@@ -1,0 +1,9 @@
+---
+import { trazosDe } from '../lib/iconos';
+interface Props { nombre: string; tamano?: number; grosor?: number; clase?: string }
+const { nombre, tamano = 20, grosor = 2, clase } = Astro.props;
+const trazos = trazosDe(nombre);
+---
+<svg class:list={['icono', clase]} width={tamano} height={tamano} viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width={grosor} stroke-linecap="round" stroke-linejoin="round" aria-hidden="true" focusable="false">
+  {trazos.map(([forma, attrs]) => (forma === 'path' ? <path {...attrs} /> : forma === 'circle' ? <circle {...attrs} /> : <rect {...attrs} />))}
+</svg>

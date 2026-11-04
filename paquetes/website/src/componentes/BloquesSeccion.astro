@@ -1,0 +1,33 @@
+---
+import Carrusel from '../islas/Carrusel';
+import type { Bloque } from '../contenido/tipos';
+import { srcsetDe } from '../lib/medios';
+
+interface Props { bloques: readonly Bloque[] }
+const { bloques } = Astro.props;
+const externo = (url: string): boolean => url.startsWith('https://');
+---
+<div class="bloques">
+  {bloques.map((b) => {
+    if (b.tipo === 'texto') return (
+      <section class="bloque-texto">
+        {b.titulo !== undefined && <h2>{b.titulo}</h2>}
+        {b.parrafos.map((t) => <p>{t}</p>)}
+      </section>
+    );
+    if (b.tipo === 'imagen') return (
+      <figure class="bloque-imagen"><img src={b.foto.url} srcset={srcsetDe(b.foto)} alt={b.foto.alt} loading="lazy" decoding="async" /></figure>
+    );
+    if (b.tipo === 'carrusel') return (
+      <div class="bloque-carrusel"><Carrusel client:visible fotos={b.fotos} etiqueta="Galería de fotos" /></div>
+    );
+    return (
+      <section class="bloque-enlaces">
+        {b.titulo !== undefined && <h2>{b.titulo}</h2>}
+        <ul>{b.items.map((it) => (
+          <li><a href={it.url} target={externo(it.url) ? '_blank' : undefined} rel={externo(it.url) ? 'noopener noreferrer' : undefined}>{it.texto}</a></li>
+        ))}</ul>
+      </section>
+    );
+  })}
+</div>

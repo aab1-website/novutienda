@@ -1,0 +1,29 @@
+---
+import Filtros from '../islas/Filtros';
+import TarjetaProducto from './TarjetaProducto.astro';
+import { contenido } from '../contenido/instancia';
+import { marcasDe } from '../contenido/consultas';
+import type { Producto } from '../contenido/tipos';
+import { rutaCategoria } from '../lib/seo';
+
+interface Props { productos: readonly Producto[]; categoriaActual?: string }
+const { productos, categoriaActual } = Astro.props;
+const { config, categorias } = contenido;
+const filtrables = productos.map((p) => ({ id: p.id, marca: p.marca, usd: p.precioUsd }));
+---
+<nav class="nav-categorias" aria-label="Categorías">
+  <a href="/productos" aria-current={categoriaActual === undefined ? 'page' : undefined}>Todos</a>
+  {categorias.map((c) => <a href={rutaCategoria(c.id)} aria-current={categoriaActual === c.id ? 'page' : undefined}>{c.nombre}</a>)}
+</nav>
+{productos.length === 0 ? (
+  <p class="subtitulo">Por ahora no hay productos en esta categoría.</p>
+) : (
+  <div class="catalogo">
+    <aside aria-label="Filtros">
+      <Filtros client:load productos={filtrables} marcas={marcasDe(productos)} inicial={config.mercadoInicial} mercados={config.mercados} redondeo={config.redondeo} />
+    </aside>
+    <div class="grilla-productos">
+      {productos.map((p) => <TarjetaProducto producto={p} />)}
+    </div>
+  </div>
+)}

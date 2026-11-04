@@ -1,0 +1,38 @@
+---
+import Base from '../../layouts/Base.astro';
+import Migas from '../../componentes/Migas.astro';
+import Icono from '../../componentes/Icono.astro';
+import Galeria from '../../islas/Galeria';
+import Precio from '../../islas/Precio';
+import BotonComprar from '../../islas/BotonComprar';
+import EventoVista from '../../islas/EventoVista';
+import { contenido } from '../../contenido/instancia';
+import { jsonLdProducto, rutaCategoria, rutaProducto } from '../../lib/seo';
+
+export function getStaticPaths() {
+  return contenido.productos.map((p) => ({ params: { slug: p.slug }, props: { producto: p } }));
+}
+const { producto: p } = Astro.props;
+const { config, categorias } = contenido;
+const cat = categorias.find((c) => c.id === p.categoria);
+const titulo = p.seo.titulo ?? p.nombre;
+const descripcion = p.seo.descripcion ?? (p.descripcion.length > 160 ? `${p.descripcion.slice(0, 157).trimEnd()}…` : p.descripcion);
+---
+<Base titulo={titulo} descripcion={descripcion} ruta={rutaProducto(p)} imagen={p.fotos[0]?.url} datosEstructurados={[jsonLdProducto(p, contenido)]}>
+  <div class="contenedor pagina">
+    <Migas pasos={[{ texto: 'Inicio', href: '/' }, { texto: 'Productos', href: '/productos' }, ...(cat !== undefined ? [{ texto: cat.nombre, href: rutaCategoria(cat.id) }] : []), { texto: p.nombre }]} />
+    <div class="ficha">
+      <Galeria client:load nombre={p.nombre} fotos={p.fotos} video={p.video} />
+      <div class="ficha-info">
+        <h1>{p.nombre}</h1>
+        <p class="ficha-meta"><span>Marca: <strong>{p.marca}</strong></span><span>Código: <strong>{p.id}</strong></span></p>
+        <Precio client:load usd={p.precioUsd} inicial={config.mercadoInicial} mercados={config.mercados} redondeo={config.redondeo} />
+        <noscript><p class="aviso-estado">Activa JavaScript para ver el precio o consúltalo por WhatsApp.</p></noscript>
+        <BotonComprar client:load id={p.id} nombre={p.nombre} disponible={p.disponible} whatsapp={config.whatsappNovuchat} verificar />
+        <p class="ficha-descripcion">{p.descripcion}</p>
+        {p.garantia !== null && <p class="ficha-garantia"><Icono nombre="escudo" tamano={20} />Garantía: {p.garantia}</p>}
+      </div>
+    </div>
+  </div>
+  <EventoVista client:idle id={p.id} nombre={p.nombre} />
+</Base>

@@ -1,0 +1,23 @@
+---
+import Base from '../../layouts/Base.astro';
+import Catalogo from '../../componentes/Catalogo.astro';
+import Migas from '../../componentes/Migas.astro';
+import { contenido } from '../../contenido/instancia';
+import { productosDeCategoria } from '../../contenido/consultas';
+import { rutaCategoria } from '../../lib/seo';
+
+export function getStaticPaths() {
+  return contenido.categorias.map((c) => ({ params: { categoria: c.id }, props: { categoria: c } }));
+}
+const { categoria } = Astro.props;
+const productos = productosDeCategoria(contenido.productos, categoria.id);
+---
+<Base titulo={categoria.nombre} descripcion={`${categoria.nombre}: modelos y precios actualizados.`} ruta={rutaCategoria(categoria.id)}>
+  <div class="contenedor pagina">
+    <Migas pasos={[{ texto: 'Inicio', href: '/' }, { texto: 'Productos', href: '/productos' }, { texto: categoria.nombre }]} />
+    <header class="encabezado-pagina">
+      <h1 class="titulo-seccion">{categoria.nombre}</h1>
+    </header>
+    <Catalogo productos={productos} categoriaActual={categoria.id} />
+  </div>
+</Base>

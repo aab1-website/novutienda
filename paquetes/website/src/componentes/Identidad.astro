@@ -1,0 +1,37 @@
+---
+import Icono from './Icono.astro';
+import { contenido } from '../contenido/instancia';
+import { afirmacionVisible } from '../contenido/consultas';
+import { srcsetDe } from '../lib/medios';
+
+const { identidad: i } = contenido;
+const cifra = i.cifra !== null && afirmacionVisible(i.cifra.valor, false) ? i.cifra : null;
+const sello = afirmacionVisible(i.sello, false) ? i.sello : null;
+---
+<section id="nosotros" class="seccion identidad" aria-labelledby="titulo-identidad">
+  <div class="contenedor identidad-interior">
+    {i.foto !== null && (
+      <div class="identidad-foto">
+        <img src={i.foto.url} srcset={srcsetDe(i.foto)} alt={i.foto.alt} loading="lazy" decoding="async" width="800" height="600" />
+        {cifra !== null && <div class="identidad-cifra"><strong>{cifra.valor.texto}</strong><span>{cifra.detalle}</span></div>}
+      </div>
+    )}
+    <div class="identidad-texto">
+      <span class="etiqueta">{i.etiqueta}</span>
+      <h2 id="titulo-identidad" class="titulo-seccion">{i.titulo}</h2>
+      <p class="subtitulo">{i.texto}</p>
+      {i.valores.length > 0 && (
+        <ul class="valores">
+          {i.valores.map((v) => (
+            <li class="valor">
+              <span class="icono-caja"><Icono nombre={v.icono} tamano={18} /></span>
+              <h3>{v.titulo}</h3>
+              <p>{v.texto}</p>
+            </li>
+          ))}
+        </ul>
+      )}
+      {sello !== null && <p class="sello"><Icono nombre="check" tamano={20} />{sello.texto}</p>}
+    </div>
+  </div>
+</section>
