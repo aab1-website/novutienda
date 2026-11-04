@@ -1,0 +1,340 @@
+import { registrarAuditoria, type Actor } from '@plataforma/nucleo';
+import { leerEstadoSitio } from './cambios.js';
+import { ErrorConsola } from './errores.js';
+import type { FichaWeb } from './fichas.js';
+import { LIMITES_CONSOLA } from './limites.js';
+import type { Medio } from './medios/subidas.js';
+import { exigirRol, ROLES } from './permisos.js';
+import { PLANTILLAS } from './plantillas.js';
+import type {
+  BaseDatosConsola, CatalogoPuerto, DisparadorSitio, Existencia, PrecioUSD, ProductoCatalogo, Reloj, UbicacionId,
+} from './puertos.js';
+import { rutaCarrusel, rutaFicha, rutaMedio, rutaPublicado, rutaSeccion, rutaSitio, tenantValido } from './rutas.js';
+import type { Bloque, Seccion } from './secciones.js';
+import type { Carrusel, ConfigSitio } from './sitio.js';
+import { validarSeccion } from './secciones.js';
+import { validarCarrusel, validarConfigSitio } from './sitio.js';
+import { esObjeto } from './validar.js';
+
+// ---------------------------------------------------------------------------------------------
+// Disponibilidad pública (solo disponible / agotado, sin cantidades)
+// ---------------------------------------------------------------------------------------------
+
+export interface EntradaDisponibilidad {
+  readonly producto: Pick<ProductoCatalogo, 'id' | 'activo' | 'stockTotal'>;
+  readonly existencias: readonly Existencia[];
+}
+
+/**
+ * Proyección pública de disponibilidad. Los pedidos de WhatsApp descuentan siempre de `tienda`, así que solo esa
+ * ubicación cuenta (parametrizable). Un producto sin control de stock (`stockTotal` ausente) figura disponible;
+ * uno inactivo, agotado. Nunca se publican cantidades.
+ */
+export function proyectarDisponibilidad(
+  entradas: readonly EntradaDisponibilidad[],
+  ubicaciones: readonly UbicacionId[] = ['tienda'],
+): Readonly<Record<string, { readonly disponible: boolean }>> {
+  const salida: Record<string, { disponible: boolean }> = {};
+  for (const { producto, existencias } of entradas) {
+    let disponible: boolean;
+    if (!producto.activo) disponible = false;
+    else if (producto.stockTotal === undefined) disponible = true;
+    else disponible = existencias.filter((x) => ubicaciones.includes(x.ubicacionId)).reduce((s, x) => s + x.cantidad, 0) > 0;
+    salida[producto.id] = { disponible };
+  }
+  return salida;
+}
+
+/** Arma la proyección leyendo catálogo y existencias por el puerto (solo lectura). */
+export async function calcularDisponibilidadPublica(catalogo: CatalogoPuerto, tenantId: string) {
+  const productos = await catalogo.listarProductos(tenantId);
+  const entradas: EntradaDisponibilidad[] = [];
+  for (const p of productos) {
+    entradas.push({ producto: p, existencias: p.stockTotal === undefined ? [] : await catalogo.existenciasPorAlmacen(tenantId, p.id) });
+  }
+  return proyectarDisponibilidad(entradas);
+}
+
+// ---------------------------------------------------------------------------------------------
+// Decisión de reconstrucción (agrupa cambios 10 minutos)
+// ---------------------------------------------------------------------------------------------
+
+export type EventoReconstruccion = 'publicacion' | 'temporizador' | 'diaria';
+
+export type DecisionReconstruccion =
+  | { readonly accion: 'nada' }
+  /** Primer cambio del grupo: agendar la reconstrucción para `para`. */
+  | { readonly accion: 'programar'; readonly para: number }
+  /** Ya hay una agendada: el cambio se suma al grupo. */
+  | { readonly accion: 'esperar'; readonly para: number }
+  | { readonly accion: 'reconstruir' };
+
+/**
+ * Función pura. `programadaPara` es la reconstrucción ya agendada (ms) o null. Una publicación agenda a +10 min si no
+ * hay nada agendado y, si ya hay, se agrupa. El temporizador reconstruye solo cuando llegó la hora. La corrida diaria
+ * (tras la publicación del BCB) reconstruye siempre que haya algo publicado.
+ */
+export function decidirReconstruccion(
+  estado: { readonly hayPublicacion: boolean; readonly programadaPara: number | null },
+  ahora: number,
+  evento: EventoReconstruccion,
+  ventanaMs: number = LIMITES_CONSOLA.ventanaReconstruccionMs,
+): DecisionReconstruccion {
+  if (evento === 'diaria') return estado.hayPublicacion ? { accion: 'reconstruir' } : { accion: 'nada' };
+  const p = estado.programadaPara;
+  if (p === null) return evento === 'publicacion' ? { accion: 'programar', para: ahora + ventanaMs } : { accion: 'nada' };
+  return p > ahora ? { accion: 'esperar', para: p } : { accion: 'reconstruir' };
+}
+
+// ---------------------------------------------------------------------------------------------
+// Copia publicada (`publicado/`)
+// ---------------------------------------------------------------------------------------------
+
+export interface MedioPublico {
+  readonly tipo: 'foto' | 'video';
+  readonly alt: string;
+  readonly ancho: number;
+  readonly alto: number;
+  readonly versiones: readonly { readonly clase: 'imagen' | 'video' | 'poster'; readonly lado: number; readonly formato: string; readonly ruta: string }[];
+}
+
+export interface ProductoPublicado {
+  readonly id: string;
+  readonly slug: string;
+  readonly nombre: string;
+  readonly categoria: string;
+  readonly marca?: string;
+  readonly descripcion: string;
+  readonly garantia: string;
+  readonly garantiaMeses?: number;
+  readonly medios: readonly MedioPublico[];
+  readonly seo: FichaWeb['seo'];
+  /** Precio base en USD por mercado; el sitio lo convierte con `precioFinal` y la cotización. */
+  readonly precioUSD: PrecioUSD;
+}
+
+export type BloquePublicado =
+  | Exclude<Bloque, { tipo: 'imagen' | 'carrusel' }>
+  | { readonly tipo: 'imagen'; readonly medio: MedioPublico }
+  | { readonly tipo: 'carrusel'; readonly items: readonly MedioPublico[] };
+
+export interface SeccionPublicada {
+  readonly id: string;
+  readonly titulo: string;
+  readonly bloques: readonly BloquePublicado[];
+}
+
+export interface CarruselPublicado {
+  readonly plantilla: string;
+  readonly items: readonly (MedioPublico & { readonly enlace?: string })[];
+}
+
+export interface FichaGuardada extends FichaWeb {
+  readonly productoId: string;
+}
+
+export interface EntradaPublicado {
+  readonly productos: readonly ProductoCatalogo[];
+  readonly fichas: ReadonlyMap<string, FichaGuardada>;
+  readonly medios: ReadonlyMap<string, Medio>;
+  readonly config: ConfigSitio;
+  /** En el orden del menú. */
+  readonly secciones: readonly Seccion[];
+  readonly carruseles: readonly Carrusel[];
+}
+
+export interface Publicado {
+  readonly config: ConfigSitio;
+  readonly productos: readonly ProductoPublicado[];
+  readonly secciones: readonly SeccionPublicada[];
+  readonly carruseles: readonly CarruselPublicado[];
+  readonly advertencias: readonly string[];
+}
+
+/**
+ * Función pura: arma lo que la reconstrucción del sitio lee. Entran solo fichas en estado `publicado` de
+ * productos activos; salen únicamente datos públicos (sin stock, costos, SKU, rutas de originales ni autores).
+ */
+export function construirPublicado(e: EntradaPublicado): Publicado {
+  const advertencias: string[] = [];
+  const publico = (medioId: string, alt: string, donde: string): MedioPublico | undefined => {
+    const m = e.medios.get(medioId);
+    if (m === undefined) {
+      advertencias.push(`${donde}: el medio ${medioId} no existe y se omitió`);
+      return undefined;
+    }
+    return {
+      tipo: m.tipo, alt, ancho: m.ancho, alto: m.alto,
+      versiones: m.versiones.map((v) => ({ clase: v.clase, lado: v.lado, formato: v.formato, ruta: v.ruta })),
+    };
+  };
+  const sinNulos = <T>(xs: readonly (T | undefined)[]): T[] => xs.filter((x): x is T => x !== undefined);
+
+  const productos: ProductoPublicado[] = [];
+  for (const p of [...e.productos].sort((a, b) => (a.id < b.id ? -1 : 1))) {
+    const f = e.fichas.get(p.id);
+    if (f?.estado !== 'publicado' || !p.activo) continue;
+    productos.push({
+      id: p.id, slug: f.slug, nombre: p.nombre, categoria: p.categoria,
+      ...(p.marca === undefined ? {} : { marca: p.marca }),
+      descripcion: f.descripcion, garantia: f.garantia,
+      ...(p.garantiaMeses === undefined ? {} : { garantiaMeses: p.garantiaMeses }),
+      medios: sinNulos(f.medios.map((m) => publico(m.medioId, m.alt, `producto ${p.id}`))),
+      seo: f.seo, precioUSD: p.precioUSD,
+    });
+  }
+
+  const secciones: SeccionPublicada[] = e.secciones.filter((s) => s.visible).map((s) => ({
+    id: s.id, titulo: s.titulo,
+    bloques: sinNulos(s.bloques.map((b): BloquePublicado | undefined => {
+      if (b.tipo === 'imagen') {
+        const m = publico(b.medioId, b.alt, `sección ${s.id}`);
+        return m === undefined ? undefined : { tipo: 'imagen', medio: m };
+      }
+      if (b.tipo === 'carrusel') return { tipo: 'carrusel', items: sinNulos(b.items.map((i) => publico(i.medioId, i.alt, `sección ${s.id}`))) };
+      return b;
+    })),
+  }));
+
+  const carruseles: CarruselPublicado[] = e.carruseles.map((c) => ({
+    plantilla: c.plantilla,
+    items: sinNulos(c.items.map((i) => {
+      const m = publico(i.medioId, i.alt, `carrusel ${c.plantilla}`);
+      return m === undefined ? undefined : i.enlace === undefined ? m : { ...m, enlace: i.enlace };
+    })),
+  }));
+
+  return { config: e.config, productos, secciones, carruseles, advertencias };
+}
+
+// ---------------------------------------------------------------------------------------------
+// Publicar
+// ---------------------------------------------------------------------------------------------
+
+export interface DepsPublicar {
+  readonly db: BaseDatosConsola;
+  readonly catalogo: CatalogoPuerto;
+  readonly reloj: Reloj;
+  readonly disparador: DisparadorSitio;
+}
+
+export interface ResultadoPublicacion {
+  readonly version: number;
+  readonly productos: number;
+  readonly decision: DecisionReconstruccion;
+  readonly advertencias: readonly string[];
+}
+
+const texto = (x: unknown): string[] => (Array.isArray(x) ? x.filter((v): v is string => typeof v === 'string') : []);
+
+const leerReconstruccion = (d: Readonly<Record<string, unknown>> | undefined): { version: number; programadaPara: number | null; productos: string[]; secciones: string[]; carruseles: string[] } => {
+  const r = d?.['reconstruccion'];
+  const p = esObjeto(r) ? r['programadaPara'] : null;
+  return {
+    version: typeof d?.['version'] === 'number' ? d['version'] : 0,
+    programadaPara: typeof p === 'number' ? p : null,
+    productos: texto(d?.['productos']), secciones: texto(d?.['secciones']), carruseles: texto(d?.['carruseles']),
+  };
+};
+
+/**
+ * Publica: escribe la copia `publicado/` (una sola transacción), pone a cero los cambios sin publicar, registra la
+ * auditoría y agenda la reconstrucción (agrupa 10 minutos). Solo adm.
+ */
+export async function publicarSitio(deps: DepsPublicar, e: { tenantId: string; actor: Actor }): Promise<ResultadoPublicacion> {
+  const t = tenantValido(e.tenantId);
+  const rol = exigirRol(e.actor, t, ROLES.administrar);
+  const productos = await deps.catalogo.listarProductos(t);
+  const ahora = deps.reloj.ahora();
+  const ahoraIso = new Date(ahora).toISOString();
+
+  const r = await deps.db.runTransaction(async (tx) => {
+    const config = validarConfigSitio((await tx.get(rutaSitio(t, 'config'))).data());
+    if (!config.ok) throw new ErrorConsola('estado', 'Configure el sitio (plantilla y WhatsApp) antes de publicar', config.errores);
+    const indice = texto((await tx.get(rutaSitio(t, 'indice'))).data()?.['secciones']);
+    const secciones: Seccion[] = [];
+    for (const id of indice) {
+      const s = validarSeccion((await tx.get(rutaSeccion(t, id))).data());
+      if (s.ok) secciones.push(s.valor);
+    }
+    const carruseles: Carrusel[] = [];
+    for (const p of PLANTILLAS) {
+      const d = (await tx.get(rutaCarrusel(t, p))).data();
+      if (d === undefined) continue;
+      const c = validarCarrusel(d);
+      if (c.ok) carruseles.push(c.valor);
+    }
+    const fichas = new Map<string, FichaGuardada>();
+    for (const p of productos) {
+      const d = (await tx.get(rutaFicha(t, p.id))).data();
+      if (d !== undefined) fichas.set(p.id, d as unknown as FichaGuardada);
+    }
+    const ids = new Set<string>();
+    for (const f of fichas.values()) if (f.estado === 'publicado') for (const m of f.medios) ids.add(m.medioId);
+    for (const s of secciones) for (const b of s.bloques) {
+      if (b.tipo === 'imagen') ids.add(b.medioId);
+      if (b.tipo === 'carrusel') for (const i of b.items) ids.add(i.medioId);
+    }
+    for (const c of carruseles) for (const i of c.items) ids.add(i.medioId);
+    const medios = new Map<string, Medio>();
+    for (const id of ids) {
+      const d = (await tx.get(rutaMedio(t, id))).data();
+      if (d !== undefined) medios.set(id, d as unknown as Medio);
+    }
+    const previo = leerReconstruccion((await tx.get(rutaPublicado(t, 'estado'))).data());
+    await leerEstadoSitio(tx, t);
+
+    const pub = construirPublicado({ productos, fichas, medios, config: config.valor, secciones, carruseles });
+    const version = previo.version + 1;
+    const decision = decidirReconstruccion({ hayPublicacion: true, programadaPara: previo.programadaPara }, ahora, 'publicacion');
+
+    for (const p of pub.productos) tx.set(rutaPublicado(t, `producto__${p.id}`), { ...p });
+    for (const s of pub.secciones) tx.set(rutaPublicado(t, `seccion__${s.id}`), { ...s });
+    for (const c of pub.carruseles) tx.set(rutaPublicado(t, `carrusel__${c.plantilla}`), { ...c });
+    tx.set(rutaPublicado(t, 'sitio'), { ...pub.config, version });
+    const idsProd = pub.productos.map((p) => p.id);
+    const idsSec = pub.secciones.map((s) => s.id);
+    const idsCar = pub.carruseles.map((c) => c.plantilla);
+    for (const id of previo.productos) if (!idsProd.includes(id)) tx.delete(rutaPublicado(t, `producto__${id}`));
+    for (const id of previo.secciones) if (!idsSec.includes(id)) tx.delete(rutaPublicado(t, `seccion__${id}`));
+    for (const id of previo.carruseles) if (!idsCar.includes(id)) tx.delete(rutaPublicado(t, `carrusel__${id}`));
+
+    const programadaPara = decision.accion === 'programar' ? decision.para : decision.accion === 'esperar' ? decision.para : null;
+    tx.set(rutaPublicado(t, 'estado'), {
+      version, publicadoEn: ahoraIso, productos: idsProd, secciones: idsSec, carruseles: idsCar,
+      reconstruccion: { programadaPara, ultima: decision.accion === 'reconstruir' ? ahora : null },
+    });
+    tx.set(rutaSitio(t, 'estado'), { cambios: 0, ultimoCambioEn: ahoraIso });
+    registrarAuditoria(tx, {
+      tenantId: t, uid: e.actor.uid, rol, accion: 'sitio.publicar', ruta: rutaPublicado(t, 'estado'),
+      resumenDespues: { version, productos: idsProd.length, secciones: idsSec.length },
+    });
+    return { version, productos: idsProd.length, decision, advertencias: pub.advertencias };
+  });
+
+  if (r.decision.accion === 'programar') await deps.disparador.programar(t, r.decision.para);
+  else if (r.decision.accion === 'reconstruir') await deps.disparador.reconstruir(t, r.version, 'publicacion');
+  return r;
+}
+
+/**
+ * Lo invocan el temporizador agendado (`temporizador`) y la corrida diaria tras la publicación del BCB (`diaria`).
+ * Corre en el servidor; no depende de ninguna máquina de usuario.
+ */
+export async function ejecutarReconstruccion(
+  deps: Pick<DepsPublicar, 'db' | 'reloj' | 'disparador'>, e: { tenantId: string; evento: 'temporizador' | 'diaria' },
+): Promise<DecisionReconstruccion> {
+  const t = tenantValido(e.tenantId);
+  const ahora = deps.reloj.ahora();
+  const { decision, version } = await deps.db.runTransaction(async (tx) => {
+    const d = (await tx.get(rutaPublicado(t, 'estado'))).data();
+    const prev = leerReconstruccion(d);
+    const dec = decidirReconstruccion({ hayPublicacion: d !== undefined, programadaPara: prev.programadaPara }, ahora, e.evento);
+    if (dec.accion === 'reconstruir' && d !== undefined) {
+      tx.set(rutaPublicado(t, 'estado'), { ...d, reconstruccion: { programadaPara: null, ultima: ahora } });
+    }
+    return { decision: dec, version: prev.version };
+  });
+  if (decision.accion === 'reconstruir') await deps.disparador.reconstruir(t, version, e.evento === 'diaria' ? 'diaria' : 'publicacion');
+  return decision;
+}
