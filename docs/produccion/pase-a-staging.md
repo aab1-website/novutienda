@@ -86,6 +86,10 @@ firebase hosting:sites:list --project "$P"
 
 El CI aplica los targets en cada despliegue (`firebase target:apply hosting sitio|panel`); no se versiona `.firebaserc`.
 
+Lección (04/11/2026): un ID de sitio borrado queda **reservado por el proyecto que lo tuvo**, aun después de `hosting:sites:delete`;
+no se puede reutilizar en otro proyecto. Si hay que recrear el staging, los sitios llevan IDs nuevos (p. ej. `<plataforma>-sitio-stg`),
+y se actualizan `FIREBASE_SITE_SITIO|PANEL` y los dominios autorizados de Auth.
+
 ## 5. Federación GitHub → GCP (WIF) [gratis]
 
 5.1 Claude corre el script del estándar (solo lectura sobre SeguridadGeneral; escribe en GCP):
