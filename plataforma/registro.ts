@@ -9,6 +9,7 @@ import { manifiestoInventarios } from '@plataforma/inventarios';
 import { manifiestoPos } from '@plataforma/pos';
 import { manifiestoRecibos } from '@plataforma/recibos';
 import { manifiestoWebsite } from '@plataforma/website';
+import { manifiestoConsola } from '@plataforma/consola';
 
 export const registroPlataforma = crearRegistro<ManifiestoModulo>();
 registroPlataforma.registrar(manifiestoNucleo);
@@ -16,6 +17,7 @@ registroPlataforma.registrar(manifiestoInventarios);
 registroPlataforma.registrar(manifiestoPos);
 registroPlataforma.registrar(manifiestoRecibos);
 registroPlataforma.registrar(manifiestoWebsite);
+registroPlataforma.registrar(manifiestoConsola);
 
 /**
  * Manifiestos en orden topológico (dependencias primero). Es el orden que usa el

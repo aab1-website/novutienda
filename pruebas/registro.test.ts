@@ -22,8 +22,8 @@ const mod = (id: string, dependeDe: string[] = [], rutas: string[] = []): Manifi
 });
 
 describe('registro de módulos', () => {
-  it('el núcleo y los cuatro módulos están registrados; el núcleo tiene sus siete colecciones', () => {
-    expect(registroPlataforma.listar().map((m) => m.id).sort()).toEqual(['inventarios', 'nucleo', 'pos', 'recibos', 'website']);
+  it('el núcleo y los cinco módulos están registrados; el núcleo tiene sus siete colecciones', () => {
+    expect(registroPlataforma.listar().map((m) => m.id).sort()).toEqual(['consola', 'inventarios', 'nucleo', 'pos', 'recibos', 'website']);
     expect(manifiestoNucleo.colecciones.map((c) => c.ruta)).toEqual(['miembros', 'auditoria', 'eventos', 'procesados', 'contadores', 'cotizaciones', 'config']);
     const aud = manifiestoNucleo.colecciones.find((c) => c.ruta === 'auditoria');
     expect(aud?.lectura).toEqual(['sup', 'adm']);

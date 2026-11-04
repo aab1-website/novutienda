@@ -14,6 +14,8 @@ export type MedioPagoVenta = 'efectivo' | 'qr' | 'transferencia' | 'credito';
 
 export interface LineaVentaConfirmada {
   readonly productoId: string;
+  /** Nombre del producto al momento de la venta (copia: el recibo muestra lo vendido aunque se renombre después). */
+  readonly nombre: string;
   readonly cantidad: number;
   /** Enteros de centavos de la moneda de la venta. */
   readonly precioUnitario: number;
@@ -80,6 +82,7 @@ export const validarVentaConfirmadaV1 = crearValidador<DatosVentaConfirmadaV1>(
     lineas: arreglo(
       objeto({
         productoId: texto,
+        nombre: texto,
         cantidad: cantidadPositiva,
         precioUnitario: centavos,
         almacenId: texto,
@@ -141,13 +144,13 @@ const valido: DatosVentaConfirmadaV1 = {
   cotizacion: cotizacionBob,
   descuento: { monto: 5000, motivo: 'Cliente frecuente', aprobadoPor: 'u-sup' },
   lineas: [
-    { productoId: 'p1', cantidad: 2, precioUnitario: 65000, almacenId: 'a1', series: ['S1', 'S2'], garantiaMeses: 12 },
+    { productoId: 'p1', nombre: 'Lavarropas 8 kg', cantidad: 2, precioUnitario: 65000, almacenId: 'a1', series: ['S1', 'S2'], garantiaMeses: 12 },
   ],
   pagos: [{ medio: 'efectivo', moneda: 'BOB', monto: 130000, recibido: 150000, cambio: 5000, referencia: 'caja-1' }],
   cliente: { nombre: 'Ana Pérez', telefono: '70000000' },
 };
 
-const lineaSinSerie = { productoId: 'p2', cantidad: 1, precioUnitario: 10000, almacenId: 'a1', series: [] };
+const lineaSinSerie = { productoId: 'p2', nombre: 'Licuadora', cantidad: 1, precioUnitario: 10000, almacenId: 'a1', series: [] };
 const ventaUsd: DatosVentaConfirmadaV1 = {
   ventaId: 'v2',
   turnoId: 't1',
@@ -163,6 +166,10 @@ const ventaUsd: DatosVentaConfirmadaV1 = {
 export const fixturesVentaConfirmadaV1: Fixtures<DatosVentaConfirmadaV1> = {
   validos: [valido, ventaUsd, { ...ventaUsd, moneda: 'ARS', cotizacion: { ...cotizacionBob, par: 'ARS/USD', fuente: 'BNA' }, pagos: [{ medio: 'transferencia', moneda: 'ARS', monto: 10000 }] }],
   invalidos: [
+    {
+      nombre: 'línea sin nombre del producto',
+      datos: { ...valido, lineas: [{ productoId: 'p1', cantidad: 2, precioUnitario: 65000, almacenId: 'a1', series: ['S1', 'S2'] }] },
+    },
     { nombre: 'total decimal', datos: { ...valido, total: 10.5 } },
     { nombre: 'total negativo', datos: { ...valido, total: -1 } },
     { nombre: 'sin líneas', datos: { ...valido, lineas: [] } },
@@ -187,7 +194,7 @@ export const fixturesVentaConfirmadaV1: Fixtures<DatosVentaConfirmadaV1> = {
         total: 125000,
         lineas: [
           { ...valido.lineas[0], cantidad: 1, series: ['S1'] },
-          { ...valido.lineas[0], productoId: 'p3', cantidad: 1, series: ['S1'] },
+          { ...valido.lineas[0], productoId: 'p3', nombre: 'Plancha', cantidad: 1, series: ['S1'] },
         ],
       },
     },
