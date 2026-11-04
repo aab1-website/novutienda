@@ -4,7 +4,7 @@
 import { readFileSync } from 'node:fs';
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
 import { initializeTestEnvironment, type RulesTestEnvironment } from '@firebase/rules-unit-testing';
-import { registroPlataforma } from '@plataforma/nucleo';
+import { manifiestosEnOrden } from '../../plataforma/registro.js';
 import { generarReglas, type ManifiestoReglas } from '../../scripts/generar-reglas.mjs';
 import { construirCasos, ejecutarMatriz, type Caso } from './matriz.js';
 
@@ -38,7 +38,7 @@ async function entorno(reglas: string): Promise<RulesTestEnvironment> {
 }
 
 describe.skipIf(host === undefined)('reglas de Firestore contra el emulador', () => {
-  const manifiestos: readonly ManifiestoReglas[] = registroPlataforma.listar();
+  const manifiestos: readonly ManifiestoReglas[] = manifiestosEnOrden();
   const reglasReales = readFileSync('firestore.rules', 'utf8');
   let env: RulesTestEnvironment | undefined;
 
@@ -88,6 +88,7 @@ describe.skipIf(host === undefined)('reglas de Firestore contra el emulador', ()
       ['lectura abierta en una colección sin lectores', (t) => t.replace(/(eventos\/\{id\} \{\n\s+)allow read: if false;/, '$1allow read: if true;')],
       ['negación final reemplazada por permiso', (t) => t.replace(/(\{document=\*\*\} \{\n\s+)allow read, write: if false;/, '$1allow read, write: if true;')],
       ['proveedor ignorado', (t) => t.replace("&& proveedor() == 'password'", '')],
+      ['correo verificado ignorado', (t) => t.replace("&& request.auth.token.get('email_verified', false) == true", '')],
       ['rol sin comprobar', (t) => t.replace('&& rolEn(tenantId) in roles', '&& rolEn(tenantId) != \'\'')],
     ];
 
