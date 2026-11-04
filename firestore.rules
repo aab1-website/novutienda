@@ -162,8 +162,14 @@ service cloud.firestore {
       allow read: if tieneRol(tenantId, ['caj', 'sup', 'adm']);
       allow write: if false; // solo el servidor escribe
     }
-    match /tenants/{tenantId}/contadores_recibo/{id} {
+    match /tenants/{tenantId}/anulaciones_pendientes_recibo/{id} {
       allow read: if tieneRol(tenantId, ['adm']);
+      allow write: if false; // solo el servidor escribe
+    }
+
+    // Módulo website
+    match /tenants/{tenantId}/contactos/{id} {
+      allow read: if tieneRol(tenantId, ['sup', 'adm']);
       allow write: if false; // solo el servidor escribe
     }
 

@@ -153,11 +153,10 @@ describe('SEO y JSON-LD', () => {
 });
 
 describe('manifiesto', () => {
-  it('declara solo colecciones del sitio, todas con escritura de servidor, y ningún dato de otro módulo', () => {
+  it('declara solo sus colecciones (contactos), con escritura de servidor, y ningún dato de otro módulo', () => {
     const rutas = manifiestoWebsite.colecciones.map((x) => x.ruta);
-    expect(rutas).toEqual(expect.arrayContaining(['fichasWeb', 'sitio', 'secciones', 'carruseles', 'publicado', 'subidas', 'medios']));
+    expect(rutas).toEqual(['contactos']);
     expect(manifiestoWebsite.colecciones.every((x) => x.escritura === 'servidor')).toBe(true);
-    for (const ajeno of ['productos', 'existencias', 'existenciasPublicas', 'cotizaciones']) expect(rutas).not.toContain(ajeno);
-    expect(manifiestoWebsite.colecciones.find((x) => x.ruta === 'publicado')?.lectura).toEqual([]);
+    for (const ajeno of ['productos', 'existencias', 'existenciasPublicas', 'cotizaciones', 'fichasWeb', 'publicado']) expect(rutas).not.toContain(ajeno);
   });
 });

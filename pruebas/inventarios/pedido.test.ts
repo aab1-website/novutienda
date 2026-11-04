@@ -158,9 +158,9 @@ const sobre = (tipo: string, id: string, clave: string, datos: unknown): SobreEv
 describe('eventos consumidos', () => {
   const cotizacion = { cotizacionId: 'AR-1', par: 'ARS/USD', valor: 1200, fecha: '2026-11-04', fuente: 'BNA', estado: 'vigente' };
   const pedidoEv = (pedidoId: string, lineas: unknown[], id = `e-${pedidoId}`) =>
-    sobre('pedido.confirmado', id, pedidoId, { pedidoId, mercado: 'AR', moneda: 'ARS', total: 1000, cotizacion, almacenId: 'deposito-1', lineas, confirmadoEn: '2026-11-04T11:59:00Z' });
+    sobre('pedido.confirmado', id, pedidoId, { pedidoId, mercado: 'AR', moneda: 'ARS', total: 1000, cotizacion, lineas, confirmadoEn: '2026-11-04T11:59:00Z' });
 
-  it('pedido.confirmado descuenta de tienda (ignora el almacén del evento) una sola vez', async () => {
+  it('pedido.confirmado descuenta de tienda (siempre de la tienda) una sola vez', async () => {
     const ev = pedidoEv('p1', [{ productoId: 'lapiz', cantidad: 2 }]);
     expect(await consumirPedidoConfirmado(ejecutorDesde(db), ev)).toBe(true);
     expect(await consumirPedidoConfirmado(ejecutorDesde(db), ev)).toBe(false);
@@ -195,7 +195,7 @@ describe('eventos consumidos', () => {
         { productoId: 'lapiz', cantidad: 2, almacenId: 'tienda', series: [] },
         { productoId: 'celular', cantidad: 1, almacenId: 'tienda', series: ['B'] },
       ],
-      reembolso: { medio: 'efectivo', moneda: 'BOB', monto: 100 },
+      reembolsos: [{ medio: 'efectivo', moneda: 'BOB', monto: 100 }],
       turnoIdReembolso: 't1',
     };
     const ev = sobre('venta.anulada', 'ea1', 'v1', datos);
@@ -215,7 +215,7 @@ describe('eventos consumidos', () => {
     const ev = sobre('venta.anulada', 'ea2', 'v2', {
       ventaId: 'v2', turnoId: 't1', motivo: 'x', anuladaPor: 'u-caj', aprobadoPor: 'u-sup',
       lineas: [{ productoId: 'lapiz', cantidad: 1, almacenId: 'tienda', series: [] }],
-      reembolso: { medio: 'efectivo', moneda: 'BOB', monto: 1 }, turnoIdReembolso: 't1',
+      reembolsos: [{ medio: 'efectivo', moneda: 'BOB', monto: 1 }], turnoIdReembolso: 't1',
     });
     await expect(consumirVentaAnulada(ejecutorDesde(db), ev)).rejects.toThrow(/no coinciden/);
     expect(doc(db, 'existencias', 'lapiz__tienda')?.['cantidad']).toBe(3);
