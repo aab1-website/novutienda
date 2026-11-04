@@ -45,6 +45,20 @@ test('inicio de sesión real: contraseña incorrecta, correo sin verificar y acc
   expect(v.errores).toEqual([]);
 });
 
+test('App Check: cada llamada a las funciones del panel real lleva el token en X-Firebase-AppCheck', async ({ page }) => {
+  const v = vigilar(page);
+  const llamadas: { url: string; token: string | undefined }[] = [];
+  page.on('request', (r) => {
+    if (r.method() === 'POST' && r.url().includes('/demo-pruebas/us-east1/')) llamadas.push({ url: r.url(), token: r.headers()['x-firebase-appcheck'] });
+  });
+  await entrar(page, adm);
+  await page.getByRole('link', { name: 'Usuarios' }).click();
+  await expect(page.getByText(/Personas con acceso/)).toBeVisible();
+  expect(llamadas.length).toBeGreaterThan(0);
+  for (const l of llamadas) expect(l.token, l.url).toMatch(/^[\w-]+\.[\w-]+\.[\w-]+$/);
+  expect(v.errores).toEqual([]);
+});
+
 test('venta de punta a punta: turno, terminal, cobro con cambio, recibo, Mis recibos y cierre', async ({ page }) => {
   const v = vigilar(page);
   // Quien vende aquí es `sup`: el vendedor (`caj`) todavía no recibe las cotizaciones del servidor (ver el informe).
