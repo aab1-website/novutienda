@@ -9,7 +9,9 @@ import { tokenAppCheckEmulador } from './emulador.js';
 const env = (globalThis as { process?: { env: Record<string, string | undefined> } }).process?.env ?? {};
 const hayEmulador = env['FIRESTORE_EMULATOR_HOST'] !== undefined && env['FIREBASE_AUTH_EMULATOR_HOST'] !== undefined;
 const exigido = env['APP_CHECK_EXIGIDO'] === 'true';
-const URL = 'http://127.0.0.1:8245/demo-pruebas/us-east1/consola';
+// El destino es el emulador local de Functions (sin TLS por diseño); el host sale del entorno del emulador.
+const hostFunciones = env['FIREBASE_FUNCTIONS_EMULATOR_HOST'] ?? env['FUNCTIONS_EMULATOR_HOST'] ?? '127.0.0.1:8245';
+const URL = `http://${hostFunciones}/demo-pruebas/us-east1/consola`;
 const sobre = { data: { accion: 'listarUsuarios', tenantId: 'tienda-prueba' } };
 
 async function llamar(cabeceras: Record<string, string>): Promise<{ status: number; mensaje: string }> {

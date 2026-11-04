@@ -26,7 +26,7 @@ done
 
 # 2. Configuración compuesta en el build.
 [[ -f dist/firebase.json ]] || error "El artifact no trae dist/firebase.json (scripts/build.mjs lo genera)."
-filtro='del(.hosting[] | select(.target == "sitio") | .headers[] | select(.source == "**") | .headers)'
+filtro='del(.hosting[] | select(.target == "sitio" or .target == "panel") | .headers[] | select(.source == "**") | .headers)'
 if ! diff <(jq -S "$filtro" firebase.json) <(jq -S "$filtro" dist/firebase.json) >/dev/null; then
   error "dist/firebase.json no corresponde al firebase.json de este commit (fuera de la CSP del sitio)."
 fi

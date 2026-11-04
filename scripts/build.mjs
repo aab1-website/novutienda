@@ -2,7 +2,7 @@
 //
 // 1. Compila el sitio (`@novutienda/website`, salida dist/website con `_cabeceras.json` sellado) y el panel
 //    (`@novutienda/panel`, salida dist/panel con su `_cabeceras.json`), cada uno con su propio script de build.
-// 2. Ejecuta plataforma/funciones/scripts/componer-hosting.mjs para incorporar la CSP sellada del sitio a una
+// 2. Ejecuta plataforma/funciones/scripts/componer-hosting.mjs para incorporar las CSP selladas del sitio y del panel a una
 //    COPIA de firebase.json: dist/firebase.json. El firebase.json versionado no se toca; el CI despliega con la
 //    copia que viaja en el artifact de dist/ (se despliega exactamente lo que se construyó).
 // 3. Verifica que dist/ quede listo: index.html y `_cabeceras.json` en ambos sitios y los `public` de Hosting
@@ -67,4 +67,4 @@ for (const h of compuesto.hosting) {
   if (!existsSync(`${h.public}/index.html`)) fallar(`el target ${h.target} publica ${h.public}, que no tiene index.html`);
 }
 
-console.log(`build (${modo}): dist/website y dist/panel listos; dist/firebase.json con la CSP sellada del sitio.`);
+console.log(`build (${modo}): dist/website y dist/panel listos; dist/firebase.json con las CSP selladas del sitio y del panel.`);
