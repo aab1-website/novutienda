@@ -63,55 +63,55 @@ service cloud.firestore {
 
     // Módulo inventarios
     match /tenants/{tenantId}/productos/{id} {
-      allow read: if tieneRol(tenantId, ['caj', 'sup', 'adm']);
+      allow read: if false;
       allow write: if false; // solo el servidor escribe
     }
     match /tenants/{tenantId}/costos/{id} {
-      allow read: if tieneRol(tenantId, ['adm']);
+      allow read: if false;
       allow write: if false; // solo el servidor escribe
     }
     match /tenants/{tenantId}/skus/{id} {
-      allow read: if tieneRol(tenantId, ['sup', 'adm']);
+      allow read: if false;
       allow write: if false; // solo el servidor escribe
     }
     match /tenants/{tenantId}/ubicaciones/{id} {
-      allow read: if tieneRol(tenantId, ['caj', 'sup', 'adm']);
+      allow read: if false;
       allow write: if false; // solo el servidor escribe
     }
     match /tenants/{tenantId}/existencias/{id} {
-      allow read: if tieneRol(tenantId, ['caj', 'sup', 'adm']);
+      allow read: if false;
       allow write: if false; // solo el servidor escribe
     }
     match /tenants/{tenantId}/unidades/{id} {
-      allow read: if tieneRol(tenantId, ['caj', 'sup', 'adm']);
+      allow read: if false;
       allow write: if false; // solo el servidor escribe
     }
     match /tenants/{tenantId}/movimientos/{id} {
-      allow read: if tieneRol(tenantId, ['sup', 'adm']);
+      allow read: if false;
       allow write: if false; // solo el servidor escribe
     }
     match /tenants/{tenantId}/operaciones/{id} {
-      allow read: if tieneRol(tenantId, ['sup', 'adm']);
+      allow read: if false;
       allow write: if false; // solo el servidor escribe
     }
     match /tenants/{tenantId}/traspasos/{id} {
-      allow read: if tieneRol(tenantId, ['sup', 'adm']);
+      allow read: if false;
       allow write: if false; // solo el servidor escribe
     }
     match /tenants/{tenantId}/mermas/{id} {
-      allow read: if tieneRol(tenantId, ['sup', 'adm']);
+      allow read: if false;
       allow write: if false; // solo el servidor escribe
     }
     match /tenants/{tenantId}/conteos/{id} {
-      allow read: if tieneRol(tenantId, ['caj', 'sup', 'adm']);
+      allow read: if false;
       allow write: if false; // solo el servidor escribe
     }
     match /tenants/{tenantId}/conteoLineas/{id} {
-      allow read: if tieneRol(tenantId, ['caj', 'sup', 'adm']);
+      allow read: if false;
       allow write: if false; // solo el servidor escribe
     }
     match /tenants/{tenantId}/conteoTeoricos/{id} {
-      allow read: if tieneRol(tenantId, ['sup', 'adm']);
+      allow read: if false;
       allow write: if false; // solo el servidor escribe
     }
     match /tenants/{tenantId}/existenciasPublicas/{id} {
@@ -155,15 +155,15 @@ service cloud.firestore {
 
     // Módulo recibos
     match /tenants/{tenantId}/recibos/{id} {
-      allow read: if tieneRol(tenantId, ['caj', 'sup', 'adm']);
+      allow read: if false;
       allow write: if false; // solo el servidor escribe
     }
     match /tenants/{tenantId}/plantillas_recibo/{id} {
-      allow read: if tieneRol(tenantId, ['caj', 'sup', 'adm']);
+      allow read: if false;
       allow write: if false; // solo el servidor escribe
     }
     match /tenants/{tenantId}/anulaciones_pendientes_recibo/{id} {
-      allow read: if tieneRol(tenantId, ['adm']);
+      allow read: if false;
       allow write: if false; // solo el servidor escribe
     }
 
@@ -175,35 +175,35 @@ service cloud.firestore {
 
     // Módulo consola
     match /tenants/{tenantId}/fichasWeb/{id} {
-      allow read: if tieneRol(tenantId, ['sup', 'adm']);
+      allow read: if false;
       allow write: if false; // solo el servidor escribe
     }
     match /tenants/{tenantId}/secciones/{id} {
-      allow read: if tieneRol(tenantId, ['sup', 'adm']);
+      allow read: if false;
       allow write: if false; // solo el servidor escribe
     }
     match /tenants/{tenantId}/carruseles/{id} {
-      allow read: if tieneRol(tenantId, ['sup', 'adm']);
+      allow read: if false;
       allow write: if false; // solo el servidor escribe
     }
     match /tenants/{tenantId}/sitio/{id} {
-      allow read: if tieneRol(tenantId, ['sup', 'adm']);
+      allow read: if false;
       allow write: if false; // solo el servidor escribe
     }
     match /tenants/{tenantId}/publicado/{id} {
-      allow read: if tieneRol(tenantId, ['adm']);
+      allow read: if false;
       allow write: if false; // solo el servidor escribe
     }
     match /tenants/{tenantId}/subidas/{id} {
-      allow read: if tieneRol(tenantId, ['sup', 'adm']);
+      allow read: if false;
       allow write: if false; // solo el servidor escribe
     }
     match /tenants/{tenantId}/medios/{id} {
-      allow read: if tieneRol(tenantId, ['sup', 'adm']);
+      allow read: if false;
       allow write: if false; // solo el servidor escribe
     }
     match /tenants/{tenantId}/uso/{id} {
-      allow read: if tieneRol(tenantId, ['sup', 'adm']);
+      allow read: if false;
       allow write: if false; // solo el servidor escribe
     }
 
