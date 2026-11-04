@@ -1,5 +1,8 @@
-import { arreglo, cantidadPositiva, crearValidador, moneda, objeto, texto, type Fixtures } from './esquema.js';
+import type { CopiaCotizacion, Mercado } from '../tipo-cambio/tipos.js';
+import { centavos, copiaCotizacion, crearValidador, monedaOperativa, texto, uno, type Fixtures } from './esquema.js';
+import { cotizacionArsDePrueba as cotizacionArs, errorMercadoMonedaCotizacion, esquemaLineasPedido } from './pedido-comun.js';
 
+/** CONTRATO CONGELADO al terminar la ola 1c: un cambio incompatible exige un contrato v2. */
 export const TIPO_PEDIDO_SOLICITADO_V1 = 'pedido.solicitado';
 
 export interface LineaPedido {
@@ -9,32 +12,50 @@ export interface LineaPedido {
 
 export interface DatosPedidoSolicitadoV1 {
   readonly pedidoId: string;
-  /** Mercado de origen del pedido (por ejemplo `BO` o `AR`). */
-  readonly mercado: string;
+  readonly mercado: Mercado;
   readonly moneda: string;
+  /** Total en enteros de centavos de `moneda`. */
+  readonly total: number;
+  /** Cotización con la que se calculó el precio (siempre presente en pedidos). */
+  readonly cotizacion: CopiaCotizacion;
   readonly lineas: readonly LineaPedido[];
 }
 
-export const validarPedidoSolicitadoV1 = crearValidador<DatosPedidoSolicitadoV1>({
-  pedidoId: texto,
-  mercado: texto,
-  moneda,
-  lineas: arreglo(objeto({ productoId: texto, cantidad: cantidadPositiva }), 1),
-});
+export const validarPedidoSolicitadoV1 = crearValidador<DatosPedidoSolicitadoV1>(
+  {
+    pedidoId: texto,
+    mercado: uno(['BO', 'AR']),
+    moneda: monedaOperativa,
+    total: centavos,
+    cotizacion: copiaCotizacion,
+    lineas: esquemaLineasPedido,
+  },
+  errorMercadoMonedaCotizacion,
+);
 
 const valido: DatosPedidoSolicitadoV1 = {
   pedidoId: 'pd1',
   mercado: 'AR',
   moneda: 'ARS',
+  total: 360000,
+  cotizacion: cotizacionArs,
   lineas: [{ productoId: 'p1', cantidad: 3 }],
 };
 
 export const fixturesPedidoSolicitadoV1: Fixtures<DatosPedidoSolicitadoV1> = {
-  validos: [valido],
+  validos: [valido, { ...valido, mercado: 'BO', moneda: 'BOB', cotizacion: { ...cotizacionArs, par: 'BOB/USD', fuente: 'BCB', valor: 6.96 } }],
   invalidos: [
     { nombre: 'sin líneas', datos: { ...valido, lineas: [] } },
     { nombre: 'cantidad negativa', datos: { ...valido, lineas: [{ productoId: 'p1', cantidad: -1 }] } },
-    { nombre: 'sin mercado', datos: { pedidoId: 'pd1', moneda: 'ARS', lineas: valido.lineas } },
+    { nombre: 'sin mercado', datos: { ...valido, mercado: undefined } },
+    { nombre: 'mercado desconocido', datos: { ...valido, mercado: 'CL' } },
     { nombre: 'moneda inválida', datos: { ...valido, moneda: 'peso' } },
+    { nombre: 'moneda de otro mercado', datos: { ...valido, moneda: 'BOB' } },
+    { nombre: 'sin total', datos: { ...valido, total: undefined } },
+    { nombre: 'total decimal', datos: { ...valido, total: 10.5 } },
+    { nombre: 'sin cotización', datos: { ...valido, cotizacion: undefined } },
+    { nombre: 'cotización nula', datos: { ...valido, cotizacion: null } },
+    { nombre: 'cotización con par de otro mercado', datos: { ...valido, cotizacion: { ...cotizacionArs, par: 'BOB/USD' } } },
+    { nombre: 'cotización con estado desconocido', datos: { ...valido, cotizacion: { ...cotizacionArs, estado: 'vencida' } } },
   ],
 };

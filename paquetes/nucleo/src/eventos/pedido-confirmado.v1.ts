@@ -1,23 +1,46 @@
-import { arreglo, cantidadPositiva, crearValidador, instanteIso, objeto, texto, type Fixtures } from './esquema.js';
+import type { CopiaCotizacion, Mercado } from '../tipo-cambio/tipos.js';
+import { centavos, copiaCotizacion, crearValidador, instanteIso, monedaOperativa, texto, uno, type Fixtures } from './esquema.js';
+import { cotizacionArsDePrueba as cotizacionArs, errorMercadoMonedaCotizacion, esquemaLineasPedido } from './pedido-comun.js';
 import type { LineaPedido } from './pedido-solicitado.v1.js';
 
+/** CONTRATO CONGELADO al terminar la ola 1c: un cambio incompatible exige un contrato v2. */
 export const TIPO_PEDIDO_CONFIRMADO_V1 = 'pedido.confirmado';
 
 export interface DatosPedidoConfirmadoV1 {
   readonly pedidoId: string;
+  readonly mercado: Mercado;
+  readonly moneda: string;
+  /** Total en enteros de centavos de `moneda`. */
+  readonly total: number;
+  readonly cotizacion: CopiaCotizacion;
+  /** Almacén del que Inventarios descuenta el stock. */
+  readonly almacenId: string;
   readonly lineas: readonly LineaPedido[];
   /** Instante ISO 8601 UTC de la confirmación. */
   readonly confirmadoEn: string;
 }
 
-export const validarPedidoConfirmadoV1 = crearValidador<DatosPedidoConfirmadoV1>({
-  pedidoId: texto,
-  lineas: arreglo(objeto({ productoId: texto, cantidad: cantidadPositiva }), 1),
-  confirmadoEn: instanteIso,
-});
+export const validarPedidoConfirmadoV1 = crearValidador<DatosPedidoConfirmadoV1>(
+  {
+    pedidoId: texto,
+    mercado: uno(['BO', 'AR']),
+    moneda: monedaOperativa,
+    total: centavos,
+    cotizacion: copiaCotizacion,
+    almacenId: texto,
+    lineas: esquemaLineasPedido,
+    confirmadoEn: instanteIso,
+  },
+  errorMercadoMonedaCotizacion,
+);
 
 const valido: DatosPedidoConfirmadoV1 = {
   pedidoId: 'pd1',
+  mercado: 'AR',
+  moneda: 'ARS',
+  total: 360000,
+  cotizacion: cotizacionArs,
+  almacenId: 'a1',
   lineas: [{ productoId: 'p1', cantidad: 3 }],
   confirmadoEn: '2026-11-04T15:30:00Z',
 };
@@ -25,8 +48,15 @@ const valido: DatosPedidoConfirmadoV1 = {
 export const fixturesPedidoConfirmadoV1: Fixtures<DatosPedidoConfirmadoV1> = {
   validos: [valido],
   invalidos: [
-    { nombre: 'sin fecha', datos: { pedidoId: 'pd1', lineas: valido.lineas } },
+    { nombre: 'sin fecha', datos: { ...valido, confirmadoEn: undefined } },
     { nombre: 'fecha sin zona', datos: { ...valido, confirmadoEn: '2026-11-04T15:30:00' } },
     { nombre: 'sin líneas', datos: { ...valido, lineas: [] } },
+    { nombre: 'sin almacén', datos: { ...valido, almacenId: undefined } },
+    { nombre: 'sin mercado', datos: { ...valido, mercado: undefined } },
+    { nombre: 'mercado desconocido', datos: { ...valido, mercado: 'CL' } },
+    { nombre: 'sin total', datos: { ...valido, total: undefined } },
+    { nombre: 'sin cotización', datos: { ...valido, cotizacion: undefined } },
+    { nombre: 'cotización con par de otro mercado', datos: { ...valido, cotizacion: { ...cotizacionArs, par: 'BOB/USD' } } },
+    { nombre: 'moneda de otro mercado', datos: { ...valido, moneda: 'BOB' } },
   ],
 };

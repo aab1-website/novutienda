@@ -1,4 +1,6 @@
 import type { Resultado } from '../contratos/claim.js';
+import { esFechaIso } from '../tipo-cambio/texto.js';
+import type { EstadoCotizacion, FuenteCotizacion, Par } from '../tipo-cambio/tipos.js';
 
 /** Validador de un campo: devuelve `null` si es válido o el motivo del rechazo. */
 export type Campo = (valor: unknown, ruta: string) => string | null;
@@ -59,19 +61,70 @@ export const objeto =
     return null;
   };
 
-/** Mapa de claves de moneda a valores validados por `valor`. Al menos una entrada. */
-export const porMoneda =
-  (valor: Campo): Campo =>
-  (v, r) => {
-    if (!esObjeto(v)) return `${r} debe ser un objeto`;
-    const claves = Object.keys(v);
-    if (claves.length === 0) return `${r} requiere al menos una moneda`;
-    for (const k of claves) {
-      const e = moneda(k, `${r} (clave ${k})`) ?? valor(v[k], `${r}.${k}`);
-      if (e !== null) return e;
+/** Campo que puede faltar (clave ausente); si está presente debe cumplir `campo`. Nunca se usa `undefined` explícito en Firestore. */
+export const opcional =
+  (campo: Campo): Campo =>
+  (v, r) =>
+    v === undefined ? null : campo(v, r);
+
+/** Campo que admite `null` explícito además de lo que valide `campo`. */
+export const oNulo =
+  (campo: Campo): Campo =>
+  (v, r) =>
+    v === null ? null : campo(v, r);
+
+/** Uno de los valores listados. */
+export const uno =
+  (valores: readonly string[]): Campo =>
+  (v, r) =>
+    typeof v === 'string' && valores.includes(v) ? null : `${r} debe ser uno de: ${valores.join(', ')}`;
+
+/** Fecha civil «aaaa-mm-dd» real de calendario. */
+export const fechaIso: Campo = (v, r) => (esFechaIso(v) ? null : `${r} debe ser una fecha aaaa-mm-dd`);
+
+export const MONEDAS_EVENTO = ['BOB', 'USD', 'ARS'] as const;
+export const monedaOperativa: Campo = uno(MONEDAS_EVENTO);
+export const MEDIOS_PAGO = ['efectivo', 'qr', 'transferencia', 'credito'] as const;
+export const medioPago: Campo = uno(MEDIOS_PAGO);
+
+const PARES: readonly Par[] = ['BOB/USD', 'ARS/USD'];
+const FUENTES: readonly FuenteCotizacion[] = ['BCB', 'BNA', 'BCRA', 'manual'];
+const ESTADOS: readonly EstadoCotizacion[] = ['vigente', 'ultimo_verificado'];
+
+/** Copia de cotización del núcleo (`CopiaCotizacion`): la misma forma que guardan ventas y pedidos. */
+export const copiaCotizacion: Campo = objeto({
+  cotizacionId: texto,
+  par: uno(PARES),
+  valor: numeroPositivo,
+  fecha: fechaIso,
+  fuente: uno(FUENTES),
+  estado: uno(ESTADOS),
+});
+
+/** Series no vacías sin repetidos en la línea; si hay series, su cantidad debe igualar `cantidad`. */
+export function errorSeries(series: readonly string[], cantidad: number, ruta: string): string | null {
+  if (series.length === 0) return null;
+  if (series.length !== cantidad) return `${ruta}.series debe tener tantas series como la cantidad`;
+  if (new Set(series).size !== series.length) return `${ruta}.series tiene series repetidas`;
+  return null;
+}
+
+/** Revisa las series de todas las líneas: reglas por línea y sin duplicados entre líneas. */
+export function errorSeriesLineas(
+  lineas: readonly { readonly cantidad: number; readonly series: readonly string[] }[],
+  ruta: string,
+): string | null {
+  const vistas = new Set<string>();
+  for (const [i, l] of lineas.entries()) {
+    const e = errorSeries(l.series, l.cantidad, `${ruta}[${i}]`);
+    if (e !== null) return e;
+    for (const s of l.series) {
+      if (vistas.has(s)) return `${ruta}[${i}].series repite la serie ${s} de otra línea`;
+      vistas.add(s);
     }
-    return null;
-  };
+  }
+  return null;
+}
 
 /** Convierte un esquema de campos en un validador de datos de evento. */
 export function crearValidador<D>(esquema: Readonly<Record<string, Campo>>, extra?: (d: D) => string | null) {
