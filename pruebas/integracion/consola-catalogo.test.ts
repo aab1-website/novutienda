@@ -1,4 +1,4 @@
-import { cambiarPrecioUSD, crearProductoConsola, editarProductoConsola, obtenerTablero, preciosDelDia } from '@plataforma/consola';
+import { calcularDisponibilidadPublica, cambiarPrecioUSD, crearProductoConsola, editarProductoConsola, obtenerTablero, preciosDelDia } from '@plataforma/consola';
 import { LimiteDelPlan, verificarYReservar, type Actor } from '@plataforma/nucleo';
 import { abrirTurno, confirmarVenta } from '@plataforma/pos';
 import { beforeEach, describe, expect, it } from 'vitest';
@@ -90,6 +90,22 @@ describe('consola -> Inventarios -> POS: el precio y los datos del producto viaj
     });
     await expect(editarProductoConsola(deps, { tenantId: T, actor: admin, productoId: 'lapiz', cambios: { sku: 'OTRO' } })).rejects.toMatchObject({ codigo: 'invalid-argument' });
     expect(doc(e, T, 'productos/con-marca')).toBeUndefined();
+  });
+});
+
+describe('disponibilidad pública: dos fuentes de verdad', () => {
+  it('INCOHERENCIA I-07 (documentada): la consola cuenta solo tienda y producto activo; existenciasPublicas de Inventarios cuenta todos los almacenes', async () => {
+    await abrirTurno(e.deps, T, caj, UUID(900), { BOB: 0 });
+    await confirmarVenta(e.deps, T, caj, UUID(1), { mercado: 'BO', moneda: 'BOB', lineas: [{ productoId: 'lapiz', cantidad: 10 }] }, [
+      { medio: 'efectivo', moneda: 'BOB', monto: 70000 },
+    ]);
+    // tienda = 0, deposito-1 = 5: la web (consola) dice agotado; Inventarios dice disponible.
+    expect(await calcularDisponibilidadPublica(e.catalogoConsola, T)).toMatchObject({ lapiz: { disponible: false } });
+    expect(doc(e, T, 'existenciasPublicas/lapiz')).toMatchObject({ disponible: true });
+    // Inactivar el producto tampoco actualiza existenciasPublicas.
+    await editarProductoConsola(deps, { tenantId: T, actor: admin, productoId: 'celular', cambios: { activo: false } });
+    expect(await calcularDisponibilidadPublica(e.catalogoConsola, T)).toMatchObject({ celular: { disponible: false } });
+    expect(doc(e, T, 'existenciasPublicas/celular')).toMatchObject({ disponible: true });
   });
 });
 
