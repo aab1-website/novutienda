@@ -1,0 +1,27 @@
+{
+  "name": "@plataforma/funciones",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "engines": {
+    "node": ">=22"
+  },
+  "scripts": {
+    "build": "node scripts/empaquetar.mjs"
+  },
+  "dependencies": {
+    "firebase-admin": "14.5.0",
+    "firebase-functions": "7.4.0",
+    "sharp": "0.35.5",
+    "zod": "4.6.7"
+  },
+  "devDependencies": {
+    "@plataforma/consola": "workspace:*",
+    "@plataforma/inventarios": "workspace:*",
+    "@plataforma/nucleo": "workspace:*",
+    "@plataforma/pos": "workspace:*",
+    "@plataforma/recibos": "workspace:*",
+    "@plataforma/website": "workspace:*",
+    "esbuild": "0.28.2"
+  }
+}

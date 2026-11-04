@@ -7,5 +7,5 @@
     "types": ["node"]
   },
   "include": ["./**/*.ts"],
-  "references": [{ "path": "../paquetes/nucleo" }, { "path": "../plataforma" }]
+  "references": [{ "path": "../paquetes/nucleo" }, { "path": "../plataforma" }, { "path": "../plataforma/funciones" }]
 }

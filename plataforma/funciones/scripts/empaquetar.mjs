@@ -1,0 +1,45 @@
+// Empaqueta las funciones para desplegar y para el emulador: un solo `index.js` (los paquetes del monorepo son
+// TypeScript y `workspace:*` no se instala con npm en Cloud Build) más un `package.json` limpio que declara solo
+// las dependencias de ejecución, con las MISMAS versiones exactas que `plataforma/funciones/package.json`.
+// Salida: dist/funciones/ (ignorada por git y por ESLint; es el `source` de `functions` en firebase.json).
+import { build } from 'esbuild';
+import { existsSync, mkdirSync, readFileSync, rmSync, symlinkSync, writeFileSync } from 'node:fs';
+import { dirname, join } from 'node:path';
+import { fileURLToPath } from 'node:url';
+
+const aqui = dirname(fileURLToPath(import.meta.url));
+const raiz = join(aqui, '..');
+const dist = join(raiz, '..', '..', 'dist', 'funciones');
+const origen = JSON.parse(readFileSync(join(raiz, 'package.json'), 'utf8'));
+
+// Nativos o grandes que Cloud Build instala por su cuenta; el resto se incluye en el paquete.
+const EXTERNOS = ['firebase-admin', 'firebase-functions', 'sharp'];
+
+rmSync(dist, { recursive: true, force: true });
+mkdirSync(dist, { recursive: true });
+
+await build({
+  entryPoints: [join(raiz, 'servidor/index.ts')],
+  outfile: join(dist, 'index.js'),
+  bundle: true,
+  platform: 'node',
+  target: 'node22',
+  format: 'esm',
+  external: EXTERNOS.flatMap((n) => [n, `${n}/*`]),
+  banner: { js: "import { createRequire as __crearRequire } from 'node:module'; const require = __crearRequire(import.meta.url);" },
+  legalComments: 'none',
+  logLevel: 'warning',
+});
+
+const dependencias = Object.fromEntries(EXTERNOS.map((n) => [n, origen.dependencies[n]]));
+if (Object.values(dependencias).some((v) => typeof v !== 'string' || !/^\d+\.\d+\.\d+$/.test(v))) {
+  throw new Error('Las dependencias de ejecución deben tener versión exacta');
+}
+writeFileSync(
+  join(dist, 'package.json'),
+  `${JSON.stringify({ name: 'plataforma-funciones', version: origen.version, private: true, type: 'module', main: 'index.js', engines: { node: '22' }, dependencies: dependencias }, null, 2)}\n`,
+);
+// Solo para el emulador y el desarrollo local: el emulador busca `.bin/firebase-functions` y los módulos junto
+// al código. `firebase deploy` ignora `node_modules` (ver `ignore` en firebase.json) y Cloud Build instala los suyos.
+if (existsSync(join(raiz, 'node_modules'))) symlinkSync(join(raiz, 'node_modules'), join(dist, 'node_modules'), 'dir');
+console.log(`empaquetar: ${'dist/funciones/index.js'} y package.json escritos`);

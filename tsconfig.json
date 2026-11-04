@@ -26,6 +26,9 @@
       "path": "plataforma"
     },
     {
+      "path": "plataforma/funciones"
+    },
+    {
       "path": "pruebas"
     }
   ]

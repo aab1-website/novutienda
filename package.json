@@ -12,6 +12,7 @@
     "typecheck": "tsc -b",
     "test": "vitest",
     "test:rules": "node scripts/test-rules.mjs",
+    "test:funciones": "node plataforma/funciones/scripts/probar.mjs",
     "build": "node scripts/build.mjs",
     "reglas:generar": "node scripts/reglas.mjs generar",
     "reglas:verificar": "node scripts/reglas.mjs verificar"
@@ -23,6 +24,8 @@
     "@types/node": "22.20.5",
     "@vitest/coverage-v8": "5.1.0",
     "eslint": "10.14.0",
+    "firebase-admin": "14.5.0",
+    "sharp": "0.35.5",
     "firebase": "13.2.0",
     "globals": "17.14.0",
     "typescript": "6.0.3",

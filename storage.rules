@@ -1,9 +1,54 @@
 rules_version = '2';
 
-// Negar todo: los medios se sirven con rutas autorizadas por el servidor.
+// Cloud Storage. Se niega todo salvo dos caminos:
+//  1) Subida de originales: SOLO con sesión de correo y contraseña verificado, rol sup/adm EN ESE tenant (claim pl),
+//     a `tenants/{t}/privado/originales/{productoId}/{subidaId}`, y solo si en Firestore existe la reserva de la
+//     subida (misma ruta, mismo producto, hecha por esta persona, aún `reservada`) y el archivo cumple tamaño y tipo
+//     (foto: 15 MB; video: 200 MB). Solo se puede CREAR: no hay actualización ni borrado desde el navegador.
+//  2) Lectura pública de `tenants/{t}/publico/**` (versiones procesadas con hash de contenido).
+// Todo lo demás (originales, temporales, PDF de recibos) lo lee y escribe solo el servidor.
 service firebase.storage {
   match /b/{bucket}/o {
-    match /{allPaths=**} {
+
+    function rolEn(tenantId) {
+      return request.auth.token.get('pl', {}).get('t', {}).get(tenantId, '');
+    }
+
+    function editor(tenantId) {
+      return request.auth != null
+        && request.auth.token.get('firebase', {}).get('sign_in_provider', '') == 'password'
+        && request.auth.token.get('email_verified', false) == true
+        && rolEn(tenantId) in ['sup', 'adm'];
+    }
+
+    // Reserva hecha en Firestore por la consola (`reservarSubida`); una sola lectura cruzada por petición.
+    function reservaValida(tenantId, productoId, subidaId) {
+      let r = firestore.get(/databases/(default)/documents/tenants/$(tenantId)/subidas/$(subidaId)).data;
+      return r.estado == 'reservada'
+        && r.productoId == productoId
+        && r.por == request.auth.uid
+        && request.resource.size > 0
+        && request.resource.size <= r.bytes
+        && ((r.tipo == 'foto'
+              && request.resource.size <= 15 * 1024 * 1024
+              && request.resource.contentType.matches('image/(jpeg|png|webp|heic)'))
+            || (r.tipo == 'video'
+              && request.resource.size <= 200 * 1024 * 1024
+              && request.resource.contentType.matches('video/(mp4|quicktime|webm)')));
+    }
+
+    match /tenants/{tenantId}/privado/originales/{productoId}/{subidaId} {
+      // `resource == null`: el objeto no existe todavía (nunca se reemplaza un original ya subido).
+      allow create: if resource == null && editor(tenantId) && reservaValida(tenantId, productoId, subidaId);
+      allow read, update, delete: if false;
+    }
+
+    match /tenants/{tenantId}/publico/{ruta=**} {
+      allow read: if true;
+      allow write: if false;
+    }
+
+    match /{todo=**} {
       allow read, write: if false;
     }
   }

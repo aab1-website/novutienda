@@ -1,7 +1,10 @@
 packages:
   - paquetes/*
+  - plataforma/funciones
   - tenants/*
 allowBuilds:
+  esbuild: false
+  sharp: false
   '@firebase/util': false
   protobufjs: false
 blockExoticSubdeps: true
