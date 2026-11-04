@@ -26,22 +26,52 @@ export interface EntradaAuditoria {
 export class ErrorAuditoria extends Error {}
 
 const ROLES: readonly string[] = ['caj', 'sup', 'adm', 'dir'];
-/** Claves (normalizadas) que se rechazan por igualdad exacta. */
-const CLAVES_EXACTAS = new Set(['pin', 'email', 'correo', 'telefono', 'celular', 'documento', 'ci', 'nit', 'direccion']);
-/** Fragmentos que se rechazan si aparecen dentro de la clave normalizada. */
-const FRAGMENTOS = ['password', 'contrasena', 'token', 'secret', 'apikey', 'authorization', 'credencial', 'privatekey'];
+/** Palabras (en minúsculas, sin tildes) que se rechazan si son una palabra completa de la clave. */
+const PALABRAS_CORTAS = new Set(['pin', 'email', 'ci', 'nit']);
+/** Fragmentos que se rechazan si aparecen dentro de la clave normalizada (correoElectronico, telefonoCliente...). */
+const FRAGMENTOS = [
+  'password',
+  'contrasena',
+  'token',
+  'secret',
+  'apikey',
+  'authorization',
+  'credencial',
+  'privatekey',
+  'correo',
+  'email',
+  'telefono',
+  'celular',
+  'documento',
+  'direccion',
+  'nombrecliente',
+  'nombredelcliente',
+  'clientenombre',
+];
 const PROFUNDIDAD_MAXIMA = 5;
 
-const normalizar = (clave: string): string =>
-  clave
-    .normalize('NFD')
-    .replace(/[̀-ͯ]/g, '')
+const sinTildes = (t: string): string => t.normalize('NFD').replace(/[̀-ͯ]/g, '');
+
+const normalizar = (clave: string): string => sinTildes(clave).toLowerCase().replace(/[^a-z0-9]/g, '');
+
+/** Palabras de la clave, separando camelCase, guiones y espacios (`nitCliente` -> nit, cliente). */
+const palabras = (clave: string): string[] =>
+  sinTildes(clave)
+    .replace(/([a-z0-9])([A-Z])/g, '$1 $2')
+    .replace(/([A-Z]+)([A-Z][a-z])/g, '$1 $2')
     .toLowerCase()
-    .replace(/[^a-z0-9]/g, '');
+    .split(/[^a-z0-9]+/)
+    .filter((p) => p !== '');
 
 const esProhibida = (clave: string): boolean => {
   const n = normalizar(clave);
-  return CLAVES_EXACTAS.has(n) || FRAGMENTOS.some((f) => n.includes(f));
+  const ps = palabras(clave);
+  return (
+    ps.some((p) => PALABRAS_CORTAS.has(p)) ||
+    n.startsWith('nit') ||
+    (ps.includes('nombre') && ps.includes('cliente')) ||
+    FRAGMENTOS.some((f) => n.includes(f))
+  );
 };
 
 function revisar(valor: unknown, ruta: string, profundidad: number): void {
@@ -65,7 +95,10 @@ export function validarEntradaAuditoria(e: EntradaAuditoria): void {
     if (typeof e[c] !== 'string' || e[c].trim() === '') throw new ErrorAuditoria(`${c} requerido`);
   }
   if (!ROLES.includes(e.rol)) throw new ErrorAuditoria('rol inválido');
-  if (e.motivo !== undefined && e.motivo.trim() === '') throw new ErrorAuditoria('motivo no puede estar vacío');
+  if (e.motivo !== undefined) {
+    if (typeof e.motivo !== 'string') throw new ErrorAuditoria('motivo debe ser texto');
+    if (e.motivo.trim() === '') throw new ErrorAuditoria('motivo no puede estar vacío');
+  }
   if (e.resumenAntes !== undefined) revisar(e.resumenAntes, 'resumenAntes', 0);
   if (e.resumenDespues !== undefined) revisar(e.resumenDespues, 'resumenDespues', 0);
 }

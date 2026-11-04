@@ -1,4 +1,12 @@
-export type { PlanId, TopesPlan } from './planes.js';
+export type { ClaveLimite, PlanId, TopesPlan } from './planes.js';
 export { esPlanId, PLANES } from './planes.js';
 export type { BaseDatosMin, DocLeido, TransaccionMin } from './transaccion.js';
-export { LimiteDelPlan, rutaContador, verificarYReservar } from './verificar.js';
+export {
+  abrirCaja,
+  cerrarCaja,
+  ContadorCorrupto,
+  LimiteDelPlan,
+  liberar,
+  rutaContador,
+  verificarYReservar,
+} from './verificar.js';
