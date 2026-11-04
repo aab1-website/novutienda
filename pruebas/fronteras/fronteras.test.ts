@@ -2,7 +2,7 @@ import { readdirSync, readFileSync, statSync } from 'node:fs';
 import { join, relative, sep } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { describe, expect, it } from 'vitest';
-import { registroPlataforma } from '@plataforma/nucleo';
+import { registroPlataforma } from '../../plataforma/registro.js';
 import { buscarTermino, extraerImportaciones, verificarFronteras, type Arbol } from './verificador.js';
 
 const RAIZ = fileURLToPath(new URL('../../', import.meta.url));
@@ -27,6 +27,12 @@ describe('fronteras del repositorio real', () => {
   it('no hay violaciones en paquetes/ ni tenants/', () => {
     const arbol = { ...leerArbol('paquetes'), ...leerArbol('tenants') };
     expect(verificarFronteras(arbol, dependencias)).toEqual([]);
+  });
+
+  it('cada paquete de paquetes/ está registrado en plataforma/registro.ts', () => {
+    const carpetas = readdirSync(join(RAIZ, 'paquetes')).filter((n) => statSync(join(RAIZ, 'paquetes', n)).isDirectory());
+    const registrados = registroPlataforma.listar().map((m) => m.id);
+    expect(carpetas.filter((c) => !registrados.includes(c))).toEqual([]);
   });
 
   it('no aparece «bermejo» en paquetes/', () => {
@@ -68,6 +74,15 @@ describe('verificador con árboles inventados', () => {
       'paquetes/pos/src/a.ts': "import '@tenant/casa';\nconst m = await import('@plataforma/recibos');",
     };
     expect(motivos(arbol)).toEqual(['@tenant/casa', '@plataforma/recibos']);
+  });
+
+  it('rechaza import() con plantilla de texto y analiza la plantilla sin interpolación', () => {
+    const arbol: Arbol = {
+      'paquetes/pos/src/a.ts': 'const m = await import(`@plataforma/${nombre}`);',
+      'paquetes/pos/src/b.ts': 'const m = await import(`@plataforma/recibos`);',
+      'paquetes/pos/src/c.ts': 'const m = await import(`@plataforma/nucleo`);',
+    };
+    expect(motivos(arbol)).toEqual(['@plataforma/${nombre}', '@plataforma/recibos']);
   });
 
   it('la búsqueda de «bermejo» detecta contenido y nombres de ruta', () => {

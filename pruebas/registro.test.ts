@@ -5,11 +5,11 @@ import {
   crearRegistro,
   ErrorRegistro,
   manifiestoNucleo,
-  registroPlataforma,
   validarClaim,
   validarSobre,
   type ManifiestoModulo,
 } from '@plataforma/nucleo';
+import { registroPlataforma } from '../plataforma/registro.js';
 
 const mod = (id: string, dependeDe: string[] = [], rutas: string[] = []): ManifiestoModulo => ({
   id,

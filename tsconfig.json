@@ -2,6 +2,7 @@
   "files": [],
   "references": [
     { "path": "paquetes/nucleo" },
+    { "path": "plataforma" },
     { "path": "pruebas" }
   ]
 }
