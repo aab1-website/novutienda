@@ -18,8 +18,7 @@ describe('manifiesto', () => {
   it('declara los límites, la visibilidad por rol y los eventos', () => {
     const por = (ruta: string) => manifiestoInventarios.colecciones.find((c) => c.ruta === ruta);
     expect(por('productos')?.limite).toBe('productos');
-    // 'almacenes' aún no lo admite el registro del núcleo: el tope lo aplica crearUbicacion.
-    expect(por('ubicaciones')?.limite).toBeUndefined();
+    expect(por('ubicaciones')?.limite).toBe('almacenes');
     expect(por('costos')?.lectura).toEqual(['adm']);
     expect(por('conteoTeoricos')?.lectura).toEqual(['sup', 'adm']);
     expect(por('existenciasPublicas')?.lectura).toEqual([]);

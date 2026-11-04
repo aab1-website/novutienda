@@ -21,9 +21,8 @@ export const manifiestoInventarios: ManifiestoModulo = {
     col('productos', TODOS, 'productos'),
     col('costos', ['adm']),
     col('skus', SUPERVISION),
-    // El tope de 3 almacenes se aplica en el código (`crearUbicacion`). Declararlo aquí con `limite: 'almacenes'`
-    // exige que el registro del núcleo lo admita (su lista LIMITES hoy no incluye 'almacenes').
-    col('ubicaciones', TODOS),
+    // El tope de 3 almacenes también se aplica en el código (`crearUbicacion`).
+    col('ubicaciones', TODOS, 'almacenes'),
     col('existencias', TODOS),
     col('unidades', TODOS),
     col('movimientos', SUPERVISION),

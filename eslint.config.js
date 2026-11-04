@@ -9,7 +9,7 @@ const sinProfundas = {
 };
 
 export default tseslint.config(
-  { ignores: ['dist/**', 'coverage/**', '.tsbuild/**', 'node_modules/**', '**/node_modules/**'] },
+  { ignores: ['dist/**', 'coverage/**', '.tsbuild/**', 'node_modules/**', '**/node_modules/**', '.claude/worktrees/**'] },
   js.configs.recommended,
   ...tseslint.configs.recommended,
   {

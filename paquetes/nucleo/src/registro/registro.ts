@@ -19,7 +19,7 @@ type IdModulo = string;
 
 const SEMVER = /^(0|[1-9]\d*)\.(0|[1-9]\d*)\.(0|[1-9]\d*)$/;
 const ROLES = ['caj', 'sup', 'adm'];
-const LIMITES = ['productos', 'usuarios', 'cajas'];
+const LIMITES = ['productos', 'usuarios', 'cajas', 'almacenes'];
 
 export class ErrorRegistro extends Error {
   constructor(mensaje: string) {
