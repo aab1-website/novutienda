@@ -152,7 +152,7 @@ const ADM: Autor = { uid: 'sembrador', rol: 'adm' };
 export const hoyLaPaz = (): string => new Intl.DateTimeFormat('en-CA', { timeZone: 'America/La_Paz' }).format(new Date());
 
 export interface OpcionesSembrado {
-  readonly productos?: readonly { id: string; nombre: string; precioUSD: { bo: number; ar: number }; tienda: number; deposito?: number; conSerie?: boolean; series?: string[]; publicado?: boolean }[];
+  readonly productos?: readonly { id: string; nombre: string; precioUSD: { bo: number; ar: number }; tienda: number; deposito?: number; conSerie?: boolean; series?: string[]; publicado?: boolean; controlaStock?: boolean }[];
 }
 
 /** Tenant con almacenes, cotizaciones del día y productos, escrito con las funciones reales de los módulos. */
@@ -169,7 +169,7 @@ export async function sembrarTenant(h: Herramientas, tenantId: string, o: Opcion
     await h.db.runTransaction((tx) =>
       crearProducto(tx, {
         tenantId, operacionId: unico('prod'), por: ADM,
-        producto: { id: p.id, nombre: p.nombre, categoria: 'general', sku: `SKU-${p.id}`, precioUSD: p.precioUSD, ...(p.conSerie === true ? { conSerie: true, garantiaMeses: 12 } : {}), publicado: p.publicado ?? true },
+        producto: { id: p.id, nombre: p.nombre, categoria: 'general', sku: `SKU-${p.id}`, precioUSD: p.precioUSD, ...(p.conSerie === true ? { conSerie: true, garantiaMeses: 12 } : {}), publicado: p.publicado ?? true, ...(p.controlaStock === false ? { controlaStock: false } : {}) },
       }),
     );
     if (p.tienda > 0) {

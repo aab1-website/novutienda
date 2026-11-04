@@ -4,7 +4,7 @@
 // tiempo constante. Las respuestas llevan ETag y `Cache-Control: private, max-age=60`.
 import { createHash, timingSafeEqual } from 'node:crypto';
 import {
-  leerDocumentoProducto, UBICACION_DISPONIBILIDAD, UBICACIONES, confirmarPedidoFirmado,
+  esDisponible, leerDocumentoProducto, UBICACION_DISPONIBILIDAD, UBICACIONES, confirmarPedidoFirmado,
 } from '@novutienda/inventarios';
 import {
   esMercado, leerCotizacion, MONEDA_DE, precioFinal, SinCotizacionUtilizable, type CopiaCotizacion, type Mercado, type Redondeo,
@@ -111,11 +111,14 @@ async function catalogo(e: Entorno, tenantId: string, mercado: Mercado, cfg: Con
     const precio = precioFinal(p.precioCentavos[clave] / 100, mercado, cot, redondeo);
     if (precio.tipo !== 'precio') continue; // sin precio en este mercado
     const por = stockPorAlmacen(existencias.get(p.productoId));
-    const stockTienda = p.stockTotal === undefined ? 0 : (por[UBICACION_DISPONIBILIDAD] ?? 0);
+    // Un producto que NO controla stock (sin `stockTotal`) está disponible mientras esté activo: `stock` va en `null` (no 0, que
+    // el asistente leería como agotado) y `disponible` lo dice con la regla única de Inventarios.
+    const stockTienda = p.stockTotal === undefined ? null : (por[UBICACION_DISPONIBILIDAD] ?? 0);
+    const disponible = esDisponible({ activo: p.activo, ...(p.stockTotal !== undefined ? { stockTotal: p.stockTotal } : {}) }, por[UBICACION_DISPONIBILIDAD] ?? 0);
     const medios = (Array.isArray(pub['medios']) ? pub['medios'] : []) as MedioPub[];
     const fotos = medios.filter((m) => m.tipo === 'foto').map((m) => urlFoto(m, base)).filter((u): u is string => u !== undefined).slice(0, 5);
     items.push({
-      id: p.productoId, nombre: p.nombre, precio: precio.monto, precioCentavos: precio.centavos, moneda, stock: stockTienda, stockPorAlmacen: por,
+      id: p.productoId, nombre: p.nombre, precio: precio.monto, precioCentavos: precio.centavos, moneda, stock: stockTienda, disponible, stockPorAlmacen: por,
       foto: fotos[0] ?? null, fotos, activo: true, area: p.categoria ?? '', descripcion: typeof pub['descripcion'] === 'string' ? pub['descripcion'] : '',
       urlProducto: cfg.sitioUrl !== '' && typeof pub['slug'] === 'string' ? `${cfg.sitioUrl}/producto/${pub['slug']}` : null,
     });

@@ -14,12 +14,22 @@ const secretoSitio = process.env['SITIO_RECONSTRUCCION_SECRETO'] ?? '';
 describe.skipIf(!hayEmulador)('API HTTP (emulador)', () => {
   let h: Herramientas;
   const prod = unico('api-lapiz').toLowerCase();
+  const prodSinControl = unico('api-servicio').toLowerCase();
   const token = randomBytes(24).toString('hex');
 
   beforeAll(async () => {
     h = herramientas();
-    await sembrarTenant(h, T, { productos: [{ id: prod, nombre: 'Lápiz API', precioUSD: { bo: 1000, ar: 2000 }, tienda: 10 }] });
+    await sembrarTenant(h, T, {
+      productos: [
+        { id: prod, nombre: 'Lápiz API', precioUSD: { bo: 1000, ar: 2000 }, tienda: 10 },
+        { id: prodSinControl, nombre: 'Servicio API', precioUSD: { bo: 500, ar: 500 }, tienda: 0, controlaStock: false },
+      ],
+    });
     // Copia publicada (la escribe `publicarSitio`) con una foto procesada.
+    await h.firestore.doc(`tenants/${T}/publicado/producto__${prodSinControl}`).set({
+      id: prodSinControl, slug: 'servicio-api', nombre: 'Servicio API', categoria: 'general', descripcion: 'Sin control de stock', garantia: '', medios: [],
+      seo: { titulo: 't', descripcion: 'd' }, precioUSD: { bo: 5, ar: 5 },
+    });
     await h.firestore.doc(`tenants/${T}/publicado/producto__${prod}`).set({
       id: prod, slug: 'lapiz-api', nombre: 'Lápiz API', categoria: 'general', descripcion: 'Lápiz de prueba', garantia: '', medios: [
         { tipo: 'foto', alt: 'Lápiz', ancho: 1000, alto: 800, versiones: [
@@ -119,6 +129,9 @@ describe.skipIf(!hayEmulador)('API HTTP (emulador)', () => {
         foto: `https://medios.ejemplo.test/tenants/${T}/publico/medios/${prod}/bbb-imagen960.webp`, urlProducto: 'https://sitio.ejemplo.test/producto/lapiz-api',
         stockPorAlmacen: { tienda: 10, 'deposito-1': 0, 'deposito-2': 0 },
       });
+      expect(item).toMatchObject({ disponible: true });
+      // Sin control de stock: disponible (no `stock: 0`, que se leería como agotado).
+      expect(c.items.find((i) => i['id'] === prodSinControl)).toMatchObject({ stock: null, disponible: true, activo: true });
       const etag = r.cabeceras.get('etag');
       expect(etag).toMatch(/^"[0-9a-f]{32}"$/);
       const igual = await http('/api/novuchat/v1/catalogo?mercado=BO', { headers: { ...auth, 'if-none-match': etag ?? '' } });
