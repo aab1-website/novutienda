@@ -24,6 +24,7 @@ seguridad:
   excepciones:
     - id: CKV_GHA_7
       herramienta: checkov
+      componente: plataforma
       justificacion: >-
         Regla SLSA sobre .github/workflows/release.yml: exige que
         workflow_dispatch no declare inputs. Los dos que declara son de tipo
