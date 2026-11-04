@@ -31,7 +31,7 @@ export { aCsv, neutralizarCelda, parsearCsv } from './csv.js';
 export {
   COLUMNAS_EXPORTACION, MAX_FILAS_IMPORTACION, exportarProductosCsv, importarProductos, simularImportacion,
 } from './importacion.js';
-export type { FilaSimulada, ResultadoImportacion, Simulacion } from './importacion.js';
+export type { DepsImportacion, DepsSimulacion, FilaSimulada, ResultadoImportacion, Simulacion } from './importacion.js';
 export { cambiarPrecioUSD, crearProductoConsola, editarProductoConsola, validarDatosProducto, validarPrecioUSD } from './productos.js';
 export { eliminarSeccion, guardarCarrusel, guardarConfigSitio, guardarFicha, guardarSeccion, ordenarSecciones } from './servicio-sitio.js';
 export {
