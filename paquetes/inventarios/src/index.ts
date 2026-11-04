@@ -1,1 +1,38 @@
 export { manifiestoInventarios } from './manifiesto.js';
+
+// Puerto que consumen el POS y los pedidos (dentro de SU transacción).
+export { aplicarReversion, aplicarSalida, hashSalida, idOperacionReversion, idOperacionSalida, prepararReversion, prepararSalida } from './puerto.js';
+export type { LineaResuelta, LineaSalida, PlanReversion, PlanSalida, ReferenciaSalida } from './puerto.js';
+
+// Errores tipados.
+export {
+  EntradaInvalida, ErrorInventario, EstadoInvalido, NoEncontrado, OperacionConflicto, ProductoInactivo, SerieNoDisponible, SinPermiso, StockInsuficiente,
+} from './errores.js';
+export type { CodigoError, Faltante } from './errores.js';
+
+// Operaciones.
+export { actualizarProducto, crearProducto, crearUbicacion, validarEntradaProducto } from './productos.js';
+export type { CambiosProducto, EntradaCrearProducto, EntradaProducto, PrecioUSD } from './productos.js';
+export { ajustar, ingresar, traspasar } from './stock.js';
+export type { LineaAjuste, LineaIngreso, LineaTraspaso } from './stock.js';
+export { resolverMerma, solicitarMerma } from './merma.js';
+export { abrirConteo, cerrarConteo, registrarLineaConteo } from './conteo.js';
+export { analizarCsv, exportarProductosCsv, importarProductosCsv, leerCsvProductos, neutralizarCelda } from './importacion.js';
+export type { ProductoExportable } from './importacion.js';
+export { PERMISOS } from './operacion.js';
+export type { ResultadoOperacion } from './operacion.js';
+
+// Eventos y endpoint firmado.
+export {
+  ACTOR_SISTEMA, confirmarPedido, confirmarPedidoFirmado, consumirPedidoConfirmado, consumirVentaAnulada, ejecutorDesde, leerCuerpoPedido,
+} from './pedido.js';
+export type { ItemPedido, RespuestaHttp, ResultadoPedido, SolicitudConfirmarPedido, TransaccionInventario } from './pedido.js';
+export { calcularFirma, VENTANA_FIRMA_MS, verificarFirma } from './firma.js';
+export type { ResultadoFirma } from './firma.js';
+
+// Utilidades de dominio.
+export { esIdSegmento, esProductoId, esSerie, esUbicacionId, UBICACIONES } from './ids.js';
+export type { UbicacionId } from './ids.js';
+export type { Autor } from './motor.js';
+/** Solo para pruebas: fija el reloj con el que se estampan los planes. */
+export { fijarReloj } from './motor.js';
