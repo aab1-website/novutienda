@@ -26,6 +26,9 @@
     },
     {
       "path": "../paquetes/consola"
+    },
+    {
+      "path": "../paquetes/panel"
     }
   ]
 }

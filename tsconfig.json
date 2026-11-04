@@ -20,6 +20,9 @@
       "path": "paquetes/inventarios"
     },
     {
+      "path": "paquetes/panel"
+    },
+    {
       "path": "plataforma"
     },
     {
