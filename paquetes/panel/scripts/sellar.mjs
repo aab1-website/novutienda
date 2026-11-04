@@ -37,15 +37,23 @@ if (problemas.length > 0) {
 }
 
 // Sin 'unsafe-inline' ni 'unsafe-eval'. connect-src: callables (Cloud Functions), Firebase Auth y Cloud Storage.
+// App Check con reCAPTCHA Enterprise (única razón de estos dominios; los mismos que firebase.json, target `panel`):
+//   script-src  https://www.google.com/recaptcha/ y https://www.gstatic.com/recaptcha/  (enterprise.js y sus módulos)
+//   connect-src https://firebaseappcheck.googleapis.com (canje del token) y https://www.google.com (recaptcha/enterprise/reload y clr)
+//   frame-src   https://www.google.com y https://recaptcha.google.com  (marco invisible de reCAPTCHA Enterprise)
+// La compilación `--emulador` NO los incluye: usa un proveedor propio y no carga nada de Google.
+const RECAPTCHA_SCRIPT = emulador ? '' : ' https://www.google.com/recaptcha/ https://www.gstatic.com/recaptcha/';
+const RECAPTCHA_CONEXION = emulador ? '' : ' https://firebaseappcheck.googleapis.com https://www.google.com';
+const RECAPTCHA_MARCO = emulador ? "'none'" : 'https://www.google.com https://recaptcha.google.com';
 const CONEXIONES_EMULADOR = emulador ? ' http://127.0.0.1:8240 http://127.0.0.1:8243 http://127.0.0.1:8245' : '';
 const csp = [
   "default-src 'none'",
-  "script-src 'self'",
+  `script-src 'self'${RECAPTCHA_SCRIPT}`,
   "style-src 'self'",
   "img-src 'self' data: blob: https:",
   "font-src 'self'",
-  `connect-src 'self' https://*.cloudfunctions.net https://*.run.app https://identitytoolkit.googleapis.com https://securetoken.googleapis.com https://firebasestorage.googleapis.com${CONEXIONES_EMULADOR}`,
-  "frame-src 'none'",
+  `connect-src 'self' https://*.cloudfunctions.net https://*.run.app https://identitytoolkit.googleapis.com https://securetoken.googleapis.com https://firebasestorage.googleapis.com${RECAPTCHA_CONEXION}${CONEXIONES_EMULADOR}`,
+  `frame-src ${RECAPTCHA_MARCO}`,
   "object-src 'none'",
   "media-src 'self' blob:",
   "base-uri 'none'",
