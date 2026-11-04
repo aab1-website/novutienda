@@ -3,8 +3,17 @@
   "compilerOptions": {
     "rootDir": "src",
     "outDir": "../../.tsbuild/inventarios",
-    "tsBuildInfoFile": "../../.tsbuild/inventarios.tsbuildinfo"
+    "tsBuildInfoFile": "../../.tsbuild/inventarios.tsbuildinfo",
+    "types": [
+      "node"
+    ]
   },
-  "include": ["src/**/*.ts"],
-  "references": [{ "path": "../nucleo" }]
+  "include": [
+    "src/**/*.ts"
+  ],
+  "references": [
+    {
+      "path": "../nucleo"
+    }
+  ]
 }
