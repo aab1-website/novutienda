@@ -32,6 +32,7 @@
     "@plataforma/pos": "workspace:*",
     "@plataforma/recibos": "workspace:*",
     "@plataforma/website": "workspace:*",
-    "@plataforma/consola": "workspace:*"
+    "@plataforma/consola": "workspace:*",
+    "@plataforma/panel": "workspace:*"
   }
 }
