@@ -13,16 +13,25 @@
 #    dist/funciones/.env. Sin eso, firebase deploy usaría los valores por
 #    defecto (SITIO_URL vacío) sin avisar. Ver docs/arquitectura/decisiones.md.
 #
-# Entradas (entorno): PROYECTO, SITIO_ID, PANEL_ID, PANEL_URL y P_<PARÁMETRO>.
+# Entradas (entorno): AMBIENTE (staging | production), PROYECTO, SITIO_ID, PANEL_ID, PANEL_URL y P_<PARÁMETRO>.
+# Sin valores por defecto para lo que identifica al cliente o abre superficie: TENANT_ID y MEDIOS_BASE_URL son obligatorias,
+# y en production APP_CHECK_EXIGIDO debe ser true.
 set -euo pipefail
 
 error() { echo "::error::$*"; exit 1; }
 
-for v in PROYECTO SITIO_ID PANEL_ID PANEL_URL P_TENANT_ID P_APP_CHECK_EXIGIDO P_SITIO_URL; do
+[[ "${AMBIENTE:-}" == "staging" || "${AMBIENTE:-}" == "production" ]] \
+  || error "AMBIENTE debe ser staging o production."
+for v in PROYECTO SITIO_ID PANEL_ID PANEL_URL P_TENANT_ID P_APP_CHECK_EXIGIDO P_SITIO_URL P_MEDIOS_BASE_URL; do
   [[ -n "${!v:-}" ]] || error "Falta la variable ${v#P_} (Environment o repositorio). Ver docs/produccion/pase-a-staging.md."
 done
 [[ "$P_APP_CHECK_EXIGIDO" == "true" || "$P_APP_CHECK_EXIGIDO" == "false" ]] \
   || error "APP_CHECK_EXIGIDO debe ser true o false."
+if [[ "$AMBIENTE" == "production" && "$P_APP_CHECK_EXIGIDO" != "true" ]]; then
+  error "En production APP_CHECK_EXIGIDO debe ser true (docs/produccion/funciones.md §9)."
+fi
+[[ "$P_MEDIOS_BASE_URL" =~ ^https://[^[:space:]/]+ ]] \
+  || error "MEDIOS_BASE_URL debe ser una URL https (Hosting o un bucket público aparte solo para publico/; nunca el bucket por defecto). Ver docs/produccion/pase-a-staging.md."
 
 # 2. Configuración compuesta en el build.
 [[ -f dist/firebase.json ]] || error "El artifact no trae dist/firebase.json (scripts/build.mjs lo genera)."
@@ -39,7 +48,7 @@ firebase target:apply hosting panel "$PANEL_ID" --project "$PROYECTO"
 # 4. Parámetros de Functions (no secretos; los secretos viven en Secret Manager).
 parametros="${RUNNER_TEMP:-/tmp}/funciones.env"
 : >"$parametros"
-for nombre in TENANT_ID APP_CHECK_EXIGIDO RECAPTCHA_CLAVE_SITIO SITIO_URL MEDIOS_BASE_URL; do
+for nombre in TENANT_ID APP_CHECK_EXIGIDO RECAPTCHA_CLAVE_SITIO SITIO_URL MEDIOS_BASE_URL FUNCIONES_SERVICE_ACCOUNT PROXY_SALTOS; do
   var="P_${nombre}"
   valor="${!var:-}"
   [[ "$valor" != *$'\n'* ]] || error "El parámetro $nombre contiene un salto de línea."

@@ -10,7 +10,11 @@ import { AccionNoPermitida, ErrorRecibo, ReciboNoEncontrado } from '@novutienda/
 import {
   VideoNoDisponible, appCheckReal, appCheckSimulado, esEntornoDePruebas, recaptchaEnterprise, recaptchaSimulado, traducirError,
 } from '../../plataforma/adaptadores/firebase/index.js';
+import { limiteMemoria } from '@novutienda/website';
+import { enrutar, type ConfigRouter } from '../../plataforma/funciones/servidor/http/router.js';
 import { componer } from '../../plataforma/funciones/scripts/componer-hosting.mjs';
+import { ConfiguracionIncompleta, exigirConfiguracionDeServicio } from '../../plataforma/funciones/servidor/config.js';
+import { ipDelCliente, ORIGEN_DESCONOCIDO } from '../../plataforma/funciones/servidor/origen.js';
 import { REDONDEO_POR_DEFECTO, RedondeoInvalido, interpretarRedondeo } from '../../plataforma/funciones/servidor/redondeo.js';
 import { aJson } from '../../plataforma/funciones/servidor/serializar.js';
 
@@ -150,6 +154,27 @@ describe('verificadores de App Check y reCAPTCHA', () => {
     expect(await bueno.verificar('t')).toBe(true);
     expect(await malo.verificar('t')).toBe(false);
   });
+  it('App Check real con consume: pide a Admin consumir el token y rechaza el que ya fue consumido', async () => {
+    const llamadas: unknown[] = [];
+    const visto = new Set<string>();
+    const admin = {
+      verifyToken: (t: string, o?: unknown) => {
+        llamadas.push(o);
+        const repetido = visto.has(t);
+        visto.add(t);
+        return Promise.resolve({ appId: 'a', alreadyConsumed: repetido });
+      },
+    };
+    const v = appCheckReal(admin as never, { consumir: true });
+    expect(await v.verificar('t1')).toBe(true);
+    expect(await v.verificar('t1')).toBe(false); // reutilizado
+    expect(await v.verificar('t2')).toBe(true);
+    expect(llamadas).toEqual([{ consume: true }, { consume: true }, { consume: true }]);
+    // Sin consumir no se pide consumo (los callables usan el marco de Functions, no este verificador).
+    const sin = appCheckReal(admin as never);
+    expect(await sin.verificar('t3')).toBe(true);
+    expect(llamadas[3]).toBeUndefined();
+  });
   it('reCAPTCHA Enterprise: valida token y acción, envía la clave de sitio y falla cerrado ante cualquier error', async () => {
     const respuesta = (cuerpo: unknown, ok = true) => vi.fn().mockResolvedValue({ ok, json: () => Promise.resolve(cuerpo) });
     const config = (f: ReturnType<typeof vi.fn>) => ({ proyecto: 'p-1', claveSitio: 'clave-publica', tokenAcceso: () => Promise.resolve('acceso'), fetch: f as unknown as typeof fetch });
@@ -267,5 +292,70 @@ describe('autenticación de los callables (con un Auth falso)', () => {
     expect(() => exigirAppCheck(false, {} as never)).not.toThrow();
     expect(() => exigirAppCheck(true, { app: { appId: 'x' } } as never)).not.toThrow();
     expect(() => exigirAppCheck(true, {} as never)).toThrow(expect.objectContaining({ code: 'unauthenticated' }));
+  });
+});
+
+describe('origen de la petición (X-Forwarded-For)', () => {
+  it('toma la IP del último salto confiable: lo que el cliente antepone no cuenta', () => {
+    // Hosting: <escrito por el cliente>, <cliente visto por Fastly>, <Fastly visto por el GFE>
+    expect(ipDelCliente('9.9.9.9, 203.0.113.7, 151.101.1.1', 2)).toBe('203.0.113.7');
+    expect(ipDelCliente('1.1.1.1, 2.2.2.2, 9.9.9.9, 203.0.113.7, 151.101.1.1', 2)).toBe('203.0.113.7');
+    expect(ipDelCliente('203.0.113.7, 151.101.1.1', 2)).toBe('203.0.113.7');
+    expect(ipDelCliente('2001:db8::1, 151.101.1.1', 2)).toBe('2001:db8::1');
+  });
+  it('con una sola dirección usa esa; sin cadena o con basura, desconocido', () => {
+    expect(ipDelCliente('203.0.113.7', 2)).toBe('203.0.113.7');
+    expect(ipDelCliente(undefined, 2)).toBe(ORIGEN_DESCONOCIDO);
+    expect(ipDelCliente('', 2)).toBe(ORIGEN_DESCONOCIDO);
+    expect(ipDelCliente('no-es-una-ip, 151.101.1.1', 2)).toBe(ORIGEN_DESCONOCIDO);
+    expect(ipDelCliente('203.0.113.7, 151.101.1.1', 0)).toBe(ORIGEN_DESCONOCIDO);
+  });
+});
+
+describe('configuración obligatoria fuera de las pruebas', () => {
+  it('falla si falta la sal del límite o la base de medios (sin valores por defecto)', () => {
+    expect(() => exigirConfiguracionDeServicio({ sal: '', mediosBaseUrl: 'https://medios.test' }, false)).toThrow(ConfiguracionIncompleta);
+    expect(() => exigirConfiguracionDeServicio({ sal: 'x', mediosBaseUrl: '' }, false)).toThrow(/MEDIOS_BASE_URL/);
+    expect(() => exigirConfiguracionDeServicio({ sal: 'x', mediosBaseUrl: 'http://medios.test' }, false)).toThrow(/MEDIOS_BASE_URL/);
+    expect(() => exigirConfiguracionDeServicio({ sal: '', mediosBaseUrl: '' }, false)).toThrow(/LIMITE_TASA_SAL.*MEDIOS_BASE_URL/);
+  });
+  it('con todo presente normaliza la barra final; en pruebas admite vacíos', () => {
+    expect(exigirConfiguracionDeServicio({ sal: 'sal', mediosBaseUrl: 'https://medios.test///' }, false)).toEqual({ sal: 'sal', mediosBaseUrl: 'https://medios.test' });
+    expect(exigirConfiguracionDeServicio({ sal: '', mediosBaseUrl: '' }, true).mediosBaseUrl).toBe('');
+  });
+});
+
+describe('límites en memoria antes de autenticar', () => {
+  // `Entorno` mínimo: si el enrutador llegara a autenticar o a leer, tocaría `firestore` y la prueba fallaría.
+  const e = {
+    ahora: () => 1_000,
+    firestore: new Proxy({}, { get: () => { throw new Error('tocó Firestore antes del límite'); } }),
+    leerDisponibilidad: () => () => Promise.resolve({ 'tv-1': true }),
+    guardarContacto: () => ({}),
+    almacenCotizaciones: {},
+  } as never;
+  const cfg = (n: number): ConfigRouter => ({
+    tenantId: 't', secretoReconstruccion: '', novuchat: {} as never, recaptcha: {} as never, appCheck: {} as never,
+    limiteContacto: limiteMemoria(100, 60_000),
+    limiteMemoria: { novuchat: limiteMemoria(n, 60_000), disponibilidad: limiteMemoria(n, 60_000) },
+  });
+  const peticion = (ruta: string, origen: string) => ({ metodo: 'GET', ruta, url: ruta, consulta: { ids: 'tv-1' }, cabeceras: { authorization: 'Bearer token-inventado' }, cuerpoCrudo: '', cuerpo: undefined, origen });
+
+  it('NovuChat: pasado el máximo por origen responde 429 sin leer el token en Firestore', async () => {
+    const c = cfg(2);
+    // Las dos primeras llegan a autenticar (el Proxy lanza: eso prueba que el límite las dejó pasar).
+    for (let i = 0; i < 2; i += 1) await expect(enrutar(e, peticion('/api/novuchat/v1/catalogo', '203.0.113.1'), c)).rejects.toThrow(/Firestore/);
+    const r = await enrutar(e, peticion('/api/novuchat/v1/catalogo', '203.0.113.1'), c);
+    expect(r.status).toBe(429);
+    expect(Number(r.headers['Retry-After'])).toBeGreaterThan(0);
+    // Otro origen tiene su propio cubo.
+    await expect(enrutar(e, peticion('/api/novuchat/v1/inventario', '203.0.113.2'), c)).rejects.toThrow(/Firestore/);
+  });
+
+  it('disponibilidad: pasado el máximo por origen responde 429', async () => {
+    const c = cfg(1);
+    expect((await enrutar(e, peticion('/api/disponibilidad', '203.0.113.1'), c)).status).toBe(200);
+    expect((await enrutar(e, peticion('/api/disponibilidad', '203.0.113.1'), c)).status).toBe(429);
+    expect((await enrutar(e, peticion('/api/disponibilidad', '203.0.113.9'), c)).status).toBe(200);
   });
 });

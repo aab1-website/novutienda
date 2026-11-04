@@ -1,8 +1,9 @@
 /**
  * POST /api/contacto — formulario de contacto. Función pura de manejo: App Check, reCAPTCHA,
  * límite de tasa y almacenamiento son PUERTOS inyectados (el coordinador los cablea a los
- * servicios reales). Orden: método, tipo, tamaño, límite de tasa, App Check, validación,
- * trampa para bots, reCAPTCHA y, solo entonces, guardar. Los registros no llevan datos personales.
+ * servicios reales). Orden: método, tipo, tamaño, App Check, límite de tasa, validación,
+ * trampa para bots, reCAPTCHA y, solo entonces, guardar. App Check va ANTES del límite: el límite se paga con
+ * una escritura transaccional en Firestore, que no debe quedar al alcance de peticiones sin token válido. Los registros no llevan datos personales.
  */
 import type { Mercado } from '@novutienda/nucleo';
 import { limpiarTexto, respuestaJson, type RespuestaHttp } from './http.js';
@@ -123,13 +124,13 @@ export async function manejarContacto(req: PeticionContacto, deps: DepsContacto)
 
   const ahora = deps.ahora();
   try {
-    const lim = await deps.limite.intentar(`contacto:${req.origen}`, ahora);
-    if (!lim.permitido) return respuestaJson(429, { error: 'demasiadas_solicitudes' }, { 'Retry-After': String(lim.reintentarEnSeg) });
-
     const tokenAppCheck = req.cabeceras[CABECERA_APP_CHECK];
     if (tokenAppCheck === undefined || tokenAppCheck === '' || !(await deps.appCheck.verificar(tokenAppCheck))) {
       return respuestaJson(401, { error: 'app_check' });
     }
+
+    const lim = await deps.limite.intentar(`contacto:${req.origen}`, ahora);
+    if (!lim.permitido) return respuestaJson(429, { error: 'demasiadas_solicitudes' }, { 'Retry-After': String(lim.reintentarEnSeg) });
 
     const v = validarContacto(req.cuerpo);
     if (!v.ok) return respuestaJson(400, { error: 'validacion', campos: v.campos });

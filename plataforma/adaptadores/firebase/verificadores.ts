@@ -15,12 +15,17 @@ function exigirPruebas(env: EntornoMin, que: string): void {
   if (!esEntornoDePruebas(env)) throw new Error(`${que} simulado solo existe en el emulador o en pruebas`);
 }
 
-export function appCheckReal(appCheck: AppCheck): VerificadorAppCheck {
+/**
+ * App Check real. Con `consumir` (replay protection de Admin SDK) cada token vale UNA sola verificación: el servidor lo marca
+ * consumido y rechaza el segundo uso. Exige que el cliente pida un token nuevo por envío (`getLimitedUseToken`).
+ */
+export function appCheckReal(appCheck: Pick<AppCheck, 'verifyToken'>, opciones: { readonly consumir?: boolean } = {}): VerificadorAppCheck {
+  const consumir = opciones.consumir === true;
   return {
     async verificar(token) {
       try {
-        await appCheck.verifyToken(token);
-        return true;
+        const r = await appCheck.verifyToken(token, consumir ? { consume: true } : undefined);
+        return !(consumir && r.alreadyConsumed === true);
       } catch {
         return false;
       }

@@ -53,28 +53,37 @@ describe.skipIf(!hayEmulador)('API HTTP (emulador)', () => {
       expect(r.texto).not.toMatch(/cantidad|stock/);
     });
 
-    it('contacto: App Check, reCAPTCHA, idempotencia y límite de tasa', async () => {
+    it('contacto: App Check antes del límite, reCAPTCHA, idempotencia y límite de tasa', async () => {
       const origen = `203.0.113.${String(Math.floor(Math.random() * 200) + 1)}`;
       const envioId = unico('envio').padEnd(20, 'x');
       const cuerpo = { envioId, nombre: 'Ana Pérez', correo: 'ana@ejemplo.test', mensaje: 'Quisiera una cotización', aceptaPrivacidad: true, recaptchaToken: 'simulado-humano-xxxxxxxxxxxxxxxx' };
+      // Cadena como la arma Hosting: lo que escribe el cliente, su IP vista por Fastly y la de Fastly vista por el GFE.
+      const cadena = `9.9.9.9, ${origen}, 151.101.1.1`;
       const enviar = (c: unknown, extra: Record<string, string> = {}) =>
-        http('/api/contacto', { method: 'POST', headers: { 'content-type': 'application/json', 'fastly-client-ip': origen, 'x-firebase-appcheck': 'simulado-valido', ...extra }, body: JSON.stringify(c) });
+        http('/api/contacto', { method: 'POST', headers: { 'content-type': 'application/json', 'x-forwarded-for': cadena, 'x-firebase-appcheck': 'simulado-valido', ...extra }, body: JSON.stringify(c) });
 
-      const sinAppCheck = await http('/api/contacto', { method: 'POST', headers: { 'content-type': 'application/json', 'fastly-client-ip': origen }, body: JSON.stringify(cuerpo) });
-      expect(sinAppCheck.status).toBe(401); // 1.º intento del origen
+      // Sin token de App Check (ni con `fastly-client-ip` falsificada): 401 y el límite NO se consume.
+      for (let i = 0; i < 5; i += 1) {
+        const sin = await http('/api/contacto', { method: 'POST', headers: { 'content-type': 'application/json', 'x-forwarded-for': cadena, 'fastly-client-ip': '8.8.8.8' }, body: JSON.stringify(cuerpo) });
+        expect(sin.status).toBe(401);
+      }
 
-      const bot = await enviar({ ...cuerpo, recaptchaToken: 'simulado-bot-xxxxxxxxxxxxxxxxx' }); // 2.º
+      const bot = await enviar({ ...cuerpo, recaptchaToken: 'simulado-bot-xxxxxxxxxxxxxxxxx' }); // 1.º del límite
       expect(bot.status).toBe(403);
 
-      const ok = await enviar(cuerpo); // 3.º
+      const ok = await enviar(cuerpo); // 2.º
       expect(ok.status).toBe(200);
       expect(ok.cuerpo).toEqual({ ok: true, repetido: false });
       const doc = (await h.firestore.doc(`tenants/${T}/contactos/${envioId}`).get()).data();
       expect(doc).toMatchObject({ nombre: 'Ana Pérez', pais: null });
 
-      const limite = await enviar(cuerpo); // 4.º: más de CONTACTO_MAXIMO (3) en la ventana
-      expect(limite.status).toBe(429);
-      expect(limite.cabeceras.get('retry-after')).toMatch(/^\d+$/);
+      const repetido = await enviar(cuerpo); // 3.º
+      expect(repetido.cuerpo).toEqual({ ok: true, repetido: true });
+
+      // Cambiar `fastly-client-ip` o anteponer valores en X-Forwarded-For no cambia de cubo: el origen es el último salto confiable.
+      const falsificado = await enviar(cuerpo, { 'fastly-client-ip': '8.8.4.4', 'x-forwarded-for': `7.7.7.7, 6.6.6.6, ${origen}, 151.101.1.1` });
+      expect(falsificado.status).toBe(429); // 4.º: más de CONTACTO_MAXIMO (3) en la ventana
+      expect(falsificado.cabeceras.get('retry-after')).toMatch(/^\d+$/);
       // El origen se guarda con hash salado, nunca en claro.
       const claves = (await h.firestore.collection('limitesTasa').get()).docs.map((d) => d.id);
       expect(claves.some((c) => c.includes(origen))).toBe(false);

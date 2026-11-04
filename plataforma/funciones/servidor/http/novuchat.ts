@@ -99,7 +99,9 @@ async function catalogo(e: Entorno, tenantId: string, mercado: Mercado, cfg: Con
   const productos = prods.docs.map((p) => leerDocumentoProducto(p.id, p.data())).sort((a, b) => a.nombre.localeCompare(b.nombre) || a.productoId.localeCompare(b.productoId));
   const copias = productos.length === 0 ? [] : await e.firestore.getAll(...productos.map((p) => e.firestore.doc(`tenants/${tenantId}/publicado/producto__${p.productoId}`)));
   const copiaDe = new Map(copias.map((d) => [d.id.replace('producto__', ''), d.data()]));
-  const base = cfg.mediosBaseUrl !== '' ? cfg.mediosBaseUrl : `https://storage.googleapis.com/${e.bucket.name}`;
+  // Sin valor por defecto al bucket por defecto: `MEDIOS_BASE_URL` es obligatoria (config.ts) y apunta a un origen público APARTE.
+  const base = cfg.mediosBaseUrl;
+  if (base === '') throw new Error('MEDIOS_BASE_URL no configurada');
   const moneda = MONEDA_DE[mercado];
   const clave = mercado === 'BO' ? 'bo' : 'ar';
   const items: Record<string, unknown>[] = [];

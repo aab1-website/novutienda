@@ -96,7 +96,7 @@ describe.skipIf(!hayEmulador)('bus de eventos (Firestore del emulador)', () => {
     const t = unico('bus').toLowerCase();
     await sembrarTenant(h, t, { productos: [{ id: 'goma', nombre: 'Goma', precioUSD: { bo: 100, ar: 100 }, tienda: 10 }] });
     const bueno = evento(t, 'P6', 'goma', 2);
-    const malo = documento({ ...bueno, datos: { ...bueno.datos, lineas: 'no-es-una-lista' } });
+    const malo = documento({ ...bueno, datos: { ...(bueno.datos as object), lineas: 'no-es-una-lista' } });
     await expect(entregarEvento(e, t, bueno.id, malo)).resolves.toEqual({ entregas: 0, aplicadas: 0, sinConsumidor: false });
     expect(sobreDesdeDocumento(malo)).toBeUndefined();
     expect((await h.firestore.doc(`tenants/${t}/existencias/goma__tienda`).get()).data()?.['cantidad']).toBe(10);

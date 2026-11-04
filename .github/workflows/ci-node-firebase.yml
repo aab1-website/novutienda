@@ -490,15 +490,18 @@ jobs:
 
       - name: Configurar Hosting (targets) y parámetros de Functions
         env:
+          AMBIENTE: staging
           PROYECTO: ${{ vars.GCP_PROJECT_ID_STAGING }}
           SITIO_ID: ${{ vars.FIREBASE_SITE_SITIO }}
           PANEL_ID: ${{ vars.FIREBASE_SITE_PANEL }}
           PANEL_URL: ${{ vars.PANEL_URL }}
-          P_TENANT_ID: ${{ vars.TENANT_ID || 'casa-bermejo' }}
+          P_TENANT_ID: ${{ vars.TENANT_ID }}
           P_APP_CHECK_EXIGIDO: ${{ vars.APP_CHECK_EXIGIDO || 'false' }}
           P_RECAPTCHA_CLAVE_SITIO: ${{ vars.RECAPTCHA_CLAVE_SITIO }}
           P_SITIO_URL: ${{ vars.STAGING_URL }}
           P_MEDIOS_BASE_URL: ${{ vars.MEDIOS_BASE_URL }}
+          P_FUNCIONES_SERVICE_ACCOUNT: ${{ vars.FUNCIONES_SERVICE_ACCOUNT }}
+          P_PROXY_SALTOS: ${{ vars.PROXY_SALTOS }}
         run: bash .github/scripts/preparar-despliegue-firebase.sh
 
       - name: Conservar copia de la versión actual (canal "previa" para rollback)
@@ -704,16 +707,19 @@ jobs:
       - name: Configurar Hosting (targets) y parámetros de Functions
         id: sitios
         env:
+          AMBIENTE: production
           PROYECTO: ${{ vars.GCP_PROJECT_ID_PROD }}
           SITIO_ID: ${{ vars.FIREBASE_SITE_SITIO }}
           PANEL_ID: ${{ vars.FIREBASE_SITE_PANEL }}
           PANEL_URL: ${{ vars.PANEL_URL }}
-          P_TENANT_ID: ${{ vars.TENANT_ID || 'casa-bermejo' }}
+          P_TENANT_ID: ${{ vars.TENANT_ID }}
           # En producción App Check se exige por defecto (docs/produccion/funciones.md §9).
           P_APP_CHECK_EXIGIDO: ${{ vars.APP_CHECK_EXIGIDO || 'true' }}
           P_RECAPTCHA_CLAVE_SITIO: ${{ vars.RECAPTCHA_CLAVE_SITIO }}
           P_SITIO_URL: ${{ vars.PROD_URL }}
           P_MEDIOS_BASE_URL: ${{ vars.MEDIOS_BASE_URL }}
+          P_FUNCIONES_SERVICE_ACCOUNT: ${{ vars.FUNCIONES_SERVICE_ACCOUNT }}
+          P_PROXY_SALTOS: ${{ vars.PROXY_SALTOS }}
         run: |
           bash .github/scripts/preparar-despliegue-firebase.sh
           # post-despliegue no declara Environment: recibe los ids por salida.
