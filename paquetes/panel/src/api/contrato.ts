@@ -1,14 +1,15 @@
-// CONTRATO de callables que el panel asume. Una callable por función pública de cada módulo, con el mismo nombre y la
-// misma entrada SIN `tx`, `deps`, `actor` ni `por` (esos salen del token en el servidor). El transporte agrega
-// `tenantId` a toda entrada. Las "lecturas" no tienen función pública: son consultas que el panel necesita y que el
-// servidor puede resolver como callables o como lecturas protegidas por reglas; el panel solo conoce este contrato.
+// OPERACIONES DEL PANEL. Es el vocabulario con el que las pantallas piden cosas (montos en centavos, fechas aaaa-mm-dd,
+// listas planas). El contrato REAL con el servidor es otro y vive en `real.ts`: una Cloud Function por módulo
+// (`pos`, `inventarios`, `consola`, `recibos`, `medios`) que recibe `{ accion, tenantId, datos }` (docs/produccion/funciones.md §2-§3).
+// `real.ts` traduce cada operación del panel a una o varias acciones reales; el cliente real y el doble en memoria pasan
+// por esa misma traducción, de modo que las pruebas del panel ejercitan la forma real de la llamada.
 import type {
   AprobacionPos, Carrito, Carrusel, CambiosProducto, CobroCredito, CobroCreditoEntrada, ConfigPos, ConfigSitio,
-  ConsultaArchivo, ConteoVista, CotizacionesVigentes, CreditoVista, DatosProducto, EntradaAuditoriaVista, EntradaProducto, FichaWeb,
+  ConsultaArchivo, PrecioUSDCentavos, ConteoVista, CotizacionesVigentes, CreditoVista, EntradaAuditoriaVista, EntradaProducto, FichaWeb,
   LineaAjuste, LineaIngreso, LineaTraspaso, Medio, MermaVista, MontosPorMoneda, MovimientoCaja, MovimientoCajaEntrada, MovimientoVista,
   PagoEntrada, PlantillaRecibo, ProductoPanel, Recibo, Reserva, ResultadoAnulacion, ResultadoCierre, ResultadoEnvio,
   ResultadoImportacion, ResultadoOperacion, ResultadoPublicacion, ResultadoVenta, Rol, Seccion, Simulacion, SolicitudAprobacion,
-  SubidaVista, Tablero, TipoMedio, TurnoPos, UbicacionId, UnidadSerie, UsuarioVista, VentaPos, EstadoMerma,
+  Tablero, TipoMedio, TurnoPos, UbicacionId, UnidadSerie, UsuarioVista, VentaPos, EstadoMerma,
   TipoMovimiento,
 } from './tipos.js';
 
@@ -32,6 +33,7 @@ export interface Contrato {
   cobrarCredito: { entrada: { requestId: string; ventaId: string; cobro: CobroCreditoEntrada }; salida: { cobro: CobroCredito; repetido: boolean } };
   guardarConfigPos: { entrada: { config: ConfigPos }; salida: ConfigPos };
   // ---- Inventarios (cada una lleva `operacionId`, idempotente) ----
+  /** Alta: `consola.crearProducto` (precios en USD decimales en el servidor) y, si trae costo, `inventarios.fijarCosto`. Solo adm. */
   crearProducto: { entrada: { operacionId: string; producto: EntradaProducto }; salida: ResultadoOperacion };
   actualizarProducto: { entrada: { operacionId: string; productoId: string; cambios: CambiosProducto }; salida: ResultadoOperacion };
   ingresar: { entrada: { operacionId: string; ubicacionId: UbicacionId; lineas: readonly LineaIngreso[] }; salida: ResultadoOperacion };
@@ -53,17 +55,15 @@ export interface Contrato {
   exportarProductosCsv: { entrada: Vacio; salida: { csv: string } };
   // ---- Recibos ----
   buscarComprobantes: { entrada: { consulta: ConsultaArchivo }; salida: readonly Recibo[] };
-  generarPdfRecibo: { entrada: { reciboId: string }; salida: { enlacePdf: string } };
-  enviarRecibo: { entrada: { reciboId: string; enlacePdf: string }; salida: ResultadoEnvio };
+  /** El servidor genera el PDF, lo guarda en una ruta privada y devuelve el enlace `wa.me` (que la persona abre y envía). */
+  enviarRecibo: { entrada: { reciboId: string; codigoPais?: string }; salida: ResultadoEnvio };
   referenciarFacturaSuma: { entrada: { reciboId: string; facturaSuma: string }; salida: Ok };
   guardarPlantilla: { entrada: { plantilla: PlantillaRecibo }; salida: Ok };
   // ---- Consola (catálogo y sitio) ----
   obtenerTablero: { entrada: Vacio; salida: Tablero };
   publicarSitio: { entrada: Vacio; salida: ResultadoPublicacion };
-  /** `precioUSD` en dólares decimales (la consola valida hasta 2 decimales); el resto del panel trabaja en centavos. */
-  crearProductoConsola: { entrada: { productoId: string; datos: DatosProducto; precioUSD: { bo: number; ar: number } }; salida: Ok };
-  editarProductoConsola: { entrada: { productoId: string; cambios: Partial<DatosProducto> }; salida: Ok };
-  cambiarPrecioUSD: { entrada: { productoId: string; precioUSD: { bo: number; ar: number } }; salida: Ok };
+  /** Centavos de USD, como en todo el panel; `real.ts` convierte a dólares decimales porque `consola.cambiarPrecioUSD` los espera así. */
+  cambiarPrecioUSD: { entrada: { productoId: string; precioUSD: PrecioUSDCentavos }; salida: Ok };
   guardarFicha: { entrada: { productoId: string; ficha: FichaWeb }; salida: Ok };
   reservarSubida: { entrada: { subidaId: string; productoId: string; tipo: TipoMedio; bytes: number }; salida: Reserva };
   finalizarSubida: { entrada: { subidaId: string }; salida: Medio };
@@ -107,7 +107,6 @@ export interface Contrato {
   obtenerRecibo: { entrada: { ventaId: string }; salida: Recibo | null };
   listarFichas: { entrada: Vacio; salida: readonly { productoId: string; ficha: FichaWeb }[] };
   listarMedios: { entrada: { productoId: string }; salida: readonly Medio[] };
-  estadoSubida: { entrada: { subidaId: string }; salida: SubidaVista };
   leerConfigSitio: { entrada: Vacio; salida: ConfigSitio | null };
   listarSecciones: { entrada: Vacio; salida: readonly Seccion[] };
   listarCarruseles: { entrada: Vacio; salida: readonly Carrusel[] };
@@ -118,27 +117,4 @@ export type NombreCallable = keyof Contrato;
 export type Entrada<N extends NombreCallable> = Contrato[N]['entrada'];
 export type Salida<N extends NombreCallable> = Contrato[N]['salida'];
 
-const TODOS: readonly Rol[] = ['caj', 'sup', 'adm'];
-const SUP: readonly Rol[] = ['sup', 'adm'];
-const ADM: readonly Rol[] = ['adm'];
-
-/** Quién puede llamar a cada callable (copia de los permisos de los módulos). El doble los aplica; el servidor es la autoridad. */
-export const ROLES_CALLABLE: Readonly<Record<NombreCallable, readonly Rol[]>> = {
-  abrirTurno: TODOS, cerrarTurno: TODOS, cerrarTurnoForzado: ADM, confirmarVenta: TODOS, solicitarAprobacion: TODOS,
-  resolverAprobacion: SUP, solicitarAnulacion: TODOS, aprobarAnulacion: SUP, registrarMovimientoCaja: TODOS, cobrarCredito: TODOS,
-  guardarConfigPos: ADM,
-  crearProducto: ADM, actualizarProducto: ADM, ingresar: SUP, traspasar: SUP, ajustar: ADM, solicitarMerma: TODOS, resolverMerma: SUP,
-  abrirConteo: SUP, registrarLineaConteo: TODOS, cerrarConteo: SUP, importarProductosCsv: ADM, exportarProductosCsv: SUP,
-  buscarComprobantes: TODOS, generarPdfRecibo: TODOS, enviarRecibo: TODOS, referenciarFacturaSuma: SUP, guardarPlantilla: SUP,
-  obtenerTablero: SUP, publicarSitio: ADM, crearProductoConsola: ADM, editarProductoConsola: ADM, cambiarPrecioUSD: ADM,
-  guardarFicha: SUP, reservarSubida: SUP, finalizarSubida: SUP, borrarMedio: SUP, guardarSeccion: ADM, eliminarSeccion: ADM,
-  ordenarSecciones: ADM, guardarCarrusel: ADM, guardarConfigSitio: ADM, simularImportacion: ADM, importarProductos: ADM,
-  exportarProductosCsvSitio: SUP, asignarRol: ADM, quitarRol: ADM,
-  leerConfigPos: TODOS, leerPlantilla: TODOS, cotizacionesVigentes: TODOS, listarProductos: TODOS, listarSeries: TODOS, buscarSerie: TODOS,
-  listarMovimientos: SUP, listarMermas: TODOS, listarConteos: TODOS, turnoActual: TODOS, listarTurnos: TODOS, listarVentas: TODOS,
-  listarAprobaciones: TODOS, listarMovimientosCaja: TODOS, listarCreditos: TODOS, listarAuditoria: SUP, obtenerRecibo: TODOS,
-  listarFichas: SUP, listarMedios: SUP, estadoSubida: SUP, leerConfigSitio: SUP, listarSecciones: SUP, listarCarruseles: SUP,
-  listarUsuarios: ADM,
-};
-
-export const NOMBRES_CALLABLE = Object.keys(ROLES_CALLABLE) as NombreCallable[];
+export { NOMBRES_CALLABLE, ROLES_CALLABLE } from './real.js';

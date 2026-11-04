@@ -83,7 +83,8 @@ describe('doble: turnos y arqueo', () => {
   });
   it('la supervisión ve todos los turnos; el vendedor, solo el suyo', async () => {
     const { e } = await conTurno('caj');
-    expect(await e.api.llamar('listarTurnos', { estado: 'abierto' })).toHaveLength(1);
+    expect((await falla(e.api.llamar('listarTurnos', { estado: 'abierto' }))).codigoHttps).toBe('permission-denied');
+    expect(await e.api.llamar('turnoActual', {})).not.toBeNull();
     e.como('sup');
     expect(await e.api.llamar('listarTurnos', { estado: 'abierto' })).toHaveLength(1);
     expect(await e.api.llamar('turnoActual', {})).not.toBeNull();
@@ -221,7 +222,9 @@ describe('doble: crédito, caja y anulaciones', () => {
     await e.api.llamar('resolverAprobacion', { aprobacionId, decision: 'aprobar' });
     e.como('caj');
     const v = await e.api.llamar('confirmarVenta', { requestId: uuid(), carrito: conDeudor, pagos, aprobacionCreditoId: aprobacionId });
+    e.como('sup');
     const [credito] = await e.api.llamar('listarCreditos', { estado: 'pendiente' });
+    e.como('caj');
     expect(credito?.saldo).toBe(5568);
     // Cobro del crédito en efectivo: entra al turno y baja el saldo.
     const cobro = await e.api.llamar('cobrarCredito', { requestId: uuid(), ventaId: v.venta.ventaId, cobro: { medio: 'efectivo', monto: 2000 } });
@@ -231,14 +234,14 @@ describe('doble: crédito, caja y anulaciones', () => {
     expect((await falla(e.api.llamar('cobrarCredito', { requestId: uuid(), ventaId: v.venta.ventaId, cobro: { medio: 'qr', monto: 1 } }))).detalle.codigo).toBe('entrada-invalida');
   });
   it('un egreso mayor al efectivo se rechaza y los movimientos son idempotentes', async () => {
-    const { e } = await conTurno();
+    const { e, turnoId } = await conTurno();
     expect((await falla(e.api.llamar('registrarMovimientoCaja', { requestId: uuid(), movimiento: { tipo: 'egreso', moneda: 'BOB', monto: 10001, motivo: 'Compra' } }))).detalle.codigo).toBe('egreso-excede-efectivo');
     const requestId = uuid();
     await e.api.llamar('registrarMovimientoCaja', { requestId, movimiento: { tipo: 'egreso', moneda: 'BOB', monto: 4000, motivo: 'Compra de bolsas' } });
     const r = await e.api.llamar('registrarMovimientoCaja', { requestId, movimiento: { tipo: 'egreso', moneda: 'BOB', monto: 4000, motivo: 'Compra de bolsas' } });
     expect(r.repetido).toBe(true);
     expect((await e.api.llamar('turnoActual', {}))?.totales.BOB?.egresos).toBe(4000);
-    expect(await e.api.llamar('listarMovimientosCaja', {})).toHaveLength(1);
+    expect(await e.api.llamar('listarMovimientosCaja', { turnoId })).toHaveLength(1);
   });
   it('anulación: la solicita el vendedor, la aprueba otra persona y reembolsa por los medios originales', async () => {
     const { e } = await conTurno();
@@ -359,7 +362,7 @@ describe('doble: inventarios', () => {
     const e = crearEntorno('adm');
     const nuevo = { id: 'mouse-1', nombre: 'Mouse', categoria: 'Accesorios', sku: 'MOUSE-1', precioUSD: { bo: 1000, ar: 1100 }, costoUSD: 500 };
     await e.api.llamar('crearProducto', { operacionId: uuid(), producto: nuevo });
-    expect((await falla(e.api.llamar('crearProducto', { operacionId: uuid(), producto: nuevo }))).detalle.codigo).toBe('estado-invalido');
+    expect((await falla(e.api.llamar('crearProducto', { operacionId: uuid(), producto: nuevo }))).detalle.codigo).toBe('conflicto');
     expect((await falla(e.api.llamar('crearProducto', { operacionId: uuid(), producto: { ...nuevo, id: 'Malo' } }))).detalle.codigo).toBe('entrada-invalida');
     expect((await falla(e.api.llamar('crearProducto', { operacionId: uuid(), producto: { ...nuevo, id: 'mouse-2' } }))).detalle.codigo).toBe('estado-invalido');
     await e.api.llamar('actualizarProducto', { operacionId: uuid(), productoId: 'mouse-1', cambios: { minimo: 4 } });
@@ -406,13 +409,12 @@ describe('doble: recibos', () => {
   });
   it('el enlace de WhatsApp lo arma el servidor (wa.me) y queda el estado; sin teléfono no hay enlace', async () => {
     const { e, reciboId } = await conVenta();
-    const { enlacePdf } = await e.api.llamar('generarPdfRecibo', { reciboId });
-    const r = await e.api.llamar('enviarRecibo', { reciboId, enlacePdf });
+    const r = await e.api.llamar('enviarRecibo', { reciboId });
     expect(r.estado).toBe('enlace_generado');
     expect(r.enlace).toMatch(/^https:\/\/wa\.me\/59170012345\?text=/);
     expect((await e.api.llamar('buscarComprobantes', { consulta: {} }))[0]?.envioWhatsapp.estado).toBe('enlace_generado');
-    expect((await e.api.llamar('enviarRecibo', { reciboId, enlacePdf: 'http://inseguro' })).estado).toBe('fallido');
-    await falla(e.api.llamar('enviarRecibo', { reciboId: 'no-existe', enlacePdf }));
+    expect((await e.api.llamar('enviarRecibo', { reciboId, codigoPais: '54' })).enlace).toMatch(/^https:\/\/wa\.me\/\d+\?text=/);
+    await falla(e.api.llamar('enviarRecibo', { reciboId: 'no-existe' }));
   });
   it('referencia de factura SUMA solo para sup/adm, con formato válido', async () => {
     const { e, reciboId } = await conVenta();
@@ -451,7 +453,6 @@ describe('doble: catálogo y sitio', () => {
     const a = await e.api.llamar('reservarSubida', { subidaId: id, productoId: 'cable-hdmi', tipo: 'foto', bytes: 10 });
     expect(await e.api.llamar('reservarSubida', { subidaId: id, productoId: 'cable-hdmi', tipo: 'foto', bytes: 10 })).toEqual(a);
     expect((await falla(e.api.llamar('reservarSubida', { subidaId: id, productoId: 'cable-hdmi', tipo: 'foto', bytes: 11 }))).detalle.codigo).toBe('conflicto');
-    expect((await e.api.llamar('estadoSubida', { subidaId: id })).estado).toBe('reservada');
   });
   it('ficha: slug único, texto alternativo, medios del producto; publicar la deja en el tablero', async () => {
     const e = crearEntorno('sup');
@@ -511,16 +512,24 @@ describe('doble: catálogo y sitio', () => {
     expect(await e.api.llamar('listarCarruseles', {})).toHaveLength(1);
     expect(await e.api.llamar('listarMedios', { productoId: 'tv-55' })).toHaveLength(1);
   });
-  it('productos desde la consola: precio con dos decimales, tope de 200 y edición', async () => {
+  it('productos desde la consola: precios en centavos (el servidor los recibe en dólares), tope de 200 y edición', async () => {
     const e = crearEntorno('adm');
-    await e.api.llamar('crearProductoConsola', { productoId: 'nuevo-x', datos: { nombre: 'X', categoria: 'C', activo: true }, precioUSD: { bo: 12.5, ar: 13 } });
-    expect((await e.api.llamar('listarProductos', {})).find((p) => p.id === 'nuevo-x')?.precioUSD).toEqual({ bo: 1250, ar: 1300 });
-    expect((await falla(e.api.llamar('crearProductoConsola', { productoId: 'nuevo-x', datos: { nombre: 'X', categoria: 'C', activo: true }, precioUSD: { bo: 1, ar: 1 } }))).detalle.codigo).toBe('conflicto');
-    expect((await falla(e.api.llamar('cambiarPrecioUSD', { productoId: 'nuevo-x', precioUSD: { bo: 1.234, ar: 1 } }))).detalle.codigo).toBe('entrada-invalida');
-    await e.api.llamar('editarProductoConsola', { productoId: 'nuevo-x', cambios: { nombre: 'Equis' } });
-    await falla(e.api.llamar('editarProductoConsola', { productoId: 'nuevo-x', cambios: {} }));
-    await falla(e.api.llamar('editarProductoConsola', { productoId: 'nada', cambios: { nombre: 'a' } }));
-    await falla(e.api.llamar('cambiarPrecioUSD', { productoId: 'nada', precioUSD: { bo: 1, ar: 1 } }));
+    const nuevo = { id: 'nuevo-x', nombre: 'X', categoria: 'C', sku: 'NX', precioUSD: { bo: 1250, ar: 1300 }, costoUSD: 700 };
+    await e.api.llamar('crearProducto', { operacionId: uuid(), producto: nuevo });
+    const creado = (await e.api.llamar('listarProductos', {})).find((p) => p.id === 'nuevo-x');
+    expect(creado?.precioUSD).toEqual({ bo: 1250, ar: 1300 });
+    expect(creado?.costoUSD).toBe(700);
+    // En el cable del servidor el precio viaja en dólares decimales y el costo en centavos.
+    const alta = e.api.transporte.invocaciones.find((i) => i.accion === 'crearProducto');
+    expect(alta?.datos).toMatchObject({ precioUSD: { bo: 12.5, ar: 13 } });
+    expect(e.api.transporte.invocaciones.find((i) => i.accion === 'fijarCosto')?.datos).toMatchObject({ costoUSD: 700 });
+    expect((await falla(e.api.llamar('crearProducto', { operacionId: uuid(), producto: nuevo }))).detalle.codigo).toBe('conflicto');
+    expect((await falla(e.api.llamar('cambiarPrecioUSD', { productoId: 'nuevo-x', precioUSD: { bo: 123.4, ar: 100 } }))).detalle.codigo).toBe('entrada-invalida');
+    await e.api.llamar('cambiarPrecioUSD', { productoId: 'nuevo-x', precioUSD: { bo: 1999, ar: 2000 } });
+    expect(e.api.transporte.invocaciones.filter((i) => i.accion === 'cambiarPrecioUSD').at(-1)?.datos).toMatchObject({ precioUSD: { bo: 19.99, ar: 20 } });
+    await e.api.llamar('actualizarProducto', { operacionId: uuid(), productoId: 'nuevo-x', cambios: { nombre: 'Equis' } });
+    await falla(e.api.llamar('actualizarProducto', { operacionId: uuid(), productoId: 'nada', cambios: { nombre: 'a' } }));
+    await falla(e.api.llamar('cambiarPrecioUSD', { productoId: 'nada', precioUSD: { bo: 100, ar: 100 } }));
   });
   it('importación con simulación: filas con error bloquean salvo omitirlas; el stock se ignora', async () => {
     const e = crearEntorno('adm');

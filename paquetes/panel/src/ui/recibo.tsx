@@ -86,8 +86,8 @@ export function AccionesRecibo({ recibo, alCambiar }: { recibo: Recibo; alCambia
 
   const enviar = (): void => {
     void wa.ejecutar(async () => {
-      const { enlacePdf } = await api.llamar('generarPdfRecibo', { reciboId: recibo.reciboId });
-      const r = await api.llamar('enviarRecibo', { reciboId: recibo.reciboId, enlacePdf });
+      // El servidor genera y guarda el PDF y devuelve el enlace `wa.me` que la persona abre y envía.
+      const r = await api.llamar('enviarRecibo', { reciboId: recibo.reciboId });
       setEnlace(r.enlace ?? null);
       setAviso(
         r.estado === 'sin_telefono'

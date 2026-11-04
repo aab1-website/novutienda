@@ -1,6 +1,8 @@
-// Errores del contrato y su traducción a mensajes legibles. El servidor responde con un HttpsError cuyo `code` es el de
-// Firebase Functions y cuyo `details.codigo` es el código del módulo (ErrorPos, ErrorConsola, ErrorIdentidad, clases
-// de Inventarios en kebab-case, errores de Recibos). El panel muestra siempre un mensaje propio, nunca el técnico.
+// Errores del contrato y su traducción a mensajes legibles. El servidor real responde con un HttpsError cuyo `code` es el
+// de Firebase Functions, cuyo `message` es el del error tipado del módulo (apto para el usuario, en español) y cuyos
+// `details` pueden traer `faltantes` (stock), `campos` (rutas inválidas, nunca valores), `detalles` (filas de una
+// importación) y `clave`/`tope` (límite del plan). El servidor real NO envía `details.codigo`; los dobles en memoria sí
+// lo incluyen para poder probar cada regla, y cuando existe el panel prefiere su propio mensaje.
 
 export interface DetalleError {
   readonly codigo?: string;
@@ -8,6 +10,11 @@ export interface DetalleError {
   readonly faltantes?: readonly { readonly productoId: string; readonly almacenId: string; readonly pedido: number; readonly disponible: number }[];
   /** Mensajes por campo o fila (ErrorConsola.detalles). */
   readonly detalles?: readonly string[];
+  /** Rutas de los campos inválidos de `datos` (esquema estricto del servidor; nunca los valores). */
+  readonly campos?: readonly string[];
+  /** Límite del plan alcanzado (`resource-exhausted`). */
+  readonly clave?: string;
+  readonly tope?: number;
 }
 
 export class ErrorApi extends Error {
@@ -97,14 +104,23 @@ const POR_CODIGO_HTTPS: Readonly<Record<string, string>> = {
   internal: 'Ocurrió un error inesperado. Intente de nuevo.',
 };
 
+/**
+ * Códigos HTTPS cuyo `message` el servidor controla (errores tipados de los módulos, aptos para el usuario). Los demás
+ * (`internal`, `unavailable`, `unauthenticated`, `aborted`…) llevan texto genérico o técnico y se reemplazan por el del panel.
+ */
+const CON_MENSAJE_DEL_SERVIDOR: ReadonlySet<string> = new Set(['failed-precondition', 'not-found', 'already-exists', 'permission-denied', 'invalid-argument', 'resource-exhausted']);
+
 export const MENSAJE_GENERICO = 'Ocurrió un error inesperado. Intente de nuevo.';
 
 /** Mensaje legible para cualquier error (nunca el texto técnico del servidor). */
 export function mensajeDeError(e: unknown): string {
   if (!(e instanceof ErrorApi)) return MENSAJE_GENERICO;
   const modulo = e.detalle.codigo === undefined ? undefined : POR_CODIGO_MODULO[e.detalle.codigo];
-  let base = modulo ?? POR_CODIGO_HTTPS[e.codigoHttps] ?? MENSAJE_GENERICO;
-  if (e.detalle.codigo === 'stock-insuficiente' && e.detalle.faltantes !== undefined && e.detalle.faltantes.length > 0) {
+  const delServidor = modulo === undefined && e.detalle.codigo === undefined && CON_MENSAJE_DEL_SERVIDOR.has(e.codigoHttps) && e.message.trim() !== '' ? e.message.trim() : undefined;
+  let base = modulo ?? delServidor ?? POR_CODIGO_HTTPS[e.codigoHttps] ?? MENSAJE_GENERICO;
+  const sinCodigoConFaltantes = e.detalle.codigo === undefined && e.codigoHttps === 'failed-precondition';
+  if ((e.detalle.codigo === 'stock-insuficiente' || sinCodigoConFaltantes) && e.detalle.faltantes !== undefined && e.detalle.faltantes.length > 0) {
+    if (sinCodigoConFaltantes) base = POR_CODIGO_MODULO['stock-insuficiente'] ?? base;
     const f = e.detalle.faltantes.map((x) => `${x.productoId} en ${x.almacenId}: pidió ${x.pedido}, hay ${x.disponible}`).join('; ');
     base = `${base} ${f}.`;
   }

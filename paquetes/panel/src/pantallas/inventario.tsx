@@ -75,7 +75,7 @@ export function FichaProducto({ producto, cot, alGuardar, alCerrar }: { producto
           ...(minimo !== undefined && minimo !== producto.minimo ? { minimo } : {}), ...(costo !== undefined && costo !== producto.costoUSD ? { costoUSD: costo } : {}),
         };
         if (Object.keys(cambios).length > 0) await api.llamar('actualizarProducto', { operacionId: nuevoId(), productoId: producto.id, cambios });
-        if (bo !== producto.precioUSD.bo || ar !== producto.precioUSD.ar) await api.llamar('cambiarPrecioUSD', { productoId: producto.id, precioUSD: { bo: bo / 100, ar: ar / 100 } });
+        if (bo !== producto.precioUSD.bo || ar !== producto.precioUSD.ar) await api.llamar('cambiarPrecioUSD', { productoId: producto.id, precioUSD: { bo, ar } });
       }
       setOk(true);
       alGuardar();
