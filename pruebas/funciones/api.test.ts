@@ -1,5 +1,6 @@
 // API HTTP contra el emulador: rutas públicas del sitio, API de NovuChat (catálogo, inventario, pedido firmado)
 // y endpoints firmados de reconstrucción del sitio.
+import { spawnSync } from 'node:child_process';
 import { createHash, randomBytes } from 'node:crypto';
 import { beforeAll, describe, expect, it, vi } from 'vitest';
 import { esperar, firmar, hayEmulador, herramientas, http, sembrarTenant, T, unico, type Herramientas } from './ayudas.js';
@@ -212,6 +213,31 @@ describe.skipIf(!hayEmulador)('API HTTP (emulador)', () => {
     it('401 sin firma válida', async () => {
       const r = await http(`/api/sitio/v1/reconstrucciones?tenantId=${T}`, { headers: { 'x-marca-tiempo': String(Date.now()), 'x-firma': 'b'.repeat(64) } });
       expect(r.status).toBe(401);
+    });
+  });
+
+  describe('script de tokens de NovuChat', () => {
+    const correr = (args: string[], entrada = '') =>
+      spawnSync('node', ['plataforma/funciones/scripts/token-novuchat.mjs', ...args, '--proyecto', 'demo-pruebas'], { input: entrada, encoding: 'utf8', env: process.env });
+
+    it('registra solo el hash, impone el tope de dos activos y desactiva sin imprimir el token', async () => {
+      const t = unico('tok').toLowerCase();
+      const a = randomBytes(24).toString('hex');
+      const b = randomBytes(24).toString('hex');
+      const c = randomBytes(24).toString('hex');
+      const r1 = correr(['registrar', '--tenant', t], a);
+      expect(r1.status, r1.stderr).toBe(0);
+      expect(r1.stdout).toContain(sha256(a));
+      expect(r1.stdout + r1.stderr).not.toContain(a);
+      expect(correr(['registrar', '--tenant', t], b).status).toBe(0);
+      expect(correr(['registrar', '--tenant', t], c).status).toBe(1); // tercer token activo
+      expect(correr(['registrar', '--tenant', t], 'corto').status).toBe(1);
+      expect(correr(['desactivar', '--hash', sha256(a)]).status).toBe(0);
+      expect((await h.firestore.doc(`novuchatTokens/${sha256(a)}`).get()).data()).toMatchObject({ tenantId: t, hash: sha256(a), activo: false });
+      expect(correr(['registrar', '--tenant', t], c).status).toBe(0);
+      expect(correr(['listar', '--tenant', t]).stdout.trim().split('\n')).toHaveLength(3);
+      expect(correr(['desactivar', '--hash', 'no-es-hash']).status).toBe(1);
+      expect(correr(['otra']).status).toBe(1);
     });
   });
 });
