@@ -1,0 +1,17 @@
+# Documentos comerciales y datos del cliente: nunca al historial (repositorio público)
+*.pdf
+privado/
+
+# Configuración local y secretos
+.firebaserc
+CONFIGURACION.local.md
+.env*
+
+# Dependencias y salidas
+node_modules/
+dist/
+coverage/
+*-debug.log
+
+# Worktrees de trabajo en paralelo
+.claude/worktrees/
