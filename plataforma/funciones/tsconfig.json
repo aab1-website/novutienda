@@ -1,7 +1,7 @@
 {
   "extends": "../../tsconfig.base.json",
   "compilerOptions": {
-    "rootDir": "src",
+    "rootDir": "servidor",
     "outDir": "../../.tsbuild/funciones",
     "tsBuildInfoFile": "../../.tsbuild/funciones.tsbuildinfo",
     "types": [
@@ -9,7 +9,7 @@
     ]
   },
   "include": [
-    "src/**/*.ts"
+    "servidor/**/*.ts"
   ],
   "references": [
     {
