@@ -158,7 +158,7 @@ describe('anulación aprobada por el supervisor', () => {
     // El reembolso es en efectivo: la caja necesita efectivo suficiente (ingreso justificado).
     await registrarMovimientoCaja(e.deps, T, caj, UUID(60), { tipo: 'ingreso', moneda: 'BOB', monto: 40000, motivo: 'fondo adicional' });
     await solicitarAnulacion(e.deps, T, caj, VENTA, 'cliente se arrepintió');
-    const r = await aprobarAnulacion(e.deps, T, sup, VENTA);
+    const r = await aprobarAnulacion(e.deps, T, sup, VENTA, 'aprobada por supervisión');
     // Se devuelve por los medios originales: 100000 en efectivo (neto de cambio) y 37000 por QR.
     expect(r.reembolsos).toEqual([
       { medio: 'efectivo', moneda: 'BOB', monto: 100000 },
@@ -192,8 +192,8 @@ describe('anulación aprobada por el supervisor', () => {
     await venderConDescuentoAprobado();
     await registrarMovimientoCaja(e.deps, T, caj, UUID(60), { tipo: 'ingreso', moneda: 'BOB', monto: 40000, motivo: 'fondo adicional' });
     await solicitarAnulacion(e.deps, T, caj, VENTA, 'error');
-    await aprobarAnulacion(e.deps, T, sup, VENTA);
-    await expect(aprobarAnulacion(e.deps, T, sup, VENTA)).rejects.toMatchObject({ codigo: 'venta-ya-anulada' });
+    await aprobarAnulacion(e.deps, T, sup, VENTA, 'aprobada por supervisión');
+    await expect(aprobarAnulacion(e.deps, T, sup, VENTA, 'aprobada por supervisión')).rejects.toMatchObject({ codigo: 'venta-ya-anulada' });
     expect(doc(e, T, 'productos/celular')?.['stockTotal']).toBe(3);
     expect(contar(e, T, 'anulaciones')).toBe(1);
     verificarInvariantes(e, T);

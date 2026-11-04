@@ -200,6 +200,8 @@ describe('venta: caja, créditos, historial y cierre', () => {
     e.como('sup');
     render(e.envolver(h(PantallaAprobaciones, { sub: 'anulaciones' })));
     await u.click(await screen.findByRole('button', { name: 'Aprobar anulación' }));
+    expect((await screen.findByRole('button', { name: 'Sí, anular la venta' }) as HTMLButtonElement).disabled).toBe(true);
+    await u.type(campo(/Motivo de la aprobación/), 'Verificado con el cliente');
     await u.click(await screen.findByRole('button', { name: 'Sí, anular la venta' }));
     expect(await screen.findByText(/Reembolsos: efectivo Bs 55,68/)).toBeTruthy();
     expect((await e.api.llamar('listarVentas', {}))[0]?.estado).toBe('anulada');

@@ -35,7 +35,7 @@ describe('bandeja en memoria: entrega duplicada y desordenada', () => {
     await vender(1);
     await registrarMovimientoCaja(e.deps, T, caj, UUID(60), { tipo: 'ingreso', moneda: 'BOB', monto: 7000, motivo: 'fondo' });
     await solicitarAnulacion(e.deps, T, caj, UUID(1), 'error');
-    await aprobarAnulacion(e.deps, T, sup, UUID(1));
+    await aprobarAnulacion(e.deps, T, sup, UUID(1), 'aprobada por supervisión');
     // Se entrega al revés y duplicado: primero la anulación, que aún no tiene comprobante.
     const r = await e.bandeja.entregar(T, { orden: 'inverso', duplicados: 1 });
     expect(r.fallidas).toEqual([]);

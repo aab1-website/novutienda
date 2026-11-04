@@ -28,7 +28,7 @@ export interface Contrato {
   solicitarAprobacion: { entrada: { aprobacionId: string; solicitud: SolicitudAprobacion }; salida: AprobacionPos };
   resolverAprobacion: { entrada: { aprobacionId: string; decision: 'aprobar' | 'rechazar' }; salida: AprobacionPos };
   solicitarAnulacion: { entrada: { ventaId: string; motivo: string }; salida: VentaPos };
-  aprobarAnulacion: { entrada: { ventaId: string }; salida: ResultadoAnulacion };
+  aprobarAnulacion: { entrada: { ventaId: string; motivo: string }; salida: ResultadoAnulacion };
   registrarMovimientoCaja: { entrada: { requestId: string; movimiento: MovimientoCajaEntrada }; salida: { movimiento: MovimientoCaja; repetido: boolean } };
   cobrarCredito: { entrada: { requestId: string; ventaId: string; cobro: CobroCreditoEntrada }; salida: { cobro: CobroCredito; repetido: boolean } };
   guardarConfigPos: { entrada: { config: ConfigPos }; salida: ConfigPos };

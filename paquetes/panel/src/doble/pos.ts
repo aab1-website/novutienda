@@ -293,7 +293,8 @@ export const handlersPos: {
     if (v === undefined) throw fallo('venta-inexistente');
     if (v.estado === 'anulada') throw fallo('venta-ya-anulada');
     if (v.solicitudAnulacion === undefined) throw fallo('anulacion-sin-solicitud');
-    if (v.solicitudAnulacion.por === c.uid) throw fallo('autoaprobacion');
+    exigirTexto(e.motivo, 'motivo');
+    if (v.solicitudAnulacion.por === c.uid || v.cajeroUid === c.uid) throw fallo('autoaprobacion');
     const turno = turnoAbierto(c);
     if (turno === undefined) throw fallo('sin-turno', 'Abra un turno para registrar el reembolso');
     // Reembolso por los medios con que se cobró (netos de cambio, más cobros de crédito).

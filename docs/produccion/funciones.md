@@ -62,7 +62,7 @@ const { data } = await llamar({ accion: 'abrirTurno', tenantId: 'casa-bermejo', 
 | `solicitarAprobacion` | TODOS | `{ aprobacionId (UUID), solicitud: { tipo: 'descuento'\|'credito', moneda, monto, motivo, deudor? } }` | aprobación |
 | `resolverAprobacion` | SUP | `{ aprobacionId, decision: 'aprobar'\|'rechazar' }` | aprobación |
 | `solicitarAnulacion` | TODOS (el vendedor, solo sus ventas) | `{ ventaId, motivo }` | venta |
-| `aprobarAnulacion` | SUP | `{ ventaId }` | `{ ventaId, reembolsos[], turnoIdReembolso }` |
+| `aprobarAnulacion` | SUP | `{ ventaId, motivo }` (motivo del aprobador; `autoaprobacion` si vendió o solicitó) | `{ ventaId, reembolsos[], turnoIdReembolso }` |
 | `registrarMovimientoCaja` | TODOS | `{ requestId, movimiento: { tipo: 'ingreso'\|'egreso', moneda, monto, motivo, comprobante? } }` | `{ movimiento, repetido }` |
 | `cobrarCredito` | TODOS | `{ requestId, ventaId, cobro: { medio, monto, referencia? } }` | `{ cobro, repetido }` |
 | `leerConfig` / `guardarConfig` | TODOS / ADM | `{}` / `{ config }` | `{ config }` |

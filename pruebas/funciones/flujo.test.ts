@@ -80,8 +80,8 @@ describe.skipIf(!hayEmulador)('flujo POS → evento → recibo (emulador)', () =
     const solicitud = await accion('pos', 'solicitarAnulacion', { ventaId, motivo: 'Cliente devolvió el producto' }, caj.token, A);
     expect(solicitud.status).toBe(200);
     // Un vendedor no aprueba.
-    expect((await accion('pos', 'aprobarAnulacion', { ventaId }, caj.token, A)).status).toBe(403);
-    const ok = await accion('pos', 'aprobarAnulacion', { ventaId }, sup.token, A);
+    expect((await accion('pos', 'aprobarAnulacion', { ventaId, motivo: 'Aprobada tras revisar' }, caj.token, A)).status).toBe(403);
+    const ok = await accion('pos', 'aprobarAnulacion', { ventaId, motivo: 'Aprobada tras revisar' }, sup.token, A);
     expect(ok.status, JSON.stringify(ok.error)).toBe(200);
     await esperar(async () => (await h.firestore.doc(`tenants/${A}/recibos/recibo-${ventaId}`).get()).data()?.['estado'] === 'ANULADO', 30_000, 'recibo anulado');
     await esperar(async () => (await h.firestore.doc(`tenants/${A}/existencias/lapiz__tienda`).get()).data()?.['cantidad'] === 10, 30_000, 'stock revertido');

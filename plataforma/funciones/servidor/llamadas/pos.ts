@@ -62,8 +62,8 @@ export const accionesPos: TablaAcciones = {
   }),
   aprobarAnulacion: accion({
     roles: SUPERVISION,
-    esquema: objeto({ ventaId: UUID }),
-    ejecutar: async (c, d) => aprobarAnulacion(await c.e.depsPos(c.tenantId), c.tenantId, actorPos(c), d.ventaId),
+    esquema: objeto({ ventaId: UUID, motivo: TEXTO(200) }),
+    ejecutar: async (c, d) => aprobarAnulacion(await c.e.depsPos(c.tenantId), c.tenantId, actorPos(c), d.ventaId, d.motivo),
   }),
 
   // ---- Caja y créditos --------------------------------------------------------------------------------------
