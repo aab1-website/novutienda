@@ -95,7 +95,16 @@ export const accionesInventarios: TablaAcciones = {
   cerrarConteo: accion({
     roles: SUPERVISION,
     esquema: objeto({ operacionId: ID, conteoId: ID }),
-    ejecutar: (c, d) => c.e.db.runTransaction((tx) => cerrarConteo(tx, { tenantId: c.tenantId, operacionId: d.operacionId, por: autor(c), conteoId: d.conteoId })),
+    ejecutar: async (c, d) => {
+      // Productos con existencia en la ubicación del conteo: los que nadie contó se tratan como contados en 0.
+      const conteo = (await c.e.firestore.doc(ruta(c.tenantId, 'conteos', d.conteoId)).get()).data();
+      let productosConExistencia: string[] = [];
+      if (conteo !== undefined && typeof conteo['ubicacionId'] === 'string') {
+        const ex = await c.e.firestore.collection(ruta(c.tenantId, 'existencias')).where('ubicacionId', '==', conteo['ubicacionId']).limit(1000).get();
+        productosConExistencia = ex.docs.map(datosDe).filter((x) => Number(x['cantidad']) > 0 && typeof x['productoId'] === 'string').map((x) => String(x['productoId']));
+      }
+      return c.e.db.runTransaction((tx) => cerrarConteo(tx, { tenantId: c.tenantId, operacionId: d.operacionId, por: autor(c), conteoId: d.conteoId, productosConExistencia }));
+    },
   }),
   crearUbicacion: accion({
     roles: ['adm'],
