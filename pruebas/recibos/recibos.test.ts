@@ -263,7 +263,9 @@ describe('anulación', () => {
   });
 
   it('el manifiesto declara la colección de anulaciones pendientes solo para el servidor', () => {
-    expect(manifiestoRecibos.colecciones).toContainEqual({ ruta: 'anulaciones_pendientes_recibo', lectura: ['adm'], escritura: 'servidor' });
+    expect(manifiestoRecibos.colecciones).toContainEqual({ ruta: 'anulaciones_pendientes_recibo', lectura: [], escritura: 'servidor' });
+    // Lectura solo por callables: ninguna colección de recibos se abre al navegador.
+    for (const c of manifiestoRecibos.colecciones) expect(c.lectura, c.ruta).toEqual([]);
     expect(manifiestoRecibos.colecciones.some((c) => c.ruta === 'contadores_recibo')).toBe(false);
   });
 

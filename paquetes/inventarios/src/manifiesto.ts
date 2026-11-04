@@ -1,12 +1,14 @@
 import type { ColeccionManifiesto, ManifiestoModulo, Rol } from '@novutienda/nucleo';
 
-const TODOS: readonly Rol[] = ['caj', 'sup', 'adm'];
-const SUPERVISION: readonly Rol[] = ['sup', 'adm'];
+/**
+ * Todas las escrituras son del servidor y NINGUNA colección se lee directo desde el navegador (`lectura: []`): el panel no usa
+ * Firestore y consulta todo por los callables, que aplican el rol (docs/arquitectura/decisiones.md, «Lectura solo por callables»).
+ */
+const SIN_LECTURA_DIRECTA: readonly Rol[] = [];
 
-/** Todas las escrituras son del servidor; el navegador solo lee según el rol. */
-const col = (ruta: string, lectura: readonly Rol[], limite?: 'productos' | 'almacenes'): ColeccionManifiesto => ({
+const col = (ruta: string, limite?: 'productos' | 'almacenes'): ColeccionManifiesto => ({
   ruta,
-  lectura,
+  lectura: SIN_LECTURA_DIRECTA,
   escritura: 'servidor',
   ...(limite !== undefined ? { limite } : {}),
 });
@@ -18,23 +20,23 @@ export const manifiestoInventarios: ManifiestoModulo = {
   dependeDe: ['nucleo'],
   submodulos: [],
   colecciones: [
-    col('productos', TODOS, 'productos'),
-    col('costos', ['adm']),
-    col('skus', SUPERVISION),
+    col('productos', 'productos'),
+    col('costos'),
+    col('skus'),
     // El tope de 3 almacenes también se aplica en el código (`crearUbicacion`).
-    col('ubicaciones', TODOS, 'almacenes'),
-    col('existencias', TODOS),
-    col('unidades', TODOS),
-    col('movimientos', SUPERVISION),
-    col('operaciones', SUPERVISION),
-    col('traspasos', SUPERVISION),
-    col('mermas', SUPERVISION),
-    col('conteos', TODOS),
-    col('conteoLineas', TODOS),
+    col('ubicaciones', 'almacenes'),
+    col('existencias'),
+    col('unidades'),
+    col('movimientos'),
+    col('operaciones'),
+    col('traspasos'),
+    col('mermas'),
+    col('conteos'),
+    col('conteoLineas'),
     // Los teóricos no los lee quien cuenta.
-    col('conteoTeoricos', SUPERVISION),
+    col('conteoTeoricos'),
     // La lee el sitio a través de la API, no el navegador.
-    col('existenciasPublicas', []),
+    col('existenciasPublicas'),
   ],
   emite: ['stock.cambiado', 'stock.bajo'],
   // venta.confirmada no se consume: el POS descuenta con el puerto dentro de su propia transacción.

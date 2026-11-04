@@ -2,7 +2,8 @@
 // es de otra ola). Contrato en docs/produccion/reconstruccion-sitio.md.
 //   GET  /api/sitio/v1/reconstrucciones?tenantId=T[&estado=pendiente]   → trabajos encolados
 //   POST /api/sitio/v1/reconstrucciones/{id}/estado  {tenantId, estado}  → en_curso | completada | fallida
-//   GET  /api/sitio/v1/publicado?tenantId=T                            → copia publicada (`publicado/`)
+//   GET  /api/sitio/v1/publicado?tenantId=T                            → copia publicada (`publicado/`) y `redondeo`
+//        (política de `tenants/T/config/redondeo`; la reconstrucción la inyecta en `config.redondeo` del contenido del sitio)
 // Firma: `X-Marca-Tiempo` (ms Unix) y `X-Firma` = HMAC-SHA256 hex de `{marca}.{MÉTODO}\n{url con consulta}\n{cuerpo}`
 // con el secreto SITIO_RECONSTRUCCION_SECRETO; ventana de 5 minutos.
 import { verificarFirma } from '@novutienda/inventarios';
@@ -61,7 +62,9 @@ export async function manejarSitio(e: Entorno, req: PeticionHttp, secreto: strin
 
   if (req.ruta === '/api/sitio/v1/publicado' && req.metodo === 'GET') {
     const snap = await e.firestore.collection(`${base}/publicado`).get();
-    return json(200, { documentos: Object.fromEntries(snap.docs.map((d) => [d.id, d.data()])) });
+    // La política de redondeo vive en la configuración del tenant (no en `publicado/`): se entrega aparte para que
+    // la reconstrucción la inyecte en el contenido y el sitio redondee igual que el POS y la API de NovuChat.
+    return json(200, { documentos: Object.fromEntries(snap.docs.map((d) => [d.id, d.data()])), redondeo: await e.redondeo(tenantId) });
   }
   return json(404, { error: 'no_encontrado' });
 }

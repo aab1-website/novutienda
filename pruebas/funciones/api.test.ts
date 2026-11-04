@@ -14,12 +14,22 @@ const secretoSitio = process.env['SITIO_RECONSTRUCCION_SECRETO'] ?? '';
 describe.skipIf(!hayEmulador)('API HTTP (emulador)', () => {
   let h: Herramientas;
   const prod = unico('api-lapiz').toLowerCase();
+  const prodSinControl = unico('api-servicio').toLowerCase();
   const token = randomBytes(24).toString('hex');
 
   beforeAll(async () => {
     h = herramientas();
-    await sembrarTenant(h, T, { productos: [{ id: prod, nombre: 'Lápiz API', precioUSD: { bo: 1000, ar: 2000 }, tienda: 10 }] });
+    await sembrarTenant(h, T, {
+      productos: [
+        { id: prod, nombre: 'Lápiz API', precioUSD: { bo: 1000, ar: 2000 }, tienda: 10 },
+        { id: prodSinControl, nombre: 'Servicio API', precioUSD: { bo: 500, ar: 500 }, tienda: 0, controlaStock: false },
+      ],
+    });
     // Copia publicada (la escribe `publicarSitio`) con una foto procesada.
+    await h.firestore.doc(`tenants/${T}/publicado/producto__${prodSinControl}`).set({
+      id: prodSinControl, slug: 'servicio-api', nombre: 'Servicio API', categoria: 'general', descripcion: 'Sin control de stock', garantia: '', medios: [],
+      seo: { titulo: 't', descripcion: 'd' }, precioUSD: { bo: 5, ar: 5 },
+    });
     await h.firestore.doc(`tenants/${T}/publicado/producto__${prod}`).set({
       id: prod, slug: 'lapiz-api', nombre: 'Lápiz API', categoria: 'general', descripcion: 'Lápiz de prueba', garantia: '', medios: [
         { tipo: 'foto', alt: 'Lápiz', ancho: 1000, alto: 800, versiones: [
@@ -53,28 +63,37 @@ describe.skipIf(!hayEmulador)('API HTTP (emulador)', () => {
       expect(r.texto).not.toMatch(/cantidad|stock/);
     });
 
-    it('contacto: App Check, reCAPTCHA, idempotencia y límite de tasa', async () => {
+    it('contacto: App Check antes del límite, reCAPTCHA, idempotencia y límite de tasa', async () => {
       const origen = `203.0.113.${String(Math.floor(Math.random() * 200) + 1)}`;
       const envioId = unico('envio').padEnd(20, 'x');
       const cuerpo = { envioId, nombre: 'Ana Pérez', correo: 'ana@ejemplo.test', mensaje: 'Quisiera una cotización', aceptaPrivacidad: true, recaptchaToken: 'simulado-humano-xxxxxxxxxxxxxxxx' };
+      // Cadena como la arma Hosting: lo que escribe el cliente, su IP vista por Fastly y la de Fastly vista por el GFE.
+      const cadena = `9.9.9.9, ${origen}, 151.101.1.1`;
       const enviar = (c: unknown, extra: Record<string, string> = {}) =>
-        http('/api/contacto', { method: 'POST', headers: { 'content-type': 'application/json', 'fastly-client-ip': origen, 'x-firebase-appcheck': 'simulado-valido', ...extra }, body: JSON.stringify(c) });
+        http('/api/contacto', { method: 'POST', headers: { 'content-type': 'application/json', 'x-forwarded-for': cadena, 'x-firebase-appcheck': 'simulado-valido', ...extra }, body: JSON.stringify(c) });
 
-      const sinAppCheck = await http('/api/contacto', { method: 'POST', headers: { 'content-type': 'application/json', 'fastly-client-ip': origen }, body: JSON.stringify(cuerpo) });
-      expect(sinAppCheck.status).toBe(401); // 1.º intento del origen
+      // Sin token de App Check (ni con `fastly-client-ip` falsificada): 401 y el límite NO se consume.
+      for (let i = 0; i < 5; i += 1) {
+        const sin = await http('/api/contacto', { method: 'POST', headers: { 'content-type': 'application/json', 'x-forwarded-for': cadena, 'fastly-client-ip': '8.8.8.8' }, body: JSON.stringify(cuerpo) });
+        expect(sin.status).toBe(401);
+      }
 
-      const bot = await enviar({ ...cuerpo, recaptchaToken: 'simulado-bot-xxxxxxxxxxxxxxxxx' }); // 2.º
+      const bot = await enviar({ ...cuerpo, recaptchaToken: 'simulado-bot-xxxxxxxxxxxxxxxxx' }); // 1.º del límite
       expect(bot.status).toBe(403);
 
-      const ok = await enviar(cuerpo); // 3.º
+      const ok = await enviar(cuerpo); // 2.º
       expect(ok.status).toBe(200);
       expect(ok.cuerpo).toEqual({ ok: true, repetido: false });
       const doc = (await h.firestore.doc(`tenants/${T}/contactos/${envioId}`).get()).data();
       expect(doc).toMatchObject({ nombre: 'Ana Pérez', pais: null });
 
-      const limite = await enviar(cuerpo); // 4.º: más de CONTACTO_MAXIMO (3) en la ventana
-      expect(limite.status).toBe(429);
-      expect(limite.cabeceras.get('retry-after')).toMatch(/^\d+$/);
+      const repetido = await enviar(cuerpo); // 3.º
+      expect(repetido.cuerpo).toEqual({ ok: true, repetido: true });
+
+      // Cambiar `fastly-client-ip` o anteponer valores en X-Forwarded-For no cambia de cubo: el origen es el último salto confiable.
+      const falsificado = await enviar(cuerpo, { 'fastly-client-ip': '8.8.4.4', 'x-forwarded-for': `7.7.7.7, 6.6.6.6, ${origen}, 151.101.1.1` });
+      expect(falsificado.status).toBe(429); // 4.º: más de CONTACTO_MAXIMO (3) en la ventana
+      expect(falsificado.cabeceras.get('retry-after')).toMatch(/^\d+$/);
       // El origen se guarda con hash salado, nunca en claro.
       const claves = (await h.firestore.collection('limitesTasa').get()).docs.map((d) => d.id);
       expect(claves.some((c) => c.includes(origen))).toBe(false);
@@ -110,6 +129,9 @@ describe.skipIf(!hayEmulador)('API HTTP (emulador)', () => {
         foto: `https://medios.ejemplo.test/tenants/${T}/publico/medios/${prod}/bbb-imagen960.webp`, urlProducto: 'https://sitio.ejemplo.test/producto/lapiz-api',
         stockPorAlmacen: { tienda: 10, 'deposito-1': 0, 'deposito-2': 0 },
       });
+      expect(item).toMatchObject({ disponible: true });
+      // Sin control de stock: disponible (no `stock: 0`, que se leería como agotado).
+      expect(c.items.find((i) => i['id'] === prodSinControl)).toMatchObject({ stock: null, disponible: true, activo: true });
       const etag = r.cabeceras.get('etag');
       expect(etag).toMatch(/^"[0-9a-f]{32}"$/);
       const igual = await http('/api/novuchat/v1/catalogo?mercado=BO', { headers: { ...auth, 'if-none-match': etag ?? '' } });
@@ -208,6 +230,19 @@ describe.skipIf(!hayEmulador)('API HTTP (emulador)', () => {
       const pub = await firmado('GET', `/api/sitio/v1/publicado?tenantId=${T}`);
       expect(pub.status).toBe(200);
       expect(Object.keys((pub.cuerpo as { documentos: object }).documentos)).toContain(`producto__${prod}`);
+      // Sin documento de configuración rige la política vigente (BOB 2 decimales; ARS múltiplo de 100).
+      expect((pub.cuerpo as { redondeo: unknown }).redondeo).toEqual({
+        BOB: { tipo: 'decimales', decimales: 2, modo: 'cercano' }, ARS: { tipo: 'multiplo', multiplo: 100, modo: 'cercano' },
+      });
+    });
+
+    it('el publicado entrega el redondeo configurado en tenants/{t}/config/redondeo', async () => {
+      const t = unico('red').toLowerCase();
+      const regla = { BOB: { tipo: 'decimales', decimales: 0, modo: 'arriba' }, ARS: { tipo: 'multiplo', multiplo: 500, modo: 'abajo' } };
+      await h.firestore.doc(`tenants/${t}/config/redondeo`).set(regla);
+      const pub = await firmado('GET', `/api/sitio/v1/publicado?tenantId=${t}`);
+      expect(pub.status, pub.texto).toBe(200);
+      expect((pub.cuerpo as { redondeo: unknown }).redondeo).toEqual(regla);
     });
 
     it('401 sin firma válida', async () => {

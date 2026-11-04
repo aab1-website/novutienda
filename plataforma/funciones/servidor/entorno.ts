@@ -107,7 +107,7 @@ export function verificadoresSitio(env: Readonly<Record<string, string | undefin
   readonly appCheck: VerificadorAppCheck;
   readonly recaptcha: VerificadorRecaptcha;
 } {
-  const appCheck = PARAMETROS.appCheckModo.value() === 'simulado' ? appCheckSimulado(env) : appCheckReal(getAppCheck());
+  const appCheck = PARAMETROS.appCheckModo.value() === 'simulado' ? appCheckSimulado(env) : appCheckReal(getAppCheck(), { consumir: true }); // el único uso es /api/contacto: un token por envío
   let recaptcha: VerificadorRecaptcha;
   if (PARAMETROS.recaptchaModo.value() === 'simulado') recaptcha = recaptchaSimulado(env);
   else {

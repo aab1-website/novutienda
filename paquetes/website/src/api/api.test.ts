@@ -96,6 +96,16 @@ describe('POST /api/contacto', () => {
     expect((await manejarContacto(pet({ origen: 'ip-2' }), d)).status).toBeLessThan(429);
   });
 
+  it('App Check va antes del límite: las peticiones sin token válido no consumen ni consultan el límite', async () => {
+    let consultas = 0;
+    const base = limiteMemoria(3, 60_000);
+    const d = deps({ limite: { intentar: (k, t) => { consultas += 1; return base.intentar(k, t); } } });
+    for (let i = 0; i < 10; i += 1) expect((await manejarContacto(pet({ cabeceras: { 'content-type': 'application/json' } }), d)).status).toBe(401);
+    expect(consultas).toBe(0);
+    for (let i = 0; i < 3; i += 1) expect((await manejarContacto(pet(), d)).status).toBeLessThan(429);
+    expect((await manejarContacto(pet(), d)).status).toBe(429);
+  });
+
   it('reCAPTCHA inválido o con puntaje bajo: 403', async () => {
     expect((await manejarContacto(pet({ cuerpo: { ...valido, recaptchaToken: 'y'.repeat(40) } }), deps())).status).toBe(403);
     const bajo = deps({ recaptcha: { verificar: () => Promise.resolve({ valido: true, puntaje: 0.1 }) } });

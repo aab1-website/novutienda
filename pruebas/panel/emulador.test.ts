@@ -1,6 +1,7 @@
 // El cliente del panel (`ClienteRemoto` + `TRADUCCION`) contra las funciones REALES en el emulador (Auth, Firestore,
 // Storage, Functions): cada operación del panel viaja como `{ accion, tenantId, datos }` por el protocolo HTTP de los
-// callables, con ID tokens del emulador de Auth. Se omite sin emulador; `pnpm test:panel-emulador` lo levanta.
+// callables, con ID tokens del emulador de Auth. Sin emulador se omite en `npm test`; `pnpm test:funciones` (probar.mjs) la corre con
+// el emulador y APP_CHECK_EXIGIDO=true, y allí su ausencia es un fallo (pruebas/funciones/emulador.test.ts).
 import sharp from 'sharp';
 import { beforeAll, describe, expect, it, vi } from 'vitest';
 import { ClienteRemoto, ErrorApi, mensajeDeError, precioDeVenta, type Rol, type Transporte } from '@novutienda/panel';

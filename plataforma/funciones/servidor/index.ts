@@ -11,10 +11,12 @@ import { onDocumentCreated } from 'firebase-functions/v2/firestore';
 import { onCall, onRequest, type Request } from 'firebase-functions/v2/https';
 import { onSchedule } from 'firebase-functions/v2/scheduler';
 import { onObjectFinalized } from 'firebase-functions/v2/storage';
-import { crearLimiteTasa } from '../../adaptadores/firebase/index.js';
+import { limiteMemoria, type LimiteTasa } from '@novutienda/website';
+import { crearLimiteTasa, esEntornoDePruebas } from '../../adaptadores/firebase/index.js';
 import { entregarEvento } from './bus.js';
-import { enteroDe, PARAMETROS, REGION, SECRETOS } from './config.js';
+import { enteroDe, exigirConfiguracionDeServicio, PARAMETROS, REGION, SECRETOS } from './config.js';
 import { entorno, verificadoresSitio } from './entorno.js';
+import { ipDelCliente } from './origen.js';
 import { enrutar, type ConfigRouter } from './http/router.js';
 import type { PeticionHttp } from './http/tipos.js';
 import { accionesConsola } from './llamadas/consola.js';
@@ -29,7 +31,9 @@ import { procesarObjetoSubido } from './trigger-medios.js';
 // Los disparadores (Firestore, Storage) necesitan la app por defecto desde el arranque.
 if (getApps().length === 0) initializeApp();
 
-setGlobalOptions({ region: REGION, maxInstances: 10, memory: '256MiB', timeoutSeconds: 60 });
+// `serviceAccount` sale de un parámetro: vacío = cuenta por defecto (solo emulador y, si se acepta, staging); en producción,
+// una cuenta dedicada con roles mínimos (docs/produccion/pase-a-staging.md, paso 6).
+setGlobalOptions({ region: REGION, maxInstances: 10, memory: '256MiB', timeoutSeconds: 60, serviceAccount: PARAMETROS.cuentaServicio });
 
 const appCheckExigido = (): boolean => PARAMETROS.appCheckExigido.value();
 const callable = (modulo: string, acciones: Parameters<typeof crearManejador>[0]['acciones']) =>
@@ -62,12 +66,28 @@ function aPeticion(req: Request): PeticionHttp {
     cabeceras,
     cuerpoCrudo,
     cuerpo: esJson ? (req.body as unknown) : undefined,
-    origen: cabeceras['fastly-client-ip'] ?? cabeceras['x-forwarded-for']?.split(',')[0]?.trim() ?? req.ip ?? 'desconocido',
+    // Último salto confiable de X-Forwarded-For (ver origen.ts); nunca `fastly-client-ip` ni el primer elemento.
+    origen: ipDelCliente(cabeceras['x-forwarded-for'], enteroDe(PARAMETROS.proxySaltos.value(), 2)),
   };
 }
 
+// Límites en memoria POR INSTANCIA y por origen, antes de autenticar (el límite de Firestore por token se paga con una lectura
+// del token y una escritura transaccional). Se crean una vez, con los valores de los parámetros de la primera petición.
+let memoria: { readonly novuchat: LimiteTasa; readonly disponibilidad: LimiteTasa } | undefined;
+function limitesEnMemoria(): NonNullable<typeof memoria> {
+  memoria ??= {
+    novuchat: limiteMemoria(enteroDe(PARAMETROS.novuchatMaximoPorMinuto.value(), 120), 60_000),
+    disponibilidad: limiteMemoria(enteroDe(PARAMETROS.disponibilidadMaximoPorMinuto.value(), 60), 60_000),
+  };
+  return memoria;
+}
+
 function configRouter(e: ReturnType<typeof entorno>): ConfigRouter {
-  const sal = SECRETOS.salLimite.value() || 'sal-no-configurada';
+  // Falla si falta la sal del límite o la base de medios fuera de las pruebas (nunca un valor por defecto).
+  const { sal, mediosBaseUrl } = exigirConfiguracionDeServicio(
+    { sal: SECRETOS.salLimite.value(), mediosBaseUrl: PARAMETROS.mediosBaseUrl.value() },
+    esEntornoDePruebas(process.env),
+  );
   const verificadores = verificadoresSitio();
   const tenantId = PARAMETROS.tenantId.value();
   return {
@@ -76,11 +96,12 @@ function configRouter(e: ReturnType<typeof entorno>): ConfigRouter {
     limiteContacto: crearLimiteTasa(e.firestore, {
       maximo: enteroDe(PARAMETROS.contactoMaximo.value(), 5), ventanaMs: enteroDe(PARAMETROS.contactoVentanaSeg.value(), 600) * 1000, sal,
     }),
+    limiteMemoria: limitesEnMemoria(),
     recaptcha: verificadores.recaptcha,
     appCheck: verificadores.appCheck,
     novuchat: {
       sitioUrl: PARAMETROS.sitioUrl.value().replace(/\/+$/, ''),
-      mediosBaseUrl: PARAMETROS.mediosBaseUrl.value().replace(/\/+$/, ''),
+      mediosBaseUrl,
       limite: crearLimiteTasa(e.firestore, { maximo: enteroDe(PARAMETROS.novuchatMaximoPorMinuto.value(), 120), ventanaMs: 60_000, sal }),
       secretoPedidos: SECRETOS.pedidos.value(),
       tenantPedidos: tenantId,

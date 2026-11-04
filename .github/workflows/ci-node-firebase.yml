@@ -29,8 +29,10 @@
 #   - Dos sitios de Hosting por target. Variables del Environment (staging y
 #     production, mismo nombre, distinto valor): FIREBASE_SITE_SITIO,
 #     FIREBASE_SITE_PANEL, PANEL_URL, MEDIOS_BASE_URL, APP_CHECK_EXIGIDO,
-#     RECAPTCHA_CLAVE_SITIO. Repositorio: TENANT_ID, VITE_FIREBASE_API_KEY_STAGING,
-#     VITE_FIREBASE_API_KEY_PROD. FIREBASE_SITE_ID ya no se usa.
+#     RECAPTCHA_CLAVE_SITIO. Repositorio: TENANT_ID y, por ambiente (sufijo
+#     _STAGING / _PROD), VITE_FIREBASE_API_KEY, VITE_RECAPTCHA_ENTERPRISE_SITE_KEY,
+#     VITE_FIREBASE_STORAGE_BUCKET y VITE_FIREBASE_APP_ID (todas obligatorias si el
+#     ambiente tiene proyecto). SITIO_CONTENIDO (production). FIREBASE_SITE_ID ya no se usa.
 #   - calidad corre además `test:funciones` (emuladores; Java 21 del runner).
 # =============================================================================
 name: CI/CD Node → Firebase
@@ -210,6 +212,28 @@ jobs:
           npm i -g "firebase-tools@${FIREBASE_TOOLS_VERSION}"
           npm run test:funciones
 
+      - name: osv-scanner del paquete de Functions (dist/funciones/package-lock.json)
+        # empaquetar.mjs (lo corre test:funciones) genera el lockfile que Cloud Build usa con `npm ci`: se analiza lo que se
+        # despliega, incluidas las transitivas. Bloquea con severidad CVSS >= 7 (HIGH y CRITICAL, como BLOQUEAR_EN por defecto);
+        # lo demás se lista como aviso. Código de salida de osv-scanner: 0 limpio, 1 con hallazgos, otro = fallo del análisis.
+        if: needs.preparar.outputs.hay_test_funciones == 'true'
+        run: |
+          set -euo pipefail
+          [[ -f dist/funciones/package-lock.json ]] \
+            || { echo "::error::Falta dist/funciones/package-lock.json (lo genera plataforma/funciones/scripts/empaquetar.mjs)."; exit 1; }
+          rc=0
+          docker run --rm -v "$PWD:/src" ghcr.io/google/osv-scanner:v2.5.1 \
+            scan source -L /src/dist/funciones/package-lock.json --format json > osv-funciones.json || rc=$?
+          if [[ "$rc" -ne 0 && "$rc" -ne 1 ]]; then echo "::error::osv-scanner falló (código $rc)."; exit 1; fi
+          jq -e '.results' osv-funciones.json >/dev/null 2>&1 || { echo "::error::osv-scanner no produjo un informe válido."; exit 1; }
+          jq -r '.results[]?.packages[]? | .package.name as $n | .package.version as $v | .groups[]? | "\($n)@\($v) \(.ids | join(",")) CVSS \(.max_severity // "sin dato")"' osv-funciones.json
+          bloqueantes=$(jq '[.results[]?.packages[]?.groups[]? | select(((.max_severity // "0") | tonumber) >= 7)] | length' osv-funciones.json)
+          if [[ "$bloqueantes" -gt 0 ]]; then
+            echo "::error::osv-scanner: $bloqueantes hallazgo(s) HIGH o CRITICAL en las dependencias de las Functions."
+            exit 1
+          fi
+          echo "osv-scanner: sin hallazgos HIGH ni CRITICAL en dist/funciones/package-lock.json."
+
   # ---------------------------------------------------------------------------
   # Fase 2 — seguridad-estatica: reusable OSS (todos los modos).
   # NOTA: en el repositorio del proyecto la ruta es local
@@ -257,9 +281,10 @@ jobs:
     timeout-minutes: 15
     strategy:
       matrix:
-        # Se construyen ambos ambientes en paralelo: el de producción solo
-        # se usa si el run es de tag/dispatch, pero cuesta ~1 min y simplifica.
-        ambiente: [staging, production]
+        # staging siempre; production solo en tag o dispatch (lo único que lo
+        # despliega). El build de producción FALLA con el contenido de ejemplo
+        # del sitio (cargar.ts), así que no puede correr en cada PR.
+        ambiente: ${{ fromJSON((startsWith(github.ref, 'refs/tags/v') || github.event_name == 'workflow_dispatch') && '["staging","production"]' || '["staging"]') }}
     steps:
       - name: Checkout
         uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
@@ -286,23 +311,58 @@ jobs:
         # 01-gestion-de-secretos.md SEC-005): llega de variables, no de secretos.
         # Se elige en el shell, no con `a && b || c`, que con la clave de
         # producción vacía caería en silencio en la de staging.
+        # Con proyecto configurado, TODAS las variables son obligatorias: App Check
+        # no puede iniciar sin la clave de sitio de reCAPTCHA ni sin `appId` (el
+        # SDK arma `…/apps/{appId}:exchange…`), y subir archivos necesita el bucket.
         env:
           APP_ENV: ${{ matrix.ambiente }}
           VITE_APP_VERSION: ${{ github.ref_name }}-${{ github.sha }}
-          CLAVE_STAGING: ${{ vars.VITE_FIREBASE_API_KEY_STAGING }}
-          CLAVE_PROD: ${{ vars.VITE_FIREBASE_API_KEY_PROD }}
           PROYECTO_STAGING: ${{ vars.GCP_PROJECT_ID_STAGING }}
           PROYECTO_PROD: ${{ vars.GCP_PROJECT_ID_PROD }}
+          CLAVE_STAGING: ${{ vars.VITE_FIREBASE_API_KEY_STAGING }}
+          CLAVE_PROD: ${{ vars.VITE_FIREBASE_API_KEY_PROD }}
+          RECAPTCHA_STAGING: ${{ vars.VITE_RECAPTCHA_ENTERPRISE_SITE_KEY_STAGING }}
+          RECAPTCHA_PROD: ${{ vars.VITE_RECAPTCHA_ENTERPRISE_SITE_KEY_PROD }}
+          BUCKET_STAGING: ${{ vars.VITE_FIREBASE_STORAGE_BUCKET_STAGING }}
+          BUCKET_PROD: ${{ vars.VITE_FIREBASE_STORAGE_BUCKET_PROD }}
+          APP_ID_STAGING: ${{ vars.VITE_FIREBASE_APP_ID_STAGING }}
+          APP_ID_PROD: ${{ vars.VITE_FIREBASE_APP_ID_PROD }}
+          # Contenido publicado del sitio (JSON de `publicado/` con el redondeo
+          # inyectado). Obligatorio en production: el ejemplo no se publica.
+          SITIO_CONTENIDO: ${{ matrix.ambiente == 'production' && vars.SITIO_CONTENIDO || '' }}
         run: |
           set -euo pipefail
-          if [[ "$APP_ENV" == "production" ]]; then clave="$CLAVE_PROD"; proyecto="$PROYECTO_PROD"
-          else clave="$CLAVE_STAGING"; proyecto="$PROYECTO_STAGING"; fi
-          if [[ -n "$proyecto" && -z "$clave" ]]; then
-            echo "::warning::El panel de $APP_ENV se compila sin VITE_FIREBASE_API_KEY: no podrá iniciar sesión."
+          if [[ "$APP_ENV" == "production" ]]; then
+            proyecto="$PROYECTO_PROD"; clave="$CLAVE_PROD"; recaptcha="$RECAPTCHA_PROD"; bucket="$BUCKET_PROD"; app_id="$APP_ID_PROD"
+            sufijo=PROD
+          else
+            proyecto="$PROYECTO_STAGING"; clave="$CLAVE_STAGING"; recaptcha="$RECAPTCHA_STAGING"; bucket="$BUCKET_STAGING"; app_id="$APP_ID_STAGING"
+            sufijo=STAGING
+          fi
+          if [[ -n "$proyecto" ]]; then
+            faltan=()
+            [[ -n "$clave" ]] || faltan+=("VITE_FIREBASE_API_KEY_$sufijo")
+            [[ -n "$recaptcha" ]] || faltan+=("VITE_RECAPTCHA_ENTERPRISE_SITE_KEY_$sufijo")
+            [[ -n "$bucket" ]] || faltan+=("VITE_FIREBASE_STORAGE_BUCKET_$sufijo")
+            [[ -n "$app_id" ]] || faltan+=("VITE_FIREBASE_APP_ID_$sufijo")
+            if (( ${#faltan[@]} > 0 )); then
+              echo "::error::Con proyecto de $APP_ENV configurado faltan variables del repositorio: ${faltan[*]}. Sin ellas el panel compilado no inicia sesión, no inicia App Check o no sube archivos. Ver docs/produccion/pase-a-staging.md."
+              exit 1
+            fi
           fi
           export VITE_FIREBASE_API_KEY="$clave" VITE_FIREBASE_PROJECT_ID="$proyecto"
+          export VITE_RECAPTCHA_ENTERPRISE_SITE_KEY="$recaptcha" VITE_FIREBASE_STORAGE_BUCKET="$bucket" VITE_FIREBASE_APP_ID="$app_id"
           export VITE_FIREBASE_AUTH_DOMAIN="${proyecto:+$proyecto.firebaseapp.com}"
           npm run build -- --mode "$APP_ENV"
+
+      - name: Pruebas del sitio compilado (dist.test.ts)
+        # El sitio de staging se construye con el contenido de ejemplo y esta suite
+        # lo verifica (CSP, páginas, ausencia de marcadores). EXIGIR_DIST=1: si falta
+        # dist/website la prueba FALLA, no se omite.
+        if: matrix.ambiente == 'staging'
+        env:
+          EXIGIR_DIST: '1'
+        run: npx vitest --run pruebas/website/dist.test.ts
 
       - name: Guardar dist/
         uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7
@@ -328,8 +388,8 @@ jobs:
     # alcance la nube. Concederle esos secretos abriría justo el vector de
     # cadena de suministro que el `cooldown` de dependabot.yml viene a cerrar.
     #
-    # La compuerta no se debilita: `compuerta-pr` solo exige `calidad` y
-    # `seguridad-estatica`, y ambas corren igual, como Semgrep, Trivy, Gitleaks
+    # La compuerta no se debilita: `compuerta-pr` exige `calidad`,
+    # `seguridad-estatica` y `construir`, y todas corren igual, como Semgrep, Trivy, Gitleaks
     # y CodeQL. Aplique el mismo `if` a cualquier job de PR que use
     # credenciales de nube en los demás pipelines.
     if: >-
@@ -452,15 +512,18 @@ jobs:
 
       - name: Configurar Hosting (targets) y parámetros de Functions
         env:
+          AMBIENTE: staging
           PROYECTO: ${{ vars.GCP_PROJECT_ID_STAGING }}
           SITIO_ID: ${{ vars.FIREBASE_SITE_SITIO }}
           PANEL_ID: ${{ vars.FIREBASE_SITE_PANEL }}
           PANEL_URL: ${{ vars.PANEL_URL }}
-          P_TENANT_ID: ${{ vars.TENANT_ID || 'casa-bermejo' }}
+          P_TENANT_ID: ${{ vars.TENANT_ID }}
           P_APP_CHECK_EXIGIDO: ${{ vars.APP_CHECK_EXIGIDO || 'false' }}
           P_RECAPTCHA_CLAVE_SITIO: ${{ vars.RECAPTCHA_CLAVE_SITIO }}
           P_SITIO_URL: ${{ vars.STAGING_URL }}
           P_MEDIOS_BASE_URL: ${{ vars.MEDIOS_BASE_URL }}
+          P_FUNCIONES_SERVICE_ACCOUNT: ${{ vars.FUNCIONES_SERVICE_ACCOUNT }}
+          P_PROXY_SALTOS: ${{ vars.PROXY_SALTOS }}
         run: bash .github/scripts/preparar-despliegue-firebase.sh
 
       - name: Conservar copia de la versión actual (canal "previa" para rollback)
@@ -666,16 +729,19 @@ jobs:
       - name: Configurar Hosting (targets) y parámetros de Functions
         id: sitios
         env:
+          AMBIENTE: production
           PROYECTO: ${{ vars.GCP_PROJECT_ID_PROD }}
           SITIO_ID: ${{ vars.FIREBASE_SITE_SITIO }}
           PANEL_ID: ${{ vars.FIREBASE_SITE_PANEL }}
           PANEL_URL: ${{ vars.PANEL_URL }}
-          P_TENANT_ID: ${{ vars.TENANT_ID || 'casa-bermejo' }}
+          P_TENANT_ID: ${{ vars.TENANT_ID }}
           # En producción App Check se exige por defecto (docs/produccion/funciones.md §9).
           P_APP_CHECK_EXIGIDO: ${{ vars.APP_CHECK_EXIGIDO || 'true' }}
           P_RECAPTCHA_CLAVE_SITIO: ${{ vars.RECAPTCHA_CLAVE_SITIO }}
           P_SITIO_URL: ${{ vars.PROD_URL }}
           P_MEDIOS_BASE_URL: ${{ vars.MEDIOS_BASE_URL }}
+          P_FUNCIONES_SERVICE_ACCOUNT: ${{ vars.FUNCIONES_SERVICE_ACCOUNT }}
+          P_PROXY_SALTOS: ${{ vars.PROXY_SALTOS }}
         run: |
           bash .github/scripts/preparar-despliegue-firebase.sh
           # post-despliegue no declara Environment: recibe los ids por salida.
@@ -822,24 +888,25 @@ jobs:
 
   # ---------------------------------------------------------------------------
   # compuerta-pr (D1): ÚNICO status check que exigen los rulesets de main.
-  # Agrega calidad y seguridad-estatica (con o sin matriz) en un solo contexto
-  # estable; falla si cualquiera de sus needs no terminó en success.
+  # Agrega calidad, seguridad-estatica y construir (con o sin matriz) en un solo
+  # contexto estable; falla si cualquiera de sus needs no terminó en success.
   # ---------------------------------------------------------------------------
   compuerta-pr:
     name: compuerta-pr
-    needs: [calidad, seguridad-estatica]
+    needs: [calidad, seguridad-estatica, construir]
     if: always()
     runs-on: ubuntu-latest
     timeout-minutes: 5
     steps:
-      - name: Verificar resultados de calidad y seguridad-estatica
+      - name: Verificar resultados de calidad, seguridad-estatica y construir
         env:
           R_CALIDAD: ${{ needs.calidad.result }}
           R_SEGURIDAD: ${{ needs.seguridad-estatica.result }}
+          R_CONSTRUIR: ${{ needs.construir.result }}
         run: |
           set -euo pipefail
-          echo "calidad=$R_CALIDAD | seguridad-estatica=$R_SEGURIDAD"
-          for r in "$R_CALIDAD" "$R_SEGURIDAD"; do
+          echo "calidad=$R_CALIDAD | seguridad-estatica=$R_SEGURIDAD | construir=$R_CONSTRUIR"
+          for r in "$R_CALIDAD" "$R_SEGURIDAD" "$R_CONSTRUIR"; do
             if [[ "$r" != "success" ]]; then
               echo "::error::compuerta-pr bloqueada: algún job requerido no terminó en success"
               exit 1

@@ -15,16 +15,14 @@ describe('manifiesto', () => {
     }
   });
 
-  it('declara los límites, la visibilidad por rol y los eventos', () => {
+  it('declara los límites, ninguna lectura directa y los eventos', () => {
     const por = (ruta: string) => manifiestoInventarios.colecciones.find((c) => c.ruta === ruta);
     expect(por('productos')?.limite).toBe('productos');
     expect(por('ubicaciones')?.limite).toBe('almacenes');
-    expect(por('costos')?.lectura).toEqual(['adm']);
-    expect(por('conteoTeoricos')?.lectura).toEqual(['sup', 'adm']);
-    expect(por('existenciasPublicas')?.lectura).toEqual([]);
+    // Lectura solo por callables: el panel no usa Firestore, así que ninguna colección se abre al navegador.
+    for (const c of manifiestoInventarios.colecciones) expect(c.lectura, c.ruta).toEqual([]);
     expect(manifiestoInventarios.emite).toEqual(['stock.cambiado', 'stock.bajo']);
     expect(manifiestoInventarios.consume).toEqual(['venta.anulada', 'pedido.confirmado']);
-    for (const c of ['movimientos', 'operaciones', 'mermas']) expect(por(c)?.lectura).not.toContain('caj');
   });
 });
 
