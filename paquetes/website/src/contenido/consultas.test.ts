@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { afirmacionVisible, buscarProductos, categoriaPorId, filtrarProductos, marcasDe, normalizar, productoPorSlug, productosDeCategoria, seccionesEnMenu, textoModelos } from './consultas.js';
+import { afirmacionVisible, buscarProductos, categoriaPorId, filtrarProductos, marcasDe, pendientesDeConfirmar, normalizar, productoPorSlug, productosDeCategoria, seccionesEnMenu, textoModelos } from './consultas.js';
 import { contenidoEjemplo as c } from './ejemplo.js';
 
 describe('consultas de contenido', () => {
@@ -44,5 +44,6 @@ describe('consultas de contenido', () => {
   it('el ejemplo deja SIN confirmar las afirmaciones de clientes y de originalidad', () => {
     const pendientes = [...c.beneficios.map((b) => b.titulo), c.identidad.cifra!.valor, c.identidad.sello].filter((a) => !a.confirmada);
     expect(pendientes.length).toBeGreaterThanOrEqual(3);
+    expect([...pendientesDeConfirmar(c)].sort()).toEqual(pendientes.map((a) => a.texto).sort());
   });
 });

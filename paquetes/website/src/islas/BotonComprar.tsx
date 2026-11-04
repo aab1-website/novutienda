@@ -38,12 +38,14 @@ export default function BotonComprar({ id, nombre, disponible, whatsapp, verific
     };
   }, [id, verificar, apiBase]);
 
+  const estado = verificar ? <p class="estado-disponibilidad" role="status">Disponibilidad: <strong>{hay ? 'Disponible' : 'Agotado'}</strong></p> : null;
   if (!hay) {
-    return <p class="etiqueta-agotado"><Icono nombre="prohibido" tamano={15} /> TEMPORALMENTE AGOTADO</p>;
+    return <div>{estado}<p class="etiqueta-agotado"><Icono nombre="prohibido" tamano={15} /> TEMPORALMENTE AGOTADO</p></div>;
   }
   const enlace = enlaceWhatsApp(whatsapp, mensajeComprar(nombre, id));
   return (
     <div class="acciones-producto">
+      {estado}
       {conAgregar && (
         <button type="button" class="boton boton-secundario" onClick={() => { agregarAlCarrito({ id, nombre }); setAviso(`${nombre} agregado a tu consulta`); window.setTimeout(() => setAviso(''), 2500); }}>
           <Icono nombre="bolsa" tamano={15} /> AGREGAR

@@ -122,7 +122,7 @@ export interface Seccion {
 }
 
 export interface ConfigMedicion {
-  /** Etiqueta de Google (por ejemplo `G-XXXXXXXXXX`). */
+  /** Etiqueta de Google (empieza por `G-` y sigue con letras y números). */
   readonly google: string | null;
   /** Código de verificación de Search Console (etiqueta meta, no hace peticiones). */
   readonly searchConsole: string | null;

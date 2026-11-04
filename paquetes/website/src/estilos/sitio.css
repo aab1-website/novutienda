@@ -279,3 +279,5 @@ main:focus { outline: none; }
   html { scroll-behavior: auto; }
   *, *::before, *::after { transition: none !important; animation: none !important; }
 }
+.estado-disponibilidad { font-size: 15px; color: var(--cb-texto-suave); width: 100%; }
+.estado-disponibilidad strong { color: var(--cb-texto); }

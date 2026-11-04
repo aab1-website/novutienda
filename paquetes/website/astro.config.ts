@@ -5,10 +5,13 @@ import { defineConfig } from 'astro/config';
 // La configuración de Astro vive en la raíz del paquete: aquí la ruta relativa a `src/` es del propio paquete.
 /* eslint-disable no-restricted-imports */
 import { cargarContenido } from './src/contenido/cargar.ts';
+import { pendientesDeConfirmar } from './src/contenido/consultas.ts';
 import { integracionSellarCsp } from './src/integraciones/sellar-csp.ts';
 /* eslint-enable no-restricted-imports */
 
-const { config } = cargarContenido();
+const contenido = cargarContenido();
+const { config } = contenido;
+for (const texto of pendientesDeConfirmar(contenido)) console.warn(`CONFIRMAR (no se publica): ${texto}`);
 
 export default defineConfig({
   site: config.origen,

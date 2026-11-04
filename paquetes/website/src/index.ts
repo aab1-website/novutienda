@@ -38,3 +38,4 @@ export * from './api/router.js';
 
 // Seguridad
 export * from './seguridad/csp.js';
+export * from './seguridad/sellar.js';

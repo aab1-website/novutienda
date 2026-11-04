@@ -1,5 +1,5 @@
 /** Consultas puras sobre el contenido: las usan las páginas (build) y las islas (navegador). */
-import type { Afirmacion, Categoria, Producto, Seccion } from './tipos.js';
+import type { Afirmacion, Categoria, Contenido, Producto, Seccion } from './tipos.js';
 
 export const productoPorSlug = (ps: readonly Producto[], slug: string): Producto | undefined => ps.find((p) => p.slug === slug);
 
@@ -65,4 +65,10 @@ export const afirmacionVisible = (a: Afirmacion, mostrarPendientes: boolean): bo
 
 export function textoModelos(n: number): string {
   return n === 1 ? '1 modelo disponible' : `${n} modelos disponibles`;
+}
+
+/** Textos pendientes de confirmar (no se publican): sirve para avisar en el build qué falta aprobar. */
+export function pendientesDeConfirmar(c: Pick<Contenido, 'beneficios' | 'identidad'>): readonly string[] {
+  const todos: Afirmacion[] = [...c.beneficios.map((b) => b.titulo), c.identidad.sello, ...(c.identidad.cifra === null ? [] : [c.identidad.cifra.valor])];
+  return todos.filter((a) => !a.confirmada).map((a) => a.texto);
 }
