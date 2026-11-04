@@ -1,0 +1,37 @@
+{
+  "extends": "../../tsconfig.base.json",
+  "compilerOptions": {
+    "rootDir": "src",
+    "outDir": "../../.tsbuild/funciones",
+    "tsBuildInfoFile": "../../.tsbuild/funciones.tsbuildinfo",
+    "types": [
+      "node"
+    ]
+  },
+  "include": [
+    "src/**/*.ts"
+  ],
+  "references": [
+    {
+      "path": "../../paquetes/nucleo"
+    },
+    {
+      "path": "../../paquetes/inventarios"
+    },
+    {
+      "path": "../../paquetes/pos"
+    },
+    {
+      "path": "../../paquetes/recibos"
+    },
+    {
+      "path": "../../paquetes/website"
+    },
+    {
+      "path": "../../paquetes/consola"
+    },
+    {
+      "path": ".."
+    }
+  ]
+}

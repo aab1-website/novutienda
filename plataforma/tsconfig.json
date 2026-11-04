@@ -3,7 +3,10 @@
   "compilerOptions": {
     "rootDir": ".",
     "outDir": "../.tsbuild/plataforma",
-    "tsBuildInfoFile": "../.tsbuild/plataforma.tsbuildinfo"
+    "tsBuildInfoFile": "../.tsbuild/plataforma.tsbuildinfo",
+    "types": [
+      "node"
+    ]
   },
   "include": [
     "./**/*.ts"
@@ -27,5 +30,8 @@
     {
       "path": "../paquetes/consola"
     }
+  ],
+  "exclude": [
+    "funciones"
   ]
 }
