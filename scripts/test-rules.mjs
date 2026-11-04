@@ -1,6 +1,6 @@
-// Pruebas de reglas de Firestore. Por ahora es un no-op documentado: sale 0 si
-// no hay pruebas en pruebas/reglas/. La matriz negativa llega con la ola 1b;
-// desde entonces este script ejecutará vitest sobre esa carpeta.
+// test:rules: levanta el emulador de Firestore (proyecto demo-pruebas) y corre
+// las pruebas de pruebas/reglas. Falla si las pruebas fallan o si no llegan a
+// ejecutarse contra el emulador. Es no-op solo si no hay pruebas.
 import { existsSync, readdirSync } from 'node:fs';
 import { spawnSync } from 'node:child_process';
 
@@ -10,9 +10,19 @@ const pruebas = existsSync(carpeta)
   : [];
 
 if (pruebas.length === 0) {
-  console.log('test:rules: sin pruebas en pruebas/reglas; no hay nada que ejecutar (ola 1b).');
+  console.log('test:rules: sin pruebas en pruebas/reglas; no hay nada que ejecutar.');
   process.exit(0);
 }
 
-const r = spawnSync('pnpm', ['exec', 'vitest', '--run', carpeta], { stdio: 'inherit' });
+// REGLAS_EXIGIR_EMULADOR hace que las pruebas fallen, en vez de omitirse, si
+// el emulador no está disponible.
+const r = spawnSync(
+  'bash',
+  ['scripts/correr-emulador.sh', 'npx vitest --run pruebas/reglas'],
+  { stdio: 'inherit', env: { ...process.env, REGLAS_EXIGIR_EMULADOR: '1' } },
+);
+if (r.error) {
+  console.error(`test:rules: no se pudo ejecutar: ${r.error.message}`);
+  process.exit(1);
+}
 process.exit(r.status ?? 1);
