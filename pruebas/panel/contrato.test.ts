@@ -96,8 +96,11 @@ describe('listas cerradas y límites', () => {
 describe('cobertura de las pantallas de la consola', () => {
   // Funciones puras de la consola que el panel resuelve en el navegador con la misma lógica (no son callables).
   const PURAS = new Set(['preciosDelDia']);
-  // Nombres que el contrato cambia para no chocar con Inventarios.
-  const RENOMBRADAS: Readonly<Record<string, string>> = { exportarProductosCsv: 'exportarProductosCsvSitio' };
+  // Nombres con que el panel pide lo mismo (el alta y la edición de productos de la consola se piden como `crearProducto` y
+  // `actualizarProducto`; `real.ts` los traduce a `consola.crearProducto` y `consola.editarProducto`).
+  const RENOMBRADAS: Readonly<Record<string, string>> = {
+    exportarProductosCsv: 'exportarProductosCsvSitio', crearProductoConsola: 'crearProducto', editarProductoConsola: 'actualizarProducto',
+  };
   it('cada llamada declarada en PANTALLAS existe como callable del contrato', () => {
     const faltan: string[] = [];
     for (const p of PANTALLAS) {

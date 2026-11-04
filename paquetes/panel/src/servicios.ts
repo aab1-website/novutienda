@@ -22,9 +22,10 @@ export async function crearServicios(): Promise<Servicios> {
     return { sesion, api, almacen: new AlmacenSubidasDoble() };
   }
   const { SesionFirebase } = await import('./sesion/firebase.js');
-  const { ClienteFirebase } = await import('./api/firebase.js');
+  const { TransporteFirebase } = await import('./api/firebase.js');
+  const { ClienteRemoto } = await import('./api/transporte.js');
   const sesion = new SesionFirebase(configuracionFirebase());
-  const api = new ClienteFirebase(() => sesion.actual()?.tenantId ?? '');
+  const api = new ClienteRemoto(new TransporteFirebase(), () => ({ tenantId: sesion.actual()?.tenantId ?? '', rol: sesion.actual()?.rol }), { permitirPropuestas: false });
   const { AlmacenSubidasFirebase } = await import('./subidas/firebase.js');
   return { sesion, api, almacen: new AlmacenSubidasFirebase() };
 }

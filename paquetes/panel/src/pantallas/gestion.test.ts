@@ -311,7 +311,7 @@ describe('usuarios y configuración', () => {
 describe('catálogo y sitio', () => {
   it('tablero: cambios sin publicar, cotización vigente, uso del plan y publicar con confirmación', async () => {
     const e = crearEntorno('adm');
-    await e.api.llamar('editarProductoConsola', { productoId: 'cable-hdmi', cambios: { nombre: 'Cable HDMI 2,5 m' } });
+    await e.api.llamar('actualizarProducto', { operacionId: crypto.randomUUID(), productoId: 'cable-hdmi', cambios: { nombre: 'Cable HDMI 2,5 m' } });
     ver(e, h(PantallaCatalogo, { sub: 'tablero' }));
     const u = userEvent.setup();
     await screen.findByRole('heading', { name: 'Sitio' });

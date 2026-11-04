@@ -1,5 +1,5 @@
 import type { Entrada, NombreCallable, Salida } from '../api/contrato.js';
-import type { Medio, Recibo, Simulacion, FilaSimulada } from '../api/tipos.js';
+import type { DatosProducto, Medio, Recibo, Simulacion, FilaSimulada } from '../api/tipos.js';
 import { LIMITES_PANEL, PLANTILLAS_SITIO } from '../api/tipos.js';
 import { aCsv } from '../util/csv.js';
 import { auditar, fallo, iso, vistaProducto, type Contexto } from './estado.js';
@@ -53,8 +53,36 @@ export function simular(c: Contexto, contenidoBase64: string): Simulacion {
   return { filas: out, resumen: { crear: cuenta('crear'), actualizar: cuenta('actualizar'), sinCambios: cuenta('sin-cambios'), errores: cuenta('error') }, columnasIgnoradas: ignoradas };
 }
 
+export function crearProductoConsola(c: Contexto, e: { productoId: string; datos: DatosProducto; precioUSD: { bo: number; ar: number } }): { ok: true } {
+  if (!/^[a-z0-9][a-z0-9-]{1,59}$/.test(e.productoId)) throw fallo('entrada-invalida', 'productoId inválido');
+  if (c.e.productos.has(e.productoId)) throw fallo('conflicto', 'El producto ya existe');
+  if (c.e.productos.size >= LIMITES_PANEL.productos) throw fallo('limite', 'Máximo 200 productos');
+  const d = e.datos;
+  if (d.nombre.trim() === '' || d.categoria.trim() === '') throw fallo('entrada-invalida', 'nombre y categoría son obligatorios');
+  if ([...c.e.productos.values()].some((x) => x.sku === (d.sku ?? e.productoId.toUpperCase()))) throw fallo('estado-invalido', 'El SKU ya está en uso');
+  c.e.productos.set(e.productoId, {
+    id: e.productoId, nombre: d.nombre, categoria: d.categoria, ...(d.marca ? { marca: d.marca } : {}), sku: d.sku ?? e.productoId.toUpperCase(), activo: d.activo,
+    publicado: d.publicado ?? false, conSerie: d.conSerie ?? false, ...(d.garantiaMeses !== undefined ? { garantiaMeses: d.garantiaMeses } : {}),
+    ...(d.minimo !== undefined ? { minimo: d.minimo } : {}), precioUSD: { bo: Math.round(e.precioUSD.bo * 100), ar: Math.round(e.precioUSD.ar * 100) }, costoUSD: 0,
+    stockTotal: 0, existencias: { tienda: 0, 'deposito-1': 0, 'deposito-2': 0 },
+  });
+  anotarCambio(c);
+  auditar(c, 'producto.crear', `productos/${e.productoId}`);
+  return { ok: true };
+}
+export function editarProductoConsola(c: Contexto, e: { productoId: string; cambios: Partial<DatosProducto> }): { ok: true } {
+  const p = c.e.productos.get(e.productoId);
+  if (p === undefined) throw fallo('no-encontrado', 'El producto no existe');
+  if (Object.keys(e.cambios).length === 0) throw fallo('entrada-invalida', 'No hay cambios');
+  if (e.cambios.conSerie !== undefined && e.cambios.conSerie !== p.conSerie && (p.stockTotal ?? 0) > 0) throw fallo('estado-invalido', 'conSerie no cambia tras el primer movimiento');
+  Object.assign(p, e.cambios);
+  anotarCambio(c);
+  auditar(c, 'producto.editar', `productos/${p.id}`);
+  return { ok: true };
+}
+
 export const handlersOtros: {
-  [N in 'buscarComprobantes' | 'generarPdfRecibo' | 'enviarRecibo' | 'referenciarFacturaSuma' | 'guardarPlantilla' | 'leerPlantilla' | 'obtenerRecibo' | 'obtenerTablero' | 'publicarSitio' | 'crearProductoConsola' | 'editarProductoConsola' | 'cambiarPrecioUSD' | 'guardarFicha' | 'reservarSubida' | 'finalizarSubida' | 'borrarMedio' | 'guardarSeccion' | 'eliminarSeccion' | 'ordenarSecciones' | 'guardarCarrusel' | 'guardarConfigSitio' | 'simularImportacion' | 'importarProductos' | 'exportarProductosCsvSitio' | 'asignarRol' | 'quitarRol' | 'listarFichas' | 'listarMedios' | 'estadoSubida' | 'leerConfigSitio' | 'listarSecciones' | 'listarCarruseles' | 'listarUsuarios']: H<N>;
+  [N in 'buscarComprobantes' | 'enviarRecibo' | 'referenciarFacturaSuma' | 'guardarPlantilla' | 'leerPlantilla' | 'obtenerRecibo' | 'obtenerTablero' | 'publicarSitio' | 'cambiarPrecioUSD' | 'guardarFicha' | 'reservarSubida' | 'finalizarSubida' | 'borrarMedio' | 'guardarSeccion' | 'eliminarSeccion' | 'ordenarSecciones' | 'guardarCarrusel' | 'guardarConfigSitio' | 'simularImportacion' | 'importarProductos' | 'exportarProductosCsvSitio' | 'asignarRol' | 'quitarRol' | 'listarFichas' | 'listarMedios' | 'leerConfigSitio' | 'listarSecciones' | 'listarCarruseles' | 'listarUsuarios']: H<N>;
 } = {
   buscarComprobantes(c, e) {
     const q = e.consulta;
@@ -71,18 +99,18 @@ export const handlersOtros: {
       .sort((a, b) => b.emitidoEn.localeCompare(a.emitidoEn) || b.numero.localeCompare(a.numero))
       .slice(0, limite);
   },
-  generarPdfRecibo: (c, e) => ({ enlacePdf: `https://recibos.ejemplo.test/${recibo(c, e.reciboId).reciboId}.pdf` }),
   enviarRecibo(c, e) {
     const r = recibo(c, e.reciboId);
     if (r.estado === 'ANULADO') throw fallo('accion-no-permitida', 'No se envía un comprobante anulado');
     const tel = r.cliente?.telefono;
     let res: Salida<'enviarRecibo'>;
     if (tel === undefined) res = { estado: 'sin_telefono' };
-    else if (!/^https:\/\//.test(e.enlacePdf)) res = { estado: 'fallido' };
     else {
+      // El servidor genera el PDF y firma su enlace; aquí basta un enlace de ejemplo.
+      const enlacePdf = `https://recibos.ejemplo.test/${r.reciboId}.pdf`;
       const d = tel.replace(/\D/g, '');
-      const num = d.length <= 8 ? `591${d}` : d;
-      res = { estado: 'enlace_generado', enlace: `https://wa.me/${num}?text=${encodeURIComponent(`Su recibo N.º ${r.numero}: ${e.enlacePdf}`)}` };
+      const num = d.length <= 8 ? `${e.codigoPais ?? '591'}${d}` : d;
+      res = { estado: 'enlace_generado', enlace: `https://wa.me/${num}?text=${encodeURIComponent(`Su recibo N.º ${r.numero}: ${enlacePdf}`)}` };
     }
     c.e.recibos.set(r.reciboId, { ...r, envioWhatsapp: { estado: res.estado, actualizadoEn: iso(c.ahora) } });
     auditar(c, 'recibos.enviar', `recibos/${r.reciboId}`);
@@ -127,38 +155,13 @@ export const handlersOtros: {
     auditar(c, 'sitio.publicar', 'publicado/estado');
     return { version: c.e.versionPublicada, productos: [...c.e.productos.values()].filter((p) => p.activo).length, decision: { accion: 'programar', para: c.ahora + 600_000 }, advertencias: [] };
   },
-  crearProductoConsola(c, e) {
-    if (!/^[a-z0-9][a-z0-9-]{1,59}$/.test(e.productoId)) throw fallo('entrada-invalida', 'productoId inválido');
-    if (c.e.productos.has(e.productoId)) throw fallo('conflicto', 'El producto ya existe');
-    if (c.e.productos.size >= LIMITES_PANEL.productos) throw fallo('limite', 'Máximo 200 productos');
-    const d = e.datos;
-    if (d.nombre.trim() === '' || d.categoria.trim() === '') throw fallo('entrada-invalida', 'nombre y categoría son obligatorios');
-    c.e.productos.set(e.productoId, {
-      id: e.productoId, nombre: d.nombre, categoria: d.categoria, ...(d.marca ? { marca: d.marca } : {}), sku: d.sku ?? e.productoId.toUpperCase(), activo: d.activo,
-      publicado: d.publicado ?? false, conSerie: d.conSerie ?? false, ...(d.garantiaMeses !== undefined ? { garantiaMeses: d.garantiaMeses } : {}),
-      ...(d.minimo !== undefined ? { minimo: d.minimo } : {}), precioUSD: { bo: Math.round(e.precioUSD.bo * 100), ar: Math.round(e.precioUSD.ar * 100) }, costoUSD: 0,
-      stockTotal: 0, existencias: { tienda: 0, 'deposito-1': 0, 'deposito-2': 0 },
-    });
-    anotarCambio(c);
-    auditar(c, 'producto.crear', `productos/${e.productoId}`);
-    return { ok: true };
-  },
-  editarProductoConsola(c, e) {
-    const p = c.e.productos.get(e.productoId);
-    if (p === undefined) throw fallo('no-encontrado', 'El producto no existe');
-    if (Object.keys(e.cambios).length === 0) throw fallo('entrada-invalida', 'No hay cambios');
-    Object.assign(p, e.cambios);
-    anotarCambio(c);
-    auditar(c, 'producto.editar', `productos/${p.id}`);
-    return { ok: true };
-  },
   cambiarPrecioUSD(c, e) {
     const p = c.e.productos.get(e.productoId);
     if (p === undefined) throw fallo('no-encontrado', 'El producto no existe');
     for (const v of [e.precioUSD.bo, e.precioUSD.ar]) {
-      if (!Number.isFinite(v) || v < 0 || v > 9_999_999 || Math.abs(v * 100 - Math.round(v * 100)) > 1e-6) throw fallo('entrada-invalida', 'Precio: 0 a 9 999 999, hasta 2 decimales');
+      if (!Number.isSafeInteger(v) || v < 0 || v > 999_999_900) throw fallo('entrada-invalida', 'Precio: centavos enteros de 0 a 9 999 999');
     }
-    p.precioUSD = { bo: Math.round(e.precioUSD.bo * 100), ar: Math.round(e.precioUSD.ar * 100) };
+    p.precioUSD = { bo: e.precioUSD.bo, ar: e.precioUSD.ar };
     anotarCambio(c);
     auditar(c, 'producto.precio', `productos/${p.id}`);
     return { ok: true };
@@ -331,11 +334,6 @@ export const handlersOtros: {
   },
   listarFichas: (c) => [...c.e.fichas].map(([productoId, ficha]) => ({ productoId, ficha })),
   listarMedios: (c, e) => [...c.e.medios.values()].filter((m) => m.productoId === e.productoId),
-  estadoSubida(c, e) {
-    const s = c.e.subidas.get(e.subidaId);
-    if (s === undefined) throw fallo('no-encontrado', 'La subida no existe');
-    return { subidaId: s.subidaId, productoId: s.productoId, tipo: s.tipo, estado: s.estado };
-  },
   leerConfigSitio: (c) => c.e.configSitio,
   listarSecciones: (c) => c.e.secciones,
   listarCarruseles: (c) => [...c.e.carruseles.values()],
