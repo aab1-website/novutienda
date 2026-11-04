@@ -1,0 +1,43 @@
+---
+import SelectorPais from '../islas/SelectorPais';
+import TemaToggle from '../islas/TemaToggle';
+import Buscador from '../islas/Buscador';
+import Carrito from '../islas/Carrito';
+import { contenido } from '../contenido/instancia';
+import { seccionesEnMenu } from '../contenido/consultas';
+import { rutaSeccion } from '../lib/seo';
+
+interface Props { ruta: string }
+const { ruta } = Astro.props;
+const { config, secciones } = contenido;
+const items = [
+  { texto: 'Inicio', href: '/' },
+  { texto: 'Productos', href: '/productos' },
+  { texto: 'Nosotros', href: '/#nosotros' },
+  { texto: 'Contacto', href: '/contacto' },
+  ...seccionesEnMenu(secciones).map((s) => ({ texto: s.titulo, href: rutaSeccion(s.slug) })),
+];
+const actual = (href: string): boolean => (href === '/' ? ruta === '/' : !href.includes('#') && (ruta === href || ruta.startsWith(`${href}/`)));
+---
+<header class="cabecera">
+  <div class="contenedor cabecera-interior">
+    <a class="marca" href="/">
+      {config.logo !== null && <img src={config.logo.url} alt="" width="44" height="44" />}
+      <span class="marca-texto">
+        <span class="marca-nombre">{config.nombre}</span>
+        {config.lema !== '' && <span class="marca-lema">{config.lema}</span>}
+      </span>
+    </a>
+    <nav aria-label="Principal">
+      <ul class="menu">
+        {items.map((i) => <li><a href={i.href} aria-current={actual(i.href) ? 'page' : undefined}>{i.texto}</a></li>)}
+      </ul>
+    </nav>
+    <div class="controles">
+      <SelectorPais client:load inicial={config.mercadoInicial} mercados={config.mercados} />
+      <TemaToggle client:idle />
+      <Buscador client:idle />
+      <Carrito client:load whatsapp={config.whatsappTienda} />
+    </div>
+  </div>
+</header>

@@ -1,0 +1,56 @@
+---
+import Convertidor from '../islas/Convertidor';
+import Consentimiento from '../islas/Consentimiento';
+import Icono from './Icono.astro';
+import { contenido } from '../contenido/instancia';
+import { seccionesEnMenu } from '../contenido/consultas';
+import { rutaSeccion } from '../lib/seo';
+import { enlaceWhatsApp } from '../lib/whatsapp';
+
+const { config, secciones } = contenido;
+const wa = enlaceWhatsApp(config.whatsappTienda, 'Hola, tengo una consulta.');
+const anio = new Date().getFullYear();
+---
+<footer class="pie">
+  <div class="contenedor pie-columnas">
+    <div>
+      <h2>{config.nombre}</h2>
+      {config.lema !== '' && <p>{config.lema}</p>}
+      <p class="pie-linea"><Icono nombre="pin" tamano={18} />{config.direccion}</p>
+    </div>
+    <nav aria-label="Navegación del pie">
+      <h2>Navegación</h2>
+      <ul>
+        <li><a href="/">Inicio</a></li>
+        <li><a href="/productos">Productos</a></li>
+        <li><a href="/#nosotros">Nosotros</a></li>
+        <li><a href="/contacto">Contacto</a></li>
+        {seccionesEnMenu(secciones).map((s) => <li><a href={rutaSeccion(s.slug)}>{s.titulo}</a></li>)}
+      </ul>
+    </nav>
+    <div>
+      <h2>Información útil</h2>
+      <ul>
+        <li><Convertidor client:idle /></li>
+        <li><p>Los pedidos se coordinan por WhatsApp con asesoramiento personalizado.</p></li>
+      </ul>
+    </div>
+    <div>
+      <h2>Contacto directo</h2>
+      <ul>
+        {config.telefono !== null && <li class="pie-linea"><Icono nombre="telefono" tamano={16} /><a href={`tel:${config.telefono.replace(/[^+0-9]/g, '')}`}>{config.telefono}</a></li>}
+        {wa !== null && <li class="pie-linea"><Icono nombre="chat" tamano={16} /><a href={wa} target="_blank" rel="noopener noreferrer">Escribir por WhatsApp</a></li>}
+        {config.correo !== null && <li class="pie-linea"><Icono nombre="mensaje" tamano={16} /><a href={`mailto:${config.correo}`}>{config.correo}</a></li>}
+        {config.horario !== null && <li>{config.horario}</li>}
+      </ul>
+    </div>
+  </div>
+  <div class="contenedor pie-legal">
+    <span>© {anio} {config.nombre}. Todos los derechos reservados.</span>
+    <span class="pie-legal-enlaces">
+      <a href="/privacidad">Privacidad</a>
+      <Consentimiento client:load />
+      <a href="#contenido" aria-label="Volver arriba"><Icono nombre="flecha-arriba" tamano={16} /></a>
+    </span>
+  </div>
+</footer>

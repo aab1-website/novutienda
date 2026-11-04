@@ -1,0 +1,80 @@
+---
+import '../estilos/sitio.css';
+import Cabecera from '../componentes/Cabecera.astro';
+import Pie from '../componentes/Pie.astro';
+import { contenido } from '../contenido/instancia';
+import { jsonLdSeguro, tituloPagina, urlAbsoluta } from '../lib/seo';
+import type { ConfigCliente } from '../lib/config-cliente';
+import { enlaceWhatsApp } from '../lib/whatsapp';
+import Icono from '../componentes/Icono.astro';
+
+interface Props {
+  titulo: string;
+  descripcion?: string;
+  /** Ruta canónica de la página (`/productos`). */
+  ruta: string;
+  /** Imagen para vista previa al compartir. */
+  imagen?: string;
+  noindex?: boolean;
+  datosEstructurados?: readonly Record<string, unknown>[];
+}
+const { titulo, descripcion, ruta, imagen, noindex = false, datosEstructurados = [] } = Astro.props;
+const { config } = contenido;
+const completo = ruta === '/' ? config.nombre : tituloPagina(titulo, config.nombre);
+const desc = descripcion ?? config.lema;
+const publico: ConfigCliente = {
+  nombre: config.nombre,
+  mercados: config.mercados,
+  mercadoInicial: config.mercadoInicial,
+  redondeo: config.redondeo,
+  whatsappNovuchat: config.whatsappNovuchat,
+  whatsappTienda: config.whatsappTienda,
+  medicion: config.medicion,
+  recaptchaSiteKey: config.recaptchaSiteKey,
+  apiBase: '',
+  vistaPrevia: false,
+};
+const urlImagen = imagen === undefined ? undefined : imagen.startsWith('/') ? urlAbsoluta(config.origen, imagen) : imagen;
+const waGeneral = enlaceWhatsApp(config.whatsappTienda, 'Hola, tengo una consulta.');
+---
+<!doctype html>
+<html lang="es" data-plantilla={config.plantilla}>
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>{completo}</title>
+    <meta name="description" content={desc} />
+    <link rel="canonical" href={urlAbsoluta(config.origen, ruta === '/' ? '/' : ruta)} />
+    {(noindex || config.esEjemplo) && <meta name="robots" content="noindex, nofollow" />}
+    <meta property="og:type" content="website" />
+    <meta property="og:site_name" content={config.nombre} />
+    <meta property="og:title" content={completo} />
+    <meta property="og:description" content={desc} />
+    <meta property="og:url" content={urlAbsoluta(config.origen, ruta)} />
+    {urlImagen !== undefined && <meta property="og:image" content={urlImagen} />}
+    <meta name="twitter:card" content={urlImagen === undefined ? 'summary' : 'summary_large_image'} />
+    {config.medicion.searchConsole !== null && <meta name="google-site-verification" content={config.medicion.searchConsole} />}
+    <link rel="icon" href="/ejemplo/logo.svg" type="image/svg+xml" />
+    <link rel="stylesheet" href="/plantillas.css" />
+    <link rel="preload" href="/fuentes/ubuntu-latin-400.woff2" as="font" type="font/woff2" crossorigin />
+    <script is:inline src="/tema-inicial.js"></script>
+    <script is:inline type="application/json" id="cb-config" set:html={jsonLdSeguro(publico)} />
+    {datosEstructurados.map((d) => <script is:inline type="application/ld+json" set:html={jsonLdSeguro(d)} />)}
+  </head>
+  <body>
+    <a class="salto" href="#contenido">Saltar al contenido</a>
+    <Cabecera ruta={ruta} />
+    <main id="contenido" tabindex="-1">
+      {config.esEjemplo && (
+        <p class="aviso-ejemplo" role="note">Sitio de ejemplo: todo el contenido es ficticio y no corresponde a ningún negocio real.</p>
+      )}
+      <slot />
+    </main>
+    <Pie />
+    {waGeneral !== null && (
+      <a class="whatsapp-flotante" href={waGeneral} target="_blank" rel="noopener noreferrer" aria-label="Escribir por WhatsApp">
+        <Icono nombre="chat" tamano={28} />
+      </a>
+    )}
+  </body>
+</html>

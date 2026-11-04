@@ -6,7 +6,21 @@
   "exports": {
     ".": "./src/index.ts"
   },
+  "scripts": {
+    "dev": "astro dev",
+    "build": "astro build && node scripts/limpiar.mjs",
+    "preview": "astro preview",
+    "csp:verificar": "node scripts/verificar-csp.mjs",
+    "humo": "playwright test --config humo/playwright.config.ts"
+  },
   "dependencies": {
-    "@plataforma/nucleo": "workspace:*"
+    "@astrojs/preact": "6.1.1",
+    "@plataforma/nucleo": "workspace:*",
+    "astro": "7.4.2",
+    "preact": "10.29.8"
+  },
+  "devDependencies": {
+    "@axe-core/playwright": "4.13.0",
+    "@playwright/test": "1.64.1"
   }
 }

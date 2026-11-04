@@ -1,0 +1,31 @@
+---
+import Base from '../layouts/Base.astro';
+import Migas from '../componentes/Migas.astro';
+import Icono from '../componentes/Icono.astro';
+import FormularioContacto from '../islas/FormularioContacto';
+import { contenido } from '../contenido/instancia';
+import { enlaceWhatsApp } from '../lib/whatsapp';
+
+const { config } = contenido;
+const wa = enlaceWhatsApp(config.whatsappTienda, 'Hola, tengo una consulta.');
+---
+<Base titulo="Contacto" descripcion="Escríbenos: respondemos tus consultas por WhatsApp y por correo." ruta="/contacto">
+  <div class="contenedor pagina">
+    <Migas pasos={[{ texto: 'Inicio', href: '/' }, { texto: 'Contacto' }]} />
+    <header class="encabezado-pagina">
+      <h1 class="titulo-seccion">Contacto</h1>
+      <p class="subtitulo">Cuéntanos qué necesitas y te respondemos lo antes posible.</p>
+    </header>
+    <div class="contacto-interior">
+      <FormularioContacto client:load recaptcha={config.recaptchaSiteKey} whatsapp={config.whatsappTienda} />
+      <div class="tarjeta-contacto">
+        <h2>Otras formas de contactarnos</h2>
+        {wa !== null && <a class="boton boton-cta boton-ancho" href={wa} target="_blank" rel="noopener noreferrer"><Icono nombre="mensaje" tamano={18} />ESCRIBIR POR WHATSAPP</a>}
+        {config.telefono !== null && <a class="enlace-telefono" href={`tel:${config.telefono.replace(/[^+0-9]/g, '')}`}><Icono nombre="telefono" tamano={16} />Llamar al {config.telefono}</a>}
+        {config.correo !== null && <a class="enlace-telefono" href={`mailto:${config.correo}`}><Icono nombre="mensaje" tamano={16} />{config.correo}</a>}
+        <p class="pie-linea"><Icono nombre="pin" tamano={16} />{config.direccion}</p>
+        {config.horario !== null && <p class="subtitulo">{config.horario}</p>}
+      </div>
+    </div>
+  </div>
+</Base>

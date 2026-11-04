@@ -1,0 +1,19 @@
+---
+import Icono from './Icono.astro';
+import { contenido } from '../contenido/instancia';
+import { afirmacionVisible } from '../contenido/consultas';
+
+const visibles = contenido.beneficios.filter((b) => afirmacionVisible(b.titulo, false));
+---
+{visibles.length > 0 && (
+  <section class="beneficios" aria-label="Beneficios">
+    <ul class="contenedor">
+      {visibles.map((b) => (
+        <li>
+          <span class="icono-caja"><Icono nombre={b.icono} tamano={18} /></span>
+          <span><strong>{b.titulo.texto}</strong><span class="detalle">{b.descripcion}</span></span>
+        </li>
+      ))}
+    </ul>
+  </section>
+)}
