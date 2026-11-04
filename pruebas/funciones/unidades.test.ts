@@ -337,7 +337,7 @@ describe('límites en memoria antes de autenticar', () => {
   const cfg = (n: number): ConfigRouter => ({
     tenantId: 't', secretoReconstruccion: '', novuchat: {} as never, recaptcha: {} as never, appCheck: {} as never,
     limiteContacto: limiteMemoria(100, 60_000),
-    limiteMemoria: { novuchat: limiteMemoria(n, 60_000), disponibilidad: limiteMemoria(n, 60_000) },
+    limiteMemoria: { novuchat: limiteMemoria(n, 60_000), disponibilidad: limiteMemoria(n, 60_000), contacto: limiteMemoria(n, 60_000) },
   });
   const peticion = (ruta: string, origen: string) => ({ metodo: 'GET', ruta, url: ruta, consulta: { ids: 'tv-1' }, cabeceras: { authorization: 'Bearer token-inventado' }, cuerpoCrudo: '', cuerpo: undefined, origen });
 
@@ -357,5 +357,66 @@ describe('límites en memoria antes de autenticar', () => {
     expect((await enrutar(e, peticion('/api/disponibilidad', '203.0.113.1'), c)).status).toBe(200);
     expect((await enrutar(e, peticion('/api/disponibilidad', '203.0.113.1'), c)).status).toBe(429);
     expect((await enrutar(e, peticion('/api/disponibilidad', '203.0.113.9'), c)).status).toBe(200);
+  });
+});
+
+describe('contacto: App Check de un solo uso y límite en memoria antes de verificarlo', () => {
+  const guardados: string[] = [];
+  const e = {
+    ahora: () => 1_000,
+    almacenCotizaciones: {},
+    leerDisponibilidad: () => () => Promise.resolve({}),
+    guardarContacto: () => ({ guardar: (c: { operacionId: string }) => { guardados.push(c.operacionId); return Promise.resolve('creado' as const); } }),
+  } as never;
+  /** Admin simulado: un token solo se consume una vez (`alreadyConsumed`), como el de uso limitado de App Check. */
+  const adminConsume = () => {
+    const consumidos = new Set<string>();
+    const verificados: string[] = [];
+    const admin = {
+      verifyToken: (t: string, o?: { consume?: boolean }) => {
+        verificados.push(t);
+        if (t.startsWith('malo')) return Promise.reject(new Error('token inválido'));
+        const repetido = consumidos.has(t);
+        if (o?.consume === true) consumidos.add(t);
+        return Promise.resolve({ appId: 'a', alreadyConsumed: repetido });
+      },
+    };
+    return { admin, verificados };
+  };
+  const cfg = (maximoMemoria: number, admin: ReturnType<typeof adminConsume>['admin']): ConfigRouter => ({
+    tenantId: 't', secretoReconstruccion: '', novuchat: {} as never,
+    recaptcha: { verificar: () => Promise.resolve({ valido: true, puntaje: 0.9 }) },
+    appCheck: appCheckReal(admin as never, { consumir: true }),
+    limiteContacto: limiteMemoria(100, 60_000),
+    limiteMemoria: { novuchat: limiteMemoria(1, 60_000), disponibilidad: limiteMemoria(1, 60_000), contacto: limiteMemoria(maximoMemoria, 60_000) },
+  });
+  const cuerpo = { envioId: 'envio-0123456789abcdef', nombre: 'Ana Pérez', correo: 'ana@ejemplo.test', mensaje: 'Quisiera una cotización', aceptaPrivacidad: true, recaptchaToken: 'x'.repeat(30) };
+  const envio = (token: string | undefined, origen = '203.0.113.1') => ({
+    metodo: 'POST', ruta: '/api/contacto', url: '/api/contacto', consulta: {}, cuerpoCrudo: '', cuerpo,
+    cabeceras: { 'content-type': 'application/json', ...(token === undefined ? {} : { 'x-firebase-appcheck': token }) }, origen,
+  });
+
+  it('un segundo envío con el mismo token falla (401) y con un token nuevo pasa', async () => {
+    const { admin } = adminConsume();
+    const c = cfg(100, admin);
+    expect((await enrutar(e, envio('token-1'), c)).status).toBe(200);
+    const repetido = await enrutar(e, envio('token-1'), c);
+    expect(repetido.status).toBe(401);
+    expect(repetido.cuerpo).toEqual({ error: 'app_check' });
+    expect((await enrutar(e, envio('token-2'), c)).status).toBe(200);
+    expect((await enrutar(e, envio('malo-3'), c)).status).toBe(401);
+    expect((await enrutar(e, envio(undefined), c)).status).toBe(401);
+  });
+  it('pasado el máximo por origen responde 429 sin llamar a App Check; otro origen tiene su cubo', async () => {
+    const { admin, verificados } = adminConsume();
+    const c = cfg(2, admin);
+    expect((await enrutar(e, envio('token-a'), c)).status).toBe(200);
+    expect((await enrutar(e, envio('token-b'), c)).status).toBe(200);
+    const antes = verificados.length;
+    const limitado = await enrutar(e, envio('token-c'), c);
+    expect(limitado.status).toBe(429);
+    expect(limitado.headers['Retry-After']).toMatch(/^\d+$/);
+    expect(verificados).toHaveLength(antes); // el token del tercero ni se miró (ni se consumió)
+    expect((await enrutar(e, envio('token-c', '203.0.113.2'), c)).status).toBe(200);
   });
 });

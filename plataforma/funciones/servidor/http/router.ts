@@ -13,8 +13,8 @@ export interface ConfigRouter {
   readonly novuchat: ConfigNovuchat;
   readonly secretoReconstruccion: string;
   readonly limiteContacto: LimiteTasa;
-  /** Límites en memoria por instancia y por origen, ANTES de autenticar (NovuChat) o de leer (disponibilidad). */
-  readonly limiteMemoria: { readonly novuchat: LimiteTasa; readonly disponibilidad: LimiteTasa };
+  /** Límites en memoria por instancia y por origen, ANTES de autenticar (NovuChat), de leer (disponibilidad) o de verificar App Check (contacto). */
+  readonly limiteMemoria: { readonly novuchat: LimiteTasa; readonly disponibilidad: LimiteTasa; readonly contacto: LimiteTasa };
   readonly recaptcha: VerificadorRecaptcha;
   readonly appCheck: VerificadorAppCheck;
 }
@@ -33,6 +33,10 @@ export async function enrutar(e: Entorno, req: PeticionHttp, cfg: ConfigRouter):
   if (ruta === '/healthz') return { status: 200, headers: { 'Content-Type': 'text/plain; charset=utf-8', 'Cache-Control': 'no-store' }, cuerpo: 'ok' };
   if (ruta === '/api/disponibilidad') {
     const limitado = await excedeLimite(cfg.limiteMemoria.disponibilidad, `disponibilidad:${req.origen}`, e.ahora());
+    if (limitado !== undefined) return limitado;
+  } else if (ruta === '/api/contacto') {
+    // Antes de App Check: verificar y consumir un token cuesta una llamada a Google; el límite de Firestore por origen va después.
+    const limitado = await excedeLimite(cfg.limiteMemoria.contacto, `contacto:${req.origen}`, e.ahora());
     if (limitado !== undefined) return limitado;
   } else if (ruta.startsWith('/api/novuchat/')) {
     // Antes de autenticar: un token inventado ya cuesta una lectura de Firestore.

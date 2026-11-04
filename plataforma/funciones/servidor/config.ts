@@ -47,6 +47,8 @@ export const PARAMETROS = {
   novuchatMaximoPorMinuto: defineString('NOVUCHAT_MAXIMO_POR_MINUTO', { default: '120' }),
   /** Peticiones por minuto a `/api/disponibilidad`, por origen y por instancia (memoria). */
   disponibilidadMaximoPorMinuto: defineString('DISPONIBILIDAD_MAXIMO_POR_MINUTO', { default: '60' }),
+  /** Peticiones por minuto a `/api/contacto`, por origen y por instancia (memoria), antes de verificar App Check. */
+  contactoMaximoPorMinuto: defineString('CONTACTO_MAXIMO_POR_MINUTO', { default: '30' }),
 } as const;
 
 export const SECRETOS = {
