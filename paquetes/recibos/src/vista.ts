@@ -30,7 +30,7 @@ export function lineasDeTexto(r: Recibo): string[] {
   if (r.facturaSuma !== undefined) t.push(`Factura SUMA (referencia): ${r.facturaSuma}`);
   t.push('');
   for (const l of r.lineas) {
-    t.push(`${String(l.cantidad)} x ${l.productoId}  ${formatearMonto(l.precioUnitario, r.moneda)}  =  ${formatearMonto(l.subtotal, r.moneda)}`);
+    t.push(`${String(l.cantidad)} x ${l.nombre}  ${formatearMonto(l.precioUnitario, r.moneda)}  =  ${formatearMonto(l.subtotal, r.moneda)}`);
     if (l.series.length > 0) t.push(`  Serie: ${l.series.join(', ')}`);
     if (l.garantiaHasta !== undefined) t.push(`  Garantía hasta: ${l.garantiaHasta}`);
   }
@@ -58,7 +58,7 @@ export function renderizarReciboHtml(r: Recibo): string {
   const filas = r.lineas
     .map(
       (l) =>
-        `<tr><td>${e(l.productoId)}${l.series.length > 0 ? `<br><small>Serie: ${e(l.series.join(', '))}</small>` : ''}${l.garantiaHasta !== undefined ? `<br><small>Garantía hasta: ${e(l.garantiaHasta)}</small>` : ''}</td><td>${String(l.cantidad)}</td><td>${e(formatearMonto(l.precioUnitario, r.moneda))}</td><td>${e(formatearMonto(l.subtotal, r.moneda))}</td></tr>`,
+        `<tr><td>${e(l.nombre)}${l.series.length > 0 ? `<br><small>Serie: ${e(l.series.join(', '))}</small>` : ''}${l.garantiaHasta !== undefined ? `<br><small>Garantía hasta: ${e(l.garantiaHasta)}</small>` : ''}</td><td>${String(l.cantidad)}</td><td>${e(formatearMonto(l.precioUnitario, r.moneda))}</td><td>${e(formatearMonto(l.subtotal, r.moneda))}</td></tr>`,
     )
     .join('');
   const pagos = r.pagos.map((p) => `<li>${e(MEDIOS[p.medio] ?? p.medio)}: ${e(formatearMonto(p.monto, p.moneda))}</li>`).join('');

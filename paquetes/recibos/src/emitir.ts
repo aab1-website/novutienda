@@ -56,6 +56,7 @@ async function reservarCorrelativo(tx: TransaccionRecibos, tenantId: string, ser
 function lineasDe(d: DatosVentaConfirmadaV1, fecha: string): LineaRecibo[] {
   return d.lineas.map((l) => ({
     productoId: l.productoId,
+    nombre: l.nombre,
     cantidad: l.cantidad,
     precioUnitario: l.precioUnitario,
     subtotal: l.cantidad * l.precioUnitario,

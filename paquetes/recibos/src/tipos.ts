@@ -44,6 +44,8 @@ export interface PlantillaRecibo {
 
 export interface LineaRecibo {
   readonly productoId: string;
+  /** Nombre del producto al momento de la venta (copia del evento). */
+  readonly nombre: string;
   readonly cantidad: number;
   readonly precioUnitario: number;
   readonly subtotal: number;

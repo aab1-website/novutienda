@@ -14,7 +14,7 @@ type Extra = { [K in keyof DatosVentaConfirmadaV1]?: DatosVentaConfirmadaV1[K] |
 function datosVenta(ventaId: string, extra: Extra = {}): DatosVentaConfirmadaV1 {
   const base: DatosVentaConfirmadaV1 = {
     ventaId, turnoId: 't1', cajaId: 'c1', cajeroUid: 'u-caj', moneda: 'BOB', total: 125000, cotizacion,
-    lineas: [{ productoId: 'p1', cantidad: 2, precioUnitario: 62500, almacenId: 'tienda', series: ['S1', 'S2'], garantiaMeses: 12 }],
+    lineas: [{ productoId: 'p1', nombre: 'Lavarropas 8 kg', cantidad: 2, precioUnitario: 62500, almacenId: 'tienda', series: ['S1', 'S2'], garantiaMeses: 12 }],
     pagos: [{ medio: 'qr', moneda: 'BOB', monto: 125000, referencia: 'REF-SECRETA-1' }],
     cliente: { nombre: 'Ana Pérez', telefono: '70000000' },
   };
@@ -51,7 +51,7 @@ describe('emisión desde venta.confirmada', () => {
       reciboId: 'recibo-v1', numero: 'A-000001', serie: 'A', estado: 'EMITIDO', moneda: 'BOB', total: 125000, fecha: '2026-11-04',
       cotizacion, envioWhatsapp: { estado: 'no_enviado' },
     });
-    expect(r.lineas[0]).toMatchObject({ series: ['S1', 'S2'], garantiaMeses: 12, garantiaHasta: '2027-11-04', subtotal: 125000 });
+    expect(r.lineas[0]).toMatchObject({ nombre: 'Lavarropas 8 kg', series: ['S1', 'S2'], garantiaMeses: 12, garantiaHasta: '2027-11-04', subtotal: 125000 });
     expect(r.facturaSuma).toBeUndefined();
   });
 
@@ -234,12 +234,21 @@ describe('vista y PDF', () => {
       tenantId: 't1', actor: { uid: 'u', rol: 'adm' },
       plantilla: { serie: 'A', negocio: { nombre: MALO, direccion: MALO }, pie: MALO, politicaGarantia: MALO, politicaCambios: MALO, logoUrl: 'https://x.test/l.png' },
     });
-    await manejarVentaConfirmada(db, eventoVenta('t1', 'v1', { cliente: { nombre: MALO }, lineas: [{ productoId: 'p<b>', cantidad: 1, precioUnitario: 125000, almacenId: 'tienda', series: [] }] }), AHORA);
+    await manejarVentaConfirmada(db, eventoVenta('t1', 'v1', { cliente: { nombre: MALO }, lineas: [{ productoId: 'p1', nombre: 'Prod <b>x</b>', cantidad: 1, precioUnitario: 125000, almacenId: 'tienda', series: [] }] }), AHORA);
     const html = renderizarReciboHtml(recibo(db, 't1', 'v1'));
     expect(html).not.toContain('<script>');
     expect(html).not.toContain('<b>');
     expect(html).toContain('&lt;script&gt;');
+    expect(html).toContain('Prod &lt;b&gt;x&lt;/b&gt;');
     expect(html).toContain('<img src="https://x.test/l.png"');
+  });
+
+  it('el HTML y el PDF muestran el nombre del producto', async () => {
+    const db = new DobleDb();
+    await manejarVentaConfirmada(db, eventoVenta('t1', 'v1'), AHORA);
+    const r = recibo(db, 't1', 'v1');
+    expect(renderizarReciboHtml(r)).toContain('Lavarropas 8 kg');
+    expect(new TextDecoder('latin1').decode(generarPdfRecibo(r))).toContain('Lavarropas 8 kg');
   });
 
   it('no incluye datos de pago sensibles ni el teléfono del cliente', async () => {
