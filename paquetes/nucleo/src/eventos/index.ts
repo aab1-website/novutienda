@@ -1,4 +1,7 @@
-export { ErrorEvento, consumir, publicarEvento, rutaEvento, rutaProcesado } from './bandeja.js';
+export {
+  ErrorEvento, MAX_INTENTOS_POR_DEFECTO, consumir, publicarEvento, rutaDescartado, rutaEvento, rutaFallo, rutaProcesado,
+  rutaProcesadoPorClave,
+} from './bandeja.js';
 export type { EjecutorTransacciones, TransaccionBandeja } from './bandeja.js';
 export { CONTRATOS_V1, validarEvento } from './contratos.js';
 export type { Campo, Fixtures } from './esquema.js';
