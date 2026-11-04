@@ -133,7 +133,7 @@ export async function cargarManifiestos(raiz = process.cwd()) {
       }
     },
   });
-  const entrada = pathToFileURL(resolve(raiz, 'paquetes/nucleo/src/index.ts')).href;
+  const entrada = pathToFileURL(resolve(raiz, 'paquetes/nucleo/src/plataforma.ts')).href;
   const { registroPlataforma } = await import(entrada);
   registroPlataforma.rutas(); // lanza si hay rutas duplicadas
   const porId = new Map(registroPlataforma.listar().map((m) => [m.id, m]));

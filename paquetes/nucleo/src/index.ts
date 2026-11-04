@@ -1,7 +1,3 @@
-import { manifiestoNucleo } from './manifiesto.js';
-import { crearRegistro } from './registro/registro.js';
-import type { ManifiestoModulo } from './registro/tipos.js';
-
 export type {
   ColeccionManifiesto,
   IdModulo,
@@ -18,9 +14,7 @@ export type { SobreEvento } from './contratos/sobre-evento.js';
 export { validarSobre } from './contratos/sobre-evento.js';
 export { manifiestoNucleo } from './manifiesto.js';
 
-/** Registro de la plataforma, con solo el módulo núcleo registrado. */
-export const registroPlataforma = crearRegistro<ManifiestoModulo>();
-registroPlataforma.registrar(manifiestoNucleo);
+export { registroPlataforma } from './plataforma.js';
 
 export * from './identidad/index.js';
 export * from './tenant/index.js';
