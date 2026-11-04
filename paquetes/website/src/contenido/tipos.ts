@@ -133,6 +133,8 @@ export interface ConfigMedicion {
 export interface ConfigSitio {
   readonly nombre: string;
   readonly lema: string;
+  /** Logotipo (imagen cuadrada), o null para mostrar solo el nombre. */
+  readonly logo: Foto | null;
   /** Origen público del sitio (https://…), para URL canónicas y JSON-LD. */
   readonly origen: string;
   readonly plantilla: IdPlantilla;

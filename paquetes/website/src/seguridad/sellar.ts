@@ -30,6 +30,14 @@ export function scriptsEnLinea(html: string): string[] {
   return salida;
 }
 
+/** Única regla de estilo en línea que Astro emite (hace que sus islas no afecten el diseño). Todo otro `<style>` es un defecto. */
+export const ESTILO_ISLAS = 'astro-island,astro-slot,astro-static-slot{display:contents}';
+
+/** Contenido de cada `<style>` en línea. */
+export function estilosEnLinea(html: string): string[] {
+  return [...html.matchAll(/<style[^>]*>([\s\S]*?)<\/style>/gi)].map((m) => m[1] ?? '');
+}
+
 export const hashDe = (contenido: string): string => `'sha256-${createHash('sha256').update(contenido, 'utf8').digest('base64')}'`;
 
 export interface OpcionesSellado {
@@ -42,6 +50,15 @@ export interface OpcionesSellado {
 export function hashesDeDist(dir: string): string[] {
   const hashes = new Set<string>();
   for (const f of archivos(dir, ['.html'])) for (const s of scriptsEnLinea(readFileSync(f, 'utf8'))) hashes.add(hashDe(s));
+  return [...hashes].sort();
+}
+
+/** Hashes de los estilos en línea autorizados (solo `ESTILO_ISLAS`). */
+export function hashesEstiloDeDist(dir: string): string[] {
+  const hashes = new Set<string>();
+  for (const f of archivos(dir, ['.html'])) {
+    for (const s of estilosEnLinea(readFileSync(f, 'utf8'))) if (s === ESTILO_ISLAS) hashes.add(hashDe(s));
+  }
   return [...hashes].sort();
 }
 
@@ -61,7 +78,7 @@ export function verificarDist(dir: string, permitidos: readonly string[] = []): 
     const sinDatos = html.replace(/<script[^>]*type\s*=\s*["']?application\/(?:ld\+)?json["']?[^>]*>[\s\S]*?<\/script>/gi, '');
     if (/\son[a-z]+\s*=\s*["']/i.test(sinDatos)) falla(f, 'manejador de eventos en línea (onclick=…)');
     if (/\sstyle\s*=\s*["']/i.test(sinDatos)) falla(f, 'atributo style en línea (la CSP lo bloquea)');
-    if (/<style[\s>]/i.test(sinDatos)) falla(f, 'etiqueta <style> en línea (la CSP lo bloquea)');
+    for (const s of estilosEnLinea(sinDatos)) if (s !== ESTILO_ISLAS) falla(f, 'etiqueta <style> en línea no autorizada (la CSP la bloquea)');
     if (/(?:href|src|action)\s*=\s*["']\s*javascript:/i.test(sinDatos)) falla(f, 'URL javascript:');
     for (const m of sinDatos.matchAll(/<a\b[^>]*\btarget\s*=\s*["']_blank["'][^>]*>/gi)) {
       if (!/\brel\s*=\s*["'][^"']*\bnoopener\b/i.test(m[0])) falla(f, `enlace con target=_blank sin noopener: ${m[0].slice(0, 80)}`);
@@ -81,7 +98,7 @@ export function verificarDist(dir: string, permitidos: readonly string[] = []): 
 
 /** Calcula los hashes, escribe `_cabeceras.json` y devuelve la CSP resultante. */
 export function sellarDist(dir: string, o: OpcionesSellado): string {
-  const csp = construirCsp({ hashesScript: hashesDeDist(dir), ...o });
+  const csp = construirCsp({ hashesScript: hashesDeDist(dir), hashesEstilo: hashesEstiloDeDist(dir), ...o });
   const cabeceras = { source: '**', headers: cabecerasSeguridad(csp) };
   writeFileSync(join(dir, ARCHIVO_CABECERAS), `${JSON.stringify([cabeceras], null, 2)}\n`, 'utf8');
   return csp;

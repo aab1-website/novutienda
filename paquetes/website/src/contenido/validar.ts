@@ -30,6 +30,11 @@ const RE_RECAPTCHA = /^[A-Za-z0-9_-]{10,80}$/;
 type Obj = Readonly<Record<string, unknown>>;
 const esObj = (x: unknown): x is Obj => typeof x === 'object' && x !== null && !Array.isArray(x);
 
+// eslint-disable-next-line no-control-regex -- se buscan justamente los caracteres de control
+const RE_CONTROL = /[\u0000-\u001f]/;
+/** Ruta del propio sitio: empieza con una sola barra y no trae barras invertidas ni caracteres de control. */
+const esRutaPropia = (url: string): boolean => url.startsWith('/') && !url.startsWith('//') && !url.includes('\\') && !RE_CONTROL.test(url);
+
 /** Orígenes https (o http://localhost en desarrollo) sin ruta ni credenciales. */
 export function origenValido(x: unknown): x is string {
   if (typeof x !== 'string') return false;
@@ -44,7 +49,7 @@ export function origenValido(x: unknown): x is string {
 
 /** Una URL de medio es segura si es una ruta propia (`/…`) o cuelga de un origen declarado. */
 export function urlMedioSegura(url: string, origenes: readonly (string | null)[]): boolean {
-  if (url.startsWith('/')) return !url.startsWith('//') && !url.includes('\\') && !/[\u0000-\u001f]/.test(url);
+  if (url.startsWith('/')) return esRutaPropia(url);
   try {
     const u = new URL(url);
     return u.protocol === 'https:' && origenes.some((o) => o !== null && o === u.origin);
@@ -55,7 +60,7 @@ export function urlMedioSegura(url: string, origenes: readonly (string | null)[]
 
 /** Enlaces de las secciones editables: ruta propia, tel:, mailto: o https a un anfitrión de la lista blanca. */
 export function urlEnlaceSegura(url: string, permitidos: readonly string[]): boolean {
-  if (url.startsWith('/')) return !url.startsWith('//') && !url.includes('\\') && !/[\u0000-\u001f]/.test(url);
+  if (url.startsWith('/')) return esRutaPropia(url);
   if (/^tel:\+?[0-9]{6,15}$/.test(url)) return true;
   if (/^mailto:[^\s@<>"]+@[^\s@<>"]+\.[^\s@<>"]+$/.test(url)) return true;
   try {
@@ -193,6 +198,7 @@ function leerConfig(l: Lector, v: unknown): Contenido['config'] {
   return {
     nombre: l.texto(o['nombre'], 'config.nombre', 1, 80),
     lema: l.texto(o['lema'], 'config.lema', 0, 160),
+    logo: o['logo'] === null ? null : leerFoto(l, o['logo'], 'config.logo', [typeof o['origen'] === 'string' ? o['origen'] : null, typeof origenMedios === 'string' ? origenMedios : null]),
     origen: typeof o['origen'] === 'string' ? o['origen'] : '',
     plantilla: plantilla ?? 'cielo',
     whatsappNovuchat: wa('whatsappNovuchat'),

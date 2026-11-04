@@ -86,6 +86,7 @@ export const contenidoEjemplo: Contenido = {
   config: {
     nombre: 'Tienda de Ejemplo',
     lema: 'Contenido de ejemplo para probar el sitio',
+    logo: { url: '/ejemplo/logo.svg', alt: 'Logotipo de la tienda de ejemplo' },
     origen: 'https://ejemplo.invalid',
     plantilla: 'cielo',
     whatsappNovuchat: '59100000001',

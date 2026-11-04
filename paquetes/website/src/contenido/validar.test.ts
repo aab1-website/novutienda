@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import { contenidoEjemplo } from './ejemplo.js';
-import { LIMITES_SITIO, type Contenido, type Producto } from './tipos.js';
+import { LIMITES_SITIO, type Producto } from './tipos.js';
 import { origenValido, urlEnlaceSegura, urlMedioSegura, validarContenido } from './validar.js';
 
 const clon = (): Record<string, unknown> => JSON.parse(JSON.stringify(contenidoEjemplo)) as Record<string, unknown>;
@@ -19,9 +19,9 @@ describe('validarContenido', () => {
 
   it('rechaza lo que no es un objeto y reúne todos los errores, no solo el primero', () => {
     expect(errores(null).length).toBeGreaterThan(0);
-    const c = clon() as unknown as Contenido & Record<string, unknown>;
-    (c.config as Record<string, unknown>)['plantilla'] = 'rosa-neon';
-    (c as Record<string, unknown>)['marcas'] = 'no-es-lista';
+    const c = clon();
+    (c['config'] as Record<string, unknown>)['plantilla'] = 'rosa-neon';
+    c['marcas'] = 'no-es-lista';
     expect(errores(c).length).toBeGreaterThanOrEqual(2);
   });
 

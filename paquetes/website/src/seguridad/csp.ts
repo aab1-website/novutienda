@@ -10,6 +10,8 @@ import type { ConfigMedicion } from '../contenido/tipos.js';
 export interface OpcionesCsp {
   /** Hashes `'sha256-…'` de los scripts en línea del build. */
   readonly hashesScript: readonly string[];
+  /** Hashes `'sha256-…'` de los estilos en línea autorizados (solo la regla de las islas de Astro). */
+  readonly hashesEstilo?: readonly string[];
   readonly medicion: ConfigMedicion;
   readonly recaptcha: boolean;
   readonly origenMedios: string | null;
@@ -30,7 +32,7 @@ export function construirCsp(o: OpcionesCsp): string {
       m && 'https://connect.facebook.net',
       t && 'https://analytics.tiktok.com',
       o.recaptcha && ['https://www.google.com/recaptcha/', 'https://www.gstatic.com/recaptcha/']),
-    "style-src 'self'",
+    dir('style-src', "'self'", ...(o.hashesEstilo ?? [])),
     dir('img-src', "'self'", 'data:', medios,
       g && ['https://www.googletagmanager.com', 'https://www.google-analytics.com', 'https://*.google-analytics.com'],
       m && 'https://www.facebook.com',
