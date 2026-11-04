@@ -234,8 +234,9 @@ export function Conteo(): JSX.Element {
   };
   const cerrar = (conteoId: string): void => {
     void accion.ejecutar(async () => {
-      await api.llamar('cerrarConteo', { operacionId: nuevoId(), conteoId });
-      setMsg('Conteo cerrado y firmado. Los faltantes quedaron como mermas por resolver; los sobrantes se ingresaron.');
+      const r = await api.llamar('cerrarConteo', { operacionId: nuevoId(), conteoId });
+      const avisos = Array.isArray(r.resultado['avisos']) ? (r.resultado['avisos'] as unknown[]).filter((x): x is string => typeof x === 'string') : [];
+      setMsg(`Conteo cerrado y firmado. Los faltantes quedaron como mermas por resolver; los sobrantes se ingresaron.${avisos.length > 0 ? ` Atención: ${avisos.join(' ')}` : ''}`);
       setActivo(null);
       conteos.recargar();
       prod.recargar();

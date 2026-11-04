@@ -349,7 +349,10 @@ describe('doble: inventarios', () => {
     const abierto = (await e.api.llamar('listarConteos', {}))[0];
     expect(JSON.stringify(abierto)).not.toContain('teorico');
     expect(abierto?.resultado).toBeUndefined();
-    await e.api.llamar('cerrarConteo', { operacionId: uuid(), conteoId });
+    const cierre = await e.api.llamar('cerrarConteo', { operacionId: uuid(), conteoId });
+    expect(cierre.resultado['sinContar']).toEqual(expect.arrayContaining(['tv-55']));
+    expect(String(cierre.resultado['avisos'])).toContain('nadie contó');
+    expect((await e.api.llamar('listarMermas', {})).some((m) => m.productoId === 'tv-55')).toBe(true);
     const cerrado = (await e.api.llamar('listarConteos', {}))[0];
     expect(cerrado?.resultado).toEqual([{ productoId: 'cable-hdmi', teorico: 25, contado: 20, diferencia: -5 }, { productoId: 'parlante', teorico: 1, contado: 3, diferencia: 2 }]);
     expect((await e.api.llamar('listarMermas', {})).some((m) => m.productoId === 'cable-hdmi' && m.cantidad === 5)).toBe(true);
