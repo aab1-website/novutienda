@@ -1,5 +1,6 @@
 // Pruebas sobre el sitio ya compilado (`dist/website`, generado por `astro build`). Si todavía no se
-// compiló, se omiten y lo dicen: la compilación forma parte de la verificación del módulo.
+// compiló, se omiten (`npm test` a secas) salvo con EXIGIR_DIST=1, que fija el CI en el paso posterior al build:
+// entonces la ausencia de dist/website es un fallo, nunca una omisión en silencio.
 import { existsSync, readFileSync, readdirSync, statSync } from 'node:fs';
 import { join } from 'node:path';
 import { fileURLToPath } from 'node:url';
@@ -8,6 +9,14 @@ import { ARCHIVO_CABECERAS, ESTILO_ISLAS, estilosEnLinea, hashDe, scriptsEnLinea
 
 const DIST = fileURLToPath(new URL('../../dist/website', import.meta.url));
 const compilado = existsSync(join(DIST, ARCHIVO_CABECERAS));
+const exigido = process.env['EXIGIR_DIST'] === '1';
+
+describe('sitio compilado exigido', () => {
+  it('existe dist/website cuando se exige (EXIGIR_DIST=1)', () => {
+    if (exigido) expect(compilado, 'EXIGIR_DIST=1 pero falta dist/website: compile antes con `pnpm build`').toBe(true);
+    else expect(true).toBe(true);
+  });
+});
 
 function html(dir: string): string[] {
   return readdirSync(dir).flatMap((n) => {

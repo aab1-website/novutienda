@@ -21,6 +21,15 @@ export const OTRO = 'otra-casa';
 
 export const hayEmulador = process.env['FIRESTORE_EMULATOR_HOST'] !== undefined && process.env['FIREBASE_AUTH_EMULATOR_HOST'] !== undefined;
 export const exigirEmulador = process.env['PRUEBAS_FUNCIONES_EXIGIR'] === '1';
+/** `pnpm test:funciones` corre con App Check exigido en los callables (como producción): toda llamada lleva token. */
+export const appCheckExigido = process.env['APP_CHECK_EXIGIDO'] === 'true';
+
+const b64url = (o: object): string => Buffer.from(JSON.stringify(o)).toString('base64url');
+
+/** JWT sin firma que el emulador de Functions acepta como App Check (no verifica la firma; toma la app de `sub`). */
+export function tokenAppCheckPrueba(ahoraMs: number = Date.now()): string {
+  return `${b64url({ alg: 'none', typ: 'JWT' })}.${b64url({ sub: '1:000000000000:web:emulador', aud: ['projects/demo-pruebas'], iss: 'https://firebaseappcheck.googleapis.com/000000000000', iat: Math.floor(ahoraMs / 1000), exp: Math.floor((ahoraMs + 3_600_000) / 1000) })}.sin-firma`;
+}
 
 const puertoFunciones = 8245;
 export const URL_FUNCIONES = `http://127.0.0.1:${String(puertoFunciones)}/${PROYECTO}/${REGION}`;
@@ -89,7 +98,12 @@ export interface RespuestaLlamada {
 export async function llamar(funcion: string, datos: unknown, token?: string, extra: Record<string, string> = {}): Promise<RespuestaLlamada> {
   const r = await fetch(`${URL_FUNCIONES}/${funcion}`, {
     method: 'POST',
-    headers: { 'content-type': 'application/json', ...(token !== undefined ? { authorization: `Bearer ${token}` } : {}), ...extra },
+    headers: {
+      'content-type': 'application/json',
+      ...(token !== undefined ? { authorization: `Bearer ${token}` } : {}),
+      ...(appCheckExigido ? { 'x-firebase-appcheck': tokenAppCheckPrueba() } : {}),
+      ...extra,
+    },
     body: JSON.stringify({ data: datos }),
   });
   const j = (await r.json()) as { result?: unknown; error?: RespuestaLlamada['error'] };

@@ -33,6 +33,9 @@ const env = {
   PLATAFORMA_PRUEBAS: '1',
   PRUEBAS_FUNCIONES_EXIGIR: '1',
   TENANT_ID: 'casa-bermejo',
+  // Como producción: los callables exigen App Check. Las ayudas de pruebas/funciones envían un token del emulador;
+  // paquetes/panel/src/appcheck/appcheck.emulador.test.ts comprueba el rechazo sin token.
+  APP_CHECK_EXIGIDO: 'true',
   APP_CHECK_MODO: 'simulado',
   RECAPTCHA_MODO: 'simulado',
   NOVUCHAT_PEDIDOS_SECRETO: randomBytes(24).toString('hex'),
@@ -43,7 +46,7 @@ const env = {
   MEDIOS_BASE_URL: 'https://medios.ejemplo.test',
 };
 // Los parámetros no secretos los lee el emulador de `.env.<proyecto>` junto al código (no del entorno del proceso).
-const PARAMETROS = ['TENANT_ID', 'APP_CHECK_MODO', 'RECAPTCHA_MODO', 'CONTACTO_MAXIMO', 'SITIO_URL', 'MEDIOS_BASE_URL'];
+const PARAMETROS = ['TENANT_ID', 'APP_CHECK_EXIGIDO', 'APP_CHECK_MODO', 'RECAPTCHA_MODO', 'CONTACTO_MAXIMO', 'SITIO_URL', 'MEDIOS_BASE_URL'];
 writeFileSync('dist/funciones/.env.demo-pruebas', PARAMETROS.map((k) => `${k}=${env[k]}`).join('\n') + '\n');
 // El emulador lee los secretos de `.secret.local` junto al código (no de Secret Manager). `dist/` está ignorado.
 writeFileSync(
@@ -51,7 +54,9 @@ writeFileSync(
   ['NOVUCHAT_PEDIDOS_SECRETO', 'SITIO_RECONSTRUCCION_SECRETO', 'LIMITE_TASA_SAL'].map((k) => `${k}=${env[k]}`).join('\n') + '\n',
   { mode: 0o600 },
 );
-const comando = `npx vitest --run --no-file-parallelism pruebas/funciones ${process.argv.slice(2).join(' ')}`.trim();
+// Además de pruebas/funciones, las dos suites del panel que necesitan el emulador: ninguna queda omitida en CI.
+const SUITES = ['pruebas/funciones', 'pruebas/panel/emulador.test.ts', 'paquetes/panel/src/appcheck/appcheck.emulador.test.ts'];
+const comando = `npx vitest --run --no-file-parallelism ${SUITES.join(' ')} ${process.argv.slice(2).join(' ')}`.trim();
 const r = spawnSync(
   'firebase',
   ['emulators:exec', '--only', 'auth,firestore,storage,functions,eventarc', '--project', 'demo-pruebas', comando],

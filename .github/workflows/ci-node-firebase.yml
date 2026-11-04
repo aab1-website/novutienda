@@ -29,8 +29,10 @@
 #   - Dos sitios de Hosting por target. Variables del Environment (staging y
 #     production, mismo nombre, distinto valor): FIREBASE_SITE_SITIO,
 #     FIREBASE_SITE_PANEL, PANEL_URL, MEDIOS_BASE_URL, APP_CHECK_EXIGIDO,
-#     RECAPTCHA_CLAVE_SITIO. Repositorio: TENANT_ID, VITE_FIREBASE_API_KEY_STAGING,
-#     VITE_FIREBASE_API_KEY_PROD. FIREBASE_SITE_ID ya no se usa.
+#     RECAPTCHA_CLAVE_SITIO. Repositorio: TENANT_ID y, por ambiente (sufijo
+#     _STAGING / _PROD), VITE_FIREBASE_API_KEY, VITE_RECAPTCHA_ENTERPRISE_SITE_KEY,
+#     VITE_FIREBASE_STORAGE_BUCKET y VITE_FIREBASE_APP_ID (todas obligatorias si el
+#     ambiente tiene proyecto). SITIO_CONTENIDO (production). FIREBASE_SITE_ID ya no se usa.
 #   - calidad corre además `test:funciones` (emuladores; Java 21 del runner).
 # =============================================================================
 name: CI/CD Node → Firebase
@@ -257,9 +259,10 @@ jobs:
     timeout-minutes: 15
     strategy:
       matrix:
-        # Se construyen ambos ambientes en paralelo: el de producción solo
-        # se usa si el run es de tag/dispatch, pero cuesta ~1 min y simplifica.
-        ambiente: [staging, production]
+        # staging siempre; production solo en tag o dispatch (lo único que lo
+        # despliega). El build de producción FALLA con el contenido de ejemplo
+        # del sitio (cargar.ts), así que no puede correr en cada PR.
+        ambiente: ${{ fromJSON((startsWith(github.ref, 'refs/tags/v') || github.event_name == 'workflow_dispatch') && '["staging","production"]' || '["staging"]') }}
     steps:
       - name: Checkout
         uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
@@ -286,23 +289,58 @@ jobs:
         # 01-gestion-de-secretos.md SEC-005): llega de variables, no de secretos.
         # Se elige en el shell, no con `a && b || c`, que con la clave de
         # producción vacía caería en silencio en la de staging.
+        # Con proyecto configurado, TODAS las variables son obligatorias: App Check
+        # no puede iniciar sin la clave de sitio de reCAPTCHA ni sin `appId` (el
+        # SDK arma `…/apps/{appId}:exchange…`), y subir archivos necesita el bucket.
         env:
           APP_ENV: ${{ matrix.ambiente }}
           VITE_APP_VERSION: ${{ github.ref_name }}-${{ github.sha }}
-          CLAVE_STAGING: ${{ vars.VITE_FIREBASE_API_KEY_STAGING }}
-          CLAVE_PROD: ${{ vars.VITE_FIREBASE_API_KEY_PROD }}
           PROYECTO_STAGING: ${{ vars.GCP_PROJECT_ID_STAGING }}
           PROYECTO_PROD: ${{ vars.GCP_PROJECT_ID_PROD }}
+          CLAVE_STAGING: ${{ vars.VITE_FIREBASE_API_KEY_STAGING }}
+          CLAVE_PROD: ${{ vars.VITE_FIREBASE_API_KEY_PROD }}
+          RECAPTCHA_STAGING: ${{ vars.VITE_RECAPTCHA_ENTERPRISE_SITE_KEY_STAGING }}
+          RECAPTCHA_PROD: ${{ vars.VITE_RECAPTCHA_ENTERPRISE_SITE_KEY_PROD }}
+          BUCKET_STAGING: ${{ vars.VITE_FIREBASE_STORAGE_BUCKET_STAGING }}
+          BUCKET_PROD: ${{ vars.VITE_FIREBASE_STORAGE_BUCKET_PROD }}
+          APP_ID_STAGING: ${{ vars.VITE_FIREBASE_APP_ID_STAGING }}
+          APP_ID_PROD: ${{ vars.VITE_FIREBASE_APP_ID_PROD }}
+          # Contenido publicado del sitio (JSON de `publicado/` con el redondeo
+          # inyectado). Obligatorio en production: el ejemplo no se publica.
+          SITIO_CONTENIDO: ${{ matrix.ambiente == 'production' && vars.SITIO_CONTENIDO || '' }}
         run: |
           set -euo pipefail
-          if [[ "$APP_ENV" == "production" ]]; then clave="$CLAVE_PROD"; proyecto="$PROYECTO_PROD"
-          else clave="$CLAVE_STAGING"; proyecto="$PROYECTO_STAGING"; fi
-          if [[ -n "$proyecto" && -z "$clave" ]]; then
-            echo "::warning::El panel de $APP_ENV se compila sin VITE_FIREBASE_API_KEY: no podrá iniciar sesión."
+          if [[ "$APP_ENV" == "production" ]]; then
+            proyecto="$PROYECTO_PROD"; clave="$CLAVE_PROD"; recaptcha="$RECAPTCHA_PROD"; bucket="$BUCKET_PROD"; app_id="$APP_ID_PROD"
+            sufijo=PROD
+          else
+            proyecto="$PROYECTO_STAGING"; clave="$CLAVE_STAGING"; recaptcha="$RECAPTCHA_STAGING"; bucket="$BUCKET_STAGING"; app_id="$APP_ID_STAGING"
+            sufijo=STAGING
+          fi
+          if [[ -n "$proyecto" ]]; then
+            faltan=()
+            [[ -n "$clave" ]] || faltan+=("VITE_FIREBASE_API_KEY_$sufijo")
+            [[ -n "$recaptcha" ]] || faltan+=("VITE_RECAPTCHA_ENTERPRISE_SITE_KEY_$sufijo")
+            [[ -n "$bucket" ]] || faltan+=("VITE_FIREBASE_STORAGE_BUCKET_$sufijo")
+            [[ -n "$app_id" ]] || faltan+=("VITE_FIREBASE_APP_ID_$sufijo")
+            if (( ${#faltan[@]} > 0 )); then
+              echo "::error::Con proyecto de $APP_ENV configurado faltan variables del repositorio: ${faltan[*]}. Sin ellas el panel compilado no inicia sesión, no inicia App Check o no sube archivos. Ver docs/produccion/pase-a-staging.md."
+              exit 1
+            fi
           fi
           export VITE_FIREBASE_API_KEY="$clave" VITE_FIREBASE_PROJECT_ID="$proyecto"
+          export VITE_RECAPTCHA_ENTERPRISE_SITE_KEY="$recaptcha" VITE_FIREBASE_STORAGE_BUCKET="$bucket" VITE_FIREBASE_APP_ID="$app_id"
           export VITE_FIREBASE_AUTH_DOMAIN="${proyecto:+$proyecto.firebaseapp.com}"
           npm run build -- --mode "$APP_ENV"
+
+      - name: Pruebas del sitio compilado (dist.test.ts)
+        # El sitio de staging se construye con el contenido de ejemplo y esta suite
+        # lo verifica (CSP, páginas, ausencia de marcadores). EXIGIR_DIST=1: si falta
+        # dist/website la prueba FALLA, no se omite.
+        if: matrix.ambiente == 'staging'
+        env:
+          EXIGIR_DIST: '1'
+        run: npx vitest --run pruebas/website/dist.test.ts
 
       - name: Guardar dist/
         uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7
@@ -328,8 +366,8 @@ jobs:
     # alcance la nube. Concederle esos secretos abriría justo el vector de
     # cadena de suministro que el `cooldown` de dependabot.yml viene a cerrar.
     #
-    # La compuerta no se debilita: `compuerta-pr` solo exige `calidad` y
-    # `seguridad-estatica`, y ambas corren igual, como Semgrep, Trivy, Gitleaks
+    # La compuerta no se debilita: `compuerta-pr` exige `calidad`,
+    # `seguridad-estatica` y `construir`, y todas corren igual, como Semgrep, Trivy, Gitleaks
     # y CodeQL. Aplique el mismo `if` a cualquier job de PR que use
     # credenciales de nube en los demás pipelines.
     if: >-
@@ -822,24 +860,25 @@ jobs:
 
   # ---------------------------------------------------------------------------
   # compuerta-pr (D1): ÚNICO status check que exigen los rulesets de main.
-  # Agrega calidad y seguridad-estatica (con o sin matriz) en un solo contexto
-  # estable; falla si cualquiera de sus needs no terminó en success.
+  # Agrega calidad, seguridad-estatica y construir (con o sin matriz) en un solo
+  # contexto estable; falla si cualquiera de sus needs no terminó en success.
   # ---------------------------------------------------------------------------
   compuerta-pr:
     name: compuerta-pr
-    needs: [calidad, seguridad-estatica]
+    needs: [calidad, seguridad-estatica, construir]
     if: always()
     runs-on: ubuntu-latest
     timeout-minutes: 5
     steps:
-      - name: Verificar resultados de calidad y seguridad-estatica
+      - name: Verificar resultados de calidad, seguridad-estatica y construir
         env:
           R_CALIDAD: ${{ needs.calidad.result }}
           R_SEGURIDAD: ${{ needs.seguridad-estatica.result }}
+          R_CONSTRUIR: ${{ needs.construir.result }}
         run: |
           set -euo pipefail
-          echo "calidad=$R_CALIDAD | seguridad-estatica=$R_SEGURIDAD"
-          for r in "$R_CALIDAD" "$R_SEGURIDAD"; do
+          echo "calidad=$R_CALIDAD | seguridad-estatica=$R_SEGURIDAD | construir=$R_CONSTRUIR"
+          for r in "$R_CALIDAD" "$R_SEGURIDAD" "$R_CONSTRUIR"; do
             if [[ "$r" != "success" ]]; then
               echo "::error::compuerta-pr bloqueada: algún job requerido no terminó en success"
               exit 1
