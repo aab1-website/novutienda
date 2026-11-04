@@ -1,4 +1,4 @@
-import type { TransaccionIdentidad } from '@plataforma/nucleo';
+import type { TransaccionIdentidad } from '@novutienda/nucleo';
 import { EntradaInvalida, EstadoInvalido, NoEncontrado, SerieNoDisponible } from './errores.js';
 import { hashCarga } from './hash.js';
 import { exigirProducto, exigirSegmento, exigirSeries, exigirUbicacion, MAX_LINEAS, ruta } from './ids.js';

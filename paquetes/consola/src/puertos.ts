@@ -1,7 +1,7 @@
 // Puertos inyectables de la consola. Inventarios (productos, precios, stock) y la
 // infraestructura (Storage, procesamiento, programación) los implementan; aquí solo
 // se declara el contrato. La consola no importa ningún otro módulo.
-import type { BaseDatosIdentidad, TransaccionIdentidad } from '@plataforma/nucleo';
+import type { BaseDatosIdentidad, TransaccionIdentidad } from '@novutienda/nucleo';
 import type { PlanProcesamiento } from './medios/plan.js';
 import type { TipoMedio } from './medios/tipos-archivo.js';
 

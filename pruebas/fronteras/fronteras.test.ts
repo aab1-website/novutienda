@@ -45,44 +45,44 @@ describe('verificador con árboles inventados', () => {
 
   it('un árbol inventado con todas las infracciones falla', () => {
     const arbol: Arbol = {
-      'paquetes/nucleo/src/a.ts': "import { x } from '@plataforma/pos';",
-      'paquetes/pos/src/b.ts': "import { y } from '@plataforma/inventarios';",
-      'paquetes/pos/src/c.ts': "import { z } from '@plataforma/nucleo/src/registro/registro.js';",
+      'paquetes/nucleo/src/a.ts': "import { x } from '@novutienda/pos';",
+      'paquetes/pos/src/b.ts': "import { y } from '@novutienda/inventarios';",
+      'paquetes/pos/src/c.ts': "import { z } from '@novutienda/nucleo/src/registro/registro.js';",
       'paquetes/pos/src/d.ts': "import { w } from '../../inventarios/src/x.js';",
-      'tenants/t1/e.ts': "import { v } from '@plataforma/nucleo';",
+      'tenants/t1/e.ts': "import { v } from '@novutienda/nucleo';",
     };
     expect(motivos(arbol)).toEqual([
-      '@plataforma/pos',
-      '@plataforma/inventarios',
-      '@plataforma/nucleo/src/registro/registro.js',
+      '@novutienda/pos',
+      '@novutienda/inventarios',
+      '@novutienda/nucleo/src/registro/registro.js',
       '../../inventarios/src/x.js',
-      '@plataforma/nucleo',
+      '@novutienda/nucleo',
     ]);
   });
 
   it('acepta las importaciones permitidas', () => {
     const arbol: Arbol = {
       'paquetes/nucleo/src/a.ts': "import { x } from './b.js'; import fs from 'node:fs';",
-      'paquetes/pos/src/b.ts': "import { y } from '@plataforma/nucleo'; import { i } from '@plataforma/inventarios';",
-      'tenants/t1/e.ts': "import type { Rol } from '@plataforma/nucleo/extension';",
+      'paquetes/pos/src/b.ts': "import { y } from '@novutienda/nucleo'; import { i } from '@novutienda/inventarios';",
+      'tenants/t1/e.ts': "import type { Rol } from '@novutienda/nucleo/extension';",
     };
     expect(verificarFronteras(arbol, { pos: ['inventarios'] })).toEqual([]);
   });
 
   it('rechaza importar un tenant y dependencias no declaradas', () => {
     const arbol: Arbol = {
-      'paquetes/pos/src/a.ts': "import '@tenant/casa';\nconst m = await import('@plataforma/recibos');",
+      'paquetes/pos/src/a.ts': "import '@tenant/casa';\nconst m = await import('@novutienda/recibos');",
     };
-    expect(motivos(arbol)).toEqual(['@tenant/casa', '@plataforma/recibos']);
+    expect(motivos(arbol)).toEqual(['@tenant/casa', '@novutienda/recibos']);
   });
 
   it('rechaza import() con plantilla de texto y analiza la plantilla sin interpolación', () => {
     const arbol: Arbol = {
-      'paquetes/pos/src/a.ts': 'const m = await import(`@plataforma/${nombre}`);',
-      'paquetes/pos/src/b.ts': 'const m = await import(`@plataforma/recibos`);',
-      'paquetes/pos/src/c.ts': 'const m = await import(`@plataforma/nucleo`);',
+      'paquetes/pos/src/a.ts': 'const m = await import(`@novutienda/${nombre}`);',
+      'paquetes/pos/src/b.ts': 'const m = await import(`@novutienda/recibos`);',
+      'paquetes/pos/src/c.ts': 'const m = await import(`@novutienda/nucleo`);',
     };
-    expect(motivos(arbol)).toEqual(['@plataforma/${nombre}', '@plataforma/recibos']);
+    expect(motivos(arbol)).toEqual(['@novutienda/${nombre}', '@novutienda/recibos']);
   });
 
   it('la búsqueda de «bermejo» detecta contenido y nombres de ruta', () => {

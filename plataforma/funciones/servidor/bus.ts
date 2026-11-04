@@ -4,7 +4,7 @@
 // activo, Functions reintenta lo que falle; el tope lo pone `consumir` (5 intentos fallidos por consumidor y
 // evento, luego queda «descartado» y deja de reintentarse), de modo que un evento venenoso no gira para siempre.
 import { logger } from 'firebase-functions';
-import { validarSobre, type SobreEvento } from '@plataforma/nucleo';
+import { validarSobre, type SobreEvento } from '@novutienda/nucleo';
 import { consumidoresDePlataforma, type Consumidor } from '../../adaptadores/index.js';
 import type { Entorno } from './entorno.js';
 

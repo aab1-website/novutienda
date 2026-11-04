@@ -1,7 +1,7 @@
 import {
   leerCotizacion, precioFinal, rutaContador, SinCotizacionUtilizable,
   type Actor, type AlmacenCotizaciones, type CopiaCotizacion, type Mercado, type PrecioFinal, type Redondeo,
-} from '@plataforma/nucleo';
+} from '@novutienda/nucleo';
 import { leerEstadoSitio } from './cambios.js';
 import { LIMITES_CONSOLA } from './limites.js';
 import { leerUsoMedios } from './medios/uso.js';

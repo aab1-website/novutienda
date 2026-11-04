@@ -1,4 +1,4 @@
-import { confirmarVenta, ErrorPos, resolverAprobacion, solicitarAprobacion } from '@plataforma/pos';
+import { confirmarVenta, ErrorPos, resolverAprobacion, solicitarAprobacion } from '@novutienda/pos';
 import { describe, expect, it } from 'vitest';
 import { T, UUID, abrir, adm, caj, caj2, carritoP1, crearEntorno, efectivo, eventos, sup, sup2, type Entorno } from './ayudas.js';
 

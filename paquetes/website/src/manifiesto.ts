@@ -1,4 +1,4 @@
-import type { ManifiestoModulo } from '@plataforma/nucleo';
+import type { ManifiestoModulo } from '@novutienda/nucleo';
 
 /**
  * Manifiesto del módulo website. El sitio público NO lee Firestore desde el navegador:

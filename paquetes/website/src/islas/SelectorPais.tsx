@@ -1,5 +1,5 @@
 import { useEffect, useState } from 'preact/hooks';
-import type { Mercado } from '@plataforma/nucleo';
+import type { Mercado } from '@novutienda/nucleo';
 import { leerMercado, monedaDe } from '../lib/mercado.js';
 import { Dialogo } from './Dialogo.js';
 import { useMercado } from './estado.js';

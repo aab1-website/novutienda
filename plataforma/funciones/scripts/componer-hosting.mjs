@@ -32,7 +32,7 @@ if (import.meta.url === `file://${process.argv[1]}`) {
   const rutaFirebase = argumento('firebase', 'firebase.json');
   const rutaCabeceras = argumento('cabeceras', 'dist/website/_cabeceras.json');
   if (!existsSync(rutaCabeceras)) {
-    console.error(`componer-hosting: falta ${rutaCabeceras}; compile el sitio antes (pnpm --filter @plataforma/website build).`);
+    console.error(`componer-hosting: falta ${rutaCabeceras}; compile el sitio antes (pnpm --filter @novutienda/website build).`);
     process.exit(1);
   }
   const resultado = componer(JSON.parse(readFileSync(rutaFirebase, 'utf8')), JSON.parse(readFileSync(rutaCabeceras, 'utf8')));

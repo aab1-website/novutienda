@@ -4,9 +4,9 @@
 import {
   EntradaInvalida, actualizarProducto, crearProducto, esDisponible, leerDocumentoProducto, leerExistencias, leerProducto,
   rutaColeccionProductos, skuDesdeId, UBICACION_DISPONIBILIDAD, type Autor, type CambiosProducto, type ProductoLeido,
-} from '@plataforma/inventarios';
-import type { BaseDatosIdentidad, TransaccionIdentidad } from '@plataforma/nucleo';
-import type { CatalogoPuerto, Existencia, PrecioUSD, ProductoCatalogo } from '@plataforma/consola';
+} from '@novutienda/inventarios';
+import type { BaseDatosIdentidad, TransaccionIdentidad } from '@novutienda/nucleo';
+import type { CatalogoPuerto, Existencia, PrecioUSD, ProductoCatalogo } from '@novutienda/consola';
 import type { LectorColecciones } from './colecciones.js';
 import { centavosADolares, dolaresACentavos } from './producto-inventarios.js';
 

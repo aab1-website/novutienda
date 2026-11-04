@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { precioFinal, type Redondeo } from '@plataforma/nucleo';
+import { precioFinal, type Redondeo } from '@novutienda/nucleo';
 import { almacenMemoria } from './almacen.js';
 import { crearClienteCotizacion, leerCotizacionApi, VIGENCIA_CACHE_MS, type DepsCotizacion, type RespuestaFetch } from './cotizacion-cliente.js';
 import { precioLocal, vistaPrecio } from './precio-vista.js';

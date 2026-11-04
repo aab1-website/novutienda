@@ -1,7 +1,7 @@
-import { validarEvento } from '@plataforma/nucleo';
+import { validarEvento } from '@novutienda/nucleo';
 import {
   abrirTurno, aprobarAnulacion, cerrarTurno, cobrarCredito, confirmarVenta, ErrorPos, reconstruirTotales, registrarMovimientoCaja, solicitarAnulacion,
-} from '@plataforma/pos';
+} from '@novutienda/pos';
 import { describe, expect, it } from 'vitest';
 import { T, TURNO, UUID, abrir, adm, auditoria, caj, caj2, carritoP1, crearEntorno, efectivo, eventos, stock, sup, venderP1 } from './ayudas.js';
 

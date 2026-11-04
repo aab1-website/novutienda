@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useState } from 'preact/hooks';
-import type { Mercado, Redondeo } from '@plataforma/nucleo';
+import type { Mercado, Redondeo } from '@novutienda/nucleo';
 import { filtrarProductos } from '../contenido/consultas.js';
 import { parsearMonto } from '../lib/dinero.js';
 import { monedaDe } from '../lib/mercado.js';

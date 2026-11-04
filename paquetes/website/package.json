@@ -1,5 +1,5 @@
 {
-  "name": "@plataforma/website",
+  "name": "@novutienda/website",
   "version": "0.1.0",
   "private": true,
   "type": "module",
@@ -15,7 +15,7 @@
   },
   "dependencies": {
     "@astrojs/preact": "6.1.1",
-    "@plataforma/nucleo": "workspace:*",
+    "@novutienda/nucleo": "workspace:*",
     "astro": "7.4.2",
     "preact": "10.29.8"
   },

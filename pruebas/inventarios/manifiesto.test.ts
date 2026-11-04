@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { crearRegistro, manifiestoNucleo, type ManifiestoModulo } from '@plataforma/nucleo';
+import { crearRegistro, manifiestoNucleo, type ManifiestoModulo } from '@novutienda/nucleo';
 import { aplicarSalida, EntradaInvalida, ingresar, manifiestoInventarios, prepararSalida } from './api.js';
 import { ADM, altaProducto, cargar, CAJ, doc, nuevoEntorno, op, producto, SUP, T, tenantOk } from './entorno.js';
 

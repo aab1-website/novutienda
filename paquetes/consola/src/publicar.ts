@@ -1,4 +1,4 @@
-import { registrarAuditoria, type Actor } from '@plataforma/nucleo';
+import { registrarAuditoria, type Actor } from '@novutienda/nucleo';
 import { leerEstadoSitio } from './cambios.js';
 import { ErrorConsola } from './errores.js';
 import type { FichaWeb } from './fichas.js';

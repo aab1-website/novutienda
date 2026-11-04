@@ -7,7 +7,7 @@ import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import sharp from 'sharp';
 import { describe, expect, it, vi } from 'vitest';
-import { planificarProcesamiento } from '@plataforma/consola';
+import { planificarProcesamiento } from '@novutienda/consola';
 import { binariosDeVideo, crearProcesadorMedios, procesadorVideo } from '../../plataforma/adaptadores/firebase/index.js';
 import { hayEmulador, herramientas, unico } from './ayudas.js';
 

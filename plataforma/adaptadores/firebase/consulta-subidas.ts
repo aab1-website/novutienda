@@ -1,7 +1,7 @@
 // `ConsultaSubidas` de la consola sobre Firestore. Usa el índice compuesto (estado, venceEn) de
 // `firestore.indexes.json`: las más antiguas primero, que son las que hay que limpiar.
 import type { Firestore } from 'firebase-admin/firestore';
-import type { ConsultaSubidas } from '@plataforma/consola';
+import type { ConsultaSubidas } from '@novutienda/consola';
 
 export function crearConsultaSubidas(firestore: Firestore): ConsultaSubidas {
   return {

@@ -1,4 +1,4 @@
-import type { MotivoStockCambiado, Rol, TransaccionIdentidad } from '@plataforma/nucleo';
+import type { MotivoStockCambiado, Rol, TransaccionIdentidad } from '@novutienda/nucleo';
 import { aplicarPlan, type Contexto } from './aplicar.js';
 import { EntradaInvalida, OperacionConflicto, SinPermiso } from './errores.js';
 import { hashCarga } from './hash.js';

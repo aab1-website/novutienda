@@ -1,5 +1,5 @@
 import { beforeEach, describe, expect, it } from 'vitest';
-import type { SobreEvento } from '@plataforma/nucleo';
+import type { SobreEvento } from '@novutienda/nucleo';
 import {
   aplicarSalida,
   calcularFirma,

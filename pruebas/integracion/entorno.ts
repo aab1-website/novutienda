@@ -2,9 +2,9 @@
 // los puertos reales de la plataforma y los datos mínimos (tenant, almacenes, cotizaciones, productos).
 import {
   UBICACIONES, crearProducto, crearUbicacion, fijarReloj, ingresar, type Autor, type EntradaProducto,
-} from '@plataforma/inventarios';
-import { cargarManual, leerCotizacion, type CopiaCotizacion, type Mercado, type Redondeo } from '@plataforma/nucleo';
-import type { ActorPos, DepsPos } from '@plataforma/pos';
+} from '@novutienda/inventarios';
+import { cargarManual, leerCotizacion, type CopiaCotizacion, type Mercado, type Redondeo } from '@novutienda/nucleo';
+import type { ActorPos, DepsPos } from '@novutienda/pos';
 import {
   BandejaMemoria, almacenCotizacionesDesde, catalogoParaPos, consumidoresDePlataforma, crearCatalogoConsola, ejecutorRecibosDesde,
   inventariosParaPos,

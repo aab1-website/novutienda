@@ -1,4 +1,4 @@
-import { ZONA_HORARIA, type MotivoStockCambiado, type Rol, type TransaccionMin } from '@plataforma/nucleo';
+import { ZONA_HORARIA, type MotivoStockCambiado, type Rol, type TransaccionMin } from '@novutienda/nucleo';
 import { ErrorInventario, EstadoInvalido, ProductoInactivo, SerieNoDisponible, StockInsuficiente } from './errores.js';
 import { esDisponible, UBICACION_DISPONIBILIDAD } from './disponibilidad.js';
 import { idExistencia, idUnidad, ruta } from './ids.js';

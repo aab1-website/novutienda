@@ -4,7 +4,7 @@ Alcance: solo la propuesta comercial firmada y su Anexo A. Lo que no está ahí 
 
 Reglas comunes a todos los módulos:
 - Datos bajo `tenants/{tenantId}/...`. El navegador no escribe ventas, stock, movimientos, cotizaciones ni auditoría: solo el servidor (callables o Functions). Las reglas de Firestore se generan desde el manifiesto del módulo.
-- Un solo dueño por dato. Un módulo no importa el interior de otro: se comunica por eventos v1 (`paquetes/nucleo/src/eventos`) o por la API pública de `@plataforma/nucleo`.
+- Un solo dueño por dato. Un módulo no importa el interior de otro: se comunica por eventos v1 (`paquetes/nucleo/src/eventos`) o por la API pública de `@novutienda/nucleo`.
 - Cada operación lleva un `operacionId` determinista; reintentar no duplica nada (transacción única, `create()` para los movimientos).
 - Montos en enteros de centavos. Monedas: BOB, USD, ARS. Cada venta guarda la cotización usada (`CopiaCotizacion`).
 - Roles: `caj` (vendedor), `sup` (supervisor), `adm` (administrador). Máximo 3 usuarios, 1 caja activa por turno, 200 productos, 3 almacenes (`tienda`, `deposito-1`, `deposito-2`). Todos inician sesión con correo verificado y contraseña.

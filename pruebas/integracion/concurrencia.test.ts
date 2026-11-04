@@ -1,6 +1,6 @@
-import { SerieNoDisponible, StockInsuficiente, calcularFirma, confirmarPedidoFirmado } from '@plataforma/inventarios';
-import { abrirTurno, confirmarVenta } from '@plataforma/pos';
-import { manejarVentaConfirmada, type Recibo } from '@plataforma/recibos';
+import { SerieNoDisponible, StockInsuficiente, calcularFirma, confirmarPedidoFirmado } from '@novutienda/inventarios';
+import { abrirTurno, confirmarVenta } from '@novutienda/pos';
+import { manejarVentaConfirmada, type Recibo } from '@novutienda/recibos';
 import { beforeEach, describe, expect, it } from 'vitest';
 import { T, UUID, altaProducto, cargarStock, caj, contar, doc, entornoListo, producto, type Entorno } from './entorno.js';
 import { verificarInvariantes } from './invariantes.js';

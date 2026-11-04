@@ -1,5 +1,5 @@
 {
-  "name": "@plataforma/funciones",
+  "name": "@novutienda/funciones",
   "version": "0.1.0",
   "private": true,
   "type": "module",
@@ -16,12 +16,12 @@
     "zod": "4.6.7"
   },
   "devDependencies": {
-    "@plataforma/consola": "workspace:*",
-    "@plataforma/inventarios": "workspace:*",
-    "@plataforma/nucleo": "workspace:*",
-    "@plataforma/pos": "workspace:*",
-    "@plataforma/recibos": "workspace:*",
-    "@plataforma/website": "workspace:*",
+    "@novutienda/consola": "workspace:*",
+    "@novutienda/inventarios": "workspace:*",
+    "@novutienda/nucleo": "workspace:*",
+    "@novutienda/pos": "workspace:*",
+    "@novutienda/recibos": "workspace:*",
+    "@novutienda/website": "workspace:*",
     "esbuild": "0.28.2"
   }
 }

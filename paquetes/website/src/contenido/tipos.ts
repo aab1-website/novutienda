@@ -6,7 +6,7 @@
  * Los precios se guardan en USD por mercado; el precio final lo calcula `precioFinal`
  * del núcleo con la cotización oficial. Un precio base 0 significa «consultar».
  */
-import type { Mercado, Redondeo } from '@plataforma/nucleo';
+import type { Mercado, Redondeo } from '@novutienda/nucleo';
 
 /** Lista cerrada de plantillas de color (ver `plantillas/plantillas.ts`). */
 export const IDS_PLANTILLA = ['cielo', 'bosque', 'ambar', 'grafito', 'ciruela'] as const;

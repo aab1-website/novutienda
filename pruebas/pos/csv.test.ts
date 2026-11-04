@@ -1,5 +1,5 @@
-import { manifiestoNucleo, crearRegistro, type ManifiestoModulo } from '@plataforma/nucleo';
-import { aCsv, celdaCsv, csvMovimientosCaja, csvVentas, etiquetaPago, formatoMonto, manifiestoPos, type VentaPos } from '@plataforma/pos';
+import { manifiestoNucleo, crearRegistro, type ManifiestoModulo } from '@novutienda/nucleo';
+import { aCsv, celdaCsv, csvMovimientosCaja, csvVentas, etiquetaPago, formatoMonto, manifiestoPos, type VentaPos } from '@novutienda/pos';
 import { describe, expect, it } from 'vitest';
 
 describe('CSV', () => {

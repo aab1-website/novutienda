@@ -4,7 +4,7 @@ import tseslint from 'typescript-eslint';
 
 // Red secundaria: la verificación principal de fronteras es pruebas/fronteras.
 const sinProfundas = {
-  group: ['@plataforma/*/src', '@plataforma/*/src/**', '**/src/**'],
+  group: ['@novutienda/*/src', '@novutienda/*/src/**', '**/src/**'],
   message: 'Importación profunda: use la entrada pública del paquete.',
 };
 
@@ -27,7 +27,7 @@ export default tseslint.config(
         {
           patterns: [
             sinProfundas,
-            { group: ['@plataforma/*', '@tenant/*'], message: 'nucleo no depende de otros paquetes.' },
+            { group: ['@novutienda/*', '@tenant/*'], message: 'nucleo no depende de otros paquetes.' },
           ],
         },
       ],
@@ -43,14 +43,14 @@ export default tseslint.config(
         {
           patterns: [
             sinProfundas,
-            { group: ['@plataforma/nucleo/*', '@tenant/*'], message: 'Use solo @plataforma/nucleo.' },
+            { group: ['@novutienda/nucleo/*', '@tenant/*'], message: 'Use solo @novutienda/nucleo.' },
           ],
         },
       ],
     },
   },
   {
-    // Los tenants: solo @plataforma/nucleo/extension.
+    // Los tenants: solo @novutienda/nucleo/extension.
     files: ['tenants/**/*.ts'],
     rules: {
       'no-restricted-imports': [
@@ -58,7 +58,7 @@ export default tseslint.config(
         {
           patterns: [
             sinProfundas,
-            { group: ['@plataforma/*', '!@plataforma/nucleo/extension'], message: 'Los tenants solo usan @plataforma/nucleo/extension.' },
+            { group: ['@novutienda/*', '!@novutienda/nucleo/extension'], message: 'Los tenants solo usan @novutienda/nucleo/extension.' },
           ],
         },
       ],

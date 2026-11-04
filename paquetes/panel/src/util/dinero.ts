@@ -1,4 +1,4 @@
-import type { Moneda } from '@plataforma/nucleo';
+import type { Moneda } from '@novutienda/nucleo';
 
 const PREFIJO: Readonly<Record<Moneda, string>> = { BOB: 'Bs', USD: 'USD', ARS: 'ARS' };
 

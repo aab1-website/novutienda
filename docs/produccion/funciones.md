@@ -1,6 +1,6 @@
 # Funciones del servidor (Cloud Functions v2, us-east1, Node 22)
 
-Paquete `@plataforma/funciones` (`plataforma/funciones/`). Adaptadores reales en `plataforma/adaptadores/firebase/`.
+Paquete `@novutienda/funciones` (`plataforma/funciones/`). Adaptadores reales en `plataforma/adaptadores/firebase/`.
 Todo lo que escribe ventas, stock, movimientos, cotizaciones o auditoría pasa por estas funciones; el navegador solo lee,
 según las reglas de Firestore. Región `us-east1` en todo. No hay identificadores del proyecto ni secretos en el repositorio.
 
@@ -225,7 +225,7 @@ Pruebas contra el emulador: `pnpm test:funciones` (puertos de `firebase.json`; p
   `tenants/{t}/reconstrucciones`. No están en ningún manifiesto, así que las reglas de Firestore las niegan al navegador (correcto). Si el panel debe **leerlas
   directo** (alertas), hace falta declararlas en un manifiesto; mientras tanto se leen por `consola.alertas`.
 - **Contrato del catálogo:** «`precio` (unidades) y `precioCentavos` (mismo entero)» es ambiguo; se implementó `precio` = monto decimal y `precioCentavos` = ese monto × 100.
-- **Plantillas del sitio:** `@plataforma/consola` admite `marfil, oceano, bosque, terracota, grafito`; `@plataforma/website` define `cielo, bosque, ambar, grafito, ciruela`. No coinciden.
+- **Plantillas del sitio:** `@novutienda/consola` admite `marfil, oceano, bosque, terracota, grafito`; `@novutienda/website` define `cielo, bosque, ambar, grafito, ciruela`. No coinciden.
 - **Adaptador de Recibos en memoria:** `ejecutorRecibosDesde` (en `plataforma/adaptadores/`) exige leer antes de `actualizar`, y `enviarRecibo` actualiza en una transacción nueva
   sin leer: falla. Las funciones usan `crearEjecutorRecibos` (Firestore, `update` nativo). Conviene corregirlo o retirarlo en la próxima integración.
 - **Enlace del PDF:** `enviarRecibo` guarda el PDF en una ruta privada y firma una URL v4 de hasta 7 días; el enlace de WhatsApp caduca a los 7 días. La cuenta de servicio de

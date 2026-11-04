@@ -1,4 +1,4 @@
-import { esTenantIdValido } from '@plataforma/nucleo';
+import { esTenantIdValido } from '@novutienda/nucleo';
 import { EntradaInvalida } from './errores.js';
 
 /** Validación estricta: lo que no cumple se rechaza, nunca se corrige (sin trim, sin minúsculas). */

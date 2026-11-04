@@ -1,4 +1,4 @@
-import { esTenantIdValido } from '@plataforma/nucleo';
+import { esTenantIdValido } from '@novutienda/nucleo';
 import { ErrorRecibo } from './errores.js';
 
 const SEGURO = /^[A-Za-z0-9._-]+$/;

@@ -1,4 +1,4 @@
-import type { Moneda, TransaccionIdentidad } from '@plataforma/nucleo';
+import type { Moneda, TransaccionIdentidad } from '@novutienda/nucleo';
 import {
   VIGENCIA_APROBACION_POR_DEFECTO_MS, ahoraDe, auditar, exigirActor, exigirCentavos, exigirRol, exigirTenant, exigirTexto, exigirUuid,
   leerObligatorio, rutaAprobacion, type DepsPos,

@@ -1,7 +1,7 @@
 // Tipos del contrato del panel. Se re-declaran (no se importan de los módulos) para que el panel no dependa de su
 // código: cada tipo copia la forma serializable que devuelve la función pública del módulo indicado. Los montos son
 // centavos enteros, igual que en el POS. Las fechas viajan como milisegundos (`...Ms`) o texto ISO, como en el módulo.
-import type { CopiaCotizacion, Mercado, Moneda, Rol } from '@plataforma/nucleo';
+import type { CopiaCotizacion, Mercado, Moneda, Rol } from '@novutienda/nucleo';
 
 export type { CopiaCotizacion, Mercado, Moneda, Rol };
 

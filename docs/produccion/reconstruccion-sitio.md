@@ -38,4 +38,4 @@ Errores: `401 firma_invalida`, `400 tenant_invalido | estado_invalido | entrada_
    `Publicado` → contenido del sitio también es de esa ola) y despliega el sitio.
 4. Cierra con `POST …/estado` `completada` o `fallida`.
 
-El formato del contenido de `publicado/` es el de `construirPublicado` de `@plataforma/consola`.
+El formato del contenido de `publicado/` es el de `construirPublicado` de `@novutienda/consola`.

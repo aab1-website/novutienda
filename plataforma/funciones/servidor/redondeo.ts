@@ -2,7 +2,7 @@
 // 04/11/2026): BOB con dos decimales; ARS al múltiplo de 100 más cercano. Sin documento rige esa política;
 // con un documento inválido NO se adivina: se falla (un precio mal redondeado se cobra).
 import { z } from 'zod';
-import type { BaseDatosIdentidad, Redondeo } from '@plataforma/nucleo';
+import type { BaseDatosIdentidad, Redondeo } from '@novutienda/nucleo';
 
 export const REDONDEO_POR_DEFECTO: Redondeo = {
   BOB: { tipo: 'decimales', decimales: 2, modo: 'cercano' },

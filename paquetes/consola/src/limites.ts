@@ -1,4 +1,4 @@
-import { PLANES } from '@plataforma/nucleo';
+import { PLANES } from '@novutienda/nucleo';
 
 const MIB = 1024 * 1024;
 

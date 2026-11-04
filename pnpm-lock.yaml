@@ -19,25 +19,25 @@ importers:
       '@firebase/rules-unit-testing':
         specifier: 6.0.0
         version: 6.0.0(firebase@13.2.0)
-      '@plataforma/consola':
+      '@novutienda/consola':
         specifier: workspace:*
         version: link:paquetes/consola
-      '@plataforma/inventarios':
+      '@novutienda/inventarios':
         specifier: workspace:*
         version: link:paquetes/inventarios
-      '@plataforma/nucleo':
+      '@novutienda/nucleo':
         specifier: workspace:*
         version: link:paquetes/nucleo
-      '@plataforma/panel':
+      '@novutienda/panel':
         specifier: workspace:*
         version: link:paquetes/panel
-      '@plataforma/pos':
+      '@novutienda/pos':
         specifier: workspace:*
         version: link:paquetes/pos
-      '@plataforma/recibos':
+      '@novutienda/recibos':
         specifier: workspace:*
         version: link:paquetes/recibos
-      '@plataforma/website':
+      '@novutienda/website':
         specifier: workspace:*
         version: link:paquetes/website
       '@types/node':
@@ -73,13 +73,13 @@ importers:
 
   paquetes/consola:
     dependencies:
-      '@plataforma/nucleo':
+      '@novutienda/nucleo':
         specifier: workspace:*
         version: link:../nucleo
 
   paquetes/inventarios:
     dependencies:
-      '@plataforma/nucleo':
+      '@novutienda/nucleo':
         specifier: workspace:*
         version: link:../nucleo
 
@@ -91,7 +91,7 @@ importers:
 
   paquetes/panel:
     dependencies:
-      '@plataforma/nucleo':
+      '@novutienda/nucleo':
         specifier: workspace:*
         version: link:../nucleo
       firebase:
@@ -128,13 +128,13 @@ importers:
 
   paquetes/pos:
     dependencies:
-      '@plataforma/nucleo':
+      '@novutienda/nucleo':
         specifier: workspace:*
         version: link:../nucleo
 
   paquetes/recibos:
     dependencies:
-      '@plataforma/nucleo':
+      '@novutienda/nucleo':
         specifier: workspace:*
         version: link:../nucleo
 
@@ -143,7 +143,7 @@ importers:
       '@astrojs/preact':
         specifier: 6.1.1
         version: 6.1.1(@babel/core@7.29.7)(@types/node@22.20.5)(esbuild@0.28.2)(preact@10.29.8)(yaml@2.9.1)
-      '@plataforma/nucleo':
+      '@novutienda/nucleo':
         specifier: workspace:*
         version: link:../nucleo
       astro:
@@ -175,22 +175,22 @@ importers:
         specifier: 4.6.7
         version: 4.6.7
     devDependencies:
-      '@plataforma/consola':
+      '@novutienda/consola':
         specifier: workspace:*
         version: link:../../paquetes/consola
-      '@plataforma/inventarios':
+      '@novutienda/inventarios':
         specifier: workspace:*
         version: link:../../paquetes/inventarios
-      '@plataforma/nucleo':
+      '@novutienda/nucleo':
         specifier: workspace:*
         version: link:../../paquetes/nucleo
-      '@plataforma/pos':
+      '@novutienda/pos':
         specifier: workspace:*
         version: link:../../paquetes/pos
-      '@plataforma/recibos':
+      '@novutienda/recibos':
         specifier: workspace:*
         version: link:../../paquetes/recibos
-      '@plataforma/website':
+      '@novutienda/website':
         specifier: workspace:*
         version: link:../../paquetes/website
       esbuild:

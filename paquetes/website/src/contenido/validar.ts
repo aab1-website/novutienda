@@ -3,7 +3,7 @@
  * archivo de ejemplo) se comprueba antes de generar una sola página. Un contenido
  * inválido detiene el build con la lista completa de errores, no solo el primero.
  */
-import type { Mercado } from '@plataforma/nucleo';
+import type { Mercado } from '@novutienda/nucleo';
 import {
   IDS_ICONO, IDS_PLANTILLA, LIMITES_SITIO,
   type Bloque, type Contenido, type Foto, type IdIcono, type IdPlantilla, type Producto, type Seccion,

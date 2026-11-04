@@ -4,7 +4,7 @@
  * servicios reales). Orden: método, tipo, tamaño, límite de tasa, App Check, validación,
  * trampa para bots, reCAPTCHA y, solo entonces, guardar. Los registros no llevan datos personales.
  */
-import type { Mercado } from '@plataforma/nucleo';
+import type { Mercado } from '@novutienda/nucleo';
 import { limpiarTexto, respuestaJson, type RespuestaHttp } from './http.js';
 import type { LimiteTasa } from './limite-tasa.js';
 

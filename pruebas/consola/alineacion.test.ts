@@ -1,8 +1,8 @@
 // La consola frente a Inventarios REAL (por los adaptadores de la plataforma): campos alineados, alta y auditoría
 // atómicas, conversión de unidades y SKU derivado. Reutiliza el entorno de integración (solo lectura de sus ayudas).
-import { crearProductoConsola, editarProductoConsola, validarDatosProducto } from '@plataforma/consola';
-import { skuDesdeId } from '@plataforma/inventarios';
-import type { Actor, BaseDatosIdentidad } from '@plataforma/nucleo';
+import { crearProductoConsola, editarProductoConsola, validarDatosProducto } from '@novutienda/consola';
+import { skuDesdeId } from '@novutienda/inventarios';
+import type { Actor, BaseDatosIdentidad } from '@novutienda/nucleo';
 import { beforeEach, describe, expect, it } from 'vitest';
 import { centavosADolares, dolaresACentavos } from '../../plataforma/adaptadores/index.js';
 import { T, doc, entornoListo, type Entorno } from '../integracion/entorno.js';

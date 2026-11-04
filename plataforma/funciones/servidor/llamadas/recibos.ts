@@ -6,7 +6,7 @@ import { z } from 'zod';
 import {
   buscarComprobantes, EnviadorWaMe, enviarRecibo, generarPdfRecibo, guardarPlantilla, plantillaVigente, referenciarFacturaSuma,
   renderizarReciboHtml, rutaPlantilla, rutaRecibo, type Recibo,
-} from '@plataforma/recibos';
+} from '@novutienda/recibos';
 import { accion, actorPos, type Contexto, type TablaAcciones } from './marco.js';
 import { ID, LIMITE, OBJETO, VACIO, objeto } from './comunes.js';
 

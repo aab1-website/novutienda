@@ -2,8 +2,8 @@
 import { readFileSync } from 'node:fs';
 import { fileURLToPath } from 'node:url';
 import { beforeAll, describe, expect, it, vi } from 'vitest';
-import { publicarSitio } from '@plataforma/consola';
-import { rutaCotizacion, type FetchLike, type SobreEvento } from '@plataforma/nucleo';
+import { publicarSitio } from '@novutienda/consola';
+import { rutaCotizacion, type FetchLike, type SobreEvento } from '@novutienda/nucleo';
 import { entregarEvento, sobreDesdeDocumento } from '../../plataforma/funciones/servidor/bus.js';
 import { crearEntorno, type Entorno } from '../../plataforma/funciones/servidor/entorno.js';
 import { crearNotificador } from '../../plataforma/funciones/servidor/notificador.js';

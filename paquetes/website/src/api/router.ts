@@ -2,7 +2,7 @@
  * Despachador de las tres rutas dinámicas del sitio. Es una función pura: la Cloud Function
  * (o el servidor de pruebas) traduce su petición a `PeticionApi` y devuelve lo que sale de aquí.
  */
-import type { CopiaCotizacion, Mercado } from '@plataforma/nucleo';
+import type { CopiaCotizacion, Mercado } from '@novutienda/nucleo';
 import { manejarCotizacionSitio } from './cotizacion.js';
 import { manejarContacto, type DepsContacto } from './contacto.js';
 import { manejarDisponibilidad, type LectorDisponibilidad } from './disponibilidad.js';

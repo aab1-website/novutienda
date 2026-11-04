@@ -2,16 +2,16 @@
 // las entradas públicas de cada módulo (la comprobación de tipos corre con `pnpm typecheck`), y las listas cerradas
 // (roles, monedas, almacenes, plantillas, límites) deben coincidir.
 import { describe, expect, it } from 'vitest';
-import { PERMISOS } from '@plataforma/inventarios';
-import { ALMACENES_POS, MEDIOS_PAGO as MEDIOS_POS, MONEDAS_POS } from '@plataforma/pos';
-import { LIMITES_CONSOLA, PANTALLAS, PLANTILLAS } from '@plataforma/consola';
-import { UBICACIONES } from '@plataforma/inventarios';
-import { manifiestoPanel, MEDIOS_PAGO, MONEDAS, NOMBRES_CALLABLE, PLANTILLAS_SITIO, LIMITES_PANEL, ROLES_CALLABLE, UBICACIONES as UBIC_PANEL } from '@plataforma/panel';
-import type * as Panel from '@plataforma/panel';
-import type * as Pos from '@plataforma/pos';
-import type * as Inv from '@plataforma/inventarios';
-import type * as Rec from '@plataforma/recibos';
-import type * as Con from '@plataforma/consola';
+import { PERMISOS } from '@novutienda/inventarios';
+import { ALMACENES_POS, MEDIOS_PAGO as MEDIOS_POS, MONEDAS_POS } from '@novutienda/pos';
+import { LIMITES_CONSOLA, PANTALLAS, PLANTILLAS } from '@novutienda/consola';
+import { UBICACIONES } from '@novutienda/inventarios';
+import { manifiestoPanel, MEDIOS_PAGO, MONEDAS, NOMBRES_CALLABLE, PLANTILLAS_SITIO, LIMITES_PANEL, ROLES_CALLABLE, UBICACIONES as UBIC_PANEL } from '@novutienda/panel';
+import type * as Panel from '@novutienda/panel';
+import type * as Pos from '@novutienda/pos';
+import type * as Inv from '@novutienda/inventarios';
+import type * as Rec from '@novutienda/recibos';
+import type * as Con from '@novutienda/consola';
 
 /** `true` si todo valor de D sirve donde se espera O. */
 type Cabe<D, O> = [D] extends [O] ? true : false;

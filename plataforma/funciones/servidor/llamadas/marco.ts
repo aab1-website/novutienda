@@ -6,8 +6,8 @@
 import { logger } from 'firebase-functions';
 import { HttpsError, type CallableRequest } from 'firebase-functions/v2/https';
 import { z } from 'zod';
-import type { Actor, Rol } from '@plataforma/nucleo';
-import type { ActorPos } from '@plataforma/pos';
+import type { Actor, Rol } from '@novutienda/nucleo';
+import type { ActorPos } from '@novutienda/pos';
 import { traducirError } from '../../../adaptadores/firebase/index.js';
 import { autenticar, exigirAppCheck, personalDelTenant, type Sesion, type SesionTenant } from '../autenticacion.js';
 import type { Entorno } from '../entorno.js';

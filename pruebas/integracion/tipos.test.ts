@@ -1,10 +1,10 @@
 // Prueba de tipos: si los contratos del POS y las exportaciones reales de Inventarios divergen, este
 // archivo deja de compilar (`pnpm typecheck`). Lo que se ejecuta aquí es solo la forma en tiempo de
 // ejecución del cableado; las afirmaciones de tipos viven en las llamadas a `expectTypeOf`.
-import * as inventarios from '@plataforma/inventarios';
-import type { Autor, LineaSalida as LineaInventarios, ReferenciaSalida } from '@plataforma/inventarios';
-import type { Mercado } from '@plataforma/nucleo';
-import type { LineaSalida as LineaPos, ProductoCatalogo, PuertoCatalogo, PuertoInventarios, QuienMueve, ReferenciaMovimiento } from '@plataforma/pos';
+import * as inventarios from '@novutienda/inventarios';
+import type { Autor, LineaSalida as LineaInventarios, ReferenciaSalida } from '@novutienda/inventarios';
+import type { Mercado } from '@novutienda/nucleo';
+import type { LineaSalida as LineaPos, ProductoCatalogo, PuertoCatalogo, PuertoInventarios, QuienMueve, ReferenciaMovimiento } from '@novutienda/pos';
 import { describe, expect, expectTypeOf, it } from 'vitest';
 import { catalogoParaPos, inventariosParaPos } from '../../plataforma/adaptadores/index.js';
 

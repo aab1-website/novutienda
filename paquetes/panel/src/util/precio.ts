@@ -1,4 +1,4 @@
-import { aCentavos, precioFinal, type Mercado, type Moneda, type Redondeo } from '@plataforma/nucleo';
+import { aCentavos, precioFinal, type Mercado, type Moneda, type Redondeo } from '@novutienda/nucleo';
 import type { CotizacionVista } from '../api/tipos.js';
 
 /**

@@ -4,7 +4,7 @@ import { existsSync, readFileSync, readdirSync, statSync } from 'node:fs';
 import { join } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { describe, expect, it } from 'vitest';
-import { ARCHIVO_CABECERAS, ESTILO_ISLAS, estilosEnLinea, hashDe, scriptsEnLinea, verificarDist } from '@plataforma/website';
+import { ARCHIVO_CABECERAS, ESTILO_ISLAS, estilosEnLinea, hashDe, scriptsEnLinea, verificarDist } from '@novutienda/website';
 
 const DIST = fileURLToPath(new URL('../../dist/website', import.meta.url));
 const compilado = existsSync(join(DIST, ARCHIVO_CABECERAS));

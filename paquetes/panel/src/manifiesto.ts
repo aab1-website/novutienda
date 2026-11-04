@@ -1,4 +1,4 @@
-import type { ManifiestoModulo } from '@plataforma/nucleo';
+import type { ManifiestoModulo } from '@novutienda/nucleo';
 
 /**
  * Manifiesto del panel único de gestión. El panel es una SPA cliente: no es dueño de datos, no declara colecciones,

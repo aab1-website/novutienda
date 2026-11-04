@@ -1,11 +1,11 @@
 # Manifiesto del estándar DevSecOps (esquema: 02-pipelines/config/devsecops.schema.json;
 # convenciones: 00-gobernanza/00-convenciones.md; generado por bootstrap-repo.sh v2.5)
 version: 1
-proyecto: plataforma
+proyecto: novutienda
 modo: A            # A | B | B0 (ver 00-gobernanza/03-ambientes-modos-y-aprobaciones.md)
 cobertura_minima: 70
 componentes:
-  - nombre: plataforma
+  - nombre: novutienda
     ruta: ./
     stack: node
     proveedor: firebase

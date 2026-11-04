@@ -1,10 +1,10 @@
 import { describe, expect, it } from 'vitest';
-import { validarEvento, type DatosVentaAnuladaV1, type DatosVentaConfirmadaV1, type SobreEvento } from '@plataforma/nucleo';
+import { validarEvento, type DatosVentaAnuladaV1, type DatosVentaConfirmadaV1, type SobreEvento } from '@novutienda/nucleo';
 import {
   EnviadorSimulado, EnviadorWaMe, ReciboNoEncontrado, AccionNoPermitida, buscarComprobantes, enviarRecibo, escaparHtml,
   generarPdfRecibo, guardarPlantilla, manejarVentaAnulada, manejarVentaConfirmada, manifiestoRecibos, referenciarFacturaSuma,
   renderizarReciboHtml, rutaAnulacionPendiente, rutaPlantilla, rutaRecibo, validarPlantilla, type Recibo,
-} from '@plataforma/recibos';
+} from '@novutienda/recibos';
 import { DobleDb } from './doble-db.js';
 
 const cotizacion = { cotizacionId: 'BO-1', par: 'BOB/USD', valor: 6.96, fecha: '2026-11-04', fuente: 'BCB', estado: 'vigente' } as const;

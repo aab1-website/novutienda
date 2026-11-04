@@ -1,4 +1,4 @@
-import type { ColeccionManifiesto, ManifiestoModulo, Rol } from '@plataforma/nucleo';
+import type { ColeccionManifiesto, ManifiestoModulo, Rol } from '@novutienda/nucleo';
 
 const CONSULTA: readonly Rol[] = ['sup', 'adm'];
 

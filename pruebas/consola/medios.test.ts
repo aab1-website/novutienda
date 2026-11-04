@@ -2,8 +2,8 @@ import { beforeEach, describe, expect, it } from 'vitest';
 import {
   borrarMedio, contieneMetadatos, detectarArchivo, ErrorConsola, finalizarSubida, LIMITES_CONSOLA, limpiarSubidas, nombreVersion,
   planificarProcesamiento, reservarSubida, type DepsMedios,
-} from '@plataforma/consola';
-import { rutaContador } from '@plataforma/nucleo';
+} from '@novutienda/consola';
+import { rutaContador } from '@novutienda/nucleo';
 import {
   actor, AlmacenDoble, AVIF, CatalogoDoble, ConsultaDoble, EXE, HEIC, JPG, JPG_CON_EXIF, JPG_LIMPIO, MOV, MP4, nuevaDb, PNG, ProcesadorSimulado,
   RelojFijo, T, WEBM, WEBP,

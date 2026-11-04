@@ -4,7 +4,7 @@
 import { logger } from 'firebase-functions';
 import type { Firestore } from 'firebase-admin/firestore';
 import { FieldValue } from 'firebase-admin/firestore';
-import type { AvisoOperativo, Notificador } from '@plataforma/nucleo';
+import type { AvisoOperativo, Notificador } from '@novutienda/nucleo';
 
 const YA_EXISTE = 6;
 

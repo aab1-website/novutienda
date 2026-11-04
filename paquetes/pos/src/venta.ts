@@ -1,4 +1,4 @@
-import { aCentavos, precioFinal, type CopiaCotizacion, type Mercado, type Moneda, type TransaccionIdentidad } from '@plataforma/nucleo';
+import { aCentavos, precioFinal, type CopiaCotizacion, type Mercado, type Moneda, type TransaccionIdentidad } from '@novutienda/nucleo';
 import { leerAprobacionParaUso, marcarAprobacionUsada, type AprobacionLeida } from './aprobaciones.js';
 import { sumarTotales, deltaPorMedio } from './arqueo.js';
 import { TOTAL_MAXIMO, descuentoExcedeTope, validarPagos } from './calculo.js';

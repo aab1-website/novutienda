@@ -1,4 +1,4 @@
-import { registrarAuditoria } from '@plataforma/nucleo';
+import { registrarAuditoria } from '@novutienda/nucleo';
 import { AccionNoPermitida, ErrorRecibo, ReciboNoEncontrado } from './errores.js';
 import { rutaRecibo } from './rutas.js';
 import type { ActorAuditado, EjecutorRecibos } from './tipos.js';

@@ -3,7 +3,7 @@
 // el rol del claim `pl` (nunca de un campo enviado por el cliente). Cada fallo corta con un `HttpsError`.
 import { HttpsError, type CallableRequest } from 'firebase-functions/v2/https';
 import type { DecodedIdToken } from 'firebase-admin/auth';
-import { esTenantIdValido, esPropietario, proveedorDe, rolEn, type Rol } from '@plataforma/nucleo';
+import { esTenantIdValido, esPropietario, proveedorDe, rolEn, type Rol } from '@novutienda/nucleo';
 import type { Entorno } from './entorno.js';
 
 export interface Sesion {

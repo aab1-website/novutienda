@@ -1,4 +1,4 @@
-import type { RespuestaHttp } from '@plataforma/nucleo';
+import type { RespuestaHttp } from '@novutienda/nucleo';
 
 export type { RespuestaHttp };
 

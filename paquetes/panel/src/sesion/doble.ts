@@ -1,4 +1,4 @@
-import type { Rol } from '@plataforma/nucleo';
+import type { Rol } from '@novutienda/nucleo';
 import type { ResultadoInicio, Sesion, UsuarioSesion } from './sesion.js';
 
 export interface CuentaDoble {

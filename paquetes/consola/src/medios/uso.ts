@@ -1,4 +1,4 @@
-import type { TransaccionIdentidad } from '@plataforma/nucleo';
+import type { TransaccionIdentidad } from '@novutienda/nucleo';
 import { LIMITES_CONSOLA } from '../limites.js';
 import { ErrorConsola } from '../errores.js';
 import { rutaUsoMedios } from '../rutas.js';

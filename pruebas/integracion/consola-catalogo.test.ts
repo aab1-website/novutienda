@@ -1,6 +1,6 @@
-import { calcularDisponibilidadPublica, cambiarPrecioUSD, crearProductoConsola, editarProductoConsola, obtenerTablero, preciosDelDia } from '@plataforma/consola';
-import { LimiteDelPlan, verificarYReservar, type Actor } from '@plataforma/nucleo';
-import { abrirTurno, confirmarVenta } from '@plataforma/pos';
+import { calcularDisponibilidadPublica, cambiarPrecioUSD, crearProductoConsola, editarProductoConsola, obtenerTablero, preciosDelDia } from '@novutienda/consola';
+import { LimiteDelPlan, verificarYReservar, type Actor } from '@novutienda/nucleo';
+import { abrirTurno, confirmarVenta } from '@novutienda/pos';
 import { beforeEach, describe, expect, it } from 'vitest';
 import { REDONDEO, T, UUID, cargarStock, caj, cotizacionVigente, doc, entornoListo, type Entorno } from './entorno.js';
 import { verificarInvariantes } from './invariantes.js';

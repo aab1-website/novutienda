@@ -1,4 +1,4 @@
-import { rolEn, type Actor, type Rol } from '@plataforma/nucleo';
+import { rolEn, type Actor, type Rol } from '@novutienda/nucleo';
 import { ErrorConsola } from './errores.js';
 import { tenantValido } from './rutas.js';
 

@@ -8,7 +8,7 @@ import {
   validarClaim,
   validarSobre,
   type ManifiestoModulo,
-} from '@plataforma/nucleo';
+} from '@novutienda/nucleo';
 import { registroPlataforma } from '../plataforma/registro.js';
 
 const mod = (id: string, dependeDe: string[] = [], rutas: string[] = []): ManifiestoModulo => ({

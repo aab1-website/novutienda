@@ -2,7 +2,7 @@
 import {
   leerCotizacion, manejarCotizacion,
   type AlmacenCotizaciones, type CopiaCotizacion, type Mercado, type RespuestaHttp,
-} from '@plataforma/nucleo';
+} from '@novutienda/nucleo';
 
 /** Lector de cotizaciones de un tenant sobre el almacén inyectado (Firestore en producción). */
 export function lectorCotizacion(almacen: AlmacenCotizaciones, tenantId: string, ahora: () => number): (m: Mercado) => Promise<CopiaCotizacion> {

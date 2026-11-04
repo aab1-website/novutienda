@@ -1,6 +1,6 @@
 // Lectores públicos del documento de producto y de las existencias, tal como los escribe este módulo. Los
 // adaptadores (consola, POS) los usan en lugar de conocer rutas y campos.
-import type { TransaccionMin } from '@plataforma/nucleo';
+import type { TransaccionMin } from '@novutienda/nucleo';
 import { idExistencia, ruta, UBICACIONES, type UbicacionId } from './ids.js';
 
 type Datos = Readonly<Record<string, unknown>>;

@@ -1,5 +1,5 @@
-import { LimiteDelPlan, SinCotizacionUtilizable, validarEvento } from '@plataforma/nucleo';
-import { confirmarVenta, ErrorPos } from '@plataforma/pos';
+import { LimiteDelPlan, SinCotizacionUtilizable, validarEvento } from '@novutienda/nucleo';
+import { confirmarVenta, ErrorPos } from '@novutienda/pos';
 import { describe, expect, it } from 'vitest';
 import {
   AHORA, SerieNoDisponible, StockInsuficiente, T, UUID, abrir, adm, auditoria, caj, caj2, carritoP1, crearEntorno, efectivo, eventos, stock, sup,

@@ -1,7 +1,7 @@
 import {
   cobrarCredito, confirmarVenta, ErrorPos, guardarConfigPos, registrarMovimientoCaja, resolverAprobacion, solicitarAprobacion, validarConfigPos,
   CONFIG_POS_POR_DEFECTO, leerConfigPos, cerrarTurno,
-} from '@plataforma/pos';
+} from '@novutienda/pos';
 import { describe, expect, it } from 'vitest';
 import { T, TURNO, UUID, abrir, adm, auditoria, caj, caj2, carritoP1, crearEntorno, sup, venderP1 } from './ayudas.js';
 

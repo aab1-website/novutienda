@@ -1,4 +1,4 @@
-import type { Moneda } from '@plataforma/nucleo';
+import type { Moneda } from '@novutienda/nucleo';
 import { efectivoDisponible, sumarTotales } from './arqueo.js';
 import {
   ahoraDe, auditar, exigirActor, exigirCentavos, exigirTenant, exigirTexto, exigirUuid, leerObligatorio, rutaMovimiento, rutaTurno, type DepsPos,

@@ -1,4 +1,4 @@
-import type { CopiaCotizacion, Mercado, Moneda, Rol } from '@plataforma/nucleo';
+import type { CopiaCotizacion, Mercado, Moneda, Rol } from '@novutienda/nucleo';
 
 export type MedioPago = 'efectivo' | 'qr' | 'transferencia' | 'credito';
 export const MEDIOS_PAGO: readonly MedioPago[] = ['efectivo', 'qr', 'transferencia', 'credito'];

@@ -1,4 +1,4 @@
-import { LimiteDelPlan, ContadorCorrupto, PLANES, rutaContador, validarTenant, type TransaccionIdentidad } from '@plataforma/nucleo';
+import { LimiteDelPlan, ContadorCorrupto, PLANES, rutaContador, validarTenant, type TransaccionIdentidad } from '@novutienda/nucleo';
 import { EntradaInvalida, EstadoInvalido, NoEncontrado } from './errores.js';
 import { esDisponible, UBICACION_DISPONIBILIDAD } from './disponibilidad.js';
 import { esProductoId, esSku, exigirProducto, exigirSegmento, exigirUbicacion, idExistencia, ruta } from './ids.js';

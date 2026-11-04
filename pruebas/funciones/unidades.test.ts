@@ -2,11 +2,11 @@
 // el marco de los callables con un entorno falso.
 import { readFileSync } from 'node:fs';
 import { describe, expect, it, vi } from 'vitest';
-import { ErrorConsola } from '@plataforma/consola';
-import { EntradaInvalida, ErrorInventario, OperacionConflicto, SinPermiso, StockInsuficiente } from '@plataforma/inventarios';
-import { CargaNoAutorizada, ContadorCorrupto, ErrorEvento, ErrorIdentidad, LimiteDelPlan, SaltoSinConfirmar, SinCotizacionUtilizable } from '@plataforma/nucleo';
-import { ErrorPos, type CodigoErrorPos } from '@plataforma/pos';
-import { AccionNoPermitida, ErrorRecibo, ReciboNoEncontrado } from '@plataforma/recibos';
+import { ErrorConsola } from '@novutienda/consola';
+import { EntradaInvalida, ErrorInventario, OperacionConflicto, SinPermiso, StockInsuficiente } from '@novutienda/inventarios';
+import { CargaNoAutorizada, ContadorCorrupto, ErrorEvento, ErrorIdentidad, LimiteDelPlan, SaltoSinConfirmar, SinCotizacionUtilizable } from '@novutienda/nucleo';
+import { ErrorPos, type CodigoErrorPos } from '@novutienda/pos';
+import { AccionNoPermitida, ErrorRecibo, ReciboNoEncontrado } from '@novutienda/recibos';
 import {
   VideoNoDisponible, appCheckReal, appCheckSimulado, esEntornoDePruebas, recaptchaEnterprise, recaptchaSimulado, traducirError,
 } from '../../plataforma/adaptadores/firebase/index.js';

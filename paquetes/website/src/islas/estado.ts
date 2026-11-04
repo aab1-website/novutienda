@@ -1,5 +1,5 @@
 import { useEffect, useState } from 'preact/hooks';
-import type { Mercado } from '@plataforma/nucleo';
+import type { Mercado } from '@novutienda/nucleo';
 import { configCliente } from '../lib/config-cliente.js';
 import type { CotizacionCliente } from '../lib/cotizacion-cliente.js';
 import { EVENTOS, emitir, escuchar } from '../lib/eventos.js';

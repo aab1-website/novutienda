@@ -60,16 +60,16 @@ export function verificarFronteras(arbol: Arbol, dependencias: Dependencias = {}
         falla('ningún código importa a un tenant');
         continue;
       }
-      if (!imp.startsWith('@plataforma/')) continue; // dependencias externas: fuera de este control
+      if (!imp.startsWith('@novutienda/')) continue; // dependencias externas: fuera de este control
 
       if (z.zona === 'tenant') {
-        if (imp !== '@plataforma/nucleo/extension') {
-          falla('un tenant solo importa @plataforma/nucleo/extension');
+        if (imp !== '@novutienda/nucleo/extension') {
+          falla('un tenant solo importa @novutienda/nucleo/extension');
         }
       } else if (z.nombre === 'nucleo') {
         falla('nucleo no importa ningún paquete interno');
-      } else if (imp !== '@plataforma/nucleo' && !declaradas.some((d) => imp === `@plataforma/${d}`)) {
-        falla('solo @plataforma/nucleo (entrada pública) y lo que declare el manifiesto');
+      } else if (imp !== '@novutienda/nucleo' && !declaradas.some((d) => imp === `@novutienda/${d}`)) {
+        falla('solo @novutienda/nucleo (entrada pública) y lo que declare el manifiesto');
       }
     }
   }

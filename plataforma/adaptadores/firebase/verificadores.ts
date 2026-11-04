@@ -2,7 +2,7 @@
 // simulada para el emulador. La simulada SOLO se puede construir si el entorno declara que es un emulador
 // o una prueba: en producción, pedirla lanza (nunca se degrada la verificación por una variable olvidada).
 import type { AppCheck } from 'firebase-admin/app-check';
-import type { VerificadorAppCheck, VerificadorRecaptcha } from '@plataforma/website';
+import type { VerificadorAppCheck, VerificadorRecaptcha } from '@novutienda/website';
 
 export type EntornoMin = Readonly<Record<string, string | undefined>>;
 

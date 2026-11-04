@@ -1,7 +1,7 @@
 import {
   consumir, publicarEvento, registrarAuditoria, validarEvento,
   type DatosReciboEmitidoV1, type DatosVentaAnuladaV1, type DatosVentaConfirmadaV1, type SobreEvento,
-} from '@plataforma/nucleo';
+} from '@novutienda/nucleo';
 import { ErrorRecibo } from './errores.js';
 import { plantillaVigente } from './plantilla.js';
 import { reciboIdDe, rutaAnulacionPendiente, rutaPlantilla, rutaRecibo } from './rutas.js';

@@ -1,5 +1,5 @@
 /** Qué se muestra en lugar del precio. Usa `precioFinal` del núcleo: la misma función que el servidor. */
-import { precioFinal, type Mercado, type Redondeo } from '@plataforma/nucleo';
+import { precioFinal, type Mercado, type Redondeo } from '@novutienda/nucleo';
 import { formatearMonto } from './dinero.js';
 import type { CotizacionCliente } from './cotizacion-cliente.js';
 

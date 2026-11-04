@@ -1,4 +1,4 @@
-import { LimiteDelPlan, registrarAuditoria, type Actor } from '@plataforma/nucleo';
+import { LimiteDelPlan, registrarAuditoria, type Actor } from '@novutienda/nucleo';
 import { anotarCambio, leerEstadoSitio } from './cambios.js';
 import { aCsv, decodificarUtf8, ErrorCsv, MAX_BYTES_ARCHIVO, neutralizarCelda, parsearCsv } from './csv.js';
 import { ErrorConsola } from './errores.js';

@@ -1,8 +1,8 @@
 // Incoherencias entre módulos con el código de la lista del informe de integración. I-02 ya está corregida
 // (la prueba fija el comportamiento nuevo); si se corrige otra causa, la prueba debe actualizarse.
-import { StockInsuficiente } from '@plataforma/inventarios';
-import { ErrorPos, abrirTurno, confirmarVenta } from '@plataforma/pos';
-import type { Recibo } from '@plataforma/recibos';
+import { StockInsuficiente } from '@novutienda/inventarios';
+import { ErrorPos, abrirTurno, confirmarVenta } from '@novutienda/pos';
+import type { Recibo } from '@novutienda/recibos';
 import { describe, expect, it } from 'vitest';
 import { T, UUID, caj, doc, entornoListo } from './entorno.js';
 

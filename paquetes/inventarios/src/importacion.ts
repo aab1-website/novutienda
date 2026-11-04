@@ -1,4 +1,4 @@
-import type { TransaccionIdentidad } from '@plataforma/nucleo';
+import type { TransaccionIdentidad } from '@novutienda/nucleo';
 import { EntradaInvalida } from './errores.js';
 import { UBICACIONES, MAX_LINEAS } from './ids.js';
 import type { Autor, Datos } from './motor.js';

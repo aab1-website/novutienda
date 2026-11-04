@@ -5,7 +5,7 @@
 - Fase 0 (estándar DevSecOps, CLAUDE.md): hecha.
 - Ola 1a (andamiaje y registro de módulos): hecha y en el trunk del núcleo.
   - Monorepo pnpm (`paquetes/*`, `tenants/*`), TypeScript estricto, ESLint, Vitest con cobertura.
-  - `@plataforma/nucleo` (nombre provisional): tipos `Rol` y `ManifiestoModulo`, registro con orden topológico y rutas únicas, claim y sobre de eventos congelados.
+  - `@novutienda/nucleo` (nombre provisional): tipos `Rol` y `ManifiestoModulo`, registro con orden topológico y rutas únicas, claim y sobre de eventos congelados.
   - Prueba de fronteras entre paquetes.
 - Ola 1b (identidad, límites, auditoría, eventos, tipo de cambio, generador de reglas con matriz): integrada en el trunk del núcleo.
 - Ola 1c (infraestructura, rama `feat/nucleo-c-infra`, en curso):

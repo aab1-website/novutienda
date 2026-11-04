@@ -5,7 +5,7 @@
 // Reglas de Firestore que el adaptador no puede ocultar: las lecturas van ANTES de las escrituras (el SDK
 // lanza si se invierte el orden) y `create` falla si el documento ya existe.
 import { FieldValue, type DocumentSnapshot, type Firestore, type Transaction } from 'firebase-admin/firestore';
-import type { BaseDatosIdentidad, TransaccionIdentidad } from '@plataforma/nucleo';
+import type { BaseDatosIdentidad, TransaccionIdentidad } from '@novutienda/nucleo';
 import type { DocumentoListado, LectorColecciones } from '../colecciones.js';
 
 type Datos = Readonly<Record<string, unknown>>;

@@ -5,7 +5,7 @@ import { Timestamp } from 'firebase-admin/firestore';
 import sharp from 'sharp';
 import { beforeAll, describe, expect, it, vi } from 'vitest';
 import { crearAlmacenMedios, crearConsultaSubidas, crearEjecutorRecibos, crearGuardarContacto, crearLectorDisponibilidad, crearLimiteTasa, crearProcesadorMedios, hashClave, procesadorImagenes } from '../../plataforma/adaptadores/firebase/index.js';
-import { planificarProcesamiento } from '@plataforma/consola';
+import { planificarProcesamiento } from '@novutienda/consola';
 import { hayEmulador, herramientas, sembrarTenant, unico, type Herramientas } from './ayudas.js';
 
 vi.setConfig({ testTimeout: 60_000, hookTimeout: 60_000 });

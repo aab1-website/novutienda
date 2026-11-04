@@ -2,7 +2,7 @@
 // (`tenants/{t}/privado/...`); las versiones publicadas van a `tenants/{t}/publico/...` con caché inmutable.
 import { createHash } from 'node:crypto';
 import type { Storage } from 'firebase-admin/storage';
-import type { AlmacenMedios } from '@plataforma/consola';
+import type { AlmacenMedios } from '@novutienda/consola';
 
 export type Bucket = ReturnType<Storage['bucket']>;
 

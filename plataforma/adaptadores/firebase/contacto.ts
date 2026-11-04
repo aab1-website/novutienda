@@ -1,7 +1,7 @@
 // `GuardarContacto` del sitio sobre `tenants/{t}/contactos/{operacionId}`. El id es la clave de idempotencia
 // que eligió el navegador: reenviar el mismo formulario no crea un segundo documento.
 import { FieldValue, type Firestore } from 'firebase-admin/firestore';
-import type { GuardarContacto } from '@plataforma/website';
+import type { GuardarContacto } from '@novutienda/website';
 
 const YA_EXISTE = 6; // código gRPC ALREADY_EXISTS
 

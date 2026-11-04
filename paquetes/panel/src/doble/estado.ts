@@ -1,4 +1,4 @@
-import type { Rol } from '@plataforma/nucleo';
+import type { Rol } from '@novutienda/nucleo';
 import { ErrorApi } from '../api/errores.js';
 import type {
   AprobacionPos, Carrusel, CobroCredito, ConfigPos, ConfigSitio, ConteoVista, CotizacionesVigentes, CreditoVista, EntradaAuditoriaVista,

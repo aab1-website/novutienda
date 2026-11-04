@@ -1,4 +1,4 @@
-# @plataforma/website — sitio público
+# @novutienda/website — sitio público
 
 Sitio estático (Astro + Preact) con sus APIs dinámicas como funciones puras. Especificación: `docs/modulos/website.md`.
 

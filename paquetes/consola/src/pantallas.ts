@@ -1,4 +1,4 @@
-import type { Rol } from '@plataforma/nucleo';
+import type { Rol } from '@novutienda/nucleo';
 
 /**
  * Pantallas de la consola y el contrato de cada llamada. La interfaz visual no se construye en esta ola: esta lista es

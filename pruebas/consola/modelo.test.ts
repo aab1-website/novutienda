@@ -1,10 +1,10 @@
 import { describe, expect, it } from 'vitest';
-import * as consola from '@plataforma/consola';
-import * as nucleo from '@plataforma/nucleo';
+import * as consola from '@novutienda/consola';
+import * as nucleo from '@novutienda/nucleo';
 import {
   esPlantilla, manifiestoConsola, PANTALLAS, PLANTILLAS, validarCarrusel, validarConfigSitio, validarEnlace, validarFichaWeb, validarSeccion,
-} from '@plataforma/consola';
-import { crearRegistro, type ManifiestoModulo } from '@plataforma/nucleo';
+} from '@novutienda/consola';
+import { crearRegistro, type ManifiestoModulo } from '@novutienda/nucleo';
 
 describe('lista blanca de enlaces', () => {
   it.each([

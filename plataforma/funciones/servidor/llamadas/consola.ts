@@ -7,8 +7,8 @@ import {
   cambiarPrecioUSD, crearProductoConsola, editarProductoConsola, eliminarSeccion, exportarProductosCsv, guardarCarrusel,
   guardarConfigSitio, guardarFicha, guardarSeccion, importarProductos, obtenerTablero, ordenarSecciones, preciosDelDia, publicarSitio,
   simularImportacion, type DepsImportacion,
-} from '@plataforma/consola';
-import { asignarRol, leerCotizacion, quitarRol, SinCotizacionUtilizable, type CopiaCotizacion, type Mercado, type Rol } from '@plataforma/nucleo';
+} from '@novutienda/consola';
+import { asignarRol, leerCotizacion, quitarRol, SinCotizacionUtilizable, type CopiaCotizacion, type Mercado, type Rol } from '@novutienda/nucleo';
 import { accion, type Contexto, type TablaAcciones } from './marco.js';
 import { ID_PRODUCTO, LIMITE, OBJETO, VACIO, objeto } from './comunes.js';
 

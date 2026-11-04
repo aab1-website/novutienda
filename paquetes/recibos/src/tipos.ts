@@ -1,4 +1,4 @@
-import type { CopiaCotizacion, EjecutorTransacciones, Rol, TransaccionAuditoria, TransaccionBandeja } from '@plataforma/nucleo';
+import type { CopiaCotizacion, EjecutorTransacciones, Rol, TransaccionAuditoria, TransaccionBandeja } from '@novutienda/nucleo';
 
 export type Datos = Readonly<Record<string, unknown>>;
 

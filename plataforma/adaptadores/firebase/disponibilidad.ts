@@ -1,7 +1,7 @@
 // `LectorDisponibilidad` del sitio sobre `existenciasPublicas/{productoId}` (la proyección que Inventarios
 // recalcula con su regla única). Solo se lee el booleano `disponible`; nunca cantidades.
 import type { Firestore } from 'firebase-admin/firestore';
-import type { LectorDisponibilidad } from '@plataforma/website';
+import type { LectorDisponibilidad } from '@novutienda/website';
 
 export function crearLectorDisponibilidad(firestore: Firestore, tenantId: string): LectorDisponibilidad {
   return async (ids) => {

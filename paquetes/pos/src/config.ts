@@ -1,4 +1,4 @@
-import type { Moneda, Rol, TransaccionIdentidad } from '@plataforma/nucleo';
+import type { Moneda, Rol, TransaccionIdentidad } from '@novutienda/nucleo';
 import {
   ahoraDe, auditar, exigirActor, exigirRol, exigirTenant, leerObligatorio, rutaConfig, type DepsPos,
 } from './contexto.js';

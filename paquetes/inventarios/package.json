@@ -1,5 +1,5 @@
 {
-  "name": "@plataforma/inventarios",
+  "name": "@novutienda/inventarios",
   "version": "0.1.0",
   "private": true,
   "type": "module",
@@ -7,6 +7,6 @@
     ".": "./src/index.ts"
   },
   "dependencies": {
-    "@plataforma/nucleo": "workspace:*"
+    "@novutienda/nucleo": "workspace:*"
   }
 }

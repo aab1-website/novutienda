@@ -1,4 +1,4 @@
-import type { Mercado, Redondeo } from '@plataforma/nucleo';
+import type { Mercado, Redondeo } from '@novutienda/nucleo';
 import { vistaPrecio } from '../lib/precio-vista.js';
 import { useCotizacion, useMercado } from './estado.js';
 

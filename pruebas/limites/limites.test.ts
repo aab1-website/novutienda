@@ -8,7 +8,7 @@ import {
   PLANES,
   rutaContador,
   verificarYReservar,
-} from '@plataforma/nucleo';
+} from '@novutienda/nucleo';
 import { DobleDb } from './doble-db.js';
 
 const tenantOk = { plan: 'base', modulos: {}, zonaHoraria: 'America/La_Paz', monedas: ['BOB', 'USD', 'ARS'] };

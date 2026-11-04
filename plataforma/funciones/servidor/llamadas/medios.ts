@@ -3,7 +3,7 @@
 // tiempo. Normalmente la finaliza el disparador de Storage; la acción `finalizarSubida` es el camino explícito
 // (idempotente) para que el panel espere el resultado.
 import { z } from 'zod';
-import { borrarMedio, finalizarSubida, reservarSubida, type DepsMedios } from '@plataforma/consola';
+import { borrarMedio, finalizarSubida, reservarSubida, type DepsMedios } from '@novutienda/consola';
 import { accion, type Contexto, type TablaAcciones } from './marco.js';
 import { ID_PRODUCTO, LIMITE, objeto } from './comunes.js';
 

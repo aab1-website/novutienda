@@ -1,4 +1,4 @@
-import type { ArqueoMoneda, Moneda } from '@plataforma/nucleo';
+import type { ArqueoMoneda, Moneda } from '@novutienda/nucleo';
 import { ErrorPos } from './errores.js';
 import { MONEDAS_POS, type MedioPago, type MontosPorMoneda, type TotalesMoneda, type TotalesTurno, type TurnoPos } from './tipos.js';
 

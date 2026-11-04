@@ -1,7 +1,7 @@
-import { LimiteDelPlan, validarEvento } from '@plataforma/nucleo';
+import { LimiteDelPlan, validarEvento } from '@novutienda/nucleo';
 import {
   abrirTurno, calcularArqueo, cerrarTurno, cerrarTurnoForzado, ErrorPos, proyectarTurno, registrarMovimientoCaja, reconstruirTotales,
-} from '@plataforma/pos';
+} from '@novutienda/pos';
 import { describe, expect, it } from 'vitest';
 import { T, TURNO, UUID, abrir, adm, auditoria, caj, caj2, crearEntorno, eventos, sup, venderP1 } from './ayudas.js';
 

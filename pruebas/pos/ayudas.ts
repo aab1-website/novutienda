@@ -1,7 +1,7 @@
-import type { Redondeo, TransaccionIdentidad } from '@plataforma/nucleo';
+import type { Redondeo, TransaccionIdentidad } from '@novutienda/nucleo';
 import type {
   ActorPos, DepsPos, LineaSalida, ProductoCatalogo, PuertoCatalogo, PuertoInventarios, ReferenciaMovimiento,
-} from '@plataforma/pos';
+} from '@novutienda/pos';
 import { DobleDb } from './doble-db.js';
 
 export const T = 'tenant-a';
@@ -112,7 +112,7 @@ export const eventos = (e: Entorno, tipo?: string): Record<string, unknown>[] =>
 
 export const auditoria = (e: Entorno): Record<string, unknown>[] => e.db.coleccion(`tenants/${T}/auditoria`);
 
-import { abrirTurno, confirmarVenta, type Carrito } from '@plataforma/pos';
+import { abrirTurno, confirmarVenta, type Carrito } from '@novutienda/pos';
 
 export const TURNO = UUID(900);
 

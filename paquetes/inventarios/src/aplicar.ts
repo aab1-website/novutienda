@@ -5,7 +5,7 @@ import {
   type Resumen,
   type TransaccionBandeja,
   type TransaccionIdentidad,
-} from '@plataforma/nucleo';
+} from '@novutienda/nucleo';
 import { idMovimiento, idUnidad, ruta } from './ids.js';
 import { MARCA_SERVIDOR, type Autor, type Datos, type PlanStock, type Referencia } from './motor.js';
 

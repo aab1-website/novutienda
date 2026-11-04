@@ -1,4 +1,4 @@
-import { registrarAuditoria, type Actor, type Rol, type TransaccionIdentidad } from '@plataforma/nucleo';
+import { registrarAuditoria, type Actor, type Rol, type TransaccionIdentidad } from '@novutienda/nucleo';
 import { anotarCambio, leerEstadoSitio } from './cambios.js';
 import { ErrorConsola } from './errores.js';
 import { exigirRol, ROLES } from './permisos.js';

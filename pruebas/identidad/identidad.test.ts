@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { LIMITE_BYTES_CLAIM } from '@plataforma/nucleo';
+import { LIMITE_BYTES_CLAIM } from '@novutienda/nucleo';
 import {
   asignarRol,
   quitarRol,
@@ -11,8 +11,8 @@ import {
   rolEn,
   type AuthMin,
   type DepsIdentidad,
-} from '@plataforma/nucleo';
-import { LimiteDelPlan } from '@plataforma/nucleo';
+} from '@novutienda/nucleo';
+import { LimiteDelPlan } from '@novutienda/nucleo';
 import { DobleDb } from '../limites/doble-db.js';
 
 const tok = (t: Record<string, string>, proveedor: string, extra: Record<string, unknown> = {}) => ({

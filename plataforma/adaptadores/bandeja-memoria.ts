@@ -1,9 +1,9 @@
 // Bandeja de eventos en memoria, SOLO para pruebas de integración. Lee los eventos que los módulos
 // publicaron (`tenants/{t}/eventos/*`, escritos en la transacción del negocio) y los entrega a los
 // consumidores, con entrega duplicada y desordenada como la de un bus real (al menos una vez).
-import { consumirPedidoConfirmado, consumirVentaAnulada, ejecutorDesde } from '@plataforma/inventarios';
-import { publicarEvento, type BaseDatosIdentidad, type SobreEvento } from '@plataforma/nucleo';
-import { manejarVentaAnulada, manejarVentaConfirmada, type OpcionesEmision } from '@plataforma/recibos';
+import { consumirPedidoConfirmado, consumirVentaAnulada, ejecutorDesde } from '@novutienda/inventarios';
+import { publicarEvento, type BaseDatosIdentidad, type SobreEvento } from '@novutienda/nucleo';
+import { manejarVentaAnulada, manejarVentaConfirmada, type OpcionesEmision } from '@novutienda/recibos';
 import type { LectorColecciones } from './colecciones.js';
 import { ejecutorRecibosDesde } from './ejecutor-recibos.js';
 

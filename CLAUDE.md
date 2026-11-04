@@ -68,7 +68,7 @@ Ajuste esta tabla si los scripts de `package.json`/`pyproject.toml` tienen otros
 ## Invariantes del proyecto
 
 - **Zonas de propiedad por carpeta:** `paquetes/nucleo` (registro, contratos, identidad), `paquetes/<modulo>` (un módulo, un dueño), `tenants/<tenant>` (solo configuración y extensiones), `pruebas/` (fronteras y reglas), `scripts/` y raíz (andamiaje). Un archivo lo escribe un solo agente por vez.
-- **Fronteras de importación:** `nucleo` no importa ningún paquete interno; `paquetes/<m>` importa solo `@plataforma/nucleo` y lo que su manifiesto declare; `tenants/*` importa solo `@plataforma/nucleo/extension`; nunca a `/src/` de otro paquete. Lo verifica `pruebas/fronteras`.
+- **Fronteras de importación:** `nucleo` no importa ningún paquete interno; `paquetes/<m>` importa solo `@novutienda/nucleo` y lo que su manifiesto declare; `tenants/*` importa solo `@novutienda/nucleo/extension`; nunca a `/src/` de otro paquete. Lo verifica `pruebas/fronteras`.
 - **Un dueño por dato:** cada colección pertenece al manifiesto de un solo módulo (rutas únicas); Inventarios es dueño de productos y stock; solo el servidor escribe ventas y movimientos. Las reglas de Firestore se generan desde el registro de módulos y nunca se amplían a mano.
 - **Repositorio público:** nada de PDF comerciales, identificadores (proyectos, cuentas, teléfonos) ni datos del cliente en el código, la configuración o el historial. Los paquetes no mencionan al cliente; lo propio de un cliente vive en `tenants/<tenant>`.
 - **Andres autoriza antes de escribir fuera del repositorio:** GitHub, Firebase, servicios externos y cualquier carpeta distinta de este proyecto.

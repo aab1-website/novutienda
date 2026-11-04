@@ -1,5 +1,5 @@
 /** Mercado (país) elegido por la persona. La moneda se deduce del mercado. */
-import { esMercado, MONEDA_DE, type Mercado, type Moneda } from '@plataforma/nucleo';
+import { esMercado, MONEDA_DE, type Mercado, type Moneda } from '@novutienda/nucleo';
 import { guardarSeguro, leerSeguro, type AlmacenClaveValor } from './almacen.js';
 
 export const CLAVE_MERCADO = 'cb.mercado';

@@ -1,4 +1,4 @@
-import type { BaseDatosIdentidad, TransaccionIdentidad } from '@plataforma/nucleo';
+import type { BaseDatosIdentidad, TransaccionIdentidad } from '@novutienda/nucleo';
 
 type Datos = Readonly<Record<string, unknown>>;
 

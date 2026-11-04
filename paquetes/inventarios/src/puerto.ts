@@ -1,4 +1,4 @@
-import type { TransaccionIdentidad } from '@plataforma/nucleo';
+import type { TransaccionIdentidad } from '@novutienda/nucleo';
 import { aplicarPlan } from './aplicar.js';
 import {
   EntradaInvalida,

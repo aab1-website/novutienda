@@ -1,4 +1,4 @@
-import { abrirCaja, cerrarCaja, type DatosTurnoCerradoV1, type Moneda, type TransaccionIdentidad } from '@plataforma/nucleo';
+import { abrirCaja, cerrarCaja, type DatosTurnoCerradoV1, type Moneda, type TransaccionIdentidad } from '@novutienda/nucleo';
 import { calcularArqueo } from './arqueo.js';
 import {
   ahoraDe, auditar, exigirActor, exigirCentavos, exigirRol, exigirTenant, exigirTexto, exigirUuid, leerObligatorio, publicar,

@@ -8,7 +8,7 @@ import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { promisify } from 'node:util';
 import sharp from 'sharp';
-import type { InfoMedio, ProcesadorMedios, SolicitudProcesado, VersionProcesada } from '@plataforma/consola';
+import type { InfoMedio, ProcesadorMedios, SolicitudProcesado, VersionProcesada } from '@novutienda/consola';
 import type { Bucket } from './almacen-medios.js';
 
 const ejecutar = promisify(execFile);

@@ -1,4 +1,4 @@
-import type { Moneda } from '@plataforma/nucleo';
+import type { Moneda } from '@novutienda/nucleo';
 import { ErrorPos } from './errores.js';
 import { MEDIOS_PAGO, MONEDAS_POS, type ActorPos, type MedioPago, type PagoVentaPos } from './tipos.js';
 

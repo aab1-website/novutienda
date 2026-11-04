@@ -6,7 +6,7 @@ import {
   abrirTurno, aprobarAnulacion, cerrarTurno, cerrarTurnoForzado, cobrarCredito, confirmarVenta, csvMovimientosCaja, csvVentas,
   guardarConfigPos, leerConfigPos, proyectarTurno, registrarMovimientoCaja, resolverAprobacion, solicitarAnulacion, solicitarAprobacion,
   type Carrito, type CobroCreditoEntrada, type MovimientoCaja, type MovimientoCajaEntrada, type SolicitudAprobacion, type VentaPos,
-} from '@plataforma/pos';
+} from '@novutienda/pos';
 import { accion, actorPos, type TablaAcciones } from './marco.js';
 import { LIMITE, MS, OBJETO, UUID, VACIO, objeto, validarRango, TEXTO } from './comunes.js';
 

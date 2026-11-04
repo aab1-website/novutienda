@@ -4,8 +4,8 @@ import {
   finalizarSubida, guardarCarrusel, guardarConfigSitio, guardarFicha, guardarSeccion, LIMITES_CONSOLA, obtenerTablero, ordenarSecciones,
   preciosDelDia, proyectarDisponibilidad, publicarSitio, reservarSubida, calcularDisponibilidadPublica, construirPublicado,
   type DepsMedios,
-} from '@plataforma/consola';
-import { LimiteDelPlan, rutaContador, type AlmacenCotizaciones, type CopiaCotizacion, type Redondeo } from '@plataforma/nucleo';
+} from '@novutienda/consola';
+import { LimiteDelPlan, rutaContador, type AlmacenCotizaciones, type CopiaCotizacion, type Redondeo } from '@novutienda/nucleo';
 import { actor, AlmacenDoble, CatalogoDoble, DisparadorDoble, JPG, MP4, nuevaDb, ProcesadorSimulado, RelojFijo, T } from './dobles.js';
 
 const adm = actor('adm');

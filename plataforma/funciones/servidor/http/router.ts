@@ -2,7 +2,7 @@
 // Función pura sobre `PeticionHttp`; la Cloud Function solo traduce Express a esta forma y de vuelta.
 import {
   despacharApi, lectorCotizacion, type DepsContacto, type VerificadorAppCheck, type VerificadorRecaptcha, type LimiteTasa,
-} from '@plataforma/website';
+} from '@novutienda/website';
 import type { Entorno } from '../entorno.js';
 import { manejarCatalogo, manejarInventario, manejarPedido, type ConfigNovuchat } from './novuchat.js';
 import { manejarSitio } from './sitio.js';

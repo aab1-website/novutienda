@@ -1,8 +1,8 @@
 import { beforeEach, describe, expect, it } from 'vitest';
 import {
   aCsv, ErrorConsola, exportarProductosCsv, importarProductos, neutralizarCelda, parsearCsv, simularImportacion, type DepsImportacion, type LectorHojas,
-} from '@plataforma/consola';
-import { rutaContador } from '@plataforma/nucleo';
+} from '@novutienda/consola';
+import { rutaContador } from '@novutienda/nucleo';
 import { actor, CatalogoDoble, nuevaDb, RelojFijo, T } from './dobles.js';
 
 const bytes = (s: string): Uint8Array => new Uint8Array([...Buffer.from(s, 'utf8')]);

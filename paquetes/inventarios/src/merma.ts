@@ -1,4 +1,4 @@
-import type { TransaccionIdentidad } from '@plataforma/nucleo';
+import type { TransaccionIdentidad } from '@novutienda/nucleo';
 import { EntradaInvalida, EstadoInvalido, NoEncontrado, SerieNoDisponible, SinPermiso, StockInsuficiente } from './errores.js';
 import { exigirCantidad, exigirProducto, exigirSegmento, exigirSeries, exigirUbicacion, ruta } from './ids.js';
 import { MARCA_SERVIDOR, type Autor, type Datos } from './motor.js';

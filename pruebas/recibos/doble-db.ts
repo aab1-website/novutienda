@@ -1,4 +1,4 @@
-import type { EjecutorRecibos, TransaccionRecibos } from '@plataforma/recibos';
+import type { EjecutorRecibos, TransaccionRecibos } from '@novutienda/recibos';
 
 type Datos = Readonly<Record<string, unknown>>;
 

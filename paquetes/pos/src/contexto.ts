@@ -14,7 +14,7 @@ import {
   type SobreEvento,
   type TransaccionBandeja,
   type TransaccionIdentidad,
-} from '@plataforma/nucleo';
+} from '@novutienda/nucleo';
 import { ErrorPos } from './errores.js';
 import type { PuertoCatalogo, PuertoInventarios } from './puertos.js';
 import type { ActorPos } from './tipos.js';

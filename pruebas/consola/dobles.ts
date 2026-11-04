@@ -1,8 +1,8 @@
-import { verificarYReservar, type Actor, type TransaccionIdentidad } from '@plataforma/nucleo';
+import { verificarYReservar, type Actor, type TransaccionIdentidad } from '@novutienda/nucleo';
 import type {
   AlmacenMedios, CatalogoPuerto, ConsultaSubidas, DatosProducto, DisparadorSitio, Existencia, InfoMedio, PrecioUSD,
   ProcesadorMedios, ProductoCatalogo, Reloj, SolicitudProcesado, VersionProcesada,
-} from '@plataforma/consola';
+} from '@novutienda/consola';
 import { DobleDb } from './doble-db.js';
 
 export const T = 't1';

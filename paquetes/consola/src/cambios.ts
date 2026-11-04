@@ -1,4 +1,4 @@
-import type { TransaccionIdentidad } from '@plataforma/nucleo';
+import type { TransaccionIdentidad } from '@novutienda/nucleo';
 import { rutaSitio } from './rutas.js';
 
 /** `sitio/estado`: contador de cambios hechos desde la última publicación (tablero). */

@@ -1,4 +1,4 @@
-import type { Mercado, TransaccionIdentidad } from '@plataforma/nucleo';
+import type { Mercado, TransaccionIdentidad } from '@novutienda/nucleo';
 
 /**
  * Plan de salida de stock preparado por Inventarios (solo lecturas). Para el POS es opaco:

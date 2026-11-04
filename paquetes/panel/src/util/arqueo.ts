@@ -1,4 +1,4 @@
-import type { Moneda } from '@plataforma/nucleo';
+import type { Moneda } from '@novutienda/nucleo';
 import type { MontosPorMoneda, TotalesMoneda, TotalesTurno, TurnoPos } from '../api/tipos.js';
 import { MONEDAS } from '../api/tipos.js';
 

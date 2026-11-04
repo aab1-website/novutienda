@@ -1,4 +1,4 @@
-import { abrirTurno, aprobarAnulacion, cerrarTurno, confirmarVenta, registrarMovimientoCaja, solicitarAnulacion } from '@plataforma/pos';
+import { abrirTurno, aprobarAnulacion, cerrarTurno, confirmarVenta, registrarMovimientoCaja, solicitarAnulacion } from '@novutienda/pos';
 import { describe, expect, it } from 'vitest';
 import { manifiestosEnOrden } from '../../plataforma/registro.js';
 import { T, UUID, caj, entornoListo, sup } from './entorno.js';

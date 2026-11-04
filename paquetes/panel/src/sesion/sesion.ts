@@ -1,4 +1,4 @@
-import type { Rol } from '@plataforma/nucleo';
+import type { Rol } from '@novutienda/nucleo';
 
 /** Usuario autenticado, con tenant y rol ya leídos del claim `pl`. */
 export interface UsuarioSesion {

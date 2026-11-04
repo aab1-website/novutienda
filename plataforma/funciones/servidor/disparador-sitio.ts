@@ -2,7 +2,7 @@
 // se ENCOLA el trabajo en `tenants/{t}/reconstrucciones/{id}` y GitHub Actions lo lee por el endpoint firmado
 // (ver docs/produccion/reconstruccion-sitio.md). Nada depende de ninguna máquina de usuario.
 import { FieldValue, type Firestore } from 'firebase-admin/firestore';
-import type { DisparadorSitio } from '@plataforma/consola';
+import type { DisparadorSitio } from '@novutienda/consola';
 
 const YA_EXISTE = 6;
 

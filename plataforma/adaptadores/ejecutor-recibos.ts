@@ -1,7 +1,7 @@
 // Adaptador de Recibos sobre la misma base que usan los demás módulos: convierte una
 // `BaseDatosIdentidad` en el `EjecutorRecibos` que piden `manejarVentaConfirmada` y `manejarVentaAnulada`.
-import type { BaseDatosIdentidad } from '@plataforma/nucleo';
-import type { EjecutorRecibos, TransaccionRecibos } from '@plataforma/recibos';
+import type { BaseDatosIdentidad } from '@novutienda/nucleo';
+import type { EjecutorRecibos, TransaccionRecibos } from '@novutienda/recibos';
 
 type Datos = Readonly<Record<string, unknown>>;
 

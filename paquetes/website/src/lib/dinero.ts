@@ -1,5 +1,5 @@
 /** Formato de montos. Los montos viajan en centavos enteros; aquí solo se presentan. */
-import type { Moneda } from '@plataforma/nucleo';
+import type { Moneda } from '@novutienda/nucleo';
 
 const PREFIJO: Readonly<Record<Moneda, string>> = { BOB: 'Bs ', ARS: '$ ', USD: 'US$ ' };
 

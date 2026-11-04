@@ -5,8 +5,8 @@
 //   GET  /api/sitio/v1/publicado?tenantId=T                            → copia publicada (`publicado/`)
 // Firma: `X-Marca-Tiempo` (ms Unix) y `X-Firma` = HMAC-SHA256 hex de `{marca}.{MÉTODO}\n{url con consulta}\n{cuerpo}`
 // con el secreto SITIO_RECONSTRUCCION_SECRETO; ventana de 5 minutos.
-import { verificarFirma } from '@plataforma/inventarios';
-import { esTenantIdValido } from '@plataforma/nucleo';
+import { verificarFirma } from '@novutienda/inventarios';
+import { esTenantIdValido } from '@novutienda/nucleo';
 import type { Entorno } from '../entorno.js';
 import { json, type PeticionHttp, type RespuestaApi } from './tipos.js';
 

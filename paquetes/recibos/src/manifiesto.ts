@@ -1,4 +1,4 @@
-import type { ManifiestoModulo } from '@plataforma/nucleo';
+import type { ManifiestoModulo } from '@novutienda/nucleo';
 
 /** Manifiesto del módulo recibos. Todas las colecciones las escribe solo el servidor. */
 export const manifiestoRecibos: ManifiestoModulo = {

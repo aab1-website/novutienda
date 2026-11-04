@@ -1,5 +1,5 @@
 {
-  "name": "@plataforma/panel",
+  "name": "@novutienda/panel",
   "version": "0.1.0",
   "private": true,
   "type": "module",
@@ -13,7 +13,7 @@
     "humo": "pnpm run build:humo && playwright test --config humo/playwright.config.ts"
   },
   "dependencies": {
-    "@plataforma/nucleo": "workspace:*",
+    "@novutienda/nucleo": "workspace:*",
     "firebase": "13.1.0",
     "preact": "10.29.8"
   },

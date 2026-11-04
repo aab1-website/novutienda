@@ -3,9 +3,9 @@
 import {
   aplicarReversion, aplicarSalida, leerProducto, prepararReversion, prepararSalida,
   type Autor, type PlanReversion as PlanReversionInventarios, type PlanSalida as PlanSalidaInventarios,
-} from '@plataforma/inventarios';
-import type { Mercado } from '@plataforma/nucleo';
-import type { ProductoCatalogo, PuertoCatalogo, PuertoInventarios, QuienMueve } from '@plataforma/pos';
+} from '@novutienda/inventarios';
+import type { Mercado } from '@novutienda/nucleo';
+import type { ProductoCatalogo, PuertoCatalogo, PuertoInventarios, QuienMueve } from '@novutienda/pos';
 import { centavosADolares } from './producto-inventarios.js';
 
 const ROLES: readonly string[] = ['caj', 'sup', 'adm'];

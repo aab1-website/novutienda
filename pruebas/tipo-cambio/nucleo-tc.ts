@@ -1,1 +1,1 @@
-export * from '@plataforma/nucleo';
+export * from '@novutienda/nucleo';

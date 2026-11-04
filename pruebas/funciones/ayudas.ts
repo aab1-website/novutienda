@@ -7,8 +7,8 @@ import { getFirestore, type Firestore } from 'firebase-admin/firestore';
 import { getStorage } from 'firebase-admin/storage';
 import {
   UBICACIONES, crearProducto, crearUbicacion, ingresar, type Autor,
-} from '@plataforma/inventarios';
-import { cargarManual, construirClaim, type Rol } from '@plataforma/nucleo';
+} from '@novutienda/inventarios';
+import { cargarManual, construirClaim, type Rol } from '@novutienda/nucleo';
 import { almacenCotizacionesDesde } from '../../plataforma/adaptadores/index.js';
 import { crearBaseDatos, type BaseDatosFirestore, type Bucket } from '../../plataforma/adaptadores/firebase/index.js';
 

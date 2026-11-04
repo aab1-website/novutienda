@@ -1,4 +1,4 @@
-import type { Rol } from '@plataforma/nucleo';
+import type { Rol } from '@novutienda/nucleo';
 
 const ROLES: readonly string[] = ['caj', 'sup', 'adm'];
 

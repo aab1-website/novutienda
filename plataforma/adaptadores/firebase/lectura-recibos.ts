@@ -1,7 +1,7 @@
 // `LecturaRecibos` de Recibos sobre Firestore: consultas indexadas por número (prefijo) y por fecha.
 // La búsqueda por cliente y el acotado final los completa `buscarComprobantes`.
 import type { Firestore, Query } from 'firebase-admin/firestore';
-import type { LecturaRecibos, Recibo } from '@plataforma/recibos';
+import type { LecturaRecibos, Recibo } from '@novutienda/recibos';
 
 /** Tope de documentos que una consulta puede traer antes de filtrar en memoria. */
 export const MAX_CANDIDATOS = 500;

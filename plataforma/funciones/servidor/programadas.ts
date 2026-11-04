@@ -2,8 +2,8 @@
 // Cada uno es una función pura sobre el `Entorno`; las Cloud Functions solo los invocan. Nada depende de ninguna
 // máquina de usuario (Cloud Scheduler en la nube del proyecto).
 import { logger } from 'firebase-functions';
-import { ejecutarReconstruccion, limpiarSubidas } from '@plataforma/consola';
-import { actualizarMercado, esTenantIdValido, type Mercado, type OpcionesDescarga } from '@plataforma/nucleo';
+import { ejecutarReconstruccion, limpiarSubidas } from '@novutienda/consola';
+import { actualizarMercado, esTenantIdValido, type Mercado, type OpcionesDescarga } from '@novutienda/nucleo';
 import type { Entorno } from './entorno.js';
 import { depsMedios } from './llamadas/medios.js';
 import { crearNotificador } from './notificador.js';

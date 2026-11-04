@@ -13,7 +13,7 @@ import {
   StockInsuficiente,
   traspasar,
 } from './api.js';
-import { LimiteDelPlan } from '@plataforma/nucleo';
+import { LimiteDelPlan } from '@novutienda/nucleo';
 import type { DobleDb } from './doble-db.js';
 import { ADM, altaProducto, CAJ, cargar, contar, doc, nuevoEntorno, op, producto, SUP, T, verificarInvariantes } from './entorno.js';
 

@@ -1,4 +1,4 @@
-import type { Moneda } from '@plataforma/nucleo';
+import type { Moneda } from '@novutienda/nucleo';
 import { ErrorPos } from './errores.js';
 import { MONEDAS_POS, type MontosPorMoneda, type TotalesMoneda, type TotalesTurno, type TurnoPos, type VentaPos } from './tipos.js';
 

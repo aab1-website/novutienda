@@ -1,6 +1,6 @@
 // `AuthMin` del núcleo sobre Firebase Auth (Admin SDK). Solo traduce la forma del usuario.
 import type { Auth } from 'firebase-admin/auth';
-import type { AuthMin } from '@plataforma/nucleo';
+import type { AuthMin } from '@novutienda/nucleo';
 
 export function crearAuthMin(auth: Auth): AuthMin {
   return {

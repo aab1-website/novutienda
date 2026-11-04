@@ -1,5 +1,5 @@
-import { abrirTurno, aprobarAnulacion, confirmarVenta, registrarMovimientoCaja, solicitarAnulacion } from '@plataforma/pos';
-import type { Recibo } from '@plataforma/recibos';
+import { abrirTurno, aprobarAnulacion, confirmarVenta, registrarMovimientoCaja, solicitarAnulacion } from '@novutienda/pos';
+import type { Recibo } from '@novutienda/recibos';
 import { beforeEach, describe, expect, it } from 'vitest';
 import {
   T, T2, UUID, altaProducto, cargarStock, caj, catalogoEstandar, contar, doc, entornoListo, eventosDe, prepararTenant, producto, sup, type Entorno,

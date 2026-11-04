@@ -8,7 +8,7 @@ import {
   abrirConteo, actualizarProducto, ajustar, cerrarConteo, crearUbicacion, esDisponible, exportarProductosCsv, importarProductosCsv,
   ingresar, leerDocumentoProducto, registrarLineaConteo, resolverMerma, solicitarMerma, traspasar, UBICACION_DISPONIBILIDAD,
   type Autor, type LineaAjuste, type LineaIngreso, type LineaTraspaso, type ProductoExportable,
-} from '@plataforma/inventarios';
+} from '@novutienda/inventarios';
 import { accion, actorPos, type Contexto, type TablaAcciones } from './marco.js';
 import { ID, ID_PRODUCTO, LIMITE, MS, TEXTO, UBICACION, VACIO, objeto, validarRango } from './comunes.js';
 

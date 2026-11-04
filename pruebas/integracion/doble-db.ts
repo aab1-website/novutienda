@@ -1,4 +1,4 @@
-import type { BaseDatosIdentidad, TransaccionIdentidad } from '@plataforma/nucleo';
+import type { BaseDatosIdentidad, TransaccionIdentidad } from '@novutienda/nucleo';
 import type { DocumentoListado, LectorColecciones } from '../../plataforma/adaptadores/index.js';
 
 type Datos = Readonly<Record<string, unknown>>;

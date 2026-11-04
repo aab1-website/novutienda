@@ -1,9 +1,9 @@
-import { validarEvento, type DatosVentaConfirmadaV1 } from '@plataforma/nucleo';
+import { validarEvento, type DatosVentaConfirmadaV1 } from '@novutienda/nucleo';
 import {
   abrirTurno, aprobarAnulacion, cerrarTurno, confirmarVenta, registrarMovimientoCaja, resolverAprobacion, solicitarAnulacion,
   solicitarAprobacion, type Carrito,
-} from '@plataforma/pos';
-import type { Recibo } from '@plataforma/recibos';
+} from '@novutienda/pos';
+import type { Recibo } from '@novutienda/recibos';
 import { beforeEach, describe, expect, it } from 'vitest';
 import {
   T, UUID, caj, contar, cotizacionVigente, doc, entornoListo, eventosDe, sup, type Entorno,

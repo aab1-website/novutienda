@@ -1,5 +1,5 @@
 /** Configuración pública que el HTML entrega al navegador en un bloque JSON (no se ejecuta, no la bloquea la CSP). */
-import type { Mercado, Redondeo } from '@plataforma/nucleo';
+import type { Mercado, Redondeo } from '@novutienda/nucleo';
 import type { ConfigMedicion } from '../contenido/tipos.js';
 
 export interface ConfigCliente {

@@ -3,7 +3,7 @@
  * y se guarda 15 minutos en `sessionStorage`. No hay ninguna tasa en el código: si la API
  * no responde, el precio no se muestra (nunca se inventa).
  */
-import { MERCADOS, PAR_DE, type Mercado } from '@plataforma/nucleo';
+import { MERCADOS, PAR_DE, type Mercado } from '@novutienda/nucleo';
 import { borrarSeguro, guardarSeguro, leerSeguro, type AlmacenClaveValor } from './almacen.js';
 
 export const VIGENCIA_CACHE_MS = 15 * 60 * 1000;

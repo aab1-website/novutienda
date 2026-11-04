@@ -8,7 +8,7 @@ import {
   type SobreEvento,
   type TransaccionBandeja,
   type TransaccionIdentidad,
-} from '@plataforma/nucleo';
+} from '@novutienda/nucleo';
 import { EntradaInvalida, EstadoInvalido, ErrorInventario, OperacionConflicto, StockInsuficiente, type Faltante } from './errores.js';
 import { hashSalida, aplicarReversion, aplicarSalida, idOperacionSalida, prepararReversion, prepararSalida, type LineaResuelta, type ReferenciaSalida } from './puerto.js';
 import { exigirCantidad, exigirProducto, exigirSegmento, exigirTenant, MAX_LINEAS } from './ids.js';

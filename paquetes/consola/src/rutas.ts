@@ -1,4 +1,4 @@
-import { esTenantIdValido } from '@plataforma/nucleo';
+import { esTenantIdValido } from '@novutienda/nucleo';
 import { ErrorConsola } from './errores.js';
 
 export const ID_PRODUCTO = /^[a-z0-9][a-z0-9-]{1,59}$/;

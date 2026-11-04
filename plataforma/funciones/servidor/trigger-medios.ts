@@ -2,8 +2,8 @@
 // finaliza la subida (valida bytes, procesa, publica versiones). Actúa con el rol VIGENTE de quien subió: se
 // toma de sus claims actuales en Auth, así que un usuario degradado o deshabilitado no completa subidas.
 import { logger } from 'firebase-functions';
-import { finalizarSubida } from '@plataforma/consola';
-import { esTenantIdValido } from '@plataforma/nucleo';
+import { finalizarSubida } from '@novutienda/consola';
+import { esTenantIdValido } from '@novutienda/nucleo';
 import type { Entorno } from './entorno.js';
 import { depsMedios } from './llamadas/medios.js';
 

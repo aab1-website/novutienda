@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { esTenantIdValido, proyectoFirebase, validarTenant } from '@plataforma/nucleo';
+import { esTenantIdValido, proyectoFirebase, validarTenant } from '@novutienda/nucleo';
 
 const ok = () => ({
   plan: 'base',

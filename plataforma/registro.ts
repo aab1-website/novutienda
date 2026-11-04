@@ -4,13 +4,13 @@
 // Un módulo nuevo se registra aquí con una línea de importación por su entrada
 // pública y una de `registrar`; el generador de reglas y las pruebas de
 // fronteras leen este archivo.
-import { crearRegistro, manifiestoNucleo, type ManifiestoModulo } from '@plataforma/nucleo';
-import { manifiestoInventarios } from '@plataforma/inventarios';
-import { manifiestoPos } from '@plataforma/pos';
-import { manifiestoRecibos } from '@plataforma/recibos';
-import { manifiestoWebsite } from '@plataforma/website';
-import { manifiestoConsola } from '@plataforma/consola';
-import { manifiestoPanel } from '@plataforma/panel';
+import { crearRegistro, manifiestoNucleo, type ManifiestoModulo } from '@novutienda/nucleo';
+import { manifiestoInventarios } from '@novutienda/inventarios';
+import { manifiestoPos } from '@novutienda/pos';
+import { manifiestoRecibos } from '@novutienda/recibos';
+import { manifiestoWebsite } from '@novutienda/website';
+import { manifiestoConsola } from '@novutienda/consola';
+import { manifiestoPanel } from '@novutienda/panel';
 
 export const registroPlataforma = crearRegistro<ManifiestoModulo>();
 registroPlataforma.registrar(manifiestoNucleo);

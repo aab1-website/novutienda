@@ -2,14 +2,14 @@
 // firebase-functions): el borde de las funciones crea el `HttpsError` con lo que devuelve. Los mensajes de los
 // errores tipados son aptos para el usuario (no llevan datos personales); cualquier otro error se reporta como
 // `internal` sin detalle y el detalle técnico queda solo en el registro.
-import { ErrorConsola } from '@plataforma/consola';
-import { ErrorInventario, StockInsuficiente } from '@plataforma/inventarios';
+import { ErrorConsola } from '@novutienda/consola';
+import { ErrorInventario, StockInsuficiente } from '@novutienda/inventarios';
 import {
   CargaNoAutorizada, ContadorCorrupto, ErrorAuditoria, ErrorEvento, ErrorIdentidad, LimiteDelPlan, SaltoSinConfirmar,
   SinCotizacionUtilizable,
-} from '@plataforma/nucleo';
-import { ErrorPos, type CodigoErrorPos } from '@plataforma/pos';
-import { AccionNoPermitida, ErrorRecibo, ReciboNoEncontrado } from '@plataforma/recibos';
+} from '@novutienda/nucleo';
+import { ErrorPos, type CodigoErrorPos } from '@novutienda/pos';
+import { AccionNoPermitida, ErrorRecibo, ReciboNoEncontrado } from '@novutienda/recibos';
 import { VideoNoDisponible } from './procesador-medios.js';
 
 export type CodigoHttps =
