@@ -293,7 +293,8 @@ export const handlersPos: {
     if (v === undefined) throw fallo('venta-inexistente');
     if (v.estado === 'anulada') throw fallo('venta-ya-anulada');
     if (v.solicitudAnulacion === undefined) throw fallo('anulacion-sin-solicitud');
-    if (v.solicitudAnulacion.por === c.uid) throw fallo('autoaprobacion');
+    exigirTexto(e.motivo, 'motivo');
+    if (v.solicitudAnulacion.por === c.uid || v.cajeroUid === c.uid) throw fallo('autoaprobacion');
     const turno = turnoAbierto(c);
     if (turno === undefined) throw fallo('sin-turno', 'Abra un turno para registrar el reembolso');
     // Reembolso por los medios con que se cobró (netos de cambio, más cobros de crédito).
@@ -304,12 +305,12 @@ export const handlersPos: {
     const reembolsos = (['efectivo', 'qr', 'transferencia'] as const).filter((m) => (porMedio[m] ?? 0) > 0).map((m) => ({ medio: m, moneda: v.moneda, monto: porMedio[m] ?? 0 }));
     const efectivo = reembolsos.find((r) => r.medio === 'efectivo');
     const t = turno.totales[v.moneda] ?? TOTALES_VACIOS;
-    if (efectivo !== undefined && efectivoEsperado(turno.apertura[v.moneda] ?? 0, t) < efectivo.monto) throw fallo('egreso-excede-efectivo');
+    if (efectivo !== undefined && efectivoEsperado(turno.apertura[v.moneda] ?? 0, t) < efectivo.monto) throw fallo('egreso-excede-efectivo', 'El reembolso en efectivo supera el efectivo de esa moneda en la caja');
     let nt = turno;
     for (const r of reembolsos) nt = agregarMonedas(nt, { [v.moneda]: r.medio === 'efectivo' ? { efectivo: -r.monto } : r.medio === 'qr' ? { qr: -r.monto } : { transferencia: -r.monto } });
     if (cred !== undefined) {
       nt = agregarMonedas(nt, { [v.moneda]: { credito: -(cred.monto) } });
-      c.e.creditos.set(v.ventaId, { ...cred, estado: 'cancelado' });
+      c.e.creditos.set(v.ventaId, { ...cred, estado: 'anulado' });
     }
     c.e.turnos.set(nt.turnoId, nt);
     c.e.ventas.set(v.ventaId, { ...v, estado: 'anulada' });
@@ -427,7 +428,7 @@ export const handlersPos: {
       .filter((v) => (e.hasta === undefined ? true : fechaLaPaz(v.creadoEnMs) <= e.hasta))
       .sort((a, b) => a.creadoEnMs - b.creadoEnMs)
       .map((v) => [v.ventaId, fechaLaPaz(v.creadoEnMs), v.estado, v.moneda, v.total, v.cajeroUid]);
-    return { csv: aCsv(['ventaId', 'fecha', 'estado', 'moneda', 'total', 'cajeroUid'], filas) };
+    return { csv: aCsv(['ventaId', 'fecha', 'estado', 'moneda', 'total', 'cajeroUid'], filas), truncado: false };
   },
   listarAuditoria: (c, e) =>
     c.e.auditoria

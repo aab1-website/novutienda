@@ -3,7 +3,7 @@
 import { HttpsError } from 'firebase-functions/v2/https';
 import { z } from 'zod';
 import {
-  abrirTurno, aprobarAnulacion, cerrarTurno, cerrarTurnoForzado, cobrarCredito, confirmarVenta, csvMovimientosCaja, csvVentas,
+  abrirTurno, aprobarAnulacion, cerrarTurno, cerrarTurnoForzado, cobrarCredito, confirmarVenta, csvMovimientosCaja, csvVentas, MAX_FILAS_CSV, recortarExportacion,
   guardarConfigPos, leerConfigPos, proyectarTurno, registrarMovimientoCaja, resolverAprobacion, solicitarAnulacion, solicitarAprobacion,
   type Carrito, type CobroCreditoEntrada, type MovimientoCaja, type MovimientoCajaEntrada, type SolicitudAprobacion, type VentaPos,
 } from '@novutienda/pos';
@@ -62,8 +62,8 @@ export const accionesPos: TablaAcciones = {
   }),
   aprobarAnulacion: accion({
     roles: SUPERVISION,
-    esquema: objeto({ ventaId: UUID }),
-    ejecutar: async (c, d) => aprobarAnulacion(await c.e.depsPos(c.tenantId), c.tenantId, actorPos(c), d.ventaId),
+    esquema: objeto({ ventaId: UUID, motivo: TEXTO(200) }),
+    ejecutar: async (c, d) => aprobarAnulacion(await c.e.depsPos(c.tenantId), c.tenantId, actorPos(c), d.ventaId, d.motivo),
   }),
 
   // ---- Caja y créditos --------------------------------------------------------------------------------------
@@ -164,23 +164,17 @@ export const accionesPos: TablaAcciones = {
     },
   }),
   /**
-   * Créditos. `sup`/`adm` ven todos; el vendedor solo los de SUS ventas: el crédito no guarda quién vendió (su id es el
-   * de la venta), así que se cruza con las ventas del vendedor (índice existente `cajeroUid` + `creadoEnMs`).
+   * Créditos (estados `pendiente`, `cobrado` y `anulado`). `sup`/`adm` ven todos; el vendedor solo los de SUS ventas:
+   * el crédito guarda `cajeroUid` y se consulta por él (índices `cajeroUid` + `creadoEnMs` y `cajeroUid` + `estado`
+   * + `creadoEnMs`), sin el tope de ventas recientes.
    */
   creditos: accion({
     roles: TODOS,
-    esquema: objeto({ estado: z.enum(['pendiente', 'cobrado']).optional(), limite: LIMITE.optional() }),
+    esquema: objeto({ estado: z.enum(['pendiente', 'cobrado', 'anulado']).optional(), limite: LIMITE.optional() }),
     ejecutar: async (c, d) => {
       const limite = d.limite ?? 100;
-      if (c.rol === 'caj') {
-        const ventas = await c.e.firestore.collection(ruta(c.tenantId, 'ventas')).where('cajeroUid', '==', c.sesion.uid).orderBy('creadoEnMs', 'desc').limit(500).get();
-        if (ventas.empty) return { creditos: [] };
-        const docs = await c.e.firestore.getAll(...ventas.docs.map((v) => c.e.firestore.doc(ruta(c.tenantId, 'creditos', v.id))));
-        const mios = docs.filter((x) => x.exists).map(datosDe).filter((x) => d.estado === undefined || x['estado'] === d.estado);
-        mios.sort((a, b) => Number(b['creadoEnMs']) - Number(a['creadoEnMs']));
-        return { creditos: mios.slice(0, limite) };
-      }
       let q = c.e.firestore.collection(ruta(c.tenantId, 'creditos')).orderBy('creadoEnMs', 'desc');
+      if (c.rol === 'caj') q = q.where('cajeroUid', '==', c.sesion.uid);
       if (d.estado !== undefined) q = q.where('estado', '==', d.estado);
       const snap = await q.limit(limite).get();
       return { creditos: snap.docs.map(datosDe) };
@@ -240,16 +234,19 @@ export const accionesPos: TablaAcciones = {
     esquema: objeto({ desde: MS, hasta: MS }),
     ejecutar: async (c, d) => {
       validarRango(d.desde, d.hasta);
-      const snap = await c.e.firestore.collection(ruta(c.tenantId, 'ventas')).where('creadoEnMs', '>=', d.desde).where('creadoEnMs', '<=', d.hasta).orderBy('creadoEnMs', 'asc').limit(5000).get();
-      return { csv: csvVentas(snap.docs.map(datosDe) as unknown as VentaPos[]) };
+      const snap = await c.e.firestore.collection(ruta(c.tenantId, 'ventas')).where('creadoEnMs', '>=', d.desde).where('creadoEnMs', '<=', d.hasta).orderBy('creadoEnMs', 'asc').limit(MAX_FILAS_CSV + 1).get();
+      // Si hay más filas que el tope, el CSV lleva las primeras y la respuesta lo avisa con `truncado`.
+      const { filas, truncado } = recortarExportacion(snap.docs.map(datosDe));
+      return { csv: csvVentas(filas as unknown as VentaPos[]), truncado };
     },
   }),
   exportarMovimientosCajaCsv: accion({
     roles: SUPERVISION,
     esquema: objeto({ turnoId: UUID }),
     ejecutar: async (c, d) => {
-      const snap = await c.e.firestore.collection(ruta(c.tenantId, 'movimientos_caja')).where('turnoId', '==', d.turnoId).orderBy('creadoEnMs', 'asc').limit(5000).get();
-      return { csv: csvMovimientosCaja(snap.docs.map(datosDe) as unknown as MovimientoCaja[]) };
+      const snap = await c.e.firestore.collection(ruta(c.tenantId, 'movimientos_caja')).where('turnoId', '==', d.turnoId).orderBy('creadoEnMs', 'asc').limit(MAX_FILAS_CSV + 1).get();
+      const { filas, truncado } = recortarExportacion(snap.docs.map(datosDe));
+      return { csv: csvMovimientosCaja(filas as unknown as MovimientoCaja[]), truncado };
     },
   }),
 };

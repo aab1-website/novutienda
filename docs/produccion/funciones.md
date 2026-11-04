@@ -62,7 +62,7 @@ const { data } = await llamar({ accion: 'abrirTurno', tenantId: 'casa-bermejo', 
 | `solicitarAprobacion` | TODOS | `{ aprobacionId (UUID), solicitud: { tipo: 'descuento'\|'credito', moneda, monto, motivo, deudor? } }` | aprobación |
 | `resolverAprobacion` | SUP | `{ aprobacionId, decision: 'aprobar'\|'rechazar' }` | aprobación |
 | `solicitarAnulacion` | TODOS (el vendedor, solo sus ventas) | `{ ventaId, motivo }` | venta |
-| `aprobarAnulacion` | SUP | `{ ventaId }` | `{ ventaId, reembolsos[], turnoIdReembolso }` |
+| `aprobarAnulacion` | SUP | `{ ventaId, motivo }` (motivo del aprobador; `autoaprobacion` si vendió o solicitó) | `{ ventaId, reembolsos[], turnoIdReembolso }` |
 | `registrarMovimientoCaja` | TODOS | `{ requestId, movimiento: { tipo: 'ingreso'\|'egreso', moneda, monto, motivo, comprobante? } }` | `{ movimiento, repetido }` |
 | `cobrarCredito` | TODOS | `{ requestId, ventaId, cobro: { medio, monto, referencia? } }` | `{ cobro, repetido }` |
 | `leerConfig` / `guardarConfig` | TODOS / ADM | `{}` / `{ config }` | `{ config }` |
@@ -71,10 +71,10 @@ const { data } = await llamar({ accion: 'abrirTurno', tenantId: 'casa-bermejo', 
 | `venta` | TODOS (el vendedor, solo las suyas) | `{ ventaId }` | `{ venta }` |
 | `aprobaciones` / `aprobacion` | TODOS (el vendedor, solo las que él solicitó) | `{ estado?, limite? }` / `{ aprobacionId }` | `{ aprobaciones[] }` / `{ aprobacion }` |
 | `movimientosCaja` | TODOS (el vendedor, solo su turno) | `{ turnoId, limite? }` | `{ movimientos[] }` |
-| `creditos` | TODOS (el vendedor, solo los créditos de SUS ventas: el crédito no guarda al vendedor, se cruza con sus ventas) | `{ estado?, limite? }` | `{ creditos[] }` |
+| `creditos` | TODOS (el vendedor, solo los créditos de SUS ventas: el crédito guarda `cajeroUid` y se consulta por él, sin tope de ventas; los créditos creados antes de este campo no aparecen para el vendedor) | `{ estado?: pendiente\|cobrado\|anulado, limite? }` | `{ creditos[] }` |
 | `cotizaciones` | TODOS | `{}` | `{ cotizaciones: { BO, AR }, redondeo }`: cada mercado es `{ cotizacionId, par, valor, fecha, fuente, estado }` o `null` si no hay una utilizable; `redondeo` es la política de `tenants/{t}/config/redondeo` (por defecto BOB dos decimales, ARS múltiplo de 100 más cercano). El panel calcula con ese redondeo. |
 | `turnos`, `supervision` | SUP | `{ limite? }` / `{}` | listas; `supervision`: `{ turno, proyeccion, ultimasVentas[] }` |
-| `exportarVentasCsv` / `exportarMovimientosCajaCsv` | SUP | `{ desde, hasta }` / `{ turnoId }` | `{ csv }` (celdas con `= + - @` neutralizadas) |
+| `exportarVentasCsv` / `exportarMovimientosCajaCsv` | SUP | `{ desde, hasta }` / `{ turnoId }` | `{ csv, truncado }` (celdas con `= + - @` neutralizadas; máximo 5000 filas: si hay más, `truncado: true` y el panel avisa) |
 
 Reglas del POS (descuento de 5 % sin permiso, aprobaciones de un solo uso, anulación con reembolso por los medios originales, arqueo sin tope en cero)
 las aplica el módulo; el redondeo del precio sale de `tenants/{t}/config/redondeo` (§8).
@@ -134,11 +134,18 @@ las aplica el módulo; el redondeo del precio sale de `tenants/{t}/config/redond
 Flujo de subida: `reservarSubida` → el navegador sube a `rutaOriginal` con el SDK de Storage (`contentType` de foto: jpeg/png/webp/heic; video:
 mp4/quicktime/webm) → el disparador procesa → el panel espera `subidas/{id}.estado` (`procesada` o `rechazada`) o llama `finalizarSubida`.
 
+Carrera entre el disparador y `finalizarSubida`: si dos ejecuciones procesan el mismo original, gana la que confirma primero; la otra borra sus
+temporales y las versiones publicadas que el ganador no usa, y devuelve el medio ganador (la acción sigue siendo idempotente). El panel espera con
+reintentos y retroceso (hasta ~2 minutos si la llamada se corta por tiempo o por red) y muestra el tiempo transcurrido.
+**Pendiente (no es de esta ola):** `estadoSubida` (consulta sin procesar, exportada por `@novutienda/consola`) aún no tiene acción en el callable
+`medios`; al agregarla (rol SUP, `{ subidaId }` → `{ estado, medio?, motivo? }`) el panel debe pasar a consultar el estado en vez de llamar
+`finalizarSubida`, que evita el trabajo duplicado.
+
 ### `recibos`
 | Acción | Roles | `datos` | Devuelve |
 |---|---|---|---|
 | `leerPlantilla` / `guardarPlantilla` | TODOS / SUP | `{}` / `{ plantilla }` | `{ plantilla }` / `{ ok }` |
-| `buscarComprobantes` | TODOS (el vendedor, solo los de sus ventas) | `{ numero?, desde?, hasta?, cliente?, limite? }` (fechas `aaaa-mm-dd`) | `{ recibos[] }` |
+| `buscarComprobantes` | TODOS (el vendedor, solo los de sus ventas; el filtro se aplica antes del límite) | `{ numero?, desde?, hasta?, cliente?, limite? }` (fechas `aaaa-mm-dd`; `numero` sin distinguir mayúsculas: con serie `A-0001` es prefijo indexado, sin serie `123`/`000123` busca `{serie}-000123` en cada serie del tenant) | `{ recibos[] }` |
 | `leerRecibo`, `htmlRecibo`, `pdfRecibo` | TODOS (el vendedor, solo los suyos) | `{ reciboId }` (el id del comprobante de una venta es `recibo-<ventaId>`) | `{ recibo }` / `{ html }` / `{ pdfBase64 }` |
 | `referenciarFacturaSuma` | SUP | `{ reciboId, facturaSuma }` | `{ ok }` |
 | `enviarRecibo` | TODOS (el vendedor, solo los suyos) | `{ reciboId, codigoPais? }` (por defecto `591`) | `{ estado, enlace? }`: `enlace` es el `wa.me` que la persona abre y envía |
@@ -234,7 +241,7 @@ desplegar (sin sello, rige la CSP base estricta). Parámetros en el despliegue: 
 | `aprobaciones_descuento` por estado / por solicitante | `(estado, solicitadoEnMs desc)`, `(solicitadoPor, estado, solicitadoEnMs desc)` |
 | `movimientos_caja` de un turno | `(turnoId, creadoEnMs desc)` y `(turnoId, creadoEnMs asc)` |
 | `creditos` por estado | `(estado, creadoEnMs desc)` |
-| `creditos` del vendedor | ninguno nuevo: se cruzan con sus ventas (`ventas (cajeroUid, creadoEnMs desc)`) y se leen por id |
+| `creditos` del vendedor | `(cajeroUid, creadoEnMs desc)` y `(cajeroUid, estado, creadoEnMs desc)` |
 | `inventarios.series` (`productoId` + `ubicacionId` + `estado`) y `buscarSerie` (`serie` + `productoId`) | ninguno: solo igualdades, que Firestore resuelve combinando los índices de campo único; el orden por serie se hace en memoria |
 | `reconstrucciones` por estado | `(estado, solicitadaEnMs asc)` |
 | `recibos` por número (prefijo) o por fecha | campo único (automático) |

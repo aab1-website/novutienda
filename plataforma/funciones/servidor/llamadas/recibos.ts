@@ -5,7 +5,7 @@ import { HttpsError } from 'firebase-functions/v2/https';
 import { z } from 'zod';
 import {
   buscarComprobantes, EnviadorWaMe, enviarRecibo, generarPdfRecibo, guardarPlantilla, plantillaVigente, referenciarFacturaSuma,
-  renderizarReciboHtml, rutaPlantilla, rutaRecibo, type Recibo,
+  renderizarReciboHtml, rutaPlantilla, rutaRecibo, type LecturaRecibos, type Recibo,
 } from '@novutienda/recibos';
 import { accion, actorPos, type Contexto, type TablaAcciones } from './marco.js';
 import { ID, LIMITE, OBJETO, VACIO, objeto } from './comunes.js';
@@ -24,6 +24,23 @@ async function leerRecibo(c: Contexto, reciboId: string): Promise<Recibo> {
     if (venta?.['cajeroUid'] !== c.sesion.uid) throw new HttpsError('permission-denied', 'Solo puede ver los comprobantes de sus ventas.');
   }
   return recibo;
+}
+
+/**
+ * Lectura del vendedor: descarta los comprobantes de ventas ajenas ANTES de que `buscarComprobantes` ordene y aplique
+ * el límite, para que el filtro «solo lo mío» nunca recorte el resultado después. El comprobante no guarda quién vendió:
+ * se cruza con la venta por id.
+ */
+function lecturaDelVendedor(c: Contexto): LecturaRecibos {
+  return {
+    async consultar(tenantId, filtro) {
+      const candidatos = await c.e.lecturaRecibos.consultar(tenantId, filtro);
+      if (candidatos.length === 0) return candidatos;
+      const ventas = await c.e.firestore.getAll(...candidatos.map((r) => c.e.firestore.doc(`tenants/${tenantId}/ventas/${r.ventaId}`)), { fieldMask: ['cajeroUid'] });
+      const mias = new Set(ventas.filter((v) => v.get('cajeroUid') === c.sesion.uid).map((v) => v.id));
+      return candidatos.filter((r) => mias.has(r.ventaId));
+    },
+  };
 }
 
 export const accionesRecibos: TablaAcciones = {
@@ -49,13 +66,8 @@ export const accionesRecibos: TablaAcciones = {
         ...(d.hasta !== undefined ? { hasta: d.hasta } : {}), ...(d.cliente !== undefined ? { cliente: d.cliente } : {}),
         limite: d.limite ?? 50,
       };
-      const recibos = await buscarComprobantes(c.e.lecturaRecibos, c.tenantId, consulta);
-      if (c.rol !== 'caj') return { recibos };
-      // Vendedor: solo los comprobantes de sus ventas.
-      if (recibos.length === 0) return { recibos };
-      const ventas = await c.e.firestore.getAll(...recibos.map((r) => c.e.firestore.doc(`tenants/${c.tenantId}/ventas/${r.ventaId}`)), { fieldMask: ['cajeroUid'] });
-      const mias = new Set(ventas.filter((v) => v.get('cajeroUid') === c.sesion.uid).map((v) => v.id));
-      return { recibos: recibos.filter((r) => mias.has(r.ventaId)) };
+      const lectura = c.rol === 'caj' ? lecturaDelVendedor(c) : c.e.lecturaRecibos;
+      return { recibos: await buscarComprobantes(lectura, c.tenantId, consulta) };
     },
   }),
   leerRecibo: accion({

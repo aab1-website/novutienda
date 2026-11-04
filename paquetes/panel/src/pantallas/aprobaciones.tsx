@@ -1,7 +1,7 @@
 import type { JSX } from 'preact';
 import { useState } from 'preact/hooks';
 import type { AprobacionPos, VentaPos } from '../api/tipos.js';
-import { Alerta, Boton, BotonConfirmado, Cargando, ErrorCarga, Pestanas, Seccion, Vacio, fechaHora } from '../ui/comun.js';
+import { Alerta, Boton, Campo, Cargando, ErrorCarga, Pestanas, Seccion, Vacio, fechaHora } from '../ui/comun.js';
 import { useApp } from '../ui/contexto.js';
 import { useAccion, useCarga } from '../ui/hooks.js';
 import { formatearMonto } from '../util/dinero.js';
@@ -45,15 +45,45 @@ function Solicitudes(): JSX.Element {
   );
 }
 
+function FilaAnulacion({ v, ocupado, aprobar }: { v: VentaPos; ocupado: boolean; aprobar: (v: VentaPos, motivo: string) => void }): JSX.Element {
+  const { usuario } = useApp();
+  const [abierto, setAbierto] = useState(false);
+  const [motivo, setMotivo] = useState('');
+  const propia = v.solicitudAnulacion?.por === usuario.uid || v.cajeroUid === usuario.uid;
+  return (
+    <li class="tarjeta-interna">
+      <div class="fila fila-entre">
+        <strong>Recibo {v.serie}-{String(v.receiptNo).padStart(6, '0')} · {formatearMonto(v.total, v.moneda)}</strong>
+        <span class="texto-suave">{v.solicitudAnulacion ? fechaHora(v.solicitudAnulacion.enMs) : ''}</span>
+      </div>
+      <p>Motivo: {v.solicitudAnulacion?.motivo}</p>
+      {propia ? (
+        <p class="texto-suave">La vendió o la solicitó usted: la debe aprobar otra persona.</p>
+      ) : !abierto ? (
+        <Boton chico variante="peligro" onClick={() => setAbierto(true)} etiqueta="Aprobar anulación">Aprobar anulación</Boton>
+      ) : (
+        <form class="formulario" onSubmit={(e) => { e.preventDefault(); if (motivo.trim() !== '') aprobar(v, motivo.trim()); }} noValidate>
+          <p>Se revierte el stock y se reembolsa lo cobrado. Indique el motivo de su aprobación.</p>
+          <Campo etiqueta="Motivo de la aprobación" valor={motivo} onInput={setMotivo} requerido />
+          <div class="fila">
+            <Boton tipo="submit" chico variante="peligro" ocupado={ocupado} deshabilitado={motivo.trim() === ''}>Sí, anular la venta</Boton>
+            <Boton chico variante="secundario" onClick={() => setAbierto(false)}>Cancelar</Boton>
+          </div>
+        </form>
+      )}
+    </li>
+  );
+}
+
 function Anulaciones(): JSX.Element {
-  const { api, usuario } = useApp();
+  const { api } = useApp();
   const lista = useCarga(() => api.llamar('listarVentas', { conSolicitudAnulacion: true }), []);
   const turno = useCarga(() => api.llamar('turnoActual', {}), []);
   const accion = useAccion();
   const [resultado, setResultado] = useState<string | null>(null);
-  const aprobar = (v: VentaPos): void => {
+  const aprobar = (v: VentaPos, motivo: string): void => {
     void accion.ejecutar(async () => {
-      const r = await api.llamar('aprobarAnulacion', { ventaId: v.ventaId });
+      const r = await api.llamar('aprobarAnulacion', { ventaId: v.ventaId, motivo });
       setResultado(
         r.reembolsos.length === 0
           ? 'Anulación aprobada. No hubo cobros que reembolsar.'
@@ -73,18 +103,7 @@ function Anulaciones(): JSX.Element {
       {lista.datos && lista.datos.length === 0 && <Vacio titulo="No hay anulaciones pendientes" />}
       <ul class="lista-simple">
         {(lista.datos ?? []).map((v) => (
-          <li key={v.ventaId} class="tarjeta-interna">
-            <div class="fila fila-entre">
-              <strong>Recibo {v.serie}-{String(v.receiptNo).padStart(6, '0')} · {formatearMonto(v.total, v.moneda)}</strong>
-              <span class="texto-suave">{v.solicitudAnulacion ? fechaHora(v.solicitudAnulacion.enMs) : ''}</span>
-            </div>
-            <p>Motivo: {v.solicitudAnulacion?.motivo}</p>
-            {v.solicitudAnulacion?.por === usuario.uid ? (
-              <p class="texto-suave">La solicitó usted: la debe aprobar otra persona.</p>
-            ) : (
-              <BotonConfirmado texto="Aprobar anulación" pregunta="¿Aprobar la anulación? Se revierte el stock y se reembolsa lo cobrado." textoConfirmar="Sí, anular la venta" peligro chico onConfirmar={() => aprobar(v)} deshabilitado={accion.ocupado} />
-            )}
-          </li>
+          <FilaAnulacion key={v.ventaId} v={v} ocupado={accion.ocupado} aprobar={aprobar} />
         ))}
       </ul>
     </Seccion>

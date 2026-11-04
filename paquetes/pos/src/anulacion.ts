@@ -85,7 +85,8 @@ function cobradoPorMedio(
 }
 
 /**
- * Aprueba la anulación (solo `sup` o `adm`), una sola vez por venta: revierte stock y series por el
+ * Aprueba la anulación (solo `sup` o `adm`, con motivo propio), una sola vez por venta y nunca por quien vendió o
+ * solicitó anularla (`autoaprobacion`): revierte stock y series por el
  * puerto de Inventarios, cancela el saldo de crédito, registra el reembolso en el TURNO ABIERTO y
  * publica `venta.anulada`. El reembolso es lo realmente cobrado y se devuelve por los medios con
  * que se cobró: el efectivo sale de la caja de esa moneda (se rechaza si no alcanza); QR y
@@ -96,11 +97,13 @@ export async function aprobarAnulacion(
   tenantId: string,
   actor: ActorPos,
   ventaIdEntrada: string,
+  motivoAprobadorEntrada: string,
 ): Promise<ResultadoAnulacion> {
   exigirTenant(tenantId);
   exigirActor(actor);
   exigirRol(actor, ['sup', 'adm'], 'aprobar anulaciones');
   const ventaId = exigirUuid(ventaIdEntrada, 'ventaId');
+  const motivoAprobador = exigirTexto(motivoAprobadorEntrada, 'motivo');
   const ahora = ahoraDe(deps);
   return deps.db.runTransaction(async (tx) => {
     const raw = await leerObligatorio(tx, rutaVenta(tenantId, ventaId));
@@ -111,6 +114,9 @@ export async function aprobarAnulacion(
       throw new ErrorPos('venta-ya-anulada', 'La venta ya está anulada');
     }
     if (venta.solicitudAnulacion === undefined) throw new ErrorPos('anulacion-sin-solicitud', 'El vendedor debe solicitar la anulación primero');
+    if (venta.solicitudAnulacion.por === actor.uid || venta.cajeroUid === actor.uid) {
+      throw new ErrorPos('autoaprobacion', 'Nadie puede aprobar la anulación de una venta que vendió o que solicitó anular');
+    }
     const abierto = await leerTurnoAbierto(tx, tenantId);
     if (abierto === undefined) throw new ErrorPos('sin-turno', 'No hay un turno abierto donde registrar el reembolso');
     const creditoPago = venta.pagos.find((p) => p.medio === 'credito');
@@ -147,6 +153,7 @@ export async function aprobarAnulacion(
       turnoIdReembolso: abierto.turno.turnoId,
       moneda: venta.moneda,
       motivo: venta.solicitudAnulacion.motivo,
+      motivoAprobador,
       solicitadoPor: venta.solicitudAnulacion.por,
       aprobadoPor: actor.uid,
       reembolsos,
@@ -174,8 +181,8 @@ export async function aprobarAnulacion(
       accion: 'pos.anulacion.aprobar',
       ruta: rutaAnulacion(tenantId, ventaId),
       antes: { estado: 'confirmada' },
-      despues: { estado: 'anulada', reembolso: monto, medios: reembolsos.map((r) => r.medio) },
-      motivo: venta.solicitudAnulacion.motivo,
+      despues: { estado: 'anulada', reembolso: monto, medios: reembolsos.map((r) => r.medio), motivoSolicitud: venta.solicitudAnulacion.motivo },
+      motivo: motivoAprobador,
     });
     return { ventaId, reembolsos, turnoIdReembolso: abierto.turno.turnoId };
   });

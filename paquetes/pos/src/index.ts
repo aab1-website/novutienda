@@ -24,5 +24,5 @@ export { registrarMovimientoCaja } from './caja.js';
 export type { MovimientoCaja, MovimientoCajaEntrada } from './caja.js';
 export { cobrarCredito } from './creditos.js';
 export type { CobroCredito, CobroCreditoEntrada } from './creditos.js';
-export { aCsv, celdaCsv, csvMovimientosCaja, csvVentas, formatoMonto } from './csv.js';
+export { aCsv, celdaCsv, csvMovimientosCaja, csvVentas, formatoMonto, MAX_FILAS_CSV, recortarExportacion } from './csv.js';
 export type { CeldaCsv, CeldaMonto } from './csv.js';

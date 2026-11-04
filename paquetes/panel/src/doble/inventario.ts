@@ -251,9 +251,20 @@ export const handlersInventario: {
           });
         } else mover(c, e.operacionId, p, k.ubicacionId, 'conteo', r.diferencia, []);
       }
+      // Conteo ciego completo: lo que tiene existencia y nadie contó se trata como contado en 0.
+      const sinContar: string[] = [];
+      for (const p of c.e.productos.values()) {
+        if (k.lineas.some((l) => l.productoId === p.id) || p.stockTotal === undefined || (p.existencias[k.ubicacionId] ?? 0) <= 0) continue;
+        sinContar.push(p.id);
+        c.e.mermas.push({
+          mermaId: `merma-conteo-${k.conteoId}-${p.id}`, productoId: p.id, ubicacionId: k.ubicacionId, cantidad: p.existencias[k.ubicacionId], series: [],
+          motivo: `Faltante del conteo ${k.conteoId}`, estado: 'solicitada', solicitadaPor: c.uid, fecha: iso(c.ahora),
+        });
+      }
+      const avisos = sinContar.length > 0 ? [`Productos con existencia que nadie contó, tratados como contados en 0 (merma solicitada): ${sinContar.join(', ')}`] : [];
       c.e.conteos.set(k.conteoId, { ...k, estado: 'cerrado', cerradoPor: c.uid, resultado });
       auditar(c, 'inventarios.conteo-cerrar', `conteos/${k.conteoId}`);
-      return { conteoId: k.conteoId };
+      return { conteoId: k.conteoId, sinContar, avisos };
     });
   },
 

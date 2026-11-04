@@ -6,6 +6,22 @@ describe('mensajes de error', () => {
     expect(mensajeDeError(new ErrorApi('failed-precondition', 'x', { codigo: 'sin-turno' }))).toContain('Abra el turno');
     expect(mensajeDeError(new ErrorApi('failed-precondition', 'x', { codigo: 'correo-no-verificado' }))).toBe('Verifica tu correo para continuar.');
   });
+  it('para entrada-invalida, estado, estado-invalido y no-encontrado muestra el mensaje preciso del servidor si existe', () => {
+    expect(mensajeDeError(new ErrorApi('invalid-argument', 'El motivo es obligatorio', { codigo: 'entrada-invalida' }))).toBe('El motivo es obligatorio');
+    expect(mensajeDeError(new ErrorApi('failed-precondition', 'El conteo c1 no está abierto', { codigo: 'estado-invalido' }))).toBe('El conteo c1 no está abierto');
+    expect(mensajeDeError(new ErrorApi('failed-precondition', 'La sección ya está publicada', { codigo: 'estado' }))).toBe('La sección ya está publicada');
+    expect(mensajeDeError(new ErrorApi('not-found', 'La ubicación x no existe', { codigo: 'no-encontrado' }))).toBe('La ubicación x no existe');
+    // Sin mensaje (o con un código HTTPS cuyo texto no controla el servidor) se usa el texto fijo del panel.
+    expect(mensajeDeError(new ErrorApi('invalid-argument', ' ', { codigo: 'entrada-invalida' }))).toBe('Hay datos que no son válidos. Revise el formulario.');
+    expect(mensajeDeError(new ErrorApi('internal', 'fallo interno 10.0.0.1', { codigo: 'estado' }))).toBe('La acción no se puede hacer en el estado actual.');
+  });
+  it('egreso-excede-efectivo distingue el reembolso de la anulación del egreso de caja', () => {
+    const egreso = mensajeDeError(new ErrorApi('failed-precondition', 'El egreso supera el efectivo disponible en BOB', { codigo: 'egreso-excede-efectivo' }));
+    const reembolso = mensajeDeError(new ErrorApi('failed-precondition', 'El reembolso en efectivo supera el efectivo de esa moneda en la caja', { codigo: 'egreso-excede-efectivo' }));
+    expect(egreso).toContain('egreso');
+    expect(reembolso).toContain('reembolso');
+    expect(reembolso).not.toContain('egreso');
+  });
   it('cae en el código HTTPS y luego en el genérico, sin mostrar el texto técnico', () => {
     const e = new ErrorApi('unavailable', 'ECONNRESET 10.0.0.1');
     expect(mensajeDeError(e)).toContain('conexión');

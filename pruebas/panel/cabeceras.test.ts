@@ -14,11 +14,15 @@ type Firebase = { hosting: { target: string; headers: { source: string; headers:
 const raiz = mkdtempSync(join(tmpdir(), 'sello-panel-'));
 afterAll(() => rmSync(raiz, { recursive: true, force: true }));
 
+/** Variables VITE_* con las que se sella; por defecto ninguna, para que el resultado no dependa del entorno de quien corre la prueba. */
 function sellar(nombre: string, ...extra: string[]): Cab[] {
+  const { VITE_FIREBASE_PROJECT_ID: _p, VITE_FIREBASE_STORAGE_BUCKET: _b, ...entorno } = process.env;
+  void _p; void _b;
   const dir = join(raiz, nombre);
   mkdirSync(dir);
   writeFileSync(join(dir, 'index.html'), '<!doctype html><html><head><meta charset="utf-8"></head><body><div id="app"></div></body></html>');
-  execFileSync('node', ['paquetes/panel/scripts/sellar.mjs', dir, ...extra], { stdio: 'pipe' });
+  const vars = Object.fromEntries(extra.filter((x) => x.startsWith('VITE_')).map((x) => x.split('=', 2) as [string, string]));
+  execFileSync('node', ['paquetes/panel/scripts/sellar.mjs', dir, ...extra.filter((x) => !x.startsWith('VITE_'))], { stdio: 'pipe', env: { ...entorno, ...vars } });
   const [regla] = JSON.parse(readFileSync(join(dir, '_cabeceras.json'), 'utf8')) as { source: string; headers: Cab[] }[];
   return regla?.headers ?? [];
 }
@@ -34,7 +38,7 @@ describe('CSP del panel (producción)', () => {
   it('permite solo lo que el panel usa', () => {
     expect(directiva(csp, 'default-src')).toEqual(["'none'"]);
     expect(directiva(csp, 'connect-src').sort()).toEqual([
-      "'self'", 'https://*.a.run.app', 'https://*.cloudfunctions.net', 'https://firebaseappcheck.googleapis.com', 'https://firebasestorage.googleapis.com',
+      "'self'", 'https://*.cloudfunctions.net', 'https://firebaseappcheck.googleapis.com', 'https://firebasestorage.googleapis.com',
       'https://identitytoolkit.googleapis.com', 'https://securetoken.googleapis.com', 'https://www.google.com',
     ].sort());
     expect(directiva(csp, 'img-src')).toEqual(["'self'", 'data:', 'blob:', 'https://storage.googleapis.com', 'https://firebasestorage.googleapis.com']);
@@ -45,8 +49,8 @@ describe('CSP del panel (producción)', () => {
     expect(directiva(csp, 'frame-ancestors')).toEqual(["'none'"]);
     expect(csp).toContain('upgrade-insecure-requests');
   });
-  it('sin unsafe-*, sin esquemas abiertos, sin Firestore ni http', () => {
-    expect(csp).not.toMatch(/unsafe-|\shttps:(\s|;|$)|\sdata:\s*\*|http:|firestore\.googleapis/);
+  it('sin unsafe-*, sin esquemas abiertos, sin Firestore ni http, y sin *.a.run.app (el SDK de callables no lo usa)', () => {
+    expect(csp).not.toMatch(/unsafe-|\shttps:(\s|;|$)|\sdata:\s*\*|http:|firestore\.googleapis|run\.app/);
   });
   it('cabeceras de endurecimiento', () => {
     expect(valor(h, 'Strict-Transport-Security')).toBe('max-age=63072000; includeSubDomains');
@@ -58,6 +62,25 @@ describe('CSP del panel (producción)', () => {
   });
   it('el firebase.json versionado coincide con lo que genera el build (una sola fuente de verdad)', () => {
     expect(reglaDe(versionado, 'panel')).toEqual(h);
+  });
+});
+
+describe('CSP del panel con el proyecto y el bucket (variables VITE_* del build)', () => {
+  const csp = valor(sellar('con-variables', 'VITE_FIREBASE_PROJECT_ID=tienda-staging-123', 'VITE_FIREBASE_STORAGE_BUCKET=tienda-staging-123.firebasestorage.app'), 'Content-Security-Policy');
+  it('sella el host exacto de las funciones, sin comodín', () => {
+    expect(directiva(csp, 'connect-src')).toContain('https://us-east1-tienda-staging-123.cloudfunctions.net');
+    expect(directiva(csp, 'connect-src')).not.toContain('https://*.cloudfunctions.net');
+  });
+  it('restringe img-src y media-src al prefijo del bucket', () => {
+    expect(directiva(csp, 'img-src')).toEqual([
+      "'self'", 'data:', 'blob:', 'https://storage.googleapis.com/tienda-staging-123.firebasestorage.app/', 'https://firebasestorage.googleapis.com/v0/b/tienda-staging-123.firebasestorage.app/',
+    ]);
+    expect(directiva(csp, 'media-src')).toEqual(["'self'", 'blob:', 'https://storage.googleapis.com/tienda-staging-123.firebasestorage.app/']);
+  });
+  it('rechaza valores que podrían abrir directivas', () => {
+    for (const malo of ['VITE_FIREBASE_PROJECT_ID=a b; script-src *', 'VITE_FIREBASE_STORAGE_BUCKET=x y; img-src *']) {
+      expect(() => sellar(`malo-${malo.length}`, malo)).toThrow();
+    }
   });
 });
 

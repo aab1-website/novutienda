@@ -260,6 +260,8 @@ export async function confirmarVenta(
         cobradoPorMedio: {},
         estado: 'pendiente',
         aprobadoPor: creditoAprobadoPor,
+        /** Quien vendió: permite al vendedor consultar sus créditos sin recorrer sus ventas. */
+        cajeroUid: actor.uid,
         turnoId: turno.turnoId,
         creadoEnMs: ahora,
       });

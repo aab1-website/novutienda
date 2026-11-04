@@ -133,6 +133,32 @@ describe('finalizarSubida frente al disparador de Storage', () => {
   });
 });
 
+describe('finalizarSubida de un video: la llamada se corta por tiempo mientras el servidor procesa', () => {
+  const t = TRADUCCION.finalizarSubida as unknown as { ejecutar(c: unknown, e: unknown): Promise<{ id: string }> };
+  const contexto = (codigo: string, fallan: number, esperas: number[]): unknown => {
+    let n = 0;
+    return {
+      rol: 'sup', esperar: (ms: number) => { esperas.push(ms); return Promise.resolve(); },
+      llamar: () => { n += 1; return n <= fallan ? Promise.reject(new ErrorApi(codigo, 'x')) : Promise.resolve({ medio: { id: 'sub-1', productoId: 'p' } }); },
+    };
+  };
+  it('reintenta con retroceso creciente (tope de 8 s) y devuelve el medio', async () => {
+    const esperas: number[] = [];
+    expect((await t.ejecutar(contexto('deadline-exceeded', 6, esperas), { subidaId: 'sub-1' })).id).toBe('sub-1');
+    expect(esperas).toEqual([1500, 2250, 3375, 5063, 7595, 8000]);
+  });
+  it('se rinde al agotar ~2 minutos de espera y no reintenta errores definitivos', async () => {
+    const esperas: number[] = [];
+    await expect(t.ejecutar(contexto('unavailable', 1000, esperas), { subidaId: 'sub-1' })).rejects.toMatchObject({ codigoHttps: 'unavailable' });
+    const total = esperas.reduce((a, b) => a + b, 0);
+    expect(total).toBeGreaterThanOrEqual(120_000);
+    expect(total).toBeLessThan(130_000);
+    const definitivas: number[] = [];
+    await expect(t.ejecutar(contexto('permission-denied', 1, definitivas), { subidaId: 'sub-1' })).rejects.toMatchObject({ codigoHttps: 'permission-denied' });
+    expect(definitivas).toEqual([]);
+  });
+});
+
 describe('redondeo que llega del servidor (pos.cotizaciones)', () => {
   const cot = { cotizacionId: 'x', par: 'ARS/USD' as const, valor: 1000, fecha: '2026-11-04', fuente: 'BNA', estado: 'vigente' as const };
   const BOB = { tipo: 'decimales', decimales: 2, modo: 'cercano' };
@@ -172,16 +198,17 @@ describe('buscarUsuarioPorCorreo y exportarVentasCsv', () => {
       rol: 'adm' as const, esperar: (): Promise<void> => Promise.resolve(),
       llamar: (modulo: string, accion: string, datos?: object): Promise<unknown> => {
         llamadas.push({ modulo, accion, datos });
-        return Promise.resolve(accion === 'exportarVentasCsv' ? { csv: 'a\r\n' } : { uid: 'u1', correoVerificado: true, conContrasena: false });
+        return Promise.resolve(accion === 'exportarVentasCsv' ? { csv: 'a\r\n', truncado: llamadas.length === 3 } : { uid: 'u1', correoVerificado: true, conContrasena: false });
       },
     };
     const ejecutar = (n: NombreCallable, e: unknown): Promise<unknown> => (TRADUCCION[n] as unknown as { ejecutar(c: unknown, e: unknown): Promise<unknown> }).ejecutar(c, e);
     expect(await ejecutar('buscarUsuarioPorCorreo', { correo: ' ana@ejemplo.test ' })).toEqual({ uid: 'u1', correoVerificado: true, conContrasena: false });
     expect(llamadas[0]).toEqual({ modulo: 'consola', accion: 'buscarUsuarioPorCorreo', datos: { correo: 'ana@ejemplo.test' } });
-    expect(await ejecutar('exportarVentasCsv', { desde: '2026-11-01', hasta: '2026-11-03' })).toEqual({ csv: 'a\r\n' });
+    expect(await ejecutar('exportarVentasCsv', { desde: '2026-11-01', hasta: '2026-11-03' })).toEqual({ csv: 'a\r\n', truncado: false });
     expect(llamadas[1]).toEqual({ modulo: 'pos', accion: 'exportarVentasCsv', datos: { desde: Date.parse('2026-11-01T00:00:00.000-04:00'), hasta: Date.parse('2026-11-03T23:59:59.999-04:00') } });
     // Sin fechas: último año, siempre dentro del tope de 366 días del servidor.
-    await ejecutar('exportarVentasCsv', {});
+    // El aviso de truncado del servidor llega al panel.
+    expect(await ejecutar('exportarVentasCsv', {})).toEqual({ csv: 'a\r\n', truncado: true });
     const d = llamadas[2]?.datos as { desde: number; hasta: number };
     expect(d.hasta - d.desde).toBeLessThanOrEqual(366 * 86_400_000);
     expect([...ROLES_CALLABLE.buscarUsuarioPorCorreo]).toEqual(['adm']);

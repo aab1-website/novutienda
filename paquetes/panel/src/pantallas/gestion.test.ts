@@ -245,7 +245,7 @@ describe('recibos', () => {
     await u.clear(screen.getByLabelText('N.º de factura SUMA'));
     await u.type(screen.getByLabelText('N.º de factura SUMA'), '<b>');
     await u.click(screen.getByRole('button', { name: 'Guardar referencia' }));
-    expect((await screen.findAllByRole('alert'))[0]?.textContent).toContain('Hay datos que no son válidos');
+    expect((await screen.findAllByRole('alert'))[0]?.textContent).toContain('facturaSuma inválida');
   });
   it('el texto del cliente se escapa: no se interpreta como HTML', async () => {
     const e = crearEntorno('caj');

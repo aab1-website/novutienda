@@ -15,7 +15,7 @@ describe('rutas que escriben los módulos frente a los manifiestos registrados',
     ]);
     await registrarMovimientoCaja(e.deps, T, caj, UUID(60), { tipo: 'ingreso', moneda: 'BOB', monto: 100, motivo: 'm' });
     await solicitarAnulacion(e.deps, T, caj, UUID(1), 'error');
-    await aprobarAnulacion(e.deps, T, sup, UUID(1));
+    await aprobarAnulacion(e.deps, T, sup, UUID(1), 'aprobada por supervisión');
     await e.bandeja.entregar(T);
     await cerrarTurno(e.deps, T, caj, UUID(900), { BOB: 100 });
 

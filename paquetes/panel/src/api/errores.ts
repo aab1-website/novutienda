@@ -111,13 +111,24 @@ const POR_CODIGO_HTTPS: Readonly<Record<string, string>> = {
  */
 const CON_MENSAJE_DEL_SERVIDOR: ReadonlySet<string> = new Set(['failed-precondition', 'not-found', 'already-exists', 'permission-denied', 'invalid-argument', 'resource-exhausted']);
 
+/**
+ * Códigos del módulo cuyo texto fijo del panel es demasiado vago: se prefiere el mensaje preciso del servidor
+ * («Falta el motivo», «El conteo c1 no está abierto»…) cuando existe y es de los que el servidor controla.
+ */
+const PREFIERE_MENSAJE_DEL_SERVIDOR: ReadonlySet<string> = new Set(['entrada-invalida', 'estado', 'estado-invalido', 'no-encontrado']);
+
 export const MENSAJE_GENERICO = 'Ocurrió un error inesperado. Intente de nuevo.';
 
 /** Mensaje legible para cualquier error (nunca el texto técnico del servidor). */
 export function mensajeDeError(e: unknown): string {
   if (!(e instanceof ErrorApi)) return MENSAJE_GENERICO;
-  const modulo = e.detalle.codigo === undefined ? undefined : POR_CODIGO_MODULO[e.detalle.codigo];
-  const delServidor = modulo === undefined && CON_MENSAJE_DEL_SERVIDOR.has(e.codigoHttps) && e.message.trim() !== '' ? e.message.trim() : undefined;
+  const delServidorDisponible = CON_MENSAJE_DEL_SERVIDOR.has(e.codigoHttps) && e.message.trim() !== '' ? e.message.trim() : undefined;
+  const codigo = e.detalle.codigo;
+  let modulo = codigo === undefined ? undefined : POR_CODIGO_MODULO[codigo];
+  if (codigo !== undefined && PREFIERE_MENSAJE_DEL_SERVIDOR.has(codigo) && delServidorDisponible !== undefined) modulo = delServidorDisponible;
+  // El mismo código sirve al egreso de caja y al reembolso de una anulación: se distinguen por el mensaje del servidor.
+  if (codigo === 'egreso-excede-efectivo' && /reembolso/i.test(e.message)) modulo = 'El reembolso en efectivo es mayor que el efectivo disponible en esa moneda de la caja.';
+  const delServidor = modulo === undefined ? delServidorDisponible : undefined;
   let base = modulo ?? delServidor ?? POR_CODIGO_HTTPS[e.codigoHttps] ?? MENSAJE_GENERICO;
   const sinCodigoConFaltantes = e.detalle.codigo === undefined && e.codigoHttps === 'failed-precondition';
   if ((e.detalle.codigo === 'stock-insuficiente' || sinCodigoConFaltantes) && e.detalle.faltantes !== undefined && e.detalle.faltantes.length > 0) {

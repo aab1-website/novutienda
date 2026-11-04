@@ -247,18 +247,18 @@ describe('doble: crédito, caja y anulaciones', () => {
     const { e } = await conTurno();
     const ventaId = uuid();
     await e.api.llamar('confirmarVenta', { requestId: ventaId, carrito: carritoTv(), pagos: [{ medio: 'efectivo', moneda: 'BOB', monto: 200000 }, { medio: 'qr', moneda: 'BOB', monto: 113200, referencia: 'R9' }] });
-    expect((await falla(e.api.llamar('aprobarAnulacion', { ventaId }))).codigoHttps).toBe('permission-denied');
+    expect((await falla(e.api.llamar('aprobarAnulacion', { ventaId, motivo: 'Aprobada tras revisar' }))).codigoHttps).toBe('permission-denied');
     const sol = await e.api.llamar('solicitarAnulacion', { ventaId, motivo: 'Cliente devolvió' });
     expect(sol.solicitudAnulacion?.por).toBe('u-caj');
-    expect((await falla(e.api.llamar('aprobarAnulacion', { ventaId }))).codigoHttps).toBe('permission-denied');
+    expect((await falla(e.api.llamar('aprobarAnulacion', { ventaId, motivo: 'Aprobada tras revisar' }))).codigoHttps).toBe('permission-denied');
     e.como('sup');
     // El reembolso entra en el turno abierto de la caja (la caja es única), aunque lo apruebe otra persona.
-    const r = await e.api.llamar('aprobarAnulacion', { ventaId });
+    const r = await e.api.llamar('aprobarAnulacion', { ventaId, motivo: 'Aprobada tras revisar' });
     expect(r.reembolsos).toEqual([{ medio: 'efectivo', moneda: 'BOB', monto: 200000 }, { medio: 'qr', moneda: 'BOB', monto: 113200 }]);
     const t = await e.api.llamar('turnoActual', {});
     expect(t?.totales.BOB?.efectivo).toBe(0); // lo cobrado menos lo reembolsado
     expect(t?.totales.BOB?.qr).toBe(0);
-    expect((await falla(e.api.llamar('aprobarAnulacion', { ventaId }))).detalle.codigo).toBe('venta-ya-anulada');
+    expect((await falla(e.api.llamar('aprobarAnulacion', { ventaId, motivo: 'Aprobada tras revisar' }))).detalle.codigo).toBe('venta-ya-anulada');
     const tv = (await e.api.llamar('listarProductos', {})).find((p) => p.id === 'tv-55');
     expect(tv?.existencias.tienda).toBe(3);
     expect((await e.api.llamar('obtenerRecibo', { ventaId }))?.estado).toBe('ANULADO');
@@ -268,7 +268,7 @@ describe('doble: crédito, caja y anulaciones', () => {
     const ventaId = uuid();
     await e.api.llamar('confirmarVenta', { requestId: ventaId, carrito: carritoTv(), pagos: efectivo(313200) });
     await e.api.llamar('solicitarAnulacion', { ventaId, motivo: 'error' });
-    expect((await falla(e.api.llamar('aprobarAnulacion', { ventaId }))).detalle.codigo).toBe('autoaprobacion');
+    expect((await falla(e.api.llamar('aprobarAnulacion', { ventaId, motivo: 'Aprobada tras revisar' }))).detalle.codigo).toBe('autoaprobacion');
     e.como('caj');
     expect((await falla(e.api.llamar('solicitarAnulacion', { ventaId, motivo: 'x' }))).detalle.codigo).toBe('no-autorizado');
   });
@@ -349,7 +349,10 @@ describe('doble: inventarios', () => {
     const abierto = (await e.api.llamar('listarConteos', {}))[0];
     expect(JSON.stringify(abierto)).not.toContain('teorico');
     expect(abierto?.resultado).toBeUndefined();
-    await e.api.llamar('cerrarConteo', { operacionId: uuid(), conteoId });
+    const cierre = await e.api.llamar('cerrarConteo', { operacionId: uuid(), conteoId });
+    expect(cierre.resultado['sinContar']).toEqual(expect.arrayContaining(['tv-55']));
+    expect(String(cierre.resultado['avisos'])).toContain('nadie contó');
+    expect((await e.api.llamar('listarMermas', {})).some((m) => m.productoId === 'tv-55')).toBe(true);
     const cerrado = (await e.api.llamar('listarConteos', {}))[0];
     expect(cerrado?.resultado).toEqual([{ productoId: 'cable-hdmi', teorico: 25, contado: 20, diferencia: -5 }, { productoId: 'parlante', teorico: 1, contado: 3, diferencia: 2 }]);
     expect((await e.api.llamar('listarMermas', {})).some((m) => m.productoId === 'cable-hdmi' && m.cantidad === 5)).toBe(true);

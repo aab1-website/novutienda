@@ -115,8 +115,8 @@ const contar1 = (conteoId: string, productoId: string, contado?: number, series?
       ...(series !== undefined ? { series } : {}),
     }),
   );
-const cerrar = (conteoId: string, por: Autor = SUP2) =>
-  db.runTransaction((tx) => cerrarConteo(tx, { tenantId: T, operacionId: op('cc'), por, conteoId }));
+const cerrar = (conteoId: string, por: Autor = SUP2, productosConExistencia?: string[]) =>
+  db.runTransaction((tx) => cerrarConteo(tx, { tenantId: T, operacionId: op('cc'), por, conteoId, ...(productosConExistencia !== undefined ? { productosConExistencia } : {}) }));
 
 describe('conteo ciego', () => {
   it('abrir: uno por ubicación, solo sup/adm', async () => {
@@ -173,9 +173,58 @@ describe('conteo ciego', () => {
     await expect(contar1('c1', 'lapiz', -1)).rejects.toBeInstanceOf(EntradaInvalida);
     await expect(contar1('c1', 'lapiz', 1.5)).rejects.toBeInstanceOf(EntradaInvalida);
     await expect(contar1('c1', 'lapiz')).rejects.toBeInstanceOf(EntradaInvalida);
-    await expect(contar1('c1', 'celular', undefined, ['NOEXISTE'])).rejects.toBeInstanceOf(SerieNoDisponible);
     await expect(contar1('c1', 'celular', 2)).rejects.toBeInstanceOf(EntradaInvalida);
     await expect(cerrar('c1')).rejects.toBeInstanceOf(EstadoInvalido);
+  });
+
+  it('al cerrar, el producto con existencia que nadie contó es un faltante total (contado en 0) y el cierre lo avisa', async () => {
+    await abrir('c1');
+    await contar1('c1', 'lapiz', 10); // exacto
+    // goma (5) y celular (S1..S3) tienen existencia en la tienda y nadie los contó; el producto 'lapiz' ya contado no se duplica.
+    const r = await cerrar('c1', SUP2, ['lapiz', 'goma', 'celular']);
+    expect(r.resultado).toMatchObject({ sinContar: ['goma', 'celular'], sobrantes: 0 });
+    expect((r.resultado['avisos'] as string[]).join(' ')).toMatch(/nadie cont.*goma, celular/);
+    expect(doc(db, 'mermas', 'c1-goma')).toMatchObject({ estado: 'solicitada', cantidad: 5, solicitadaPor: 'u-sup2', origen: 'conteo' });
+    expect(doc(db, 'mermas', 'c1-celular')).toMatchObject({ estado: 'solicitada', cantidad: 3, series: ['S1', 'S2', 'S3'] });
+    expect(doc(db, 'mermas', 'c1-lapiz')).toBeUndefined();
+    expect(doc(db, 'existencias', 'goma__tienda')?.['cantidad']).toBe(5); // la merma aún no descuenta
+    await expect(resolver('rm', 'c1-goma', 'aprobada', SUP2)).rejects.toBeInstanceOf(SinPermiso); // quien cerró no la aprueba
+    await resolver('rm', 'c1-goma', 'aprobada', SUP);
+    expect(doc(db, 'existencias', 'goma__tienda')?.['cantidad']).toBe(0);
+    verificarInvariantes(db);
+  });
+
+  it('un producto sin existencia en la lista no genera merma; sin lista el cierre se comporta como antes', async () => {
+    await cargar(db, 'goma', 'deposito-1', 4);
+    await abrir('c1', SUP, 'deposito-1');
+    await contar1('c1', 'goma', 4);
+    const r = await cerrar('c1', SUP2, []);
+    expect(r.resultado).toMatchObject({ sinContar: [], avisos: [] });
+    await abrir('c2');
+    await contar1('c2', 'lapiz', 10);
+    expect((await cerrar('c2')).resultado).toMatchObject({ sinContar: [] });
+  });
+
+  it('registrar una serie que no figura disponible no revela su estado: se acepta y el cierre la reporta sin moverla', async () => {
+    const vendida = await db.runTransaction((tx) =>
+      solicitarMerma(tx, { tenantId: T, operacionId: op('sm'), por: CAJ, productoId: 'celular', ubicacionId: 'tienda', cantidad: 1, series: ['S2'], motivo: 'rota' }),
+    );
+    expect(vendida).toBeDefined();
+    await resolver('rm', `${(vendida.resultado as { mermaId: string }).mermaId}`, 'aprobada'); // S2 pasa a merma
+    await abrir('c1');
+    // Mismo resultado para una serie en merma, una inexistente y una disponible: ninguna lanza error.
+    const rMerma = await contar1('c1', 'celular', undefined, ['S1', 'S2', 'NOEXISTE']);
+    expect(rMerma.resultado).toEqual({ conteoId: 'c1', productoId: 'celular', contado: 3 });
+    const rLimpia = await contar1('c1', 'celular', undefined, ['S1', 'S3']);
+    expect(Object.keys(rLimpia.resultado)).toEqual(Object.keys(rMerma.resultado));
+    await contar1('c1', 'celular', undefined, ['S1', 'S3', 'S2', 'NOEXISTE']);
+    const r = await cerrar('c1');
+    expect(r.resultado).toMatchObject({ sobrantesConSerie: [{ productoId: 'celular', series: ['S2', 'NOEXISTE'] }] });
+    expect((r.resultado['avisos'] as string[]).join(' ')).toContain('S2, NOEXISTE');
+    expect(doc(db, 'unidades', 'celular__S2')).toMatchObject({ estado: 'merma' }); // no se movió
+    expect(doc(db, 'unidades', 'celular__NOEXISTE')).toBeUndefined();
+    expect(doc(db, 'conteos', 'c1')?.['sobrantesConSerie']).toBeUndefined();
+    verificarInvariantes(db);
   });
 
   it('volver a registrar una línea la reemplaza', async () => {

@@ -189,7 +189,7 @@ export interface CreditoVista {
   readonly monto: number;
   readonly saldo: number;
   readonly cobrado: number;
-  readonly estado: 'pendiente' | 'cobrado' | 'cancelado';
+  readonly estado: 'pendiente' | 'cobrado' | 'anulado';
   readonly aprobadoPor: string;
   readonly turnoId: string;
   readonly creadoEnMs: number;

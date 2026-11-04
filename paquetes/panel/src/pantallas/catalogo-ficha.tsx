@@ -55,8 +55,16 @@ function EditorFicha({ producto, alCerrar }: { producto: ProductoPanel; alCerrar
       const r = await api.llamar('reservarSubida', { subidaId, productoId: producto.id, tipo, bytes: archivo.size });
       estado('Subiendo 0 %');
       await almacen.subir(r.rutaOriginal, archivo, (p) => estado(`Subiendo ${p} %`));
-      estado('Procesando…');
-      const m = await api.llamar('finalizarSubida', { subidaId });
+      // El procesamiento (sobre todo de un video) puede tardar más de un minuto: se muestra el tiempo transcurrido.
+      const inicio = Date.now();
+      estado('Procesando en el servidor… 0 s');
+      const reloj = setInterval(() => estado(`Procesando en el servidor… ${Math.round((Date.now() - inicio) / 1000)} s. Un video puede tardar hasta 2 minutos.`), 1000);
+      let m;
+      try {
+        m = await api.llamar('finalizarSubida', { subidaId });
+      } finally {
+        clearInterval(reloj);
+      }
       estado('Listo');
       setF((actual) => {
         const base = actual ?? ficha;

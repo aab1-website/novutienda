@@ -1,5 +1,5 @@
 import type { TransaccionIdentidad } from '@novutienda/nucleo';
-import { EntradaInvalida, EstadoInvalido, NoEncontrado, SerieNoDisponible } from './errores.js';
+import { EntradaInvalida, EstadoInvalido, NoEncontrado } from './errores.js';
 import { hashCarga } from './hash.js';
 import { exigirProducto, exigirSegmento, exigirSeries, exigirUbicacion, MAX_LINEAS, ruta } from './ids.js';
 import { MARCA_SERVIDOR, type Autor, type Datos, type Trabajo } from './motor.js';
@@ -50,7 +50,9 @@ export async function abrirConteo(
 /**
  * Registra (o reemplaza) la línea contada de un producto. El teórico se guarda en el servidor
  * (`conteoTeoricos`) y NUNCA se devuelve a quien cuenta. En productos con serie se informan las
- * series halladas; deben estar disponibles en la ubicación.
+ * series halladas. Conteo ciego: NO se verifica su estado (una serie vendida, en merma, de otro almacén o
+ * desconocida se acepta igual como «hallada»), para no revelar a quien cuenta lo que el sistema espera; el
+ * cierre reporta a `sup`/`adm` las que no figuraban como disponibles aquí (sobrantes con serie).
  */
 export async function registrarLineaConteo(
   tx: TransaccionIdentidad,
@@ -85,11 +87,6 @@ export async function registrarLineaConteo(
       if (prod['conSerie'] === true) {
         if (series === undefined) throw new EntradaInvalida(`${productoId} lleva serie: informe las series halladas`);
         if (e.contado !== undefined && e.contado !== series.length) throw new EntradaInvalida('contado no coincide con las series');
-        await Promise.all(series.map((s) => t.unidad(productoId, s)));
-        for (const s of series) {
-          const u = t.unidadLeida(productoId, s);
-          if (u === undefined || u['estado'] !== 'disponible' || u['ubicacionId'] !== ubicacionId) throw new SerieNoDisponible(productoId, s);
-        }
         contado = series.length;
       } else {
         if (series !== undefined && series.length > 0) throw new EntradaInvalida(`${productoId} no lleva serie`);
@@ -129,10 +126,17 @@ export async function registrarLineaConteo(
 /**
  * Cierra y firma el conteo (sup/adm). Faltantes → mermas solicitadas (a nombre de quien contó, para
  * que otro las resuelva); sobrantes → movimiento de conteo. Libera la ubicación.
+ *
+ * Conteo ciego completo: los productos con existencia en la ubicación que nadie contó (`productosConExistencia`,
+ * que el llamador consulta en la ubicación) se tratan como contados en 0: generan una merma solicitada a nombre de
+ * quien cierra y quedan listados en `sinContar` con un aviso. Las series halladas que no figuraban como disponibles
+ * en la ubicación se reportan en `sobrantesConSerie`; el cierre NO las mueve (alguien debe revisarlas). Ambos datos
+ * van solo en el resultado (que leen sup/adm), no en el documento del conteo, que también lee quien cuenta.
  */
-export async function cerrarConteo(tx: TransaccionIdentidad, e: Base): Promise<ResultadoOperacion<Datos>> {
+export async function cerrarConteo(tx: TransaccionIdentidad, e: Base & { productosConExistencia?: readonly string[] }): Promise<ResultadoOperacion<Datos>> {
   const conteoId = exigirSegmento(e.conteoId, 'conteoId');
   const por = exigirAutor(e.por);
+  const conExistencia = [...new Set((e.productosConExistencia ?? []).map((p) => exigirProducto(p)))];
   return ejecutarOperacion(tx, {
     tenantId: e.tenantId,
     operacionId: e.operacionId,
@@ -148,13 +152,19 @@ export async function cerrarConteo(tx: TransaccionIdentidad, e: Base): Promise<R
       const ubicacionId = conteo['ubicacionId'] as string;
       const productos = conteo['productos'] as string[];
       if (productos.length === 0) throw new EstadoInvalido('El conteo no tiene líneas');
+      const sinContarIds = conExistencia.filter((p) => !productos.includes(p));
+      if (productos.length + sinContarIds.length > MAX_LINEAS) {
+        throw new EntradaInvalida(`Con los productos sin contar el cierre supera ${MAX_LINEAS} productos: cuente o cierre por partes`);
+      }
       const ubic = await t.lector.leer('ubicaciones', ubicacionId);
       const [lineas, teoricos] = await Promise.all([
         Promise.all(productos.map((p) => t.lector.leer('conteoLineas', idLinea(conteoId, p)))),
         Promise.all(productos.map((p) => t.lector.leer('conteoTeoricos', idLinea(conteoId, p)))),
-        Promise.all(productos.map((p) => t.cargar(p, ubicacionId))),
+        Promise.all([...productos, ...sinContarIds].map((p) => t.cargar(p, ubicacionId))),
       ]);
       const mermas: string[] = [];
+      const sinContar: string[] = [];
+      const sobrantesConSerie: { productoId: string; series: string[] }[] = [];
       let sobrantes = 0;
       const firmaLineas: Datos[] = [];
       for (const [i, p] of productos.entries()) {
@@ -166,8 +176,11 @@ export async function cerrarConteo(tx: TransaccionIdentidad, e: Base): Promise<R
         firmaLineas.push({ productoId: p, contado });
         if (prodSerie(t.producto(p))) {
           const halladas = (l['series'] as string[]) ?? [];
-          const faltan = ((te['series'] as string[]) ?? []).filter((s) => !halladas.includes(s));
+          const teoricas = (te['series'] as string[]) ?? [];
+          const faltan = teoricas.filter((s) => !halladas.includes(s));
           if (faltan.length > 0) mermas.push(pedirMerma(t, conteoId, p, ubicacionId, faltan.length, faltan, l['registradaPor'] as string, l['registradaRol'] as string));
+          const extra = halladas.filter((s) => !teoricas.includes(s));
+          if (extra.length > 0) sobrantesConSerie.push({ productoId: p, series: extra });
         } else if (contado < teorico) {
           mermas.push(pedirMerma(t, conteoId, p, ubicacionId, teorico - contado, [], l['registradaPor'] as string, l['registradaRol'] as string));
         } else if (contado > teorico) {
@@ -175,6 +188,18 @@ export async function cerrarConteo(tx: TransaccionIdentidad, e: Base): Promise<R
           sobrantes += contado - teorico;
         }
       }
+      // Productos con existencia que nadie contó: se tratan como contados en 0.
+      for (const p of sinContarIds) {
+        const ex = t.existencia(p, ubicacionId);
+        if (ex.cantidad <= 0) continue;
+        const faltan = prodSerie(t.producto(p)) ? [...ex.series] : [];
+        firmaLineas.push({ productoId: p, contado: 0 });
+        mermas.push(pedirMerma(t, conteoId, p, ubicacionId, ex.cantidad, faltan, por.uid, por.rol));
+        sinContar.push(p);
+      }
+      const avisos: string[] = [];
+      if (sinContar.length > 0) avisos.push(`Productos con existencia que nadie contó, tratados como contados en 0 (merma solicitada): ${sinContar.join(', ')}`);
+      for (const s of sobrantesConSerie) avisos.push(`Series halladas que no figuraban como disponibles en la ubicación (no se movieron): ${s.productoId}: ${s.series.join(', ')}`);
       const { conteoAbiertoId: _libre, ...resto } = ubic ?? {};
       void _libre;
       t.escribir({ ruta: ruta(t.tenantId, 'ubicaciones', ubicacionId), modo: 'set', datos: resto });
@@ -191,7 +216,7 @@ export async function cerrarConteo(tx: TransaccionIdentidad, e: Base): Promise<R
         },
       });
       return {
-        resultado: { conteoId, sobrantes, mermas },
+        resultado: { conteoId, sobrantes, mermas, sinContar, sobrantesConSerie, avisos },
         referencia: { tipo: 'conteo', id: conteoId },
         tipoMovimiento: 'conteo',
       };

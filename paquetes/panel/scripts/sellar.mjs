@@ -42,14 +42,35 @@ if (problemas.length > 0) {
 // coincida con lo que genera este script.
 // Sin 'unsafe-inline' ni 'unsafe-eval'. Solo lo que el panel usa en producción:
 //   connect-src identitytoolkit y securetoken (Firebase Auth), las funciones (callables, región us-east1) y
-//               firebasestorage.googleapis.com (subidas). CSP no admite comodines a mitad de un nombre: no puede decir
-//               «us-east1-*.cloudfunctions.net»; se acepta *.cloudfunctions.net y *.a.run.app (funciones de 2.ª gen.).
-//   img-src / media-src  Cloud Storage (medios publicados) y blob: (vistas previas antes de subir)
+//               firebasestorage.googleapis.com (subidas).
+//               Funciones: el SDK de callables (@firebase/functions) llama SIEMPRE a
+//               https://<región>-<proyecto>.cloudfunctions.net/<función>, así que NO hace falta *.a.run.app. Con
+//               VITE_FIREBASE_PROJECT_ID se sella el host exacto https://us-east1-<proyecto>.cloudfunctions.net; sin la
+//               variable (valor base del firebase.json versionado y compilaciones locales) el respaldo es el comodín
+//               https://*.cloudfunctions.net, porque CSP no admite comodines a mitad de un nombre («us-east1-*»).
+//   img-src / media-src  Cloud Storage (medios publicados) y blob: (vistas previas antes de subir). Con
+//               VITE_FIREBASE_STORAGE_BUCKET se restringen al prefijo de ese bucket (https://storage.googleapis.com/<bucket>/
+//               y, solo en img-src, https://firebasestorage.googleapis.com/v0/b/<bucket>/); sin la variable, los hosts completos.
 // App Check con reCAPTCHA Enterprise (única razón de estos dominios):
 //   script-src  https://www.google.com/recaptcha/ y https://www.gstatic.com/recaptcha/  (enterprise.js y sus módulos)
 //   connect-src https://firebaseappcheck.googleapis.com (canje del token) y https://www.google.com (recaptcha/enterprise/reload y clr)
 //   frame-src   https://www.google.com y https://recaptcha.google.com  (marco invisible de reCAPTCHA Enterprise)
 // La compilación `--emulador` NO los incluye: usa un proveedor propio y no carga nada de Google.
+// Las variables llegan del entorno del build (el CI las exporta para el panel). Se validan: van dentro de la CSP y un valor
+// con espacios o «;» abriría o rompería directivas. En la compilación del emulador no se usan.
+const PROYECTO = emulador ? '' : (process.env.VITE_FIREBASE_PROJECT_ID ?? '').trim();
+const BUCKET = emulador ? '' : (process.env.VITE_FIREBASE_STORAGE_BUCKET ?? '').trim();
+if (PROYECTO !== '' && !/^[a-z][a-z0-9-]{4,28}[a-z0-9]$/.test(PROYECTO)) {
+  console.error('sellar: VITE_FIREBASE_PROJECT_ID no tiene la forma de un id de proyecto de Google Cloud.');
+  process.exit(1);
+}
+if (BUCKET !== '' && !/^[a-z0-9][a-z0-9._-]{2,221}$/.test(BUCKET)) {
+  console.error('sellar: VITE_FIREBASE_STORAGE_BUCKET no tiene la forma de un nombre de bucket.');
+  process.exit(1);
+}
+const FUNCIONES = PROYECTO === '' ? 'https://*.cloudfunctions.net' : `https://us-east1-${PROYECTO}.cloudfunctions.net`;
+const ALMACEN_IMG = BUCKET === '' ? 'https://storage.googleapis.com https://firebasestorage.googleapis.com' : `https://storage.googleapis.com/${BUCKET}/ https://firebasestorage.googleapis.com/v0/b/${BUCKET}/`;
+const ALMACEN_MEDIA = BUCKET === '' ? 'https://storage.googleapis.com' : `https://storage.googleapis.com/${BUCKET}/`;
 const RECAPTCHA_SCRIPT = emulador ? '' : ' https://www.google.com/recaptcha/ https://www.gstatic.com/recaptcha/';
 const RECAPTCHA_CONEXION = emulador ? '' : ' https://firebaseappcheck.googleapis.com https://www.google.com';
 const RECAPTCHA_MARCO = emulador ? "'none'" : 'https://www.google.com https://recaptcha.google.com';
@@ -58,12 +79,12 @@ const csp = [
   "default-src 'none'",
   `script-src 'self'${RECAPTCHA_SCRIPT}`,
   "style-src 'self'",
-  "img-src 'self' data: blob: https://storage.googleapis.com https://firebasestorage.googleapis.com",
+  `img-src 'self' data: blob: ${ALMACEN_IMG}`,
   "font-src 'self'",
-  `connect-src 'self' https://identitytoolkit.googleapis.com https://securetoken.googleapis.com https://*.cloudfunctions.net https://*.a.run.app https://firebasestorage.googleapis.com${RECAPTCHA_CONEXION}${CONEXIONES_EMULADOR}`,
+  `connect-src 'self' https://identitytoolkit.googleapis.com https://securetoken.googleapis.com ${FUNCIONES} https://firebasestorage.googleapis.com${RECAPTCHA_CONEXION}${CONEXIONES_EMULADOR}`,
   `frame-src ${RECAPTCHA_MARCO}`,
   "object-src 'none'",
-  "media-src 'self' blob: https://storage.googleapis.com",
+  `media-src 'self' blob: ${ALMACEN_MEDIA}`,
   "manifest-src 'self'",
   "base-uri 'none'",
   "form-action 'self'",

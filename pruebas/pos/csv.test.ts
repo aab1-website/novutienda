@@ -1,5 +1,5 @@
 import { manifiestoNucleo, crearRegistro, type ManifiestoModulo } from '@novutienda/nucleo';
-import { aCsv, celdaCsv, csvMovimientosCaja, csvVentas, etiquetaPago, formatoMonto, manifiestoPos, type VentaPos } from '@novutienda/pos';
+import { aCsv, celdaCsv, csvMovimientosCaja, csvVentas, etiquetaPago, formatoMonto, manifiestoPos, MAX_FILAS_CSV, recortarExportacion, type VentaPos } from '@novutienda/pos';
 import { describe, expect, it } from 'vitest';
 
 describe('CSV', () => {
@@ -38,6 +38,19 @@ describe('CSV', () => {
     expect(etiquetaPago({ medio: 'qr', moneda: 'BOB', monto: 1, registradoPor: 'ana' })).toBe('QR registrado por ana');
     expect(etiquetaPago({ medio: 'qr', moneda: 'BOB', monto: 1 })).not.toMatch(/verific/i);
     expect(etiquetaPago({ medio: 'efectivo', moneda: 'BOB', monto: 1 })).toBe('efectivo');
+  });
+});
+
+describe('exportación acotada', () => {
+  it('avisa cuando hay más filas que el tope y recorta; no avisa si caben', () => {
+    const filas = Array.from({ length: MAX_FILAS_CSV + 1 }, (_, i) => i);
+    const r = recortarExportacion(filas);
+    expect(r.truncado).toBe(true);
+    expect(r.filas).toHaveLength(MAX_FILAS_CSV);
+    expect(r.filas[MAX_FILAS_CSV - 1]).toBe(MAX_FILAS_CSV - 1);
+    expect(recortarExportacion(filas.slice(0, MAX_FILAS_CSV))).toMatchObject({ truncado: false });
+    expect(recortarExportacion([1, 2, 3], 3).truncado).toBe(false);
+    expect(recortarExportacion([1, 2, 3, 4], 3)).toEqual({ filas: [1, 2, 3], truncado: true });
   });
 });
 

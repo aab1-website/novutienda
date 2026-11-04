@@ -28,7 +28,7 @@ export interface Contrato {
   solicitarAprobacion: { entrada: { aprobacionId: string; solicitud: SolicitudAprobacion }; salida: AprobacionPos };
   resolverAprobacion: { entrada: { aprobacionId: string; decision: 'aprobar' | 'rechazar' }; salida: AprobacionPos };
   solicitarAnulacion: { entrada: { ventaId: string; motivo: string }; salida: VentaPos };
-  aprobarAnulacion: { entrada: { ventaId: string }; salida: ResultadoAnulacion };
+  aprobarAnulacion: { entrada: { ventaId: string; motivo: string }; salida: ResultadoAnulacion };
   registrarMovimientoCaja: { entrada: { requestId: string; movimiento: MovimientoCajaEntrada }; salida: { movimiento: MovimientoCaja; repetido: boolean } };
   cobrarCredito: { entrada: { requestId: string; ventaId: string; cobro: CobroCreditoEntrada }; salida: { cobro: CobroCredito; repetido: boolean } };
   guardarConfigPos: { entrada: { config: ConfigPos }; salida: ConfigPos };
@@ -107,8 +107,8 @@ export interface Contrato {
   listarAprobaciones: { entrada: { estado?: 'pendiente' | 'aprobada' | 'rechazada' | 'usada' }; salida: readonly AprobacionPos[] };
   listarMovimientosCaja: { entrada: { turnoId?: string }; salida: readonly MovimientoCaja[] };
   /** Ventas del rango (aaaa-mm-dd) en CSV, con celdas neutralizadas por el servidor (`sup`/`adm`). */
-  exportarVentasCsv: { entrada: { desde?: string; hasta?: string }; salida: { csv: string } };
-  listarCreditos: { entrada: { estado?: 'pendiente' | 'cobrado' | 'cancelado' }; salida: readonly CreditoVista[] };
+  exportarVentasCsv: { entrada: { desde?: string; hasta?: string }; salida: { csv: string; truncado: boolean } };
+  listarCreditos: { entrada: { estado?: 'pendiente' | 'cobrado' | 'anulado' }; salida: readonly CreditoVista[] };
   listarAuditoria: { entrada: { desde?: string; hasta?: string; accion?: string; uid?: string; limite?: number }; salida: readonly EntradaAuditoriaVista[] };
   /** Recibo emitido para una venta (el módulo lo emite al consumir el evento: puede tardar), o `null`. */
   obtenerRecibo: { entrada: { ventaId: string }; salida: Recibo | null };

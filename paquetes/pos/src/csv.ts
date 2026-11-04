@@ -23,6 +23,17 @@ export function celdaCsv(valor: CeldaCsv): string {
   return /[",\n\r]/.test(t) ? `"${t.replaceAll('"', '""')}"` : t;
 }
 
+/** Máximo de filas de una exportación CSV: lo que excede se avisa con `truncado`, nunca se corta en silencio. */
+export const MAX_FILAS_CSV = 5000;
+
+/**
+ * Recorta una consulta hecha con `MAX_FILAS_CSV + 1` documentos: devuelve a lo sumo `MAX_FILAS_CSV` y `truncado: true`
+ * si había más.
+ */
+export function recortarExportacion<T>(filas: readonly T[], maximo: number = MAX_FILAS_CSV): { filas: readonly T[]; truncado: boolean } {
+  return filas.length > maximo ? { filas: filas.slice(0, maximo), truncado: true } : { filas, truncado: false };
+}
+
 /** Texto CSV con saltos de línea CRLF. */
 export function aCsv(encabezados: readonly string[], filas: readonly (readonly CeldaCsv[])[]): string {
   return [encabezados, ...filas].map((f) => f.map(celdaCsv).join(',')).join('\r\n') + '\r\n';
