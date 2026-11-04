@@ -1,6 +1,6 @@
 import { initializeApp, type FirebaseOptions } from 'firebase/app';
 import {
-  getAuth, onAuthStateChanged, sendEmailVerification, signInWithEmailAndPassword, signOut, type Auth, type User,
+  browserLocalPersistence, indexedDBLocalPersistence, initializeAuth, onAuthStateChanged, sendEmailVerification, signInWithEmailAndPassword, signOut, type Auth, type User,
 } from 'firebase/auth';
 import { leerClaimPanel } from './claim.js';
 import type { ResultadoInicio, Sesion, UsuarioSesion } from './sesion.js';
@@ -13,7 +13,8 @@ export class SesionFirebase implements Sesion {
   private readonly oyentes = new Set<(u: UsuarioSesion | null) => void>();
 
   constructor(config: FirebaseOptions) {
-    this.auth = getAuth(initializeApp(config));
+    // Sin resolvedor de ventanas emergentes: no se cargan marcos ni scripts de Google (CSP estricta).
+    this.auth = initializeAuth(initializeApp(config), { persistence: [indexedDBLocalPersistence, browserLocalPersistence] });
     onAuthStateChanged(this.auth, (u) => {
       void this.adoptar(u).then((x) => {
         this.usuario = x;

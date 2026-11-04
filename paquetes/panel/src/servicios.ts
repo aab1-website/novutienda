@@ -1,0 +1,36 @@
+import type { ClienteApi } from './api/cliente.js';
+import type { AlmacenSubidas } from './subidas/almacen.js';
+import type { Sesion } from './sesion/sesion.js';
+
+export interface Servicios {
+  readonly sesion: Sesion;
+  readonly api: ClienteApi;
+  readonly almacen: AlmacenSubidas;
+}
+
+/**
+ * Compone los servicios según el modo de compilación. `humo` (pruebas de navegador y desarrollo) usa los dobles en
+ * memoria; cualquier otro modo usa Firebase. La rama del doble se elimina del paquete de producción.
+ */
+export async function crearServicios(): Promise<Servicios> {
+  if (import.meta.env.MODE === 'humo') {
+    const { SesionDoble } = await import('./sesion/doble.js');
+    const { ClienteDoble } = await import('./doble/doble.js');
+    const sesion = new SesionDoble();
+    const api = new ClienteDoble({ usuario: () => sesion.actual() ?? { uid: 'anonimo', rol: 'caj' } });
+    const { AlmacenSubidasDoble } = await import('./subidas/almacen.js');
+    return { sesion, api, almacen: new AlmacenSubidasDoble() };
+  }
+  const { SesionFirebase } = await import('./sesion/firebase.js');
+  const { ClienteFirebase } = await import('./api/firebase.js');
+  const sesion = new SesionFirebase(configuracionFirebase());
+  const api = new ClienteFirebase(() => sesion.actual()?.tenantId ?? '');
+  const { AlmacenSubidasFirebase } = await import('./subidas/firebase.js');
+  return { sesion, api, almacen: new AlmacenSubidasFirebase() };
+}
+
+/** La configuración web de Firebase (pública) llega por variables de compilación, nunca está en el repositorio. */
+function configuracionFirebase(): { apiKey: string; authDomain: string; projectId: string } {
+  const env = import.meta.env;
+  return { apiKey: String(env['VITE_FIREBASE_API_KEY'] ?? ''), authDomain: String(env['VITE_FIREBASE_AUTH_DOMAIN'] ?? ''), projectId: String(env['VITE_FIREBASE_PROJECT_ID'] ?? '') };
+}
