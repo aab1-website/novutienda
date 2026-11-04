@@ -27,7 +27,7 @@ alguien crea otro repositorio con el nombre viejo: no reutilizarlo.
 ## 3. Después
 
 1. **Remoto local** (escritura solo en el repositorio local; la redirección funciona, pero no se depende de ella):
-   `git -C /home/andres-alberdi/CasaBermejo remote set-url origin "https://github.com/$OWNER/novutienda.git"` y comprobar con
+   `git -C /home/andres-alberdi/NovuTienda remote set-url origin "https://github.com/$OWNER/novutienda.git"` y comprobar con
    `git ls-remote origin HEAD`. Los worktrees de `.claude/worktrees/` comparten ese remoto.
 2. **Federación (WIF)**: el binding `principalSet://…/attribute.repository/OWNER/REPO` usa el nombre. Si ya se había federado con el nombre
    viejo, volver a correr `setup-oidc-gcp.sh --repo novutienda` en cada proyecto (staging y, después, producción) y quitar el binding del

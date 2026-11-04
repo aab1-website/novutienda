@@ -33,3 +33,6 @@ secrets.tfvars
 .trivyignore.yaml
 .gitleaksignore
 .tsbuild/
+
+# Archivos de clientes (propuestas, contratos, datos): nunca al repositorio publico
+CLIENTES/
