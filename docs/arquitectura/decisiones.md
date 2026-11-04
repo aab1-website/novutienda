@@ -39,7 +39,7 @@
   una sola fuente de verdad. La sección del target `panel` de `firebase.json` versionado es solo el valor base y una prueba
   (`pruebas/panel/cabeceras.test.ts`) exige que sea idéntica a lo que genera el build, de modo que `dist/firebase.json` solo difiere del
   versionado en la regla `**` del sitio y la comprobación de `preparar-despliegue-firebase.sh` sigue válida sin cambios. Contenido:
-  `connect-src` con Firebase Auth (`identitytoolkit`, `securetoken`), funciones (`*.cloudfunctions.net`, `*.a.run.app`), Cloud Storage
+  `connect-src` con Firebase Auth (`identitytoolkit`, `securetoken`), funciones (el host exacto `https://us-east1-<proyecto>.cloudfunctions.net` cuando el build tiene `VITE_FIREBASE_PROJECT_ID`; sin esa variable, el respaldo `https://*.cloudfunctions.net`; el SDK de callables no usa `*.a.run.app`, que se eliminó), Cloud Storage
   (`firebasestorage.googleapis.com`) y App Check/reCAPTCHA Enterprise; `img-src` y `media-src` limitados a Cloud Storage y `blob:`; sin
   Firestore (el panel no usa su SDK); HSTS 63072000; `Permissions-Policy` con `usb=()`. **Desviación:** CSP solo admite comodín en la primera
   etiqueta (`*.`), así que `https://us-east1-*.cloudfunctions.net` no es una fuente válida y se usa `https://*.cloudfunctions.net`; restringir a
@@ -50,9 +50,9 @@
   Firestore (ni el SDK ni su CSP) y consulta todo por los callables, que aplican el rol. `firestore.rules` se regenera y niega toda lectura directa de esas colecciones.
   **Paso del pase:** en la consola de Firebase, App Check debe quedar **«Enforced»** en Firestore y en Storage (además de `APP_CHECK_EXIGIDO=true` en los callables); sin eso, un
   token de usuario robado podría llamar a las APIs de Firestore y Storage directamente. (POS y sitio conservan lecturas declaradas por sus dueños: pendiente de la misma decisión.)
-- 04/11/2026 — **Riesgo anotado de la CSP del panel (no se cambió aquí).** Los comodines `https://*.cloudfunctions.net` y `https://*.a.run.app` en `connect-src` permiten que un
-  script inyectado envíe datos a funciones de CUALQUIER proyecto. Se acepta mientras la CSP se mantenga estricta (sin `unsafe-inline`); mitigación pendiente: fijar `us-east1-<proyecto>`
-  en el build desde la variable del proyecto (sin versionar el id) o servir las funciones por el dominio de Hosting (`/api/**`).
+- 04/11/2026 — **Riesgo anotado de la CSP del panel (acotado).** Ya no hay `*.a.run.app`. Con `VITE_FIREBASE_PROJECT_ID` el build sella el host exacto de funciones y un script inyectado no puede
+  enviar datos a funciones de otros proyectos. Queda el respaldo `https://*.cloudfunctions.net` solo para compilaciones sin esa variable (locales y el valor base versionado); el CI de staging y producción
+  debe exportarla para que el sello definitivo sea el exacto. Alternativa a futuro: servir las funciones por el dominio de Hosting (`/api/**`).
 - 04/11/2026 — **El build de producción del sitio no admite contenido de ejemplo; el redondeo sale de la configuración.** `cargarContenido` lanza con `APP_ENV=production` y
   `esEjemplo`; `GET /api/sitio/v1/publicado` entrega `redondeo` desde `tenants/{t}/config/redondeo` y la reconstrucción lo inyecta en `config.redondeo` (`reconstruccion-sitio.md`).
   `construir` compila `production` solo en tags y `workflow_dispatch`, con `SITIO_CONTENIDO`.
@@ -61,3 +61,8 @@
   real. App Check va antes del límite en `/api/contacto`; NovuChat y `/api/disponibilidad` tienen un límite en memoria por instancia antes de autenticar.
 - 04/11/2026 — **Variables nuevas del build del panel:** `VITE_RECAPTCHA_ENTERPRISE_SITE_KEY_*`, `VITE_FIREBASE_STORAGE_BUCKET_*`, `VITE_FIREBASE_APP_ID_*` (`_STAGING`/`_PROD`). El SDK de
   App Check arma `…/apps/{appId}:exchange…` con `app.options.appId`: sin `appId` el intercambio de token falla. `construir` falla si falta alguna con proyecto configurado.
+- 04/11/2026 — **App Check de un solo uso en el formulario del sitio.** El servidor consume el token (`consume: true`) y el navegador lo entrega con `window.cbAppCheck` (`islas/appcheck.ts`): SDK de Firebase con
+  `ReCaptchaEnterpriseProvider` y `getLimitedUseToken` por envío; se descarga solo al enfocar el formulario. Sin el bloque `config.appCheck` del contenido publicado (clave de sitio de reCAPTCHA Enterprise registrada para App Check, `apiKey`, `appId`
+  y `projectId` de la app web; públicos, fuera del repositorio) no se inicializa y el formulario avisa que no está disponible. La app de Firebase del sitio se llama `cb-contacto`. CSP del sitio: cuando existe ese bloque se agrega
+  `https://content-firebaseappcheck.googleapis.com` (el host que usa el SDK, no `firebaseappcheck.`) a `connect-src` (canje del token) y se habilitan los orígenes de reCAPTCHA Enterprise que ya usa el antiabuso (`www.google.com/recaptcha/`, `www.gstatic.com/recaptcha/`, marco de `www.google.com`); nada más.
+  Dependencia `firebase` 13.1.0, igual que el panel (la 13.2.0 tenía menos de 7 días). Pasos del pase: registrar la app web del sitio en App Check con reCAPTCHA Enterprise y cargar el bloque en el contenido publicado.
