@@ -478,6 +478,32 @@ jobs:
       ruta_salud: ${{ vars.HEALTH_PATH || '/healthz' }}
 
   # ---------------------------------------------------------------------------
+  # exigir-dast-staging: un tag v* sin proyecto de staging no pasa por DAST
+  # (dast-y-humo se omite). El primer tag exige DAST sobre staging; sin él, el
+  # pase a producción falla en vez de salir sin escaneo dinámico.
+  # ---------------------------------------------------------------------------
+  exigir-dast-staging:
+    name: exigir-dast-staging
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - name: Verificar que DAST puede correr en tags
+        env:
+          STAGING: ${{ vars.GCP_PROJECT_ID_STAGING }}
+          ES_TAG: ${{ github.event_name == 'push' && startsWith(github.ref, 'refs/tags/v') }}
+        run: |
+          set -euo pipefail
+          if [[ "$ES_TAG" == "true" && -z "$STAGING" ]]; then
+            echo "::error::GCP_PROJECT_ID_STAGING está vacío: DAST no corrió contra staging. El primer tag exige DAST sobre staging (docs/produccion/primer-tag.md)."
+            {
+              echo "### DAST NO CORRIÓ"
+              echo "Tag \`$GITHUB_REF_NAME\` sin \`GCP_PROJECT_ID_STAGING\`: no hay staging que escanear. El despliegue a producción se bloquea."
+            } >> "$GITHUB_STEP_SUMMARY"
+            exit 1
+          fi
+          echo "DAST: sin objeciones para este evento."
+
+  # ---------------------------------------------------------------------------
   # Fase 6 — desplegar-produccion (D3): push de tag v* estable (nunca
   # prerelease) en Modo A/B, o workflow_dispatch con confirmar=DESPLEGAR
   # (obligatorio en Modo B0, donde no hay Environments con revisores). El step
@@ -485,7 +511,7 @@ jobs:
   # ---------------------------------------------------------------------------
   desplegar-produccion:
     name: desplegar-produccion
-    needs: [calidad, seguridad-estatica, construir]
+    needs: [calidad, seguridad-estatica, construir, exigir-dast-staging]
     if: >-
       (github.event_name == 'push' && startsWith(github.ref, 'refs/tags/v')
         && !contains(github.ref_name, '-') && vars.MODO != 'B0')
