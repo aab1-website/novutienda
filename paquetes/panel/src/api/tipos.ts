@@ -489,6 +489,12 @@ export interface Reserva {
 }
 
 export type EstadoSubida = 'reservada' | 'procesada' | 'borrando' | 'rechazada';
+/** Respuesta de `estadoSubida`: `medio` solo con `procesada`; `motivo` si la subida se rechazó. */
+export interface ResultadoEstadoSubida {
+  readonly estado: EstadoSubida;
+  readonly medio?: Medio;
+  readonly motivo?: string;
+}
 export interface SubidaVista {
   readonly subidaId: string;
   readonly productoId: string;

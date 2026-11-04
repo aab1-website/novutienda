@@ -180,6 +180,7 @@ const ACCIONES: Readonly<Record<string, WireHandler>> = {
   'consola.configSitio': (c) => legado(c, 'leerConfigSitio', {}).then((config) => ({ config })),
   // medios
   'medios.reservarSubida': igual('reservarSubida'),
+  'medios.estadoSubida': igual('estadoSubida'),
   'medios.finalizarSubida': async (c, d) => ({ medio: await legado(c, 'finalizarSubida', d) }),
   'medios.borrarMedio': ok('borrarMedio'),
   'medios.listarMedios': async (c, d) => ({ medios: lim((await legado(c, 'listarMedios', { productoId: d['productoId'] })) as Obj[], d, 20) }),

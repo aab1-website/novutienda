@@ -8,7 +8,7 @@ import type {
   ConsultaArchivo, PrecioUSDCentavos, ConteoVista, CotizacionesVigentes, CreditoVista, EntradaAuditoriaVista, EntradaProducto, FichaWeb,
   LineaAjuste, LineaIngreso, LineaTraspaso, Medio, MermaVista, MontosPorMoneda, MovimientoCaja, MovimientoCajaEntrada, MovimientoVista,
   PagoEntrada, PlantillaRecibo, ProductoPanel, Recibo, Reserva, ResultadoAnulacion, ResultadoCierre, ResultadoEnvio,
-  ResultadoImportacion, ResultadoOperacion, ResultadoPublicacion, ResultadoVenta, Rol, Seccion, Simulacion, SolicitudAprobacion,
+  ResultadoImportacion, ResultadoOperacion, ResultadoEstadoSubida, ResultadoPublicacion, ResultadoVenta, Rol, Seccion, Simulacion, SolicitudAprobacion,
   Tablero, TipoMedio, TurnoPos, UbicacionId, UnidadSerie, UsuarioVista, VentaPos, EstadoMerma,
   TipoMovimiento,
 } from './tipos.js';
@@ -66,6 +66,9 @@ export interface Contrato {
   cambiarPrecioUSD: { entrada: { productoId: string; precioUSD: PrecioUSDCentavos }; salida: Ok };
   guardarFicha: { entrada: { productoId: string; ficha: FichaWeb }; salida: Ok };
   reservarSubida: { entrada: { subidaId: string; productoId: string; tipo: TipoMedio; bytes: number }; salida: Reserva };
+  /** Consulta el estado de una subida sin procesarla (el disparador de Storage la procesa al llegar el original). */
+  estadoSubida: { entrada: { subidaId: string }; salida: ResultadoEstadoSubida };
+  /** Respaldo: fuerza el procesamiento si el disparador no resolvió la subida (idempotente). */
   finalizarSubida: { entrada: { subidaId: string }; salida: Medio };
   borrarMedio: { entrada: { medioId: string }; salida: Ok };
   guardarSeccion: { entrada: { seccion: Seccion }; salida: Ok };

@@ -31,7 +31,9 @@ export interface EstadoDoble {
   auditoria: EntradaAuditoriaVista[];
   fichas: Map<string, FichaWeb>;
   medios: Map<string, Medio>;
-  subidas: Map<string, SubidaVista & { productoId: string; bytes: number }>;
+  subidas: Map<string, SubidaVista & { productoId: string; bytes: number; /** Instante (reloj real) de la primera consulta de estado: sirve al disparador simulado. */ consultadaDesde?: number }>;
+  /** Disparador de Storage simulado: resuelve la subida `demoraMs` después de la primera consulta de estado (`Infinity` = disparador caído). */
+  disparador: { demoraMs: number; rechazo?: string };
   secciones: Seccion[];
   carruseles: Map<string, Carrusel>;
   configSitio: ConfigSitio | null;
@@ -116,7 +118,7 @@ export function crearEstado(ahora: number): EstadoDoble {
       topesDescuentoBp: { caj: 500, sup: 10000, adm: 10000 }, textoRecibo: 'Gracias por su compra.', serieRecibo: 'A',
     },
     plantilla: { negocio: { nombre: 'Negocio de ejemplo', direccion: 'Calle Ejemplo 123', telefono: '70000000' }, pie: 'Comprobante no fiscal.', politicaGarantia: 'Garantía según ficha del producto.', politicaCambios: 'Cambios dentro de 7 días con el comprobante.' },
-    auditoria: [], fichas: new Map(), medios: new Map(), subidas: new Map(), secciones: [], carruseles: new Map(),
+    auditoria: [], fichas: new Map(), medios: new Map(), subidas: new Map(), disparador: { demoraMs: 15 }, secciones: [], carruseles: new Map(),
     configSitio: { plantillaActiva: 'cielo', whatsappNovuchat: '59170000000', medicion: {} },
     cambiosSinPublicar: 0, ultimoCambioEn: iso(ahora), publicadoEn: null, versionPublicada: 0,
     usuarios: [

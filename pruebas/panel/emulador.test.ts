@@ -4,7 +4,7 @@
 // el emulador y APP_CHECK_EXIGIDO=true, y allí su ausencia es un fallo (pruebas/funciones/emulador.test.ts).
 import sharp from 'sharp';
 import { beforeAll, describe, expect, it, vi } from 'vitest';
-import { ClienteRemoto, ErrorApi, mensajeDeError, precioDeVenta, type Rol, type Transporte } from '@novutienda/panel';
+import { ClienteRemoto, ErrorApi, esperarSubida, mensajeDeError, precioDeVenta, type Rol, type Transporte } from '@novutienda/panel';
 import { crearUsuario, esperar, hayEmulador, herramientas, llamar, sembrarTenant, uuid, unico, type Herramientas, type Usuario } from '../funciones/ayudas.js';
 
 vi.setConfig({ testTimeout: 90_000, hookTimeout: 90_000 });
@@ -219,14 +219,16 @@ describe.skipIf(!hayEmulador)('panel contra las funciones reales (emulador)', ()
     await api.sup.llamar('guardarFicha', { productoId: 'mouse-1', ficha: { slug: 'mouse-optico', descripcion: 'Mouse óptico USB.', garantia: '6 meses', medios: [], seo: { titulo: 'Mouse', descripcion: 'Mouse' }, estado: 'borrador' } });
   });
 
-  it('medios: reservar → subir el original → finalizar (idempotente) → listar → borrar', async () => {
+  it('medios: reservar → subir el original → esperar el estado (el disparador procesa) → finalizar (idempotente, respaldo) → listar → borrar', async () => {
     const original = await sharp({ create: { width: 800, height: 600, channels: 3, background: { r: 10, g: 120, b: 200 } } }).jpeg().toBuffer();
     const subidaId = unico('sub').slice(0, 38);
     const reserva = await api.sup.llamar('reservarSubida', { subidaId, productoId: 'cable-hdmi', tipo: 'foto', bytes: original.length });
     expect(reserva.rutaOriginal).toBe(`tenants/${TENANT}/privado/originales/cable-hdmi/${subidaId}`);
     await h.bucket.file(reserva.rutaOriginal).save(original, { contentType: 'image/jpeg', resumable: false });
-    const medio = await api.sup.llamar('finalizarSubida', { subidaId });
+    // Como la pantalla: consulta `estadoSubida` con retroceso hasta que el disparador de Storage la resuelve (sin forzar el procesamiento).
+    const medio = await esperarSubida(api.sup, subidaId);
     expect(medio).toMatchObject({ id: subidaId, productoId: 'cable-hdmi', tipo: 'foto', ancho: 800, alto: 600 });
+    expect(await api.sup.llamar('estadoSubida', { subidaId })).toMatchObject({ estado: 'procesada', medio: { id: subidaId } });
     expect(await api.sup.llamar('finalizarSubida', { subidaId })).toMatchObject({ id: subidaId });
     expect((await api.sup.llamar('listarMedios', { productoId: 'cable-hdmi' })).map((m) => m.id)).toContain(subidaId);
     await api.sup.llamar('borrarMedio', { medioId: subidaId });
