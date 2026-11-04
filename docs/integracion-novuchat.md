@@ -33,3 +33,6 @@ La plataforma ya implementa y prueba esto (módulo Inventarios: `confirmarPedido
 - P8. ¿Se mantiene Wegic como fuente transitoria hasta que salga el sitio nuevo, y quién mantiene ese adaptador?
 - P9. El botón «Comprar» del sitio abre el chat con «Hola, quiero comprar: <nombre> (cód. <id>)»: ¿el flujo extrae el código con una expresión fija? ¿Qué número de WhatsApp?
 - P10. El recibo se envía hoy como enlace `wa.me`. La propuesta dice «envío automático»: ¿pueden enviarlo por el número del asistente, y con qué costo?
+
+## 5. Lectura desde la consola de NovuChat (decisión de Andres, 04/11/2026)
+El panel único de gestión de Casa Bermejo es independiente de la consola de NovuChat (ver docs/panel-unico.md). La consola de NovuChat podrá recuperar información de inventarios y productos de la plataforma con endpoints de solo lectura, con el mismo token por tenant que el catálogo: `GET /api/novuchat/v1/catalogo` (precio final y stock) y, si se necesita más detalle, `GET /api/novuchat/v1/inventario` (existencias por almacén). No se escribe en la plataforma salvo la confirmación de pedido firmada del §2.
