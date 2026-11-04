@@ -1,6 +1,5 @@
-/* eslint-disable no-restricted-imports -- provisional: importación profunda hasta que el coordinador cablee el index de nucleo; luego pasar a '@plataforma/nucleo' */
 import { describe, expect, it } from 'vitest';
-import { LIMITE_BYTES_CLAIM } from '../../paquetes/nucleo/src/contratos/claim.js';
+import { LIMITE_BYTES_CLAIM } from '@plataforma/nucleo';
 import {
   asignarRol,
   construirClaim,
@@ -11,8 +10,8 @@ import {
   rolEn,
   type AuthMin,
   type DepsIdentidad,
-} from '../../paquetes/nucleo/src/identidad/index.js';
-import { LimiteDelPlan } from '../../paquetes/nucleo/src/limites/index.js';
+} from '@plataforma/nucleo';
+import { LimiteDelPlan } from '@plataforma/nucleo';
 import { DobleDb } from '../limites/doble-db.js';
 
 const tok = (t: Record<string, string>, proveedor: string, extra: Record<string, unknown> = {}) => ({

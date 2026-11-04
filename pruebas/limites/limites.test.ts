@@ -1,6 +1,5 @@
-/* eslint-disable no-restricted-imports -- provisional: importación profunda hasta que el coordinador cablee el index de nucleo; luego pasar a '@plataforma/nucleo' */
 import { describe, expect, it } from 'vitest';
-import { LimiteDelPlan, PLANES, rutaContador, verificarYReservar } from '../../paquetes/nucleo/src/limites/index.js';
+import { LimiteDelPlan, PLANES, rutaContador, verificarYReservar } from '@plataforma/nucleo';
 import { DobleDb } from './doble-db.js';
 
 const tenantOk = { plan: 'base', modulos: {}, zonaHoraria: 'America/La_Paz', monedas: ['BOB', 'USD', 'ARS'] };

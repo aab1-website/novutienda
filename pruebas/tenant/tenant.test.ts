@@ -1,6 +1,5 @@
-/* eslint-disable no-restricted-imports -- provisional: importación profunda hasta que el coordinador cablee el index de nucleo; luego pasar a '@plataforma/nucleo' */
 import { describe, expect, it } from 'vitest';
-import { esTenantIdValido, proyectoFirebase, validarTenant } from '../../paquetes/nucleo/src/tenant/index.js';
+import { esTenantIdValido, proyectoFirebase, validarTenant } from '@plataforma/nucleo';
 
 const ok = () => ({
   plan: 'base',

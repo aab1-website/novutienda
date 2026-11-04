@@ -21,3 +21,13 @@ export { manifiestoNucleo } from './manifiesto.js';
 /** Registro de la plataforma, con solo el módulo núcleo registrado. */
 export const registroPlataforma = crearRegistro<ManifiestoModulo>();
 registroPlataforma.registrar(manifiestoNucleo);
+
+export * from './identidad/index.js';
+export * from './tenant/index.js';
+export * from './limites/index.js';
+export * from './auditoria/index.js';
+export * from './eventos/index.js';
+export * from './tipo-cambio/index.js';
+
+// Moneda existe en tenant (BOB, USD, ARS) y en tipo-cambio (BOB, ARS): gana la del tenant.
+export type { Moneda } from './tenant/index.js';

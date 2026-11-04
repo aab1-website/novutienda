@@ -1,5 +1,4 @@
-/* eslint-disable no-restricted-imports -- provisional: importación profunda hasta que el coordinador cablee el index de nucleo; luego pasar a '@plataforma/nucleo' */
-import type { BaseDatosMin, TransaccionMin } from '../../paquetes/nucleo/src/limites/transaccion.js';
+import type { BaseDatosMin, TransaccionMin } from '@plataforma/nucleo';
 
 type Datos = Readonly<Record<string, unknown>>;
 
