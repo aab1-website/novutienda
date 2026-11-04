@@ -579,3 +579,22 @@ describe('doble: aislamiento de la entrada', () => {
     expect(err).toBeInstanceOf(ErrorApi);
   });
 });
+
+describe('doble: buscar usuario por correo y exportar ventas', () => {
+  it('buscarUsuarioPorCorreo: solo el administrador; devuelve uid y estado de la cuenta; sin cuenta → no encontrado', async () => {
+    const e = crearEntorno('adm');
+    const [u] = await e.api.llamar('listarUsuarios', {});
+    const r = await e.api.llamar('buscarUsuarioPorCorreo', { correo: ` ${(u?.correo ?? '').toUpperCase()} ` });
+    expect(r).toEqual({ uid: u?.uid, correoVerificado: u?.verificado, conContrasena: true });
+    expect((await falla(e.api.llamar('buscarUsuarioPorCorreo', { correo: 'nadie@ejemplo.test' }))).codigoHttps).toBe('not-found');
+    expect((await falla(crearEntorno('sup').api.llamar('buscarUsuarioPorCorreo', { correo: 'a@b.co' }))).codigoHttps).toBe('permission-denied');
+  });
+  it('exportarVentasCsv: sup/adm reciben el CSV de las ventas del rango; el vendedor no', async () => {
+    const { e } = await conTurno('adm');
+    await e.api.llamar('confirmarVenta', { requestId: uuid(), carrito: carritoTv(), pagos: efectivo(313200) }).catch(() => undefined);
+    const { csv } = await e.api.llamar('exportarVentasCsv', {});
+    expect(csv.split('\r\n')[0]).toContain('ventaId');
+    expect((await e.api.llamar('exportarVentasCsv', { desde: '2000-01-01', hasta: '2000-01-02' })).csv.trim().split('\r\n')).toHaveLength(1);
+    expect((await falla(crearEntorno('caj').api.llamar('exportarVentasCsv', {}))).codigoHttps).toBe('permission-denied');
+  });
+});

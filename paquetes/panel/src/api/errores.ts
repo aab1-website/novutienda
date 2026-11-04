@@ -1,8 +1,9 @@
 // Errores del contrato y su traducción a mensajes legibles. El servidor real responde con un HttpsError cuyo `code` es el
 // de Firebase Functions, cuyo `message` es el del error tipado del módulo (apto para el usuario, en español) y cuyos
 // `details` pueden traer `faltantes` (stock), `campos` (rutas inválidas, nunca valores), `detalles` (filas de una
-// importación) y `clave`/`tope` (límite del plan). El servidor real NO envía `details.codigo`; los dobles en memoria sí
-// lo incluyen para poder probar cada regla, y cuando existe el panel prefiere su propio mensaje.
+// importación) y `clave`/`tope` (límite del plan). El servidor real envía SIEMPRE `details.codigo` (código del módulo en
+// kebab-case): el panel mapea el mensaje por ese código. Si el código no tiene mensaje propio (los del borde, como
+// `solicitud-invalida`, o uno nuevo), se usa el mensaje que el servidor controla.
 
 export interface DetalleError {
   readonly codigo?: string;
@@ -116,7 +117,7 @@ export const MENSAJE_GENERICO = 'Ocurrió un error inesperado. Intente de nuevo.
 export function mensajeDeError(e: unknown): string {
   if (!(e instanceof ErrorApi)) return MENSAJE_GENERICO;
   const modulo = e.detalle.codigo === undefined ? undefined : POR_CODIGO_MODULO[e.detalle.codigo];
-  const delServidor = modulo === undefined && e.detalle.codigo === undefined && CON_MENSAJE_DEL_SERVIDOR.has(e.codigoHttps) && e.message.trim() !== '' ? e.message.trim() : undefined;
+  const delServidor = modulo === undefined && CON_MENSAJE_DEL_SERVIDOR.has(e.codigoHttps) && e.message.trim() !== '' ? e.message.trim() : undefined;
   let base = modulo ?? delServidor ?? POR_CODIGO_HTTPS[e.codigoHttps] ?? MENSAJE_GENERICO;
   const sinCodigoConFaltantes = e.detalle.codigo === undefined && e.codigoHttps === 'failed-precondition';
   if ((e.detalle.codigo === 'stock-insuficiente' || sinCodigoConFaltantes) && e.detalle.faltantes !== undefined && e.detalle.faltantes.length > 0) {

@@ -80,6 +80,11 @@ export interface Contrato {
   // ---- Identidad (núcleo) ----
   asignarRol: { entrada: { uid: string; rol: Rol }; salida: Ok };
   quitarRol: { entrada: { uid: string }; salida: Ok };
+  /**
+   * Busca una cuenta existente por correo para asignarle rol (solo `adm`). Por privacidad responde solo si la cuenta ya es
+   * miembro de este negocio o no pertenece a ninguno; en cualquier otro caso responde «no encontrado», igual que si no existiera.
+   */
+  buscarUsuarioPorCorreo: { entrada: { correo: string }; salida: { uid: string; correoVerificado: boolean; conContrasena: boolean } };
   // ---- Lecturas del panel (sin función pública equivalente) ----
   leerConfigPos: { entrada: Vacio; salida: ConfigPos };
   leerPlantilla: { entrada: Vacio; salida: PlantillaRecibo };
@@ -101,6 +106,8 @@ export interface Contrato {
   listarVentas: { entrada: { turnoId?: string; desde?: string; hasta?: string; conSolicitudAnulacion?: boolean }; salida: readonly VentaPos[] };
   listarAprobaciones: { entrada: { estado?: 'pendiente' | 'aprobada' | 'rechazada' | 'usada' }; salida: readonly AprobacionPos[] };
   listarMovimientosCaja: { entrada: { turnoId?: string }; salida: readonly MovimientoCaja[] };
+  /** Ventas del rango (aaaa-mm-dd) en CSV, con celdas neutralizadas por el servidor (`sup`/`adm`). */
+  exportarVentasCsv: { entrada: { desde?: string; hasta?: string }; salida: { csv: string } };
   listarCreditos: { entrada: { estado?: 'pendiente' | 'cobrado' | 'cancelado' }; salida: readonly CreditoVista[] };
   listarAuditoria: { entrada: { desde?: string; hasta?: string; accion?: string; uid?: string; limite?: number }; salida: readonly EntradaAuditoriaVista[] };
   /** Recibo emitido para una venta (el módulo lo emite al consumir el evento: puede tardar), o `null`. */

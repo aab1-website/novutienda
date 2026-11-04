@@ -63,13 +63,12 @@ describe.skipIf(!hayEmulador)('panel contra las funciones reales (emulador)', ()
     expect(await api.caj.llamar('listarAprobaciones', {})).toEqual([]);
   });
 
-  it('cotizaciones del día salen del tablero para sup/adm; el vendedor las espera de pos.cotizaciones (propuesta)', async () => {
-    const cot = await api.sup.llamar('cotizacionesVigentes', {});
-    expect(cot.BO).toMatchObject({ par: 'BOB/USD', valor: 7, estado: 'vigente' });
-    expect(cot.AR).toMatchObject({ par: 'ARS/USD', valor: 1000 });
-    const e = await api.caj.llamar('cotizacionesVigentes', {}).catch((x: unknown) => x);
-    expect(e).toBeInstanceOf(ErrorApi);
-    expect(mensajeDeError(e)).toBeTruthy();
+  it('cotizaciones del día: todos los roles las reciben de pos.cotizaciones, igual que la política de redondeo', async () => {
+    for (const cliente of [api.adm, api.sup, api.caj]) {
+      const cot = await cliente.llamar('cotizacionesVigentes', {});
+      expect(cot.BO).toMatchObject({ par: 'BOB/USD', valor: 7, estado: 'vigente' });
+      expect(cot.AR).toMatchObject({ par: 'ARS/USD', valor: 1000 });
+    }
   });
 
   it('turno → venta con cambio → recibo → envío por WhatsApp → vendedor solo ve lo suyo → cierre', async () => {
@@ -233,11 +232,24 @@ describe.skipIf(!hayEmulador)('panel contra las funciones reales (emulador)', ()
     await esperar(async () => !(await api.sup.llamar('listarMedios', { productoId: 'cable-hdmi' })).some((m) => m.id === subidaId), 30_000, 'el borrado del medio');
   });
 
-  it('operaciones sin acción en el servidor fallan con «no disponible», sin llamar al servidor', async () => {
-    for (const [nombre, entrada] of [['listarAuditoria', {}], ['listarFichas', {}], ['listarSecciones', {}], ['listarCarruseles', {}], ['leerConfigSitio', {}], ['listarSeries', { productoId: 'televisor' }]] as const) {
-      const e = await (api.adm as unknown as { llamar(n: string, x: unknown): Promise<unknown> }).llamar(nombre, entrada).catch((x: unknown) => x);
-      expect(e, nombre).toBeInstanceOf(ErrorApi);
-      expect((e as ErrorApi).codigoHttps).toBe('unavailable');
-    }
+  it('lecturas que antes eran propuestas: auditoría, fichas, secciones, carruseles, configuración del sitio y series', async () => {
+    const llamar = (c: ClienteRemoto, n: string, x: unknown): Promise<unknown> => (c as unknown as { llamar(n: string, x: unknown): Promise<unknown> }).llamar(n, x);
+    expect(Array.isArray(await llamar(api.adm, 'listarAuditoria', {}))).toBe(true);
+    expect(await llamar(api.sup, 'listarAuditoria', { accion: 'no-existe-xyz' })).toEqual([]);
+    for (const n of ['listarFichas', 'listarSecciones', 'listarCarruseles']) expect(Array.isArray(await llamar(api.sup, n, {})), n).toBe(true);
+    expect(await llamar(api.sup, 'leerConfigSitio', {})).toSatisfy((x: unknown) => x === null || typeof x === 'object');
+    expect(Array.isArray(await llamar(api.caj, 'listarSeries', { productoId: 'televisor' }))).toBe(true);
+    // El vendedor no entra a la auditoría: lo decide el servidor.
+    const e = await llamar(clienteDe(caj, 'adm'), 'listarAuditoria', {}).catch((x: unknown) => x);
+    expect((e as ErrorApi).codigoHttps).toBe('permission-denied');
+    expect((e as ErrorApi).detalle.codigo).toBe('acceso-denegado');
+  });
+
+  it('exportar ventas y buscar usuario por correo contra el servidor real', async () => {
+    const llamar = (c: ClienteRemoto, n: string, x: unknown): Promise<unknown> => (c as unknown as { llamar(n: string, x: unknown): Promise<unknown> }).llamar(n, x);
+    expect(String(((await llamar(api.sup, 'exportarVentasCsv', {})) as { csv: string }).csv)).toContain('\n');
+    expect(((await llamar(clienteDe(caj, 'sup'), 'exportarVentasCsv', {}).catch((x: unknown) => x)) as ErrorApi).codigoHttps).toBe('permission-denied');
+    expect(await llamar(api.adm, 'buscarUsuarioPorCorreo', { correo: sup.correo })).toMatchObject({ uid: sup.uid, correoVerificado: true });
+    expect(((await llamar(api.adm, 'buscarUsuarioPorCorreo', { correo: 'nadie-xyz@prueba.test' }).catch((x: unknown) => x)) as ErrorApi).codigoHttps).toBe('not-found');
   });
 });

@@ -64,6 +64,42 @@ describe('traducción de errores a HttpsError', () => {
     expect(traducirError(new ContadorCorrupto('productos', -1))).toMatchObject({ code: 'internal' });
   });
 
+  it('todo error traducido lleva details.codigo en kebab-case (el panel mapea el mensaje por ese código)', () => {
+    const kebab = /^[a-z][a-z0-9]*(-[a-z0-9]+)*$/;
+    const f = [{ productoId: 'p', almacenId: 'tienda', pedido: 3, disponible: 1 }];
+    const casos: [unknown, string][] = [
+      [new StockInsuficiente(f), 'stock-insuficiente'],
+      [new OperacionConflicto('op-1'), 'operacion-conflicto'],
+      [new SinPermiso('no'), 'sin-permiso'],
+      [new EntradaInvalida('mal'), 'entrada-invalida'],
+      [new ErrorInventario('not-found', 'x'), 'not-found'],
+      [new ErrorPos('sin-turno', 'm'), 'sin-turno'],
+      [new LimiteDelPlan('productos', 200), 'limite-del-plan'],
+      [new ErrorIdentidad('ultimo-adm', 'x'), 'ultimo-adm'],
+      [new ErrorConsola('cuota-excedida', 'x'), 'cuota-excedida'],
+      [new ReciboNoEncontrado('x'), 'recibo-no-encontrado'],
+      [new AccionNoPermitida('x'), 'accion-no-permitida'],
+      [new ErrorRecibo('x'), 'recibo-invalido'],
+      [new CargaNoAutorizada(), 'carga-no-autorizada'],
+      [new SaltoSinConfirmar(1, 2, 0.05), 'salto-sin-confirmar'],
+      [new SinCotizacionUtilizable('BO', 'vieja'), 'sin-cotizacion'],
+      [new VideoNoDisponible(), 'video-no-disponible'],
+      [new ErrorEvento('x'), 'evento-invalido'],
+      [new ContadorCorrupto('productos', -1), 'error-interno'],
+      [new ErrorPos('dato-corrupto', 'ruta secreta'), 'dato-corrupto'],
+      [{ code: 10 }, 'concurrencia'],
+      [{ code: 4 }, 'tiempo-agotado'],
+      [{ code: 14 }, 'no-disponible'],
+      [new Error('raro'), 'error-interno'],
+      [null, 'error-interno'],
+    ];
+    for (const [error, esperado] of casos) {
+      const t = traducirError(error);
+      expect((t.details as { codigo?: string }).codigo, esperado).toBe(esperado);
+      expect(esperado).toMatch(kebab);
+    }
+  });
+
   it('errores de infraestructura y desconocidos no filtran detalle técnico', () => {
     expect(traducirError({ code: 10 }).code).toBe('aborted');
     expect(traducirError({ code: 4 }).code).toBe('deadline-exceeded');

@@ -173,16 +173,56 @@ export const accionesInventarios: TablaAcciones = {
       return { unidades: (await q.limit(20).get()).docs.map(datosDe) };
     },
   }),
+  /**
+   * Unidades con serie de un producto (sin costos: la unidad no guarda costo). Filtros de igualdad, que no piden índice
+   * compuesto. Devuelve solo los campos de la vista (la referencia de venta como id de venta).
+   */
+  series: accion({
+    roles: TODOS,
+    esquema: objeto({ productoId: ID_PRODUCTO, ubicacionId: UBICACION.optional(), soloDisponibles: z.boolean().optional(), limite: LIMITE.optional() }),
+    ejecutar: async (c, d) => {
+      let q = c.e.firestore.collection(ruta(c.tenantId, 'unidades')).where('productoId', '==', d.productoId);
+      if (d.ubicacionId !== undefined) q = q.where('ubicacionId', '==', d.ubicacionId);
+      if (d.soloDisponibles === true) q = q.where('estado', '==', 'disponible');
+      const snap = await q.limit(d.limite ?? 200).get();
+      const unidades = snap.docs.map((u) => {
+        const x = datosDe(u);
+        const ref = x['ventaRef'] as { id?: unknown } | undefined;
+        return {
+          productoId: x['productoId'], serie: x['serie'], estado: x['estado'], ubicacionId: x['ubicacionId'],
+          ...(typeof ref?.id === 'string' ? { ventaRef: ref.id } : {}),
+          ...(typeof x['garantiaHasta'] === 'string' ? { garantiaHasta: x['garantiaHasta'] } : {}),
+        };
+      });
+      unidades.sort((a, b) => String(a.serie).localeCompare(String(b.serie)));
+      return { unidades };
+    },
+  }),
+  /**
+   * Movimientos. El costo unitario (`costoUSDUnit`) es solo del administrador. Los filtros `tipo` y `uid` (autor) se
+   * aplican sobre una ventana de los últimos 1000 movimientos del resto de los filtros, para no exigir índices
+   * compuestos nuevos.
+   */
   movimientos: accion({
     roles: SUPERVISION,
-    esquema: objeto({ productoId: ID_PRODUCTO.optional(), desde: MS.optional(), hasta: MS.optional(), limite: LIMITE.optional() }),
+    esquema: objeto({
+      productoId: ID_PRODUCTO.optional(), desde: MS.optional(), hasta: MS.optional(), limite: LIMITE.optional(),
+      tipo: z.string().regex(/^[a-z][a-z-]{0,29}$/).optional(), uid: z.string().min(1).max(128).optional(),
+    }),
     ejecutar: async (c, d) => {
       validarRango(d.desde, d.hasta);
+      const limite = d.limite ?? 100;
+      const filtraEnMemoria = d.tipo !== undefined || d.uid !== undefined;
       let q = c.e.firestore.collection(ruta(c.tenantId, 'movimientos')).orderBy('fecha', 'desc');
       if (d.productoId !== undefined) q = q.where('productoId', '==', d.productoId);
       if (d.desde !== undefined) q = q.where('fecha', '>=', new Date(d.desde));
       if (d.hasta !== undefined) q = q.where('fecha', '<=', new Date(d.hasta));
-      return { movimientos: (await q.limit(d.limite ?? 100).get()).docs.map(datosDe) };
+      const filas = (await q.limit(filtraEnMemoria ? 1000 : limite).get()).docs
+        .map(datosDe)
+        .filter((m) => (d.tipo === undefined || m['tipo'] === d.tipo) && (d.uid === undefined || m['por'] === d.uid))
+        .slice(0, limite);
+      const movimientos = c.rol === 'adm' ? filas : filas.map(({ costoUSDUnit: _costo, ...resto }) => { void _costo; return resto; });
+      return { movimientos };
     },
   }),
   mermas: accion({
@@ -194,7 +234,10 @@ export const accionesInventarios: TablaAcciones = {
       return { mermas: (await q.get()).docs.map((m) => ({ id: m.id, ...m.data() })) };
     },
   }),
-  /** Conteo ciego: quien cuenta ve sus líneas, nunca los teóricos (`conteoTeoricos` no se lee aquí). */
+  /**
+   * Conteo ciego: quien cuenta ve sus líneas, nunca los teóricos. `resultado` (teórico, contado, diferencia por
+   * producto) lo reciben `sup`/`adm` SOLO con el conteo cerrado; con el conteo abierto no se lee `conteoTeoricos`.
+   */
   conteo: accion({
     roles: TODOS,
     esquema: objeto({ conteoId: ID }),
@@ -202,7 +245,16 @@ export const accionesInventarios: TablaAcciones = {
       const conteo = (await c.e.firestore.doc(ruta(c.tenantId, 'conteos', d.conteoId)).get()).data();
       if (conteo === undefined) throw new HttpsError('not-found', 'El conteo no existe.');
       const lineas = await c.e.firestore.collection(ruta(c.tenantId, 'conteoLineas')).where('conteoId', '==', d.conteoId).limit(500).get();
-      return { conteo, lineas: lineas.docs.map(datosDe) };
+      const filas = lineas.docs.map(datosDe);
+      if (c.rol === 'caj' || conteo['estado'] !== 'cerrado') return { conteo, lineas: filas };
+      const teoricos = await c.e.firestore.collection(ruta(c.tenantId, 'conteoTeoricos')).where('conteoId', '==', d.conteoId).limit(500).get();
+      const porProducto = new Map(teoricos.docs.map((t) => [String(t.data()['productoId']), Number(t.data()['cantidad'])]));
+      const resultado = filas.map((l) => {
+        const teorico = porProducto.get(String(l['productoId'])) ?? 0;
+        const contado = Number(l['contado']);
+        return { productoId: l['productoId'], teorico, contado, diferencia: contado - teorico };
+      });
+      return { conteo, lineas: filas, resultado };
     },
   }),
   conteos: accion({

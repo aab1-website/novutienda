@@ -7,6 +7,7 @@ import {
   guardarConfigPos, leerConfigPos, proyectarTurno, registrarMovimientoCaja, resolverAprobacion, solicitarAnulacion, solicitarAprobacion,
   type Carrito, type CobroCreditoEntrada, type MovimientoCaja, type MovimientoCajaEntrada, type SolicitudAprobacion, type VentaPos,
 } from '@novutienda/pos';
+import { leerCotizacion, SinCotizacionUtilizable, type CopiaCotizacion, type Mercado } from '@novutienda/nucleo';
 import { accion, actorPos, type TablaAcciones } from './marco.js';
 import { LIMITE, MS, OBJETO, UUID, VACIO, objeto, validarRango, TEXTO } from './comunes.js';
 
@@ -162,14 +163,46 @@ export const accionesPos: TablaAcciones = {
       return { movimientos: snap.docs.map(datosDe) };
     },
   }),
+  /**
+   * Créditos. `sup`/`adm` ven todos; el vendedor solo los de SUS ventas: el crédito no guarda quién vendió (su id es el
+   * de la venta), así que se cruza con las ventas del vendedor (índice existente `cajeroUid` + `creadoEnMs`).
+   */
   creditos: accion({
-    roles: SUPERVISION,
+    roles: TODOS,
     esquema: objeto({ estado: z.enum(['pendiente', 'cobrado']).optional(), limite: LIMITE.optional() }),
     ejecutar: async (c, d) => {
+      const limite = d.limite ?? 100;
+      if (c.rol === 'caj') {
+        const ventas = await c.e.firestore.collection(ruta(c.tenantId, 'ventas')).where('cajeroUid', '==', c.sesion.uid).orderBy('creadoEnMs', 'desc').limit(500).get();
+        if (ventas.empty) return { creditos: [] };
+        const docs = await c.e.firestore.getAll(...ventas.docs.map((v) => c.e.firestore.doc(ruta(c.tenantId, 'creditos', v.id))));
+        const mios = docs.filter((x) => x.exists).map(datosDe).filter((x) => d.estado === undefined || x['estado'] === d.estado);
+        mios.sort((a, b) => Number(b['creadoEnMs']) - Number(a['creadoEnMs']));
+        return { creditos: mios.slice(0, limite) };
+      }
       let q = c.e.firestore.collection(ruta(c.tenantId, 'creditos')).orderBy('creadoEnMs', 'desc');
       if (d.estado !== undefined) q = q.where('estado', '==', d.estado);
-      const snap = await q.limit(d.limite ?? 100).get();
+      const snap = await q.limit(limite).get();
       return { creditos: snap.docs.map(datosDe) };
+    },
+  }),
+  /**
+   * Cotizaciones vigentes de los dos mercados (`null` si no hay una utilizable) y la política de redondeo del tenant,
+   * para que el POS calcule el precio final con la misma regla que el servidor. No devuelve nada sensible.
+   */
+  cotizaciones: accion({
+    roles: TODOS,
+    esquema: VACIO,
+    ejecutar: async (c) => {
+      const cotizaciones: Record<Mercado, CopiaCotizacion | null> = { BO: null, AR: null };
+      for (const m of ['BO', 'AR'] as const) {
+        try {
+          cotizaciones[m] = await leerCotizacion(c.e.almacenCotizaciones, m, c.e.ahora(), { tenantId: c.tenantId });
+        } catch (error) {
+          if (!(error instanceof SinCotizacionUtilizable)) throw error;
+        }
+      }
+      return { cotizaciones, redondeo: await c.e.redondeo(c.tenantId) };
     },
   }),
 
