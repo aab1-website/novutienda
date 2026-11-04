@@ -1,7 +1,10 @@
 /**
  * Handler puro de `GET /api/cotizacion[?mercado=BO|AR]`. No conoce Express ni
  * Cloud Functions: recibe método y consulta, y devuelve estado, encabezados y
- * cuerpo. Sin cotización utilizable responde 503 (el catálogo no debe mostrar precios inventados).
+ * cuerpo. Sin cotización utilizable no se inventa un precio. Sin `mercado`, cada
+ * mercado responde por separado: `cotizaciones` trae los que sí tienen y `errores`
+ * los que no (200 si al menos uno responde, 503 si ninguno). Con `mercado`
+ * explícito, 200 o 503 de ese mercado.
  */
 import { esMercado, MERCADOS, SinCotizacionUtilizable, type CopiaCotizacion, type Mercado } from './tipos.js';
 
@@ -30,13 +33,23 @@ export async function manejarCotizacion(
     pedidos = [req.mercado];
   }
   const cotizaciones: Partial<Record<Mercado, CopiaCotizacion>> = {};
-  try {
-    for (const m of pedidos) cotizaciones[m] = await leer(m);
-  } catch (e) {
-    if (e instanceof SinCotizacionUtilizable) {
-      return { status: 503, headers: { ...sinCache, 'Retry-After': '300' }, cuerpo: { error: 'sin_cotizacion', mercado: e.mercado } };
+  const errores: Partial<Record<Mercado, 'sin_cotizacion'>> = {};
+  for (const m of pedidos) {
+    try {
+      cotizaciones[m] = await leer(m);
+    } catch (e) {
+      if (!(e instanceof SinCotizacionUtilizable)) throw e;
+      errores[m] = 'sin_cotizacion';
     }
-    throw e;
+  }
+  const fallidos = Object.keys(errores);
+  if (fallidos.length === pedidos.length) {
+    const cuerpo = pedidos.length === 1 ? { error: 'sin_cotizacion', mercado: pedidos[0] } : { error: 'sin_cotizacion', errores };
+    return { status: 503, headers: { ...sinCache, 'Retry-After': '300' }, cuerpo };
+  }
+  if (fallidos.length > 0) {
+    // Respuesta parcial: sin caché compartida para que el mercado caído se recupere apenas vuelva.
+    return { status: 200, headers: sinCache, cuerpo: { cotizaciones, errores } };
   }
   return { status: 200, headers: { 'Content-Type': JSON_UTF8, 'Cache-Control': CACHE_COTIZACION }, cuerpo: { cotizaciones } };
 }
