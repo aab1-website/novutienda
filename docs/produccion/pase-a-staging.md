@@ -215,6 +215,11 @@ Firestore y Storage seguirían abiertas a quien tenga un token de usuario.
 8.4 **No activar la exigencia** (`APP_CHECK_EXIGIDO=false` en staging, ni «Enforce» en la consola) hasta que el panel envíe el token:
 hoy `paquetes/panel` no inicializa App Check, así que con la exigencia activa todas sus llamadas responderían `unauthenticated`.
 
+8.4 App Check del SITIO (formulario de contacto, token de un solo uso): registrar la app web del sitio en App Check con su propia clave de
+reCAPTCHA Enterprise (distinta de la del panel) y cargar en el contenido publicado el bloque `config.appCheck {claveSitio, apiKey, appId,
+projectId}` (contrato en `paquetes/website/src/contenido/tipos.ts`). Sin ese bloque el formulario avisa «no está disponible». La CSP del sitio y
+del panel permiten `content-firebaseappcheck.googleapis.com`, que es el host que usa el SDK 13.x para canjear el token.
+
 ## 9. GitHub: variables, secretos, Environments y rulesets [gratis]
 
 Todo con `gh`, por Claude, tras el «sí». Ningún valor en archivos versionados.

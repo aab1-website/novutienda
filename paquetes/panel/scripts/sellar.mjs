@@ -53,7 +53,7 @@ if (problemas.length > 0) {
 //               y, solo en img-src, https://firebasestorage.googleapis.com/v0/b/<bucket>/); sin la variable, los hosts completos.
 // App Check con reCAPTCHA Enterprise (única razón de estos dominios):
 //   script-src  https://www.google.com/recaptcha/ y https://www.gstatic.com/recaptcha/  (enterprise.js y sus módulos)
-//   connect-src https://firebaseappcheck.googleapis.com (canje del token) y https://www.google.com (recaptcha/enterprise/reload y clr)
+//   connect-src https://content-firebaseappcheck.googleapis.com (canje del token) y https://www.google.com (recaptcha/enterprise/reload y clr)
 //   frame-src   https://www.google.com y https://recaptcha.google.com  (marco invisible de reCAPTCHA Enterprise)
 // La compilación `--emulador` NO los incluye: usa un proveedor propio y no carga nada de Google.
 // Las variables llegan del entorno del build (el CI las exporta para el panel). Se validan: van dentro de la CSP y un valor
@@ -72,7 +72,7 @@ const FUNCIONES = PROYECTO === '' ? 'https://*.cloudfunctions.net' : `https://us
 const ALMACEN_IMG = BUCKET === '' ? 'https://storage.googleapis.com https://firebasestorage.googleapis.com' : `https://storage.googleapis.com/${BUCKET}/ https://firebasestorage.googleapis.com/v0/b/${BUCKET}/`;
 const ALMACEN_MEDIA = BUCKET === '' ? 'https://storage.googleapis.com' : `https://storage.googleapis.com/${BUCKET}/`;
 const RECAPTCHA_SCRIPT = emulador ? '' : ' https://www.google.com/recaptcha/ https://www.gstatic.com/recaptcha/';
-const RECAPTCHA_CONEXION = emulador ? '' : ' https://firebaseappcheck.googleapis.com https://www.google.com';
+const RECAPTCHA_CONEXION = emulador ? '' : ' https://content-firebaseappcheck.googleapis.com https://www.google.com';
 const RECAPTCHA_MARCO = emulador ? "'none'" : 'https://www.google.com https://recaptcha.google.com';
 const CONEXIONES_EMULADOR = emulador ? ' http://127.0.0.1:8240 http://127.0.0.1:8243 http://127.0.0.1:8245' : '';
 const csp = [

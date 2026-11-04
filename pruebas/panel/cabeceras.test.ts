@@ -38,7 +38,7 @@ describe('CSP del panel (producción)', () => {
   it('permite solo lo que el panel usa', () => {
     expect(directiva(csp, 'default-src')).toEqual(["'none'"]);
     expect(directiva(csp, 'connect-src').sort()).toEqual([
-      "'self'", 'https://*.cloudfunctions.net', 'https://firebaseappcheck.googleapis.com', 'https://firebasestorage.googleapis.com',
+      "'self'", 'https://*.cloudfunctions.net', 'https://content-firebaseappcheck.googleapis.com', 'https://firebasestorage.googleapis.com',
       'https://identitytoolkit.googleapis.com', 'https://securetoken.googleapis.com', 'https://www.google.com',
     ].sort());
     expect(directiva(csp, 'img-src')).toEqual(["'self'", 'data:', 'blob:', 'https://storage.googleapis.com', 'https://firebasestorage.googleapis.com']);
