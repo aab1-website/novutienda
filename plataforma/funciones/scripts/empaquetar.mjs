@@ -3,7 +3,7 @@
 // las dependencias de ejecución, con las MISMAS versiones exactas que `plataforma/funciones/package.json`.
 // Salida: dist/funciones/ (ignorada por git y por ESLint; es el `source` de `functions` en firebase.json).
 import { build } from 'esbuild';
-import { existsSync, mkdirSync, readFileSync, rmSync, symlinkSync, writeFileSync } from 'node:fs';
+import { copyFileSync, existsSync, mkdirSync, readFileSync, rmSync, symlinkSync, writeFileSync } from 'node:fs';
 import { dirname, join } from 'node:path';
 import { fileURLToPath } from 'node:url';
 
@@ -42,4 +42,13 @@ writeFileSync(
 // Solo para el emulador y el desarrollo local: el emulador busca `.bin/firebase-functions` y los módulos junto
 // al código. `firebase deploy` ignora `node_modules` (ver `ignore` en firebase.json) y Cloud Build instala los suyos.
 if (existsSync(join(raiz, 'node_modules'))) symlinkSync(join(raiz, 'node_modules'), join(dist, 'node_modules'), 'dir');
+// Parámetros de Functions: `firebase deploy` los lee de `dist/funciones/.env*` DESPUÉS de este predeploy, y este
+// script borra `dist/funciones/` al empezar. El CI escribe el archivo y lo señala con FUNCIONES_PARAMETROS; aquí se
+// copia al final para que llegue al despliegue. Sin la variable no se copia nada (emulador y desarrollo local).
+const parametros = process.env['FUNCIONES_PARAMETROS'];
+if (parametros) {
+  if (!existsSync(parametros)) throw new Error(`FUNCIONES_PARAMETROS apunta a un archivo inexistente: ${parametros}`);
+  copyFileSync(parametros, join(dist, '.env'));
+  console.log('empaquetar: parámetros de Functions copiados a dist/funciones/.env');
+}
 console.log(`empaquetar: ${'dist/funciones/index.js'} y package.json escritos`);
