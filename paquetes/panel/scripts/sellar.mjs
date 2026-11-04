@@ -36,8 +36,16 @@ if (problemas.length > 0) {
   process.exit(1);
 }
 
-// Sin 'unsafe-inline' ni 'unsafe-eval'. connect-src: callables (Cloud Functions), Firebase Auth y Cloud Storage.
-// App Check con reCAPTCHA Enterprise (única razón de estos dominios; los mismos que firebase.json, target `panel`):
+// LA CSP DEL PANEL LA DEFINE ESTE BUILD (única fuente de verdad): `_cabeceras.json` se incorpora al target `panel` de
+// dist/firebase.json con plataforma/funciones/scripts/componer-hosting.mjs, igual que el sitio. La sección del target
+// `panel` de firebase.json versionado es solo su valor base y una prueba (pruebas/panel/cabeceras.test.ts) exige que
+// coincida con lo que genera este script.
+// Sin 'unsafe-inline' ni 'unsafe-eval'. Solo lo que el panel usa en producción:
+//   connect-src identitytoolkit y securetoken (Firebase Auth), las funciones (callables, región us-east1) y
+//               firebasestorage.googleapis.com (subidas). CSP no admite comodines a mitad de un nombre: no puede decir
+//               «us-east1-*.cloudfunctions.net»; se acepta *.cloudfunctions.net y *.a.run.app (funciones de 2.ª gen.).
+//   img-src / media-src  Cloud Storage (medios publicados) y blob: (vistas previas antes de subir)
+// App Check con reCAPTCHA Enterprise (única razón de estos dominios):
 //   script-src  https://www.google.com/recaptcha/ y https://www.gstatic.com/recaptcha/  (enterprise.js y sus módulos)
 //   connect-src https://firebaseappcheck.googleapis.com (canje del token) y https://www.google.com (recaptcha/enterprise/reload y clr)
 //   frame-src   https://www.google.com y https://recaptcha.google.com  (marco invisible de reCAPTCHA Enterprise)
@@ -50,12 +58,13 @@ const csp = [
   "default-src 'none'",
   `script-src 'self'${RECAPTCHA_SCRIPT}`,
   "style-src 'self'",
-  "img-src 'self' data: blob: https:",
+  "img-src 'self' data: blob: https://storage.googleapis.com https://firebasestorage.googleapis.com",
   "font-src 'self'",
-  `connect-src 'self' https://*.cloudfunctions.net https://*.run.app https://identitytoolkit.googleapis.com https://securetoken.googleapis.com https://firebasestorage.googleapis.com${RECAPTCHA_CONEXION}${CONEXIONES_EMULADOR}`,
+  `connect-src 'self' https://identitytoolkit.googleapis.com https://securetoken.googleapis.com https://*.cloudfunctions.net https://*.a.run.app https://firebasestorage.googleapis.com${RECAPTCHA_CONEXION}${CONEXIONES_EMULADOR}`,
   `frame-src ${RECAPTCHA_MARCO}`,
   "object-src 'none'",
-  "media-src 'self' blob:",
+  "media-src 'self' blob: https://storage.googleapis.com",
+  "manifest-src 'self'",
   "base-uri 'none'",
   "form-action 'self'",
   "frame-ancestors 'none'",
@@ -68,7 +77,7 @@ const headers = [
   { key: 'X-Content-Type-Options', value: 'nosniff' },
   { key: 'X-Frame-Options', value: 'DENY' },
   { key: 'Referrer-Policy', value: 'no-referrer' },
-  { key: 'Permissions-Policy', value: 'camera=(), microphone=(), geolocation=(), payment=()' },
+  { key: 'Permissions-Policy', value: 'camera=(), microphone=(), geolocation=(), payment=(), usb=()' },
   { key: 'Cross-Origin-Opener-Policy', value: 'same-origin' },
   { key: 'Cache-Control', value: 'no-store' },
 ];
