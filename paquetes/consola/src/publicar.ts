@@ -7,7 +7,7 @@ import type { Medio } from './medios/subidas.js';
 import { exigirRol, ROLES } from './permisos.js';
 import { PLANTILLAS } from './plantillas.js';
 import type {
-  BaseDatosConsola, CatalogoPuerto, DisparadorSitio, Existencia, PrecioUSD, ProductoCatalogo, Reloj, UbicacionId,
+  BaseDatosConsola, CatalogoPuerto, DisparadorSitio, PrecioUSD, ProductoCatalogo, Reloj,
 } from './puertos.js';
 import { rutaCarrusel, rutaFicha, rutaMedio, rutaPublicado, rutaSeccion, rutaSitio, tenantValido } from './rutas.js';
 import type { Bloque, Seccion } from './secciones.js';
@@ -20,39 +20,22 @@ import { esObjeto } from './validar.js';
 // Disponibilidad pública (solo disponible / agotado, sin cantidades)
 // ---------------------------------------------------------------------------------------------
 
-export interface EntradaDisponibilidad {
-  readonly producto: Pick<ProductoCatalogo, 'id' | 'activo' | 'stockTotal'>;
-  readonly existencias: readonly Existencia[];
-}
-
 /**
- * Proyección pública de disponibilidad. Los pedidos de WhatsApp descuentan siempre de `tienda`, así que solo esa
- * ubicación cuenta (parametrizable). Un producto sin control de stock (`stockTotal` ausente) figura disponible;
- * uno inactivo, agotado. Nunca se publican cantidades.
+ * Proyección pública de disponibilidad. NO define la regla: usa `disponible`, que el catálogo (Inventarios) calcula con su
+ * regla única (activo y existencia en `tienda` > 0; ver `esDisponible` de Inventarios). Así la web y `existenciasPublicas`
+ * nunca discrepan. Nunca se publican cantidades.
  */
 export function proyectarDisponibilidad(
-  entradas: readonly EntradaDisponibilidad[],
-  ubicaciones: readonly UbicacionId[] = ['tienda'],
+  productos: readonly Pick<ProductoCatalogo, 'id' | 'disponible'>[],
 ): Readonly<Record<string, { readonly disponible: boolean }>> {
   const salida: Record<string, { disponible: boolean }> = {};
-  for (const { producto, existencias } of entradas) {
-    let disponible: boolean;
-    if (!producto.activo) disponible = false;
-    else if (producto.stockTotal === undefined) disponible = true;
-    else disponible = existencias.filter((x) => ubicaciones.includes(x.ubicacionId)).reduce((s, x) => s + x.cantidad, 0) > 0;
-    salida[producto.id] = { disponible };
-  }
+  for (const p of productos) salida[p.id] = { disponible: p.disponible };
   return salida;
 }
 
-/** Arma la proyección leyendo catálogo y existencias por el puerto (solo lectura). */
+/** Arma la proyección leyendo el catálogo por el puerto (solo lectura). */
 export async function calcularDisponibilidadPublica(catalogo: CatalogoPuerto, tenantId: string) {
-  const productos = await catalogo.listarProductos(tenantId);
-  const entradas: EntradaDisponibilidad[] = [];
-  for (const p of productos) {
-    entradas.push({ producto: p, existencias: p.stockTotal === undefined ? [] : await catalogo.existenciasPorAlmacen(tenantId, p.id) });
-  }
-  return proyectarDisponibilidad(entradas);
+  return proyectarDisponibilidad(await catalogo.listarProductos(tenantId));
 }
 
 // ---------------------------------------------------------------------------------------------

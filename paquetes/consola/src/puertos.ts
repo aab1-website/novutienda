@@ -1,7 +1,7 @@
 // Puertos inyectables de la consola. Inventarios (productos, precios, stock) y la
 // infraestructura (Storage, procesamiento, programación) los implementan; aquí solo
 // se declara el contrato. La consola no importa ningún otro módulo.
-import type { BaseDatosIdentidad } from '@plataforma/nucleo';
+import type { BaseDatosIdentidad, TransaccionIdentidad } from '@plataforma/nucleo';
 import type { PlanProcesamiento } from './medios/plan.js';
 import type { TipoMedio } from './medios/tipos-archivo.js';
 
@@ -15,13 +15,24 @@ export interface Reloj {
 
 export type UbicacionId = 'tienda' | 'deposito-1' | 'deposito-2';
 
-/** Precio base en USD por mercado; 0 significa «sin precio / a consultar». */
+/**
+ * Precio base en USD por mercado; 0 significa «sin precio / a consultar».
+ * UNIDAD: dólares DECIMALES (hasta 2 decimales) en toda la consola y en este puerto. Inventarios guarda centavos
+ * enteros; la conversión vive solo en el adaptador del puerto, nunca en la consola.
+ */
 export interface PrecioUSD {
   readonly bo: number;
   readonly ar: number;
 }
 
-/** Datos del producto que la consola puede editar (los escribe Inventarios). */
+/**
+ * Datos del producto que la consola maneja (los escribe Inventarios).
+ *  - `sku`: Inventarios lo exige y es único. Al crear, si la consola no lo da, el adaptador lo deriva del id del
+ *    producto de forma determinista (el id si cabe en 40 caracteres; si no, 31 caracteres del id + «-» + 8 del SHA-256).
+ *    Una vez creado NO se edita: la consola no lo ofrece y el adaptador lo rechaza.
+ *  - `conSerie`: solo al crear (no cambia tras el primer movimiento de stock).
+ *  - `garantiaMeses`: entero de 1 a 120 (igual que Inventarios).
+ */
 export interface DatosProducto {
   readonly nombre: string;
   readonly categoria: string;
@@ -29,6 +40,10 @@ export interface DatosProducto {
   readonly sku?: string;
   readonly activo: boolean;
   readonly garantiaMeses?: number;
+  readonly conSerie?: boolean;
+  /** Existencia total en o por debajo de la cual el producto figura «bajo mínimo». */
+  readonly minimo?: number;
+  readonly publicado?: boolean;
 }
 
 export interface ProductoCatalogo extends DatosProducto {
@@ -36,6 +51,11 @@ export interface ProductoCatalogo extends DatosProducto {
   readonly precioUSD: PrecioUSD;
   /** Ausente: el producto no controla stock. */
   readonly stockTotal?: number;
+  /**
+   * Disponibilidad pública, calculada por Inventarios con SU regla única (`esDisponible`: activo y existencia en la
+   * tienda mayor que cero). La consola la usa tal cual y no la recalcula.
+   */
+  readonly disponible: boolean;
 }
 
 export interface Existencia {
@@ -44,23 +64,25 @@ export interface Existencia {
 }
 
 /**
- * Productos, precios y stock. Los implementa Inventarios con SUS funciones (la
- * consola nunca escribe esas colecciones). `crearProducto` debe reservar el tope
- * de 200 productos dentro de su propia transacción (`verificarYReservar` del núcleo)
- * y lanzar `LimiteDelPlan` si se supera.
+ * Productos, precios y stock. Los implementa Inventarios con SUS funciones (la consola nunca escribe esas
+ * colecciones). Las operaciones de escritura corren DENTRO de la transacción `tx` de la consola, junto con la
+ * anotación de cambio y la auditoría: si una falla, ninguna queda. Las lecturas de la transacción van antes de las
+ * escrituras. `crearProducto` debe reservar el tope de 200 productos en esa misma transacción (`verificarYReservar`
+ * del núcleo) y lanzar `LimiteDelPlan` si se supera.
  */
 export interface CatalogoPuerto {
   listarProductos(tenantId: string): Promise<readonly ProductoCatalogo[]>;
   leerProducto(tenantId: string, productoId: string): Promise<ProductoCatalogo | undefined>;
   crearProducto(
+    tx: TransaccionIdentidad,
     tenantId: string,
     productoId: string,
     datos: DatosProducto,
     precioUSD: PrecioUSD,
     por: string,
   ): Promise<void>;
-  actualizarDatosProducto(tenantId: string, productoId: string, cambios: Partial<DatosProducto>, por: string): Promise<void>;
-  actualizarPrecioUSD(tenantId: string, productoId: string, precio: PrecioUSD, por: string): Promise<void>;
+  actualizarDatosProducto(tx: TransaccionIdentidad, tenantId: string, productoId: string, cambios: Partial<DatosProducto>, por: string): Promise<void>;
+  actualizarPrecioUSD(tx: TransaccionIdentidad, tenantId: string, productoId: string, precio: PrecioUSD, por: string): Promise<void>;
   /** Solo lectura. */
   existenciasPorAlmacen(tenantId: string, productoId: string): Promise<readonly Existencia[]>;
 }

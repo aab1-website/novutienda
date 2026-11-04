@@ -1,13 +1,14 @@
 // `CatalogoPuerto` de la consola implementado con las funciones de Inventarios (dueño de productos y
-// stock). La consola nunca escribe esas colecciones; todo pasa por `crearProducto` y
-// `actualizarProducto`, cada uno en UNA transacción.
-import { EntradaInvalida, UBICACIONES, actualizarProducto, crearProducto, type Autor, type CambiosProducto } from '@plataforma/inventarios';
-import type { BaseDatosIdentidad } from '@plataforma/nucleo';
-import type { CatalogoPuerto, DatosProducto, Existencia, PrecioUSD, ProductoCatalogo } from '@plataforma/consola';
-import type { LectorColecciones } from './colecciones.js';
+// stock). La consola nunca escribe esas colecciones; todo pasa por `crearProducto` y `actualizarProducto`,
+// dentro de la transacción que abre la consola (la misma que anota el cambio y la auditoría).
 import {
-  centavosADolares, dolaresACentavos, leerDocumentoProducto, rutaExistencia, rutaProducto, type ProductoInventarios,
-} from './producto-inventarios.js';
+  EntradaInvalida, actualizarProducto, crearProducto, esDisponible, leerDocumentoProducto, leerExistencias, leerProducto,
+  rutaColeccionProductos, skuDesdeId, UBICACION_DISPONIBILIDAD, type Autor, type CambiosProducto, type ProductoLeido,
+} from '@plataforma/inventarios';
+import type { BaseDatosIdentidad, TransaccionIdentidad } from '@plataforma/nucleo';
+import type { CatalogoPuerto, Existencia, PrecioUSD, ProductoCatalogo } from '@plataforma/consola';
+import type { LectorColecciones } from './colecciones.js';
+import { centavosADolares, dolaresACentavos } from './producto-inventarios.js';
 
 export interface DepsCatalogoConsola {
   readonly db: BaseDatosIdentidad;
@@ -17,123 +18,112 @@ export interface DepsCatalogoConsola {
 /** El puerto de la consola solo trae el uid de quien opera; la consola ya exigió rol `adm`. */
 const autorAdm = (uid: string): Autor => ({ uid, rol: 'adm' });
 
-const aPrecioConsola = (c: ProductoInventarios['precioCentavos']): PrecioUSD => ({ bo: centavosADolares(c.bo), ar: centavosADolares(c.ar) });
+const aPrecioConsola = (c: ProductoLeido['precioCentavos']): PrecioUSD => ({ bo: centavosADolares(c.bo), ar: centavosADolares(c.ar) });
 const aPrecioInventarios = (p: PrecioUSD): { bo: number; ar: number } => ({ bo: dolaresACentavos(p.bo), ar: dolaresACentavos(p.ar) });
 
-function aProductoConsola(p: ProductoInventarios): ProductoCatalogo {
+/** `cantidadTienda`: existencia en el almacén que decide la disponibilidad pública (regla única de Inventarios). */
+function aProductoConsola(p: ProductoLeido, cantidadTienda: number): ProductoCatalogo {
   return {
     id: p.productoId,
     nombre: p.nombre,
     categoria: p.categoria ?? '',
+    ...(p.marca !== undefined ? { marca: p.marca } : {}),
     ...(p.sku !== undefined ? { sku: p.sku } : {}),
     activo: p.activo,
+    conSerie: p.conSerie,
+    publicado: p.publicado,
     ...(p.garantiaMeses !== undefined ? { garantiaMeses: p.garantiaMeses } : {}),
+    ...(p.minimo !== undefined ? { minimo: p.minimo } : {}),
     precioUSD: aPrecioConsola(p.precioCentavos),
     ...(p.stockTotal !== undefined ? { stockTotal: p.stockTotal } : {}),
+    disponible: esDisponible({ activo: p.activo, ...(p.stockTotal !== undefined ? { stockTotal: p.stockTotal } : {}) }, cantidadTienda),
   };
 }
 
-/** Campos que la consola acepta pero Inventarios no guarda: se rechazan, nunca se descartan en silencio. */
-function exigirSoportados(datos: Partial<DatosProducto>): void {
-  if (datos.marca !== undefined) throw new EntradaInvalida('Inventarios no guarda la marca del producto');
-}
+const enTienda = (existencias: readonly { ubicacionId: string; cantidad: number }[]): number =>
+  existencias.find((x) => x.ubicacionId === UBICACION_DISPONIBILIDAD)?.cantidad ?? 0;
 
 export function crearCatalogoConsola(deps: DepsCatalogoConsola): CatalogoPuerto {
   const { db, lector } = deps;
 
-  const leer = (tenantId: string, productoId: string): Promise<ProductoInventarios | undefined> =>
-    db.runTransaction(async (tx) => {
-      const d = await tx.get(rutaProducto(tenantId, productoId));
-      const datos = d.data();
-      return d.existe && datos !== undefined ? leerDocumentoProducto(productoId, datos) : undefined;
-    });
-
   return {
     async listarProductos(tenantId) {
-      const docs = await lector.listar(`tenants/${tenantId}/productos`);
-      return docs.map((d) => aProductoConsola(leerDocumentoProducto(d.id, d.datos)));
+      const docs = await lector.listar(rutaColeccionProductos(tenantId));
+      const productos = docs.map((d) => leerDocumentoProducto(d.id, d.datos));
+      const tiendas = await db.runTransaction(async (tx) => {
+        const salida = new Map<string, number>();
+        for (const p of productos) salida.set(p.productoId, enTienda(await leerExistencias(tx, tenantId, p.productoId)));
+        return salida;
+      });
+      return productos.map((p) => aProductoConsola(p, tiendas.get(p.productoId) ?? 0));
     },
 
     async leerProducto(tenantId, productoId) {
-      const p = await leer(tenantId, productoId);
-      return p === undefined ? undefined : aProductoConsola(p);
+      return db.runTransaction(async (tx) => {
+        const p = await leerProducto(tx, tenantId, productoId);
+        return p === undefined ? undefined : aProductoConsola(p, enTienda(await leerExistencias(tx, tenantId, productoId)));
+      });
     },
 
     /**
      * Alta con el tope de 200 productos: `crearProducto` de Inventarios reserva el cupo del contador
-     * `contadores/uso` (el mismo que `verificarYReservar` del núcleo) en la misma transacción. Id de
+     * `contadores/uso` (el mismo que `verificarYReservar` del núcleo) en la transacción de la consola. Id de
      * operación determinista: reintentar el alta con el mismo contenido no duplica ni gasta otro cupo.
-     * Sin SKU, el SKU es el id del producto (Inventarios exige uno único).
+     * Sin SKU, el SKU se deriva del id del producto (`skuDesdeId`): Inventarios exige uno único.
      */
-    async crearProducto(tenantId, productoId, datos, precioUSD, por) {
-      exigirSoportados(datos);
-      await db.runTransaction((tx) =>
-        crearProducto(tx, {
-          tenantId,
-          operacionId: `consola-crear-${productoId}`,
-          por: autorAdm(por),
-          producto: {
-            id: productoId,
-            nombre: datos.nombre,
-            categoria: datos.categoria,
-            sku: datos.sku ?? productoId,
-            activo: datos.activo,
-            ...(datos.garantiaMeses !== undefined ? { garantiaMeses: datos.garantiaMeses } : {}),
-            precioUSD: aPrecioInventarios(precioUSD),
-          },
-        }),
-      );
-    },
-
-    /** La operación lleva la versión leída: repetir la misma edición es idempotente; otra edición sobre la misma versión es conflicto. */
-    async actualizarDatosProducto(tenantId, productoId, cambios, por) {
-      exigirSoportados(cambios);
-      if (cambios.sku !== undefined) throw new EntradaInvalida('El SKU no se edita en Inventarios');
-      const cambiosInv: CambiosProducto = {
-        ...(cambios.nombre !== undefined ? { nombre: cambios.nombre } : {}),
-        ...(cambios.categoria !== undefined ? { categoria: cambios.categoria } : {}),
-        ...(cambios.activo !== undefined ? { activo: cambios.activo } : {}),
-        ...(cambios.garantiaMeses !== undefined ? { garantiaMeses: cambios.garantiaMeses } : {}),
-      };
-      await db.runTransaction(async (tx) => {
-        const v = await versionDe(tx, tenantId, productoId);
-        await actualizarProducto(tx, {
-          tenantId, operacionId: `consola-editar-${productoId}-v${v}`, por: autorAdm(por), productoId, cambios: cambiosInv,
-        });
+    async crearProducto(tx, tenantId, productoId, datos, precioUSD, por) {
+      await crearProducto(tx, {
+        tenantId,
+        operacionId: `consola-crear-${productoId}`,
+        por: autorAdm(por),
+        producto: {
+          id: productoId,
+          nombre: datos.nombre,
+          categoria: datos.categoria,
+          ...(datos.marca !== undefined ? { marca: datos.marca } : {}),
+          sku: datos.sku ?? skuDesdeId(productoId),
+          activo: datos.activo,
+          ...(datos.conSerie !== undefined ? { conSerie: datos.conSerie } : {}),
+          ...(datos.publicado !== undefined ? { publicado: datos.publicado } : {}),
+          ...(datos.garantiaMeses !== undefined ? { garantiaMeses: datos.garantiaMeses } : {}),
+          ...(datos.minimo !== undefined ? { minimo: datos.minimo } : {}),
+          precioUSD: aPrecioInventarios(precioUSD),
+        },
       });
     },
 
-    async actualizarPrecioUSD(tenantId, productoId, precio, por) {
-      await db.runTransaction(async (tx) => {
-        const v = await versionDe(tx, tenantId, productoId);
-        await actualizarProducto(tx, {
-          tenantId, operacionId: `consola-precio-${productoId}-v${v}`, por: autorAdm(por), productoId,
-          cambios: { precioUSD: aPrecioInventarios(precio) },
-        });
+    /** La operación lleva la versión leída: repetir la misma edición es idempotente; otra edición sobre la misma versión es conflicto. */
+    async actualizarDatosProducto(tx, tenantId, productoId, cambios, por) {
+      if (cambios.sku !== undefined) throw new EntradaInvalida('El SKU no se edita en Inventarios');
+      if (cambios.conSerie !== undefined) throw new EntradaInvalida('conSerie solo se define al crear el producto');
+      const cambiosInv: CambiosProducto = {
+        ...(cambios.nombre !== undefined ? { nombre: cambios.nombre } : {}),
+        ...(cambios.categoria !== undefined ? { categoria: cambios.categoria } : {}),
+        ...(cambios.marca !== undefined ? { marca: cambios.marca } : {}),
+        ...(cambios.activo !== undefined ? { activo: cambios.activo } : {}),
+        ...(cambios.publicado !== undefined ? { publicado: cambios.publicado } : {}),
+        ...(cambios.garantiaMeses !== undefined ? { garantiaMeses: cambios.garantiaMeses } : {}),
+        ...(cambios.minimo !== undefined ? { minimo: cambios.minimo } : {}),
+      };
+      const v = await versionDe(tx, tenantId, productoId);
+      await actualizarProducto(tx, { tenantId, operacionId: `consola-editar-${productoId}-v${v}`, por: autorAdm(por), productoId, cambios: cambiosInv });
+    },
+
+    async actualizarPrecioUSD(tx, tenantId, productoId, precio, por) {
+      const v = await versionDe(tx, tenantId, productoId);
+      await actualizarProducto(tx, {
+        tenantId, operacionId: `consola-precio-${productoId}-v${v}`, por: autorAdm(por), productoId, cambios: { precioUSD: aPrecioInventarios(precio) },
       });
     },
 
     async existenciasPorAlmacen(tenantId, productoId) {
-      return db.runTransaction(async (tx) => {
-        const salida: Existencia[] = [];
-        for (const u of UBICACIONES) {
-          const d = await tx.get(rutaExistencia(tenantId, productoId, u));
-          const cantidad = d.data()?.['cantidad'];
-          if (d.existe && typeof cantidad === 'number') salida.push({ ubicacionId: u, cantidad });
-        }
-        return salida;
-      });
+      return db.runTransaction(async (tx): Promise<Existencia[]> => leerExistencias(tx, tenantId, productoId));
     },
   };
 }
 
-async function versionDe(
-  tx: { get(ruta: string): Promise<{ existe: boolean; data(): Readonly<Record<string, unknown>> | undefined }> },
-  tenantId: string,
-  productoId: string,
-): Promise<number> {
-  const d = await tx.get(rutaProducto(tenantId, productoId));
-  const datos = d.data();
-  if (!d.existe || datos === undefined) throw new EntradaInvalida(`Producto inexistente: ${productoId}`);
-  return leerDocumentoProducto(productoId, datos).version;
+async function versionDe(tx: TransaccionIdentidad, tenantId: string, productoId: string): Promise<number> {
+  const p = await leerProducto(tx, tenantId, productoId);
+  if (p === undefined) throw new EntradaInvalida(`Producto inexistente: ${productoId}`);
+  return p.version;
 }

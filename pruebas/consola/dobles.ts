@@ -1,4 +1,4 @@
-import { verificarYReservar, type Actor } from '@plataforma/nucleo';
+import { verificarYReservar, type Actor, type TransaccionIdentidad } from '@plataforma/nucleo';
 import type {
   AlmacenMedios, CatalogoPuerto, ConsultaSubidas, DatosProducto, DisparadorSitio, Existencia, InfoMedio, PrecioUSD,
   ProcesadorMedios, ProductoCatalogo, Reloj, SolicitudProcesado, VersionProcesada,
@@ -31,10 +31,10 @@ export class CatalogoDoble implements CatalogoPuerto {
   readonly productos = new Map<string, ProductoCatalogo>();
   readonly existencias = new Map<string, Existencia[]>();
   readonly llamadas: string[] = [];
-  constructor(private readonly db: DobleDb) {}
+  constructor(readonly db?: DobleDb) {}
 
   agregar(id: string, extra: Partial<ProductoCatalogo> = {}): ProductoCatalogo {
-    const p: ProductoCatalogo = { id, nombre: `Producto ${id}`, categoria: 'general', activo: true, precioUSD: { bo: 10, ar: 12 }, ...extra };
+    const p: ProductoCatalogo = { id, nombre: `Producto ${id}`, categoria: 'general', activo: true, disponible: true, precioUSD: { bo: 10, ar: 12 }, ...extra };
     this.productos.set(id, p);
     return p;
   }
@@ -44,18 +44,18 @@ export class CatalogoDoble implements CatalogoPuerto {
   leerProducto(_t: string, id: string): Promise<ProductoCatalogo | undefined> {
     return Promise.resolve(this.productos.get(id));
   }
-  async crearProducto(t: string, id: string, datos: DatosProducto, precioUSD: PrecioUSD): Promise<void> {
-    await this.db.runTransaction((tx) => verificarYReservar(tx, t, 'productos'));
-    this.productos.set(id, { id, ...datos, precioUSD });
+  async crearProducto(tx: TransaccionIdentidad, t: string, id: string, datos: DatosProducto, precioUSD: PrecioUSD): Promise<void> {
+    await verificarYReservar(tx, t, 'productos');
+    this.productos.set(id, { id, ...datos, precioUSD, disponible: datos.activo });
     this.llamadas.push(`crear:${id}`);
   }
-  actualizarDatosProducto(_t: string, id: string, cambios: Partial<DatosProducto>): Promise<void> {
+  actualizarDatosProducto(_tx: TransaccionIdentidad, _t: string, id: string, cambios: Partial<DatosProducto>): Promise<void> {
     const p = this.productos.get(id) as ProductoCatalogo;
     this.productos.set(id, { ...p, ...cambios });
     this.llamadas.push(`datos:${id}`);
     return Promise.resolve();
   }
-  actualizarPrecioUSD(_t: string, id: string, precio: PrecioUSD): Promise<void> {
+  actualizarPrecioUSD(_tx: TransaccionIdentidad, _t: string, id: string, precio: PrecioUSD): Promise<void> {
     const p = this.productos.get(id) as ProductoCatalogo;
     this.productos.set(id, { ...p, precioUSD: precio });
     this.llamadas.push(`precio:${id}`);

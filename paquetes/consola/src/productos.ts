@@ -1,4 +1,4 @@
-import { registrarAuditoria, type Actor } from '@plataforma/nucleo';
+import { registrarAuditoria, type Actor, type TransaccionIdentidad } from '@plataforma/nucleo';
 import { anotarCambio, leerEstadoSitio } from './cambios.js';
 import { ErrorConsola } from './errores.js';
 import { exigirRol, ROLES } from './permisos.js';
@@ -12,13 +12,18 @@ export interface DepsProductos {
   readonly reloj: Reloj;
 }
 
-const CLAVES_DATOS = ['nombre', 'categoria', 'marca', 'sku', 'activo', 'garantiaMeses'] as const;
+const CLAVES_ALTA = ['nombre', 'categoria', 'marca', 'sku', 'activo', 'garantiaMeses', 'conSerie', 'minimo', 'publicado'] as const;
+/** El SKU no se edita y `conSerie` solo se define al crear. */
+const CLAVES_EDICION = ['nombre', 'categoria', 'marca', 'activo', 'garantiaMeses', 'minimo', 'publicado'] as const;
+/** Mismo formato que el SKU de Inventarios. */
+const SKU = /^[A-Za-z0-9][A-Za-z0-9._-]{0,39}$/;
 
 /** Valida datos de producto (completos si `completo`, parciales si no). Lanza `entrada-invalida`. */
 export function validarDatosProducto(x: unknown, completo: boolean): Partial<DatosProducto> {
   const errores: string[] = [];
   if (!esObjeto(x)) throw new ErrorConsola('entrada-invalida', 'Los datos del producto deben ser un objeto');
-  soloClaves(x, CLAVES_DATOS, 'producto', errores);
+  if (!completo && x['sku'] !== undefined) errores.push('sku: no se edita una vez creado el producto');
+  soloClaves(x, completo ? CLAVES_ALTA : [...CLAVES_EDICION, ...(x['sku'] !== undefined ? ['sku' as const] : [])], 'producto', errores);
   const d: { -readonly [k in keyof DatosProducto]?: DatosProducto[k] } = {};
   for (const [c, max, req] of [['nombre', 120, true], ['categoria', 60, true], ['marca', 60, false]] as const) {
     if (x[c] === undefined) {
@@ -28,18 +33,28 @@ export function validarDatosProducto(x: unknown, completo: boolean): Partial<Dat
     const v = textoPlano(x[c], c, { min: req ? 1 : 0, max }, errores);
     if (v !== undefined && v !== '') d[c] = v;
   }
-  if (x['sku'] !== undefined) {
-    if (typeof x['sku'] !== 'string' || !/^[A-Za-z0-9._-]{1,40}$/.test(x['sku'])) errores.push('sku: inválido');
+  if (completo && x['sku'] !== undefined) {
+    if (typeof x['sku'] !== 'string' || !SKU.test(x['sku'])) errores.push('sku: inválido');
     else d.sku = x['sku'];
   }
   if (x['activo'] !== undefined) {
     if (typeof x['activo'] !== 'boolean') errores.push('activo: debe ser verdadero o falso');
     else d.activo = x['activo'];
   } else if (completo) d.activo = true;
+  for (const c of ['conSerie', 'publicado'] as const) {
+    if (x[c] === undefined) continue;
+    if (typeof x[c] !== 'boolean') errores.push(`${c}: debe ser verdadero o falso`);
+    else d[c] = x[c];
+  }
   const g = x['garantiaMeses'];
   if (g !== undefined) {
-    if (typeof g !== 'number' || !Number.isInteger(g) || g < 0 || g > 120) errores.push('garantiaMeses: entero de 0 a 120');
+    if (typeof g !== 'number' || !Number.isInteger(g) || g < 1 || g > 120) errores.push('garantiaMeses: entero de 1 a 120');
     else d.garantiaMeses = g;
+  }
+  const m = x['minimo'];
+  if (m !== undefined) {
+    if (typeof m !== 'number' || !Number.isSafeInteger(m) || m < 0) errores.push('minimo: entero mayor o igual que 0');
+    else d.minimo = m;
   }
   if (errores.length > 0) throw new ErrorConsola('entrada-invalida', 'Hay datos inválidos', errores);
   return d;
@@ -57,10 +72,18 @@ export function validarPrecioUSD(x: unknown): PrecioUSD {
   return { bo: x['bo'] as number, ar: x['ar'] as number };
 }
 
-async function registrar(deps: DepsProductos, t: string, actor: Actor, accion: string, productoId: string, resumen: Record<string, number | string>): Promise<void> {
+/**
+ * Corre `escribir` (la operación de Inventarios) y, en la MISMA transacción, anota el cambio del sitio y registra la
+ * auditoría: si cualquiera falla, no queda ninguna. Orden: primero las lecturas (estado del sitio), luego las escrituras.
+ */
+async function enTransaccion(
+  deps: DepsProductos, t: string, actor: Actor, accion: string, productoId: string, resumen: Record<string, number | string>,
+  escribir: (tx: TransaccionIdentidad) => Promise<void>,
+): Promise<void> {
   const ahora = new Date(deps.reloj.ahora()).toISOString();
   await deps.db.runTransaction(async (tx) => {
     const estado = await leerEstadoSitio(tx, t);
+    await escribir(tx);
     anotarCambio(tx, t, estado, ahora);
     registrarAuditoria(tx, { tenantId: t, uid: actor.uid, rol: 'adm', accion, ruta: rutaFicha(t, productoId), resumenDespues: resumen });
   });
@@ -75,8 +98,9 @@ export async function crearProductoConsola(
   if (!ID_PRODUCTO.test(e.productoId)) throw new ErrorConsola('entrada-invalida', 'productoId inválido');
   const datos = validarDatosProducto(e.datos, true) as DatosProducto;
   const precio = validarPrecioUSD(e.precioUSD);
-  await deps.catalogo.crearProducto(t, e.productoId, datos, precio, e.actor.uid);
-  await registrar(deps, t, e.actor, 'producto.crear', e.productoId, { precioBo: precio.bo, precioAr: precio.ar });
+  await enTransaccion(deps, t, e.actor, 'producto.crear', e.productoId, { precioBo: precio.bo, precioAr: precio.ar }, (tx) =>
+    deps.catalogo.crearProducto(tx, t, e.productoId, datos, precio, e.actor.uid),
+  );
 }
 
 export async function editarProductoConsola(
@@ -87,8 +111,9 @@ export async function editarProductoConsola(
   const cambios = validarDatosProducto(e.cambios, false);
   if (Object.keys(cambios).length === 0) throw new ErrorConsola('entrada-invalida', 'No hay cambios');
   if ((await deps.catalogo.leerProducto(t, e.productoId)) === undefined) throw new ErrorConsola('no-encontrado', 'El producto no existe');
-  await deps.catalogo.actualizarDatosProducto(t, e.productoId, cambios, e.actor.uid);
-  await registrar(deps, t, e.actor, 'producto.editar', e.productoId, { campos: Object.keys(cambios).length });
+  await enTransaccion(deps, t, e.actor, 'producto.editar', e.productoId, { campos: Object.keys(cambios).length }, (tx) =>
+    deps.catalogo.actualizarDatosProducto(tx, t, e.productoId, cambios, e.actor.uid),
+  );
 }
 
 /** Cambia el precio USD por mercado a través de Inventarios. Solo adm: el precio compromete ingresos. */
@@ -100,8 +125,9 @@ export async function cambiarPrecioUSD(
   const precio = validarPrecioUSD(e.precioUSD);
   const previo = await deps.catalogo.leerProducto(t, e.productoId);
   if (previo === undefined) throw new ErrorConsola('no-encontrado', 'El producto no existe');
-  await deps.catalogo.actualizarPrecioUSD(t, e.productoId, precio, e.actor.uid);
-  await registrar(deps, t, e.actor, 'producto.precio', e.productoId, {
-    antesBo: previo.precioUSD.bo, antesAr: previo.precioUSD.ar, precioBo: precio.bo, precioAr: precio.ar,
-  });
+  await enTransaccion(
+    deps, t, e.actor, 'producto.precio', e.productoId,
+    { antesBo: previo.precioUSD.bo, antesAr: previo.precioUSD.ar, precioBo: precio.bo, precioAr: precio.ar },
+    (tx) => deps.catalogo.actualizarPrecioUSD(tx, t, e.productoId, precio, e.actor.uid),
+  );
 }

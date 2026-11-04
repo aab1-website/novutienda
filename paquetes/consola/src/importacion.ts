@@ -143,7 +143,9 @@ export async function simularImportacion(deps: DepsSimulacion, e: EntradaImporta
     texto('marca', 60);
     const sku = celda('sku');
     if (sku !== undefined) {
-      if (!/^[A-Za-z0-9._-]{1,40}$/.test(sku)) errores.push('sku inválido');
+      if (!/^[A-Za-z0-9][A-Za-z0-9._-]{0,39}$/.test(sku)) errores.push('sku inválido');
+      else if (previo !== undefined && sku === previo.sku) skusVistos.set(sku, id); // sin cambio: no se envía
+      else if (previo !== undefined) errores.push('sku: no se edita una vez creado el producto');
       else {
         const dueno = skusExistentes.get(sku) ?? skusVistos.get(sku);
         if (dueno !== undefined && dueno !== id) errores.push('sku repetido en otro producto');
@@ -162,7 +164,7 @@ export async function simularImportacion(deps: DepsSimulacion, e: EntradaImporta
     }
     const gar = celda('garantiaMeses');
     if (gar !== undefined) {
-      if (!/^\d{1,3}$/.test(gar) || Number(gar) > 120) errores.push('garantiaMeses: entero de 0 a 120');
+      if (!/^\d{1,3}$/.test(gar) || Number(gar) < 1 || Number(gar) > 120) errores.push('garantiaMeses: entero de 1 a 120');
       else datos.garantiaMeses = Number(gar);
     }
     const precio: { bo?: number; ar?: number } = {};
@@ -232,18 +234,24 @@ export async function importarProductos(
     try {
       if (f.accion === 'crear') {
         const d = f.cambios.datos;
-        await deps.catalogo.crearProducto(
-          t, f.id,
-          { ...d, nombre: d.nombre ?? '', categoria: d.categoria ?? '', activo: d.activo ?? true },
-          { bo: f.cambios.precio.bo ?? 0, ar: f.cambios.precio.ar ?? 0 },
-          e.actor.uid,
+        await deps.db.runTransaction((tx) =>
+          deps.catalogo.crearProducto(
+            tx, t, f.id,
+            { ...d, nombre: d.nombre ?? '', categoria: d.categoria ?? '', activo: d.activo ?? true },
+            { bo: f.cambios.precio.bo ?? 0, ar: f.cambios.precio.ar ?? 0 },
+            e.actor.uid,
+          ),
         );
       } else {
         const previo = existentes.get(f.id) as ProductoCatalogo;
-        if (Object.keys(f.cambios.datos).length > 0) await deps.catalogo.actualizarDatosProducto(t, f.id, f.cambios.datos, e.actor.uid);
+        if (Object.keys(f.cambios.datos).length > 0) {
+          await deps.db.runTransaction((tx) => deps.catalogo.actualizarDatosProducto(tx, t, f.id, f.cambios.datos, e.actor.uid));
+        }
         const { bo, ar } = f.cambios.precio;
         if (bo !== undefined || ar !== undefined) {
-          await deps.catalogo.actualizarPrecioUSD(t, f.id, { bo: bo ?? previo.precioUSD.bo, ar: ar ?? previo.precioUSD.ar }, e.actor.uid);
+          await deps.db.runTransaction((tx) =>
+            deps.catalogo.actualizarPrecioUSD(tx, t, f.id, { bo: bo ?? previo.precioUSD.bo, ar: ar ?? previo.precioUSD.ar }, e.actor.uid),
+          );
         }
       }
       aplicadas += 1;

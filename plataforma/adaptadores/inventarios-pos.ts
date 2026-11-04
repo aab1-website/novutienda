@@ -1,12 +1,12 @@
 // Cableado del POS con Inventarios: `PuertoInventarios` (salida y reversión de stock dentro de la
 // transacción del POS) y `PuertoCatalogo` (lectura del producto para vender).
 import {
-  aplicarReversion, aplicarSalida, prepararReversion, prepararSalida,
+  aplicarReversion, aplicarSalida, leerProducto, prepararReversion, prepararSalida,
   type Autor, type PlanReversion as PlanReversionInventarios, type PlanSalida as PlanSalidaInventarios,
 } from '@plataforma/inventarios';
 import type { Mercado } from '@plataforma/nucleo';
 import type { ProductoCatalogo, PuertoCatalogo, PuertoInventarios, QuienMueve } from '@plataforma/pos';
-import { centavosADolares, leerDocumentoProducto, rutaProducto } from './producto-inventarios.js';
+import { centavosADolares } from './producto-inventarios.js';
 
 const ROLES: readonly string[] = ['caj', 'sup', 'adm'];
 
@@ -40,10 +40,8 @@ const MERCADOS: readonly [Mercado, 'bo' | 'ar'][] = [['BO', 'bo'], ['AR', 'ar']]
 /** Lee el producto con la forma que pide el POS; precios en USD decimales. `null` si no existe. */
 export const catalogoParaPos: PuertoCatalogo = {
   async leerProducto(tx, tenantId, productoId): Promise<ProductoCatalogo | null> {
-    const d = await tx.get(rutaProducto(tenantId, productoId));
-    const datos = d.data();
-    if (!d.existe || datos === undefined) return null;
-    const p = leerDocumentoProducto(productoId, datos);
+    const p = await leerProducto(tx, tenantId, productoId);
+    if (p === undefined) return null;
     return {
       productoId,
       nombre: p.nombre,
