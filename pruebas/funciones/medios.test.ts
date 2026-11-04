@@ -71,6 +71,14 @@ describe.skipIf(!hayEmulador)('medios (emulador)', () => {
     const [temporales] = await h.bucket.getFiles({ prefix: `tenants/${M}/privado/procesando/${id}/` });
     expect(temporales).toHaveLength(0);
 
+    // estadoSubida: sin forzar nada, informa el estado y el medio; solo SUP; una subida inexistente es not-found.
+    const estado = await accion('medios', 'estadoSubida', { subidaId: id }, sup.token, M);
+    expect(estado.status).toBe(200);
+    expect(estado.resultado).toMatchObject({ estado: 'procesada', medio: { id } });
+    expect((await accion('medios', 'estadoSubida', { subidaId: id }, caj.token, M)).status).toBe(403);
+    const noExiste = await accion('medios', 'estadoSubida', { subidaId: 'no-existe-123' }, sup.token, M);
+    expect(noExiste.error?.status).toBe('NOT_FOUND');
+
     // finalizarSubida explícito es idempotente: devuelve el mismo medio.
     const otra = await accion('medios', 'finalizarSubida', { subidaId: id }, sup.token, M);
     expect(otra.status).toBe(200);

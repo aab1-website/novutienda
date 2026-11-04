@@ -3,7 +3,7 @@
 // tiempo. Normalmente la finaliza el disparador de Storage; la acción `finalizarSubida` es el camino explícito
 // (idempotente) para que el panel espere el resultado.
 import { z } from 'zod';
-import { borrarMedio, finalizarSubida, reservarSubida, type DepsMedios } from '@novutienda/consola';
+import { borrarMedio, ErrorConsola, finalizarSubida, reservarSubida, type DepsMedios } from '@novutienda/consola';
 import { accion, type Contexto, type TablaAcciones } from './marco.js';
 import { ID_PRODUCTO, LIMITE, objeto } from './comunes.js';
 
@@ -24,6 +24,24 @@ export const accionesMedios: TablaAcciones = {
     roles: SUPERVISION,
     esquema: objeto({ subidaId: SUBIDA_ID }),
     ejecutar: async (c, d) => ({ medio: await finalizarSubida(depsMedios(c), { tenantId: c.tenantId, actor: c.actor, subidaId: d.subidaId }) }),
+  }),
+  // Consulta el estado de una subida sin procesarla (el panel la sondea tras subir el original). Lee la reserva con el mismo contrato que
+  // `estadoSubida` de la consola (aún no está en este árbol: al integrar feat/fix-negocio puede sustituirse por esa función).
+  estadoSubida: accion({
+    roles: SUPERVISION,
+    esquema: objeto({ subidaId: SUBIDA_ID }),
+    ejecutar: async (c, d) => {
+      const s = (await c.e.firestore.doc(`tenants/${c.tenantId}/subidas/${d.subidaId}`).get()).data();
+      if (s === undefined) throw new ErrorConsola('no-encontrado', 'La subida no existe');
+      const estado = s['estado'];
+      if (estado !== 'reservada' && estado !== 'procesada' && estado !== 'borrando' && estado !== 'rechazada') throw new ErrorConsola('estado', 'Registro de subida dañado');
+      const medio = estado === 'procesada' ? (await c.e.firestore.doc(`tenants/${c.tenantId}/medios/${d.subidaId}`).get()).data() : undefined;
+      return {
+        estado,
+        ...(medio !== undefined ? { medio: { id: d.subidaId, ...medio } } : {}),
+        ...(typeof s['motivo'] === 'string' ? { motivo: s['motivo'] } : {}),
+      };
+    },
   }),
   borrarMedio: accion({
     roles: SUPERVISION,
