@@ -128,6 +128,8 @@ export function mensajeDeError(e: unknown): string {
   if (codigo !== undefined && PREFIERE_MENSAJE_DEL_SERVIDOR.has(codigo) && delServidorDisponible !== undefined) modulo = delServidorDisponible;
   // El mismo código sirve al egreso de caja y al reembolso de una anulación: se distinguen por el mensaje del servidor.
   if (codigo === 'egreso-excede-efectivo' && /reembolso/i.test(e.message)) modulo = 'El reembolso en efectivo es mayor que el efectivo disponible en esa moneda de la caja.';
+  // El mismo código sirve al descuento y a la anulación: la anulación se distingue por el mensaje del servidor.
+  if (codigo === 'autoaprobacion' && /anulaci[oó]n/i.test(e.message)) modulo = 'No puedes aprobar la anulación de una venta que vendiste o pediste anular';
   const delServidor = modulo === undefined ? delServidorDisponible : undefined;
   let base = modulo ?? delServidor ?? POR_CODIGO_HTTPS[e.codigoHttps] ?? MENSAJE_GENERICO;
   const sinCodigoConFaltantes = e.detalle.codigo === undefined && e.codigoHttps === 'failed-precondition';

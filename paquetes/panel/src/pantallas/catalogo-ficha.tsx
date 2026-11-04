@@ -6,6 +6,7 @@ import { LIMITES_PANEL, type EstadoFicha, type FichaWeb, type Medio, type MedioF
 import { Alerta, Area, Boton, BotonConfirmado, Campo, Cargando, ErrorCarga, Selector, Seccion, Vacio } from '../ui/comun.js';
 import { useApp } from '../ui/contexto.js';
 import { useAccion, useCarga } from '../ui/hooks.js';
+import { esperarSubida } from '../subidas/esperar.js';
 import { formatoBytes } from '../util/base64.js';
 
 const ESTADOS: { valor: EstadoFicha; texto: string }[] = [{ valor: 'borrador', texto: 'Borrador' }, { valor: 'publicado', texto: 'Publicado' }, { valor: 'oculto', texto: 'Oculto' }];
@@ -55,13 +56,14 @@ function EditorFicha({ producto, alCerrar }: { producto: ProductoPanel; alCerrar
       const r = await api.llamar('reservarSubida', { subidaId, productoId: producto.id, tipo, bytes: archivo.size });
       estado('Subiendo 0 %');
       await almacen.subir(r.rutaOriginal, archivo, (p) => estado(`Subiendo ${p} %`));
-      // El procesamiento (sobre todo de un video) puede tardar más de un minuto: se muestra el tiempo transcurrido.
+      // El disparador de Storage procesa el original; el panel consulta el estado (con retroceso) y solo fuerza el
+      // procesamiento como respaldo. Puede tardar más de un minuto (un video): se muestra el tiempo transcurrido.
       const inicio = Date.now();
       estado('Procesando en el servidor… 0 s');
       const reloj = setInterval(() => estado(`Procesando en el servidor… ${Math.round((Date.now() - inicio) / 1000)} s. Un video puede tardar hasta 2 minutos.`), 1000);
       let m;
       try {
-        m = await api.llamar('finalizarSubida', { subidaId });
+        m = await esperarSubida(api, subidaId);
       } finally {
         clearInterval(reloj);
       }

@@ -110,6 +110,19 @@ describe('redondeo: el panel calcula con la misma política que el servidor', ()
   });
 });
 
+describe('estadoSubida', () => {
+  it('traduce a medios.estadoSubida y entrega el medio con la forma del panel solo si está procesada', async () => {
+    const llamadas: { modulo: string; accion: string; datos: unknown }[] = [];
+    const respuesta = (r: unknown) => ({ rol: 'sup' as const, esperar: (): Promise<void> => Promise.resolve(), llamar: (modulo: string, accion: string, datos?: object): Promise<unknown> => { llamadas.push({ modulo, accion, datos }); return Promise.resolve(r); } });
+    const t = TRADUCCION.estadoSubida as unknown as { usa: string[]; ejecutar(c: unknown, e: unknown): Promise<unknown> };
+    expect(t.usa).toEqual(['medios.estadoSubida']);
+    expect(await t.ejecutar(respuesta({ estado: 'procesada', medio: { id: 'sub-1', productoId: 'p', tipo: 'foto' } }), { subidaId: 'sub-1' })).toEqual({ estado: 'procesada', medio: { id: 'sub-1', productoId: 'p', tipo: 'foto' } });
+    expect(await t.ejecutar(respuesta({ estado: 'reservada' }), { subidaId: 'sub-1' })).toEqual({ estado: 'reservada' });
+    expect(await t.ejecutar(respuesta({ estado: 'rechazada', motivo: 'm' }), { subidaId: 'sub-1' })).toEqual({ estado: 'rechazada', motivo: 'm' });
+    expect(llamadas[0]).toEqual({ modulo: 'medios', accion: 'estadoSubida', datos: { subidaId: 'sub-1' } });
+  });
+});
+
 describe('finalizarSubida frente al disparador de Storage', () => {
   it('reintenta mientras el servidor responde «ya fue resuelta» y devuelve el medio; si persiste, el error sube', async () => {
     let intentos = 0;

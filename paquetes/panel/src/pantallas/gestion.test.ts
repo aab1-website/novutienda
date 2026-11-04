@@ -404,6 +404,9 @@ describe('catálogo y sitio', () => {
     expect(await screen.findByText('frente.jpg: Listo')).toBeTruthy();
     expect(e.almacen.subidos).toHaveLength(1);
     expect(e.almacen.subidos[0]?.ruta).toContain('privado/tv-55/');
+    // El disparador resolvió la subida: el panel solo consultó el estado, sin forzar el procesamiento (no hay doble procesamiento).
+    expect(e.api.llamadas.some((l) => l.nombre === 'estadoSubida')).toBe(true);
+    expect(e.api.llamadas.some((l) => l.nombre === 'finalizarSubida')).toBe(false);
     expect(await screen.findByText(/Portada \(2 KB\)/)).toBeTruthy();
     await u.type(screen.getByLabelText('Descripción del producto'), 'Televisor de 55 pulgadas.');
     await u.click(screen.getByRole('button', { name: 'Guardar ficha' }));
@@ -412,6 +415,17 @@ describe('catálogo y sitio', () => {
     // Tope de 5 fotos: la sexta falla con mensaje legible.
     for (let i = 0; i < 4; i++) fireEvent.change(screen.getByLabelText('Subir fotos'), { target: { files: [new File(['x'], `f${i}.jpg`, { type: 'image/jpeg' })] } });
     await waitFor(() => expect((screen.getByLabelText('Subir fotos') as HTMLInputElement).disabled).toBe(true));
+  });
+  it('ficha: si el servidor rechaza el archivo, muestra el error y no agrega el medio', async () => {
+    const e = crearEntorno('sup');
+    e.api.estado.disparador.rechazo = 'El archivo no es una imagen válida';
+    ver(e, h(PantallaCatalogo, { sub: 'fichas' }));
+    const u = userEvent.setup();
+    await u.click(await screen.findByRole('button', { name: 'Editar la ficha de Televisor 55 pulgadas' }));
+    fireEvent.change(await screen.findByLabelText('Subir fotos'), { target: { files: [new File(['x'], 'roto.jpg', { type: 'image/jpeg' })] } });
+    expect(await screen.findByText('roto.jpg: No se pudo procesar el archivo. Pruebe con otro.')).toBeTruthy();
+    expect(e.api.llamadas.some((l) => l.nombre === 'finalizarSubida')).toBe(false);
+    expect(await e.api.llamar('listarMedios', { productoId: 'tv-55' })).toHaveLength(0);
   });
   it('ficha: un video, reordenar y quitar de la ficha', async () => {
     const e = crearEntorno('sup');

@@ -127,20 +127,18 @@ las aplica el módulo; el redondeo del precio sale de `tenants/{t}/config/redond
 | Acción | Roles | `datos` | Devuelve |
 |---|---|---|---|
 | `reservarSubida` | SUP | `{ subidaId (8–40: A-Z a-z 0-9 _ -), productoId, tipo: 'foto'\|'video', bytes }` | `{ subidaId, rutaOriginal, venceEn }` |
-| `finalizarSubida` | SUP | `{ subidaId }` | `{ medio }` (idempotente; normalmente ya la hizo el disparador) |
-| `estadoSubida` | SUP | `{ subidaId }` | `{ estado: 'reservada'\|'procesada'\|'borrando'\|'rechazada', medio?, motivo? }` (`medio` solo si `procesada`; `motivo` si la subida se rechazó; `not-found` si no existe). El panel la sondea tras subir el original, sin forzar el procesamiento |
+| `finalizarSubida` | SUP | `{ subidaId }` | `{ medio }` (idempotente; respaldo: el panel solo la llama si tras 30 s el disparador no resolvió la subida) |
+| `estadoSubida` | SUP | `{ subidaId }` | `{ estado: 'reservada'\|'procesada'\|'borrando'\|'rechazada', medio?, motivo? }` (`medio` solo si `procesada`; `motivo` si la subida se rechazó; `not-found` si no existe). El panel la consulta con retroceso tras subir el original, sin forzar el procesamiento |
 | `borrarMedio` | SUP | `{ medioId }` | `{ ok }` |
 | `listarMedios` | SUP | `{ productoId, limite? }` | `{ medios[] }` |
 
 Flujo de subida: `reservarSubida` → el navegador sube a `rutaOriginal` con el SDK de Storage (`contentType` de foto: jpeg/png/webp/heic; video:
-mp4/quicktime/webm) → el disparador procesa → el panel espera `subidas/{id}.estado` (`procesada` o `rechazada`) o llama `finalizarSubida`.
+mp4/quicktime/webm) → el disparador procesa → el panel consulta `estadoSubida` con retroceso (200 ms, ×1,5, tope 5 s) hasta `procesada` o `rechazada`; si tras 30 s sigue `reservada`, llama una vez a `finalizarSubida` como respaldo.
 
 Carrera entre el disparador y `finalizarSubida`: si dos ejecuciones procesan el mismo original, gana la que confirma primero; la otra borra sus
-temporales y las versiones publicadas que el ganador no usa, y devuelve el medio ganador (la acción sigue siendo idempotente). El panel espera con
-reintentos y retroceso (hasta ~2 minutos si la llamada se corta por tiempo o por red) y muestra el tiempo transcurrido.
-**Pendiente (no es de esta ola):** `estadoSubida` (consulta sin procesar, exportada por `@novutienda/consola`) aún no tiene acción en el callable
-`medios`; al agregarla (rol SUP, `{ subidaId }` → `{ estado, medio?, motivo? }`) el panel debe pasar a consultar el estado en vez de llamar
-`finalizarSubida`, que evita el trabajo duplicado.
+temporales y las versiones publicadas que el ganador no usa, y devuelve el medio ganador (la acción sigue siendo idempotente). Como el panel consulta
+`estadoSubida` (que no procesa) y solo recurre a `finalizarSubida` pasados 30 s, el original no se procesa dos veces. El respaldo conserva su espera con reintentos y retroceso
+(hasta ~2 minutos si la llamada se corta por tiempo o por red); la pantalla muestra el tiempo transcurrido.
 
 ### `recibos`
 | Acción | Roles | `datos` | Devuelve |
@@ -160,7 +158,7 @@ Hosting reescribe `/api/**` y `/healthz` a la función `api` (región `us-east1`
 | `GET /healthz` | ninguna | `200 ok` (texto) |
 | `GET /api/cotizacion[?mercado=BO\|AR]` | pública | handler del núcleo; `Cache-Control: public, max-age=60, s-maxage=300` |
 | `GET /api/disponibilidad?ids=a,b` | pública | `{ disponibilidad: { id: 'disponible'\|'agotado' } }`, nunca cantidades |
-| `POST /api/contacto` | App Check (`X-Firebase-AppCheck`) + reCAPTCHA Enterprise + límite de tasa por origen | `200 { ok, repetido }`; `401 app_check`; `403 recaptcha`; `429` con `Retry-After`; idempotente por `envioId` |
+| `POST /api/contacto` | límite en memoria por origen (antes de todo) + App Check de un solo uso (`X-Firebase-AppCheck`) + límite de tasa por origen + reCAPTCHA Enterprise | `200 { ok, repetido }`; `401 app_check`; `403 recaptcha`; `429` con `Retry-After`; idempotente por `envioId` |
 | `GET /api/novuchat/v1/catalogo?mercado=BO\|AR` | `Authorization: Bearer <token>` (SHA-256 en `novuchatTokens/{hash}`) | Contrato de `docs/integracion-novuchat.md` §1; `ETag` y `Cache-Control: private, max-age=60`; `304` con `If-None-Match`; `401 sin_credencial\|credencial_invalida`, `400 mercado_invalido`, `429 limite`, `503 sin_cotizacion` |
 | `GET /api/novuchat/v1/inventario` | idem | `{ version, generadoEn, items: [{ id, nombre, sku, activo, conSerie, stockTotal, stockPorAlmacen, minimo, bajoMinimo }] }`, sin costos; `ETag` |
 | `POST /api/novuchat/v1/pedidos/confirmar` | HMAC-SHA256 de `"{X-Marca-Tiempo}.{cuerpo exacto}"` en `X-Firma`, ventana de 5 min | `confirmarPedidoFirmado` del módulo: `200` (aplicado o ya aplicado), `400`, `401`, `409` (`faltantes`) |
@@ -213,7 +211,7 @@ Parámetros (`.env.<alias>` en el origen de las funciones o variables de desplie
 `TENANT_ID` (**sin valor por defecto**: el despliegue lo exige), `APP_CHECK_EXIGIDO` (`false`; **`true` en producción**, el despliegue lo exige), `APP_CHECK_MODO` (`real`),
 `RECAPTCHA_MODO` (`real`), `RECAPTCHA_CLAVE_SITIO`, `SITIO_URL`, `MEDIOS_BASE_URL` (**obligatoria**, https, origen público aparte; sin valor por defecto al bucket por defecto),
 `FUNCIONES_SERVICE_ACCOUNT` (vacío = cuenta por defecto; en producción, una dedicada), `PROXY_SALTOS` (`2`), `FFMPEG_PATH`, `FFPROBE_PATH`, `CONTACTO_MAXIMO` (`5`),
-`CONTACTO_VENTANA_SEG` (`600`), `NOVUCHAT_MAXIMO_POR_MINUTO` (`120`), `DISPONIBILIDAD_MAXIMO_POR_MINUTO` (`60`). Fuera del emulador y de las pruebas, `LIMITE_TASA_SAL` y
+`CONTACTO_VENTANA_SEG` (`600`), `NOVUCHAT_MAXIMO_POR_MINUTO` (`120`), `DISPONIBILIDAD_MAXIMO_POR_MINUTO` (`60`), `CONTACTO_MAXIMO_POR_MINUTO` (`30`, límite en memoria por instancia y origen de `/api/contacto`, antes de App Check). Fuera del emulador y de las pruebas, `LIMITE_TASA_SAL` y
 `MEDIOS_BASE_URL` faltantes hacen fallar la API (`ConfiguracionIncompleta`). Los modos `simulado` solo funcionan en el emulador (`FUNCTIONS_EMULATOR`) o con `PLATAFORMA_PRUEBAS=1`: en la nube lanzan al arrancar.
 
 Una instalación atiende **un** tenant en las rutas sin token de usuario (`TENANT_ID`: sitio, contacto y pedido firmado). El catálogo y el inventario toman el tenant del token.
@@ -274,8 +272,8 @@ Pruebas contra el emulador: `pnpm test:funciones` (puertos de `firebase.json`; p
 - **Sitio y redondeo:** `GET /api/sitio/v1/publicado` entrega además `redondeo` (de `tenants/{t}/config/redondeo`); ver `reconstruccion-sitio.md`.
 - **Eventos fuera de contrato:** el bus valida el contrato completo (`validarEvento`); un evento inválido se registra y se descarta sin relanzar.
 - **Origen del límite de tasa:** último salto confiable de `X-Forwarded-For` (`PROXY_SALTOS`, 2 detrás de Hosting + GFE); jamás `Fastly-Client-IP` ni el primer elemento. Además hay un límite en
-  memoria por instancia antes de autenticar (NovuChat y `/api/disponibilidad`) y App Check va antes del límite de `/api/contacto`, con token de un solo uso (`consume: true`; el
-  sitio debe pedir un token nuevo por envío: `getLimitedUseToken`).
+  memoria por instancia antes de autenticar (NovuChat), de leer (`/api/disponibilidad`) y de verificar App Check (`/api/contacto`, `CONTACTO_MAXIMO_POR_MINUTO`); el límite de Firestore
+  de `/api/contacto` va después de App Check, con token de un solo uso (`consume: true`; el sitio pide un token nuevo por envío con `getLimitedUseToken`, proveedor `cbAppCheck`).
 - **Configuración en la nube pendiente:** App Check, reCAPTCHA Enterprise, IAM y secretos no se crearon (§11).
 
 ## 11. Qué debe autorizar Andres (lo ejecuta Claude con su «sí»)

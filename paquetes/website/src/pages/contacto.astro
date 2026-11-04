@@ -17,7 +17,7 @@ const wa = enlaceWhatsApp(config.whatsappTienda, 'Hola, tengo una consulta.');
       <p class="subtitulo">Cuéntanos qué necesitas y te respondemos lo antes posible.</p>
     </header>
     <div class="contacto-interior">
-      <FormularioContacto client:load recaptcha={config.recaptchaSiteKey} whatsapp={config.whatsappTienda} />
+      <FormularioContacto client:load recaptcha={config.recaptchaSiteKey} appCheck={config.appCheck} whatsapp={config.whatsappTienda} />
       <div class="tarjeta-contacto">
         <h2>Otras formas de contactarnos</h2>
         {wa !== null && <a class="boton boton-cta boton-ancho" href={wa} target="_blank" rel="noopener noreferrer"><Icono nombre="mensaje" tamano={18} />ESCRIBIR POR WHATSAPP</a>}

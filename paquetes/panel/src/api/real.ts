@@ -408,6 +408,14 @@ export const TRADUCCION: { readonly [N in NombreCallable]: Traduccion<N> } = {
   cambiarPrecioUSD: comoOk('consola', 'cambiarPrecioUSD', (e) => ({ productoId: e.productoId, precioUSD: { bo: usd(e.precioUSD.bo), ar: usd(e.precioUSD.ar) } })),
   guardarFicha: comoOk('consola', 'guardarFicha', (e) => e),
   reservarSubida: directa('medios', 'reservarSubida'),
+  estadoSubida: {
+    usa: ['medios.estadoSubida'],
+    ejecutar: async (c, e) => {
+      const r = (await c.llamar('medios', 'estadoSubida', e)) as Obj;
+      const medio = r['medio'];
+      return { estado: r['estado'] as never, ...(typeof medio === 'object' && medio !== null ? { medio: aMedio(medio as Obj) } : {}), ...(typeof r['motivo'] === 'string' ? { motivo: r['motivo'] } : {}) };
+    },
+  },
   finalizarSubida: {
     usa: ['medios.finalizarSubida'],
     ejecutar: async (c, e) => {

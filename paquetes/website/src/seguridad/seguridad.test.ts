@@ -38,6 +38,16 @@ describe('CSP', () => {
     expect(conMedios).toContain("media-src 'self' https://medios.ejemplo.invalid");
     expect(conMedios).toContain('https://www.google.com/recaptcha/');
   });
+  it('App Check agrega solo firebaseappcheck.googleapis.com a connect-src y habilita reCAPTCHA Enterprise; sin él, nada', () => {
+    const sin = construirCsp({ hashesScript: [], medicion: nada, recaptcha: false, origenMedios: null });
+    expect(sin).not.toContain('firebaseappcheck');
+    const con = construirCsp({ hashesScript: [], medicion: nada, recaptcha: false, appCheck: true, origenMedios: null });
+    expect(con).toContain("connect-src 'self' https://www.google.com https://content-firebaseappcheck.googleapis.com;");
+    expect(con).toContain('https://www.google.com/recaptcha/');
+    expect(con).toContain('frame-src https://www.google.com https://recaptcha.google.com');
+    expect(con.match(/googleapis\.com/g)).toHaveLength(1);
+    expect(construirCsp({ hashesScript: [], medicion: nada, recaptcha: true, origenMedios: null })).not.toContain('firebaseappcheck');
+  });
   it('las cabeceras acompañantes incluyen HSTS, nosniff y Referrer-Policy', () => {
     const k = cabecerasSeguridad('x').map((h) => h.key);
     expect(k).toEqual(expect.arrayContaining(['Content-Security-Policy', 'Strict-Transport-Security', 'X-Content-Type-Options', 'Referrer-Policy', 'X-Frame-Options']));

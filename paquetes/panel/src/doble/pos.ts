@@ -294,7 +294,7 @@ export const handlersPos: {
     if (v.estado === 'anulada') throw fallo('venta-ya-anulada');
     if (v.solicitudAnulacion === undefined) throw fallo('anulacion-sin-solicitud');
     exigirTexto(e.motivo, 'motivo');
-    if (v.solicitudAnulacion.por === c.uid || v.cajeroUid === c.uid) throw fallo('autoaprobacion');
+    if (v.solicitudAnulacion.por === c.uid || v.cajeroUid === c.uid) throw fallo('autoaprobacion', 'Nadie puede aprobar la anulación de una venta que vendió o que solicitó anular');
     const turno = turnoAbierto(c);
     if (turno === undefined) throw fallo('sin-turno', 'Abra un turno para registrar el reembolso');
     // Reembolso por los medios con que se cobró (netos de cambio, más cobros de crédito).

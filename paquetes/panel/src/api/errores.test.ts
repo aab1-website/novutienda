@@ -22,6 +22,13 @@ describe('mensajes de error', () => {
     expect(reembolso).toContain('reembolso');
     expect(reembolso).not.toContain('egreso');
   });
+  it('autoaprobacion distingue la anulación de una venta del descuento', () => {
+    const anulacion = new ErrorApi('permission-denied', 'Nadie puede aprobar la anulación de una venta que vendió o que solicitó anular', { codigo: 'autoaprobacion' });
+    expect(mensajeDeError(anulacion)).toBe('No puedes aprobar la anulación de una venta que vendiste o pediste anular');
+    const descuento = new ErrorApi('permission-denied', 'Nadie puede resolver su propia solicitud', { codigo: 'autoaprobacion' });
+    expect(mensajeDeError(descuento)).toBe('Nadie puede aprobar su propia solicitud.');
+    expect(mensajeDeError(new ErrorApi('permission-denied', 'x', { codigo: 'autoaprobacion' }))).toBe('Nadie puede aprobar su propia solicitud.');
+  });
   it('cae en el código HTTPS y luego en el genérico, sin mostrar el texto técnico', () => {
     const e = new ErrorApi('unavailable', 'ECONNRESET 10.0.0.1');
     expect(mensajeDeError(e)).toContain('conexión');

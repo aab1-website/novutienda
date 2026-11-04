@@ -268,7 +268,9 @@ describe('doble: crédito, caja y anulaciones', () => {
     const ventaId = uuid();
     await e.api.llamar('confirmarVenta', { requestId: ventaId, carrito: carritoTv(), pagos: efectivo(313200) });
     await e.api.llamar('solicitarAnulacion', { ventaId, motivo: 'error' });
-    expect((await falla(e.api.llamar('aprobarAnulacion', { ventaId, motivo: 'Aprobada tras revisar' }))).detalle.codigo).toBe('autoaprobacion');
+    const propia = await falla(e.api.llamar('aprobarAnulacion', { ventaId, motivo: 'Aprobada tras revisar' }));
+    expect(propia.detalle.codigo).toBe('autoaprobacion');
+    expect(mensajeDeError(propia)).toBe('No puedes aprobar la anulación de una venta que vendiste o pediste anular');
     e.como('caj');
     expect((await falla(e.api.llamar('solicitarAnulacion', { ventaId, motivo: 'x' }))).detalle.codigo).toBe('no-autorizado');
   });
@@ -456,6 +458,35 @@ describe('doble: catálogo y sitio', () => {
     const a = await e.api.llamar('reservarSubida', { subidaId: id, productoId: 'cable-hdmi', tipo: 'foto', bytes: 10 });
     expect(await e.api.llamar('reservarSubida', { subidaId: id, productoId: 'cable-hdmi', tipo: 'foto', bytes: 10 })).toEqual(a);
     expect((await falla(e.api.llamar('reservarSubida', { subidaId: id, productoId: 'cable-hdmi', tipo: 'foto', bytes: 11 }))).detalle.codigo).toBe('conflicto');
+  });
+  it('estadoSubida: el disparador simulado resuelve la subida unos milisegundos después; finalizarSubida queda como respaldo', async () => {
+    const e = crearEntorno('sup');
+    const reservar = (subidaId = uuid()) => e.api.llamar('reservarSubida', { subidaId, productoId: 'tv-55', tipo: 'foto', bytes: 100 });
+    const r = await reservar();
+    expect(await e.api.llamar('estadoSubida', { subidaId: r.subidaId })).toEqual({ estado: 'reservada' });
+    await new Promise((x) => setTimeout(x, 30));
+    const listo = await e.api.llamar('estadoSubida', { subidaId: r.subidaId });
+    expect(listo.estado).toBe('procesada');
+    expect(listo.medio).toMatchObject({ id: r.subidaId, productoId: 'tv-55', tipo: 'foto' });
+    expect((await e.api.llamar('listarMedios', { productoId: 'tv-55' })).map((m) => m.id)).toEqual([r.subidaId]);
+    // Idempotente con el respaldo: no duplica el medio.
+    expect((await e.api.llamar('finalizarSubida', { subidaId: r.subidaId })).id).toBe(r.subidaId);
+    expect(await e.api.llamar('listarMedios', { productoId: 'tv-55' })).toHaveLength(1);
+    // Disparador caído: sigue reservada y el respaldo la procesa.
+    e.api.estado.disparador.demoraMs = Number.POSITIVE_INFINITY;
+    const b = await reservar();
+    await e.api.llamar('estadoSubida', { subidaId: b.subidaId });
+    await new Promise((x) => setTimeout(x, 30));
+    expect((await e.api.llamar('estadoSubida', { subidaId: b.subidaId })).estado).toBe('reservada');
+    expect((await e.api.llamar('finalizarSubida', { subidaId: b.subidaId })).id).toBe(b.subidaId);
+    expect((await e.api.llamar('estadoSubida', { subidaId: b.subidaId })).estado).toBe('procesada');
+    // Rechazo: estado y motivo, y libera la cuota.
+    e.api.estado.disparador = { demoraMs: 0, rechazo: 'no es una imagen' };
+    const malo = await reservar();
+    const cuota = e.api.estado.bytesOriginales;
+    expect(await e.api.llamar('estadoSubida', { subidaId: malo.subidaId })).toEqual({ estado: 'rechazada', motivo: 'no es una imagen' });
+    expect(e.api.estado.bytesOriginales).toBe(cuota - 100);
+    expect((await falla(e.api.llamar('estadoSubida', { subidaId: uuid() }))).detalle.codigo).toBe('no-encontrado');
   });
   it('ficha: slug único, texto alternativo, medios del producto; publicar la deja en el tablero', async () => {
     const e = crearEntorno('sup');

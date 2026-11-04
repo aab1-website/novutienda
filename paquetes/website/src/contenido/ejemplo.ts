@@ -104,6 +104,7 @@ export const contenidoEjemplo: Contenido = {
     },
     medicion: { google: 'G-EJEMPLO00', searchConsole: null, meta: '1234567890123456', tiktok: 'CEJEMPLO0000EJEMPLO' },
     recaptchaSiteKey: 'EJEMPLO-clave-recaptcha',
+    appCheck: { claveSitio: 'EJEMPLO-clave-appcheck', apiKey: 'EJEMPLO-apikey-publica-0000', appId: '1:000000000000:web:ejemplo0000', projectId: 'proyecto-ejemplo' },
     origenMedios: null,
     enlacesPermitidos: ['www.ejemplo.invalid'],
     textoPrivacidad: [

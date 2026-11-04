@@ -82,6 +82,19 @@ describe('validarContenido', () => {
     expect(e).toContain('recaptchaSiteKey');
   });
 
+  it('valida el bloque de App Check: formato de cada identificador; ausente equivale a null', () => {
+    const c = clon();
+    const cfg = c['config'] as Record<string, unknown>;
+    expect(errores(c)).toEqual([]);
+    delete cfg['appCheck'];
+    expect(errores(c)).toEqual([]);
+    cfg['appCheck'] = { claveSitio: 'corta', apiKey: 'x"><script>', appId: 'no', projectId: 'A' };
+    const e = errores(c).join();
+    for (const k of ['claveSitio', 'apiKey', 'appId', 'projectId']) expect(e).toContain(`appCheck.${k}`);
+    cfg['appCheck'] = null;
+    expect(errores(c)).toEqual([]);
+  });
+
   it('exige números de WhatsApp solo con dígitos o null', () => {
     const c = clon();
     (c['config'] as Record<string, unknown>)['whatsappNovuchat'] = '+591 700';

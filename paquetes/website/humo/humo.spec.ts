@@ -246,7 +246,7 @@ test.describe('ficha, tema y formulario', () => {
   test('formulario: envío válido con reCAPTCHA simulado y clave de idempotencia estable', async ({ page }) => {
     await simularApi(page);
     await decidirConsentimiento(page, false, false);
-    await page.route('**/recaptcha/enterprise.js*', (r) => r.fulfill({ status: 200, contentType: 'text/javascript', body: 'window.grecaptcha={enterprise:{ready:function(f){f()},execute:function(){return Promise.resolve("t".repeat(40))}}};' }));
+    await simularRecaptchaYAppCheck(page);
     const cuerpos: Record<string, unknown>[] = [];
     await page.route('**/api/contacto', async (r) => {
       cuerpos.push(r.request().postDataJSON() as Record<string, unknown>);
@@ -263,6 +263,35 @@ test.describe('ficha, tema y formulario', () => {
     expect(cuerpos).toHaveLength(1);
     expect(cuerpos[0]).toMatchObject({ nombre: 'Ana Pérez', aceptaPrivacidad: true, sitioWeb: '' });
     expect(String(cuerpos[0]?.['envioId'])).toMatch(/^[A-Za-z0-9_-]{16,64}$/);
+  });
+
+  test('formulario: App Check de un solo uso, con el SDK real y el intercambio simulado, sin violaciones de CSP', async ({ page }) => {
+    const { errores } = vigilar(page);
+    await simularApi(page);
+    await decidirConsentimiento(page, false, false);
+    const intercambios = await simularRecaptchaYAppCheck(page);
+    const cabeceras: (string | undefined)[] = [];
+    await page.route('**/api/contacto', async (r) => {
+      cabeceras.push(r.request().headers()['x-firebase-appcheck']);
+      await r.fulfill({ status: 200, contentType: 'application/json', body: '{"ok":true}' });
+    });
+    await page.goto('/contacto');
+    await islasListas(page);
+    expect(await page.evaluate(() => typeof (window as unknown as { cbAppCheck?: unknown }).cbAppCheck)).toBe('function');
+    for (let i = 0; i < 2; i += 1) {
+      await page.getByLabel('Nombre', { exact: true }).fill('Ana Pérez');
+      await page.getByLabel('Correo electrónico').fill('ana@ejemplo.invalid');
+      await page.getByLabel('Mensaje').fill('Quisiera saber el precio.');
+      await page.getByLabel(/Acepto/).check();
+      await page.getByRole('button', { name: /ENVIAR MENSAJE/ }).click();
+      await expect(page.getByRole('status').filter({ hasText: 'Recibimos tu mensaje' })).toBeVisible();
+    }
+    expect(cabeceras).toHaveLength(2);
+    expect(cabeceras[0]).toMatch(/^token-appcheck-\d+$/);
+    expect(cabeceras[1]).toMatch(/^token-appcheck-\d+$/);
+    expect(cabeceras[1]).not.toBe(cabeceras[0]);
+    expect(intercambios.limitados).toBeGreaterThanOrEqual(2);
+    expect(errores).toEqual([]);
   });
 
   test('el sitio no tiene ingreso de administración ni chat simulado, ni voseo', async ({ page }) => {
@@ -332,3 +361,22 @@ test.describe('accesibilidad (axe) en claro y oscuro con las 5 plantillas', () =
     await auditar(page, 'convertidor');
   });
 });
+
+/**
+ * reCAPTCHA Enterprise simulado (el mismo script sirve al antiabuso y al proveedor de App Check) y el intercambio de App Check de
+ * Firebase simulado: devuelve un token distinto por llamada. Cuenta los intercambios de uso limitado.
+ */
+async function simularRecaptchaYAppCheck(page: Page): Promise<{ limitados: number }> {
+  const cuenta = { limitados: 0 };
+  let n = 0;
+  await page.route('**/recaptcha/enterprise.js*', (r) => r.fulfill({ status: 200, contentType: 'text/javascript', body: 'window.grecaptcha={enterprise:{ready:function(f){f()},render:function(c,o){window.cbCbRecaptcha=o;return 1},execute:function(w){if(w===1&&window.cbCbRecaptcha)window.cbCbRecaptcha.callback();return Promise.resolve("t".repeat(40))}}};' }));
+  const cors = { 'access-control-allow-origin': '*', 'access-control-allow-headers': '*', 'access-control-allow-methods': 'POST, OPTIONS' };
+  await page.route('https://content-firebaseappcheck.googleapis.com/**', async (r) => {
+    if (r.request().method() === 'OPTIONS') return r.fulfill({ status: 204, headers: cors });
+    const cuerpo = r.request().postDataJSON() as { limited_use?: boolean; limitedUse?: boolean } | null;
+    if (cuerpo?.limited_use === true || cuerpo?.limitedUse === true) cuenta.limitados += 1;
+    n += 1;
+    return r.fulfill({ status: 200, headers: cors, contentType: 'application/json', body: JSON.stringify({ token: `token-appcheck-${n}`, ttl: '3600s' }) });
+  });
+  return cuenta;
+}

@@ -81,8 +81,20 @@ export function editarProductoConsola(c: Contexto, e: { productoId: string; camb
   return { ok: true };
 }
 
+/** Procesa una subida reservada (lo hace el disparador simulado o el respaldo `finalizarSubida`). */
+function procesarSubida(c: Contexto, subidaId: string): Medio {
+  const s = c.e.subidas.get(subidaId);
+  if (s === undefined) throw fallo('no-encontrado', 'La subida no existe');
+  const m: Medio = { id: subidaId, productoId: s.productoId, tipo: s.tipo, bytesOriginal: s.bytes, ancho: 1200, alto: 800, ...(s.tipo === 'video' ? { duracionSeg: 30 } : {}), creadoEn: c.ahora, por: c.uid };
+  c.e.medios.set(m.id, m);
+  c.e.subidas.set(subidaId, { ...s, estado: 'procesada' });
+  anotarCambio(c);
+  auditar(c, 'medio.subir', `medios/${m.id}`);
+  return m;
+}
+
 export const handlersOtros: {
-  [N in 'buscarComprobantes' | 'enviarRecibo' | 'referenciarFacturaSuma' | 'guardarPlantilla' | 'leerPlantilla' | 'obtenerRecibo' | 'obtenerTablero' | 'publicarSitio' | 'cambiarPrecioUSD' | 'guardarFicha' | 'reservarSubida' | 'finalizarSubida' | 'borrarMedio' | 'guardarSeccion' | 'eliminarSeccion' | 'ordenarSecciones' | 'guardarCarrusel' | 'guardarConfigSitio' | 'simularImportacion' | 'importarProductos' | 'exportarProductosCsvSitio' | 'asignarRol' | 'quitarRol' | 'buscarUsuarioPorCorreo' | 'listarFichas' | 'listarMedios' | 'leerConfigSitio' | 'listarSecciones' | 'listarCarruseles' | 'listarUsuarios']: H<N>;
+  [N in 'buscarComprobantes' | 'enviarRecibo' | 'referenciarFacturaSuma' | 'guardarPlantilla' | 'leerPlantilla' | 'obtenerRecibo' | 'obtenerTablero' | 'publicarSitio' | 'cambiarPrecioUSD' | 'guardarFicha' | 'reservarSubida' | 'estadoSubida' | 'finalizarSubida' | 'borrarMedio' | 'guardarSeccion' | 'eliminarSeccion' | 'ordenarSecciones' | 'guardarCarrusel' | 'guardarConfigSitio' | 'simularImportacion' | 'importarProductos' | 'exportarProductosCsvSitio' | 'asignarRol' | 'quitarRol' | 'buscarUsuarioPorCorreo' | 'listarFichas' | 'listarMedios' | 'leerConfigSitio' | 'listarSecciones' | 'listarCarruseles' | 'listarUsuarios']: H<N>;
 } = {
   buscarComprobantes(c, e) {
     const q = e.consulta;
@@ -204,18 +216,33 @@ export const handlersOtros: {
     c.e.bytesOriginales += e.bytes;
     return { subidaId: e.subidaId, rutaOriginal: `privado/${e.productoId}/${e.subidaId}`, venceEn: c.ahora + 6 * 3600_000 };
   },
+  estadoSubida(c, e) {
+    const s = c.e.subidas.get(e.subidaId);
+    if (s === undefined) throw fallo('no-encontrado', 'La subida no existe');
+    if (s.estado === 'reservada') {
+      // Disparador de Storage simulado: resuelve la subida unos milisegundos después de la primera consulta.
+      const desde = s.consultadaDesde ?? Date.now();
+      c.e.subidas.set(e.subidaId, { ...s, consultadaDesde: desde });
+      if (Date.now() - desde >= c.e.disparador.demoraMs) {
+        const rechazo = c.e.disparador.rechazo;
+        if (rechazo === undefined) procesarSubida(c, e.subidaId);
+        else {
+          c.e.subidas.set(e.subidaId, { ...s, consultadaDesde: desde, estado: 'rechazada', motivo: rechazo });
+          c.e.bytesOriginales = Math.max(0, c.e.bytesOriginales - s.bytes);
+        }
+      }
+    }
+    const actual = c.e.subidas.get(e.subidaId) as NonNullable<ReturnType<typeof c.e.subidas.get>>;
+    const medio = actual.estado === 'procesada' ? c.e.medios.get(e.subidaId) : undefined;
+    return { estado: actual.estado, ...(medio !== undefined ? { medio } : {}), ...(actual.motivo !== undefined ? { motivo: actual.motivo } : {}) };
+  },
   finalizarSubida(c, e) {
     const s = c.e.subidas.get(e.subidaId);
     if (s === undefined) throw fallo('no-encontrado', 'La subida no existe');
     const previo = c.e.medios.get(e.subidaId);
     if (s.estado === 'procesada' && previo !== undefined) return previo;
     if (s.estado !== 'reservada') throw fallo('estado', 'La subida ya no está pendiente');
-    const m: Medio = { id: e.subidaId, productoId: s.productoId, tipo: s.tipo, bytesOriginal: s.bytes, ancho: 1200, alto: 800, ...(s.tipo === 'video' ? { duracionSeg: 30 } : {}), creadoEn: c.ahora, por: c.uid };
-    c.e.medios.set(m.id, m);
-    c.e.subidas.set(e.subidaId, { ...s, estado: 'procesada' });
-    anotarCambio(c);
-    auditar(c, 'medio.subir', `medios/${m.id}`);
-    return m;
+    return procesarSubida(c, e.subidaId);
   },
   borrarMedio(c, e) {
     const m = c.e.medios.get(e.medioId);
