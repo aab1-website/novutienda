@@ -199,3 +199,37 @@ describe('firebase.json', () => {
     for (const n of ['auth', 'firestore', 'storage', 'functions', 'eventarc']) expect(cfg.emulators[n]?.port).toBeGreaterThan(8000);
   });
 });
+
+describe('autenticación de los callables (con un Auth falso)', () => {
+  const claims = (extra: Record<string, unknown> = {}) => ({
+    uid: 'u1', email_verified: true, firebase: { sign_in_provider: 'password' }, pl: { t: { 'casa-a': 'caj' }, v: 1 }, ...extra,
+  });
+  const auth = (resultado: unknown) => ({
+    verifyIdToken: vi.fn((_t: string, revocados?: boolean) => (resultado instanceof Error ? Promise.reject(resultado) : Promise.resolve({ ...(resultado as object), revocados }))),
+  });
+  const req = (cabecera?: string) => ({ rawRequest: { headers: cabecera === undefined ? {} : { authorization: cabecera } } }) as never;
+
+  it('pide siempre checkRevoked, exige correo verificado y rechaza anónimos o sin token', async () => {
+    const { autenticar, personalDelTenant, exigirAppCheck } = await import('../../plataforma/funciones/servidor/autenticacion.js');
+    const ok = auth(claims());
+    const s = await autenticar({ auth: ok } as never, req('Bearer token-1'));
+    expect(ok.verifyIdToken).toHaveBeenCalledWith('token-1', true);
+    expect(s).toMatchObject({ uid: 'u1', proveedor: 'password', propietario: false });
+    await expect(autenticar({ auth: auth(claims({ email_verified: false })) } as never, req('Bearer t'))).rejects.toMatchObject({ code: 'unauthenticated' });
+    await expect(autenticar({ auth: auth(claims({ email_verified: undefined })) } as never, req('Bearer t'))).rejects.toMatchObject({ code: 'unauthenticated' });
+    await expect(autenticar({ auth: auth(claims({ firebase: { sign_in_provider: 'anonymous' } })) } as never, req('Bearer t'))).rejects.toMatchObject({ code: 'unauthenticated' });
+    await expect(autenticar({ auth: auth(new Error('revocado')) } as never, req('Bearer t'))).rejects.toMatchObject({ code: 'unauthenticated' });
+    for (const cab of [undefined, '', 'Basic abc', 'Bearer', 'bearer  ']) await expect(autenticar({ auth: ok } as never, req(cab))).rejects.toMatchObject({ code: 'unauthenticated' });
+    // Rol del claim en ESE tenant: otro tenant, proveedor distinto o tenant inválido no pasan.
+    expect(personalDelTenant(s, 'casa-a')).toMatchObject({ rol: 'caj', tenantId: 'casa-a' });
+    expect(() => personalDelTenant(s, 'casa-b')).toThrow(expect.objectContaining({ code: 'permission-denied' }));
+    expect(() => personalDelTenant(s, '../x')).toThrow(expect.objectContaining({ code: 'invalid-argument' }));
+    const google = await autenticar({ auth: auth(claims({ firebase: { sign_in_provider: 'google.com' }, pl: { t: { 'casa-a': 'adm' }, p: true, v: 1 } })) } as never, req('Bearer t'));
+    expect(google.propietario).toBe(true);
+    expect(() => personalDelTenant(google, 'casa-a')).toThrow(expect.objectContaining({ code: 'permission-denied' }));
+    // App Check solo se exige cuando la instalación lo pide.
+    expect(() => exigirAppCheck(false, {} as never)).not.toThrow();
+    expect(() => exigirAppCheck(true, { app: { appId: 'x' } } as never)).not.toThrow();
+    expect(() => exigirAppCheck(true, {} as never)).toThrow(expect.objectContaining({ code: 'unauthenticated' }));
+  });
+});

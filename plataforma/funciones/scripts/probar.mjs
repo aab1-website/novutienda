@@ -4,7 +4,7 @@
 // prueba se generan al vuelo y no se guardan.
 import { spawnSync } from 'node:child_process';
 import { randomBytes } from 'node:crypto';
-import { readFileSync, writeFileSync } from 'node:fs';
+import { readFileSync, rmSync, writeFileSync } from 'node:fs';
 import { connect } from 'node:net';
 
 const config = JSON.parse(readFileSync('firebase.json', 'utf8')).emulators;
@@ -31,6 +31,7 @@ if (construccion.status !== 0) process.exit(construccion.status ?? 1);
 const env = {
   ...process.env,
   PLATAFORMA_PRUEBAS: '1',
+  PRUEBAS_FUNCIONES_EXIGIR: '1',
   TENANT_ID: 'casa-bermejo',
   APP_CHECK_MODO: 'simulado',
   RECAPTCHA_MODO: 'simulado',
@@ -56,4 +57,6 @@ const r = spawnSync(
   ['emulators:exec', '--only', 'auth,firestore,storage,functions,eventarc', '--project', 'demo-pruebas', comando],
   { stdio: 'inherit', env },
 );
+// Los secretos de la prueba no quedan en disco.
+rmSync('dist/funciones/.secret.local', { force: true });
 process.exit(r.status ?? 1);

@@ -4,22 +4,8 @@
     "rootDir": ".",
     "outDir": "../.tsbuild/pruebas",
     "tsBuildInfoFile": "../.tsbuild/pruebas.tsbuildinfo",
-    "types": [
-      "node"
-    ]
+    "types": ["node"]
   },
-  "include": [
-    "./**/*.ts"
-  ],
-  "references": [
-    {
-      "path": "../paquetes/nucleo"
-    },
-    {
-      "path": "../plataforma"
-    },
-    {
-      "path": "../plataforma/funciones"
-    }
-  ]
+  "include": ["./**/*.ts"],
+  "references": [{ "path": "../paquetes/nucleo" }, { "path": "../plataforma" }, { "path": "../plataforma/funciones" }]
 }

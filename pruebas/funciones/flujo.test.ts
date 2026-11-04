@@ -144,6 +144,37 @@ describe.skipIf(!hayEmulador)('flujo POS → evento → recibo (emulador)', () =
     });
   });
 
+  it('usuarios: el administrador asigna y quita roles; el claim y el espejo quedan de acuerdo', async () => {
+    const nuevo = await crearUsuario(h, {});
+    const buscado = await accion('consola', 'buscarUsuarioPorCorreo', { correo: nuevo.correo }, adm.token, A);
+    expect(buscado.resultado).toMatchObject({ uid: nuevo.uid, correoVerificado: true, conContrasena: true });
+    expect((await accion('consola', 'buscarUsuarioPorCorreo', { correo: 'no-existe@prueba.test' }, adm.token, A)).status).toBe(404);
+    // Sin rol todavía: el nuevo no entra.
+    expect((await accion('pos', 'leerConfig', {}, nuevo.token, A)).status).toBe(403);
+    // Quien no es administrador no asigna roles.
+    expect((await accion('consola', 'asignarRol', { uid: nuevo.uid, rol: 'caj' }, sup.token, A)).status).toBe(403);
+    const ok = await accion('consola', 'asignarRol', { uid: nuevo.uid, rol: 'sup' }, adm.token, A);
+    expect(ok.status, JSON.stringify(ok.error)).toBe(200);
+    expect(ok.resultado).toMatchObject({ claim: { pl: { t: { [A]: 'sup' } } } });
+    expect((await h.firestore.doc(`tenants/${A}/miembros/${nuevo.uid}`).get()).data()).toMatchObject({ rol: 'sup' });
+    // El administrador no otorga el rol `adm` (solo el propietario de la plataforma).
+    expect((await accion('consola', 'asignarRol', { uid: nuevo.uid, rol: 'adm' }, adm.token, A)).status).toBe(403);
+    const lista = await accion('consola', 'listarUsuarios', {}, sup.token, A);
+    expect((lista.resultado as { usuarios: { uid: string; rol: string; correo: string }[] }).usuarios).toContainEqual(expect.objectContaining({ uid: nuevo.uid, rol: 'sup', correo: nuevo.correo }));
+    const fuera = await accion('consola', 'quitarRol', { uid: nuevo.uid }, adm.token, A);
+    expect(fuera.status, JSON.stringify(fuera.error)).toBe(200);
+    expect((await h.firestore.doc(`tenants/${A}/miembros/${nuevo.uid}`).get()).exists).toBe(false);
+    // El plan admite 3 usuarios: tres asignaciones caben (el rol quitado liberó su cupo) y la cuarta no.
+    for (let n = 1; n <= 3; n++) {
+      const u = await crearUsuario(h, {});
+      expect((await accion('consola', 'asignarRol', { uid: u.uid, rol: 'caj' }, adm.token, A)).status).toBe(200);
+    }
+    const cuarto = await crearUsuario(h, {});
+    const rechazo = await accion('consola', 'asignarRol', { uid: cuarto.uid, rol: 'caj' }, adm.token, A);
+    expect(rechazo.status).toBe(429);
+    expect(rechazo.error).toMatchObject({ status: 'RESOURCE_EXHAUSTED', details: { clave: 'usuarios', tope: 3 } });
+  });
+
   it('la política de redondeo sale de la configuración del tenant (BOB 2 decimales; ARS múltiplo de 100)', async () => {
     const r = await accion('consola', 'preciosDelDia', { precioUSD: { bo: 10.01, ar: 10.01 } }, adm.token, A);
     expect(r.status, JSON.stringify(r.error)).toBe(200);
