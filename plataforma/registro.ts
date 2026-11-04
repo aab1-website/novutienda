@@ -5,9 +5,17 @@
 // pública y una de `registrar`; el generador de reglas y las pruebas de
 // fronteras leen este archivo.
 import { crearRegistro, manifiestoNucleo, type ManifiestoModulo } from '@plataforma/nucleo';
+import { manifiestoInventarios } from '@plataforma/inventarios';
+import { manifiestoPos } from '@plataforma/pos';
+import { manifiestoRecibos } from '@plataforma/recibos';
+import { manifiestoWebsite } from '@plataforma/website';
 
 export const registroPlataforma = crearRegistro<ManifiestoModulo>();
 registroPlataforma.registrar(manifiestoNucleo);
+registroPlataforma.registrar(manifiestoInventarios);
+registroPlataforma.registrar(manifiestoPos);
+registroPlataforma.registrar(manifiestoRecibos);
+registroPlataforma.registrar(manifiestoWebsite);
 
 /**
  * Manifiestos en orden topológico (dependencias primero). Es el orden que usa el

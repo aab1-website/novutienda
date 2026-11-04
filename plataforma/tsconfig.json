@@ -5,6 +5,24 @@
     "outDir": "../.tsbuild/plataforma",
     "tsBuildInfoFile": "../.tsbuild/plataforma.tsbuildinfo"
   },
-  "include": ["./**/*.ts"],
-  "references": [{ "path": "../paquetes/nucleo" }]
+  "include": [
+    "./**/*.ts"
+  ],
+  "references": [
+    {
+      "path": "../paquetes/nucleo"
+    },
+    {
+      "path": "../paquetes/inventarios"
+    },
+    {
+      "path": "../paquetes/pos"
+    },
+    {
+      "path": "../paquetes/recibos"
+    },
+    {
+      "path": "../paquetes/website"
+    }
+  ]
 }

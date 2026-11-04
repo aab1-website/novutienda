@@ -1,8 +1,26 @@
 {
   "files": [],
   "references": [
-    { "path": "paquetes/nucleo" },
-    { "path": "plataforma" },
-    { "path": "pruebas" }
+    {
+      "path": "paquetes/nucleo"
+    },
+    {
+      "path": "paquetes/website"
+    },
+    {
+      "path": "paquetes/recibos"
+    },
+    {
+      "path": "paquetes/pos"
+    },
+    {
+      "path": "paquetes/inventarios"
+    },
+    {
+      "path": "plataforma"
+    },
+    {
+      "path": "pruebas"
+    }
   ]
 }
