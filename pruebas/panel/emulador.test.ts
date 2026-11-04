@@ -3,10 +3,7 @@
 // callables, con ID tokens del emulador de Auth. Se omite sin emulador; `pnpm test:panel-emulador` lo levanta.
 import sharp from 'sharp';
 import { beforeAll, describe, expect, it, vi } from 'vitest';
-import { ErrorApi, mensajeDeError } from '@novutienda/panel';
-import { ClienteRemoto, type Transporte } from '../../paquetes/panel/src/api/transporte.js';
-import type { Rol } from '../../paquetes/panel/src/api/tipos.js';
-import { precioDeVenta } from '../../paquetes/panel/src/util/precio.js';
+import { ClienteRemoto, ErrorApi, mensajeDeError, precioDeVenta, type Rol, type Transporte } from '@novutienda/panel';
 import { crearUsuario, esperar, hayEmulador, herramientas, llamar, sembrarTenant, uuid, unico, type Herramientas, type Usuario } from '../funciones/ayudas.js';
 
 vi.setConfig({ testTimeout: 90_000, hookTimeout: 90_000 });

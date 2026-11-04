@@ -37,7 +37,7 @@ if (construccion.status !== 0) process.exit(construccion.status ?? 1);
 
 const env = {
   ...process.env,
-  PLATAFORMA_PRUEBAS: '1', PRUEBAS_FUNCIONES_EXIGIR: '1', TENANT_ID: 'casa-bermejo', APP_CHECK_MODO: 'simulado', RECAPTCHA_MODO: 'simulado',
+  PLATAFORMA_PRUEBAS: '1', PRUEBAS_FUNCIONES_EXIGIR: '1', TENANT_ID: 'tienda-prueba', APP_CHECK_MODO: 'simulado', RECAPTCHA_MODO: 'simulado',
   NOVUCHAT_PEDIDOS_SECRETO: randomBytes(24).toString('hex'), SITIO_RECONSTRUCCION_SECRETO: randomBytes(24).toString('hex'),
   LIMITE_TASA_SAL: randomBytes(16).toString('hex'), CONTACTO_MAXIMO: '3', SITIO_URL: 'https://sitio.ejemplo.test', MEDIOS_BASE_URL: 'https://medios.ejemplo.test',
 };
