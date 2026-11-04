@@ -23,9 +23,9 @@ Reglas que valen en todo el guion:
 2. **Plan Blaze en staging** [$]: Cloud Functions v2, Secret Manager, Cloud Scheduler y Artifact Registry lo exigen. Vincular la cuenta de
    facturación es una pantalla de Google Cloud con medio de pago: **[Andres]** (enlace: `https://console.cloud.google.com/billing/linkedaccount?project=<P>`).
    Recomendado: presupuesto con alerta por correo (paso 13).
-3. **Cuenta de servicio de ejecución de las Functions**: hoy el código no fija `serviceAccount`, así que corre como la cuenta por defecto de
-   Compute (`<NUM>-compute@developer.gserviceaccount.com`). Opción recomendada para producción: una SA dedicada con roles mínimos (exige un
-   cambio en `plataforma/funciones/servidor/index.ts`, `setGlobalOptions({ serviceAccount })`). Para staging se puede aceptar la de Compute
+3. **Cuenta de servicio de ejecución de las Functions**: el código ya toma `serviceAccount` del parámetro `FUNCIONES_SERVICE_ACCOUNT`
+   (`setGlobalOptions`). Vacío = la cuenta por defecto de Compute (`<NUM>-compute@developer.gserviceaccount.com`). **Producción: una SA dedicada**
+   con roles mínimos (paso 6.1), cargada en la variable `FUNCIONES_SERVICE_ACCOUNT` del Environment. Para staging se puede aceptar la de Compute
    **si no tiene el rol Editor** (paso 6.3 lo verifica).
 4. **Aprobador**: `segurolotengopy` revisa los PR (ruleset) y aprueba el Environment `production`. Debe ser colaborador con permiso de
    escritura y aceptar la invitación: **[segurolotengopy]**.
@@ -122,7 +122,19 @@ entrega a Andres el enlace exacto de IAM y lo verifica después en modo lectura.
 
 ## 6. Cuenta de ejecución de las Functions y agentes de servicio [gratis]
 
-6.1 Variable: `SA_FN="${NUM}-compute@developer.gserviceaccount.com"` (o la dedicada, si se decidió en 0.3).
+6.1 Variable: `SA_FN="${NUM}-compute@developer.gserviceaccount.com"` o la dedicada (producción). Crear la dedicada con roles mínimos y publicarla en la variable
+`FUNCIONES_SERVICE_ACCOUNT` del Environment (nombre corto o correo); la SA de despliegue necesita `roles/iam.serviceAccountUser` **sobre esa SA**, no sobre el proyecto:
+
+```bash
+SA_FN="novutienda-funciones@${P}.iam.gserviceaccount.com"
+gcloud iam service-accounts create novutienda-funciones --project "$P" --display-name="NovuTienda Functions"
+for rol in roles/datastore.user roles/firebaseauth.admin roles/logging.logWriter roles/eventarc.eventReceiver; do
+  gcloud projects add-iam-policy-binding "$P" --member "serviceAccount:${SA_FN}" --role "$rol" --condition=None --quiet >/dev/null
+done
+gcloud storage buckets add-iam-policy-binding "gs://<BUCKET>" --member "serviceAccount:${SA_FN}" --role roles/storage.objectAdmin
+gcloud iam service-accounts add-iam-policy-binding "$SA_FN" --project "$P" \
+  --member "serviceAccount:deploy-staging@${P}.iam.gserviceaccount.com" --role roles/iam.serviceAccountUser
+```
 
 6.2 Firmar URLs v4 del PDF de recibos (`enviarRecibo`): «Creador de tokens de cuenta de servicio» de la SA **sobre sí misma**, no sobre el proyecto:
 
@@ -196,7 +208,11 @@ gcloud recaptcha keys create --project "$P" --web --integration-type=score \
 La clave de sitio (pública) va a `RECAPTCHA_CLAVE_SITIO` (variable del Environment) y al registro de App Check de cada app: consola de
 Firebase → App Check → Apps → reCAPTCHA Enterprise (`https://console.firebase.google.com/project/<P>/appcheck`). Lo hace Claude.
 
-8.3 **No activar la exigencia** (`APP_CHECK_EXIGIDO=false` en staging, ni «Enforce» en la consola) hasta que el panel envíe el token:
+8.3 App Check «Enforced» en Firestore y Storage (producción; paso del pase): consola de Firebase → App Check → Firestore y Storage → «Enforce», **después** de que el panel
+envíe el token. Las lecturas de recibos, inventarios y consola son solo por callables (`decisiones.md`, «Lectura solo por callables»); sin la exigencia, las APIs directas de
+Firestore y Storage seguirían abiertas a quien tenga un token de usuario.
+
+8.4 **No activar la exigencia** (`APP_CHECK_EXIGIDO=false` en staging, ni «Enforce» en la consola) hasta que el panel envíe el token:
 hoy `paquetes/panel` no inicializa App Check, así que con la exigencia activa todas sus llamadas responderían `unauthenticated`.
 
 ## 9. GitHub: variables, secretos, Environments y rulesets [gratis]
@@ -237,16 +253,30 @@ gh api --method POST "repos/$OWNER/$REPO/environments/production/deployment-bran
 | `STAGING_URL` | repositorio | `https://<SITIO_ID>.web.app` |
 | `HEALTH_PATH` | repositorio | `/healthz` |
 | `FIREBASE_DEPLOY_ONLY` | repositorio | `hosting,functions,firestore,storage` |
-| `TENANT_ID` | repositorio | `casa-bermejo` |
+| `TENANT_ID` | repositorio | `casa-bermejo` (**obligatoria**: sin valor por defecto en el código ni en el CI) |
 | `VITE_FIREBASE_API_KEY_STAGING` | repositorio | apiKey pública de la app web del panel (8.1) |
 | `MODO` | repositorio | `A` |
 | `APROBADORES_PROD` | repositorio | `segurolotengopy` (y el propietario, si Andres lo decide) |
 | `FIREBASE_SITE_SITIO` | Environment `staging` | `<SITIO_ID>` |
 | `FIREBASE_SITE_PANEL` | Environment `staging` | `<PANEL_ID>` |
 | `PANEL_URL` | Environment `staging` | `https://<PANEL_ID>.web.app` |
-| `APP_CHECK_EXIGIDO` | Environment `staging` | `false` (8.3) |
+| `APP_CHECK_EXIGIDO` | Environment `staging` | `false` (8.4) |
 | `RECAPTCHA_CLAVE_SITIO` | Environment `staging` | clave de sitio de 8.2 |
-| `MEDIOS_BASE_URL` | Environment `staging` | vacío (usa `https://storage.googleapis.com/<bucket>`) o el dominio de medios |
+| `MEDIOS_BASE_URL` | Environment `staging` | **obligatoria** (https): ver 9.5; el despliegue falla si falta |
+| `FUNCIONES_SERVICE_ACCOUNT` | Environment `staging` | vacío (cuenta por defecto, si no tiene Editor) o la dedicada del paso 6.1 (obligatoria en la práctica en producción) |
+| `PROXY_SALTOS` | repositorio (opcional) | `2` por defecto: proxies que anteponen su IP en `X-Forwarded-For` (Hosting/Fastly + GFE). **Verificar en staging** con una petición real |
+| `VITE_RECAPTCHA_ENTERPRISE_SITE_KEY_STAGING` / `_PROD` | repositorio | clave de sitio de reCAPTCHA Enterprise (8.2) para el App Check del panel |
+| `VITE_FIREBASE_STORAGE_BUCKET_STAGING` / `_PROD` | repositorio | nombre del bucket de Storage del proyecto (`gcloud storage buckets list`) |
+| `VITE_FIREBASE_APP_ID_STAGING` / `_PROD` | repositorio | `appId` de la app web del panel (8.1): App Check lo usa en `…/apps/{appId}:exchange…` |
+| `SITIO_CONTENIDO` | repositorio | solo `production`: ruta al JSON de contenido publicado; sin él, el build de producción falla (`reconstruccion-sitio.md`) |
+
+`construir` FALLA si, con el proyecto del ambiente configurado, falta alguna de `VITE_FIREBASE_API_KEY_*`, `VITE_RECAPTCHA_ENTERPRISE_SITE_KEY_*`, `VITE_FIREBASE_STORAGE_BUCKET_*` o
+`VITE_FIREBASE_APP_ID_*`. En `production`, `APP_CHECK_EXIGIDO` debe ser `true` o el despliegue se detiene.
+
+9.5 **Medios públicos (`MEDIOS_BASE_URL`).** La API de NovuChat y el panel arman las URL de las fotos con esa base. Opciones válidas: (a) un **bucket público aparte** que solo
+reciba `tenants/*/publico/**` (copiado por la función de medios o con otra regla de publicación), o (b) servir `publico/` por Hosting/CDN. **Prohibido** abrir con `allUsers` el
+bucket por defecto de Firebase Storage: contiene originales y PDF de recibos (`privado/`); las reglas de `storage.rules` no protegen contra una política IAM pública. No existe
+valor por defecto a `storage.googleapis.com/<bucket>`: sin `MEDIOS_BASE_URL` el despliegue y la API fallan.
 
 Comandos: `gh variable set <NOMBRE> --repo "$OWNER/$REPO" [--env staging] --body "<valor>"` y
 `… | gh secret set <NOMBRE> --repo "$OWNER/$REPO" [--env staging]` (valor por stdin, nunca en `--body`).
@@ -280,9 +310,8 @@ firebase functions:artifacts:setpolicy --location us-east1 --days 1 --project "$
    [$: Cloud Build y Artifact Registry por cada despliegue de Functions.]
 4. Claude lee el run (`gh run view --log-failed` si falla), lo informa con su resultado real y corrige lo mínimo sin debilitar controles.
 
-Bloqueos conocidos que impiden el verde (04/11/2026, ver `ESTADO.md`): `pruebas/funciones/programadas.test.ts` usa la plantilla
-`marfil`, retirada en a7f7418 (falla `test:funciones` en `calidad`), y `empaquetar.mjs` todavía no incorpora `FUNCIONES_PARAMETROS`
-(`decisiones.md`, «Parámetros de Functions en el despliegue»): el paso de configuración del despliegue falla a propósito hasta entonces.
+Antes del primer despliegue: cargar las variables de 9.3 (incluidas las `VITE_*` nuevas, `MEDIOS_BASE_URL` y `TENANT_ID`); sin ellas `construir` o el paso de configuración
+del despliegue fallan a propósito. Verificar en staging el origen del límite de tasa (`PROXY_SALTOS`) con una petición real a `/api/contacto`.
 
 ## 12. Después del primer despliegue
 

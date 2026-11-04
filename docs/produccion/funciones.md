@@ -128,6 +128,7 @@ las aplica el módulo; el redondeo del precio sale de `tenants/{t}/config/redond
 |---|---|---|---|
 | `reservarSubida` | SUP | `{ subidaId (8–40: A-Z a-z 0-9 _ -), productoId, tipo: 'foto'\|'video', bytes }` | `{ subidaId, rutaOriginal, venceEn }` |
 | `finalizarSubida` | SUP | `{ subidaId }` | `{ medio }` (idempotente; normalmente ya la hizo el disparador) |
+| `estadoSubida` | SUP | `{ subidaId }` | `{ estado: 'reservada'\|'procesada'\|'borrando'\|'rechazada', medio?, motivo? }` (`medio` solo si `procesada`; `motivo` si la subida se rechazó; `not-found` si no existe). El panel la sondea tras subir el original, sin forzar el procesamiento |
 | `borrarMedio` | SUP | `{ medioId }` | `{ ok }` |
 | `listarMedios` | SUP | `{ productoId, limite? }` | `{ medios[] }` |
 
@@ -202,14 +203,16 @@ Un documento inválido **no se adivina**: las operaciones que lo necesitan falla
 Secretos (Secret Manager, `defineSecret`): `NOVUCHAT_PEDIDOS_SECRETO`, `SITIO_RECONSTRUCCION_SECRETO`, `LIMITE_TASA_SAL`.
 
 Parámetros (`.env.<alias>` en el origen de las funciones o variables de despliegue; valores por defecto entre paréntesis):
-`TENANT_ID` (`casa-bermejo`), `APP_CHECK_EXIGIDO` (`false`; **`true` en producción**), `APP_CHECK_MODO` (`real`), `RECAPTCHA_MODO` (`real`),
-`RECAPTCHA_CLAVE_SITIO`, `SITIO_URL`, `MEDIOS_BASE_URL`, `FFMPEG_PATH`, `FFPROBE_PATH`, `CONTACTO_MAXIMO` (`5`), `CONTACTO_VENTANA_SEG` (`600`),
-`NOVUCHAT_MAXIMO_POR_MINUTO` (`120`). Los modos `simulado` solo funcionan en el emulador (`FUNCTIONS_EMULATOR`) o con `PLATAFORMA_PRUEBAS=1`: en la nube lanzan al arrancar.
+`TENANT_ID` (**sin valor por defecto**: el despliegue lo exige), `APP_CHECK_EXIGIDO` (`false`; **`true` en producción**, el despliegue lo exige), `APP_CHECK_MODO` (`real`),
+`RECAPTCHA_MODO` (`real`), `RECAPTCHA_CLAVE_SITIO`, `SITIO_URL`, `MEDIOS_BASE_URL` (**obligatoria**, https, origen público aparte; sin valor por defecto al bucket por defecto),
+`FUNCIONES_SERVICE_ACCOUNT` (vacío = cuenta por defecto; en producción, una dedicada), `PROXY_SALTOS` (`2`), `FFMPEG_PATH`, `FFPROBE_PATH`, `CONTACTO_MAXIMO` (`5`),
+`CONTACTO_VENTANA_SEG` (`600`), `NOVUCHAT_MAXIMO_POR_MINUTO` (`120`), `DISPONIBILIDAD_MAXIMO_POR_MINUTO` (`60`). Fuera del emulador y de las pruebas, `LIMITE_TASA_SAL` y
+`MEDIOS_BASE_URL` faltantes hacen fallar la API (`ConfiguracionIncompleta`). Los modos `simulado` solo funcionan en el emulador (`FUNCTIONS_EMULATOR`) o con `PLATAFORMA_PRUEBAS=1`: en la nube lanzan al arrancar.
 
 Una instalación atiende **un** tenant en las rutas sin token de usuario (`TENANT_ID`: sitio, contacto y pedido firmado). El catálogo y el inventario toman el tenant del token.
 
 Construcción: `node plataforma/funciones/scripts/empaquetar.mjs` genera `dist/funciones/` (un `index.js` empaquetado con esbuild y un `package.json` con las
-dependencias de ejecución de versión exacta). `firebase.json` lo declara como `source` y lo ejecuta como `predeploy`.
+dependencias de ejecución de versión exacta y su `package-lock.json`, que Cloud Build usa con `npm ci` y el CI analiza con osv-scanner). `firebase.json` lo declara como `source` y lo ejecuta como `predeploy`.
 
 Hosting: dos sitios con **targets** (`sitio` → `dist/website`, `panel` → `dist/panel`); el CI hace `firebase target:apply hosting sitio|panel`
 con los ids de las variables de Environment `FIREBASE_SITE_SITIO` y `FIREBASE_SITE_PANEL` (nunca en el repositorio). La CSP del sitio se sella en
@@ -248,7 +251,7 @@ nuevo» deja de ser cierta cuando se haga). Con `accion` y `uid` a la vez, Fires
 `firebase deploy --only firestore:indexes` (el CI ya incluye `firestore` en `FIREBASE_DEPLOY_ONLY`) y tardan en construirse: despliéguelos
 antes de activar la consulta exacta.
 
-Pruebas contra el emulador: `pnpm test:funciones` (puertos de `firebase.json`; proyecto `demo-pruebas`; los secretos de la prueba se generan al vuelo).
+Pruebas contra el emulador: `pnpm test:funciones` (puertos de `firebase.json`; proyecto `demo-pruebas`; los secretos de la prueba se generan al vuelo). Corre con `APP_CHECK_EXIGIDO=true` (las ayudas envían un token del emulador) e incluye `pruebas/panel/emulador.test.ts` y `paquetes/panel/src/appcheck/appcheck.emulador.test.ts`; con `PRUEBAS_FUNCIONES_EXIGIR=1` ninguna se omite en silencio.
 
 ## 10. Decisiones, límites y hallazgos para el coordinador
 
@@ -256,10 +259,16 @@ Pruebas contra el emulador: `pnpm test:funciones` (puertos de `firebase.json`; p
   `tenants/{t}/reconstrucciones`. No están en ningún manifiesto, así que las reglas de Firestore las niegan al navegador (correcto). Si el panel debe **leerlas
   directo** (alertas), hace falta declararlas en un manifiesto; mientras tanto se leen por `consola.alertas`.
 - **Contrato del catálogo:** «`precio` (unidades) y `precioCentavos` (mismo entero)» es ambiguo; se implementó `precio` = monto decimal y `precioCentavos` = ese monto × 100.
-- **Plantillas del sitio:** unificadas en a7f7418 (`cielo, bosque, ambar, grafito, ciruela`). `pruebas/funciones/programadas.test.ts` todavía siembra `marfil` y falla en `test:funciones` (04/11/2026).
 - **Enlace del PDF:** `enviarRecibo` guarda el PDF en una ruta privada y firma una URL v4 de hasta 7 días; el enlace de WhatsApp caduca a los 7 días. La cuenta de servicio de
   las funciones necesita el rol «Creador de tokens de cuenta de servicio» sobre sí misma para firmar.
 - **Excel:** no hay lector de `.xlsx` (puerto `LectorHojas` sin implementación); solo CSV.
+- **Catálogo de NovuChat y productos sin control de stock:** un producto activo que no controla stock sale con `stock: null` y `disponible: true` (antes `stock: 0`, que el
+  asistente leía como agotado). Todos los ítems llevan `disponible` (regla única de Inventarios). Cambio de contrato a confirmar con la sesión de NovuChat.
+- **Sitio y redondeo:** `GET /api/sitio/v1/publicado` entrega además `redondeo` (de `tenants/{t}/config/redondeo`); ver `reconstruccion-sitio.md`.
+- **Eventos fuera de contrato:** el bus valida el contrato completo (`validarEvento`); un evento inválido se registra y se descarta sin relanzar.
+- **Origen del límite de tasa:** último salto confiable de `X-Forwarded-For` (`PROXY_SALTOS`, 2 detrás de Hosting + GFE); jamás `Fastly-Client-IP` ni el primer elemento. Además hay un límite en
+  memoria por instancia antes de autenticar (NovuChat y `/api/disponibilidad`) y App Check va antes del límite de `/api/contacto`, con token de un solo uso (`consume: true`; el
+  sitio debe pedir un token nuevo por envío: `getLimitedUseToken`).
 - **Configuración en la nube pendiente:** App Check, reCAPTCHA Enterprise, IAM y secretos no se crearon (§11).
 
 ## 11. Qué debe autorizar Andres (lo ejecuta Claude con su «sí»)

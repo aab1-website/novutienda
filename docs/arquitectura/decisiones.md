@@ -46,3 +46,18 @@
   `us-east1-<proyecto>` exigiría el id del proyecto en la CSP versionada (repositorio público). `Cross-Origin-Opener-Policy: same-origin`:
   reCAPTCHA Enterprise de App Check usa un marco invisible y el inicio de sesión no usa ventanas emergentes, así que no se relaja a
   `same-origin-allow-popups`; si una prueba con reCAPTCHA real lo exigiera, se cambia solo en `sellar.mjs` (y la prueba lo detecta en `firebase.json`).
+- 04/11/2026 — **Lectura solo por callables (M2).** Los manifiestos de recibos, inventarios y consola declaran `lectura: []` en todas sus colecciones: el panel no usa
+  Firestore (ni el SDK ni su CSP) y consulta todo por los callables, que aplican el rol. `firestore.rules` se regenera y niega toda lectura directa de esas colecciones.
+  **Paso del pase:** en la consola de Firebase, App Check debe quedar **«Enforced»** en Firestore y en Storage (además de `APP_CHECK_EXIGIDO=true` en los callables); sin eso, un
+  token de usuario robado podría llamar a las APIs de Firestore y Storage directamente. (POS y sitio conservan lecturas declaradas por sus dueños: pendiente de la misma decisión.)
+- 04/11/2026 — **Riesgo anotado de la CSP del panel (no se cambió aquí).** Los comodines `https://*.cloudfunctions.net` y `https://*.a.run.app` en `connect-src` permiten que un
+  script inyectado envíe datos a funciones de CUALQUIER proyecto. Se acepta mientras la CSP se mantenga estricta (sin `unsafe-inline`); mitigación pendiente: fijar `us-east1-<proyecto>`
+  en el build desde la variable del proyecto (sin versionar el id) o servir las funciones por el dominio de Hosting (`/api/**`).
+- 04/11/2026 — **El build de producción del sitio no admite contenido de ejemplo; el redondeo sale de la configuración.** `cargarContenido` lanza con `APP_ENV=production` y
+  `esEjemplo`; `GET /api/sitio/v1/publicado` entrega `redondeo` desde `tenants/{t}/config/redondeo` y la reconstrucción lo inyecta en `config.redondeo` (`reconstruccion-sitio.md`).
+  `construir` compila `production` solo en tags y `workflow_dispatch`, con `SITIO_CONTENIDO`.
+- 04/11/2026 — **Límite de tasa y origen.** `ipDelCliente` toma el elemento de `X-Forwarded-For` a `PROXY_SALTOS` (2) posiciones del final: Fastly añade la IP del cliente y el GFE la de
+  Fastly. Se descartan `Fastly-Client-IP` y el primer elemento (los escribe el cliente; la función es invocable por su URL directa). **Supuesto a verificar en staging** con una petición
+  real. App Check va antes del límite en `/api/contacto`; NovuChat y `/api/disponibilidad` tienen un límite en memoria por instancia antes de autenticar.
+- 04/11/2026 — **Variables nuevas del build del panel:** `VITE_RECAPTCHA_ENTERPRISE_SITE_KEY_*`, `VITE_FIREBASE_STORAGE_BUCKET_*`, `VITE_FIREBASE_APP_ID_*` (`_STAGING`/`_PROD`). El SDK de
+  App Check arma `…/apps/{appId}:exchange…` con `app.options.appId`: sin `appId` el intercambio de token falla. `construir` falla si falta alguna con proyecto configurado.
