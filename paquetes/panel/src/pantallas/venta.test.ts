@@ -256,6 +256,18 @@ describe('supervisión en vivo', () => {
     await u.click(screen.getByRole('button', { name: 'Exportar ventas (CSV)' }));
     await waitFor(() => expect(crear).toHaveBeenCalled());
   });
+  it('exportar ventas: si el servidor trunca, el panel lo avisa en vez de callar', async () => {
+    const e = crearEntorno('sup');
+    const original = e.api.llamar.bind(e.api);
+    (e.api as { llamar: unknown }).llamar = async (n: string, entrada: unknown) => (n === 'exportarVentasCsv' ? { csv: 'a\r\n', truncado: true } : original(n as never, entrada as never));
+    render(e.envolver(h(PantallaSupervision, { sub: 'auditoria' })));
+    const u = userEvent.setup();
+    vi.spyOn(URL, 'createObjectURL').mockReturnValue('blob:x');
+    vi.spyOn(URL, 'revokeObjectURL').mockReturnValue(undefined);
+    vi.spyOn(HTMLAnchorElement.prototype, 'click').mockReturnValue(undefined);
+    await u.click(await screen.findByRole('button', { name: 'Exportar ventas (CSV)' }));
+    expect(await screen.findByText(/archivo está incompleto.*5000/)).toBeTruthy();
+  });
   it('exportar ventas: último mes por defecto, pide el rango al servidor y descarga el CSV; rechaza rangos de más de 366 días', async () => {
     vi.useFakeTimers({ toFake: ['Date'] });
     vi.setSystemTime(Date.UTC(2026, 10, 4, 15, 0, 0));

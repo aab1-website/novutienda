@@ -255,7 +255,8 @@ export const TRADUCCION: { readonly [N in NombreCallable]: Traduccion<N> } = {
       // El servidor exige un rango acotado (hasta 366 días): sin fechas se pide el último año.
       const hasta = e.hasta === undefined ? Date.now() : msDeFecha(e.hasta, true);
       const desde = e.desde === undefined ? Math.max(0, hasta - 365 * 86_400_000) : msDeFecha(e.desde, false);
-      return { csv: String(campo(await c.llamar('pos', 'exportarVentasCsv', { desde, hasta }), 'csv')) };
+      const r = await c.llamar('pos', 'exportarVentasCsv', { desde, hasta });
+      return { csv: String(campo(r, 'csv')), truncado: campo(r, 'truncado') === true };
     },
   },
   listarAuditoria: {

@@ -74,7 +74,7 @@ const { data } = await llamar({ accion: 'abrirTurno', tenantId: 'casa-bermejo', 
 | `creditos` | TODOS (el vendedor, solo los créditos de SUS ventas: el crédito guarda `cajeroUid` y se consulta por él, sin tope de ventas; los créditos creados antes de este campo no aparecen para el vendedor) | `{ estado?: pendiente\|cobrado\|anulado, limite? }` | `{ creditos[] }` |
 | `cotizaciones` | TODOS | `{}` | `{ cotizaciones: { BO, AR }, redondeo }`: cada mercado es `{ cotizacionId, par, valor, fecha, fuente, estado }` o `null` si no hay una utilizable; `redondeo` es la política de `tenants/{t}/config/redondeo` (por defecto BOB dos decimales, ARS múltiplo de 100 más cercano). El panel calcula con ese redondeo. |
 | `turnos`, `supervision` | SUP | `{ limite? }` / `{}` | listas; `supervision`: `{ turno, proyeccion, ultimasVentas[] }` |
-| `exportarVentasCsv` / `exportarMovimientosCajaCsv` | SUP | `{ desde, hasta }` / `{ turnoId }` | `{ csv }` (celdas con `= + - @` neutralizadas) |
+| `exportarVentasCsv` / `exportarMovimientosCajaCsv` | SUP | `{ desde, hasta }` / `{ turnoId }` | `{ csv, truncado }` (celdas con `= + - @` neutralizadas; máximo 5000 filas: si hay más, `truncado: true` y el panel avisa) |
 
 Reglas del POS (descuento de 5 % sin permiso, aprobaciones de un solo uso, anulación con reembolso por los medios originales, arqueo sin tope en cero)
 las aplica el módulo; el redondeo del precio sale de `tenants/{t}/config/redondeo` (§8).
@@ -138,7 +138,7 @@ mp4/quicktime/webm) → el disparador procesa → el panel espera `subidas/{id}.
 | Acción | Roles | `datos` | Devuelve |
 |---|---|---|---|
 | `leerPlantilla` / `guardarPlantilla` | TODOS / SUP | `{}` / `{ plantilla }` | `{ plantilla }` / `{ ok }` |
-| `buscarComprobantes` | TODOS (el vendedor, solo los de sus ventas) | `{ numero?, desde?, hasta?, cliente?, limite? }` (fechas `aaaa-mm-dd`) | `{ recibos[] }` |
+| `buscarComprobantes` | TODOS (el vendedor, solo los de sus ventas; el filtro se aplica antes del límite) | `{ numero?, desde?, hasta?, cliente?, limite? }` (fechas `aaaa-mm-dd`; `numero` sin distinguir mayúsculas: con serie `A-0001` es prefijo indexado, sin serie `123`/`000123` busca `{serie}-000123` en cada serie del tenant) | `{ recibos[] }` |
 | `leerRecibo`, `htmlRecibo`, `pdfRecibo` | TODOS (el vendedor, solo los suyos) | `{ reciboId }` (el id del comprobante de una venta es `recibo-<ventaId>`) | `{ recibo }` / `{ html }` / `{ pdfBase64 }` |
 | `referenciarFacturaSuma` | SUP | `{ reciboId, facturaSuma }` | `{ ok }` |
 | `enviarRecibo` | TODOS (el vendedor, solo los suyos) | `{ reciboId, codigoPais? }` (por defecto `591`) | `{ estado, enlace? }`: `enlace` es el `wa.me` que la persona abre y envía |

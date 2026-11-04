@@ -3,7 +3,7 @@
 import { HttpsError } from 'firebase-functions/v2/https';
 import { z } from 'zod';
 import {
-  abrirTurno, aprobarAnulacion, cerrarTurno, cerrarTurnoForzado, cobrarCredito, confirmarVenta, csvMovimientosCaja, csvVentas,
+  abrirTurno, aprobarAnulacion, cerrarTurno, cerrarTurnoForzado, cobrarCredito, confirmarVenta, csvMovimientosCaja, csvVentas, MAX_FILAS_CSV, recortarExportacion,
   guardarConfigPos, leerConfigPos, proyectarTurno, registrarMovimientoCaja, resolverAprobacion, solicitarAnulacion, solicitarAprobacion,
   type Carrito, type CobroCreditoEntrada, type MovimientoCaja, type MovimientoCajaEntrada, type SolicitudAprobacion, type VentaPos,
 } from '@novutienda/pos';
@@ -234,16 +234,19 @@ export const accionesPos: TablaAcciones = {
     esquema: objeto({ desde: MS, hasta: MS }),
     ejecutar: async (c, d) => {
       validarRango(d.desde, d.hasta);
-      const snap = await c.e.firestore.collection(ruta(c.tenantId, 'ventas')).where('creadoEnMs', '>=', d.desde).where('creadoEnMs', '<=', d.hasta).orderBy('creadoEnMs', 'asc').limit(5000).get();
-      return { csv: csvVentas(snap.docs.map(datosDe) as unknown as VentaPos[]) };
+      const snap = await c.e.firestore.collection(ruta(c.tenantId, 'ventas')).where('creadoEnMs', '>=', d.desde).where('creadoEnMs', '<=', d.hasta).orderBy('creadoEnMs', 'asc').limit(MAX_FILAS_CSV + 1).get();
+      // Si hay más filas que el tope, el CSV lleva las primeras y la respuesta lo avisa con `truncado`.
+      const { filas, truncado } = recortarExportacion(snap.docs.map(datosDe));
+      return { csv: csvVentas(filas as unknown as VentaPos[]), truncado };
     },
   }),
   exportarMovimientosCajaCsv: accion({
     roles: SUPERVISION,
     esquema: objeto({ turnoId: UUID }),
     ejecutar: async (c, d) => {
-      const snap = await c.e.firestore.collection(ruta(c.tenantId, 'movimientos_caja')).where('turnoId', '==', d.turnoId).orderBy('creadoEnMs', 'asc').limit(5000).get();
-      return { csv: csvMovimientosCaja(snap.docs.map(datosDe) as unknown as MovimientoCaja[]) };
+      const snap = await c.e.firestore.collection(ruta(c.tenantId, 'movimientos_caja')).where('turnoId', '==', d.turnoId).orderBy('creadoEnMs', 'asc').limit(MAX_FILAS_CSV + 1).get();
+      const { filas, truncado } = recortarExportacion(snap.docs.map(datosDe));
+      return { csv: csvMovimientosCaja(filas as unknown as MovimientoCaja[]), truncado };
     },
   }),
 };

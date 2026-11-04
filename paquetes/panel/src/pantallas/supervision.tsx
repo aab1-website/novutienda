@@ -94,12 +94,15 @@ function ExportarVentas(): JSX.Element {
   const [desde, setDesde] = useState(inicial.desde);
   const [hasta, setHasta] = useState(inicial.hasta);
   const accion = useAccion();
+  const [aviso, setAviso] = useState<string | null>(null);
   const problema = validarRango(desde, hasta);
   const exportar = (): void => {
     if (problema !== null) return;
+    setAviso(null);
     void accion.ejecutar(async () => {
-      const { csv } = await api.llamar('exportarVentasCsv', { desde, hasta });
+      const { csv, truncado } = await api.llamar('exportarVentasCsv', { desde, hasta });
       descargarTexto(`ventas_${desde}_${hasta}.csv`, csv);
+      if (truncado) setAviso('El archivo está incompleto: el rango tiene más ventas que el máximo de una exportación (5000). Exporte por tramos más cortos.');
     });
   };
   return (
@@ -111,6 +114,7 @@ function ExportarVentas(): JSX.Element {
         </div>
         {problema !== null && <Alerta>{problema}</Alerta>}
         {accion.error && <Alerta>{accion.error}</Alerta>}
+        {aviso !== null && <Alerta tipo="info">{aviso}</Alerta>}
         <div class="fila"><Boton tipo="submit" variante="secundario" ocupado={accion.ocupado} deshabilitado={problema !== null}>Exportar ventas (CSV)</Boton></div>
       </form>
     </Seccion>

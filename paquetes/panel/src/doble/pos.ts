@@ -428,7 +428,7 @@ export const handlersPos: {
       .filter((v) => (e.hasta === undefined ? true : fechaLaPaz(v.creadoEnMs) <= e.hasta))
       .sort((a, b) => a.creadoEnMs - b.creadoEnMs)
       .map((v) => [v.ventaId, fechaLaPaz(v.creadoEnMs), v.estado, v.moneda, v.total, v.cajeroUid]);
-    return { csv: aCsv(['ventaId', 'fecha', 'estado', 'moneda', 'total', 'cajeroUid'], filas) };
+    return { csv: aCsv(['ventaId', 'fecha', 'estado', 'moneda', 'total', 'cajeroUid'], filas), truncado: false };
   },
   listarAuditoria: (c, e) =>
     c.e.auditoria

@@ -107,7 +107,7 @@ export interface Contrato {
   listarAprobaciones: { entrada: { estado?: 'pendiente' | 'aprobada' | 'rechazada' | 'usada' }; salida: readonly AprobacionPos[] };
   listarMovimientosCaja: { entrada: { turnoId?: string }; salida: readonly MovimientoCaja[] };
   /** Ventas del rango (aaaa-mm-dd) en CSV, con celdas neutralizadas por el servidor (`sup`/`adm`). */
-  exportarVentasCsv: { entrada: { desde?: string; hasta?: string }; salida: { csv: string } };
+  exportarVentasCsv: { entrada: { desde?: string; hasta?: string }; salida: { csv: string; truncado: boolean } };
   listarCreditos: { entrada: { estado?: 'pendiente' | 'cobrado' | 'anulado' }; salida: readonly CreditoVista[] };
   listarAuditoria: { entrada: { desde?: string; hasta?: string; accion?: string; uid?: string; limite?: number }; salida: readonly EntradaAuditoriaVista[] };
   /** Recibo emitido para una venta (el módulo lo emite al consumir el evento: puede tardar), o `null`. */
