@@ -268,7 +268,9 @@ describe('doble: crédito, caja y anulaciones', () => {
     const ventaId = uuid();
     await e.api.llamar('confirmarVenta', { requestId: ventaId, carrito: carritoTv(), pagos: efectivo(313200) });
     await e.api.llamar('solicitarAnulacion', { ventaId, motivo: 'error' });
-    expect((await falla(e.api.llamar('aprobarAnulacion', { ventaId, motivo: 'Aprobada tras revisar' }))).detalle.codigo).toBe('autoaprobacion');
+    const propia = await falla(e.api.llamar('aprobarAnulacion', { ventaId, motivo: 'Aprobada tras revisar' }));
+    expect(propia.detalle.codigo).toBe('autoaprobacion');
+    expect(mensajeDeError(propia)).toBe('No puedes aprobar la anulación de una venta que vendiste o pediste anular');
     e.como('caj');
     expect((await falla(e.api.llamar('solicitarAnulacion', { ventaId, motivo: 'x' }))).detalle.codigo).toBe('no-autorizado');
   });
