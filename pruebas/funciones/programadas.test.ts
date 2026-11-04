@@ -204,7 +204,7 @@ describe.skipIf(!hayEmulador)('trabajos programados (Firestore del emulador)', (
   it('publicar: el sitio agenda la reconstrucción en la cola real', async () => {
     const t = unico('pub').toLowerCase();
     await sembrarTenant(h, t, { productos: [{ id: 'lapiz', nombre: 'Lápiz', precioUSD: { bo: 100, ar: 100 }, tienda: 2 }] });
-    await h.firestore.doc(`tenants/${t}/sitio/config`).set({ plantillaActiva: 'marfil', whatsappNovuchat: '59170000000', medicion: {} });
+    await h.firestore.doc(`tenants/${t}/sitio/config`).set({ plantillaActiva: 'cielo', whatsappNovuchat: '59170000000', medicion: {} });
     const adm = await crearUsuario(h, { rol: 'adm', tenant: t });
     const actor = { uid: adm.uid, claims: { firebase: { sign_in_provider: 'password' }, pl: { t: { [t]: 'adm' }, v: 1 } } };
     const r = await publicarSitio({ db: e.db, catalogo: e.catalogo, reloj: { ahora: e.ahora }, disparador: e.disparadorSitio }, { tenantId: t, actor });
