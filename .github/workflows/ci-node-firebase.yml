@@ -212,6 +212,28 @@ jobs:
           npm i -g "firebase-tools@${FIREBASE_TOOLS_VERSION}"
           npm run test:funciones
 
+      - name: osv-scanner del paquete de Functions (dist/funciones/package-lock.json)
+        # empaquetar.mjs (lo corre test:funciones) genera el lockfile que Cloud Build usa con `npm ci`: se analiza lo que se
+        # despliega, incluidas las transitivas. Bloquea con severidad CVSS >= 7 (HIGH y CRITICAL, como BLOQUEAR_EN por defecto);
+        # lo demás se lista como aviso. Código de salida de osv-scanner: 0 limpio, 1 con hallazgos, otro = fallo del análisis.
+        if: needs.preparar.outputs.hay_test_funciones == 'true'
+        run: |
+          set -euo pipefail
+          [[ -f dist/funciones/package-lock.json ]] \
+            || { echo "::error::Falta dist/funciones/package-lock.json (lo genera plataforma/funciones/scripts/empaquetar.mjs)."; exit 1; }
+          rc=0
+          docker run --rm -v "$PWD:/src" ghcr.io/google/osv-scanner:v2.5.1 \
+            scan source -L /src/dist/funciones/package-lock.json --format json > osv-funciones.json || rc=$?
+          if [[ "$rc" -ne 0 && "$rc" -ne 1 ]]; then echo "::error::osv-scanner falló (código $rc)."; exit 1; fi
+          jq -e '.results' osv-funciones.json >/dev/null 2>&1 || { echo "::error::osv-scanner no produjo un informe válido."; exit 1; }
+          jq -r '.results[]?.packages[]? | .package.name as $n | .package.version as $v | .groups[]? | "\($n)@\($v) \(.ids | join(",")) CVSS \(.max_severity // "sin dato")"' osv-funciones.json
+          bloqueantes=$(jq '[.results[]?.packages[]?.groups[]? | select(((.max_severity // "0") | tonumber) >= 7)] | length' osv-funciones.json)
+          if [[ "$bloqueantes" -gt 0 ]]; then
+            echo "::error::osv-scanner: $bloqueantes hallazgo(s) HIGH o CRITICAL en las dependencias de las Functions."
+            exit 1
+          fi
+          echo "osv-scanner: sin hallazgos HIGH ni CRITICAL en dist/funciones/package-lock.json."
+
   # ---------------------------------------------------------------------------
   # Fase 2 — seguridad-estatica: reusable OSS (todos los modos).
   # NOTA: en el repositorio del proyecto la ruta es local
