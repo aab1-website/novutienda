@@ -1,9 +1,57 @@
 rules_version = '2';
 
-// Negar todo por ahora. Las reglas por módulo las generará el registro
-// de módulos (ola 1b); no se amplía nada a mano.
+// GENERADO por scripts/generar-reglas.mjs desde el registro de módulos.
+// No se edita a mano: ejecute `npm run reglas:generar`. `reglas:verificar`
+// falla si este archivo difiere de lo generado.
+//
+// Principios: se niega por defecto; el tenant sale de la ruta, nunca de un
+// campo; el rol sale del claim firmado (pl.t[tenantId]) y solo vale si la
+// sesión se abrió con el proveedor esperado; rolEn devuelve '' y nunca null.
 service cloud.firestore {
   match /databases/{database}/documents {
+
+    function autenticado() {
+      return request.auth != null && request.auth.uid != null;
+    }
+
+    function proveedor() {
+      return request.auth.token.get('firebase', {}).get('sign_in_provider', '');
+    }
+
+    // Rol en ESTE tenant o cadena vacía (nunca null: comparar null revienta).
+    function rolEn(tenantId) {
+      return request.auth.token.get('pl', {}).get('t', {}).get(tenantId, '');
+    }
+
+    function tieneRol(tenantId, roles) {
+      return autenticado()
+        && proveedor() == 'password'
+        && rolEn(tenantId) in roles;
+    }
+
+    // Módulo nucleo
+    match /tenants/{tenantId}/miembros/{id} {
+      allow read: if tieneRol(tenantId, ['sup', 'adm', 'dir']);
+      allow write: if false; // solo el servidor escribe
+    }
+    match /tenants/{tenantId}/auditoria/{id} {
+      allow read: if tieneRol(tenantId, ['sup', 'adm', 'dir']);
+      allow write: if false; // solo el servidor escribe
+    }
+    match /tenants/{tenantId}/eventos/{id} {
+      allow read: if false;
+      allow write: if false; // solo el servidor escribe
+    }
+    match /tenants/{tenantId}/contadores/{id} {
+      allow read: if false;
+      allow write: if false; // solo el servidor escribe
+    }
+    match /tenants/{tenantId}/config/{id} {
+      allow read: if tieneRol(tenantId, ['caj', 'sup', 'adm', 'dir']);
+      allow write: if false; // solo el servidor escribe
+    }
+
+    // Negación final: todo lo no declarado queda inaccesible.
     match /{document=**} {
       allow read, write: if false;
     }
