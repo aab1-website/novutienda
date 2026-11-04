@@ -34,9 +34,9 @@ export async function crearServicios(): Promise<Servicios> {
 }
 
 /** La configuración web de Firebase (pública) llega por variables de compilación, nunca está en el repositorio. */
-function configuracionFirebase(): { apiKey: string; authDomain: string; projectId: string; storageBucket?: string } {
+function configuracionFirebase(): { apiKey: string; authDomain: string; projectId: string; storageBucket?: string; appId?: string } {
   const env = import.meta.env;
   // Pruebas contra el emulador: proyecto ficticio, sin ninguna credencial.
-  if (import.meta.env.MODE === 'emulador') return { apiKey: 'clave-falsa', authDomain: 'localhost', projectId: 'demo-pruebas', storageBucket: 'demo-pruebas.appspot.com' };
-  return { apiKey: String(env['VITE_FIREBASE_API_KEY'] ?? ''), authDomain: String(env['VITE_FIREBASE_AUTH_DOMAIN'] ?? ''), projectId: String(env['VITE_FIREBASE_PROJECT_ID'] ?? ''), storageBucket: String(env['VITE_FIREBASE_STORAGE_BUCKET'] ?? '') };
+  if (import.meta.env.MODE === 'emulador') return { apiKey: 'clave-falsa', authDomain: 'localhost', projectId: 'demo-pruebas', storageBucket: 'demo-pruebas.appspot.com', appId: '1:0:web:emulador' };
+  return { apiKey: String(env['VITE_FIREBASE_API_KEY'] ?? ''), authDomain: String(env['VITE_FIREBASE_AUTH_DOMAIN'] ?? ''), projectId: String(env['VITE_FIREBASE_PROJECT_ID'] ?? ''), storageBucket: String(env['VITE_FIREBASE_STORAGE_BUCKET'] ?? ''), appId: String(env['VITE_FIREBASE_APP_ID'] ?? '') };
 }

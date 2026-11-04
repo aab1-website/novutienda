@@ -47,7 +47,7 @@ export const ROLES_ACCION: Readonly<Record<string, readonly Rol[]>> = {
   'consola.tablero': SUP, 'consola.alertas': SUP, 'consola.listarUsuarios': SUP, 'consola.buscarUsuarioPorCorreo': ADM,
   'consola.asignarRol': ADM, 'consola.quitarRol': ADM, 'consola.auditoria': SUP, 'consola.fichas': SUP, 'consola.secciones': SUP,
   'consola.carruseles': SUP, 'consola.configSitio': SUP,
-  'medios.reservarSubida': SUP, 'medios.finalizarSubida': SUP, 'medios.borrarMedio': SUP, 'medios.listarMedios': SUP,
+  'medios.reservarSubida': SUP, 'medios.finalizarSubida': SUP, 'medios.estadoSubida': SUP, 'medios.borrarMedio': SUP, 'medios.listarMedios': SUP,
   'recibos.leerPlantilla': TODOS, 'recibos.guardarPlantilla': SUP, 'recibos.buscarComprobantes': TODOS, 'recibos.leerRecibo': TODOS,
   'recibos.referenciarFacturaSuma': SUP, 'recibos.htmlRecibo': TODOS, 'recibos.pdfRecibo': TODOS, 'recibos.enviarRecibo': TODOS,
 };
