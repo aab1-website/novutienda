@@ -71,7 +71,7 @@ const { data } = await llamar({ accion: 'abrirTurno', tenantId: 'casa-bermejo', 
 | `venta` | TODOS (el vendedor, solo las suyas) | `{ ventaId }` | `{ venta }` |
 | `aprobaciones` / `aprobacion` | TODOS (el vendedor, solo las que él solicitó) | `{ estado?, limite? }` / `{ aprobacionId }` | `{ aprobaciones[] }` / `{ aprobacion }` |
 | `movimientosCaja` | TODOS (el vendedor, solo su turno) | `{ turnoId, limite? }` | `{ movimientos[] }` |
-| `creditos` | TODOS (el vendedor, solo los créditos de SUS ventas: el crédito no guarda al vendedor, se cruza con sus ventas) | `{ estado?, limite? }` | `{ creditos[] }` |
+| `creditos` | TODOS (el vendedor, solo los créditos de SUS ventas: el crédito guarda `cajeroUid` y se consulta por él, sin tope de ventas; los créditos creados antes de este campo no aparecen para el vendedor) | `{ estado?: pendiente\|cobrado\|anulado, limite? }` | `{ creditos[] }` |
 | `cotizaciones` | TODOS | `{}` | `{ cotizaciones: { BO, AR }, redondeo }`: cada mercado es `{ cotizacionId, par, valor, fecha, fuente, estado }` o `null` si no hay una utilizable; `redondeo` es la política de `tenants/{t}/config/redondeo` (por defecto BOB dos decimales, ARS múltiplo de 100 más cercano). El panel calcula con ese redondeo. |
 | `turnos`, `supervision` | SUP | `{ limite? }` / `{}` | listas; `supervision`: `{ turno, proyeccion, ultimasVentas[] }` |
 | `exportarVentasCsv` / `exportarMovimientosCajaCsv` | SUP | `{ desde, hasta }` / `{ turnoId }` | `{ csv }` (celdas con `= + - @` neutralizadas) |
@@ -234,7 +234,7 @@ desplegar (sin sello, rige la CSP base estricta). Parámetros en el despliegue: 
 | `aprobaciones_descuento` por estado / por solicitante | `(estado, solicitadoEnMs desc)`, `(solicitadoPor, estado, solicitadoEnMs desc)` |
 | `movimientos_caja` de un turno | `(turnoId, creadoEnMs desc)` y `(turnoId, creadoEnMs asc)` |
 | `creditos` por estado | `(estado, creadoEnMs desc)` |
-| `creditos` del vendedor | ninguno nuevo: se cruzan con sus ventas (`ventas (cajeroUid, creadoEnMs desc)`) y se leen por id |
+| `creditos` del vendedor | `(cajeroUid, creadoEnMs desc)` y `(cajeroUid, estado, creadoEnMs desc)` |
 | `inventarios.series` (`productoId` + `ubicacionId` + `estado`) y `buscarSerie` (`serie` + `productoId`) | ninguno: solo igualdades, que Firestore resuelve combinando los índices de campo único; el orden por serie se hace en memoria |
 | `reconstrucciones` por estado | `(estado, solicitadaEnMs asc)` |
 | `recibos` por número (prefijo) o por fecha | campo único (automático) |

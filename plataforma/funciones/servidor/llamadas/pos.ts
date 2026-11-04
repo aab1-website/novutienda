@@ -164,23 +164,17 @@ export const accionesPos: TablaAcciones = {
     },
   }),
   /**
-   * Créditos. `sup`/`adm` ven todos; el vendedor solo los de SUS ventas: el crédito no guarda quién vendió (su id es el
-   * de la venta), así que se cruza con las ventas del vendedor (índice existente `cajeroUid` + `creadoEnMs`).
+   * Créditos (estados `pendiente`, `cobrado` y `anulado`). `sup`/`adm` ven todos; el vendedor solo los de SUS ventas:
+   * el crédito guarda `cajeroUid` y se consulta por él (índices `cajeroUid` + `creadoEnMs` y `cajeroUid` + `estado`
+   * + `creadoEnMs`), sin el tope de ventas recientes.
    */
   creditos: accion({
     roles: TODOS,
-    esquema: objeto({ estado: z.enum(['pendiente', 'cobrado']).optional(), limite: LIMITE.optional() }),
+    esquema: objeto({ estado: z.enum(['pendiente', 'cobrado', 'anulado']).optional(), limite: LIMITE.optional() }),
     ejecutar: async (c, d) => {
       const limite = d.limite ?? 100;
-      if (c.rol === 'caj') {
-        const ventas = await c.e.firestore.collection(ruta(c.tenantId, 'ventas')).where('cajeroUid', '==', c.sesion.uid).orderBy('creadoEnMs', 'desc').limit(500).get();
-        if (ventas.empty) return { creditos: [] };
-        const docs = await c.e.firestore.getAll(...ventas.docs.map((v) => c.e.firestore.doc(ruta(c.tenantId, 'creditos', v.id))));
-        const mios = docs.filter((x) => x.exists).map(datosDe).filter((x) => d.estado === undefined || x['estado'] === d.estado);
-        mios.sort((a, b) => Number(b['creadoEnMs']) - Number(a['creadoEnMs']));
-        return { creditos: mios.slice(0, limite) };
-      }
       let q = c.e.firestore.collection(ruta(c.tenantId, 'creditos')).orderBy('creadoEnMs', 'desc');
+      if (c.rol === 'caj') q = q.where('cajeroUid', '==', c.sesion.uid);
       if (d.estado !== undefined) q = q.where('estado', '==', d.estado);
       const snap = await q.limit(limite).get();
       return { creditos: snap.docs.map(datosDe) };

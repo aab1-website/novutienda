@@ -71,7 +71,7 @@ describe('créditos', () => {
     expect(await codigo(confirmarVenta(e.deps, T, caj, UUID(1), carritoP1(1, { cliente: { nombre: 'Otra' } }), pagos(7000), undefined, UUID(50)))).toBe('aprobacion-no-coincide');
     const r = await confirmarVenta(e.deps, T, caj, UUID(1), c, pagos(7000), undefined, UUID(50));
     expect(r.venta.total).toBe(7000);
-    expect(e.db.dato(`tenants/${T}/creditos/${UUID(1)}`)).toMatchObject({ deudor: 'Ana', saldo: 7000, aprobadoPor: 'u-sup', estado: 'pendiente' });
+    expect(e.db.dato(`tenants/${T}/creditos/${UUID(1)}`)).toMatchObject({ deudor: 'Ana', saldo: 7000, aprobadoPor: 'u-sup', estado: 'pendiente', cajeroUid: 'u-caj' });
     expect(await codigo(confirmarVenta(e.deps, T, caj, UUID(2), c, pagos(7000), undefined, UUID(50)))).toBe('aprobacion-usada');
   });
 

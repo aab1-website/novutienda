@@ -177,6 +177,38 @@
       ]
     },
     {
+      "collectionGroup": "creditos",
+      "queryScope": "COLLECTION",
+      "fields": [
+        {
+          "fieldPath": "cajeroUid",
+          "order": "ASCENDING"
+        },
+        {
+          "fieldPath": "creadoEnMs",
+          "order": "DESCENDING"
+        }
+      ]
+    },
+    {
+      "collectionGroup": "creditos",
+      "queryScope": "COLLECTION",
+      "fields": [
+        {
+          "fieldPath": "cajeroUid",
+          "order": "ASCENDING"
+        },
+        {
+          "fieldPath": "estado",
+          "order": "ASCENDING"
+        },
+        {
+          "fieldPath": "creadoEnMs",
+          "order": "DESCENDING"
+        }
+      ]
+    },
+    {
       "collectionGroup": "reconstrucciones",
       "queryScope": "COLLECTION",
       "fields": [

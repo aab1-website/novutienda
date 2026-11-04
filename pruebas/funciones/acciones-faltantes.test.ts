@@ -131,19 +131,19 @@ describe.skipIf(!hayEmulador)('acciones faltantes del panel (emulador)', () => {
 
   describe('pos.creditos', () => {
     it('el vendedor solo ve los créditos de sus ventas; sup/adm ven todos', async () => {
-      const ventas = h.firestore.collection(`tenants/${A}/ventas`);
+      // El crédito guarda al vendedor: no se consulta a través de las ventas (sin tope de ventas recientes).
       const creditos = h.firestore.collection(`tenants/${A}/creditos`);
-      await ventas.doc('v-1').set({ cajeroUid: caj.uid, creadoEnMs: 1000 });
-      await ventas.doc('v-2').set({ cajeroUid: caj2.uid, creadoEnMs: 2000 });
-      await ventas.doc('v-3').set({ cajeroUid: caj.uid, creadoEnMs: 3000 });
-      await creditos.doc('v-1').set({ ventaId: 'v-1', estado: 'pendiente', creadoEnMs: 1000 });
-      await creditos.doc('v-2').set({ ventaId: 'v-2', estado: 'pendiente', creadoEnMs: 2000 });
-      await creditos.doc('v-3').set({ ventaId: 'v-3', estado: 'cobrado', creadoEnMs: 3000 });
+      await creditos.doc('v-1').set({ ventaId: 'v-1', cajeroUid: caj.uid, estado: 'pendiente', creadoEnMs: 1000 });
+      await creditos.doc('v-2').set({ ventaId: 'v-2', cajeroUid: caj2.uid, estado: 'pendiente', creadoEnMs: 2000 });
+      await creditos.doc('v-3').set({ ventaId: 'v-3', cajeroUid: caj.uid, estado: 'cobrado', creadoEnMs: 3000 });
+      await creditos.doc('v-4').set({ ventaId: 'v-4', cajeroUid: caj.uid, estado: 'anulado', creadoEnMs: 4000 });
       const ids = async (u: Usuario, datos: object = {}): Promise<unknown[]> => ((cuerpo(await accion('pos', 'creditos', datos, u.token, A))['creditos'] as Obj[]).map((c) => c['ventaId']));
-      expect(await ids(caj)).toEqual(['v-3', 'v-1']);
+      expect(await ids(caj)).toEqual(['v-4', 'v-3', 'v-1']);
       expect(await ids(caj, { estado: 'pendiente' })).toEqual(['v-1']);
+      expect(await ids(caj, { estado: 'anulado' })).toEqual(['v-4']);
       expect(await ids(caj2)).toEqual(['v-2']);
-      expect(await ids(sup)).toEqual(['v-3', 'v-2', 'v-1']);
+      expect(await ids(sup)).toEqual(['v-4', 'v-3', 'v-2', 'v-1']);
+      expect(await ids(sup, { estado: 'anulado' })).toEqual(['v-4']);
       expect(await ids(adm, { estado: 'cobrado' })).toEqual(['v-3']);
       const sinVentas = await crearUsuario(h, { rol: 'caj', tenant: A });
       expect(await ids(sinVentas)).toEqual([]);

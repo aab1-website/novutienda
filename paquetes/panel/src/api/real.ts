@@ -245,7 +245,7 @@ export const TRADUCCION: { readonly [N in NombreCallable]: Traduccion<N> } = {
     usa: ['pos.creditos'],
     // El vendedor solo recibe los créditos de sus ventas (lo filtra el servidor).
     ejecutar: async (c, e) => {
-      const creditos = lista(await c.llamar('pos', 'creditos', e.estado === 'pendiente' || e.estado === 'cobrado' ? { estado: e.estado, limite: 200 } : { limite: 200 }), 'creditos') as unknown as CreditoVista[];
+      const creditos = lista(await c.llamar('pos', 'creditos', e.estado === 'pendiente' || e.estado === 'cobrado' || e.estado === 'anulado' ? { estado: e.estado, limite: 200 } : { limite: 200 }), 'creditos') as unknown as CreditoVista[];
       return creditos;
     },
   },

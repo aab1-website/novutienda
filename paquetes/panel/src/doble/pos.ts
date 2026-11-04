@@ -310,7 +310,7 @@ export const handlersPos: {
     for (const r of reembolsos) nt = agregarMonedas(nt, { [v.moneda]: r.medio === 'efectivo' ? { efectivo: -r.monto } : r.medio === 'qr' ? { qr: -r.monto } : { transferencia: -r.monto } });
     if (cred !== undefined) {
       nt = agregarMonedas(nt, { [v.moneda]: { credito: -(cred.monto) } });
-      c.e.creditos.set(v.ventaId, { ...cred, estado: 'cancelado' });
+      c.e.creditos.set(v.ventaId, { ...cred, estado: 'anulado' });
     }
     c.e.turnos.set(nt.turnoId, nt);
     c.e.ventas.set(v.ventaId, { ...v, estado: 'anulada' });
