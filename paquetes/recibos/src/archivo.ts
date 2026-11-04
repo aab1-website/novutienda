@@ -57,6 +57,6 @@ export async function buscarComprobantes(lectura: LecturaRecibos, tenantId: stri
     .filter((r) => consulta.desde === undefined || r.fecha >= consulta.desde)
     .filter((r) => consulta.hasta === undefined || r.fecha <= consulta.hasta)
     .filter((r) => cliente === undefined || (r.cliente !== undefined && normalizar(r.cliente.nombre).includes(cliente)))
-    .sort((a, b) => b.emitidoEn.localeCompare(a.emitidoEn) || b.correlativo - a.correlativo)
+    .sort((a, b) => b.emitidoEn.localeCompare(a.emitidoEn) || b.numero.localeCompare(a.numero))
     .slice(0, limite);
 }

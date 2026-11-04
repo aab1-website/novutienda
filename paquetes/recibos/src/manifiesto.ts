@@ -9,8 +9,8 @@ export const manifiestoRecibos: ManifiestoModulo = {
   colecciones: [
     { ruta: 'recibos', lectura: ['caj', 'sup', 'adm'], escritura: 'servidor' },
     { ruta: 'plantillas_recibo', lectura: ['caj', 'sup', 'adm'], escritura: 'servidor' },
-    // Contador interno de numeración por serie; no lo lee ningún cliente salvo administración.
-    { ruta: 'contadores_recibo', lectura: ['adm'], escritura: 'servidor' },
+    // Anulaciones llegadas antes que su venta; interno, no lo lee ningún cliente salvo administración.
+    { ruta: 'anulaciones_pendientes_recibo', lectura: ['adm'], escritura: 'servidor' },
   ],
   emite: ['recibo.emitido'],
   consume: ['venta.confirmada', 'venta.anulada'],

@@ -2,13 +2,15 @@ import {
   consumir, publicarEvento, registrarAuditoria, validarEvento,
   type DatosReciboEmitidoV1, type DatosVentaAnuladaV1, type DatosVentaConfirmadaV1, type SobreEvento,
 } from '@plataforma/nucleo';
-import { ContadorReciboCorrupto, ErrorRecibo, ReciboNoEncontrado } from './errores.js';
+import { ErrorRecibo } from './errores.js';
 import { plantillaVigente } from './plantilla.js';
-import { reciboIdDe, rutaContadorSerie, rutaPlantilla, rutaRecibo } from './rutas.js';
-import type { EjecutorRecibos, LineaRecibo, Recibo, TransaccionRecibos } from './tipos.js';
+import { reciboIdDe, rutaAnulacionPendiente, rutaPlantilla, rutaRecibo } from './rutas.js';
+import type { AnulacionRecibo, EjecutorRecibos, LineaRecibo, Recibo, TransaccionRecibos } from './tipos.js';
 
 export const CONSUMIDOR_RECIBOS = 'recibos';
 export const ZONA_HORARIA_POR_DEFECTO = 'America/La_Paz';
+/** El evento no trae el rol del aprobador y el núcleo exige un Rol; se usa el mínimo que puede aprobar (sup), sin presentarlo como dato del evento. */
+const ROL_APROBADOR = 'sup';
 
 export interface OpcionesEmision {
   /** Reloj inyectable (ISO 8601 UTC) para el instante de emisión del evento `recibo.emitido`. */
@@ -37,20 +39,13 @@ export function sumarMeses(fecha: string, meses: number): string {
   return `${String(anio).padStart(4, '0')}-${String(mes).padStart(2, '0')}-${String(dd).padStart(2, '0')}`;
 }
 
-export const formatearNumero = (serie: string, correlativo: number): string => `${serie}-${String(correlativo).padStart(6, '0')}`;
-
-/** Reserva el siguiente correlativo de la serie dentro de la transacción (sin saltos: si la transacción falla, no se consume). */
-async function reservarCorrelativo(tx: TransaccionRecibos, tenantId: string, serie: string): Promise<number> {
-  const ruta = rutaContadorSerie(tenantId, serie);
-  const doc = await tx.leer(ruta);
-  let ultimo = 0;
-  if (doc !== undefined) {
-    const v = doc['ultimo'];
-    if (typeof v !== 'number' || !Number.isSafeInteger(v) || v < 0) throw new ContadorReciboCorrupto(`Contador corrupto en la serie ${serie}`);
-    ultimo = v;
-  }
-  tx.set(ruta, { ultimo: ultimo + 1 });
-  return ultimo + 1;
+function anulacionDePendiente(p: Readonly<Record<string, unknown>>): AnulacionRecibo {
+  const t = (k: string): string => {
+    const v = p[k];
+    if (typeof v !== 'string' || v === '') throw new ErrorRecibo(`Anulación pendiente corrupta: falta ${k}`);
+    return v;
+  };
+  return { motivo: t('motivo'), anuladaPor: t('anuladaPor'), aprobadoPor: t('aprobadoPor'), anuladoEn: t('anuladoEn') };
 }
 
 function lineasDe(d: DatosVentaConfirmadaV1, fecha: string): LineaRecibo[] {
@@ -74,14 +69,17 @@ async function emitirDesdeEvento(tx: TransaccionRecibos, evento: SobreEvento, op
   if ((await tx.leer(ruta)) !== undefined) return;
 
   const plantilla = plantillaVigente(await tx.leer(rutaPlantilla(tenantId)));
-  const correlativo = await reservarCorrelativo(tx, tenantId, plantilla.serie);
-  const numero = formatearNumero(plantilla.serie, correlativo);
+  // El número lo asignó el POS dentro de la transacción de la venta: aquí no se numera.
+  const numero = d.numeroRecibo;
+  // Si la anulación llegó antes que la venta, el recibo nace ANULADO.
+  const pendiente = await tx.leer(rutaAnulacionPendiente(tenantId, d.ventaId));
+  const anulacion = pendiente === undefined ? undefined : anulacionDePendiente(pendiente);
   const fecha = fechaLocal(evento.ocurridoEn, opciones.zonaHoraria ?? ZONA_HORARIA_POR_DEFECTO);
   const lineas = lineasDe(d, fecha);
 
   const recibo: Recibo = {
-    reciboId, tenantId, ventaId: d.ventaId, numero, serie: plantilla.serie, correlativo,
-    estado: 'EMITIDO', fecha, emitidoEn: evento.ocurridoEn, moneda: d.moneda, total: d.total,
+    reciboId, tenantId, ventaId: d.ventaId, numero,
+    estado: anulacion === undefined ? 'EMITIDO' : 'ANULADO', fecha, emitidoEn: evento.ocurridoEn, moneda: d.moneda, total: d.total,
     ...(d.descuento !== undefined && { descuento: { monto: d.descuento.monto, motivo: d.descuento.motivo } }),
     cotizacion: d.cotizacion,
     lineas,
@@ -92,6 +90,7 @@ async function emitirDesdeEvento(tx: TransaccionRecibos, evento: SobreEvento, op
     }),
     plantilla,
     envioWhatsapp: { estado: 'no_enviado' },
+    ...(anulacion !== undefined && { anulacion }),
   };
   tx.create(ruta, { ...recibo, creadoEn: tx.marcaTiempoServidor() });
 
@@ -110,8 +109,9 @@ async function emitirDesdeEvento(tx: TransaccionRecibos, evento: SobreEvento, op
     datos: datosEvento,
   });
   registrarAuditoria(tx, {
+    // El evento no trae el rol de quien vendió y el núcleo exige un Rol; 'caj' es el rol mínimo, no un dato del evento.
     tenantId, uid: d.cajeroUid, rol: 'caj', accion: 'recibos.emitir', ruta,
-    resumenDespues: { ventaId: d.ventaId, numero, estado: 'EMITIDO' },
+    resumenDespues: { ventaId: d.ventaId, numero, estado: recibo.estado },
   });
 }
 
@@ -123,8 +123,8 @@ function exigirTipo(evento: SobreEvento, tipo: string): void {
 
 /**
  * Consume `venta.confirmada`: arma el comprobante solo con el evento. El procesado
- * (por id y por clave de idempotencia), la numeración, el comprobante y `recibo.emitido`
- * van en una sola transacción: reintentar el mismo evento no genera otro número.
+ * (por id y por clave de idempotencia), el comprobante y `recibo.emitido`
+ * van en una sola transacción: reintentar el mismo evento no genera otro comprobante. El número es el del evento (lo asigna el POS).
  * Devuelve `false` si era duplicado.
  */
 export function manejarVentaConfirmada(ejecutor: EjecutorRecibos, evento: SobreEvento, opciones: OpcionesEmision = {}): Promise<boolean> {
@@ -140,19 +140,30 @@ async function anularDesdeEvento(tx: TransaccionRecibos, evento: SobreEvento, op
   const d = evento.datos as DatosVentaAnuladaV1;
   const ruta = rutaRecibo(evento.tenantId, reciboIdDe(d.ventaId));
   const actual = await tx.leer(ruta);
-  if (actual === undefined) throw new ReciboNoEncontrado('La venta anulada aún no tiene comprobante');
-  if (actual['estado'] === 'ANULADO') return;
   const anuladoEn = (opciones.ahora ?? ((): string => new Date().toISOString()))();
+  const anulacion: AnulacionRecibo = { motivo: d.motivo, anuladaPor: d.anuladaPor, aprobadoPor: d.aprobadoPor, anuladoEn };
+  if (actual === undefined) {
+    // La anulación llegó antes que la venta: se guarda sin fallar; el recibo se emitirá ANULADO.
+    const rutaPend = rutaAnulacionPendiente(evento.tenantId, d.ventaId);
+    if ((await tx.leer(rutaPend)) !== undefined) return;
+    tx.create(rutaPend, { ventaId: d.ventaId, ...anulacion, creadoEn: tx.marcaTiempoServidor() });
+    registrarAuditoria(tx, {
+      tenantId: evento.tenantId,
+      uid: d.aprobadoPor,
+      rol: ROL_APROBADOR,
+      accion: 'recibos.anulacion-pendiente',
+      ruta: rutaPend,
+      motivo: d.motivo,
+    });
+    return;
+  }
+  if (actual['estado'] === 'ANULADO') return;
   // Se marca; el comprobante no se borra ni se renumera.
-  tx.actualizar(ruta, {
-    estado: 'ANULADO',
-    anulacion: { motivo: d.motivo, anuladaPor: d.anuladaPor, aprobadoPor: d.aprobadoPor, anuladoEn },
-  });
+  tx.actualizar(ruta, { estado: 'ANULADO', anulacion });
   registrarAuditoria(tx, {
     tenantId: evento.tenantId,
     uid: d.aprobadoPor,
-    // El evento no trae el rol del aprobador; el supuesto vigente es que aprueba sup/adm.
-    rol: 'sup',
+    rol: ROL_APROBADOR,
     accion: 'recibos.anular',
     ruta,
     resumenAntes: { estado: 'EMITIDO' },
@@ -161,7 +172,7 @@ async function anularDesdeEvento(tx: TransaccionRecibos, evento: SobreEvento, op
   });
 }
 
-/** Consume `venta.anulada`: marca el comprobante ANULADO sin borrarlo. Idempotente. */
+/** Consume `venta.anulada`: marca el comprobante ANULADO sin borrarlo; si la venta aún no llegó, registra la anulación pendiente. Idempotente. */
 export function manejarVentaAnulada(ejecutor: EjecutorRecibos, evento: SobreEvento, opciones: OpcionesEmision = {}): Promise<boolean> {
   exigirTipo(evento, 'venta.anulada');
   return consumir(ejecutor, {

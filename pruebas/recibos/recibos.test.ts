@@ -3,7 +3,7 @@ import { validarEvento, type DatosVentaAnuladaV1, type DatosVentaConfirmadaV1, t
 import {
   EnviadorSimulado, EnviadorWaMe, ReciboNoEncontrado, AccionNoPermitida, buscarComprobantes, enviarRecibo, escaparHtml,
   generarPdfRecibo, guardarPlantilla, manejarVentaAnulada, manejarVentaConfirmada, manifiestoRecibos, referenciarFacturaSuma,
-  renderizarReciboHtml, rutaContadorSerie, rutaPlantilla, rutaRecibo, validarPlantilla, type Recibo,
+  renderizarReciboHtml, rutaAnulacionPendiente, rutaPlantilla, rutaRecibo, validarPlantilla, type Recibo,
 } from '@plataforma/recibos';
 import { DobleDb } from './doble-db.js';
 
@@ -13,7 +13,7 @@ type Extra = { [K in keyof DatosVentaConfirmadaV1]?: DatosVentaConfirmadaV1[K] |
 
 function datosVenta(ventaId: string, extra: Extra = {}): DatosVentaConfirmadaV1 {
   const base: DatosVentaConfirmadaV1 = {
-    ventaId, turnoId: 't1', cajaId: 'c1', cajeroUid: 'u-caj', moneda: 'BOB', total: 125000, cotizacion,
+    ventaId, turnoId: 't1', cajaId: 'c1', cajeroUid: 'u-caj', numeroRecibo: `A-${ventaId.replace(/\D/g, '').padStart(6, '0')}`, moneda: 'BOB', total: 125000, cotizacion,
     lineas: [{ productoId: 'p1', nombre: 'Lavarropas 8 kg', cantidad: 2, precioUnitario: 62500, almacenId: 'tienda', series: ['S1', 'S2'], garantiaMeses: 12 }],
     pagos: [{ medio: 'qr', moneda: 'BOB', monto: 125000, referencia: 'REF-SECRETA-1' }],
     cliente: { nombre: 'Ana Pérez', telefono: '70000000' },
@@ -34,7 +34,7 @@ function eventoAnulada(tenantId: string, ventaId: string): SobreEvento {
   const datos: DatosVentaAnuladaV1 = {
     ventaId, turnoId: 't1', motivo: 'Error de digitación', anuladaPor: 'u-caj', aprobadoPor: 'u-sup',
     lineas: [{ productoId: 'p1', cantidad: 2, almacenId: 'tienda', series: ['S1', 'S2'] }],
-    reembolso: { medio: 'efectivo', moneda: 'BOB', monto: 125000 }, turnoIdReembolso: 't1',
+    reembolsos: [{ medio: 'qr', moneda: 'BOB', monto: 125000 }], turnoIdReembolso: 't1',
   };
   return { id: `an-${ventaId}`, tipo: 'venta.anulada', version: 1, tenantId, origen: 'pos', ocurridoEn: '2026-11-05T15:00:00Z', claveIdempotencia: `anul-${ventaId}`, datos };
 }
@@ -43,12 +43,12 @@ const recibo = (db: DobleDb, t: string, v: string): Recibo => db.dato(rutaRecibo
 const AHORA = { ahora: () => '2026-11-04T15:00:01Z' };
 
 describe('emisión desde venta.confirmada', () => {
-  it('arma el comprobante solo con el evento: serie, garantía, moneda, cotización, estado', async () => {
+  it('arma el comprobante solo con el evento: número del POS, garantía, moneda, cotización, estado', async () => {
     const db = new DobleDb();
     expect(await manejarVentaConfirmada(db, eventoVenta('t1', 'v1'), AHORA)).toBe(true);
     const r = recibo(db, 't1', 'v1');
     expect(r).toMatchObject({
-      reciboId: 'recibo-v1', numero: 'A-000001', serie: 'A', estado: 'EMITIDO', moneda: 'BOB', total: 125000, fecha: '2026-11-04',
+      reciboId: 'recibo-v1', numero: 'A-000001', estado: 'EMITIDO', moneda: 'BOB', total: 125000, fecha: '2026-11-04',
       cotizacion, envioWhatsapp: { estado: 'no_enviado' },
     });
     expect(r.lineas[0]).toMatchObject({ nombre: 'Lavarropas 8 kg', series: ['S1', 'S2'], garantiaMeses: 12, garantiaHasta: '2027-11-04', subtotal: 125000 });
@@ -80,7 +80,6 @@ describe('emisión desde venta.confirmada', () => {
     expect(await manejarVentaConfirmada(db, ev, AHORA)).toBe(true);
     expect(await manejarVentaConfirmada(db, ev, AHORA)).toBe(false);
     expect(db.coleccion('tenants/t1/recibos')).toHaveLength(1);
-    expect(db.dato(rutaContadorSerie('t1', 'A'))).toEqual({ ultimo: 1 });
     expect(db.coleccion('tenants/t1/eventos')).toHaveLength(1);
   });
 
@@ -88,52 +87,62 @@ describe('emisión desde venta.confirmada', () => {
     const db = new DobleDb();
     await manejarVentaConfirmada(db, eventoVenta('t1', 'v1'), AHORA);
     expect(await manejarVentaConfirmada(db, eventoVenta('t1', 'v1', {}, 'otro-id'), AHORA)).toBe(false);
-    expect(db.dato(rutaContadorSerie('t1', 'A'))).toEqual({ ultimo: 1 });
+    expect(db.coleccion('tenants/t1/recibos')).toHaveLength(1);
   });
 
-  it('numeración sin saltos ni duplicados con 20 ventas concurrentes', async () => {
+  it('el recibo lleva el número del evento (el POS numera), también con entrega desordenada', async () => {
     const db = new DobleDb();
-    await Promise.all(Array.from({ length: 20 }, (_, i) => manejarVentaConfirmada(db, eventoVenta('t1', `v${String(i)}`), AHORA)));
-    const numeros = db.coleccion('tenants/t1/recibos').map((r) => (r as unknown as Recibo).correlativo).sort((a, b) => a - b);
-    expect(numeros).toEqual(Array.from({ length: 20 }, (_, i) => i + 1));
-    expect(db.dato(rutaContadorSerie('t1', 'A'))).toEqual({ ultimo: 20 });
-    expect(db.reintentos).toBeGreaterThan(0);
+    const orden = [3, 1, 2, 5, 4];
+    for (const n of orden) await manejarVentaConfirmada(db, eventoVenta('t1', `v${String(n)}`, { numeroRecibo: `A-00000${String(n)}` }), AHORA);
+    for (const n of orden) expect(recibo(db, 't1', `v${String(n)}`).numero).toBe(`A-00000${String(n)}`);
   });
 
-  it('el mismo evento concurrente consume un solo número', async () => {
+  it('20 ventas concurrentes emiten 20 recibos con los números del evento, sin tocar contadores', async () => {
+    const db = new DobleDb();
+    await Promise.all(
+      Array.from({ length: 20 }, (_, i) => manejarVentaConfirmada(db, eventoVenta('t1', `v${String(i)}`, { numeroRecibo: `A-${String(i + 1).padStart(6, '0')}` }), AHORA)),
+    );
+    const numeros = db.coleccion('tenants/t1/recibos').map((r) => (r as unknown as Recibo).numero).sort();
+    expect(numeros).toEqual(Array.from({ length: 20 }, (_, i) => `A-${String(i + 1).padStart(6, '0')}`).sort());
+    expect([...db.docs.keys()].some((r) => r.includes('contadores'))).toBe(false);
+  });
+
+  it('el mismo evento concurrente emite un solo recibo', async () => {
     const db = new DobleDb();
     const ev = eventoVenta('t1', 'v1');
     const r = await Promise.all([manejarVentaConfirmada(db, ev, AHORA), manejarVentaConfirmada(db, ev, AHORA)]);
     expect(r.filter(Boolean)).toHaveLength(1);
-    expect(db.dato(rutaContadorSerie('t1', 'A'))).toEqual({ ultimo: 1 });
+    expect(db.coleccion('tenants/t1/recibos')).toHaveLength(1);
   });
 
-  it('un fallo no consume número (sin saltos)', async () => {
+  it('un evento inválido no emite nada', () => {
     const db = new DobleDb();
     const mal = { ...eventoVenta('t1', 'v2'), datos: { basura: true } };
     expect(() => manejarVentaConfirmada(db, mal as SobreEvento)).toThrow();
-    expect(db.dato(rutaContadorSerie('t1', 'A'))).toBeUndefined();
-    await manejarVentaConfirmada(db, eventoVenta('t1', 'v3'), AHORA);
-    expect(recibo(db, 't1', 'v3').numero).toBe('A-000001');
-  });
-
-  it('un contador corrupto aborta sin emitir', async () => {
-    const db = new DobleDb();
-    db.poner(rutaContadorSerie('t1', 'A'), { ultimo: -3 });
-    await expect(manejarVentaConfirmada(db, eventoVenta('t1', 'v1'), { ...AHORA })).rejects.toThrow(/corrupto/);
     expect(db.coleccion('tenants/t1/recibos')).toHaveLength(0);
   });
 
-  it('usa la serie de la plantilla del tenant y la copia en el comprobante', async () => {
+  it('un evento sin número de recibo se rechaza (el contrato lo exige)', () => {
+    const mal = eventoVenta('t1', 'v2', { numeroRecibo: undefined });
+    expect(() => manejarVentaConfirmada(new DobleDb(), mal)).toThrow(/numeroRecibo/);
+  });
+
+  it('la plantilla del tenant ya no define serie: se rechaza y la copia en el comprobante no la lleva', async () => {
     const db = new DobleDb();
-    await guardarPlantilla(db, {
-      tenantId: 't1', actor: { uid: 'u-adm', rol: 'adm' },
-      plantilla: { serie: 'T1', negocio: { nombre: 'Tienda X' }, pie: 'Gracias', politicaGarantia: '12 meses', politicaCambios: '7 días' },
-    });
+    const base = { negocio: { nombre: 'Tienda X' }, pie: 'Gracias', politicaGarantia: '12 meses', politicaCambios: '7 días' };
+    await expect(guardarPlantilla(db, { tenantId: 't1', actor: { uid: 'u-adm', rol: 'adm' }, plantilla: { serie: 'T1', ...base } })).rejects.toThrow(/serie/);
+    await guardarPlantilla(db, { tenantId: 't1', actor: { uid: 'u-adm', rol: 'adm' }, plantilla: base });
     await manejarVentaConfirmada(db, eventoVenta('t1', 'v1'), AHORA);
     const r = recibo(db, 't1', 'v1');
-    expect(r.numero).toBe('T1-000001');
     expect(r.plantilla).toMatchObject({ negocio: { nombre: 'Tienda X' }, pie: 'Gracias' });
+    expect(r.plantilla).not.toHaveProperty('serie');
+  });
+
+  it('una plantilla guardada antes con serie sigue vigente sin ella', async () => {
+    const db = new DobleDb();
+    db.poner(rutaPlantilla('t1'), { serie: 'T1', negocio: { nombre: 'Vieja' } });
+    await manejarVentaConfirmada(db, eventoVenta('t1', 'v1'), AHORA);
+    expect(recibo(db, 't1', 'v1').plantilla).toEqual({ negocio: { nombre: 'Vieja' } });
   });
 
   it('rechaza un evento de otro tipo', () => {
@@ -151,11 +160,11 @@ describe('emisión desde venta.confirmada', () => {
 });
 
 describe('aislamiento entre tenants', () => {
-  it('cada tenant tiene su propia numeración y sus propios documentos', async () => {
+  it('cada tenant tiene sus propios documentos y conserva el número de su venta', async () => {
     const db = new DobleDb();
-    await manejarVentaConfirmada(db, eventoVenta('t1', 'v1'), AHORA);
-    await manejarVentaConfirmada(db, eventoVenta('t1', 'v2'), AHORA);
-    await manejarVentaConfirmada(db, eventoVenta('t2', 'v1'), AHORA);
+    await manejarVentaConfirmada(db, eventoVenta('t1', 'v1', { numeroRecibo: 'A-000001' }), AHORA);
+    await manejarVentaConfirmada(db, eventoVenta('t1', 'v2', { numeroRecibo: 'A-000002' }), AHORA);
+    await manejarVentaConfirmada(db, eventoVenta('t2', 'v1', { numeroRecibo: 'A-000001' }), AHORA);
     expect(recibo(db, 't2', 'v1').numero).toBe('A-000001');
     expect(recibo(db, 't1', 'v2').numero).toBe('A-000002');
     expect(db.coleccion('tenants/t1/recibos')).toHaveLength(2);
@@ -164,9 +173,9 @@ describe('aislamiento entre tenants', () => {
 
   it('la plantilla de un tenant no afecta a otro', async () => {
     const db = new DobleDb();
-    await guardarPlantilla(db, { tenantId: 't1', actor: { uid: 'u', rol: 'adm' }, plantilla: { serie: 'X', negocio: { nombre: 'Uno' } } });
+    await guardarPlantilla(db, { tenantId: 't1', actor: { uid: 'u', rol: 'adm' }, plantilla: { negocio: { nombre: 'Uno' } } });
     await manejarVentaConfirmada(db, eventoVenta('t2', 'v1'), AHORA);
-    expect(recibo(db, 't2', 'v1').serie).toBe('A');
+    expect(recibo(db, 't2', 'v1').plantilla.negocio.nombre).toBe('');
   });
 
   it('la anulación de un tenant no toca el comprobante del mismo ventaId en otro', async () => {
@@ -198,7 +207,6 @@ describe('anulación', () => {
     expect(await manejarVentaAnulada(db, eventoAnulada('t1', 'v1'), AHORA)).toBe(true);
     const r = recibo(db, 't1', 'v1');
     expect(r).toMatchObject({ estado: 'ANULADO', numero: antes.numero, total: antes.total, anulacion: { motivo: 'Error de digitación', aprobadoPor: 'u-sup' } });
-    expect(db.dato(rutaContadorSerie('t1', 'A'))).toEqual({ ultimo: 1 });
     expect(db.coleccion('tenants/t1/auditoria').map((a) => a['accion'])).toContain('recibos.anular');
   });
 
@@ -209,8 +217,54 @@ describe('anulación', () => {
     expect(await manejarVentaAnulada(db, eventoAnulada('t1', 'v1'), AHORA)).toBe(false);
   });
 
-  it('sin comprobante lanza ReciboNoEncontrado para que el bus reintente', async () => {
-    await expect(manejarVentaAnulada(new DobleDb(), eventoAnulada('t1', 'v9'))).rejects.toBeInstanceOf(ReciboNoEncontrado);
+  it('anulación antes de la venta: no falla, queda pendiente y el recibo se emite ANULADO con el número del POS', async () => {
+    const db = new DobleDb();
+    expect(await manejarVentaAnulada(db, eventoAnulada('t1', 'v1'), AHORA)).toBe(true);
+    expect(db.dato(rutaRecibo('t1', 'recibo-v1'))).toBeUndefined();
+    expect(db.dato(rutaAnulacionPendiente('t1', 'v1'))).toMatchObject({ ventaId: 'v1', motivo: 'Error de digitación', aprobadoPor: 'u-sup' });
+    expect(await manejarVentaConfirmada(db, eventoVenta('t1', 'v1', { numeroRecibo: 'A-000007' }), AHORA)).toBe(true);
+    const r = recibo(db, 't1', 'v1');
+    expect(r).toMatchObject({ estado: 'ANULADO', numero: 'A-000007', total: 125000, anulacion: { motivo: 'Error de digitación', anuladaPor: 'u-caj', aprobadoPor: 'u-sup' } });
+    const ev = db.dato('tenants/t1/eventos/recibo-emitido-v1');
+    expect(validarEvento(ev).ok).toBe(true);
+    // Una anulación repetida después ya no hace nada.
+    expect(await manejarVentaAnulada(db, eventoAnulada('t1', 'v1'), AHORA)).toBe(false);
+    expect(recibo(db, 't1', 'v1').estado).toBe('ANULADO');
+  });
+
+  it('anulación duplicada antes de la venta (mismo id o id distinto): una sola pendiente y un solo recibo', async () => {
+    const db = new DobleDb();
+    const a = eventoAnulada('t1', 'v1');
+    expect(await manejarVentaAnulada(db, a, AHORA)).toBe(true);
+    expect(await manejarVentaAnulada(db, a, AHORA)).toBe(false);
+    const otra = { ...a, id: 'an-otro', claveIdempotencia: 'anul-otro' };
+    expect(await manejarVentaAnulada(db, otra, AHORA)).toBe(true);
+    expect(db.coleccion('tenants/t1/anulaciones_pendientes_recibo')).toHaveLength(1);
+    const v = eventoVenta('t1', 'v1');
+    await manejarVentaConfirmada(db, v, AHORA);
+    expect(await manejarVentaConfirmada(db, v, AHORA)).toBe(false);
+    expect(db.coleccion('tenants/t1/recibos')).toHaveLength(1);
+    expect(recibo(db, 't1', 'v1').estado).toBe('ANULADO');
+  });
+
+  it('orden normal (venta y luego anulación) sigue marcando ANULADO y no deja pendientes', async () => {
+    const db = new DobleDb();
+    await manejarVentaConfirmada(db, eventoVenta('t1', 'v1'), AHORA);
+    await manejarVentaAnulada(db, eventoAnulada('t1', 'v1'), AHORA);
+    expect(recibo(db, 't1', 'v1').estado).toBe('ANULADO');
+    expect(db.coleccion('tenants/t1/anulaciones_pendientes_recibo')).toHaveLength(0);
+  });
+
+  it('la anulación pendiente de un tenant no afecta la venta del mismo ventaId en otro', async () => {
+    const db = new DobleDb();
+    await manejarVentaAnulada(db, eventoAnulada('t1', 'v1'), AHORA);
+    await manejarVentaConfirmada(db, eventoVenta('t2', 'v1'), AHORA);
+    expect(recibo(db, 't2', 'v1').estado).toBe('EMITIDO');
+  });
+
+  it('el manifiesto declara la colección de anulaciones pendientes solo para el servidor', () => {
+    expect(manifiestoRecibos.colecciones).toContainEqual({ ruta: 'anulaciones_pendientes_recibo', lectura: ['adm'], escritura: 'servidor' });
+    expect(manifiestoRecibos.colecciones.some((c) => c.ruta === 'contadores_recibo')).toBe(false);
   });
 
   it('la vista del anulado muestra ANULADO', async () => {
@@ -232,7 +286,7 @@ describe('vista y PDF', () => {
     const db = new DobleDb();
     await guardarPlantilla(db, {
       tenantId: 't1', actor: { uid: 'u', rol: 'adm' },
-      plantilla: { serie: 'A', negocio: { nombre: MALO, direccion: MALO }, pie: MALO, politicaGarantia: MALO, politicaCambios: MALO, logoUrl: 'https://x.test/l.png' },
+      plantilla: { negocio: { nombre: MALO, direccion: MALO }, pie: MALO, politicaGarantia: MALO, politicaCambios: MALO, logoUrl: 'https://x.test/l.png' },
     });
     await manejarVentaConfirmada(db, eventoVenta('t1', 'v1', { cliente: { nombre: MALO }, lineas: [{ productoId: 'p1', nombre: 'Prod <b>x</b>', cantidad: 1, precioUnitario: 125000, almacenId: 'tienda', series: [] }] }), AHORA);
     const html = renderizarReciboHtml(recibo(db, 't1', 'v1'));
@@ -262,9 +316,9 @@ describe('vista y PDF', () => {
   });
 
   it('rechaza logo que no sea https y el PDF escapa paréntesis y barras', async () => {
-    expect(() => validarPlantilla({ serie: 'A', negocio: { nombre: 'x' }, logoUrl: 'javascript:alert(1)' })).toThrow();
+    expect(() => validarPlantilla({ negocio: { nombre: 'x' }, logoUrl: 'javascript:alert(1)' })).toThrow();
     const db = new DobleDb();
-    await guardarPlantilla(db, { tenantId: 't1', actor: { uid: 'u', rol: 'sup' }, plantilla: { serie: 'A', negocio: { nombre: 'A) Tj (EVIL \\ ñ' } } });
+    await guardarPlantilla(db, { tenantId: 't1', actor: { uid: 'u', rol: 'sup' }, plantilla: { negocio: { nombre: 'A) Tj (EVIL \\ ñ' } } });
     await manejarVentaConfirmada(db, eventoVenta('t1', 'v1'), AHORA);
     const pdf = new TextDecoder('latin1').decode(generarPdfRecibo(recibo(db, 't1', 'v1')));
     expect(pdf.startsWith('%PDF-1.4')).toBe(true);
@@ -273,16 +327,16 @@ describe('vista y PDF', () => {
   });
 
   it('un caj no edita la plantilla', async () => {
-    await expect(guardarPlantilla(new DobleDb(), { tenantId: 't1', actor: { uid: 'u', rol: 'caj' }, plantilla: { serie: 'A', negocio: { nombre: 'x' } } })).rejects.toBeInstanceOf(AccionNoPermitida);
+    await expect(guardarPlantilla(new DobleDb(), { tenantId: 't1', actor: { uid: 'u', rol: 'caj' }, plantilla: { negocio: { nombre: 'x' } } })).rejects.toBeInstanceOf(AccionNoPermitida);
   });
 
   it('guardar la plantilla audita solo los campos cambiados', async () => {
     const db = new DobleDb();
-    await guardarPlantilla(db, { tenantId: 't1', actor: { uid: 'u', rol: 'adm' }, plantilla: { serie: 'A', negocio: { nombre: 'Secreto' }, pie: 'Hola' } });
+    await guardarPlantilla(db, { tenantId: 't1', actor: { uid: 'u', rol: 'adm' }, plantilla: { negocio: { nombre: 'Secreto' }, pie: 'Hola' } });
     const aud = db.coleccion('tenants/t1/auditoria');
     expect(aud[0]).toMatchObject({ accion: 'recibos.plantilla.guardar', resumenDespues: { camposCambiados: ['negocio', 'pie'] } });
     expect(JSON.stringify(aud)).not.toContain('Secreto');
-    expect(db.dato(rutaPlantilla('t1'))).toMatchObject({ serie: 'A' });
+    expect(db.dato(rutaPlantilla('t1'))).toBeDefined();
   });
 });
 

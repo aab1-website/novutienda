@@ -3,12 +3,10 @@ import { AccionNoPermitida, PlantillaInvalida } from './errores.js';
 import { rutaPlantilla } from './rutas.js';
 import type { ActorAuditado, DatosNegocio, EjecutorRecibos, PlantillaRecibo } from './tipos.js';
 
-export const SERIE_POR_DEFECTO = 'A';
-const SERIE = /^[A-Z0-9]{1,6}$/;
 const LIMITE_TEXTO = 2000;
 
 /** Plantilla usada mientras el tenant no configure la suya: la venta nunca se bloquea por esto. */
-export const PLANTILLA_POR_DEFECTO: PlantillaRecibo = { serie: SERIE_POR_DEFECTO, negocio: { nombre: '' } };
+export const PLANTILLA_POR_DEFECTO: PlantillaRecibo = { negocio: { nombre: '' } };
 
 /** URL https sin espacios ni caracteres de HTML; evita `javascript:` y similares. */
 export const esUrlHttps = (v: string): boolean => /^https:\/\/[^\s"'<>`\\]{1,490}$/i.test(v);
@@ -23,9 +21,8 @@ function textoOpcional(v: unknown, campo: string, max: number): string | undefin
 export function validarPlantilla(x: unknown): PlantillaRecibo {
   if (typeof x !== 'object' || x === null || Array.isArray(x)) throw new PlantillaInvalida('La plantilla debe ser un objeto');
   const o = x as Record<string, unknown>;
-  const permitidos = ['serie', 'logoUrl', 'negocio', 'pie', 'politicaGarantia', 'politicaCambios'];
+  const permitidos = ['logoUrl', 'negocio', 'pie', 'politicaGarantia', 'politicaCambios'];
   for (const k of Object.keys(o)) if (!permitidos.includes(k)) throw new PlantillaInvalida(`Campo desconocido: ${k}`);
-  if (typeof o['serie'] !== 'string' || !SERIE.test(o['serie'])) throw new PlantillaInvalida('serie inválida (A-Z y 0-9, hasta 6 caracteres)');
   const n = o['negocio'];
   if (typeof n !== 'object' || n === null || Array.isArray(n)) throw new PlantillaInvalida('negocio requerido');
   const no = n as Record<string, unknown>;
@@ -46,7 +43,6 @@ export function validarPlantilla(x: unknown): PlantillaRecibo {
   const politicaGarantia = textoOpcional(o['politicaGarantia'], 'politicaGarantia', LIMITE_TEXTO);
   const politicaCambios = textoOpcional(o['politicaCambios'], 'politicaCambios', LIMITE_TEXTO);
   return {
-    serie: o['serie'],
     negocio,
     ...(logoUrl !== undefined && { logoUrl }),
     ...(pie !== undefined && { pie }),
@@ -60,6 +56,8 @@ export function plantillaVigente(datos: Readonly<Record<string, unknown>> | unde
   if (datos === undefined) return PLANTILLA_POR_DEFECTO;
   const contenido: Record<string, unknown> = { ...datos };
   delete contenido['actualizadoEn'];
+  // Plantillas guardadas antes de que la serie pasara a ser exclusiva del POS: el campo se ignora.
+  delete contenido['serie'];
   try {
     return validarPlantilla(contenido);
   } catch {

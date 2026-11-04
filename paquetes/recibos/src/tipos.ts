@@ -5,12 +5,12 @@ export type Datos = Readonly<Record<string, unknown>>;
 /**
  * Transacción mínima que necesita el módulo (la adapta firebase-admin en el borde).
  * Incluye la bandeja de eventos y la auditoría del núcleo; `set` y `actualizar`
- * solo se usan sobre documentos propios del módulo (contador y comprobantes).
+ * solo se usan sobre documentos propios del módulo (plantilla y comprobantes).
  */
 export interface TransaccionRecibos extends TransaccionBandeja, TransaccionAuditoria {
   /** Lee un documento; `undefined` si no existe. */
   leer(ruta: string): Promise<Datos | undefined>;
-  /** Escribe el documento completo (solo el contador de numeración). */
+  /** Escribe el documento completo (solo la plantilla del tenant). */
   set(ruta: string, datos: Datos): void;
   /** Actualiza campos de un documento existente. */
   actualizar(ruta: string, parcial: Datos): void;
@@ -32,8 +32,6 @@ export interface DatosNegocio {
 
 /** Plantilla del tenant: `tenants/{t}/plantillas_recibo/main`. */
 export interface PlantillaRecibo {
-  /** Serie de la numeración (A-Z, 0-9, hasta 6 caracteres). */
-  readonly serie: string;
   /** URL https del logo. */
   readonly logoUrl?: string;
   readonly negocio: DatosNegocio;
@@ -74,10 +72,8 @@ export interface Recibo {
   readonly reciboId: string;
   readonly tenantId: string;
   readonly ventaId: string;
-  /** Número legible: serie y correlativo con ceros (A-000123). */
+  /** Número legible asignado por el POS (A-000123); este módulo no numera. */
   readonly numero: string;
-  readonly serie: string;
-  readonly correlativo: number;
   readonly estado: EstadoRecibo;
   /** Fecha aaaa-mm-dd de emisión, en la zona horaria del tenant. */
   readonly fecha: string;
