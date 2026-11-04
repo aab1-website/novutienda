@@ -301,23 +301,70 @@ export async function finalizarSubida(deps: DepsMedios, e: EntradaFinalizar): Pr
   }
 
   const ahoraIso = new Date(deps.reloj.ahora()).toISOString();
-  await deps.db.runTransaction(async (tx) => {
-    const actual = leerSubida((await tx.get(rutaSubida(t, s.id))).data());
-    const uso = await leerUsoMedios(tx, t);
-    const estado = await leerEstadoSitio(tx, t);
-    if (actual?.estado !== 'reservada') throw new ErrorConsola('estado', 'La subida ya fue resuelta por otra solicitud');
-    // Si el archivo real es más chico que lo reservado, se devuelve la diferencia a la cuota.
-    escribirUsoMedios(tx, t, { ...uso, bytes: Math.max(0, uso.bytes - (s.bytes - real)) });
-    tx.set(rutaMedio(t, s.id), { ...medio });
-    tx.set(rutaSubida(t, s.id), aDoc({ ...actual, estado: 'procesada', bytes: real }));
-    anotarCambio(tx, t, estado, ahoraIso);
-    registrarAuditoria(tx, {
-      tenantId: t, uid: e.actor.uid, rol, accion: 'medio.subir', ruta: rutaMedio(t, s.id),
-      resumenDespues: { productoId: s.productoId, tipo: s.tipo, bytes: real },
+  try {
+    await deps.db.runTransaction(async (tx) => {
+      const actual = leerSubida((await tx.get(rutaSubida(t, s.id))).data());
+      const uso = await leerUsoMedios(tx, t);
+      const estado = await leerEstadoSitio(tx, t);
+      if (actual?.estado !== 'reservada') throw new ErrorConsola('estado', 'La subida ya fue resuelta por otra solicitud');
+      // Si el archivo real es más chico que lo reservado, se devuelve la diferencia a la cuota.
+      escribirUsoMedios(tx, t, { ...uso, bytes: Math.max(0, uso.bytes - (s.bytes - real)) });
+      tx.set(rutaMedio(t, s.id), { ...medio });
+      tx.set(rutaSubida(t, s.id), aDoc({ ...actual, estado: 'procesada', bytes: real }));
+      anotarCambio(tx, t, estado, ahoraIso);
+      registrarAuditoria(tx, {
+        tenantId: t, uid: e.actor.uid, rol, accion: 'medio.subir', ruta: rutaMedio(t, s.id),
+        resumenDespues: { productoId: s.productoId, tipo: s.tipo, bytes: real },
+      });
     });
-  });
+  } catch (err) {
+    // Otra ejecución (el disparador de Storage o la acción explícita) ganó la carrera: se limpian los temporales de esta
+    // y las versiones publicadas que el ganador no usa (con contenido igual comparten ruta y no se tocan). Si el ganador
+    // dejó el medio listo, esta llamada lo devuelve (es idempotente); si no, sube el error.
+    if (!(err instanceof ErrorConsola) || err.codigo !== 'estado') throw err;
+    const ganador = await leerDoc(deps.db, rutaMedio(t, s.id));
+    const delGanador = new Set(((ganador as Partial<Medio> | undefined)?.versiones ?? []).map((v) => v.ruta));
+    await deps.almacen.borrar([...temporales, ...publicadas.filter((r) => !delGanador.has(r))]).catch(() => undefined);
+    if (ganador !== undefined) return ganador as unknown as Medio;
+    throw err;
+  }
   await deps.almacen.borrar(temporales).catch(() => undefined); // los temporales no afectan los datos
   return medio;
+}
+
+// ---------------------------------------------------------------------------------------------
+// Estado de una subida (consulta sin efectos: el panel espera al disparador de Storage con ella)
+// ---------------------------------------------------------------------------------------------
+
+export interface EntradaEstadoSubida {
+  readonly tenantId: string;
+  readonly actor: Actor;
+  readonly subidaId: string;
+}
+
+export interface EstadoDeSubida {
+  readonly estado: EstadoSubida;
+  /** Solo con `procesada`. */
+  readonly medio?: Medio;
+  /** Solo con `rechazada` (o `borrando` por rechazo): el motivo apto para el usuario. */
+  readonly motivo?: string;
+}
+
+/**
+ * Consulta el estado de una subida SIN procesar nada: evita que el panel y el disparador procesen el mismo original
+ * dos veces. `reservada` significa que falta procesar (o que el archivo aún no llegó).
+ */
+export async function estadoSubida(deps: DepsMedios, e: EntradaEstadoSubida): Promise<EstadoDeSubida> {
+  const t = tenantValido(e.tenantId);
+  exigirRol(e.actor, t, ROLES.editarFichas);
+  if (!ID_SUBIDA.test(e.subidaId)) throw new ErrorConsola('entrada-invalida', 'subidaId inválido');
+  const s = leerSubida(await leerDoc(deps.db, rutaSubida(t, e.subidaId)));
+  if (s === undefined) throw new ErrorConsola('no-encontrado', 'La subida no existe');
+  if (s.estado === 'procesada') {
+    const m = await leerDoc(deps.db, rutaMedio(t, s.id));
+    return m === undefined ? { estado: 'reservada' } : { estado: 'procesada', medio: m as unknown as Medio };
+  }
+  return { estado: s.estado, ...(s.motivo === undefined ? {} : { motivo: s.motivo }) };
 }
 
 // ---------------------------------------------------------------------------------------------

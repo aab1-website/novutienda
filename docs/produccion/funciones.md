@@ -134,6 +134,13 @@ las aplica el módulo; el redondeo del precio sale de `tenants/{t}/config/redond
 Flujo de subida: `reservarSubida` → el navegador sube a `rutaOriginal` con el SDK de Storage (`contentType` de foto: jpeg/png/webp/heic; video:
 mp4/quicktime/webm) → el disparador procesa → el panel espera `subidas/{id}.estado` (`procesada` o `rechazada`) o llama `finalizarSubida`.
 
+Carrera entre el disparador y `finalizarSubida`: si dos ejecuciones procesan el mismo original, gana la que confirma primero; la otra borra sus
+temporales y las versiones publicadas que el ganador no usa, y devuelve el medio ganador (la acción sigue siendo idempotente). El panel espera con
+reintentos y retroceso (hasta ~2 minutos si la llamada se corta por tiempo o por red) y muestra el tiempo transcurrido.
+**Pendiente (no es de esta ola):** `estadoSubida` (consulta sin procesar, exportada por `@novutienda/consola`) aún no tiene acción en el callable
+`medios`; al agregarla (rol SUP, `{ subidaId }` → `{ estado, medio?, motivo? }`) el panel debe pasar a consultar el estado en vez de llamar
+`finalizarSubida`, que evita el trabajo duplicado.
+
 ### `recibos`
 | Acción | Roles | `datos` | Devuelve |
 |---|---|---|---|

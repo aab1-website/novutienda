@@ -133,6 +133,32 @@ describe('finalizarSubida frente al disparador de Storage', () => {
   });
 });
 
+describe('finalizarSubida de un video: la llamada se corta por tiempo mientras el servidor procesa', () => {
+  const t = TRADUCCION.finalizarSubida as unknown as { ejecutar(c: unknown, e: unknown): Promise<{ id: string }> };
+  const contexto = (codigo: string, fallan: number, esperas: number[]): unknown => {
+    let n = 0;
+    return {
+      rol: 'sup', esperar: (ms: number) => { esperas.push(ms); return Promise.resolve(); },
+      llamar: () => { n += 1; return n <= fallan ? Promise.reject(new ErrorApi(codigo, 'x')) : Promise.resolve({ medio: { id: 'sub-1', productoId: 'p' } }); },
+    };
+  };
+  it('reintenta con retroceso creciente (tope de 8 s) y devuelve el medio', async () => {
+    const esperas: number[] = [];
+    expect((await t.ejecutar(contexto('deadline-exceeded', 6, esperas), { subidaId: 'sub-1' })).id).toBe('sub-1');
+    expect(esperas).toEqual([1500, 2250, 3375, 5063, 7595, 8000]);
+  });
+  it('se rinde al agotar ~2 minutos de espera y no reintenta errores definitivos', async () => {
+    const esperas: number[] = [];
+    await expect(t.ejecutar(contexto('unavailable', 1000, esperas), { subidaId: 'sub-1' })).rejects.toMatchObject({ codigoHttps: 'unavailable' });
+    const total = esperas.reduce((a, b) => a + b, 0);
+    expect(total).toBeGreaterThanOrEqual(120_000);
+    expect(total).toBeLessThan(130_000);
+    const definitivas: number[] = [];
+    await expect(t.ejecutar(contexto('permission-denied', 1, definitivas), { subidaId: 'sub-1' })).rejects.toMatchObject({ codigoHttps: 'permission-denied' });
+    expect(definitivas).toEqual([]);
+  });
+});
+
 describe('redondeo que llega del servidor (pos.cotizaciones)', () => {
   const cot = { cotizacionId: 'x', par: 'ARS/USD' as const, valor: 1000, fecha: '2026-11-04', fuente: 'BNA', estado: 'vigente' as const };
   const BOB = { tipo: 'decimales', decimales: 2, modo: 'cercano' };

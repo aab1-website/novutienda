@@ -114,6 +114,12 @@ const comoOk = <N extends NombreCallable>(modulo: Modulo, accion: string, datos:
 
 export const REINTENTOS_FINALIZAR = 8;
 export const ESPERA_FINALIZAR_MS = 1500;
+/**
+ * Espera máxima a que el servidor termine de procesar una subida cuando la llamada se corta por tiempo o por red
+ * (un video de 200 MB tarda más de un minuto y el SDK corta las llamadas largas): se reintenta con retroceso.
+ */
+export const ESPERA_SUBIDA_MAXIMA_MS = 120_000;
+export const ESPERA_SUBIDA_TOPE_MS = 8000;
 
 const ESTADOS_APROBACION = ['pendiente', 'aprobada', 'rechazada', 'usada'] as const;
 
@@ -408,12 +414,22 @@ export const TRADUCCION: { readonly [N in NombreCallable]: Traduccion<N> } = {
       // El disparador de Storage también finaliza la subida al llegar el original: si gana él, esta llamada responde
       // «ya fue resuelta» (failed-precondition) aunque el medio ya esté listo. La acción es idempotente: se reintenta
       // hasta que devuelva el medio; si la subida fue rechazada de verdad, el error persiste y se muestra.
-      for (let intento = 1; ; intento++) {
+      let intentosResuelta = 0;
+      let esperado = 0;
+      let espera = ESPERA_FINALIZAR_MS;
+      for (;;) {
         try {
           return aMedio(campo(await c.llamar('medios', 'finalizarSubida', e), 'medio') as Obj);
         } catch (err) {
-          if (!(err instanceof ErrorApi) || err.codigoHttps !== 'failed-precondition' || intento >= REINTENTOS_FINALIZAR) throw err;
-          await c.esperar(ESPERA_FINALIZAR_MS);
+          if (!(err instanceof ErrorApi)) throw err;
+          if (err.codigoHttps === 'failed-precondition' && (intentosResuelta += 1) < REINTENTOS_FINALIZAR) {
+            await c.esperar(ESPERA_FINALIZAR_MS);
+          } else if ((err.codigoHttps === 'deadline-exceeded' || err.codigoHttps === 'unavailable') && esperado < ESPERA_SUBIDA_MAXIMA_MS) {
+            // La llamada se cortó, pero el servidor puede seguir procesando: se reintenta con retroceso (hasta ~2 minutos).
+            await c.esperar(espera);
+            esperado += espera;
+            espera = Math.min(Math.round(espera * 1.5), ESPERA_SUBIDA_TOPE_MS);
+          } else throw err;
         }
       }
     },

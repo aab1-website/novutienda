@@ -1,6 +1,6 @@
 import { beforeEach, describe, expect, it } from 'vitest';
 import {
-  borrarMedio, contieneMetadatos, detectarArchivo, ErrorConsola, finalizarSubida, LIMITES_CONSOLA, limpiarSubidas, nombreVersion,
+  borrarMedio, contieneMetadatos, detectarArchivo, ErrorConsola, estadoSubida, finalizarSubida, LIMITES_CONSOLA, limpiarSubidas, nombreVersion,
   planificarProcesamiento, reservarSubida, type DepsMedios,
 } from '@novutienda/consola';
 import { rutaContador } from '@novutienda/nucleo';
@@ -204,6 +204,45 @@ describe('pipeline de medios', () => {
       const b = await finalizarSubida(deps, { tenantId: T, actor: adm, subidaId });
       expect(b).toEqual(a);
       expect(uso().productos['cam-1']?.fotos).toBe(1);
+    });
+    it('si otra ejecución gana la carrera, devuelve el medio ganador y limpia sus temporales y sus versiones huérfanas', async () => {
+      const { subidaId } = await subir('foto', JPG);
+      let ganador: Awaited<ReturnType<typeof finalizarSubida>> | undefined;
+      let disparado = false;
+      // La primera ejecución produce versiones distintas (otro hash); mientras procesa, otra ejecución termina primero.
+      class ProcesadorConCarrera extends ProcesadorSimulado {
+        override async procesar(...args: Parameters<ProcesadorSimulado['procesar']>): ReturnType<ProcesadorSimulado['procesar']> {
+          if (disparado) return super.procesar(...args);
+          disparado = true;
+          ganador = await finalizarSubida(deps, { tenantId: T, actor: adm, subidaId });
+          const salida = await super.procesar(...args);
+          for (const v of salida) almacen.objetos.set(v.rutaTemporal, new Uint8Array([...(almacen.objetos.get(v.rutaTemporal) ?? []), 7]));
+          return salida;
+        }
+      }
+      deps = { ...deps, procesador: new ProcesadorConCarrera(almacen) };
+      const perdedor = await finalizarSubida(deps, { tenantId: T, actor: adm, subidaId });
+      expect(ganador).toBeDefined();
+      expect(perdedor).toEqual(ganador);
+      expect(uso().productos['cam-1']?.fotos).toBe(1);
+      expect(db.dato(`tenants/${T}/sitio/estado`)).toMatchObject({ cambios: 1 }); // se anotó una sola vez
+      expect([...almacen.objetos.keys()].filter((k) => k.includes('/procesando/'))).toEqual([]);
+      // Lo publicado es exactamente lo del ganador: las versiones huérfanas del perdedor se borraron.
+      const publicados = [...almacen.objetos.keys()].filter((k) => k.includes('/publico/')).sort();
+      expect(publicados).toEqual((ganador?.versiones ?? []).map((v) => v.ruta).sort());
+    });
+    it('estadoSubida consulta sin procesar: reservada, luego procesada con el medio; rechazada con su motivo', async () => {
+      const { subidaId } = await subir('foto', JPG);
+      expect(await estadoSubida(deps, { tenantId: T, actor: adm, subidaId })).toEqual({ estado: 'reservada' });
+      expect(db.dato(`tenants/${T}/medios/${subidaId}`)).toBeUndefined(); // no procesó nada
+      const m = await finalizarSubida(deps, { tenantId: T, actor: adm, subidaId });
+      expect(await estadoSubida(deps, { tenantId: T, actor: adm, subidaId })).toEqual({ estado: 'procesada', medio: m });
+      const mala = await subir('foto', EXE);
+      await expect(finalizarSubida(deps, { tenantId: T, actor: adm, subidaId: mala.subidaId })).rejects.toMatchObject({ codigo: 'tipo-no-permitido' });
+      expect(await estadoSubida(deps, { tenantId: T, actor: adm, subidaId: mala.subidaId })).toMatchObject({ estado: 'rechazada', motivo: expect.stringContaining('tipo permitido') });
+      await expect(estadoSubida(deps, { tenantId: T, actor: adm, subidaId: 'subida-nada' })).rejects.toMatchObject({ codigo: 'no-encontrado' });
+      await expect(estadoSubida(deps, { tenantId: T, actor: actor('caj'), subidaId })).rejects.toMatchObject({ codigo: 'no-autorizado' });
+      await expect(estadoSubida(deps, { tenantId: T, actor: actor('adm', 'otro'), subidaId })).rejects.toMatchObject({ codigo: 'no-autorizado' });
     });
     it('video: 720p y 1080p con póster', async () => {
       proc.info = { ancho: 1920, alto: 1080, duracionSeg: 30 };
