@@ -85,11 +85,23 @@ describe.skipIf(!hayEmulador)('bus de eventos (Firestore del emulador)', () => {
 
   it('ignora tipos sin consumidor y sobres inválidos o que no coinciden con su ruta', async () => {
     const t = unico('bus').toLowerCase();
-    const sinConsumidor: SobreEvento = { ...evento(t, 'P3', 'x', 1), id: 'tc-1', tipo: 'turno.cerrado', claveIdempotencia: 'tc-1', origen: 'pos', datos: { turnoId: 't', cajaId: 'caja-1', cajeroUid: 'u', monedas: {} } };
+    const sinConsumidor: SobreEvento = { ...evento(t, 'P3', 'x', 1), id: 'tc-1', tipo: 'turno.cerrado', claveIdempotencia: 'tc-1', origen: 'pos', datos: { turnoId: 't', cajaId: 'caja-1', cajeroUid: 'u', monedas: { BOB: { apertura: 0, esperado: 0, contado: 0, diferencia: 0, efectivo: 0, qr: 0, transferencia: 0, credito: 0 } } } };
     expect(await entregarEvento(e, t, 'tc-1', sinConsumidor as never)).toEqual({ entregas: 0, aplicadas: 0, sinConsumidor: true });
     expect(await entregarEvento(e, t, 'x', { basura: true })).toEqual({ entregas: 0, aplicadas: 0, sinConsumidor: false });
     expect(await entregarEvento(e, 'otro-tenant', 'pc-P4', evento(t, 'P4', 'x', 1) as never)).toEqual({ entregas: 0, aplicadas: 0, sinConsumidor: false });
     expect(sobreDesdeDocumento({ ...evento(t, 'P5', 'x', 1), publicadoEn: 'marca' })?.id).toBe('pc-P5');
+  });
+
+  it('un evento con datos fuera de contrato se descarta y se registra, sin relanzar ni llegar a los consumidores', async () => {
+    const t = unico('bus').toLowerCase();
+    await sembrarTenant(h, t, { productos: [{ id: 'goma', nombre: 'Goma', precioUSD: { bo: 100, ar: 100 }, tienda: 10 }] });
+    const bueno = evento(t, 'P6', 'goma', 2);
+    const malo = documento({ ...bueno, datos: { ...bueno.datos, lineas: 'no-es-una-lista' } });
+    await expect(entregarEvento(e, t, bueno.id, malo)).resolves.toEqual({ entregas: 0, aplicadas: 0, sinConsumidor: false });
+    expect(sobreDesdeDocumento(malo)).toBeUndefined();
+    expect((await h.firestore.doc(`tenants/${t}/existencias/goma__tienda`).get()).data()?.['cantidad']).toBe(10);
+    const tipoNuevo = documento({ ...bueno, tipo: 'venta.inventada' } as never);
+    await expect(entregarEvento(e, t, bueno.id, tipoNuevo)).resolves.toMatchObject({ aplicadas: 0, sinConsumidor: false });
   });
 });
 
