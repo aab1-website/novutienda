@@ -14,12 +14,13 @@ Flujo: trabajo en ramas `feat/*`, `fix/*`, `chore/*`, `hotfix/*` → PR hacia `m
 |---|---|
 | Instalar dependencias | `pnpm install --frozen-lockfile` |
 | Pruebas | `pnpm test` (con cobertura: `pnpm test -- --run --coverage`) |
+| Pruebas de Functions (emuladores; Java 21 y `firebase` en el PATH) | `pnpm test:funciones` |
 | Lint y tipos | `pnpm lint` · `pnpm typecheck` |
-| Build por ambiente | `APP_ENV=staging pnpm build` |
+| Build por ambiente | `pnpm build -- --mode staging` (o `production`): `dist/website`, `dist/panel` y `dist/firebase.json` |
 | Seguridad estática local | `./security-local.sh` (informe en `.security-reports/ultimo/resumen.md`) |
-| Desplegar a staging | `./deploy.sh staging` (`--dry-run` para ver los comandos) |
+| Desplegar a staging | Merge a `main` (CI, cuando exista `GCP_PROJECT_ID_STAGING`). `./deploy.sh staging` aún no admite los dos sitios ni Functions. Pase: `docs/produccion/pase-a-staging.md` |
 | Desplegar a producción | **No lo ejecute.** Lo hace una persona: tag `vX.Y.Z` + aprobación del Environment (A/B) o `workflow_dispatch` del `ci-*` con `confirmar=DESPLEGAR` (B0). Ver `/pase-a-produccion`. |
-| Validar workflows | `actionlint .github/workflows/*.yml` |
+| Validar workflows | `actionlint .github/workflows/*.yml` · `python3 .github/scripts/validar-manifiesto.py` |
 | Reglas Firestore | `pnpm reglas:generar` · `pnpm reglas:verificar` · `pnpm test:rules` (levanta el emulador; dentro de `emulators:exec` reutiliza el existente) |
 
 Ajuste esta tabla si los scripts de `package.json`/`pyproject.toml` tienen otros nombres; no invente comandos.

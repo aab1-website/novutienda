@@ -9,13 +9,22 @@ componentes:
     ruta: ./
     stack: node
     proveedor: firebase
+    # Dos sitios de Hosting por target (sitio → dist/website, panel → dist/panel);
+    # los ids reales viven en variables de los Environments de GitHub
+    # (FIREBASE_SITE_SITIO, FIREBASE_SITE_PANEL), nunca en el repositorio.
+    # `url` es la del sitio público: la usan el health check (/healthz, función
+    # api) y el DAST. El panel se verifica con PANEL_URL en el humo del CI.
     ambientes:
       staging:
         proyecto: ${GCP_PROJECT_ID_STAGING}
-        url: https://${GCP_PROJECT_ID_STAGING}.web.app
+        url: https://${FIREBASE_SITE_SITIO}.web.app
+        site: ${FIREBASE_SITE_SITIO}
+        region: us-east1
       production:
-        proyecto: ${GCP_PROJECT_ID}
-        url: https://${GCP_PROJECT_ID}.web.app
+        proyecto: ${GCP_PROJECT_ID_PROD}
+        url: https://${FIREBASE_SITE_SITIO}.web.app
+        site: ${FIREBASE_SITE_SITIO}
+        region: us-east1
 seguridad:
   dast: true
   zap_reglas: .github/zap-rules.tsv
@@ -24,7 +33,8 @@ seguridad:
   excepciones:
     - id: CKV_GHA_7
       herramienta: checkov
-      componente: plataforma
+      # Era «plataforma»: el componente se renombró a «novutienda» (b0e304f).
+      componente: novutienda
       justificacion: >-
         Regla SLSA sobre .github/workflows/release.yml: exige que
         workflow_dispatch no declare inputs. Los dos que declara son de tipo

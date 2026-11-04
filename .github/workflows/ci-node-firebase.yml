@@ -20,8 +20,18 @@
 # Variables: MODO, APROBADORES_PROD, TAG_FIRMADO_REQUERIDO, GCP_PROJECT_ID_STAGING,
 #            GCP_PROJECT_ID_PROD, STAGING_URL, PROD_URL, HEALTH_PATH,
 #            NODE_VERSION (22), COVERAGE_MIN (70), GHAS_ENABLED, BLOQUEAR_EN,
-#            FIREBASE_DEPLOY_ONLY ('hosting,firestore:rules'),
-#            FIREBASE_SITE_ID, FIREBASE_PREVIEW ('true' para canales de PR)
+#            FIREBASE_DEPLOY_ONLY ('hosting,functions,firestore,storage' aquí),
+#            FIREBASE_PREVIEW ('true' para canales de PR)
+# Adaptación NovuTienda (docs/arquitectura/decisiones.md, «Contrato de dist/»
+# y «CI multi-sitio»):
+#   - dist/ = dist/website + dist/panel + dist/firebase.json (CSP sellada del
+#     sitio compuesta por scripts/build.mjs); /healthz lo atiende la función api.
+#   - Dos sitios de Hosting por target. Variables del Environment (staging y
+#     production, mismo nombre, distinto valor): FIREBASE_SITE_SITIO,
+#     FIREBASE_SITE_PANEL, PANEL_URL, MEDIOS_BASE_URL, APP_CHECK_EXIGIDO,
+#     RECAPTCHA_CLAVE_SITIO. Repositorio: TENANT_ID, VITE_FIREBASE_API_KEY_STAGING,
+#     VITE_FIREBASE_API_KEY_PROD. FIREBASE_SITE_ID ya no se usa.
+#   - calidad corre además `test:funciones` (emuladores; Java 21 del runner).
 # =============================================================================
 name: CI/CD Node → Firebase
 
@@ -71,6 +81,8 @@ jobs:
       instalar: ${{ steps.pm.outputs.instalar }}
       # true si package.json define el script test:rules (pruebas de Firestore)
       hay_test_rules: ${{ steps.pm.outputs.hay_test_rules }}
+      # true si package.json define test:funciones (Functions contra el emulador)
+      hay_test_funciones: ${{ steps.pm.outputs.hay_test_funciones }}
     steps:
       - name: Checkout
         uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
@@ -86,10 +98,12 @@ jobs:
           elif [[ -f yarn.lock ]];      then pm=yarn; instalar="yarn install --immutable"
           else                                pm=npm;  instalar="npm ci"; fi
           hay_test_rules=$(jq -r 'if .scripts["test:rules"] then "true" else "false" end' package.json)
+          hay_test_funciones=$(jq -r 'if .scripts["test:funciones"] then "true" else "false" end' package.json)
           {
             echo "pm=$pm"; echo "instalar=$instalar"; echo "hay_test_rules=$hay_test_rules"
+            echo "hay_test_funciones=$hay_test_funciones"
           } >> "$GITHUB_OUTPUT"
-          echo "Gestor: $pm | test:rules: $hay_test_rules"
+          echo "Gestor: $pm | test:rules: $hay_test_rules | test:funciones: $hay_test_funciones"
 
       - name: Habilitar corepack (pnpm/yarn)
         if: steps.pm.outputs.pm != 'npm'
@@ -111,7 +125,8 @@ jobs:
     name: calidad
     needs: preparar
     runs-on: ubuntu-latest
-    timeout-minutes: 20
+    # 30 y no 20: test:funciones empaqueta las Functions y levanta cinco emuladores.
+    timeout-minutes: 30
     env:
       COVERAGE_MIN: ${{ vars.COVERAGE_MIN || 70 }}
     steps:
@@ -163,13 +178,37 @@ jobs:
             exit 1
           fi
 
+      - name: Java 21 para los emuladores
+        # firebase-tools 15 exige JDK 21 o superior para los emuladores; el
+        # runner trae varios JDK y deja 17 por defecto. Se usa el 21 que ya está
+        # instalado (sin acción nueva que fijar). Si la imagen deja de traerlo,
+        # el paso falla con un mensaje claro en vez de un error opaco del emulador.
+        if: needs.preparar.outputs.hay_test_rules == 'true' || needs.preparar.outputs.hay_test_funciones == 'true'
+        run: |
+          set -euo pipefail
+          jdk="${JAVA_HOME_21_X64:-}"
+          [[ -n "$jdk" && -x "$jdk/bin/java" ]] \
+            || { echo "::error::El runner no trae JDK 21 (JAVA_HOME_21_X64); los emuladores de Firebase lo necesitan."; exit 1; }
+          echo "JAVA_HOME=$jdk" >> "$GITHUB_ENV"
+          echo "$jdk/bin" >> "$GITHUB_PATH"
+
       - name: Pruebas de reglas de Firestore (emulador)
         if: needs.preparar.outputs.hay_test_rules == 'true'
-        # El emulador necesita Java (preinstalado en ubuntu-latest).
         run: >-
           npx --yes firebase-tools@${{ env.FIREBASE_TOOLS_VERSION }}
           emulators:exec --only firestore --project demo-pruebas
           "npm run test:rules"
+
+      - name: Pruebas de Functions (emuladores de Auth, Firestore, Storage, Functions y Eventarc)
+        # plataforma/funciones/scripts/probar.mjs empaqueta las Functions y llama
+        # a `firebase emulators:exec` (binario global) con el proyecto ficticio
+        # demo-pruebas y los puertos de firebase.json; los secretos de prueba se
+        # generan al vuelo. Nada toca Firebase real.
+        if: needs.preparar.outputs.hay_test_funciones == 'true'
+        run: |
+          set -euo pipefail
+          npm i -g "firebase-tools@${FIREBASE_TOOLS_VERSION}"
+          npm run test:funciones
 
   # ---------------------------------------------------------------------------
   # Fase 2 — seguridad-estatica: reusable OSS (todos los modos).
@@ -242,10 +281,28 @@ jobs:
         run: ${{ needs.preparar.outputs.instalar }}
 
       - name: Build (${{ matrix.ambiente }})
+        # scripts/build.mjs compila sitio y panel y compone dist/firebase.json.
+        # La configuración web de Firebase del panel es pública (clase P,
+        # 01-gestion-de-secretos.md SEC-005): llega de variables, no de secretos.
+        # Se elige en el shell, no con `a && b || c`, que con la clave de
+        # producción vacía caería en silencio en la de staging.
         env:
           APP_ENV: ${{ matrix.ambiente }}
           VITE_APP_VERSION: ${{ github.ref_name }}-${{ github.sha }}
-        run: npm run build -- --mode "$APP_ENV"
+          CLAVE_STAGING: ${{ vars.VITE_FIREBASE_API_KEY_STAGING }}
+          CLAVE_PROD: ${{ vars.VITE_FIREBASE_API_KEY_PROD }}
+          PROYECTO_STAGING: ${{ vars.GCP_PROJECT_ID_STAGING }}
+          PROYECTO_PROD: ${{ vars.GCP_PROJECT_ID_PROD }}
+        run: |
+          set -euo pipefail
+          if [[ "$APP_ENV" == "production" ]]; then clave="$CLAVE_PROD"; proyecto="$PROYECTO_PROD"
+          else clave="$CLAVE_STAGING"; proyecto="$PROYECTO_STAGING"; fi
+          if [[ -n "$proyecto" && -z "$clave" ]]; then
+            echo "::warning::El panel de $APP_ENV se compila sin VITE_FIREBASE_API_KEY: no podrá iniciar sesión."
+          fi
+          export VITE_FIREBASE_API_KEY="$clave" VITE_FIREBASE_PROJECT_ID="$proyecto"
+          export VITE_FIREBASE_AUTH_DOMAIN="${proyecto:+$proyecto.firebaseapp.com}"
+          npm run build -- --mode "$APP_ENV"
 
       - name: Guardar dist/
         uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7
@@ -345,7 +402,8 @@ jobs:
     # Desviación local (docs/arquitectura/decisiones.md): sin proyecto de staging federado no se despliega.
     if: github.event_name == 'push' && github.ref == 'refs/heads/main' && vars.GCP_PROJECT_ID_STAGING != ''
     runs-on: ubuntu-latest
-    timeout-minutes: 15
+    # 30 y no 15: el primer despliegue de Functions v2 (11 funciones, Cloud Build) tarda.
+    timeout-minutes: 30
     environment:
       name: staging
       url: ${{ vars.STAGING_URL }}
@@ -356,7 +414,7 @@ jobs:
       contents: read
       id-token: write # token OIDC para WIF
     steps:
-      - name: Checkout (firebase.json, firestore.rules)
+      - name: Checkout (firebase.json, reglas, código de las Functions)
         uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           # En workflow_dispatch se analiza/despliega el tag aprobado (D3)
@@ -374,62 +432,58 @@ jobs:
           workload_identity_provider: ${{ secrets.GCP_WIF_PROVIDER }}
           service_account: ${{ secrets.GCP_SA_DEPLOY_STAGING }}
 
+      - name: Habilitar corepack (pnpm, declarado en packageManager)
+        run: corepack enable
+
       - name: Node.js
         uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7
         with:
           node-version: ${{ env.NODE_VERSION }}
+          cache: pnpm
 
-      - name: Preparar el gestor de paquetes para el hook `predeploy`
-        # `firebase deploy` ejecuta los hooks `predeploy` de firebase.json. En
-        # cuanto FIREBASE_DEPLOY_ONLY incluye `functions` —lo normal en un
-        # proyecto Firebase— ese hook compila las Functions con el gestor del
-        # proyecto, y estos jobs solo preparaban Node:
-        #
-        #   /bin/sh: 1: pnpm: not found
-        #   Error: functions predeploy error: exit code 127
-        #
-        # Lo grave es CUÁNDO falla: en producción, después de la compuerta de
-        # aprobación del Environment. Se aprueba el pase y solo entonces se
-        # descubre que el despliegue no puede ni empezar.
-        # Detectado en novuchat-site (2026-09-03).
+      - name: Dependencias para el hook `predeploy` y firebase-tools
+        # El `predeploy` de Functions (plataforma/funciones/scripts/empaquetar.mjs)
+        # usa esbuild del workspace: sin `pnpm install` el despliegue no puede ni
+        # empezar (ver la nota de novuchat-site en la plantilla del estándar).
         run: |
           set -euo pipefail
-          corepack enable
-          # `corepack prepare --activate` aborta con "The local project doesn't
-          # feature a 'packageManager' field" cuando el proyecto no declara ese
-          # campo, y tumba el despliegue entero aunque no haya hook `predeploy`
-          # que preparar. Si no está declarado, alcanza con el gestor que trae
-          # Node. Detectado en PRETSO (2026-09-25).
-          if grep -q '"packageManager"' package.json 2>/dev/null; then
-            corepack prepare --activate
-          fi
-          # `functions/` suele traer su propio lockfile: no es del workspace.
-          if [[ -f functions/package.json ]]; then
-            if   [[ -f functions/pnpm-lock.yaml ]];    then pnpm --dir functions install --frozen-lockfile
-            elif [[ -f functions/yarn.lock ]];         then (cd functions && yarn install --frozen-lockfile)
-            elif [[ -f functions/package-lock.json ]]; then npm ci --prefix functions
-            fi
-          fi
+          pnpm install --frozen-lockfile
+          npm i -g "firebase-tools@${FIREBASE_TOOLS_VERSION}"
+
+      - name: Configurar Hosting (targets) y parámetros de Functions
+        env:
+          PROYECTO: ${{ vars.GCP_PROJECT_ID_STAGING }}
+          SITIO_ID: ${{ vars.FIREBASE_SITE_SITIO }}
+          PANEL_ID: ${{ vars.FIREBASE_SITE_PANEL }}
+          PANEL_URL: ${{ vars.PANEL_URL }}
+          P_TENANT_ID: ${{ vars.TENANT_ID || 'casa-bermejo' }}
+          P_APP_CHECK_EXIGIDO: ${{ vars.APP_CHECK_EXIGIDO || 'false' }}
+          P_RECAPTCHA_CLAVE_SITIO: ${{ vars.RECAPTCHA_CLAVE_SITIO }}
+          P_SITIO_URL: ${{ vars.STAGING_URL }}
+          P_MEDIOS_BASE_URL: ${{ vars.MEDIOS_BASE_URL }}
+        run: bash .github/scripts/preparar-despliegue-firebase.sh
 
       - name: Conservar copia de la versión actual (canal "previa" para rollback)
         # D7: antes de CADA deploy a live (staging y producción) se clona el
-        # contenido en vivo a un canal "previa". El rollback es clonar de vuelta.
+        # contenido en vivo a un canal "previa", en los DOS sitios. El rollback
+        # es clonar de vuelta.
         continue-on-error: true
         env:
           PROYECTO: ${{ vars.GCP_PROJECT_ID_STAGING }}
-          SITIO: ${{ vars.GCP_PROJECT_ID_STAGING }}
+          SITIO_ID: ${{ vars.FIREBASE_SITE_SITIO }}
+          PANEL_ID: ${{ vars.FIREBASE_SITE_PANEL }}
         run: |
-          npm i -g "firebase-tools@${FIREBASE_TOOLS_VERSION}"
-          firebase hosting:channel:create previa --project "$PROYECTO" --expires 30d \
-            --non-interactive >/dev/null 2>&1 || true
-          firebase hosting:clone "$SITIO:live" "$SITIO:previa" --project "$PROYECTO" \
-            || echo "::warning::No se pudo guardar la copia para rollback (clone $SITIO:live → previa). Si el sitio '$SITIO' todavía no existe, créelo: firebase hosting:sites:create $SITIO --project $PROYECTO"
+          for sitio in "$SITIO_ID" "$PANEL_ID"; do
+            firebase hosting:channel:create previa --site "$sitio" --project "$PROYECTO" --expires 30d \
+              --non-interactive >/dev/null 2>&1 || true
+            firebase hosting:clone "$sitio:live" "$sitio:previa" --project "$PROYECTO" \
+              || echo "::warning::No se pudo guardar la copia para rollback (clone $sitio:live → previa). ¿Primer despliegue o sitio sin crear? (docs/produccion/pase-a-staging.md)"
+          done
 
-      - name: Desplegar hosting + reglas (staging)
+      - name: Desplegar hosting, functions, firestore y storage (staging)
         env:
           PROYECTO: ${{ vars.GCP_PROJECT_ID_STAGING }}
-          SITIO: ${{ vars.GCP_PROJECT_ID_STAGING }}
-          SOLO: ${{ vars.FIREBASE_DEPLOY_ONLY || 'hosting,firestore:rules' }}
+          SOLO: ${{ vars.FIREBASE_DEPLOY_ONLY || 'hosting,functions,firestore,storage' }}
           URL_STAGING: ${{ vars.STAGING_URL }}
         run: |
           set -euo pipefail
@@ -437,20 +491,14 @@ jobs:
           # los fallos de Functions como avisos y continúa, y la versión de
           # hosting se queda en CREATED sin pasar nunca a FINALIZED. En
           # novuchat-site (2026-09-03) este paso dio VERDE con las dos Functions
-          # sin desplegar y el sitio en 404, diciendo «Producción desplegada».
-          # Lo destapó el health check posterior. Un despliegue que miente es
-          # peor que uno que falla: el acta de producción se firma con lo que
-          # dice el pipeline.
+          # sin desplegar y el sitio en 404. Un despliegue que miente es peor
+          # que uno que falla.
           rc=0
           firebase deploy --only "$SOLO" --project "$PROYECTO" --non-interactive \
             --message "staging ${GITHUB_SHA::7} (run ${GITHUB_RUN_ID})" 2>&1 \
             | tee /tmp/despliegue.log || rc=$?
-          # Sitio de Hosting ausente: desde el 15/10/2026 un proyecto nuevo no
-          # trae creado el suyo (aviso de Firebase, 28/09/2026) y firebase
-          # deploy solo dice «404 Site Not Found». Sin esta traducción, el
-          # primer despliegue de un proyecto nuevo es un error opaco.
           if grep -qiE 'site not found|404.*site|no site (named|with id)' /tmp/despliegue.log; then
-            echo "::error::El proyecto $PROYECTO no tiene creado el sitio de Hosting '$SITIO'. Créelo una vez con: firebase hosting:sites:create $SITIO --project $PROYECTO (03-scripts/setup-oidc-gcp.sh lo verifica y lo crea al federar). Si el siteId no puede ser el del proyecto, declárelo en firebase.json (\"site\") y, en producción, en la variable FIREBASE_SITE_ID."
+            echo "::error::Falta crear en $PROYECTO alguno de los sitios de Hosting (FIREBASE_SITE_SITIO / FIREBASE_SITE_PANEL). Ver docs/produccion/pase-a-staging.md."
             exit 1
           fi
           [ "$rc" -eq 0 ] || exit "$rc"
@@ -458,8 +506,16 @@ jobs:
             echo "::error::firebase deploy terminó con código 0 pero su registro contiene fallos: el despliegue NO está completo."
             exit 1
           fi
-
           echo "### Staging desplegado: $URL_STAGING" >> "$GITHUB_STEP_SUMMARY"
+
+      - name: Humo post-despliegue (sitio /healthz por la función api, y panel)
+        # dast-y-humo cubre el sitio (STAGING_URL); el panel es otro origen y el
+        # reusable no admite dos objetivos, así que su humo va aquí.
+        env:
+          URL_SITIO: ${{ vars.STAGING_URL }}
+          URL_PANEL: ${{ vars.PANEL_URL }}
+          RUTA_SALUD: ${{ vars.HEALTH_PATH || '/healthz' }}
+        run: bash .github/scripts/humo-hosting.sh "$URL_SITIO" "$URL_PANEL" "$RUTA_SALUD"
 
   # ---------------------------------------------------------------------------
   # Fase 5 — dast-y-humo: contra staging recién desplegado.
@@ -512,12 +568,16 @@ jobs:
   desplegar-produccion:
     name: desplegar-produccion
     needs: [calidad, seguridad-estatica, construir, exigir-dast-staging]
+    outputs:
+      sitio: ${{ steps.sitios.outputs.sitio }}
+      panel: ${{ steps.sitios.outputs.panel }}
+      panel_url: ${{ steps.sitios.outputs.panel_url }}
     if: >-
       (github.event_name == 'push' && startsWith(github.ref, 'refs/tags/v')
         && !contains(github.ref_name, '-') && vars.MODO != 'B0')
       || (github.event_name == 'workflow_dispatch' && inputs.confirmar == 'DESPLEGAR')
     runs-on: ubuntu-latest
-    timeout-minutes: 15
+    timeout-minutes: 30
     environment:
       name: production
       url: ${{ vars.PROD_URL }}
@@ -586,84 +646,74 @@ jobs:
           workload_identity_provider: ${{ secrets.GCP_WIF_PROVIDER }}
           service_account: ${{ secrets.GCP_SA_DEPLOY_PROD }}
 
+      - name: Habilitar corepack (pnpm, declarado en packageManager)
+        run: corepack enable
+
       - name: Node.js
         uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7
         with:
           node-version: ${{ env.NODE_VERSION }}
+          cache: pnpm
 
-      - name: Preparar el gestor de paquetes para el hook `predeploy`
-        # `firebase deploy` ejecuta los hooks `predeploy` de firebase.json. En
-        # cuanto FIREBASE_DEPLOY_ONLY incluye `functions` —lo normal en un
-        # proyecto Firebase— ese hook compila las Functions con el gestor del
-        # proyecto, y estos jobs solo preparaban Node:
-        #
-        #   /bin/sh: 1: pnpm: not found
-        #   Error: functions predeploy error: exit code 127
-        #
-        # Lo grave es CUÁNDO falla: en producción, después de la compuerta de
-        # aprobación del Environment. Se aprueba el pase y solo entonces se
-        # descubre que el despliegue no puede ni empezar.
-        # Detectado en novuchat-site (2026-09-03).
+      - name: Dependencias para el hook `predeploy` y firebase-tools
+        # Ver desplegar-staging: sin esto el `predeploy` de Functions falla
+        # DESPUÉS de aprobado el Environment.
         run: |
           set -euo pipefail
-          corepack enable
-          # `corepack prepare --activate` aborta con "The local project doesn't
-          # feature a 'packageManager' field" cuando el proyecto no declara ese
-          # campo, y tumba el despliegue entero aunque no haya hook `predeploy`
-          # que preparar. Si no está declarado, alcanza con el gestor que trae
-          # Node. Detectado en PRETSO (2026-09-25).
-          if grep -q '"packageManager"' package.json 2>/dev/null; then
-            corepack prepare --activate
-          fi
-          # `functions/` suele traer su propio lockfile: no es del workspace.
-          if [[ -f functions/package.json ]]; then
-            if   [[ -f functions/pnpm-lock.yaml ]];    then pnpm --dir functions install --frozen-lockfile
-            elif [[ -f functions/yarn.lock ]];         then (cd functions && yarn install --frozen-lockfile)
-            elif [[ -f functions/package-lock.json ]]; then npm ci --prefix functions
-            fi
-          fi
+          pnpm install --frozen-lockfile
+          npm i -g "firebase-tools@${FIREBASE_TOOLS_VERSION}"
+
+      - name: Configurar Hosting (targets) y parámetros de Functions
+        id: sitios
+        env:
+          PROYECTO: ${{ vars.GCP_PROJECT_ID_PROD }}
+          SITIO_ID: ${{ vars.FIREBASE_SITE_SITIO }}
+          PANEL_ID: ${{ vars.FIREBASE_SITE_PANEL }}
+          PANEL_URL: ${{ vars.PANEL_URL }}
+          P_TENANT_ID: ${{ vars.TENANT_ID || 'casa-bermejo' }}
+          # En producción App Check se exige por defecto (docs/produccion/funciones.md §9).
+          P_APP_CHECK_EXIGIDO: ${{ vars.APP_CHECK_EXIGIDO || 'true' }}
+          P_RECAPTCHA_CLAVE_SITIO: ${{ vars.RECAPTCHA_CLAVE_SITIO }}
+          P_SITIO_URL: ${{ vars.PROD_URL }}
+          P_MEDIOS_BASE_URL: ${{ vars.MEDIOS_BASE_URL }}
+        run: |
+          bash .github/scripts/preparar-despliegue-firebase.sh
+          # post-despliegue no declara Environment: recibe los ids por salida.
+          { echo "sitio=$SITIO_ID"; echo "panel=$PANEL_ID"; echo "panel_url=$PANEL_URL"; } >> "$GITHUB_OUTPUT"
 
       - name: Conservar copia de la versión actual (canal "previa" para rollback)
-        # Clona el contenido en vivo a un canal de vista previa de larga
+        # Clona el contenido en vivo de los DOS sitios a un canal de larga
         # duración. Si el health check posterior falla, post-despliegue lo
         # vuelve a clonar sobre live. Ver 01-seguridad/06-rollback-e-incidentes.md.
         continue-on-error: true
         env:
           PROYECTO: ${{ vars.GCP_PROJECT_ID_PROD }}
-          SITIO: ${{ vars.FIREBASE_SITE_ID || vars.GCP_PROJECT_ID_PROD }}
+          SITIO_ID: ${{ vars.FIREBASE_SITE_SITIO }}
+          PANEL_ID: ${{ vars.FIREBASE_SITE_PANEL }}
         run: |
-          npm i -g "firebase-tools@${FIREBASE_TOOLS_VERSION}"
-          firebase hosting:channel:create previa --project "$PROYECTO" --expires 30d \
-            --non-interactive >/dev/null 2>&1 || true
-          firebase hosting:clone "$SITIO:live" "$SITIO:previa" --project "$PROYECTO" \
-            || echo "::warning::No se pudo guardar la copia para rollback (clone $SITIO:live → previa). Si el sitio '$SITIO' todavía no existe, créelo: firebase hosting:sites:create $SITIO --project $PROYECTO"
+          for sitio in "$SITIO_ID" "$PANEL_ID"; do
+            firebase hosting:channel:create previa --site "$sitio" --project "$PROYECTO" --expires 30d \
+              --non-interactive >/dev/null 2>&1 || true
+            firebase hosting:clone "$sitio:live" "$sitio:previa" --project "$PROYECTO" \
+              || echo "::warning::No se pudo guardar la copia para rollback (clone $sitio:live → previa)."
+          done
 
-      - name: Desplegar hosting + reglas (producción)
+      - name: Desplegar hosting, functions, firestore y storage (producción)
         env:
           PROYECTO: ${{ vars.GCP_PROJECT_ID_PROD }}
-          SITIO: ${{ vars.FIREBASE_SITE_ID || vars.GCP_PROJECT_ID_PROD }}
-          SOLO: ${{ vars.FIREBASE_DEPLOY_ONLY || 'hosting,firestore:rules' }}
+          SOLO: ${{ vars.FIREBASE_DEPLOY_ONLY || 'hosting,functions,firestore,storage' }}
           URL_PROD: ${{ vars.PROD_URL }}
         run: |
           set -euo pipefail
-          # `firebase deploy` PUEDE SALIR CON CÓDIGO 0 HABIENDO FALLADO: rotula
-          # los fallos de Functions como avisos y continúa, y la versión de
-          # hosting se queda en CREATED sin pasar nunca a FINALIZED. En
-          # novuchat-site (2026-09-03) este paso dio VERDE con las dos Functions
-          # sin desplegar y el sitio en 404, diciendo «Producción desplegada».
-          # Lo destapó el health check posterior. Un despliegue que miente es
-          # peor que uno que falla: el acta de producción se firma con lo que
-          # dice el pipeline.
+          # `firebase deploy` PUEDE SALIR CON CÓDIGO 0 HABIENDO FALLADO (ver
+          # desplegar-staging). El acta de producción se firma con lo que dice
+          # el pipeline: se revisa el registro además del código de salida.
           rc=0
           firebase deploy --only "$SOLO" --project "$PROYECTO" --non-interactive \
             --message "producción ${GITHUB_REF_NAME} (run ${GITHUB_RUN_ID})" 2>&1 \
             | tee /tmp/despliegue.log || rc=$?
-          # Sitio de Hosting ausente: desde el 15/10/2026 un proyecto nuevo no
-          # trae creado el suyo (aviso de Firebase, 28/09/2026) y firebase
-          # deploy solo dice «404 Site Not Found». Sin esta traducción, el
-          # primer despliegue de un proyecto nuevo es un error opaco.
           if grep -qiE 'site not found|404.*site|no site (named|with id)' /tmp/despliegue.log; then
-            echo "::error::El proyecto $PROYECTO no tiene creado el sitio de Hosting '$SITIO'. Créelo una vez con: firebase hosting:sites:create $SITIO --project $PROYECTO (03-scripts/setup-oidc-gcp.sh lo verifica y lo crea al federar). Si el siteId no puede ser el del proyecto, declárelo en firebase.json (\"site\") y, en producción, en la variable FIREBASE_SITE_ID."
+            echo "::error::Falta crear en $PROYECTO alguno de los sitios de Hosting (FIREBASE_SITE_SITIO / FIREBASE_SITE_PANEL)."
             exit 1
           fi
           [ "$rc" -eq 0 ] || exit "$rc"
@@ -689,25 +739,28 @@ jobs:
       id-token: write
       deployments: write
     steps:
-      - name: Health check de producción (10 intentos, 15 s)
+      - name: Checkout (script de humo)
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          ref: ${{ inputs.tag || github.ref }}
+
+      - name: Health check de producción (sitio /healthz por la función api, y panel)
+        # Sin la tolerancia de la plantilla (404 en /healthz aceptado si / da
+        # 200): aquí /healthz lo atiende la función api, y un 404 significa que
+        # Functions o el rewrite no quedaron desplegados.
         id: salud
         env:
           URL: ${{ vars.PROD_URL }}
+          URL_PANEL: ${{ needs.desplegar-produccion.outputs.panel_url }}
           RUTA_SALUD: ${{ vars.HEALTH_PATH || '/healthz' }}
         run: |
           set -uo pipefail
-          for i in $(seq 1 10); do
-            codigo=$(curl -sS -o /dev/null -w '%{http_code}' --max-time 15 -L "${URL%/}${RUTA_SALUD}" || echo 000)
-            # Una SPA estática puede no exponer /healthz: 404 en la ruta de salud
-            # se acepta si / responde 200.
-            if [[ "$codigo" == "404" ]]; then
-              codigo=$(curl -sS -o /dev/null -w '%{http_code}' --max-time 15 -L "${URL%/}/" || echo 000)
-            fi
-            [[ "$codigo" == "200" ]] && { echo "ok=true" >> "$GITHUB_OUTPUT"; echo "OK ($i)"; exit 0; }
-            echo "Intento $i: $codigo"; sleep 15
-          done
-          echo "ok=false" >> "$GITHUB_OUTPUT"
-          echo "::error::Producción no responde 200 tras 10 intentos"
+          if bash .github/scripts/humo-hosting.sh "$URL" "$URL_PANEL" "$RUTA_SALUD"; then
+            echo "ok=true" >> "$GITHUB_OUTPUT"
+          else
+            echo "ok=false" >> "$GITHUB_OUTPUT"
+            echo "::error::Producción no superó el humo tras 10 intentos"
+          fi
 
       - name: Autenticar en GCP para rollback
         if: steps.salud.outputs.ok == 'false'
@@ -716,11 +769,12 @@ jobs:
           workload_identity_provider: ${{ secrets.GCP_WIF_PROVIDER }}
           service_account: ${{ secrets.GCP_SA_DEPLOY_PROD }}
 
-      - name: Rollback de hosting (clonar canal "previa" sobre live)
+      - name: Rollback de hosting (clonar canal "previa" sobre live, en los dos sitios)
         if: steps.salud.outputs.ok == 'false'
         env:
           PROYECTO: ${{ vars.GCP_PROJECT_ID_PROD }}
-          SITIO: ${{ vars.FIREBASE_SITE_ID || vars.GCP_PROJECT_ID_PROD }}
+          SITIO_ID: ${{ needs.desplegar-produccion.outputs.sitio }}
+          PANEL_ID: ${{ needs.desplegar-produccion.outputs.panel }}
         run: |
           set -euo pipefail
           npm i -g "firebase-tools@${FIREBASE_TOOLS_VERSION}"
@@ -729,11 +783,15 @@ jobs:
           # existe, el rollback es MANUAL: consola Firebase → Hosting →
           # Historial de versiones → "Revertir" (ver 06-rollback-e-incidentes.md).
           # Las reglas de Firestore se revierten con `git revert` + nuevo tag.
-          if firebase hosting:clone "$SITIO:previa" "$SITIO:live" --project "$PROYECTO"; then
-            echo "::warning::ROLLBACK ejecutado: live restaurado desde el canal 'previa'."
-          else
-            echo "::error::Rollback automático no disponible. Ejecute el rollback manual: consola Firebase → Hosting → Historial → Revertir. Ver 01-seguridad/06-rollback-e-incidentes.md"
-          fi
+          # Las Functions NO se revierten con el canal: su rollback es `git revert`
+          # + nuevo tag (o redesplegar el tag anterior), como las reglas.
+          for SITIO in "$SITIO_ID" "$PANEL_ID"; do
+            if firebase hosting:clone "$SITIO:previa" "$SITIO:live" --project "$PROYECTO"; then
+              echo "::warning::ROLLBACK ejecutado en $SITIO: live restaurado desde el canal 'previa'."
+            else
+              echo "::error::Rollback automático no disponible en $SITIO. Ejecute el rollback manual: consola Firebase → Hosting → Historial → Revertir. Ver 01-seguridad/06-rollback-e-incidentes.md"
+            fi
+          done
 
       - name: Registrar resultado del despliegue
         if: always()
