@@ -5,6 +5,9 @@
       "path": "paquetes/nucleo"
     },
     {
+      "path": "paquetes/consola"
+    },
+    {
       "path": "paquetes/website"
     },
     {

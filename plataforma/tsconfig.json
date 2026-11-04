@@ -23,6 +23,9 @@
     },
     {
       "path": "../paquetes/website"
+    },
+    {
+      "path": "../paquetes/consola"
     }
   ]
 }
