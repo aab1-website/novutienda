@@ -3,8 +3,8 @@ import { useEffect, useMemo, useState } from 'preact/hooks';
 import type { ClienteApi } from '../api/cliente.js';
 import type { AlmacenSubidas } from '../subidas/almacen.js';
 import type { Sesion, UsuarioSesion } from '../sesion/sesion.js';
-import { menuPara, parsearRuta, puedeVer } from '../util/menu.js';
-import { Vacio } from './comun.js';
+import { ITEMS_MENU, menuPara, parsearRuta, puedeVer } from '../util/menu.js';
+import { Cargando, Vacio } from './comun.js';
 import { CtxApp } from './contexto.js';
 import { Login } from './login.js';
 import { PantallaAprobaciones } from '../pantallas/aprobaciones.js';
@@ -64,7 +64,7 @@ function Pantalla({ seccion, sub }: { seccion: string; sub: string }): JSX.Eleme
     case 'catalogo': return <PantallaCatalogo sub={sub} />;
     case 'usuarios': return <PantallaUsuarios />;
     case 'configuracion': return <PantallaConfiguracion sub={sub} />;
-    default: return <Vacio titulo="Esta página no existe" detalle="Elija una opción del menú." />;
+    default: return <Cargando />;
   }
 }
 
@@ -86,7 +86,8 @@ export function App({ sesion, api, almacen }: { sesion: Sesion; api: ClienteApi;
   if (usuario === null || contexto === null) return <Login sesion={sesion} nombre={NOMBRE_APP} />;
 
   const menu = menuPara(usuario.rol);
-  const permitida = puedeVer(usuario.rol, ruta.seccion);
+  const existe = ruta.seccion === '' || ITEMS_MENU.some((i) => i.id === ruta.seccion);
+  const permitida = ruta.seccion === '' || puedeVer(usuario.rol, ruta.seccion);
   const textoTema = tema === 'auto' ? 'Tema: automático' : tema === 'claro' ? 'Tema: claro' : 'Tema: oscuro';
 
   return (
@@ -118,7 +119,9 @@ export function App({ sesion, api, almacen }: { sesion: Sesion; api: ClienteApi;
         </div>
       </header>
       <main id="contenido" tabIndex={-1} class="contenedor principal">
-        {permitida || ruta.seccion === '' ? (
+        {!existe ? (
+          <Vacio titulo="Esta página no existe" detalle="Elija una opción del menú." />
+        ) : permitida ? (
           <Pantalla seccion={ruta.seccion} sub={ruta.sub} />
         ) : (
           <Vacio titulo="No tiene acceso a esta página" detalle="Elija una opción de su menú." />

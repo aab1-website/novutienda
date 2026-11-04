@@ -21,13 +21,19 @@ function SelectorFoto({ valor, alElegir, etiqueta }: { valor: string; alElegir: 
   );
 }
 
+/** Área de texto con su propio valor: no se recorta mientras se escribe (los espacios finales son parte de la escritura). */
+function AreaLibre({ etiqueta, inicial, filas, alCambiar }: { etiqueta: string; inicial: string; filas: number; alCambiar: (v: string) => void }): JSX.Element {
+  const [v, setV] = useState(inicial);
+  return <Area etiqueta={etiqueta} valor={v} filas={filas} onInput={(x) => { setV(x); alCambiar(x); }} />;
+}
+
 function EditorBloque({ b, set, quitar }: { b: Bloque; set: (b: Bloque) => void; quitar: () => void }): JSX.Element {
   let cuerpo: JSX.Element;
   if (b.tipo === 'texto') {
     cuerpo = (
       <>
         <Campo etiqueta="Título del bloque" valor={b.titulo} onInput={(v) => set({ ...b, titulo: v })} />
-        <Area etiqueta="Párrafos (separe con una línea en blanco)" valor={b.parrafos.join('\n\n')} onInput={(v) => set({ ...b, parrafos: v.split(/\n\s*\n/).map((x) => x.trim()).filter((x) => x !== '') })} filas={4} />
+        <AreaLibre etiqueta="Párrafos (separe con una línea en blanco)" inicial={b.parrafos.join('\n\n')} filas={4} alCambiar={(v) => set({ ...b, parrafos: v.split(/\n\s*\n/).map((x) => x.trim()).filter((x) => x !== '') })} />
       </>
     );
   } else if (b.tipo === 'imagen') {
@@ -52,10 +58,10 @@ function EditorBloque({ b, set, quitar }: { b: Bloque; set: (b: Bloque) => void;
     );
   } else {
     cuerpo = (
-      <Area
+      <AreaLibre
         etiqueta="Enlaces (uno por línea: texto | dirección). Solo https o rutas del sitio."
-        valor={b.items.map((i) => `${i.texto} | ${i.url}`).join('\n')}
-        onInput={(v) => set({ ...b, items: v.split('\n').map((l) => l.split('|')).filter((p) => p.length >= 2).map((p) => ({ texto: (p[0] ?? '').trim(), url: p.slice(1).join('|').trim() })) })}
+        inicial={b.items.map((i) => `${i.texto} | ${i.url}`).join('\n')}
+        alCambiar={(v) => set({ ...b, items: v.split('\n').map((l) => l.split('|')).filter((p) => p.length >= 2).map((p) => ({ texto: (p[0] ?? '').trim(), url: p.slice(1).join('|').trim() })) })}
         filas={3}
       />
     );

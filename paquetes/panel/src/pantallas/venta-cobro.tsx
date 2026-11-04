@@ -1,7 +1,7 @@
 import type { JSX } from 'preact';
 import { useRef, useState } from 'preact/hooks';
 import { nuevoId } from '../api/cliente.js';
-import type { AprobacionPos, Carrito, ConfigPos, Mercado, MedioPago, Moneda, PagoEntrada } from '../api/tipos.js';
+import type { AprobacionPos, Carrito, ConfigPos, Mercado, MedioPago, Moneda } from '../api/tipos.js';
 import { Alerta, Boton, Campo, Cargando, Selector, Seccion } from '../ui/comun.js';
 import { useApp } from '../ui/contexto.js';
 import { useAccion, useCarga } from '../ui/hooks.js';

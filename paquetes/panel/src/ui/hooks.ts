@@ -16,9 +16,14 @@ export function useCarga<T>(fn: () => Promise<T>, deps: readonly unknown[], cada
   const [version, setVersion] = useState(0);
   const fnRef = useRef(fn);
   fnRef.current = fn;
+  const depsPrevias = useRef<readonly unknown[] | null>(null);
 
   useEffect(() => {
     let vivo = true;
+    // Un `recargar()` con las mismas dependencias conserva lo que ya se ve (sin parpadeo); si cambian, se muestra la carga.
+    const previas = depsPrevias.current;
+    const mismas = previas !== null && previas.length === deps.length && previas.every((d, i) => Object.is(d, deps[i]));
+    depsPrevias.current = deps;
     const cargar = (inicial: boolean): void => {
       if (inicial) setCargando(true);
       fnRef.current().then(
@@ -35,7 +40,7 @@ export function useCarga<T>(fn: () => Promise<T>, deps: readonly unknown[], cada
         },
       );
     };
-    cargar(true);
+    cargar(!mismas);
     const t = cadaMs === undefined ? undefined : setInterval(() => cargar(false), cadaMs);
     return () => {
       vivo = false;
