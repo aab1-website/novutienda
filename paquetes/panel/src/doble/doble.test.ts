@@ -498,16 +498,16 @@ describe('doble: catálogo y sitio', () => {
   });
   it('apariencia: plantilla de lista cerrada, WhatsApp válido, medición válida y carrusel con fotos', async () => {
     const e = crearEntorno('adm');
-    const cfg = { plantillaActiva: 'oceano' as const, whatsappNovuchat: '59170000000', medicion: { ga4: 'G-ABC12345' } };
+    const cfg = { plantillaActiva: 'ambar' as const, whatsappNovuchat: '59170000000', medicion: { ga4: 'G-ABC12345' } };
     await e.api.llamar('guardarConfigSitio', { config: cfg });
-    expect((await e.api.llamar('leerConfigSitio', {}))?.plantillaActiva).toBe('oceano');
+    expect((await e.api.llamar('leerConfigSitio', {}))?.plantillaActiva).toBe('ambar');
     expect((await falla(e.api.llamar('guardarConfigSitio', { config: { ...cfg, plantillaActiva: 'rosa' as never } }))).detalle.codigo).toBe('entrada-invalida');
     expect((await falla(e.api.llamar('guardarConfigSitio', { config: { ...cfg, whatsappNovuchat: '123' } }))).detalle.codigo).toBe('entrada-invalida');
     expect((await falla(e.api.llamar('guardarConfigSitio', { config: { ...cfg, medicion: { ga4: 'xx' } } }))).detalle.codigo).toBe('entrada-invalida');
-    expect((await falla(e.api.llamar('guardarCarrusel', { carrusel: { plantilla: 'oceano', items: [{ medioId: 'no-existe', alt: 'x' }] } }))).detalle.codigo).toBe('no-encontrado');
+    expect((await falla(e.api.llamar('guardarCarrusel', { carrusel: { plantilla: 'ambar', items: [{ medioId: 'no-existe', alt: 'x' }] } }))).detalle.codigo).toBe('no-encontrado');
     const r = await e.api.llamar('reservarSubida', { subidaId: uuid(), productoId: 'tv-55', tipo: 'foto', bytes: 5 });
     const m = await e.api.llamar('finalizarSubida', { subidaId: r.subidaId });
-    await e.api.llamar('guardarCarrusel', { carrusel: { plantilla: 'oceano', items: [{ medioId: m.id, alt: 'Portada' }] } });
+    await e.api.llamar('guardarCarrusel', { carrusel: { plantilla: 'ambar', items: [{ medioId: m.id, alt: 'Portada' }] } });
     expect(await e.api.llamar('listarCarruseles', {})).toHaveLength(1);
     expect(await e.api.llamar('listarMedios', { productoId: 'tv-55' })).toHaveLength(1);
   });

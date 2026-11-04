@@ -1,10 +1,7 @@
 // Paleta de la VISTA PREVIA APROXIMADA de las 5 plantillas del sitio. Los valores se copiaron de
 // paquetes/website/src/plantillas/plantillas.ts (solo lectura; las fronteras prohíben importarlo): `fondo`, `superficie`,
 // `texto`, `acento` y `cta` de cada tema. La plantilla 1 del sitio aprobado («cielo») es la identidad visual del panel.
-//
-// PENDIENTE DE RECONCILIAR: la consola valida los identificadores marfil, oceano, bosque, terracota y grafito
-// (paquetes/consola/src/plantillas.ts) y el sitio usa cielo, bosque, ambar, grafito y ciruela. Mientras no se unifiquen,
-// el panel envía a la consola sus identificadores y dibuja la paleta del sitio que ocupa la MISMA POSICIÓN en la lista.
+// Los identificadores son los mismos en el sitio, la consola y el panel (unificados el 04/11/2026).
 import type { PlantillaSitio } from '../api/tipos.js';
 
 export interface PaletaVista {
@@ -14,9 +11,9 @@ export interface PaletaVista {
 }
 
 export const PALETAS: Readonly<Record<PlantillaSitio, PaletaVista>> = {
-  marfil: { nombre: 'Marfil', origenSitio: 'cielo' },
-  oceano: { nombre: 'Océano', origenSitio: 'bosque' },
-  bosque: { nombre: 'Bosque', origenSitio: 'ambar' },
-  terracota: { nombre: 'Terracota', origenSitio: 'grafito' },
-  grafito: { nombre: 'Grafito', origenSitio: 'ciruela' },
+  cielo: { nombre: 'Cielo', origenSitio: 'cielo' },
+  bosque: { nombre: 'Bosque', origenSitio: 'bosque' },
+  ambar: { nombre: 'Ámbar', origenSitio: 'ambar' },
+  grafito: { nombre: 'Grafito', origenSitio: 'grafito' },
+  ciruela: { nombre: 'Ciruela', origenSitio: 'ciruela' },
 };

@@ -122,10 +122,10 @@ describe('secciones', () => {
 describe('plantillas, configuración y carruseles', () => {
   it('hay exactamente 5 plantillas (lista cerrada)', () => {
     expect(PLANTILLAS).toHaveLength(5);
-    expect(esPlantilla('marfil')).toBe(true);
+    expect(esPlantilla('cielo')).toBe(true);
     expect(esPlantilla('rosa-chicle')).toBe(false);
   });
-  const cfg = { plantillaActiva: 'oceano', whatsappNovuchat: '59100000000', medicion: { ga4: 'G-ABC12345', metaPixel: '123456789012' } };
+  const cfg = { plantillaActiva: 'ambar', whatsappNovuchat: '59100000000', medicion: { ga4: 'G-ABC12345', metaPixel: '123456789012' } };
   it('valida la configuración', () => {
     expect(validarConfigSitio(cfg).ok).toBe(true);
     expect(validarConfigSitio({ ...cfg, plantillaActiva: 'otra' }).ok).toBe(false);

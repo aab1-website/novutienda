@@ -115,7 +115,7 @@ export function crearEstado(ahora: number): EstadoDoble {
     },
     plantilla: { negocio: { nombre: 'Negocio de ejemplo', direccion: 'Calle Ejemplo 123', telefono: '70000000' }, pie: 'Comprobante no fiscal.', politicaGarantia: 'Garantía según ficha del producto.', politicaCambios: 'Cambios dentro de 7 días con el comprobante.' },
     auditoria: [], fichas: new Map(), medios: new Map(), subidas: new Map(), secciones: [], carruseles: new Map(),
-    configSitio: { plantillaActiva: 'marfil', whatsappNovuchat: '59170000000', medicion: {} },
+    configSitio: { plantillaActiva: 'cielo', whatsappNovuchat: '59170000000', medicion: {} },
     cambiosSinPublicar: 0, ultimoCambioEn: iso(ahora), publicadoEn: null, versionPublicada: 0,
     usuarios: [
       { uid: 'u-adm', correo: 'adm@ejemplo.test', rol: 'adm', verificado: true },

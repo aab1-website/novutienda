@@ -407,13 +407,13 @@ describe('catálogo y sitio', () => {
     const grupo = await screen.findByRole('group', { name: 'Plantilla activa' });
     expect(within(grupo).getAllByRole('radio')).toHaveLength(5);
     expect(within(grupo).getAllByRole('img').length).toBe(10);
-    await u.click(within(grupo).getByRole('radio', { name: /Terracota/ }));
+    await u.click(within(grupo).getByRole('radio', { name: /Ciruela/ }));
     await u.clear(screen.getByLabelText(/WhatsApp del asistente/));
     await u.type(screen.getByLabelText(/WhatsApp del asistente/), '59171112222');
     await u.click(screen.getByRole('button', { name: 'Guardar apariencia' }));
     expect(await screen.findByText(/Apariencia guardada/)).toBeTruthy();
     const c = await e.api.llamar('leerConfigSitio', {});
-    expect(c?.plantillaActiva).toBe('terracota');
+    expect(c?.plantillaActiva).toBe('ciruela');
     expect(c?.whatsappNovuchat).toBe('59171112222');
   });
   it('importación: simula, bloquea con errores y permite omitirlos', async () => {

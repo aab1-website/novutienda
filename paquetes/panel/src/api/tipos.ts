@@ -416,7 +416,7 @@ export interface ResultadoEnvio {
 // Consola de catálogo y sitio (docs/modulos/website.md; paquetes/consola)
 // ---------------------------------------------------------------------------------------------------------------------
 
-export const PLANTILLAS_SITIO = ['marfil', 'oceano', 'bosque', 'terracota', 'grafito'] as const;
+export const PLANTILLAS_SITIO = ['cielo', 'bosque', 'ambar', 'grafito', 'ciruela'] as const;
 export type PlantillaSitio = (typeof PLANTILLAS_SITIO)[number];
 
 export const LIMITES_PANEL = {

@@ -86,7 +86,7 @@ function Apariencia(): JSX.Element {
   const [items, setItems] = useState<Carrusel['items'] | null>(null);
   if (datos.cargando) return <Cargando />;
   if (datos.error || !datos.datos) return <ErrorCarga error={datos.error ?? 'Sin datos'} reintentar={datos.recargar} />;
-  const c: ConfigSitio = cfg ?? datos.datos.config ?? { plantillaActiva: 'marfil', whatsappNovuchat: '', medicion: {} };
+  const c: ConfigSitio = cfg ?? datos.datos.config ?? { plantillaActiva: 'cielo', whatsappNovuchat: '', medicion: {} };
   const med = c.medicion;
   const setMed = (k: keyof ConfigSitio['medicion'], v: string): void => {
     const { [k]: _quitado, ...resto } = med;

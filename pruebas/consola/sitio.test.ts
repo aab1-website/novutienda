@@ -168,7 +168,7 @@ describe('servicios de la consola', () => {
 
   describe('publicar', () => {
     const dp = () => ({ db, catalogo, reloj, disparador });
-    const configurar = (): Promise<void> => guardarConfigSitio(ds(), { tenantId: T, actor: adm, config: { plantillaActiva: 'oceano', whatsappNovuchat: '59100000000', medicion: {} } });
+    const configurar = (): Promise<void> => guardarConfigSitio(ds(), { tenantId: T, actor: adm, config: { plantillaActiva: 'ambar', whatsappNovuchat: '59100000000', medicion: {} } });
 
     it('exige configuración del sitio y rol adm', async () => {
       await expect(publicarSitio(dp(), { tenantId: T, actor: adm })).rejects.toMatchObject({ codigo: 'estado' });
@@ -197,7 +197,7 @@ describe('servicios de la consola', () => {
       expect(texto).not.toContain('u-adm');
       expect(db.dato(`tenants/${T}/sitio/estado`)).toMatchObject({ cambios: 0 });
       expect(db.dato(`tenants/${T}/publicado/estado`)).toMatchObject({ version: 1, productos: ['cam-1'] });
-      expect(db.dato(`tenants/${T}/publicado/sitio`)).toMatchObject({ plantillaActiva: 'oceano', version: 1 });
+      expect(db.dato(`tenants/${T}/publicado/sitio`)).toMatchObject({ plantillaActiva: 'ambar', version: 1 });
       expect(db.coleccion(`tenants/${T}/auditoria`).some((a) => a['accion'] === 'sitio.publicar')).toBe(true);
     });
 
@@ -230,21 +230,21 @@ describe('servicios de la consola', () => {
       await configurar();
       await guardarSeccion(ds(), { tenantId: T, actor: adm, seccion: { id: 'nosotros', titulo: 'Nosotros', visible: true, bloques: [{ tipo: 'imagen', medioId: m, alt: 'Local' }, { tipo: 'enlaces', items: [{ texto: 'WhatsApp', url: 'https://wa.me/59100000000' }] }] } });
       await guardarSeccion(ds(), { tenantId: T, actor: adm, seccion: { id: 'oculta', titulo: 'Oculta', visible: false, bloques: [] } });
-      await guardarCarrusel(ds(), { tenantId: T, actor: adm, carrusel: { plantilla: 'oceano', items: [{ medioId: m, alt: 'Portada', enlace: '/catalogo' }] } });
+      await guardarCarrusel(ds(), { tenantId: T, actor: adm, carrusel: { plantilla: 'ambar', items: [{ medioId: m, alt: 'Portada', enlace: '/catalogo' }] } });
       const r = await publicarSitio(dp(), { tenantId: T, actor: adm });
       expect(r.advertencias).toEqual([]);
       const s = db.dato(`tenants/${T}/publicado/seccion__nosotros`) as { bloques: { tipo: string; medio?: { alt: string; versiones: unknown[] } }[] };
       expect(s.bloques[0]?.medio?.alt).toBe('Local');
       expect(s.bloques[0]?.medio?.versiones).toHaveLength(8);
       expect(db.dato(`tenants/${T}/publicado/seccion__oculta`)).toBeUndefined();
-      expect(db.dato(`tenants/${T}/publicado/carrusel__oceano`)).toMatchObject({ items: [{ alt: 'Portada', enlace: '/catalogo' }] });
+      expect(db.dato(`tenants/${T}/publicado/carrusel__ambar`)).toMatchObject({ items: [{ alt: 'Portada', enlace: '/catalogo' }] });
     });
 
     it('construirPublicado omite medios inexistentes con una advertencia', () => {
       const p = construirPublicado({
         productos: [{ id: 'a-1', nombre: 'A', categoria: 'c', activo: true, disponible: true, precioUSD: { bo: 0, ar: 0 } }],
         fichas: new Map([['a-1', { productoId: 'a-1', ...ficha('a-uno', [{ medioId: 'perdido-1', alt: 'x' }]) } as never]]),
-        medios: new Map(), config: { plantillaActiva: 'marfil', whatsappNovuchat: '59100000000', medicion: {} }, secciones: [], carruseles: [],
+        medios: new Map(), config: { plantillaActiva: 'cielo', whatsappNovuchat: '59100000000', medicion: {} }, secciones: [], carruseles: [],
       });
       expect(p.productos[0]?.medios).toEqual([]);
       expect(p.advertencias[0]).toContain('perdido-1');
@@ -338,7 +338,7 @@ describe('servicios de la consola', () => {
     });
 
     async function configurar(): Promise<void> {
-      await guardarConfigSitio(ds(), { tenantId: T, actor: adm, config: { plantillaActiva: 'oceano', whatsappNovuchat: '59100000000', medicion: {} } });
+      await guardarConfigSitio(ds(), { tenantId: T, actor: adm, config: { plantillaActiva: 'ambar', whatsappNovuchat: '59100000000', medicion: {} } });
     }
   });
 });
