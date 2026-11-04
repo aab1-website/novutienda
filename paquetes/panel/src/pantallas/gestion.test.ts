@@ -3,6 +3,7 @@ import { h } from 'preact';
 import { cleanup, fireEvent, render, screen, waitFor, within } from '@testing-library/preact';
 import { userEvent } from '@testing-library/user-event';
 import { afterEach, describe, expect, it, vi } from 'vitest';
+import { ErrorApi } from '../api/errores.js';
 import { crearEntorno, uuid, type Entorno, type Nodo } from '../ayuda-pruebas.js';
 import { PantallaCatalogo } from './catalogo.js';
 import { PantallaConfiguracion } from './configuracion.js';
@@ -275,6 +276,66 @@ describe('usuarios y configuración', () => {
     expect(await screen.findByText('Acceso retirado.')).toBeTruthy();
     expect(await screen.findByText('Personas con acceso (2 de 3)')).toBeTruthy();
     expect(screen.queryByRole('button', { name: 'Quitar acceso de adm' })).toBeNull();
+  });
+  it('alta: con el plan lleno avisa el tope y no ofrece buscar; al quitar a alguien se habilita', async () => {
+    const e = crearEntorno('adm');
+    ver(e, h(PantallaUsuarios, {}));
+    const u = userEvent.setup();
+    expect(await screen.findByText(/ya están todos ocupados/)).toBeTruthy();
+    expect(screen.queryByRole('button', { name: 'Buscar cuenta' })).toBeNull();
+    await u.click(screen.getAllByRole('button', { name: 'Quitar acceso' })[0] as HTMLElement);
+    await u.click(screen.getByRole('button', { name: 'Sí, quitar' }));
+    expect(await screen.findByRole('button', { name: 'Buscar cuenta' })).toBeTruthy();
+  });
+  it('alta: cuenta existente con correo verificado → asigna el rol elegido', async () => {
+    const e = crearEntorno('adm');
+    await e.api.llamar('quitarRol', { uid: 'u-sup' });
+    ver(e, h(PantallaUsuarios, {}));
+    const u = userEvent.setup();
+    await u.type(await screen.findByLabelText(/Correo de la persona/), ' Nueva@Ejemplo.test ');
+    await u.selectOptions(screen.getByLabelText('Rol que tendrá'), 'sup');
+    await u.click(screen.getByRole('button', { name: 'Buscar cuenta' }));
+    expect(await screen.findByText(/Cuenta encontrada y con el correo verificado/)).toBeTruthy();
+    await u.click(screen.getByRole('button', { name: 'Asignar rol de supervisor' }));
+    expect(await screen.findByText(/nueva@ejemplo.test ahora es supervisor/)).toBeTruthy();
+    expect(await screen.findByText('Personas con acceso (3 de 3)')).toBeTruthy();
+    expect((await e.api.llamar('listarUsuarios', {})).find((x) => x.uid === 'u-nueva')?.rol).toBe('sup');
+  });
+  it('alta: cuenta sin verificar pide verificar el correo y no ofrece asignar', async () => {
+    const e = crearEntorno('adm');
+    await e.api.llamar('quitarRol', { uid: 'u-sup' });
+    ver(e, h(PantallaUsuarios, {}));
+    const u = userEvent.setup();
+    await u.type(await screen.findByLabelText(/Correo de la persona/), 'pendiente@ejemplo.test');
+    await u.click(screen.getByRole('button', { name: 'Buscar cuenta' }));
+    expect(await screen.findByText(/todavía no está verificado/)).toBeTruthy();
+    expect(screen.queryByRole('button', { name: /Asignar rol/ })).toBeNull();
+  });
+  it('alta: cuenta inexistente muestra las instrucciones para crearla; el panel no crea cuentas', async () => {
+    const e = crearEntorno('adm');
+    await e.api.llamar('quitarRol', { uid: 'u-sup' });
+    ver(e, h(PantallaUsuarios, {}));
+    const u = userEvent.setup();
+    await u.type(await screen.findByLabelText(/Correo de la persona/), 'nadie@ejemplo.test');
+    await u.click(screen.getByRole('button', { name: 'Buscar cuenta' }));
+    const pasos = await screen.findByRole('region', { name: 'Cómo crear la cuenta' });
+    expect(within(pasos).getAllByRole('listitem')).toHaveLength(4);
+    expect(pasos.textContent).toContain('Add user');
+    expect(pasos.textContent).toContain('nadie@ejemplo.test');
+    expect(pasos.textContent).toContain('Reenviar enlace');
+    expect(screen.queryByRole('button', { name: /Asignar rol/ })).toBeNull();
+    expect(e.api.llamadas.map((l) => l.nombre)).not.toContain('asignarRol');
+  });
+  it('quitar acceso: el error de último administrador se muestra con su mensaje', async () => {
+    const e = crearEntorno('adm');
+    const llamar = e.api.llamar.bind(e.api) as (n: string, x: unknown) => Promise<unknown>;
+    vi.spyOn(e.api, 'llamar').mockImplementation(((n: string, x: unknown) =>
+      n === 'quitarRol' ? Promise.reject(new ErrorApi('failed-precondition', 'x', { codigo: 'ultimo-adm' })) : llamar(n, x)) as never);
+    ver(e, h(PantallaUsuarios, {}));
+    const u = userEvent.setup();
+    await u.click((await screen.findAllByRole('button', { name: 'Quitar acceso' }))[0] as HTMLElement);
+    await u.click(screen.getByRole('button', { name: 'Sí, quitar' }));
+    expect((await screen.findByRole('alert')).textContent).toContain('No se puede quitar al último administrador.');
   });
   it('configuración del POS: tope de descuento, medios y serie; valida antes de enviar', async () => {
     const e = crearEntorno('adm');
