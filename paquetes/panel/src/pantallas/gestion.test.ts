@@ -1,9 +1,9 @@
 // @vitest-environment jsdom
-import { h, type VNode } from 'preact';
+import { h } from 'preact';
 import { cleanup, fireEvent, render, screen, waitFor, within } from '@testing-library/preact';
-import userEvent from '@testing-library/user-event';
+import { userEvent } from '@testing-library/user-event';
 import { afterEach, describe, expect, it, vi } from 'vitest';
-import { crearEntorno, uuid, type Entorno } from '../ayuda-pruebas.js';
+import { crearEntorno, uuid, type Entorno, type Nodo } from '../ayuda-pruebas.js';
 import { PantallaCatalogo } from './catalogo.js';
 import { PantallaConfiguracion } from './configuracion.js';
 import { PantallaInventario } from './inventario.js';
@@ -16,7 +16,7 @@ afterEach(() => {
   vi.restoreAllMocks();
 });
 
-const ver = (e: Entorno, nodo: VNode): void => void render(e.envolver(nodo));
+const ver = (e: Entorno, nodo: Nodo): void => void render(e.envolver(nodo));
 const campo = (re: RegExp | string): HTMLElement => screen.getByLabelText(re);
 
 describe('inventario', () => {

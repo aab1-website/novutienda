@@ -1,5 +1,5 @@
 // Utilidades compartidas de las pruebas del panel (no forma parte de la aplicación).
-import { h, type VNode } from 'preact';
+import { h, type JSX } from 'preact';
 import { ClienteDoble } from './doble/doble.js';
 import type { Rol } from './api/tipos.js';
 import { AlmacenSubidasDoble } from './subidas/almacen.js';
@@ -8,6 +8,8 @@ import type { UsuarioSesion } from './sesion/sesion.js';
 
 export const AHORA = Date.UTC(2026, 10, 4, 15, 0, 0);
 
+export type Nodo = JSX.Element;
+
 export interface Entorno {
   readonly api: ClienteDoble;
   readonly almacen: AlmacenSubidasDoble;
@@ -15,7 +17,7 @@ export interface Entorno {
   /** Cambia quién llama (el doble aplica los permisos de ese rol). */
   como(rol: Rol): UsuarioSesion;
   /** Envuelve un nodo con el contexto de la aplicación. */
-  envolver(nodo: VNode): VNode;
+  envolver(nodo: Nodo): Nodo;
 }
 
 export function usuarioDe(rol: Rol): UsuarioSesion {

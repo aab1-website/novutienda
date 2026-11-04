@@ -1,7 +1,7 @@
 // @vitest-environment jsdom
 import { h } from 'preact';
 import { cleanup, render, screen, waitFor, within } from '@testing-library/preact';
-import userEvent from '@testing-library/user-event';
+import { userEvent } from '@testing-library/user-event';
 import { afterEach, beforeEach, describe, expect, it } from 'vitest';
 import { crearEntorno } from '../ayuda-pruebas.js';
 import { SesionDoble } from '../sesion/doble.js';
