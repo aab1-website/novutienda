@@ -28,7 +28,7 @@ export async function crearServicios(): Promise<Servicios> {
   const emuladores = emulador ? await import('./emuladores.js') : undefined;
   const sesion = new SesionFirebase(configuracionFirebase(), emuladores?.URL_AUTH_EMULADOR);
   emuladores?.conectarFuncionesYAlmacen();
-  const api = new ClienteRemoto(new TransporteFirebase(), () => ({ tenantId: sesion.actual()?.tenantId ?? '', rol: sesion.actual()?.rol }), { permitirPropuestas: false });
+  const api = new ClienteRemoto(new TransporteFirebase(), () => ({ tenantId: sesion.actual()?.tenantId ?? '', rol: sesion.actual()?.rol }));
   const { AlmacenSubidasFirebase } = await import('./subidas/firebase.js');
   return { sesion, api, almacen: new AlmacenSubidasFirebase() };
 }

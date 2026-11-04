@@ -39,7 +39,7 @@ export class ClienteDoble implements ClienteApi {
       return { e: this.estado, uid, rol, ahora: this.ahora(), tenantId };
     };
     this.transporte = new TransporteDoble({ contexto, ...(o.retrasoMs !== undefined ? { retrasoMs: o.retrasoMs } : {}) });
-    this.remoto = new ClienteRemoto(this.transporte, () => ({ tenantId, rol: this.o.usuario().rol }), { permitirPropuestas: true });
+    this.remoto = new ClienteRemoto(this.transporte, () => ({ tenantId, rol: this.o.usuario().rol }));
   }
 
   async llamar<N extends NombreCallable>(nombre: N, entrada: Entrada<N>): Promise<Salida<N>> {

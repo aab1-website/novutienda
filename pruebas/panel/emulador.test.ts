@@ -27,7 +27,7 @@ function transporteDe(u: Usuario): Transporte {
     },
   };
 }
-const clienteDe = (u: Usuario, rol: Rol): ClienteRemoto => new ClienteRemoto(transporteDe(u), () => ({ tenantId: TENANT, rol }), { permitirPropuestas: false });
+const clienteDe = (u: Usuario, rol: Rol): ClienteRemoto => new ClienteRemoto(transporteDe(u), () => ({ tenantId: TENANT, rol }));
 
 describe.skipIf(!hayEmulador)('panel contra las funciones reales (emulador)', () => {
   let h: Herramientas;

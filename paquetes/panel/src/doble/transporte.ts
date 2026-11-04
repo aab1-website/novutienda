@@ -1,5 +1,5 @@
 import { ErrorApi } from '../api/errores.js';
-import { esPropuesta, rolesDeAccion, type Modulo } from '../api/real.js';
+import { rolesDeAccion, type Modulo } from '../api/real.js';
 import type { Sobre, Transporte } from '../api/transporte.js';
 import type { ProductoPanel, Rol } from '../api/tipos.js';
 import { fechaLaPaz, fallo, type Contexto } from './estado.js';
@@ -40,7 +40,7 @@ function productoReal(p: ProductoPanel): Obj {
 
 /**
  * Acciones reales atendidas por el doble: nombre `modulo.accion` → entrada y salida con la forma del servidor
- * (docs/produccion/funciones.md §3). `PROPUESTAS` está vacía: todas existen en el servidor.
+ * (docs/produccion/funciones.md §3).
  */
 const ACCIONES: Readonly<Record<string, WireHandler>> = {
   // pos
@@ -223,4 +223,3 @@ export class TransporteDoble implements Transporte {
   }
 }
 
-export const esAccionPropuesta = esPropuesta;

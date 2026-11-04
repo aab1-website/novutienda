@@ -1,10 +1,9 @@
 // Conformidad de la traducción del panel (`api/real.ts`) con las tablas de acciones REALES de las Cloud Functions
-// (plataforma/funciones/servidor/llamadas): toda acción que el panel invoca existe, con los mismos roles, salvo las
-// propuestas (hoy ninguna: las que faltaban ya existen en el servidor).
+// (plataforma/funciones/servidor/llamadas): toda acción que el panel invoca existe, con los mismos roles.
 import { describe, expect, it } from 'vitest';
 import type { CopiaCotizacion } from '@novutienda/nucleo';
 import { preciosDelDia } from '@novutienda/consola';
-import { ErrorApi, mensajeDeError, NOMBRES_CALLABLE, PROPUESTAS, REDONDEO, ROLES_ACCION, ROLES_CALLABLE, TRADUCCION, precioDeVenta, usd, type NombreCallable } from '@novutienda/panel';
+import { ErrorApi, mensajeDeError, NOMBRES_CALLABLE, REDONDEO, ROLES_ACCION, ROLES_CALLABLE, TRADUCCION, precioDeVenta, usd, type NombreCallable } from '@novutienda/panel';
 import { REDONDEO_POR_DEFECTO } from '../../plataforma/funciones/servidor/redondeo.js';
 import { accionesConsola } from '../../plataforma/funciones/servidor/llamadas/consola.js';
 import { accionesInventarios } from '../../plataforma/funciones/servidor/llamadas/inventarios.js';
@@ -35,8 +34,7 @@ describe('acciones reales del servidor frente a la tabla del panel', () => {
       }
     }
   });
-  it('no quedan propuestas: cada operación del panel usa solo acciones que existen en el servidor', () => {
-    expect(Object.keys(PROPUESTAS)).toEqual([]);
+  it('cada operación del panel usa solo acciones que existen en el servidor', () => {
     for (const nombre of NOMBRES_CALLABLE) {
       for (const clave of TRADUCCION[nombre].usa) expect(real(clave), `${nombre} → ${clave}`).toBeDefined();
     }
