@@ -208,6 +208,19 @@ describe.skipIf(!hayEmulador)('API HTTP (emulador)', () => {
       const pub = await firmado('GET', `/api/sitio/v1/publicado?tenantId=${T}`);
       expect(pub.status).toBe(200);
       expect(Object.keys((pub.cuerpo as { documentos: object }).documentos)).toContain(`producto__${prod}`);
+      // Sin documento de configuración rige la política vigente (BOB 2 decimales; ARS múltiplo de 100).
+      expect((pub.cuerpo as { redondeo: unknown }).redondeo).toEqual({
+        BOB: { tipo: 'decimales', decimales: 2, modo: 'cercano' }, ARS: { tipo: 'multiplo', multiplo: 100, modo: 'cercano' },
+      });
+    });
+
+    it('el publicado entrega el redondeo configurado en tenants/{t}/config/redondeo', async () => {
+      const t = unico('red').toLowerCase();
+      const regla = { BOB: { tipo: 'decimales', decimales: 0, modo: 'arriba' }, ARS: { tipo: 'multiplo', multiplo: 500, modo: 'abajo' } };
+      await h.firestore.doc(`tenants/${t}/config/redondeo`).set(regla);
+      const pub = await firmado('GET', `/api/sitio/v1/publicado?tenantId=${t}`);
+      expect(pub.status, pub.texto).toBe(200);
+      expect((pub.cuerpo as { redondeo: unknown }).redondeo).toEqual(regla);
     });
 
     it('401 sin firma válida', async () => {
