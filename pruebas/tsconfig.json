@@ -1,0 +1,11 @@
+{
+  "extends": "../tsconfig.base.json",
+  "compilerOptions": {
+    "rootDir": ".",
+    "outDir": "../.tsbuild/pruebas",
+    "tsBuildInfoFile": "../.tsbuild/pruebas.tsbuildinfo",
+    "types": ["node"]
+  },
+  "include": ["./**/*.ts"],
+  "references": [{ "path": "../paquetes/nucleo" }]
+}
