@@ -5,7 +5,8 @@ import { existsSync, readFileSync, statSync } from 'node:fs';
 import { extname, join, normalize, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
 
-const RAIZ = resolve(fileURLToPath(new URL('../../../dist/panel-humo', import.meta.url)));
+// `DIR_PANEL`: carpeta bajo dist/ a servir (por omisión la compilación con dobles; `panel-emulador` para el emulador).
+const RAIZ = resolve(fileURLToPath(new URL(`../../../dist/${process.env.DIR_PANEL ?? 'panel-humo'}`, import.meta.url)));
 const PUERTO = Number(process.env.PUERTO_HUMO ?? 4341);
 const TIPOS = {
   '.html': 'text/html; charset=utf-8', '.js': 'text/javascript; charset=utf-8', '.css': 'text/css; charset=utf-8',
@@ -13,7 +14,7 @@ const TIPOS = {
 };
 
 if (!existsSync(join(RAIZ, '_cabeceras.json'))) {
-  console.error('Falta dist/panel-humo/_cabeceras.json: compile antes con `pnpm run build:humo`.');
+  console.error('Falta _cabeceras.json en la carpeta de dist/ a servir: compile antes con `pnpm run build:humo` o `build:emulador`.');
   process.exit(1);
 }
 const cabeceras = Object.fromEntries(JSON.parse(readFileSync(join(RAIZ, '_cabeceras.json'), 'utf8'))[0].headers.map((h) => [h.key, h.value]));

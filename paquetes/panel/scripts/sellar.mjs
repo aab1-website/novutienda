@@ -4,6 +4,8 @@ import { readdirSync, readFileSync, statSync, writeFileSync } from 'node:fs';
 import { extname, join, relative, resolve } from 'node:path';
 
 const dir = resolve(process.argv[2] ?? '../../dist/panel');
+// `--emulador`: SOLO la compilación de pruebas contra los emuladores de Firebase (http://127.0.0.1, puertos de firebase.json).
+const emulador = process.argv.includes('--emulador');
 
 function* archivos(d, ext) {
   for (const n of readdirSync(d)) {
@@ -35,20 +37,21 @@ if (problemas.length > 0) {
 }
 
 // Sin 'unsafe-inline' ni 'unsafe-eval'. connect-src: callables (Cloud Functions), Firebase Auth y Cloud Storage.
+const CONEXIONES_EMULADOR = emulador ? ' http://127.0.0.1:8240 http://127.0.0.1:8243 http://127.0.0.1:8245' : '';
 const csp = [
   "default-src 'none'",
   "script-src 'self'",
   "style-src 'self'",
   "img-src 'self' data: blob: https:",
   "font-src 'self'",
-  "connect-src 'self' https://*.cloudfunctions.net https://*.run.app https://identitytoolkit.googleapis.com https://securetoken.googleapis.com https://firebasestorage.googleapis.com",
+  `connect-src 'self' https://*.cloudfunctions.net https://*.run.app https://identitytoolkit.googleapis.com https://securetoken.googleapis.com https://firebasestorage.googleapis.com${CONEXIONES_EMULADOR}`,
   "frame-src 'none'",
   "object-src 'none'",
   "media-src 'self' blob:",
   "base-uri 'none'",
   "form-action 'self'",
   "frame-ancestors 'none'",
-  'upgrade-insecure-requests',
+  ...(emulador ? [] : ['upgrade-insecure-requests']),
 ].join('; ');
 
 const headers = [

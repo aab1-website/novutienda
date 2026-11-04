@@ -81,6 +81,8 @@ export interface ContextoReal {
   llamar(modulo: Modulo, accion: string, datos?: object): Promise<unknown>;
   /** Rol de quien llama (solo para elegir entre acciones; el servidor decide el permiso). */
   readonly rol: Rol | undefined;
+  /** Espera entre reintentos (inyectable en las pruebas). */
+  esperar(ms: number): Promise<void>;
 }
 
 export interface Traduccion<N extends NombreCallable> {
@@ -130,6 +132,9 @@ const comoOk = <N extends NombreCallable>(modulo: Modulo, accion: string, datos:
     return OK as Salida<N>;
   },
 });
+
+export const REINTENTOS_FINALIZAR = 8;
+export const ESPERA_FINALIZAR_MS = 1500;
 
 const ESTADOS_APROBACION = ['pendiente', 'aprobada', 'rechazada', 'usada'] as const;
 
@@ -424,7 +429,22 @@ export const TRADUCCION: { readonly [N in NombreCallable]: Traduccion<N> } = {
   cambiarPrecioUSD: comoOk('consola', 'cambiarPrecioUSD', (e) => ({ productoId: e.productoId, precioUSD: { bo: usd(e.precioUSD.bo), ar: usd(e.precioUSD.ar) } })),
   guardarFicha: comoOk('consola', 'guardarFicha', (e) => e),
   reservarSubida: directa('medios', 'reservarSubida'),
-  finalizarSubida: { usa: ['medios.finalizarSubida'], ejecutar: async (c, e) => aMedio(campo(await c.llamar('medios', 'finalizarSubida', e), 'medio') as Obj) },
+  finalizarSubida: {
+    usa: ['medios.finalizarSubida'],
+    ejecutar: async (c, e) => {
+      // El disparador de Storage también finaliza la subida al llegar el original: si gana él, esta llamada responde
+      // «ya fue resuelta» (failed-precondition) aunque el medio ya esté listo. La acción es idempotente: se reintenta
+      // hasta que devuelva el medio; si la subida fue rechazada de verdad, el error persiste y se muestra.
+      for (let intento = 1; ; intento++) {
+        try {
+          return aMedio(campo(await c.llamar('medios', 'finalizarSubida', e), 'medio') as Obj);
+        } catch (err) {
+          if (!(err instanceof ErrorApi) || err.codigoHttps !== 'failed-precondition' || intento >= REINTENTOS_FINALIZAR) throw err;
+          await c.esperar(ESPERA_FINALIZAR_MS);
+        }
+      }
+    },
+  },
   borrarMedio: comoOk('medios', 'borrarMedio', (e) => e),
   guardarSeccion: comoOk('consola', 'guardarSeccion', (e) => e),
   eliminarSeccion: comoOk('consola', 'eliminarSeccion', (e) => e),

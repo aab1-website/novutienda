@@ -10,7 +10,10 @@
     "dev": "vite",
     "build": "vite build && node scripts/sellar.mjs ../../dist/panel",
     "build:humo": "vite build --mode humo && node scripts/sellar.mjs ../../dist/panel-humo",
-    "humo": "pnpm run build:humo && playwright test --config humo/playwright.config.ts"
+    "humo": "pnpm run build:humo && playwright test --config humo/playwright.config.ts",
+    "build:emulador": "vite build --mode emulador && node scripts/sellar.mjs ../../dist/panel-emulador --emulador",
+    "test:emulador": "node scripts/emulador.mjs \"npx vitest --run --no-file-parallelism pruebas/panel/emulador\"",
+    "humo:emulador": "pnpm run build:emulador && node scripts/emulador.mjs \"npx playwright test --config paquetes/panel/humo/playwright.emulador.config.ts\""
   },
   "dependencies": {
     "@novutienda/nucleo": "workspace:*",

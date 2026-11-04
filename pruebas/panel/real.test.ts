@@ -4,7 +4,7 @@
 import { describe, expect, it } from 'vitest';
 import type { CopiaCotizacion } from '@novutienda/nucleo';
 import { preciosDelDia } from '@novutienda/consola';
-import { NOMBRES_CALLABLE, PROPUESTAS, REDONDEO, ROLES_ACCION, ROLES_CALLABLE, TRADUCCION, precioDeVenta, usd, type NombreCallable } from '@novutienda/panel';
+import { ErrorApi, NOMBRES_CALLABLE, PROPUESTAS, REDONDEO, ROLES_ACCION, ROLES_CALLABLE, TRADUCCION, precioDeVenta, usd, type NombreCallable } from '@novutienda/panel';
 import { REDONDEO_POR_DEFECTO } from '../../plataforma/funciones/servidor/redondeo.js';
 import { accionesConsola } from '../../plataforma/funciones/servidor/llamadas/consola.js';
 import { accionesInventarios } from '../../plataforma/funciones/servidor/llamadas/inventarios.js';
@@ -60,6 +60,7 @@ describe('unidades', () => {
     const llamadas: { accion: string; datos: unknown }[] = [];
     const c = {
       rol: 'adm' as const,
+      esperar: (): Promise<void> => Promise.resolve(),
       llamar: (_m: string, accion: string, datos?: object): Promise<unknown> => {
         llamadas.push({ accion, datos });
         return Promise.resolve({ ok: true, productoId: 'x', config: {}, medio: {} });
@@ -110,5 +111,28 @@ describe('redondeo: el panel calcula con la misma política que el servidor', ()
       // ARS: múltiplo de 100 pesos (10 000 centavos).
       if (servidor.AR.tipo === 'precio') expect(servidor.AR.centavos % 10_000).toBe(0);
     }
+  });
+});
+
+describe('finalizarSubida frente al disparador de Storage', () => {
+  it('reintenta mientras el servidor responde «ya fue resuelta» y devuelve el medio; si persiste, el error sube', async () => {
+    let intentos = 0;
+    const c = (fallan: number): unknown => ({
+      rol: 'sup', esperar: () => Promise.resolve(),
+      llamar: () => {
+        intentos += 1;
+        return intentos <= fallan ? Promise.reject(new ErrorApi('failed-precondition', 'La subida ya fue resuelta por otra solicitud')) : Promise.resolve({ medio: { id: 'sub-1', productoId: 'p' } });
+      },
+    });
+    const t = TRADUCCION.finalizarSubida as unknown as { ejecutar(c: unknown, e: unknown): Promise<{ id: string }> };
+    expect((await t.ejecutar(c(2), { subidaId: 'sub-1' })).id).toBe('sub-1');
+    expect(intentos).toBe(3);
+    intentos = 0;
+    await expect(t.ejecutar(c(100), { subidaId: 'sub-1' })).rejects.toBeInstanceOf(ErrorApi);
+    expect(intentos).toBe(8);
+    intentos = 0;
+    const otro = { rol: 'sup', esperar: () => Promise.resolve(), llamar: () => { intentos += 1; return Promise.reject(new ErrorApi('permission-denied', 'x')); } };
+    await expect(t.ejecutar(otro, { subidaId: 'sub-1' })).rejects.toMatchObject({ codigoHttps: 'permission-denied' });
+    expect(intentos).toBe(1);
   });
 });

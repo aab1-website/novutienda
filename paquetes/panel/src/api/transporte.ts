@@ -37,6 +37,7 @@ export class ClienteRemoto implements ClienteApi {
     const { tenantId, rol } = this.contexto();
     const c: ContextoReal = {
       rol,
+      esperar: (ms) => new Promise((r) => setTimeout(r, ms)),
       llamar: (modulo, accion, datos) => {
         if (!this.opciones.permitirPropuestas && esPropuesta(modulo, accion)) {
           throw new ErrorApi('unavailable', `Acción pendiente en el servidor: ${modulo}.${accion}`, { codigo: 'no-disponible' });
