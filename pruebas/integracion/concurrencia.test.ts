@@ -75,8 +75,8 @@ describe('concurrencia entre módulos sobre la misma base', () => {
     // Recibos: los 5 eventos se manejan a la vez sobre la misma base.
     const eventos = await e.bandeja.publicados(T, 'venta.confirmada');
     await Promise.all(eventos.map((ev) => manejarVentaConfirmada(e.recibos, ev, { ahora: () => '2026-11-04T15:00:00Z' })));
-    const nrosRecibos = e.db.coleccion(`tenants/${T}/recibos`).map((x) => (x.datos as unknown as Recibo).correlativo).sort();
-    expect(nrosRecibos).toEqual([1, 2, 3, 4, 5]);
+    const nrosRecibos = e.db.coleccion(`tenants/${T}/recibos`).map((x) => (x.datos as unknown as Recibo).numero).sort();
+    expect(nrosRecibos).toEqual(['A-000001', 'A-000002', 'A-000003', 'A-000004', 'A-000005']);
     expect(e.db.reintentos).toBeGreaterThan(0);
     expect(doc(e, T, 'productos/lapiz')?.['stockTotal']).toBe(10);
     verificarInvariantes(e, T);

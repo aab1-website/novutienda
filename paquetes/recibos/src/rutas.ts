@@ -22,5 +22,6 @@ export const rutaRecibo = (tenantId: string, reciboId: string): string =>
 
 export const rutaPlantilla = (tenantId: string): string => `${base(tenantId)}/plantillas_recibo/main`;
 
-export const rutaContadorSerie = (tenantId: string, serie: string): string =>
-  `${base(tenantId)}/contadores_recibo/${segmento(serie, 'serie')}`;
+/** Anulación recibida antes que la venta: se guarda aquí hasta que llegue `venta.confirmada`. */
+export const rutaAnulacionPendiente = (tenantId: string, ventaId: string): string =>
+  `${base(tenantId)}/anulaciones_pendientes_recibo/${segmento(ventaId, 'ventaId')}`;

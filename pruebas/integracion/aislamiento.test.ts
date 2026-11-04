@@ -75,7 +75,7 @@ describe('aislamiento entre dos tenants en la misma base', () => {
     await e.bandeja.entregar(T2);
     await registrarMovimientoCaja(e.deps, T, caj, UUID(60), { tipo: 'ingreso', moneda: 'BOB', monto: 1, motivo: 'm' });
     await solicitarAnulacion(e.deps, T, caj, UUID(1), 'error');
-    await aprobarAnulacion(e.deps, T, sup, UUID(1), 'efectivo');
+    await aprobarAnulacion(e.deps, T, sup, UUID(1));
     await e.bandeja.entregar(T);
     await e.bandeja.entregar(T2);
     expect(doc(e, T, `recibos/recibo-${UUID(1)}`)?.['estado']).toBe('ANULADO');

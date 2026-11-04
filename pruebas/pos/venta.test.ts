@@ -42,6 +42,9 @@ describe('confirmarVenta: camino feliz', () => {
     const b = await venderP1(e, 2);
     expect([a.venta.receiptNo, b.venta.receiptNo]).toEqual([1, 2]);
     expect(e.db.dato(`tenants/${T}/contadores/recibo_A`)).toMatchObject({ ultimo: 2 });
+    // El POS es el dueño del número: viaja en el evento para que Recibos lo use tal cual.
+    const numeros = eventos(e, 'venta.confirmada').map((x) => (x['datos'] as { numeroRecibo: string }).numeroRecibo).sort();
+    expect(numeros).toEqual(['A-000001', 'A-000002']);
   });
 
   it('venta en USD no lleva cotización y en ARS usa la lista AR', async () => {

@@ -38,24 +38,64 @@ export async function solicitarAnulacion(
   });
 }
 
+export interface ReembolsoAnulacion {
+  readonly medio: Exclude<MedioPago, 'credito'>;
+  readonly moneda: VentaPos['moneda'];
+  readonly monto: number;
+}
+
 export interface ResultadoAnulacion {
   readonly ventaId: string;
-  readonly reembolso: { readonly medio: MedioPago; readonly moneda: VentaPos['moneda']; readonly monto: number };
+  /** Un reembolso por medio con que se cobró (efectivo, qr, transferencia); vacío si no se cobró nada. */
+  readonly reembolsos: readonly ReembolsoAnulacion[];
   readonly turnoIdReembolso: string;
+}
+
+const MEDIOS_REEMBOLSABLES = ['efectivo', 'qr', 'transferencia'] as const;
+
+/**
+ * Lo realmente cobrado por medio: pagos sin crédito (netos de cambio) más cobros de crédito
+ * (desglosados por medio en el propio crédito). Es el reembolso por los medios originales.
+ */
+function cobradoPorMedio(
+  venta: VentaPos,
+  credito: Readonly<Record<string, unknown>> | undefined,
+): Record<(typeof MEDIOS_REEMBOLSABLES)[number], number> {
+  const r = { efectivo: 0, qr: 0, transferencia: 0 };
+  for (const p of venta.pagos) if (p.medio !== 'credito') r[p.medio] += p.monto - (p.cambio ?? 0);
+  if (credito !== undefined) {
+    const cobrado = enteroDe(credito, 'cobrado');
+    const desglose = credito['cobradoPorMedio'];
+    let suma = 0;
+    if (cobrado > 0) {
+      if (typeof desglose !== 'object' || desglose === null || Array.isArray(desglose)) {
+        throw new ErrorPos('dato-corrupto', 'Falta el desglose por medio de los cobros del crédito');
+      }
+      for (const m of MEDIOS_REEMBOLSABLES) {
+        const v = (desglose as Record<string, unknown>)[m];
+        if (v === undefined) continue;
+        if (typeof v !== 'number' || !Number.isSafeInteger(v) || v < 0) throw new ErrorPos('dato-corrupto', 'Desglose de cobros del crédito inválido');
+        r[m] += v;
+        suma += v;
+      }
+    }
+    if (suma !== cobrado) throw new ErrorPos('dato-corrupto', 'El desglose de cobros del crédito no suma lo cobrado');
+  }
+  return r;
 }
 
 /**
  * Aprueba la anulación (solo `sup` o `adm`), una sola vez por venta: revierte stock y series por el
  * puerto de Inventarios, cancela el saldo de crédito, registra el reembolso en el TURNO ABIERTO y
- * publica `venta.anulada`. El reembolso es lo realmente cobrado (pagos sin crédito más cobros de
- * crédito); `medioReembolso` es obligatorio si ese monto es mayor que cero.
+ * publica `venta.anulada`. El reembolso es lo realmente cobrado y se devuelve por los medios con
+ * que se cobró: el efectivo sale de la caja de esa moneda (se rechaza si no alcanza); QR y
+ * transferencia se informan aparte y no tocan el efectivo.
  */
 export async function aprobarAnulacion(
   deps: DepsPos,
   tenantId: string,
   actor: ActorPos,
   ventaIdEntrada: string,
-  medioReembolso?: MedioPago,
 ): Promise<ResultadoAnulacion> {
   exigirTenant(tenantId);
   exigirActor(actor);
@@ -74,22 +114,21 @@ export async function aprobarAnulacion(
     const abierto = await leerTurnoAbierto(tx, tenantId);
     if (abierto === undefined) throw new ErrorPos('sin-turno', 'No hay un turno abierto donde registrar el reembolso');
     const creditoPago = venta.pagos.find((p) => p.medio === 'credito');
-    let cobrado = 0;
     let credito: Readonly<Record<string, unknown>> | undefined;
     if (creditoPago !== undefined) {
       credito = await leerObligatorio(tx, rutaCredito(tenantId, ventaId));
       if (credito === undefined) throw new ErrorPos('dato-corrupto', 'Falta el crédito de la venta');
-      cobrado = enteroDe(credito, 'cobrado');
     }
-    const sinCredito = venta.pagos.filter((p) => p.medio !== 'credito').reduce((s, p) => s + p.monto - (p.cambio ?? 0), 0);
-    const monto = sinCredito + cobrado;
-    const medio: MedioPago = monto === 0 ? 'credito' : (medioReembolso ?? 'credito');
-    if (monto > 0 && (medio === 'credito' || !['efectivo', 'qr', 'transferencia'].includes(medio))) {
-      throw new ErrorPos('entrada-invalida', 'Indique el medio del reembolso: efectivo, qr o transferencia');
-    }
-    if (medio === 'efectivo' && monto > efectivoDisponible(abierto.turno, venta.moneda)) {
+    const porMedio = cobradoPorMedio(venta, credito);
+    const reembolsos: ReembolsoAnulacion[] = MEDIOS_REEMBOLSABLES.filter((m) => porMedio[m] > 0).map((m) => ({
+      medio: m,
+      moneda: venta.moneda,
+      monto: porMedio[m],
+    }));
+    if (porMedio.efectivo > efectivoDisponible(abierto.turno, venta.moneda)) {
       throw new ErrorPos('egreso-excede-efectivo', 'El reembolso en efectivo supera el efectivo de esa moneda en la caja');
     }
+    const monto = reembolsos.reduce((s, r) => s + r.monto, 0);
     const ref = { tipo: 'venta' as const, id: ventaId };
     const por = { uid: actor.uid, rol: actor.rol };
     const plan = await deps.inventarios.prepararReversion(tx, tenantId, ref);
@@ -97,12 +136,11 @@ export async function aprobarAnulacion(
     // Escrituras.
     deps.inventarios.aplicarReversion(tx, plan, ref, por);
     let totales: TotalesTurno = abierto.turno.totales;
-    if (monto > 0) totales = sumarTotales(totales, venta.moneda, deltaPorMedio(medio, -monto));
+    for (const r of reembolsos) totales = sumarTotales(totales, venta.moneda, deltaPorMedio(r.medio, -r.monto));
     if (creditoPago !== undefined) totales = sumarTotales(totales, venta.moneda, { credito: -creditoPago.monto });
     tx.set(rutaTurno(tenantId, abierto.turno.turnoId), { ...abierto.raw, totales });
     if (credito !== undefined) tx.set(rutaCredito(tenantId, ventaId), { ...credito, estado: 'anulado', saldo: 0 });
     tx.set(rutaVenta(tenantId, ventaId), { ...raw, estado: 'anulada', anuladaEnMs: ahora });
-    const reembolso = { medio, moneda: venta.moneda, monto };
     tx.create(rutaAnulacion(tenantId, ventaId), {
       ventaId,
       turnoId: venta.turnoId,
@@ -111,7 +149,7 @@ export async function aprobarAnulacion(
       motivo: venta.solicitudAnulacion.motivo,
       solicitadoPor: venta.solicitudAnulacion.por,
       aprobadoPor: actor.uid,
-      reembolso,
+      reembolsos,
       creditoCancelado: creditoPago?.monto ?? 0,
       creadoEnMs: ahora,
       creadoEn: tx.marcaTiempoServidor(),
@@ -128,7 +166,7 @@ export async function aprobarAnulacion(
         anuladaPor: venta.solicitudAnulacion.por,
         aprobadoPor: actor.uid,
         lineas: venta.lineas.map((l) => ({ productoId: l.productoId, cantidad: l.cantidad, almacenId: l.almacenId, series: l.series })),
-        reembolso,
+        reembolsos,
         turnoIdReembolso: abierto.turno.turnoId,
       },
     });
@@ -136,9 +174,9 @@ export async function aprobarAnulacion(
       accion: 'pos.anulacion.aprobar',
       ruta: rutaAnulacion(tenantId, ventaId),
       antes: { estado: 'confirmada' },
-      despues: { estado: 'anulada', reembolso: monto, medio },
+      despues: { estado: 'anulada', reembolso: monto, medios: reembolsos.map((r) => r.medio) },
       motivo: venta.solicitudAnulacion.motivo,
     });
-    return { ventaId, reembolso, turnoIdReembolso: abierto.turno.turnoId };
+    return { ventaId, reembolsos, turnoIdReembolso: abierto.turno.turnoId };
   });
 }

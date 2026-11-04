@@ -94,7 +94,7 @@ describe('venta con serie, pago mixto y descuento aprobado', () => {
     expect(r.fallidas).toEqual([]);
     const rec = recibo(VENTA);
     expect(rec).toMatchObject({
-      numero: 'A-000001', correlativo: 1, estado: 'EMITIDO', moneda: 'BOB', total: 137000, fecha: '2026-11-04',
+      numero: 'A-000001', estado: 'EMITIDO', moneda: 'BOB', total: 137000, fecha: '2026-11-04',
       descuento: { monto: 10000, motivo: 'cliente frecuente' }, cliente: { nombre: 'Ana Pérez' },
     });
     expect(rec.lineas.map((l) => [l.nombre, l.cantidad, l.series])).toEqual([['Celular X1', 2, ['A', 'B']], ['Lápiz HB', 1, []]]);
@@ -110,7 +110,8 @@ describe('venta con serie, pago mixto y descuento aprobado', () => {
       garantias: [{ serie: 'A', hasta: '2027-11-04' }, { serie: 'B', hasta: '2027-11-04' }],
     });
     // Numeración: el número del POS (receiptNo) y el de Recibos coinciden mientras la entrega es ordenada.
-    expect((doc(e, T, `ventas/${VENTA}`) as { receiptNo: number }).receiptNo).toBe(rec.correlativo);
+    expect((doc(e, T, `ventas/${VENTA}`) as { receiptNo: number }).receiptNo).toBe(1);
+    expect(rec.numero).toBe('A-000001');
   });
 
   it('reintentar la misma venta no duplica stock, eventos, operaciones ni recibos', async () => {
@@ -130,7 +131,7 @@ describe('venta con serie, pago mixto y descuento aprobado', () => {
       recibos: contar(e, T, 'recibos'), stock: doc(e, T, 'productos/lapiz')?.['stockTotal'],
     }).toEqual(antes);
     expect(doc(e, T, 'contadores/recibo_A')).toMatchObject({ ultimo: 1 });
-    expect(doc(e, T, 'contadores_recibo/A')).toMatchObject({ ultimo: 1 });
+    expect(doc(e, T, 'contadores_recibo/A')).toBeUndefined();
     verificarInvariantes(e, T);
   });
 
@@ -157,8 +158,12 @@ describe('anulación aprobada por el supervisor', () => {
     // El reembolso es en efectivo: la caja necesita efectivo suficiente (ingreso justificado).
     await registrarMovimientoCaja(e.deps, T, caj, UUID(60), { tipo: 'ingreso', moneda: 'BOB', monto: 40000, motivo: 'fondo adicional' });
     await solicitarAnulacion(e.deps, T, caj, VENTA, 'cliente se arrepintió');
-    const r = await aprobarAnulacion(e.deps, T, sup, VENTA, 'efectivo');
-    expect(r.reembolso).toEqual({ medio: 'efectivo', moneda: 'BOB', monto: 137000 });
+    const r = await aprobarAnulacion(e.deps, T, sup, VENTA);
+    // Se devuelve por los medios originales: 100000 en efectivo (neto de cambio) y 37000 por QR.
+    expect(r.reembolsos).toEqual([
+      { medio: 'efectivo', moneda: 'BOB', monto: 100000 },
+      { medio: 'qr', moneda: 'BOB', monto: 37000 },
+    ]);
     expect(r.turnoIdReembolso).toBe(TURNO);
     // Stock y series de vuelta, ya dentro de la transacción del POS.
     expect(doc(e, T, 'existencias/lapiz__tienda')?.['cantidad']).toBe(10);
@@ -177,9 +182,9 @@ describe('anulación aprobada por el supervisor', () => {
     const rec = recibo(VENTA);
     expect(rec).toMatchObject({ estado: 'ANULADO', numero: 'A-000001', anulacion: { motivo: 'cliente se arrepintió', aprobadoPor: 'u-sup' } });
     expect(rec.lineas).toHaveLength(2);
-    // El reembolso entró en el turno abierto: esperado = apertura + efectivo neto (+100000 - 137000) + ingresos.
-    const cierre = await cerrarTurno(e.deps, T, caj, TURNO, { BOB: 13000 });
-    expect(cierre.arqueo['BOB']).toMatchObject({ apertura: 10000, esperado: 13000, contado: 13000, diferencia: 0 });
+    // El reembolso entró en el turno abierto: esperado = apertura + efectivo neto (+100000 - 100000) + ingresos; el QR devuelto no resta del efectivo.
+    const cierre = await cerrarTurno(e.deps, T, caj, TURNO, { BOB: 50000 });
+    expect(cierre.arqueo['BOB']).toMatchObject({ apertura: 10000, esperado: 50000, contado: 50000, diferencia: 0, qr: 0 });
     verificarInvariantes(e, T);
   });
 
@@ -187,8 +192,8 @@ describe('anulación aprobada por el supervisor', () => {
     await venderConDescuentoAprobado();
     await registrarMovimientoCaja(e.deps, T, caj, UUID(60), { tipo: 'ingreso', moneda: 'BOB', monto: 40000, motivo: 'fondo adicional' });
     await solicitarAnulacion(e.deps, T, caj, VENTA, 'error');
-    await aprobarAnulacion(e.deps, T, sup, VENTA, 'efectivo');
-    await expect(aprobarAnulacion(e.deps, T, sup, VENTA, 'efectivo')).rejects.toMatchObject({ codigo: 'venta-ya-anulada' });
+    await aprobarAnulacion(e.deps, T, sup, VENTA);
+    await expect(aprobarAnulacion(e.deps, T, sup, VENTA)).rejects.toMatchObject({ codigo: 'venta-ya-anulada' });
     expect(doc(e, T, 'productos/celular')?.['stockTotal']).toBe(3);
     expect(contar(e, T, 'anulaciones')).toBe(1);
     verificarInvariantes(e, T);

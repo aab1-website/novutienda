@@ -70,16 +70,16 @@ describe('pedido de WhatsApp firmado', () => {
 });
 
 describe('pedido.confirmado por la bandeja', () => {
-  const evento = async (pedidoId: string, almacenId: string): Promise<SobreEvento> => {
+  const evento = async (pedidoId: string): Promise<SobreEvento> => {
     const datos: DatosPedidoConfirmadoV1 = {
-      pedidoId, mercado: 'AR', moneda: 'ARS', total: 3000000, cotizacion: await cotizacionVigente(e, 'AR'), almacenId,
+      pedidoId, mercado: 'AR', moneda: 'ARS', total: 3000000, cotizacion: await cotizacionVigente(e, 'AR'),
       lineas: [{ productoId: 'lapiz', cantidad: 3 }], confirmadoEn: '2026-11-04T14:59:00Z',
     };
     return { id: `pc-${pedidoId}`, tipo: 'pedido.confirmado', version: 1, tenantId: T, origen: 'pedidos', ocurridoEn: '2026-11-04T14:59:00Z', claveIdempotencia: `pc-${pedidoId}`, datos };
   };
 
-  it('descuenta de tienda aunque el evento indique otro almacén, una sola vez con entrega duplicada', async () => {
-    await publicarEnBandeja(e.db, await evento('pd-4', 'deposito-1'));
+  it('descuenta siempre de tienda (el evento ya no trae almacén), una sola vez con entrega duplicada', async () => {
+    await publicarEnBandeja(e.db, await evento('pd-4'));
     const r = await e.bandeja.entregar(T, { duplicados: 2 });
     expect(r.fallidas).toEqual([]);
     expect(doc(e, T, 'existencias/lapiz__tienda')?.['cantidad']).toBe(7);
@@ -89,7 +89,7 @@ describe('pedido.confirmado por la bandeja', () => {
   });
 
   it('un pedido sin stock queda auditado, se da por procesado y no descuenta nada', async () => {
-    const ev = await evento('pd-5', 'tienda');
+    const ev = await evento('pd-5');
     (ev.datos as { lineas: unknown }).lineas = [{ productoId: 'lapiz', cantidad: 99 }];
     await publicarEnBandeja(e.db, ev);
     const r = await e.bandeja.entregar(T, { duplicados: 1 });

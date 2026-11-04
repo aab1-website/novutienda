@@ -15,7 +15,7 @@ describe('rutas que escriben los módulos frente a los manifiestos registrados',
     ]);
     await registrarMovimientoCaja(e.deps, T, caj, UUID(60), { tipo: 'ingreso', moneda: 'BOB', monto: 100, motivo: 'm' });
     await solicitarAnulacion(e.deps, T, caj, UUID(1), 'error');
-    await aprobarAnulacion(e.deps, T, sup, UUID(1), 'efectivo');
+    await aprobarAnulacion(e.deps, T, sup, UUID(1));
     await e.bandeja.entregar(T);
     await cerrarTurno(e.deps, T, caj, UUID(900), { BOB: 100 });
 
@@ -26,7 +26,7 @@ describe('rutas que escriben los módulos frente a los manifiestos registrados',
     const sinDueno = [...escritas].filter((c) => !duenos.has(c)).sort();
     expect(sinDueno).toEqual([]);
     // Las colecciones esperadas de cada módulo sí aparecieron.
-    for (const c of ['productos', 'existencias', 'unidades', 'movimientos', 'operaciones', 'ventas', 'turnos', 'anulaciones', 'recibos', 'eventos', 'procesados', 'auditoria', 'contadores', 'contadores_recibo', 'cotizaciones']) {
+    for (const c of ['productos', 'existencias', 'unidades', 'movimientos', 'operaciones', 'ventas', 'turnos', 'anulaciones', 'recibos', 'eventos', 'procesados', 'auditoria', 'contadores', 'cotizaciones']) {
       expect(escritas.has(c), c).toBe(true);
     }
   });

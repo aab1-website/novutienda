@@ -6,6 +6,7 @@ import type { LineaPedido } from './pedido-solicitado.v1.js';
 /** CONTRATO CONGELADO al terminar la ola 1c: un cambio incompatible exige un contrato v2. */
 export const TIPO_PEDIDO_CONFIRMADO_V1 = 'pedido.confirmado';
 
+/** Sin almacén: Inventarios descuenta siempre de `tienda` (decisión de la dirección). */
 export interface DatosPedidoConfirmadoV1 {
   readonly pedidoId: string;
   readonly mercado: Mercado;
@@ -13,8 +14,6 @@ export interface DatosPedidoConfirmadoV1 {
   /** Total en enteros de centavos de `moneda`. */
   readonly total: number;
   readonly cotizacion: CopiaCotizacion;
-  /** Almacén del que Inventarios descuenta el stock. */
-  readonly almacenId: string;
   readonly lineas: readonly LineaPedido[];
   /** Instante ISO 8601 UTC de la confirmación. */
   readonly confirmadoEn: string;
@@ -27,7 +26,6 @@ export const validarPedidoConfirmadoV1 = crearValidador<DatosPedidoConfirmadoV1>
     moneda: monedaOperativa,
     total: centavos,
     cotizacion: copiaCotizacion,
-    almacenId: texto,
     lineas: esquemaLineasPedido,
     confirmadoEn: instanteIso,
   },
@@ -40,7 +38,6 @@ const valido: DatosPedidoConfirmadoV1 = {
   moneda: 'ARS',
   total: 360000,
   cotizacion: cotizacionArs,
-  almacenId: 'a1',
   lineas: [{ productoId: 'p1', cantidad: 3 }],
   confirmadoEn: '2026-11-04T15:30:00Z',
 };
@@ -51,7 +48,7 @@ export const fixturesPedidoConfirmadoV1: Fixtures<DatosPedidoConfirmadoV1> = {
     { nombre: 'sin fecha', datos: { ...valido, confirmadoEn: undefined } },
     { nombre: 'fecha sin zona', datos: { ...valido, confirmadoEn: '2026-11-04T15:30:00' } },
     { nombre: 'sin líneas', datos: { ...valido, lineas: [] } },
-    { nombre: 'sin almacén', datos: { ...valido, almacenId: undefined } },
+    { nombre: 'almacén en el contrato (ya no existe: Inventarios descuenta de tienda)', datos: { ...valido, almacenId: 'a1' } },
     { nombre: 'sin mercado', datos: { ...valido, mercado: undefined } },
     { nombre: 'mercado desconocido', datos: { ...valido, mercado: 'CL' } },
     { nombre: 'sin total', datos: { ...valido, total: undefined } },
