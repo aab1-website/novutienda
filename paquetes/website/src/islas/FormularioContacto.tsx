@@ -1,12 +1,15 @@
-import { useRef, useState } from 'preact/hooks';
+import { useEffect, useRef, useState } from 'preact/hooks';
+import type { ConfigAppCheck } from '../contenido/tipos.js';
 import { ACCION_RECAPTCHA, CABECERA_APP_CHECK, validarContacto } from '../api/contacto.js';
 import { enlaceWhatsApp } from '../lib/whatsapp.js';
+import { instalarCbAppCheck } from './appcheck.js';
 import { Icono } from './Icono.js';
 import { medicionGlobal } from './navegador.js';
 import { cargarRecaptcha, obtenerTokenRecaptcha, proveedorAppCheck } from './recaptcha.js';
 
 interface Props {
   recaptcha: string | null;
+  appCheck: ConfigAppCheck | null;
   whatsapp: string | null;
   productoId?: string | null;
   apiBase?: string;
@@ -19,8 +22,8 @@ const ETIQUETAS: Readonly<Record<string, string>> = {
 };
 const nuevoId = (): string => (crypto.randomUUID?.() ?? `${Date.now()}${Math.random().toString(36).slice(2)}0000`).replace(/-/g, '');
 
-/** Formulario de contacto con reCAPTCHA. Reintentar el mismo envío no duplica el mensaje (clave de idempotencia). */
-export default function FormularioContacto({ recaptcha, whatsapp, productoId = null, apiBase = '' }: Props) {
+/** Formulario de contacto con reCAPTCHA y App Check de un solo uso (token nuevo por envío; el SDK se descarga al enfocar). Reintentar el mismo envío no duplica el mensaje (clave de idempotencia). */
+export default function FormularioContacto({ recaptcha, appCheck, whatsapp, productoId = null, apiBase = '' }: Props) {
   const [estado, setEstado] = useState<Estado>('inactivo');
   const [errores, setErrores] = useState<readonly string[]>([]);
   const [mensajeError, setMensajeError] = useState('');
@@ -28,7 +31,14 @@ export default function FormularioContacto({ recaptcha, whatsapp, productoId = n
   const resumen = useRef<HTMLDivElement>(null);
   const formulario = useRef<HTMLFormElement>(null);
 
+  const appCheckProv = useRef<ReturnType<typeof instalarCbAppCheck>>(null);
+  // Solo en el navegador (el prerrenderizado no tiene `window`): registra `window.cbAppCheck`; el SDK aún no se descarga.
+  useEffect(() => {
+    appCheckProv.current = instalarCbAppCheck(appCheck);
+  }, [appCheck]);
+
   const precargar = (): void => {
+    void appCheckProv.current?.preparar().catch(() => undefined);
     if (recaptcha !== null) void cargarRecaptcha(recaptcha).catch(() => undefined);
   };
   const falla = (campos: readonly string[], texto: string): void => {
@@ -48,15 +58,16 @@ export default function FormularioContacto({ recaptcha, whatsapp, productoId = n
     };
     const previo = validarContacto({ ...cuerpo, recaptchaToken: 'x'.repeat(20) });
     if (!previo.ok) return falla(previo.campos, 'Revisa los campos marcados.');
-    if (recaptcha === null) return falla([], 'El formulario no está disponible por ahora. Escríbenos por WhatsApp.');
+    if (recaptcha === null || appCheck === null) return falla([], 'El formulario no está disponible por ahora. Escríbenos por WhatsApp.');
 
     setEstado('enviando');
     setErrores([]);
     try {
       const recaptchaToken = await obtenerTokenRecaptcha(recaptcha, ACCION_RECAPTCHA);
       const cabeceras: Record<string, string> = { 'Content-Type': 'application/json', Accept: 'application/json' };
-      const tokenAppCheck = await proveedorAppCheck()?.();
-      if (tokenAppCheck) cabeceras[CABECERA_APP_CHECK] = tokenAppCheck;
+      const obtenerAppCheck = proveedorAppCheck();
+      if (obtenerAppCheck === null) return falla([], 'El formulario no está disponible por ahora. Escríbenos por WhatsApp.');
+      cabeceras[CABECERA_APP_CHECK] = await obtenerAppCheck();
       const r = await fetch(`${apiBase}/api/contacto`, { method: 'POST', headers: cabeceras, body: JSON.stringify({ ...cuerpo, recaptchaToken }) });
       if (r.ok) {
         medicionGlobal().evento('envio_formulario');
@@ -120,7 +131,7 @@ export default function FormularioContacto({ recaptcha, whatsapp, productoId = n
         </button>
         {enlaceWa !== null && <a class="boton boton-secundario" href={enlaceWa} target="_blank" rel="noopener noreferrer"><Icono nombre="chat" tamano={16} /> ESCRIBIR POR WHATSAPP</a>}
       </div>
-      <p class="aviso-estado">Este sitio usa reCAPTCHA de Google para evitar abusos; se carga solo cuando empiezas a escribir.</p>
+      <p class="aviso-estado">Este sitio usa reCAPTCHA de Google y Firebase App Check para evitar abusos; se carga solo cuando empiezas a escribir.</p>
     </form>
   );
 }

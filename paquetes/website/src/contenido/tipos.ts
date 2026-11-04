@@ -130,6 +130,13 @@ export interface ConfigMedicion {
   readonly tiktok: string | null;
 }
 
+export interface ConfigAppCheck {
+  readonly claveSitio: string;
+  readonly apiKey: string;
+  readonly appId: string;
+  readonly projectId: string;
+}
+
 export interface ConfigSitio {
   readonly nombre: string;
   readonly lema: string;
@@ -152,6 +159,12 @@ export interface ConfigSitio {
   readonly redondeo: Redondeo;
   readonly medicion: ConfigMedicion;
   readonly recaptchaSiteKey: string | null;
+  /**
+   * App Check de un solo uso del formulario de contacto: clave de sitio de reCAPTCHA Enterprise registrada para App Check y
+   * datos públicos de la app web de Firebase (el intercambio de token los exige). Son identificadores públicos del cliente:
+   * viven en el contenido publicado, nunca en el repositorio. Sin este bloque el formulario avisa que no está disponible.
+   */
+  readonly appCheck: ConfigAppCheck | null;
   /** Origen de los medios públicos (Storage/CDN propio), si no es el mismo origen del sitio. */
   readonly origenMedios: string | null;
   /** Anfitriones https permitidos en los enlaces de las secciones editables. */

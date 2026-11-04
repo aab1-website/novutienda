@@ -30,6 +30,7 @@ export default defineConfig({
     integracionSellarCsp({
       medicion: config.medicion,
       recaptcha: config.recaptchaSiteKey !== null,
+      appCheck: config.appCheck !== null,
       origenMedios: config.origenMedios,
       hostsPermitidos: ['wa.me', new URL(config.origen).hostname, ...config.enlacesPermitidos],
     }),

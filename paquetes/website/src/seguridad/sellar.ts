@@ -43,6 +43,7 @@ export const hashDe = (contenido: string): string => `'sha256-${createHash('sha2
 export interface OpcionesSellado {
   readonly medicion: ConfigMedicion;
   readonly recaptcha: boolean;
+  readonly appCheck?: boolean;
   readonly origenMedios: string | null;
 }
 

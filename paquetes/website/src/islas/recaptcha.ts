@@ -36,8 +36,8 @@ export async function obtenerTokenRecaptcha(clave: string, accion: string): Prom
   return e.execute(clave, { action: accion });
 }
 
-/** Proveedor opcional de token de App Check, que el cableado del despliegue puede registrar en la ventana. */
-export type ProveedorAppCheck = () => Promise<string | null>;
+/** Proveedor de token de App Check que el sitio registra en la ventana (`appcheck.ts`). Cada llamada devuelve un token nuevo de un solo uso. */
+export type ProveedorAppCheck = () => Promise<string>;
 export function proveedorAppCheck(): ProveedorAppCheck | null {
   const p = (window as unknown as Record<string, unknown>)['cbAppCheck'];
   return typeof p === 'function' ? (p as ProveedorAppCheck) : null;

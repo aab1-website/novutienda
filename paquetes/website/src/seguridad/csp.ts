@@ -14,6 +14,12 @@ export interface OpcionesCsp {
   readonly hashesEstilo?: readonly string[];
   readonly medicion: ConfigMedicion;
   readonly recaptcha: boolean;
+  /**
+   * App Check del formulario (SDK de Firebase). Agrega solo `https://content-firebaseappcheck.googleapis.com` a `connect-src` (intercambio
+   * del token de reCAPTCHA Enterprise por un token de App Check) y habilita los mismos orígenes de reCAPTCHA Enterprise, que el
+   * proveedor carga desde `www.google.com/recaptcha/enterprise.js`. Nada más: el SDK no usa otros orígenes en este flujo.
+   */
+  readonly appCheck?: boolean;
   readonly origenMedios: string | null;
 }
 
@@ -24,6 +30,7 @@ export function construirCsp(o: OpcionesCsp): string {
   const dir = (nombre: string, ...valores: (string | false | null | readonly string[])[]): string =>
     [nombre, ...valores.flat().filter((v): v is string => typeof v === 'string')].join(' ');
   const medios = o.origenMedios;
+  const rc = o.recaptcha || o.appCheck === true;
 
   return [
     "default-src 'none'",
@@ -31,21 +38,22 @@ export function construirCsp(o: OpcionesCsp): string {
       g && 'https://www.googletagmanager.com',
       m && 'https://connect.facebook.net',
       t && 'https://analytics.tiktok.com',
-      o.recaptcha && ['https://www.google.com/recaptcha/', 'https://www.gstatic.com/recaptcha/']),
+      rc && ['https://www.google.com/recaptcha/', 'https://www.gstatic.com/recaptcha/']),
     dir('style-src', "'self'", ...(o.hashesEstilo ?? [])),
     dir('img-src', "'self'", 'data:', medios,
       g && ['https://www.googletagmanager.com', 'https://www.google-analytics.com', 'https://*.google-analytics.com'],
       m && 'https://www.facebook.com',
       t && 'https://analytics.tiktok.com',
-      o.recaptcha && 'https://www.gstatic.com'),
+      rc && 'https://www.gstatic.com'),
     dir('media-src', "'self'", medios),
     "font-src 'self'",
     dir('connect-src', "'self'",
       g && ['https://www.google-analytics.com', 'https://*.google-analytics.com', 'https://*.analytics.google.com', 'https://www.googletagmanager.com'],
       m && ['https://www.facebook.com', 'https://connect.facebook.net'],
       t && 'https://analytics.tiktok.com',
-      o.recaptcha && 'https://www.google.com'),
-    o.recaptcha ? 'frame-src https://www.google.com https://recaptcha.google.com' : "frame-src 'none'",
+      rc && 'https://www.google.com',
+      o.appCheck === true && 'https://content-firebaseappcheck.googleapis.com'),
+    rc ? 'frame-src https://www.google.com https://recaptcha.google.com' : "frame-src 'none'",
     "manifest-src 'self'",
     "form-action 'self'",
     "base-uri 'none'",

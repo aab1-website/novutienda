@@ -26,6 +26,12 @@ export const FORMATO_ID_MEDICION = {
   tiktok: /^[A-Z0-9]{10,30}$/,
 } as const;
 const RE_RECAPTCHA = /^[A-Za-z0-9_-]{10,80}$/;
+const FORMATO_APP_CHECK = {
+  claveSitio: RE_RECAPTCHA,
+  apiKey: /^[A-Za-z0-9_-]{20,80}$/,
+  appId: /^\d{1,20}:\d{1,20}:web:[A-Za-z0-9]{8,40}$/,
+  projectId: /^[a-z][a-z0-9-]{4,28}[a-z0-9]$/,
+} as const;
 
 type Obj = Readonly<Record<string, unknown>>;
 const esObj = (x: unknown): x is Obj => typeof x === 'object' && x !== null && !Array.isArray(x);
@@ -187,6 +193,16 @@ function leerConfig(l: Lector, v: unknown): Contenido['config'] {
   };
   const rc = o['recaptchaSiteKey'];
   if (rc !== null && (typeof rc !== 'string' || !RE_RECAPTCHA.test(rc))) l.falla('config.recaptchaSiteKey', 'clave con formato inválido');
+  const ac = o['appCheck'] === undefined || o['appCheck'] === null ? null : l.obj(o['appCheck'], 'config.appCheck');
+  const appCheck = ac === null ? null : (() => {
+    const campo = (k: keyof typeof FORMATO_APP_CHECK): string => {
+      const x = ac[k];
+      if (typeof x === 'string' && FORMATO_APP_CHECK[k].test(x)) return x;
+      l.falla(`config.appCheck.${k}`, 'identificador con formato inválido');
+      return '';
+    };
+    return { claveSitio: campo('claveSitio'), apiKey: campo('apiKey'), appId: campo('appId'), projectId: campo('projectId') };
+  })();
   const permitidos = l.lista(o['enlacesPermitidos'], 'config.enlacesPermitidos', 20).map((h, i) => {
     if (typeof h !== 'string' || !RE_HOST.test(h)) {
       l.falla(`config.enlacesPermitidos[${i}]`, 'debe ser un nombre de anfitrión');
@@ -212,6 +228,7 @@ function leerConfig(l: Lector, v: unknown): Contenido['config'] {
     redondeo: { BOB: leerRegla(l, red['BOB'], 'config.redondeo.BOB'), ARS: leerRegla(l, red['ARS'], 'config.redondeo.ARS') },
     medicion: { google: id('google'), searchConsole: id('searchConsole'), meta: id('meta'), tiktok: id('tiktok') },
     recaptchaSiteKey: typeof rc === 'string' && RE_RECAPTCHA.test(rc) ? rc : null,
+    appCheck,
     origenMedios: typeof origenMedios === 'string' ? origenMedios : null,
     enlacesPermitidos: permitidos.filter((h) => h !== ''),
     textoPrivacidad: l.lista(o['textoPrivacidad'], 'config.textoPrivacidad', 40, 1).map((p, i) => l.texto(p, `config.textoPrivacidad[${i}]`, 1, 2000)),
