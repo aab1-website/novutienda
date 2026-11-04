@@ -224,13 +224,29 @@ desplegar (sin sello, rige la CSP base estricta). Parámetros en el despliegue: 
 |---|---|
 | `subidas` por `estado` + `venceEn` | `subidas (estado, venceEn)` |
 | `movimientos` por `productoId`, `fecha` desc | `movimientos (productoId, fecha desc)` |
+| `movimientos` por `tipo`, `fecha` desc | `movimientos (tipo, fecha desc)` (nuevo) |
+| `movimientos` por `por` (usuario), `fecha` desc | `movimientos (por, fecha desc)` (nuevo) |
+| `auditoria` por `accion`, `en` desc | `auditoria (accion, en desc)` (nuevo) |
+| `auditoria` por `uid`, `en` desc | `auditoria (uid, en desc)` (nuevo) |
+| `auditoria` y `movimientos` solo por rango de fecha (`en` / `fecha`) | campo único (automático) |
 | `ventas` del vendedor / del turno | `ventas (cajeroUid, creadoEnMs desc)`, `(turnoId, creadoEnMs desc)`, `(cajeroUid, turnoId, creadoEnMs desc)` |
+| `pos.exportarVentasCsv` (rango de `creadoEnMs`, orden ascendente) | campo único (automático): filtro de rango y orden sobre el mismo campo |
 | `aprobaciones_descuento` por estado / por solicitante | `(estado, solicitadoEnMs desc)`, `(solicitadoPor, estado, solicitadoEnMs desc)` |
 | `movimientos_caja` de un turno | `(turnoId, creadoEnMs desc)` y `(turnoId, creadoEnMs asc)` |
 | `creditos` por estado | `(estado, creadoEnMs desc)` |
+| `creditos` del vendedor | ninguno nuevo: se cruzan con sus ventas (`ventas (cajeroUid, creadoEnMs desc)`) y se leen por id |
+| `inventarios.series` (`productoId` + `ubicacionId` + `estado`) y `buscarSerie` (`serie` + `productoId`) | ninguno: solo igualdades, que Firestore resuelve combinando los índices de campo único; el orden por serie se hace en memoria |
 | `reconstrucciones` por estado | `(estado, solicitadaEnMs asc)` |
 | `recibos` por número (prefijo) o por fecha | campo único (automático) |
 | TTL de `limitesTasa.expiraEn` | `fieldOverrides` con `ttl: true` |
+
+Los cuatro índices nuevos (`movimientos` por `tipo` y por `por`; `auditoria` por `accion` y por `uid`, todos con orden descendente por fecha)
+respaldan filtros que hoy el servidor aplica **en memoria** sobre las últimas 1000 filas (`inventarios.movimientos` con `tipo`/`uid`;
+`consola.auditoria` con `accion`/`uid`). Con ellos esas consultas pueden pasar a consulta exacta (`where` + `orderBy` + `limit`) sin recorrer
+el tope de 1000; ese cambio es del dueño de `plataforma/funciones/servidor` y no se hizo aquí (la nota de §3 sobre «sin índice compuesto
+nuevo» deja de ser cierta cuando se haga). Con `accion` y `uid` a la vez, Firestore combina ambos índices. Los índices se despliegan con
+`firebase deploy --only firestore:indexes` (el CI ya incluye `firestore` en `FIREBASE_DEPLOY_ONLY`) y tardan en construirse: despliéguelos
+antes de activar la consulta exacta.
 
 Pruebas contra el emulador: `pnpm test:funciones` (puertos de `firebase.json`; proyecto `demo-pruebas`; los secretos de la prueba se generan al vuelo).
 
