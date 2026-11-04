@@ -8,14 +8,15 @@ import {
   guardarConfigSitio, guardarFicha, guardarSeccion, importarProductos, obtenerTablero, ordenarSecciones, preciosDelDia, publicarSitio,
   simularImportacion, type DepsImportacion,
 } from '@novutienda/consola';
-import { asignarRol, leerCotizacion, quitarRol, SinCotizacionUtilizable, type CopiaCotizacion, type Mercado, type Rol } from '@novutienda/nucleo';
+import { asignarRol, leerClaim, leerCotizacion, quitarRol, SinCotizacionUtilizable, type CopiaCotizacion, type Mercado, type Rol } from '@novutienda/nucleo';
 import { accion, type Contexto, type TablaAcciones } from './marco.js';
-import { ID_PRODUCTO, LIMITE, OBJETO, VACIO, objeto } from './comunes.js';
+import { ID_PRODUCTO, LIMITE, MS, OBJETO, VACIO, objeto, validarRango } from './comunes.js';
 
 const ADM = ['adm'] as const;
 const SUPERVISION = ['sup', 'adm'] as const;
 
 type DepsSitio = Parameters<typeof guardarFicha>[0];
+const datosDe = (d: { data(): unknown }): Record<string, unknown> => d.data() as Record<string, unknown>;
 const reloj = (c: Contexto): { ahora(): number } => ({ ahora: c.e.ahora });
 const depsSitio = (c: Contexto): DepsSitio => ({ db: c.e.db, catalogo: c.e.catalogo, reloj: reloj(c) });
 const depsImportacion = (c: Contexto): DepsImportacion => ({ db: c.e.db, catalogo: c.e.catalogo, reloj: reloj(c) });
@@ -136,6 +137,40 @@ export const accionesConsola: TablaAcciones = {
     },
   }),
 
+  /** Lecturas del sitio (solo lectura; el navegador no las lee directo por la CSP del panel). */
+  fichas: accion({
+    roles: SUPERVISION,
+    esquema: VACIO,
+    ejecutar: async (c) => ({
+      fichas: (await c.e.firestore.collection(ruta(c.tenantId, 'fichasWeb')).limit(500).get()).docs.map((f) => ({ productoId: f.id, ficha: datosDe(f) })),
+    }),
+  }),
+  /** Secciones en el orden del índice del sitio (las que no estén en el índice van al final). */
+  secciones: accion({
+    roles: SUPERVISION,
+    esquema: VACIO,
+    ejecutar: async (c) => {
+      const [docs, indice] = await Promise.all([
+        c.e.firestore.collection(ruta(c.tenantId, 'secciones')).limit(50).get(),
+        c.e.firestore.doc(ruta(c.tenantId, 'sitio', 'indice')).get(),
+      ]);
+      const orden = ((indice.data()?.['secciones'] as unknown[] | undefined) ?? []).filter((x): x is string => typeof x === 'string');
+      const posicion = (id: string): number => { const i = orden.indexOf(id); return i < 0 ? orden.length : i; };
+      return { secciones: docs.docs.map((x) => ({ id: x.id, ...datosDe(x) })).sort((a, b) => posicion(a.id) - posicion(b.id)) };
+    },
+  }),
+  carruseles: accion({
+    roles: SUPERVISION,
+    esquema: VACIO,
+    ejecutar: async (c) => ({ carruseles: (await c.e.firestore.collection(ruta(c.tenantId, 'carruseles')).limit(50).get()).docs.map((x) => ({ plantilla: x.id, ...datosDe(x) })) }),
+  }),
+  /** Configuración del sitio, o `null` si aún no se guardó. */
+  configSitio: accion({
+    roles: SUPERVISION,
+    esquema: VACIO,
+    ejecutar: async (c) => ({ config: (await c.e.firestore.doc(ruta(c.tenantId, 'sitio', 'config')).get()).data() ?? null }),
+  }),
+
   // ---- Importación y exportación (CSV; .xlsx no está disponible: ver docs/produccion) ----------------------
   simularImportacion: accion({
     roles: ADM,
@@ -175,6 +210,36 @@ export const accionesConsola: TablaAcciones = {
     }),
   }),
 
+  /**
+   * Auditoría del tenant (`sup`/`adm`), de la más reciente a la más antigua. Devuelve solo los campos de la vista (sin los
+   * resúmenes antes/después). Rango por `en`; los filtros `accion` y `uid` se aplican sobre una ventana de las últimas
+   * 1000 entradas del rango, para no exigir índices compuestos nuevos.
+   */
+  auditoria: accion({
+    roles: SUPERVISION,
+    esquema: objeto({ desde: MS.optional(), hasta: MS.optional(), accion: z.string().min(1).max(60).optional(), uid: UID.optional(), limite: LIMITE.optional() }),
+    ejecutar: async (c, d) => {
+      validarRango(d.desde, d.hasta);
+      const limite = d.limite ?? 100;
+      let q = c.e.firestore.collection(ruta(c.tenantId, 'auditoria')).orderBy('en', 'desc');
+      if (d.desde !== undefined) q = q.where('en', '>=', new Date(d.desde));
+      if (d.hasta !== undefined) q = q.where('en', '<=', new Date(d.hasta));
+      const filtra = d.accion !== undefined || d.uid !== undefined;
+      const entradas = (await q.limit(filtra ? 1000 : limite).get()).docs
+        .filter((e) => (d.accion === undefined || e.data()['accion'] === d.accion) && (d.uid === undefined || e.data()['uid'] === d.uid))
+        .slice(0, limite)
+        .map((e) => {
+          const x = datosDe(e);
+          const en = x['en'] as { toDate?: () => Date } | undefined;
+          return {
+            id: e.id, fecha: typeof en?.toDate === 'function' ? en.toDate().toISOString() : '', uid: x['uid'], rol: x['rol'], accion: x['accion'], ruta: x['ruta'],
+            ...(typeof x['motivo'] === 'string' ? { motivo: x['motivo'] } : {}),
+          };
+        });
+      return { entradas };
+    },
+  }),
+
   // ---- Usuarios (3 como máximo) ---------------------------------------------------------------------------
   /** Miembros del tenant con su correo (`sup`/`adm`). */
   listarUsuarios: accion({
@@ -193,19 +258,30 @@ export const accionesConsola: TablaAcciones = {
       };
     },
   }),
-  /** Busca un usuario existente por correo para poder asignarle rol (solo `adm`). La cuenta debe existir y estar verificada. */
+  /**
+   * Busca un usuario existente por correo para poder asignarle rol (solo `adm`). La cuenta debe existir y estar verificada.
+   * No revela cuentas de otros negocios (la plataforma es multi-tenant): solo responde si la cuenta ya es miembro de ESTE
+   * negocio o si no pertenece a ningún negocio (claim sin tenants, cuenta libre para asignar). En cualquier otro caso
+   * responde exactamente igual que si no existiera, para que no sirva de oráculo de qué correos usa otro negocio.
+   */
   buscarUsuarioPorCorreo: accion({
     roles: ADM,
     propietario: true,
     esquema: objeto({ correo: z.string().email().max(120) }),
     ejecutar: async (c, d) => {
+      const noExiste = new HttpsError('not-found', 'No existe una cuenta con ese correo.');
+      let u;
       try {
-        const u = await c.e.auth.getUserByEmail(d.correo);
-        return { uid: u.uid, correoVerificado: u.emailVerified, conContrasena: u.providerData.some((p) => p.providerId === 'password') };
+        u = await c.e.auth.getUserByEmail(d.correo);
       } catch (error) {
-        if ((error as { code?: unknown }).code === 'auth/user-not-found') throw new HttpsError('not-found', 'No existe una cuenta con ese correo.');
+        if ((error as { code?: unknown }).code === 'auth/user-not-found') throw noExiste;
         throw error;
       }
+      const claim = leerClaim(u.customClaims);
+      const sinTenants = !claim.ok || Object.keys(claim.valor.pl.t).length === 0;
+      const esMiembro = (await c.e.firestore.doc(ruta(c.tenantId, 'miembros', u.uid)).get()).exists || (claim.ok && Object.hasOwn(claim.valor.pl.t, c.tenantId));
+      if (!sinTenants && !esMiembro) throw noExiste;
+      return { uid: u.uid, correoVerificado: u.emailVerified, conContrasena: u.providerData.some((p) => p.providerId === 'password') };
     },
   }),
   asignarRol: accion({
