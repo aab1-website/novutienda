@@ -305,7 +305,7 @@ export const handlersPos: {
     const reembolsos = (['efectivo', 'qr', 'transferencia'] as const).filter((m) => (porMedio[m] ?? 0) > 0).map((m) => ({ medio: m, moneda: v.moneda, monto: porMedio[m] ?? 0 }));
     const efectivo = reembolsos.find((r) => r.medio === 'efectivo');
     const t = turno.totales[v.moneda] ?? TOTALES_VACIOS;
-    if (efectivo !== undefined && efectivoEsperado(turno.apertura[v.moneda] ?? 0, t) < efectivo.monto) throw fallo('egreso-excede-efectivo');
+    if (efectivo !== undefined && efectivoEsperado(turno.apertura[v.moneda] ?? 0, t) < efectivo.monto) throw fallo('egreso-excede-efectivo', 'El reembolso en efectivo supera el efectivo de esa moneda en la caja');
     let nt = turno;
     for (const r of reembolsos) nt = agregarMonedas(nt, { [v.moneda]: r.medio === 'efectivo' ? { efectivo: -r.monto } : r.medio === 'qr' ? { qr: -r.monto } : { transferencia: -r.monto } });
     if (cred !== undefined) {
