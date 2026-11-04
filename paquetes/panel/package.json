@@ -10,7 +10,7 @@
     "dev": "vite",
     "build": "vite build && node scripts/sellar.mjs ../../dist/panel",
     "build:humo": "vite build --mode humo && node scripts/sellar.mjs ../../dist/panel-humo",
-    "humo": "playwright test --config humo/playwright.config.ts"
+    "humo": "pnpm run build:humo && playwright test --config humo/playwright.config.ts"
   },
   "dependencies": {
     "@plataforma/nucleo": "workspace:*",
