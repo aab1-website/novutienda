@@ -5,6 +5,7 @@ import type {
 import { MEDIOS_PAGO, MONEDAS } from '../api/tipos.js';
 import { diferenciaPorMoneda, efectivoEsperado, monedasDelTurno, sumarTotales, TOTALES_VACIOS } from '../util/arqueo.js';
 import { MONEDA_DE_MERCADO, precioDeVenta } from '../util/precio.js';
+import { aCsv } from '../util/csv.js';
 import { auditar, fallo, fechaLaPaz, iso, recalcular, type Contexto } from './estado.js';
 
 type H<N extends NombreCallable> = (c: Contexto, e: Entrada<N>) => Salida<N> | Promise<Salida<N>>;
@@ -102,7 +103,7 @@ function validarPagos(c: Contexto, pagos: readonly { medio: string; moneda: stri
 }
 
 export const handlersPos: {
-  [N in 'abrirTurno' | 'cerrarTurno' | 'cerrarTurnoForzado' | 'confirmarVenta' | 'solicitarAprobacion' | 'resolverAprobacion' | 'solicitarAnulacion' | 'aprobarAnulacion' | 'registrarMovimientoCaja' | 'cobrarCredito' | 'guardarConfigPos' | 'leerConfigPos' | 'turnoActual' | 'listarTurnos' | 'listarVentas' | 'listarAprobaciones' | 'listarMovimientosCaja' | 'listarCreditos' | 'listarAuditoria']: H<N>;
+  [N in 'abrirTurno' | 'cerrarTurno' | 'cerrarTurnoForzado' | 'confirmarVenta' | 'solicitarAprobacion' | 'resolverAprobacion' | 'solicitarAnulacion' | 'aprobarAnulacion' | 'registrarMovimientoCaja' | 'cobrarCredito' | 'guardarConfigPos' | 'leerConfigPos' | 'turnoActual' | 'listarTurnos' | 'listarVentas' | 'listarAprobaciones' | 'listarMovimientosCaja' | 'listarCreditos' | 'listarAuditoria' | 'exportarVentasCsv']: H<N>;
 } = {
   abrirTurno(c, e) {
     const id = exigirUuid(e.turnoId, 'turnoId');
@@ -416,7 +417,18 @@ export const handlersPos: {
       .sort((a, b) => b.solicitadoEnMs - a.solicitadoEnMs),
   listarMovimientosCaja: (c, e) => [...c.e.movCaja.values()].filter((m) => (e.turnoId === undefined ? true : m.turnoId === e.turnoId)).sort((a, b) => b.creadoEnMs - a.creadoEnMs),
   listarCreditos: (c, e) =>
-    [...c.e.creditos.values()].filter((x) => (e.estado === undefined ? true : x.estado === e.estado)).map((x) => ({ ventaId: x.ventaId, deudor: x.deudor, moneda: x.moneda, monto: x.monto, saldo: x.saldo, cobrado: x.cobrado, estado: x.estado, aprobadoPor: x.aprobadoPor, turnoId: x.turnoId, creadoEnMs: x.creadoEnMs })).sort((a, b) => b.creadoEnMs - a.creadoEnMs),
+    [...c.e.creditos.values()]
+      .filter((x) => (c.rol !== 'caj' ? true : c.e.ventas.get(x.ventaId)?.cajeroUid === c.uid))
+      .filter((x) => (e.estado === undefined ? true : x.estado === e.estado)).map((x) => ({ ventaId: x.ventaId, deudor: x.deudor, moneda: x.moneda, monto: x.monto, saldo: x.saldo, cobrado: x.cobrado, estado: x.estado, aprobadoPor: x.aprobadoPor, turnoId: x.turnoId, creadoEnMs: x.creadoEnMs })).sort((a, b) => b.creadoEnMs - a.creadoEnMs),
+  exportarVentasCsv(c, e) {
+    if (c.rol === 'caj') throw fallo('no-autorizado', 'Solo supervisores y administradores exportan ventas.');
+    const filas = [...c.e.ventas.values()]
+      .filter((v) => (e.desde === undefined ? true : fechaLaPaz(v.creadoEnMs) >= e.desde))
+      .filter((v) => (e.hasta === undefined ? true : fechaLaPaz(v.creadoEnMs) <= e.hasta))
+      .sort((a, b) => a.creadoEnMs - b.creadoEnMs)
+      .map((v) => [v.ventaId, fechaLaPaz(v.creadoEnMs), v.estado, v.moneda, v.total, v.cajeroUid]);
+    return { csv: aCsv(['ventaId', 'fecha', 'estado', 'moneda', 'total', 'cajeroUid'], filas) };
+  },
   listarAuditoria: (c, e) =>
     c.e.auditoria
       .filter((a) => (e.desde === undefined ? true : a.fecha.slice(0, 10) >= e.desde))

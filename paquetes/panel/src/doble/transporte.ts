@@ -40,7 +40,7 @@ function productoReal(p: ProductoPanel): Obj {
 
 /**
  * Acciones reales atendidas por el doble: nombre `modulo.accion` → entrada y salida con la forma del servidor
- * (docs/produccion/funciones.md §3). Las que el servidor aún no tiene (`PROPUESTAS`) llevan la forma propuesta.
+ * (docs/produccion/funciones.md §3). `PROPUESTAS` está vacía: todas existen en el servidor.
  */
 const ACCIONES: Readonly<Record<string, WireHandler>> = {
   // pos
@@ -90,6 +90,8 @@ const ACCIONES: Readonly<Record<string, WireHandler>> = {
       ...(d['productoId'] !== undefined ? { productoId: d['productoId'] } : {}),
       ...(d['desde'] !== undefined ? { desde: msAFecha(d['desde']) } : {}),
       ...(d['hasta'] !== undefined ? { hasta: msAFecha(d['hasta']) } : {}),
+      ...(d['tipo'] !== undefined ? { tipo: d['tipo'] } : {}),
+      ...(d['uid'] !== undefined ? { usuario: d['uid'] } : {}),
       limite: d['limite'] ?? 100,
     })) as Obj[];
     // Forma del documento real: sin `id`, con `referencia` como objeto.
@@ -107,8 +109,8 @@ const ACCIONES: Readonly<Record<string, WireHandler>> = {
     const k = ((await legado(c, 'listarConteos', {})) as Obj[]).find((x) => x['conteoId'] === d['conteoId']);
     if (k === undefined) throw fallo('no-encontrado', 'El conteo no existe');
     const { lineas, conteoId, resultado, ...r } = k;
-    // PROPUESTA: `resultado` (teórico, contado, diferencia) solo para sup/adm y con el conteo cerrado.
-    return { conteo: { id: conteoId, ...r, ...(resultado !== undefined ? { resultado } : {}) }, lineas };
+    // `resultado` (teórico, contado, diferencia) solo llega a sup/adm y con el conteo cerrado (el doble ya lo filtra).
+    return { conteo: { id: conteoId, ...r }, lineas, ...(resultado !== undefined ? { resultado } : {}) };
   },
   'inventarios.exportarCsv': (c, d) => legado({ ...c, rol: d['conCostos'] === true ? 'adm' : 'sup' }, 'exportarProductosCsv', {}),
   // recibos
@@ -162,7 +164,16 @@ const ACCIONES: Readonly<Record<string, WireHandler>> = {
     await legado(c, 'quitarRol', d);
     return { claim: {} };
   },
-  'consola.auditoria': async (c, d) => ({ entradas: await legado(c, 'listarAuditoria', d) }),
+  'consola.auditoria': async (c, d) => ({
+    entradas: await legado(c, 'listarAuditoria', {
+      ...sin(d, 'desde', 'hasta'), ...(d['desde'] !== undefined ? { desde: msAFecha(d['desde']) } : {}), ...(d['hasta'] !== undefined ? { hasta: msAFecha(d['hasta']) } : {}),
+    }),
+  }),
+  'consola.buscarUsuarioPorCorreo': async (c, d) => legado(c, 'buscarUsuarioPorCorreo', d),
+  'pos.exportarVentasCsv': async (c, d) =>
+    legado(c, 'exportarVentasCsv', {
+      ...(d['desde'] !== undefined ? { desde: msAFecha(d['desde']) } : {}), ...(d['hasta'] !== undefined ? { hasta: msAFecha(d['hasta']) } : {}),
+    }),
   'consola.fichas': (c) => legado(c, 'listarFichas', {}).then((fichas) => ({ fichas })),
   'consola.secciones': (c) => legado(c, 'listarSecciones', {}).then((secciones) => ({ secciones })),
   'consola.carruseles': (c) => legado(c, 'listarCarruseles', {}).then((carruseles) => ({ carruseles })),
@@ -184,8 +195,8 @@ export interface OpcionesTransporteDoble {
 
 /**
  * Servidor doble: atiende `{ accion, tenantId, datos }` por módulo con las reglas del doble en memoria, aplicando los
- * roles REALES de cada acción y devolviendo la forma real de la respuesta. No incluye `details.codigo` más allá de
- * lo que ponen las reglas del doble (el servidor real no lo envía; ver `api/errores.ts`).
+ * roles REALES de cada acción y devolviendo la forma real de la respuesta. El `details.codigo` es el de las
+ * reglas del doble (el servidor real lo envía siempre; ver `api/errores.ts`).
  */
 export class TransporteDoble implements Transporte {
   invocaciones: { modulo: Modulo; accion: string; tenantId: string; datos: unknown }[] = [];

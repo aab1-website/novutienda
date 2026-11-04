@@ -9,14 +9,15 @@
 // `consola.editarProducto` y `consola.cambiarPrecioUSD` (§2 de funciones.md); en `inventarios` los precios y costos van en
 // centavos de USD. La conversión vive únicamente en `usd()` y se usa solo en esas acciones.
 //
-// Lo que el servidor todavía no ofrece (ver `PROPUESTAS`) NO se inventa en el panel: la operación existe en el contrato del
-// panel y el doble la atiende, pero el cliente real responde "no disponible" hasta que el dueño de las funciones la agregue.
+// Lo que el servidor todavía no ofrezca (ver `PROPUESTAS`, hoy vacía) NO se inventa en el panel: la operación existe en el
+// contrato del panel y el doble la atiende, pero el cliente real responde "no disponible" hasta que se agregue en las funciones.
 import type { Entrada, NombreCallable, Salida } from './contrato.js';
 import { ErrorApi } from './errores.js';
 import type {
-  AprobacionPos, ConteoVista, CotizacionVista, CotizacionesVigentes, CreditoVista, Medio, MermaVista, MovimientoVista, ProductoPanel,
+  AprobacionPos, ConteoVista, CotizacionesVigentes, CreditoVista, Medio, MermaVista, MovimientoVista, ProductoPanel,
   Rol, TurnoPos, UbicacionId, UnidadSerie, UsuarioVista, VentaPos,
 } from './tipos.js';
+import { fijarRedondeo } from '../util/precio.js';
 
 export type Modulo = 'pos' | 'inventarios' | 'consola' | 'recibos' | 'medios';
 export type ClaveAccion = `${Modulo}.${string}`;
@@ -31,46 +32,31 @@ export const ROLES_ACCION: Readonly<Record<string, readonly Rol[]>> = {
   'pos.solicitarAprobacion': TODOS, 'pos.resolverAprobacion': SUP, 'pos.solicitarAnulacion': TODOS, 'pos.aprobarAnulacion': SUP,
   'pos.registrarMovimientoCaja': TODOS, 'pos.cobrarCredito': TODOS, 'pos.leerConfig': TODOS, 'pos.guardarConfig': ADM,
   'pos.miTurno': TODOS, 'pos.misVentas': TODOS, 'pos.venta': TODOS, 'pos.aprobaciones': TODOS, 'pos.aprobacion': TODOS,
-  'pos.movimientosCaja': TODOS, 'pos.creditos': SUP, 'pos.supervision': SUP, 'pos.turnos': SUP,
+  'pos.movimientosCaja': TODOS, 'pos.creditos': TODOS, 'pos.cotizaciones': TODOS, 'pos.supervision': SUP, 'pos.turnos': SUP,
   'pos.exportarVentasCsv': SUP, 'pos.exportarMovimientosCajaCsv': SUP,
   'inventarios.ingresar': SUP, 'inventarios.traspasar': SUP, 'inventarios.ajustar': ADM, 'inventarios.solicitarMerma': TODOS,
   'inventarios.resolverMerma': SUP, 'inventarios.abrirConteo': SUP, 'inventarios.registrarLineaConteo': TODOS, 'inventarios.cerrarConteo': SUP,
   'inventarios.crearUbicacion': ADM, 'inventarios.fijarCosto': ADM, 'inventarios.importarProductosCsv': ADM,
   'inventarios.listarProductos': TODOS, 'inventarios.ubicaciones': TODOS, 'inventarios.costos': ADM, 'inventarios.buscarSerie': TODOS,
   'inventarios.movimientos': SUP, 'inventarios.mermas': SUP, 'inventarios.conteo': TODOS, 'inventarios.conteos': TODOS,
-  'inventarios.exportarCsv': SUP,
+  'inventarios.exportarCsv': SUP, 'inventarios.series': TODOS,
   'consola.crearProducto': ADM, 'consola.editarProducto': ADM, 'consola.cambiarPrecioUSD': ADM, 'consola.catalogo': SUP,
   'consola.preciosDelDia': SUP, 'consola.guardarFicha': SUP, 'consola.leerFicha': SUP, 'consola.guardarSeccion': ADM,
   'consola.eliminarSeccion': ADM, 'consola.ordenarSecciones': ADM, 'consola.guardarCarrusel': ADM, 'consola.guardarConfigSitio': ADM,
   'consola.simularImportacion': ADM, 'consola.importarProductos': ADM, 'consola.exportarProductosCsv': SUP, 'consola.publicarSitio': ADM,
   'consola.tablero': SUP, 'consola.alertas': SUP, 'consola.listarUsuarios': SUP, 'consola.buscarUsuarioPorCorreo': ADM,
-  'consola.asignarRol': ADM, 'consola.quitarRol': ADM,
+  'consola.asignarRol': ADM, 'consola.quitarRol': ADM, 'consola.auditoria': SUP, 'consola.fichas': SUP, 'consola.secciones': SUP,
+  'consola.carruseles': SUP, 'consola.configSitio': SUP,
   'medios.reservarSubida': SUP, 'medios.finalizarSubida': SUP, 'medios.borrarMedio': SUP, 'medios.listarMedios': SUP,
   'recibos.leerPlantilla': TODOS, 'recibos.guardarPlantilla': SUP, 'recibos.buscarComprobantes': TODOS, 'recibos.leerRecibo': TODOS,
   'recibos.referenciarFacturaSuma': SUP, 'recibos.htmlRecibo': TODOS, 'recibos.pdfRecibo': TODOS, 'recibos.enviarRecibo': TODOS,
 };
 
 /**
- * Acciones que el panel necesita y que el servidor NO tiene (propuestas al dueño de las funciones). El cliente real no las
- * llama; el doble sí, para que las pantallas se puedan desarrollar y probar. Mientras existan, esas pantallas fallan con
- * «no disponible» en producción: son el pendiente de la reconciliación.
+ * Acciones que el panel necesita y que el servidor aún no tiene (propuestas al dueño de las funciones). Hoy no queda
+ * ninguna: todas existen y están en `ROLES_ACCION`. Se conserva el mecanismo (el doble y el transporte lo consultan).
  */
-export const PROPUESTAS: Readonly<Record<string, readonly Rol[]>> = {
-  /** `{ cotizaciones: { BO, AR }, redondeo }` para el POS del vendedor (hoy solo `consola.tablero`, de sup/adm, trae las cotizaciones). */
-  'pos.cotizaciones': TODOS,
-  /** `{ productoId, ubicacionId?, soloDisponibles? }` → `{ unidades[] }`: series de un producto (hoy solo se busca por serie exacta). */
-  'inventarios.series': TODOS,
-  /** `{ desde?, hasta?, accion?, uid?, limite? }` → `{ entradas[] }`: auditoría (el navegador no puede leer `auditoria` con la CSP del panel). */
-  'consola.auditoria': SUP,
-  /** `{}` → `{ fichas: [{ productoId, ficha }] }`. */
-  'consola.fichas': SUP,
-  /** `{}` → `{ secciones[] }`. */
-  'consola.secciones': SUP,
-  /** `{}` → `{ carruseles[] }`. */
-  'consola.carruseles': SUP,
-  /** `{}` → `{ config }` (o `null`). */
-  'consola.configSitio': SUP,
-};
+export const PROPUESTAS: Readonly<Record<string, readonly Rol[]>> = {};
 
 export const esPropuesta = (modulo: Modulo, accion: string): boolean => Object.hasOwn(PROPUESTAS, `${modulo}.${accion}`);
 export const rolesDeAccion = (clave: string): readonly Rol[] => ROLES_ACCION[clave] ?? PROPUESTAS[clave] ?? [];
@@ -207,12 +193,6 @@ function aMedio(m: Obj): Medio {
   return { ...(quitar(m, 'id') as unknown as Medio), id: String(m['id']) };
 }
 
-function aCotizacion(t: Obj): CotizacionVista | null {
-  if (t['estado'] === 'sin_cotizacion') return null;
-  const par = String(t['par']) as CotizacionVista['par'];
-  return { cotizacionId: `${String(t['mercado'])}-${String(t['fecha'])}`, par, valor: Number(t['valor']), fecha: String(t['fecha']), fuente: String(t['fuente']), estado: t['estado'] as CotizacionVista['estado'] };
-}
-
 // ---------------------------------------------------------------------------------------------------------------------
 // Tabla de traducciones: una por operación del panel
 // ---------------------------------------------------------------------------------------------------------------------
@@ -270,16 +250,24 @@ export const TRADUCCION: { readonly [N in NombreCallable]: Traduccion<N> } = {
   },
   listarCreditos: {
     usa: ['pos.creditos'],
-    // Hoy el servidor lo limita a sup/adm; el vendedor cobra créditos desde su caja (ver pendientes).
-    roles: SUP,
+    // El vendedor solo recibe los créditos de sus ventas (lo filtra el servidor).
     ejecutar: async (c, e) => {
       const creditos = lista(await c.llamar('pos', 'creditos', e.estado === 'pendiente' || e.estado === 'cobrado' ? { estado: e.estado, limite: 200 } : { limite: 200 }), 'creditos') as unknown as CreditoVista[];
       return creditos;
     },
   },
+  exportarVentasCsv: {
+    usa: ['pos.exportarVentasCsv'],
+    ejecutar: async (c, e) => {
+      // El servidor exige un rango acotado (hasta 366 días): sin fechas se pide el último año.
+      const hasta = e.hasta === undefined ? Date.now() : msDeFecha(e.hasta, true);
+      const desde = e.desde === undefined ? Math.max(0, hasta - 365 * 86_400_000) : msDeFecha(e.desde, false);
+      return { csv: String(campo(await c.llamar('pos', 'exportarVentasCsv', { desde, hasta }), 'csv')) };
+    },
+  },
   listarAuditoria: {
     usa: ['consola.auditoria'],
-    ejecutar: async (c, e) => lista(await c.llamar('consola', 'auditoria', sinVacios({ desde: e.desde, hasta: e.hasta, accion: e.accion, uid: e.uid, limite: e.limite })), 'entradas') as never,
+    ejecutar: async (c, e) => lista(await c.llamar('consola', 'auditoria', sinVacios({ desde: e.desde === undefined ? undefined : msDeFecha(e.desde, false), hasta: e.hasta === undefined ? undefined : msDeFecha(e.hasta, true), accion: e.accion, uid: e.uid, limite: e.limite })), 'entradas') as never,
   },
 
   // ---- Inventarios ----
@@ -350,14 +338,12 @@ export const TRADUCCION: { readonly [N in NombreCallable]: Traduccion<N> } = {
         productoId: e.productoId,
         desde: e.desde === undefined ? undefined : msDeFecha(e.desde, false),
         hasta: e.hasta === undefined ? undefined : msDeFecha(e.hasta, true),
-        limite: 200,
+        tipo: e.tipo,
+        uid: e.usuario,
+        limite: e.limite ?? 200,
       });
-      // El servidor no filtra por tipo ni por persona: se filtra aquí sobre los últimos 200 y luego se recorta.
-      return lista(await c.llamar('inventarios', 'movimientos', datos), 'movimientos')
-        .map(aMovimiento)
-        .filter((m) => (e.tipo === undefined ? true : m.tipo === e.tipo))
-        .filter((m) => (e.usuario === undefined ? true : m.por === e.usuario))
-        .slice(0, e.limite ?? 200);
+      // El servidor filtra por tipo y por persona; `costoUSDUnit` solo llega al administrador y la vista no lo usa.
+      return lista(await c.llamar('inventarios', 'movimientos', datos), 'movimientos').map(aMovimiento);
     },
   },
   listarMermas: {
@@ -376,28 +362,21 @@ export const TRADUCCION: { readonly [N in NombreCallable]: Traduccion<N> } = {
           return sinVacios({
             conteoId: String(k['id']), ubicacionId: k['ubicacionId'] as UbicacionId, estado: k['estado'] as ConteoVista['estado'], abiertoPor: String(k['abiertoPor']),
             cerradoPor: k['cerradoPor'] as string | undefined, fecha: String(k['abiertoEn'] ?? ''), lineas,
-            // Hoy el servidor no devuelve el teórico (ver pendientes): sin `resultado`, la pantalla no muestra diferencias.
-            resultado: ((detalle as Obj)['conteo'] as Obj | undefined)?.['resultado'] as ConteoVista['resultado'],
+            // `resultado` (teórico, contado, diferencia) solo llega a sup/adm y con el conteo cerrado.
+            resultado: (detalle as Obj)['resultado'] as ConteoVista['resultado'],
           }) as ConteoVista;
         }),
       );
     },
   },
   cotizacionesVigentes: {
-    // sup/adm la sacan del tablero de la consola; para el vendedor falta `pos.cotizaciones` (propuesta).
-    usa: ['consola.tablero', 'pos.cotizaciones'],
+    // Para todos los roles; además trae la política de redondeo del negocio, que el panel adopta para calcular precios.
+    usa: ['pos.cotizaciones'],
     roles: TODOS,
     ejecutar: async (c) => {
-      if (c.rol === 'caj') {
-        const r = (await c.llamar('pos', 'cotizaciones', {})) as Obj;
-        return (r['cotizaciones'] ?? { BO: null, AR: null }) as CotizacionesVigentes;
-      }
-      const t = lista(await c.llamar('consola', 'tablero', {}), 'cotizaciones');
-      const porMercado = (m: string): CotizacionVista | null => {
-        const x = t.find((y) => y['mercado'] === m);
-        return x === undefined ? null : aCotizacion(x);
-      };
-      return { BO: porMercado('BO'), AR: porMercado('AR') };
+      const r = (await c.llamar('pos', 'cotizaciones', {})) as Obj;
+      fijarRedondeo(r['redondeo']);
+      return (r['cotizaciones'] ?? { BO: null, AR: null }) as CotizacionesVigentes;
     },
   },
 
@@ -457,6 +436,13 @@ export const TRADUCCION: { readonly [N in NombreCallable]: Traduccion<N> } = {
     ejecutar: async (c, e) => (await c.llamar('consola', 'importarProductos', sinVacios({ archivo: e.contenidoBase64, omitirErrores: e.omitirErrores }))) as never,
   },
   exportarProductosCsvSitio: directa('consola', 'exportarProductosCsv'),
+  buscarUsuarioPorCorreo: {
+    usa: ['consola.buscarUsuarioPorCorreo'],
+    ejecutar: async (c, e) => {
+      const r = (await c.llamar('consola', 'buscarUsuarioPorCorreo', { correo: e.correo.trim() })) as Obj;
+      return { uid: String(r['uid']), correoVerificado: r['correoVerificado'] === true, conContrasena: r['conContrasena'] === true };
+    },
+  },
   asignarRol: comoOk('consola', 'asignarRol', (e) => e),
   quitarRol: comoOk('consola', 'quitarRol', (e) => e),
   listarFichas: { usa: ['consola.fichas'], ejecutar: async (c) => lista(await c.llamar('consola', 'fichas', {}), 'fichas') as never },

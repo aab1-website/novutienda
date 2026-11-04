@@ -2,7 +2,7 @@ import type { Entrada, NombreCallable, Salida } from '../api/contrato.js';
 import type { DatosProducto, Medio, Recibo, Simulacion, FilaSimulada } from '../api/tipos.js';
 import { LIMITES_PANEL, PLANTILLAS_SITIO } from '../api/tipos.js';
 import { aCsv } from '../util/csv.js';
-import { auditar, fallo, iso, vistaProducto, type Contexto } from './estado.js';
+import { auditar, exigirRol, fallo, iso, vistaProducto, type Contexto } from './estado.js';
 import { parsearCsv } from './inventario.js';
 
 type H<N extends NombreCallable> = (c: Contexto, e: Entrada<N>) => Salida<N> | Promise<Salida<N>>;
@@ -82,7 +82,7 @@ export function editarProductoConsola(c: Contexto, e: { productoId: string; camb
 }
 
 export const handlersOtros: {
-  [N in 'buscarComprobantes' | 'enviarRecibo' | 'referenciarFacturaSuma' | 'guardarPlantilla' | 'leerPlantilla' | 'obtenerRecibo' | 'obtenerTablero' | 'publicarSitio' | 'cambiarPrecioUSD' | 'guardarFicha' | 'reservarSubida' | 'finalizarSubida' | 'borrarMedio' | 'guardarSeccion' | 'eliminarSeccion' | 'ordenarSecciones' | 'guardarCarrusel' | 'guardarConfigSitio' | 'simularImportacion' | 'importarProductos' | 'exportarProductosCsvSitio' | 'asignarRol' | 'quitarRol' | 'listarFichas' | 'listarMedios' | 'leerConfigSitio' | 'listarSecciones' | 'listarCarruseles' | 'listarUsuarios']: H<N>;
+  [N in 'buscarComprobantes' | 'enviarRecibo' | 'referenciarFacturaSuma' | 'guardarPlantilla' | 'leerPlantilla' | 'obtenerRecibo' | 'obtenerTablero' | 'publicarSitio' | 'cambiarPrecioUSD' | 'guardarFicha' | 'reservarSubida' | 'finalizarSubida' | 'borrarMedio' | 'guardarSeccion' | 'eliminarSeccion' | 'ordenarSecciones' | 'guardarCarrusel' | 'guardarConfigSitio' | 'simularImportacion' | 'importarProductos' | 'exportarProductosCsvSitio' | 'asignarRol' | 'quitarRol' | 'buscarUsuarioPorCorreo' | 'listarFichas' | 'listarMedios' | 'leerConfigSitio' | 'listarSecciones' | 'listarCarruseles' | 'listarUsuarios']: H<N>;
 } = {
   buscarComprobantes(c, e) {
     const q = e.consulta;
@@ -338,6 +338,12 @@ export const handlersOtros: {
   listarSecciones: (c) => c.e.secciones,
   listarCarruseles: (c) => [...c.e.carruseles.values()],
   listarUsuarios: (c) => c.e.usuarios,
+  buscarUsuarioPorCorreo(c, e) {
+    exigirRol(c, ['adm']);
+    const u = c.e.usuarios.find((x) => x.correo.toLowerCase() === e.correo.trim().toLowerCase());
+    if (u === undefined) throw fallo('no-encontrado', 'No existe una cuenta con ese correo.');
+    return { uid: u.uid, correoVerificado: u.verificado, conContrasena: true };
+  },
 };
 
 export { vistaProducto };

@@ -1,10 +1,10 @@
 // Conformidad de la traducción del panel (`api/real.ts`) con las tablas de acciones REALES de las Cloud Functions
 // (plataforma/funciones/servidor/llamadas): toda acción que el panel invoca existe, con los mismos roles, salvo las
-// propuestas pendientes (que deben seguir ausentes del servidor: si el servidor las agrega, hay que pasarlas a reales).
+// propuestas (hoy ninguna: las que faltaban ya existen en el servidor).
 import { describe, expect, it } from 'vitest';
 import type { CopiaCotizacion } from '@novutienda/nucleo';
 import { preciosDelDia } from '@novutienda/consola';
-import { ErrorApi, NOMBRES_CALLABLE, PROPUESTAS, REDONDEO, ROLES_ACCION, ROLES_CALLABLE, TRADUCCION, precioDeVenta, usd, type NombreCallable } from '@novutienda/panel';
+import { ErrorApi, mensajeDeError, NOMBRES_CALLABLE, PROPUESTAS, REDONDEO, ROLES_ACCION, ROLES_CALLABLE, TRADUCCION, precioDeVenta, usd, type NombreCallable } from '@novutienda/panel';
 import { REDONDEO_POR_DEFECTO } from '../../plataforma/funciones/servidor/redondeo.js';
 import { accionesConsola } from '../../plataforma/funciones/servidor/llamadas/consola.js';
 import { accionesInventarios } from '../../plataforma/funciones/servidor/llamadas/inventarios.js';
@@ -35,12 +35,10 @@ describe('acciones reales del servidor frente a la tabla del panel', () => {
       }
     }
   });
-  it('cada operación del panel usa solo acciones reales o propuestas declaradas; las propuestas no existen aún en el servidor', () => {
+  it('no quedan propuestas: cada operación del panel usa solo acciones que existen en el servidor', () => {
+    expect(Object.keys(PROPUESTAS)).toEqual([]);
     for (const nombre of NOMBRES_CALLABLE) {
-      for (const clave of TRADUCCION[nombre].usa) {
-        const propuesta = clave in PROPUESTAS;
-        expect(propuesta ? real(clave) === undefined : real(clave) !== undefined, `${nombre} → ${clave}`).toBe(true);
-      }
+      for (const clave of TRADUCCION[nombre].usa) expect(real(clave), `${nombre} → ${clave}`).toBeDefined();
     }
   });
   it('los roles de cada operación no son más amplios que los del servidor', () => {
@@ -48,7 +46,7 @@ describe('acciones reales del servidor frente a la tabla del panel', () => {
       const t = TRADUCCION[nombre];
       if (t.roles !== undefined) continue; // declaradas a mano (ver pendientes del informe)
       for (const rol of ROLES_CALLABLE[nombre]) {
-        for (const clave of t.usa) expect([...(ROLES_ACCION[clave] ?? PROPUESTAS[clave] ?? [])], `${nombre}/${clave}`).toContain(rol);
+        for (const clave of t.usa) expect([...(ROLES_ACCION[clave] ?? [])], `${nombre}/${clave}`).toContain(rol);
       }
     }
   });
@@ -134,5 +132,61 @@ describe('finalizarSubida frente al disparador de Storage', () => {
     const otro = { rol: 'sup', esperar: () => Promise.resolve(), llamar: () => { intentos += 1; return Promise.reject(new ErrorApi('permission-denied', 'x')); } };
     await expect(t.ejecutar(otro, { subidaId: 'sub-1' })).rejects.toMatchObject({ codigoHttps: 'permission-denied' });
     expect(intentos).toBe(1);
+  });
+});
+
+describe('redondeo que llega del servidor (pos.cotizaciones)', () => {
+  const cot = { cotizacionId: 'x', par: 'ARS/USD' as const, valor: 1000, fecha: '2026-11-04', fuente: 'BNA', estado: 'vigente' as const };
+  const BOB = { tipo: 'decimales', decimales: 2, modo: 'cercano' };
+  const t = TRADUCCION.cotizacionesVigentes as unknown as { ejecutar(c: unknown, e: unknown): Promise<{ AR: unknown; BO: unknown }> };
+  const respuesta = (redondeo: unknown) => ({
+    rol: 'caj' as const, esperar: (): Promise<void> => Promise.resolve(),
+    llamar: (): Promise<unknown> => Promise.resolve({ cotizaciones: { BO: null, AR: cot }, redondeo }),
+  });
+  it('la traducción adopta el redondeo del servidor y precioDeVenta lo usa; una forma inválida se ignora', async () => {
+    // 10,49 USD * 1000 = 10 490 ARS: múltiplo de 100 → 10 500; múltiplo de 1000 → 10 000.
+    await t.ejecutar(respuesta({ BOB, ARS: { tipo: 'multiplo', multiplo: 100, modo: 'cercano' } }), {});
+    expect(precioDeVenta(1049, 'AR', 'ARS', cot)).toMatchObject({ centavos: 1_050_000 });
+    expect(await t.ejecutar(respuesta({ BOB, ARS: { tipo: 'multiplo', multiplo: 1000, modo: 'cercano' } }), {})).toMatchObject({ BO: null, AR: { valor: 1000 } });
+    expect(precioDeVenta(1049, 'AR', 'ARS', cot)).toMatchObject({ centavos: 1_000_000 });
+    await t.ejecutar(respuesta({ cualquier: 'cosa' }), {});
+    await t.ejecutar(respuesta(undefined), {});
+    expect(precioDeVenta(1049, 'AR', 'ARS', cot)).toMatchObject({ centavos: 1_000_000 });
+    // Se deja el respaldo vigente para el resto de la suite.
+    await t.ejecutar(respuesta(REDONDEO), {});
+    expect(precioDeVenta(1049, 'AR', 'ARS', cot)).toMatchObject({ centavos: 1_050_000 });
+  });
+});
+
+describe('errores del servidor: el panel mapea por details.codigo', () => {
+  it('cada código de módulo conocido tiene su mensaje; el del borde usa el mensaje del servidor', () => {
+    expect(mensajeDeError(new ErrorApi('failed-precondition', 'x', { codigo: 'serie-no-disponible' }))).toBe('Esa serie no está disponible en ese almacén.');
+    expect(mensajeDeError(new ErrorApi('not-found', 'x', { codigo: 'recibo-no-encontrado' }))).toBe('No se encontró el comprobante.');
+    expect(mensajeDeError(new ErrorApi('permission-denied', 'Solo puede ver sus propias ventas.', { codigo: 'acceso-denegado' }))).toBe('Solo puede ver sus propias ventas.');
+    expect(mensajeDeError(new ErrorApi('internal', 'detalle técnico', { codigo: 'error-interno' }))).not.toContain('técnico');
+  });
+});
+
+describe('buscarUsuarioPorCorreo y exportarVentasCsv', () => {
+  it('traducen a sus acciones reales con los datos y roles del servidor', async () => {
+    const llamadas: { modulo: string; accion: string; datos: unknown }[] = [];
+    const c = {
+      rol: 'adm' as const, esperar: (): Promise<void> => Promise.resolve(),
+      llamar: (modulo: string, accion: string, datos?: object): Promise<unknown> => {
+        llamadas.push({ modulo, accion, datos });
+        return Promise.resolve(accion === 'exportarVentasCsv' ? { csv: 'a\r\n' } : { uid: 'u1', correoVerificado: true, conContrasena: false });
+      },
+    };
+    const ejecutar = (n: NombreCallable, e: unknown): Promise<unknown> => (TRADUCCION[n] as unknown as { ejecutar(c: unknown, e: unknown): Promise<unknown> }).ejecutar(c, e);
+    expect(await ejecutar('buscarUsuarioPorCorreo', { correo: ' ana@ejemplo.test ' })).toEqual({ uid: 'u1', correoVerificado: true, conContrasena: false });
+    expect(llamadas[0]).toEqual({ modulo: 'consola', accion: 'buscarUsuarioPorCorreo', datos: { correo: 'ana@ejemplo.test' } });
+    expect(await ejecutar('exportarVentasCsv', { desde: '2026-11-01', hasta: '2026-11-03' })).toEqual({ csv: 'a\r\n' });
+    expect(llamadas[1]).toEqual({ modulo: 'pos', accion: 'exportarVentasCsv', datos: { desde: Date.parse('2026-11-01T00:00:00.000-04:00'), hasta: Date.parse('2026-11-03T23:59:59.999-04:00') } });
+    // Sin fechas: último año, siempre dentro del tope de 366 días del servidor.
+    await ejecutar('exportarVentasCsv', {});
+    const d = llamadas[2]?.datos as { desde: number; hasta: number };
+    expect(d.hasta - d.desde).toBeLessThanOrEqual(366 * 86_400_000);
+    expect([...ROLES_CALLABLE.buscarUsuarioPorCorreo]).toEqual(['adm']);
+    expect([...ROLES_CALLABLE.exportarVentasCsv].sort()).toEqual(['adm', 'sup']);
   });
 });
