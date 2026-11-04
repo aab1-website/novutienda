@@ -31,8 +31,12 @@ export function leerPaginaBna(html: string): ResultadoLectura<LecturaBna> {
   const fin = resto.search(/id=["']divisas["']/i);
   const panel = fin < 0 ? resto : resto.slice(0, fin);
 
-  const rotulo = /<th[^>]*class=["'][^"']*fechaCot[^"']*["'][^>]*>([\s\S]*?)<\/th>/i.exec(panel);
-  const fecha = rotulo ? fechaDiaMesAnio(plano(rotulo[1]!)) : null;
+  // Rótulo `<th class="…fechaCot…">…</th>`: por índices (sin expresiones regulares con retroceso).
+  const marca = panel.indexOf('fechaCot');
+  const ini = marca < 0 ? -1 : panel.lastIndexOf('<th', marca);
+  const finApertura = ini < 0 ? -1 : panel.indexOf('>', marca);
+  const cierre = finApertura < 0 ? -1 : panel.indexOf('</th>', finApertura);
+  const fecha = cierre < 0 ? null : fechaDiaMesAnio(plano(panel.slice(finApertura + 1, cierre)));
   if (!fecha) return { ok: false, motivo: 'sin fecha de la cotización de billetes' };
 
   const filas = filasDe(panel).filter((c) => /^dolar (u\.?s\.?a\.?|estadounidense)$/i.test(c[0] ?? ''));

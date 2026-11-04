@@ -1,9 +1,24 @@
 /** Utilidades de texto compartidas por los parsers (puras). */
 
+/** Quita las etiquetas `<...>` en un solo recorrido (lineal). Un `<` sin `>` posterior queda como texto. */
+function sinEtiquetas(html: string): string {
+  const partes: string[] = [];
+  let i = 0;
+  for (;;) {
+    const ini = html.indexOf('<', i);
+    if (ini < 0) break;
+    const fin = html.indexOf('>', ini + 1);
+    if (fin < 0) break; // ya no hay ningún `>`: lo que resta es texto
+    partes.push(html.slice(i, ini), ' ');
+    i = fin + 1;
+  }
+  partes.push(html.slice(i));
+  return partes.join('');
+}
+
 /** Texto plano de un trozo de HTML: sin etiquetas, sin entidades comunes, sin tildes, espacios simples. */
 export function plano(html: string): string {
-  return html
-    .replace(/<[^>]*>/g, ' ')
+  return sinEtiquetas(html)
     .replace(/&nbsp;/gi, ' ')
     .replace(/&([a-z])(acute|tilde|uml|grave);/gi, '$1')
     .replace(/&amp;/gi, '&')
@@ -13,11 +28,46 @@ export function plano(html: string): string {
     .trim();
 }
 
-/** Celdas (<td>) de cada fila (<tr>) de un trozo de HTML, en texto plano. */
+/** Minúsculas solo ASCII: conserva la longitud (toLowerCase puede cambiarla) para buscar con índices. */
+const minusculas = (s: string): string => s.replace(/[A-Z]/g, (c) => String.fromCharCode(c.charCodeAt(0) + 32));
+
+/**
+ * Trozos `<nombre ...>contenido</cierre>` en orden, con búsqueda por `indexOf` (lineal;
+ * sin retroceso de expresiones regulares). `nombres` son las etiquetas de apertura
+ * admitidas y `cierres` las de cierre, en minúsculas y sin `<`/`>`.
+ */
+function trozos(html: string, nombres: readonly string[], cierres: readonly string[]): string[] {
+  const bajo = minusculas(html);
+  const salida: string[] = [];
+  let i = 0;
+  for (;;) {
+    const ini = bajo.indexOf('<t', i);
+    if (ini < 0) break;
+    const nombre = nombres.find((n) => bajo.startsWith(n, ini + 1) && /[\s>/]/.test(bajo[ini + 1 + n.length] ?? ''));
+    if (!nombre) { i = ini + 2; continue; }
+    const finApertura = bajo.indexOf('>', ini);
+    if (finApertura < 0) break;
+    // cierre más próximo de los admitidos, recorriendo `</t` hacia adelante una sola vez
+    let k = finApertura + 1;
+    let cierre = -1;
+    let largo = 0;
+    for (;;) {
+      const c = bajo.indexOf('</t', k);
+      if (c < 0) break;
+      const hallado = cierres.find((x) => bajo.startsWith(`${x}>`, c + 2));
+      if (hallado) { cierre = c; largo = hallado.length; break; }
+      k = c + 3;
+    }
+    if (cierre < 0) break; // sin cierre: ninguna etiqueta posterior lo tendrá
+    salida.push(html.slice(finApertura + 1, cierre));
+    i = cierre + largo + 3;
+  }
+  return salida;
+}
+
+/** Celdas (<td>/<th>) de cada fila (<tr>) de un trozo de HTML, en texto plano. */
 export function filasDe(html: string): string[][] {
-  return [...html.matchAll(/<tr[^>]*>([\s\S]*?)<\/tr>/gi)].map((f) =>
-    [...f[1]!.matchAll(/<t[dh][^>]*>([\s\S]*?)<\/t[dh]>/gi)].map((c) => plano(c[1]!)),
-  );
+  return trozos(html, ['tr'], ['tr']).map((fila) => trozos(fila, ['td', 'th'], ['td', 'th']).map(plano));
 }
 
 /**

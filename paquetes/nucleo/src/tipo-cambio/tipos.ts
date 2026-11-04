@@ -43,6 +43,17 @@ export interface CotizacionGuardada {
   readonly origen: OrigenCarga;
   /** Instante ISO 8601 UTC en que se escribió. */
   readonly actualizadoEn: string;
+  /**
+   * Ancla del tope de salto: la última cotización de una fecha ANTERIOR a `fecha`
+   * (null si no la había). Las escrituras automáticas se miden contra ella.
+   */
+  readonly ancla?: Ancla | null;
+}
+
+/** Valor y fecha de la última cotización de una fecha anterior (referencia del tope de salto). */
+export interface Ancla {
+  readonly valor: number;
+  readonly fecha: string;
 }
 
 /** Copia que guarda cada venta o pedido: la cotización con la que se calculó el precio. */
@@ -71,23 +82,32 @@ export interface ConfigCotizacion {
   readonly saltoMaximo: number;
   /** Desvío relativo máximo entre la fuente principal y el control cruzado antes de avisar. */
   readonly desvioMaximo: number;
-  /** Hasta cuántos días de antigüedad el valor es 'vigente'. */
+  /** Hasta cuántos días HÁBILES de antigüedad el valor es 'vigente'. */
   readonly diasVigente: number;
-  /** Más allá de estos días no hay cotización utilizable. */
+  /** Más allá de estos días HÁBILES no hay cotización utilizable. */
   readonly diasLimite: number;
   /** Cuántos días en el futuro se acepta una fecha (el BCB publica de noche la tabla del día siguiente). */
   readonly diasFuturoMax: number;
+  /**
+   * Qué hacer con una fecha futura dentro de `diasFuturoMax`. `false` (por defecto): no se
+   * escribe todavía (queda diferida) y se toma en la corrida del día de esa fecha, de modo que la
+   * tabla del BCB publicada de noche no rige esa misma noche. `true`: se escribe y rige de inmediato.
+   */
+  readonly futuroVigente: boolean;
 }
 
 /**
  * Valores iniciales. Salto 5 % lo fija el contrato; el resto son supuestos
- * revisables: 3 días de vigencia cubren un fin de semana, 4 de límite
- * siguen el criterio de NovuChat (el valor del viernes sirve hasta el martes).
+ * revisables. Los días se cuentan HÁBILES (lunes a viernes sin feriados del
+ * calendario inyectado): 2 de vigencia cubren un fin de semana y un feriado
+ * suelto; 4 de límite son una semana hábil, de modo que un feriado largo
+ * (p. ej. Carnaval) no deja el mercado sin cotización mientras haya un valor reciente.
  */
 export const CONFIG_POR_DEFECTO: ConfigCotizacion = {
   saltoMaximo: 0.05,
   desvioMaximo: 0.05,
-  diasVigente: 3,
+  diasVigente: 2,
   diasLimite: 4,
   diasFuturoMax: 1,
+  futuroVigente: false,
 };

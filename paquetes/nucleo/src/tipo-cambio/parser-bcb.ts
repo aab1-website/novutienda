@@ -34,7 +34,10 @@ function fechaDe(texto: string): string | null {
  * coincidan y que la tabla del TCO tenga una sola fila USD con un número.
  */
 export function leerTablaBcb(html: string): ResultadoLectura<Lectura> {
-  const texto = plano(html);
+  // Sección útil: desde el comienzo hasta el cierre de la tabla del TCO (rótulo y título quedan antes).
+  const inicio = html.search(/Tipo de Cambio Oficial \(TCO\)/i);
+  const fin = inicio < 0 ? -1 : html.indexOf('</table>', inicio);
+  const texto = plano(fin < 0 ? html : html.slice(0, fin));
   const rotulo = /FECHA DE LA COTIZACION: ([^|]{0,60}?\d{4})/i.exec(texto);
   const titulo = /TABLA DE COTIZACIONES DEL ([^|]{0,60}?\d{4})/i.exec(texto);
   const fecha = rotulo ? fechaDe(rotulo[1]!) : null;
@@ -42,9 +45,7 @@ export function leerTablaBcb(html: string): ResultadoLectura<Lectura> {
   if (!fecha) return { ok: false, motivo: 'sin fecha de la cotización' };
   if (fechaTitulo !== fecha) return { ok: false, motivo: 'las dos fechas de la página no coinciden' };
 
-  const inicio = html.search(/Tipo de Cambio Oficial \(TCO\)/i);
   if (inicio < 0) return { ok: false, motivo: 'sin la tabla del TCO' };
-  const fin = html.indexOf('</table>', inicio);
   const filas = filasDe(html.slice(inicio, fin < 0 ? undefined : fin)).filter((celdas) => celdas.includes('USD'));
   if (filas.length !== 1) return { ok: false, motivo: `se esperaba una fila USD y hay ${filas.length}` };
   const celda = filas[0]![filas[0]!.length - 1] ?? '';
