@@ -562,6 +562,18 @@ describe('doble: usuarios', () => {
   });
 });
 
+describe('doble: alta de personal', () => {
+  it('asigna rol a una cuenta existente con correo verificado, respeta el tope de 3 y exige verificación', async () => {
+    const e = crearEntorno('adm');
+    expect((await e.api.llamar('buscarUsuarioPorCorreo', { correo: 'pendiente@ejemplo.test' })).correoVerificado).toBe(false);
+    expect((await falla(e.api.llamar('asignarRol', { uid: 'u-nueva', rol: 'caj' }))).codigoHttps).toBe('resource-exhausted');
+    await e.api.llamar('quitarRol', { uid: 'u-sup' });
+    expect((await falla(e.api.llamar('asignarRol', { uid: 'u-pendiente', rol: 'caj' }))).detalle.codigo).toBe('correo-no-verificado');
+    await e.api.llamar('asignarRol', { uid: 'u-nueva', rol: 'sup' });
+    expect((await e.api.llamar('listarUsuarios', {})).map((u) => u.uid)).toContain('u-nueva');
+  });
+});
+
 describe('doble: aislamiento de la entrada', () => {
   it('el servidor no comparte objetos con el cliente y registra las llamadas', async () => {
     const e = crearEntorno('caj');

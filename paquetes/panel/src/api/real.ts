@@ -9,8 +9,8 @@
 // `consola.editarProducto` y `consola.cambiarPrecioUSD` (§2 de funciones.md); en `inventarios` los precios y costos van en
 // centavos de USD. La conversión vive únicamente en `usd()` y se usa solo en esas acciones.
 //
-// Lo que el servidor todavía no ofrezca (ver `PROPUESTAS`, hoy vacía) NO se inventa en el panel: la operación existe en el
-// contrato del panel y el doble la atiende, pero el cliente real responde "no disponible" hasta que se agregue en las funciones.
+// Todas las acciones que el panel usa existen en el servidor (`ROLES_ACCION`); lo que falte se pide al dueño de las
+// funciones, nunca se inventa en el panel.
 import type { Entrada, NombreCallable, Salida } from './contrato.js';
 import { ErrorApi } from './errores.js';
 import type {
@@ -52,14 +52,7 @@ export const ROLES_ACCION: Readonly<Record<string, readonly Rol[]>> = {
   'recibos.referenciarFacturaSuma': SUP, 'recibos.htmlRecibo': TODOS, 'recibos.pdfRecibo': TODOS, 'recibos.enviarRecibo': TODOS,
 };
 
-/**
- * Acciones que el panel necesita y que el servidor aún no tiene (propuestas al dueño de las funciones). Hoy no queda
- * ninguna: todas existen y están en `ROLES_ACCION`. Se conserva el mecanismo (el doble y el transporte lo consultan).
- */
-export const PROPUESTAS: Readonly<Record<string, readonly Rol[]>> = {};
-
-export const esPropuesta = (modulo: Modulo, accion: string): boolean => Object.hasOwn(PROPUESTAS, `${modulo}.${accion}`);
-export const rolesDeAccion = (clave: string): readonly Rol[] => ROLES_ACCION[clave] ?? PROPUESTAS[clave] ?? [];
+export const rolesDeAccion = (clave: string): readonly Rol[] => ROLES_ACCION[clave] ?? [];
 
 /** Lo que una traducción necesita para hablar con el servidor. */
 export interface ContextoReal {
@@ -72,7 +65,7 @@ export interface ContextoReal {
 }
 
 export interface Traduccion<N extends NombreCallable> {
-  /** Acciones reales y propuestas que invoca (para roles y pruebas de conformidad). */
+  /** Acciones reales que invoca (para roles y pruebas de conformidad). */
   readonly usa: readonly ClaveAccion[];
   /** Roles de la operación del panel si difieren de las acciones que usa. */
   readonly roles?: readonly Rol[];

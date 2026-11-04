@@ -40,6 +40,8 @@ export interface EstadoDoble {
   publicadoEn: string | null;
   versionPublicada: number;
   usuarios: Mutable<UsuarioVista>[];
+  /** Cuentas de Firebase Auth que existen pero aún no son miembros de este negocio (el panel no crea cuentas). */
+  cuentasSinRol: Mutable<UsuarioVista>[];
   bytesOriginales: number;
 }
 
@@ -121,6 +123,10 @@ export function crearEstado(ahora: number): EstadoDoble {
       { uid: 'u-adm', correo: 'adm@ejemplo.test', rol: 'adm', verificado: true },
       { uid: 'u-sup', correo: 'sup@ejemplo.test', rol: 'sup', verificado: true },
       { uid: 'u-caj', correo: 'caj@ejemplo.test', rol: 'caj', verificado: true },
+    ],
+    cuentasSinRol: [
+      { uid: 'u-nueva', correo: 'nueva@ejemplo.test', rol: 'caj', verificado: true },
+      { uid: 'u-pendiente', correo: 'pendiente@ejemplo.test', rol: 'caj', verificado: false },
     ],
     bytesOriginales: 0,
   };

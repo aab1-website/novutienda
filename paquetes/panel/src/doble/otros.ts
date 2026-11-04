@@ -316,9 +316,21 @@ export const handlersOtros: {
     return { csv: aCsv(['id', 'nombre', 'categoria', 'marca', 'sku', 'activo', 'garantiaMeses', 'precioBO', 'precioAR'], filas) };
   },
   asignarRol(c, e) {
+    if (e.rol === 'adm') throw fallo('jerarquia');
     const u = c.e.usuarios.find((x) => x.uid === e.uid);
-    if (u === undefined) throw fallo('no-miembro');
-    if (u.rol === 'adm' || e.rol === 'adm') throw fallo('jerarquia');
+    if (u === undefined) {
+      // Alta: la cuenta ya existe en Auth (el panel no la crea); exige correo verificado y cupo en el plan.
+      const i = c.e.cuentasSinRol.findIndex((x) => x.uid === e.uid);
+      const cuenta = c.e.cuentasSinRol[i];
+      if (cuenta === undefined) throw fallo('no-miembro');
+      if (!cuenta.verificado) throw fallo('correo-no-verificado');
+      if (c.e.usuarios.length >= LIMITES_PANEL.usuarios) throw fallo('limite', 'Máximo 3 usuarios');
+      c.e.cuentasSinRol.splice(i, 1);
+      c.e.usuarios.push({ ...cuenta, rol: e.rol });
+      auditar(c, 'identidad.asignar-rol', `usuarios/${e.uid}`);
+      return { ok: true };
+    }
+    if (u.rol === 'adm') throw fallo('jerarquia');
     u.rol = e.rol;
     auditar(c, 'identidad.asignar-rol', `usuarios/${e.uid}`);
     return { ok: true };
@@ -329,6 +341,7 @@ export const handlersOtros: {
     if (u === undefined) throw fallo('no-miembro');
     if (u.rol === 'adm') throw fallo('jerarquia');
     c.e.usuarios.splice(i, 1);
+    c.e.cuentasSinRol.push({ ...u, rol: 'caj' });
     auditar(c, 'identidad.quitar-rol', `usuarios/${e.uid}`);
     return { ok: true };
   },
@@ -340,7 +353,8 @@ export const handlersOtros: {
   listarUsuarios: (c) => c.e.usuarios,
   buscarUsuarioPorCorreo(c, e) {
     exigirRol(c, ['adm']);
-    const u = c.e.usuarios.find((x) => x.correo.toLowerCase() === e.correo.trim().toLowerCase());
+    const buscado = e.correo.trim().toLowerCase();
+    const u = [...c.e.usuarios, ...c.e.cuentasSinRol].find((x) => x.correo.toLowerCase() === buscado);
     if (u === undefined) throw fallo('no-encontrado', 'No existe una cuenta con ese correo.');
     return { uid: u.uid, correoVerificado: u.verificado, conContrasena: true };
   },

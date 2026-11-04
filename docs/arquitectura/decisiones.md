@@ -34,3 +34,15 @@
   sube a 30 minutos y usa el JDK 21 que trae el runner (firebase-tools 15).
 - 04/11/2026 — **`deploy.sh staging` no sirve para este repositorio todavía:** la copia del estándar despliega `hosting,firestore:rules` al
   sitio por defecto y no conoce targets ni Functions. Staging se despliega por CI (merge a `main`). La corrección va aguas arriba.
+- 04/11/2026 — **La CSP del panel la define su build.** `paquetes/panel/scripts/sellar.mjs` escribe `dist/panel/_cabeceras.json` (CSP y demás
+  cabeceras) y `componer-hosting.mjs` lo incorpora a la regla `**` del target `panel` de `dist/firebase.json`, igual que el sello del sitio:
+  una sola fuente de verdad. La sección del target `panel` de `firebase.json` versionado es solo el valor base y una prueba
+  (`pruebas/panel/cabeceras.test.ts`) exige que sea idéntica a lo que genera el build, de modo que `dist/firebase.json` solo difiere del
+  versionado en la regla `**` del sitio y la comprobación de `preparar-despliegue-firebase.sh` sigue válida sin cambios. Contenido:
+  `connect-src` con Firebase Auth (`identitytoolkit`, `securetoken`), funciones (`*.cloudfunctions.net`, `*.a.run.app`), Cloud Storage
+  (`firebasestorage.googleapis.com`) y App Check/reCAPTCHA Enterprise; `img-src` y `media-src` limitados a Cloud Storage y `blob:`; sin
+  Firestore (el panel no usa su SDK); HSTS 63072000; `Permissions-Policy` con `usb=()`. **Desviación:** CSP solo admite comodín en la primera
+  etiqueta (`*.`), así que `https://us-east1-*.cloudfunctions.net` no es una fuente válida y se usa `https://*.cloudfunctions.net`; restringir a
+  `us-east1-<proyecto>` exigiría el id del proyecto en la CSP versionada (repositorio público). `Cross-Origin-Opener-Policy: same-origin`:
+  reCAPTCHA Enterprise de App Check usa un marco invisible y el inicio de sesión no usa ventanas emergentes, así que no se relaja a
+  `same-origin-allow-popups`; si una prueba con reCAPTCHA real lo exigiera, se cambia solo en `sellar.mjs` (y la prueba lo detecta en `firebase.json`).

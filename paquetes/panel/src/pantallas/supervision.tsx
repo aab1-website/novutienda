@@ -7,6 +7,7 @@ import { useAccion, useCarga } from '../ui/hooks.js';
 import { monedasDelTurno, proyectarTurno } from '../util/arqueo.js';
 import { aCsv, descargarTexto } from '../util/csv.js';
 import { formatearMonto, textoACentavos } from '../util/dinero.js';
+import { rangoUltimoMes, validarRango } from '../util/rango.js';
 
 
 function TurnoVivo({ t, alCambiar }: { t: TurnoPos; alCambiar: () => void }): JSX.Element {
@@ -86,6 +87,36 @@ function EnVivo(): JSX.Element {
   );
 }
 
+/** Ventas del rango en CSV, generado por el servidor (celdas neutralizadas). Último mes por defecto; hasta 366 días. */
+function ExportarVentas(): JSX.Element {
+  const { api } = useApp();
+  const inicial = rangoUltimoMes(Date.now());
+  const [desde, setDesde] = useState(inicial.desde);
+  const [hasta, setHasta] = useState(inicial.hasta);
+  const accion = useAccion();
+  const problema = validarRango(desde, hasta);
+  const exportar = (): void => {
+    if (problema !== null) return;
+    void accion.ejecutar(async () => {
+      const { csv } = await api.llamar('exportarVentasCsv', { desde, hasta });
+      descargarTexto(`ventas_${desde}_${hasta}.csv`, csv);
+    });
+  };
+  return (
+    <Seccion titulo="Exportar ventas">
+      <form class="formulario" onSubmit={(e) => { e.preventDefault(); exportar(); }} noValidate>
+        <div class="cuadricula">
+          <Campo etiqueta="Ventas desde" tipo="date" valor={desde} onInput={setDesde} requerido />
+          <Campo etiqueta="Ventas hasta" tipo="date" valor={hasta} onInput={setHasta} requerido ayuda="Por defecto, el último mes. Máximo 366 días." />
+        </div>
+        {problema !== null && <Alerta>{problema}</Alerta>}
+        {accion.error && <Alerta>{accion.error}</Alerta>}
+        <div class="fila"><Boton tipo="submit" variante="secundario" ocupado={accion.ocupado} deshabilitado={problema !== null}>Exportar ventas (CSV)</Boton></div>
+      </form>
+    </Seccion>
+  );
+}
+
 function Auditoria(): JSX.Element {
   const { api } = useApp();
   const [desde, setDesde] = useState('');
@@ -93,16 +124,9 @@ function Auditoria(): JSX.Element {
   const [accion, setAccion] = useState('');
   const [filtro, setFiltro] = useState({});
   const lista = useCarga(() => api.llamar('listarAuditoria', filtro), [filtro]);
-  const ventas = useAccion();
   const exportar = (): void => {
     const filas = (lista.datos ?? []).map((a) => [a.fecha, a.uid, a.rol, a.accion, a.ruta, a.motivo]);
     descargarTexto('auditoria.csv', aCsv(['fecha', 'usuario', 'rol', 'accion', 'ruta', 'motivo'], filas));
-  };
-  const exportarVentas = (): void => {
-    void ventas.ejecutar(async () => {
-      const v = await api.llamar('listarVentas', {});
-      descargarTexto('ventas.csv', aCsv(['recibo', 'ventaId', 'turnoId', 'cajero', 'estado', 'moneda', 'subtotal', 'descuento', 'total', 'cliente', 'fechaMs'], v.map((x) => [`${x.serie}-${String(x.receiptNo).padStart(6, '0')}`, x.ventaId, x.turnoId, x.cajeroUid, x.estado, x.moneda, x.subtotal / 100, (x.descuento?.monto ?? 0) / 100, x.total / 100, x.cliente?.nombre, x.creadoEnMs])));
-    });
   };
   return (
     <Seccion titulo="Auditoría del POS">
@@ -115,10 +139,8 @@ function Auditoria(): JSX.Element {
         <div class="fila">
           <Boton tipo="submit">Filtrar</Boton>
           <Boton variante="secundario" onClick={exportar} deshabilitado={!lista.datos?.length}>Exportar auditoría (CSV)</Boton>
-          <Boton variante="secundario" onClick={exportarVentas} ocupado={ventas.ocupado}>Exportar ventas (CSV)</Boton>
         </div>
       </form>
-      {ventas.error && <Alerta>{ventas.error}</Alerta>}
       {lista.cargando && <Cargando />}
       {lista.error && <ErrorCarga error={lista.error} reintentar={lista.recargar} />}
       {lista.datos && lista.datos.length === 0 && <Vacio titulo="No hay registros con esos filtros" />}
@@ -143,7 +165,7 @@ export function PantallaSupervision({ sub }: { sub: string }): JSX.Element {
     <div>
       <h1>Supervisión</h1>
       <Pestanas etiqueta="Supervisión" base="supervision" actual={actual} items={[{ id: 'vivo', titulo: 'En vivo' }, { id: 'auditoria', titulo: 'Auditoría y CSV' }]} />
-      {actual === 'vivo' ? <EnVivo /> : <Auditoria />}
+      {actual === 'vivo' ? <EnVivo /> : <><ExportarVentas /><Auditoria /></>}
     </div>
   );
 }

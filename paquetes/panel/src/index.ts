@@ -5,7 +5,7 @@ export type { Contrato, Entrada, NombreCallable, Salida } from './api/contrato.j
 export { CODIGOS_CONOCIDOS, ErrorApi, mensajeDeError } from './api/errores.js';
 export * from './api/tipos.js';
 // Contrato real con las Cloud Functions y su traducción desde las operaciones del panel (las pruebas de conformidad lo leen).
-export { PROPUESTAS, ROLES_ACCION, TRADUCCION, usd } from './api/real.js';
+export { ROLES_ACCION, TRADUCCION, usd } from './api/real.js';
 export { REDONDEO, precioDeVenta } from './util/precio.js';
 export { ClienteRemoto } from './api/transporte.js';
 export type { Sobre, Transporte } from './api/transporte.js';

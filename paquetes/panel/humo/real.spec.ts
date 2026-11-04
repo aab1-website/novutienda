@@ -61,7 +61,6 @@ test('App Check: cada llamada a las funciones del panel real lleva el token en X
 
 test('venta de punta a punta: turno, terminal, cobro con cambio, recibo, Mis recibos y cierre', async ({ page }) => {
   const v = vigilar(page);
-  // Quien vende aquí es `sup`: el vendedor (`caj`) todavía no recibe las cotizaciones del servidor (ver el informe).
   await entrar(page, sup);
   await expect(page.getByRole('heading', { name: 'Abrir turno' })).toBeVisible();
   await page.getByLabel(/Efectivo inicial en Bolivianos/).fill('100');
@@ -92,11 +91,15 @@ test('venta de punta a punta: turno, terminal, cobro con cambio, recibo, Mis rec
   expect(v.errores).toEqual([]);
 });
 
-test('el vendedor abre turno y, mientras no exista pos.cotizaciones, el terminal avisa que la consulta no está disponible', async ({ page }) => {
+test('el vendedor abre turno y el terminal muestra la cotización vigente del servidor, sin avisos', async ({ page }) => {
+  const v = vigilar(page);
   await entrar(page, caj);
   await page.getByLabel(/Efectivo inicial en Bolivianos/).fill('10');
   await page.getByRole('button', { name: 'Abrir turno' }).click();
-  await expect(page.getByRole('alert')).toContainText('no está disponible');
+  await expect(page.getByRole('heading', { name: 'Productos' })).toBeVisible();
+  await expect(page.getByText(/Cotización: 1 USD = 7 BOB/)).toBeVisible();
+  await expect(page.getByRole('alert')).toHaveCount(0);
+  expect(v.errores).toEqual([]);
 });
 
 test('inventario básico: existencias por almacén desde el servidor, ficha con precio del día y conteo ciego', async ({ page }) => {
