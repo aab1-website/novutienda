@@ -142,7 +142,7 @@ for (const esquema of ESQUEMAS) {
       const v = vigilar(page);
       await entrar(page, 'adm');
       await page.getByRole('link', { name: 'Catálogo y sitio' }).click();
-      await expect(page.getByRole('heading', { name: 'Sitio' })).toBeVisible();
+      await expect(page.getByRole('heading', { name: 'Sitio', exact: true })).toBeVisible();
       await expect(page.getByText(/de 200/).first()).toBeVisible();
       await sinViolaciones(page, 'tablero');
       await page.getByRole('link', { name: 'Fichas, fotos y video' }).click();
