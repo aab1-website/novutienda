@@ -1,7 +1,7 @@
 // Tipos congelados del registro de módulos (ola 1a). Sin importaciones.
 
 /** Roles del claim: cajero, supervisor, administrador, dirección. */
-export type Rol = 'caj' | 'sup' | 'adm' | 'dir';
+export type Rol = 'caj' | 'sup' | 'adm';
 
 /** Identificador estable de un módulo (por ejemplo `nucleo`). */
 export type IdModulo = string;
@@ -10,7 +10,7 @@ export type IdModulo = string;
 export type TipoEvento = string;
 
 /** Límite de plan que aplica a una colección. */
-export type LimiteColeccion = 'productos' | 'usuarios' | 'cajas';
+export type LimiteColeccion = 'productos' | 'usuarios' | 'cajas' | 'almacenes';
 
 export interface ColeccionManifiesto {
   /** Ruta relativa a `tenants/{t}`, por ejemplo `miembros` o `inventario/almacenes`. */

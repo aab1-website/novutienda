@@ -5,7 +5,7 @@ import { deleteDoc, doc, getDoc, getDocs, collection, setDoc, updateDoc, type Fi
 import type { RulesTestEnvironment } from '@firebase/rules-unit-testing';
 import type { ManifiestoReglas } from '../../scripts/generar-reglas.mjs';
 
-export const ROLES = ['caj', 'sup', 'adm', 'dir'] as const;
+export const ROLES = ['caj', 'sup', 'adm'] as const;
 export type RolPrueba = (typeof ROLES)[number];
 export const OPERACIONES = ['get', 'list', 'create', 'update', 'delete'] as const;
 export type Operacion = (typeof OPERACIONES)[number];
@@ -71,17 +71,17 @@ export function construirCasos(manifiestos: readonly ManifiestoReglas[]): Caso[]
     // Negativas fijas: nada de esto abre ninguna operación.
     const hostiles: Sujeto[] = [
       { nombre: 'sin autenticar', token: null },
-      { nombre: 'anónimo con claim válido', token: conProveedor('anonymous', claim({ [TENANT_A]: 'dir' })) },
+      { nombre: 'anónimo con claim válido', token: conProveedor('anonymous', claim({ [TENANT_A]: 'adm' })) },
       { nombre: 'autenticado sin claims', token: conProveedor('password') },
       { nombre: 'claim sin tenants', token: conProveedor('password', claim({})) },
-      { nombre: 'proveedor google.com', token: conProveedor('google.com', claim({ [TENANT_A]: 'dir' })) },
-      { nombre: 'proveedor custom', token: conProveedor('custom', claim({ [TENANT_A]: 'dir' })) },
+      { nombre: 'proveedor google.com', token: conProveedor('google.com', claim({ [TENANT_A]: 'adm' })) },
+      { nombre: 'proveedor custom', token: conProveedor('custom', claim({ [TENANT_A]: 'adm' })) },
       { nombre: 'correo no verificado', token: conProveedor('password', { ...claim({ [TENANT_A]: 'adm' }), email_verified: false }) },
       { nombre: 'sin dato de verificación de correo', token: { firebase: { sign_in_provider: 'password' }, ...claim({ [TENANT_A]: 'adm' }) } },
       { nombre: 'correo verificado como texto', token: conProveedor('password', { ...claim({ [TENANT_A]: 'adm' }), email_verified: 'true' }) },
-      { nombre: 'sin proveedor', token: claim({ [TENANT_A]: 'dir' }) },
+      { nombre: 'sin proveedor', token: claim({ [TENANT_A]: 'adm' }) },
       { nombre: 'acceso de plataforma sin rol', token: conProveedor('password', claim({}, { p: true })) },
-      { nombre: 'rol de otro tenant', token: conProveedor('password', claim({ [TENANT_B]: 'dir' })) },
+      { nombre: 'rol de otro tenant', token: conProveedor('password', claim({ [TENANT_B]: 'adm' })) },
       { nombre: 'rol con valor inválido', token: conProveedor('password', claim({ [TENANT_A]: 'root' })) },
     ];
     for (const s of hostiles) {
@@ -93,7 +93,7 @@ export function construirCasos(manifiestos: readonly ManifiestoReglas[]): Caso[]
     // Rol de un tenant usado en otro: dir en A y caj en B vale solo caj en B.
     const mixto: Sujeto = {
       nombre: 'dir en A y caj en B',
-      token: conProveedor('password', claim({ [TENANT_A]: 'dir', [TENANT_B]: 'caj' })),
+      token: conProveedor('password', claim({ [TENANT_A]: 'adm', [TENANT_B]: 'caj' })),
     };
     for (const op of OPERACIONES) {
       casos.push({ descripcion: `${mixto.nombre} ${op} ${c.ruta} en B`, sujeto: mixto, tenant: TENANT_B, ruta: c.ruta, operacion: op, esperado: permitido(c, 'caj', op) });

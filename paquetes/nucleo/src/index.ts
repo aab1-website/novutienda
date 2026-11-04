@@ -14,7 +14,6 @@ export type { SobreEvento } from './contratos/sobre-evento.js';
 export { validarSobre } from './contratos/sobre-evento.js';
 export { manifiestoNucleo } from './manifiesto.js';
 
-export { registroPlataforma } from './plataforma.js';
 
 export * from './identidad/index.js';
 export * from './tenant/index.js';

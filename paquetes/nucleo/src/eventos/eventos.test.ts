@@ -260,13 +260,13 @@ describe('cotización real del núcleo en los eventos', () => {
     transaccion: () => Promise.reject(new Error('no se usa')),
   });
   it('la copia producida por leerCotizacion pasa por validarEvento en venta.confirmada', async () => {
-    const copia = await leerCotizacion(almacen('BCB', 'BO-2026-11-04-1'), 'BO', ahora);
+    const copia = await leerCotizacion(almacen('BCB', 'BO-2026-11-04-1'), 'BO', ahora, { tenantId: 'tenant-1' });
     const datos = { ...fixturesVentaConfirmadaV1.validos[0], cotizacion: copia };
     const r = validarEvento(sobre({ tipo: 'venta.confirmada', datos }));
     expect(r).toMatchObject({ ok: true });
   });
   it('una copia en estado ultimo_verificado también es válida en pedido.solicitado', async () => {
-    const copia = await leerCotizacion(almacen('BNA', 'AR-2026-11-04-1'), 'AR', Date.UTC(2026, 10, 8, 15, 0, 0));
+    const copia = await leerCotizacion(almacen('BNA', 'AR-2026-11-04-1'), 'AR', Date.UTC(2026, 10, 10, 15, 0, 0), { tenantId: 'tenant-1' });
     expect(copia.estado).toBe('ultimo_verificado');
     const datos = { ...fixturesPedidoSolicitadoV1.validos[0], cotizacion: copia };
     expect(validarEvento(sobre({ tipo: 'pedido.solicitado', datos })).ok).toBe(true);

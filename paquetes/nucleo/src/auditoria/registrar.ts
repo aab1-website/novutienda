@@ -25,7 +25,7 @@ export interface EntradaAuditoria {
 
 export class ErrorAuditoria extends Error {}
 
-const ROLES: readonly string[] = ['caj', 'sup', 'adm', 'dir'];
+const ROLES: readonly string[] = ['caj', 'sup', 'adm'];
 /** Palabras (en minúsculas, sin tildes) que se rechazan si son una palabra completa de la clave. */
 const PALABRAS_CORTAS = new Set(['pin', 'email', 'ci', 'nit']);
 /** Fragmentos que se rechazan si aparecen dentro de la clave normalizada (correoElectronico, telefonoCliente...). */

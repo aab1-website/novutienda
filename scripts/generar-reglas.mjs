@@ -7,7 +7,7 @@ import { fileURLToPath } from 'node:url';
 import { pathToFileURL } from 'node:url';
 import { resolve } from 'node:path';
 
-const ROLES = ['caj', 'sup', 'adm', 'dir'];
+const ROLES = ['caj', 'sup', 'adm'];
 const SEGMENTO = /^[A-Za-z][A-Za-z0-9_-]*$/;
 
 /** Proveedor de identidad que el claim de rol exige en la sesión. */

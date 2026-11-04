@@ -18,7 +18,7 @@ export interface ManifiestoBase {
 type IdModulo = string;
 
 const SEMVER = /^(0|[1-9]\d*)\.(0|[1-9]\d*)\.(0|[1-9]\d*)$/;
-const ROLES = ['caj', 'sup', 'adm', 'dir'];
+const ROLES = ['caj', 'sup', 'adm'];
 const LIMITES = ['productos', 'usuarios', 'cajas'];
 
 export class ErrorRegistro extends Error {

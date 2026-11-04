@@ -26,7 +26,7 @@ describe('registro de módulos', () => {
     expect(registroPlataforma.listar().map((m) => m.id)).toEqual(['nucleo']);
     expect(manifiestoNucleo.colecciones.map((c) => c.ruta)).toEqual(['miembros', 'auditoria', 'eventos', 'procesados', 'contadores', 'cotizaciones', 'config']);
     const aud = manifiestoNucleo.colecciones.find((c) => c.ruta === 'auditoria');
-    expect(aud?.lectura).toEqual(['sup', 'adm', 'dir']);
+    expect(aud?.lectura).toEqual(['sup', 'adm']);
     expect(manifiestoNucleo.colecciones.every((c) => c.escritura === 'servidor')).toBe(true);
   });
 

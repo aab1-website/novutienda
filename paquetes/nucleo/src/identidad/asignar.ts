@@ -64,8 +64,8 @@ export interface Actor {
   readonly claims: unknown;
 }
 
-const ROLES: readonly string[] = ['caj', 'sup', 'adm', 'dir'];
-const RANGO: { readonly [r in Rol]: number } = { caj: 1, sup: 2, adm: 3, dir: 4 };
+const ROLES: readonly string[] = ['caj', 'sup', 'adm'];
+const RANGO: { readonly [r in Rol]: number } = { caj: 1, sup: 2, adm: 3 };
 const INTENTOS_CLAIM = 3;
 
 const esRol = (x: unknown): x is Rol => typeof x === 'string' && ROLES.includes(x);

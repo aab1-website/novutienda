@@ -23,8 +23,8 @@ if (exigir && host === undefined) {
 const sintetico: ManifiestoReglas = {
   id: 'demo',
   colecciones: [
-    { ruta: 'productos', lectura: ['caj', 'sup', 'adm', 'dir'], escritura: ['sup', 'adm'] },
-    { ruta: 'ajustes', lectura: ['adm'], escritura: ['dir'] },
+    { ruta: 'productos', lectura: ['caj', 'sup', 'adm'], escritura: ['sup', 'adm'] },
+    { ruta: 'ajustes', lectura: ['sup'], escritura: ['adm'] },
     { ruta: 'ventas', lectura: ['sup'], escritura: 'servidor' },
   ],
 };

@@ -15,7 +15,7 @@ export interface ClaimPlataforma {
 export type Resultado<T> = { readonly ok: true; readonly valor: T } | { readonly ok: false; readonly error: string };
 
 export const LIMITE_BYTES_CLAIM = 1000;
-const ROLES: readonly string[] = ['caj', 'sup', 'adm', 'dir'];
+const ROLES: readonly string[] = ['caj', 'sup', 'adm'];
 
 const esObjeto = (x: unknown): x is Record<string, unknown> =>
   typeof x === 'object' && x !== null && !Array.isArray(x);
