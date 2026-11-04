@@ -58,6 +58,17 @@ describe('importación', () => {
     expect(catalogo.llamadas).toEqual([]);
   });
 
+  it('el SKU no se edita: un producto existente con otro SKU es error y con el mismo no genera cambios; garantía de 1 a 120', async () => {
+    catalogo.agregar('cam-1', { sku: 'CAM-1' });
+    const s = await simularImportacion(deps, entrada('id,sku,garantia\ncam-1,OTRO,12\ncam-1x,CAM-9,0\ncam-2,CAM-2,121\ncam-3,CAM-3,120'));
+    expect(s.filas.map((f) => f.accion)).toEqual(['error', 'error', 'error', 'error']);
+    expect(s.filas[0]?.errores.join(' ')).toContain('no se edita');
+    expect(s.filas[1]?.errores.join(' ')).toContain('entero de 1 a 120');
+    expect(s.filas[3]?.errores.join(' ')).not.toContain('garantiaMeses');
+    const igual = await simularImportacion(deps, entrada('id,sku\ncam-1,CAM-1'));
+    expect(igual.filas[0]?.accion).toBe('sin-cambios');
+  });
+
   it('el CSV no toca stock: las columnas de stock se ignoran con aviso', async () => {
     catalogo.agregar('cam-1');
     const s = await simularImportacion(deps, entrada('id,nombre,stock,cantidad\ncam-1,Nuevo nombre,500,9'));
@@ -143,7 +154,7 @@ describe('importación', () => {
   it('acepta BOM y punto y coma, y exporta con neutralización y sin stock', async () => {
     const s = await simularImportacion(deps, entrada('﻿id;nombre;categoria\ncam-1;Cámara;video'));
     expect(s.filas[0]?.accion).toBe('crear');
-    const csv = exportarProductosCsv([{ id: 'cam-1', nombre: '=EVIL()', categoria: 'video', activo: true, precioUSD: { bo: 1.5, ar: 2 }, stockTotal: 99 }]);
+    const csv = exportarProductosCsv([{ id: 'cam-1', nombre: '=EVIL()', categoria: 'video', activo: true, disponible: true, precioUSD: { bo: 1.5, ar: 2 }, stockTotal: 99 }]);
     expect(csv.startsWith('﻿id,nombre')).toBe(true);
     expect(csv).toContain("'=EVIL()");
     expect(csv).not.toContain('99');

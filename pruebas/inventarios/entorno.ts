@@ -93,7 +93,9 @@ export function verificarInvariantes(db: DobleDb): void {
     }
     expect(suma, `suma de existencias vs stockTotal de ${id}`).toBe(datos['stockTotal']);
     const pub = doc(db, 'existenciasPublicas', id);
-    expect(pub?.['disponible']).toBe(datos['stockTotal'] > 0);
+    // Regla única: activo y existencia en `tienda` > 0 (los depósitos no cuentan).
+    const tienda = exs.find((e) => e.datos['ubicacionId'] === 'tienda')?.datos['cantidad'] as number | undefined;
+    expect(pub?.['disponible'], `disponibilidad pública de ${id}`).toBe(datos['activo'] === true && (tienda ?? 0) > 0);
     const min = datos['minimo'];
     expect(datos['bajoMinimo']).toBe(typeof min === 'number' && datos['stockTotal'] <= min);
   }

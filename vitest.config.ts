@@ -8,7 +8,7 @@ export default defineConfig({
     coverage: {
       provider: 'v8',
       reporter: ['text', 'json-summary'],
-      include: ['paquetes/*/src/**/*.ts', 'pruebas/fronteras/verificador.ts'],
+      include: ['paquetes/*/src/**/*.ts', 'plataforma/adaptadores/**/*.ts', 'pruebas/fronteras/verificador.ts'],
       exclude: ['**/*.test.ts', '**/index.ts'],
       thresholds: { lines: 70, statements: 70, functions: 70, branches: 70 },
     },

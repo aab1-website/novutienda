@@ -76,7 +76,8 @@ describe('consola -> Inventarios -> POS: el precio y los datos del producto viaj
   });
 
   it('repetir el alta con el mismo contenido no gasta otro cupo; con otro contenido es conflicto', async () => {
-    const alta = (nombre: string) => e.catalogoConsola.crearProducto(T, 'sierra', { nombre, categoria: 'herramientas', activo: true }, { bo: 5, ar: 5 }, 'u-adm');
+    const alta = (nombre: string) =>
+      e.db.runTransaction((tx) => e.catalogoConsola.crearProducto(tx, T, 'sierra', { nombre, categoria: 'herramientas', activo: true }, { bo: 5, ar: 5 }, 'u-adm'));
     await alta('Sierra');
     const usado = (doc(e, T, 'contadores/uso') as { productos: number }).productos;
     await alta('Sierra');
@@ -84,28 +85,32 @@ describe('consola -> Inventarios -> POS: el precio y los datos del producto viaj
     await expect(alta('Sierra circular')).rejects.toMatchObject({ codigo: 'already-exists' });
   });
 
-  it('campos que Inventarios no guarda se rechazan en lugar de perderse', async () => {
-    await expect(crearProductoConsola(deps, { tenantId: T, actor: admin, productoId: 'con-marca', datos: datos({ marca: 'Bosch' }), precioUSD: { bo: 1, ar: 1 } })).rejects.toMatchObject({
-      codigo: 'invalid-argument',
-    });
-    await expect(editarProductoConsola(deps, { tenantId: T, actor: admin, productoId: 'lapiz', cambios: { sku: 'OTRO' } })).rejects.toMatchObject({ codigo: 'invalid-argument' });
-    expect(doc(e, T, 'productos/con-marca')).toBeUndefined();
+  it('la marca se guarda, se edita y llega al catálogo; el SKU no se edita', async () => {
+    await crearProductoConsola(deps, { tenantId: T, actor: admin, productoId: 'con-marca', datos: datos({ marca: 'Bosch', minimo: 2, conSerie: true, publicado: true }), precioUSD: { bo: 1, ar: 1 } });
+    expect(doc(e, T, 'productos/con-marca')).toMatchObject({ marca: 'Bosch', minimo: 2, conSerie: true, publicado: true, sku: 'con-marca' });
+    await editarProductoConsola(deps, { tenantId: T, actor: admin, productoId: 'con-marca', cambios: { marca: 'Makita' } });
+    expect(await e.catalogoConsola.leerProducto(T, 'con-marca')).toMatchObject({ marca: 'Makita', conSerie: true, minimo: 2, publicado: true });
+    await expect(editarProductoConsola(deps, { tenantId: T, actor: admin, productoId: 'lapiz', cambios: { sku: 'OTRO' } })).rejects.toMatchObject({ codigo: 'entrada-invalida' });
+    // El adaptador también lo rechaza si se lo llama sin pasar por la consola.
+    await expect(e.db.runTransaction((tx) => e.catalogoConsola.actualizarDatosProducto(tx, T, 'lapiz', { sku: 'OTRO' }, 'u-adm'))).rejects.toMatchObject({ codigo: 'invalid-argument' });
   });
 });
 
-describe('disponibilidad pública: dos fuentes de verdad', () => {
-  it('INCOHERENCIA I-07 (documentada): la consola cuenta solo tienda y producto activo; existenciasPublicas de Inventarios cuenta todos los almacenes', async () => {
+describe('disponibilidad pública: una sola regla (I-07 corregida)', () => {
+  it('la consola y existenciasPublicas dan lo mismo: activo y existencia en tienda > 0', async () => {
     await abrirTurno(e.deps, T, caj, UUID(900), { BOB: 0 });
     await confirmarVenta(e.deps, T, caj, UUID(1), { mercado: 'BO', moneda: 'BOB', lineas: [{ productoId: 'lapiz', cantidad: 10 }] }, [
       { medio: 'efectivo', moneda: 'BOB', monto: 70000 },
     ]);
-    // tienda = 0, deposito-1 = 5: la web (consola) dice agotado; Inventarios dice disponible.
-    expect(await calcularDisponibilidadPublica(e.catalogoConsola, T)).toMatchObject({ lapiz: { disponible: false } });
-    expect(doc(e, T, 'existenciasPublicas/lapiz')).toMatchObject({ disponible: true });
-    // Inactivar el producto tampoco actualiza existenciasPublicas.
+    // tienda = 0, deposito-1 = 5: ambos dicen agotado.
+    expect(await calcularDisponibilidadPublica(e.catalogoConsola, T)).toMatchObject({ lapiz: { disponible: false }, celular: { disponible: true } });
+    expect(doc(e, T, 'existenciasPublicas/lapiz')).toMatchObject({ disponible: false });
+    expect(doc(e, T, 'existenciasPublicas/celular')).toMatchObject({ disponible: true });
+    // Inactivar el producto desde la consola actualiza ambos.
     await editarProductoConsola(deps, { tenantId: T, actor: admin, productoId: 'celular', cambios: { activo: false } });
     expect(await calcularDisponibilidadPublica(e.catalogoConsola, T)).toMatchObject({ celular: { disponible: false } });
-    expect(doc(e, T, 'existenciasPublicas/celular')).toMatchObject({ disponible: true });
+    expect(doc(e, T, 'existenciasPublicas/celular')).toMatchObject({ disponible: false });
+    verificarInvariantes(e, T);
   });
 });
 

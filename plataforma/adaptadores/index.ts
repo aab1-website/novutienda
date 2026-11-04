@@ -6,5 +6,4 @@ export { crearCatalogoConsola } from './catalogo-consola.js';
 export type { DepsCatalogoConsola } from './catalogo-consola.js';
 export { ejecutorRecibosDesde } from './ejecutor-recibos.js';
 export { catalogoParaPos, inventariosParaPos } from './inventarios-pos.js';
-export { centavosADolares, dolaresACentavos, leerDocumentoProducto, ProductoCorrupto } from './producto-inventarios.js';
-export type { ProductoInventarios } from './producto-inventarios.js';
+export { centavosADolares, dolaresACentavos } from './producto-inventarios.js';

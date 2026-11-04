@@ -242,7 +242,7 @@ describe('servicios de la consola', () => {
 
     it('construirPublicado omite medios inexistentes con una advertencia', () => {
       const p = construirPublicado({
-        productos: [{ id: 'a-1', nombre: 'A', categoria: 'c', activo: true, precioUSD: { bo: 0, ar: 0 } }],
+        productos: [{ id: 'a-1', nombre: 'A', categoria: 'c', activo: true, disponible: true, precioUSD: { bo: 0, ar: 0 } }],
         fichas: new Map([['a-1', { productoId: 'a-1', ...ficha('a-uno', [{ medioId: 'perdido-1', alt: 'x' }]) } as never]]),
         medios: new Map(), config: { plantillaActiva: 'marfil', whatsappNovuchat: '59100000000', medicion: {} }, secciones: [], carruseles: [],
       });
@@ -289,19 +289,17 @@ describe('servicios de la consola', () => {
   });
 
   describe('disponibilidad pública', () => {
-    it('solo disponible/agotado, sin cantidades, contando únicamente la tienda', () => {
+    it('solo disponible/agotado, sin cantidades, y sin recalcular la regla: usa la del catálogo', () => {
       const r = proyectarDisponibilidad([
-        { producto: { id: 'a', activo: true, stockTotal: 4 }, existencias: [{ ubicacionId: 'tienda', cantidad: 4 }] },
-        { producto: { id: 'b', activo: true, stockTotal: 9 }, existencias: [{ ubicacionId: 'deposito-1', cantidad: 9 }, { ubicacionId: 'tienda', cantidad: 0 }] },
-        { producto: { id: 'c', activo: true }, existencias: [] },
-        { producto: { id: 'd', activo: false, stockTotal: 3 }, existencias: [{ ubicacionId: 'tienda', cantidad: 3 }] },
+        { id: 'a', disponible: true },
+        { id: 'b', disponible: false },
       ]);
-      expect(r).toEqual({ a: { disponible: true }, b: { disponible: false }, c: { disponible: true }, d: { disponible: false } });
+      expect(r).toEqual({ a: { disponible: true }, b: { disponible: false } });
       expect(JSON.stringify(r)).not.toMatch(/\d/);
     });
     it('se calcula desde el puerto', async () => {
-      catalogo.existencias.set('cam-1', [{ ubicacionId: 'tienda', cantidad: 2 }]);
-      expect(await calcularDisponibilidadPublica(catalogo, T)).toEqual({ 'cam-1': { disponible: true }, 'cam-2': { disponible: true } });
+      catalogo.agregar('cam-3', { disponible: false });
+      expect(await calcularDisponibilidadPublica(catalogo, T)).toEqual({ 'cam-1': { disponible: true }, 'cam-2': { disponible: true }, 'cam-3': { disponible: false } });
     });
   });
 

@@ -50,7 +50,7 @@ export function analizarCsv(texto: string): string[][] {
 }
 
 const COLUMNAS = [
-  'id', 'nombre', 'categoria', 'sku', 'conSerie', 'garantiaMeses', 'minimo', 'precioUSDbo', 'precioUSDar', 'costoUSD', 'activo', 'publicado',
+  'id', 'nombre', 'categoria', 'marca', 'sku', 'conSerie', 'garantiaMeses', 'minimo', 'precioUSDbo', 'precioUSDar', 'costoUSD', 'activo', 'publicado',
   'stockTienda', 'stockDeposito1', 'stockDeposito2',
 ] as const;
 const OBLIGATORIAS = ['id', 'nombre', 'categoria', 'sku', 'precioUSDbo', 'precioUSDar'];
@@ -93,6 +93,7 @@ export function leerCsvProductos(csv: string, cargaInicial: boolean): FilaImport
       const v = (c: string): string => f[cab.indexOf(c)] ?? '';
       if (f.some((x) => x.length > MAX_CELDA)) throw new EntradaInvalida('celda demasiado larga');
       const opt = (c: string): string | undefined => (cab.includes(c) && v(c) !== '' ? v(c) : undefined);
+      const marca = opt('marca');
       const garantia = opt('garantiaMeses');
       const minimo = opt('minimo');
       const costo = opt('costoUSD');
@@ -104,6 +105,7 @@ export function leerCsvProductos(csv: string, cargaInicial: boolean): FilaImport
         nombre: neutralizarCelda(v('nombre')),
         categoria: neutralizarCelda(v('categoria')),
         sku: v('sku'),
+        ...(marca !== undefined ? { marca: neutralizarCelda(marca) } : {}),
         precioUSD: { bo: numero(v('precioUSDbo'), 'precioUSDbo'), ar: numero(v('precioUSDar'), 'precioUSDar') },
         ...(garantia !== undefined ? { garantiaMeses: numero(garantia, 'garantiaMeses') } : {}),
         ...(minimo !== undefined ? { minimo: numero(minimo, 'minimo') } : {}),
@@ -173,6 +175,7 @@ export interface ProductoExportable {
   readonly id: string;
   readonly nombre: string;
   readonly categoria: string;
+  readonly marca?: string;
   readonly sku: string;
   readonly conSerie: boolean;
   readonly garantiaMeses?: number;
@@ -190,10 +193,10 @@ const celdaCsv = (v: string): string => {
 
 /** Exporta productos a CSV neutralizando toda celda de texto que empiece con = + - @. Sin costos salvo que vengan. */
 export function exportarProductosCsv(productos: readonly ProductoExportable[]): string {
-  const cab = ['id', 'nombre', 'categoria', 'sku', 'conSerie', 'garantiaMeses', 'minimo', 'precioUSDbo', 'precioUSDar', 'costoUSD', 'activo', 'publicado'];
+  const cab = ['id', 'nombre', 'categoria', 'marca', 'sku', 'conSerie', 'garantiaMeses', 'minimo', 'precioUSDbo', 'precioUSDar', 'costoUSD', 'activo', 'publicado'];
   const filas = productos.map((p) =>
     [
-      p.id, p.nombre, p.categoria, p.sku, String(p.conSerie), p.garantiaMeses?.toString() ?? '', p.minimo?.toString() ?? '',
+      p.id, p.nombre, p.categoria, p.marca ?? '', p.sku, String(p.conSerie), p.garantiaMeses?.toString() ?? '', p.minimo?.toString() ?? '',
       String(p.precioUSD.bo), String(p.precioUSD.ar), p.costoUSD?.toString() ?? '', String(p.activo), String(p.publicado),
     ].map(celdaCsv).join(','),
   );

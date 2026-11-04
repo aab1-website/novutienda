@@ -87,11 +87,11 @@ describe('CSV', () => {
 
   it('exporta neutralizando celdas de texto', () => {
     const csv = exportarProductosCsv([
-      { id: 'a1', nombre: '=2+2', categoria: 'x, y', sku: 'S-1', conSerie: false, precioUSD: { bo: 1, ar: 2 }, activo: true, publicado: false },
+      { id: 'a1', nombre: '=2+2', categoria: 'x, y', marca: '=Bosch', sku: 'S-1', conSerie: false, precioUSD: { bo: 1, ar: 2 }, activo: true, publicado: false },
       { id: 'a2', nombre: '@cmd', categoria: '-1', sku: 'S-2', conSerie: true, garantiaMeses: 12, precioUSD: { bo: 1, ar: 2 }, activo: true, publicado: true },
     ]);
-    expect(csv).toContain(`a1,'=2+2,"x, y",S-1`);
-    expect(csv).toContain(`a2,'@cmd,'-1,S-2`);
+    expect(csv).toContain(`a1,'=2+2,"x, y",'=Bosch,S-1`);
+    expect(csv).toContain(`a2,'@cmd,'-1,,S-2`);
     expect(analizarCsv(csv)).toHaveLength(3);
   });
 });

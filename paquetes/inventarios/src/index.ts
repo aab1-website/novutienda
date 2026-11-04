@@ -2,7 +2,7 @@ export { manifiestoInventarios } from './manifiesto.js';
 
 // Puerto que consumen el POS y los pedidos (dentro de SU transacción).
 export { aplicarReversion, aplicarSalida, hashSalida, idOperacionReversion, idOperacionSalida, prepararReversion, prepararSalida } from './puerto.js';
-export type { LineaResuelta, LineaSalida, PlanReversion, PlanSalida, ReferenciaSalida } from './puerto.js';
+export type { LineaResuelta, LineaSalida, OpcionesSalida, PlanReversion, PlanSalida, ReferenciaSalida } from './puerto.js';
 
 // Errores tipados.
 export {
@@ -11,6 +11,11 @@ export {
 export type { CodigoError, Faltante } from './errores.js';
 
 // Operaciones.
+export { esDisponible, skuDesdeId, UBICACION_DISPONIBILIDAD } from './disponibilidad.js';
+export {
+  leerDocumentoProducto, leerExistencias, leerProducto, ProductoCorrupto, rutaColeccionProductos,
+} from './lectura.js';
+export type { ExistenciaLeida, ProductoLeido } from './lectura.js';
 export { actualizarProducto, crearProducto, crearUbicacion, validarEntradaProducto } from './productos.js';
 export type { CambiosProducto, EntradaCrearProducto, EntradaProducto, PrecioUSD } from './productos.js';
 export { ajustar, ingresar, traspasar } from './stock.js';
@@ -35,4 +40,4 @@ export { esIdSegmento, esProductoId, esSerie, esUbicacionId, UBICACIONES } from 
 export type { UbicacionId } from './ids.js';
 export type { Autor } from './motor.js';
 /** Solo para pruebas: fija el reloj con el que se estampan los planes. */
-export { fijarReloj } from './motor.js';
+export { fijarReloj, fechaLocal, ZONA_HORARIA_POR_DEFECTO } from './motor.js';
