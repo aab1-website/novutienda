@@ -28,6 +28,17 @@ export interface CobroCredito {
   readonly creadoEnMs: number;
 }
 
+/** Suma el cobro al desglose por medio del crédito (necesario para reembolsar por los medios originales). */
+function cobradoPorMedioDe(credito: Readonly<Record<string, unknown>>, medio: string, monto: number): Record<string, number> {
+  const previo = credito['cobradoPorMedio'];
+  const base: Record<string, number> = {};
+  if (typeof previo === 'object' && previo !== null && !Array.isArray(previo)) {
+    for (const [k, v] of Object.entries(previo)) if (typeof v === 'number' && Number.isSafeInteger(v) && v > 0) base[k] = v;
+  }
+  base[medio] = (base[medio] ?? 0) + monto;
+  return base;
+}
+
 /**
  * Cobra (total o parcialmente) un crédito. El cobro entra al turno abierto en que se cobra:
  * en efectivo suma al efectivo esperado de esa moneda. Idempotente por `requestId`.
@@ -83,6 +94,7 @@ export async function cobrarCredito(
       ...credito,
       saldo: nuevoSaldo,
       cobrado: enteroDe(credito, 'cobrado') + monto,
+      cobradoPorMedio: cobradoPorMedioDe(credito, c.medio, monto),
       estado: nuevoSaldo === 0 ? 'cobrado' : 'pendiente',
     });
     const totales = sumarTotales(abierto.turno.totales, moneda, deltaPorMedio(c.medio, monto));

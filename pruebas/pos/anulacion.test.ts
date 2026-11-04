@@ -1,6 +1,6 @@
 import { validarEvento } from '@plataforma/nucleo';
 import {
-  abrirTurno, aprobarAnulacion, cerrarTurno, confirmarVenta, ErrorPos, reconstruirTotales, solicitarAnulacion,
+  abrirTurno, aprobarAnulacion, cerrarTurno, cobrarCredito, confirmarVenta, ErrorPos, reconstruirTotales, registrarMovimientoCaja, solicitarAnulacion,
 } from '@plataforma/pos';
 import { describe, expect, it } from 'vitest';
 import { T, TURNO, UUID, abrir, adm, auditoria, caj, caj2, carritoP1, crearEntorno, efectivo, eventos, stock, sup, venderP1 } from './ayudas.js';
@@ -21,8 +21,8 @@ describe('anulación', () => {
     await venderP1(e, 1, caj, 2);
     expect(stock(e, 'tienda', 'p1')).toBe(8);
     await solicitarAnulacion(e.deps, T, caj, UUID(1), 'error de digitación');
-    const r = await aprobarAnulacion(e.deps, T, sup, UUID(1), 'efectivo');
-    expect(r.reembolso).toEqual({ medio: 'efectivo', moneda: 'BOB', monto: 14000 });
+    const r = await aprobarAnulacion(e.deps, T, sup, UUID(1));
+    expect(r.reembolsos).toEqual([{ medio: 'efectivo', moneda: 'BOB', monto: 14000 }]);
     expect(stock(e, 'tienda', 'p1')).toBe(10);
     expect(e.db.dato(`tenants/${T}/ventas/${UUID(1)}`)).toMatchObject({ estado: 'anulada' });
     expect(e.db.dato(`tenants/${T}/anulaciones/${UUID(1)}`)).toMatchObject({ aprobadoPor: 'u-sup', solicitadoPor: 'u-caj' });
@@ -41,7 +41,7 @@ describe('anulación', () => {
     await cerrarTurno(e.deps, T, caj, TURNO, { BOB: 7000 });
     await abrirTurno(e.deps, T, caj2, UUID(901), { BOB: 20000 });
     await solicitarAnulacion(e.deps, T, caj, UUID(1), 'devolución');
-    const r = await aprobarAnulacion(e.deps, T, adm, UUID(1), 'efectivo');
+    const r = await aprobarAnulacion(e.deps, T, adm, UUID(1));
     expect(r.turnoIdReembolso).toBe(UUID(901));
     const ev = eventos(e, 'venta.anulada')[0]?.['datos'] as { turnoId: string; turnoIdReembolso: string };
     expect(ev).toMatchObject({ turnoId: TURNO, turnoIdReembolso: UUID(901) });
@@ -60,8 +60,8 @@ describe('anulación', () => {
     await abrir(e);
     await venderP1(e, 1);
     await solicitarAnulacion(e.deps, T, caj, UUID(1), 'x');
-    await aprobarAnulacion(e.deps, T, sup, UUID(1), 'efectivo');
-    expect(await codigo(aprobarAnulacion(e.deps, T, adm, UUID(1), 'efectivo'))).toBe('venta-ya-anulada');
+    await aprobarAnulacion(e.deps, T, sup, UUID(1));
+    expect(await codigo(aprobarAnulacion(e.deps, T, adm, UUID(1)))).toBe('venta-ya-anulada');
     expect(await codigo(solicitarAnulacion(e.deps, T, caj, UUID(1), 'otra'))).toBe('venta-ya-anulada');
     expect(stock(e, 'tienda', 'p1')).toBe(10);
     expect(eventos(e, 'venta.anulada')).toHaveLength(1);
@@ -72,7 +72,7 @@ describe('anulación', () => {
     await abrir(e);
     await venderP1(e, 1);
     await solicitarAnulacion(e.deps, T, caj, UUID(1), 'x');
-    const r = await Promise.allSettled([aprobarAnulacion(e.deps, T, sup, UUID(1), 'efectivo'), aprobarAnulacion(e.deps, T, adm, UUID(1), 'efectivo')]);
+    const r = await Promise.allSettled([aprobarAnulacion(e.deps, T, sup, UUID(1)), aprobarAnulacion(e.deps, T, adm, UUID(1))]);
     expect(r.filter((x) => x.status === 'fulfilled')).toHaveLength(1);
     expect(stock(e, 'tienda', 'p1')).toBe(10);
   });
@@ -81,11 +81,11 @@ describe('anulación', () => {
     const e = crearEntorno();
     await abrir(e);
     await venderP1(e, 1);
-    expect(await codigo(aprobarAnulacion(e.deps, T, caj, UUID(1), 'efectivo'))).toBe('no-autorizado');
-    expect(await codigo(aprobarAnulacion(e.deps, T, sup, UUID(1), 'efectivo'))).toBe('anulacion-sin-solicitud');
+    expect(await codigo(aprobarAnulacion(e.deps, T, caj, UUID(1)))).toBe('no-autorizado');
+    expect(await codigo(aprobarAnulacion(e.deps, T, sup, UUID(1)))).toBe('anulacion-sin-solicitud');
     await solicitarAnulacion(e.deps, T, caj, UUID(1), 'x');
     await cerrarTurno(e.deps, T, caj, TURNO, { BOB: 17000 });
-    expect(await codigo(aprobarAnulacion(e.deps, T, sup, UUID(1), 'efectivo'))).toBe('sin-turno');
+    expect(await codigo(aprobarAnulacion(e.deps, T, sup, UUID(1)))).toBe('sin-turno');
     expect(stock(e, 'tienda', 'p1')).toBe(9);
   });
 
@@ -96,25 +96,89 @@ describe('anulación', () => {
     expect(await codigo(solicitarAnulacion(e.deps, T, caj2, UUID(1), 'x'))).toBe('no-autorizado');
     expect(await codigo(solicitarAnulacion(e.deps, T, caj, UUID(1), ' '))).toBe('entrada-invalida');
     expect(await codigo(solicitarAnulacion(e.deps, T, caj, UUID(2), 'x'))).toBe('venta-inexistente');
-    expect(await codigo(aprobarAnulacion(e.deps, T, sup, UUID(2), 'efectivo'))).toBe('venta-inexistente');
+    expect(await codigo(aprobarAnulacion(e.deps, T, sup, UUID(2)))).toBe('venta-inexistente');
     await solicitarAnulacion(e.deps, T, caj, UUID(1), 'x');
     await solicitarAnulacion(e.deps, T, sup, UUID(1), 'otra'); // no pisa la solicitud original
-    expect(await codigo(aprobarAnulacion(e.deps, T, sup, UUID(1)))).toBe('entrada-invalida');
-    expect(await codigo(aprobarAnulacion(e.deps, T, sup, UUID(1), 'credito'))).toBe('entrada-invalida');
   });
 
-  it('un reembolso en efectivo mayor al efectivo de la caja se rechaza', async () => {
+  it('un reembolso en efectivo mayor al efectivo de la caja se rechaza y no cambia nada', async () => {
     const e = crearEntorno();
     await abrir(e, caj, { BOB: 0 });
     await venderP1(e, 1);
     await cerrarTurno(e.deps, T, caj, TURNO, { BOB: 7000 });
     await abrirTurno(e.deps, T, caj2, UUID(901), { BOB: 1000 });
     await solicitarAnulacion(e.deps, T, caj, UUID(1), 'x');
-    expect(await codigo(aprobarAnulacion(e.deps, T, sup, UUID(1), 'efectivo'))).toBe('egreso-excede-efectivo');
-    const r = await aprobarAnulacion(e.deps, T, sup, UUID(1), 'transferencia');
-    expect(r.reembolso.medio).toBe('transferencia');
-    const turno = e.db.dato(`tenants/${T}/turnos/${UUID(901)}`) as { totales: { BOB: { transferencia: number; efectivo: number } } };
-    expect(turno.totales.BOB).toMatchObject({ transferencia: -7000, efectivo: 0 });
+    expect(await codigo(aprobarAnulacion(e.deps, T, sup, UUID(1)))).toBe('egreso-excede-efectivo');
+    expect(stock(e, 'tienda', 'p1')).toBe(9);
+    expect(eventos(e, 'venta.anulada')).toHaveLength(0);
+    // Con un ingreso justificado que complete el efectivo, la anulación procede.
+    await registrarMovimientoCaja(e.deps, T, sup, UUID(70), { tipo: 'ingreso', moneda: 'BOB', monto: 6000, motivo: 'fondo' });
+    const r = await aprobarAnulacion(e.deps, T, sup, UUID(1));
+    expect(r.reembolsos).toEqual([{ medio: 'efectivo', moneda: 'BOB', monto: 7000 }]);
+  });
+
+  it('venta mixta efectivo + QR: devuelve cada parte por su medio; el QR no resta del efectivo y el arqueo cuadra', async () => {
+    const e = crearEntorno();
+    await abrir(e, caj, { BOB: 0 });
+    // Total 14000: 9000 en efectivo (pagó 10000, cambio 1000) y 5000 por QR.
+    await confirmarVenta(e.deps, T, caj, UUID(1), carritoP1(2), [
+      efectivo(10000, 1000),
+      { medio: 'qr', moneda: 'BOB', monto: 5000, referencia: 'REF-1' },
+    ]);
+    await solicitarAnulacion(e.deps, T, caj, UUID(1), 'devolución');
+    const r = await aprobarAnulacion(e.deps, T, sup, UUID(1));
+    expect(r.reembolsos).toEqual([
+      { medio: 'efectivo', moneda: 'BOB', monto: 9000 },
+      { medio: 'qr', moneda: 'BOB', monto: 5000 },
+    ]);
+    const ev = eventos(e, 'venta.anulada');
+    expect(validarEvento(ev[0]).ok).toBe(true);
+    expect((ev[0]?.['datos'] as { reembolsos: unknown }).reembolsos).toEqual(r.reembolsos);
+    const turno = e.db.dato(`tenants/${T}/turnos/${TURNO}`) as { totales: { BOB: Record<string, number> } };
+    expect(turno.totales.BOB).toMatchObject({ efectivo: 0, qr: 0 });
+    expect(e.db.dato(`tenants/${T}/anulaciones/${UUID(1)}`)).toMatchObject({ reembolsos: r.reembolsos });
+    const ops = {
+      ventas: e.db.coleccion(`tenants/${T}/ventas`) as never,
+      cobrosCredito: [],
+      movimientos: [],
+      anulaciones: e.db.coleccion(`tenants/${T}/anulaciones`) as never,
+    };
+    expect(reconstruirTotales(TURNO, ops)).toEqual(turno.totales);
+    const cierre = await cerrarTurno(e.deps, T, caj, TURNO, { BOB: 0 });
+    expect(JSON.stringify(cierre)).toContain('"diferencia":0');
+  });
+
+  it('en un turno distinto, el QR devuelto no toca el efectivo y el efectivo sale solo de la caja de esa moneda', async () => {
+    const e = crearEntorno();
+    await abrir(e, caj, { BOB: 0 });
+    await confirmarVenta(e.deps, T, caj, UUID(1), carritoP1(2), [efectivo(9000), { medio: 'qr', moneda: 'BOB', monto: 5000, referencia: 'R' }]);
+    await cerrarTurno(e.deps, T, caj, TURNO, { BOB: 9000 });
+    await abrirTurno(e.deps, T, caj2, UUID(901), { BOB: 9000, USD: 50000 });
+    await solicitarAnulacion(e.deps, T, caj, UUID(1), 'x');
+    await aprobarAnulacion(e.deps, T, sup, UUID(1));
+    const t = e.db.dato(`tenants/${T}/turnos/${UUID(901)}`) as { totales: { BOB: Record<string, number>; USD?: unknown } };
+    expect(t.totales.BOB).toMatchObject({ efectivo: -9000, qr: -5000, transferencia: 0 });
+    expect(t.totales.USD).toBeUndefined();
+  });
+
+  it('un crédito parcialmente cobrado reembolsa también los cobros, por el medio con que se cobraron', async () => {
+    const e = crearEntorno();
+    await abrir(e, sup, { BOB: 0 });
+    await confirmarVenta(e.deps, T, sup, UUID(1), carritoP1(1, { cliente: { nombre: 'Ana' } }), [
+      efectivo(2000),
+      { medio: 'credito', moneda: 'BOB', monto: 5000 },
+    ]);
+    await cobrarCredito(e.deps, T, sup, UUID(2), UUID(1), { medio: 'qr', monto: 1500, referencia: 'R1' });
+    await cobrarCredito(e.deps, T, sup, UUID(3), UUID(1), { medio: 'efectivo', monto: 500 });
+    await solicitarAnulacion(e.deps, T, sup, UUID(1), 'x');
+    const r = await aprobarAnulacion(e.deps, T, adm, UUID(1));
+    expect(r.reembolsos).toEqual([
+      { medio: 'efectivo', moneda: 'BOB', monto: 2500 },
+      { medio: 'qr', moneda: 'BOB', monto: 1500 },
+    ]);
+    expect(validarEvento(eventos(e, 'venta.anulada')[0]).ok).toBe(true);
+    const turno = e.db.dato(`tenants/${T}/turnos/${TURNO}`) as { totales: { BOB: Record<string, number> } };
+    expect(turno.totales.BOB).toMatchObject({ efectivo: 0, qr: 0, credito: 0 });
   });
 
   it('anular una venta a crédito cancela el saldo y reembolsa solo lo cobrado', async () => {
@@ -123,8 +187,8 @@ describe('anulación', () => {
     const pagos = [efectivo(2000), { medio: 'credito' as const, moneda: 'BOB' as const, monto: 5000 }];
     await confirmarVenta(e.deps, T, sup, UUID(1), carritoP1(1, { cliente: { nombre: 'Ana' } }), pagos);
     await solicitarAnulacion(e.deps, T, sup, UUID(1), 'x');
-    const r = await aprobarAnulacion(e.deps, T, adm, UUID(1), 'efectivo');
-    expect(r.reembolso.monto).toBe(2000);
+    const r = await aprobarAnulacion(e.deps, T, adm, UUID(1));
+    expect(r.reembolsos).toEqual([{ medio: 'efectivo', moneda: 'BOB', monto: 2000 }]);
     expect(e.db.dato(`tenants/${T}/creditos/${UUID(1)}`)).toMatchObject({ estado: 'anulado', saldo: 0 });
     const turno = e.db.dato(`tenants/${T}/turnos/${TURNO}`) as { totales: { BOB: { efectivo: number; credito: number } } };
     expect(turno.totales.BOB).toMatchObject({ efectivo: 0, credito: 0 });
@@ -137,7 +201,7 @@ describe('anulación', () => {
     await confirmarVenta(e.deps, T, sup, UUID(1), carritoP1(1, { cliente: { nombre: 'Ana' } }), [{ medio: 'credito', moneda: 'BOB', monto: 7000 }]);
     await solicitarAnulacion(e.deps, T, sup, UUID(1), 'x');
     const r = await aprobarAnulacion(e.deps, T, adm, UUID(1));
-    expect(r.reembolso).toEqual({ medio: 'credito', moneda: 'BOB', monto: 0 });
+    expect(r.reembolsos).toEqual([]);
     expect(validarEvento(eventos(e, 'venta.anulada')[0]).ok).toBe(true);
   });
 });

@@ -94,6 +94,9 @@ export const rutaCobroCredito = (t: string, id: string): string => `tenants/${t}
 /** El contador vive en `contadores` (colección del núcleo); aquí solo se escribe, por el servidor. */
 export const rutaContadorRecibo = (t: string, serie: string): string => `tenants/${t}/contadores/recibo_${serie}`;
 
+/** Número legible del recibo: serie y correlativo con ceros (A-000123). El POS es el único que numera. */
+export const formatearNumeroRecibo = (serie: string, correlativo: number): string => `${serie}-${String(correlativo).padStart(6, '0')}`;
+
 /** Lee un documento y exige que exista. */
 export async function leerObligatorio(tx: TransaccionIdentidad, ruta: string): Promise<Datos | undefined> {
   const d = await tx.get(ruta);

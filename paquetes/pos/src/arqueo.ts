@@ -100,7 +100,7 @@ export interface OperacionesTurno {
   readonly anulaciones: readonly {
     turnoIdReembolso: string;
     moneda: Moneda;
-    reembolso: { medio: MedioPago; monto: number };
+    reembolsos: readonly { medio: MedioPago; monto: number }[];
     creditoCancelado: number;
   }[];
 }
@@ -118,7 +118,7 @@ export function reconstruirTotales(turnoId: string, ops: OperacionesTurno): Tota
   }
   for (const a of ops.anulaciones) {
     if (a.turnoIdReembolso !== turnoId) continue;
-    if (a.reembolso.monto > 0) t = sumarTotales(t, a.moneda, deltaPorMedio(a.reembolso.medio, -a.reembolso.monto));
+    for (const r of a.reembolsos) if (r.monto > 0) t = sumarTotales(t, a.moneda, deltaPorMedio(r.medio, -r.monto));
     if (a.creditoCancelado > 0) t = sumarTotales(t, a.moneda, { credito: -a.creditoCancelado });
   }
   return t;

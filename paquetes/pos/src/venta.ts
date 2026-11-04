@@ -4,7 +4,7 @@ import { sumarTotales, deltaPorMedio } from './arqueo.js';
 import { TOTAL_MAXIMO, descuentoExcedeTope, validarPagos } from './calculo.js';
 import { leerConfigPos } from './config.js';
 import {
-  ahoraDe, auditar, cotizacionVigente, exigirActor, exigirCentavos, exigirTenant, exigirTexto, exigirUuid, leerObligatorio, publicar,
+  ahoraDe, auditar, formatearNumeroRecibo, cotizacionVigente, exigirActor, exigirCentavos, exigirTenant, exigirTexto, exigirUuid, leerObligatorio, publicar,
   rutaContadorRecibo, rutaCredito, rutaTurno, rutaVenta, type DepsPos,
 } from './contexto.js';
 import { ErrorPos } from './errores.js';
@@ -209,6 +209,7 @@ export async function confirmarVenta(
     const ultimo = cont === undefined ? 0 : cont['ultimo'];
     if (typeof ultimo !== 'number' || !Number.isSafeInteger(ultimo) || ultimo < 0) throw new ErrorPos('dato-corrupto', 'El contador del recibo es inválido');
     const receiptNo = ultimo + 1;
+    const numeroRecibo = formatearNumeroRecibo(config.serieRecibo, receiptNo);
     // 4) Stock: falla de stock o serie aborta todo (solo lecturas aquí).
     const ref = { tipo: 'venta' as const, id: ventaId };
     const por = { uid: actor.uid, rol: actor.rol };
@@ -256,6 +257,7 @@ export async function confirmarVenta(
         monto: pagoCredito.monto,
         saldo: pagoCredito.monto,
         cobrado: 0,
+        cobradoPorMedio: {},
         estado: 'pendiente',
         aprobadoPor: creditoAprobadoPor,
         turnoId: turno.turnoId,
@@ -272,6 +274,7 @@ export async function confirmarVenta(
         turnoId: turno.turnoId,
         cajaId: turno.cajaId,
         cajeroUid: actor.uid,
+        numeroRecibo,
         moneda: venta.moneda,
         total,
         cotizacion,
@@ -292,7 +295,7 @@ export async function confirmarVenta(
     auditar(tx, tenantId, actor, {
       accion: 'pos.venta.confirmar',
       ruta: rutaVenta(tenantId, ventaId),
-      despues: { ventaId, turnoId: turno.turnoId, moneda: venta.moneda, total, receiptNo, lineas: lineas.length },
+      despues: { ventaId, turnoId: turno.turnoId, moneda: venta.moneda, total, receiptNo: numeroRecibo, lineas: lineas.length },
       ...(descuento !== undefined ? { motivo: descuento.motivo } : {}),
     });
     return { venta, repetida: false };

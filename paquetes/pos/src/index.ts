@@ -5,6 +5,7 @@ export type {
   LineaSalida, PlanReversion, PlanSalida, ProductoCatalogo, PuertoCatalogo, PuertoInventarios, QuienMueve, ReferenciaMovimiento,
 } from './puertos.js';
 export type { DepsPos } from './contexto.js';
+export { formatearNumeroRecibo } from './contexto.js';
 export * from './tipos.js';
 export { CONFIG_POS_POR_DEFECTO, guardarConfigPos, leerConfigPos, TOPE_DESCUENTO_CAJ_BP, validarConfigPos } from './config.js';
 export type { ConfigPos } from './config.js';
@@ -18,7 +19,7 @@ export type { Carrito, LineaCarrito, ResultadoVenta } from './venta.js';
 export { resolverAprobacion, solicitarAprobacion } from './aprobaciones.js';
 export type { AprobacionPos, SolicitudAprobacion } from './aprobaciones.js';
 export { aprobarAnulacion, solicitarAnulacion } from './anulacion.js';
-export type { ResultadoAnulacion } from './anulacion.js';
+export type { ReembolsoAnulacion, ResultadoAnulacion } from './anulacion.js';
 export { registrarMovimientoCaja } from './caja.js';
 export type { MovimientoCaja, MovimientoCajaEntrada } from './caja.js';
 export { cobrarCredito } from './creditos.js';
