@@ -15,7 +15,7 @@ componentes:
         url: https://${GCP_PROJECT_ID_STAGING}.web.app
       production:
         proyecto: ${GCP_PROJECT_ID}
-        url: ${PROD_URL}
+        url: https://${GCP_PROJECT_ID}.web.app
 seguridad:
   dast: true
   zap_reglas: .github/zap-rules.tsv
