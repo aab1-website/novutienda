@@ -8,7 +8,7 @@ import { HttpsError, type CallableRequest } from 'firebase-functions/v2/https';
 import { z } from 'zod';
 import type { Actor, Rol } from '@novutienda/nucleo';
 import type { ActorPos } from '@novutienda/pos';
-import { traducirError } from '../../../adaptadores/firebase/index.js';
+import { CODIGO_DE_BORDE, traducirError } from '../../../adaptadores/firebase/index.js';
 import { autenticar, exigirAppCheck, personalDelTenant, type Sesion, type SesionTenant } from '../autenticacion.js';
 import type { Entorno } from '../entorno.js';
 import { RedondeoInvalido } from '../redondeo.js';
@@ -77,10 +77,22 @@ export interface OpcionesManejador {
   readonly appCheckExigido: () => boolean;
 }
 
-/** Convierte cualquier error en `HttpsError` y registra los internos (sin datos de la petición). */
+/** Garantiza `details.codigo` en un `HttpsError` nacido en el borde (marco, autenticación, acciones). */
+function conCodigo(error: HttpsError, codigoPorDefecto?: string): HttpsError {
+  const previo = error.details;
+  const objeto = typeof previo === 'object' && previo !== null && !Array.isArray(previo) ? (previo as Record<string, unknown>) : {};
+  if (typeof objeto['codigo'] === 'string') return error;
+  const base = CODIGO_DE_BORDE[error.code as keyof typeof CODIGO_DE_BORDE] as string | undefined;
+  return new HttpsError(error.code, error.message, { ...objeto, codigo: codigoPorDefecto ?? base ?? 'error-interno' });
+}
+
+/**
+ * Convierte cualquier error en `HttpsError` y registra los internos (sin datos de la petición). Todo `HttpsError`
+ * sale con `details.codigo` (código del módulo en kebab-case), para que el panel mapee el mensaje por código.
+ */
 export function comoHttpsError(error: unknown, contexto: Readonly<Record<string, unknown>>): HttpsError {
-  if (error instanceof HttpsError) return error;
-  if (error instanceof RedondeoInvalido) return new HttpsError('failed-precondition', error.message);
+  if (error instanceof HttpsError) return conCodigo(error);
+  if (error instanceof RedondeoInvalido) return conCodigo(new HttpsError('failed-precondition', error.message), 'redondeo-invalido');
   const t = traducirError(error);
   if (t.interno) logger.error('error interno en callable', { ...contexto, error: error instanceof Error ? { nombre: error.name, mensaje: error.message } : String(error) });
   else logger.warn('callable rechazado', { ...contexto, codigo: t.code });

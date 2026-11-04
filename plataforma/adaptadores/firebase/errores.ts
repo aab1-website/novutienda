@@ -9,7 +9,7 @@ import {
   SinCotizacionUtilizable,
 } from '@novutienda/nucleo';
 import { ErrorPos, type CodigoErrorPos } from '@novutienda/pos';
-import { AccionNoPermitida, ErrorRecibo, ReciboNoEncontrado } from '@novutienda/recibos';
+import { AccionNoPermitida, ErrorRecibo, PlantillaInvalida, ReciboNoEncontrado } from '@novutienda/recibos';
 import { VideoNoDisponible } from './procesador-medios.js';
 
 export type CodigoHttps =
@@ -86,36 +86,57 @@ const IDENTIDAD: Readonly<Record<ErrorIdentidad['codigo'], CodigoHttps>> = {
 
 const GENERICO = 'Error interno. Intente de nuevo; si persiste, avise a soporte.';
 
-const ok = (code: CodigoHttps, message: string, details?: unknown): ErrorTraducido => ({
-  code, message, ...(details !== undefined ? { details } : {}), interno: code === 'internal',
+/** `ClaseCamelCase` → `clase-camel-case` (código de módulo en kebab-case a partir del nombre del error tipado). */
+export const aKebab = (nombre: string): string => nombre.replace(/([a-z0-9])([A-Z])/g, '$1-$2').toLowerCase();
+
+/** Código de módulo por defecto de un código HTTPS, para los errores que nacen en el borde (marco, autenticación). */
+export const CODIGO_DE_BORDE: Readonly<Record<CodigoHttps, string>> = {
+  'invalid-argument': 'solicitud-invalida',
+  'failed-precondition': 'precondicion-fallida',
+  'already-exists': 'ya-existe',
+  'not-found': 'recurso-inexistente',
+  'permission-denied': 'acceso-denegado',
+  'resource-exhausted': 'limite-alcanzado',
+  unauthenticated: 'no-autenticado',
+  aborted: 'concurrencia',
+  unavailable: 'no-disponible',
+  'deadline-exceeded': 'tiempo-agotado',
+  internal: 'error-interno',
+};
+
+/** Todo error lleva `details.codigo` (código del módulo en kebab-case): el panel mapea mensajes por ese código. */
+const ok = (code: CodigoHttps, codigo: string, message: string, details?: Readonly<Record<string, unknown>>): ErrorTraducido => ({
+  code, message, details: { ...details, codigo }, interno: code === 'internal',
 });
 
 /** Traduce cualquier error. Nunca lanza; lo desconocido sale como `internal` sin mensaje técnico. */
 export function traducirError(e: unknown): ErrorTraducido {
-  if (e instanceof StockInsuficiente) return ok('failed-precondition', e.message, { faltantes: e.faltantes });
+  if (e instanceof StockInsuficiente) return ok('failed-precondition', 'stock-insuficiente', e.message, { faltantes: e.faltantes });
   if (e instanceof ErrorInventario) {
     const detalles = (e as { detalles?: readonly string[] }).detalles;
-    return ok(e.codigo, e.message, detalles !== undefined && detalles.length > 0 ? { detalles } : undefined);
+    // El código de módulo de Inventarios es el nombre de su error tipado (`SerieNoDisponible` → `serie-no-disponible`).
+    return ok(e.codigo, aKebab(e.name === 'ErrorInventario' ? e.codigo : e.name), e.message, detalles !== undefined && detalles.length > 0 ? { detalles } : undefined);
   }
-  if (e instanceof ErrorPos) return ok(POS[e.codigo], e.message);
-  if (e instanceof LimiteDelPlan) return ok('resource-exhausted', e.message, { clave: e.clave, tope: e.tope });
-  if (e instanceof ErrorIdentidad) return ok(IDENTIDAD[e.codigo], e.codigo === 'estado' ? GENERICO : e.message);
+  if (e instanceof ErrorPos) return ok(POS[e.codigo], e.codigo, e.message);
+  if (e instanceof LimiteDelPlan) return ok('resource-exhausted', 'limite-del-plan', e.message, { clave: e.clave, tope: e.tope });
+  if (e instanceof ErrorIdentidad) return ok(IDENTIDAD[e.codigo], e.codigo, e.codigo === 'estado' ? GENERICO : e.message);
   if (e instanceof ErrorConsola) {
     const code = CONSOLA[e.codigo];
-    return code === 'internal' ? ok('internal', GENERICO) : ok(code, e.message, e.detalles.length > 0 ? { detalles: e.detalles } : undefined);
+    return code === 'internal' ? ok('internal', e.codigo, GENERICO) : ok(code, e.codigo, e.message, e.detalles.length > 0 ? { detalles: e.detalles } : undefined);
   }
-  if (e instanceof ReciboNoEncontrado) return ok('not-found', e.message);
-  if (e instanceof AccionNoPermitida) return ok('permission-denied', e.message);
-  if (e instanceof ErrorRecibo) return ok('invalid-argument', e.message);
-  if (e instanceof CargaNoAutorizada) return ok('permission-denied', e.message);
-  if (e instanceof SaltoSinConfirmar) return ok('failed-precondition', e.message, { guardado: e.guardado, propuesto: e.propuesto, saltoMaximo: e.saltoMaximo });
-  if (e instanceof SinCotizacionUtilizable) return ok('failed-precondition', e.message, { mercado: e.mercado });
-  if (e instanceof VideoNoDisponible) return ok('unavailable', e.message);
-  if (e instanceof ErrorEvento) return ok('invalid-argument', e.message);
-  if (e instanceof ContadorCorrupto || e instanceof ErrorAuditoria) return ok('internal', GENERICO);
+  if (e instanceof ReciboNoEncontrado) return ok('not-found', 'recibo-no-encontrado', e.message);
+  if (e instanceof AccionNoPermitida) return ok('permission-denied', 'accion-no-permitida', e.message);
+  if (e instanceof PlantillaInvalida) return ok('invalid-argument', 'plantilla-invalida', e.message);
+  if (e instanceof ErrorRecibo) return ok('invalid-argument', 'recibo-invalido', e.message);
+  if (e instanceof CargaNoAutorizada) return ok('permission-denied', 'carga-no-autorizada', e.message);
+  if (e instanceof SaltoSinConfirmar) return ok('failed-precondition', 'salto-sin-confirmar', e.message, { guardado: e.guardado, propuesto: e.propuesto, saltoMaximo: e.saltoMaximo });
+  if (e instanceof SinCotizacionUtilizable) return ok('failed-precondition', 'sin-cotizacion', e.message, { mercado: e.mercado });
+  if (e instanceof VideoNoDisponible) return ok('unavailable', 'video-no-disponible', e.message);
+  if (e instanceof ErrorEvento) return ok('invalid-argument', 'evento-invalido', e.message);
+  if (e instanceof ContadorCorrupto || e instanceof ErrorAuditoria) return ok('internal', 'error-interno', GENERICO);
   const codigoGrpc = (e as { code?: unknown } | null)?.code;
-  if (codigoGrpc === 10 || codigoGrpc === 'aborted') return ok('aborted', 'Conflicto de concurrencia; reintente la operación.');
-  if (codigoGrpc === 4) return ok('deadline-exceeded', 'La operación tardó demasiado; reintente.');
-  if (codigoGrpc === 14) return ok('unavailable', 'Servicio no disponible por un momento; reintente.');
-  return ok('internal', GENERICO);
+  if (codigoGrpc === 10 || codigoGrpc === 'aborted') return ok('aborted', 'concurrencia', 'Conflicto de concurrencia; reintente la operación.');
+  if (codigoGrpc === 4) return ok('deadline-exceeded', 'tiempo-agotado', 'La operación tardó demasiado; reintente.');
+  if (codigoGrpc === 14) return ok('unavailable', 'no-disponible', 'Servicio no disponible por un momento; reintente.');
+  return ok('internal', 'error-interno', GENERICO);
 }
