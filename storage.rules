@@ -3,7 +3,7 @@ rules_version = '2';
 // Cloud Storage. Se niega todo salvo dos caminos:
 //  1) Subida de originales: SOLO con sesión de correo y contraseña verificado, rol sup/adm EN ESE tenant (claim pl),
 //     a `tenants/{t}/privado/originales/{productoId}/{subidaId}`, y solo si en Firestore existe la reserva de la
-//     subida (misma ruta, mismo producto, hecha por esta persona, aún `reservada`) y el archivo cumple tamaño y tipo
+//     subida (misma ruta, mismo producto, hecha por esta persona, aún `reservada` y NO vencida: `venceEn`) y el archivo cumple tamaño y tipo
 //     (foto: 15 MB; video: 200 MB). Solo se puede CREAR: no hay actualización ni borrado desde el navegador.
 //  2) Lectura pública de `tenants/{t}/publico/**` (versiones procesadas con hash de contenido).
 // Todo lo demás (originales, temporales, PDF de recibos) lo lee y escribe solo el servidor.
@@ -25,6 +25,8 @@ service firebase.storage {
     function reservaValida(tenantId, productoId, subidaId) {
       let r = firestore.get(/databases/(default)/documents/tenants/$(tenantId)/subidas/$(subidaId)).data;
       return r.estado == 'reservada'
+        && r.venceEn is number
+        && request.time.toMillis() <= r.venceEn
         && r.productoId == productoId
         && r.por == request.auth.uid
         && request.resource.size > 0

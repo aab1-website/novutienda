@@ -25,10 +25,12 @@ const sesion = (rol: string, extra: Record<string, unknown> = {}): Record<string
 describe.skipIf(!hayEmulador)('reglas de Storage (emulador)', () => {
   let env: RulesTestEnvironment;
 
-  async function reservar(id: string, o: { tipo?: 'foto' | 'video'; bytes?: number; por?: string; estado?: string; producto?: string } = {}): Promise<void> {
+  async function reservar(id: string, o: { tipo?: 'foto' | 'video'; bytes?: number; por?: string; estado?: string; producto?: string; venceEn?: number | null } = {}): Promise<void> {
     await env.withSecurityRulesDisabled(async (ctx) => {
       await ctx.firestore().doc(`tenants/${T}/subidas/${id}`).set({
         id, productoId: o.producto ?? PRODUCTO, tipo: o.tipo ?? 'foto', bytes: o.bytes ?? 15 * MIB, estado: o.estado ?? 'reservada', por: o.por ?? 'u-sup',
+        // `venceEn` en milisegundos, como lo escribe la consola; por defecto vigente una hora.
+        ...(o.venceEn === null ? {} : { venceEn: o.venceEn ?? Date.now() + 3_600_000 }),
       });
     });
   }
@@ -78,6 +80,11 @@ describe.skipIf(!hayEmulador)('reglas de Storage (emulador)', () => {
       await assertFails(subir(sup, original('subida-021'), 1024));
       await reservar('subida-022', { estado: 'procesada' });
       await assertFails(subir(sup, original('subida-022'), 1024));
+      // Reserva vencida (`venceEn` en el pasado) o sin `venceEn`: se niega aunque lo demás sea correcto.
+      await reservar('subida-023', { venceEn: Date.now() - 1000 });
+      await assertFails(subir(sup, original('subida-023'), 1024));
+      await reservar('subida-024', { venceEn: null });
+      await assertFails(subir(sup, original('subida-024'), 1024));
     });
 
     it('respeta el tamaño (15 MB foto, 200 MB video, y no más que lo reservado) y el tipo', async () => {
