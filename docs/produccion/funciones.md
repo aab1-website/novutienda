@@ -198,9 +198,11 @@ Una instalación atiende **un** tenant en las rutas sin token de usuario (`TENAN
 Construcción: `node plataforma/funciones/scripts/empaquetar.mjs` genera `dist/funciones/` (un `index.js` empaquetado con esbuild y un `package.json` con las
 dependencias de ejecución de versión exacta). `firebase.json` lo declara como `source` y lo ejecuta como `predeploy`.
 
-Hosting: dos sitios con **targets** (`sitio` → `dist/website`, `panel` → `dist/panel`); el CI debe hacer `firebase target:apply hosting sitio <id>` y
-`… panel <id>` con ids de variables de GitHub (nunca en el repositorio). La CSP del sitio se sella en cada build (`dist/website/_cabeceras.json`):
-`node plataforma/funciones/scripts/componer-hosting.mjs` la incorpora a `firebase.json` antes de desplegar (sin sello, rige la CSP base estricta).
+Hosting: dos sitios con **targets** (`sitio` → `dist/website`, `panel` → `dist/panel`); el CI hace `firebase target:apply hosting sitio|panel`
+con los ids de las variables de Environment `FIREBASE_SITE_SITIO` y `FIREBASE_SITE_PANEL` (nunca en el repositorio). La CSP del sitio se sella en
+cada build (`dist/website/_cabeceras.json`) y `pnpm build` la compone con `componer-hosting.mjs` en `dist/firebase.json`, que el CI usa al
+desplegar (sin sello, rige la CSP base estricta). Parámetros en el despliegue: el CI los escribe desde variables y los pasa por
+`FUNCIONES_PARAMETROS` (contrato pendiente en `empaquetar.mjs`; ver `docs/arquitectura/decisiones.md`). Procedimiento completo: `pase-a-staging.md`.
 `FIREBASE_DEPLOY_ONLY` coherente con este `firebase.json`: `hosting,functions,firestore,storage`.
 
 Índices (`firestore.indexes.json`; **el emulador no exige índices compuestos, así que una consulta sin índice solo falla en la nube**):
@@ -225,7 +227,7 @@ Pruebas contra el emulador: `pnpm test:funciones` (puertos de `firebase.json`; p
   `tenants/{t}/reconstrucciones`. No están en ningún manifiesto, así que las reglas de Firestore las niegan al navegador (correcto). Si el panel debe **leerlas
   directo** (alertas), hace falta declararlas en un manifiesto; mientras tanto se leen por `consola.alertas`.
 - **Contrato del catálogo:** «`precio` (unidades) y `precioCentavos` (mismo entero)» es ambiguo; se implementó `precio` = monto decimal y `precioCentavos` = ese monto × 100.
-- **Plantillas del sitio:** `@novutienda/consola` admite `marfil, oceano, bosque, terracota, grafito`; `@novutienda/website` define `cielo, bosque, ambar, grafito, ciruela`. No coinciden.
+- **Plantillas del sitio:** unificadas en a7f7418 (`cielo, bosque, ambar, grafito, ciruela`). `pruebas/funciones/programadas.test.ts` todavía siembra `marfil` y falla en `test:funciones` (04/11/2026).
 - **Adaptador de Recibos en memoria:** `ejecutorRecibosDesde` (en `plataforma/adaptadores/`) exige leer antes de `actualizar`, y `enviarRecibo` actualiza en una transacción nueva
   sin leer: falla. Las funciones usan `crearEjecutorRecibos` (Firestore, `update` nativo). Conviene corregirlo o retirarlo en la próxima integración.
 - **Enlace del PDF:** `enviarRecibo` guarda el PDF en una ruta privada y firma una URL v4 de hasta 7 días; el enlace de WhatsApp caduca a los 7 días. La cuenta de servicio de
@@ -234,6 +236,8 @@ Pruebas contra el emulador: `pnpm test:funciones` (puertos de `firebase.json`; p
 - **Configuración en la nube pendiente:** App Check, reCAPTCHA Enterprise, IAM y secretos no se crearon (§11).
 
 ## 11. Qué debe autorizar Andres (lo ejecuta Claude con su «sí»)
+
+Guion paso a paso con los comandos exactos: `pase-a-staging.md`.
 
 1. Crear los tres secretos en Secret Manager del proyecto de staging y dar acceso a la cuenta de servicio de las funciones.
 2. Primer despliegue a staging de `functions`, `hosting`, `firestore` (reglas e índices) y `storage` (reglas), y la variable `FIREBASE_DEPLOY_ONLY`.
