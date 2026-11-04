@@ -2,7 +2,7 @@
 // publicaron (`tenants/{t}/eventos/*`, escritos en la transacción del negocio) y los entrega a los
 // consumidores, con entrega duplicada y desordenada como la de un bus real (al menos una vez).
 import { consumirPedidoConfirmado, consumirVentaAnulada, ejecutorDesde } from '@plataforma/inventarios';
-import type { BaseDatosIdentidad, SobreEvento } from '@plataforma/nucleo';
+import { publicarEvento, type BaseDatosIdentidad, type SobreEvento } from '@plataforma/nucleo';
 import { manejarVentaAnulada, manejarVentaConfirmada, type OpcionesEmision } from '@plataforma/recibos';
 import type { LectorColecciones } from './colecciones.js';
 import { ejecutorRecibosDesde } from './ejecutor-recibos.js';
@@ -25,6 +25,22 @@ export function consumidoresDePlataforma(db: BaseDatosIdentidad, opcionesRecibos
     { nombre: 'inventarios:venta.anulada', tipos: ['venta.anulada'], manejar: (e) => consumirVentaAnulada(inventarios, e) },
     { nombre: 'inventarios:pedido.confirmado', tipos: ['pedido.confirmado'], manejar: (e) => consumirPedidoConfirmado(inventarios, e) },
   ];
+}
+
+/** Publica un evento en la bandeja del tenant, como lo haría un servicio externo (por ejemplo, el de pedidos de WhatsApp). */
+export function publicarEnBandeja(db: BaseDatosIdentidad, evento: SobreEvento): Promise<void> {
+  return db.runTransaction(async (tx) => {
+    publicarEvento(
+      {
+        create: (ruta, datos) => {
+          tx.create(ruta, datos);
+        },
+        existe: async (ruta) => (await tx.get(ruta)).existe,
+        marcaTiempoServidor: () => tx.marcaTiempoServidor(),
+      },
+      evento,
+    );
+  });
 }
 
 export type OrdenEntrega = 'publicacion' | 'inverso' | 'barajado';

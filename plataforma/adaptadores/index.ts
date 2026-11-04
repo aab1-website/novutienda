@@ -1,6 +1,6 @@
 export type { DocumentoListado, LectorColecciones } from './colecciones.js';
 export { almacenCotizacionesDesde } from './almacen-cotizaciones.js';
-export { BandejaMemoria, consumidoresDePlataforma } from './bandeja-memoria.js';
+export { BandejaMemoria, consumidoresDePlataforma, publicarEnBandeja } from './bandeja-memoria.js';
 export type { Consumidor, OpcionesEntrega, OrdenEntrega, ResumenEntrega } from './bandeja-memoria.js';
 export { crearCatalogoConsola } from './catalogo-consola.js';
 export type { DepsCatalogoConsola } from './catalogo-consola.js';
