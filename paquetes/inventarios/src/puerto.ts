@@ -105,6 +105,11 @@ function normalizar(lineas: readonly LineaSalida[]): LineaNormalizada[] {
   return todas;
 }
 
+export interface OpcionesSalida {
+  /** Zona de la fecha de calendario de `garantiaHasta`. Por defecto `America/La_Paz`, como Recibos. */
+  readonly zonaHoraria?: string;
+}
+
 /**
  * SOLO LECTURAS. Verifica productos activos, stock y series, y calcula el plan.
  * Lanza `StockInsuficiente` (con todos los faltantes), `SerieNoDisponible` o `ProductoInactivo`.
@@ -114,6 +119,7 @@ export async function prepararSalida(
   tx: TransaccionIdentidad,
   tenantId: string,
   lineas: readonly LineaSalida[],
+  opciones: OpcionesSalida = {},
 ): Promise<PlanSalida> {
   exigirTenant(tenantId);
   const norm = normalizar(lineas);
@@ -160,7 +166,7 @@ export async function prepararSalida(
         ...(t.unidadLeida(l.productoId, s) !== undefined ? { base: t.unidadLeida(l.productoId, s) as Datos } : {}),
         estado: 'vendida',
         ubicacionId: l.almacenId,
-        ...(typeof meses === 'number' && Number.isSafeInteger(meses) && meses > 0 ? { garantiaHasta: sumarMeses(t.ahora, meses) } : {}),
+        ...(typeof meses === 'number' && Number.isSafeInteger(meses) && meses > 0 ? { garantiaHasta: sumarMeses(t.ahora, meses, opciones.zonaHoraria) } : {}),
         modo: 'set',
       });
     }

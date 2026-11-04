@@ -1,5 +1,6 @@
-import type { MotivoStockCambiado, Rol, TransaccionMin } from '@plataforma/nucleo';
+import { ZONA_HORARIA, type MotivoStockCambiado, type Rol, type TransaccionMin } from '@plataforma/nucleo';
 import { ErrorInventario, EstadoInvalido, ProductoInactivo, SerieNoDisponible, StockInsuficiente } from './errores.js';
+import { esDisponible, UBICACION_DISPONIBILIDAD } from './disponibilidad.js';
 import { idExistencia, idUnidad, ruta } from './ids.js';
 
 export type Datos = Record<string, unknown>;
@@ -107,15 +108,24 @@ export function bajoMinimo(p: Datos): boolean {
   return entero(min) && entero(p['stockTotal']) && p['stockTotal'] <= min;
 }
 
-/** Suma meses a una fecha ISO y devuelve aaaa-mm-dd (UTC), acotando al fin de mes. */
-export function sumarMeses(iso: string, meses: number): string {
-  const f = new Date(iso);
-  const total = f.getUTCFullYear() * 12 + f.getUTCMonth() + meses;
-  const anio = Math.floor(total / 12);
-  const mes = total % 12;
-  const ultimo = new Date(Date.UTC(anio, mes + 1, 0)).getUTCDate();
-  const d = new Date(Date.UTC(anio, mes, Math.min(f.getUTCDate(), ultimo)));
-  return d.toISOString().slice(0, 10);
+/** Zona de las fechas de calendario (la misma que fija el tenant y que usa Recibos). */
+export const ZONA_HORARIA_POR_DEFECTO = ZONA_HORARIA;
+
+/** Fecha de calendario aaaa-mm-dd de un instante ISO en la zona dada (no en UTC). */
+export function fechaLocal(instanteIso: string, zona: string = ZONA_HORARIA_POR_DEFECTO): string {
+  const partes = new Intl.DateTimeFormat('en-CA', { timeZone: zona, year: 'numeric', month: '2-digit', day: '2-digit' }).formatToParts(new Date(instanteIso));
+  const g = (t: string): string => partes.find((x) => x.type === t)?.value ?? '';
+  return `${g('year')}-${g('month')}-${g('day')}`;
+}
+
+/** Fin de garantía: suma meses a la fecha de calendario del instante en la zona (si el día no existe, el último del mes). */
+export function sumarMeses(instanteIso: string, meses: number, zona: string = ZONA_HORARIA_POR_DEFECTO): string {
+  const [a, m, d] = fechaLocal(instanteIso, zona).split('-').map(Number) as [number, number, number];
+  const indice = a * 12 + (m - 1) + meses;
+  const anio = Math.floor(indice / 12);
+  const mes = (indice % 12) + 1;
+  const ultimo = new Date(Date.UTC(anio, mes, 0)).getUTCDate();
+  return `${String(anio).padStart(4, '0')}-${String(mes).padStart(2, '0')}-${String(Math.min(d, ultimo)).padStart(2, '0')}`;
 }
 
 /**
@@ -142,10 +152,12 @@ export class Trabajo {
 
   /** Carga producto, costo y existencia (lecturas). Lanza `ProductoInactivo('inexistente')` si el producto no existe. */
   async cargar(productoId: string, ubicacionId: string): Promise<void> {
-    const [prod, costo, ex] = await Promise.all([
+    // También se lee la existencia en `tienda`: de ella depende `existenciasPublicas` (ver `esDisponible`).
+    const [prod, costo, ex, tienda] = await Promise.all([
       this.lector.leer('productos', productoId),
       this.lector.leer('costos', productoId),
       this.lector.leer('existencias', idExistencia(productoId, ubicacionId)),
+      ubicacionId === UBICACION_DISPONIBILIDAD ? undefined : this.lector.leer('existencias', idExistencia(productoId, UBICACION_DISPONIBILIDAD)),
     ]);
     if (prod === undefined) throw new ProductoInactivo(productoId, 'inexistente');
     if (!this.productos.has(productoId)) {
@@ -154,15 +166,18 @@ export class Trabajo {
       const c = costo?.['costoUSD'];
       this.costos.set(productoId, typeof c === 'number' && Number.isFinite(c) && c >= 0 ? c : undefined);
     }
-    const k = idExistencia(productoId, ubicacionId);
-    if (!this.existencias.has(k)) {
-      const cantidad = ex?.['cantidad'] ?? 0;
-      const series = ex?.['series'] ?? [];
-      if (!entero(cantidad) || cantidad < 0 || !Array.isArray(series) || !series.every((s) => typeof s === 'string')) {
-        throw new ErrorInventario('failed-precondition', `Existencia corrupta: ${k}`);
-      }
-      this.existencias.set(k, { cantidad, series: [...(series as string[])] });
+    this.registrarExistencia(idExistencia(productoId, ubicacionId), ex);
+    if (ubicacionId !== UBICACION_DISPONIBILIDAD) this.registrarExistencia(idExistencia(productoId, UBICACION_DISPONIBILIDAD), tienda);
+  }
+
+  private registrarExistencia(k: string, ex: Datos | undefined): void {
+    if (this.existencias.has(k)) return;
+    const cantidad = ex?.['cantidad'] ?? 0;
+    const series = ex?.['series'] ?? [];
+    if (!entero(cantidad) || cantidad < 0 || !Array.isArray(series) || !series.every((s) => typeof s === 'string')) {
+      throw new ErrorInventario('failed-precondition', `Existencia corrupta: ${k}`);
     }
+    this.existencias.set(k, { cantidad, series: [...(series as string[])] });
   }
 
   /** Registra un producto que esta misma operación crea (aún no existe en la base): admite movimientos. */
@@ -276,7 +291,14 @@ export class Trabajo {
       docs.push({
         ruta: ruta(this.tenantId, 'existenciasPublicas', id),
         modo,
-        datos: { productoId: id, disponible: total > 0, version },
+        datos: {
+          productoId: id,
+          disponible: esDisponible(
+            { activo: prod['activo'] === true, ...(typeof prod['stockTotal'] === 'number' ? { stockTotal: prod['stockTotal'] } : {}) },
+            this.existencias.get(idExistencia(id, UBICACION_DISPONIBILIDAD))?.cantidad ?? 0,
+          ),
+          version,
+        },
       });
       if (movidos.has(id) && bajo && this.bajoAntes.get(id) !== true) alertas.push({ productoId: id, saldoTotal: total, minimo: prod['minimo'] as number });
     }

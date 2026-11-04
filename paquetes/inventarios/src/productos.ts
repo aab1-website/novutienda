@@ -1,6 +1,7 @@
 import { LimiteDelPlan, ContadorCorrupto, PLANES, rutaContador, validarTenant, type TransaccionIdentidad } from '@plataforma/nucleo';
 import { EntradaInvalida, EstadoInvalido, NoEncontrado } from './errores.js';
-import { esProductoId, esSku, exigirProducto, exigirSegmento, exigirUbicacion, ruta } from './ids.js';
+import { esDisponible, UBICACION_DISPONIBILIDAD } from './disponibilidad.js';
+import { esProductoId, esSku, exigirProducto, exigirSegmento, exigirUbicacion, idExistencia, ruta } from './ids.js';
 import { bajoMinimo, type Autor, type Datos, type Trabajo } from './motor.js';
 import { ejecutarOperacion, exigirAutor, PERMISOS, type ResultadoOperacion } from './operacion.js';
 
@@ -14,6 +15,8 @@ export interface EntradaProducto {
   readonly id: string;
   readonly nombre: string;
   readonly categoria: string;
+  /** Marca comercial (opcional): la propuesta exige filtrar el catálogo por marca. */
+  readonly marca?: string;
   readonly sku: string;
   readonly activo?: boolean;
   readonly publicado?: boolean;
@@ -27,7 +30,7 @@ export interface EntradaProducto {
 }
 
 const CLAVES_PRODUCTO = new Set([
-  'id', 'nombre', 'categoria', 'sku', 'activo', 'publicado', 'conSerie', 'garantiaMeses', 'minimo', 'precioUSD', 'costoUSD', 'controlaStock',
+  'id', 'nombre', 'categoria', 'marca', 'sku', 'activo', 'publicado', 'conSerie', 'garantiaMeses', 'minimo', 'precioUSD', 'costoUSD', 'controlaStock',
 ]);
 
 const centavos = (x: unknown): x is number => typeof x === 'number' && Number.isSafeInteger(x) && x >= 0 && x <= 100_000_000_00;
@@ -43,8 +46,8 @@ function exigirPrecio(x: unknown): PrecioUSD {
 }
 
 /** Valida estrictamente una entrada de producto (claves desconocidas incluidas). */
-export type ProductoValido = Required<Omit<EntradaProducto, 'garantiaMeses' | 'minimo' | 'costoUSD'>> &
-  Pick<EntradaProducto, 'garantiaMeses' | 'minimo' | 'costoUSD'>;
+export type ProductoValido = Required<Omit<EntradaProducto, 'garantiaMeses' | 'minimo' | 'costoUSD' | 'marca'>> &
+  Pick<EntradaProducto, 'garantiaMeses' | 'minimo' | 'costoUSD' | 'marca'>;
 
 export function validarEntradaProducto(x: EntradaProducto): ProductoValido {
   if (typeof x !== 'object' || x === null) throw new EntradaInvalida('producto inválido');
@@ -72,6 +75,7 @@ export function validarEntradaProducto(x: EntradaProducto): ProductoValido {
     conSerie,
     controlaStock,
     precioUSD: exigirPrecio(x.precioUSD),
+    ...(x.marca !== undefined ? { marca: texto(x.marca, 'marca', 60) } : {}),
     ...(x.garantiaMeses !== undefined ? { garantiaMeses: x.garantiaMeses } : {}),
     ...(x.minimo !== undefined ? { minimo: x.minimo } : {}),
     ...(x.costoUSD !== undefined ? { costoUSD: x.costoUSD } : {}),
@@ -104,6 +108,7 @@ export async function prepararProductoNuevo(
     nombre: e.nombre,
     categoria: e.categoria,
     sku: e.sku,
+    ...(e.marca !== undefined ? { marca: e.marca } : {}),
     activo: e.activo,
     publicado: e.publicado,
     conSerie: e.conSerie,
@@ -150,6 +155,7 @@ export async function crearProducto(tx: TransaccionIdentidad, e: EntradaCrearPro
 export interface CambiosProducto {
   readonly nombre?: string;
   readonly categoria?: string;
+  readonly marca?: string;
   readonly activo?: boolean;
   readonly publicado?: boolean;
   readonly conSerie?: boolean;
@@ -166,7 +172,7 @@ export async function actualizarProducto(
 ): Promise<ResultadoOperacion<Datos>> {
   const productoId = exigirProducto(e.productoId);
   const c = e.cambios;
-  const permitidas = ['nombre', 'categoria', 'activo', 'publicado', 'conSerie', 'garantiaMeses', 'minimo', 'precioUSD', 'costoUSD'];
+  const permitidas = ['nombre', 'categoria', 'marca', 'activo', 'publicado', 'conSerie', 'garantiaMeses', 'minimo', 'precioUSD', 'costoUSD'];
   for (const k of Object.keys(c)) if (!permitidas.includes(k)) throw new EntradaInvalida(`campo no editable: ${k}`);
   if (Object.keys(c).length === 0) throw new EntradaInvalida('sin cambios');
   return ejecutarOperacion(tx, {
@@ -180,9 +186,11 @@ export async function actualizarProducto(
     construir: async (t) => {
       const prod = await t.lector.leer('productos', productoId);
       if (prod === undefined) throw new NoEncontrado(`Producto inexistente: ${productoId}`);
+      const tienda = await t.lector.leer('existencias', idExistencia(productoId, UBICACION_DISPONIBILIDAD));
       const nuevo: Datos = { ...prod };
       if (c.nombre !== undefined) nuevo['nombre'] = texto(c.nombre, 'nombre', 120);
       if (c.categoria !== undefined) nuevo['categoria'] = texto(c.categoria, 'categoria', 60);
+      if (c.marca !== undefined) nuevo['marca'] = texto(c.marca, 'marca', 60);
       for (const k of ['activo', 'publicado'] as const) {
         if (c[k] !== undefined) {
           if (typeof c[k] !== 'boolean') throw new EntradaInvalida(`${k} debe ser booleano`);
@@ -207,6 +215,18 @@ export async function actualizarProducto(
       nuevo['bajoMinimo'] = bajoMinimo(nuevo);
       nuevo['version'] = (typeof prod['version'] === 'number' ? prod['version'] : 0) + 1;
       t.escribir({ ruta: ruta(t.tenantId, 'productos', productoId), modo: 'set', datos: nuevo });
+      // La disponibilidad pública depende de `activo`: se recalcula con la misma regla que el resto de operaciones.
+      const stockTotal = nuevo['stockTotal'];
+      const cantidadTienda = typeof tienda?.['cantidad'] === 'number' ? tienda['cantidad'] : 0;
+      t.escribir({
+        ruta: ruta(t.tenantId, 'existenciasPublicas', productoId),
+        modo: 'set',
+        datos: {
+          productoId,
+          disponible: esDisponible({ activo: nuevo['activo'] === true, ...(typeof stockTotal === 'number' ? { stockTotal } : {}) }, cantidadTienda),
+          version: nuevo['version'],
+        },
+      });
       if (c.costoUSD !== undefined) {
         if (!centavos(c.costoUSD)) throw new EntradaInvalida('costoUSD inválido');
         t.escribir({ ruta: ruta(t.tenantId, 'costos', productoId), modo: 'set', datos: { costoUSD: c.costoUSD } });
