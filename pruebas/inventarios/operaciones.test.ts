@@ -3,6 +3,7 @@ import {
   actualizarProducto,
   ajustar,
   crearProducto,
+  crearUbicacion,
   EntradaInvalida,
   EstadoInvalido,
   ingresar,
@@ -179,9 +180,14 @@ describe('productos y límites', () => {
     expect(contar(db, 'productos')).toBe(200);
   });
 
-  it('el cuarto almacén se rechaza y la ubicación debe ser una de las tres', async () => {
-    const dbNuevo = await nuevoEntorno();
-    await expect(dbNuevo.runTransaction((tx) => import('./api.js').then((m) => m.crearUbicacion(tx, { tenantId: T, operacionId: op(), por: ADM, ubicacionId: 'deposito-3', nombre: 'x' })))).rejects.toBeInstanceOf(EntradaInvalida);
+  it('el cuarto almacén se rechaza por el tope del plan y la ubicación debe ser una de las tres', async () => {
+    const { DobleDb } = await import('./doble-db.js');
+    const lleno = new DobleDb();
+    lleno.poner(`tenants/${T}`, { plan: 'base', modulos: {}, zonaHoraria: 'America/La_Paz', monedas: ['BOB', 'USD', 'ARS'] });
+    lleno.poner(`tenants/${T}/contadores/uso`, { almacenes: 3 });
+    await expect(lleno.runTransaction((tx) => crearUbicacion(tx, { tenantId: T, operacionId: op(), por: ADM, ubicacionId: 'tienda', nombre: 'x' }))).rejects.toBeInstanceOf(LimiteDelPlan);
+    await expect(db.runTransaction((tx) => crearUbicacion(tx, { tenantId: T, operacionId: op(), por: ADM, ubicacionId: 'deposito-3', nombre: 'x' }))).rejects.toBeInstanceOf(EntradaInvalida);
+    await expect(db.runTransaction((tx) => crearUbicacion(tx, { tenantId: T, operacionId: op(), por: ADM, ubicacionId: 'tienda', nombre: 'x' }))).rejects.toBeInstanceOf(EstadoInvalido);
   });
 
   it('id inválido, sku repetido y producto duplicado se rechazan', async () => {
