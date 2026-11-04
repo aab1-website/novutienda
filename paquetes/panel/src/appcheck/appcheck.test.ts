@@ -2,7 +2,7 @@ import type { FirebaseApp } from 'firebase/app';
 import type { AppCheck, AppCheckOptions } from 'firebase/app-check';
 import { beforeEach, describe, expect, it, vi, type Mock } from 'vitest';
 import { iniciarAppCheck, reiniciarAppCheckParaPruebas } from './appcheck.js';
-import { proveedorEmulador, TOKEN_APPCHECK_EMULADOR } from './emulador.js';
+import { proveedorEmulador } from './emulador.js';
 
 const app = {} as FirebaseApp;
 const falso = (): { inicializar: Mock<(a: FirebaseApp, o: AppCheckOptions) => AppCheck>; registrar: Mock<(m: string) => void> } => ({ inicializar: vi.fn<(a: FirebaseApp, o: AppCheckOptions) => AppCheck>(), registrar: vi.fn<(m: string) => void>() });
@@ -35,7 +35,8 @@ describe('App Check del panel', () => {
     const opciones = f.inicializar.mock.calls[0]?.[1] as AppCheckOptions;
     expect(opciones.provider).toBe(proveedorEmulador);
     const t = await (proveedorEmulador as unknown as { getToken(): Promise<{ token: string; expireTimeMillis: number }> }).getToken();
-    expect(t.token).toBe(TOKEN_APPCHECK_EMULADOR);
+    const [, carga] = t.token.split('.');
+    expect(JSON.parse(atob((carga ?? '').replace(/-/g, '+').replace(/_/g, '/')))).toMatchObject({ sub: expect.stringContaining('web') as string });
     expect(t.expireTimeMillis).toBeGreaterThan(Date.now());
   });
 });
