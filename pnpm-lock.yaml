@@ -150,8 +150,8 @@ importers:
         specifier: 7.4.2
         version: 7.4.2(@types/node@22.20.5)(esbuild@0.28.2)(yaml@2.9.1)
       firebase:
-        specifier: 13.2.0
-        version: 13.2.0
+        specifier: 13.1.0
+        version: 13.1.0
       preact:
         specifier: 10.29.8
         version: 10.29.8(preact-render-to-string@6.8.2)

@@ -17,7 +17,7 @@
     "@astrojs/preact": "6.1.1",
     "@novutienda/nucleo": "workspace:*",
     "astro": "7.4.2",
-    "firebase": "13.2.0",
+    "firebase": "13.1.0",
     "preact": "10.29.8"
   },
   "devDependencies": {
