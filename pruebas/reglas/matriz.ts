@@ -12,6 +12,7 @@ export type Operacion = (typeof OPERACIONES)[number];
 
 export const TENANT_A = 'tenant-a';
 export const TENANT_B = 'tenant-b';
+const ID_NUEVO = 'nuevo';
 
 interface Sujeto {
   readonly nombre: string;
@@ -29,8 +30,10 @@ export interface Caso {
 }
 
 const claim = (t: Record<string, string>, extra: Record<string, unknown> = {}) => ({ pl: { t, v: 1, ...extra } });
+// Por defecto el correo está verificado; las negativas lo sobrescriben.
 const conProveedor = (proveedor: string, resto: Record<string, unknown> = {}) => ({
   firebase: { sign_in_provider: proveedor },
+  email_verified: true,
   ...resto,
 });
 
@@ -73,6 +76,9 @@ export function construirCasos(manifiestos: readonly ManifiestoReglas[]): Caso[]
       { nombre: 'claim sin tenants', token: conProveedor('password', claim({})) },
       { nombre: 'proveedor google.com', token: conProveedor('google.com', claim({ [TENANT_A]: 'dir' })) },
       { nombre: 'proveedor custom', token: conProveedor('custom', claim({ [TENANT_A]: 'dir' })) },
+      { nombre: 'correo no verificado', token: conProveedor('password', { ...claim({ [TENANT_A]: 'adm' }), email_verified: false }) },
+      { nombre: 'sin dato de verificación de correo', token: { firebase: { sign_in_provider: 'password' }, ...claim({ [TENANT_A]: 'adm' }) } },
+      { nombre: 'correo verificado como texto', token: conProveedor('password', { ...claim({ [TENANT_A]: 'adm' }), email_verified: 'true' }) },
       { nombre: 'sin proveedor', token: claim({ [TENANT_A]: 'dir' }) },
       { nombre: 'acceso de plataforma sin rol', token: conProveedor('password', claim({}, { p: true })) },
       { nombre: 'rol de otro tenant', token: conProveedor('password', claim({ [TENANT_B]: 'dir' })) },
@@ -119,7 +125,7 @@ async function ejecutar(db: Firestore, caso: Caso): Promise<boolean> {
         await getDocs(collection(db, `tenants/${caso.tenant}/${caso.ruta}`));
         break;
       case 'create':
-        await setDoc(referencia(db, caso, 'nuevo'), { x: 1 });
+        await setDoc(referencia(db, caso, ID_NUEVO), { x: 1 });
         break;
       case 'update':
         await updateDoc(referencia(db, caso, 'd1'), { x: 2 });
@@ -129,8 +135,12 @@ async function ejecutar(db: Firestore, caso: Caso): Promise<boolean> {
         break;
     }
     return true;
-  } catch {
-    return false;
+  } catch (error) {
+    // Solo una denegación de las reglas cuenta como «denegado». Cualquier otro
+    // error (emulador caído, red, reglas que no compilan) debe hacer fallar la
+    // prueba, no dejar verde una negativa.
+    if ((error as { code?: unknown }).code === 'permission-denied') return false;
+    throw error;
   }
 }
 
@@ -141,6 +151,13 @@ async function sembrar(env: RulesTestEnvironment, rutas: readonly string[]): Pro
     for (const tenant of [TENANT_A, TENANT_B]) {
       for (const ruta of rutas) await setDoc(doc(db, `tenants/${tenant}/${ruta}/d1`), { x: 0 });
     }
+  });
+}
+
+/** Elimina el documento creado por un `create` permitido, sin pasar por las reglas. */
+async function quitarNuevo(env: RulesTestEnvironment, caso: Caso): Promise<void> {
+  await env.withSecurityRulesDisabled(async (ctx) => {
+    await deleteDoc(doc(ctx.firestore(), `tenants/${caso.tenant}/${caso.ruta}/${ID_NUEVO}`));
   });
 }
 
@@ -165,6 +182,9 @@ export async function ejecutarMatriz(
     }
     // Un borrado permitido consume el documento sembrado: se repone.
     if (caso.operacion === 'delete' && resultado) await sembrar(env, [caso.ruta]);
+    // Un create permitido deja el documento: sin quitarlo, el siguiente create
+    // sobre el mismo id sería en realidad un update y se evaluaría otra regla.
+    if (caso.operacion === 'create' && resultado) await quitarNuevo(env, caso);
   }
   return fallos;
 }

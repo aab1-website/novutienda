@@ -23,7 +23,7 @@ if (accion === 'generar') {
     // archivo ausente: difiere
   }
   if (actual !== generado) {
-    console.error(`reglas:verificar: ${ARCHIVO} difiere de lo generado. Ejecute npm run reglas:generar.`);
+    console.error(`reglas:verificar: ${ARCHIVO} difiere de lo generado. Ejecute pnpm reglas:generar.`);
     process.exit(1);
   }
   console.log(`reglas:verificar: ${ARCHIVO} coincide con lo generado.`);

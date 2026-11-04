@@ -1,5 +1,6 @@
 export interface ColeccionReglas {
   readonly ruta: string;
+  readonly limite?: string;
   readonly lectura: readonly string[];
   readonly escritura: 'servidor' | readonly string[];
 }

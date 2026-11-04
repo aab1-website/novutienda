@@ -7,3 +7,5 @@ allowBuilds:
 blockExoticSubdeps: true
 overrides:
   '@grpc/grpc-js': 1.14.7
+  minimatch: '>=11.0.1'
+  glob: '>=14.0.2'

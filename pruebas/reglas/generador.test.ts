@@ -1,6 +1,6 @@
 import { readFileSync } from 'node:fs';
 import { describe, expect, it } from 'vitest';
-import { registroPlataforma } from '@plataforma/nucleo';
+import { manifiestosEnOrden } from '../../plataforma/registro.js';
 import { ErrorGenerador, generarReglas, type ManifiestoReglas } from '../../scripts/generar-reglas.mjs';
 
 const sintetico: ManifiestoReglas = {
@@ -14,12 +14,12 @@ const sintetico: ManifiestoReglas = {
 
 describe('generador de reglas', () => {
   it('firestore.rules versionado coincide con lo generado desde el registro', () => {
-    const generado = generarReglas(registroPlataforma.listar());
+    const generado = generarReglas(manifiestosEnOrden());
     expect(readFileSync('firestore.rules', 'utf8')).toBe(generado);
   });
 
   it('es determinista', () => {
-    const m = registroPlataforma.listar();
+    const m = manifiestosEnOrden();
     expect(generarReglas(m)).toBe(generarReglas(m));
   });
 
@@ -44,6 +44,19 @@ describe('generador de reglas', () => {
     expect(() => generarReglas(una('a/b'))).toThrow(/número par/);
     expect(() => generarReglas(una('ok', ['root']))).toThrow(/Rol inválido/);
     expect(() => generarReglas([...una('ok'), { id: 'y', colecciones: [{ ruta: 'ok', lectura: [], escritura: 'servidor' }] }])).toThrow(/duplicada/);
+  });
+
+  it('rechaza una colección con límite cuya escritura no es del servidor', () => {
+    const con = (escritura: 'servidor' | string[]) => [
+      { id: 'x', colecciones: [{ ruta: 'miembros', lectura: ['adm'], escritura, limite: 'usuarios' }] },
+    ];
+    expect(() => generarReglas(con(['adm']))).toThrow(/límite/);
+    expect(() => generarReglas(con([]))).toThrow(ErrorGenerador);
+    expect(() => generarReglas(con('servidor'))).not.toThrow();
+  });
+
+  it('tieneRol exige correo verificado', () => {
+    expect(generarReglas([sintetico])).toContain("&& request.auth.token.get('email_verified', false) == true");
   });
 
   it('omite módulos sin colecciones', () => {

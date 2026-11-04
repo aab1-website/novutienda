@@ -1,7 +1,9 @@
 // Generador de firestore.rules desde el registro de módulos.
 // La salida es determinista (sin fechas) para que reglas:verificar pueda
 // comparar el archivo versionado con lo generado. Nunca se edita a mano.
-import { registerHooks } from 'node:module';
+import { readFileSync } from 'node:fs';
+import { registerHooks, stripTypeScriptTypes } from 'node:module';
+import { fileURLToPath } from 'node:url';
 import { pathToFileURL } from 'node:url';
 import { resolve } from 'node:path';
 
@@ -41,6 +43,13 @@ function validarRuta(ruta) {
 
 function bloqueColeccion(c) {
   validarRuta(c.ruta);
+  // Una colección con límite de plan solo puede escribirla el servidor: una
+  // escritura directa desde el cliente eludiría el conteo del límite.
+  if (c.limite !== undefined && c.escritura !== 'servidor') {
+    throw new ErrorGenerador(
+      `La colección "${c.ruta}" declara límite "${String(c.limite)}" pero su escritura no es 'servidor'`,
+    );
+  }
   const lectura =
     c.lectura.length === 0
       ? 'allow read: if false;'
@@ -77,12 +86,13 @@ export function generarReglas(manifiestos) {
   return `rules_version = '2';
 
 // GENERADO por scripts/generar-reglas.mjs desde el registro de módulos.
-// No se edita a mano: ejecute \`npm run reglas:generar\`. \`reglas:verificar\`
+// No se edita a mano: ejecute \`pnpm reglas:generar\`. \`reglas:verificar\`
 // falla si este archivo difiere de lo generado.
 //
 // Principios: se niega por defecto; el tenant sale de la ruta, nunca de un
 // campo; el rol sale del claim firmado (pl.t[tenantId]) y solo vale si la
-// sesión se abrió con el proveedor esperado; rolEn devuelve '' y nunca null.
+// sesión se abrió con el proveedor esperado y el correo está verificado;
+// rolEn devuelve '' y nunca null.
 service cloud.firestore {
   match /databases/{database}/documents {
 
@@ -102,6 +112,7 @@ service cloud.firestore {
     function tieneRol(tenantId, roles) {
       return autenticado()
         && proveedor() == '${PROVEEDOR_PERSONAS}'
+        && request.auth.token.get('email_verified', false) == true
         && rolEn(tenantId) in roles;
     }
 
@@ -117,8 +128,11 @@ ${bloques.join('\n\n')}
 }
 
 /**
- * Carga los manifiestos del registro de la plataforma. Node no resuelve las
- * importaciones «.js» hacia archivos «.ts»; el gancho lo hace solo aquí.
+ * Carga los manifiestos del registro de la plataforma (plataforma/registro.ts),
+ * que importa la entrada pública de cada paquete. Node no resuelve las
+ * importaciones «.js» hacia archivos «.ts» ni ejecuta la sintaxis de TypeScript
+ * que requiere transformación (propiedades de parámetro, enums); los ganchos
+ * lo hacen solo aquí.
  */
 export async function cargarManifiestos(raiz = process.cwd()) {
   registerHooks({
@@ -133,9 +147,19 @@ export async function cargarManifiestos(raiz = process.cwd()) {
       }
     },
   });
-  const entrada = pathToFileURL(resolve(raiz, 'paquetes/nucleo/src/plataforma.ts')).href;
-  const { registroPlataforma } = await import(entrada);
-  registroPlataforma.rutas(); // lanza si hay rutas duplicadas
-  const porId = new Map(registroPlataforma.listar().map((m) => [m.id, m]));
-  return registroPlataforma.ordenTopologico().map((id) => porId.get(id));
+  registerHooks({
+    load(url, contexto, siguiente) {
+      if (!url.startsWith('file://') || !url.endsWith('.ts') || url.includes('/node_modules/')) {
+        return siguiente(url, contexto);
+      }
+      const codigo = stripTypeScriptTypes(readFileSync(fileURLToPath(url), 'utf8'), {
+        mode: 'transform',
+        sourceUrl: url,
+      });
+      return { format: 'module', source: codigo, shortCircuit: true };
+    },
+  });
+  const entrada = pathToFileURL(resolve(raiz, 'plataforma/registro.ts')).href;
+  const { manifiestosEnOrden } = await import(entrada);
+  return manifiestosEnOrden(); // lanza si hay rutas duplicadas
 }

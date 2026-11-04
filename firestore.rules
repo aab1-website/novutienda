@@ -1,12 +1,13 @@
 rules_version = '2';
 
 // GENERADO por scripts/generar-reglas.mjs desde el registro de módulos.
-// No se edita a mano: ejecute `npm run reglas:generar`. `reglas:verificar`
+// No se edita a mano: ejecute `pnpm reglas:generar`. `reglas:verificar`
 // falla si este archivo difiere de lo generado.
 //
 // Principios: se niega por defecto; el tenant sale de la ruta, nunca de un
 // campo; el rol sale del claim firmado (pl.t[tenantId]) y solo vale si la
-// sesión se abrió con el proveedor esperado; rolEn devuelve '' y nunca null.
+// sesión se abrió con el proveedor esperado y el correo está verificado;
+// rolEn devuelve '' y nunca null.
 service cloud.firestore {
   match /databases/{database}/documents {
 
@@ -26,6 +27,7 @@ service cloud.firestore {
     function tieneRol(tenantId, roles) {
       return autenticado()
         && proveedor() == 'password'
+        && request.auth.token.get('email_verified', false) == true
         && rolEn(tenantId) in roles;
     }
 

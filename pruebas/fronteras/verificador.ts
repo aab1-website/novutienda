@@ -15,7 +15,7 @@ export type Dependencias = Readonly<Record<string, readonly string[]>>;
 
 const EXT_CODIGO = /\.(ts|tsx|js|mjs|cjs)$/;
 const IMPORTACION =
-  /(?:\bfrom\s*|\bimport\s*\(\s*|\bimport\s+|\brequire\s*\(\s*)(['"])([^'"\n]+)\1/g;
+  /(?:\bfrom\s*|\bimport\s*\(\s*|\bimport\s+|\brequire\s*\(\s*)(['"`])((?:(?!\1)[^\n])+)\1/g;
 
 export function extraerImportaciones(codigo: string): string[] {
   return [...codigo.matchAll(IMPORTACION)].map((m) => m[2] as string);
@@ -40,6 +40,11 @@ export function verificarFronteras(arbol: Arbol, dependencias: Dependencias = {}
         violaciones.push({ archivo, importacion: imp, motivo });
       };
 
+      if (imp.includes('${')) {
+        // El destino se calcula en ejecución: no se puede verificar la frontera.
+        falla('importación dinámica con plantilla de texto: destino no verificable');
+        continue;
+      }
       if (imp.startsWith('.')) {
         const destino = posix.normalize(posix.join(posix.dirname(archivo), imp));
         if (destino !== raizPropia && !destino.startsWith(`${raizPropia}/`)) {

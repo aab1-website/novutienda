@@ -12,15 +12,15 @@ Flujo: trabajo en ramas `feat/*`, `fix/*`, `chore/*`, `hotfix/*` → PR hacia `m
 
 | Acción | Comando |
 |---|---|
-| Instalar dependencias | `npm ci` (node) · `pip install -r requirements.txt` (python) |
-| Pruebas | `npm test` · `python -m pytest` |
-| Lint y formato | `npm run lint` · `ruff check . && ruff format --check .` |
-| Build por ambiente | `APP_ENV=staging npm run build` (o `build:staging`) |
+| Instalar dependencias | `pnpm install --frozen-lockfile` |
+| Pruebas | `pnpm test` (con cobertura: `pnpm test -- --run --coverage`) |
+| Lint y tipos | `pnpm lint` · `pnpm typecheck` |
+| Build por ambiente | `APP_ENV=staging pnpm build` |
 | Seguridad estática local | `./security-local.sh` (informe en `.security-reports/ultimo/resumen.md`) |
 | Desplegar a staging | `./deploy.sh staging` (`--dry-run` para ver los comandos) |
 | Desplegar a producción | **No lo ejecute.** Lo hace una persona: tag `vX.Y.Z` + aprobación del Environment (A/B) o `workflow_dispatch` del `ci-*` con `confirmar=DESPLEGAR` (B0). Ver `/pase-a-produccion`. |
 | Validar workflows | `actionlint .github/workflows/*.yml` |
-| Reglas Firestore (si aplica) | `firebase emulators:exec --only firestore "npm run test:rules"` |
+| Reglas Firestore | `pnpm reglas:generar` · `pnpm reglas:verificar` · `pnpm test:rules` (levanta el emulador; dentro de `emulators:exec` reutiliza el existente) |
 
 Ajuste esta tabla si los scripts de `package.json`/`pyproject.toml` tienen otros nombres; no invente comandos.
 

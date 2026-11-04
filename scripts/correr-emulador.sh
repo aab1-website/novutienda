@@ -21,4 +21,11 @@ if curl -fsS -o /dev/null "http://127.0.0.1:${PUERTO}/" 2>/dev/null; then
 fi
 
 cd "$RAIZ"
-exec firebase emulators:exec --only firestore --project demo-pruebas "$*"
+# Binario global si existe; si no (runner limpio), firebase-tools por npx. La
+# versión se toma de FIREBASE_TOOLS_VERSION si está definida.
+if command -v firebase >/dev/null 2>&1; then
+  FIREBASE=(firebase)
+else
+  FIREBASE=(npx --yes "firebase-tools@${FIREBASE_TOOLS_VERSION:-latest}")
+fi
+exec "${FIREBASE[@]}" emulators:exec --only firestore --project demo-pruebas "$*"
