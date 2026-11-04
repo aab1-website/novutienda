@@ -58,6 +58,47 @@ describe('registrarAuditoria', () => {
     expect(creados).toHaveLength(0);
   });
 
+  it.each([
+    'correoElectronico',
+    'telefonoCliente',
+    'nitCliente',
+    'numeroDocumento',
+    'celularContacto',
+    'direccionEntrega',
+    'nombreCliente',
+    'nombre_del_cliente',
+    'clienteNombre',
+    'NIT',
+    'nit_cliente',
+    'nitcliente',
+    'userEmail',
+    'pinSeguridad',
+    'Teléfono',
+    'dirección',
+    'ci',
+  ])('rechaza la clave compuesta %s', (clave) => {
+    const { tx, creados } = crearTx();
+    expect(() => registrarAuditoria(tx, { ...base, resumenAntes: { [clave]: 'x' } })).toThrow(/prohibida/);
+    expect(creados).toHaveLength(0);
+  });
+
+  it.each(['precioUnitario', 'unit', 'nombreProducto', 'cliente', 'clienteId', 'monitoreo', 'cantidad', 'mapping'])(
+    'no confunde la clave legítima %s',
+    (clave) => {
+      const { tx, creados } = crearTx();
+      registrarAuditoria(tx, { ...base, resumenAntes: { [clave]: 1 } });
+      expect(creados).toHaveLength(1);
+    },
+  );
+
+  it('rechaza un motivo que no es texto', () => {
+    const { tx, creados } = crearTx();
+    for (const m of [{ a: 1 }, ['x'], 5, null]) {
+      expect(() => registrarAuditoria(tx, { ...base, motivo: m as never })).toThrow(/motivo/);
+    }
+    expect(creados).toHaveLength(0);
+  });
+
   it('rechaza claves prohibidas anidadas y en arreglos', () => {
     const { tx } = crearTx();
     expect(() => registrarAuditoria(tx, { ...base, resumenAntes: { a: { b: [{ Password: 'x' }] } } })).toThrow(/prohibida/);
