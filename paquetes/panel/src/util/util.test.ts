@@ -161,3 +161,19 @@ describe('claim y utilidades', () => {
     expect(Object.keys(PALETAS).sort()).toEqual([...PLANTILLAS_SITIO].sort());
   });
 });
+
+describe('rango de exportación', () => {
+  it('último mes en La Paz, con fin de mes y límite de 366 días', async () => {
+    const { rangoUltimoMes, restarMeses, validarRango, diasDelRango } = await import('./rango.js');
+    expect(rangoUltimoMes(Date.UTC(2026, 10, 4, 15, 0, 0))).toEqual({ desde: '2026-10-04', hasta: '2026-11-04' });
+    // 02:00 UTC del 1 de marzo todavía es el 28 de febrero en La Paz.
+    expect(rangoUltimoMes(Date.UTC(2026, 2, 1, 2, 0, 0))).toEqual({ desde: '2026-01-28', hasta: '2026-02-28' });
+    expect(restarMeses('2026-03-31', 1)).toBe('2026-02-28');
+    expect(restarMeses('2026-01-15', 1)).toBe('2025-12-15');
+    expect(diasDelRango('2025-11-04', '2026-11-04')).toBe(366);
+    expect(validarRango('2025-11-04', '2026-11-04')).toBeNull();
+    expect(validarRango('2025-11-03', '2026-11-04')).toMatch(/366/);
+    expect(validarRango('2026-11-05', '2026-11-04')).toMatch(/posterior/);
+    expect(validarRango('', '2026-11-04')).toMatch(/fechas/);
+  });
+});

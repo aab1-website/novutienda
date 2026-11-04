@@ -1,6 +1,6 @@
 // @vitest-environment jsdom
 import { h } from 'preact';
-import { cleanup, render, screen, waitFor, within } from '@testing-library/preact';
+import { cleanup, fireEvent, render, screen, waitFor, within } from '@testing-library/preact';
 import { userEvent } from '@testing-library/user-event';
 import { afterEach, describe, expect, it, vi } from 'vitest';
 import { crearEntorno, uuid, type Entorno } from '../ayuda-pruebas.js';
@@ -253,5 +253,34 @@ describe('supervisión en vivo', () => {
     vi.spyOn(HTMLAnchorElement.prototype, 'click').mockReturnValue(undefined);
     await u.click(screen.getByRole('button', { name: 'Exportar ventas (CSV)' }));
     await waitFor(() => expect(crear).toHaveBeenCalled());
+  });
+  it('exportar ventas: último mes por defecto, pide el rango al servidor y descarga el CSV; rechaza rangos de más de 366 días', async () => {
+    vi.useFakeTimers({ toFake: ['Date'] });
+    vi.setSystemTime(Date.UTC(2026, 10, 4, 15, 0, 0));
+    try {
+      const e = crearEntorno('sup');
+      render(e.envolver(h(PantallaSupervision, { sub: 'auditoria' })));
+      const u = userEvent.setup();
+      const desde = (await screen.findByLabelText(/Ventas desde/)) as HTMLInputElement;
+      const hasta = screen.getByLabelText(/Ventas hasta/) as HTMLInputElement;
+      expect([desde.value, hasta.value]).toEqual(['2026-10-04', '2026-11-04']);
+      let blob: Blob | undefined;
+      vi.spyOn(URL, 'createObjectURL').mockImplementation((b) => { blob = b as Blob; return 'blob:x'; });
+      vi.spyOn(URL, 'revokeObjectURL').mockReturnValue(undefined);
+      let nombre = '';
+      vi.spyOn(HTMLAnchorElement.prototype, 'click').mockImplementation(function (this: HTMLAnchorElement) { nombre = this.download; });
+      await u.click(screen.getByRole('button', { name: 'Exportar ventas (CSV)' }));
+      await waitFor(() => expect(blob).toBeDefined());
+      expect(nombre).toBe('ventas_2026-10-04_2026-11-04.csv');
+      expect(await blob?.text()).toContain('ventaId');
+      expect(e.api.llamadas.find((l) => l.nombre === 'exportarVentasCsv')?.entrada).toEqual({ desde: '2026-10-04', hasta: '2026-11-04' });
+      fireEvent.input(desde, { target: { value: '2025-01-01' } });
+      expect(await screen.findByText(/hasta 366 días/, { selector: '[role="alert"]' })).toBeTruthy();
+      expect((screen.getByRole('button', { name: 'Exportar ventas (CSV)' }) as HTMLButtonElement).disabled).toBe(true);
+      fireEvent.input(desde, { target: { value: '2025-11-04' } });
+      await waitFor(() => expect((screen.getByRole('button', { name: 'Exportar ventas (CSV)' }) as HTMLButtonElement).disabled).toBe(false));
+    } finally {
+      vi.useRealTimers();
+    }
   });
 });
