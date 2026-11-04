@@ -37,6 +37,12 @@ const { data } = await llamar({ accion: 'abrirTurno', tenantId: 'casa-bermejo', 
   `not-found`, `already-exists` (mismo `requestId`/`operacionId` con otro contenido), `failed-precondition` (regla de negocio:
   stock insuficiente con `details.faltantes`, turno ya abierto, aprobación vencida, etc.), `resource-exhausted` (límite del plan,
   cuota; `details.{clave,tope}`), `aborted` (reintentar), `unavailable`, `internal` (mensaje genérico; el detalle va al registro).
+- **`details.codigo`:** TODO `HttpsError` lleva `details.codigo`, el código del módulo en kebab-case (`sin-turno`, `stock-insuficiente`,
+  `serie-no-disponible`, `recibo-no-encontrado`, `limite-del-plan`, `ultimo-adm`…). Los errores que nacen en el borde (marco,
+  sesión, acción desconocida, datos inválidos) llevan un código genérico por tipo: `solicitud-invalida`, `no-autenticado`,
+  `acceso-denegado`, `recurso-inexistente`, `precondicion-fallida`, `ya-existe`, `limite-alcanzado`, `error-interno`, `no-disponible`,
+  `tiempo-agotado`. El panel mapea el mensaje por ese código; si no tiene mensaje propio para él (los del borde), usa el `message`
+  del servidor, que es apto para el usuario.
 - Idempotencia: cada operación de escritura lleva un identificador del cliente (`requestId`, `turnoId`, `operacionId`…). Reintentar
   la misma petición devuelve el resultado original sin repetir efectos. Montos en **centavos enteros**; precios base en **USD decimales**
   en `consola` y en **centavos de USD** en `inventarios` (convención de cada módulo).
@@ -65,7 +71,9 @@ const { data } = await llamar({ accion: 'abrirTurno', tenantId: 'casa-bermejo', 
 | `venta` | TODOS (el vendedor, solo las suyas) | `{ ventaId }` | `{ venta }` |
 | `aprobaciones` / `aprobacion` | TODOS (el vendedor, solo las que él solicitó) | `{ estado?, limite? }` / `{ aprobacionId }` | `{ aprobaciones[] }` / `{ aprobacion }` |
 | `movimientosCaja` | TODOS (el vendedor, solo su turno) | `{ turnoId, limite? }` | `{ movimientos[] }` |
-| `creditos`, `turnos`, `supervision` | SUP | `{ estado?, limite? }` / `{ limite? }` / `{}` | listas; `supervision`: `{ turno, proyeccion, ultimasVentas[] }` |
+| `creditos` | TODOS (el vendedor, solo los créditos de SUS ventas: el crédito no guarda al vendedor, se cruza con sus ventas) | `{ estado?, limite? }` | `{ creditos[] }` |
+| `cotizaciones` | TODOS | `{}` | `{ cotizaciones: { BO, AR }, redondeo }`: cada mercado es `{ cotizacionId, par, valor, fecha, fuente, estado }` o `null` si no hay una utilizable; `redondeo` es la política de `tenants/{t}/config/redondeo` (por defecto BOB dos decimales, ARS múltiplo de 100 más cercano). El panel calcula con ese redondeo. |
+| `turnos`, `supervision` | SUP | `{ limite? }` / `{}` | listas; `supervision`: `{ turno, proyeccion, ultimasVentas[] }` |
 | `exportarVentasCsv` / `exportarMovimientosCajaCsv` | SUP | `{ desde, hasta }` / `{ turnoId }` | `{ csv }` (celdas con `= + - @` neutralizadas) |
 
 Reglas del POS (descuento de 5 % sin permiso, aprobaciones de un solo uso, anulación con reembolso por los medios originales, arqueo sin tope en cero)
@@ -85,8 +93,11 @@ las aplica el módulo; el redondeo del precio sale de `tenants/{t}/config/redond
 | `fijarCosto` | ADM | `{ operacionId, productoId, costoUSD }` | idem |
 | `importarProductosCsv` | ADM | `{ operacionId, csv, cargaInicial? }` (hasta 50 filas) | idem |
 | `listarProductos` | TODOS | `{ soloBajoMinimo? }` | `{ productos[] }` con `existencias` por almacén, `disponible`, `bajoMinimo`; sin costos |
-| `ubicaciones`, `buscarSerie`, `conteo`, `conteos` | TODOS | `{}` / `{ serie, productoId? }` / `{ conteoId }` / `{ estado?, limite? }` | listas |
-| `movimientos`, `mermas`, `exportarCsv` | SUP | `{ productoId?, desde?, hasta?, limite? }` / `{ estado?, limite? }` / `{ conCostos? }` (costos solo ADM) | listas; `{ csv }` |
+| `ubicaciones`, `buscarSerie`, `conteos` | TODOS | `{}` / `{ serie, productoId? }` / `{ estado?, limite? }` | listas |
+| `series` | TODOS | `{ productoId, ubicacionId?, soloDisponibles?, limite? }` | `{ unidades[] }` (`productoId, serie, estado, ubicacionId, ventaRef?` como id de venta, `garantiaHasta?`); sin costos |
+| `conteo` | TODOS | `{ conteoId }` | `{ conteo, lineas[] }`; **conteo ciego:** nunca trae teóricos mientras está abierto ni al vendedor. Con el conteo **cerrado**, `sup`/`adm` reciben además `resultado: [{ productoId, teorico, contado, diferencia }]` |
+| `movimientos` | SUP | `{ productoId?, desde?, hasta?, tipo?, uid?, limite? }` | `{ movimientos[] }`; `costoUSDUnit` solo lo ve ADM. `tipo` y `uid` (autor) se filtran sobre los últimos 1000 movimientos del resto de los filtros, para no exigir índices compuestos nuevos |
+| `mermas`, `exportarCsv` | SUP | `{ estado?, limite? }` / `{ conCostos? }` (costos solo ADM) | listas; `{ csv }` |
 | `costos` | ADM | `{}` | `{ costos[] }` |
 
 ### `consola`
@@ -105,10 +116,12 @@ las aplica el módulo; el redondeo del precio sale de `tenants/{t}/config/redond
 | `tablero` | SUP | `{}` | tablero (cotizaciones, cambios sin publicar, uso frente a topes) |
 | `alertas` | SUP | `{ limite? }` | `{ alertas[] }` (cotización: fuentes caídas o valor viejo) |
 | `listarUsuarios` | SUP | `{}` | `{ usuarios: [{ uid, rol, correo, correoVerificado, deshabilitado }] }` |
-| `buscarUsuarioPorCorreo` | ADM / propietario | `{ correo }` | `{ uid, correoVerificado, conContrasena }` |
+| `auditoria` | SUP | `{ desde?, hasta?, accion?, uid?, limite? }` (ms Unix, rango de hasta 366 días) | `{ entradas[] }` de `tenants/{t}/auditoria`, de la más reciente a la más antigua: `{ id, fecha, uid, rol, accion, ruta, motivo? }` (sin los resúmenes antes/después). `accion` y `uid` se filtran sobre las últimas 1000 entradas del rango (sin índice compuesto nuevo) |
+| `fichas` / `secciones` / `carruseles` / `configSitio` | SUP | `{}` | `{ fichas: [{ productoId, ficha }] }` / `{ secciones[] }` (en el orden del índice del sitio) / `{ carruseles[] }` / `{ config }` (o `null`); solo lectura |
+| `buscarUsuarioPorCorreo` | ADM / propietario | `{ correo }` | `{ uid, correoVerificado, conContrasena }`. **Privacidad:** responde solo si la cuenta ya es miembro de ESTE negocio o no tiene ningún negocio en su claim; en cualquier otro caso responde `not-found` exactamente igual que si no existiera, para que no revele qué correos usa otro negocio |
 | `asignarRol` / `quitarRol` | ADM / propietario | `{ uid, rol }` / `{ uid }` | `{ claim }` (solo el propietario toca a un `adm`; el último `adm` no se quita) |
 
-El panel **no** puede crear cuentas de Firebase Auth: el personal debe existir (correo y contraseña, correo verificado) antes de `asignarRol`.
+`asignarRol` **no crea la cuenta**: solo asigna el rol a un `uid` existente. El panel **no** puede crear cuentas de Firebase Auth: el personal debe existir (correo y contraseña, correo verificado) antes de `asignarRol`.
 
 ### `medios`
 | Acción | Roles | `datos` | Devuelve |
@@ -126,7 +139,7 @@ mp4/quicktime/webm) → el disparador procesa → el panel espera `subidas/{id}.
 |---|---|---|---|
 | `leerPlantilla` / `guardarPlantilla` | TODOS / SUP | `{}` / `{ plantilla }` | `{ plantilla }` / `{ ok }` |
 | `buscarComprobantes` | TODOS (el vendedor, solo los de sus ventas) | `{ numero?, desde?, hasta?, cliente?, limite? }` (fechas `aaaa-mm-dd`) | `{ recibos[] }` |
-| `leerRecibo`, `htmlRecibo`, `pdfRecibo` | TODOS (el vendedor, solo los suyos) | `{ reciboId }` | `{ recibo }` / `{ html }` / `{ pdfBase64 }` |
+| `leerRecibo`, `htmlRecibo`, `pdfRecibo` | TODOS (el vendedor, solo los suyos) | `{ reciboId }` (el id del comprobante de una venta es `recibo-<ventaId>`) | `{ recibo }` / `{ html }` / `{ pdfBase64 }` |
 | `referenciarFacturaSuma` | SUP | `{ reciboId, facturaSuma }` | `{ ok }` |
 | `enviarRecibo` | TODOS (el vendedor, solo los suyos) | `{ reciboId, codigoPais? }` (por defecto `591`) | `{ estado, enlace? }`: `enlace` es el `wa.me` que la persona abre y envía |
 
@@ -228,8 +241,6 @@ Pruebas contra el emulador: `pnpm test:funciones` (puertos de `firebase.json`; p
   directo** (alertas), hace falta declararlas en un manifiesto; mientras tanto se leen por `consola.alertas`.
 - **Contrato del catálogo:** «`precio` (unidades) y `precioCentavos` (mismo entero)» es ambiguo; se implementó `precio` = monto decimal y `precioCentavos` = ese monto × 100.
 - **Plantillas del sitio:** unificadas en a7f7418 (`cielo, bosque, ambar, grafito, ciruela`). `pruebas/funciones/programadas.test.ts` todavía siembra `marfil` y falla en `test:funciones` (04/11/2026).
-- **Adaptador de Recibos en memoria:** `ejecutorRecibosDesde` (en `plataforma/adaptadores/`) exige leer antes de `actualizar`, y `enviarRecibo` actualiza en una transacción nueva
-  sin leer: falla. Las funciones usan `crearEjecutorRecibos` (Firestore, `update` nativo). Conviene corregirlo o retirarlo en la próxima integración.
 - **Enlace del PDF:** `enviarRecibo` guarda el PDF en una ruta privada y firma una URL v4 de hasta 7 días; el enlace de WhatsApp caduca a los 7 días. La cuenta de servicio de
   las funciones necesita el rol «Creador de tokens de cuenta de servicio» sobre sí misma para firmar.
 - **Excel:** no hay lector de `.xlsx` (puerto `LectorHojas` sin implementación); solo CSV.
