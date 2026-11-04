@@ -4,3 +4,6 @@ packages:
 allowBuilds:
   '@firebase/util': false
   protobufjs: false
+blockExoticSubdeps: true
+overrides:
+  '@grpc/grpc-js': 1.14.7
