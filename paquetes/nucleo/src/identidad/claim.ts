@@ -13,6 +13,16 @@ export function construirClaim(
   return validarClaim({ pl });
 }
 
+/** Tamaño en bytes (UTF-8) del JSON de los claims COMPLETOS de un usuario, que es lo que mide Firebase. */
+export function bytesClaimCompleto(claims: Readonly<Record<string, unknown>>): number {
+  let n = 0;
+  for (const c of JSON.stringify(claims)) {
+    const p = c.codePointAt(0) ?? 0;
+    n += p < 0x80 ? 1 : p < 0x800 ? 2 : p < 0x10000 ? 3 : 4;
+  }
+  return n;
+}
+
 /**
  * Lee el claim de un token decodificado (o de `customClaims`). Solo se
  * considera la clave `pl`; el resto del token no cuenta para el tamaño.
