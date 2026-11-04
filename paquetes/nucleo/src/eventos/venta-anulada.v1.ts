@@ -1,5 +1,5 @@
 import {
-  arreglo, cantidadPositiva, centavos, crearValidador, errorSeriesLineas, medioPago, monedaOperativa, objeto, texto, type Fixtures,
+  arreglo, cantidadPositiva, crearValidador, entero, errorSeriesLineas, medioPago, monedaOperativa, objeto, texto, type Fixtures,
 } from './esquema.js';
 import type { MedioPagoVenta } from './venta-confirmada.v1.js';
 
@@ -31,7 +31,12 @@ export interface DatosVentaAnuladaV1 {
   /** Uid de quien aprobó la anulación. */
   readonly aprobadoPor: string;
   readonly lineas: readonly LineaVentaAnulada[];
-  readonly reembolso: ReembolsoVenta;
+  /**
+   * Reembolso por los medios con que se cobró: suma = lo realmente cobrado (sin crédito pendiente,
+   * que se cancela aparte y no se reembolsa). Vacío si no se cobró nada. A lo sumo un elemento por
+   * medio; todos en la moneda de la venta; el medio nunca es `credito`.
+   */
+  readonly reembolsos: readonly ReembolsoVenta[];
   /** Turno en el que se entrega el reembolso (puede diferir del turno original). */
   readonly turnoIdReembolso: string;
 }
@@ -44,10 +49,19 @@ export const validarVentaAnuladaV1 = crearValidador<DatosVentaAnuladaV1>(
     anuladaPor: texto,
     aprobadoPor: texto,
     lineas: arreglo(objeto({ productoId: texto, cantidad: cantidadPositiva, almacenId: texto, series: arreglo(texto) }), 1),
-    reembolso: objeto({ medio: medioPago, moneda: monedaOperativa, monto: centavos }),
+    reembolsos: arreglo(objeto({ medio: medioPago, moneda: monedaOperativa, monto: entero(1) })),
     turnoIdReembolso: texto,
   },
-  (d) => errorSeriesLineas(d.lineas, 'datos.lineas'),
+  (d) => {
+    const medios = new Set<string>();
+    for (const [i, r] of d.reembolsos.entries()) {
+      if (r.medio === 'credito') return `datos.reembolsos[${i}].medio no puede ser crédito (no se reembolsa lo que no se cobró)`;
+      if (r.moneda !== d.reembolsos[0]?.moneda) return `datos.reembolsos[${i}].moneda debe ser la misma en todos los reembolsos`;
+      if (medios.has(r.medio)) return `datos.reembolsos[${i}].medio repetido`;
+      medios.add(r.medio);
+    }
+    return errorSeriesLineas(d.lineas, 'datos.lineas');
+  },
 );
 
 const valido: DatosVentaAnuladaV1 = {
@@ -57,12 +71,17 @@ const valido: DatosVentaAnuladaV1 = {
   anuladaPor: 'u-caj',
   aprobadoPor: 'u-sup',
   lineas: [{ productoId: 'p1', cantidad: 2, almacenId: 'a1', series: ['S1', 'S2'] }],
-  reembolso: { medio: 'efectivo', moneda: 'BOB', monto: 125000 },
+  reembolsos: [{ medio: 'efectivo', moneda: 'BOB', monto: 125000 }],
   turnoIdReembolso: 't2',
 };
 
 export const fixturesVentaAnuladaV1: Fixtures<DatosVentaAnuladaV1> = {
-  validos: [valido, { ...valido, lineas: [{ productoId: 'p2', cantidad: 3, almacenId: 'a1', series: [] }], turnoIdReembolso: 't1' }],
+  validos: [
+    valido,
+    { ...valido, lineas: [{ productoId: 'p2', cantidad: 3, almacenId: 'a1', series: [] }], turnoIdReembolso: 't1' },
+    { ...valido, reembolsos: [{ medio: 'efectivo', moneda: 'BOB', monto: 80000 }, { medio: 'qr', moneda: 'BOB', monto: 45000 }] },
+    { ...valido, reembolsos: [] },
+  ],
   invalidos: [
     { nombre: 'sin motivo', datos: { ...valido, motivo: undefined } },
     { nombre: 'motivo vacío', datos: { ...valido, motivo: ' ' } },
@@ -74,9 +93,14 @@ export const fixturesVentaAnuladaV1: Fixtures<DatosVentaAnuladaV1> = {
     { nombre: 'sin líneas', datos: { ...valido, lineas: [] } },
     { nombre: 'series que no igualan la cantidad', datos: { ...valido, lineas: [{ ...valido.lineas[0], series: ['S1'] }] } },
     { nombre: 'serie repetida entre líneas', datos: { ...valido, lineas: [{ ...valido.lineas[0], cantidad: 1, series: ['S1'] }, { ...valido.lineas[0], productoId: 'p9', cantidad: 1, series: ['S1'] }] } },
-    { nombre: 'sin reembolso', datos: { ...valido, reembolso: undefined } },
-    { nombre: 'reembolso decimal', datos: { ...valido, reembolso: { ...valido.reembolso, monto: 1.5 } } },
-    { nombre: 'medio de reembolso desconocido', datos: { ...valido, reembolso: { ...valido.reembolso, medio: 'cheque' } } },
-    { nombre: 'moneda de reembolso inválida', datos: { ...valido, reembolso: { ...valido.reembolso, moneda: 'EUR' } } },
+    { nombre: 'sin reembolsos', datos: { ...valido, reembolsos: undefined } },
+    { nombre: 'reembolso único antiguo', datos: { ...valido, reembolsos: undefined, reembolso: { medio: 'efectivo', moneda: 'BOB', monto: 125000 } } },
+    { nombre: 'reembolso decimal', datos: { ...valido, reembolsos: [{ ...valido.reembolsos[0], monto: 1.5 }] } },
+    { nombre: 'reembolso de monto cero', datos: { ...valido, reembolsos: [{ ...valido.reembolsos[0], monto: 0 }] } },
+    { nombre: 'medio de reembolso desconocido', datos: { ...valido, reembolsos: [{ ...valido.reembolsos[0], medio: 'cheque' }] } },
+    { nombre: 'reembolso por crédito', datos: { ...valido, reembolsos: [{ ...valido.reembolsos[0], medio: 'credito' }] } },
+    { nombre: 'moneda de reembolso inválida', datos: { ...valido, reembolsos: [{ ...valido.reembolsos[0], moneda: 'EUR' }] } },
+    { nombre: 'reembolsos en monedas distintas', datos: { ...valido, reembolsos: [valido.reembolsos[0], { medio: 'qr', moneda: 'USD', monto: 100 }] } },
+    { nombre: 'dos reembolsos del mismo medio', datos: { ...valido, reembolsos: [valido.reembolsos[0], valido.reembolsos[0]] } },
   ],
 };

@@ -55,6 +55,8 @@ export interface DatosVentaConfirmadaV1 {
   readonly turnoId: string;
   readonly cajaId: string;
   readonly cajeroUid: string;
+  /** Número legible del recibo (serie y correlativo, p. ej. A-000001), asignado por el POS dentro de la transacción de la venta; Recibos lo usa tal cual. */
+  readonly numeroRecibo: string;
   /** Moneda de venta: precios, descuento, total y pagos están en ella. */
   readonly moneda: string;
   /** Total en enteros de centavos. */
@@ -75,6 +77,7 @@ export const validarVentaConfirmadaV1 = crearValidador<DatosVentaConfirmadaV1>(
     turnoId: texto,
     cajaId: texto,
     cajeroUid: texto,
+    numeroRecibo: texto,
     moneda: monedaOperativa,
     total: centavos,
     cotizacion: oNulo(copiaCotizacion),
@@ -139,6 +142,7 @@ const valido: DatosVentaConfirmadaV1 = {
   turnoId: 't1',
   cajaId: 'c1',
   cajeroUid: 'u-caj',
+  numeroRecibo: 'A-000001',
   moneda: 'BOB',
   total: 125000,
   cotizacion: cotizacionBob,
@@ -156,6 +160,7 @@ const ventaUsd: DatosVentaConfirmadaV1 = {
   turnoId: 't1',
   cajaId: 'c1',
   cajeroUid: 'u-caj',
+  numeroRecibo: 'A-000002',
   moneda: 'USD',
   total: 10000,
   cotizacion: null,
@@ -185,6 +190,9 @@ export const fixturesVentaConfirmadaV1: Fixtures<DatosVentaConfirmadaV1> = {
     { nombre: 'no es objeto', datos: 'venta' },
     { nombre: 'sin caja', datos: { ...valido, cajaId: undefined } },
     { nombre: 'sin cajero', datos: { ...valido, cajeroUid: '' } },
+    { nombre: 'sin número de recibo', datos: { ...valido, numeroRecibo: undefined } },
+    { nombre: 'número de recibo vacío', datos: { ...valido, numeroRecibo: ' ' } },
+    { nombre: 'número de recibo numérico', datos: { ...valido, numeroRecibo: 1 } },
     { nombre: 'series menos que la cantidad', datos: { ...valido, lineas: [{ ...valido.lineas[0], series: ['S1'] }] } },
     { nombre: 'series repetidas en la línea', datos: { ...valido, lineas: [{ ...valido.lineas[0], series: ['S1', 'S1'] }] } },
     {
