@@ -29,8 +29,12 @@ async function excedeLimite(limite: LimiteTasa, clave: string, ahora: number): P
 export async function enrutar(e: Entorno, req: PeticionHttp, cfg: ConfigRouter): Promise<RespuestaApi> {
   const ruta = req.ruta.length > 1 ? req.ruta.replace(/\/+$/, '') : req.ruta;
   const peticion = { ...req, ruta };
-  // Sonda de salud (la usa el despliegue): responde sin tocar ninguna dependencia.
-  if (ruta === '/healthz') return { status: 200, headers: { 'Content-Type': 'text/plain; charset=utf-8', 'Cache-Control': 'no-store' }, cuerpo: 'ok' };
+  // Sonda de salud (la usa el despliegue): responde sin tocar ninguna dependencia. La ruta pública es `/api/salud`:
+  // el frontend de Google intercepta exactamente `/healthz` en Cloud Run (devuelve su propio 404 HTML sin llegar al
+  // contenedor; `/healthz/` y cualquier otra ruta sí llegan), así que `/healthz` queda solo para el emulador y las pruebas.
+  if (ruta === '/healthz' || ruta === '/api/salud') {
+    return { status: 200, headers: { 'Content-Type': 'text/plain; charset=utf-8', 'Cache-Control': 'no-store' }, cuerpo: 'ok' };
+  }
   if (ruta === '/api/disponibilidad') {
     const limitado = await excedeLimite(cfg.limiteMemoria.disponibilidad, `disponibilidad:${req.origen}`, e.ahora());
     if (limitado !== undefined) return limitado;

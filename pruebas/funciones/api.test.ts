@@ -42,10 +42,12 @@ describe.skipIf(!hayEmulador)('API HTTP (emulador)', () => {
     await h.firestore.doc(`novuchatTokens/${sha256(token)}`).set({ tenantId: T, hash: sha256(token), activo: true });
   });
 
-  it('sonda de salud', async () => {
-    const r = await http('/healthz');
-    expect(r.status).toBe(200);
-    expect(r.texto).toBe('ok');
+  it('sonda de salud: /api/salud (pública) y /healthz (emulador)', async () => {
+    for (const ruta of ['/api/salud', '/healthz']) {
+      const r = await http(ruta);
+      expect(r.status).toBe(200);
+      expect(r.texto).toBe('ok');
+    }
   });
 
   describe('rutas públicas del sitio', () => {

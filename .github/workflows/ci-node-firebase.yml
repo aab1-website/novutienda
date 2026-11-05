@@ -588,7 +588,7 @@ jobs:
         env:
           URL_SITIO: ${{ vars.STAGING_URL }}
           URL_PANEL: ${{ vars.PANEL_URL }}
-          RUTA_SALUD: ${{ vars.HEALTH_PATH || '/healthz' }}
+          RUTA_SALUD: ${{ vars.HEALTH_PATH || '/api/salud' }}
         run: bash .github/scripts/humo-hosting.sh "$URL_SITIO" "$URL_PANEL" "$RUTA_SALUD"
 
   # ---------------------------------------------------------------------------
@@ -605,7 +605,7 @@ jobs:
       url_objetivo: ${{ vars.STAGING_URL }}
       reglas: .github/zap-rules.tsv
       escaneo_completo: false
-      ruta_salud: ${{ vars.HEALTH_PATH || '/healthz' }}
+      ruta_salud: ${{ vars.HEALTH_PATH || '/api/salud' }}
 
   # ---------------------------------------------------------------------------
   # exigir-dast-staging: un tag v* sin proyecto de staging no pasa por DAST
@@ -836,7 +836,7 @@ jobs:
         env:
           URL: ${{ vars.PROD_URL }}
           URL_PANEL: ${{ needs.desplegar-produccion.outputs.panel_url }}
-          RUTA_SALUD: ${{ vars.HEALTH_PATH || '/healthz' }}
+          RUTA_SALUD: ${{ vars.HEALTH_PATH || '/api/salud' }}
         run: |
           set -uo pipefail
           if bash .github/scripts/humo-hosting.sh "$URL" "$URL_PANEL" "$RUTA_SALUD"; then

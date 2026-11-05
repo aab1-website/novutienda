@@ -290,7 +290,7 @@ gh api --method POST "repos/$OWNER/$REPO/environments/production/deployment-bran
 |---|---|---|
 | `GCP_PROJECT_ID_STAGING` | repositorio | `<P>` — **al cargarla se activa el despliegue a staging en cada merge a `main`** (cargarla al final) |
 | `STAGING_URL` | repositorio | `https://<SITIO_ID>.web.app` |
-| `HEALTH_PATH` | repositorio | `/healthz` |
+| `HEALTH_PATH` | repositorio | `/api/salud` (**no** `/healthz`: el frontend de Google lo intercepta en Cloud Run y devuelve 404 sin llegar a la función; `docs/arquitectura/decisiones.md`, 05/11/2026) |
 | `FIREBASE_DEPLOY_ONLY` | repositorio | `hosting,functions,firestore,storage` |
 | `TENANT_ID` | repositorio | `casa-bermejo` (**obligatoria**: sin valor por defecto en el código ni en el CI) |
 | `VITE_FIREBASE_API_KEY_STAGING` | repositorio | apiKey pública de la app web del panel (8.1) |
