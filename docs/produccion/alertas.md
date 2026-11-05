@@ -1,6 +1,10 @@
 # Alerta de cotización (Cloud Monitoring) — procedimiento, sin crear
 
-Estado: **no se creó nada**. Este documento describe cómo se crea cuando Andres lo autorice; lo ejecuta Claude y le informa el resultado.
+Estado: **creada en staging el 05/11/2026** con autorización de Andres (botón): canal de correo del propietario, política de registro
+(`conditionMatchedLog`, 1 aviso por hora, cierre automático a 7 días) y política de latido (`conditionAbsent` sobre
+`run.googleapis.com/request_count` del servicio `cotizacion`, **23 h**: Cloud Monitoring no admite más de 23 h 30 min; como la función corre
+tres veces al día, 23 h sigue detectando un día sin ejecuciones). En producción se repite el procedimiento con su proyecto. Los nombres de
+canal y políticas no se guardan en el repositorio.
 
 ## Qué emite el sistema
 
