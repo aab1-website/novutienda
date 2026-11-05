@@ -110,8 +110,11 @@ function configRouter(e: ReturnType<typeof entorno>): ConfigRouter {
   };
 }
 
+// `invoker: 'public'` explícito: Hosting reescribe `/api/**` y `/healthz` a esta función sin credencial, y la
+// autenticación (App Check, token NovuChat, firma HMAC) la hace la propia función por ruta. En el primer despliegue a
+// staging (05/11/2026) la función quedó sin `allUsers` como invocador y el sitio respondía 403/404 en esas rutas.
 export const api = onRequest(
-  { memory: '512MiB', cors: false, secrets: [SECRETOS.pedidos, SECRETOS.reconstruccion, SECRETOS.salLimite] },
+  { memory: '512MiB', cors: false, invoker: 'public', secrets: [SECRETOS.pedidos, SECRETOS.reconstruccion, SECRETOS.salLimite] },
   async (req, res) => {
     try {
       const e = entorno();
