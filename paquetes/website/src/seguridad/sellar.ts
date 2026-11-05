@@ -5,7 +5,7 @@
  * recursos de dominios no declarados, `target=_blank` sin `noopener`).
  */
 import { createHash } from 'node:crypto';
-import { readdirSync, readFileSync, statSync, writeFileSync } from 'node:fs';
+import { readdirSync, readFileSync, writeFileSync } from 'node:fs';
 import { extname, join, relative } from 'node:path';
 import type { ConfigMedicion } from '../contenido/tipos.js';
 import { cabecerasSeguridad, construirCsp } from './csp.js';
@@ -13,21 +13,78 @@ import { cabecerasSeguridad, construirCsp } from './csp.js';
 export const ARCHIVO_CABECERAS = '_cabeceras.json';
 
 function* archivos(dir: string, ext: readonly string[]): Generator<string> {
-  for (const nombre of readdirSync(dir)) {
-    const ruta = join(dir, nombre);
-    if (statSync(ruta).isDirectory()) yield* archivos(ruta, ext);
-    else if (ext.includes(extname(nombre))) yield ruta;
+  for (const entrada of readdirSync(dir, { withFileTypes: true })) {
+    const ruta = join(dir, entrada.name);
+    if (entrada.isDirectory()) yield* archivos(ruta, ext);
+    else if (ext.includes(extname(entrada.name))) yield ruta;
   }
 }
 
-/** Contenido de cada `<script>` ejecutable sin `src` (los bloques JSON y JSON-LD no se ejecutan). */
-export function scriptsEnLinea(html: string): string[] {
-  const salida: string[] = [];
-  for (const m of html.matchAll(/<script(?![^>]*\bsrc=)([^>]*)>([\s\S]*?)<\/script>/gi)) {
-    if (/type\s*=\s*["']?application\/(ld\+)?json["']?/i.test(m[1] ?? '')) continue;
-    salida.push(m[2] ?? '');
+interface Bloque {
+  /** Texto de la etiqueta de apertura entre el nombre y `>` (atributos crudos). */
+  readonly atributos: string;
+  readonly contenido: string;
+  /** Posición del bloque completo en el HTML, para poder quitarlo. */
+  readonly inicio: number;
+  readonly fin: number;
+}
+
+/**
+ * Bloques `<etiqueta …>…</etiqueta>` recorridos con `indexOf`, sin expresiones regulares:
+ * el HTML del `dist/` es entrada del build y un patrón con cuantificadores anidados
+ * sobre él sería vulnerable a ReDoS. La comparación es insensible a mayúsculas.
+ */
+function bloques(html: string, etiqueta: string): Bloque[] {
+  const bajo = html.toLowerCase();
+  const apertura = `<${etiqueta}`;
+  const cierre = `</${etiqueta}>`;
+  const salida: Bloque[] = [];
+  let desde = 0;
+  for (;;) {
+    const inicio = bajo.indexOf(apertura, desde);
+    if (inicio < 0) break;
+    const trasNombre = inicio + apertura.length;
+    const siguiente = bajo.charAt(trasNombre);
+    // `<script` también casa con `<scripts…`: exige fin de nombre (espacio, `>` o `/`).
+    if (siguiente !== '' && siguiente !== '>' && siguiente !== '/' && !/\s/.test(siguiente)) {
+      desde = trasNombre;
+      continue;
+    }
+    const finApertura = bajo.indexOf('>', trasNombre);
+    if (finApertura < 0) break;
+    const finContenido = bajo.indexOf(cierre, finApertura + 1);
+    if (finContenido < 0) break;
+    salida.push({
+      atributos: html.slice(trasNombre, finApertura),
+      contenido: html.slice(finApertura + 1, finContenido),
+      inicio,
+      fin: finContenido + cierre.length,
+    });
+    desde = finContenido + cierre.length;
   }
   return salida;
+}
+
+const ES_JSON = (atributos: string): boolean => /type\s*=\s*["']?application\/(ld\+)?json["']?/i.test(atributos);
+const TIENE_SRC = (atributos: string): boolean => /\bsrc\s*=/i.test(atributos);
+
+/** Contenido de cada `<script>` ejecutable sin `src` (los bloques JSON y JSON-LD no se ejecutan). */
+export function scriptsEnLinea(html: string): string[] {
+  return bloques(html, 'script')
+    .filter((b) => !TIENE_SRC(b.atributos) && !ES_JSON(b.atributos))
+    .map((b) => b.contenido);
+}
+
+/** El HTML sin los bloques `<script type="application/json|ld+json">`, que son datos y no ejecutan. */
+function sinBloquesJson(html: string): string {
+  let salida = '';
+  let desde = 0;
+  for (const b of bloques(html, 'script')) {
+    if (!ES_JSON(b.atributos)) continue;
+    salida += html.slice(desde, b.inicio);
+    desde = b.fin;
+  }
+  return salida + html.slice(desde);
 }
 
 /** Única regla de estilo en línea que Astro emite (hace que sus islas no afecten el diseño). Todo otro `<style>` es un defecto. */
@@ -35,7 +92,7 @@ export const ESTILO_ISLAS = 'astro-island,astro-slot,astro-static-slot{display:c
 
 /** Contenido de cada `<style>` en línea. */
 export function estilosEnLinea(html: string): string[] {
-  return [...html.matchAll(/<style[^>]*>([\s\S]*?)<\/style>/gi)].map((m) => m[1] ?? '');
+  return bloques(html, 'style').map((b) => b.contenido);
 }
 
 export const hashDe = (contenido: string): string => `'sha256-${createHash('sha256').update(contenido, 'utf8').digest('base64')}'`;
@@ -76,7 +133,7 @@ export function verificarDist(dir: string, permitidos: readonly string[] = []): 
   const falla = (archivo: string, motivo: string): void => void problemas.push({ archivo: relative(dir, archivo), motivo });
   for (const f of archivos(dir, ['.html'])) {
     const html = readFileSync(f, 'utf8');
-    const sinDatos = html.replace(/<script[^>]*type\s*=\s*["']?application\/(?:ld\+)?json["']?[^>]*>[\s\S]*?<\/script>/gi, '');
+    const sinDatos = sinBloquesJson(html);
     if (/\son[a-z]+\s*=\s*["']/i.test(sinDatos)) falla(f, 'manejador de eventos en línea (onclick=…)');
     if (/\sstyle\s*=\s*["']/i.test(sinDatos)) falla(f, 'atributo style en línea (la CSP lo bloquea)');
     for (const s of estilosEnLinea(sinDatos)) if (s !== ESTILO_ISLAS) falla(f, 'etiqueta <style> en línea no autorizada (la CSP la bloquea)');

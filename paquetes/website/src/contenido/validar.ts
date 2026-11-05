@@ -64,11 +64,25 @@ export function urlMedioSegura(url: string, origenes: readonly (string | null)[]
   }
 }
 
+/**
+ * `usuario@dominio.tld` sin espacios ni `<>"`, con una sola `@` y un punto interior en el dominio.
+ * Sin expresión regular: la entrada es contenido editable y un patrón con varios `+` adyacentes
+ * a `.` es cuadrático (ReDoS).
+ */
+function esCorreoSimple(correo: string): boolean {
+  if (correo.length === 0 || correo.length > 254 || /[\s<>"]/.test(correo)) return false;
+  const arroba = correo.indexOf('@');
+  if (arroba <= 0 || arroba !== correo.lastIndexOf('@')) return false;
+  const dominio = correo.slice(arroba + 1);
+  const punto = dominio.indexOf('.');
+  return punto > 0 && punto < dominio.length - 1 && !dominio.endsWith('.');
+}
+
 /** Enlaces de las secciones editables: ruta propia, tel:, mailto: o https a un anfitrión de la lista blanca. */
 export function urlEnlaceSegura(url: string, permitidos: readonly string[]): boolean {
   if (url.startsWith('/')) return esRutaPropia(url);
   if (/^tel:\+?[0-9]{6,15}$/.test(url)) return true;
-  if (/^mailto:[^\s@<>"]+@[^\s@<>"]+\.[^\s@<>"]+$/.test(url)) return true;
+  if (url.startsWith('mailto:')) return esCorreoSimple(url.slice('mailto:'.length));
   try {
     const u = new URL(url);
     return u.protocol === 'https:' && u.username === '' && u.password === '' && permitidos.includes(u.hostname);

@@ -45,7 +45,7 @@ describe('CSP', () => {
     expect(con).toContain("connect-src 'self' https://www.google.com https://content-firebaseappcheck.googleapis.com;");
     expect(con).toContain('https://www.google.com/recaptcha/');
     expect(con).toContain('frame-src https://www.google.com https://recaptcha.google.com');
-    expect(con.match(/googleapis\.com/g)).toHaveLength(1);
+    expect(con.split('googleapis.com').length - 1).toBe(1);
     expect(construirCsp({ hashesScript: [], medicion: nada, recaptcha: true, origenMedios: null })).not.toContain('firebaseappcheck');
   });
   it('las cabeceras acompañantes incluyen HSTS, nosniff y Referrer-Policy', () => {

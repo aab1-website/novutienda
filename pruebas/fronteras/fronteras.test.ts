@@ -1,4 +1,4 @@
-import { readdirSync, readFileSync, statSync } from 'node:fs';
+import { readdirSync, readFileSync } from 'node:fs';
 import { join, relative, sep } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { describe, expect, it } from 'vitest';
@@ -10,10 +10,11 @@ const RAIZ = fileURLToPath(new URL('../../', import.meta.url));
 function leerArbol(carpeta: string): Arbol {
   const arbol: Record<string, string> = {};
   const recorrer = (dir: string): void => {
-    for (const nombre of readdirSync(dir)) {
+    for (const entrada of readdirSync(dir, { withFileTypes: true })) {
+      const nombre = entrada.name;
       if (nombre === 'node_modules' || nombre === 'dist' || nombre === 'coverage') continue;
       const ruta = join(dir, nombre);
-      if (statSync(ruta).isDirectory()) recorrer(ruta);
+      if (entrada.isDirectory()) recorrer(ruta);
       else arbol[relative(RAIZ, ruta).split(sep).join('/')] = readFileSync(ruta, 'utf8');
     }
   };
@@ -30,7 +31,7 @@ describe('fronteras del repositorio real', () => {
   });
 
   it('cada paquete de paquetes/ está registrado en plataforma/registro.ts', () => {
-    const carpetas = readdirSync(join(RAIZ, 'paquetes')).filter((n) => statSync(join(RAIZ, 'paquetes', n)).isDirectory());
+    const carpetas = readdirSync(join(RAIZ, 'paquetes'), { withFileTypes: true }).filter((e) => e.isDirectory()).map((e) => e.name);
     const registrados = registroPlataforma.listar().map((m) => m.id);
     expect(carpetas.filter((c) => !registrados.includes(c))).toEqual([]);
   });

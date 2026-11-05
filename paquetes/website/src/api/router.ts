@@ -27,7 +27,8 @@ export interface DepsApi {
 export const RUTAS_API = ['/api/cotizacion', '/api/disponibilidad', '/api/contacto'] as const;
 
 export function despacharApi(req: PeticionApi, deps: DepsApi): Promise<RespuestaHttp> {
-  const ruta = req.ruta.length > 1 ? req.ruta.replace(/\/+$/, '') : req.ruta;
+  let ruta = req.ruta;
+  while (ruta.length > 1 && ruta.endsWith('/')) ruta = ruta.slice(0, -1);
   switch (ruta) {
     case '/api/cotizacion':
       return manejarCotizacionSitio({ metodo: req.metodo, mercado: req.consulta['mercado'] ?? null }, deps.leerCotizacion);

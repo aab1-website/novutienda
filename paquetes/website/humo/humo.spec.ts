@@ -60,9 +60,10 @@ test.describe('CSP y peticiones', () => {
     await islasListas(page);
     await page.getByRole('button', { name: 'Aceptar todo' }).click();
     await page.waitForLoadState('networkidle');
-    expect(pedidas.some((u) => u.includes('googletagmanager.com/gtag/js?id=G-EJEMPLO00'))).toBe(true);
-    expect(pedidas.some((u) => u.includes('connect.facebook.net'))).toBe(true);
-    expect(pedidas.some((u) => u.includes('analytics.tiktok.com'))).toBe(true);
+    const hosts = pedidas.map((u) => new URL(u));
+    expect(hosts.some((u) => u.hostname === 'www.googletagmanager.com' && u.pathname === '/gtag/js' && u.searchParams.get('id') === 'G-EJEMPLO00')).toBe(true);
+    expect(hosts.some((u) => u.hostname === 'connect.facebook.net')).toBe(true);
+    expect(hosts.some((u) => u.hostname === 'analytics.tiktok.com')).toBe(true);
     await page.evaluate(() => document.querySelector('a[href^="https://wa.me/"]')?.addEventListener('click', (e) => e.preventDefault()));
     await page.getByRole('link', { name: 'COMPRAR', exact: true }).click();
     const comandos = await page.evaluate(() => (window as unknown as { dataLayer: ArrayLike<unknown>[] }).dataLayer.map((a) => Array.from(a)[1]));
