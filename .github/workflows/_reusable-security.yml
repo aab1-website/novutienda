@@ -351,7 +351,7 @@ jobs:
       # outputs tienen límite de tamaño y no admiten archivos). Uno por
       # componente: el nombre lleva su `slug`.
       - name: Publicar archivos de excepciones generados
-        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7
         with:
           name: excepciones-generadas-${{ github.run_id }}-${{ github.run_attempt }}-${{ steps.excepciones.outputs.slug }}
           path: excepciones-generadas/
@@ -429,7 +429,7 @@ jobs:
 
       - name: Subir informe SARIF de Gitleaks
         if: always()
-        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7
         with:
           name: gitleaks-sarif-${{ github.run_id }}-${{ github.run_attempt }}-${{ needs.preparar.outputs.slug }}
           path: gitleaks.sarif
@@ -540,7 +540,7 @@ jobs:
 
       - name: Subir SARIF a Code Scanning (Modo A/B)
         if: inputs.subir_sarif && always()
-        uses: github/codeql-action/upload-sarif@cdf488f595d80d6e07e03d4674febd5ab45fa938 # v4
+        uses: github/codeql-action/upload-sarif@9b3254085494b55a0f7c4c2b3d2d52cc712ce370 # v4
         with:
           # Sin los exceptuados con nosemgrep (paso anterior).
           sarif_file: semgrep-code-scanning.sarif
@@ -550,7 +550,7 @@ jobs:
       # la constancia de lo exceptuado, que Code Scanning ya no muestra.
       - name: Guardar SARIF completo como artifact (auditoría; única salida en B0)
         if: always()
-        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7
         with:
           name: sarif-semgrep-${{ needs.preparar.outputs.slug }}
           path: |
@@ -620,7 +620,7 @@ jobs:
 
       - name: Node.js
         if: needs.preparar.outputs.hay_node == 'true'
-        uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7
+        uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7
         with:
           node-version: ${{ vars.NODE_VERSION || '22' }}
 
@@ -782,7 +782,7 @@ jobs:
 
       - name: Python
         if: needs.preparar.outputs.hay_python == 'true'
-        uses: actions/setup-python@5fda3b95a4ea91299a34e894583c3862153e4b97 # v7
+        uses: actions/setup-python@6d4fd22b20465ccc0f7354476588e8df7c9ca0e0 # v7
         with:
           python-version: ${{ vars.PYTHON_VERSION || '3.12' }}
 
@@ -813,14 +813,14 @@ jobs:
 
       - name: Subir SARIF a Code Scanning (Modo A/B)
         if: inputs.subir_sarif && always()
-        uses: github/codeql-action/upload-sarif@cdf488f595d80d6e07e03d4674febd5ab45fa938 # v4
+        uses: github/codeql-action/upload-sarif@9b3254085494b55a0f7c4c2b3d2d52cc712ce370 # v4
         with:
           sarif_file: trivy-fs.sarif
           category: trivy-fs${{ needs.preparar.outputs.sufijo_sarif }}
 
       - name: Guardar SARIF como artifact (Modo B0)
         if: inputs.subir_sarif == false && always()
-        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7
         with:
           name: sarif-trivy-fs-${{ needs.preparar.outputs.slug }}
           path: trivy-fs.sarif
@@ -857,7 +857,7 @@ jobs:
         run: cp excepciones-generadas/trivyignore.yaml .trivyignore.yaml
 
       - name: Checkov
-        uses: bridgecrewio/checkov-action@5659ddea96102e16d8f221b3d8402453c0b1c150 # master @ 2026-08-26 (sin release vigente)
+        uses: bridgecrewio/checkov-action@c10e2438743528f9e4549758fad8b7a62052541d # master @ 2026-08-26 (sin release vigente)
         with:
           directory: ${{ inputs.ruta }}
           framework: terraform,dockerfile,kubernetes,github_actions
@@ -888,7 +888,7 @@ jobs:
       # razón que nada tiene que ver con la seguridad del código.
       - name: Subir SARIF a Code Scanning (Modo A/B)
         if: inputs.subir_sarif && always() && hashFiles('trivy-config.sarif') != ''
-        uses: github/codeql-action/upload-sarif@cdf488f595d80d6e07e03d4674febd5ab45fa938 # v4
+        uses: github/codeql-action/upload-sarif@9b3254085494b55a0f7c4c2b3d2d52cc712ce370 # v4
         with:
           sarif_file: trivy-config.sarif
           category: trivy-config${{ needs.preparar.outputs.sufijo_sarif }}
@@ -930,14 +930,14 @@ jobs:
 
       - name: Subir SARIF de Checkov a Code Scanning (Modo A/B)
         if: inputs.subir_sarif && always() && steps.sarif_checkov.outputs.archivo != ''
-        uses: github/codeql-action/upload-sarif@cdf488f595d80d6e07e03d4674febd5ab45fa938 # v4
+        uses: github/codeql-action/upload-sarif@9b3254085494b55a0f7c4c2b3d2d52cc712ce370 # v4
         with:
           sarif_file: ${{ steps.sarif_checkov.outputs.archivo }}
           category: checkov${{ needs.preparar.outputs.sufijo_sarif }}
 
       - name: Guardar SARIF como artifact (Modo B0)
         if: inputs.subir_sarif == false && always()
-        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7
         with:
           name: sarif-iac-${{ needs.preparar.outputs.slug }}
           path: |
