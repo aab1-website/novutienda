@@ -1,51 +1,95 @@
 # =============================================================================
-# CODEOWNERS — Revisores obligatorios por ruta
-# Versión: 2.0 | Fecha: 2026-08-24 | Destino: .github/CODEOWNERS
+# CODEOWNERS — Revisores obligatorios por ruta, por ZONA (carpeta = zona)
+# Plano: docs/arquitectura/01-arquitectura-por-zonas.md §8 y §9; mapa por archivo
+# en pruebas/fronteras/zonas.ts (`pnpm zonas`). Reemplaza la plantilla del
+# estándar (v2.0, 2026-08-24), que no reflejaba las carpetas reales.
 # -----------------------------------------------------------------------------
 # Con la rama main protegida y "Require review from Code Owners" activo
 # (ruleset), ningún cambio en estas rutas se fusiona sin la aprobación del
-# equipo dueño. En Modo B0 (privado Free) los rulesets básicos existen pero la
-# revisión de Code Owners NO se exige: el archivo sigue siendo útil para
-# asignar revisores automáticamente.
-# Reemplace @AndresAlberdi por equipos reales (o @usuario en cuentas personales).
-# La última regla que coincide gana; el orden importa.
+# dueño. Hoy el único dueño es @AndresAlberdi (cuenta personal): el archivo
+# documenta QUÉ zona es cada carpeta y asigna revisor automáticamente; cuando
+# haya equipos, se reemplaza el usuario por el equipo de cada zona sin cambiar
+# las rutas. La última regla que coincide gana; el orden importa: las carpetas
+# van antes que los archivos sueltos que viven dentro de ellas.
 # =============================================================================
 
 # Propietario por defecto de todo el repositorio
 *                                   @AndresAlberdi
 
-# Pipeline, seguridad y configuración de CI: exige al equipo de plataforma
+# ---- Coordinador y conectores (agente coordinador) --------------------------
+/plataforma/registro.ts             @AndresAlberdi
+/plataforma/adaptadores/            @AndresAlberdi
+/plataforma/funciones/servidor/     @AndresAlberdi
+/pruebas/funciones/                 @AndresAlberdi
+/pruebas/integracion/               @AndresAlberdi
+/pruebas/registro.test.ts           @AndresAlberdi
+
+# ---- Núcleo: lo que todo tenant corre igual (agente nucleo) -----------------
+/paquetes/nucleo/                   @AndresAlberdi
+/plataforma/funciones/servidor/redondeo.ts     @AndresAlberdi
+/plataforma/funciones/servidor/notificador.ts  @AndresAlberdi
+/pruebas/identidad/                 @AndresAlberdi
+/pruebas/limites/                   @AndresAlberdi
+/pruebas/tipo-cambio/               @AndresAlberdi
+/pruebas/reglas/                    @AndresAlberdi
+/pruebas/tenant/                    @AndresAlberdi
+
+# ---- Central: lo que todo comercio ve igual (agente central) ----------------
+/paquetes/panel/                    @AndresAlberdi
+/pruebas/panel/                     @AndresAlberdi
+
+# ---- Módulos: uno por carpeta, un dueño (agente modulo:<m>) -----------------
+/paquetes/inventarios/              @AndresAlberdi
+/paquetes/pos/                      @AndresAlberdi
+/paquetes/recibos/                  @AndresAlberdi
+/paquetes/consola/                  @AndresAlberdi
+/paquetes/website/                  @AndresAlberdi
+/pruebas/inventarios/               @AndresAlberdi
+/pruebas/pos/                       @AndresAlberdi
+/pruebas/recibos/                   @AndresAlberdi
+/pruebas/consola/                   @AndresAlberdi
+/pruebas/website/                   @AndresAlberdi
+# Bordes de módulo que viven en plataforma/ (plano §3, enmienda H0)
+/plataforma/funciones/servidor/llamadas/inventarios.ts   @AndresAlberdi
+/plataforma/funciones/servidor/llamadas/pos.ts           @AndresAlberdi
+/plataforma/funciones/servidor/llamadas/recibos.ts       @AndresAlberdi
+/plataforma/funciones/servidor/llamadas/consola.ts       @AndresAlberdi
+/plataforma/funciones/servidor/llamadas/medios.ts        @AndresAlberdi
+/plataforma/funciones/servidor/trigger-medios.ts         @AndresAlberdi
+/plataforma/funciones/servidor/disparador-sitio.ts       @AndresAlberdi
+/plataforma/funciones/servidor/enlace-pdf.ts             @AndresAlberdi
+
+# ---- Plataforma: andamiaje del operador (agente plataforma) -----------------
+/scripts/                           @AndresAlberdi
+/plataforma/funciones/scripts/      @AndresAlberdi
+/deploy.sh                          @AndresAlberdi
+/security-local.sh                  @AndresAlberdi
+
+# ---- Tenants: datos y configuración declarativa, nunca lógica ---------------
+/tenants/                           @AndresAlberdi
+
+# ---- Método: frontera, medición, documentos, agentes y ganchos (agente metodo)
+/pruebas/fronteras/                 @AndresAlberdi
+/scripts/zonas.mjs                  @AndresAlberdi
+/docs/                              @AndresAlberdi
+/.claude/                           @AndresAlberdi
+/CLAUDE.md                          @AndresAlberdi
+/ESTADO.md                          @AndresAlberdi
+
+# ---- Pipeline, seguridad y configuración de CI (agente devsecops) ----------
 /.github/                           @AndresAlberdi
 /.github/workflows/                 @AndresAlberdi
 /.github/CODEOWNERS                 @AndresAlberdi
-/.github/dependabot.yml             @AndresAlberdi
-/.github/gitleaks.toml              @AndresAlberdi
 /.pre-commit-config.yaml            @AndresAlberdi
 /.devsecops.yml                     @AndresAlberdi
 
-# Reglas de acceso a datos: cualquier cambio requiere seguridad
+# ---- Reglas de acceso a datos: cualquier cambio requiere seguridad ---------
 /firestore.rules                    @AndresAlberdi
 /storage.rules                      @AndresAlberdi
+/firestore.indexes.json             @AndresAlberdi
 /firebase.json                      @AndresAlberdi
 
-# Infraestructura como código y contenedores
-/infra/                             @AndresAlberdi
-/Dockerfile                         @AndresAlberdi
-/.aws/                              @AndresAlberdi
-/docker-compose*.yml                @AndresAlberdi
-
-# Dependencias (revisar cambios de lockfile en PRs no generados por Dependabot)
+# ---- Dependencias (revisar cambios de lockfile en PRs no generados por Dependabot)
 /package.json                       @AndresAlberdi
-/package-lock.json                  @AndresAlberdi
 /pnpm-lock.yaml                     @AndresAlberdi
-/requirements*.txt                  @AndresAlberdi
-/pyproject.toml                     @AndresAlberdi
-
-# Autenticación, autorización y manejo de secretos en la aplicación
-/src/auth/                          @AndresAlberdi
-/src/**/seguridad/                  @AndresAlberdi
-/api/auth/                          @AndresAlberdi
-
-# Documentación del estándar y runbooks
-/docs/                              @AndresAlberdi
-/CHANGELOG.md                       @AndresAlberdi
+/pnpm-workspace.yaml                @AndresAlberdi

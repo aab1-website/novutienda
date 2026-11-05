@@ -62,6 +62,19 @@ repos:
   #       files: \.(js|jsx|ts|tsx)$
   #       exclude: ^(dist|coverage|node_modules)/
 
+  # ---- Frontera por zonas: ningún archivo sin zona, la deuda solo baja --------
+  # Plano docs/arquitectura/01-arquitectura-por-zonas.md §6.4 y §9: la misma
+  # prueba que corre en CI (`calidad`), antes de cada commit. Usa el vitest del
+  # propio repo (node_modules) y pasa aunque no haya emulador.
+  - repo: local
+    hooks:
+      - id: fronteras-por-zona
+        name: Fronteras por zona (pruebas/fronteras)
+        entry: pnpm vitest run pruebas/fronteras
+        language: system
+        pass_filenames: false
+        files: ^(paquetes|plataforma|pruebas|tenants|scripts)/.*\.(ts|tsx|mts|astro|mjs)$|^pruebas/fronteras/deuda\.json$
+
   # ---- Dockerfile: hadolint --------------------------------------------------
   - repo: https://github.com/hadolint/hadolint
     rev: v2.14.0
