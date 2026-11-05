@@ -25,7 +25,8 @@ import { crearManejador } from './llamadas/marco.js';
 import { accionesMedios } from './llamadas/medios.js';
 import { accionesPos } from './llamadas/pos.js';
 import { accionesRecibos } from './llamadas/recibos.js';
-import { ejecutarCotizaciones, ejecutarLimpiezaSubidas, ejecutarTemporizadorSitio } from './programadas.js';
+import { ejecutarLimpiezaSubidas, ejecutarTemporizadorSitio } from './programadas/consola.js';
+import { ejecutarCotizaciones } from './programadas/cotizacion.js';
 import { procesarObjetoSubido } from './trigger-medios.js';
 
 // Los disparadores (Firestore, Storage) necesitan la app por defecto desde el arranque.

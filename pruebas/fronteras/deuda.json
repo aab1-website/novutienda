@@ -95,14 +95,6 @@
       "nota": "El marco de callables tipa con `ActorPos`; el tipo pasa al núcleo o `actorPos` a `llamadas/pos.ts`."
     },
     {
-      "archivo": "plataforma/funciones/servidor/programadas.ts",
-      "importacion": "@novutienda/consola",
-      "zona": "coordinador",
-      "destino": "modulo:consola",
-      "resuelveEn": "T1",
-      "nota": "`programadas.ts` sin partir: `ejecutarReconstruccion`/`limpiarSubidas` van a `programadas/consola.ts`."
-    },
-    {
       "archivo": "pruebas/consola/alineacion.test.ts",
       "importacion": "@novutienda/inventarios",
       "zona": "pruebas:modulo:consola",
