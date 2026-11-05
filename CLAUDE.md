@@ -22,6 +22,7 @@ Flujo: trabajo en ramas `feat/*`, `fix/*`, `chore/*`, `hotfix/*` → PR hacia `m
 | Desplegar a producción | **No lo ejecute.** Lo hace una persona: tag `vX.Y.Z` + aprobación del Environment (A/B) o `workflow_dispatch` del `ci-*` con `confirmar=DESPLEGAR` (B0). Ver `/pase-a-produccion`. |
 | Validar workflows | `actionlint .github/workflows/*.yml` · `python3 .github/scripts/validar-manifiesto.py` |
 | Reglas Firestore | `pnpm reglas:generar` · `pnpm reglas:verificar` · `pnpm test:rules` (levanta el emulador; dentro de `emulators:exec` reutiliza el existente) |
+| Zonas y fronteras | `pnpm zonas` (inventario pieza → zona, archivos sin zona, cruces) · `pnpm vitest run pruebas/fronteras` (la compuerta) |
 
 Ajuste esta tabla si los scripts de `package.json`/`pyproject.toml` tienen otros nombres; no invente comandos.
 
@@ -66,10 +67,28 @@ Ajuste esta tabla si los scripts de `package.json`/`pyproject.toml` tienen otros
 - Registros (logs) sin datos personales ni tokens. Errores con mensajes útiles para el usuario y detalle técnico solo en el log.
 - Terraform: `terraform fmt`, módulos con versión fijada, estado remoto cifrado; nunca `-auto-approve` en producción desde un agente.
 
+## La regla de zonas: carpeta = zona
+
+El código se ordena por **dueño y variabilidad**, en cinco zonas (plano: `docs/arquitectura/01-arquitectura-por-zonas.md`; regla viva: `docs/arquitectura/zonas.md`). Cada archivo tiene **una** zona, declarada por ruta en `pruebas/fronteras/zonas.ts`; `pnpm zonas` imprime el inventario y los cruces (las cifras viven ahí, nunca en este archivo).
+
+| Zona | Qué es | Dónde vive |
+|---|---|---|
+| **Núcleo** | Lo que todo tenant corre igual aunque nadie lo vea: registro, identidad y roles, límites, auditoría, eventos, tipo de cambio, redondeo | `paquetes/nucleo/` (+ `redondeo.ts`, `notificador.ts` del servidor) |
+| **Central** | Lo que todo comercio ve igual en su panel y su cuenta, tenga los módulos que tenga: sesión, login, menú, usuarios, configuración, transporte de callables | `paquetes/panel/` salvo las piezas de módulo; `llamadas/usuarios.ts` |
+| **Plataforma** | Lo que ve solo el operador de NovuTienda: alta de tenant, planes, propietario, tokens, andamiaje | `scripts/`, `plataforma/funciones/scripts/` |
+| **Módulos** | Lo que se enciende por tenant con manifiesto y límite por plan | `paquetes/<m>/`, su borde `llamadas/<m>.ts`, su interfaz en el panel, `pruebas/<m>/` |
+| **Tenants** | Datos y configuración **declarativa** de un cliente, validada por tipos del núcleo (`nucleo/extension`). **Nunca lógica** | `tenants/<t>/` en el repo; `tenants/{t}/…` en Firestore |
+
+Piezas con nombre propio: el **registro** (`plataforma/registro.ts`), el **coordinador** (`plataforma/adaptadores`, composición de `plataforma/funciones/servidor`; `docs/arquitectura/coordinador.md`) y los **conectores** (Firebase, NovuChat, sitio).
+
+**Prueba de ubicación** (en orden; la primera que dice «sí» decide; dos «sí» = pieza mal cortada, se parte): 1) ¿lo corre todo tenant igual aunque no lo vea nadie? → Núcleo; 2) ¿lo ve todo comercio tenga los módulos que tenga? → Central; 3) ¿lo ve solo NovuTienda como operador? → Plataforma; 4) ¿se enciende por tenant o tiene límite por plan? → Módulo; 5) ¿es dato de un cliente? → Tenant; 6) ¿conecta zonas o habla con un sistema externo? → Coordinador o conector, nombrado.
+
+**Dependencias permitidas:** Módulos → Central → Núcleo; Plataforma → Central, Núcleo; un módulo → otro solo si su manifiesto lo declara (`dependeDe`); Núcleo → nada de arriba; el coordinador conoce a todas solo por el registro y los puertos; los conectores dependen de la zona a la que sirven. Lo verifica `pruebas/fronteras` (CI y pre-commit) con `deuda.json`, que **solo baja**: un cruce nuevo se corrige, no se agrega a la deuda. Cada agente escribe solo en su zona (`.claude/agents/`, gancho `.claude/hooks/zona-de-escritura.sh`).
+
 ## Invariantes del proyecto
 
-- **Zonas de propiedad por carpeta:** `paquetes/nucleo` (registro, contratos, identidad), `paquetes/<modulo>` (un módulo, un dueño), `tenants/<tenant>` (solo configuración y extensiones), `pruebas/` (fronteras y reglas), `scripts/` y raíz (andamiaje). Un archivo lo escribe un solo agente por vez.
-- **Fronteras de importación:** `nucleo` no importa ningún paquete interno; `paquetes/<m>` importa solo `@novutienda/nucleo` y lo que su manifiesto declare; `tenants/*` importa solo `@novutienda/nucleo/extension`; nunca a `/src/` de otro paquete. Lo verifica `pruebas/fronteras`.
+- **Un archivo lo escribe un solo agente por vez**, y solo dentro de su zona (tabla de arriba y `docs/arquitectura/zonas.md`); `plataforma/registro.ts` lo escribe la sesión principal.
+- **Fronteras de importación:** `nucleo` no importa ningún paquete interno; `paquetes/<m>` importa solo `@novutienda/nucleo` y lo que su manifiesto declare; `tenants/*` importa solo `@novutienda/nucleo/extension`; nunca a `/src/` de otro paquete; en `plataforma/` y `pruebas/`, la tabla por zona de `docs/arquitectura/zonas.md`. Lo verifica `pruebas/fronteras`.
 - **Un dueño por dato:** cada colección pertenece al manifiesto de un solo módulo (rutas únicas); Inventarios es dueño de productos y stock; solo el servidor escribe ventas y movimientos. Las reglas de Firestore se generan desde el registro de módulos y nunca se amplían a mano.
 - **Repositorio público:** nada de PDF comerciales, identificadores (proyectos, cuentas, teléfonos) ni datos del cliente en el código, la configuración o el historial. Los paquetes no mencionan al cliente; lo propio de un cliente vive en `tenants/<tenant>`.
 - **Andres autoriza antes de escribir fuera del repositorio:** GitHub, Firebase, servicios externos y cualquier carpeta distinta de este proyecto.
@@ -92,8 +111,10 @@ Ajuste esta tabla si los scripts de `package.json`/`pyproject.toml` tienen otros
 | `deploy` | Desplegar a staging con `deploy.sh`, diagnosticar despliegues y health checks, guiar rollbacks | Ejecutar `deploy.sh prod`, crear tags, usar `--forzar` |
 | `proyectos` (Opus) | Revisar estado del proyecto frente al estándar, preparar actas de pase a producción, métricas DORA, resúmenes para dirección | Modificar archivos |
 | `planificador` (Opus) | Planificar antes de implementar: pasos exactos, pruebas, riesgos y decisiones pendientes | Modificar archivos |
-| `implementador` (Sonnet) | Ejecutar un plan ya definido, escribir pruebas, corregir lint/tipos/pruebas | Tomar decisiones de diseño; desplegar |
-| `revisor-codigo` (Opus) | Revisar el diff tras implementar y antes del PR: corrección, reglas de este archivo, pruebas | Modificar archivos |
+| `implementador` (Sonnet) | Ejecutar un plan ya definido, escribir pruebas, corregir lint/tipos/pruebas; su zona la fija quien lo lanza | Tomar decisiones de diseño; desplegar |
+| `revisor-codigo` (Opus) | Revisar el diff tras implementar y antes del PR: corrección, reglas de este archivo y de zonas, pruebas | Modificar archivos |
+| `nucleo`, `central`, `plataforma`, `modulo` (`<m>`), `coordinador` (Sonnet) | Cambios dentro de su zona (tabla de zonas; `.claude/agents/<zona>.md` declara la `NOVUTIENDA_ZONA`) | Escribir fuera de su zona; agregar cruces a `deuda.json` |
+| `metodo` (Sonnet) | Frontera y medición (`pruebas/fronteras/`, `scripts/zonas.mjs`), `docs/`, agentes y ganchos, `CLAUDE.md`, `CODEOWNERS` | Tocar lógica de `paquetes/` o `plataforma/` |
 
 Skills: `/aplicar-estandar-devsecops` (repositorio nuevo o desactualizado) y `/pase-a-produccion` (antes de crear un tag de release).
 

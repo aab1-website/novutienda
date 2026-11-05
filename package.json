@@ -15,7 +15,8 @@
     "test:funciones": "node plataforma/funciones/scripts/probar.mjs",
     "build": "node scripts/build.mjs",
     "reglas:generar": "node scripts/reglas.mjs generar",
-    "reglas:verificar": "node scripts/reglas.mjs verificar"
+    "reglas:verificar": "node scripts/reglas.mjs verificar",
+    "zonas": "node scripts/zonas.mjs"
   },
   "devDependencies": {
     "@eslint/js": "10.0.1",

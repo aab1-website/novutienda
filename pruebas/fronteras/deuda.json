@@ -1,0 +1,114 @@
+{
+  "_comentario": [
+    "Cruces de importación heredados entre zonas (plano §3, enmienda H0). La prueba exige que esta lista SOLO BAJE:",
+    "todo cruce real debe estar aquí, y ninguna entrada puede seguir aquí cuando el cruce ya no existe.",
+    "Un cruce nuevo no se agrega a esta lista: se corrige, o se cambia la zona del archivo en zonas.ts con su justificación.",
+    "Clave de cada entrada: archivo + importacion. `resuelveEn` es la tanda del plano que lo elimina."
+  ],
+  "cruces": [
+    {
+      "archivo": "paquetes/panel/src/index.ts",
+      "importacion": "./subidas/esperar.js",
+      "zona": "central",
+      "destino": "modulo:consola",
+      "resuelveEn": "T2",
+      "nota": "La entrada pública del panel reexporta la espera de subidas (pieza de consola, H0 §5.1)."
+    },
+    {
+      "archivo": "paquetes/panel/src/pantallas/venta-terminal.tsx",
+      "importacion": "../ui/recibo.js",
+      "zona": "modulo:pos",
+      "destino": "modulo:recibos",
+      "resuelveEn": "T2",
+      "nota": "El terminal de venta muestra la vista del recibo: o `pos` declara `dependeDe: recibos`, o la vista pasa a Central."
+    },
+    {
+      "archivo": "paquetes/panel/src/servicios.ts",
+      "importacion": "./doble/doble.js",
+      "zona": "central",
+      "destino": "pruebas:central",
+      "resuelveEn": "T2",
+      "nota": "La composición de servicios del panel monta el doble (material de prueba) en modo emulador."
+    },
+    {
+      "archivo": "paquetes/panel/src/servicios.ts",
+      "importacion": "./subidas/almacen.js",
+      "zona": "central",
+      "destino": "modulo:consola",
+      "resuelveEn": "T2",
+      "nota": "Central depende de `subidas/` (consola, H0 §5.1): se reclasifica como transporte central o se le da un puerto."
+    },
+    {
+      "archivo": "paquetes/panel/src/servicios.ts",
+      "importacion": "./subidas/firebase.js",
+      "zona": "central",
+      "destino": "modulo:consola",
+      "resuelveEn": "T2",
+      "nota": "Ídem."
+    },
+    {
+      "archivo": "paquetes/panel/src/ui/contexto.ts",
+      "importacion": "../subidas/almacen.js",
+      "zona": "central",
+      "destino": "modulo:consola",
+      "resuelveEn": "T2",
+      "nota": "El contexto de la aplicación lleva el almacén de subidas."
+    },
+    {
+      "archivo": "plataforma/funciones/servidor/http/novuchat.ts",
+      "importacion": "@novutienda/website",
+      "zona": "conector:novuchat",
+      "destino": "modulo:website",
+      "resuelveEn": "T4",
+      "nota": "`LimiteTasa` vive en website; va al núcleo."
+    },
+    {
+      "archivo": "plataforma/funciones/servidor/http/router.ts",
+      "importacion": "@novutienda/website",
+      "zona": "coordinador",
+      "destino": "modulo:website",
+      "resuelveEn": "T4",
+      "nota": "`LimiteTasa` (T4) y además `despacharApi`: el enrutador mezcla la composición con el borde del módulo website; partirlo en `http/website.ts` (modulo:website) deja al router solo componiendo."
+    },
+    {
+      "archivo": "plataforma/funciones/servidor/http/sitio.ts",
+      "importacion": "@novutienda/inventarios",
+      "zona": "conector:sitio",
+      "destino": "modulo:inventarios",
+      "resuelveEn": "T4",
+      "nota": "`verificarFirma` (HMAC) vive en inventarios; va al núcleo."
+    },
+    {
+      "archivo": "plataforma/funciones/servidor/index.ts",
+      "importacion": "@novutienda/website",
+      "zona": "coordinador",
+      "destino": "modulo:website",
+      "resuelveEn": "T4",
+      "nota": "`limiteMemoria`/`LimiteTasa` viven en website; van al núcleo."
+    },
+    {
+      "archivo": "plataforma/funciones/servidor/llamadas/marco.ts",
+      "importacion": "@novutienda/pos",
+      "zona": "coordinador",
+      "destino": "modulo:pos",
+      "resuelveEn": "T1",
+      "nota": "El marco de callables tipa con `ActorPos`; el tipo pasa al núcleo o `actorPos` a `llamadas/pos.ts`."
+    },
+    {
+      "archivo": "plataforma/funciones/servidor/programadas.ts",
+      "importacion": "@novutienda/consola",
+      "zona": "coordinador",
+      "destino": "modulo:consola",
+      "resuelveEn": "T1",
+      "nota": "`programadas.ts` sin partir: `ejecutarReconstruccion`/`limpiarSubidas` van a `programadas/consola.ts`."
+    },
+    {
+      "archivo": "pruebas/consola/alineacion.test.ts",
+      "importacion": "@novutienda/inventarios",
+      "zona": "pruebas:modulo:consola",
+      "destino": "modulo:inventarios",
+      "resuelveEn": "T3",
+      "nota": "Prueba de alineación consola↔inventarios: es de integración y va a `pruebas/integracion/`."
+    }
+  ]
+}
