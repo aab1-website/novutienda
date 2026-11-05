@@ -31,11 +31,11 @@ Más tres piezas con nombre propio: el **registro** (`plataforma/registro.ts`, e
 
 | Zona | Carpetas y archivos |
 |---|---|
-| `nucleo` | `paquetes/nucleo/`; en ejecución, `plataforma/funciones/servidor/{redondeo,notificador}.ts` (y `programadas/cotizacion.ts` desde T1) |
-| `central` | `paquetes/panel/` salvo las piezas de módulo; `plataforma/funciones/servidor/llamadas/usuarios.ts` (desde T1) |
+| `nucleo` | `paquetes/nucleo/`; en ejecución, `plataforma/funciones/servidor/{redondeo,notificador}.ts` |
+| `central` | `paquetes/panel/` salvo las piezas de módulo; `plataforma/funciones/servidor/llamadas/usuarios.ts` (compuesto en el callable `consola` por `index.ts`) |
 | `plataforma` | `scripts/` (salvo `zonas.mjs`), `plataforma/funciones/scripts/` |
-| `modulo:<m>` | `paquetes/<m>/`; su borde `plataforma/funciones/servidor/llamadas/<m>.ts` (consola incluye `llamadas/medios.ts`, `trigger-medios.ts`, `disparador-sitio.ts`; recibos incluye `enlace-pdf.ts`); su interfaz en el panel: pos `pantallas/{venta*,supervision,aprobaciones}.tsx`, `util/{arqueo,pagos}.ts`; inventarios `pantallas/{inventario*,mermas}.tsx`; consola `pantallas/catalogo*.tsx`, `subidas/`, `util/plantillas-vista.ts`; recibos `pantallas/recibos.tsx`, `ui/recibo.tsx`; desde T2, `pantallas/<m>/` |
-| `coordinador` | `plataforma/registro.ts`, `plataforma/adaptadores/*.ts`, el resto de `plataforma/funciones/servidor/` (incluido `programadas.ts` hasta que T1 lo parta) |
+| `modulo:<m>` | `paquetes/<m>/`; su borde `plataforma/funciones/servidor/llamadas/<m>.ts` (consola incluye `llamadas/medios.ts`, `trigger-medios.ts`, `disparador-sitio.ts`, `programadas/consola.ts`; recibos incluye `enlace-pdf.ts`); su interfaz en el panel: pos `pantallas/{venta*,supervision,aprobaciones}.tsx`, `util/{arqueo,pagos}.ts`; inventarios `pantallas/{inventario*,mermas}.tsx`; consola `pantallas/catalogo*.tsx`, `subidas/`, `util/plantillas-vista.ts`; recibos `pantallas/recibos.tsx`, `ui/recibo.tsx`; desde T2, `pantallas/<m>/` |
+| `coordinador` | `plataforma/registro.ts`, `plataforma/adaptadores/*.ts`, el resto de `plataforma/funciones/servidor/` (incluidos `programadas/{tenants,cotizacion}.ts`: la cotización recorre tenants y dispara la corrida diaria de consola, plano §6.5) |
 | `conector:<n>` | `conector:firebase` = `plataforma/adaptadores/firebase/`; `conector:novuchat` = `http/novuchat.ts`; `conector:sitio` = `http/sitio.ts` |
 | `tenant` | `tenants/` |
 | `pruebas:<zona>` | `pruebas/{funciones,integracion}/` y `pruebas/registro.test.ts` → coordinador; `pruebas/panel/` → central; `pruebas/<m>/` → `modulo:<m>`; `pruebas/{identidad,limites,tipo-cambio,reglas,tenant}/` → núcleo; un `*.test.ts` dentro de un paquete → la zona del archivo que prueba; los dobles del panel (`src/doble/`, `ayuda-pruebas.ts`) → pruebas de su zona |

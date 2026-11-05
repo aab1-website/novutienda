@@ -126,6 +126,31 @@ Opción A (un proyecto Firebase, `tenants/{t}`); repo público modo A; alcance =
 - Quién autoriza cada fusión: **Andres, con un botón por PR**; la aprobación en GitHub la ejecuta Claude como `segurolotengopy` con constancia; la revisora comprueba el hito, no el PR.
 - `fronteras.test.ts` entra también al pre-commit en T0; `ESTADO.md` se actualiza o se retira en T0 (el estado vivo pasa a `scripts/zonas.mjs`).
 
+### 6.5 Enmiendas de la revisión H1 y de la tanda T1 (05/11/2026)
+
+**Qué tanda elimina cada entrada de la deuda.** La revisora pidió (H1, observación 1) que §7 y `pruebas/fronteras/deuda.json` digan lo mismo. La fuente de verdad del cruce es `deuda.json` (`resuelveEn`); esta tabla fija lo que cada tanda debe quitar y el método con que lo quita. Las filas de §7 se leen con esta tabla.
+
+| Entrada de `deuda.json` (archivo → importación) | Zona violada | Tanda | Cómo se resuelve |
+|---|---|---|---|
+| `llamadas/marco.ts → @novutienda/pos` | coordinador → módulo | **T1** | `ActorPos` es solo un tipo: pasa al núcleo (`identidad`, `ActorConRol`) y `pos` lo reexporta type-only con su nombre; `marco.ts` lo importa del núcleo |
+| `programadas.ts → @novutienda/consola` | coordinador → módulo | **T1** | partir en `programadas/{cotizacion,consola,tenants}.ts`; el borde `programadas/consola.ts` (módulo) importa el paquete; `cotizacion.ts` lo alcanza por ese borde |
+| `pruebas/consola/alineacion.test.ts → @novutienda/inventarios` | pruebas de un módulo → otro módulo | **T3** | es una prueba de integración consola↔inventarios: va a `pruebas/integracion/` |
+| `panel/src/servicios.ts → ./subidas/almacen.js`, `→ ./subidas/firebase.js`, `panel/src/ui/contexto.ts → ../subidas/almacen.js` | Central → consola | **T2** | **reclasificación** (H1, observación 2): `subidas/almacen.ts` (puerto genérico `subir(ruta, archivo, progreso)`) y `subidas/firebase.ts` (subida reanudable a Storage a una ruta dada) son transporte **Central**, como `api/transporte.ts`; se declaran así en `zonas.ts` y las tres entradas salen sin mover nada |
+| `panel/src/index.ts → ./subidas/esperar.js` | Central → consola | **T2** | `esperar.ts` (llama a `estadoSubida`/`finalizarSubida` del callable) **es consola**: va a `pantallas/consola/`; la reexportación de `panel/src/index.ts` la usa solo `pruebas/panel/emulador.test.ts`, que pasa a importar la ruta del módulo (no se agrega `index.ts` a `COMPOSITORES`) |
+| `panel/src/pantallas/venta-terminal.tsx → ../ui/recibo.js` | pos → recibos | **T2** | o `pos` declara `dependeDe: recibos` en su manifiesto, o la vista del recibo pasa a Central; lo decide Andres en T2 |
+| `panel/src/servicios.ts → ./doble/doble.js` | Central → material de prueba | **T2** | el doble sale de `paquetes/panel/src/doble/` a `pruebas/` con los demás dobles (§5.1) |
+| `http/router.ts → @novutienda/website` | coordinador → módulo | **T4** | partir `http/website.ts` (zona `modulo:website`) con `despacharApi`, `lectorCotizacion`, `DepsContacto` y los verificadores; `router.ts` queda solo componiendo (H1, observación 3); `LimiteTasa` al núcleo en la misma tanda |
+| `http/novuchat.ts → @novutienda/website`, `index.ts → @novutienda/website` | conector/coordinador → módulo | **T4** | `limiteMemoria`/`LimiteTasa` al núcleo con reexportación transitoria desde `website` |
+| `http/sitio.ts → @novutienda/inventarios` | conector → módulo | **T4** | `verificarFirma` (HMAC) al núcleo con reexportación transitoria desde `inventarios` |
+
+T4 actualiza además los **cuatro archivos de `adaptadores/firebase/`** que importan `website` (`limite-tasa`, `verificadores`, `disponibilidad`, `contacto`): como `conector:firebase` sirve a todas las zonas, esa importación no cuenta como cruce y la deuda no la empuja (H1, observación 5); la revisora lo comprueba con `grep`, no con la prueba. Al cerrar T4, `pnpm zonas` debe dar cero cruces y `deuda.json` quedar vacía.
+
+**Lo que T1 encontró distinto del plano** (05/11/2026, agente `coordinador`; a confirmar por Andres al cerrar H2):
+
+- **`programadas/cotizacion.ts` es coordinador, no núcleo.** §5.3 y la tabla de §3 lo preveían núcleo, pero `ejecutarCotizaciones` recibe el `Entorno` completo, recorre los tenants y a las 07:00 dispara la reconstrucción diaria del sitio (módulo consola): responde «sí» a la pregunta 6 de la prueba de ubicación, igual que `listarTenants`/`porTenant` (H0). Declararla núcleo habría creado tres cruces nuevos (`Entorno`, `tenants.ts`, consola) que la tanda no puede corregir sin cambiar la lógica ni los casos de `programadas.test.ts`. Se declaró **coordinador** en `zonas.ts`, y el borde `programadas/consola.ts` expone `ejecutarReconstruccion` para que el coordinador no importe el paquete fuera de un compositor. El núcleo de la cotización sigue en `paquetes/nucleo/src/tipo-cambio`. Para que `cotizacion.ts` llegue a ser núcleo hay que inyectar la corrida diaria (una decisión de lógica: fase L, no tanda T). La fila `nucleo` de §8 y la ficha `.claude/agents/nucleo.md` siguen nombrando `programadas/cotizacion.ts`: se corrigen con la sesión principal.
+- `ActorPos` se llama `ActorConRol` en el núcleo (el núcleo no nombra módulos); `pos` conserva el nombre para sus consumidores.
+- `UID` (esquema zod del uid) sube de `llamadas/consola.ts` a `llamadas/comunes.ts` porque lo usan la auditoría de consola y las acciones de usuarios.
+
 ## 7. Camino, por tandas y fases
 
 | # | Qué | Prueba | Despliega | Jornadas |
