@@ -1,7 +1,8 @@
 #!/usr/bin/env bash
 # humo-hosting.sh — humo post-despliegue de los dos sitios de Hosting.
 # Uso: humo-hosting.sh <URL_SITIO> <URL_PANEL> [RUTA_SALUD]
-#   - Sitio: RUTA_SALUD (por defecto /healthz) responde 200 «ok» desde la función
+#   - Sitio: RUTA_SALUD (por defecto /api/salud; /healthz exacto lo intercepta el
+#     frontend de Google en Cloud Run y nunca llega a la función) responde 200 «ok» desde la función
 #     api (prueba que Functions y el rewrite de Hosting están vivos), y / responde
 #     200 con CSP y HSTS.
 #   - Panel: / responde 200 con CSP y HSTS.
@@ -10,7 +11,7 @@ set -uo pipefail
 
 URL_SITIO="${1:?URL del sitio}"
 URL_PANEL="${2:?URL del panel}"
-RUTA_SALUD="${3:-/healthz}"
+RUTA_SALUD="${3:-/api/salud}"
 INTENTOS="${HUMO_INTENTOS:-10}"
 ESPERA="${HUMO_ESPERA:-15}"
 
