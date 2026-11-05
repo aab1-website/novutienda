@@ -1,0 +1,49 @@
+# Manifiesto del estándar DevSecOps (esquema: 02-pipelines/config/devsecops.schema.json;
+# convenciones: 00-gobernanza/00-convenciones.md; generado por bootstrap-repo.sh v2.5)
+version: 1
+proyecto: novutienda
+modo: A            # A | B | B0 (ver 00-gobernanza/03-ambientes-modos-y-aprobaciones.md)
+cobertura_minima: 70
+componentes:
+  - nombre: novutienda
+    ruta: ./
+    stack: node
+    proveedor: firebase
+    # Dos sitios de Hosting por target (sitio → dist/website, panel → dist/panel);
+    # los ids reales viven en variables de los Environments de GitHub
+    # (FIREBASE_SITE_SITIO, FIREBASE_SITE_PANEL), nunca en el repositorio.
+    # `url` es la del sitio público: la usan el health check (/healthz, función
+    # api) y el DAST. El panel se verifica con PANEL_URL en el humo del CI.
+    ambientes:
+      staging:
+        proyecto: ${GCP_PROJECT_ID_STAGING}
+        url: https://${FIREBASE_SITE_SITIO}.web.app
+        site: ${FIREBASE_SITE_SITIO}
+        region: us-east1
+      production:
+        proyecto: ${GCP_PROJECT_ID_PROD}
+        url: https://${FIREBASE_SITE_SITIO}.web.app
+        site: ${FIREBASE_SITE_SITIO}
+        region: us-east1
+seguridad:
+  dast: true
+  zap_reglas: .github/zap-rules.tsv
+  bloquear_en: [CRITICAL, HIGH]   # se puede endurecer (añadir MEDIUM), nunca relajar
+  # id, herramienta, componente, justificacion, aprobado_por, creado, vence
+  excepciones:
+    - id: CKV_GHA_7
+      herramienta: checkov
+      # Era «plataforma»: el componente se renombró a «novutienda» (b0e304f).
+      componente: novutienda
+      justificacion: >-
+        Regla SLSA sobre .github/workflows/release.yml: exige que
+        workflow_dispatch no declare inputs. Los dos que declara son de tipo
+        cerrado, no texto libre: `tipo` es un choice de [auto, patch, minor,
+        major] y `prerelease` un boolean, asi que GitHub rechaza cualquier
+        otro valor antes de que el workflow arranque. Ademas `tipo` llega al
+        shell por variable de entorno (TIPO_ENTRADA), no interpolado en el
+        script, que es la inyeccion que la regla busca evitar. Quitarlos
+        obligaria a editar el workflow para cada release.
+      aprobado_por: AndresAlberdi
+      creado: "2026-11-04"
+      vence: "2027-02-02"

@@ -15,3 +15,24 @@ coverage/
 
 # Worktrees de trabajo en paralelo
 .claude/worktrees/
+.deploy-log/
+.security-reports/
+.env
+.env.*
+!.env.example
+*.pem
+*.key
+serviceAccountKey*.json
+*-sa-key.json
+tfplan*
+.terraform/
+*.tfstate*
+*.auto.tfvars
+secrets.tfvars
+.trivy-cache/
+.trivyignore.yaml
+.gitleaksignore
+.tsbuild/
+
+# Archivos de clientes (propuestas, contratos, datos): nunca al repositorio publico
+CLIENTES/

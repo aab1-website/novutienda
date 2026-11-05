@@ -1,0 +1,14 @@
+export { manifiestoRecibos } from './manifiesto.js';
+export * from './tipos.js';
+export * from './errores.js';
+export { reciboIdDe, rutaAnulacionPendiente, rutaPlantilla, rutaRecibo } from './rutas.js';
+export { PLANTILLA_POR_DEFECTO, guardarPlantilla, plantillaVigente, validarPlantilla } from './plantilla.js';
+export type { OpcionesEmision } from './emitir.js';
+export { CONSUMIDOR_RECIBOS, manejarVentaAnulada, manejarVentaConfirmada } from './emitir.js';
+export { escaparHtml, formatearMonto, generarPdfRecibo, renderizarReciboHtml } from './vista.js';
+export type { GeneradorPdf } from './vista.js';
+export type { ConsultaArchivo, FiltroLectura, LecturaRecibos } from './archivo.js';
+export { buscarComprobantes } from './archivo.js';
+export type { EnviadorRecibo, ResultadoEnvio, SolicitudEnvio } from './envio.js';
+export { EnviadorSimulado, EnviadorWaMe, enviarRecibo, textoMensaje } from './envio.js';
+export { referenciarFacturaSuma } from './factura.js';

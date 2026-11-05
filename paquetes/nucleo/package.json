@@ -1,0 +1,13 @@
+{
+  "name": "@novutienda/nucleo",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "exports": {
+    ".": "./src/index.ts",
+    "./extension": "./src/extension/index.ts"
+  },
+  "dependencies": {
+    "firebase-admin": "14.5.0"
+  }
+}

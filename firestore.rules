@@ -1,0 +1,215 @@
+rules_version = '2';
+
+// GENERADO por scripts/generar-reglas.mjs desde el registro de módulos.
+// No se edita a mano: ejecute `pnpm reglas:generar`. `reglas:verificar`
+// falla si este archivo difiere de lo generado.
+//
+// Principios: se niega por defecto; el tenant sale de la ruta, nunca de un
+// campo; el rol sale del claim firmado (pl.t[tenantId]) y solo vale si la
+// sesión se abrió con el proveedor esperado y el correo está verificado;
+// rolEn devuelve '' y nunca null.
+service cloud.firestore {
+  match /databases/{database}/documents {
+
+    function autenticado() {
+      return request.auth != null && request.auth.uid != null;
+    }
+
+    function proveedor() {
+      return request.auth.token.get('firebase', {}).get('sign_in_provider', '');
+    }
+
+    // Rol en ESTE tenant o cadena vacía (nunca null: comparar null revienta).
+    function rolEn(tenantId) {
+      return request.auth.token.get('pl', {}).get('t', {}).get(tenantId, '');
+    }
+
+    function tieneRol(tenantId, roles) {
+      return autenticado()
+        && proveedor() == 'password'
+        && request.auth.token.get('email_verified', false) == true
+        && rolEn(tenantId) in roles;
+    }
+
+    // Módulo nucleo
+    match /tenants/{tenantId}/miembros/{id} {
+      allow read: if tieneRol(tenantId, ['sup', 'adm']);
+      allow write: if false; // solo el servidor escribe
+    }
+    match /tenants/{tenantId}/auditoria/{id} {
+      allow read: if tieneRol(tenantId, ['sup', 'adm']);
+      allow write: if false; // solo el servidor escribe
+    }
+    match /tenants/{tenantId}/eventos/{id} {
+      allow read: if false;
+      allow write: if false; // solo el servidor escribe
+    }
+    match /tenants/{tenantId}/procesados/{id} {
+      allow read: if false;
+      allow write: if false; // solo el servidor escribe
+    }
+    match /tenants/{tenantId}/contadores/{id} {
+      allow read: if false;
+      allow write: if false; // solo el servidor escribe
+    }
+    match /tenants/{tenantId}/cotizaciones/{id} {
+      allow read: if tieneRol(tenantId, ['caj', 'sup', 'adm']);
+      allow write: if false; // solo el servidor escribe
+    }
+    match /tenants/{tenantId}/config/{id} {
+      allow read: if tieneRol(tenantId, ['caj', 'sup', 'adm']);
+      allow write: if false; // solo el servidor escribe
+    }
+
+    // Módulo inventarios
+    match /tenants/{tenantId}/productos/{id} {
+      allow read: if false;
+      allow write: if false; // solo el servidor escribe
+    }
+    match /tenants/{tenantId}/costos/{id} {
+      allow read: if false;
+      allow write: if false; // solo el servidor escribe
+    }
+    match /tenants/{tenantId}/skus/{id} {
+      allow read: if false;
+      allow write: if false; // solo el servidor escribe
+    }
+    match /tenants/{tenantId}/ubicaciones/{id} {
+      allow read: if false;
+      allow write: if false; // solo el servidor escribe
+    }
+    match /tenants/{tenantId}/existencias/{id} {
+      allow read: if false;
+      allow write: if false; // solo el servidor escribe
+    }
+    match /tenants/{tenantId}/unidades/{id} {
+      allow read: if false;
+      allow write: if false; // solo el servidor escribe
+    }
+    match /tenants/{tenantId}/movimientos/{id} {
+      allow read: if false;
+      allow write: if false; // solo el servidor escribe
+    }
+    match /tenants/{tenantId}/operaciones/{id} {
+      allow read: if false;
+      allow write: if false; // solo el servidor escribe
+    }
+    match /tenants/{tenantId}/traspasos/{id} {
+      allow read: if false;
+      allow write: if false; // solo el servidor escribe
+    }
+    match /tenants/{tenantId}/mermas/{id} {
+      allow read: if false;
+      allow write: if false; // solo el servidor escribe
+    }
+    match /tenants/{tenantId}/conteos/{id} {
+      allow read: if false;
+      allow write: if false; // solo el servidor escribe
+    }
+    match /tenants/{tenantId}/conteoLineas/{id} {
+      allow read: if false;
+      allow write: if false; // solo el servidor escribe
+    }
+    match /tenants/{tenantId}/conteoTeoricos/{id} {
+      allow read: if false;
+      allow write: if false; // solo el servidor escribe
+    }
+    match /tenants/{tenantId}/existenciasPublicas/{id} {
+      allow read: if false;
+      allow write: if false; // solo el servidor escribe
+    }
+
+    // Módulo pos
+    match /tenants/{tenantId}/pos_config/{id} {
+      allow read: if tieneRol(tenantId, ['caj', 'sup', 'adm']);
+      allow write: if false; // solo el servidor escribe
+    }
+    match /tenants/{tenantId}/turnos/{id} {
+      allow read: if tieneRol(tenantId, ['sup', 'adm']);
+      allow write: if false; // solo el servidor escribe
+    }
+    match /tenants/{tenantId}/ventas/{id} {
+      allow read: if tieneRol(tenantId, ['sup', 'adm']);
+      allow write: if false; // solo el servidor escribe
+    }
+    match /tenants/{tenantId}/anulaciones/{id} {
+      allow read: if tieneRol(tenantId, ['sup', 'adm']);
+      allow write: if false; // solo el servidor escribe
+    }
+    match /tenants/{tenantId}/aprobaciones_descuento/{id} {
+      allow read: if tieneRol(tenantId, ['sup', 'adm']);
+      allow write: if false; // solo el servidor escribe
+    }
+    match /tenants/{tenantId}/movimientos_caja/{id} {
+      allow read: if tieneRol(tenantId, ['sup', 'adm']);
+      allow write: if false; // solo el servidor escribe
+    }
+    match /tenants/{tenantId}/creditos/{id} {
+      allow read: if tieneRol(tenantId, ['sup', 'adm']);
+      allow write: if false; // solo el servidor escribe
+    }
+    match /tenants/{tenantId}/cobros_credito/{id} {
+      allow read: if tieneRol(tenantId, ['sup', 'adm']);
+      allow write: if false; // solo el servidor escribe
+    }
+
+    // Módulo recibos
+    match /tenants/{tenantId}/recibos/{id} {
+      allow read: if false;
+      allow write: if false; // solo el servidor escribe
+    }
+    match /tenants/{tenantId}/plantillas_recibo/{id} {
+      allow read: if false;
+      allow write: if false; // solo el servidor escribe
+    }
+    match /tenants/{tenantId}/anulaciones_pendientes_recibo/{id} {
+      allow read: if false;
+      allow write: if false; // solo el servidor escribe
+    }
+
+    // Módulo website
+    match /tenants/{tenantId}/contactos/{id} {
+      allow read: if tieneRol(tenantId, ['sup', 'adm']);
+      allow write: if false; // solo el servidor escribe
+    }
+
+    // Módulo consola
+    match /tenants/{tenantId}/fichasWeb/{id} {
+      allow read: if false;
+      allow write: if false; // solo el servidor escribe
+    }
+    match /tenants/{tenantId}/secciones/{id} {
+      allow read: if false;
+      allow write: if false; // solo el servidor escribe
+    }
+    match /tenants/{tenantId}/carruseles/{id} {
+      allow read: if false;
+      allow write: if false; // solo el servidor escribe
+    }
+    match /tenants/{tenantId}/sitio/{id} {
+      allow read: if false;
+      allow write: if false; // solo el servidor escribe
+    }
+    match /tenants/{tenantId}/publicado/{id} {
+      allow read: if false;
+      allow write: if false; // solo el servidor escribe
+    }
+    match /tenants/{tenantId}/subidas/{id} {
+      allow read: if false;
+      allow write: if false; // solo el servidor escribe
+    }
+    match /tenants/{tenantId}/medios/{id} {
+      allow read: if false;
+      allow write: if false; // solo el servidor escribe
+    }
+    match /tenants/{tenantId}/uso/{id} {
+      allow read: if false;
+      allow write: if false; // solo el servidor escribe
+    }
+
+    // Negación final: todo lo no declarado queda inaccesible.
+    match /{document=**} {
+      allow read, write: if false;
+    }
+  }
+}

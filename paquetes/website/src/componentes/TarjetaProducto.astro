@@ -1,0 +1,37 @@
+---
+import Precio from '../islas/Precio';
+import BotonComprar from '../islas/BotonComprar';
+import Icono from './Icono.astro';
+import { contenido } from '../contenido/instancia';
+import type { Producto } from '../contenido/tipos';
+import { srcsetDe, TAMANOS_TARJETA } from '../lib/medios';
+import { rutaProducto } from '../lib/seo';
+
+interface Props { producto: Producto; nivelTitulo?: 2 | 3 }
+const { producto: p, nivelTitulo = 3 } = Astro.props;
+const { config, categorias } = contenido;
+const cat = categorias.find((c) => c.id === p.categoria);
+const foto = p.fotos[0];
+const resumen = p.descripcion.length > 140 ? `${p.descripcion.slice(0, 137).trimEnd()}…` : p.descripcion;
+const Titulo = nivelTitulo === 2 ? 'h2' : 'h3';
+---
+<article class="tarjeta" data-producto-id={p.id}>
+  <div class:list={['tarjeta-imagen', { agotado: !p.disponible }]}>
+    {foto !== undefined ? (
+      <img src={foto.url} srcset={srcsetDe(foto)} sizes={TAMANOS_TARJETA} alt="" loading="lazy" decoding="async" width="600" height="600" />
+    ) : (
+      <span class="tarjeta-sin-imagen"><Icono nombre={cat?.icono ?? 'cuadricula'} tamano={32} />IMAGEN DEL PRODUCTO</span>
+    )}
+    {cat !== undefined && <span class="tarjeta-etiqueta">{cat.nombre}</span>}
+    {!p.disponible && <span class="tarjeta-agotado">SIN STOCK</span>}
+  </div>
+  <div class="tarjeta-cuerpo">
+    <Titulo class="tarjeta-titulo"><a href={rutaProducto(p)}>{p.nombre}</a></Titulo>
+    <p class="tarjeta-descripcion">{resumen}</p>
+    <div class="tarjeta-pie">
+      <Precio client:visible usd={p.precioUsd} inicial={config.mercadoInicial} mercados={config.mercados} redondeo={config.redondeo} />
+      <BotonComprar client:visible id={p.id} nombre={p.nombre} disponible={p.disponible} whatsapp={config.whatsappNovuchat} />
+      <noscript><p class="aviso-estado">Activa JavaScript para ver el precio o consúltalo por WhatsApp.</p></noscript>
+    </div>
+  </div>
+</article>

@@ -1,0 +1,9 @@
+---
+interface Props { pasos: readonly { texto: string; href?: string }[] }
+const { pasos } = Astro.props;
+---
+<nav class="migas" aria-label="Ruta de navegación">
+  <ol>
+    {pasos.map((p, i) => <li>{p.href !== undefined && i < pasos.length - 1 ? <a href={p.href}>{p.texto}</a> : <span aria-current={i === pasos.length - 1 ? 'page' : undefined}>{p.texto}</span>}</li>)}
+  </ol>
+</nav>

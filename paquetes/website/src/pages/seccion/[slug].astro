@@ -1,0 +1,19 @@
+---
+import Base from '../../layouts/Base.astro';
+import Migas from '../../componentes/Migas.astro';
+import BloquesSeccion from '../../componentes/BloquesSeccion.astro';
+import { contenido } from '../../contenido/instancia';
+import { rutaSeccion } from '../../lib/seo';
+
+export function getStaticPaths() {
+  return contenido.secciones.map((s) => ({ params: { slug: s.slug }, props: { seccion: s } }));
+}
+const { seccion } = Astro.props;
+---
+<Base titulo={seccion.titulo} ruta={rutaSeccion(seccion.slug)}>
+  <div class="contenedor pagina">
+    <Migas pasos={[{ texto: 'Inicio', href: '/' }, { texto: seccion.titulo }]} />
+    <header class="encabezado-pagina"><h1 class="titulo-seccion">{seccion.titulo}</h1></header>
+    <BloquesSeccion bloques={seccion.bloques} />
+  </div>
+</Base>

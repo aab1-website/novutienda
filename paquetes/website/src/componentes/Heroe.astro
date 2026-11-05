@@ -1,0 +1,22 @@
+---
+import Carrusel from '../islas/Carrusel';
+import Icono from './Icono.astro';
+import { contenido } from '../contenido/instancia';
+
+const { config, portada, carruseles } = contenido;
+const [a, b, c] = portada.titulo;
+---
+<section class="heroe" aria-labelledby="titulo-heroe">
+  <div class="heroe-carrusel">
+    <Carrusel client:load fotos={carruseles[config.plantilla]} etiqueta="Fotos destacadas" decorativo />
+  </div>
+  <div class="contenedor heroe-contenido">
+    <p class="heroe-insignia"><Icono nombre="destello" tamano={14} />{portada.insignia}</p>
+    <h1 id="titulo-heroe">{a}<br /><span class="atenuado">{b}</span><span class="acento">{c}</span></h1>
+    <p class="heroe-texto">{portada.texto}</p>
+    <div class="heroe-botones">
+      <a class="boton boton-cta" href="/productos">{portada.textoBotonCatalogo} <Icono nombre="chevron" tamano={16} /></a>
+      <a class="boton boton-secundario" href="/contacto">{portada.textoBotonConsulta}</a>
+    </div>
+  </div>
+</section>

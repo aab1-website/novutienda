@@ -1,0 +1,72 @@
+---
+import Base from '../layouts/Base.astro';
+import Heroe from '../componentes/Heroe.astro';
+import Beneficios from '../componentes/Beneficios.astro';
+import Identidad from '../componentes/Identidad.astro';
+import TarjetaProducto from '../componentes/TarjetaProducto.astro';
+import Icono from '../componentes/Icono.astro';
+import { contenido } from '../contenido/instancia';
+import { productosDeCategoria, textoModelos } from '../contenido/consultas';
+import { jsonLdOrganizacion, rutaCategoria } from '../lib/seo';
+import { enlaceWhatsApp } from '../lib/whatsapp';
+
+const { config, categorias, productos, marcas } = contenido;
+const destacados = productos.filter((p) => p.destacado).slice(0, 6);
+const wa = enlaceWhatsApp(config.whatsappTienda, 'Hola, tengo una consulta.');
+---
+<Base titulo={config.nombre} descripcion={config.lema} ruta="/" datosEstructurados={[jsonLdOrganizacion(contenido)]}>
+  <Heroe />
+  <Beneficios />
+  <section id="productos" class="seccion categorias" aria-labelledby="titulo-categorias">
+    <div class="contenedor centrado">
+      <span class="etiqueta">Explora por categoría</span>
+      <h2 id="titulo-categorias" class="titulo-seccion">Nuestros productos</h2>
+      <p class="subtitulo">Elige una categoría para ver sus modelos y precios actualizados.</p>
+      <ul class="lista-categorias">
+        {categorias.map((c) => (
+          <li>
+            <a class="categoria-item" href={rutaCategoria(c.id)}>
+              <span class="icono-caja"><Icono nombre={c.icono} tamano={22} grosor={1.8} /></span>
+              <span class="categoria-info"><strong>{c.nombre}</strong><span>{textoModelos(productosDeCategoria(productos, c.id).length)}</span></span>
+              <span class="categoria-accion">VER PRECIOS</span>
+            </a>
+          </li>
+        ))}
+        <li>
+          <a class="categoria-item" href="/productos">
+            <span class="icono-caja"><Icono nombre="cuadricula" tamano={22} grosor={1.8} /></span>
+            <span class="categoria-info"><strong>Ver todos los productos</strong><span>{productos.length} productos en total</span></span>
+            <span class="categoria-accion">VER TODO</span>
+          </a>
+        </li>
+      </ul>
+      {destacados.length > 0 && (
+        <section class="destacados" aria-labelledby="titulo-destacados">
+          <h2 id="titulo-destacados">Productos destacados</h2>
+          <div class="grilla-productos">{destacados.map((p) => <TarjetaProducto producto={p} />)}</div>
+        </section>
+      )}
+      {marcas.length > 0 && (
+        <section class="marcas" aria-labelledby="titulo-marcas">
+          <h2 id="titulo-marcas">Marcas que trabajamos</h2>
+          <ul>{marcas.map((m) => <li>{m}</li>)}</ul>
+        </section>
+      )}
+    </div>
+  </section>
+  <Identidad />
+  <section id="contacto" class="seccion contacto-bloque" aria-labelledby="titulo-contacto-inicio">
+    <div class="contenedor contacto-interior">
+      <div class="identidad-texto">
+        <span class="etiqueta">Soporte y consultas</span>
+        <h2 id="titulo-contacto-inicio" class="titulo-seccion">Estamos para ayudarte</h2>
+        <p class="subtitulo">¿Tienes dudas sobre algún producto o quieres coordinar un envío? Escríbenos y te respondemos lo antes posible.</p>
+      </div>
+      <div class="tarjeta-contacto">
+        {wa !== null && <a class="boton boton-cta boton-ancho" href={wa} target="_blank" rel="noopener noreferrer"><Icono nombre="mensaje" tamano={18} />ESCRIBIR POR WHATSAPP</a>}
+        {config.telefono !== null && <a class="enlace-telefono" href={`tel:${config.telefono.replace(/[^+0-9]/g, '')}`}><Icono nombre="telefono" tamano={16} />Llamar al {config.telefono}</a>}
+        <a class="boton boton-secundario boton-ancho" href="/contacto">ENVIAR UN MENSAJE</a>
+      </div>
+    </div>
+  </section>
+</Base>
