@@ -277,6 +277,7 @@ gh api --method POST "repos/$OWNER/$REPO/environments/production/deployment-bran
 | `RECAPTCHA_CLAVE_SITIO` | Environment `staging` | clave de sitio de 8.2 |
 | `MEDIOS_BASE_URL` | Environment `staging` | **obligatoria** (https): ver 9.5; el despliegue falla si falta |
 | `FUNCIONES_SERVICE_ACCOUNT` | Environment `staging` | vacío (cuenta por defecto, si no tiene Editor) o la dedicada del paso 6.1 (obligatoria en la práctica en producción) |
+| `FIREBASE_DEPLOY_FORCE` | Environment `staging` (y `production`) | cualquier valor no vacío → `firebase deploy --force`. **Obligatoria**: la función `eventos` declara `retry: true` y firebase-tools exige `--force` para una política de fallo en modo no interactivo (3.er intento del primer despliegue, 05/11/2026). Aviso en el run: `--force` también borra Functions que ya no estén en el código |
 | `PROXY_SALTOS` | repositorio (opcional) | `2` por defecto: proxies que anteponen su IP en `X-Forwarded-For` (Hosting/Fastly + GFE). **Verificar en staging** con una petición real |
 | `VITE_RECAPTCHA_ENTERPRISE_SITE_KEY_STAGING` / `_PROD` | repositorio | clave de sitio de reCAPTCHA Enterprise (8.2) para el App Check del panel |
 | `VITE_FIREBASE_STORAGE_BUCKET_STAGING` / `_PROD` | repositorio | nombre del bucket de Storage del proyecto (`gcloud storage buckets list`) |
