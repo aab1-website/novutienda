@@ -56,8 +56,12 @@ gcloud services enable --project "$P" \
   eventarc.googleapis.com pubsub.googleapis.com cloudscheduler.googleapis.com secretmanager.googleapis.com \
   firestore.googleapis.com firebasestorage.googleapis.com storage.googleapis.com firebasehosting.googleapis.com \
   firebaserules.googleapis.com firebaseappcheck.googleapis.com recaptchaenterprise.googleapis.com \
-  identitytoolkit.googleapis.com iamcredentials.googleapis.com sts.googleapis.com monitoring.googleapis.com logging.googleapis.com
+  identitytoolkit.googleapis.com iamcredentials.googleapis.com sts.googleapis.com monitoring.googleapis.com logging.googleapis.com \
+  cloudbilling.googleapis.com firebaseextensions.googleapis.com
 ```
+
+`gcloud services enable` admite 20 servicios por llamada: partir en dos. `cloudbilling` y `firebaseextensions` las exige `firebase deploy`
+(comprueba el plan Blaze y lista extensiones) y la SA de despliegue no puede habilitarlas (primer despliegue, 05/11/2026).
 
 ## 3. Datos: Firestore, Storage y Auth
 
@@ -114,6 +118,16 @@ for rol in roles/cloudfunctions.developer roles/cloudscheduler.admin roles/datas
 done
 ```
 
+Agregado tras el primer despliegue (05/11/2026): un **rol personalizado mínimo** para publicar funciones HTTPS invocables (la CLI
+exige `cloudfunctions.functions.setIamPolicy` para `api`; «Cloud Functions Admin» sería mucho más amplio):
+
+```bash
+gcloud iam roles create despliegueFuncionesIam --project "$P" --title "NovuTienda: IAM de Functions en despliegue" \
+  --permissions cloudfunctions.functions.getIamPolicy,cloudfunctions.functions.setIamPolicy --stage GA
+gcloud projects add-iam-policy-binding "$P" --member "serviceAccount:${SA_DEPLOY}" \
+  --role "projects/${P}/roles/despliegueFuncionesIam" --condition=None --quiet
+```
+
 Agregado tras el primer despliegue (05/11/2026): **`roles/firebase.viewer`**. Sin él, `firebase deploy --only storage` consulta
 `firebasestorage.googleapis.com/v1alpha/projects/<P>/defaultBucket` como la SA, recibe 404 y la CLI lo traduce a «Firebase Storage has
 not been set up» aunque el bucket exista y esté vinculado. Es solo lectura del proyecto Firebase.
@@ -166,13 +180,25 @@ Si aparece `roles/editor`, se informa a Andres: quitarlo exige darle antes los r
 política IAM del proyecto, y no debe poder):
 
 ```bash
+# El agente de Cloud Storage no existe hasta aprovisionarlo (si no, «Service account … does not exist»):
+AG_GCS=$(gcloud storage service-agent --project "$P" | tr -d '[:space:]')
 # Disparador de Storage (subidaFinalizada): el agente de Cloud Storage publica en Pub/Sub.
+gcloud projects add-iam-policy-binding "$P" --condition=None --quiet --member "serviceAccount:${AG_GCS}" --role roles/pubsub.publisher
+# El agente de Pub/Sub firma los tokens de entrega.
 gcloud projects add-iam-policy-binding "$P" --condition=None --quiet \
-  --member "serviceAccount:service-${NUM}@gs-project-accounts.iam.gserviceaccount.com" --role roles/pubsub.publisher
-# Disparadores de Eventarc (eventos, subidaFinalizada): la SA de ejecución recibe los eventos.
+  --member "serviceAccount:service-${NUM}@gcp-sa-pubsub.iam.gserviceaccount.com" --role roles/iam.serviceAccountTokenCreator
+# firebase-tools verifica estos dos sobre la cuenta de cómputo por defecto aunque las funciones corran con la dedicada:
 gcloud projects add-iam-policy-binding "$P" --condition=None --quiet \
-  --member "serviceAccount:${SA_FN}" --role roles/eventarc.eventReceiver
+  --member "serviceAccount:${NUM}-compute@developer.gserviceaccount.com" --role roles/run.invoker
+gcloud projects add-iam-policy-binding "$P" --condition=None --quiet \
+  --member "serviceAccount:${NUM}-compute@developer.gserviceaccount.com" --role roles/eventarc.eventReceiver
+# Disparadores de Eventarc (eventos, subidaFinalizada): la SA de ejecución recibe los eventos e invoca el servicio.
+gcloud projects add-iam-policy-binding "$P" --condition=None --quiet --member "serviceAccount:${SA_FN}" --role roles/eventarc.eventReceiver
+gcloud projects add-iam-policy-binding "$P" --condition=None --quiet --member "serviceAccount:${SA_FN}" --role roles/run.invoker
 ```
+
+Verificado en el primer despliegue (05/11/2026): sin los cuatro primeros, `firebase deploy` se detiene con «Failed to verify the project has
+the correct IAM bindings» y los nombra. Uno por comando: el clasificador de Claude Code bloquea los bucles de concesión.
 
 ## 7. Secretos de las Functions (Secret Manager) [gratis hasta 6 versiones activas; son 3]
 
@@ -323,6 +349,11 @@ firebase functions:artifacts:setpolicy --location us-east1 --days 1 --project "$
 3. El CI corre `desplegar-staging` → humo (sitio `/healthz`, sitio `/` y panel con CSP y HSTS) → `dast-y-humo` (ZAP baseline sobre el sitio).
    [$: Cloud Build y Artifact Registry por cada despliegue de Functions.]
 4. Claude lee el run (`gh run view --log-failed` si falla), lo informa con su resultado real y corrige lo mínimo sin debilitar controles.
+5. **Fallos de «primera vez» esperables** (05/11/2026): Cloud Build de las primeras funciones puede fallar con `Repository "gcf-artifacts" not
+   found` (la misma pasada lo crea) y los disparadores de Eventarc con «Permission denied while using the Eventarc Service Agent … may take
+   a few minutes»: se relanza el job fallido (`gh run rerun <id> --failed`) sin tocar nada. Con el repositorio ya creado se fija la política
+   de limpieza (paso 10). La función `api` declara `invoker: 'public'` en el código: sin eso, Hosting devuelve 403 en `/api/**` y 404 en
+   `/healthz` aunque todo esté desplegado, y el humo falla.
 
 Lección del primer despliegue (05/11/2026): firebase-tools 15.x en modo no interactivo exige en el dotenv un valor para **todo**
 parámetro `defineString/defineBoolean`, aunque tenga `default` en `config.ts`. `preparar-despliegue-firebase.sh` escribe los valores por
