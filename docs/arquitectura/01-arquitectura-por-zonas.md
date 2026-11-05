@@ -45,7 +45,7 @@ El sistema se ordenó por **paquete funcional** (qué hace cada pieza). La arqui
 | **Central** | Lo que todo comercio ve igual en su panel y su cuenta, tenga los módulos que tenga: sesión, login, menú, usuarios y roles, configuración del negocio, transporte de callables, App Check | NovuTienda | `paquetes/panel/src/{ui,sesion,api,appcheck,subidas,util/menu}`, `pantallas/{usuarios,configuracion}`, acciones de usuarios de `llamadas/consola.ts` |
 | **Plataforma** | Lo que ve solo el operador de NovuTienda: alta de tenant, planes, propietario, tokens de integraciones, andamiaje de despliegue | NovuTienda | claim `p`, acciones `propietario: true`, `listarTenants`, `scripts/`, `plataforma/funciones/scripts/` |
 | **Módulos** | Lo que se enciende por tenant con manifiesto y límite por plan: inventarios, pos, recibos, consola (catálogo y sitio), website | NovuTienda, un módulo a la vez, con versión | `paquetes/<m>` + su borde en `plataforma/funciones/servidor/llamadas/<m>.ts` + su interfaz en `panel/src/pantallas/*` |
-| **Tenants** | Datos de un cliente: `tenants/{t}/…` en Firestore, `CLIENTES/<T>/` fuera del repo. **Nunca código** | El comercio desde el panel; NovuTienda desde Plataforma | `tenants/casa-bermejo/config.json` (hoy nadie lo lee) |
+| **Tenants** | Datos y configuración **declarativa** de un cliente: `tenants/{t}/…` en Firestore, `tenants/<t>/config.json` en el repo, `CLIENTES/<T>/` fuera del repo. **Nunca lógica**: la configuración se valida contra los tipos de `paquetes/nucleo/src/extension` (que son del núcleo, no del tenant) | El comercio desde el panel; NovuTienda desde Plataforma | `tenants/casa-bermejo/config.json` (hoy nadie lo lee); `CLAUDE.md` l. 71 se alinea con esta redacción en T0 |
 
 Piezas con nombre propio: **registro** (`plataforma/registro.ts`), **coordinador** (`plataforma/adaptadores`: puertos módulo↔módulo y bus de eventos; `plataforma/funciones/servidor/{index,entorno,marco}`: composición y borde de ejecución) y **conectores** (`adaptadores/firebase/*`, `http/novuchat.ts`, `http/sitio.ts`, parsers BCB/BNA/BCRA).
 
@@ -58,6 +58,19 @@ Piezas con nombre propio: **registro** (`plataforma/registro.ts`), **coordinador
 6. ¿Conecta dos zonas, coordina varias o habla con un sistema externo? → Coordinador o conector, nombrado.
 
 **Dependencias permitidas:** Módulos → Central → Núcleo; Plataforma → Central, Núcleo; un módulo → otro solo si su manifiesto lo declara (`dependeDe`); Núcleo → nada de arriba; Tenants = datos. El coordinador conoce a todas, solo a través del registro. Los conectores dependen de la zona a la que sirven, nunca al revés.
+
+**Regla de frontera para `plataforma/` y `pruebas/` (enmienda H0, 05/11/2026).** Hoy `pruebas/fronteras/verificador.ts` solo vigila `paquetes/` y `tenants/`, y en `plataforma/` un cruce es sintácticamente igual a un import legítimo del compositor. Por eso la zona se declara **por archivo**, no se infiere: T0 agrega `pruebas/fronteras/zonas.ts` con un mapa `ZONA_POR_ARCHIVO` (patrones de ruta → zona y, para módulos, el id del módulo) que cubre **todo** archivo de `plataforma/` y `pruebas/`; `fronteras.test.ts` falla si un archivo no tiene zona. Reglas por zona declarada:
+
+| Zona declarada | Puede importar | Ejemplos de archivos |
+|---|---|---|
+| `coordinador` | todo, pero los módulos solo a través de `plataforma/registro.ts` y de los puertos de `plataforma/adaptadores` | `servidor/{index,entorno,config,origen,serializar,bus}.ts`, `llamadas/marco.ts`, `programadas/tenants.ts`, `adaptadores/*.ts` (puertos y consumidores) |
+| `modulo:<m>` (borde) | `@novutienda/nucleo`, `@novutienda/<m>`, Central y los puertos del coordinador | `llamadas/{pos,inventarios,recibos,consola,medios}.ts`, `programadas/consola.ts`, `trigger-medios.ts`, `disparador-sitio.ts`, `enlace-pdf.ts` |
+| `central` | núcleo y coordinador | `llamadas/usuarios.ts` |
+| `nucleo` (en ejecución) | `@novutienda/nucleo` | `programadas/cotizacion.ts`, `redondeo.ts`, `notificador.ts` |
+| `conector:<nombre>` | núcleo y la zona a la que sirve | `http/novuchat.ts` (sirve a inventarios y consola), `http/sitio.ts` (consola), `adaptadores/firebase/*` (infra de todos), parsers de bancos |
+| `pruebas:<zona>` | lo mismo que la zona que prueba, más dobles | `pruebas/funciones`, `pruebas/integracion` → coordinador; `pruebas/panel` → central y módulos; `pruebas/<m>` → `modulo:<m>`; `pruebas/{identidad,limites,tipo-cambio,reglas,tenant}` → núcleo; `pruebas/fronteras` → método |
+
+Los cruces heredados se listan en `pruebas/fronteras/deuda.json` (ruta, import, zona violada) y la prueba exige que la lista **solo baje**. Deuda inicial conocida: `limiteMemoria`/`LimiteTasa` importados de `website` (5 archivos, no 1), `verificarFirma` de `inventarios` en `http/sitio.ts`, `ActorPos` de `pos` en `llamadas/marco.ts`.
 
 ## 4. Contratos entre zonas (los que hoy son implícitos se escriben)
 
@@ -74,14 +87,16 @@ Piezas con nombre propio: **registro** (`plataforma/registro.ts`), **coordinador
 ## 5. Inventario: pieza → zona → destino (resumen; el detalle lo da `scripts/zonas.mjs`)
 
 Piezas que responden «sí» a dos preguntas y su partición:
-1. **`paquetes/panel`** (Central + interfaz de 4 módulos): `src/pantallas/<modulo>/` por módulo (pos: `venta*`, `supervision`, `aprobaciones`; inventarios: `inventario*`, `mermas`; consola: `catalogo*`; recibos: `recibos`); lo demás queda Central. Primero solo carpetas; que el registro aporte las pantallas es lógica (fase L2).
-2. **`llamadas/consola.ts` → acciones de usuarios** (`buscarUsuarioPorCorreo`, `asignarRol`, `quitarRol`; Central + Plataforma dentro de un callable de módulo): a `llamadas/usuarios.ts`, compuesto en `index.ts` para no cambiar el contrato del panel.
-3. **`programadas.ts`** (Núcleo + Consola + Plataforma): `programadas/cotizacion.ts`, `programadas/consola.ts`, `programadas/tenants.ts`.
+1. **`paquetes/panel`** (Central + interfaz de 4 módulos): `src/pantallas/<modulo>/` por módulo (pos: `venta*`, `supervision`, `aprobaciones`; inventarios: `inventario*`, `mermas`; consola: `catalogo*`; recibos: `recibos`), **y también** las piezas de módulo fuera de `pantallas/` (enmienda H0): `src/subidas/` (consola), `ui/recibo.tsx` (recibos), `util/{arqueo,pagos}.ts` (pos), `util/plantillas-vista.ts` (consola), `doble/{pos,inventario}.ts` (dobles de módulo, a `pruebas/`) y la parte por módulo de `api/real.ts` (se parte por módulo o se deja como transporte central con una tabla por módulo). Lo demás queda Central. Primero solo carpetas; que el registro aporte las pantallas es lógica (fase L2).
+2. **`llamadas/consola.ts` → acciones de usuarios** (`listarUsuarios`, `buscarUsuarioPorCorreo`, `asignarRol`, `quitarRol`; Central + Plataforma dentro de un callable de módulo): a `llamadas/usuarios.ts`, compuesto en `index.ts` para no cambiar el contrato del panel.
+3. **`programadas.ts`** (Núcleo + Consola + coordinador): `programadas/cotizacion.ts` (núcleo), `programadas/consola.ts` (módulo), `programadas/tenants.ts` (`listarTenants`, `porTenant`: recorre tenants para ejecutar lo de cada zona → **coordinador**, no Plataforma; enmienda H0).
 4. **`adaptadores/bandeja-memoria.ts`** (coordinador de producción + doble de pruebas): `consumidores.ts` y `pruebas/integracion/bandeja-memoria.ts`.
 5. **`website/src/api/limite-tasa.ts`** y **`verificarFirma` de inventarios** (núcleo dentro de módulos, usados por conectores): al núcleo, con reexportación transitoria.
 6. **Datos sin dueño**: `alertas` (→ núcleo), `reconstrucciones` (→ consola), `novuchatTokens` y `limitesTasa` (→ manifiesto de plataforma/conectores, que no existe), rutas de Storage `privado/` y `publico/` (→ `storage.rules` generado). Es lógica: regenera reglas (fase L1).
 
-Cruces de importación hoy: `funciones/index.ts` importa `limiteMemoria` de `website`; `http/sitio.ts` importa `verificarFirma` de `inventarios`; `llamadas/marco.ts` tipa con `ActorPos` de `pos`. `fronteras.test.ts` no los ve porque solo vigila `paquetes/` y `tenants/`.
+Cruces de importación hoy: `limiteMemoria`/`LimiteTasa` de `website` en 5 archivos de `plataforma/` (entre ellos `funciones/index.ts`); `http/sitio.ts` importa `verificarFirma` de `inventarios`; `llamadas/marco.ts` tipa con `ActorPos` de `pos`. `fronteras.test.ts` no los ve porque solo vigila `paquetes/` y `tenants/` (§3, regla de frontera).
+
+Piezas de `plataforma/funciones/servidor/` sin zona en la primera versión (enmienda H0), ahora asignadas: `llamadas/medios.ts` y `trigger-medios.ts` → `modulo:consola`; `enlace-pdf.ts` → `modulo:recibos`; `disparador-sitio.ts` → `modulo:consola`; `redondeo.ts` y `notificador.ts` → núcleo; `bus.ts`, `config.ts`, `origen.ts`, `serializar.ts`, `entorno.ts`, `index.ts`, `llamadas/marco.ts` → coordinador. El inventario completo por archivo lo genera `scripts/zonas.mjs` en T0 a partir de `ZONA_POR_ARCHIVO`, y la revisora lo comprueba en H1 antes de T1: ningún archivo sin zona.
 
 Zona sin nombre: `scripts/`, `plataforma/funciones/scripts/`, `deploy.sh`, `security-local.sh` son Plataforma (andamiaje del operador). `CODEOWNERS` es la plantilla del estándar y no refleja las carpetas reales.
 
@@ -97,17 +112,25 @@ Opción A (un proyecto Firebase, `tenants/{t}`); repo público modo A; alcance =
 4. Las tres cosas del método que faltan se hacen **primero** (tanda 0): docs por zona, agentes por zona con gancho de escritura, medición generada.
 5. Encendido por tenant en runtime (fase L2) antes del segundo tenant, no antes.
 
-### 6.3 Para Andres (botones)
-1. Adoptar las cinco zonas y la prueba de ubicación como regla de `CLAUDE.md`.
-2. Cuándo ejecutar las tandas: después del primer despliegue a staging (recomendado) o en paralelo.
-3. Sesión **revisora** separada que compruebe cada hito (como en NovuChat) o la misma sesión principal con el agente `revisor-codigo`.
-4. Fase L2 (encendido por tenant y pantallas desde el registro) ahora o cuando llegue el segundo tenant.
+### 6.3 Decididas por Andres el 05/11/2026 (botones)
+1. Adoptar las cinco zonas y la prueba de ubicación como regla de `CLAUDE.md`: **sí**.
+2. Cuándo ejecutar las tandas: **después del primer despliegue a staging**.
+3. Quién comprueba cada hito: **sesión revisora separada** (iniciada el 05/11; H0 = este documento, APROBADO CON OBSERVACIONES, incorporadas como enmiendas marcadas «H0»).
+4. Fase L2 (encendido por tenant y pantallas desde el registro): **antes del segundo tenant**, no antes (recomendación 6.2.5 aceptada por omisión; se confirma con botón al cerrar H2).
+
+### 6.4 Enmiendas de la revisión H0 (05/11/2026)
+- Código en tenants: `tenants/<t>/` lleva datos y configuración declarativa validada por tipos del núcleo (`nucleo/extension`); nunca lógica. `CLAUDE.md` l. 71 se reescribe así en T0.
+- `listarTenants`/`porTenant` son coordinador, no Plataforma.
+- Son cuatro acciones de usuarios (incluye `listarUsuarios`).
+- `LimiteTasa` se importa de `website` en 5 archivos.
+- Quién autoriza cada fusión: **Andres, con un botón por PR**; la aprobación en GitHub la ejecuta Claude como `segurolotengopy` con constancia; la revisora comprueba el hito, no el PR.
+- `fronteras.test.ts` entra también al pre-commit en T0; `ESTADO.md` se actualiza o se retira en T0 (el estado vivo pasa a `scripts/zonas.mjs`).
 
 ## 7. Camino, por tandas y fases
 
 | # | Qué | Prueba | Despliega | Jornadas |
 |---|---|---|---|---|
-| **T0** | Sin mover archivos: `docs/arquitectura/{zonas,coordinador}.md`; `CODEOWNERS` real; `scripts/zonas.mjs` (medición y lista de cruces, solo lectura); agentes por zona en `.claude/agents/` (`nucleo`, `central`, `plataforma`, `modulo`, `coordinador`, `metodo`, `planificador`, `implementador`, `revisor-codigo`) y gancho de zona de escritura; `CLAUDE.md` con la regla de zonas | `fronteras.test.ts` ampliado a `plataforma/` y `pruebas/` con lista de deuda que solo baja | no | 1 |
+| **T0** | Sin mover archivos: `pruebas/fronteras/zonas.ts` (`ZONA_POR_ARCHIVO`, §3) y `deuda.json`; `docs/arquitectura/{zonas,coordinador}.md`; `CODEOWNERS` real; `scripts/zonas.mjs` (tabla pieza→zona completa y cruces, solo lectura); agentes por zona en `.claude/agents/` (`nucleo`, `central`, `plataforma`, `modulo`, `coordinador`, `metodo`, `planificador`, `implementador`, `revisor-codigo`) y gancho de zona de escritura probado con un intento fuera de carpeta; `CLAUDE.md` con la regla de zonas, sin cifras; pre-commit con fronteras; `ESTADO.md` actualizado o retirado | `fronteras.test.ts` ampliado a `plataforma/` y `pruebas/` con zona por archivo y deuda que solo baja; ningún archivo sin zona | no | 1,5 |
 | **T1** | Partir `programadas.ts` y sacar las acciones de usuarios de `llamadas/consola.ts` | funciones 123/123 sin tocar casos | no | 0,5 |
 | **T2** | `panel/src/pantallas/<modulo>/` | build del panel, pruebas del panel | no | 0,5 |
 | **T3** | `bandeja-memoria` → `consumidores` + doble en pruebas; renombrar `plataforma/adaptadores` → `plataforma/coordinador`, `adaptadores/firebase` → `plataforma/conectores/firebase` | integración y cobertura | no | 0,5 |
@@ -121,16 +144,18 @@ Cada PR declara costo en tres unidades: escrituras en GitHub y corridas de CI, e
 
 | Agente | Zona de escritura | Tandas |
 |---|---|---|
-| `metodo` | `docs/`, `.claude/`, `CLAUDE.md`, `CODEOWNERS`, `scripts/zonas.mjs` | T0 |
-| `coordinador` | `plataforma/funciones/servidor/`, `plataforma/adaptadores|coordinador/` | T1, T3 |
-| `central` | `paquetes/panel/src/` salvo `pantallas/<modulo>/` | T2 |
-| `modulo:<m>` | `paquetes/<m>/`, `panel/src/pantallas/<m>/`, `llamadas/<m>.ts`, `pruebas/<m>/` | T2, L1, L2 |
-| `nucleo` | `paquetes/nucleo/`, `pruebas/{identidad,limites,tipo-cambio,reglas}/` | T4, L1 |
+| `metodo` | `docs/`, `.claude/`, `CLAUDE.md`, `CODEOWNERS`, `scripts/zonas.mjs`, `pruebas/fronteras/` | T0 |
+| `coordinador` | `plataforma/funciones/servidor/` (salvo los archivos de módulo y `llamadas/usuarios.ts`), `plataforma/adaptadores|coordinador/`, `pruebas/{funciones,integracion}/` | T1, T3 |
+| `central` | `paquetes/panel/src/` salvo las piezas de módulo (§5.1), `llamadas/usuarios.ts`, `pruebas/panel/` | T1, T2 |
+| `modulo:<m>` | `paquetes/<m>/`, `panel/src/pantallas/<m>/` y sus piezas (§5.1), `llamadas/<m>.ts` (consola incluye `medios.ts`, `trigger-medios.ts`, `disparador-sitio.ts`; recibos incluye `enlace-pdf.ts`), `pruebas/<m>/` | T2, L1, L2 |
+| `nucleo` | `paquetes/nucleo/`, `redondeo.ts`, `notificador.ts`, `programadas/cotizacion.ts`, `pruebas/{identidad,limites,tipo-cambio,reglas,tenant}/` | T4, L1 |
 | `seguridad` | solo lectura | cada PR que toque reglas, IAM, secretos o Functions expuestas |
 
 **Regla de integración dura** (nada se fusiona si falla una): `fronteras.test.ts` y `registro.test.ts` en verde; todas las suites sin quitar un caso (en tandas T, sin tocar su contenido); `reglas:verificar` idéntico en tandas T; costo declarado; revisión de `seguridad` cuando toque. Un escritor por archivo; ramas desde `main`; un PR por tanda; la sesión principal concilia `CLAUDE.md` y `docs/`.
 
-**Hitos:** H0 = este documento aprobado; H1 = T0 fusionada (frontera ampliada en CI); H2 = T1–T4 fusionadas (cero cruces en la medición); H3 = L1; H4 = L2. Cada hito se cierra con informe (PR, sha, números reales, costo, lo que quedó fuera, lo que el plano tenía mal) y espera el OK de Andres.
+**Quién autoriza:** cada fusión de tanda la autoriza Andres con un botón por PR (aprobación en GitHub ejecutada por Claude como `segurolotengopy`, con constancia); la revisora comprueba el hito contra este documento y el código antes de que Andres autorice la fase siguiente.
+
+**Hitos:** H0 = este documento aprobado (05/11/2026, con observaciones incorporadas); H1 = T0 fusionada (frontera ampliada en CI); H2 = T1–T4 fusionadas (cero cruces en la medición); H3 = L1; H4 = L2. Cada hito se cierra con informe (PR, sha, números reales, costo, lo que quedó fuera, lo que el plano tenía mal) y espera el OK de Andres.
 
 ## 9. Cómo se sostiene
 
