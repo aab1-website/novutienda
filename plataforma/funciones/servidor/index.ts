@@ -113,9 +113,22 @@ function configRouter(e: ReturnType<typeof entorno>): ConfigRouter {
 // `invoker: 'public'` explícito: Hosting reescribe `/api/**` y `/healthz` a esta función sin credencial, y la
 // autenticación (App Check, token NovuChat, firma HMAC) la hace la propia función por ruta. En el primer despliegue a
 // staging (05/11/2026) la función quedó sin `allUsers` como invocador y el sitio respondía 403/404 en esas rutas.
+/**
+ * Cabeceras de seguridad que la función pone en TODA respuesta, también en las de error. Hosting solo agrega las de
+ * `firebase.json` a las respuestas 2xx de una reescritura: en staging (05/11/2026) `/api/cotizacion` → 503 y `/api/` → 404
+ * salían sin HSTS y el DAST (ZAP 10035) lo marcó FAIL. Mismos valores que la regla `**` del sitio.
+ */
+export const CABECERAS_SEGURIDAD_API: Readonly<Record<string, string>> = {
+  'Strict-Transport-Security': 'max-age=31536000; includeSubDomains',
+  'X-Content-Type-Options': 'nosniff',
+  'Referrer-Policy': 'strict-origin-when-cross-origin',
+  'X-Frame-Options': 'DENY',
+};
+
 export const api = onRequest(
   { memory: '512MiB', cors: false, invoker: 'public', secrets: [SECRETOS.pedidos, SECRETOS.reconstruccion, SECRETOS.salLimite] },
   async (req, res) => {
+    res.set(CABECERAS_SEGURIDAD_API);
     try {
       const e = entorno();
       const r = await enrutar(e, aPeticion(req), configRouter(e));

@@ -50,6 +50,15 @@ describe.skipIf(!hayEmulador)('API HTTP (emulador)', () => {
     }
   });
 
+  it('toda respuesta lleva HSTS y nosniff, también las de error (Hosting solo las agrega a las 2xx reescritas)', async () => {
+    for (const [ruta, estado] of [['/api/no-existe', 404], ['/api/salud', 200]] as const) {
+      const r = await http(ruta);
+      expect(r.status).toBe(estado);
+      expect(r.cabeceras.get('strict-transport-security')).toBe('max-age=31536000; includeSubDomains');
+      expect(r.cabeceras.get('x-content-type-options')).toBe('nosniff');
+    }
+  });
+
   describe('rutas públicas del sitio', () => {
     it('cotización vigente', async () => {
       const r = await http('/api/cotizacion?mercado=BO');
