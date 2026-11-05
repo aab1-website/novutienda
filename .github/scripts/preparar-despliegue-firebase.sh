@@ -54,6 +54,19 @@ for nombre in TENANT_ID APP_CHECK_EXIGIDO RECAPTCHA_CLAVE_SITIO SITIO_URL MEDIOS
   [[ "$valor" != *$'\n'* ]] || error "El parámetro $nombre contiene un salto de línea."
   [[ -z "$valor" ]] || printf '%s=%s\n' "$nombre" "$valor" >>"$parametros"
 done
+# firebase-tools (15.x) en modo no interactivo exige un valor en el dotenv para TODO parámetro definido con
+# defineString/defineBoolean, aunque tenga `default` en el código (primer despliegue a staging, 05/11/2026: «In
+# non-interactive mode but have no value for … PROXY_SALTOS, RECAPTCHA_MODO, …»). Se escriben los mismos valores por
+# defecto de plataforma/funciones/servidor/config.ts para los que no llegaron por variable; mantener ambas listas iguales.
+declare -A POR_DEFECTO=(
+  [PROXY_SALTOS]=2 [RECAPTCHA_MODO]=real [APP_CHECK_MODO]=real [FFMPEG_PATH]= [FFPROBE_PATH]=
+  [CONTACTO_MAXIMO]=5 [CONTACTO_VENTANA_SEG]=600 [NOVUCHAT_MAXIMO_POR_MINUTO]=120
+  [DISPONIBILIDAD_MAXIMO_POR_MINUTO]=60 [CONTACTO_MAXIMO_POR_MINUTO]=30
+  [RECAPTCHA_CLAVE_SITIO]= [FUNCIONES_SERVICE_ACCOUNT]=
+)
+for nombre in "${!POR_DEFECTO[@]}"; do
+  grep -q "^${nombre}=" "$parametros" || printf '%s=%s\n' "$nombre" "${POR_DEFECTO[$nombre]}" >>"$parametros"
+done
 echo "FUNCIONES_PARAMETROS=$parametros" >>"${GITHUB_ENV:-/dev/null}"
 export FUNCIONES_PARAMETROS="$parametros"
 node plataforma/funciones/scripts/empaquetar.mjs

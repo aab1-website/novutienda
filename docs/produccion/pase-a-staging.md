@@ -114,6 +114,10 @@ for rol in roles/cloudfunctions.developer roles/cloudscheduler.admin roles/datas
 done
 ```
 
+Agregado tras el primer despliegue (05/11/2026): **`roles/firebase.viewer`**. Sin él, `firebase deploy --only storage` consulta
+`firebasestorage.googleapis.com/v1alpha/projects/<P>/defaultBucket` como la SA, recibe 404 y la CLI lo traduce a «Firebase Storage has
+not been set up» aunque el bucket exista y esté vinculado. Es solo lectura del proyecto Firebase.
+
 Porqué de cada uno: `cloudfunctions.developer` crea y actualiza las Functions v2; `cloudscheduler.admin`, los tres trabajos programados;
 `datastore.indexAdmin`, índices compuestos y la política TTL de `firestore.indexes.json`; `secretmanager.viewer`, firebase-tools comprueba
 que los secretos de `defineSecret` existen y quién los puede leer; `serviceusage.serviceUsageViewer`, firebase-tools consulta las APIs
@@ -318,6 +322,10 @@ firebase functions:artifacts:setpolicy --location us-east1 --days 1 --project "$
 3. El CI corre `desplegar-staging` → humo (sitio `/healthz`, sitio `/` y panel con CSP y HSTS) → `dast-y-humo` (ZAP baseline sobre el sitio).
    [$: Cloud Build y Artifact Registry por cada despliegue de Functions.]
 4. Claude lee el run (`gh run view --log-failed` si falla), lo informa con su resultado real y corrige lo mínimo sin debilitar controles.
+
+Lección del primer despliegue (05/11/2026): firebase-tools 15.x en modo no interactivo exige en el dotenv un valor para **todo**
+parámetro `defineString/defineBoolean`, aunque tenga `default` en `config.ts`. `preparar-despliegue-firebase.sh` escribe los valores por
+defecto de los que no llegan por variable; si se agrega un parámetro en `config.ts`, hay que agregarlo también allí.
 
 Antes del primer despliegue: cargar las variables de 9.3 (incluidas las `VITE_*` nuevas, `MEDIOS_BASE_URL` y `TENANT_ID`); sin ellas `construir` o el paso de configuración
 del despliegue fallan a propósito. Verificar en staging el origen del límite de tasa (`PROXY_SALTOS`) con una petición real a `/api/contacto`.
