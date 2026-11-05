@@ -61,7 +61,9 @@ on:
         default: ''
     secrets:
       GITLEAKS_LICENSE:
-        description: Licencia gratuita de Gitleaks (solo repos de organización)
+        description: >-
+          Sin uso desde que el job secretos corre el binario libre de gitleaks (sin licencia).
+          Se conserva para no romper a los callers que lo mapean.
         required: false
       SNYK_TOKEN:
         description: Token de Snyk (opcional; activa el job snyk)
@@ -383,10 +385,6 @@ jobs:
     timeout-minutes: 15
     permissions:
       contents: read
-      # gitleaks-action lista los commits del PR (GET pulls/{n}/commits). En un repositorio
-      # privado, sin este permiso la API responde 403 «Resource not accessible by integration»
-      # y Gitleaks falla. Es solo lectura; los comentarios en el PR siguen desactivados.
-      pull-requests: read
     steps:
       - name: Checkout con historial completo
         uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
@@ -403,17 +401,40 @@ jobs:
       - name: Aplicar .gitleaksignore generado
         run: cp excepciones-generadas/gitleaksignore .gitleaksignore
 
-      - name: Gitleaks
-        uses: gitleaks/gitleaks-action@e0c47f4f8be36e29cdc102c57e68cb5cbf0e8d1e # v3
+      # gitleaks-action exige licencia (GITLEAKS_LICENSE) cuando el repositorio pertenece a
+      # una organización. El binario es software libre (MIT): se descarga fijado por versión
+      # y suma SHA-256 (misma versión que security-local.sh del estándar) y se corre sobre
+      # todo el historial, con la misma configuración y el .gitleaksignore generado.
+      # Misma solución que AAB1_EMPRESA (gobierno.yml), sin cuenta ni secreto.
+      - name: Gitleaks (binario fijado, historial completo)
         env:
-          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-          GITLEAKS_CONFIG: .github/gitleaks.toml
-          # Obligatoria SOLO cuando el repositorio pertenece a una organización
-          # (licencia gratuita en gitleaks.io). En cuentas personales queda vacía.
-          GITLEAKS_LICENSE: ${{ secrets.GITLEAKS_LICENSE }}
-          GITLEAKS_ENABLE_SUMMARY: 'true'
-          GITLEAKS_ENABLE_UPLOAD_ARTIFACT: 'true'
-          GITLEAKS_ENABLE_COMMENTS: 'false'
+          GITLEAKS_VERSION: 8.30.1
+          GITLEAKS_SHA256: 551f6fc83ea457d62a0d98237cbad105af8d557003051f41f3e7ca7b3f2470eb
+        run: |
+          set -euo pipefail
+          curl -sSL -o /tmp/gitleaks.tgz "https://github.com/gitleaks/gitleaks/releases/download/v${GITLEAKS_VERSION}/gitleaks_${GITLEAKS_VERSION}_linux_x64.tar.gz"
+          echo "${GITLEAKS_SHA256}  /tmp/gitleaks.tgz" | sha256sum -c -
+          tar -xzf /tmp/gitleaks.tgz -C /tmp gitleaks
+          set +e
+          /tmp/gitleaks git --no-banner --redact --exit-code 1 --config .github/gitleaks.toml \
+            --report-format sarif --report-path gitleaks.sarif .
+          rc=$?
+          set -e
+          if [[ "$rc" -eq 0 ]]; then
+            echo "### Gitleaks ${GITLEAKS_VERSION}: sin secretos en el historial" >> "$GITHUB_STEP_SUMMARY"
+          else
+            echo "### Gitleaks ${GITLEAKS_VERSION}: HALLAZGOS (ver artifact gitleaks-sarif)" >> "$GITHUB_STEP_SUMMARY"
+          fi
+          exit "$rc"
+
+      - name: Subir informe SARIF de Gitleaks
+        if: always()
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7
+        with:
+          name: gitleaks-sarif-${{ github.run_id }}-${{ github.run_attempt }}-${{ needs.preparar.outputs.slug }}
+          path: gitleaks.sarif
+          if-no-files-found: ignore
+          retention-days: 7
 
   # ---------------------------------------------------------------------------
   # sast: Semgrep CE dentro del contenedor oficial (returntocorp/semgrep-action
