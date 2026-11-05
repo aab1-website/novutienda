@@ -87,14 +87,6 @@
       "nota": "`limiteMemoria`/`LimiteTasa` viven en website; van al núcleo."
     },
     {
-      "archivo": "plataforma/funciones/servidor/llamadas/marco.ts",
-      "importacion": "@novutienda/pos",
-      "zona": "coordinador",
-      "destino": "modulo:pos",
-      "resuelveEn": "T1",
-      "nota": "El marco de callables tipa con `ActorPos`; el tipo pasa al núcleo o `actorPos` a `llamadas/pos.ts`."
-    },
-    {
       "archivo": "pruebas/consola/alineacion.test.ts",
       "importacion": "@novutienda/inventarios",
       "zona": "pruebas:modulo:consola",

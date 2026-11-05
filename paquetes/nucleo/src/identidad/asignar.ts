@@ -64,6 +64,12 @@ export interface Actor {
   readonly claims: unknown;
 }
 
+/** Quien opera con rol ya resuelto: su rol sale del claim ya verificado por el borde (callable). Los módulos lo reexportan con su nombre (`ActorPos`). */
+export interface ActorConRol {
+  readonly uid: string;
+  readonly rol: Rol;
+}
+
 const ROLES: readonly string[] = ['caj', 'sup', 'adm'];
 const RANGO: { readonly [r in Rol]: number } = { caj: 1, sup: 2, adm: 3 };
 const INTENTOS_CLAIM = 3;

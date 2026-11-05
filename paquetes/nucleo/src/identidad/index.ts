@@ -1,5 +1,6 @@
 export type {
   Actor,
+  ActorConRol,
   AuthMin,
   BaseDatosIdentidad,
   CodigoErrorIdentidad,

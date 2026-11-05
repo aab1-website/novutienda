@@ -6,8 +6,7 @@
 import { logger } from 'firebase-functions';
 import { HttpsError, type CallableRequest } from 'firebase-functions/v2/https';
 import { z } from 'zod';
-import type { Actor, Rol } from '@novutienda/nucleo';
-import type { ActorPos } from '@novutienda/pos';
+import type { Actor, ActorConRol, Rol } from '@novutienda/nucleo';
 import { CODIGO_DE_BORDE, traducirError } from '../../../adaptadores/firebase/index.js';
 import { autenticar, exigirAppCheck, personalDelTenant, type Sesion, type SesionTenant } from '../autenticacion.js';
 import type { Entorno } from '../entorno.js';
@@ -24,7 +23,7 @@ export interface Contexto {
 }
 
 /** Actor del POS/Inventarios: exige rol (las acciones que lo usan no admiten al propietario sin rol). */
-export function actorPos(c: Contexto): ActorPos {
+export function actorPos(c: Contexto): ActorConRol {
   if (c.rol === undefined) throw new HttpsError('permission-denied', 'No tiene permiso en este negocio.');
   return { uid: c.sesion.uid, rol: c.rol };
 }
