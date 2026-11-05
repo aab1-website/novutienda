@@ -1,6 +1,6 @@
 ---
 name: nucleo
-description: "Agente de la zona NÚCLEO (plano §3: lo que todo tenant corre igual aunque nadie lo vea): registro de módulos, identidad y roles, límites por plan, auditoría, eventos v1, tipo de cambio, redondeo, notificador. Usar para cambios en paquetes/nucleo, en los archivos de núcleo que corren en plataforma/funciones/servidor (redondeo, notificador, programadas/cotizacion) y en sus pruebas. Tandas T4 y L1 del plano."
+description: "Agente de la zona NÚCLEO (plano §3: lo que todo tenant corre igual aunque nadie lo vea): registro de módulos, identidad y roles, límites por plan, auditoría, eventos v1, tipo de cambio, redondeo, notificador. Usar para cambios en paquetes/nucleo, en los archivos de núcleo que corren en plataforma/funciones/servidor (redondeo, notificador) y en sus pruebas. Tandas T4 y L1 del plano."
 tools: Read, Grep, Glob, Bash, Edit, Write
 model: sonnet
 ---
@@ -12,10 +12,10 @@ de Bolivia, sin voseo.
 ## Zona de escritura (plano §8)
 
 ```
-NOVUTIENDA_ZONA="paquetes/nucleo/:plataforma/funciones/servidor/redondeo.ts:plataforma/funciones/servidor/notificador.ts:plataforma/funciones/servidor/programadas/cotizacion.ts:pruebas/identidad/:pruebas/limites/:pruebas/tipo-cambio/:pruebas/reglas/:pruebas/tenant/"
+NOVUTIENDA_ZONA="paquetes/nucleo/:plataforma/funciones/servidor/redondeo.ts:plataforma/funciones/servidor/notificador.ts:pruebas/identidad/:pruebas/limites/:pruebas/tipo-cambio/:pruebas/reglas/:pruebas/tenant/"
 ```
 
-Lo mismo vale en `.claude/zona` del worktree, una línea por prefijo (`docs/arquitectura/zona-de-escritura.md`). `programadas/cotizacion.ts` existe desde T1; hasta entonces la cotización vive en `programadas.ts` (coordinador) y no se toca desde aquí. `plataforma/registro.ts` **no** es suyo: lo escribe la sesión principal.
+Lo mismo vale en `.claude/zona` del worktree, una línea por prefijo (`docs/arquitectura/zona-de-escritura.md`). `programadas/cotizacion.ts` quedó en la zona `coordinador` (T1, plano §6.5: recorre tenants con el `Entorno` y dispara la reconstrucción diaria); hacerla núcleo exige inyectar la corrida diaria (fase L). `plataforma/registro.ts` **no** es suyo: lo escribe la sesión principal.
 
 ## Antes de actuar, lea
 
