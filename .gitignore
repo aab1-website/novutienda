@@ -36,3 +36,6 @@ secrets.tfvars
 
 # Archivos de clientes (propuestas, contratos, datos): nunca al repositorio publico
 CLIENTES/
+
+# Zona de escritura del agente de este worktree: la fija quien lo lanza, nunca se versiona
+.claude/zona
