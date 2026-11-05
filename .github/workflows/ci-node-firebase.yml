@@ -548,6 +548,7 @@ jobs:
           PROYECTO: ${{ vars.GCP_PROJECT_ID_STAGING }}
           SOLO: ${{ vars.FIREBASE_DEPLOY_ONLY || 'hosting,functions,firestore,storage' }}
           URL_STAGING: ${{ vars.STAGING_URL }}
+          FORZAR_DEPLOY: ${{ vars.FIREBASE_DEPLOY_FORCE }}
         run: |
           set -euo pipefail
           # `firebase deploy` PUEDE SALIR CON CÓDIGO 0 HABIENDO FALLADO: rotula
@@ -556,8 +557,18 @@ jobs:
           # novuchat-site (2026-09-03) este paso dio VERDE con las dos Functions
           # sin desplegar y el sitio en 404. Un despliegue que miente es peor
           # que uno que falla.
+          # --force: la función `eventos` declara `retry: true` (bus de eventos; el tope
+          # lo pone `consumir`), y firebase-tools exige --force para desplegar una
+          # política de fallo en modo no interactivo. Mismo patrón que NovuChat: solo
+          # con la variable FIREBASE_DEPLOY_FORCE del Environment y con aviso, porque
+          # --force también borra sin preguntar las Functions que ya no estén en el código.
+          FORZAR=""
+          if [[ -n "${FORZAR_DEPLOY:-}" ]]; then
+            FORZAR="--force"
+            echo "::warning::FIREBASE_DEPLOY_FORCE activa: --force despliega la política de reintento de eventos y borra Functions que ya no estén en el código."
+          fi
           rc=0
-          firebase deploy --only "$SOLO" --project "$PROYECTO" --non-interactive \
+          firebase deploy --only "$SOLO" --project "$PROYECTO" --non-interactive $FORZAR \
             --message "staging ${GITHUB_SHA::7} (run ${GITHUB_RUN_ID})" 2>&1 \
             | tee /tmp/despliegue.log || rc=$?
           if grep -qiE 'site not found|404.*site|no site (named|with id)' /tmp/despliegue.log; then
@@ -769,13 +780,20 @@ jobs:
           PROYECTO: ${{ vars.GCP_PROJECT_ID_PROD }}
           SOLO: ${{ vars.FIREBASE_DEPLOY_ONLY || 'hosting,functions,firestore,storage' }}
           URL_PROD: ${{ vars.PROD_URL }}
+          FORZAR_DEPLOY: ${{ vars.FIREBASE_DEPLOY_FORCE }}
         run: |
           set -euo pipefail
           # `firebase deploy` PUEDE SALIR CON CÓDIGO 0 HABIENDO FALLADO (ver
           # desplegar-staging). El acta de producción se firma con lo que dice
           # el pipeline: se revisa el registro además del código de salida.
+          # --force: ver desplegar-staging (política de reintento de `eventos`).
+          FORZAR=""
+          if [[ -n "${FORZAR_DEPLOY:-}" ]]; then
+            FORZAR="--force"
+            echo "::warning::FIREBASE_DEPLOY_FORCE activa: --force despliega la política de reintento de eventos y borra Functions que ya no estén en el código."
+          fi
           rc=0
-          firebase deploy --only "$SOLO" --project "$PROYECTO" --non-interactive \
+          firebase deploy --only "$SOLO" --project "$PROYECTO" --non-interactive $FORZAR \
             --message "producción ${GITHUB_REF_NAME} (run ${GITHUB_RUN_ID})" 2>&1 \
             | tee /tmp/despliegue.log || rc=$?
           if grep -qiE 'site not found|404.*site|no site (named|with id)' /tmp/despliegue.log; then
