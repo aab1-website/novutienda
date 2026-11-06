@@ -3,7 +3,7 @@ import { h } from 'preact';
 import { cleanup, fireEvent, render, screen, waitFor, within } from '@testing-library/preact';
 import { userEvent } from '@testing-library/user-event';
 import { afterEach, describe, expect, it, vi } from 'vitest';
-import { crearEntorno, uuid, type Entorno } from '../ayuda-pruebas.js';
+import { crearEntorno, uuid, type Entorno } from '../../ayuda-pruebas.js';
 import { PantallaVenta } from './venta.js';
 import { PantallaAprobaciones } from './aprobaciones.js';
 import { PantallaSupervision } from './supervision.js';

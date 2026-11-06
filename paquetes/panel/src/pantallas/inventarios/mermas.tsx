@@ -1,10 +1,10 @@
 import type { JSX } from 'preact';
 import { useState } from 'preact/hooks';
-import { nuevoId } from '../api/cliente.js';
-import type { UbicacionId } from '../api/tipos.js';
-import { Alerta, Boton, Campo, Cargando, ErrorCarga, Selector, Seccion, Vacio, fechaHora } from '../ui/comun.js';
-import { useApp } from '../ui/contexto.js';
-import { useAccion, useCarga } from '../ui/hooks.js';
+import { nuevoId } from '../../api/cliente.js';
+import type { UbicacionId } from '../../api/tipos.js';
+import { Alerta, Boton, Campo, Cargando, ErrorCarga, Selector, Seccion, Vacio, fechaHora } from '../../ui/comun.js';
+import { useApp } from '../../ui/contexto.js';
+import { useAccion, useCarga } from '../../ui/hooks.js';
 
 const ALMACENES = [{ valor: 'tienda', texto: 'Tienda' }, { valor: 'deposito-1', texto: 'Depósito 1' }, { valor: 'deposito-2', texto: 'Depósito 2' }];
 const ESTADO_TEXTO = { solicitada: 'Pendiente', aprobada: 'Aprobada', rechazada: 'Rechazada' } as const;

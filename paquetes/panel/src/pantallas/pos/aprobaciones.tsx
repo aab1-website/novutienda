@@ -1,10 +1,10 @@
 import type { JSX } from 'preact';
 import { useState } from 'preact/hooks';
-import type { AprobacionPos, VentaPos } from '../api/tipos.js';
-import { Alerta, Boton, Campo, Cargando, ErrorCarga, Pestanas, Seccion, Vacio, fechaHora } from '../ui/comun.js';
-import { useApp } from '../ui/contexto.js';
-import { useAccion, useCarga } from '../ui/hooks.js';
-import { formatearMonto } from '../util/dinero.js';
+import type { AprobacionPos, VentaPos } from '../../api/tipos.js';
+import { Alerta, Boton, Campo, Cargando, ErrorCarga, Pestanas, Seccion, Vacio, fechaHora } from '../../ui/comun.js';
+import { useApp } from '../../ui/contexto.js';
+import { useAccion, useCarga } from '../../ui/hooks.js';
+import { formatearMonto } from '../../util/dinero.js';
 
 function Solicitudes(): JSX.Element {
   const { api, usuario } = useApp();

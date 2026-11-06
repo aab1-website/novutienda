@@ -18,35 +18,22 @@ worktree (`docs/arquitectura/zona-de-escritura.md`). Plantillas:
 # inventarios
 paquetes/inventarios/
 plataforma/funciones/servidor/llamadas/inventarios.ts
-paquetes/panel/src/pantallas/inventario.tsx
-paquetes/panel/src/pantallas/inventario-ops.tsx
-paquetes/panel/src/pantallas/mermas.tsx
-paquetes/panel/src/doble/inventario.ts
+paquetes/panel/src/pantallas/inventarios/
+paquetes/panel/src/doble/inventario/
 pruebas/inventarios/
 
 # pos
 paquetes/pos/
 plataforma/funciones/servidor/llamadas/pos.ts
-paquetes/panel/src/pantallas/venta.tsx
-paquetes/panel/src/pantallas/venta-caja.tsx
-paquetes/panel/src/pantallas/venta-cierre.tsx
-paquetes/panel/src/pantallas/venta-cobro.tsx
-paquetes/panel/src/pantallas/venta-historial.tsx
-paquetes/panel/src/pantallas/venta-terminal.tsx
-paquetes/panel/src/pantallas/venta.test.ts
-paquetes/panel/src/pantallas/supervision.tsx
-paquetes/panel/src/pantallas/aprobaciones.tsx
-paquetes/panel/src/util/arqueo.ts
-paquetes/panel/src/util/pagos.ts
-paquetes/panel/src/doble/pos.ts
+paquetes/panel/src/pantallas/pos/
+paquetes/panel/src/doble/pos/
 pruebas/pos/
 
 # recibos
 paquetes/recibos/
 plataforma/funciones/servidor/llamadas/recibos.ts
 plataforma/funciones/servidor/enlace-pdf.ts
-paquetes/panel/src/pantallas/recibos.tsx
-paquetes/panel/src/ui/recibo.tsx
+paquetes/panel/src/pantallas/recibos/
 pruebas/recibos/
 
 # consola
@@ -56,11 +43,7 @@ plataforma/funciones/servidor/llamadas/medios.ts
 plataforma/funciones/servidor/trigger-medios.ts
 plataforma/funciones/servidor/disparador-sitio.ts
 plataforma/funciones/servidor/programadas/consola.ts
-paquetes/panel/src/pantallas/catalogo.tsx
-paquetes/panel/src/pantallas/catalogo-ficha.tsx
-paquetes/panel/src/pantallas/catalogo-secciones.tsx
-paquetes/panel/src/subidas/
-paquetes/panel/src/util/plantillas-vista.ts
+paquetes/panel/src/pantallas/consola/
 pruebas/consola/
 
 # website
@@ -68,7 +51,7 @@ paquetes/website/
 pruebas/website/
 ```
 
-Desde T2 las pantallas viven en `paquetes/panel/src/pantallas/<m>/` y la lista se acorta a esa carpeta. La fuente de verdad de qué archivo es de qué módulo es `pruebas/fronteras/zonas.ts` (`pnpm zonas` lo imprime); si una pieza falta aquí, manda ese mapa y se corrige esta ficha en el mismo PR.
+Desde T2 la interfaz del módulo en el panel vive en `paquetes/panel/src/pantallas/<m>/` (pantallas, sus pruebas y las piezas que solo él usa: pos `arqueo.ts`, `pagos.ts`; consola `plantillas-vista.ts`, `esperar.ts`; recibos `recibo-vista.tsx`) y sus dobles en `src/doble/<m>/`. Lo que una prueba de fuera del paquete necesite de esa carpeta se exporta en `pantallas/<m>/index.ts` y por el export `./<m>` de `paquetes/panel/package.json` (hoy solo consola); `src/index.ts` es de Central y no reexporta piezas de módulo. La fuente de verdad de qué archivo es de qué módulo es `pruebas/fronteras/zonas.ts` (`pnpm zonas` lo imprime); si una pieza falta aquí, manda ese mapa y se corrige esta ficha en el mismo PR.
 
 ## Antes de actuar, lea
 

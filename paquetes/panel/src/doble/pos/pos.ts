@@ -1,12 +1,12 @@
-import type { Entrada, NombreCallable, Salida } from '../api/contrato.js';
+import type { Entrada, NombreCallable, Salida } from '../../api/contrato.js';
 import type {
   AprobacionPos, LineaVenta, Moneda, MovimientoCaja, PagoVentaPos, Recibo, ResultadoCierre, TurnoPos, VentaPos,
-} from '../api/tipos.js';
-import { MEDIOS_PAGO, MONEDAS } from '../api/tipos.js';
-import { diferenciaPorMoneda, efectivoEsperado, monedasDelTurno, sumarTotales, TOTALES_VACIOS } from '../util/arqueo.js';
-import { MONEDA_DE_MERCADO, precioDeVenta } from '../util/precio.js';
-import { aCsv } from '../util/csv.js';
-import { auditar, fallo, fechaLaPaz, iso, recalcular, type Contexto } from './estado.js';
+} from '../../api/tipos.js';
+import { MEDIOS_PAGO, MONEDAS } from '../../api/tipos.js';
+import { diferenciaPorMoneda, efectivoEsperado, monedasDelTurno, sumarTotales, TOTALES_VACIOS } from '../../pantallas/pos/arqueo.js';
+import { MONEDA_DE_MERCADO, precioDeVenta } from '../../util/precio.js';
+import { aCsv } from '../../util/csv.js';
+import { auditar, fallo, fechaLaPaz, iso, recalcular, type Contexto } from '../estado.js';
 
 type H<N extends NombreCallable> = (c: Contexto, e: Entrada<N>) => Salida<N> | Promise<Salida<N>>;
 

@@ -3,9 +3,9 @@ import { rolesDeAccion, type Modulo } from '../api/real.js';
 import type { Sobre, Transporte } from '../api/transporte.js';
 import type { ProductoPanel, Rol } from '../api/tipos.js';
 import { fechaLaPaz, fallo, type Contexto } from './estado.js';
-import { handlersInventario } from './inventario.js';
+import { handlersInventario } from './inventario/inventario.js';
 import { crearProductoConsola, editarProductoConsola, handlersOtros } from './otros.js';
-import { handlersPos } from './pos.js';
+import { handlersPos } from './pos/pos.js';
 
 type Obj = Record<string, unknown>;
 type Legado = (c: Contexto, e: never) => unknown;

@@ -1,11 +1,11 @@
 import type { JSX } from 'preact';
 import { useState } from 'preact/hooks';
-import { nuevoId } from '../api/cliente.js';
-import type { LineaIngreso, ProductoPanel, TipoMovimiento, UbicacionId } from '../api/tipos.js';
-import { Alerta, Boton, BotonConfirmado, Campo, Cargando, Casilla, ErrorCarga, Selector, Seccion, Vacio, fechaHora } from '../ui/comun.js';
-import { useApp } from '../ui/contexto.js';
-import { useAccion, useCarga } from '../ui/hooks.js';
-import { aCsv, descargarTexto } from '../util/csv.js';
+import { nuevoId } from '../../api/cliente.js';
+import type { LineaIngreso, ProductoPanel, TipoMovimiento, UbicacionId } from '../../api/tipos.js';
+import { Alerta, Boton, BotonConfirmado, Campo, Cargando, Casilla, ErrorCarga, Selector, Seccion, Vacio, fechaHora } from '../../ui/comun.js';
+import { useApp } from '../../ui/contexto.js';
+import { useAccion, useCarga } from '../../ui/hooks.js';
+import { aCsv, descargarTexto } from '../../util/csv.js';
 
 const ALMACENES = [{ valor: 'tienda', texto: 'Tienda' }, { valor: 'deposito-1', texto: 'Depósito 1' }, { valor: 'deposito-2', texto: 'Depósito 2' }];
 const separar = (t: string): string[] => t.split(/[\s,;]+/).filter((s) => s !== '');
@@ -337,7 +337,7 @@ const TIPOS: { valor: string; texto: string }[] = [
   { valor: 'venta', texto: 'Venta' }, { valor: 'anulacion', texto: 'Anulación' }, { valor: 'merma', texto: 'Merma' }, { valor: 'conteo', texto: 'Conteo' }, { valor: 'pedido', texto: 'Pedido' },
 ];
 
-function TablaMovimientos({ movs, productos }: { movs: readonly import('../api/tipos.js').MovimientoVista[]; productos: ProductoPanel[] }): JSX.Element {
+function TablaMovimientos({ movs, productos }: { movs: readonly import('../../api/tipos.js').MovimientoVista[]; productos: ProductoPanel[] }): JSX.Element {
   return (
     <table class="tabla">
       <caption class="solo-lectores">Movimientos de inventario</caption>

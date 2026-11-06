@@ -1,11 +1,11 @@
 import type { JSX } from 'preact';
 import { useState } from 'preact/hooks';
-import { nuevoId } from '../api/cliente.js';
-import { MONEDAS, type Moneda, type MontosPorMoneda } from '../api/tipos.js';
-import { Alerta, Boton, Campo, Cargando, ErrorCarga, Pestanas, Seccion } from '../ui/comun.js';
-import { useApp } from '../ui/contexto.js';
-import { useAccion, useCarga } from '../ui/hooks.js';
-import { textoACentavos } from '../util/dinero.js';
+import { nuevoId } from '../../api/cliente.js';
+import { MONEDAS, type Moneda, type MontosPorMoneda } from '../../api/tipos.js';
+import { Alerta, Boton, Campo, Cargando, ErrorCarga, Pestanas, Seccion } from '../../ui/comun.js';
+import { useApp } from '../../ui/contexto.js';
+import { useAccion, useCarga } from '../../ui/hooks.js';
+import { textoACentavos } from '../../util/dinero.js';
 import { VentaCaja, VentaCreditos } from './venta-caja.js';
 import { VentaCierre } from './venta-cierre.js';
 import { VentaHistorial } from './venta-historial.js';

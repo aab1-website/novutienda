@@ -3,7 +3,7 @@ import type { DatosProducto, Medio, Recibo, Simulacion, FilaSimulada } from '../
 import { LIMITES_PANEL, PLANTILLAS_SITIO } from '../api/tipos.js';
 import { aCsv } from '../util/csv.js';
 import { auditar, exigirRol, fallo, iso, vistaProducto, type Contexto } from './estado.js';
-import { parsearCsv } from './inventario.js';
+import { parsearCsv } from './inventario/inventario.js';
 
 type H<N extends NombreCallable> = (c: Contexto, e: Entrada<N>) => Salida<N> | Promise<Salida<N>>;
 

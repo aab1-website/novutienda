@@ -5,11 +5,11 @@ import { userEvent } from '@testing-library/user-event';
 import { afterEach, describe, expect, it, vi } from 'vitest';
 import { ErrorApi } from '../api/errores.js';
 import { crearEntorno, uuid, type Entorno, type Nodo } from '../ayuda-pruebas.js';
-import { PantallaCatalogo } from './catalogo.js';
+import { PantallaCatalogo } from './consola/catalogo.js';
 import { PantallaConfiguracion } from './configuracion.js';
-import { PantallaInventario } from './inventario.js';
-import { PantallaMermas } from './mermas.js';
-import { PantallaRecibos } from './recibos.js';
+import { PantallaInventario } from './inventarios/inventario.js';
+import { PantallaMermas } from './inventarios/mermas.js';
+import { PantallaRecibos } from './recibos/recibos.js';
 import { PantallaUsuarios } from './usuarios.js';
 
 afterEach(() => {

@@ -1,8 +1,8 @@
-import type { Entrada, NombreCallable, Salida } from '../api/contrato.js';
-import type { ResultadoOperacion, TipoMovimiento, UbicacionId } from '../api/tipos.js';
-import { UBICACIONES } from '../api/tipos.js';
-import { aCsv } from '../util/csv.js';
-import { auditar, exigirRol, fallo, iso, recalcular, vistaProducto, type Contexto, type ProductoInterno } from './estado.js';
+import type { Entrada, NombreCallable, Salida } from '../../api/contrato.js';
+import type { ResultadoOperacion, TipoMovimiento, UbicacionId } from '../../api/tipos.js';
+import { UBICACIONES } from '../../api/tipos.js';
+import { aCsv } from '../../util/csv.js';
+import { auditar, exigirRol, fallo, iso, recalcular, vistaProducto, type Contexto, type ProductoInterno } from '../estado.js';
 
 type H<N extends NombreCallable> = (c: Contexto, e: Entrada<N>) => Salida<N> | Promise<Salida<N>>;
 

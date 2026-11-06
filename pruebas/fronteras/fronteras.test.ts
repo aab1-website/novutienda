@@ -98,8 +98,8 @@ describe('reglas de zona con árboles inventados', () => {
     expect(zonaDe('paquetes/nucleo/src/index.ts')).toBe('nucleo');
     expect(zonaDe('paquetes/pos/src/venta.ts')).toBe('modulo:pos');
     expect(zonaDe('paquetes/panel/src/ui/app.tsx')).toBe('central');
-    expect(zonaDe('paquetes/panel/src/pantallas/venta-cobro.tsx')).toBe('modulo:pos');
-    expect(zonaDe('paquetes/panel/src/pantallas/venta.test.ts')).toBe('pruebas:modulo:pos');
+    expect(zonaDe('paquetes/panel/src/pantallas/pos/venta-cobro.tsx')).toBe('modulo:pos');
+    expect(zonaDe('paquetes/panel/src/pantallas/pos/venta.test.ts')).toBe('pruebas:modulo:pos');
     expect(zonaDe('paquetes/panel/src/doble/doble.test.ts')).toBe('pruebas:central');
     expect(zonaDe('plataforma/funciones/servidor/llamadas/recibos.ts')).toBe('modulo:recibos');
     expect(zonaDe('plataforma/funciones/servidor/http/sitio.ts')).toBe('conector:sitio');
@@ -175,14 +175,20 @@ describe('reglas de zona con árboles inventados', () => {
     const arbol: Arbol = {
       'plataforma/funciones/servidor/llamadas/marco.ts': "import type { ActorPos } from '@novutienda/pos'; import { x } from '../redondeo.js'; import y from './estilos.css'; import z from 'zod';",
       'plataforma/funciones/servidor/redondeo.ts': '',
-      'paquetes/panel/src/ui/login.tsx': "import { P } from '../pantallas/venta.js'; import { C } from './comun.js';",
-      'paquetes/panel/src/pantallas/venta.tsx': '',
+      'paquetes/panel/src/ui/login.tsx': "import { P } from '../pantallas/pos/venta.js'; import { C } from './comun.js';",
+      'paquetes/panel/src/pantallas/pos/venta.tsx': '',
       'paquetes/panel/src/ui/comun.tsx': '',
     };
     expect(crucesDeZona(arbol).map(claveDeCruce)).toEqual([
-      'paquetes/panel/src/ui/login.tsx → ../pantallas/venta.js',
+      'paquetes/panel/src/ui/login.tsx → ../pantallas/pos/venta.js',
       'plataforma/funciones/servidor/llamadas/marco.ts → @novutienda/pos',
     ]);
+  });
+
+  it('la entrada pública de la interfaz de un módulo en el panel (@novutienda/panel/<m>) es de ese módulo', () => {
+    const nunca = (): boolean => false;
+    expect(zonaDeImportacion('pruebas/panel/a.test.ts', '@novutienda/panel/consola', nunca)).toEqual({ zona: 'modulo:consola', relativa: false });
+    expect(zonaDeImportacion('pruebas/panel/a.test.ts', '@novutienda/panel', nunca)).toEqual({ zona: 'central', relativa: false });
   });
 });
 

@@ -1,12 +1,12 @@
 import type { JSX } from 'preact';
 import { useState } from 'preact/hooks';
-import type { ConsultaArchivo, Recibo } from '../api/tipos.js';
-import { Alerta, Boton, Campo, Cargando, ErrorCarga, Seccion, Vacio, fechaHora } from '../ui/comun.js';
-import { useApp } from '../ui/contexto.js';
-import { useCarga } from '../ui/hooks.js';
-import { AccionesRecibo, ReciboVista } from '../ui/recibo.js';
-import { formatearMonto } from '../util/dinero.js';
-import type { Moneda } from '../api/tipos.js';
+import type { ConsultaArchivo, Recibo } from '../../api/tipos.js';
+import { Alerta, Boton, Campo, Cargando, ErrorCarga, Seccion, Vacio, fechaHora } from '../../ui/comun.js';
+import { useApp } from '../../ui/contexto.js';
+import { useCarga } from '../../ui/hooks.js';
+import { AccionesRecibo, ReciboVista } from './recibo-vista.js';
+import { formatearMonto } from '../../util/dinero.js';
+import type { Moneda } from '../../api/tipos.js';
 
 export function PantallaRecibos(): JSX.Element {
   const { api, usuario } = useApp();

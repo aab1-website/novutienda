@@ -16,13 +16,11 @@ NOVUTIENDA_ZONA="paquetes/panel/:plataforma/funciones/servidor/llamadas/usuarios
 
 Lo mismo vale en `.claude/zona` del worktree (`docs/arquitectura/zona-de-escritura.md`). **El gancho distingue archivos, no zonas dentro de `paquetes/panel/`**: las piezas que son interfaz de un módulo (plano §5.1, enmienda H0) **no son suyas** aunque el gancho las deje pasar, y la revisión del PR lo cubre:
 
-- pos: `src/pantallas/{venta*,supervision,aprobaciones}.tsx`, `src/util/{arqueo,pagos}.ts`, `src/doble/pos.ts`;
-- inventarios: `src/pantallas/{inventario*,mermas}.tsx`, `src/doble/inventario.ts`;
-- consola: `src/pantallas/catalogo*.tsx`, `src/subidas/`, `src/util/plantillas-vista.ts`;
-- recibos: `src/pantallas/recibos.tsx`, `src/ui/recibo.tsx`;
-- y, desde T2, `src/pantallas/<modulo>/`.
+- `src/pantallas/<modulo>/` (desde T2: pantallas, sus pruebas y las piezas que solo ese módulo usa) y `src/doble/<modulo>/` (sus dobles), para `pos`, `inventarios`, `consola` y `recibos`.
 
-El mapa exacto es `pruebas/fronteras/zonas.ts` (`pnpm zonas` lo imprime). `llamadas/usuarios.ts` existe desde T1 (las cuatro acciones de usuarios salen de `llamadas/consola.ts`, que es del módulo consola).
+Suyos son `src/pantallas/{usuarios,configuracion}.tsx`, `src/pantallas/gestion.test.ts`, `src/subidas/` (transporte de subidas, reclasificado Central en T2), `src/doble/{doble,estado,otros,transporte}.ts`, `src/util/` y el resto.
+
+El mapa exacto es `pruebas/fronteras/zonas.ts` (`pnpm zonas` lo imprime). `src/index.ts` no reexporta piezas de módulo: lo que una prueba necesite de `pantallas/<m>/` sale por `pantallas/<m>/index.ts` y el export `./<m>` de `package.json` (`@novutienda/panel/<m>`). `llamadas/usuarios.ts` existe desde T1 (las cuatro acciones de usuarios salen de `llamadas/consola.ts`, que es del módulo consola).
 
 ## Antes de actuar, lea
 
