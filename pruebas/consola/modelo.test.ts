@@ -4,6 +4,7 @@ import * as nucleo from '@novutienda/nucleo';
 import {
   esPlantilla, manifiestoConsola, PANTALLAS, PLANTILLAS, validarCarrusel, validarConfigSitio, validarEnlace, validarFichaWeb, validarSeccion,
 } from '@novutienda/consola';
+import { LIMITES_CONSOLA } from '@novutienda/consola';
 import { crearRegistro, type ManifiestoModulo } from '@novutienda/nucleo';
 
 describe('lista blanca de enlaces', () => {
@@ -170,5 +171,24 @@ describe('manifiesto y pantallas', () => {
     const exportadas = new Set([...Object.keys(consola), ...Object.keys(nucleo)]);
     for (const p of PANTALLAS) for (const l of p.llamadas) expect(exportadas.has(l), `${p.id}: ${l}`).toBe(true);
     expect(PANTALLAS.map((p) => p.id)).toEqual(['tablero', 'productos', 'ficha', 'categorias-marcas', 'importar-exportar', 'apariencia', 'secciones', 'usuarios']);
+  });
+});
+
+describe('almacenamiento de la consola', () => {
+  it('declara las tres rutas de Storage con la semántica de storage.rules', () => {
+    const a = manifiestoConsola.almacenamiento ?? [];
+    expect(a.map((r) => r.ruta)).toEqual(['privado/originales/{productoId}/{subidaId}', 'privado/procesando/{ruta=**}', 'publico/{ruta=**}']);
+    const [orig, proc, pub] = a;
+    expect(orig?.lectura).toBe('servidor');
+    expect(orig?.escritura).toEqual({
+      tipo: 'subidaReservada', roles: ['sup', 'adm'], reserva: 'subidas',
+      archivos: [
+        { tipo: 'foto', bytesMax: LIMITES_CONSOLA.bytesFoto, contentType: 'image/(jpeg|png|webp|heic)' },
+        { tipo: 'video', bytesMax: LIMITES_CONSOLA.bytesVideo, contentType: 'video/(mp4|quicktime|webm)' },
+      ],
+    });
+    expect(proc).toEqual({ ruta: 'privado/procesando/{ruta=**}', lectura: 'servidor', escritura: 'servidor' });
+    expect(pub).toEqual({ ruta: 'publico/{ruta=**}', lectura: 'publica', escritura: 'servidor' });
+    expect(manifiestoConsola.colecciones.some((c) => c.ruta === 'subidas' && c.escritura === 'servidor')).toBe(true);
   });
 });

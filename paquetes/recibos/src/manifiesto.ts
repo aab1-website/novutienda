@@ -15,6 +15,9 @@ export const manifiestoRecibos: ManifiestoModulo = {
     // Anulaciones llegadas antes que su venta; interno, no lo lee ningún cliente.
     { ruta: 'anulaciones_pendientes_recibo', lectura: [], escritura: 'servidor' },
   ],
+  // PDF de recibos (`plataforma/funciones/servidor/enlace-pdf.ts`: `privado/recibos/{reciboId}.pdf`): solo el servidor;
+  // el panel obtiene enlaces firmados por callable.
+  almacenamiento: [{ ruta: 'privado/recibos/{ruta=**}', lectura: 'servidor', escritura: 'servidor' }],
   emite: ['recibo.emitido'],
   consume: ['venta.confirmada', 'venta.anulada'],
 };

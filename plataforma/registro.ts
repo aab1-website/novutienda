@@ -31,6 +31,8 @@ registroPlataforma.registrar(manifiestoPlataforma);
  */
 export function manifiestosEnOrden(): ManifiestoModulo[] {
   registroPlataforma.rutas();
+  // L1-c: rutas de Storage únicas y a lo sumo una `subidaReservada` en todo el registro.
+  registroPlataforma.rutasAlmacenamiento();
   const porId = new Map(registroPlataforma.listar().map((m) => [m.id, m]));
   return registroPlataforma.ordenTopologico().map((id) => porId.get(id) as ManifiestoModulo);
 }

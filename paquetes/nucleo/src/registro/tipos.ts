@@ -30,6 +30,32 @@ export interface ColeccionManifiesto {
   readonly ambito?: 'tenant' | 'raiz';
 }
 
+/** Archivo admitido en una subida reservada. */
+export interface ArchivoSubida {
+  /** Identificador del tipo de archivo (por ejemplo `original`). */
+  readonly tipo: string;
+  readonly bytesMax: number;
+  /** Patrón de tipo de contenido, por ejemplo `image/(jpeg|png|webp|heic)`. */
+  readonly contentType: string;
+}
+
+/** Escritura del cliente solo contra una reserva hecha antes por el servidor. */
+export interface EscrituraSubidaReservada {
+  readonly tipo: 'subidaReservada';
+  readonly roles: readonly Rol[];
+  /** Ruta de una colección del MISMO manifiesto, con escritura `servidor`. */
+  readonly reserva: string;
+  readonly archivos: readonly ArchivoSubida[];
+}
+
+/** Política de una ruta de Storage (aditivo y opcional, L1). */
+export interface RutaAlmacenamiento {
+  /** Relativa a `tenants/{tenantId}/`; empieza por `privado` o `publico`. */
+  readonly ruta: string;
+  readonly lectura: 'servidor' | 'publica';
+  readonly escritura: 'servidor' | EscrituraSubidaReservada;
+}
+
 export interface ManifiestoModulo {
   readonly id: IdModulo;
   /** Versión semver `MAYOR.MENOR.PARCHE`. */
@@ -39,4 +65,6 @@ export interface ManifiestoModulo {
   readonly colecciones: readonly ColeccionManifiesto[];
   readonly emite: readonly TipoEvento[];
   readonly consume: readonly TipoEvento[];
+  /** Rutas de Storage del módulo; sin él, el módulo no declara archivos. */
+  readonly almacenamiento?: readonly RutaAlmacenamiento[];
 }

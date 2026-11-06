@@ -1,7 +1,14 @@
 import { readFileSync } from 'node:fs';
 import { describe, expect, it } from 'vitest';
 import { manifiestosEnOrden } from '../../plataforma/registro.js';
-import { ErrorGenerador, generarReglas, type ColeccionReglas, type ManifiestoReglas } from '../../scripts/generar-reglas.mjs';
+import {
+  ErrorGenerador,
+  generarReglas,
+  generarReglasAlmacenamiento,
+  type ColeccionReglas,
+  type ManifiestoReglas,
+  type RutaAlmacenamientoReglas,
+} from '../../scripts/generar-reglas.mjs';
 
 const sintetico: ManifiestoReglas = {
   id: 'demo',
@@ -140,6 +147,134 @@ describe('generador de reglas', () => {
     it('«Tenants» con mayúscula se acepta y queda cerrada', () => {
       const t = con(raiz({ ruta: 'Tenants' }));
       expect(t).toContain('match /Tenants/{id} {\n      allow read: if false;\n      allow write: if false;');
+    });
+  });
+
+  describe('generarReglasAlmacenamiento', () => {
+    const originales: RutaAlmacenamientoReglas = {
+      ruta: 'privado/originales/{productoId}/{subidaId}',
+      lectura: 'servidor',
+      escritura: {
+        tipo: 'subidaReservada',
+        roles: ['sup', 'adm'],
+        reserva: 'subidas',
+        archivos: [
+          { tipo: 'foto', bytesMax: 15 * 1024 * 1024, contentType: 'image/(jpeg|png|webp|heic)' },
+          { tipo: 'video', bytesMax: 200 * 1024 * 1024, contentType: 'video/(mp4|quicktime|webm)' },
+        ],
+      },
+    };
+    const procesando: RutaAlmacenamientoReglas = { ruta: 'privado/procesando/{ruta=**}', lectura: 'servidor', escritura: 'servidor' };
+    const publico: RutaAlmacenamientoReglas = { ruta: 'publico/{ruta=**}', lectura: 'publica', escritura: 'servidor' };
+    const recibosR: RutaAlmacenamientoReglas = { ruta: 'privado/recibos/{ruta=**}', lectura: 'servidor', escritura: 'servidor' };
+    const mod = (id: string, almacenamiento: RutaAlmacenamientoReglas[], reservas = ['subidas']): ManifiestoReglas => ({
+      id,
+      colecciones: reservas.map((ruta) => ({ ruta, lectura: [], escritura: 'servidor' as const })),
+      almacenamiento,
+    });
+    const cuatro = () => [mod('consola', [originales, procesando, publico]), mod('recibos', [recibosR])];
+    const rechaza = (m: ManifiestoReglas[], patron: RegExp) => {
+      expect(() => generarReglasAlmacenamiento(m)).toThrow(ErrorGenerador);
+      expect(() => generarReglasAlmacenamiento(m)).toThrow(patron);
+    };
+    const subidaCon = (cambios: Record<string, unknown>): RutaAlmacenamientoReglas => ({
+      ...originales,
+      escritura: { ...(originales.escritura as object), ...cambios } as RutaAlmacenamientoReglas['escritura'],
+    });
+
+    it('emite las tres políticas (servidor, publica, subidaReservada)', () => {
+      const t = generarReglasAlmacenamiento(cuatro());
+      expect(t).toContain("    // Módulo consola\n    match /tenants/{tenantId}/privado/originales/{productoId}/{subidaId} {");
+      expect(t).toContain('allow create: if resource == null && editor(tenantId) && reservaValida(tenantId, productoId, subidaId);\n      allow read, update, delete: if false;');
+      expect(t).toContain('match /tenants/{tenantId}/privado/procesando/{ruta=**} {\n      allow read, write: if false;');
+      expect(t).toContain('match /tenants/{tenantId}/publico/{ruta=**} {\n      allow read: if true;\n      allow write: if false;');
+      expect(t).toContain('// Módulo recibos\n    match /tenants/{tenantId}/privado/recibos/{ruta=**} {\n      allow read, write: if false;');
+      expect(t).toContain("rolEn(tenantId) in ['sup', 'adm']");
+      expect(t).toContain('tenants/$(tenantId)/subidas/$(subidaId)');
+      expect(t).toContain("r.tipo == 'foto'");
+      expect(t).toContain('request.resource.size <= 15 * 1024 * 1024');
+      expect(t).toContain("matches('image/(jpeg|png|webp|heic)')");
+      expect(t).toContain("r.tipo == 'video'");
+      expect(t).toContain('request.resource.size <= 200 * 1024 * 1024');
+      expect(t).toContain("matches('video/(mp4|quicktime|webm)')");
+      expect(t.trimEnd().endsWith('match /{todo=**} {\n      allow read, write: if false;\n    }\n  }\n}')).toBe(true);
+      expect(generarReglasAlmacenamiento(cuatro())).toBe(t);
+    });
+
+    it('emite bytesMax como entero si no es múltiplo de 1 MiB', () => {
+      const t = generarReglasAlmacenamiento([
+        mod('c', [subidaCon({ archivos: [{ tipo: 'a', bytesMax: 5_000_000, contentType: 'image/(png)' }] })]),
+      ]);
+      expect(t).toContain('request.resource.size <= 5000000');
+    });
+
+    it('sin subidaReservada no emite reservaValida ni editor', () => {
+      const t = generarReglasAlmacenamiento([mod('x', [publico])]);
+      expect(t).not.toContain('reservaValida');
+      expect(t).not.toContain('editor');
+      expect(t).toContain('function rolEn');
+    });
+
+    it('sin almacenamiento solo queda la negación final', () => {
+      const t = generarReglasAlmacenamiento([sintetico]);
+      expect(t).not.toContain('match /tenants');
+      expect(t).toContain('match /{todo=**}');
+    });
+
+    it('rechaza lo mismo que el registro (rutas peligrosas, lectura publica bajo privado, reserva ajena)', () => {
+      rechaza([mod('m', [{ ...procesando, lectura: 'publica' }])], /solo vale bajo publico/);
+      rechaza([mod('m', [{ ...publico, ruta: 'publico/{r=**}/x' }])], /segmento no admitido/);
+      rechaza([mod('m', [{ ...procesando, ruta: 'otro/x' }])], /primer segmento/);
+      rechaza([mod('m', [{ ...procesando, ruta: 'privado/../x' }])], /segmento no admitido/);
+      rechaza([mod('m', [subidaCon({ reserva: 'nada' })])], /no es una colección/);
+      rechaza([mod('m', [subidaCon({ roles: [] })])], /roles/);
+      rechaza([mod('m', [subidaCon({ roles: ['root'] })])], /rol inválido/);
+      rechaza([mod('m', [subidaCon({ archivos: [] })])], /archivos/);
+      rechaza([mod('m', [subidaCon({ archivos: [{ tipo: 'a', bytesMax: 0, contentType: 'image/(png)' }] })])], /bytesMax/);
+      rechaza([mod('m', [subidaCon({ archivos: [{ tipo: 'a', bytesMax: 1, contentType: 'image/png' }] })])], /contentType/);
+      rechaza([mod('m', [{ ...originales, ruta: 'publico/x/{productoId}/{subidaId}' }])], /solo vale bajo privado/);
+      rechaza([mod('m', [{ ...originales, ruta: 'privado/x/{a}/{b}' }])], /terminar en/);
+    });
+
+    it('rechaza dos subidaReservada y rutas duplicadas entre módulos', () => {
+      const otra = { ...originales, ruta: 'privado/otras/{productoId}/{subidaId}' };
+      rechaza([mod('a', [originales]), mod('b', [otra])], /Más de una subidaReservada/);
+      rechaza([mod('a', [publico]), mod('b', [publico])], /duplicada/);
+    });
+
+    it('la reserva debe ser del servidor y de ámbito tenant', () => {
+      const m = mod('m', [originales]);
+      rechaza([{ ...m, colecciones: [{ ruta: 'subidas', lectura: [], escritura: ['adm'] }] }], /servidor/);
+      rechaza([{ ...m, colecciones: [{ ruta: 'subidas', lectura: [], escritura: 'servidor', ambito: 'raiz' }] }], /tenant/);
+    });
+
+    it('rechaza tipos de archivo hostiles', () => {
+      for (const tipo of ["foto' || true || 'x", 'foto)', 'a\nb', '{x}', 'Foto']) {
+        rechaza(
+          [mod('consola', [subidaCon({ archivos: [{ tipo, bytesMax: 1, contentType: 'image/(jpeg)' }] })])],
+          /tipo de archivo [\s\S]* no cumple el patrón \^\[a-z\]\[a-z0-9_\]\*\$/,
+        );
+      }
+    });
+
+    it('rechaza reserva hostil, id de módulo con salto de línea y variables reservadas', () => {
+      const hostil = "subidas)/x').data; return true; //";
+      rechaza([mod('consola', [subidaCon({ reserva: hostil })], [hostil])], /Ruta con caracteres no admitidos/);
+      rechaza([mod('con\nsola', [procesando])], /Id de módulo no admitido/);
+      expect(() => generarReglas([{ id: 'a\nb', colecciones: [{ ruta: 'x', lectura: [], escritura: 'servidor' }] }])).toThrow(/Id de módulo/);
+      for (const n of ['tenantId', 'todo', 'bucket']) {
+        rechaza([mod('m', [{ ruta: `publico/{${n}}`, lectura: 'publica', escritura: 'servidor' }])], new RegExp(`variable de ruta reservada "\\{${n}\\}"`));
+        rechaza([mod('m', [{ ruta: `publico/{${n}=**}`, lectura: 'publica', escritura: 'servidor' }])], new RegExp(`variable de ruta reservada "\\{${n}\\}"`));
+      }
+    });
+
+    it('generarReglas (Firestore) no cambia: firestore.rules sigue coincidiendo', () => {
+      expect(readFileSync('firestore.rules', 'utf8')).toBe(generarReglas(manifiestosEnOrden()));
+    });
+
+    // L1-c: `storage.rules` es generado; la equivalencia la exige esta prueba en el job `calidad` del CI (de la que depende el despliegue).
+    it('storage.rules versionado coincide con lo generado desde el registro', () => {
+      expect(readFileSync('storage.rules', 'utf8')).toBe(generarReglasAlmacenamiento(manifiestosEnOrden()));
     });
   });
 });

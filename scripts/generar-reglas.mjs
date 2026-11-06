@@ -27,6 +27,14 @@ function listaRoles(roles) {
   return `[${roles.map((r) => `'${r}'`).join(', ')}]`;
 }
 
+const ID_MODULO = /^[a-z][a-z0-9-]*$/;
+
+function validarIdModulo(id) {
+  if (typeof id !== 'string' || !ID_MODULO.test(id)) {
+    throw new ErrorGenerador(`Id de módulo no admitido: ${JSON.stringify(id)} (patrón ^[a-z][a-z0-9-]*$)`);
+  }
+}
+
 function validarRuta(ruta) {
   const segmentos = ruta.split('/');
   if (!segmentos.every((s) => SEGMENTO.test(s))) {
@@ -100,6 +108,7 @@ export function generarReglas(manifiestos) {
   const bloques = [];
   const vistas = new Set();
   for (const m of manifiestos) {
+    validarIdModulo(m.id);
     if (m.colecciones.length === 0) continue;
     const propios = [`    // Módulo ${m.id}`];
     const raices = [];
@@ -158,6 +167,176 @@ ${bloques.join('\n\n')}
 
     // Negación final: todo lo no declarado queda inaccesible.
     match /{document=**} {
+      allow read, write: if false;
+    }
+  }
+}
+`;
+}
+
+const SEGMENTO_ALM = /^(?:[A-Za-z][A-Za-z0-9_-]*|\{[A-Za-z][A-Za-z0-9_]*\})$/;
+const SEGMENTO_RESTO = /^\{[A-Za-z][A-Za-z0-9_]*=\*\*\}$/;
+const TIPO_ARCHIVO = /^[a-z][a-z0-9_]*$/;
+const VARIABLES_RESERVADAS = new Set(['tenantId', 'todo', 'bucket']);
+const CONTENT_TYPE = /^[a-z]+\/\([a-z0-9|-]+\)$/;
+
+function validarAlmacenamiento(m, a) {
+  validarIdModulo(m.id);
+  const donde = `Almacenamiento ${m.id}/${a.ruta}`;
+  const segs = a.ruta.split('/');
+  if (segs[0] !== 'privado' && segs[0] !== 'publico') {
+    throw new ErrorGenerador(`${donde}: el primer segmento debe ser "privado" o "publico"`);
+  }
+  if (segs.length < 2) throw new ErrorGenerador(`${donde}: falta al menos un segmento tras "${segs[0]}"`);
+  segs.forEach((s, i) => {
+    const ultimo = i === segs.length - 1;
+    if (!(SEGMENTO_ALM.test(s) || (ultimo && i > 0 && SEGMENTO_RESTO.test(s)))) {
+      throw new ErrorGenerador(`${donde}: segmento no admitido "${s}"`);
+    }
+    const v = /^\{([A-Za-z][A-Za-z0-9_]*)(?:=\*\*)?\}$/.exec(s);
+    if (v !== null && VARIABLES_RESERVADAS.has(v[1])) {
+      throw new ErrorGenerador(`${donde}: variable de ruta reservada "{${v[1]}}"`);
+    }
+  });
+  if (a.lectura !== 'servidor' && a.lectura !== 'publica') {
+    throw new ErrorGenerador(`${donde}: lectura inválida "${String(a.lectura)}"`);
+  }
+  if (a.lectura === 'publica' && segs[0] !== 'publico') {
+    throw new ErrorGenerador(`${donde}: la lectura 'publica' solo vale bajo publico/`);
+  }
+  if (a.escritura === 'servidor') return;
+  const e = a.escritura;
+  if (e?.tipo !== 'subidaReservada') throw new ErrorGenerador(`${donde}: escritura inválida`);
+  if (segs[0] !== 'privado') throw new ErrorGenerador(`${donde}: subidaReservada solo vale bajo privado/`);
+  if (segs.length < 3 || segs[segs.length - 2] !== '{productoId}' || segs[segs.length - 1] !== '{subidaId}') {
+    throw new ErrorGenerador(`${donde}: la ruta de subidaReservada debe terminar en {productoId}/{subidaId}`);
+  }
+  if (e.roles.length === 0) throw new ErrorGenerador(`${donde}: roles no puede estar vacío`);
+  for (const r of e.roles) {
+    if (!ROLES.includes(r)) throw new ErrorGenerador(`${donde}: rol inválido ${r}`);
+  }
+  if (typeof e.reserva !== 'string') throw new ErrorGenerador(`${donde}: reserva inválida`);
+  validarRuta(e.reserva);
+  const reserva = m.colecciones.find((c) => c.ruta === e.reserva);
+  if (reserva === undefined) {
+    throw new ErrorGenerador(`${donde}: la reserva "${e.reserva}" no es una colección del mismo manifiesto`);
+  }
+  if (reserva.escritura !== 'servidor' || (reserva.ambito !== undefined && reserva.ambito !== 'tenant')) {
+    throw new ErrorGenerador(`${donde}: la reserva "${e.reserva}" debe ser de ámbito tenant y con escritura 'servidor'`);
+  }
+  if (e.archivos.length === 0) throw new ErrorGenerador(`${donde}: archivos no puede estar vacío`);
+  const tipos = new Set();
+  for (const f of e.archivos) {
+    if (typeof f.tipo !== 'string' || f.tipo === '') throw new ErrorGenerador(`${donde}: tipo de archivo vacío`);
+    if (!TIPO_ARCHIVO.test(f.tipo)) {
+      throw new ErrorGenerador(`${donde}: tipo de archivo "${f.tipo}" no cumple el patrón ^[a-z][a-z0-9_]*$`);
+    }
+    if (tipos.has(f.tipo)) throw new ErrorGenerador(`${donde}: tipo de archivo duplicado "${f.tipo}"`);
+    tipos.add(f.tipo);
+    if (!Number.isInteger(f.bytesMax) || f.bytesMax <= 0) {
+      throw new ErrorGenerador(`${donde}: bytesMax de "${f.tipo}" debe ser un entero mayor que 0`);
+    }
+    if (!CONTENT_TYPE.test(f.contentType)) {
+      throw new ErrorGenerador(`${donde}: contentType de "${f.tipo}" no cumple el patrón (por ejemplo image/(jpeg|png))`);
+    }
+  }
+}
+
+function bytesTexto(n) {
+  const MIB = 1024 * 1024;
+  return n % MIB === 0 ? `${n / MIB} * 1024 * 1024` : String(n);
+}
+
+function funcionReserva(reserva, archivos) {
+  const ramas = archivos.map(
+    (f) =>
+      `(r.tipo == '${f.tipo}'\n` +
+      `              && request.resource.size <= ${bytesTexto(f.bytesMax)}\n` +
+      `              && request.resource.contentType.matches('${f.contentType}'))`,
+  );
+  return `    // Reserva hecha en Firestore por el servidor; una sola lectura cruzada por petición.
+    function reservaValida(tenantId, productoId, subidaId) {
+      let r = firestore.get(/databases/(default)/documents/tenants/$(tenantId)/${reserva}/$(subidaId)).data;
+      return r.estado == 'reservada'
+        && r.venceEn is number
+        && request.time.toMillis() <= r.venceEn
+        && r.productoId == productoId
+        && r.por == request.auth.uid
+        && request.resource.size > 0
+        && request.resource.size <= r.bytes
+        && (${ramas.join('\n            || ')});
+    }
+`;
+}
+
+/** Produce el texto de storage.rules para una lista de manifiestos (en orden). */
+export function generarReglasAlmacenamiento(manifiestos) {
+  const vistas = new Set();
+  let subida;
+  for (const m of manifiestos) {
+    for (const a of m.almacenamiento ?? []) {
+      validarAlmacenamiento(m, a);
+      if (vistas.has(a.ruta)) throw new ErrorGenerador(`Ruta de almacenamiento duplicada "${a.ruta}"`);
+      vistas.add(a.ruta);
+      if (a.escritura !== 'servidor') {
+        if (subida !== undefined) throw new ErrorGenerador('Más de una subidaReservada en el registro');
+        subida = a.escritura;
+      }
+    }
+  }
+  const bloques = [];
+  for (const m of manifiestos) {
+    const rutas = m.almacenamiento ?? [];
+    if (rutas.length === 0) continue;
+    const propios = [`    // Módulo ${m.id}`];
+    for (const a of rutas) {
+      const cabeza = `    match /tenants/{tenantId}/${a.ruta} {`;
+      if (a.escritura !== 'servidor') {
+        propios.push(
+          cabeza,
+          '      // `resource == null`: el objeto no existe todavía (nunca se reemplaza un original ya subido).',
+          '      allow create: if resource == null && editor(tenantId) && reservaValida(tenantId, productoId, subidaId);',
+          '      allow read, update, delete: if false;',
+          '    }',
+        );
+      } else if (a.lectura === 'publica') {
+        propios.push(cabeza, '      allow read: if true;', '      allow write: if false;', '    }');
+      } else {
+        propios.push(cabeza, '      allow read, write: if false;', '    }');
+      }
+    }
+    bloques.push(propios.join('\n'));
+  }
+  const editor = subida === undefined ? '' : `    function editor(tenantId) {
+      return request.auth != null
+        && request.auth.token.get('firebase', {}).get('sign_in_provider', '') == '${PROVEEDOR_PERSONAS}'
+        && request.auth.token.get('email_verified', false) == true
+        && rolEn(tenantId) in ${listaRoles(subida.roles)};
+    }
+
+${funcionReserva(subida.reserva, subida.archivos)}
+`;
+  const cuerpo = bloques.length === 0 ? '' : `${bloques.join('\n\n')}\n\n`;
+  return `rules_version = '2';
+
+// GENERADO por scripts/reglas.mjs desde el registro de módulos; no editar a mano.
+// Ejecute \`pnpm reglas:generar\`; \`reglas:verificar\` falla si este archivo difiere de lo generado.
+//
+// Cloud Storage. Se niega todo salvo lo que cada módulo declara en su manifiesto (\`almacenamiento\`):
+//  - subidaReservada: SOLO con sesión de correo y contraseña verificado, rol de la lista EN ESE tenant (claim pl),
+//    y solo si en Firestore existe la reserva de la subida (misma ruta, mismo producto, hecha por esta persona,
+//    aún \`reservada\` y NO vencida: \`venceEn\`) y el archivo cumple tamaño y tipo. Solo se puede CREAR: no hay
+//    actualización ni borrado desde el navegador.
+//  - lectura 'publica': abierta a cualquiera, bajo publico/.
+//  - todo lo demás lo lee y escribe solo el servidor.
+service firebase.storage {
+  match /b/{bucket}/o {
+
+    function rolEn(tenantId) {
+      return request.auth.token.get('pl', {}).get('t', {}).get(tenantId, '');
+    }
+
+${editor}${cuerpo}    match /{todo=**} {
       allow read, write: if false;
     }
   }
