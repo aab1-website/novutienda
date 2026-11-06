@@ -33,7 +33,7 @@ Más tres piezas con nombre propio: el **registro** (`plataforma/registro.ts`, e
 |---|---|
 | `nucleo` | `paquetes/nucleo/`; en ejecución, `plataforma/funciones/servidor/{redondeo,notificador}.ts` |
 | `central` | `paquetes/panel/` salvo `pantallas/<m>/` y `doble/<m>/`: `ui/`, `sesion/`, `api/`, `appcheck/`, `subidas/` (puerto `AlmacenSubidas` y subida a Storage: transporte, reclasificado en T2 por la observación 2 de H1), `util/`, `pantallas/{usuarios,configuracion}.tsx`; `plataforma/funciones/servidor/llamadas/usuarios.ts` (compuesto en el callable `consola` por `index.ts`) |
-| `plataforma` | `scripts/` (salvo `zonas.mjs`), `plataforma/funciones/scripts/` |
+| `plataforma` | `scripts/` (salvo `zonas.mjs`), `plataforma/funciones/scripts/`, `plataforma/operador/` (código del operador: manifiesto `plataforma`, dueño de `novuchatTokens`; alta de tenant en L2) |
 | `modulo:<m>` | `paquetes/<m>/`; su borde `plataforma/funciones/servidor/llamadas/<m>.ts` (consola incluye `llamadas/medios.ts`, `trigger-medios.ts`, `disparador-sitio.ts`, `programadas/consola.ts`; recibos incluye `enlace-pdf.ts`); su interfaz en el panel: `paquetes/panel/src/pantallas/<m>/` (T2), con las piezas que solo ese módulo usa: pos `venta*`, `supervision`, `aprobaciones`, `arqueo.ts`, `pagos.ts`; inventarios `inventario*`, `mermas`; consola `catalogo*`, `plantillas-vista.ts`, `esperar.ts` y su entrada `index.ts` (`@novutienda/panel/consola`); recibos `recibos.tsx`, `recibo-vista.tsx` |
 | `coordinador` | `plataforma/registro.ts`, `plataforma/coordinador/*.ts`, el resto de `plataforma/funciones/servidor/` (incluidos `programadas/{tenants,cotizacion}.ts`: la cotización recorre tenants y dispara la corrida diaria de consola, plano §6.5) |
 | `conector:<n>` | `conector:firebase` = `plataforma/conectores/firebase/`; `conector:novuchat` = `http/novuchat.ts`; `conector:sitio` = `http/sitio.ts` |
@@ -57,7 +57,7 @@ Reglas de importación por zona declarada (plano §3), con las aproximaciones qu
 |---|---|---|
 | `nucleo` | solo `nucleo` | — |
 | `central` | `nucleo`, `coordinador` | piezas de módulo solo desde el compositor `paquetes/panel/src/ui/app.tsx`, hasta que el registro aporte las pantallas (L2) |
-| `plataforma` | `nucleo`, `central`, `coordinador` | el coordinador entra por `plataforma/registro.ts` |
+| `plataforma` | `nucleo`, `central`, `coordinador` | el coordinador entra por `plataforma/registro.ts`; `plataforma/operador/*.ts` importa solo `@novutienda/nucleo` |
 | `modulo:<m>` | `modulo:<m>`, `nucleo`, `central`, `coordinador`, `conector:firebase`, y `modulo:<d>` si `dependeDe` lo declara | el borde en `plataforma/` necesita el marco (coordinador) y el `Bucket` (firebase) |
 | `coordinador` | todo | un **paquete** de módulo (`@novutienda/<m>`) solo desde un compositor (`registro.ts`, `coordinador/*.ts`, `servidor/entorno.ts`); un **archivo** de borde de módulo que vive en `plataforma/` siempre, porque existe para que el coordinador lo monte |
 | `conector:<n>` | `nucleo`, `coordinador` y las zonas a las que sirve | `firebase` sirve a todas; `novuchat` a inventarios y consola; `sitio` a consola |

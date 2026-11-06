@@ -27,7 +27,8 @@ derivan del código; las cifras caducan y por eso no se copian.
 
 ## Pendiente
 
-- Tandas T1–T4 (mover sin cambiar lógica) y fases L1–L2 (colecciones con dueño; encendido por tenant), **después del primer despliegue
+- L1 (colecciones con dueño): plan aprobado el 06/11/2026; en curso por PR (L1-0 método, L1-a contrato de raíz, L1-b Firestore, L1-c Storage).
+- Tandas T1–T5 hechas (mover sin cambiar lógica); fases L1–L2 (colecciones con dueño; encendido por tenant), **después del primer despliegue
   a staging** (decisión del 05/11/2026). La deuda inicial y lo que resuelve cada tanda está en `pruebas/fronteras/deuda.json`.
 - Pase a staging (`docs/produccion/pase-a-staging.md`): proyecto, facturación, Firestore/Storage, Hosting, WIF, secretos, App Check,
   variables y Environments de GitHub, rulesets, alerta de Monitoring.
