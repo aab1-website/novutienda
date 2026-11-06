@@ -86,7 +86,11 @@ export const ZONA_POR_ARCHIVO: readonly ReglaZona[] = [
   // sus pruebas y las piezas que solo ese módulo usa (pos: arqueo, pagos; consola: plantillas-vista, esperar; recibos:
   // recibo-vista). `pantallas/{usuarios,configuracion}.tsx` y `pantallas/gestion.test.ts` quedan en la raíz: Central.
   { patron: new RegExp(`^paquetes/panel/src/pantallas/(${M})/`), zona: 'modulo:$1', nota: 'carpeta por módulo (T2)' },
-  { patron: /^paquetes\/panel\/src\/subidas\//, zona: 'modulo:consola' },
+  {
+    patron: /^paquetes\/panel\/src\/subidas\//,
+    zona: 'central',
+    nota: 'T2 (H1, observación 2): el puerto `AlmacenSubidas` y la subida reanudable a Storage son transporte Central, como api/transporte.ts; la espera (`esperarSubida`) es consola y vive en pantallas/consola/',
+  },
   // Dobles del panel: material de prueba. Los de módulo, en `doble/<m>/` (T2); no pueden salir a pruebas/ porque
   // servicios.ts (producción, modo humo) y el tsconfig del paquete los alcanzan solo dentro de src/.
   { patron: new RegExp(`^paquetes/panel/src/doble/(${M})/`), zona: 'pruebas:modulo:$1', nota: 'doble de módulo (T2)' },
@@ -195,6 +199,9 @@ export function zonaDeImportacion(archivo: string, imp: string, existe: (ruta: s
   if (imp.startsWith('@tenant/')) return { zona: 'tenant', relativa: false };
   if (imp === '@novutienda/nucleo' || imp.startsWith('@novutienda/nucleo/')) return { zona: 'nucleo', relativa: false };
   if (imp === '@novutienda/panel') return { zona: 'central', relativa: false };
+  // `@novutienda/panel/<m>`: la entrada pública de la interfaz de un módulo dentro del panel (`pantallas/<m>/index.ts`).
+  const sub = new RegExp(`^@novutienda/panel/(${M})$`).exec(imp);
+  if (sub !== null) return { zona: `modulo:${sub[1]}`, relativa: false };
   const m = /^@novutienda\/([^/]+)/.exec(imp);
   if (m !== null) return { zona: `modulo:${m[1]}`, relativa: false };
   return undefined;

@@ -1,6 +1,6 @@
-import type { ClienteApi } from '../api/cliente.js';
-import { ErrorApi } from '../api/errores.js';
-import type { Medio } from '../api/tipos.js';
+import type { ClienteApi } from '../../api/cliente.js';
+import { ErrorApi } from '../../api/errores.js';
+import type { Medio } from '../../api/tipos.js';
 
 /** Primera espera entre consultas de `estadoSubida` (crece 1,5 veces por consulta hasta `ESPERA_TOPE_MS`). */
 export const ESPERA_INICIAL_MS = 200;

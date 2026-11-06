@@ -6,7 +6,7 @@ import { LIMITES_PANEL, type EstadoFicha, type FichaWeb, type Medio, type MedioF
 import { Alerta, Area, Boton, BotonConfirmado, Campo, Cargando, ErrorCarga, Selector, Seccion, Vacio } from '../../ui/comun.js';
 import { useApp } from '../../ui/contexto.js';
 import { useAccion, useCarga } from '../../ui/hooks.js';
-import { esperarSubida } from '../../subidas/esperar.js';
+import { esperarSubida } from './esperar.js';
 import { formatoBytes } from '../../util/base64.js';
 
 const ESTADOS: { valor: EstadoFicha; texto: string }[] = [{ valor: 'borrador', texto: 'Borrador' }, { valor: 'publicado', texto: 'Publicado' }, { valor: 'oculto', texto: 'Oculto' }];

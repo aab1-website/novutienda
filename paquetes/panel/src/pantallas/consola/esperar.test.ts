@@ -1,7 +1,7 @@
 import { describe, expect, it } from 'vitest';
-import { ErrorApi } from '../api/errores.js';
-import type { ClienteApi } from '../api/cliente.js';
-import type { Medio, ResultadoEstadoSubida } from '../api/tipos.js';
+import { ErrorApi } from '../../api/errores.js';
+import type { ClienteApi } from '../../api/cliente.js';
+import type { Medio, ResultadoEstadoSubida } from '../../api/tipos.js';
 import { ESPERA_INICIAL_MS, ESPERA_TOPE_MS, RESPALDO_TRAS_MS, esperarSubida } from './esperar.js';
 
 const MEDIO: Medio = { id: 'sub-12345678', productoId: 'tv-55', tipo: 'foto', bytesOriginal: 10, ancho: 1, alto: 1, creadoEn: 0, por: 'u' };

@@ -7,52 +7,20 @@
   ],
   "cruces": [
     {
-      "archivo": "paquetes/panel/src/index.ts",
-      "importacion": "./subidas/esperar.js",
-      "zona": "central",
-      "destino": "modulo:consola",
-      "resuelveEn": "T2",
-      "nota": "La entrada pública del panel reexporta la espera de subidas (pieza de consola, H0 §5.1)."
-    },
-    {
       "archivo": "paquetes/panel/src/pantallas/pos/venta-terminal.tsx",
       "importacion": "../recibos/recibo-vista.js",
       "zona": "modulo:pos",
       "destino": "modulo:recibos",
-      "resuelveEn": "T2",
-      "nota": "El terminal de venta muestra la vista del recibo: o `pos` declara `dependeDe: recibos`, o la vista pasa a Central."
+      "resuelveEn": "decisión de Andres al cerrar H2",
+      "nota": "El terminal de venta muestra el comprobante y sus acciones. T2 lo movió con sus archivos sin resolverlo: `ReciboVista` es presentación pura, pero `AccionesRecibo` llama a `enviarRecibo` y `referenciarFacturaSuma` (callables de recibos), así que no es Central. O `pos` declara `dependeDe: recibos` en su manifiesto (una línea, no es T2), o se parte la vista."
     },
     {
       "archivo": "paquetes/panel/src/servicios.ts",
       "importacion": "./doble/doble.js",
       "zona": "central",
       "destino": "pruebas:central",
-      "resuelveEn": "T2",
-      "nota": "La composición de servicios del panel monta el doble (material de prueba) en modo emulador."
-    },
-    {
-      "archivo": "paquetes/panel/src/servicios.ts",
-      "importacion": "./subidas/almacen.js",
-      "zona": "central",
-      "destino": "modulo:consola",
-      "resuelveEn": "T2",
-      "nota": "Central depende de `subidas/` (consola, H0 §5.1): se reclasifica como transporte central o se le da un puerto."
-    },
-    {
-      "archivo": "paquetes/panel/src/servicios.ts",
-      "importacion": "./subidas/firebase.js",
-      "zona": "central",
-      "destino": "modulo:consola",
-      "resuelveEn": "T2",
-      "nota": "Ídem."
-    },
-    {
-      "archivo": "paquetes/panel/src/ui/contexto.ts",
-      "importacion": "../subidas/almacen.js",
-      "zona": "central",
-      "destino": "modulo:consola",
-      "resuelveEn": "T2",
-      "nota": "El contexto de la aplicación lleva el almacén de subidas."
+      "resuelveEn": "L2",
+      "nota": "La composición de servicios del panel monta el doble (material de prueba) en modo `humo`: es un `import()` condicional que Vite elimina del paquete de producción. T2 no pudo sacar el doble a pruebas/ (servicios.ts y el tsconfig del paquete solo alcanzan src/); quitarlo o inyectarlo cambia la composición (fase L2)."
     },
     {
       "archivo": "plataforma/funciones/servidor/http/novuchat.ts",

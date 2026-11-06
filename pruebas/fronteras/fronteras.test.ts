@@ -184,6 +184,12 @@ describe('reglas de zona con árboles inventados', () => {
       'plataforma/funciones/servidor/llamadas/marco.ts → @novutienda/pos',
     ]);
   });
+
+  it('la entrada pública de la interfaz de un módulo en el panel (@novutienda/panel/<m>) es de ese módulo', () => {
+    const nunca = (): boolean => false;
+    expect(zonaDeImportacion('pruebas/panel/a.test.ts', '@novutienda/panel/consola', nunca)).toEqual({ zona: 'modulo:consola', relativa: false });
+    expect(zonaDeImportacion('pruebas/panel/a.test.ts', '@novutienda/panel', nunca)).toEqual({ zona: 'central', relativa: false });
+  });
 });
 
 describe('verificador con árboles inventados', () => {

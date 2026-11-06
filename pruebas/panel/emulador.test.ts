@@ -4,7 +4,8 @@
 // el emulador y APP_CHECK_EXIGIDO=true, y allí su ausencia es un fallo (pruebas/funciones/emulador.test.ts).
 import sharp from 'sharp';
 import { beforeAll, describe, expect, it, vi } from 'vitest';
-import { ClienteRemoto, ErrorApi, esperarSubida, mensajeDeError, precioDeVenta, type Rol, type Transporte } from '@novutienda/panel';
+import { ClienteRemoto, ErrorApi, mensajeDeError, precioDeVenta, type Rol, type Transporte } from '@novutienda/panel';
+import { esperarSubida } from '@novutienda/panel/consola';
 import { crearUsuario, esperar, hayEmulador, herramientas, llamar, sembrarTenant, uuid, unico, type Herramientas, type Usuario } from '../funciones/ayudas.js';
 
 vi.setConfig({ testTimeout: 90_000, hookTimeout: 90_000 });
