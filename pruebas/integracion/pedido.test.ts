@@ -1,7 +1,7 @@
 import { calcularFirma, confirmarPedidoFirmado } from '@novutienda/inventarios';
 import type { DatosPedidoConfirmadoV1, SobreEvento } from '@novutienda/nucleo';
 import { beforeEach, describe, expect, it } from 'vitest';
-import { publicarEnBandeja } from '../../plataforma/adaptadores/index.js';
+import { publicarEnBandeja } from './bandeja-memoria.js';
 import { T, contar, cotizacionVigente, doc, entornoListo, type Entorno } from './entorno.js';
 import { verificarInvariantes } from './invariantes.js';
 
