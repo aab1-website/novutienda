@@ -167,6 +167,15 @@ T4 actualiza además los **cuatro archivos de `conectores/firebase/`** (antes `a
 - **`api/real.ts` no se partió.** Sigue siendo el transporte Central con la tabla acción → rol de todos los módulos escrita a mano (H0, observación 3); partirla por módulo cambia la composición del cliente y queda legítimo solo en L2, cuando las acciones salgan del manifiesto.
 - `pruebas/fronteras/fronteras.test.ts` cambió las rutas de sus expectativas (`pantallas/venta-cobro.tsx` → `pantallas/pos/venta-cobro.tsx`, el árbol inventado de `login.tsx`) y ganó una comprobación de `@novutienda/panel/<m>`; ningún caso se quitó.
 
+**Lo que T4 hizo y encontró distinto del plano** (06/11/2026, agente `nucleo`; a confirmar por Andres al cerrar H2):
+
+- **Movimiento sin cambiar lógica.** `limite-tasa.ts` (website) pasó a `paquetes/nucleo/src/limite-tasa/limite-tasa.ts` y `firma.ts` (inventarios) a `paquetes/nucleo/src/firma/firma.ts`, con `git mv`; el núcleo los exporta desde `@novutienda/nucleo`. `website` e `inventarios` los reexportan desde sus rutas viejas (transitorio); los consumidores del servidor (`index.ts`, `http/novuchat.ts`, `http/router.ts`, `http/sitio.ts`, `conectores/firebase/limite-tasa.ts`, `unidades.test.ts`) importan ya del núcleo. Ninguno de los dos archivos tenía prueba propia (el límite se prueba en `api.test.ts` de website y la firma vía `pedido.test.ts` de inventarios); no se movió ninguna prueba.
+- **`http/website.ts` (zona `modulo:website`).** Contiene la llamada a `despacharApi` y el armado de `DepsContacto` tal como estaban en `router.ts` (función `manejarSitioPublico` y el tipo `ConfigWebsite`); `ConfigRouter` extiende `Pick<ConfigWebsite, 'recaptcha' | 'appCheck'>` para que el router no importe `@novutienda/website`. Los cuerpos no cambiaron; solo se extrajeron.
+- **El tsconfig del núcleo declara `types: ["node"]`** porque la firma usa `node:crypto` y `Buffer`.
+- **Hallazgo:** `@novutienda/nucleo` lo importa también el panel (navegador) y su entrada pública incluye ahora `node:crypto`. `pnpm build` emite el aviso de Vite «Module node:crypto has been externalized», pero el bundle del panel no contiene `createHmac` ni `timingSafeEqual` (tree-shaking). Si el aviso molesta, la salida es una entrada `@novutienda/nucleo/servidor`; no se hizo porque cambia la superficie pública.
+- **Conectores de Firebase:** `limite-tasa.ts` ya no importa `website`. `disponibilidad.ts`, `contacto.ts` y `verificadores.ts` (y `entorno.ts`, compositor) siguen importando tipos de puerto de `@novutienda/website` (`LectorDisponibilidad`, `GuardarContacto`, `VerificadorAppCheck`, `VerificadorRecaptcha`): implementan puertos que declara el módulo, y el conector de Firebase sirve a todas las zonas, así que la compuerta no los cuenta como cruce.
+- `deuda.json` baja de 6 a 2 entradas (quedan `venta-terminal → recibo-vista` y `servicios.ts → doble`). `zonas.ts` solo ganó el patrón de `http/website.ts`: `paquetes/nucleo/` ya cubría las carpetas nuevas.
+
 ## 7. Camino, por tandas y fases
 
 | # | Qué | Prueba | Despliega | Jornadas |
