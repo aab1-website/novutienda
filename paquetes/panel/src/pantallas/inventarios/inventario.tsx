@@ -1,12 +1,12 @@
 import type { JSX } from 'preact';
 import { useEffect, useState } from 'preact/hooks';
-import { nuevoId } from '../api/cliente.js';
-import type { CotizacionesVigentes, ProductoPanel, UbicacionId } from '../api/tipos.js';
-import { Alerta, Boton, Campo, Cargando, Casilla, ErrorCarga, Pestanas, Seccion, Vacio, Dato } from '../ui/comun.js';
-import { useApp } from '../ui/contexto.js';
-import { useAccion, useCarga } from '../ui/hooks.js';
-import { centavosATexto, formatearMonto, textoACentavos } from '../util/dinero.js';
-import { precioDeVenta } from '../util/precio.js';
+import { nuevoId } from '../../api/cliente.js';
+import type { CotizacionesVigentes, ProductoPanel, UbicacionId } from '../../api/tipos.js';
+import { Alerta, Boton, Campo, Cargando, Casilla, ErrorCarga, Pestanas, Seccion, Vacio, Dato } from '../../ui/comun.js';
+import { useApp } from '../../ui/contexto.js';
+import { useAccion, useCarga } from '../../ui/hooks.js';
+import { centavosATexto, formatearMonto, textoACentavos } from '../../util/dinero.js';
+import { precioDeVenta } from '../../util/precio.js';
 import { Ajuste, Conteo, Ingreso, Registro, Series, Traspaso, ImportarExportar } from './inventario-ops.js';
 
 const PESTANAS = [

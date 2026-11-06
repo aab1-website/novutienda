@@ -1,11 +1,11 @@
 import type { JSX } from 'preact';
 import { useState } from 'preact/hooks';
-import { MONEDAS, type Moneda, type MontosPorMoneda, type ResultadoCierre, type TurnoPos } from '../api/tipos.js';
-import { Alerta, BotonConfirmado, Campo, Dato, Seccion } from '../ui/comun.js';
-import { useApp } from '../ui/contexto.js';
-import { useAccion } from '../ui/hooks.js';
-import { diferenciaPorMoneda, monedasDelTurno, proyectarTurno } from '../util/arqueo.js';
-import { formatearMonto, textoACentavos } from '../util/dinero.js';
+import { MONEDAS, type Moneda, type MontosPorMoneda, type ResultadoCierre, type TurnoPos } from '../../api/tipos.js';
+import { Alerta, BotonConfirmado, Campo, Dato, Seccion } from '../../ui/comun.js';
+import { useApp } from '../../ui/contexto.js';
+import { useAccion } from '../../ui/hooks.js';
+import { diferenciaPorMoneda, monedasDelTurno, proyectarTurno } from '../../util/arqueo.js';
+import { formatearMonto, textoACentavos } from '../../util/dinero.js';
 
 export function ResumenArqueo({ cierre }: { cierre: ResultadoCierre }): JSX.Element {
   return (

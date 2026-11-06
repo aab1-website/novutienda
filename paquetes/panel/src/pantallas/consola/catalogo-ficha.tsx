@@ -1,13 +1,13 @@
 import type { JSX } from 'preact';
 import { useState } from 'preact/hooks';
-import { nuevoId } from '../api/cliente.js';
-import { mensajeDeError } from '../api/errores.js';
-import { LIMITES_PANEL, type EstadoFicha, type FichaWeb, type Medio, type MedioFicha, type ProductoPanel, type TipoMedio } from '../api/tipos.js';
-import { Alerta, Area, Boton, BotonConfirmado, Campo, Cargando, ErrorCarga, Selector, Seccion, Vacio } from '../ui/comun.js';
-import { useApp } from '../ui/contexto.js';
-import { useAccion, useCarga } from '../ui/hooks.js';
-import { esperarSubida } from '../subidas/esperar.js';
-import { formatoBytes } from '../util/base64.js';
+import { nuevoId } from '../../api/cliente.js';
+import { mensajeDeError } from '../../api/errores.js';
+import { LIMITES_PANEL, type EstadoFicha, type FichaWeb, type Medio, type MedioFicha, type ProductoPanel, type TipoMedio } from '../../api/tipos.js';
+import { Alerta, Area, Boton, BotonConfirmado, Campo, Cargando, ErrorCarga, Selector, Seccion, Vacio } from '../../ui/comun.js';
+import { useApp } from '../../ui/contexto.js';
+import { useAccion, useCarga } from '../../ui/hooks.js';
+import { esperarSubida } from '../../subidas/esperar.js';
+import { formatoBytes } from '../../util/base64.js';
 
 const ESTADOS: { valor: EstadoFicha; texto: string }[] = [{ valor: 'borrador', texto: 'Borrador' }, { valor: 'publicado', texto: 'Publicado' }, { valor: 'oculto', texto: 'Oculto' }];
 const slugDe = (t: string): string => t.normalize('NFD').replace(/[̀-ͯ]/g, '').toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/^-+|-+$/g, '');

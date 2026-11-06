@@ -1,13 +1,13 @@
 import type { JSX } from 'preact';
 import { useState } from 'preact/hooks';
-import { MONEDAS, type Moneda, type MontosPorMoneda, type TurnoPos } from '../api/tipos.js';
-import { Alerta, BotonConfirmado, Boton, Campo, Cargando, ErrorCarga, Pestanas, Seccion, Vacio, fechaHora } from '../ui/comun.js';
-import { useApp } from '../ui/contexto.js';
-import { useAccion, useCarga } from '../ui/hooks.js';
-import { monedasDelTurno, proyectarTurno } from '../util/arqueo.js';
-import { aCsv, descargarTexto } from '../util/csv.js';
-import { formatearMonto, textoACentavos } from '../util/dinero.js';
-import { rangoUltimoMes, validarRango } from '../util/rango.js';
+import { MONEDAS, type Moneda, type MontosPorMoneda, type TurnoPos } from '../../api/tipos.js';
+import { Alerta, BotonConfirmado, Boton, Campo, Cargando, ErrorCarga, Pestanas, Seccion, Vacio, fechaHora } from '../../ui/comun.js';
+import { useApp } from '../../ui/contexto.js';
+import { useAccion, useCarga } from '../../ui/hooks.js';
+import { monedasDelTurno, proyectarTurno } from '../../util/arqueo.js';
+import { aCsv, descargarTexto } from '../../util/csv.js';
+import { formatearMonto, textoACentavos } from '../../util/dinero.js';
+import { rangoUltimoMes, validarRango } from '../../util/rango.js';
 
 
 function TurnoVivo({ t, alCambiar }: { t: TurnoPos; alCambiar: () => void }): JSX.Element {

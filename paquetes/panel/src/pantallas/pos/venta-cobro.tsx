@@ -1,12 +1,12 @@
 import type { JSX } from 'preact';
 import { useRef, useState } from 'preact/hooks';
-import { nuevoId } from '../api/cliente.js';
-import type { AprobacionPos, Carrito, ConfigPos, Mercado, MedioPago, Moneda } from '../api/tipos.js';
-import { Alerta, Boton, Campo, Cargando, Selector, Seccion } from '../ui/comun.js';
-import { useApp } from '../ui/contexto.js';
-import { useAccion, useCarga } from '../ui/hooks.js';
-import { formatearMonto, textoACentavos } from '../util/dinero.js';
-import { calcularPagos, NOMBRE_MEDIO, type FilaPago } from '../util/pagos.js';
+import { nuevoId } from '../../api/cliente.js';
+import type { AprobacionPos, Carrito, ConfigPos, Mercado, MedioPago, Moneda } from '../../api/tipos.js';
+import { Alerta, Boton, Campo, Cargando, Selector, Seccion } from '../../ui/comun.js';
+import { useApp } from '../../ui/contexto.js';
+import { useAccion, useCarga } from '../../ui/hooks.js';
+import { formatearMonto, textoACentavos } from '../../util/dinero.js';
+import { calcularPagos, NOMBRE_MEDIO, type FilaPago } from '../../util/pagos.js';
 
 export interface DatosCobro {
   mercado: Mercado;

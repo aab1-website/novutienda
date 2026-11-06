@@ -1,12 +1,12 @@
 import type { JSX } from 'preact';
 import { useState } from 'preact/hooks';
-import { LIMITES_PANEL, PLANTILLAS_SITIO, type Carrusel, type ConfigSitio, type PlantillaSitio, type Simulacion } from '../api/tipos.js';
-import { Alerta, Boton, BotonConfirmado, Campo, Cargando, Casilla, Dato, ErrorCarga, Pestanas, Selector, Seccion, Vacio, fechaHora } from '../ui/comun.js';
-import { useApp } from '../ui/contexto.js';
-import { useAccion, useCarga } from '../ui/hooks.js';
-import { aBase64, formatoBytes } from '../util/base64.js';
-import { descargarTexto } from '../util/csv.js';
-import { PALETAS } from '../util/plantillas-vista.js';
+import { LIMITES_PANEL, PLANTILLAS_SITIO, type Carrusel, type ConfigSitio, type PlantillaSitio, type Simulacion } from '../../api/tipos.js';
+import { Alerta, Boton, BotonConfirmado, Campo, Cargando, Casilla, Dato, ErrorCarga, Pestanas, Selector, Seccion, Vacio, fechaHora } from '../../ui/comun.js';
+import { useApp } from '../../ui/contexto.js';
+import { useAccion, useCarga } from '../../ui/hooks.js';
+import { aBase64, formatoBytes } from '../../util/base64.js';
+import { descargarTexto } from '../../util/csv.js';
+import { PALETAS } from '../../util/plantillas-vista.js';
 import { PantallaFichas } from './catalogo-ficha.js';
 import { PantallaSecciones } from './catalogo-secciones.js';
 

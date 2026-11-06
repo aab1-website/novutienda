@@ -1,10 +1,10 @@
 import type { JSX } from 'preact';
 import { useState } from 'preact/hooks';
-import type { VentaPos } from '../api/tipos.js';
-import { Alerta, Boton, Campo, Cargando, ErrorCarga, Seccion, Vacio, fechaHora } from '../ui/comun.js';
-import { useApp } from '../ui/contexto.js';
-import { useAccion, useCarga } from '../ui/hooks.js';
-import { formatearMonto } from '../util/dinero.js';
+import type { VentaPos } from '../../api/tipos.js';
+import { Alerta, Boton, Campo, Cargando, ErrorCarga, Seccion, Vacio, fechaHora } from '../../ui/comun.js';
+import { useApp } from '../../ui/contexto.js';
+import { useAccion, useCarga } from '../../ui/hooks.js';
+import { formatearMonto } from '../../util/dinero.js';
 
 function Fila({ v, alCambiar }: { v: VentaPos; alCambiar: () => void }): JSX.Element {
   const { api, usuario } = useApp();

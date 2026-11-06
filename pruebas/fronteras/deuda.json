@@ -15,8 +15,8 @@
       "nota": "La entrada pública del panel reexporta la espera de subidas (pieza de consola, H0 §5.1)."
     },
     {
-      "archivo": "paquetes/panel/src/pantallas/venta-terminal.tsx",
-      "importacion": "../ui/recibo.js",
+      "archivo": "paquetes/panel/src/pantallas/pos/venta-terminal.tsx",
+      "importacion": "../../ui/recibo.js",
       "zona": "modulo:pos",
       "destino": "modulo:recibos",
       "resuelveEn": "T2",
