@@ -12,12 +12,16 @@ export interface ManifiestoBase {
     readonly lectura: readonly string[];
     readonly escritura: 'servidor' | readonly string[];
     readonly limite?: string | undefined;
+    readonly ambito?: string | undefined;
   }[];
 }
 
 type IdModulo = string;
 
 const SEMVER = /^(0|[1-9]\d*)\.(0|[1-9]\d*)\.(0|[1-9]\d*)$/;
+// Mismo criterio que el generador de reglas (scripts/generar-reglas.mjs); el
+// núcleo no puede importarlo, y pruebas/reglas/raiz.test.ts verifica la paridad.
+const SEGMENTO = /^[A-Za-z][A-Za-z0-9_-]*$/;
 const ROLES = ['caj', 'sup', 'adm'];
 const LIMITES = ['productos', 'usuarios', 'cajas', 'almacenes'];
 
@@ -51,6 +55,13 @@ function validar(m: ManifiestoBase): void {
     if (c.ruta === '' || c.ruta.startsWith('/') || c.ruta.endsWith('/') || c.ruta.split('/').includes('..')) {
       throw new ErrorRegistro(`Ruta inválida en ${m.id}: "${c.ruta}"`);
     }
+    if (!c.ruta.split('/').every((s) => SEGMENTO.test(s))) {
+      throw new ErrorRegistro(`Ruta con caracteres no admitidos: "${c.ruta}"`);
+    }
+    // Una colección de tenant tiene un número impar de segmentos (el documento, par).
+    if (c.ambito !== 'raiz' && c.ruta.split('/').length % 2 === 0) {
+      throw new ErrorRegistro(`La ruta "${c.ruta}" no es una colección válida de Firestore (número par de segmentos)`);
+    }
     for (const r of c.lectura) {
       if (!ROLES.includes(r)) throw new ErrorRegistro(`Rol inválido en ${m.id}/${c.ruta}: ${r}`);
     }
@@ -61,6 +72,17 @@ function validar(m: ManifiestoBase): void {
     }
     if (c.limite !== undefined && !LIMITES.includes(c.limite)) {
       throw new ErrorRegistro(`Límite inválido en ${m.id}/${c.ruta}: ${c.limite}`);
+    }
+    if (c.ambito !== undefined && c.ambito !== 'tenant' && c.ambito !== 'raiz') {
+      throw new ErrorRegistro(`Ámbito inválido en ${m.id}/${c.ruta}: ${c.ambito}`);
+    }
+    if (c.ambito === 'raiz') {
+      const donde = `Colección de raíz ${m.id}/${c.ruta}`;
+      if (c.ruta.includes('/')) throw new ErrorRegistro(`${donde}: la ruta debe tener un solo segmento`);
+      if (c.ruta === 'tenants') throw new ErrorRegistro(`${donde}: no puede llamarse "tenants"`);
+      if (c.lectura.length > 0) throw new ErrorRegistro(`${donde}: la lectura debe ser [] (solo el servidor lee)`);
+      if (c.escritura !== 'servidor') throw new ErrorRegistro(`${donde}: la escritura debe ser 'servidor'`);
+      if (c.limite !== undefined) throw new ErrorRegistro(`${donde}: no admite límite de plan`);
     }
   }
 }

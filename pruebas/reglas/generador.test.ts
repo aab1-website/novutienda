@@ -1,7 +1,7 @@
 import { readFileSync } from 'node:fs';
 import { describe, expect, it } from 'vitest';
 import { manifiestosEnOrden } from '../../plataforma/registro.js';
-import { ErrorGenerador, generarReglas, type ManifiestoReglas } from '../../scripts/generar-reglas.mjs';
+import { ErrorGenerador, generarReglas, type ColeccionReglas, type ManifiestoReglas } from '../../scripts/generar-reglas.mjs';
 
 const sintetico: ManifiestoReglas = {
   id: 'demo',
@@ -61,5 +61,85 @@ describe('generador de reglas', () => {
 
   it('omite módulos sin colecciones', () => {
     expect(generarReglas([{ id: 'vacio', colecciones: [] }])).not.toContain('Módulo vacio');
+  });
+
+  // L1-a paso 2: colecciones de raíz en el generador.
+  describe('colecciones de raíz', () => {
+    const raiz = (extra: Partial<ColeccionReglas> = {}): ColeccionReglas => ({
+      ruta: 'global',
+      ambito: 'raiz',
+      lectura: [],
+      escritura: 'servidor',
+      ...extra,
+    });
+    const con = (...colecciones: ColeccionReglas[]) => generarReglas([{ id: 'demo', colecciones }]);
+
+    it('emite match /x/{id} { allow read: if false; allow write: if false; } dentro del bloque del módulo', () => {
+      const t = con({ ruta: 'productos', lectura: ['adm'], escritura: ['adm'] }, raiz());
+      expect(t).toContain(
+        '    // demo: colecciones de raíz (solo servidor)\n' +
+          '    match /global/{id} {\n' +
+          '      allow read: if false;\n' +
+          '      allow write: if false; // solo el servidor escribe\n' +
+          '    }',
+      );
+      expect(t).not.toContain('/tenants/{tenantId}/global');
+      expect(t.indexOf('match /global/{id}')).toBeLessThan(t.indexOf('match /{document=**}'));
+      expect(t.indexOf('match /global/{id}')).toBeGreaterThan(t.indexOf('// Módulo demo'));
+    });
+    it('rechaza raíz con roles de lectura o de escritura', () => {
+      expect(() => con(raiz({ lectura: ['adm'] }))).toThrow(ErrorGenerador);
+      expect(() => con(raiz({ escritura: ['adm'] }))).toThrow(/servidor/);
+      expect(() => con(raiz({ escritura: [] }))).toThrow(ErrorGenerador);
+    });
+    it('rechaza raíz con límite', () => {
+      expect(() => con(raiz({ limite: 'usuarios' }))).toThrow(/límite/);
+    });
+    it('rechaza raíz de dos segmentos', () => {
+      expect(() => con(raiz({ ruta: 'a/b' }))).toThrow(/un solo segmento/);
+    });
+    it('rechaza raíz llamada tenants', () => {
+      expect(() => con(raiz({ ruta: 'tenants' }))).toThrow(/tenants/);
+    });
+    it('rechaza nombres duplicados entre ámbitos', () => {
+      expect(() => con(raiz(), { ruta: 'global', lectura: ['adm'], escritura: 'servidor' })).toThrow(/duplicada/);
+      expect(() =>
+        generarReglas([
+          { id: 'a', colecciones: [{ ruta: 'global', lectura: ['adm'], escritura: 'servidor' }] },
+          { id: 'b', colecciones: [raiz()] },
+        ]),
+      ).toThrow(/duplicada/);
+    });
+    it('rechaza caracteres no admitidos en la raíz', () => {
+      for (const ruta of ['x y', 'a{b}', '*', '..', '', 'x\n']) {
+        expect(() => con(raiz({ ruta }))).toThrow(ErrorGenerador);
+      }
+      expect(() => con(raiz({ ruta: 'x y' }))).toThrow('Ruta con caracteres no admitidos: "x y"');
+    });
+    it('rechaza un ámbito desconocido', () => {
+      const rara = { ...raiz(), ambito: 'otro' } as unknown as ColeccionReglas;
+      expect(() => con(rara)).toThrow(/Ámbito/);
+    });
+    it("ambito: 'tenant' explícito produce la misma salida que omitirlo", () => {
+      const base = { ruta: 'productos', lectura: ['adm'], escritura: ['adm'] } as const;
+      expect(con({ ...base, ambito: 'tenant' })).toBe(con({ ...base }));
+    });
+    it('dos raíces salen en orden dentro del bloque de su módulo y no en el de otro', () => {
+      const t = generarReglas([
+        { id: 'uno', colecciones: [raiz({ ruta: 'zeta' }), raiz({ ruta: 'alfa' })] },
+        { id: 'dos', colecciones: [{ ruta: 'otra', lectura: ['adm'], escritura: 'servidor' }] },
+      ]);
+      const [iUno, iDos] = [t.indexOf('// Módulo uno'), t.indexOf('// Módulo dos')];
+      const [iZeta, iAlfa] = [t.indexOf('match /zeta/{id}'), t.indexOf('match /alfa/{id}')];
+      expect(iUno).toBeLessThan(iZeta);
+      expect(iZeta).toBeLessThan(iAlfa);
+      expect(iAlfa).toBeLessThan(iDos);
+    });
+    // Firestore distingue mayúsculas: «Tenants» es otra colección que no se solapa
+    // con `tenants/{tenantId}`. No se rechaza; queda cerrada por solo-servidor.
+    it('«Tenants» con mayúscula se acepta y queda cerrada', () => {
+      const t = con(raiz({ ruta: 'Tenants' }));
+      expect(t).toContain('match /Tenants/{id} {\n      allow read: if false;\n      allow write: if false;');
+    });
   });
 });

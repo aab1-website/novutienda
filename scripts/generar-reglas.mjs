@@ -41,6 +41,32 @@ function validarRuta(ruta) {
   }
 }
 
+/** Una colección de raíz vive fuera de tenants/{tenantId}: solo el servidor la toca. */
+function validarRaiz(c, id) {
+  const donde = `Colección de raíz ${id}/${c.ruta}`;
+  if (c.ruta.includes('/')) throw new ErrorGenerador(`${donde}: la ruta debe tener un solo segmento`);
+  if (!SEGMENTO.test(c.ruta)) {
+    throw new ErrorGenerador(`Ruta con caracteres no admitidos: "${c.ruta}"`);
+  }
+  if (c.ruta === 'tenants') throw new ErrorGenerador(`${donde}: no puede llamarse "tenants"`);
+  if (c.lectura.length > 0) {
+    throw new ErrorGenerador(`${donde}: la lectura debe ser [] (solo el servidor lee)`);
+  }
+  if (c.escritura !== 'servidor') {
+    throw new ErrorGenerador(`${donde}: la escritura debe ser 'servidor'`);
+  }
+  if (c.limite !== undefined) throw new ErrorGenerador(`${donde}: no admite límite de plan`);
+}
+
+function bloqueRaiz(c) {
+  return [
+    `    match /${c.ruta}/{id} {`,
+    '      allow read: if false;',
+    '      allow write: if false; // solo el servidor escribe',
+    '    }',
+  ].join('\n');
+}
+
 function bloqueColeccion(c) {
   validarRuta(c.ruta);
   // Una colección con límite de plan solo puede escribirla el servidor: una
@@ -76,10 +102,22 @@ export function generarReglas(manifiestos) {
   for (const m of manifiestos) {
     if (m.colecciones.length === 0) continue;
     const propios = [`    // Módulo ${m.id}`];
+    const raices = [];
     for (const c of m.colecciones) {
+      if (c.ambito !== undefined && c.ambito !== 'tenant' && c.ambito !== 'raiz') {
+        throw new ErrorGenerador(`Ámbito inválido en ${m.id}/${c.ruta}: ${String(c.ambito)}`);
+      }
       if (vistas.has(c.ruta)) throw new ErrorGenerador(`Ruta duplicada: "${c.ruta}"`);
       vistas.add(c.ruta);
-      propios.push(bloqueColeccion(c));
+      if (c.ambito === 'raiz') {
+        validarRaiz(c, m.id);
+        raices.push(bloqueRaiz(c));
+      } else {
+        propios.push(bloqueColeccion(c));
+      }
+    }
+    if (raices.length > 0) {
+      propios.push(`    // ${m.id}: colecciones de raíz (solo servidor)`, ...raices);
     }
     bloques.push(propios.join('\n'));
   }

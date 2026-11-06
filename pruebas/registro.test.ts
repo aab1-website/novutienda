@@ -7,9 +7,10 @@ import {
   manifiestoNucleo,
   validarClaim,
   validarSobre,
+  type ColeccionManifiesto,
   type ManifiestoModulo,
 } from '@novutienda/nucleo';
-import { registroPlataforma } from '../plataforma/registro.js';
+import { manifiestosEnOrden, registroPlataforma } from '../plataforma/registro.js';
 
 const mod = (id: string, dependeDe: string[] = [], rutas: string[] = []): ManifiestoModulo => ({
   id,
@@ -107,5 +108,55 @@ describe('contratos congelados', () => {
     expect(validarSobre({ ...base, ocurridoEn: 'ayer' }).ok).toBe(false);
     expect(validarSobre({ ...base, datos: undefined }).ok).toBe(false);
     expect(validarSobre(null).ok).toBe(false);
+  });
+});
+
+describe('colecciones de raíz con el registro real', () => {
+  // Copia del registro real: registroPlataforma es global y no se debe mutar.
+  const copiaReal = () => {
+    const r = crearRegistro<ManifiestoModulo>();
+    for (const m of manifiestosEnOrden()) r.registrar(m);
+    return r;
+  };
+  const extra = (c: Partial<ColeccionManifiesto> & { ruta: string }): ManifiestoModulo => ({
+    ...mod('extra'),
+    colecciones: [{ ambito: 'raiz', lectura: [], escritura: 'servidor', ...c }],
+  });
+
+  it('rechaza raíces inválidas: dos segmentos, tenants, roles de lectura, escritura por roles y límite', () => {
+    expect(() => copiaReal().registrar(extra({ ruta: 'a/b' }))).toThrow(ErrorRegistro);
+    expect(() => copiaReal().registrar(extra({ ruta: 'tenants' }))).toThrow(ErrorRegistro);
+    expect(() => copiaReal().registrar(extra({ ruta: 'rz', lectura: ['adm'] }))).toThrow(ErrorRegistro);
+    expect(() => copiaReal().registrar(extra({ ruta: 'rz', escritura: ['adm'] }))).toThrow(ErrorRegistro);
+    expect(() => copiaReal().registrar(extra({ ruta: 'rz', limite: 'usuarios' }))).toThrow(ErrorRegistro);
+  });
+
+  it('una raíz válida se registra y aparece en rutas() junto a las de tenant', () => {
+    const r = copiaReal();
+    r.registrar(extra({ ruta: 'raizprueba' }));
+    const rutas = r.rutas();
+    expect(rutas).toContain('raizprueba');
+    expect(rutas).toContain('miembros');
+  });
+
+  it('hoy ningún manifiesto registrado declara ambito raiz', () => {
+    // L1-b cambiará esta aserción a «solo nucleo y plataforma declaran ámbito raíz».
+    const conRaiz = registroPlataforma
+      .listar()
+      .filter((m) => m.colecciones.some((c) => c.ambito === 'raiz'))
+      .map((m) => m.id);
+    expect(conRaiz).toEqual([]);
+  });
+
+  it('todo collectionGroup de firestore.indexes.json tiene dueño en el registro o está pendiente de L1-b', () => {
+    // L1-b: declarar dueño.
+    const pendientesL1b = ['alertas', 'reconstrucciones', 'novuchatTokens', 'limitesTasa'];
+    const idx = JSON.parse(
+      readFileSync(fileURLToPath(new URL('../firestore.indexes.json', import.meta.url)), 'utf8'),
+    ) as { indexes?: { collectionGroup: string }[]; fieldOverrides?: { collectionGroup: string }[] };
+    const grupos = new Set([...(idx.indexes ?? []), ...(idx.fieldOverrides ?? [])].map((x) => x.collectionGroup));
+    const ultimos = new Set(registroPlataforma.rutas().map((r) => r.split('/').pop()));
+    const sinDueno = [...grupos].filter((g) => !ultimos.has(g) && !pendientesL1b.includes(g));
+    expect(sinDueno).toEqual([]);
   });
 });

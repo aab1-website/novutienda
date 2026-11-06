@@ -1,6 +1,8 @@
 export interface ColeccionReglas {
   readonly ruta: string;
   readonly limite?: string;
+  /** 'raiz': colección fuera de tenants/{tenantId}, solo servidor. Por defecto 'tenant'. */
+  readonly ambito?: 'tenant' | 'raiz';
   readonly lectura: readonly string[];
   readonly escritura: 'servidor' | readonly string[];
 }
