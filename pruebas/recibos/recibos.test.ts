@@ -444,3 +444,9 @@ describe('manifiesto', () => {
     expect(manifiestoRecibos.emite).toEqual(['recibo.emitido']);
   });
 });
+
+describe('almacenamiento de recibos', () => {
+  it('declara solo la ruta privada de PDF, de servidor', () => {
+    expect(manifiestoRecibos.almacenamiento).toEqual([{ ruta: 'privado/recibos/{ruta=**}', lectura: 'servidor', escritura: 'servidor' }]);
+  });
+});

@@ -1,9 +1,12 @@
 export type {
+  ArchivoSubida,
   ColeccionManifiesto,
+  EscrituraSubidaReservada,
   IdModulo,
   LimiteColeccion,
   ManifiestoModulo,
   Rol,
+  RutaAlmacenamiento,
   TipoEvento,
 } from './registro/tipos.js';
 export { crearRegistro, ErrorRegistro } from './registro/registro.js';

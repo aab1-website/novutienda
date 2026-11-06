@@ -14,6 +14,20 @@ export interface ManifiestoBase {
     readonly limite?: string | undefined;
     readonly ambito?: string | undefined;
   }[];
+  readonly almacenamiento?:
+    | readonly {
+        readonly ruta: string;
+        readonly lectura: string;
+        readonly escritura:
+          | 'servidor'
+          | {
+              readonly tipo: string;
+              readonly roles: readonly string[];
+              readonly reserva: string;
+              readonly archivos: readonly { readonly tipo: string; readonly bytesMax: number; readonly contentType: string }[];
+            };
+      }[]
+    | undefined;
 }
 
 type IdModulo = string;
@@ -22,6 +36,12 @@ const SEMVER = /^(0|[1-9]\d*)\.(0|[1-9]\d*)\.(0|[1-9]\d*)$/;
 // Mismo criterio que el generador de reglas (scripts/generar-reglas.mjs); el
 // núcleo no puede importarlo, y pruebas/reglas/raiz.test.ts verifica la paridad.
 const SEGMENTO = /^[A-Za-z][A-Za-z0-9_-]*$/;
+// Almacenamiento: mismo segmento, o variable `{nombre}`; `{nombre=**}` solo al final.
+const SEGMENTO_ALM = /^(?:[A-Za-z][A-Za-z0-9_-]*|\{[A-Za-z][A-Za-z0-9_]*\})$/;
+const TIPO_ARCHIVO = /^[a-z][a-z0-9_]*$/;
+const VARIABLES_RESERVADAS = ['tenantId', 'todo', 'bucket'];
+const SEGMENTO_RESTO = /^\{[A-Za-z][A-Za-z0-9_]*=\*\*\}$/;
+const CONTENT_TYPE = /^[a-z]+\/\([a-z0-9|-]+\)$/;
 const ROLES = ['caj', 'sup', 'adm'];
 const LIMITES = ['productos', 'usuarios', 'cajas', 'almacenes'];
 
@@ -39,6 +59,8 @@ export interface Registro<M extends ManifiestoBase = ManifiestoBase> {
   ordenTopologico(): readonly IdModulo[];
   /** Rutas de colecciones de todos los módulos; lanza si hay duplicados. */
   rutas(): readonly string[];
+  /** Rutas de almacenamiento de todos los módulos; lanza si hay duplicados o más de una subida reservada. */
+  rutasAlmacenamiento(): readonly string[];
 }
 
 function validar(m: ManifiestoBase): void {
@@ -85,6 +107,66 @@ function validar(m: ManifiestoBase): void {
       if (c.limite !== undefined) throw new ErrorRegistro(`${donde}: no admite límite de plan`);
     }
   }
+  for (const a of m.almacenamiento ?? []) validarAlmacenamiento(m, a);
+}
+
+function validarAlmacenamiento(m: ManifiestoBase, a: NonNullable<ManifiestoBase['almacenamiento']>[number]): void {
+  const donde = `Almacenamiento ${m.id}/${a.ruta}`;
+  const segs = a.ruta.split('/');
+  if (segs[0] !== 'privado' && segs[0] !== 'publico') {
+    throw new ErrorRegistro(`${donde}: el primer segmento debe ser "privado" o "publico"`);
+  }
+  if (segs.length < 2) throw new ErrorRegistro(`${donde}: falta al menos un segmento tras "${segs[0]}"`);
+  segs.forEach((s, i) => {
+    const ultimo = i === segs.length - 1;
+    if (!(SEGMENTO_ALM.test(s) || (ultimo && i > 0 && SEGMENTO_RESTO.test(s)))) {
+      throw new ErrorRegistro(`${donde}: segmento no admitido "${s}"`);
+    }
+    const variable = /^\{([A-Za-z][A-Za-z0-9_]*)(?:=\*\*)?\}$/.exec(s)?.[1];
+    if (variable !== undefined && VARIABLES_RESERVADAS.includes(variable)) {
+      throw new ErrorRegistro(`${donde}: variable de ruta reservada "{${variable}}"`);
+    }
+  });
+  if (a.lectura !== 'servidor' && a.lectura !== 'publica') {
+    throw new ErrorRegistro(`${donde}: lectura inválida "${String(a.lectura)}"`);
+  }
+  if (a.lectura === 'publica' && segs[0] !== 'publico') {
+    throw new ErrorRegistro(`${donde}: la lectura 'publica' solo vale bajo publico/`);
+  }
+  if (a.escritura === 'servidor') return;
+  const e = a.escritura;
+  if (e.tipo !== 'subidaReservada') throw new ErrorRegistro(`${donde}: escritura inválida`);
+  if (segs[0] !== 'privado') throw new ErrorRegistro(`${donde}: subidaReservada solo vale bajo privado/`);
+  if (segs.length < 3 || segs[segs.length - 2] !== '{productoId}' || segs[segs.length - 1] !== '{subidaId}') {
+    throw new ErrorRegistro(`${donde}: la ruta de subidaReservada debe terminar en {productoId}/{subidaId}`);
+  }
+  if (e.roles.length === 0) throw new ErrorRegistro(`${donde}: roles no puede estar vacío`);
+  for (const r of e.roles) {
+    if (!ROLES.includes(r)) throw new ErrorRegistro(`${donde}: rol inválido ${r}`);
+  }
+  const reserva = m.colecciones.find((c) => c.ruta === e.reserva);
+  if (reserva === undefined) {
+    throw new ErrorRegistro(`${donde}: la reserva "${e.reserva}" no es una colección del mismo manifiesto`);
+  }
+  if (reserva.escritura !== 'servidor' || (reserva.ambito !== undefined && reserva.ambito !== 'tenant')) {
+    throw new ErrorRegistro(`${donde}: la reserva "${e.reserva}" debe ser de ámbito tenant y con escritura 'servidor'`);
+  }
+  if (e.archivos.length === 0) throw new ErrorRegistro(`${donde}: archivos no puede estar vacío`);
+  const tipos = new Set<string>();
+  for (const f of e.archivos) {
+    if (typeof f.tipo !== 'string' || f.tipo === '') throw new ErrorRegistro(`${donde}: tipo de archivo vacío`);
+    if (!TIPO_ARCHIVO.test(f.tipo)) {
+      throw new ErrorRegistro(`${donde}: tipo de archivo "${f.tipo}" no cumple el patrón ^[a-z][a-z0-9_]*$`);
+    }
+    if (tipos.has(f.tipo)) throw new ErrorRegistro(`${donde}: tipo de archivo duplicado "${f.tipo}"`);
+    tipos.add(f.tipo);
+    if (!Number.isInteger(f.bytesMax) || f.bytesMax <= 0) {
+      throw new ErrorRegistro(`${donde}: bytesMax de "${f.tipo}" debe ser un entero mayor que 0`);
+    }
+    if (!CONTENT_TYPE.test(f.contentType)) {
+      throw new ErrorRegistro(`${donde}: contentType de "${f.tipo}" no cumple el patrón (por ejemplo image/(jpeg|png))`);
+    }
+  }
 }
 
 export function crearRegistro<M extends ManifiestoBase = ManifiestoBase>(): Registro<M> {
@@ -101,6 +183,29 @@ export function crearRegistro<M extends ManifiestoBase = ManifiestoBase>(): Regi
         }
         vistas.set(c.ruta, m.id);
         todas.push(c.ruta);
+      }
+    }
+    return todas;
+  }
+
+  function rutasAlmacenamiento(): string[] {
+    const vistas = new Map<string, IdModulo>();
+    const todas: string[] = [];
+    let reservada: string | undefined;
+    for (const m of modulos.values()) {
+      for (const a of m.almacenamiento ?? []) {
+        const previo = vistas.get(a.ruta);
+        if (previo !== undefined) {
+          throw new ErrorRegistro(`Ruta de almacenamiento duplicada "${a.ruta}" (${previo} y ${m.id})`);
+        }
+        vistas.set(a.ruta, m.id);
+        todas.push(a.ruta);
+        if (a.escritura !== 'servidor') {
+          if (reservada !== undefined) {
+            throw new ErrorRegistro(`Más de una subidaReservada en el registro (${reservada} y ${m.id}/${a.ruta})`);
+          }
+          reservada = `${m.id}/${a.ruta}`;
+        }
       }
     }
     return todas;
@@ -150,5 +255,6 @@ export function crearRegistro<M extends ManifiestoBase = ManifiestoBase>(): Regi
       return orden;
     },
     rutas,
+    rutasAlmacenamiento,
   };
 }

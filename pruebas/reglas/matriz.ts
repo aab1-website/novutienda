@@ -14,7 +14,7 @@ export const TENANT_A = 'tenant-a';
 export const TENANT_B = 'tenant-b';
 const ID_NUEVO = 'nuevo';
 
-interface Sujeto {
+export interface Sujeto {
   readonly nombre: string;
   /** Token de Auth; `null` = sin autenticar. */
   readonly token: Record<string, unknown> | null;
@@ -39,10 +39,27 @@ const conProveedor = (proveedor: string, resto: Record<string, unknown> = {}) =>
   ...resto,
 });
 
-const personal = (rol: string, tenant = TENANT_A): Sujeto => ({
+export const personal = (rol: string, tenant = TENANT_A): Sujeto => ({
   nombre: `${rol}@${tenant}`,
   token: conProveedor('password', claim({ [tenant]: rol })),
 });
+
+/** Los 13 sujetos hostiles: ninguno abre ninguna operación. */
+export const HOSTILES: readonly Sujeto[] = [
+  { nombre: 'sin autenticar', token: null },
+  { nombre: 'anónimo con claim válido', token: conProveedor('anonymous', claim({ [TENANT_A]: 'adm' })) },
+  { nombre: 'autenticado sin claims', token: conProveedor('password') },
+  { nombre: 'claim sin tenants', token: conProveedor('password', claim({})) },
+  { nombre: 'proveedor google.com', token: conProveedor('google.com', claim({ [TENANT_A]: 'adm' })) },
+  { nombre: 'proveedor custom', token: conProveedor('custom', claim({ [TENANT_A]: 'adm' })) },
+  { nombre: 'correo no verificado', token: conProveedor('password', { ...claim({ [TENANT_A]: 'adm' }), email_verified: false }) },
+  { nombre: 'sin dato de verificación de correo', token: { firebase: { sign_in_provider: 'password' }, ...claim({ [TENANT_A]: 'adm' }) } },
+  { nombre: 'correo verificado como texto', token: conProveedor('password', { ...claim({ [TENANT_A]: 'adm' }), email_verified: 'true' }) },
+  { nombre: 'sin proveedor', token: claim({ [TENANT_A]: 'adm' }) },
+  { nombre: 'acceso de plataforma sin rol', token: conProveedor('password', claim({}, { p: true })) },
+  { nombre: 'rol de otro tenant', token: conProveedor('password', claim({ [TENANT_B]: 'adm' })) },
+  { nombre: 'rol con valor inválido', token: conProveedor('password', claim({ [TENANT_A]: 'root' })) },
+];
 
 type Coleccion = ManifiestoReglas['colecciones'][number];
 
@@ -75,22 +92,7 @@ export function construirCasos(manifiestos: readonly ManifiestoReglas[]): Caso[]
     }
 
     // Negativas fijas: nada de esto abre ninguna operación.
-    const hostiles: Sujeto[] = [
-      { nombre: 'sin autenticar', token: null },
-      { nombre: 'anónimo con claim válido', token: conProveedor('anonymous', claim({ [TENANT_A]: 'adm' })) },
-      { nombre: 'autenticado sin claims', token: conProveedor('password') },
-      { nombre: 'claim sin tenants', token: conProveedor('password', claim({})) },
-      { nombre: 'proveedor google.com', token: conProveedor('google.com', claim({ [TENANT_A]: 'adm' })) },
-      { nombre: 'proveedor custom', token: conProveedor('custom', claim({ [TENANT_A]: 'adm' })) },
-      { nombre: 'correo no verificado', token: conProveedor('password', { ...claim({ [TENANT_A]: 'adm' }), email_verified: false }) },
-      { nombre: 'sin dato de verificación de correo', token: { firebase: { sign_in_provider: 'password' }, ...claim({ [TENANT_A]: 'adm' }) } },
-      { nombre: 'correo verificado como texto', token: conProveedor('password', { ...claim({ [TENANT_A]: 'adm' }), email_verified: 'true' }) },
-      { nombre: 'sin proveedor', token: claim({ [TENANT_A]: 'adm' }) },
-      { nombre: 'acceso de plataforma sin rol', token: conProveedor('password', claim({}, { p: true })) },
-      { nombre: 'rol de otro tenant', token: conProveedor('password', claim({ [TENANT_B]: 'adm' })) },
-      { nombre: 'rol con valor inválido', token: conProveedor('password', claim({ [TENANT_A]: 'root' })) },
-    ];
-    for (const s of hostiles) {
+    for (const s of HOSTILES) {
       for (const op of OPERACIONES) {
         casos.push({ descripcion: `${s.nombre} ${op} ${c.ruta}`, sujeto: s, tenant: TENANT_A, ruta: c.ruta, operacion: op, ...ambito, esperado: false });
       }

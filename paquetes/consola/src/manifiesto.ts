@@ -1,4 +1,5 @@
-import type { ColeccionManifiesto, ManifiestoModulo, Rol } from '@novutienda/nucleo';
+import type { ColeccionManifiesto, ManifiestoModulo, Rol, RutaAlmacenamiento } from '@novutienda/nucleo';
+import { LIMITES_CONSOLA } from './limites.js';
 
 /** Ninguna colección se lee directo desde el navegador: el panel no usa Firestore y consulta por los callables (decisiones.md). */
 const SIN_LECTURA_DIRECTA: readonly Rol[] = [];
@@ -30,6 +31,32 @@ const colecciones: readonly ColeccionManifiesto[] = [
   { ruta: 'reconstrucciones', lectura: SIN_LECTURA_DIRECTA, escritura: 'servidor' },
 ];
 
+/**
+ * Rutas de Storage (relativas a `tenants/{t}/`). Quién escribe cada una:
+ *  - `privado/originales/...`: el navegador SOLO crea (nunca actualiza ni borra), con rol sup/adm y una reserva vigente en
+ *    `subidas` hecha antes por el servidor. Los campos de la reserva (`estado`, `venceEn`, `productoId`, `por`, `bytes`, `tipo`)
+ *    son contrato con `src/medios/subidas.ts`; `tipo` es `'foto'` o `'video'`. Lectura: solo el servidor.
+ *  - `privado/procesando/**`: temporales; lee y escribe solo el servidor.
+ *  - `publico/**`: el servidor procesa y publica; lo lee el sitio (lectura pública). Prefijo amplio como hasta hoy.
+ */
+const almacenamiento: readonly RutaAlmacenamiento[] = [
+  {
+    ruta: 'privado/originales/{productoId}/{subidaId}',
+    lectura: 'servidor',
+    escritura: {
+      tipo: 'subidaReservada',
+      roles: ['sup', 'adm'],
+      reserva: 'subidas',
+      archivos: [
+        { tipo: 'foto', bytesMax: LIMITES_CONSOLA.bytesFoto, contentType: 'image/(jpeg|png|webp|heic)' },
+        { tipo: 'video', bytesMax: LIMITES_CONSOLA.bytesVideo, contentType: 'video/(mp4|quicktime|webm)' },
+      ],
+    },
+  },
+  { ruta: 'privado/procesando/{ruta=**}', lectura: 'servidor', escritura: 'servidor' },
+  { ruta: 'publico/{ruta=**}', lectura: 'publica', escritura: 'servidor' },
+];
+
 /** Manifiesto del módulo consola (administración del catálogo y del sitio). Lo registra el coordinador. */
 export const manifiestoConsola: ManifiestoModulo = {
   id: 'consola',
@@ -39,4 +66,5 @@ export const manifiestoConsola: ManifiestoModulo = {
   colecciones,
   emite: [],
   consume: [],
+  almacenamiento,
 };
