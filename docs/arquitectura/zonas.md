@@ -32,13 +32,13 @@ Más tres piezas con nombre propio: el **registro** (`plataforma/registro.ts`, e
 | Zona | Carpetas y archivos |
 |---|---|
 | `nucleo` | `paquetes/nucleo/`; en ejecución, `plataforma/funciones/servidor/{redondeo,notificador}.ts` |
-| `central` | `paquetes/panel/` salvo las piezas de módulo; `plataforma/funciones/servidor/llamadas/usuarios.ts` (compuesto en el callable `consola` por `index.ts`) |
+| `central` | `paquetes/panel/` salvo `pantallas/<m>/` y `doble/<m>/`: `ui/`, `sesion/`, `api/`, `appcheck/`, `subidas/` (puerto `AlmacenSubidas` y subida a Storage: transporte, reclasificado en T2 por la observación 2 de H1), `util/`, `pantallas/{usuarios,configuracion}.tsx`; `plataforma/funciones/servidor/llamadas/usuarios.ts` (compuesto en el callable `consola` por `index.ts`) |
 | `plataforma` | `scripts/` (salvo `zonas.mjs`), `plataforma/funciones/scripts/` |
-| `modulo:<m>` | `paquetes/<m>/`; su borde `plataforma/funciones/servidor/llamadas/<m>.ts` (consola incluye `llamadas/medios.ts`, `trigger-medios.ts`, `disparador-sitio.ts`, `programadas/consola.ts`; recibos incluye `enlace-pdf.ts`); su interfaz en el panel: pos `pantallas/{venta*,supervision,aprobaciones}.tsx`, `util/{arqueo,pagos}.ts`; inventarios `pantallas/{inventario*,mermas}.tsx`; consola `pantallas/catalogo*.tsx`, `subidas/`, `util/plantillas-vista.ts`; recibos `pantallas/recibos.tsx`, `ui/recibo.tsx`; desde T2, `pantallas/<m>/` |
+| `modulo:<m>` | `paquetes/<m>/`; su borde `plataforma/funciones/servidor/llamadas/<m>.ts` (consola incluye `llamadas/medios.ts`, `trigger-medios.ts`, `disparador-sitio.ts`, `programadas/consola.ts`; recibos incluye `enlace-pdf.ts`); su interfaz en el panel: `paquetes/panel/src/pantallas/<m>/` (T2), con las piezas que solo ese módulo usa: pos `venta*`, `supervision`, `aprobaciones`, `arqueo.ts`, `pagos.ts`; inventarios `inventario*`, `mermas`; consola `catalogo*`, `plantillas-vista.ts`, `esperar.ts` y su entrada `index.ts` (`@novutienda/panel/consola`); recibos `recibos.tsx`, `recibo-vista.tsx` |
 | `coordinador` | `plataforma/registro.ts`, `plataforma/adaptadores/*.ts`, el resto de `plataforma/funciones/servidor/` (incluidos `programadas/{tenants,cotizacion}.ts`: la cotización recorre tenants y dispara la corrida diaria de consola, plano §6.5) |
 | `conector:<n>` | `conector:firebase` = `plataforma/adaptadores/firebase/`; `conector:novuchat` = `http/novuchat.ts`; `conector:sitio` = `http/sitio.ts` |
 | `tenant` | `tenants/` |
-| `pruebas:<zona>` | `pruebas/{funciones,integracion}/` y `pruebas/registro.test.ts` → coordinador; `pruebas/panel/` → central; `pruebas/<m>/` → `modulo:<m>`; `pruebas/{identidad,limites,tipo-cambio,reglas,tenant}/` → núcleo; un `*.test.ts` dentro de un paquete → la zona del archivo que prueba; los dobles del panel (`src/doble/`, `ayuda-pruebas.ts`) → pruebas de su zona |
+| `pruebas:<zona>` | `pruebas/{funciones,integracion}/` y `pruebas/registro.test.ts` → coordinador; `pruebas/panel/` → central; `pruebas/<m>/` → `modulo:<m>`; `pruebas/{identidad,limites,tipo-cambio,reglas,tenant}/` → núcleo; un `*.test.ts` dentro de un paquete → la zona del archivo que prueba (`pantallas/<m>/x.test.ts` → `pruebas:modulo:<m>`; `pantallas/gestion.test.ts` y `util/util.test.ts` → `pruebas:central`); los dobles del panel → `src/doble/` es `pruebas:central` y `src/doble/<m>/` es `pruebas:modulo:<m>` (no salen a `pruebas/`: `servicios.ts` los monta en modo `humo`), `ayuda-pruebas.ts` → `pruebas:central` |
 | `metodo` | `pruebas/fronteras/`, `scripts/zonas.mjs` |
 
 La fuente de verdad de esta tabla es **`pruebas/fronteras/zonas.ts`** (`ZONA_POR_ARCHIVO`): esta tabla la resume; si difieren, manda el mapa y se corrige el documento.
@@ -64,6 +64,8 @@ Reglas de importación por zona declarada (plano §3), con las aproximaciones qu
 | `pruebas:<z>` | lo que importa `z`, más cualquier `pruebas:*` (dobles), `plataforma`, `coordinador` y conectores | `pruebas:coordinador` y `pruebas:central` importan además módulos |
 | `tenant` | `@novutienda/nucleo/extension` | lo exige también `verificador.ts` |
 | `metodo` | todo | sus pruebas contienen árboles inventados |
+
+Una importación `@novutienda/panel` es Central; `@novutienda/panel/<m>` (la entrada `pantallas/<m>/index.ts` que `package.json` exporta) es `modulo:<m>`: así una prueba de fuera del paquete alcanza una pieza de módulo sin que Central la reexporte.
 
 Además sigue vigente el verificador anterior sobre `paquetes/` y `tenants/` (`verificador.ts`: ningún módulo importa a otro salvo `dependeDe`, nada a `/src/`, nadie a un tenant) y ESLint como segunda red.
 
