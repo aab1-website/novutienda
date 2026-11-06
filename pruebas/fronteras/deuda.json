@@ -21,38 +21,6 @@
       "destino": "pruebas:central",
       "resuelveEn": "L2",
       "nota": "La composición de servicios del panel monta el doble (material de prueba) en modo `humo`: es un `import()` condicional que Vite elimina del paquete de producción. T2 no pudo sacar el doble a pruebas/ (servicios.ts y el tsconfig del paquete solo alcanzan src/); quitarlo o inyectarlo cambia la composición (fase L2)."
-    },
-    {
-      "archivo": "plataforma/funciones/servidor/http/novuchat.ts",
-      "importacion": "@novutienda/website",
-      "zona": "conector:novuchat",
-      "destino": "modulo:website",
-      "resuelveEn": "T4",
-      "nota": "`LimiteTasa` vive en website; va al núcleo."
-    },
-    {
-      "archivo": "plataforma/funciones/servidor/http/router.ts",
-      "importacion": "@novutienda/website",
-      "zona": "coordinador",
-      "destino": "modulo:website",
-      "resuelveEn": "T4",
-      "nota": "`LimiteTasa` (T4) y además `despacharApi`: el enrutador mezcla la composición con el borde del módulo website; partirlo en `http/website.ts` (modulo:website) deja al router solo componiendo."
-    },
-    {
-      "archivo": "plataforma/funciones/servidor/http/sitio.ts",
-      "importacion": "@novutienda/inventarios",
-      "zona": "conector:sitio",
-      "destino": "modulo:inventarios",
-      "resuelveEn": "T4",
-      "nota": "`verificarFirma` (HMAC) vive en inventarios; va al núcleo."
-    },
-    {
-      "archivo": "plataforma/funciones/servidor/index.ts",
-      "importacion": "@novutienda/website",
-      "zona": "coordinador",
-      "destino": "modulo:website",
-      "resuelveEn": "T4",
-      "nota": "`limiteMemoria`/`LimiteTasa` viven en website; van al núcleo."
     }
   ]
 }

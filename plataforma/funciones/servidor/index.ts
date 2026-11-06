@@ -11,7 +11,7 @@ import { onDocumentCreated } from 'firebase-functions/v2/firestore';
 import { onCall, onRequest, type Request } from 'firebase-functions/v2/https';
 import { onSchedule } from 'firebase-functions/v2/scheduler';
 import { onObjectFinalized } from 'firebase-functions/v2/storage';
-import { limiteMemoria, type LimiteTasa } from '@novutienda/website';
+import { limiteMemoria, type LimiteTasa } from '@novutienda/nucleo';
 import { crearLimiteTasa, esEntornoDePruebas } from '../../conectores/firebase/index.js';
 import { entregarEvento } from './bus.js';
 import { enteroDe, exigirConfiguracionDeServicio, PARAMETROS, REGION, SECRETOS } from './config.js';

@@ -7,9 +7,8 @@ import {
   esDisponible, leerDocumentoProducto, UBICACION_DISPONIBILIDAD, UBICACIONES, confirmarPedidoFirmado,
 } from '@novutienda/inventarios';
 import {
-  esMercado, leerCotizacion, MONEDA_DE, precioFinal, SinCotizacionUtilizable, type CopiaCotizacion, type Mercado, type Redondeo,
+  esMercado, leerCotizacion, MONEDA_DE, precioFinal, SinCotizacionUtilizable, type CopiaCotizacion, type LimiteTasa, type Mercado, type Redondeo,
 } from '@novutienda/nucleo';
-import type { LimiteTasa } from '@novutienda/website';
 import type { Entorno } from '../entorno.js';
 import { json, type PeticionHttp, type RespuestaApi } from './tipos.js';
 

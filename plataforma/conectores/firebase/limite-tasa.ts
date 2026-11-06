@@ -3,7 +3,7 @@
 // política TTL de Firestore (ver `firestore.indexes.json`) los borre sola.
 import { createHash } from 'node:crypto';
 import { Timestamp, type Firestore } from 'firebase-admin/firestore';
-import type { LimiteTasa } from '@novutienda/website';
+import type { LimiteTasa } from '@novutienda/nucleo';
 
 export const COLECCION_LIMITES = 'limitesTasa';
 

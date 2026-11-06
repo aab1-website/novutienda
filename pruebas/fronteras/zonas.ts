@@ -78,6 +78,7 @@ export const ZONA_POR_ARCHIVO: readonly ReglaZona[] = [
   { patron: /^plataforma\/funciones\/servidor\/(redondeo|notificador)\.ts$/, zona: 'nucleo', nota: 'núcleo en ejecución' },
   { patron: /^plataforma\/funciones\/servidor\/http\/novuchat\.ts$/, zona: 'conector:novuchat', nota: 'sirve a inventarios y consola' },
   { patron: /^plataforma\/funciones\/servidor\/http\/sitio\.ts$/, zona: 'conector:sitio', nota: 'sirve a consola' },
+  { patron: /^plataforma\/funciones\/servidor\/http\/website\.ts$/, zona: 'modulo:website', nota: 'borde HTTP de website, partido del enrutador (T4)' },
   { patron: /^plataforma\/funciones\/servidor\//, zona: 'coordinador' },
 
   // ---- Paquetes ----------------------------------------------------------------------------------
