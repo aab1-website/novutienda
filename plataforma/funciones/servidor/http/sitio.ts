@@ -6,7 +6,7 @@
 //        (política de `tenants/T/config/redondeo`; la reconstrucción la inyecta en `config.redondeo` del contenido del sitio)
 // Firma: `X-Marca-Tiempo` (ms Unix) y `X-Firma` = HMAC-SHA256 hex de `{marca}.{MÉTODO}\n{url con consulta}\n{cuerpo}`
 // con el secreto SITIO_RECONSTRUCCION_SECRETO; ventana de 5 minutos.
-import { verificarFirma } from '@novutienda/nucleo';
+import { verificarFirma } from '@novutienda/nucleo/servidor';
 import { esTenantIdValido } from '@novutienda/nucleo';
 import type { Entorno } from '../entorno.js';
 import { json, type PeticionHttp, type RespuestaApi } from './tipos.js';

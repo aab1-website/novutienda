@@ -32,7 +32,6 @@ export * from './medicion/medicion.js';
 export * from './api/http.js';
 export * from './api/disponibilidad.js';
 export * from './api/contacto.js';
-export * from './api/limite-tasa.js';
 export * from './api/cotizacion.js';
 export * from './api/router.js';
 

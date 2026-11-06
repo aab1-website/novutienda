@@ -1,10 +1,9 @@
 import { describe, expect, it } from 'vitest';
-import { SinCotizacionUtilizable, type AlmacenCotizaciones, type CopiaCotizacion } from '@novutienda/nucleo';
+import { limiteMemoria, SinCotizacionUtilizable, type AlmacenCotizaciones, type CopiaCotizacion } from '@novutienda/nucleo';
 import { manejarContacto, validarContacto, type DepsContacto, type PeticionContacto } from './contacto.js';
 import { lectorCotizacion, manejarCotizacionSitio } from './cotizacion.js';
 import { manejarDisponibilidad } from './disponibilidad.js';
 import { limpiarTexto } from './http.js';
-import { limiteMemoria } from './limite-tasa.js';
 import { despacharApi, RUTAS_API, type DepsApi } from './router.js';
 
 describe('GET /api/disponibilidad', () => {

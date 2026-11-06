@@ -1,8 +1,8 @@
 import { beforeEach, describe, expect, it } from 'vitest';
 import type { SobreEvento } from '@novutienda/nucleo';
+import { calcularFirma, verificarFirma, VENTANA_FIRMA_MS } from '@novutienda/nucleo/servidor';
 import {
   aplicarSalida,
-  calcularFirma,
   confirmarPedido,
   confirmarPedidoFirmado,
   consumirPedidoConfirmado,
@@ -10,8 +10,6 @@ import {
   ejecutorDesde,
   OperacionConflicto,
   prepararSalida,
-  verificarFirma,
-  VENTANA_FIRMA_MS,
 } from './api.js';
 import type { DobleDb } from './doble-db.js';
 import { altaProducto, CAJ, cargar, contar, doc, nuevoEntorno, producto, T, verificarInvariantes } from './entorno.js';

@@ -5,9 +5,8 @@
  * trampa para bots, reCAPTCHA y, solo entonces, guardar. App Check va ANTES del límite: el límite se paga con
  * una escritura transaccional en Firestore, que no debe quedar al alcance de peticiones sin token válido. Los registros no llevan datos personales.
  */
-import type { Mercado } from '@novutienda/nucleo';
+import type { LimiteTasa, Mercado } from '@novutienda/nucleo';
 import { limpiarTexto, respuestaJson, type RespuestaHttp } from './http.js';
-import type { LimiteTasa } from './limite-tasa.js';
 
 export interface VerificadorRecaptcha {
   verificar(token: string, accion: string): Promise<{ readonly valido: boolean; readonly puntaje: number | null }>;

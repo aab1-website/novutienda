@@ -12,7 +12,7 @@ import {
 import { EntradaInvalida, EstadoInvalido, ErrorInventario, OperacionConflicto, StockInsuficiente, type Faltante } from './errores.js';
 import { hashSalida, aplicarReversion, aplicarSalida, idOperacionSalida, prepararReversion, prepararSalida, type LineaResuelta, type ReferenciaSalida } from './puerto.js';
 import { exigirCantidad, exigirProducto, exigirSegmento, exigirTenant, MAX_LINEAS } from './ids.js';
-import { verificarFirma } from './firma.js';
+import { verificarFirma } from '@novutienda/nucleo/servidor';
 import { Lector, type Autor, type Datos } from './motor.js';
 
 
