@@ -14,6 +14,10 @@ export const manifiestoNucleo: ManifiestoModulo = {
     { ruta: 'contadores', lectura: [], escritura: 'servidor' },
     { ruta: 'cotizaciones', lectura: ['caj', 'sup', 'adm'], escritura: 'servidor' },
     { ruta: 'config', lectura: ['caj', 'sup', 'adm'], escritura: 'servidor' },
+    // L1-b: la escribe notificador.ts con Admin; el panel las lee por el callable consola.alertas, nunca por Firestore.
+    { ruta: 'alertas', lectura: [], escritura: 'servidor' },
+    // L1-b: raíz; la usa el conector de límite de tasa (limite-tasa.ts), solo con Admin. Su TTL vive en firestore.indexes.json.
+    { ruta: 'limitesTasa', lectura: [], escritura: 'servidor', ambito: 'raiz' },
   ],
   emite: [],
   consume: [],

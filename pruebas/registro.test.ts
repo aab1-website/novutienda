@@ -10,7 +10,10 @@ import {
   type ColeccionManifiesto,
   type ManifiestoModulo,
 } from '@novutienda/nucleo';
+import { manifiestoPlataforma } from '../plataforma/operador/manifiesto.js';
 import { manifiestosEnOrden, registroPlataforma } from '../plataforma/registro.js';
+import { COLECCION_LIMITES } from '../plataforma/conectores/firebase/limite-tasa.js';
+import { COLECCION_TOKENS } from '../plataforma/funciones/servidor/http/novuchat.js';
 
 const mod = (id: string, dependeDe: string[] = [], rutas: string[] = []): ManifiestoModulo => ({
   id,
@@ -23,9 +26,10 @@ const mod = (id: string, dependeDe: string[] = [], rutas: string[] = []): Manifi
 });
 
 describe('registro de módulos', () => {
-  it('el núcleo y los cinco módulos están registrados; el núcleo tiene sus siete colecciones', () => {
-    expect(registroPlataforma.listar().map((m) => m.id).sort()).toEqual(['consola', 'inventarios', 'nucleo', 'panel', 'pos', 'recibos', 'website']);
-    expect(manifiestoNucleo.colecciones.map((c) => c.ruta)).toEqual(['miembros', 'auditoria', 'eventos', 'procesados', 'contadores', 'cotizaciones', 'config']);
+  it('el núcleo, los módulos y plataforma están registrados; el núcleo tiene sus nueve colecciones (L1-b)', () => {
+    // L1-b: se suma `plataforma` (8 ids) y el núcleo declara `alertas` y `limitesTasa` (9 colecciones).
+    expect(registroPlataforma.listar().map((m) => m.id).sort()).toEqual(['consola', 'inventarios', 'nucleo', 'panel', 'plataforma', 'pos', 'recibos', 'website']);
+    expect(manifiestoNucleo.colecciones.map((c) => c.ruta)).toEqual(['miembros', 'auditoria', 'eventos', 'procesados', 'contadores', 'cotizaciones', 'config', 'alertas', 'limitesTasa']);
     const aud = manifiestoNucleo.colecciones.find((c) => c.ruta === 'auditoria');
     expect(aud?.lectura).toEqual(['sup', 'adm']);
     expect(manifiestoNucleo.colecciones.every((c) => c.escritura === 'servidor')).toBe(true);
@@ -139,24 +143,40 @@ describe('colecciones de raíz con el registro real', () => {
     expect(rutas).toContain('miembros');
   });
 
-  it('hoy ningún manifiesto registrado declara ambito raiz', () => {
-    // L1-b cambiará esta aserción a «solo nucleo y plataforma declaran ámbito raíz».
-    const conRaiz = registroPlataforma
+  it('las colecciones de raíz declaradas son solo limitesTasa (nucleo) y novuchatTokens (plataforma)', () => {
+    const raices = registroPlataforma
       .listar()
-      .filter((m) => m.colecciones.some((c) => c.ambito === 'raiz'))
-      .map((m) => m.id);
-    expect(conRaiz).toEqual([]);
+      .flatMap((m) => m.colecciones.filter((c) => c.ambito === 'raiz').map((c) => `${m.id}:${c.ruta}`))
+      .sort();
+    expect(raices).toEqual(['nucleo:limitesTasa', 'plataforma:novuchatTokens']);
   });
 
-  it('todo collectionGroup de firestore.indexes.json tiene dueño en el registro o está pendiente de L1-b', () => {
-    // L1-b: declarar dueño.
-    const pendientesL1b = ['alertas', 'reconstrucciones', 'novuchatTokens', 'limitesTasa'];
+  it('todo collectionGroup de firestore.indexes.json tiene dueño en el registro', () => {
     const idx = JSON.parse(
       readFileSync(fileURLToPath(new URL('../firestore.indexes.json', import.meta.url)), 'utf8'),
     ) as { indexes?: { collectionGroup: string }[]; fieldOverrides?: { collectionGroup: string }[] };
     const grupos = new Set([...(idx.indexes ?? []), ...(idx.fieldOverrides ?? [])].map((x) => x.collectionGroup));
     const ultimos = new Set(registroPlataforma.rutas().map((r) => r.split('/').pop()));
-    const sinDueno = [...grupos].filter((g) => !ultimos.has(g) && !pendientesL1b.includes(g));
+    const sinDueno = [...grupos].filter((g) => !ultimos.has(g));
     expect(sinDueno).toEqual([]);
+  });
+});
+
+describe('L1-b: constantes de código alineadas con el manifiesto', () => {
+  const raiz = (m: ManifiestoModulo) => m.colecciones.filter((c) => c.ambito === 'raiz').map((c) => c.ruta);
+
+  it('COLECCION_LIMITES es la raíz declarada por nucleo', () => {
+    expect(raiz(manifiestoNucleo)).toEqual([COLECCION_LIMITES]);
+  });
+
+  it('COLECCION_TOKENS es la raíz declarada por plataforma', () => {
+    expect(raiz(manifiestoPlataforma)).toEqual([COLECCION_TOKENS]);
+  });
+
+  it('plataforma depende solo de nucleo y se ordena después', () => {
+    expect(manifiestoPlataforma.dependeDe).toEqual(['nucleo']);
+    const orden = registroPlataforma.ordenTopologico();
+    expect(orden.indexOf('nucleo')).toBeGreaterThanOrEqual(0);
+    expect(orden.indexOf('plataforma')).toBeGreaterThan(orden.indexOf('nucleo'));
   });
 });

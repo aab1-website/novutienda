@@ -60,6 +60,15 @@ service cloud.firestore {
       allow read: if tieneRol(tenantId, ['caj', 'sup', 'adm']);
       allow write: if false; // solo el servidor escribe
     }
+    match /tenants/{tenantId}/alertas/{id} {
+      allow read: if false;
+      allow write: if false; // solo el servidor escribe
+    }
+    // nucleo: colecciones de raíz (solo servidor)
+    match /limitesTasa/{id} {
+      allow read: if false;
+      allow write: if false; // solo el servidor escribe
+    }
 
     // Módulo inventarios
     match /tenants/{tenantId}/productos/{id} {
@@ -203,6 +212,17 @@ service cloud.firestore {
       allow write: if false; // solo el servidor escribe
     }
     match /tenants/{tenantId}/uso/{id} {
+      allow read: if false;
+      allow write: if false; // solo el servidor escribe
+    }
+    match /tenants/{tenantId}/reconstrucciones/{id} {
+      allow read: if false;
+      allow write: if false; // solo el servidor escribe
+    }
+
+    // Módulo plataforma
+    // plataforma: colecciones de raíz (solo servidor)
+    match /novuchatTokens/{id} {
       allow read: if false;
       allow write: if false; // solo el servidor escribe
     }

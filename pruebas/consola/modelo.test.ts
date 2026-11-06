@@ -143,9 +143,20 @@ describe('plantillas, configuración y carruseles', () => {
 });
 
 describe('manifiesto y pantallas', () => {
-  it('declara las 8 colecciones de un segmento, escritas solo por el servidor', () => {
+  it('declara las 9 colecciones de un segmento, escritas solo por el servidor', () => {
     const rutas = manifiestoConsola.colecciones.map((c) => c.ruta).sort();
-    expect(rutas).toEqual(['carruseles', 'fichasWeb', 'medios', 'publicado', 'secciones', 'sitio', 'subidas', 'uso']);
+    // L1-b: se suma 'reconstrucciones' (solicitudes de reconstrucción del sitio).
+    expect(rutas).toEqual([
+      'carruseles',
+      'fichasWeb',
+      'medios',
+      'publicado',
+      'reconstrucciones',
+      'secciones',
+      'sitio',
+      'subidas',
+      'uso',
+    ]);
     expect(manifiestoConsola.colecciones.every((c) => c.escritura === 'servidor' && !c.ruta.includes('/'))).toBe(true);
     expect(manifiestoConsola.colecciones.some((c) => c.lectura.includes('caj'))).toBe(false);
   });

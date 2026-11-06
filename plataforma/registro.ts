@@ -11,6 +11,8 @@ import { manifiestoRecibos } from '@novutienda/recibos';
 import { manifiestoWebsite } from '@novutienda/website';
 import { manifiestoConsola } from '@novutienda/consola';
 import { manifiestoPanel } from '@novutienda/panel';
+// Manifiesto del operador (zona Plataforma, L1-b): datos de plataforma que no son de ningún tenant.
+import { manifiestoPlataforma } from './operador/manifiesto.js';
 
 export const registroPlataforma = crearRegistro<ManifiestoModulo>();
 registroPlataforma.registrar(manifiestoNucleo);
@@ -20,6 +22,7 @@ registroPlataforma.registrar(manifiestoRecibos);
 registroPlataforma.registrar(manifiestoWebsite);
 registroPlataforma.registrar(manifiestoConsola);
 registroPlataforma.registrar(manifiestoPanel);
+registroPlataforma.registrar(manifiestoPlataforma);
 
 /**
  * Manifiestos en orden topológico (dependencias primero). Es el orden que usa el

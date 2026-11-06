@@ -11,6 +11,8 @@ const SIN_LECTURA_DIRECTA: readonly Rol[] = [];
  *  - `publicado/{...}`: copia que lee la reconstrucción del sitio (con el servidor); solo adm ve su estado por el callable.
  *  - `subidas/{id}`, `medios/{id}`: reservas y medios procesados.
  *  - `uso/medios`: cuota transaccional de originales y conteo de fotos/videos por producto.
+ *  - `reconstrucciones/{id}`: solicitudes de reconstrucción del sitio que escribe `disparador-sitio.ts` y lee/actualiza
+ *    `http/sitio.ts` (conector del sitio); solo el servidor.
  * `sup` puede leer todo y, por las funciones del servidor, editar fichas y subir medios; precios, importación,
  * secciones, apariencia y publicación son de `adm`.
  * No emite ni consume eventos v1: la disponibilidad pública se sirve por `/api/disponibilidad` y la reconstrucción se
@@ -25,6 +27,7 @@ const colecciones: readonly ColeccionManifiesto[] = [
   { ruta: 'subidas', lectura: SIN_LECTURA_DIRECTA, escritura: 'servidor' },
   { ruta: 'medios', lectura: SIN_LECTURA_DIRECTA, escritura: 'servidor' },
   { ruta: 'uso', lectura: SIN_LECTURA_DIRECTA, escritura: 'servidor' },
+  { ruta: 'reconstrucciones', lectura: SIN_LECTURA_DIRECTA, escritura: 'servidor' },
 ];
 
 /** Manifiesto del módulo consola (administración del catálogo y del sitio). Lo registra el coordinador. */

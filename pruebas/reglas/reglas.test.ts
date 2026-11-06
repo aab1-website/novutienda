@@ -100,6 +100,10 @@ describe.skipIf(host === undefined)('reglas de Firestore contra el emulador', ()
     const mutantes: [string, (t: string) => string][] = [
       ['escritura abierta en una colección servidor', (t) => t.replace('allow write: if false;', 'allow write: if true;')],
       ['lectura abierta en una colección sin lectores', (t) => t.replace(/(eventos\/\{id\} \{\n\s+)allow read: if false;/, '$1allow read: if true;')],
+      // L1-b: la raíz verdadera también debe quedar cerrada.
+      ['lectura abierta en limitesTasa (raíz)', (t) => t.replace(/(match \/limitesTasa\/\{id\} \{\n\s+)allow read: if false;/, '$1allow read: if true;')],
+      ['escritura abierta en novuchatTokens (raíz de plataforma)', (t) => t.replace(/(match \/novuchatTokens\/\{id\} \{\n\s+allow read: if false;\n\s+)allow write: if false;/, '$1allow write: if true;')],
+      ['lectura abierta en alertas (la lee el panel solo por callable)', (t) => t.replace(/(alertas\/\{id\} \{\n\s+)allow read: if false;/, '$1allow read: if true;')],
       ['negación final reemplazada por permiso', (t) => t.replace(/(\{document=\*\*\} \{\n\s+)allow read, write: if false;/, '$1allow read, write: if true;')],
       ['proveedor ignorado', (t) => t.replace("&& proveedor() == 'password'", '')],
       ['correo verificado ignorado', (t) => t.replace("&& request.auth.token.get('email_verified', false) == true", '')],
