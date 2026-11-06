@@ -26,3 +26,7 @@ Ingreso (correo y contraseña), apertura de turno (efectivo por moneda), termina
 
 ## Pruebas obligatorias
 Venta sin turno o con turno ajeno; segundo turno con la caja ocupada; precio o total alterado por el cliente; descuento sobre el tope sin aprobación o con aprobación reutilizada/vencida/autoaprobada; pagos ≠ total o en otra moneda; stock insuficiente o serie vendida; reintento con el mismo requestId descuenta una vez; egreso mayor al efectivo; anular dos veces; vendedor que anula; CSV con celdas que empiezan con = + - @; el arqueo con diferencia negativa no se tapa.
+
+## Dependencia del módulo recibos (06/11/2026)
+
+`manifiestoPos.dependeDe` incluye `recibos`: el terminal de venta muestra el comprobante y usa sus acciones (`enviarRecibo`, `referenciarFacturaSuma`). Consecuencia para el encendido por tenant (fase L2): **un tenant no puede tener `pos` sin `recibos`**; el registro ordena recibos antes que pos y la frontera admite la importación.

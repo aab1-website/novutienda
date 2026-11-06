@@ -47,6 +47,8 @@ El sistema se ordenó por **paquete funcional** (qué hace cada pieza). La arqui
 | **Módulos** | Lo que se enciende por tenant con manifiesto y límite por plan: inventarios, pos, recibos, consola (catálogo y sitio), website | NovuTienda, un módulo a la vez, con versión | `paquetes/<m>` + su borde en `plataforma/funciones/servidor/llamadas/<m>.ts` + su interfaz en `panel/src/pantallas/*` |
 | **Tenants** | Datos y configuración **declarativa** de un cliente: `tenants/{t}/…` en Firestore, `tenants/<t>/config.json` en el repo, `CLIENTES/<T>/` fuera del repo. **Nunca lógica**: la configuración se valida contra los tipos de `paquetes/nucleo/src/extension` (que son del núcleo, no del tenant) | El comercio desde el panel; NovuTienda desde Plataforma | `tenants/casa-bermejo/config.json` (hoy nadie lo lee); `CLAUDE.md` l. 71 se alinea con esta redacción en T0 |
 
+Nota (H2, 06/11/2026): la programada de cotización (`programadas/cotizacion.ts`) quedó en la zona **coordinador**, no núcleo; el porqué y la alternativa (fase L) están en §6.5.
+
 Piezas con nombre propio: **registro** (`plataforma/registro.ts`), **coordinador** (`plataforma/adaptadores`: puertos módulo↔módulo y bus de eventos; `plataforma/funciones/servidor/{index,entorno,marco}`: composición y borde de ejecución) y **conectores** (`adaptadores/firebase/*`, `http/novuchat.ts`, `http/sitio.ts`, parsers BCB/BNA/BCRA).
 
 **Prueba de ubicación** (en orden; la primera que dice «sí» decide; dos «sí» = pieza mal cortada, se parte):
@@ -218,3 +220,5 @@ Mover con lógica mezclada en un repo público con squash es irrevisable → tan
 ## 11. Lo que NO se hace en este cambio
 
 No se mueven paquetes de primer nivel ni se parte `plataforma/funciones` en paquetes; no se cambia ningún contrato con NovuChat; no se agregan planes ni se cambian límites; no se construyen propiedades de producto ni la copia de medios al bucket público (van en sus propios PR); no se toca el pase a staging ni a producción de Casa Bermejo, que siguen su guion.
+
+- **Decisión de Andres (06/11/2026, botón, cierre de H2):** el cruce `pantallas/pos/venta-terminal.tsx → recibos/recibo-vista` se resuelve con `dependeDe: ['nucleo', 'recibos']` en el manifiesto de pos (el POS imprime y envía recibos: la dependencia es real y el registro la ordena); descartado partir la vista. La deuda queda en 1 (`servicios.ts → doble`, L2).

@@ -119,6 +119,20 @@ service cloud.firestore {
       allow write: if false; // solo el servidor escribe
     }
 
+    // Módulo recibos
+    match /tenants/{tenantId}/recibos/{id} {
+      allow read: if false;
+      allow write: if false; // solo el servidor escribe
+    }
+    match /tenants/{tenantId}/plantillas_recibo/{id} {
+      allow read: if false;
+      allow write: if false; // solo el servidor escribe
+    }
+    match /tenants/{tenantId}/anulaciones_pendientes_recibo/{id} {
+      allow read: if false;
+      allow write: if false; // solo el servidor escribe
+    }
+
     // Módulo pos
     match /tenants/{tenantId}/pos_config/{id} {
       allow read: if tieneRol(tenantId, ['caj', 'sup', 'adm']);
@@ -150,20 +164,6 @@ service cloud.firestore {
     }
     match /tenants/{tenantId}/cobros_credito/{id} {
       allow read: if tieneRol(tenantId, ['sup', 'adm']);
-      allow write: if false; // solo el servidor escribe
-    }
-
-    // Módulo recibos
-    match /tenants/{tenantId}/recibos/{id} {
-      allow read: if false;
-      allow write: if false; // solo el servidor escribe
-    }
-    match /tenants/{tenantId}/plantillas_recibo/{id} {
-      allow read: if false;
-      allow write: if false; // solo el servidor escribe
-    }
-    match /tenants/{tenantId}/anulaciones_pendientes_recibo/{id} {
-      allow read: if false;
       allow write: if false; // solo el servidor escribe
     }
 
