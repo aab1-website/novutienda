@@ -3,7 +3,8 @@
   "compilerOptions": {
     "rootDir": "src",
     "outDir": "../../.tsbuild/nucleo",
-    "tsBuildInfoFile": "../../.tsbuild/nucleo.tsbuildinfo"
+    "tsBuildInfoFile": "../../.tsbuild/nucleo.tsbuildinfo",
+    "types": ["node"]
   },
   "include": ["src/**/*.ts"]
 }
