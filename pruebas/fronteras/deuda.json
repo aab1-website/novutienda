@@ -53,14 +53,6 @@
       "destino": "modulo:website",
       "resuelveEn": "T4",
       "nota": "`limiteMemoria`/`LimiteTasa` viven en website; van al núcleo."
-    },
-    {
-      "archivo": "pruebas/consola/alineacion.test.ts",
-      "importacion": "@novutienda/inventarios",
-      "zona": "pruebas:modulo:consola",
-      "destino": "modulo:inventarios",
-      "resuelveEn": "T3",
-      "nota": "Prueba de alineación consola↔inventarios: es de integración y va a `pruebas/integracion/`."
     }
   ]
 }
