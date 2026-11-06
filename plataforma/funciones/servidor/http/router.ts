@@ -1,7 +1,8 @@
 // Enrutador de la función HTTP `api`: rutas públicas del sitio, API de NovuChat y endpoints de reconstrucción.
 // Función pura sobre `PeticionHttp`; la Cloud Function solo traduce Express a esta forma y de vuelta.
+import type { LimiteTasa } from '@novutienda/nucleo';
 import {
-  despacharApi, lectorCotizacion, type DepsContacto, type VerificadorAppCheck, type VerificadorRecaptcha, type LimiteTasa,
+  despacharApi, lectorCotizacion, type DepsContacto, type VerificadorAppCheck, type VerificadorRecaptcha,
 } from '@novutienda/website';
 import type { Entorno } from '../entorno.js';
 import { manejarCatalogo, manejarInventario, manejarPedido, type ConfigNovuchat } from './novuchat.js';

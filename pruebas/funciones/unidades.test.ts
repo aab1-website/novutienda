@@ -4,13 +4,12 @@ import { readFileSync } from 'node:fs';
 import { describe, expect, it, vi } from 'vitest';
 import { ErrorConsola } from '@novutienda/consola';
 import { EntradaInvalida, ErrorInventario, OperacionConflicto, SinPermiso, StockInsuficiente } from '@novutienda/inventarios';
-import { CargaNoAutorizada, ContadorCorrupto, ErrorEvento, ErrorIdentidad, LimiteDelPlan, SaltoSinConfirmar, SinCotizacionUtilizable } from '@novutienda/nucleo';
+import { CargaNoAutorizada, ContadorCorrupto, ErrorEvento, ErrorIdentidad, LimiteDelPlan, SaltoSinConfirmar, SinCotizacionUtilizable, limiteMemoria } from '@novutienda/nucleo';
 import { ErrorPos, type CodigoErrorPos } from '@novutienda/pos';
 import { AccionNoPermitida, ErrorRecibo, ReciboNoEncontrado } from '@novutienda/recibos';
 import {
   VideoNoDisponible, appCheckReal, appCheckSimulado, esEntornoDePruebas, recaptchaEnterprise, recaptchaSimulado, traducirError,
 } from '../../plataforma/conectores/firebase/index.js';
-import { limiteMemoria } from '@novutienda/website';
 import { enrutar, type ConfigRouter } from '../../plataforma/funciones/servidor/http/router.js';
 import { componer } from '../../plataforma/funciones/scripts/componer-hosting.mjs';
 import { ConfiguracionIncompleta, exigirConfiguracionDeServicio } from '../../plataforma/funciones/servidor/config.js';
