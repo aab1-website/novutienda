@@ -1,5 +1,5 @@
-import type { MedioPago, Moneda, PagoEntrada } from '../api/tipos.js';
-import { textoACentavos } from './dinero.js';
+import type { MedioPago, Moneda, PagoEntrada } from '../../api/tipos.js';
+import { textoACentavos } from '../../util/dinero.js';
 
 export interface FilaPago {
   id: string;

@@ -5,7 +5,7 @@ import { MONEDAS, type Moneda, type TurnoPos } from '../../api/tipos.js';
 import { Alerta, Boton, Campo, Cargando, ErrorCarga, Selector, Seccion, Vacio, fechaHora } from '../../ui/comun.js';
 import { useApp } from '../../ui/contexto.js';
 import { useAccion, useCarga } from '../../ui/hooks.js';
-import { efectivoEsperado, TOTALES_VACIOS } from '../../util/arqueo.js';
+import { efectivoEsperado, TOTALES_VACIOS } from './arqueo.js';
 import { formatearMonto, textoACentavos } from '../../util/dinero.js';
 
 export function VentaCaja({ turno, alCambiar }: { turno: TurnoPos; alCambiar: () => void }): JSX.Element {

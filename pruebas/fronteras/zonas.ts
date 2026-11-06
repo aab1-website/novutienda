@@ -82,19 +82,14 @@ export const ZONA_POR_ARCHIVO: readonly ReglaZona[] = [
 
   // ---- Paquetes ----------------------------------------------------------------------------------
   { patron: /^paquetes\/nucleo\//, zona: 'nucleo' },
-  // Panel: piezas que son interfaz de un módulo (plano §5.1, enmienda H0); el resto es Central.
-  { patron: new RegExp(`^paquetes/panel/src/pantallas/(${M})/`), zona: 'modulo:$1', nota: 'carpetas por módulo (T2)' },
-  { patron: /^paquetes\/panel\/src\/pantallas\/(venta[^/]*|supervision|aprobaciones)\.tsx?$/, zona: 'modulo:pos' },
-  { patron: /^paquetes\/panel\/src\/pantallas\/(inventario[^/]*|mermas)\.tsx?$/, zona: 'modulo:inventarios' },
-  { patron: /^paquetes\/panel\/src\/pantallas\/catalogo[^/]*\.tsx?$/, zona: 'modulo:consola' },
-  { patron: /^paquetes\/panel\/src\/pantallas\/recibos\.tsx?$/, zona: 'modulo:recibos' },
-  { patron: /^paquetes\/panel\/src\/ui\/recibo\.tsx$/, zona: 'modulo:recibos' },
+  // Panel: la interfaz de cada módulo vive en su carpeta `pantallas/<m>/` (plano §5.1, enmienda H0; T2): pantallas,
+  // sus pruebas y las piezas que solo ese módulo usa (pos: arqueo, pagos; consola: plantillas-vista, esperar; recibos:
+  // recibo-vista). `pantallas/{usuarios,configuracion}.tsx` y `pantallas/gestion.test.ts` quedan en la raíz: Central.
+  { patron: new RegExp(`^paquetes/panel/src/pantallas/(${M})/`), zona: 'modulo:$1', nota: 'carpeta por módulo (T2)' },
   { patron: /^paquetes\/panel\/src\/subidas\//, zona: 'modulo:consola' },
-  { patron: /^paquetes\/panel\/src\/util\/plantillas-vista\.ts$/, zona: 'modulo:consola' },
-  { patron: /^paquetes\/panel\/src\/util\/(arqueo|pagos)\.ts$/, zona: 'modulo:pos' },
-  // Dobles del panel: material de prueba (T2 los lleva a pruebas/); los de módulo, de su módulo.
-  { patron: /^paquetes\/panel\/src\/doble\/pos\.ts$/, zona: 'pruebas:modulo:pos', nota: 'doble de módulo (T2: a pruebas/)' },
-  { patron: /^paquetes\/panel\/src\/doble\/inventario\.ts$/, zona: 'pruebas:modulo:inventarios', nota: 'doble de módulo (T2: a pruebas/)' },
+  // Dobles del panel: material de prueba. Los de módulo, en `doble/<m>/` (T2); no pueden salir a pruebas/ porque
+  // servicios.ts (producción, modo humo) y el tsconfig del paquete los alcanzan solo dentro de src/.
+  { patron: new RegExp(`^paquetes/panel/src/doble/(${M})/`), zona: 'pruebas:modulo:$1', nota: 'doble de módulo (T2)' },
   { patron: /^paquetes\/panel\/src\/doble\//, zona: 'pruebas:central', nota: 'doble del transporte y del estado' },
   { patron: /^paquetes\/panel\/src\/ayuda-pruebas\.ts$/, zona: 'pruebas:central' },
   { patron: /^paquetes\/panel\//, zona: 'central' },

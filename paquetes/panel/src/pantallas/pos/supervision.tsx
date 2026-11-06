@@ -4,7 +4,7 @@ import { MONEDAS, type Moneda, type MontosPorMoneda, type TurnoPos } from '../..
 import { Alerta, BotonConfirmado, Boton, Campo, Cargando, ErrorCarga, Pestanas, Seccion, Vacio, fechaHora } from '../../ui/comun.js';
 import { useApp } from '../../ui/contexto.js';
 import { useAccion, useCarga } from '../../ui/hooks.js';
-import { monedasDelTurno, proyectarTurno } from '../../util/arqueo.js';
+import { monedasDelTurno, proyectarTurno } from './arqueo.js';
 import { aCsv, descargarTexto } from '../../util/csv.js';
 import { formatearMonto, textoACentavos } from '../../util/dinero.js';
 import { rangoUltimoMes, validarRango } from '../../util/rango.js';

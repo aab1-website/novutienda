@@ -1,6 +1,6 @@
 import type { Moneda } from '@novutienda/nucleo';
-import type { MontosPorMoneda, TotalesMoneda, TotalesTurno, TurnoPos } from '../api/tipos.js';
-import { MONEDAS } from '../api/tipos.js';
+import type { MontosPorMoneda, TotalesMoneda, TotalesTurno, TurnoPos } from '../../api/tipos.js';
+import { MONEDAS } from '../../api/tipos.js';
 
 export const TOTALES_VACIOS: TotalesMoneda = { efectivo: 0, qr: 0, transferencia: 0, credito: 0, ingresos: 0, egresos: 0 };
 

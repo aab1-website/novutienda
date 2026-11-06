@@ -1,13 +1,13 @@
 import { describe, expect, it } from 'vitest';
 import { aBase64, formatoBytes } from './base64.js';
 import { aCsv, celdaCsv } from './csv.js';
-import { diferenciaPorMoneda, efectivoEsperado, proyectarTurno, sumarTotales, TOTALES_VACIOS } from './arqueo.js';
+import { diferenciaPorMoneda, efectivoEsperado, proyectarTurno, sumarTotales, TOTALES_VACIOS } from '../pantallas/pos/arqueo.js';
 import { centavosATexto, formatearMonto, textoACentavos } from './dinero.js';
 import { ITEMS_MENU, menuPara, parsearRuta, puedeVer } from './menu.js';
-import { calcularPagos, type FilaPago } from './pagos.js';
+import { calcularPagos, type FilaPago } from '../pantallas/pos/pagos.js';
 import { precioDeVenta, REDONDEO } from './precio.js';
 import { leerClaimPanel } from '../sesion/claim.js';
-import { PALETAS } from './plantillas-vista.js';
+import { PALETAS } from '../pantallas/consola/plantillas-vista.js';
 import { PLANTILLAS_SITIO } from '../api/tipos.js';
 import type { CotizacionVista } from '../api/tipos.js';
 

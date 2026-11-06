@@ -16,7 +16,7 @@
     },
     {
       "archivo": "paquetes/panel/src/pantallas/pos/venta-terminal.tsx",
-      "importacion": "../../ui/recibo.js",
+      "importacion": "../recibos/recibo-vista.js",
       "zona": "modulo:pos",
       "destino": "modulo:recibos",
       "resuelveEn": "T2",

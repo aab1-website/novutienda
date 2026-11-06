@@ -1,11 +1,11 @@
 import type { JSX } from 'preact';
 import { useState } from 'preact/hooks';
-import type { Recibo } from '../api/tipos.js';
-import type { Moneda } from '../api/tipos.js';
-import { formatearMonto } from '../util/dinero.js';
-import { Alerta, Boton, Campo, fechaHora } from './comun.js';
-import { useApp } from './contexto.js';
-import { useAccion } from './hooks.js';
+import type { Recibo } from '../../api/tipos.js';
+import type { Moneda } from '../../api/tipos.js';
+import { formatearMonto } from '../../util/dinero.js';
+import { Alerta, Boton, Campo, fechaHora } from '../../ui/comun.js';
+import { useApp } from '../../ui/contexto.js';
+import { useAccion } from '../../ui/hooks.js';
 
 const MEDIO_TEXTO: Record<string, string> = { efectivo: 'Efectivo', qr: 'QR', transferencia: 'Transferencia', credito: 'Crédito' };
 

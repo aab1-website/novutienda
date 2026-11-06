@@ -6,7 +6,7 @@ import { useApp } from '../../ui/contexto.js';
 import { useAccion, useCarga } from '../../ui/hooks.js';
 import { aBase64, formatoBytes } from '../../util/base64.js';
 import { descargarTexto } from '../../util/csv.js';
-import { PALETAS } from '../../util/plantillas-vista.js';
+import { PALETAS } from './plantillas-vista.js';
 import { PantallaFichas } from './catalogo-ficha.js';
 import { PantallaSecciones } from './catalogo-secciones.js';
 

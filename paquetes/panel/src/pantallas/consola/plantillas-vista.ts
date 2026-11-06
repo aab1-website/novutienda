@@ -2,7 +2,7 @@
 // paquetes/website/src/plantillas/plantillas.ts (solo lectura; las fronteras prohíben importarlo): `fondo`, `superficie`,
 // `texto`, `acento` y `cta` de cada tema. La plantilla 1 del sitio aprobado («cielo») es la identidad visual del panel.
 // Los identificadores son los mismos en el sitio, la consola y el panel (unificados el 04/11/2026).
-import type { PlantillaSitio } from '../api/tipos.js';
+import type { PlantillaSitio } from '../../api/tipos.js';
 
 export interface PaletaVista {
   readonly nombre: string;

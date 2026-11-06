@@ -4,7 +4,7 @@ import { MONEDAS, type Moneda, type MontosPorMoneda, type ResultadoCierre, type 
 import { Alerta, BotonConfirmado, Campo, Dato, Seccion } from '../../ui/comun.js';
 import { useApp } from '../../ui/contexto.js';
 import { useAccion } from '../../ui/hooks.js';
-import { diferenciaPorMoneda, monedasDelTurno, proyectarTurno } from '../../util/arqueo.js';
+import { diferenciaPorMoneda, monedasDelTurno, proyectarTurno } from './arqueo.js';
 import { formatearMonto, textoACentavos } from '../../util/dinero.js';
 
 export function ResumenArqueo({ cierre }: { cierre: ResultadoCierre }): JSX.Element {

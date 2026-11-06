@@ -5,7 +5,7 @@ import type { AprobacionPos, CotizacionesVigentes, Mercado, Moneda, ProductoPane
 import { Alerta, Boton, Campo, Cargando, Casilla, ErrorCarga, Selector, Seccion, Vacio } from '../../ui/comun.js';
 import { useApp } from '../../ui/contexto.js';
 import { useAccion, useCarga } from '../../ui/hooks.js';
-import { AccionesRecibo, ReciboVista } from '../../ui/recibo.js';
+import { AccionesRecibo, ReciboVista } from '../recibos/recibo-vista.js';
 import { formatearMonto, textoACentavos } from '../../util/dinero.js';
 import { MONEDA_DE_MERCADO, precioDeVenta } from '../../util/precio.js';
 import { VentaCobro, type DatosCobro } from './venta-cobro.js';

@@ -6,7 +6,7 @@ import { Alerta, Boton, Campo, Cargando, Selector, Seccion } from '../../ui/comu
 import { useApp } from '../../ui/contexto.js';
 import { useAccion, useCarga } from '../../ui/hooks.js';
 import { formatearMonto, textoACentavos } from '../../util/dinero.js';
-import { calcularPagos, NOMBRE_MEDIO, type FilaPago } from '../../util/pagos.js';
+import { calcularPagos, NOMBRE_MEDIO, type FilaPago } from './pagos.js';
 
 export interface DatosCobro {
   mercado: Mercado;
