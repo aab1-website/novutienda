@@ -11,7 +11,7 @@ import type { ManifiestoModulo } from '@novutienda/nucleo';
 export const manifiestoPos: ManifiestoModulo = {
   id: 'pos',
   version: '0.1.0',
-  dependeDe: ['nucleo'],
+  dependeDe: ['nucleo', 'recibos'],
   submodulos: [],
   colecciones: [
     { ruta: 'pos_config', lectura: ['caj', 'sup', 'adm'], escritura: 'servidor' },

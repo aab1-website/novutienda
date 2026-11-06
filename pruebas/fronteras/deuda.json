@@ -7,14 +7,6 @@
   ],
   "cruces": [
     {
-      "archivo": "paquetes/panel/src/pantallas/pos/venta-terminal.tsx",
-      "importacion": "../recibos/recibo-vista.js",
-      "zona": "modulo:pos",
-      "destino": "modulo:recibos",
-      "resuelveEn": "decisión de Andres al cerrar H2",
-      "nota": "El terminal de venta muestra el comprobante y sus acciones. T2 lo movió con sus archivos sin resolverlo: `ReciboVista` es presentación pura, pero `AccionesRecibo` llama a `enviarRecibo` y `referenciarFacturaSuma` (callables de recibos), así que no es Central. O `pos` declara `dependeDe: recibos` en su manifiesto (una línea, no es T2), o se parte la vista."
-    },
-    {
       "archivo": "paquetes/panel/src/servicios.ts",
       "importacion": "./doble/doble.js",
       "zona": "central",

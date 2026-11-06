@@ -218,3 +218,5 @@ Mover con lógica mezclada en un repo público con squash es irrevisable → tan
 ## 11. Lo que NO se hace en este cambio
 
 No se mueven paquetes de primer nivel ni se parte `plataforma/funciones` en paquetes; no se cambia ningún contrato con NovuChat; no se agregan planes ni se cambian límites; no se construyen propiedades de producto ni la copia de medios al bucket público (van en sus propios PR); no se toca el pase a staging ni a producción de Casa Bermejo, que siguen su guion.
+
+- **Decisión de Andres (06/11/2026, botón, cierre de H2):** el cruce `pantallas/pos/venta-terminal.tsx → recibos/recibo-vista` se resuelve con `dependeDe: ['nucleo', 'recibos']` en el manifiesto de pos (el POS imprime y envía recibos: la dependencia es real y el registro la ordena); descartado partir la vista. La deuda queda en 1 (`servicios.ts → doble`, L2).
