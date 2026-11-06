@@ -2,7 +2,7 @@
 // publicaron (`tenants/{t}/eventos/*`, escritos en la transacción del negocio) y los entrega a los
 // consumidores, con entrega duplicada y desordenada como la de un bus real (al menos una vez).
 import { publicarEvento, type BaseDatosIdentidad, type SobreEvento } from '@novutienda/nucleo';
-import type { Consumidor, LectorColecciones } from '../../plataforma/adaptadores/index.js';
+import type { Consumidor, LectorColecciones } from '../../plataforma/coordinador/index.js';
 
 /** Publica un evento en la bandeja del tenant, como lo haría un servicio externo (por ejemplo, el de pedidos de WhatsApp). */
 export function publicarEnBandeja(db: BaseDatosIdentidad, evento: SobreEvento): Promise<void> {

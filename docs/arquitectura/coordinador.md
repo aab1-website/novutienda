@@ -3,8 +3,7 @@
 > Pieza con nombre propio de la arquitectura por zonas (plano `01-arquitectura-por-zonas.md` §3 y §4,
 > «puertos módulo↔módulo: existen como código, sin documento»). Este documento escribe lo que hoy es
 > implícito: qué puertos hay, quién los implementa, dónde se componen y cómo viajan los eventos. Las
-> rutas son las de hoy; T3 renombra `plataforma/adaptadores` → `plataforma/coordinador` y
-> `adaptadores/firebase` → `plataforma/conectores/firebase`, y este documento se actualiza en ese PR.
+> rutas son las posteriores a T3 (`plataforma/coordinador`, `plataforma/conectores/firebase`).
 > Sin cifras (las da `pnpm zonas`) ni identificadores.
 
 ## Qué es y qué no es
@@ -20,7 +19,7 @@ El coordinador **no tiene lógica de negocio**: convierte tipos entre módulos, 
 un módulo expresa con un tipo más laxo que otro, y decide el orden de composición. Si una regla de
 negocio aparece en un adaptador, está mal ubicada.
 
-## Los puertos (`plataforma/adaptadores/`)
+## Los puertos (`plataforma/coordinador/`)
 
 | Archivo | Puerto que implementa (quién lo define) | Con qué lo implementa | Para qué |
 |---|---|---|---|
@@ -30,20 +29,20 @@ negocio aparece en un adaptador, está mal ubicada.
 | `ejecutor-recibos.ts` | `EjecutorRecibos` (recibos) | `BaseDatosIdentidad` (núcleo) | Recibos escribe con la misma base transaccional que los demás; el adaptador difiere las escrituras para respetar «todas las lecturas antes de la primera escritura» de Firestore |
 | `almacen-cotizaciones.ts` | `AlmacenCotizaciones` (núcleo) | `BaseDatosIdentidad` | la cotización que el POS lee dentro de su transacción es la que escribió la programada o la carga manual |
 | `colecciones.ts` | `LectorColecciones` | — | lectura de colecciones que usan los puertos y el doble de pruebas |
-| `bandeja-memoria.ts` | bandeja de eventos y `consumidoresDePlataforma` | los consumidores reales de Recibos (2) e Inventarios (2) | en producción, el bus real (`servidor/bus.ts`) usa `consumidoresDePlataforma`; la bandeja en memoria es un **doble para pruebas de integración** que entrega duplicado y desordenado como un bus real. T3 separa `consumidores.ts` (producción) del doble (a `pruebas/integracion/`) |
+| `consumidores.ts` | `Consumidor` y `consumidoresDePlataforma` | los consumidores reales de Recibos (2) e Inventarios (2) | el bus real (`servidor/bus.ts`) y las pruebas usan esta misma lista. La bandeja en memoria (`BandejaMemoria`, `publicarEnBandeja`) es un **doble de pruebas** y vive en `pruebas/integracion/bandeja-memoria.ts` |
 | `index.ts` | entrada pública de los puertos | — | lo único que importan `entorno.ts`, `bus.ts` y las pruebas |
 
 Regla: **cada puerto lo define el módulo que lo necesita** (en su paquete) y **lo implementa el
 coordinador**; el módulo que provee la capacidad no sabe quién la consume. Un puerto nuevo es un cambio
 de contrato entre dos zonas: lo planifica `planificador`, lo escribe `coordinador` y lo documenta aquí.
 
-## Los conectores (`plataforma/adaptadores/firebase/`, `servidor/http/`)
+## Los conectores (`plataforma/conectores/firebase/`, `servidor/http/`)
 
 Un conector habla con un sistema externo en nombre de una zona, y depende de ella, nunca al revés.
 
 | Conector | Sirve a | Qué hace |
 |---|---|---|
-| `adaptadores/firebase/*` | todas | `BaseDatosIdentidad` sobre Firestore (`base-datos.ts`), `AuthMin` (`auth.ts`), traducción de errores de los módulos a códigos de borde (`errores.ts`), límite de tasa (`limite-tasa.ts`), medios en Storage y procesamiento (`almacen-medios.ts`, `procesador-medios.ts`, `consulta-subidas.ts`), lectura y ejecutor de recibos sobre Firestore, disponibilidad pública, contacto, verificadores de App Check y reCAPTCHA |
+| `conectores/firebase/*` | todas | `BaseDatosIdentidad` sobre Firestore (`base-datos.ts`), `AuthMin` (`auth.ts`), traducción de errores de los módulos a códigos de borde (`errores.ts`), límite de tasa (`limite-tasa.ts`), medios en Storage y procesamiento (`almacen-medios.ts`, `procesador-medios.ts`, `consulta-subidas.ts`), lectura y ejecutor de recibos sobre Firestore, disponibilidad pública, contacto, verificadores de App Check y reCAPTCHA |
 | `http/novuchat.ts` | inventarios y consola | la API externa v1/v1.1 que consume NovuChat (catálogo, inventario, pedidos), con firma y límite de tasa; contrato en `docs/integracion-novuchat.md` |
 | `http/sitio.ts` | consola | endpoints de reconstrucción del sitio (contrato en `docs/arquitectura/decisiones.md`) |
 | parsers BCB/BNA/BCRA | núcleo | viven en `paquetes/nucleo/src/tipo-cambio/` y se clasifican como núcleo por carpeta |
@@ -67,7 +66,7 @@ Un conector habla con un sistema externo en nombre de una zona, y depende de ell
 
 ## Reglas para quien toca el coordinador
 
-- Importa paquetes de módulo solo desde `registro.ts`, `adaptadores/*.ts` y `entorno.ts`; en todo lo demás, por puertos o montando bordes (`pruebas/fronteras/zonas.ts`, `COMPOSITORES`).
+- Importa paquetes de módulo solo desde `registro.ts`, `coordinador/*.ts` y `entorno.ts`; en todo lo demás, por puertos o montando bordes (`pruebas/fronteras/zonas.ts`, `COMPOSITORES`).
 - Un puerto nuevo o un cambio de forma de un puerto se documenta en la tabla de arriba en el mismo PR.
 - Las Functions expuestas, App Check, autenticación y cabeceras son superficie de seguridad: revisión del agente `seguridad` en cada PR que las toque.
 - Cero cambios de contrato con NovuChat sin decisión de Andres.

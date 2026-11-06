@@ -7,7 +7,7 @@ import { logger } from 'firebase-functions';
 import { HttpsError, type CallableRequest } from 'firebase-functions/v2/https';
 import { z } from 'zod';
 import type { Actor, ActorConRol, Rol } from '@novutienda/nucleo';
-import { CODIGO_DE_BORDE, traducirError } from '../../../adaptadores/firebase/index.js';
+import { CODIGO_DE_BORDE, traducirError } from '../../../conectores/firebase/index.js';
 import { autenticar, exigirAppCheck, personalDelTenant, type Sesion, type SesionTenant } from '../autenticacion.js';
 import type { Entorno } from '../entorno.js';
 import { RedondeoInvalido } from '../redondeo.js';

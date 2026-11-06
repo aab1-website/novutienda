@@ -5,7 +5,7 @@
 // evento, luego queda «descartado» y deja de reintentarse), de modo que un evento venenoso no gira para siempre.
 import { logger } from 'firebase-functions';
 import { validarEvento, type SobreEvento } from '@novutienda/nucleo';
-import { consumidoresDePlataforma, type Consumidor } from '../../adaptadores/index.js';
+import { consumidoresDePlataforma, type Consumidor } from '../../coordinador/index.js';
 import type { Entorno } from './entorno.js';
 
 export interface ResultadoBus {

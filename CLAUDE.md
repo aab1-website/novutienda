@@ -79,7 +79,7 @@ El código se ordena por **dueño y variabilidad**, en cinco zonas (plano: `docs
 | **Módulos** | Lo que se enciende por tenant con manifiesto y límite por plan | `paquetes/<m>/`, su borde `llamadas/<m>.ts`, su interfaz en el panel, `pruebas/<m>/` |
 | **Tenants** | Datos y configuración **declarativa** de un cliente, validada por tipos del núcleo (`nucleo/extension`). **Nunca lógica** | `tenants/<t>/` en el repo; `tenants/{t}/…` en Firestore |
 
-Piezas con nombre propio: el **registro** (`plataforma/registro.ts`), el **coordinador** (`plataforma/adaptadores`, composición de `plataforma/funciones/servidor`; `docs/arquitectura/coordinador.md`) y los **conectores** (Firebase, NovuChat, sitio).
+Piezas con nombre propio: el **registro** (`plataforma/registro.ts`), el **coordinador** (`plataforma/coordinador`, composición de `plataforma/funciones/servidor`; `docs/arquitectura/coordinador.md`) y los **conectores** (Firebase, NovuChat, sitio).
 
 **Prueba de ubicación** (en orden; la primera que dice «sí» decide; dos «sí» = pieza mal cortada, se parte): 1) ¿lo corre todo tenant igual aunque no lo vea nadie? → Núcleo; 2) ¿lo ve todo comercio tenga los módulos que tenga? → Central; 3) ¿lo ve solo NovuTienda como operador? → Plataforma; 4) ¿se enciende por tenant o tiene límite por plan? → Módulo; 5) ¿es dato de un cliente? → Tenant; 6) ¿conecta zonas o habla con un sistema externo? → Coordinador o conector, nombrado.
 

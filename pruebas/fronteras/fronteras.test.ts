@@ -103,7 +103,7 @@ describe('reglas de zona con árboles inventados', () => {
     expect(zonaDe('paquetes/panel/src/doble/doble.test.ts')).toBe('pruebas:central');
     expect(zonaDe('plataforma/funciones/servidor/llamadas/recibos.ts')).toBe('modulo:recibos');
     expect(zonaDe('plataforma/funciones/servidor/http/sitio.ts')).toBe('conector:sitio');
-    expect(zonaDe('plataforma/adaptadores/firebase/auth.ts')).toBe('conector:firebase');
+    expect(zonaDe('plataforma/conectores/firebase/auth.ts')).toBe('conector:firebase');
     expect(zonaDe('plataforma/funciones/servidor/redondeo.ts')).toBe('nucleo');
     expect(zonaDe('pruebas/inventarios/pedido.test.ts')).toBe('pruebas:modulo:inventarios');
     expect(zonaDe('pruebas/reglas/matriz.ts')).toBe('pruebas:nucleo');
@@ -131,7 +131,7 @@ describe('reglas de zona con árboles inventados', () => {
     expect(permitido('coordinador', pkg('modulo:pos'), marco, sinDeps)).toBe(false);
     expect(permitido('coordinador', rel('modulo:pos'), 'plataforma/funciones/servidor/index.ts', sinDeps)).toBe(true);
     expect(permitido('coordinador', pkg('modulo:pos'), 'plataforma/funciones/servidor/entorno.ts', sinDeps)).toBe(true);
-    expect(permitido('coordinador', pkg('modulo:pos'), 'plataforma/adaptadores/inventarios-pos.ts', sinDeps)).toBe(true);
+    expect(permitido('coordinador', pkg('modulo:pos'), 'plataforma/coordinador/inventarios-pos.ts', sinDeps)).toBe(true);
     expect(permitido('coordinador', rel('conector:firebase'), marco, sinDeps)).toBe(true);
     expect(permitido('coordinador', pkg('nucleo'), marco, sinDeps)).toBe(true);
   });
@@ -151,8 +151,8 @@ describe('reglas de zona con árboles inventados', () => {
     expect(permitido('conector:novuchat', pkg('modulo:inventarios'), nc, sinDeps)).toBe(true);
     expect(permitido('conector:novuchat', pkg('modulo:website'), nc, sinDeps)).toBe(false);
     expect(permitido('conector:novuchat', rel('coordinador'), nc, sinDeps)).toBe(true);
-    expect(permitido('conector:firebase', pkg('modulo:website'), 'plataforma/adaptadores/firebase/x.ts', sinDeps)).toBe(true);
-    expect(permitido('conector:firebase', rel('conector:sitio'), 'plataforma/adaptadores/firebase/x.ts', sinDeps)).toBe(false);
+    expect(permitido('conector:firebase', pkg('modulo:website'), 'plataforma/conectores/firebase/x.ts', sinDeps)).toBe(true);
+    expect(permitido('conector:firebase', rel('conector:sitio'), 'plataforma/conectores/firebase/x.ts', sinDeps)).toBe(false);
   });
 
   it('las pruebas importan su zona, dobles, plataforma y coordinador; las del coordinador y central, módulos', () => {

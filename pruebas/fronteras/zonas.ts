@@ -58,8 +58,8 @@ export const ZONA_POR_ARCHIVO: readonly ReglaZona[] = [
 
   // ---- Registro y coordinador (plano §3, piezas con nombre propio) -------------------------------
   { patron: /^plataforma\/registro\.ts$/, zona: 'coordinador', nota: 'el registro: el único lugar que enumera los módulos' },
-  { patron: /^plataforma\/adaptadores\/firebase\//, zona: 'conector:firebase' },
-  { patron: /^plataforma\/adaptadores\//, zona: 'coordinador', nota: 'puertos módulo↔módulo y bandeja' },
+  { patron: /^plataforma\/conectores\/firebase\//, zona: 'conector:firebase' },
+  { patron: /^plataforma\/coordinador\//, zona: 'coordinador', nota: 'puertos módulo↔módulo y bandeja' },
 
   // ---- Borde de ejecución (plataforma/funciones/servidor), por archivo (plano §3 y §5, H0) --------
   { patron: new RegExp(`^plataforma/funciones/servidor/llamadas/(${M})\\.ts$`), zona: 'modulo:$1' },
@@ -107,7 +107,7 @@ export const ZONA_POR_ARCHIVO: readonly ReglaZona[] = [
  */
 export const COMPOSITORES: readonly RegExp[] = [
   /^plataforma\/registro\.ts$/,
-  /^plataforma\/adaptadores\/[^/]+\.ts$/, // los puertos mismos
+  /^plataforma\/coordinador\/[^/]+\.ts$/, // los puertos mismos
   /^plataforma\/funciones\/servidor\/entorno\.ts$/, // composición de los puertos reales
   /^paquetes\/panel\/src\/ui\/app\.tsx$/, // monta las pantallas de los módulos hasta que el registro las aporte (fase L2)
 ];

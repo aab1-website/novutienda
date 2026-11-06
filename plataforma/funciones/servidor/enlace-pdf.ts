@@ -1,7 +1,7 @@
 // Enlace https al PDF de un recibo, que Recibos exige para armar el mensaje de WhatsApp. Puerto con dos
 // implementaciones: la real firma una URL temporal (v4, hasta 7 días) del PDF guardado en una ruta PRIVADA
 // del bucket; la del emulador devuelve una URL ficticia (el emulador no firma). El PDF nunca queda público.
-import type { Bucket } from '../../adaptadores/firebase/index.js';
+import type { Bucket } from '../../conectores/firebase/index.js';
 
 export interface EmisorEnlacePdf {
   /** Guarda el PDF y devuelve una URL https que lo abre. */

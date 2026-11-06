@@ -9,7 +9,7 @@ import { ErrorPos, type CodigoErrorPos } from '@novutienda/pos';
 import { AccionNoPermitida, ErrorRecibo, ReciboNoEncontrado } from '@novutienda/recibos';
 import {
   VideoNoDisponible, appCheckReal, appCheckSimulado, esEntornoDePruebas, recaptchaEnterprise, recaptchaSimulado, traducirError,
-} from '../../plataforma/adaptadores/firebase/index.js';
+} from '../../plataforma/conectores/firebase/index.js';
 import { limiteMemoria } from '@novutienda/website';
 import { enrutar, type ConfigRouter } from '../../plataforma/funciones/servidor/http/router.js';
 import { componer } from '../../plataforma/funciones/scripts/componer-hosting.mjs';

@@ -18,7 +18,8 @@
 
 # ---- Coordinador y conectores (agente coordinador) --------------------------
 /plataforma/registro.ts             @AndresAlberdi
-/plataforma/adaptadores/            @AndresAlberdi
+/plataforma/coordinador/            @AndresAlberdi
+/plataforma/conectores/             @AndresAlberdi
 /plataforma/funciones/servidor/     @AndresAlberdi
 /pruebas/funciones/                 @AndresAlberdi
 /pruebas/integracion/               @AndresAlberdi

@@ -9,8 +9,8 @@ import {
   UBICACIONES, crearProducto, crearUbicacion, ingresar, type Autor,
 } from '@novutienda/inventarios';
 import { cargarManual, construirClaim, type Rol } from '@novutienda/nucleo';
-import { almacenCotizacionesDesde } from '../../plataforma/adaptadores/index.js';
-import { crearBaseDatos, type BaseDatosFirestore, type Bucket } from '../../plataforma/adaptadores/firebase/index.js';
+import { almacenCotizacionesDesde } from '../../plataforma/coordinador/index.js';
+import { crearBaseDatos, type BaseDatosFirestore, type Bucket } from '../../plataforma/conectores/firebase/index.js';
 
 
 export const PROYECTO = 'demo-pruebas';

@@ -7,7 +7,7 @@ import { cargarManual, leerCotizacion, type CopiaCotizacion, type Mercado, type 
 import type { ActorPos, DepsPos } from '@novutienda/pos';
 import {
   almacenCotizacionesDesde, catalogoParaPos, consumidoresDePlataforma, crearCatalogoConsola, ejecutorRecibosDesde, inventariosParaPos,
-} from '../../plataforma/adaptadores/index.js';
+} from '../../plataforma/coordinador/index.js';
 import { BandejaMemoria } from './bandeja-memoria.js';
 import { DobleDb } from './doble-db.js';
 

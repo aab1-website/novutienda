@@ -1,6 +1,6 @@
 # Funciones del servidor (Cloud Functions v2, us-east1, Node 22)
 
-Paquete `@novutienda/funciones` (`plataforma/funciones/`). Adaptadores reales en `plataforma/adaptadores/firebase/`.
+Paquete `@novutienda/funciones` (`plataforma/funciones/`). Adaptadores reales en `plataforma/conectores/firebase/`.
 Todo lo que escribe ventas, stock, movimientos, cotizaciones o auditoría pasa por estas funciones; el navegador solo lee,
 según las reglas de Firestore. Región `us-east1` en todo. No hay identificadores del proyecto ni secretos en el repositorio.
 

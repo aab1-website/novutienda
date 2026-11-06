@@ -6,12 +6,12 @@ import { getAuth, type Auth } from 'firebase-admin/auth';
 import { getFirestore, type Firestore } from 'firebase-admin/firestore';
 import { getStorage } from 'firebase-admin/storage';
 import type { CatalogoPuerto, DisparadorSitio, ProcesadorMedios } from '@novutienda/consola';
-import { crearCatalogoConsola, almacenCotizacionesDesde, catalogoParaPos, inventariosParaPos } from '../../adaptadores/index.js';
+import { crearCatalogoConsola, almacenCotizacionesDesde, catalogoParaPos, inventariosParaPos } from '../../coordinador/index.js';
 import {
   appCheckReal, appCheckSimulado, crearAlmacenMedios, crearAuthMin, crearBaseDatos, crearConsultaSubidas, crearEjecutorRecibos, crearGuardarContacto,
   crearLecturaRecibos, crearLectorDisponibilidad, crearProcesadorMedios, recaptchaEnterprise, recaptchaSimulado,
   type BaseDatosFirestore, type Bucket,
-} from '../../adaptadores/firebase/index.js';
+} from '../../conectores/firebase/index.js';
 import type { AlmacenMedios, ConsultaSubidas } from '@novutienda/consola';
 import type { AlmacenCotizaciones, AuthMin, Redondeo } from '@novutienda/nucleo';
 import type { DepsPos } from '@novutienda/pos';
