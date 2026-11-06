@@ -1,4 +1,6 @@
 // Tipos congelados del registro de módulos (ola 1a). Sin importaciones.
+// Único cambio posterior: `ColeccionManifiesto.ambito`, aditivo y opcional
+// (06/11/2026, L1); sin él, todo sigue siendo `tenant`.
 
 /** Roles del claim: cajero, supervisor, administrador, dirección. */
 export type Rol = 'caj' | 'sup' | 'adm';
@@ -20,6 +22,12 @@ export interface ColeccionManifiesto {
   /** `servidor` = solo el servidor escribe; si no, los roles que pueden escribir. */
   readonly escritura: 'servidor' | readonly Rol[];
   readonly limite?: LimiteColeccion;
+  /**
+   * `tenant` (por defecto): la ruta cuelga de `tenants/{t}`. `raiz`: colección
+   * fuera de `tenants/{t}`; no tiene tenant del cual sacar un rol, así que solo
+   * el servidor la lee y escribe (`lectura: []`, `escritura: 'servidor'`, sin `limite`).
+   */
+  readonly ambito?: 'tenant' | 'raiz';
 }
 
 export interface ManifiestoModulo {

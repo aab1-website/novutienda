@@ -26,6 +26,8 @@ export interface Caso {
   readonly tenant: string;
   readonly ruta: string;
   readonly operacion: Operacion;
+  /** `raiz`: la ruta no cuelga de `tenants/{t}`. Por defecto `tenant`. */
+  readonly ambito?: 'tenant' | 'raiz';
   readonly esperado: boolean;
 }
 
@@ -55,6 +57,9 @@ export function construirCasos(manifiestos: readonly ManifiestoReglas[]): Caso[]
   const colecciones = manifiestos.flatMap((m) => m.colecciones);
 
   for (const c of colecciones) {
+    // Raíz: fuera de tenants/{t}; solo el servidor la toca, así que todo se niega.
+    const raiz = c.ambito === 'raiz';
+    const ambito: Pick<Caso, 'ambito'> = raiz ? { ambito: 'raiz' } : {};
     for (const rol of ROLES) {
       for (const op of OPERACIONES) {
         casos.push({
@@ -63,7 +68,8 @@ export function construirCasos(manifiestos: readonly ManifiestoReglas[]): Caso[]
           tenant: TENANT_A,
           ruta: c.ruta,
           operacion: op,
-          esperado: permitido(c, rol, op),
+          ...ambito,
+          esperado: !raiz && permitido(c, rol, op),
         });
       }
     }
@@ -86,7 +92,7 @@ export function construirCasos(manifiestos: readonly ManifiestoReglas[]): Caso[]
     ];
     for (const s of hostiles) {
       for (const op of OPERACIONES) {
-        casos.push({ descripcion: `${s.nombre} ${op} ${c.ruta}`, sujeto: s, tenant: TENANT_A, ruta: c.ruta, operacion: op, esperado: false });
+        casos.push({ descripcion: `${s.nombre} ${op} ${c.ruta}`, sujeto: s, tenant: TENANT_A, ruta: c.ruta, operacion: op, ...ambito, esperado: false });
       }
     }
 
@@ -95,7 +101,7 @@ export function construirCasos(manifiestos: readonly ManifiestoReglas[]): Caso[]
       nombre: 'dir en A y caj en B',
       token: conProveedor('password', claim({ [TENANT_A]: 'adm', [TENANT_B]: 'caj' })),
     };
-    for (const op of OPERACIONES) {
+    for (const op of raiz ? [] : OPERACIONES) {
       casos.push({ descripcion: `${mixto.nombre} ${op} ${c.ruta} en B`, sujeto: mixto, tenant: TENANT_B, ruta: c.ruta, operacion: op, esperado: permitido(c, 'caj', op) });
     }
   }
@@ -111,8 +117,13 @@ export function construirCasos(manifiestos: readonly ManifiestoReglas[]): Caso[]
   return casos;
 }
 
+/** Ruta de la colección del caso: `ruta` si es de raíz; si no, bajo `tenants/{t}`. */
+function rutaColeccion(caso: Caso): string {
+  return caso.ambito === 'raiz' ? caso.ruta : `tenants/${caso.tenant}/${caso.ruta}`;
+}
+
 function referencia(db: Firestore, caso: Caso, id: string) {
-  return doc(db, `tenants/${caso.tenant}/${caso.ruta}/${id}`);
+  return doc(db, `${rutaColeccion(caso)}/${id}`);
 }
 
 async function ejecutar(db: Firestore, caso: Caso): Promise<boolean> {
@@ -122,7 +133,7 @@ async function ejecutar(db: Firestore, caso: Caso): Promise<boolean> {
         await getDoc(referencia(db, caso, 'd1'));
         break;
       case 'list':
-        await getDocs(collection(db, `tenants/${caso.tenant}/${caso.ruta}`));
+        await getDocs(collection(db, rutaColeccion(caso)));
         break;
       case 'create':
         await setDoc(referencia(db, caso, ID_NUEVO), { x: 1 });
@@ -144,20 +155,24 @@ async function ejecutar(db: Firestore, caso: Caso): Promise<boolean> {
   }
 }
 
-/** Siembra un documento por colección en ambos tenants, sin pasar por las reglas. */
-async function sembrar(env: RulesTestEnvironment, rutas: readonly string[]): Promise<void> {
+/** Siembra un documento por colección en ambos tenants (o uno solo si es de raíz), sin pasar por las reglas. */
+async function sembrar(env: RulesTestEnvironment, casos: readonly Caso[]): Promise<void> {
+  const deTenant = [...new Set(casos.filter((c) => c.ambito !== 'raiz').map((c) => c.ruta))];
+  const deRaiz = [...new Set(casos.filter((c) => c.ambito === 'raiz').map((c) => c.ruta))];
   await env.withSecurityRulesDisabled(async (ctx) => {
     const db = ctx.firestore();
     for (const tenant of [TENANT_A, TENANT_B]) {
-      for (const ruta of rutas) await setDoc(doc(db, `tenants/${tenant}/${ruta}/d1`), { x: 0 });
+      for (const ruta of deTenant) await setDoc(doc(db, `tenants/${tenant}/${ruta}/d1`), { x: 0 });
     }
+    // Las raíces no cuelgan de ningún tenant: se siembran una sola vez.
+    for (const ruta of deRaiz) await setDoc(doc(db, `${ruta}/d1`), { x: 0 });
   });
 }
 
 /** Elimina el documento creado por un `create` permitido, sin pasar por las reglas. */
 async function quitarNuevo(env: RulesTestEnvironment, caso: Caso): Promise<void> {
   await env.withSecurityRulesDisabled(async (ctx) => {
-    await deleteDoc(doc(ctx.firestore(), `tenants/${caso.tenant}/${caso.ruta}/${ID_NUEVO}`));
+    await deleteDoc(doc(ctx.firestore(), `${rutaColeccion(caso)}/${ID_NUEVO}`));
   });
 }
 
@@ -171,8 +186,7 @@ export async function ejecutarMatriz(
   detenerEnPrimero = false,
 ): Promise<string[]> {
   const fallos: string[] = [];
-  const rutas = [...new Set(casos.map((c) => c.ruta))];
-  await sembrar(env, rutas);
+  await sembrar(env, casos);
   for (const caso of casos) {
     const ctx = caso.sujeto.token === null ? env.unauthenticatedContext() : env.authenticatedContext('u1', caso.sujeto.token);
     const resultado = await ejecutar(ctx.firestore() as unknown as Firestore, caso);
@@ -181,7 +195,7 @@ export async function ejecutarMatriz(
       if (detenerEnPrimero) break;
     }
     // Un borrado permitido consume el documento sembrado: se repone.
-    if (caso.operacion === 'delete' && resultado) await sembrar(env, [caso.ruta]);
+    if (caso.operacion === 'delete' && resultado) await sembrar(env, [caso]);
     // Un create permitido deja el documento: sin quitarlo, el siguiente create
     // sobre el mismo id sería en realidad un update y se evaluaría otra regla.
     if (caso.operacion === 'create' && resultado) await quitarNuevo(env, caso);

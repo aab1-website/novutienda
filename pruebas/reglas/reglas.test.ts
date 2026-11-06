@@ -82,6 +82,20 @@ describe.skipIf(host === undefined)('reglas de Firestore contra el emulador', ()
     }, 300_000);
   });
 
+  describe('manifiesto sintético con colección de raíz', () => {
+    it('nadie toca la raíz con las reglas generadas', async () => {
+      const m: ManifiestoReglas[] = [
+        { id: 'demo', colecciones: [{ ruta: 'global', ambito: 'raiz', lectura: [], escritura: 'servidor' }] },
+      ];
+      await con(generarReglas(m));
+      const casos = construirCasos(m);
+      const deRaiz = casos.filter((c) => c.ruta === 'global');
+      expect(deRaiz.length).toBeGreaterThan(0);
+      expect(deRaiz.every((c) => c.ambito === 'raiz' && !c.esperado)).toBe(true);
+      expect(await ejecutarMatriz(env!, casos)).toEqual([]);
+    }, 300_000);
+  });
+
   describe('prueba de mutación: la suite detecta reglas ampliadas', () => {
     const mutantes: [string, (t: string) => string][] = [
       ['escritura abierta en una colección servidor', (t) => t.replace('allow write: if false;', 'allow write: if true;')],
