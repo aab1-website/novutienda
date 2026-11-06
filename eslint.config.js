@@ -43,7 +43,23 @@ export default tseslint.config(
         {
           patterns: [
             sinProfundas,
-            { group: ['@novutienda/nucleo/*', '@tenant/*'], message: 'Use solo @novutienda/nucleo.' },
+            // `/servidor` (Node) solo para módulos de lógica de servidor; panel y sitio lo prohíben abajo.
+            { group: ['@novutienda/nucleo/*', '!@novutienda/nucleo/servidor', '@tenant/*'], message: 'Use solo @novutienda/nucleo (o @novutienda/nucleo/servidor en código de servidor).' },
+          ],
+        },
+      ],
+    },
+  },
+  {
+    // Código que llega al navegador: solo la raíz de nucleo, sin Node.
+    files: ['paquetes/panel/**/*.{ts,tsx}', 'paquetes/website/**/*.ts'],
+    rules: {
+      'no-restricted-imports': [
+        'error',
+        {
+          patterns: [
+            sinProfundas,
+            { group: ['@novutienda/nucleo/*', '@tenant/*'], message: 'El navegador usa solo @novutienda/nucleo; lo que depende de Node va por @novutienda/nucleo/servidor, en el servidor.' },
           ],
         },
       ],

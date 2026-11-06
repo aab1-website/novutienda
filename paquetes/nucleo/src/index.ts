@@ -22,7 +22,6 @@ export * from './auditoria/index.js';
 export * from './eventos/index.js';
 export * from './tipo-cambio/index.js';
 export * from './limite-tasa/index.js';
-export * from './firma/index.js';
 
 // Moneda existe en tenant (BOB, USD, ARS) y en tipo-cambio (BOB, ARS): gana la del tenant.
 export type { Moneda } from './tenant/index.js';

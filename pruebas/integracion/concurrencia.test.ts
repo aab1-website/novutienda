@@ -1,4 +1,5 @@
-import { SerieNoDisponible, StockInsuficiente, calcularFirma, confirmarPedidoFirmado } from '@novutienda/inventarios';
+import { SerieNoDisponible, StockInsuficiente, confirmarPedidoFirmado } from '@novutienda/inventarios';
+import { calcularFirma } from '@novutienda/nucleo/servidor';
 import { abrirTurno, confirmarVenta } from '@novutienda/pos';
 import { manejarVentaConfirmada, type Recibo } from '@novutienda/recibos';
 import { beforeEach, describe, expect, it } from 'vitest';

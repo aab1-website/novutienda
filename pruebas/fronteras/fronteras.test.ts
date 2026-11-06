@@ -221,6 +221,14 @@ describe('verificador con árboles inventados', () => {
     expect(verificarFronteras(arbol, { pos: ['inventarios'] })).toEqual([]);
   });
 
+  it('/servidor del núcleo: permitido a módulos de servidor, prohibido al panel (navegador)', () => {
+    const arbol: Arbol = {
+      'paquetes/inventarios/src/a.ts': "import { v } from '@novutienda/nucleo/servidor';",
+      'paquetes/panel/src/b.ts': "import { v } from '@novutienda/nucleo/servidor';",
+    };
+    expect(motivos(arbol)).toEqual(['@novutienda/nucleo/servidor']);
+  });
+
   it('rechaza importar un tenant y dependencias no declaradas', () => {
     const arbol: Arbol = {
       'paquetes/pos/src/a.ts': "import '@tenant/casa';\nconst m = await import('@novutienda/recibos');",

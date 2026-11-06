@@ -32,8 +32,6 @@ export {
   ACTOR_SISTEMA, confirmarPedido, confirmarPedidoFirmado, consumirPedidoConfirmado, consumirVentaAnulada, ejecutorDesde, leerCuerpoPedido,
 } from './pedido.js';
 export type { ItemPedido, RespuestaHttp, ResultadoPedido, SolicitudConfirmarPedido, TransaccionInventario } from './pedido.js';
-export { calcularFirma, VENTANA_FIRMA_MS, verificarFirma } from './firma.js';
-export type { ResultadoFirma } from './firma.js';
 
 // Utilidades de dominio.
 export { esIdSegmento, esProductoId, esSerie, esUbicacionId, UBICACIONES } from './ids.js';

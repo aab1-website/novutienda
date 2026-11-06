@@ -68,6 +68,9 @@ export function verificarFronteras(arbol: Arbol, dependencias: Dependencias = {}
         }
       } else if (z.nombre === 'nucleo') {
         falla('nucleo no importa ningún paquete interno');
+      } else if (imp === '@novutienda/nucleo/servidor') {
+        // Entrada de Node del núcleo: no la usa el código que llega al navegador (panel).
+        if (z.nombre === 'panel') falla('el panel (navegador) importa solo @novutienda/nucleo, no /servidor');
       } else if (imp !== '@novutienda/nucleo' && !declaradas.some((d) => imp === `@novutienda/${d}`)) {
         falla('solo @novutienda/nucleo (entrada pública) y lo que declare el manifiesto');
       }

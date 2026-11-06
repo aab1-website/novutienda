@@ -1,4 +1,5 @@
-import { calcularFirma, confirmarPedidoFirmado } from '@novutienda/inventarios';
+import { confirmarPedidoFirmado } from '@novutienda/inventarios';
+import { calcularFirma } from '@novutienda/nucleo/servidor';
 import type { DatosPedidoConfirmadoV1, SobreEvento } from '@novutienda/nucleo';
 import { beforeEach, describe, expect, it } from 'vitest';
 import { publicarEnBandeja } from './bandeja-memoria.js';
