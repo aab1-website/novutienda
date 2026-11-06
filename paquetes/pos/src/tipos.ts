@@ -1,4 +1,4 @@
-import type { CopiaCotizacion, Mercado, Moneda, Rol } from '@novutienda/nucleo';
+import type { CopiaCotizacion, Mercado, Moneda } from '@novutienda/nucleo';
 
 export type MedioPago = 'efectivo' | 'qr' | 'transferencia' | 'credito';
 export const MEDIOS_PAGO: readonly MedioPago[] = ['efectivo', 'qr', 'transferencia', 'credito'];
@@ -7,11 +7,8 @@ export const ALMACENES_POS: readonly string[] = ['tienda', 'deposito-1', 'deposi
 /** El plan contrata una sola caja activa por turno. */
 export const CAJA_UNICA = 'caja-1';
 
-/** Quien opera: su rol sale del claim ya verificado por el borde (callable). */
-export interface ActorPos {
-  readonly uid: string;
-  readonly rol: Rol;
-}
+/** Quien opera: su rol sale del claim ya verificado por el borde (callable). El tipo es del núcleo (`ActorConRol`, T1); aquí conserva su nombre. */
+export type { ActorConRol as ActorPos } from '@novutienda/nucleo';
 
 /** Montos en centavos enteros. */
 export interface TotalesMoneda {

@@ -10,9 +10,11 @@ import { accionesInventarios } from '../../plataforma/funciones/servidor/llamada
 import { accionesMedios } from '../../plataforma/funciones/servidor/llamadas/medios.js';
 import { accionesPos } from '../../plataforma/funciones/servidor/llamadas/pos.js';
 import { accionesRecibos } from '../../plataforma/funciones/servidor/llamadas/recibos.js';
+import { accionesUsuarios } from '../../plataforma/funciones/servidor/llamadas/usuarios.js';
 
+// El callable `consola` se compone en index.ts con las acciones de usuarios (Central): misma composición aquí.
 const SERVIDOR: Readonly<Record<string, Readonly<Record<string, { readonly roles: readonly string[]; readonly propietario: boolean }>>>> = {
-  pos: accionesPos, inventarios: accionesInventarios, consola: accionesConsola, recibos: accionesRecibos, medios: accionesMedios,
+  pos: accionesPos, inventarios: accionesInventarios, consola: { ...accionesConsola, ...accionesUsuarios }, recibos: accionesRecibos, medios: accionesMedios,
 };
 const real = (clave: string): { roles: readonly string[] } | undefined => {
   const [modulo = '', accion = ''] = clave.split('.');

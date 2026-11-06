@@ -8,7 +8,9 @@ import { entregarEvento, sobreDesdeDocumento } from '../../plataforma/funciones/
 import { crearEntorno, type Entorno } from '../../plataforma/funciones/servidor/entorno.js';
 import { crearNotificador } from '../../plataforma/funciones/servidor/notificador.js';
 import { crearDisparadorSitio } from '../../plataforma/funciones/servidor/disparador-sitio.js';
-import { ejecutarCotizaciones, ejecutarLimpiezaSubidas, ejecutarTemporizadorSitio, horaEnLaPaz, listarTenants } from '../../plataforma/funciones/servidor/programadas.js';
+import { ejecutarLimpiezaSubidas, ejecutarTemporizadorSitio } from '../../plataforma/funciones/servidor/programadas/consola.js';
+import { ejecutarCotizaciones, horaEnLaPaz } from '../../plataforma/funciones/servidor/programadas/cotizacion.js';
+import { listarTenants } from '../../plataforma/funciones/servidor/programadas/tenants.js';
 import { procesarObjetoSubido } from '../../plataforma/funciones/servidor/trigger-medios.js';
 import { crearUsuario, hayEmulador, herramientas, sembrarTenant, unico, BUCKET, type Herramientas } from './ayudas.js';
 

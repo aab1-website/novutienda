@@ -15,7 +15,7 @@ externos (Firebase, NovuChat, reconstrucción del sitio). Escriba en español de
 NOVUTIENDA_ZONA="plataforma/adaptadores/:plataforma/funciones/servidor/:pruebas/funciones/:pruebas/integracion/"
 ```
 
-Lo mismo vale en `.claude/zona` del worktree (`docs/arquitectura/zona-de-escritura.md`). **El gancho distingue archivos, no zonas dentro de `plataforma/funciones/servidor/`**: ahí NO son suyos, aunque el gancho los deje pasar, los archivos de módulo (`llamadas/{pos,inventarios,recibos,consola,medios}.ts`, `trigger-medios.ts`, `disparador-sitio.ts`, `enlace-pdf.ts`, `programadas/consola.ts`), los de núcleo (`redondeo.ts`, `notificador.ts`, `programadas/cotizacion.ts`) ni `llamadas/usuarios.ts` (Central). La fuente de verdad es `pruebas/fronteras/zonas.ts`; la revisión del PR lo cubre. `plataforma/registro.ts` lo escribe la sesión principal: usted lo lee.
+Lo mismo vale en `.claude/zona` del worktree (`docs/arquitectura/zona-de-escritura.md`). **El gancho distingue archivos, no zonas dentro de `plataforma/funciones/servidor/`**: ahí NO son suyos, aunque el gancho los deje pasar, los archivos de módulo (`llamadas/{pos,inventarios,recibos,consola,medios}.ts`, `trigger-medios.ts`, `disparador-sitio.ts`, `enlace-pdf.ts`, `programadas/consola.ts`), los de núcleo (`redondeo.ts`, `notificador.ts`) ni `llamadas/usuarios.ts` (Central). La fuente de verdad es `pruebas/fronteras/zonas.ts`; la revisión del PR lo cubre. `plataforma/registro.ts` lo escribe la sesión principal: usted lo lee.
 
 ## Antes de actuar, lea
 

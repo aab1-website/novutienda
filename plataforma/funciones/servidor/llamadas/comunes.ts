@@ -6,6 +6,8 @@ export const UUID = z.string().regex(/^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a
 /** Identificador de operación o de documento: letras, números, punto, guion y guion bajo. */
 export const ID = z.string().regex(/^[A-Za-z0-9][A-Za-z0-9._-]{0,79}$/, 'identificador inválido');
 export const ID_PRODUCTO = z.string().regex(/^[a-z0-9][a-z0-9-]{1,59}$/, 'productoId inválido');
+/** uid de Firebase Auth (lo usan la auditoría de consola y las acciones de usuarios). */
+export const UID = z.string().min(1).max(128).regex(/^[^/\s]+$/, 'uid inválido');
 export const UBICACION = z.enum(['tienda', 'deposito-1', 'deposito-2']);
 export const TEXTO = (max = 500) => z.string().min(1).max(max);
 export const MS = z.number().int().nonnegative().max(8_640_000_000_000_000);

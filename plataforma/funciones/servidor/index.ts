@@ -25,7 +25,9 @@ import { crearManejador } from './llamadas/marco.js';
 import { accionesMedios } from './llamadas/medios.js';
 import { accionesPos } from './llamadas/pos.js';
 import { accionesRecibos } from './llamadas/recibos.js';
-import { ejecutarCotizaciones, ejecutarLimpiezaSubidas, ejecutarTemporizadorSitio } from './programadas.js';
+import { accionesUsuarios } from './llamadas/usuarios.js';
+import { ejecutarLimpiezaSubidas, ejecutarTemporizadorSitio } from './programadas/consola.js';
+import { ejecutarCotizaciones } from './programadas/cotizacion.js';
 import { procesarObjetoSubido } from './trigger-medios.js';
 
 // Los disparadores (Firestore, Storage) necesitan la app por defecto desde el arranque.
@@ -42,7 +44,8 @@ const callable = (modulo: string, acciones: Parameters<typeof crearManejador>[0]
 // ---- Callables ------------------------------------------------------------------------------------------------
 export const pos = onCall({ memory: '512MiB' }, callable('pos', accionesPos));
 export const inventarios = onCall({ memory: '512MiB' }, callable('inventarios', accionesInventarios));
-export const consola = onCall({ memory: '512MiB' }, callable('consola', accionesConsola));
+// Las acciones de usuarios (Central, `llamadas/usuarios.ts`) viajan en el callable `consola` para no cambiar el contrato del panel.
+export const consola = onCall({ memory: '512MiB' }, callable('consola', { ...accionesConsola, ...accionesUsuarios }));
 export const recibos = onCall({ memory: '512MiB' }, callable('recibos', accionesRecibos));
 export const medios = onCall({ memory: '2GiB', timeoutSeconds: 540, maxInstances: 3 }, callable('medios', accionesMedios));
 
