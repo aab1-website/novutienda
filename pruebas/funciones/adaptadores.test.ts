@@ -4,7 +4,7 @@ import { crc32 } from 'node:zlib';
 import { Timestamp } from 'firebase-admin/firestore';
 import sharp from 'sharp';
 import { beforeAll, describe, expect, it, vi } from 'vitest';
-import { crearAlmacenMedios, crearConsultaSubidas, crearEjecutorRecibos, crearGuardarContacto, crearLectorDisponibilidad, crearLimiteTasa, crearProcesadorMedios, hashClave, procesadorImagenes } from '../../plataforma/adaptadores/firebase/index.js';
+import { crearAlmacenMedios, crearConsultaSubidas, crearEjecutorRecibos, crearGuardarContacto, crearLectorDisponibilidad, crearLimiteTasa, crearProcesadorMedios, hashClave, procesadorImagenes } from '../../plataforma/conectores/firebase/index.js';
 import { planificarProcesamiento } from '@novutienda/consola';
 import { hayEmulador, herramientas, sembrarTenant, unico, type Herramientas } from './ayudas.js';
 

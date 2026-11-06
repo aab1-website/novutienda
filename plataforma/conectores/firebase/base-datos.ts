@@ -6,7 +6,7 @@
 // lanza si se invierte el orden) y `create` falla si el documento ya existe.
 import { FieldValue, type DocumentSnapshot, type Firestore, type Transaction } from 'firebase-admin/firestore';
 import type { BaseDatosIdentidad, TransaccionIdentidad } from '@novutienda/nucleo';
-import type { DocumentoListado, LectorColecciones } from '../colecciones.js';
+import type { DocumentoListado, LectorColecciones } from '../../coordinador/colecciones.js';
 
 type Datos = Readonly<Record<string, unknown>>;
 

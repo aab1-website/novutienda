@@ -12,7 +12,7 @@ import { onCall, onRequest, type Request } from 'firebase-functions/v2/https';
 import { onSchedule } from 'firebase-functions/v2/scheduler';
 import { onObjectFinalized } from 'firebase-functions/v2/storage';
 import { limiteMemoria, type LimiteTasa } from '@novutienda/website';
-import { crearLimiteTasa, esEntornoDePruebas } from '../../adaptadores/firebase/index.js';
+import { crearLimiteTasa, esEntornoDePruebas } from '../../conectores/firebase/index.js';
 import { entregarEvento } from './bus.js';
 import { enteroDe, exigirConfiguracionDeServicio, PARAMETROS, REGION, SECRETOS } from './config.js';
 import { entorno, verificadoresSitio } from './entorno.js';

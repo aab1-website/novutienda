@@ -6,9 +6,9 @@ import {
 import { cargarManual, leerCotizacion, type CopiaCotizacion, type Mercado, type Redondeo } from '@novutienda/nucleo';
 import type { ActorPos, DepsPos } from '@novutienda/pos';
 import {
-  BandejaMemoria, almacenCotizacionesDesde, catalogoParaPos, consumidoresDePlataforma, crearCatalogoConsola, ejecutorRecibosDesde,
-  inventariosParaPos,
-} from '../../plataforma/adaptadores/index.js';
+  almacenCotizacionesDesde, catalogoParaPos, consumidoresDePlataforma, crearCatalogoConsola, ejecutorRecibosDesde, inventariosParaPos,
+} from '../../plataforma/coordinador/index.js';
+import { BandejaMemoria } from './bandeja-memoria.js';
 import { DobleDb } from './doble-db.js';
 
 export const T = 'casa-a';

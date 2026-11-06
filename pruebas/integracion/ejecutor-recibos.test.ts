@@ -2,7 +2,7 @@
 // `enviarRecibo` actualiza el comprobante en una transacción NUEVA, sin leerlo antes, y no debe fallar.
 import { describe, expect, it } from 'vitest';
 import { enviarRecibo, referenciarFacturaSuma, rutaRecibo, type EnviadorRecibo, type Recibo } from '@novutienda/recibos';
-import { ejecutorRecibosDesde } from '../../plataforma/adaptadores/index.js';
+import { ejecutorRecibosDesde } from '../../plataforma/coordinador/index.js';
 import { DobleDb } from './doble-db.js';
 
 const T = 'casa-bermejo';

@@ -62,7 +62,7 @@ Desde T2 la interfaz del módulo en el panel vive en `paquetes/panel/src/pantall
 
 ## Reglas
 
-- **Un módulo importa solo `@novutienda/nucleo` y lo que su manifiesto declare en `dependeDe`**; nunca `/src/` de otro paquete ni otro módulo directo. Lo que necesita de otro módulo lo pide por un puerto (`plataforma/adaptadores`), que escribe el agente `coordinador`.
+- **Un módulo importa solo `@novutienda/nucleo` y lo que su manifiesto declare en `dependeDe`**; nunca `/src/` de otro paquete ni otro módulo directo. Lo que necesita de otro módulo lo pide por un puerto (`plataforma/coordinador`), que escribe el agente `coordinador`.
 - Su borde en `plataforma/` importa su paquete, el núcleo, Central, el marco del coordinador y el conector `firebase`; nada más.
 - **Un dueño por dato**: sus colecciones están en su manifiesto y solo ahí; una colección nueva se declara en el manifiesto y se regeneran las reglas (`pnpm reglas:generar`, `reglas:verificar`), con revisión de `seguridad`.
 - Los eventos que emite y consume son los v1 congelados; una necesidad nueva es una versión nueva, acordada con el núcleo.

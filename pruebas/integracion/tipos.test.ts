@@ -6,7 +6,7 @@ import type { Autor, LineaSalida as LineaInventarios, ReferenciaSalida } from '@
 import type { Mercado } from '@novutienda/nucleo';
 import type { LineaSalida as LineaPos, ProductoCatalogo, PuertoCatalogo, PuertoInventarios, QuienMueve, ReferenciaMovimiento } from '@novutienda/pos';
 import { describe, expect, expectTypeOf, it } from 'vitest';
-import { catalogoParaPos, inventariosParaPos } from '../../plataforma/adaptadores/index.js';
+import { catalogoParaPos, inventariosParaPos } from '../../plataforma/coordinador/index.js';
 
 type ParametrosDe<F> = F extends (...args: infer P) => unknown ? P : never;
 

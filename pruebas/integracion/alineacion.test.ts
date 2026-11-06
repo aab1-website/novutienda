@@ -4,8 +4,8 @@ import { crearProductoConsola, editarProductoConsola, validarDatosProducto } fro
 import { skuDesdeId } from '@novutienda/inventarios';
 import type { Actor, BaseDatosIdentidad } from '@novutienda/nucleo';
 import { beforeEach, describe, expect, it } from 'vitest';
-import { centavosADolares, dolaresACentavos } from '../../plataforma/adaptadores/index.js';
-import { T, doc, entornoListo, type Entorno } from '../integracion/entorno.js';
+import { centavosADolares, dolaresACentavos } from '../../plataforma/coordinador/index.js';
+import { T, doc, entornoListo, type Entorno } from './entorno.js';
 
 const admin: Actor = { uid: 'u-adm', claims: { firebase: { sign_in_provider: 'password' }, pl: { t: { [T]: 'adm' }, v: 1 } } };
 const datos = (extra: object = {}) => ({ nombre: 'Taladro 500 W', categoria: 'herramientas', activo: true, ...extra });

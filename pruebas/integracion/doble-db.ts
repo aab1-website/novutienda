@@ -1,5 +1,5 @@
 import type { BaseDatosIdentidad, TransaccionIdentidad } from '@novutienda/nucleo';
-import type { DocumentoListado, LectorColecciones } from '../../plataforma/adaptadores/index.js';
+import type { DocumentoListado, LectorColecciones } from '../../plataforma/coordinador/index.js';
 
 type Datos = Readonly<Record<string, unknown>>;
 
