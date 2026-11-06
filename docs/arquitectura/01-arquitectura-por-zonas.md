@@ -84,7 +84,14 @@ Los cruces heredados se listan en `pruebas/fronteras/deuda.json` (ruta, import, 
 | Callable por módulo `{accion, tenantId, datos}` con esquema zod y rol | existe | `llamadas/marco.ts`, `docs/produccion/funciones.md` |
 | API externa NovuChat v1 / v1.1 | existe, acordado | `docs/integracion-novuchat.md`, `docs/contratos/propiedades-de-producto-v1.1.md` |
 | **Pantallas, acciones y programadas que aporta cada módulo** | **falta**: hoy el menú filtra por rol, no por módulo | campos nuevos del manifiesto: `zona`, `pantallas[]`, `acciones[]`, `programadas[]` |
+| **Colección raíz y almacenamiento del manifiesto** (L1) | **falta**: campos opcionales nuevos, ver abajo | `ambito` en `ColeccionManifiesto`, `almacenamiento` en el manifiesto |
 | **Encendido por tenant** (`Tenant.modulos`) | existe el dato, no el uso | el marco de callables y el menú del panel consultan `modulos` del tenant |
+
+**Campos de L1 en el manifiesto** (opcionales; un manifiesto que no los declara se valida igual que antes):
+
+- `ambito?: 'tenant' | 'raiz'` en `ColeccionManifiesto` (por omisión `tenant`). Una colección `raiz` tiene un solo segmento de ruta distinto de `tenants`, `lectura: []`, `escritura: 'servidor'` y no lleva `limite`. El registro rechaza cualquier otra combinación.
+- `almacenamiento?` en el manifiesto: rutas de Storage relativas a `tenants/{t}/`, cada una con `lectura: 'servidor' | 'publica'` y `escritura: 'servidor' | { tipo: 'subidaReservada', roles, reserva, archivos: [{ tipo, bytesMax, contentType }] }`. `scripts/generar-reglas.mjs` genera `storage.rules` desde el registro (L1-c), igual que `firestore.rules`; no se amplía a mano.
+- **Contrato de la reserva:** los campos `estado`, `venceEn`, `productoId`, `por`, `bytes` y `tipo` del documento de reserva son contrato con `paquetes/consola/src/medios/subidas.ts`; cambiarlos exige cambiar ambos lados en el mismo PR.
 
 ## 5. Inventario: pieza → zona → destino (resumen; el detalle lo da `scripts/zonas.mjs`)
 
@@ -178,6 +185,15 @@ T4 actualiza además los **cuatro archivos de `conectores/firebase/`** (antes `a
 - **Conectores de Firebase:** `limite-tasa.ts` ya no importa `website`. `disponibilidad.ts`, `contacto.ts` y `verificadores.ts` (y `entorno.ts`, compositor) siguen importando tipos de puerto de `@novutienda/website` (`LectorDisponibilidad`, `GuardarContacto`, `VerificadorAppCheck`, `VerificadorRecaptcha`): implementan puertos que declara el módulo, y el conector de Firebase sirve a todas las zonas, así que la compuerta no los cuenta como cruce.
 - `deuda.json` baja de 6 a 2 entradas (quedan `venta-terminal → recibo-vista` y `servicios.ts → doble`). `zonas.ts` solo ganó el patrón de `http/website.ts`: `paquetes/nucleo/` ya cubría las carpetas nuevas.
 
+### 6.6 Enmienda L1 (06/11/2026): colecciones con dueño
+
+- **D1: `novuchatTokens` → manifiesto `plataforma`** (`plataforma/operador/manifiesto.ts`, `dependeDe: ['nucleo']`, zona Plataforma, pregunta 3 de la prueba de ubicación: los tokens de integraciones los ve y opera solo NovuTienda). Alternativas rechazadas: **núcleo** (no lo corre todo tenant igual: es dato del operador, y el núcleo no debe cargar con integraciones) y **conector** (el conector habla con el sistema externo, pero no es dueño del dato).
+- `alertas` y `limitesTasa` (colecciones raíz) → **núcleo**. `reconstrucciones` → **consola**.
+- `privado/` tiene dos dueños: el dueño de Storage se declara **por subruta** en `almacenamiento`.
+- El documento raíz `tenants/{t}` queda **sin dueño** hasta L2.
+- `publico/**` se mantiene **amplio** (lectura pública); no se parte en L1.
+- Las colecciones raíz y las rutas de Storage se declaran con `ambito` y `almacenamiento` (§4).
+
 ## 7. Camino, por tandas y fases
 
 | # | Qué | Prueba | Despliega | Jornadas |
@@ -187,6 +203,7 @@ T4 actualiza además los **cuatro archivos de `conectores/firebase/`** (antes `a
 | **T2** | `panel/src/pantallas/<modulo>/` | build del panel, pruebas del panel | no | 0,5 |
 | **T3** | `bandeja-memoria` → `consumidores` + doble en pruebas; renombrar `plataforma/adaptadores` → `plataforma/coordinador`, `adaptadores/firebase` → `plataforma/conectores/firebase` | integración y cobertura | no | 0,5 |
 | **T4** | `limite-tasa` y HMAC al núcleo con reexportación transitoria | unitarias de núcleo, funciones | no | 0,5 |
+| **T5** | (06/11/2026, PR 23) Retirados los puentes transitorios de T4 (`website/src/api/limite-tasa.ts`, `inventarios/src/firma.ts`); entrada `@novutienda/nucleo/servidor` para lo que depende de Node (firma HMAC); observaciones 2 y 3 de H2 | unitarias de núcleo, funciones, build del panel | no | 0,5 |
 | **L1** | Colecciones con dueño: `alertas`, `reconstrucciones`, `novuchatTokens`, `limitesTasa`; `storage.rules` generado | matriz negativa de reglas regenerada | sí (reglas) | 1 |
 | **L2** | Manifiesto con `zona`, `pantallas`, `acciones`, `programadas`; menú y marco consultan `Tenant.modulos`; `tenants/<t>/config.json` leído por el alta | registro.test ampliado; prueba «módulo apagado → `permission-denied` y sin pantalla» | sí | 1,5 |
 

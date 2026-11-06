@@ -55,6 +55,7 @@ export const ZONA_POR_ARCHIVO: readonly ReglaZona[] = [
   // ---- Plataforma: andamiaje del operador (plano §5, «zona sin nombre») --------------------------
   { patron: /^scripts\//, zona: 'plataforma' },
   { patron: /^plataforma\/funciones\/scripts\//, zona: 'plataforma' },
+  { patron: /^plataforma\/operador\//, zona: 'plataforma', nota: 'código del operador; manifiesto `plataforma`, dueño de los datos del operador como `novuchatTokens` (L1)' },
 
   // ---- Registro y coordinador (plano §3, piezas con nombre propio) -------------------------------
   { patron: /^plataforma\/registro\.ts$/, zona: 'coordinador', nota: 'el registro: el único lugar que enumera los módulos' },
