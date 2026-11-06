@@ -201,6 +201,8 @@ export function zonaDeImportacion(archivo: string, imp: string, existe: (ruta: s
   if (imp.startsWith('@tenant/')) return { zona: 'tenant', relativa: false };
   if (imp === '@novutienda/nucleo' || imp.startsWith('@novutienda/nucleo/')) return { zona: 'nucleo', relativa: false };
   if (imp === '@novutienda/panel') return { zona: 'central', relativa: false };
+  // L2-2: manifiesto del panel, Central (la regla siguiente solo admite ids de MODULOS).
+  if (imp === '@novutienda/panel/manifiesto') return { zona: 'central', relativa: false };
   // `@novutienda/panel/<m>`: la entrada pública de la interfaz de un módulo dentro del panel (`pantallas/<m>/index.ts`).
   const sub = new RegExp(`^@novutienda/panel/(${M})$`).exec(imp);
   if (sub !== null) return { zona: `modulo:${sub[1]}`, relativa: false };

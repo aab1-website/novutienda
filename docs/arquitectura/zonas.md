@@ -33,7 +33,7 @@ Más tres piezas con nombre propio: el **registro** (`plataforma/registro.ts`, e
 |---|---|
 | `nucleo` | `paquetes/nucleo/`; en ejecución, `plataforma/funciones/servidor/{redondeo,notificador}.ts` |
 | `central` | `paquetes/panel/` salvo `pantallas/<m>/` y `doble/<m>/`: `ui/`, `sesion/`, `api/`, `appcheck/`, `subidas/` (puerto `AlmacenSubidas` y subida a Storage: transporte, reclasificado en T2 por la observación 2 de H1), `util/`, `pantallas/{usuarios,configuracion}.tsx`; `plataforma/funciones/servidor/llamadas/usuarios.ts` (compuesto en el callable `consola` por `index.ts`) |
-| `plataforma` | `scripts/` (salvo `zonas.mjs`), `plataforma/funciones/scripts/`, `plataforma/operador/` (código del operador: manifiesto `plataforma`, dueño de `novuchatTokens`; alta de tenant en L2) |
+| `plataforma` | `scripts/` (salvo `zonas.mjs`), `plataforma/funciones/scripts/`, `plataforma/operador/` (código del operador: manifiesto `plataforma`, dueño de `novuchatTokens`; futuros en L2-5: `plataforma/operador/alta.ts` y `scripts/alta-tenant.mjs`) |
 | `modulo:<m>` | `paquetes/<m>/`; su borde `plataforma/funciones/servidor/llamadas/<m>.ts` (consola incluye `llamadas/medios.ts`, `trigger-medios.ts`, `disparador-sitio.ts`, `programadas/consola.ts`; recibos incluye `enlace-pdf.ts`); su interfaz en el panel: `paquetes/panel/src/pantallas/<m>/` (T2), con las piezas que solo ese módulo usa: pos `venta*`, `supervision`, `aprobaciones`, `arqueo.ts`, `pagos.ts`; inventarios `inventario*`, `mermas`; consola `catalogo*`, `plantillas-vista.ts`, `esperar.ts` y su entrada `index.ts` (`@novutienda/panel/consola`); recibos `recibos.tsx`, `recibo-vista.tsx` |
 | `coordinador` | `plataforma/registro.ts`, `plataforma/coordinador/*.ts`, el resto de `plataforma/funciones/servidor/` (incluidos `programadas/{tenants,cotizacion}.ts`: la cotización recorre tenants y dispara la corrida diaria de consola, plano §6.5) |
 | `conector:<n>` | `conector:firebase` = `plataforma/conectores/firebase/`; `conector:novuchat` = `http/novuchat.ts`; `conector:sitio` = `http/sitio.ts` |
@@ -56,7 +56,7 @@ Reglas de importación por zona declarada (plano §3), con las aproximaciones qu
 | Zona del archivo | Puede importar | Aproximación |
 |---|---|---|
 | `nucleo` | solo `nucleo` | — |
-| `central` | `nucleo`, `coordinador` | piezas de módulo solo desde el compositor `paquetes/panel/src/ui/app.tsx`, hasta que el registro aporte las pantallas (L2) |
+| `central` | `nucleo`, `coordinador` | piezas de módulo solo desde el compositor `paquetes/panel/src/ui/app.tsx`; en L2-4 el compositor monta las pantallas que declaran los manifiestos mediante un mapa id → componente. `@novutienda/panel/manifiesto` (L2-2) es Central |
 | `plataforma` | `nucleo`, `central`, `coordinador` | el coordinador entra por `plataforma/registro.ts`; `plataforma/operador/*.ts` importa solo `@novutienda/nucleo` |
 | `modulo:<m>` | `modulo:<m>`, `nucleo`, `central`, `coordinador`, `conector:firebase`, y `modulo:<d>` si `dependeDe` lo declara | el borde en `plataforma/` necesita el marco (coordinador) y el `Bucket` (firebase) |
 | `coordinador` | todo | un **paquete** de módulo (`@novutienda/<m>`) solo desde un compositor (`registro.ts`, `coordinador/*.ts`, `servidor/entorno.ts`); un **archivo** de borde de módulo que vive en `plataforma/` siempre, porque existe para que el coordinador lo monte |
@@ -65,7 +65,7 @@ Reglas de importación por zona declarada (plano §3), con las aproximaciones qu
 | `tenant` | `@novutienda/nucleo/extension` | lo exige también `verificador.ts` |
 | `metodo` | todo | sus pruebas contienen árboles inventados |
 
-Una importación `@novutienda/panel` es Central; `@novutienda/panel/<m>` (la entrada `pantallas/<m>/index.ts` que `package.json` exporta) es `modulo:<m>`: así una prueba de fuera del paquete alcanza una pieza de módulo sin que Central la reexporte.
+Una importación `@novutienda/panel` es Central; `@novutienda/panel/<m>` (la entrada `pantallas/<m>/index.ts` que `package.json` exporta) es `modulo:<m>`: así una prueba de fuera del paquete alcanza una pieza de módulo sin que Central la reexporte. `@novutienda/panel/manifiesto` (el manifiesto de Central) es Central y se clasifica con entrada explícita antes de esa regla.
 
 Además sigue vigente el verificador anterior sobre `paquetes/` y `tenants/` (`verificador.ts`: ningún módulo importa a otro salvo `dependeDe`, nada a `/src/`, nadie a un tenant) y ESLint como segunda red.
 

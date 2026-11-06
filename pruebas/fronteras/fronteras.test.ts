@@ -189,6 +189,7 @@ describe('reglas de zona con árboles inventados', () => {
     const nunca = (): boolean => false;
     expect(zonaDeImportacion('pruebas/panel/a.test.ts', '@novutienda/panel/consola', nunca)).toEqual({ zona: 'modulo:consola', relativa: false });
     expect(zonaDeImportacion('pruebas/panel/a.test.ts', '@novutienda/panel', nunca)).toEqual({ zona: 'central', relativa: false });
+    expect(zonaDeImportacion('plataforma/registro.ts', '@novutienda/panel/manifiesto', nunca)).toEqual({ zona: 'central', relativa: false });
   });
 });
 
