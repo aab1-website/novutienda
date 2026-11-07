@@ -56,6 +56,34 @@ export interface RutaAlmacenamiento {
   readonly escritura: 'servidor' | EscrituraSubidaReservada;
 }
 
+/** Zona del manifiesto (L2); sin ella se entiende `modulo`. */
+export type ZonaManifiesto = 'nucleo' | 'central' | 'plataforma' | 'modulo';
+
+/** Pantalla del panel que aporta un módulo (L2). */
+export interface PantallaManifiesto {
+  readonly id: string;
+  readonly titulo: string;
+  readonly roles: readonly Rol[];
+  readonly orden: number;
+  readonly tituloPorRol?: Partial<Record<Rol, string>>;
+}
+
+/** Acción (callable) que expone un módulo (L2). */
+export interface AccionManifiesto {
+  readonly callable: string;
+  readonly nombre: string;
+  readonly roles: readonly Rol[];
+  readonly propietario?: boolean;
+}
+
+/** Tarea programada de un módulo (L2). */
+export interface ProgramadaManifiesto {
+  readonly id: string;
+  readonly horario: string;
+  readonly zonaHoraria: string;
+  readonly porTenant: boolean;
+}
+
 export interface ManifiestoModulo {
   readonly id: IdModulo;
   /** Versión semver `MAYOR.MENOR.PARCHE`. */
@@ -67,4 +95,17 @@ export interface ManifiestoModulo {
   readonly consume: readonly TipoEvento[];
   /** Rutas de Storage del módulo; sin él, el módulo no declara archivos. */
   readonly almacenamiento?: readonly RutaAlmacenamiento[];
+  /** L2: zona a la que pertenece; sin él, `modulo`. */
+  readonly zona?: ZonaManifiesto;
+  /** L2: pantallas del panel. No se admiten con `zona: 'nucleo'`. */
+  readonly pantallas?: readonly PantallaManifiesto[];
+  /** L2: acciones (callables). No se admiten con `zona: 'nucleo'`. */
+  readonly acciones?: readonly AccionManifiesto[];
+  /** L2: tareas programadas. */
+  readonly programadas?: readonly ProgramadaManifiesto[];
+  /**
+   * L2 (D1): dependencias de ejecución por puertos. Cuentan para el encendido
+   * y el alta; NO autorizan importaciones (eso es `dependeDe`).
+   */
+  readonly requiere?: readonly IdModulo[];
 }

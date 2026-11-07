@@ -1,15 +1,19 @@
 export type {
+  AccionManifiesto,
   ArchivoSubida,
   ColeccionManifiesto,
   EscrituraSubidaReservada,
   IdModulo,
   LimiteColeccion,
   ManifiestoModulo,
+  PantallaManifiesto,
+  ProgramadaManifiesto,
   Rol,
   RutaAlmacenamiento,
   TipoEvento,
+  ZonaManifiesto,
 } from './registro/tipos.js';
-export { crearRegistro, ErrorRegistro } from './registro/registro.js';
+export { crearRegistro, ErrorRegistro, NO_ENCENDIBLES } from './registro/registro.js';
 export type { Registro } from './registro/registro.js';
 export type { ClaimPlataforma, Resultado } from './contratos/claim.js';
 export { LIMITE_BYTES_CLAIM, validarClaim } from './contratos/claim.js';
