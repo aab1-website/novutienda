@@ -1,27 +1,20 @@
 import type { Rol } from '@novutienda/nucleo';
+import { PANTALLAS } from './pantallas.generado.js';
 
 export interface ItemMenu {
   readonly id: string;
   readonly titulo: string;
   readonly roles: readonly Rol[];
+  readonly tituloPorRol?: Partial<Record<Rol, string>>;
 }
 
-/** Menú por rol (decisión del 04/11/2026): caj = Venta y Mis recibos; sup agrega Inventario, Mermas, Aprobaciones, Supervisión; adm todo. */
-export const ITEMS_MENU: readonly ItemMenu[] = [
-  { id: 'venta', titulo: 'Venta', roles: ['caj', 'sup', 'adm'] },
-  { id: 'recibos', titulo: 'Recibos', roles: ['caj', 'sup', 'adm'] },
-  { id: 'inventario', titulo: 'Inventario', roles: ['sup', 'adm'] },
-  { id: 'mermas', titulo: 'Mermas', roles: ['sup', 'adm'] },
-  { id: 'aprobaciones', titulo: 'Aprobaciones', roles: ['sup', 'adm'] },
-  { id: 'supervision', titulo: 'Supervisión', roles: ['sup', 'adm'] },
-  // `sup` edita fichas y medios; el resto del catálogo y el sitio es de `adm`.
-  { id: 'catalogo', titulo: 'Catálogo y sitio', roles: ['sup', 'adm'] },
-  { id: 'usuarios', titulo: 'Usuarios', roles: ['adm'] },
-  { id: 'configuracion', titulo: 'Configuración', roles: ['adm'] },
-];
+/** Menú por rol (decisión del 04/11/2026), derivado de las pantallas del registro por `orden`. */
+export const ITEMS_MENU: readonly ItemMenu[] = [...PANTALLAS]
+  .sort((a, b) => a.orden - b.orden)
+  .map((p) => ({ id: p.id, titulo: p.titulo, roles: p.roles, ...(p.tituloPorRol === undefined ? {} : { tituloPorRol: p.tituloPorRol }) }));
 
-export function menuPara(rol: Rol): readonly (ItemMenu & { titulo: string })[] {
-  return ITEMS_MENU.filter((i) => i.roles.includes(rol)).map((i) => (i.id === 'recibos' && rol === 'caj' ? { ...i, titulo: 'Mis recibos' } : i));
+export function menuPara(rol: Rol): readonly ItemMenu[] {
+  return ITEMS_MENU.filter((i) => i.roles.includes(rol)).map((i) => ({ ...i, titulo: i.tituloPorRol?.[rol] ?? i.titulo }));
 }
 
 export interface Ruta {

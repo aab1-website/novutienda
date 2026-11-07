@@ -12,6 +12,7 @@
 // Todas las acciones que el panel usa existen en el servidor (`ROLES_ACCION`); lo que falte se pide al dueño de las
 // funciones, nunca se inventa en el panel.
 import type { Entrada, NombreCallable, Salida } from './contrato.js';
+import { ROLES_ACCION } from './acciones.generado.js';
 import { ErrorApi } from './errores.js';
 import type {
   AprobacionPos, ConteoVista, CotizacionesVigentes, CreditoVista, Medio, MermaVista, MovimientoVista, ProductoPanel,
@@ -23,34 +24,9 @@ export type Modulo = 'pos' | 'inventarios' | 'consola' | 'recibos' | 'medios';
 export type ClaveAccion = `${Modulo}.${string}`;
 
 const TODOS: readonly Rol[] = ['caj', 'sup', 'adm'];
-const SUP: readonly Rol[] = ['sup', 'adm'];
-const ADM: readonly Rol[] = ['adm'];
 
-/** Roles de cada acción REAL (copia de las tablas de `plataforma/funciones/servidor/llamadas`; una prueba las compara). */
-export const ROLES_ACCION: Readonly<Record<string, readonly Rol[]>> = {
-  'pos.abrirTurno': TODOS, 'pos.cerrarTurno': TODOS, 'pos.cerrarTurnoForzado': ADM, 'pos.confirmarVenta': TODOS,
-  'pos.solicitarAprobacion': TODOS, 'pos.resolverAprobacion': SUP, 'pos.solicitarAnulacion': TODOS, 'pos.aprobarAnulacion': SUP,
-  'pos.registrarMovimientoCaja': TODOS, 'pos.cobrarCredito': TODOS, 'pos.leerConfig': TODOS, 'pos.guardarConfig': ADM,
-  'pos.miTurno': TODOS, 'pos.misVentas': TODOS, 'pos.venta': TODOS, 'pos.aprobaciones': TODOS, 'pos.aprobacion': TODOS,
-  'pos.movimientosCaja': TODOS, 'pos.creditos': TODOS, 'pos.cotizaciones': TODOS, 'pos.supervision': SUP, 'pos.turnos': SUP,
-  'pos.exportarVentasCsv': SUP, 'pos.exportarMovimientosCajaCsv': SUP,
-  'inventarios.ingresar': SUP, 'inventarios.traspasar': SUP, 'inventarios.ajustar': ADM, 'inventarios.solicitarMerma': TODOS,
-  'inventarios.resolverMerma': SUP, 'inventarios.abrirConteo': SUP, 'inventarios.registrarLineaConteo': TODOS, 'inventarios.cerrarConteo': SUP,
-  'inventarios.crearUbicacion': ADM, 'inventarios.fijarCosto': ADM, 'inventarios.importarProductosCsv': ADM,
-  'inventarios.listarProductos': TODOS, 'inventarios.ubicaciones': TODOS, 'inventarios.costos': ADM, 'inventarios.buscarSerie': TODOS,
-  'inventarios.movimientos': SUP, 'inventarios.mermas': SUP, 'inventarios.conteo': TODOS, 'inventarios.conteos': TODOS,
-  'inventarios.exportarCsv': SUP, 'inventarios.series': TODOS,
-  'consola.crearProducto': ADM, 'consola.editarProducto': ADM, 'consola.cambiarPrecioUSD': ADM, 'consola.catalogo': SUP,
-  'consola.preciosDelDia': SUP, 'consola.guardarFicha': SUP, 'consola.leerFicha': SUP, 'consola.guardarSeccion': ADM,
-  'consola.eliminarSeccion': ADM, 'consola.ordenarSecciones': ADM, 'consola.guardarCarrusel': ADM, 'consola.guardarConfigSitio': ADM,
-  'consola.simularImportacion': ADM, 'consola.importarProductos': ADM, 'consola.exportarProductosCsv': SUP, 'consola.publicarSitio': ADM,
-  'consola.tablero': SUP, 'consola.alertas': SUP, 'consola.listarUsuarios': SUP, 'consola.buscarUsuarioPorCorreo': ADM,
-  'consola.asignarRol': ADM, 'consola.quitarRol': ADM, 'consola.auditoria': SUP, 'consola.fichas': SUP, 'consola.secciones': SUP,
-  'consola.carruseles': SUP, 'consola.configSitio': SUP,
-  'medios.reservarSubida': SUP, 'medios.finalizarSubida': SUP, 'medios.estadoSubida': SUP, 'medios.borrarMedio': SUP, 'medios.listarMedios': SUP,
-  'recibos.leerPlantilla': TODOS, 'recibos.guardarPlantilla': SUP, 'recibos.buscarComprobantes': TODOS, 'recibos.leerRecibo': TODOS,
-  'recibos.referenciarFacturaSuma': SUP, 'recibos.htmlRecibo': TODOS, 'recibos.pdfRecibo': TODOS, 'recibos.enviarRecibo': TODOS,
-};
+/** Roles de cada acción real: derivados del registro (`pnpm registro:generar`), sin tabla a mano. */
+export { ROLES_ACCION };
 
 export const rolesDeAccion = (clave: string): readonly Rol[] => ROLES_ACCION[clave] ?? [];
 

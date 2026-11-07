@@ -16,6 +16,8 @@
     "build": "node scripts/build.mjs",
     "reglas:generar": "node scripts/reglas.mjs generar",
     "reglas:verificar": "node scripts/reglas.mjs verificar",
+    "registro:generar": "node scripts/registro-panel.mjs generar",
+    "registro:verificar": "node scripts/registro-panel.mjs verificar",
     "zonas": "node scripts/zonas.mjs"
   },
   "devDependencies": {

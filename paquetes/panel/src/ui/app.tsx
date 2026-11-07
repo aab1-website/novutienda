@@ -53,19 +53,22 @@ function useTema(): [Tema, () => void] {
   return [tema, alternar];
 }
 
+/** Mapa id de pantalla del registro → componente (L2-4); una prueba exige que sus claves sean las del registro. */
+export const COMPONENTES_PANTALLA: Readonly<Record<string, (p: { sub: string }) => JSX.Element>> = {
+  venta: ({ sub }) => <PantallaVenta sub={sub} />,
+  recibos: () => <PantallaRecibos />,
+  inventario: ({ sub }) => <PantallaInventario sub={sub} />,
+  mermas: () => <PantallaMermas />,
+  aprobaciones: ({ sub }) => <PantallaAprobaciones sub={sub} />,
+  supervision: ({ sub }) => <PantallaSupervision sub={sub} />,
+  catalogo: ({ sub }) => <PantallaCatalogo sub={sub} />,
+  usuarios: () => <PantallaUsuarios />,
+  configuracion: ({ sub }) => <PantallaConfiguracion sub={sub} />,
+};
+
 function Pantalla({ seccion, sub }: { seccion: string; sub: string }): JSX.Element {
-  switch (seccion) {
-    case 'venta': return <PantallaVenta sub={sub} />;
-    case 'recibos': return <PantallaRecibos />;
-    case 'inventario': return <PantallaInventario sub={sub} />;
-    case 'mermas': return <PantallaMermas />;
-    case 'aprobaciones': return <PantallaAprobaciones sub={sub} />;
-    case 'supervision': return <PantallaSupervision sub={sub} />;
-    case 'catalogo': return <PantallaCatalogo sub={sub} />;
-    case 'usuarios': return <PantallaUsuarios />;
-    case 'configuracion': return <PantallaConfiguracion sub={sub} />;
-    default: return <Cargando />;
-  }
+  const Componente = COMPONENTES_PANTALLA[seccion];
+  return Componente === undefined ? <Cargando /> : <Componente sub={sub} />;
 }
 
 export function App({ sesion, api, almacen }: { sesion: Sesion; api: ClienteApi; almacen: AlmacenSubidas }): JSX.Element {
