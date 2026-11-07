@@ -41,6 +41,26 @@ describe('colecciones de raíz en el registro del núcleo', () => {
     expect(() => r.registrar(mod('a', [raiz({ ruta: 'tenants' })]))).toThrow(/tenants/);
   });
 
+  it('la raíz tenants solo la admite el manifiesto plataforma (registro y generador)', () => {
+    const tenants = raiz({ ruta: 'tenants' });
+    for (const id of ['a', 'nucleo', 'consola', 'plataforma2', 'plataforma-x']) {
+      expect(() => crearRegistro<ManifiestoModulo>().registrar(mod(id, [tenants]))).toThrow(/tenants/);
+      expect(() => generarReglas([{ id, colecciones: [tenants] }])).toThrow(/tenants/);
+    }
+    const r = crearRegistro<ManifiestoModulo>();
+    r.registrar(mod('plataforma', [tenants]));
+    expect(r.rutas()).toEqual(['tenants']);
+    const reglas = generarReglas([{ id: 'plataforma', colecciones: [tenants] }]);
+    expect(reglas).toMatch(/match \/tenants\/\{id\} \{\n\s+allow read: if false;\n\s+allow write: if false;/);
+  });
+
+  it('en plataforma, tenants sigue exigiendo lectura [] y escritura servidor', () => {
+    for (const mala of [raiz({ ruta: 'tenants', lectura: ['adm'] }), raiz({ ruta: 'tenants', escritura: ['adm'] })]) {
+      expect(() => crearRegistro<ManifiestoModulo>().registrar(mod('plataforma', [mala]))).toThrow(ErrorRegistro);
+      expect(() => generarReglas([{ id: 'plataforma', colecciones: [mala] }])).toThrow(ErrorGenerador);
+    }
+  });
+
   it('rechaza un ámbito desconocido', () => {
     const r = crearRegistro<ManifiestoModulo>();
     const rara = { ...raiz(), ambito: 'otro' } as unknown as ColeccionManifiesto;
@@ -90,10 +110,10 @@ describe('paridad de validación entre el registro y el generador', () => {
   entradas.push(['raíz con escritura por roles', raiz({ escritura: ['adm'] })]);
   entradas.push(['raíz con límite', raiz({ limite: 'usuarios' })]);
 
-  it.each(entradas)('%s', (_n, c) => {
+  it.each(entradas.flatMap(([n, c]) => [[n, c, 'a'] as const, [`${n} (plataforma)`, c, 'plataforma'] as const]))('%s', (_n, c, id) => {
     const enRegistro = (() => {
       try {
-        crearRegistro<ManifiestoModulo>().registrar(mod('a', [c]));
+        crearRegistro<ManifiestoModulo>().registrar(mod(id, [c]));
         return true;
       } catch (e) {
         if (!(e instanceof ErrorRegistro)) throw e;
@@ -102,7 +122,7 @@ describe('paridad de validación entre el registro y el generador', () => {
     })();
     const enGenerador = (() => {
       try {
-        generarReglas([{ id: 'a', colecciones: [c] }]);
+        generarReglas([{ id, colecciones: [c] }]);
         return true;
       } catch (e) {
         if (!(e instanceof ErrorGenerador)) throw e;

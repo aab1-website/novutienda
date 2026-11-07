@@ -78,6 +78,8 @@ const ID_MODULO = /^[a-z][a-z0-9-]*$/;
 const HORARIO = /^(?:[0-9*/,\- ]+|every [1-9][0-9]* (?:minutes|hours)|every day (?:[01][0-9]|2[0-3]):[0-5][0-9])$/;
 const ZONAS = ['nucleo', 'central', 'plataforma', 'modulo'];
 const ROLES = ['caj', 'sup', 'adm'];
+/** Único manifiesto que puede declarar la raíz `tenants` (mismo valor que scripts/generar-reglas.mjs). */
+const ID_DUENO_TENANTS = 'plataforma';
 const LIMITES = ['productos', 'usuarios', 'cajas', 'almacenes'];
 
 export class ErrorRegistro extends Error {
@@ -142,7 +144,10 @@ function validar(m: ManifiestoBase): void {
     if (c.ambito === 'raiz') {
       const donde = `Colección de raíz ${m.id}/${c.ruta}`;
       if (c.ruta.includes('/')) throw new ErrorRegistro(`${donde}: la ruta debe tener un solo segmento`);
-      if (c.ruta === 'tenants') throw new ErrorRegistro(`${donde}: no puede llamarse "tenants"`);
+      // Excepción explícita (L2-5): `tenants` solo puede ser raíz del manifiesto `plataforma` (dueño del documento del tenant).
+      if (c.ruta === 'tenants' && m.id !== ID_DUENO_TENANTS) {
+        throw new ErrorRegistro(`${donde}: no puede llamarse "tenants"`);
+      }
       if (c.lectura.length > 0) throw new ErrorRegistro(`${donde}: la lectura debe ser [] (solo el servidor lee)`);
       if (c.escritura !== 'servidor') throw new ErrorRegistro(`${donde}: la escritura debe ser 'servidor'`);
       if (c.limite !== undefined) throw new ErrorRegistro(`${donde}: no admite límite de plan`);

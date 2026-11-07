@@ -7,7 +7,10 @@ import type { ManifiestoModulo } from '@novutienda/nucleo';
  *    `plataforma/funciones/servidor/http/novuchat.ts` para autenticar las llamadas; el navegador no lee ni escribe
  *    (`lectura: []`) y solo el servidor escribe.
  * Colección de raíz (`ambito: 'raiz'`): no cuelga de `tenants/{t}`.
- * En L2 aquí irá el alta de tenant. No emite ni consume eventos.
+ * - `tenants/{t}`: documento raíz del tenant (plan, módulos encendidos, zona horaria, monedas). Dueño: este manifiesto (excepción
+ *   explícita del registro). Solo el servidor lo escribe: el alta la hace `scripts/alta-tenant.mjs` con Admin SDK desde
+ *   `tenants/<t>/config.json`; las subcolecciones `tenants/{t}/…` son de los módulos y no se tocan aquí.
+ * No emite ni consume eventos.
  */
 export const manifiestoPlataforma: ManifiestoModulo = {
   id: 'plataforma',
@@ -15,7 +18,10 @@ export const manifiestoPlataforma: ManifiestoModulo = {
   version: '0.1.0',
   dependeDe: ['nucleo'],
   submodulos: [],
-  colecciones: [{ ruta: 'novuchatTokens', lectura: [], escritura: 'servidor', ambito: 'raiz' }],
+  colecciones: [
+    { ruta: 'novuchatTokens', lectura: [], escritura: 'servidor', ambito: 'raiz' },
+    { ruta: 'tenants', lectura: [], escritura: 'servidor', ambito: 'raiz' },
+  ],
   emite: [],
   consume: [],
 };

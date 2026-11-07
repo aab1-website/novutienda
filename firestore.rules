@@ -226,6 +226,10 @@ service cloud.firestore {
       allow read: if false;
       allow write: if false; // solo el servidor escribe
     }
+    match /tenants/{id} {
+      allow read: if false;
+      allow write: if false; // solo el servidor escribe
+    }
 
     // Negación final: todo lo no declarado queda inaccesible.
     match /{document=**} {

@@ -1,5 +1,17 @@
 {
-  "version": 1,
-  "modulosActivos": ["nucleo"],
-  "zonaHoraria": "America/La_Paz"
+  "version": 2,
+  "plan": "base",
+  "zonaHoraria": "America/La_Paz",
+  "monedas": [
+    "BOB",
+    "USD",
+    "ARS"
+  ],
+  "modulos": [
+    "inventarios",
+    "pos",
+    "recibos",
+    "consola",
+    "website"
+  ]
 }
