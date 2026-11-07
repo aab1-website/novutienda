@@ -136,7 +136,7 @@ describe('colecciones de raíz con el registro real', () => {
 
   it('rechaza raíces inválidas: dos segmentos, tenants, roles de lectura, escritura por roles y límite', () => {
     expect(() => copiaReal().registrar(extra({ ruta: 'a/b' }))).toThrow(ErrorRegistro);
-    expect(() => copiaReal().registrar(extra({ ruta: 'tenants' }))).toThrow(ErrorRegistro);
+    expect(() => copiaReal().registrar(extra({ ruta: 'tenants' }))).toThrow(ErrorRegistro); // solo plataforma la declara
     expect(() => copiaReal().registrar(extra({ ruta: 'rz', lectura: ['adm'] }))).toThrow(ErrorRegistro);
     expect(() => copiaReal().registrar(extra({ ruta: 'rz', escritura: ['adm'] }))).toThrow(ErrorRegistro);
     expect(() => copiaReal().registrar(extra({ ruta: 'rz', limite: 'usuarios' }))).toThrow(ErrorRegistro);
@@ -150,12 +150,12 @@ describe('colecciones de raíz con el registro real', () => {
     expect(rutas).toContain('miembros');
   });
 
-  it('las colecciones de raíz declaradas son solo limitesTasa (nucleo) y novuchatTokens (plataforma)', () => {
+  it('las colecciones de raíz declaradas son solo limitesTasa (nucleo), novuchatTokens y tenants (plataforma)', () => {
     const raices = registroPlataforma
       .listar()
       .flatMap((m) => m.colecciones.filter((c) => c.ambito === 'raiz').map((c) => `${m.id}:${c.ruta}`))
       .sort();
-    expect(raices).toEqual(['nucleo:limitesTasa', 'plataforma:novuchatTokens']);
+    expect(raices).toEqual(['nucleo:limitesTasa', 'plataforma:novuchatTokens', 'plataforma:tenants']);
   });
 
   it('todo collectionGroup de firestore.indexes.json tiene dueño en el registro', () => {
@@ -177,7 +177,7 @@ describe('L1-b: constantes de código alineadas con el manifiesto', () => {
   });
 
   it('COLECCION_TOKENS es la raíz declarada por plataforma', () => {
-    expect(raiz(manifiestoPlataforma)).toEqual([COLECCION_TOKENS]);
+    expect(raiz(manifiestoPlataforma)).toEqual([COLECCION_TOKENS, 'tenants']);
   });
 
   it('plataforma depende solo de nucleo y se ordena después', () => {

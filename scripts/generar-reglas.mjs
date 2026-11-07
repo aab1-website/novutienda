@@ -49,6 +49,9 @@ function validarRuta(ruta) {
   }
 }
 
+/** Único manifiesto que puede declarar la raíz `tenants` (mismo valor que el registro del núcleo). */
+const ID_DUENO_TENANTS = 'plataforma';
+
 /** Una colección de raíz vive fuera de tenants/{tenantId}: solo el servidor la toca. */
 function validarRaiz(c, id) {
   const donde = `Colección de raíz ${id}/${c.ruta}`;
@@ -56,7 +59,10 @@ function validarRaiz(c, id) {
   if (!SEGMENTO.test(c.ruta)) {
     throw new ErrorGenerador(`Ruta con caracteres no admitidos: "${c.ruta}"`);
   }
-  if (c.ruta === 'tenants') throw new ErrorGenerador(`${donde}: no puede llamarse "tenants"`);
+  // Excepción explícita (L2-5): `tenants` solo puede ser raíz del manifiesto `plataforma`.
+  if (c.ruta === 'tenants' && id !== ID_DUENO_TENANTS) {
+    throw new ErrorGenerador(`${donde}: no puede llamarse "tenants"`);
+  }
   if (c.lectura.length > 0) {
     throw new ErrorGenerador(`${donde}: la lectura debe ser [] (solo el servidor lee)`);
   }
