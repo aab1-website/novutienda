@@ -1,4 +1,5 @@
 import { describe, expect, it } from 'vitest';
+import { registroPlataforma } from '../../plataforma/registro.js';
 import { crearRegistro, modulosEfectivos, validarEncendido } from '@novutienda/nucleo';
 import type { ManifiestoModulo } from '@novutienda/nucleo';
 
@@ -45,6 +46,25 @@ describe('requiere hostil', () => {
     r.registrar(m('a', { requiere: ['b'] }));
     r.registrar(m('b', { dependeDe: ['a'] }));
     expect(() => r.ordenTopologico()).toThrow(/Ciclo/);
+  });
+  it('requiere no altera el orden (solo dependeDe lo fija)', () => {
+    const con = crearRegistro<ManifiestoModulo>();
+    con.registrar(m('a', { requiere: ['b'] }));
+    con.registrar(m('b'));
+    const sin = crearRegistro<ManifiestoModulo>();
+    sin.registrar(m('a'));
+    sin.registrar(m('b'));
+    expect(con.ordenTopologico()).toEqual(['a', 'b']);
+    expect(con.ordenTopologico()).toEqual(sin.ordenTopologico());
+  });
+  it('el orden del registro real no cambia por los requiere declarados', () => {
+    const ms = registroPlataforma.listar();
+    const sin = crearRegistro<ManifiestoModulo>();
+    for (const x of ms) sin.registrar({ ...x, requiere: [] });
+    expect(registroPlataforma.ordenTopologico()).toEqual(sin.ordenTopologico());
+    const o = registroPlataforma.ordenTopologico();
+    // Fija que `requiere` no altera el orden (el orden alimenta las reglas generadas); no es una regla de negocio.
+    expect(o.indexOf('website')).toBeLessThan(o.indexOf('consola'));
   });
 });
 

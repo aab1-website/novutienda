@@ -11,6 +11,7 @@ export const manifiestoWebsite: ManifiestoModulo = {
   id: 'website',
   version: '0.1.0',
   dependeDe: ['nucleo'],
+  zona: 'modulo',
   submodulos: [],
   colecciones: [
     // Mensajes del formulario de contacto, escritos por /api/contacto.
@@ -20,4 +21,5 @@ export const manifiestoWebsite: ManifiestoModulo = {
   ],
   emite: [],
   consume: [],
+  requiere: ['consola', 'inventarios'],
 };

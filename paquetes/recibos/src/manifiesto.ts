@@ -1,4 +1,17 @@
-import type { ManifiestoModulo } from '@novutienda/nucleo';
+import type { AccionManifiesto, ManifiestoModulo, Rol } from '@novutienda/nucleo';
+
+const accion = (callable: string, nombre: string, roles: readonly Rol[]): AccionManifiesto => ({ callable, nombre, roles });
+
+const ACCIONES_RECIBOS: readonly (readonly [string, readonly Rol[]])[] = [
+  ['leerPlantilla', ['caj', 'sup', 'adm']],
+  ['guardarPlantilla', ['sup', 'adm']],
+  ['buscarComprobantes', ['caj', 'sup', 'adm']],
+  ['leerRecibo', ['caj', 'sup', 'adm']],
+  ['referenciarFacturaSuma', ['sup', 'adm']],
+  ['htmlRecibo', ['caj', 'sup', 'adm']],
+  ['pdfRecibo', ['caj', 'sup', 'adm']],
+  ['enviarRecibo', ['caj', 'sup', 'adm']],
+];
 
 /**
  * Manifiesto del módulo recibos. Todas las colecciones las escribe solo el servidor y NINGUNA se lee directo desde el navegador
@@ -8,6 +21,7 @@ export const manifiestoRecibos: ManifiestoModulo = {
   id: 'recibos',
   version: '0.1.0',
   dependeDe: ['nucleo'],
+  zona: 'modulo',
   submodulos: [],
   colecciones: [
     { ruta: 'recibos', lectura: [], escritura: 'servidor' },
@@ -20,4 +34,14 @@ export const manifiestoRecibos: ManifiestoModulo = {
   almacenamiento: [{ ruta: 'privado/recibos/{ruta=**}', lectura: 'servidor', escritura: 'servidor' }],
   emite: ['recibo.emitido'],
   consume: ['venta.confirmada', 'venta.anulada'],
+  acciones: ACCIONES_RECIBOS.map(([nombre, roles]) => accion('recibos', nombre, roles)),
+  pantallas: [
+    {
+      id: 'recibos',
+      titulo: 'Recibos',
+      roles: ['caj', 'sup', 'adm'],
+      orden: 20,
+      tituloPorRol: { caj: 'Mis recibos' },
+    },
+  ],
 };

@@ -10,7 +10,7 @@ import { manifiestoPos } from '@novutienda/pos';
 import { manifiestoRecibos } from '@novutienda/recibos';
 import { manifiestoWebsite } from '@novutienda/website';
 import { manifiestoConsola } from '@novutienda/consola';
-import { manifiestoPanel } from '@novutienda/panel';
+import { manifiestoPanel } from '@novutienda/panel/manifiesto';
 // Manifiesto del operador (zona Plataforma, L1-b): datos de plataforma que no son de ningún tenant.
 import { manifiestoPlataforma } from './operador/manifiesto.js';
 

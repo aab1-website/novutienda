@@ -16,6 +16,14 @@ import {
 import { manifiestoPlataforma } from '../plataforma/operador/manifiesto.js';
 import { manifiestosEnOrden, registroPlataforma } from '../plataforma/registro.js';
 import { COLECCION_LIMITES } from '../plataforma/conectores/firebase/limite-tasa.js';
+import { accionesConsola } from '../plataforma/funciones/servidor/llamadas/consola.js';
+import { accionesInventarios } from '../plataforma/funciones/servidor/llamadas/inventarios.js';
+import { accionesMedios } from '../plataforma/funciones/servidor/llamadas/medios.js';
+import { accionesPos } from '../plataforma/funciones/servidor/llamadas/pos.js';
+import { accionesRecibos } from '../plataforma/funciones/servidor/llamadas/recibos.js';
+import { accionesUsuarios } from '../plataforma/funciones/servidor/llamadas/usuarios.js';
+import { FOTO_MENU_L2, TITULO_RECIBOS_CAJ } from './fotos/menu-l2.js';
+import { FOTO_PERMISOS_L2 } from './fotos/permisos-l2.js';
 import { COLECCION_TOKENS } from '../plataforma/funciones/servidor/http/novuchat.js';
 
 const mod = (id: string, dependeDe: string[] = [], rutas: string[] = []): ManifiestoModulo => ({
@@ -279,10 +287,75 @@ describe('L2-1: campos L2 del manifiesto (sin efecto)', () => {
   });
 
   describe('con el registro real', () => {
-    it('ningún manifiesto declara campos L2 todavía', () => {
-      expect(registroPlataforma.acciones()).toEqual([]);
-      expect(registroPlataforma.pantallas()).toEqual([]);
-      expect(registroPlataforma.programadas()).toEqual([]);
+    // Foto de permisos: las tablas de llamadas/*.ts componen los callables como en servidor/index.ts.
+    const tablas: Record<string, Record<string, { roles: readonly string[]; propietario?: boolean | undefined }>> = {
+      pos: accionesPos,
+      inventarios: accionesInventarios,
+      recibos: accionesRecibos,
+      medios: accionesMedios,
+      consola: { ...accionesConsola, ...accionesUsuarios },
+    };
+    const leer = (rel: string): string => readFileSync(fileURLToPath(new URL(rel, import.meta.url)), 'utf8');
+
+    it('todo manifiesto del registro declara zona', () => {
+      const sinZona = registroPlataforma.listar().filter((m) => m.zona === undefined).map((m) => m.id);
+      expect(sinZona).toEqual([]);
+    });
+
+    it('NO_ENCENDIBLES es exactamente el conjunto de ids con zona distinta de modulo', () => {
+      const noModulo = registroPlataforma.listar().filter((m) => m.zona !== 'modulo').map((m) => m.id);
+      expect(new Set(noModulo)).toEqual(new Set(NO_ENCENDIBLES));
+      expect(noModulo.length).toBe(NO_ENCENDIBLES.length);
+    });
+
+    const normal = (l: readonly { callable: string; nombre: string; roles: readonly string[]; propietario?: boolean | undefined }[]) =>
+      l
+        .map((a) => ({ callable: a.callable, nombre: a.nombre, roles: [...a.roles].sort(), propietario: a.propietario === true }))
+        .sort((x, y) => `${x.callable}.${x.nombre}`.localeCompare(`${y.callable}.${y.nombre}`));
+
+    // Foto de permisos congelada (pruebas/fotos/permisos-l2.ts): este caso es el que L2-3 NO debe tocar.
+    it('las acciones del registro coinciden con la foto de permisos (callable, nombre, roles, propietario; ni de más ni de menos)', () => {
+      expect(FOTO_PERMISOS_L2.length).toBe(85);
+      expect(normal(registroPlataforma.acciones())).toEqual(normal(FOTO_PERMISOS_L2));
+    });
+
+    // L2-3 reescribe este caso para usar tablaDeCallable; el de arriba no se toca.
+    it('las tablas actuales de llamadas/*.ts coinciden con la foto de permisos', () => {
+      const tablasComoLista = Object.entries(tablas).flatMap(([callable, t]) =>
+        Object.entries(t).map(([nombre, d]) => ({ callable, nombre, roles: d.roles, propietario: d.propietario })),
+      );
+      expect(normal(tablasComoLista)).toEqual(normal(FOTO_PERMISOS_L2));
+    });
+
+    it('las pantallas del registro coinciden con la foto del menú (orden por `orden`) y caj ve «Mis recibos»', () => {
+      const pantallas = [...registroPlataforma.pantallas()].sort((a, b) => a.orden - b.orden);
+      expect(pantallas.map((p) => ({ id: p.id, titulo: p.titulo, roles: [...p.roles] }))).toEqual(FOTO_MENU_L2);
+      expect(new Set(pantallas.map((p) => p.orden)).size).toBe(pantallas.length);
+      expect(pantallas.find((p) => p.id === 'recibos')?.tituloPorRol?.caj).toBe(TITULO_RECIBOS_CAJ);
+    });
+
+    // L2-4 lo reemplaza por pruebas/panel/generado.test.ts.
+    it('la foto del menú coincide con ITEMS_MENU (menu.ts leído como texto: las fronteras vedan /src/ de otro paquete)', () => {
+      const codigo = leer('../paquetes/panel/src/util/menu.ts');
+      const bloque = /ITEMS_MENU[^=]*=\s*\[([\s\S]*?)\n\];/.exec(codigo)?.[1] ?? '';
+      const items = [...bloque.matchAll(/\{\s*id:\s*'([^']+)',\s*titulo:\s*'([^']+)',\s*roles:\s*\[([^\]]*)\]\s*\}/g)].map((x) => ({
+        id: x[1] as string,
+        titulo: x[2] as string,
+        roles: (x[3] ?? '').split(',').map((r) => r.trim().replace(/'/g, '')).filter(Boolean),
+      }));
+      expect(items).toEqual(FOTO_MENU_L2);
+      expect(codigo).toMatch(/i\.id === 'recibos' && rol === 'caj' \? \{ \.\.\.i, titulo: 'Mis recibos' \}/);
+    });
+
+    it('las programadas del registro coinciden con los onSchedule de servidor/index.ts (porTenant incluido)', () => {
+      const codigo = leer('../plataforma/funciones/servidor/index.ts');
+      const esperado = [...codigo.matchAll(/export const (\w+) = onSchedule\(\{ schedule: '([^']+)', timeZone: '([^']+)'/g)].map((x) => ({
+        id: x[1], horario: x[2], zonaHoraria: x[3], porTenant: true,
+      }));
+      expect(esperado.map((e) => e.id).sort()).toEqual(['cotizacion', 'limpiezaSubidas', 'temporizadorSitio']);
+      const real = registroPlataforma.programadas().map((p) => ({ id: p.id, horario: p.horario, zonaHoraria: p.zonaHoraria, porTenant: p.porTenant === true }));
+      const por = <T extends { id: string | undefined }>(l: T[]) => [...l].sort((a, b) => String(a.id).localeCompare(String(b.id)));
+      expect(por(real)).toEqual(por(esperado));
     });
 
     it('pos (dependeDe nucleo y recibos) queda fuera sin recibos encendido', () => {

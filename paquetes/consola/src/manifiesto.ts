@@ -1,4 +1,4 @@
-import type { ColeccionManifiesto, ManifiestoModulo, Rol, RutaAlmacenamiento } from '@novutienda/nucleo';
+import type { AccionManifiesto, ColeccionManifiesto, ManifiestoModulo, Rol, RutaAlmacenamiento } from '@novutienda/nucleo';
 import { LIMITES_CONSOLA } from './limites.js';
 
 /** Ninguna colección se lee directo desde el navegador: el panel no usa Firestore y consulta por los callables (decisiones.md). */
@@ -58,14 +58,63 @@ const almacenamiento: readonly RutaAlmacenamiento[] = [
   { ruta: 'publico/medios/{ruta=**}', lectura: 'publica', escritura: 'servidor' },
 ];
 
+const accion = (callable: string, nombre: string, roles: readonly Rol[]): AccionManifiesto => ({ callable, nombre, roles });
+
+const ACCIONES_CONSOLA: readonly (readonly [string, readonly Rol[]])[] = [
+  ['crearProducto', ['adm']],
+  ['editarProducto', ['adm']],
+  ['cambiarPrecioUSD', ['adm']],
+  ['catalogo', ['sup', 'adm']],
+  ['preciosDelDia', ['sup', 'adm']],
+  ['guardarFicha', ['sup', 'adm']],
+  ['leerFicha', ['sup', 'adm']],
+  ['guardarSeccion', ['adm']],
+  ['eliminarSeccion', ['adm']],
+  ['ordenarSecciones', ['adm']],
+  ['guardarCarrusel', ['adm']],
+  ['guardarConfigSitio', ['adm']],
+  ['fichas', ['sup', 'adm']],
+  ['secciones', ['sup', 'adm']],
+  ['carruseles', ['sup', 'adm']],
+  ['configSitio', ['sup', 'adm']],
+  ['simularImportacion', ['adm']],
+  ['importarProductos', ['adm']],
+  ['exportarProductosCsv', ['sup', 'adm']],
+  ['publicarSitio', ['adm']],
+  ['tablero', ['sup', 'adm']],
+  ['alertas', ['sup', 'adm']],
+  ['auditoria', ['sup', 'adm']],
+];
+
+const ACCIONES_MEDIOS: readonly (readonly [string, readonly Rol[]])[] = [
+  ['reservarSubida', ['sup', 'adm']],
+  ['finalizarSubida', ['sup', 'adm']],
+  ['estadoSubida', ['sup', 'adm']],
+  ['borrarMedio', ['sup', 'adm']],
+  ['listarMedios', ['sup', 'adm']],
+];
+
 /** Manifiesto del módulo consola (administración del catálogo y del sitio). Lo registra el coordinador. */
 export const manifiestoConsola: ManifiestoModulo = {
   id: 'consola',
   version: '0.1.0',
   dependeDe: ['nucleo'],
+  zona: 'modulo',
   submodulos: [],
   colecciones,
   emite: [],
   consume: [],
   almacenamiento,
+  acciones: [
+    ...ACCIONES_CONSOLA.map(([nombre, roles]) => accion('consola', nombre, roles)),
+    ...ACCIONES_MEDIOS.map(([nombre, roles]) => accion('medios', nombre, roles)),
+  ],
+  pantallas: [
+    { id: 'catalogo', titulo: 'Catálogo y sitio', roles: ['sup', 'adm'], orden: 70 },
+  ],
+  programadas: [
+    { id: 'limpiezaSubidas', horario: 'every 60 minutes', zonaHoraria: 'America/La_Paz', porTenant: true },
+    { id: 'temporizadorSitio', horario: 'every 5 minutes', zonaHoraria: 'America/La_Paz', porTenant: true },
+  ],
+  requiere: ['inventarios'],
 };
