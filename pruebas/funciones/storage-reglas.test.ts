@@ -3,7 +3,7 @@ import { readFileSync } from 'node:fs';
 import { afterAll, beforeAll, describe, it, vi } from 'vitest';
 import { assertFails, assertSucceeds, initializeTestEnvironment, type RulesTestEnvironment } from '@firebase/rules-unit-testing';
 import { ref, uploadBytes, getBytes, deleteObject } from 'firebase/storage';
-import { hayEmulador, PROYECTO } from './ayudas.js';
+import { hayEmuladorStorage, PROYECTO } from './ayudas.js';
 
 vi.setConfig({ testTimeout: 120_000, hookTimeout: 120_000 });
 
@@ -22,7 +22,7 @@ const sesion = (rol: string, extra: Record<string, unknown> = {}): Record<string
   email_verified: true, firebase: { sign_in_provider: 'password' }, ...pl(rol), ...extra,
 });
 
-describe.skipIf(!hayEmulador)('reglas de Storage (emulador)', () => {
+describe.skipIf(!hayEmuladorStorage)('reglas de Storage (emulador)', () => {
   let env: RulesTestEnvironment;
 
   async function reservar(id: string, o: { tipo?: 'foto' | 'video'; bytes?: number; por?: string; estado?: string; producto?: string; venceEn?: number | null } = {}): Promise<void> {

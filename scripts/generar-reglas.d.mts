@@ -29,6 +29,8 @@ export interface ManifiestoReglas {
   readonly almacenamiento?: readonly RutaAlmacenamientoReglas[];
 }
 export const PROVEEDOR_PERSONAS: string;
+/** Campos del documento de reserva que lee la plantilla `reservaValida`. */
+export const CAMPOS_PLANTILLA_RESERVA: readonly string[];
 export class ErrorGenerador extends Error {}
 export function generarReglas(manifiestos: readonly ManifiestoReglas[]): string;
 export function generarReglasAlmacenamiento(manifiestos: readonly ManifiestoReglas[]): string;

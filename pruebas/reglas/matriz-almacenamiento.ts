@@ -38,6 +38,9 @@ export function rutaConcreta(ruta: string): string {
     .join('/');
 }
 
+/** Ruta bajo `publico/` que ningún manifiesto declara: la lectura anónima debe ser denegada. */
+export const RUTA_PUBLICA_AJENA = 'publico/otro/x.jpg';
+
 const personas: readonly PersonaAlmacenamiento[] = [
   ...ROLES.map((r) => ({ nombre: `${r}@A`, sujeto: personal(r, VALORES_RUTA.tenant) })),
   ...HOSTILES.map((s) => ({ nombre: s.nombre, sujeto: s })),
@@ -66,6 +69,20 @@ export function construirCasosAlmacenamiento(
           persona,
           operacion,
           esperado: lee && a.lectura === 'publica',
+        });
+      }
+    }
+  }
+  if (manifiestos.some((m) => (m.almacenamiento ?? []).some((a) => a.lectura === 'publica'))) {
+    for (const persona of personas) {
+      for (const operacion of ['get', 'list'] as const) {
+        casos.push({
+          descripcion: `${persona.nombre} ${operacion} ${RUTA_PUBLICA_AJENA} (fuera de lo declarado como público)`,
+          ruta: RUTA_PUBLICA_AJENA,
+          tenant: VALORES_RUTA.tenant,
+          persona,
+          operacion,
+          esperado: false,
         });
       }
     }

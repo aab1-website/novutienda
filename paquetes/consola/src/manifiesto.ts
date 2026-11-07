@@ -37,7 +37,8 @@ const colecciones: readonly ColeccionManifiesto[] = [
  *    `subidas` hecha antes por el servidor. Los campos de la reserva (`estado`, `venceEn`, `productoId`, `por`, `bytes`, `tipo`)
  *    son contrato con `src/medios/subidas.ts`; `tipo` es `'foto'` o `'video'`. Lectura: solo el servidor.
  *  - `privado/procesando/**`: temporales; lee y escribe solo el servidor.
- *  - `publico/**`: el servidor procesa y publica; lo lee el sitio (lectura pública). Prefijo amplio como hasta hoy.
+ *  - `publico/medios/**`: el servidor procesa y publica; lo lee el sitio (lectura pública). Es la única ruta pública que usa
+ *    el módulo (`rutaPublicaMedio`); nada más bajo `publico/` queda legible.
  */
 const almacenamiento: readonly RutaAlmacenamiento[] = [
   {
@@ -54,7 +55,7 @@ const almacenamiento: readonly RutaAlmacenamiento[] = [
     },
   },
   { ruta: 'privado/procesando/{ruta=**}', lectura: 'servidor', escritura: 'servidor' },
-  { ruta: 'publico/{ruta=**}', lectura: 'publica', escritura: 'servidor' },
+  { ruta: 'publico/medios/{ruta=**}', lectura: 'publica', escritura: 'servidor' },
 ];
 
 /** Manifiesto del módulo consola (administración del catálogo y del sitio). Lo registra el coordinador. */

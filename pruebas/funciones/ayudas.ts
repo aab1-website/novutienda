@@ -20,6 +20,8 @@ export const T = 'casa-bermejo';
 export const OTRO = 'otra-casa';
 
 export const hayEmulador = process.env['FIRESTORE_EMULATOR_HOST'] !== undefined && process.env['FIREBASE_AUTH_EMULATOR_HOST'] !== undefined;
+/** Las pruebas de Storage necesitan además el host del emulador de Storage (lo exporta `emulators:exec` solo si Storage está en `--only`). */
+export const hayEmuladorStorage = hayEmulador && process.env['FIREBASE_STORAGE_EMULATOR_HOST'] !== undefined;
 export const exigirEmulador = process.env['PRUEBAS_FUNCIONES_EXIGIR'] === '1';
 /** `pnpm test:funciones` corre con App Check exigido en los callables (como producción): toda llamada lleva token. */
 export const appCheckExigido = process.env['APP_CHECK_EXIGIDO'] === 'true';

@@ -9,7 +9,7 @@ import sharp from 'sharp';
 import { describe, expect, it, vi } from 'vitest';
 import { planificarProcesamiento } from '@novutienda/consola';
 import { binariosDeVideo, crearProcesadorMedios, procesadorVideo } from '../../plataforma/conectores/firebase/index.js';
-import { hayEmulador, herramientas, unico } from './ayudas.js';
+import { hayEmuladorStorage, herramientas, unico } from './ayudas.js';
 
 vi.setConfig({ testTimeout: 120_000, hookTimeout: 120_000 });
 
@@ -33,7 +33,7 @@ describe('binarios de video', () => {
   });
 });
 
-describe.skipIf(!hayEmulador || !hayFfmpeg())('procesador de video (ffmpeg real + Storage del emulador)', () => {
+describe.skipIf(!hayEmuladorStorage || !hayFfmpeg())('procesador de video (ffmpeg real + Storage del emulador)', () => {
   it('inspecciona, genera 720p y 1080p en MP4 sin metadatos y el póster WebP', async () => {
     const h = herramientas();
     const dir = mkdtempSync(join(tmpdir(), 'v-'));
