@@ -9,18 +9,10 @@ export interface Servicios {
 }
 
 /**
- * Compone los servicios según el modo de compilación. `humo` (pruebas de navegador y desarrollo) usa los dobles en
- * memoria; cualquier otro modo usa Firebase. La rama del doble se elimina del paquete de producción.
+ * Compone los servicios reales (Firebase; en modo `emulador`, contra los emuladores). El modo `humo` no pasa por aquí:
+ * su arranque es `doble/arranque.tsx`, que vite.config.ts sustituye en el HTML solo en ese modo.
  */
 export async function crearServicios(): Promise<Servicios> {
-  if (import.meta.env.MODE === 'humo') {
-    const { SesionDoble } = await import('./sesion/doble.js');
-    const { ClienteDoble } = await import('./doble/doble.js');
-    const sesion = new SesionDoble();
-    const api = new ClienteDoble({ usuario: () => sesion.actual() ?? { uid: 'anonimo', rol: 'caj' } });
-    const { AlmacenSubidasDoble } = await import('./subidas/almacen.js');
-    return { sesion, api, almacen: new AlmacenSubidasDoble() };
-  }
   const { SesionFirebase } = await import('./sesion/firebase.js');
   const { TransporteFirebase } = await import('./api/firebase.js');
   const { ClienteRemoto } = await import('./api/transporte.js');

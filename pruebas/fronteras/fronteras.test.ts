@@ -101,6 +101,8 @@ describe('reglas de zona con árboles inventados', () => {
     expect(zonaDe('paquetes/panel/src/pantallas/pos/venta-cobro.tsx')).toBe('modulo:pos');
     expect(zonaDe('paquetes/panel/src/pantallas/pos/venta.test.ts')).toBe('pruebas:modulo:pos');
     expect(zonaDe('paquetes/panel/src/doble/doble.test.ts')).toBe('pruebas:central');
+    expect(zonaDe('paquetes/panel/src/doble/arranque.tsx')).toBe('pruebas:central');
+    expect(zonaDe('paquetes/panel/src/montar.tsx')).toBe('central');
     expect(zonaDe('plataforma/funciones/servidor/llamadas/recibos.ts')).toBe('modulo:recibos');
     expect(zonaDe('plataforma/funciones/servidor/http/sitio.ts')).toBe('conector:sitio');
     expect(zonaDe('plataforma/conectores/firebase/auth.ts')).toBe('conector:firebase');
