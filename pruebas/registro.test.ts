@@ -334,19 +334,6 @@ describe('L2-1: campos L2 del manifiesto (sin efecto)', () => {
       expect(pantallas.find((p) => p.id === 'recibos')?.tituloPorRol?.caj).toBe(TITULO_RECIBOS_CAJ);
     });
 
-    // L2-4 lo reemplaza por pruebas/panel/generado.test.ts.
-    it('la foto del menú coincide con ITEMS_MENU (menu.ts leído como texto: las fronteras vedan /src/ de otro paquete)', () => {
-      const codigo = leer('../paquetes/panel/src/util/menu.ts');
-      const bloque = /ITEMS_MENU[^=]*=\s*\[([\s\S]*?)\n\];/.exec(codigo)?.[1] ?? '';
-      const items = [...bloque.matchAll(/\{\s*id:\s*'([^']+)',\s*titulo:\s*'([^']+)',\s*roles:\s*\[([^\]]*)\]\s*\}/g)].map((x) => ({
-        id: x[1] as string,
-        titulo: x[2] as string,
-        roles: (x[3] ?? '').split(',').map((r) => r.trim().replace(/'/g, '')).filter(Boolean),
-      }));
-      expect(items).toEqual(FOTO_MENU_L2);
-      expect(codigo).toMatch(/i\.id === 'recibos' && rol === 'caj' \? \{ \.\.\.i, titulo: 'Mis recibos' \}/);
-    });
-
     it('las programadas del registro coinciden con los onSchedule de servidor/index.ts (porTenant incluido)', () => {
       const codigo = leer('../plataforma/funciones/servidor/index.ts');
       const esperado = [...codigo.matchAll(/export const (\w+) = onSchedule\(\{ schedule: '([^']+)', timeZone: '([^']+)'/g)].map((x) => ({
