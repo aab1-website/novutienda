@@ -8,36 +8,30 @@ import {
   type Carrito, type CobroCreditoEntrada, type MovimientoCaja, type MovimientoCajaEntrada, type SolicitudAprobacion, type VentaPos,
 } from '@novutienda/pos';
 import { leerCotizacion, SinCotizacionUtilizable, type CopiaCotizacion, type Mercado } from '@novutienda/nucleo';
-import { accion, actorPos, type TablaAcciones } from './marco.js';
+import { accion, actorPos, type TablaImplementaciones } from './marco.js';
 import { LIMITE, MS, OBJETO, UUID, VACIO, objeto, validarRango, TEXTO } from './comunes.js';
 
-const TODOS = ['caj', 'sup', 'adm'] as const;
-const SUPERVISION = ['sup', 'adm'] as const;
 
 const ruta = (t: string, col: string, id?: string): string => `tenants/${t}/${col}${id === undefined ? '' : `/${id}`}`;
 const datosDe = (d: { data(): unknown }): Record<string, unknown> => d.data() as Record<string, unknown>;
 
-export const accionesPos: TablaAcciones = {
+export const accionesPos: TablaImplementaciones = {
   // ---- Turno ------------------------------------------------------------------------------------------------
   abrirTurno: accion({
-    roles: TODOS,
     esquema: objeto({ turnoId: UUID, apertura: OBJETO }),
     ejecutar: async (c, d) => abrirTurno(await c.e.depsPos(c.tenantId), c.tenantId, actorPos(c), d.turnoId, d.apertura),
   }),
   cerrarTurno: accion({
-    roles: TODOS,
     esquema: objeto({ turnoId: UUID, contado: OBJETO }),
     ejecutar: async (c, d) => cerrarTurno(await c.e.depsPos(c.tenantId), c.tenantId, actorPos(c), d.turnoId, d.contado),
   }),
   cerrarTurnoForzado: accion({
-    roles: ['adm'],
     esquema: objeto({ turnoId: UUID, contado: OBJETO, motivo: TEXTO(200) }),
     ejecutar: async (c, d) => cerrarTurnoForzado(await c.e.depsPos(c.tenantId), c.tenantId, actorPos(c), d.turnoId, d.contado, d.motivo),
   }),
 
   // ---- Venta ------------------------------------------------------------------------------------------------
   confirmarVenta: accion({
-    roles: TODOS,
     maxCaracteres: 128_000,
     esquema: objeto({ requestId: UUID, carrito: OBJETO, pagos: z.array(OBJETO).min(1).max(10), aprobacionId: UUID.optional(), aprobacionCreditoId: UUID.optional() }),
     ejecutar: async (c, d) =>
@@ -46,47 +40,39 @@ export const accionesPos: TablaAcciones = {
 
   // ---- Aprobaciones y anulaciones --------------------------------------------------------------------------
   solicitarAprobacion: accion({
-    roles: TODOS,
     esquema: objeto({ aprobacionId: UUID, solicitud: OBJETO }),
     ejecutar: async (c, d) => solicitarAprobacion(await c.e.depsPos(c.tenantId), c.tenantId, actorPos(c), d.aprobacionId, d.solicitud as unknown as SolicitudAprobacion),
   }),
   resolverAprobacion: accion({
-    roles: SUPERVISION,
     esquema: objeto({ aprobacionId: UUID, decision: z.enum(['aprobar', 'rechazar']) }),
     ejecutar: async (c, d) => resolverAprobacion(await c.e.depsPos(c.tenantId), c.tenantId, actorPos(c), d.aprobacionId, d.decision),
   }),
   solicitarAnulacion: accion({
-    roles: TODOS,
     esquema: objeto({ ventaId: UUID, motivo: TEXTO(200) }),
     ejecutar: async (c, d) => solicitarAnulacion(await c.e.depsPos(c.tenantId), c.tenantId, actorPos(c), d.ventaId, d.motivo),
   }),
   aprobarAnulacion: accion({
-    roles: SUPERVISION,
     esquema: objeto({ ventaId: UUID, motivo: TEXTO(200) }),
     ejecutar: async (c, d) => aprobarAnulacion(await c.e.depsPos(c.tenantId), c.tenantId, actorPos(c), d.ventaId, d.motivo),
   }),
 
   // ---- Caja y créditos --------------------------------------------------------------------------------------
   registrarMovimientoCaja: accion({
-    roles: TODOS,
     esquema: objeto({ requestId: UUID, movimiento: OBJETO }),
     ejecutar: async (c, d) =>
       registrarMovimientoCaja(await c.e.depsPos(c.tenantId), c.tenantId, actorPos(c), d.requestId, d.movimiento as unknown as MovimientoCajaEntrada),
   }),
   cobrarCredito: accion({
-    roles: TODOS,
     esquema: objeto({ requestId: UUID, ventaId: UUID, cobro: OBJETO }),
     ejecutar: async (c, d) => cobrarCredito(await c.e.depsPos(c.tenantId), c.tenantId, actorPos(c), d.requestId, d.ventaId, d.cobro as unknown as CobroCreditoEntrada),
   }),
 
   // ---- Configuración ----------------------------------------------------------------------------------------
   leerConfig: accion({
-    roles: TODOS,
     esquema: VACIO,
     ejecutar: async (c) => ({ config: await c.e.db.runTransaction((tx) => leerConfigPos(tx, c.tenantId)) }),
   }),
   guardarConfig: accion({
-    roles: ['adm'],
     esquema: objeto({ config: OBJETO }),
     ejecutar: async (c, d) => ({ config: await guardarConfigPos(await c.e.depsPos(c.tenantId), c.tenantId, actorPos(c), d.config) }),
   }),
@@ -94,7 +80,6 @@ export const accionesPos: TablaAcciones = {
   // ---- Lecturas «solo lo mío» -------------------------------------------------------------------------------
   /** Turno abierto. El vendedor ve el suyo; si la caja la tiene otro, solo se le dice que está ocupada. */
   miTurno: accion({
-    roles: TODOS,
     esquema: VACIO,
     ejecutar: async (c) => {
       const activo = (await c.e.firestore.doc(ruta(c.tenantId, 'pos_config', 'turno_activo')).get()).data();
@@ -107,7 +92,6 @@ export const accionesPos: TablaAcciones = {
   }),
   /** Ventas: el vendedor solo las suyas; `sup`/`adm` todas (o solo las suyas con `soloMias`). */
   misVentas: accion({
-    roles: TODOS,
     esquema: objeto({ turnoId: UUID.optional(), desde: MS.optional(), hasta: MS.optional(), limite: LIMITE.optional(), soloMias: z.boolean().optional() }),
     ejecutar: async (c, d) => {
       validarRango(d.desde, d.hasta);
@@ -121,7 +105,6 @@ export const accionesPos: TablaAcciones = {
     },
   }),
   venta: accion({
-    roles: TODOS,
     esquema: objeto({ ventaId: UUID }),
     ejecutar: async (c, d) => {
       const venta = (await c.e.firestore.doc(ruta(c.tenantId, 'ventas', d.ventaId)).get()).data();
@@ -132,7 +115,6 @@ export const accionesPos: TablaAcciones = {
   }),
   /** Aprobaciones: `sup`/`adm` ven las pendientes; el vendedor, las que él solicitó. */
   aprobaciones: accion({
-    roles: TODOS,
     esquema: objeto({ estado: z.enum(['pendiente', 'aprobada', 'rechazada', 'usada']).optional(), limite: LIMITE.optional() }),
     ejecutar: async (c, d) => {
       let q = c.e.firestore.collection(ruta(c.tenantId, 'aprobaciones_descuento')).orderBy('solicitadoEnMs', 'desc');
@@ -143,7 +125,6 @@ export const accionesPos: TablaAcciones = {
     },
   }),
   aprobacion: accion({
-    roles: TODOS,
     esquema: objeto({ aprobacionId: UUID }),
     ejecutar: async (c, d) => {
       const a = (await c.e.firestore.doc(ruta(c.tenantId, 'aprobaciones_descuento', d.aprobacionId)).get()).data();
@@ -153,7 +134,6 @@ export const accionesPos: TablaAcciones = {
     },
   }),
   movimientosCaja: accion({
-    roles: TODOS,
     esquema: objeto({ turnoId: UUID, limite: LIMITE.optional() }),
     ejecutar: async (c, d) => {
       const turno = (await c.e.firestore.doc(ruta(c.tenantId, 'turnos', d.turnoId)).get()).data();
@@ -169,7 +149,6 @@ export const accionesPos: TablaAcciones = {
    * + `creadoEnMs`), sin el tope de ventas recientes.
    */
   creditos: accion({
-    roles: TODOS,
     esquema: objeto({ estado: z.enum(['pendiente', 'cobrado', 'anulado']).optional(), limite: LIMITE.optional() }),
     ejecutar: async (c, d) => {
       const limite = d.limite ?? 100;
@@ -185,7 +164,6 @@ export const accionesPos: TablaAcciones = {
    * para que el POS calcule el precio final con la misma regla que el servidor. No devuelve nada sensible.
    */
   cotizaciones: accion({
-    roles: TODOS,
     esquema: VACIO,
     ejecutar: async (c) => {
       const cotizaciones: Record<Mercado, CopiaCotizacion | null> = { BO: null, AR: null };
@@ -203,7 +181,6 @@ export const accionesPos: TablaAcciones = {
   // ---- Supervisión ------------------------------------------------------------------------------------------
   /** Supervisión de caja en vivo: turno abierto, proyección del efectivo esperado y últimas ventas. */
   supervision: accion({
-    roles: SUPERVISION,
     esquema: VACIO,
     ejecutar: async (c) => {
       const activo = (await c.e.firestore.doc(ruta(c.tenantId, 'pos_config', 'turno_activo')).get()).data();
@@ -220,7 +197,6 @@ export const accionesPos: TablaAcciones = {
     },
   }),
   turnos: accion({
-    roles: SUPERVISION,
     esquema: objeto({ limite: LIMITE.optional() }),
     ejecutar: async (c, d) => {
       const snap = await c.e.firestore.collection(ruta(c.tenantId, 'turnos')).orderBy('abiertoEnMs', 'desc').limit(d.limite ?? 30).get();
@@ -230,7 +206,6 @@ export const accionesPos: TablaAcciones = {
 
   // ---- Exportaciones (CSV con celdas neutralizadas por el módulo) -------------------------------------------
   exportarVentasCsv: accion({
-    roles: SUPERVISION,
     esquema: objeto({ desde: MS, hasta: MS }),
     ejecutar: async (c, d) => {
       validarRango(d.desde, d.hasta);
@@ -241,7 +216,6 @@ export const accionesPos: TablaAcciones = {
     },
   }),
   exportarMovimientosCajaCsv: accion({
-    roles: SUPERVISION,
     esquema: objeto({ turnoId: UUID }),
     ejecutar: async (c, d) => {
       const snap = await c.e.firestore.collection(ruta(c.tenantId, 'movimientos_caja')).where('turnoId', '==', d.turnoId).orderBy('creadoEnMs', 'asc').limit(MAX_FILAS_CSV + 1).get();

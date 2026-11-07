@@ -1,24 +1,20 @@
 // Acciones de usuarios del tenant (Central, plano §5.2): lo que todo comercio ve igual tenga los módulos que tenga.
 // Viajan dentro del callable `consola` (`index.ts` las compone con `accionesConsola`) para no cambiar el contrato del
-// panel; las de `propietario: true` admiten además al propietario de la plataforma sin rol en el tenant.
+// panel; los roles y el permiso del propietario los declara el manifiesto del panel.
 import { HttpsError } from 'firebase-functions/v2/https';
 import { z } from 'zod';
 import { asignarRol, leerClaim, quitarRol, type Rol } from '@novutienda/nucleo';
-import { accion, type TablaAcciones } from './marco.js';
+import { accion, type TablaImplementaciones } from './marco.js';
 import { UID, VACIO, objeto } from './comunes.js';
-
-const ADM = ['adm'] as const;
-const SUPERVISION = ['sup', 'adm'] as const;
 
 const ruta = (t: string, col: string, id?: string): string => `tenants/${t}/${col}${id === undefined ? '' : `/${id}`}`;
 
 const ROL = z.enum(['caj', 'sup', 'adm']);
 
-export const accionesUsuarios: TablaAcciones = {
+export const accionesUsuarios: TablaImplementaciones = {
   // ---- Usuarios (3 como máximo) ---------------------------------------------------------------------------
   /** Miembros del tenant con su correo (`sup`/`adm`). */
   listarUsuarios: accion({
-    roles: SUPERVISION,
     esquema: VACIO,
     ejecutar: async (c) => {
       const miembros = (await c.e.firestore.collection(ruta(c.tenantId, 'miembros')).get()).docs;
@@ -40,8 +36,6 @@ export const accionesUsuarios: TablaAcciones = {
    * responde exactamente igual que si no existiera, para que no sirva de oráculo de qué correos usa otro negocio.
    */
   buscarUsuarioPorCorreo: accion({
-    roles: ADM,
-    propietario: true,
     esquema: objeto({ correo: z.string().email().max(120) }),
     ejecutar: async (c, d) => {
       const noExiste = new HttpsError('not-found', 'No existe una cuenta con ese correo.');
@@ -60,14 +54,10 @@ export const accionesUsuarios: TablaAcciones = {
     },
   }),
   asignarRol: accion({
-    roles: ADM,
-    propietario: true,
     esquema: objeto({ uid: UID, rol: ROL }),
     ejecutar: async (c, d) => ({ claim: await asignarRol({ auth: c.e.authMin, db: c.e.db, ahora: c.e.ahora }, c.actor, c.tenantId, d.uid, d.rol as Rol) }),
   }),
   quitarRol: accion({
-    roles: ADM,
-    propietario: true,
     esquema: objeto({ uid: UID }),
     ejecutar: async (c, d) => ({ claim: await quitarRol({ auth: c.e.authMin, db: c.e.db, ahora: c.e.ahora }, c.actor, c.tenantId, d.uid) }),
   }),

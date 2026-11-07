@@ -11,11 +11,9 @@ import {
   simularImportacion, type DepsImportacion,
 } from '@novutienda/consola';
 import { leerCotizacion, SinCotizacionUtilizable, type CopiaCotizacion, type Mercado } from '@novutienda/nucleo';
-import { accion, type Contexto, type TablaAcciones } from './marco.js';
+import { accion, type Contexto, type TablaImplementaciones } from './marco.js';
 import { ID_PRODUCTO, LIMITE, MS, OBJETO, UID, VACIO, objeto, validarRango } from './comunes.js';
 
-const ADM = ['adm'] as const;
-const SUPERVISION = ['sup', 'adm'] as const;
 
 type DepsSitio = Parameters<typeof guardarFicha>[0];
 const datosDe = (d: { data(): unknown }): Record<string, unknown> => d.data() as Record<string, unknown>;
@@ -34,10 +32,9 @@ function base64(valor: string): Uint8Array {
   return new Uint8Array(bytes);
 }
 
-export const accionesConsola: TablaAcciones = {
+export const accionesConsola: TablaImplementaciones = {
   // ---- Productos y precios ---------------------------------------------------------------------------------
   crearProducto: accion({
-    roles: ADM,
     esquema: objeto({ productoId: ID_PRODUCTO, datos: OBJETO, precioUSD: OBJETO }),
     ejecutar: async (c, d) => {
       await crearProductoConsola({ db: c.e.db, catalogo: c.e.catalogo, reloj: reloj(c) }, { tenantId: c.tenantId, actor: c.actor, productoId: d.productoId, datos: d.datos, precioUSD: d.precioUSD });
@@ -45,7 +42,6 @@ export const accionesConsola: TablaAcciones = {
     },
   }),
   editarProducto: accion({
-    roles: ADM,
     esquema: objeto({ productoId: ID_PRODUCTO, cambios: OBJETO }),
     ejecutar: async (c, d) => {
       await editarProductoConsola({ db: c.e.db, catalogo: c.e.catalogo, reloj: reloj(c) }, { tenantId: c.tenantId, actor: c.actor, productoId: d.productoId, cambios: d.cambios });
@@ -53,7 +49,6 @@ export const accionesConsola: TablaAcciones = {
     },
   }),
   cambiarPrecioUSD: accion({
-    roles: ADM,
     esquema: objeto({ productoId: ID_PRODUCTO, precioUSD: OBJETO }),
     ejecutar: async (c, d) => {
       await cambiarPrecioUSD({ db: c.e.db, catalogo: c.e.catalogo, reloj: reloj(c) }, { tenantId: c.tenantId, actor: c.actor, productoId: d.productoId, precioUSD: d.precioUSD });
@@ -61,13 +56,11 @@ export const accionesConsola: TablaAcciones = {
     },
   }),
   catalogo: accion({
-    roles: SUPERVISION,
     esquema: VACIO,
     ejecutar: async (c) => ({ productos: await c.e.catalogo.listarProductos(c.tenantId) }),
   }),
   /** Precio en Bs y en ARS del día para un precio base en USD (editor de ficha), con el redondeo del tenant. */
   preciosDelDia: accion({
-    roles: SUPERVISION,
     esquema: objeto({ precioUSD: objeto({ bo: z.number().nonnegative().max(9_999_999), ar: z.number().nonnegative().max(9_999_999) }) }),
     ejecutar: async (c, d) => {
       const cotizaciones: Partial<Record<Mercado, CopiaCotizacion>> = {};
@@ -84,7 +77,6 @@ export const accionesConsola: TablaAcciones = {
 
   // ---- Fichas, secciones, carrusel y configuración del sitio -----------------------------------------------
   guardarFicha: accion({
-    roles: SUPERVISION,
     esquema: objeto({ productoId: ID_PRODUCTO, ficha: OBJETO }),
     ejecutar: async (c, d) => {
       await guardarFicha(depsSitio(c), { tenantId: c.tenantId, actor: c.actor, productoId: d.productoId, ficha: d.ficha });
@@ -92,12 +84,10 @@ export const accionesConsola: TablaAcciones = {
     },
   }),
   leerFicha: accion({
-    roles: SUPERVISION,
     esquema: objeto({ productoId: ID_PRODUCTO }),
     ejecutar: async (c, d) => ({ ficha: (await c.e.firestore.doc(ruta(c.tenantId, 'fichasWeb', d.productoId)).get()).data() ?? null }),
   }),
   guardarSeccion: accion({
-    roles: ADM,
     esquema: objeto({ seccion: OBJETO }),
     ejecutar: async (c, d) => {
       await guardarSeccion(depsSitio(c), { tenantId: c.tenantId, actor: c.actor, seccion: d.seccion });
@@ -105,7 +95,6 @@ export const accionesConsola: TablaAcciones = {
     },
   }),
   eliminarSeccion: accion({
-    roles: ADM,
     esquema: objeto({ seccionId: z.string().regex(/^[a-z0-9][a-z0-9-]{0,29}$/) }),
     ejecutar: async (c, d) => {
       await eliminarSeccion(depsSitio(c), { tenantId: c.tenantId, actor: c.actor, seccionId: d.seccionId });
@@ -113,7 +102,6 @@ export const accionesConsola: TablaAcciones = {
     },
   }),
   ordenarSecciones: accion({
-    roles: ADM,
     esquema: objeto({ orden: z.array(z.string().max(30)).max(5) }),
     ejecutar: async (c, d) => {
       await ordenarSecciones(depsSitio(c), { tenantId: c.tenantId, actor: c.actor, orden: d.orden });
@@ -121,7 +109,6 @@ export const accionesConsola: TablaAcciones = {
     },
   }),
   guardarCarrusel: accion({
-    roles: ADM,
     esquema: objeto({ carrusel: OBJETO }),
     ejecutar: async (c, d) => {
       await guardarCarrusel(depsSitio(c), { tenantId: c.tenantId, actor: c.actor, carrusel: d.carrusel });
@@ -129,7 +116,6 @@ export const accionesConsola: TablaAcciones = {
     },
   }),
   guardarConfigSitio: accion({
-    roles: ADM,
     esquema: objeto({ config: OBJETO }),
     ejecutar: async (c, d) => {
       await guardarConfigSitio(depsSitio(c), { tenantId: c.tenantId, actor: c.actor, config: d.config });
@@ -139,7 +125,6 @@ export const accionesConsola: TablaAcciones = {
 
   /** Lecturas del sitio (solo lectura; el navegador no las lee directo por la CSP del panel). */
   fichas: accion({
-    roles: SUPERVISION,
     esquema: VACIO,
     ejecutar: async (c) => ({
       fichas: (await c.e.firestore.collection(ruta(c.tenantId, 'fichasWeb')).limit(500).get()).docs.map((f) => ({ productoId: f.id, ficha: datosDe(f) })),
@@ -147,7 +132,6 @@ export const accionesConsola: TablaAcciones = {
   }),
   /** Secciones en el orden del índice del sitio (las que no estén en el índice van al final). */
   secciones: accion({
-    roles: SUPERVISION,
     esquema: VACIO,
     ejecutar: async (c) => {
       const [docs, indice] = await Promise.all([
@@ -160,50 +144,42 @@ export const accionesConsola: TablaAcciones = {
     },
   }),
   carruseles: accion({
-    roles: SUPERVISION,
     esquema: VACIO,
     ejecutar: async (c) => ({ carruseles: (await c.e.firestore.collection(ruta(c.tenantId, 'carruseles')).limit(50).get()).docs.map((x) => ({ plantilla: x.id, ...datosDe(x) })) }),
   }),
   /** Configuración del sitio, o `null` si aún no se guardó. */
   configSitio: accion({
-    roles: SUPERVISION,
     esquema: VACIO,
     ejecutar: async (c) => ({ config: (await c.e.firestore.doc(ruta(c.tenantId, 'sitio', 'config')).get()).data() ?? null }),
   }),
 
   // ---- Importación y exportación (CSV; .xlsx no está disponible: ver docs/produccion) ----------------------
   simularImportacion: accion({
-    roles: ADM,
     maxCaracteres: 3_000_000,
     esquema: objeto({ archivo: z.string().min(4).max(2_900_000) }),
     ejecutar: async (c, d) => ({ simulacion: await simularImportacion({ catalogo: c.e.catalogo }, { tenantId: c.tenantId, actor: c.actor, contenido: base64(d.archivo) }) }),
   }),
   importarProductos: accion({
-    roles: ADM,
     maxCaracteres: 3_000_000,
     esquema: objeto({ archivo: z.string().min(4).max(2_900_000), omitirErrores: z.boolean().optional() }),
     ejecutar: async (c, d) =>
       importarProductos(depsImportacion(c), { tenantId: c.tenantId, actor: c.actor, contenido: base64(d.archivo), ...(d.omitirErrores !== undefined ? { omitirErrores: d.omitirErrores } : {}) }),
   }),
   exportarProductosCsv: accion({
-    roles: SUPERVISION,
     esquema: VACIO,
     ejecutar: async (c) => ({ csv: exportarProductosCsv(await c.e.catalogo.listarProductos(c.tenantId)) }),
   }),
 
   // ---- Publicación y tablero ------------------------------------------------------------------------------
   publicarSitio: accion({
-    roles: ADM,
     esquema: VACIO,
     ejecutar: (c) => publicarSitio({ db: c.e.db, catalogo: c.e.catalogo, reloj: reloj(c), disparador: c.e.disparadorSitio }, { tenantId: c.tenantId, actor: c.actor }),
   }),
   tablero: accion({
-    roles: SUPERVISION,
     esquema: VACIO,
     ejecutar: (c) => obtenerTablero({ db: c.e.db, cotizaciones: c.e.almacenCotizaciones, reloj: reloj(c) }, { tenantId: c.tenantId, actor: c.actor }),
   }),
   alertas: accion({
-    roles: SUPERVISION,
     esquema: objeto({ limite: LIMITE.optional() }),
     ejecutar: async (c, d) => ({
       alertas: (await c.e.firestore.collection(ruta(c.tenantId, 'alertas')).orderBy('creadaEn', 'desc').limit(d.limite ?? 30).get()).docs.map((a) => ({ id: a.id, ...a.data() })),
@@ -216,7 +192,6 @@ export const accionesConsola: TablaAcciones = {
    * 1000 entradas del rango, para no exigir índices compuestos nuevos.
    */
   auditoria: accion({
-    roles: SUPERVISION,
     esquema: objeto({ desde: MS.optional(), hasta: MS.optional(), accion: z.string().min(1).max(60).optional(), uid: UID.optional(), limite: LIMITE.optional() }),
     ejecutar: async (c, d) => {
       validarRango(d.desde, d.hasta);

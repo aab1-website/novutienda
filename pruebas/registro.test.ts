@@ -13,17 +13,13 @@ import {
   type ColeccionManifiesto,
   type ManifiestoModulo,
 } from '@novutienda/nucleo';
+import { horarioDe } from '../plataforma/coordinador/encendido.js';
 import { manifiestoPlataforma } from '../plataforma/operador/manifiesto.js';
 import { manifiestosEnOrden, registroPlataforma } from '../plataforma/registro.js';
 import { COLECCION_LIMITES } from '../plataforma/conectores/firebase/limite-tasa.js';
-import { accionesConsola } from '../plataforma/funciones/servidor/llamadas/consola.js';
-import { accionesInventarios } from '../plataforma/funciones/servidor/llamadas/inventarios.js';
-import { accionesMedios } from '../plataforma/funciones/servidor/llamadas/medios.js';
-import { accionesPos } from '../plataforma/funciones/servidor/llamadas/pos.js';
-import { accionesRecibos } from '../plataforma/funciones/servidor/llamadas/recibos.js';
-import { accionesUsuarios } from '../plataforma/funciones/servidor/llamadas/usuarios.js';
 import { FOTO_MENU_L2, TITULO_RECIBOS_CAJ } from './fotos/menu-l2.js';
 import { FOTO_PERMISOS_L2 } from './fotos/permisos-l2.js';
+import { tablasCompuestas } from './funciones/tablas.js';
 import { COLECCION_TOKENS } from '../plataforma/funciones/servidor/http/novuchat.js';
 
 const mod = (id: string, dependeDe: string[] = [], rutas: string[] = []): ManifiestoModulo => ({
@@ -287,14 +283,8 @@ describe('L2-1: campos L2 del manifiesto (sin efecto)', () => {
   });
 
   describe('con el registro real', () => {
-    // Foto de permisos: las tablas de llamadas/*.ts componen los callables como en servidor/index.ts.
-    const tablas: Record<string, Record<string, { roles: readonly string[]; propietario?: boolean | undefined }>> = {
-      pos: accionesPos,
-      inventarios: accionesInventarios,
-      recibos: accionesRecibos,
-      medios: accionesMedios,
-      consola: { ...accionesConsola, ...accionesUsuarios },
-    };
+    // Tablas compuestas como en servidor/index.ts: implementaciones de llamadas/*.ts + roles y propietario del registro (tablaDeCallable).
+    const tablas = tablasCompuestas();
     const leer = (rel: string): string => readFileSync(fileURLToPath(new URL(rel, import.meta.url)), 'utf8');
 
     it('todo manifiesto del registro declara zona', () => {
@@ -319,8 +309,8 @@ describe('L2-1: campos L2 del manifiesto (sin efecto)', () => {
       expect(normal(registroPlataforma.acciones())).toEqual(normal(FOTO_PERMISOS_L2));
     });
 
-    // L2-3 reescribe este caso para usar tablaDeCallable; el de arriba no se toca.
-    it('las tablas actuales de llamadas/*.ts coinciden con la foto de permisos', () => {
+    // L2-3: la fuente son las tablas compuestas con tablaDeCallable (los bordes ya no llevan roles); la comparación sigue siendo contra la foto.
+    it('las tablas compuestas de los callables coinciden con la foto de permisos', () => {
       const tablasComoLista = Object.entries(tablas).flatMap(([callable, t]) =>
         Object.entries(t).map(([nombre, d]) => ({ callable, nombre, roles: d.roles, propietario: d.propietario })),
       );
@@ -334,15 +324,14 @@ describe('L2-1: campos L2 del manifiesto (sin efecto)', () => {
       expect(pantallas.find((p) => p.id === 'recibos')?.tituloPorRol?.caj).toBe(TITULO_RECIBOS_CAJ);
     });
 
-    it('las programadas del registro coinciden con los onSchedule de servidor/index.ts (porTenant incluido)', () => {
+    // L2-3: index.ts ya no lleva el horario en texto: cada onSchedule lo toma del registro con horarioDe(<id>).
+    it('cada onSchedule de servidor/index.ts toma su horario del registro (horarioDe) y son exactamente las programadas declaradas', () => {
       const codigo = leer('../plataforma/funciones/servidor/index.ts');
-      const esperado = [...codigo.matchAll(/export const (\w+) = onSchedule\(\{ schedule: '([^']+)', timeZone: '([^']+)'/g)].map((x) => ({
-        id: x[1], horario: x[2], zonaHoraria: x[3], porTenant: true,
-      }));
-      expect(esperado.map((e) => e.id).sort()).toEqual(['cotizacion', 'limpiezaSubidas', 'temporizadorSitio']);
-      const real = registroPlataforma.programadas().map((p) => ({ id: p.id, horario: p.horario, zonaHoraria: p.zonaHoraria, porTenant: p.porTenant === true }));
-      const por = <T extends { id: string | undefined }>(l: T[]) => [...l].sort((a, b) => String(a.id).localeCompare(String(b.id)));
-      expect(por(real)).toEqual(por(esperado));
+      const usadas = [...codigo.matchAll(/export const (\w+) = onSchedule\(\{ \.\.\.horarioDe\('(\w+)'\)/g)].map((x) => ({ exportada: x[1], id: x[2] }));
+      expect(usadas.every((u) => u.exportada === u.id)).toBe(true);
+      expect(usadas.map((u) => u.id).sort()).toEqual(registroPlataforma.programadas().map((p) => p.id).sort());
+      expect(codigo).not.toMatch(/schedule:\s*'/);
+      for (const p of registroPlataforma.programadas()) expect(horarioDe(p.id)).toEqual({ schedule: p.horario, timeZone: p.zonaHoraria });
     });
 
     it('pos (dependeDe nucleo y recibos) queda fuera sin recibos encendido', () => {

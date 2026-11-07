@@ -12,6 +12,7 @@ import { onCall, onRequest, type Request } from 'firebase-functions/v2/https';
 import { onSchedule } from 'firebase-functions/v2/scheduler';
 import { onObjectFinalized } from 'firebase-functions/v2/storage';
 import { limiteMemoria, type LimiteTasa } from '@novutienda/nucleo';
+import { tablaDeCallable, horarioDe } from '../../coordinador/encendido.js';
 import { crearLimiteTasa, esEntornoDePruebas } from '../../conectores/firebase/index.js';
 import { entregarEvento } from './bus.js';
 import { enteroDe, exigirConfiguracionDeServicio, PARAMETROS, REGION, SECRETOS } from './config.js';
@@ -21,7 +22,7 @@ import { enrutar, type ConfigRouter } from './http/router.js';
 import type { PeticionHttp } from './http/tipos.js';
 import { accionesConsola } from './llamadas/consola.js';
 import { accionesInventarios } from './llamadas/inventarios.js';
-import { crearManejador } from './llamadas/marco.js';
+import { crearManejador, type TablaImplementaciones } from './llamadas/marco.js';
 import { accionesMedios } from './llamadas/medios.js';
 import { accionesPos } from './llamadas/pos.js';
 import { accionesRecibos } from './llamadas/recibos.js';
@@ -38,8 +39,9 @@ if (getApps().length === 0) initializeApp();
 setGlobalOptions({ region: REGION, maxInstances: 10, memory: '256MiB', timeoutSeconds: 60, serviceAccount: PARAMETROS.cuentaServicio });
 
 const appCheckExigido = (): boolean => PARAMETROS.appCheckExigido.value();
-const callable = (modulo: string, acciones: Parameters<typeof crearManejador>[0]['acciones']) =>
-  crearManejador({ modulo, acciones, entorno, appCheckExigido });
+// Roles y `propietario` de cada acción salen del registro (manifiestos); aquí solo se aportan esquema y ejecución. Si no coinciden, el arranque falla.
+const callable = (modulo: string, implementaciones: TablaImplementaciones) =>
+  crearManejador({ modulo, acciones: tablaDeCallable(modulo, implementaciones), entorno, appCheckExigido });
 
 // ---- Callables ------------------------------------------------------------------------------------------------
 export const pos = onCall({ memory: '512MiB' }, callable('pos', accionesPos));
@@ -157,16 +159,16 @@ export const subidaFinalizada = onObjectFinalized({ memory: '2GiB', timeoutSecon
   if (r !== 'ignorada') logger.info('subida procesada', { resultado: r });
 });
 
-// ---- Programadas (Cloud Scheduler; hora de La Paz) ------------------------------------------------------------
-export const cotizacion = onSchedule({ schedule: '0 7,13,19 * * *', timeZone: 'America/La_Paz', timeoutSeconds: 300, retryCount: 1 }, async () => {
+// ---- Programadas (Cloud Scheduler; horario y zona horaria declarados en los manifiestos) ------------------------------------------------------------
+export const cotizacion = onSchedule({ ...horarioDe('cotizacion'), timeoutSeconds: 300, retryCount: 1 }, async () => {
   const r = await ejecutarCotizaciones(entorno());
   logger.info('cotización actualizada', { resultados: r });
 });
 
-export const limpiezaSubidas = onSchedule({ schedule: 'every 60 minutes', timeZone: 'America/La_Paz', memory: '512MiB', timeoutSeconds: 300 }, async () => {
+export const limpiezaSubidas = onSchedule({ ...horarioDe('limpiezaSubidas'), memory: '512MiB', timeoutSeconds: 300 }, async () => {
   logger.info('limpieza de subidas', { resultado: await ejecutarLimpiezaSubidas(entorno()) });
 });
 
-export const temporizadorSitio = onSchedule({ schedule: 'every 5 minutes', timeZone: 'America/La_Paz' }, async () => {
+export const temporizadorSitio = onSchedule({ ...horarioDe('temporizadorSitio') }, async () => {
   await ejecutarTemporizadorSitio(entorno());
 });

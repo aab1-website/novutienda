@@ -9,11 +9,9 @@ import {
   ingresar, leerDocumentoProducto, registrarLineaConteo, resolverMerma, solicitarMerma, traspasar, UBICACION_DISPONIBILIDAD,
   type Autor, type LineaAjuste, type LineaIngreso, type LineaTraspaso, type ProductoExportable,
 } from '@novutienda/inventarios';
-import { accion, actorPos, type Contexto, type TablaAcciones } from './marco.js';
+import { accion, actorPos, type Contexto, type TablaImplementaciones } from './marco.js';
 import { ID, ID_PRODUCTO, LIMITE, MS, TEXTO, UBICACION, VACIO, objeto, validarRango } from './comunes.js';
 
-const TODOS = ['caj', 'sup', 'adm'] as const;
-const SUPERVISION = ['sup', 'adm'] as const;
 
 const autor = (c: Contexto): Autor => actorPos(c);
 
@@ -22,10 +20,9 @@ const datosDe = (d: { data(): unknown }): Record<string, unknown> => d.data() as
 const SERIES = z.array(z.string().min(1).max(60)).min(1).max(500);
 const LINEA_INGRESO = objeto({ productoId: ID_PRODUCTO, cantidad: z.number().int().positive().max(1_000_000), series: SERIES.optional() });
 
-export const accionesInventarios: TablaAcciones = {
+export const accionesInventarios: TablaImplementaciones = {
   // ---- Operaciones ------------------------------------------------------------------------------------------
   ingresar: accion({
-    roles: SUPERVISION,
     maxCaracteres: 256_000,
     esquema: objeto({ operacionId: ID, ubicacionId: UBICACION, lineas: z.array(LINEA_INGRESO).min(1).max(50) }),
     ejecutar: (c, d) =>
@@ -34,7 +31,6 @@ export const accionesInventarios: TablaAcciones = {
       ),
   }),
   traspasar: accion({
-    roles: SUPERVISION,
     maxCaracteres: 256_000,
     esquema: objeto({ operacionId: ID, origenId: UBICACION, destinoId: UBICACION, lineas: z.array(LINEA_INGRESO).min(1).max(50) }),
     ejecutar: (c, d) =>
@@ -43,7 +39,6 @@ export const accionesInventarios: TablaAcciones = {
       ),
   }),
   ajustar: accion({
-    roles: ['adm'],
     esquema: objeto({
       operacionId: ID, motivo: TEXTO(500),
       lineas: z.array(objeto({ productoId: ID_PRODUCTO, ubicacionId: UBICACION, delta: z.number().int().min(-1_000_000).max(1_000_000) })).min(1).max(50),
@@ -52,7 +47,6 @@ export const accionesInventarios: TablaAcciones = {
       c.e.db.runTransaction((tx) => ajustar(tx, { tenantId: c.tenantId, operacionId: d.operacionId, por: autor(c), motivo: d.motivo, lineas: d.lineas as LineaAjuste[] })),
   }),
   solicitarMerma: accion({
-    roles: TODOS,
     esquema: objeto({ operacionId: ID, productoId: ID_PRODUCTO, ubicacionId: UBICACION, cantidad: z.number().int().positive().max(1_000_000), series: SERIES.optional(), motivo: TEXTO(500) }),
     ejecutar: (c, d) =>
       c.e.db.runTransaction((tx) =>
@@ -63,7 +57,6 @@ export const accionesInventarios: TablaAcciones = {
       ),
   }),
   resolverMerma: accion({
-    roles: SUPERVISION,
     esquema: objeto({ operacionId: ID, mermaId: ID, decision: z.enum(['aprobada', 'rechazada']), motivo: TEXTO(500).optional() }),
     ejecutar: (c, d) =>
       c.e.db.runTransaction((tx) =>
@@ -71,13 +64,11 @@ export const accionesInventarios: TablaAcciones = {
       ),
   }),
   abrirConteo: accion({
-    roles: SUPERVISION,
     esquema: objeto({ operacionId: ID, conteoId: ID, ubicacionId: UBICACION }),
     ejecutar: (c, d) =>
       c.e.db.runTransaction((tx) => abrirConteo(tx, { tenantId: c.tenantId, operacionId: d.operacionId, por: autor(c), conteoId: d.conteoId, ubicacionId: d.ubicacionId })),
   }),
   registrarLineaConteo: accion({
-    roles: TODOS,
     esquema: objeto({ operacionId: ID, conteoId: ID, productoId: ID_PRODUCTO, contado: z.number().int().nonnegative().max(1_000_000).optional(), series: z.array(z.string().min(1).max(60)).max(500).optional() }),
     ejecutar: async (c, d) => {
       const r = await c.e.db.runTransaction((tx) =>
@@ -93,7 +84,6 @@ export const accionesInventarios: TablaAcciones = {
     },
   }),
   cerrarConteo: accion({
-    roles: SUPERVISION,
     esquema: objeto({ operacionId: ID, conteoId: ID }),
     ejecutar: async (c, d) => {
       // Productos con existencia en la ubicación del conteo: los que nadie contó se tratan como contados en 0.
@@ -107,14 +97,12 @@ export const accionesInventarios: TablaAcciones = {
     },
   }),
   crearUbicacion: accion({
-    roles: ['adm'],
     esquema: objeto({ operacionId: ID, ubicacionId: UBICACION, nombre: TEXTO(60) }),
     ejecutar: (c, d) =>
       c.e.db.runTransaction((tx) => crearUbicacion(tx, { tenantId: c.tenantId, operacionId: d.operacionId, por: autor(c), ubicacionId: d.ubicacionId, nombre: d.nombre })),
   }),
   /** Costo de un producto (solo `adm`): único camino para fijarlo; el alta y el precio van por `consola`. */
   fijarCosto: accion({
-    roles: ['adm'],
     esquema: objeto({ operacionId: ID, productoId: ID_PRODUCTO, costoUSD: z.number().nonnegative().max(9_999_999) }),
     ejecutar: (c, d) =>
       c.e.db.runTransaction((tx) =>
@@ -122,7 +110,6 @@ export const accionesInventarios: TablaAcciones = {
       ),
   }),
   importarProductosCsv: accion({
-    roles: ['adm'],
     maxCaracteres: 400_000,
     esquema: objeto({ operacionId: ID, csv: z.string().min(1).max(262_144), cargaInicial: z.boolean().optional() }),
     ejecutar: (c, d) =>
@@ -134,7 +121,6 @@ export const accionesInventarios: TablaAcciones = {
   // ---- Lecturas ---------------------------------------------------------------------------------------------
   /** Productos con existencias por almacén y disponibilidad (regla única de Inventarios). Sin costos. */
   listarProductos: accion({
-    roles: TODOS,
     esquema: objeto({ soloBajoMinimo: z.boolean().optional() }),
     ejecutar: async (c, d) => {
       const [prods, exis] = await Promise.all([
@@ -163,18 +149,15 @@ export const accionesInventarios: TablaAcciones = {
     },
   }),
   ubicaciones: accion({
-    roles: TODOS,
     esquema: VACIO,
     ejecutar: async (c) => ({ ubicaciones: (await c.e.firestore.collection(ruta(c.tenantId, 'ubicaciones')).get()).docs.map((u) => ({ id: u.id, ...u.data() })) }),
   }),
   costos: accion({
-    roles: ['adm'],
     esquema: VACIO,
     ejecutar: async (c) => ({ costos: (await c.e.firestore.collection(ruta(c.tenantId, 'costos')).get()).docs.map((x) => ({ productoId: x.id, costoUSD: x.data()['costoUSD'] })) }),
   }),
   /** Búsqueda por serie: estado, almacén, venta y vencimiento de garantía. */
   buscarSerie: accion({
-    roles: TODOS,
     esquema: objeto({ serie: TEXTO(60), productoId: ID_PRODUCTO.optional() }),
     ejecutar: async (c, d) => {
       let q = c.e.firestore.collection(ruta(c.tenantId, 'unidades')).where('serie', '==', d.serie);
@@ -187,7 +170,6 @@ export const accionesInventarios: TablaAcciones = {
    * compuesto. Devuelve solo los campos de la vista (la referencia de venta como id de venta).
    */
   series: accion({
-    roles: TODOS,
     esquema: objeto({ productoId: ID_PRODUCTO, ubicacionId: UBICACION.optional(), soloDisponibles: z.boolean().optional(), limite: LIMITE.optional() }),
     ejecutar: async (c, d) => {
       let q = c.e.firestore.collection(ruta(c.tenantId, 'unidades')).where('productoId', '==', d.productoId);
@@ -213,7 +195,6 @@ export const accionesInventarios: TablaAcciones = {
    * compuestos nuevos.
    */
   movimientos: accion({
-    roles: SUPERVISION,
     esquema: objeto({
       productoId: ID_PRODUCTO.optional(), desde: MS.optional(), hasta: MS.optional(), limite: LIMITE.optional(),
       tipo: z.string().regex(/^[a-z][a-z-]{0,29}$/).optional(), uid: z.string().min(1).max(128).optional(),
@@ -235,7 +216,6 @@ export const accionesInventarios: TablaAcciones = {
     },
   }),
   mermas: accion({
-    roles: SUPERVISION,
     esquema: objeto({ estado: z.enum(['solicitada', 'aprobada', 'rechazada']).optional(), limite: LIMITE.optional() }),
     ejecutar: async (c, d) => {
       let q = c.e.firestore.collection(ruta(c.tenantId, 'mermas')).limit(d.limite ?? 100);
@@ -248,7 +228,6 @@ export const accionesInventarios: TablaAcciones = {
    * producto) lo reciben `sup`/`adm` SOLO con el conteo cerrado; con el conteo abierto no se lee `conteoTeoricos`.
    */
   conteo: accion({
-    roles: TODOS,
     esquema: objeto({ conteoId: ID }),
     ejecutar: async (c, d) => {
       const conteo = (await c.e.firestore.doc(ruta(c.tenantId, 'conteos', d.conteoId)).get()).data();
@@ -267,7 +246,6 @@ export const accionesInventarios: TablaAcciones = {
     },
   }),
   conteos: accion({
-    roles: TODOS,
     esquema: objeto({ estado: z.enum(['abierto', 'cerrado']).optional(), limite: LIMITE.optional() }),
     ejecutar: async (c, d) => {
       let q = c.e.firestore.collection(ruta(c.tenantId, 'conteos')).limit(d.limite ?? 50);
@@ -276,7 +254,6 @@ export const accionesInventarios: TablaAcciones = {
     },
   }),
   exportarCsv: accion({
-    roles: SUPERVISION,
     esquema: objeto({ conCostos: z.boolean().optional() }),
     ejecutar: async (c, d) => {
       const conCostos = d.conCostos === true;

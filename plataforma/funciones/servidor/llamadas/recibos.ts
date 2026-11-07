@@ -7,11 +7,9 @@ import {
   buscarComprobantes, EnviadorWaMe, enviarRecibo, generarPdfRecibo, guardarPlantilla, plantillaVigente, referenciarFacturaSuma,
   renderizarReciboHtml, rutaPlantilla, rutaRecibo, type LecturaRecibos, type Recibo,
 } from '@novutienda/recibos';
-import { accion, actorPos, type Contexto, type TablaAcciones } from './marco.js';
+import { accion, actorPos, type Contexto, type TablaImplementaciones } from './marco.js';
 import { ID, LIMITE, OBJETO, VACIO, objeto } from './comunes.js';
 
-const TODOS = ['caj', 'sup', 'adm'] as const;
-const SUPERVISION = ['sup', 'adm'] as const;
 const RECIBO_ID = ID;
 const FECHA = z.string().regex(/^\d{4}-\d{2}-\d{2}$/);
 
@@ -43,14 +41,12 @@ function lecturaDelVendedor(c: Contexto): LecturaRecibos {
   };
 }
 
-export const accionesRecibos: TablaAcciones = {
+export const accionesRecibos: TablaImplementaciones = {
   leerPlantilla: accion({
-    roles: TODOS,
     esquema: VACIO,
     ejecutar: async (c) => ({ plantilla: plantillaVigente((await c.e.firestore.doc(rutaPlantilla(c.tenantId)).get()).data()) }),
   }),
   guardarPlantilla: accion({
-    roles: SUPERVISION,
     esquema: objeto({ plantilla: OBJETO }),
     ejecutar: async (c, d) => {
       await guardarPlantilla(c.e.ejecutorRecibos, { tenantId: c.tenantId, actor: actorPos(c), plantilla: d.plantilla });
@@ -58,7 +54,6 @@ export const accionesRecibos: TablaAcciones = {
     },
   }),
   buscarComprobantes: accion({
-    roles: TODOS,
     esquema: objeto({ numero: z.string().min(1).max(30).optional(), desde: FECHA.optional(), hasta: FECHA.optional(), cliente: z.string().min(1).max(100).optional(), limite: LIMITE.optional() }),
     ejecutar: async (c, d) => {
       const consulta = {
@@ -71,12 +66,10 @@ export const accionesRecibos: TablaAcciones = {
     },
   }),
   leerRecibo: accion({
-    roles: TODOS,
     esquema: objeto({ reciboId: RECIBO_ID }),
     ejecutar: async (c, d) => ({ recibo: await leerRecibo(c, d.reciboId) }),
   }),
   referenciarFacturaSuma: accion({
-    roles: SUPERVISION,
     esquema: objeto({ reciboId: RECIBO_ID, facturaSuma: z.string().min(1).max(40) }),
     ejecutar: async (c, d) => {
       await referenciarFacturaSuma(c.e.ejecutorRecibos, { tenantId: c.tenantId, reciboId: d.reciboId, facturaSuma: d.facturaSuma, actor: actorPos(c) });
@@ -84,19 +77,16 @@ export const accionesRecibos: TablaAcciones = {
     },
   }),
   htmlRecibo: accion({
-    roles: TODOS,
     esquema: objeto({ reciboId: RECIBO_ID }),
     ejecutar: async (c, d) => ({ html: renderizarReciboHtml(await leerRecibo(c, d.reciboId)) }),
   }),
   /** PDF generado en el servidor (texto escapado), en base64. */
   pdfRecibo: accion({
-    roles: TODOS,
     esquema: objeto({ reciboId: RECIBO_ID }),
     ejecutar: async (c, d) => ({ pdfBase64: Buffer.from(generarPdfRecibo(await leerRecibo(c, d.reciboId))).toString('base64') }),
   }),
   /** Genera el PDF, lo guarda en una ruta privada y devuelve el enlace `wa.me` para que la persona lo envíe. */
   enviarRecibo: accion({
-    roles: TODOS,
     esquema: objeto({ reciboId: RECIBO_ID, codigoPais: z.string().regex(/^\d{1,3}$/).optional() }),
     ejecutar: async (c, d) => {
       const recibo = await leerRecibo(c, d.reciboId);
