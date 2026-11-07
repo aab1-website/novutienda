@@ -90,6 +90,8 @@ const POR_CODIGO_MODULO: Readonly<Record<string, string>> = {
   'recibo-no-encontrado': 'No se encontró el comprobante.',
   'plantilla-invalida': 'La plantilla del recibo tiene datos inválidos.',
   'accion-no-permitida': 'Esa acción no está permitida para este comprobante.',
+  // Encendido por tenant (L2-6): el servidor rechaza las acciones de un módulo apagado.
+  'modulo-apagado': 'Este módulo no está habilitado para su negocio.',
 };
 
 const POR_CODIGO_HTTPS: Readonly<Record<string, string>> = {

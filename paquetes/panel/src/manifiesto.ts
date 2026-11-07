@@ -18,11 +18,13 @@ export const manifiestoPanel: ManifiestoModulo = {
     { id: 'usuarios', titulo: 'Usuarios', orden: 80, roles: ['adm'] },
     { id: 'configuracion', titulo: 'Configuración', orden: 90, roles: ['adm'] },
   ],
-  // Las acciones de usuarios viajan en el callable `consola`.
+  // Las acciones de usuarios y `modulosActivos` (Central) viajan en el callable `consola`.
   acciones: [
     { callable: 'consola', nombre: 'listarUsuarios', roles: ['sup', 'adm'], propietario: false },
     { callable: 'consola', nombre: 'buscarUsuarioPorCorreo', roles: ['adm'], propietario: true },
     { callable: 'consola', nombre: 'asignarRol', roles: ['adm'], propietario: true },
     { callable: 'consola', nombre: 'quitarRol', roles: ['adm'], propietario: true },
+    // L2-6: ids de los módulos efectivos del tenant (el panel arma su menú con ellos). Sin propietario: exige rol.
+    { callable: 'consola', nombre: 'modulosActivos', roles: ['caj', 'sup', 'adm'], propietario: false },
   ],
 };

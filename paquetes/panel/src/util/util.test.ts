@@ -3,7 +3,7 @@ import { aBase64, formatoBytes } from './base64.js';
 import { aCsv, celdaCsv } from './csv.js';
 import { diferenciaPorMoneda, efectivoEsperado, proyectarTurno, sumarTotales, TOTALES_VACIOS } from '../pantallas/pos/arqueo.js';
 import { centavosATexto, formatearMonto, textoACentavos } from './dinero.js';
-import { ITEMS_MENU, menuPara, parsearRuta, puedeVer } from './menu.js';
+import { ITEMS_MENU, menuPara, parsearRuta, puedeVer, rutaPorOmision } from './menu.js';
 import { calcularPagos, type FilaPago } from '../pantallas/pos/pagos.js';
 import { precioDeVenta, REDONDEO } from './precio.js';
 import { leerClaimPanel } from '../sesion/claim.js';
@@ -118,19 +118,40 @@ describe('csv', () => {
   });
 });
 
+const TODOS = ['inventarios', 'pos', 'recibos', 'consola', 'website'] as const;
+
 describe('menú por rol', () => {
   it('vendedor: Venta y Mis recibos', () => {
-    expect(menuPara('caj').map((i) => i.titulo)).toEqual(['Venta', 'Mis recibos']);
+    expect(menuPara('caj', TODOS).map((i) => i.titulo)).toEqual(['Venta', 'Mis recibos']);
   });
   it('supervisor agrega inventario, mermas, aprobaciones y supervisión', () => {
-    expect(menuPara('sup').map((i) => i.id)).toEqual(['venta', 'recibos', 'inventario', 'mermas', 'aprobaciones', 'supervision', 'catalogo']);
+    expect(menuPara('sup', TODOS).map((i) => i.id)).toEqual(['venta', 'recibos', 'inventario', 'mermas', 'aprobaciones', 'supervision', 'catalogo']);
   });
   it('administrador ve todo', () => {
-    expect(menuPara('adm')).toHaveLength(ITEMS_MENU.length);
-    expect(menuPara('adm').map((i) => i.id)).toContain('usuarios');
-    expect(puedeVer('caj', 'inventario')).toBe(false);
-    expect(puedeVer('sup', 'usuarios')).toBe(false);
-    expect(puedeVer('adm', 'configuracion')).toBe(true);
+    expect(menuPara('adm', TODOS)).toHaveLength(ITEMS_MENU.length);
+    expect(menuPara('adm', TODOS).map((i) => i.id)).toContain('usuarios');
+    expect(puedeVer('caj', 'inventario', TODOS)).toBe(false);
+    expect(puedeVer('sup', 'usuarios', TODOS)).toBe(false);
+    expect(puedeVer('adm', 'configuracion', TODOS)).toBe(true);
+  });
+  it('un módulo apagado quita sus pantallas del menú y de puedeVer; Central no depende de módulos', () => {
+    const sinPos = TODOS.filter((m) => m !== 'pos');
+    expect(menuPara('adm', sinPos).map((i) => i.id)).toEqual(['recibos', 'inventario', 'mermas', 'catalogo', 'usuarios', 'configuracion']);
+    expect(puedeVer('adm', 'venta', sinPos)).toBe(false);
+    expect(menuPara('adm', []).map((i) => i.id)).toEqual(['usuarios', 'configuracion']);
+  });
+  it('falla cerrado: sin módulos conocidos solo se ven las pantallas de Central', () => {
+    expect(menuPara('adm', null).map((i) => i.id)).toEqual(['usuarios', 'configuracion']);
+    expect(menuPara('caj', null)).toEqual([]);
+    expect(puedeVer('adm', 'venta', null)).toBe(false);
+    expect(puedeVer('adm', 'usuarios', null)).toBe(true);
+  });
+  it('la ruta por omisión es la primera pantalla visible', () => {
+    expect(rutaPorOmision('caj', TODOS)).toBe('#/venta/terminal');
+    expect(rutaPorOmision('caj', ['recibos'])).toBe('#/recibos');
+    expect(rutaPorOmision('adm', ['inventarios'])).toBe('#/inventario');
+    expect(rutaPorOmision('adm', null)).toBe('#/usuarios');
+    expect(rutaPorOmision('caj', null)).toBeNull();
   });
   it('rutas', () => {
     expect(parsearRuta('#/venta/cobro')).toEqual({ seccion: 'venta', sub: 'cobro' });

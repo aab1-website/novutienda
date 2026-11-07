@@ -1,4 +1,4 @@
-// Foto de permisos de las 85 acciones, tomada de las tablas originales de plataforma/funciones/servidor/llamadas/*.ts
+// Foto de permisos de las 86 acciones (85 originales más `modulosActivos`, de L2-6/D3), tomada de las tablas originales de plataforma/funciones/servidor/llamadas/*.ts
 // antes de L2-2. Dato literal congelado: lo que L2-3 NO debe cambiar. Las 4 de usuarios viajan en el callable `consola`.
 export interface AccionFoto {
   readonly callable: string;
@@ -95,4 +95,6 @@ export const FOTO_PERMISOS_L2: readonly AccionFoto[] = [
   f('consola', 'buscarUsuarioPorCorreo', ['adm'], true),
   f('consola', 'asignarRol', ['adm'], true),
   f('consola', 'quitarRol', ['adm'], true),
+  // L2-6 (D3): acción central nueva; todos los roles, sin propietario. Las 85 anteriores no cambian.
+  f('consola', 'modulosActivos', ['sup', 'adm', 'caj']),
 ];

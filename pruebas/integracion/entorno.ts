@@ -28,7 +28,7 @@ export const REDONDEO: Redondeo = {
   ARS: { tipo: 'decimales', decimales: 2, modo: 'cercano' },
 };
 
-const tenantOk = { plan: 'base', modulos: {}, zonaHoraria: 'America/La_Paz', monedas: ['BOB', 'USD', 'ARS'] };
+const tenantOk = { plan: 'base', modulos: { consola: { version: '0.1.0', submodulos: [] }, inventarios: { version: '0.1.0', submodulos: [] }, pos: { version: '0.1.0', submodulos: [] }, recibos: { version: '0.1.0', submodulos: [] }, website: { version: '0.1.0', submodulos: [] } }, zonaHoraria: 'America/La_Paz', monedas: ['BOB', 'USD', 'ARS'] };
 const ACTOR_COTIZACION = { uid: 'u-adm', rol: 'adm', proveedor: 'password' } as const;
 
 let secuencia = 0;

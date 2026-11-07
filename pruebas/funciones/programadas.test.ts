@@ -12,7 +12,7 @@ import { ejecutarLimpiezaSubidas, ejecutarTemporizadorSitio } from '../../plataf
 import { ejecutarCotizaciones, horaEnLaPaz } from '../../plataforma/funciones/servidor/programadas/cotizacion.js';
 import { listarTenants } from '../../plataforma/funciones/servidor/programadas/tenants.js';
 import { procesarObjetoSubido } from '../../plataforma/funciones/servidor/trigger-medios.js';
-import { crearUsuario, hayEmulador, herramientas, sembrarTenant, unico, BUCKET, type Herramientas } from './ayudas.js';
+import { crearUsuario, hayEmulador, herramientas, sembrarTenant, unico, BUCKET, TENANT_TODO_ENCENDIDO, type Herramientas } from './ayudas.js';
 
 vi.setConfig({ testTimeout: 60_000, hookTimeout: 60_000 });
 
@@ -125,7 +125,7 @@ describe.skipIf(!hayEmulador)('trabajos programados (Firestore del emulador)', (
 
   it('cotización: baja BO y AR de las fuentes, escribe por tenant y reconstruye el sitio a las 07:00', async () => {
     const t = unico('cot').toLowerCase();
-    await h.firestore.doc(`tenants/${t}`).set({ plan: 'base', modulos: {}, zonaHoraria: 'America/La_Paz', monedas: ['BOB', 'USD', 'ARS'] });
+    await h.firestore.doc(`tenants/${t}`).set(TENANT_TODO_ENCENDIDO);
     // Con una publicación previa y sin reconstrucción agendada, la corrida de las 07:00 encola la diaria.
     await h.firestore.doc(`tenants/${t}/publicado/estado`).set({ version: 2, publicadoEn: '2026-11-03T12:00:00.000Z', productos: [], secciones: [], carruseles: [], reconstruccion: { programadaPara: null, ultima: null } });
     const resumen = await ejecutarCotizaciones(e, { fetchFn: falso(FUENTES) });
@@ -139,7 +139,7 @@ describe.skipIf(!hayEmulador)('trabajos programados (Firestore del emulador)', (
 
   it('cotización: si las fuentes fallan avisa (documento de alerta + registro) y no inventa un valor', async () => {
     const t = unico('cotf').toLowerCase();
-    await h.firestore.doc(`tenants/${t}`).set({ plan: 'base', modulos: {}, zonaHoraria: 'America/La_Paz', monedas: ['BOB', 'USD', 'ARS'] });
+    await h.firestore.doc(`tenants/${t}`).set(TENANT_TODO_ENCENDIDO);
     await ejecutarCotizaciones(e, { fetchFn: falso({}) });
     expect((await h.firestore.doc(rutaCotizacion(t, 'BO')).get()).exists).toBe(false);
     const alertas = await h.firestore.collection(`tenants/${t}/alertas`).get();
@@ -175,13 +175,22 @@ describe.skipIf(!hayEmulador)('trabajos programados (Firestore del emulador)', (
 
   it('temporizador del sitio: reconstruye cuando llega la hora agendada y no antes', async () => {
     const t = unico('tmr').toLowerCase();
-    await h.firestore.doc(`tenants/${t}`).set({ plan: 'base' });
+    await h.firestore.doc(`tenants/${t}`).set(TENANT_TODO_ENCENDIDO);
     await h.firestore.doc(`tenants/${t}/publicado/estado`).set({ version: 5, reconstruccion: { programadaPara: AHORA + 60_000, ultima: null } });
     expect((await ejecutarTemporizadorSitio(e))[t]).toBe('esperar');
     expect((await h.firestore.collection(`tenants/${t}/reconstrucciones`).get()).size).toBe(0);
     await h.firestore.doc(`tenants/${t}/publicado/estado`).set({ version: 5, reconstruccion: { programadaPara: AHORA - 1000, ultima: null } });
     expect((await ejecutarTemporizadorSitio(e))[t]).toBe('reconstruir');
     expect((await h.firestore.collection(`tenants/${t}/reconstrucciones`).get()).docs[0]?.data()).toMatchObject({ estado: 'pendiente', version: 5 });
+  });
+
+  it('programadas del módulo consola: saltan al tenant con consola apagada (L2-6)', async () => {
+    const t = unico('apag').toLowerCase();
+    await h.firestore.doc(`tenants/${t}`).set({ ...TENANT_TODO_ENCENDIDO, modulos: {} });
+    await h.firestore.doc(`tenants/${t}/publicado/estado`).set({ version: 5, reconstruccion: { programadaPara: AHORA - 1000, ultima: null } });
+    expect((await ejecutarTemporizadorSitio(e))[t]).toBeUndefined();
+    expect((await ejecutarLimpiezaSubidas(e))[t]).toBeUndefined();
+    expect((await h.firestore.collection(`tenants/${t}/reconstrucciones`).get()).size).toBe(0);
   });
 
   it('limpieza: libera reservas vencidas, devuelve cuota y borra lo subido a medias', async () => {

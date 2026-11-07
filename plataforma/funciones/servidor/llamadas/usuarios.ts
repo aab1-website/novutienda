@@ -4,7 +4,7 @@
 import { HttpsError } from 'firebase-functions/v2/https';
 import { z } from 'zod';
 import { asignarRol, leerClaim, quitarRol, type Rol } from '@novutienda/nucleo';
-import { accion, type TablaImplementaciones } from './marco.js';
+import { accion, moduloApagado, type TablaImplementaciones } from './marco.js';
 import { UID, VACIO, objeto } from './comunes.js';
 
 const ruta = (t: string, col: string, id?: string): string => `tenants/${t}/${col}${id === undefined ? '' : `/${id}`}`;
@@ -60,5 +60,17 @@ export const accionesUsuarios: TablaImplementaciones = {
   quitarRol: accion({
     esquema: objeto({ uid: UID }),
     ejecutar: async (c, d) => ({ claim: await quitarRol({ auth: c.e.authMin, db: c.e.db, ahora: c.e.ahora }, c.actor, c.tenantId, d.uid) }),
+  }),
+  /**
+   * Ids de los módulos efectivos del tenant (L2-6, Central): el panel filtra su menú con ellos. No depende de ningún
+   * módulo para poder ejecutarse con todo apagado. Falla cerrado: tenant sin documento o inválido se rechaza.
+   */
+  modulosActivos: accion({
+    esquema: VACIO,
+    ejecutar: async (c) => {
+      const modulos = await c.e.modulosDelTenant(c.tenantId);
+      if (modulos === undefined) throw moduloApagado('Este negocio no está habilitado.');
+      return { modulos: [...modulos] };
+    },
   }),
 };

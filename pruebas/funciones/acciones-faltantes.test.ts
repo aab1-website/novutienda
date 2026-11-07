@@ -3,7 +3,7 @@
 // todos los errores y la búsqueda de usuarios que no revela cuentas de otros negocios.
 import { Timestamp } from 'firebase-admin/firestore';
 import { beforeAll, describe, expect, it, vi } from 'vitest';
-import { accion, crearUsuario, hayEmulador, herramientas, sembrarTenant, unico, type Herramientas, type Usuario } from './ayudas.js';
+import { accion, crearUsuario, hayEmulador, herramientas, sembrarTenant, unico, TENANT_TODO_ENCENDIDO, type Herramientas, type Usuario } from './ayudas.js';
 
 vi.setConfig({ testTimeout: 90_000, hookTimeout: 90_000 });
 
@@ -59,7 +59,7 @@ describe.skipIf(!hayEmulador)('acciones faltantes del panel (emulador)', () => {
       expect(r.status).toBe(200);
       expect(cuerpo(r)['redondeo']).toEqual({ BOB: { tipo: 'ninguno' }, ARS: { tipo: 'multiplo', multiplo: 500, modo: 'arriba' } });
       const D = 'falt-d';
-      await h.firestore.doc(`tenants/${D}`).set({ plan: 'base', modulos: {} });
+      await h.firestore.doc(`tenants/${D}`).set(TENANT_TODO_ENCENDIDO);
       const v = await crearUsuario(h, { rol: 'caj', tenant: D });
       expect(cuerpo(await accion('pos', 'cotizaciones', {}, v.token, D))['cotizaciones']).toEqual({ BO: null, AR: null });
     });
@@ -88,7 +88,7 @@ describe.skipIf(!hayEmulador)('acciones faltantes del panel (emulador)', () => {
     it('solo sup/adm; devuelve los campos de la vista, filtra por rango, acción y persona', async () => {
       // Tenant propio: el sembrado de los demás deja sus propias entradas de auditoría.
       const E = 'falt-e';
-      await h.firestore.doc(`tenants/${E}`).set({ plan: 'base', modulos: {} });
+      await h.firestore.doc(`tenants/${E}`).set(TENANT_TODO_ENCENDIDO);
       const [supE, admE, cajE] = await Promise.all([crearUsuario(h, { rol: 'sup', tenant: E }), crearUsuario(h, { rol: 'adm', tenant: E }), crearUsuario(h, { rol: 'caj', tenant: E })]);
       const col = h.firestore.collection(`tenants/${E}/auditoria`);
       const base = Date.parse('2026-10-10T12:00:00Z');

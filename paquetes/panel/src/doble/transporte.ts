@@ -156,6 +156,7 @@ const ACCIONES: Readonly<Record<string, WireHandler>> = {
   'consola.listarUsuarios': async (c) => ({
     usuarios: ((await legado(c, 'listarUsuarios', {})) as Obj[]).map((u) => ({ uid: u['uid'], rol: u['rol'], correo: u['correo'], correoVerificado: u['verificado'], deshabilitado: false })),
   }),
+  'consola.modulosActivos': async (c) => ({ modulos: (await legado(c, 'modulosActivos', {})) as string[] }),
   'consola.asignarRol': async (c, d) => {
     await legado(c, 'asignarRol', d);
     return { claim: {} };

@@ -454,6 +454,13 @@ export const TRADUCCION: { readonly [N in NombreCallable]: Traduccion<N> } = {
         (u): UsuarioVista => ({ uid: String(u['uid']), correo: typeof u['correo'] === 'string' ? u['correo'] : '', rol: u['rol'] as Rol, verificado: u['correoVerificado'] === true }),
       ),
   },
+  modulosActivos: {
+    usa: ['consola.modulosActivos'],
+    ejecutar: async (c) => {
+      const m = campo<unknown>(await c.llamar('consola', 'modulosActivos', {}), 'modulos');
+      return (Array.isArray(m) ? m.filter((x): x is string => typeof x === 'string') : []) as never;
+    },
+  },
 };
 
 export const NOMBRES_CALLABLE = Object.keys(TRADUCCION) as NombreCallable[];

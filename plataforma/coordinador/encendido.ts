@@ -3,7 +3,7 @@
 // borde (`llamadas/<m>.ts`) solo trae el esquema y la lógica. Si el registro y los bordes no coinciden, el arranque
 // falla: ninguna acción queda sin permiso declarado ni con un permiso sin implementación.
 import { registroPlataforma } from '../registro.js';
-import type { Rol } from '@novutienda/nucleo';
+import { NO_ENCENDIBLES, type Rol } from '@novutienda/nucleo';
 
 // Genérico a propósito: el coordinador no importa el marco del servidor (el proyecto de TypeScript de `plataforma` excluye `funciones`).
 // El registro valida los roles de cada acción contra los del núcleo al registrar el manifiesto.
@@ -11,7 +11,16 @@ import type { Rol } from '@novutienda/nucleo';
 export interface Permisos {
   readonly roles: readonly Rol[];
   readonly propietario: boolean;
+  /** Módulo dueño de la acción (el del manifiesto que la declara). */
+  readonly modulo: string;
+  /**
+   * `true` si la acción solo se ejecuta cuando su dueño está entre los módulos efectivos del tenant (L2-6). Falla
+   * cerrado: solo las de módulos NO_ENCENDIBLES (nucleo, panel/Central, plataforma) quedan libres de encendido.
+   */
+  readonly requiereEncendido: boolean;
 }
+
+const libres: readonly string[] = NO_ENCENDIBLES;
 
 /** Lo mínimo del registro que se necesita (acepta el real o un doble de prueba). */
 export type FuenteDeManifiestos = Pick<typeof registroPlataforma, 'acciones' | 'programadas'>;
@@ -34,7 +43,7 @@ export function tablaDeCallable<I extends object>(
       faltan.push(d.nombre);
       continue;
     }
-    tabla[d.nombre] = { ...impl, roles: d.roles as readonly Rol[], propietario: d.propietario === true };
+    tabla[d.nombre] = { ...impl, roles: d.roles as readonly Rol[], propietario: d.propietario === true, modulo: d.modulo, requiereEncendido: !libres.includes(d.modulo) };
   }
   const nombres = new Set(declaradas.map((d) => d.nombre));
   const sobran = Object.keys(implementaciones).filter((n) => !nombres.has(n));

@@ -13,12 +13,13 @@ export { ejecutarReconstruccion };
 
 /** Libera las reservas de subida vencidas y reintenta los borrados pendientes. */
 export function ejecutarLimpiezaSubidas(e: Entorno): Promise<Record<string, { vencidas: number; reintentadas: number }>> {
-  return porTenant(e, 'limpieza de subidas', (tenantId) => limpiarSubidas({ ...depsMedios({ e }), consulta: e.consultaSubidas }, tenantId));
+  return porTenant(e, 'limpieza de subidas', (tenantId) => limpiarSubidas({ ...depsMedios({ e }), consulta: e.consultaSubidas }, tenantId), { modulo: 'consola' });
 }
 
 /** Temporizador de la reconstrucción del sitio: encola la agendada para esta hora (agrupa 10 minutos de cambios). */
 export function ejecutarTemporizadorSitio(e: Entorno): Promise<Record<string, string>> {
   return porTenant(e, 'temporizador del sitio', async (tenantId) =>
     (await ejecutarReconstruccion({ db: e.db, reloj: { ahora: e.ahora }, disparador: e.disparadorSitio }, { tenantId, evento: 'temporizador' })).accion,
+    { modulo: 'consola' },
   );
 }
