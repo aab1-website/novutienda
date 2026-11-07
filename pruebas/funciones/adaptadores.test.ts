@@ -193,4 +193,3 @@ describe.skipIf(!hayEmulador)('almacén de medios y procesador (emulador de Stor
     await expect(p.procesar({ origen: 'x', tipo: 'video', plan: planificarProcesamiento('video', 1280, 720), destinoTemporal: 'pruebas/t' })).rejects.toThrow(/video no está disponible/i);
   });
 });
-

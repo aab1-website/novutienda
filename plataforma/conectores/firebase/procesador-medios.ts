@@ -159,4 +159,3 @@ export function crearProcesadorMedios(bucket: Bucket, env: Readonly<Record<strin
     procesar: async (s) => elegir(s.tipo).procesar(s),
   };
 }
-

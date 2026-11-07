@@ -233,4 +233,3 @@ describe('anulación', () => {
     expect(validarEvento(eventos(e, 'venta.anulada')[0]).ok).toBe(true);
   });
 });
-
