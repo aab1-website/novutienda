@@ -5,14 +5,5 @@
     "Un cruce nuevo no se agrega a esta lista: se corrige, o se cambia la zona del archivo en zonas.ts con su justificación.",
     "Clave de cada entrada: archivo + importacion. `resuelveEn` es la tanda del plano que lo elimina."
   ],
-  "cruces": [
-    {
-      "archivo": "paquetes/panel/src/servicios.ts",
-      "importacion": "./doble/doble.js",
-      "zona": "central",
-      "destino": "pruebas:central",
-      "resuelveEn": "L2",
-      "nota": "La composición de servicios del panel monta el doble (material de prueba) en modo `humo`: es un `import()` condicional que Vite elimina del paquete de producción. T2 no pudo sacar el doble a pruebas/ (servicios.ts y el tsconfig del paquete solo alcanzan src/); quitarlo o inyectarlo cambia la composición (fase L2)."
-    }
-  ]
+  "cruces": []
 }
