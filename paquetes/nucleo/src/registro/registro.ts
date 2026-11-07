@@ -28,9 +28,40 @@ export interface ManifiestoBase {
             };
       }[]
     | undefined;
+  readonly zona?: string | undefined;
+  readonly pantallas?: readonly PantallaBase[] | undefined;
+  readonly acciones?: readonly AccionBase[] | undefined;
+  readonly programadas?: readonly ProgramadaBase[] | undefined;
+  readonly requiere?: readonly string[] | undefined;
 }
 
 type IdModulo = string;
+
+/** Ids que ningún tenant enciende: siempre presentes o fuera de su alcance. */
+export const NO_ENCENDIBLES = ['nucleo', 'panel', 'plataforma'] as const;
+
+/** Fila agregada por el registro: el elemento del manifiesto y su módulo dueño. */
+export type ConModulo<T> = T & { readonly modulo: string };
+
+export interface PantallaBase {
+  readonly id: string;
+  readonly titulo: string;
+  readonly roles: readonly string[];
+  readonly orden: number;
+  readonly tituloPorRol?: Partial<Record<string, string>> | undefined;
+}
+export interface AccionBase {
+  readonly callable: string;
+  readonly nombre: string;
+  readonly roles: readonly string[];
+  readonly propietario?: boolean | undefined;
+}
+export interface ProgramadaBase {
+  readonly id: string;
+  readonly horario: string;
+  readonly zonaHoraria: string;
+  readonly porTenant: boolean;
+}
 
 const SEMVER = /^(0|[1-9]\d*)\.(0|[1-9]\d*)\.(0|[1-9]\d*)$/;
 // Mismo criterio que el generador de reglas (scripts/generar-reglas.mjs); el
@@ -42,6 +73,10 @@ const TIPO_ARCHIVO = /^[a-z][a-z0-9_]*$/;
 const VARIABLES_RESERVADAS = ['tenantId', 'todo', 'bucket'];
 const SEGMENTO_RESTO = /^\{[A-Za-z][A-Za-z0-9_]*=\*\*\}$/;
 const CONTENT_TYPE = /^[a-z]+\/\([a-z0-9|-]+\)$/;
+const NOMBRE_L2 = /^[a-z][a-zA-Z0-9]*$/;
+const ID_MODULO = /^[a-z][a-z0-9-]*$/;
+const HORARIO = /^(?:[0-9*/,\- ]+|every [1-9][0-9]* (?:minutes|hours)|every day (?:[01][0-9]|2[0-3]):[0-5][0-9])$/;
+const ZONAS = ['nucleo', 'central', 'plataforma', 'modulo'];
 const ROLES = ['caj', 'sup', 'adm'];
 const LIMITES = ['productos', 'usuarios', 'cajas', 'almacenes'];
 
@@ -61,10 +96,16 @@ export interface Registro<M extends ManifiestoBase = ManifiestoBase> {
   rutas(): readonly string[];
   /** Rutas de almacenamiento de todos los módulos; lanza si hay duplicados o más de una subida reservada. */
   rutasAlmacenamiento(): readonly string[];
+  /** Acciones de todos los módulos con su módulo dueño; lanza si (callable, nombre) se repite. */
+  acciones(): readonly ConModulo<AccionBase>[];
+  /** Pantallas de todos los módulos con su módulo dueño; lanza si un id se repite. */
+  pantallas(): readonly ConModulo<PantallaBase>[];
+  /** Programadas de todos los módulos con su módulo dueño; lanza si un id se repite. */
+  programadas(): readonly ConModulo<ProgramadaBase>[];
 }
 
 function validar(m: ManifiestoBase): void {
-  if (typeof m.id !== 'string' || !/^[a-z][a-z0-9-]*$/.test(m.id)) {
+  if (typeof m.id !== 'string' || !ID_MODULO.test(m.id)) {
     throw new ErrorRegistro(`Id de módulo inválido: ${String(m.id)}`);
   }
   if (!SEMVER.test(m.version)) {
@@ -108,6 +149,113 @@ function validar(m: ManifiestoBase): void {
     }
   }
   for (const a of m.almacenamiento ?? []) validarAlmacenamiento(m, a);
+  validarL2(m);
+}
+
+function validarRoles(donde: string, roles: readonly string[]): void {
+  if (!Array.isArray(roles)) throw new ErrorRegistro(`${donde}: roles debe ser una lista`);
+  for (const r of roles) {
+    if (!ROLES.includes(r)) throw new ErrorRegistro(`${donde}: rol inválido ${String(r)}`);
+  }
+}
+
+function lista<T>(m: ManifiestoBase, campo: string, v: readonly T[] | undefined): readonly T[] {
+  if (v === undefined) return [];
+  if (!Array.isArray(v)) throw new ErrorRegistro(`${m.id}: ${campo} debe ser una lista`);
+  return v;
+}
+
+function tieneControl(v: string): boolean {
+  for (let i = 0; i < v.length; i++) {
+    const c = v.charCodeAt(i);
+    if (c <= 0x1f || (c >= 0x7f && c <= 0x9f)) return true;
+  }
+  return false;
+}
+
+/** Texto visible: no vacío, hasta 60 caracteres y sin caracteres de control. */
+function validarTexto(donde: string, campo: string, v: unknown): void {
+  if (typeof v !== 'string' || v.trim() === '' || v.length > 60 || tieneControl(v)) {
+    throw new ErrorRegistro(`${donde}: ${campo} debe ser un texto de 1 a 60 caracteres sin caracteres de control`);
+  }
+}
+
+let zonasValidas: ReadonlySet<string> | undefined;
+function zonaHorariaValida(z: string): boolean {
+  if (zonasValidas === undefined) {
+    try {
+      zonasValidas = new Set(Intl.supportedValuesOf('timeZone'));
+    } catch {
+      zonasValidas = new Set();
+    }
+  }
+  if (zonasValidas.size > 0 && (zonasValidas.has(z) || z === 'UTC')) return true;
+  return zonasValidas.size === 0 && /^[A-Za-z]+(\/[A-Za-z0-9_+-]+)+$|^UTC$/.test(z);
+}
+
+function validarL2(m: ManifiestoBase): void {
+  if (m.zona !== undefined && !ZONAS.includes(m.zona)) {
+    throw new ErrorRegistro(`Zona inválida en ${m.id}: ${String(m.zona)}`);
+  }
+  if (m.zona !== undefined && (m.zona !== 'modulo') !== (NO_ENCENDIBLES as readonly string[]).includes(m.id)) {
+    throw new ErrorRegistro(`Zona ${m.zona} incoherente con el id ${m.id} (los ids no encendibles no son de zona modulo, y los demás sí)`);
+  }
+  const pantallas = lista(m, 'pantallas', m.pantallas);
+  const acciones = lista(m, 'acciones', m.acciones);
+  const programadas = lista(m, 'programadas', m.programadas);
+  const requiere = lista(m, 'requiere', m.requiere);
+  if (m.zona === 'nucleo' && (pantallas.length > 0 || acciones.length > 0)) {
+    throw new ErrorRegistro(`El módulo ${m.id} es de zona nucleo y no admite pantallas ni acciones`);
+  }
+  const ids = new Set<string>();
+  for (const p of pantallas) {
+    const donde = `Pantalla ${m.id}/${String(p.id)}`;
+    if (typeof p.id !== 'string' || !NOMBRE_L2.test(p.id)) throw new ErrorRegistro(`${donde}: id inválido`);
+    if (ids.has(p.id)) throw new ErrorRegistro(`${donde}: id de pantalla duplicado`);
+    ids.add(p.id);
+    validarTexto(donde, 'titulo', p.titulo);
+    if (!Number.isInteger(p.orden) || p.orden < 0) throw new ErrorRegistro(`${donde}: orden debe ser un entero >= 0`);
+    validarRoles(donde, p.roles);
+    const porRol = p.tituloPorRol ?? {};
+    for (const [r, t] of Object.entries(porRol)) {
+      if (!ROLES.includes(r)) throw new ErrorRegistro(`${donde}: rol inválido en tituloPorRol: ${r}`);
+      validarTexto(donde, `tituloPorRol.${r}`, t);
+    }
+  }
+  const pares = new Set<string>();
+  for (const a of acciones) {
+    const donde = `Acción ${m.id}/${String(a.callable)}/${String(a.nombre)}`;
+    if (typeof a.callable !== 'string' || !NOMBRE_L2.test(a.callable)) throw new ErrorRegistro(`${donde}: callable inválido`);
+    if (typeof a.nombre !== 'string' || !NOMBRE_L2.test(a.nombre)) throw new ErrorRegistro(`${donde}: nombre inválido`);
+    const par = `${a.callable}.${a.nombre}`;
+    if (pares.has(par)) throw new ErrorRegistro(`${donde}: acción duplicada`);
+    pares.add(par);
+    validarRoles(donde, a.roles);
+    if (a.propietario !== undefined && typeof a.propietario !== 'boolean') {
+      throw new ErrorRegistro(`${donde}: propietario debe ser booleano`);
+    }
+  }
+  const progs = new Set<string>();
+  for (const p of programadas) {
+    const donde = `Programada ${m.id}/${String(p.id)}`;
+    if (typeof p.id !== 'string' || !NOMBRE_L2.test(p.id)) throw new ErrorRegistro(`${donde}: id inválido`);
+    if (progs.has(p.id)) throw new ErrorRegistro(`${donde}: id de programada duplicado`);
+    progs.add(p.id);
+    if (typeof p.horario !== 'string' || !HORARIO.test(p.horario.trim()) || p.horario.trim() === '') {
+      throw new ErrorRegistro(`${donde}: horario inválido (cron con 0-9 * / , - y espacios, "every N minutes|hours" o "every day HH:MM")`);
+    }
+    if (typeof p.zonaHoraria !== 'string' || !zonaHorariaValida(p.zonaHoraria)) {
+      throw new ErrorRegistro(`${donde}: zonaHoraria inválida`);
+    }
+    if (typeof p.porTenant !== 'boolean') throw new ErrorRegistro(`${donde}: porTenant debe ser booleano`);
+  }
+  const req = new Set<string>();
+  for (const d of requiere) {
+    if (typeof d !== 'string' || !ID_MODULO.test(d)) throw new ErrorRegistro(`El módulo ${m.id} tiene un id inválido en requiere`);
+    if (d === m.id) throw new ErrorRegistro(`El módulo ${m.id} se requiere a sí mismo`);
+    if (req.has(d)) throw new ErrorRegistro(`El módulo ${m.id} repite "${d}" en requiere`);
+    req.add(d);
+  }
 }
 
 function validarAlmacenamiento(m: ManifiestoBase, a: NonNullable<ManifiestoBase['almacenamiento']>[number]): void {
@@ -211,6 +359,25 @@ export function crearRegistro<M extends ManifiestoBase = ManifiestoBase>(): Regi
     return todas;
   }
 
+  function agregar<T>(
+    sacar: (m: M) => readonly T[] | undefined,
+    clave: (x: T) => string,
+    que: string,
+  ): ConModulo<T>[] {
+    const vistas = new Map<string, IdModulo>();
+    const todas: ConModulo<T>[] = [];
+    for (const m of modulos.values()) {
+      for (const x of sacar(m) ?? []) {
+        const k = clave(x);
+        const previo = vistas.get(k);
+        if (previo !== undefined) throw new ErrorRegistro(`${que} duplicado "${k}" (${previo} y ${m.id})`);
+        vistas.set(k, m.id);
+        todas.push({ ...x, modulo: m.id });
+      }
+    }
+    return todas;
+  }
+
   return {
     registrar(manifiesto) {
       validar(manifiesto);
@@ -248,6 +415,12 @@ export function crearRegistro<M extends ManifiestoBase = ManifiestoBase>(): Regi
         }
         estado.set(id, 'visitando');
         for (const d of m.dependeDe) visitar(d, [...camino, id]);
+        for (const d of Array.isArray(m.requiere) ? m.requiere : []) {
+          if (modulos.has(d)) visitar(d, [...camino, id]);
+          else if (!(NO_ENCENDIBLES as readonly string[]).includes(d)) {
+            throw new ErrorRegistro(`Requiere ausente: ${id} requiere ${d}, que no está registrado`);
+          }
+        }
         estado.set(id, 'listo');
         orden.push(id);
       };
@@ -256,5 +429,8 @@ export function crearRegistro<M extends ManifiestoBase = ManifiestoBase>(): Regi
     },
     rutas,
     rutasAlmacenamiento,
+    acciones: () => agregar((m) => m.acciones, (a) => `${a.callable}.${a.nombre}`, 'Par (callable, nombre)'),
+    pantallas: () => agregar((m) => m.pantallas, (p) => p.id, 'Id de pantalla'),
+    programadas: () => agregar((m) => m.programadas, (p) => p.id, 'Id de programada'),
   };
 }

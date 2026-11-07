@@ -5,6 +5,9 @@ import {
   crearRegistro,
   ErrorRegistro,
   manifiestoNucleo,
+  modulosEfectivos,
+  NO_ENCENDIBLES,
+  validarEncendido,
   validarClaim,
   validarSobre,
   type ColeccionManifiesto,
@@ -178,5 +181,121 @@ describe('L1-b: constantes de código alineadas con el manifiesto', () => {
     const orden = registroPlataforma.ordenTopologico();
     expect(orden.indexOf('nucleo')).toBeGreaterThanOrEqual(0);
     expect(orden.indexOf('plataforma')).toBeGreaterThan(orden.indexOf('nucleo'));
+  });
+});
+
+describe('L2-1: campos L2 del manifiesto (sin efecto)', () => {
+  const pant = { id: 'inicio', titulo: 'Inicio', roles: ['adm'] as const, orden: 1 };
+  const acc = { callable: 'ventas', nombre: 'crear', roles: ['caj'] as const };
+  const prog = { id: 'cierre', horario: 'every day 02:00', zonaHoraria: 'America/La_Paz', porTenant: true };
+  const l2 = (id: string, extra: Record<string, unknown> = {}): ManifiestoModulo =>
+    ({ ...mod(id), ...extra }) as ManifiestoModulo;
+  const rechaza = (extra: Record<string, unknown>) => () => crearRegistro<ManifiestoModulo>().registrar(l2('x', extra));
+
+  it('sin campos L2 el manifiesto es válido y los agregadores devuelven []', () => {
+    const r = crearRegistro<ManifiestoModulo>();
+    r.registrar(mod('a'));
+    expect(r.listar().map((m) => m.id)).toEqual(['a']);
+    expect(r.acciones()).toEqual([]);
+    expect(r.pantallas()).toEqual([]);
+    expect(r.programadas()).toEqual([]);
+  });
+
+  it('cada agregador anota el módulo dueño en cada fila', () => {
+    const r = crearRegistro<ManifiestoModulo>();
+    r.registrar(l2('a', { pantallas: [pant], acciones: [acc], programadas: [prog] }));
+    r.registrar(l2('b', { pantallas: [{ ...pant, id: 'otra' }], acciones: [{ ...acc, nombre: 'anular' }], programadas: [{ ...prog, id: 'otro' }] }));
+    expect(r.pantallas().map((p) => [p.id, p.modulo])).toEqual([['inicio', 'a'], ['otra', 'b']]);
+    expect(r.acciones().map((a) => [a.nombre, a.modulo])).toEqual([['crear', 'a'], ['anular', 'b']]);
+    expect(r.programadas().map((p) => [p.id, p.modulo])).toEqual([['cierre', 'a'], ['otro', 'b']]);
+  });
+
+  it('rechaza zona inválida', () => {
+    expect(rechaza({ zona: 'otra' })).toThrow(ErrorRegistro);
+  });
+
+  it('rechaza callable, nombre o id con guion', () => {
+    expect(rechaza({ acciones: [{ ...acc, callable: 'mi-callable' }] })).toThrow(ErrorRegistro);
+    expect(rechaza({ acciones: [{ ...acc, nombre: 'mi-nombre' }] })).toThrow(ErrorRegistro);
+    expect(rechaza({ pantallas: [{ ...pant, id: 'mi-id' }] })).toThrow(ErrorRegistro);
+    expect(rechaza({ programadas: [{ ...prog, id: 'mi-id' }] })).toThrow(ErrorRegistro);
+  });
+
+  it('rechaza roles desconocidos, también en tituloPorRol', () => {
+    expect(rechaza({ pantallas: [{ ...pant, roles: ['root'] }] })).toThrow(/rol/i);
+    expect(rechaza({ acciones: [{ ...acc, roles: ['root'] }] })).toThrow(/rol/i);
+    expect(rechaza({ pantallas: [{ ...pant, tituloPorRol: { root: 'X' } }] })).toThrow(/tituloPorRol/);
+  });
+
+  it('rechaza orden negativo o decimal y horario vacío', () => {
+    expect(rechaza({ pantallas: [{ ...pant, orden: -1 }] })).toThrow(/orden/);
+    expect(rechaza({ pantallas: [{ ...pant, orden: 1.5 }] })).toThrow(/orden/);
+    expect(rechaza({ programadas: [{ ...prog, horario: '' }] })).toThrow(/horario/);
+  });
+
+  it('rechaza requiere a sí mismo o repetido', () => {
+    expect(rechaza({ requiere: ['x'] })).toThrow(/sí mismo/);
+    expect(rechaza({ requiere: ['y', 'y'] })).toThrow(/repite/);
+  });
+
+  it('rechaza pantallas o acciones en el manifiesto nucleo', () => {
+    const nuc = (extra: Record<string, unknown>) => () => crearRegistro<ManifiestoModulo>().registrar(l2('nucleo', { zona: 'nucleo', ...extra }));
+    expect(nuc({ pantallas: [pant] })).toThrow(/no admite pantallas ni acciones/);
+    expect(nuc({ acciones: [acc] })).toThrow(/no admite pantallas ni acciones/);
+  });
+
+  it('rechaza zona incoherente con el id (NO_ENCENDIBLES ↔ zona)', () => {
+    expect(rechaza({ zona: 'nucleo' })).toThrow(/incoherente/);
+    expect(() => crearRegistro<ManifiestoModulo>().registrar(l2('nucleo', { zona: 'modulo' }))).toThrow(/incoherente/);
+  });
+
+  it('rechaza duplicados dentro de un módulo', () => {
+    expect(rechaza({ pantallas: [pant, pant] })).toThrow(/duplicado/);
+    expect(rechaza({ acciones: [acc, acc] })).toThrow(/duplicada/);
+    expect(rechaza({ programadas: [prog, prog] })).toThrow(/duplicado/);
+  });
+
+  it('duplicados entre módulos: registrar no falla, los agregadores lanzan nombrando ambos', () => {
+    const r = crearRegistro<ManifiestoModulo>();
+    r.registrar(l2('a', { pantallas: [pant], acciones: [acc], programadas: [prog] }));
+    expect(() => r.registrar(l2('b', { pantallas: [pant], acciones: [acc], programadas: [prog] }))).not.toThrow();
+    for (const f of [() => r.pantallas(), () => r.acciones(), () => r.programadas()]) {
+      expect(f).toThrow(ErrorRegistro);
+      expect(f).toThrow(/a y b/);
+    }
+  });
+
+  it('rutas() y rutasAlmacenamiento() no cambian por añadir campos L2', () => {
+    const sin = crearRegistro<ManifiestoModulo>();
+    const con = crearRegistro<ManifiestoModulo>();
+    sin.registrar(mod('a', [], ['x', 'y']));
+    con.registrar(l2('a', { colecciones: mod('a', [], ['x', 'y']).colecciones, pantallas: [pant], acciones: [acc], programadas: [prog], requiere: ['otro'] }));
+    expect(con.rutas()).toEqual(sin.rutas());
+    expect(con.rutasAlmacenamiento()).toEqual(sin.rutasAlmacenamiento());
+  });
+
+  it('NO_ENCENDIBLES es nucleo, panel y plataforma', () => {
+    expect([...NO_ENCENDIBLES]).toEqual(['nucleo', 'panel', 'plataforma']);
+  });
+
+  describe('con el registro real', () => {
+    it('ningún manifiesto declara campos L2 todavía', () => {
+      expect(registroPlataforma.acciones()).toEqual([]);
+      expect(registroPlataforma.pantallas()).toEqual([]);
+      expect(registroPlataforma.programadas()).toEqual([]);
+    });
+
+    it('pos (dependeDe nucleo y recibos) queda fuera sin recibos encendido', () => {
+      expect(manifiestosEnOrden().find((m) => m.id === 'pos')?.dependeDe).toEqual(['nucleo', 'recibos']);
+      expect(modulosEfectivos(manifiestosEnOrden(), ['pos'])).toEqual([]);
+      const v = validarEncendido(manifiestosEnOrden(), ['pos']);
+      expect(v.ok).toBe(false);
+      if (!v.ok) expect(v.errores).toContain('pos requiere recibos, que no está encendido');
+    });
+
+    it('nucleo, panel y plataforma no se pueden encender', () => {
+      const v = validarEncendido(manifiestosEnOrden(), ['nucleo', 'panel', 'plataforma']);
+      expect(v).toEqual({ ok: false, errores: ['nucleo no es encendible', 'panel no es encendible', 'plataforma no es encendible'] });
+    });
   });
 });
