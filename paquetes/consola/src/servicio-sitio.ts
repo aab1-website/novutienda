@@ -195,4 +195,3 @@ export async function guardarConfigSitio(deps: DepsSitio, e: { tenantId: string;
     });
   });
 }
-

@@ -240,4 +240,3 @@ export const accionesConsola: TablaAcciones = {
     },
   }),
 };
-

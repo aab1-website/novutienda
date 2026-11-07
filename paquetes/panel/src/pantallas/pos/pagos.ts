@@ -40,4 +40,3 @@ export function calcularPagos(filas: readonly FilaPago[], total: number, moneda:
   }
   return { pagos, neto, restante: total - neto, cambioTotal, errores };
 }
-
