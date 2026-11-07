@@ -314,7 +314,7 @@ gh api --method POST "repos/$OWNER/$REPO/environments/production/deployment-bran
 `VITE_FIREBASE_APP_ID_*`. En `production`, `APP_CHECK_EXIGIDO` debe ser `true` o el despliegue se detiene.
 
 9.5 **Medios públicos (`MEDIOS_BASE_URL`).** La API de NovuChat y el panel arman las URL de las fotos con esa base. Opciones válidas: (a) un **bucket público aparte** que solo
-reciba `tenants/*/publico/**` (copiado por la función de medios o con otra regla de publicación), o (b) servir `publico/` por Hosting/CDN. **Prohibido** abrir con `allUsers` el
+reciba `tenants/*/publico/medios/**` (copiado por la función de medios o con otra regla de publicación), o (b) servir `publico/` por Hosting/CDN. **Prohibido** abrir con `allUsers` el
 bucket por defecto de Firebase Storage: contiene originales y PDF de recibos (`privado/`); las reglas de `storage.rules` no protegen contra una política IAM pública. No existe
 valor por defecto a `storage.googleapis.com/<bucket>`: sin `MEDIOS_BASE_URL` el despliegue y la API fallan.
 

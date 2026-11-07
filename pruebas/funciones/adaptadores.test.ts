@@ -6,7 +6,7 @@ import sharp from 'sharp';
 import { beforeAll, describe, expect, it, vi } from 'vitest';
 import { crearAlmacenMedios, crearConsultaSubidas, crearEjecutorRecibos, crearGuardarContacto, crearLectorDisponibilidad, crearLimiteTasa, crearProcesadorMedios, hashClave, procesadorImagenes } from '../../plataforma/conectores/firebase/index.js';
 import { planificarProcesamiento } from '@novutienda/consola';
-import { hayEmulador, herramientas, sembrarTenant, unico, type Herramientas } from './ayudas.js';
+import { hayEmulador, hayEmuladorStorage, herramientas, sembrarTenant, unico, type Herramientas } from './ayudas.js';
 
 vi.setConfig({ testTimeout: 60_000, hookTimeout: 60_000 });
 
@@ -128,7 +128,7 @@ describe.skipIf(!hayEmulador)('adaptadores de Firestore (emulador)', () => {
   });
 });
 
-describe.skipIf(!hayEmulador)('almacén de medios y procesador (emulador de Storage)', () => {
+describe.skipIf(!hayEmuladorStorage)('almacén de medios y procesador (emulador de Storage)', () => {
   let h: Herramientas;
   beforeAll(() => {
     h = herramientas();

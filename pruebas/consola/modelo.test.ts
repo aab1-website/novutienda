@@ -177,7 +177,7 @@ describe('manifiesto y pantallas', () => {
 describe('almacenamiento de la consola', () => {
   it('declara las tres rutas de Storage con la semántica de storage.rules', () => {
     const a = manifiestoConsola.almacenamiento ?? [];
-    expect(a.map((r) => r.ruta)).toEqual(['privado/originales/{productoId}/{subidaId}', 'privado/procesando/{ruta=**}', 'publico/{ruta=**}']);
+    expect(a.map((r) => r.ruta)).toEqual(['privado/originales/{productoId}/{subidaId}', 'privado/procesando/{ruta=**}', 'publico/medios/{ruta=**}']);
     const [orig, proc, pub] = a;
     expect(orig?.lectura).toBe('servidor');
     expect(orig?.escritura).toEqual({
@@ -188,7 +188,7 @@ describe('almacenamiento de la consola', () => {
       ],
     });
     expect(proc).toEqual({ ruta: 'privado/procesando/{ruta=**}', lectura: 'servidor', escritura: 'servidor' });
-    expect(pub).toEqual({ ruta: 'publico/{ruta=**}', lectura: 'publica', escritura: 'servidor' });
+    expect(pub).toEqual({ ruta: 'publico/medios/{ruta=**}', lectura: 'publica', escritura: 'servidor' });
     expect(manifiestoConsola.colecciones.some((c) => c.ruta === 'subidas' && c.escritura === 'servidor')).toBe(true);
   });
 });

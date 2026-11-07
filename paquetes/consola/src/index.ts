@@ -25,7 +25,7 @@ export { ALTURAS_VIDEO, ANCHOS_FOTO, FORMATOS_FOTO, nombreVersion, planificarPro
 export type { ItemPlan, PlanProcesamiento } from './medios/plan.js';
 export { liberarEnUso, reservarEnUso } from './medios/uso.js';
 export type { UsoMedios } from './medios/uso.js';
-export { borrarMedio, estadoSubida, finalizarSubida, limpiarSubidas, reservarSubida } from './medios/subidas.js';
+export { borrarMedio, CAMPOS_RESERVA, estadoSubida, finalizarSubida, limpiarSubidas, reservarSubida } from './medios/subidas.js';
 export type { DepsMedios, Medio, Reserva, ResultadoLimpieza, VersionMedio } from './medios/subidas.js';
 export { aCsv, neutralizarCelda, parsearCsv } from './csv.js';
 export {

@@ -247,6 +247,12 @@ function bytesTexto(n) {
   return n % MIB === 0 ? `${n / MIB} * 1024 * 1024` : String(n);
 }
 
+/**
+ * Campos del documento de reserva que la plantilla `reservaValida` lee (`r.<campo>`).
+ * Una prueba comprueba que el texto generado nombra exactamente estos y ninguno más.
+ */
+export const CAMPOS_PLANTILLA_RESERVA = Object.freeze(['estado', 'venceEn', 'productoId', 'por', 'bytes', 'tipo']);
+
 function funcionReserva(reserva, archivos) {
   const ramas = archivos.map(
     (f) =>

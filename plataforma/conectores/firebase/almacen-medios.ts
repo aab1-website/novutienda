@@ -1,5 +1,5 @@
 // `AlmacenMedios` de la consola sobre Cloud Storage. Las rutas son rutas de objeto dentro del bucket
-// (`tenants/{t}/privado/...`); las versiones publicadas van a `tenants/{t}/publico/...` con caché inmutable.
+// (`tenants/{t}/privado/...`); las versiones publicadas van a `tenants/{t}/publico/medios/...` con caché inmutable.
 import { createHash } from 'node:crypto';
 import type { Storage } from 'firebase-admin/storage';
 import type { AlmacenMedios } from '@novutienda/consola';

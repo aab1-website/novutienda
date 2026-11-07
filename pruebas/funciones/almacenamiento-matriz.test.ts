@@ -6,8 +6,8 @@ import { afterAll, beforeAll, describe, expect, it, vi } from 'vitest';
 import { assertFails, assertSucceeds, initializeTestEnvironment, type RulesTestEnvironment } from '@firebase/rules-unit-testing';
 import { deleteObject, getBytes, listAll, ref, updateMetadata, uploadBytes } from 'firebase/storage';
 import { manifiestosEnOrden } from '../../plataforma/registro.js';
-import { construirCasosAlmacenamiento, type CasoAlmacenamiento } from '../reglas/matriz-almacenamiento.js';
-import { hayEmulador, PROYECTO } from './ayudas.js';
+import { construirCasosAlmacenamiento, RUTA_PUBLICA_AJENA, type CasoAlmacenamiento } from '../reglas/matriz-almacenamiento.js';
+import { hayEmuladorStorage, PROYECTO } from './ayudas.js';
 
 vi.setConfig({ testTimeout: 300_000, hookTimeout: 300_000 });
 
@@ -111,15 +111,15 @@ async function correrDirectas(env: RulesTestEnvironment): Promise<string[]> {
   await reservar(env, 'd-existe', 'u-sup');
   await sembrarObjeto(env, completa(T, 'privado/originales/p1/d-existe'));
   await debeFallar('sup reemplaza un original existente', subir(env.authenticatedContext('u-sup', sesion('sup')), completa(T, 'privado/originales/p1/d-existe')));
-  await debeFallar('adm escribe en publico', subir(env.authenticatedContext('u-adm', sesion('adm')), completa(T, 'publico/z/nuevo.jpg')));
-  await debeFallar('anonimo escribe en publico', subir(env.unauthenticatedContext() as Ctx, completa(T, 'publico/z/nuevo2.jpg')));
+  await debeFallar('adm escribe en publico', subir(env.authenticatedContext('u-adm', sesion('adm')), completa(T, 'publico/medios/z/nuevo.jpg')));
+  await debeFallar('anonimo escribe en publico', subir(env.unauthenticatedContext() as Ctx, completa(T, 'publico/medios/z/nuevo2.jpg')));
   await debeFallar('adm escribe fuera de los módulos', subir(env.authenticatedContext('u-adm', sesion('adm')), 'cualquier/ruta.jpg'));
   await sembrarObjeto(env, 'cualquier/leer.jpg');
   await debeFallar('anonimo lee fuera de los módulos', getBytes(ref((env.unauthenticatedContext() as Ctx).storage(), 'cualquier/leer.jpg')));
   return fallos;
 }
 
-describe.skipIf(!hayEmulador)('matriz negativa de storage.rules (emulador)', () => {
+describe.skipIf(!hayEmuladorStorage)('matriz negativa de storage.rules (emulador)', () => {
   const casos = construirCasosAlmacenamiento(manifiestosEnOrden());
   let env: RulesTestEnvironment;
 
@@ -134,7 +134,9 @@ describe.skipIf(!hayEmulador)('matriz negativa de storage.rules (emulador)', () 
     expect(casos.length).toBeGreaterThan(0);
     const positivos = casos.filter((c) => c.esperado);
     expect(positivos.length).toBeGreaterThan(0);
-    expect(positivos.every((c) => c.ruta.startsWith('publico/') && (c.operacion === 'get' || c.operacion === 'list'))).toBe(true);
+    expect(positivos.every((c) => c.ruta.startsWith('publico/medios/') && (c.operacion === 'get' || c.operacion === 'list'))).toBe(true);
+    // `publico/otro/x.jpg` (fuera de lo declarado) nunca se abre: 16 personas x get y list, todos negativos.
+    expect(casos.filter((c) => c.ruta === RUTA_PUBLICA_AJENA && !c.esperado)).toHaveLength(32);
     console.info(`[matriz-almacenamiento] casos=${casos.length} positivos=${positivos.length}`);
   });
 
@@ -145,8 +147,8 @@ describe.skipIf(!hayEmulador)('matriz negativa de storage.rules (emulador)', () 
     expect(fallos).toEqual([]);
   });
 
-  it('positivas: publico/x/y.jpg legible y listable por anónimo y por los tres roles', async () => {
-    const lecturas = casos.filter((c) => c.esperado && c.ruta === 'publico/x/y.jpg');
+  it('positivas: publico/medios/x/y.jpg legible y listable por anónimo y por los tres roles', async () => {
+    const lecturas = casos.filter((c) => c.esperado && c.ruta === 'publico/medios/x/y.jpg');
     const nombres = new Set(lecturas.map((c) => c.persona.nombre));
     for (const n of ['sin autenticar', 'caj@A', 'sup@A', 'adm@A']) expect(nombres.has(n), n).toBe(true);
     await sembrarTodo(env, casos);
@@ -168,7 +170,8 @@ describe.skipIf(!hayEmulador)('matriz negativa de storage.rules (emulador)', () 
       ['editor acepta caj', () => mutar(REGLAS_STORAGE, "in ['sup', 'adm']", "in ['caj', 'sup', 'adm']")],
       ['sin r.por == request.auth.uid', () => mutar(REGLAS_STORAGE, /\n\s*&& r\.por == request\.auth\.uid/, '')],
       ['sin resource == null', () => mutar(REGLAS_STORAGE, 'resource == null && ', '')],
-      ['escritura abierta en publico', () => mutar(REGLAS_STORAGE, /(publico\/\{ruta=\*\*\} \{\s*allow read: if true;\s*allow write: if )false/, '$1true')],
+      ['escritura abierta en publico', () => mutar(REGLAS_STORAGE, /(publico\/medios\/\{ruta=\*\*\} \{\s*allow read: if true;\s*allow write: if )false/, '$1true')],
+      ['publico amplio (revierte D4)', () => mutar(REGLAS_STORAGE, 'publico/medios/{ruta=**}', 'publico/{ruta=**}')],
       ['negación final abierta', () => {
         const i = REGLAS_STORAGE.lastIndexOf('allow read, write: if false;');
         expect(i).toBeGreaterThan(0);

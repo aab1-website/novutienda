@@ -2,6 +2,7 @@ import { readFileSync } from 'node:fs';
 import { describe, expect, it } from 'vitest';
 import { manifiestosEnOrden } from '../../plataforma/registro.js';
 import {
+  CAMPOS_PLANTILLA_RESERVA,
   ErrorGenerador,
   generarReglas,
   generarReglasAlmacenamiento,
@@ -206,6 +207,16 @@ describe('generador de reglas', () => {
         mod('c', [subidaCon({ archivos: [{ tipo: 'a', bytesMax: 5_000_000, contentType: 'image/(png)' }] })]),
       ]);
       expect(t).toContain('request.resource.size <= 5000000');
+    });
+
+    it('la plantilla reservaValida nombra exactamente CAMPOS_PLANTILLA_RESERVA', () => {
+      const t = generarReglasAlmacenamiento([mod('c', [subidaCon({})])]);
+      const inicio = t.indexOf('function reservaValida');
+      const fin = t.indexOf('\n    }\n', inicio);
+      const funcion = t.slice(inicio, fin);
+      const campos = [...new Set([...funcion.matchAll(/\br\.(\w+)/g)].map((m) => m[1]))].sort();
+      expect(campos).toEqual([...CAMPOS_PLANTILLA_RESERVA].sort());
+      expect(Object.isFrozen(CAMPOS_PLANTILLA_RESERVA)).toBe(true);
     });
 
     it('sin subidaReservada no emite reservaValida ni editor', () => {

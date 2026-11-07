@@ -56,7 +56,7 @@ service firebase.storage {
     match /tenants/{tenantId}/privado/procesando/{ruta=**} {
       allow read, write: if false;
     }
-    match /tenants/{tenantId}/publico/{ruta=**} {
+    match /tenants/{tenantId}/publico/medios/{ruta=**} {
       allow read: if true;
       allow write: if false;
     }

@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import { crearRegistro, ErrorRegistro, type EscrituraSubidaReservada, type ManifiestoModulo, type RutaAlmacenamiento } from '@novutienda/nucleo';
-import { construirCasosAlmacenamiento, rutaConcreta } from './matriz-almacenamiento.js';
+import { construirCasosAlmacenamiento, RUTA_PUBLICA_AJENA, rutaConcreta } from './matriz-almacenamiento.js';
 
 const subida: RutaAlmacenamiento = {
   ruta: 'privado/originales/{productoId}/{subidaId}',
@@ -12,7 +12,7 @@ const subida: RutaAlmacenamiento = {
     archivos: [{ tipo: 'original', bytesMax: 5_000_000, contentType: 'image/(jpeg|png|webp|heic)' }],
   },
 };
-const publica: RutaAlmacenamiento = { ruta: 'publico/{ruta=**}', lectura: 'publica', escritura: 'servidor' };
+const publica: RutaAlmacenamiento = { ruta: 'publico/medios/{ruta=**}', lectura: 'publica', escritura: 'servidor' };
 const privada: RutaAlmacenamiento = { ruta: 'privado/derivados/{productoId}', lectura: 'servidor', escritura: 'servidor' };
 
 function manifiesto(id: string, almacenamiento?: readonly RutaAlmacenamiento[]): ManifiestoModulo {
@@ -128,13 +128,13 @@ describe('constructor de la matriz de almacenamiento', () => {
 
   it('sustituye las variables', () => {
     expect(rutaConcreta(subida.ruta)).toBe('privado/originales/p1/s1');
-    expect(rutaConcreta(publica.ruta)).toBe('publico/x/y.jpg');
+    expect(rutaConcreta(publica.ruta)).toBe('publico/medios/x/y.jpg');
   });
 
   it('genera 16 personas x 5 operaciones, salvo el create permitido de la subida', () => {
     const casos = construirCasosAlmacenamiento([m]);
     expect(casos.filter((c) => c.ruta === 'privado/derivados/p1')).toHaveLength(80);
-    expect(casos.filter((c) => c.ruta === 'publico/x/y.jpg')).toHaveLength(80);
+    expect(casos.filter((c) => c.ruta === 'publico/medios/x/y.jpg')).toHaveLength(80);
     // adm y sup (roles permitidos) quedan fuera del create; caj sigue dentro.
     const s = casos.filter((c) => c.ruta === 'privado/originales/p1/s1');
     expect(s).toHaveLength(78);
@@ -146,8 +146,15 @@ describe('constructor de la matriz de almacenamiento', () => {
     const casos = construirCasosAlmacenamiento([m]);
     const permitidos = casos.filter((c) => c.esperado);
     expect(permitidos).toHaveLength(32);
-    expect(permitidos.every((c) => c.ruta === 'publico/x/y.jpg' && (c.operacion === 'get' || c.operacion === 'list'))).toBe(true);
+    expect(permitidos.every((c) => c.ruta === 'publico/medios/x/y.jpg' && (c.operacion === 'get' || c.operacion === 'list'))).toBe(true);
     expect(permitidos.some((c) => c.persona.nombre === 'sin autenticar')).toBe(true);
+  });
+
+  it('lectura anónima en publico/otro/x.jpg queda denegada', () => {
+    const casos = construirCasosAlmacenamiento([m]).filter((c) => c.ruta === RUTA_PUBLICA_AJENA);
+    expect(casos).toHaveLength(32);
+    expect(casos.some((c) => c.persona.nombre === 'sin autenticar' && c.operacion === 'get')).toBe(true);
+    expect(casos.every((c) => !c.esperado)).toBe(true);
   });
 
   it('sin almacenamiento no hay casos', () => {

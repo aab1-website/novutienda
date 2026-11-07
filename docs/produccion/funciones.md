@@ -180,7 +180,7 @@ Functions deja de reintentar. Hay que vigilar `procesados/*~fallo~*` y `*~descar
 
 Reglas de Storage (`storage.rules`): crear en `tenants/{t}/privado/originales/{producto}/{subida}` solo con correo+contraseña verificado, rol `sup`/`adm`
 **en ese tenant**, reserva vigente en Firestore (mismo producto y misma persona), ≤ 15 MB foto / ≤ 200 MB video y tipo permitido; no se reemplaza
-ni se borra desde el navegador. Lectura pública solo de `tenants/{t}/publico/**`. Todo lo demás, negado.
+ni se borra desde el navegador. Lectura pública solo de `tenants/{t}/publico/medios/**`. Todo lo demás, negado.
 
 Procesamiento (sharp): AVIF y WebP a 480, 960, 1600 y 2400 px (sin ampliar), orientación aplicada, **sin EXIF/GPS/XMP/IPTC**, tope de 100 megapíxeles.
 Las versiones se publican con el hash del contenido en el nombre y `Cache-Control: public, max-age=31536000, immutable`.

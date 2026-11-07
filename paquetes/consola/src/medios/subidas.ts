@@ -67,6 +67,13 @@ function leerSubida(d: Readonly<Record<string, unknown>> | undefined): Subida | 
   };
 }
 
+/**
+ * Campos de la reserva que la regla de Storage (`reservaValida`, generada desde el manifiesto) lee del documento de `subidas`.
+ * Contrato con `scripts/generar-reglas.mjs`: lo fija `pruebas/consola/contrato-reserva.test.ts`.
+ */
+export const CAMPOS_RESERVA = ['estado', 'venceEn', 'productoId', 'por', 'bytes', 'tipo'] as const;
+export type CampoReserva = (typeof CAMPOS_RESERVA)[number];
+
 const aDoc = (s: Subida): Record<string, unknown> => ({ ...s });
 
 // ---------------------------------------------------------------------------------------------
@@ -120,10 +127,10 @@ export async function reservarSubida(deps: DepsMedios, e: EntradaReserva): Promi
     }
     escribirUsoMedios(tx, t, reservarEnUso(uso, e.productoId, e.tipo, e.bytes));
     const venceEn = ahora + LIMITES_CONSOLA.vigenciaReservaMs;
-    const s: Subida = {
-      id: e.subidaId, productoId: e.productoId, tipo: e.tipo, bytes: e.bytes, estado: 'reservada',
-      rutaOriginal: ruta, creadaEn: ahora, venceEn, por: e.actor.uid,
+    const campos: Pick<Subida, CampoReserva> = {
+      estado: 'reservada', venceEn, productoId: e.productoId, por: e.actor.uid, bytes: e.bytes, tipo: e.tipo,
     };
+    const s: Subida = { id: e.subidaId, rutaOriginal: ruta, creadaEn: ahora, ...campos };
     tx.set(rutaSubida(t, e.subidaId), aDoc(s));
     return { subidaId: e.subidaId, rutaOriginal: ruta, venceEn };
   });
