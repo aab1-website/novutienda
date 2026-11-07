@@ -9,7 +9,7 @@ import { actualizarMercado, type Mercado, type OpcionesDescarga } from '@novutie
 import type { Entorno } from '../entorno.js';
 import { crearNotificador } from '../notificador.js';
 import { ejecutarReconstruccion } from './consola.js';
-import { listarTenants } from './tenants.js';
+import { listarTenants, moduloEncendido } from './tenants.js';
 
 /** Hora (0 a 23) en La Paz de un instante. */
 export function horaEnLaPaz(ms: number): number {
@@ -44,6 +44,8 @@ export async function ejecutarCotizaciones(e: Entorno, descarga: OpcionesDescarg
     // La corrida diaria del sitio va tras la primera cotización de la mañana (después de la publicación del BCB).
     if (horaEnLaPaz(e.ahora()) === 7) {
       try {
+        // Solo los tenants con consola encendida (L2-6); la cotización de arriba es del núcleo y corre para todos.
+        if (!(await moduloEncendido(e, tenantId, 'consola'))) continue;
         await ejecutarReconstruccion({ db: e.db, reloj: { ahora: e.ahora }, disparador: e.disparadorSitio }, { tenantId, evento: 'diaria' });
       } catch (err) {
         error ??= err;

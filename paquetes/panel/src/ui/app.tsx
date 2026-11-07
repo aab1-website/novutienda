@@ -3,7 +3,7 @@ import { useEffect, useMemo, useState } from 'preact/hooks';
 import type { ClienteApi } from '../api/cliente.js';
 import type { AlmacenSubidas } from '../subidas/almacen.js';
 import type { Sesion, UsuarioSesion } from '../sesion/sesion.js';
-import { ITEMS_MENU, menuPara, parsearRuta, puedeVer } from '../util/menu.js';
+import { ITEMS_MENU, menuPara, parsearRuta, puedeVer, rutaPorOmision, type ModulosActivos } from '../util/menu.js';
 import { Cargando, Vacio } from './comun.js';
 import { CtxApp } from './contexto.js';
 import { Login } from './login.js';
@@ -34,6 +34,26 @@ function useUsuario(sesion: Sesion): UsuarioSesion | null {
   const [u, setU] = useState<UsuarioSesion | null>(sesion.actual());
   useEffect(() => sesion.alCambiar(setU), [sesion]);
   return u;
+}
+
+type CargaModulos = { readonly estado: 'cargando' | 'error' } | { readonly estado: 'lista'; readonly modulos: readonly string[] };
+
+/** Módulos encendidos del negocio. Falla cerrado: mientras carga o si falla, no hay módulos (solo pantallas de Central). */
+function useModulosActivos(api: ClienteApi, uid: string | undefined): CargaModulos {
+  const [carga, setCarga] = useState<CargaModulos>({ estado: 'cargando' });
+  useEffect(() => {
+    setCarga({ estado: 'cargando' });
+    if (uid === undefined) return undefined;
+    let vigente = true;
+    api.llamar('modulosActivos', {}).then(
+      (modulos) => vigente && setCarga({ estado: 'lista', modulos }),
+      () => vigente && setCarga({ estado: 'error' }),
+    );
+    return () => {
+      vigente = false;
+    };
+  }, [api, uid]);
+  return carga;
 }
 
 type Tema = 'auto' | 'claro' | 'oscuro';
@@ -78,9 +98,15 @@ export function App({ sesion, api, almacen }: { sesion: Sesion; api: ClienteApi;
   const ruta = parsearRuta(hash);
   const contexto = useMemo(() => (usuario === null ? null : { api, almacen, usuario, cerrarSesion: () => void sesion.cerrar() }), [api, almacen, usuario, sesion]);
 
+  const carga = useModulosActivos(api, usuario?.uid);
+  const modulos: ModulosActivos = carga.estado === 'lista' ? carga.modulos : null;
+  const rol = usuario?.rol;
+
   useEffect(() => {
-    if (usuario !== null && ruta.seccion === '') window.location.hash = '#/venta/terminal';
-  }, [usuario, ruta.seccion]);
+    if (rol === undefined || carga.estado === 'cargando' || ruta.seccion !== '') return;
+    const inicio = rutaPorOmision(rol, modulos);
+    if (inicio !== null) window.location.hash = inicio;
+  }, [rol, carga.estado, modulos, ruta.seccion]);
 
   useEffect(() => {
     document.title = usuario === null ? `Ingreso · ${NOMBRE_APP}` : `${NOMBRE_APP}`;
@@ -88,9 +114,11 @@ export function App({ sesion, api, almacen }: { sesion: Sesion; api: ClienteApi;
 
   if (usuario === null || contexto === null) return <Login sesion={sesion} nombre={NOMBRE_APP} />;
 
-  const menu = menuPara(usuario.rol);
+  const menu = menuPara(usuario.rol, modulos);
   const existe = ruta.seccion === '' || ITEMS_MENU.some((i) => i.id === ruta.seccion);
-  const permitida = ruta.seccion === '' || puedeVer(usuario.rol, ruta.seccion);
+  const permitida = ruta.seccion === '' || puedeVer(usuario.rol, ruta.seccion, modulos);
+  // Una pantalla de módulo espera a saber qué módulos hay encendidos (sin parpadeo de «no tiene acceso»).
+  const esperando = carga.estado === 'cargando' && existe && !permitida;
   const textoTema = tema === 'auto' ? 'Tema: automático' : tema === 'claro' ? 'Tema: claro' : 'Tema: oscuro';
 
   return (
@@ -101,13 +129,17 @@ export function App({ sesion, api, almacen }: { sesion: Sesion; api: ClienteApi;
       <header class="cabecera">
         <div class="cabecera-interior">
           <span class="marca-nombre">{NOMBRE_APP}</span>
-          <nav aria-label="Menú principal" class="menu">
-            {menu.map((i) => (
-              <a key={i.id} href={`#/${i.id}`} aria-current={ruta.seccion === i.id ? 'page' : undefined}>
-                {i.titulo}
-              </a>
-            ))}
-          </nav>
+          {carga.estado === 'cargando' ? (
+            <span class="menu" />
+          ) : (
+            <nav aria-label="Menú principal" class="menu">
+              {menu.map((i) => (
+                <a key={i.id} href={`#/${i.id}`} aria-current={ruta.seccion === i.id ? 'page' : undefined}>
+                  {i.titulo}
+                </a>
+              ))}
+            </nav>
+          )}
           <div class="controles">
             <button type="button" class="boton boton-secundario boton-chico" onClick={alternarTema}>
               {textoTema}
@@ -124,10 +156,12 @@ export function App({ sesion, api, almacen }: { sesion: Sesion; api: ClienteApi;
       <main id="contenido" tabIndex={-1} class="contenedor principal">
         {!existe ? (
           <Vacio titulo="Esta página no existe" detalle="Elija una opción del menú." />
+        ) : esperando ? (
+          <Cargando />
         ) : permitida ? (
           <Pantalla seccion={ruta.seccion} sub={ruta.sub} />
         ) : (
-          <Vacio titulo="No tiene acceso a esta página" detalle="Elija una opción de su menú." />
+          <Vacio titulo="No tiene acceso a esta página" detalle={carga.estado === 'error' ? 'No se pudieron cargar los módulos de su negocio. Recargue la página.' : 'Elija una opción de su menú.'} />
         )}
       </main>
     </CtxApp.Provider>

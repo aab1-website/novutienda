@@ -6,6 +6,7 @@ import { getAuth, type Auth } from 'firebase-admin/auth';
 import { getFirestore, type Firestore } from 'firebase-admin/firestore';
 import { getStorage } from 'firebase-admin/storage';
 import type { CatalogoPuerto, DisparadorSitio, ProcesadorMedios } from '@novutienda/consola';
+import { crearLectorModulos, type LectorModulos } from '../../coordinador/modulos-activos.js';
 import { crearCatalogoConsola, almacenCotizacionesDesde, catalogoParaPos, inventariosParaPos } from '../../coordinador/index.js';
 import {
   appCheckReal, appCheckSimulado, crearAlmacenMedios, crearAuthMin, crearBaseDatos, crearConsultaSubidas, crearEjecutorRecibos, crearGuardarContacto,
@@ -38,6 +39,8 @@ export interface Entorno {
   readonly disparadorSitio: DisparadorSitio;
   readonly emisorEnlacePdf: EmisorEnlacePdf;
   readonly ahora: () => number;
+  /** Módulos efectivos del tenant (cache de 60 s por instancia); `undefined` si el tenant no existe o es inválido. */
+  readonly modulosDelTenant: LectorModulos;
   readonly redondeo: (tenantId: string) => Promise<Redondeo>;
   /** `DepsPos` del tenant, con la política de redondeo de su configuración. */
   depsPos(tenantId: string): Promise<DepsPos>;
@@ -77,6 +80,7 @@ export function crearEntorno(o: OpcionesEntorno): Entorno {
     disparadorSitio: crearDisparadorSitio(o.firestore, ahora),
     emisorEnlacePdf: o.emisorEnlacePdf ?? (emulador ? emisorEnlaceEmulador(o.bucket) : emisorEnlaceFirmado(o.bucket, ahora)),
     ahora,
+    modulosDelTenant: crearLectorModulos(o.firestore, ahora),
     redondeo,
     depsPos: async (tenantId) => ({
       db, inventarios: inventariosParaPos, catalogo: catalogoParaPos, redondeo: await redondeo(tenantId), ahora,

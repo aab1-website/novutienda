@@ -16,13 +16,14 @@ beforeEach(() => {
   window.location.hash = '';
 });
 
-function montar(): { sesion: SesionDoble } {
+function montar(apagar: readonly string[] = []): { sesion: SesionDoble } {
   const sesion = new SesionDoble();
   const entorno = crearEntorno('caj');
   // La sesión manda: el doble de la API toma el usuario de la sesión.
   const api = new (entorno.api.constructor as new (o: { usuario: () => { uid: string; rol: 'caj' | 'sup' | 'adm' } }) => typeof entorno.api)({
     usuario: () => sesion.actual() ?? { uid: 'anonimo', rol: 'caj' },
   });
+  api.estado.modulos = api.estado.modulos.filter((m) => !apagar.includes(m));
   render(h(App, { sesion, api, almacen: entorno.almacen }));
   return { sesion };
 }
@@ -85,6 +86,24 @@ describe('menú por rol', () => {
     expect(await screen.findByText('Esta página no existe')).toBeTruthy();
     await userEvent.setup().click(screen.getByRole('button', { name: 'Salir' }));
     expect(await screen.findByRole('button', { name: 'Entrar' })).toBeTruthy();
+  });
+  it('pos apagado: el menú no muestra «Venta» y #/venta dice que no tiene acceso', async () => {
+    montar(['pos']);
+    await entrar('adm@ejemplo.test', 'clave-adm-1');
+    await screen.findByRole('navigation', { name: 'Menú principal' });
+    expect(items()).toEqual(['Recibos', 'Inventario', 'Mermas', 'Catálogo y sitio', 'Usuarios', 'Configuración']);
+    await waitFor(() => expect(window.location.hash).toBe('#/recibos'));
+    window.location.hash = '#/venta';
+    expect(await screen.findByText('No tiene acceso a esta página')).toBeTruthy();
+  });
+  it('si modulosActivos falla, el menú solo muestra Central', async () => {
+    const sesion = new SesionDoble();
+    const entorno = crearEntorno('adm');
+    const api = { llamar: () => Promise.reject(new Error('sin conexión')) } as unknown as typeof entorno.api;
+    render(h(App, { sesion, api, almacen: entorno.almacen }));
+    await entrar('adm@ejemplo.test', 'clave-adm-1');
+    await screen.findByRole('navigation', { name: 'Menú principal' });
+    expect(items()).toEqual(['Usuarios', 'Configuración']);
   });
   it('el tema se puede alternar y se recuerda', async () => {
     montar();

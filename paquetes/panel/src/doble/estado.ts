@@ -42,6 +42,8 @@ export interface EstadoDoble {
   publicadoEn: string | null;
   versionPublicada: number;
   usuarios: Mutable<UsuarioVista>[];
+  /** Módulos encendidos del negocio (el doble los enciende todos; una prueba puede apagar alguno). */
+  modulos: string[];
   /** Cuentas de Firebase Auth que existen pero aún no son miembros de este negocio (el panel no crea cuentas). */
   cuentasSinRol: Mutable<UsuarioVista>[];
   bytesOriginales: number;
@@ -121,6 +123,7 @@ export function crearEstado(ahora: number): EstadoDoble {
     auditoria: [], fichas: new Map(), medios: new Map(), subidas: new Map(), disparador: { demoraMs: 15 }, secciones: [], carruseles: new Map(),
     configSitio: { plantillaActiva: 'cielo', whatsappNovuchat: '59170000000', medicion: {} },
     cambiosSinPublicar: 0, ultimoCambioEn: iso(ahora), publicadoEn: null, versionPublicada: 0,
+    modulos: ['inventarios', 'pos', 'recibos', 'consola', 'website'],
     usuarios: [
       { uid: 'u-adm', correo: 'adm@ejemplo.test', rol: 'adm', verificado: true },
       { uid: 'u-sup', correo: 'sup@ejemplo.test', rol: 'sup', verificado: true },

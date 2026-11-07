@@ -89,4 +89,5 @@ export const ROLES_ACCION: Readonly<Record<string, readonly Rol[]>> = {
   'consola.buscarUsuarioPorCorreo': ['adm'],
   'consola.asignarRol': ['adm'],
   'consola.quitarRol': ['adm'],
+  'consola.modulosActivos': ['caj', 'sup', 'adm'],
 };

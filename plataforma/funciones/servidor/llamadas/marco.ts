@@ -2,13 +2,13 @@
 // `recibos`, `medios`) que recibe `{ accion, tenantId, datos }` y despacha por una tabla de acciones. Cada
 // acción declara un esquema estricto de `datos`; los roles y el permiso del propietario salen del manifiesto
 // (`plataforma/coordinador/encendido.ts`: `tablaDeCallable`). El marco hace, en este orden:
-// App Check → token (checkRevoked + email_verified) → tenant y rol del claim → esquema → ejecución → traducción
+// App Check → token (checkRevoked + email_verified) → tenant y rol del claim → módulo encendido (L2-6) → esquema → ejecución → traducción
 // del error. Los módulos vuelven a validar y a exigir permisos por su cuenta (defensa en profundidad).
 import { logger } from 'firebase-functions';
 import { HttpsError, type CallableRequest } from 'firebase-functions/v2/https';
 import { z } from 'zod';
 import type { Actor, ActorConRol, Rol } from '@novutienda/nucleo';
-import { CODIGO_DE_BORDE, traducirError } from '../../../conectores/firebase/index.js';
+import { CODIGO_DE_BORDE, CODIGO_MODULO_APAGADO, traducirError } from '../../../conectores/firebase/index.js';
 import { autenticar, exigirAppCheck, personalDelTenant, type Sesion, type SesionTenant } from '../autenticacion.js';
 import type { Entorno } from '../entorno.js';
 import { RedondeoInvalido } from '../redondeo.js';
@@ -48,6 +48,15 @@ export interface Accion extends Implementacion {
   readonly roles: readonly Rol[];
   /** Admite también al propietario de la plataforma (sesión con Google) sin rol en el tenant. */
   readonly propietario: boolean;
+  /** Módulo dueño de la acción. */
+  readonly modulo: string;
+  /** Si es `true`, el dueño debe estar encendido para el tenant (L2-6); las de Central y núcleo no dependen de módulos. */
+  readonly requiereEncendido: boolean;
+}
+
+/** Rechazo por módulo apagado (o tenant inexistente): mismo error en ambos casos, para no revelar cuáles tenants existen. */
+export function moduloApagado(mensaje = 'Este módulo no está habilitado para su negocio.'): HttpsError {
+  return new HttpsError('permission-denied', mensaje, { codigo: CODIGO_MODULO_APAGADO });
 }
 
 export const MAX_CARACTERES_POR_DEFECTO = 64_000;
@@ -129,6 +138,13 @@ export function crearManejador(o: OpcionesManejador): (req: CallableRequest) => 
       }
       if (rol !== undefined && !def.roles.includes(rol) && !(def.propietario && sesion.propietario)) {
         throw new HttpsError('permission-denied', 'Su rol no permite esta acción.');
+      }
+      if (def.requiereEncendido) {
+        // Falla cerrado: tenant sin documento (o inválido) y módulo apagado se rechazan igual, con el mismo código.
+        const activos = await e.modulosDelTenant(tenantId);
+        if (activos === undefined || !activos.includes(def.modulo)) {
+          throw moduloApagado();
+        }
       }
       if (datos !== undefined && JSON.stringify(datos).length > def.maxCaracteres) {
         throw new HttpsError('invalid-argument', 'La petición es demasiado grande.');

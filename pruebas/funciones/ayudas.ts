@@ -157,9 +157,17 @@ export interface OpcionesSembrado {
   readonly productos?: readonly { id: string; nombre: string; precioUSD: { bo: number; ar: number }; tienda: number; deposito?: number; conSerie?: boolean; series?: string[]; publicado?: boolean; controlaStock?: boolean }[];
 }
 
+/** Documento `tenants/{t}` con los cinco módulos encendidos (forma v2 de L2-5): datos de prueba, no un caso. */
+export const TENANT_TODO_ENCENDIDO = {
+  plan: 'base',
+  modulos: { consola: { version: '0.1.0', submodulos: [] }, inventarios: { version: '0.1.0', submodulos: [] }, pos: { version: '0.1.0', submodulos: [] }, recibos: { version: '0.1.0', submodulos: [] }, website: { version: '0.1.0', submodulos: [] } },
+  zonaHoraria: 'America/La_Paz',
+  monedas: ['BOB', 'USD', 'ARS'],
+};
+
 /** Tenant con almacenes, cotizaciones del día y productos, escrito con las funciones reales de los módulos. */
 export async function sembrarTenant(h: Herramientas, tenantId: string, o: OpcionesSembrado = {}): Promise<void> {
-  await h.firestore.doc(`tenants/${tenantId}`).set({ plan: 'base', modulos: {}, zonaHoraria: 'America/La_Paz', monedas: ['BOB', 'USD', 'ARS'] });
+  await h.firestore.doc(`tenants/${tenantId}`).set(TENANT_TODO_ENCENDIDO);
   for (const u of UBICACIONES) {
     await h.db.runTransaction((tx) => crearUbicacion(tx, { tenantId, operacionId: unico('ubic'), por: ADM, ubicacionId: u, nombre: u }));
   }

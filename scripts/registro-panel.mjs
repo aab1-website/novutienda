@@ -33,7 +33,7 @@ export function generarPantallas(pantallas) {
     const porRol = p.tituloPorRol === undefined
       ? ''
       : `, tituloPorRol: { ${Object.entries(p.tituloPorRol).map(([r, t]) => `${r}: ${texto(t)}`).join(', ')} }`;
-    return `  { id: ${texto(p.id)}, titulo: ${texto(p.titulo)}, roles: ${lista(p.roles)}, orden: ${p.orden}${porRol} },`;
+    return `  { id: ${texto(p.id)}, titulo: ${texto(p.titulo)}, roles: ${lista(p.roles)}, orden: ${p.orden}, modulo: ${texto(p.modulo)}${porRol} },`;
   });
   return `${CABECERA}import type { Rol } from '@novutienda/nucleo';
 
@@ -42,6 +42,8 @@ export interface PantallaGenerada {
   readonly titulo: string;
   readonly roles: readonly Rol[];
   readonly orden: number;
+  /** Módulo dueño de la pantalla (\`panel\` para las de Central). */
+  readonly modulo: string;
   readonly tituloPorRol?: Partial<Record<Rol, string>>;
 }
 

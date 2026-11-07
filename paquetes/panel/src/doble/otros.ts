@@ -94,7 +94,7 @@ function procesarSubida(c: Contexto, subidaId: string): Medio {
 }
 
 export const handlersOtros: {
-  [N in 'buscarComprobantes' | 'enviarRecibo' | 'referenciarFacturaSuma' | 'guardarPlantilla' | 'leerPlantilla' | 'obtenerRecibo' | 'obtenerTablero' | 'publicarSitio' | 'cambiarPrecioUSD' | 'guardarFicha' | 'reservarSubida' | 'estadoSubida' | 'finalizarSubida' | 'borrarMedio' | 'guardarSeccion' | 'eliminarSeccion' | 'ordenarSecciones' | 'guardarCarrusel' | 'guardarConfigSitio' | 'simularImportacion' | 'importarProductos' | 'exportarProductosCsvSitio' | 'asignarRol' | 'quitarRol' | 'buscarUsuarioPorCorreo' | 'listarFichas' | 'listarMedios' | 'leerConfigSitio' | 'listarSecciones' | 'listarCarruseles' | 'listarUsuarios']: H<N>;
+  [N in 'buscarComprobantes' | 'enviarRecibo' | 'referenciarFacturaSuma' | 'guardarPlantilla' | 'leerPlantilla' | 'obtenerRecibo' | 'obtenerTablero' | 'publicarSitio' | 'cambiarPrecioUSD' | 'guardarFicha' | 'reservarSubida' | 'estadoSubida' | 'finalizarSubida' | 'borrarMedio' | 'guardarSeccion' | 'eliminarSeccion' | 'ordenarSecciones' | 'guardarCarrusel' | 'guardarConfigSitio' | 'simularImportacion' | 'importarProductos' | 'exportarProductosCsvSitio' | 'asignarRol' | 'quitarRol' | 'buscarUsuarioPorCorreo' | 'listarFichas' | 'listarMedios' | 'leerConfigSitio' | 'listarSecciones' | 'listarCarruseles' | 'listarUsuarios' | 'modulosActivos']: H<N>;
 } = {
   buscarComprobantes(c, e) {
     const q = e.consulta;
@@ -378,6 +378,7 @@ export const handlersOtros: {
   listarSecciones: (c) => c.e.secciones,
   listarCarruseles: (c) => [...c.e.carruseles.values()],
   listarUsuarios: (c) => c.e.usuarios,
+  modulosActivos: (c) => [...c.e.modulos],
   buscarUsuarioPorCorreo(c, e) {
     exigirRol(c, ['adm']);
     const buscado = e.correo.trim().toLowerCase();

@@ -121,6 +121,8 @@ export interface Contrato {
   listarSecciones: { entrada: Vacio; salida: readonly Seccion[] };
   listarCarruseles: { entrada: Vacio; salida: readonly Carrusel[] };
   listarUsuarios: { entrada: Vacio; salida: readonly UsuarioVista[] };
+  /** Ids de los módulos encendidos del negocio (el menú del panel se arma con ellos). */
+  modulosActivos: { entrada: Vacio; salida: readonly string[] };
 }
 
 export type NombreCallable = keyof Contrato;

@@ -51,3 +51,9 @@ describe('mensajes de error', () => {
     for (const c of [...pos, ...consola, ...identidad, ...inventarios]) expect(CODIGOS_CONOCIDOS, c).toContain(c);
   });
 });
+
+describe('módulo apagado (L2-6)', () => {
+  it('el código modulo-apagado tiene un mensaje claro aunque el servidor traiga otro texto', () => {
+    expect(mensajeDeError(new ErrorApi('permission-denied', 'Módulo apagado: pos', { codigo: 'modulo-apagado' }))).toBe('Este módulo no está habilitado para su negocio.');
+  });
+});

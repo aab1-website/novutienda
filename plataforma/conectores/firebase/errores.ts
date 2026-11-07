@@ -104,6 +104,9 @@ export const CODIGO_DE_BORDE: Readonly<Record<CodigoHttps, string>> = {
   internal: 'error-interno',
 };
 
+/** Código de borde de una acción rechazada porque su módulo está apagado para el tenant (L2-6, `permission-denied`). */
+export const CODIGO_MODULO_APAGADO = 'modulo-apagado';
+
 /** Todo error lleva `details.codigo` (código del módulo en kebab-case): el panel mapea mensajes por ese código. */
 const ok = (code: CodigoHttps, codigo: string, message: string, details?: Readonly<Record<string, unknown>>): ErrorTraducido => ({
   code, message, details: { ...details, codigo }, interno: code === 'internal',
