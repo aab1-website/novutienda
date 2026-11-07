@@ -3,7 +3,8 @@
 //   paquetes/panel/src/api/acciones.generado.ts   (ROLES_ACCION)
 //   paquetes/panel/src/util/pantallas.generado.ts (PANTALLAS)
 // La salida es determinista (sin fechas). Nunca se edita a mano.
-import { readFileSync, writeFileSync } from 'node:fs';
+import { readFileSync, realpathSync, writeFileSync } from 'node:fs';
+import { pathToFileURL } from 'node:url';
 import { cargarManifiestos } from './generar-reglas.mjs';
 
 const CABECERA = [
@@ -51,7 +52,7 @@ ${filas.join('\n')}
 `;
 }
 
-if (import.meta.url === `file://${process.argv[1]}`) {
+if (process.argv[1] && import.meta.url === pathToFileURL(realpathSync(process.argv[1])).href) {
   const accion = process.argv[2];
   if (accion !== 'generar' && accion !== 'verificar') {
     console.error('Uso: node scripts/registro-panel.mjs <generar|verificar>');
