@@ -45,6 +45,7 @@ export const ZONA_POR_ARCHIVO: readonly ReglaZona[] = [
   // ---- Pruebas: la zona que prueban (plano §3, fila `pruebas:<zona>`) ----------------------------
   { patron: /^pruebas\/(funciones|integracion)\//, zona: 'pruebas:coordinador' },
   { patron: /^pruebas\/registro\.test\.ts$/, zona: 'pruebas:coordinador', nota: 'prueba el registro de módulos' },
+  { patron: /^pruebas\/fotos\//, zona: 'pruebas:coordinador', nota: 'fotos congeladas de permisos y menú que ata el registro; L2-3 y L2-4 no las tocan' },
   { patron: /^pruebas\/panel\//, zona: 'pruebas:central' },
   { patron: new RegExp(`^pruebas/(${M})/`), zona: 'pruebas:modulo:$1' },
   { patron: /^pruebas\/(identidad|limites|tipo-cambio|reglas|tenant)\//, zona: 'pruebas:nucleo' },

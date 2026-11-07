@@ -47,11 +47,32 @@ describe('modulosEfectivos', () => {
     expect(validarEncendido(ms, ['x'])).toEqual({ ok: true });
     expect(validarEncendido(ms, ['nucleo', 'x']).ok).toBe(false);
   });
-  it('registro real: recibos y pos efectivos; inventarios solo también', () => {
+  it('registro real: con recibos, pos e inventarios los tres son efectivos; inventarios solo también', () => {
     const ms = registroPlataforma.listar();
-    expect(modulosEfectivos(ms, ['recibos', 'pos'])).toEqual(['recibos', 'pos']);
-    expect(validarEncendido(ms, ['recibos', 'pos'])).toEqual({ ok: true });
+    expect(modulosEfectivos(ms, ['recibos', 'pos', 'inventarios'])).toEqual(['recibos', 'pos', 'inventarios']);
+    expect(validarEncendido(ms, ['recibos', 'pos', 'inventarios'])).toEqual({ ok: true });
     expect(modulosEfectivos(ms, ['inventarios'])).toEqual(['inventarios']);
+  });
+  it('registro real: pos requiere inventarios (D1); sin él no es efectivo y el error lo nombra', () => {
+    const ms = registroPlataforma.listar();
+    expect(modulosEfectivos(ms, ['recibos', 'pos'])).toEqual(['recibos']);
+    const v = validarEncendido(ms, ['recibos', 'pos']);
+    expect(v.ok).toBe(false);
+    if (!v.ok) expect(v.errores).toContain('pos requiere inventarios, que no está encendido');
+  });
+  it('registro real: consola requiere inventarios; website requiere consola e inventarios', () => {
+    const ms = registroPlataforma.listar();
+    expect(modulosEfectivos(ms, ['consola'])).toEqual([]);
+    expect([...modulosEfectivos(ms, ['consola', 'inventarios'])].sort()).toEqual(['consola', 'inventarios']);
+    expect(modulosEfectivos(ms, ['website', 'consola'])).toEqual([]);
+    expect(modulosEfectivos(ms, ['website', 'inventarios'])).toEqual(['inventarios']);
+    expect([...modulosEfectivos(ms, ['website', 'consola', 'inventarios'])].sort()).toEqual(['consola', 'inventarios', 'website']);
+    const v = validarEncendido(ms, ['website']);
+    expect(v.ok).toBe(false);
+    if (!v.ok) {
+      expect(v.errores).toContain('website requiere consola, que no está encendido');
+      expect(v.errores).toContain('website requiere inventarios, que no está encendido');
+    }
   });
   it('ignora ids desconocidos', () => {
     expect(modulosEfectivos(manifiestos, ['fantasma'])).toEqual([]);

@@ -11,6 +11,7 @@ import type { ManifiestoModulo } from '@novutienda/nucleo';
  */
 export const manifiestoPlataforma: ManifiestoModulo = {
   id: 'plataforma',
+  zona: 'plataforma',
   version: '0.1.0',
   dependeDe: ['nucleo'],
   submodulos: [],

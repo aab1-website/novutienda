@@ -415,16 +415,33 @@ export function crearRegistro<M extends ManifiestoBase = ManifiestoBase>(): Regi
         }
         estado.set(id, 'visitando');
         for (const d of m.dependeDe) visitar(d, [...camino, id]);
-        for (const d of Array.isArray(m.requiere) ? m.requiere : []) {
-          if (modulos.has(d)) visitar(d, [...camino, id]);
-          else if (!(NO_ENCENDIBLES as readonly string[]).includes(d)) {
-            throw new ErrorRegistro(`Requiere ausente: ${id} requiere ${d}, que no está registrado`);
-          }
-        }
         estado.set(id, 'listo');
         orden.push(id);
       };
       for (const id of modulos.keys()) visitar(id, []);
+      // El orden alimenta las reglas generadas y solo depende de `dependeDe`; `requiere` es de
+      // ejecución: aquí únicamente se valida (ausentes y ciclos sobre el grafo unión), sin alterar `orden`.
+      const requeridos = (m: M): readonly IdModulo[] => (Array.isArray(m.requiere) ? m.requiere : []);
+      const marca = new Map<IdModulo, 'visitando' | 'listo'>();
+      const validar = (id: IdModulo, camino: readonly IdModulo[]): void => {
+        const actual = marca.get(id);
+        if (actual === 'listo') return;
+        if (actual === 'visitando') {
+          throw new ErrorRegistro(`Ciclo de dependencias: ${[...camino, id].join(' -> ')}`);
+        }
+        const m = modulos.get(id);
+        if (m === undefined) return;
+        marca.set(id, 'visitando');
+        for (const d of m.dependeDe) validar(d, [...camino, id]);
+        for (const d of requeridos(m)) {
+          if (modulos.has(d)) validar(d, [...camino, id]);
+          else if (!(NO_ENCENDIBLES as readonly string[]).includes(d)) {
+            throw new ErrorRegistro(`Requiere ausente: ${id} requiere ${d}, que no está registrado`);
+          }
+        }
+        marca.set(id, 'listo');
+      };
+      for (const id of modulos.keys()) validar(id, []);
       return orden;
     },
     rutas,

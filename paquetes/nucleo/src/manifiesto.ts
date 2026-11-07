@@ -4,6 +4,7 @@ import type { ManifiestoModulo } from './registro/tipos.js';
 export const manifiestoNucleo: ManifiestoModulo = {
   id: 'nucleo',
   version: '0.1.0',
+  zona: 'nucleo',
   dependeDe: [],
   submodulos: [],
   colecciones: [
@@ -21,4 +22,6 @@ export const manifiestoNucleo: ManifiestoModulo = {
   ],
   emite: [],
   consume: [],
+  // L2: la corrida recorre todos los tenants (ejecutarCotizaciones); el horario espeja a la Cloud Function.
+  programadas: [{ id: 'cotizacion', horario: '0 7,13,19 * * *', zonaHoraria: 'America/La_Paz', porTenant: true }],
 };
