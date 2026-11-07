@@ -83,7 +83,7 @@ Los cruces heredados se listan en `pruebas/fronteras/deuda.json` (ruta, import, 
 | Puertos módulo↔módulo (consola→inventarios, pos→inventarios, recibos→db) | existen como código, sin documento | `plataforma/adaptadores/*.ts` → documentar en `docs/arquitectura/coordinador.md` |
 | Callable por módulo `{accion, tenantId, datos}` con esquema zod y rol | existe | `llamadas/marco.ts`, `docs/produccion/funciones.md` |
 | API externa NovuChat v1 / v1.1 | existe, acordado | `docs/integracion-novuchat.md`, `docs/contratos/propiedades-de-producto-v1.1.md` |
-| **Pantallas, acciones y programadas que aporta cada módulo** | **falta**: hoy el menú filtra por rol, no por módulo | campos nuevos del manifiesto: `zona`, `pantallas[]`, `acciones[]`, `programadas[]` |
+| **Pantallas, acciones y programadas que aporta cada módulo** | **falta** (L2-1): hoy el menú filtra por rol, no por módulo | campos nuevos del manifiesto: `zona`, `pantallas[]`, `acciones[]`, `programadas[]`, `requiere[]` (formas abajo) |
 | **Colección raíz y almacenamiento del manifiesto** (L1) | **falta**: campos opcionales nuevos, ver abajo | `ambito` en `ColeccionManifiesto`, `almacenamiento` en el manifiesto |
 | **Encendido por tenant** (`Tenant.modulos`) | existe el dato, no el uso | el marco de callables y el menú del panel consultan `modulos` del tenant |
 
@@ -92,6 +92,14 @@ Los cruces heredados se listan en `pruebas/fronteras/deuda.json` (ruta, import, 
 - `ambito?: 'tenant' | 'raiz'` en `ColeccionManifiesto` (por omisión `tenant`). Una colección `raiz` tiene un solo segmento de ruta distinto de `tenants`, `lectura: []`, `escritura: 'servidor'` y no lleva `limite`. El registro rechaza cualquier otra combinación.
 - `almacenamiento?` en el manifiesto: rutas de Storage relativas a `tenants/{t}/`, cada una con `lectura: 'servidor' | 'publica'` y `escritura: 'servidor' | { tipo: 'subidaReservada', roles, reserva, archivos: [{ tipo, bytesMax, contentType }] }`. `scripts/generar-reglas.mjs` genera `storage.rules` desde el registro (L1-c), igual que `firestore.rules`; no se amplía a mano.
 - **Contrato de la reserva:** los campos `estado`, `venceEn`, `productoId`, `por`, `bytes` y `tipo` del documento de reserva son contrato con `paquetes/consola/src/medios/subidas.ts`; cambiarlos exige cambiar ambos lados en el mismo PR.
+
+**Campos de L2 en el manifiesto** (todos opcionales y aditivos; los define L2-1, se declaran en L2-2):
+
+- `zona?: 'nucleo' | 'central' | 'plataforma' | 'modulo'`. **`NO_ENCENDIBLES = nucleo, panel, plataforma`** es una lista cerrada y es exactamente el conjunto de ids con `zona` distinta de `modulo`; `registro.test.ts` la fija.
+- `pantallas?: { id, titulo, roles, orden, tituloPorRol? }[]`: de ellas salen el menú y los roles del panel.
+- `acciones?: { callable, nombre, roles, propietario? }[]`: `callable` y `nombre` cumplen `^[a-z][a-zA-Z0-9]*$`; de ellas salen los roles de los callables. Una acción con `propietario` no cabe en zona `nucleo`.
+- `programadas?: { id, horario, zonaHoraria, porTenant: boolean }[]`: de ellas salen los parámetros de las programadas (los nombres exportados por Functions siguen estáticos; una prueba exige que el conjunto exportado sea el del registro).
+- `requiere?: IdModulo[]`: dependencias de ejecución por puertos (D1 de §6.7). No puede nombrar al propio módulo.
 
 ## 5. Inventario: pieza → zona → destino (resumen; el detalle lo da `scripts/zonas.mjs`)
 
@@ -194,6 +202,46 @@ T4 actualiza además los **cuatro archivos de `conectores/firebase/`** (antes `a
 - `publico/**` se mantiene **amplio** (lectura pública); no se parte en L1.
 - Las colecciones raíz y las rutas de Storage se declaran con `ambito` y `almacenamiento` (§4).
 
+### 6.7 Enmienda L2 (06/11/2026): encendido por tenant y manifiesto completo
+
+Plan: `NOVUTIENDA_plan-L2-encendido-por-tenant_2026-11-06.md` (en `~/CLAUDE_DESCARGAS/`). Un PR por bloque L2-0…L2-9 (§7).
+
+**Alcance (los 8 puntos de H3):**
+1. Campo `zona` en los manifiestos y lista cerrada `NO_ENCENDIBLES` (§4).
+2. `pantallas[]`, `acciones[]` y `programadas[]` (y `requiere[]`); de ellos salen los roles del panel, el menú, los roles de los callables y los parámetros de las programadas.
+3. Encendido en ejecución: el marco de callables, el menú y las programadas consultan `Tenant.modulos`, respetando `dependeDe` y `requiere`.
+4. Alta de tenant desde `tenants/<t>/config.json` y dueño para el documento `tenants/{t}` (manifiesto `plataforma`).
+5. El doble sale de la composición de `servicios.ts`; `deuda.json` vacío.
+6. `publico/**` acotado.
+7. Prueba que ata la plantilla `reservaValida` a consola; el emulador de Storage se exige.
+8. Método: este plano, pre-commit y `.claude/zona`.
+
+**Lo que no entra, y por qué:**
+- **Encendido en HTTP (`api`), en el bus `eventos` y en el disparador `subidaFinalizada`: L3.** HTTP es de un solo tenant por construcción y hacerlo multitenant toca la API de NovuChat, que no cambia. Al bus solo llegan eventos de módulos que ya pasaron el control del callable. El disparador solo recibe archivos con reserva, que exige el callable `medios`, ya controlado.
+- **Versiones de módulo por tenant:** L2 solo mira si el módulo está encendido; hoy nadie lee la versión.
+- **Paso `reglas:verificar` en el job `calidad`:** ya lo cubre `pruebas/reglas/generador.test.ts`, que corre en `calidad`. Se descarta.
+- **`.claude/zona` del coordinador:** no hay worktrees vigentes y `.claude/agents/coordinador.md` ya trae las rutas nuevas; pasa a ser un paso de arranque de cada worktree, sin PR.
+
+**Regla: el control de encendido es por dueño de la acción, no por callable.** El callable `consola` lleva acciones de Central (usuarios); una acción de un manifiesto con `zona` distinta de `modulo` no se controla. Controlar por callable apagaría la gestión de usuarios.
+
+**Decisiones de Andres del 06/11/2026 (botones):**
+- **D1: campo `requiere[]`.** Dependencias de ejecución por puertos (pos→inventarios, consola→inventarios, website→consola e inventarios). Cuenta para el encendido y el alta, **no autoriza importaciones**; `dependeDe` queda sin cambios. Descartado sumarlas a `dependeDe` (aflojaría la frontera) y descartado no declararlas («pos sin inventarios» fallaría al ejecutar).
+- **D2: `tenants/<t>/config.json` v2** = `{ version: 2, plan, zonaHoraria, monedas, modulos: [ids] }`, con las versiones tomadas del manifiesto. Casa Bermejo con inventarios, pos, recibos, consola y website. Descartadas la copia literal del documento `Tenant` y mantener `modulosActivos`.
+- **D3: acción central `modulosActivos` en el callable `consola`**, como las de usuarios (sin Function nueva). Descartados un callable nuevo y el claim.
+- **D4: `publico/**` se acota a `publico/medios/**` en L2-8** (reduce permisos).
+- **D5: el encendido en L2 llega a callables, menú y programadas.** HTTP, bus y disparador, a L3.
+
+**Lo que el plano tenía mal o incompleto:**
+1. «Pre-commit `--all-files` limpio en main» no puede cumplirse: `no-commit-to-branch` falla siempre sobre `main`. Se mide en una rama que parte de `main`, o con `SKIP=no-commit-to-branch`.
+2. §7 estimaba L2 en 1,5 jornadas; son unas 4 a 5.
+3. `dependeDe` no recoge las dependencias de ejecución por puertos (D1).
+4. `tenants/casa-bermejo/config.json` contradecía al documento de staging y al tipo `Tenant` (D2).
+5. `index.ts` no puede derivar sus exportaciones del registro (Firebase necesita nombres estáticos): se derivan los parámetros y una prueba exige que el conjunto exportado sea el del registro.
+6. El callable `consola` lleva acciones de Central: el control es por dueño de la acción.
+7. El registro prohíbe la raíz `tenants`: darle dueño exige una excepción explícita limitada al manifiesto `plataforma`.
+8. El paso `reglas:verificar` en `calidad` ya existe a través de `generador.test.ts`.
+9. Las fixtures de emulador siembran `modulos: {}`: sin cambiarlas, el control de L2-6 tumbaría `test:funciones`.
+
 ## 7. Camino, por tandas y fases
 
 | # | Qué | Prueba | Despliega | Jornadas |
@@ -205,7 +253,17 @@ T4 actualiza además los **cuatro archivos de `conectores/firebase/`** (antes `a
 | **T4** | `limite-tasa` y HMAC al núcleo con reexportación transitoria | unitarias de núcleo, funciones | no | 0,5 |
 | **T5** | (06/11/2026, PR 23) Retirados los puentes transitorios de T4 (`website/src/api/limite-tasa.ts`, `inventarios/src/firma.ts`); entrada `@novutienda/nucleo/servidor` para lo que depende de Node (firma HMAC); observaciones 2 y 3 de H2 | unitarias de núcleo, funciones, build del panel | no | 0,5 |
 | **L1** | Colecciones con dueño: `alertas`, `reconstrucciones`, `novuchatTokens`, `limitesTasa`; `storage.rules` generado | matriz negativa de reglas regenerada | sí (reglas) | 1 |
-| **L2** | Manifiesto con `zona`, `pantallas`, `acciones`, `programadas`; menú y marco consultan `Tenant.modulos`; `tenants/<t>/config.json` leído por el alta | registro.test ampliado; prueba «módulo apagado → `permission-denied` y sin pantalla» | sí | 1,5 |
+| **L2-0** | Método: esta enmienda (§6.7), §7 y §8, `zonas.md`, `@novutienda/panel/manifiesto` como Central en `zonas.ts`, `ESTADO.md` | fronteras en verde; 0 sin zona | no | 0,2 |
+| **L2-1** | Contrato del manifiesto sin efecto: `zona`, `pantallas`, `acciones`, `programadas`, `requiere`; `tenant/encendido.ts` (`modulosEfectivos`, `validarEncendido`) | `pruebas/tenant/encendido.test.ts`; `registro.test.ts` (rechazos, `NO_ENCENDIBLES`); `reglas:verificar` idéntico | no | 0,4 |
+| **L2-2** | Cada manifiesto declara lo que aporta (incl. `paquetes/panel/src/manifiesto.ts`, Central); conformidad con las tablas actuales de `llamadas/*.ts`, `ITEMS_MENU` y los `onSchedule` | 5 casos de conformidad en `registro.test.ts`; comportamiento sin cambios | no | 0,5 |
+| **L2-3** | El servidor deriva del manifiesto: `tablaDeCallable`, `onSchedule` con horario del registro, exportaciones = registro | `exportaciones.test.ts`; conformidad de acciones sin cambiar su contenido; `test:funciones` | sí | 0,6 |
+| **L2-4** | El panel deriva del manifiesto: `api/real.ts` sin tabla a mano, menú desde `pantallas`, mapa id → componente en el compositor; generador `scripts/registro-panel.mjs` | `pantallas.test.ts`, `generado.test.ts`; `util.test.ts` y `contrato.test.ts` sin cambiar | no | 0,5 |
+| **L2-5** | Alta de tenant (`plataforma/operador/alta.ts`, `scripts/alta-tenant.mjs`) y dueño del documento raíz `tenants/{t}` (manifiesto `plataforma`); `config.json` v2 | `alta.test.ts`; mutante «lectura abierta en `tenants/{t}`»; diff de reglas = un bloque `if false` | sí (reglas; alta en staging) | 0,6 |
+| **L2-6** | Encendido en ejecución: marco, `porTenant` y menú consultan `Tenant.modulos`; acción `modulosActivos` | «módulo apagado → `permission-denied` y sin pantalla»; «pos sin recibos rechazado»; `test:funciones` | sí | 0,8 |
+| **L2-7** | El doble de `servicios.ts` sale de la composición (`doble/arranque.tsx`); `deuda.json` vacío | `pnpm zonas` en 0 cruces; humo del panel | no | 0,3 |
+| **L2-8** | `publico/**` → `publico/medios/**` (dueño consola); `CAMPOS_RESERVA` atado a la plantilla; Storage exigido en pruebas | contrato de reserva; negativo `publico/otro`; matriz y mutantes | sí (Storage, más restrictivo) | 0,5 |
+| **L2-9** | Higiene del pre-commit (5 archivos hallados) | pre-commit limpio en una rama desde `main` | no | 0,1 |
+| **L3** | Encendido en HTTP (`api`), bus `eventos` y disparador `subidaFinalizada`; **antes del tercer tenant o de un tenant sin website** | por definir | sí | por definir |
 
 Cada PR declara costo en tres unidades: escrituras en GitHub y corridas de CI, escrituras en la nube (0 en T0–T4), y **cero cambios de contrato** con NovuChat. Precondición de toda tanda: baseline local en verde (`pnpm test`, `lint`, `typecheck`, `reglas:verificar`, `build -- --mode staging`, `test:funciones`).
 
@@ -214,17 +272,17 @@ Cada PR declara costo en tres unidades: escrituras en GitHub y corridas de CI, e
 | Agente | Zona de escritura | Tandas |
 |---|---|---|
 | `metodo` | `docs/`, `.claude/`, `CLAUDE.md`, `CODEOWNERS`, `scripts/zonas.mjs`, `pruebas/fronteras/` | T0 |
-| `coordinador` | `plataforma/funciones/servidor/` (salvo los archivos de módulo y `llamadas/usuarios.ts`), `plataforma/adaptadores|coordinador/`, `pruebas/{funciones,integracion}/` | T1, T3 |
+| `coordinador` | `plataforma/funciones/servidor/` (incluida `programadas/cotizacion.ts`, T1; salvo los archivos de módulo y `llamadas/usuarios.ts`), `plataforma/adaptadores|coordinador/`, `pruebas/{funciones,integracion}/` | T1, T3 |
 | `central` | `paquetes/panel/src/` salvo las piezas de módulo (§5.1), `llamadas/usuarios.ts`, `pruebas/panel/` | T1, T2 |
 | `modulo:<m>` | `paquetes/<m>/`, `panel/src/pantallas/<m>/` y sus piezas (§5.1), `llamadas/<m>.ts` (consola incluye `medios.ts`, `trigger-medios.ts`, `disparador-sitio.ts`; recibos incluye `enlace-pdf.ts`), `pruebas/<m>/` | T2, L1, L2 |
-| `nucleo` | `paquetes/nucleo/`, `redondeo.ts`, `notificador.ts`, `programadas/cotizacion.ts`, `pruebas/{identidad,limites,tipo-cambio,reglas,tenant}/` | T4, L1 |
+| `nucleo` | `paquetes/nucleo/`, `redondeo.ts`, `notificador.ts`, `pruebas/{identidad,limites,tipo-cambio,reglas,tenant}/` | T4, L1 |
 | `seguridad` | solo lectura | cada PR que toque reglas, IAM, secretos o Functions expuestas |
 
 **Regla de integración dura** (nada se fusiona si falla una): `fronteras.test.ts` y `registro.test.ts` en verde; todas las suites sin quitar un caso (en tandas T, sin tocar su contenido); `reglas:verificar` idéntico en tandas T; costo declarado; revisión de `seguridad` cuando toque. Un escritor por archivo; ramas desde `main`; un PR por tanda; la sesión principal concilia `CLAUDE.md` y `docs/`.
 
 **Quién autoriza:** cada fusión de tanda la autoriza Andres con un botón por PR (aprobación en GitHub ejecutada por Claude como `segurolotengopy`, con constancia); la revisora comprueba el hito contra este documento y el código antes de que Andres autorice la fase siguiente.
 
-**Hitos:** H0 = este documento aprobado (05/11/2026, con observaciones incorporadas); H1 = T0 fusionada (frontera ampliada en CI); H2 = T1–T4 fusionadas (cero cruces en la medición); H3 = L1; H4 = L2. Cada hito se cierra con informe (PR, sha, números reales, costo, lo que quedó fuera, lo que el plano tenía mal) y espera el OK de Andres.
+**Hitos:** H0 = este documento aprobado (05/11/2026, con observaciones incorporadas); H1 = T0 fusionada (frontera ampliada en CI); H2 = T1–T4 fusionadas (cero cruces en la medición); H3 = L1; H4 = L2 completa (L2-0…L2-9; HTTP, bus y disparador quedan en L3). Cada hito se cierra con informe (PR, sha, números reales, costo, lo que quedó fuera, lo que el plano tenía mal) y espera el OK de Andres.
 
 ## 9. Cómo se sostiene
 

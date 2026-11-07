@@ -1,6 +1,6 @@
 # Estado del proyecto
 
-Última actualización: 05/11/2026 (T0 del plano por zonas).
+Última actualización: 06/11/2026 (L1 cerrada, L2 planificada).
 
 **El estado vivo de la arquitectura no se escribe aquí: lo imprime `pnpm zonas`** (pieza → zona, archivos
 sin zona, cruces de importación y qué deuda queda). Lo que sigue son hitos y pendientes que no se
@@ -18,6 +18,7 @@ derivan del código; las cifras caducan y por eso no se copian.
 - Arquitectura por zonas, tanda T0 (rama `metodo/t0-zonas`): zona por archivo y deuda que solo baja (`pruebas/fronteras/`),
   medición `pnpm zonas`, agentes por zona con gancho de zona de escritura, `docs/arquitectura/{zonas,coordinador,zona-de-escritura}.md`,
   `CLAUDE.md` con la regla de zonas, `CODEOWNERS` por carpetas reales, frontera en el pre-commit. Sin mover ni cambiar lógica.
+- Arquitectura por zonas, tandas T1 a T4 fusionadas (H2, PR 18 a 22) y L1 cerrada (PR 23 a 27: T5, L1-0, L1-a, L1-b, L1-c): colecciones con dueño y `storage.rules` generado; hito H3 aprobado el 06/11/2026.
 
 ## Bloqueos registrados el 04/11/2026 (confirmar si siguen; el CI de `main` ya está en verde)
 
@@ -27,9 +28,8 @@ derivan del código; las cifras caducan y por eso no se copian.
 
 ## Pendiente
 
-- L1 (colecciones con dueño): plan aprobado el 06/11/2026; en curso por PR (L1-0 método, L1-a contrato de raíz, L1-b Firestore, L1-c Storage).
-- Tandas T1–T5 hechas (mover sin cambiar lógica); fases L1–L2 (colecciones con dueño; encendido por tenant), **después del primer despliegue
-  a staging** (decisión del 05/11/2026). La deuda inicial y lo que resuelve cada tanda está en `pruebas/fronteras/deuda.json`.
+- L2 (encendido por tenant y manifiesto completo): planificada, bloques L2-0 a L2-9. Plan: `NOVUTIENDA_plan-L2-encendido-por-tenant_2026-11-06.md`
+  (en `~/CLAUDE_DESCARGAS/`); decisiones D1 a D5 y alcance en el plano §6.7; filas en §7. L3 (HTTP, bus, disparador) queda para antes del tercer tenant.
 - Pase a staging (`docs/produccion/pase-a-staging.md`): proyecto, facturación, Firestore/Storage, Hosting, WIF, secretos, App Check,
   variables y Environments de GitHub, rulesets, alerta de Monitoring.
 - Decisiones de Andres: D2 a D5 del plan único (proyectos Firebase, ubicación de Firestore —se propone `us-east1`—, segundo aprobador,
