@@ -4,18 +4,11 @@ import { describe, expect, it } from 'vitest';
 import type { CopiaCotizacion } from '@novutienda/nucleo';
 import { preciosDelDia } from '@novutienda/consola';
 import { ErrorApi, mensajeDeError, NOMBRES_CALLABLE, REDONDEO, ROLES_ACCION, ROLES_CALLABLE, TRADUCCION, precioDeVenta, usd, type NombreCallable } from '@novutienda/panel';
+import { tablasCompuestas } from '../funciones/tablas.js';
 import { REDONDEO_POR_DEFECTO } from '../../plataforma/funciones/servidor/redondeo.js';
-import { accionesConsola } from '../../plataforma/funciones/servidor/llamadas/consola.js';
-import { accionesInventarios } from '../../plataforma/funciones/servidor/llamadas/inventarios.js';
-import { accionesMedios } from '../../plataforma/funciones/servidor/llamadas/medios.js';
-import { accionesPos } from '../../plataforma/funciones/servidor/llamadas/pos.js';
-import { accionesRecibos } from '../../plataforma/funciones/servidor/llamadas/recibos.js';
-import { accionesUsuarios } from '../../plataforma/funciones/servidor/llamadas/usuarios.js';
 
-// El callable `consola` se compone en index.ts con las acciones de usuarios (Central): misma composición aquí.
-const SERVIDOR: Readonly<Record<string, Readonly<Record<string, { readonly roles: readonly string[]; readonly propietario: boolean }>>>> = {
-  pos: accionesPos, inventarios: accionesInventarios, consola: { ...accionesConsola, ...accionesUsuarios }, recibos: accionesRecibos, medios: accionesMedios,
-};
+// Los roles salen de las tablas compuestas (implementaciones de los bordes + registro, como en index.ts; el callable `consola` lleva las de usuarios).
+const SERVIDOR: Readonly<Record<string, Readonly<Record<string, { readonly roles: readonly string[]; readonly propietario: boolean }>>>> = tablasCompuestas();
 const real = (clave: string): { roles: readonly string[] } | undefined => {
   const [modulo = '', accion = ''] = clave.split('.');
   return SERVIDOR[modulo]?.[accion];
