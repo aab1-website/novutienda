@@ -368,8 +368,8 @@ del despliegue fallan a propósito. Verificar en staging el origen del límite d
    devuelve vacío y la API responde `503 sin_cotizacion` aunque todo esté desplegado). Se crea con el Admin SDK (autenticado como el
    operador, `GOOGLE_CLOUD_PROJECT=<P>`): `tenants/<t>` = `{ plan: 'base', zonaHoraria: 'America/La_Paz', monedas: ['BOB','USD','ARS'],
    modulos: { nucleo|inventarios|pos|recibos|consola|website: { version: '1.0.0', submodulos: [] } } }` (forma de `validarTenant`). La
-   configuración de redondeo rige por defecto sin documento (`redondeo.ts`). Pendiente del método: un script `alta-tenant.mjs` que lea
-   `tenants/<t>/config.json` (fase L2 del plano de arquitectura).
+   configuración de redondeo rige por defecto sin documento (`redondeo.ts`). Hoy se hace con `scripts/alta-tenant.mjs` a partir de
+   `tenants/<t>/config.json`: ficha del operador en `docs/produccion/alta-de-tenant.md`.
 1. Usuarios: crear las cuentas del personal en Auth (correo y contraseña, correo verificado) y asignar roles con `consola.asignarRol` —
    el propietario de la plataforma entra con Google y el claim `p` (procedimiento del núcleo).
 2. Token de NovuChat: `node plataforma/funciones/scripts/token-novuchat.mjs registrar` contra staging y entrega a n8n sin mostrarlo.

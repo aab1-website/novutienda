@@ -12,5 +12,9 @@ corrido contra un staging real. Requisitos antes de crearlo:
 3. Un merge a `main` previo debe haber desplegado a staging y pasado
    `dast-y-humo` en verde; el tag se crea sobre ese commit.
 
+4. **Alta de cada tenant en producción**, antes del tag (ficha: `docs/produccion/alta-de-tenant.md`): `--verificar`, mostrar el diff,
+   `--aplicar` con el «sí» de Andres y volver a `--verificar` hasta que diga que el documento coincide. Sin el documento `tenants/{t}`
+   todas las acciones de módulo quedan rechazadas y las programadas no tienen a quién correr.
+
 No se relaja la exigencia vaciando la variable ni quitando el job: configurar
 staging es parte del pase a producción (ver `/pase-a-produccion`).

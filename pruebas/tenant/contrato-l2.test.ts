@@ -142,3 +142,29 @@ describe('encendido hostil', () => {
     expect(r.ok).toBe(false);
   });
 });
+
+describe('roles vacíos y fuera de lista', () => {
+  const acc = (extra: Record<string, unknown>) => ({ callable: 'ventas', nombre: 'anular', roles: ['caj'], ...extra });
+  it('rechaza una acción con roles vacíos y sin propietario', () => {
+    expect(rechaza(m('x', { acciones: [acc({ roles: [] })] }))).toThrow(/vacío/);
+    expect(rechaza(m('x', { acciones: [acc({ roles: [], propietario: false })] }))).toThrow(/vacío/);
+  });
+  it('acepta roles vacíos solo con propietario', () => {
+    expect(rechaza(m('x', { acciones: [acc({ roles: [], propietario: true })] }))).not.toThrow();
+  });
+  it('rechaza una pantalla con roles vacíos', () => {
+    expect(rechaza(m('x', { pantallas: [{ ...pant, roles: [] }] }))).toThrow(/vacío/);
+  });
+  it('un rol fuera de la lista sigue rechazado', () => {
+    expect(rechaza(m('x', { acciones: [acc({ roles: ['otro'] })] }))).toThrow(/rol inválido/);
+    expect(rechaza(m('x', { pantallas: [{ ...pant, roles: ['otro'] }] }))).toThrow(/rol inválido/);
+  });
+  it('los roles de una acción o pantalla tipada son Rol, no string', () => {
+    const tipada: ManifiestoModulo = {
+      ...m('x'),
+      // @ts-expect-error 'otro' no es un Rol
+      acciones: [{ callable: 'ventas', nombre: 'anular', roles: ['otro'] }],
+    };
+    expect(tipada.id).toBe('x');
+  });
+});

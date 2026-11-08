@@ -46,14 +46,14 @@ export type ConModulo<T> = T & { readonly modulo: string };
 export interface PantallaBase {
   readonly id: string;
   readonly titulo: string;
-  readonly roles: readonly string[];
+  readonly roles: readonly RolBase[];
   readonly orden: number;
-  readonly tituloPorRol?: Partial<Record<string, string>> | undefined;
+  readonly tituloPorRol?: Partial<Record<RolBase, string>> | undefined;
 }
 export interface AccionBase {
   readonly callable: string;
   readonly nombre: string;
-  readonly roles: readonly string[];
+  readonly roles: readonly RolBase[];
   readonly propietario?: boolean | undefined;
 }
 export interface ProgramadaBase {
@@ -77,7 +77,10 @@ const NOMBRE_L2 = /^[a-z][a-zA-Z0-9]*$/;
 const ID_MODULO = /^[a-z][a-z0-9-]*$/;
 const HORARIO = /^(?:[0-9*/,\- ]+|every [1-9][0-9]* (?:minutes|hours)|every day (?:[01][0-9]|2[0-3]):[0-5][0-9])$/;
 const ZONAS = ['nucleo', 'central', 'plataforma', 'modulo'];
-const ROLES = ['caj', 'sup', 'adm'];
+const ROLES = ['caj', 'sup', 'adm'] as const;
+/** Mismo conjunto que `Rol` de tipos.ts (sin importarlo). Si divergen, deja de compilar: `crearRegistro<ManifiestoModulo>` en plataforma/registro.ts y la asignación de roles en plataforma/coordinador/encendido.ts exigen que coincidan. */
+export type RolBase = (typeof ROLES)[number];
+const esRol = (r: unknown): r is RolBase => (ROLES as readonly unknown[]).includes(r);
 /** Único manifiesto que puede declarar la raíz `tenants` (mismo valor que scripts/generar-reglas.mjs). */
 const ID_DUENO_TENANTS = 'plataforma';
 const LIMITES = ['productos', 'usuarios', 'cajas', 'almacenes'];
@@ -128,11 +131,11 @@ function validar(m: ManifiestoBase): void {
       throw new ErrorRegistro(`La ruta "${c.ruta}" no es una colección válida de Firestore (número par de segmentos)`);
     }
     for (const r of c.lectura) {
-      if (!ROLES.includes(r)) throw new ErrorRegistro(`Rol inválido en ${m.id}/${c.ruta}: ${r}`);
+      if (!esRol(r)) throw new ErrorRegistro(`Rol inválido en ${m.id}/${c.ruta}: ${r}`);
     }
     if (c.escritura !== 'servidor') {
       for (const r of c.escritura) {
-        if (!ROLES.includes(r)) throw new ErrorRegistro(`Rol inválido en ${m.id}/${c.ruta}: ${r}`);
+        if (!esRol(r)) throw new ErrorRegistro(`Rol inválido en ${m.id}/${c.ruta}: ${r}`);
       }
     }
     if (c.limite !== undefined && !LIMITES.includes(c.limite)) {
@@ -157,10 +160,14 @@ function validar(m: ManifiestoBase): void {
   validarL2(m);
 }
 
-function validarRoles(donde: string, roles: readonly string[]): void {
+function validarRoles(donde: string, roles: readonly string[], admiteVacia: boolean): void {
   if (!Array.isArray(roles)) throw new ErrorRegistro(`${donde}: roles debe ser una lista`);
+  // Lista vacía: una pantalla sería invisible y una acción sin propietario, inalcanzable.
+  if (roles.length === 0 && !admiteVacia) {
+    throw new ErrorRegistro(`${donde}: roles no puede estar vacío (inalcanzable o invisible)`);
+  }
   for (const r of roles) {
-    if (!ROLES.includes(r)) throw new ErrorRegistro(`${donde}: rol inválido ${String(r)}`);
+    if (!esRol(r)) throw new ErrorRegistro(`${donde}: rol inválido ${String(r)}`);
   }
 }
 
@@ -220,10 +227,10 @@ function validarL2(m: ManifiestoBase): void {
     ids.add(p.id);
     validarTexto(donde, 'titulo', p.titulo);
     if (!Number.isInteger(p.orden) || p.orden < 0) throw new ErrorRegistro(`${donde}: orden debe ser un entero >= 0`);
-    validarRoles(donde, p.roles);
+    validarRoles(donde, p.roles, false);
     const porRol = p.tituloPorRol ?? {};
     for (const [r, t] of Object.entries(porRol)) {
-      if (!ROLES.includes(r)) throw new ErrorRegistro(`${donde}: rol inválido en tituloPorRol: ${r}`);
+      if (!esRol(r)) throw new ErrorRegistro(`${donde}: rol inválido en tituloPorRol: ${r}`);
       validarTexto(donde, `tituloPorRol.${r}`, t);
     }
   }
@@ -235,7 +242,7 @@ function validarL2(m: ManifiestoBase): void {
     const par = `${a.callable}.${a.nombre}`;
     if (pares.has(par)) throw new ErrorRegistro(`${donde}: acción duplicada`);
     pares.add(par);
-    validarRoles(donde, a.roles);
+    validarRoles(donde, a.roles, a.propietario === true);
     if (a.propietario !== undefined && typeof a.propietario !== 'boolean') {
       throw new ErrorRegistro(`${donde}: propietario debe ser booleano`);
     }
@@ -295,7 +302,7 @@ function validarAlmacenamiento(m: ManifiestoBase, a: NonNullable<ManifiestoBase[
   }
   if (e.roles.length === 0) throw new ErrorRegistro(`${donde}: roles no puede estar vacío`);
   for (const r of e.roles) {
-    if (!ROLES.includes(r)) throw new ErrorRegistro(`${donde}: rol inválido ${r}`);
+    if (!esRol(r)) throw new ErrorRegistro(`${donde}: rol inválido ${r}`);
   }
   const reserva = m.colecciones.find((c) => c.ruta === e.reserva);
   if (reserva === undefined) {

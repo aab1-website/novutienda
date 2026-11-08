@@ -43,7 +43,7 @@ export function tablaDeCallable<I extends object>(
       faltan.push(d.nombre);
       continue;
     }
-    tabla[d.nombre] = { ...impl, roles: d.roles as readonly Rol[], propietario: d.propietario === true, modulo: d.modulo, requiereEncendido: !libres.includes(d.modulo) };
+    tabla[d.nombre] = { ...impl, roles: d.roles, propietario: d.propietario === true, modulo: d.modulo, requiereEncendido: !libres.includes(d.modulo) };
   }
   const nombres = new Set(declaradas.map((d) => d.nombre));
   const sobran = Object.keys(implementaciones).filter((n) => !nombres.has(n));
