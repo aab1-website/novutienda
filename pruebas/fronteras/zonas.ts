@@ -94,8 +94,8 @@ export const ZONA_POR_ARCHIVO: readonly ReglaZona[] = [
     zona: 'central',
     nota: 'T2 (H1, observación 2): el puerto `AlmacenSubidas` y la subida reanudable a Storage son transporte Central, como api/transporte.ts; la espera (`esperarSubida`) es consola y vive en pantallas/consola/',
   },
-  // Dobles del panel: material de prueba. Los de módulo, en `doble/<m>/` (T2); no pueden salir a pruebas/ porque
-  // servicios.ts (producción, modo humo) y el tsconfig del paquete los alcanzan solo dentro de src/.
+  // Dobles del panel: material de prueba. Los de módulo, en `doble/<m>/` (T2); no salen a pruebas/ porque el
+  // `rootDir: src` del paquete y el arranque `doble/arranque.tsx` los alcanzan solo dentro de src/ (servicios.ts ya no monta el doble).
   { patron: new RegExp(`^paquetes/panel/src/doble/(${M})/`), zona: 'pruebas:modulo:$1', nota: 'doble de módulo (T2)' },
   { patron: /^paquetes\/panel\/src\/doble\//, zona: 'pruebas:central', nota: 'doble del transporte y del estado' },
   { patron: /^paquetes\/panel\/src\/ayuda-pruebas\.ts$/, zona: 'pruebas:central' },

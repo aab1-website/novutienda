@@ -39,3 +39,6 @@ El panel único de gestión de Casa Bermejo es independiente de la consola de No
 
 ## 6. Propiedades de producto (v1.1 aditiva)
 Especificación acordada con NovuChat el 05/11/2026: `docs/contratos/propiedades-de-producto-v1.1.md`. No construida aún; el alcance para `casa-bermejo` es decisión aparte de Andres.
+
+## 7. Encendido por tenant y esta API
+El encendido de módulos por tenant rige hoy para callables, menú y programadas, pero **no** para la API HTTP (`/api/*`, incluidos los endpoints de NovuChat): su tenant es un parámetro fijo del despliegue y responde aunque `website` o `inventarios` estén apagados. Hoy no afecta porque hay un solo tenant con todo encendido; L3 lo cubre (plano §7).
