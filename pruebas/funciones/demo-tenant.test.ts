@@ -14,7 +14,7 @@ import { leerCsvProductos } from '@novutienda/inventarios';
 import { validarPlantilla } from '@novutienda/recibos';
 import { contenidoEjemplo } from '@novutienda/website';
 import {
-  planificarDemo, idsDeCatalogo, subidaIdDe, turnoIdDemo, uuidDeterminista, ventaIdDemo, VERSION_DEMO,
+  planificarDemo, idsDeCatalogo, lotesDeCatalogo, MAX_FILAS_CSV, subidaIdDe, turnoIdDemo, uuidDeterminista, ventaIdDemo, VERSION_DEMO,
   type EstadoDemo, type FixtureDemo, type OpcionesDemo, type Paso, type PlanDemo,
 } from '../../plataforma/operador/demo.js';
 import {
@@ -189,6 +189,94 @@ describe('planificador de la demostración (puro)', () => {
 
   it('las diferencias no traen correos ni identificadores', () => {
     for (const d of plan().diferencias) expect(d).not.toMatch(/@|u-sup|u-caj/);
+  });
+});
+
+describe('fixtures externos: 41 productos, lotes y retiro (puro)', () => {
+  const N = 41;
+  const cab = csv.split(/\r?\n/)[0] as string;
+  const idsExt = Array.from({ length: N }, (_, i) => `ext-prod-${String(i + 1).padStart(2, '0')}`);
+  const csvExt = `${[cab, ...idsExt.map((id) => `${id},Producto ${id},cat,,SKU-${id},false,,,100,100,,true,true,2,,`)].join('\r\n')}\r\n`;
+  // 14 fotos por ficha (más de 12) en un producto; el resto con una.
+  const fxExt: FixtureDemo = {
+    ...fx,
+    series: [], traspaso: { origenId: 'tienda', destinoId: 'tienda', lineas: [] }, pos: { ...fx.pos, ventas: [] },
+    fichas: idsExt.map((id, i) => ({
+      productoId: id,
+      ficha: { slug: `slug-${id}`, descripcion: 'd', garantia: 'g', estado: 'publicada', seo: {} },
+      fotos: Array.from({ length: i === 0 ? 14 : 1 }, (_, k) => ({ archivo: `${id}-${String(k)}.jpg`, alt: 'a' })),
+    })),
+  };
+  const bytes = Object.fromEntries(fxExt.fichas.flatMap((f) => f.fotos.map((x) => [x.archivo, 2_000_000])));
+  const opc: OpcionesDemo = { fotos: true, ventas: false, bytesFoto: bytes };
+  const base: EstadoDemo = { ...vacio, ubicaciones: fx.almacenes.map((a) => a.id) };
+
+  it('el CSV de 41 filas se parte en lotes de ≤50 con operacionId deterministas, sin perder ni repetir filas', () => {
+    expect(MAX_FILAS_CSV).toBe(50);
+    const l = lotesDeCatalogo(csvExt);
+    expect(l).toHaveLength(1);
+    const csv120 = `${[cab, ...Array.from({ length: 120 }, (_, i) => `p${String(i)},P,c,,S${String(i)},false,,,1,1,,true,true,,,`)].join('\r\n')}\r\n`;
+    const lotes = lotesDeCatalogo(csv120);
+    expect(lotes.map((x) => x.ids.length)).toEqual([50, 50, 20]);
+    for (const x of lotes) expect(leerCsvProductos(x.csv, true).length).toBe(x.ids.length);
+    expect(lotes.flatMap((x) => x.ids)).toEqual(idsDeCatalogo(csv120));
+    const pasos = planificarDemo(csv120, { ...fxExt, fichas: [] }, base, { ...opc, fotos: false }).pasos.filter((p) => p.etapa === 'catalogo');
+    expect(pasos.map((p) => (p.tipo === 'llamada' ? p.datos['operacionId'] : ''))).toEqual(['demo-v1-catalogo', 'demo-v1-catalogo-2', 'demo-v1-catalogo-3']);
+  });
+
+  it('con 41 productos y fichas de 14 fotos: el plan completo y, con el estado al día, cero pasos', () => {
+    expect(leerCsvProductos(csvExt, true)).toHaveLength(N);
+    const p = planificarDemo(csvExt, fxExt, base, opc);
+    expect(p.bloqueos).toEqual([]);
+    expect(p.pasos.filter((x) => x.etapa === 'fotos')).toHaveLength(14 + 40);
+    const medios: Record<string, string[]> = {};
+    const fichas: Record<string, Record<string, unknown>> = {};
+    for (const f of fxExt.fichas) {
+      medios[f.productoId] = f.fotos.map((_, i) => subidaIdDe(f.productoId, i + 1));
+      fichas[f.productoId] = { ...f.ficha, medios: f.fotos.map((foto, i) => ({ medioId: subidaIdDe(f.productoId, i + 1), alt: foto.alt })) };
+    }
+    const alDia: EstadoDemo = {
+      ...base, productos: idsExt, plantilla: fx.recibos.plantilla, configSitio: fx.sitio.config, fichas, medios,
+      tablero: { versionPublicada: 1, cambiosSinPublicar: 0 },
+      cuentas: { sup: { uid: 's', rolActual: 'sup' }, caj: { uid: 'c', rolActual: 'caj' } },
+    };
+    const otra = planificarDemo(csvExt, fxExt, alDia, opc);
+    expect(otra.pasos).toEqual([]);
+    expect(otra.bloqueos).toEqual([]);
+  });
+
+  it('--retirar-fuera-del-fixture: desactiva y despublica solo lo que sobra, sin borrar, y es idempotente', () => {
+    const visibles = [
+      ...idsExt.map((id) => ({ id, activo: true, publicado: true })),
+      { id: 'ejemplo-tv-55', activo: true, publicado: true },
+      { id: 'ejemplo-tv-65', activo: false, publicado: true },
+      { id: 'ya-retirado', activo: false, publicado: false },
+    ];
+    const estado: EstadoDemo = { ...base, productos: [...idsExt, 'ejemplo-tv-55', 'ejemplo-tv-65', 'ya-retirado'], productosVisibilidad: visibles };
+    const sin = planificarDemo(csvExt, fxExt, estado, opc);
+    expect(sin.pasos.some((x) => x.etapa === 'retiro')).toBe(false);
+    const con = planificarDemo(csvExt, fxExt, estado, { ...opc, retirarFueraDelFixture: true });
+    const retiros = con.pasos.filter((x) => x.etapa === 'retiro');
+    expect(retiros.map((x) => (x.tipo === 'llamada' ? x.datos : null))).toEqual([
+      { productoId: 'ejemplo-tv-55', cambios: { activo: false, publicado: false } },
+      { productoId: 'ejemplo-tv-65', cambios: { activo: false, publicado: false } },
+    ]);
+    for (const r of retiros) expect(r.tipo === 'llamada' && r.accion === 'editarProducto' && r.modulo === 'consola').toBe(true);
+    expect(con.diferencias).toContain('por retirar: 2');
+    expect(con.pasos.at(-1)?.etapa).toBe('publicacion');
+    // Segunda pasada: ya retirados.
+    const despues: EstadoDemo = { ...estado, productosVisibilidad: visibles.map((v) => (idsExt.includes(v.id) ? v : { ...v, activo: false, publicado: false })) };
+    expect(planificarDemo(csvExt, fxExt, despues, { ...opc, retirarFueraDelFixture: true }).pasos.filter((x) => x.etapa === 'retiro')).toEqual([]);
+  });
+
+  it('un lote existente solo en parte bloquea; otro lote ya completo no se vuelve a cargar', () => {
+    const csv60 = `${[cab, ...Array.from({ length: 60 }, (_, i) => `q${String(i)},P,c,,S${String(i)},false,,,1,1,,true,true,,,`)].join('\r\n')}\r\n`;
+    const primero = Array.from({ length: 50 }, (_, i) => `q${String(i)}`);
+    const reanuda = planificarDemo(csv60, { ...fxExt, fichas: [] }, { ...base, productos: primero }, { ...opc, fotos: false });
+    expect(reanuda.bloqueos).toEqual([]);
+    expect(reanuda.pasos.filter((x) => x.etapa === 'catalogo')).toHaveLength(1);
+    const parcial = planificarDemo(csv60, { ...fxExt, fichas: [] }, { ...base, productos: ['q3'] }, { ...opc, fotos: false });
+    expect(parcial.bloqueos.length).toBeGreaterThan(0);
   });
 });
 

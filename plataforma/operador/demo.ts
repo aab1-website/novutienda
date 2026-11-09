@@ -65,6 +65,8 @@ export interface EstadoDemo {
   readonly ubicaciones: readonly string[];
   /** Ids de productos existentes. */
   readonly productos: readonly string[];
+  /** Estado de visibilidad de cada producto existente (solo se usa con `retirarFueraDelFixture`). */
+  readonly productosVisibilidad?: readonly { readonly id: string; readonly activo: boolean; readonly publicado: boolean }[];
   /** Unidades con serie existentes, por serie → ubicación. */
   readonly series: Readonly<Record<string, string>>;
   readonly plantilla: Readonly<Record<string, unknown>> | null;
@@ -83,6 +85,8 @@ export interface OpcionesDemo {
   readonly ventas: boolean;
   /** Tamaño en bytes de cada archivo de `fotos/`. */
   readonly bytesFoto: Readonly<Record<string, number>>;
+  /** Desactiva y despublica (nunca borra) los productos del tenant que no están en el catálogo del fixture. */
+  readonly retirarFueraDelFixture?: boolean;
 }
 
 export interface PlanDemo {
@@ -109,15 +113,46 @@ export function subidaIdDe(productoId: string, n: number): string {
   return `dv1-${createHash('sha256').update(productoId).digest('hex').slice(0, 24)}-${String(n)}`;
 }
 
+/** Máximo de filas por importación de Inventarios (`MAX_LINEAS` del módulo): un CSV mayor se parte en lotes. */
+export const MAX_FILAS_CSV = 50;
+
+/** Registros de un CSV (cabecera aparte), respetando comillas con saltos de línea dentro de un campo. */
+function registrosCsv(csv: string): { cabecera: string; registros: string[] } {
+  const texto = csv.replace(/^\uFEFF/, '');
+  const todos: string[] = [];
+  let actual = '';
+  let comillas = false;
+  for (let i = 0; i < texto.length; i += 1) {
+    const ch = texto.charAt(i);
+    if (ch === '"') comillas = !comillas;
+    if (!comillas && (ch === '\n' || ch === '\r')) {
+      if (ch === '\r' && texto.charAt(i + 1) === '\n') i += 1;
+      if (actual.trim() !== '') todos.push(actual);
+      actual = '';
+    } else actual += ch;
+  }
+  if (actual.trim() !== '') todos.push(actual);
+  return { cabecera: todos[0] ?? '', registros: todos.slice(1) };
+}
+const idDeRegistro = (l: string): string => {
+  const m = /^"((?:[^"]|"")*)"|^([^,]*)/.exec(l);
+  return (m?.[1] !== undefined ? m[1].replace(/""/g, '"') : (m?.[2] ?? '')).trim();
+};
+
 /** Ids de producto (primera columna) de un CSV de Inventarios; admite campos entre comillas. */
 export function idsDeCatalogo(csv: string): string[] {
-  const ids: string[] = [];
-  const lineas = csv.replace(/^\uFEFF/, '').split(/\r?\n/).filter((l) => l.trim() !== '');
-  for (const l of lineas.slice(1)) {
-    const m = /^"((?:[^"]|"")*)"|^([^,]*)/.exec(l);
-    ids.push((m?.[1] !== undefined ? m[1].replace(/""/g, '"') : (m?.[2] ?? '')).trim());
+  return registrosCsv(csv).registros.map(idDeRegistro);
+}
+
+/** Parte el CSV en lotes de hasta `max` filas, cada uno con la cabecera; el orden y los ids se conservan. */
+export function lotesDeCatalogo(csv: string, max: number = MAX_FILAS_CSV): { csv: string; ids: string[] }[] {
+  const { cabecera, registros } = registrosCsv(csv);
+  const lotes: { csv: string; ids: string[] }[] = [];
+  for (let i = 0; i < registros.length; i += max) {
+    const trozo = registros.slice(i, i + max);
+    lotes.push({ csv: `${[cabecera, ...trozo].join('\r\n')}\r\n`, ids: trozo.map(idDeRegistro) });
   }
-  return ids;
+  return lotes;
 }
 
 const json = (x: unknown): string => JSON.stringify(ordenar(x));
@@ -168,15 +203,35 @@ export function planificarDemo(catalogoCsv: string, fx: FixtureDemo, estado: Est
     pasos.push(llamada('almacenes', 'inventarios', 'crearUbicacion', { operacionId: `${VERSION_DEMO}-ubicacion-${a.id}`, ubicacionId: a.id, nombre: a.nombre }));
   }
 
-  // 3) Catálogo con stock inicial (todo o nada: la carga inicial falla si algún producto ya existe).
+  // 3) Catálogo con stock inicial, en lotes de hasta 50 filas (límite de la importación). Cada lote es todo o nada:
+  // la carga inicial falla si algún producto ya existe. El primer lote conserva el operacionId `demo-v1-catalogo`.
   const ids = idsDeCatalogo(catalogoCsv);
+  const lotes = lotesDeCatalogo(catalogoCsv);
   const existentes = ids.filter((i) => estado.productos.includes(i));
-  if (existentes.length === 0) {
-    diferencias.push(`catálogo por cargar: ${String(ids.length)} productos`);
-    pasos.push(llamada('catalogo', 'inventarios', 'importarProductosCsv', { operacionId: `${VERSION_DEMO}-catalogo`, csv: catalogoCsv, cargaInicial: true }));
-  } else if (existentes.length < ids.length) {
+  let lotesPorCargar = 0;
+  let parcial = false;
+  lotes.forEach((lote, n) => {
+    const hay = lote.ids.filter((i) => estado.productos.includes(i)).length;
+    if (hay === 0) {
+      lotesPorCargar += 1;
+      pasos.push(llamada('catalogo', 'inventarios', 'importarProductosCsv', {
+        operacionId: n === 0 ? `${VERSION_DEMO}-catalogo` : `${VERSION_DEMO}-catalogo-${String(n + 1)}`, csv: lote.csv, cargaInicial: true,
+      }));
+    } else if (hay < lote.ids.length) parcial = true;
+  });
+  if (parcial) {
     bloqueos.push('el catálogo existe solo en parte: revise el tenant a mano (la carga inicial no admite productos repetidos)');
     diferencias.push(`catálogo parcial: ${String(existentes.length)} de ${String(ids.length)}`);
+  } else if (lotesPorCargar > 0) {
+    diferencias.push(`catálogo por cargar: ${String(ids.length - existentes.length)} productos`);
+  }
+
+  // 3b) Retiro de lo que no está en el fixture (opcional): activo=false y publicado=false, sin borrar.
+  if (opciones.retirarFueraDelFixture === true) {
+    const delFixture = new Set(ids);
+    const porRetirar = (estado.productosVisibilidad ?? []).filter((p) => !delFixture.has(p.id) && (p.activo || p.publicado));
+    if (porRetirar.length > 0) diferencias.push(`por retirar: ${String(porRetirar.length)}`);
+    for (const p of porRetirar) pasos.push(llamada('retiro', 'consola', 'editarProducto', { productoId: p.id, cambios: { activo: false, publicado: false } }));
   }
 
   // 4) Series, por almacén (todo o nada por almacén).
