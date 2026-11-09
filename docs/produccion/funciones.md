@@ -169,6 +169,28 @@ Notas del catálogo: solo productos activos y publicados con copia en `publicado
 decimal en la moneda del mercado; `precioCentavos` el mismo monto en centavos (el contrato original dice «mismo entero»: ver §10).
 `stock` es la existencia del almacén `tienda`. `foto`/`fotos` salen de las versiones WebP publicadas (960 px de preferencia).
 
+### Encendido por tenant en HTTP
+
+Cada ruta de la API pertenece a un módulo: el dueño sale de `rutasHttp` de los manifiestos (`registro.rutasHttp()`; `plataforma/coordinador/rutas-http.ts`),
+sin lista aparte. `/api/salud` y `/healthz` no tienen dueño y siempre responden. Una ruta sin dueño, un tenant sin documento `tenants/{t}` (o inválido) o un
+módulo fuera de los efectivos del tenant **no se sirven** (falla cerrado). Si Firestore falla al leer los módulos, la petición da error y no se sirve.
+
+Orden del control: 1) límite en memoria por origen; 2) **autenticar primero** (token de NovuChat, firma HMAC del pedido o del sitio); 3) el encendido; 4) el límite de
+Firestore y la lectura de datos. Sin credencial válida no se consultan módulos, de modo que nadie puede averiguar qué tiene encendido un tenant.
+
+| Ruta | Tenant que se controla | Módulo apagado |
+|---|---|---|
+| `/api/cotizacion`, `/api/disponibilidad`, `/api/contacto` | `TENANT_ID` del despliegue, antes del manejador | `404 no_encontrado` |
+| `/api/novuchat/v1/catalogo`, `/api/novuchat/v1/inventario` | el del token, tras autenticarlo y antes de leer datos | `401 credencial_invalida` (igual que un token inválido; sin cambio de contrato) |
+| `/api/novuchat/v1/pedidos/confirmar` | `tenantPedidos`, tras verificar la firma | `401 credencial_invalida` |
+| `/api/sitio/v1/…` | el `tenantId` firmado, tras la firma y su validación | `404 no_encontrado` |
+
+Cada rechazo deja un `logger.warn` con `motivo` (`modulo-apagado`, `sin-documento` o `ruta-sin-dueno`), la ruta y el tenant; nunca el token ni la IP.
+
+Caché: la lista de módulos de un tenant se guarda 60 s si existe y **10 s si falta** (caché negativa). Las respuestas de NovuChat llevan además
+`Cache-Control: private, max-age=60`, así que apagar un módulo puede tardar **hasta ~120 s** en notarse del lado de NovuChat. Antes de desplegar en un ambiente,
+el documento `tenants/{TENANT_ID}` debe existir en él (alta de tenant); sin él, estas rutas responden como apagadas.
+
 ## 5. Bus de eventos
 
 Los módulos publican `tenants/{t}/eventos/{id}` dentro de su transacción. `eventos` (Firestore `onDocumentCreated`, `retry: true`) entrega
