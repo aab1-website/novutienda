@@ -33,6 +33,7 @@ export interface ManifiestoBase {
   readonly acciones?: readonly AccionBase[] | undefined;
   readonly programadas?: readonly ProgramadaBase[] | undefined;
   readonly requiere?: readonly string[] | undefined;
+  readonly rutasHttp?: readonly RutaHttpBase[] | undefined;
 }
 
 type IdModulo = string;
@@ -56,6 +57,10 @@ export interface AccionBase {
   readonly roles: readonly RolBase[];
   readonly propietario?: boolean | undefined;
 }
+export interface RutaHttpBase {
+  readonly ruta: string;
+  readonly prefijo?: boolean | undefined;
+}
 export interface ProgramadaBase {
   readonly id: string;
   readonly horario: string;
@@ -74,6 +79,7 @@ const VARIABLES_RESERVADAS = ['tenantId', 'todo', 'bucket'];
 const SEGMENTO_RESTO = /^\{[A-Za-z][A-Za-z0-9_]*=\*\*\}$/;
 const CONTENT_TYPE = /^[a-z]+\/\([a-z0-9|-]+\)$/;
 const NOMBRE_L2 = /^[a-z][a-zA-Z0-9]*$/;
+const RUTA_HTTP = /^\/api(?:\/[a-z0-9_-]+)+$/;
 const ID_MODULO = /^[a-z][a-z0-9-]*$/;
 const HORARIO = /^(?:[0-9*/,\- ]+|every [1-9][0-9]* (?:minutes|hours)|every day (?:[01][0-9]|2[0-3]):[0-5][0-9])$/;
 const ZONAS = ['nucleo', 'central', 'plataforma', 'modulo'];
@@ -107,6 +113,8 @@ export interface Registro<M extends ManifiestoBase = ManifiestoBase> {
   pantallas(): readonly ConModulo<PantallaBase>[];
   /** Programadas de todos los módulos con su módulo dueño; lanza si un id se repite. */
   programadas(): readonly ConModulo<ProgramadaBase>[];
+  /** Rutas HTTP de todos los módulos con su módulo dueño; lanza si se repiten o si una cae bajo el prefijo de otro módulo. */
+  rutasHttp(): readonly ConModulo<RutaHttpBase>[];
 }
 
 function validar(m: ManifiestoBase): void {
@@ -216,6 +224,7 @@ function validarL2(m: ManifiestoBase): void {
   const acciones = lista(m, 'acciones', m.acciones);
   const programadas = lista(m, 'programadas', m.programadas);
   const requiere = lista(m, 'requiere', m.requiere);
+  const rutasHttp = lista(m, 'rutasHttp', m.rutasHttp);
   if (m.zona === 'nucleo' && (pantallas.length > 0 || acciones.length > 0)) {
     throw new ErrorRegistro(`El módulo ${m.id} es de zona nucleo y no admite pantallas ni acciones`);
   }
@@ -260,6 +269,19 @@ function validarL2(m: ManifiestoBase): void {
       throw new ErrorRegistro(`${donde}: zonaHoraria inválida`);
     }
     if (typeof p.porTenant !== 'boolean') throw new ErrorRegistro(`${donde}: porTenant debe ser booleano`);
+  }
+  if (rutasHttp.length > 0 && ((m.zona !== undefined && m.zona !== 'modulo') || (NO_ENCENDIBLES as readonly string[]).includes(m.id))) {
+    throw new ErrorRegistro(`El módulo ${m.id} no es de zona modulo y no admite rutasHttp`);
+  }
+  const rutas = new Set<string>();
+  for (const r of rutasHttp) {
+    const donde = `Ruta HTTP ${m.id}/${String(r?.ruta)}`;
+    if (typeof r?.ruta !== 'string' || !RUTA_HTTP.test(r.ruta) || r.ruta.endsWith('/')) {
+      throw new ErrorRegistro(`${donde}: ruta inválida (^/api/[a-z0-9_/-]+$, sin barra final)`);
+    }
+    if (r.prefijo !== undefined && typeof r.prefijo !== 'boolean') throw new ErrorRegistro(`${donde}: prefijo debe ser booleano`);
+    if (rutas.has(r.ruta)) throw new ErrorRegistro(`${donde}: ruta duplicada`);
+    rutas.add(r.ruta);
   }
   const req = new Set<string>();
   for (const d of requiere) {
@@ -390,6 +412,19 @@ export function crearRegistro<M extends ManifiestoBase = ManifiestoBase>(): Regi
     return todas;
   }
 
+  function rutasHttp(): ConModulo<RutaHttpBase>[] {
+    const todas = agregar((m) => m.rutasHttp, (r) => r.ruta, 'Ruta HTTP');
+    for (const p of todas) {
+      if (p.prefijo !== true) continue;
+      for (const o of todas) {
+        if (o.modulo !== p.modulo && (o.ruta === p.ruta || o.ruta.startsWith(`${p.ruta}/`))) {
+          throw new ErrorRegistro(`Ruta HTTP "${o.ruta}" (${o.modulo}) cae bajo el prefijo "${p.ruta}" de ${p.modulo}`);
+        }
+      }
+    }
+    return todas;
+  }
+
   return {
     registrar(manifiesto) {
       validar(manifiesto);
@@ -460,6 +495,7 @@ export function crearRegistro<M extends ManifiestoBase = ManifiestoBase>(): Regi
     rutasAlmacenamiento,
     acciones: () => agregar((m) => m.acciones, (a) => `${a.callable}.${a.nombre}`, 'Par (callable, nombre)'),
     pantallas: () => agregar((m) => m.pantallas, (p) => p.id, 'Id de pantalla'),
+    rutasHttp,
     programadas: () => agregar((m) => m.programadas, (p) => p.id, 'Id de programada'),
   };
 }
