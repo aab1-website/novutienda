@@ -87,6 +87,8 @@ export interface OpcionesDemo {
   readonly bytesFoto: Readonly<Record<string, number>>;
   /** Desactiva y despublica (nunca borra) los productos del tenant que no están en el catálogo del fixture. */
   readonly retirarFueraDelFixture?: boolean;
+  /** Versión de la carga (`demo-v1` por defecto; `demo-x<hash8>` con fixtures propios, ver `versionDeFixture`). */
+  readonly version?: string;
 }
 
 export interface PlanDemo {
@@ -98,19 +100,30 @@ export interface PlanDemo {
 
 // ---- Ayudas puras -------------------------------------------------------------------------------------------------
 
-/** UUID determinista (forma 8-4-4-4-12 en hexadecimal) derivado de una clave. */
-export function uuidDeterminista(clave: string): string {
-  const h = createHash('sha256').update(`${VERSION_DEMO}:${clave}`).digest('hex');
+/** UUID determinista (forma 8-4-4-4-12 en hexadecimal) derivado de una clave y de la versión de la carga. */
+export function uuidDeterminista(clave: string, version: string = VERSION_DEMO): string {
+  const h = createHash('sha256').update(`${version}:${clave}`).digest('hex');
   return `${h.slice(0, 8)}-${h.slice(8, 12)}-4${h.slice(13, 16)}-8${h.slice(17, 20)}-${h.slice(20, 32)}`;
 }
-export const turnoIdDemo = (): string => uuidDeterminista('turno-1');
-export const ventaIdDemo = (clave: string): string => uuidDeterminista(`venta-${clave}`);
+export const turnoIdDemo = (version: string = VERSION_DEMO): string => uuidDeterminista('turno-1', version);
+export const ventaIdDemo = (clave: string, version: string = VERSION_DEMO): string => uuidDeterminista(`venta-${clave}`, version);
+
+/**
+ * Versión de una carga con fixtures propios: `demo-x<hash8>`, con hash8 = primeros 8 hex del SHA-256 del contenido de
+ * catalogo.csv, demo.json (claves ordenadas) y los nombres de las fotos. Un fixture distinto da operaciones distintas y no choca
+ * con las anteriores; el mismo fixture da siempre la misma versión (idempotencia).
+ */
+export function versionDeFixture(catalogoCsv: string, fixture: unknown, nombresFotos: readonly string[]): string {
+  const h = createHash('sha256').update(catalogoCsv).update('\u0000').update(json(fixture)).update('\u0000').update([...nombresFotos].sort().join('\n')).digest('hex');
+  return `demo-x${h.slice(0, 8)}`;
+}
 
 /** Id de subida (`^[A-Za-z0-9_-]{8,40}$`): corto y estable; si no cabe, se acorta con un hash. */
-export function subidaIdDe(productoId: string, n: number): string {
-  const directo = `dv1-${productoId}-${String(n)}`;
+export function subidaIdDe(productoId: string, n: number, version: string = VERSION_DEMO): string {
+  const pref = version === VERSION_DEMO ? 'dv1' : `d${version.replace(/^demo-/, '')}`;
+  const directo = `${pref}-${productoId}-${String(n)}`;
   if (directo.length <= 40) return directo;
-  return `dv1-${createHash('sha256').update(productoId).digest('hex').slice(0, 24)}-${String(n)}`;
+  return `${pref}-${createHash('sha256').update(productoId).digest('hex').slice(0, 24)}-${String(n)}`;
 }
 
 /** Máximo de filas por importación de Inventarios (`MAX_LINEAS` del módulo): un CSV mayor se parte en lotes. */
@@ -180,6 +193,7 @@ const llamada = (etapa: string, modulo: Modulo, accion: string, datos: Record<st
 
 /** Plan completo: etapas en el orden en que se ejecutan. */
 export function planificarDemo(catalogoCsv: string, fx: FixtureDemo, estado: EstadoDemo, opciones: OpcionesDemo): PlanDemo {
+  const V = opciones.version ?? VERSION_DEMO;
   const pasos: Paso[] = [];
   const diferencias: string[] = [];
   const bloqueos: string[] = [];
@@ -200,7 +214,7 @@ export function planificarDemo(catalogoCsv: string, fx: FixtureDemo, estado: Est
   for (const a of fx.almacenes) {
     if (estado.ubicaciones.includes(a.id)) continue;
     diferencias.push('almacén por crear');
-    pasos.push(llamada('almacenes', 'inventarios', 'crearUbicacion', { operacionId: `${VERSION_DEMO}-ubicacion-${a.id}`, ubicacionId: a.id, nombre: a.nombre }));
+    pasos.push(llamada('almacenes', 'inventarios', 'crearUbicacion', { operacionId: `${V}-ubicacion-${a.id}`, ubicacionId: a.id, nombre: a.nombre }));
   }
 
   // 3) Catálogo con stock inicial, en lotes de hasta 50 filas (límite de la importación). Cada lote es todo o nada:
@@ -215,7 +229,7 @@ export function planificarDemo(catalogoCsv: string, fx: FixtureDemo, estado: Est
     if (hay === 0) {
       lotesPorCargar += 1;
       pasos.push(llamada('catalogo', 'inventarios', 'importarProductosCsv', {
-        operacionId: n === 0 ? `${VERSION_DEMO}-catalogo` : `${VERSION_DEMO}-catalogo-${String(n + 1)}`, csv: lote.csv, cargaInicial: true,
+        operacionId: n === 0 ? `${V}-catalogo` : `${V}-catalogo-${String(n + 1)}`, csv: lote.csv, cargaInicial: true,
       }));
     } else if (hay < lote.ids.length) parcial = true;
   });
@@ -248,7 +262,7 @@ export function planificarDemo(catalogoCsv: string, fx: FixtureDemo, estado: Est
     }
     diferencias.push(`series por ingresar: ${String(todas.length)}`);
     pasos.push(llamada('series', 'inventarios', 'ingresar', {
-      operacionId: `${VERSION_DEMO}-series-${ubicacionId}`,
+      operacionId: `${V}-series-${ubicacionId}`,
       ubicacionId,
       lineas: grupos.map((g) => ({ productoId: g.productoId, cantidad: g.series.length, series: [...g.series] })),
     }));
@@ -259,7 +273,7 @@ export function planificarDemo(catalogoCsv: string, fx: FixtureDemo, estado: Est
   if (!enDestino) {
     diferencias.push('traspaso por hacer');
     pasos.push(llamada('traspaso', 'inventarios', 'traspasar', {
-      operacionId: `${VERSION_DEMO}-traspaso-1`,
+      operacionId: `${V}-traspaso-1`,
       origenId: fx.traspaso.origenId,
       destinoId: fx.traspaso.destinoId,
       lineas: fx.traspaso.lineas.map((l) => ({ productoId: l.productoId, cantidad: l.series.length, series: [...l.series] })),
@@ -283,7 +297,7 @@ export function planificarDemo(catalogoCsv: string, fx: FixtureDemo, estado: Est
     const hechos = new Set(estado.medios[f.productoId] ?? []);
     const lista: { medioId: string; alt: string }[] = [];
     f.fotos.forEach((foto, i) => {
-      const subidaId = subidaIdDe(f.productoId, i + 1);
+      const subidaId = subidaIdDe(f.productoId, i + 1, V);
       if (hechos.has(subidaId)) {
         lista.push({ medioId: subidaId, alt: foto.alt });
       } else if (opciones.fotos) {
@@ -317,10 +331,10 @@ export function planificarDemo(catalogoCsv: string, fx: FixtureDemo, estado: Est
 
   // 10) Ventas de muestra como cajero: turno abierto, 3 ventas, turno cerrado.
   if (opciones.ventas) {
-    const turnoId = turnoIdDemo();
+    const turnoId = turnoIdDemo(V);
     const turno = estado.turnos.find((t) => t.turnoId === turnoId);
     const otroAbierto = estado.turnos.some((t) => t.turnoId !== turnoId && t.estado === 'abierto');
-    const faltan = fx.pos.ventas.filter((v) => !estado.ventas.includes(ventaIdDemo(v.clave)));
+    const faltan = fx.pos.ventas.filter((v) => !estado.ventas.includes(ventaIdDemo(v.clave, V)));
     const sinCerrar = turno === undefined || turno.estado === 'abierto';
     if (otroAbierto && turno === undefined) {
       bloqueos.push('hay otro turno abierto en la caja: ciérrelo antes de cargar las ventas de muestra');
@@ -331,7 +345,7 @@ export function planificarDemo(catalogoCsv: string, fx: FixtureDemo, estado: Est
       }
       if (faltan.length > 0) diferencias.push(`ventas por registrar: ${String(faltan.length)}`);
       for (const v of faltan) {
-        pasos.push(llamada('ventas', 'pos', 'confirmarVenta', { requestId: ventaIdDemo(v.clave), carrito: v.carrito, pagos: v.pagos }, 'caj'));
+        pasos.push(llamada('ventas', 'pos', 'confirmarVenta', { requestId: ventaIdDemo(v.clave, V), carrito: v.carrito, pagos: v.pagos }, 'caj'));
       }
       if (sinCerrar) {
         diferencias.push('turno por cerrar');

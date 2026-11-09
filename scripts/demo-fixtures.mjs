@@ -73,5 +73,5 @@ export function cargarFixtures(fixtures) {
       bytesFoto[foto.archivo] = tam;
     }
   }
-  return { catalogoCsv, fixture, archivosFoto, bytesFoto, tipos };
+  return { catalogoCsv, fixture, archivosFoto, bytesFoto, tipos, personalizada };
 }

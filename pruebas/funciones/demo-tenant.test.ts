@@ -14,7 +14,7 @@ import { leerCsvProductos } from '@novutienda/inventarios';
 import { validarPlantilla } from '@novutienda/recibos';
 import { contenidoEjemplo } from '@novutienda/website';
 import {
-  planificarDemo, idsDeCatalogo, lotesDeCatalogo, MAX_FILAS_CSV, subidaIdDe, turnoIdDemo, uuidDeterminista, ventaIdDemo, VERSION_DEMO,
+  planificarDemo, versionDeFixture, idsDeCatalogo, lotesDeCatalogo, MAX_FILAS_CSV, subidaIdDe, turnoIdDemo, uuidDeterminista, ventaIdDemo, VERSION_DEMO,
   type EstadoDemo, type FixtureDemo, type OpcionesDemo, type Paso, type PlanDemo,
 } from '../../plataforma/operador/demo.js';
 import {
@@ -267,6 +267,55 @@ describe('fixtures externos: 41 productos, lotes y retiro (puro)', () => {
     // Segunda pasada: ya retirados.
     const despues: EstadoDemo = { ...estado, productosVisibilidad: visibles.map((v) => (idsExt.includes(v.id) ? v : { ...v, activo: false, publicado: false })) };
     expect(planificarDemo(csvExt, fxExt, despues, { ...opc, retirarFueraDelFixture: true }).pasos.filter((x) => x.etapa === 'retiro')).toEqual([]);
+  });
+
+  it('con fixtures propios todos los identificadores llevan demo-x<hash8> y nada coincide con demo-v1', () => {
+    const fotos = Object.keys(bytes);
+    const v = versionDeFixture(csvExt, fxExt, fotos);
+    expect(v).toMatch(/^demo-x[0-9a-f]{8}$/);
+    expect(versionDeFixture(csvExt, fxExt, [...fotos].reverse())).toBe(v);
+    expect(versionDeFixture(`${csvExt}\r\n`, fxExt, fotos)).not.toBe(v);
+    expect(versionDeFixture(csvExt, { ...fxExt, sitio: { config: { otro: 1 } } }, fotos)).not.toBe(v);
+    const conV = planificarDemo(csvExt, { ...fxExt, pos: fx.pos }, base, { ...opc, ventas: true, version: v });
+    const porDefecto = planificarDemo(csvExt, { ...fxExt, pos: fx.pos }, base, { ...opc, ventas: true });
+    const ops = (p: PlanDemo): string[] => p.pasos.flatMap((x) => (x.tipo === 'llamada' && typeof x.datos['operacionId'] === 'string' ? [x.datos['operacionId']] : []));
+    for (const o of ops(conV)) expect(o.startsWith(`${v}-`)).toBe(true);
+    expect(ops(porDefecto).every((o) => o.startsWith('demo-v1-'))).toBe(true);
+    expect(turnoIdDemo(v)).not.toBe(turnoIdDemo());
+    expect(ventaIdDemo('v1', v)).not.toBe(ventaIdDemo('v1'));
+    expect(subidaIdDe('p-1', 1, v)).toMatch(/^dx[0-9a-f]{8}-p-1-1$/);
+    for (const x of conV.pasos) if (x.tipo === 'foto') expect(x.subidaId).toMatch(/^[A-Za-z0-9_-]{8,40}$/);
+    const turno = conV.pasos.find((x) => x.tipo === 'llamada' && x.accion === 'abrirTurno');
+    expect(turno?.tipo === 'llamada' && turno.datos['turnoId']).toBe(turnoIdDemo(v));
+  });
+
+  it('tras la demostración anterior (turno v1 cerrado, plantilla y sitio iguales) se omite lo que coincide y se abre un turno nuevo', () => {
+    const v = versionDeFixture(csvExt, fxExt, Object.keys(bytes));
+    const fxV = { ...fxExt, pos: fx.pos };
+    const previo: EstadoDemo = {
+      ...base, plantilla: fx.recibos.plantilla, configSitio: fx.sitio.config, tablero: { versionPublicada: 1, cambiosSinPublicar: 0 },
+      cuentas: { sup: { uid: 's', rolActual: 'sup' }, caj: { uid: 'c', rolActual: 'caj' } },
+      turnos: [{ turnoId: turnoIdDemo(), estado: 'cerrado' }], ventas: fx.pos.ventas.map((x) => ventaIdDemo(x.clave)),
+    };
+    const p = planificarDemo(csvExt, fxV, previo, { ...opc, ventas: true, version: v });
+    expect(p.bloqueos).toEqual([]);
+    const etapas = new Set(p.pasos.map((x) => x.etapa));
+    expect(etapas.has('recibos')).toBe(false);
+    expect(etapas.has('sitio')).toBe(false);
+    expect(p.pasos.filter((x) => x.tipo === 'llamada' && x.accion === 'abrirTurno')).toHaveLength(1);
+    expect(p.pasos.filter((x) => x.tipo === 'llamada' && x.accion === 'confirmarVenta')).toHaveLength(fx.pos.ventas.length);
+    // Segunda pasada con el estado resultante: cero pasos.
+    const medios: Record<string, string[]> = {};
+    const fichas: Record<string, Record<string, unknown>> = {};
+    for (const f of fxV.fichas) {
+      medios[f.productoId] = f.fotos.map((_, i) => subidaIdDe(f.productoId, i + 1, v));
+      fichas[f.productoId] = { ...f.ficha, medios: f.fotos.map((foto, i) => ({ medioId: subidaIdDe(f.productoId, i + 1, v), alt: foto.alt })) };
+    }
+    const despues: EstadoDemo = {
+      ...previo, productos: idsExt, fichas, medios,
+      turnos: [...previo.turnos, { turnoId: turnoIdDemo(v), estado: 'cerrado' }], ventas: [...previo.ventas, ...fx.pos.ventas.map((x) => ventaIdDemo(x.clave, v))],
+    };
+    expect(planificarDemo(csvExt, fxV, despues, { ...opc, ventas: true, version: v }).pasos).toEqual([]);
   });
 
   it('un lote existente solo en parte bloquea; otro lote ya completo no se vuelve a cargar', () => {

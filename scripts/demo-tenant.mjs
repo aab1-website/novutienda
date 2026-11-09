@@ -103,15 +103,17 @@ if (enEmulador && webArg === undefined) {
   if (webConfig.projectId !== proyectoEntorno) falla('web.json no corresponde al proyecto indicado');
 }
 
-let catalogoCsv, fixture, archivosFoto, bytesFoto, tipos;
+let catalogoCsv, fixture, archivosFoto, bytesFoto, tipos, personalizada;
 try {
-  ({ catalogoCsv, fixture, archivosFoto, bytesFoto, tipos } = cargarFixtures(fixturesArg));
+  ({ catalogoCsv, fixture, archivosFoto, bytesFoto, tipos, personalizada } = cargarFixtures(fixturesArg));
 } catch (e) {
   falla(e instanceof Error ? e.message : 'fixtures inválidos');
 }
 
 await cargarManifiestos(); // registra los ganchos de TypeScript
-const { planificarDemo, subidaIdDe, ventaIdDemo } = await import(pathToFileURL(resolve('plataforma/operador/demo.ts')).href);
+const { planificarDemo, subidaIdDe, ventaIdDemo, versionDeFixture, VERSION_DEMO } = await import(pathToFileURL(resolve('plataforma/operador/demo.ts')).href);
+// Fixtures propios: todos los identificadores de operación llevan una versión derivada del contenido (no chocan con cargas previas).
+const version = personalizada ? versionDeFixture(catalogoCsv, fixture, [...archivosFoto.keys()]) : VERSION_DEMO;
 
 // ---- Sesiones y llamadas ----------------------------------------------------------------------------------------
 // Un SDK cliente por sesión: la de administración y la de caja no se mezclan.
@@ -200,7 +202,7 @@ async function leerEstado() {
     medios[f.productoId] = ids;
     // Estado parcial: una subida sin medio con reserva vigente («reservada») se reanuda; rechazada o en borrado, se bloquea.
     for (let i = 0; i < f.fotos.length; i += 1) {
-      const subidaId = subidaIdDe(f.productoId, i + 1);
+      const subidaId = subidaIdDe(f.productoId, i + 1, version);
       if (ids.includes(subidaId)) continue;
       const r = await leerOpcional('adm', 'medios', 'estadoSubida', { subidaId });
       if (r === null) continue; // sin reserva: se reserva de cero
@@ -213,7 +215,7 @@ async function leerEstado() {
   const turnos = ((await llamar('adm', 'pos', 'turnos', { limite: 200 })).turnos ?? []).map((x) => ({ turnoId: x.turnoId, estado: x.estado }));
   const ventas = [];
   for (const v of fixture.pos.ventas) {
-    const id = ventaIdDemo(v.clave);
+    const id = ventaIdDemo(v.clave, version);
     if ((await leerOpcional('adm', 'pos', 'venta', { ventaId: id })) !== null) ventas.push(id);
   }
   return {
@@ -254,7 +256,7 @@ async function subirFoto(paso) {
 // ---- Ejecución --------------------------------------------------------------------------------------------------
 try {
   const estado = await leerEstado();
-  const plan = planificarDemo(catalogoCsv, fixture, estado, { fotos: conFotos, ventas: conVentas, bytesFoto, retirarFueraDelFixture: retirar });
+  const plan = planificarDemo(catalogoCsv, fixture, estado, { fotos: conFotos, ventas: conVentas, bytesFoto, retirarFueraDelFixture: retirar, version });
   if (plan.diferencias.length === 0) console.log('demo-tenant: el tenant ya tiene los datos de demostración.');
   else for (const d of plan.diferencias) console.log(`  ${d}`);
   for (const b of plan.bloqueos) console.log(`  BLOQUEO: ${b}`);

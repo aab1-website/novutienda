@@ -58,6 +58,7 @@ se versionan nunca.
 - La importación de Inventarios admite hasta 50 filas por llamada: un catálogo mayor se parte en lotes de 50 con
   `operacionId` deterministas (`demo-v1-catalogo`, `demo-v1-catalogo-2`, …). Cada lote es todo o nada; un lote ya cargado se omite y uno
   parcial bloquea. El plan del sitio admite hasta 200 productos en total.
+- Con fixtures propios, todos los identificadores de operación, subidas, turno y ventas llevan el prefijo `demo-x<hash8>` (primeros 8 hex del SHA-256 de `catalogo.csv`, `demo.json` y los nombres de foto) en lugar de `demo-v1`: no chocan con cargas anteriores y un fixture cambiado produce operaciones nuevas. Plantilla y configuración del sitio que ya coinciden se omiten; el turno de una carga anterior no se reutiliza.
 - La segunda pasada sigue en cero pasos con fixtures propios.
 
 ## Retirar lo que no está en el fixture (`--retirar-fuera-del-fixture`)
