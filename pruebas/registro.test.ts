@@ -188,6 +188,71 @@ describe('L1-b: constantes de código alineadas con el manifiesto', () => {
   });
 });
 
+describe('L3-1: rutasHttp del manifiesto (sin efecto)', () => {
+  const l3 = (id: string, extra: Record<string, unknown> = {}): ManifiestoModulo =>
+    ({ ...mod(id), ...extra }) as ManifiestoModulo;
+  const rechaza = (extra: Record<string, unknown>, id = 'x') => () =>
+    crearRegistro<ManifiestoModulo>().registrar(l3(id, extra));
+
+  it('sin rutasHttp el agregador devuelve []', () => {
+    const r = crearRegistro<ManifiestoModulo>();
+    r.registrar(mod('a'));
+    expect(r.rutasHttp()).toEqual([]);
+  });
+
+  it('anota el módulo dueño en cada ruta', () => {
+    const r = crearRegistro<ManifiestoModulo>();
+    r.registrar(l3('a', { rutasHttp: [{ ruta: '/api/a/v1', prefijo: true }, { ruta: '/api/a-uno' }] }));
+    r.registrar(l3('b', { rutasHttp: [{ ruta: '/api/b' }] }));
+    expect(r.rutasHttp().map((x) => [x.ruta, x.modulo])).toEqual([['/api/a/v1', 'a'], ['/api/a-uno', 'a'], ['/api/b', 'b']]);
+  });
+
+  it('rechaza rutas mal formadas o con barra final', () => {
+    for (const ruta of ['/otra/x', '/api/', '/api', '/api/A', '/api/x/', '/api/x y', 'api/x', '/api/x?q=1', '/api//x', '/api/a//b']) {
+      expect(rechaza({ rutasHttp: [{ ruta }] }), ruta).toThrow(ErrorRegistro);
+    }
+    expect(rechaza({ rutasHttp: [{ ruta: '/api/x', prefijo: 'si' }] })).toThrow(/prefijo/);
+    expect(rechaza({ rutasHttp: 'x' })).toThrow(/lista/);
+  });
+
+  it('rechaza rutasHttp fuera de la zona modulo', () => {
+    const una = { rutasHttp: [{ ruta: '/api/x' }] };
+    expect(rechaza({ zona: 'central', ...una }, 'panel')).toThrow(/rutasHttp/);
+    expect(rechaza({ zona: 'nucleo', ...una }, 'nucleo')).toThrow(/rutasHttp/);
+    expect(rechaza(una, 'plataforma')).toThrow(/rutasHttp/);
+  });
+
+  it('rechaza rutas repetidas dentro de un módulo', () => {
+    expect(rechaza({ rutasHttp: [{ ruta: '/api/x' }, { ruta: '/api/x', prefijo: true }] })).toThrow(/duplicada/);
+  });
+
+  it('rutas repetidas entre módulos: registrar no falla, rutasHttp() lanza nombrando ambos', () => {
+    const r = crearRegistro<ManifiestoModulo>();
+    r.registrar(l3('a', { rutasHttp: [{ ruta: '/api/x' }] }));
+    expect(() => r.registrar(l3('b', { rutasHttp: [{ ruta: '/api/x' }] }))).not.toThrow();
+    expect(() => r.rutasHttp()).toThrow(/a y b/);
+  });
+
+  it('rechaza una ruta que cae bajo el prefijo de otro módulo, en cualquier orden de registro', () => {
+    for (const orden of [['a', 'b'], ['b', 'a']] as const) {
+      const r = crearRegistro<ManifiestoModulo>();
+      const por = {
+        a: l3('a', { rutasHttp: [{ ruta: '/api/sitio', prefijo: true }] }),
+        b: l3('b', { rutasHttp: [{ ruta: '/api/sitio/v1/x' }] }),
+      };
+      for (const id of orden) r.registrar(por[id]);
+      expect(() => r.rutasHttp()).toThrow(/cae bajo el prefijo/);
+    }
+  });
+
+  it('una ruta exacta vecina del prefijo no choca', () => {
+    const r = crearRegistro<ManifiestoModulo>();
+    r.registrar(l3('a', { rutasHttp: [{ ruta: '/api/sitio', prefijo: true }] }));
+    r.registrar(l3('b', { rutasHttp: [{ ruta: '/api/sitio-x' }] }));
+    expect(r.rutasHttp()).toHaveLength(2);
+  });
+});
+
 describe('L2-1: campos L2 del manifiesto (sin efecto)', () => {
   const pant = { id: 'inicio', titulo: 'Inicio', roles: ['adm'] as const, orden: 1 };
   const acc = { callable: 'ventas', nombre: 'crear', roles: ['caj'] as const };
