@@ -33,6 +33,7 @@ derivan del código; las cifras caducan y por eso no se copian.
   se fusiona antes de apagar un módulo a cualquier tenant o de dar de alta uno con módulos apagados. Hasta entonces el encendido por
   tenant no rige para la API HTTP (ver `docs/modulos/website.md`).
 - Pase a producción: alta de cada tenant en producción como paso previo al tag (`docs/produccion/primer-tag.md`); está pendiente.
+- Datos de demostración en staging: scripts `personal-tenant.mjs` y `demo-tenant.mjs`; ficha en `docs/produccion/datos-de-demostracion.md`.
 - Pase a staging (`docs/produccion/pase-a-staging.md`): proyecto, facturación, Firestore/Storage, Hosting, WIF, secretos, App Check,
   variables y Environments de GitHub, rulesets, alerta de Monitoring.
 - Decisiones de Andres: D2 a D5 del plan único (proyectos Firebase, ubicación de Firestore —se propone `us-east1`—, segundo aprobador,
