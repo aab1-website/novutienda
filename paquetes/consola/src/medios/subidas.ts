@@ -6,7 +6,7 @@ import { exigirRol, ROLES } from '../permisos.js';
 import { PLANTILLAS } from '../plantillas.js';
 import type { AlmacenMedios, BaseDatosConsola, CatalogoPuerto, ConsultaSubidas, ProcesadorMedios, Reloj } from '../puertos.js';
 import {
-  dirTemporal, ID_PRODUCTO, ID_SUBIDA, rutaCarrusel, rutaFicha, rutaMedio, rutaOriginal, rutaPublicaMedio, rutaSeccion, rutaSitio,
+  dirTemporal, ID_PRODUCTO, ID_SUBIDA, prefijoTemporal, rutaCarrusel, rutaFicha, rutaMedio, rutaOriginal, rutaPublicaMedio, rutaSeccion, rutaSitio,
   rutaSubida, tenantValido,
 } from '../rutas.js';
 import { mediosDeSeccion, validarSeccion } from '../secciones.js';
@@ -202,6 +202,12 @@ async function rechazar(
     return true;
   });
   if (propia) await borrarYCerrar(deps, t, s.id);
+  else {
+    // No es la dueña: no toca el original ni lo publicado, solo los temporales de su propia carpeta de invocación.
+    const propios = extras.filter((r) => r.startsWith(`${dirTemporal(t, s.id, reclamo)}/`));
+    if (propios.length > 0) await deps.almacen.borrar(propios).catch(() => undefined);
+    await deps.almacen.borrarPrefijo?.(`${dirTemporal(t, s.id, reclamo)}/`).catch(() => undefined); // lo que el procesador dejó sin informar
+  }
   throw new ErrorConsola(codigo, motivo);
 }
 
@@ -210,6 +216,7 @@ async function borrarYCerrar(deps: DepsMedios, t: string, subidaId: string): Pro
   const s = leerSubida((await leerDoc(deps.db, rutaSubida(t, subidaId))));
   if (s?.estado !== 'borrando') return;
   await deps.almacen.borrar(s.rutas ?? [s.rutaOriginal]);
+  await deps.almacen.borrarPrefijo?.(prefijoTemporal(t, subidaId)); // restos de invocaciones que murieron a medias
   await deps.db.runTransaction(async (tx) => {
     const actual = leerSubida((await tx.get(rutaSubida(t, subidaId))).data());
     if (actual?.estado !== 'borrando') return;
@@ -237,6 +244,15 @@ function validarSalida(plan: PlanProcesamiento, versiones: readonly { clase: str
   return undefined;
 }
 
+/** Devuelve la subida a `reservada` si todavía la tiene reclamada esta invocación (error previo al procesamiento). */
+async function soltarReclamo(deps: DepsMedios, t: string, subidaId: string, reclamo: string): Promise<void> {
+  await deps.db.runTransaction(async (tx) => {
+    const actual = leerSubida((await tx.get(rutaSubida(t, subidaId))).data());
+    if (actual?.estado !== 'procesando' || actual.procesandoPor !== reclamo) return;
+    tx.set(rutaSubida(t, subidaId), aDoc({ ...sinReclamo(actual), estado: 'reservada' }));
+  });
+}
+
 /** Identificador de invocación: solo debe ser único (no es un secreto). */
 const idAleatorio = (): string => `${Date.now().toString(36)}${Math.random().toString(36).slice(2, 12)}${Math.random().toString(36).slice(2, 12)}`;
 
@@ -256,6 +272,7 @@ async function reclamar(
       const m = (await tx.get(rutaMedio(t, subidaId))).data();
       if (m !== undefined) return { medio: m as unknown as Medio };
     }
+    if (actual.estado === 'procesando' && actual.procesandoPor === reclamo) return { subida: actual }; // reintento de la propia invocación
     if (actual.estado === 'procesando' && (actual.procesandoVenceEn ?? 0) > ahora) {
       throw new ErrorConsola('estado', 'La subida se está procesando; vuelva a consultar en unos segundos');
     }
@@ -283,8 +300,19 @@ export async function finalizarSubida(deps: DepsMedios, e: EntradaFinalizar): Pr
   const reclamo = (deps.nuevoId ?? idAleatorio)();
   const r = await reclamar(deps, t, e.subidaId, reclamo);
   if ('medio' in r) return r.medio;
-  const s = r.subida;
+  try {
+    return await procesarReclamada(deps, t, e, rol, reclamo, r.subida);
+  } catch (err) {
+    // Cualquier salida con error devuelve la subida a `reservada` si esta invocación aún la tiene (si `rechazar` o el ganador ya la
+    // resolvieron, el token no coincide y no hace nada). Así un fallo transitorio no la deja bloqueada hasta el vencimiento.
+    await soltarReclamo(deps, t, e.subidaId, reclamo).catch(() => undefined);
+    throw err;
+  }
+}
 
+async function procesarReclamada(
+  deps: DepsMedios, t: string, e: EntradaFinalizar, rol: ReturnType<typeof exigirRol>, reclamo: string, s: Subida,
+): Promise<Medio> {
   const tope = s.tipo === 'foto' ? LIMITES_CONSOLA.bytesFoto : LIMITES_CONSOLA.bytesVideo;
   const real = await deps.almacen.tamano(s.rutaOriginal);
   if (real === undefined) throw new ErrorConsola('no-encontrado', 'El archivo todavía no llegó');
@@ -382,7 +410,10 @@ export async function finalizarSubida(deps: DepsMedios, e: EntradaFinalizar): Pr
     if (!(err instanceof ErrorConsola) || err.codigo !== 'estado') throw err;
     const ganador = await leerDoc(deps.db, rutaMedio(t, s.id));
     const delGanador = new Set(((ganador as Partial<Medio> | undefined)?.versiones ?? []).map((v) => v.ruta));
-    await deps.almacen.borrar([...temporales, ...publicadas.filter((r) => !delGanador.has(r))]).catch(() => undefined);
+    // Sin ganador confirmado NO se borra lo publicado: puede ser el contenido (misma ruta por hash) que otra invocación retomada
+    // está por confirmar. Las versiones huérfanas solo se limpian cuando el ganador ya dejó su medio.
+    const aBorrar = ganador === undefined ? temporales : [...temporales, ...publicadas.filter((r) => !delGanador.has(r))];
+    await deps.almacen.borrar(aBorrar).catch(() => undefined);
     if (ganador !== undefined) return ganador as unknown as Medio;
     throw err;
   }

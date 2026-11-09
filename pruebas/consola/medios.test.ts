@@ -258,6 +258,72 @@ describe('pipeline de medios', () => {
       await finalizarSubida(deps, { tenantId: T, actor: adm, subidaId });
       expect(dirs).toEqual([`tenants/${T}/privado/procesando/${subidaId}/invocacion-1`]);
     });
+    it('A reclama, el reloj pasa el vencimiento, B retoma y A termina antes de que B confirme: A no borra lo publicado y el medio de B conserva sus versiones', async () => {
+      const { subidaId } = await subir('foto', JPG);
+      let suelta!: () => void;
+      const puerta = new Promise<void>((r) => { suelta = r; });
+      let llamadasB = 0;
+      const dbB = { runTransaction: <T>(fn: Parameters<typeof db.runTransaction<T>>[0]) => ((llamadasB += 1) === 2 ? puerta.then(() => db.runTransaction(fn)) : db.runTransaction(fn)) };
+      const depsB = { ...deps, db: dbB as unknown as typeof db, nuevoId: () => 'invocacion-B' };
+      let b!: ReturnType<typeof finalizarSubida>;
+      class ProcesadorA extends ProcesadorSimulado {
+        override async procesar(...args: Parameters<ProcesadorSimulado['procesar']>): ReturnType<ProcesadorSimulado['procesar']> {
+          reloj.ms += LIMITES_CONSOLA.vencimientoProcesandoMs + 1;
+          b = finalizarSubida(depsB, { tenantId: T, actor: adm, subidaId });
+          b.catch(() => undefined);
+          await new Promise((r) => setTimeout(r, 20)); // B alcanza a procesar y publicar, y queda a las puertas de confirmar
+          return super.procesar(...args);
+        }
+      }
+      const depsA = { ...deps, procesador: new ProcesadorA(almacen), nuevoId: () => 'invocacion-A' };
+      await expect(finalizarSubida(depsA, { tenantId: T, actor: adm, subidaId })).rejects.toMatchObject({ codigo: 'estado' });
+      suelta();
+      const medioB = await b;
+      expect(db.dato(`tenants/${T}/subidas/${subidaId}`)).toMatchObject({ estado: 'procesada' });
+      expect(medioB.versiones.length).toBeGreaterThan(0);
+      for (const v of medioB.versiones) expect(almacen.objetos.has(v.ruta)).toBe(true);
+      expect(uso().productos['cam-1']?.fotos).toBe(1);
+    });
+    it('un error previo al procesamiento (el archivo aún no llegó) devuelve la subida a `reservada` y permite reintentar', async () => {
+      const subidaId = id();
+      const r = await reservarSubida(deps, { tenantId: T, actor: adm, subidaId, productoId: 'cam-1', tipo: 'foto', bytes: JPG.length });
+      await expect(finalizarSubida(deps, { tenantId: T, actor: adm, subidaId })).rejects.toMatchObject({ codigo: 'no-encontrado' });
+      expect(db.dato(`tenants/${T}/subidas/${subidaId}`)).toMatchObject({ estado: 'reservada' });
+      expect(db.dato(`tenants/${T}/subidas/${subidaId}`)).not.toHaveProperty('procesandoPor');
+      almacen.subir(r.rutaOriginal, JPG);
+      expect((await finalizarSubida(deps, { tenantId: T, actor: adm, subidaId })).id).toBe(subidaId);
+    });
+    it('si leer el almacén lanza antes de procesar, el reclamo se suelta', async () => {
+      const { subidaId } = await subir('foto', JPG);
+      const roto = Object.create(almacen) as AlmacenDoble;
+      roto.leerInicio = () => Promise.reject(new Error('almacén caído'));
+      await expect(finalizarSubida({ ...deps, almacen: roto }, { tenantId: T, actor: adm, subidaId })).rejects.toThrow('almacén caído');
+      expect(db.dato(`tenants/${T}/subidas/${subidaId}`)).toMatchObject({ estado: 'reservada' });
+      expect((await finalizarSubida(deps, { tenantId: T, actor: adm, subidaId })).id).toBe(subidaId);
+    });
+    it('el reintento de la propia invocación sobre su reclamo es idempotente', async () => {
+      const { subidaId } = await subir('foto', JPG);
+      const ruta = `tenants/${T}/subidas/${subidaId}`;
+      db.poner(ruta, { ...(db.dato(ruta) as Record<string, unknown>), estado: 'procesando', procesandoPor: 'mia', procesandoVenceEn: reloj.ms + 1000 });
+      const m = await finalizarSubida({ ...deps, nuevoId: () => 'mia' }, { tenantId: T, actor: adm, subidaId });
+      expect(m.id).toBe(subidaId);
+    });
+    it('una perdedora que no es dueña no rechaza ni borra el original, pero limpia sus temporales', async () => {
+      const { subidaId, r } = await subir('foto', JPG);
+      const ruta = `tenants/${T}/subidas/${subidaId}`;
+      // Otra invocación (distinta) reclama mientras esta procesa y falla: no puede rechazar la subida ajena.
+      class Falla extends ProcesadorSimulado {
+        override async procesar(...args: Parameters<ProcesadorSimulado['procesar']>): ReturnType<ProcesadorSimulado['procesar']> {
+          await super.procesar(...args); // deja temporales propios
+          db.poner(ruta, { ...(db.dato(ruta) as Record<string, unknown>), procesandoPor: 'otra' });
+          throw new Error('falla');
+        }
+      }
+      await expect(finalizarSubida({ ...deps, procesador: new Falla(almacen), nuevoId: () => 'yo' }, { tenantId: T, actor: adm, subidaId })).rejects.toMatchObject({ codigo: 'procesamiento' });
+      expect(db.dato(ruta)).toMatchObject({ estado: 'procesando', procesandoPor: 'otra' });
+      expect(almacen.objetos.has(r.rutaOriginal)).toBe(true);
+      expect([...almacen.objetos.keys()].filter((k) => k.includes(`/procesando/${subidaId}/yo/`))).toEqual([]);
+    });
     it('retoma una subida `procesando` con reclamo vencido; con reclamo vigente responde «en curso»', async () => {
       const { subidaId } = await subir('foto', JPG);
       const ruta = `tenants/${T}/subidas/${subidaId}`;
@@ -441,6 +507,14 @@ describe('pipeline de medios', () => {
       expect(res.vencidas).toBeGreaterThanOrEqual(1);
       expect(db.dato(ruta)).toBeUndefined();
       expect(almacen.objetos.has(b.r.rutaOriginal)).toBe(false);
+    });
+    it('al cerrar una subida vencida borra también los restos de las carpetas temporales de sus invocaciones', async () => {
+      const x = await subir('foto', JPG);
+      const resto = `tenants/${T}/privado/procesando/${x.subidaId}/inv-muerta/imagen-100.webp`;
+      almacen.subir(resto, new Uint8Array([1]));
+      reloj.ms += LIMITES_CONSOLA.vigenciaReservaMs + 1;
+      await limpiarSubidas({ ...deps, consulta: new ConsultaDoble(db) }, T);
+      expect(almacen.objetos.has(resto)).toBe(false);
     });
     it('es idempotente', async () => {
       await subir('foto', JPG);

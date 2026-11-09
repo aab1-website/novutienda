@@ -87,6 +87,9 @@ export class AlmacenDoble implements AlmacenMedios {
     if (this.fallaAlBorrar) throw new Error('almacenamiento caído');
     for (const r of rutas) this.objetos.delete(r);
   }
+  async borrarPrefijo(prefijo: string): Promise<void> {
+    for (const r of [...this.objetos.keys()]) if (r.startsWith(prefijo)) this.objetos.delete(r);
+  }
   /** Sube un objeto como lo haría el cliente a la ruta privada. */
   subir(ruta: string, bytes: Uint8Array): void {
     this.objetos.set(ruta, bytes);

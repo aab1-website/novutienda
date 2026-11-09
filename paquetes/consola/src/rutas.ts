@@ -23,6 +23,8 @@ export const rutaUsoMedios = (t: string): string => `tenants/${t}/uso/medios`;
 /** Rutas de almacenamiento. El original es privado; solo las versiones procesadas son públicas. */
 export const rutaOriginal = (t: string, productoId: string, subidaId: string): string =>
   `tenants/${t}/privado/originales/${productoId}/${subidaId}`;
+/** Prefijo de todas las carpetas temporales de una subida (una por invocación). */
+export const prefijoTemporal = (t: string, subidaId: string): string => `tenants/${t}/privado/procesando/${subidaId}/`;
 /** Carpeta temporal de UNA invocación de procesamiento: `invocacion` es único por reclamo, así dos procesos nunca comparten archivos. */
 export const dirTemporal = (t: string, subidaId: string, invocacion: string): string =>
   `tenants/${t}/privado/procesando/${subidaId}/${invocacion}`;

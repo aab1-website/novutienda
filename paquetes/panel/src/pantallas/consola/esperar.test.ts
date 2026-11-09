@@ -55,6 +55,15 @@ describe('esperarSubida', () => {
     const { api } = cliente(() => ({ estado: 'reservada' }), new ErrorApi('failed-precondition', 'x', { codigo: 'estado' }));
     await expect(esperarSubida(api, 'sub-12345678', reloj().opciones)).rejects.toMatchObject({ detalle: { codigo: 'estado' } });
   });
+  it('si el respaldo responde «en curso» (otro la procesa), sigue consultando y no vuelve a llamar a finalizarSubida', async () => {
+    const enCurso = new ErrorApi('failed-precondition', 'La subida se está procesando; vuelva a consultar en unos segundos', { codigo: 'estado' });
+    let llamadasFinalizar = 0;
+    const c = cliente(() => (llamadasFinalizar > 0 ? { estado: 'procesada', medio: MEDIO } : { estado: 'reservada' }), enCurso);
+    const base = c.api.llamar.bind(c.api) as (n: string, d: unknown) => Promise<unknown>;
+    (c.api as unknown as { llamar: unknown }).llamar = (n: string, d: unknown) => { if (n === 'finalizarSubida') llamadasFinalizar += 1; return base(n, d); };
+    expect(await esperarSubida(c.api, 'sub-12345678', reloj().opciones)).toEqual(MEDIO);
+    expect(llamadasFinalizar).toBe(1);
+  });
   it('los cortes de red o de tiempo de una consulta no interrumpen la espera; los demás errores sí', async () => {
     const corte = cliente((n) => (n === 1 ? new ErrorApi('unavailable', 'x') : n === 2 ? new ErrorApi('deadline-exceeded', 'x') : { estado: 'procesada', medio: MEDIO }));
     expect(await esperarSubida(corte.api, 'sub-12345678', reloj().opciones)).toEqual(MEDIO);
