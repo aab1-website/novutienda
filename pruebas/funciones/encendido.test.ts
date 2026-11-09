@@ -4,6 +4,7 @@ import { beforeAll, describe, expect, it, vi } from 'vitest';
 import { construirClaim } from '@novutienda/nucleo';
 import { registroPlataforma } from '../../plataforma/registro.js';
 import { crearLectorModulos, TTL_MODULOS_MS } from '../../plataforma/coordinador/modulos-activos.js';
+import { ejecutarLimpiezaSubidas } from '../../plataforma/funciones/servidor/programadas/consola.js';
 import { crearEntorno } from '../../plataforma/funciones/servidor/entorno.js';
 import { crearManejador, accion, type TablaAcciones } from '../../plataforma/funciones/servidor/llamadas/marco.js';
 import { moduloEncendido, porTenant } from '../../plataforma/funciones/servidor/programadas/tenants.js';
@@ -222,6 +223,11 @@ describe.skipIf(!hayEmulador)('encendido por tenant (emulador)', () => {
     expect((await llamar('inventarios', 'series', { productoId: 'x' }, u.token, nada)).status).toBe(403);
     const con = await llamar('consola', 'modulosActivos', {}, (await uno(sinPos)).token, sinPos);
     expect(con.resultado).toEqual({ modulos: ['inventarios', 'recibos', 'consola'] });
+  });
+
+  it('la limpieza de subidas corre también con consola apagada (L3-4, D4 = A)', async () => {
+    const e = crearEntorno({ firestore: h.firestore, auth: h.auth, bucket: h.bucket, ahora: () => Date.now(), env: { PLATAFORMA_PRUEBAS: '1' } });
+    expect((await ejecutarLimpiezaSubidas(e))[nada]).toEqual({ vencidas: 0, reintentadas: 0 });
   });
 
   it('tenant sin documento → rechazo', async () => {
