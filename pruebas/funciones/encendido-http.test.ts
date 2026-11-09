@@ -209,6 +209,31 @@ describe('el control va DESPUÉS de autenticar: sin credencial no se leen los m�
   });
 });
 
+describe('pedido firmado: la firma se verifica ANTES del control de encendido', () => {
+  it('sin firma válida responde igual con el módulo apagado o encendido y no consulta los módulos', async () => {
+    const c = casos().find((x) => x.ruta === '/api/novuchat/v1/pedidos/confirmar');
+    if (c === undefined) throw new Error('falta la ruta del pedido');
+    const consultas: string[] = [];
+    const espiar = { modulosDelTenant: async (t: string) => { consultas.push(t); return []; } };
+    const apagado = montar(tenantCon('consola'), espiar);
+    const encendido = montar(tenantCon(...TODOS), espiar);
+    const a = await correr(apagado, c.peticion({ firmaMala: true }));
+    const b = await correr(encendido, c.peticion({ firmaMala: true }));
+    expect('respuesta' in a && 'respuesta' in b && JSON.stringify(a.respuesta) === JSON.stringify(b.respuesta)).toBe(true);
+    expect('respuesta' in a && a.respuesta.status).toBe(401);
+    expect(consultas).toEqual([]);
+    expect(apagado.lecturas).toEqual([]);
+  });
+  it('con firma válida y módulo apagado → 401 credencial_invalida; encendido → pasa el control', async () => {
+    const c = casos().find((x) => x.ruta === '/api/novuchat/v1/pedidos/confirmar');
+    if (c === undefined) throw new Error('falta la ruta del pedido');
+    const apagado = montar(tenantCon('consola'));
+    const r = await correr(apagado, c.peticion());
+    expect(rechazada(r, c)).toBe(true);
+    expect(apagado.datos()).toEqual([]);
+  });
+});
+
 describe('infraestructura y rutas desconocidas', () => {
   const sonda = (ruta: string) => peticionDe('GET', ruta);
   it('/api/salud y /healthz responden 200 siempre, sin leer nada, aun con el lector caído', async () => {

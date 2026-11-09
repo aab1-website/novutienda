@@ -4,7 +4,7 @@ import { createHash, randomBytes } from 'node:crypto';
 import { beforeAll, describe, expect, it, vi } from 'vitest';
 import { construirClaim } from '@novutienda/nucleo';
 import { registroPlataforma } from '../../plataforma/registro.js';
-import { crearLectorModulos, TTL_MODULOS_MS } from '../../plataforma/coordinador/modulos-activos.js';
+import { crearLectorModulos, TTL_MODULOS_MS, TTL_NEGATIVO_MS } from '../../plataforma/coordinador/modulos-activos.js';
 import { ejecutarLimpiezaSubidas } from '../../plataforma/funciones/servidor/programadas/consola.js';
 import { crearEntorno } from '../../plataforma/funciones/servidor/entorno.js';
 import { crearManejador, accion, type TablaAcciones } from '../../plataforma/funciones/servidor/llamadas/marco.js';
@@ -129,7 +129,7 @@ describe('encendido por tenant en el marco de los callables', () => {
 });
 
 describe('lector de módulos del tenant: cache de 60 s', () => {
-  it('lee una vez por ventana, relee al vencer y no cachea los rechazos', async () => {
+  it('lee una vez por ventana, relee al vencer y guarda los rechazos solo 10 s', async () => {
     let t = 0;
     const docs: Record<string, unknown> = { [`tenants/${T}`]: tenantCon('inventarios', 'recibos', 'pos') };
     const { f, lecturas } = firestoreFalso(docs);
@@ -144,6 +144,7 @@ describe('lector de módulos del tenant: cache de 60 s', () => {
     expect(lecturas.n).toBe(2);
     expect(await leer('nuevo')).toBeUndefined();
     docs['tenants/nuevo'] = tenantCon('inventarios');
+    t += TTL_NEGATIVO_MS; // el rechazo se guarda 10 s (LOW-2), no más: pasado ese tiempo el alta se nota
     expect(await leer('nuevo')).toEqual(['inventarios']);
     expect(await leer('../x')).toBeUndefined();
   });
@@ -172,6 +173,25 @@ describe('lector de módulos del tenant: cache de 60 s', () => {
     };
     await expect(manejar(caido, tabla)(peticion('hacer'))).rejects.toBeDefined();
     expect(ejecutar).not.toHaveBeenCalled();
+  });
+});
+
+describe('lector de módulos del tenant: caché negativa de 10 s', () => {
+  it('sin documento o inválido: la segunda petición dentro de 10 s no lee Firestore; pasados 10 s sí', async () => {
+    let t = 0;
+    const docs: Record<string, unknown> = { 'tenants/roto': { plan: 'base' } };
+    const { f, lecturas } = firestoreFalso(docs);
+    const leer = crearLectorModulos(f, () => t);
+    for (const id of ['fantasma', 'roto']) {
+      const antes = lecturas.n;
+      expect(await leer(id)).toBeUndefined();
+      t += TTL_NEGATIVO_MS - 1;
+      expect(await leer(id)).toBeUndefined();
+      expect(lecturas.n - antes, id).toBe(1);
+      t += 1;
+      expect(await leer(id)).toBeUndefined();
+      expect(lecturas.n - antes, id).toBe(2);
+    }
   });
 });
 

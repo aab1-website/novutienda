@@ -30,12 +30,15 @@ async function excedeLimite(limite: LimiteTasa, clave: string, ahora: number): P
  * Si el lector de módulos lanza, el error sube y la petición no se sirve.
  */
 async function servir(e: Entorno, ruta: string, tenantId: string): Promise<boolean> {
-  const ok = await rutaEncendida(e.modulosDelTenant, tenantId, duenoDeRuta(ruta));
-  if (!ok) logger.warn('ruta HTTP rechazada', { motivo: 'modulo-apagado', ruta });
+  const dueno = duenoDeRuta(ruta);
+  const ok = await rutaEncendida(e.modulosDelTenant, tenantId, dueno);
+  if (!ok) {
+    // Motivo distinguible en el log (la respuesta no lo distingue). El lector tiene caché: la segunda consulta no cuesta una lectura.
+    const motivo = dueno === undefined ? 'ruta-sin-dueno' : (await e.modulosDelTenant(tenantId)) === undefined ? 'sin-documento' : 'modulo-apagado';
+    logger.warn('ruta HTTP rechazada', { motivo, ruta, tenantId });
+  }
   return ok;
 }
-
-const rechazoNovuchat = (): RespuestaApi => json(401, { error: 'credencial_invalida' });
 
 export async function enrutar(e: Entorno, req: PeticionHttp, cfg: ConfigRouter): Promise<RespuestaApi> {
   const ruta = req.ruta.length > 1 ? req.ruta.replace(/\/+$/, '') : req.ruta;
@@ -71,9 +74,8 @@ export async function enrutar(e: Entorno, req: PeticionHttp, cfg: ConfigRouter):
     case '/api/novuchat/v1/inventario':
       return manejarInventario(e, peticion, cfg.novuchat, puedeServir);
     case '/api/novuchat/v1/pedidos/confirmar':
-      // Tenant fijo (el de `tenantPedidos`): mismo rechazo que una credencial mala (D2 = A, sin cambio de contrato).
-      if (req.metodo === 'POST' && !(await puedeServir(cfg.novuchat.tenantPedidos))) return rechazoNovuchat();
-      return manejarPedido(e, peticion, cfg.novuchat);
+      // Tenant fijo (`tenantPedidos`): el control corre dentro del manejador, tras verificar la firma (D2 = A: 401 credencial_invalida).
+      return manejarPedido(e, peticion, cfg.novuchat, () => puedeServir(cfg.novuchat.tenantPedidos));
     default:
       if (ruta.startsWith('/api/sitio/v1/')) return manejarSitio(e, peticion, cfg.secretoReconstruccion, puedeServir);
       return json(404, { error: 'no_encontrado' });
