@@ -1,0 +1,21 @@
+id,nombre,categoria,marca,sku,conSerie,garantiaMeses,minimo,precioUSDbo,precioUSDar,costoUSD,activo,publicado,stockTienda,stockDeposito1,stockDeposito2
+ejemplo-tv-55,Televisor de ejemplo 55 pulgadas,televisores,Aurora,DEMO-TV-55,true,12,2,45000,48000,31500,true,true,,,
+ejemplo-tv-65,Televisor de ejemplo 65 pulgadas,televisores,Aurora,DEMO-TV-65,true,12,,0,0,,true,true,,,
+ejemplo-tv-43,Televisor de ejemplo 43 pulgadas,televisores,Nórdika,DEMO-TV-43,true,6,1,28000,30000,19600,true,true,,,
+ejemplo-lavadora-9,Lavadora de ejemplo 9 kg,lavadoras,Nórdika,DEMO-LAV-09,true,24,2,32000,34000,22400,true,true,,,
+ejemplo-lavadora-15,Lavadora de ejemplo 15 kg,lavadoras,Vektor,DEMO-LAV-15,true,24,,54000,56000,37800,true,true,,,
+ejemplo-heladera-300,Heladera de ejemplo 300 L,heladeras,Vektor,DEMO-HEL-300,true,12,2,41000,43000,28700,true,true,,,
+ejemplo-heladera-450,Heladera de ejemplo 450 L,heladeras,Aurora,DEMO-HEL-450,true,12,1,69000,72000,48300,true,true,,,
+ejemplo-aire-12000,Aire acondicionado de ejemplo 12.000 BTU,aires,Lumina,DEMO-AIRE-12,true,18,2,38000,40000,26600,true,true,,,
+ejemplo-aire-18000,Aire acondicionado de ejemplo 18.000 BTU,aires,Lumina,DEMO-AIRE-18,true,18,1,52000,54500,36400,true,true,,,
+ejemplo-parlante-1,Parlante portátil de ejemplo,parlantes,Nórdika,DEMO-PARL-01,false,,5,9000,9500,6300,true,true,12,6,0
+accesorio-soporte-tv-pared,Soporte de pared para televisor,accesorios,Genérica,DEMO-ACC-01,false,,3,2500,2600,1700,true,false,8,4,0
+accesorio-cable-hdmi-2m,Cable HDMI de 2 metros,accesorios,Genérica,DEMO-ACC-02,false,,10,900,950,500,true,false,4,0,0
+accesorio-control-universal,Control remoto universal,accesorios,Genérica,DEMO-ACC-03,false,,3,1500,1600,900,true,false,10,5,0
+accesorio-protector-voltaje,Protector de voltaje,accesorios,Genérica,DEMO-ACC-04,false,,3,1800,1900,1100,true,false,6,3,0
+accesorio-filtro-aire,Filtro de repuesto para aire,accesorios,Genérica,DEMO-ACC-05,false,,3,1200,1300,700,true,false,7,0,5
+accesorio-manguera-lavadora,Manguera para lavadora,accesorios,Genérica,DEMO-ACC-06,false,,3,1100,1200,600,true,false,5,5,0
+accesorio-pilas-aa,Pilas AA pack de 4,accesorios,Genérica,DEMO-ACC-07,false,,5,600,650,300,true,false,20,10,0
+accesorio-funda-parlante,Funda para parlante,accesorios,Genérica,DEMO-ACC-08,false,,3,1400,1500,800,true,false,6,0,0
+accesorio-base-giratoria,Base giratoria para televisor,accesorios,Genérica,DEMO-ACC-09,false,,3,3200,3300,2000,true,false,4,2,2
+accesorio-alargue-3m,Alargue de 3 metros,accesorios,Genérica,DEMO-ACC-10,false,,3,1300,1400,800,true,false,9,4,0
