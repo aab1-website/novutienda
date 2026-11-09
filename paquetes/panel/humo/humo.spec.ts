@@ -146,7 +146,7 @@ for (const esquema of ESQUEMAS) {
       await expect(page.getByText(/de 200/).first()).toBeVisible();
       await sinViolaciones(page, 'tablero');
       await page.getByRole('link', { name: 'Fichas, fotos y video' }).click();
-      await page.getByRole('button', { name: 'Editar la ficha de Televisor 55 pulgadas' }).click();
+      await page.getByRole('button', { name: 'Editar ficha de Televisor 55 pulgadas' }).click();
       await page.getByLabel('Subir fotos').setInputFiles({ name: 'frente.jpg', mimeType: 'image/jpeg', buffer: Buffer.from('imagen de prueba') });
       await expect(page.getByText('frente.jpg: Listo')).toBeVisible();
       await page.getByLabel('Descripción del producto').fill('Televisor de 55 pulgadas.');
