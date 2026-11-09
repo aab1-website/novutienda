@@ -51,9 +51,10 @@ const conVentas = !args.includes('--sin-ventas');
 // ---- Archivos locales -------------------------------------------------------------------------------------------
 const rutaCred = resolve(credencialesRuta);
 let proyectoEntorno;
+let enEmulador;
 try {
   // Entorno: --proyecto igual a GOOGLE_CLOUD_PROJECT, NOVUTIENDA_AMBIENTE=staging|emulador, nunca producción, emulador completo o ninguno.
-  ({ proyecto: proyectoEntorno } = validarEntorno({
+  ({ proyecto: proyectoEntorno, enEmulador } = validarEntorno({
     proyectoArg: valorDe('--proyecto'),
     hostsEmulador: ['FIREBASE_AUTH_EMULATOR_HOST', 'FIRESTORE_EMULATOR_HOST', 'FIREBASE_STORAGE_EMULATOR_HOST'],
   }));
@@ -78,7 +79,6 @@ if (cuentaAdm === undefined || cuentaSup === undefined || cuentaCaj === undefine
 const emuladorAuth = process.env.FIREBASE_AUTH_EMULATOR_HOST;
 const emuladorFunciones = process.env.FUNCTIONS_EMULATOR_HOST ?? (process.env.FIREBASE_AUTH_EMULATOR_HOST !== undefined ? '127.0.0.1:8245' : undefined);
 const emuladorStorage = process.env.FIREBASE_STORAGE_EMULATOR_HOST;
-const enEmulador = emuladorAuth !== undefined;
 let webConfig;
 if (enEmulador && webArg === undefined) {
   const proyecto = proyectoEntorno;
@@ -123,7 +123,7 @@ async function sesion(actor) {
   if (previa !== undefined) return previa;
   const app = initializeApp(webConfig, `demo-${actor}`);
   const auth = getAuth(app);
-  if (emuladorAuth !== undefined) connectAuthEmulator(auth, `http://${emuladorAuth}`, { disableWarnings: true });
+  if (enEmulador) connectAuthEmulator(auth, `http://${emuladorAuth}`, { disableWarnings: true });
   const funciones = getFunctions(app, 'us-east1');
   if (emuladorFunciones !== undefined) {
     const [host, puerto] = emuladorFunciones.split(':');

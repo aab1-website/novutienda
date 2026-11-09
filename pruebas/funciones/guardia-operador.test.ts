@@ -2,7 +2,7 @@
 // Se importa el módulo real. Las rutas se prueban contra el repositorio real (el módulo decide con el git del propio
 // checkout), usando rutas que no existen o directorios temporales: no se escribe nada en el repositorio.
 import { execFileSync } from 'node:child_process';
-import { mkdtempSync, rmSync } from 'node:fs';
+import { mkdtempSync, rmSync, symlinkSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { dirname, join, resolve } from 'node:path';
 import { afterAll, describe, expect, it } from 'vitest';
@@ -19,7 +19,7 @@ const HOSTS_DEMO = [...HOSTS_PERSONAL, 'FIREBASE_STORAGE_EMULATOR_HOST'];
 const EMU = { FIREBASE_AUTH_EMULATOR_HOST: '127.0.0.1:9099', FIRESTORE_EMULATOR_HOST: '127.0.0.1:8080', FIREBASE_STORAGE_EMULATOR_HOST: '127.0.0.1:9199' };
 
 describe('guardia de entorno', () => {
-  const stg = { GOOGLE_CLOUD_PROJECT: 'proyecto-stg', NOVUTIENDA_AMBIENTE: 'staging' };
+  const stg = { GOOGLE_CLOUD_PROJECT: 'proyecto-stg', NOVUTIENDA_AMBIENTE: 'staging', GCP_PROJECT_ID_STAGING: 'proyecto-stg' };
   const emu = { GOOGLE_CLOUD_PROJECT: 'demo-x', NOVUTIENDA_AMBIENTE: 'emulador', ...EMU };
   const v = (env: Record<string, string | undefined>, proyectoArg: string | undefined, hosts = HOSTS_DEMO) => () => validarEntorno({ proyectoArg, hostsEmulador: hosts, env });
 
@@ -51,6 +51,22 @@ describe('guardia de entorno', () => {
     // Un id de producción distinto o vacío no bloquea staging.
     expect(v({ ...stg, GCP_PROJECT_ID_PROD: 'otro-id' }, 'proyecto-stg')().ambiente).toBe('staging');
     expect(v({ ...stg, GCP_PROJECT_ID_PROD: '' }, 'proyecto-stg')().ambiente).toBe('staging');
+  });
+
+  it('sin emulador exige GCP_PROJECT_ID_STAGING definida, válida e igual al proyecto', () => {
+    const sinStaging: Record<string, string | undefined> = { ...stg, GCP_PROJECT_ID_STAGING: undefined };
+    expect(v(sinStaging, 'proyecto-stg')).toThrow(/GCP_PROJECT_ID_STAGING/);
+    expect(v({ ...stg, GCP_PROJECT_ID_STAGING: '  ' }, 'proyecto-stg')).toThrow(/GCP_PROJECT_ID_STAGING/);
+    expect(v({ ...stg, GCP_PROJECT_ID_STAGING: 'otro-proyecto' }, 'proyecto-stg')).toThrow(/no es el de staging/);
+    // Ids con formato inválido (mayúsculas, guion al final, muy cortos o con caracteres ajenos).
+    for (const malo of ['Proyecto-Stg', 'proyecto-stg-', 'abc', '1proyecto', 'proyecto_stg']) {
+      expect(v({ ...stg, GOOGLE_CLOUD_PROJECT: malo, GCP_PROJECT_ID_STAGING: malo }, malo)).toThrow(/formato/);
+    }
+    // Normaliza espacios y con producción definida y distinta sigue pasando.
+    expect(v({ ...stg, GCP_PROJECT_ID_STAGING: ' proyecto-stg ' }, 'proyecto-stg')().proyecto).toBe('proyecto-stg');
+    expect(() => v({ ...stg, GCP_PROJECT_ID_STAGING: 'otro-proyecto' }, 'proyecto-stg')()).toThrow(/^(?!.*proyecto-stg)/);
+    // El emulador no exige GCP_PROJECT_ID_STAGING.
+    expect(v(emu, 'demo-x')().enEmulador).toBe(true);
   });
 
   it('emulador completo o ninguno: con uno solo de los hosts (también sin Storage en demo) falla', () => {
@@ -115,6 +131,18 @@ describe('guardia de rutas con git', () => {
 
   it('rechaza los archivos de CLIENTES si dejaran de estar ignorados: la carpeta vecina «CLIENTES2» sí se rechaza', () => {
     expect(() => exigirFueraDelRepositorio(join(toplevel, 'CLIENTES2', 'credenciales.json'))).toThrow(/fuera del repositorio o ignorado/);
+  });
+
+  it('rechaza un enlace simbólico en un tmp que apunta dentro del repositorio (al archivo o a la carpeta)', () => {
+    const t = mkdtempSync(join(tmpdir(), 'guardia-'));
+    temporales.push(t);
+    symlinkSync(join(toplevel, 'package.json'), join(t, 'enlace.json'));
+    expect(() => exigirFueraDelRepositorio(join(t, 'enlace.json'))).toThrow(/enlace simbólico/);
+    symlinkSync(join(toplevel, 'scripts'), join(t, 'carpeta'));
+    expect(() => exigirFueraDelRepositorio(join(t, 'carpeta', 'credenciales.json'))).toThrow(/fuera del repositorio o ignorado/);
+    // El .tmp de las credenciales también se valida: un .tmp que es enlace se rechaza.
+    symlinkSync(join(toplevel, 'package.json'), join(t, 'credenciales.json.tmp'));
+    expect(() => exigirFueraDelRepositorio(join(t, 'credenciales.json.tmp'), 'el archivo temporal')).toThrow(/enlace simbólico/);
   });
 
   it('el mensaje lleva la etiqueta indicada y no la ruta', () => {

@@ -48,6 +48,7 @@ const rutaCredenciales = resolve(credencialesArg ?? join(dirname(resolve(entrada
 // Repositorio público: el archivo de contraseñas nunca puede quedar dentro del árbol de trabajo.
 try {
   exigirFueraDelRepositorio(rutaCredenciales, 'el archivo de credenciales');
+  exigirFueraDelRepositorio(`${rutaCredenciales}.tmp`, 'el archivo temporal de credenciales');
 } catch (e) {
   falla(e instanceof Error ? e.message : 'ruta de credenciales inválida');
 }
