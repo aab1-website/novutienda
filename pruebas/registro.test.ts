@@ -32,6 +32,63 @@ const mod = (id: string, dependeDe: string[] = [], rutas: string[] = []): Manifi
   consume: [],
 });
 
+/**
+ * Invariante estática del bus (L3-5, D3 = A): si el módulo C consume un evento, todo módulo que lo emite tiene a C
+ * en su cierre de `dependeDe` y `requiere`; así un emisor encendido implica a su consumidor encendido.
+ * Devuelve las violaciones como texto (vacío = se cumple).
+ */
+function violacionesDelBus(manifiestos: readonly ManifiestoModulo[]): string[] {
+  const porId = new Map(manifiestos.map((m) => [m.id, m]));
+  const cierre = (id: string): Set<string> => {
+    const visto = new Set<string>();
+    const pila = [id];
+    while (pila.length > 0) {
+      const m = porId.get(pila.pop() as string);
+      for (const d of [...(m?.dependeDe ?? []), ...(m?.requiere ?? [])]) {
+        if (!visto.has(d)) {
+          visto.add(d);
+          pila.push(d);
+        }
+      }
+    }
+    return visto;
+  };
+  const fallas: string[] = [];
+  for (const c of manifiestos) {
+    for (const evento of c.consume) {
+      for (const emisor of manifiestos.filter((m) => m.emite.includes(evento))) {
+        if (emisor.id !== c.id && !cierre(emisor.id).has(c.id)) fallas.push(`${emisor.id} emite ${evento}, que consume ${c.id}, y no lo tiene en dependeDe/requiere`);
+      }
+    }
+  }
+  return fallas;
+}
+
+describe('invariante estática del bus (L3-5)', () => {
+  it('con los manifiestos reales, todo emisor de un evento tiene al consumidor en su cierre', () => {
+    expect(violacionesDelBus(registroPlataforma.listar())).toEqual([]);
+  });
+
+  it('los emisores reales de lo que consumen Recibos e Inventarios (pos) los tienen en su cierre', () => {
+    const pos = registroPlataforma.listar().find((m) => m.id === 'pos');
+    expect(pos?.dependeDe).toContain('recibos');
+    expect(pos?.requiere).toContain('inventarios');
+  });
+
+  it('detecta un manifiesto roto: un emisor que no declara a su consumidor', () => {
+    const emisor = { ...mod('emisor', ['nucleo']), emite: ['x.hecho'] };
+    const consumidor = { ...mod('consumidor', ['nucleo']), consume: ['x.hecho'] };
+    expect(violacionesDelBus([mod('nucleo'), emisor, consumidor])).toEqual([
+      'emisor emite x.hecho, que consume consumidor, y no lo tiene en dependeDe/requiere',
+    ]);
+    // Corregido (por dependeDe o por requiere, también transitivo) deja de fallar.
+    expect(violacionesDelBus([mod('nucleo'), { ...emisor, dependeDe: ['nucleo', 'consumidor'] }, consumidor])).toEqual([]);
+    expect(violacionesDelBus([mod('nucleo'), { ...emisor, requiere: ['consumidor'] }, consumidor])).toEqual([]);
+    const puente = mod('puente', ['consumidor']);
+    expect(violacionesDelBus([mod('nucleo'), { ...emisor, dependeDe: ['puente'] }, puente, consumidor])).toEqual([]);
+  });
+});
+
 describe('registro de módulos', () => {
   it('el núcleo, los módulos y plataforma están registrados; el núcleo tiene sus nueve colecciones (L1-b)', () => {
     // L1-b: se suma `plataforma` (8 ids) y el núcleo declara `alertas` y `limitesTasa` (9 colecciones).
