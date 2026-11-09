@@ -258,6 +258,8 @@ Plan: `NOVUTIENDA_plan-L3_2026-11-09.md` (en `~/CLAUDE_DESCARGAS/`). Un PR por b
 - **D3 = A: el bus se controla con una invariante estática** (`pruebas/registro.test.ts`): todo emisor de un evento que consume el módulo C tiene a C en su cierre de `dependeDe`/`requiere`. Sin control en ejecución. Descartadas B (control en ejecución) y C (nada).
 - **D4 = A: con consola apagada el disparador `subidaFinalizada` no procesa y `limpiezaSubidas` corre para todos los tenants.** Descartadas B (la limpieza sigue saltando) y C (dejar como está).
 
+**Cierre (L3-6):** el encendido en HTTP quedó fusionado (PR 42 a 46); la condición de D1 (L3-3 antes de apagar un módulo o dar de alta un tenant con módulos apagados) está cumplida. L3-5 espera su fusión. Antes de desplegar en un ambiente, `tenants/{t}` debe existir en él.
+
 **No entra:** volver multitenant las rutas de tenant fijo (sitio por dominio, pedido firmado por tenant): corresponde al segundo tenant con website. Versiones de módulo por tenant y límites de tasa por plan en HTTP.
 
 ## 7. Camino, por tandas y fases
@@ -281,13 +283,13 @@ Plan: `NOVUTIENDA_plan-L3_2026-11-09.md` (en `~/CLAUDE_DESCARGAS/`). Un PR por b
 | **L2-7** | El doble de `servicios.ts` sale de la composición (`doble/arranque.tsx`); `deuda.json` vacío | `pnpm zonas` en 0 cruces; humo del panel | no | 0,3 |
 | **L2-8** | `publico/**` → `publico/medios/**` (dueño consola); `CAMPOS_RESERVA` atado a la plantilla; Storage exigido en pruebas | contrato de reserva; negativo `publico/otro`; matriz y mutantes | sí (Storage, más restrictivo) | 0,5 |
 | **L2-9** | Higiene del pre-commit (5 archivos hallados) | pre-commit limpio en una rama desde `main` | no | 0,1 |
-| **L3-0** | Método: esta enmienda (§6.8), esta fila partida, `website.md`, `ESTADO.md` | fronteras en verde; 0 sin zona | no | 0,1 |
-| **L3-1** | Contrato `rutasHttp` en el manifiesto y `registro.rutasHttp()`, sin efecto | `registro.test.ts` (rechazos); `reglas:verificar` idéntico | no | 0,3 |
-| **L3-2** | website, inventarios y consola declaran sus rutas; conformidad con `router.ts` | caso de conformidad; comportamiento sin cambios | no | 0,3 |
-| **L3-3** | Encendido en HTTP: `rutas-http.ts`, `router.ts`, `novuchat.ts`, `sitio.ts` (D2 = A). **Se fusiona antes del alta de cualquier tenant con módulos apagados y antes de apagar un módulo a cualquier tenant (D1 = A)** | `encendido-http.test.ts`; caso con emulador; `api.test.ts` intacto; `test:funciones`; humo de staging | sí | 0,8 |
-| **L3-4** | Disparador `subidaFinalizada` sin procesar con consola apagada; `limpiezaSubidas` para todos (D4 = A) | `programadas.test.ts`, `encendido.test.ts` | sí | 0,3 |
-| **L3-5** | Invariante estática del bus (D3 = A) | `registro.test.ts`; consumidores = `consume` de los manifiestos | no | 0,2 |
-| **L3-6** | Cierre: `funciones.md`, `website.md`, `coordinador.md`, `ESTADO.md` | fronteras en verde | no | 0,1 |
+| **L3-0** | Método: esta enmienda (§6.8), esta fila partida, `website.md`, `ESTADO.md`. **Hecho (PR 42)** | fronteras en verde; 0 sin zona | no | 0,1 |
+| **L3-1** | Contrato `rutasHttp` en el manifiesto y `registro.rutasHttp()`, sin efecto. **Hecho (PR 43)** | `registro.test.ts` (rechazos); `reglas:verificar` idéntico | no | 0,3 |
+| **L3-2** | website, inventarios y consola declaran sus rutas; conformidad con `router.ts`. **Hecho (PR 45)** | caso de conformidad; comportamiento sin cambios | no | 0,3 |
+| **L3-3** | Encendido en HTTP: `rutas-http.ts`, `router.ts`, `novuchat.ts`, `sitio.ts` (D2 = A). **Se fusiona antes del alta de cualquier tenant con módulos apagados y antes de apagar un módulo a cualquier tenant (D1 = A)**. **Hecho (PR 46)** | `encendido-http.test.ts`; caso con emulador; `api.test.ts` intacto; `test:funciones`; humo de staging | sí | 0,8 |
+| **L3-4** | Disparador `subidaFinalizada` sin procesar con consola apagada; `limpiezaSubidas` para todos (D4 = A). **Hecho (PR 44)** | `programadas.test.ts`, `encendido.test.ts` | sí | 0,3 |
+| **L3-5** | Invariante estática del bus (D3 = A). **Escrito; pendiente de fusión (rama `test/l3-5-invariante-bus`)** | `registro.test.ts`; consumidores = `consume` de los manifiestos | no | 0,2 |
+| **L3-6** | Cierre: `funciones.md`, `website.md`, `coordinador.md`, `ESTADO.md`. **Hecho** | fronteras en verde | no | 0,1 |
 
 Cada PR declara costo en tres unidades: escrituras en GitHub y corridas de CI, escrituras en la nube (0 en T0–T4), y **cero cambios de contrato** con NovuChat. Precondición de toda tanda: baseline local en verde (`pnpm test`, `lint`, `typecheck`, `reglas:verificar`, `build -- --mode staging`, `test:funciones`).
 

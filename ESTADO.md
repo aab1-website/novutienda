@@ -1,6 +1,6 @@
 # Estado del proyecto
 
-Última actualización: 09/11/2026 (L1 y L2 cerradas; L3 planificada y decidida, en ejecución L3-0; sigue el pase a producción).
+Última actualización: 09/11/2026 (L1 y L2 cerradas; L3 cerrada salvo L3-5, pendiente de fusión; sigue el pase a producción).
 
 **El estado vivo de la arquitectura no se escribe aquí: lo imprime `pnpm zonas`** (pieza → zona, archivos
 sin zona, cruces de importación y qué deuda queda). Lo que sigue son hitos y pendientes que no se
@@ -20,6 +20,7 @@ derivan del código; las cifras caducan y por eso no se copian.
   `CLAUDE.md` con la regla de zonas, `CODEOWNERS` por carpetas reales, frontera en el pre-commit. Sin mover ni cambiar lógica.
 - Arquitectura por zonas, tandas T1 a T4 fusionadas (H2, PR 18 a 22) y L1 cerrada (PR 23 a 27: T5, L1-0, L1-a, L1-b, L1-c): colecciones con dueño y `storage.rules` generado; hito H3 aprobado el 06/11/2026.
 - Arquitectura por zonas, L2 cerrada (bloques L2-0 a L2-9 fusionados): encendido por tenant en ejecución, manifiestos completos, alta de tenant (`scripts/alta-tenant.mjs`); hito H4 aprobado el 07/11/2026. El alta de Casa Bermejo ya se aplicó en staging.
+- Arquitectura por zonas, L3 (PR 42 a 46): encendido por tenant también en la API HTTP (`docs/produccion/funciones.md` §4), disparador de medios con consola apagada y limpieza para todos los tenants; sin cambio de contrato con NovuChat.
 
 ## Bloqueos registrados el 04/11/2026 (confirmar si siguen; el CI de `main` ya está en verde)
 
@@ -29,11 +30,12 @@ derivan del código; las cifras caducan y por eso no se copian.
 
 ## Pendiente
 
-- L3 (HTTP, bus de eventos, disparador): decidida el 09/11/2026 (plano §6.8); bloques L3-0 a L3-6 en el plano §7. L3-3 (encendido en HTTP)
-  se fusiona antes de apagar un módulo a cualquier tenant o de dar de alta uno con módulos apagados. Hasta entonces el encendido por
-  tenant no rige para la API HTTP (ver `docs/modulos/website.md`).
-- Pase a producción: alta de cada tenant en producción como paso previo al tag (`docs/produccion/primer-tag.md`); está pendiente.
-- Datos de demostración en staging: scripts `personal-tenant.mjs` y `demo-tenant.mjs`; ficha en `docs/produccion/datos-de-demostracion.md`.
+- L3 (HTTP, bus de eventos, disparador) cerrada el 09/11/2026 (plano §6.8 y §7): L3-0 a L3-5 fusionados (PR 42 a 47), L3-6 es este cierre. El encendido por tenant rige también para la API HTTP; ver `docs/produccion/funciones.md`.
+- Pase a producción: alta de Casa Bermejo en producción antes del tag (`docs/produccion/primer-tag.md`); está pendiente. Sin el documento del tenant, la API HTTP responde como módulo apagado.
+- Datos de demostración en staging: código fusionado (scripts `personal-tenant.mjs` y `demo-tenant.mjs`, ficha en `docs/produccion/datos-de-demostracion.md`); aplicarlos en staging es un paso aparte con el visto bueno de Andres.
+- `alta-tenant.mjs` no tiene la guardia contra producción que sí tienen `personal-tenant` y `demo-tenant` (`scripts/guardia-operador.mjs`).
+- `cambiarRol` tiene el mismo patrón de falla parcial del claim que se corrigió en `asignarPrimerAdministrador`.
+- Accesibilidad: botones «Ficha» (inventarios) y «Solicitar anulación» (POS) con nombre accesible que no empieza por su texto visible; el de la tabla del catálogo está en el PR de accesibilidad.
 - Pase a staging (`docs/produccion/pase-a-staging.md`): proyecto, facturación, Firestore/Storage, Hosting, WIF, secretos, App Check,
   variables y Environments de GitHub, rulesets, alerta de Monitoring.
 - Decisiones de Andres: D2 a D5 del plan único (proyectos Firebase, ubicación de Firestore —se propone `us-east1`—, segundo aprobador,
