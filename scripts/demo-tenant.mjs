@@ -1,7 +1,7 @@
 // Carga de datos de demostración de un tenant por las MISMAS callables del panel (nada se escribe directo en Firestore).
 //
-//   node scripts/demo-tenant.mjs <tenant> --credenciales <ruta> [--web <ruta>] [--verificar] [--sin-fotos] [--sin-ventas]
-//   node scripts/demo-tenant.mjs <tenant> --credenciales <ruta> [--web <ruta>] --aplicar [--sin-fotos] [--sin-ventas]
+//   node scripts/demo-tenant.mjs <tenant> --proyecto <id> --credenciales <ruta> [--web <ruta>] [--verificar] [--sin-fotos] [--sin-ventas]
+//   node scripts/demo-tenant.mjs <tenant> --proyecto <id> --credenciales <ruta> [--web <ruta>] --aplicar [--sin-fotos] [--sin-ventas]
 //
 // Inicia sesión con el SDK cliente de Firebase como administrador (y como cajero para las ventas) con el archivo de
 // credenciales que dejó personal-tenant.mjs (por defecto, junto a él, `web.json` con la configuración web del proyecto; con
@@ -10,7 +10,7 @@
 // plan; `--aplicar` ejecuta lo que falta: una segunda pasada no escribe nada. No imprime uid, correos, proyecto ni tokens.
 // Fixtures: scripts/demo/ (todo ficticio). La planificación vive en plataforma/operador/demo.ts (pura).
 import { readFileSync } from 'node:fs';
-import { dirname, join, relative, resolve } from 'node:path';
+import { dirname, join, resolve } from 'node:path';
 import { setTimeout as esperar } from 'node:timers/promises';
 import { pathToFileURL } from 'node:url';
 import { initializeApp } from 'firebase/app';
@@ -18,6 +18,7 @@ import { connectAuthEmulator, getAuth, signInWithEmailAndPassword } from 'fireba
 import { connectFunctionsEmulator, getFunctions, httpsCallable } from 'firebase/functions';
 import { connectStorageEmulator, getStorage, ref, uploadBytes } from 'firebase/storage';
 import { cargarManifiestos } from './generar-reglas.mjs';
+import { exigirFueraDelRepositorio, validarEntorno } from './guardia-operador.mjs';
 
 const falla = (mensaje) => {
   console.error(`demo-tenant: ${mensaje}`);
@@ -25,7 +26,7 @@ const falla = (mensaje) => {
 };
 
 const args = process.argv.slice(2);
-const CON_VALOR = ['--credenciales', '--web'];
+const CON_VALOR = ['--credenciales', '--web', '--proyecto'];
 const tenant = args.find((a, i) => !a.startsWith('--') && !CON_VALOR.includes(args[i - 1] ?? ''));
 const valorDe = (b) => {
   const i = args.indexOf(b);
@@ -40,7 +41,7 @@ if (
   tenant === undefined || credencialesRuta === undefined || credencialesRuta.startsWith('--') || (webArg !== undefined && webArg.startsWith('--')) ||
   desconocidas.length > 0 || modos.length > 1
 ) {
-  falla('uso: demo-tenant.mjs <tenant> --credenciales <ruta> [--web <ruta>] [--verificar | --aplicar] [--sin-fotos] [--sin-ventas]');
+  falla('uso: demo-tenant.mjs <tenant> --proyecto <id> --credenciales <ruta> [--web <ruta>] [--verificar | --aplicar] [--sin-fotos] [--sin-ventas]');
 }
 if (!/^[a-z0-9][a-z0-9-]{0,62}$/.test(tenant)) falla('el tenant no es un identificador válido');
 const aplicar = modos[0] === '--aplicar';
@@ -49,8 +50,17 @@ const conVentas = !args.includes('--sin-ventas');
 
 // ---- Archivos locales -------------------------------------------------------------------------------------------
 const rutaCred = resolve(credencialesRuta);
-const relCred = relative(process.cwd(), rutaCred);
-if (relCred === '' || (!relCred.startsWith('..') && !relCred.startsWith('/'))) falla('el archivo de credenciales debe estar fuera del repositorio');
+let proyectoEntorno;
+try {
+  // Entorno: --proyecto igual a GOOGLE_CLOUD_PROJECT, NOVUTIENDA_AMBIENTE=staging|emulador, nunca producción, emulador completo o ninguno.
+  ({ proyecto: proyectoEntorno } = validarEntorno({
+    proyectoArg: valorDe('--proyecto'),
+    hostsEmulador: ['FIREBASE_AUTH_EMULATOR_HOST', 'FIRESTORE_EMULATOR_HOST', 'FIREBASE_STORAGE_EMULATOR_HOST'],
+  }));
+  exigirFueraDelRepositorio(rutaCred, 'el archivo de credenciales');
+} catch (e) {
+  falla(e instanceof Error ? e.message : 'entorno inválido');
+}
 const leerJson = (ruta, que) => {
   try {
     return JSON.parse(readFileSync(ruta, 'utf8'));
@@ -71,14 +81,20 @@ const emuladorStorage = process.env.FIREBASE_STORAGE_EMULATOR_HOST;
 const enEmulador = emuladorAuth !== undefined;
 let webConfig;
 if (enEmulador && webArg === undefined) {
-  const proyecto = process.env.GOOGLE_CLOUD_PROJECT;
-  if (!proyecto) falla('defina GOOGLE_CLOUD_PROJECT para el emulador');
+  const proyecto = proyectoEntorno;
   webConfig = { apiKey: 'clave-del-emulador', projectId: proyecto, storageBucket: `${proyecto}.appspot.com` };
 } else {
-  webConfig = leerJson(resolve(webArg ?? join(dirname(rutaCred), 'web.json')), 'la configuración web (web.json)');
+  const rutaWeb = resolve(webArg ?? join(dirname(rutaCred), 'web.json'));
+  try {
+    exigirFueraDelRepositorio(rutaWeb, 'web.json');
+  } catch (e) {
+    falla(e instanceof Error ? e.message : 'ruta de web.json inválida');
+  }
+  webConfig = leerJson(rutaWeb, 'la configuración web (web.json)');
   if (typeof webConfig.apiKey !== 'string' || typeof webConfig.projectId !== 'string' || typeof webConfig.storageBucket !== 'string') {
     falla('web.json debe traer apiKey, projectId y storageBucket');
   }
+  if (webConfig.projectId !== proyectoEntorno) falla('web.json no corresponde al proyecto indicado');
 }
 
 const dirDemo = resolve('scripts/demo');
@@ -97,7 +113,7 @@ for (const f of fixture.fichas) {
 }
 
 await cargarManifiestos(); // registra los ganchos de TypeScript
-const { planificarDemo, ventaIdDemo } = await import(pathToFileURL(resolve('plataforma/operador/demo.ts')).href);
+const { planificarDemo, subidaIdDe, ventaIdDemo } = await import(pathToFileURL(resolve('plataforma/operador/demo.ts')).href);
 
 // ---- Sesiones y llamadas ----------------------------------------------------------------------------------------
 // Un SDK cliente por sesión: la de administración y la de caja no se mezclan.
@@ -180,10 +196,21 @@ async function leerEstado() {
   const medios = {};
   for (const f of fixture.fichas) {
     if (!productos.includes(f.productoId)) continue;
-    medios[f.productoId] = ((await llamar('adm', 'medios', 'listarMedios', { productoId: f.productoId })).medios ?? []).map((m) => m.id);
+    const ids = ((await llamar('adm', 'medios', 'listarMedios', { productoId: f.productoId })).medios ?? []).map((m) => m.id);
+    medios[f.productoId] = ids;
+    // Estado parcial: una subida sin medio con reserva vigente («reservada») se reanuda; rechazada o en borrado, se bloquea.
+    for (let i = 0; i < f.fotos.length; i += 1) {
+      const subidaId = subidaIdDe(f.productoId, i + 1);
+      if (ids.includes(subidaId)) continue;
+      const r = await leerOpcional('adm', 'medios', 'estadoSubida', { subidaId });
+      if (r === null) continue; // sin reserva: se reserva de cero
+      if (r.estado !== 'reservada' && r.estado !== 'procesada') {
+        throw new Error('una foto quedó en un estado parcial no reanudable (reserva rechazada o vencida): limpie esa subida desde el panel y repita');
+      }
+    }
   }
   const t = await llamar('adm', 'consola', 'tablero', {});
-  const turnos = ((await llamar('adm', 'pos', 'turnos', { limite: 30 })).turnos ?? []).map((x) => ({ turnoId: x.turnoId, estado: x.estado }));
+  const turnos = ((await llamar('adm', 'pos', 'turnos', { limite: 200 })).turnos ?? []).map((x) => ({ turnoId: x.turnoId, estado: x.estado }));
   const ventas = [];
   for (const v of fixture.pos.ventas) {
     const id = ventaIdDemo(v.clave);
@@ -218,7 +245,7 @@ async function subirFoto(paso) {
   for (let i = 0; i < 40; i += 1) {
     const r = await llamar('adm', 'medios', 'estadoSubida', { subidaId: paso.subidaId });
     if (r.estado === 'procesada') return;
-    if (r.estado === 'rechazada') throw new Error('el servidor rechazó una foto');
+    if (r.estado === 'rechazada' || r.estado === 'borrando') throw new Error('el servidor rechazó una foto');
     await esperar(1500);
   }
   throw new Error('una foto no terminó de procesarse a tiempo');

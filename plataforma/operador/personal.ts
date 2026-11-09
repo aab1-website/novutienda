@@ -96,8 +96,14 @@ export interface AlmacenCredenciales {
   guardar(credenciales: readonly Credencial[]): Promise<void>;
 }
 
-/** Valor fijo de `operador` para la auditoría: nunca viene de un argumento libre. */
-export const operadorDe = (cuenta?: string): string => `operador:${cuenta !== undefined && /^[A-Za-z0-9._@-]{1,120}$/.test(cuenta) ? cuenta : 'script'}`;
+/** Misma regla que `OPERADOR_VALIDO` del núcleo (identidad/asignar.ts); el prefijo «operador:» cuenta en el largo. */
+const OPERADOR_VALIDO = /^[a-z0-9:._@-]{1,128}$/;
+/** Valor fijo de `operador` para la auditoría: nunca viene de un argumento libre. En minúsculas; lo inválido cae a «script». */
+export const operadorDe = (cuenta?: string): string => {
+  const nombre = (cuenta ?? '').trim().toLowerCase();
+  const candidato = `operador:${nombre}`;
+  return nombre !== '' && OPERADOR_VALIDO.test(candidato) ? candidato : 'operador:script';
+};
 
 export interface ResultadoPersonal {
   readonly cuentas: number;
@@ -126,6 +132,8 @@ export async function aplicarPersonal(o: {
   readonly ahora?: () => number;
 }): Promise<ResultadoPersonal> {
   const entrada = validarEntradaPersonal(o.entrada);
+  // Antes de crear cuentas: el operador de la auditoría debe ser válido para el núcleo (si no, fallaría en el paso 3 con cuentas ya creadas).
+  if (!OPERADOR_VALIDO.test(o.operador)) throw new Error('el operador de la auditoría no es válido');
   const previas = await o.credenciales.leer();
   const estados = new Map<string, UsuarioAuth | null>();
   for (const c of entrada.cuentas) estados.set(c.correo, await o.auth.buscarPorCorreo(c.correo));
