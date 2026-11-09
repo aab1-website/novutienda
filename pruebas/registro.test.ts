@@ -399,6 +399,24 @@ describe('L2-1: campos L2 del manifiesto (sin efecto)', () => {
       for (const p of registroPlataforma.programadas()) expect(horarioDe(p.id)).toEqual({ schedule: p.horario, timeZone: p.zonaHoraria });
     });
 
+    // L3-2: las rutas que maneja router.ts (leídas del texto) son exactamente las declaradas por los módulos más la salud.
+    it('las rutas de router.ts son exactamente registro.rutasHttp() más /healthz y /api/salud', () => {
+      const codigo = leer('../plataforma/funciones/servidor/http/router.ts');
+      const literales = [...codigo.matchAll(/'(\/(?:api\/[a-z0-9_/-]+|healthz))'/g)].map((x) => x[1] as string);
+      // '/api/novuchat/' solo es la guarda del límite en memoria: sus rutas reales se listan una a una.
+      const exactas = literales.filter((l) => !l.endsWith('/'));
+      const prefijos = literales.filter((l) => l.endsWith('/') && l !== '/api/novuchat/').map((l) => l.slice(0, -1));
+      const leidas = [...new Set([...exactas, ...prefijos])].sort();
+      const declaradas = registroPlataforma.rutasHttp().map((r) => r.ruta);
+      expect(leidas).toEqual([...declaradas, '/healthz', '/api/salud'].sort());
+      expect(registroPlataforma.rutasHttp().filter((r) => r.prefijo === true).map((r) => r.ruta).sort()).toEqual(prefijos.sort());
+      expect(registroPlataforma.rutasHttp().map((r) => [r.ruta, r.modulo]).sort()).toEqual([
+        ['/api/contacto', 'website'], ['/api/cotizacion', 'website'], ['/api/disponibilidad', 'website'],
+        ['/api/novuchat/v1/catalogo', 'consola'], ['/api/novuchat/v1/inventario', 'inventarios'],
+        ['/api/novuchat/v1/pedidos/confirmar', 'inventarios'], ['/api/sitio/v1', 'consola'],
+      ]);
+    });
+
     it('pos (dependeDe nucleo y recibos) queda fuera sin recibos encendido', () => {
       expect(manifiestosEnOrden().find((m) => m.id === 'pos')?.dependeDe).toEqual(['nucleo', 'recibos']);
       expect(modulosEfectivos(manifiestosEnOrden(), ['pos'])).toEqual([]);
