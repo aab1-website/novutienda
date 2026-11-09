@@ -72,6 +72,8 @@ export interface EstadoDemo {
   readonly plantilla: Readonly<Record<string, unknown>> | null;
   readonly configSitio: Readonly<Record<string, unknown>> | null;
   readonly fichas: Readonly<Record<string, Readonly<Record<string, unknown>>>>;
+  /** Estado de las subidas de fotos que existen y aún no son medios (por id, incluidos los reintentos `-r2`, `-r3`). */
+  readonly subidas?: Readonly<Record<string, 'reservada' | 'procesada' | 'borrando' | 'rechazada'>>;
   /** Ids de medios ya procesados, por producto. */
   readonly medios: Readonly<Record<string, readonly string[]>>;
   readonly tablero: { readonly versionPublicada: number; readonly cambiosSinPublicar: number };
@@ -118,12 +120,16 @@ export function versionDeFixture(catalogoCsv: string, fixture: unknown, nombresF
   return `demo-x${h.slice(0, 8)}`;
 }
 
-/** Id de subida (`^[A-Za-z0-9_-]{8,40}$`): corto y estable; si no cabe, se acorta con un hash. */
-export function subidaIdDe(productoId: string, n: number, version: string = VERSION_DEMO): string {
+/** Intentos por foto: el id base y `-r2`, `-r3` si el servidor rechazó el anterior. */
+export const MAX_INTENTOS_FOTO = 3;
+
+/** Id de subida (`^[A-Za-z0-9_-]{8,40}$`): corto y estable; si no cabe, se acorta con un hash. `intento` > 1 agrega `-r<intento>`. */
+export function subidaIdDe(productoId: string, n: number, version: string = VERSION_DEMO, intento = 1): string {
   const pref = version === VERSION_DEMO ? 'dv1' : `d${version.replace(/^demo-/, '')}`;
-  const directo = `${pref}-${productoId}-${String(n)}`;
+  const sufijo = intento > 1 ? `-r${String(intento)}` : '';
+  const directo = `${pref}-${productoId}-${String(n)}${sufijo}`;
   if (directo.length <= 40) return directo;
-  return `${pref}-${createHash('sha256').update(productoId).digest('hex').slice(0, 24)}-${String(n)}`;
+  return `${pref}-${createHash('sha256').update(productoId).digest('hex').slice(0, intento > 1 ? 18 : 24)}-${String(n)}${sufijo}`;
 }
 
 /** Máximo de filas por importación de Inventarios (`MAX_LINEAS` del módulo): un CSV mayor se parte en lotes. */
@@ -290,21 +296,31 @@ export function planificarDemo(catalogoCsv: string, fx: FixtureDemo, estado: Est
     pasos.push(llamada('sitio', 'consola', 'guardarConfigSitio', { config: fx.sitio.config }));
   }
 
-  // 7) Fotos: antes de las fichas, porque la ficha referencia medios ya procesados.
+  // 7) Fotos: antes de las fichas, porque la ficha referencia medios ya procesados. Cada foto tiene hasta 3 intentos
+  // (id base, `-r2`, `-r3`): una subida rechazada o en borrado se da por fallida y se pasa al siguiente id. Las reservas
+  // rechazadas liberan su cupo de 5 fotos por producto en el servidor, así que los reintentos no lo agotan.
   const mediosFicha = new Map<string, { medioId: string; alt: string }[]>();
   let fotosPendientes = 0;
   for (const f of fx.fichas) {
     const hechos = new Set(estado.medios[f.productoId] ?? []);
     const lista: { medioId: string; alt: string }[] = [];
     f.fotos.forEach((foto, i) => {
-      const subidaId = subidaIdDe(f.productoId, i + 1, V);
-      if (hechos.has(subidaId)) {
-        lista.push({ medioId: subidaId, alt: foto.alt });
-      } else if (opciones.fotos) {
-        lista.push({ medioId: subidaId, alt: foto.alt });
-        fotosPendientes += 1;
-        pasos.push({ tipo: 'foto', etapa: 'fotos', productoId: f.productoId, subidaId, archivo: foto.archivo, bytes: opciones.bytesFoto[foto.archivo] ?? 0 });
+      const candidatos = Array.from({ length: MAX_INTENTOS_FOTO }, (_, k) => subidaIdDe(f.productoId, i + 1, V, k + 1));
+      const hecho = candidatos.find((c) => hechos.has(c) || estado.subidas?.[c] === 'procesada');
+      if (hecho !== undefined) {
+        lista.push({ medioId: hecho, alt: foto.alt });
+        return;
       }
+      if (!opciones.fotos) return;
+      const vivo = candidatos.find((c) => { const e = estado.subidas?.[c]; return e === undefined || e === 'reservada'; });
+      if (vivo === undefined) {
+        bloqueos.push(`una foto falló ${String(MAX_INTENTOS_FOTO)} veces (el servidor rechazó todos los intentos): revise el archivo`);
+        diferencias.push('foto sin intentos disponibles');
+        return;
+      }
+      lista.push({ medioId: vivo, alt: foto.alt });
+      fotosPendientes += 1;
+      pasos.push({ tipo: 'foto', etapa: 'fotos', productoId: f.productoId, subidaId: vivo, archivo: foto.archivo, bytes: opciones.bytesFoto[foto.archivo] ?? 0 });
     });
     mediosFicha.set(f.productoId, lista);
   }

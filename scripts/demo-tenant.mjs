@@ -111,7 +111,7 @@ try {
 }
 
 await cargarManifiestos(); // registra los ganchos de TypeScript
-const { planificarDemo, subidaIdDe, ventaIdDemo, versionDeFixture, VERSION_DEMO } = await import(pathToFileURL(resolve('plataforma/operador/demo.ts')).href);
+const { planificarDemo, subidaIdDe, ventaIdDemo, versionDeFixture, VERSION_DEMO, MAX_INTENTOS_FOTO } = await import(pathToFileURL(resolve('plataforma/operador/demo.ts')).href);
 // Fixtures propios: todos los identificadores de operación llevan una versión derivada del contenido (no chocan con cargas previas).
 const version = personalizada ? versionDeFixture(catalogoCsv, fixture, [...archivosFoto.keys()]) : VERSION_DEMO;
 
@@ -196,18 +196,20 @@ async function leerEstado() {
   const fichas = {};
   for (const f of (await llamar('adm', 'consola', 'fichas', {})).fichas ?? []) fichas[f.productoId] = f.ficha;
   const medios = {};
+  const subidas = {};
   for (const f of fixture.fichas) {
     if (!productos.includes(f.productoId)) continue;
     const ids = ((await llamar('adm', 'medios', 'listarMedios', { productoId: f.productoId })).medios ?? []).map((m) => m.id);
     medios[f.productoId] = ids;
-    // Estado parcial: una subida sin medio con reserva vigente («reservada») se reanuda; rechazada o en borrado, se bloquea.
+    // Subidas existentes que aún no son medios, con sus reintentos (-r2, -r3): el planificador decide cuál reanudar o reintentar.
     for (let i = 0; i < f.fotos.length; i += 1) {
-      const subidaId = subidaIdDe(f.productoId, i + 1, version);
-      if (ids.includes(subidaId)) continue;
-      const r = await leerOpcional('adm', 'medios', 'estadoSubida', { subidaId });
-      if (r === null) continue; // sin reserva: se reserva de cero
-      if (r.estado !== 'reservada' && r.estado !== 'procesada') {
-        throw new Error('una foto quedó en un estado parcial no reanudable (reserva rechazada o vencida): limpie esa subida desde el panel y repita');
+      for (let k = 1; k <= MAX_INTENTOS_FOTO; k += 1) {
+        const subidaId = subidaIdDe(f.productoId, i + 1, version, k);
+        if (ids.includes(subidaId)) break;
+        const r = await leerOpcional('adm', 'medios', 'estadoSubida', { subidaId });
+        if (r === null) break; // sin reserva: los siguientes intentos tampoco existen
+        subidas[subidaId] = r.estado;
+        if (r.estado === 'reservada' || r.estado === 'procesada') break;
       }
     }
   }
@@ -220,13 +222,15 @@ async function leerEstado() {
   }
   return {
     cuentas: { sup: await cuenta(cuentaSup), caj: await cuenta(cuentaCaj) },
-    ubicaciones, productos, productosVisibilidad, series, plantilla, configSitio, fichas, medios,
+    ubicaciones, productos, productosVisibilidad, series, plantilla, configSitio, fichas, medios, subidas,
     tablero: { versionPublicada: Number(t.versionPublicada ?? 0), cambiosSinPublicar: Number(t.cambiosSinPublicar ?? 0) },
     turnos, ventas,
   };
 }
 
 // ---- Fotos -----------------------------------------------------------------------------------------------------
+/** La subida terminó rechazada o en borrado: el intento falló y el planificador usará el id siguiente. */
+class FotoRechazada extends Error {}
 async function subirFoto(paso) {
   const bytes = archivosFoto.get(paso.archivo);
   if (bytes === undefined) throw new Error('archivo de foto desconocido');
@@ -237,43 +241,64 @@ async function subirFoto(paso) {
   } catch (e) {
     throw new Error(`no se pudo subir la foto (${e && typeof e === 'object' && 'code' in e ? String(e.code) : 'desconocido'})`, { cause: e });
   }
-  // El disparador de Storage también finaliza la subida: si gana él, finalizarSubida responde «ya resuelta» y se espera el estado.
-  try {
-    await llamar('adm', 'medios', 'finalizarSubida', { subidaId: paso.subidaId });
-    return;
-  } catch (e) {
-    if (!(e instanceof ErrorLlamada) || e.codigo !== 'failed-precondition') throw e;
-  }
-  for (let i = 0; i < intentosEspera(bytes.length); i += 1) {
+  // Procesa el disparador de Storage. Llamar a finalizarSubida a la vez haría competir a los dos por el mismo directorio temporal
+  // y el perdedor marcaría la subida como rechazada: solo se usa de respaldo si tras ~45 s la reserva sigue «reservada».
+  const intentos = intentosEspera(bytes.length);
+  let respaldo = false;
+  for (let i = 0; i < intentos; i += 1) {
     const r = await llamar('adm', 'medios', 'estadoSubida', { subidaId: paso.subidaId });
     if (r.estado === 'procesada') return;
-    if (r.estado === 'rechazada' || r.estado === 'borrando') throw new Error('el servidor rechazó una foto');
+    if (r.estado === 'rechazada' || r.estado === 'borrando') throw new FotoRechazada('el servidor rechazó una foto');
+    if (!respaldo && i >= 30) {
+      respaldo = true;
+      try {
+        await llamar('adm', 'medios', 'finalizarSubida', { subidaId: paso.subidaId });
+      } catch (e) {
+        if (!(e instanceof ErrorLlamada) || e.codigo !== 'failed-precondition') throw e;
+      }
+      continue;
+    }
     await esperar(1500);
   }
   throw new Error('una foto no terminó de procesarse a tiempo');
 }
 
 // ---- Ejecución --------------------------------------------------------------------------------------------------
+// Rondas: si el servidor rechaza una foto, se vuelve a leer el estado y el planificador reintenta con un id nuevo (-r2, -r3).
 try {
-  const estado = await leerEstado();
-  const plan = planificarDemo(catalogoCsv, fixture, estado, { fotos: conFotos, ventas: conVentas, bytesFoto, retirarFueraDelFixture: retirar, version });
-  if (plan.diferencias.length === 0) console.log('demo-tenant: el tenant ya tiene los datos de demostración.');
-  else for (const d of plan.diferencias) console.log(`  ${d}`);
-  for (const b of plan.bloqueos) console.log(`  BLOQUEO: ${b}`);
-  console.log(`demo-tenant: pasos pendientes ${plan.pasos.length}.`);
-  if (!aplicar) {
-    console.log('demo-tenant: sin escritura (use --aplicar para escribir).');
-  } else if (plan.bloqueos.length > 0) {
-    falla('hay bloqueos: no se escribe nada');
-  } else {
+  for (let ronda = 1; ronda <= MAX_INTENTOS_FOTO; ronda += 1) {
+    const estado = await leerEstado();
+    const plan = planificarDemo(catalogoCsv, fixture, estado, { fotos: conFotos, ventas: conVentas, bytesFoto, retirarFueraDelFixture: retirar, version });
+    if (plan.diferencias.length === 0) console.log('demo-tenant: el tenant ya tiene los datos de demostración.');
+    else for (const d of plan.diferencias) console.log(`  ${d}`);
+    for (const b of plan.bloqueos) console.log(`  BLOQUEO: ${b}`);
+    console.log(`demo-tenant: pasos pendientes ${plan.pasos.length}.`);
+    if (!aplicar) {
+      console.log('demo-tenant: sin escritura (use --aplicar para escribir).');
+      break;
+    }
+    if (plan.bloqueos.length > 0) falla('hay bloqueos: no se escribe nada');
     const porEtapa = new Map();
+    let rechazada = false;
     for (const paso of plan.pasos) {
-      if (paso.tipo === 'foto') await subirFoto(paso);
-      else await llamar(paso.como, paso.modulo, paso.accion, paso.datos);
+      if (paso.tipo === 'foto') {
+        try {
+          await subirFoto(paso);
+        } catch (e) {
+          if (!(e instanceof FotoRechazada)) throw e;
+          rechazada = true;
+          console.log('  una foto fue rechazada: se reintentará con una subida nueva');
+          break; // las fichas dependen de las fotos: se vuelve a planificar
+        }
+      } else await llamar(paso.como, paso.modulo, paso.accion, paso.datos);
       porEtapa.set(paso.etapa, (porEtapa.get(paso.etapa) ?? 0) + 1);
     }
     for (const [etapa, n] of porEtapa) console.log(`  ${etapa}: ${n}`);
-    console.log('demo-tenant: aplicado.');
+    if (!rechazada) {
+      console.log('demo-tenant: aplicado.');
+      break;
+    }
+    if (ronda === MAX_INTENTOS_FOTO) falla('las fotos siguen rechazadas tras los reintentos: no se continúa');
   }
 } catch (e) {
   falla(e instanceof Error ? e.message : 'error desconocido');

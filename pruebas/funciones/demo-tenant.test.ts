@@ -14,7 +14,7 @@ import { leerCsvProductos } from '@novutienda/inventarios';
 import { validarPlantilla } from '@novutienda/recibos';
 import { contenidoEjemplo } from '@novutienda/website';
 import {
-  planificarDemo, versionDeFixture, idsDeCatalogo, lotesDeCatalogo, MAX_FILAS_CSV, subidaIdDe, turnoIdDemo, uuidDeterminista, ventaIdDemo, VERSION_DEMO,
+  planificarDemo, versionDeFixture, idsDeCatalogo, lotesDeCatalogo, MAX_FILAS_CSV, subidaIdDe, MAX_INTENTOS_FOTO, turnoIdDemo, uuidDeterminista, ventaIdDemo, VERSION_DEMO,
   type EstadoDemo, type FixtureDemo, type OpcionesDemo, type Paso, type PlanDemo,
 } from '../../plataforma/operador/demo.js';
 import {
@@ -316,6 +316,42 @@ describe('fixtures externos: 41 productos, lotes y retiro (puro)', () => {
       turnos: [...previo.turnos, { turnoId: turnoIdDemo(v), estado: 'cerrado' }], ventas: [...previo.ventas, ...fx.pos.ventas.map((x) => ventaIdDemo(x.clave, v))],
     };
     expect(planificarDemo(csvExt, fxV, despues, { ...opc, ventas: true, version: v }).pasos).toEqual([]);
+  });
+
+  it('fotos rechazadas: reintento con -r2 y -r3, bloqueo tras 3 fallos, sin romper la idempotencia', () => {
+    expect(MAX_INTENTOS_FOTO).toBe(3);
+    const f = fxExt.fichas[1] as (typeof fxExt.fichas)[number];
+    const un: FixtureDemo = { ...fxExt, fichas: [f] };
+    const id = (k: number): string => subidaIdDe(f.productoId, 1, 'demo-v1', k);
+    expect([id(1), id(2), id(3)]).toEqual([id(1), `${id(1)}-r2`, `${id(1)}-r3`]);
+    for (const k of [1, 2, 3]) expect(id(k)).toMatch(/^[A-Za-z0-9_-]{8,40}$/);
+    const largo = 'producto-con-un-identificador-bastante-largo';
+    for (const k of [1, 2, 3]) expect(subidaIdDe(largo, 12, 'demo-xabcdef12', k)).toMatch(/^[A-Za-z0-9_-]{8,40}$/);
+    expect(new Set([1, 2, 3].map((k) => subidaIdDe(largo, 12, 'demo-xabcdef12', k))).size).toBe(3);
+    const estado = (subidas: EstadoDemo['subidas'], medios: string[] = []): EstadoDemo => ({
+      ...base, productos: idsExt, ...(subidas !== undefined ? { subidas } : {}), medios: { [f.productoId]: medios },
+    });
+    const fotos = (e: EstadoDemo): string[] => planificarDemo(csvExt, un, e, opc).pasos.flatMap((p) => (p.tipo === 'foto' ? [p.subidaId] : []));
+    expect(fotos(estado({ [id(1)]: 'reservada' }))).toEqual([id(1)]); // se reanuda
+    expect(fotos(estado({ [id(1)]: 'rechazada' }))).toEqual([id(2)]);
+    expect(fotos(estado({ [id(1)]: 'borrando' }))).toEqual([id(2)]);
+    expect(fotos(estado({ [id(1)]: 'rechazada', [id(2)]: 'rechazada' }))).toEqual([id(3)]);
+    const muerta = planificarDemo(csvExt, un, estado({ [id(1)]: 'rechazada', [id(2)]: 'rechazada', [id(3)]: 'rechazada' }), opc);
+    expect(muerta.bloqueos.join(' ')).toMatch(/falló 3 veces/);
+    expect(muerta.pasos.some((p) => p.tipo === 'foto')).toBe(false);
+    // La ficha referencia el id que se va a subir (el reintento), no el rechazado.
+    const ficha = planificarDemo(csvExt, un, estado({ [id(1)]: 'rechazada' }), opc).pasos.find((p) => p.tipo === 'llamada' && p.accion === 'guardarFicha');
+    expect(JSON.stringify(ficha)).toContain(id(2));
+    expect(JSON.stringify(ficha)).not.toContain(`"${id(1)}"`);
+    // Con el reintento ya procesado (medio existente) y rechazos previos: ficha con -r2 y cero pasos de fotos.
+    const hecho = estado({ [id(1)]: 'rechazada' }, [id(2)]);
+    expect(fotos(hecho)).toEqual([]);
+    const conFicha: EstadoDemo = {
+      ...hecho, plantilla: fx.recibos.plantilla, configSitio: fx.sitio.config, tablero: { versionPublicada: 1, cambiosSinPublicar: 0 },
+      cuentas: { sup: { uid: 's', rolActual: 'sup' }, caj: { uid: 'c', rolActual: 'caj' } },
+      fichas: { [f.productoId]: { ...f.ficha, medios: [{ medioId: id(2), alt: (f.fotos[0] as { alt: string }).alt }] } },
+    };
+    expect(planificarDemo(csvExt, un, conFicha, opc).pasos).toEqual([]);
   });
 
   it('un lote existente solo en parte bloquea; otro lote ya completo no se vuelve a cargar', () => {
