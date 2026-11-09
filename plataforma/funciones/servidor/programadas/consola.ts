@@ -11,9 +11,12 @@ import { porTenant } from './tenants.js';
 // del módulo para que el coordinador no importe `@novutienda/consola` fuera de un compositor (regla de zonas).
 export { ejecutarReconstruccion };
 
-/** Libera las reservas de subida vencidas y reintenta los borrados pendientes. */
+/**
+ * Libera las reservas de subida vencidas y reintenta los borrados pendientes. Es mantenimiento: corre para todos los
+ * tenants, también con consola apagada (D4 = A), para no dejar cuota ni objetos huérfanos.
+ */
 export function ejecutarLimpiezaSubidas(e: Entorno): Promise<Record<string, { vencidas: number; reintentadas: number }>> {
-  return porTenant(e, 'limpieza de subidas', (tenantId) => limpiarSubidas({ ...depsMedios({ e }), consulta: e.consultaSubidas }, tenantId), { modulo: 'consola' });
+  return porTenant(e, 'limpieza de subidas', (tenantId) => limpiarSubidas({ ...depsMedios({ e }), consulta: e.consultaSubidas }, tenantId));
 }
 
 /** Temporizador de la reconstrucción del sitio: encola la agendada para esta hora (agrupa 10 minutos de cambios). */
