@@ -338,3 +338,72 @@ export function asignarRol(
 export function quitarRol(deps: DepsIdentidad, actor: Actor, tenantId: string, uid: string): Promise<ClaimPlataforma> {
   return cambiarRol(deps, actor, tenantId, uid, null);
 }
+
+/**
+ * Fija al PRIMER administrador de un tenant, sin actor autorizado previo (el
+ * tenant recién creado no tiene ninguno). Lo invoca solo el operador de la
+ * plataforma desde un script. Falla cerrado: si el tenant no existe, si ya hay
+ * un administrador (contador `adm` mayor que 0), si el destino no ingresa con
+ * correo y contraseña o si su correo no está verificado. Mismo efecto que
+ * `asignarRol` con 'adm': espejo, cupo de usuarios, contador de
+ * administradores y auditoría (`miembro.asignar-primer-adm`, con el uid del
+ * operador) en una transacción; luego el claim, con reversión del espejo si
+ * falla.
+ */
+export async function asignarPrimerAdministrador(
+  deps: DepsIdentidad,
+  tenantId: string,
+  uid: string,
+  operador: string,
+): Promise<ClaimPlataforma> {
+  if (!esTenantIdValido(tenantId) || uid === '' || uid.includes('/') || operador === '') {
+    throw new ErrorIdentidad('entrada-invalida', 'tenantId, uid u operador inválido');
+  }
+  return enSerie(uid, async () => {
+    const destino = await deps.auth.getUser(uid);
+    if (!destino.providerData.some((p) => p.providerId === 'password')) {
+      throw new ErrorIdentidad('proveedor', 'El personal debe ingresar con correo y contraseña');
+    }
+    if (destino.emailVerified !== true) {
+      throw new ErrorIdentidad('correo-no-verificado', 'El correo del usuario debe estar verificado');
+    }
+    const { previo, base } = claimDe(destino);
+    componerClaim(previo, base, tenantId, 'adm'); // falla temprano si el claim no cabe
+
+    const ahora = deps.ahora ?? Date.now;
+    const rutaMiembro = `tenants/${tenantId}/miembros/${uid}`;
+    const estado = await deps.db.runTransaction<Estado>(async (tx) => {
+      const tenant = await tx.get(`tenants/${tenantId}`);
+      if (!tenant.existe) throw new ErrorIdentidad('estado', 'El tenant no existe');
+      const miembro = await tx.get(rutaMiembro);
+      const roles = await tx.get(rutaRoles(tenantId));
+      const adminsPrevios = leerAdmins(roles.data());
+      if (adminsPrevios > 0) throw new ErrorIdentidad('estado', 'El tenant ya tiene un administrador');
+      const datosPrevios = miembro.existe ? miembro.data() : undefined;
+      const rolMirror = datosPrevios?.['rol'];
+      const rolClaim: Rol | '' = base !== undefined && Object.hasOwn(base.t, tenantId) ? (base.t[tenantId] ?? '') : '';
+      const rolPrevio: Rol | '' = esRol(rolMirror) ? rolMirror : rolClaim;
+      if (rolPrevio === 'adm') throw new ErrorIdentidad('estado', 'El destino figura como administrador sin contador');
+      if (!miembro.existe) await verificarYReservar(tx, tenantId, 'usuarios');
+      tx.set(rutaMiembro, { rol: 'adm', actualizado: ahora(), por: operador });
+      tx.set(rutaRoles(tenantId), { adm: 1 });
+      registrarAuditoria(tx, {
+        tenantId,
+        uid: operador,
+        rol: 'adm',
+        accion: 'miembro.asignar-primer-adm',
+        ruta: rutaMiembro,
+        resumenAntes: { rol: rolPrevio === '' ? null : rolPrevio },
+        resumenDespues: { rol: 'adm' },
+      });
+      return { existia: miembro.existe, rolPrevio, datosPrevios, adminsPrevios };
+    });
+
+    try {
+      return await escribirClaim(deps, uid, tenantId, 'adm');
+    } catch (e) {
+      await revertirEspejo(deps, { uid: operador, claims: undefined }, { propietario: true }, tenantId, uid, rutaMiembro, estado);
+      throw e;
+    }
+  });
+}
