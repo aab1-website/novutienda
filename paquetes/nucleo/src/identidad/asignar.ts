@@ -73,6 +73,7 @@ export interface ActorConRol {
 const ROLES: readonly string[] = ['caj', 'sup', 'adm'];
 const RANGO: { readonly [r in Rol]: number } = { caj: 1, sup: 2, adm: 3 };
 const INTENTOS_CLAIM = 3;
+const OPERADOR_VALIDO = /^[a-z0-9:._@-]{1,128}$/;
 
 const esRol = (x: unknown): x is Rol => typeof x === 'string' && ROLES.includes(x);
 
@@ -356,7 +357,7 @@ export async function asignarPrimerAdministrador(
   uid: string,
   operador: string,
 ): Promise<ClaimPlataforma> {
-  if (!esTenantIdValido(tenantId) || uid === '' || uid.includes('/') || operador === '') {
+  if (!esTenantIdValido(tenantId) || uid === '' || uid.includes('/') || !OPERADOR_VALIDO.test(operador)) {
     throw new ErrorIdentidad('entrada-invalida', 'tenantId, uid u operador inválido');
   }
   return enSerie(uid, async () => {
@@ -402,6 +403,16 @@ export async function asignarPrimerAdministrador(
     try {
       return await escribirClaim(deps, uid, tenantId, 'adm');
     } catch (e) {
+      // setCustomUserClaims pudo aplicar el claim antes de fallar: se relee Auth antes de revertir.
+      // (cambiarRol tiene el mismo patrón; se corrige en un cambio aparte.)
+      let vigente: Rol | '' | 'desconocido';
+      try {
+        vigente = rolEn((await deps.auth.getUser(uid)).customClaims, tenantId);
+      } catch {
+        vigente = 'desconocido';
+      }
+      if (vigente === 'adm') throw new ErrorIdentidad('estado', 'Claim aplicado pero no confirmado; espejo conservado, revisar');
+      if (vigente === 'desconocido') throw new ErrorIdentidad('estado', 'Estado del claim desconocido; no se revierte, revisar a mano');
       await revertirEspejo(deps, { uid: operador, claims: undefined }, { propietario: true }, tenantId, uid, rutaMiembro, estado);
       throw e;
     }

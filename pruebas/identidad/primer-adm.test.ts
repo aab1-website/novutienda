@@ -12,12 +12,13 @@ const pw = (): Usuario => ({ providerData: [{ providerId: 'password' }], emailVe
 function montaje(usuarios: Record<string, Usuario>, conTenant = true) {
   const db = new DobleDb();
   if (conTenant) db.poner('tenants/t1', { plan: 'base', modulos: {}, zonaHoraria: 'America/La_Paz', monedas: ['BOB', 'USD', 'ARS'] });
-  const fallos = { set: false };
+  const fallos = { set: false, setTrasAplicar: false, authCaidoTrasFallo: false, getUser: false };
   const escritos: string[] = [];
   const auth: AuthMin = {
     getUser: async (uid) => {
       const u = usuarios[uid];
       if (!u) throw new Error('no existe');
+      if (fallos.getUser) throw new Error('Auth caído');
       return u;
     },
     setCustomUserClaims: async (uid, claims) => {
@@ -25,6 +26,10 @@ function montaje(usuarios: Record<string, Usuario>, conTenant = true) {
       escritos.push(uid);
       const u = usuarios[uid];
       if (u) u.customClaims = { ...claims };
+      if (fallos.setTrasAplicar) {
+        if (fallos.authCaidoTrasFallo) fallos.getUser = true;
+        throw new Error('fallo tras aplicar');
+      }
     },
     revokeRefreshTokens: async () => undefined,
   };
@@ -124,5 +129,61 @@ describe('asignarPrimerAdministrador', () => {
     await rechaza(asignarPrimerAdministrador(deps, 'T 1/x', 'u1', 'op'), 'entrada-invalida');
     await rechaza(asignarPrimerAdministrador(deps, 't1', 'a/b', 'op'), 'entrada-invalida');
     await rechaza(asignarPrimerAdministrador(deps, 't1', 'u1', ''), 'entrada-invalida');
+  });
+
+  it('si setCustomUserClaims aplica el claim y luego lanza, conserva el espejo y lanza «estado»', async () => {
+    const { db, deps, fallos, usuarios } = montaje({ u1: pw() });
+    fallos.setTrasAplicar = true;
+    await rechaza(asignarPrimerAdministrador(deps, 't1', 'u1', 'operador'), 'estado');
+    expect(usuarios['u1']?.customClaims).toMatchObject({ pl: { t: { t1: 'adm' } } });
+    expect(db.dato('tenants/t1/miembros/u1')).toMatchObject({ rol: 'adm' });
+    expect(db.dato('tenants/t1/contadores/roles')).toEqual({ adm: 1 });
+    expect(db.dato('tenants/t1/contadores/uso')).toEqual({ usuarios: 1 });
+    expect(auditoria(db).map((a) => a['accion'])).toEqual(['miembro.asignar-primer-adm']);
+  });
+
+  it('si el claim falla y Auth no responde al releer, no revierte y lanza «estado»', async () => {
+    const { db, deps, fallos } = montaje({ u1: pw() });
+    fallos.setTrasAplicar = true;
+    fallos.authCaidoTrasFallo = true;
+    await rechaza(asignarPrimerAdministrador(deps, 't1', 'u1', 'operador'), 'estado');
+    expect(db.dato('tenants/t1/miembros/u1')).toMatchObject({ rol: 'adm' });
+    expect(db.dato('tenants/t1/contadores/roles')).toEqual({ adm: 1 });
+    expect(auditoria(db).map((a) => a['accion'])).toEqual(['miembro.asignar-primer-adm']);
+  });
+
+  it('dos llamadas concurrentes con distinto uid: exactamente un éxito y adm=1', async () => {
+    const { db, deps } = montaje({ u1: pw(), u2: pw() });
+    const r = await Promise.allSettled([
+      asignarPrimerAdministrador(deps, 't1', 'u1', 'operador'),
+      asignarPrimerAdministrador(deps, 't1', 'u2', 'operador'),
+    ]);
+    expect(r.filter((x) => x.status === 'fulfilled')).toHaveLength(1);
+    const rechazo = r.find((x) => x.status === 'rejected');
+    expect((rechazo as PromiseRejectedResult).reason).toBeInstanceOf(ErrorIdentidad);
+    expect(db.dato('tenants/t1/contadores/roles')).toEqual({ adm: 1 });
+    expect(db.dato('tenants/t1/contadores/uso')).toEqual({ usuarios: 1 });
+    expect([db.dato('tenants/t1/miembros/u1'), db.dato('tenants/t1/miembros/u2')].filter((m) => m !== undefined)).toHaveLength(1);
+  });
+
+  it.each(['sup', 'caj'] as const)('un miembro previo %s promovido no reserva otro cupo: contador en 1', async (rolPrevio) => {
+    const { db, deps } = montaje({ u1: pw() });
+    db.poner('tenants/t1/miembros/u1', { rol: rolPrevio, actualizado: 1, por: 'x' });
+    db.poner('tenants/t1/contadores/uso', { usuarios: 1 });
+    await asignarPrimerAdministrador(deps, 't1', 'u1', 'operador');
+    expect(db.dato('tenants/t1/miembros/u1')).toMatchObject({ rol: 'adm' });
+    expect(db.dato('tenants/t1/contadores/uso')).toEqual({ usuarios: 1 });
+    expect(db.dato('tenants/t1/contadores/roles')).toEqual({ adm: 1 });
+    expect(auditoria(db)[0]).toMatchObject({ resumenAntes: { rol: rolPrevio } });
+  });
+
+  it('rechaza un operador con caracteres fuera de ^[a-z0-9:._@-]{1,128}$', async () => {
+    const { db, deps, escritos } = montaje({ u1: pw() });
+    for (const op of ['Operador', 'a b', 'a/b', 'x'.repeat(129), 'ñ', 'a\nb']) {
+      await rechaza(asignarPrimerAdministrador(deps, 't1', 'u1', op), 'entrada-invalida');
+    }
+    await asignarPrimerAdministrador(deps, 't1', 'u1', 'op.er_a:1@x-y'); // válido
+    expect(escritos).toEqual(['u1']);
+    expect(auditoria(db)).toHaveLength(1);
   });
 });

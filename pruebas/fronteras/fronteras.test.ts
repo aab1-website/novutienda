@@ -55,6 +55,26 @@ describe('fronteras del repositorio real', () => {
   });
 });
 
+// El alta del primer administrador no pasa por actor autorizado: solo puede alcanzarlo el operador (scripts) y el núcleo, nunca un callable ni el sitio.
+describe('asignarPrimerAdministrador solo lo referencian el núcleo, el operador, scripts y pruebas', () => {
+  const PERMITIDOS = ['paquetes/nucleo/', 'plataforma/operador/', 'scripts/', 'pruebas/'];
+  const arbol: Arbol = Object.assign({}, ...['paquetes', 'plataforma', 'scripts', 'tenants', 'pruebas'].map((c) => leerArbol(c)));
+  const referencia = /\basignarPrimerAdministrador\b/;
+
+  it('no aparece fuera de las rutas permitidas (llamadas del servidor, panel, sitio)', () => {
+    const fuera = Object.entries(arbol)
+      .filter(([ruta, codigo]) => referencia.test(codigo) && !PERMITIDOS.some((p) => ruta.startsWith(p)))
+      .map(([ruta]) => ruta);
+    expect(fuera).toEqual([]);
+  });
+
+  it('la regla detecta una referencia en un callable del servidor o en el panel', () => {
+    const inventado = { 'plataforma/funciones/servidor/llamadas/x.ts': 'asignarPrimerAdministrador(d)', 'paquetes/panel/src/x.ts': 'asignarPrimerAdministrador' };
+    const fuera = Object.entries(inventado).filter(([ruta, c]) => referencia.test(c) && !PERMITIDOS.some((p) => ruta.startsWith(p)));
+    expect(fuera).toHaveLength(2);
+  });
+});
+
 // Frontera por zona declarada (plano §3, enmienda H0): cubre plataforma/, pruebas/, scripts/ y el panel por pieza.
 describe('zonas del repositorio real', () => {
   const arbol: Arbol = Object.assign({}, ...CARPETAS_CON_ZONA.map((c) => leerArbol(c)));
