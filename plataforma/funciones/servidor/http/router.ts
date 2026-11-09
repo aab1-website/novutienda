@@ -1,6 +1,8 @@
 // Enrutador de la función HTTP `api`: rutas públicas del sitio, API de NovuChat y endpoints de reconstrucción.
 // Función pura sobre `PeticionHttp`; la Cloud Function solo traduce Express a esta forma y de vuelta.
 import type { LimiteTasa } from '@novutienda/nucleo';
+import { logger } from 'firebase-functions';
+import { duenoDeRuta, rutaEncendida } from '../../../coordinador/rutas-http.js';
 import type { Entorno } from '../entorno.js';
 import { manejarCatalogo, manejarInventario, manejarPedido, type ConfigNovuchat } from './novuchat.js';
 import { manejarSitio } from './sitio.js';
@@ -21,6 +23,21 @@ const RUTAS_SITIO = new Set(['/api/cotizacion', '/api/disponibilidad', '/api/con
 async function excedeLimite(limite: LimiteTasa, clave: string, ahora: number): Promise<RespuestaApi | undefined> {
   const r = await limite.intentar(clave, ahora);
   return r.permitido ? undefined : json(429, { error: 'limite' }, { 'Retry-After': String(r.reintentarEnSeg) });
+}
+
+/**
+ * Control de encendido de una ruta para un tenant (L3-3). El rechazo queda en el log con el motivo y la ruta, sin token ni IP.
+ * Si el lector de módulos lanza, el error sube y la petición no se sirve.
+ */
+async function servir(e: Entorno, ruta: string, tenantId: string): Promise<boolean> {
+  const dueno = duenoDeRuta(ruta);
+  const ok = await rutaEncendida(e.modulosDelTenant, tenantId, dueno);
+  if (!ok) {
+    // Motivo distinguible en el log (la respuesta no lo distingue). El lector tiene caché: la segunda consulta no cuesta una lectura.
+    const motivo = dueno === undefined ? 'ruta-sin-dueno' : (await e.modulosDelTenant(tenantId)) === undefined ? 'sin-documento' : 'modulo-apagado';
+    logger.warn('ruta HTTP rechazada', { motivo, ruta, tenantId });
+  }
+  return ok;
 }
 
 export async function enrutar(e: Entorno, req: PeticionHttp, cfg: ConfigRouter): Promise<RespuestaApi> {
@@ -44,16 +61,23 @@ export async function enrutar(e: Entorno, req: PeticionHttp, cfg: ConfigRouter):
     const limitado = await excedeLimite(cfg.limiteMemoria.novuchat, `novuchat:${req.origen}`, e.ahora());
     if (limitado !== undefined) return limitado;
   }
-  if (RUTAS_SITIO.has(ruta)) return manejarSitioPublico(e, req, ruta, cfg);
+  // Rutas de tenant fijo: el dueño se controla aquí, antes del manejador (el tenant no sale de una credencial).
+  if (RUTAS_SITIO.has(ruta)) {
+    if (!(await servir(e, ruta, cfg.tenantId))) return json(404, { error: 'no_encontrado' });
+    return manejarSitioPublico(e, req, ruta, cfg);
+  }
+  // Rutas con tenant de credencial: el manejador llama a `puedeServir` DESPUÉS de autenticar y ANTES de leer datos.
+  const puedeServir = (tenantId: string): Promise<boolean> => servir(e, ruta, tenantId);
   switch (ruta) {
     case '/api/novuchat/v1/catalogo':
-      return manejarCatalogo(e, peticion, cfg.novuchat);
+      return manejarCatalogo(e, peticion, cfg.novuchat, puedeServir);
     case '/api/novuchat/v1/inventario':
-      return manejarInventario(e, peticion, cfg.novuchat);
+      return manejarInventario(e, peticion, cfg.novuchat, puedeServir);
     case '/api/novuchat/v1/pedidos/confirmar':
-      return manejarPedido(e, peticion, cfg.novuchat);
+      // Tenant fijo (`tenantPedidos`): el control corre dentro del manejador, tras verificar la firma (D2 = A: 401 credencial_invalida).
+      return manejarPedido(e, peticion, cfg.novuchat, () => puedeServir(cfg.novuchat.tenantPedidos));
     default:
-      if (ruta.startsWith('/api/sitio/v1/')) return manejarSitio(e, peticion, cfg.secretoReconstruccion);
+      if (ruta.startsWith('/api/sitio/v1/')) return manejarSitio(e, peticion, cfg.secretoReconstruccion, puedeServir);
       return json(404, { error: 'no_encontrado' });
   }
 }

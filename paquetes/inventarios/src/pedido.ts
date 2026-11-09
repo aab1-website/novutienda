@@ -205,11 +205,11 @@ export function leerCuerpoPedido(cuerpo: string): { pedidoId: string; items: Ite
 
 /**
  * Endpoint `confirmarPedido`: verifica la firma (HMAC-SHA256, ventana de 5 min), valida el cuerpo y
- * confirma el pedido en una transacción. Devuelve 200 (ok o repetido), 400, 401 o 409 (faltantes,
+ * confirma el pedido en una transacción. `autorizado` (opcional) se evalúa tras la firma y antes de leer el cuerpo. Devuelve 200 (ok o repetido), 400, 401 o 409 (faltantes,
  * contenido distinto o producto no vendible). Otros errores se propagan (500 en el borde).
  */
 export async function confirmarPedidoFirmado(
-  deps: { db: BaseDatosIdentidad; secreto: string; ahora?: () => number },
+  deps: { db: BaseDatosIdentidad; secreto: string; ahora?: () => number; autorizado?: () => Promise<boolean> },
   s: SolicitudConfirmarPedido,
 ): Promise<RespuestaHttp> {
   const v = verificarFirma({
@@ -220,6 +220,8 @@ export async function confirmarPedidoFirmado(
     ahoraMs: (deps.ahora ?? Date.now)(),
   });
   if (!v.ok) return { estado: 401, cuerpo: { error: v.motivo } };
+  // Control de encendido del coordinador: solo tras una firma válida (no revela el estado de los módulos a un anónimo).
+  if (deps.autorizado !== undefined && !(await deps.autorizado())) return { estado: 401, cuerpo: { error: 'credencial_invalida' } };
   try {
     const p = leerCuerpoPedido(s.cuerpo);
     const r = await deps.db.runTransaction((tx) => confirmarPedido(tx, { tenantId: s.tenantId, pedidoId: p.pedidoId, items: p.items }));

@@ -1,14 +1,15 @@
 // L2-6, sin emulador: el marco de los callables rechaza las acciones de un módulo apagado para el tenant, falla cerrado
 // con tenant inexistente y deja pasar las de Central. Se usa `crearEntorno` con un Firestore mínimo en memoria.
+import { createHash, randomBytes } from 'node:crypto';
 import { beforeAll, describe, expect, it, vi } from 'vitest';
 import { construirClaim } from '@novutienda/nucleo';
 import { registroPlataforma } from '../../plataforma/registro.js';
-import { crearLectorModulos, TTL_MODULOS_MS } from '../../plataforma/coordinador/modulos-activos.js';
+import { crearLectorModulos, TTL_MODULOS_MS, TTL_NEGATIVO_MS } from '../../plataforma/coordinador/modulos-activos.js';
 import { ejecutarLimpiezaSubidas } from '../../plataforma/funciones/servidor/programadas/consola.js';
 import { crearEntorno } from '../../plataforma/funciones/servidor/entorno.js';
 import { crearManejador, accion, type TablaAcciones } from '../../plataforma/funciones/servidor/llamadas/marco.js';
 import { moduloEncendido, porTenant } from '../../plataforma/funciones/servidor/programadas/tenants.js';
-import { accion as llamar, crearUsuario, hayEmulador, herramientas, sembrarTenant, TENANT_TODO_ENCENDIDO, type Herramientas } from './ayudas.js';
+import { accion as llamar, crearUsuario, hayEmulador, herramientas, http, sembrarTenant, TENANT_TODO_ENCENDIDO, type Herramientas } from './ayudas.js';
 import { VACIO } from '../../plataforma/funciones/servidor/llamadas/comunes.js';
 import { tablasCompuestas } from './tablas.js';
 
@@ -128,7 +129,7 @@ describe('encendido por tenant en el marco de los callables', () => {
 });
 
 describe('lector de módulos del tenant: cache de 60 s', () => {
-  it('lee una vez por ventana, relee al vencer y no cachea los rechazos', async () => {
+  it('lee una vez por ventana, relee al vencer y guarda los rechazos solo 10 s', async () => {
     let t = 0;
     const docs: Record<string, unknown> = { [`tenants/${T}`]: tenantCon('inventarios', 'recibos', 'pos') };
     const { f, lecturas } = firestoreFalso(docs);
@@ -143,6 +144,7 @@ describe('lector de módulos del tenant: cache de 60 s', () => {
     expect(lecturas.n).toBe(2);
     expect(await leer('nuevo')).toBeUndefined();
     docs['tenants/nuevo'] = tenantCon('inventarios');
+    t += TTL_NEGATIVO_MS; // el rechazo se guarda 10 s (LOW-2), no más: pasado ese tiempo el alta se nota
     expect(await leer('nuevo')).toEqual(['inventarios']);
     expect(await leer('../x')).toBeUndefined();
   });
@@ -171,6 +173,25 @@ describe('lector de módulos del tenant: cache de 60 s', () => {
     };
     await expect(manejar(caido, tabla)(peticion('hacer'))).rejects.toBeDefined();
     expect(ejecutar).not.toHaveBeenCalled();
+  });
+});
+
+describe('lector de módulos del tenant: caché negativa de 10 s', () => {
+  it('sin documento o inválido: la segunda petición dentro de 10 s no lee Firestore; pasados 10 s sí', async () => {
+    let t = 0;
+    const docs: Record<string, unknown> = { 'tenants/roto': { plan: 'base' } };
+    const { f, lecturas } = firestoreFalso(docs);
+    const leer = crearLectorModulos(f, () => t);
+    for (const id of ['fantasma', 'roto']) {
+      const antes = lecturas.n;
+      expect(await leer(id)).toBeUndefined();
+      t += TTL_NEGATIVO_MS - 1;
+      expect(await leer(id)).toBeUndefined();
+      expect(lecturas.n - antes, id).toBe(1);
+      t += 1;
+      expect(await leer(id)).toBeUndefined();
+      expect(lecturas.n - antes, id).toBe(2);
+    }
   });
 });
 
@@ -234,5 +255,32 @@ describe.skipIf(!hayEmulador)('encendido por tenant (emulador)', () => {
     const t = 'enc-fantasma';
     const admFantasma = await crearUsuario(h, { rol: 'adm', tenant: t });
     expect((await llamar('consola', 'modulosActivos', {}, admFantasma.token, t)).status).toBe(403);
+  });
+  // L3-3: la API HTTP real. El token de NovuChat toma el tenant de su documento; con el módulo dueño de la ruta apagado, la
+  // respuesta es la de un token malo (401 credencial_invalida) y con el encendido responde.
+  it('API HTTP: catálogo (consola) apagado → 401 credencial_invalida; inventario (inventarios) encendido → 200; sin módulos → 401', async () => {
+    const sha = (t: string) => createHash('sha256').update(t).digest('hex');
+    const sembrarToken = async (tenant: string): Promise<string> => {
+      const token = randomBytes(24).toString('hex');
+      await h.firestore.doc(`novuchatTokens/${sha(token)}`).set({ tenantId: tenant, hash: sha(token), activo: true });
+      return token;
+    };
+    const conAuth = (token: string) => ({ headers: { authorization: `Bearer ${token}` } });
+    const soloInventarios = 'enc-http-inv';
+    const ninguno = 'enc-http-nada';
+    await h.firestore.doc(`tenants/${soloInventarios}`).set({ ...TENANT_TODO_ENCENDIDO, modulos: mod('inventarios') });
+    await h.firestore.doc(`tenants/${ninguno}`).set({ ...TENANT_TODO_ENCENDIDO, modulos: {} });
+    const tokenInv = await sembrarToken(soloInventarios);
+    const tokenNada = await sembrarToken(ninguno);
+
+    const catalogo = await http('/api/novuchat/v1/catalogo?mercado=BO', conAuth(tokenInv));
+    expect(catalogo.status).toBe(401);
+    expect(catalogo.cuerpo).toEqual({ error: 'credencial_invalida' });
+    const inventario = await http('/api/novuchat/v1/inventario', conAuth(tokenInv));
+    expect(inventario.status, JSON.stringify(inventario.cuerpo)).toBe(200);
+    const nada = await http('/api/novuchat/v1/inventario', conAuth(tokenNada));
+    expect(nada.status).toBe(401);
+    expect(nada.cuerpo).toEqual({ error: 'credencial_invalida' });
+    expect((await http('/api/salud')).status).toBe(200);
   });
 });
