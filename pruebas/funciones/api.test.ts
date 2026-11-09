@@ -3,7 +3,7 @@
 import { spawnSync } from 'node:child_process';
 import { createHash, randomBytes } from 'node:crypto';
 import { beforeAll, describe, expect, it, vi } from 'vitest';
-import { esperar, firmar, hayEmulador, herramientas, http, sembrarTenant, T, unico, type Herramientas } from './ayudas.js';
+import { esperar, firmar, hayEmulador, herramientas, http, sembrarTenant, T, TENANT_TODO_ENCENDIDO, unico, type Herramientas } from './ayudas.js';
 
 vi.setConfig({ testTimeout: 60_000, hookTimeout: 60_000 });
 
@@ -250,6 +250,7 @@ describe.skipIf(!hayEmulador)('API HTTP (emulador)', () => {
     it('el publicado entrega el redondeo configurado en tenants/{t}/config/redondeo', async () => {
       const t = unico('red').toLowerCase();
       const regla = { BOB: { tipo: 'decimales', decimales: 0, modo: 'arriba' }, ARS: { tipo: 'multiplo', multiplo: 500, modo: 'abajo' } };
+      await h.firestore.doc(`tenants/${t}`).set(TENANT_TODO_ENCENDIDO); // L3-3: la API exige el documento del tenant
       await h.firestore.doc(`tenants/${t}/config/redondeo`).set(regla);
       const pub = await firmado('GET', `/api/sitio/v1/publicado?tenantId=${t}`);
       expect(pub.status, pub.texto).toBe(200);

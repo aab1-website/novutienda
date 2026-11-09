@@ -328,6 +328,7 @@ describe('límites en memoria antes de autenticar', () => {
   // `Entorno` mínimo: si el enrutador llegara a autenticar o a leer, tocaría `firestore` y la prueba fallaría.
   const e = {
     ahora: () => 1_000,
+    modulosDelTenant: () => Promise.resolve(['inventarios', 'consola', 'website']), // L3-3: el encendido se controla antes del manejador
     firestore: new Proxy({}, { get: () => { throw new Error('tocó Firestore antes del límite'); } }),
     leerDisponibilidad: () => () => Promise.resolve({ 'tv-1': true }),
     guardarContacto: () => ({}),
@@ -363,6 +364,7 @@ describe('contacto: App Check de un solo uso y límite en memoria antes de verif
   const guardados: string[] = [];
   const e = {
     ahora: () => 1_000,
+    modulosDelTenant: () => Promise.resolve(['inventarios', 'consola', 'website']),
     almacenCotizaciones: {},
     leerDisponibilidad: () => () => Promise.resolve({}),
     guardarContacto: () => ({ guardar: (c: { operacionId: string }) => { guardados.push(c.operacionId); return Promise.resolve('creado' as const); } }),

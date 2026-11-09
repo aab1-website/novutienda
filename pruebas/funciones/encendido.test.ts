@@ -1,5 +1,6 @@
 // L2-6, sin emulador: el marco de los callables rechaza las acciones de un módulo apagado para el tenant, falla cerrado
 // con tenant inexistente y deja pasar las de Central. Se usa `crearEntorno` con un Firestore mínimo en memoria.
+import { createHash, randomBytes } from 'node:crypto';
 import { beforeAll, describe, expect, it, vi } from 'vitest';
 import { construirClaim } from '@novutienda/nucleo';
 import { registroPlataforma } from '../../plataforma/registro.js';
@@ -8,7 +9,7 @@ import { ejecutarLimpiezaSubidas } from '../../plataforma/funciones/servidor/pro
 import { crearEntorno } from '../../plataforma/funciones/servidor/entorno.js';
 import { crearManejador, accion, type TablaAcciones } from '../../plataforma/funciones/servidor/llamadas/marco.js';
 import { moduloEncendido, porTenant } from '../../plataforma/funciones/servidor/programadas/tenants.js';
-import { accion as llamar, crearUsuario, hayEmulador, herramientas, sembrarTenant, TENANT_TODO_ENCENDIDO, type Herramientas } from './ayudas.js';
+import { accion as llamar, crearUsuario, hayEmulador, herramientas, http, sembrarTenant, TENANT_TODO_ENCENDIDO, type Herramientas } from './ayudas.js';
 import { VACIO } from '../../plataforma/funciones/servidor/llamadas/comunes.js';
 import { tablasCompuestas } from './tablas.js';
 
@@ -234,5 +235,32 @@ describe.skipIf(!hayEmulador)('encendido por tenant (emulador)', () => {
     const t = 'enc-fantasma';
     const admFantasma = await crearUsuario(h, { rol: 'adm', tenant: t });
     expect((await llamar('consola', 'modulosActivos', {}, admFantasma.token, t)).status).toBe(403);
+  });
+  // L3-3: la API HTTP real. El token de NovuChat toma el tenant de su documento; con el módulo dueño de la ruta apagado, la
+  // respuesta es la de un token malo (401 credencial_invalida) y con el encendido responde.
+  it('API HTTP: catálogo (consola) apagado → 401 credencial_invalida; inventario (inventarios) encendido → 200; sin módulos → 401', async () => {
+    const sha = (t: string) => createHash('sha256').update(t).digest('hex');
+    const sembrarToken = async (tenant: string): Promise<string> => {
+      const token = randomBytes(24).toString('hex');
+      await h.firestore.doc(`novuchatTokens/${sha(token)}`).set({ tenantId: tenant, hash: sha(token), activo: true });
+      return token;
+    };
+    const conAuth = (token: string) => ({ headers: { authorization: `Bearer ${token}` } });
+    const soloInventarios = 'enc-http-inv';
+    const ninguno = 'enc-http-nada';
+    await h.firestore.doc(`tenants/${soloInventarios}`).set({ ...TENANT_TODO_ENCENDIDO, modulos: mod('inventarios') });
+    await h.firestore.doc(`tenants/${ninguno}`).set({ ...TENANT_TODO_ENCENDIDO, modulos: {} });
+    const tokenInv = await sembrarToken(soloInventarios);
+    const tokenNada = await sembrarToken(ninguno);
+
+    const catalogo = await http('/api/novuchat/v1/catalogo?mercado=BO', conAuth(tokenInv));
+    expect(catalogo.status).toBe(401);
+    expect(catalogo.cuerpo).toEqual({ error: 'credencial_invalida' });
+    const inventario = await http('/api/novuchat/v1/inventario', conAuth(tokenInv));
+    expect(inventario.status, JSON.stringify(inventario.cuerpo)).toBe(200);
+    const nada = await http('/api/novuchat/v1/inventario', conAuth(tokenNada));
+    expect(nada.status).toBe(401);
+    expect(nada.cuerpo).toEqual({ error: 'credencial_invalida' });
+    expect((await http('/api/salud')).status).toBe(200);
   });
 });
