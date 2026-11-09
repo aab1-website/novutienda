@@ -205,31 +205,70 @@ describe('pipeline de medios', () => {
       expect(b).toEqual(a);
       expect(uso().productos['cam-1']?.fotos).toBe(1);
     });
-    it('si otra ejecución gana la carrera, devuelve el medio ganador y limpia sus temporales y sus versiones huérfanas', async () => {
-      const { subidaId } = await subir('foto', JPG);
-      let ganador: Awaited<ReturnType<typeof finalizarSubida>> | undefined;
-      let disparado = false;
-      // La primera ejecución produce versiones distintas (otro hash); mientras procesa, otra ejecución termina primero.
-      class ProcesadorConCarrera extends ProcesadorSimulado {
+    it('dos finalizaciones concurrentes de la misma subida: una procesa, la otra no rechaza ni borra, queda procesada con un solo medio', async () => {
+      const { subidaId, r } = await subir('foto', JPG);
+      let n = 0;
+      deps = { ...deps, nuevoId: () => `inv${String((n += 1))}` };
+      const resultados = await Promise.allSettled([
+        finalizarSubida(deps, { tenantId: T, actor: adm, subidaId }),
+        finalizarSubida(deps, { tenantId: T, actor: adm, subidaId }),
+      ]);
+      const ok = resultados.filter((x) => x.status === 'fulfilled');
+      const falla = resultados.filter((x) => x.status === 'rejected');
+      expect(ok).toHaveLength(1);
+      expect(falla).toHaveLength(1);
+      expect((falla[0] as PromiseRejectedResult).reason).toMatchObject({ codigo: 'estado', message: expect.stringContaining('se está procesando') });
+      expect(db.dato(`tenants/${T}/subidas/${subidaId}`)).toMatchObject({ estado: 'procesada' });
+      expect(db.dato(`tenants/${T}/subidas/${subidaId}`)).not.toHaveProperty('procesandoPor');
+      expect(db.coleccion(`tenants/${T}/medios`)).toHaveLength(1);
+      expect(almacen.objetos.has(r.rutaOriginal)).toBe(true); // el original de la ganadora no se borró
+      expect(uso().productos['cam-1']?.fotos).toBe(1);
+      expect(db.dato(`tenants/${T}/sitio/estado`)).toMatchObject({ cambios: 1 });
+      expect([...almacen.objetos.keys()].filter((k) => k.includes('/procesando/'))).toEqual([]);
+      // Reintentar después es idempotente.
+      expect(await finalizarSubida(deps, { tenantId: T, actor: adm, subidaId })).toEqual((ok[0] as PromiseFulfilledResult<unknown>).value);
+    });
+    it('una finalización que llega mientras otra procesa recibe «en curso» y no toca nada de la ganadora', async () => {
+      const { subidaId, r } = await subir('foto', JPG);
+      let interna: unknown;
+      class ProcesadorConIntruso extends ProcesadorSimulado {
         override async procesar(...args: Parameters<ProcesadorSimulado['procesar']>): ReturnType<ProcesadorSimulado['procesar']> {
-          if (disparado) return super.procesar(...args);
-          disparado = true;
-          ganador = await finalizarSubida(deps, { tenantId: T, actor: adm, subidaId });
-          const salida = await super.procesar(...args);
-          for (const v of salida) almacen.objetos.set(v.rutaTemporal, new Uint8Array([...(almacen.objetos.get(v.rutaTemporal) ?? []), 7]));
-          return salida;
+          interna = await finalizarSubida(deps, { tenantId: T, actor: adm, subidaId }).catch((x: unknown) => x);
+          return super.procesar(...args);
         }
       }
-      deps = { ...deps, procesador: new ProcesadorConCarrera(almacen) };
-      const perdedor = await finalizarSubida(deps, { tenantId: T, actor: adm, subidaId });
-      expect(ganador).toBeDefined();
-      expect(perdedor).toEqual(ganador);
+      deps = { ...deps, procesador: new ProcesadorConIntruso(almacen) };
+      const medio = await finalizarSubida(deps, { tenantId: T, actor: adm, subidaId });
+      expect(interna).toMatchObject({ codigo: 'estado' });
+      expect(db.dato(`tenants/${T}/subidas/${subidaId}`)).toMatchObject({ estado: 'procesada' });
+      expect(db.coleccion(`tenants/${T}/medios`)).toEqual([expect.objectContaining({ id: medio.id })]);
+      expect(almacen.objetos.has(r.rutaOriginal)).toBe(true);
       expect(uso().productos['cam-1']?.fotos).toBe(1);
-      expect(db.dato(`tenants/${T}/sitio/estado`)).toMatchObject({ cambios: 1 }); // se anotó una sola vez
-      expect([...almacen.objetos.keys()].filter((k) => k.includes('/procesando/'))).toEqual([]);
-      // Lo publicado es exactamente lo del ganador: las versiones huérfanas del perdedor se borraron.
-      const publicados = [...almacen.objetos.keys()].filter((k) => k.includes('/publico/')).sort();
-      expect(publicados).toEqual((ganador?.versiones ?? []).map((v) => v.ruta).sort());
+    });
+    it('cada invocación usa su propia carpeta temporal', async () => {
+      const { subidaId } = await subir('foto', JPG);
+      const dirs: string[] = [];
+      class Espia extends ProcesadorSimulado {
+        override async procesar(...args: Parameters<ProcesadorSimulado['procesar']>): ReturnType<ProcesadorSimulado['procesar']> {
+          dirs.push(args[0].destinoTemporal);
+          return super.procesar(...args);
+        }
+      }
+      deps = { ...deps, procesador: new Espia(almacen), nuevoId: () => 'invocacion-1' };
+      await finalizarSubida(deps, { tenantId: T, actor: adm, subidaId });
+      expect(dirs).toEqual([`tenants/${T}/privado/procesando/${subidaId}/invocacion-1`]);
+    });
+    it('retoma una subida `procesando` con reclamo vencido; con reclamo vigente responde «en curso»', async () => {
+      const { subidaId } = await subir('foto', JPG);
+      const ruta = `tenants/${T}/subidas/${subidaId}`;
+      const base = db.dato(ruta) as Record<string, unknown>;
+      db.poner(ruta, { ...base, estado: 'procesando', procesandoPor: 'muerta', procesandoVenceEn: reloj.ms + 1000 });
+      await expect(finalizarSubida(deps, { tenantId: T, actor: adm, subidaId })).rejects.toMatchObject({ codigo: 'estado' });
+      expect(db.dato(ruta)).toMatchObject({ estado: 'procesando', procesandoPor: 'muerta' });
+      reloj.ms += LIMITES_CONSOLA.vencimientoProcesandoMs + 1;
+      const m = await finalizarSubida(deps, { tenantId: T, actor: adm, subidaId });
+      expect(m.id).toBe(subidaId);
+      expect(db.dato(ruta)).toMatchObject({ estado: 'procesada' });
     });
     it('estadoSubida consulta sin procesar: reservada, luego procesada con el medio; rechazada con su motivo', async () => {
       const { subidaId } = await subir('foto', JPG);
@@ -379,6 +418,29 @@ describe('pipeline de medios', () => {
       expect(almacen.objetos.has(nueva.r.rutaOriginal)).toBe(true);
       expect(db.dato(`tenants/${T}/subidas/${vieja.subidaId}`)).toBeUndefined();
       expect(uso()).toEqual({ bytes: JPG.length, productos: { 'cam-2': { fotos: 1, videos: 0 } } });
+    });
+    it('una `procesando` vencida con reserva vigente vuelve a `reservada`; con la reserva vencida se libera', async () => {
+      const a = await subir('foto', JPG);
+      const b = await subir('foto', JPG, { producto: 'cam-2' });
+      for (const x of [a, b]) {
+        const ruta = `tenants/${T}/subidas/${x.subidaId}`;
+        db.poner(ruta, { ...(db.dato(ruta) as Record<string, unknown>), estado: 'procesando', procesandoPor: 'muerta', procesandoVenceEn: reloj.ms + 10 });
+      }
+      const d = { ...deps, consulta: new ConsultaDoble(db) };
+      expect(await limpiarSubidas(d, T)).toEqual({ vencidas: 0, reintentadas: 0 }); // reclamo aún vigente
+      expect(db.dato(`tenants/${T}/subidas/${a.subidaId}`)).toMatchObject({ estado: 'procesando' });
+      reloj.ms += 20;
+      await limpiarSubidas(d, T);
+      expect(db.dato(`tenants/${T}/subidas/${a.subidaId}`)).toMatchObject({ estado: 'reservada' });
+      expect(db.dato(`tenants/${T}/subidas/${a.subidaId}`)).not.toHaveProperty('procesandoPor');
+      // Reserva vencida mientras estaba procesando.
+      const ruta = `tenants/${T}/subidas/${b.subidaId}`;
+      db.poner(ruta, { ...(db.dato(ruta) as Record<string, unknown>), estado: 'procesando', procesandoPor: 'muerta', procesandoVenceEn: reloj.ms + 10 });
+      reloj.ms += LIMITES_CONSOLA.vigenciaReservaMs + 1;
+      const res = await limpiarSubidas(d, T);
+      expect(res.vencidas).toBeGreaterThanOrEqual(1);
+      expect(db.dato(ruta)).toBeUndefined();
+      expect(almacen.objetos.has(b.r.rutaOriginal)).toBe(false);
     });
     it('es idempotente', async () => {
       await subir('foto', JPG);

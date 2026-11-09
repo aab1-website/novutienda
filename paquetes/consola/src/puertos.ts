@@ -134,7 +134,7 @@ export interface ProcesadorMedios {
 export interface ConsultaSubidas {
   listarPorEstado(
     tenantId: string,
-    estado: 'reservada' | 'borrando',
+    estado: 'reservada' | 'procesando' | 'borrando',
     limite: number,
   ): Promise<readonly { readonly id: string; readonly data: Readonly<Record<string, unknown>> }[]>;
 }

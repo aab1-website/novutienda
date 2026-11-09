@@ -30,10 +30,10 @@ export const accionesMedios: TablaImplementaciones = {
       const s = (await c.e.firestore.doc(`tenants/${c.tenantId}/subidas/${d.subidaId}`).get()).data();
       if (s === undefined) throw new ErrorConsola('no-encontrado', 'La subida no existe');
       const estado = s['estado'];
-      if (estado !== 'reservada' && estado !== 'procesada' && estado !== 'borrando' && estado !== 'rechazada') throw new ErrorConsola('estado', 'Registro de subida dañado');
+      if (estado !== 'reservada' && estado !== 'procesando' && estado !== 'procesada' && estado !== 'borrando' && estado !== 'rechazada') throw new ErrorConsola('estado', 'Registro de subida dañado');
       const medio = estado === 'procesada' ? (await c.e.firestore.doc(`tenants/${c.tenantId}/medios/${d.subidaId}`).get()).data() : undefined;
       return {
-        estado,
+        estado: estado === 'procesando' ? 'reservada' : estado, // `procesando` es interno: para el panel sigue siendo «falta procesar»
         ...(medio !== undefined ? { medio: { id: d.subidaId, ...medio } } : {}),
         ...(typeof s['motivo'] === 'string' ? { motivo: s['motivo'] } : {}),
       };

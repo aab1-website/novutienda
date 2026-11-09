@@ -149,7 +149,7 @@ export class ProcesadorSimulado implements ProcesadorMedios {
 
 export class ConsultaDoble implements ConsultaSubidas {
   constructor(private readonly db: DobleDb) {}
-  async listarPorEstado(t: string, estado: 'reservada' | 'borrando', limite: number) {
+  async listarPorEstado(t: string, estado: 'reservada' | 'procesando' | 'borrando', limite: number) {
     return [...this.db.docs]
       .filter(([r, d]) => r.startsWith(`tenants/${t}/subidas/`) && d.datos?.['estado'] === estado)
       .slice(0, limite)
