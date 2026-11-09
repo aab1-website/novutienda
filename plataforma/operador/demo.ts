@@ -72,6 +72,12 @@ export interface EstadoDemo {
   readonly plantilla: Readonly<Record<string, unknown>> | null;
   readonly configSitio: Readonly<Record<string, unknown>> | null;
   readonly fichas: Readonly<Record<string, Readonly<Record<string, unknown>>>>;
+  /**
+   * Medios de cada producto con su tipo y el tamaño del original (lo que expone `listarMedios`). Con él, una foto del fixture
+   * cuenta como ya subida si el producto tiene un medio de tipo foto con los mismos bytes, sea cual sea su id: la decisión
+   * de subir depende del estado y no de la versión (hash) del fixture.
+   */
+  readonly mediosDetalle?: Readonly<Record<string, readonly { readonly id: string; readonly tipo: string; readonly bytes: number }[]>>;
   /** Estado de las subidas de fotos que existen y aún no son medios (por id, incluidos los reintentos `-r2`, `-r3`). */
   readonly subidas?: Readonly<Record<string, 'reservada' | 'procesada' | 'borrando' | 'rechazada'>>;
   /** Ids de medios ya procesados, por producto. */
@@ -303,16 +309,31 @@ export function planificarDemo(catalogoCsv: string, fx: FixtureDemo, estado: Est
   let fotosPendientes = 0;
   for (const f of fx.fichas) {
     const hechos = new Set(estado.medios[f.productoId] ?? []);
+    const candidatosDe = (i: number): string[] => Array.from({ length: MAX_INTENTOS_FOTO }, (_, k) => subidaIdDe(f.productoId, i + 1, V, k + 1));
+    // Medio ya existente de cada foto: primero por id derivado; después, por contenido (tipo foto y mismos bytes), sin repetir medios.
+    const existente: (string | undefined)[] = f.fotos.map((_, i) => candidatosDe(i).find((c) => hechos.has(c) || estado.subidas?.[c] === 'procesada'));
+    const usados = new Set(existente.filter((x): x is string => x !== undefined));
+    const detalle = estado.mediosDetalle?.[f.productoId];
+    if (detalle !== undefined) {
+      f.fotos.forEach((foto, i) => {
+        if (existente[i] !== undefined) return;
+        const bytes = opciones.bytesFoto[foto.archivo];
+        const m = detalle.find((x) => x.tipo === 'foto' && x.bytes === bytes && !usados.has(x.id));
+        if (m !== undefined) {
+          existente[i] = m.id;
+          usados.add(m.id);
+        }
+      });
+    }
     const lista: { medioId: string; alt: string }[] = [];
     f.fotos.forEach((foto, i) => {
-      const candidatos = Array.from({ length: MAX_INTENTOS_FOTO }, (_, k) => subidaIdDe(f.productoId, i + 1, V, k + 1));
-      const hecho = candidatos.find((c) => hechos.has(c) || estado.subidas?.[c] === 'procesada');
+      const hecho = existente[i];
       if (hecho !== undefined) {
         lista.push({ medioId: hecho, alt: foto.alt });
         return;
       }
       if (!opciones.fotos) return;
-      const vivo = candidatos.find((c) => { const e = estado.subidas?.[c]; return e === undefined || e === 'reservada'; });
+      const vivo = candidatosDe(i).find((c) => { const e = estado.subidas?.[c]; return e === undefined || e === 'reservada'; });
       if (vivo === undefined) {
         bloqueos.push(`una foto falló ${String(MAX_INTENTOS_FOTO)} veces (el servidor rechazó todos los intentos): revise el archivo`);
         diferencias.push('foto sin intentos disponibles');

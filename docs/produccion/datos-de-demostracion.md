@@ -63,6 +63,7 @@ se versionan nunca.
   queda de respaldo si a los ~45 s la reserva sigue pendiente), porque llamar a ambos a la vez hace que uno rechace la subida. Una
   subida rechazada se reintenta con un identificador nuevo (`<id>-r2`, `-r3`; hasta 3 intentos por foto) y tras 3 fallos el plan da
   `BLOQUEO`. Las reservas rechazadas liberan su cupo de 5 fotos por producto.
+- Subir o no una foto depende del estado: si el producto ya tiene un medio de tipo foto con los mismos bytes, se reutiliza (con su id real) aunque el prefijo haya cambiado por editar el fixture. Las fichas se guardan solo si difieren del fixture y referencian los medios existentes; el prefijo solo versiona las operaciones que escriben por primera vez.
 - La segunda pasada sigue en cero pasos con fixtures propios.
 
 ## Retirar lo que no está en el fixture (`--retirar-fuera-del-fixture`)

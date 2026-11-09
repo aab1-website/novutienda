@@ -197,10 +197,13 @@ async function leerEstado() {
   for (const f of (await llamar('adm', 'consola', 'fichas', {})).fichas ?? []) fichas[f.productoId] = f.ficha;
   const medios = {};
   const subidas = {};
+  const mediosDetalle = {};
   for (const f of fixture.fichas) {
     if (!productos.includes(f.productoId)) continue;
-    const ids = ((await llamar('adm', 'medios', 'listarMedios', { productoId: f.productoId })).medios ?? []).map((m) => m.id);
+    const listadosMedios = (await llamar('adm', 'medios', 'listarMedios', { productoId: f.productoId })).medios ?? [];
+    const ids = listadosMedios.map((m) => m.id);
     medios[f.productoId] = ids;
+    mediosDetalle[f.productoId] = listadosMedios.map((m) => ({ id: m.id, tipo: String(m.tipo ?? ''), bytes: Number(m.bytesOriginal ?? -1) }));
     // Subidas existentes que aún no son medios, con sus reintentos (-r2, -r3): el planificador decide cuál reanudar o reintentar.
     for (let i = 0; i < f.fotos.length; i += 1) {
       for (let k = 1; k <= MAX_INTENTOS_FOTO; k += 1) {
@@ -222,7 +225,7 @@ async function leerEstado() {
   }
   return {
     cuentas: { sup: await cuenta(cuentaSup), caj: await cuenta(cuentaCaj) },
-    ubicaciones, productos, productosVisibilidad, series, plantilla, configSitio, fichas, medios, subidas,
+    ubicaciones, productos, productosVisibilidad, series, plantilla, configSitio, fichas, medios, mediosDetalle, subidas,
     tablero: { versionPublicada: Number(t.versionPublicada ?? 0), cambiosSinPublicar: Number(t.cambiosSinPublicar ?? 0) },
     turnos, ventas,
   };

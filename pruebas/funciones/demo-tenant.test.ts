@@ -354,6 +354,46 @@ describe('fixtures externos: 41 productos, lotes y retiro (puro)', () => {
     expect(planificarDemo(csvExt, un, conFicha, opc).pasos).toEqual([]);
   });
 
+  it('cambiar el hash del fixture con las fotos ya procesadas no sube nada; una ficha editada se guarda sola', () => {
+    const v1 = versionDeFixture(csvExt, fxExt, Object.keys(bytes));
+    // Estado de la carga hecha con la versión v1: medios con ids de v1 y fichas guardadas.
+    const medios: Record<string, string[]> = {};
+    const mediosDetalle: Record<string, { id: string; tipo: string; bytes: number }[]> = {};
+    const fichas: Record<string, Record<string, unknown>> = {};
+    for (const f of fxExt.fichas) {
+      const ids = f.fotos.map((_, i) => subidaIdDe(f.productoId, i + 1, v1));
+      medios[f.productoId] = ids;
+      mediosDetalle[f.productoId] = ids.map((id) => ({ id, tipo: 'foto', bytes: 2_000_000 }));
+      fichas[f.productoId] = { ...f.ficha, medios: ids.map((id) => ({ medioId: id, alt: 'a' })) };
+    }
+    const estado: EstadoDemo = {
+      ...base, productos: idsExt, plantilla: fx.recibos.plantilla, configSitio: fx.sitio.config, fichas, medios, mediosDetalle,
+      tablero: { versionPublicada: 1, cambiosSinPublicar: 0 },
+      cuentas: { sup: { uid: 's', rolActual: 'sup' }, caj: { uid: 'c', rolActual: 'caj' } },
+    };
+    // Se corrige el texto de una ficha: cambia el hash, pero las fotos y las demás fichas siguen al día.
+    const editado: FixtureDemo = { ...fxExt, fichas: fxExt.fichas.map((f, i) => (i === 3 ? { ...f, ficha: { ...f.ficha, descripcion: 'descripción corregida' } } : f)) };
+    const v2 = versionDeFixture(csvExt, editado, Object.keys(bytes));
+    expect(v2).not.toBe(v1);
+    const p = planificarDemo(csvExt, editado, estado, { ...opc, version: v2 });
+    expect(p.bloqueos).toEqual([]);
+    expect(p.pasos.filter((x) => x.tipo === 'foto')).toEqual([]);
+    const guardadas = p.pasos.filter((x) => x.tipo === 'llamada' && x.accion === 'guardarFicha');
+    expect(guardadas).toHaveLength(1);
+    const g = guardadas[0];
+    expect(g?.tipo === 'llamada' && g.datos['productoId']).toBe(editado.fichas[3]?.productoId);
+    // La ficha referencia los medios reales (ids de v1).
+    expect(JSON.stringify(g)).toContain(subidaIdDe(editado.fichas[3]?.productoId as string, 1, v1));
+    expect(p.diferencias).toContain('fichas por guardar: 1');
+    expect(p.diferencias.join(' ')).not.toMatch(/fotos por subir/);
+    // Sin edición y con otro hash: cero pasos.
+    expect(planificarDemo(csvExt, fxExt, estado, { ...opc, version: 'demo-xdeadbeef' }).pasos).toEqual([]);
+    // Una foto con otros bytes (cambió el archivo) sí se vuelve a subir, solo esa.
+    const otra = { ...opc, version: v2, bytesFoto: { ...bytes, [fxExt.fichas[5]?.fotos[0]?.archivo as string]: 1234 } };
+    const cambiada = planificarDemo(csvExt, fxExt, estado, otra);
+    expect(cambiada.pasos.filter((x) => x.tipo === 'foto')).toHaveLength(1);
+  });
+
   it('un lote existente solo en parte bloquea; otro lote ya completo no se vuelve a cargar', () => {
     const csv60 = `${[cab, ...Array.from({ length: 60 }, (_, i) => `q${String(i)},P,c,,S${String(i)},false,,,1,1,,true,true,,,`)].join('\r\n')}\r\n`;
     const primero = Array.from({ length: 50 }, (_, i) => `q${String(i)}`);
