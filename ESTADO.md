@@ -1,6 +1,6 @@
 # Estado del proyecto
 
-Última actualización: 06/11/2026 (L1 y L2 cerradas; sigue L3 y el pase a producción).
+Última actualización: 09/11/2026 (L1 y L2 cerradas; L3 planificada y decidida, en ejecución L3-0; sigue el pase a producción).
 
 **El estado vivo de la arquitectura no se escribe aquí: lo imprime `pnpm zonas`** (pieza → zona, archivos
 sin zona, cruces de importación y qué deuda queda). Lo que sigue son hitos y pendientes que no se
@@ -29,7 +29,8 @@ derivan del código; las cifras caducan y por eso no se copian.
 
 ## Pendiente
 
-- L3 (HTTP, bus de eventos, disparador): antes del tercer tenant; alcance y filas en el plano §7. Hasta entonces el encendido por
+- L3 (HTTP, bus de eventos, disparador): decidida el 09/11/2026 (plano §6.8); bloques L3-0 a L3-6 en el plano §7. L3-3 (encendido en HTTP)
+  se fusiona antes de apagar un módulo a cualquier tenant o de dar de alta uno con módulos apagados. Hasta entonces el encendido por
   tenant no rige para la API HTTP (ver `docs/modulos/website.md`).
 - Pase a producción: alta de cada tenant en producción como paso previo al tag (`docs/produccion/primer-tag.md`); está pendiente.
 - Pase a staging (`docs/produccion/pase-a-staging.md`): proyecto, facturación, Firestore/Storage, Hosting, WIF, secretos, App Check,
