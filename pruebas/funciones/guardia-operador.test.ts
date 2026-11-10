@@ -10,9 +10,10 @@ import { afterAll, describe, expect, it } from 'vitest';
 interface Guardia {
   validarEntorno(o: { proyectoArg: string | undefined; hostsEmulador: readonly string[]; env?: Record<string, string | undefined> }): { proyecto: string; ambiente: string; enEmulador: boolean };
   exigirFueraDelRepositorio(ruta: string, etiqueta?: string): void;
+  validarEntornoAlta(o: { proyectoArg: string | undefined; confirmarProduccion?: boolean; hostsEmulador: readonly string[]; env?: Record<string, string | undefined> }): { proyecto: string; ambiente: string; enEmulador: boolean };
 }
 const ruta = '../../scripts/guardia-operador.mjs';
-const { validarEntorno, exigirFueraDelRepositorio } = (await import(/* @vite-ignore */ ruta)) as Guardia;
+const { validarEntorno, exigirFueraDelRepositorio, validarEntornoAlta } = (await import(/* @vite-ignore */ ruta)) as Guardia;
 
 const HOSTS_PERSONAL = ['FIREBASE_AUTH_EMULATOR_HOST', 'FIRESTORE_EMULATOR_HOST'];
 const HOSTS_DEMO = [...HOSTS_PERSONAL, 'FIREBASE_STORAGE_EMULATOR_HOST'];
@@ -210,5 +211,38 @@ describe('carpeta de fixtures (--fixtures)', () => {
     expect(() => cargarFixtures(carpeta(['a.gif']))).toThrow(/extensión/);
     expect(intentosEspera(1000)).toBeLessThan(intentosEspera(8 * 1024 * 1024));
     expect(intentosEspera(15 * 1024 * 1024)).toBeLessThanOrEqual(120);
+  });
+});
+
+describe('guardia de entorno del alta de tenant', () => {
+  const HOSTS = ['FIRESTORE_EMULATOR_HOST'];
+  const stg = { GOOGLE_CLOUD_PROJECT: 'proyecto-stg', NOVUTIENDA_AMBIENTE: 'staging', GCP_PROJECT_ID_STAGING: 'proyecto-stg' };
+  const prod = { GOOGLE_CLOUD_PROJECT: 'proyecto-prd', NOVUTIENDA_AMBIENTE: 'produccion', GCP_PROJECT_ID_PROD: 'proyecto-prd' };
+  const a = (env: Record<string, string | undefined>, proyectoArg: string | undefined, confirmarProduccion = false) => () =>
+    validarEntornoAlta({ proyectoArg, confirmarProduccion, hostsEmulador: HOSTS, env });
+
+  it('staging y emulador siguen las reglas comunes', () => {
+    expect(a(stg, 'proyecto-stg')()).toMatchObject({ ambiente: 'staging', enEmulador: false });
+    expect(a({ ...stg, GCP_PROJECT_ID_STAGING: 'otro-stg' }, 'proyecto-stg')).toThrow(/staging/);
+    expect(a({ GOOGLE_CLOUD_PROJECT: 'proyecto-stg' }, 'proyecto-stg')).toThrow(/NOVUTIENDA_AMBIENTE/);
+    expect(a({ GOOGLE_CLOUD_PROJECT: 'demo-x', NOVUTIENDA_AMBIENTE: 'emulador', FIRESTORE_EMULATOR_HOST: '127.0.0.1:8080' }, 'demo-x')()).toMatchObject({ enEmulador: true });
+  });
+
+  it('el proyecto de producción no pasa como staging', () => {
+    expect(a({ ...stg, GCP_PROJECT_ID_PROD: 'proyecto-stg' }, 'proyecto-stg')).toThrow(/producción/);
+  });
+
+  it('producción exige ambiente, id de producción, --proyecto y --confirmar-produccion', () => {
+    expect(a(prod, 'proyecto-prd', true)()).toEqual({ proyecto: 'proyecto-prd', ambiente: 'produccion', enEmulador: false });
+    expect(a(prod, 'proyecto-prd')).toThrow(/--confirmar-produccion/);
+    expect(a(prod, undefined, true)).toThrow(/--proyecto/);
+    expect(a(prod, 'otro', true)).toThrow(/no coincide/);
+    expect(a({ ...prod, GCP_PROJECT_ID_PROD: undefined }, 'proyecto-prd', true)).toThrow(/GCP_PROJECT_ID_PROD/);
+    expect(a({ ...prod, GCP_PROJECT_ID_PROD: 'otro-prd' }, 'proyecto-prd', true)).toThrow(/no es el de producción/);
+    expect(a({ ...prod, FIRESTORE_EMULATOR_HOST: '127.0.0.1:8080' }, 'proyecto-prd', true)).toThrow(/emulador/);
+  });
+
+  it('--confirmar-produccion fuera de producción es un error', () => {
+    expect(a(stg, 'proyecto-stg', true)).toThrow(/solo aplica/);
   });
 });

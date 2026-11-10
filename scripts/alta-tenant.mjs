@@ -1,31 +1,49 @@
 // Alta de tenant: `tenants/<t>/config.json` (v2) -> documento `tenants/{t}` en Firestore (L2-5).
 //
-//   node scripts/alta-tenant.mjs <tenant> [--verificar]   solo lectura: muestra el diff contra el documento actual
-//   node scripts/alta-tenant.mjs <tenant> --aplicar       escribe el documento con Admin SDK
+//   node scripts/alta-tenant.mjs <tenant> --proyecto <id> [--verificar]   solo lectura: muestra el diff contra el documento actual
+//   node scripts/alta-tenant.mjs <tenant> --proyecto <id> --aplicar       escribe el documento con Admin SDK
 //
-// El proyecto sale de GOOGLE_CLOUD_PROJECT (obligatorio; con FIRESTORE_EMULATOR_HOST apunta al emulador). No imprime
+// El proyecto sale de GOOGLE_CLOUD_PROJECT (obligatorio; con FIRESTORE_EMULATOR_HOST apunta al emulador) y debe repetirse en
+// --proyecto. NOVUTIENDA_AMBIENTE=staging|emulador como en los demás scripts del operador; producción solo con
+// NOVUTIENDA_AMBIENTE=produccion, GCP_PROJECT_ID_PROD igual al proyecto y --confirmar-produccion (scripts/guardia-operador.mjs). No imprime
 // identificadores de proyecto ni de tenant. La lógica vive en plataforma/operador/alta.ts (pura, con almacén inyectable).
 import { readFileSync } from 'node:fs';
 import { resolve } from 'node:path';
 import { pathToFileURL } from 'node:url';
 import { cargarManifiestos } from './generar-reglas.mjs';
+import { validarEntornoAlta } from './guardia-operador.mjs';
 
 const falla = (mensaje) => {
   console.error(`alta-tenant: ${mensaje}`);
   process.exit(1);
 };
 
+const USO = 'uso: alta-tenant.mjs <tenant> --proyecto <id> [--verificar | --aplicar] [--confirmar-produccion]';
 const args = process.argv.slice(2);
-const tenant = args.find((a) => !a.startsWith('--'));
-const banderas = args.filter((a) => a.startsWith('--'));
-const desconocidas = banderas.filter((b) => b !== '--aplicar' && b !== '--verificar');
-if (tenant === undefined || desconocidas.length > 0 || banderas.length > 1) {
-  falla('uso: alta-tenant.mjs <tenant> [--verificar | --aplicar]');
+let tenant;
+let proyectoArg;
+let confirmarProduccion = false;
+const banderas = [];
+for (let i = 0; i < args.length; i += 1) {
+  const a = args[i];
+  if (a === '--proyecto') {
+    i += 1;
+    proyectoArg = args[i];
+  } else if (a === '--confirmar-produccion') confirmarProduccion = true;
+  else if (a === '--aplicar' || a === '--verificar') banderas.push(a);
+  else if (a.startsWith('--') || tenant !== undefined) falla(USO);
+  else tenant = a;
 }
+if (tenant === undefined || banderas.length > 1) falla(USO);
 const aplicar = banderas[0] === '--aplicar';
 if (!/^[a-z0-9][a-z0-9-]{0,62}$/.test(tenant)) falla('el tenant no es un identificador válido');
-const proyecto = process.env.GOOGLE_CLOUD_PROJECT;
-if (!proyecto) falla('defina GOOGLE_CLOUD_PROJECT');
+let proyecto;
+try {
+  // Entorno: --proyecto igual a GOOGLE_CLOUD_PROJECT; staging|emulador, o producción solo de forma explícita.
+  ({ proyecto } = validarEntornoAlta({ proyectoArg, confirmarProduccion, hostsEmulador: ['FIRESTORE_EMULATOR_HOST'] }));
+} catch (e) {
+  falla(e instanceof Error ? e.message : 'entorno inválido');
+}
 
 let config;
 try {
