@@ -385,7 +385,7 @@ del despliegue fallan a propósito. Verificar en staging el origen del límite d
    `scripts/personal-tenant.mjs <t> --entrada <ruta> --verificar|--aplicar` (contraseñas solo en un archivo 0600 fuera del repositorio);
    para una beta con datos ficticios, `scripts/demo-tenant.mjs`: ficha en `docs/produccion/datos-de-demostracion.md`. El propietario de
    la plataforma entra con Google y el claim `p`.
-2. Token de NovuChat: `node plataforma/funciones/scripts/token-novuchat.mjs registrar` contra staging y entrega a n8n sin mostrarlo.
+2. Token de NovuChat: `node plataforma/funciones/scripts/token-novuchat.mjs registrar --tenant <tenant> --proyecto <proyecto>` contra staging (con `NOVUTIENDA_AMBIENTE=staging`, `GCP_PROJECT_ID_STAGING` y `GOOGLE_CLOUD_PROJECT` definidos; el tenant debe estar activo) y entrega a n8n sin mostrarlo.
 3. Alerta de cotización y latido: `docs/produccion/alertas.md` (canal de correo `CORREO_ALERTAS`, política por registro y ausencia de datos de 26 h).
 4. Verificar la política TTL de `limitesTasa.expiraEn`: `gcloud firestore fields ttls list --project "$P"`.
 

@@ -307,7 +307,7 @@ Guion paso a paso con los comandos exactos: `pase-a-staging.md`.
 2. Primer despliegue a staging de `functions`, `hosting`, `firestore` (reglas e índices) y `storage` (reglas), y la variable `FIREBASE_DEPLOY_ONLY`.
 3. Crear en staging los dos sitios de Hosting y aplicar los targets.
 4. Registrar App Check (reCAPTCHA Enterprise) y la clave de sitio; fijar `APP_CHECK_EXIGIDO=true` y `RECAPTCHA_CLAVE_SITIO`.
-5. Registrar el token de NovuChat (`token-novuchat.mjs registrar`) y entregárselo a n8n sin mostrarlo.
+5. Registrar el token de NovuChat (`token-novuchat.mjs registrar --tenant <tenant> --proyecto <proyecto>`, con `NOVUTIENDA_AMBIENTE=staging`, `GCP_PROJECT_ID_STAGING` y `GOOGLE_CLOUD_PROJECT` definidos; el tenant debe estar activo) y entregárselo a n8n sin mostrarlo.
 6. Crear la alerta de Cloud Monitoring y su canal de correo (`alertas.md`).
 7. Activar la política TTL de `limitesTasa.expiraEn` (viene en `firestore.indexes.json`).
 8. Decidir el video: empaquetar un binario de ffmpeg o procesar el video fuera de Functions.
