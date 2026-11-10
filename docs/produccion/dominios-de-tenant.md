@@ -10,7 +10,7 @@ la tabla llega en un PR posterior; este solo prepara los datos.
 - El host va en minúsculas, sin esquema, puerto, ruta ni consulta; formato DNS (al menos dos etiquetas; no se aceptan IP).
 - Un host pertenece a un solo tenant. Si ya es de otro, se rechaza salvo `--reasignar`.
 - El tenant debe existir y estar `activo` o `suspendido`; uno en `baja` no admite dominios (la baja es terminal).
-- Cada cambio queda auditado en el tenant afectado (`dominio.asignar`, `dominio.reasignar`, `dominio.eliminar`), sin el host.
+- Cada cambio queda auditado en el tenant afectado (`dominio.asignar`, `dominio.reasignar`, `dominio.eliminar`), sin el host (la entrada apunta a la colección `dominios`).
 
 ## Uso
 
@@ -34,4 +34,4 @@ Antes de `--aplicar` se pide el «sí» de Andres (escribe en un servicio extern
 ## Registro de tokens de NovuChat
 
 `plataforma/funciones/scripts/token-novuchat.mjs` aplica la misma guardia de entorno y, en `registrar`, rechaza un tenant que no
-exista o no esté `activo`. Desactivar y listar no exigen estado, para poder cerrar un token de un tenant suspendido.
+exista o no esté `activo`; la lectura del estado y la escritura van en una sola transacción. El tope de dos tokens activos se cuenta antes, fuera de ella: dos registros simultáneos podrían superarlo (riesgo aceptado: solo opera el operador). Desactivar y listar no exigen estado, para poder cerrar un token de un tenant suspendido.

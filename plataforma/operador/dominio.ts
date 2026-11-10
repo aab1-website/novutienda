@@ -41,6 +41,14 @@ export function construirDominio(tenantId: string, marca: unknown): DocumentoDom
   return { tenantId, creado: marca, actualizado: marca };
 }
 
+type Rechazo = { readonly accion: 'rechazo'; readonly mensaje: string };
+const rechazar = (mensaje: string): Rechazo => ({ accion: 'rechazo', mensaje });
+type Plan =
+  | { readonly accion: 'asignar'; readonly destino: string }
+  | { readonly accion: 'reasignar'; readonly destino: string; readonly previo: string }
+  | { readonly accion: 'eliminar'; readonly previo: string }
+  | { readonly accion: 'nada' };
+
 export interface ResultadoDominio {
   readonly aplicado: boolean;
   /** Líneas legibles sin identificadores. */
@@ -52,7 +60,7 @@ export interface ResultadoDominio {
  * Reglas: un host pertenece a un solo tenant; si ya es de otro, se rechaza salvo `reasignar`. El tenant destino debe existir
  * con estado `activo` o `suspendido` (no `baja`; `tenantOperativo` cubre solo `activo`, y suspendido se admite para poder
  * dejar el mapeo listo). Con `aplicar` escribe y audita en una transacción (`dominio.asignar`, `dominio.reasignar`,
- * `dominio.eliminar`); la auditoría cuelga del tenant afectado (en la reasignación, de ambos).
+ * `dominio.eliminar`; la entrada no guarda el host); la auditoría cuelga del tenant afectado (en la reasignación, de ambos).
  * `eliminar` exige que el host exista; si se indica `tenantId`, debe ser su dueño actual.
  */
 export async function gestionarDominio(o: {
@@ -70,7 +78,8 @@ export async function gestionarDominio(o: {
   if (o.eliminar !== true && o.tenantId === undefined) throw new Error('indique el tenant (--tenant)');
   const operador = operadorDe(o.operador);
   const ruta = `dominios/${o.host}`;
-  const auditar = (tx: TransaccionDominio, tenantId: string, accion: string, antes: string | null, despues: string | null): void => {
+  // La auditoría no guarda el host: la ruta es la colección. El tenant afectado es el de la entrada.
+  const auditar = (tx: TransaccionDominio, tenantId: string, accion: string, antes: boolean, despues: boolean): void => {
     registrarAuditoria(tx, {
       tenantId,
       uid: operador,
@@ -78,34 +87,37 @@ export async function gestionarDominio(o: {
       rol: 'adm',
       motivo: 'operador de plataforma',
       accion,
-      ruta,
-      resumenAntes: { asignado: antes !== null },
-      resumenDespues: { asignado: despues !== null },
+      ruta: 'dominios',
+      resumenAntes: { asignado: antes },
+      resumenDespues: { asignado: despues },
     });
   };
 
-  const planear = async (tx: TransaccionDominio): Promise<{ readonly accion: 'asignar' | 'reasignar' | 'eliminar' | 'nada'; readonly previo?: string }> => {
+  // Los rechazos de negocio no se lanzan dentro de la transacción: abandonarla deja bloqueos en la base hasta que vence.
+  const planear = async (tx: TransaccionDominio): Promise<Plan | Rechazo> => {
     const actual = await tx.get(ruta);
     const previo = actual.existe ? actual.data()?.['tenantId'] : undefined;
-    if (actual.existe && (typeof previo !== 'string' || !esTenantIdValido(previo))) throw new Error('el mapeo existente es inválido: revíselo a mano');
+    if (actual.existe && (typeof previo !== 'string' || !esTenantIdValido(previo))) return rechazar('el mapeo existente es inválido: revíselo a mano');
     if (o.eliminar === true) {
-      if (!actual.existe) throw new Error('el host no está asignado');
-      if (o.tenantId !== undefined && o.tenantId !== previo) throw new Error('el host pertenece a otro tenant');
-      return { accion: 'eliminar', previo: previo as string };
+      if (typeof previo !== 'string') return rechazar('el host no está asignado');
+      if (o.tenantId !== undefined && o.tenantId !== previo) return rechazar('el host pertenece a otro tenant');
+      return { accion: 'eliminar', previo };
     }
-    const tenantId = o.tenantId as string;
-    const t = await tx.get(`tenants/${tenantId}`);
-    if (!t.existe) throw new Error('el tenant no existe');
+    const destino = o.tenantId;
+    if (destino === undefined) return rechazar('indique el tenant (--tenant)');
+    const t = await tx.get(`tenants/${destino}`);
+    if (!t.existe) return rechazar('el tenant no existe');
     const estado = t.data()?.['estado'];
-    if (!esEstadoTenant(estado)) throw new Error('el tenant no tiene un estado válido: corra el alta antes');
-    if (!tenantOperativo({ estado }) && estado !== 'suspendido') throw new Error('el tenant está de baja: no admite dominios');
-    if (!actual.existe) return { accion: 'asignar' };
-    if (previo === tenantId) return { accion: 'nada', previo };
-    if (o.reasignar !== true) throw new Error('el host ya pertenece a otro tenant: use --reasignar para moverlo');
-    return { accion: 'reasignar', previo: previo as string };
+    if (!esEstadoTenant(estado)) return rechazar('el tenant no tiene un estado válido: corra el alta antes');
+    if (!tenantOperativo({ estado }) && estado !== 'suspendido') return rechazar('el tenant está de baja: no admite dominios');
+    if (typeof previo !== 'string') return { accion: 'asignar', destino };
+    if (previo === destino) return { accion: 'nada' };
+    if (o.reasignar !== true) return rechazar('el host ya pertenece a otro tenant: use --reasignar para moverlo');
+    return { accion: 'reasignar', destino, previo };
   };
 
   const plan = await o.db.runTransaction(planear);
+  if (plan.accion === 'rechazo') throw new Error(plan.mensaje);
   const diferencias =
     plan.accion === 'asignar' ? ['host: sin asignar -> tenant indicado']
     : plan.accion === 'reasignar' ? ['host: tenant actual -> tenant indicado (reasignación)']
@@ -113,22 +125,23 @@ export async function gestionarDominio(o: {
     : [];
   if (plan.accion === 'nada' || !o.aplicar) return { aplicado: false, diferencias };
 
-  await o.db.runTransaction(async (tx) => {
-    // Se replanifica dentro de la transacción: si algo cambió entre la lectura y la escritura, se aborta.
-    const ahora = await planear(tx);
-    if (ahora.accion !== plan.accion || ahora.previo !== plan.previo) throw new Error('el mapeo cambió durante la operación: reintente');
+  const escrito = await o.db.runTransaction(async (tx) => {
+    // Se replanifica dentro de la transacción: si algo cambió entre la lectura y la escritura, no se escribe.
+    if (JSON.stringify(await planear(tx)) !== JSON.stringify(plan)) return false;
     const marca = tx.marcaTiempoServidor();
     if (plan.accion === 'eliminar') {
       tx.delete(ruta);
-      auditar(tx, plan.previo as string, 'dominio.eliminar', plan.previo as string, null);
+      auditar(tx, plan.previo, 'dominio.eliminar', true, false);
     } else if (plan.accion === 'asignar') {
-      tx.create(ruta, { ...construirDominio(o.tenantId as string, marca) });
-      auditar(tx, o.tenantId as string, 'dominio.asignar', null, o.tenantId as string);
+      tx.create(ruta, { ...construirDominio(plan.destino, marca) });
+      auditar(tx, plan.destino, 'dominio.asignar', false, true);
     } else {
-      tx.update(ruta, { tenantId: o.tenantId as string, actualizado: marca });
-      auditar(tx, plan.previo as string, 'dominio.reasignar', plan.previo as string, null);
-      auditar(tx, o.tenantId as string, 'dominio.reasignar', null, o.tenantId as string);
+      tx.update(ruta, { tenantId: plan.destino, actualizado: marca });
+      auditar(tx, plan.previo, 'dominio.reasignar', true, false);
+      auditar(tx, plan.destino, 'dominio.reasignar', false, true);
     }
+    return true;
   });
+  if (!escrito) throw new Error('el mapeo cambió durante la operación: reintente');
   return { aplicado: true, diferencias };
 }

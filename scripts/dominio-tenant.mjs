@@ -9,8 +9,6 @@
 // GCP_PROJECT_ID_PROD y --confirmar-produccion (scripts/guardia-operador.mjs). No imprime identificadores.
 // La lógica vive en plataforma/operador/dominio.ts (pura, con la base inyectable).
 import { readFileSync } from 'node:fs';
-import { resolve } from 'node:path';
-import { pathToFileURL } from 'node:url';
 import { cargarManifiestos } from './generar-reglas.mjs';
 import { validarEntornoAlta } from './guardia-operador.mjs';
 
@@ -57,17 +55,18 @@ try {
 }
 
 await cargarManifiestos(); // registra los ganchos de TypeScript
-const { gestionarDominio } = await import(pathToFileURL(resolve('plataforma/operador/dominio.ts')).href);
+const { gestionarDominio } = await import(new URL('../plataforma/operador/dominio.ts', import.meta.url).href);
 const { getApps, initializeApp } = await import('firebase-admin/app');
 const { FieldValue, getFirestore } = await import('firebase-admin/firestore');
 if (getApps().length === 0) initializeApp({ projectId: proyecto });
 const firestore = getFirestore();
 
-// Los errores de Firebase suelen traer el id del proyecto: solo se muestra su código.
+// Los errores de Firebase suelen traer el id del proyecto: solo se muestra su código. Los rechazos de negocio (sin `code`) pasan intactos.
 const sinIdentificadores = async (fn) => {
   try {
     return await fn();
   } catch (e) {
+    if (e instanceof Error && !('code' in e)) throw e;
     throw new Error(`error de Firebase (${e && typeof e === 'object' && 'code' in e ? String(e.code) : 'desconocido'})`, { cause: e });
   }
 };

@@ -1,6 +1,7 @@
 // Mapeo host -> tenant (`plataforma/operador/dominio.ts`) y guardia de tokens (`plataforma/operador/token.ts`) con dobles en memoria.
 import { spawnSync } from 'node:child_process';
 import { describe, expect, it } from 'vitest';
+import { hayEmulador, herramientas, unico } from './ayudas.js';
 import type { EstadoTenant, TransaccionIdentidad } from '@novutienda/nucleo';
 import { construirDominio, esHostValido, gestionarDominio, type BaseDatosDominio } from '../../plataforma/operador/dominio.js';
 import { exigirTenantOperativo } from '../../plataforma/operador/token.js';
@@ -147,6 +148,16 @@ describe('gestionarDominio', () => {
     expect(JSON.stringify(r)).not.toContain(HOST);
     expect(JSON.stringify(r)).not.toContain(A);
   });
+
+  it('la auditoría no guarda el host', async () => {
+    const m = montaje();
+    await m.correr();
+    await m.correr({ tenantId: B, reasignar: true });
+    await m.correr({ eliminar: true, tenantId: B });
+    const auditoria = [...m.doble.docs].filter(([r]) => r.includes('/auditoria/')).map(([, d]) => JSON.stringify(d.datos));
+    expect(auditoria.length).toBeGreaterThanOrEqual(4);
+    for (const a of auditoria) expect(a).not.toContain(HOST);
+  });
 });
 
 describe('exigirTenantOperativo (guardia de token-novuchat)', () => {
@@ -181,5 +192,38 @@ describe('scripts/dominio-tenant.mjs: guardias previas a tocar la nube', () => {
     expect(correr(['--host', HOST, '--tenant', A, '--proyecto', 'proyecto-prod', '--aplicar'], prod).stderr).toContain('--confirmar-produccion');
     expect(correr(['--host', HOST, '--tenant', A, '--proyecto', 'x', '--aplicar', '--verificar']).stderr).toContain('uso:');
     expect(correr(['--host', HOST, '--proyecto', 'x']).stderr).toContain('uso:');
+  });
+});
+
+describe.skipIf(!hayEmulador)('scripts/dominio-tenant.mjs contra el emulador', () => {
+  const correr = (args: string[]) =>
+    spawnSync('node', ['scripts/dominio-tenant.mjs', ...args, '--proyecto', 'demo-pruebas'], {
+      encoding: 'utf8',
+      env: { ...process.env, GOOGLE_CLOUD_PROJECT: 'demo-pruebas', NOVUTIENDA_AMBIENTE: 'emulador' },
+    });
+
+  it('asigna, rechaza sin --reasignar con un mensaje útil y sin identificadores', async () => {
+    const h = herramientas();
+    const a = unico('dom-a').toLowerCase();
+    const b = unico('dom-b').toLowerCase();
+    const host = `${unico('h').toLowerCase()}.ejemplo.test`;
+    for (const t of [a, b]) await h.firestore.doc(`tenants/${t}`).set({ estado: 'activo' });
+    const verificar = correr(['--host', host, '--tenant', a]);
+    expect(verificar.status, verificar.stderr).toBe(0);
+    expect((await h.firestore.doc(`dominios/${host}`).get()).exists).toBe(false);
+    const aplicar = correr(['--host', host, '--tenant', a, '--aplicar']);
+    expect(aplicar.status, aplicar.stderr).toBe(0);
+    expect((await h.firestore.doc(`dominios/${host}`).get()).data()).toMatchObject({ tenantId: a });
+    const rechazo = correr(['--host', host, '--tenant', b, '--aplicar']);
+    expect(rechazo.status).toBe(1);
+    expect(rechazo.stderr).toContain('--reasignar');
+    expect(rechazo.stderr).not.toContain('error de Firebase');
+    for (const x of [host, a, b, 'demo-pruebas']) expect(rechazo.stdout + rechazo.stderr).not.toContain(x);
+    expect((await h.firestore.doc(`dominios/${host}`).get()).data()).toMatchObject({ tenantId: a });
+    const mover = correr(['--host', host, '--tenant', b, '--aplicar', '--reasignar']);
+    expect(mover.status, mover.stderr).toBe(0);
+    const quitar = correr(['--host', host, '--eliminar', '--aplicar']);
+    expect(quitar.status, quitar.stderr).toBe(0);
+    expect((await h.firestore.doc(`dominios/${host}`).get()).exists).toBe(false);
   });
 });
