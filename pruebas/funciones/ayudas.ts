@@ -159,6 +159,7 @@ export interface OpcionesSembrado {
 
 /** Documento `tenants/{t}` con los cinco módulos encendidos (forma v2 de L2-5): datos de prueba, no un caso. */
 export const TENANT_TODO_ENCENDIDO = {
+  estado: 'activo',
   plan: 'base',
   modulos: { consola: { version: '0.1.0', submodulos: [] }, inventarios: { version: '0.1.0', submodulos: [] }, pos: { version: '0.1.0', submodulos: [] }, recibos: { version: '0.1.0', submodulos: [] }, website: { version: '0.1.0', submodulos: [] } },
   zonaHoraria: 'America/La_Paz',

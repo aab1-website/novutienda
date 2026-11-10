@@ -68,3 +68,10 @@
   Dependencia `firebase` 13.1.0, igual que el panel (la 13.2.0 tenía menos de 7 días). Pasos del pase: registrar la app web del sitio en App Check con reCAPTCHA Enterprise y cargar el bloque en el contenido publicado.
 - 05/11/2026 — **La ruta de salud pública es `/api/salud`, no `/healthz`.** En el primer despliegue a staging, `/healthz` devolvía 404 aunque la función `api` estaba activa y pública: el frontend de Google intercepta exactamente `/healthz` en Cloud Run y responde su propio 404 HTML sin llegar al contenedor (`/healthz/`, `/nada` y `/api/**` sí llegan; comprobado contra la URL directa de la función). `HEALTH_PATH=/api/salud` en GitHub (humo, DAST y post-despliegue); el router mantiene `/healthz` para el emulador y las pruebas, y el rewrite de Hosting queda por compatibilidad.
 - 05/11/2026 — **Excepción de edad mínima (decisión de Andres, botón):** Dependabot actualizó su PR de `astro` 7.4.4 (revisado, 8 días) a 7.4.5 (publicado el 02/11, 3 días) antes de la fusión en bloque; se deja (parche menor, CI/SCA/despliegue en verde). Lección: en fusiones en bloque, fijar el sha revisado o re-verificar la edad justo antes de aprobar.
+- 10/11/2026 — **Ciclo de vida del tenant (decisiones de Andres, D1 a D5).** Operación y ventanas: `docs/produccion/ciclo-de-vida-tenant.md`.
+  **D1:** `estado` (`activo|suspendido|baja`) es obligatorio en `tenants/{t}`; sin estado válido el tenant no opera y el alta lo crea `activo`.
+  **D2:** no se toca `storage.rules`; la ventana residual es la vigencia de una reserva de subida ya emitida.
+  **D3 (corregida tras la revisión):** el propietario de la plataforma pasa solo ante un tenant suspendido y solo en acciones de propietario; ante inexistente, baja o inválido se rechaza.
+  **D4:** se acepta lo que ve el público: el sitio publicado y los medios públicos siguen visibles al suspender.
+  **D5:** la verificación en la nube se hace una sola vez, por Claude, con el «sí» de Andres.
+  **Cambio de comportamiento en pruebas:** en `personal-escritura.test.ts`, sin tenant ya no se crean cuentas antes de fallar (antes quedaban creadas y el alta se reanudaba).

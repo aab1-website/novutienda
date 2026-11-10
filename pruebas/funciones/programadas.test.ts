@@ -119,8 +119,17 @@ describe.skipIf(!hayEmulador)('trabajos programados (Firestore del emulador)', (
     expect(horaEnLaPaz(AHORA)).toBe(7);
     expect(horaEnLaPaz(Date.parse('2026-11-04T00:30:00Z'))).toBe(20);
     const t = unico('prog').toLowerCase();
-    await h.firestore.doc(`tenants/${t}`).set({ plan: 'base' });
+    await h.firestore.doc(`tenants/${t}`).set({ estado: 'activo', plan: 'base' });
     expect(await listarTenants(e)).toContain(t);
+  });
+
+  it('listarTenants solo devuelve los activos: suspendidos y de baja no corren trabajos', async () => {
+    const t = unico('est').toLowerCase();
+    for (const estado of ['activo', 'suspendido', 'baja']) await h.firestore.doc(`tenants/${t}-${estado}`).set({ estado, plan: 'base' });
+    const lista = await listarTenants(e);
+    expect(lista).toContain(`${t}-activo`);
+    expect(lista).not.toContain(`${t}-suspendido`);
+    expect(lista).not.toContain(`${t}-baja`);
   });
 
   it('cotización: baja BO y AR de las fuentes, escribe por tenant y reconstruye el sitio a las 07:00', async () => {

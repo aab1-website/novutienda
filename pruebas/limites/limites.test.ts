@@ -11,7 +11,7 @@ import {
 } from '@novutienda/nucleo';
 import { DobleDb } from './doble-db.js';
 
-const tenantOk = { plan: 'base', modulos: {}, zonaHoraria: 'America/La_Paz', monedas: ['BOB', 'USD', 'ARS'] };
+const tenantOk = { plan: 'base', estado: 'activo', modulos: {}, zonaHoraria: 'America/La_Paz', monedas: ['BOB', 'USD', 'ARS'] };
 
 function nuevaDb(uso: Record<string, number> = {}): DobleDb {
   const db = new DobleDb();
@@ -68,7 +68,7 @@ describe('límites del plan', () => {
   it('rechaza tenant inexistente, inválido o con id que altera la ruta', async () => {
     const db = new DobleDb();
     await expect(db.runTransaction((tx) => verificarYReservar(tx, 't1', 'cajas'))).rejects.toThrow(/inexistente/);
-    db.poner('tenants/t1', { plan: 'oro' });
+    db.poner('tenants/t1', { plan: 'oro', estado: 'activo' });
     await expect(db.runTransaction((tx) => verificarYReservar(tx, 't1', 'cajas'))).rejects.toThrow(/inválido/);
     await expect(db.runTransaction((tx) => verificarYReservar(tx, 'a/b', 'cajas'))).rejects.toThrow(/tenantId/);
   });

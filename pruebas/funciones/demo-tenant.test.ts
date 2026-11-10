@@ -8,6 +8,7 @@ import { readFileSync, readdirSync, statSync } from 'node:fs';
 import { join } from 'node:path';
 import { beforeAll, describe, expect, it, vi } from 'vitest';
 import { construirClaim, cargarManual } from '@novutienda/nucleo';
+import { DobleDb } from '../limites/doble-db.js';
 import { almacenCotizacionesDesde } from '../../plataforma/coordinador/index.js';
 import { validarConfigSitio, validarFichaWeb } from '@novutienda/consola';
 import { leerCsvProductos } from '@novutienda/inventarios';
@@ -439,7 +440,10 @@ describe('alta del personal (puro, con dobles)', () => {
       revokeRefreshTokens: () => Promise.reject(new Error('no debe llamarse')),
     };
   };
-  const base = { tenantId: 'demo-x', entrada, db: {} as never, aleatorios: (n: number) => randomBytes(n), operador: operadorDe('adm@example.com') };
+  // El tenant debe existir y estar activo; el resto de la base no se toca en estos casos.
+  const dbActivo = new DobleDb();
+  dbActivo.poner('tenants/demo-x', { estado: 'activo' });
+  const base = { tenantId: 'demo-x', entrada, db: dbActivo, aleatorios: (n: number) => randomBytes(n), operador: operadorDe('adm@example.com') };
 
   it('personal.json es válido: 3 cuentas @example.com con un solo administrador', () => {
     expect(entrada.cuentas).toHaveLength(3);

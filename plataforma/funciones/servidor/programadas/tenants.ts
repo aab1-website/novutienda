@@ -2,18 +2,18 @@
 // existentes y corre el trabajo de cada zona por cada uno sin que un tenant roto detenga a los demás. No sabe qué
 // hace cada trabajo; eso lo ponen `cotizacion.ts` (núcleo + consola) y `consola.ts` (módulo).
 import { logger } from 'firebase-functions';
-import { esTenantIdValido } from '@novutienda/nucleo';
+import { esTenantIdValido, tenantOperativo } from '@novutienda/nucleo';
 import type { Entorno } from '../entorno.js';
 
 /**
- * Tenants que existen (`tenants/{t}` con documento) y de id válido. `listDocuments` también devuelve los «fantasmas»
+ * Tenants activos (`tenants/{t}` con documento y `estado: 'activo'`) y de id válido. `listDocuments` también devuelve los «fantasmas»
  * (rutas que solo tienen subcolecciones), por eso se confirma que el documento exista.
  */
 export async function listarTenants(e: Entorno): Promise<string[]> {
   const refs = (await e.firestore.collection('tenants').listDocuments()).filter((r) => esTenantIdValido(r.id));
   if (refs.length === 0) return [];
-  const docs = await e.firestore.getAll(...refs, { fieldMask: ['plan'] });
-  return docs.filter((d) => d.exists).map((d) => d.id).sort();
+  const docs = await e.firestore.getAll(...refs, { fieldMask: ['estado'] });
+  return docs.filter((d) => d.exists && tenantOperativo({ estado: d.get('estado') })).map((d) => d.id).sort();
 }
 
 /** `true` si el módulo está entre los efectivos del tenant. Falla cerrado: tenant sin documento o inválido → `false`. */

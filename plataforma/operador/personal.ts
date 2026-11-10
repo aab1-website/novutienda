@@ -119,6 +119,7 @@ export interface ResultadoPersonal {
  * Compara contra Auth y, solo con `aplicar`, crea las cuentas faltantes y asigna el primer administrador.
  * Aborta (sin escribir) si: una cuenta está deshabilitada; otro usuario ya es administrador del tenant; una cuenta
  * existente no tiene credencial guardada (no se pisa una cuenta ajena); o una cuenta existente no es de correo y contraseña.
+ * También aborta si el tenant no existe o no está activo (suspendido o dado de baja): no se crea personal ahí.
  */
 export async function aplicarPersonal(o: {
   readonly tenantId: string;
@@ -134,6 +135,9 @@ export async function aplicarPersonal(o: {
   const entrada = validarEntradaPersonal(o.entrada);
   // Antes de crear cuentas: el operador de la auditoría debe ser válido para el núcleo (si no, fallaría en el paso 3 con cuentas ya creadas).
   if (!OPERADOR_VALIDO.test(o.operador)) throw new Error('el operador de la auditoría no es válido');
+  const tenant = await o.db.runTransaction((tx) => tx.get(`tenants/${o.tenantId}`));
+  if (!tenant.existe) throw new Error('el tenant no existe');
+  if (tenant.data()?.['estado'] !== 'activo') throw new Error('el tenant no está activo: no se crea personal');
   const previas = await o.credenciales.leer();
   const estados = new Map<string, UsuarioAuth | null>();
   for (const c of entrada.cuentas) estados.set(c.correo, await o.auth.buscarPorCorreo(c.correo));

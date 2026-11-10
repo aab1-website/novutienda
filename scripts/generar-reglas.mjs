@@ -162,11 +162,17 @@ service cloud.firestore {
       return request.auth.token.get('pl', {}).get('t', {}).get(tenantId, '');
     }
 
+    // El tenant debe estar activo: suspendido o dado de baja niega todo rol (falla cerrado si falta el documento o el campo).
+    function tenantActivo(tenantId) {
+      return get(/databases/$(database)/documents/tenants/$(tenantId)).data.get('estado', '') == 'activo';
+    }
+
     function tieneRol(tenantId, roles) {
       return autenticado()
         && proveedor() == '${PROVEEDOR_PERSONAS}'
         && request.auth.token.get('email_verified', false) == true
-        && rolEn(tenantId) in roles;
+        && rolEn(tenantId) in roles
+        && tenantActivo(tenantId);
     }
 
 ${bloques.join('\n\n')}

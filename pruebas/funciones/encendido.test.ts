@@ -116,8 +116,50 @@ describe('encendido por tenant en el marco de los callables', () => {
     expect(await codigoDe(manejar(sin.e, tablaDe('pos', true))(peticion('hacer')))).toEqual(APAGADO);
     const modulosActivos = tablasCompuestas()['consola']?.['modulosActivos'] as never;
     expect(await codigoDe(manejar(sin.e, { modulosActivos })(peticion('modulosActivos')))).toEqual(APAGADO);
-    const roto = entornoCon({ [`tenants/${T}`]: { plan: 'base' } });
+    const roto = entornoCon({ [`tenants/${T}`]: { estado: 'activo', plan: 'base' } });
     expect(await codigoDe(manejar(roto.e, tablaDe('pos', true))(peticion('hacer')))).toEqual(APAGADO);
+  });
+
+  it('tenant suspendido o de baja → rechazado en acciones de módulo y de Central; activo sigue igual', async () => {
+    const modulosActivos = tablasCompuestas()['consola']?.['modulosActivos'] as never;
+    for (const estado of ['suspendido', 'baja']) {
+      const { e } = entornoCon({ [`tenants/${T}`]: { ...tenantCon('inventarios', 'recibos', 'pos'), estado } });
+      expect(await codigoDe(manejar(e, tablaDe('pos', true))(peticion('hacer'))), estado).toEqual(APAGADO);
+      expect(await codigoDe(manejar(e, tablaDe('panel', false))(peticion('hacer'))), estado).toEqual(APAGADO);
+      expect(await codigoDe(manejar(e, { modulosActivos })(peticion('modulosActivos'))), estado).toEqual(APAGADO);
+    }
+    const activo = entornoCon({ [`tenants/${T}`]: tenantCon('inventarios', 'recibos', 'pos') });
+    expect(await manejar(activo.e, tablaDe('panel', false))(peticion('hacer'))).toEqual({ hecho: true });
+  });
+
+  describe('propietario de la plataforma (D3): pasa solo ante un tenant suspendido y en acciones que lo declaran', () => {
+    const entornoDe = (docs: Record<string, unknown>, propietario: boolean) => {
+      const claim = construirClaim(propietario ? {} : { [T]: 'adm' }, 1, propietario);
+      if (!claim.ok) throw new Error(claim.error);
+      const claims = { uid: 'op', email_verified: true, firebase: { sign_in_provider: propietario ? 'google.com' : 'password' }, ...claim.valor };
+      const { f } = firestoreFalso(docs);
+      return crearEntorno({ firestore: f as never, auth: { verifyIdToken: async () => claims } as never, bucket: {} as never, ahora: () => 1_000, env: {} });
+    };
+    const propia = (modulo: string, requiereEncendido: boolean): TablaAcciones => ({ hacer: { ...tablaDe(modulo, requiereEncendido)['hacer']!, propietario: true } });
+    const susp = (...ids: string[]) => ({ [`tenants/${T}`]: { ...tenantCon(...ids), estado: 'suspendido' } });
+
+    it('suspendido, acción propietario → pasa', async () => {
+      expect(await manejar(entornoDe(susp('pos'), true), propia('panel', false))(peticion('hacer'))).toEqual({ hecho: true });
+    });
+    it('suspendido, acción de módulo con requiereEncendido → sigue revisando el encendido', async () => {
+      expect(await codigoDe(manejar(entornoDe(susp('inventarios'), true), propia('pos', true))(peticion('hacer')))).toEqual(APAGADO);
+      expect(await manejar(entornoDe(susp('inventarios', 'recibos', 'pos'), true), propia('pos', true))(peticion('hacer'))).toEqual({ hecho: true });
+    });
+    it('inexistente, inválido o de baja → rechazado también para el propietario', async () => {
+      const casos: Record<string, unknown>[] = [{}, { [`tenants/${T}`]: { estado: 'activo', plan: 'base' } }, { [`tenants/${T}`]: { ...tenantCon('pos'), estado: 'baja' } }];
+      for (const docs of casos) expect(await codigoDe(manejar(entornoDe(docs, true), propia('panel', false))(peticion('hacer'))), JSON.stringify(docs)).toEqual(APAGADO);
+    });
+    it('propietario en una acción que no lo declara → no pasa ante suspendido', async () => {
+      expect(await codigoDe(manejar(entornoDe(susp('pos'), true), tablaDe('panel', false))(peticion('hacer')))).not.toBe('ok');
+    });
+    it('personal del tenant vs suspendido → rechazado, aunque la acción declare propietario', async () => {
+      expect(await codigoDe(manejar(entornoDe(susp('pos'), false), propia('panel', false))(peticion('hacer')))).toEqual(APAGADO);
+    });
   });
 
   it('el rol sigue mandando: otro tenant sin rol no llega a leer módulos', async () => {
@@ -179,7 +221,7 @@ describe('lector de módulos del tenant: cache de 60 s', () => {
 describe('lector de módulos del tenant: caché negativa de 10 s', () => {
   it('sin documento o inválido: la segunda petición dentro de 10 s no lee Firestore; pasados 10 s sí', async () => {
     let t = 0;
-    const docs: Record<string, unknown> = { 'tenants/roto': { plan: 'base' } };
+    const docs: Record<string, unknown> = { 'tenants/roto': { estado: 'activo', plan: 'base' } };
     const { f, lecturas } = firestoreFalso(docs);
     const leer = crearLectorModulos(f, () => t);
     for (const id of ['fantasma', 'roto']) {
@@ -199,13 +241,21 @@ describe('programadas: porTenant con módulo', () => {
   it('salta los tenants con el módulo apagado', async () => {
     const docs: Record<string, unknown> = { 'tenants/a': tenantCon('consola', 'inventarios'), 'tenants/b': tenantCon('inventarios') };
     const { f } = firestoreFalso(docs);
-    const fs = { ...f, collection: () => ({ listDocuments: async () => ['a', 'b'].map((id) => ({ id })) }), getAll: async (...refs: { id: string }[]) => refs.filter((r) => typeof r.id === 'string').map((r) => ({ id: r.id, exists: true })) };
+    const fs = { ...f, collection: () => ({ listDocuments: async () => ['a', 'b'].map((id) => ({ id })) }), getAll: async (...refs: { id: string }[]) => refs.filter((r) => typeof r.id === 'string').map((r) => ({ id: r.id, exists: true, get: () => 'activo' })) };
     const e = crearEntorno({ firestore: fs as never, auth: {} as never, bucket: {} as never, ahora: () => 1, env: {} });
     expect(await moduloEncendido(e, 'a', 'consola')).toBe(true);
     expect(await moduloEncendido(e, 'b', 'consola')).toBe(false);
     expect(await moduloEncendido(e, 'zz', 'consola')).toBe(false);
     expect(await porTenant(e, 'prueba', async (t) => t.toUpperCase(), { modulo: 'consola' })).toEqual({ a: 'A' });
     expect(await porTenant(e, 'prueba', async (t) => t.toUpperCase())).toEqual({ a: 'A', b: 'B' });
+  });
+
+  it('solo recorre los tenants activos: suspendidos y de baja se saltan', async () => {
+    const docs: Record<string, unknown> = { 'tenants/a': tenantCon('consola'), 'tenants/s': { ...tenantCon('consola'), estado: 'suspendido' }, 'tenants/z': { ...tenantCon('consola'), estado: 'baja' } };
+    const { f } = firestoreFalso(docs);
+    const fs = { ...f, collection: () => ({ listDocuments: async () => ['a', 's', 'z'].map((id) => ({ id })) }), getAll: async (...refs: { id: string }[]) => refs.filter((r) => typeof r.id === 'string').map((r) => ({ id: r.id, exists: true, get: () => (docs[`tenants/${r.id}`] as { estado: string }).estado })) };
+    const e = crearEntorno({ firestore: fs as never, auth: {} as never, bucket: {} as never, ahora: () => 1, env: {} });
+    expect(await porTenant(e, 'prueba', async (t) => t)).toEqual({ a: 'a' });
   });
 });
 

@@ -11,7 +11,7 @@ const pw = (): Usuario => ({ providerData: [{ providerId: 'password' }], emailVe
 
 function montaje(usuarios: Record<string, Usuario>, conTenant = true) {
   const db = new DobleDb();
-  if (conTenant) db.poner('tenants/t1', { plan: 'base', modulos: {}, zonaHoraria: 'America/La_Paz', monedas: ['BOB', 'USD', 'ARS'] });
+  if (conTenant) db.poner('tenants/t1', { plan: 'base', estado: 'activo', modulos: {}, zonaHoraria: 'America/La_Paz', monedas: ['BOB', 'USD', 'ARS'] });
   const fallos = { set: false, setTrasAplicar: false, authCaidoTrasFallo: false, getUser: false };
   const escritos: string[] = [];
   const auth: AuthMin = {

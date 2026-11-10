@@ -78,13 +78,14 @@ describe('diferencias contra el documento actual', () => {
 });
 
 describe('aplicarAlta con almacén simulado (sin red)', () => {
-  const memoria = (inicial: unknown = null) => {
+  const memoria = (inicial: unknown = null, subcolecciones: () => Promise<boolean> = async () => false) => {
     const escrituras: Tenant[] = [];
     const almacen: AlmacenTenant = {
       leer: async () => inicial,
       escribir: async (_id, doc) => {
         escrituras.push(doc);
       },
+      tieneSubcolecciones: subcolecciones,
     };
     return { almacen, escrituras };
   };
@@ -101,6 +102,35 @@ describe('aplicarAlta con almacén simulado (sin red)', () => {
     const r = await aplicarAlta({ tenantId: 't', config: cfg(), manifiestos, almacen, aplicar: true });
     expect(r.aplicado).toBe(true);
     expect(escrituras).toEqual([tenantDe(cfg())]);
+    expect(escrituras[0]?.estado).toBe('activo');
+  });
+  it('documento existente conserva su estado (suspendido) y no lo cambia', async () => {
+    const previo = { ...JSON.parse(JSON.stringify(tenantDe(cfg()))), estado: 'suspendido', plan: 'base' } as Record<string, unknown>;
+    const { almacen, escrituras } = memoria(previo);
+    const r = await aplicarAlta({ tenantId: 't', config: cfg(), manifiestos, almacen, aplicar: true });
+    expect(r).toEqual({ diferencias: [], aplicado: false });
+    expect(escrituras).toEqual([]);
+    const { almacen: a2, escrituras: e2 } = memoria(previo);
+    await aplicarAlta({ tenantId: 't', config: cfg({ modulos: ['inventarios'] }), manifiestos, almacen: a2, aplicar: true });
+    expect(e2).toHaveLength(1);
+    expect(e2[0]?.estado).toBe('suspendido');
+  });
+  it('estado baja se rechaza y no escribe', async () => {
+    const { almacen, escrituras } = memoria({ ...JSON.parse(JSON.stringify(tenantDe(cfg()))), estado: 'baja' });
+    await expect(aplicarAlta({ tenantId: 't', config: cfg(), manifiestos, almacen, aplicar: true })).rejects.toThrow(/dado de baja, no se reutiliza/);
+    expect(escrituras).toEqual([]);
+  });
+  it('id fantasma (subcolecciones sin documento) se rechaza y no escribe', async () => {
+    const { almacen, escrituras } = memoria(null, async () => true);
+    await expect(aplicarAlta({ tenantId: 't', config: cfg(), manifiestos, almacen, aplicar: true })).rejects.toThrow(/id con datos previos/);
+    expect(escrituras).toEqual([]);
+  });
+  it('si tieneSubcolecciones falla, falla cerrado y no escribe', async () => {
+    const { almacen, escrituras } = memoria(null, async () => {
+      throw new Error('sin red');
+    });
+    await expect(aplicarAlta({ tenantId: 't', config: cfg(), manifiestos, almacen, aplicar: true })).rejects.toThrow(/sin red/);
+    expect(escrituras).toEqual([]);
   });
   it('aplicar sin diferencias no escribe', async () => {
     const { almacen, escrituras } = memoria(JSON.parse(JSON.stringify(tenantDe(cfg()))));

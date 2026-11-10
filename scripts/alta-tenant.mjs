@@ -67,16 +67,29 @@ const sinIdentificadores = async (fn) => {
     throw new Error(`error de Firestore (${e && typeof e === 'object' && 'code' in e ? String(e.code) : 'desconocido'})`, { cause: e });
   }
 };
+// Serialización con claves ordenadas, para comparar documentos sin depender del orden.
+const canonico = (v) => JSON.stringify(v, (_k, x) => (x && typeof x === 'object' && !Array.isArray(x) ? Object.fromEntries(Object.entries(x).sort(([a], [b]) => (a < b ? -1 : 1))) : x));
 const almacen = {
   leer: (id) =>
     sinIdentificadores(async () => {
       const s = await db.collection('tenants').doc(id).get();
       return s.exists ? s.data() : null;
     }),
-  escribir: (id, doc) =>
-    sinIdentificadores(async () => {
-      await db.collection('tenants').doc(id).set(doc);
-    }),
+  // Transacción: si el documento cambió desde la lectura (p. ej. una suspensión concurrente), aborta en vez de pisarlo.
+  escribir: (id, doc, previo) =>
+    sinIdentificadores(() =>
+      db.runTransaction(async (tx) => {
+        const ref = db.collection('tenants').doc(id);
+        const s = await tx.get(ref);
+        const actual = s.exists ? s.data() : null;
+        if (canonico(actual) !== canonico(previo)) {
+          throw new Error('el documento cambió durante el alta: reintente');
+        }
+        tx.set(ref, doc);
+      }),
+    ),
+  // listCollections falla cerrado: si Firestore no responde, el alta se aborta (no se asume «sin datos previos»).
+  tieneSubcolecciones: (id) => sinIdentificadores(async () => (await db.collection('tenants').doc(id).listCollections()).length > 0),
 };
 
 try {

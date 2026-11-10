@@ -183,7 +183,7 @@ describe('productos y límites', () => {
   it('el cuarto almacén se rechaza por el tope del plan y la ubicación debe ser una de las tres', async () => {
     const { DobleDb } = await import('./doble-db.js');
     const lleno = new DobleDb();
-    lleno.poner(`tenants/${T}`, { plan: 'base', modulos: {}, zonaHoraria: 'America/La_Paz', monedas: ['BOB', 'USD', 'ARS'] });
+    lleno.poner(`tenants/${T}`, { estado: 'activo', plan: 'base', modulos: {}, zonaHoraria: 'America/La_Paz', monedas: ['BOB', 'USD', 'ARS'] });
     lleno.poner(`tenants/${T}/contadores/uso`, { almacenes: 3 });
     await expect(lleno.runTransaction((tx) => crearUbicacion(tx, { tenantId: T, operacionId: op(), por: ADM, ubicacionId: 'tienda', nombre: 'x' }))).rejects.toBeInstanceOf(LimiteDelPlan);
     await expect(db.runTransaction((tx) => crearUbicacion(tx, { tenantId: T, operacionId: op(), por: ADM, ubicacionId: 'deposito-3', nombre: 'x' }))).rejects.toBeInstanceOf(EntradaInvalida);

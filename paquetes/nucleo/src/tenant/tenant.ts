@@ -8,8 +8,22 @@ export interface ModuloTenant {
   readonly submodulos: readonly string[];
 }
 
+/** Ciclo de vida del tenant. `baja` es terminal: el id no se reutiliza. */
+export type EstadoTenant = 'activo' | 'suspendido' | 'baja';
+export const ESTADOS_TENANT: readonly EstadoTenant[] = ['activo', 'suspendido', 'baja'];
+
+export const esEstadoTenant = (x: unknown): x is EstadoTenant =>
+  typeof x === 'string' && (ESTADOS_TENANT as readonly string[]).includes(x);
+
+/** Solo un tenant activo opera (falla cerrado en cualquier otro estado). */
+export const tenantOperativo = (t: Pick<Tenant, 'estado'>): boolean => t.estado === 'activo';
+
+/** Transiciones permitidas; `baja` no sale a ningún estado y no se «transita» a sí mismo. */
+export const transicionValida = (de: EstadoTenant, a: EstadoTenant): boolean => de !== 'baja' && de !== a;
+
 /** Documento `tenants/{t}`. */
 export interface Tenant {
+  readonly estado: EstadoTenant;
   readonly plan: PlanId;
   readonly modulos: { readonly [idModulo: string]: ModuloTenant };
   readonly zonaHoraria: 'America/La_Paz';
@@ -31,6 +45,7 @@ export const esTenantIdValido = (x: unknown): x is string => typeof x === 'strin
 /** Valida el documento `tenants/{t}` leído de la base de datos. */
 export function validarTenant(x: unknown): Resultado<Tenant> {
   if (!esObjeto(x)) return { ok: false, error: 'El tenant debe ser un objeto' };
+  if (!esEstadoTenant(x['estado'])) return { ok: false, error: 'Estado de tenant ausente o desconocido' };
   if (!esPlanId(x['plan'])) return { ok: false, error: 'Plan desconocido' };
   if (x['zonaHoraria'] !== ZONA_HORARIA) return { ok: false, error: `zonaHoraria debe ser ${ZONA_HORARIA}` };
   const monedas = x['monedas'];

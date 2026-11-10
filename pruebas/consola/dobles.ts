@@ -6,7 +6,7 @@ import type {
 import { DobleDb } from './doble-db.js';
 
 export const T = 't1';
-export const tenantOk = { plan: 'base', modulos: {}, zonaHoraria: 'America/La_Paz', monedas: ['BOB', 'USD', 'ARS'] };
+export const tenantOk = { estado: 'activo', plan: 'base', modulos: {}, zonaHoraria: 'America/La_Paz', monedas: ['BOB', 'USD', 'ARS'] };
 
 export const actor = (rol: 'caj' | 'sup' | 'adm', tenant = T, uid = `u-${rol}`): Actor => ({
   uid,

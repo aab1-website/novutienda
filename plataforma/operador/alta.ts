@@ -1,7 +1,7 @@
 // Alta de tenant (L2-5): del `config.json` v2 de un tenant al documento `tenants/{t}`.
 // Funciones puras salvo `aplicarAlta`, que recibe el almacén por inyección: aquí no hay red.
-import { validarEncendido, validarTenant } from '@novutienda/nucleo';
-import type { ManifiestoModulo, Resultado, Tenant } from '@novutienda/nucleo';
+import { esEstadoTenant, validarEncendido, validarTenant } from '@novutienda/nucleo';
+import type { EstadoTenant, ManifiestoModulo, Resultado, Tenant } from '@novutienda/nucleo';
 
 /** Forma de `tenants/<t>/config.json` (D2): los módulos son ids; las versiones salen del manifiesto. */
 export interface ConfigTenantV2 {
@@ -20,7 +20,8 @@ const fallo = (error: string): Resultado<never> => ({ ok: false, error });
 /**
  * `config.json` v2 → documento `Tenant`. Rechaza versiones distintas de 2, claves desconocidas, módulos repetidos o
  * desconocidos y un encendido inválido (p. ej. pos sin recibos), y valida el resultado con `validarTenant`.
- * Cada módulo lleva la versión y los submódulos de su manifiesto.
+ * Cada módulo lleva la versión y los submódulos de su manifiesto. El estado no sale de la configuración: el resultado
+ * lleva `estado: 'activo'`, que solo vale para un documento nuevo (`aplicarAlta` conserva el estado del existente).
  */
 export function construirTenant(config: unknown, manifiestos: readonly ManifiestoModulo[]): Resultado<Tenant> {
   if (!esObjeto(config)) return fallo('config.json debe ser un objeto');
@@ -40,7 +41,7 @@ export function construirTenant(config: unknown, manifiestos: readonly Manifiest
     if (m === undefined) return fallo(`${id} es un módulo desconocido`);
     modulos[id] = { version: m.version, submodulos: [...m.submodulos] };
   }
-  const tenant = { plan: config['plan'], modulos, zonaHoraria: config['zonaHoraria'], monedas: config['monedas'] };
+  const tenant = { estado: 'activo', plan: config['plan'], modulos, zonaHoraria: config['zonaHoraria'], monedas: config['monedas'] };
   return validarTenant(tenant);
 }
 
@@ -50,6 +51,9 @@ export function diferenciasTenant(actual: unknown, deseado: Tenant): string[] {
   if (!esObjeto(actual)) return ['documento actual inválido: se reemplazará'];
   const json = (x: unknown): string => JSON.stringify(x);
   const out: string[] = [];
+  if (actual['estado'] !== deseado.estado) {
+    out.push(`estado: ${actual['estado'] === undefined ? 'ausente' : json(actual['estado'])} -> ${json(deseado.estado)}`);
+  }
   for (const k of ['plan', 'zonaHoraria'] as const) {
     if (actual[k] !== deseado[k]) out.push(`${k}: ${json(actual[k])} -> ${json(deseado[k])}`);
   }
@@ -64,7 +68,7 @@ export function diferenciasTenant(actual: unknown, deseado: Tenant): string[] {
     else if (a === undefined) out.push(`modulos.${id}: falta -> ${json(d)}`);
     else if (json(a) !== json(d)) out.push(`modulos.${id}: ${json(a)} -> ${json(d)}`);
   }
-  const extra = Object.keys(actual).filter((k) => !['plan', 'zonaHoraria', 'monedas', 'modulos'].includes(k));
+  const extra = Object.keys(actual).filter((k) => !['estado', 'plan', 'zonaHoraria', 'monedas', 'modulos'].includes(k));
   for (const k of extra) out.push(`${k}: campo ajeno -> se retira`);
   return out;
 }
@@ -72,7 +76,13 @@ export function diferenciasTenant(actual: unknown, deseado: Tenant): string[] {
 /** Almacén inyectable del documento del tenant (en producción, Admin SDK; en pruebas, memoria). */
 export interface AlmacenTenant {
   leer(tenantId: string): Promise<unknown>;
-  escribir(tenantId: string, doc: Tenant): Promise<void>;
+  /**
+   * Escribe el documento completo solo si sigue igual a `previo` (lo leído por `leer`; `null` si no existía). La
+   * comprobación y la escritura van en la misma transacción: si otro cambio (p. ej. una suspensión) se coló, lanza.
+   */
+  escribir(tenantId: string, doc: Tenant, previo: unknown): Promise<void>;
+  /** `true` si `tenants/{id}` tiene subcolecciones (con `listCollections` en producción). Debe fallar cerrado: ante un error, lanzar. */
+  tieneSubcolecciones(tenantId: string): Promise<boolean>;
 }
 
 export interface ResultadoAlta {
@@ -81,8 +91,27 @@ export interface ResultadoAlta {
 }
 
 /**
+ * Estado con el que queda el documento: nuevo -> 'activo'; existente -> conserva el suyo (la ausencia de estado de un
+ * documento previo a este campo se normaliza a 'activo'). Lanza si el id fue dado de baja, si el estado es desconocido o si
+ * el documento está ausente pero el id tiene subcolecciones (fantasma: datos previos sin documento).
+ */
+async function estadoResultante(tenantId: string, actual: unknown, almacen: AlmacenTenant): Promise<EstadoTenant> {
+  if (actual === null || actual === undefined) {
+    if (await almacen.tieneSubcolecciones(tenantId)) throw new Error('id con datos previos');
+    return 'activo';
+  }
+  if (!esObjeto(actual)) return 'activo';
+  const estado = actual['estado'];
+  if (estado === undefined) return 'activo';
+  if (!esEstadoTenant(estado)) throw new Error('estado desconocido en el documento actual');
+  if (estado === 'baja') throw new Error('id dado de baja, no se reutiliza');
+  return estado;
+}
+
+/**
  * Compara contra el documento actual (lectura) y, solo con `aplicar`, lo escribe si hay diferencias.
- * Lanza si la configuración es inválida: nunca escribe un documento que no valide.
+ * Lanza si la configuración es inválida: nunca escribe un documento que no valide. Nunca cambia el estado de un
+ * documento existente (eso es de `estado.ts`); rechaza un id dado de baja y un id fantasma con subcolecciones.
  */
 export async function aplicarAlta(opciones: {
   readonly tenantId: string;
@@ -93,8 +122,10 @@ export async function aplicarAlta(opciones: {
 }): Promise<ResultadoAlta> {
   const r = construirTenant(opciones.config, opciones.manifiestos);
   if (!r.ok) throw new Error(r.error);
-  const diferencias = diferenciasTenant(await opciones.almacen.leer(opciones.tenantId), r.valor);
+  const actual = await opciones.almacen.leer(opciones.tenantId);
+  const deseado: Tenant = { ...r.valor, estado: await estadoResultante(opciones.tenantId, actual, opciones.almacen) };
+  const diferencias = diferenciasTenant(actual, deseado);
   if (!opciones.aplicar || diferencias.length === 0) return { diferencias, aplicado: false };
-  await opciones.almacen.escribir(opciones.tenantId, r.valor);
+  await opciones.almacen.escribir(opciones.tenantId, deseado, actual ?? null);
   return { diferencias, aplicado: true };
 }
