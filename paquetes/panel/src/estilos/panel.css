@@ -39,6 +39,7 @@ main:focus { outline: none; }
 .menu a[aria-current='page'] { color: var(--acento); text-decoration: underline; text-underline-offset: 6px; }
 .controles { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; }
 .usuario-actual { font-size: 14px; }
+.marca-tenant { font-size: 14px; font-weight: 500; color: var(--texto); border: 1px solid var(--borde-control); border-radius: 999px; padding: 2px 12px; max-width: 100%; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 
 .boton { display: inline-flex; align-items: center; justify-content: center; gap: 8px; min-height: 44px; padding: 0 20px; border-radius: 12px; border: 1px solid transparent; font-size: 14px; font-weight: 700; text-decoration: none; cursor: pointer; transition: background .2s, border-color .2s; }
 .boton-chico { min-height: 40px; padding: 0 14px; font-size: 13px; }
