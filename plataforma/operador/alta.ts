@@ -1,6 +1,7 @@
 // Alta de tenant (L2-5): del `config.json` v2 de un tenant al documento `tenants/{t}`.
 // Funciones puras salvo `aplicarAlta`, que recibe el almacén por inyección: aquí no hay red.
 import { esEstadoTenant, validarEncendido, validarTenant } from '@novutienda/nucleo';
+import { MENSAJE_INVENTARIOS_COMPARTIDO } from './inventarios-compartido.js';
 import type { EstadoTenant, ManifiestoModulo, Resultado, Tenant } from '@novutienda/nucleo';
 
 /** Forma de `tenants/<t>/config.json` (D2): los módulos son ids; las versiones salen del manifiesto. */
@@ -83,6 +84,11 @@ export interface AlmacenTenant {
   escribir(tenantId: string, doc: Tenant, previo: unknown): Promise<void>;
   /** `true` si `tenants/{id}` tiene subcolecciones (con `listCollections` en producción). Debe fallar cerrado: ante un error, lanzar. */
   tieneSubcolecciones(tenantId: string): Promise<boolean>;
+  /**
+   * Compuerta D-B1: `true` si otro tenant con `inventarios` ya tiene host mapeado y este tenant también tiene alguno
+   * (`otroConInventariosYHost` con `exigirHostPropio`). `escribir` la repite dentro de su transacción.
+   */
+  inventariosCompartido(tenantId: string): Promise<boolean>;
 }
 
 export interface ResultadoAlta {
@@ -125,6 +131,10 @@ export async function aplicarAlta(opciones: {
   const actual = await opciones.almacen.leer(opciones.tenantId);
   const deseado: Tenant = { ...r.valor, estado: await estadoResultante(opciones.tenantId, actual, opciones.almacen) };
   const diferencias = diferenciasTenant(actual, deseado);
+  // También sin `aplicar`: --verificar muestra el rechazo. `escribir` lo repite dentro de la transacción.
+  if (deseado.modulos['inventarios'] !== undefined && diferencias.length > 0 && (await opciones.almacen.inventariosCompartido(opciones.tenantId))) {
+    throw new Error(MENSAJE_INVENTARIOS_COMPARTIDO);
+  }
   if (!opciones.aplicar || diferencias.length === 0) return { diferencias, aplicado: false };
   await opciones.almacen.escribir(opciones.tenantId, deseado, actual ?? null);
   return { diferencias, aplicado: true };

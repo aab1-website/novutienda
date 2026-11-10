@@ -24,8 +24,6 @@ export interface ConfigNovuchat {
   readonly limite: LimiteTasa;
   /** Secreto HMAC del pedido firmado. */
   readonly secretoPedidos: string;
-  /** Tenant de las rutas firmadas, que no llevan token de tenant. */
-  readonly tenantPedidos: string;
 }
 
 type Datos = Readonly<Record<string, unknown>>;
@@ -181,12 +179,12 @@ export async function manejarInventario(e: Entorno, req: PeticionHttp, cfg: Conf
 }
 
 /** `POST /api/novuchat/v1/pedidos/confirmar`: HMAC-SHA256 de `{marca}.{cuerpo exacto}`, ventana de 5 minutos. */
-export async function manejarPedido(e: Entorno, req: PeticionHttp, cfg: ConfigNovuchat, autorizado: () => Promise<boolean>): Promise<RespuestaApi> {
+export async function manejarPedido(e: Entorno, req: PeticionHttp, cfg: ConfigNovuchat, tenantId: string, autorizado: () => Promise<boolean>): Promise<RespuestaApi> {
   if (req.metodo !== 'POST') return json(405, { error: 'metodo_no_permitido' }, { Allow: 'POST' });
   if (cfg.secretoPedidos === '') return json(503, { error: 'no_configurado' });
   const r = await confirmarPedidoFirmado(
     { db: e.db, secreto: cfg.secretoPedidos, ahora: e.ahora, autorizado },
-    { tenantId: cfg.tenantPedidos, marcaTiempo: req.cabeceras['x-marca-tiempo'] ?? '', firma: req.cabeceras['x-firma'] ?? '', cuerpo: req.cuerpoCrudo },
+    { tenantId, marcaTiempo: req.cabeceras['x-marca-tiempo'] ?? '', firma: req.cabeceras['x-firma'] ?? '', cuerpo: req.cuerpoCrudo },
   );
   return json(r.estado, r.cuerpo as Datos);
 }

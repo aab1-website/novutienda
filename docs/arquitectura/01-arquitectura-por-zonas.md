@@ -247,7 +247,7 @@ Plan: `NOVUTIENDA_plan-L2-encendido-por-tenant_2026-11-06.md` (en `~/CLAUDE_DESC
 Plan: `NOVUTIENDA_plan-L3_2026-11-09.md` (en `~/CLAUDE_DESCARGAS/`). Un PR por bloque L3-0…L3-6 (§7). Corrige el diagnóstico de L2 (§6.7, D5).
 
 **Hallazgos:**
-1. HTTP **no** es «de un solo tenant por construcción». Son de tenant fijo (`TENANT_ID`) solo las rutas del sitio (`/api/cotizacion`, `/api/disponibilidad`, `/api/contacto`) y el pedido firmado. El catálogo y el inventario de NovuChat toman el tenant del token (`autenticarToken`) y `/api/sitio/v1/*` del `tenantId` firmado. Con un segundo tenant con token de NovuChat o reconstrucción del sitio el hueco ya existe, y apagar `inventarios` no corta su catálogo.
+1. HTTP **no** es «de un solo tenant por construcción». El tenant de las rutas del sitio (`/api/cotizacion`, `/api/disponibilidad`, `/api/contacto`) y del pedido firmado sale del host (`x-forwarded-host`, tabla `dominios`; PR B), ya no de `TENANT_ID`. El catálogo y el inventario de NovuChat toman el tenant del token (`autenticarToken`) y `/api/sitio/v1/*` del `tenantId` firmado. Con un segundo tenant con token de NovuChat o reconstrucción del sitio el hueco ya existe, y apagar `inventarios` no corta su catálogo.
 2. Al bus llegan eventos que no pasaron por un callable: el pedido firmado (HTTP) llama a `confirmarPedido` → `aplicarSalida` y publica `stock.cambiado` y `stock.bajo`. Hoy nadie consume `stock.*`.
 3. `limpiezaSubidas` salta los tenants con consola apagada (desde L2-6): sus reservas vencidas y borrados pendientes no se limpian nunca.
 4. Las respuestas de NovuChat llevan `Cache-Control: private, max-age=60`; sumado a la caché de 60 s de `modulosDelTenant`, apagar un módulo puede tardar hasta ~120 s en notarse en NovuChat. Se documenta.
