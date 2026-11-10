@@ -99,6 +99,20 @@ describe('crearLectorDominios', () => {
     expect(f.lecturas).toHaveLength(2); // el rechazo no quedó guardado: se vuelve a leer
   });
 
+  it('conserva el positivo vencido como respaldo y desaloja antes los negativos', async () => {
+    const m = montar({ 'dominios/a.test': { tenantId: 'tienda-a' } });
+    await m.lector('a.test');
+    m.avanzar(TTL_DOMINIO_MS + 1);
+    expect(m.lector.enCache('a.test')).toBe(false);
+    expect(m.lector.positivoVencido('a.test')).toBe('tienda-a');
+    expect(m.lector.positivoVencido('otro.test')).toBeUndefined();
+    for (let i = 0; i < TOPE_DOMINIOS + 50; i += 1) {
+      await m.lector(`h${String(i)}.test`);
+      m.avanzar(TTL_DOMINIO_NEGATIVO_MS + 1); // cada negativo vence antes del siguiente
+    }
+    expect(m.lector.positivoVencido('a.test')).toBe('tienda-a');
+  });
+
   it('respeta el tope de entradas', async () => {
     const m = montar();
     for (let i = 0; i < TOPE_DOMINIOS + 50; i += 1) await m.lector(`h${String(i)}.test`);

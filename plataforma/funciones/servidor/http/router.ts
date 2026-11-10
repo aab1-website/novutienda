@@ -40,6 +40,35 @@ async function servir(e: Entorno, ruta: string, tenantId: string): Promise<boole
   return ok;
 }
 
+const MAX_CABECERAS_LOG = 50;
+const MAX_NOMBRE_LOG = 64;
+const MAX_RUTA_LOG = 100;
+const MAX_AVISOS_POR_MINUTO = 30;
+const estadoAvisos = { inicio: 0, emitidos: 0, omitidos: 0 };
+
+/** Solo para las pruebas: reinicia la ventana del límite de avisos. */
+export function reiniciarAvisosRechazo(): void {
+  estadoAvisos.inicio = 0;
+  estadoAvisos.emitidos = 0;
+  estadoAvisos.omitidos = 0;
+}
+
+/** `warn` de rechazo acotado por instancia: máximo 30 por minuto; el resto se cuenta y se resume al abrir la ventana siguiente. */
+function avisarRechazo(ahora: number, datos: Record<string, unknown>): void {
+  if (ahora - estadoAvisos.inicio >= 60_000) {
+    if (estadoAvisos.omitidos > 0) logger.warn('rechazos HTTP omitidos en el minuto anterior', { omitidos: estadoAvisos.omitidos });
+    estadoAvisos.inicio = ahora;
+    estadoAvisos.emitidos = 0;
+    estadoAvisos.omitidos = 0;
+  }
+  if (estadoAvisos.emitidos < MAX_AVISOS_POR_MINUTO) {
+    estadoAvisos.emitidos += 1;
+    logger.warn('ruta HTTP rechazada', datos);
+  } else {
+    estadoAvisos.omitidos += 1;
+  }
+}
+
 /**
  * Tenant de una ruta pública (sitio o pedido firmado): sale del host y de la lista cerrada `dominios`. `undefined` = rechazo (404).
  * Un host fuera de la caché cuesta una lectura de Firestore: pasa antes por un límite en memoria por origen. El log lleva el
@@ -50,18 +79,21 @@ async function tenantDelHost(e: Entorno, req: PeticionHttp, cfg: ConfigRouter): 
   let motivo = 'host-invalido';
   if (host !== undefined) {
     if (!e.tenantDelHost.enCache(host)) {
-      const limitado = await excedeLimite(cfg.limiteMemoria.hosts, `hosts:${req.origen}`, e.ahora());
-      if (limitado !== undefined) return limitado;
-      // Tope global de la instancia: rotar el origen no evita la cuota de lecturas de Firestore.
-      const global = await excedeLimite(cfg.limiteMemoria.hostsGlobal, 'hosts:*', e.ahora());
-      if (global !== undefined) return global;
+      // Tope por origen y, además, global de la instancia (rotar el origen no evita la cuota de lecturas de Firestore).
+      // Si el límite salta y hay un mapeo positivo vencido, se usa ese: inventar hosts no deja sin servicio al sitio legítimo.
+      const limitado = (await excedeLimite(cfg.limiteMemoria.hosts, `hosts:${req.origen}`, e.ahora()))
+        ?? (await excedeLimite(cfg.limiteMemoria.hostsGlobal, 'hosts:*', e.ahora()));
+      if (limitado !== undefined) {
+        const vencido = e.tenantDelHost.positivoVencido(host);
+        return vencido ?? limitado;
+      }
     }
     const tenantId = await e.tenantDelHost(host);
     if (tenantId !== undefined) return tenantId;
     motivo = 'host-sin-mapeo';
   }
-  const presentes = Object.keys(req.cabeceras).sort();
-  logger.warn('ruta HTTP rechazada', { motivo, ruta: req.ruta, cabeceras: presentes });
+  const cabeceras = Object.keys(req.cabeceras).sort().slice(0, MAX_CABECERAS_LOG).map((c) => c.slice(0, MAX_NOMBRE_LOG));
+  avisarRechazo(e.ahora(), { motivo, ruta: req.ruta.slice(0, MAX_RUTA_LOG), cabeceras });
   return json(404, { error: 'no_encontrado' });
 }
 

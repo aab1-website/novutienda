@@ -60,7 +60,7 @@ function montar(tenant: unknown, sobrescribir: Partial<ReturnType<typeof crearEn
   const base = crearEntorno({ firestore: s.f as never, auth: {} as never, bucket: {} as never, ahora: () => AHORA, env: {} });
   const e = {
     ...base,
-    tenantDelHost: Object.assign((h: string) => Promise.resolve(h === HOST ? T : undefined), { enCache: () => true }),
+    tenantDelHost: Object.assign((h: string) => Promise.resolve(h === HOST ? T : undefined), { enCache: () => true, positivoVencido: () => undefined }),
     leerDisponibilidad: () => () => Promise.resolve({}),
     guardarContacto: () => ({}) as never,
     ...sobrescribir,

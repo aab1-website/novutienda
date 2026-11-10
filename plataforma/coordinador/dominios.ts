@@ -26,15 +26,21 @@ export function hostDePeticion(cabeceras: Readonly<Record<string, string | undef
 export interface LectorDominios {
   (host: string): Promise<string | undefined>;
   enCache(host: string): boolean;
+  /** Tenant de un mapeo POSITIVO ya vencido (sin lectura): último recurso cuando el límite impide releer. */
+  positivoVencido(host: string): string | undefined;
 }
 
 export function crearLectorDominios(firestore: LectorDocumento, ahora: () => number): LectorDominios {
   const cache = new Map<string, { readonly hasta: number; readonly tenantId: string | undefined }>();
   const guardar = (host: string, tenantId: string | undefined, t: number): void => {
     if (!cache.has(host) && cache.size >= TOPE_DOMINIOS) {
-      for (const [k, v] of cache) if (v.hasta <= t) cache.delete(k);
-      const masAntiguo = cache.keys().next();
-      if (cache.size >= TOPE_DOMINIOS && masAntiguo.done !== true) cache.delete(masAntiguo.value);
+      // Se desalojan primero los negativos vencidos; los positivos vencidos se conservan (son el respaldo del sitio legítimo)
+      // y solo salen, del más antiguo, si aun así no hay lugar.
+      for (const [k, v] of cache) if (v.hasta <= t && v.tenantId === undefined) cache.delete(k);
+      if (cache.size >= TOPE_DOMINIOS) {
+        const vencido = [...cache].find(([, v]) => v.hasta <= t)?.[0] ?? cache.keys().next().value;
+        if (vencido !== undefined) cache.delete(vencido);
+      }
     }
     cache.set(host, { hasta: t + (tenantId === undefined ? TTL_DOMINIO_NEGATIVO_MS : TTL_DOMINIO_MS), tenantId });
   };
@@ -60,5 +66,6 @@ export function crearLectorDominios(firestore: LectorDocumento, ahora: () => num
   };
   return Object.assign(leer, {
     enCache: (host: string): boolean => (cache.get(host)?.hasta ?? 0) > ahora(),
+    positivoVencido: (host: string): string | undefined => cache.get(host)?.tenantId,
   });
 }

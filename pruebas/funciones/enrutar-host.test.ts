@@ -1,10 +1,10 @@
 // El tenant de las rutas públicas sale del host (sin emulador, entorno doble): cada host a su tenant, lista cerrada, y
 // el control de estado del tenant (suspendido o de baja: 404 en el sitio, 401 en el pedido firmado).
-import { describe, expect, it, vi } from 'vitest';
+import { beforeEach, describe, expect, it, vi } from 'vitest';
 import { limiteMemoria } from '@novutienda/nucleo';
 import { crearLectorDominios } from '../../plataforma/coordinador/dominios.js';
 import { crearLectoresModulos } from '../../plataforma/coordinador/modulos-activos.js';
-import { enrutar, type ConfigRouter } from '../../plataforma/funciones/servidor/http/router.js';
+import { enrutar, reiniciarAvisosRechazo, type ConfigRouter } from '../../plataforma/funciones/servidor/http/router.js';
 import { sha256Hex } from '../../plataforma/funciones/servidor/http/novuchat.js';
 import { firmar, TENANT_TODO_ENCENDIDO } from './ayudas.js';
 
@@ -24,6 +24,7 @@ const SECRETO = 'secreto-pedidos-de-prueba';
 const TOKEN = 'token-de-prueba';
 
 function montar(docs: Record<string, unknown>, o: { hosts?: number; hostsGlobal?: number } = {}) {
+  const reloj = { t: AHORA };
   const lecturas: string[] = [];
   const contactos: { tenantId: string; operacionId: string }[] = [];
   const disponibilidad: string[] = [];
@@ -38,8 +39,8 @@ function montar(docs: Record<string, unknown>, o: { hosts?: number; hostsGlobal?
   };
   const modulos = crearLectoresModulos(firestore, () => AHORA);
   const e = {
-    ahora: () => AHORA,
-    tenantDelHost: crearLectorDominios(firestore, () => AHORA),
+    ahora: () => reloj.t,
+    tenantDelHost: crearLectorDominios(firestore, () => reloj.t),
     modulosDelTenant: modulos.modulos,
     estadoModulosDelTenant: modulos.estado,
     firestore,
@@ -56,7 +57,7 @@ function montar(docs: Record<string, unknown>, o: { hosts?: number; hostsGlobal?
     limiteContacto: limiteMemoria(1000, 60_000),
     limiteMemoria: { novuchat: limiteMemoria(1000, 60_000), disponibilidad: limiteMemoria(1000, 60_000), contacto: limiteMemoria(1000, 60_000), hosts: limiteMemoria(o.hosts ?? 1000, 60_000), hostsGlobal: limiteMemoria(o.hostsGlobal ?? 1000, 60_000) },
   };
-  return { e, cfg, lecturas, contactos, disponibilidad, cotizaciones };
+  return { e, cfg, reloj, lecturas, contactos, disponibilidad, cotizaciones };
 }
 
 const base = (): Record<string, unknown> => ({
@@ -85,6 +86,8 @@ const pedido = (host: string | undefined) => {
 };
 
 describe('tenant por host en las rutas públicas', () => {
+  beforeEach(() => { reiniciarAvisosRechazo(); });
+
   it('cada host llega a su tenant en cotización, disponibilidad y contacto', async () => {
     const m = montar(base());
     for (const [host, t] of [[HOST_A, A], [HOST_B, B]] as const) {
@@ -163,6 +166,32 @@ describe('tenant por host en las rutas públicas', () => {
     expect((await enrutar(m.e, desde('dos.test', 'o2'), m.cfg)).status).toBe(404);
     expect((await enrutar(m.e, desde('tres.test', 'o3'), m.cfg)).status).toBe(429);
     expect(m.lecturas.filter((l) => l.startsWith('dominios/'))).toEqual(['dominios/uno.test', 'dominios/dos.test']);
+  });
+
+  it('con el cubo global agotado, el host legítimo con caché vencida sigue sirviéndose; el desconocido, no', async () => {
+    const m = montar(base(), { hostsGlobal: 1 });
+    const get = (host: string) => enrutar(m.e, peticion('GET', '/api/disponibilidad', host), m.cfg);
+    expect((await get(HOST_A)).status).toBe(200);
+    m.reloj.t += 61_000; // vence el positivo y se renueva la ventana del límite
+    expect((await get('inventado-1.test')).status).toBe(404); // gasta el único permiso global
+    expect((await get(HOST_A)).status).toBe(200); // positivo vencido: se usa
+    expect((await get('inventado-2.test')).status).toBe(429);
+    expect(m.lecturas.filter((l) => l.startsWith('dominios/'))).toEqual(['dominios/tienda-a.test', 'dominios/inventado-1.test']);
+  });
+
+  it('el log de rechazo se acota: 50 cabeceras, nombres de 64 caracteres, 30 avisos por minuto y resumen', async () => {
+    avisos.length = 0;
+    const m = montar(base());
+    const muchas: Record<string, string> = { [`x-${'n'.repeat(100)}`]: 'v' };
+    for (let i = 0; i < 60; i += 1) muchas[`x-h${String(i).padStart(2, '0')}`] = 'v';
+    for (let i = 0; i < 35; i += 1) await enrutar(m.e, peticion('GET', '/api/disponibilidad', undefined, { cabeceras: muchas }), m.cfg);
+    const rechazos = avisos.filter((a) => a.includes('ruta HTTP rechazada'));
+    expect(rechazos).toHaveLength(30);
+    expect(rechazos[0]).not.toContain('n'.repeat(65));
+    expect(rechazos[0]).not.toContain('x-h50'); // la lista se corta en 50 nombres ordenados
+    m.reloj.t += 61_000;
+    await enrutar(m.e, peticion('GET', '/api/disponibilidad', undefined), m.cfg);
+    expect(avisos.some((a) => a.includes('omitidos') && a.includes('5'))).toBe(true);
   });
 
   it('el log de rechazo lleva todos los nombres de cabeceras, ordenados y sin valores', async () => {
