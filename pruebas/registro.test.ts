@@ -207,12 +207,12 @@ describe('colecciones de raíz con el registro real', () => {
     expect(rutas).toContain('miembros');
   });
 
-  it('las colecciones de raíz declaradas son solo limitesTasa (nucleo), novuchatTokens y tenants (plataforma)', () => {
+  it('las colecciones de raíz declaradas son solo limitesTasa (nucleo), dominios, novuchatTokens y tenants (plataforma)', () => {
     const raices = registroPlataforma
       .listar()
       .flatMap((m) => m.colecciones.filter((c) => c.ambito === 'raiz').map((c) => `${m.id}:${c.ruta}`))
       .sort();
-    expect(raices).toEqual(['nucleo:limitesTasa', 'plataforma:novuchatTokens', 'plataforma:tenants']);
+    expect(raices).toEqual(['nucleo:limitesTasa', 'plataforma:dominios', 'plataforma:novuchatTokens', 'plataforma:tenants']);
   });
 
   it('todo collectionGroup de firestore.indexes.json tiene dueño en el registro', () => {
@@ -234,7 +234,7 @@ describe('L1-b: constantes de código alineadas con el manifiesto', () => {
   });
 
   it('COLECCION_TOKENS es la raíz declarada por plataforma', () => {
-    expect(raiz(manifiestoPlataforma)).toEqual([COLECCION_TOKENS, 'tenants']);
+    expect(raiz(manifiestoPlataforma)).toEqual([COLECCION_TOKENS, 'dominios', 'tenants']);
   });
 
   it('plataforma depende solo de nucleo y se ordena después', () => {

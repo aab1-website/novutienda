@@ -232,6 +232,10 @@ service cloud.firestore {
       allow read: if false;
       allow write: if false; // solo el servidor escribe
     }
+    match /dominios/{id} {
+      allow read: if false;
+      allow write: if false; // solo el servidor escribe
+    }
     match /tenants/{id} {
       allow read: if false;
       allow write: if false; // solo el servidor escribe
