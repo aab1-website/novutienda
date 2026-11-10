@@ -75,3 +75,17 @@
   **D4:** se acepta lo que ve el público: el sitio publicado y los medios públicos siguen visibles al suspender.
   **D5:** la verificación en la nube se hace una sola vez, por Claude, con el «sí» de Andres.
   **Cambio de comportamiento en pruebas:** en `personal-escritura.test.ts`, sin tenant ya no se crean cuentas antes de fallar (antes quedaban creadas y el alta se reanudaba).
+- 10/11/2026 — **Multitenant (segundo tenant; el actual es «T1»).** Plan: `NOVUTIENDA_plan-multitenant_2026-11-10.md` (en `~/CLAUDE_DESCARGAS/`). Enmienda del plano: §6.9. Faltan, verificados en el código: tenant fijo en el servidor (`TENANT_ID` en rutas públicas y pedidos de NovuChat), secretos compartidos, CI de un solo sitio, panel sin selector, guardias incompletas en `token-novuchat.mjs` y en los fixtures ficticios, y la verificación en la nube con dos usuarios.
+  **Decididas por Andres:**
+  **D1:** el tenant de las rutas públicas sale del host, con la tabla `dominios` (lista cerrada; host sin mapeo, 404). Nunca de un parámetro del cliente. Descartadas: segmento de ruta (falsificable) y una función por tenant.
+  **D2:** un sitio de Hosting por tenant en el mismo proyecto, con target y CSP propios. Descartadas: sitio compartido con rutas y un proyecto por tenant. Se verifica con fecha el tope de sitios por proyecto.
+  **D4:** los secretos de NovuChat y de reconstrucción se derivan por tenant con HKDF de un maestro (un maestro por propósito, con rotación). Descartadas: un secreto en Secret Manager por tenant y el secreto compartido.
+  **Propuestas pendientes de decisión de Andres (opción recomendada):**
+  **D3** (dominio): el de Hosting por defecto y uno propio cuando el cliente lo entregue.
+  **D5** (panel): uno compartido con selector de tenant.
+  **D6** (plan): «base» hasta que un contrato pida otros topes.
+  **D7** (id de tenant en el repositorio público): id neutro, sin nombre comercial.
+  **D8** (demo): tenant «demo» aparte, solo en staging, con guardia por el campo `uso` (`cliente|demo`); nunca fixtures ficticios en un tenant de cliente.
+  **D9** (aislamiento): volver a correr el guion en cada alta real.
+  **Riesgos:** R1 el host que llega a la función detrás de Hosting no está verificado (probar en staging; si no llega, falla cerrado). R2 el mapeo del host de T1 va antes del PR B o T1 da 404. R3 filtrar el maestro HKDF expone a todos los tenants. R4 hasta el PR E no se asignan dos tenants a una cuenta. R5 el claim tiene tope de 1000 bytes. R6 las programadas corren en serie. R7 la lista de `tenants/` en el repositorio público revela clientes (D7). R8 el CI pisa los sitios si no cambia `FIREBASE_DEPLOY_ONLY`.
+  **Orden de PR** (un escritor por archivo; cada fusión con autorización de Andres): **M0** método (esta enmienda). **A** plataforma: `dominio.ts`, `dominio-tenant.mjs`, colección `dominios` con reglas `if false`, guardias de `token-novuchat.mjs`; revisa seguridad. Paso previo a B: mapear el host del sitio de T1 en staging. **B** coordinador: el enrutador resuelve el tenant por host y se retira `TENANT_ID`; revisa seguridad. **C** `componer-hosting` y workflow: target por tenant y reconstrucción con matriz. **D** núcleo (derivación HKDF), coordinador y `secreto-tenant.mjs`: pedido firmado con tenant, contrato v2 con NovuChat; revisa seguridad. **E** central: selector del panel. **F** núcleo (`uso`) y guardias de demo. **G** plataforma: guion de aislamiento ampliado a las rutas públicas por host.

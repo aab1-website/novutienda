@@ -262,6 +262,30 @@ Plan: `NOVUTIENDA_plan-L3_2026-11-09.md` (en `~/CLAUDE_DESCARGAS/`). Un PR por b
 
 **No entra:** volver multitenant las rutas de tenant fijo (sitio por dominio, pedido firmado por tenant): corresponde al segundo tenant con website. Versiones de módulo por tenant y límites de tasa por plan en HTTP.
 
+### 6.9 Enmienda multitenant (10/11/2026): por tenant y compartido
+
+Decisiones y riesgos: `decisiones.md` (entrada «Multitenant»). Este plano fija solo la ubicación.
+
+| Pieza | Alcance |
+|---|---|
+| Proyecto Firebase, Firestore, bucket, función `api`, callables, panel | Compartido; aislamiento por ruta, claim y estado. El tenant del panel sale del claim y lo elige un selector |
+| Sitio público, dominio, target y CSP de Hosting | Por tenant; el tenant de las rutas públicas sale del host |
+| Secretos de NovuChat y de reconstrucción | Por tenant (derivados) |
+| Medios | Bucket y base de URL compartidos; rutas y cuota por tenant |
+| Topes por plan, almacén de cotización | Por tenant |
+| Demo | Tenant aparte, solo en staging |
+
+| Pieza nueva | Zona |
+|---|---|
+| Lector host a tenant (`plataforma/coordinador/dominios.ts`) | Coordinador |
+| Colección `dominios/{host}` (lectura y escritura `false` en reglas) | Plataforma (manifiesto) |
+| `scripts/dominio-tenant.mjs`, `plataforma/operador/dominio.ts`, `componer-hosting.mjs`, guardias de demo, verificación de aislamiento | Plataforma |
+| `derivarSecretoTenant` (`paquetes/nucleo/src/firma/`); campo `uso` del tenant | Núcleo |
+| Uso de la derivación en `http/novuchat.ts` y `http/sitio.ts` | Coordinador |
+| `http/website.ts` | Módulo `website` |
+| Selector del panel (`sesion/claim.ts`, `sesion.ts`, `ui/app.tsx`) | Central |
+| Workflow y preparación del despliegue | `devsecops` |
+
 ## 7. Camino, por tandas y fases
 
 | # | Qué | Prueba | Despliega | Jornadas |
