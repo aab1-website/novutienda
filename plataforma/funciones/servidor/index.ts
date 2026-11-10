@@ -80,12 +80,13 @@ function aPeticion(req: Request): PeticionHttp {
 
 // Límites en memoria POR INSTANCIA y por origen, antes de autenticar o de verificar App Check (el límite de Firestore por token se paga con una lectura
 // del token y una escritura transaccional). Se crean una vez, con los valores de los parámetros de la primera petición.
-let memoria: { readonly novuchat: LimiteTasa; readonly disponibilidad: LimiteTasa; readonly contacto: LimiteTasa } | undefined;
+let memoria: { readonly novuchat: LimiteTasa; readonly disponibilidad: LimiteTasa; readonly contacto: LimiteTasa; readonly hosts: LimiteTasa } | undefined;
 function limitesEnMemoria(): NonNullable<typeof memoria> {
   memoria ??= {
     novuchat: limiteMemoria(enteroDe(PARAMETROS.novuchatMaximoPorMinuto.value(), 120), 60_000),
     disponibilidad: limiteMemoria(enteroDe(PARAMETROS.disponibilidadMaximoPorMinuto.value(), 60), 60_000),
     contacto: limiteMemoria(enteroDe(PARAMETROS.contactoMaximoPorMinuto.value(), 30), 60_000),
+    hosts: limiteMemoria(60, 60_000),
   };
   return memoria;
 }
@@ -97,9 +98,7 @@ function configRouter(e: ReturnType<typeof entorno>): ConfigRouter {
     esEntornoDePruebas(process.env),
   );
   const verificadores = verificadoresSitio();
-  const tenantId = PARAMETROS.tenantId.value();
   return {
-    tenantId,
     secretoReconstruccion: SECRETOS.reconstruccion.value(),
     limiteContacto: crearLimiteTasa(e.firestore, {
       maximo: enteroDe(PARAMETROS.contactoMaximo.value(), 5), ventanaMs: enteroDe(PARAMETROS.contactoVentanaSeg.value(), 600) * 1000, sal,
@@ -112,7 +111,6 @@ function configRouter(e: ReturnType<typeof entorno>): ConfigRouter {
       mediosBaseUrl,
       limite: crearLimiteTasa(e.firestore, { maximo: enteroDe(PARAMETROS.novuchatMaximoPorMinuto.value(), 120), ventanaMs: 60_000, sal }),
       secretoPedidos: SECRETOS.pedidos.value(),
-      tenantPedidos: tenantId,
     },
   };
 }

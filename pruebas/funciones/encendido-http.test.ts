@@ -13,6 +13,7 @@ import { textoFirmado } from '../../plataforma/funciones/servidor/http/sitio.js'
 import { firmar, TENANT_TODO_ENCENDIDO } from './ayudas.js';
 
 const T = 'tienda-uno';
+const HOST = 'tienda-uno.test';
 const AHORA = 1_700_000_000_000;
 const SECRETO_SITIO = 'secreto-sitio-de-prueba';
 const SECRETO_PEDIDOS = 'secreto-pedidos-de-prueba';
@@ -59,16 +60,17 @@ function montar(tenant: unknown, sobrescribir: Partial<ReturnType<typeof crearEn
   const base = crearEntorno({ firestore: s.f as never, auth: {} as never, bucket: {} as never, ahora: () => AHORA, env: {} });
   const e = {
     ...base,
+    tenantDelHost: Object.assign((h: string) => Promise.resolve(h === HOST ? T : undefined), { enCache: () => true }),
     leerDisponibilidad: () => () => Promise.resolve({}),
     guardarContacto: () => ({}) as never,
     ...sobrescribir,
   };
   const cfg: ConfigRouter = {
-    tenantId: T, secretoReconstruccion: SECRETO_SITIO, recaptcha: { verificar: () => Promise.resolve({ valido: true, puntaje: 0.9 }) } as never,
+    secretoReconstruccion: SECRETO_SITIO, recaptcha: { verificar: () => Promise.resolve({ valido: true, puntaje: 0.9 }) } as never,
     appCheck: { verificar: () => Promise.resolve(false) } as never,
-    novuchat: { sitioUrl: '', mediosBaseUrl: 'https://medios.test', limite: limiteMemoria(1000, 60_000), secretoPedidos: SECRETO_PEDIDOS, tenantPedidos: T },
+    novuchat: { sitioUrl: '', mediosBaseUrl: 'https://medios.test', limite: limiteMemoria(1000, 60_000), secretoPedidos: SECRETO_PEDIDOS },
     limiteContacto: limiteMemoria(1000, 60_000),
-    limiteMemoria: { novuchat: limiteMemoria(1000, 60_000), disponibilidad: limiteMemoria(1000, 60_000), contacto: limiteMemoria(1000, 60_000) },
+    limiteMemoria: { novuchat: limiteMemoria(1000, 60_000), disponibilidad: limiteMemoria(1000, 60_000), contacto: limiteMemoria(1000, 60_000), hosts: limiteMemoria(1000, 60_000) },
   };
   return { e: e as typeof base, cfg, ...s };
 }
@@ -79,7 +81,7 @@ function peticionDe(metodo: string, ruta: string, o: { consulta?: Record<string,
   const consulta = o.consulta ?? {};
   const q = Object.keys(consulta).length === 0 ? '' : `?${new URLSearchParams(consulta).toString()}`;
   const crudo = o.cuerpo ?? '';
-  return { metodo, ruta, url: `${ruta}${q}`, consulta, cabeceras: o.cabeceras ?? {}, cuerpoCrudo: crudo, cuerpo: crudo === '' ? undefined : JSON.parse(crudo), origen: '203.0.113.1' };
+  return { metodo, ruta, url: `${ruta}${q}`, consulta, cabeceras: { 'x-forwarded-host': HOST, ...o.cabeceras }, cuerpoCrudo: crudo, cuerpo: crudo === '' ? undefined : JSON.parse(crudo), origen: '203.0.113.1' };
 }
 
 /** Petición concreta por cada ruta declarada en el registro; las rutas con prefijo usan un subcamino real. */

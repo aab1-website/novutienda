@@ -67,6 +67,13 @@ describe.skipIf(!hayEmulador)('API HTTP (emulador)', () => {
       expect((await http('/api/cotizacion?mercado=XX')).status).toBe(400);
     });
 
+    it('host desconocido o sin cabecera: 404 en las rutas públicas (el tenant sale del host, lista cerrada)', async () => {
+      const desconocido = await http('/api/cotizacion?mercado=BO', { headers: { 'x-forwarded-host': 'no-mapeado.test' } });
+      expect(desconocido.status).toBe(404);
+      expect(desconocido.cuerpo).toEqual({ error: 'no_encontrado' });
+      expect((await http('/api/disponibilidad?ids=x', { headers: { 'x-forwarded-host': 'a.test, b.test' } })).status).toBe(404);
+    });
+
     it('disponibilidad: solo disponible o agotado', async () => {
       const r = await http(`/api/disponibilidad?ids=${prod},no-existe-xx`);
       expect(r.status).toBe(200);

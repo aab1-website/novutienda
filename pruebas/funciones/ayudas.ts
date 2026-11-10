@@ -123,8 +123,13 @@ export interface RespuestaHttp {
   readonly texto: string;
 }
 
+/** Host sintético que Hosting enviaría en `x-forwarded-host`; `sembrarTenant` lo mapea al tenant `T`. */
+export const HOST_A = 'tienda-a.test';
+
 export async function http(ruta: string, init: RequestInit = {}): Promise<RespuestaHttp> {
-  const r = await fetch(`${URL_FUNCIONES}/api${ruta}`, init);
+  const cabeceras = new Headers(init.headers);
+  if (!cabeceras.has('x-forwarded-host')) cabeceras.set('x-forwarded-host', HOST_A);
+  const r = await fetch(`${URL_FUNCIONES}/api${ruta}`, { ...init, headers: cabeceras });
   const texto = await r.text();
   let cuerpo: unknown = texto;
   try {
@@ -169,6 +174,7 @@ export const TENANT_TODO_ENCENDIDO = {
 /** Tenant con almacenes, cotizaciones del día y productos, escrito con las funciones reales de los módulos. */
 export async function sembrarTenant(h: Herramientas, tenantId: string, o: OpcionesSembrado = {}): Promise<void> {
   await h.firestore.doc(`tenants/${tenantId}`).set(TENANT_TODO_ENCENDIDO);
+  if (tenantId === T) await h.firestore.doc(`dominios/${HOST_A}`).set({ tenantId });
   for (const u of UBICACIONES) {
     await h.db.runTransaction((tx) => crearUbicacion(tx, { tenantId, operacionId: unico('ubic'), por: ADM, ubicacionId: u, nombre: u }));
   }
