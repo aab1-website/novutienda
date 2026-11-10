@@ -1,5 +1,5 @@
 // Mapeo host -> tenant (`plataforma/operador/dominio.ts`) y guardia de tokens (`plataforma/operador/token.ts`) con dobles en memoria.
-import { spawnSync } from 'node:child_process';
+import { spawn, spawnSync } from 'node:child_process';
 import { describe, expect, it } from 'vitest';
 import { hayEmulador, herramientas, unico } from './ayudas.js';
 import type { EstadoTenant, TransaccionIdentidad } from '@novutienda/nucleo';
@@ -233,6 +233,30 @@ describe.skipIf(!hayEmulador)('scripts/dominio-tenant.mjs contra el emulador', (
     expect(quitar.status, quitar.stderr).toBe(0);
     expect((await h.firestore.doc(`dominios/${host}`).get()).exists).toBe(false);
   }, 60_000);
+});
+
+describe.skipIf(!hayEmulador)('compuerta de inventarios: dos asignaciones en paralelo (emulador)', () => {
+  const lanzar = (host: string, tenant: string) =>
+    new Promise<number | null>((fin) => {
+      const p = spawn('node', ['scripts/dominio-tenant.mjs', '--host', host, '--tenant', tenant, '--proyecto', 'demo-pruebas', '--aplicar'], {
+        env: { ...process.env, GOOGLE_CLOUD_PROJECT: 'demo-pruebas', NOVUTIENDA_AMBIENTE: 'emulador' },
+        stdio: 'ignore',
+      });
+      p.on('close', fin);
+    });
+  it('con dos tenants con inventarios, a lo sumo uno queda con host', async () => {
+    const h = herramientas();
+    const a = unico('inv-a').toLowerCase();
+    const b = unico('inv-b').toLowerCase();
+    const hosts = [`${unico('pa').toLowerCase()}.ejemplo.test`, `${unico('pb').toLowerCase()}.ejemplo.test`];
+    for (const t of [a, b]) await h.firestore.doc(`tenants/${t}`).set({ estado: 'activo', modulos: { inventarios: { version: '1', submodulos: [] } } });
+    const codigos = await Promise.all([lanzar(hosts[0] as string, a), lanzar(hosts[1] as string, b)]);
+    const escritos = (await Promise.all(hosts.map((x) => h.firestore.doc(`dominios/${x}`).get()))).filter((d) => d.exists).length;
+    expect(escritos).toBeLessThanOrEqual(1);
+    expect(codigos.filter((c) => c === 0).length).toBe(escritos);
+    for (const x of hosts) await h.firestore.doc(`dominios/${x}`).delete();
+    for (const t of [a, b]) await h.firestore.doc(`tenants/${t}`).delete();
+  }, 90_000);
 });
 
 describe('compuerta de inventarios (secreto de pedidos compartido)', () => {
