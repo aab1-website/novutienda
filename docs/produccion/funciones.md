@@ -182,10 +182,10 @@ Firestore y la lectura de datos. Sin credencial válida no se consultan módulos
 |---|---|---|
 | `/api/cotizacion`, `/api/disponibilidad`, `/api/contacto` | el del host (`x-forwarded-host`, tabla `dominios`), antes del manejador; host sin mapeo, `404` | `404 no_encontrado` |
 | `/api/novuchat/v1/catalogo`, `/api/novuchat/v1/inventario` | el del token, tras autenticarlo y antes de leer datos | `401 credencial_invalida` (igual que un token inválido; sin cambio de contrato) |
-| `/api/novuchat/v1/pedidos/confirmar` | `tenantPedidos`, tras verificar la firma | `401 credencial_invalida` |
+| `/api/novuchat/v1/pedidos/confirmar` | el del host (`x-forwarded-host`, tabla `dominios`); el encendido se controla tras verificar la firma | `401 credencial_invalida` |
 | `/api/sitio/v1/…` | el `tenantId` firmado, tras la firma y su validación | `404 no_encontrado` |
 
-Cada rechazo deja un `logger.warn` con `motivo` (`modulo-apagado`, `sin-documento` o `ruta-sin-dueno`), la ruta y el tenant; nunca el token ni la IP.
+Cada rechazo deja un `logger.warn` con `motivo` (`modulo-apagado`, `sin-documento`, `ruta-sin-dueno`, `host-invalido` o `host-sin-mapeo`), la ruta y el tenant; nunca el token ni la IP. El log lleva además los nombres de TODAS las cabeceras recibidas (sin valores), para diagnosticar el riesgo R1.
 
 Caché: la lista de módulos de un tenant se guarda 60 s si existe y **10 s si falta** (caché negativa). Las respuestas de NovuChat llevan además
 `Cache-Control: private, max-age=60`, así que apagar un módulo puede tardar **hasta ~120 s** en notarse del lado de NovuChat. Antes de desplegar en un ambiente,

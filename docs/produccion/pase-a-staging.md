@@ -375,7 +375,9 @@ del despliegue fallan a propósito. Verificar en staging el origen del límite d
 
 **Paso A′ (obligatorio, ANTES de desplegar).** El tenant de `/api/cotizacion`, `/api/disponibilidad`, `/api/contacto` y `/api/novuchat/v1/pedidos/confirmar` sale del host. Sin mapeo, esas rutas responden `404`. Con `scripts/dominio-tenant.mjs` (`docs/produccion/dominios-de-tenant.md`) se mapea cada host que sirve el sitio del tenant: `<sitio>.web.app`, `<sitio>.firebaseapp.com` y el dominio propio, si existe. Cada `--aplicar` pide el «sí» de Andres.
 
-**Compuerta D-B1.** No se mapea el host de un segundo tenant con `inventarios` encendido hasta el PR D (secreto de firma por tenant): hoy el secreto de pedidos es compartido y una firma de un tenant valdría 5 minutos en otro.
+**Compuerta D-B1 (la impone `dominio-tenant.mjs`).** No se mapea el host de un segundo tenant con `inventarios` encendido hasta el PR D (secreto de firma por tenant): hoy el secreto de pedidos es compartido y una firma de un tenant valdría 5 minutos en otro.
+
+**Requisito antes de desplegar B.** NovuChat debe llamar `pedidos/confirmar` con el dominio del sitio del tenant, no con la URL directa de la función (si no, `404`), y el paso A′ debe estar hecho o el sitio público deja de cotizar. El host elige el tenant pero NO autentica: la función es pública y, en pedidos, la firma sigue siendo obligatoria. Un cambio de mapeo tarda hasta 60 s en verse por instancia. Hay un límite global por instancia (300/min) y por origen (60/min) para hosts fuera de caché.
 
 **Verificación del riesgo R1 tras desplegar a staging** (qué cabecera de host llega detrás de Firebase Hosting no está confirmado en la documentación oficial). Solo lecturas: `GET /api/cotizacion?mercado=BO` y `GET /api/disponibilidad?ids=x` en `<sitio>.web.app` y en `<sitio>.firebaseapp.com` deben dar `200`; la URL directa de la función, sin `x-forwarded-host`, debe dar `404`. Si falla, el log del rechazo indica qué cabeceras llegaron.
 

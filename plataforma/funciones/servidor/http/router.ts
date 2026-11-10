@@ -14,8 +14,8 @@ export interface ConfigRouter extends Pick<ConfigWebsite, 'recaptcha' | 'appChec
   readonly novuchat: ConfigNovuchat;
   readonly secretoReconstruccion: string;
   readonly limiteContacto: LimiteTasa;
-  /** Límites en memoria por instancia y por origen, ANTES de autenticar (NovuChat), de leer (disponibilidad) o de verificar App Check (contacto); `hosts`, ante un host que no está en caché. */
-  readonly limiteMemoria: { readonly novuchat: LimiteTasa; readonly disponibilidad: LimiteTasa; readonly contacto: LimiteTasa; readonly hosts: LimiteTasa };
+  /** Límites en memoria por instancia y por origen, ANTES de autenticar (NovuChat), de leer (disponibilidad) o de verificar App Check (contacto); `hosts` (por origen) y `hostsGlobal` (clave fija `hosts:*`, tope de la instancia), ante un host que no está en caché. */
+  readonly limiteMemoria: { readonly novuchat: LimiteTasa; readonly disponibilidad: LimiteTasa; readonly contacto: LimiteTasa; readonly hosts: LimiteTasa; readonly hostsGlobal: LimiteTasa };
 }
 
 const RUTAS_SITIO = new Set(['/api/cotizacion', '/api/disponibilidad', '/api/contacto']);
@@ -43,7 +43,7 @@ async function servir(e: Entorno, ruta: string, tenantId: string): Promise<boole
 /**
  * Tenant de una ruta pública (sitio o pedido firmado): sale del host y de la lista cerrada `dominios`. `undefined` = rechazo (404).
  * Un host fuera de la caché cuesta una lectura de Firestore: pasa antes por un límite en memoria por origen. El log lleva el
- * motivo y solo los NOMBRES de las cabeceras de host presentes, nunca sus valores.
+ * motivo y los NOMBRES de todas las cabeceras recibidas (ordenados), nunca sus valores: sirven para diagnosticar qué cabecera trae el host.
  */
 async function tenantDelHost(e: Entorno, req: PeticionHttp, cfg: ConfigRouter): Promise<string | RespuestaApi> {
   const host = hostDePeticion(req.cabeceras);
@@ -57,7 +57,7 @@ async function tenantDelHost(e: Entorno, req: PeticionHttp, cfg: ConfigRouter): 
     if (tenantId !== undefined) return tenantId;
     motivo = 'host-sin-mapeo';
   }
-  const presentes = ['x-forwarded-host', 'host'].filter((c) => req.cabeceras[c] !== undefined);
+  const presentes = Object.keys(req.cabeceras).sort();
   logger.warn('ruta HTTP rechazada', { motivo, ruta: req.ruta, cabeceras: presentes });
   return json(404, { error: 'no_encontrado' });
 }

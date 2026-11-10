@@ -70,7 +70,7 @@ function montar(tenant: unknown, sobrescribir: Partial<ReturnType<typeof crearEn
     appCheck: { verificar: () => Promise.resolve(false) } as never,
     novuchat: { sitioUrl: '', mediosBaseUrl: 'https://medios.test', limite: limiteMemoria(1000, 60_000), secretoPedidos: SECRETO_PEDIDOS },
     limiteContacto: limiteMemoria(1000, 60_000),
-    limiteMemoria: { novuchat: limiteMemoria(1000, 60_000), disponibilidad: limiteMemoria(1000, 60_000), contacto: limiteMemoria(1000, 60_000), hosts: limiteMemoria(1000, 60_000) },
+    limiteMemoria: { novuchat: limiteMemoria(1000, 60_000), disponibilidad: limiteMemoria(1000, 60_000), contacto: limiteMemoria(1000, 60_000), hosts: limiteMemoria(1000, 60_000), hostsGlobal: limiteMemoria(1000, 60_000) },
   };
   return { e: e as typeof base, cfg, ...s };
 }

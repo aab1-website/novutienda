@@ -38,16 +38,25 @@ export function crearLectorDominios(firestore: LectorDocumento, ahora: () => num
     }
     cache.set(host, { hasta: t + (tenantId === undefined ? TTL_DOMINIO_NEGATIVO_MS : TTL_DOMINIO_MS), tenantId });
   };
-  const leer = async (host: string): Promise<string | undefined> => {
-    if (!esHostValido(host)) return undefined; // sin lectura: la ruta de Firestore no se arma con un host inválido
-    const t = ahora();
-    const previo = cache.get(host);
-    if (previo !== undefined && previo.hasta > t) return previo.tenantId;
+  // Lecturas simultáneas del mismo host comparten una sola promesa; al terminar (con éxito o error) se quita: un error no queda en caché.
+  const enCurso = new Map<string, Promise<string | undefined>>();
+  const consultar = async (host: string, t: number): Promise<string | undefined> => {
     const snap = await firestore.doc(`dominios/${host}`).get();
     const id = snap.exists ? (snap.data() as { tenantId?: unknown } | undefined)?.tenantId : undefined;
     const tenantId = typeof id === 'string' && esTenantIdValido(id) ? id : undefined;
     guardar(host, tenantId, t);
     return tenantId;
+  };
+  const leer = (host: string): Promise<string | undefined> => {
+    if (!esHostValido(host)) return Promise.resolve(undefined); // sin lectura: la ruta de Firestore no se arma con un host inválido
+    const t = ahora();
+    const previo = cache.get(host);
+    if (previo !== undefined && previo.hasta > t) return Promise.resolve(previo.tenantId);
+    const activa = enCurso.get(host);
+    if (activa !== undefined) return activa;
+    const nueva = consultar(host, t).finally(() => { enCurso.delete(host); });
+    enCurso.set(host, nueva);
+    return nueva;
   };
   return Object.assign(leer, {
     enCache: (host: string): boolean => (cache.get(host)?.hasta ?? 0) > ahora(),
