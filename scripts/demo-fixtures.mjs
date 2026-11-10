@@ -1,7 +1,7 @@
 // Carga de los fixtures de demostración (catalogo.csv, demo.json, fotos/) desde `scripts/demo/` o desde una carpeta propia
 // (`--fixtures <carpeta>`). Una carpeta distinta de la de fábrica puede traer datos reales de un cliente: por eso debe estar
 // fuera del repositorio o ignorada por git (misma guardia que las credenciales). Sin identificadores en los mensajes.
-import { readFileSync, statSync } from 'node:fs';
+import { readFileSync } from 'node:fs';
 import { dirname, extname, join, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { exigirFueraDelRepositorio } from './guardia-operador.mjs';
@@ -62,14 +62,17 @@ export function cargarFixtures(fixtures) {
       if (archivosFoto.has(foto.archivo)) continue;
       tipos[foto.archivo] = tipoContenidoFoto(foto.archivo);
       const ruta = join(dir, 'fotos', foto.archivo);
-      let tam;
+      // Se lee una sola vez y el tamaño se mide sobre los bytes leídos: así no hay
+      // ventana entre comprobar el archivo y usarlo (js/file-system-race).
+      let bytes;
       try {
-        tam = statSync(ruta).size;
+        bytes = readFileSync(ruta);
       } catch {
         throw new Error('falta un archivo de foto en la carpeta de fixtures');
       }
+      const tam = bytes.length;
       if (tam === 0 || tam > MAX_BYTES_FOTO) throw new Error('una foto está vacía o supera 15 MB');
-      archivosFoto.set(foto.archivo, readFileSync(ruta));
+      archivosFoto.set(foto.archivo, bytes);
       bytesFoto[foto.archivo] = tam;
     }
   }
