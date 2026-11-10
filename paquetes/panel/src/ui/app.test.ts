@@ -4,7 +4,7 @@ import { cleanup, render, screen, waitFor, within } from '@testing-library/preac
 import { userEvent } from '@testing-library/user-event';
 import { afterEach, beforeEach, describe, expect, it } from 'vitest';
 import { crearEntorno } from '../ayuda-pruebas.js';
-import { SesionDoble } from '../sesion/doble.js';
+import { CUENTAS_DOBLE, SesionDoble } from '../sesion/doble.js';
 import { App } from './app.js';
 
 afterEach(() => {
@@ -52,6 +52,37 @@ describe('inicio de sesión', () => {
   it('el botón Entrar espera correo y contraseña', () => {
     montar();
     expect((screen.getByRole('button', { name: 'Entrar' }) as HTMLButtonElement).disabled).toBe(true);
+  });
+});
+
+describe('comercio en el encabezado', () => {
+  const cuentas = [
+    ...CUENTAS_DOBLE,
+    { correo: 'otro@ejemplo.test', contrasena: 'clave-otro-1', uid: 'u-otro', tenantId: 'otro-comercio', rol: 'adm' as const, verificado: true },
+  ];
+  function montarCon(): SesionDoble {
+    const sesion = new SesionDoble(cuentas);
+    const entorno = crearEntorno('caj');
+    render(h(App, { sesion, api: entorno.api, almacen: entorno.almacen }));
+    return sesion;
+  }
+  it('no aparece en el ingreso', () => {
+    montarCon();
+    expect(screen.queryByText(/Comercio:/)).toBeNull();
+    expect(document.title).toBe('Ingreso · Panel de gestión');
+  });
+  it('muestra el comercio de la sesión y lo pone en el título; cambia al ingresar con otro', async () => {
+    montarCon();
+    await entrar('adm@ejemplo.test', 'clave-adm-1');
+    const cab = await screen.findByRole('banner');
+    expect(within(cab).getByText('Comercio: demo')).toBeTruthy();
+    await waitFor(() => expect(document.title).toBe('demo · Panel de gestión'));
+    await userEvent.setup().click(screen.getByRole('button', { name: 'Salir' }));
+    await screen.findByRole('button', { name: 'Entrar' });
+    expect(screen.queryByText(/Comercio:/)).toBeNull();
+    await entrar('otro@ejemplo.test', 'clave-otro-1');
+    expect(await screen.findByText('Comercio: otro-comercio')).toBeTruthy();
+    await waitFor(() => expect(document.title).toBe('otro-comercio · Panel de gestión'));
   });
 });
 
