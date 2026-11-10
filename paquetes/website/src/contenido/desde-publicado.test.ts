@@ -1,7 +1,7 @@
 import { describe, expect, it } from 'vitest';
 import { ErrorContenidoPublicado, contenidoDesdePublicado, iconoDeCategoria, nombreDeCategoria, type EntornoSitio } from './desde-publicado.js';
 import { contenidoEjemplo } from './ejemplo.js';
-import { validarNegocio } from './validar.js';
+import { urlMedioSegura, validarNegocio } from './validar.js';
 
 // Todo inventado: dominios .invalid, nombres de ejemplo.
 const MEDIOS = 'https://medios.ejemplo.invalid';
@@ -147,6 +147,7 @@ describe('contenidoDesdePublicado', () => {
     expect(mensaje).toContain('negocio.whatsappTienda');
     expect(mensaje).toContain('negocio.mercados');
     expect(mensaje).not.toContain('no-es-numero');
+    expect(mensaje).not.toContain('Nombre Secreto');
   });
 
   it('respuesta sin documentos o sin sitio falla con campos', () => {
@@ -157,7 +158,57 @@ describe('contenidoDesdePublicado', () => {
   });
 });
 
+describe('casos límite', () => {
+  const falla = (r: unknown, n: unknown = negocioBase()): string => {
+    try { contenidoDesdePublicado(r, n, entorno); } catch (e) { return (e as Error).message; }
+    return '';
+  };
+  it('rechaza rutas de medios con espacios, comas o ..: la foto se omite', () => {
+    const mala = { tipo: 'foto', alt: 'x', versiones: [{ clase: 'imagen', lado: 960, formato: 'webp', ruta: 'm/a b,c.webp' }, { clase: 'imagen', lado: 480, formato: 'webp', ruta: '../fuera.webp' }] };
+    const r = respuesta({ producto__tres: prod('p-tres', { medios: [mala, medioFoto('m/ok')] }) });
+    const c = contenidoDesdePublicado(r, negocioBase(), entorno);
+    expect(c.productos.find((p) => p.id === 'p-tres')!.fotos).toHaveLength(1);
+  });
+  it('un destacado inexistente se ignora', () => {
+    const c = contenidoDesdePublicado(respuesta(), { ...negocioBase(), destacados: ['no-existe'] }, entorno);
+    expect(c.productos.some((p) => p.destacado)).toBe(false);
+  });
+  it('claves inválidas se nombran por posición, sin copiarlas al error', () => {
+    const r = respuesta({ 'producto__CLAVE SECRETA': { id: 'x' } });
+    const m = falla(r);
+    expect(m).toContain('documentos.producto__[');
+    expect(m).not.toContain('CLAVE SECRETA');
+    const m2 = falla(respuesta({}, { secciones: ['Sección Rara'] }));
+    expect(m2).toContain('documentos.estado.secciones[0]');
+    expect(m2).not.toContain('Sección Rara');
+    const m3 = falla(respuesta(), { ...negocioBase(), categorias: { 'Clave Mala': { nombre: 'x', icono: 'check' } } });
+    expect(m3).toContain('negocio.categorias[0]');
+    expect(m3).not.toContain('Clave Mala');
+  });
+  it('sin productos publicados: falla con un mensaje claro (el sitio exige catálogo)', () => {
+    const vacia = { redondeo, documentos: { sitio: { plantillaActiva: 'cielo', whatsappNovuchat: null, medicion: {} }, estado: { secciones: [] } } };
+    expect(falla(vacia)).toContain('no hay productos publicados');
+  });
+  it('más de 40 categorías: mensaje claro', () => {
+    const muchos = Object.fromEntries(Array.from({ length: 41 }, (_, i) => [`producto__c${i}`, prod(`p-c${i}`, { categoria: `cat-${i}` })]));
+    expect(falla(respuesta(muchos))).toContain('más de 40 categorías');
+  });
+});
+
+describe('urlMedioSegura', () => {
+  it('rechaza espacios y comas', () => {
+    expect(urlMedioSegura('/m/a b.webp', [])).toBe(false);
+    expect(urlMedioSegura(`${MEDIOS}/m/a,b.webp`, [MEDIOS])).toBe(false);
+    expect(urlMedioSegura(`${MEDIOS}/m/ab.webp`, [MEDIOS])).toBe(true);
+  });
+});
+
 describe('validarNegocio', () => {
+  it('antepone negocio. a los errores de portada, beneficios e identidad', () => {
+    const r = validarNegocio({ ...negocioBase(), portada: {}, beneficios: 'x', identidad: {} });
+    expect(r.ok).toBe(false);
+    expect(!r.ok && r.errores.every((e) => e.startsWith('negocio.'))).toBe(true);
+  });
   it('acepta logo e identidad.foto nulos y categorías vacías', () => {
     expect(validarNegocio(negocioBase()).ok).toBe(true);
     const sinOpcionales: Record<string, unknown> = { ...negocioBase() };

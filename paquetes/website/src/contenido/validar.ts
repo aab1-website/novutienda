@@ -55,6 +55,7 @@ export function origenValido(x: unknown): x is string {
 
 /** Una URL de medio es segura si es una ruta propia (`/…`) o cuelga de un origen declarado. */
 export function urlMedioSegura(url: string, origenes: readonly (string | null)[]): boolean {
+  if (/[\s,]/.test(url)) return false; // una coma o un espacio rompe el `srcset`
   if (url.startsWith('/')) return esRutaPropia(url);
   try {
     const u = new URL(url);
@@ -317,6 +318,14 @@ function leerIdentidad(l: Lector, v: unknown, origenes: readonly (string | null)
   };
 }
 
+/** Ejecuta un lector y antepone `negocio.` a los errores que registre, para que nombren el campo del JSON del negocio. */
+function conPrefijo<T>(l: Lector, f: () => T): T {
+  const antes = l.errores.length;
+  const r = f();
+  for (let i = antes; i < l.errores.length; i += 1) l.errores[i] = `negocio.${l.errores[i]}`;
+  return r;
+}
+
 export type ResultadoNegocio =
   | { readonly ok: true; readonly negocio: NegocioSitio }
   | { readonly ok: false; readonly errores: readonly string[] };
@@ -351,9 +360,10 @@ export function validarNegocio(entrada: unknown, origenes: readonly (string | nu
   const categorias: Record<string, { nombre: string; icono: IdIcono }> = {};
   if (o['categorias'] !== undefined) {
     const c = l.obj(o['categorias'], 'negocio.categorias');
-    for (const [id, x] of Object.entries(c)) {
-      const r = `negocio.categorias.${id}`;
-      if (!RE_SLUG.test(id)) l.falla('negocio.categorias', 'una clave no es un identificador válido');
+    for (const [i, [id, x]] of Object.entries(c).entries()) {
+      // Una clave inválida no se copia al error: se nombra por posición.
+      const r = RE_SLUG.test(id) ? `negocio.categorias.${id}` : `negocio.categorias[${i}]`;
+      if (!RE_SLUG.test(id)) l.falla(r, 'la clave no es un identificador válido');
       const e = l.obj(x, r);
       categorias[id] = { nombre: l.texto(e['nombre'], `${r}.nombre`, 1, 80), icono: l.icono(e['icono'], `${r}.icono`) };
     }
@@ -375,9 +385,9 @@ export function validarNegocio(entrada: unknown, origenes: readonly (string | nu
     mercados,
     mercadoInicial,
     enlacesPermitidos: enlacesPermitidos.filter((h) => h !== ''),
-    portada: leerPortada(l, o['portada']),
-    beneficios: leerBeneficios(l, o['beneficios']),
-    identidad: leerIdentidad(l, o['identidad'], origenes),
+    portada: conPrefijo(l, () => leerPortada(l, o['portada'])),
+    beneficios: conPrefijo(l, () => leerBeneficios(l, o['beneficios'])),
+    identidad: conPrefijo(l, () => leerIdentidad(l, o['identidad'], origenes)),
     textoPrivacidad: l.lista(o['textoPrivacidad'], 'negocio.textoPrivacidad', 40, 1).map((p, i) => l.texto(p, `negocio.textoPrivacidad[${i}]`, 1, 2000)),
     categorias,
     destacados,

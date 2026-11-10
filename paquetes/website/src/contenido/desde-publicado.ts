@@ -31,13 +31,20 @@ export class ErrorContenidoPublicado extends Error {
 type Obj = Readonly<Record<string, unknown>>;
 const esObj = (x: unknown): x is Obj => typeof x === 'object' && x !== null && !Array.isArray(x);
 const lista = (x: unknown): readonly unknown[] => (Array.isArray(x) ? x : []);
+const LIMITE_CATEGORIAS = 40;
 const cadena = (x: unknown): string => (typeof x === 'string' ? x : '');
 
 interface VersionMedio { readonly clase: string; readonly lado: number; readonly formato: string; readonly ruta: string }
 
+/** Ruta relativa de un medio: sin espacios, comas ni `..` (se interpola en URL y en `srcset`). */
+const RE_RUTA_MEDIO = /^[A-Za-z0-9][A-Za-z0-9._/-]{0,300}$/;
+const RE_CLAVE_PRODUCTO = /^producto__[a-z0-9][a-z0-9-]{1,59}$/;
+const RE_ID_SECCION = /^[a-z0-9][a-z0-9-]{0,79}$/;
+const rutaMedioValida = (r: string): boolean => RE_RUTA_MEDIO.test(r) && !r.includes('..');
+
 function versionesDe(medio: Obj): VersionMedio[] {
   return lista(medio['versiones']).filter(esObj).flatMap((v) =>
-    typeof v['clase'] === 'string' && typeof v['lado'] === 'number' && typeof v['formato'] === 'string' && typeof v['ruta'] === 'string'
+    typeof v['clase'] === 'string' && typeof v['lado'] === 'number' && typeof v['formato'] === 'string' && typeof v['ruta'] === 'string' && rutaMedioValida(v['ruta'])
       ? [{ clase: v['clase'], lado: v['lado'], formato: v['formato'], ruta: v['ruta'] }]
       : []);
 }
@@ -128,8 +135,10 @@ export function contenidoDesdePublicado(respuesta: unknown, negocio: unknown, en
   // Productos
   const productos: Producto[] = [];
   const destacados = new Set(neg?.destacados ?? []);
-  for (const [clave, d] of entradas.filter(([k]) => k.startsWith('producto__')).sort(([, a], [, b]) => (cadena(esObj(a) ? a['id'] : '') < cadena(esObj(b) ? b['id'] : '') ? -1 : 1))) {
-    const r = `documentos.${clave}`;
+  const docsProducto = entradas.filter(([k]) => k.startsWith('producto__')).sort(([, a], [, b]) => (cadena(esObj(a) ? a['id'] : '') < cadena(esObj(b) ? b['id'] : '') ? -1 : 1));
+  for (const [i, [clave, d]] of docsProducto.entries()) {
+    // Una clave con formato inesperado podría traer datos: en el error se nombra por posición.
+    const r = RE_CLAVE_PRODUCTO.test(clave) ? `documentos.${clave}` : `documentos.producto__[${i}]`;
     if (!esObj(d)) { errores.push(`${r}: debe ser un objeto`); continue; }
     if (typeof d['marca'] !== 'string' || d['marca'].trim() === '') errores.push(`${r}.marca: falta (el sitio exige marca)`);
     const precio = esObj(d['precioUSD']) ? d['precioUSD'] : undefined;
@@ -160,17 +169,20 @@ export function contenidoDesdePublicado(respuesta: unknown, negocio: unknown, en
 
   // Categorías (D4) y marcas
   const sobrescritas = neg?.categorias ?? {};
-  const categorias: Categoria[] = [...new Set(productos.map((p) => p.categoria))].sort().map((id) => ({
-    id,
-    nombre: sobrescritas[id]?.nombre ?? nombreDeCategoria(id),
-    icono: sobrescritas[id]?.icono ?? iconoDeCategoria(id),
-  }));
+  const idsCategoria = [...new Set(productos.map((p) => p.categoria))].sort();
+  if (idsCategoria.length > LIMITE_CATEGORIAS) errores.push(`categorias: hay más de ${LIMITE_CATEGORIAS} categorías distintas (tope del sitio)`);
+  if (productos.length === 0) errores.push('documentos.producto__*: no hay productos publicados; el sitio no se reconstruye sin catálogo: publique al menos uno desde el panel');
+  const categorias: Categoria[] = idsCategoria.slice(0, LIMITE_CATEGORIAS).map((id) => {
+    const o = Object.hasOwn(sobrescritas, id) ? sobrescritas[id] : undefined;
+    return { id, nombre: o?.nombre ?? nombreDeCategoria(id), icono: o?.icono ?? iconoDeCategoria(id) };
+  });
   const marcas = [...new Set(productos.map((p) => p.marca).filter((m) => m !== ''))].sort().slice(0, 40);
 
   // Secciones, en el orden del estado
   const orden = esObj(estado) ? lista(estado['secciones']).filter((x): x is string => typeof x === 'string') : [];
   const secciones: Seccion[] = [];
-  for (const id of orden) {
+  for (const [i, id] of orden.entries()) {
+    if (!RE_ID_SECCION.test(id)) { errores.push(`documentos.estado.secciones[${i}]: identificador inválido`); continue; }
     const d = docs?.[`seccion__${id}`];
     if (!esObj(d)) { errores.push(`documentos.seccion__${id}: falta o no es un objeto`); continue; }
     secciones.push({
@@ -220,7 +232,7 @@ export function contenidoDesdePublicado(respuesta: unknown, negocio: unknown, en
 
   const r = validarContenido(candidato);
   if (!r.ok) errores.push(...r.errores);
-  // Los errores de negocio ya vienen con su prefijo; los de validarContenido repetidos por campos ausentes se descartan.
+  // Se juntan los errores de entrada y de validarContenido, sin repetir mensajes idénticos.
   if (errores.length > 0 || !r.ok) throw new ErrorContenidoPublicado([...new Set(errores)]);
   return r.contenido;
 }

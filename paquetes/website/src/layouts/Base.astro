@@ -7,7 +7,7 @@ import { jsonLdSeguro, tituloPagina, urlAbsoluta } from '../lib/seo';
 import type { ConfigCliente } from '../lib/config-cliente';
 import { enlaceWhatsApp } from '../lib/whatsapp';
 import Icono from '../componentes/Icono.astro';
-import { esProduccion } from '../lib/indexacion';
+import { debeNoIndexar } from '../lib/indexacion';
 
 interface Props {
   titulo: string;
@@ -46,7 +46,7 @@ const waGeneral = enlaceWhatsApp(config.whatsappTienda, 'Hola, tengo una consult
     <title>{completo}</title>
     <meta name="description" content={desc} />
     <link rel="canonical" href={urlAbsoluta(config.origen, ruta === '/' ? '/' : ruta)} />
-    {(noindex || config.esEjemplo || !esProduccion(process.env['APP_ENV'])) && <meta name="robots" content="noindex, nofollow" />}
+    {debeNoIndexar(process.env['APP_ENV'], config.esEjemplo, noindex) && <meta name="robots" content="noindex, nofollow" />}
     <meta property="og:type" content="website" />
     <meta property="og:site_name" content={config.nombre} />
     <meta property="og:title" content={completo} />
