@@ -14,7 +14,7 @@
 #    defecto (SITIO_URL vacío) sin avisar. Ver docs/arquitectura/decisiones.md.
 #
 # Entradas (entorno): AMBIENTE (staging | production), PROYECTO, SITIO_ID, PANEL_ID, PANEL_URL y P_<PARÁMETRO>.
-# Sin valores por defecto para lo que identifica al cliente o abre superficie: TENANT_ID y MEDIOS_BASE_URL son obligatorias,
+# Sin valores por defecto para lo que identifica al cliente o abre superficie: MEDIOS_BASE_URL es obligatoria,
 # y en production APP_CHECK_EXIGIDO debe ser true.
 set -euo pipefail
 

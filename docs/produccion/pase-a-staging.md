@@ -303,7 +303,7 @@ gh api --method POST "repos/$OWNER/$REPO/environments/production/deployment-bran
 | `STAGING_URL` | repositorio | `https://<SITIO_ID>.web.app` |
 | `HEALTH_PATH` | repositorio | `/api/salud` (**no** `/healthz`: el frontend de Google lo intercepta en Cloud Run y devuelve 404 sin llegar a la función; `docs/arquitectura/decisiones.md`, 05/11/2026) |
 | `FIREBASE_DEPLOY_ONLY` | repositorio | `hosting,functions,firestore,storage` |
-| `TENANT_ID` | repositorio | `casa-bermejo` (**obligatoria**: sin valor por defecto en el código ni en el CI) |
+| `TENANT_ID` | repositorio | **Sin uso**: el tenant de las rutas públicas sale del host (`dominios/{host}`). Se borra después del pase de producción (`docs/arquitectura/decisiones.md`, «Multitenant: tenant por host (PR B)») |
 | `VITE_FIREBASE_API_KEY_STAGING` | repositorio | apiKey pública de la app web del panel (8.1) |
 | `MODO` | repositorio | `A` |
 | `APROBADORES_PROD` | repositorio | `segurolotengopy` (y el propietario, si Andres lo decide) |
@@ -370,8 +370,14 @@ Lección del primer despliegue (05/11/2026): firebase-tools 15.x en modo no inte
 parámetro `defineString/defineBoolean`, aunque tenga `default` en `config.ts`. `preparar-despliegue-firebase.sh` escribe los valores por
 defecto de los que no llegan por variable; si se agrega un parámetro en `config.ts`, hay que agregarlo también allí.
 
-Antes del primer despliegue: cargar las variables de 9.3 (incluidas las `VITE_*` nuevas, `MEDIOS_BASE_URL` y `TENANT_ID`); sin ellas `construir` o el paso de configuración
+Antes del primer despliegue: cargar las variables de 9.3 (incluidas las `VITE_*` nuevas y `MEDIOS_BASE_URL`); sin ellas `construir` o el paso de configuración
 del despliegue fallan a propósito. Verificar en staging el origen del límite de tasa (`PROXY_SALTOS`) con una petición real a `/api/contacto`.
+
+**Paso A′ (obligatorio, ANTES de desplegar).** El tenant de `/api/cotizacion`, `/api/disponibilidad`, `/api/contacto` y `/api/novuchat/v1/pedidos/confirmar` sale del host. Sin mapeo, esas rutas responden `404`. Con `scripts/dominio-tenant.mjs` (`docs/produccion/dominios-de-tenant.md`) se mapea cada host que sirve el sitio del tenant: `<sitio>.web.app`, `<sitio>.firebaseapp.com` y el dominio propio, si existe. Cada `--aplicar` pide el «sí» de Andres.
+
+**Compuerta D-B1.** No se mapea el host de un segundo tenant con `inventarios` encendido hasta el PR D (secreto de firma por tenant): hoy el secreto de pedidos es compartido y una firma de un tenant valdría 5 minutos en otro.
+
+**Verificación del riesgo R1 tras desplegar a staging** (qué cabecera de host llega detrás de Firebase Hosting no está confirmado en la documentación oficial). Solo lecturas: `GET /api/cotizacion?mercado=BO` y `GET /api/disponibilidad?ids=x` en `<sitio>.web.app` y en `<sitio>.firebaseapp.com` deben dar `200`; la URL directa de la función, sin `x-forwarded-host`, debe dar `404`. Si falla, el log del rechazo indica qué cabeceras llegaron.
 
 ## 12. Después del primer despliegue
 

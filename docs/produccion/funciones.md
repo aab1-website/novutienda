@@ -180,7 +180,7 @@ Firestore y la lectura de datos. Sin credencial válida no se consultan módulos
 
 | Ruta | Tenant que se controla | Módulo apagado |
 |---|---|---|
-| `/api/cotizacion`, `/api/disponibilidad`, `/api/contacto` | `TENANT_ID` del despliegue, antes del manejador | `404 no_encontrado` |
+| `/api/cotizacion`, `/api/disponibilidad`, `/api/contacto` | el del host (`x-forwarded-host`, tabla `dominios`), antes del manejador; host sin mapeo, `404` | `404 no_encontrado` |
 | `/api/novuchat/v1/catalogo`, `/api/novuchat/v1/inventario` | el del token, tras autenticarlo y antes de leer datos | `401 credencial_invalida` (igual que un token inválido; sin cambio de contrato) |
 | `/api/novuchat/v1/pedidos/confirmar` | `tenantPedidos`, tras verificar la firma | `401 credencial_invalida` |
 | `/api/sitio/v1/…` | el `tenantId` firmado, tras la firma y su validación | `404 no_encontrado` |
@@ -189,7 +189,7 @@ Cada rechazo deja un `logger.warn` con `motivo` (`modulo-apagado`, `sin-document
 
 Caché: la lista de módulos de un tenant se guarda 60 s si existe y **10 s si falta** (caché negativa). Las respuestas de NovuChat llevan además
 `Cache-Control: private, max-age=60`, así que apagar un módulo puede tardar **hasta ~120 s** en notarse del lado de NovuChat. Antes de desplegar en un ambiente,
-el documento `tenants/{TENANT_ID}` debe existir en él (alta de tenant); sin él, estas rutas responden como apagadas.
+el documento `tenants/{t}` debe existir en él (alta de tenant) y su host debe estar mapeado en `dominios/{host}` (`docs/produccion/dominios-de-tenant.md`); sin él, estas rutas responden como apagadas.
 
 ## 5. Bus de eventos
 
@@ -231,13 +231,14 @@ Un documento inválido **no se adivina**: las operaciones que lo necesitan falla
 Secretos (Secret Manager, `defineSecret`): `NOVUCHAT_PEDIDOS_SECRETO`, `SITIO_RECONSTRUCCION_SECRETO`, `LIMITE_TASA_SAL`.
 
 Parámetros (`.env.<alias>` en el origen de las funciones o variables de despliegue; valores por defecto entre paréntesis):
-`TENANT_ID` (**sin valor por defecto**: el despliegue lo exige), `APP_CHECK_EXIGIDO` (`false`; **`true` en producción**, el despliegue lo exige), `APP_CHECK_MODO` (`real`),
+`APP_CHECK_EXIGIDO` (`false`; **`true` en producción**, el despliegue lo exige), `APP_CHECK_MODO` (`real`),
 `RECAPTCHA_MODO` (`real`), `RECAPTCHA_CLAVE_SITIO`, `SITIO_URL`, `MEDIOS_BASE_URL` (**obligatoria**, https, origen público aparte; sin valor por defecto al bucket por defecto),
 `FUNCIONES_SERVICE_ACCOUNT` (vacío = cuenta por defecto; en producción, una dedicada), `PROXY_SALTOS` (`2`), `FFMPEG_PATH`, `FFPROBE_PATH`, `CONTACTO_MAXIMO` (`5`),
 `CONTACTO_VENTANA_SEG` (`600`), `NOVUCHAT_MAXIMO_POR_MINUTO` (`120`), `DISPONIBILIDAD_MAXIMO_POR_MINUTO` (`60`), `CONTACTO_MAXIMO_POR_MINUTO` (`30`, límite en memoria por instancia y origen de `/api/contacto`, antes de App Check). Fuera del emulador y de las pruebas, `LIMITE_TASA_SAL` y
 `MEDIOS_BASE_URL` faltantes hacen fallar la API (`ConfiguracionIncompleta`). Los modos `simulado` solo funcionan en el emulador (`FUNCTIONS_EMULATOR`) o con `PLATAFORMA_PRUEBAS=1`: en la nube lanzan al arrancar.
 
-Una instalación atiende **un** tenant en las rutas sin token de usuario (`TENANT_ID`: sitio, contacto y pedido firmado). El catálogo y el inventario toman el tenant del token.
+En las rutas sin token de usuario (sitio, contacto y pedido firmado) el tenant sale del host: `x-forwarded-host` de un solo valor, nunca `host`, resuelto por `plataforma/coordinador/dominios.ts` contra `dominios/{host}`; sin mapeo, `404`. Los parámetros `TENANT_ID` y `P_TENANT_ID` ya no existen. El catálogo y el inventario toman el tenant del token.
+Riesgo R1: qué cabecera de host llega tras Firebase Hosting no está confirmado en la documentación oficial; se verifica tras el despliegue a staging (`docs/produccion/pase-a-staging.md`, §11). Compuerta D-B1: el secreto de pedidos sigue compartido; no se mapea el host de un segundo tenant con `inventarios` encendido hasta el PR D.
 
 Construcción: `node plataforma/funciones/scripts/empaquetar.mjs` genera `dist/funciones/` (un `index.js` empaquetado con esbuild y un `package.json` con las
 dependencias de ejecución de versión exacta y su `package-lock.json`, que Cloud Build usa con `npm ci` y el CI analiza con osv-scanner). `firebase.json` lo declara como `source` y lo ejecuta como `predeploy`.
