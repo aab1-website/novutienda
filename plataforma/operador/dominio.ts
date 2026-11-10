@@ -14,6 +14,9 @@ export interface BaseDatosDominio {
   runTransaction<T>(fn: (tx: TransaccionDominio) => Promise<T>): Promise<T>;
 }
 
+/** Rechazo de negocio (entrada inválida o regla incumplida): su mensaje no lleva identificadores y puede mostrarse tal cual. */
+export class RechazoDominio extends Error {}
+
 const ETIQUETA = /^[a-z0-9](?:[a-z0-9-]{0,61}[a-z0-9])?$/;
 
 /**
@@ -21,6 +24,7 @@ const ETIQUETA = /^[a-z0-9](?:[a-z0-9-]{0,61}[a-z0-9])?$/;
  * (letras, dígitos y guion; sin guion en los bordes; hasta 63 caracteres cada una), hasta 253 en total, y la última no es
  * numérica (así se descartan las direcciones IP).
  */
+
 export function esHostValido(host: unknown): host is string {
   if (typeof host !== 'string' || host.length === 0 || host.length > 253) return false;
   const etiquetas = host.split('.');
@@ -37,7 +41,7 @@ export interface DocumentoDominio {
 
 /** Documento nuevo de `dominios/{host}`. Las marcas de tiempo las pone el servidor (se pasan ya resueltas). */
 export function construirDominio(tenantId: string, marca: unknown): DocumentoDominio {
-  if (!esTenantIdValido(tenantId)) throw new Error('el tenant no es un identificador válido');
+  if (!esTenantIdValido(tenantId)) throw new RechazoDominio('el tenant no es un identificador válido');
   return { tenantId, creado: marca, actualizado: marca };
 }
 
@@ -72,10 +76,10 @@ export async function gestionarDominio(o: {
   readonly reasignar?: boolean;
   readonly eliminar?: boolean;
 }): Promise<ResultadoDominio> {
-  if (!esHostValido(o.host)) throw new Error('el host no es válido (minúsculas, sin esquema, puerto ni ruta; formato DNS)');
-  if (o.tenantId !== undefined && !esTenantIdValido(o.tenantId)) throw new Error('el tenant no es un identificador válido');
-  if (o.eliminar === true && o.reasignar === true) throw new Error('--eliminar y --reasignar son excluyentes');
-  if (o.eliminar !== true && o.tenantId === undefined) throw new Error('indique el tenant (--tenant)');
+  if (!esHostValido(o.host)) throw new RechazoDominio('el host no es válido (minúsculas, sin esquema, puerto ni ruta; formato DNS)');
+  if (o.tenantId !== undefined && !esTenantIdValido(o.tenantId)) throw new RechazoDominio('el tenant no es un identificador válido');
+  if (o.eliminar === true && o.reasignar === true) throw new RechazoDominio('--eliminar y --reasignar son excluyentes');
+  if (o.eliminar !== true && o.tenantId === undefined) throw new RechazoDominio('indique el tenant (--tenant)');
   const operador = operadorDe(o.operador);
   const ruta = `dominios/${o.host}`;
   // La auditoría no guarda el host: la ruta es la colección. El tenant afectado es el de la entrada.
@@ -93,7 +97,7 @@ export async function gestionarDominio(o: {
     });
   };
 
-  // Los rechazos de negocio no se lanzan dentro de la transacción: abandonarla deja bloqueos en la base hasta que vence.
+  // El rechazo de negocio se devuelve como valor y se lanza fuera de la transacción, para distinguirlo de un error de Firebase.
   const planear = async (tx: TransaccionDominio): Promise<Plan | Rechazo> => {
     const actual = await tx.get(ruta);
     const previo = actual.existe ? actual.data()?.['tenantId'] : undefined;
@@ -117,7 +121,7 @@ export async function gestionarDominio(o: {
   };
 
   const plan = await o.db.runTransaction(planear);
-  if (plan.accion === 'rechazo') throw new Error(plan.mensaje);
+  if (plan.accion === 'rechazo') throw new RechazoDominio(plan.mensaje);
   const diferencias =
     plan.accion === 'asignar' ? ['host: sin asignar -> tenant indicado']
     : plan.accion === 'reasignar' ? ['host: tenant actual -> tenant indicado (reasignación)']
@@ -142,6 +146,6 @@ export async function gestionarDominio(o: {
     }
     return true;
   });
-  if (!escrito) throw new Error('el mapeo cambió durante la operación: reintente');
+  if (!escrito) throw new RechazoDominio('el mapeo cambió durante la operación: reintente');
   return { aplicado: true, diferencias };
 }

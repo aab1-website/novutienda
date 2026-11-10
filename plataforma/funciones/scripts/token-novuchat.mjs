@@ -55,8 +55,8 @@ if (comando === 'registrar') {
   // Tope de activos (fuera de la transacción: una consulta dentro bloquea toda la colección). Carrera aceptada: solo opera el operador.
   const activos = (await col.where('tenantId', '==', tenant).where('activo', '==', true).get()).docs.filter((d) => d.id !== hash);
   if (activos.length >= 2) falla('el tenant ya tiene dos tokens activos; desactive el anterior antes de registrar uno nuevo');
-  // El estado del tenant se lee y el token se escribe en la misma transacción. El rechazo se devuelve, no se lanza dentro:
-  // abandonar una transacción deja bloqueos en la base hasta que vence.
+  // El estado del tenant se lee y el token se escribe en la misma transacción. El rechazo de negocio se devuelve como valor,
+  // para distinguirlo de un error de Firebase.
   let rechazo;
   try {
     rechazo = await firestore.runTransaction(async (tx) => {
@@ -72,8 +72,8 @@ if (comando === 'registrar') {
       tx.set(col.doc(hash), { tenantId: tenant, hash, activo: true, creadoEn: new Date().toISOString() });
       return undefined;
     });
-  } catch {
-    falla('error de Firebase al registrar el token');
+  } catch (e) {
+    falla(`error de Firebase al registrar el token (${e && typeof e === 'object' && 'code' in e ? String(e.code) : 'inesperado'})`);
   }
   if (rechazo !== undefined) falla(rechazo);
   console.log(`registrado: ${hash}`);

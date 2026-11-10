@@ -55,19 +55,20 @@ try {
 }
 
 await cargarManifiestos(); // registra los ganchos de TypeScript
-const { gestionarDominio } = await import(new URL('../plataforma/operador/dominio.ts', import.meta.url).href);
+const { gestionarDominio, RechazoDominio } = await import(new URL('../plataforma/operador/dominio.ts', import.meta.url).href);
 const { getApps, initializeApp } = await import('firebase-admin/app');
 const { FieldValue, getFirestore } = await import('firebase-admin/firestore');
 if (getApps().length === 0) initializeApp({ projectId: proyecto });
 const firestore = getFirestore();
 
-// Los errores de Firebase suelen traer el id del proyecto: solo se muestra su código. Los rechazos de negocio (sin `code`) pasan intactos.
+// Los errores de Firebase suelen traer el id del proyecto: solo se muestra su código. Solo los `RechazoDominio` (mensaje sin identificadores) pasan intactos.
+class ErrorSeguro extends Error {}
 const sinIdentificadores = async (fn) => {
   try {
     return await fn();
   } catch (e) {
-    if (e instanceof Error && !('code' in e)) throw e;
-    throw new Error(`error de Firebase (${e && typeof e === 'object' && 'code' in e ? String(e.code) : 'desconocido'})`, { cause: e });
+    if (e instanceof RechazoDominio) throw e;
+    throw new ErrorSeguro(`error de Firebase (${e && typeof e === 'object' && 'code' in e ? String(e.code) : 'inesperado'})`);
   }
 };
 const db = {
@@ -112,5 +113,5 @@ try {
   else for (const d of r.diferencias) console.log(`  ${d}`);
   console.log(r.aplicado ? 'dominio-tenant: aplicado.' : 'dominio-tenant: sin escritura (use --aplicar para escribir).');
 } catch (e) {
-  falla(e instanceof Error ? e.message : 'error desconocido');
+  falla(e instanceof RechazoDominio || e instanceof ErrorSeguro ? e.message : 'error inesperado');
 }

@@ -3,7 +3,7 @@ import { spawnSync } from 'node:child_process';
 import { describe, expect, it } from 'vitest';
 import { hayEmulador, herramientas, unico } from './ayudas.js';
 import type { EstadoTenant, TransaccionIdentidad } from '@novutienda/nucleo';
-import { construirDominio, esHostValido, gestionarDominio, type BaseDatosDominio } from '../../plataforma/operador/dominio.js';
+import { construirDominio, esHostValido, gestionarDominio, RechazoDominio, type BaseDatosDominio } from '../../plataforma/operador/dominio.js';
 import { exigirTenantOperativo } from '../../plataforma/operador/token.js';
 import { DobleDb } from '../limites/doble-db.js';
 
@@ -122,6 +122,12 @@ describe('gestionarDominio', () => {
     expect(m.doble.docs.has(RUTA)).toBe(false);
   });
 
+  it('los rechazos de negocio son RechazoDominio (los únicos que el script muestra tal cual)', async () => {
+    const m = montaje();
+    await expect(m.correr({ tenantId: 'tenant-x' })).rejects.toBeInstanceOf(RechazoDominio);
+    await expect(m.correr({ host: 'mal' })).rejects.toBeInstanceOf(RechazoDominio);
+  });
+
   it('un mapeo existente corrupto no se pisa', async () => {
     const m = montaje();
     m.doble.poner(RUTA, { tenantId: 5 });
@@ -225,5 +231,5 @@ describe.skipIf(!hayEmulador)('scripts/dominio-tenant.mjs contra el emulador', (
     const quitar = correr(['--host', host, '--eliminar', '--aplicar']);
     expect(quitar.status, quitar.stderr).toBe(0);
     expect((await h.firestore.doc(`dominios/${host}`).get()).exists).toBe(false);
-  });
+  }, 60_000);
 });
