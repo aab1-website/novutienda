@@ -41,6 +41,29 @@ export function validarEntorno({ proyectoArg, hostsEmulador, env = process.env }
   return { proyecto, ambiente, enEmulador };
 }
 
+/**
+ * Entorno del alta de tenant (`alta-tenant.mjs`), que a diferencia de los demás scripts también puede operar en producción, pero solo
+ * de forma explícita: NOVUTIENDA_AMBIENTE=produccion, GCP_PROJECT_ID_PROD igual al proyecto, sin emulador y con `confirmarProduccion`.
+ * Staging y emulador siguen las reglas de `validarEntorno`. El id de producción llega por variable, nunca en el repositorio.
+ */
+export function validarEntornoAlta({ proyectoArg, confirmarProduccion = false, hostsEmulador, env = process.env }) {
+  if (env.NOVUTIENDA_AMBIENTE !== 'produccion') {
+    if (confirmarProduccion) throw new Error('--confirmar-produccion solo aplica con NOVUTIENDA_AMBIENTE=produccion');
+    return validarEntorno({ proyectoArg, hostsEmulador, env });
+  }
+  const proyecto = (env.GOOGLE_CLOUD_PROJECT ?? '').trim();
+  if (!proyecto) throw new Error('defina GOOGLE_CLOUD_PROJECT');
+  if (proyectoArg === undefined || proyectoArg.startsWith('--')) throw new Error('indique --proyecto <id> (debe coincidir con GOOGLE_CLOUD_PROJECT)');
+  if (proyectoArg.trim() !== proyecto) throw new Error('--proyecto no coincide con GOOGLE_CLOUD_PROJECT');
+  const prod = (env.GCP_PROJECT_ID_PROD ?? '').trim();
+  if (prod === '') throw new Error('defina GCP_PROJECT_ID_PROD: con NOVUTIENDA_AMBIENTE=produccion debe ser el proyecto de producción');
+  if (!ID_PROYECTO.test(prod) || !ID_PROYECTO.test(proyecto)) throw new Error('el id de proyecto no tiene un formato válido');
+  if (proyecto !== prod) throw new Error('el proyecto no es el de producción (GCP_PROJECT_ID_PROD)');
+  if (hostsEmulador.some((v) => env[v] !== undefined && env[v] !== '')) throw new Error('con producción no puede haber variables de emulador');
+  if (!confirmarProduccion) throw new Error('operar en producción exige --confirmar-produccion');
+  return { proyecto, ambiente: 'produccion', enEmulador: false };
+}
+
 const dentroDe = (raiz, ruta) => {
   const rel = relative(raiz, ruta);
   return rel === '' || !(rel === '..' || rel.startsWith(`..${sep}`) || isAbsolute(rel));

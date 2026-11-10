@@ -33,7 +33,6 @@ derivan del código; las cifras caducan y por eso no se copian.
 - L3 (HTTP, bus de eventos, disparador) cerrada el 09/11/2026 (plano §6.8 y §7): L3-0 a L3-5 fusionados (PR 42 a 47), L3-6 es este cierre. El encendido por tenant rige también para la API HTTP; ver `docs/produccion/funciones.md`.
 - Pase a producción: alta de Casa Bermejo en producción antes del tag (`docs/produccion/primer-tag.md`); está pendiente. Sin el documento del tenant, la API HTTP responde como módulo apagado.
 - Datos de demostración en staging: código fusionado (scripts `personal-tenant.mjs` y `demo-tenant.mjs`, ficha en `docs/produccion/datos-de-demostracion.md`); aplicarlos en staging es un paso aparte con el visto bueno de Andres.
-- `alta-tenant.mjs` no tiene la guardia contra producción que sí tienen `personal-tenant` y `demo-tenant` (`scripts/guardia-operador.mjs`).
 - `cambiarRol` tiene el mismo patrón de falla parcial del claim que se corrigió en `asignarPrimerAdministrador`.
 - Accesibilidad: botones «Ficha» (inventarios) y «Solicitar anulación» (POS) con nombre accesible que no empieza por su texto visible; el de la tabla del catálogo está en el PR de accesibilidad.
 - Pase a staging (`docs/produccion/pase-a-staging.md`): proyecto, facturación, Firestore/Storage, Hosting, WIF, secretos, App Check,
