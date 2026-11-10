@@ -22,7 +22,7 @@ error() { echo "::error::$*"; exit 1; }
 
 [[ "${AMBIENTE:-}" == "staging" || "${AMBIENTE:-}" == "production" ]] \
   || error "AMBIENTE debe ser staging o production."
-for v in PROYECTO SITIO_ID PANEL_ID PANEL_URL P_TENANT_ID P_APP_CHECK_EXIGIDO P_SITIO_URL P_MEDIOS_BASE_URL; do
+for v in PROYECTO SITIO_ID PANEL_ID PANEL_URL P_APP_CHECK_EXIGIDO P_SITIO_URL P_MEDIOS_BASE_URL; do
   [[ -n "${!v:-}" ]] || error "Falta la variable ${v#P_} (Environment o repositorio). Ver docs/produccion/pase-a-staging.md."
 done
 [[ "$P_APP_CHECK_EXIGIDO" == "true" || "$P_APP_CHECK_EXIGIDO" == "false" ]] \
@@ -48,7 +48,7 @@ firebase target:apply hosting panel "$PANEL_ID" --project "$PROYECTO"
 # 4. Parámetros de Functions (no secretos; los secretos viven en Secret Manager).
 parametros="${RUNNER_TEMP:-/tmp}/funciones.env"
 : >"$parametros"
-for nombre in TENANT_ID APP_CHECK_EXIGIDO RECAPTCHA_CLAVE_SITIO SITIO_URL MEDIOS_BASE_URL FUNCIONES_SERVICE_ACCOUNT PROXY_SALTOS; do
+for nombre in APP_CHECK_EXIGIDO RECAPTCHA_CLAVE_SITIO SITIO_URL MEDIOS_BASE_URL FUNCIONES_SERVICE_ACCOUNT PROXY_SALTOS; do
   var="P_${nombre}"
   valor="${!var:-}"
   [[ "$valor" != *$'\n'* ]] || error "El parámetro $nombre contiene un salto de línea."
@@ -70,7 +70,7 @@ done
 echo "FUNCIONES_PARAMETROS=$parametros" >>"${GITHUB_ENV:-/dev/null}"
 export FUNCIONES_PARAMETROS="$parametros"
 node plataforma/funciones/scripts/empaquetar.mjs
-if ! grep -q '^TENANT_ID=' dist/funciones/.env 2>/dev/null; then
+if ! grep -q '^MEDIOS_BASE_URL=' dist/funciones/.env 2>/dev/null; then
   error "empaquetar.mjs no incorporó los parámetros (FUNCIONES_PARAMETROS → dist/funciones/.env). Contrato pendiente: docs/arquitectura/decisiones.md, «Parámetros de Functions en el despliegue»."
 fi
 echo "Hosting: targets sitio y panel aplicados; parámetros de Functions: $(cut -d= -f1 "$parametros" | paste -sd, -)"

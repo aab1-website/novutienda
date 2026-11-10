@@ -9,19 +9,18 @@ import type { PeticionHttp, RespuestaApi } from './tipos.js';
 
 /** Lo que el borde de website necesita de la configuración del enrutador. */
 export interface ConfigWebsite {
-  readonly tenantId: string;
   readonly limiteContacto: LimiteTasa;
   readonly recaptcha: VerificadorRecaptcha;
   readonly appCheck: VerificadorAppCheck;
 }
 
-export async function manejarSitioPublico(e: Entorno, req: PeticionHttp, ruta: string, cfg: ConfigWebsite): Promise<RespuestaApi> {
+export async function manejarSitioPublico(e: Entorno, req: PeticionHttp, ruta: string, cfg: ConfigWebsite, tenantId: string): Promise<RespuestaApi> {
   const contacto: DepsContacto = {
-    recaptcha: cfg.recaptcha, appCheck: cfg.appCheck, limite: cfg.limiteContacto, almacen: e.guardarContacto(cfg.tenantId), ahora: e.ahora,
+    recaptcha: cfg.recaptcha, appCheck: cfg.appCheck, limite: cfg.limiteContacto, almacen: e.guardarContacto(tenantId), ahora: e.ahora,
   };
   const r = await despacharApi(
     { metodo: req.metodo, ruta, consulta: req.consulta, cabeceras: req.cabeceras, cuerpo: req.cuerpo, origen: req.origen },
-    { leerCotizacion: lectorCotizacion(e.almacenCotizaciones, cfg.tenantId, e.ahora), leerDisponibilidad: e.leerDisponibilidad(cfg.tenantId), contacto },
+    { leerCotizacion: lectorCotizacion(e.almacenCotizaciones, tenantId, e.ahora), leerDisponibilidad: e.leerDisponibilidad(tenantId), contacto },
   );
   return { status: r.status, headers: r.headers, cuerpo: r.cuerpo };
 }
