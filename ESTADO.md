@@ -34,7 +34,6 @@ derivan del código; las cifras caducan y por eso no se copian.
 - Pase a producción: alta de Casa Bermejo en producción antes del tag (`docs/produccion/primer-tag.md`); está pendiente. Sin el documento del tenant, la API HTTP responde como módulo apagado.
 - Datos de demostración en staging: código fusionado (scripts `personal-tenant.mjs` y `demo-tenant.mjs`, ficha en `docs/produccion/datos-de-demostracion.md`); aplicarlos en staging es un paso aparte con el visto bueno de Andres.
 - `cambiarRol` tiene el mismo patrón de falla parcial del claim que se corrigió en `asignarPrimerAdministrador`.
-- Accesibilidad: botones «Ficha» (inventarios) y «Solicitar anulación» (POS) con nombre accesible que no empieza por su texto visible; el de la tabla del catálogo está en el PR de accesibilidad.
 - Pase a staging (`docs/produccion/pase-a-staging.md`): proyecto, facturación, Firestore/Storage, Hosting, WIF, secretos, App Check,
   variables y Environments de GitHub, rulesets, alerta de Monitoring.
 - Decisiones de Andres: D2 a D5 del plan único (proyectos Firebase, ubicación de Firestore —se propone `us-east1`—, segundo aprobador,

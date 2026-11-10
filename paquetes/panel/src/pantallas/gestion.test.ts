@@ -37,7 +37,7 @@ describe('inventario', () => {
     const e = crearEntorno('sup');
     ver(e, h(PantallaInventario, { sub: 'productos' }));
     const u = userEvent.setup();
-    await u.click(await screen.findByRole('button', { name: 'Ver ficha de Televisor 55 pulgadas' }));
+    await u.click(await screen.findByRole('button', { name: 'Ficha de Televisor 55 pulgadas' }));
     expect(await screen.findByText(/Solo el administrador edita/)).toBeTruthy();
     expect(document.querySelector('[data-prueba="precio-bo"]')?.textContent).toContain('Bs 3.132,00');
     expect(document.querySelector('[data-prueba="precio-ar"]')?.textContent).toContain('ARS 480.000,00');
@@ -46,7 +46,7 @@ describe('inventario', () => {
     cleanup();
     const adm = crearEntorno('adm');
     ver(adm, h(PantallaInventario, { sub: 'productos' }));
-    await u.click(await screen.findByRole('button', { name: 'Ver ficha de Televisor 55 pulgadas' }));
+    await u.click(await screen.findByRole('button', { name: 'Ficha de Televisor 55 pulgadas' }));
     expect(await screen.findByText(/Costo y margen \(solo administrador\)/)).toBeTruthy();
     expect(screen.getByText('33,3 %', { exact: false })).toBeTruthy();
   });
@@ -55,7 +55,7 @@ describe('inventario', () => {
     const e = crearEntorno('adm');
     ver(e, h(PantallaInventario, { sub: 'productos' }));
     const u = userEvent.setup();
-    await u.click(await screen.findByRole('button', { name: 'Ver ficha de Cable HDMI 2 m' }));
+    await u.click(await screen.findByRole('button', { name: 'Ficha de Cable HDMI 2 m' }));
     await u.clear(await screen.findByLabelText(/^Bolivia \(USD\)/));
     await u.type(screen.getByLabelText(/^Bolivia \(USD\)/), '10,50');
     await u.clear(screen.getByLabelText('Mínimo de existencias'));

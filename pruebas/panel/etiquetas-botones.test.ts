@@ -4,7 +4,7 @@ import { readdirSync, readFileSync } from 'node:fs';
 import { join } from 'node:path';
 import { describe, expect, it } from 'vitest';
 
-const carpetas = ['paquetes/panel/src/pantallas/consola', 'paquetes/panel/src/ui'];
+const carpetas = ['paquetes/panel/src/pantallas/consola', 'paquetes/panel/src/pantallas/inventarios', 'paquetes/panel/src/pantallas/pos', 'paquetes/panel/src/ui'];
 const raiz = join(__dirname, '..', '..');
 
 function fuentes(dir: string): string[] {
