@@ -7,6 +7,8 @@
 // Un host pertenece a un solo tenant; moverlo a otro exige --reasignar. El tenant debe existir y estar activo o suspendido.
 // Entorno como alta-tenant: GOOGLE_CLOUD_PROJECT igual a --proyecto; NOVUTIENDA_AMBIENTE=staging|emulador, o produccion solo con
 // GCP_PROJECT_ID_PROD y --confirmar-produccion (scripts/guardia-operador.mjs). No imprime identificadores.
+// Compuerta: mientras el secreto de firma de pedidos sea compartido, se rechaza mapear un host a un tenant con `inventarios`
+// si otro tenant con `inventarios` ya tiene host mapeado (también con --verificar). Sin escape.
 // La lógica vive en plataforma/operador/dominio.ts (pura, con la base inyectable).
 import { readFileSync } from 'node:fs';
 import { cargarManifiestos } from './generar-reglas.mjs';
@@ -82,6 +84,7 @@ const db = {
           },
           update: (ruta, datos) => void tx.update(firestore.doc(ruta), datos),
           create: (ruta, datos) => void tx.create(firestore.doc(ruta), datos),
+          listar: async (coleccion) => (await tx.get(firestore.collection(coleccion))).docs.map((d) => ({ ruta: d.ref.path, data: () => d.data() })),
           delete: (ruta) => void tx.delete(firestore.doc(ruta)),
           nuevoId: (coleccion) => firestore.collection(coleccion).doc().id,
           marcaTiempoServidor: () => FieldValue.serverTimestamp(),

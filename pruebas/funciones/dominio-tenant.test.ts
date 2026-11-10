@@ -22,6 +22,7 @@ function montaje(tenants: Readonly<Record<string, EstadoTenant | 'raro'>> = { [A
           get: tx.get.bind(tx) as never,
           update: (ruta, datos) => tx.set(ruta, { ...(doble.dato(ruta) ?? {}), ...datos }),
           delete: tx.delete.bind(tx),
+          listar: async (col) => [...doble.docs].filter(([r, d]) => r.startsWith(`${col}/`) && d.datos !== undefined).map(([ruta, d]) => ({ ruta, data: () => d.datos })),
           create: tx.create.bind(tx),
           nuevoId: tx.nuevoId.bind(tx),
           marcaTiempoServidor: tx.marcaTiempoServidor.bind(tx),
@@ -232,4 +233,42 @@ describe.skipIf(!hayEmulador)('scripts/dominio-tenant.mjs contra el emulador', (
     expect(quitar.status, quitar.stderr).toBe(0);
     expect((await h.firestore.doc(`dominios/${host}`).get()).exists).toBe(false);
   }, 60_000);
+});
+
+describe('compuerta de inventarios (secreto de pedidos compartido)', () => {
+  const conInv = { plan: 'base', estado: 'activo', modulos: { inventarios: { version: '1', submodulos: [] } } };
+  const sinInv = { plan: 'base', estado: 'activo', modulos: {} };
+  const prepara = (b: typeof conInv | typeof sinInv) => {
+    const m = montaje();
+    m.doble.poner(`tenants/${A}`, conInv);
+    m.doble.poner(`tenants/${B}`, b);
+    return m;
+  };
+  it('un solo tenant con inventarios admite varios hosts', async () => {
+    const m = prepara(sinInv);
+    await m.correr({ host: 'uno.ejemplo.test' });
+    await expect(m.correr({ host: 'dos.ejemplo.test' })).resolves.toMatchObject({ aplicado: true });
+  });
+  it('un segundo tenant con inventarios se rechaza, con aplicar o sin él, sin ids en el mensaje', async () => {
+    const m = prepara(conInv);
+    await m.correr({ host: 'uno.ejemplo.test' });
+    for (const aplicar of [true, false]) {
+      const e = await m.correr({ host: 'dos.ejemplo.test', tenantId: B, aplicar }).catch((x: unknown) => x);
+      expect(e).toBeInstanceOf(RechazoDominio);
+      expect((e as Error).message).toMatch(/inventarios/);
+      expect((e as Error).message).not.toMatch(/tenant-[ab]/);
+    }
+    expect(m.doble.dato('dominios/dos.ejemplo.test')).toBeUndefined();
+  });
+  it('un segundo tenant sin inventarios se permite', async () => {
+    const m = prepara(sinInv);
+    await m.correr({ host: 'uno.ejemplo.test' });
+    await expect(m.correr({ host: 'dos.ejemplo.test', tenantId: B })).resolves.toMatchObject({ aplicado: true });
+  });
+  it('eliminar y reasignar sin conflicto no se bloquean', async () => {
+    const m = prepara(sinInv);
+    await m.correr({ host: 'uno.ejemplo.test' });
+    await expect(m.correr({ host: 'uno.ejemplo.test', tenantId: B, reasignar: true })).resolves.toMatchObject({ aplicado: true });
+    await expect(m.correr({ host: 'uno.ejemplo.test', tenantId: B, eliminar: true })).resolves.toMatchObject({ aplicado: true });
+  });
 });

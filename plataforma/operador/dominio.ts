@@ -9,6 +9,8 @@ export interface TransaccionDominio extends TransaccionAuditoria {
   get(ruta: string): Promise<{ readonly existe: boolean; data(): Readonly<Record<string, unknown>> | undefined }>;
   update(ruta: string, datos: Readonly<Record<string, unknown>>): void;
   delete(ruta: string): void;
+  /** Documentos de una colección (solo lectura dentro de la transacción). */
+  listar(coleccion: string): Promise<readonly { readonly ruta: string; data(): Readonly<Record<string, unknown>> | undefined }[]>;
 }
 export interface BaseDatosDominio {
   runTransaction<T>(fn: (tx: TransaccionDominio) => Promise<T>): Promise<T>;
@@ -16,6 +18,12 @@ export interface BaseDatosDominio {
 
 /** Rechazo de negocio (entrada inválida o regla incumplida): su mensaje no lleva identificadores y puede mostrarse tal cual. */
 export class RechazoDominio extends Error {}
+
+/** Misma fuente que el servidor (`tenants/{t}.modulos`, claves = módulos encendidos). */
+function tieneInventarios(datos: Readonly<Record<string, unknown>> | undefined): boolean {
+  const m = datos?.['modulos'];
+  return typeof m === 'object' && m !== null && !Array.isArray(m) && Object.hasOwn(m, 'inventarios');
+}
 
 const ETIQUETA = /^[a-z0-9](?:[a-z0-9-]{0,61}[a-z0-9])?$/;
 
@@ -114,6 +122,20 @@ export async function gestionarDominio(o: {
     const estado = t.data()?.['estado'];
     if (!esEstadoTenant(estado)) return rechazar('el tenant no tiene un estado válido: corra el alta antes');
     if (!tenantOperativo({ estado }) && estado !== 'suspendido') return rechazar('el tenant está de baja: no admite dominios');
+    // Compuerta D-B1: con el secreto de firma de pedidos compartido, dos tenants con inventarios y host propio permitirían repetir
+    // una firma válida de uno contra el host del otro. Se retira cuando cada tenant tenga su propio secreto (PR D).
+    if (tieneInventarios(t.data())) {
+      const vistos = new Set<string>();
+      for (const d of await tx.listar('dominios')) {
+        const otro = d.data()?.['tenantId'];
+        if (d.ruta === ruta || typeof otro !== 'string' || otro === destino || vistos.has(otro)) continue;
+        vistos.add(otro);
+        const ot = await tx.get(`tenants/${otro}`);
+        if (ot.existe && tieneInventarios(ot.data())) {
+          return rechazar('otro tenant con inventarios ya tiene un host mapeado: no se admite un segundo mientras el secreto de firma de pedidos sea compartido');
+        }
+      }
+    }
     if (typeof previo !== 'string') return { accion: 'asignar', destino };
     if (previo === destino) return { accion: 'nada' };
     if (o.reasignar !== true) return rechazar('el host ya pertenece a otro tenant: use --reasignar para moverlo');
