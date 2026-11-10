@@ -99,6 +99,8 @@ export interface AlmacenMedios {
   publicar(origen: string, destino: string): Promise<void>;
   /** Borra los objetos; los que no existen se ignoran. */
   borrar(rutas: readonly string[]): Promise<void>;
+  /** Opcional: borra todo objeto bajo el prefijo (restos de invocaciones que murieron). Sin él, esos restos quedan para el ciclo de vida del bucket. */
+  borrarPrefijo?(prefijo: string): Promise<void>;
 }
 
 export interface InfoMedio {
@@ -134,7 +136,7 @@ export interface ProcesadorMedios {
 export interface ConsultaSubidas {
   listarPorEstado(
     tenantId: string,
-    estado: 'reservada' | 'borrando',
+    estado: 'reservada' | 'procesando' | 'borrando',
     limite: number,
   ): Promise<readonly { readonly id: string; readonly data: Readonly<Record<string, unknown>> }[]>;
 }
