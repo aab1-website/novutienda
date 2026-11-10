@@ -117,7 +117,8 @@ function bloque(b: Obj, base: string): Bloque | undefined {
  */
 export function contenidoDesdePublicado(respuesta: unknown, negocio: unknown, entorno: EntornoSitio): Contenido {
   const errores: string[] = [];
-  const base = entorno.origenMedios.replace(/\/+$/, '');
+  let base = entorno.origenMedios;
+  while (base.endsWith('/')) base = base.slice(0, -1);
 
   const n = validarNegocio(negocio, [entorno.origen, base]);
   if (!n.ok) errores.push(...n.errores);
