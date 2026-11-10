@@ -2,7 +2,7 @@
 // Se importa el módulo real. Las rutas se prueban contra el repositorio real (el módulo decide con el git del propio
 // checkout), usando rutas que no existen o directorios temporales: no se escribe nada en el repositorio.
 import { execFileSync } from 'node:child_process';
-import { mkdtempSync, rmSync, symlinkSync } from 'node:fs';
+import { mkdirSync, mkdtempSync, rmSync, symlinkSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { dirname, join, resolve } from 'node:path';
 import { afterAll, describe, expect, it } from 'vitest';
@@ -153,5 +153,62 @@ describe('guardia de rutas con git', () => {
       expect((e as Error).message).toMatch(/^el archivo de credenciales debe estar/);
       expect((e as Error).message).not.toContain(toplevel);
     }
+  });
+});
+
+interface Fixtures {
+  cargarFixtures(carpeta?: string): { catalogoCsv: string; fixture: { fichas: unknown[] }; bytesFoto: Record<string, number>; tipos: Record<string, string> };
+  nombreFotoValido(n: unknown): boolean;
+  tipoContenidoFoto(a: string): string;
+  intentosEspera(bytes: number): number;
+}
+const rutaFx = '../../scripts/demo-fixtures.mjs';
+const { cargarFixtures, nombreFotoValido, tipoContenidoFoto, intentosEspera } = (await import(/* @vite-ignore */ rutaFx)) as Fixtures;
+
+describe('carpeta de fixtures (--fixtures)', () => {
+  const toplevel = resolve(dirname(new URL(import.meta.url).pathname), '../..');
+  const temporales: string[] = [];
+  afterAll(() => {
+    for (const t of temporales) rmSync(t, { recursive: true, force: true });
+  });
+  const carpeta = (fotos: string[]): string => {
+    const t = mkdtempSync(join(tmpdir(), 'fixtures-'));
+    temporales.push(t);
+    mkdirSync(join(t, 'fotos'));
+    writeFileSync(join(t, 'catalogo.csv'), 'id,nombre\nx,X\n');
+    writeFileSync(join(t, 'demo.json'), JSON.stringify({ fichas: [{ productoId: 'x', fotos: fotos.map((archivo) => ({ archivo, alt: 'a' })) }] }));
+    for (const f of fotos) if (!f.includes('/') && !f.includes('..')) writeFileSync(join(t, 'fotos', f), Buffer.from([1, 2, 3]));
+    return t;
+  };
+
+  it('la carpeta de fábrica se acepta sin guardia; una fuera del repositorio se acepta', () => {
+    expect(cargarFixtures().fixture.fichas.length).toBeGreaterThan(0);
+    const r = cargarFixtures(carpeta(['a.png', 'b.jpg', 'c.webp']));
+    expect(r.tipos).toEqual({ 'a.png': 'image/png', 'b.jpg': 'image/jpeg', 'c.webp': 'image/webp' });
+    expect(r.bytesFoto['a.png']).toBe(3);
+  });
+
+  it('una carpeta dentro del repositorio y no ignorada se rechaza; una ignorada (CLIENTES/) pasa la guardia', () => {
+    expect(() => cargarFixtures(join(toplevel, 'scripts', 'otros-fixtures'))).toThrow(/fuera del repositorio o ignorado/);
+    expect(() => cargarFixtures(join(toplevel, 'paquetes'))).toThrow(/fuera del repositorio o ignorado/);
+    expect(() => cargarFixtures(join(toplevel, 'CLIENTES', 'x', 'fixtures'))).toThrow(/no se pudo leer/);
+  });
+
+  it('los nombres de foto con «/», «\\» o «..» se rechazan', () => {
+    for (const malo of ['../x.png', 'a/../b.png', 'sub/a.png', 'a\\b.png', '..', '', 'a..png']) {
+      expect(nombreFotoValido(malo), malo).toBe(false);
+    }
+    expect(nombreFotoValido('foto-1.JPG')).toBe(true);
+    expect(() => cargarFixtures(carpeta(['../fuera.png']))).toThrow(/nombre de foto/);
+    expect(() => cargarFixtures(carpeta(['sub/a.png']))).toThrow(/nombre de foto/);
+  });
+
+  it('contentType según la extensión y rechazo de otras; la espera crece con el tamaño y tiene tope', () => {
+    expect(tipoContenidoFoto('a.JPEG')).toBe('image/jpeg');
+    expect(tipoContenidoFoto('a.heic')).toBe('image/heic');
+    expect(() => tipoContenidoFoto('a.gif')).toThrow(/extensión/);
+    expect(() => cargarFixtures(carpeta(['a.gif']))).toThrow(/extensión/);
+    expect(intentosEspera(1000)).toBeLessThan(intentosEspera(8 * 1024 * 1024));
+    expect(intentosEspera(15 * 1024 * 1024)).toBeLessThanOrEqual(120);
   });
 });

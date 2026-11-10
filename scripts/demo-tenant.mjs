@@ -1,14 +1,16 @@
 // Carga de datos de demostración de un tenant por las MISMAS callables del panel (nada se escribe directo en Firestore).
 //
-//   node scripts/demo-tenant.mjs <tenant> --proyecto <id> --credenciales <ruta> [--web <ruta>] [--verificar] [--sin-fotos] [--sin-ventas]
-//   node scripts/demo-tenant.mjs <tenant> --proyecto <id> --credenciales <ruta> [--web <ruta>] --aplicar [--sin-fotos] [--sin-ventas]
+//   node scripts/demo-tenant.mjs <tenant> --proyecto <id> --credenciales <ruta> [--web <ruta>] [--fixtures <carpeta>] [--verificar] [--sin-fotos] [--sin-ventas] [--retirar-fuera-del-fixture]
+//   node scripts/demo-tenant.mjs <tenant> --proyecto <id> --credenciales <ruta> [--web <ruta>] [--fixtures <carpeta>] --aplicar [--sin-fotos] [--sin-ventas] [--retirar-fuera-del-fixture]
 //
 // Inicia sesión con el SDK cliente de Firebase como administrador (y como cajero para las ventas) con el archivo de
 // credenciales que dejó personal-tenant.mjs (por defecto, junto a él, `web.json` con la configuración web del proyecto; con
 // `--web` se indica otra ruta). Con FIREBASE_AUTH_EMULATOR_HOST / FUNCTIONS_EMULATOR_HOST / FIREBASE_STORAGE_EMULATOR_HOST
 // definidos se conecta al emulador y no necesita `web.json` (usa GOOGLE_CLOUD_PROJECT). `--verificar` solo lee y muestra el
 // plan; `--aplicar` ejecuta lo que falta: una segunda pasada no escribe nada. No imprime uid, correos, proyecto ni tokens.
-// Fixtures: scripts/demo/ (todo ficticio). La planificación vive en plataforma/operador/demo.ts (pura).
+// Fixtures: scripts/demo/ (todo ficticio) o `--fixtures <carpeta>` (catalogo.csv, demo.json, fotos/), que debe estar fuera del
+// repositorio o ignorada por git. `--retirar-fuera-del-fixture` desactiva y despublica (nunca borra) los productos del tenant
+// que no estén en el catálogo del fixture; `--verificar` los lista como «por retirar: N». La planificación vive en plataforma/operador/demo.ts (pura).
 import { readFileSync } from 'node:fs';
 import { dirname, join, resolve } from 'node:path';
 import { setTimeout as esperar } from 'node:timers/promises';
@@ -18,6 +20,7 @@ import { connectAuthEmulator, getAuth, signInWithEmailAndPassword } from 'fireba
 import { connectFunctionsEmulator, getFunctions, httpsCallable } from 'firebase/functions';
 import { connectStorageEmulator, getStorage, ref, uploadBytes } from 'firebase/storage';
 import { cargarManifiestos } from './generar-reglas.mjs';
+import { cargarFixtures, intentosEspera } from './demo-fixtures.mjs';
 import { exigirFueraDelRepositorio, validarEntorno } from './guardia-operador.mjs';
 
 const falla = (mensaje) => {
@@ -26,7 +29,7 @@ const falla = (mensaje) => {
 };
 
 const args = process.argv.slice(2);
-const CON_VALOR = ['--credenciales', '--web', '--proyecto'];
+const CON_VALOR = ['--credenciales', '--web', '--proyecto', '--fixtures'];
 const tenant = args.find((a, i) => !a.startsWith('--') && !CON_VALOR.includes(args[i - 1] ?? ''));
 const valorDe = (b) => {
   const i = args.indexOf(b);
@@ -34,19 +37,22 @@ const valorDe = (b) => {
 };
 const credencialesRuta = valorDe('--credenciales');
 const webArg = valorDe('--web');
-const BANDERAS = ['--aplicar', '--verificar', '--sin-fotos', '--sin-ventas', ...CON_VALOR];
+const fixturesArg = valorDe('--fixtures');
+const BANDERAS = ['--aplicar', '--verificar', '--sin-fotos', '--sin-ventas', '--retirar-fuera-del-fixture', ...CON_VALOR];
 const desconocidas = args.filter((a) => a.startsWith('--') && !BANDERAS.includes(a));
 const modos = args.filter((a) => a === '--aplicar' || a === '--verificar');
 if (
   tenant === undefined || credencialesRuta === undefined || credencialesRuta.startsWith('--') || (webArg !== undefined && webArg.startsWith('--')) ||
+  (args.includes('--fixtures') && (fixturesArg === undefined || fixturesArg.startsWith('--'))) ||
   desconocidas.length > 0 || modos.length > 1
 ) {
-  falla('uso: demo-tenant.mjs <tenant> --proyecto <id> --credenciales <ruta> [--web <ruta>] [--verificar | --aplicar] [--sin-fotos] [--sin-ventas]');
+  falla('uso: demo-tenant.mjs <tenant> --proyecto <id> --credenciales <ruta> [--web <ruta>] [--fixtures <carpeta>] [--verificar | --aplicar] [--sin-fotos] [--sin-ventas] [--retirar-fuera-del-fixture]');
 }
 if (!/^[a-z0-9][a-z0-9-]{0,62}$/.test(tenant)) falla('el tenant no es un identificador válido');
 const aplicar = modos[0] === '--aplicar';
 const conFotos = !args.includes('--sin-fotos');
 const conVentas = !args.includes('--sin-ventas');
+const retirar = args.includes('--retirar-fuera-del-fixture');
 
 // ---- Archivos locales -------------------------------------------------------------------------------------------
 const rutaCred = resolve(credencialesRuta);
@@ -97,23 +103,17 @@ if (enEmulador && webArg === undefined) {
   if (webConfig.projectId !== proyectoEntorno) falla('web.json no corresponde al proyecto indicado');
 }
 
-const dirDemo = resolve('scripts/demo');
-const catalogoCsv = readFileSync(join(dirDemo, 'catalogo.csv'), 'utf8');
-const fixture = leerJson(join(dirDemo, 'demo.json'), 'scripts/demo/demo.json');
-const bytesFoto = {};
-const archivosFoto = new Map();
-for (const f of fixture.fichas) {
-  for (const foto of f.fotos) {
-    if (!archivosFoto.has(foto.archivo)) {
-      const datos = readFileSync(join(dirDemo, 'fotos', foto.archivo));
-      archivosFoto.set(foto.archivo, datos);
-      bytesFoto[foto.archivo] = datos.length;
-    }
-  }
+let catalogoCsv, fixture, archivosFoto, bytesFoto, tipos, personalizada;
+try {
+  ({ catalogoCsv, fixture, archivosFoto, bytesFoto, tipos, personalizada } = cargarFixtures(fixturesArg));
+} catch (e) {
+  falla(e instanceof Error ? e.message : 'fixtures inválidos');
 }
 
 await cargarManifiestos(); // registra los ganchos de TypeScript
-const { planificarDemo, subidaIdDe, ventaIdDemo } = await import(pathToFileURL(resolve('plataforma/operador/demo.ts')).href);
+const { planificarDemo, subidaIdDe, ventaIdDemo, versionDeFixture, VERSION_DEMO, MAX_INTENTOS_FOTO } = await import(pathToFileURL(resolve('plataforma/operador/demo.ts')).href);
+// Fixtures propios: todos los identificadores de operación llevan una versión derivada del contenido (no chocan con cargas previas).
+const version = personalizada ? versionDeFixture(catalogoCsv, fixture, [...archivosFoto.keys()]) : VERSION_DEMO;
 
 // ---- Sesiones y llamadas ----------------------------------------------------------------------------------------
 // Un SDK cliente por sesión: la de administración y la de caja no se mezclan.
@@ -183,7 +183,9 @@ async function leerEstado() {
     return { uid: String(r.uid), rolActual: usuarios.find((u) => u.uid === r.uid)?.rol ?? null };
   };
   const ubicaciones = ((await llamar('adm', 'inventarios', 'ubicaciones')).ubicaciones ?? []).map((u) => u.id);
-  const productos = ((await llamar('adm', 'inventarios', 'listarProductos', {})).productos ?? []).map((p) => p.id);
+  const listados = (await llamar('adm', 'inventarios', 'listarProductos', {})).productos ?? [];
+  const productos = listados.map((p) => p.id);
+  const productosVisibilidad = listados.map((p) => ({ id: p.id, activo: p.activo === true, publicado: p.publicado === true }));
   const series = {};
   const productosConSerie = [...new Set(fixture.series.map((g) => g.productoId))].filter((id) => productos.includes(id));
   for (const productoId of productosConSerie) {
@@ -194,18 +196,23 @@ async function leerEstado() {
   const fichas = {};
   for (const f of (await llamar('adm', 'consola', 'fichas', {})).fichas ?? []) fichas[f.productoId] = f.ficha;
   const medios = {};
+  const subidas = {};
+  const mediosDetalle = {};
   for (const f of fixture.fichas) {
     if (!productos.includes(f.productoId)) continue;
-    const ids = ((await llamar('adm', 'medios', 'listarMedios', { productoId: f.productoId })).medios ?? []).map((m) => m.id);
+    const listadosMedios = (await llamar('adm', 'medios', 'listarMedios', { productoId: f.productoId })).medios ?? [];
+    const ids = listadosMedios.map((m) => m.id);
     medios[f.productoId] = ids;
-    // Estado parcial: una subida sin medio con reserva vigente («reservada») se reanuda; rechazada o en borrado, se bloquea.
+    mediosDetalle[f.productoId] = listadosMedios.map((m) => ({ id: m.id, tipo: String(m.tipo ?? ''), bytes: Number(m.bytesOriginal ?? -1) }));
+    // Subidas existentes que aún no son medios, con sus reintentos (-r2, -r3): el planificador decide cuál reanudar o reintentar.
     for (let i = 0; i < f.fotos.length; i += 1) {
-      const subidaId = subidaIdDe(f.productoId, i + 1);
-      if (ids.includes(subidaId)) continue;
-      const r = await leerOpcional('adm', 'medios', 'estadoSubida', { subidaId });
-      if (r === null) continue; // sin reserva: se reserva de cero
-      if (r.estado !== 'reservada' && r.estado !== 'procesada') {
-        throw new Error('una foto quedó en un estado parcial no reanudable (reserva rechazada o vencida): limpie esa subida desde el panel y repita');
+      for (let k = 1; k <= MAX_INTENTOS_FOTO; k += 1) {
+        const subidaId = subidaIdDe(f.productoId, i + 1, version, k);
+        if (ids.includes(subidaId)) break;
+        const r = await leerOpcional('adm', 'medios', 'estadoSubida', { subidaId });
+        if (r === null) break; // sin reserva: los siguientes intentos tampoco existen
+        subidas[subidaId] = r.estado;
+        if (r.estado === 'reservada' || r.estado === 'procesada') break;
       }
     }
   }
@@ -213,65 +220,88 @@ async function leerEstado() {
   const turnos = ((await llamar('adm', 'pos', 'turnos', { limite: 200 })).turnos ?? []).map((x) => ({ turnoId: x.turnoId, estado: x.estado }));
   const ventas = [];
   for (const v of fixture.pos.ventas) {
-    const id = ventaIdDemo(v.clave);
+    const id = ventaIdDemo(v.clave, version);
     if ((await leerOpcional('adm', 'pos', 'venta', { ventaId: id })) !== null) ventas.push(id);
   }
   return {
     cuentas: { sup: await cuenta(cuentaSup), caj: await cuenta(cuentaCaj) },
-    ubicaciones, productos, series, plantilla, configSitio, fichas, medios,
+    ubicaciones, productos, productosVisibilidad, series, plantilla, configSitio, fichas, medios, mediosDetalle, subidas,
     tablero: { versionPublicada: Number(t.versionPublicada ?? 0), cambiosSinPublicar: Number(t.cambiosSinPublicar ?? 0) },
     turnos, ventas,
   };
 }
 
 // ---- Fotos -----------------------------------------------------------------------------------------------------
+/** La subida terminó rechazada o en borrado: el intento falló y el planificador usará el id siguiente. */
+class FotoRechazada extends Error {}
 async function subirFoto(paso) {
   const bytes = archivosFoto.get(paso.archivo);
   if (bytes === undefined) throw new Error('archivo de foto desconocido');
   const reserva = await llamar('adm', 'medios', 'reservarSubida', { subidaId: paso.subidaId, productoId: paso.productoId, tipo: 'foto', bytes: bytes.length });
   const s = await sesion('adm');
   try {
-    await uploadBytes(ref(s.almacenamiento, reserva.rutaOriginal), bytes, { contentType: 'image/png' });
+    await uploadBytes(ref(s.almacenamiento, reserva.rutaOriginal), bytes, { contentType: tipos[paso.archivo] });
   } catch (e) {
     throw new Error(`no se pudo subir la foto (${e && typeof e === 'object' && 'code' in e ? String(e.code) : 'desconocido'})`, { cause: e });
   }
-  // El disparador de Storage también finaliza la subida: si gana él, finalizarSubida responde «ya resuelta» y se espera el estado.
-  try {
-    await llamar('adm', 'medios', 'finalizarSubida', { subidaId: paso.subidaId });
-    return;
-  } catch (e) {
-    if (!(e instanceof ErrorLlamada) || e.codigo !== 'failed-precondition') throw e;
-  }
-  for (let i = 0; i < 40; i += 1) {
+  // Procesa el disparador de Storage. Llamar a finalizarSubida a la vez haría competir a los dos por el mismo directorio temporal
+  // y el perdedor marcaría la subida como rechazada: solo se usa de respaldo si tras ~45 s la reserva sigue «reservada».
+  const intentos = intentosEspera(bytes.length);
+  let respaldo = false;
+  for (let i = 0; i < intentos; i += 1) {
     const r = await llamar('adm', 'medios', 'estadoSubida', { subidaId: paso.subidaId });
     if (r.estado === 'procesada') return;
-    if (r.estado === 'rechazada' || r.estado === 'borrando') throw new Error('el servidor rechazó una foto');
+    if (r.estado === 'rechazada' || r.estado === 'borrando') throw new FotoRechazada('el servidor rechazó una foto');
+    if (!respaldo && i >= 30) {
+      respaldo = true;
+      try {
+        await llamar('adm', 'medios', 'finalizarSubida', { subidaId: paso.subidaId });
+      } catch (e) {
+        if (!(e instanceof ErrorLlamada) || e.codigo !== 'failed-precondition') throw e;
+      }
+      continue;
+    }
     await esperar(1500);
   }
   throw new Error('una foto no terminó de procesarse a tiempo');
 }
 
 // ---- Ejecución --------------------------------------------------------------------------------------------------
+// Rondas: si el servidor rechaza una foto, se vuelve a leer el estado y el planificador reintenta con un id nuevo (-r2, -r3).
 try {
-  const estado = await leerEstado();
-  const plan = planificarDemo(catalogoCsv, fixture, estado, { fotos: conFotos, ventas: conVentas, bytesFoto });
-  if (plan.diferencias.length === 0) console.log('demo-tenant: el tenant ya tiene los datos de demostración.');
-  else for (const d of plan.diferencias) console.log(`  ${d}`);
-  for (const b of plan.bloqueos) console.log(`  BLOQUEO: ${b}`);
-  console.log(`demo-tenant: pasos pendientes ${plan.pasos.length}.`);
-  if (!aplicar) {
-    console.log('demo-tenant: sin escritura (use --aplicar para escribir).');
-  } else if (plan.bloqueos.length > 0) {
-    falla('hay bloqueos: no se escribe nada');
-  } else {
+  for (let ronda = 1; ronda <= MAX_INTENTOS_FOTO; ronda += 1) {
+    const estado = await leerEstado();
+    const plan = planificarDemo(catalogoCsv, fixture, estado, { fotos: conFotos, ventas: conVentas, bytesFoto, retirarFueraDelFixture: retirar, version });
+    if (plan.diferencias.length === 0) console.log('demo-tenant: el tenant ya tiene los datos de demostración.');
+    else for (const d of plan.diferencias) console.log(`  ${d}`);
+    for (const b of plan.bloqueos) console.log(`  BLOQUEO: ${b}`);
+    console.log(`demo-tenant: pasos pendientes ${plan.pasos.length}.`);
+    if (!aplicar) {
+      console.log('demo-tenant: sin escritura (use --aplicar para escribir).');
+      break;
+    }
+    if (plan.bloqueos.length > 0) falla('hay bloqueos: no se escribe nada');
     const porEtapa = new Map();
+    let rechazada = false;
     for (const paso of plan.pasos) {
-      if (paso.tipo === 'foto') await subirFoto(paso);
-      else await llamar(paso.como, paso.modulo, paso.accion, paso.datos);
+      if (paso.tipo === 'foto') {
+        try {
+          await subirFoto(paso);
+        } catch (e) {
+          if (!(e instanceof FotoRechazada)) throw e;
+          rechazada = true;
+          console.log('  una foto fue rechazada: se reintentará con una subida nueva');
+          break; // las fichas dependen de las fotos: se vuelve a planificar
+        }
+      } else await llamar(paso.como, paso.modulo, paso.accion, paso.datos);
       porEtapa.set(paso.etapa, (porEtapa.get(paso.etapa) ?? 0) + 1);
     }
     for (const [etapa, n] of porEtapa) console.log(`  ${etapa}: ${n}`);
-    console.log('demo-tenant: aplicado.');
+    if (!rechazada) {
+      console.log('demo-tenant: aplicado.');
+      break;
+    }
+    if (ronda === MAX_INTENTOS_FOTO) falla('las fotos siguen rechazadas tras los reintentos: no se continúa');
   }
 } catch (e) {
   falla(e instanceof Error ? e.message : 'error desconocido');

@@ -46,6 +46,33 @@ Siempre `--verificar` (solo lectura) antes de `--aplicar`.
 
 Si el plan muestra `BLOQUEO`, `--aplicar` no escribe nada: se corrige la causa y se repite `--verificar`.
 
+## Fixtures propios (`--fixtures`)
+
+Por defecto el script carga `scripts/demo/` (ficticio). `--fixtures <carpeta>` carga otra carpeta con `catalogo.csv`, `demo.json`
+(misma forma que el de fábrica) y `fotos/`. Esa carpeta puede traer datos reales, así que **debe estar fuera del repositorio o
+ignorada por git** (la misma guardia que las credenciales); si no, el script se detiene antes de leer nada. Los datos reales no
+se versionan nunca.
+
+- Los nombres de foto no pueden contener `/`, `\` ni `..`. Se admiten `.jpg`, `.png`, `.webp` y `.heic` (el tipo se toma de la
+  extensión) y hasta 15 MB por foto (tope de la regla de Storage). La espera del procesamiento crece con el tamaño de la foto, con tope.
+- La importación de Inventarios admite hasta 50 filas por llamada: un catálogo mayor se parte en lotes de 50 con
+  `operacionId` deterministas (`demo-v1-catalogo`, `demo-v1-catalogo-2`, …). Cada lote es todo o nada; un lote ya cargado se omite y uno
+  parcial bloquea. El plan del sitio admite hasta 200 productos en total.
+- Con fixtures propios, todos los identificadores de operación, subidas, turno y ventas llevan el prefijo `demo-x<hash8>` (primeros 8 hex del SHA-256 de `catalogo.csv`, `demo.json` y los nombres de foto) en lugar de `demo-v1`: no chocan con cargas anteriores y un fixture cambiado produce operaciones nuevas. Plantilla y configuración del sitio que ya coinciden se omiten; el turno de una carga anterior no se reutiliza.
+- Fotos: tras subir el original el script solo espera a que el disparador de Storage la procese (sondea el estado; `finalizarSubida`
+  queda de respaldo si a los ~45 s la reserva sigue pendiente), porque llamar a ambos a la vez hace que uno rechace la subida. Una
+  subida rechazada se reintenta con un identificador nuevo (`<id>-r2`, `-r3`; hasta 3 intentos por foto) y tras 3 fallos el plan da
+  `BLOQUEO`. Las reservas rechazadas liberan su cupo de 5 fotos por producto.
+- Subir o no una foto depende del estado: si el producto ya tiene un medio de tipo foto con los mismos bytes, se reutiliza (con su id real) aunque el prefijo haya cambiado por editar el fixture. Las fichas se guardan solo si difieren del fixture y referencian los medios existentes; el prefijo solo versiona las operaciones que escriben por primera vez.
+- La segunda pasada sigue en cero pasos con fixtures propios.
+
+## Retirar lo que no está en el fixture (`--retirar-fuera-del-fixture`)
+
+Con esta opción, `--aplicar` desactiva y despublica (`activo=false`, `publicado=false`; nunca borra) los productos del tenant cuyo
+id no figura en el `catalogo.csv` del fixture, con la acción `editarProducto` de la consola (la misma del panel). `--verificar`
+los lista como «por retirar: N». Es idempotente: los ya retirados no vuelven a aparecer. Se republica el sitio al final. Sirve,
+por ejemplo, para quitar de staging los productos de una demostración anterior.
+
 ## Idempotencia
 
 Los identificadores de operación son deterministas (`demo-v1-…`). Una segunda pasada de `--verificar` informa «pasos pendientes 0» y
