@@ -252,6 +252,18 @@ async function cambiarRol(
     try {
       claim = await escribirClaim(deps, uid, tenantId, rol);
     } catch (e) {
+      // setCustomUserClaims pudo aplicar el claim antes de fallar: se relee Auth antes de revertir (igual que asignarPrimerAdministrador).
+      let vigente: Rol | '' | 'desconocido';
+      try {
+        vigente = rolEn((await deps.auth.getUser(uid)).customClaims, tenantId);
+      } catch {
+        vigente = 'desconocido';
+      }
+      const deseado: Rol | '' = rol ?? '';
+      if (vigente === 'desconocido') throw new ErrorIdentidad('estado', 'Estado del claim desconocido; no se revierte, revisar a mano');
+      if (vigente === deseado && vigente !== rolClaim) {
+        throw new ErrorIdentidad('estado', 'Claim aplicado pero no confirmado; espejo conservado, revisar');
+      }
       await revertirEspejo(deps, actor, aut, tenantId, uid, rutaMiembro, estado);
       throw e;
     }
@@ -404,7 +416,6 @@ export async function asignarPrimerAdministrador(
       return await escribirClaim(deps, uid, tenantId, 'adm');
     } catch (e) {
       // setCustomUserClaims pudo aplicar el claim antes de fallar: se relee Auth antes de revertir.
-      // (cambiarRol tiene el mismo patrón; se corrige en un cambio aparte.)
       let vigente: Rol | '' | 'desconocido';
       try {
         vigente = rolEn((await deps.auth.getUser(uid)).customClaims, tenantId);
