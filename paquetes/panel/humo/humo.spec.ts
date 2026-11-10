@@ -122,7 +122,7 @@ for (const esquema of ESQUEMAS) {
       await expect(page.getByRole('table', { name: 'Productos y existencias por almacén' })).toBeVisible();
       await expect(page.getByText(/Alerta de mínimo/)).toBeVisible();
       await sinViolaciones(page, 'inventario');
-      await page.getByRole('button', { name: 'Ver ficha de Televisor 55 pulgadas' }).click();
+      await page.getByRole('button', { name: 'Ficha de Televisor 55 pulgadas' }).click();
       await expect(page.locator('[data-prueba="precio-bo"]')).toContainText('Bs 3.132,00');
       await sinViolaciones(page, 'ficha de producto');
       await page.getByRole('link', { name: 'Conteo ciego' }).click();
