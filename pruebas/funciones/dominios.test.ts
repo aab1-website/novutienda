@@ -86,6 +86,19 @@ describe('crearLectorDominios', () => {
     expect(m.lector.enCache('a.test')).toBe(false);
   });
 
+  it('agrupa lecturas simultáneas del mismo host y un error no queda en caché', async () => {
+    const m = montar({ 'dominios/a.test': { tenantId: 'tienda-a' } });
+    const r = await Promise.all([m.lector('a.test'), m.lector('a.test'), m.lector('a.test')]);
+    expect(r).toEqual(['tienda-a', 'tienda-a', 'tienda-a']);
+    expect(m.lecturas).toHaveLength(1);
+    const f = montar({}, true);
+    const fallos = await Promise.allSettled([f.lector('a.test'), f.lector('a.test')]);
+    expect(fallos.every((x) => x.status === 'rejected')).toBe(true);
+    expect(f.lecturas).toHaveLength(1);
+    await expect(f.lector('a.test')).rejects.toThrow('firestore caído');
+    expect(f.lecturas).toHaveLength(2); // el rechazo no quedó guardado: se vuelve a leer
+  });
+
   it('respeta el tope de entradas', async () => {
     const m = montar();
     for (let i = 0; i < TOPE_DOMINIOS + 50; i += 1) await m.lector(`h${String(i)}.test`);

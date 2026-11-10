@@ -1,12 +1,19 @@
 // El tenant de las rutas públicas sale del host (sin emulador, entorno doble): cada host a su tenant, lista cerrada, y
 // el control de estado del tenant (suspendido o de baja: 404 en el sitio, 401 en el pedido firmado).
-import { describe, expect, it } from 'vitest';
+import { describe, expect, it, vi } from 'vitest';
 import { limiteMemoria } from '@novutienda/nucleo';
 import { crearLectorDominios } from '../../plataforma/coordinador/dominios.js';
 import { crearLectoresModulos } from '../../plataforma/coordinador/modulos-activos.js';
 import { enrutar, type ConfigRouter } from '../../plataforma/funciones/servidor/http/router.js';
 import { sha256Hex } from '../../plataforma/funciones/servidor/http/novuchat.js';
 import { firmar, TENANT_TODO_ENCENDIDO } from './ayudas.js';
+
+// El logger de `firebase-functions` toma `console.warn` al cargarse: se intercepta antes de los imports (hoisted) para leer sus avisos.
+const avisos = vi.hoisted(() => {
+  const lista: string[] = [];
+  console.warn = (...a: unknown[]): void => { lista.push(a.map(String).join(' ')); };
+  return lista;
+});
 
 const A = 'tienda-a';
 const B = 'tienda-b';
@@ -16,7 +23,7 @@ const AHORA = 1_700_000_000_000;
 const SECRETO = 'secreto-pedidos-de-prueba';
 const TOKEN = 'token-de-prueba';
 
-function montar(docs: Record<string, unknown>, o: { hosts?: number } = {}) {
+function montar(docs: Record<string, unknown>, o: { hosts?: number; hostsGlobal?: number } = {}) {
   const lecturas: string[] = [];
   const contactos: { tenantId: string; operacionId: string }[] = [];
   const disponibilidad: string[] = [];
@@ -47,7 +54,7 @@ function montar(docs: Record<string, unknown>, o: { hosts?: number } = {}) {
     appCheck: { verificar: () => Promise.resolve(true) },
     novuchat: { sitioUrl: '', mediosBaseUrl: 'https://medios.test', limite: limiteMemoria(1000, 60_000), secretoPedidos: SECRETO },
     limiteContacto: limiteMemoria(1000, 60_000),
-    limiteMemoria: { novuchat: limiteMemoria(1000, 60_000), disponibilidad: limiteMemoria(1000, 60_000), contacto: limiteMemoria(1000, 60_000), hosts: limiteMemoria(o.hosts ?? 1000, 60_000), hostsGlobal: limiteMemoria(1000, 60_000) },
+    limiteMemoria: { novuchat: limiteMemoria(1000, 60_000), disponibilidad: limiteMemoria(1000, 60_000), contacto: limiteMemoria(1000, 60_000), hosts: limiteMemoria(o.hosts ?? 1000, 60_000), hostsGlobal: limiteMemoria(o.hostsGlobal ?? 1000, 60_000) },
   };
   return { e, cfg, lecturas, contactos, disponibilidad, cotizaciones };
 }
@@ -147,6 +154,26 @@ describe('tenant por host en las rutas públicas', () => {
     expect(m.lecturas.filter((l) => l.startsWith('dominios/'))).toEqual(['dominios/uno.test', 'dominios/dos.test']);
     // Un host ya cacheado (aunque sea negativo) responde sin gastar el límite.
     expect((await enrutar(m.e, peticion('GET', '/api/disponibilidad', 'uno.test'), m.cfg)).status).toBe(404);
+  });
+
+  it('el límite global de hosts (clave fija) responde 429 aunque cambie el origen', async () => {
+    const m = montar(base(), { hostsGlobal: 2 });
+    const desde = (host: string, origen: string) => ({ ...peticion('GET', '/api/disponibilidad', host), origen });
+    expect((await enrutar(m.e, desde('uno.test', 'o1'), m.cfg)).status).toBe(404);
+    expect((await enrutar(m.e, desde('dos.test', 'o2'), m.cfg)).status).toBe(404);
+    expect((await enrutar(m.e, desde('tres.test', 'o3'), m.cfg)).status).toBe(429);
+    expect(m.lecturas.filter((l) => l.startsWith('dominios/'))).toEqual(['dominios/uno.test', 'dominios/dos.test']);
+  });
+
+  it('el log de rechazo lleva todos los nombres de cabeceras, ordenados y sin valores', async () => {
+    avisos.length = 0;
+    const m = montar(base());
+    const p = peticion('GET', '/api/disponibilidad', undefined, { cabeceras: { 'x-zeta': 'valor-secreto', accept: 'a' } });
+    await enrutar(m.e, p, m.cfg);
+    const texto = avisos.join('\n');
+    expect(texto).toContain('host-invalido');
+    expect(texto).toContain(JSON.stringify(Object.keys(p.cabeceras).sort()));
+    expect(texto).not.toContain('valor-secreto');
   });
 
   it('el catálogo y el inventario siguen por token, sin host', async () => {

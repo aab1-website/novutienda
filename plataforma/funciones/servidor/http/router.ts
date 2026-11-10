@@ -52,6 +52,9 @@ async function tenantDelHost(e: Entorno, req: PeticionHttp, cfg: ConfigRouter): 
     if (!e.tenantDelHost.enCache(host)) {
       const limitado = await excedeLimite(cfg.limiteMemoria.hosts, `hosts:${req.origen}`, e.ahora());
       if (limitado !== undefined) return limitado;
+      // Tope global de la instancia: rotar el origen no evita la cuota de lecturas de Firestore.
+      const global = await excedeLimite(cfg.limiteMemoria.hostsGlobal, 'hosts:*', e.ahora());
+      if (global !== undefined) return global;
     }
     const tenantId = await e.tenantDelHost(host);
     if (tenantId !== undefined) return tenantId;
