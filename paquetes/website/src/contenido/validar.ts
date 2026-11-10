@@ -6,7 +6,7 @@
 import type { Mercado } from '@novutienda/nucleo';
 import {
   IDS_ICONO, IDS_PLANTILLA, LIMITES_SITIO,
-  type Bloque, type Contenido, type Foto, type IdIcono, type IdPlantilla, type Producto, type Seccion,
+  type Beneficio, type Bloque, type Contenido, type Foto, type IdIcono, type IdPlantilla, type Identidad, type NegocioSitio, type Portada, type Producto, type Seccion,
 } from './tipos.js';
 
 export type ResultadoValidacion =
@@ -277,14 +277,8 @@ function leerBloque(l: Lector, v: unknown, ruta: string, cfg: Contenido['config'
   }
 }
 
-/** Valida y normaliza el contenido completo. No confía en ningún campo. */
-export function validarContenido(entrada: unknown): ResultadoValidacion {
-  const l = new Lector();
-  const raiz = l.obj(entrada, 'contenido');
-  const config = leerConfig(l, raiz['config']);
-  const origenes = [config.origen, config.origenMedios];
-
-  const por = l.obj(raiz['portada'], 'portada');
+function leerPortada(l: Lector, v: unknown): Portada {
+  const por = l.obj(v, 'portada');
   const tit = l.lista(por['titulo'], 'portada.titulo', 3, 3).map((t, i) => l.texto(t, `portada.titulo[${i}]`, 1, 60));
   const portada = {
     insignia: l.texto(por['insignia'], 'portada.insignia', 1, 60),
@@ -293,27 +287,20 @@ export function validarContenido(entrada: unknown): ResultadoValidacion {
     textoBotonCatalogo: l.texto(por['textoBotonCatalogo'], 'portada.textoBotonCatalogo', 1, 60),
     textoBotonConsulta: l.texto(por['textoBotonConsulta'], 'portada.textoBotonConsulta', 1, 60),
   };
+  return portada;
+}
 
-  const beneficios = l.lista(raiz['beneficios'], 'beneficios', 8).map((b, i) => {
+function leerBeneficios(l: Lector, v: unknown): Beneficio[] {
+  return l.lista(v, 'beneficios', 8).map((b, i) => {
     const o = l.obj(b, `beneficios[${i}]`);
     return { icono: l.icono(o['icono'], `beneficios[${i}].icono`), titulo: leerAfirmacion(l, o['titulo'], `beneficios[${i}].titulo`), descripcion: l.texto(o['descripcion'], `beneficios[${i}].descripcion`, 1, 160) };
   });
+}
 
-  const idsCat = new Set<string>();
-  const categorias = l.lista(raiz['categorias'], 'categorias', 40, 1).map((c, i) => {
-    const o = l.obj(c, `categorias[${i}]`);
-    const id = l.texto(o['id'], `categorias[${i}].id`, 1, 60);
-    if (!RE_SLUG.test(id)) l.falla(`categorias[${i}].id`, 'identificador inválido');
-    if (idsCat.has(id)) l.falla(`categorias[${i}].id`, `duplicado: ${id}`);
-    idsCat.add(id);
-    return { id, nombre: l.texto(o['nombre'], `categorias[${i}].nombre`, 1, 80), icono: l.icono(o['icono'], `categorias[${i}].icono`) };
-  });
-
-  const marcas = l.lista(raiz['marcas'], 'marcas', 40).map((m, i) => l.texto(m, `marcas[${i}]`, 1, 40));
-
-  const ide = l.obj(raiz['identidad'], 'identidad');
+function leerIdentidad(l: Lector, v: unknown, origenes: readonly (string | null)[]): Identidad {
+  const ide = l.obj(v, 'identidad');
   const cifraCruda = ide['cifra'];
-  const identidad = {
+  return {
     etiqueta: l.texto(ide['etiqueta'], 'identidad.etiqueta', 1, 80),
     titulo: l.texto(ide['titulo'], 'identidad.titulo', 1, 120),
     texto: l.texto(ide['texto'], 'identidad.texto', 1, 1200),
@@ -328,6 +315,100 @@ export function validarContenido(entrada: unknown): ResultadoValidacion {
     }),
     sello: leerAfirmacion(l, ide['sello'], 'identidad.sello'),
   };
+}
+
+export type ResultadoNegocio =
+  | { readonly ok: true; readonly negocio: NegocioSitio }
+  | { readonly ok: false; readonly errores: readonly string[] };
+
+/**
+ * Valida los datos del negocio (JSON externo). `origenes` son los orígenes de medios aceptados para el logo y la foto de identidad
+ * (además de rutas propias). Los errores nombran campos, nunca valores.
+ */
+export function validarNegocio(entrada: unknown, origenes: readonly (string | null)[] = []): ResultadoNegocio {
+  const l = new Lector();
+  const o = l.obj(entrada, 'negocio');
+  const wa = (k: string): string | null => {
+    const x = o[k];
+    if (x === null) return null;
+    if (typeof x !== 'string' || !RE_WA.test(x)) {
+      l.falla(`negocio.${k}`, 'debe ser null o un número solo con dígitos y código de país');
+      return null;
+    }
+    return x;
+  };
+  const mercados = l.lista(o['mercados'], 'negocio.mercados', 2, 1).filter((m): m is Mercado => m === 'BO' || m === 'AR');
+  if (mercados.length === 0) l.falla('negocio.mercados', 'debe incluir BO o AR');
+  const mercadoInicial = mercados.find((m) => m === o['mercadoInicial']) ?? mercados[0] ?? 'BO';
+  if (!mercados.includes(o['mercadoInicial'] as Mercado)) l.falla('negocio.mercadoInicial', 'debe estar entre los mercados activos');
+  const enlacesPermitidos = l.lista(o['enlacesPermitidos'], 'negocio.enlacesPermitidos', 20).map((h, i) => {
+    if (typeof h !== 'string' || !RE_HOST.test(h)) {
+      l.falla(`negocio.enlacesPermitidos[${i}]`, 'debe ser un nombre de anfitrión');
+      return '';
+    }
+    return h;
+  });
+  const categorias: Record<string, { nombre: string; icono: IdIcono }> = {};
+  if (o['categorias'] !== undefined) {
+    const c = l.obj(o['categorias'], 'negocio.categorias');
+    for (const [id, x] of Object.entries(c)) {
+      const r = `negocio.categorias.${id}`;
+      if (!RE_SLUG.test(id)) l.falla('negocio.categorias', 'una clave no es un identificador válido');
+      const e = l.obj(x, r);
+      categorias[id] = { nombre: l.texto(e['nombre'], `${r}.nombre`, 1, 80), icono: l.icono(e['icono'], `${r}.icono`) };
+    }
+  }
+  const destacados = o['destacados'] === undefined ? [] : l.lista(o['destacados'], 'negocio.destacados', LIMITES_SITIO.productos).map((d, i) => {
+    const id = l.texto(d, `negocio.destacados[${i}]`, 1, 60);
+    if (id !== '' && !RE_ID.test(id)) l.falla(`negocio.destacados[${i}]`, 'identificador inválido');
+    return id;
+  });
+  const negocio: NegocioSitio = {
+    nombre: l.texto(o['nombre'], 'negocio.nombre', 1, 80),
+    lema: l.texto(o['lema'], 'negocio.lema', 0, 160),
+    logo: o['logo'] === null ? null : leerFoto(l, o['logo'], 'negocio.logo', origenes),
+    whatsappTienda: wa('whatsappTienda'),
+    telefono: o['telefono'] === null ? null : l.texto(o['telefono'], 'negocio.telefono', 6, 30),
+    correo: o['correo'] === null ? null : l.texto(o['correo'], 'negocio.correo', 5, 120),
+    direccion: l.texto(o['direccion'], 'negocio.direccion', 1, 200),
+    horario: l.textoONulo(o['horario'], 'negocio.horario', 200),
+    mercados,
+    mercadoInicial,
+    enlacesPermitidos: enlacesPermitidos.filter((h) => h !== ''),
+    portada: leerPortada(l, o['portada']),
+    beneficios: leerBeneficios(l, o['beneficios']),
+    identidad: leerIdentidad(l, o['identidad'], origenes),
+    textoPrivacidad: l.lista(o['textoPrivacidad'], 'negocio.textoPrivacidad', 40, 1).map((p, i) => l.texto(p, `negocio.textoPrivacidad[${i}]`, 1, 2000)),
+    categorias,
+    destacados,
+  };
+  return l.errores.length > 0 ? { ok: false, errores: l.errores } : { ok: true, negocio };
+}
+
+/** Valida y normaliza el contenido completo. No confía en ningún campo. */
+export function validarContenido(entrada: unknown): ResultadoValidacion {
+  const l = new Lector();
+  const raiz = l.obj(entrada, 'contenido');
+  const config = leerConfig(l, raiz['config']);
+  const origenes = [config.origen, config.origenMedios];
+
+  const portada = leerPortada(l, raiz['portada']);
+
+  const beneficios = leerBeneficios(l, raiz['beneficios']);
+
+  const idsCat = new Set<string>();
+  const categorias = l.lista(raiz['categorias'], 'categorias', 40, 1).map((c, i) => {
+    const o = l.obj(c, `categorias[${i}]`);
+    const id = l.texto(o['id'], `categorias[${i}].id`, 1, 60);
+    if (!RE_SLUG.test(id)) l.falla(`categorias[${i}].id`, 'identificador inválido');
+    if (idsCat.has(id)) l.falla(`categorias[${i}].id`, `duplicado: ${id}`);
+    idsCat.add(id);
+    return { id, nombre: l.texto(o['nombre'], `categorias[${i}].nombre`, 1, 80), icono: l.icono(o['icono'], `categorias[${i}].icono`) };
+  });
+
+  const marcas = l.lista(raiz['marcas'], 'marcas', 40).map((m, i) => l.texto(m, `marcas[${i}]`, 1, 40));
+
+  const identidad = leerIdentidad(l, raiz['identidad'], origenes);
 
   const ids = new Set<string>();
   const slugs = new Set<string>();
