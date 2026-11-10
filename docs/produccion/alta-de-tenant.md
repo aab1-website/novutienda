@@ -20,6 +20,16 @@ sin cualquiera de ellas el script se detiene antes de leer o escribir nada.
 - En producción, `--aplicar` se corre con el «sí» de Andres (escribe en un servicio externo). Es un paso del pase a producción
   (`docs/produccion/primer-tag.md`): sin el documento, todas las acciones de módulo quedan rechazadas.
 
+## Estado del tenant
+
+- El alta **preserva el estado** del documento existente (el `set` completo no lo pisa) y crea los tenants nuevos con `estado: 'activo'`.
+- **Rechaza** el alta de un id cuyo tenant está dado de baja (la baja es terminal) y de un estado desconocido en el documento.
+- Solo busca subcolecciones cuando el documento **no existe**: si hay datos previos sin documento, lo rechaza (no adopta un tenant con datos ajenos).
+  Un documento existente pero inválido **se adopta** y se reemplaza (el diff lo muestra).
+- Un estado **ausente se normaliza a `activo`** y el diff lo muestra (`estado: ausente -> "activo"`): eso es la migración de los tenants
+  existentes. Córrala con `--verificar` y luego `--aplicar` **antes** de fusionar o desplegar el cambio de estado; sin ella quedan denegados.
+- Para suspender, reactivar o dar de baja, use `scripts/estado-tenant.mjs`: `docs/produccion/ciclo-de-vida-tenant.md`.
+
 ## Apagar o encender un módulo
 
 El servidor lee el encendido con una caché de 60 s por instancia de Functions y no hay forma de invalidarla. Apagar o encender un

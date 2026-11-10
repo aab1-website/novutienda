@@ -87,7 +87,7 @@ const vigente = (t: Record<string, string>, extra: Record<string, unknown> = {})
 
 function montaje(usuarios: Record<string, Usuario>) {
   const db = new DobleDb();
-  db.poner('tenants/t1', { plan: 'base', modulos: {}, zonaHoraria: 'America/La_Paz', monedas: ['BOB', 'USD', 'ARS'] });
+  db.poner('tenants/t1', { plan: 'base', estado: 'activo', modulos: {}, zonaHoraria: 'America/La_Paz', monedas: ['BOB', 'USD', 'ARS'] });
   const todos: Record<string, Usuario> = {
     adm1: vigente({ t1: 'adm' }),
     dueno: vigente({}, { p: true }),
@@ -335,7 +335,7 @@ describe('asignarRol', () => {
 
   it('carrera de claims entre tenants: el segundo conserva el rol del primero', async () => {
     const { deps, todos, db } = montaje({ u1: { ...pw } });
-    db.poner('tenants/t2', { plan: 'base', modulos: {}, zonaHoraria: 'America/La_Paz', monedas: ['BOB', 'USD', 'ARS'] });
+    db.poner('tenants/t2', { plan: 'base', estado: 'activo', modulos: {}, zonaHoraria: 'America/La_Paz', monedas: ['BOB', 'USD', 'ARS'] });
     await Promise.all([asignarRol(deps, dueno, 't1', 'u1', 'caj'), asignarRol(deps, dueno, 't2', 'u1', 'sup')]);
     const pl = todos['u1']?.customClaims?.['pl'] as { t: Record<string, string>; v: number };
     expect(pl.t).toEqual({ t1: 'caj', t2: 'sup' });

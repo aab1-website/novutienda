@@ -110,6 +110,7 @@ describe.skipIf(host === undefined)('reglas de Firestore contra el emulador', ()
       ['negación final reemplazada por permiso', (t) => t.replace(/(\{document=\*\*\} \{\n\s+)allow read, write: if false;/, '$1allow read, write: if true;')],
       ['proveedor ignorado', (t) => t.replace("&& proveedor() == 'password'", '')],
       ['correo verificado ignorado', (t) => t.replace("&& request.auth.token.get('email_verified', false) == true", '')],
+      ['estado del tenant ignorado', (t) => t.replace('&& tenantActivo(tenantId)', '')],
       ['rol sin comprobar', (t) => t.replace('&& rolEn(tenantId) in roles', '&& rolEn(tenantId) != \'\'')],
     ];
 

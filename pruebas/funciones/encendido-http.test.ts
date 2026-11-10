@@ -5,6 +5,7 @@ import { describe, expect, it } from 'vitest';
 import { limiteMemoria } from '@novutienda/nucleo';
 import { registroPlataforma } from '../../plataforma/registro.js';
 import { duenoDeRuta, rutaEncendida } from '../../plataforma/coordinador/rutas-http.js';
+import { crearLectoresModulos } from '../../plataforma/coordinador/modulos-activos.js';
 import { crearEntorno } from '../../plataforma/funciones/servidor/entorno.js';
 import { enrutar, type ConfigRouter } from '../../plataforma/funciones/servidor/http/router.js';
 import { sha256Hex } from '../../plataforma/funciones/servidor/http/novuchat.js';
@@ -159,10 +160,19 @@ describe('cada ruta declarada: módulo dueño apagado → rechazo; encendido →
     });
 
     it(`${c.ruta}: tenant sin documento o con documento inválido → rechazo, sin leer datos`, async () => {
-      for (const t of [undefined, { plan: 'base' }]) {
+      for (const t of [undefined, { estado: 'activo', plan: 'base' }]) {
         const m = montar(t);
         const r = await correr(m, c.peticion());
         expect(rechazada(r, c), JSON.stringify(r)).toBe(true);
+        expect(m.datos()).toEqual([]);
+      }
+    });
+
+    it(`${c.ruta}: tenant suspendido o de baja → rechazo, sin leer datos`, async () => {
+      for (const estado of ['suspendido', 'baja']) {
+        const m = montar({ ...tenantCon(...TODOS), estado });
+        const r = await correr(m, c.peticion());
+        expect(rechazada(r, c), `${estado} ${JSON.stringify(r)}`).toBe(true);
         expect(m.datos()).toEqual([]);
       }
     });
@@ -258,5 +268,22 @@ describe('infraestructura y rutas desconocidas', () => {
     const malo = await correr(montar(tenantCon(...TODOS)), c.peticion({ tokenMalo: true }));
     expect('respuesta' in r && 'respuesta' in malo && JSON.stringify(r.respuesta) === JSON.stringify(malo.respuesta)).toBe(true);
     expect(JSON.stringify(r)).not.toMatch(/modulo|apagado/);
+  });
+});
+
+describe('el lector de módulos sigue fallando cerrado para HTTP; el motivo va aparte (D3)', () => {
+  it('suspendido, baja, inexistente e inválido → modulos undefined; el estado expone el motivo', async () => {
+    const docs: Record<string, unknown> = {
+      'tenants/susp': { ...tenantCon('pos'), estado: 'suspendido' },
+      'tenants/baja': { ...tenantCon('pos'), estado: 'baja' },
+      'tenants/roto': { estado: 'activo', plan: 'base' },
+    };
+    const f = { doc: (ruta: string) => ({ get: async () => ({ exists: Object.hasOwn(docs, ruta), data: () => docs[ruta] }) }) };
+    const l = crearLectoresModulos(f, () => 0);
+    const motivos: Record<string, string> = { susp: 'suspendido', baja: 'baja', roto: 'invalido', nada: 'inexistente', 'ID Malo': 'invalido' };
+    for (const [id, motivo] of Object.entries(motivos)) {
+      expect(await l.modulos(id), id).toBeUndefined();
+      expect(await l.estado(id), id).toMatchObject({ motivo });
+    }
   });
 });

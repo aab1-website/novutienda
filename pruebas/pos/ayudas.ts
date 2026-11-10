@@ -88,7 +88,7 @@ export interface Entorno {
 export function crearEntorno(): Entorno {
   const db = new DobleDb();
   const reloj = { ahora: AHORA };
-  db.poner(`tenants/${T}`, { plan: 'base', modulos: {}, zonaHoraria: 'America/La_Paz', monedas: ['BOB', 'USD', 'ARS'] });
+  db.poner(`tenants/${T}`, { estado: 'activo', plan: 'base', modulos: {}, zonaHoraria: 'America/La_Paz', monedas: ['BOB', 'USD', 'ARS'] });
   db.poner(`tenants/${T}/cotizaciones/BO`, { cotizacionId: 'BO-2026-11-04-1', valor: 7, fecha: '2026-11-04', fuente: 'BCB' });
   db.poner(`tenants/${T}/cotizaciones/AR`, { cotizacionId: 'AR-2026-11-04-1', valor: 1000, fecha: '2026-11-04', fuente: 'BNA' });
   // p1: 10 USD (sin serie); p2: 100 USD con series; p3: sin precio en AR.

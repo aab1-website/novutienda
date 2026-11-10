@@ -69,7 +69,7 @@ function montaje(opciones: { conTenant?: boolean } = {}) {
   return { db, cuentas, bitacora, creadas, fallos, credenciales, correr, guardadoAhora: () => guardado };
 }
 function poner(db: DobleDb): void {
-  db.poner(`tenants/${TENANT}`, { plan: 'base', modulos: {}, zonaHoraria: 'America/La_Paz', monedas: ['BOB', 'USD', 'ARS'] });
+  db.poner(`tenants/${TENANT}`, { estado: 'activo', plan: 'base', modulos: {}, zonaHoraria: 'America/La_Paz', monedas: ['BOB', 'USD', 'ARS'] });
 }
 
 describe('aplicarPersonal: camino de escritura', () => {
@@ -138,15 +138,14 @@ describe('aplicarPersonal: camino de escritura', () => {
     expect(m.cuentas.size).toBe(3);
   });
 
-  it('reanuda con las cuentas creadas y el adm sin asignar (el tenant aún no existía)', async () => {
+  it('sin tenant no crea cuentas ni guarda credenciales; al existir activo, el alta sigue normal', async () => {
     const m = montaje({ conTenant: false });
     await expect(m.correr()).rejects.toThrow(/no existe/);
-    expect(m.cuentas.size).toBe(3);
-    expect(m.cuentas.get('adm@example.com')?.claims).toBeUndefined();
+    expect(m.cuentas.size).toBe(0);
+    expect(m.bitacora).toEqual([]);
     poner(m.db);
     const r = await m.correr();
-    expect(r).toMatchObject({ aplicado: true, creadas: 0, existentes: 3, adminAsignado: true });
-    expect(m.creadas).toHaveLength(3); // ninguna cuenta nueva
+    expect(r).toMatchObject({ aplicado: true, creadas: 3, existentes: 0, adminAsignado: true });
   });
 
   it('la segunda pasada completa no tiene diferencias ni escribe', async () => {
