@@ -200,6 +200,17 @@ gcloud projects add-iam-policy-binding "$P" --condition=None --quiet --member "s
 Verificado en el primer despliegue (05/11/2026): sin los cuatro primeros, `firebase deploy` se detiene con «Failed to verify the project has
 the correct IAM bindings» y los nombra. Uno por comando: el clasificador de Claude Code bloquea los bucles de concesión.
 
+6.5 Invocación pública y agente de Storage (verificado en staging el 09/11/2026). Los callables y la función `api` declaran `invoker: 'public'` en el
+código, así que el despliegue crea la invocación pública por sí solo; si el proyecto tiene una política que lo impide, `medios` responde 401 antes de
+llegar al manejador. Las reglas de `storage.rules` consultan Firestore con `firestore.get`: el agente de servicio de Storage necesita leerlo, y sin
+este rol las subidas de fotos fallan con `storage/unauthorized`. Es escritura de IAM del proyecto: se pide con el «sí» de Andres, también en producción.
+
+```bash
+gcloud projects add-iam-policy-binding "$P" --condition=None --quiet --member "serviceAccount:${AG_GCS}" --role roles/firebaserules.firestoreServiceAgent
+```
+
+Tarda unos minutos en propagarse; la verificación es una subida de prueba (`reservarSubida` y `finalizarSubida`) con el panel.
+
 ## 7. Secretos de las Functions (Secret Manager) [gratis hasta 6 versiones activas; son 3]
 
 Los valores se generan en la máquina, van por tubería a Secret Manager y no se muestran ni se guardan. Réplica gestionada por el usuario en `us-east1`.
