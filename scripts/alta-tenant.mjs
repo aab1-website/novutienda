@@ -55,6 +55,7 @@ try {
 const manifiestos = await cargarManifiestos();
 // Los ganchos de TypeScript ya están registrados por cargarManifiestos.
 const { aplicarAlta } = await import(pathToFileURL(resolve('plataforma/operador/alta.ts')).href);
+const { MENSAJE_INVENTARIOS_COMPARTIDO, otroConInventariosYHost } = await import(pathToFileURL(resolve('plataforma/operador/inventarios-compartido.ts')).href);
 const { getApps, initializeApp } = await import('firebase-admin/app');
 const { getFirestore } = await import('firebase-admin/firestore');
 if (getApps().length === 0) initializeApp({ projectId: proyecto });
@@ -69,7 +70,16 @@ const sinIdentificadores = async (fn) => {
 };
 // Serialización con claves ordenadas, para comparar documentos sin depender del orden.
 const canonico = (v) => JSON.stringify(v, (_k, x) => (x && typeof x === 'object' && !Array.isArray(x) ? Object.fromEntries(Object.entries(x).sort(([a], [b]) => (a < b ? -1 : 1))) : x));
+// Lector de la compuerta D-B1 sobre una transacción de Firestore.
+const lectorDe = (tx) => ({
+  get: async (ruta) => {
+    const s = await tx.get(db.doc(ruta));
+    return { existe: s.exists, data: () => s.data() };
+  },
+  listar: async (coleccion) => (await tx.get(db.collection(coleccion))).docs.map((d) => ({ ruta: d.ref.path, data: () => d.data() })),
+});
 const almacen = {
+  inventariosCompartido: (id) => sinIdentificadores(() => db.runTransaction((tx) => otroConInventariosYHost(lectorDe(tx), id, { exigirHostPropio: true }))),
   leer: (id) =>
     sinIdentificadores(async () => {
       const s = await db.collection('tenants').doc(id).get();
@@ -84,6 +94,9 @@ const almacen = {
         const actual = s.exists ? s.data() : null;
         if (canonico(actual) !== canonico(previo)) {
           throw new Error('el documento cambió durante el alta: reintente');
+        }
+        if (doc.modulos?.inventarios !== undefined && (await otroConInventariosYHost(lectorDe(tx), id, { exigirHostPropio: true }))) {
+          throw new Error(MENSAJE_INVENTARIOS_COMPARTIDO);
         }
         tx.set(ref, doc);
       }),

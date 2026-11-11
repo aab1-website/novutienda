@@ -2,6 +2,8 @@
 // Firebase (Auth, Firestore, Storage, Functions y Eventarc) con el proyecto ficticio demo-pruebas y los puertos
 // de firebase.json. Nada toca Firebase real: el proyecto `demo-*` no existe en la nube. Los secretos de la
 // prueba se generan al vuelo y no se guardan.
+// El tenant no es parámetro: el servidor lo resuelve del host (x-forwarded-host); las ayudas de pruebas/funciones
+// siembran dominios/<host> y envían ese host.
 import { spawnSync } from 'node:child_process';
 import { randomBytes } from 'node:crypto';
 import { readFileSync, rmSync, writeFileSync } from 'node:fs';
@@ -32,7 +34,6 @@ const env = {
   ...process.env,
   PLATAFORMA_PRUEBAS: '1',
   PRUEBAS_FUNCIONES_EXIGIR: '1',
-  TENANT_ID: 'casa-bermejo',
   // Como producción: los callables exigen App Check. Las ayudas de pruebas/funciones envían un token del emulador;
   // paquetes/panel/src/appcheck/appcheck.emulador.test.ts comprueba el rechazo sin token.
   APP_CHECK_EXIGIDO: 'true',
@@ -46,7 +47,7 @@ const env = {
   MEDIOS_BASE_URL: 'https://medios.ejemplo.test',
 };
 // Los parámetros no secretos los lee el emulador de `.env.<proyecto>` junto al código (no del entorno del proceso).
-const PARAMETROS = ['TENANT_ID', 'APP_CHECK_EXIGIDO', 'APP_CHECK_MODO', 'RECAPTCHA_MODO', 'CONTACTO_MAXIMO', 'SITIO_URL', 'MEDIOS_BASE_URL'];
+const PARAMETROS = ['APP_CHECK_EXIGIDO', 'APP_CHECK_MODO', 'RECAPTCHA_MODO', 'CONTACTO_MAXIMO', 'SITIO_URL', 'MEDIOS_BASE_URL'];
 writeFileSync('dist/funciones/.env.demo-pruebas', PARAMETROS.map((k) => `${k}=${env[k]}`).join('\n') + '\n');
 // El emulador lee los secretos de `.secret.local` junto al código (no de Secret Manager). `dist/` está ignorado.
 writeFileSync(

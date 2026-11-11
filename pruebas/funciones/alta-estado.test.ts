@@ -27,6 +27,7 @@ function almacen(actual: unknown, subcolecciones = false) {
       consultas += 1;
       return Promise.resolve(subcolecciones);
     },
+    inventariosCompartido: () => Promise.resolve(false),
   };
   return { a, escritos, consultas: () => consultas };
 }
@@ -51,6 +52,7 @@ describe('alta y estado', () => {
         return Promise.resolve();
       },
       tieneSubcolecciones: () => Promise.resolve(false),
+      inventariosCompartido: () => Promise.resolve(false),
     };
     await expect(alta(a)).rejects.toThrow(/cambió durante el alta/);
     expect(doc['estado']).toBe('suspendido');

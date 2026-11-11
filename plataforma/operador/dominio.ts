@@ -2,6 +2,7 @@
 // Los mensajes no llevan identificadores. El documento solo lo escribe el servidor (reglas `if false`).
 import { esEstadoTenant, esTenantIdValido, registrarAuditoria, tenantOperativo } from '@novutienda/nucleo';
 import type { TransaccionAuditoria } from '@novutienda/nucleo';
+import { MENSAJE_INVENTARIOS_COMPARTIDO, otroConInventariosYHost, tieneInventarios } from './inventarios-compartido.js';
 import { operadorDe } from './personal.js';
 
 /** Transacción mínima: lectura, alta, actualización y borrado de un documento, más la auditoría. */
@@ -9,6 +10,8 @@ export interface TransaccionDominio extends TransaccionAuditoria {
   get(ruta: string): Promise<{ readonly existe: boolean; data(): Readonly<Record<string, unknown>> | undefined }>;
   update(ruta: string, datos: Readonly<Record<string, unknown>>): void;
   delete(ruta: string): void;
+  /** Documentos de una colección (solo lectura dentro de la transacción). */
+  listar(coleccion: string): Promise<readonly { readonly ruta: string; data(): Readonly<Record<string, unknown>> | undefined }[]>;
 }
 export interface BaseDatosDominio {
   runTransaction<T>(fn: (tx: TransaccionDominio) => Promise<T>): Promise<T>;
@@ -114,6 +117,9 @@ export async function gestionarDominio(o: {
     const estado = t.data()?.['estado'];
     if (!esEstadoTenant(estado)) return rechazar('el tenant no tiene un estado válido: corra el alta antes');
     if (!tenantOperativo({ estado }) && estado !== 'suspendido') return rechazar('el tenant está de baja: no admite dominios');
+    // Compuerta D-B1: con el secreto de firma de pedidos compartido, dos tenants con inventarios y host propio permitirían repetir
+    // una firma válida de uno contra el host del otro. Se retira cuando cada tenant tenga su propio secreto (PR D).
+    if (tieneInventarios(t.data()) && (await otroConInventariosYHost(tx, destino, { ignorar: ruta }))) return rechazar(MENSAJE_INVENTARIOS_COMPARTIDO);
     if (typeof previo !== 'string') return { accion: 'asignar', destino };
     if (previo === destino) return { accion: 'nada' };
     if (o.reasignar !== true) return rechazar('el host ya pertenece a otro tenant: use --reasignar para moverlo');
