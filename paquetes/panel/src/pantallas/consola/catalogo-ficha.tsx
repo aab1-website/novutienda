@@ -191,7 +191,9 @@ export function PantallaFichas(): JSX.Element {
   useEffect(() => {
     // Al volver a la tabla, el foco regresa al botón «Editar ficha» del producto que se editaba.
     if (elegido !== null || aVolver.current === null) return;
-    const boton = lista.current?.querySelector<HTMLElement>(`button[aria-label="${aVolver.current.replace(/"/g, '\\"')}"]`);
+    // Se compara el atributo en vez de armar un selector con el nombre del producto (no hay que escapar nada).
+    const etiqueta = aVolver.current;
+    const boton = Array.from(lista.current?.querySelectorAll<HTMLElement>('button[aria-label]') ?? []).find((b) => b.getAttribute('aria-label') === etiqueta);
     if (!boton) return;
     aVolver.current = null;
     boton.focus();
