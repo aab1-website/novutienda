@@ -121,7 +121,55 @@ jobs:
             { echo "hay=false"; echo "fallos=0"; } >> "$GITHUB_OUTPUT"
             exit 0
           fi
-          node .github/scripts/sondear-sitios.mjs
+          # Sin node_modules: `sitios-tenant.mjs matriz` y `contenido-sitio.mjs
+          # pendiente` solo usan módulos de Node. Los errores de ambos dan el
+          # motivo, nunca valores; los logs nombran solo la `clave`.
+          [[ "$MODO" == "pendientes" || "$MODO" == "todos" ]] \
+            || { echo "::error::sondear: MODO debe ser pendientes o todos."; exit 1; }
+          args=(matriz)
+          if [[ -n "$CLAVE" ]]; then
+            [[ "$CLAVE" =~ ^[a-z0-9]{1,12}$ ]] \
+              || { echo "::error::sondear: la clave pedida no cumple ^[a-z0-9]{1,12}\$."; exit 1; }
+            args+=(--clave "$CLAVE")
+          fi
+          matriz="$(node scripts/sitios-tenant.mjs "${args[@]}")" \
+            || { echo "::error::sondear: SITIOS_TENANT inválido o clave inexistente (motivo arriba)."; exit 1; }
+          # Defensa en profundidad: los identificadores del tenant nunca en claro.
+          while IFS=$'\t' read -r t s u; do
+            for v in "$t" "$s" "$u" "${u#https://}"; do [[ -z "$v" ]] || echo "::add-mask::$v"; done
+          done < <(jq -r '.include[] | [.tenant, .sitio, .url] | @tsv' <<<"$matriz")
+          fallos=0
+          if [[ "$MODO" == "pendientes" ]]; then
+            [[ -n "$SITIO_RECONSTRUCCION_SECRETO" ]] \
+              || { echo "::error::sondear: falta SITIO_RECONSTRUCCION_SECRETO (secreto del Environment staging)."; exit 1; }
+            con_trabajo=()
+            while IFS=$'\t' read -r clave tenant url; do
+              rc=0
+              id="$(node scripts/contenido-sitio.mjs pendiente --tenant "$tenant" --url "$url")" || rc=$?
+              if (( rc != 0 )); then
+                # Un sitio que no responde no detiene a los demás; el job falla al final.
+                fallos=$((fallos + 1))
+                echo "::error::sondear $clave: no se pudo consultar la cola (código $rc)."
+              elif [[ -n "$id" ]]; then
+                con_trabajo+=("$clave")
+                echo "$clave: trabajo pendiente"
+              else
+                echo "$clave: sin trabajo pendiente"
+              fi
+            done < <(jq -r '.include[] | [.clave, .tenant, .url] | @tsv' <<<"$matriz")
+            seleccion="$(printf '%s\n' "${con_trabajo[@]}" | jq -R . | jq -sc 'map(select(. != ""))')"
+            matriz="$(jq -c --argjson sel "$seleccion" '{include: [.include[] | select(.clave as $c | $sel | index($c))]}' <<<"$matriz")"
+          fi
+          n="$(jq '.include | length' <<<"$matriz")"
+          hay=false; (( n > 0 )) && hay=true
+          claves="$(jq -r '[.include[].clave] | join(", ")' <<<"$matriz")"
+          { echo "matriz=$matriz"; echo "hay=$hay"; echo "fallos=$fallos"; } >> "$GITHUB_OUTPUT"
+          {
+            echo "### Sondeo ($MODO)"
+            echo "Sitios a reconstruir: ${claves:-ninguno}"
+            (( fallos == 0 )) || echo "Sondeos fallidos: $fallos"
+          } >> "$GITHUB_STEP_SUMMARY"
+          echo "Sitios a reconstruir: ${claves:-ninguno}"
 
       - name: Fallar si algún sondeo falló
         # Los sitios que respondieron ya están en la matriz y se reconstruyen
@@ -197,12 +245,6 @@ jobs:
           node-version: ${{ env.NODE_VERSION }}
           cache: pnpm
 
-      - name: Instalar dependencias
-        # Antes de tomar el trabajo: la CLI de contenido-sitio.mjs carga el
-        # registro de la plataforma (TypeScript y dependencias) en todos sus
-        # subcomandos.
-        run: pnpm install --frozen-lockfile
-
       - name: Tomar el trabajo (en_curso)
         id: trabajo
         env:
@@ -234,6 +276,14 @@ jobs:
             *) echo "::error::$CLAVE: no se pudo marcar el trabajo en_curso (código $rc)."
                exit 1 ;;
           esac
+
+      - name: Instalar dependencias
+        # Después de tomar el trabajo (en_curso): `pendiente` y `estado` no
+        # necesitan node_modules; si la instalación falla, el paso final cierra
+        # el trabajo como fallida en vez de dejarlo pendiente para el próximo
+        # sondeo. `generar`, el build y las pruebas sí las necesitan.
+        if: steps.trabajo.outputs.continuar == 'true'
+        run: pnpm install --frozen-lockfile
 
       - name: Generar el contenido publicado
         if: steps.trabajo.outputs.continuar == 'true'

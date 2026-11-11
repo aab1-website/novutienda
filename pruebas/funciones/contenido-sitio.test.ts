@@ -81,6 +81,14 @@ describe('firma local y petición segura', () => {
     expect(await trabajoPendiente(baseLocal)).toBe('job-1');
     expect((await ejecutar(['pendiente', ...args], env, { mapear: deps.mapear }, fetchLocal)).codigo).toBe(0);
   });
+  it('pendiente y estado no cargan el registro ni usan el mapeo; solo generar lo carga', async () => {
+    const mapear = () => { throw new Error('mapear no debía usarse'); };
+    const conMapeo = { mapear };
+    expect(await ejecutar(['pendiente', ...args], env, conMapeo, fetchLocal)).toEqual({ codigo: 0, salida: 'job-1' });
+    expect((await ejecutar(['estado', 'job-1', 'completada', ...args], env, conMapeo, fetchLocal)).codigo).toBe(0);
+    // Sin deps tampoco se carga nada: pendiente solo usa la red y la firma local.
+    expect((await ejecutar(['pendiente', ...args], env, undefined, fetchLocal)).codigo).toBe(0);
+  });
   it('una respuesta 3xx falla y no se sigue la redirección', async () => {
     modo.redirigir = true;
     await expect(pedirFirmado({ ...base, metodo: 'GET', ruta: '/api/sitio/v1/reconstrucciones?x=1' })).rejects.toThrow('no se pudo contactar al sitio');
