@@ -1,0 +1,514 @@
+# =============================================================================
+# reconstruir-sitio.yml — Reconstrucción y despliegue del sitio público de cada
+#                         tenant (un sitio de Hosting por tenant) en STAGING.
+# Versión: 1.0 | Fecha: 2026-11-10 | PR C-2 (DC1 a DC4)
+# -----------------------------------------------------------------------------
+# Contrato con las funciones: docs/produccion/reconstruccion-sitio.md (cola
+# firmada `tenants/{t}/reconstrucciones`, estados pendiente → en_curso →
+# completada | fallida). Scripts: scripts/sitios-tenant.mjs (matriz),
+# scripts/contenido-sitio.mjs (pendiente, estado, generar), scripts/build.mjs
+# --solo sitio --sitio <id>.
+#
+# Disparadores:
+#   schedule */15 ...... (DC2) solo los sitios con un trabajo `pendiente`.
+#                        GitHub atrasa los schedule en horas de carga y los
+#                        apaga tras 60 días sin actividad en el repositorio.
+#   workflow_dispatch .. todos los sitios, o solo `clave`; reconstruye aunque
+#                        no haya trabajo en la cola.
+#   workflow_run ....... el CI terminó en éxito un push a main: el código nuevo
+#                        del sitio llega a staging con el contenido real.
+#                        Se reconstruye SIEMPRE con el HEAD de main (rama por
+#                        defecto), nunca con el head_sha del evento: ningún
+#                        dato de workflow_run decide qué código se ejecuta con
+#                        secretos. Si entraron varios push seguidos, el HEAD
+#                        ya incluye el último; el resultado es el mismo.
+#
+# Solo staging (DC3). El CI (ci-node-firebase.yml) ya no despliega el sitio en
+# staging: su guardia (validar-solo) lo impide; este workflow es el único que
+# despliega los sitios de tenant.
+#
+# Solo desde main: schedule y workflow_dispatch exigen github.ref == main
+# (un dispatch desde otra rama no despliega con los secretos de staging).
+#
+# Logs públicos y DISEÑO DE LA MATRIZ: los jobs, resúmenes y mensajes nombran
+# solo la `clave` del sitio. El id del tenant, el id del sitio y su URL son
+# identificadores del cliente y no deben aparecer en claro:
+#   - SITIOS_TENANT y SITIO_NEGOCIO_<CLAVE> son SECRETOS del Environment: las
+#     cabeceras de `env:` de cada paso los muestran como ***.
+#   - `sondear` enmascara (::add-mask::) cada valor que lee, pero el runner
+#     DESCARTA toda salida de job que contenga un valor enmascarado; por eso
+#     la matriz publica SOLO `clave` ({"include":[{"clave":…}]}) y nunca
+#     tenant, sitio ni url (con ellos, fromJSON(needs.sondear.outputs.matriz)
+#     recibiría una salida vacía y el run fallaría).
+#   - Cada job de `reconstruir` resuelve tenant, sitio y url desde
+#     secrets.SITIOS_TENANT por su clave (jq), los enmascara ANTES de
+#     escribirlos en GITHUB_ENV y falla cerrado si la clave no existe. Ningún
+#     identificador va en un `env:` de YAML (saldría en claro en la cabecera).
+#
+# Environment `staging`:
+#   Secretos: SITIO_RECONSTRUCCION_SECRETO (firma HMAC de la cola),
+#             SITIOS_TENANT (JSON [{clave,tenant,sitio,url}]),
+#             SITIO_NEGOCIO_<CLAVE> (JSON de textos del negocio por sitio),
+#             GCP_WIF_PROVIDER, GCP_SA_DEPLOY_STAGING (WIF, sin JSON de SA).
+#   Variables: MEDIOS_BASE_URL, FIREBASE_SITE_PANEL (sitio reservado,
+#              obligatoria: nunca se despliega aquí), GCP_PROJECT_ID_STAGING y
+#              las VITE_*_STAGING del repositorio (las mismas que `construir`).
+# =============================================================================
+name: Reconstruir sitio por tenant (staging)
+
+on:
+  schedule:
+    - cron: '*/15 * * * *'
+  workflow_dispatch:
+    inputs:
+      clave:
+        description: Clave del sitio (SITIOS_TENANT[].clave); vacío = todos los sitios
+        type: string
+        required: false
+        default: ''
+  workflow_run:
+    workflows: ['CI/CD Node → Firebase']
+    types: [completed]
+    branches: [main]
+
+# Mínimo global; cada job eleva lo que necesita.
+permissions:
+  contents: read
+
+env:
+  NODE_VERSION: ${{ vars.NODE_VERSION || '22' }}
+  # Mismo firebase-tools que ci-node-firebase.yml.
+  FIREBASE_TOOLS_VERSION: '15.28.1'
+
+jobs:
+  # ---------------------------------------------------------------------------
+  # sondear: decide la matriz. Sin `pnpm install` (segundos): solo Node y los
+  # dos scripts sin dependencias npm. En schedule, consulta la cola firmada de
+  # cada sitio y deja solo los que tienen un trabajo pendiente.
+  # ---------------------------------------------------------------------------
+  sondear:
+    name: sondear
+    # schedule/dispatch solo desde main; workflow_run solo para un push a main
+    # del propio repositorio terminado en éxito (nunca un PR ni un fork: este
+    # workflow usa secretos y la nube).
+    if: >-
+      (github.event_name != 'workflow_run' && github.ref == 'refs/heads/main')
+      || (github.event.workflow_run.event == 'push'
+        && github.event.workflow_run.head_branch == 'main'
+        && github.event.workflow_run.conclusion == 'success'
+        && github.event.workflow_run.head_repository.full_name == github.repository)
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    # El Environment da acceso a los secretos SITIOS_TENANT y de la cola.
+    # deployment: false — usa los secretos y variables del Environment sin crear
+    # un registro de despliegue cada 15 minutos (el sondeo no despliega nada).
+    environment:
+      name: staging
+      deployment: false
+    permissions:
+      contents: read
+    outputs:
+      matriz: ${{ steps.sondeo.outputs.matriz }}
+      hay: ${{ steps.sondeo.outputs.hay }}
+    steps:
+      - name: Checkout (scripts)
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          # workflow_run: HEAD de la rama por defecto (main), nunca el head_sha
+          # del evento. schedule/dispatch: github.sha (main, por la guardia).
+          ref: ${{ github.event_name == 'workflow_run' && github.event.repository.default_branch || github.sha }}
+          persist-credentials: false
+
+      - name: Node.js
+        uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7
+        with:
+          node-version: ${{ env.NODE_VERSION }}
+
+      - name: Sondear sitios
+        id: sondeo
+        env:
+          EVENTO: ${{ github.event_name }}
+          MODO: ${{ github.event_name == 'schedule' && 'pendientes' || 'todos' }}
+          # El input llega por variable de entorno, nunca interpolado en el script.
+          CLAVE: ${{ inputs.clave || '' }}
+          SITIOS_TENANT: ${{ secrets.SITIOS_TENANT }}
+          SITIO_RECONSTRUCCION_SECRETO: ${{ secrets.SITIO_RECONSTRUCCION_SECRETO }}
+        run: |
+          set -euo pipefail
+          if [[ -n "$SITIO_RECONSTRUCCION_SECRETO" ]]; then echo "::add-mask::$SITIO_RECONSTRUCCION_SECRETO"; fi
+          if [[ -z "$SITIOS_TENANT" ]]; then
+            if [[ "$EVENTO" == "workflow_dispatch" ]]; then
+              echo "::error::Falta el secreto SITIOS_TENANT del Environment staging: no hay sitios que reconstruir."
+              exit 1
+            fi
+            # Aún sin configurar (paso 3 del plan del PR C): no es un fallo del sondeo.
+            echo "::notice::Secreto SITIOS_TENANT sin configurar en el Environment staging; nada que sondear."
+            { echo "hay=false"; echo "fallos=0"; } >> "$GITHUB_OUTPUT"
+            exit 0
+          fi
+          # Sin node_modules: `sitios-tenant.mjs matriz` y `contenido-sitio.mjs
+          # pendiente` solo usan módulos de Node. Los errores de ambos dan el
+          # motivo, nunca valores; los logs nombran solo la `clave`.
+          [[ "$MODO" == "pendientes" || "$MODO" == "todos" ]] \
+            || { echo "::error::sondear: MODO debe ser pendientes o todos."; exit 1; }
+          args=(matriz)
+          if [[ -n "$CLAVE" ]]; then
+            [[ "$CLAVE" =~ ^[a-z0-9]{1,12}$ ]] \
+              || { echo "::error::sondear: la clave pedida no cumple ^[a-z0-9]{1,12}\$."; exit 1; }
+            args+=(--clave "$CLAVE")
+          fi
+          matriz="$(node scripts/sitios-tenant.mjs "${args[@]}")" \
+            || { echo "::error::sondear: SITIOS_TENANT inválido o clave inexistente (motivo arriba)."; exit 1; }
+          # Defensa en profundidad: los identificadores del tenant nunca en claro.
+          # Una clave que contenga un valor enmascarado haría que el runner
+          # descartara la salida `matriz`: se rechaza aquí con un motivo claro.
+          # Un valor enmascarado muy corto (p. ej. tenant `a` o `true`) aparecería
+          # dentro del texto de `matriz` o `hay` y el runner las descartaría en
+          # silencio: se rechaza ANTES de enmascarar, sin imprimir el valor.
+          enmascarados=()
+          while IFS=$'\t' read -r c t s u; do
+            h="${u#https://}"; h="${h%/}"
+            for v in "$t" "$s" "$u" "$h"; do
+              [[ -z "$v" ]] && continue
+              (( ${#v} >= 4 )) \
+                || { echo "::error::sondear $c: el tenant, el sitio o la URL tiene menos de 4 caracteres (no se puede enmascarar sin vaciar las salidas)."; exit 1; }
+              echo "::add-mask::$v"
+              enmascarados+=("$v")
+              [[ "$c" != *"$v"* ]] \
+                || { echo "::error::sondear $c: la clave no puede contener el tenant, el sitio ni la URL."; exit 1; }
+            done
+          done < <(jq -r '.include[] | [.clave, .tenant, .sitio, .url] | @tsv' <<<"$matriz")
+          fallos=0
+          if [[ "$MODO" == "pendientes" ]]; then
+            [[ -n "$SITIO_RECONSTRUCCION_SECRETO" ]] \
+              || { echo "::error::sondear: falta SITIO_RECONSTRUCCION_SECRETO (secreto del Environment staging)."; exit 1; }
+            con_trabajo=()
+            while IFS=$'\t' read -r clave tenant url; do
+              rc=0
+              id="$(node scripts/contenido-sitio.mjs pendiente --tenant "$tenant" --url "$url")" || rc=$?
+              if (( rc != 0 )); then
+                # Un sitio que no responde no detiene a los demás; el job falla al final.
+                fallos=$((fallos + 1))
+                echo "::error::sondear $clave: no se pudo consultar la cola (código $rc)."
+              elif [[ -n "$id" ]]; then
+                con_trabajo+=("$clave")
+                echo "$clave: trabajo pendiente"
+              else
+                echo "$clave: sin trabajo pendiente"
+              fi
+            done < <(jq -r '.include[] | [.clave, .tenant, .url] | @tsv' <<<"$matriz")
+            seleccion="$(printf '%s\n' "${con_trabajo[@]}" | jq -R . | jq -sc 'map(select(. != ""))')"
+            matriz="$(jq -c --argjson sel "$seleccion" '{include: [.include[] | select(.clave as $c | $sel | index($c))]}' <<<"$matriz")"
+          fi
+          # La salida lleva SOLO la clave (ver cabecera: descarte de salidas enmascaradas).
+          matriz="$(jq -c '{include: [.include[] | {clave}]}' <<<"$matriz")"
+          n="$(jq '.include | length' <<<"$matriz")"
+          hay=false; (( n > 0 )) && hay=true
+          claves="$(jq -r '[.include[].clave] | join(", ")' <<<"$matriz")"
+          # Ninguna salida puede contener un valor enmascarado (el runner la
+          # descartaría y el run quedaría verde sin reconstruir, o fromJSON fallaría).
+          for v in "${enmascarados[@]}"; do
+            [[ "$matriz$hay" != *"$v"* ]] \
+              || { echo "::error::sondear: un tenant, sitio o URL de SITIOS_TENANT aparece dentro de las salidas matriz/hay (p. ej. coincide con 'include' o 'clave'); cámbielo."; exit 1; }
+          done
+          { echo "matriz=$matriz"; echo "hay=$hay"; echo "fallos=$fallos"; } >> "$GITHUB_OUTPUT"
+          {
+            echo "### Sondeo ($MODO)"
+            echo "Sitios a reconstruir: ${claves:-ninguno}"
+            (( fallos == 0 )) || echo "Sondeos fallidos: $fallos"
+          } >> "$GITHUB_STEP_SUMMARY"
+          echo "Sitios a reconstruir: ${claves:-ninguno}"
+
+      - name: Fallar si algún sondeo falló
+        # Los sitios que respondieron ya están en la matriz y se reconstruyen
+        # igual (reconstruir usa !cancelled()); el run queda en rojo para que
+        # el sitio que no respondió no pase inadvertido.
+        if: steps.sondeo.outputs.fallos != '' && steps.sondeo.outputs.fallos != '0'
+        env:
+          FALLOS: ${{ steps.sondeo.outputs.fallos }}
+        run: |
+          echo "::error::$FALLOS sitio(s) no respondieron al sondeo de la cola de reconstrucción."
+          exit 1
+
+  # ---------------------------------------------------------------------------
+  # reconstruir: un job por sitio (matriz). Grupo de concurrencia POR SITIO y
+  # sin cancelar: nunca dos despliegues del mismo sitio a la vez, y un sitio no
+  # cancela a otro (un grupo compartido en una matriz cancela trabajos).
+  # ---------------------------------------------------------------------------
+  reconstruir:
+    name: reconstruir (${{ matrix.clave }})
+    needs: sondear
+    if: ${{ !cancelled() && github.ref == 'refs/heads/main' && needs.sondear.outputs.hay == 'true' }}
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    strategy:
+      fail-fast: false
+      # Tope de despliegues de Hosting simultáneos en el proyecto de staging.
+      max-parallel: 4
+      matrix: ${{ fromJSON(needs.sondear.outputs.matriz) }}
+    concurrency:
+      group: reconstruir-staging-${{ matrix.clave }}
+      cancel-in-progress: false
+    # Sin `url`: la URL del sitio de un tenant no se publica en la interfaz.
+    environment:
+      name: staging
+    permissions:
+      contents: read
+      id-token: write # token OIDC para WIF
+    # TENANT, SITIO y URL_SITIO NO van aquí: los fija (enmascarados) el primer paso.
+    env:
+      CLAVE: ${{ matrix.clave }}
+      EVENTO: ${{ github.event_name }}
+      APP_ENV: staging
+      PROYECTO: ${{ vars.GCP_PROJECT_ID_STAGING }}
+      MEDIOS_BASE_URL: ${{ vars.MEDIOS_BASE_URL }}
+      # Configuración web pública de Firebase (clase P, SEC-005), la misma de `construir`.
+      VITE_FIREBASE_PROJECT_ID: ${{ vars.GCP_PROJECT_ID_STAGING }}
+      VITE_FIREBASE_API_KEY: ${{ vars.VITE_FIREBASE_API_KEY_STAGING }}
+      VITE_RECAPTCHA_ENTERPRISE_SITE_KEY: ${{ vars.VITE_RECAPTCHA_ENTERPRISE_SITE_KEY_STAGING }}
+      VITE_FIREBASE_APP_ID: ${{ vars.VITE_FIREBASE_APP_ID_STAGING }}
+    steps:
+      - name: Resolver y enmascarar el sitio de la clave
+        # Falla cerrado: clave inválida, SITIOS_TENANT ausente o no JSON, clave
+        # inexistente o repetida, o un valor fuera de formato. Los mensajes no
+        # imprimen valores; cada uno se enmascara antes de ir a GITHUB_ENV.
+        env:
+          SITIOS_TENANT: ${{ secrets.SITIOS_TENANT }}
+        run: |
+          set -euo pipefail
+          falla() { echo "::error::reconstruir $CLAVE: $*"; exit 1; }
+          [[ "$CLAVE" =~ ^[a-z0-9]{1,12}$ ]] || falla "la clave no cumple ^[a-z0-9]{1,12}\$."
+          [[ -n "$SITIOS_TENANT" ]] || falla "falta el secreto SITIOS_TENANT del Environment staging."
+          entrada="$(jq -ce --arg c "$CLAVE" \
+            'if type == "array" then ([.[] | select(type == "object" and .clave == $c)] | if length == 1 then .[0] else empty end) else empty end' \
+            <<<"$SITIOS_TENANT" 2>/dev/null)" \
+            || falla "la clave no existe (o está repetida) en SITIOS_TENANT, o SITIOS_TENANT no es una lista JSON."
+          tenant="$(jq -r '.tenant | strings' <<<"$entrada")"
+          sitio="$(jq -r '.sitio | strings' <<<"$entrada")"
+          url="$(jq -r '.url | strings' <<<"$entrada")"
+          # Un salto de línea partiría ::add-mask:: y dejaría el resto en claro.
+          for v in "$tenant" "$sitio" "$url"; do
+            [[ "$v" != *[$'\n\r']* ]] || falla "un valor de SITIOS_TENANT contiene un salto de línea."
+          done
+          host="${url#https://}"; host="${host%/}"
+          # Un valor muy corto enmascararía texto común del registro y de las
+          # salidas (misma regla que `sondear`): se rechaza sin imprimirlo.
+          for v in "$tenant" "$sitio" "$url" "${url%/}" "$host"; do
+            [[ -z "$v" || ${#v} -ge 4 ]] || falla "el tenant, el sitio o la URL tiene menos de 4 caracteres en SITIOS_TENANT."
+          done
+          # Enmascarar ANTES de validar o escribir nada que pueda contenerlos.
+          for v in "$tenant" "$sitio" "$url" "${url%/}" "$host"; do
+            [[ -z "$v" ]] || echo "::add-mask::$v"
+          done
+          # Mismos formatos que scripts/sitios-tenant.mjs; además impiden saltos
+          # de línea (inyección en GITHUB_ENV).
+          [[ "$tenant" =~ ^[a-z0-9][a-z0-9-]{0,62}$ ]] || falla "tenant ausente o inválido en SITIOS_TENANT."
+          [[ "$sitio" =~ ^[a-z0-9-]{6,30}$ ]] || falla "sitio ausente o inválido en SITIOS_TENANT."
+          [[ "$url" =~ ^https://[^/?#[:space:]@]+/?$ ]] || falla "url ausente o no es https sin ruta en SITIOS_TENANT."
+          {
+            echo "TENANT=$tenant"
+            echo "SITIO=$sitio"
+            echo "URL_SITIO=$url"
+          } >> "$GITHUB_ENV"
+          echo "Sitio: $CLAVE (tenant, sitio y URL resueltos y enmascarados)"
+
+      - name: Checkout
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          # workflow_run: HEAD de la rama por defecto (main), nunca el head_sha
+          # del evento. schedule/dispatch: github.sha (main, por la guardia).
+          ref: ${{ github.event_name == 'workflow_run' && github.event.repository.default_branch || github.sha }}
+          persist-credentials: false
+
+      - name: Habilitar corepack (pnpm, declarado en packageManager)
+        run: corepack enable
+
+      - name: Node.js
+        uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7
+        with:
+          node-version: ${{ env.NODE_VERSION }}
+          cache: pnpm
+
+      - name: Tomar el trabajo (en_curso)
+        id: trabajo
+        env:
+          SITIO_RECONSTRUCCION_SECRETO: ${{ secrets.SITIO_RECONSTRUCCION_SECRETO }}
+        run: |
+          set -euo pipefail
+          [[ -n "$SITIO_RECONSTRUCCION_SECRETO" ]] \
+            || { echo "::error::Falta el secreto SITIO_RECONSTRUCCION_SECRETO del Environment staging."; exit 1; }
+          echo "::add-mask::$SITIO_RECONSTRUCCION_SECRETO"
+          id="$(node scripts/contenido-sitio.mjs pendiente --tenant "$TENANT" --url "$URL_SITIO")"
+          if [[ -z "$id" ]]; then
+            if [[ "$EVENTO" == "schedule" ]]; then
+              # Lo tomó otro corredor entre el sondeo y este job.
+              echo "::notice::$CLAVE: ya no hay trabajo pendiente; nada que hacer."
+              { echo "continuar=false"; echo "trabajo="; } >> "$GITHUB_OUTPUT"
+              exit 0
+            fi
+            echo "$CLAVE: sin trabajo en la cola; reconstrucción pedida por $EVENTO."
+            { echo "continuar=true"; echo "trabajo="; } >> "$GITHUB_OUTPUT"
+            exit 0
+          fi
+          rc=0
+          node scripts/contenido-sitio.mjs estado "$id" en_curso --tenant "$TENANT" --url "$URL_SITIO" || rc=$?
+          case "$rc" in
+            0) { echo "continuar=true"; echo "trabajo=$id"; } >> "$GITHUB_OUTPUT"
+               echo "$CLAVE: trabajo tomado (en_curso)." ;;
+            3) echo "::notice::$CLAVE: el trabajo lo tomó otro corredor (409); este termina sin desplegar."
+               { echo "continuar=false"; echo "trabajo="; } >> "$GITHUB_OUTPUT" ;;
+            *) echo "::error::$CLAVE: no se pudo marcar el trabajo en_curso (código $rc)."
+               exit 1 ;;
+          esac
+
+      - name: Instalar dependencias
+        # Después de tomar el trabajo (en_curso): `pendiente` y `estado` no
+        # necesitan node_modules; si la instalación falla, el paso final cierra
+        # el trabajo como fallida en vez de dejarlo pendiente para el próximo
+        # sondeo. `generar`, el build y las pruebas sí las necesitan.
+        if: steps.trabajo.outputs.continuar == 'true'
+        run: pnpm install --frozen-lockfile
+
+      - name: Generar el contenido publicado
+        if: steps.trabajo.outputs.continuar == 'true'
+        env:
+          SITIO_RECONSTRUCCION_SECRETO: ${{ secrets.SITIO_RECONSTRUCCION_SECRETO }}
+          # Textos del negocio de ESTE sitio (secreto del Environment por clave).
+          SITIO_NEGOCIO: ${{ secrets[format('SITIO_NEGOCIO_{0}', matrix.clave)] }}
+        run: |
+          set -euo pipefail
+          echo "::add-mask::$SITIO_RECONSTRUCCION_SECRETO"
+          # Misma exigencia que `construir`: sin la configuración web completa
+          # el sitio no inicia App Check y las funciones lo rechazarían.
+          faltan=()
+          for v in VITE_FIREBASE_PROJECT_ID VITE_FIREBASE_API_KEY VITE_RECAPTCHA_ENTERPRISE_SITE_KEY VITE_FIREBASE_APP_ID MEDIOS_BASE_URL; do
+            [[ -n "${!v:-}" ]] || faltan+=("$v")
+          done
+          [[ -n "$SITIO_NEGOCIO" ]] || faltan+=("SITIO_NEGOCIO_$(tr '[:lower:]' '[:upper:]' <<<"$CLAVE")")
+          if (( ${#faltan[@]} > 0 )); then
+            echo "::error::Faltan variables o secretos para reconstruir $CLAVE: ${faltan[*]}. Ver docs/produccion/reconstruccion-sitio.md."
+            exit 1
+          fi
+          salida="$RUNNER_TEMP/sitio/contenido.json"
+          node scripts/contenido-sitio.mjs generar --salida "$salida" --tenant "$TENANT" --url "$URL_SITIO"
+          echo "SITIO_CONTENIDO=$salida" >> "$GITHUB_ENV"
+
+      - name: Build del sitio (solo sitio, staging)
+        if: steps.trabajo.outputs.continuar == 'true'
+        env:
+          VITE_APP_VERSION: ${{ github.ref_name }}-${{ github.sha }}
+        run: |
+          set -euo pipefail
+          export VITE_FIREBASE_AUTH_DOMAIN="${VITE_FIREBASE_PROJECT_ID}.firebaseapp.com"
+          node scripts/build.mjs --mode staging --solo sitio --sitio "$SITIO"
+
+      - name: Pruebas del sitio compilado con contenido real (dist-real.test.ts)
+        # EXIGIR_DIST=1: si falta dist/website la prueba FALLA, no se omite.
+        if: steps.trabajo.outputs.continuar == 'true'
+        env:
+          EXIGIR_DIST: '1'
+        run: pnpm vitest run pruebas/website/dist-real.test.ts
+
+      - name: Preparar firebase.json (solo este sitio)
+        if: steps.trabajo.outputs.continuar == 'true'
+        env:
+          # El panel nunca se despliega desde aquí, aunque SITIOS_TENANT lo nombre
+          # (preparar-sitio-tenant.sh falla si esta lista queda vacía).
+          SITIOS_PROHIBIDOS: ${{ vars.FIREBASE_SITE_PANEL }}
+        run: bash .github/scripts/preparar-sitio-tenant.sh "$SITIO"
+
+      - name: Autenticar en GCP (WIF + impersonación de la SA de deploy)
+        if: steps.trabajo.outputs.continuar == 'true'
+        uses: google-github-actions/auth@7c6bc770dae815cd3e89ee6cdf493a5fab2cc093 # v3
+        with:
+          workload_identity_provider: ${{ secrets.GCP_WIF_PROVIDER }}
+          service_account: ${{ secrets.GCP_SA_DEPLOY_STAGING }}
+
+      - name: Instalar firebase-tools
+        if: steps.trabajo.outputs.continuar == 'true'
+        run: npm i -g "firebase-tools@${FIREBASE_TOOLS_VERSION}"
+
+      - name: Conservar copia de la versión actual del sitio (canal "previa" para rollback)
+        # D7: el rollback es clonar previa → live. Sin copia (primer despliegue
+        # del sitio) se avisa y se continúa, como en ci-node-firebase.yml.
+        if: steps.trabajo.outputs.continuar == 'true'
+        run: |
+          firebase hosting:channel:create previa --site "$SITIO" --project "$PROYECTO" --expires 30d \
+            --non-interactive >/dev/null 2>&1 || true
+          firebase hosting:clone "$SITIO:live" "$SITIO:previa" --project "$PROYECTO" \
+            || echo "::warning::$CLAVE: no se pudo guardar la copia para rollback (live → previa). ¿Primer despliegue o sitio sin crear?"
+
+      - name: Desplegar el sitio (solo hosting de este sitio)
+        if: steps.trabajo.outputs.continuar == 'true'
+        run: |
+          set -euo pipefail
+          # `firebase deploy` PUEDE SALIR CON CÓDIGO 0 HABIENDO FALLADO (ver
+          # desplegar-staging en ci-node-firebase.yml): se revisa también el
+          # registro. firebase.json solo contiene este sitio (paso anterior).
+          log="$RUNNER_TEMP/despliegue.log"
+          rc=0
+          firebase deploy --only hosting --project "$PROYECTO" --non-interactive \
+            --message "sitio $CLAVE ${GITHUB_SHA::7} (run ${GITHUB_RUN_ID})" 2>&1 \
+            | tee "$log" || rc=$?
+          if grep -qiE 'site not found|404.*site|no site (named|with id)' "$log"; then
+            echo "::error::$CLAVE: el sitio de Hosting no existe en el proyecto de staging (paso de alta del tenant)."
+            exit 1
+          fi
+          [ "$rc" -eq 0 ] || exit "$rc"
+          if grep -qiE 'failed to create function|failed to update function|Build failed with status|Deploy failed|had HTTP Error' "$log"; then
+            echo "::error::firebase deploy terminó con código 0 pero su registro contiene fallos: el despliegue NO está completo."
+            exit 1
+          fi
+          echo "### Sitio $CLAVE desplegado en staging" >> "$GITHUB_STEP_SUMMARY"
+
+      - name: Humo del sitio (/ y /api/cotizacion?mercado=BO en 200)
+        if: steps.trabajo.outputs.continuar == 'true'
+        run: |
+          set -uo pipefail
+          comprobar() { # ruta exigir_csp(si|no)
+            local ruta="$1" csp="$2" i codigo cabeceras
+            cabeceras="$(mktemp)"
+            for ((i = 1; i <= 10; i++)); do
+              codigo="$(curl -sS --max-time 15 -D "$cabeceras" -o /dev/null -w '%{http_code}' "${URL_SITIO%/}$ruta" 2>/dev/null || echo 000)"
+              if [[ "$codigo" == "200" ]] && { [[ "$csp" == "no" ]] || grep -qi '^content-security-policy:' "$cabeceras"; }; then
+                echo "OK  $ruta (intento $i)"; rm -f "$cabeceras"; return 0
+              fi
+              echo "…   $ruta: HTTP $codigo (intento $i/10)"
+              sleep 15
+            done
+            rm -f "$cabeceras"
+            echo "::error::$CLAVE: humo fallido en $ruta"
+            return 1
+          }
+          fallos=0
+          comprobar / si || fallos=$((fallos + 1))
+          comprobar '/api/cotizacion?mercado=BO' no || fallos=$((fallos + 1))
+          [ "$fallos" -eq 0 ] || exit 1
+
+      - name: Cerrar el trabajo (completada)
+        id: cierre_completada
+        if: success() && steps.trabajo.outputs.trabajo != ''
+        env:
+          SITIO_RECONSTRUCCION_SECRETO: ${{ secrets.SITIO_RECONSTRUCCION_SECRETO }}
+          ID_TRABAJO: ${{ steps.trabajo.outputs.trabajo }}
+        run: |
+          set -euo pipefail
+          echo "::add-mask::$SITIO_RECONSTRUCCION_SECRETO"
+          node scripts/contenido-sitio.mjs estado "$ID_TRABAJO" completada --tenant "$TENANT" --url "$URL_SITIO"
+
+      - name: Cerrar el trabajo (fallida)
+        # También si el run se cancela: un trabajo no queda en_curso para siempre.
+        # No corre si lo que falló fue el propio cierre `completada` (el sitio ya
+        # está desplegado y probado; marcarlo fallida sería falso).
+        if: >-
+          (failure() || cancelled())
+          && steps.trabajo.outputs.trabajo != ''
+          && steps.cierre_completada.outcome != 'failure'
+        env:
+          SITIO_RECONSTRUCCION_SECRETO: ${{ secrets.SITIO_RECONSTRUCCION_SECRETO }}
+          ID_TRABAJO: ${{ steps.trabajo.outputs.trabajo }}
+        run: |
+          set -euo pipefail
+          echo "::add-mask::$SITIO_RECONSTRUCCION_SECRETO"
+          node scripts/contenido-sitio.mjs estado "$ID_TRABAJO" fallida --tenant "$TENANT" --url "$URL_SITIO"
+          echo "::error::$CLAVE: reconstrucción fallida; trabajo cerrado como fallida. Rollback: clonar previa → live del sitio."

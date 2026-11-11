@@ -15,8 +15,9 @@
 //     staging: lista PERMITIDA, no negra. Solo valen `functions[:x]`, `firestore[:rules|:indexes]`, `storage` y `hosting:panel`;
 //       cualquier otra entrada (vacía, `hosting`, `hosting:sitio`, `hosting:<sitio de tenant>`, `hosting:,functions`…) es problema.
 //       La lista completa vacía también lo es (desplegaría también los sitios).
-//     production: se mantiene lo de DC3 (una entrada libre; con más de una, se rechazan `hosting` sin calificar y `hosting:sitio`).
-//       Cuando se pasa --sitios, `hosting:<id de sitio de tenant>` se rechaza siempre, sea cual sea el número de entradas.
+//     production (DC3): mientras SITIOS_TENANT tenga a lo sumo 1 entrada (--sitios), producción sigue desplegando `hosting` del sitio de T1
+//       y `hosting`/`hosting:sitio` valen. Con más de 1 entrada en --sitios se rechazan `hosting` sin calificar y `hosting:sitio`.
+//       Se cuentan las entradas de --sitios, no las de --solo. `hosting:<id de sitio de tenant>` se rechaza siempre que se pasen sitios.
 //   Las banderas exigen valor: un valor que empieza con `--` es uso inválido (código 2).
 // - Sin dependencias npm. Los errores nunca imprimen valores, solo la posición y el motivo. Código de salida: 0 bien, 1 inválido, 2 uso.
 import { pathToFileURL } from 'node:url';
@@ -94,8 +95,8 @@ export const RE_SOLO_STAGING = /^(functions(:[A-Za-z0-9_.-]+)?|firestore(:(rules
 
 /**
  * Guardia de FIREBASE_DEPLOY_ONLY. Devuelve los problemas (vacío = válida); nunca incluye valores.
- * staging: solo la lista permitida (RE_SOLO_STAGING). production: `hosting` sin calificar o `hosting:sitio` solo con más de una
- * entrada (DC3); `hosting:<sitio de tenant>` siempre que se pasen sitios.
+ * staging: solo la lista permitida (RE_SOLO_STAGING). production (DC3): `hosting` sin calificar o `hosting:sitio` se rechazan solo
+ * cuando `sitios` tiene más de 1 entrada; `hosting:<sitio de tenant>` siempre que se pasen sitios.
  */
 export function validarSolo(ambiente, lista, sitios = []) {
   if (!AMBIENTES.includes(ambiente)) return ['ambiente no válido'];
@@ -115,8 +116,8 @@ export function validarSolo(ambiente, lista, sitios = []) {
   const ids = new Set(sitios.map((s) => `hosting:${s.sitio}`));
   entradas.forEach((e, i) => {
     if (ids.has(e)) problemas.push(`entrada ${i + 1}: es un sitio de tenant`);
-    else if (entradas.length > 1 && e === 'hosting') problemas.push(`entrada ${i + 1}: hosting sin calificar despliega los sitios`);
-    else if (entradas.length > 1 && e === 'hosting:sitio') problemas.push(`entrada ${i + 1}: hosting:sitio no se despliega desde el CI`);
+    else if (sitios.length > 1 && e === 'hosting') problemas.push(`entrada ${i + 1}: hosting sin calificar despliega los sitios`);
+    else if (sitios.length > 1 && e === 'hosting:sitio') problemas.push(`entrada ${i + 1}: hosting:sitio no se despliega desde el CI`);
   });
   return problemas;
 }
@@ -141,7 +142,7 @@ export function ejecutar(args, env = process.env) {
       const lista = valor(args, 'solo');
       if (ambiente === undefined || lista === undefined) return { codigo: 2, error: 'uso: validar-solo --ambiente staging|production --solo "<lista>" [--sitios "<json>"]' };
       const crudo = valor(args, 'sitios') ?? env.SITIOS_TENANT;
-      const sitios = crudo === undefined || crudo === '' ? [] : parsearSitios(crudo);
+      const sitios = crudo === undefined || crudo.trim() === '' || crudo.trim() === '[]' ? [] : parsearSitios(crudo);
       const problemas = validarSolo(ambiente, lista, sitios);
       if (problemas.length > 0) return { codigo: 1, error: `FIREBASE_DEPLOY_ONLY inválido: ${problemas.join('; ')}` };
       return { codigo: 0, salida: 'FIREBASE_DEPLOY_ONLY válido' };

@@ -219,7 +219,8 @@ export async function ejecutar(args, env = process.env, deps = undefined, fetchF
     const url = normalizarUrl(valor(args, 'url'), env.NODE_ENV === 'test');
     const secreto = env.SITIO_RECONSTRUCCION_SECRETO ?? '';
     if (secreto === '') throw new ErrorContenidoSitio('falta SITIO_RECONSTRUCCION_SECRETO');
-    const d = deps ?? (await cargarDependencias());
+    // El registro (TypeScript) se carga solo en `generar`: `pendiente` y `estado` no necesitan node_modules.
+    const d = sub === 'generar' ? (deps ?? (await cargarDependencias())) : deps;
     const base = { tenant, url, secreto, calcularFirma: d?.calcularFirma, fetchFn };
     if (sub === 'pendiente') {
       const id = await trabajoPendiente(base);

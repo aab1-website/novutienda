@@ -87,12 +87,18 @@ describe('validarSolo', () => {
     for (const ok of ['functions', 'functions:api', 'firestore', 'firestore:rules', 'firestore:indexes', 'storage', 'hosting:panel']) expect(RE_SOLO_STAGING.test(ok)).toBe(true);
     for (const mal of ['', 'hosting', 'hosting:', 'hosting:sitio', 'hosting:sitio-aaaa', 'firestore:otra', 'functions:', 'storage:x', 'functions api']) expect(RE_SOLO_STAGING.test(mal)).toBe(false);
   });
-  it('production: solo revisa cuando hay más de una entrada', () => {
+  it('production: la guardia depende de cuántos sitios hay, no de cuántas entradas trae la lista', () => {
+    const lista = ['hosting', 'functions', 'firestore', 'storage'].join(',');
+    expect(validarSolo('production', lista, [])).toEqual([]);
+    expect(validarSolo('production', lista, [A])).toEqual([]);
     expect(validarSolo('production', '')).toEqual([]);
     expect(validarSolo('production', 'hosting')).toEqual([]);
     expect(validarSolo('production', 'hosting:sitio')).toEqual([]);
-    expect(validarSolo('production', 'functions,hosting')).toHaveLength(1);
-    expect(validarSolo('production', 'functions,hosting:sitio')).toHaveLength(1);
+    const dos = validarSolo('production', lista, [A, B]);
+    expect(dos).toHaveLength(1);
+    expect(dos[0]).toContain('hosting sin calificar');
+    expect(validarSolo('production', 'hosting', [A, B])).toHaveLength(1);
+    expect(validarSolo('production', 'functions,hosting:sitio', [A, B])).toHaveLength(1);
   });
   it('production rechaza siempre hosting:<sitio de tenant> cuando se dan los sitios, aunque sea la única entrada', () => {
     expect(validarSolo('production', 'hosting:sitio-aaaa', [A])).toHaveLength(1);
@@ -126,6 +132,15 @@ describe('ejecutar', () => {
     expect(ejecutar(['validar-solo', '--ambiente', 'staging'], {}).codigo).toBe(2);
     expect(ejecutar(['validar-solo', '--ambiente', 'production', '--solo', 'functions,hosting:sitio-bbbb'], env).codigo).toBe(1);
     expect(ejecutar(['otra'], {}).codigo).toBe(2);
+  });
+  it('validar-solo: --sitios \'[]\' cuenta 0 sitios; matriz sigue rechazando la lista vacía', () => {
+    const lista = 'hosting,functions,firestore,storage';
+    expect(ejecutar(['validar-solo', '--ambiente', 'production', '--solo', lista, '--sitios', '[]'], {}).codigo).toBe(0);
+    expect(ejecutar(['validar-solo', '--ambiente', 'production', '--solo', lista, '--sitios', json([A])], {}).codigo).toBe(0);
+    const dos = ejecutar(['validar-solo', '--ambiente', 'production', '--solo', lista, '--sitios', json([A, B])], {});
+    expect(dos.codigo).toBe(1);
+    expect(dos.error).toContain('hosting sin calificar');
+    expect(ejecutar(['matriz', '--sitios', '[]'], {}).codigo).toBe(1);
   });
   it('un valor que empieza con «--» es uso inválido (código 2) y no se interpreta como valor', () => {
     expect(ejecutar(['validar-solo', '--ambiente', 'staging', '--solo', '--sitios', json([A])], {}).codigo).toBe(2);
