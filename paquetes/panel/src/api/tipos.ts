@@ -426,6 +426,7 @@ export const LIMITES_PANEL = {
   videosPorProducto: 1,
   bytesFoto: 15 * 1024 * 1024,
   bytesVideo: 200 * 1024 * 1024,
+  duracionVideoSeg: 60,
   seccionesMax: 5,
   cuotaOriginalesBytes: 10 * 1024 * 1024 * 1024,
 } as const;

@@ -1,5 +1,5 @@
 import type { ClienteApi } from '../../api/cliente.js';
-import { ErrorApi } from '../../api/errores.js';
+import { ErrorApi, mensajeDeError } from '../../api/errores.js';
 import type { Medio } from '../../api/tipos.js';
 
 /** Primera espera entre consultas de `estadoSubida` (crece 1,5 veces por consulta hasta `ESPERA_TOPE_MS`). */
@@ -18,6 +18,15 @@ export interface OpcionesEspera {
 /** `finalizarSubida` responde así cuando otra invocación (el disparador) ya tiene reclamada la subida: no es un fallo. */
 export const esEnCurso = (e: unknown): boolean =>
   e instanceof ErrorApi && e.detalle.codigo === 'estado' && e.codigoHttps === 'failed-precondition' && e.message.includes('se está procesando');
+
+/**
+ * Mensaje para el usuario de un fallo de subida. Cuando el servidor rechazó el archivo (`procesamiento`) o el servicio no
+ * está disponible, su motivo ya es un texto legible («El video dura más de 60 segundos») y es más útil que el genérico.
+ */
+export function mensajeDeSubida(e: unknown): string {
+  if (e instanceof ErrorApi && (e.detalle.codigo === 'procesamiento' || e.detalle.codigo === 'no-disponible' || e.detalle.codigo === 'tipo-no-permitido') && e.message.trim() !== '') return e.message.trim();
+  return mensajeDeError(e);
+}
 
 const pausa = (ms: number): Promise<void> => new Promise((r) => setTimeout(r, ms));
 

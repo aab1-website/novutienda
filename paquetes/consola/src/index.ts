@@ -1,5 +1,5 @@
 export { manifiestoConsola } from './manifiesto.js';
-export { ErrorConsola } from './errores.js';
+export { ArchivoNoAdmitido, ErrorConsola, ProcesamientoNoDisponible } from './errores.js';
 export type { CodigoErrorConsola } from './errores.js';
 export { LIMITES_CONSOLA } from './limites.js';
 export { PLANTILLAS, esPlantilla } from './plantillas.js';
@@ -25,7 +25,7 @@ export { ALTURAS_VIDEO, ANCHOS_FOTO, FORMATOS_FOTO, nombreVersion, planificarPro
 export type { ItemPlan, PlanProcesamiento } from './medios/plan.js';
 export { liberarEnUso, reservarEnUso } from './medios/uso.js';
 export type { UsoMedios } from './medios/uso.js';
-export { borrarMedio, CAMPOS_RESERVA, estadoSubida, finalizarSubida, limpiarSubidas, reservarSubida } from './medios/subidas.js';
+export { MENSAJE_VIDEO_NO_DISPONIBLE, borrarMedio, CAMPOS_RESERVA, estadoSubida, finalizarSubida, limpiarSubidas, reservarSubida } from './medios/subidas.js';
 export type { DepsMedios, Medio, Reserva, ResultadoLimpieza, VersionMedio } from './medios/subidas.js';
 export { aCsv, neutralizarCelda, parsearCsv } from './csv.js';
 export {

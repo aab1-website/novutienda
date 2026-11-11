@@ -1,6 +1,6 @@
 import { registrarAuditoria, type Actor, type TransaccionIdentidad } from '@novutienda/nucleo';
 import { anotarCambio, leerEstadoSitio } from '../cambios.js';
-import { ErrorConsola, type CodigoErrorConsola } from '../errores.js';
+import { ArchivoNoAdmitido, ErrorConsola, ProcesamientoNoDisponible, type CodigoErrorConsola } from '../errores.js';
 import { LIMITES_CONSOLA } from '../limites.js';
 import { exigirRol, ROLES } from '../permisos.js';
 import { PLANTILLAS } from '../plantillas.js';
@@ -15,6 +15,9 @@ import { contieneMetadatos } from './metadatos.js';
 import { nombreVersion, planificarProcesamiento, type ItemPlan, type PlanProcesamiento } from './plan.js';
 import { BYTES_INICIALES, detectarArchivo, type FormatoArchivo, type TipoMedio } from './tipos-archivo.js';
 import { escribirUsoMedios, leerUsoMedios, liberarEnUso, reservarEnUso } from './uso.js';
+
+/** Texto para el usuario cuando el procesamiento de video no está disponible (el archivo no tiene la culpa). */
+export const MENSAJE_VIDEO_NO_DISPONIBLE = 'El procesamiento de video no está disponible por ahora; su archivo no tiene problemas. Intente más tarde.';
 
 export interface DepsMedios {
   readonly db: BaseDatosConsola;
@@ -127,6 +130,9 @@ export async function reservarSubida(deps: DepsMedios, e: EntradaReserva): Promi
   if (!Number.isSafeInteger(e.bytes) || e.bytes <= 0) throw new ErrorConsola('entrada-invalida', 'tamaño inválido');
   if (e.tipo === 'foto' && e.bytes > LIMITES_CONSOLA.bytesFoto) throw new ErrorConsola('limite', 'La foto supera 15 MB');
   if (e.tipo === 'video' && e.bytes > LIMITES_CONSOLA.bytesVideo) throw new ErrorConsola('limite', 'El video supera 200 MB');
+  if (e.tipo === 'video' && (await deps.procesador.disponible?.('video')) === false) {
+    throw new ErrorConsola('no-disponible', MENSAJE_VIDEO_NO_DISPONIBLE);
+  }
   if ((await deps.catalogo.leerProducto(t, e.productoId)) === undefined) {
     throw new ErrorConsola('no-encontrado', 'El producto no existe');
   }
@@ -381,6 +387,12 @@ async function procesarReclamada(
     };
   } catch (err) {
     if (err instanceof ErrorConsola) throw err; // `rechazar` ya limpió
+    if (err instanceof ProcesamientoNoDisponible) {
+      return rechazar(deps, t, s, reclamo, 'no-disponible', MENSAJE_VIDEO_NO_DISPONIBLE, [...temporales, ...publicadas]);
+    }
+    if (err instanceof ArchivoNoAdmitido) {
+      return rechazar(deps, t, s, reclamo, 'tipo-no-permitido', err.message, [...temporales, ...publicadas]);
+    }
     return rechazar(deps, t, s, reclamo, 'procesamiento', 'No se pudo procesar el archivo', [...temporales, ...publicadas]);
   }
 

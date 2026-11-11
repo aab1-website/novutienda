@@ -1,6 +1,8 @@
 // Pruebas sin emulador: traducción de errores, política de redondeo, verificadores, composición de cabeceras y
 // el marco de los callables con un entorno falso.
-import { readFileSync } from 'node:fs';
+import { chmodSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
+import { tmpdir } from 'node:os';
+import { join } from 'node:path';
 import { describe, expect, it, vi } from 'vitest';
 import { ErrorConsola } from '@novutienda/consola';
 import { EntradaInvalida, ErrorInventario, OperacionConflicto, SinPermiso, StockInsuficiente } from '@novutienda/inventarios';
@@ -8,7 +10,7 @@ import { CargaNoAutorizada, ContadorCorrupto, ErrorEvento, ErrorIdentidad, Limit
 import { ErrorPos, type CodigoErrorPos } from '@novutienda/pos';
 import { AccionNoPermitida, ErrorRecibo, ReciboNoEncontrado } from '@novutienda/recibos';
 import {
-  VideoNoDisponible, appCheckReal, appCheckSimulado, esEntornoDePruebas, recaptchaEnterprise, recaptchaSimulado, traducirError,
+  VideoNoDisponible, appCheckReal, crearProcesadorMedios, demuxerPermitido, sondaVideo, appCheckSimulado, esEntornoDePruebas, recaptchaEnterprise, recaptchaSimulado, traducirError,
 } from '../../plataforma/conectores/firebase/index.js';
 import { enrutar, type ConfigRouter } from '../../plataforma/funciones/servidor/http/router.js';
 import { componer } from '../../plataforma/funciones/scripts/componer-hosting.mjs';
@@ -437,5 +439,59 @@ describe('bucket público de los medios', () => {
   it('en pruebas vacío significa el bucket por defecto', () => {
     expect(exigirBucketPublico('', 'por-defecto', true)).toBe('');
     expect(exigirBucketPublico('otro', 'por-defecto', true)).toBe('otro');
+  });
+});
+
+describe('sonda del ffmpeg de video', () => {
+  function falso(cuerpo: string): { readonly ruta: string; readonly limpiar: () => void } {
+    const dir = mkdtempSync(join(tmpdir(), 'ffmpeg-falso-'));
+    const ruta = join(dir, 'ffmpeg');
+    writeFileSync(ruta, `#!/bin/sh\n${cuerpo}\n`);
+    chmodSync(ruta, 0o755);
+    return { ruta, limpiar: () => rmSync(dir, { recursive: true, force: true }) };
+  }
+  const BUCKET = {} as never;
+
+  it('con libx264 queda disponible, guarda la versión y corre una sola vez', async () => {
+    const f = falso('echo x >> "$0.corridas"\ncase "$*" in *-version*) echo "ffmpeg version 4.4.2-falso";; *-encoders*) echo " V..... libx264 H.264";; esac');
+    try {
+      const sonda = sondaVideo({ ffmpeg: f.ruta, ffprobe: '/no/importa' });
+      expect(await sonda()).toEqual({ disponible: true, version: 'ffmpeg version 4.4.2-falso' });
+      await sonda();
+      expect(readFileSync(`${f.ruta}.corridas`, 'utf8').trim().split('\n')).toHaveLength(2); // -version y -encoders, una vez
+      const p = crearProcesadorMedios(BUCKET, { FFMPEG_PATH: f.ruta, FFPROBE_PATH: '/no/importa' });
+      expect(await p.disponible?.('video')).toBe(true);
+      expect(await p.disponible?.('foto')).toBe(true);
+    } finally {
+      f.limpiar();
+    }
+  });
+
+  it('sin libx264 no está disponible y el video se rechaza con VideoNoDisponible', async () => {
+    const f = falso('case "$*" in *-version*) echo "ffmpeg version 4.4.2-falso";; *-encoders*) echo " A..... aac";; esac');
+    try {
+      const p = crearProcesadorMedios(BUCKET, { FFMPEG_PATH: f.ruta, FFPROBE_PATH: '/no/importa' });
+      expect(await p.estadoVideo()).toEqual({ disponible: false, causa: 'ffmpeg sin libx264', version: 'ffmpeg version 4.4.2-falso' });
+      expect(await p.disponible?.('video')).toBe(false);
+      expect(await p.disponible?.('foto')).toBe(true);
+      await expect(p.inspeccionar('x', 'video')).rejects.toBeInstanceOf(VideoNoDisponible);
+    } finally {
+      f.limpiar();
+    }
+  });
+
+  it('un binario que no existe o sin rutas no está disponible', async () => {
+    const p = crearProcesadorMedios(BUCKET, { FFMPEG_PATH: '/no/existe/ffmpeg', FFPROBE_PATH: '/no/existe/ffprobe' });
+    expect(await p.estadoVideo()).toMatchObject({ disponible: false });
+    expect(await p.disponible?.('video')).toBe(false);
+    const sin = crearProcesadorMedios(BUCKET, {});
+    expect(await sin.disponible?.('video')).toBe(false);
+    await expect(sin.procesar({ origen: 'x', tipo: 'video', destinoTemporal: 'y', plan: { items: [] } } as never)).rejects.toBeInstanceOf(VideoNoDisponible);
+  });
+
+  it('solo admite la familia mov/mp4 y matroska/webm', () => {
+    expect(demuxerPermitido('mov,mp4,m4a,3gp,3g2,mj2')).toBe('mov,mp4,m4a,3gp,3g2,mj2');
+    expect(demuxerPermitido('matroska,webm')).toBe('matroska,webm');
+    for (const raro of ['avi', 'hls', 'concat', 'image2', 'mpegts', 'mov,avi', '', undefined]) expect(demuxerPermitido(raro)).toBeUndefined();
   });
 });

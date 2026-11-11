@@ -20,6 +20,7 @@
 # MEDIOS_BUCKET_PUBLICO son obligatorias, y en production APP_CHECK_EXIGIDO debe ser true.
 # MEDIOS_BUCKET_PUBLICO es el bucket público aparte (solo tenants/<t>/publico/medios/), nunca el bucket por defecto
 # del proyecto; si MEDIOS_BASE_URL es de Cloud Storage (cualquiera de sus tres formas), su bucket debe ser exactamente ese.
+# FFMPEG_PATH y FFPROBE_PATH valen /usr/bin/ffmpeg y /usr/bin/ffprobe salvo P_FFMPEG_PATH / P_FFPROBE_PATH; nunca vacíos.
 # Ningún parámetro de Functions puede ser PLATAFORMA_PRUEBAS ni FUNCTIONS_EMULATOR (la guardia no se apaga en la nube).
 # Los errores nunca imprimen los valores.
 set -euo pipefail
@@ -110,13 +111,28 @@ done
 # non-interactive mode but have no value for … PROXY_SALTOS, RECAPTCHA_MODO, …»). Se escriben los mismos valores por
 # defecto de plataforma/funciones/servidor/config.ts para los que no llegaron por variable; mantener ambas listas iguales.
 declare -A POR_DEFECTO=(
-  [PROXY_SALTOS]=2 [RECAPTCHA_MODO]=real [APP_CHECK_MODO]=real [FFMPEG_PATH]="" [FFPROBE_PATH]=""
+  [PROXY_SALTOS]=2 [RECAPTCHA_MODO]=real [APP_CHECK_MODO]=real
   [CONTACTO_MAXIMO]=5 [CONTACTO_VENTANA_SEG]=600 [NOVUCHAT_MAXIMO_POR_MINUTO]=120
   [DISPONIBILIDAD_MAXIMO_POR_MINUTO]=60 [CONTACTO_MAXIMO_POR_MINUTO]=30
   [RECAPTCHA_CLAVE_SITIO]="" [FUNCIONES_SERVICE_ACCOUNT]=""
 )
 for nombre in "${!POR_DEFECTO[@]}"; do
   grep -q "^${nombre}=" "$parametros" || printf '%s=%s\n' "$nombre" "${POR_DEFECTO[$nombre]}" >>"$parametros"
+done
+# Binarios de video (decisión D1 = A, 11/11/2026): se usa el ffmpeg/ffprobe que trae el runtime de Google para
+# Functions (Node 22, Ubuntu 22.04) en /usr/bin. Difiere A PROPÓSITO de config.ts, que deja ambos vacíos para el
+# emulador y las pruebas (sin binarios, el video se rechaza con motivo claro). Aquí nunca quedan vacíos: un valor
+# vacío desplegaría Functions que rechazan todo video sin avisar. Sobreescribibles con P_FFMPEG_PATH / P_FFPROBE_PATH.
+ruta_absoluta='^(/[A-Za-z0-9._+-]+)+$'
+for nombre in FFMPEG_PATH FFPROBE_PATH; do
+  var="P_${nombre}"
+  case "$nombre" in
+    FFMPEG_PATH) valor="${!var:-/usr/bin/ffmpeg}" ;;
+    FFPROBE_PATH) valor="${!var:-/usr/bin/ffprobe}" ;;
+  esac
+  [[ "$valor" =~ $ruta_absoluta ]] \
+    || error "El parámetro $nombre debe ser una ruta absoluta sin espacios ni caracteres especiales (por defecto /usr/bin/ffmpeg y /usr/bin/ffprobe)."
+  printf '%s=%s\n' "$nombre" "$valor" >>"$parametros"
 done
 # La guardia de configuración (exigirConfiguracionDeServicio, exigirBucketPublico) no debe poder apagarse en staging ni
 # en production: ningún parámetro desplegado puede marcar el entorno como pruebas o emulador. Falla cerrado.
@@ -128,7 +144,9 @@ echo "FUNCIONES_PARAMETROS=$parametros" >>"${GITHUB_ENV:-/dev/null}"
 export FUNCIONES_PARAMETROS="$parametros"
 node plataforma/funciones/scripts/empaquetar.mjs
 if ! grep -q '^MEDIOS_BASE_URL=' dist/funciones/.env 2>/dev/null \
-  || ! grep -q '^MEDIOS_BUCKET_PUBLICO=' dist/funciones/.env 2>/dev/null; then
+  || ! grep -q '^MEDIOS_BUCKET_PUBLICO=' dist/funciones/.env 2>/dev/null \
+  || ! grep -Eq '^FFMPEG_PATH=/' dist/funciones/.env 2>/dev/null \
+  || ! grep -Eq '^FFPROBE_PATH=/' dist/funciones/.env 2>/dev/null; then
   error "empaquetar.mjs no incorporó los parámetros (FUNCIONES_PARAMETROS → dist/funciones/.env). Contrato pendiente: docs/arquitectura/decisiones.md, «Parámetros de Functions en el despliegue»."
 fi
 # Revisión del resultado empaquetado: firebase deploy lee dist/funciones/.env y .env.<proyecto|alias>.

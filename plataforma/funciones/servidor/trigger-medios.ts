@@ -2,7 +2,7 @@
 // finaliza la subida (valida bytes, procesa, publica versiones). Actúa con el rol VIGENTE de quien subió: se
 // toma de sus claims actuales en Auth, así que un usuario degradado o deshabilitado no completa subidas.
 import { logger } from 'firebase-functions';
-import { finalizarSubida } from '@novutienda/consola';
+import { ErrorConsola, finalizarSubida } from '@novutienda/consola';
 import { esTenantIdValido } from '@novutienda/nucleo';
 import type { Entorno } from './entorno.js';
 import { depsMedios } from './llamadas/medios.js';
@@ -34,7 +34,10 @@ export async function procesarObjetoSubido(e: Entorno, bucket: string, nombre: s
     return 'finalizada';
   } catch (error) {
     // finalizarSubida ya liberó la reserva y borró lo subido cuando el archivo no cumple; no se reintenta.
-    logger.warn('subida rechazada', { tenantId, subidaId, error: error instanceof Error ? error.name : 'desconocido', mensaje: error instanceof Error ? error.message : '' });
+    // Un procesamiento caído no es culpa del archivo: es una falla del servicio y se registra como error para que alerte.
+    const registro = { tenantId, subidaId, error: error instanceof Error ? error.name : 'desconocido', mensaje: error instanceof Error ? error.message : '' };
+    if (error instanceof ErrorConsola && error.codigo === 'no-disponible') logger.error('subida rechazada: procesamiento no disponible', registro);
+    else logger.warn('subida rechazada', registro);
     return 'rechazada';
   }
 }

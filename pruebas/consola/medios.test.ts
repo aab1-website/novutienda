@@ -1,6 +1,6 @@
 import { beforeEach, describe, expect, it } from 'vitest';
 import {
-  borrarMedio, contieneMetadatos, detectarArchivo, ErrorConsola, estadoSubida, finalizarSubida, LIMITES_CONSOLA, limpiarSubidas, nombreVersion,
+  borrarMedio, contieneMetadatos, MENSAJE_VIDEO_NO_DISPONIBLE, detectarArchivo, ErrorConsola, estadoSubida, finalizarSubida, LIMITES_CONSOLA, limpiarSubidas, nombreVersion,
   planificarProcesamiento, reservarSubida, type DepsMedios,
 } from '@novutienda/consola';
 import { rutaContador } from '@novutienda/nucleo';
@@ -139,6 +139,12 @@ describe('pipeline de medios', () => {
       await expect(subir('foto', JPG)).rejects.toMatchObject({ codigo: 'limite' });
       expect(uso().productos['cam-1']?.fotos).toBe(5);
       await expect(subir('foto', JPG, { producto: 'cam-2' })).resolves.toBeDefined(); // el tope es por producto
+    });
+    it('sin procesamiento de video disponible rechaza la reserva del video antes de reservar nada, pero no la de una foto', async () => {
+      proc.videoDisponible = false;
+      await expect(subir('video', MP4)).rejects.toMatchObject({ codigo: 'no-disponible', message: MENSAJE_VIDEO_NO_DISPONIBLE });
+      expect(uso()).toEqual({ bytes: 0, productos: {} });
+      await expect(subir('foto', JPG)).resolves.toBeDefined();
     });
     it('rechaza el segundo video', async () => {
       await subir('video', MP4);
@@ -411,6 +417,24 @@ describe('pipeline de medios', () => {
         await expect(finalizarSubida(deps, { tenantId: T, actor: adm, subidaId })).rejects.toMatchObject({ codigo: 'procesamiento' });
       }
       expect(uso()).toEqual({ bytes: 0, productos: {} });
+    });
+    it('si el procesador lanza ProcesamientoNoDisponible, la subida queda rechazada con el mensaje, sin original y con la cuota liberada', async () => {
+      proc.lanzaNoDisponible = true;
+      proc.info = { ancho: 1920, alto: 1080, duracionSeg: 10 };
+      const { subidaId, r } = await subir('video', MP4);
+      await expect(finalizarSubida(deps, { tenantId: T, actor: adm, subidaId })).rejects.toMatchObject({ codigo: 'no-disponible', message: MENSAJE_VIDEO_NO_DISPONIBLE });
+      expect(almacen.objetos.has(r.rutaOriginal)).toBe(false);
+      expect(uso()).toEqual({ bytes: 0, productos: {} });
+      expect(await estadoSubida(deps, { tenantId: T, actor: adm, subidaId })).toMatchObject({ estado: 'rechazada', motivo: MENSAJE_VIDEO_NO_DISPONIBLE });
+    });
+    it('si el procesador lanza ArchivoNoAdmitido, la subida queda rechazada con ese motivo, sin original y con la cuota liberada', async () => {
+      proc.lanzaNoAdmitido = 'Formato de video no admitido: use MP4, MOV o WebM';
+      proc.info = { ancho: 1920, alto: 1080, duracionSeg: 10 };
+      const { subidaId, r } = await subir('video', MP4);
+      await expect(finalizarSubida(deps, { tenantId: T, actor: adm, subidaId })).rejects.toMatchObject({ codigo: 'tipo-no-permitido', message: 'Formato de video no admitido: use MP4, MOV o WebM' });
+      expect(almacen.objetos.has(r.rutaOriginal)).toBe(false);
+      expect(uso()).toEqual({ bytes: 0, productos: {} });
+      expect(await estadoSubida(deps, { tenantId: T, actor: adm, subidaId })).toMatchObject({ estado: 'rechazada', motivo: 'Formato de video no admitido: use MP4, MOV o WebM' });
     });
     it('la cuota refleja el tamaño real si es menor que lo reservado', async () => {
       const { subidaId } = await subir('foto', JPG, { declarados: JPG.length + 500 });

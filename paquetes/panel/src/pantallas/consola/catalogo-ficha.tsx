@@ -6,7 +6,8 @@ import { LIMITES_PANEL, type EstadoFicha, type FichaWeb, type Medio, type MedioF
 import { Alerta, Area, Boton, BotonConfirmado, Campo, Cargando, ErrorCarga, Selector, Seccion, Vacio } from '../../ui/comun.js';
 import { useApp } from '../../ui/contexto.js';
 import { useAccion, useCarga } from '../../ui/hooks.js';
-import { esperarSubida } from './esperar.js';
+import { esperarSubida, mensajeDeSubida } from './esperar.js';
+import { validarArchivo } from './validar-archivo.js';
 import { formatoBytes } from '../../util/base64.js';
 
 const ESTADOS: { valor: EstadoFicha; texto: string }[] = [{ valor: 'borrador', texto: 'Borrador' }, { valor: 'publicado', texto: 'Publicado' }, { valor: 'oculto', texto: 'Oculto' }];
@@ -63,6 +64,12 @@ function EditorFicha({ producto, alCerrar }: { producto: ProductoPanel; alCerrar
     const subidaId = nuevoId();
     const estado = (texto: string, error = false): void => setSubidas((s) => (s.some((x) => x.id === subidaId) ? s.map((x) => (x.id === subidaId ? { ...x, texto, error } : x)) : [...s, { id: subidaId, nombre: archivo.name, texto, error }]));
     try {
+      estado('Revisando el archivo…');
+      const falla = await validarArchivo(archivo, tipo);
+      if (falla !== undefined) {
+        estado(falla, true);
+        return;
+      }
       estado('Reservando…');
       const r = await api.llamar('reservarSubida', { subidaId, productoId: producto.id, tipo, bytes: archivo.size });
       estado('Subiendo 0 %');
@@ -86,7 +93,7 @@ function EditorFicha({ producto, alCerrar }: { producto: ProductoPanel; alCerrar
       setOk(false);
       datos.recargar();
     } catch (e) {
-      estado(mensajeDeError(e), true);
+      estado(mensajeDeSubida(e), true);
     }
   };
   const elegirArchivo = (tipo: TipoMedio) => (e: Event): void => {

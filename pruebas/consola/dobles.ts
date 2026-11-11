@@ -3,6 +3,7 @@ import type {
   AlmacenMedios, CatalogoPuerto, ConsultaSubidas, DatosProducto, DisparadorSitio, Existencia, InfoMedio, PrecioUSD,
   ProcesadorMedios, ProductoCatalogo, Reloj, SolicitudProcesado, VersionProcesada,
 } from '@novutienda/consola';
+import { ArchivoNoAdmitido, ProcesamientoNoDisponible } from '@novutienda/consola';
 import { DobleDb } from './doble-db.js';
 
 export const T = 't1';
@@ -131,14 +132,22 @@ const contenidoVersion = (v: { clase: string; lado: number; formato: string }, s
 export class ProcesadorSimulado implements ProcesadorMedios {
   info: InfoMedio = { ancho: 3000, alto: 2000 };
   lanza = false;
+  lanzaNoDisponible = false;
+  lanzaNoAdmitido: string | undefined = undefined;
+  videoDisponible = true;
   dejarMetadatos = false;
   omitirUna = false;
   escribirFuera = false;
   constructor(private readonly almacen: AlmacenDoble) {}
+  async disponible(tipo: 'foto' | 'video'): Promise<boolean> {
+    return tipo === 'video' ? this.videoDisponible : true;
+  }
   async inspeccionar(): Promise<InfoMedio> {
     return this.info;
   }
   async procesar(s: SolicitudProcesado): Promise<readonly VersionProcesada[]> {
+    if (this.lanzaNoAdmitido !== undefined) throw new ArchivoNoAdmitido(this.lanzaNoAdmitido);
+    if (this.lanzaNoDisponible) throw new ProcesamientoNoDisponible('servicio de video caído');
     if (this.lanza) throw new Error('imagen ilegible');
     const salida: VersionProcesada[] = [];
     for (const item of this.omitirUna ? s.plan.items.slice(1) : s.plan.items) {
