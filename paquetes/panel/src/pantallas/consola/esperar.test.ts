@@ -82,6 +82,6 @@ describe('mensajeDeSubida', () => {
   it('conserva el mensaje del servidor si el servicio no está disponible y cae al genérico sin motivo', () => {
     expect(mensajeDeSubida(new ErrorApi('unavailable', 'El procesamiento de video no está disponible por ahora.', { codigo: 'no-disponible' }))).toBe('El procesamiento de video no está disponible por ahora.');
     expect(mensajeDeSubida(new ErrorApi('failed-precondition', 'Formato de video no admitido: use MP4, MOV o WebM', { codigo: 'tipo-no-permitido' }))).toBe('Formato de video no admitido: use MP4, MOV o WebM');
-    expect(mensajeDeSubida(new ErrorApi('failed-precondition', '', { codigo: 'procesamiento' }))).toBe('No se pudo procesar el archivo. Pruebe con otro.');
+    expect(mensajeDeSubida(new ErrorApi('failed-precondition', '', { codigo: 'procesamiento' }))).toBe('No se pudo procesar el archivo. Pruebe con otro o vuelva a intentarlo más tarde.');
   });
 });
