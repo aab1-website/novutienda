@@ -155,11 +155,18 @@ jobs:
           # Defensa en profundidad: los identificadores del tenant nunca en claro.
           # Una clave que contenga un valor enmascarado haría que el runner
           # descartara la salida `matriz`: se rechaza aquí con un motivo claro.
+          # Un valor enmascarado muy corto (p. ej. tenant `a` o `true`) aparecería
+          # dentro del texto de `matriz` o `hay` y el runner las descartaría en
+          # silencio: se rechaza ANTES de enmascarar, sin imprimir el valor.
+          enmascarados=()
           while IFS=$'\t' read -r c t s u; do
             h="${u#https://}"; h="${h%/}"
             for v in "$t" "$s" "$u" "$h"; do
               [[ -z "$v" ]] && continue
+              (( ${#v} >= 4 )) \
+                || { echo "::error::sondear $c: el tenant, el sitio o la URL tiene menos de 4 caracteres (no se puede enmascarar sin vaciar las salidas)."; exit 1; }
               echo "::add-mask::$v"
+              enmascarados+=("$v")
               [[ "$c" != *"$v"* ]] \
                 || { echo "::error::sondear $c: la clave no puede contener el tenant, el sitio ni la URL."; exit 1; }
             done
@@ -191,6 +198,12 @@ jobs:
           n="$(jq '.include | length' <<<"$matriz")"
           hay=false; (( n > 0 )) && hay=true
           claves="$(jq -r '[.include[].clave] | join(", ")' <<<"$matriz")"
+          # Ninguna salida puede contener un valor enmascarado (el runner la
+          # descartaría y el run quedaría verde sin reconstruir, o fromJSON fallaría).
+          for v in "${enmascarados[@]}"; do
+            [[ "$matriz$hay" != *"$v"* ]] \
+              || { echo "::error::sondear: un tenant, sitio o URL de SITIOS_TENANT aparece dentro de las salidas matriz/hay (p. ej. coincide con 'include' o 'clave'); cámbielo."; exit 1; }
+          done
           { echo "matriz=$matriz"; echo "hay=$hay"; echo "fallos=$fallos"; } >> "$GITHUB_OUTPUT"
           {
             echo "### Sondeo ($MODO)"
@@ -271,6 +284,11 @@ jobs:
             [[ "$v" != *[$'\n\r']* ]] || falla "un valor de SITIOS_TENANT contiene un salto de línea."
           done
           host="${url#https://}"; host="${host%/}"
+          # Un valor muy corto enmascararía texto común del registro y de las
+          # salidas (misma regla que `sondear`): se rechaza sin imprimirlo.
+          for v in "$tenant" "$sitio" "$url" "${url%/}" "$host"; do
+            [[ -z "$v" || ${#v} -ge 4 ]] || falla "el tenant, el sitio o la URL tiene menos de 4 caracteres en SITIOS_TENANT."
+          done
           # Enmascarar ANTES de validar o escribir nada que pueda contenerlos.
           for v in "$tenant" "$sitio" "$url" "${url%/}" "$host"; do
             [[ -z "$v" ]] || echo "::add-mask::$v"
