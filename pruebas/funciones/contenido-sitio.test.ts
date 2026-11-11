@@ -309,12 +309,16 @@ describe('generar', () => {
     expect(existsSync(salida)).toBe(false);
   });
   it('generarContenido pasa el entorno al mapeo (App Check solo si están las cuatro variables)', async () => {
-    let visto: { appCheck: unknown; origenMedios: string; origen: string } | undefined;
+    let visto: { appCheck: unknown; origenMedios: string; baseMedios: string; origen: string } | undefined;
     const mapear = (_p: unknown, _n: unknown, e: unknown) => { visto = e as typeof visto; return {}; };
     const llamar = (extra: Record<string, string>) => generarContenido({ tenant: TENANT, url: ORIGEN, secreto: SECRETO, env: { ...env, ...extra }, calcularFirma, mapear, fetchFn: fetchLocal });
     await llamar({});
     expect(visto?.appCheck).toBeNull();
     expect(visto?.origenMedios).toBe('https://medios.example.com');
+    // Base con ruta (bucket): el origen va sin ruta (CSP y validación) y la base completa arma las url de las fotos.
+    await llamar({ MEDIOS_BASE_URL: 'https://medios.example.com/bucket-stg/' });
+    expect(visto?.origenMedios).toBe('https://medios.example.com');
+    expect(visto?.baseMedios).toBe('https://medios.example.com/bucket-stg');
     await llamar({ VITE_RECAPTCHA_ENTERPRISE_SITE_KEY: 'k', VITE_FIREBASE_API_KEY: 'a', VITE_FIREBASE_APP_ID: 'i', VITE_FIREBASE_PROJECT_ID: 'p' });
     expect(visto?.appCheck).toEqual({ claveSitio: 'k', apiKey: 'a', appId: 'i', projectId: 'p' });
   });
