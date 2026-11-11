@@ -454,16 +454,18 @@ describe('sonda del ffmpeg de video', () => {
 
   it('con libx264 queda disponible, guarda la versión y corre una sola vez', async () => {
     const f = falso('echo x >> "$0.corridas"\ncase "$*" in *-version*) echo "ffmpeg version 4.4.2-falso";; *-encoders*) echo " V..... libx264 H.264";; esac');
+    const pr = falso('echo "ffprobe version 4.4.2-falso"');
     try {
-      const sonda = sondaVideo({ ffmpeg: f.ruta, ffprobe: '/no/importa' });
-      expect(await sonda()).toEqual({ disponible: true, version: 'ffmpeg version 4.4.2-falso' });
+      const sonda = sondaVideo({ ffmpeg: f.ruta, ffprobe: pr.ruta });
+      expect(await sonda()).toEqual({ disponible: true, version: 'ffmpeg version 4.4.2-falso | ffprobe version 4.4.2-falso' });
       await sonda();
       expect(readFileSync(`${f.ruta}.corridas`, 'utf8').trim().split('\n')).toHaveLength(2); // -version y -encoders, una vez
-      const p = crearProcesadorMedios(BUCKET, { FFMPEG_PATH: f.ruta, FFPROBE_PATH: '/no/importa' });
+      const p = crearProcesadorMedios(BUCKET, { FFMPEG_PATH: f.ruta, FFPROBE_PATH: pr.ruta });
       expect(await p.disponible?.('video')).toBe(true);
       expect(await p.disponible?.('foto')).toBe(true);
     } finally {
       f.limpiar();
+      pr.limpiar();
     }
   });
 

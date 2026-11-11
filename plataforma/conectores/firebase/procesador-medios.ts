@@ -10,7 +10,7 @@ import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { promisify } from 'node:util';
 import sharp from 'sharp';
-import { ArchivoNoAdmitido, ProcesamientoNoDisponible, type InfoMedio, type ProcesadorMedios, type SolicitudProcesado, type VersionProcesada } from '@novutienda/consola';
+import { ArchivoNoAdmitido, LIMITES_CONSOLA, ProcesamientoNoDisponible, type InfoMedio, type ProcesadorMedios, type SolicitudProcesado, type VersionProcesada } from '@novutienda/consola';
 import type { Bucket } from './almacen-medios.js';
 
 const ejecutar = promisify(execFile);
@@ -98,29 +98,52 @@ export type EstadoVideo =
 /** Entorno mínimo de los subprocesos: sin heredar nada (ni credenciales ni variables de ffmpeg). */
 const ENTORNO_BIN = { PATH: '/usr/bin:/bin' };
 
+/** Una causa que no se repite en la siguiente llamada: el tiempo, no el binario (no se guarda en caché). */
+function esTransitorio(err: unknown): boolean {
+  const e = err as { killed?: unknown; signal?: unknown; code?: unknown };
+  return e.killed === true || (typeof e.signal === 'string' && e.signal !== '') || e.code === 'ETIMEDOUT';
+}
+
 /**
- * Sonda del ffmpeg: existe, ejecuta y trae libx264. El resultado se guarda por instancia (una sola corrida).
+ * Sonda de ffmpeg y ffprobe: existen, ejecutan y ffmpeg trae libx264. Se guarda por instancia solo el éxito o un
+ * fallo definitivo (falta el binario, sin libx264); un timeout se reintenta en la siguiente llamada. La primera
+ * línea de `-version` de ambos queda en la versión, para compararla con los avisos de seguridad.
  */
 export function sondaVideo(bin: BinariosVideo): () => Promise<EstadoVideo> {
-  let guardada: Promise<EstadoVideo> | undefined;
-  const sondear = async (): Promise<EstadoVideo> => {
+  let guardada: EstadoVideo | undefined;
+  const opc = { timeout: 15_000, killSignal: 'SIGKILL' as const, env: ENTORNO_BIN };
+  const sondear = async (): Promise<{ readonly estado: EstadoVideo; readonly definitivo: boolean }> => {
     let version: string | undefined;
+    const con = (e: EstadoVideo & { disponible: false }): EstadoVideo => ({ ...e, ...(version === undefined ? {} : { version }) });
     try {
-      const v = await ejecutar(bin.ffmpeg, ['-hide_banner', '-version'], { timeout: 15_000, maxBuffer: 1024 * 1024, env: ENTORNO_BIN });
+      const v = await ejecutar(bin.ffmpeg, ['-hide_banner', '-version'], { ...opc, maxBuffer: 1024 * 1024 });
       version = v.stdout.split('\n')[0]?.trim();
-      const e = await ejecutar(bin.ffmpeg, ['-hide_banner', '-encoders'], { timeout: 15_000, maxBuffer: 4 * 1024 * 1024, env: ENTORNO_BIN });
-      if (!/\blibx264\b/.test(e.stdout)) return { disponible: false, causa: 'ffmpeg sin libx264', ...(version === undefined ? {} : { version }) };
-      return { disponible: true, version: version ?? 'desconocida' };
+      const e = await ejecutar(bin.ffmpeg, ['-hide_banner', '-encoders'], { ...opc, maxBuffer: 4 * 1024 * 1024 });
+      if (!/\blibx264\b/.test(e.stdout)) return { estado: con({ disponible: false, causa: 'ffmpeg sin libx264' }), definitivo: true };
+      let sondeVersion: string | undefined;
+      try {
+        const p = await ejecutar(bin.ffprobe, ['-hide_banner', '-version'], { ...opc, maxBuffer: 1024 * 1024 });
+        sondeVersion = p.stdout.split('\n')[0]?.trim();
+      } catch (err) {
+        const codigo = (err as { code?: unknown }).code;
+        return { estado: con({ disponible: false, causa: `ffprobe no ejecuta (${typeof codigo === 'string' || typeof codigo === 'number' ? String(codigo) : 'error'})` }), definitivo: !esTransitorio(err) };
+      }
+      return { estado: { disponible: true, version: [version, sondeVersion].filter((x) => x !== undefined && x !== '').join(' | ') || 'desconocida' }, definitivo: true };
     } catch (err) {
       const codigo = (err as { code?: unknown }).code;
-      return { disponible: false, causa: `ffmpeg no ejecuta (${typeof codigo === 'string' || typeof codigo === 'number' ? String(codigo) : 'error'})`, ...(version === undefined ? {} : { version }) };
+      return { estado: con({ disponible: false, causa: `ffmpeg no ejecuta (${typeof codigo === 'string' || typeof codigo === 'number' ? String(codigo) : 'error'})` }), definitivo: !esTransitorio(err) };
     }
   };
-  return () => (guardada ??= sondear());
+  return async () => {
+    if (guardada !== undefined) return guardada;
+    const r = await sondear();
+    if (r.definitivo) guardada = r.estado;
+    return r.estado;
+  };
 }
 
 interface SalidaProbe {
-  readonly streams?: readonly { readonly codec_type?: string; readonly width?: number; readonly height?: number; readonly duration?: string }[];
+  readonly streams?: readonly { readonly codec_type?: string; readonly codec_name?: string; readonly width?: number; readonly height?: number; readonly duration?: string }[];
   readonly format?: { readonly duration?: string; readonly format_name?: string };
 }
 
@@ -135,10 +158,19 @@ export function demuxerPermitido(formatName: string | undefined): string | undef
   return undefined;
 }
 
+/** Códecs admitidos (lista blanca en dos capas: `-codec_whitelist` de ffmpeg y verificación de las pistas con ffprobe; en ffprobe la opción haría fallar el análisis de pistas de subtítulos). */
+const CODECS_VIDEO = ['h264', 'hevc', 'vp8', 'vp9', 'av1'];
+const CODECS_AUDIO = ['aac', 'mp3', 'opus', 'vorbis'];
+const LISTA_CODECS = [...CODECS_VIDEO, ...CODECS_AUDIO].join(',');
+/** Duración máxima de salida: se cumple aunque la cabecera del archivo mienta. */
+const DURACION_MAX_SEG = String(LIMITES_CONSOLA.duracionVideoSeg);
+/** Plazo total de la función (540 s) menos un margen para descargar y subir. */
+const PLAZO_TOTAL_MS = 500_000;
+const TIEMPO_SONDEO_MS = 30_000;
 /** Tope de bytes de cada archivo de salida de ffmpeg (el límite de la consola para una versión es menor). */
 const SALIDA_MAX_BYTES = 200 * 1024 * 1024;
 /** Opciones de entrada comunes: sin stdin y solo archivos locales. */
-const ENTRADA_SEGURA = ['-nostdin', '-protocol_whitelist', 'file'];
+const ENTRADA_SEGURA = ['-nostdin', '-protocol_whitelist', 'file', '-codec_whitelist', LISTA_CODECS];
 
 export function procesadorVideo(bucket: Bucket, bin: BinariosVideo): Pick<ProcesadorMedios, 'inspeccionar' | 'procesar'> {
   async function conArchivo<T>(ruta: string, fn: (local: string, dir: string) => Promise<T>): Promise<T> {
@@ -153,18 +185,26 @@ export function procesadorVideo(bucket: Bucket, bin: BinariosVideo): Pick<Proces
   }
 
   async function sondear(local: string): Promise<{ readonly sonda: SalidaProbe; readonly demuxer: string }> {
+    // Un contenedor fuera de `-format_whitelist` hace fallar a ffprobe: es un archivo no admitido, no una avería.
     const { stdout } = await ejecutar(
       bin.ffprobe,
-      ['-v', 'error', '-protocol_whitelist', 'file', '-print_format', 'json', '-show_format', '-show_streams', local],
-      { timeout: 60_000, maxBuffer: 4 * 1024 * 1024, env: ENTORNO_BIN },
-    );
+      ['-v', 'error', '-protocol_whitelist', 'file', '-format_whitelist', 'mov,mp4,m4a,3gp,3g2,mj2,matroska,webm', '-enable_drefs', '0', '-print_format', 'json', '-show_format', '-show_streams', local],
+      { timeout: TIEMPO_SONDEO_MS, killSignal: 'SIGKILL', maxBuffer: 4 * 1024 * 1024, env: ENTORNO_BIN },
+    ).catch((err: unknown) => {
+      if (esTransitorio(err) || (err as { code?: unknown }).code === 'ENOENT') throw err;
+      throw new FormatoVideoNoAdmitido();
+    });
     const sonda = JSON.parse(stdout) as SalidaProbe;
     const demuxer = demuxerPermitido(sonda.format?.format_name);
     if (demuxer === undefined) throw new FormatoVideoNoAdmitido();
+    const v = sonda.streams?.find((x) => x.codec_type === 'video');
+    const a = sonda.streams?.find((x) => x.codec_type === 'audio');
+    if (v?.codec_name !== undefined && !CODECS_VIDEO.includes(v.codec_name)) throw new FormatoVideoNoAdmitido();
+    if (a?.codec_name !== undefined && !CODECS_AUDIO.includes(a.codec_name)) throw new FormatoVideoNoAdmitido();
     return { sonda, demuxer };
   }
 
-  const correr = (args: readonly string[], timeout: number): Promise<unknown> => ejecutar(bin.ffmpeg, [...args], { timeout, maxBuffer: 1024 * 1024, env: ENTORNO_BIN });
+  const correr = (args: readonly string[], timeout: number): Promise<unknown> => ejecutar(bin.ffmpeg, [...args], { timeout: Math.max(1000, Math.floor(timeout)), killSignal: 'SIGKILL', maxBuffer: 1024 * 1024, env: ENTORNO_BIN });
 
   return {
     inspeccionar: (ruta): Promise<InfoMedio> =>
@@ -178,18 +218,21 @@ export function procesadorVideo(bucket: Bucket, bin: BinariosVideo): Pick<Proces
 
     procesar: (s: SolicitudProcesado): Promise<readonly VersionProcesada[]> =>
       conArchivo(s.origen, async (local, dir) => {
+        const limite = Date.now() + PLAZO_TOTAL_MS;
         const { demuxer } = await sondear(local);
         const entrada = [...ENTRADA_SEGURA, '-f', demuxer, '-i', local];
         const salida: VersionProcesada[] = [];
-        for (const item of s.plan.items) {
+        for (const [i, item] of s.plan.items.entries()) {
+          // Plazo único: lo que queda se reparte en partes iguales entre los ítems pendientes.
+          const tiempo = (limite - Date.now()) / (s.plan.items.length - i);
           if (item.clase === 'video') {
             // El lado lo mide el lado corto: en vertical se fija el ancho, en horizontal el alto.
             const lado = String(item.lado);
             const filtro = `scale=w='if(gt(iw,ih),-2,${lado})':h='if(gt(iw,ih),${lado},-2)'`;
             const destino = join(dir, `video${lado}.mp4`);
             await correr(
-              ['-y', '-v', 'error', ...entrada, '-map', '0:v:0', '-map', '0:a:0?', '-sn', '-dn', '-map_metadata', '-1', '-map_chapters', '-1', '-vf', filtro, '-c:v', 'libx264', '-preset', 'veryfast', '-crf', '23', '-pix_fmt', 'yuv420p', '-c:a', 'aac', '-b:a', '128k', '-movflags', '+faststart', '-fs', String(SALIDA_MAX_BYTES), destino],
-              480_000,
+              ['-y', '-v', 'error', ...entrada, '-map', '0:v:0', '-map', '0:a:0?', '-sn', '-dn', '-map_metadata', '-1', '-map_chapters', '-1', '-vf', filtro, '-threads', '2', '-t', DURACION_MAX_SEG, '-c:v', 'libx264', '-preset', 'veryfast', '-crf', '23', '-pix_fmt', 'yuv420p', '-c:a', 'aac', '-b:a', '128k', '-movflags', '+faststart', '-fs', String(SALIDA_MAX_BYTES), destino],
+              tiempo,
             );
             const rutaTemporal = `${s.destinoTemporal}/video${lado}.mp4`;
             await subir(bucket, rutaTemporal, await readFile(destino), TIPO_CONTENIDO.mp4);
@@ -197,8 +240,8 @@ export function procesadorVideo(bucket: Bucket, bin: BinariosVideo): Pick<Proces
           } else if (item.clase === 'poster') {
             const cuadro = join(dir, 'cuadro.png');
             const base = ['-y', '-v', 'error'];
-            const salidaPoster = ['-map', '0:v:0', '-an', '-sn', '-dn', '-frames:v', '1', '-fs', String(SALIDA_MAX_BYTES), cuadro];
-            await correr([...base, '-ss', '0.5', ...entrada, ...salidaPoster], 60_000).catch(() => correr([...base, ...entrada, ...salidaPoster], 60_000));
+            const salidaPoster = ['-map', '0:v:0', '-an', '-sn', '-dn', '-frames:v', '1', '-t', DURACION_MAX_SEG, '-fs', String(SALIDA_MAX_BYTES), cuadro];
+            await correr([...base, '-ss', '0.5', ...entrada, ...salidaPoster], tiempo / 2).catch(() => correr([...base, ...entrada, ...salidaPoster], tiempo / 2));
             const bytes = await sharp(await readFile(cuadro), opcionesSharp).rotate().resize({ width: item.lado, withoutEnlargement: true }).webp({ quality: 80 }).toBuffer();
             const rutaTemporal = `${s.destinoTemporal}/poster${String(item.lado)}.webp`;
             await subir(bucket, rutaTemporal, bytes, TIPO_CONTENIDO.webp);
