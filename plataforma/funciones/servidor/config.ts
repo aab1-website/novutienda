@@ -32,6 +32,12 @@ export const PARAMETROS = {
    * eso empujaría a abrir con `allUsers` el bucket que guarda originales y PDF de recibos.
    */
   mediosBaseUrl: defineString('MEDIOS_BASE_URL', { default: '' }),
+  /**
+   * Bucket PÚBLICO de los medios (solo `tenants/<t>/publico/medios/`), distinto del bucket por defecto que guarda originales
+   * y PDF de recibos. Obligatorio fuera del emulador y de las pruebas (falla cerrado: nunca se publica en el por defecto).
+   * Debe ser el bucket que sirve `MEDIOS_BASE_URL`.
+   */
+  mediosBucketPublico: defineString('MEDIOS_BUCKET_PUBLICO', { default: '' }),
   /** Binarios de video (opcionales: sin ellos el video se rechaza con un error claro). */
   ffmpegPath: defineString('FFMPEG_PATH', { default: '' }),
   ffprobePath: defineString('FFPROBE_PATH', { default: '' }),
@@ -85,4 +91,19 @@ export function exigirConfiguracionDeServicio(
     if (faltan.length > 0) throw new ConfiguracionIncompleta(faltan);
   }
   return { sal: v.sal === '' ? 'sal-de-pruebas' : v.sal, mediosBaseUrl };
+}
+
+const NOMBRE_BUCKET = /^[a-z0-9][a-z0-9._-]{1,61}[a-z0-9]$/;
+
+/**
+ * Nombre del bucket público de los medios. Fuera de pruebas es obligatorio, de nombre válido y distinto del bucket por
+ * defecto (el de originales y recibos). En pruebas, vacío = el bucket por defecto (devuelve `''`).
+ */
+export function exigirBucketPublico(valor: string, bucketPorDefecto: string, esPruebas: boolean): string {
+  const nombre = valor.trim();
+  if (esPruebas) return nombre;
+  if (nombre === '') throw new ConfiguracionIncompleta(['MEDIOS_BUCKET_PUBLICO']);
+  if (!NOMBRE_BUCKET.test(nombre)) throw new ConfiguracionIncompleta(['MEDIOS_BUCKET_PUBLICO (nombre de bucket válido)']);
+  if (nombre === bucketPorDefecto) throw new ConfiguracionIncompleta(['MEDIOS_BUCKET_PUBLICO (distinto del bucket por defecto)']);
+  return nombre;
 }

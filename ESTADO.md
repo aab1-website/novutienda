@@ -1,6 +1,6 @@
 # Estado del proyecto
 
-Última actualización: 09/11/2026 (L1 y L2 cerradas; L3 cerrada salvo L3-5, pendiente de fusión; sigue el pase a producción).
+Última actualización: 11/11/2026 (sitio real en staging con fotos; sigue el pase a producción).
 
 **El estado vivo de la arquitectura no se escribe aquí: lo imprime `pnpm zonas`** (pieza → zona, archivos
 sin zona, cruces de importación y qué deuda queda). Lo que sigue son hitos y pendientes que no se
@@ -21,6 +21,7 @@ derivan del código; las cifras caducan y por eso no se copian.
 - Arquitectura por zonas, tandas T1 a T4 fusionadas (H2, PR 18 a 22) y L1 cerrada (PR 23 a 27: T5, L1-0, L1-a, L1-b, L1-c): colecciones con dueño y `storage.rules` generado; hito H3 aprobado el 06/11/2026.
 - Arquitectura por zonas, L2 cerrada (bloques L2-0 a L2-9 fusionados): encendido por tenant en ejecución, manifiestos completos, alta de tenant (`scripts/alta-tenant.mjs`); hito H4 aprobado el 07/11/2026. El alta de Casa Bermejo ya se aplicó en staging.
 - Sitio de Hosting por tenant (PR C): scripts (#65) y reconstrucción con matriz en staging (#66, fusionado; ajustes #68 a #72 tras la primera reconstrucción real), documentados en `docs/produccion/reconstruccion-sitio.md`; decisiones DC1 a DC4 en `docs/arquitectura/decisiones.md`.
+- 11/11/2026: sitio real publicado en staging con fotos. En staging hay hoy una copia única de los medios hecha ese día y la lectura sin listado ya está aplicada. **Pendiente de despliegue:** que los medios públicos se escriban en un bucket público aparte (`MEDIOS_BUCKET_PUBLICO`); decisión en `docs/arquitectura/decisiones.md` y operación en `docs/produccion/pase-a-staging.md` 9.5.
 - Arquitectura por zonas, L3 (PR 42 a 46): encendido por tenant también en la API HTTP (`docs/produccion/funciones.md` §4), disparador de medios con consola apagada y limpieza para todos los tenants; sin cambio de contrato con NovuChat.
 
 ## Bloqueos registrados el 04/11/2026 (confirmar si siguen; el CI de `main` ya está en verde)

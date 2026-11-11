@@ -1,5 +1,5 @@
 export { crearAuthMin } from './auth.js';
-export { crearAlmacenMedios, CACHE_INMUTABLE, tipoContenidoDe } from './almacen-medios.js';
+export { crearAlmacenMedios, CACHE_INMUTABLE, RUTA_PUBLICA, tipoContenidoDe } from './almacen-medios.js';
 export type { Bucket } from './almacen-medios.js';
 export { crearBaseDatos } from './base-datos.js';
 export type { BaseDatosFirestore } from './base-datos.js';

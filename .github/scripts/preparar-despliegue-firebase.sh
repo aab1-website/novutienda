@@ -16,15 +16,19 @@
 # Entradas (entorno): AMBIENTE (staging | production), PROYECTO, SITIO_ID, PANEL_ID, PANEL_URL, SOLO (la lista de
 # `firebase deploy --only`), SITIOS_TENANT (secreto opcional, JSON de los sitios por tenant) y P_<PARÁMETRO>.
 # Antes de los targets, `scripts/sitios-tenant.mjs validar-solo` comprueba SOLO y falla cerrado (paso 2b).
-# Sin valores por defecto para lo que identifica al cliente o abre superficie: MEDIOS_BASE_URL es obligatoria,
-# y en production APP_CHECK_EXIGIDO debe ser true.
+# Sin valores por defecto para lo que identifica al cliente o abre superficie: MEDIOS_BASE_URL y
+# MEDIOS_BUCKET_PUBLICO son obligatorias, y en production APP_CHECK_EXIGIDO debe ser true.
+# MEDIOS_BUCKET_PUBLICO es el bucket público aparte (solo tenants/<t>/publico/medios/), nunca el bucket por defecto
+# del proyecto; si MEDIOS_BASE_URL es de Cloud Storage (cualquiera de sus tres formas), su bucket debe ser exactamente ese.
+# Ningún parámetro de Functions puede ser PLATAFORMA_PRUEBAS ni FUNCTIONS_EMULATOR (la guardia no se apaga en la nube).
+# Los errores nunca imprimen los valores.
 set -euo pipefail
 
 error() { echo "::error::$*"; exit 1; }
 
 [[ "${AMBIENTE:-}" == "staging" || "${AMBIENTE:-}" == "production" ]] \
   || error "AMBIENTE debe ser staging o production."
-for v in PROYECTO SITIO_ID PANEL_ID PANEL_URL P_APP_CHECK_EXIGIDO P_SITIO_URL P_MEDIOS_BASE_URL; do
+for v in PROYECTO SITIO_ID PANEL_ID PANEL_URL P_APP_CHECK_EXIGIDO P_SITIO_URL P_MEDIOS_BASE_URL P_MEDIOS_BUCKET_PUBLICO; do
   [[ -n "${!v:-}" ]] || error "Falta la variable ${v#P_} (Environment o repositorio). Ver docs/produccion/pase-a-staging.md."
 done
 [[ "$P_APP_CHECK_EXIGIDO" == "true" || "$P_APP_CHECK_EXIGIDO" == "false" ]] \
@@ -34,6 +38,35 @@ if [[ "$AMBIENTE" == "production" && "$P_APP_CHECK_EXIGIDO" != "true" ]]; then
 fi
 [[ "$P_MEDIOS_BASE_URL" =~ ^https://[^[:space:]/]+ ]] \
   || error "MEDIOS_BASE_URL debe ser una URL https (Hosting o un bucket público aparte solo para publico/; nunca el bucket por defecto). Ver docs/produccion/pase-a-staging.md."
+# Mismo patrón que NOMBRE_BUCKET de plataforma/funciones/servidor/config.ts; mantener ambos iguales.
+[[ "$P_MEDIOS_BUCKET_PUBLICO" =~ ^[a-z0-9][a-z0-9._-]{1,61}[a-z0-9]$ ]] \
+  || error "MEDIOS_BUCKET_PUBLICO no es un nombre de bucket válido (solo el nombre, sin gs:// ni barras)."
+if [[ "$P_MEDIOS_BUCKET_PUBLICO" == "${PROYECTO}.appspot.com" || "$P_MEDIOS_BUCKET_PUBLICO" == "${PROYECTO}.firebasestorage.app" ]]; then
+  error "MEDIOS_BUCKET_PUBLICO no puede ser el bucket por defecto del proyecto."
+fi
+# Coherencia base <-> bucket. Se comparan como las normaliza config.ts (sin barras finales). Si la base es de Cloud
+# Storage en cualquiera de sus formas, el bucket debe ser exactamente MEDIOS_BUCKET_PUBLICO:
+#   https://storage.googleapis.com/<bucket> · https://storage.cloud.google.com/<bucket> · https://<bucket>.storage.googleapis.com
+# Una base que no es de Storage (Hosting o CDN) se acepta.
+base="$P_MEDIOS_BASE_URL"
+while [[ "$base" == */ ]]; do base="${base%/}"; done
+resto="${base#https://}"
+host="${resto%%/*}"
+ruta=""
+[[ "$resto" == */* ]] && ruta="/${resto#*/}"
+[[ "$host" != *@* ]] || error "MEDIOS_BASE_URL no puede llevar credenciales (usuario@host)."
+host="${host%%:*}"
+host="${host,,}"
+case "$host" in
+  storage.googleapis.com | storage.cloud.google.com)
+    [[ "$ruta" == "/$P_MEDIOS_BUCKET_PUBLICO" ]] \
+      || error "MEDIOS_BASE_URL apunta a Cloud Storage ($host) pero su ruta no es exactamente /<MEDIOS_BUCKET_PUBLICO>."
+    ;;
+  *.storage.googleapis.com)
+    [[ "$host" == "${P_MEDIOS_BUCKET_PUBLICO}.storage.googleapis.com" && -z "$ruta" ]] \
+      || error "MEDIOS_BASE_URL apunta a Cloud Storage (<bucket>.storage.googleapis.com) pero el bucket no es exactamente MEDIOS_BUCKET_PUBLICO o lleva ruta."
+    ;;
+esac
 
 # 2. Configuración compuesta en el build.
 [[ -f dist/firebase.json ]] || error "El artifact no trae dist/firebase.json (scripts/build.mjs lo genera)."
@@ -66,7 +99,7 @@ firebase target:apply hosting panel "$PANEL_ID" --project "$PROYECTO"
 # 4. Parámetros de Functions (no secretos; los secretos viven en Secret Manager).
 parametros="${RUNNER_TEMP:-/tmp}/funciones.env"
 : >"$parametros"
-for nombre in APP_CHECK_EXIGIDO RECAPTCHA_CLAVE_SITIO SITIO_URL MEDIOS_BASE_URL FUNCIONES_SERVICE_ACCOUNT PROXY_SALTOS; do
+for nombre in APP_CHECK_EXIGIDO RECAPTCHA_CLAVE_SITIO SITIO_URL MEDIOS_BASE_URL MEDIOS_BUCKET_PUBLICO FUNCIONES_SERVICE_ACCOUNT PROXY_SALTOS; do
   var="P_${nombre}"
   valor="${!var:-}"
   [[ "$valor" != *$'\n'* ]] || error "El parámetro $nombre contiene un salto de línea."
@@ -85,10 +118,24 @@ declare -A POR_DEFECTO=(
 for nombre in "${!POR_DEFECTO[@]}"; do
   grep -q "^${nombre}=" "$parametros" || printf '%s=%s\n' "$nombre" "${POR_DEFECTO[$nombre]}" >>"$parametros"
 done
+# La guardia de configuración (exigirConfiguracionDeServicio, exigirBucketPublico) no debe poder apagarse en staging ni
+# en production: ningún parámetro desplegado puede marcar el entorno como pruebas o emulador. Falla cerrado.
+prohibidos='^[[:space:]]*(export[[:space:]]+)?(PLATAFORMA_PRUEBAS|FUNCTIONS_EMULATOR)[[:space:]]*='
+if grep -Eq "$prohibidos" "$parametros"; then
+  error "Los parámetros de Functions incluyen PLATAFORMA_PRUEBAS o FUNCTIONS_EMULATOR; prohibidos fuera del emulador y las pruebas."
+fi
 echo "FUNCIONES_PARAMETROS=$parametros" >>"${GITHUB_ENV:-/dev/null}"
 export FUNCIONES_PARAMETROS="$parametros"
 node plataforma/funciones/scripts/empaquetar.mjs
-if ! grep -q '^MEDIOS_BASE_URL=' dist/funciones/.env 2>/dev/null; then
+if ! grep -q '^MEDIOS_BASE_URL=' dist/funciones/.env 2>/dev/null \
+  || ! grep -q '^MEDIOS_BUCKET_PUBLICO=' dist/funciones/.env 2>/dev/null; then
   error "empaquetar.mjs no incorporó los parámetros (FUNCIONES_PARAMETROS → dist/funciones/.env). Contrato pendiente: docs/arquitectura/decisiones.md, «Parámetros de Functions en el despliegue»."
 fi
+# Revisión del resultado empaquetado: firebase deploy lee dist/funciones/.env y .env.<proyecto|alias>.
+for archivo in dist/funciones/.env*; do
+  [[ -f "$archivo" ]] || continue
+  if grep -Eq "$prohibidos" "$archivo"; then
+    error "$archivo incluye PLATAFORMA_PRUEBAS o FUNCTIONS_EMULATOR; prohibidos en staging y production."
+  fi
+done
 echo "Hosting: targets sitio y panel aplicados; parámetros de Functions: $(cut -d= -f1 "$parametros" | paste -sd, -)"

@@ -29,8 +29,9 @@
 #     sitio compuesta por scripts/build.mjs); /healthz lo atiende la función api.
 #   - Dos sitios de Hosting por target. Variables del Environment (staging y
 #     production, mismo nombre, distinto valor): FIREBASE_SITE_SITIO,
-#     FIREBASE_SITE_PANEL, PANEL_URL, MEDIOS_BASE_URL, APP_CHECK_EXIGIDO,
-#     RECAPTCHA_CLAVE_SITIO. Repositorio, por ambiente (sufijo
+#     FIREBASE_SITE_PANEL, PANEL_URL, MEDIOS_BASE_URL, MEDIOS_BUCKET_PUBLICO
+#     (bucket público aparte de medios publicados; obligatoria, distinta del
+#     bucket por defecto), APP_CHECK_EXIGIDO, RECAPTCHA_CLAVE_SITIO. Repositorio, por ambiente (sufijo
 #     _STAGING / _PROD), VITE_FIREBASE_API_KEY, VITE_RECAPTCHA_ENTERPRISE_SITE_KEY,
 #     VITE_FIREBASE_STORAGE_BUCKET y VITE_FIREBASE_APP_ID (todas obligatorias si el
 #     ambiente tiene proyecto). SITIO_CONTENIDO (production). FIREBASE_SITE_ID ya no se usa.
@@ -536,6 +537,7 @@ jobs:
           P_RECAPTCHA_CLAVE_SITIO: ${{ vars.RECAPTCHA_CLAVE_SITIO }}
           P_SITIO_URL: ${{ vars.STAGING_URL }}
           P_MEDIOS_BASE_URL: ${{ vars.MEDIOS_BASE_URL }}
+          P_MEDIOS_BUCKET_PUBLICO: ${{ vars.MEDIOS_BUCKET_PUBLICO }}
           P_FUNCIONES_SERVICE_ACCOUNT: ${{ vars.FUNCIONES_SERVICE_ACCOUNT }}
           P_PROXY_SALTOS: ${{ vars.PROXY_SALTOS }}
         run: bash .github/scripts/preparar-despliegue-firebase.sh
@@ -769,6 +771,7 @@ jobs:
           P_RECAPTCHA_CLAVE_SITIO: ${{ vars.RECAPTCHA_CLAVE_SITIO }}
           P_SITIO_URL: ${{ vars.PROD_URL }}
           P_MEDIOS_BASE_URL: ${{ vars.MEDIOS_BASE_URL }}
+          P_MEDIOS_BUCKET_PUBLICO: ${{ vars.MEDIOS_BUCKET_PUBLICO }}
           P_FUNCIONES_SERVICE_ACCOUNT: ${{ vars.FUNCIONES_SERVICE_ACCOUNT }}
           P_PROXY_SALTOS: ${{ vars.PROXY_SALTOS }}
         run: |

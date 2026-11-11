@@ -15,6 +15,8 @@ import { crearBaseDatos, type BaseDatosFirestore, type Bucket } from '../../plat
 
 export const PROYECTO = 'demo-pruebas';
 export const BUCKET = `${PROYECTO}.appspot.com`;
+/** Bucket público de los medios en el emulador (segundo bucket: las versiones publicadas van aquí, no al por defecto). */
+export const BUCKET_PUBLICO = `${PROYECTO}-publico`;
 export const REGION = 'us-east1';
 export const T = 'casa-bermejo';
 export const OTRO = 'otra-casa';
@@ -41,13 +43,14 @@ export interface Herramientas {
   readonly auth: Auth;
   readonly firestore: Firestore;
   readonly bucket: Bucket;
+  readonly bucketPublico: Bucket;
   readonly db: BaseDatosFirestore;
 }
 
 export function herramientas(): Herramientas {
   const app = getApps()[0] ?? initializeApp({ projectId: PROYECTO, storageBucket: BUCKET });
   const firestore = getFirestore(app);
-  return { app, auth: getAuth(app), firestore, bucket: getStorage(app).bucket(BUCKET), db: crearBaseDatos(firestore) };
+  return { app, auth: getAuth(app), firestore, bucket: getStorage(app).bucket(BUCKET), bucketPublico: getStorage(app).bucket(BUCKET_PUBLICO), db: crearBaseDatos(firestore) };
 }
 
 let contador = 0;

@@ -10,7 +10,7 @@ import { crearLectorDominios, type LectorDominios } from '../../coordinador/domi
 import { crearLectoresModulos, type LectorEstadoModulos, type LectorModulos } from '../../coordinador/modulos-activos.js';
 import { crearCatalogoConsola, almacenCotizacionesDesde, catalogoParaPos, inventariosParaPos } from '../../coordinador/index.js';
 import {
-  appCheckReal, appCheckSimulado, crearAlmacenMedios, crearAuthMin, crearBaseDatos, crearConsultaSubidas, crearEjecutorRecibos, crearGuardarContacto,
+  appCheckReal, appCheckSimulado, crearAlmacenMedios, esEntornoDePruebas, crearAuthMin, crearBaseDatos, crearConsultaSubidas, crearEjecutorRecibos, crearGuardarContacto,
   crearLecturaRecibos, crearLectorDisponibilidad, crearProcesadorMedios, recaptchaEnterprise, recaptchaSimulado,
   type BaseDatosFirestore, type Bucket,
 } from '../../conectores/firebase/index.js';
@@ -19,7 +19,7 @@ import type { AlmacenCotizaciones, AuthMin, Redondeo } from '@novutienda/nucleo'
 import type { DepsPos } from '@novutienda/pos';
 import type { EjecutorRecibos, LecturaRecibos } from '@novutienda/recibos';
 import type { GuardarContacto, LectorDisponibilidad, VerificadorAppCheck, VerificadorRecaptcha } from '@novutienda/website';
-import { PARAMETROS } from './config.js';
+import { exigirBucketPublico, PARAMETROS } from './config.js';
 import { crearDisparadorSitio } from './disparador-sitio.js';
 import { emisorEnlaceEmulador, emisorEnlaceFirmado, type EmisorEnlacePdf } from './enlace-pdf.js';
 import { lectorRedondeo } from './redondeo.js';
@@ -57,6 +57,8 @@ export interface OpcionesEntorno {
   readonly firestore: Firestore;
   readonly auth: Auth;
   readonly bucket: Bucket;
+  /** Bucket público de los medios (solo `publico/medios/`); sin él, el bucket por defecto (emulador y pruebas). */
+  readonly bucketPublico?: Bucket;
   readonly ahora?: () => number;
   readonly env?: Readonly<Record<string, string | undefined>>;
   readonly emisorEnlacePdf?: EmisorEnlacePdf;
@@ -80,7 +82,7 @@ export function crearEntorno(o: OpcionesEntorno): Entorno {
     catalogo: crearCatalogoConsola({ db, lector: db }),
     ejecutorRecibos: crearEjecutorRecibos(o.firestore),
     lecturaRecibos: crearLecturaRecibos(o.firestore),
-    almacenMedios: crearAlmacenMedios(o.bucket),
+    almacenMedios: crearAlmacenMedios(o.bucket, o.bucketPublico ?? o.bucket),
     procesador: o.procesador ?? crearProcesadorMedios(o.bucket, env),
     consultaSubidas: crearConsultaSubidas(o.firestore),
     disparadorSitio: crearDisparadorSitio(o.firestore, ahora),
@@ -109,7 +111,12 @@ export function entorno(): Entorno {
       FFMPEG_PATH: PARAMETROS.ffmpegPath.value() || undefined,
       FFPROBE_PATH: PARAMETROS.ffprobePath.value() || undefined,
     };
-    unico = crearEntorno({ firestore: getFirestore(), auth: getAuth(), bucket: getStorage().bucket(), env });
+    const almacenamiento = getStorage();
+    const bucket = almacenamiento.bucket();
+    // Falla cerrado: fuera de pruebas sin bucket público válido y distinto no hay entorno (nunca se publica en el por defecto).
+    const nombrePublico = exigirBucketPublico(PARAMETROS.mediosBucketPublico.value(), bucket.name, esEntornoDePruebas(process.env));
+    const bucketPublico = nombrePublico === '' ? bucket : almacenamiento.bucket(nombrePublico);
+    unico = crearEntorno({ firestore: getFirestore(), auth: getAuth(), bucket, bucketPublico, env });
   }
   return unico;
 }

@@ -8,7 +8,7 @@ import { join } from 'node:path';
 import sharp from 'sharp';
 import { describe, expect, it, vi } from 'vitest';
 import { planificarProcesamiento } from '@novutienda/consola';
-import { binariosDeVideo, crearProcesadorMedios, procesadorVideo } from '../../plataforma/conectores/firebase/index.js';
+import { binariosDeVideo, crearAlmacenMedios, crearProcesadorMedios, procesadorVideo } from '../../plataforma/conectores/firebase/index.js';
 import { hayEmuladorStorage, herramientas, unico } from './ayudas.js';
 
 vi.setConfig({ testTimeout: 120_000, hookTimeout: 120_000 });
@@ -62,6 +62,18 @@ describe.skipIf(!hayEmuladorStorage || !hayFfmpeg())('procesador de video (ffmpe
       const poster = salida.find((v) => v.clase === 'poster');
       const [pb] = await h.bucket.file(poster?.rutaTemporal ?? '').download();
       expect(await sharp(pb).metadata()).toMatchObject({ format: 'webp', width: 1280 });
+      // Video y póster llegan al bucket público (y no al por defecto) con su tipo y caché inmutable.
+      const almacen = crearAlmacenMedios(h.bucket, h.bucketPublico);
+      const t = unico('vid').toLowerCase();
+      for (const v of salida) {
+        const destino = `tenants/${t}/publico/medios/cam-1/${'a'.repeat(32)}-${v.clase}${String(v.lado)}.${v.formato}`;
+        await almacen.publicar(v.rutaTemporal, destino);
+        const [m] = await h.bucketPublico.file(destino).getMetadata();
+        expect(m.contentType).toBe(v.formato === 'mp4' ? 'video/mp4' : 'image/webp');
+        expect(m.cacheControl).toBe('public, max-age=31536000, immutable');
+        expect((await h.bucket.file(destino).exists())[0]).toBe(false);
+        await almacen.borrar([destino]);
+      }
       // La fábrica elige este procesador cuando el entorno trae los binarios.
       const completo = crearProcesadorMedios(h.bucket, { FFMPEG_PATH: FFMPEG, FFPROBE_PATH: FFPROBE });
       expect((await completo.inspeccionar(`${base}/entrada.mp4`, 'video')).ancho).toBe(1920);

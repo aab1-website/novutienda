@@ -147,6 +147,8 @@ entrega a Andres el enlace exacto de IAM y lo verifica después en modo lectura.
 6.1 Variable: `SA_FN="${NUM}-compute@developer.gserviceaccount.com"` o la dedicada (producción). Crear la dedicada con roles mínimos y publicarla en la variable
 `FUNCIONES_SERVICE_ACCOUNT` del Environment (nombre corto o correo); la SA de despliegue necesita `roles/iam.serviceAccountUser` **sobre esa SA**, no sobre el proyecto:
 
+El rol sobre el bucket público de medios se da en 9.5 (un solo lugar), antes de fusionar o desplegar.
+
 ```bash
 SA_FN="novutienda-funciones@${P}.iam.gserviceaccount.com"
 gcloud iam service-accounts create novutienda-funciones --project "$P" --display-name="NovuTienda Functions"
@@ -173,7 +175,7 @@ gcloud projects get-iam-policy "$P" --flatten='bindings[].members' \
 ```
 
 Si aparece `roles/editor`, se informa a Andres: quitarlo exige darle antes los roles mínimos (`roles/datastore.user`,
-`roles/storage.objectAdmin` sobre el bucket, `roles/firebaseauth.admin`, `roles/logging.logWriter`, `roles/eventarc.eventReceiver`,
+`roles/storage.objectAdmin` sobre el bucket, `roles/storage.objectUser` sobre el bucket público de medios, `roles/firebaseauth.admin`, `roles/logging.logWriter`, `roles/eventarc.eventReceiver`,
 `roles/iam.serviceAccountTokenCreator` del paso 6.2). Es una decisión aparte; en staging puede quedar con nota.
 
 6.4 Agentes de servicio que los disparadores necesitan (firebase-tools intenta darlos solo, pero la SA de despliegue no puede cambiar la
@@ -316,6 +318,7 @@ gh api --method POST "repos/$OWNER/$REPO/environments/production/deployment-bran
 | `APP_CHECK_EXIGIDO` | Environment `staging` | `false` (8.4) |
 | `RECAPTCHA_CLAVE_SITIO` | Environment `staging` | clave de sitio de 8.2 |
 | `MEDIOS_BASE_URL` | Environment `staging` | **obligatoria** (https): ver 9.5; el despliegue falla si falta |
+| `MEDIOS_BUCKET_PUBLICO` | Environment `staging` | **obligatoria**: nombre (sin `gs://`) del bucket público de 9.5, `<proyecto>-medios`; distinto del bucket por defecto; la función falla cerrado sin él |
 | `FUNCIONES_SERVICE_ACCOUNT` | Environment `staging` | vacío (cuenta por defecto, si no tiene Editor) o la dedicada del paso 6.1 (obligatoria en la práctica en producción) |
 | `FIREBASE_DEPLOY_ONLY` | Environment `staging` | `hosting:panel,functions,firestore,storage`. **Cargarla antes de fusionar el PR C-2**: tiene prioridad sobre la del repositorio y evita que el CI despliegue los sitios de tenant; `scripts/sitios-tenant.mjs validar-solo` falla cerrado si trae otra cosa |
 | `FIREBASE_DEPLOY_FORCE` | Environment `staging` (y `production`) | cualquier valor no vacío → `firebase deploy --force`. **Obligatoria**: la función `eventos` declara `retry: true` y firebase-tools exige `--force` para una política de fallo en modo no interactivo (3.er intento del primer despliegue, 05/11/2026). Aviso en el run: `--force` también borra Functions que ya no estén en el código |
@@ -328,10 +331,31 @@ gh api --method POST "repos/$OWNER/$REPO/environments/production/deployment-bran
 `construir` FALLA si, con el proyecto del ambiente configurado, falta alguna de `VITE_FIREBASE_API_KEY_*`, `VITE_RECAPTCHA_ENTERPRISE_SITE_KEY_*`, `VITE_FIREBASE_STORAGE_BUCKET_*` o
 `VITE_FIREBASE_APP_ID_*`. En `production`, `APP_CHECK_EXIGIDO` debe ser `true` o el despliegue se detiene.
 
-9.5 **Medios públicos (`MEDIOS_BASE_URL`).** La API de NovuChat y el panel arman las URL de las fotos con esa base. Opciones válidas: (a) un **bucket público aparte** que solo
-reciba `tenants/*/publico/medios/**` (copiado por la función de medios o con otra regla de publicación), o (b) servir `publico/` por Hosting/CDN. **Prohibido** abrir con `allUsers` el
+9.5 **Medios públicos (`MEDIOS_BASE_URL` y `MEDIOS_BUCKET_PUBLICO`).** La API de NovuChat y el panel arman las URL de las fotos con `MEDIOS_BASE_URL`. **Prohibido** abrir con `allUsers` el
 bucket por defecto de Firebase Storage: contiene originales y PDF de recibos (`privado/`); las reglas de `storage.rules` no protegen contra una política IAM pública. No existe
 valor por defecto a `storage.googleapis.com/<bucket>`: sin `MEDIOS_BASE_URL` el despliegue y la API fallan.
+
+**Mecanismo (decisión del 11/11/2026; `docs/arquitectura/decisiones.md`).** Las versiones publicadas (derivados) se escriben y se borran **directamente** en un bucket público aparte,
+`<proyecto>-medios`, desde el conector `plataforma/conectores/firebase/almacen-medios.ts`; el parámetro `MEDIOS_BUCKET_PUBLICO` lo nombra. `publicar` rechaza todo destino fuera de
+`tenants/<t>/publico/medios/`. Sin `MEDIOS_BUCKET_PUBLICO` válido (o igual al bucket por defecto, o con nombre inválido) no arranca **ninguna** función que use el entorno (API, eventos, cotización, limpieza y medios), no solo la de medios; fuera del emulador y de las pruebas falla cerrado. El script de despliegue rechaza `PLATAFORMA_PRUEBAS` y `FUNCTIONS_EMULATOR` en los parámetros y compara la base `MEDIOS_BASE_URL` con el bucket en las tres formas de URL de Storage.
+`MEDIOS_BASE_URL` apunta a ese bucket (`https://storage.googleapis.com/<proyecto>-medios`).
+
+Crear el bucket (`<proyecto>-medios`): `us-east1`, acceso uniforme a nivel de bucket, **sin versionado** (un borrado debe ser definitivo), y prevención de acceso público no forzada solo en él. Lectura pública:
+a `allUsers` se le da **solo `roles/storage.legacyObjectReader`**, nunca `roles/storage.objectViewer`: este último incluye `storage.objects.list` y permitiría listar todos los
+objetos de todos los tenants; el lector legado lee un objeto cuyo nombre se conoce y no lista. Las URL llevan el nombre completo, que incluye identificadores no adivinables.
+
+```bash
+gcloud storage buckets create "gs://${P}-medios" --project "$P" --location=us-east1 --uniform-bucket-level-access
+gcloud storage buckets add-iam-policy-binding "gs://${P}-medios" --member=allUsers --role=roles/storage.legacyObjectReader
+gcloud storage buckets add-iam-policy-binding "gs://${P}-medios" --member "serviceAccount:${SA_FN}" --role roles/storage.objectUser
+```
+
+Cada comando de IAM es escritura en el proyecto: pide el «sí» de Andres. Caché: los derivados se publican con `Cache-Control` de 1 año e inmutables (el nombre cambia con el contenido).
+
+**Orden de pasos.** (1) crear el bucket; (2) dar el rol de la cuenta de funciones sobre él (6.1); (3) dar la lectura pública; (4) cargar `MEDIOS_BASE_URL` y `MEDIOS_BUCKET_PUBLICO`;
+(5) recién entonces fusionar y desplegar. Si se despliega antes del rol, `publicar` falla con 403 y las fotos nuevas no se ven. Verificación: publicar una foto de prueba, leerla
+por la URL pública (200) y pedir el listado del bucket sin credenciales (debe dar 403). **Limpieza del legado (D4):** los derivados que quedaron en el bucket por defecto se borran
+solo después de esa prueba; el borrado de un medio ya limpia también la copia legada.
 
 Comandos: `gh variable set <NOMBRE> --repo "$OWNER/$REPO" [--env staging] --body "<valor>"` y
 `… | gh secret set <NOMBRE> --repo "$OWNER/$REPO" [--env staging]` (valor por stdin, nunca en `--body`).
