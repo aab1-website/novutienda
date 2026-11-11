@@ -128,6 +128,8 @@ describe.skipIf(!hayEmulador)('adaptadores de Firestore (emulador)', () => {
   });
 });
 
+const H32 = 'a'.repeat(32);
+
 describe.skipIf(!hayEmuladorStorage)('almacén de medios y procesador (emulador de Storage)', () => {
   let h: Herramientas;
   beforeAll(() => {
@@ -141,15 +143,21 @@ describe.skipIf(!hayEmuladorStorage)('almacén de medios y procesador (emulador 
     await h.bucket.file(origen).save(randomBytes(300), { contentType: 'application/octet-stream', resumable: false });
 
     // Destinos fuera del prefijo público: se rechazan y no llega nada a ningún bucket.
-    for (const malo of [`tenants/${t}/privado/originales/x/a.webp`, `tenants/${t}/privado/publico/medios/a.webp`, `tenants/${t}/publico/otro/a.webp`, `pruebas/${t}/publico/medios/a.webp`, `tenants/${t}/publico/medios`]) {
+    for (const malo of [`tenants/${t}/privado/originales/x/a.webp`, `tenants/${t}/privado/publico/medios/a.webp`, `tenants/${t}/publico/otro/a.webp`, `pruebas/${t}/publico/medios/a.webp`, `tenants/${t}/publico/medios`,
+      `tenants/${t}/publico/medios/pr/../${H32}-imagen480.webp`, `tenants/${t}/publico/medios/%2e%2e/${H32}-imagen480.webp`, `tenants/${t}/publico/medios/pr/%41${H32.slice(2)}-imagen480.webp`,
+      `tenants/${t}/publico/medios/PR/${H32}-imagen480.webp`, `tenants/${t}/publico/medios/pr/${H32.toUpperCase()}-imagen480.webp`, `tenants/${t.toUpperCase()}/publico/medios/pr/${H32}-imagen480.webp`,
+      `tenants/${t}/publico/medios//${H32}-imagen480.webp`, `otro/${t}/publico/medios/pr/${H32}-imagen480.webp`, `/tenants/${t}/publico/medios/pr/${H32}-imagen480.webp`,
+      `tenants/${t}/publico/medios/pr/extra/${H32}-imagen480.webp`, `tenants/${t}/publico/medios/pr/${H32}-imagen480.webp/`,
+      `tenants/${t}/publico/medios/pr/a.webp`, `tenants/${t}/publico/medios/pr/${H32}-imagen480.gif`, `tenants/${t}/publico/medios/pr/${H32}-video720.webp`, `tenants/${t}/publico/medios/pr/${H32}-imagen0.webp`,
+    ]) {
       await expect(almacen.publicar(origen, malo), malo).rejects.toThrow(/fuera de tenants/);
       expect((await h.bucketPublico.file(malo).exists())[0], malo).toBe(false);
       expect((await h.bucket.file(malo).exists())[0], malo).toBe(false);
     }
 
     // Publicar: llega al público (con caché inmutable y tipo) y no al bucket por defecto.
-    const a = `tenants/${t}/publico/medios/p/aaaa-imagen480.webp`;
-    const b = `tenants/${t}/publico/medios/p/bbbb-poster1280.webp`;
+    const a = `tenants/${t}/publico/medios/pr/${H32}-imagen480.webp`;
+    const b = `tenants/${t}/publico/medios/pr/${'b'.repeat(32)}-poster1280.webp`;
     await almacen.publicar(origen, a);
     await almacen.publicar(origen, b);
     const [meta] = await h.bucketPublico.file(a).getMetadata();
@@ -173,11 +181,11 @@ describe.skipIf(!hayEmuladorStorage)('almacén de medios y procesador (emulador 
     expect(await almacen.tamano(`${base}/no-existe`)).toBeUndefined();
     expect(Buffer.from(await almacen.leerInicio(`${base}/a.webp`, 16))).toEqual(contenido.subarray(0, 16));
     expect(await almacen.hashContenido(`${base}/a.webp`)).toBe(createHash('sha256').update(contenido).digest('hex'));
-    await almacen.publicar(`${base}/a.webp`, `${base}/pub/x.webp`);
-    const [meta] = await h.bucket.file(`${base}/pub/x.webp`).getMetadata();
+    await almacen.publicar(`${base}/a.webp`, `${base}/pr/${H32}-imagen480.webp`);
+    const [meta] = await h.bucket.file(`${base}/pr/${H32}-imagen480.webp`).getMetadata();
     expect(meta.cacheControl).toBe('public, max-age=31536000, immutable');
     expect(meta.contentType).toBe('image/webp');
-    await almacen.borrar([`${base}/a.webp`, `${base}/pub/x.webp`, `${base}/no-existe`]);
+    await almacen.borrar([`${base}/a.webp`, `${base}/pr/${H32}-imagen480.webp`, `${base}/no-existe`]);
     expect(await almacen.tamano(`${base}/a.webp`)).toBeUndefined();
     await expect(almacen.leerInicio(`${base}/a.webp`, 0)).rejects.toThrow(RangeError);
   });

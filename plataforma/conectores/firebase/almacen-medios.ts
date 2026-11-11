@@ -3,6 +3,7 @@
 import { createHash } from 'node:crypto';
 import type { Storage } from 'firebase-admin/storage';
 import type { AlmacenMedios } from '@novutienda/consola';
+import { esTenantIdValido } from '@novutienda/nucleo';
 
 export type Bucket = ReturnType<Storage['bucket']>;
 
@@ -18,10 +19,20 @@ const TIPOS: Readonly<Record<string, string>> = {
 export const tipoContenidoDe = (ruta: string): string => TIPOS[ruta.slice(ruta.lastIndexOf('.') + 1).toLowerCase()] ?? 'application/octet-stream';
 
 /**
- * Única ruta que puede llegar al bucket público: las versiones publicadas de un tenant. Todo lo demás (originales,
- * temporales, PDF de recibos) vive solo en el bucket por defecto; el público no puede recibir nada fuera de este prefijo.
+ * Única ruta que puede llegar al bucket público: las versiones publicadas de un tenant, con la forma exacta que produce la
+ * consola (`rutaPublicaMedio` + `nombreVersion`): `tenants/<t>/publico/medios/<producto>/<hash32>-<clase><lado>.<formato>`.
+ * Todo lo demás (originales, temporales, PDF de recibos) vive solo en el bucket por defecto. La ruta se ancla completa:
+ * sin `..`, `//`, `%`, mayúsculas ni segmentos extra. El tenant se valida con `esTenantIdValido` del núcleo (una sola definición);
+ * el producto replica `ID_PRODUCTO` y la versión replica `nombreVersion`/`planificarProcesamiento` de `@novutienda/consola`,
+ * que este conector no puede importar sin crear un cruce.
  */
-export const RUTA_PUBLICA = /^tenants\/[a-z0-9][a-z0-9-]{0,62}\/publico\/medios\//;
+const RUTA_PUBLICA_COMPLETA = /^tenants\/([^/]+)\/publico\/medios\/[a-z0-9][a-z0-9-]{1,59}\/[a-f0-9]{32}-(?:imagen[1-9][0-9]{0,4}\.(?:avif|webp)|video[1-9][0-9]{0,4}\.mp4|poster[1-9][0-9]{0,4}\.webp)$/;
+export const RUTA_PUBLICA = {
+  test(ruta: string): boolean {
+    const m = RUTA_PUBLICA_COMPLETA.exec(ruta);
+    return m !== null && esTenantIdValido(m[1]);
+  },
+};
 
 /**
  * `bucket` guarda originales, temporales y recibos; `publico` (un bucket aparte, legible por URL) recibe SOLO las versiones
@@ -52,8 +63,8 @@ export function crearAlmacenMedios(bucket: Bucket, publico: Bucket = bucket): Al
 
     async publicar(origen, destino) {
       if (!RUTA_PUBLICA.test(destino)) throw new Error('destino de publicación fuera de tenants/<tenant>/publico/medios/');
-      const [copia] = await bucket.file(origen).copy(publico.file(destino));
-      await copia.setMetadata({ cacheControl: CACHE_INMUTABLE, contentType: tipoContenidoDe(destino) });
+      // Una sola operación: la copia nace con su caché inmutable y su tipo.
+      await bucket.file(origen).copy(publico.file(destino), { cacheControl: CACHE_INMUTABLE, contentType: tipoContenidoDe(destino) });
     },
 
     async borrar(rutas) {

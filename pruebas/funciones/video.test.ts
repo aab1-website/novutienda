@@ -66,7 +66,7 @@ describe.skipIf(!hayEmuladorStorage || !hayFfmpeg())('procesador de video (ffmpe
       const almacen = crearAlmacenMedios(h.bucket, h.bucketPublico);
       const t = unico('vid').toLowerCase();
       for (const v of salida) {
-        const destino = `tenants/${t}/publico/medios/cam/${v.clase}${String(v.lado)}.${v.formato}`;
+        const destino = `tenants/${t}/publico/medios/cam-1/${'a'.repeat(32)}-${v.clase}${String(v.lado)}.${v.formato}`;
         await almacen.publicar(v.rutaTemporal, destino);
         const [m] = await h.bucketPublico.file(destino).getMetadata();
         expect(m.contentType).toBe(v.formato === 'mp4' ? 'video/mp4' : 'image/webp');
