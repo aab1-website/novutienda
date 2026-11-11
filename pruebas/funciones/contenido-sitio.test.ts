@@ -1,7 +1,7 @@
 // scripts/contenido-sitio.mjs contra un servidor HTTP local que verifica la firma con `verificarFirma` del núcleo (texto firmado
 // exacto del contrato de docs/produccion/reconstruccion-sitio.md). Todo inventado: dominios .invalid, nombres ficticios.
 import { spawn } from 'node:child_process';
-import { mkdtempSync, readFileSync, rmSync } from 'node:fs';
+import { mkdtempSync, readFileSync, rmSync, statSync, writeFileSync } from 'node:fs';
 import { createServer, type IncomingMessage, type Server, type ServerResponse } from 'node:http';
 import type { AddressInfo } from 'node:net';
 import { tmpdir } from 'node:os';
@@ -79,7 +79,7 @@ afterEach(() => {
 function correr(args: string[], env: Record<string, string> = {}): Promise<{ codigo: number; out: string; err: string }> {
   return new Promise((ok) => {
     const entorno: Record<string, string> = {
-      PATH: process.env['PATH'] ?? '', SITIO_URL: base, TENANT_ID: TENANT, SITIO_RECONSTRUCCION_SECRETO: SECRETO,
+      PATH: process.env['PATH'] ?? '', NODE_ENV: 'test', SITIO_URL: base, TENANT_ID: TENANT, SITIO_RECONSTRUCCION_SECRETO: SECRETO,
       MEDIOS_BASE_URL: MEDIOS, SITIO_NEGOCIO: JSON.stringify(negocio), ...env,
     };
     const p = spawn(process.execPath, ['scripts/contenido-sitio.mjs', ...args], { env: entorno, cwd: process.cwd() });
@@ -139,6 +139,21 @@ describe('contenido-sitio estado', () => {
     expect(r.codigo).toBe(3);
   });
 
+  it('404 y 503 fallan; repetido se avisa', async () => {
+    responder = () => ({ estado: 404, json: {} });
+    const a = await correr(['estado', 'rec-a', 'completada']);
+    expect(a.codigo).toBe(1);
+    expect(a.err).toContain('404');
+    responder = () => ({ estado: 503, json: { error: 'no_configurado' } });
+    const b = await correr(['estado', 'rec-a', 'completada']);
+    expect(b.codigo).toBe(1);
+    expect(b.err).toContain('503');
+    responder = () => ({ estado: 200, json: { id: 'rec-a', estado: 'completada', repetido: true } });
+    const c = await correr(['estado', 'rec-a', 'completada']);
+    expect(c.codigo).toBe(0);
+    expect(c.out).toContain('repetido');
+  });
+
   it('estado o id inválidos no llaman al servidor', async () => {
     expect((await correr(['estado', 'rec-a', 'pendiente'])).codigo).toBe(2);
     expect((await correr(['estado', '../x', 'fallida'])).codigo).toBe(2);
@@ -193,7 +208,7 @@ describe('contenido-sitio generar', () => {
     const r = await correr(['generar', '--salida', join(tmp, 'lotes.json')]);
     const lotes = visto.filter((v) => v.url.startsWith('/api/disponibilidad')).map((v) => v.url.split('=')[1]!.split(',').length);
     expect(lotes).toEqual([50, 50, 20]);
-    // Más productos que el tope del sitio puede invalidar el contenido; solo importa que no se filtren datos.
+    expect(r.codigo).toBe(0);
     sinSecreto(r);
   });
 
@@ -204,6 +219,42 @@ describe('contenido-sitio generar', () => {
     expect(r.codigo).toBe(1);
     expect(r.err).toContain('negocio.mercados');
     expect(() => readFileSync(salida)).toThrow();
+  });
+
+  it('disponibilidad 500 o 429 falla', async () => {
+    for (const estado of [500, 429]) {
+      responder = (v) => (v.url.startsWith('/api/sitio/v1/publicado') ? { estado: 200, json: publicado(IDS) } : { estado, json: {} });
+      const r = await correr(['generar', '--salida', join(tmp, 'd.json')]);
+      expect(r.codigo).toBe(1);
+      expect(r.err).toContain(String(estado));
+    }
+  });
+
+  it('contenido inválido: conteo y rutas sin ids de producto', async () => {
+    const p = publicado(['p-secreto']);
+    delete ((p.documentos as Record<string, unknown>)['producto__p-secreto'] as Record<string, unknown>)['marca'];
+    responder = (v) => (v.url.startsWith('/api/sitio/v1/publicado') ? { estado: 200, json: p } : { estado: 200, json: { disponibilidad: {} } });
+    const r = await correr(['generar', '--salida', join(tmp, 'i.json')]);
+    expect(r.codigo).toBe(1);
+    expect(r.err).toMatch(/\(\d+ errores\)/);
+    expect(r.err).toContain('documentos.producto__*.marca');
+    expect(r.err).not.toContain('p-secreto');
+  });
+
+  it('descarta ids no válidos con aviso de conteo y reemplaza un archivo previo con modo 0600', async () => {
+    const p = publicado(['p-uno']);
+    (p.documentos as Record<string, unknown>)['producto__MAL ID'] = prod('p-dos');
+    responder = (v) => (v.url.startsWith('/api/sitio/v1/publicado') ? { estado: 200, json: p } : { estado: 200, json: { disponibilidad: {} } });
+    const salida = join(tmp, 'previo.json');
+    writeFileSync(salida, 'viejo', { mode: 0o644 });
+    const r = await correr(['generar', '--salida', salida]);
+    expect(r.err).toContain('1 productos con identificador no válido');
+    expect(r.err + r.out).not.toContain('MAL ID');
+    expect(statSync(salida).mode & 0o777).toBe(0o600);
+  });
+
+  it('http://localhost sin NODE_ENV=test se rechaza', async () => {
+    expect((await correr(['pendiente'], { NODE_ENV: 'production' })).codigo).toBe(2);
   });
 
   it('App Check incompleto es entrada inválida', async () => {

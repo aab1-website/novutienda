@@ -10,10 +10,10 @@
 // `pendiente` y `estado` no necesitan `pnpm install` (solo node:crypto y fetch); `generar` carga el paquete del sitio.
 //
 // Variables de entorno (nunca argumentos; los valores no se imprimen):
-//   SITIO_URL                     origen del sitio (https://…; http://localhost solo en pruebas). Obligatoria.
+//   SITIO_URL                     origen del sitio (https://…; http://localhost o 127.0.0.1 solo con NODE_ENV=test). Obligatoria.
 //   TENANT_ID                     identificador del tenant (minúsculas, dígitos y guiones). Obligatoria.
 //   SITIO_RECONSTRUCCION_SECRETO  secreto de firma (el mismo de las funciones). Obligatoria. Nunca se imprime.
-//   MEDIOS_BASE_URL               origen público de los medios (https://…). Obligatoria en `generar`.
+//   MEDIOS_BASE_URL               origen público de los medios (https://…; misma excepción de pruebas). Obligatoria en `generar`.
 //   SITIO_NEGOCIO                 JSON con los datos del negocio (validarNegocio). Obligatoria en `generar`.
 //   RECAPTCHA_CLAVE_SITIO         clave pública de reCAPTCHA. Opcional.
 //   SITIO_APPCHECK_CLAVE_SITIO, SITIO_APPCHECK_API_KEY, SITIO_APPCHECK_APP_ID, SITIO_APPCHECK_PROJECT_ID
@@ -22,7 +22,7 @@
 // Códigos de salida: 0 bien · 1 error · 2 uso o entrada inválida · 3 el trabajo lo tomó otro corredor (409).
 // Solo imprime conteos y advertencias: nunca el secreto, la firma, URLs ni datos de productos.
 import { createHmac } from 'node:crypto';
-import { readFileSync, mkdirSync, writeFileSync } from 'node:fs';
+import { readFileSync, mkdirSync, rmSync, writeFileSync } from 'node:fs';
 import { registerHooks, stripTypeScriptTypes } from 'node:module';
 import { dirname, resolve } from 'node:path';
 import { fileURLToPath, pathToFileURL } from 'node:url';
@@ -42,6 +42,7 @@ const LOTE = 50;
 const TIEMPO_MS = 30_000;
 
 function origenValido(valor, nombre, { permitirLocal }) {
+  // permitirLocal ya incluye NODE_ENV=test (ver leerEntorno).
   let u;
   try {
     u = new URL(valor ?? '');
@@ -59,10 +60,11 @@ function leerEntorno(env, { paraGenerar }) {
   if (!RE_TENANT.test(tenant)) throw new Fallo('TENANT_ID no es un identificador válido', 2);
   const secreto = env.SITIO_RECONSTRUCCION_SECRETO ?? '';
   if (secreto === '') throw new Fallo('defina SITIO_RECONSTRUCCION_SECRETO', 2);
-  const sitio = origenValido(env.SITIO_URL, 'SITIO_URL', { permitirLocal: true });
+  const permitirLocal = env.NODE_ENV === 'test';
+  const sitio = origenValido(env.SITIO_URL, 'SITIO_URL', { permitirLocal });
   const cfg = { tenant, secreto, sitio };
   if (paraGenerar) {
-    cfg.medios = origenValido(env.MEDIOS_BASE_URL, 'MEDIOS_BASE_URL', { permitirLocal: true });
+    cfg.medios = origenValido(env.MEDIOS_BASE_URL, 'MEDIOS_BASE_URL', { permitirLocal });
     try {
       cfg.negocio = JSON.parse(env.SITIO_NEGOCIO ?? '');
     } catch {
@@ -180,7 +182,8 @@ async function generar(cfg, salida) {
   exigirOk(r, 'publicado');
   const publicado = await jsonDe(r, 'publicado');
   const claves = Object.keys(publicado?.documentos ?? {}).filter((k) => k.startsWith('producto__'));
-  const ids = claves.map((k) => k.slice('producto__'.length)).filter((id) => RE_ID_PRODUCTO.test(id));
+  const todos = claves.map((k) => k.slice('producto__'.length));
+  const ids = todos.filter((id) => RE_ID_PRODUCTO.test(id));
   const disponibilidad = await disponibilidadDe(cfg, ids);
 
   registrarTypeScript();
@@ -192,14 +195,20 @@ async function generar(cfg, salida) {
       origen: cfg.sitio, origenMedios: cfg.medios, appCheck: cfg.appCheck, recaptchaSiteKey: cfg.recaptcha, disponibilidad,
     });
   } catch (e) {
-    if (e instanceof ErrorContenidoPublicado) throw new Fallo(`el contenido publicado no es válido:\n - ${e.errores.join('\n - ')}`);
+    if (e instanceof ErrorContenidoPublicado) {
+      // Solo rutas de campos, sin ids de productos, secciones ni categorías (el log de CI es público).
+      const rutas = [...new Set(e.errores.map((m) => m.split(':')[0].replace(/(producto|seccion)__[^.\s]*/g, '$1__*').replace(/categorias\.[^.\s]*/g, 'categorias.*')))];
+      throw new Fallo(`el contenido publicado no es válido (${e.errores.length} errores). Campos afectados:\n - ${rutas.slice(0, 20).join('\n - ')}`);
+    }
     throw new Fallo('no se pudo mapear el contenido publicado');
   }
   const destino = resolve(salida);
   mkdirSync(dirname(destino), { recursive: true });
+  rmSync(destino, { force: true }); // un archivo previo con otros permisos no se reutiliza
   writeFileSync(destino, `${JSON.stringify(contenido)}\n`, { mode: 0o600 });
   const agotados = ids.filter((id) => disponibilidad[id] !== true).length;
   console.log(`contenido generado: ${ids.length} productos publicados, ${agotados} sin disponibilidad confirmada`);
+  if (todos.length !== ids.length) console.warn(`advertencia: ${todos.length - ids.length} productos con identificador no válido sin consultar disponibilidad`);
   if (ids.length === 0) console.warn('advertencia: no hay productos publicados');
   if (cfg.appCheck === null) console.warn('advertencia: sin bloque de App Check');
   if (cfg.recaptcha === null) console.warn('advertencia: sin clave de reCAPTCHA');
