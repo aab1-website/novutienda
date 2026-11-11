@@ -175,14 +175,16 @@ export function negocioDesdeEntorno(env) {
 
 /** Genera el contenido: devuelve { contenido, productos }. `mapear` es `contenidoDesdePublicado` del módulo del sitio. */
 export async function generarContenido({ tenant, url, secreto, env, calcularFirma = calcularFirmaLocal, mapear, ahoraMs, fetchFn = fetch }) {
-  const origenMedios = normalizarUrl(env.MEDIOS_BASE_URL ?? '', env.NODE_ENV === 'test', 'MEDIOS_BASE_URL', true);
+  // La base lleva el bucket como ruta; el esquema del sitio valida el ORIGEN (CSP) y arma las url de fotos con la base completa.
+  const baseMedios = normalizarUrl(env.MEDIOS_BASE_URL ?? '', env.NODE_ENV === 'test', 'MEDIOS_BASE_URL', true);
+  const origenMedios = new URL(baseMedios).origin;
   const negocio = negocioDesdeEntorno(env);
   const r = await pedirFirmado({ url, secreto, metodo: 'GET', ruta: rutaPublicado(tenant), ahoraMs, calcularFirma, fetchFn });
   exigirOk(r, 'publicado');
   const todos = idsDeProductos(r.json);
   const ids = idsValidos(todos);
   const disponibilidad = await leerDisponibilidad({ url, ids, fetchFn });
-  const entorno = { origen: url, origenMedios, appCheck: appCheckDesdeEntorno(env), recaptchaSiteKey: env.VITE_RECAPTCHA_ENTERPRISE_SITE_KEY || null, disponibilidad };
+  const entorno = { origen: url, origenMedios, baseMedios, appCheck: appCheckDesdeEntorno(env), recaptchaSiteKey: env.VITE_RECAPTCHA_ENTERPRISE_SITE_KEY || null, disponibilidad };
   let contenido;
   try {
     contenido = mapear(r.json, negocio, entorno);
