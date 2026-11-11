@@ -17,6 +17,11 @@
 #                        no haya trabajo en la cola.
 #   workflow_run ....... el CI terminó en éxito un push a main: el código nuevo
 #                        del sitio llega a staging con el contenido real.
+#                        Se reconstruye SIEMPRE con el HEAD de main (rama por
+#                        defecto), nunca con el head_sha del evento: ningún
+#                        dato de workflow_run decide qué código se ejecuta con
+#                        secretos. Si entraron varios push seguidos, el HEAD
+#                        ya incluye el último; el resultado es el mismo.
 #
 # Solo staging (DC3). El CI (ci-node-firebase.yml) ya no despliega el sitio en
 # staging: su guardia (validar-solo) lo impide; este workflow es el único que
@@ -109,7 +114,9 @@ jobs:
       - name: Checkout (scripts)
         uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
-          ref: ${{ github.event.workflow_run.head_sha || github.sha }}
+          # workflow_run: HEAD de la rama por defecto (main), nunca el head_sha
+          # del evento. schedule/dispatch: github.sha (main, por la guardia).
+          ref: ${{ github.event_name == 'workflow_run' && github.event.repository.default_branch || github.sha }}
           persist-credentials: false
 
       - name: Node.js
@@ -308,7 +315,9 @@ jobs:
       - name: Checkout
         uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
-          ref: ${{ github.event.workflow_run.head_sha || github.sha }}
+          # workflow_run: HEAD de la rama por defecto (main), nunca el head_sha
+          # del evento. schedule/dispatch: github.sha (main, por la guardia).
+          ref: ${{ github.event_name == 'workflow_run' && github.event.repository.default_branch || github.sha }}
           persist-credentials: false
 
       - name: Habilitar corepack (pnpm, declarado en packageManager)
