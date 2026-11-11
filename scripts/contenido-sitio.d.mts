@@ -19,7 +19,7 @@ export const TIEMPO_MAXIMO_MS: number;
 export function calcularFirmaLocal(secreto: string, marcaTiempo: string, cuerpo: string): string;
 export function idsValidos(ids: readonly string[]): string[];
 export class ErrorContenidoSitio extends Error { readonly codigo: number }
-export function normalizarUrl(url: unknown, permitirLocal?: boolean, nombre?: string): string;
+export function normalizarUrl(url: unknown, permitirLocal?: boolean, nombre?: string, permitirRuta?: boolean): string;
 export function validarTenant(tenant: unknown): string;
 export function cabecerasFirmadas(p: { secreto: string; metodo: string; ruta: string; cuerpo?: string; ahoraMs: number; calcularFirma?: CalcularFirma }): Record<string, string>;
 export function rutaPendientes(tenant: string): string;

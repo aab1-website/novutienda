@@ -46,10 +46,12 @@ export class ErrorContenidoSitio extends Error {
 }
 
 /** Origen https sin ruta, sin barra final; http://localhost y 127.0.0.1 solo con `permitirLocal` (NODE_ENV=test). Sin eco del valor. */
-export function normalizarUrl(url, permitirLocal = false, nombre = '--url') {
-  const https = typeof url === 'string' && /^https:\/\/[^/?#\s@]+\/?$/.test(url);
+export function normalizarUrl(url, permitirLocal = false, nombre = '--url', permitirRuta = false) {
+  // `permitirRuta`: la base de medios (almacenamiento) lleva el nombre del bucket como ruta; sin consulta, fragmento ni usuario.
+  const patron = permitirRuta ? /^https:\/\/[^/?#\s@]+(?:\/[A-Za-z0-9._~%-]+)*\/?$/ : /^https:\/\/[^/?#\s@]+\/?$/;
+  const https = typeof url === 'string' && patron.test(url);
   const local = permitirLocal && typeof url === 'string' && /^http:\/\/(localhost|127\.0\.0\.1)(:\d{1,5})?\/?$/.test(url);
-  if (!https && !local) throw new ErrorContenidoSitio(`${nombre} debe ser https sin ruta`);
+  if (!https && !local) throw new ErrorContenidoSitio(`${nombre} debe ser https${permitirRuta ? '' : ' sin ruta'}`);
   return url.replace(/\/$/, '');
 }
 
@@ -173,7 +175,7 @@ export function negocioDesdeEntorno(env) {
 
 /** Genera el contenido: devuelve { contenido, productos }. `mapear` es `contenidoDesdePublicado` del módulo del sitio. */
 export async function generarContenido({ tenant, url, secreto, env, calcularFirma = calcularFirmaLocal, mapear, ahoraMs, fetchFn = fetch }) {
-  const origenMedios = normalizarUrl(env.MEDIOS_BASE_URL ?? '', env.NODE_ENV === 'test', 'MEDIOS_BASE_URL');
+  const origenMedios = normalizarUrl(env.MEDIOS_BASE_URL ?? '', env.NODE_ENV === 'test', 'MEDIOS_BASE_URL', true);
   const negocio = negocioDesdeEntorno(env);
   const r = await pedirFirmado({ url, secreto, metodo: 'GET', ruta: rutaPublicado(tenant), ahoraMs, calcularFirma, fetchFn });
   exigirOk(r, 'publicado');

@@ -114,6 +114,10 @@ describe('firma local y petición segura', () => {
     expect(() => normalizarUrl('http://localhost')).toThrow('debe ser https');
     expect(normalizarUrl('http://127.0.0.1:8080/', true)).toBe('http://127.0.0.1:8080');
     expect(normalizarUrl('https://sitio.example.com/')).toBe(ORIGEN);
+    expect(normalizarUrl('https://medios.example.com/bucket-stg/', false, 'MEDIOS_BASE_URL', true)).toBe('https://medios.example.com/bucket-stg');
+    expect(() => normalizarUrl('https://medios.example.com/b?x=1', false, 'MEDIOS_BASE_URL', true)).toThrow('MEDIOS_BASE_URL debe ser https');
+    expect(() => normalizarUrl('https://u@medios.example.com/b', false, 'MEDIOS_BASE_URL', true)).toThrow('debe ser https');
+    expect(() => normalizarUrl('https://medios.example.com/b')).toThrow('sin ruta');
     const r = await ejecutar(['pendiente', '--tenant', TENANT, '--url', 'http://127.0.0.1:9'], { ...env, NODE_ENV: 'production' }, deps, fetchLocal);
     expect(r.codigo).toBe(1);
     expect(peticiones).toHaveLength(0);
