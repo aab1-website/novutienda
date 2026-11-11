@@ -3,8 +3,9 @@
 # reconstruir-sitio.yml (un sitio de Hosting por tenant).
 #
 # Uso: preparar-sitio-tenant.sh <id del sitio esperado>
-# Entorno opcional: SITIOS_PROHIBIDOS (ids separados por espacios o comas, p. ej. el sitio del panel): si el sitio
-# esperado es uno de ellos, falla. Un SITIOS_TENANT mal cargado no puede pisar el panel.
+# Entorno obligatorio: SITIOS_PROHIBIDOS (ids separados por espacios o comas, p. ej. el sitio del panel): si el sitio
+# esperado es uno de ellos, falla. Vacía o ausente también falla (sin ella la guardia no protegería nada). Un
+# SITIOS_TENANT mal cargado no puede pisar el panel.
 #
 # 1. Exige que dist/firebase.json (compuesto por `scripts/build.mjs --solo sitio --sitio <id>`) declare SOLO la clave
 #    `hosting`, con exactamente una entrada, sin `target`, con `site` igual al esperado y un `public` que existe y
@@ -21,6 +22,8 @@ esperado="${1:-}"
 [[ "$esperado" =~ ^[a-z0-9-]{6,30}$ ]] || error "falta el id del sitio esperado o no cumple ^[a-z0-9-]{6,30}\$."
 
 prohibidos="${SITIOS_PROHIBIDOS:-}"
+[[ -n "${prohibidos//[[:space:],]/}" ]] \
+  || error "falta SITIOS_PROHIBIDOS (al menos el id del panel, variable FIREBASE_SITE_PANEL del Environment)."
 for p in ${prohibidos//,/ }; do
   [[ "$p" != "$esperado" ]] || error "el sitio pedido es un sitio reservado (panel o sitio del CI); revise SITIOS_TENANT."
 done

@@ -41,8 +41,10 @@
 #     functions, firestore y storage, y conserva copia previa solo del panel.
 #     preparar-despliegue-firebase.sh valida FIREBASE_DEPLOY_ONLY con
 #     `scripts/sitios-tenant.mjs validar-solo` (staging: lista permitida;
-#     production: DC3 y nunca un sitio de tenant) y falla cerrado. Variable
-#     del Environment: SITIOS_TENANT (JSON de sitios por tenant).
+#     production: DC3 y nunca un sitio de tenant) y falla cerrado, y que el
+#     id del panel no sea un sitio de tenant. Secreto del Environment:
+#     SITIOS_TENANT (JSON de sitios por tenant; secreto para que la cabecera
+#     del paso lo muestre como ***; en production puede quedar vacío).
 #     Producción: sin cambio de alcance (DC3).
 # =============================================================================
 name: CI/CD Node → Firebase
@@ -526,7 +528,7 @@ jobs:
           PROYECTO: ${{ vars.GCP_PROJECT_ID_STAGING }}
           # Mismo valor que el paso de despliegue: la guardia valida lo que se desplegará.
           SOLO: ${{ vars.FIREBASE_DEPLOY_ONLY || 'hosting:panel,functions,firestore,storage' }}
-          SITIOS_TENANT: ${{ vars.SITIOS_TENANT }}
+          SITIOS_TENANT: ${{ secrets.SITIOS_TENANT }}
           SITIO_ID: ${{ vars.FIREBASE_SITE_SITIO }}
           PANEL_ID: ${{ vars.FIREBASE_SITE_PANEL }}
           PANEL_URL: ${{ vars.PANEL_URL }}
@@ -758,7 +760,7 @@ jobs:
           PROYECTO: ${{ vars.GCP_PROJECT_ID_PROD }}
           # Mismo valor que el paso de despliegue (producción sin cambio de alcance, DC3).
           SOLO: ${{ vars.FIREBASE_DEPLOY_ONLY || 'hosting,functions,firestore,storage' }}
-          SITIOS_TENANT: ${{ vars.SITIOS_TENANT }}
+          SITIOS_TENANT: ${{ secrets.SITIOS_TENANT }}
           SITIO_ID: ${{ vars.FIREBASE_SITE_SITIO }}
           PANEL_ID: ${{ vars.FIREBASE_SITE_PANEL }}
           PANEL_URL: ${{ vars.PANEL_URL }}

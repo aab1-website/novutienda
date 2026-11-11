@@ -14,7 +14,7 @@
 #    defecto (SITIO_URL vacío) sin avisar. Ver docs/arquitectura/decisiones.md.
 #
 # Entradas (entorno): AMBIENTE (staging | production), PROYECTO, SITIO_ID, PANEL_ID, PANEL_URL, SOLO (la lista de
-# `firebase deploy --only`), SITIOS_TENANT (opcional, JSON de los sitios por tenant) y P_<PARÁMETRO>.
+# `firebase deploy --only`), SITIOS_TENANT (secreto opcional, JSON de los sitios por tenant) y P_<PARÁMETRO>.
 # Antes de los targets, `scripts/sitios-tenant.mjs validar-solo` comprueba SOLO y falla cerrado (paso 2b).
 # Sin valores por defecto para lo que identifica al cliente o abre superficie: MEDIOS_BASE_URL es obligatoria,
 # y en production APP_CHECK_EXIGIDO debe ser true.
@@ -51,6 +51,13 @@ cp dist/firebase.json firebase.json
 if ! node scripts/sitios-tenant.mjs validar-solo --ambiente "$AMBIENTE" --solo "$SOLO" --sitios "${SITIOS_TENANT:-}"; then
   error "La guardia de FIREBASE_DEPLOY_ONLY rechazó el alcance del despliegue en $AMBIENTE (los sitios de tenant los despliega solo reconstruir-sitio.yml). Ver docs/produccion/reconstruccion-sitio.md."
 fi
+# 2c. El id del panel no puede ser el de un sitio de tenant (un SITIOS_TENANT o un FIREBASE_SITE_PANEL mal cargados
+#     harían que este CI o reconstruir-sitio.yml pisaran el sitio del otro). SITIOS_TENANT ya pasó validar-solo.
+if [[ -n "${SITIOS_TENANT:-}" && "$(jq -r 'if type == "array" then length else 0 end' <<<"$SITIOS_TENANT")" != "0" ]]; then
+  if jq -e --arg p "$PANEL_ID" 'any(.[]; .sitio == $p)' <<<"$SITIOS_TENANT" >/dev/null; then
+    error "El id del panel (FIREBASE_SITE_PANEL) coincide con el sitio de un tenant en SITIOS_TENANT."
+  fi
+fi
 
 # 3. Targets de Hosting.
 firebase target:apply hosting sitio "$SITIO_ID" --project "$PROYECTO"
@@ -70,10 +77,10 @@ done
 # non-interactive mode but have no value for … PROXY_SALTOS, RECAPTCHA_MODO, …»). Se escriben los mismos valores por
 # defecto de plataforma/funciones/servidor/config.ts para los que no llegaron por variable; mantener ambas listas iguales.
 declare -A POR_DEFECTO=(
-  [PROXY_SALTOS]=2 [RECAPTCHA_MODO]=real [APP_CHECK_MODO]=real [FFMPEG_PATH]= [FFPROBE_PATH]=
+  [PROXY_SALTOS]=2 [RECAPTCHA_MODO]=real [APP_CHECK_MODO]=real [FFMPEG_PATH]="" [FFPROBE_PATH]=""
   [CONTACTO_MAXIMO]=5 [CONTACTO_VENTANA_SEG]=600 [NOVUCHAT_MAXIMO_POR_MINUTO]=120
   [DISPONIBILIDAD_MAXIMO_POR_MINUTO]=60 [CONTACTO_MAXIMO_POR_MINUTO]=30
-  [RECAPTCHA_CLAVE_SITIO]= [FUNCIONES_SERVICE_ACCOUNT]=
+  [RECAPTCHA_CLAVE_SITIO]="" [FUNCIONES_SERVICE_ACCOUNT]=""
 )
 for nombre in "${!POR_DEFECTO[@]}"; do
   grep -q "^${nombre}=" "$parametros" || printf '%s=%s\n' "$nombre" "${POR_DEFECTO[$nombre]}" >>"$parametros"
