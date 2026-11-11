@@ -66,7 +66,9 @@ export function cabecerasFirmadas({ secreto, metodo, ruta, cuerpo = '', ahoraMs,
   return { 'X-Marca-Tiempo': marca, 'X-Firma': firma };
 }
 
-export const rutaPendientes = (tenant) => `/api/sitio/v1/reconstrucciones?tenantId=${encodeURIComponent(tenant)}&estado=pendiente`;
+// Firebase Hosting reordena la consulta alfabéticamente antes de entregarla a la función, y la firma cubre la URL tal como la ve el servidor:
+// los parámetros se firman y se envían YA ordenados por clave (estado antes que tenantId).
+export const rutaPendientes = (tenant) => `/api/sitio/v1/reconstrucciones?estado=pendiente&tenantId=${encodeURIComponent(tenant)}`;
 export const rutaEstado = (id) => `/api/sitio/v1/reconstrucciones/${encodeURIComponent(id)}/estado`;
 export const rutaPublicado = (tenant) => `/api/sitio/v1/publicado?tenantId=${encodeURIComponent(tenant)}`;
 export const rutaDisponibilidad = (ids) => `/api/disponibilidad?ids=${ids.map(encodeURIComponent).join(',')}`;
