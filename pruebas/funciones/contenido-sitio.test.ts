@@ -143,7 +143,7 @@ describe('pedirFirmado y pendiente', () => {
     expect(await trabajoPendiente(base)).toBe('job-1');
     modo.pendientes = { trabajos: [] };
     expect(await trabajoPendiente(base)).toBeNull();
-    expect(peticiones[0]?.ruta).toContain(`tenantId=${TENANT}&estado=pendiente`);
+    expect(peticiones[0]?.ruta).toContain(`estado=pendiente&tenantId=${TENANT}`);
   });
   it('ejecutar pendiente: imprime el id; sin trabajos no imprime nada', async () => {
     expect(await ejecutar(['pendiente', ...args], env, deps, fetchLocal)).toEqual({ codigo: 0, salida: 'job-1' });
