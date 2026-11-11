@@ -45,9 +45,10 @@ const env = {
   CONTACTO_MAXIMO: '3',
   SITIO_URL: 'https://sitio.ejemplo.test',
   MEDIOS_BASE_URL: 'https://medios.ejemplo.test',
+  MEDIOS_BUCKET_PUBLICO: 'demo-pruebas-publico',
 };
 // Los parámetros no secretos los lee el emulador de `.env.<proyecto>` junto al código (no del entorno del proceso).
-const PARAMETROS = ['APP_CHECK_EXIGIDO', 'APP_CHECK_MODO', 'RECAPTCHA_MODO', 'CONTACTO_MAXIMO', 'SITIO_URL', 'MEDIOS_BASE_URL'];
+const PARAMETROS = ['APP_CHECK_EXIGIDO', 'APP_CHECK_MODO', 'RECAPTCHA_MODO', 'CONTACTO_MAXIMO', 'SITIO_URL', 'MEDIOS_BASE_URL', 'MEDIOS_BUCKET_PUBLICO'];
 writeFileSync('dist/funciones/.env.demo-pruebas', PARAMETROS.map((k) => `${k}=${env[k]}`).join('\n') + '\n');
 // El emulador lee los secretos de `.secret.local` junto al código (no de Secret Manager). `dist/` está ignorado.
 writeFileSync(

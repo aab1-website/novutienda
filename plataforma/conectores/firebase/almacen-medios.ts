@@ -17,7 +17,17 @@ const TIPOS: Readonly<Record<string, string>> = {
 /** Tipo de contenido de una ruta pública según su extensión (las versiones las nombra la consola). */
 export const tipoContenidoDe = (ruta: string): string => TIPOS[ruta.slice(ruta.lastIndexOf('.') + 1).toLowerCase()] ?? 'application/octet-stream';
 
-export function crearAlmacenMedios(bucket: Bucket): AlmacenMedios {
+/**
+ * Única ruta que puede llegar al bucket público: las versiones publicadas de un tenant. Todo lo demás (originales,
+ * temporales, PDF de recibos) vive solo en el bucket por defecto; el público no puede recibir nada fuera de este prefijo.
+ */
+export const RUTA_PUBLICA = /^tenants\/[a-z0-9][a-z0-9-]{0,62}\/publico\/medios\//;
+
+/**
+ * `bucket` guarda originales, temporales y recibos; `publico` (un bucket aparte, legible por URL) recibe SOLO las versiones
+ * publicadas. Si `publico === bucket` (emulador y pruebas) todo ocurre en un único bucket.
+ */
+export function crearAlmacenMedios(bucket: Bucket, publico: Bucket = bucket): AlmacenMedios {
   return {
     async tamano(ruta) {
       const archivo = bucket.file(ruta);
@@ -41,12 +51,20 @@ export function crearAlmacenMedios(bucket: Bucket): AlmacenMedios {
     },
 
     async publicar(origen, destino) {
-      const [copia] = await bucket.file(origen).copy(bucket.file(destino));
+      if (!RUTA_PUBLICA.test(destino)) throw new Error('destino de publicación fuera de tenants/<tenant>/publico/medios/');
+      const [copia] = await bucket.file(origen).copy(publico.file(destino));
       await copia.setMetadata({ cacheControl: CACHE_INMUTABLE, contentType: tipoContenidoDe(destino) });
     },
 
     async borrar(rutas) {
-      await Promise.all(rutas.map((r) => bucket.file(r).delete({ ignoreNotFound: true })));
+      await Promise.all(
+        rutas.map(async (r) => {
+          if (!RUTA_PUBLICA.test(r)) return bucket.file(r).delete({ ignoreNotFound: true });
+          await publico.file(r).delete({ ignoreNotFound: true });
+          // Legado: antes de separar los buckets las versiones se copiaban en el bucket por defecto; se limpian medio por medio.
+          if (publico !== bucket) await bucket.file(r).delete({ ignoreNotFound: true });
+        }),
+      );
     },
   };
 }

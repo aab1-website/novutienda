@@ -12,7 +12,7 @@ import {
 } from '../../plataforma/conectores/firebase/index.js';
 import { enrutar, type ConfigRouter } from '../../plataforma/funciones/servidor/http/router.js';
 import { componer } from '../../plataforma/funciones/scripts/componer-hosting.mjs';
-import { ConfiguracionIncompleta, exigirConfiguracionDeServicio } from '../../plataforma/funciones/servidor/config.js';
+import { ConfiguracionIncompleta, exigirBucketPublico, exigirConfiguracionDeServicio } from '../../plataforma/funciones/servidor/config.js';
 import { ipDelCliente, ORIGEN_DESCONOCIDO } from '../../plataforma/funciones/servidor/origen.js';
 import { REDONDEO_POR_DEFECTO, RedondeoInvalido, interpretarRedondeo } from '../../plataforma/funciones/servidor/redondeo.js';
 import { aJson } from '../../plataforma/funciones/servidor/serializar.js';
@@ -421,5 +421,21 @@ describe('contacto: App Check de un solo uso y límite en memoria antes de verif
     expect(limitado.headers['Retry-After']).toMatch(/^\d+$/);
     expect(verificados).toHaveLength(antes); // el token del tercero ni se miró (ni se consumió)
     expect((await enrutar(e, envio('token-c', '203.0.113.2'), c)).status).toBe(200);
+  });
+});
+
+describe('bucket público de los medios', () => {
+  it('fuera de pruebas es obligatorio, de nombre válido y distinto del bucket por defecto', () => {
+    expect(() => exigirBucketPublico('', 'por-defecto', false)).toThrow(ConfiguracionIncompleta);
+    expect(() => exigirBucketPublico('  ', 'por-defecto', false)).toThrow(/MEDIOS_BUCKET_PUBLICO/);
+    for (const malo of ['A', 'Mayusculas', '-guion', 'con espacio', 'con/barra', 'x']) {
+      expect(() => exigirBucketPublico(malo, 'por-defecto', false), malo).toThrow(/nombre de bucket válido/);
+    }
+    expect(() => exigirBucketPublico('por-defecto', 'por-defecto', false)).toThrow(/distinto del bucket por defecto/);
+    expect(exigirBucketPublico('medios-publicos', 'por-defecto', false)).toBe('medios-publicos');
+  });
+  it('en pruebas vacío significa el bucket por defecto', () => {
+    expect(exigirBucketPublico('', 'por-defecto', true)).toBe('');
+    expect(exigirBucketPublico('otro', 'por-defecto', true)).toBe('otro');
   });
 });

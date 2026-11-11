@@ -55,7 +55,9 @@ describe.skipIf(!hayEmulador)('medios (emulador)', () => {
     );
     for (const v of versiones) {
       expect(v.ruta).toMatch(new RegExp(`^tenants/${M}/publico/medios/${PRODUCTO}/[0-9a-f]{32}-imagen${String(v.lado)}\\.${v.formato}$`));
-      const archivo = h.bucket.file(v.ruta);
+      // Las versiones viven en el bucket PÚBLICO y no quedan copias en el por defecto (el de originales y recibos).
+      expect((await h.bucket.file(v.ruta).exists())[0], `${v.ruta} no debe estar en el bucket por defecto`).toBe(false);
+      const archivo = h.bucketPublico.file(v.ruta);
       const [meta] = await archivo.getMetadata();
       expect(meta.cacheControl).toBe('public, max-age=31536000, immutable');
       expect(meta.contentType).toBe(v.formato === 'avif' ? 'image/avif' : 'image/webp');
@@ -84,12 +86,17 @@ describe.skipIf(!hayEmulador)('medios (emulador)', () => {
     expect(otra.status).toBe(200);
     expect((otra.resultado as { medio: { id: string } }).medio.id).toBe(id);
 
-    // Borrar: libera cuota y borra original y versiones.
+    // Legado: un objeto de la misma ruta pública en el bucket por defecto (de antes de separar los buckets).
+    const rutaLegado = versiones[0]?.ruta ?? '';
+    await h.bucket.file(rutaLegado).save(Buffer.from('legado'), { contentType: 'image/webp', resumable: false });
+
+    // Borrar: libera cuota y borra original y versiones (del bucket público y el legado del por defecto).
     const borrado = await accion('medios', 'borrarMedio', { medioId: id }, sup.token, M);
     expect(borrado.status, JSON.stringify(borrado.error)).toBe(200);
     expect((await h.firestore.doc(`tenants/${M}/medios/${id}`).get()).exists).toBe(false);
     expect((await h.bucket.file(rutaOriginal(id)).exists())[0]).toBe(false);
-    expect((await h.bucket.file(versiones[0]?.ruta ?? '').exists())[0]).toBe(false);
+    for (const v of versiones) expect((await h.bucketPublico.file(v.ruta).exists())[0], `${v.ruta} sigue en el público`).toBe(false);
+    expect((await h.bucket.file(rutaLegado).exists())[0]).toBe(false);
     expect((await h.firestore.doc(`tenants/${M}/uso/medios`).get()).data()).toMatchObject({ bytes: 0 });
   });
 
@@ -123,7 +130,9 @@ describe.skipIf(!hayEmulador)('medios (emulador)', () => {
     await accion('medios', 'reservarSubida', { subidaId: id, productoId: PRODUCTO, tipo: 'video', bytes: mp4.length }, sup.token, M);
     await h.bucket.file(rutaOriginal(id)).save(mp4, { contentType: 'video/mp4', resumable: false });
     await esperar(async () => (await h.firestore.doc(`tenants/${M}/subidas/${id}`).get()).data()?.['estado'] === 'rechazada', 60_000, 'video rechazado');
-    const [publicos] = await h.bucket.getFiles({ prefix: `tenants/${M}/publico/medios/${PRODUCTO}/` });
+    const prefijo = `tenants/${M}/publico/medios/${PRODUCTO}/`;
+    const [publicos] = await h.bucketPublico.getFiles({ prefix: prefijo });
     expect(publicos.filter((f) => f.name.endsWith('.mp4'))).toHaveLength(0);
+    expect((await h.bucket.getFiles({ prefix: prefijo }))[0].filter((f) => f.name.endsWith('.mp4'))).toHaveLength(0);
   });
 });
