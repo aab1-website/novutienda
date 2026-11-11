@@ -5,8 +5,17 @@
 //
 // Uso:  node plataforma/funciones/scripts/componer-hosting.mjs [--firebase firebase.json] [--cabeceras dist/website/_cabeceras.json]
 //         [--cabeceras-panel dist/panel/_cabeceras.json] [--salida ruta]
+//
+// Con --solo-sitio --sitio <id> (solo compila el sitio): lee únicamente las cabeceras del sitio y escribe (por defecto en
+// `dist/firebase.json`) un firebase.json que contiene SOLO `hosting: [entrada con la regla ** sellada]`, sin functions, firestore,
+// storage ni emulators (lo usa el despliegue por tenant: nunca puede tocar otra cosa que ese sitio). La entrada lleva
+// `site: <id>` (RE_SITIO) en lugar de `target`, así el archivo no depende de .firebaserc ni de target:apply. Exporta
+// `componerSitioTenant(firebase, cabecerasSitio, sitioId)`, pura. `componer` no cambia.
 // Sin --salida reescribe `firebase.json` en el área de trabajo (en CI es efímera; nada se versiona).
 import { existsSync, readFileSync, writeFileSync } from 'node:fs';
+
+/** Id de sitio de Hosting (el mismo formato que valida scripts/sitios-tenant.mjs). */
+export const RE_SITIO = /^[a-z0-9-]{6,30}$/;
 
 function argumento(nombre, defecto) {
   const i = process.argv.indexOf(`--${nombre}`);
@@ -42,8 +51,36 @@ export function componer(firebase, cabecerasSitio, cabecerasPanel) {
   return copia;
 }
 
+/** Solo el sitio: `{ hosting: [entrada con `site` y la regla ** sellada] }`, nada más (sin functions/firestore/storage/emulators). */
+export function componerSitioTenant(firebase, cabecerasSitio, sitioId) {
+  if (typeof sitioId !== 'string' || !RE_SITIO.test(sitioId)) throw new Error('id de sitio inválido');
+  const sitio = reglaSellada(cabecerasSitio, 'sitio');
+  const copia = structuredClone(firebase);
+  sustituir(copia, 'sitio', sitio);
+  const entrada = { ...copia.hosting.find((h) => h.target === 'sitio'), site: sitioId };
+  delete entrada.target;
+  return { hosting: [entrada] };
+}
+
 if (import.meta.url === `file://${process.argv[1]}`) {
   const rutaFirebase = argumento('firebase', 'firebase.json');
+  if (process.argv.includes('--solo-sitio')) {
+    const rutaSitio = argumento('cabeceras', 'dist/website/_cabeceras.json');
+    if (!existsSync(rutaSitio)) {
+      console.error(`componer-hosting: falta ${rutaSitio}; compile antes el sitio (pnpm --filter @novutienda/website build).`);
+      process.exit(1);
+    }
+    let solo;
+    try {
+      solo = componerSitioTenant(JSON.parse(readFileSync(rutaFirebase, 'utf8')), JSON.parse(readFileSync(rutaSitio, 'utf8')), argumento('sitio', undefined));
+    } catch (e) {
+      console.error(`componer-hosting: ${e instanceof Error ? e.message : 'error'}`);
+      process.exit(1);
+    }
+    writeFileSync(argumento('salida', 'dist/firebase.json'), `${JSON.stringify(solo, null, 2)}\n`);
+    console.log('componer-hosting: firebase.json solo del sitio con su CSP sellada.');
+    process.exit(0);
+  }
   const rutaCabeceras = argumento('cabeceras', 'dist/website/_cabeceras.json');
   const rutaPanel = argumento('cabeceras-panel', 'dist/panel/_cabeceras.json');
   for (const [ruta, que] of [[rutaCabeceras, 'el sitio (pnpm --filter @novutienda/website build)'], [rutaPanel, 'el panel (pnpm --filter @novutienda/panel build)']]) {
