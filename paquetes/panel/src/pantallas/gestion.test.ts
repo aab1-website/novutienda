@@ -398,6 +398,16 @@ describe('catálogo y sitio', () => {
     ver(e, h(PantallaCatalogo, { sub: 'fichas' }));
     const u = userEvent.setup();
     await u.click(await screen.findByRole('button', { name: 'Editar ficha de Televisor 55 pulgadas' }));
+    const titulo = await screen.findByRole('heading', { name: 'Ficha web: Televisor 55 pulgadas' });
+    // El editor reemplaza a la tabla y recibe el foco.
+    expect(screen.queryByRole('table')).toBeNull();
+    expect(screen.getByLabelText('Subir fotos')).toBeTruthy();
+    await waitFor(() => expect(document.activeElement).toBe(titulo));
+    await u.click(screen.getByRole('button', { name: 'Volver a la lista' }));
+    expect(await screen.findByRole('table')).toBeTruthy();
+    expect(screen.queryByLabelText('Subir fotos')).toBeNull();
+    await waitFor(() => expect(document.activeElement).toBe(screen.getByRole('button', { name: 'Editar ficha de Televisor 55 pulgadas' })));
+    await u.click(screen.getByRole('button', { name: 'Editar ficha de Televisor 55 pulgadas' }));
     await screen.findByRole('heading', { name: 'Ficha web: Televisor 55 pulgadas' });
     const foto = new File(['x'.repeat(2048)], 'frente.jpg', { type: 'image/jpeg' });
     fireEvent.change(await screen.findByLabelText('Subir fotos'), { target: { files: [foto] } });

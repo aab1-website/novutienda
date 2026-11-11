@@ -1,5 +1,5 @@
 import type { JSX } from 'preact';
-import { useState } from 'preact/hooks';
+import { useEffect, useRef, useState } from 'preact/hooks';
 import { nuevoId } from '../../api/cliente.js';
 import { mensajeDeError } from '../../api/errores.js';
 import { LIMITES_PANEL, type EstadoFicha, type FichaWeb, type Medio, type MedioFicha, type ProductoPanel, type TipoMedio } from '../../api/tipos.js';
@@ -27,6 +27,17 @@ function EditorFicha({ producto, alCerrar }: { producto: ProductoPanel; alCerrar
   const [subidas, setSubidas] = useState<Subiendo[]>([]);
   const [ok, setOk] = useState(false);
   const [errorMedios, setErrorMedios] = useState<string | null>(null);
+  const raiz = useRef<HTMLDivElement>(null);
+  const enfocado = useRef(false);
+  useEffect(() => {
+    // Al abrir (cuando el título ya está dibujado), la vista sube y el foco pasa al título para lectores de pantalla y teclado.
+    const titulo = raiz.current?.querySelector('h2');
+    if (enfocado.current || !titulo) return;
+    enfocado.current = true;
+    titulo.setAttribute('tabindex', '-1');
+    titulo.focus();
+    titulo.scrollIntoView?.({ block: 'start' });
+  });
 
   if (datos.cargando) return <Cargando />;
   if (datos.error || !datos.datos) return <ErrorCarga error={datos.error ?? 'Sin datos'} reintentar={datos.recargar} />;
@@ -107,7 +118,8 @@ function EditorFicha({ producto, alCerrar }: { producto: ProductoPanel; alCerrar
   };
 
   return (
-    <Seccion titulo={`Ficha web: ${producto.nombre}`} acciones={<Boton chico variante="secundario" onClick={alCerrar}>Cerrar ficha</Boton>}>
+    <div ref={raiz}>
+    <Seccion titulo={`Ficha web: ${producto.nombre}`} acciones={<Boton chico variante="secundario" onClick={alCerrar}>Volver a la lista</Boton>}>
       <form class="formulario" onSubmit={guardar} noValidate>
         <div class="cuadricula">
           <Campo etiqueta="Dirección (slug)" valor={ficha.slug} onInput={(v) => cambiar({ slug: v })} requerido ayuda="Minúsculas, números y guiones." />
@@ -164,6 +176,7 @@ function EditorFicha({ producto, alCerrar }: { producto: ProductoPanel; alCerrar
         {ficha.medios.some((m) => m.alt.trim() === '') && <p class="texto-suave">Todo medio necesita texto alternativo.</p>}
       </form>
     </Seccion>
+    </div>
   );
 }
 
@@ -171,11 +184,22 @@ export function PantallaFichas(): JSX.Element {
   const { api } = useApp();
   const datos = useCarga(async () => ({ productos: await api.llamar('listarProductos', {}), fichas: await api.llamar('listarFichas', {}) }), []);
   const [elegido, setElegido] = useState<string | null>(null);
+  const aVolver = useRef<string | null>(null);
+  const lista = useRef<HTMLDivElement>(null);
+  useEffect(() => {
+    // Al volver a la tabla, el foco regresa al botón «Editar ficha» del producto que se editaba.
+    if (elegido !== null || aVolver.current === null) return;
+    const boton = lista.current?.querySelector<HTMLElement>(`button[aria-label="${aVolver.current.replace(/"/g, '\\"')}"]`);
+    if (!boton) return;
+    aVolver.current = null;
+    boton.focus();
+  });
   if (datos.cargando) return <Cargando />;
   if (datos.error || !datos.datos) return <ErrorCarga error={datos.error ?? 'Sin datos'} reintentar={datos.recargar} />;
   const p = datos.datos.productos.find((x) => x.id === elegido);
+  if (p) return <EditorFicha key={p.id} producto={p} alCerrar={() => { aVolver.current = `Editar ficha de ${p.nombre}`; setElegido(null); datos.recargar(); }} />;
   return (
-    <div>
+    <div ref={lista}>
       <Seccion titulo="Fichas de producto">
         {datos.datos.productos.length === 0 && <Vacio titulo="No hay productos" />}
         <table class="tabla">
@@ -195,7 +219,6 @@ export function PantallaFichas(): JSX.Element {
           </tbody>
         </table>
       </Seccion>
-      {p && <EditorFicha key={p.id} producto={p} alCerrar={() => { setElegido(null); datos.recargar(); }} />}
     </div>
   );
 }
