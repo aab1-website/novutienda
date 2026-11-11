@@ -1,7 +1,7 @@
 # =============================================================================
 # ci-node-firebase.yml — Pipeline completo SPA Node/React (Vite/Vitest)
 #                        → Firebase Hosting + reglas de Firestore
-# Versión: 2.4 | Fecha: 2026-09-30
+# Versión: 2.5 | Fecha: 2026-11-10
 # -----------------------------------------------------------------------------
 # Flujo (ver 00-gobernanza/02-flujo-git-y-versionado.md):
 #   PR → main ............ preparar, calidad, seguridad-estatica, construir
@@ -20,7 +20,8 @@
 # Variables: MODO, APROBADORES_PROD, TAG_FIRMADO_REQUERIDO, GCP_PROJECT_ID_STAGING,
 #            GCP_PROJECT_ID_PROD, STAGING_URL, PROD_URL, HEALTH_PATH,
 #            NODE_VERSION (22), COVERAGE_MIN (70), GHAS_ENABLED, BLOQUEAR_EN,
-#            FIREBASE_DEPLOY_ONLY ('hosting,functions,firestore,storage' aquí),
+#            FIREBASE_DEPLOY_ONLY (por defecto: staging 'hosting:panel,functions,
+#            firestore,storage'; production 'hosting,functions,firestore,storage'),
 #            FIREBASE_PREVIEW ('true' para canales de PR)
 # Adaptación NovuTienda (docs/arquitectura/decisiones.md, «Contrato de dist/»
 # y «CI multi-sitio»):
@@ -34,6 +35,17 @@
 #     VITE_FIREBASE_STORAGE_BUCKET y VITE_FIREBASE_APP_ID (todas obligatorias si el
 #     ambiente tiene proyecto). SITIO_CONTENIDO (production). FIREBASE_SITE_ID ya no se usa.
 #   - calidad corre además `test:funciones` (emuladores; Java 21 del runner).
+#   - Sitio por tenant (PR C): en staging este CI YA NO despliega el sitio
+#     público; lo despliega solo reconstruir-sitio.yml (un sitio de Hosting por
+#     tenant, contenido publicado real). Staging despliega hosting:panel,
+#     functions, firestore y storage, y conserva copia previa solo del panel.
+#     preparar-despliegue-firebase.sh valida FIREBASE_DEPLOY_ONLY con
+#     `scripts/sitios-tenant.mjs validar-solo` (staging: lista permitida;
+#     production: DC3 y nunca un sitio de tenant) y falla cerrado, y que el
+#     id del panel no sea un sitio de tenant. Secreto del Environment:
+#     SITIOS_TENANT (JSON de sitios por tenant; secreto para que la cabecera
+#     del paso lo muestre como ***; en production puede quedar vacío).
+#     Producción: sin cambio de alcance (DC3).
 # =============================================================================
 name: CI/CD Node → Firebase
 
@@ -514,6 +526,9 @@ jobs:
         env:
           AMBIENTE: staging
           PROYECTO: ${{ vars.GCP_PROJECT_ID_STAGING }}
+          # Mismo valor que el paso de despliegue: la guardia valida lo que se desplegará.
+          SOLO: ${{ vars.FIREBASE_DEPLOY_ONLY || 'hosting:panel,functions,firestore,storage' }}
+          SITIOS_TENANT: ${{ secrets.SITIOS_TENANT }}
           SITIO_ID: ${{ vars.FIREBASE_SITE_SITIO }}
           PANEL_ID: ${{ vars.FIREBASE_SITE_PANEL }}
           PANEL_URL: ${{ vars.PANEL_URL }}
@@ -525,27 +540,29 @@ jobs:
           P_PROXY_SALTOS: ${{ vars.PROXY_SALTOS }}
         run: bash .github/scripts/preparar-despliegue-firebase.sh
 
-      - name: Conservar copia de la versión actual (canal "previa" para rollback)
-        # D7: antes de CADA deploy a live (staging y producción) se clona el
-        # contenido en vivo a un canal "previa", en los DOS sitios. El rollback
-        # es clonar de vuelta.
+      - name: Conservar copia de la versión actual del panel (canal "previa" para rollback)
+        # D7: antes de CADA deploy a live se clona el contenido en vivo a un
+        # canal "previa"; el rollback es clonar de vuelta. En staging solo el
+        # panel: el sitio público ya no se despliega aquí (lo despliega
+        # reconstruir-sitio.yml, que guarda su propia copia por sitio). Clonar
+        # el sitio aquí pisaría la copia previa que esa reconstrucción guardó.
         continue-on-error: true
         env:
           PROYECTO: ${{ vars.GCP_PROJECT_ID_STAGING }}
-          SITIO_ID: ${{ vars.FIREBASE_SITE_SITIO }}
           PANEL_ID: ${{ vars.FIREBASE_SITE_PANEL }}
         run: |
-          for sitio in "$SITIO_ID" "$PANEL_ID"; do
-            firebase hosting:channel:create previa --site "$sitio" --project "$PROYECTO" --expires 30d \
-              --non-interactive >/dev/null 2>&1 || true
-            firebase hosting:clone "$sitio:live" "$sitio:previa" --project "$PROYECTO" \
-              || echo "::warning::No se pudo guardar la copia para rollback (clone $sitio:live → previa). ¿Primer despliegue o sitio sin crear? (docs/produccion/pase-a-staging.md)"
-          done
+          firebase hosting:channel:create previa --site "$PANEL_ID" --project "$PROYECTO" --expires 30d \
+            --non-interactive >/dev/null 2>&1 || true
+          firebase hosting:clone "$PANEL_ID:live" "$PANEL_ID:previa" --project "$PROYECTO" \
+            || echo "::warning::No se pudo guardar la copia para rollback (clone $PANEL_ID:live → previa). ¿Primer despliegue o sitio sin crear? (docs/produccion/pase-a-staging.md)"
 
-      - name: Desplegar hosting, functions, firestore y storage (staging)
+      - name: Desplegar hosting:panel, functions, firestore y storage (staging)
+        # El sitio público de cada tenant NO se despliega aquí (reconstruir-sitio.yml).
+        # FIREBASE_DEPLOY_ONLY del Environment staging tiene prioridad sobre la del
+        # repositorio; la guardia del paso de configuración ya la validó.
         env:
           PROYECTO: ${{ vars.GCP_PROJECT_ID_STAGING }}
-          SOLO: ${{ vars.FIREBASE_DEPLOY_ONLY || 'hosting,functions,firestore,storage' }}
+          SOLO: ${{ vars.FIREBASE_DEPLOY_ONLY || 'hosting:panel,functions,firestore,storage' }}
           URL_STAGING: ${{ vars.STAGING_URL }}
           FORZAR_DEPLOY: ${{ vars.FIREBASE_DEPLOY_FORCE }}
         run: |
@@ -741,6 +758,9 @@ jobs:
         env:
           AMBIENTE: production
           PROYECTO: ${{ vars.GCP_PROJECT_ID_PROD }}
+          # Mismo valor que el paso de despliegue (producción sin cambio de alcance, DC3).
+          SOLO: ${{ vars.FIREBASE_DEPLOY_ONLY || 'hosting,functions,firestore,storage' }}
+          SITIOS_TENANT: ${{ secrets.SITIOS_TENANT }}
           SITIO_ID: ${{ vars.FIREBASE_SITE_SITIO }}
           PANEL_ID: ${{ vars.FIREBASE_SITE_PANEL }}
           PANEL_URL: ${{ vars.PANEL_URL }}

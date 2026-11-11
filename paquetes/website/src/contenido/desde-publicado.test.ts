@@ -158,6 +158,25 @@ describe('contenidoDesdePublicado', () => {
   });
 });
 
+describe('base de medios con ruta', () => {
+  const conBase: EntornoSitio = { ...entorno, origenMedios: 'https://medios.ejemplo.test', baseMedios: 'https://medios.ejemplo.test/bucket-stg/' };
+  it('arma las url con la base y deja el origen en la configuración', () => {
+    const c = contenidoDesdePublicado(respuesta(), negocioBase(), conBase);
+    expect(c.config.origenMedios).toBe('https://medios.ejemplo.test');
+    const urls = c.productos.flatMap((p) => p.fotos.map((f) => f.url));
+    expect(urls.length).toBeGreaterThan(0);
+    for (const u of urls) expect(u.startsWith('https://medios.ejemplo.test/bucket-stg/')).toBe(true);
+  });
+  it('rechaza una url fuera del origen', () => {
+    const malo = { ...negocioBase(), logo: { url: 'https://otro.ejemplo.test/bucket-stg/x.webp', alt: 'x', versiones: [] } };
+    expect(() => contenidoDesdePublicado(respuesta(), malo, conBase)).toThrow(ErrorContenidoPublicado);
+  });
+  it('acepta una url con ruta bajo el origen', () => {
+    expect(urlMedioSegura('https://medios.ejemplo.test/bucket-stg/a.webp', ['https://medios.ejemplo.test'])).toBe(true);
+    expect(urlMedioSegura('https://otro.ejemplo.test/bucket-stg/a.webp', ['https://medios.ejemplo.test'])).toBe(false);
+  });
+});
+
 describe('casos límite', () => {
   const falla = (r: unknown, n: unknown = negocioBase()): string => {
     try { contenidoDesdePublicado(r, n, entorno); } catch (e) { return (e as Error).message; }

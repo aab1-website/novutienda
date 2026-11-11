@@ -81,6 +81,14 @@ describe('firma local y petición segura', () => {
     expect(await trabajoPendiente(baseLocal)).toBe('job-1');
     expect((await ejecutar(['pendiente', ...args], env, { mapear: deps.mapear }, fetchLocal)).codigo).toBe(0);
   });
+  it('pendiente y estado no cargan el registro ni usan el mapeo; solo generar lo carga', async () => {
+    const mapear = () => { throw new Error('mapear no debía usarse'); };
+    const conMapeo = { mapear };
+    expect(await ejecutar(['pendiente', ...args], env, conMapeo, fetchLocal)).toEqual({ codigo: 0, salida: 'job-1' });
+    expect((await ejecutar(['estado', 'job-1', 'completada', ...args], env, conMapeo, fetchLocal)).codigo).toBe(0);
+    // Sin deps tampoco se carga nada: pendiente solo usa la red y la firma local.
+    expect((await ejecutar(['pendiente', ...args], env, undefined, fetchLocal)).codigo).toBe(0);
+  });
   it('una respuesta 3xx falla y no se sigue la redirección', async () => {
     modo.redirigir = true;
     await expect(pedirFirmado({ ...base, metodo: 'GET', ruta: '/api/sitio/v1/reconstrucciones?x=1' })).rejects.toThrow('no se pudo contactar al sitio');
@@ -106,6 +114,10 @@ describe('firma local y petición segura', () => {
     expect(() => normalizarUrl('http://localhost')).toThrow('debe ser https');
     expect(normalizarUrl('http://127.0.0.1:8080/', true)).toBe('http://127.0.0.1:8080');
     expect(normalizarUrl('https://sitio.example.com/')).toBe(ORIGEN);
+    expect(normalizarUrl('https://medios.example.com/bucket-stg/', false, 'MEDIOS_BASE_URL', true)).toBe('https://medios.example.com/bucket-stg');
+    expect(() => normalizarUrl('https://medios.example.com/b?x=1', false, 'MEDIOS_BASE_URL', true)).toThrow('MEDIOS_BASE_URL debe ser https');
+    expect(() => normalizarUrl('https://u@medios.example.com/b', false, 'MEDIOS_BASE_URL', true)).toThrow('debe ser https');
+    expect(() => normalizarUrl('https://medios.example.com/b')).toThrow('sin ruta');
     const r = await ejecutar(['pendiente', '--tenant', TENANT, '--url', 'http://127.0.0.1:9'], { ...env, NODE_ENV: 'production' }, deps, fetchLocal);
     expect(r.codigo).toBe(1);
     expect(peticiones).toHaveLength(0);
@@ -135,7 +147,7 @@ describe('pedirFirmado y pendiente', () => {
     expect(await trabajoPendiente(base)).toBe('job-1');
     modo.pendientes = { trabajos: [] };
     expect(await trabajoPendiente(base)).toBeNull();
-    expect(peticiones[0]?.ruta).toContain(`tenantId=${TENANT}&estado=pendiente`);
+    expect(peticiones[0]?.ruta).toContain(`estado=pendiente&tenantId=${TENANT}`);
   });
   it('ejecutar pendiente: imprime el id; sin trabajos no imprime nada', async () => {
     expect(await ejecutar(['pendiente', ...args], env, deps, fetchLocal)).toEqual({ codigo: 0, salida: 'job-1' });
@@ -297,12 +309,16 @@ describe('generar', () => {
     expect(existsSync(salida)).toBe(false);
   });
   it('generarContenido pasa el entorno al mapeo (App Check solo si están las cuatro variables)', async () => {
-    let visto: { appCheck: unknown; origenMedios: string; origen: string } | undefined;
+    let visto: { appCheck: unknown; origenMedios: string; baseMedios: string; origen: string } | undefined;
     const mapear = (_p: unknown, _n: unknown, e: unknown) => { visto = e as typeof visto; return {}; };
     const llamar = (extra: Record<string, string>) => generarContenido({ tenant: TENANT, url: ORIGEN, secreto: SECRETO, env: { ...env, ...extra }, calcularFirma, mapear, fetchFn: fetchLocal });
     await llamar({});
     expect(visto?.appCheck).toBeNull();
     expect(visto?.origenMedios).toBe('https://medios.example.com');
+    // Base con ruta (bucket): el origen va sin ruta (CSP y validación) y la base completa arma las url de las fotos.
+    await llamar({ MEDIOS_BASE_URL: 'https://medios.example.com/bucket-stg/' });
+    expect(visto?.origenMedios).toBe('https://medios.example.com');
+    expect(visto?.baseMedios).toBe('https://medios.example.com/bucket-stg');
     await llamar({ VITE_RECAPTCHA_ENTERPRISE_SITE_KEY: 'k', VITE_FIREBASE_API_KEY: 'a', VITE_FIREBASE_APP_ID: 'i', VITE_FIREBASE_PROJECT_ID: 'p' });
     expect(visto?.appCheck).toEqual({ claveSitio: 'k', apiKey: 'a', appId: 'i', projectId: 'p' });
   });

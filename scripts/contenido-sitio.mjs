@@ -46,10 +46,12 @@ export class ErrorContenidoSitio extends Error {
 }
 
 /** Origen https sin ruta, sin barra final; http://localhost y 127.0.0.1 solo con `permitirLocal` (NODE_ENV=test). Sin eco del valor. */
-export function normalizarUrl(url, permitirLocal = false, nombre = '--url') {
-  const https = typeof url === 'string' && /^https:\/\/[^/?#\s@]+\/?$/.test(url);
+export function normalizarUrl(url, permitirLocal = false, nombre = '--url', permitirRuta = false) {
+  // `permitirRuta`: la base de medios (almacenamiento) lleva el nombre del bucket como ruta; sin consulta, fragmento ni usuario.
+  const patron = permitirRuta ? /^https:\/\/[^/?#\s@]+(?:\/[A-Za-z0-9._~%-]+)*\/?$/ : /^https:\/\/[^/?#\s@]+\/?$/;
+  const https = typeof url === 'string' && patron.test(url);
   const local = permitirLocal && typeof url === 'string' && /^http:\/\/(localhost|127\.0\.0\.1)(:\d{1,5})?\/?$/.test(url);
-  if (!https && !local) throw new ErrorContenidoSitio(`${nombre} debe ser https sin ruta`);
+  if (!https && !local) throw new ErrorContenidoSitio(`${nombre} debe ser https${permitirRuta ? '' : ' sin ruta'}`);
   return url.replace(/\/$/, '');
 }
 
@@ -66,7 +68,9 @@ export function cabecerasFirmadas({ secreto, metodo, ruta, cuerpo = '', ahoraMs,
   return { 'X-Marca-Tiempo': marca, 'X-Firma': firma };
 }
 
-export const rutaPendientes = (tenant) => `/api/sitio/v1/reconstrucciones?tenantId=${encodeURIComponent(tenant)}&estado=pendiente`;
+// Firebase Hosting reordena la consulta alfabéticamente antes de entregarla a la función, y la firma cubre la URL tal como la ve el servidor:
+// los parámetros se firman y se envían YA ordenados por clave (estado antes que tenantId).
+export const rutaPendientes = (tenant) => `/api/sitio/v1/reconstrucciones?estado=pendiente&tenantId=${encodeURIComponent(tenant)}`;
 export const rutaEstado = (id) => `/api/sitio/v1/reconstrucciones/${encodeURIComponent(id)}/estado`;
 export const rutaPublicado = (tenant) => `/api/sitio/v1/publicado?tenantId=${encodeURIComponent(tenant)}`;
 export const rutaDisponibilidad = (ids) => `/api/disponibilidad?ids=${ids.map(encodeURIComponent).join(',')}`;
@@ -171,14 +175,16 @@ export function negocioDesdeEntorno(env) {
 
 /** Genera el contenido: devuelve { contenido, productos }. `mapear` es `contenidoDesdePublicado` del módulo del sitio. */
 export async function generarContenido({ tenant, url, secreto, env, calcularFirma = calcularFirmaLocal, mapear, ahoraMs, fetchFn = fetch }) {
-  const origenMedios = normalizarUrl(env.MEDIOS_BASE_URL ?? '', env.NODE_ENV === 'test', 'MEDIOS_BASE_URL');
+  // La base lleva el bucket como ruta; el esquema del sitio valida el ORIGEN (CSP) y arma las url de fotos con la base completa.
+  const baseMedios = normalizarUrl(env.MEDIOS_BASE_URL ?? '', env.NODE_ENV === 'test', 'MEDIOS_BASE_URL', true);
+  const origenMedios = new URL(baseMedios).origin;
   const negocio = negocioDesdeEntorno(env);
   const r = await pedirFirmado({ url, secreto, metodo: 'GET', ruta: rutaPublicado(tenant), ahoraMs, calcularFirma, fetchFn });
   exigirOk(r, 'publicado');
   const todos = idsDeProductos(r.json);
   const ids = idsValidos(todos);
   const disponibilidad = await leerDisponibilidad({ url, ids, fetchFn });
-  const entorno = { origen: url, origenMedios, appCheck: appCheckDesdeEntorno(env), recaptchaSiteKey: env.VITE_RECAPTCHA_ENTERPRISE_SITE_KEY || null, disponibilidad };
+  const entorno = { origen: url, origenMedios, baseMedios, appCheck: appCheckDesdeEntorno(env), recaptchaSiteKey: env.VITE_RECAPTCHA_ENTERPRISE_SITE_KEY || null, disponibilidad };
   let contenido;
   try {
     contenido = mapear(r.json, negocio, entorno);
@@ -219,7 +225,8 @@ export async function ejecutar(args, env = process.env, deps = undefined, fetchF
     const url = normalizarUrl(valor(args, 'url'), env.NODE_ENV === 'test');
     const secreto = env.SITIO_RECONSTRUCCION_SECRETO ?? '';
     if (secreto === '') throw new ErrorContenidoSitio('falta SITIO_RECONSTRUCCION_SECRETO');
-    const d = deps ?? (await cargarDependencias());
+    // El registro (TypeScript) se carga solo en `generar`: `pendiente` y `estado` no necesitan node_modules.
+    const d = sub === 'generar' ? (deps ?? (await cargarDependencias())) : deps;
     const base = { tenant, url, secreto, calcularFirma: d?.calcularFirma, fetchFn };
     if (sub === 'pendiente') {
       const id = await trabajoPendiente(base);
