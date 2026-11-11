@@ -123,15 +123,21 @@ done
 # Functions (Node 22, Ubuntu 22.04) en /usr/bin. Difiere A PROPÓSITO de config.ts, que deja ambos vacíos para el
 # emulador y las pruebas (sin binarios, el video se rechaza con motivo claro). Aquí nunca quedan vacíos: un valor
 # vacío desplegaría Functions que rechazan todo video sin avisar. Sobreescribibles con P_FFMPEG_PATH / P_FFPROBE_PATH.
+# Guardia (falla cerrado, sin imprimir el valor): ruta absoluta de caracteres seguros, bajo /usr/bin/, /usr/local/bin/
+# u /opt/, y sin segmentos «.» ni «..» (evita escapar del prefijo, p. ej. /usr/bin/../../tmp/x).
 ruta_absoluta='^(/[A-Za-z0-9._+-]+)+$'
+prefijo_permitido='^(/usr/bin/|/usr/local/bin/|/opt/)'
+segmento_relativo='(^|/)\.{1,2}(/|$)'
 for nombre in FFMPEG_PATH FFPROBE_PATH; do
   var="P_${nombre}"
   case "$nombre" in
     FFMPEG_PATH) valor="${!var:-/usr/bin/ffmpeg}" ;;
     FFPROBE_PATH) valor="${!var:-/usr/bin/ffprobe}" ;;
   esac
-  [[ "$valor" =~ $ruta_absoluta ]] \
-    || error "El parámetro $nombre debe ser una ruta absoluta sin espacios ni caracteres especiales (por defecto /usr/bin/ffmpeg y /usr/bin/ffprobe)."
+  if [[ ! "$valor" =~ $ruta_absoluta ]] || [[ ! "$valor" =~ $prefijo_permitido ]] \
+    || [[ "$valor" =~ $segmento_relativo ]]; then
+    error "El parámetro $nombre debe ser una ruta absoluta bajo /usr/bin/, /usr/local/bin/ u /opt/, sin segmentos . ni .., sin espacios ni caracteres especiales (por defecto /usr/bin/ffmpeg y /usr/bin/ffprobe)."
+  fi
   printf '%s=%s\n' "$nombre" "$valor" >>"$parametros"
 done
 # La guardia de configuración (exigirConfiguracionDeServicio, exigirBucketPublico) no debe poder apagarse en staging ni
