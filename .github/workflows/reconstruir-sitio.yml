@@ -461,7 +461,7 @@ jobs:
           fi
           echo "### Sitio $CLAVE desplegado en staging" >> "$GITHUB_STEP_SUMMARY"
 
-      - name: Humo del sitio (/ y /api/cotizacion?mercado=BO en 200)
+      - name: Humo del sitio (/, /productos y /api/cotizacion?mercado=BO en 200)
         if: steps.trabajo.outputs.continuar == 'true'
         run: |
           set -uo pipefail
@@ -482,6 +482,8 @@ jobs:
           }
           fallos=0
           comprobar / si || fallos=$((fallos + 1))
+          # Una página interna sin .html: comprueba las URLs limpias de Hosting (los enlaces del sitio no llevan extensión).
+          comprobar /productos si || fallos=$((fallos + 1))
           comprobar '/api/cotizacion?mercado=BO' no || fallos=$((fallos + 1))
           [ "$fallos" -eq 0 ] || exit 1
 

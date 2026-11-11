@@ -18,6 +18,7 @@
   "hosting": [
     {
       "target": "sitio",
+      "cleanUrls": true,
       "public": "dist/website",
       "ignore": ["firebase.json", "**/.*", "**/node_modules/**", "_cabeceras.json"],
       "rewrites": [
