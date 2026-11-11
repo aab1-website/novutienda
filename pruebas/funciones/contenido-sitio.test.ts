@@ -1,5 +1,5 @@
 // scripts/contenido-sitio.mjs contra un servidor HTTP local que verifica la firma con el núcleo.
-import { existsSync, mkdtempSync, readFileSync, rmSync, statSync, writeFileSync } from 'node:fs';
+import { closeSync, existsSync, fstatSync, mkdtempSync, openSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
 import { createServer, type IncomingMessage, type Server } from 'node:http';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
@@ -207,6 +207,11 @@ describe('validación de argumentos y entorno', () => {
 
 describe('generar', () => {
   let dir = '';
+  // Abre una sola vez: modo y contenido salen del mismo descriptor (sin comprobar y luego usar la ruta).
+  const leerConModo = (ruta: string): { modo: number; texto: string } => {
+    const fd = openSync(ruta, 'r');
+    try { return { modo: fstatSync(fd).mode & 0o777, texto: readFileSync(fd, 'utf8') }; } finally { closeSync(fd); }
+  };
   beforeAll(() => { dir = mkdtempSync(join(tmpdir(), 'contenido-sitio-')); });
   afterAll(() => rmSync(dir, { recursive: true, force: true }));
 
@@ -215,8 +220,9 @@ describe('generar', () => {
     const salida = join(dir, 'sub', 'contenido.json');
     const r = await ejecutar(['generar', '--salida', salida, ...args], env, deps, fetchLocal);
     expect(r).toEqual({ codigo: 0, salida: 'contenido generado: 120 productos' }); // el lote exige código 0
-    expect(statSync(salida).mode & 0o777).toBe(0o600);
-    const escrito = JSON.parse(readFileSync(salida, 'utf8')) as { productos: string[]; disponibilidad: Record<string, boolean> };
+    const leido = leerConModo(salida);
+    expect(leido.modo).toBe(0o600);
+    const escrito = JSON.parse(leido.texto) as { productos: string[]; disponibilidad: Record<string, boolean> };
     expect(escrito.productos).toHaveLength(120);
     expect(escrito.disponibilidad.p0).toBe(true);
     expect(escrito.disponibilidad.p1).toBe(false);
@@ -266,8 +272,9 @@ describe('generar', () => {
       : fetchLocal(entrada, init)) as typeof fetch;
     const r = await ejecutar(['generar', '--salida', salida, ...args], env, deps, publicadoMalo);
     expect(r).toEqual({ codigo: 0, salida: 'contenido generado: 1 productos (aviso: 1 ids de producto inválidos sin consultar)' });
-    expect(statSync(salida).mode & 0o777).toBe(0o600);
-    expect(readFileSync(salida, 'utf8')).not.toContain('viejo');
+    const releido = leerConModo(salida);
+    expect(releido.modo).toBe(0o600);
+    expect(releido.texto).not.toContain('viejo');
     const consultados = peticiones.filter((p) => p.ruta.startsWith('/api/disponibilidad')).map((p) => p.ruta).join();
     expect(consultados).not.toContain('MAL');
   });
