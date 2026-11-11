@@ -13,7 +13,9 @@
 #    dist/funciones/.env. Sin eso, firebase deploy usaría los valores por
 #    defecto (SITIO_URL vacío) sin avisar. Ver docs/arquitectura/decisiones.md.
 #
-# Entradas (entorno): AMBIENTE (staging | production), PROYECTO, SITIO_ID, PANEL_ID, PANEL_URL y P_<PARÁMETRO>.
+# Entradas (entorno): AMBIENTE (staging | production), PROYECTO, SITIO_ID, PANEL_ID, PANEL_URL, SOLO (la lista de
+# `firebase deploy --only`), SITIOS_TENANT (opcional, JSON de los sitios por tenant) y P_<PARÁMETRO>.
+# Antes de los targets, `scripts/sitios-tenant.mjs validar-solo` comprueba SOLO y falla cerrado (paso 2b).
 # Sin valores por defecto para lo que identifica al cliente o abre superficie: MEDIOS_BASE_URL es obligatoria,
 # y en production APP_CHECK_EXIGIDO debe ser true.
 set -euo pipefail
@@ -40,6 +42,15 @@ if ! diff <(jq -S "$filtro" firebase.json) <(jq -S "$filtro" dist/firebase.json)
   error "dist/firebase.json no corresponde al firebase.json de este commit (fuera de la CSP del sitio)."
 fi
 cp dist/firebase.json firebase.json
+
+# 2b. Guardia de alcance (PR C, R8): FIREBASE_DEPLOY_ONLY no puede desplegar los sitios de tenant desde este CI.
+#     staging: lista permitida (functions, firestore, storage, hosting:panel); production: DC3 y nunca un sitio de tenant.
+#     Falla cerrado: SOLO vacío o ausente es error (firebase deploy sin --only lo desplegaría todo), y cualquier código
+#     distinto de 0 de sitios-tenant.mjs (inválido, uso o error inesperado) detiene el despliegue antes de tocar la nube.
+[[ -n "${SOLO:-}" ]] || error "Falta SOLO (FIREBASE_DEPLOY_ONLY o su valor por defecto del workflow)."
+if ! node scripts/sitios-tenant.mjs validar-solo --ambiente "$AMBIENTE" --solo "$SOLO" --sitios "${SITIOS_TENANT:-}"; then
+  error "La guardia de FIREBASE_DEPLOY_ONLY rechazó el alcance del despliegue en $AMBIENTE (los sitios de tenant los despliega solo reconstruir-sitio.yml). Ver docs/produccion/reconstruccion-sitio.md."
+fi
 
 # 3. Targets de Hosting.
 firebase target:apply hosting sitio "$SITIO_ID" --project "$PROYECTO"
