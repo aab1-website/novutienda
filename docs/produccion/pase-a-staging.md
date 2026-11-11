@@ -147,6 +147,8 @@ entrega a Andres el enlace exacto de IAM y lo verifica después en modo lectura.
 6.1 Variable: `SA_FN="${NUM}-compute@developer.gserviceaccount.com"` o la dedicada (producción). Crear la dedicada con roles mínimos y publicarla en la variable
 `FUNCIONES_SERVICE_ACCOUNT` del Environment (nombre corto o correo); la SA de despliegue necesita `roles/iam.serviceAccountUser` **sobre esa SA**, no sobre el proyecto:
 
+El rol sobre el bucket público de medios se da en 9.5 (un solo lugar), antes de fusionar o desplegar.
+
 ```bash
 SA_FN="novutienda-funciones@${P}.iam.gserviceaccount.com"
 gcloud iam service-accounts create novutienda-funciones --project "$P" --display-name="NovuTienda Functions"
@@ -154,8 +156,6 @@ for rol in roles/datastore.user roles/firebaseauth.admin roles/logging.logWriter
   gcloud projects add-iam-policy-binding "$P" --member "serviceAccount:${SA_FN}" --role "$rol" --condition=None --quiet >/dev/null
 done
 gcloud storage buckets add-iam-policy-binding "gs://<BUCKET>" --member "serviceAccount:${SA_FN}" --role roles/storage.objectAdmin
-# Bucket público de medios (9.5): solo ese bucket, nunca el proyecto. Antes de fusionar o desplegar.
-gcloud storage buckets add-iam-policy-binding "gs://${P}-medios" --member "serviceAccount:${SA_FN}" --role roles/storage.objectUser
 gcloud iam service-accounts add-iam-policy-binding "$SA_FN" --project "$P" \
   --member "serviceAccount:deploy-staging@${P}.iam.gserviceaccount.com" --role roles/iam.serviceAccountUser
 ```
@@ -337,7 +337,7 @@ valor por defecto a `storage.googleapis.com/<bucket>`: sin `MEDIOS_BASE_URL` el 
 
 **Mecanismo (decisión del 11/11/2026; `docs/arquitectura/decisiones.md`).** Las versiones publicadas (derivados) se escriben y se borran **directamente** en un bucket público aparte,
 `<proyecto>-medios`, desde el conector `plataforma/conectores/firebase/almacen-medios.ts`; el parámetro `MEDIOS_BUCKET_PUBLICO` lo nombra. `publicar` rechaza todo destino fuera de
-`tenants/<t>/publico/medios/`. Sin `MEDIOS_BUCKET_PUBLICO` (o igual al bucket por defecto, o con nombre inválido) la función falla cerrado fuera del emulador y de las pruebas.
+`tenants/<t>/publico/medios/`. Sin `MEDIOS_BUCKET_PUBLICO` válido (o igual al bucket por defecto, o con nombre inválido) no arranca **ninguna** función que use el entorno (API, eventos, cotización, limpieza y medios), no solo la de medios; fuera del emulador y de las pruebas falla cerrado. El script de despliegue rechaza `PLATAFORMA_PRUEBAS` y `FUNCTIONS_EMULATOR` en los parámetros y compara la base `MEDIOS_BASE_URL` con el bucket en las tres formas de URL de Storage.
 `MEDIOS_BASE_URL` apunta a ese bucket (`https://storage.googleapis.com/<proyecto>-medios`).
 
 Crear el bucket (`<proyecto>-medios`): `us-east1`, acceso uniforme a nivel de bucket, **sin versionado** (un borrado debe ser definitivo), y prevención de acceso público no forzada solo en él. Lectura pública:
