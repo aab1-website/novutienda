@@ -3,6 +3,7 @@ export { manifiestoWebsite } from './manifiesto.js';
 // Contenido
 export * from './contenido/tipos.js';
 export * from './contenido/validar.js';
+export { contenidoDesdePublicado, ErrorContenidoPublicado, type EntornoSitio } from './contenido/desde-publicado.js';
 export * from './contenido/consultas.js';
 export { contenidoEjemplo } from './contenido/ejemplo.js';
 
@@ -22,6 +23,7 @@ export * from './lib/cotizacion-cliente.js';
 export * from './lib/precio-vista.js';
 export * from './lib/convertidor.js';
 export * from './lib/seo.js';
+export * from './lib/indexacion.js';
 export * from './lib/eventos.js';
 
 // Medición

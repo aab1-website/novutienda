@@ -186,3 +186,29 @@ export interface Contenido {
   /** Fotos del carrusel de la portada, por plantilla. */
   readonly carruseles: Readonly<Record<IdPlantilla, readonly Foto[]>>;
 }
+
+/**
+ * Textos y datos propios del negocio que NO están en `publicado/`: la reconstrucción los lee de un JSON externo al repositorio
+ * (variable del ambiente). Con ellos y la copia publicada se arma el `Contenido` (`contenidoDesdePublicado`).
+ */
+export interface NegocioSitio {
+  readonly nombre: string;
+  readonly lema: string;
+  readonly logo: Foto | null;
+  readonly whatsappTienda: string | null;
+  readonly telefono: string | null;
+  readonly correo: string | null;
+  readonly direccion: string;
+  readonly horario: string | null;
+  readonly mercados: readonly Mercado[];
+  readonly mercadoInicial: Mercado;
+  readonly enlacesPermitidos: readonly string[];
+  readonly portada: Portada;
+  readonly beneficios: readonly Beneficio[];
+  readonly identidad: Identidad;
+  readonly textoPrivacidad: readonly string[];
+  /** Sobrescribe nombre e ícono derivados de una categoría (id = el de la categoría del producto). */
+  readonly categorias?: Readonly<Record<string, { readonly nombre: string; readonly icono: IdIcono }>>;
+  /** Ids de productos destacados; vacía o ausente = ninguno. */
+  readonly destacados?: readonly string[];
+}
