@@ -426,6 +426,21 @@ describe('catálogo y sitio', () => {
     for (let i = 0; i < 4; i++) fireEvent.change(screen.getByLabelText('Subir fotos'), { target: { files: [new File(['x'], `f${i}.jpg`, { type: 'image/jpeg' })] } });
     await waitFor(() => expect((screen.getByLabelText('Subir fotos') as HTMLInputElement).disabled).toBe(true));
   });
+  it('ficha existente: al guardar envía solo los campos editables, sin los de almacenamiento', async () => {
+    const e = crearEntorno('sup');
+    const u = userEvent.setup();
+    const guardada = { slug: 'tv-55', descripcion: 'Televisor.', garantia: '12 meses', medios: [], seo: { titulo: 'Televisor', descripcion: '' }, estado: 'borrador', productoId: 'tv-55', version: 3, actualizadaEn: 'ayer', por: 'u1' };
+    await e.api.llamar('guardarFicha', { productoId: 'tv-55', ficha: guardada as never });
+    e.api.llamadas.length = 0;
+    ver(e, h(PantallaCatalogo, { sub: 'fichas' }));
+    await u.click(await screen.findByRole('button', { name: 'Editar ficha de Televisor 55 pulgadas' }));
+    await screen.findByRole('heading', { name: 'Ficha web: Televisor 55 pulgadas' });
+    await u.type(screen.getByLabelText('Descripción del producto'), ' Nuevo.');
+    await u.click(screen.getByRole('button', { name: 'Guardar ficha' }));
+    expect(await screen.findByText(/Ficha guardada/)).toBeTruthy();
+    const envio = e.api.llamadas.find((l) => l.nombre === 'guardarFicha');
+    expect(Object.keys((envio?.entrada as { ficha: object }).ficha).sort()).toEqual(['descripcion', 'estado', 'garantia', 'medios', 'seo', 'slug']);
+  });
   it('ficha: si el servidor rechaza el archivo, muestra el error y no agrega el medio', async () => {
     const e = crearEntorno('sup');
     e.api.estado.disparador.rechazo = 'El archivo no es una imagen válida';

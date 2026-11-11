@@ -98,7 +98,9 @@ function EditorFicha({ producto, alCerrar }: { producto: ProductoPanel; alCerrar
   const guardar = (e: Event): void => {
     e.preventDefault();
     void accion.ejecutar(async () => {
-      await api.llamar('guardarFicha', { productoId: producto.id, ficha });
+      // El servidor valida con esquema estricto: solo viajan los campos editables, no los de almacenamiento (version, por…).
+      const editable: FichaWeb = { slug: ficha.slug, descripcion: ficha.descripcion, garantia: ficha.garantia, medios: ficha.medios.map((m) => ({ medioId: m.medioId, alt: m.alt })), seo: { titulo: ficha.seo.titulo, descripcion: ficha.seo.descripcion }, estado: ficha.estado };
+      await api.llamar('guardarFicha', { productoId: producto.id, ficha: editable });
       setOk(true);
       setF(null);
       datos.recargar();
