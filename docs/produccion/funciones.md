@@ -248,7 +248,7 @@ con los ids de las variables de Environment `FIREBASE_SITE_SITIO` y `FIREBASE_SI
 cada build (`dist/website/_cabeceras.json`) y `pnpm build` la compone con `componer-hosting.mjs` en `dist/firebase.json`, que el CI usa al
 desplegar (sin sello, rige la CSP base estricta). Parámetros en el despliegue: el CI los escribe desde variables y los pasa por
 `FUNCIONES_PARAMETROS` (contrato pendiente en `empaquetar.mjs`; ver `docs/arquitectura/decisiones.md`). Procedimiento completo: `pase-a-staging.md`.
-`FIREBASE_DEPLOY_ONLY` coherente con este `firebase.json`: `hosting,functions,firestore,storage`.
+`FIREBASE_DEPLOY_ONLY` coherente con este `firebase.json`: en producción `hosting,functions,firestore,storage`; en staging `hosting:panel,functions,firestore,storage`, porque el sitio público de cada tenant (un sitio de Hosting por tenant, `dist/firebase.json` con una sola entrada) lo despliega `reconstruir-sitio.yml` (`reconstruccion-sitio.md`) y el CI lo impide con `scripts/sitios-tenant.mjs validar-solo`.
 
 Índices (`firestore.indexes.json`; **el emulador no exige índices compuestos, así que una consulta sin índice solo falla en la nube**):
 
