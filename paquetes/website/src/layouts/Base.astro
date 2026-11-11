@@ -55,7 +55,8 @@ const waGeneral = enlaceWhatsApp(config.whatsappTienda, 'Hola, tengo una consult
     {urlImagen !== undefined && <meta property="og:image" content={urlImagen} />}
     <meta name="twitter:card" content={urlImagen === undefined ? 'summary' : 'summary_large_image'} />
     {config.medicion.searchConsole !== null && <meta name="google-site-verification" content={config.medicion.searchConsole} />}
-    <link rel="icon" href="/ejemplo/logo.svg" type="image/svg+xml" />
+    {/* El icono es el logo del negocio; sin logo no se enlaza ninguno (nunca el de ejemplo en un sitio real). */}
+    {config.logo !== null && <link rel="icon" href={config.logo.url} />}
     <link rel="stylesheet" href="/plantillas.css" />
     <link rel="preload" href="/fuentes/ubuntu-latin-400.woff2" as="font" type="font/woff2" crossorigin />
     <script is:inline src="/tema-inicial.js"></script>
