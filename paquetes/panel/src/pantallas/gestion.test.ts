@@ -398,6 +398,16 @@ describe('catálogo y sitio', () => {
     ver(e, h(PantallaCatalogo, { sub: 'fichas' }));
     const u = userEvent.setup();
     await u.click(await screen.findByRole('button', { name: 'Editar ficha de Televisor 55 pulgadas' }));
+    const titulo = await screen.findByRole('heading', { name: 'Ficha web: Televisor 55 pulgadas' });
+    // El editor reemplaza a la tabla y recibe el foco.
+    expect(screen.queryByRole('table')).toBeNull();
+    expect(screen.getByLabelText('Subir fotos')).toBeTruthy();
+    await waitFor(() => expect(document.activeElement).toBe(titulo));
+    await u.click(screen.getByRole('button', { name: 'Volver a la lista' }));
+    expect(await screen.findByRole('table')).toBeTruthy();
+    expect(screen.queryByLabelText('Subir fotos')).toBeNull();
+    await waitFor(() => expect(document.activeElement).toBe(screen.getByRole('button', { name: 'Editar ficha de Televisor 55 pulgadas' })));
+    await u.click(screen.getByRole('button', { name: 'Editar ficha de Televisor 55 pulgadas' }));
     await screen.findByRole('heading', { name: 'Ficha web: Televisor 55 pulgadas' });
     const foto = new File(['x'.repeat(2048)], 'frente.jpg', { type: 'image/jpeg' });
     fireEvent.change(await screen.findByLabelText('Subir fotos'), { target: { files: [foto] } });
@@ -415,6 +425,21 @@ describe('catálogo y sitio', () => {
     // Tope de 5 fotos: la sexta falla con mensaje legible.
     for (let i = 0; i < 4; i++) fireEvent.change(screen.getByLabelText('Subir fotos'), { target: { files: [new File(['x'], `f${i}.jpg`, { type: 'image/jpeg' })] } });
     await waitFor(() => expect((screen.getByLabelText('Subir fotos') as HTMLInputElement).disabled).toBe(true));
+  });
+  it('ficha existente: al guardar envía solo los campos editables, sin los de almacenamiento', async () => {
+    const e = crearEntorno('sup');
+    const u = userEvent.setup();
+    const guardada = { slug: 'tv-55', descripcion: 'Televisor.', garantia: '12 meses', medios: [], seo: { titulo: 'Televisor', descripcion: '' }, estado: 'borrador', productoId: 'tv-55', version: 3, actualizadaEn: 'ayer', por: 'u1' };
+    await e.api.llamar('guardarFicha', { productoId: 'tv-55', ficha: guardada as never });
+    e.api.llamadas.length = 0;
+    ver(e, h(PantallaCatalogo, { sub: 'fichas' }));
+    await u.click(await screen.findByRole('button', { name: 'Editar ficha de Televisor 55 pulgadas' }));
+    await screen.findByRole('heading', { name: 'Ficha web: Televisor 55 pulgadas' });
+    await u.type(screen.getByLabelText('Descripción del producto'), ' Nuevo.');
+    await u.click(screen.getByRole('button', { name: 'Guardar ficha' }));
+    expect(await screen.findByText(/Ficha guardada/)).toBeTruthy();
+    const envio = e.api.llamadas.find((l) => l.nombre === 'guardarFicha');
+    expect(Object.keys((envio?.entrada as { ficha: object }).ficha).sort()).toEqual(['descripcion', 'estado', 'garantia', 'medios', 'seo', 'slug']);
   });
   it('ficha: si el servidor rechaza el archivo, muestra el error y no agrega el medio', async () => {
     const e = crearEntorno('sup');
