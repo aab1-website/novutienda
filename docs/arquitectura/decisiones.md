@@ -109,3 +109,7 @@
   **D3 (caché):** `Cache-Control` de 1 año e inmutable; el nombre del objeto cambia con el contenido, así que no hay invalidación.
   **D4 (legado):** los derivados que quedaron en el bucket por defecto se borran después de la prueba de lectura en el bucket nuevo; entre tanto el borrado de un medio limpia también la copia legada.
   **Orden:** el rol `roles/storage.objectUser` de la cuenta de funciones, solo sobre el bucket público, se da antes de fusionar y desplegar.
+- 11/11/2026 — **Video: D1 = ffmpeg del runtime.** Código en `plataforma/conectores/firebase/procesador-medios.ts`; operación en `docs/produccion/funciones.md` §6.
+  **D1:** el video usa el ffmpeg y el ffprobe del runtime de Google (`/usr/bin`, por `FFMPEG_PATH` y `FFPROBE_PATH` que fija el script de despliegue). Una sonda exige que existan y traigan `libx264`; si no, el video se rechaza antes de subir y se registra `video no disponible`. Lo parchea Google, así que no aparece en los escáneres del repositorio. **Descartadas:** `ffmpeg-static` (un binario que baja de fuera del lockfile y no se puede verificar con la cadena de suministro del repositorio) y compilar uno propio (por el tamaño del despliegue y su mantenimiento). Falta confirmarlo en staging con un humo.
+  **Pendiente D2:** más CPU, o una sola pasada de transcodificación, si el humo pasa de 300 s.
+  **Pendiente D3:** cuenta de servicio dedicada para medios (decisión de Andres).

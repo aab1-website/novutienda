@@ -207,10 +207,15 @@ ni se borra desde el navegador. Lectura pública solo de `tenants/{t}/publico/me
 Procesamiento (sharp): AVIF y WebP a 480, 960, 1600 y 2400 px (sin ampliar), orientación aplicada, **sin EXIF/GPS/XMP/IPTC**, tope de 100 megapíxeles.
 Las versiones se publican con el hash del contenido en el nombre y `Cache-Control: public, max-age=31536000, immutable`.
 
-**Video: no está garantizado en Cloud Functions.** El runtime no trae ffmpeg/ffprobe. El procesador de video (ffmpeg: 720p/1080p H.264 sin
-metadatos y póster WebP, probado con el binario local) solo se activa si el despliegue define `FFMPEG_PATH` y `FFPROBE_PATH`; sin ellos, un video se
-**rechaza** con un error claro y no se publica nada (no hay versión simulada en producción). Para habilitarlo hay que empaquetar un binario
-estático dentro del despliegue (decisión pendiente; ver §9) y subir memoria/tiempo de `subidaFinalizada` y `medios`. Tampoco se procesa HEIC (el sharp
+**Video: usa el ffmpeg del runtime de Google.** El procesador (720p/1080p H.264 sin metadatos y póster WebP) ejecuta `/usr/bin/ffmpeg` y
+`/usr/bin/ffprobe`, que el script de despliegue fija en `FFMPEG_PATH` y `FFPROBE_PATH` (salvo `P_FFMPEG_PATH`/`P_FFPROBE_PATH`; nunca vacíos). En el
+emulador quedan vacíos. Al arrancar, una sonda comprueba que el binario existe, ejecuta y **trae `libx264`**; su versión queda en el log. Formatos
+admitidos: MP4, MOV y WebM. El archivo se trata como no confiable: sin shell, entorno mínimo, solo protocolo `file`, demuxer forzado según ffprobe, una
+pista de video y una de audio, sin subtítulos ni datos, y tope de tamaño de salida. Si el ffmpeg falta o no tiene `libx264`, `reservarSubida` rechaza el
+video **antes de subir** con un mensaje claro, el procesador no publica nada y se registra `video no disponible` como error. El ffmpeg del sistema **no
+aparece en los escáneres del repositorio**: lo parchea Google y su versión solo se ve en el log de la sonda. Que el runtime de staging traiga ffmpeg con
+`libx264` está **por confirmar** con un humo (un `.mp4` y un `.webm` reales); la decisión está en `decisiones.md` (11/11/2026, D1). Falta decidir si
+`subidaFinalizada` y `medios` necesitan más memoria o tiempo (D2). Tampoco se procesa HEIC (el sharp
 precompilado no lo decodifica): el navegador debe convertir a JPEG antes de subir.
 
 ## 7. Cotización y alertas
@@ -311,4 +316,4 @@ Guion paso a paso con los comandos exactos: `pase-a-staging.md`.
 5. Registrar el token de NovuChat (`token-novuchat.mjs registrar --tenant <tenant> --proyecto <proyecto>`, con `NOVUTIENDA_AMBIENTE=staging`, `GCP_PROJECT_ID_STAGING` y `GOOGLE_CLOUD_PROJECT` definidos; el tenant debe estar activo) y entregárselo a n8n sin mostrarlo.
 6. Crear la alerta de Cloud Monitoring y su canal de correo (`alertas.md`).
 7. Activar la política TTL de `limitesTasa.expiraEn` (viene en `firestore.indexes.json`).
-8. Decidir el video: empaquetar un binario de ffmpeg o procesar el video fuera de Functions.
+8. Confirmar en staging que el runtime trae ffmpeg con `libx264` (humo con un `.mp4` y un `.webm` reales) y decidir D2 y D3 del video (`decisiones.md`, 11/11/2026).
