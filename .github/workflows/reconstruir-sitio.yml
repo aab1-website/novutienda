@@ -80,8 +80,11 @@ jobs:
     runs-on: ubuntu-latest
     timeout-minutes: 5
     # El Environment da acceso a SITIOS_TENANT y al secreto de la cola.
+    # deployment: false — usa los secretos y variables del Environment sin crear
+    # un registro de despliegue cada 15 minutos (el sondeo no despliega nada).
     environment:
       name: staging
+      deployment: false
     permissions:
       contents: read
     outputs:
