@@ -68,6 +68,7 @@ export const manifiestoInventarios: ManifiestoModulo = {
   emite: ['stock.cambiado', 'stock.bajo'],
   // venta.confirmada no se consume: el POS descuenta con el puerto dentro de su propia transacción.
   consume: ['venta.anulada', 'pedido.confirmado'],
+  rutasHttp: [{ ruta: '/api/novuchat/v1/inventario' }, { ruta: '/api/novuchat/v1/pedidos/confirmar' }],
   acciones: ACCIONES_INVENTARIOS.map(([nombre, roles]) => accion('inventarios', nombre, roles)),
   pantallas: [
     {

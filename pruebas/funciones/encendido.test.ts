@@ -1,13 +1,15 @@
 // L2-6, sin emulador: el marco de los callables rechaza las acciones de un módulo apagado para el tenant, falla cerrado
 // con tenant inexistente y deja pasar las de Central. Se usa `crearEntorno` con un Firestore mínimo en memoria.
+import { createHash, randomBytes } from 'node:crypto';
 import { beforeAll, describe, expect, it, vi } from 'vitest';
 import { construirClaim } from '@novutienda/nucleo';
 import { registroPlataforma } from '../../plataforma/registro.js';
-import { crearLectorModulos, TTL_MODULOS_MS } from '../../plataforma/coordinador/modulos-activos.js';
+import { crearLectorModulos, TTL_MODULOS_MS, TTL_NEGATIVO_MS } from '../../plataforma/coordinador/modulos-activos.js';
+import { ejecutarLimpiezaSubidas } from '../../plataforma/funciones/servidor/programadas/consola.js';
 import { crearEntorno } from '../../plataforma/funciones/servidor/entorno.js';
 import { crearManejador, accion, type TablaAcciones } from '../../plataforma/funciones/servidor/llamadas/marco.js';
 import { moduloEncendido, porTenant } from '../../plataforma/funciones/servidor/programadas/tenants.js';
-import { accion as llamar, crearUsuario, hayEmulador, herramientas, sembrarTenant, TENANT_TODO_ENCENDIDO, type Herramientas } from './ayudas.js';
+import { accion as llamar, crearUsuario, hayEmulador, herramientas, http, sembrarTenant, TENANT_TODO_ENCENDIDO, type Herramientas } from './ayudas.js';
 import { VACIO } from '../../plataforma/funciones/servidor/llamadas/comunes.js';
 import { tablasCompuestas } from './tablas.js';
 
@@ -114,8 +116,50 @@ describe('encendido por tenant en el marco de los callables', () => {
     expect(await codigoDe(manejar(sin.e, tablaDe('pos', true))(peticion('hacer')))).toEqual(APAGADO);
     const modulosActivos = tablasCompuestas()['consola']?.['modulosActivos'] as never;
     expect(await codigoDe(manejar(sin.e, { modulosActivos })(peticion('modulosActivos')))).toEqual(APAGADO);
-    const roto = entornoCon({ [`tenants/${T}`]: { plan: 'base' } });
+    const roto = entornoCon({ [`tenants/${T}`]: { estado: 'activo', plan: 'base' } });
     expect(await codigoDe(manejar(roto.e, tablaDe('pos', true))(peticion('hacer')))).toEqual(APAGADO);
+  });
+
+  it('tenant suspendido o de baja → rechazado en acciones de módulo y de Central; activo sigue igual', async () => {
+    const modulosActivos = tablasCompuestas()['consola']?.['modulosActivos'] as never;
+    for (const estado of ['suspendido', 'baja']) {
+      const { e } = entornoCon({ [`tenants/${T}`]: { ...tenantCon('inventarios', 'recibos', 'pos'), estado } });
+      expect(await codigoDe(manejar(e, tablaDe('pos', true))(peticion('hacer'))), estado).toEqual(APAGADO);
+      expect(await codigoDe(manejar(e, tablaDe('panel', false))(peticion('hacer'))), estado).toEqual(APAGADO);
+      expect(await codigoDe(manejar(e, { modulosActivos })(peticion('modulosActivos'))), estado).toEqual(APAGADO);
+    }
+    const activo = entornoCon({ [`tenants/${T}`]: tenantCon('inventarios', 'recibos', 'pos') });
+    expect(await manejar(activo.e, tablaDe('panel', false))(peticion('hacer'))).toEqual({ hecho: true });
+  });
+
+  describe('propietario de la plataforma (D3): pasa solo ante un tenant suspendido y en acciones que lo declaran', () => {
+    const entornoDe = (docs: Record<string, unknown>, propietario: boolean) => {
+      const claim = construirClaim(propietario ? {} : { [T]: 'adm' }, 1, propietario);
+      if (!claim.ok) throw new Error(claim.error);
+      const claims = { uid: 'op', email_verified: true, firebase: { sign_in_provider: propietario ? 'google.com' : 'password' }, ...claim.valor };
+      const { f } = firestoreFalso(docs);
+      return crearEntorno({ firestore: f as never, auth: { verifyIdToken: async () => claims } as never, bucket: {} as never, ahora: () => 1_000, env: {} });
+    };
+    const propia = (modulo: string, requiereEncendido: boolean): TablaAcciones => ({ hacer: { ...tablaDe(modulo, requiereEncendido)['hacer']!, propietario: true } });
+    const susp = (...ids: string[]) => ({ [`tenants/${T}`]: { ...tenantCon(...ids), estado: 'suspendido' } });
+
+    it('suspendido, acción propietario → pasa', async () => {
+      expect(await manejar(entornoDe(susp('pos'), true), propia('panel', false))(peticion('hacer'))).toEqual({ hecho: true });
+    });
+    it('suspendido, acción de módulo con requiereEncendido → sigue revisando el encendido', async () => {
+      expect(await codigoDe(manejar(entornoDe(susp('inventarios'), true), propia('pos', true))(peticion('hacer')))).toEqual(APAGADO);
+      expect(await manejar(entornoDe(susp('inventarios', 'recibos', 'pos'), true), propia('pos', true))(peticion('hacer'))).toEqual({ hecho: true });
+    });
+    it('inexistente, inválido o de baja → rechazado también para el propietario', async () => {
+      const casos: Record<string, unknown>[] = [{}, { [`tenants/${T}`]: { estado: 'activo', plan: 'base' } }, { [`tenants/${T}`]: { ...tenantCon('pos'), estado: 'baja' } }];
+      for (const docs of casos) expect(await codigoDe(manejar(entornoDe(docs, true), propia('panel', false))(peticion('hacer'))), JSON.stringify(docs)).toEqual(APAGADO);
+    });
+    it('propietario en una acción que no lo declara → no pasa ante suspendido', async () => {
+      expect(await codigoDe(manejar(entornoDe(susp('pos'), true), tablaDe('panel', false))(peticion('hacer')))).not.toBe('ok');
+    });
+    it('personal del tenant vs suspendido → rechazado, aunque la acción declare propietario', async () => {
+      expect(await codigoDe(manejar(entornoDe(susp('pos'), false), propia('panel', false))(peticion('hacer')))).toEqual(APAGADO);
+    });
   });
 
   it('el rol sigue mandando: otro tenant sin rol no llega a leer módulos', async () => {
@@ -127,7 +171,7 @@ describe('encendido por tenant en el marco de los callables', () => {
 });
 
 describe('lector de módulos del tenant: cache de 60 s', () => {
-  it('lee una vez por ventana, relee al vencer y no cachea los rechazos', async () => {
+  it('lee una vez por ventana, relee al vencer y guarda los rechazos solo 10 s', async () => {
     let t = 0;
     const docs: Record<string, unknown> = { [`tenants/${T}`]: tenantCon('inventarios', 'recibos', 'pos') };
     const { f, lecturas } = firestoreFalso(docs);
@@ -142,6 +186,7 @@ describe('lector de módulos del tenant: cache de 60 s', () => {
     expect(lecturas.n).toBe(2);
     expect(await leer('nuevo')).toBeUndefined();
     docs['tenants/nuevo'] = tenantCon('inventarios');
+    t += TTL_NEGATIVO_MS; // el rechazo se guarda 10 s (LOW-2), no más: pasado ese tiempo el alta se nota
     expect(await leer('nuevo')).toEqual(['inventarios']);
     expect(await leer('../x')).toBeUndefined();
   });
@@ -173,17 +218,44 @@ describe('lector de módulos del tenant: cache de 60 s', () => {
   });
 });
 
+describe('lector de módulos del tenant: caché negativa de 10 s', () => {
+  it('sin documento o inválido: la segunda petición dentro de 10 s no lee Firestore; pasados 10 s sí', async () => {
+    let t = 0;
+    const docs: Record<string, unknown> = { 'tenants/roto': { estado: 'activo', plan: 'base' } };
+    const { f, lecturas } = firestoreFalso(docs);
+    const leer = crearLectorModulos(f, () => t);
+    for (const id of ['fantasma', 'roto']) {
+      const antes = lecturas.n;
+      expect(await leer(id)).toBeUndefined();
+      t += TTL_NEGATIVO_MS - 1;
+      expect(await leer(id)).toBeUndefined();
+      expect(lecturas.n - antes, id).toBe(1);
+      t += 1;
+      expect(await leer(id)).toBeUndefined();
+      expect(lecturas.n - antes, id).toBe(2);
+    }
+  });
+});
+
 describe('programadas: porTenant con módulo', () => {
   it('salta los tenants con el módulo apagado', async () => {
     const docs: Record<string, unknown> = { 'tenants/a': tenantCon('consola', 'inventarios'), 'tenants/b': tenantCon('inventarios') };
     const { f } = firestoreFalso(docs);
-    const fs = { ...f, collection: () => ({ listDocuments: async () => ['a', 'b'].map((id) => ({ id })) }), getAll: async (...refs: { id: string }[]) => refs.filter((r) => typeof r.id === 'string').map((r) => ({ id: r.id, exists: true })) };
+    const fs = { ...f, collection: () => ({ listDocuments: async () => ['a', 'b'].map((id) => ({ id })) }), getAll: async (...refs: { id: string }[]) => refs.filter((r) => typeof r.id === 'string').map((r) => ({ id: r.id, exists: true, get: () => 'activo' })) };
     const e = crearEntorno({ firestore: fs as never, auth: {} as never, bucket: {} as never, ahora: () => 1, env: {} });
     expect(await moduloEncendido(e, 'a', 'consola')).toBe(true);
     expect(await moduloEncendido(e, 'b', 'consola')).toBe(false);
     expect(await moduloEncendido(e, 'zz', 'consola')).toBe(false);
     expect(await porTenant(e, 'prueba', async (t) => t.toUpperCase(), { modulo: 'consola' })).toEqual({ a: 'A' });
     expect(await porTenant(e, 'prueba', async (t) => t.toUpperCase())).toEqual({ a: 'A', b: 'B' });
+  });
+
+  it('solo recorre los tenants activos: suspendidos y de baja se saltan', async () => {
+    const docs: Record<string, unknown> = { 'tenants/a': tenantCon('consola'), 'tenants/s': { ...tenantCon('consola'), estado: 'suspendido' }, 'tenants/z': { ...tenantCon('consola'), estado: 'baja' } };
+    const { f } = firestoreFalso(docs);
+    const fs = { ...f, collection: () => ({ listDocuments: async () => ['a', 's', 'z'].map((id) => ({ id })) }), getAll: async (...refs: { id: string }[]) => refs.filter((r) => typeof r.id === 'string').map((r) => ({ id: r.id, exists: true, get: () => (docs[`tenants/${r.id}`] as { estado: string }).estado })) };
+    const e = crearEntorno({ firestore: fs as never, auth: {} as never, bucket: {} as never, ahora: () => 1, env: {} });
+    expect(await porTenant(e, 'prueba', async (t) => t)).toEqual({ a: 'a' });
   });
 });
 
@@ -224,9 +296,41 @@ describe.skipIf(!hayEmulador)('encendido por tenant (emulador)', () => {
     expect(con.resultado).toEqual({ modulos: ['inventarios', 'recibos', 'consola'] });
   });
 
+  it('la limpieza de subidas corre también con consola apagada (L3-4, D4 = A)', async () => {
+    const e = crearEntorno({ firestore: h.firestore, auth: h.auth, bucket: h.bucket, ahora: () => Date.now(), env: { PLATAFORMA_PRUEBAS: '1' } });
+    expect((await ejecutarLimpiezaSubidas(e))[nada]).toEqual({ vencidas: 0, reintentadas: 0 });
+  });
+
   it('tenant sin documento → rechazo', async () => {
     const t = 'enc-fantasma';
     const admFantasma = await crearUsuario(h, { rol: 'adm', tenant: t });
     expect((await llamar('consola', 'modulosActivos', {}, admFantasma.token, t)).status).toBe(403);
+  });
+  // L3-3: la API HTTP real. El token de NovuChat toma el tenant de su documento; con el módulo dueño de la ruta apagado, la
+  // respuesta es la de un token malo (401 credencial_invalida) y con el encendido responde.
+  it('API HTTP: catálogo (consola) apagado → 401 credencial_invalida; inventario (inventarios) encendido → 200; sin módulos → 401', async () => {
+    const sha = (t: string) => createHash('sha256').update(t).digest('hex');
+    const sembrarToken = async (tenant: string): Promise<string> => {
+      const token = randomBytes(24).toString('hex');
+      await h.firestore.doc(`novuchatTokens/${sha(token)}`).set({ tenantId: tenant, hash: sha(token), activo: true });
+      return token;
+    };
+    const conAuth = (token: string) => ({ headers: { authorization: `Bearer ${token}` } });
+    const soloInventarios = 'enc-http-inv';
+    const ninguno = 'enc-http-nada';
+    await h.firestore.doc(`tenants/${soloInventarios}`).set({ ...TENANT_TODO_ENCENDIDO, modulos: mod('inventarios') });
+    await h.firestore.doc(`tenants/${ninguno}`).set({ ...TENANT_TODO_ENCENDIDO, modulos: {} });
+    const tokenInv = await sembrarToken(soloInventarios);
+    const tokenNada = await sembrarToken(ninguno);
+
+    const catalogo = await http('/api/novuchat/v1/catalogo?mercado=BO', conAuth(tokenInv));
+    expect(catalogo.status).toBe(401);
+    expect(catalogo.cuerpo).toEqual({ error: 'credencial_invalida' });
+    const inventario = await http('/api/novuchat/v1/inventario', conAuth(tokenInv));
+    expect(inventario.status, JSON.stringify(inventario.cuerpo)).toBe(200);
+    const nada = await http('/api/novuchat/v1/inventario', conAuth(tokenNada));
+    expect(nada.status).toBe(401);
+    expect(nada.cuerpo).toEqual({ error: 'credencial_invalida' });
+    expect((await http('/api/salud')).status).toBe(200);
   });
 });

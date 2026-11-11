@@ -1,31 +1,49 @@
 // Alta de tenant: `tenants/<t>/config.json` (v2) -> documento `tenants/{t}` en Firestore (L2-5).
 //
-//   node scripts/alta-tenant.mjs <tenant> [--verificar]   solo lectura: muestra el diff contra el documento actual
-//   node scripts/alta-tenant.mjs <tenant> --aplicar       escribe el documento con Admin SDK
+//   node scripts/alta-tenant.mjs <tenant> --proyecto <id> [--verificar]   solo lectura: muestra el diff contra el documento actual
+//   node scripts/alta-tenant.mjs <tenant> --proyecto <id> --aplicar       escribe el documento con Admin SDK
 //
-// El proyecto sale de GOOGLE_CLOUD_PROJECT (obligatorio; con FIRESTORE_EMULATOR_HOST apunta al emulador). No imprime
+// El proyecto sale de GOOGLE_CLOUD_PROJECT (obligatorio; con FIRESTORE_EMULATOR_HOST apunta al emulador) y debe repetirse en
+// --proyecto. NOVUTIENDA_AMBIENTE=staging|emulador como en los demás scripts del operador; producción solo con
+// NOVUTIENDA_AMBIENTE=produccion, GCP_PROJECT_ID_PROD igual al proyecto y --confirmar-produccion (scripts/guardia-operador.mjs). No imprime
 // identificadores de proyecto ni de tenant. La lógica vive en plataforma/operador/alta.ts (pura, con almacén inyectable).
 import { readFileSync } from 'node:fs';
 import { resolve } from 'node:path';
 import { pathToFileURL } from 'node:url';
 import { cargarManifiestos } from './generar-reglas.mjs';
+import { validarEntornoAlta } from './guardia-operador.mjs';
 
 const falla = (mensaje) => {
   console.error(`alta-tenant: ${mensaje}`);
   process.exit(1);
 };
 
+const USO = 'uso: alta-tenant.mjs <tenant> --proyecto <id> [--verificar | --aplicar] [--confirmar-produccion]';
 const args = process.argv.slice(2);
-const tenant = args.find((a) => !a.startsWith('--'));
-const banderas = args.filter((a) => a.startsWith('--'));
-const desconocidas = banderas.filter((b) => b !== '--aplicar' && b !== '--verificar');
-if (tenant === undefined || desconocidas.length > 0 || banderas.length > 1) {
-  falla('uso: alta-tenant.mjs <tenant> [--verificar | --aplicar]');
+let tenant;
+let proyectoArg;
+let confirmarProduccion = false;
+const banderas = [];
+for (let i = 0; i < args.length; i += 1) {
+  const a = args[i];
+  if (a === '--proyecto') {
+    i += 1;
+    proyectoArg = args[i];
+  } else if (a === '--confirmar-produccion') confirmarProduccion = true;
+  else if (a === '--aplicar' || a === '--verificar') banderas.push(a);
+  else if (a.startsWith('--') || tenant !== undefined) falla(USO);
+  else tenant = a;
 }
+if (tenant === undefined || banderas.length > 1) falla(USO);
 const aplicar = banderas[0] === '--aplicar';
 if (!/^[a-z0-9][a-z0-9-]{0,62}$/.test(tenant)) falla('el tenant no es un identificador válido');
-const proyecto = process.env.GOOGLE_CLOUD_PROJECT;
-if (!proyecto) falla('defina GOOGLE_CLOUD_PROJECT');
+let proyecto;
+try {
+  // Entorno: --proyecto igual a GOOGLE_CLOUD_PROJECT; staging|emulador, o producción solo de forma explícita.
+  ({ proyecto } = validarEntornoAlta({ proyectoArg, confirmarProduccion, hostsEmulador: ['FIRESTORE_EMULATOR_HOST'] }));
+} catch (e) {
+  falla(e instanceof Error ? e.message : 'entorno inválido');
+}
 
 let config;
 try {
@@ -37,6 +55,7 @@ try {
 const manifiestos = await cargarManifiestos();
 // Los ganchos de TypeScript ya están registrados por cargarManifiestos.
 const { aplicarAlta } = await import(pathToFileURL(resolve('plataforma/operador/alta.ts')).href);
+const { MENSAJE_INVENTARIOS_COMPARTIDO, otroConInventariosYHost } = await import(pathToFileURL(resolve('plataforma/operador/inventarios-compartido.ts')).href);
 const { getApps, initializeApp } = await import('firebase-admin/app');
 const { getFirestore } = await import('firebase-admin/firestore');
 if (getApps().length === 0) initializeApp({ projectId: proyecto });
@@ -49,16 +68,41 @@ const sinIdentificadores = async (fn) => {
     throw new Error(`error de Firestore (${e && typeof e === 'object' && 'code' in e ? String(e.code) : 'desconocido'})`, { cause: e });
   }
 };
+// Serialización con claves ordenadas, para comparar documentos sin depender del orden.
+const canonico = (v) => JSON.stringify(v, (_k, x) => (x && typeof x === 'object' && !Array.isArray(x) ? Object.fromEntries(Object.entries(x).sort(([a], [b]) => (a < b ? -1 : 1))) : x));
+// Lector de la compuerta D-B1 sobre una transacción de Firestore.
+const lectorDe = (tx) => ({
+  get: async (ruta) => {
+    const s = await tx.get(db.doc(ruta));
+    return { existe: s.exists, data: () => s.data() };
+  },
+  listar: async (coleccion) => (await tx.get(db.collection(coleccion))).docs.map((d) => ({ ruta: d.ref.path, data: () => d.data() })),
+});
 const almacen = {
+  inventariosCompartido: (id) => sinIdentificadores(() => db.runTransaction((tx) => otroConInventariosYHost(lectorDe(tx), id, { exigirHostPropio: true }))),
   leer: (id) =>
     sinIdentificadores(async () => {
       const s = await db.collection('tenants').doc(id).get();
       return s.exists ? s.data() : null;
     }),
-  escribir: (id, doc) =>
-    sinIdentificadores(async () => {
-      await db.collection('tenants').doc(id).set(doc);
-    }),
+  // Transacción: si el documento cambió desde la lectura (p. ej. una suspensión concurrente), aborta en vez de pisarlo.
+  escribir: (id, doc, previo) =>
+    sinIdentificadores(() =>
+      db.runTransaction(async (tx) => {
+        const ref = db.collection('tenants').doc(id);
+        const s = await tx.get(ref);
+        const actual = s.exists ? s.data() : null;
+        if (canonico(actual) !== canonico(previo)) {
+          throw new Error('el documento cambió durante el alta: reintente');
+        }
+        if (doc.modulos?.inventarios !== undefined && (await otroConInventariosYHost(lectorDe(tx), id, { exigirHostPropio: true }))) {
+          throw new Error(MENSAJE_INVENTARIOS_COMPARTIDO);
+        }
+        tx.set(ref, doc);
+      }),
+    ),
+  // listCollections falla cerrado: si Firestore no responde, el alta se aborta (no se asume «sin datos previos»).
+  tieneSubcolecciones: (id) => sinIdentificadores(async () => (await db.collection('tenants').doc(id).listCollections()).length > 0),
 };
 
 try {

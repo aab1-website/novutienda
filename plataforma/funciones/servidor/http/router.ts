@@ -1,6 +1,9 @@
 // Enrutador de la función HTTP `api`: rutas públicas del sitio, API de NovuChat y endpoints de reconstrucción.
 // Función pura sobre `PeticionHttp`; la Cloud Function solo traduce Express a esta forma y de vuelta.
 import type { LimiteTasa } from '@novutienda/nucleo';
+import { logger } from 'firebase-functions';
+import { hostDePeticion } from '../../../coordinador/dominios.js';
+import { duenoDeRuta, rutaEncendida } from '../../../coordinador/rutas-http.js';
 import type { Entorno } from '../entorno.js';
 import { manejarCatalogo, manejarInventario, manejarPedido, type ConfigNovuchat } from './novuchat.js';
 import { manejarSitio } from './sitio.js';
@@ -8,12 +11,11 @@ import { manejarSitioPublico, type ConfigWebsite } from './website.js';
 import { json, type PeticionHttp, type RespuestaApi } from './tipos.js';
 
 export interface ConfigRouter extends Pick<ConfigWebsite, 'recaptcha' | 'appCheck'> {
-  readonly tenantId: string;
   readonly novuchat: ConfigNovuchat;
   readonly secretoReconstruccion: string;
   readonly limiteContacto: LimiteTasa;
-  /** Límites en memoria por instancia y por origen, ANTES de autenticar (NovuChat), de leer (disponibilidad) o de verificar App Check (contacto). */
-  readonly limiteMemoria: { readonly novuchat: LimiteTasa; readonly disponibilidad: LimiteTasa; readonly contacto: LimiteTasa };
+  /** Límites en memoria por instancia y por origen, ANTES de autenticar (NovuChat), de leer (disponibilidad) o de verificar App Check (contacto); `hosts` (por origen) y `hostsGlobal` (clave fija `hosts:*`, tope de la instancia), ante un host que no está en caché. */
+  readonly limiteMemoria: { readonly novuchat: LimiteTasa; readonly disponibilidad: LimiteTasa; readonly contacto: LimiteTasa; readonly hosts: LimiteTasa; readonly hostsGlobal: LimiteTasa };
 }
 
 const RUTAS_SITIO = new Set(['/api/cotizacion', '/api/disponibilidad', '/api/contacto']);
@@ -21,6 +23,78 @@ const RUTAS_SITIO = new Set(['/api/cotizacion', '/api/disponibilidad', '/api/con
 async function excedeLimite(limite: LimiteTasa, clave: string, ahora: number): Promise<RespuestaApi | undefined> {
   const r = await limite.intentar(clave, ahora);
   return r.permitido ? undefined : json(429, { error: 'limite' }, { 'Retry-After': String(r.reintentarEnSeg) });
+}
+
+/**
+ * Control de encendido de una ruta para un tenant (L3-3). El rechazo queda en el log con el motivo y la ruta, sin token ni IP.
+ * Si el lector de módulos lanza, el error sube y la petición no se sirve.
+ */
+async function servir(e: Entorno, ruta: string, tenantId: string): Promise<boolean> {
+  const dueno = duenoDeRuta(ruta);
+  const ok = await rutaEncendida(e.modulosDelTenant, tenantId, dueno);
+  if (!ok) {
+    // Motivo distinguible en el log (la respuesta no lo distingue). El lector tiene caché: la segunda consulta no cuesta una lectura.
+    const motivo = dueno === undefined ? 'ruta-sin-dueno' : (await e.modulosDelTenant(tenantId)) === undefined ? 'sin-documento' : 'modulo-apagado';
+    logger.warn('ruta HTTP rechazada', { motivo, ruta, tenantId });
+  }
+  return ok;
+}
+
+const MAX_CABECERAS_LOG = 50;
+const MAX_NOMBRE_LOG = 64;
+const MAX_RUTA_LOG = 100;
+const MAX_AVISOS_POR_MINUTO = 30;
+const estadoAvisos = { inicio: 0, emitidos: 0, omitidos: 0 };
+
+/** Solo para las pruebas: reinicia la ventana del límite de avisos. */
+export function reiniciarAvisosRechazo(): void {
+  estadoAvisos.inicio = 0;
+  estadoAvisos.emitidos = 0;
+  estadoAvisos.omitidos = 0;
+}
+
+/** `warn` de rechazo acotado por instancia: máximo 30 por minuto; el resto se cuenta y se resume al abrir la ventana siguiente. */
+function avisarRechazo(ahora: number, datos: Record<string, unknown>): void {
+  if (ahora - estadoAvisos.inicio >= 60_000) {
+    if (estadoAvisos.omitidos > 0) logger.warn('rechazos HTTP omitidos en el minuto anterior', { omitidos: estadoAvisos.omitidos });
+    estadoAvisos.inicio = ahora;
+    estadoAvisos.emitidos = 0;
+    estadoAvisos.omitidos = 0;
+  }
+  if (estadoAvisos.emitidos < MAX_AVISOS_POR_MINUTO) {
+    estadoAvisos.emitidos += 1;
+    logger.warn('ruta HTTP rechazada', datos);
+  } else {
+    estadoAvisos.omitidos += 1;
+  }
+}
+
+/**
+ * Tenant de una ruta pública (sitio o pedido firmado): sale del host y de la lista cerrada `dominios`. `undefined` = rechazo (404).
+ * Un host fuera de la caché cuesta una lectura de Firestore: pasa antes por un límite en memoria por origen. El log lleva el
+ * motivo y los NOMBRES de todas las cabeceras recibidas (ordenados), nunca sus valores: sirven para diagnosticar qué cabecera trae el host.
+ */
+async function tenantDelHost(e: Entorno, req: PeticionHttp, cfg: ConfigRouter): Promise<string | RespuestaApi> {
+  const host = hostDePeticion(req.cabeceras);
+  let motivo = 'host-invalido';
+  if (host !== undefined) {
+    if (!e.tenantDelHost.enCache(host)) {
+      // Tope por origen y, además, global de la instancia (rotar el origen no evita la cuota de lecturas de Firestore).
+      // Si el límite salta y hay un mapeo positivo vencido, se usa ese: inventar hosts no deja sin servicio al sitio legítimo.
+      const limitado = (await excedeLimite(cfg.limiteMemoria.hosts, `hosts:${req.origen}`, e.ahora()))
+        ?? (await excedeLimite(cfg.limiteMemoria.hostsGlobal, 'hosts:*', e.ahora()));
+      if (limitado !== undefined) {
+        const vencido = e.tenantDelHost.positivoVencido(host);
+        return vencido ?? limitado;
+      }
+    }
+    const tenantId = await e.tenantDelHost(host);
+    if (tenantId !== undefined) return tenantId;
+    motivo = 'host-sin-mapeo';
+  }
+  const cabeceras = Object.keys(req.cabeceras).sort().slice(0, MAX_CABECERAS_LOG).map((c) => c.slice(0, MAX_NOMBRE_LOG));
+  avisarRechazo(e.ahora(), { motivo, ruta: req.ruta.slice(0, MAX_RUTA_LOG), cabeceras });
+  return json(404, { error: 'no_encontrado' });
 }
 
 export async function enrutar(e: Entorno, req: PeticionHttp, cfg: ConfigRouter): Promise<RespuestaApi> {
@@ -44,16 +118,30 @@ export async function enrutar(e: Entorno, req: PeticionHttp, cfg: ConfigRouter):
     const limitado = await excedeLimite(cfg.limiteMemoria.novuchat, `novuchat:${req.origen}`, e.ahora());
     if (limitado !== undefined) return limitado;
   }
-  if (RUTAS_SITIO.has(ruta)) return manejarSitioPublico(e, req, ruta, cfg);
+  // Rutas de tenant por host: el dueño se controla aquí, antes del manejador (el tenant no sale de una credencial).
+  if (RUTAS_SITIO.has(ruta)) {
+    const tenantId = await tenantDelHost(e, req, cfg);
+    if (typeof tenantId !== 'string') return tenantId;
+    if (!(await servir(e, ruta, tenantId))) return json(404, { error: 'no_encontrado' });
+    return manejarSitioPublico(e, req, ruta, cfg, tenantId);
+  }
+  // Rutas con tenant de credencial: el manejador llama a `puedeServir` DESPUÉS de autenticar y ANTES de leer datos.
+  const puedeServir = (tenantId: string): Promise<boolean> => servir(e, ruta, tenantId);
   switch (ruta) {
     case '/api/novuchat/v1/catalogo':
-      return manejarCatalogo(e, peticion, cfg.novuchat);
+      return manejarCatalogo(e, peticion, cfg.novuchat, puedeServir);
     case '/api/novuchat/v1/inventario':
-      return manejarInventario(e, peticion, cfg.novuchat);
+      return manejarInventario(e, peticion, cfg.novuchat, puedeServir);
     case '/api/novuchat/v1/pedidos/confirmar':
-      return manejarPedido(e, peticion, cfg.novuchat);
+    {
+      // Tenant por host (la firma es un secreto compartido: no se mapea el host de un segundo tenant con inventarios hasta el PR D).
+      // El control corre dentro del manejador, tras verificar la firma (D2 = A: 401 credencial_invalida).
+      const tenantId = await tenantDelHost(e, req, cfg);
+      if (typeof tenantId !== 'string') return tenantId;
+      return manejarPedido(e, peticion, cfg.novuchat, tenantId, () => puedeServir(tenantId));
+    }
     default:
-      if (ruta.startsWith('/api/sitio/v1/')) return manejarSitio(e, peticion, cfg.secretoReconstruccion);
+      if (ruta.startsWith('/api/sitio/v1/')) return manejarSitio(e, peticion, cfg.secretoReconstruccion, puedeServir);
       return json(404, { error: 'no_encontrado' });
   }
 }

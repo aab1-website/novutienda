@@ -109,7 +109,7 @@ export function App({ sesion, api, almacen }: { sesion: Sesion; api: ClienteApi;
   }, [rol, carga.estado, modulos, ruta.seccion]);
 
   useEffect(() => {
-    document.title = usuario === null ? `Ingreso · ${NOMBRE_APP}` : `${NOMBRE_APP}`;
+    document.title = usuario === null ? `Ingreso · ${NOMBRE_APP}` : `${usuario.tenantId} · ${NOMBRE_APP}`;
   }, [usuario]);
 
   if (usuario === null || contexto === null) return <Login sesion={sesion} nombre={NOMBRE_APP} />;
@@ -129,6 +129,7 @@ export function App({ sesion, api, almacen }: { sesion: Sesion; api: ClienteApi;
       <header class="cabecera">
         <div class="cabecera-interior">
           <span class="marca-nombre">{NOMBRE_APP}</span>
+          <span class="marca-tenant" title={`Comercio: ${usuario.tenantId}`}>Comercio: {usuario.tenantId}</span>
           {carga.estado === 'cargando' ? (
             <span class="menu" />
           ) : (

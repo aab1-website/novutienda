@@ -169,6 +169,28 @@ Notas del catálogo: solo productos activos y publicados con copia en `publicado
 decimal en la moneda del mercado; `precioCentavos` el mismo monto en centavos (el contrato original dice «mismo entero»: ver §10).
 `stock` es la existencia del almacén `tienda`. `foto`/`fotos` salen de las versiones WebP publicadas (960 px de preferencia).
 
+### Encendido por tenant en HTTP
+
+Cada ruta de la API pertenece a un módulo: el dueño sale de `rutasHttp` de los manifiestos (`registro.rutasHttp()`; `plataforma/coordinador/rutas-http.ts`),
+sin lista aparte. `/api/salud` y `/healthz` no tienen dueño y siempre responden. Una ruta sin dueño, un tenant sin documento `tenants/{t}` (o inválido) o un
+módulo fuera de los efectivos del tenant **no se sirven** (falla cerrado). Si Firestore falla al leer los módulos, la petición da error y no se sirve.
+
+Orden del control: 1) límite en memoria por origen; 2) **autenticar primero** (token de NovuChat, firma HMAC del pedido o del sitio); 3) el encendido; 4) el límite de
+Firestore y la lectura de datos. Sin credencial válida no se consultan módulos, de modo que nadie puede averiguar qué tiene encendido un tenant.
+
+| Ruta | Tenant que se controla | Módulo apagado |
+|---|---|---|
+| `/api/cotizacion`, `/api/disponibilidad`, `/api/contacto` | el del host (`x-forwarded-host`, tabla `dominios`), antes del manejador; host sin mapeo, `404` | `404 no_encontrado` |
+| `/api/novuchat/v1/catalogo`, `/api/novuchat/v1/inventario` | el del token, tras autenticarlo y antes de leer datos | `401 credencial_invalida` (igual que un token inválido; sin cambio de contrato) |
+| `/api/novuchat/v1/pedidos/confirmar` | el del host (`x-forwarded-host`, tabla `dominios`); el encendido se controla tras verificar la firma | `401 credencial_invalida` |
+| `/api/sitio/v1/…` | el `tenantId` firmado, tras la firma y su validación | `404 no_encontrado` |
+
+Cada rechazo deja un `logger.warn` con `motivo` (`modulo-apagado`, `sin-documento`, `ruta-sin-dueno`, `host-invalido` o `host-sin-mapeo`), la ruta y el tenant; nunca el token ni la IP. El log lleva además los nombres de TODAS las cabeceras recibidas (sin valores), para diagnosticar el riesgo R1.
+
+Caché: la lista de módulos de un tenant se guarda 60 s si existe y **10 s si falta** (caché negativa). Las respuestas de NovuChat llevan además
+`Cache-Control: private, max-age=60`, así que apagar un módulo puede tardar **hasta ~120 s** en notarse del lado de NovuChat. Antes de desplegar en un ambiente,
+el documento `tenants/{t}` debe existir en él (alta de tenant) y su host debe estar mapeado en `dominios/{host}` (`docs/produccion/dominios-de-tenant.md`); sin él, estas rutas responden como apagadas.
+
 ## 5. Bus de eventos
 
 Los módulos publican `tenants/{t}/eventos/{id}` dentro de su transacción. `eventos` (Firestore `onDocumentCreated`, `retry: true`) entrega
@@ -209,13 +231,14 @@ Un documento inválido **no se adivina**: las operaciones que lo necesitan falla
 Secretos (Secret Manager, `defineSecret`): `NOVUCHAT_PEDIDOS_SECRETO`, `SITIO_RECONSTRUCCION_SECRETO`, `LIMITE_TASA_SAL`.
 
 Parámetros (`.env.<alias>` en el origen de las funciones o variables de despliegue; valores por defecto entre paréntesis):
-`TENANT_ID` (**sin valor por defecto**: el despliegue lo exige), `APP_CHECK_EXIGIDO` (`false`; **`true` en producción**, el despliegue lo exige), `APP_CHECK_MODO` (`real`),
+`APP_CHECK_EXIGIDO` (`false`; **`true` en producción**, el despliegue lo exige), `APP_CHECK_MODO` (`real`),
 `RECAPTCHA_MODO` (`real`), `RECAPTCHA_CLAVE_SITIO`, `SITIO_URL`, `MEDIOS_BASE_URL` (**obligatoria**, https, origen público aparte; sin valor por defecto al bucket por defecto),
 `FUNCIONES_SERVICE_ACCOUNT` (vacío = cuenta por defecto; en producción, una dedicada), `PROXY_SALTOS` (`2`), `FFMPEG_PATH`, `FFPROBE_PATH`, `CONTACTO_MAXIMO` (`5`),
 `CONTACTO_VENTANA_SEG` (`600`), `NOVUCHAT_MAXIMO_POR_MINUTO` (`120`), `DISPONIBILIDAD_MAXIMO_POR_MINUTO` (`60`), `CONTACTO_MAXIMO_POR_MINUTO` (`30`, límite en memoria por instancia y origen de `/api/contacto`, antes de App Check). Fuera del emulador y de las pruebas, `LIMITE_TASA_SAL` y
 `MEDIOS_BASE_URL` faltantes hacen fallar la API (`ConfiguracionIncompleta`). Los modos `simulado` solo funcionan en el emulador (`FUNCTIONS_EMULATOR`) o con `PLATAFORMA_PRUEBAS=1`: en la nube lanzan al arrancar.
 
-Una instalación atiende **un** tenant en las rutas sin token de usuario (`TENANT_ID`: sitio, contacto y pedido firmado). El catálogo y el inventario toman el tenant del token.
+En las rutas sin token de usuario (sitio, contacto y pedido firmado) el tenant sale del host: `x-forwarded-host` de un solo valor, nunca `host`, resuelto por `plataforma/coordinador/dominios.ts` contra `dominios/{host}`; sin mapeo, `404`. Los parámetros `TENANT_ID` y `P_TENANT_ID` ya no existen. El catálogo y el inventario toman el tenant del token.
+Riesgo R1: qué cabecera de host llega tras Firebase Hosting no está confirmado en la documentación oficial; se verifica tras el despliegue a staging (`docs/produccion/pase-a-staging.md`, §11). Compuerta D-B1: el secreto de pedidos sigue compartido; no se mapea el host de un segundo tenant con `inventarios` encendido hasta el PR D.
 
 Construcción: `node plataforma/funciones/scripts/empaquetar.mjs` genera `dist/funciones/` (un `index.js` empaquetado con esbuild y un `package.json` con las
 dependencias de ejecución de versión exacta y su `package-lock.json`, que Cloud Build usa con `npm ci` y el CI analiza con osv-scanner). `firebase.json` lo declara como `source` y lo ejecuta como `predeploy`.
@@ -285,7 +308,7 @@ Guion paso a paso con los comandos exactos: `pase-a-staging.md`.
 2. Primer despliegue a staging de `functions`, `hosting`, `firestore` (reglas e índices) y `storage` (reglas), y la variable `FIREBASE_DEPLOY_ONLY`.
 3. Crear en staging los dos sitios de Hosting y aplicar los targets.
 4. Registrar App Check (reCAPTCHA Enterprise) y la clave de sitio; fijar `APP_CHECK_EXIGIDO=true` y `RECAPTCHA_CLAVE_SITIO`.
-5. Registrar el token de NovuChat (`token-novuchat.mjs registrar`) y entregárselo a n8n sin mostrarlo.
+5. Registrar el token de NovuChat (`token-novuchat.mjs registrar --tenant <tenant> --proyecto <proyecto>`, con `NOVUTIENDA_AMBIENTE=staging`, `GCP_PROJECT_ID_STAGING` y `GOOGLE_CLOUD_PROJECT` definidos; el tenant debe estar activo) y entregárselo a n8n sin mostrarlo.
 6. Crear la alerta de Cloud Monitoring y su canal de correo (`alertas.md`).
 7. Activar la política TTL de `limitesTasa.expiraEn` (viene en `firestore.indexes.json`).
 8. Decidir el video: empaquetar un binario de ffmpeg o procesar el video fuera de Functions.

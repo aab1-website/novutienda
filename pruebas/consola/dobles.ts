@@ -6,7 +6,7 @@ import type {
 import { DobleDb } from './doble-db.js';
 
 export const T = 't1';
-export const tenantOk = { plan: 'base', modulos: {}, zonaHoraria: 'America/La_Paz', monedas: ['BOB', 'USD', 'ARS'] };
+export const tenantOk = { estado: 'activo', plan: 'base', modulos: {}, zonaHoraria: 'America/La_Paz', monedas: ['BOB', 'USD', 'ARS'] };
 
 export const actor = (rol: 'caj' | 'sup' | 'adm', tenant = T, uid = `u-${rol}`): Actor => ({
   uid,
@@ -87,6 +87,9 @@ export class AlmacenDoble implements AlmacenMedios {
     if (this.fallaAlBorrar) throw new Error('almacenamiento caído');
     for (const r of rutas) this.objetos.delete(r);
   }
+  async borrarPrefijo(prefijo: string): Promise<void> {
+    for (const r of [...this.objetos.keys()]) if (r.startsWith(prefijo)) this.objetos.delete(r);
+  }
   /** Sube un objeto como lo haría el cliente a la ruta privada. */
   subir(ruta: string, bytes: Uint8Array): void {
     this.objetos.set(ruta, bytes);
@@ -149,7 +152,7 @@ export class ProcesadorSimulado implements ProcesadorMedios {
 
 export class ConsultaDoble implements ConsultaSubidas {
   constructor(private readonly db: DobleDb) {}
-  async listarPorEstado(t: string, estado: 'reservada' | 'borrando', limite: number) {
+  async listarPorEstado(t: string, estado: 'reservada' | 'procesando' | 'borrando', limite: number) {
     return [...this.db.docs]
       .filter(([r, d]) => r.startsWith(`tenants/${t}/subidas/`) && d.datos?.['estado'] === estado)
       .slice(0, limite)

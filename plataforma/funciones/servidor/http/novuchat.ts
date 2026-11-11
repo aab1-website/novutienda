@@ -24,8 +24,6 @@ export interface ConfigNovuchat {
   readonly limite: LimiteTasa;
   /** Secreto HMAC del pedido firmado. */
   readonly secretoPedidos: string;
-  /** Tenant de las rutas firmadas, que no llevan token de tenant. */
-  readonly tenantPedidos: string;
 }
 
 type Datos = Readonly<Record<string, unknown>>;
@@ -45,6 +43,12 @@ export async function autenticarToken(e: Entorno, cabeceras: PeticionHttp['cabec
   }
   return { tenantId, hash };
 }
+
+/** Control de encendido que pone el enrutador: `true` si el módulo dueño de la ruta está efectivo para el tenant. */
+export type PuedeServir = (tenantId: string) => Promise<boolean>;
+
+/** Con el módulo apagado se responde igual que con un token malo (D2 = A): NovuChat no distingue los dos casos. */
+const sinServicio = (): RespuestaApi => json(401, { error: 'credencial_invalida' });
 
 const esRespuesta = (x: unknown): x is RespuestaApi => typeof x === 'object' && x !== null && 'status' in x;
 
@@ -139,10 +143,11 @@ async function limitar(cfg: ConfigNovuchat, hash: string, ahora: number): Promis
 }
 
 /** `GET /api/novuchat/v1/catalogo?mercado=BO|AR`. */
-export async function manejarCatalogo(e: Entorno, req: PeticionHttp, cfg: ConfigNovuchat): Promise<RespuestaApi> {
+export async function manejarCatalogo(e: Entorno, req: PeticionHttp, cfg: ConfigNovuchat, puedeServir: PuedeServir): Promise<RespuestaApi> {
   if (req.metodo !== 'GET') return json(405, { error: 'metodo_no_permitido' }, { Allow: 'GET' });
   const a = await autenticarToken(e, req.cabeceras);
   if (esRespuesta(a)) return a;
+  if (!(await puedeServir(a.tenantId))) return sinServicio();
   const limitado = await limitar(cfg, a.hash, e.ahora());
   if (limitado !== undefined) return limitado;
   const mercado = req.consulta['mercado'];
@@ -154,10 +159,11 @@ export async function manejarCatalogo(e: Entorno, req: PeticionHttp, cfg: Config
 }
 
 /** `GET /api/novuchat/v1/inventario`: existencias por almacén de todos los productos (sin costos). */
-export async function manejarInventario(e: Entorno, req: PeticionHttp, cfg: ConfigNovuchat): Promise<RespuestaApi> {
+export async function manejarInventario(e: Entorno, req: PeticionHttp, cfg: ConfigNovuchat, puedeServir: PuedeServir): Promise<RespuestaApi> {
   if (req.metodo !== 'GET') return json(405, { error: 'metodo_no_permitido' }, { Allow: 'GET' });
   const a = await autenticarToken(e, req.cabeceras);
   if (esRespuesta(a)) return a;
+  if (!(await puedeServir(a.tenantId))) return sinServicio();
   const limitado = await limitar(cfg, a.hash, e.ahora());
   if (limitado !== undefined) return limitado;
   const [prods, existencias] = await Promise.all([e.firestore.collection(`tenants/${a.tenantId}/productos`).get(), existenciasPorProducto(e, a.tenantId)]);
@@ -173,12 +179,12 @@ export async function manejarInventario(e: Entorno, req: PeticionHttp, cfg: Conf
 }
 
 /** `POST /api/novuchat/v1/pedidos/confirmar`: HMAC-SHA256 de `{marca}.{cuerpo exacto}`, ventana de 5 minutos. */
-export async function manejarPedido(e: Entorno, req: PeticionHttp, cfg: ConfigNovuchat): Promise<RespuestaApi> {
+export async function manejarPedido(e: Entorno, req: PeticionHttp, cfg: ConfigNovuchat, tenantId: string, autorizado: () => Promise<boolean>): Promise<RespuestaApi> {
   if (req.metodo !== 'POST') return json(405, { error: 'metodo_no_permitido' }, { Allow: 'POST' });
   if (cfg.secretoPedidos === '') return json(503, { error: 'no_configurado' });
   const r = await confirmarPedidoFirmado(
-    { db: e.db, secreto: cfg.secretoPedidos, ahora: e.ahora },
-    { tenantId: cfg.tenantPedidos, marcaTiempo: req.cabeceras['x-marca-tiempo'] ?? '', firma: req.cabeceras['x-firma'] ?? '', cuerpo: req.cuerpoCrudo },
+    { db: e.db, secreto: cfg.secretoPedidos, ahora: e.ahora, autorizado },
+    { tenantId, marcaTiempo: req.cabeceras['x-marca-tiempo'] ?? '', firma: req.cabeceras['x-firma'] ?? '', cuerpo: req.cuerpoCrudo },
   );
   return json(r.estado, r.cuerpo as Datos);
 }

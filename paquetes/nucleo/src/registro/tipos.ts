@@ -76,6 +76,12 @@ export interface AccionManifiesto {
   readonly propietario?: boolean;
 }
 
+/** L3: ruta HTTP que sirve el módulo (`/api/...`, sin barra final). Con `prefijo`, cubre también todo lo que cuelga de ella. */
+export interface RutaHttpManifiesto {
+  readonly ruta: string;
+  readonly prefijo?: boolean;
+}
+
 /** Tarea programada de un módulo (L2). */
 export interface ProgramadaManifiesto {
   readonly id: string;
@@ -108,4 +114,6 @@ export interface ManifiestoModulo {
    * y el alta; NO autorizan importaciones (eso es `dependeDe`).
    */
   readonly requiere?: readonly IdModulo[];
+  /** L3: rutas HTTP del módulo. Solo en zona `modulo`. */
+  readonly rutasHttp?: readonly RutaHttpManifiesto[];
 }

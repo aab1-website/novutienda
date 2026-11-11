@@ -117,4 +117,5 @@ export const manifiestoConsola: ManifiestoModulo = {
     { id: 'temporizadorSitio', horario: 'every 5 minutes', zonaHoraria: 'America/La_Paz', porTenant: true },
   ],
   requiere: ['inventarios'],
+  rutasHttp: [{ ruta: '/api/novuchat/v1/catalogo' }, { ruta: '/api/sitio/v1', prefijo: true }],
 };

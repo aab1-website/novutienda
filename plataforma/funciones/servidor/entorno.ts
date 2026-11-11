@@ -6,7 +6,8 @@ import { getAuth, type Auth } from 'firebase-admin/auth';
 import { getFirestore, type Firestore } from 'firebase-admin/firestore';
 import { getStorage } from 'firebase-admin/storage';
 import type { CatalogoPuerto, DisparadorSitio, ProcesadorMedios } from '@novutienda/consola';
-import { crearLectorModulos, type LectorModulos } from '../../coordinador/modulos-activos.js';
+import { crearLectorDominios, type LectorDominios } from '../../coordinador/dominios.js';
+import { crearLectoresModulos, type LectorEstadoModulos, type LectorModulos } from '../../coordinador/modulos-activos.js';
 import { crearCatalogoConsola, almacenCotizacionesDesde, catalogoParaPos, inventariosParaPos } from '../../coordinador/index.js';
 import {
   appCheckReal, appCheckSimulado, crearAlmacenMedios, crearAuthMin, crearBaseDatos, crearConsultaSubidas, crearEjecutorRecibos, crearGuardarContacto,
@@ -41,6 +42,10 @@ export interface Entorno {
   readonly ahora: () => number;
   /** Módulos efectivos del tenant (cache de 60 s por instancia); `undefined` si el tenant no existe o es inválido. */
   readonly modulosDelTenant: LectorModulos;
+  /** Igual que `modulosDelTenant` pero con el motivo cuando no hay módulos (lo usa el marco para el propietario). */
+  readonly estadoModulosDelTenant: LectorEstadoModulos;
+  /** Tenant del host de la petición (`dominios/{host}`, caché de 60 s; `undefined` si no hay mapeo). */
+  readonly tenantDelHost: LectorDominios;
   readonly redondeo: (tenantId: string) => Promise<Redondeo>;
   /** `DepsPos` del tenant, con la política de redondeo de su configuración. */
   depsPos(tenantId: string): Promise<DepsPos>;
@@ -64,6 +69,7 @@ export function crearEntorno(o: OpcionesEntorno): Entorno {
   const db = crearBaseDatos(o.firestore);
   const redondeo = lectorRedondeo(db, ahora);
   const emulador = env['FUNCTIONS_EMULATOR'] === 'true';
+  const lectoresModulos = crearLectoresModulos(o.firestore, ahora);
   return {
     firestore: o.firestore,
     auth: o.auth,
@@ -80,7 +86,9 @@ export function crearEntorno(o: OpcionesEntorno): Entorno {
     disparadorSitio: crearDisparadorSitio(o.firestore, ahora),
     emisorEnlacePdf: o.emisorEnlacePdf ?? (emulador ? emisorEnlaceEmulador(o.bucket) : emisorEnlaceFirmado(o.bucket, ahora)),
     ahora,
-    modulosDelTenant: crearLectorModulos(o.firestore, ahora),
+    modulosDelTenant: lectoresModulos.modulos,
+    estadoModulosDelTenant: lectoresModulos.estado,
+    tenantDelHost: crearLectorDominios(o.firestore, ahora),
     redondeo,
     depsPos: async (tenantId) => ({
       db, inventarios: inventariosParaPos, catalogo: catalogoParaPos, redondeo: await redondeo(tenantId), ahora,

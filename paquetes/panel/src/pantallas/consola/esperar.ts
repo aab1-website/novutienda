@@ -15,6 +15,10 @@ export interface OpcionesEspera {
   readonly respaldoTrasMs?: number;
 }
 
+/** `finalizarSubida` responde así cuando otra invocación (el disparador) ya tiene reclamada la subida: no es un fallo. */
+export const esEnCurso = (e: unknown): boolean =>
+  e instanceof ErrorApi && e.detalle.codigo === 'estado' && e.codigoHttps === 'failed-precondition' && e.message.includes('se está procesando');
+
 const pausa = (ms: number): Promise<void> => new Promise((r) => setTimeout(r, ms));
 
 /**
@@ -30,6 +34,7 @@ export async function esperarSubida(api: ClienteApi, subidaId: string, o: Opcion
   const respaldoTrasMs = o.respaldoTrasMs ?? RESPALDO_TRAS_MS;
   const inicio = ahora();
   let espera = ESPERA_INICIAL_MS;
+  let respaldoHecho = false;
   for (;;) {
     try {
       const r = await api.llamar('estadoSubida', { subidaId });
@@ -40,7 +45,14 @@ export async function esperarSubida(api: ClienteApi, subidaId: string, o: Opcion
       const transitorio = e instanceof ErrorApi && (e.codigoHttps === 'unavailable' || e.codigoHttps === 'deadline-exceeded');
       if (!transitorio) throw e;
     }
-    if (ahora() - inicio >= respaldoTrasMs) return api.llamar('finalizarSubida', { subidaId });
+    if (!respaldoHecho && ahora() - inicio >= respaldoTrasMs) {
+      respaldoHecho = true;
+      try {
+        return await api.llamar('finalizarSubida', { subidaId });
+      } catch (e) {
+        if (!esEnCurso(e)) throw e; // «en curso»: la procesa otro; se sigue consultando
+      }
+    }
     await esperar(espera);
     espera = Math.min(Math.round(espera * 1.5), ESPERA_TOPE_MS);
   }

@@ -1,0 +1,7 @@
+{
+  "cuentas": [
+    { "correo": "adm@example.com", "rol": "adm", "nombre": "Administración de demostración" },
+    { "correo": "sup@example.com", "rol": "sup", "nombre": "Supervisión de demostración" },
+    { "correo": "caj@example.com", "rol": "caj", "nombre": "Caja de demostración" }
+  ]
+}

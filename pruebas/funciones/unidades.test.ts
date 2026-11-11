@@ -328,17 +328,19 @@ describe('límites en memoria antes de autenticar', () => {
   // `Entorno` mínimo: si el enrutador llegara a autenticar o a leer, tocaría `firestore` y la prueba fallaría.
   const e = {
     ahora: () => 1_000,
+    tenantDelHost: Object.assign(() => Promise.resolve('t'), { enCache: () => true, positivoVencido: () => undefined }),
+    modulosDelTenant: () => Promise.resolve(['inventarios', 'consola', 'website']), // L3-3: el encendido se controla antes del manejador
     firestore: new Proxy({}, { get: () => { throw new Error('tocó Firestore antes del límite'); } }),
     leerDisponibilidad: () => () => Promise.resolve({ 'tv-1': true }),
     guardarContacto: () => ({}),
     almacenCotizaciones: {},
   } as never;
   const cfg = (n: number): ConfigRouter => ({
-    tenantId: 't', secretoReconstruccion: '', novuchat: {} as never, recaptcha: {} as never, appCheck: {} as never,
+    secretoReconstruccion: '', novuchat: {} as never, recaptcha: {} as never, appCheck: {} as never,
     limiteContacto: limiteMemoria(100, 60_000),
-    limiteMemoria: { novuchat: limiteMemoria(n, 60_000), disponibilidad: limiteMemoria(n, 60_000), contacto: limiteMemoria(n, 60_000) },
+    limiteMemoria: { novuchat: limiteMemoria(n, 60_000), disponibilidad: limiteMemoria(n, 60_000), contacto: limiteMemoria(n, 60_000), hosts: limiteMemoria(n, 60_000), hostsGlobal: limiteMemoria(1000, 60_000) },
   });
-  const peticion = (ruta: string, origen: string) => ({ metodo: 'GET', ruta, url: ruta, consulta: { ids: 'tv-1' }, cabeceras: { authorization: 'Bearer token-inventado' }, cuerpoCrudo: '', cuerpo: undefined, origen });
+  const peticion = (ruta: string, origen: string) => ({ metodo: 'GET', ruta, url: ruta, consulta: { ids: 'tv-1' }, cabeceras: { authorization: 'Bearer token-inventado', 'x-forwarded-host': 'tienda.test' }, cuerpoCrudo: '', cuerpo: undefined, origen });
 
   it('NovuChat: pasado el máximo por origen responde 429 sin leer el token en Firestore', async () => {
     const c = cfg(2);
@@ -363,6 +365,8 @@ describe('contacto: App Check de un solo uso y límite en memoria antes de verif
   const guardados: string[] = [];
   const e = {
     ahora: () => 1_000,
+    tenantDelHost: Object.assign(() => Promise.resolve('t'), { enCache: () => true, positivoVencido: () => undefined }),
+    modulosDelTenant: () => Promise.resolve(['inventarios', 'consola', 'website']),
     almacenCotizaciones: {},
     leerDisponibilidad: () => () => Promise.resolve({}),
     guardarContacto: () => ({ guardar: (c: { operacionId: string }) => { guardados.push(c.operacionId); return Promise.resolve('creado' as const); } }),
@@ -383,16 +387,16 @@ describe('contacto: App Check de un solo uso y límite en memoria antes de verif
     return { admin, verificados };
   };
   const cfg = (maximoMemoria: number, admin: ReturnType<typeof adminConsume>['admin']): ConfigRouter => ({
-    tenantId: 't', secretoReconstruccion: '', novuchat: {} as never,
+    secretoReconstruccion: '', novuchat: {} as never,
     recaptcha: { verificar: () => Promise.resolve({ valido: true, puntaje: 0.9 }) },
     appCheck: appCheckReal(admin as never, { consumir: true }),
     limiteContacto: limiteMemoria(100, 60_000),
-    limiteMemoria: { novuchat: limiteMemoria(1, 60_000), disponibilidad: limiteMemoria(1, 60_000), contacto: limiteMemoria(maximoMemoria, 60_000) },
+    limiteMemoria: { novuchat: limiteMemoria(1, 60_000), disponibilidad: limiteMemoria(1, 60_000), contacto: limiteMemoria(maximoMemoria, 60_000), hosts: limiteMemoria(100, 60_000), hostsGlobal: limiteMemoria(1000, 60_000) },
   });
   const cuerpo = { envioId: 'envio-0123456789abcdef', nombre: 'Ana Pérez', correo: 'ana@ejemplo.test', mensaje: 'Quisiera una cotización', aceptaPrivacidad: true, recaptchaToken: 'x'.repeat(30) };
   const envio = (token: string | undefined, origen = '203.0.113.1') => ({
     metodo: 'POST', ruta: '/api/contacto', url: '/api/contacto', consulta: {}, cuerpoCrudo: '', cuerpo,
-    cabeceras: { 'content-type': 'application/json', ...(token === undefined ? {} : { 'x-firebase-appcheck': token }) }, origen,
+    cabeceras: { 'content-type': 'application/json', 'x-forwarded-host': 'tienda.test', ...(token === undefined ? {} : { 'x-firebase-appcheck': token }) }, origen,
   });
 
   it('un segundo envío con el mismo token falla (401) y con un token nuevo pasa', async () => {

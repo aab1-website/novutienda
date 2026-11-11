@@ -6,7 +6,7 @@ import { exigirRol, ROLES } from '../permisos.js';
 import { PLANTILLAS } from '../plantillas.js';
 import type { AlmacenMedios, BaseDatosConsola, CatalogoPuerto, ConsultaSubidas, ProcesadorMedios, Reloj } from '../puertos.js';
 import {
-  dirTemporal, ID_PRODUCTO, ID_SUBIDA, rutaCarrusel, rutaFicha, rutaMedio, rutaOriginal, rutaPublicaMedio, rutaSeccion, rutaSitio,
+  dirTemporal, ID_PRODUCTO, ID_SUBIDA, prefijoTemporal, rutaCarrusel, rutaFicha, rutaMedio, rutaOriginal, rutaPublicaMedio, rutaSeccion, rutaSitio,
   rutaSubida, tenantValido,
 } from '../rutas.js';
 import { mediosDeSeccion, validarSeccion } from '../secciones.js';
@@ -22,12 +22,14 @@ export interface DepsMedios {
   readonly procesador: ProcesadorMedios;
   readonly catalogo: CatalogoPuerto;
   readonly reloj: Reloj;
+  /** Generador del identificador de invocación (solo para pruebas; por defecto aleatorio). */
+  readonly nuevoId?: () => string;
 }
 
 /** Tope de una versión procesada de imagen que se lee completa para buscar metadatos. */
 const MAX_BYTES_VERSION_IMAGEN = 8 * 1024 * 1024;
 
-type EstadoSubida = 'reservada' | 'procesada' | 'borrando' | 'rechazada';
+type EstadoSubida = 'reservada' | 'procesando' | 'procesada' | 'borrando' | 'rechazada';
 type Destino = 'eliminar' | 'rechazada' | 'vencida';
 
 interface Subida {
@@ -43,6 +45,9 @@ interface Subida {
   readonly destino?: Destino;
   readonly motivo?: string;
   readonly rutas?: readonly string[];
+  /** Solo con `procesando`: identificador de la invocación que reclamó la subida y cuándo vence ese reclamo. */
+  readonly procesandoPor?: string;
+  readonly procesandoVenceEn?: number;
 }
 
 function leerSubida(d: Readonly<Record<string, unknown>> | undefined): Subida | undefined {
@@ -52,17 +57,21 @@ function leerSubida(d: Readonly<Record<string, unknown>> | undefined): Subida | 
     typeof id !== 'string' || typeof productoId !== 'string' || (tipo !== 'foto' && tipo !== 'video') ||
     typeof bytes !== 'number' || typeof creadaEn !== 'number' || typeof venceEn !== 'number' || typeof por !== 'string' ||
     typeof d['rutaOriginal'] !== 'string' ||
-    (estado !== 'reservada' && estado !== 'procesada' && estado !== 'borrando' && estado !== 'rechazada')
+    (estado !== 'reservada' && estado !== 'procesando' && estado !== 'procesada' && estado !== 'borrando' && estado !== 'rechazada')
   ) {
     throw new ErrorConsola('estado', 'Registro de subida dañado');
   }
   const destino = d['destino'];
   const rutas = d['rutas'];
   const motivo = d['motivo'];
+  const pPor = d['procesandoPor'];
+  const pVence = d['procesandoVenceEn'];
   return {
     id, productoId, tipo, bytes, estado, creadaEn, venceEn, por, rutaOriginal: d['rutaOriginal'],
     ...(destino === 'eliminar' || destino === 'rechazada' || destino === 'vencida' ? { destino } : {}),
     ...(typeof motivo === 'string' ? { motivo } : {}),
+    ...(typeof pPor === 'string' ? { procesandoPor: pPor } : {}),
+    ...(typeof pVence === 'number' ? { procesandoVenceEn: pVence } : {}),
     ...(Array.isArray(rutas) ? { rutas: rutas.filter((r): r is string => typeof r === 'string') } : {}),
   };
 }
@@ -75,6 +84,14 @@ export const CAMPOS_RESERVA = ['estado', 'venceEn', 'productoId', 'por', 'bytes'
 export type CampoReserva = (typeof CAMPOS_RESERVA)[number];
 
 const aDoc = (s: Subida): Record<string, unknown> => ({ ...s });
+
+/** Quita las marcas del reclamo (al volver a `reservada` o pasar a un estado final). */
+function sinReclamo(s: Subida): Subida {
+  const { procesandoPor: _p, procesandoVenceEn: _v, ...resto } = s;
+  void _p;
+  void _v;
+  return resto;
+}
 
 // ---------------------------------------------------------------------------------------------
 // Reserva
@@ -172,17 +189,25 @@ export interface Medio {
 
 /** Libera la reserva y borra lo subido. Siempre termina lanzando el error que ve el usuario. */
 async function rechazar(
-  deps: DepsMedios, t: string, s: Subida, codigo: CodigoErrorConsola, motivo: string, extras: readonly string[],
+  deps: DepsMedios, t: string, s: Subida, reclamo: string, codigo: CodigoErrorConsola, motivo: string, extras: readonly string[],
 ): Promise<never> {
   const rutas = [s.rutaOriginal, ...extras];
-  await deps.db.runTransaction(async (tx) => {
+  const propia = await deps.db.runTransaction(async (tx) => {
     const actual = leerSubida((await tx.get(rutaSubida(t, s.id))).data());
     const uso = await leerUsoMedios(tx, t);
-    if (actual?.estado !== 'reservada') return; // otra ejecución ya la resolvió
+    // Solo actúa quien tiene el reclamo vigente de esta subida; si no, otra invocación la resolvió y no se toca nada.
+    if (actual?.estado !== 'procesando' || actual.procesandoPor !== reclamo) return false;
     escribirUsoMedios(tx, t, liberarEnUso(uso, s.productoId, s.tipo, s.bytes));
-    tx.set(rutaSubida(t, s.id), aDoc({ ...actual, estado: 'borrando', destino: 'rechazada', motivo, rutas }));
+    tx.set(rutaSubida(t, s.id), aDoc({ ...sinReclamo(actual), estado: 'borrando', destino: 'rechazada', motivo, rutas }));
+    return true;
   });
-  await borrarYCerrar(deps, t, s.id);
+  if (propia) await borrarYCerrar(deps, t, s.id);
+  else {
+    // No es la dueña: no toca el original ni lo publicado, solo los temporales de su propia carpeta de invocación.
+    const propios = extras.filter((r) => r.startsWith(`${dirTemporal(t, s.id, reclamo)}/`));
+    if (propios.length > 0) await deps.almacen.borrar(propios).catch(() => undefined);
+    await deps.almacen.borrarPrefijo?.(`${dirTemporal(t, s.id, reclamo)}/`).catch(() => undefined); // lo que el procesador dejó sin informar
+  }
   throw new ErrorConsola(codigo, motivo);
 }
 
@@ -191,6 +216,7 @@ async function borrarYCerrar(deps: DepsMedios, t: string, subidaId: string): Pro
   const s = leerSubida((await leerDoc(deps.db, rutaSubida(t, subidaId))));
   if (s?.estado !== 'borrando') return;
   await deps.almacen.borrar(s.rutas ?? [s.rutaOriginal]);
+  await deps.almacen.borrarPrefijo?.(prefijoTemporal(t, subidaId)); // restos de invocaciones que murieron a medias
   await deps.db.runTransaction(async (tx) => {
     const actual = leerSubida((await tx.get(rutaSubida(t, subidaId))).data());
     if (actual?.estado !== 'borrando') return;
@@ -218,6 +244,48 @@ function validarSalida(plan: PlanProcesamiento, versiones: readonly { clase: str
   return undefined;
 }
 
+/** Devuelve la subida a `reservada` si todavía la tiene reclamada esta invocación (error previo al procesamiento). */
+async function soltarReclamo(deps: DepsMedios, t: string, subidaId: string, reclamo: string): Promise<void> {
+  await deps.db.runTransaction(async (tx) => {
+    const actual = leerSubida((await tx.get(rutaSubida(t, subidaId))).data());
+    if (actual?.estado !== 'procesando' || actual.procesandoPor !== reclamo) return;
+    tx.set(rutaSubida(t, subidaId), aDoc({ ...sinReclamo(actual), estado: 'reservada' }));
+  });
+}
+
+/** Identificador de invocación: solo debe ser único (no es un secreto). */
+const idAleatorio = (): string => `${Date.now().toString(36)}${Math.random().toString(36).slice(2, 12)}${Math.random().toString(36).slice(2, 12)}`;
+
+/**
+ * Reclama la subida para esta invocación (`reservada` -> `procesando` con vencimiento). Si ya está `procesada` devuelve su
+ * medio; si otra invocación la tiene vigente responde «en curso» (error `estado`, sin tocar nada); un reclamo vencido
+ * (el proceso murió) se retoma.
+ */
+async function reclamar(
+  deps: DepsMedios, t: string, subidaId: string, reclamo: string,
+): Promise<{ readonly subida: Subida } | { readonly medio: Medio }> {
+  return deps.db.runTransaction(async (tx) => {
+    const actual = leerSubida((await tx.get(rutaSubida(t, subidaId))).data());
+    if (actual === undefined) throw new ErrorConsola('no-encontrado', 'La subida no existe');
+    const ahora = deps.reloj.ahora();
+    if (actual.estado === 'procesada') {
+      const m = (await tx.get(rutaMedio(t, subidaId))).data();
+      if (m !== undefined) return { medio: m as unknown as Medio };
+    }
+    if (actual.estado === 'procesando' && actual.procesandoPor === reclamo) return { subida: actual }; // reintento de la propia invocación
+    if (actual.estado === 'procesando' && (actual.procesandoVenceEn ?? 0) > ahora) {
+      throw new ErrorConsola('estado', 'La subida se está procesando; vuelva a consultar en unos segundos');
+    }
+    if (actual.estado !== 'reservada' && actual.estado !== 'procesando') throw new ErrorConsola('estado', 'La subida ya no está pendiente');
+    if (ahora > actual.venceEn) throw new ErrorConsola('estado', 'La reserva de subida venció; reserve de nuevo');
+    const subida: Subida = {
+      ...actual, estado: 'procesando', procesandoPor: reclamo, procesandoVenceEn: ahora + LIMITES_CONSOLA.vencimientoProcesandoMs,
+    };
+    tx.set(rutaSubida(t, subidaId), aDoc(subida));
+    return { subida };
+  });
+}
+
 /**
  * Finaliza una subida ya cargada a la ruta privada: comprueba tamaño real, tipo real por los bytes iniciales
  * (no la extensión ni el MIME), dimensiones y duración, procesa, verifica que no queden metadatos y publica
@@ -227,68 +295,77 @@ export async function finalizarSubida(deps: DepsMedios, e: EntradaFinalizar): Pr
   const t = tenantValido(e.tenantId);
   const rol = exigirRol(e.actor, t, ROLES.editarFichas);
   if (!ID_SUBIDA.test(e.subidaId)) throw new ErrorConsola('entrada-invalida', 'subidaId inválido');
-  const s = leerSubida(await leerDoc(deps.db, rutaSubida(t, e.subidaId)));
-  if (s === undefined) throw new ErrorConsola('no-encontrado', 'La subida no existe');
-  if (s.estado === 'procesada') {
-    const m = await leerDoc(deps.db, rutaMedio(t, s.id));
-    if (m !== undefined) return m as unknown as Medio;
+  // Exclusión mutua: el disparador de Storage y la acción explícita pueden finalizar la MISMA subida a la vez. Solo gana
+  // quien pasa la subida de `reservada` a `procesando` en una transacción; el resto no procesa ni rechaza nada.
+  const reclamo = (deps.nuevoId ?? idAleatorio)();
+  const r = await reclamar(deps, t, e.subidaId, reclamo);
+  if ('medio' in r) return r.medio;
+  try {
+    return await procesarReclamada(deps, t, e, rol, reclamo, r.subida);
+  } catch (err) {
+    // Cualquier salida con error devuelve la subida a `reservada` si esta invocación aún la tiene (si `rechazar` o el ganador ya la
+    // resolvieron, el token no coincide y no hace nada). Así un fallo transitorio no la deja bloqueada hasta el vencimiento.
+    await soltarReclamo(deps, t, e.subidaId, reclamo).catch(() => undefined);
+    throw err;
   }
-  if (s.estado !== 'reservada') throw new ErrorConsola('estado', 'La subida ya no está pendiente');
-  if (deps.reloj.ahora() > s.venceEn) throw new ErrorConsola('estado', 'La reserva de subida venció; reserve de nuevo');
+}
 
+async function procesarReclamada(
+  deps: DepsMedios, t: string, e: EntradaFinalizar, rol: ReturnType<typeof exigirRol>, reclamo: string, s: Subida,
+): Promise<Medio> {
   const tope = s.tipo === 'foto' ? LIMITES_CONSOLA.bytesFoto : LIMITES_CONSOLA.bytesVideo;
   const real = await deps.almacen.tamano(s.rutaOriginal);
   if (real === undefined) throw new ErrorConsola('no-encontrado', 'El archivo todavía no llegó');
-  if (real === 0) return rechazar(deps, t, s, 'entrada-invalida', 'El archivo está vacío', []);
+  if (real === 0) return rechazar(deps, t, s, reclamo, 'entrada-invalida', 'El archivo está vacío', []);
   if (real > s.bytes || real > tope) {
-    return rechazar(deps, t, s, 'limite', s.tipo === 'foto' ? 'La foto supera 15 MB' : 'El video supera 200 MB', []);
+    return rechazar(deps, t, s, reclamo, 'limite', s.tipo === 'foto' ? 'La foto supera 15 MB' : 'El video supera 200 MB', []);
   }
 
   const detectado = detectarArchivo(await deps.almacen.leerInicio(s.rutaOriginal, BYTES_INICIALES));
   if (detectado?.tipo !== s.tipo) {
-    return rechazar(deps, t, s, 'tipo-no-permitido', 'El contenido del archivo no corresponde a un tipo permitido', []);
+    return rechazar(deps, t, s, reclamo, 'tipo-no-permitido', 'El contenido del archivo no corresponde a un tipo permitido', []);
   }
 
-  const dirTmp = dirTemporal(t, s.id);
+  const dirTmp = dirTemporal(t, s.id, reclamo);
   const publicadas: string[] = [];
   const temporales: string[] = [];
   let medio: Medio;
   try {
     const info = await deps.procesador.inspeccionar(s.rutaOriginal, s.tipo);
     if (!Number.isInteger(info.ancho) || !Number.isInteger(info.alto) || info.ancho < 1 || info.alto < 1) {
-      return await rechazar(deps, t, s, 'procesamiento', 'No se pudieron leer las dimensiones del archivo', []);
+      return await rechazar(deps, t, s, reclamo, 'procesamiento', 'No se pudieron leer las dimensiones del archivo', []);
     }
     if (s.tipo === 'foto' && info.ancho * info.alto > LIMITES_CONSOLA.pixelesFotoMax) {
-      return await rechazar(deps, t, s, 'limite', 'La imagen tiene demasiados píxeles', []);
+      return await rechazar(deps, t, s, reclamo, 'limite', 'La imagen tiene demasiados píxeles', []);
     }
     if (s.tipo === 'video') {
       const d = info.duracionSeg;
       if (d === undefined || !Number.isFinite(d) || d <= 0) {
-        return await rechazar(deps, t, s, 'procesamiento', 'No se pudo leer la duración del video', []);
+        return await rechazar(deps, t, s, reclamo, 'procesamiento', 'No se pudo leer la duración del video', []);
       }
       if (d > LIMITES_CONSOLA.duracionVideoSeg) {
-        return await rechazar(deps, t, s, 'limite', 'El video dura más de 60 segundos', []);
+        return await rechazar(deps, t, s, reclamo, 'limite', 'El video dura más de 60 segundos', []);
       }
     }
     const plan = planificarProcesamiento(s.tipo, info.ancho, info.alto);
     const salida = await deps.procesador.procesar({ origen: s.rutaOriginal, tipo: s.tipo, plan, destinoTemporal: dirTmp });
     temporales.push(...salida.map((v) => v.rutaTemporal));
     const falla = validarSalida(plan, salida, dirTmp);
-    if (falla !== undefined) return await rechazar(deps, t, s, 'procesamiento', 'No se pudo procesar el archivo', temporales);
+    if (falla !== undefined) return await rechazar(deps, t, s, reclamo, 'procesamiento', 'No se pudo procesar el archivo', temporales);
 
     const versiones: VersionMedio[] = [];
     for (const v of salida) {
       const item: ItemPlan = { clase: v.clase, lado: v.lado, formato: v.formato };
       const bytes = await deps.almacen.tamano(v.rutaTemporal);
       if (bytes === undefined || bytes === 0) {
-        return await rechazar(deps, t, s, 'procesamiento', 'No se pudo procesar el archivo', [...temporales, ...publicadas]);
+        return await rechazar(deps, t, s, reclamo, 'procesamiento', 'No se pudo procesar el archivo', [...temporales, ...publicadas]);
       }
       if (v.clase !== 'video') {
         if (bytes > MAX_BYTES_VERSION_IMAGEN) {
-          return await rechazar(deps, t, s, 'procesamiento', 'Una versión de la imagen resultó demasiado grande', [...temporales, ...publicadas]);
+          return await rechazar(deps, t, s, reclamo, 'procesamiento', 'Una versión de la imagen resultó demasiado grande', [...temporales, ...publicadas]);
         }
         if (contieneMetadatos(await deps.almacen.leerInicio(v.rutaTemporal, MAX_BYTES_VERSION_IMAGEN))) {
-          return await rechazar(deps, t, s, 'procesamiento', 'La imagen conserva metadatos (EXIF/GPS) y se rechazó', [...temporales, ...publicadas]);
+          return await rechazar(deps, t, s, reclamo, 'procesamiento', 'La imagen conserva metadatos (EXIF/GPS) y se rechazó', [...temporales, ...publicadas]);
         }
       }
       const destino = rutaPublicaMedio(t, s.productoId, nombreVersion(await deps.almacen.hashContenido(v.rutaTemporal), item));
@@ -304,7 +381,7 @@ export async function finalizarSubida(deps: DepsMedios, e: EntradaFinalizar): Pr
     };
   } catch (err) {
     if (err instanceof ErrorConsola) throw err; // `rechazar` ya limpió
-    return rechazar(deps, t, s, 'procesamiento', 'No se pudo procesar el archivo', [...temporales, ...publicadas]);
+    return rechazar(deps, t, s, reclamo, 'procesamiento', 'No se pudo procesar el archivo', [...temporales, ...publicadas]);
   }
 
   const ahoraIso = new Date(deps.reloj.ahora()).toISOString();
@@ -313,11 +390,13 @@ export async function finalizarSubida(deps: DepsMedios, e: EntradaFinalizar): Pr
       const actual = leerSubida((await tx.get(rutaSubida(t, s.id))).data());
       const uso = await leerUsoMedios(tx, t);
       const estado = await leerEstadoSitio(tx, t);
-      if (actual?.estado !== 'reservada') throw new ErrorConsola('estado', 'La subida ya fue resuelta por otra solicitud');
+      if (actual?.estado !== 'procesando' || actual.procesandoPor !== reclamo) {
+        throw new ErrorConsola('estado', 'La subida ya fue resuelta por otra solicitud');
+      }
       // Si el archivo real es más chico que lo reservado, se devuelve la diferencia a la cuota.
       escribirUsoMedios(tx, t, { ...uso, bytes: Math.max(0, uso.bytes - (s.bytes - real)) });
       tx.set(rutaMedio(t, s.id), { ...medio });
-      tx.set(rutaSubida(t, s.id), aDoc({ ...actual, estado: 'procesada', bytes: real }));
+      tx.set(rutaSubida(t, s.id), aDoc({ ...sinReclamo(actual), estado: 'procesada', bytes: real }));
       anotarCambio(tx, t, estado, ahoraIso);
       registrarAuditoria(tx, {
         tenantId: t, uid: e.actor.uid, rol, accion: 'medio.subir', ruta: rutaMedio(t, s.id),
@@ -331,7 +410,10 @@ export async function finalizarSubida(deps: DepsMedios, e: EntradaFinalizar): Pr
     if (!(err instanceof ErrorConsola) || err.codigo !== 'estado') throw err;
     const ganador = await leerDoc(deps.db, rutaMedio(t, s.id));
     const delGanador = new Set(((ganador as Partial<Medio> | undefined)?.versiones ?? []).map((v) => v.ruta));
-    await deps.almacen.borrar([...temporales, ...publicadas.filter((r) => !delGanador.has(r))]).catch(() => undefined);
+    // Sin ganador confirmado NO se borra lo publicado: puede ser el contenido (misma ruta por hash) que otra invocación retomada
+    // está por confirmar. Las versiones huérfanas solo se limpian cuando el ganador ya dejó su medio.
+    const aBorrar = ganador === undefined ? temporales : [...temporales, ...publicadas.filter((r) => !delGanador.has(r))];
+    await deps.almacen.borrar(aBorrar).catch(() => undefined);
     if (ganador !== undefined) return ganador as unknown as Medio;
     throw err;
   }
@@ -371,7 +453,8 @@ export async function estadoSubida(deps: DepsMedios, e: EntradaEstadoSubida): Pr
     const m = await leerDoc(deps.db, rutaMedio(t, s.id));
     return m === undefined ? { estado: 'reservada' } : { estado: 'procesada', medio: m as unknown as Medio };
   }
-  return { estado: s.estado, ...(s.motivo === undefined ? {} : { motivo: s.motivo }) };
+  // `procesando` es interno: para el panel sigue siendo «falta procesar».
+  return { estado: s.estado === 'procesando' ? 'reservada' : s.estado, ...(s.motivo === undefined ? {} : { motivo: s.motivo }) };
 }
 
 // ---------------------------------------------------------------------------------------------
@@ -468,6 +551,26 @@ export async function limpiarSubidas(
       if (s?.estado !== 'reservada' || s.venceEn >= ahora) return false;
       escribirUsoMedios(tx, t, liberarEnUso(uso, s.productoId, s.tipo, s.bytes));
       tx.set(rutaSubida(t, id), aDoc({ ...s, estado: 'borrando', destino: 'vencida', rutas: [s.rutaOriginal] }));
+      return true;
+    });
+    if (marcada) {
+      vencidas += 1;
+      await borrarYCerrar(deps, t, id);
+    }
+  }
+  // `procesando` vencida: el proceso que la reclamó murió. Con reserva vigente vuelve a `reservada` (se puede finalizar de
+  // nuevo); con reserva vencida se libera como cualquier otra.
+  for (const { id } of await deps.consulta.listarPorEstado(t, 'procesando', limite)) {
+    const marcada = await deps.db.runTransaction(async (tx) => {
+      const s = leerSubida((await tx.get(rutaSubida(t, id))).data());
+      const uso = await leerUsoMedios(tx, t);
+      if (s?.estado !== 'procesando' || (s.procesandoVenceEn ?? 0) >= ahora) return false;
+      if (s.venceEn >= ahora) {
+        tx.set(rutaSubida(t, id), aDoc({ ...sinReclamo(s), estado: 'reservada' }));
+        return false;
+      }
+      escribirUsoMedios(tx, t, liberarEnUso(uso, s.productoId, s.tipo, s.bytes));
+      tx.set(rutaSubida(t, id), aDoc({ ...sinReclamo(s), estado: 'borrando', destino: 'vencida', rutas: [s.rutaOriginal] }));
       return true;
     });
     if (marcada) {

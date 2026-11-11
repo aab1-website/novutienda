@@ -103,6 +103,8 @@ describe.skipIf(host === undefined)('reglas de Firestore contra el emulador', ()
       // L1-b: la raíz verdadera también debe quedar cerrada.
       ['lectura abierta en limitesTasa (raíz)', (t) => t.replace(/(match \/limitesTasa\/\{id\} \{\n\s+)allow read: if false;/, '$1allow read: if true;')],
       ['escritura abierta en novuchatTokens (raíz de plataforma)', (t) => t.replace(/(match \/novuchatTokens\/\{id\} \{\n\s+allow read: if false;\n\s+)allow write: if false;/, '$1allow write: if true;')],
+      ['lectura abierta en dominios (raíz de plataforma)', (t) => t.replace(/(match \/dominios\/\{id\} \{\n\s+)allow read: if false;/, '$1allow read: if true;')],
+      ['escritura abierta en dominios (raíz de plataforma)', (t) => t.replace(/(match \/dominios\/\{id\} \{\n\s+allow read: if false;\n\s+)allow write: if false;/, '$1allow write: if true;')],
       // L2-5: el documento raíz del tenant solo lo toca el servidor.
       ['lectura abierta en tenants/{t} (documento raíz)', (t) => t.replace(/(match \/tenants\/\{id\} \{\n\s+)allow read: if false;/, '$1allow read: if true;')],
       ['escritura abierta en tenants/{t} (documento raíz)', (t) => t.replace(/(match \/tenants\/\{id\} \{\n\s+allow read: if false;\n\s+)allow write: if false;/, '$1allow write: if true;')],
@@ -110,6 +112,7 @@ describe.skipIf(host === undefined)('reglas de Firestore contra el emulador', ()
       ['negación final reemplazada por permiso', (t) => t.replace(/(\{document=\*\*\} \{\n\s+)allow read, write: if false;/, '$1allow read, write: if true;')],
       ['proveedor ignorado', (t) => t.replace("&& proveedor() == 'password'", '')],
       ['correo verificado ignorado', (t) => t.replace("&& request.auth.token.get('email_verified', false) == true", '')],
+      ['estado del tenant ignorado', (t) => t.replace('&& tenantActivo(tenantId)', '')],
       ['rol sin comprobar', (t) => t.replace('&& rolEn(tenantId) in roles', '&& rolEn(tenantId) != \'\'')],
     ];
 

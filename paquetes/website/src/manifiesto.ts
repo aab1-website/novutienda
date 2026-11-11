@@ -22,4 +22,5 @@ export const manifiestoWebsite: ManifiestoModulo = {
   emite: [],
   consume: [],
   requiere: ['consola', 'inventarios'],
+  rutasHttp: [{ ruta: '/api/cotizacion' }, { ruta: '/api/disponibilidad' }, { ruta: '/api/contacto' }],
 };

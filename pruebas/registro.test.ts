@@ -32,6 +32,63 @@ const mod = (id: string, dependeDe: string[] = [], rutas: string[] = []): Manifi
   consume: [],
 });
 
+/**
+ * Invariante estática del bus (L3-5, D3 = A): si el módulo C consume un evento, todo módulo que lo emite tiene a C
+ * en su cierre de `dependeDe` y `requiere`; así un emisor encendido implica a su consumidor encendido.
+ * Devuelve las violaciones como texto (vacío = se cumple).
+ */
+function violacionesDelBus(manifiestos: readonly ManifiestoModulo[]): string[] {
+  const porId = new Map(manifiestos.map((m) => [m.id, m]));
+  const cierre = (id: string): Set<string> => {
+    const visto = new Set<string>();
+    const pila = [id];
+    while (pila.length > 0) {
+      const m = porId.get(pila.pop() as string);
+      for (const d of [...(m?.dependeDe ?? []), ...(m?.requiere ?? [])]) {
+        if (!visto.has(d)) {
+          visto.add(d);
+          pila.push(d);
+        }
+      }
+    }
+    return visto;
+  };
+  const fallas: string[] = [];
+  for (const c of manifiestos) {
+    for (const evento of c.consume) {
+      for (const emisor of manifiestos.filter((m) => m.emite.includes(evento))) {
+        if (emisor.id !== c.id && !cierre(emisor.id).has(c.id)) fallas.push(`${emisor.id} emite ${evento}, que consume ${c.id}, y no lo tiene en dependeDe/requiere`);
+      }
+    }
+  }
+  return fallas;
+}
+
+describe('invariante estática del bus (L3-5)', () => {
+  it('con los manifiestos reales, todo emisor de un evento tiene al consumidor en su cierre', () => {
+    expect(violacionesDelBus(registroPlataforma.listar())).toEqual([]);
+  });
+
+  it('los emisores reales de lo que consumen Recibos e Inventarios (pos) los tienen en su cierre', () => {
+    const pos = registroPlataforma.listar().find((m) => m.id === 'pos');
+    expect(pos?.dependeDe).toContain('recibos');
+    expect(pos?.requiere).toContain('inventarios');
+  });
+
+  it('detecta un manifiesto roto: un emisor que no declara a su consumidor', () => {
+    const emisor = { ...mod('emisor', ['nucleo']), emite: ['x.hecho'] };
+    const consumidor = { ...mod('consumidor', ['nucleo']), consume: ['x.hecho'] };
+    expect(violacionesDelBus([mod('nucleo'), emisor, consumidor])).toEqual([
+      'emisor emite x.hecho, que consume consumidor, y no lo tiene en dependeDe/requiere',
+    ]);
+    // Corregido (por dependeDe o por requiere, también transitivo) deja de fallar.
+    expect(violacionesDelBus([mod('nucleo'), { ...emisor, dependeDe: ['nucleo', 'consumidor'] }, consumidor])).toEqual([]);
+    expect(violacionesDelBus([mod('nucleo'), { ...emisor, requiere: ['consumidor'] }, consumidor])).toEqual([]);
+    const puente = mod('puente', ['consumidor']);
+    expect(violacionesDelBus([mod('nucleo'), { ...emisor, dependeDe: ['puente'] }, puente, consumidor])).toEqual([]);
+  });
+});
+
 describe('registro de módulos', () => {
   it('el núcleo, los módulos y plataforma están registrados; el núcleo tiene sus nueve colecciones (L1-b)', () => {
     // L1-b: se suma `plataforma` (8 ids) y el núcleo declara `alertas` y `limitesTasa` (9 colecciones).
@@ -150,12 +207,12 @@ describe('colecciones de raíz con el registro real', () => {
     expect(rutas).toContain('miembros');
   });
 
-  it('las colecciones de raíz declaradas son solo limitesTasa (nucleo), novuchatTokens y tenants (plataforma)', () => {
+  it('las colecciones de raíz declaradas son solo limitesTasa (nucleo), dominios, novuchatTokens y tenants (plataforma)', () => {
     const raices = registroPlataforma
       .listar()
       .flatMap((m) => m.colecciones.filter((c) => c.ambito === 'raiz').map((c) => `${m.id}:${c.ruta}`))
       .sort();
-    expect(raices).toEqual(['nucleo:limitesTasa', 'plataforma:novuchatTokens', 'plataforma:tenants']);
+    expect(raices).toEqual(['nucleo:limitesTasa', 'plataforma:dominios', 'plataforma:novuchatTokens', 'plataforma:tenants']);
   });
 
   it('todo collectionGroup de firestore.indexes.json tiene dueño en el registro', () => {
@@ -177,7 +234,7 @@ describe('L1-b: constantes de código alineadas con el manifiesto', () => {
   });
 
   it('COLECCION_TOKENS es la raíz declarada por plataforma', () => {
-    expect(raiz(manifiestoPlataforma)).toEqual([COLECCION_TOKENS, 'tenants']);
+    expect(raiz(manifiestoPlataforma)).toEqual([COLECCION_TOKENS, 'dominios', 'tenants']);
   });
 
   it('plataforma depende solo de nucleo y se ordena después', () => {
@@ -185,6 +242,71 @@ describe('L1-b: constantes de código alineadas con el manifiesto', () => {
     const orden = registroPlataforma.ordenTopologico();
     expect(orden.indexOf('nucleo')).toBeGreaterThanOrEqual(0);
     expect(orden.indexOf('plataforma')).toBeGreaterThan(orden.indexOf('nucleo'));
+  });
+});
+
+describe('L3-1: rutasHttp del manifiesto (sin efecto)', () => {
+  const l3 = (id: string, extra: Record<string, unknown> = {}): ManifiestoModulo =>
+    ({ ...mod(id), ...extra }) as ManifiestoModulo;
+  const rechaza = (extra: Record<string, unknown>, id = 'x') => () =>
+    crearRegistro<ManifiestoModulo>().registrar(l3(id, extra));
+
+  it('sin rutasHttp el agregador devuelve []', () => {
+    const r = crearRegistro<ManifiestoModulo>();
+    r.registrar(mod('a'));
+    expect(r.rutasHttp()).toEqual([]);
+  });
+
+  it('anota el módulo dueño en cada ruta', () => {
+    const r = crearRegistro<ManifiestoModulo>();
+    r.registrar(l3('a', { rutasHttp: [{ ruta: '/api/a/v1', prefijo: true }, { ruta: '/api/a-uno' }] }));
+    r.registrar(l3('b', { rutasHttp: [{ ruta: '/api/b' }] }));
+    expect(r.rutasHttp().map((x) => [x.ruta, x.modulo])).toEqual([['/api/a/v1', 'a'], ['/api/a-uno', 'a'], ['/api/b', 'b']]);
+  });
+
+  it('rechaza rutas mal formadas o con barra final', () => {
+    for (const ruta of ['/otra/x', '/api/', '/api', '/api/A', '/api/x/', '/api/x y', 'api/x', '/api/x?q=1', '/api//x', '/api/a//b']) {
+      expect(rechaza({ rutasHttp: [{ ruta }] }), ruta).toThrow(ErrorRegistro);
+    }
+    expect(rechaza({ rutasHttp: [{ ruta: '/api/x', prefijo: 'si' }] })).toThrow(/prefijo/);
+    expect(rechaza({ rutasHttp: 'x' })).toThrow(/lista/);
+  });
+
+  it('rechaza rutasHttp fuera de la zona modulo', () => {
+    const una = { rutasHttp: [{ ruta: '/api/x' }] };
+    expect(rechaza({ zona: 'central', ...una }, 'panel')).toThrow(/rutasHttp/);
+    expect(rechaza({ zona: 'nucleo', ...una }, 'nucleo')).toThrow(/rutasHttp/);
+    expect(rechaza(una, 'plataforma')).toThrow(/rutasHttp/);
+  });
+
+  it('rechaza rutas repetidas dentro de un módulo', () => {
+    expect(rechaza({ rutasHttp: [{ ruta: '/api/x' }, { ruta: '/api/x', prefijo: true }] })).toThrow(/duplicada/);
+  });
+
+  it('rutas repetidas entre módulos: registrar no falla, rutasHttp() lanza nombrando ambos', () => {
+    const r = crearRegistro<ManifiestoModulo>();
+    r.registrar(l3('a', { rutasHttp: [{ ruta: '/api/x' }] }));
+    expect(() => r.registrar(l3('b', { rutasHttp: [{ ruta: '/api/x' }] }))).not.toThrow();
+    expect(() => r.rutasHttp()).toThrow(/a y b/);
+  });
+
+  it('rechaza una ruta que cae bajo el prefijo de otro módulo, en cualquier orden de registro', () => {
+    for (const orden of [['a', 'b'], ['b', 'a']] as const) {
+      const r = crearRegistro<ManifiestoModulo>();
+      const por = {
+        a: l3('a', { rutasHttp: [{ ruta: '/api/sitio', prefijo: true }] }),
+        b: l3('b', { rutasHttp: [{ ruta: '/api/sitio/v1/x' }] }),
+      };
+      for (const id of orden) r.registrar(por[id]);
+      expect(() => r.rutasHttp()).toThrow(/cae bajo el prefijo/);
+    }
+  });
+
+  it('una ruta exacta vecina del prefijo no choca', () => {
+    const r = crearRegistro<ManifiestoModulo>();
+    r.registrar(l3('a', { rutasHttp: [{ ruta: '/api/sitio', prefijo: true }] }));
+    r.registrar(l3('b', { rutasHttp: [{ ruta: '/api/sitio-x' }] }));
+    expect(r.rutasHttp()).toHaveLength(2);
   });
 });
 
@@ -332,6 +454,24 @@ describe('L2-1: campos L2 del manifiesto (sin efecto)', () => {
       expect(usadas.map((u) => u.id).sort()).toEqual(registroPlataforma.programadas().map((p) => p.id).sort());
       expect(codigo).not.toMatch(/schedule:\s*'/);
       for (const p of registroPlataforma.programadas()) expect(horarioDe(p.id)).toEqual({ schedule: p.horario, timeZone: p.zonaHoraria });
+    });
+
+    // L3-2: las rutas que maneja router.ts (leídas del texto) son exactamente las declaradas por los módulos más la salud.
+    it('las rutas de router.ts son exactamente registro.rutasHttp() más /healthz y /api/salud', () => {
+      const codigo = leer('../plataforma/funciones/servidor/http/router.ts');
+      const literales = [...codigo.matchAll(/'(\/(?:api\/[a-z0-9_/-]+|healthz))'/g)].map((x) => x[1] as string);
+      // '/api/novuchat/' solo es la guarda del límite en memoria: sus rutas reales se listan una a una.
+      const exactas = literales.filter((l) => !l.endsWith('/'));
+      const prefijos = literales.filter((l) => l.endsWith('/') && l !== '/api/novuchat/').map((l) => l.slice(0, -1));
+      const leidas = [...new Set([...exactas, ...prefijos])].sort();
+      const declaradas = registroPlataforma.rutasHttp().map((r) => r.ruta);
+      expect(leidas).toEqual([...declaradas, '/healthz', '/api/salud'].sort());
+      expect(registroPlataforma.rutasHttp().filter((r) => r.prefijo === true).map((r) => r.ruta).sort()).toEqual(prefijos.sort());
+      expect(registroPlataforma.rutasHttp().map((r) => [r.ruta, r.modulo]).sort()).toEqual([
+        ['/api/contacto', 'website'], ['/api/cotizacion', 'website'], ['/api/disponibilidad', 'website'],
+        ['/api/novuchat/v1/catalogo', 'consola'], ['/api/novuchat/v1/inventario', 'inventarios'],
+        ['/api/novuchat/v1/pedidos/confirmar', 'inventarios'], ['/api/sitio/v1', 'consola'],
+      ]);
     });
 
     it('pos (dependeDe nucleo y recibos) queda fuera sin recibos encendido', () => {

@@ -44,12 +44,14 @@ const callable = (modulo: string, implementaciones: TablaImplementaciones) =>
   crearManejador({ modulo, acciones: tablaDeCallable(modulo, implementaciones), entorno, appCheckExigido });
 
 // ---- Callables ------------------------------------------------------------------------------------------------
-export const pos = onCall({ memory: '512MiB' }, callable('pos', accionesPos));
-export const inventarios = onCall({ memory: '512MiB' }, callable('inventarios', accionesInventarios));
+// `invoker: 'public'` explícito: el navegador llama sin credencial de Google Cloud; la identidad, App Check, el rol y el encendido por
+// tenant se verifican dentro del manejador. Sin esto, Cloud Run responde 401 en un despliegue nuevo (visto en `medios`, 09/11/2026).
+export const pos = onCall({ invoker: 'public', memory: '512MiB' }, callable('pos', accionesPos));
+export const inventarios = onCall({ invoker: 'public', memory: '512MiB' }, callable('inventarios', accionesInventarios));
 // Las acciones de usuarios (Central, `llamadas/usuarios.ts`) viajan en el callable `consola` para no cambiar el contrato del panel.
-export const consola = onCall({ memory: '512MiB' }, callable('consola', { ...accionesConsola, ...accionesUsuarios }));
-export const recibos = onCall({ memory: '512MiB' }, callable('recibos', accionesRecibos));
-export const medios = onCall({ memory: '2GiB', timeoutSeconds: 540, maxInstances: 3 }, callable('medios', accionesMedios));
+export const consola = onCall({ invoker: 'public', memory: '512MiB' }, callable('consola', { ...accionesConsola, ...accionesUsuarios }));
+export const recibos = onCall({ invoker: 'public', memory: '512MiB' }, callable('recibos', accionesRecibos));
+export const medios = onCall({ invoker: 'public', memory: '2GiB', timeoutSeconds: 540, maxInstances: 3 }, callable('medios', accionesMedios));
 
 // ---- API HTTP -------------------------------------------------------------------------------------------------
 function unico(v: string | string[] | undefined): string | undefined {
@@ -78,12 +80,14 @@ function aPeticion(req: Request): PeticionHttp {
 
 // Límites en memoria POR INSTANCIA y por origen, antes de autenticar o de verificar App Check (el límite de Firestore por token se paga con una lectura
 // del token y una escritura transaccional). Se crean una vez, con los valores de los parámetros de la primera petición.
-let memoria: { readonly novuchat: LimiteTasa; readonly disponibilidad: LimiteTasa; readonly contacto: LimiteTasa } | undefined;
+let memoria: { readonly novuchat: LimiteTasa; readonly disponibilidad: LimiteTasa; readonly contacto: LimiteTasa; readonly hosts: LimiteTasa; readonly hostsGlobal: LimiteTasa } | undefined;
 function limitesEnMemoria(): NonNullable<typeof memoria> {
   memoria ??= {
     novuchat: limiteMemoria(enteroDe(PARAMETROS.novuchatMaximoPorMinuto.value(), 120), 60_000),
     disponibilidad: limiteMemoria(enteroDe(PARAMETROS.disponibilidadMaximoPorMinuto.value(), 60), 60_000),
     contacto: limiteMemoria(enteroDe(PARAMETROS.contactoMaximoPorMinuto.value(), 30), 60_000),
+    hosts: limiteMemoria(60, 60_000),
+    hostsGlobal: limiteMemoria(300, 60_000),
   };
   return memoria;
 }
@@ -95,9 +99,7 @@ function configRouter(e: ReturnType<typeof entorno>): ConfigRouter {
     esEntornoDePruebas(process.env),
   );
   const verificadores = verificadoresSitio();
-  const tenantId = PARAMETROS.tenantId.value();
   return {
-    tenantId,
     secretoReconstruccion: SECRETOS.reconstruccion.value(),
     limiteContacto: crearLimiteTasa(e.firestore, {
       maximo: enteroDe(PARAMETROS.contactoMaximo.value(), 5), ventanaMs: enteroDe(PARAMETROS.contactoVentanaSeg.value(), 600) * 1000, sal,
@@ -110,7 +112,6 @@ function configRouter(e: ReturnType<typeof entorno>): ConfigRouter {
       mediosBaseUrl,
       limite: crearLimiteTasa(e.firestore, { maximo: enteroDe(PARAMETROS.novuchatMaximoPorMinuto.value(), 120), ventanaMs: 60_000, sal }),
       secretoPedidos: SECRETOS.pedidos.value(),
-      tenantPedidos: tenantId,
     },
   };
 }

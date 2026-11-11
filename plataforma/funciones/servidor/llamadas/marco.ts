@@ -139,12 +139,15 @@ export function crearManejador(o: OpcionesManejador): (req: CallableRequest) => 
       if (rol !== undefined && !def.roles.includes(rol) && !(def.propietario && sesion.propietario)) {
         throw new HttpsError('permission-denied', 'Su rol no permite esta acción.');
       }
-      if (def.requiereEncendido) {
-        // Falla cerrado: tenant sin documento (o inválido) y módulo apagado se rechazan igual, con el mismo código.
-        const activos = await e.modulosDelTenant(tenantId);
-        if (activos === undefined || !activos.includes(def.modulo)) {
-          throw moduloApagado();
-        }
+      // Falla cerrado: tenant sin documento, inválido, de baja o suspendido y módulo apagado se rechazan igual, con el
+      // mismo código. Única excepción (D3): el propietario en una acción que lo declara pasa ante un tenant SUSPENDIDO.
+      const activos = await e.modulosDelTenant(tenantId);
+      if (activos === undefined) {
+        const r = def.propietario && sesion.propietario ? await e.estadoModulosDelTenant(tenantId) : undefined;
+        if (r === undefined || !('motivo' in r) || r.motivo !== 'suspendido') throw moduloApagado();
+        if (def.requiereEncendido && !(r.modulosSiOpera ?? []).includes(def.modulo)) throw moduloApagado();
+      } else if (def.requiereEncendido && !activos.includes(def.modulo)) {
+        throw moduloApagado();
       }
       if (datos !== undefined && JSON.stringify(datos).length > def.maxCaracteres) {
         throw new HttpsError('invalid-argument', 'La petición es demasiado grande.');

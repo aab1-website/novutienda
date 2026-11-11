@@ -188,7 +188,7 @@ export function PantallaFichas(): JSX.Element {
                 <tr key={x.id}>
                   <th scope="row">{x.nombre}</th>
                   <td>{fc === undefined ? 'Sin ficha' : ESTADOS.find((e) => e.valor === fc.estado)?.texto}</td>
-                  <td><Boton chico variante="secundario" onClick={() => setElegido(x.id)} etiqueta={`Editar la ficha de ${x.nombre}`}>Editar ficha</Boton></td>
+                  <td><Boton chico variante="secundario" onClick={() => setElegido(x.id)} etiqueta={`Editar ficha de ${x.nombre}`}>Editar ficha</Boton></td>
                 </tr>
               );
             })}

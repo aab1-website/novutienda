@@ -37,7 +37,7 @@ describe('inventario', () => {
     const e = crearEntorno('sup');
     ver(e, h(PantallaInventario, { sub: 'productos' }));
     const u = userEvent.setup();
-    await u.click(await screen.findByRole('button', { name: 'Ver ficha de Televisor 55 pulgadas' }));
+    await u.click(await screen.findByRole('button', { name: 'Ficha de Televisor 55 pulgadas' }));
     expect(await screen.findByText(/Solo el administrador edita/)).toBeTruthy();
     expect(document.querySelector('[data-prueba="precio-bo"]')?.textContent).toContain('Bs 3.132,00');
     expect(document.querySelector('[data-prueba="precio-ar"]')?.textContent).toContain('ARS 480.000,00');
@@ -46,7 +46,7 @@ describe('inventario', () => {
     cleanup();
     const adm = crearEntorno('adm');
     ver(adm, h(PantallaInventario, { sub: 'productos' }));
-    await u.click(await screen.findByRole('button', { name: 'Ver ficha de Televisor 55 pulgadas' }));
+    await u.click(await screen.findByRole('button', { name: 'Ficha de Televisor 55 pulgadas' }));
     expect(await screen.findByText(/Costo y margen \(solo administrador\)/)).toBeTruthy();
     expect(screen.getByText('33,3 %', { exact: false })).toBeTruthy();
   });
@@ -55,7 +55,7 @@ describe('inventario', () => {
     const e = crearEntorno('adm');
     ver(e, h(PantallaInventario, { sub: 'productos' }));
     const u = userEvent.setup();
-    await u.click(await screen.findByRole('button', { name: 'Ver ficha de Cable HDMI 2 m' }));
+    await u.click(await screen.findByRole('button', { name: 'Ficha de Cable HDMI 2 m' }));
     await u.clear(await screen.findByLabelText(/^Bolivia \(USD\)/));
     await u.type(screen.getByLabelText(/^Bolivia \(USD\)/), '10,50');
     await u.clear(screen.getByLabelText('Mínimo de existencias'));
@@ -397,7 +397,7 @@ describe('catálogo y sitio', () => {
     const e = crearEntorno('sup');
     ver(e, h(PantallaCatalogo, { sub: 'fichas' }));
     const u = userEvent.setup();
-    await u.click(await screen.findByRole('button', { name: 'Editar la ficha de Televisor 55 pulgadas' }));
+    await u.click(await screen.findByRole('button', { name: 'Editar ficha de Televisor 55 pulgadas' }));
     await screen.findByRole('heading', { name: 'Ficha web: Televisor 55 pulgadas' });
     const foto = new File(['x'.repeat(2048)], 'frente.jpg', { type: 'image/jpeg' });
     fireEvent.change(await screen.findByLabelText('Subir fotos'), { target: { files: [foto] } });
@@ -421,7 +421,7 @@ describe('catálogo y sitio', () => {
     e.api.estado.disparador.rechazo = 'El archivo no es una imagen válida';
     ver(e, h(PantallaCatalogo, { sub: 'fichas' }));
     const u = userEvent.setup();
-    await u.click(await screen.findByRole('button', { name: 'Editar la ficha de Televisor 55 pulgadas' }));
+    await u.click(await screen.findByRole('button', { name: 'Editar ficha de Televisor 55 pulgadas' }));
     fireEvent.change(await screen.findByLabelText('Subir fotos'), { target: { files: [new File(['x'], 'roto.jpg', { type: 'image/jpeg' })] } });
     expect(await screen.findByText('roto.jpg: No se pudo procesar el archivo. Pruebe con otro.')).toBeTruthy();
     expect(e.api.llamadas.some((l) => l.nombre === 'finalizarSubida')).toBe(false);
@@ -431,7 +431,7 @@ describe('catálogo y sitio', () => {
     const e = crearEntorno('sup');
     ver(e, h(PantallaCatalogo, { sub: 'fichas' }));
     const u = userEvent.setup();
-    await u.click(await screen.findByRole('button', { name: 'Editar la ficha de Cable HDMI 2 m' }));
+    await u.click(await screen.findByRole('button', { name: 'Editar ficha de Cable HDMI 2 m' }));
     fireEvent.change(await screen.findByLabelText('Subir fotos'), { target: { files: [new File(['a'], 'uno.jpg', { type: 'image/jpeg' }), new File(['b'], 'dos.jpg', { type: 'image/jpeg' })] } });
     await screen.findByText('uno.jpg: Listo');
     await screen.findByText('dos.jpg: Listo');
@@ -449,7 +449,7 @@ describe('catálogo y sitio', () => {
     const e = crearEntorno('sup');
     ver(e, h(PantallaCatalogo, { sub: 'fichas' }));
     const u = userEvent.setup();
-    await u.click(await screen.findByRole('button', { name: 'Editar la ficha de Cable HDMI 2 m' }));
+    await u.click(await screen.findByRole('button', { name: 'Editar ficha de Cable HDMI 2 m' }));
     const enorme = new File(['x'], 'gigante.jpg', { type: 'image/jpeg' });
     Object.defineProperty(enorme, 'size', { value: 16 * 1024 * 1024 });
     fireEvent.change(await screen.findByLabelText('Subir fotos'), { target: { files: [enorme] } });

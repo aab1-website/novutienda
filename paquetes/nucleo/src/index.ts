@@ -8,6 +8,7 @@ export type {
   ManifiestoModulo,
   PantallaManifiesto,
   ProgramadaManifiesto,
+  RutaHttpManifiesto,
   Rol,
   RutaAlmacenamiento,
   TipoEvento,
