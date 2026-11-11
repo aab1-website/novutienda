@@ -168,11 +168,11 @@ function EditorFicha({ producto, alCerrar }: { producto: ProductoPanel; alCerrar
           <div class="fila">
             <div class="campo">
               <label for="subir-foto">Subir fotos</label>
-              <input id="subir-foto" type="file" accept="image/jpeg,image/png,image/webp,image/avif" multiple disabled={fotos >= LIMITES_PANEL.fotosPorProducto} onChange={elegirArchivo('foto')} />
+              <input id="subir-foto" type="file" accept="image/jpeg,image/png,image/webp,image/heic,image/heif,.heic,.heif" multiple disabled={fotos >= LIMITES_PANEL.fotosPorProducto} onChange={elegirArchivo('foto')} />
             </div>
             <div class="campo">
               <label for="subir-video">Subir video</label>
-              <input id="subir-video" type="file" accept="video/mp4,video/quicktime,video/webm" disabled={videos >= LIMITES_PANEL.videosPorProducto} onChange={elegirArchivo('video')} />
+              <input id="subir-video" type="file" accept="video/mp4,video/x-m4v,video/quicktime,video/webm,.m4v" disabled={videos >= LIMITES_PANEL.videosPorProducto} onChange={elegirArchivo('video')} />
             </div>
           </div>
           <ul class="lista-simple" aria-live="polite">

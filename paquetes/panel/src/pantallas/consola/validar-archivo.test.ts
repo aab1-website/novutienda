@@ -17,8 +17,19 @@ describe('validarArchivo', () => {
   it('acepta por extensión cuando el navegador no informa el tipo', async () => {
     expect(await validarArchivo(archivo('v.mov', ''), 'video', dura(10))).toBeUndefined();
   });
+  it('acepta HEIC, M4V y un MIME genérico por su extensión; rechaza AVIF', async () => {
+    expect(await validarArchivo(archivo('f.heic', 'image/heic'), 'foto')).toBeUndefined();
+    expect(await validarArchivo(archivo('f.HEIC', ''), 'foto')).toBeUndefined();
+    expect(await validarArchivo(archivo('v.m4v', 'video/x-m4v'), 'video', dura(5))).toBeUndefined();
+    expect(await validarArchivo(archivo('v.m4v', 'application/octet-stream'), 'video', dura(5))).toBeUndefined();
+    expect(await validarArchivo(archivo('f.avif', 'image/avif'), 'foto')).toMatch(/JPG, PNG, WebP o HEIC/);
+    expect(await validarArchivo(archivo('f.avif', 'application/octet-stream'), 'foto')).toMatch(/JPG, PNG/);
+  });
+  it('el mensaje de duración redondea hacia arriba', async () => {
+    expect(await validarArchivo(archivo('v.mp4', 'video/mp4'), 'video', dura(60.4))).toMatch(/dura 61 segundos/);
+  });
   it('rechaza un tipo no permitido y dice los formatos', async () => {
-    expect(await validarArchivo(archivo('a.gif', 'image/gif'), 'foto')).toMatch(/JPG, PNG, WebP o AVIF/);
+    expect(await validarArchivo(archivo('a.gif', 'image/gif'), 'foto')).toMatch(/JPG, PNG, WebP o HEIC/);
     expect(await validarArchivo(archivo('v.avi', 'video/x-msvideo'), 'video', dura(1))).toMatch(/MP4, MOV o WebM/);
   });
   it('rechaza por tamaño con el límite', async () => {

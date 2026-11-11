@@ -390,6 +390,19 @@ describe('pipeline de medios', () => {
       const b = await subir('video', MP4);
       await expect(finalizarSubida(deps, { tenantId: T, actor: adm, subidaId: b.subidaId })).resolves.toBeDefined();
     });
+    it('video con demasiados píxeles se rechaza con su motivo; 4096×2304 entra', async () => {
+      proc.info = { ancho: 7680, alto: 4320, duracionSeg: 10 };
+      const a = await subir('video', MP4);
+      await expect(finalizarSubida(deps, { tenantId: T, actor: adm, subidaId: a.subidaId })).rejects.toMatchObject({
+        codigo: 'limite', message: 'El video mide 7680×4320 y el máximo es 4096×2304',
+      });
+      proc.info = { ancho: 2304, alto: 4400, duracionSeg: 10 }; // lado mayor que 4096
+      const c = await subir('video', MP4);
+      await expect(finalizarSubida(deps, { tenantId: T, actor: adm, subidaId: c.subidaId })).rejects.toMatchObject({ codigo: 'limite' });
+      proc.info = { ancho: 4096, alto: 2304, duracionSeg: 10 };
+      const b = await subir('video', MP4);
+      await expect(finalizarSubida(deps, { tenantId: T, actor: adm, subidaId: b.subidaId })).resolves.toBeDefined();
+    });
     it('video sin duración legible se rechaza', async () => {
       proc.info = { ancho: 1920, alto: 1080 };
       const a = await subir('video', MP4);

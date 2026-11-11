@@ -6,8 +6,20 @@ export const DURACION_VIDEO_MAX_SEG = LIMITES_PANEL.duracionVideoSeg;
 /** Espera máxima para leer la duración del video en el navegador; si no se logra, decide el servidor. */
 export const ESPERA_METADATOS_MS = 10_000;
 
-const FOTO = { mime: ['image/jpeg', 'image/png', 'image/webp', 'image/avif'], ext: ['jpg', 'jpeg', 'png', 'webp', 'avif'], texto: 'JPG, PNG, WebP o AVIF' } as const;
-const VIDEO = { mime: ['video/mp4', 'video/quicktime', 'video/webm'], ext: ['mp4', 'mov', 'webm'], texto: 'MP4, MOV o WebM' } as const;
+// Formatos que admite el servidor: la fuente de verdad es paquetes/consola/src/medios/tipos-archivo.ts (detecta por bytes
+// JPG, PNG, WebP, HEIC/HEIF, MP4/M4V, MOV y WebM; rechaza AVIF). Aquí solo se refleja para avisar antes de subir.
+const FOTO = {
+  mime: ['image/jpeg', 'image/png', 'image/webp', 'image/heic', 'image/heif'],
+  ext: ['jpg', 'jpeg', 'png', 'webp', 'heic', 'heif'],
+  texto: 'JPG, PNG, WebP o HEIC',
+} as const;
+const VIDEO = {
+  mime: ['video/mp4', 'video/x-m4v', 'video/quicktime', 'video/webm'],
+  ext: ['mp4', 'm4v', 'mov', 'webm'],
+  texto: 'MP4, MOV o WebM',
+} as const;
+/** MIME que el navegador pone cuando no reconoce el archivo: se decide por la extensión. */
+const MIME_GENERICOS: readonly string[] = ['', 'application/octet-stream'];
 
 /** Archivo que se revisa (un `File` lo cumple). */
 export type ArchivoAValidar = Pick<File, 'name' | 'size' | 'type'> & Blob;
@@ -51,7 +63,7 @@ export async function validarArchivo(archivo: ArchivoAValidar, tipo: TipoMedio, 
   const ext = archivo.name.includes('.') ? (archivo.name.split('.').pop() ?? '').toLowerCase() : '';
   const mimeOk = (reglas.mime as readonly string[]).includes(archivo.type);
   const extOk = (reglas.ext as readonly string[]).includes(ext);
-  if (!mimeOk && !(archivo.type === '' && extOk)) {
+  if (!mimeOk && !(MIME_GENERICOS.includes(archivo.type) && extOk)) {
     return `«${archivo.name}» no es ${tipo === 'video' ? 'un video' : 'una foto'} permitido. Formatos: ${reglas.texto}.`;
   }
   if (archivo.size <= 0) return `«${archivo.name}» está vacío.`;
@@ -62,7 +74,7 @@ export async function validarArchivo(archivo: ArchivoAValidar, tipo: TipoMedio, 
   if (tipo === 'video') {
     const d = await leer(archivo);
     if (d !== undefined && d > DURACION_VIDEO_MAX_SEG) {
-      return `El video «${archivo.name}» dura ${Math.round(d)} segundos y el máximo es ${DURACION_VIDEO_MAX_SEG} segundos.`;
+      return `El video «${archivo.name}» dura ${Math.ceil(d)} segundos y el máximo es ${DURACION_VIDEO_MAX_SEG} segundos.`;
     }
   }
   return undefined;

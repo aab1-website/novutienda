@@ -24,7 +24,7 @@ export const esEnCurso = (e: unknown): boolean =>
  * está disponible, su motivo ya es un texto legible («El video dura más de 60 segundos») y es más útil que el genérico.
  */
 export function mensajeDeSubida(e: unknown): string {
-  if (e instanceof ErrorApi && (e.detalle.codigo === 'procesamiento' || e.detalle.codigo === 'no-disponible' || e.detalle.codigo === 'tipo-no-permitido') && e.message.trim() !== '') return e.message.trim();
+  if (e instanceof ErrorApi && (e.detalle.codigo === 'procesamiento' || e.detalle.codigo === 'no-disponible' || e.detalle.codigo === 'tipo-no-permitido' || e.detalle.codigo === 'limite') && e.message.trim() !== '') return e.message.trim();
   return mensajeDeError(e);
 }
 

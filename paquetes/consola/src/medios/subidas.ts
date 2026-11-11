@@ -345,6 +345,10 @@ async function procesarReclamada(
       return await rechazar(deps, t, s, reclamo, 'limite', 'La imagen tiene demasiados píxeles', []);
     }
     if (s.tipo === 'video') {
+      const { ladoVideoMax, pixelesVideoMax } = LIMITES_CONSOLA;
+      if (Math.max(info.ancho, info.alto) > ladoVideoMax || info.ancho * info.alto > pixelesVideoMax) {
+        return await rechazar(deps, t, s, reclamo, 'limite', `El video mide ${info.ancho}×${info.alto} y el máximo es ${ladoVideoMax}×${pixelesVideoMax / ladoVideoMax}`, []);
+      }
       const d = info.duracionSeg;
       if (d === undefined || !Number.isFinite(d) || d <= 0) {
         return await rechazar(deps, t, s, reclamo, 'procesamiento', 'No se pudo leer la duración del video', []);
