@@ -7,11 +7,6 @@ export const REGION = 'us-east1';
 
 export const PARAMETROS = {
   /**
-   * Tenant que atiende esta instalación en las rutas públicas y firmadas sin token de usuario. SIN valor por defecto:
-   * el despliegue lo exige (`preparar-despliegue-firebase.sh`) y el emulador lo fija `probar.mjs`.
-   */
-  tenantId: defineString('TENANT_ID'),
-  /**
    * Cuenta de servicio con la que corren las Functions (nombre corto o correo). Vacío = la cuenta por defecto de Compute
    * (firebase-tools lo trata como «sin cuenta»). En producción debe ser una cuenta dedicada con roles mínimos
    * (docs/produccion/pase-a-staging.md, paso 6).

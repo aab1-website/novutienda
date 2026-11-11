@@ -119,8 +119,17 @@ describe.skipIf(!hayEmulador)('trabajos programados (Firestore del emulador)', (
     expect(horaEnLaPaz(AHORA)).toBe(7);
     expect(horaEnLaPaz(Date.parse('2026-11-04T00:30:00Z'))).toBe(20);
     const t = unico('prog').toLowerCase();
-    await h.firestore.doc(`tenants/${t}`).set({ plan: 'base' });
+    await h.firestore.doc(`tenants/${t}`).set({ estado: 'activo', plan: 'base' });
     expect(await listarTenants(e)).toContain(t);
+  });
+
+  it('listarTenants solo devuelve los activos: suspendidos y de baja no corren trabajos', async () => {
+    const t = unico('est').toLowerCase();
+    for (const estado of ['activo', 'suspendido', 'baja']) await h.firestore.doc(`tenants/${t}-${estado}`).set({ estado, plan: 'base' });
+    const lista = await listarTenants(e);
+    expect(lista).toContain(`${t}-activo`);
+    expect(lista).not.toContain(`${t}-suspendido`);
+    expect(lista).not.toContain(`${t}-baja`);
   });
 
   it('cotización: baja BO y AR de las fuentes, escribe por tenant y reconstruye el sitio a las 07:00', async () => {
@@ -189,7 +198,6 @@ describe.skipIf(!hayEmulador)('trabajos programados (Firestore del emulador)', (
     await h.firestore.doc(`tenants/${t}`).set({ ...TENANT_TODO_ENCENDIDO, modulos: {} });
     await h.firestore.doc(`tenants/${t}/publicado/estado`).set({ version: 5, reconstruccion: { programadaPara: AHORA - 1000, ultima: null } });
     expect((await ejecutarTemporizadorSitio(e))[t]).toBeUndefined();
-    expect((await ejecutarLimpiezaSubidas(e))[t]).toBeUndefined();
     expect((await h.firestore.collection(`tenants/${t}/reconstrucciones`).get()).size).toBe(0);
   });
 
@@ -222,6 +230,16 @@ describe.skipIf(!hayEmulador)('trabajos programados (Firestore del emulador)', (
     expect(await procesarObjetoSubido(e, BUCKET, `tenants/${t}/privado/originales/camara/subida-0003`)).toBe('sin-usuario');
     await h.firestore.doc(`tenants/${t}/subidas/subida-0004`).set({ id: 'subida-0004', productoId: 'camara', tipo: 'foto', bytes: 10, estado: 'reservada', por: 'uid-que-no-existe' });
     expect(await procesarObjetoSubido(e, BUCKET, `tenants/${t}/privado/originales/camara/subida-0004`)).toBe('sin-usuario');
+  });
+
+  it('disparador de Storage: subida con consola apagada → modulo-apagado, sin medio publicado', async () => {
+    const t = unico('trgapag').toLowerCase();
+    await h.firestore.doc(`tenants/${t}`).set({ ...TENANT_TODO_ENCENDIDO, modulos: {} });
+    const u = await crearUsuario(h, { rol: 'sup', tenant: t });
+    await h.firestore.doc(`tenants/${t}/subidas/subida-0005`).set({ id: 'subida-0005', productoId: 'camara', tipo: 'foto', bytes: 10, estado: 'reservada', por: u.uid });
+    expect(await procesarObjetoSubido(e, BUCKET, `tenants/${t}/privado/originales/camara/subida-0005`)).toBe('modulo-apagado');
+    expect((await h.firestore.doc(`tenants/${t}/subidas/subida-0005`).get()).data()).toMatchObject({ estado: 'reservada' });
+    expect((await h.bucket.getFiles({ prefix: `tenants/${t}/publico/` }))[0]).toHaveLength(0);
   });
 
   it('publicar: el sitio agenda la reconstrucción en la cola real', async () => {

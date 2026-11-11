@@ -217,7 +217,7 @@ Plan: `NOVUTIENDA_plan-L2-encendido-por-tenant_2026-11-06.md` (en `~/CLAUDE_DESC
 8. Método: este plano, pre-commit y `.claude/zona`.
 
 **Lo que no entra, y por qué:**
-- **Encendido en HTTP (`api`), en el bus `eventos` y en el disparador `subidaFinalizada`: L3.** HTTP es de un solo tenant por construcción y hacerlo multitenant toca la API de NovuChat, que no cambia. Al bus solo llegan eventos de módulos que ya pasaron el control del callable. El disparador solo recibe archivos con reserva, que exige el callable `medios`, ya controlado.
+- **Encendido en HTTP (`api`), en el bus `eventos` y en el disparador `subidaFinalizada`: L3.** Se creyó que HTTP era de un solo tenant por construcción; es falso (corregido en §6.8). Al bus solo llegan eventos de módulos que ya pasaron el control del callable. El disparador solo recibe archivos con reserva, que exige el callable `medios`, ya controlado.
 - **Versiones de módulo por tenant:** L2 solo mira si el módulo está encendido; hoy nadie lee la versión.
 - **Paso `reglas:verificar` en el job `calidad`:** ya lo cubre `pruebas/reglas/generador.test.ts`, que corre en `calidad`. Se descarta.
 - **`.claude/zona` del coordinador:** no hay worktrees vigentes y `.claude/agents/coordinador.md` ya trae las rutas nuevas; pasa a ser un paso de arranque de cada worktree, sin PR.
@@ -242,6 +242,50 @@ Plan: `NOVUTIENDA_plan-L2-encendido-por-tenant_2026-11-06.md` (en `~/CLAUDE_DESC
 8. El paso `reglas:verificar` en `calidad` ya existe a través de `generador.test.ts`.
 9. Las fixtures de emulador siembran `modulos: {}`: sin cambiarlas, el control de L2-6 tumbaría `test:funciones`.
 
+### 6.8 Enmienda L3 (09/11/2026): encendido en HTTP, bus de eventos y disparador de Storage
+
+Plan: `NOVUTIENDA_plan-L3_2026-11-09.md` (en `~/CLAUDE_DESCARGAS/`). Un PR por bloque L3-0…L3-6 (§7). Corrige el diagnóstico de L2 (§6.7, D5).
+
+**Hallazgos:**
+1. HTTP **no** es «de un solo tenant por construcción». El tenant de las rutas del sitio (`/api/cotizacion`, `/api/disponibilidad`, `/api/contacto`) y del pedido firmado sale del host (`x-forwarded-host`, tabla `dominios`; PR B), ya no de `TENANT_ID`. El catálogo y el inventario de NovuChat toman el tenant del token (`autenticarToken`) y `/api/sitio/v1/*` del `tenantId` firmado. Con un segundo tenant con token de NovuChat o reconstrucción del sitio el hueco ya existe, y apagar `inventarios` no corta su catálogo.
+2. Al bus llegan eventos que no pasaron por un callable: el pedido firmado (HTTP) llama a `confirmarPedido` → `aplicarSalida` y publica `stock.cambiado` y `stock.bajo`. Hoy nadie consume `stock.*`.
+3. `limpiezaSubidas` salta los tenants con consola apagada (desde L2-6): sus reservas vencidas y borrados pendientes no se limpian nunca.
+4. Las respuestas de NovuChat llevan `Cache-Control: private, max-age=60`; sumado a la caché de 60 s de `modulosDelTenant`, apagar un módulo puede tardar hasta ~120 s en notarse en NovuChat. Se documenta.
+
+**Decisiones de Andres del 09/11/2026 (botones):**
+- **D1 = A: L3-3 se fusiona antes del alta de cualquier tenant con módulos apagados y antes de apagar un módulo a cualquier tenant** (incluido el primero). Descartadas B (antes del tercer tenant, deja ventana) y C (antes del pase a producción).
+- **D2 = A: con el módulo apagado, NovuChat recibe 401 `credencial_invalida`** (cero cambios de contrato). El sitio y `/api/sitio/v1/*` responden 404. Descartadas B (403 `modulo_apagado`, cambia el contrato) y C (404 en NovuChat).
+- **D3 = A: el bus se controla con una invariante estática** (`pruebas/registro.test.ts`): todo emisor de un evento que consume el módulo C tiene a C en su cierre de `dependeDe`/`requiere`. Sin control en ejecución. Descartadas B (control en ejecución) y C (nada).
+- **D4 = A: con consola apagada el disparador `subidaFinalizada` no procesa y `limpiezaSubidas` corre para todos los tenants.** Descartadas B (la limpieza sigue saltando) y C (dejar como está).
+
+**Cierre (L3-6):** el encendido en HTTP quedó fusionado (PR 42 a 46); la condición de D1 (L3-3 antes de apagar un módulo o dar de alta un tenant con módulos apagados) está cumplida. L3-5 espera su fusión. Antes de desplegar en un ambiente, `tenants/{t}` debe existir en él.
+
+**No entra:** volver multitenant las rutas de tenant fijo (sitio por dominio, pedido firmado por tenant): corresponde al segundo tenant con website. Versiones de módulo por tenant y límites de tasa por plan en HTTP.
+
+### 6.9 Enmienda multitenant (10/11/2026): por tenant y compartido
+
+Decisiones y riesgos: `decisiones.md` (entrada «Multitenant»). Este plano fija solo la ubicación.
+
+| Pieza | Alcance |
+|---|---|
+| Proyecto Firebase, Firestore, bucket, función `api`, callables, panel | Compartido; aislamiento por ruta, claim y estado. El tenant del panel sale del claim y lo elige un selector |
+| Sitio público, dominio, target y CSP de Hosting | Por tenant; el tenant de las rutas públicas sale del host |
+| Secretos de NovuChat y de reconstrucción | Por tenant (derivados) |
+| Medios | Bucket y base de URL compartidos; rutas y cuota por tenant |
+| Topes por plan, almacén de cotización | Por tenant |
+| Demo | Tenant aparte, solo en staging |
+
+| Pieza nueva | Zona |
+|---|---|
+| Lector host a tenant (`plataforma/coordinador/dominios.ts`) | Coordinador |
+| Colección `dominios/{host}` (lectura y escritura `false` en reglas) | Plataforma (manifiesto) |
+| `scripts/dominio-tenant.mjs`, `plataforma/operador/dominio.ts`, `componer-hosting.mjs`, guardias de demo, verificación de aislamiento | Plataforma |
+| `derivarSecretoTenant` (`paquetes/nucleo/src/firma/`); campo `uso` del tenant | Núcleo |
+| Uso de la derivación en `http/novuchat.ts` y `http/sitio.ts` | Coordinador |
+| `http/website.ts` | Módulo `website` |
+| Selector del panel (`sesion/claim.ts`, `sesion.ts`, `ui/app.tsx`) | Central |
+| Workflow y preparación del despliegue | `devsecops` |
+
 ## 7. Camino, por tandas y fases
 
 | # | Qué | Prueba | Despliega | Jornadas |
@@ -263,7 +307,13 @@ Plan: `NOVUTIENDA_plan-L2-encendido-por-tenant_2026-11-06.md` (en `~/CLAUDE_DESC
 | **L2-7** | El doble de `servicios.ts` sale de la composición (`doble/arranque.tsx`); `deuda.json` vacío | `pnpm zonas` en 0 cruces; humo del panel | no | 0,3 |
 | **L2-8** | `publico/**` → `publico/medios/**` (dueño consola); `CAMPOS_RESERVA` atado a la plantilla; Storage exigido en pruebas | contrato de reserva; negativo `publico/otro`; matriz y mutantes | sí (Storage, más restrictivo) | 0,5 |
 | **L2-9** | Higiene del pre-commit (5 archivos hallados) | pre-commit limpio en una rama desde `main` | no | 0,1 |
-| **L3** | Encendido en HTTP (`api`), bus `eventos` y disparador `subidaFinalizada`; **antes del tercer tenant o de un tenant sin website** | por definir | sí | por definir |
+| **L3-0** | Método: esta enmienda (§6.8), esta fila partida, `website.md`, `ESTADO.md`. **Hecho (PR 42)** | fronteras en verde; 0 sin zona | no | 0,1 |
+| **L3-1** | Contrato `rutasHttp` en el manifiesto y `registro.rutasHttp()`, sin efecto. **Hecho (PR 43)** | `registro.test.ts` (rechazos); `reglas:verificar` idéntico | no | 0,3 |
+| **L3-2** | website, inventarios y consola declaran sus rutas; conformidad con `router.ts`. **Hecho (PR 45)** | caso de conformidad; comportamiento sin cambios | no | 0,3 |
+| **L3-3** | Encendido en HTTP: `rutas-http.ts`, `router.ts`, `novuchat.ts`, `sitio.ts` (D2 = A). **Se fusiona antes del alta de cualquier tenant con módulos apagados y antes de apagar un módulo a cualquier tenant (D1 = A)**. **Hecho (PR 46)** | `encendido-http.test.ts`; caso con emulador; `api.test.ts` intacto; `test:funciones`; humo de staging | sí | 0,8 |
+| **L3-4** | Disparador `subidaFinalizada` sin procesar con consola apagada; `limpiezaSubidas` para todos (D4 = A). **Hecho (PR 44)** | `programadas.test.ts`, `encendido.test.ts` | sí | 0,3 |
+| **L3-5** | Invariante estática del bus (D3 = A). **Escrito; pendiente de fusión (rama `test/l3-5-invariante-bus`)** | `registro.test.ts`; consumidores = `consume` de los manifiestos | no | 0,2 |
+| **L3-6** | Cierre: `funciones.md`, `website.md`, `coordinador.md`, `ESTADO.md`. **Hecho** | fronteras en verde | no | 0,1 |
 
 Cada PR declara costo en tres unidades: escrituras en GitHub y corridas de CI, escrituras en la nube (0 en T0–T4), y **cero cambios de contrato** con NovuChat. Precondición de toda tanda: baseline local en verde (`pnpm test`, `lint`, `typecheck`, `reglas:verificar`, `build -- --mode staging`, `test:funciones`).
 

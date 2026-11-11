@@ -9,13 +9,16 @@ import { depsMedios } from './llamadas/medios.js';
 
 const RUTA_ORIGINAL = /^tenants\/([a-z0-9][a-z0-9-]{0,62})\/privado\/originales\/([a-z0-9][a-z0-9-]{1,59})\/([A-Za-z0-9_-]{8,40})$/;
 
-export type ResultadoSubida = 'ignorada' | 'sin-reserva' | 'sin-usuario' | 'finalizada' | 'rechazada';
+export type ResultadoSubida = 'ignorada' | 'sin-reserva' | 'sin-usuario' | 'finalizada' | 'rechazada' | 'modulo-apagado';
 
 export async function procesarObjetoSubido(e: Entorno, bucket: string, nombre: string): Promise<ResultadoSubida> {
   const m = RUTA_ORIGINAL.exec(nombre);
   if (m === null || bucket !== e.bucket.name) return 'ignorada';
   const [, tenantId, productoId, subidaId] = m;
   if (!esTenantIdValido(tenantId) || subidaId === undefined || productoId === undefined) return 'ignorada';
+  // Encendido (L3-4): con consola fuera de los módulos efectivos del tenant no se procesa ni se publica nada; falla cerrado
+  // (tenant sin documento o inválido, o lectura caída, también cuentan como apagado).
+  if (!(await e.modulosDelTenant(tenantId))?.includes('consola')) return 'modulo-apagado';
   const reserva = (await e.firestore.doc(`tenants/${tenantId}/subidas/${subidaId}`).get()).data();
   if (reserva?.['estado'] !== 'reservada' || reserva['productoId'] !== productoId || typeof reserva['por'] !== 'string') return 'sin-reserva';
   let usuario;

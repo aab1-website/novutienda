@@ -16,7 +16,7 @@ export const SUP: Autor = { uid: 'u-sup', rol: 'sup' };
 export const SUP2: Autor = { uid: 'u-sup2', rol: 'sup' };
 export const CAJ: Autor = { uid: 'u-caj', rol: 'caj' };
 
-export const tenantOk = { plan: 'base', modulos: {}, zonaHoraria: 'America/La_Paz', monedas: ['BOB', 'USD', 'ARS'] };
+export const tenantOk = { estado: 'activo', plan: 'base', modulos: {}, zonaHoraria: 'America/La_Paz', monedas: ['BOB', 'USD', 'ARS'] };
 
 export const producto = (id: string, extra: Partial<EntradaProducto> = {}): EntradaProducto => ({
   id,

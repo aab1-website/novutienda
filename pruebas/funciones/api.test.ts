@@ -3,7 +3,7 @@
 import { spawnSync } from 'node:child_process';
 import { createHash, randomBytes } from 'node:crypto';
 import { beforeAll, describe, expect, it, vi } from 'vitest';
-import { esperar, firmar, hayEmulador, herramientas, http, sembrarTenant, T, unico, type Herramientas } from './ayudas.js';
+import { esperar, firmar, hayEmulador, herramientas, http, sembrarTenant, T, TENANT_TODO_ENCENDIDO, unico, type Herramientas } from './ayudas.js';
 
 vi.setConfig({ testTimeout: 60_000, hookTimeout: 60_000 });
 
@@ -65,6 +65,13 @@ describe.skipIf(!hayEmulador)('API HTTP (emulador)', () => {
       expect(r.status).toBe(200);
       expect(r.cuerpo).toMatchObject({ cotizaciones: { BO: { par: 'BOB/USD', valor: 7, estado: 'vigente' } } });
       expect((await http('/api/cotizacion?mercado=XX')).status).toBe(400);
+    });
+
+    it('host desconocido o sin cabecera: 404 en las rutas públicas (el tenant sale del host, lista cerrada)', async () => {
+      const desconocido = await http('/api/cotizacion?mercado=BO', { headers: { 'x-forwarded-host': 'no-mapeado.test' } });
+      expect(desconocido.status).toBe(404);
+      expect(desconocido.cuerpo).toEqual({ error: 'no_encontrado' });
+      expect((await http('/api/disponibilidad?ids=x', { headers: { 'x-forwarded-host': 'a.test, b.test' } })).status).toBe(404);
     });
 
     it('disponibilidad: solo disponible o agotado', async () => {
@@ -250,6 +257,7 @@ describe.skipIf(!hayEmulador)('API HTTP (emulador)', () => {
     it('el publicado entrega el redondeo configurado en tenants/{t}/config/redondeo', async () => {
       const t = unico('red').toLowerCase();
       const regla = { BOB: { tipo: 'decimales', decimales: 0, modo: 'arriba' }, ARS: { tipo: 'multiplo', multiplo: 500, modo: 'abajo' } };
+      await h.firestore.doc(`tenants/${t}`).set(TENANT_TODO_ENCENDIDO); // L3-3: la API exige el documento del tenant
       await h.firestore.doc(`tenants/${t}/config/redondeo`).set(regla);
       const pub = await firmado('GET', `/api/sitio/v1/publicado?tenantId=${t}`);
       expect(pub.status, pub.texto).toBe(200);
@@ -264,10 +272,15 @@ describe.skipIf(!hayEmulador)('API HTTP (emulador)', () => {
 
   describe('script de tokens de NovuChat', () => {
     const correr = (args: string[], entrada = '') =>
-      spawnSync('node', ['plataforma/funciones/scripts/token-novuchat.mjs', ...args, '--proyecto', 'demo-pruebas'], { input: entrada, encoding: 'utf8', env: process.env });
+      spawnSync('node', ['plataforma/funciones/scripts/token-novuchat.mjs', ...args, '--proyecto', 'demo-pruebas'], {
+        input: entrada,
+        encoding: 'utf8',
+        env: { ...process.env, GOOGLE_CLOUD_PROJECT: 'demo-pruebas', NOVUTIENDA_AMBIENTE: 'emulador' },
+      });
 
     it('registra solo el hash, impone el tope de dos activos y desactiva sin imprimir el token', async () => {
       const t = unico('tok').toLowerCase();
+      await h.firestore.doc(`tenants/${t}`).set({ estado: 'activo' });
       const a = randomBytes(24).toString('hex');
       const b = randomBytes(24).toString('hex');
       const c = randomBytes(24).toString('hex');
@@ -284,6 +297,24 @@ describe.skipIf(!hayEmulador)('API HTTP (emulador)', () => {
       expect(correr(['listar', '--tenant', t]).stdout.trim().split('\n')).toHaveLength(3);
       expect(correr(['desactivar', '--hash', 'no-es-hash']).status).toBe(1);
       expect(correr(['otra']).status).toBe(1);
+    });
+
+    it('rechaza registrar para un tenant inexistente o no activo, y sin guardia de entorno', async () => {
+      const token = randomBytes(24).toString('hex');
+      const inexistente = unico('tok-no').toLowerCase();
+      expect(correr(['registrar', '--tenant', inexistente], token).status).toBe(1);
+      const suspendido = unico('tok-susp').toLowerCase();
+      await h.firestore.doc(`tenants/${suspendido}`).set({ estado: 'suspendido' });
+      const r = correr(['registrar', '--tenant', suspendido], token);
+      expect(r.status).toBe(1);
+      expect(r.stderr).toContain('no está activo');
+      expect((await h.firestore.doc(`novuchatTokens/${sha256(token)}`).get()).exists).toBe(false);
+      const sinAmbiente = spawnSync('node', ['plataforma/funciones/scripts/token-novuchat.mjs', 'listar', '--tenant', suspendido, '--proyecto', 'demo-pruebas'], {
+        encoding: 'utf8',
+        env: { ...process.env, GOOGLE_CLOUD_PROJECT: 'demo-pruebas', NOVUTIENDA_AMBIENTE: '' },
+      });
+      expect(sinAmbiente.status).toBe(1);
+      expect(sinAmbiente.stderr).toContain('NOVUTIENDA_AMBIENTE');
     });
   });
 });

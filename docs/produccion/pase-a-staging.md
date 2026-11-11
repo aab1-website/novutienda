@@ -200,6 +200,17 @@ gcloud projects add-iam-policy-binding "$P" --condition=None --quiet --member "s
 Verificado en el primer despliegue (05/11/2026): sin los cuatro primeros, `firebase deploy` se detiene con «Failed to verify the project has
 the correct IAM bindings» y los nombra. Uno por comando: el clasificador de Claude Code bloquea los bucles de concesión.
 
+6.5 Invocación pública y agente de Storage (verificado en staging el 09/11/2026). Los callables y la función `api` declaran `invoker: 'public'` en el
+código, así que el despliegue crea la invocación pública por sí solo; si el proyecto tiene una política que lo impide, `medios` responde 401 antes de
+llegar al manejador. Las reglas de `storage.rules` consultan Firestore con `firestore.get`: el agente de servicio de Storage necesita leerlo, y sin
+este rol las subidas de fotos fallan con `storage/unauthorized`. Es escritura de IAM del proyecto: se pide con el «sí» de Andres, también en producción.
+
+```bash
+gcloud projects add-iam-policy-binding "$P" --condition=None --quiet --member "serviceAccount:${AG_GCS}" --role roles/firebaserules.firestoreServiceAgent
+```
+
+Tarda unos minutos en propagarse; la verificación es una subida de prueba (`reservarSubida` y `finalizarSubida`) con el panel.
+
 ## 7. Secretos de las Functions (Secret Manager) [gratis hasta 6 versiones activas; son 3]
 
 Los valores se generan en la máquina, van por tubería a Secret Manager y no se muestran ni se guardan. Réplica gestionada por el usuario en `us-east1`.
@@ -292,7 +303,7 @@ gh api --method POST "repos/$OWNER/$REPO/environments/production/deployment-bran
 | `STAGING_URL` | repositorio | `https://<SITIO_ID>.web.app` |
 | `HEALTH_PATH` | repositorio | `/api/salud` (**no** `/healthz`: el frontend de Google lo intercepta en Cloud Run y devuelve 404 sin llegar a la función; `docs/arquitectura/decisiones.md`, 05/11/2026) |
 | `FIREBASE_DEPLOY_ONLY` | repositorio | `hosting,functions,firestore,storage` |
-| `TENANT_ID` | repositorio | `casa-bermejo` (**obligatoria**: sin valor por defecto en el código ni en el CI) |
+| `TENANT_ID` | repositorio | **Sin uso**: el tenant de las rutas públicas sale del host (`dominios/{host}`). Se borra después del pase de producción (`docs/arquitectura/decisiones.md`, «Multitenant: tenant por host (PR B)») |
 | `VITE_FIREBASE_API_KEY_STAGING` | repositorio | apiKey pública de la app web del panel (8.1) |
 | `MODO` | repositorio | `A` |
 | `APROBADORES_PROD` | repositorio | `segurolotengopy` (y el propietario, si Andres lo decide) |
@@ -359,8 +370,16 @@ Lección del primer despliegue (05/11/2026): firebase-tools 15.x en modo no inte
 parámetro `defineString/defineBoolean`, aunque tenga `default` en `config.ts`. `preparar-despliegue-firebase.sh` escribe los valores por
 defecto de los que no llegan por variable; si se agrega un parámetro en `config.ts`, hay que agregarlo también allí.
 
-Antes del primer despliegue: cargar las variables de 9.3 (incluidas las `VITE_*` nuevas, `MEDIOS_BASE_URL` y `TENANT_ID`); sin ellas `construir` o el paso de configuración
+Antes del primer despliegue: cargar las variables de 9.3 (incluidas las `VITE_*` nuevas y `MEDIOS_BASE_URL`); sin ellas `construir` o el paso de configuración
 del despliegue fallan a propósito. Verificar en staging el origen del límite de tasa (`PROXY_SALTOS`) con una petición real a `/api/contacto`.
+
+**Paso A′ (obligatorio, ANTES de desplegar).** El tenant de `/api/cotizacion`, `/api/disponibilidad`, `/api/contacto` y `/api/novuchat/v1/pedidos/confirmar` sale del host. Sin mapeo, esas rutas responden `404`. Con `scripts/dominio-tenant.mjs` (`docs/produccion/dominios-de-tenant.md`) se mapea cada host que sirve el sitio del tenant: `<sitio>.web.app`, `<sitio>.firebaseapp.com` y el dominio propio, si existe. Cada `--aplicar` pide el «sí» de Andres.
+
+**Compuerta D-B1 (la impone `dominio-tenant.mjs`).** No se mapea el host de un segundo tenant con `inventarios` encendido hasta el PR D (secreto de firma por tenant): hoy el secreto de pedidos es compartido y una firma de un tenant valdría 5 minutos en otro.
+
+**Requisito antes de desplegar B.** NovuChat debe llamar `pedidos/confirmar` con el dominio del sitio del tenant, no con la URL directa de la función (si no, `404`), y el paso A′ debe estar hecho o el sitio público deja de cotizar. El host elige el tenant pero NO autentica: la función es pública y, en pedidos, la firma sigue siendo obligatoria. Un cambio de mapeo tarda hasta 60 s en verse por instancia. Hay un límite global por instancia (300/min) y por origen (60/min) para hosts fuera de caché.
+
+**Verificación del riesgo R1 tras desplegar a staging** (qué cabecera de host llega detrás de Firebase Hosting no está confirmado en la documentación oficial). Solo lecturas: `GET /api/cotizacion?mercado=BO` y `GET /api/disponibilidad?ids=x` en `<sitio>.web.app` y en `<sitio>.firebaseapp.com` deben dar `200`; la URL directa de la función, sin `x-forwarded-host`, debe dar `404`. Si falla, el log del rechazo indica qué cabeceras llegaron.
 
 ## 12. Después del primer despliegue
 
@@ -370,9 +389,11 @@ del despliegue fallan a propósito. Verificar en staging el origen del límite d
    modulos: { nucleo|inventarios|pos|recibos|consola|website: { version: '1.0.0', submodulos: [] } } }` (forma de `validarTenant`). La
    configuración de redondeo rige por defecto sin documento (`redondeo.ts`). Hoy se hace con `scripts/alta-tenant.mjs` a partir de
    `tenants/<t>/config.json`: ficha del operador en `docs/produccion/alta-de-tenant.md`.
-1. Usuarios: crear las cuentas del personal en Auth (correo y contraseña, correo verificado) y asignar roles con `consola.asignarRol` —
-   el propietario de la plataforma entra con Google y el claim `p` (procedimiento del núcleo).
-2. Token de NovuChat: `node plataforma/funciones/scripts/token-novuchat.mjs registrar` contra staging y entrega a n8n sin mostrarlo.
+1. Usuarios: crear las cuentas del personal en Auth (correo y contraseña) con el primer administrador, con
+   `scripts/personal-tenant.mjs <t> --entrada <ruta> --verificar|--aplicar` (contraseñas solo en un archivo 0600 fuera del repositorio);
+   para una beta con datos ficticios, `scripts/demo-tenant.mjs`: ficha en `docs/produccion/datos-de-demostracion.md`. El propietario de
+   la plataforma entra con Google y el claim `p`.
+2. Token de NovuChat: `node plataforma/funciones/scripts/token-novuchat.mjs registrar --tenant <tenant> --proyecto <proyecto>` contra staging (con `NOVUTIENDA_AMBIENTE=staging`, `GCP_PROJECT_ID_STAGING` y `GOOGLE_CLOUD_PROJECT` definidos; el tenant debe estar activo) y entrega a n8n sin mostrarlo.
 3. Alerta de cotización y latido: `docs/produccion/alertas.md` (canal de correo `CORREO_ALERTAS`, política por registro y ausencia de datos de 26 h).
 4. Verificar la política TTL de `limitesTasa.expiraEn`: `gcloud firestore fields ttls list --project "$P"`.
 

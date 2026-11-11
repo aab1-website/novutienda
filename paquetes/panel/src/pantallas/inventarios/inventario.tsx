@@ -175,7 +175,7 @@ function Productos(): JSX.Element {
                   {ALM.map((a) => <td key={a.id} class="num">{p.existencias[a.id]}</td>)}
                   <td class="num">{p.stockTotal ?? '—'}</td>
                   <td>{!p.activo ? 'Inactivo' : p.bajoMinimo ? 'Bajo el mínimo' : p.disponible ? 'Disponible' : 'Agotado'}</td>
-                  <td><Boton chico variante="secundario" onClick={() => setFicha(p)} etiqueta={`Ver ficha de ${p.nombre}`}>Ficha</Boton></td>
+                  <td><Boton chico variante="secundario" onClick={() => setFicha(p)} etiqueta={`Ficha de ${p.nombre}`}>Ficha</Boton></td>
                 </tr>
               ))}
             </tbody>

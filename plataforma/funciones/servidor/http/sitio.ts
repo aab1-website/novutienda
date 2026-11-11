@@ -29,11 +29,15 @@ export function firmaValida(req: PeticionHttp, secreto: string, ahoraMs: number)
   }).ok;
 }
 
-export async function manejarSitio(e: Entorno, req: PeticionHttp, secreto: string): Promise<RespuestaApi> {
+export async function manejarSitio(
+  e: Entorno, req: PeticionHttp, secreto: string, puedeServir: (tenantId: string) => Promise<boolean>,
+): Promise<RespuestaApi> {
   if (secreto === '') return json(503, { error: 'no_configurado' });
   if (!firmaValida(req, secreto, e.ahora())) return json(401, { error: 'firma_invalida' });
   const tenantId = (req.metodo === 'GET' ? req.consulta['tenantId'] : (req.cuerpo as { tenantId?: unknown } | null)?.tenantId) as unknown;
   if (!esTenantIdValido(tenantId)) return json(400, { error: 'tenant_invalido' });
+  // Tras la firma y el tenantId válido, antes de leer o escribir nada: módulo apagado = ruta inexistente.
+  if (!(await puedeServir(tenantId))) return json(404, { error: 'no_encontrado' });
   const base = `tenants/${tenantId}`;
 
   if (req.ruta === '/api/sitio/v1/reconstrucciones' && req.metodo === 'GET') {

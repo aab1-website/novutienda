@@ -87,7 +87,7 @@ const vigente = (t: Record<string, string>, extra: Record<string, unknown> = {})
 
 function montaje(usuarios: Record<string, Usuario>) {
   const db = new DobleDb();
-  db.poner('tenants/t1', { plan: 'base', modulos: {}, zonaHoraria: 'America/La_Paz', monedas: ['BOB', 'USD', 'ARS'] });
+  db.poner('tenants/t1', { plan: 'base', estado: 'activo', modulos: {}, zonaHoraria: 'America/La_Paz', monedas: ['BOB', 'USD', 'ARS'] });
   const todos: Record<string, Usuario> = {
     adm1: vigente({ t1: 'adm' }),
     dueno: vigente({}, { p: true }),
@@ -95,9 +95,11 @@ function montaje(usuarios: Record<string, Usuario>) {
   };
   const escritos: { uid: string; claims: Record<string, unknown> }[] = [];
   const revocados: string[] = [];
-  const fallos = { set: false, revocar: false };
+  const fallos = { set: false, setTrasAplicar: false, authCaidoTrasFallo: false, revocar: false };
+  let tuvoFallo = false;
   const auth: AuthMin = {
     getUser: async (uid) => {
+      if (fallos.authCaidoTrasFallo && tuvoFallo) throw new Error('Auth no responde');
       const u = todos[uid];
       if (!u) throw new Error('no existe');
       return u;
@@ -107,6 +109,10 @@ function montaje(usuarios: Record<string, Usuario>) {
       escritos.push({ uid, claims });
       const u = todos[uid];
       if (u) u.customClaims = { ...claims };
+      if (fallos.setTrasAplicar) {
+        tuvoFallo = true;
+        throw new Error('fallo de Auth tras aplicar');
+      }
     },
     revokeRefreshTokens: async (uid) => {
       if (fallos.revocar) throw new Error('fallo al revocar');
@@ -329,7 +335,7 @@ describe('asignarRol', () => {
 
   it('carrera de claims entre tenants: el segundo conserva el rol del primero', async () => {
     const { deps, todos, db } = montaje({ u1: { ...pw } });
-    db.poner('tenants/t2', { plan: 'base', modulos: {}, zonaHoraria: 'America/La_Paz', monedas: ['BOB', 'USD', 'ARS'] });
+    db.poner('tenants/t2', { plan: 'base', estado: 'activo', modulos: {}, zonaHoraria: 'America/La_Paz', monedas: ['BOB', 'USD', 'ARS'] });
     await Promise.all([asignarRol(deps, dueno, 't1', 'u1', 'caj'), asignarRol(deps, dueno, 't2', 'u1', 'sup')]);
     const pl = todos['u1']?.customClaims?.['pl'] as { t: Record<string, string>; v: number };
     expect(pl.t).toEqual({ t1: 'caj', t2: 'sup' });
@@ -367,6 +373,25 @@ describe('asignarRol', () => {
     expect(db.dato('tenants/t1/contadores/roles')).toEqual({ adm: 0 });
     expect(auditoria(db).map((a) => a['accion'])).toEqual(['miembro.asignar-rol', 'miembro.revertir-rol']);
     expect(revocados).toHaveLength(0);
+  });
+
+  it('si setCustomUserClaims aplica el claim y luego lanza, conserva el espejo y lanza «estado»', async () => {
+    const { deps, db, fallos, todos, revocados } = montaje({ u1: { ...pw } });
+    fallos.setTrasAplicar = true;
+    await expect(asignarRol(deps, admT1, 't1', 'u1', 'caj')).rejects.toMatchObject({ codigo: 'estado' });
+    expect(todos['u1']?.customClaims).toMatchObject({ pl: { t: { t1: 'caj' } } });
+    expect(db.dato('tenants/t1/miembros/u1')).toMatchObject({ rol: 'caj' });
+    expect(auditoria(db).map((a) => a['accion'])).toEqual(['miembro.asignar-rol']);
+    expect(revocados).toHaveLength(0);
+  });
+
+  it('si el claim falla y Auth no responde al releer, no revierte y lanza «estado»', async () => {
+    const { deps, db, fallos } = montaje({ u1: { ...pw } });
+    fallos.setTrasAplicar = true;
+    fallos.authCaidoTrasFallo = true;
+    await expect(asignarRol(deps, admT1, 't1', 'u1', 'caj')).rejects.toMatchObject({ codigo: 'estado' });
+    expect(db.dato('tenants/t1/miembros/u1')).toMatchObject({ rol: 'caj' });
+    expect(auditoria(db).map((a) => a['accion'])).toEqual(['miembro.asignar-rol']);
   });
 
   it('si falla el seteo en un miembro existente, se restaura su rol anterior', async () => {

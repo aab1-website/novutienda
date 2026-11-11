@@ -21,6 +21,8 @@ export const LIMITES_CONSOLA = {
   seccionesMax: 5,
   /** Vigencia de una reserva de subida sin finalizar. */
   vigenciaReservaMs: 6 * 60 * 60 * 1000,
+  /** Tiempo que una invocación puede tener reclamada una subida (`procesando`) antes de que otra la retome; debe superar el timeout máximo de la función (540 s). */
+  vencimientoProcesandoMs: 10 * 60 * 1000,
   /** Ventana de agrupación de cambios antes de reconstruir el sitio. */
   ventanaReconstruccionMs: 10 * 60 * 1000,
 } as const;

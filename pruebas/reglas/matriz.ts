@@ -12,6 +12,15 @@ export type Operacion = (typeof OPERACIONES)[number];
 
 export const TENANT_A = 'tenant-a';
 export const TENANT_B = 'tenant-b';
+export const TENANT_SUSPENDIDO = 'tenant-suspendido';
+export const TENANT_BAJA = 'tenant-baja';
+/** Estado sembrado en `tenants/{t}`; los tenants de la matriz positiva están activos. */
+const ESTADOS: Readonly<Record<string, string>> = {
+  [TENANT_A]: 'activo',
+  [TENANT_B]: 'activo',
+  [TENANT_SUSPENDIDO]: 'suspendido',
+  [TENANT_BAJA]: 'baja',
+};
 const ID_NUEVO = 'nuevo';
 
 export interface Sujeto {
@@ -98,6 +107,17 @@ export function construirCasos(manifiestos: readonly ManifiestoReglas[]): Caso[]
       }
     }
 
+    // Tenant suspendido o dado de baja: ningún rol legítimo abre nada.
+    if (!raiz) {
+      for (const tenant of [TENANT_SUSPENDIDO, TENANT_BAJA]) {
+        for (const rol of ROLES) {
+          for (const op of OPERACIONES) {
+            casos.push({ descripcion: `${rol} ${op} ${c.ruta} en ${tenant}`, sujeto: personal(rol, tenant), tenant, ruta: c.ruta, operacion: op, esperado: false });
+          }
+        }
+      }
+    }
+
     // Rol de un tenant usado en otro: dir en A y caj en B vale solo caj en B.
     const mixto: Sujeto = {
       nombre: 'dir en A y caj en B',
@@ -163,7 +183,9 @@ async function sembrar(env: RulesTestEnvironment, casos: readonly Caso[]): Promi
   const deRaiz = [...new Set(casos.filter((c) => c.ambito === 'raiz').map((c) => c.ruta))];
   await env.withSecurityRulesDisabled(async (ctx) => {
     const db = ctx.firestore();
-    for (const tenant of [TENANT_A, TENANT_B]) {
+    for (const tenant of Object.keys(ESTADOS)) {
+      // Documento raíz del tenant: lo leen las reglas (tenantActivo) para decidir.
+      await setDoc(doc(db, `tenants/${tenant}`), { estado: ESTADOS[tenant] });
       for (const ruta of deTenant) await setDoc(doc(db, `tenants/${tenant}/${ruta}/d1`), { x: 0 });
     }
     // Las raíces no cuelgan de ningún tenant: se siembran una sola vez.
@@ -189,8 +211,16 @@ export async function ejecutarMatriz(
 ): Promise<string[]> {
   const fallos: string[] = [];
   await sembrar(env, casos);
+  // Un contexto (y su cliente de Firestore) por sujeto distinto, no por caso:
+  // crear uno por caso acumula clientes sin cerrar y agota el heap.
+  const contextos = new Map<string, ReturnType<RulesTestEnvironment['authenticatedContext']>>();
   for (const caso of casos) {
-    const ctx = caso.sujeto.token === null ? env.unauthenticatedContext() : env.authenticatedContext('u1', caso.sujeto.token);
+    const clave = JSON.stringify(caso.sujeto.token);
+    let ctx = contextos.get(clave);
+    if (ctx === undefined) {
+      ctx = caso.sujeto.token === null ? env.unauthenticatedContext() : env.authenticatedContext('u1', caso.sujeto.token);
+      contextos.set(clave, ctx);
+    }
     const resultado = await ejecutar(ctx.firestore() as unknown as Firestore, caso);
     if (resultado !== caso.esperado) {
       fallos.push(`${caso.descripcion}: esperado ${caso.esperado ? 'permitido' : 'denegado'}, fue ${resultado ? 'permitido' : 'denegado'}`);

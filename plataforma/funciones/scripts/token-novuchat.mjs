@@ -2,16 +2,21 @@
 // `novuchatTokens/{sha256}` → { tenantId, hash, activo }. Rotación: se registra el nuevo, NovuChat cambia, y luego
 // se desactiva el viejo (hasta dos activos por tenant a la vez).
 //
-//   printf '%s' "$TOKEN" | node plataforma/funciones/scripts/token-novuchat.mjs registrar --tenant casa-bermejo
-//   node plataforma/funciones/scripts/token-novuchat.mjs desactivar --hash <sha256>
-//   node plataforma/funciones/scripts/token-novuchat.mjs listar --tenant casa-bermejo
+//   printf '%s' "$TOKEN" | node plataforma/funciones/scripts/token-novuchat.mjs registrar --tenant <tenant> --proyecto <id>
+//   node plataforma/funciones/scripts/token-novuchat.mjs desactivar --hash <sha256> --proyecto <id>
+//   node plataforma/funciones/scripts/token-novuchat.mjs listar --tenant <tenant> --proyecto <id>
 //
-// El proyecto sale de GOOGLE_CLOUD_PROJECT (o --proyecto); con FIRESTORE_EMULATOR_HOST escribe en el emulador.
+// Entorno como alta-tenant (scripts/guardia-operador.mjs): GOOGLE_CLOUD_PROJECT igual a --proyecto; NOVUTIENDA_AMBIENTE=staging|emulador,
+// o produccion solo con GCP_PROJECT_ID_PROD y --confirmar-produccion. Con FIRESTORE_EMULATOR_HOST escribe en el emulador.
+// `registrar` exige que el tenant exista y esté activo (plataforma/operador/token.ts). Contrato de salida sin cambios.
 // El token se lee de la entrada estándar y NO se imprime nunca.
 import { createHash } from 'node:crypto';
 import { readFileSync } from 'node:fs';
 import { getApps, initializeApp } from 'firebase-admin/app';
 import { getFirestore } from 'firebase-admin/firestore';
+import { fileURLToPath, pathToFileURL } from 'node:url';
+import { cargarManifiestos } from '../../../scripts/generar-reglas.mjs';
+import { validarEntornoAlta } from '../../../scripts/guardia-operador.mjs';
 
 const [, , comando, ...resto] = process.argv;
 const arg = (n) => {
@@ -25,20 +30,52 @@ function falla(mensaje) {
   process.exit(1);
 }
 
-const proyecto = arg('proyecto') ?? process.env.GOOGLE_CLOUD_PROJECT;
-if (!proyecto) falla('indique el proyecto con GOOGLE_CLOUD_PROJECT o --proyecto');
+let proyecto;
+try {
+  ({ proyecto } = validarEntornoAlta({
+    proyectoArg: arg('proyecto'),
+    confirmarProduccion: resto.includes('--confirmar-produccion'),
+    hostsEmulador: ['FIRESTORE_EMULATOR_HOST'],
+  }));
+} catch (e) {
+  falla(e instanceof Error ? e.message : 'entorno inválido');
+}
 if (getApps().length === 0) initializeApp({ projectId: proyecto });
-const col = getFirestore().collection('novuchatTokens');
+const firestore = getFirestore();
+const col = firestore.collection('novuchatTokens');
 
 if (comando === 'registrar') {
   const tenant = arg('tenant');
   if (!tenant || !TENANT.test(tenant)) falla('falta --tenant válido');
+  await cargarManifiestos(); // registra los ganchos de TypeScript
+  const { exigirTenantOperativo } = await import(pathToFileURL(fileURLToPath(new URL('../../operador/token.ts', import.meta.url))).href);
   const token = readFileSync(0, 'utf8').trim();
   if (token.length < 32 || /\s/.test(token)) falla('el token (entrada estándar) debe tener al menos 32 caracteres y no llevar espacios');
   const hash = createHash('sha256').update(token).digest('hex');
+  // Tope de activos (fuera de la transacción: una consulta dentro bloquea toda la colección). Carrera aceptada: solo opera el operador.
   const activos = (await col.where('tenantId', '==', tenant).where('activo', '==', true).get()).docs.filter((d) => d.id !== hash);
   if (activos.length >= 2) falla('el tenant ya tiene dos tokens activos; desactive el anterior antes de registrar uno nuevo');
-  await col.doc(hash).set({ tenantId: tenant, hash, activo: true, creadoEn: new Date().toISOString() });
+  // El estado del tenant se lee y el token se escribe en la misma transacción. El rechazo de negocio se devuelve como valor,
+  // para distinguirlo de un error de Firebase.
+  let rechazo;
+  try {
+    rechazo = await firestore.runTransaction(async (tx) => {
+      try {
+        await exigirTenantOperativo(tenant, async (ruta) => {
+          const s = await tx.get(firestore.doc(ruta));
+          return { existe: s.exists, data: () => s.data() };
+        });
+      } catch (e) {
+        if (e instanceof Error && !('code' in e)) return e.message;
+        throw e;
+      }
+      tx.set(col.doc(hash), { tenantId: tenant, hash, activo: true, creadoEn: new Date().toISOString() });
+      return undefined;
+    });
+  } catch (e) {
+    falla(`error de Firebase al registrar el token (${e && typeof e === 'object' && 'code' in e ? String(e.code) : 'inesperado'})`);
+  }
+  if (rechazo !== undefined) falla(rechazo);
   console.log(`registrado: ${hash}`);
 } else if (comando === 'desactivar') {
   const hash = arg('hash');
