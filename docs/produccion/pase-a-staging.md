@@ -294,6 +294,9 @@ gh api --method POST "repos/$OWNER/$REPO/environments/production/deployment-bran
 | `GCP_WIF_PROVIDER` | repositorio | salida de `setup-oidc-gcp.sh` |
 | `GCP_SA_DEPLOY_STAGING` | Environment `staging` | salida de `setup-oidc-gcp.sh` |
 | `GCP_SA_DEPLOY_PROD` | Environment `production` | al federar producción (otro pase) |
+| `SITIOS_TENANT` | Environment `staging` | JSON `[{clave,tenant,sitio,url}]` de los sitios por tenant; el CI principal lo usa para validar `FIREBASE_DEPLOY_ONLY` y `reconstruir-sitio.yml` para la matriz. Una fila por alta (`reconstruccion-sitio.md`). Cada tenant, sitio y URL de al menos 4 caracteres |
+| `SITIO_NEGOCIO_<CLAVE>` | Environment `staging` | JSON de textos del negocio de ese sitio (una por fila de `SITIOS_TENANT`, clave en mayúsculas) |
+| `SITIO_RECONSTRUCCION_SECRETO` | Environment `staging` | el mismo valor que la función `api` usa para firmar la cola de reconstrucción |
 
 9.3 Variables:
 
@@ -302,7 +305,7 @@ gh api --method POST "repos/$OWNER/$REPO/environments/production/deployment-bran
 | `GCP_PROJECT_ID_STAGING` | repositorio | `<P>` — **al cargarla se activa el despliegue a staging en cada merge a `main`** (cargarla al final) |
 | `STAGING_URL` | repositorio | `https://<SITIO_ID>.web.app` |
 | `HEALTH_PATH` | repositorio | `/api/salud` (**no** `/healthz`: el frontend de Google lo intercepta en Cloud Run y devuelve 404 sin llegar a la función; `docs/arquitectura/decisiones.md`, 05/11/2026) |
-| `FIREBASE_DEPLOY_ONLY` | repositorio | `hosting,functions,firestore,storage` |
+| `FIREBASE_DEPLOY_ONLY` | repositorio | `hosting,functions,firestore,storage` (producción; staging la sobrescribe con la del Environment) |
 | `TENANT_ID` | repositorio | **Sin uso**: el tenant de las rutas públicas sale del host (`dominios/{host}`). Se borra después del pase de producción (`docs/arquitectura/decisiones.md`, «Multitenant: tenant por host (PR B)») |
 | `VITE_FIREBASE_API_KEY_STAGING` | repositorio | apiKey pública de la app web del panel (8.1) |
 | `MODO` | repositorio | `A` |
@@ -314,6 +317,7 @@ gh api --method POST "repos/$OWNER/$REPO/environments/production/deployment-bran
 | `RECAPTCHA_CLAVE_SITIO` | Environment `staging` | clave de sitio de 8.2 |
 | `MEDIOS_BASE_URL` | Environment `staging` | **obligatoria** (https): ver 9.5; el despliegue falla si falta |
 | `FUNCIONES_SERVICE_ACCOUNT` | Environment `staging` | vacío (cuenta por defecto, si no tiene Editor) o la dedicada del paso 6.1 (obligatoria en la práctica en producción) |
+| `FIREBASE_DEPLOY_ONLY` | Environment `staging` | `hosting:panel,functions,firestore,storage`. **Cargarla antes de fusionar el PR C-2**: tiene prioridad sobre la del repositorio y evita que el CI despliegue los sitios de tenant; `scripts/sitios-tenant.mjs validar-solo` falla cerrado si trae otra cosa |
 | `FIREBASE_DEPLOY_FORCE` | Environment `staging` (y `production`) | cualquier valor no vacío → `firebase deploy --force`. **Obligatoria**: la función `eventos` declara `retry: true` y firebase-tools exige `--force` para una política de fallo en modo no interactivo (3.er intento del primer despliegue, 05/11/2026). Aviso en el run: `--force` también borra Functions que ya no estén en el código |
 | `PROXY_SALTOS` | repositorio (opcional) | `2` por defecto: proxies que anteponen su IP en `X-Forwarded-For` (Hosting/Fastly + GFE). **Verificar en staging** con una petición real |
 | `VITE_RECAPTCHA_ENTERPRISE_SITE_KEY_STAGING` / `_PROD` | repositorio | clave de sitio de reCAPTCHA Enterprise (8.2) para el App Check del panel |
@@ -357,6 +361,7 @@ firebase functions:artifacts:setpolicy --location us-east1 --days 1 --project "$
 
 1. Andres autoriza cargar `GCP_PROJECT_ID_STAGING` (9.3, última).
 2. El PR de `feat/ci` (y los pendientes del bloque «Bloqueos» de abajo) se fusiona a `main` con la aprobación de **[segurolotengopy]**.
+   **Desde el PR C el CI ya no despliega el sitio público en staging**: `desplegar-staging` publica `hosting:panel`, `functions`, `firestore` y `storage`, y cada sitio de tenant lo despliega `reconstruir-sitio.yml` (primera vez: `workflow_dispatch` con la `clave`). El humo del CI prueba el sitio que dejó la última reconstrucción, de modo que el primer despliegue exige haber reconstruido antes.
 3. El CI corre `desplegar-staging` → humo (sitio `/healthz`, sitio `/` y panel con CSP y HSTS) → `dast-y-humo` (ZAP baseline sobre el sitio).
    [$: Cloud Build y Artifact Registry por cada despliegue de Functions.]
 4. Claude lee el run (`gh run view --log-failed` si falla), lo informa con su resultado real y corrige lo mínimo sin debilitar controles.
