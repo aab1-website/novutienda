@@ -13,8 +13,10 @@ import { validarContenido, validarNegocio } from './validar.js';
 export interface EntornoSitio {
   /** Origen público del sitio (https://…). */
   readonly origen: string;
-  /** Origen público de los medios; las rutas de las versiones cuelgan de él. */
+  /** Origen público de los medios (https://host, sin ruta): para la CSP y para validar las url. */
   readonly origenMedios: string;
+  /** Base completa de los medios, con ruta (https://host/bucket); de ella cuelgan las rutas de las versiones. Ausente = `origenMedios`. */
+  readonly baseMedios?: string;
   readonly appCheck: ConfigAppCheck | null;
   readonly recaptchaSiteKey: string | null;
   /** Por id de producto, de `/api/disponibilidad`; ausente = no disponible. */
@@ -117,10 +119,11 @@ function bloque(b: Obj, base: string): Bloque | undefined {
  */
 export function contenidoDesdePublicado(respuesta: unknown, negocio: unknown, entorno: EntornoSitio): Contenido {
   const errores: string[] = [];
-  let base = entorno.origenMedios;
-  while (base.endsWith('/')) base = base.slice(0, -1);
+  const sinBarras = (t: string): string => { let r = t; while (r.endsWith('/')) r = r.slice(0, -1); return r; };
+  const origenMedios = sinBarras(entorno.origenMedios);
+  const base = sinBarras(entorno.baseMedios ?? entorno.origenMedios);
 
-  const n = validarNegocio(negocio, [entorno.origen, base]);
+  const n = validarNegocio(negocio, [entorno.origen, origenMedios]);
   if (!n.ok) errores.push(...n.errores);
   const neg = n.ok ? n.negocio : undefined;
 
@@ -222,7 +225,7 @@ export function contenidoDesdePublicado(respuesta: unknown, negocio: unknown, en
       medicion: { google: nulo(med['ga4']), searchConsole: nulo(med['searchConsole']), meta: nulo(med['metaPixel']), tiktok: nulo(med['tiktokPixel']) },
       recaptchaSiteKey: entorno.recaptchaSiteKey,
       appCheck: entorno.appCheck,
-      origenMedios: base,
+      origenMedios,
       enlacesPermitidos: neg?.enlacesPermitidos,
       textoPrivacidad: neg?.textoPrivacidad,
       esEjemplo: false,
