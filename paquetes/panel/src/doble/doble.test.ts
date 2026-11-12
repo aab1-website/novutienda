@@ -339,7 +339,7 @@ describe('doble: inventarios', () => {
     e.como('adm');
     await e.api.llamar('resolverMerma', { operacionId: uuid(), mermaId, decision: 'aprobada' });
     expect((await e.api.llamar('buscarSerie', { serie: 'TV55-002' }))[0]?.estado).toBe('merma');
-    expect((await falla(e.api.llamar('resolverMerma', { operacionId: uuid(), mermaId, decision: 'rechazada' }))).detalle.codigo).toBe('estado-invalido');
+    expect((await falla(e.api.llamar('resolverMerma', { operacionId: uuid(), mermaId, decision: 'rechazada', motivo: 'x' }))).detalle.codigo).toBe('estado-invalido');
     await falla(e.api.llamar('solicitarMerma', { operacionId: uuid(), productoId: 'tv-55', ubicacionId: 'tienda', cantidad: 1, series: ['TV55-002'], motivo: 'otra vez' }));
   });
   it('conteo ciego: el teórico no viaja mientras está abierto; al cerrar, faltante genera merma y sobrante ingresa', async () => {
@@ -410,7 +410,7 @@ describe('doble: inventarios', () => {
     expect((await e.api.llamar('listarProductos', {})).some((p) => p.id === 'ok-1')).toBe(false);
     const err = await falla(e.api.llamar('importarProductosCsv', { operacionId: uuid(), csv }));
     expect(err.detalle.codigo).toBe('entrada-invalida');
-    const r = await e.api.llamar('importarProductosCsv', { operacionId: uuid(), csv, omitirErrores: true });
+    const r = await e.api.llamar('importarProductosCsv', { operacionId: uuid(), csv, omitirErrores: true, lineasOmitidas: [3, 4] });
     expect(r).toMatchObject({ completa: true, creados: 1, actualizados: 1, sinCambios: 1, omitidas: 2 });
     const ok = (await e.api.llamar('listarProductos', {})).find((p) => p.id === 'ok-1');
     expect(ok?.existencias.tienda).toBe(0);
@@ -420,6 +420,32 @@ describe('doble: inventarios', () => {
     expect(enviadas[0]).toMatchObject({ simular: true });
     expect(enviadas[0]).not.toHaveProperty('operacionId');
     expect(enviadas.at(-1)).not.toHaveProperty('simular');
+  });
+  it('importación: omitirErrores exige lineasOmitidas y, si no coinciden con la simulación nueva, no escribe nada y devuelve desactualizada', async () => {
+    const e = crearEntorno('adm');
+    const csv = 'id,nombre,categoria,sku\r\nok-1,Uno,Cat,S1\r\nMAL ID,Dos,Cat,S2\r\n';
+    const sin = await falla(e.api.llamar('importarProductosCsv', { operacionId: uuid(), csv, omitirErrores: true } as never));
+    expect(sin.detalle.codigo).toBe('entrada-invalida');
+    expect(sin.codigoHttps).toBe('invalid-argument');
+    const operacionId = uuid();
+    const r = await e.api.llamar('importarProductosCsv', { operacionId, csv, omitirErrores: true, lineasOmitidas: [2] });
+    expect(r).toMatchObject({ completa: false, desactualizada: true, creados: 0, omitidas: 0, lotes: { total: 0, aplicados: 0 } });
+    expect(r.detencion).toContain('No se escribió nada');
+    expect(r.simulacion.resumen.errores).toBe(1);
+    expect((await e.api.llamar('listarProductos', {})).some((p) => p.id === 'ok-1')).toBe(false);
+    const ok = await e.api.llamar('importarProductosCsv', { operacionId, csv, omitirErrores: true, lineasOmitidas: [3] });
+    expect(ok).toMatchObject({ completa: true, creados: 1, omitidas: 1 });
+    expect(ok.desactualizada).toBeUndefined();
+  });
+  it('merma: rechazar sin motivo falla; aprobar no lo exige', async () => {
+    const e = crearEntorno('sup');
+    await e.api.llamar('solicitarMerma', { operacionId: uuid(), productoId: 'cable-hdmi', ubicacionId: 'tienda', cantidad: 1, motivo: 'Dañado' });
+    const mermaId = (await e.api.llamar('listarMermas', { estado: 'solicitada' })).mermas[0]?.mermaId ?? '';
+    e.como('adm');
+    expect((await falla(e.api.llamar('resolverMerma', { operacionId: uuid(), mermaId, decision: 'rechazada' } as never))).detalle.codigo).toBe('entrada-invalida');
+    expect((await falla(e.api.llamar('resolverMerma', { operacionId: uuid(), mermaId, decision: 'rechazada', motivo: '  ' }))).detalle.codigo).toBe('entrada-invalida');
+    expect((await e.api.llamar('listarMermas', { estado: 'solicitada' })).mermas).toHaveLength(1);
+    await e.api.llamar('resolverMerma', { operacionId: uuid(), mermaId, decision: 'aprobada' });
   });
   it('importación: carga inicial admite stock; sin ella, las columnas de stock se rechazan', async () => {
     const e = crearEntorno('adm');

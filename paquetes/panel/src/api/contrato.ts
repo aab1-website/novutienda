@@ -44,7 +44,11 @@ export interface Contrato {
     entrada: { operacionId: string; productoId: string; ubicacionId: UbicacionId; cantidad: number; series?: readonly string[]; motivo: string };
     salida: ResultadoOperacion;
   };
-  resolverMerma: { entrada: { operacionId: string; mermaId: string; decision: 'aprobada' | 'rechazada'; motivo?: string }; salida: ResultadoOperacion };
+  /** Rechazar exige `motivo` (el servidor responde 400 sin él). */
+  resolverMerma: {
+    entrada: { operacionId: string; mermaId: string } & ({ decision: 'aprobada'; motivo?: string } | { decision: 'rechazada'; motivo: string });
+    salida: ResultadoOperacion;
+  };
   abrirConteo: { entrada: { operacionId: string; conteoId: string; ubicacionId: UbicacionId }; salida: ResultadoOperacion };
   registrarLineaConteo: {
     entrada: { operacionId: string; conteoId: string; productoId: string; contado?: number; series?: readonly string[] };
@@ -55,9 +59,17 @@ export interface Contrato {
   simularImportacionProductos: { entrada: FuenteImportacion & { cargaInicial?: boolean }; salida: Simulacion };
   /**
    * Importa productos (crea los nuevos y actualiza los existentes) por tandas; con filas con error se rechaza salvo
-   * `omitirErrores`. Si `completa` es `false` se reintenta con el mismo `operacionId`. El stock solo entra con `cargaInicial`.
+   * `omitirErrores`, que exige `lineasOmitidas` (las líneas con error que la persona vio y aceptó omitir): si no coinciden
+   * con las de la simulación nueva del servidor no escribe nada y responde `desactualizada`. Si `completa` es `false` sin
+   * `desactualizada`, se reintenta con el mismo `operacionId`. El stock solo entra con `cargaInicial`.
    */
-  importarProductosCsv: { entrada: FuenteImportacion & { operacionId: string; cargaInicial?: boolean; omitirErrores?: boolean }; salida: ResultadoImportacion };
+  importarProductosCsv: {
+    entrada: FuenteImportacion & { operacionId: string; cargaInicial?: boolean } & (
+      | { omitirErrores?: false; lineasOmitidas?: undefined }
+      | { omitirErrores: true; lineasOmitidas: readonly number[] }
+    );
+    salida: ResultadoImportacion;
+  };
   /** Función pura del módulo expuesta como callable: devuelve el CSV (celdas neutralizadas) de los productos del tenant. */
   exportarProductosCsv: { entrada: Vacio; salida: { csv: string } };
   // ---- Recibos ----

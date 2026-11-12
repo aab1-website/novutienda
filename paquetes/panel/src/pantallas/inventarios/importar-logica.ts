@@ -98,6 +98,9 @@ export const textoTandas = (r: ResultadoImportacion): string => `${String(r.lote
 /** Mensaje cuando el archivo no es el del intento anterior (el servidor reconoce la importación por su contenido). */
 export const TEXTO_ARCHIVO_CAMBIO = 'El archivo cambió desde el intento anterior: empiece de nuevo con una importación nueva.';
 
+/** Aviso cuando el servidor no importó nada porque los datos cambiaron desde la simulación. */
+export const TEXTO_DESACTUALIZADA = 'Los datos cambiaron desde la simulación. Revise la simulación nueva antes de importar.';
+
 /**
  * Traduce el motivo de detención del servidor a algo que una persona pueda actuar: qué pasó y qué hacer. Nunca deja pasar
  * identificadores técnicos («operacionId», el código de la operación).

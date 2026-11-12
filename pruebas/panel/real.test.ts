@@ -75,7 +75,7 @@ describe('unidades', () => {
   it('la importación de Inventario viaja por una sola acción: simular con `simular: true` y aplicar sin él', async () => {
     const fuente = { archivo: 'UEsDBA==', cargaInicial: true };
     expect(await enviado('simularImportacionProductos', fuente)).toEqual([{ accion: 'importarProductosCsv', datos: { ...fuente, simular: true } }]);
-    const aplicar = { operacionId: 'o3', csv: 'id\r\nx\r\n', omitirErrores: true };
+    const aplicar = { operacionId: 'o3', csv: 'id\r\nx\r\n', omitirErrores: true, lineasOmitidas: [2, 5] };
     expect(await enviado('importarProductosCsv', aplicar)).toEqual([{ accion: 'importarProductosCsv', datos: aplicar }]);
   });
   it('el resto de las operaciones con dinero no convierte nada', async () => {

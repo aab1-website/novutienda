@@ -1,6 +1,7 @@
 import type { JSX } from 'preact';
 import { useEffect, useRef, useState } from 'preact/hooks';
 import { nuevoId } from '../../api/cliente.js';
+import { ErrorApi, mensajeDeError } from '../../api/errores.js';
 import type { MermaVista, ProductoPanel, UbicacionId } from '../../api/tipos.js';
 import { useAvisos } from '../../ui/avisos.js';
 import { Alerta, Boton, Campo, ConCarga, Selector, Seccion, fechaHora } from '../../ui/comun.js';
@@ -32,6 +33,8 @@ function ResolverMerma({ merma, producto, decision, alCerrar, alResolver, alProc
   const accion = useAccion();
   const [motivo, setMotivo] = useState('');
   const [intento, setIntento] = useState(false);
+  /** Error de validación del servidor sobre el motivo: va junto al campo, no en la alerta general. */
+  const [errorMotivo, setErrorMotivo] = useState<string | null>(null);
   // El mismo identificador solo mientras no cambie lo que se envía (un reintento no duplica; otro motivo es otra operación).
   const operacion = useRef<{ firma: string; id: string } | null>(null);
   const rechaza = decision === 'rechazada';
@@ -43,9 +46,16 @@ function ResolverMerma({ merma, producto, decision, alCerrar, alResolver, alProc
     const firma = JSON.stringify([merma.mermaId, decision, rechaza ? motivo.trim() : '']);
     if (operacion.current?.firma !== firma) operacion.current = { firma, id: nuevoId() };
     const operacionId = operacion.current.id;
+    setErrorMotivo(null);
     alProcesar(true);
     void accion.ejecutar(async () => {
-      await api.llamar('resolverMerma', { operacionId, mermaId: merma.mermaId, decision, ...(rechaza ? { motivo: motivo.trim() } : {}) });
+      try {
+        await api.llamar('resolverMerma', rechaza ? { operacionId, mermaId: merma.mermaId, decision: 'rechazada', motivo: motivo.trim() } : { operacionId, mermaId: merma.mermaId, decision: 'aprobada' });
+      } catch (e) {
+        if (!rechaza || !(e instanceof ErrorApi) || e.detalle.codigo !== 'entrada-invalida') throw e;
+        setErrorMotivo(mensajeDeError(e));
+        return;
+      }
       avisos.ok(rechaza ? `Merma de ${nombre} rechazada.` : `Merma de ${nombre} aprobada: el stock ya se descontó.`);
       alResolver();
     }).finally(() => alProcesar(false));
@@ -70,7 +80,7 @@ function ResolverMerma({ merma, producto, decision, alCerrar, alResolver, alProc
         {resumenResolucion(merma, producto, decision).map((l) => <li key={l}>{l}</li>)}
       </ul>
       {rechaza && (
-        <Campo etiqueta="Motivo del rechazo" requerido tope={MOTIVO_MAX} valor={motivo} onInput={setMotivo} error={intento && falta ? MOTIVO_RECHAZO_FALTA : undefined} />
+        <Campo etiqueta="Motivo del rechazo" requerido tope={MOTIVO_MAX} valor={motivo} onInput={(v) => { setMotivo(v); setErrorMotivo(null); }} error={intento && falta ? MOTIVO_RECHAZO_FALTA : (errorMotivo ?? undefined)} />
       )}
       {accion.error !== null && <Alerta>{accion.error}</Alerta>}
     </Dialogo>

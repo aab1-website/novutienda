@@ -3,6 +3,7 @@ import { h } from 'preact';
 import { cleanup, render, screen, waitFor, within } from '@testing-library/preact';
 import { userEvent } from '@testing-library/user-event';
 import { afterEach, describe, expect, it, vi } from 'vitest';
+import { ErrorApi } from '../../api/errores.js';
 import { crearEntorno, type Entorno } from '../../ayuda-pruebas.js';
 import { ProveedorGuardia } from '../../ui/guardia.js';
 import { PantallaMermas } from './mermas.js';
@@ -83,6 +84,22 @@ describe('resolver', () => {
     await waitFor(() => expect(llamadas(e, 'resolverMerma')).toHaveLength(1));
     expect(llamadas(e, 'resolverMerma')[0]?.entrada).toMatchObject({ decision: 'rechazada', motivo: 'Está en buen estado' });
     expect((await e.api.llamar('listarProductos', {})).find((p) => p.id === 'cable-hdmi')?.existencias.tienda).toBe(25);
+  });
+
+  it('si el servidor rechaza el motivo vacío, el error sale junto al campo', async () => {
+    const e = await conMermaPendiente();
+    ver(e);
+    const u = userEvent.setup();
+    const original = e.api.llamar.bind(e.api);
+    vi.spyOn(e.api, 'llamar').mockImplementation(((n: string, en: unknown) => (n === 'resolverMerma'
+      ? Promise.reject(new ErrorApi('invalid-argument', 'Indique el motivo del rechazo.', { codigo: 'entrada-invalida' }))
+      : original(n as never, en as never))) as never);
+    await u.click(await screen.findByRole('button', { name: 'Rechazar la merma de Cable HDMI 2 m' }));
+    const d = await screen.findByRole('dialog', { name: '¿Rechazar esta merma?' });
+    await u.type(within(d).getByLabelText(/^Motivo del rechazo/), 'Algo');
+    await u.click(within(d).getByRole('button', { name: 'Sí, rechazar' }));
+    expect(await within(d).findByText('Error: Indique el motivo del rechazo.')).toBeTruthy();
+    expect(within(d).queryByRole('alert')).toBeNull();
   });
 
   it('el filtro por estado pide al servidor y la rechazada muestra su motivo de resolución', async () => {

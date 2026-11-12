@@ -195,6 +195,18 @@ export function importarProductosDoble(c: Contexto, e: Entrada<'importarProducto
     const detalles = simulacion.filas.filter((f) => f.accion === 'error').map((f) => `línea ${f.linea}: ${f.errores.map((x) => (x.columna === null ? x.motivo : `${x.columna}: ${x.motivo}`)).join('; ')}`);
     throw fallo('entrada-invalida', `El archivo tiene ${simulacion.resumen.errores} fila(s) con errores; corríjalas o importe omitiéndolas`, { detalles });
   }
+  if (e.omitirErrores === true) {
+    // Igual que el servidor: omitir exige la lista y debe coincidir exactamente con las filas con error de la simulación nueva.
+    if (e.lineasOmitidas === undefined) throw fallo('entrada-invalida', 'Con omitirErrores debe enviar lineasOmitidas: las líneas con error que acepta omitir');
+    const vistas = new Set(e.lineasOmitidas);
+    const ahoraConError = simulacion.filas.filter((f) => f.accion === 'error').map((f) => f.linea);
+    if (vistas.size !== ahoraConError.length || ahoraConError.some((l) => !vistas.has(l))) {
+      return {
+        completa: false, creados: 0, actualizados: 0, sinCambios: 0, omitidas: 0, lotes: { total: 0, aplicados: 0 }, productos: [], desactualizada: true,
+        detencion: 'El archivo o los datos cambiaron desde la simulación; vuelva a simular. No se escribió nada.', simulacion,
+      };
+    }
+  }
   const { filas } = leer(c, e, cargaInicial);
   const buenas = new Map(simulacion.filas.filter((f) => f.accion !== 'error').map((f) => [f.linea, f.accion]));
   const aplicables = filas.filter((f) => buenas.has(f.linea));

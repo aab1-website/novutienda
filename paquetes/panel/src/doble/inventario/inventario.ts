@@ -198,6 +198,7 @@ export const handlersInventario: {
   },
 
   resolverMerma(c, e) {
+    if (e.decision === 'rechazada' && (e.motivo ?? '').trim() === '') throw fallo('entrada-invalida', 'Indique el motivo del rechazo.');
     return operacion(c, 'merma-resolver', e.operacionId, [e.mermaId, e.decision, e.motivo], () => {
       const i = c.e.mermas.findIndex((m) => m.mermaId === e.mermaId);
       const m = c.e.mermas[i];

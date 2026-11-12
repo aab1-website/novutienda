@@ -106,7 +106,7 @@ describe('importar: siempre simulación primero', () => {
     expect(d.textContent).toContain('se omiten 1 fila con error');
     await u.click(within(d).getByRole('button', { name: 'Sí, importar y omitir las filas con error' }));
     await waitFor(() => expect(llamadas(e, 'importarProductosCsv')).toHaveLength(1));
-    expect(llamadas(e, 'importarProductosCsv')[0]?.entrada).toMatchObject({ omitirErrores: true, cargaInicial: false });
+    expect(llamadas(e, 'importarProductosCsv')[0]?.entrada).toMatchObject({ omitirErrores: true, cargaInicial: false, lineasOmitidas: [4] });
     expect(await screen.findByText(/Importación terminada: 2 productos creados/, { selector: '.alerta' })).toBeTruthy();
     expect(screen.getByText(/Se omitieron 1 fila con error \(líneas del archivo: 4\)/)).toBeTruthy();
     expect(screen.queryByText(/Atención: usted aceptó omitir/)).toBeNull();
@@ -231,5 +231,35 @@ describe('importar: por tandas', () => {
     const aviso = await screen.findByText(/Atención: usted aceptó omitir 1 fila \(líneas: 4\) y el servidor omitió 2/);
     expect(aviso.closest('.alerta')?.getAttribute('role')).toBe('alert');
     expect(screen.getByText(/Se omitieron 2 filas con error \(líneas del archivo: 2, 4\)/)).toBeTruthy();
+  });
+
+  it('si el servidor responde desactualizada no dice que importó, muestra la simulación nueva, pide confirmar otra vez y usa otro operacionId', async () => {
+    const e = crearEntorno('adm');
+    ver(e);
+    const u = userEvent.setup();
+    await u.upload(entradaArchivo(), mixto());
+    await screen.findByRole('table', { name: 'Simulación de la importación' });
+    const original = e.api.llamar.bind(e.api);
+    let primera = true;
+    const ids: unknown[] = [];
+    vi.spyOn(e.api, 'llamar').mockImplementation((async (n: string, en: unknown) => {
+      if (n === 'importarProductosCsv') ids.push((en as Record<string, unknown>)['operacionId']);
+      if (n !== 'importarProductosCsv' || !primera) return original(n as never, en as never);
+      primera = false;
+      const sim = await original('simularImportacionProductos', { archivo: (en as { archivo: string }).archivo } as never);
+      return { completa: false, desactualizada: true, creados: 0, actualizados: 0, sinCambios: 0, omitidas: 0, lotes: { total: 0, aplicados: 0 }, productos: [], detencion: 'x', simulacion: { ...sim, resumen: { ...sim.resumen, sinCambios: 9 } } };
+    }) as never);
+    await u.click(screen.getByRole('button', { name: 'Importar las filas válidas y omitir las 1 con error' }));
+    await u.click(within(await screen.findByRole('dialog')).getByRole('button', { name: 'Sí, importar y omitir las filas con error' }));
+    expect(await screen.findByText('Los datos cambiaron desde la simulación. Revise la simulación nueva antes de importar.')).toBeTruthy();
+    expect(screen.queryByText(/Importación terminada/)).toBeNull();
+    expect(screen.queryByRole('dialog')).toBeNull();
+    expect(screen.getByText(/9 sin cambios/)).toBeTruthy();
+    await u.click(screen.getByRole('button', { name: 'Importar las filas válidas y omitir las 1 con error' }));
+    await u.click(within(await screen.findByRole('dialog')).getByRole('button', { name: 'Sí, importar y omitir las filas con error' }));
+    expect(await screen.findByText(/Importación terminada: 2 productos creados/, { selector: '.alerta' })).toBeTruthy();
+    expect(ids).toHaveLength(2);
+    expect(ids[0]).not.toBe(ids[1]);
+    expect(screen.queryByText(/Los datos cambiaron/)).toBeNull();
   });
 });

@@ -15,7 +15,7 @@ import { aBase64, formatoBytes } from '../../util/base64.js';
 import { aCsv, descargarTexto } from '../../util/csv.js';
 import {
   ACCION_TEXTO, ACEPTA_ARCHIVO, aplicables, COLUMNAS_ARCHIVO, COLUMNAS_STOCK, encabezadosPlantilla, lineasConfirmacion, MAX_BYTES_ARCHIVO, MAX_FILAS, ordenarFilas, resumenSimulacion,
-  avisoOmitidas, lineasConError, TEXTO_ARCHIVO_CAMBIO, textoDetencion, textoError, textoResultado, textoTandas, validarArchivo,
+  avisoOmitidas, lineasConError, TEXTO_ARCHIVO_CAMBIO, TEXTO_DESACTUALIZADA, textoDetencion, textoError, textoResultado, textoTandas, validarArchivo,
 } from './importar-logica.js';
 import './inventario.css';
 
@@ -76,6 +76,8 @@ export function ImportarExportar(): JSX.Element {
   /** Líneas con error que la persona vio en la simulación y aceptó omitir al confirmar. */
   const aceptadas = useRef<number[]>([]);
   const [archivoCambio, setArchivoCambio] = useState(false);
+  /** El servidor no escribió nada porque las filas con error ya no son las que la persona aceptó omitir. */
+  const [desactualizada, setDesactualizada] = useState(false);
   const { marcarGuardado } = useCambiosSinGuardar(fuente !== null, ['inventarios.importar']);
   const esAdm = usuario.rol === 'adm';
 
@@ -93,6 +95,7 @@ export function ImportarExportar(): JSX.Element {
     const turno = (vigente.current += 1);
     setSim(null);
     setArchivoCambio(false);
+    setDesactualizada(false);
     operacion.current = null;
     void simulacion.ejecutar(async () => {
       const s = await api.llamar('simularImportacionProductos', { archivo: f.archivo, cargaInicial });
@@ -136,6 +139,7 @@ export function ImportarExportar(): JSX.Element {
     operacion.current = null;
     aceptadas.current = [];
     setArchivoCambio(false);
+    setDesactualizada(false);
     importacion.limpiar();
     simulacion.limpiar();
     marcarGuardado();
@@ -150,10 +154,20 @@ export function ImportarExportar(): JSX.Element {
     if (omitir) aceptadas.current = lineasConError(sim);
     void importacion.ejecutar(async () => {
       try {
-        // PENDIENTE (Central): el contrato del panel aún no admite `lineasOmitidas: number[]` (las líneas en error de la
-        // simulación aceptada, para que el servidor verifique que omite exactamente esas). Cuando exista en
-        // `api/contrato.ts`, enviar aquí `...(omitir ? { lineasOmitidas: aceptadas.current } : {})`.
-        const r = await api.llamar('importarProductosCsv', { operacionId, archivo: fuente.archivo, cargaInicial: inicial, omitirErrores: omitir });
+        const base = { operacionId, archivo: fuente.archivo, cargaInicial: inicial };
+        const r = await api.llamar('importarProductosCsv', omitir ? { ...base, omitirErrores: true, lineasOmitidas: aceptadas.current } : { ...base, omitirErrores: false });
+        if (r.desactualizada === true) {
+          // El servidor no escribió nada: se muestra la simulación nueva y se pide confirmar otra vez. Como no quedó nada
+          // aplicado con ese `operacionId`, el intento siguiente usa uno nuevo.
+          operacion.current = null;
+          aceptadas.current = [];
+          setSim(r.simulacion);
+          setResultado(null);
+          setConfirmando(null);
+          setDesactualizada(true);
+          return;
+        }
+        setDesactualizada(false);
         setResultado(r);
         setConfirmando(null);
         if (r.completa) {
@@ -243,6 +257,7 @@ export function ImportarExportar(): JSX.Element {
 
       {esAdm && sim !== null && r !== undefined && (
         <Seccion titulo="Simulación: así quedaría el inventario">
+          {desactualizada && <Alerta>{TEXTO_DESACTUALIZADA}</Alerta>}
           <p role="status" data-prueba="resumen-simulacion"><strong>{resumenSimulacion(r)}.</strong></p>
           {sim.columnasIgnoradas.length > 0 && <Alerta tipo="info">Estas columnas no se usan y se ignoran: {sim.columnasIgnoradas.join('; ')}.</Alerta>}
           <TablaSimulacion sim={sim} />

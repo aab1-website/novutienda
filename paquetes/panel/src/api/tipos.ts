@@ -574,6 +574,8 @@ export interface ResultadoImportacion {
   readonly productos: readonly string[];
   /** Motivo de la detención, si `completa` es `false`. */
   readonly detencion?: string;
+  /** `true`: las filas con error ya no son las que se aceptaron omitir; no se escribió nada y `simulacion` es la nueva. */
+  readonly desactualizada?: boolean;
   readonly simulacion: Simulacion;
 }
 
