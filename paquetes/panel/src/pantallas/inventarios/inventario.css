@@ -1,0 +1,10 @@
+/* Inventario: productos, panel lateral y movimientos. Solo clases: la CSP no admite estilos en línea. */
+.inv-cuerpo { display: flex; flex-direction: column; gap: 16px; }
+.inv-formulario { display: flex; flex-direction: column; gap: 16px; }
+.inv-bloque { display: flex; flex-direction: column; gap: 12px; margin: 0; padding: 12px; border: 1px solid var(--borde); border-radius: 12px; }
+.inv-bloque legend { padding: 0 6px; font-weight: 600; }
+.inv-filtro { max-width: 280px; margin-bottom: 8px; }
+.inv-lineas { display: flex; flex-direction: column; gap: 12px; }
+.inv-linea { display: flex; flex-direction: column; gap: 8px; }
+.inv-resumen { display: flex; flex-direction: column; gap: 8px; margin: 0; padding: 0; list-style: none; }
+.inv-resumen p { margin: 0; }
