@@ -2,7 +2,7 @@ import { describe, expect, it } from 'vitest';
 import { ErrorApi } from '../../api/errores.js';
 import type { ClienteApi } from '../../api/cliente.js';
 import type { Medio, ResultadoEstadoSubida } from '../../api/tipos.js';
-import { ESPERA_INICIAL_MS, ESPERA_TOPE_MS, RESPALDO_TRAS_MS, esperarSubida } from './esperar.js';
+import { ESPERA_INICIAL_MS, ESPERA_TOPE_MS, RESPALDO_TRAS_MS, esperarSubida, mensajeDeSubida } from './esperar.js';
 
 const MEDIO: Medio = { id: 'sub-12345678', productoId: 'tv-55', tipo: 'foto', bytesOriginal: 10, ancho: 1, alto: 1, creadoEn: 0, por: 'u' };
 
@@ -70,5 +70,18 @@ describe('esperarSubida', () => {
     const definitivo = cliente(() => new ErrorApi('permission-denied', 'x'));
     await expect(esperarSubida(definitivo.api, 'sub-12345678', reloj().opciones)).rejects.toMatchObject({ codigoHttps: 'permission-denied' });
     expect(definitivo.llamadas).toHaveLength(1);
+  });
+});
+
+describe('mensajeDeSubida', () => {
+  it('muestra el motivo que guardó el servidor, sin códigos', async () => {
+    const { api } = cliente(() => ({ estado: 'rechazada', motivo: 'El video dura más de 60 segundos' }));
+    const e = await esperarSubida(api, MEDIO.id, reloj().opciones).catch((x: unknown) => x);
+    expect(mensajeDeSubida(e)).toBe('El video dura más de 60 segundos');
+  });
+  it('conserva el mensaje del servidor si el servicio no está disponible y cae al genérico sin motivo', () => {
+    expect(mensajeDeSubida(new ErrorApi('unavailable', 'El procesamiento de video no está disponible por ahora.', { codigo: 'no-disponible' }))).toBe('El procesamiento de video no está disponible por ahora.');
+    expect(mensajeDeSubida(new ErrorApi('failed-precondition', 'Formato de video no admitido: use MP4, MOV o WebM', { codigo: 'tipo-no-permitido' }))).toBe('Formato de video no admitido: use MP4, MOV o WebM');
+    expect(mensajeDeSubida(new ErrorApi('failed-precondition', '', { codigo: 'procesamiento' }))).toBe('No se pudo procesar el archivo. Pruebe con otro.');
   });
 });

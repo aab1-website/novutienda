@@ -23,6 +23,7 @@ derivan del código; las cifras caducan y por eso no se copian.
 - Sitio de Hosting por tenant (PR C): scripts (#65) y reconstrucción con matriz en staging (#66, fusionado; ajustes #68 a #72 tras la primera reconstrucción real), documentados en `docs/produccion/reconstruccion-sitio.md`; decisiones DC1 a DC4 en `docs/arquitectura/decisiones.md`.
 - 11/11/2026: sitio real publicado en staging con fotos. En staging hay hoy una copia única de los medios hecha ese día y la lectura sin listado ya está aplicada. **Pendiente de despliegue:** que los medios públicos se escriban en un bucket público aparte (`MEDIOS_BUCKET_PUBLICO`); decisión en `docs/arquitectura/decisiones.md` y operación en `docs/produccion/pase-a-staging.md` 9.5.
 - Arquitectura por zonas, L3 (PR 42 a 46): encendido por tenant también en la API HTTP (`docs/produccion/funciones.md` §4), disparador de medios con consola apagada y limpieza para todos los tenants; sin cambio de contrato con NovuChat.
+- 11/11/2026: video con el ffmpeg del runtime, rechazo previo con motivo claro y validación en el panel (rama `fix/medios-video-no-disponible`, aún sin fusionar ni desplegar; decisión D1 en `docs/arquitectura/decisiones.md`).
 
 ## Bloqueos registrados el 04/11/2026 (confirmar si siguen; el CI de `main` ya está en verde)
 
@@ -32,6 +33,7 @@ derivan del código; las cifras caducan y por eso no se copian.
 
 ## Pendiente
 
+- Video: confirmar en staging que el runtime trae ffmpeg con libx264 (humo con un `.mp4` y un `.webm` reales); D2 (más CPU o una sola pasada si el humo pasa de 300 s) y D3 (cuenta de servicio dedicada para medios).
 - Sitio por tenant: decisión de Andres sobre una cuenta de servicio propia con solo `roles/firebasehosting.admin`; cargar el logo de `t1`; borrar la variable de repositorio `TENANT_ID` tras el pase de producción. Secretos y variable de staging ya cargados (10/11/2026).
 
 - L3 (HTTP, bus de eventos, disparador) cerrada el 09/11/2026 (plano §6.8 y §7): L3-0 a L3-5 fusionados (PR 42 a 47), L3-6 es este cierre. El encendido por tenant rige también para la API HTTP; ver `docs/produccion/funciones.md`.
@@ -40,5 +42,5 @@ derivan del código; las cifras caducan y por eso no se copian.
 - Pase a staging (`docs/produccion/pase-a-staging.md`): proyecto, facturación, Firestore/Storage, Hosting, WIF, secretos, App Check,
   variables y Environments de GitHub, rulesets, alerta de Monitoring.
 - Decisiones de Andres: D2 a D5 del plan único (proyectos Firebase, ubicación de Firestore —se propone `us-east1`—, segundo aprobador,
-  nombre); cuenta de servicio de ejecución dedicada para Functions; video (ffmpeg en Functions o fuera); `minimumReleaseAge` y
+  nombre); cuenta de servicio de ejecución dedicada para Functions; `minimumReleaseAge` y
   `trustPolicy` de pnpm (ver bitácora).

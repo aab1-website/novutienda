@@ -18,6 +18,9 @@ export const LIMITES_CONSOLA = {
   cuotaOriginalesBytes: 10 * 1024 * MIB,
   /** Protección contra imágenes «bomba»: píxeles máximos de una foto (100 megapíxeles). */
   pixelesFotoMax: 100_000_000,
+  /** Protección de recursos al transcodificar: lado máximo y área máxima (4096×2304) de un video. */
+  ladoVideoMax: 4096,
+  pixelesVideoMax: 4096 * 2304,
   seccionesMax: 5,
   /** Vigencia de una reserva de subida sin finalizar. */
   vigenciaReservaMs: 6 * 60 * 60 * 1000,

@@ -4,6 +4,7 @@ import { getApps, initializeApp } from 'firebase-admin/app';
 import { getAppCheck } from 'firebase-admin/app-check';
 import { getAuth, type Auth } from 'firebase-admin/auth';
 import { getFirestore, type Firestore } from 'firebase-admin/firestore';
+import { logger } from 'firebase-functions';
 import { getStorage } from 'firebase-admin/storage';
 import type { CatalogoPuerto, DisparadorSitio, ProcesadorMedios } from '@novutienda/consola';
 import { crearLectorDominios, type LectorDominios } from '../../coordinador/dominios.js';
@@ -116,7 +117,14 @@ export function entorno(): Entorno {
     // Falla cerrado: fuera de pruebas sin bucket público válido y distinto no hay entorno (nunca se publica en el por defecto).
     const nombrePublico = exigirBucketPublico(PARAMETROS.mediosBucketPublico.value(), bucket.name, esEntornoDePruebas(process.env));
     const bucketPublico = nombrePublico === '' ? bucket : almacenamiento.bucket(nombrePublico);
-    unico = crearEntorno({ firestore: getFirestore(), auth: getAuth(), bucket, bucketPublico, env });
+    const procesador = crearProcesadorMedios(bucket, env);
+    unico = crearEntorno({ firestore: getFirestore(), auth: getAuth(), bucket, bucketPublico, env, procesador });
+    // Fuera de pruebas se sondea el ffmpeg una sola vez por instancia; si falta, se deja constancia sin tumbar las demás funciones.
+    if (!esEntornoDePruebas(process.env)) {
+      void procesador.estadoVideo().then((e) => {
+        if (!e.disponible) logger.error('video no disponible', { causa: e.causa, version: e.version });
+      }).catch(() => { logger.error('video no disponible', { causa: 'la sonda falló' }); });
+    }
   }
   return unico;
 }

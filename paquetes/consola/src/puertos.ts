@@ -128,6 +128,11 @@ export interface SolicitudProcesado {
 
 /** Procesamiento de medios (imágenes y video). Debe quitar EXIF/GPS de toda salida. */
 export interface ProcesadorMedios {
+  /**
+   * Si el procesamiento de ese tipo está disponible ahora. Opcional: sin él se asume que sí. `reservarSubida` lo consulta
+   * para video y rechaza (`no-disponible`) antes de subir nada.
+   */
+  disponible?(tipo: TipoMedio): Promise<boolean>;
   inspeccionar(ruta: string, tipo: TipoMedio): Promise<InfoMedio>;
   procesar(solicitud: SolicitudProcesado): Promise<readonly VersionProcesada[]>;
 }

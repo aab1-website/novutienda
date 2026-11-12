@@ -123,16 +123,18 @@ describe.skipIf(!hayEmulador)('medios (emulador)', () => {
     expect(await usoBytes()).toBe(antes);
   });
 
-  it('el video se rechaza con claridad si el entorno no trae ffmpeg, sin publicar nada', async () => {
+  it('el video se rechaza con claridad si el entorno no trae ffmpeg: la reserva falla, sin cuota ni archivos', async () => {
     const id = idSubida();
-    // Cabecera MP4 mínima (caja ftyp con la marca isom): pasa la detección de tipo y llega al procesador.
-    const mp4 = Buffer.concat([Buffer.from([0, 0, 0, 0x20]), Buffer.from('ftypisom'), Buffer.alloc(4), Buffer.from('isomiso2avc1mp41')]);
-    await accion('medios', 'reservarSubida', { subidaId: id, productoId: PRODUCTO, tipo: 'video', bytes: mp4.length }, sup.token, M);
-    await h.bucket.file(rutaOriginal(id)).save(mp4, { contentType: 'video/mp4', resumable: false });
-    await esperar(async () => (await h.firestore.doc(`tenants/${M}/subidas/${id}`).get()).data()?.['estado'] === 'rechazada', 60_000, 'video rechazado');
+    const antes = await usoBytes();
+    const r = await accion('medios', 'reservarSubida', { subidaId: id, productoId: PRODUCTO, tipo: 'video', bytes: 1000 }, sup.token, M);
+    expect(r.status).toBe(503);
+    expect(r.error?.status).toBe('UNAVAILABLE');
+    expect(r.error?.message).toContain('no está disponible por ahora');
+    expect(r.error?.message).toContain('su archivo no tiene problemas');
+    expect(await usoBytes()).toBe(antes);
+    expect((await h.firestore.doc(`tenants/${M}/subidas/${id}`).get()).exists).toBe(false);
     const prefijo = `tenants/${M}/publico/medios/${PRODUCTO}/`;
-    const [publicos] = await h.bucketPublico.getFiles({ prefix: prefijo });
-    expect(publicos.filter((f) => f.name.endsWith('.mp4'))).toHaveLength(0);
+    expect((await h.bucketPublico.getFiles({ prefix: prefijo }))[0].filter((f) => f.name.endsWith('.mp4'))).toHaveLength(0);
     expect((await h.bucket.getFiles({ prefix: prefijo }))[0].filter((f) => f.name.endsWith('.mp4'))).toHaveLength(0);
   });
 });

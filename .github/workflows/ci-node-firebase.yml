@@ -214,12 +214,29 @@ jobs:
           emulators:exec --only firestore --project demo-pruebas
           "npm run test:rules"
 
+      - name: ffmpeg para la suite de video de Functions
+        # Producción usa el ffmpeg/ffprobe del runtime de Google (/usr/bin; decisión D1 = A). En CI se instalan los del
+        # runner para que pruebas/funciones/video.test.ts corra con binarios reales; con VIDEO_EXIGIDO=1 la suite falla
+        # en vez de saltarse si faltan. Se verifica libx264, que el procesador de video necesita.
+        if: needs.preparar.outputs.hay_test_funciones == 'true'
+        run: |
+          set -euo pipefail
+          sudo apt-get update
+          sudo apt-get install -y --no-install-recommends ffmpeg
+          ffmpeg -hide_banner -encoders | grep -q libx264 \
+            || { echo "::error::El ffmpeg instalado no trae libx264."; exit 1; }
+          ffprobe -version | head -n 1
+
       - name: Pruebas de Functions (emuladores de Auth, Firestore, Storage, Functions y Eventarc)
         # plataforma/funciones/scripts/probar.mjs empaqueta las Functions y llama
         # a `firebase emulators:exec` (binario global) con el proyecto ficticio
         # demo-pruebas y los puertos de firebase.json; los secretos de prueba se
         # generan al vuelo. Nada toca Firebase real.
         if: needs.preparar.outputs.hay_test_funciones == 'true'
+        # VIDEO_EXIGIDO=1: la suite de video (ffmpeg real, /usr/bin por defecto en la prueba) falla en vez de saltarse.
+        # FFMPEG_PATH/FFPROBE_PATH no se exportan aquí para no habilitar el video en el emulador por herencia del entorno.
+        env:
+          VIDEO_EXIGIDO: '1'
         run: |
           set -euo pipefail
           npm i -g "firebase-tools@${FIREBASE_TOOLS_VERSION}"
