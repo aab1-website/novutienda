@@ -124,3 +124,85 @@ describe('borradores en memoria', () => {
     expect((screen.getByLabelText('Nombre') as HTMLInputElement).value).toBe('');
   });
 });
+
+describe('guardia: observaciones de revisión', () => {
+  it('no atrapa anclajes que no son rutas del panel, ni enlaces nuevos o con modificador', async () => {
+    montar(true);
+    const u = userEvent.setup();
+    const sal = document.createElement('a');
+    sal.href = '#contenido';
+    sal.textContent = 'Saltar';
+    const otra = document.createElement('a');
+    otra.href = '#/b';
+    otra.target = '_blank';
+    otra.textContent = 'Nueva';
+    document.body.append(sal, otra);
+    await u.click(sal);
+    expect(screen.queryByRole('dialog')).toBeNull();
+    expect(window.location.hash).toBe('#contenido');
+    window.location.hash = '#/a';
+    otra.addEventListener('click', (e) => e.preventDefault());
+    await u.click(otra);
+    expect(screen.queryByRole('dialog')).toBeNull();
+    const b = screen.getByRole('link', { name: 'Ir a B' });
+    for (const init of [{ ctrlKey: true }, { metaKey: true }, { shiftKey: true }, { button: 1 }]) {
+      const ev = new MouseEvent('click', { bubbles: true, cancelable: true, ...init });
+      b.addEventListener('click', (e) => e.preventDefault(), { once: true });
+      b.dispatchEvent(ev);
+    }
+    expect(screen.queryByRole('dialog')).toBeNull();
+    sal.remove();
+    otra.remove();
+  });
+  it('«Salir sin guardar» borra también los borradores de las fuentes descartadas', async () => {
+    function F(): JSX.Element {
+      const b = useBorrador('ficha-x', '');
+      useCambiosSinGuardar(b.valor !== '', ['ficha-x']);
+      return h('div', null, h('input', { 'aria-label': 'Nombre', value: b.valor, onInput: (e: Event) => b.poner((e.target as HTMLInputElement).value) }), h('a', { href: '#/b' }, 'Ir a B'));
+    }
+    function Raiz(): JSX.Element {
+      const [ver, setVer] = useState(true);
+      return h('div', null, h('button', { type: 'button', onClick: () => setVer(!ver) }, 'Alternar'), ver ? h(F, null) : h('p', null, 'Fuera'));
+    }
+    render(h(ProveedorGuardia, null, h(Raiz, null)));
+    const u = userEvent.setup();
+    await u.type(screen.getByLabelText('Nombre'), 'abc');
+    await u.click(screen.getByRole('link', { name: 'Ir a B' }));
+    await u.click(await screen.findByRole('button', { name: 'Salir sin guardar' }));
+    await u.click(screen.getByRole('button', { name: 'Alternar' }));
+    await u.click(screen.getByRole('button', { name: 'Alternar' }));
+    expect((screen.getByLabelText('Nombre') as HTMLInputElement).value).toBe('');
+  });
+  it('useBorrador sigue a la clave vigente sin mezclar registros', async () => {
+    function F({ clave }: { clave: string }): JSX.Element {
+      const b = useBorrador(clave, '');
+      return h('input', { 'aria-label': 'Nombre', value: b.valor, onInput: (e: Event) => b.poner((e.target as HTMLInputElement).value) });
+    }
+    function Raiz(): JSX.Element {
+      const [c, setC] = useState('x');
+      return h('div', null, h('button', { type: 'button', onClick: () => setC('x') }, 'X'), h('button', { type: 'button', onClick: () => setC('y') }, 'Y'), h(F, { clave: c }));
+    }
+    render(h(ProveedorGuardia, null, h(Raiz, null)));
+    const u = userEvent.setup();
+    const campo = (): HTMLInputElement => screen.getByLabelText('Nombre') as HTMLInputElement;
+    await u.type(campo(), 'uno');
+    await u.click(screen.getByRole('button', { name: 'Y' }));
+    expect(campo().value).toBe('');
+    await u.type(campo(), 'dos');
+    await u.click(screen.getByRole('button', { name: 'X' }));
+    expect(campo().value).toBe('uno');
+    await u.click(screen.getByRole('button', { name: 'Y' }));
+    expect(campo().value).toBe('dos');
+  });
+  it('marcarGuardado es síncrono: guardar y navegar en el mismo tick no abre el diálogo', async () => {
+    function H(): JSX.Element {
+      const { marcarGuardado } = useCambiosSinGuardar(true);
+      const { confirmarSalida } = useGuardia();
+      return h('button', { type: 'button', onClick: () => { marcarGuardado(); confirmarSalida(() => { window.location.hash = '#/z'; }); } }, 'Guardar y salir');
+    }
+    render(h(ProveedorGuardia, null, h(H, null)));
+    await userEvent.setup().click(screen.getByRole('button', { name: 'Guardar y salir' }));
+    expect(screen.queryByRole('dialog')).toBeNull();
+    expect(window.location.hash).toBe('#/z');
+  });
+});

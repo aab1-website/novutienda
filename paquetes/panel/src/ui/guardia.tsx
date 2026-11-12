@@ -18,7 +18,7 @@ import { Dialogo } from './dialogo.js';
 
 interface ContextoGuardia {
   /** Registra (o quita) una fuente de cambios sin guardar bajo un identificador propio. */
-  readonly marcar: (id: string, sucio: boolean) => void;
+  readonly marcar: (id: string, sucio: boolean, claves?: readonly string[]) => void;
   /** Ejecuta `accion` ya; si hay cambios sin guardar, antes pregunta si se descartan. */
   readonly confirmarSalida: (accion: () => void) => void;
   readonly borradores: Map<string, unknown>;
@@ -40,7 +40,8 @@ const hashDe = (href: string): string | null => {
 };
 
 export function ProveedorGuardia({ children }: { children?: ComponentChildren }): JSX.Element {
-  const fuentes = useRef(new Set<string>());
+  // Fuente de cambios -> claves de los borradores que se pierden si se descarta.
+  const fuentes = useRef(new Map<string, readonly string[]>());
   const borradores = useRef(new Map<string, unknown>());
   const ultimo = useRef(window.location.hash);
   const [pendiente, setPendiente] = useState<Pendiente | null>(null);
@@ -48,10 +49,10 @@ export function ProveedorGuardia({ children }: { children?: ComponentChildren })
   pendienteRef.current = pendiente;
 
   const haySucio = (): boolean => fuentes.current.size > 0;
-  const marcar = useCallback((id: string, sucio: boolean) => {
+  const marcar = useCallback((id: string, sucio: boolean, claves: readonly string[] = []) => {
     if (sucio) {
       if (fuentes.current.size === 0) ultimo.current = window.location.hash;
-      fuentes.current.add(id);
+      fuentes.current.set(id, claves);
     } else fuentes.current.delete(id);
   }, []);
   const preguntar = useCallback((aplicar: () => void) => setPendiente({ aplicar }), []);
@@ -72,6 +73,8 @@ export function ProveedorGuardia({ children }: { children?: ComponentChildren })
       if (!haySucio() || e.defaultPrevented || e.button !== 0 || e.metaKey || e.ctrlKey || e.shiftKey || e.altKey) return;
       const a = e.target instanceof Element ? e.target.closest('a[href]') : null;
       if (a === null || (a.getAttribute('target') ?? '') !== '' || a.hasAttribute('download')) return;
+      // Solo rutas internas del panel (`#/…`): «Saltar al contenido» (`#contenido`) y otros anclajes no se tocan.
+      if (!(a.getAttribute('href') ?? '').startsWith('#/')) return;
       const destino = hashDe((a as HTMLAnchorElement).href);
       if (destino === null || destino === window.location.hash) return;
       e.preventDefault();
@@ -82,6 +85,8 @@ export function ProveedorGuardia({ children }: { children?: ComponentChildren })
     // «Atrás»/«adelante» (popstate) y cualquier cambio de hash ajeno a un clic (hashchange): se restaura la URL sin
     // entrada nueva y se pregunta. El hashchange que sigue a un popstate ya trae el hash restaurado.
     const alVolver = (e: Event): void => {
+      // Un anclaje que no es ruta del panel (`#contenido`) no cambia de pantalla: no se pregunta ni se restaura.
+      if (haySucio() && window.location.hash !== '' && !window.location.hash.startsWith('#/')) return;
       if (!haySucio() || window.location.hash === ultimo.current) {
         registrar();
         return;
@@ -116,6 +121,7 @@ export function ProveedorGuardia({ children }: { children?: ComponentChildren })
   const descartar = (): void => {
     const p = pendiente;
     setPendiente(null);
+    for (const claves of fuentes.current.values()) for (const k of claves) borradores.current.delete(k);
     fuentes.current.clear();
     p?.aplicar();
   };
@@ -148,14 +154,24 @@ export function ProveedorGuardia({ children }: { children?: ComponentChildren })
 
 let serieFuente = 0;
 
-/** Declara que la pantalla tiene (o ya no tiene) cambios sin guardar. Sin proveedor no hace nada. */
-export function useCambiosSinGuardar(sucio: boolean): void {
+/**
+ * Declara que la pantalla tiene (o ya no tiene) cambios sin guardar. Sin proveedor no hace nada.
+ * `claves` son los borradores (`useBorrador`) que se borran si la persona elige «Salir sin guardar».
+ *
+ * Para los PR que adopten la guardia: si la pantalla guarda y navega por código en el mismo tick, llame antes a
+ * `marcarGuardado()` (síncrono); `sucio=false` se registra recién en un efecto y el diálogo alcanzaría a salir.
+ * Tras `marcarGuardado()` la fuente queda libre hasta que `sucio` pase de nuevo a `false` y luego a `true`.
+ */
+export function useCambiosSinGuardar(sucio: boolean, claves: readonly string[] = []): { marcarGuardado: () => void } {
   const g = useContext(CtxGuardia);
   const [id] = useState(() => `fuente-${(serieFuente += 1)}`);
+  const clavesTxt = claves.join('\u0000');
   useEffect(() => {
-    g?.marcar(id, sucio);
+    g?.marcar(id, sucio, clavesTxt === '' ? [] : clavesTxt.split('\u0000'));
     return () => g?.marcar(id, false);
-  }, [g, id, sucio]);
+  }, [g, id, sucio, clavesTxt]);
+  const marcarGuardado = useCallback(() => g?.marcar(id, false), [g, id]);
+  return { marcarGuardado };
 }
 
 /** Para «Salir» y similares: `confirmarSalida(accion)` pregunta antes si hay cambios sin guardar. */
@@ -168,12 +184,17 @@ type Actualizacion<T> = T | ((previo: T) => T);
 
 /**
  * Estado que sobrevive al cambio de pestaña (y de pantalla) dentro del panel: vive en memoria del proveedor bajo
- * `clave` (inclúyala con el nombre de la pantalla y, si aplica, el registro editado). `descartar` lo borra y
- * restaura el inicial; llámelo al guardar con éxito o al cancelar. Sin proveedor se comporta como `useState`.
+ * `clave` (inclúyala con el nombre de la pantalla y, si aplica, el registro editado). El valor mostrado y el
+ * guardado siguen siempre a la `clave` vigente, aunque el componente pase de un registro a otro sin desmontarse.
+ * `descartar` lo borra y restaura el inicial; llámelo al guardar con éxito o al cancelar. Sin proveedor se
+ * comporta como `useState`.
  */
 export function useBorrador<T>(clave: string, inicial: T): { valor: T; poner: (v: Actualizacion<T>) => void; descartar: () => void; hayBorrador: boolean } {
   const g = useContext(CtxGuardia);
-  const [valor, setValor] = useState<T>(() => (g !== null && g.borradores.has(clave) ? (g.borradores.get(clave) as T) : inicial));
+  const inicialRef = useRef(inicial);
+  inicialRef.current = inicial;
+  const [estado, setEstado] = useState<{ clave: string; valor: T }>(() => ({ clave, valor: g !== null && g.borradores.has(clave) ? (g.borradores.get(clave) as T) : inicial }));
+  const valor: T = estado.clave === clave ? estado.valor : g !== null && g.borradores.has(clave) ? (g.borradores.get(clave) as T) : inicial;
   const ref = useRef(valor);
   ref.current = valor;
   const poner = useCallback(
@@ -181,15 +202,14 @@ export function useBorrador<T>(clave: string, inicial: T): { valor: T; poner: (v
       const nuevo = typeof v === 'function' ? (v as (p: T) => T)(ref.current) : v;
       ref.current = nuevo;
       g?.borradores.set(clave, nuevo);
-      setValor(nuevo);
+      setEstado({ clave, valor: nuevo });
     },
     [g, clave],
   );
-  const inicialRef = useRef(inicial);
   const descartar = useCallback(() => {
     g?.borradores.delete(clave);
     ref.current = inicialRef.current;
-    setValor(inicialRef.current);
+    setEstado({ clave, valor: inicialRef.current });
   }, [g, clave]);
   return { valor, poner, descartar, hayBorrador: g?.borradores.has(clave) ?? false };
 }
