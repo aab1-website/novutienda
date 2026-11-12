@@ -64,6 +64,18 @@ export function crearCatalogoConsola(deps: DepsCatalogoConsola): CatalogoPuerto 
       return (await leerProducto(tx, tenantId, productoId)) !== undefined;
     },
 
+    /** Datos mínimos del producto con la transacción del llamador; no lee existencias. `marca` solo si existe. */
+    async leerProductoEnTransaccion(tx, tenantId, productoId) {
+      const p = await leerProducto(tx, tenantId, productoId);
+      if (p === undefined) return undefined;
+      return {
+        id: p.productoId, nombre: p.nombre, categoria: p.categoria ?? '',
+        ...(p.marca !== undefined ? { marca: p.marca } : {}),
+        activo: p.activo, precioUSD: aPrecioConsola(p.precioCentavos),
+        ...(p.garantiaMeses !== undefined ? { garantiaMeses: p.garantiaMeses } : {}),
+      };
+    },
+
     async existenciasPorAlmacen(tenantId, productoId) {
       return db.runTransaction(async (tx): Promise<Existencia[]> => leerExistencias(tx, tenantId, productoId));
     },

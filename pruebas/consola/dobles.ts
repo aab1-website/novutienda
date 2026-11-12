@@ -1,7 +1,7 @@
 import type { Actor, TransaccionIdentidad } from '@novutienda/nucleo';
 import type {
   AlmacenMedios, CatalogoPuerto, ConsultaSubidas, DisparadorSitio, Existencia, InfoMedio,
-  ProcesadorMedios, ProductoCatalogo, Reloj, SolicitudProcesado, VersionProcesada,
+  ProcesadorMedios, ProductoCatalogo, ProductoEnTransaccion, Reloj, SolicitudProcesado, VersionProcesada,
 } from '@novutienda/consola';
 import { ArchivoNoAdmitido, ProcesamientoNoDisponible } from '@novutienda/consola';
 import { DobleDb } from './doble-db.js';
@@ -34,7 +34,7 @@ export class CatalogoDoble implements CatalogoPuerto {
   constructor(readonly db?: DobleDb) {}
 
   agregar(id: string, extra: Partial<ProductoCatalogo> = {}): ProductoCatalogo {
-    const p: ProductoCatalogo = { id, nombre: `Producto ${id}`, categoria: 'general', activo: true, disponible: true, precioUSD: { bo: 10, ar: 12 }, ...extra };
+    const p: ProductoCatalogo = { id, nombre: `Producto ${id}`, categoria: 'general', marca: 'Marca', activo: true, disponible: true, precioUSD: { bo: 10, ar: 12 }, ...extra };
     this.productos.set(id, p);
     return p;
   }
@@ -50,6 +50,15 @@ export class CatalogoDoble implements CatalogoPuerto {
     this.txExistencia.push(tx);
     await tx.get(`__producto__/${id}`); // lectura real con tx, como el adaptador: entra al control de conflictos
     return this.productos.has(id);
+  }
+  /** Si se define, se invoca justo después de leer en la transacción (simula un cambio concurrente entre la lectura y el commit). */
+  alLeerEnTransaccion: ((id: string) => void) | undefined = undefined;
+  async leerProductoEnTransaccion(tx: TransaccionIdentidad, _t: string, id: string): Promise<ProductoEnTransaccion | undefined> {
+    this.txExistencia.push(tx);
+    await tx.get(`__producto__/${id}`);
+    const p = this.productos.get(id);
+    this.alLeerEnTransaccion?.(id);
+    return p === undefined ? undefined : { id: p.id, nombre: p.nombre, categoria: p.categoria, activo: p.activo, precioUSD: p.precioUSD, ...(p.marca === undefined ? {} : { marca: p.marca }) };
   }
   existenciasPorAlmacen(_t: string, id: string): Promise<readonly Existencia[]> {
     return Promise.resolve(this.existencias.get(id) ?? []);

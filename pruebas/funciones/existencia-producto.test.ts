@@ -15,7 +15,7 @@ describe.skipIf(!hayEmulador)('existencia del producto en la transacción (emula
 
   beforeAll(async () => {
     h = herramientas();
-    await sembrarTenant(h, M, { productos: [{ id: EXISTE, nombre: 'Cámara web', precioUSD: { bo: 5000, ar: 5000 }, tienda: 0 }] });
+    await sembrarTenant(h, M, { productos: [{ id: EXISTE, nombre: 'Cámara web', marca: 'Marca de Prueba', precioUSD: { bo: 5000, ar: 5000 }, tienda: 0 }] });
     sup = await crearUsuario(h, { rol: 'sup', tenant: M });
   });
 

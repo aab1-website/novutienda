@@ -67,9 +67,14 @@ export async function guardarFicha(deps: DepsSitio, e: EntradaFicha): Promise<vo
   const ahora = ahoraIso(deps);
 
   await deps.db.runTransaction(async (tx) => {
-    // La existencia del producto se lee con ESTA transacción (puerto `existeProductoEnTransaccion`), antes de toda escritura:
+    // El producto (existencia y marca) se lee con ESTA transacción (puerto `leerProductoEnTransaccion`), antes de toda escritura:
     // si Inventarios cambia el producto mientras tanto, la transacción se reintenta. Inventarios no tiene «eliminar producto» hoy.
-    if (!(await deps.catalogo.existeProductoEnTransaccion(tx, t, e.productoId))) throw new ErrorConsola('no-encontrado', 'El producto no existe');
+    const producto = await deps.catalogo.leerProductoEnTransaccion(tx, t, e.productoId);
+    if (producto === undefined) throw new ErrorConsola('no-encontrado', 'El producto no existe');
+    // El sitio exige marca: un producto sin marca tumbaría la reconstrucción de todo el sitio.
+    if (ficha.estado === 'publicado' && (producto.marca ?? '').trim() === '') {
+      throw new ErrorConsola('estado', 'Agregue la marca del producto en Inventario antes de publicarlo');
+    }
     const previa = (await tx.get(rutaFicha(t, e.productoId))).data();
     const mapa = (await tx.get(rutaSitio(t, 'slugs'))).data()?.['mapa'];
     const slugs: Record<string, string> = {};
