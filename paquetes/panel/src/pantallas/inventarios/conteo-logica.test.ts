@@ -47,5 +47,6 @@ describe('avance y cierre', () => {
     expect(t).toContain('Faltan 23 productos por contar. Los que tengan existencias en el sistema se contarán en 0 y generarán mermas.');
     expect(lineasDeCierre({ contados: 1, total: 2 }).join(' ')).toContain('Faltan 1 producto por contar.');
     expect(lineasDeCierre({ contados: 2, total: 2 }).join(' ')).not.toMatch(/Faltan|se contarán en 0/);
+    expect(lineasDeCierre({ contados: 2, total: 2 }).join(' ')).toContain('No falta ningún producto por contar.');
   });
 });

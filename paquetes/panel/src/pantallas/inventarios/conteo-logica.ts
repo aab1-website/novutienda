@@ -62,6 +62,7 @@ export function lineasDeCierre(a: { contados: number; total: number }): string[]
   const res = [`Contó ${String(a.contados)} de ${String(a.total)} productos.`];
   const n = sinContar(a);
   if (n > 0) res.push(`Faltan ${String(n)} ${n === 1 ? 'producto' : 'productos'} por contar. Los que tengan existencias en el sistema se contarán en 0 y generarán mermas.`);
+  else if (a.total > 0) res.push('No falta ningún producto por contar.');
   res.push('Los sobrantes se ingresan al stock. El cierre se firma con su usuario y no se deshace.');
   return res;
 }
