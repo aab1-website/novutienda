@@ -362,7 +362,8 @@ export function armarSalida(comprobaciones, referencia = undefined) {
   return lineas.join('\n');
 }
 
-const celda = (t) => String(t).replace(/\|/g, '\\|');
+// Celda de tabla Markdown: se escapan primero las barras invertidas y luego las barras verticales.
+const celda = (t) => String(t).replace(/\\/g, '\\\\').replace(/\|/g, '\\|');
 
 export function armarResumen(comprobaciones, referencia = undefined) {
   const filas = comprobaciones.map((c) => {
@@ -577,8 +578,9 @@ export async function ejecutar(args, env = process.env, deps = undefined, fetchF
     const comprobaciones = await certificar({ url, contenido, versionContenido: d.versionContenido, fetchFn, esperar, avisar });
     if (rutaResumen !== undefined) {
       const md = armarResumen(comprobaciones, referencia);
-      if (valor(args, 'resumen') !== undefined) writeFileSync(rutaResumen, md);
-      else appendFileSync(rutaResumen, md);
+      // Permisos 0600: el resumen puede vivir en un directorio temporal compartido del corredor.
+      if (valor(args, 'resumen') !== undefined) writeFileSync(rutaResumen, md, { mode: 0o600 });
+      else appendFileSync(rutaResumen, md, { mode: 0o600 });
     }
     const codigo = codigoDe(comprobaciones);
     const error = codigo === 1 ? 'el sitio desplegado no corresponde a lo publicado' : 'no se pudo comparar todo el sitio desplegado';
