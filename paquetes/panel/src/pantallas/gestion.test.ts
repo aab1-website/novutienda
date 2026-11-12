@@ -9,6 +9,7 @@ import { PantallaCatalogo } from './consola/catalogo.js';
 import { PantallaConfiguracion } from './configuracion.js';
 import { PantallaInventario } from './inventarios/inventario.js';
 import { PantallaMermas } from './inventarios/mermas.js';
+import { PantallaVenta } from './pos/venta.js';
 import { PantallaRecibos } from './recibos/recibos.js';
 import { PantallaUsuarios } from './usuarios.js';
 
@@ -317,6 +318,37 @@ describe('usuarios y configuración', () => {
     await u.click(screen.getByRole('button', { name: 'Guardar plantilla' }));
     expect(await screen.findByText('Plantilla guardada.')).toBeTruthy();
     expect((await e.api.llamar('leerPlantilla', {})).pie).toContain('Vuelva pronto.');
+  });
+});
+
+describe('conteo abierto: lo que ven cajera y administrador', () => {
+  it('caj no ve cantidades en Inventario pero vende en la caja; adm las ve', async () => {
+    const e = crearEntorno('sup');
+    await e.api.llamar('abrirConteo', { operacionId: uuid(), conteoId: 'conteo-tienda', ubicacionId: 'tienda' });
+    e.como('caj');
+    ver(e, h(PantallaInventario, { sub: 'productos' }));
+    expect(await screen.findByText(/Hay un conteo abierto en Tienda/)).toBeTruthy();
+    expect((await screen.findAllByText('Oculto')).length).toBeGreaterThan(0);
+    cleanup();
+
+    await e.api.llamar('abrirTurno', { turnoId: uuid(), apertura: { BOB: 10000 } });
+    ver(e, h(PantallaVenta, { sub: 'terminal' }));
+    const u = userEvent.setup();
+    await u.click(await screen.findByRole('button', { name: 'Agregar Cable HDMI 2 m' }));
+    await waitFor(() => expect(document.querySelector('[data-prueba="total"]')?.textContent).toBe('Bs 55,68'));
+    await u.click(screen.getByRole('button', { name: 'Cobrar' }));
+    await screen.findByRole('heading', { name: 'Cobro' });
+    await u.type(campo(/Monto a aplicar/), '55,68');
+    await u.type(campo(/Efectivo recibido/), '100000');
+    await u.click(screen.getByRole('button', { name: 'Confirmar cobro' }));
+    await screen.findByText('La venta se registró correctamente.');
+    cleanup();
+
+    e.como('adm');
+    ver(e, h(PantallaInventario, { sub: 'productos' }));
+    await screen.findByRole('button', { name: 'Datos del producto de Cable HDMI 2 m' });
+    expect(screen.queryByText(/Hay un conteo abierto/)).toBeNull();
+    expect(screen.queryByText('Oculto')).toBeNull();
   });
 });
 
