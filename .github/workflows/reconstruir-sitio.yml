@@ -6,7 +6,7 @@
 # Contrato con las funciones: docs/produccion/reconstruccion-sitio.md (cola
 # firmada `tenants/{t}/reconstrucciones`, estados pendiente → en_curso →
 # completada | fallida). Scripts: scripts/sitios-tenant.mjs (matriz),
-# scripts/contenido-sitio.mjs (pendiente, estado, generar), scripts/build.mjs
+# scripts/contenido-sitio.mjs (pendiente, estado, rezagados, generar), scripts/build.mjs
 # --solo sitio --sitio <id>.
 #
 # Disparadores:
@@ -514,3 +514,22 @@ jobs:
           echo "::add-mask::$SITIO_RECONSTRUCCION_SECRETO"
           node scripts/contenido-sitio.mjs estado "$ID_TRABAJO" fallida --tenant "$TENANT" --url "$URL_SITIO"
           echo "::error::$CLAVE: reconstrucción fallida; trabajo cerrado como fallida. Rollback: clonar previa → live del sitio."
+
+      - name: Cerrar trabajos rezagados (en_curso de corridas anteriores)
+        # Un cierre `completada` que falló en una corrida anterior (p. ej. un 502
+        # agotado) deja su trabajo en_curso para siempre. Corre solo si el
+        # despliegue y el humo fueron correctos, haya o no trabajo propio
+        # (dispatch, workflow_run). Sin --excepto: el trabajo propio ya está
+        # cerrado (paso anterior) y el grupo de concurrencia por sitio impide
+        # otro corredor del mismo sitio; tras un despliegue y humo correctos el
+        # sitio ya contiene lo publicado, así que `completada` es verdadero.
+        # Va después de «fallida» para que su fallo no cierre como fallida un
+        # trabajo propio ya completado. Un fallo pone el run en rojo (sin
+        # continue-on-error): un rezagado sin cerrar debe verse, no ocultarse.
+        if: success() && steps.trabajo.outputs.continuar == 'true'
+        env:
+          SITIO_RECONSTRUCCION_SECRETO: ${{ secrets.SITIO_RECONSTRUCCION_SECRETO }}
+        run: |
+          set -euo pipefail
+          echo "::add-mask::$SITIO_RECONSTRUCCION_SECRETO"
+          node scripts/contenido-sitio.mjs rezagados --tenant "$TENANT" --url "$URL_SITIO"

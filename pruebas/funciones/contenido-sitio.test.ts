@@ -5,7 +5,7 @@ import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { afterAll, beforeAll, beforeEach, describe, expect, it } from 'vitest';
 import { calcularFirma, verificarFirma } from '@novutienda/nucleo/servidor';
-import { calcularFirmaLocal, cambiarEstado, ejecutar, generarContenido, idsValidos, leerDisponibilidad, normalizarUrl, pedirFirmado, trabajoPendiente } from '../../scripts/contenido-sitio.mjs';
+import { calcularFirmaLocal, cambiarEstado, cerrarRezagados, ejecutar, generarContenido, idsValidos, leerDisponibilidad, normalizarUrl, pedirFirmado, trabajoPendiente } from '../../scripts/contenido-sitio.mjs';
 
 // Valores de prueba sin aspecto de clave (gitleaks): armados en ejecución.
 const SECRETO = 's'.repeat(24);
@@ -51,7 +51,7 @@ beforeAll(async () => {
   url = `http://127.0.0.1:${typeof dir === 'object' && dir !== null ? dir.port : 0}`;
 });
 afterAll(() => new Promise<void>((ok) => servidor.close(() => ok())));
-beforeEach(() => { modo = {}; peticiones.length = 0; });
+beforeEach(() => { modo = {}; peticiones.length = 0; esperas.length = 0; avisos.length = 0; });
 
 // El script exige https; para el servidor local se inyecta un fetch que reescribe el origen a http://127.0.0.1.
 const ORIGEN = 'https://sitio.example.com';
@@ -63,9 +63,13 @@ const deps = { calcularFirma, mapear: (respuesta: unknown, _n: unknown, entorno:
   if (productos.length > 200) throw new Error('productos: demasiados');
   return { productos, disponibilidad: e.disponibilidad };
 } };
-const base = { tenant: TENANT, url: ORIGEN, secreto: SECRETO, calcularFirma, fetchFn: fetchLocal };
+// Las esperas de reintento no duermen en las pruebas; se registran para comprobarlas.
+const esperas: number[] = [];
+const avisos: string[] = [];
+const red = { esperar: async (ms: number) => { esperas.push(ms); }, avisar: (m: string) => { avisos.push(m); } };
+const base = { tenant: TENANT, url: ORIGEN, secreto: SECRETO, calcularFirma, fetchFn: fetchLocal, ...red };
 // Sin calcularFirma: usa la firma local de node:crypto.
-const baseLocal = { tenant: TENANT, url: ORIGEN, secreto: SECRETO, fetchFn: fetchLocal };
+const baseLocal = { tenant: TENANT, url: ORIGEN, secreto: SECRETO, fetchFn: fetchLocal, ...red };
 const env = { SITIO_RECONSTRUCCION_SECRETO: SECRETO, MEDIOS_BASE_URL: 'https://medios.example.com/', SITIO_NEGOCIO: '{"nombre":"N"}' };
 const args = ['--tenant', TENANT, '--url', ORIGEN];
 
@@ -93,18 +97,19 @@ describe('firma local y petición segura', () => {
     modo.redirigir = true;
     await expect(pedirFirmado({ ...base, metodo: 'GET', ruta: '/api/sitio/v1/reconstrucciones?x=1' })).rejects.toThrow('no se pudo contactar al sitio');
     expect(peticiones.map((p) => p.ruta)).toEqual(['/api/sitio/v1/reconstrucciones?x=1']);
-    const r = await ejecutar(['pendiente', ...args], env, deps, fetchLocal);
+    expect(esperas).toEqual([]);
+    const r = await ejecutar(['pendiente', ...args], env, deps, fetchLocal, red);
     expect(r.codigo).toBe(1);
     expect(peticiones.some((p) => p.ruta.startsWith('/api/sitio/v1/destino'))).toBe(false);
   });
-  it('toda petición lleva redirect «error» y un AbortSignal con tiempo máximo', async () => {
+  it('toda petición lleva redirect «manual» y un AbortSignal con tiempo máximo', async () => {
     const vistos: RequestInit[] = [];
     const espia = ((entrada: string, init?: RequestInit) => { vistos.push(init ?? {}); return fetchLocal(entrada, init); }) as typeof fetch;
     await pedirFirmado({ ...base, fetchFn: espia, metodo: 'GET', ruta: '/api/sitio/v1/reconstrucciones?x=1' });
     await leerDisponibilidad({ url: ORIGEN, ids: ['p-uno'], fetchFn: espia });
     expect(vistos).toHaveLength(2);
     for (const init of vistos) {
-      expect(init.redirect).toBe('error');
+      expect(init.redirect).toBe('manual');
       expect(init.signal).toBeInstanceOf(AbortSignal);
       expect(init.signal?.aborted).toBe(false);
     }
@@ -161,7 +166,7 @@ describe('pedirFirmado y pendiente', () => {
     expect(JSON.stringify(r)).not.toContain('z'.repeat(24));
   });
   it('error de red: código 1 con motivo', async () => {
-    const r = await ejecutar(['pendiente', ...args], env, deps, (() => Promise.reject(new Error(`boom ${SECRETO}`))) as typeof fetch);
+    const r = await ejecutar(['pendiente', ...args], env, deps, (() => Promise.reject(new Error(`boom ${SECRETO}`))) as typeof fetch, red);
     expect(r.codigo).toBe(1);
     expect(JSON.stringify(r)).not.toContain(SECRETO);
   });
@@ -181,7 +186,7 @@ describe('cambiarEstado', () => {
   });
   it('503 -> código 1 con el motivo; repetido se informa', async () => {
     modo.estado = 503;
-    const r = await ejecutar(['estado', 'job-1', 'completada', ...args], env, deps, fetchLocal);
+    const r = await ejecutar(['estado', 'job-1', 'completada', ...args], env, deps, fetchLocal, red);
     expect(r.codigo).toBe(1);
     expect(r.error).toContain('503');
     modo = { estado: 200, repetido: true };
@@ -199,6 +204,144 @@ describe('cambiarEstado', () => {
     expect((await ejecutar(['estado', '../x', 'completada', ...args], env, deps, fetchLocal)).codigo).toBe(1);
     expect((await ejecutar(['estado', 'job-1', 'rara', ...args], env, deps, fetchLocal)).codigo).toBe(1);
     expect(peticiones).toHaveLength(0);
+  });
+});
+
+describe('reintentos y rezagados', () => {
+  const estadoDe = (r: { codigo: number }) => r.codigo;
+  it('502 dos veces y luego 200: código 0 con 3 peticiones, cada una con marca y firma válidas', async () => {
+    let n = 0;
+    const flaky = ((entrada: string, init?: RequestInit) => (++n <= 2 ? Promise.resolve(new Response('{}', { status: 502 })) : fetchLocal(entrada, init))) as typeof fetch;
+    const vistos: RequestInit[] = [];
+    const espia = ((entrada: string, init?: RequestInit) => { vistos.push(init ?? {}); return flaky(entrada, init); }) as typeof fetch;
+    const r = await ejecutar(['estado', 'job-1', 'completada', ...args], env, deps, espia, red);
+    expect(estadoDe(r)).toBe(0);
+    expect(vistos).toHaveLength(3);
+    expect(peticiones).toHaveLength(1); // la tercera llegó al servidor, que la verificó (si no, habría dado 401)
+    expect(esperas).toEqual([2000, 5000]);
+    expect(avisos).toEqual(['reintento 1 de 3', 'reintento 2 de 3']);
+    for (const init of vistos) {
+      const h = init.headers as Record<string, string>;
+      expect(Math.abs(Date.now() - Number(h['X-Marca-Tiempo']))).toBeLessThan(5 * 60_000);
+      expect(h['X-Firma']).toBe(calcularFirma(SECRETO, h['X-Marca-Tiempo']!, `POST\n/api/sitio/v1/reconstrucciones/job-1/estado\n${init.body as string}`));
+    }
+  });
+  it('502 siempre: código 1 tras 4 peticiones, con las tres esperas', async () => {
+    modo.estado = 502;
+    const r = await ejecutar(['estado', 'job-1', 'completada', ...args], env, deps, fetchLocal, red);
+    expect(r.codigo).toBe(1);
+    expect(r.error).toContain('502');
+    expect(peticiones).toHaveLength(4);
+    expect(esperas).toEqual([2000, 5000, 10000]);
+  });
+  it('503 y 504 también se reintentan', async () => {
+    for (const estado of [503, 504]) {
+      peticiones.length = 0;
+      modo.estado = estado;
+      expect((await ejecutar(['estado', 'job-1', 'completada', ...args], env, deps, fetchLocal, red)).codigo).toBe(1);
+      expect(peticiones).toHaveLength(4);
+    }
+  });
+  it('pendiente no reintenta: 502 hace una sola petición, sin esperas', async () => {
+    modo.estado = 502;
+    const r = await ejecutar(['pendiente', ...args], env, deps, fetchLocal, red);
+    expect(r.codigo).toBe(1);
+    expect(peticiones).toHaveLength(1);
+    expect(esperas).toEqual([]);
+  });
+  it('la petición del POST aplicada pero con 502 al script: el reintento recibe «repetido» y da código 0, nunca 3', async () => {
+    let n = 0;
+    const respuestaPerdida = (async (entrada: string, init?: RequestInit) => {
+      if (++n === 1) {
+        await fetchLocal(entrada, init); // el servidor la aplica
+        return new Response('{}', { status: 502 }); // pero el script solo ve el 502
+      }
+      return new Response(JSON.stringify({ repetido: true }), { status: 200 });
+    }) as typeof fetch;
+    const r = await ejecutar(['estado', 'job-1', 'completada', ...args], env, deps, respuestaPerdida, red);
+    expect(r).toEqual({ codigo: 0, salida: 'estado repetido' });
+    expect(n).toBe(2);
+    expect(peticiones).toHaveLength(1);
+  });
+  it('cerrarRezagados cuenta como fallo los en_curso que quedan sin ver tras las 10 rondas', async () => {
+    let k = 0;
+    const siempreNuevos = ((entrada: string, init?: RequestInit) => (entrada.includes('estado=en_curso')
+      ? Promise.resolve(new Response(JSON.stringify({ trabajos: [{ id: `n-${k++}` }] }), { status: 200 }))
+      : fetchLocal(entrada, init))) as typeof fetch;
+    const r = await cerrarRezagados({ ...base, fetchFn: siempreNuevos });
+    expect(r.cerrados).toBe(10);
+    expect(r.fallos).toBe(1);
+    const cli = await ejecutar(['rezagados', ...args], env, deps, siempreNuevos, red);
+    expect(cli.codigo).toBe(1);
+    expect(cli.salida).toBe('rezagados cerrados: 10');
+  });
+  it('409, 404, 400, 401 y 500 no se reintentan', async () => {
+    for (const [estado, codigo] of [[409, 3], [404, 4], [400, 1], [500, 1]] as const) {
+      peticiones.length = 0;
+      modo.estado = estado;
+      expect((await ejecutar(['estado', 'job-1', 'completada', ...args], env, deps, fetchLocal, red)).codigo).toBe(codigo);
+      expect(peticiones).toHaveLength(1);
+    }
+    peticiones.length = 0;
+    modo = { sinFirmaValida: true };
+    expect((await ejecutar(['estado', 'job-1', 'completada', ...args], env, deps, fetchLocal, red)).codigo).toBe(1);
+    expect(peticiones).toHaveLength(1);
+    expect(esperas).toEqual([]);
+  });
+  it('error de red: reintenta 4 veces y falla sin revelar valores; si se recupera, sale bien', async () => {
+    let llamadas = 0;
+    const caido = (() => { llamadas++; return Promise.reject(new Error(`boom ${SECRETO}`)); }) as typeof fetch;
+    const r = await ejecutar(['estado', 'job-1', 'completada', ...args], env, deps, caido, red);
+    expect(r.codigo).toBe(1);
+    expect(llamadas).toBe(4);
+    expect(JSON.stringify(r) + avisos.join()).not.toContain(SECRETO);
+    let k = 0;
+    const sePuso = ((entrada: string, init?: RequestInit) => (++k === 1 ? Promise.reject(new Error('red')) : fetchLocal(entrada, init))) as typeof fetch;
+    expect((await ejecutar(['estado', 'job-1', 'completada', ...args], env, deps, sePuso, red)).codigo).toBe(0);
+  });
+  it('rezagados cierra los trabajos en_curso, ordena la consulta y no imprime ids', async () => {
+    modo.pendientes = { trabajos: [{ id: 'old-1' }, { id: 'old-2' }, { id: 'old-3' }] };
+    // El servidor de prueba devuelve siempre la misma lista: tras cerrar, los ids ya vistos no se repiten.
+    const r = await ejecutar(['rezagados', ...args], env, deps, fetchLocal, red);
+    expect(r).toEqual({ codigo: 0, salida: 'rezagados cerrados: 3' });
+    expect(peticiones[0]!.ruta).toBe(`/api/sitio/v1/reconstrucciones?estado=en_curso&tenantId=${TENANT}`);
+    const posts = peticiones.filter((p) => p.metodo === 'POST');
+    expect(posts.map((p) => JSON.parse(p.cuerpo).estado)).toEqual(['completada', 'completada', 'completada']);
+    expect(JSON.stringify(r)).not.toMatch(/old-/);
+  });
+  it('rezagados respeta --excepto', async () => {
+    modo.pendientes = { trabajos: [{ id: 'old-1' }, { id: 'actual' }, { id: 'old-2' }] };
+    const r = await ejecutar(['rezagados', '--excepto', 'actual', ...args], env, deps, fetchLocal, red);
+    expect(r).toEqual({ codigo: 0, salida: 'rezagados cerrados: 2' });
+    const rutas = peticiones.filter((p) => p.metodo === 'POST').map((p) => p.ruta);
+    expect(rutas.some((x) => x.includes('/actual/'))).toBe(false);
+    expect(rutas).toHaveLength(2);
+  });
+  it('rezagados tolera un 409 o 404 intermedio; otro fallo da código 1 al final sin detener a los demás', async () => {
+    modo.pendientes = { trabajos: [{ id: 'a-1' }, { id: 'a-2' }, { id: 'a-3' }, { id: 'a-4' }] };
+    const respuestas: Record<string, number> = { 'a-2': 409, 'a-3': 404, 'a-4': 500 };
+    const conErrores = ((entrada: string, init?: RequestInit) => {
+      const m = /reconstrucciones\/([^/]+)\/estado/.exec(entrada);
+      const status = m ? respuestas[m[1]!] : undefined;
+      return status !== undefined ? Promise.resolve(new Response('{}', { status })) : fetchLocal(entrada, init);
+    }) as typeof fetch;
+    const r = await ejecutar(['rezagados', ...args], env, deps, conErrores, red);
+    expect(r.codigo).toBe(1);
+    expect(r.salida).toBe('rezagados cerrados: 1');
+    expect(JSON.stringify(r)).not.toMatch(/a-\d/);
+    const soloTolerados = await ejecutar(['rezagados', '--excepto', 'a-4', ...args], env, deps, conErrores, red);
+    expect(soloTolerados).toEqual({ codigo: 0, salida: 'rezagados cerrados: 1' });
+  });
+  it('rezagados sin trabajos: 0; --excepto inválido: código 2; cerrarRezagados vuelve a consultar al llegar al límite del servidor', async () => {
+    modo.pendientes = { trabajos: [] };
+    expect(await ejecutar(['rezagados', ...args], env, deps, fetchLocal, red)).toEqual({ codigo: 0, salida: 'rezagados cerrados: 0' });
+    expect((await ejecutar(['rezagados', '--excepto', '../x', ...args], env, deps, fetchLocal, red)).codigo).toBe(2);
+    let ronda = 0;
+    const porRondas = ((entrada: string, init?: RequestInit) => {
+      if (entrada.includes('estado=en_curso')) return Promise.resolve(new Response(JSON.stringify({ trabajos: ronda++ === 0 ? [{ id: 'r-1' }] : ronda === 2 ? [{ id: 'r-1' }, { id: 'r-2' }] : [] }), { status: 200 }));
+      return fetchLocal(entrada, init);
+    }) as typeof fetch;
+    expect((await cerrarRezagados({ ...base, fetchFn: porRondas })).cerrados).toBe(2);
   });
 });
 
