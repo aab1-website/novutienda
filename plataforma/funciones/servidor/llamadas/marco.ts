@@ -9,6 +9,7 @@ import { HttpsError, type CallableRequest } from 'firebase-functions/v2/https';
 import { z } from 'zod';
 import type { Actor, ActorConRol, Rol } from '@novutienda/nucleo';
 import { CODIGO_DE_BORDE, CODIGO_MODULO_APAGADO, traducirError } from '../../../conectores/firebase/index.js';
+import { recortarDetallesDeStock } from '../../../coordinador/index.js';
 import { autenticar, exigirAppCheck, personalDelTenant, type Sesion, type SesionTenant } from '../autenticacion.js';
 import type { Entorno } from '../entorno.js';
 import { RedondeoInvalido } from '../redondeo.js';
@@ -115,6 +116,9 @@ export function comoHttpsError(error: unknown, contexto: Readonly<Record<string,
 export function crearManejador(o: OpcionesManejador): (req: CallableRequest) => Promise<unknown> {
   return async (req) => {
     const marca: Record<string, unknown> = { modulo: o.modulo };
+    // Para el recorte del error de stock insuficiente (existencias ocultas durante un conteo): se fijan al autenticar.
+    let tenantDelError: string | undefined;
+    let rolDelError: Rol | undefined;
     try {
       exigirAppCheck(o.appCheckExigido(), req);
       const sobre = envoltura.safeParse(req.data);
@@ -125,6 +129,7 @@ export function crearManejador(o: OpcionesManejador): (req: CallableRequest) => 
       const def = Object.hasOwn(o.acciones, nombre) ? o.acciones[nombre] : undefined;
       if (def === undefined) throw new HttpsError('invalid-argument', 'Acción desconocida.');
       const e = o.entorno();
+      tenantDelError = tenantId;
       const sesion = await autenticar(e, req);
       marca['uid'] = sesion.uid;
       let rol: Rol | undefined;
@@ -132,6 +137,7 @@ export function crearManejador(o: OpcionesManejador): (req: CallableRequest) => 
       try {
         tenantSesion = personalDelTenant(sesion, tenantId);
         rol = tenantSesion.rol;
+        rolDelError = rol;
       } catch (error) {
         // Sin rol en este tenant: solo pasa el propietario de la plataforma en las acciones que lo admiten.
         if (!(def.propietario && sesion.propietario)) throw error;
@@ -155,7 +161,14 @@ export function crearManejador(o: OpcionesManejador): (req: CallableRequest) => 
       const resultado = await def.ejecutar({ e, tenantId, sesion, rol, actor: { uid: sesion.uid, claims: sesion.claims } }, datos);
       return aJson(resultado ?? { ok: true });
     } catch (error) {
-      throw comoHttpsError(error, marca);
+      const h = comoHttpsError(error, marca);
+      // Único punto por donde pasan los callables: quien no es `adm` no recibe `disponible` de un almacén en conteo. Solo se lee
+      // (conteos del tenant) cuando el error es de stock insuficiente. Sin rol verificado (falló antes) no hay faltantes que recortar.
+      const d = h.details as { codigo?: unknown } | undefined;
+      if (d?.codigo === 'stock-insuficiente' && tenantDelError !== undefined) {
+        throw new HttpsError(h.code, h.message, await recortarDetallesDeStock(o.entorno().firestore, tenantDelError, rolDelError, h.details));
+      }
+      throw h;
     }
   };
 }
