@@ -31,15 +31,15 @@ describe('marca de ocultamiento de una lista', () => {
 
   it('filter, map y spread pierden la marca; conMarca la reaplica', () => {
     const origen = ponerMarca([1, 2, 3], { existenciasOcultas: true, conteosAbiertos: conteos });
-    expect(origen.filter((n) => n > 1).existenciasOcultas).toBeUndefined();
-    expect([...origen].existenciasOcultas).toBeUndefined();
+    expect(marcaDe(origen.filter((n) => n > 1))).toBeUndefined();
+    expect(marcaDe([...origen])).toBeUndefined();
     const nueva = conMarca(origen.filter((n) => n > 1), origen);
     expect(nueva).toEqual([2, 3]);
     expect(marcaDe(nueva)).toEqual({ existenciasOcultas: true, conteosAbiertos: conteos });
   });
 
   it('falla cerrado: oculta sin lista válida queda con lista vacía', () => {
-    const l = [1] as number[] & { existenciasOcultas: true; conteosAbiertos: unknown };
+    const l: number[] = [1];
     Object.defineProperty(l, 'existenciasOcultas', { value: true });
     expect(marcaDe(l)).toEqual({ existenciasOcultas: true, conteosAbiertos: [] });
   });
