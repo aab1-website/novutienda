@@ -5,7 +5,7 @@
 import { HttpsError } from 'firebase-functions/v2/https';
 import { z } from 'zod';
 import {
-  abrirConteo, actualizarProducto, ajustar, cerrarConteo, crearProducto, crearUbicacion, esDisponible, exportarProductosCsv, importarCsvPorLotes,
+  abrirConteo, actualizarProducto, ajustar, cerrarConteo, crearProducto, crearUbicacion, esDisponible, exportarProductosCsv, importarCsvPorLotes, leerArchivoImportacion, MAX_BYTES_ARCHIVO, type FuenteTabla, type LectorHojas,
   ingresar, leerDocumentoProducto, registrarLineaConteo, resolverMerma, simularImportacionCsv, solicitarMerma, traspasar, UBICACION_DISPONIBILIDAD,
   type Autor, type CambiosProducto, type EntradaProducto, type LineaAjuste, type PrecioUSD, type LineaIngreso, type LineaTraspaso, type ProductoExportable,
 } from '@novutienda/inventarios';
@@ -20,6 +20,26 @@ const ruta = (t: string, col: string, id?: string): string => `tenants/${t}/${co
 const datosDe = (d: { data(): unknown }): Record<string, unknown> => d.data() as Record<string, unknown>;
 /** Tiempo que la importación se da antes de detenerse limpiamente (el callable vive 60 s); se retoma con el mismo `operacionId`. */
 const PRESUPUESTO_IMPORTACION_MS = 40_000;
+
+/**
+ * Lector de hojas (.xlsx) que inyecta el coordinador en el entorno como `lectorHojas` (ver `LectorHojas` del paquete);
+ * mientras no esté, un .xlsx se rechaza con un mensaje claro y el CSV sigue funcionando.
+ */
+const lectorDe = (c: Contexto): LectorHojas | undefined => (c.e as { readonly lectorHojas?: LectorHojas }).lectorHojas;
+
+/** Decodifica base64 estricto con tope de bytes (el archivo llega dentro del JSON). */
+function base64(valor: string): Uint8Array {
+  if (!/^[A-Za-z0-9+/]+={0,2}$/.test(valor) || valor.length % 4 !== 0) throw new HttpsError('invalid-argument', 'El archivo debe venir en base64.');
+  const bytes = Buffer.from(valor, 'base64');
+  if (bytes.length === 0 || bytes.length > MAX_BYTES_ARCHIVO) throw new HttpsError('invalid-argument', 'El archivo está vacío o supera 2 MB.');
+  return bytes;
+}
+
+/** Texto CSV o archivo (csv/xlsx) a tabla; los errores del paquete salen como `invalid-argument`/`failed-precondition`. */
+async function leerTabla(c: Contexto, d: { csv?: string | undefined; archivo?: string | undefined }): Promise<FuenteTabla> {
+  if (d.archivo !== undefined) return leerArchivoImportacion(base64(d.archivo), lectorDe(c));
+  return d.csv as string;
+}
 const SERIES = z.array(z.string().min(1).max(60)).min(1).max(500);
 const LINEA_INGRESO = objeto({ productoId: ID_PRODUCTO, cantidad: z.number().int().positive().max(1_000_000), series: SERIES.optional() });
 
@@ -163,21 +183,26 @@ export const accionesInventarios: TablaImplementaciones = {
    * `cargaInicial` y solo en productos nuevos sin serie.
    */
   importarProductosCsv: accion({
-    maxCaracteres: 400_000,
+    maxCaracteres: 2_900_000,
     esquema: objeto({
-      operacionId: ID.optional(), csv: z.string().min(1).max(262_144), cargaInicial: z.boolean().optional(),
+      operacionId: ID.optional(), cargaInicial: z.boolean().optional(),
       simular: z.boolean().optional(), omitirErrores: z.boolean().optional(),
-    }),
+      /** Texto CSV (compatibilidad). */
+      csv: z.string().min(1).max(262_144).optional(),
+      /** Bytes del archivo .csv o .xlsx en base64 (hasta 2 MB); se distingue por la firma, no por la extensión. */
+      archivo: z.string().min(4).max(2_900_000).optional(),
+    }).refine((d) => (d.csv === undefined) !== (d.archivo === undefined), { message: 'Envíe `archivo` (base64) o `csv`, uno solo.' }),
     ejecutar: async (c, d) => {
+      const tabla = await leerTabla(c, d);
       if (d.simular === true) {
         const simulacion = await c.e.db.runTransaction((tx) =>
-          simularImportacionCsv(tx, { tenantId: c.tenantId, por: autor(c), csv: d.csv, ...(d.cargaInicial !== undefined ? { cargaInicial: d.cargaInicial } : {}) }),
+          simularImportacionCsv(tx, { tenantId: c.tenantId, por: autor(c), csv: tabla, ...(d.cargaInicial !== undefined ? { cargaInicial: d.cargaInicial } : {}) }),
         );
         return { simular: true, simulacion };
       }
       if (d.operacionId === undefined) throw new HttpsError('invalid-argument', 'Falta operacionId: solo la simulación puede omitirlo.');
       const r = await importarCsvPorLotes(c.e.db, {
-        tenantId: c.tenantId, operacionId: d.operacionId, por: autor(c), csv: d.csv, presupuestoMs: PRESUPUESTO_IMPORTACION_MS,
+        tenantId: c.tenantId, operacionId: d.operacionId, por: autor(c), csv: tabla, presupuestoMs: PRESUPUESTO_IMPORTACION_MS,
         ...(d.cargaInicial !== undefined ? { cargaInicial: d.cargaInicial } : {}), ...(d.omitirErrores !== undefined ? { omitirErrores: d.omitirErrores } : {}),
       });
       return { simular: false, ...r };

@@ -61,7 +61,8 @@ type Unidad = 'centavos' | 'usd';
 /**
  * Encabezados admitidos (se comparan sin tildes, mayúsculas ni signos). Los dos formatos anteriores siguen valiendo:
  * `precioUSDbo`, `precioUSDar` y `costoUSD` van en centavos enteros (formato de Inventarios y de su exportación);
- * `precioBO`, `precioAR` (y `precio_bo`, `precioBOusd`...) van en USD con hasta 2 decimales (formato de la consola).
+ * `precioBO`, `precioAR`, `costo` (y `precio_bo`, `precioBOusd`...) van en USD con hasta 2 decimales (formato de la consola
+ * y de la exportación).
  */
 const ALIAS: Readonly<Record<string, readonly [Columna, Unidad | null]>> = {
   id: ['id', null], codigo: ['id', null], nombre: ['nombre', null], categoria: ['categoria', null], marca: ['marca', null], sku: ['sku', null],
@@ -69,7 +70,7 @@ const ALIAS: Readonly<Record<string, readonly [Columna, Unidad | null]>> = {
   garantiameses: ['garantiaMeses', null], garantia: ['garantiaMeses', null], minimo: ['minimo', null],
   preciousdbo: ['precioBO', 'centavos'], preciousdar: ['precioAR', 'centavos'],
   preciobo: ['precioBO', 'usd'], preciobousd: ['precioBO', 'usd'], precioar: ['precioAR', 'usd'], precioarusd: ['precioAR', 'usd'],
-  costousd: ['costoUSD', 'centavos'],
+  costousd: ['costoUSD', 'centavos'], costo: ['costoUSD', 'usd'],
   stocktienda: ['stockTienda', null], stockdeposito1: ['stockDeposito1', null], stockdeposito2: ['stockDeposito2', null],
 };
 const COLUMNAS_STOCK = { stockTienda: UBICACIONES[0], stockDeposito1: UBICACIONES[1], stockDeposito2: UBICACIONES[2] } as const;
@@ -77,6 +78,9 @@ const COLUMNAS_STOCK = { stockTienda: UBICACIONES[0], stockDeposito1: UBICACIONE
 const SUENA_A_STOCK = new Set(['stock', 'existencias', 'existencia', 'cantidad', 'almacen', 'ubicacion', 'deposito', 'tienda']);
 
 const normalizar = (t: string): string => t.normalize('NFD').replace(/[̀-ͯ]/g, '').toLowerCase().replace(/[^a-z0-9]/g, '');
+
+/** Texto CSV o matriz de texto ya leída (de CSV o de la primera hoja de un xlsx: ver `leerArchivoImportacion`). */
+export type FuenteTabla = string | readonly (readonly string[])[];
 
 export interface ErrorFila {
   /** Encabezado de la columna tal como viene en el archivo; `null` si el error es de la fila entera. */
@@ -132,9 +136,16 @@ function importe(v: string, unidad: Unidad): number | undefined {
  * Lee el CSV. Los errores de encabezado, tamaño o formato general lanzan `EntradaInvalida`; los errores de cada fila
  * (formato de una celda) se anotan en la fila para que la simulación los informe todos juntos.
  */
-export function leerCsvFilas(csv: string, cargaInicial: boolean): LecturaCsv {
-  if (typeof csv !== 'string' || csv.length === 0 || csv.length > MAX_BYTES_CSV) throw new EntradaInvalida('CSV vacío o demasiado grande');
-  const filas = analizarCsv(csv.charCodeAt(0) === 0xfeff ? csv.slice(1) : csv);
+export function leerCsvFilas(fuente: FuenteTabla, cargaInicial: boolean): LecturaCsv {
+  let filas: readonly (readonly string[])[];
+  if (typeof fuente === 'string') {
+    if (fuente.length === 0 || fuente.length > MAX_BYTES_CSV) throw new EntradaInvalida('CSV vacío o demasiado grande');
+    filas = analizarCsv(fuente.charCodeAt(0) === 0xfeff ? fuente.slice(1) : fuente);
+  } else {
+    // Una hoja de cálculo puede traer filas más cortas (celdas finales vacías): se completan con vacío.
+    const ancho = Math.max(0, ...fuente.slice(0, 1).map((f) => f.length));
+    filas = fuente.map((f) => (f.length < ancho ? [...f, ...Array<string>(ancho - f.length).fill('')] : f));
+  }
   const [cab, ...datos] = filas;
   if (cab === undefined) throw new EntradaInvalida('CSV sin encabezado');
   const indice = new Map<Columna, { i: number; etiqueta: string; unidad: Unidad | null }>();
@@ -243,7 +254,7 @@ export interface FilaImportada {
  * Lectura estricta para quien solo CREA (la carga de demostración): cada fila debe ser un producto completo y válido;
  * acumula los errores por fila y lanza una sola `EntradaInvalida`. No mira la base de datos.
  */
-export function leerCsvProductos(csv: string, cargaInicial: boolean): FilaImportada[] {
+export function leerCsvProductos(csv: FuenteTabla, cargaInicial: boolean): FilaImportada[] {
   const { filas } = leerCsvFilas(csv, cargaInicial);
   const errores: string[] = [];
   const salida: FilaImportada[] = [];
@@ -379,7 +390,7 @@ async function planificarFila(lector: Lector, fila: FilaLeida): Promise<PlanFila
 /** Escrituras que una fila puede pedir; no depende del estado, así el reparto en lotes es estable ante un reintento. */
 const pesoFila = (f: FilaLeida): number => 10 + 4 * f.stock.length;
 
-function leer(tx: TransaccionIdentidad, tenantId: string, csv: string, cargaInicial: boolean): { lector: Lector; lectura: LecturaCsv } {
+function leer(tx: TransaccionIdentidad, tenantId: string, csv: FuenteTabla, cargaInicial: boolean): { lector: Lector; lectura: LecturaCsv } {
   return { lector: new Lector(tx, exigirTenant(tenantId)), lectura: leerCsvFilas(csv, cargaInicial) };
 }
 
@@ -389,7 +400,7 @@ function leer(tx: TransaccionIdentidad, tenantId: string, csv: string, cargaInic
  */
 export async function simularImportacionCsv(
   tx: TransaccionIdentidad,
-  e: { tenantId: string; por: Autor; csv: string; cargaInicial?: boolean },
+  e: { tenantId: string; por: Autor; csv: FuenteTabla; cargaInicial?: boolean },
 ): Promise<Simulacion> {
   const por = exigirAutor(e.por);
   if (!PERMISOS.importacion.includes(por.rol)) throw new SinPermiso(`El rol ${por.rol} no puede ejecutar importar-csv`);
@@ -483,7 +494,7 @@ async function importarLote(
  */
 export async function importarProductosCsv(
   tx: TransaccionIdentidad,
-  e: { tenantId: string; operacionId: string; por: Autor; csv: string; cargaInicial?: boolean },
+  e: { tenantId: string; operacionId: string; por: Autor; csv: FuenteTabla; cargaInicial?: boolean },
 ): Promise<ResultadoOperacion<Datos>> {
   const cargaInicial = e.cargaInicial === true;
   const { lectura } = leer(tx, e.tenantId, e.csv, cargaInicial);
@@ -525,7 +536,7 @@ export interface ResultadoImportacion {
  */
 export async function importarCsvPorLotes(
   db: BaseTransaccional,
-  e: { tenantId: string; operacionId: string; por: Autor; csv: string; cargaInicial?: boolean; omitirErrores?: boolean; presupuestoMs?: number; ahora?: () => number },
+  e: { tenantId: string; operacionId: string; por: Autor; csv: FuenteTabla; cargaInicial?: boolean; omitirErrores?: boolean; presupuestoMs?: number; ahora?: () => number },
 ): Promise<ResultadoImportacion> {
   exigirSegmento(e.operacionId, 'operacionId');
   const cargaInicial = e.cargaInicial === true;
@@ -593,7 +604,7 @@ export interface ProductoExportable {
   readonly conSerie: boolean;
   readonly garantiaMeses?: number;
   readonly minimo?: number;
-  /** Centavos de USD (como se guardan y como los lee la importación: la exportación se puede volver a importar sin cambiar precios). */
+  /** Centavos de USD (como se guardan); la exportación los escribe en USD con 2 decimales, que la importación lee sin cambiar precios. */
   readonly precioUSD: { readonly bo: number; readonly ar: number };
   readonly costoUSD?: number;
   readonly activo: boolean;
@@ -605,14 +616,22 @@ const celdaCsv = (v: string): string => {
   return /[",\r\n]/.test(n) ? `"${n.replace(/"/g, '""')}"` : n;
 };
 
+/** Centavos enteros a «12.50» sin pasar por coma flotante. */
+export function centavosAUsd(c: number): string {
+  const e = Math.trunc(c);
+  return `${String(Math.floor(e / 100))}.${String(e % 100).padStart(2, '0')}`;
+}
+
+/** Encabezados de la exportación: precios y costo en USD con decimales (los que el importador lee en USD). */
+export const COLUMNAS_EXPORTACION = ['id', 'nombre', 'categoria', 'marca', 'sku', 'conSerie', 'garantiaMeses', 'minimo', 'precioBO', 'precioAR', 'costo', 'activo', 'publicado'] as const;
+
 /** Exporta productos a CSV neutralizando toda celda de texto que empiece con = + - @. Sin costos salvo que vengan. */
 export function exportarProductosCsv(productos: readonly ProductoExportable[]): string {
-  const cab = ['id', 'nombre', 'categoria', 'marca', 'sku', 'conSerie', 'garantiaMeses', 'minimo', 'precioUSDbo', 'precioUSDar', 'costoUSD', 'activo', 'publicado'];
   const filas = productos.map((p) =>
     [
       p.id, p.nombre, p.categoria, p.marca ?? '', p.sku, String(p.conSerie), p.garantiaMeses?.toString() ?? '', p.minimo?.toString() ?? '',
-      String(p.precioUSD.bo), String(p.precioUSD.ar), p.costoUSD?.toString() ?? '', String(p.activo), String(p.publicado),
+      centavosAUsd(p.precioUSD.bo), centavosAUsd(p.precioUSD.ar), p.costoUSD === undefined ? '' : centavosAUsd(p.costoUSD), String(p.activo), String(p.publicado),
     ].map(celdaCsv).join(','),
   );
-  return `${[cab.join(','), ...filas].join('\r\n')}\r\n`;
+  return `${[COLUMNAS_EXPORTACION.join(','), ...filas].join('\r\n')}\r\n`;
 }
