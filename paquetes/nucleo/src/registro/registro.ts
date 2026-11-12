@@ -1,6 +1,21 @@
 // Registro de módulos. No lleva ninguna importación (ni de tipos): por eso
 // trabaja sobre la forma mínima estructural `ManifiestoBase`, que
 // `ManifiestoModulo` (tipos.ts) satisface; index.ts lo verifica al compilar.
+/**
+ * Tipos con contrato v1. Copia sin importaciones de las claves de `CONTRATOS_V1` (eventos/contratos.ts);
+ * pruebas/tenant/contrato-l2.test.ts verifica la paridad.
+ */
+export const TIPOS_EVENTO_V1: readonly string[] = [
+  'venta.confirmada',
+  'venta.anulada',
+  'turno.cerrado',
+  'producto.cambiado',
+  'stock.cambiado',
+  'stock.bajo',
+  'recibo.emitido',
+  'pedido.solicitado',
+  'pedido.confirmado',
+];
 
 /** Forma mínima que el registro necesita de un manifiesto. */
 export interface ManifiestoBase {
@@ -33,6 +48,9 @@ export interface ManifiestoBase {
   readonly acciones?: readonly AccionBase[] | undefined;
   readonly programadas?: readonly ProgramadaBase[] | undefined;
   readonly requiere?: readonly string[] | undefined;
+  readonly emite?: readonly string[] | undefined;
+  readonly consume?: readonly string[] | undefined;
+  readonly consumeOpcional?: readonly string[] | undefined;
   readonly rutasHttp?: readonly RutaHttpBase[] | undefined;
 }
 
@@ -166,6 +184,21 @@ function validar(m: ManifiestoBase): void {
   }
   for (const a of m.almacenamiento ?? []) validarAlmacenamiento(m, a);
   validarL2(m);
+  validarConsumeOpcional(m);
+}
+
+function validarConsumeOpcional(m: ManifiestoBase): void {
+  const opc = lista(m, 'consumeOpcional', m.consumeOpcional);
+  const consume = Array.isArray(m.consume) ? m.consume : [];
+  const vistos = new Set<string>();
+  for (const e of opc) {
+    if (typeof e !== 'string' || !TIPOS_EVENTO_V1.includes(e)) {
+      throw new ErrorRegistro(`El módulo ${m.id} declara en consumeOpcional un evento sin contrato v1: ${String(e)}`);
+    }
+    if (consume.includes(e)) throw new ErrorRegistro(`El módulo ${m.id} declara "${e}" en consume y en consumeOpcional`);
+    if (vistos.has(e)) throw new ErrorRegistro(`El módulo ${m.id} repite "${e}" en consumeOpcional`);
+    vistos.add(e);
+  }
 }
 
 function validarRoles(donde: string, roles: readonly string[], admiteVacia: boolean): void {
@@ -489,6 +522,27 @@ export function crearRegistro<M extends ManifiestoBase = ManifiestoBase>(): Regi
         marca.set(id, 'listo');
       };
       for (const id of modulos.keys()) validar(id, []);
+      // consumeOpcional: al menos un emisor del evento debe estar en el cierre de dependeDe/requiere del consumidor.
+      for (const m of modulos.values()) {
+        const opc = m.consumeOpcional ?? [];
+        if (opc.length === 0) continue;
+        const cierre = new Set<IdModulo>();
+        const pila: IdModulo[] = [m.id];
+        while (pila.length > 0) {
+          const actual = modulos.get(pila.pop() as IdModulo);
+          if (actual === undefined) continue;
+          for (const d of [...actual.dependeDe, ...requeridos(actual)]) {
+            if (!cierre.has(d)) {
+              cierre.add(d);
+              pila.push(d);
+            }
+          }
+        }
+        for (const e of opc) {
+          const hay = [...modulos.values()].some((x) => cierre.has(x.id) && (x.emite ?? []).includes(e));
+          if (!hay) throw new ErrorRegistro(`${m.id} consume opcionalmente "${e}", pero ningún módulo de su dependeDe/requiere lo emite`);
+        }
+      }
       return orden;
     },
     rutas,

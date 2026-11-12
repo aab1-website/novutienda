@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import { registroPlataforma } from '../../plataforma/registro.js';
-import { crearRegistro, modulosEfectivos, validarEncendido } from '@novutienda/nucleo';
+import { CONTRATOS_V1, crearRegistro, modulosEfectivos, TIPOS_EVENTO_V1, validarEncendido } from '@novutienda/nucleo';
 import type { ManifiestoModulo } from '@novutienda/nucleo';
 
 const m = (id: string, extra: Record<string, unknown> = {}): ManifiestoModulo =>
@@ -166,5 +166,34 @@ describe('roles vacíos y fuera de lista', () => {
       acciones: [{ callable: 'ventas', nombre: 'anular', roles: ['otro'] }],
     };
     expect(tipada.id).toBe('x');
+  });
+});
+
+describe('consumeOpcional', () => {
+  it('los tipos con contrato v1 del registro coinciden con CONTRATOS_V1', () => {
+    expect([...TIPOS_EVENTO_V1].sort()).toEqual(Object.keys(CONTRATOS_V1).sort());
+  });
+  const emisor = m('emisor', { emite: ['producto.cambiado'] });
+  const registrar = (...ms: ManifiestoModulo[]) => () => {
+    const r = crearRegistro<ManifiestoModulo>();
+    for (const x of ms) r.registrar(x);
+    r.ordenTopologico();
+  };
+
+  it('acepta un evento v1 emitido por un módulo del cierre de requiere o dependeDe', () => {
+    expect(registrar(emisor, m('c1', { requiere: ['emisor'], consumeOpcional: ['producto.cambiado'] }))).not.toThrow();
+    expect(registrar(emisor, m('c2', { dependeDe: ['emisor'], consumeOpcional: ['producto.cambiado'] }))).not.toThrow();
+  });
+  it('rechaza un evento sin contrato v1', () => {
+    expect(registrar(emisor, m('c', { requiere: ['emisor'], consumeOpcional: ['x.hecho'] }))).toThrow(/sin contrato v1/);
+  });
+  it('rechaza un evento a la vez en consume y consumeOpcional', () => {
+    expect(
+      registrar(emisor, m('c', { requiere: ['emisor'], consume: ['producto.cambiado'], consumeOpcional: ['producto.cambiado'] })),
+    ).toThrow(/consume y en consumeOpcional/);
+  });
+  it('rechaza si ningún emisor está en el cierre del consumidor', () => {
+    expect(registrar(emisor, m('c', { consumeOpcional: ['producto.cambiado'] }))).toThrow(/ningún módulo de su dependeDe\/requiere/);
+    expect(registrar(m('c', { requiere: ['emisor'], consumeOpcional: ['producto.cambiado'] }), m('emisor', { emite: [] }))).toThrow(/ningún módulo/);
   });
 });
