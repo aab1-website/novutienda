@@ -345,8 +345,15 @@ export const handlersInventario: {
     [...c.e.conteos.values()].map((k) => ({
       conteoId: k.conteoId, ubicacionId: k.ubicacionId, estado: k.estado, abiertoPor: k.abiertoPor, ...(k.cerradoPor !== undefined ? { cerradoPor: k.cerradoPor } : {}), fecha: k.fecha, lineas: k.lineas,
       ...(c.rol !== 'caj' && k.estado === 'cerrado' && k.resultado !== undefined ? { resultado: k.resultado } : {}),
-      // Solo sup/adm y con el conteo abierto: cuántos productos con existencia nadie ha contado (sin ids ni cantidades).
-      ...(c.rol !== 'caj' && k.estado === 'abierto' ? { faltan: [...c.e.productos.values()].filter((p) => p.existencias[k.ubicacionId] > 0 && !k.lineas.some((l) => l.productoId === p.id)).length } : {}),
+      // Con el conteo abierto, para todo rol: lo que hay que contar, sin existencias ni nada derivado de ellas.
+      ...(k.estado === 'abierto'
+        ? {
+            productos: [...c.e.productos.values()]
+              .filter((p) => p.stockTotal !== undefined)
+              .map((p) => ({ productoId: p.id, nombre: p.nombre, sku: p.sku, categoria: p.categoria, ...(p.marca !== undefined ? { marca: p.marca } : {}), conSerie: p.conSerie }))
+              .sort((x, y) => x.nombre.localeCompare(y.nombre)),
+          }
+        : {}),
     })),
 
   cotizacionesVigentes: (c) => c.e.cotizaciones,

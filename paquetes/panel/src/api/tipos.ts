@@ -339,6 +339,16 @@ export interface MermaVista {
   readonly fecha: string;
 }
 
+/** Un producto de la lista a contar: nada que dependa de las existencias del sistema (el conteo es ciego). */
+export interface ProductoDeConteo {
+  readonly productoId: string;
+  readonly nombre: string;
+  readonly sku: string;
+  readonly categoria: string;
+  readonly marca?: string;
+  readonly conSerie: boolean;
+}
+
 export interface ConteoVista {
   readonly conteoId: string;
   readonly ubicacionId: UbicacionId;
@@ -346,8 +356,8 @@ export interface ConteoVista {
   readonly abiertoPor: string;
   readonly cerradoPor?: string;
   readonly fecha: string;
-  /** Productos con existencia que aún nadie contó: el cierre los cuenta en 0 y abre una merma por cada uno. Solo sup/adm y con el conteo abierto. */
-  readonly faltan?: number;
+  /** Lo que hay que contar, sin existencias ni nada derivado de ellas. Solo con el conteo abierto, para todo rol. */
+  readonly productos?: readonly ProductoDeConteo[];
   /** Productos ya contados (el teórico NO viaja mientras el conteo está abierto). */
   readonly lineas: readonly { readonly productoId: string; readonly contado: number; readonly series?: readonly string[] }[];
   /** Solo en un conteo cerrado y solo para sup/adm. */
