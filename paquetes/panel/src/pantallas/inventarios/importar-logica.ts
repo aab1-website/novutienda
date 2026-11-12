@@ -94,3 +94,54 @@ export function textoResultado(r: ResultadoImportacion): string {
 }
 
 export const textoTandas = (r: ResultadoImportacion): string => `${String(r.lotes.aplicados)} de ${String(r.lotes.total)} ${r.lotes.total === 1 ? 'tanda aplicada' : 'tandas aplicadas'}`;
+
+/** Mensaje cuando el archivo no es el del intento anterior (el servidor reconoce la importación por su contenido). */
+export const TEXTO_ARCHIVO_CAMBIO = 'El archivo cambió desde el intento anterior: empiece de nuevo con una importación nueva.';
+
+/**
+ * Traduce el motivo de detención del servidor a algo que una persona pueda actuar: qué pasó y qué hacer. Nunca deja pasar
+ * identificadores técnicos («operacionId», el código de la operación).
+ */
+export function textoDetencion(detencion: string | undefined): string {
+  const d = (detencion ?? '').trim();
+  if (/otro contenido|otros datos/i.test(d)) return TEXTO_ARCHIVO_CAMBIO;
+  if (/tiempo de la llamada/i.test(d)) return 'Se agotó el tiempo de espera. Pulse «Continuar la importación» para seguir con lo que falta.';
+  const sinTecnico = d
+    .replace(/;?\s*repita con el mismo operacionId[^.]*\.?/i, '')
+    .replace(/\boperacionId\b/gi, '')
+    .replace(/La operación \S+ /i, 'La operación ')
+    .trim()
+    .replace(/[;:,]\s*$/, '');
+  const tanda = /^Tanda (\d+) de (\d+):\s*(.*)$/i.exec(sinTecnico);
+  const causa = tanda === null ? sinTecnico : (tanda[3] ?? '').trim();
+  const donde = tanda === null ? '' : ` en la tanda ${tanda[1] ?? ''} de ${tanda[2] ?? ''}`;
+  const problema = causa === '' ? `Hubo un problema${donde}.` : `Hubo un problema${donde}: ${causa.replace(/\.$/, '')}.`;
+  return `${problema} Pulse «Continuar la importación» para seguir con lo que falta; si se repite, avise al administrador.`;
+}
+
+/** Líneas con error de una simulación, en orden. */
+export const lineasConError = (s: Simulacion): number[] => s.filas.filter((f) => f.accion === 'error').map((f) => f.linea).sort((a, b) => a - b);
+
+const textoLineas = (l: readonly number[]): string => (l.length === 0 ? 'ninguna' : l.join(', '));
+
+export interface AvisoOmitidas {
+  /** Qué se omitió, exacto: cuántas y cuáles líneas. */
+  readonly texto: string;
+  /** Lo omitido no coincide con lo que la persona aceptó en la confirmación: va destacado. */
+  readonly difiere: string | null;
+}
+
+/**
+ * Cuando la importación real omitió filas con error: cuántas y cuáles líneas, y si no coincide con lo aceptado en la
+ * confirmación (`aceptadas`: las líneas con error de la simulación que la persona vio).
+ */
+export function avisoOmitidas(r: ResultadoImportacion, aceptadas: readonly number[]): AvisoOmitidas | null {
+  const omitidas = lineasConError(r.simulacion);
+  if (r.omitidas === 0 && omitidas.length === 0 && aceptadas.length === 0) return null;
+  const texto = `Se omitieron ${plural(r.omitidas, 'fila con error', 'filas con error')} (líneas del archivo: ${textoLineas(omitidas)}). No entraron al inventario: corríjalas y súbalas en otro archivo.`;
+  const mismas = omitidas.length === aceptadas.length && omitidas.every((l, i) => l === aceptadas[i]);
+  const difiere = r.omitidas === aceptadas.length && mismas
+    ? null
+    : `Atención: usted aceptó omitir ${plural(aceptadas.length, 'fila', 'filas')} (líneas: ${textoLineas(aceptadas)}) y el servidor omitió ${String(r.omitidas)} (líneas: ${textoLineas(omitidas)}). Revise ese resultado antes de seguir.`;
+  return { texto, difiere };
+}

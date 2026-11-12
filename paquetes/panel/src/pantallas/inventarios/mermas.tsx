@@ -32,16 +32,20 @@ function ResolverMerma({ merma, producto, decision, alCerrar, alResolver, alProc
   const accion = useAccion();
   const [motivo, setMotivo] = useState('');
   const [intento, setIntento] = useState(false);
-  const operacionId = useRef(nuevoId());
+  // El mismo identificador solo mientras no cambie lo que se envía (un reintento no duplica; otro motivo es otra operación).
+  const operacion = useRef<{ firma: string; id: string } | null>(null);
   const rechaza = decision === 'rechazada';
   const falta = rechaza && motivo.trim() === '';
   const nombre = producto?.nombre ?? merma.productoId;
   const confirmar = (): void => {
     setIntento(true);
     if (falta) return;
+    const firma = JSON.stringify([merma.mermaId, decision, rechaza ? motivo.trim() : '']);
+    if (operacion.current?.firma !== firma) operacion.current = { firma, id: nuevoId() };
+    const operacionId = operacion.current.id;
     alProcesar(true);
     void accion.ejecutar(async () => {
-      await api.llamar('resolverMerma', { operacionId: operacionId.current, mermaId: merma.mermaId, decision, ...(rechaza ? { motivo: motivo.trim() } : {}) });
+      await api.llamar('resolverMerma', { operacionId, mermaId: merma.mermaId, decision, ...(rechaza ? { motivo: motivo.trim() } : {}) });
       avisos.ok(rechaza ? `Merma de ${nombre} rechazada.` : `Merma de ${nombre} aprobada: el stock ya se descontó.`);
       alResolver();
     }).finally(() => alProcesar(false));

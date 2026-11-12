@@ -1,6 +1,7 @@
 import type { JSX } from 'preact';
 import { useRef, useState } from 'preact/hooks';
 import { nuevoId } from '../../api/cliente.js';
+import { ErrorApi } from '../../api/errores.js';
 import type { FilaSimulada, ResultadoImportacion, Simulacion } from '../../api/tipos.js';
 import { useAvisos } from '../../ui/avisos.js';
 import { Alerta, Boton, Casilla, Seccion } from '../../ui/comun.js';
@@ -14,7 +15,7 @@ import { aBase64, formatoBytes } from '../../util/base64.js';
 import { aCsv, descargarTexto } from '../../util/csv.js';
 import {
   ACCION_TEXTO, ACEPTA_ARCHIVO, aplicables, COLUMNAS_ARCHIVO, COLUMNAS_STOCK, encabezadosPlantilla, lineasConfirmacion, MAX_BYTES_ARCHIVO, MAX_FILAS, ordenarFilas, resumenSimulacion,
-  textoError, textoResultado, textoTandas, validarArchivo,
+  avisoOmitidas, lineasConError, TEXTO_ARCHIVO_CAMBIO, textoDetencion, textoError, textoResultado, textoTandas, validarArchivo,
 } from './importar-logica.js';
 import './inventario.css';
 
@@ -72,6 +73,9 @@ export function ImportarExportar(): JSX.Element {
   const [resultado, setResultado] = useState<ResultadoImportacion | null>(null);
   const operacion = useRef<{ clave: string; id: string } | null>(null);
   const vigente = useRef(0);
+  /** Líneas con error que la persona vio en la simulación y aceptó omitir al confirmar. */
+  const aceptadas = useRef<number[]>([]);
+  const [archivoCambio, setArchivoCambio] = useState(false);
   const { marcarGuardado } = useCambiosSinGuardar(fuente !== null, ['inventarios.importar']);
   const esAdm = usuario.rol === 'adm';
 
@@ -88,6 +92,7 @@ export function ImportarExportar(): JSX.Element {
   const simular = (f: Fuente, cargaInicial: boolean): void => {
     const turno = (vigente.current += 1);
     setSim(null);
+    setArchivoCambio(false);
     operacion.current = null;
     void simulacion.ejecutar(async () => {
       const s = await api.llamar('simularImportacionProductos', { archivo: f.archivo, cargaInicial });
@@ -129,6 +134,8 @@ export function ImportarExportar(): JSX.Element {
     setResultado(null);
     setErrorArchivo(null);
     operacion.current = null;
+    aceptadas.current = [];
+    setArchivoCambio(false);
     importacion.limpiar();
     simulacion.limpiar();
     marcarGuardado();
@@ -140,16 +147,29 @@ export function ImportarExportar(): JSX.Element {
     const clave = JSON.stringify([fuente.archivo.length, fuente.nombre, inicial, omitir]);
     if (operacion.current?.clave !== clave) operacion.current = { clave, id: nuevoId() };
     const operacionId = operacion.current.id;
+    if (omitir) aceptadas.current = lineasConError(sim);
     void importacion.ejecutar(async () => {
-      const r = await api.llamar('importarProductosCsv', { operacionId, archivo: fuente.archivo, cargaInicial: inicial, omitirErrores: omitir });
-      setResultado(r);
-      setConfirmando(null);
-      if (r.completa) {
-        avisos.ok(`Importación terminada: ${textoResultado(r)}.`);
-        setFuente(null);
-        setSim(null);
+      try {
+        // PENDIENTE (Central): el contrato del panel aún no admite `lineasOmitidas: number[]` (las líneas en error de la
+        // simulación aceptada, para que el servidor verifique que omite exactamente esas). Cuando exista en
+        // `api/contrato.ts`, enviar aquí `...(omitir ? { lineasOmitidas: aceptadas.current } : {})`.
+        const r = await api.llamar('importarProductosCsv', { operacionId, archivo: fuente.archivo, cargaInicial: inicial, omitirErrores: omitir });
+        setResultado(r);
+        setConfirmando(null);
+        if (r.completa) {
+          avisos.ok(`Importación terminada: ${textoResultado(r)}.`);
+          setFuente(null);
+          setSim(null);
+          operacion.current = null;
+          marcarGuardado();
+        }
+      } catch (e) {
+        // El servidor ya tiene una importación con ese identificador pero con otro archivo: no se puede continuar.
+        if (!(e instanceof ErrorApi) || e.detalle.codigo !== 'operacion-conflicto') throw e;
         operacion.current = null;
-        marcarGuardado();
+        setConfirmando(null);
+        setResultado(null);
+        setArchivoCambio(true);
       }
     });
   };
@@ -157,6 +177,7 @@ export function ImportarExportar(): JSX.Element {
   const r = sim?.resumen;
   const nAplicar = r === undefined ? 0 : aplicables(r);
   const hayErrores = (r?.errores ?? 0) > 0;
+  const omitidas = resultado === null ? null : avisoOmitidas(resultado, aceptadas.current);
 
   return (
     <div>
@@ -241,16 +262,29 @@ export function ImportarExportar(): JSX.Element {
         </Seccion>
       )}
 
+      {archivoCambio && (
+        <Seccion titulo="Resultado de la importación">
+          <Alerta>{TEXTO_ARCHIVO_CAMBIO}</Alerta>
+          <Boton onClick={descartar}>Empezar de nuevo</Boton>
+        </Seccion>
+      )}
+
       {resultado !== null && (
         <Seccion titulo="Resultado de la importación">
           {resultado.completa ? (
-            <Alerta tipo="ok">Importación terminada: {textoResultado(resultado)}. {textoTandas(resultado)}.</Alerta>
+            <>
+              <Alerta tipo="ok">Importación terminada: {textoResultado(resultado)}. {textoTandas(resultado)}.</Alerta>
+              {omitidas !== null && <Alerta tipo="info">{omitidas.texto}</Alerta>}
+              {omitidas?.difiere != null && <Alerta>{omitidas.difiere}</Alerta>}
+            </>
           ) : (
             <>
               <Alerta>
-                La importación quedó incompleta: {textoTandas(resultado)}. Ya se aplicó: {textoResultado(resultado)}. {resultado.detencion ?? ''}
+                La importación quedó incompleta: {textoTandas(resultado)}. Ya se aplicó: {textoResultado(resultado)}. {textoDetencion(resultado.detencion)}
               </Alerta>
               <p class="texto-suave">Lo aplicado se queda. «Continuar» sigue con las tandas que faltan sin repetir las anteriores.</p>
+              {omitidas !== null && <Alerta tipo="info">{omitidas.texto}</Alerta>}
+              {omitidas?.difiere != null && <Alerta>{omitidas.difiere}</Alerta>}
               <Boton onClick={() => importar(resultado.omitidas > 0)} ocupado={importacion.ocupado}>Continuar la importación</Boton>
               {importacion.error && <Alerta>{importacion.error}</Alerta>}
             </>

@@ -19,38 +19,69 @@ import './inventario.css';
 type Linea = ConteoVista['lineas'][number];
 
 /** Un campo del conteo: se guarda al salir de él si cambió, y dice en qué estado quedó. */
-function FilaConteo({ conteoId, p, escrito, hecha, alEscribir, alGuardar }: {
+function FilaConteo({ conteoId, p, escrito, hecha, alEscribir, alGuardar, alOcupar }: {
   conteoId: string;
   p: ProductoPanel;
   escrito: string;
   hecha: Linea | undefined;
   alEscribir: (texto: string) => void;
   alGuardar: () => void;
+  /** Avisa a la pantalla cuántos guardados de este campo hay en curso (+1 al empezar, -1 al terminar). */
+  alOcupar: (delta: number) => void;
 }): JSX.Element {
   const { api } = useApp();
   const accion = useAccion();
   const [errorCampo, setErrorCampo] = useState<string | null>(null);
-  // Un identificador por valor: reintentar el mismo valor no duplica; un valor distinto es otra operación.
-  const ids = useRef(new Map<string, string>());
+  // El `operacionId` solo se reusa al REINTENTAR un guardado fallido del mismo valor; al guardar bien se descarta
+  // (si no, volver a escribir un valor ya usado se tomaría por repetido y el servidor no lo escribiría).
+  const fallido = useRef<{ clave: string; operacionId: string } | null>(null);
+  // Guardados de este campo, encadenados: el segundo nunca llega antes que el primero ni se pierde.
+  const cola = useRef<Promise<void>>(Promise.resolve());
+  const ultima = useRef<string | null>(null);
+  const enVuelo = useRef(0);
   const guardado = normalizarTexto(p, textoGuardado(p, hecha));
   const cambio = escrito.trim() !== '' && normalizarTexto(p, escrito) !== guardado;
 
   const guardar = (): void => {
-    if (!cambio) {
+    if (escrito.trim() === '') {
+      setErrorCampo(null);
+      return;
+    }
+    const clave = normalizarTexto(p, escrito);
+    // Con un guardado en curso, volver al valor que ya tiene el servidor también se envía: el pendiente lo pisaría.
+    if (!cambio && enVuelo.current === 0) {
       setErrorCampo(null);
       return;
     }
     const malo = revisarTexto(p, escrito);
     setErrorCampo(malo);
     if (malo !== null) return;
-    const clave = normalizarTexto(p, escrito);
-    const operacionId = ids.current.get(clave) ?? nuevoId();
-    ids.current.set(clave, operacionId);
-    void accion.ejecutar(async () => {
-      await api.llamar('registrarLineaConteo', p.conSerie
-        ? { operacionId, conteoId, productoId: p.id, series: separar(escrito) }
-        : { operacionId, conteoId, productoId: p.id, contado: Number(escrito.trim()) });
-      alGuardar();
+    if (clave === ultima.current && fallido.current === null) return;
+    const reintento = fallido.current?.clave === clave ? fallido.current : null;
+    const operacionId = reintento?.operacionId ?? nuevoId();
+    fallido.current = null;
+    ultima.current = clave;
+    enVuelo.current += 1;
+    alOcupar(1);
+    const datos = p.conSerie ? { operacionId, conteoId, productoId: p.id, series: separar(escrito) } : { operacionId, conteoId, productoId: p.id, contado: Number(escrito.trim()) };
+    cola.current = cola.current.then(async () => {
+      let bien = false;
+      try {
+        await accion.ejecutar(async () => {
+          await api.llamar('registrarLineaConteo', datos);
+          bien = true;
+          alGuardar();
+        });
+      } finally {
+        enVuelo.current -= 1;
+        alOcupar(-1);
+        if (bien) {
+          if (ultima.current === clave && enVuelo.current === 0) ultima.current = null;
+        } else if (ultima.current === clave) {
+          fallido.current = { clave, operacionId };
+          ultima.current = null;
+        }
+      }
     });
   };
 
@@ -77,16 +108,24 @@ function ConteoAbierto({ abierto, productos, alCambiar }: { abierto: ConteoVista
   const cierre = useAccion();
   const [q, setQ] = useState('');
   const [confirmando, setConfirmando] = useState(false);
+  const [enCurso, setEnCurso] = useState(0);
+  const enCursoRef = useRef(0);
+  const ocupar = (delta: number): void => {
+    enCursoRef.current += delta;
+    setEnCurso(enCursoRef.current);
+  };
   const operacionCierre = useRef<string | null>(null);
   const clave = `inventarios.conteo.${abierto.conteoId}`;
   const b = useBorrador<Record<string, string>>(clave, {});
   const lista = productos.filter((p) => p.stockTotal !== undefined);
   const pendientes = contarPendientes(lista, b.valor, abierto.lineas);
-  const { marcarGuardado } = useCambiosSinGuardar(pendientes > 0, [clave]);
+  const { marcarGuardado } = useCambiosSinGuardar(pendientes > 0 || enCurso > 0, [clave]);
   const av = avance(lista, abierto.lineas);
   const visibles = q.trim() === '' ? lista : lista.filter((p) => normalizar([p.nombre, p.sku, p.categoria, p.marca ?? ''].join(' ')).includes(normalizar(q)));
 
   const cerrar = (): void => {
+    // Nunca se cierra con valores que la persona ve y el servidor todavía no tiene.
+    if (enCursoRef.current > 0 || pendientes > 0) return;
     operacionCierre.current ??= nuevoId();
     const operacionId = operacionCierre.current;
     void cierre.ejecutar(async () => {
@@ -127,6 +166,7 @@ function ConteoAbierto({ abierto, productos, alCambiar }: { abierto: ConteoVista
                       hecha={abierto.lineas.find((l) => l.productoId === p.id)}
                       alEscribir={(t) => b.poner((prev) => ({ ...prev, [p.id]: t }))}
                       alGuardar={alCambiar}
+                      alOcupar={ocupar}
                     />
                   </td>
                 </tr>
@@ -139,7 +179,7 @@ function ConteoAbierto({ abierto, productos, alCambiar }: { abierto: ConteoVista
         <Boton
           variante="secundario"
           onClick={() => setConfirmando(true)}
-          motivo={pendientes > 0 ? `Hay ${String(pendientes)} ${pendientes === 1 ? 'cantidad' : 'cantidades'} sin guardar: salga de cada campo para guardarlas.` : undefined}
+          motivo={enCurso > 0 ? 'Se están guardando cantidades: espere un momento.' : pendientes > 0 ? `Hay ${String(pendientes)} ${pendientes === 1 ? 'cantidad' : 'cantidades'} sin guardar: salga de cada campo para guardarlas.` : undefined}
         >
           Cerrar y firmar el conteo
         </Boton>

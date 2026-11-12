@@ -3,6 +3,7 @@ import { h } from 'preact';
 import { cleanup, render, screen, waitFor, within } from '@testing-library/preact';
 import { userEvent } from '@testing-library/user-event';
 import { afterEach, describe, expect, it, vi } from 'vitest';
+import { ErrorApi } from '../../api/errores.js';
 import { crearEntorno, type Entorno } from '../../ayuda-pruebas.js';
 import { archivoExcelDoble } from '../../doble/inventario/importacion.js';
 import { ProveedorGuardia } from '../../ui/guardia.js';
@@ -107,6 +108,8 @@ describe('importar: siempre simulación primero', () => {
     await waitFor(() => expect(llamadas(e, 'importarProductosCsv')).toHaveLength(1));
     expect(llamadas(e, 'importarProductosCsv')[0]?.entrada).toMatchObject({ omitirErrores: true, cargaInicial: false });
     expect(await screen.findByText(/Importación terminada: 2 productos creados/, { selector: '.alerta' })).toBeTruthy();
+    expect(screen.getByText(/Se omitieron 1 fila con error \(líneas del archivo: 4\)/)).toBeTruthy();
+    expect(screen.queryByText(/Atención: usted aceptó omitir/)).toBeNull();
     expect((await e.api.llamar('listarProductos', {})).some((p) => p.id === 'nuevo-a' && p.precioUSD.bo === 1050)).toBe(true);
   });
 
@@ -171,5 +174,62 @@ describe('importar: por tandas', () => {
     expect(ids).toHaveLength(2);
     expect(ids[1]).toBe(ids[0]);
     expect((await e.api.llamar('listarProductos', {})).filter((p) => p.id.startsWith('nuevo-')).length).toBe(3);
+  });
+
+  it('la detención se muestra sin identificadores técnicos y dice qué hacer', async () => {
+    const e = crearEntorno('adm');
+    e.api.estado.importacion.filasPorTanda = 1;
+    e.api.estado.importacion.fallaEnTanda = 2;
+    ver(e);
+    const u = userEvent.setup();
+    await u.upload(entradaArchivo(), csv('nuevo-a,Nuevo A,Cat,NA-1,10,11', 'nuevo-b,Nuevo B,Cat,NB-1,20,22'));
+    await u.click(await screen.findByRole('button', { name: 'Importar 2 filas' }));
+    await u.click(within(await screen.findByRole('dialog')).getByRole('button', { name: 'Sí, importar' }));
+    const alerta = await screen.findByText(/La importación quedó incompleta/);
+    expect(alerta.textContent).not.toMatch(/operacionId/i);
+    expect(alerta.textContent).toMatch(/Hubo un problema en la tanda 2 de 2/);
+    expect(alerta.textContent).toMatch(/Pulse «Continuar la importación»/);
+  });
+
+  it('si al continuar el servidor dice que la operación tiene otro contenido, pide empezar de nuevo', async () => {
+    const e = crearEntorno('adm');
+    e.api.estado.importacion.filasPorTanda = 1;
+    e.api.estado.importacion.fallaEnTanda = 2;
+    ver(e);
+    const u = userEvent.setup();
+    await u.upload(entradaArchivo(), csv('nuevo-a,Nuevo A,Cat,NA-1,10,11', 'nuevo-b,Nuevo B,Cat,NB-1,20,22'));
+    await u.click(await screen.findByRole('button', { name: 'Importar 2 filas' }));
+    await u.click(within(await screen.findByRole('dialog')).getByRole('button', { name: 'Sí, importar' }));
+    await screen.findByRole('button', { name: 'Continuar la importación' });
+    const original = e.api.llamar.bind(e.api);
+    vi.spyOn(e.api, 'llamar').mockImplementation(((n: string, en: unknown) => (n === 'importarProductosCsv'
+      ? Promise.reject(new ErrorApi('already-exists', 'La operación abc ya existe con otro contenido', { codigo: 'operacion-conflicto' }))
+      : original(n as never, en as never))) as never);
+    await u.click(screen.getByRole('button', { name: 'Continuar la importación' }));
+    const alerta = await screen.findByText(/El archivo cambió desde el intento anterior/);
+    expect(alerta.textContent).toMatch(/empiece de nuevo con una importación nueva/);
+    expect(document.body.textContent).not.toMatch(/abc|operacionId/);
+    await u.click(screen.getByRole('button', { name: 'Empezar de nuevo' }));
+    expect(screen.queryByText(/El archivo cambió/)).toBeNull();
+  });
+
+  it('si el servidor omite más filas de las que la persona aceptó, lo dice destacado con las líneas', async () => {
+    const e = crearEntorno('adm');
+    ver(e);
+    const u = userEvent.setup();
+    await u.upload(entradaArchivo(), mixto());
+    await screen.findByRole('table', { name: 'Simulación de la importación' });
+    const original = e.api.llamar.bind(e.api);
+    vi.spyOn(e.api, 'llamar').mockImplementation((async (n: string, en: unknown) => {
+      const r = await original(n as never, en as never);
+      if (n !== 'importarProductosCsv') return r;
+      const res = r as { omitidas: number; simulacion: { filas: { linea: number; accion: string }[] } };
+      return { ...res, omitidas: 2, simulacion: { ...res.simulacion, filas: res.simulacion.filas.map((f) => (f.linea === 2 ? { ...f, accion: 'error', errores: [], advertencias: [], cambios: [] } : f)) } };
+    }) as never);
+    await u.click(screen.getByRole('button', { name: 'Importar las filas válidas y omitir las 1 con error' }));
+    await u.click(within(await screen.findByRole('dialog')).getByRole('button', { name: 'Sí, importar y omitir las filas con error' }));
+    const aviso = await screen.findByText(/Atención: usted aceptó omitir 1 fila \(líneas: 4\) y el servidor omitió 2/);
+    expect(aviso.closest('.alerta')?.getAttribute('role')).toBe('alert');
+    expect(screen.getByText(/Se omitieron 2 filas con error \(líneas del archivo: 2, 4\)/)).toBeTruthy();
   });
 });

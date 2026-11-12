@@ -117,4 +117,87 @@ describe('conteo ciego', () => {
     const tabla = await screen.findByRole('table', { name: 'Resultado del conteo' });
     expect(tabla.textContent).toContain('-5');
   });
+
+  const escribir = async (u: ReturnType<typeof userEvent.setup>, valor: string): Promise<void> => {
+    const campo = screen.getByLabelText('Cantidad de Cable HDMI 2 m');
+    await u.click(campo);
+    await u.clear(campo);
+    await u.type(campo, valor);
+    await u.tab();
+  };
+  const contadoEnServidor = (e: Entorno): number | undefined => [...e.api.estado.conteos.values()][0]?.lineas.find((l) => l.productoId === 'cable-hdmi')?.contado;
+
+  it('escribir 5, luego 6 y otra vez 5 deja 5 en el servidor: cada guardado bueno descarta su identificador', async () => {
+    const e = crearEntorno('sup');
+    const u = await abrir(e);
+    await escribir(u, '5');
+    await waitFor(() => expect(contadoEnServidor(e)).toBe(5));
+    await escribir(u, '6');
+    await waitFor(() => expect(contadoEnServidor(e)).toBe(6));
+    await escribir(u, '5');
+    await waitFor(() => expect(contadoEnServidor(e)).toBe(5));
+    const ids = llamadas(e, 'registrarLineaConteo').map((l) => l.entrada['operacionId']);
+    expect(ids).toHaveLength(3);
+    expect(new Set(ids).size).toBe(3);
+    const campo = screen.getByLabelText('Cantidad de Cable HDMI 2 m');
+    await waitFor(() => expect(within(campo.closest('td') as HTMLElement).getByText('Guardado')).toBeTruthy());
+  });
+
+  it('dos cambios rápidos del mismo campo se envían en orden y queda el último', async () => {
+    const e = crearEntorno('sup');
+    const u = await abrir(e);
+    const original = e.api.llamar.bind(e.api);
+    const orden: string[] = [];
+    let soltar: () => void = () => undefined;
+    const puerta = new Promise<void>((r) => { soltar = r; });
+    let primera = true;
+    vi.spyOn(e.api, 'llamar').mockImplementation((async (n: string, en: { contado?: number }) => {
+      if (n === 'registrarLineaConteo') {
+        orden.push(`inicio-${String(en.contado)}`);
+        if (primera) {
+          primera = false;
+          await puerta;
+        }
+        const r = await original(n as never, en as never);
+        orden.push(`fin-${String(en.contado)}`);
+        return r;
+      }
+      return original(n as never, en as never);
+    }) as never);
+    await escribir(u, '5');
+    await escribir(u, '6');
+    expect(orden).toEqual(['inicio-5']);
+    soltar();
+    await waitFor(() => expect(contadoEnServidor(e)).toBe(6));
+    await waitFor(() => expect(orden).toEqual(['inicio-5', 'fin-5', 'inicio-6', 'fin-6']));
+  });
+
+  it('con un guardado fallido no deja cerrar y avisa; el reintento reusa el identificador y luego sí se cierra', async () => {
+    const e = crearEntorno('sup');
+    const u = await abrir(e);
+    const original = e.api.llamar.bind(e.api);
+    const ids: unknown[] = [];
+    let falla = true;
+    vi.spyOn(e.api, 'llamar').mockImplementation(((n: string, en: { operacionId?: unknown }) => {
+      if (n === 'registrarLineaConteo') {
+        ids.push(en.operacionId);
+        if (falla) {
+          falla = false;
+          return Promise.reject(new ErrorApi('unavailable', 'sin red'));
+        }
+      }
+      return original(n as never, en as never);
+    }) as never);
+    await escribir(u, '5');
+    expect(await screen.findByText(/No se pudo guardar Cable HDMI 2 m/)).toBeTruthy();
+    expect(screen.getByText(/Hay 1 cantidad sin guardar/)).toBeTruthy();
+    await u.click(screen.getByRole('button', { name: 'Cerrar y firmar el conteo' }));
+    expect(screen.queryByRole('dialog')).toBeNull();
+    await u.click(screen.getByRole('button', { name: 'Reintentar guardar Cable HDMI 2 m' }));
+    await waitFor(() => expect(contadoEnServidor(e)).toBe(5));
+    expect(ids[1]).toBe(ids[0]);
+    await waitFor(() => expect(screen.queryByText(/Hay 1 cantidad sin guardar/)).toBeNull());
+    await u.click(screen.getByRole('button', { name: 'Cerrar y firmar el conteo' }));
+    expect(await screen.findByRole('dialog', { name: '¿Cerrar y firmar el conteo?' })).toBeTruthy();
+  });
 });
