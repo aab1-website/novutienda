@@ -43,9 +43,8 @@ export function ejecutorConsola(db: BaseDatosIdentidad): EjecutorTransacciones<T
  * por evento (por id y por clave de idempotencia, en la misma transacción que el contador). `consumir` valida el evento con
  * el contrato del núcleo y lanza `ErrorEvento` si es inválido. Devuelve `false` si era duplicado o estaba descartado.
  *
- * Sin doble conteo: los callables de consola (`crearProductoConsola`, etc.) anotan el cambio ellos mismos y llaman al
- * catálogo de Inventarios por el puerto, que NO publica el evento; solo los callables propios de Inventarios lo publican,
- * y esos cambios solo se cuentan aquí.
+ * Única vía de conteo de los cambios de producto: los callables de consola (alta, edición, precio, importación) llaman a la
+ * biblioteca de Inventarios por el puerto, que publica el evento en la misma transacción; consola ya no anota esos cambios.
  */
 export function consumirProductoCambiado(
   ejecutor: EjecutorTransacciones<TransaccionConsola>,

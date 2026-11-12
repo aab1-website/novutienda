@@ -37,16 +37,17 @@ describe('consumirProductoCambiado', () => {
     expect(db.dato(ESTADO)).toBeUndefined();
   });
 
-  it('una operación por consola cuenta una sola vez (la vía de consola no publica el evento)', async () => {
+  it('las operaciones de producto por consola no anotan el cambio: lo cuenta solo el evento de Inventarios', async () => {
     const deps = { db, catalogo: new CatalogoDoble(), reloj: new RelojFijo() };
     const adm = actor('adm');
     await crearProductoConsola(deps, {
       tenantId: T, actor: adm, productoId: 'p1', datos: { nombre: 'A', categoria: 'C', sku: 'S1' }, precioUSD: { bo: 1, ar: 1 },
     });
     await editarProductoConsola(deps, { tenantId: T, actor: adm, productoId: 'p1', cambios: { nombre: 'B' } });
+    expect(db.dato(ESTADO)).toBeUndefined();
+    // El evento que publica la biblioteca de Inventarios en esas mismas transacciones es la única vía: suma una vez por evento.
+    await consumirProductoCambiado(ejecutorConsola(db), evento('pc-consola-crear-p1', { productoId: 'p1', cambio: 'creado' }));
+    await consumirProductoCambiado(ejecutorConsola(db), evento('e5', { productoId: 'p1', cambio: 'editado' }));
     expect(db.dato(ESTADO)?.['cambios']).toBe(2);
-    // Un producto cambiado por Inventarios llega solo por el evento y suma una vez más.
-    await consumirProductoCambiado(ejecutorConsola(db), evento('e5', { productoId: 'p2', cambio: 'editado' }));
-    expect(db.dato(ESTADO)?.['cambios']).toBe(3);
   });
 });

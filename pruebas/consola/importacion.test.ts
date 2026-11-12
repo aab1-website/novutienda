@@ -106,7 +106,7 @@ describe('importación', () => {
     expect(db.dato(rutaContador(T))).toEqual({ productos: 200 });
   });
 
-  it('importa: crea con precio 0 si falta, actualiza precio mezclando el otro mercado, anota cambio y auditoría', async () => {
+  it('importa: crea con precio 0 si falta, actualiza precio mezclando el otro mercado, audita y no anota cambio (lo cuenta el evento de Inventarios)', async () => {
     catalogo.agregar('cam-1', { precioUSD: { bo: 10, ar: 12 } });
     db.poner(rutaContador(T), { productos: 1 });
     const r = await importarProductos(deps, entrada('id,nombre,categoria,precio_bo\ncam-1,,,15\ncam-9,Nueva,video,\n'));
@@ -114,7 +114,7 @@ describe('importación', () => {
     expect(catalogo.productos.get('cam-1')?.precioUSD).toEqual({ bo: 15, ar: 12 });
     expect(catalogo.productos.get('cam-9')?.precioUSD).toEqual({ bo: 0, ar: 0 });
     expect(r.simulacion.filas[1]?.advertencias.join(' ')).toContain('a consultar');
-    expect(db.dato(`tenants/${T}/sitio/estado`)).toMatchObject({ cambios: 1 });
+    expect(db.dato(`tenants/${T}/sitio/estado`)).toBeUndefined();
     expect(db.coleccion(`tenants/${T}/auditoria`)[0]).toMatchObject({ accion: 'productos.importar', resumenDespues: { aplicadas: 2, fallidas: 0 } });
   });
 

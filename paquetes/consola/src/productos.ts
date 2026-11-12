@@ -1,5 +1,4 @@
 import { registrarAuditoria, type Actor, type TransaccionIdentidad } from '@novutienda/nucleo';
-import { anotarCambio, leerEstadoSitio } from './cambios.js';
 import { ErrorConsola } from './errores.js';
 import { exigirRol, ROLES } from './permisos.js';
 import type { BaseDatosConsola, CatalogoPuerto, DatosProducto, PrecioUSD, Reloj } from './puertos.js';
@@ -73,18 +72,16 @@ export function validarPrecioUSD(x: unknown): PrecioUSD {
 }
 
 /**
- * Corre `escribir` (la operación de Inventarios) y, en la MISMA transacción, anota el cambio del sitio y registra la
- * auditoría: si cualquiera falla, no queda ninguna. Orden: primero las lecturas (estado del sitio), luego las escrituras.
+ * Corre `escribir` (la operación de Inventarios) y, en la MISMA transacción, registra la auditoría: si cualquiera falla,
+ * no queda ninguna. El cambio sin publicar del sitio NO se anota aquí: la biblioteca de Inventarios publica
+ * `producto.cambiado` en esta misma transacción y lo cuenta `consumirProductoCambiado` (una sola vía, sin doble conteo).
  */
 async function enTransaccion(
   deps: DepsProductos, t: string, actor: Actor, accion: string, productoId: string, resumen: Record<string, number | string>,
   escribir: (tx: TransaccionIdentidad) => Promise<void>,
 ): Promise<void> {
-  const ahora = new Date(deps.reloj.ahora()).toISOString();
   await deps.db.runTransaction(async (tx) => {
-    const estado = await leerEstadoSitio(tx, t);
     await escribir(tx);
-    anotarCambio(tx, t, estado, ahora);
     registrarAuditoria(tx, { tenantId: t, uid: actor.uid, rol: 'adm', accion, ruta: rutaFicha(t, productoId), resumenDespues: resumen });
   });
 }
