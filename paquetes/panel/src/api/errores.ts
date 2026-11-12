@@ -151,7 +151,8 @@ export function mensajeDeError(e: unknown): string {
   if ((e.detalle.codigo === 'stock-insuficiente' || sinCodigoConFaltantes) && e.detalle.faltantes !== undefined && e.detalle.faltantes.length > 0) {
     if (sinCodigoConFaltantes) base = POR_CODIGO_MODULO['stock-insuficiente'] ?? base;
     const f = e.detalle.faltantes
-      .map((x) => `${x.productoNombre ?? 'Un producto'}${x.almacenNombre === undefined ? '' : ` en ${x.almacenNombre}`}: pidió ${x.pedido}, hay ${x.disponible}`)
+      // Sin nombre se muestra el código del producto y del almacén (legibles): es mejor que no decir cuál falta.
+      .map((x) => `${x.productoNombre ?? x.productoId} en ${x.almacenNombre ?? x.almacenId}: pidió ${x.pedido}, hay ${x.disponible}`)
       .join('; ');
     base = `${base} ${f}.`;
   }

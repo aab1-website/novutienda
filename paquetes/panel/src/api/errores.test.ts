@@ -39,8 +39,7 @@ describe('mensajes de error', () => {
   });
   it('agrega los faltantes de stock y los detalles por fila', () => {
     const f = new ErrorApi('failed-precondition', 'x', { codigo: 'stock-insuficiente', faltantes: [{ productoId: 'tv', almacenId: 'tienda', pedido: 3, disponible: 1 }] });
-    expect(mensajeDeError(f)).toContain('Un producto: pidió 3, hay 1');
-    expect(mensajeDeError(f)).not.toContain('tv');
+    expect(mensajeDeError(f)).toContain('tv en tienda: pidió 3, hay 1'); // sin nombre, el código legible
     const n = new ErrorApi('failed-precondition', 'x', { codigo: 'stock-insuficiente', faltantes: [{ productoId: 'tv-55', almacenId: 'deposito-1', pedido: 2, disponible: 0, productoNombre: 'Televisor', almacenNombre: 'Depósito' }] });
     expect(mensajeDeError(n)).toContain('Televisor en Depósito: pidió 2, hay 0');
     const d = new ErrorApi('invalid-argument', 'x', { codigo: 'entrada-invalida', detalles: ['línea 2: id inválido'] });
