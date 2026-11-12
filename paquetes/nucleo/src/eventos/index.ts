@@ -8,6 +8,7 @@ export type { Campo, Fixtures } from './esquema.js';
 export * from './venta-confirmada.v1.js';
 export * from './venta-anulada.v1.js';
 export * from './turno-cerrado.v1.js';
+export * from './producto-cambiado.v1.js';
 export * from './stock-cambiado.v1.js';
 export * from './stock-bajo.v1.js';
 export * from './recibo-emitido.v1.js';

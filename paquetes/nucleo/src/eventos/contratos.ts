@@ -2,6 +2,7 @@ import type { Resultado } from '../contratos/claim.js';
 import { validarSobre, type SobreEvento } from '../contratos/sobre-evento.js';
 import { validarPedidoConfirmadoV1 } from './pedido-confirmado.v1.js';
 import { validarPedidoSolicitadoV1 } from './pedido-solicitado.v1.js';
+import { validarProductoCambiadoV1 } from './producto-cambiado.v1.js';
 import { validarReciboEmitidoV1 } from './recibo-emitido.v1.js';
 import { validarStockBajoV1 } from './stock-bajo.v1.js';
 import { validarStockCambiadoV1 } from './stock-cambiado.v1.js';
@@ -16,6 +17,7 @@ export const CONTRATOS_V1: Readonly<Record<string, ValidadorDatos>> = {
   'venta.confirmada': validarVentaConfirmadaV1,
   'venta.anulada': validarVentaAnuladaV1,
   'turno.cerrado': validarTurnoCerradoV1,
+  'producto.cambiado': validarProductoCambiadoV1,
   'stock.cambiado': validarStockCambiadoV1,
   'stock.bajo': validarStockBajoV1,
   'recibo.emitido': validarReciboEmitidoV1,
