@@ -219,7 +219,7 @@ describe('existencias ocultas: el panel distingue «oculto» (null) de «no cont
   });
 
   it('sin marca en la respuesta, la lista no la trae', async () => {
-    const r = (await ejecutar('listarProductos', { productos: [{ id: 'a', ...base, stockTotal: 3, existencias: { tienda: 3 } }] })) as { existenciasOcultas?: true }[];
+    const r = (await ejecutar('listarProductos', { productos: [{ id: 'a', ...base, stockTotal: 3, existencias: { tienda: 3 } }] })) as unknown[] & { existenciasOcultas?: true };
     expect(r.existenciasOcultas).toBeUndefined();
   });
 
