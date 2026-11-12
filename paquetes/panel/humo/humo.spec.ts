@@ -188,6 +188,24 @@ for (const esquema of ESQUEMAS) {
       expect(v.errores).toEqual([]);
     });
 
+    test('Usuarios: tabla con búsqueda y orden a 1280 px, y sin desborde a 360 px', async ({ page }) => {
+      const v = vigilar(page);
+      await entrar(page, 'adm');
+      await page.getByRole('link', { name: 'Usuarios' }).click();
+      const tabla = page.getByRole('table', { name: 'Usuarios del negocio' });
+      await expect(tabla).toBeVisible();
+      await expect(tabla.getByRole('columnheader', { name: 'Correo' })).toHaveAttribute('scope', 'col');
+      await tabla.getByRole('columnheader', { name: 'Correo' }).getByRole('button').click();
+      await expect(tabla.getByRole('columnheader', { name: 'Correo' })).toHaveAttribute('aria-sort', 'ascending');
+      await sinViolaciones(page, 'usuarios con tabla a 1280');
+      expect(await page.content()).not.toMatch(/\sstyle=/);
+      await page.setViewportSize({ width: 360, height: 740 });
+      await expect(page.getByRole('button', { name: 'Quitar acceso' }).first()).toBeVisible();
+      expect(await page.evaluate(() => document.documentElement.scrollWidth)).toBeLessThanOrEqual(360);
+      await sinViolaciones(page, 'usuarios con tabla en modo desplazar a 360');
+      expect(v.errores).toEqual([]);
+    });
+
     test('celular 360×740 con un diálogo abierto: cubre la pantalla, no desborda y vive en body', async ({ page }) => {
       const v = vigilar(page);
       await page.setViewportSize({ width: 360, height: 740 });
