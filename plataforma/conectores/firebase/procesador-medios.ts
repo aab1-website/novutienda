@@ -93,7 +93,7 @@ export class FormatoVideoNoAdmitido extends ArchivoNoAdmitido {
 
 export type EstadoVideo =
   | { readonly disponible: true; readonly version: string }
-  | { readonly disponible: false; readonly causa: string; readonly version?: string };
+  | { readonly disponible: false; readonly causa: string; readonly version?: string; readonly transitorio?: true };
 
 /** Entorno mínimo de los subprocesos: sin heredar nada (ni credenciales ni variables de ffmpeg). */
 const ENTORNO_BIN = { PATH: '/usr/bin:/bin' };
@@ -104,10 +104,20 @@ function esTransitorio(err: unknown): boolean {
   return e.killed === true || (typeof e.signal === 'string' && e.signal !== '') || e.code === 'ETIMEDOUT';
 }
 
+/** Causa legible de un fallo al ejecutar un binario: no existe, tiempo agotado u otro código. */
+function causaDeEjecucion(nombre: 'ffmpeg' | 'ffprobe', err: unknown): string {
+  const e = err as { code?: unknown };
+  if (e.code === 'ENOENT') return `${nombre} no existe`;
+  if (esTransitorio(err)) return `tiempo agotado al sondear ${nombre}`;
+  return `${nombre} no ejecuta (${typeof e.code === 'string' || typeof e.code === 'number' ? String(e.code) : 'error'})`;
+}
+
 /**
- * Sonda de ffmpeg y ffprobe: existen, ejecutan y ffmpeg trae libx264. Se guarda por instancia solo el éxito o un
- * fallo definitivo (falta el binario, sin libx264); un timeout se reintenta en la siguiente llamada. La primera
- * línea de `-version` de ambos queda en la versión, para compararla con los avisos de seguridad.
+ * Sonda de ffmpeg y ffprobe: existen, ejecutan y ffmpeg trae libx264. Son solo dos ejecuciones: `ffmpeg -encoders`
+ * (sin `-hide_banner`, para que la primera línea de stderr traiga la versión y no haga falta un `-version` aparte) y
+ * `ffprobe -version`. Se guarda por instancia solo el éxito o un fallo definitivo (falta el binario, sin libx264);
+ * un timeout se reintenta en la siguiente llamada. La sonda corre dentro de la petición que la necesita, nunca en
+ * segundo plano: fuera de una petición Cloud Run estrangula la CPU y la sonda moriría por tiempo.
  */
 export function sondaVideo(bin: BinariosVideo): () => Promise<EstadoVideo> {
   let guardada: EstadoVideo | undefined;
@@ -116,29 +126,37 @@ export function sondaVideo(bin: BinariosVideo): () => Promise<EstadoVideo> {
     let version: string | undefined;
     const con = (e: EstadoVideo & { disponible: false }): EstadoVideo => ({ ...e, ...(version === undefined ? {} : { version }) });
     try {
-      const v = await ejecutar(bin.ffmpeg, ['-hide_banner', '-version'], { ...opc, maxBuffer: 1024 * 1024 });
-      version = v.stdout.split('\n')[0]?.trim();
-      const e = await ejecutar(bin.ffmpeg, ['-hide_banner', '-encoders'], { ...opc, maxBuffer: 4 * 1024 * 1024 });
+      const e = await ejecutar(bin.ffmpeg, ['-encoders'], { ...opc, maxBuffer: 4 * 1024 * 1024 });
+      version = e.stderr.split('\n')[0]?.trim();
       if (!/\blibx264\b/.test(e.stdout)) return { estado: con({ disponible: false, causa: 'ffmpeg sin libx264' }), definitivo: true };
-      let sondeVersion: string | undefined;
-      try {
-        const p = await ejecutar(bin.ffprobe, ['-hide_banner', '-version'], { ...opc, maxBuffer: 1024 * 1024 });
-        sondeVersion = p.stdout.split('\n')[0]?.trim();
-      } catch (err) {
-        const codigo = (err as { code?: unknown }).code;
-        return { estado: con({ disponible: false, causa: `ffprobe no ejecuta (${typeof codigo === 'string' || typeof codigo === 'number' ? String(codigo) : 'error'})` }), definitivo: !esTransitorio(err) };
-      }
+    } catch (err) {
+      return { estado: con({ disponible: false, causa: causaDeEjecucion('ffmpeg', err) }), definitivo: !esTransitorio(err) };
+    }
+    try {
+      const p = await ejecutar(bin.ffprobe, ['-hide_banner', '-version'], { ...opc, maxBuffer: 1024 * 1024 });
+      const sondeVersion = p.stdout.split('\n')[0]?.trim();
       return { estado: { disponible: true, version: [version, sondeVersion].filter((x) => x !== undefined && x !== '').join(' | ') || 'desconocida' }, definitivo: true };
     } catch (err) {
-      const codigo = (err as { code?: unknown }).code;
-      return { estado: con({ disponible: false, causa: `ffmpeg no ejecuta (${typeof codigo === 'string' || typeof codigo === 'number' ? String(codigo) : 'error'})` }), definitivo: !esTransitorio(err) };
+      return { estado: con({ disponible: false, causa: causaDeEjecucion('ffprobe', err) }), definitivo: !esTransitorio(err) };
     }
   };
-  return async () => {
-    if (guardada !== undefined) return guardada;
-    const r = await sondear();
-    if (r.definitivo) guardada = r.estado;
-    return r.estado;
+  // Las peticiones concurrentes comparten la sonda en curso; se suelta al terminar (el definitivo queda en `guardada`).
+  let enCurso: Promise<EstadoVideo> | undefined;
+  return () => {
+    if (guardada !== undefined) return Promise.resolve(guardada);
+    // Con timeout la petición espera hasta 15 s y responde «no disponible»: decisión aceptada, se reintenta en la siguiente.
+    enCurso ??= sondear()
+      .then((r): EstadoVideo => {
+        if (r.definitivo) {
+          guardada = r.estado;
+          return r.estado;
+        }
+        return r.estado.disponible ? r.estado : { ...r.estado, transitorio: true };
+      })
+      .finally(() => {
+        enCurso = undefined;
+      });
+    return enCurso;
   };
 }
 
@@ -256,15 +274,42 @@ export function procesadorVideo(bucket: Bucket, bin: BinariosVideo): Pick<Proces
 /** Procesador de la consola con la sonda de video expuesta (para registrar el estado al crear el entorno). */
 export type ProcesadorMediosConSonda = ProcesadorMedios & { readonly estadoVideo: () => Promise<EstadoVideo> };
 
+/** Registro mínimo para dejar constancia de la sonda (el entorno pasa el `logger` de Functions). */
+export interface RegistroSonda {
+  readonly error: (mensaje: string, datos: Record<string, unknown>) => void;
+  readonly warn: (mensaje: string, datos: Record<string, unknown>) => void;
+}
+
 /**
  * Procesador de la consola: fotos con sharp; video con ffmpeg si hay binarios con libx264, y si no, error claro.
+ * Crearlo no ejecuta ningún binario: la sonda corre perezosa dentro de la petición que la pide (`disponible('video')`
+ * al reservar una subida, o al inspeccionar/procesar). Un fallo definitivo se registra como error una sola vez por
+ * instancia; uno transitorio (tiempo agotado) como aviso, y la siguiente llamada reintenta.
  */
-export function crearProcesadorMedios(bucket: Bucket, env: Readonly<Record<string, string | undefined>> = {}): ProcesadorMediosConSonda {
+export function crearProcesadorMedios(bucket: Bucket, env: Readonly<Record<string, string | undefined>> = {}, registro?: RegistroSonda): ProcesadorMediosConSonda {
   const imagenes = procesadorImagenes(bucket);
   const bin = binariosDeVideo(env);
   const video = bin === undefined ? undefined : procesadorVideo(bucket, bin);
   const sonda = bin === undefined ? undefined : sondaVideo(bin);
-  const estadoVideo = async (): Promise<EstadoVideo> => (sonda === undefined ? { disponible: false, causa: 'faltan FFMPEG_PATH y FFPROBE_PATH' } : sonda());
+  let errorRegistrado = false;
+  let avisoRegistrado = false; // un solo aviso por instancia hasta que la sonda tenga éxito o fallo definitivo
+  const estadoVideo = async (): Promise<EstadoVideo> => {
+    if (sonda === undefined) return { disponible: false, causa: 'faltan FFMPEG_PATH y FFPROBE_PATH' };
+    const e = await sonda();
+    if (!e.disponible && registro !== undefined) {
+      if (e.transitorio === true) {
+        if (!avisoRegistrado) {
+          avisoRegistrado = true;
+          registro.warn('video no disponible por ahora', { causa: e.causa, version: e.version });
+        }
+      } else if (!errorRegistrado) {
+        errorRegistrado = true;
+        registro.error('video no disponible', { causa: e.causa, version: e.version });
+      }
+    }
+    if (e.disponible || e.transitorio !== true) avisoRegistrado = false;
+    return e;
+  };
   const elegirVideo = async (): Promise<Pick<ProcesadorMedios, 'inspeccionar' | 'procesar'>> => {
     const e = await estadoVideo();
     if (video === undefined || !e.disponible) throw new VideoNoDisponible();
