@@ -1,7 +1,7 @@
 import type { JSX } from 'preact';
 import { useRef, useState } from 'preact/hooks';
 import { nuevoId } from '../../api/cliente.js';
-import type { ConteoVista, ProductoPanel, UbicacionId } from '../../api/tipos.js';
+import type { ConteoVista, ProductoDeConteo, UbicacionId } from '../../api/tipos.js';
 import { useAvisos } from '../../ui/avisos.js';
 import { Alerta, Boton, Campo, ConCarga, Selector, Seccion, Vacio, fechaHora } from '../../ui/comun.js';
 import { useApp } from '../../ui/contexto.js';
@@ -21,7 +21,7 @@ type Linea = ConteoVista['lineas'][number];
 /** Un campo del conteo: se guarda al salir de él si cambió, y dice en qué estado quedó. */
 function FilaConteo({ conteoId, p, escrito, hecha, alEscribir, alGuardar, alOcupar }: {
   conteoId: string;
-  p: ProductoPanel;
+  p: ProductoDeConteo;
   escrito: string;
   hecha: Linea | undefined;
   alEscribir: (texto: string) => void;
@@ -63,7 +63,7 @@ function FilaConteo({ conteoId, p, escrito, hecha, alEscribir, alGuardar, alOcup
     ultima.current = clave;
     enVuelo.current += 1;
     alOcupar(1);
-    const datos = p.conSerie ? { operacionId, conteoId, productoId: p.id, series: separar(escrito) } : { operacionId, conteoId, productoId: p.id, contado: Number(escrito.trim()) };
+    const datos = p.conSerie ? { operacionId, conteoId, productoId: p.productoId, series: separar(escrito) } : { operacionId, conteoId, productoId: p.productoId, contado: Number(escrito.trim()) };
     cola.current = cola.current.then(async () => {
       let bien = false;
       try {
@@ -102,7 +102,7 @@ function FilaConteo({ conteoId, p, escrito, hecha, alEscribir, alGuardar, alOcup
   );
 }
 
-function ConteoAbierto({ abierto, productos, alCambiar }: { abierto: ConteoVista; productos: readonly ProductoPanel[]; alCambiar: () => void }): JSX.Element {
+function ConteoAbierto({ abierto, productos, alCambiar }: { abierto: ConteoVista; productos: readonly ProductoDeConteo[]; alCambiar: () => void }): JSX.Element {
   const { api } = useApp();
   const avisos = useAvisos();
   const cierre = useAccion();
@@ -117,7 +117,7 @@ function ConteoAbierto({ abierto, productos, alCambiar }: { abierto: ConteoVista
   const operacionCierre = useRef<string | null>(null);
   const clave = `inventarios.conteo.${abierto.conteoId}`;
   const b = useBorrador<Record<string, string>>(clave, {});
-  const lista = productos.filter((p) => p.stockTotal !== undefined);
+  const lista = productos;
   const pendientes = contarPendientes(lista, b.valor, abierto.lineas);
   const { marcarGuardado } = useCambiosSinGuardar(pendientes > 0 || enCurso > 0, [clave]);
   const av = avance(lista, abierto.lineas);
@@ -156,15 +156,15 @@ function ConteoAbierto({ abierto, productos, alCambiar }: { abierto: ConteoVista
             <thead><tr><th scope="col">Producto</th><th scope="col">Contado</th></tr></thead>
             <tbody>
               {visibles.map((p) => (
-                <tr key={p.id}>
+                <tr key={p.productoId}>
                   <th scope="row">{p.nombre}<div class="texto-suave">{p.sku}</div></th>
                   <td>
                     <FilaConteo
                       conteoId={abierto.conteoId}
                       p={p}
-                      escrito={b.valor[p.id] ?? textoGuardado(p, abierto.lineas.find((l) => l.productoId === p.id))}
-                      hecha={abierto.lineas.find((l) => l.productoId === p.id)}
-                      alEscribir={(t) => b.poner((prev) => ({ ...prev, [p.id]: t }))}
+                      escrito={b.valor[p.productoId] ?? textoGuardado(p, abierto.lineas.find((l) => l.productoId === p.productoId))}
+                      hecha={abierto.lineas.find((l) => l.productoId === p.productoId)}
+                      alEscribir={(t) => b.poner((prev) => ({ ...prev, [p.productoId]: t }))}
                       alGuardar={alCambiar}
                       alOcupar={ocupar}
                     />
@@ -199,7 +199,7 @@ function ConteoAbierto({ abierto, productos, alCambiar }: { abierto: ConteoVista
           }
         >
           <ul class="lista-simple inv-resumen" data-prueba="resumen-cierre">
-            {lineasDeCierre(av, abierto.faltan).map((l) => <li key={l}>{l}</li>)}
+            {lineasDeCierre(av).map((l) => <li key={l}>{l}</li>)}
           </ul>
           {cierre.error !== null && <Alerta>{cierre.error}</Alerta>}
         </Dialogo>
@@ -208,13 +208,31 @@ function ConteoAbierto({ abierto, productos, alCambiar }: { abierto: ConteoVista
   );
 }
 
+/** Resultado de un conteo cerrado (solo sup/adm). Los nombres se piden aquí, y solo cuando no hay un conteo abierto. */
+function ResultadoConteo({ resultado }: { resultado: NonNullable<ConteoVista['resultado']> }): JSX.Element {
+  const prod = useProductos();
+  const nombre = (id: string): string => prod.lista.find((p) => p.id === id)?.nombre ?? id;
+  return (
+    <Tabla
+      titulo="Resultado del conteo"
+      filas={resultado}
+      clave={(r) => r.productoId}
+      porPagina={100}
+      columnas={[
+        { id: 'producto', titulo: 'Producto', valor: (r) => nombre(r.productoId), encabezadoFila: true },
+        { id: 'sistema', titulo: 'Sistema', valor: (r) => r.teorico },
+        { id: 'contado', titulo: 'Contado', valor: (r) => r.contado },
+        { id: 'diferencia', titulo: 'Diferencia', valor: (r) => r.diferencia, celda: (r) => <span class={r.diferencia < 0 ? 'texto-error' : ''}>{r.diferencia}</span> },
+      ]}
+    />
+  );
+}
+
 export function Conteo(): JSX.Element {
   const { api } = useApp();
   const conteos = useCarga(() => api.llamar('listarConteos', {}), []);
-  const prod = useProductos();
   const accion = useAccion();
   const [ubicacion, setUbicacion] = useState<UbicacionId>('tienda');
-  const nombre = (id: string): string => prod.lista.find((p) => p.id === id)?.nombre ?? id;
   const operacionApertura = useRef<{ ubicacion: string; conteoId: string; operacionId: string } | null>(null);
 
   const abrir = (): void => {
@@ -228,7 +246,6 @@ export function Conteo(): JSX.Element {
   };
   const recargar = (): void => {
     conteos.recargar();
-    prod.recargar();
   };
 
   return (
@@ -245,10 +262,8 @@ export function Conteo(): JSX.Element {
                   <Selector etiqueta="Almacén a contar" valor={ubicacion} onCambio={(v) => setUbicacion(v as UbicacionId)} opciones={OPCIONES_ALMACEN} />
                   <Boton onClick={abrir} ocupado={accion.ocupado}>Abrir conteo</Boton>
                 </div>
-              ) : prod.cargando ? (
-                <p class="texto-suave">Cargando productos…</p>
               ) : (
-                <ConteoAbierto key={abierto.conteoId} abierto={abierto} productos={prod.lista} alCambiar={recargar} />
+                <ConteoAbierto key={abierto.conteoId} abierto={abierto} productos={abierto.productos ?? []} alCambiar={recargar} />
               )}
               {accion.error && <Alerta>{accion.error}</Alerta>}
             </Seccion>
@@ -257,20 +272,7 @@ export function Conteo(): JSX.Element {
               {cerrados.map((c) => (
                 <div key={c.conteoId} class="tarjeta-interna">
                   <strong>{nombreAlmacen(c.ubicacionId)}</strong> · {fechaHora(c.fecha)}
-                  {c.resultado && (
-                    <Tabla
-                      titulo="Resultado del conteo"
-                      filas={c.resultado}
-                      clave={(r) => r.productoId}
-                      porPagina={100}
-                      columnas={[
-                        { id: 'producto', titulo: 'Producto', valor: (r) => nombre(r.productoId), encabezadoFila: true },
-                        { id: 'sistema', titulo: 'Sistema', valor: (r) => r.teorico },
-                        { id: 'contado', titulo: 'Contado', valor: (r) => r.contado },
-                        { id: 'diferencia', titulo: 'Diferencia', valor: (r) => r.diferencia, celda: (r) => <span class={r.diferencia < 0 ? 'texto-error' : ''}>{r.diferencia}</span> },
-                      ]}
-                    />
-                  )}
+                  {c.resultado !== undefined && (abierto === undefined ? <ResultadoConteo resultado={c.resultado} /> : <p class="texto-suave">El resultado se muestra cuando no haya un conteo abierto: así quien cuenta no ve las existencias del sistema.</p>)}
                 </div>
               ))}
             </Seccion>

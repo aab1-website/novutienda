@@ -323,7 +323,7 @@ for (const esquema of ESQUEMAS) {
         await sinDesborde('conteo');
         await page.getByRole('button', { name: 'Cerrar y firmar el conteo' }).click();
         const cierre = page.getByRole('dialog', { name: '¿Cerrar y firmar el conteo?' });
-        await expect(cierre.getByText(/Faltan \d+ productos?; se contarán en 0 y generarán mermas? por resolver/)).toBeVisible();
+        await expect(cierre.getByText(/Faltan \d+ productos? por contar\. Los que tengan existencias en el sistema se contarán en 0 y generarán mermas\./)).toBeVisible();
         await sinViolaciones(page, `cierre del conteo a ${String(ancho)} px`);
         await cierre.getByRole('button', { name: 'Sí, cerrar y firmar' }).click();
         await expect(page.getByText(/Conteo cerrado y firmado/).first()).toBeVisible();

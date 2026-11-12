@@ -14,7 +14,7 @@ import type { Entrada, NombreCallable, Salida } from './contrato.js';
 import { ROLES_ACCION } from './acciones.generado.js';
 import { ErrorApi } from './errores.js';
 import type {
-  AprobacionPos, ConteoVista, CotizacionesVigentes, CreditoVista, Medio, MermaVista, MovimientoVista, ProductoPanel,
+  AprobacionPos, ConteoVista, ProductoDeConteo, CotizacionesVigentes, CreditoVista, Medio, MermaVista, MovimientoVista, ProductoPanel,
   Rol, TurnoPos, UbicacionId, UnidadSerie, UsuarioVista, VentaPos,
 } from './tipos.js';
 import { fijarRedondeo } from '../util/precio.js';
@@ -332,8 +332,8 @@ export const TRADUCCION: { readonly [N in NombreCallable]: Traduccion<N> } = {
           return sinVacios({
             conteoId: String(k['id']), ubicacionId: k['ubicacionId'] as UbicacionId, estado: k['estado'] as ConteoVista['estado'], abiertoPor: String(k['abiertoPor']),
             cerradoPor: k['cerradoPor'] as string | undefined, fecha: String(k['abiertoEn'] ?? ''), lineas,
-            // `faltan` solo llega a sup/adm con el conteo abierto.
-            faltan: typeof (detalle as Obj)['faltan'] === 'number' ? ((detalle as Obj)['faltan'] as number) : undefined,
+            // Con el conteo abierto, la lista a contar (sin existencias) llega a todo rol.
+            productos: Array.isArray((detalle as Obj)['productos']) ? ((detalle as Obj)['productos'] as ProductoDeConteo[]) : undefined,
             // `resultado` (teórico, contado, diferencia) solo llega a sup/adm y con el conteo cerrado.
             resultado: (detalle as Obj)['resultado'] as ConteoVista['resultado'],
           }) as ConteoVista;
