@@ -1,5 +1,6 @@
 /** SEO: URL canónicas y datos estructurados (JSON-LD) generados a partir de objetos del repositorio. */
 import type { Contenido, Producto } from '../contenido/tipos.js';
+import { descripcionPlana } from './descripcion.js';
 
 export const rutaProducto = (p: Pick<Producto, 'slug'>): string => `/producto/${p.slug}`;
 export const rutaCategoria = (id: string): string => `/productos/${id}`;
@@ -32,7 +33,7 @@ export function jsonLdProducto(p: Producto, c: Contenido): Record<string, unknow
     '@type': 'Product',
     name: p.nombre,
     sku: p.id,
-    description: p.descripcion,
+    description: descripcionPlana(p.descripcion),
     brand: { '@type': 'Brand', name: p.marca },
     ...(p.fotos.length > 0 ? { image: p.fotos.map((f) => (f.url.startsWith('/') ? urlAbsoluta(o, f.url) : f.url)) } : {}),
     ...(p.garantia !== null ? { warranty: { '@type': 'WarrantyPromise', description: p.garantia } } : {}),

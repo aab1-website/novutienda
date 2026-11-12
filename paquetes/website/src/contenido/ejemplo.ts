@@ -19,7 +19,7 @@ const base = {
 const productos: readonly Producto[] = [
   {
     ...base, id: 'ejemplo-tv-55', slug: 'televisor-ejemplo-55', nombre: 'Televisor de ejemplo 55"', categoria: 'televisores', marca: 'Aurora',
-    descripcion: 'EJEMPLO. Televisor inventado para probar el sitio. Pantalla de 55 pulgadas, resolución 4K y aplicaciones de transmisión incluidas.',
+    descripcion: 'EJEMPLO. Televisor inventado para probar el sitio.\n\n## Características\n* Pantalla de **55 pulgadas**\n* - Resolución 4K\n\n### Conexiones\nAplicaciones de transmisión incluidas. <b>Texto literal</b>.',
     garantia: '12 meses (ejemplo)', precioUsd: { BO: 450, AR: 480 }, destacado: true,
     fotos: [foto(1, 'Televisor de ejemplo, vista frontal'), foto(2, 'Televisor de ejemplo, vista lateral'), foto(3, 'Televisor de ejemplo, conexiones')],
     video: { url: '/ejemplo/video-ejemplo.mp4', poster: '/ejemplo/producto-1.svg', titulo: 'Video de ejemplo del televisor' },
@@ -75,7 +75,7 @@ const carrusel = (orden: readonly number[]): readonly Foto[] =>
   orden.map((n) => hero(n, `Imagen de ejemplo ${n} del carrusel de la portada`));
 
 const carruseles: Readonly<Record<IdPlantilla, readonly Foto[]>> = {
-  cielo: carrusel([1, 2, 3]),
+  cielo: carrusel([1, 2, 3]).map((f, i) => (i === 0 ? { ...f, enlace: '/productos' } : f)),
   bosque: carrusel([2, 3, 4]),
   ambar: carrusel([3, 4, 5]),
   grafito: carrusel([4, 5, 1]),
