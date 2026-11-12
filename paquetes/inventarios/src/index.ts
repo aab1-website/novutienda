@@ -43,3 +43,9 @@ export type { UbicacionId } from './ids.js';
 export type { Autor } from './motor.js';
 /** Solo para pruebas: fija el reloj con el que se estampan los planes. */
 export { fijarReloj, fechaLocal, ZONA_HORARIA_POR_DEFECTO } from './motor.js';
+
+// Visibilidad de las existencias durante un conteo abierto (único punto de decisión; ver `visibilidad.ts`).
+export {
+  conteosAbiertosDe, filtrarUnidadesLista, hayOcultamiento, marcaOcultamiento, proyectarMovimiento, proyectarProducto, puedeVerExistencias, recortarFaltantes,
+} from './visibilidad.js';
+export type { ConteoAbierto, Conteos, FaltanteRecortado, MarcaOcultamiento, ProductoProyectado, ProductoVisible } from './visibilidad.js';
