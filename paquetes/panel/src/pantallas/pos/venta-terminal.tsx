@@ -4,10 +4,12 @@ import { nuevoId } from '../../api/cliente.js';
 import type { AprobacionPos, CotizacionesVigentes, Mercado, Moneda, ProductoPanel, Recibo, TurnoPos, UbicacionId } from '../../api/tipos.js';
 import { Alerta, Boton, Campo, Cargando, Casilla, ErrorCarga, Selector, Seccion, Vacio } from '../../ui/comun.js';
 import { useApp } from '../../ui/contexto.js';
+import { AvisoConteoAbierto, ExistenciaOculta, TEXTO_OCULTO } from '../../ui/existencia.js';
 import { useAccion, useCarga } from '../../ui/hooks.js';
 import { AccionesRecibo, ReciboVista } from '../recibos/recibo-vista.js';
 import { formatearMonto, textoACentavos } from '../../util/dinero.js';
 import { MONEDA_DE_MERCADO, precioDeVenta } from '../../util/precio.js';
+import { SerieEscrita } from './serie-escrita.js';
 import { VentaCobro, type DatosCobro } from './venta-cobro.js';
 
 export interface LineaUI {
@@ -23,7 +25,13 @@ const ALMACENES: { valor: UbicacionId; texto: string }[] = [
   { valor: 'deposito-2', texto: 'Depósito 2' },
 ];
 
-function SelectorSeries({ producto, almacenId, elegidas, alCambiar }: { producto: ProductoPanel; almacenId: UbicacionId; elegidas: string[]; alCambiar: (s: string[]) => void }): JSX.Element {
+function SelectorSeries({ producto, almacenId, enConteo, elegidas, alCambiar }: { producto: ProductoPanel; almacenId: UbicacionId; enConteo: boolean; elegidas: string[]; alCambiar: (s: string[]) => void }): JSX.Element {
+  // Almacén en conteo para quien no es administrador: no se lista lo disponible (su cantidad sería el stock); se escribe o escanea.
+  if (enConteo) return <SerieEscrita productoId={producto.id} almacenId={almacenId} elegidas={elegidas} alCambiar={alCambiar} />;
+  return <SelectorSeriesLista producto={producto} almacenId={almacenId} elegidas={elegidas} alCambiar={alCambiar} />;
+}
+
+function SelectorSeriesLista({ producto, almacenId, elegidas, alCambiar }: { producto: ProductoPanel; almacenId: UbicacionId; elegidas: string[]; alCambiar: (s: string[]) => void }): JSX.Element {
   const { api } = useApp();
   const s = useCarga(() => api.llamar('listarSeries', { productoId: producto.id, ubicacionId: almacenId, soloDisponibles: true }), [producto.id, almacenId]);
   if (s.cargando) return <Cargando texto="Cargando series…" />;
@@ -79,6 +87,8 @@ export function VentaTerminal({ turno, alCambiar }: { turno: TurnoPos; alCambiar
   const [solicitadaId, setSolicitadaId] = useState<string | null>(null);
   const aprobs = useCarga(() => api.llamar('listarAprobaciones', {}), [solicitadaId, paso]);
 
+  // La marca viaja como propiedad de la lista: se lee antes de filtrar o mapear.
+  const conteos = datos.datos?.productos.existenciasOcultas === true ? (datos.datos.productos.conteosAbiertos ?? []) : [];
   const productos = datos.datos?.productos ?? [];
   const porId = useMemo(() => new Map(productos.map((p) => [p.id, p])), [productos]);
 
@@ -102,7 +112,7 @@ export function VentaTerminal({ turno, alCambiar }: { turno: TurnoPos; alCambiar
     .filter((p) => q === '' || p.nombre.toLowerCase().includes(q) || p.sku.toLowerCase().includes(q) || (p.marca ?? '').toLowerCase().includes(q));
   const vendidos = new Map<string, number>();
   for (const v of ventas) for (const l of v.lineas) vendidos.set(l.productoId, (vendidos.get(l.productoId) ?? 0) + l.cantidad);
-  const rapidos = [...productos.filter((p) => p.activo && p.disponible)].sort((a, b) => (vendidos.get(b.id) ?? 0) - (vendidos.get(a.id) ?? 0) || a.nombre.localeCompare(b.nombre)).slice(0, 6);
+  const rapidos = [...productos.filter((p) => p.activo && p.disponible !== false)].sort((a, b) => (vendidos.get(b.id) ?? 0) - (vendidos.get(a.id) ?? 0) || a.nombre.localeCompare(b.nombre)).slice(0, 6);
 
   const precioDe = (p: ProductoPanel): ReturnType<typeof precioDeVenta> =>
     precioDeVenta(mercado === 'BO' ? p.precioUSD.bo : p.precioUSD.ar, mercado, moneda, cot[mercado]);
@@ -167,6 +177,7 @@ export function VentaTerminal({ turno, alCambiar }: { turno: TurnoPos; alCambiar
 
   return (
     <div class="terminal">
+      <AvisoConteoAbierto conteos={conteos} />
       <Seccion titulo="Productos">
         <div class="cuadricula">
           <Campo etiqueta="Buscar por nombre, SKU o marca" valor={busqueda} onInput={setBusqueda} nombre="buscar" />
@@ -196,7 +207,7 @@ export function VentaTerminal({ turno, alCambiar }: { turno: TurnoPos; alCambiar
                     <strong>{p.nombre}</strong>
                     <div class="texto-suave">
                       {p.categoria}
-                      {p.marca ? ` · ${p.marca}` : ''} · Tienda: {p.existencias.tienda}
+                      {p.marca ? ` · ${p.marca}` : ''} · Tienda: {p.existencias.tienda === null ? <ExistenciaOculta /> : p.existencias.tienda}
                       {p.conSerie ? ' · con serie' : ''}
                     </div>
                     <div class="precio" data-prueba="precio">
@@ -232,7 +243,7 @@ export function VentaTerminal({ turno, alCambiar }: { turno: TurnoPos; alCambiar
                     <Selector
                       etiqueta="Almacén"
                       valor={l.almacenId}
-                      opciones={ALMACENES.map((a) => ({ valor: a.valor, texto: `${a.texto} (${p.existencias[a.valor]})` }))}
+                      opciones={ALMACENES.map((a) => ({ valor: a.valor, texto: `${a.texto} (${p.existencias[a.valor] ?? TEXTO_OCULTO})` }))}
                       onCambio={(v) => setLineas(lineas.map((x, j) => (j === i ? { ...x, almacenId: v as UbicacionId, series: [], cantidad: p.conSerie ? 0 : x.cantidad } : x)))}
                     />
                     {p.conSerie ? (
@@ -250,9 +261,9 @@ export function VentaTerminal({ turno, alCambiar }: { turno: TurnoPos; alCambiar
                     </Boton>
                   </div>
                   {p.conSerie && verSeries === p.id && (
-                    <SelectorSeries producto={p} almacenId={l.almacenId} elegidas={l.series} alCambiar={(s) => setLineas(lineas.map((x, j) => (j === i ? { ...x, series: s, cantidad: s.length } : x)))} />
+                    <SelectorSeries producto={p} almacenId={l.almacenId} enConteo={conteos.some((c) => c.ubicacionId === l.almacenId)} elegidas={l.series} alCambiar={(s) => setLineas(lineas.map((x, j) => (j === i ? { ...x, series: s, cantidad: s.length } : x)))} />
                   )}
-                  {p.conSerie && l.series.length === 0 && <p class="texto-suave">Elija al menos una serie.</p>}
+                  {p.conSerie && l.series.length === 0 && <p class="texto-suave">{conteos.some((c) => c.ubicacionId === l.almacenId) ? 'Escriba o escanee al menos una serie.' : 'Elija al menos una serie.'}</p>}
                 </li>
               );
             })}
