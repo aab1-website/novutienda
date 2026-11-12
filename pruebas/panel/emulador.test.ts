@@ -197,7 +197,7 @@ describe.skipIf(!hayEmulador)('panel contra las funciones reales (emulador)', ()
     expect(mouse).toMatchObject({ nombre: 'Mouse', precioUSD: { bo: 1250, ar: 1999 }, costoUSD: 700 });
     // Ni el supervisor ni el vendedor ven el costo.
     expect((await api.sup.llamar('listarProductos', {})).find((p) => p.id === 'mouse-1')?.costoUSD).toBeUndefined();
-    await api.adm.llamar('cambiarPrecioUSD', { productoId: 'mouse-1', precioUSD: { bo: 1300, ar: 2000 } });
+    await api.adm.llamar('cambiarPrecioUSD', { operacionId: crypto.randomUUID(), productoId: 'mouse-1', precioUSD: { bo: 1300, ar: 2000 } });
     await api.adm.llamar('actualizarProducto', { operacionId: uuid(), productoId: 'mouse-1', cambios: { nombre: 'Mouse óptico', minimo: 3, costoUSD: 800 } });
     mouse = (await api.adm.llamar('listarProductos', {})).find((p) => p.id === 'mouse-1');
     expect(mouse).toMatchObject({ nombre: 'Mouse óptico', precioUSD: { bo: 1300, ar: 2000 }, costoUSD: 800, minimo: 3 });

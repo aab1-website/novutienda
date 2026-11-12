@@ -63,8 +63,8 @@ export interface Contrato {
   // ---- Consola (catálogo y sitio) ----
   obtenerTablero: { entrada: Vacio; salida: Tablero };
   publicarSitio: { entrada: Vacio; salida: ResultadoPublicacion };
-  /** Centavos de USD: `inventarios.cambiarPrecioUSD` (idempotente por `operacionId`; si la pantalla no lo manda, `real.ts` genera uno). */
-  cambiarPrecioUSD: { entrada: { operacionId?: string; productoId: string; precioUSD: PrecioUSDCentavos }; salida: Ok };
+  /** Centavos de USD: `inventarios.cambiarPrecioUSD` (idempotente por `operacionId`, que la pantalla manda siempre). */
+  cambiarPrecioUSD: { entrada: { operacionId: string; productoId: string; precioUSD: PrecioUSDCentavos }; salida: Ok };
   guardarFicha: { entrada: { productoId: string; ficha: FichaWeb }; salida: Ok };
   reservarSubida: { entrada: { subidaId: string; productoId: string; tipo: TipoMedio; bytes: number }; salida: Reserva };
   /** Consulta el estado de una subida sin procesarla (el disparador de Storage la procesa al llegar el original). */

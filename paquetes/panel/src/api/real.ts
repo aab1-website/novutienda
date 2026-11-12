@@ -365,7 +365,7 @@ export const TRADUCCION: { readonly [N in NombreCallable]: Traduccion<N> } = {
   // ---- Consola ----
   obtenerTablero: directa('consola', 'tablero'),
   publicarSitio: directa('consola', 'publicarSitio'),
-  cambiarPrecioUSD: comoOk('inventarios', 'cambiarPrecioUSD', (e) => ({ operacionId: e.operacionId ?? crypto.randomUUID(), productoId: e.productoId, precioUSD: e.precioUSD })),
+  cambiarPrecioUSD: comoOk('inventarios', 'cambiarPrecioUSD', (e) => ({ operacionId: e.operacionId, productoId: e.productoId, precioUSD: e.precioUSD })),
   guardarFicha: comoOk('consola', 'guardarFicha', (e) => e),
   reservarSubida: directa('medios', 'reservarSubida'),
   estadoSubida: {

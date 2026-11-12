@@ -162,7 +162,7 @@ describe('doble: venta', () => {
   });
   it('producto sin precio (a consultar) y moneda que no corresponde a la lista', async () => {
     const { e } = await conTurno('adm');
-    await e.api.llamar('cambiarPrecioUSD', { productoId: 'cable-hdmi', precioUSD: { bo: 0, ar: 9 } });
+    await e.api.llamar('cambiarPrecioUSD', { operacionId: uuid(), productoId: 'cable-hdmi', precioUSD: { bo: 0, ar: 9 } });
     expect((await falla(e.api.llamar('confirmarVenta', { requestId: uuid(), carrito: { mercado: 'BO', moneda: 'BOB', lineas: [{ productoId: 'cable-hdmi', cantidad: 1 }] }, pagos: efectivo(1) }))).detalle.codigo).toBe('sin-precio');
     expect((await falla(e.api.llamar('confirmarVenta', { requestId: uuid(), carrito: { mercado: 'BO', moneda: 'ARS', lineas: [{ productoId: 'cable-hdmi', cantidad: 1 }] }, pagos: efectivo(1) }))).detalle.codigo).toBe('entrada-invalida');
   });
@@ -558,8 +558,8 @@ describe('doble: catálogo y sitio', () => {
     expect(alta?.datos).toMatchObject({ producto: { precioUSD: { bo: 1250, ar: 1300 }, costoUSD: 700 } });
     expect(e.api.transporte.invocaciones.some((i) => i.accion === 'fijarCosto')).toBe(false);
     expect((await falla(e.api.llamar('crearProducto', { operacionId: uuid(), producto: nuevo }))).detalle.codigo).toBe('estado-invalido');
-    expect((await falla(e.api.llamar('cambiarPrecioUSD', { productoId: 'nuevo-x', precioUSD: { bo: 123.4, ar: 100 } }))).detalle.codigo).toBe('entrada-invalida');
-    await e.api.llamar('cambiarPrecioUSD', { productoId: 'nuevo-x', precioUSD: { bo: 1999, ar: 2000 } });
+    expect((await falla(e.api.llamar('cambiarPrecioUSD', { operacionId: uuid(), productoId: 'nuevo-x', precioUSD: { bo: 123.4, ar: 100 } }))).detalle.codigo).toBe('entrada-invalida');
+    await e.api.llamar('cambiarPrecioUSD', { operacionId: uuid(), productoId: 'nuevo-x', precioUSD: { bo: 1999, ar: 2000 } });
     expect(e.api.transporte.invocaciones.filter((i) => i.accion === 'cambiarPrecioUSD').at(-1)?.datos).toMatchObject({ precioUSD: { bo: 1999, ar: 2000 } });
     await e.api.llamar('actualizarProducto', { operacionId: uuid(), productoId: 'nuevo-x', cambios: { nombre: 'Equis', marca: 'M', garantiaMeses: 12, minimo: 3 } });
     // `null` vacía marca, garantía, mínimo y costo.
@@ -570,7 +570,7 @@ describe('doble: catálogo y sitio', () => {
     expect(vaciado?.minimo).toBeUndefined();
     expect(vaciado?.costoUSD).toBe(0);
     await falla(e.api.llamar('actualizarProducto', { operacionId: uuid(), productoId: 'nada', cambios: { nombre: 'a' } }));
-    await falla(e.api.llamar('cambiarPrecioUSD', { productoId: 'nada', precioUSD: { bo: 100, ar: 100 } }));
+    await falla(e.api.llamar('cambiarPrecioUSD', { operacionId: uuid(), productoId: 'nada', precioUSD: { bo: 100, ar: 100 } }));
   });
   it('importación con simulación: filas con error bloquean salvo omitirlas; el stock se ignora', async () => {
     const e = crearEntorno('adm');
