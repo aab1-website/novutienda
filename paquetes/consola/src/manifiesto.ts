@@ -16,7 +16,8 @@ const SIN_LECTURA_DIRECTA: readonly Rol[] = [];
  *    `http/sitio.ts` (conector del sitio); solo el servidor.
  * `sup` puede leer todo y, por las funciones del servidor, editar fichas y subir medios; precios, importación,
  * secciones, apariencia y publicación son de `adm`.
- * No emite ni consume eventos v1: la disponibilidad pública se sirve por `/api/disponibilidad` y la reconstrucción se
+ * No emite ni declara consumo de eventos v1 en el manifiesto (el consumo de `producto.cambiado` lo cablea el coordinador; ver
+ * `consumidores.ts`). La disponibilidad pública se sirve por `/api/disponibilidad` y la reconstrucción se
  * agenda desde la publicación, no desde el stock.
  */
 const colecciones: readonly ColeccionManifiesto[] = [
