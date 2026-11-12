@@ -2,9 +2,10 @@ import type { JSX } from 'preact';
 import { useState } from 'preact/hooks';
 import { ErrorApi } from '../api/errores.js';
 import { LIMITES_PANEL, type Rol } from '../api/tipos.js';
-import { Alerta, Boton, BotonConfirmado, Campo, Cargando, ErrorCarga, Selector, Seccion, Vacio } from '../ui/comun.js';
+import { Alerta, Boton, BotonConfirmado, Campo, Cargando, ErrorCarga, Selector, Seccion } from '../ui/comun.js';
 import { useApp } from '../ui/contexto.js';
 import { useAccion, useCarga } from '../ui/hooks.js';
+import { Tabla } from '../ui/tabla.js';
 
 const ROL_TEXTO: Record<Rol, string> = { caj: 'Vendedor', sup: 'Supervisor', adm: 'Administrador' };
 
@@ -121,36 +122,38 @@ export function PantallaUsuarios(): JSX.Element {
         {lista.error && <ErrorCarga error={lista.error} reintentar={lista.recargar} />}
         {accion.error && <Alerta>{accion.error}</Alerta>}
         {ok && <Alerta tipo="ok">{ok}</Alerta>}
-        {lista.datos && lista.datos.length === 0 && <Vacio titulo="No hay usuarios" />}
-        {lista.datos && lista.datos.length > 0 && (
-          <table class="tabla">
-            <caption class="solo-lectores">Usuarios del negocio</caption>
-            <thead><tr><th scope="col">Correo</th><th scope="col">Rol</th><th scope="col"><span class="solo-lectores">Acciones</span></th></tr></thead>
-            <tbody>
-              {lista.datos.map((u) => (
-                <tr key={u.uid}>
-                  <th scope="row">{u.correo}{u.uid === usuario.uid ? ' (usted)' : ''}</th>
-                  <td>
-                    {u.rol === 'adm' ? (
-                      ROL_TEXTO.adm
-                    ) : (
-                      <Selector etiqueta={`Rol de ${u.correo}`} valor={cambios[u.uid] ?? u.rol} onCambio={(v) => setCambios({ ...cambios, [u.uid]: v as Rol })} opciones={(['caj', 'sup'] as const).map((r) => ({ valor: r, texto: ROL_TEXTO[r] }))} />
-                    )}
-                  </td>
-                  <td>
-                    {u.rol !== 'adm' && (
-                      <div class="fila">
-                        <button type="button" class="boton boton-secundario boton-chico" disabled={cambios[u.uid] === undefined || cambios[u.uid] === u.rol || accion.ocupado} onClick={() => asignar(u.uid)}>
-                          Guardar rol
-                        </button>
-                        <BotonConfirmado texto="Quitar acceso" pregunta={`¿Quitar el acceso de ${u.correo}?`} textoConfirmar="Sí, quitar" peligro chico onConfirmar={() => quitar(u.uid)} />
-                      </div>
-                    )}
-                  </td>
-                </tr>
-              ))}
-            </tbody>
-          </table>
+        {lista.datos && (
+          <Tabla
+            titulo="Usuarios del negocio"
+            filas={lista.datos}
+            clave={(u) => u.uid}
+            buscar={{ etiqueta: 'Buscar por correo', en: (u) => [u.correo] }}
+            vacio={{ titulo: 'No hay usuarios' }}
+            columnas={[
+              { id: 'correo', titulo: 'Correo', valor: (u) => u.correo, encabezadoFila: true, ordenable: true, celda: (u) => `${u.correo}${u.uid === usuario.uid ? ' (usted)' : ''}` },
+              {
+                id: 'rol',
+                titulo: 'Rol',
+                valor: (u) => ROL_TEXTO[u.rol],
+                celda: (u) =>
+                  u.rol === 'adm' ? (
+                    ROL_TEXTO.adm
+                  ) : (
+                    <Selector etiqueta={`Rol de ${u.correo}`} valor={cambios[u.uid] ?? u.rol} onCambio={(v) => setCambios({ ...cambios, [u.uid]: v as Rol })} opciones={(['caj', 'sup'] as const).map((r) => ({ valor: r, texto: ROL_TEXTO[r] }))} />
+                  ),
+              },
+            ]}
+            acciones={(u) =>
+              u.rol !== 'adm' && (
+                <div class="fila">
+                  <Boton variante="secundario" chico deshabilitado={accion.ocupado} motivo={cambios[u.uid] === undefined || cambios[u.uid] === u.rol ? 'Cambie el rol para guardar' : undefined} onClick={() => asignar(u.uid)}>
+                    Guardar rol
+                  </Boton>
+                  <BotonConfirmado texto="Quitar acceso" pregunta={`¿Quitar el acceso de ${u.correo}?`} textoConfirmar="Sí, quitar" peligro chico onConfirmar={() => quitar(u.uid)} />
+                </div>
+              )
+            }
+          />
         )}
       </Seccion>
     </div>
