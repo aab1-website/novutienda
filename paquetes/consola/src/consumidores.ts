@@ -41,7 +41,7 @@ export function ejecutorConsola(db: BaseDatosIdentidad): EjecutorTransacciones<T
 /**
  * Consume `producto.cambiado` (v1): anota un cambio sin publicar en `sitio/estado`, igual que `anotarCambio`. Una sola vez
  * por evento (por id y por clave de idempotencia, en la misma transacción que el contador). `consumir` valida el evento con
- * el contrato del núcleo y lanza `ErrorEvento` si es inválido. Devuelve `false` si era duplicado o estaba descartado.
+ * el contrato del núcleo y lanza `ErrorEvento` si es inválido. Un evento con `ocurridoEn` <= `corteCatalogoEn` (instante en que la última publicación leyó el catálogo, `publicar.ts`) se consume sin contar. Devuelve `false` si era duplicado o estaba descartado.
  *
  * Única vía de conteo de los cambios de producto: los callables de consola (alta, edición, precio, importación) llaman a la
  * biblioteca de Inventarios por el puerto, que publica el evento en la misma transacción; consola ya no anota esos cambios.
@@ -55,6 +55,8 @@ export function consumirProductoCambiado(
     evento,
     manejador: async (tx, ev) => {
       const estado = await leerEstadoSitio(tx, ev.tenantId);
+      // Un cambio anterior o igual al corte de la última publicación ya salió publicado: se consume sin contar.
+      if (estado.corteCatalogoEn !== '' && Date.parse(ev.ocurridoEn) <= Date.parse(estado.corteCatalogoEn)) return;
       anotarCambio(tx, ev.tenantId, estado, ev.ocurridoEn);
     },
   });
