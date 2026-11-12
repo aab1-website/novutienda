@@ -1,11 +1,11 @@
 import { beforeEach, describe, expect, it } from 'vitest';
 import {
-  cambiarPrecioUSD, crearProductoConsola, decidirReconstruccion, editarProductoConsola, eliminarSeccion, ejecutarReconstruccion,
+  decidirReconstruccion, eliminarSeccion, ejecutarReconstruccion,
   finalizarSubida, guardarCarrusel, guardarConfigSitio, guardarFicha, guardarSeccion, LIMITES_CONSOLA, obtenerTablero, ordenarSecciones,
   preciosDelDia, proyectarDisponibilidad, publicarSitio, reservarSubida, calcularDisponibilidadPublica, construirPublicado,
   type DepsMedios,
 } from '@novutienda/consola';
-import { LimiteDelPlan, rutaContador, type AlmacenCotizaciones, type CopiaCotizacion, type Redondeo } from '@novutienda/nucleo';
+import { rutaContador, type AlmacenCotizaciones, type CopiaCotizacion, type Redondeo } from '@novutienda/nucleo';
 import { actor, AlmacenDoble, CatalogoDoble, DisparadorDoble, JPG, MP4, nuevaDb, ProcesadorSimulado, RelojFijo, T } from './dobles.js';
 
 const adm = actor('adm');
@@ -83,6 +83,12 @@ describe('servicios de la consola', () => {
       await expect(guardarFicha(ds(), { ...e, actor: adm, ficha: { ...ficha('x-1'), slug: 'MAL SLUG' } })).rejects.toMatchObject({ codigo: 'entrada-invalida' });
       expect(db.dato(`tenants/${T}/fichasWeb/cam-1`)).toBeUndefined();
     });
+    it('la consola no crea fichas de productos inexistentes: nada queda escrito', async () => {
+      await expect(guardarFicha(ds(), { tenantId: T, actor: adm, productoId: 'fantasma-1', ficha: ficha('fantasma') })).rejects.toMatchObject({ codigo: 'no-encontrado' });
+      expect(db.dato(`tenants/${T}/fichasWeb/fantasma-1`)).toBeUndefined();
+      expect(db.coleccion(`tenants/${T}/auditoria`).filter((a) => a['accion'] === 'ficha.guardar')).toHaveLength(0);
+      expect(catalogo.productos.has('fantasma-1')).toBe(false);
+    });
     it('no admite más de 5 fotos ni más de 1 video en la ficha', async () => {
       const fotos: string[] = [];
       for (let i = 0; i < 5; i += 1) fotos.push(await medio('cam-1'));
@@ -135,34 +141,6 @@ describe('servicios de la consola', () => {
       await guardarCarrusel(ds(), { tenantId: T, actor: adm, carrusel: { plantilla: 'bosque', items: [{ medioId: m, alt: 'a' }] } });
       expect(db.dato(`tenants/${T}/carruseles/bosque`)).toBeDefined();
       await expect(guardarCarrusel(ds(), { tenantId: T, actor: adm, carrusel: { plantilla: 'bosque', items: [{ medioId: 'medio-9999', alt: 'a' }] } })).rejects.toMatchObject({ codigo: 'no-encontrado' });
-    });
-  });
-
-  describe('productos por el puerto', () => {
-    it('cambia el precio USD por mercado solo con adm y registra antes/después', async () => {
-      await cambiarPrecioUSD(ds(), { tenantId: T, actor: adm, productoId: 'cam-1', precioUSD: { bo: 99.99, ar: 120 } });
-      expect(catalogo.productos.get('cam-1')?.precioUSD).toEqual({ bo: 99.99, ar: 120 });
-      expect(db.coleccion(`tenants/${T}/auditoria`).at(-1)).toMatchObject({ accion: 'producto.precio', resumenDespues: { antesBo: 10, precioBo: 99.99 } });
-      await expect(cambiarPrecioUSD(ds(), { tenantId: T, actor: sup, productoId: 'cam-1', precioUSD: { bo: 1, ar: 1 } })).rejects.toMatchObject({ codigo: 'no-autorizado' });
-      for (const mal of [{ bo: -1, ar: 1 }, { bo: 1.234, ar: 1 }, { bo: Number.NaN, ar: 1 }, { bo: 1 }, { bo: 1, ar: 1, x: 2 }, null]) {
-        await expect(cambiarPrecioUSD(ds(), { tenantId: T, actor: adm, productoId: 'cam-1', precioUSD: mal })).rejects.toMatchObject({ codigo: 'entrada-invalida' });
-      }
-      await expect(cambiarPrecioUSD(ds(), { tenantId: T, actor: adm, productoId: 'no-hay', precioUSD: { bo: 1, ar: 1 } })).rejects.toMatchObject({ codigo: 'no-encontrado' });
-    });
-    it('crear el producto 201 propaga LimiteDelPlan del catálogo', async () => {
-      db.poner(rutaContador(T), { productos: 200 });
-      await expect(crearProductoConsola(ds(), { tenantId: T, actor: adm, productoId: 'nuevo-1', datos: { nombre: 'A', categoria: 'x' }, precioUSD: { bo: 1, ar: 1 } })).rejects.toBeInstanceOf(LimiteDelPlan);
-      db.poner(rutaContador(T), { productos: 199 });
-      await crearProductoConsola(ds(), { tenantId: T, actor: adm, productoId: 'nuevo-1', datos: { nombre: 'A', categoria: 'x' }, precioUSD: { bo: 1, ar: 1 } });
-      expect(catalogo.productos.get('nuevo-1')).toMatchObject({ activo: true });
-    });
-    it('edita datos con validación y rechaza cambios vacíos o con campos ajenos', async () => {
-      await editarProductoConsola(ds(), { tenantId: T, actor: adm, productoId: 'cam-1', cambios: { marca: 'Otra', garantiaMeses: 24 } });
-      expect(catalogo.productos.get('cam-1')).toMatchObject({ marca: 'Otra', garantiaMeses: 24 });
-      await expect(editarProductoConsola(ds(), { tenantId: T, actor: adm, productoId: 'cam-1', cambios: {} })).rejects.toMatchObject({ codigo: 'entrada-invalida' });
-      await expect(editarProductoConsola(ds(), { tenantId: T, actor: adm, productoId: 'cam-1', cambios: { stockTotal: 5000 } })).rejects.toMatchObject({ codigo: 'entrada-invalida' });
-      await expect(editarProductoConsola(ds(), { tenantId: T, actor: adm, productoId: 'cam-1', cambios: { garantiaMeses: 1.5 } })).rejects.toMatchObject({ codigo: 'entrada-invalida' });
-      await expect(editarProductoConsola(ds(), { tenantId: T, actor: sup, productoId: 'cam-1', cambios: { marca: 'x' } })).rejects.toMatchObject({ codigo: 'no-autorizado' });
     });
   });
 

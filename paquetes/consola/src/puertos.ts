@@ -1,7 +1,7 @@
 // Puertos inyectables de la consola. Inventarios (productos, precios, stock) y la
 // infraestructura (Storage, procesamiento, programación) los implementan; aquí solo
 // se declara el contrato. La consola no importa ningún otro módulo.
-import type { BaseDatosIdentidad, TransaccionIdentidad } from '@novutienda/nucleo';
+import type { BaseDatosIdentidad } from '@novutienda/nucleo';
 import type { PlanProcesamiento } from './medios/plan.js';
 import type { TipoMedio } from './medios/tipos-archivo.js';
 
@@ -64,26 +64,12 @@ export interface Existencia {
 }
 
 /**
- * Productos, precios y stock. Los implementa Inventarios con SUS funciones (la consola nunca escribe esas
- * colecciones). Las operaciones de escritura corren DENTRO de la transacción `tx` de la consola, junto con la
- * anotación de cambio y la auditoría: si una falla, ninguna queda. Las lecturas de la transacción van antes de las
- * escrituras. `crearProducto` debe reservar el tope de 200 productos en esa misma transacción (`verificarYReservar`
- * del núcleo) y lanzar `LimiteDelPlan` si se supera.
+ * Productos, precios y stock, SOLO LECTURA. Los implementa Inventarios con SUS funciones: la consola nunca crea ni
+ * edita productos ni escribe esas colecciones (el alta y la edición son de Inventarios).
  */
 export interface CatalogoPuerto {
   listarProductos(tenantId: string): Promise<readonly ProductoCatalogo[]>;
   leerProducto(tenantId: string, productoId: string): Promise<ProductoCatalogo | undefined>;
-  crearProducto(
-    tx: TransaccionIdentidad,
-    tenantId: string,
-    productoId: string,
-    datos: DatosProducto,
-    precioUSD: PrecioUSD,
-    por: string,
-  ): Promise<void>;
-  actualizarDatosProducto(tx: TransaccionIdentidad, tenantId: string, productoId: string, cambios: Partial<DatosProducto>, por: string): Promise<void>;
-  actualizarPrecioUSD(tx: TransaccionIdentidad, tenantId: string, productoId: string, precio: PrecioUSD, por: string): Promise<void>;
-  /** Solo lectura. */
   existenciasPorAlmacen(tenantId: string, productoId: string): Promise<readonly Existencia[]>;
 }
 
@@ -152,9 +138,4 @@ export interface DisparadorSitio {
   programar(tenantId: string, para: number): Promise<void>;
   /** Dispara la reconstrucción del sitio estático del tenant. */
   reconstruir(tenantId: string, version: number, motivo: 'publicacion' | 'diaria'): Promise<void>;
-}
-
-/** Lector de hojas de cálculo (.xlsx): primera hoja como matriz de texto. Lo implementa un adaptador. */
-export interface LectorHojas {
-  leerPrimeraHoja(bytes: Uint8Array): Promise<readonly (readonly string[])[]>;
 }

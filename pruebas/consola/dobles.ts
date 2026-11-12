@@ -1,6 +1,6 @@
-import { verificarYReservar, type Actor, type TransaccionIdentidad } from '@novutienda/nucleo';
+import type { Actor } from '@novutienda/nucleo';
 import type {
-  AlmacenMedios, CatalogoPuerto, ConsultaSubidas, DatosProducto, DisparadorSitio, Existencia, InfoMedio, PrecioUSD,
+  AlmacenMedios, CatalogoPuerto, ConsultaSubidas, DisparadorSitio, Existencia, InfoMedio,
   ProcesadorMedios, ProductoCatalogo, Reloj, SolicitudProcesado, VersionProcesada,
 } from '@novutienda/consola';
 import { ArchivoNoAdmitido, ProcesamientoNoDisponible } from '@novutienda/consola';
@@ -27,11 +27,10 @@ export class RelojFijo implements Reloj {
   }
 }
 
-/** Catálogo en memoria. `crearProducto` reserva el tope del plan como lo haría Inventarios. */
+/** Catálogo en memoria, de solo lectura como el puerto. */
 export class CatalogoDoble implements CatalogoPuerto {
   readonly productos = new Map<string, ProductoCatalogo>();
   readonly existencias = new Map<string, Existencia[]>();
-  readonly llamadas: string[] = [];
   constructor(readonly db?: DobleDb) {}
 
   agregar(id: string, extra: Partial<ProductoCatalogo> = {}): ProductoCatalogo {
@@ -44,23 +43,6 @@ export class CatalogoDoble implements CatalogoPuerto {
   }
   leerProducto(_t: string, id: string): Promise<ProductoCatalogo | undefined> {
     return Promise.resolve(this.productos.get(id));
-  }
-  async crearProducto(tx: TransaccionIdentidad, t: string, id: string, datos: DatosProducto, precioUSD: PrecioUSD): Promise<void> {
-    await verificarYReservar(tx, t, 'productos');
-    this.productos.set(id, { id, ...datos, precioUSD, disponible: datos.activo });
-    this.llamadas.push(`crear:${id}`);
-  }
-  actualizarDatosProducto(_tx: TransaccionIdentidad, _t: string, id: string, cambios: Partial<DatosProducto>): Promise<void> {
-    const p = this.productos.get(id) as ProductoCatalogo;
-    this.productos.set(id, { ...p, ...cambios });
-    this.llamadas.push(`datos:${id}`);
-    return Promise.resolve();
-  }
-  actualizarPrecioUSD(_tx: TransaccionIdentidad, _t: string, id: string, precio: PrecioUSD): Promise<void> {
-    const p = this.productos.get(id) as ProductoCatalogo;
-    this.productos.set(id, { ...p, precioUSD: precio });
-    this.llamadas.push(`precio:${id}`);
-    return Promise.resolve();
   }
   existenciasPorAlmacen(_t: string, id: string): Promise<readonly Existencia[]> {
     return Promise.resolve(this.existencias.get(id) ?? []);

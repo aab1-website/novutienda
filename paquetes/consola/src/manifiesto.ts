@@ -62,9 +62,6 @@ const almacenamiento: readonly RutaAlmacenamiento[] = [
 const accion = (callable: string, nombre: string, roles: readonly Rol[]): AccionManifiesto => ({ callable, nombre, roles });
 
 const ACCIONES_CONSOLA: readonly (readonly [string, readonly Rol[]])[] = [
-  ['crearProducto', ['adm']],
-  ['editarProducto', ['adm']],
-  ['cambiarPrecioUSD', ['adm']],
   ['catalogo', ['sup', 'adm']],
   ['preciosDelDia', ['sup', 'adm']],
   ['guardarFicha', ['sup', 'adm']],
@@ -78,8 +75,6 @@ const ACCIONES_CONSOLA: readonly (readonly [string, readonly Rol[]])[] = [
   ['secciones', ['sup', 'adm']],
   ['carruseles', ['sup', 'adm']],
   ['configSitio', ['sup', 'adm']],
-  ['simularImportacion', ['adm']],
-  ['importarProductos', ['adm']],
   ['exportarProductosCsv', ['sup', 'adm']],
   ['publicarSitio', ['adm']],
   ['tablero', ['sup', 'adm']],
