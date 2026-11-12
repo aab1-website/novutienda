@@ -6,7 +6,7 @@ import { Alerta, Area, Boton, BotonConfirmado, Campo, ConCarga, Selector, Seccio
 import { useApp } from '../../ui/contexto.js';
 import { Dialogo } from '../../ui/dialogo.js';
 import { useAvisos } from '../../ui/avisos.js';
-import { enfocarPrimerError, textoContador } from '../../ui/formulario.js';
+import { enfocarPrimerError } from '../../ui/formulario.js';
 import { useBorrador, useCambiosSinGuardar, useGuardia } from '../../ui/guardia.js';
 import { useAccion, useCarga } from '../../ui/hooks.js';
 import { Tabla } from '../../ui/tabla.js';
@@ -28,26 +28,6 @@ const plural = (n: number, uno: string, varios: string): string => `${String(n)}
 const medidas = (m: Medio): string => `${String(m.ancho)} × ${String(m.alto)}${m.duracionSeg !== undefined ? `, ${String(Math.round(m.duracionSeg))} s` : ''} · ${formatoBytes(m.bytesOriginal)}`;
 
 type ModoPanel = 'medios' | 'datos';
-
-let serieAlt = 0;
-
-/**
- * Campo de la descripción de un medio. No usa `Campo`: sus ids salen de `useId`, y dentro del portal del `Dialogo` los
- * campos que se montan después de la primera pasada repiten el id (`P0-0`), con lo que la etiqueta apuntaría a otro campo.
- * Las filas de medios se montan y desmontan mientras el panel está abierto, así que llevan un id propio y único.
- */
-function CampoAlt(p: { etiqueta: string; valor: string; error: string | undefined; onInput: (v: string) => void }): JSX.Element {
-  const [id] = useState(() => `ficha-alt-${String((serieAlt += 1))}`);
-  return (
-    <div class="campo">
-      <label for={id}>{p.etiqueta}</label>
-      <input id={id} type="text" value={p.valor} maxLength={TOPES_FICHA.alt} aria-invalid={p.error ? 'true' : undefined} aria-describedby={p.error ? `${id}-ayuda ${id}-error` : `${id}-ayuda`} onInput={(e) => p.onInput((e.currentTarget as HTMLInputElement).value)} />
-      <p id={`${id}-ayuda`} class="ayuda">Cuenta qué se ve. La leen los lectores de pantalla.</p>
-      {p.error && <p id={`${id}-error`} class="campo-error">Error: {p.error}</p>}
-      <p class="contador">{textoContador(p.valor.length, TOPES_FICHA.alt)}</p>
-    </div>
-  );
-}
 
 /** Al abrir (y al llegar los datos), el foco va a la zona de carga o al primer texto, según el botón que se pulsó. */
 function FocoInicial({ modo, cuerpo, children }: { modo: ModoPanel; cuerpo: RefObject<HTMLDivElement>; children: ComponentChildren }): JSX.Element {
@@ -117,14 +97,28 @@ function PanelFicha({ producto, modo, alCerrar, alCerrarEnfocar }: PropsPanel): 
   const entradaVideo = useRef<HTMLInputElement>(null);
   const cola = useRef<Promise<unknown>>(Promise.resolve());
   const fichaRef = useRef<FichaWeb | null>(null);
-  const baseRef = useRef<FichaWeb | null>(null);
+  /** Lo último que el servidor confirmó de la ficha (carga inicial o respuesta de cada guardado): base de los guardados automáticos. */
+  const confirmadaRef = useRef<FichaWeb | null>(null);
+  const [confirmada, setConfirmada] = useState<FichaWeb | null>(null);
+  const vivo = useRef(true);
   const mediosRef = useRef<readonly Medio[]>([]);
 
   const guardada = carga.datos?.fichas.find((x) => x.productoId === producto.id)?.ficha;
-  const base = carga.datos === undefined ? null : editable(guardada ?? porDefecto(producto));
+  const delServidorFicha = carga.datos === undefined ? null : editable(guardada ?? porDefecto(producto));
+  if (confirmadaRef.current === null && delServidorFicha !== null) confirmadaRef.current = delServidorFicha;
+  const base = confirmada ?? delServidorFicha;
   const ficha = borrador.valor ?? base;
   fichaRef.current = ficha;
-  baseRef.current = base;
+  useEffect(() => {
+    vivo.current = true;
+    return () => {
+      vivo.current = false;
+    };
+  }, []);
+  const confirmar = (f: FichaWeb): void => {
+    confirmadaRef.current = f;
+    setConfirmada(f);
+  };
   const delServidor = carga.datos?.medios ?? [];
   const idsServidor = new Set(delServidor.map((m) => m.id));
   const medios = [...delServidor, ...listos.filter((m) => !idsServidor.has(m.id))].filter((m) => !borrados.has(m.id));
@@ -136,8 +130,7 @@ function PanelFicha({ producto, modo, alCerrar, alCerrarEnfocar }: PropsPanel): 
     cola.current = p.catch(() => undefined);
     return p;
   };
-  const sugerida = (actual: FichaWeb, tipo: 'foto' | 'video', posicion: number): string => {
-    void actual;
+  const sugerida = (tipo: 'foto' | 'video', posicion: number): string => {
     const nombre = producto.nombre.slice(0, 120);
     return tipo === 'video' ? `${nombre}, video` : `${nombre}, foto ${String(posicion)}`;
   };
@@ -147,23 +140,19 @@ function PanelFicha({ producto, modo, alCerrar, alCerrarEnfocar }: PropsPanel): 
     borrador.poner(f);
   };
 
-  // Guardado automático (D2): al terminar cada subida la lista de medios se guarda sola, sin tocar los textos sin guardar.
-  const guardarLista = async (): Promise<void> => {
-    const actual = fichaRef.current;
-    const guardadaBase = baseRef.current;
-    if (actual === null || guardadaBase === null) return;
+  // Guardado automático (D2): al terminar cada subida se agrega SOLO el medio nuevo sobre lo último que el servidor confirmó.
+  // Las ediciones locales (descripciones, orden, «Quitar») siguen en el borrador hasta «Guardar».
+  const guardarMedio = async (m: Medio, alt: string): Promise<void> => {
+    const confirmadaAhora = confirmadaRef.current;
+    if (!vivo.current || confirmadaAhora === null || confirmadaAhora.medios.some((x) => x.medioId === m.id)) return;
     try {
-      let fotos = 0;
-      const lista = actual.medios.map((m) => {
-        const tipo = tipoDe(m.medioId) ?? 'foto';
-        if (tipo === 'foto') fotos += 1;
-        return { medioId: m.medioId, alt: m.alt.trim() === '' ? sugerida(actual, tipo, fotos) : m.alt };
-      });
-      await api.llamar('guardarFicha', { productoId: producto.id, ficha: { ...guardadaBase, medios: lista } });
+      const enviada: FichaWeb = { ...confirmadaAhora, medios: [...confirmadaAhora.medios, { medioId: m.id, alt }] };
+      await api.llamar('guardarFicha', { productoId: producto.id, ficha: enviada });
+      confirmar(enviada);
       setErrorAuto(null);
-      carga.recargar();
+      if (vivo.current) carga.recargar();
     } catch (e) {
-      setErrorAuto(mensajeDeError(e));
+      if (vivo.current) setErrorAuto(mensajeDeError(e));
     }
   };
 
@@ -171,13 +160,17 @@ function PanelFicha({ producto, modo, alCerrar, alCerrarEnfocar }: PropsPanel): 
     productoId: producto.id,
     medios,
     alListo: (m) => {
+      if (!vivo.current) return;
       setListos((l) => [...l, m]);
       mediosRef.current = [...mediosRef.current, m];
       const actual = fichaRef.current;
-      if (actual === null || actual.medios.some((x) => x.medioId === m.id)) return;
-      const fotos = actual.medios.filter((x) => tipoDe(x.medioId) === 'foto').length;
-      poner({ ...actual, medios: [...actual.medios, { medioId: m.id, alt: sugerida(actual, m.tipo, fotos + 1) }] });
-      void encolar(guardarLista);
+      const confirmadaAhora = confirmadaRef.current;
+      if (actual === null || confirmadaAhora === null || actual.medios.some((x) => x.medioId === m.id)) return;
+      // La descripción sugerida sale de lo confirmado, así lo que se ve y lo que se guarda coinciden.
+      const fotos = confirmadaAhora.medios.filter((x) => tipoDe(x.medioId) === 'foto').length;
+      const alt = sugerida(m.tipo, fotos + 1);
+      poner({ ...actual, medios: [...actual.medios, { medioId: m.id, alt }] });
+      void encolar(() => guardarMedio(m, alt));
     },
   });
 
@@ -211,7 +204,9 @@ function PanelFicha({ producto, modo, alCerrar, alCerrarEnfocar }: PropsPanel): 
       const guardado = await encolar(async () => {
         const f = fichaRef.current ?? ficha;
         try {
-          await api.llamar('guardarFicha', { productoId: producto.id, ficha: editable(f) });
+          const enviada = editable(f);
+          await api.llamar('guardarFicha', { productoId: producto.id, ficha: enviada });
+          confirmar(enviada);
           return true;
         } catch (e) {
           if (e instanceof ErrorApi && e.detalle.codigo === 'conflicto') {
@@ -243,6 +238,8 @@ function PanelFicha({ producto, modo, alCerrar, alCerrarEnfocar }: PropsPanel): 
       try {
         await encolar(() => api.llamar('borrarMedio', { medioId }));
         setBorrados((b) => new Set([...b, medioId]));
+        const conf = confirmadaRef.current;
+        if (conf !== null && conf.medios.some((x) => x.medioId === medioId)) confirmar({ ...conf, medios: conf.medios.filter((x) => x.medioId !== medioId) });
         const actual = fichaRef.current;
         if (actual !== null && actual.medios.some((x) => x.medioId === medioId)) poner({ ...actual, medios: actual.medios.filter((x) => x.medioId !== medioId) });
         carga.recargar();
@@ -315,7 +312,7 @@ function PanelFicha({ producto, modo, alCerrar, alCerrarEnfocar }: PropsPanel): 
               return (
                 <li key={m.medioId} class="ficha-medio">
                   <p class="ficha-medio-titulo"><strong>{nombre}</strong>{info ? ` · ${medidas(info)}` : ' · sin subir'}</p>
-                  <CampoAlt etiqueta={esVideo ? 'Descripción del video' : `Descripción de la foto ${String(i + 1)}`} valor={m.alt} error={errores[claveAlt(i)]} onInput={(v) => cambiar({ medios: f.medios.map((x, j) => (j === i ? { ...x, alt: v } : x)) })} />
+                  <Campo etiqueta={esVideo ? 'Descripción del video' : `Descripción de la foto ${String(i + 1)}`} valor={m.alt} tope={TOPES_FICHA.alt} ayuda="Cuenta qué se ve. La leen los lectores de pantalla." error={errores[claveAlt(i)]} onInput={(v) => cambiar({ medios: f.medios.map((x, j) => (j === i ? { ...x, alt: v } : x)) })} />
                   <div class="fila">
                     <Boton chico variante="secundario" onClick={() => mover(i, -1)} deshabilitado={i === 0} etiqueta={`Mover arriba el medio ${String(i + 1)}`}>Mover arriba</Boton>
                     <Boton chico variante="secundario" onClick={() => mover(i, 1)} deshabilitado={i === f.medios.length - 1} etiqueta={`Mover abajo el medio ${String(i + 1)}`}>Mover abajo</Boton>
@@ -336,7 +333,7 @@ function PanelFicha({ producto, modo, alCerrar, alCerrarEnfocar }: PropsPanel): 
                   return (
                     <li key={m.id} class="fila">
                       <span>{m.tipo === 'video' ? 'Video' : 'Foto'} · {medidas(m)}</span>
-                      <Boton chico variante="secundario" onClick={() => cambiar({ medios: [...f.medios, { medioId: m.id, alt: sugerida(f, m.tipo, fotos + 1) }] })} etiqueta={`Agregar a la página ${m.tipo === 'video' ? 'el video' : 'la foto'} de ${medidas(m)}`}>Agregar a la página</Boton>
+                      <Boton chico variante="secundario" onClick={() => cambiar({ medios: [...f.medios, { medioId: m.id, alt: sugerida(m.tipo, fotos + 1) }] })} etiqueta={`Agregar a la página ${m.tipo === 'video' ? 'el video' : 'la foto'} de ${medidas(m)}`}>Agregar a la página</Boton>
                       <BotonConfirmado chico peligro texto="Borrar archivo" pregunta="¿Borrar el archivo para siempre?" textoConfirmar="Sí, borrar" onConfirmar={() => borrar(m.id)} />
                     </li>
                   );

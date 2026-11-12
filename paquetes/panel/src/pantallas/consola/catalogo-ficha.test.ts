@@ -241,6 +241,71 @@ describe('panel lateral de la ficha', () => {
     expect((await e.api.llamar('listarFichas', {}))[0]?.ficha.descripcion).toBe('');
     expect((screen.getByLabelText('Descripción del producto') as HTMLTextAreaElement).value).toBe('Texto sin guardar');
   });
+  it('el guardado automático no envía ediciones locales: solo agrega el medio nuevo sobre lo confirmado, y Cancelar las revierte', async () => {
+    const e = crearEntorno('sup');
+    ver(e);
+    const u = userEvent.setup();
+    await abrir(u, 'Fotos y video', TV);
+    fireEvent.change(await screen.findByLabelText('Archivos de fotos'), { target: { files: [jpg('uno.jpg', 1)] } });
+    await screen.findByText('uno.jpg: Listo');
+    await waitFor(() => expect(guardados(e)).toBe(1));
+    await screen.findByLabelText('Descripción de la foto 1');
+    await u.clear(screen.getByLabelText('Descripción de la foto 1'));
+    await u.type(screen.getByLabelText('Descripción de la foto 1'), 'editada sin guardar');
+    fireEvent.change(fotos(), { target: { files: [jpg('dos.jpg', 1)] } });
+    await screen.findByText('dos.jpg: Listo');
+    await waitFor(() => expect(guardados(e)).toBe(2));
+    const medios = (await e.api.llamar('listarFichas', {}))[0]?.ficha.medios ?? [];
+    expect(medios).toHaveLength(2);
+    expect(medios[0]?.alt).toBe(`${TV}, foto 1`);
+    // Lo local sigue en pantalla junto con el medio nuevo.
+    expect((screen.getByLabelText('Descripción de la foto 1') as HTMLInputElement).value).toBe('editada sin guardar');
+    expect(screen.getByLabelText('Descripción de la foto 2')).toBeTruthy();
+    await u.click(screen.getByRole('button', { name: 'Cancelar' }));
+    await u.click(await screen.findByRole('button', { name: 'Salir sin guardar' }));
+    await waitFor(() => expect(screen.queryByRole('dialog')).toBeNull());
+    await abrir(u, 'Fotos y video', TV);
+    expect((await screen.findByLabelText('Descripción de la foto 1') as HTMLInputElement).value).toBe(`${TV}, foto 1`);
+  });
+  it('una subida que termina entre «Guardar» y la recarga no pisa lo recién guardado', async () => {
+    const e = crearEntorno('sup');
+    e.api.estado.disparador.demoraMs = 900;
+    ver(e);
+    const u = userEvent.setup();
+    await abrir(u, 'Fotos y video', TV);
+    fireEvent.change(await screen.findByLabelText('Archivos de fotos'), { target: { files: [jpg('lenta.jpg', 1)] } });
+    await screen.findAllByText(/Procesando en el servidor/);
+    await u.type(screen.getByLabelText('Descripción del producto'), 'Texto nuevo.');
+    // La recarga posterior al guardado tarda: la subida termina antes de que llegue.
+    const llamar = e.api.llamar.bind(e.api);
+    vi.spyOn(e.api, 'llamar').mockImplementation((async (nombre: string, entrada: never) => {
+      const r = await llamar(nombre as never, entrada);
+      if (nombre === 'listarFichas') await new Promise((ok) => setTimeout(ok, 800));
+      return r;
+    }) as never);
+    await u.click(screen.getByRole('button', { name: 'Guardar' }));
+    await screen.findByText(/Página guardada/);
+    await screen.findByText('lenta.jpg: Listo', undefined, { timeout: 4000 });
+    await waitFor(async () => expect((await e.api.llamar('listarFichas', {}))[0]?.ficha.medios).toHaveLength(1), { timeout: 4000 });
+    const f = (await e.api.llamar('listarFichas', {}))[0]?.ficha;
+    expect(f?.descripcion).toBe('Texto nuevo.');
+    expect((screen.getByLabelText('Descripción del producto') as HTMLTextAreaElement).value).toBe('Texto nuevo.');
+  }, 15_000);
+  it('con una subida en curso, Cancelar pregunta; al salir se abandona y no se guarda nada con el panel cerrado', async () => {
+    const e = crearEntorno('sup');
+    e.api.estado.disparador.demoraMs = 700;
+    ver(e);
+    const u = userEvent.setup();
+    await abrir(u, 'Fotos y video', TV);
+    fireEvent.change(await screen.findByLabelText('Archivos de fotos'), { target: { files: [jpg('uno.jpg', 1)] } });
+    await screen.findAllByText(/Procesando en el servidor/);
+    await u.click(screen.getByRole('button', { name: 'Cancelar' }));
+    expect(await screen.findByRole('dialog', { name: '¿Salir sin guardar?' })).toBeTruthy();
+    await u.click(screen.getByRole('button', { name: 'Salir sin guardar' }));
+    await waitFor(() => expect(screen.queryByRole('dialog')).toBeNull());
+    await new Promise((r) => setTimeout(r, 1800));
+    expect(guardados(e)).toBe(0);
+  }, 10_000);
   it('si falla la recarga tras un guardado, conserva lo que se ve y ofrece «Reintentar»', async () => {
     const e = crearEntorno('sup');
     ver(e);

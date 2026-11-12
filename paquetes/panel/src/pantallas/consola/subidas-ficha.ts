@@ -1,4 +1,4 @@
-import { useCallback, useRef, useState } from 'preact/hooks';
+import { useCallback, useEffect, useRef, useState } from 'preact/hooks';
 import { nuevoId } from '../../api/cliente.js';
 import { ErrorApi } from '../../api/errores.js';
 import { LIMITES_PANEL, type Medio, type TipoMedio } from '../../api/tipos.js';
@@ -39,19 +39,17 @@ export function tipoDeArchivo(a: { readonly name: string; readonly type: string 
   return a.type.startsWith('video/') || /\.(mp4|m4v|mov|webm)$/i.test(a.name) ? 'video' : 'foto';
 }
 
-function ocupaCupo(s: Subida, idsSubidos: ReadonlySet<string>): boolean {
+function ocupaCupo(s: Subida): boolean {
   if (EN_CURSO.includes(s.fase)) return true;
-  // Terminó, pero la lista de medios del producto aún no lo incluye.
-  if (s.fase === 'listo') return s.medioId === undefined || !idsSubidos.has(s.medioId);
+  // `listo` ya no cuenta: el medio forma parte de los medios reales (y si se borró, el lugar se recupera).
   // Falló con la reserva puesta y se puede reintentar: el servidor sigue contándolo.
   return s.reservada && s.reintentable;
 }
 
 /** Lugares libres: el tope menos lo ya subido al producto (según el servidor) menos las subidas que ocupan lugar. */
 export function cupoLibre(tipo: TipoMedio, medios: readonly Medio[], subidas: readonly Subida[]): number {
-  const ids = new Set(medios.map((m) => m.id));
   const subidos = medios.filter((m) => m.tipo === tipo).length;
-  const ocupan = subidas.filter((s) => s.tipo === tipo && ocupaCupo(s, ids)).length;
+  const ocupan = subidas.filter((s) => s.tipo === tipo && ocupaCupo(s)).length;
   return Math.max(0, topeDe(tipo) - subidos - ocupan);
 }
 
@@ -90,8 +88,20 @@ export function useSubidas(o: OpcionesSubidas): Subidas {
   const ref = useRef<readonly Subida[]>([]);
   const archivos = useRef(new Map<string, File>());
   const revisados = useRef(new Set<string>());
+  /** Hasta dónde llegó cada subida: con `subida` el original ya está en el servidor y solo falta esperar su procesamiento. */
+  const etapas = useRef(new Map<string, 'subida'>());
+  const abandonado = useRef(false);
   const opciones = useRef(o);
   opciones.current = o;
+
+  // Al desmontar (el panel se cierra) las subidas en curso se abandonan: no se avisa a nadie ni se encolan guardados.
+  useEffect(
+    () => () => {
+      abandonado.current = true;
+      archivos.current.clear();
+    },
+    [],
+  );
 
   const poner = useCallback((f: (s: readonly Subida[]) => readonly Subida[]): void => {
     ref.current = f(ref.current);
@@ -121,19 +131,37 @@ export function useSubidas(o: OpcionesSubidas): Subidas {
           }
           revisados.current.add(id);
         }
-        ir('reservando');
-        const r = await api.llamar('reservarSubida', { subidaId: id, productoId: opciones.current.productoId, tipo, bytes: archivo.size });
-        cambiar(id, { reservada: true });
-        ir('subiendo', { progreso: 0 });
-        await almacen.subir(r.rutaOriginal, archivo, (p) => cambiar(id, { progreso: p }));
+        if (etapas.current.get(id) !== 'subida') {
+          ir('reservando');
+          const r = await api.llamar('reservarSubida', { subidaId: id, productoId: opciones.current.productoId, tipo, bytes: archivo.size });
+          if (abandonado.current) return;
+          cambiar(id, { reservada: true });
+          ir('subiendo', { progreso: 0 });
+          await almacen.subir(r.rutaOriginal, archivo, (p) => {
+            if (!abandonado.current) cambiar(id, { progreso: p });
+          });
+          if (abandonado.current) return;
+          etapas.current.set(id, 'subida');
+        }
         // El disparador de Storage procesa el original; el panel consulta el estado y solo fuerza el procesamiento como respaldo.
         const inicio = Date.now();
         ir('procesando', { segundos: 0 });
         reloj = setInterval(() => cambiar(id, { segundos: Math.round((Date.now() - inicio) / 1000) }), 1000);
-        const medio = await esperarSubida(api, id);
+        const medio = await esperarSubida(api, id, {
+          esperar: async (ms) => {
+            if (abandonado.current) throw new Error('subida abandonada');
+            await new Promise<void>((r) => setTimeout(r, ms));
+          },
+        });
+        if (abandonado.current) return;
+        // Terminó: la fila deja de contar como «en curso» y se libera el archivo.
+        archivos.current.delete(id);
+        revisados.current.delete(id);
+        etapas.current.delete(id);
         ir('listo', { medioId: medio.id, motivo: undefined });
         opciones.current.alListo(medio, archivo);
       } catch (e) {
+        if (abandonado.current) return;
         cambiar(id, { fase: 'error', motivo: mensajeDeSubida(e), reintentable: esReintentable(e, fase) });
       } finally {
         if (reloj !== undefined) clearInterval(reloj);
@@ -173,7 +201,7 @@ export function useSubidas(o: OpcionesSubidas): Subidas {
     (id: string): void => {
       const s = ref.current.find((x) => x.id === id);
       if (s === undefined || s.fase !== 'error' || !s.reintentable) return;
-      cambiar(id, { fase: 'reservando', motivo: undefined, reintentable: false });
+      cambiar(id, { fase: etapas.current.get(id) === 'subida' ? 'procesando' : 'reservando', motivo: undefined, reintentable: false });
       void correr(id);
     },
     [cambiar, correr],
@@ -183,6 +211,7 @@ export function useSubidas(o: OpcionesSubidas): Subidas {
     (id: string): void => {
       archivos.current.delete(id);
       revisados.current.delete(id);
+      etapas.current.delete(id);
       poner((s) => s.filter((x) => x.id !== id));
     },
     [poner],

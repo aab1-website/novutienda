@@ -26,9 +26,11 @@ describe('cupoLibre', () => {
   });
   it('no cuenta dos veces lo que ya está en la lista del servidor ni lo que falló sin reserva', () => {
     expect(cupoLibre('foto', [medio('a')], [subida({ fase: 'listo', medioId: 'a' })])).toBe(4);
-    expect(cupoLibre('foto', [], [subida({ fase: 'listo', medioId: 'a' })])).toBe(4);
     expect(cupoLibre('foto', [], [subida({ fase: 'error', reservada: false })])).toBe(5);
     expect(cupoLibre('foto', [], [subida({ fase: 'error', reservada: true, reintentable: false })])).toBe(5);
+  });
+  it('una subida «listo» no cuenta: si su medio se borró, el cupo se recupera', () => {
+    expect(cupoLibre('foto', [], [subida({ fase: 'listo', medioId: 'a' })])).toBe(5);
   });
   it('una subida que falló con la reserva puesta y se puede reintentar sigue ocupando lugar', () => {
     expect(cupoLibre('foto', [], [subida({ fase: 'error', reservada: true, reintentable: true })])).toBe(4);
@@ -110,6 +112,59 @@ describe('useSubidas', () => {
     await waitFor(() => expect(screen.getByText('a.jpg|listo|fijo|')).toBeTruthy());
     const ids = e.api.llamadas.filter((l) => l.nombre === 'reservarSubida').map((l) => (l.entrada as { subidaId: string }).subidaId);
     expect(ids).toEqual([id, id]);
+  });
+  it('subir, borrar ese archivo y recuperar el cupo; el archivo se libera al llegar a «listo»', async () => {
+    const e = crearEntorno('sup');
+    const listos: Medio[] = [];
+    let medios: readonly Medio[] = [];
+    const salida: { actual?: Subidas } = {};
+    const Caja = (): JSX.Element => {
+      const s = useSubidas({ productoId: 'tv-55', medios, alListo: (m) => { listos.push(m); medios = [...medios, m]; } });
+      salida.actual = s;
+      return h('p', null, `cupo ${String(s.cupo('foto'))} ${s.subidas.map((x) => x.fase).join(',')}`);
+    };
+    const { rerender } = render(e.envolver(h(Caja as () => JSX.Element, {})));
+    salida.actual?.agregar([jpg('a.jpg')]);
+    await waitFor(() => expect(listos).toHaveLength(1));
+    rerender(e.envolver(h(Caja as () => JSX.Element, {})));
+    await waitFor(() => expect(screen.getByText('cupo 4 listo')).toBeTruthy());
+    medios = [];
+    rerender(e.envolver(h(Caja as () => JSX.Element, {})));
+    await waitFor(() => expect(screen.getByText('cupo 5 listo')).toBeTruthy());
+    expect(salida.actual?.enCurso).toBe(0);
+    // Sin archivo en memoria, «reintentar» sobre una fila lista no hace nada.
+    salida.actual?.reintentar(salida.actual.subidas[0]?.id ?? '');
+    expect(e.api.llamadas.filter((l) => l.nombre === 'reservarSubida')).toHaveLength(1);
+  });
+  it('si falla mientras procesa, «Reintentar» no vuelve a reservar: retoma la espera', async () => {
+    const e = crearEntorno('sup');
+    const llamar = e.api.llamar.bind(e.api);
+    let falla = true;
+    vi.spyOn(e.api, 'llamar').mockImplementation(((n: string, x: never) => {
+      if (n === 'estadoSubida' && falla) {
+        falla = false;
+        return Promise.reject(new Error('corte raro'));
+      }
+      return llamar(n as never, x);
+    }) as never);
+    const s = montar(e);
+    s.actual?.agregar([jpg('a.jpg')]);
+    await waitFor(() => expect(screen.getByText(/^a.jpg\|error\|reintentable/)).toBeTruthy());
+    s.actual?.reintentar(s.actual.subidas[0]?.id ?? '');
+    await waitFor(() => expect(screen.getByText('a.jpg|listo|fijo|')).toBeTruthy());
+    expect(e.api.llamadas.filter((l) => l.nombre === 'reservarSubida')).toHaveLength(1);
+    expect(e.almacen.subidos).toHaveLength(1);
+  });
+  it('al desmontar, las subidas en curso se abandonan sin avisar con el medio', async () => {
+    const e = crearEntorno('sup');
+    e.api.estado.disparador.demoraMs = 600;
+    const listos: Medio[] = [];
+    const s = montar(e, [], (m) => listos.push(m));
+    s.actual?.agregar([jpg('a.jpg')]);
+    await waitFor(() => expect(screen.getByText(/^a.jpg\|procesando/)).toBeTruthy());
+    cleanup();
+    await new Promise((r) => setTimeout(r, 1500));
+    expect(listos).toHaveLength(0);
   });
   it('sube lo que cabe y dice cuántos quedaron fuera; «descartar» libera la fila', async () => {
     const e = crearEntorno('sup');
