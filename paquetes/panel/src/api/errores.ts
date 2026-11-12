@@ -119,8 +119,8 @@ const CON_MENSAJE_DEL_SERVIDOR: ReadonlySet<string> = new Set(['failed-precondit
  */
 const PREFIERE_MENSAJE_DEL_SERVIDOR: ReadonlySet<string> = new Set(['entrada-invalida', 'estado', 'estado-invalido', 'no-encontrado', 'limite', 'cuota-excedida', 'procesamiento', 'tipo-no-permitido', 'no-disponible']);
 
-/** Texto que el usuario nunca debe ver: código HTTP entre corchetes, «campo desconocido», nombres internos (camelCase) o valores vacíos. */
-const TECNICO = /\[\d{3}\]|campo desconocido|\b[a-z]+[A-Z][A-Za-z]*\b|\bundefined\b|\bnull\b|\b[a-z]+:\s/;
+/** Texto que el usuario nunca debe ver: código HTTP entre corchetes, «campo desconocido», nombres internos (camelCase), una ruta de campo al inicio («ficha.titulo: …»; los dos puntos en medio de una frase son prosa) o valores vacíos. */
+const TECNICO = /\[\d{3}\]|campo desconocido|\b[a-z]+[A-Z][A-Za-z]*\b|\bundefined\b|\bnull\b|^\s*[a-z][\w.[\]]*:\s/;
 const esLegible = (t: string): boolean => t.trim() !== '' && !TECNICO.test(t);
 
 export const MENSAJE_DATOS_NO_RECONOCIDOS =
