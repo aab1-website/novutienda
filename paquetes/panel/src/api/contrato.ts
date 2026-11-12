@@ -33,8 +33,9 @@ export interface Contrato {
   cobrarCredito: { entrada: { requestId: string; ventaId: string; cobro: CobroCreditoEntrada }; salida: { cobro: CobroCredito; repetido: boolean } };
   guardarConfigPos: { entrada: { config: ConfigPos }; salida: ConfigPos };
   // ---- Inventarios (cada una lleva `operacionId`, idempotente) ----
-  /** Alta: `consola.crearProducto` (precios en USD decimales en el servidor) y, si trae costo, `inventarios.fijarCosto`. Solo adm. */
+  /** Alta: `inventarios.crearProducto` (centavos de USD, un precio por mercado, costo opcional). Solo adm. */
   crearProducto: { entrada: { operacionId: string; producto: EntradaProducto }; salida: ResultadoOperacion };
+  /** Edición: `inventarios.editarProducto`; campo ausente = sin cambio, `null` vacía marca, garantía, mínimo o costo. */
   actualizarProducto: { entrada: { operacionId: string; productoId: string; cambios: CambiosProducto }; salida: ResultadoOperacion };
   ingresar: { entrada: { operacionId: string; ubicacionId: UbicacionId; lineas: readonly LineaIngreso[] }; salida: ResultadoOperacion };
   traspasar: { entrada: { operacionId: string; origenId: UbicacionId; destinoId: UbicacionId; lineas: readonly LineaTraspaso[] }; salida: ResultadoOperacion };
@@ -62,8 +63,8 @@ export interface Contrato {
   // ---- Consola (catálogo y sitio) ----
   obtenerTablero: { entrada: Vacio; salida: Tablero };
   publicarSitio: { entrada: Vacio; salida: ResultadoPublicacion };
-  /** Centavos de USD, como en todo el panel; `real.ts` convierte a dólares decimales porque `consola.cambiarPrecioUSD` los espera así. */
-  cambiarPrecioUSD: { entrada: { productoId: string; precioUSD: PrecioUSDCentavos }; salida: Ok };
+  /** Centavos de USD: `inventarios.cambiarPrecioUSD` (idempotente por `operacionId`, que la pantalla manda siempre). */
+  cambiarPrecioUSD: { entrada: { operacionId: string; productoId: string; precioUSD: PrecioUSDCentavos }; salida: Ok };
   guardarFicha: { entrada: { productoId: string; ficha: FichaWeb }; salida: Ok };
   reservarSubida: { entrada: { subidaId: string; productoId: string; tipo: TipoMedio; bytes: number }; salida: Reserva };
   /** Consulta el estado de una subida sin procesarla (el disparador de Storage la procesa al llegar el original). */

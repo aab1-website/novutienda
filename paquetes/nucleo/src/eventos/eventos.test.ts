@@ -9,6 +9,7 @@ import { CONTRATOS_V1, validarEvento } from './contratos.js';
 import { fixturesPedidoConfirmadoV1, validarPedidoConfirmadoV1 } from './pedido-confirmado.v1.js';
 import { fixturesPedidoSolicitadoV1, validarPedidoSolicitadoV1 } from './pedido-solicitado.v1.js';
 import { fixturesReciboEmitidoV1, validarReciboEmitidoV1 } from './recibo-emitido.v1.js';
+import { fixturesProductoCambiadoV1, validarProductoCambiadoV1 } from './producto-cambiado.v1.js';
 import { fixturesStockBajoV1, validarStockBajoV1 } from './stock-bajo.v1.js';
 import { fixturesStockCambiadoV1, validarStockCambiadoV1 } from './stock-cambiado.v1.js';
 import { fixturesTurnoCerradoV1, validarTurnoCerradoV1 } from './turno-cerrado.v1.js';
@@ -19,6 +20,7 @@ const contratos = [
   ['venta.confirmada', validarVentaConfirmadaV1, fixturesVentaConfirmadaV1],
   ['venta.anulada', validarVentaAnuladaV1, fixturesVentaAnuladaV1],
   ['turno.cerrado', validarTurnoCerradoV1, fixturesTurnoCerradoV1],
+  ['producto.cambiado', validarProductoCambiadoV1, fixturesProductoCambiadoV1],
   ['stock.cambiado', validarStockCambiadoV1, fixturesStockCambiadoV1],
   ['stock.bajo', validarStockBajoV1, fixturesStockBajoV1],
   ['recibo.emitido', validarReciboEmitidoV1, fixturesReciboEmitidoV1],

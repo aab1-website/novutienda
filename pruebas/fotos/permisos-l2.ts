@@ -1,4 +1,4 @@
-// Foto de permisos de las 86 acciones (85 originales más `modulosActivos`, de L2-6/D3), tomada de las tablas originales de plataforma/funciones/servidor/llamadas/*.ts
+// Foto de permisos de las 89 acciones (85 originales, `modulosActivos` de L2-6/D3 y las tres de producto de Inventarios del PR 5a), tomada de las tablas originales de plataforma/funciones/servidor/llamadas/*.ts
 // antes de L2-2. Dato literal congelado: lo que L2-3 NO debe cambiar. Las 4 de usuarios viajan en el callable `consola`.
 export interface AccionFoto {
   readonly callable: string;
@@ -43,6 +43,9 @@ export const FOTO_PERMISOS_L2: readonly AccionFoto[] = [
   f('inventarios', 'registrarLineaConteo', ['caj', 'sup', 'adm']),
   f('inventarios', 'cerrarConteo', ['sup', 'adm']),
   f('inventarios', 'crearUbicacion', ['adm']),
+  f('inventarios', 'crearProducto', ['adm']),
+  f('inventarios', 'editarProducto', ['adm']),
+  f('inventarios', 'cambiarPrecioUSD', ['adm']),
   f('inventarios', 'fijarCosto', ['adm']),
   f('inventarios', 'importarProductosCsv', ['adm']),
   f('inventarios', 'listarProductos', ['caj', 'sup', 'adm']),

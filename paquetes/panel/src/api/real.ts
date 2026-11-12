@@ -5,9 +5,9 @@
 // reales: nombre, forma de `datos` y forma de la respuesta. El cliente real (`firebase.ts`) y el doble en memoria
 // (`doble/transporte.ts`) pasan por esta misma traducción.
 //
-// Unidades: el panel trabaja en centavos. El servidor espera dólares decimales SOLO en `consola.crearProducto`,
-// `consola.editarProducto` y `consola.cambiarPrecioUSD` (§2 de funciones.md); en `inventarios` los precios y costos van en
-// centavos de USD. La conversión vive únicamente en `usd()` y se usa solo en esas acciones.
+// Unidades: el panel trabaja en centavos. El servidor espera dólares decimales SOLO en las acciones de `consola` que los
+// reciben (§2 de funciones.md); en `inventarios` los precios y costos van en centavos de USD. La conversión vive
+// únicamente en `usd()` y se usa solo en esas acciones.
 //
 // Todas las acciones que el panel usa existen en el servidor (`ROLES_ACCION`); lo que falte se pide al dueño de las
 // funciones, nunca se inventa en el panel.
@@ -247,30 +247,14 @@ export const TRADUCCION: { readonly [N in NombreCallable]: Traduccion<N> } = {
   },
 
   // ---- Inventarios ----
-  crearProducto: {
-    usa: ['consola.crearProducto', 'inventarios.fijarCosto'],
-    ejecutar: async (c, e) => {
-      const p = e.producto;
-      const datos = sinVacios({
-        nombre: p.nombre, categoria: p.categoria, marca: p.marca, sku: p.sku, activo: p.activo ?? true, garantiaMeses: p.garantiaMeses,
-        conSerie: p.conSerie, minimo: p.minimo, publicado: p.publicado,
-      });
-      await c.llamar('consola', 'crearProducto', { productoId: p.id, datos, precioUSD: { bo: usd(p.precioUSD.bo), ar: usd(p.precioUSD.ar) } });
-      if (p.costoUSD !== undefined) await c.llamar('inventarios', 'fijarCosto', { operacionId: e.operacionId, productoId: p.id, costoUSD: p.costoUSD });
-      return { resultado: { productoId: p.id }, repetida: false };
-    },
-  },
+  // Alta, edición y cambio de precio viven en Inventarios: precios y costo en centavos de USD, sin conversión; `null` vacía
+  // marca, garantía, mínimo o costo; la repetición con el mismo `operacionId` devuelve `repetida`.
+  crearProducto: directa('inventarios', 'crearProducto'),
   actualizarProducto: {
-    usa: ['consola.editarProducto', 'consola.cambiarPrecioUSD', 'inventarios.fijarCosto'],
+    usa: ['inventarios.editarProducto'],
     ejecutar: async (c, e) => {
-      const cambios = quitar(e.cambios, 'precioUSD', 'costoUSD');
       if (Object.keys(e.cambios).length === 0) throw new ErrorApi('invalid-argument', 'No hay cambios que guardar.');
-      if (Object.keys(cambios).length > 0) await c.llamar('consola', 'editarProducto', { productoId: e.productoId, cambios });
-      if (e.cambios.precioUSD !== undefined) {
-        await c.llamar('consola', 'cambiarPrecioUSD', { productoId: e.productoId, precioUSD: { bo: usd(e.cambios.precioUSD.bo), ar: usd(e.cambios.precioUSD.ar) } });
-      }
-      if (e.cambios.costoUSD !== undefined) await c.llamar('inventarios', 'fijarCosto', { operacionId: e.operacionId, productoId: e.productoId, costoUSD: e.cambios.costoUSD });
-      return { resultado: { productoId: e.productoId }, repetida: false };
+      return (await c.llamar('inventarios', 'editarProducto', e)) as Salida<'actualizarProducto'>;
     },
   },
   ingresar: directa('inventarios', 'ingresar'),
@@ -381,7 +365,7 @@ export const TRADUCCION: { readonly [N in NombreCallable]: Traduccion<N> } = {
   // ---- Consola ----
   obtenerTablero: directa('consola', 'tablero'),
   publicarSitio: directa('consola', 'publicarSitio'),
-  cambiarPrecioUSD: comoOk('consola', 'cambiarPrecioUSD', (e) => ({ productoId: e.productoId, precioUSD: { bo: usd(e.precioUSD.bo), ar: usd(e.precioUSD.ar) } })),
+  cambiarPrecioUSD: comoOk('inventarios', 'cambiarPrecioUSD', (e) => ({ operacionId: e.operacionId, productoId: e.productoId, precioUSD: e.precioUSD })),
   guardarFicha: comoOk('consola', 'guardarFicha', (e) => e),
   reservarSubida: directa('medios', 'reservarSubida'),
   estadoSubida: {

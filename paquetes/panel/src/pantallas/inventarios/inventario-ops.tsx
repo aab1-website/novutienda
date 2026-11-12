@@ -1,201 +1,22 @@
 import type { JSX } from 'preact';
 import { useState } from 'preact/hooks';
 import { nuevoId } from '../../api/cliente.js';
-import type { LineaIngreso, ProductoPanel, TipoMovimiento, UbicacionId } from '../../api/tipos.js';
+import type { ProductoPanel, TipoMovimiento, UbicacionId } from '../../api/tipos.js';
 import { Alerta, Boton, BotonConfirmado, Campo, Cargando, Casilla, ErrorCarga, Selector, Seccion, Vacio, fechaHora } from '../../ui/comun.js';
 import { useApp } from '../../ui/contexto.js';
 import { useAccion, useCarga } from '../../ui/hooks.js';
 import { aCsv, descargarTexto } from '../../util/csv.js';
+import { separar } from './movimientos-resumen.js';
+import { nombreAlmacen, nombreTipo } from './nombres.js';
 
 const ALMACENES = [{ valor: 'tienda', texto: 'Tienda' }, { valor: 'deposito-1', texto: 'Depósito 1' }, { valor: 'deposito-2', texto: 'Depósito 2' }];
-const separar = (t: string): string[] => t.split(/[\s,;]+/).filter((s) => s !== '');
 
-interface FilaLinea {
-  id: string;
-  productoId: string;
-  cantidad: string;
-  series: string;
-}
-const filaVacia = (): FilaLinea => ({ id: nuevoId(), productoId: '', cantidad: '1', series: '' });
-
-function useProductos(): { lista: ProductoPanel[]; cargando: boolean; error: string | null; recargar: () => void } {
+export function useProductos(): { lista: ProductoPanel[]; cargando: boolean; error: string | null; recargar: () => void } {
   const { api } = useApp();
   const c = useCarga(() => api.llamar('listarProductos', {}), []);
   return { lista: c.datos ? [...c.datos] : [], cargando: c.cargando, error: c.error, recargar: c.recargar };
 }
 
-function LineasProducto({ filas, setFilas, productos }: { filas: FilaLinea[]; setFilas: (f: FilaLinea[]) => void; productos: ProductoPanel[] }): JSX.Element {
-  return (
-    <div>
-      {filas.map((f, i) => {
-        const p = productos.find((x) => x.id === (f.productoId || productos[0]?.id));
-        const cambiar = (c: Partial<FilaLinea>): void => setFilas(filas.map((x) => (x.id === f.id ? { ...x, ...c } : x)));
-        return (
-          <fieldset key={f.id} class="fila-pago">
-            <legend>Línea {i + 1}</legend>
-            <div class="cuadricula">
-              <Selector etiqueta="Producto" valor={p?.id ?? ''} onCambio={(v) => cambiar({ productoId: v })} opciones={productos.map((x) => ({ valor: x.id, texto: `${x.nombre}${x.conSerie ? ' (serie)' : ''}` }))} />
-              {p?.conSerie ? (
-                <Campo etiqueta="Series (una por unidad, separadas por coma o espacio)" valor={f.series} onInput={(v) => cambiar({ series: v })} requerido />
-              ) : (
-                <Campo etiqueta="Cantidad" valor={f.cantidad} onInput={(v) => cambiar({ cantidad: v })} inputMode="numeric" requerido />
-              )}
-            </div>
-            {filas.length > 1 && <Boton chico variante="secundario" onClick={() => setFilas(filas.filter((x) => x.id !== f.id))}>Quitar línea</Boton>}
-          </fieldset>
-        );
-      })}
-      {filas.length < 50 && <Boton chico variante="secundario" onClick={() => setFilas([...filas, filaVacia()])}>Agregar línea</Boton>}
-    </div>
-  );
-}
-
-function aLineas(filas: FilaLinea[], productos: ProductoPanel[]): LineaIngreso[] | null {
-  const out: LineaIngreso[] = [];
-  for (const f of filas) {
-    const p = productos.find((x) => x.id === (f.productoId || productos[0]?.id));
-    if (p === undefined) return null;
-    if (p.conSerie) {
-      const s = separar(f.series);
-      if (s.length === 0) return null;
-      out.push({ productoId: p.id, cantidad: s.length, series: s });
-    } else {
-      const n = Math.floor(Number(f.cantidad));
-      if (!(n >= 1)) return null;
-      out.push({ productoId: p.id, cantidad: n });
-    }
-  }
-  return out;
-}
-
-export function Ingreso(): JSX.Element {
-  const { api } = useApp();
-  const prod = useProductos();
-  const accion = useAccion();
-  const [ubicacion, setUbicacion] = useState<UbicacionId>('tienda');
-  const [filas, setFilas] = useState<FilaLinea[]>([filaVacia()]);
-  const [operacionId, setOperacionId] = useState(nuevoId);
-  const [ok, setOk] = useState<string | null>(null);
-  if (prod.cargando) return <Cargando />;
-  if (prod.error) return <ErrorCarga error={prod.error} reintentar={prod.recargar} />;
-  const lineas = aLineas(filas, prod.lista);
-  const enviar = (e: Event): void => {
-    e.preventDefault();
-    if (lineas === null) return;
-    void accion.ejecutar(async () => {
-      await api.llamar('ingresar', { operacionId, ubicacionId: ubicacion, lineas });
-      setOk('Ingreso registrado.');
-      setFilas([filaVacia()]);
-      setOperacionId(nuevoId());
-      prod.recargar();
-    });
-  };
-  return (
-    <Seccion titulo="Ingreso de mercadería">
-      <form class="formulario" onSubmit={enviar} noValidate>
-        <Selector etiqueta="Almacén de destino" valor={ubicacion} onCambio={(v) => setUbicacion(v as UbicacionId)} opciones={ALMACENES} />
-        <LineasProducto filas={filas} setFilas={setFilas} productos={prod.lista} />
-        {accion.error && <Alerta>{accion.error}</Alerta>}
-        {ok && <Alerta tipo="ok">{ok}</Alerta>}
-        <Boton tipo="submit" ocupado={accion.ocupado} deshabilitado={lineas === null}>Registrar ingreso</Boton>
-      </form>
-    </Seccion>
-  );
-}
-
-export function Traspaso(): JSX.Element {
-  const { api } = useApp();
-  const prod = useProductos();
-  const accion = useAccion();
-  const [origen, setOrigen] = useState<UbicacionId>('deposito-1');
-  const [destino, setDestino] = useState<UbicacionId>('tienda');
-  const [filas, setFilas] = useState<FilaLinea[]>([filaVacia()]);
-  const [operacionId, setOperacionId] = useState(nuevoId);
-  const [ok, setOk] = useState<string | null>(null);
-  const movs = useCarga(() => api.llamar('listarMovimientos', { tipo: 'traspaso', limite: 20 }), []);
-  if (prod.cargando) return <Cargando />;
-  if (prod.error) return <ErrorCarga error={prod.error} reintentar={prod.recargar} />;
-  const lineas = aLineas(filas, prod.lista);
-  const enviar = (e: Event): void => {
-    e.preventDefault();
-    if (lineas === null || origen === destino) return;
-    void accion.ejecutar(async () => {
-      await api.llamar('traspasar', { operacionId, origenId: origen, destinoId: destino, lineas });
-      setOk('Traspaso registrado: el stock ya está en el almacén de destino.');
-      setFilas([filaVacia()]);
-      setOperacionId(nuevoId());
-      prod.recargar();
-      movs.recargar();
-    });
-  };
-  return (
-    <div>
-      <Seccion titulo="Traspaso entre almacenes">
-        <form class="formulario" onSubmit={enviar} noValidate>
-          <div class="cuadricula">
-            <Selector etiqueta="Origen" valor={origen} onCambio={(v) => setOrigen(v as UbicacionId)} opciones={ALMACENES} />
-            <Selector etiqueta="Destino" valor={destino} onCambio={(v) => setDestino(v as UbicacionId)} opciones={ALMACENES} />
-          </div>
-          {origen === destino && <Alerta>El origen y el destino deben ser distintos.</Alerta>}
-          <LineasProducto filas={filas} setFilas={setFilas} productos={prod.lista} />
-          {accion.error && <Alerta>{accion.error}</Alerta>}
-          {ok && <Alerta tipo="ok">{ok}</Alerta>}
-          <Boton tipo="submit" ocupado={accion.ocupado} deshabilitado={lineas === null || origen === destino}>Traspasar</Boton>
-        </form>
-      </Seccion>
-      <Seccion titulo="Últimos traspasos">
-        {movs.datos && movs.datos.length === 0 && <Vacio titulo="Todavía no hay traspasos" />}
-        {movs.datos && movs.datos.length > 0 && <TablaMovimientos movs={movs.datos} productos={prod.lista} />}
-      </Seccion>
-    </div>
-  );
-}
-
-export function Ajuste(): JSX.Element {
-  const { api } = useApp();
-  const prod = useProductos();
-  const accion = useAccion();
-  const [productoId, setProductoId] = useState('');
-  const [ubicacion, setUbicacion] = useState<UbicacionId>('tienda');
-  const [delta, setDelta] = useState('');
-  const [motivo, setMotivo] = useState('');
-  const [operacionId, setOperacionId] = useState(nuevoId);
-  const [ok, setOk] = useState<string | null>(null);
-  if (prod.cargando) return <Cargando />;
-  if (prod.error) return <ErrorCarga error={prod.error} reintentar={prod.recargar} />;
-  const sinSerie = prod.lista.filter((p) => !p.conSerie);
-  const p = sinSerie.find((x) => x.id === (productoId || sinSerie[0]?.id));
-  const d = Math.trunc(Number(delta));
-  const valido = p !== undefined && Number.isInteger(d) && d !== 0 && delta.trim() !== '' && motivo.trim() !== '';
-  const enviar = (e: Event): void => {
-    e.preventDefault();
-    if (!valido) return;
-    void accion.ejecutar(async () => {
-      await api.llamar('ajustar', { operacionId, motivo: motivo.trim(), lineas: [{ productoId: p.id, ubicacionId: ubicacion, delta: d }] });
-      setOk('Ajuste registrado.');
-      setDelta('');
-      setMotivo('');
-      setOperacionId(nuevoId());
-      prod.recargar();
-    });
-  };
-  return (
-    <Seccion titulo="Ajuste de existencias (administrador)">
-      <p class="texto-suave">Un ajuste siempre lleva motivo. Los productos con serie no se ajustan: use ingreso o merma.</p>
-      <form class="formulario" onSubmit={enviar} noValidate>
-        <div class="cuadricula">
-          <Selector etiqueta="Producto" valor={p?.id ?? ''} onCambio={setProductoId} opciones={sinSerie.map((x) => ({ valor: x.id, texto: x.nombre }))} />
-          <Selector etiqueta="Almacén" valor={ubicacion} onCambio={(v) => setUbicacion(v as UbicacionId)} opciones={ALMACENES} />
-          <Campo etiqueta="Diferencia (positivo suma, negativo resta)" valor={delta} onInput={setDelta} inputMode="numeric" requerido />
-          <Campo etiqueta="Motivo" valor={motivo} onInput={setMotivo} requerido />
-        </div>
-        {accion.error && <Alerta>{accion.error}</Alerta>}
-        {ok && <Alerta tipo="ok">{ok}</Alerta>}
-        <Boton tipo="submit" ocupado={accion.ocupado} deshabilitado={!valido}>Aplicar ajuste</Boton>
-      </form>
-    </Seccion>
-  );
-}
 
 export function Conteo(): JSX.Element {
   const { api } = useApp();
@@ -337,7 +158,7 @@ const TIPOS: { valor: string; texto: string }[] = [
   { valor: 'venta', texto: 'Venta' }, { valor: 'anulacion', texto: 'Anulación' }, { valor: 'merma', texto: 'Merma' }, { valor: 'conteo', texto: 'Conteo' }, { valor: 'pedido', texto: 'Pedido' },
 ];
 
-function TablaMovimientos({ movs, productos }: { movs: readonly import('../../api/tipos.js').MovimientoVista[]; productos: ProductoPanel[] }): JSX.Element {
+export function TablaMovimientos({ movs, productos }: { movs: readonly import('../../api/tipos.js').MovimientoVista[]; productos: ProductoPanel[] }): JSX.Element {
   return (
     <table class="tabla">
       <caption class="solo-lectores">Movimientos de inventario</caption>
@@ -345,7 +166,7 @@ function TablaMovimientos({ movs, productos }: { movs: readonly import('../../ap
       <tbody>
         {movs.map((m) => (
           <tr key={m.id}>
-            <td>{fechaHora(m.fecha)}</td><td>{m.tipo}</td><td>{productos.find((p) => p.id === m.productoId)?.nombre ?? m.productoId}</td><td>{m.ubicacionId}</td>
+            <td>{fechaHora(m.fecha)}</td><td>{nombreTipo(m.tipo)}</td><td>{productos.find((p) => p.id === m.productoId)?.nombre ?? m.productoId}</td><td>{nombreAlmacen(m.ubicacionId)}</td>
             <td class="num">{m.delta > 0 ? `+${m.delta}` : m.delta}</td><td>{m.por} ({m.rol})</td>
           </tr>
         ))}

@@ -5,6 +5,7 @@ import type { UbicacionId } from '../../api/tipos.js';
 import { Alerta, Boton, Campo, Cargando, ErrorCarga, Selector, Seccion, Vacio, fechaHora } from '../../ui/comun.js';
 import { useApp } from '../../ui/contexto.js';
 import { useAccion, useCarga } from '../../ui/hooks.js';
+import { SelectorProducto } from './movimientos.js';
 
 const ALMACENES = [{ valor: 'tienda', texto: 'Tienda' }, { valor: 'deposito-1', texto: 'Depósito 1' }, { valor: 'deposito-2', texto: 'Depósito 2' }];
 const ESTADO_TEXTO = { solicitada: 'Pendiente', aprobada: 'Aprobada', rechazada: 'Rechazada' } as const;
@@ -24,7 +25,7 @@ export function PantallaMermas(): JSX.Element {
   const [ok, setOk] = useState<string | null>(null);
 
   const lista = productos.datos ?? [];
-  const p = lista.find((x) => x.id === (productoId || lista[0]?.id));
+  const p = lista.find((x) => x.id === productoId);
   const listaSeries = series.split(/[\s,;]+/).filter((s) => s !== '');
 
   const solicitar = (e: Event): void => {
@@ -57,12 +58,12 @@ export function PantallaMermas(): JSX.Element {
       <Seccion titulo="Solicitar una merma">
         {productos.cargando && <Cargando />}
         {productos.error && <ErrorCarga error={productos.error} reintentar={productos.recargar} />}
-        {p && (
+        {productos.datos && (
           <form class="formulario" onSubmit={solicitar} noValidate>
             <div class="cuadricula">
-              <Selector etiqueta="Producto" valor={p.id} onCambio={setProductoId} opciones={lista.map((x) => ({ valor: x.id, texto: x.nombre }))} />
+              <SelectorProducto productos={lista} valor={productoId} onCambio={setProductoId} />
               <Selector etiqueta="Almacén" valor={ubicacionId} onCambio={(v) => setUbicacionId(v as UbicacionId)} opciones={ALMACENES} />
-              {p.conSerie ? (
+              {p?.conSerie ? (
                 <Campo etiqueta="Series (separadas por coma)" valor={series} onInput={setSeries} requerido />
               ) : (
                 <Campo etiqueta="Cantidad" valor={cantidad} onInput={setCantidad} inputMode="numeric" requerido />
@@ -71,7 +72,7 @@ export function PantallaMermas(): JSX.Element {
             </div>
             {accion.error && <Alerta>{accion.error}</Alerta>}
             {ok && <Alerta tipo="ok">{ok}</Alerta>}
-            <Boton tipo="submit" ocupado={accion.ocupado} deshabilitado={motivo.trim() === '' || (p.conSerie && listaSeries.length === 0)}>
+            <Boton tipo="submit" ocupado={accion.ocupado} deshabilitado={p === undefined || motivo.trim() === '' || (p.conSerie && listaSeries.length === 0)}>
               Solicitar merma
             </Boton>
           </form>

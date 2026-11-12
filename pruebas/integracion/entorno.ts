@@ -3,7 +3,7 @@
 import {
   UBICACIONES, crearProducto, crearUbicacion, fijarReloj, ingresar, type Autor, type EntradaProducto,
 } from '@novutienda/inventarios';
-import { cargarManual, leerCotizacion, type CopiaCotizacion, type Mercado, type Redondeo } from '@novutienda/nucleo';
+import { cargarManual, leerCotizacion, type CopiaCotizacion, type IdModulo, type Mercado, type Redondeo } from '@novutienda/nucleo';
 import type { ActorPos, DepsPos } from '@novutienda/pos';
 import {
   almacenCotizacionesDesde, catalogoParaPos, consumidoresDePlataforma, crearCatalogoConsola, ejecutorRecibosDesde, inventariosParaPos,
@@ -56,7 +56,7 @@ export function crearEntorno(): Entorno {
     db,
     reloj,
     deps,
-    bandeja: new BandejaMemoria(db, consumidoresDePlataforma(db, { ahora: () => new Date(reloj.ahora).toISOString() })),
+    bandeja: new BandejaMemoria(db, consumidoresDePlataforma(db, { ahora: () => new Date(reloj.ahora).toISOString() }, async (t) => Object.keys((db.dato(`tenants/${t}`)?.['modulos'] as object | undefined) ?? {}) as IdModulo[])),
     recibos: ejecutorRecibosDesde(db),
     catalogoConsola: crearCatalogoConsola({ db, lector: db }),
     almacen: almacenCotizacionesDesde(db),

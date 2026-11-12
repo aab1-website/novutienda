@@ -14,7 +14,7 @@ export type {
   TipoEvento,
   ZonaManifiesto,
 } from './registro/tipos.js';
-export { crearRegistro, ErrorRegistro, NO_ENCENDIBLES } from './registro/registro.js';
+export { crearRegistro, ErrorRegistro, NO_ENCENDIBLES, TIPOS_EVENTO_V1 } from './registro/registro.js';
 export type { Registro } from './registro/registro.js';
 export type { ClaimPlataforma, Resultado } from './contratos/claim.js';
 export { LIMITE_BYTES_CLAIM, validarClaim } from './contratos/claim.js';

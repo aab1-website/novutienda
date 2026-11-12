@@ -291,6 +291,50 @@ describe('panel lateral de la ficha', () => {
     expect(f?.descripcion).toBe('Texto nuevo.');
     expect((screen.getByLabelText('Descripción del producto') as HTMLTextAreaElement).value).toBe('Texto nuevo.');
   }, 15_000);
+  it('dos subidas que terminan antes de confirmarse la primera reciben descripciones distintas', async () => {
+    const e = crearEntorno('sup');
+    ver(e);
+    const u = userEvent.setup();
+    await abrir(u, 'Fotos y video', TV);
+    const llamar = e.api.llamar.bind(e.api);
+    vi.spyOn(e.api, 'llamar').mockImplementation((async (nombre: string, entrada: never) => {
+      if (nombre === 'guardarFicha') await new Promise((ok) => setTimeout(ok, 600));
+      return llamar(nombre as never, entrada);
+    }) as never);
+    fireEvent.change(await screen.findByLabelText('Archivos de fotos'), { target: { files: [jpg('uno.jpg', 1), jpg('dos.jpg', 1)] } });
+    await screen.findByText('uno.jpg: Listo');
+    await screen.findByText('dos.jpg: Listo');
+    const alts = [1, 2].map((n) => (screen.getByLabelText(`Descripción de la foto ${String(n)}`) as HTMLInputElement).value);
+    expect(new Set(alts).size).toBe(2);
+    await waitFor(async () => expect((await e.api.llamar('listarFichas', {}))[0]?.ficha.medios.map((m) => m.alt).sort()).toEqual([`${TV}, foto 1`, `${TV}, foto 2`]), { timeout: 4000 });
+  });
+  it('si el guardado automático falla después de un «Guardar», el medio no se pierde: avisa y se puede agregar de nuevo', async () => {
+    const e = crearEntorno('sup');
+    e.api.estado.disparador.demoraMs = 900;
+    ver(e);
+    const u = userEvent.setup();
+    await abrir(u, 'Fotos y video', TV);
+    fireEvent.change(await screen.findByLabelText('Archivos de fotos'), { target: { files: [jpg('lenta.jpg', 1)] } });
+    await screen.findAllByText(/Procesando en el servidor/);
+    await u.click(screen.getByRole('button', { name: 'Guardar' }));
+    await screen.findByText(/Página guardada/);
+    const llamar = e.api.llamar.bind(e.api);
+    let falla = true;
+    vi.spyOn(e.api, 'llamar').mockImplementation((async (nombre: string, entrada: never) => {
+      if (nombre === 'guardarFicha' && falla) throw new ErrorApi('internal', 'Sin conexión.');
+      return llamar(nombre as never, entrada);
+    }) as never);
+    await screen.findByText('lenta.jpg: Listo', undefined, { timeout: 4000 });
+    expect(await screen.findByText(/No se pudo guardar la lista de fotos/)).toBeTruthy();
+    expect((await e.api.llamar('listarFichas', {}))[0]?.ficha.medios ?? []).toHaveLength(0);
+    // El medio sigue a la vista, en la página o en «subidos, no en la página».
+    const agregar = screen.queryByRole('button', { name: /Agregar a la página/ });
+    if (agregar === null) expect(screen.getByLabelText('Descripción de la foto 1')).toBeTruthy();
+    else await u.click(agregar);
+    falla = false;
+    await u.click(screen.getByRole('button', { name: 'Guardar' }));
+    await waitFor(async () => expect((await e.api.llamar('listarFichas', {}))[0]?.ficha.medios).toHaveLength(1), { timeout: 4000 });
+  }, 15_000);
   it('con una subida en curso, Cancelar pregunta; al salir se abandona y no se guarda nada con el panel cerrado', async () => {
     const e = crearEntorno('sup');
     e.api.estado.disparador.demoraMs = 700;

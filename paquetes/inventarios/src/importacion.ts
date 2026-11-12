@@ -166,6 +166,7 @@ export async function importarProductosCsv(
         resultado: { creados: filas.length, productos: filas.map((f) => f.producto.id) },
         referencia: cargaInicial ? { tipo: 'carga-inicial', id: e.operacionId } : { tipo: 'importacion', id: e.operacionId },
         tipoMovimiento: 'ingreso',
+        cambiosProducto: filas.map((f) => ({ productoId: f.producto.id, cambio: 'creado' as const })),
       };
     },
   });

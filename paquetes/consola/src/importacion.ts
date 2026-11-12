@@ -1,5 +1,4 @@
 import { LimiteDelPlan, registrarAuditoria, type Actor } from '@novutienda/nucleo';
-import { anotarCambio, leerEstadoSitio } from './cambios.js';
 import { aCsv, decodificarUtf8, ErrorCsv, MAX_BYTES_ARCHIVO, neutralizarCelda, parsearCsv } from './csv.js';
 import { ErrorConsola } from './errores.js';
 import { LIMITES_CONSOLA } from './limites.js';
@@ -259,10 +258,7 @@ export async function importarProductos(
       fallidas.push({ linea: f.linea, id: f.id, motivo: err instanceof LimiteDelPlan ? `supera el límite de ${String(err.tope)} productos del plan` : 'no se pudo aplicar la fila' });
     }
   }
-  const ahoraIso = new Date(deps.reloj.ahora()).toISOString();
   await deps.db.runTransaction(async (tx) => {
-    const estado = await leerEstadoSitio(tx, t);
-    if (aplicadas > 0) anotarCambio(tx, t, estado, ahoraIso);
     registrarAuditoria(tx, {
       tenantId: t, uid: e.actor.uid, rol: 'adm', accion: 'productos.importar', ruta: rutaSitio(t, 'estado'),
       resumenDespues: { aplicadas, fallidas: fallidas.length, omitidas: sim.resumen.errores },

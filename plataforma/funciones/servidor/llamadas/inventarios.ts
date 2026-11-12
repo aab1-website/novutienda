@@ -5,10 +5,11 @@
 import { HttpsError } from 'firebase-functions/v2/https';
 import { z } from 'zod';
 import {
-  abrirConteo, actualizarProducto, ajustar, cerrarConteo, crearUbicacion, esDisponible, exportarProductosCsv, importarProductosCsv,
+  abrirConteo, actualizarProducto, ajustar, cerrarConteo, crearProducto, crearUbicacion, esDisponible, exportarProductosCsv, importarProductosCsv,
   ingresar, leerDocumentoProducto, registrarLineaConteo, resolverMerma, solicitarMerma, traspasar, UBICACION_DISPONIBILIDAD,
-  type Autor, type LineaAjuste, type LineaIngreso, type LineaTraspaso, type ProductoExportable,
+  type Autor, type CambiosProducto, type EntradaProducto, type LineaAjuste, type PrecioUSD, type LineaIngreso, type LineaTraspaso, type ProductoExportable,
 } from '@novutienda/inventarios';
+import { MERCADOS } from '@novutienda/nucleo';
 import { accion, actorPos, type Contexto, type TablaImplementaciones } from './marco.js';
 import { ID, ID_PRODUCTO, LIMITE, MS, TEXTO, UBICACION, VACIO, objeto, validarRango } from './comunes.js';
 
@@ -19,6 +20,13 @@ const ruta = (t: string, col: string, id?: string): string => `tenants/${t}/${co
 const datosDe = (d: { data(): unknown }): Record<string, unknown> => d.data() as Record<string, unknown>;
 const SERIES = z.array(z.string().min(1).max(60)).min(1).max(500);
 const LINEA_INGRESO = objeto({ productoId: ID_PRODUCTO, cantidad: z.number().int().positive().max(1_000_000), series: SERIES.optional() });
+
+const centavos = z.number().int().nonnegative().max(100_000_000_00);
+/** Un precio por cada mercado del núcleo (centavos de USD); no se escribe `bo`/`ar` a mano. */
+const PRECIO = objeto(Object.fromEntries(MERCADOS.map((m) => [m.toLowerCase(), centavos])) as Record<string, typeof centavos>);
+const SKU = z.string().regex(/^[A-Za-z0-9][A-Za-z0-9._-]{0,39}$/, 'sku inválido');
+const GARANTIA = z.number().int().min(1).max(120);
+const MINIMO = z.number().int().nonnegative().max(1_000_000_000);
 
 export const accionesInventarios: TablaImplementaciones = {
   // ---- Operaciones ------------------------------------------------------------------------------------------
@@ -101,7 +109,48 @@ export const accionesInventarios: TablaImplementaciones = {
     ejecutar: (c, d) =>
       c.e.db.runTransaction((tx) => crearUbicacion(tx, { tenantId: c.tenantId, operacionId: d.operacionId, por: autor(c), ubicacionId: d.ubicacionId, nombre: d.nombre })),
   }),
-  /** Costo de un producto (solo `adm`): único camino para fijarlo; el alta y el precio van por `consola`. */
+  /** Alta de un producto (solo `adm`); respeta el tope de productos del plan. Precios y costo en centavos de USD. */
+  crearProducto: accion({
+    esquema: objeto({
+      operacionId: ID,
+      producto: objeto({
+        id: ID_PRODUCTO, nombre: TEXTO(120), categoria: TEXTO(60), marca: TEXTO(60).optional(), sku: SKU, activo: z.boolean().optional(),
+        publicado: z.boolean().optional(), conSerie: z.boolean().optional(), garantiaMeses: GARANTIA.optional(), minimo: MINIMO.optional(),
+        precioUSD: PRECIO, costoUSD: centavos.optional(), controlaStock: z.boolean().optional(),
+      }),
+    }),
+    ejecutar: (c, d) =>
+      c.e.db.runTransaction((tx) =>
+        crearProducto(tx, { tenantId: c.tenantId, operacionId: d.operacionId, por: autor(c), producto: d.producto as unknown as EntradaProducto }),
+      ),
+  }),
+  /**
+   * Edición de la ficha de inventario (solo `adm`). Campo ausente = sin cambio; `null` vacía marca, garantía, mínimo o costo.
+   * Nombre, categoría y precios no se vacían. `conSerie` no cambia tras el primer movimiento.
+   */
+  editarProducto: accion({
+    esquema: objeto({
+      operacionId: ID, productoId: ID_PRODUCTO,
+      cambios: objeto({
+        nombre: TEXTO(120).optional(), categoria: TEXTO(60).optional(), marca: TEXTO(60).nullable().optional(), activo: z.boolean().optional(),
+        publicado: z.boolean().optional(), conSerie: z.boolean().optional(), garantiaMeses: GARANTIA.nullable().optional(),
+        minimo: MINIMO.nullable().optional(), precioUSD: PRECIO.optional(), costoUSD: centavos.nullable().optional(),
+      }),
+    }),
+    ejecutar: (c, d) =>
+      c.e.db.runTransaction((tx) =>
+        actualizarProducto(tx, { tenantId: c.tenantId, operacionId: d.operacionId, por: autor(c), productoId: d.productoId, cambios: d.cambios as unknown as CambiosProducto }),
+      ),
+  }),
+  /** Cambia el precio base por mercado (solo `adm`): centavos de USD. La auditoría guarda el precio anterior y el nuevo. */
+  cambiarPrecioUSD: accion({
+    esquema: objeto({ operacionId: ID, productoId: ID_PRODUCTO, precioUSD: PRECIO }),
+    ejecutar: (c, d) =>
+      c.e.db.runTransaction((tx) =>
+        actualizarProducto(tx, { tenantId: c.tenantId, operacionId: d.operacionId, por: autor(c), productoId: d.productoId, cambios: { precioUSD: d.precioUSD as unknown as PrecioUSD } }),
+      ),
+  }),
+  /** Costo de un producto (solo `adm`): también se fija o se vacía con `editarProducto`. */
   fijarCosto: accion({
     esquema: objeto({ operacionId: ID, productoId: ID_PRODUCTO, costoUSD: z.number().nonnegative().max(9_999_999) }),
     ejecutar: (c, d) =>
@@ -154,7 +203,7 @@ export const accionesInventarios: TablaImplementaciones = {
   }),
   costos: accion({
     esquema: VACIO,
-    ejecutar: async (c) => ({ costos: (await c.e.firestore.collection(ruta(c.tenantId, 'costos')).get()).docs.map((x) => ({ productoId: x.id, costoUSD: x.data()['costoUSD'] })) }),
+    ejecutar: async (c) => ({ costos: (await c.e.firestore.collection(ruta(c.tenantId, 'costos')).get()).docs.filter((x) => typeof x.data()['costoUSD'] === 'number').map((x) => ({ productoId: x.id, costoUSD: x.data()['costoUSD'] })) }),
   }),
   /** Búsqueda por serie: estado, almacén, venta y vencimiento de garantía. */
   buscarSerie: accion({
