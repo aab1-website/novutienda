@@ -57,6 +57,62 @@ describe('archivos no confiables', () => {
 
   it('ruta de hoja con «..» no sale del libro', async () => {
     const rels = '<Relationships><Relationship Id="rId1" Type="x" Target="../../secreto.xml"/></Relationships>';
-    await expect(leer(xlsx([['id']], [{ nombre: 'xl/_rels/workbook.xml.rels', datos: Buffer.from(rels) }]))).rejects.toBeInstanceOf(XlsxInvalido);
+    const t = (x: string) => Buffer.from(x);
+    const libro = zip([
+      { nombre: 'xl/workbook.xml', datos: t('<workbook xmlns:r="r"><sheets><sheet name="H" sheetId="1" r:id="rId1"/></sheets></workbook>') },
+      { nombre: 'xl/_rels/workbook.xml.rels', datos: t(rels) },
+    ]);
+    await expect(leer(libro)).rejects.toThrow('ruta de hoja inválida');
+  });
+
+  it('ZIP con un nombre de entrada repetido se rechaza (no gana la última)', async () => {
+    const t = (x: string) => Buffer.from(x);
+    const b = zip([{ nombre: 'xl/workbook.xml', datos: t('<a/>') }, { nombre: 'xl/workbook.xml', datos: t('<b/>') }]);
+    await expect(leer(b)).rejects.toThrow('duplicada');
+  });
+
+  it('una entrada que supera el tope de 4 MB descomprimida se rechaza', async () => {
+    const hoja = `<worksheet><sheetData>${' '.repeat(4 * 1024 * 1024 + 1)}</sheetData></worksheet>`;
+    await expect(leer(xlsx([['id']], [], hoja))).rejects.toBeInstanceOf(XlsxInvalido);
+  });
+});
+
+describe('etiquetas sin cierre (retroceso cuadrático, CWE-1333)', () => {
+  const hojaCon = (relleno: string) => `<worksheet><sheetData>${relleno}</sheetData></worksheet>`;
+  const casos: [string, Buffer][] = [
+    ['<row> sin cierre', xlsx([['id']], [], hojaCon('<row>'.repeat(60_000)))],
+    ['<c> sin cierre', xlsx([['id']], [], hojaCon(`<row r="1">${'<c>'.repeat(60_000)}</row>`))],
+    ['<v> sin cierre', xlsx([['id']], [], hojaCon(`<row r="1"><c r="A1">${'<v>'.repeat(60_000)}</c></row>`))],
+    ['<row sin >', xlsx([['id']], [], hojaCon('<row '.repeat(60_000)))],
+  ];
+  const sst = (cuerpo: string) => zip([
+    { nombre: 'xl/sharedStrings.xml', datos: Buffer.from(`<sst>${cuerpo}</sst>`) },
+    { nombre: 'xl/workbook.xml', datos: Buffer.from('<workbook xmlns:r="r"><sheets><sheet name="H" r:id="rId1"/></sheets></workbook>') },
+    { nombre: 'xl/_rels/workbook.xml.rels', datos: Buffer.from('<Relationships><Relationship Id="rId1" Target="worksheets/s.xml"/></Relationships>') },
+    { nombre: 'xl/worksheets/s.xml', datos: Buffer.from('<worksheet><sheetData/></worksheet>') },
+  ]);
+  casos.push(
+    ['<si> sin cierre', sst('<si>'.repeat(60_000))],
+    ['<t> sin cierre', sst(`<si>${'<t>'.repeat(60_000)}</si>`)],
+    ['<rPh> sin cierre', sst(`<si><t>x</t>${'<rPh>'.repeat(60_000)}</si>`)],
+  );
+
+  for (const [nombre, archivo] of casos) {
+    it(`${nombre}: XlsxInvalido en menos de 500 ms`, async () => {
+      const t0 = performance.now();
+      await expect(leer(archivo)).rejects.toBeInstanceOf(XlsxInvalido);
+      expect(performance.now() - t0).toBeLessThan(500);
+    });
+  }
+
+  it('peor caso admitido (hoja de 3 MB con 200 000 celdas): se lee en menos de 400 ms', async () => {
+    const filas = Array.from({ length: 2_000 }, (_, r) => `<row r="${String(r + 1)}">${Array.from({ length: 100 }, () => '<c><v>1</v></c>').join('')}</row>`).join('');
+    const b = xlsx([['id']], [], hojaCon(filas));
+    const t0 = performance.now();
+    const salida = await leer(b);
+    const ms = performance.now() - t0;
+    console.info(`peor caso admitido: ${ms.toFixed(1)} ms`);
+    expect(salida.length).toBe(2_000);
+    expect(ms).toBeLessThan(400);
   });
 });
