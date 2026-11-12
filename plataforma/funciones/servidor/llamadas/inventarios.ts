@@ -343,8 +343,9 @@ export const accionesInventarios: TablaImplementaciones = {
     },
   }),
   /**
-   * Conteo ciego: quien cuenta ve sus líneas, nunca los teóricos. `resultado` (teórico, contado, diferencia por
-   * producto) lo reciben `sup`/`adm` SOLO con el conteo cerrado; con el conteo abierto no se lee `conteoTeoricos`.
+   * Conteo ciego: quien cuenta ve sus líneas y la lista de productos a contar, nunca los teóricos ni nada derivado de las
+   * existencias. `resultado` (teórico, contado, diferencia por producto) lo reciben `sup`/`adm` SOLO con el conteo cerrado;
+   * con el conteo abierto no se lee `conteoTeoricos` ni `existencias`.
    */
   conteo: accion({
     esquema: objeto({ conteoId: ID }),
@@ -353,14 +354,19 @@ export const accionesInventarios: TablaImplementaciones = {
       if (conteo === undefined) throw new HttpsError('not-found', 'El conteo no existe.');
       const lineas = await c.e.firestore.collection(ruta(c.tenantId, 'conteoLineas')).where('conteoId', '==', d.conteoId).limit(500).get();
       const filas = lineas.docs.map(datosDe);
-      if (c.rol === 'caj') return { conteo, lineas: filas };
       if (conteo['estado'] !== 'cerrado') {
-        // Para avisar antes de cerrar: cuántos productos con existencia aún no se contaron. Solo el número (sup/adm), sin ids
-        // ni cantidades; el cierre los cuenta en 0 y abre una merma por cada uno.
-        const contados = new Set(Array.isArray(conteo['productos']) ? (conteo['productos'] as unknown[]).map(String) : []);
-        const faltan = (await productosConExistenciaEn(c, conteo)).filter((p) => !contados.has(p)).length;
-        return { conteo, lineas: filas, faltan };
+        // Conteo abierto, para TODOS los roles: lo que hay que contar (id, nombre, sku, serie) y nada que dependa de las
+        // existencias: ni cantidades, ni «bajo el mínimo», ni cuántos faltan (su variación al contar delataría qué productos
+        // tienen stock). El cierre cuenta en 0 lo no contado y lo informa en su resultado.
+        const prods = await c.e.firestore.collection(ruta(c.tenantId, 'productos')).get();
+        const productos = prods.docs
+          .map((p) => leerDocumentoProducto(p.id, p.data()))
+          .filter((p) => p.stockTotal !== undefined)
+          .map((p) => ({ productoId: p.productoId, nombre: p.nombre, sku: p.sku, categoria: p.categoria ?? '', ...(p.marca !== undefined ? { marca: p.marca } : {}), conSerie: p.conSerie }))
+          .sort((x, y) => x.nombre.localeCompare(y.nombre));
+        return { conteo, lineas: filas, productos };
       }
+      if (c.rol === 'caj') return { conteo, lineas: filas };
       const teoricos = await c.e.firestore.collection(ruta(c.tenantId, 'conteoTeoricos')).where('conteoId', '==', d.conteoId).limit(500).get();
       const porProducto = new Map(teoricos.docs.map((t) => [String(t.data()['productoId']), Number(t.data()['cantidad'])]));
       const resultado = filas.map((l) => {
