@@ -12,7 +12,7 @@ import { useAccion, useCarga, type Accion } from '../../ui/hooks.js';
 import { SelectorBuscable } from '../../ui/selector-buscable.js';
 import { TablaMovimientos, useProductos } from './inventario-ops.js';
 import {
-  claveLinea, haySeQuedan, leerDiferencia, MAX_LINEAS, resumenAjuste, resumenIngreso, resumenTraspaso, revisarAjuste, revisarLineas, type FilaLinea, type Resumen,
+  claveLinea, haySeQuedan, leerDiferencia, MAX_LINEAS, resumenAjuste, resumenIngreso, resumenTraspaso, revisarAjuste, revisarLineas, type FilaLinea, type LecturaExistencia, type Resumen,
 } from './movimientos-resumen.js';
 import { nombreAlmacen, OPCIONES_ALMACEN } from './nombres.js';
 import './inventario.css';
@@ -72,7 +72,7 @@ function useEnvio(clave: string, sucio: boolean) {
   return { accion, avisos, ids, marcarGuardado, intento, setIntento, resumen, setResumen, pideFoco, pedirFoco: () => setPideFoco((n) => n + 1), formulario };
 }
 
-function Confirmacion({ resumen, accion, alConfirmar, alVolver }: { resumen: Resumen; accion: Accion; alConfirmar: () => void; alVolver: () => void }): JSX.Element {
+function Confirmacion({ resumen, accion, alConfirmar, alVolver, leyendo = false }: { resumen: Resumen; accion: Accion; alConfirmar: () => void; alVolver: () => void; leyendo?: boolean }): JSX.Element {
   return (
     <Dialogo
       variante="centro"
@@ -83,11 +83,11 @@ function Confirmacion({ resumen, accion, alConfirmar, alVolver }: { resumen: Res
       pie={
         <>
           <button type="button" class="boton boton-secundario" data-seguro onClick={alVolver}>Volver</button>
-          <Boton onClick={alConfirmar} ocupado={accion.ocupado}>{resumen.confirmar}</Boton>
+          <Boton onClick={alConfirmar} ocupado={accion.ocupado || leyendo}>{resumen.confirmar}</Boton>
         </>
       }
     >
-      <ul class="lista-simple inv-resumen" data-prueba="resumen-movimiento">
+      <ul class="lista-simple inv-resumen" data-prueba="resumen-movimiento" aria-busy={leyendo ? 'true' : undefined}>
         {resumen.lineas.map((l) => <li key={l}>{l}</li>)}
       </ul>
       {accion.error !== null && <Alerta>{accion.error}</Alerta>}
@@ -258,6 +258,8 @@ export function Ajuste(): JSX.Element {
   const e = b.valor;
   const sucio = b.hayBorrador && (e.productoId !== '' || e.almacen !== 'tienda' || e.diferencia.trim() !== '' || e.motivo.trim() !== '');
   const s = useEnvio(clave, sucio);
+  const [lectura, setLectura] = useState<LecturaExistencia>({ estado: 'cargando' });
+  const lecturaVigente = useRef(0);
   if (prod.cargando) return <Cargando />;
   if (prod.error) return <ErrorCarga error={prod.error} reintentar={prod.recargar} />;
   const sinSerie = prod.lista.filter((p) => !p.conSerie);
@@ -270,7 +272,28 @@ export function Ajuste(): JSX.Element {
     ev.preventDefault();
     s.setIntento(true);
     if (Object.keys(revisarAjuste(p, almacen, e.diferencia, e.motivo)).length > 0 || p === undefined || delta === null) s.pedirFoco();
-    else s.setResumen(resumenAjuste(p, almacen, delta, e.motivo));
+    else {
+      s.setResumen(resumenAjuste(p, almacen, delta, e.motivo, { estado: 'cargando' }));
+      // Al abrir la confirmación se vuelven a leer las existencias: lo mostrado no depende de lo leído al montar.
+      const turno = (lecturaVigente.current += 1);
+      setLectura({ estado: 'cargando' });
+      const productoId = p.id;
+      api.llamar('listarProductos', {}).then(
+        (ps) => {
+          if (turno !== lecturaVigente.current) return;
+          const fresco = ps.find((x) => x.id === productoId)?.existencias[almacen];
+          setLectura(fresco === undefined ? { estado: 'fallo' } : { estado: 'ok', hay: fresco });
+        },
+        () => {
+          if (turno === lecturaVigente.current) setLectura({ estado: 'fallo' });
+        },
+      );
+    }
+  };
+  const volver = (): void => {
+    lecturaVigente.current += 1;
+    s.setResumen(null);
+    s.accion.limpiar();
   };
   const confirmar = (): void => {
     if (p === undefined || delta === null) return;
@@ -301,7 +324,9 @@ export function Ajuste(): JSX.Element {
         </div>
         <Boton tipo="submit" ocupado={s.accion.ocupado && s.resumen === null}>Aplicar ajuste</Boton>
       </form>
-      {s.resumen !== null && <Confirmacion resumen={s.resumen} accion={s.accion} alConfirmar={confirmar} alVolver={() => { s.setResumen(null); s.accion.limpiar(); }} />}
+      {s.resumen !== null && p !== undefined && delta !== null && (
+        <Confirmacion resumen={resumenAjuste(p, almacen, delta, e.motivo, lectura)} accion={s.accion} alConfirmar={confirmar} alVolver={volver} leyendo={lectura.estado === 'cargando'} />
+      )}
     </Seccion>
   );
 }

@@ -196,7 +196,7 @@ describe('edición', () => {
     expect((await e.api.llamar('listarProductos', {})).find((x) => x.id === 'cable-hdmi')?.stockTotal).toBe(35);
   });
 
-  it('cambiar solo el precio llama a cambiarPrecioUSD con su operacionId y sin advertencia', async () => {
+  it('cambiar solo el precio llama a actualizarProducto con precioUSD, un operacionId y sin advertencia', async () => {
     const e = crearEntorno('adm');
     ver(e);
     const u = userEvent.setup();
@@ -205,10 +205,49 @@ describe('edición', () => {
     await u.type(within(d).getByLabelText(/^Bolivia \(USD\)/), '10,50');
     await u.click(within(d).getByRole('button', { name: 'Guardar cambios' }));
     await waitFor(() => expect(screen.queryByRole('dialog')).toBeNull());
-    expect(llamadas(e, 'actualizarProducto').length).toBe(0);
-    const [c] = llamadas(e, 'cambiarPrecioUSD');
-    expect(c?.entrada).toMatchObject({ productoId: 'cable-hdmi', precioUSD: { bo: 1050, ar: 900 } });
+    expect(llamadas(e, 'cambiarPrecioUSD').length).toBe(0);
+    const [c] = llamadas(e, 'actualizarProducto');
+    expect(c?.entrada).toMatchObject({ productoId: 'cable-hdmi', cambios: { precioUSD: { bo: 1050, ar: 900 } } });
     expect(typeof c?.entrada['operacionId']).toBe('string');
+  });
+
+  it('datos y precio juntos van en UNA sola llamada con un solo operacionId', async () => {
+    const e = crearEntorno('adm');
+    ver(e);
+    const u = userEvent.setup();
+    const d = await editar(u);
+    await u.clear(within(d).getByLabelText(/^Categoría/));
+    await u.type(within(d).getByLabelText(/^Categoría/), 'Cables');
+    await u.clear(within(d).getByLabelText(/^Bolivia \(USD\)/));
+    await u.type(within(d).getByLabelText(/^Bolivia \(USD\)/), '10,50');
+    await u.click(within(d).getByRole('button', { name: 'Guardar cambios' }));
+    await waitFor(() => expect(screen.queryByRole('dialog')).toBeNull());
+    expect(llamadas(e, 'cambiarPrecioUSD').length).toBe(0);
+    const todas = llamadas(e, 'actualizarProducto');
+    expect(todas.length).toBe(1);
+    expect(todas[0]?.entrada).toMatchObject({ cambios: { categoria: 'Cables', precioUSD: { bo: 1050, ar: 900 } } });
+    expect(typeof todas[0]?.entrada['operacionId']).toBe('string');
+  });
+
+  it('la casilla de número de serie sigue activa con stock, dice la restricción y muestra el rechazo del servidor junto a ella', async () => {
+    const e = crearEntorno('adm');
+    const original = e.api.llamar.bind(e.api);
+    vi.spyOn(e.api, 'llamar').mockImplementation(((n: string, en: unknown) => (n === 'actualizarProducto'
+      ? Promise.reject(new ErrorApi('failed-precondition', 'No se puede cambiar si el producto se controla por número de serie: ya tiene movimientos de inventario.', { codigo: 'estado-invalido' }))
+      : original(n as never, en as never))) as never);
+    ver(e);
+    const u = userEvent.setup();
+    const d = await editar(u);
+    const casilla = within(d).getByLabelText('Se controla por número de serie') as HTMLInputElement;
+    expect(casilla.disabled).toBe(false);
+    expect(within(d).getByText('No se puede cambiar si el producto ya tuvo movimientos.')).toBeTruthy();
+    await u.click(casilla);
+    await u.click(within(d).getByRole('button', { name: 'Guardar cambios' }));
+    const msg = await within(d).findByText('No se puede cambiar: el producto ya tuvo movimientos.');
+    expect(msg.id).toBe('inv-con-serie-ayuda');
+    expect(casilla.getAttribute('aria-invalid')).toBe('true');
+    await waitFor(() => expect(document.activeElement).toBe(casilla));
+    expect(within(d).queryByRole('alert')).toBeNull();
   });
 
   it('sin cambios avisa y no llama al servidor (que rechaza un cambio vacío)', async () => {

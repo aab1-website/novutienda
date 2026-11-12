@@ -69,7 +69,6 @@ describe('alta y edición hacia el servidor', () => {
   it('en una edición sin tocar nada no hay cambios', () => {
     const r = cambiosDeEdicion(formInicial(producto()), producto(), true);
     expect(r.cambios).toEqual({});
-    expect(r.precio).toBeNull();
     expect(r.vaciados).toEqual([]);
     expect(r.desactiva).toBe(false);
   });
@@ -84,10 +83,9 @@ describe('alta y edición hacia el servidor', () => {
     expect(cambiosDeEdicion(formInicial(p), p, true).vaciados).toEqual([]);
     expect(cambiosDeEdicion({ ...formInicial(producto()), costo: '' }, producto(), false).cambios).toEqual({});
   });
-  it('el precio va aparte y desactivar se declara', () => {
+  it('el precio va dentro de los cambios (una sola llamada) y desactivar se declara', () => {
     const r = cambiosDeEdicion({ ...formInicial(producto()), precios: { bo: '10,50', ar: '9' }, activo: false }, producto(), true);
-    expect(r.precio).toEqual({ bo: 1050, ar: 900 });
-    expect(r.cambios).toEqual({ activo: false });
+    expect(r.cambios).toEqual({ activo: false, precioUSD: { bo: 1050, ar: 900 } });
     expect(r.desactiva).toBe(true);
   });
   it('lista los datos en texto corrido', () => {
@@ -101,6 +99,10 @@ describe('errores del servidor a su campo', () => {
   it('SKU en uso e identificador repetido', () => {
     expect(errorDeServidor(new ErrorApi('failed-precondition', 'El sku TEC-1 ya está en uso', { codigo: 'estado-invalido' }))?.campo).toBe('sku');
     expect(errorDeServidor(new ErrorApi('failed-precondition', 'El producto teclado-1 ya existe', { codigo: 'estado-invalido' }))?.campo).toBe('id');
+  });
+  it('el rechazo de conSerie por movimientos va a su casilla', () => {
+    expect(errorDeServidor(new ErrorApi('failed-precondition', 'No se puede cambiar si el producto se controla por número de serie: ya tiene movimientos de inventario.', { codigo: 'estado-invalido' }))?.campo).toBe('conSerie');
+    expect(errorDeServidor(new ErrorApi('failed-precondition', 'conSerie no cambia tras el primer movimiento', { codigo: 'estado-invalido' }))?.campo).toBe('conSerie');
   });
   it('rutas de campos inválidos, incluido el precio de un mercado', () => {
     expect(errorDeServidor(new ErrorApi('invalid-argument', 'x', { codigo: 'entrada-invalida', campos: ['cambios.garantiaMeses'] }))?.campo).toBe('garantia');

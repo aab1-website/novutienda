@@ -229,6 +229,60 @@ describe('ajuste', () => {
     expect(llamadas(e, 'ajustar').length).toBe(0);
   });
 
+  const prepararAjuste = async (e: Entorno, u: U): Promise<void> => {
+    ver(e, 'ajuste');
+    await screen.findByRole('heading', { name: /Ajuste de existencias/ });
+    await elegir(u, 'cable', /Cable HDMI/);
+    await u.type(screen.getByLabelText(/^Diferencia/), '-2');
+    await u.type(screen.getByLabelText(/^Motivo/), 'Rotura en depósito');
+  };
+
+  it('al abrir la confirmación relee las existencias: si cambiaron mientras tanto, la cifra es la fresca y el operacionId es el mismo', async () => {
+    const e = crearEntorno('adm');
+    const u = userEvent.setup();
+    await prepararAjuste(e, u);
+    expect(screen.getByText('Hay 25, quedarán 23.')).toBeTruthy();
+    // Otra persona ingresa 5 unidades después de montar la pantalla.
+    await e.api.llamar('ingresar', { operacionId: 'otro-ingreso', ubicacionId: 'tienda', lineas: [{ productoId: 'cable-hdmi', cantidad: 5 }] });
+    const lecturas = llamadas(e, 'listarProductos').length;
+    await u.click(screen.getByRole('button', { name: 'Aplicar ajuste' }));
+    const d = await screen.findByRole('dialog', { name: '¿Aplicar este ajuste?' });
+    expect(await within(d).findByText('Cable HDMI 2 m en Tienda: Hay 30, quedarán 28.')).toBeTruthy();
+    expect(llamadas(e, 'listarProductos').length).toBeGreaterThan(lecturas);
+    await u.click(within(d).getByRole('button', { name: 'Sí, aplicar el ajuste' }));
+    expect(await screen.findByText('Ajuste registrado.')).toBeTruthy();
+    expect(llamadas(e, 'ajustar').length).toBe(1);
+  });
+
+  it('mientras relee muestra el estado de carga dentro del diálogo y no deja confirmar', async () => {
+    const e = crearEntorno('adm');
+    const u = userEvent.setup();
+    await prepararAjuste(e, u);
+    const original = e.api.llamar.bind(e.api);
+    let soltar: () => void = () => undefined;
+    vi.spyOn(e.api, 'llamar').mockImplementation(((n: string, en: unknown) => (n === 'listarProductos' ? new Promise((r) => { soltar = () => r(original(n as never, en as never)); }) : original(n as never, en as never))) as never);
+    await u.click(screen.getByRole('button', { name: 'Aplicar ajuste' }));
+    const d = await screen.findByRole('dialog', { name: '¿Aplicar este ajuste?' });
+    expect(within(d).getByText(/leyendo las existencias actuales/)).toBeTruthy();
+    expect(within(d).getByRole('button', { name: 'Procesando…' }).hasAttribute('disabled')).toBe(true);
+    soltar();
+    expect(await within(d).findByText('Cable HDMI 2 m en Tienda: Hay 25, quedarán 23.')).toBeTruthy();
+  });
+
+  it('si la relectura falla, el resumen no lleva cifra, dice que el servidor valida y se puede confirmar', async () => {
+    const e = crearEntorno('adm');
+    const u = userEvent.setup();
+    await prepararAjuste(e, u);
+    const original = e.api.llamar.bind(e.api);
+    vi.spyOn(e.api, 'llamar').mockImplementation(((n: string, en: unknown) => (n === 'listarProductos' ? Promise.reject(new ErrorApi('unavailable', 'sin red')) : original(n as never, en as never))) as never);
+    await u.click(screen.getByRole('button', { name: 'Aplicar ajuste' }));
+    const d = await screen.findByRole('dialog', { name: '¿Aplicar este ajuste?' });
+    const linea = await within(d).findByText(/no se pudieron leer las existencias actuales; el servidor valida al registrar/);
+    expect(linea.textContent).not.toMatch(/quedarán/);
+    await u.click(within(d).getByRole('button', { name: 'Sí, aplicar el ajuste' }));
+    expect(await screen.findByText('Ajuste registrado.')).toBeTruthy();
+  });
+
   it('no ofrece productos con serie', async () => {
     const e = crearEntorno('adm');
     ver(e, 'ajuste');

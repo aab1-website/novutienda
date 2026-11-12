@@ -130,11 +130,22 @@ export function revisarAjuste(p: ProductoPanel | undefined, ubicacion: Ubicacion
   return e;
 }
 
-export function resumenAjuste(p: ProductoPanel, ubicacion: UbicacionId, delta: number, motivo: string): Resumen {
-  const r = haySeQuedan(p, ubicacion, delta);
+/** Lo que se sabe de las existencias al abrir la confirmación: leyendo, la cifra fresca o la lectura falló. */
+export type LecturaExistencia = { readonly estado: 'cargando' } | { readonly estado: 'fallo' } | { readonly estado: 'ok'; readonly hay: number };
+
+/**
+ * Resumen del ajuste. La cifra «Hay N, quedarán M» sale de `lectura` (existencias leídas al abrir la confirmación), no de
+ * las leídas al montar la pantalla; si la lectura falla se muestra sin cifra y se avisa que el servidor valida al registrar.
+ */
+export function resumenAjuste(p: ProductoPanel, ubicacion: UbicacionId, delta: number, motivo: string, lectura: LecturaExistencia = { estado: 'ok', hay: p.existencias[ubicacion] }): Resumen {
+  const encabezado = `${p.nombre} en ${nombreAlmacen(ubicacion)}`;
+  const principal =
+    lectura.estado === 'ok' ? `${encabezado}: Hay ${String(lectura.hay)}, quedarán ${String(lectura.hay + delta)}.`
+    : lectura.estado === 'cargando' ? `${encabezado}: leyendo las existencias actuales…`
+    : `${encabezado}: no se pudieron leer las existencias actuales; el servidor valida al registrar.`;
   return {
     titulo: '¿Aplicar este ajuste?',
-    lineas: [`${p.nombre} en ${nombreAlmacen(ubicacion)}: ${r?.texto ?? ''}.`, `Diferencia: ${delta > 0 ? '+' : ''}${String(delta)}.`, `Motivo: ${motivo.trim()}.`],
+    lineas: [principal, `Diferencia: ${delta > 0 ? '+' : ''}${String(delta)}.`, `Motivo: ${motivo.trim()}.`],
     confirmar: 'Sí, aplicar el ajuste',
   };
 }

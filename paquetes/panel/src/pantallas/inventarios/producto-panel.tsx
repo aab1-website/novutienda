@@ -99,12 +99,8 @@ export function ProductoPanelLateral({ producto, cot, existentes, alCerrar, alCe
           if (producto2 === null) return;
           await api.llamar('crearProducto', { operacionId: idDeOperacion('crear', JSON.stringify(producto2)), producto: producto2 });
         } else if (edicion !== null) {
-          if (Object.keys(edicion.cambios).length > 0) {
-            await api.llamar('actualizarProducto', { operacionId: idDeOperacion('actualizar', JSON.stringify(edicion.cambios)), productoId: producto.id, cambios: edicion.cambios });
-          }
-          if (edicion.precio !== null) {
-            await api.llamar('cambiarPrecioUSD', { operacionId: idDeOperacion('precio', JSON.stringify(edicion.precio)), productoId: producto.id, precioUSD: edicion.precio });
-          }
+          // Una sola llamada con todo lo cambiado (datos y precio): atómica y con un solo evento.
+          await api.llamar('actualizarProducto', { operacionId: idDeOperacion('actualizar', JSON.stringify(edicion.cambios)), productoId: producto.id, cambios: edicion.cambios });
         }
       } catch (e) {
         const deCampo = errorDeServidor(e);
@@ -132,7 +128,7 @@ export function ProductoPanelLateral({ producto, cot, existentes, alCerrar, alCe
       setPideFoco((n) => n + 1);
       return;
     }
-    if (edicion !== null && Object.keys(edicion.cambios).length === 0 && edicion.precio === null) {
+    if (edicion !== null && Object.keys(edicion.cambios).length === 0) {
       avisos.info('No hay cambios que guardar.');
       cerrar();
       return;
@@ -193,8 +189,20 @@ export function ProductoPanelLateral({ producto, cot, existentes, alCerrar, alCe
           />
           <div class="fila">
             <Casilla etiqueta="Activo" marcado={f.activo} deshabilitado={soloLectura} onCambio={(v) => poner({ activo: v })} />
-            <Casilla etiqueta="Se controla por número de serie" marcado={f.conSerie} deshabilitado={soloLectura || (!nuevo && (producto.stockTotal ?? 0) > 0)} onCambio={(v) => poner({ conSerie: v })} />
+            <div class="casilla">
+              <input
+                id="inv-con-serie" type="checkbox" checked={f.conSerie} disabled={soloLectura} aria-invalid={errores['conSerie'] !== undefined ? 'true' : undefined}
+                aria-describedby={!nuevo ? 'inv-con-serie-ayuda' : undefined}
+                onChange={(ev) => poner({ conSerie: (ev.currentTarget as HTMLInputElement).checked })}
+              />
+              <label for="inv-con-serie">Se controla por número de serie</label>
+            </div>
           </div>
+          {!nuevo && (
+            <p id="inv-con-serie-ayuda" class={errores['conSerie'] !== undefined ? 'campo-error' : 'ayuda'} data-prueba="ayuda-serie">
+              {errores['conSerie'] ?? 'No se puede cambiar si el producto ya tuvo movimientos.'}
+            </p>
+          )}
           {!f.activo && !nuevo && producto.activo && <p class="ayuda" data-prueba="aviso-desactivar">Al desactivarlo, deja de venderse en caja y sale del sitio en la siguiente publicación. El stock no se pierde.</p>}
           <fieldset class="inv-bloque">
             <legend>Precio base en dólares por mercado</legend>

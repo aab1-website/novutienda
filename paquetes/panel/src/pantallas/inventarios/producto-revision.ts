@@ -131,9 +131,8 @@ export function aEntrada(f: FormProducto): EntradaProducto | null {
 }
 
 export interface CambiosDeEdicion {
-  /** Sin `precioUSD`: el precio va por `cambiarPrecioUSD`. */
+  /** Todo lo cambiado, precio incluido (`precioUSD`): una sola llamada a `actualizarProducto`. */
   readonly cambios: CambiosProducto;
-  readonly precio: PrecioUSDCentavos | null;
   /** Datos independientes que la persona dejó vacíos y hoy tienen valor. */
   readonly vaciados: readonly string[];
   /** Se desactiva un producto que hoy está activo. */
@@ -180,7 +179,8 @@ export function cambiosDeEdicion(f: FormProducto, p: ProductoPanel, puedeEditarC
   }
   const precios = preciosACentavos(f);
   const cambiaPrecio = precios !== null && MERCADOS_PRECIO.some((m) => precios[m.clave] !== p.precioUSD[m.clave]);
-  return { cambios: c, precio: cambiaPrecio ? precios : null, vaciados, desactiva: p.activo && !f.activo };
+  if (precios !== null && cambiaPrecio) c.precioUSD = precios;
+  return { cambios: c, vaciados, desactiva: p.activo && !f.activo };
 }
 
 /** «la marca y la garantía» / «la marca, la garantía y el costo». */
@@ -189,12 +189,13 @@ export function listaEnTexto(items: readonly string[]): string {
   return `${items.slice(0, -1).join(', ')} y ${items[items.length - 1] ?? ''}`;
 }
 
-const CAMPO_DE_RUTA: Readonly<Record<string, string>> = { id: 'id', nombre: 'nombre', categoria: 'categoria', marca: 'marca', sku: 'sku', garantiaMeses: 'garantia', minimo: 'minimo', costoUSD: 'costo' };
+const CAMPO_DE_RUTA: Readonly<Record<string, string>> = { id: 'id', nombre: 'nombre', categoria: 'categoria', marca: 'marca', sku: 'sku', garantiaMeses: 'garantia', conSerie: 'conSerie', minimo: 'minimo', costoUSD: 'costo' };
 
 /** El campo al que corresponde un error del servidor, con su texto; `null` si no es de un campo (va como error general). */
 export function errorDeServidor(e: unknown): { campo: string; texto: string } | null {
   if (!(e instanceof ErrorApi)) return null;
   if (/\bsku\b/i.test(e.message) && /uso|existe/i.test(e.message)) return { campo: 'sku', texto: 'Ese SKU ya lo usa otro producto.' };
+  if (/(n[uú]mero de serie|conSerie)/i.test(e.message) && /movimientos?/i.test(e.message)) return { campo: 'conSerie', texto: 'No se puede cambiar: el producto ya tuvo movimientos.' };
   if (/producto .* ya existe/i.test(e.message)) return { campo: 'id', texto: 'Ya existe un producto con ese identificador. Cambie el identificador.' };
   for (const ruta of e.detalle.campos ?? []) {
     const ultimo = ruta.split('.').pop() ?? '';
