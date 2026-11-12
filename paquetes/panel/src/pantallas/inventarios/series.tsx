@@ -1,7 +1,9 @@
 import type { JSX } from 'preact';
 import { useState } from 'preact/hooks';
-import { Boton, Campo, ErrorCarga, Seccion, Vacio } from '../../ui/comun.js';
+import type { ListaConMarca, UnidadSerie } from '../../api/tipos.js';
+import { Alerta, Boton, Campo, ErrorCarga, Seccion, Vacio } from '../../ui/comun.js';
 import { useApp } from '../../ui/contexto.js';
+import { AvisoConteoAbierto } from '../../ui/existencia.js';
 import { useCarga } from '../../ui/hooks.js';
 import { nombreAlmacen } from './nombres.js';
 import { useProductos } from './usar-productos.js';
@@ -14,8 +16,13 @@ export function Series(): JSX.Element {
   const [buscar, setBuscar] = useState('');
   const r = useCarga(() => (buscar === '' ? Promise.resolve([]) : api.llamar('buscarSerie', { serie: buscar })), [buscar]);
   const prod = useProductos();
+  // Si la lista llega con la marca, las series disponibles de un almacén en conteo no vienen: se dice, y la búsqueda sigue.
+  const marca = r.datos as ListaConMarca<UnidadSerie> | undefined;
+  const ocultas = marca?.existenciasOcultas === true || prod.ocultas;
   return (
     <Seccion titulo="Buscar por número de serie">
+      {ocultas && <AvisoConteoAbierto conteos={marca?.conteosAbiertos ?? prod.conteos} nombreAlmacen={nombreAlmacen} />}
+      {marca?.existenciasOcultas === true && <Alerta tipo="info">Las series disponibles están ocultas mientras hay un conteo abierto.</Alerta>}
       <form class="formulario" role="search" onSubmit={(e) => { e.preventDefault(); setBuscar(q.trim()); }} noValidate>
         <Campo etiqueta="Número de serie (o parte)" valor={q} onInput={setQ} />
         <Boton tipo="submit" motivo={q.trim() === '' ? 'Escriba un número de serie o parte de él.' : undefined}>Buscar</Boton>

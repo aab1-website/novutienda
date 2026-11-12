@@ -10,6 +10,8 @@ export interface FilaLinea {
   series: string;
 }
 
+export const TEXTO_EXISTENCIAS_OCULTAS = 'Las existencias están ocultas mientras hay un conteo abierto; el servidor valida al registrar.';
+
 export const MAX_CANTIDAD = 1_000_000;
 export const MAX_LINEAS = 50;
 const SERIE = /^[A-Za-z0-9][A-Za-z0-9._-]{0,63}$/;
@@ -58,7 +60,8 @@ export function revisarLineas(filas: readonly FilaLinea[], productos: readonly P
       const total = (pedido.get(p.id) ?? 0) + n;
       pedido.set(p.id, total);
       const hay = p.existencias[origen];
-      if (total > hay) {
+      // Oculta por un conteo abierto: no se puede comparar; valida el servidor.
+      if (hay !== null && total > hay) {
         errores[claveLinea(f, 'cantidad')] = `En ${nombreAlmacen(origen)} hay ${String(hay)} de «${p.nombre}»; no se pueden pasar ${String(total)}.`;
         continue;
       }
@@ -91,10 +94,11 @@ export function resumenTraspaso(lineas: readonly LineaIngreso[], origen: Ubicaci
   return { titulo: '¿Registrar este traspaso?', lineas: [`De ${nombreAlmacen(origen)} a ${nombreAlmacen(destino)}:`, ...lineas.map((l) => textoLinea(l, productos))], confirmar: 'Sí, traspasar' };
 }
 
-/** «Hay 12, quedarán 10»; `null` si todavía faltan el producto, el almacén o la diferencia. */
+/** «Hay 12, quedarán 10»; `null` si todavía faltan el producto, el almacén o la diferencia, o si la existencia está oculta. */
 export function haySeQuedan(p: ProductoPanel | undefined, ubicacion: UbicacionId | null, delta: number | null): { hay: number; quedan: number; texto: string } | null {
   if (p === undefined || ubicacion === null || delta === null) return null;
   const hay = p.existencias[ubicacion];
+  if (hay === null) return null;
   const quedan = hay + delta;
   return { hay, quedan, texto: `Hay ${String(hay)}, quedarán ${String(quedan)}` };
 }
@@ -131,16 +135,20 @@ export function revisarAjuste(p: ProductoPanel | undefined, ubicacion: Ubicacion
 }
 
 /** Lo que se sabe de las existencias al abrir la confirmación: leyendo, la cifra fresca o la lectura falló. */
-export type LecturaExistencia = { readonly estado: 'cargando' } | { readonly estado: 'fallo' } | { readonly estado: 'ok'; readonly hay: number };
+export type LecturaExistencia = { readonly estado: 'cargando' } | { readonly estado: 'fallo' } | { readonly estado: 'oculta' } | { readonly estado: 'ok'; readonly hay: number };
+
+/** Lectura de una existencia que puede venir oculta (`null`). */
+export const lecturaDe = (hay: number | null): LecturaExistencia => (hay === null ? { estado: 'oculta' } : { estado: 'ok', hay });
 
 /**
  * Resumen del ajuste. La cifra «Hay N, quedarán M» sale de `lectura` (existencias leídas al abrir la confirmación), no de
  * las leídas al montar la pantalla; si la lectura falla se muestra sin cifra y se avisa que el servidor valida al registrar.
  */
-export function resumenAjuste(p: ProductoPanel, ubicacion: UbicacionId, delta: number, motivo: string, lectura: LecturaExistencia = { estado: 'ok', hay: p.existencias[ubicacion] }): Resumen {
+export function resumenAjuste(p: ProductoPanel, ubicacion: UbicacionId, delta: number, motivo: string, lectura: LecturaExistencia = lecturaDe(p.existencias[ubicacion])): Resumen {
   const encabezado = `${p.nombre} en ${nombreAlmacen(ubicacion)}`;
   const principal =
     lectura.estado === 'ok' ? `${encabezado}: Hay ${String(lectura.hay)}, quedarán ${String(lectura.hay + delta)}.`
+    : lectura.estado === 'oculta' ? `${encabezado}: ${TEXTO_EXISTENCIAS_OCULTAS}`
     : lectura.estado === 'cargando' ? `${encabezado}: leyendo las existencias actuales…`
     : `${encabezado}: no se pudieron leer las existencias actuales; el servidor valida al registrar.`;
   return {

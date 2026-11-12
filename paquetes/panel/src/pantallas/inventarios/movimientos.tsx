@@ -3,6 +3,7 @@ import { useEffect, useRef, useState } from 'preact/hooks';
 import { nuevoId } from '../../api/cliente.js';
 import type { ProductoPanel, UbicacionId } from '../../api/tipos.js';
 import { useAvisos } from '../../ui/avisos.js';
+import { AvisoConteoAbierto } from '../../ui/existencia.js';
 import { Alerta, Boton, Campo, Cargando, ErrorCarga, Selector, Seccion, Vacio } from '../../ui/comun.js';
 import { useApp } from '../../ui/contexto.js';
 import { Dialogo } from '../../ui/dialogo.js';
@@ -11,7 +12,7 @@ import { useBorrador, useCambiosSinGuardar } from '../../ui/guardia.js';
 import { useAccion, useCarga, type Accion } from '../../ui/hooks.js';
 import { SelectorBuscable } from '../../ui/selector-buscable.js';
 import {
-  claveLinea, haySeQuedan, leerDiferencia, MAX_LINEAS, resumenAjuste, resumenIngreso, resumenTraspaso, revisarAjuste, revisarLineas, type FilaLinea, type LecturaExistencia, type Resumen,
+  claveLinea, haySeQuedan, lecturaDe, leerDiferencia, MAX_LINEAS, resumenAjuste, resumenIngreso, resumenTraspaso, revisarAjuste, revisarLineas, type FilaLinea, type LecturaExistencia, type Resumen,
 } from './movimientos-resumen.js';
 import { nombreAlmacen, OPCIONES_ALMACEN } from './nombres.js';
 import { TablaMovimientos } from './registro.js';
@@ -119,7 +120,7 @@ function LineasProducto({ filas, setFilas, productos, errores, origen }: {
               ) : (
                 <Campo
                   etiqueta="Cantidad" valor={f.cantidad} inputMode="numeric" requerido onInput={(v) => cambiar({ cantidad: v })} error={errores[claveLinea(f, 'cantidad')]}
-                  ayuda={origen != null && p !== undefined ? `En ${nombreAlmacen(origen)} hay ${String(p.existencias[origen])}.` : undefined}
+                  ayuda={origen != null && p !== undefined ? (p.existencias[origen] === null ? 'La existencia está oculta mientras hay un conteo abierto.' : `En ${nombreAlmacen(origen)} hay ${String(p.existencias[origen])}.`) : undefined}
                 />
               )}
             </div>
@@ -174,6 +175,7 @@ export function Ingreso(): JSX.Element {
   };
   return (
     <Seccion titulo="Ingreso de mercadería">
+      {prod.ocultas && <AvisoConteoAbierto conteos={prod.conteos} nombreAlmacen={nombreAlmacen} />}
       <form ref={s.formulario} class="formulario" onSubmit={revisar} noValidate>
         <Selector etiqueta="Almacén de destino" valor={e.almacen} onCambio={(v) => b.poner({ ...e, almacen: v })} opciones={OPCIONES_ALMACEN} />
         <LineasProducto filas={e.filas} setFilas={(filas) => b.poner({ ...e, filas })} productos={prod.lista} errores={errores} />
@@ -225,6 +227,7 @@ export function Traspaso(): JSX.Element {
   return (
     <div>
       <Seccion titulo="Traspaso entre almacenes">
+        {prod.ocultas && <AvisoConteoAbierto conteos={prod.conteos} nombreAlmacen={nombreAlmacen} />}
         <form ref={s.formulario} class="formulario" onSubmit={revisar} noValidate>
           <div class="cuadricula">
             <Selector etiqueta="Origen" valor={e.almacen} onCambio={(v) => b.poner({ ...e, almacen: v })} opciones={OPCIONES_ALMACEN} />
@@ -283,7 +286,7 @@ export function Ajuste(): JSX.Element {
         (ps) => {
           if (turno !== lecturaVigente.current) return;
           const fresco = ps.find((x) => x.id === productoId)?.existencias[almacen];
-          setLectura(fresco === undefined ? { estado: 'fallo' } : { estado: 'ok', hay: fresco });
+          setLectura(fresco === undefined ? { estado: 'fallo' } : lecturaDe(fresco));
         },
         () => {
           if (turno === lecturaVigente.current) setLectura({ estado: 'fallo' });

@@ -4,6 +4,7 @@ import type { MovimientoVista, ProductoPanel, TipoMovimiento } from '../../api/t
 import { useAvisos } from '../../ui/avisos.js';
 import { Boton, Campo, ConCarga, Selector, Seccion, Vacio, fechaHora } from '../../ui/comun.js';
 import { useApp } from '../../ui/contexto.js';
+import { ExistenciaOculta } from '../../ui/existencia.js';
 import { useCarga } from '../../ui/hooks.js';
 import { Tabla } from '../../ui/tabla.js';
 import { aCsv, descargarTexto } from '../../util/csv.js';
@@ -33,6 +34,7 @@ export function TablaMovimientos({ movs, productos, cortada = false }: { movs: r
         { id: 'producto', titulo: 'Producto', valor: (m) => nombre(m.productoId), ordenable: true },
         { id: 'almacen', titulo: 'Almacén', valor: (m) => nombreAlmacen(m.ubicacionId) },
         { id: 'cantidad', titulo: 'Cantidad', valor: (m) => m.delta, celda: (m) => (m.delta > 0 ? `+${String(m.delta)}` : String(m.delta)), ordenable: true },
+        { id: 'saldo', titulo: 'Saldo', valor: (m) => m.saldoUbicacion ?? -1, celda: (m) => (m.saldoUbicacion === undefined ? <ExistenciaOculta /> : m.saldoUbicacion), ordenable: false },
         { id: 'usuario', titulo: 'Usuario', valor: (m) => `${m.por} (${m.rol})` },
       ]}
     />
