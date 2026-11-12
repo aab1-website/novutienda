@@ -1,13 +1,14 @@
 # =============================================================================
 # reconstruir-sitio.yml — Reconstrucción y despliegue del sitio público de cada
 #                         tenant (un sitio de Hosting por tenant) en STAGING.
-# Versión: 1.0 | Fecha: 2026-11-10 | PR C-2 (DC1 a DC4)
+# Versión: 1.1 | Fecha: 2026-11-12 | PR C-2 (DC1 a DC4) + S5 (certificación)
 # -----------------------------------------------------------------------------
 # Contrato con las funciones: docs/produccion/reconstruccion-sitio.md (cola
 # firmada `tenants/{t}/reconstrucciones`, estados pendiente → en_curso →
 # completada | fallida). Scripts: scripts/sitios-tenant.mjs (matriz),
 # scripts/contenido-sitio.mjs (pendiente, estado, rezagados, generar), scripts/build.mjs
-# --solo sitio --sitio <id>.
+# --solo sitio --sitio <id>, scripts/certificar-sitio.mjs (S5: el sitio
+# desplegado coincide con lo publicado; corre tras el humo y antes del cierre).
 #
 # Disparadores:
 #   schedule */15 ...... (DC2) solo los sitios con un trabajo `pendiente`.
@@ -15,6 +16,12 @@
 #                        apaga tras 60 días sin actividad en el repositorio.
 #   workflow_dispatch .. todos los sitios, o solo `clave`; reconstruye aunque
 #                        no haya trabajo en la cola.
+#                        `clave` = `certificar:` (todos) o `certificar:<clave>`
+#                        → SOLO certificación: no toma trabajo, no compila, no
+#                        despliega ni cierra trabajos. Se reutiliza la entrada
+#                        `clave` en vez de declarar otra: Checkov CKV_GHA_7
+#                        marca toda entrada de workflow_dispatch (ver
+#                        docs/produccion/reconstruccion-sitio.md, Certificación).
 #   workflow_run ....... el CI terminó en éxito un push a main: el código nuevo
 #                        del sitio llega a staging con el contenido real.
 #                        Se reconstruye SIEMPRE con el HEAD de main (rama por
@@ -62,7 +69,7 @@ on:
   workflow_dispatch:
     inputs:
       clave:
-        description: Clave del sitio (SITIOS_TENANT[].clave); vacío = todos los sitios
+        description: "Clave del sitio (SITIOS_TENANT[].clave); vacío = todos los sitios. Con el prefijo certificar: (certificar:<clave>, o certificar: para todos) solo certifica, sin desplegar"
         type: string
         required: false
         default: ''
@@ -151,10 +158,18 @@ jobs:
           # motivo, nunca valores; los logs nombran solo la `clave`.
           [[ "$MODO" == "pendientes" || "$MODO" == "todos" ]] \
             || { echo "::error::sondear: MODO debe ser pendientes o todos."; exit 1; }
+          # Prefijo reservado `certificar:` (solo dispatch): mismos sitios, pero
+          # `reconstruir` solo certifica (SOLO_CERTIFICAR). El `:` no es válido en
+          # una clave, así que no choca con ninguna; el resto se valida igual.
+          accion="reconstruir"
+          if [[ "$CLAVE" == certificar:* ]]; then
+            accion="certificar"
+            CLAVE="${CLAVE#certificar:}"
+          fi
           args=(matriz)
           if [[ -n "$CLAVE" ]]; then
             [[ "$CLAVE" =~ ^[a-z0-9]{1,12}$ ]] \
-              || { echo "::error::sondear: la clave pedida no cumple ^[a-z0-9]{1,12}\$."; exit 1; }
+              || { echo "::error::sondear: la clave pedida no cumple ^(certificar:)?[a-z0-9]{1,12}\$."; exit 1; }
             args+=(--clave "$CLAVE")
           fi
           matriz="$(node scripts/sitios-tenant.mjs "${args[@]}")" \
@@ -214,10 +229,10 @@ jobs:
           { echo "matriz=$matriz"; echo "hay=$hay"; echo "fallos=$fallos"; } >> "$GITHUB_OUTPUT"
           {
             echo "### Sondeo ($MODO)"
-            echo "Sitios a reconstruir: ${claves:-ninguno}"
+            echo "Sitios a $accion: ${claves:-ninguno}"
             (( fallos == 0 )) || echo "Sondeos fallidos: $fallos"
           } >> "$GITHUB_STEP_SUMMARY"
-          echo "Sitios a reconstruir: ${claves:-ninguno}"
+          echo "Sitios a $accion: ${claves:-ninguno}"
 
       - name: Fallar si algún sondeo falló
         # Los sitios que respondieron ya están en la matriz y se reconstruyen
@@ -259,6 +274,11 @@ jobs:
     env:
       CLAVE: ${{ matrix.clave }}
       EVENTO: ${{ github.event_name }}
+      # 'true' solo en un dispatch con `clave` = `certificar:` o `certificar:<clave>`
+      # (sondear ya validó el formato). Entonces el job salta tomar el trabajo y,
+      # con él, todo lo que depende de steps.trabajo (build, despliegue, cierres
+      # y rezagados): solo resuelve, instala y certifica.
+      SOLO_CERTIFICAR: ${{ github.event_name == 'workflow_dispatch' && startsWith(inputs.clave, 'certificar:') }}
       APP_ENV: staging
       PROYECTO: ${{ vars.GCP_PROJECT_ID_STAGING }}
       MEDIOS_BASE_URL: ${{ vars.MEDIOS_BASE_URL }}
@@ -331,6 +351,9 @@ jobs:
 
       - name: Tomar el trabajo (en_curso)
         id: trabajo
+        # Solo certificación: no se toca la cola. Sin este paso, `continuar` y
+        # `trabajo` quedan vacíos y se omiten build, despliegue y cierres.
+        if: env.SOLO_CERTIFICAR != 'true'
         env:
           SITIO_RECONSTRUCCION_SECRETO: ${{ secrets.SITIO_RECONSTRUCCION_SECRETO }}
         run: |
@@ -365,8 +388,9 @@ jobs:
         # Después de tomar el trabajo (en_curso): `pendiente` y `estado` no
         # necesitan node_modules; si la instalación falla, el paso final cierra
         # el trabajo como fallida en vez de dejarlo pendiente para el próximo
-        # sondeo. `generar`, el build y las pruebas sí las necesitan.
-        if: steps.trabajo.outputs.continuar == 'true'
+        # sondeo. `generar`, el build, las pruebas y la certificación sí las
+        # necesitan (también en el modo de solo certificación).
+        if: steps.trabajo.outputs.continuar == 'true' || env.SOLO_CERTIFICAR == 'true'
         run: pnpm install --frozen-lockfile
 
       - name: Generar el contenido publicado
@@ -487,6 +511,120 @@ jobs:
           comprobar '/api/cotizacion?mercado=BO' no || fallos=$((fallos + 1))
           [ "$fallos" -eq 0 ] || exit 1
 
+      # S5. Certificación (scripts/certificar-sitio.mjs): contrasta lo que sirve
+      # el sitio —versión, conteos y huellaSinDisponibilidad de
+      # /version-contenido.json, índice, fichas, portada, secciones,
+      # disponibilidad y cotización— con el contenido de referencia. El log
+      # lleva solo conteos; la tabla va al resumen del job. Dos pasos con la
+      # misma lógica (función `certificar`, repetida a propósito): tras un
+      # despliegue no hacen falta los secretos de la cola ni del negocio, así
+      # que ese paso no los recibe.
+      #
+      # Códigos del script: 0 = coincide (puede haber avisos); 1 = diferencias
+      # firmes; 2 = uso inválido; 3 = error de operación (no se pudo comparar:
+      # sitio caído, falta un secreto, fallo al regenerar). Todo código distinto
+      # de 0 pone el paso en rojo.
+      #
+      # Caché de Hosting: cada release purga el CDN, pero la purga no llega a
+      # todos los bordes en el mismo instante y los .json se sirven con
+      # s-maxage=300. El script reintenta 5xx y errores de red, no una versión
+      # vieja. Por eso hay UN reintento tras 20 s, SOLO con código 1: cubre la
+      # propagación normal (segundos) y una diferencia real persiste. Con 2 o 3
+      # no se reintenta. Un CDN que siguiera sirviendo la versión anterior más
+      # allá de eso es un fallo que debe verse, no esperarse.
+      - name: Certificar el sitio desplegado contra el contenido del build
+        # Compara contra el MISMO contenido con el que se compiló el sitio
+        # ($SITIO_CONTENIDO, escrito por «Generar»): una publicación hecha en la
+        # consola entre el build y este paso no da una falsa alarma.
+        #
+        # Orden y cierre: va DESPUÉS del humo y ANTES de «Cerrar el trabajo
+        # (completada)». Si falla, success() es falso y el cierre completada se
+        # omite (outcome 'skipped', no 'failure'); entonces la condición de
+        # «Cerrar el trabajo (fallida)» —failure() && trabajo != '' &&
+        # cierre_completada.outcome != 'failure'— se cumple y el trabajo se
+        # cierra como fallida. Los rezagados (success()) tampoco corren.
+        if: steps.trabajo.outputs.continuar == 'true'
+        run: |
+          set -uo pipefail
+          certificar() { # args extra del script; deja rc e intento
+            local resumen="$RUNNER_TEMP/certificacion.md"
+            rc=3
+            for intento in 1 2; do
+              rm -f "$resumen"
+              rc=0
+              node scripts/certificar-sitio.mjs --tenant "$TENANT" --url "$URL_SITIO" --resumen "$resumen" "$@" || rc=$?
+              (( rc == 1 && intento == 1 )) || break
+              echo "::notice::$CLAVE: la certificación encontró diferencias (intento 1/2); se repite en 20 s por si el CDN de Hosting aún servía la versión anterior."
+              sleep 20
+            done
+            {
+              echo "### Certificación del sitio $CLAVE (intento $intento/2)"
+              if [[ -f "$resumen" ]]; then cat "$resumen"; else echo "Sin tabla: la certificación terminó antes de comparar (código $rc)."; fi
+            } >> "$GITHUB_STEP_SUMMARY"
+            case "$rc" in
+              0) echo "$CLAVE: el sitio coincide con lo publicado (intento $intento)."; return 0 ;;
+              1) echo "::error::$CLAVE: el sitio NO coincide con lo publicado (detalle en el resumen del job)." ;;
+              2) echo "::error::$CLAVE: no se pudo certificar (error de uso del script, código 2)." ;;
+              3) echo "::error::$CLAVE: no se pudo certificar (error de operación; motivo en el log)." ;;
+              *) echo "::error::$CLAVE: no se pudo certificar (código inesperado $rc)." ;;
+            esac
+            return 1
+          }
+          [[ -n "${SITIO_CONTENIDO:-}" && -f "$SITIO_CONTENIDO" ]] \
+            || { echo "::error::$CLAVE: no se pudo certificar (error de operación): falta el contenido generado por el build."; exit 3; }
+          certificar --contenido "$SITIO_CONTENIDO" || exit "$rc"
+
+      - name: Certificar a pedido (sin desplegar)
+        # Solo en el modo `certificar:`. No hay build: el script regenera el
+        # contenido desde lo publicado con el mismo código y entorno que
+        # «Generar»; por eso solo este paso recibe los secretos. No toca la
+        # cola: `trabajo` está vacío, así que ningún cierre ni rezagado corre.
+        if: env.SOLO_CERTIFICAR == 'true'
+        env:
+          SITIO_RECONSTRUCCION_SECRETO: ${{ secrets.SITIO_RECONSTRUCCION_SECRETO }}
+          # Textos del negocio de ESTE sitio (secreto del Environment por clave).
+          SITIO_NEGOCIO: ${{ secrets[format('SITIO_NEGOCIO_{0}', matrix.clave)] }}
+        run: |
+          set -uo pipefail
+          certificar() { # sin --contenido: el script regenera; deja rc e intento
+            local resumen="$RUNNER_TEMP/certificacion.md"
+            rc=3
+            for intento in 1 2; do
+              rm -f "$resumen"
+              rc=0
+              node scripts/certificar-sitio.mjs --tenant "$TENANT" --url "$URL_SITIO" --resumen "$resumen" || rc=$?
+              (( rc == 1 && intento == 1 )) || break
+              echo "::notice::$CLAVE: la certificación encontró diferencias (intento 1/2); se repite en 20 s por si el CDN de Hosting aún servía la versión anterior."
+              sleep 20
+            done
+            {
+              echo "### Certificación del sitio $CLAVE (intento $intento/2)"
+              if [[ -f "$resumen" ]]; then cat "$resumen"; else echo "Sin tabla: la certificación terminó antes de comparar (código $rc)."; fi
+            } >> "$GITHUB_STEP_SUMMARY"
+            case "$rc" in
+              0) echo "$CLAVE: el sitio coincide con lo publicado (intento $intento)."; return 0 ;;
+              1) echo "::error::$CLAVE: el sitio NO coincide con lo publicado (detalle en el resumen del job)." ;;
+              2) echo "::error::$CLAVE: no se pudo certificar (error de uso del script, código 2)." ;;
+              3) echo "::error::$CLAVE: no se pudo certificar (error de operación; motivo en el log)." ;;
+              *) echo "::error::$CLAVE: no se pudo certificar (código inesperado $rc)." ;;
+            esac
+            return 1
+          }
+          [[ -n "$SITIO_RECONSTRUCCION_SECRETO" ]] \
+            || { echo "::error::$CLAVE: no se pudo certificar (error de operación): falta el secreto SITIO_RECONSTRUCCION_SECRETO del Environment staging."; exit 3; }
+          echo "::add-mask::$SITIO_RECONSTRUCCION_SECRETO"
+          # Misma exigencia que «Generar»: un faltante da su motivo, no un reintento.
+          faltan=()
+          for v in VITE_FIREBASE_PROJECT_ID VITE_FIREBASE_API_KEY VITE_RECAPTCHA_ENTERPRISE_SITE_KEY VITE_FIREBASE_APP_ID MEDIOS_BASE_URL; do
+            [[ -n "${!v:-}" ]] || faltan+=("$v")
+          done
+          [[ -n "$SITIO_NEGOCIO" ]] || faltan+=("SITIO_NEGOCIO_$(tr '[:lower:]' '[:upper:]' <<<"$CLAVE")")
+          if (( ${#faltan[@]} > 0 )); then
+            echo "::error::$CLAVE: no se pudo certificar (error de operación): faltan ${faltan[*]}. Ver docs/produccion/reconstruccion-sitio.md."
+            exit 3
+          fi
+          certificar || exit "$rc"
+
       - name: Cerrar el trabajo (completada)
         id: cierre_completada
         if: success() && steps.trabajo.outputs.trabajo != ''
@@ -501,7 +639,10 @@ jobs:
       - name: Cerrar el trabajo (fallida)
         # También si el run se cancela: un trabajo no queda en_curso para siempre.
         # No corre si lo que falló fue el propio cierre `completada` (el sitio ya
-        # está desplegado y probado; marcarlo fallida sería falso).
+        # está desplegado y probado; marcarlo fallida sería falso). Cubre la
+        # certificación tras el despliegue: si falla, cierre_completada queda
+        # 'skipped'. En la certificación a pedido `trabajo` está vacío y ningún
+        # cierre corre.
         if: >-
           (failure() || cancelled())
           && steps.trabajo.outputs.trabajo != ''
@@ -518,7 +659,7 @@ jobs:
       - name: Cerrar trabajos rezagados (en_curso de corridas anteriores)
         # Un cierre `completada` que falló en una corrida anterior (p. ej. un 502
         # agotado) deja su trabajo en_curso para siempre. Corre solo si el
-        # despliegue y el humo fueron correctos, haya o no trabajo propio
+        # despliegue, el humo y la certificación fueron correctos, haya o no trabajo propio
         # (dispatch, workflow_run). Sin --excepto: el trabajo propio ya está
         # cerrado (paso anterior) y el grupo de concurrencia por sitio impide
         # otro corredor del mismo sitio; tras un despliegue y humo correctos el

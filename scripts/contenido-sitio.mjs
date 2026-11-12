@@ -20,7 +20,7 @@
 // - Reintentos: error de red, tiempo agotado o respuesta 502/503/504 se reintentan hasta 4 intentos en total (esperas de 2, 5 y 10 s; `pendiente` hace 1 solo, opción `intentos`),
 //   firmando de nuevo cada intento con la marca de tiempo del momento. Los 3xx y 4xx no se reintentan.
 // - `generar`: GET firmado de `publicado`, disponibilidad pública en lotes de 50, mapeo `contenidoDesdePublicado` (que `plataforma/registro.ts`
-//   debe reexportar) y escritura del JSON validado en --salida. Imprime solo conteos.
+//   debe reexportar) y escritura del JSON validado en --salida. Imprime solo conteos y, de las advertencias del mapeo (enlaces de carrusel descartados), su número y las rutas de campo con ids enmascarados.
 // - Seguridad: sin redirecciones (`redirect: 'manual'`; un 3xx falla sin reintentarse), tiempo máximo de 30 s por petición; http://localhost y 127.0.0.1 solo con
 //   NODE_ENV=test. --salida se borra antes de escribir y queda con modo 0600.
 // - Nunca imprime el secreto, la firma, las respuestas ni datos de productos; los errores dan el motivo, no valores.
@@ -235,6 +235,26 @@ export async function leerDisponibilidad({ url, ids, fetchFn = fetch, esperar = 
   return salida;
 }
 
+/** Ruta de campo sin ids: producto, sección y categoría se enmascaran (el log de CI es público). */
+export const enmascararRuta = (m) => String(m).split(':')[0].replace(/(producto|seccion)__[^.\s\]]*/g, '$1__*').replace(/categorias\.[^.\s]*/g, 'categorias.*');
+
+/** GET público (sin firma) con los reintentos y límites del resto: devuelve { estado, texto } y nunca sigue redirecciones. */
+export async function pedirTexto({ url, ruta, fetchFn = fetch, esperar = esperarReal, avisar = avisarReal, maxBytes = 8_000_000 }) {
+  const r = await conReintentos(async () => {
+    let resp;
+    try {
+      resp = await fetchFn(`${url}${ruta}`, { method: 'GET', redirect: 'manual', signal: AbortSignal.timeout(TIEMPO_MAXIMO_MS) });
+    } catch {
+      return { reintentable: true, valor: null };
+    }
+    if (esRedireccion(resp)) return { reintentable: false, valor: { estado: resp.status || 302, texto: '', redireccion: true } };
+    const texto = await resp.text().catch(() => '');
+    return { reintentable: ESTADOS_REINTENTABLES.includes(resp.status), valor: { estado: resp.status, texto: texto.length > maxBytes ? '' : texto, demasiado: texto.length > maxBytes } };
+  }, esperar, avisar);
+  if (r.valor === null) throw new ErrorContenidoSitio('no se pudo contactar al sitio');
+  return r.valor;
+}
+
 /** App Check del build desde las variables VITE_* del sitio; null si falta alguna. */
 export function appCheckDesdeEntorno(env) {
   const claveSitio = env.VITE_RECAPTCHA_ENTERPRISE_SITE_KEY;
@@ -265,18 +285,21 @@ export async function generarContenido({ tenant, url, secreto, env, calcularFirm
   const disponibilidad = await leerDisponibilidad({ url, ids, fetchFn, esperar, avisar });
   const entorno = { origen: url, origenMedios, baseMedios, appCheck: appCheckDesdeEntorno(env), recaptchaSiteKey: env.VITE_RECAPTCHA_ENTERPRISE_SITE_KEY || null, disponibilidad };
   let contenido;
+  const avisosMapeo = [];
   try {
-    contenido = mapear(r.json, negocio, entorno);
+    contenido = mapear(r.json, negocio, entorno, avisosMapeo);
   } catch (e) {
     // Solo rutas de campos: los ids de productos, secciones y categorías se enmascaran (el log de CI es público).
     const errores = Array.isArray(e?.errores) ? e.errores.filter((m) => typeof m === 'string') : [];
-    const rutas = [...new Set(errores.map((m) => m.split(':')[0].replace(/(producto|seccion)__[^.\s\]]*/g, '$1__*').replace(/categorias\.[^.\s]*/g, 'categorias.*')))];
+    const rutas = [...new Set(errores.map(enmascararRuta))];
     throw new ErrorContenidoSitio(`generar: el contenido publicado no es válido (${errores.length} errores)${rutas.length > 0 ? `. Campos afectados: ${rutas.slice(0, 20).join(', ')}` : ''}`);
   }
-  return { contenido, productos: ids.length, invalidos: todos.length - ids.length };
+  // Solo rutas de campo, enmascaradas; el conteo es el de avisos (no el de rutas distintas).
+  const advertencias = avisosMapeo.filter((m) => typeof m === 'string').map(enmascararRuta);
+  return { contenido, productos: ids.length, invalidos: todos.length - ids.length, advertencias };
 }
 
-function valor(args, nombre) {
+export function valor(args, nombre) {
   const i = args.indexOf(`--${nombre}`);
   const v = i > -1 ? args[i + 1] : undefined;
   if (v !== undefined && v.startsWith('--')) throw new ErrorContenidoSitio(`--${nombre} requiere un valor`, 2);
@@ -284,7 +307,7 @@ function valor(args, nombre) {
 }
 
 /** Carga perezosa de lo que necesita TypeScript (núcleo y mapeo del sitio) con los ganchos de `cargarManifiestos`. */
-async function cargarDependencias() {
+export async function cargarDependencias() {
   const { cargarManifiestos } = await import('./generar-reglas.mjs');
   await cargarManifiestos(); // registra los ganchos de TypeScript
   // Plataforma no importa un módulo directamente: el mapeo llega por el registro (`plataforma/registro.ts` lo reexporta).
@@ -292,7 +315,7 @@ async function cargarDependencias() {
   if (typeof registro.contenidoDesdePublicado !== 'function') {
     throw new ErrorContenidoSitio('plataforma/registro.ts no exporta contenidoDesdePublicado');
   }
-  return { mapear: registro.contenidoDesdePublicado };
+  return { mapear: registro.contenidoDesdePublicado, versionContenido: registro.versionContenido };
 }
 
 /** Punto de entrada: devuelve { codigo, salida?, error? }; las dependencias se pueden inyectar en pruebas. */
@@ -326,13 +349,14 @@ export async function ejecutar(args, env = process.env, deps = undefined, fetchF
     }
     const salida = valor(args, 'salida');
     if (salida === undefined || salida === '') throw new ErrorContenidoSitio('falta --salida', 2);
-    const { contenido, productos, invalidos } = await generarContenido({ tenant, url, secreto, env, calcularFirma: d?.calcularFirma, mapear: d.mapear, fetchFn, esperar, avisar });
+    const { contenido, productos, invalidos, advertencias } = await generarContenido({ tenant, url, secreto, env, calcularFirma: d?.calcularFirma, mapear: d.mapear, fetchFn, esperar, avisar });
     const destino = resolve(salida);
     mkdirSync(dirname(destino), { recursive: true });
     rmSync(destino, { force: true }); // un archivo previo con otros permisos no se reutiliza
     writeFileSync(destino, `${JSON.stringify(contenido)}\n`, { mode: 0o600 });
     const aviso = invalidos > 0 ? ` (aviso: ${invalidos} ids de producto inválidos sin consultar)` : '';
-    return { codigo: 0, salida: `contenido generado: ${productos} productos${aviso}` };
+    const lineas = [`contenido generado: ${productos} productos${aviso}`, `advertencias del mapeo: ${advertencias.length}`, ...[...new Set(advertencias)].slice(0, 20).map((a) => `  ${a}`)];
+    return { codigo: 0, salida: lineas.join('\n') };
   } catch (e) {
     if (e instanceof ErrorContenidoSitio) return { codigo: e.codigo, error: e.message };
     // Solo el nombre y el código del error, nunca valores.
