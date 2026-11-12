@@ -101,6 +101,8 @@ function PanelFicha({ producto, modo, alCerrar, alCerrarEnfocar }: PropsPanel): 
   const confirmadaRef = useRef<FichaWeb | null>(null);
   const [confirmada, setConfirmada] = useState<FichaWeb | null>(null);
   const vivo = useRef(true);
+  /** Fotos ya agregadas a la ficha cuyo guardado automático aún no se confirma: cuentan para el número de la descripción sugerida. */
+  const pendientes = useRef<ReadonlySet<string>>(new Set());
   const mediosRef = useRef<readonly Medio[]>([]);
 
   const guardada = carga.datos?.fichas.find((x) => x.productoId === producto.id)?.ficha;
@@ -153,6 +155,8 @@ function PanelFicha({ producto, modo, alCerrar, alCerrarEnfocar }: PropsPanel): 
       if (vivo.current) carga.recargar();
     } catch (e) {
       if (vivo.current) setErrorAuto(mensajeDeError(e));
+    } finally {
+      pendientes.current = new Set([...pendientes.current].filter((id) => id !== m.id));
     }
   };
 
@@ -167,8 +171,10 @@ function PanelFicha({ producto, modo, alCerrar, alCerrarEnfocar }: PropsPanel): 
       const confirmadaAhora = confirmadaRef.current;
       if (actual === null || confirmadaAhora === null || actual.medios.some((x) => x.medioId === m.id)) return;
       // La descripción sugerida sale de lo confirmado, así lo que se ve y lo que se guarda coinciden.
-      const fotos = confirmadaAhora.medios.filter((x) => tipoDe(x.medioId) === 'foto').length;
+      const enFicha = new Set([...confirmadaAhora.medios.map((x) => x.medioId), ...pendientes.current]);
+      const fotos = [...enFicha].filter((id) => tipoDe(id) === 'foto').length;
       const alt = sugerida(m.tipo, fotos + 1);
+      pendientes.current = new Set([...pendientes.current, m.id]);
       poner({ ...actual, medios: [...actual.medios, { medioId: m.id, alt }] });
       void encolar(() => guardarMedio(m, alt));
     },
