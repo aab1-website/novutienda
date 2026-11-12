@@ -29,7 +29,7 @@ negocio aparece en un adaptador, está mal ubicada.
 | `ejecutor-recibos.ts` | `EjecutorRecibos` (recibos) | `BaseDatosIdentidad` (núcleo) | Recibos escribe con la misma base transaccional que los demás; el adaptador difiere las escrituras para respetar «todas las lecturas antes de la primera escritura» de Firestore |
 | `almacen-cotizaciones.ts` | `AlmacenCotizaciones` (núcleo) | `BaseDatosIdentidad` | la cotización que el POS lee dentro de su transacción es la que escribió la programada o la carga manual |
 | `colecciones.ts` | `LectorColecciones` | — | lectura de colecciones que usan los puertos y el doble de pruebas |
-| `consumidores.ts` | `Consumidor` y `consumidoresDePlataforma` | los consumidores reales de Recibos (2) e Inventarios (2) | el bus real (`servidor/bus.ts`) y las pruebas usan esta misma lista. La bandeja en memoria (`BandejaMemoria`, `publicarEnBandeja`) es un **doble de pruebas** y vive en `pruebas/integracion/bandeja-memoria.ts` |
+| `consumidores.ts` | `Consumidor` y `consumidoresDePlataforma` | los consumidores reales de Recibos (2), Inventarios (2) y Consola (`producto.cambiado`, opcional) | `consume` es el consumo que el módulo necesita para funcionar; `consumeOpcional` es el que solo aplica si el emisor está activo, y el registro lo valida igual. El bus real (`servidor/bus.ts`) y las pruebas usan esta misma lista. La bandeja en memoria (`BandejaMemoria`, `publicarEnBandeja`) es un **doble de pruebas** y vive en `pruebas/integracion/bandeja-memoria.ts` |
 | `index.ts` | entrada pública de los puertos | — | lo único que importan `entorno.ts`, `bus.ts` y las pruebas |
 
 Regla: **cada puerto lo define el módulo que lo necesita** (en su paquete) y **lo implementa el

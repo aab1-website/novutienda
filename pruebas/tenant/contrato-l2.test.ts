@@ -60,7 +60,8 @@ describe('requiere hostil', () => {
   it('el orden del registro real no cambia por los requiere declarados', () => {
     const ms = registroPlataforma.listar();
     const sin = crearRegistro<ManifiestoModulo>();
-    for (const x of ms) sin.registrar({ ...x, requiere: [] });
+    // Sin `requiere`, un `consumeOpcional` deja de ser válido (exige al emisor en el cierre): se quita junto con él.
+    for (const x of ms) sin.registrar({ ...x, requiere: [], consumeOpcional: [] });
     expect(registroPlataforma.ordenTopologico()).toEqual(sin.ordenTopologico());
     const o = registroPlataforma.ordenTopologico();
     // Fija que `requiere` no altera el orden (el orden alimenta las reglas generadas); no es una regla de negocio.
