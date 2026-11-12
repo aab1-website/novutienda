@@ -21,11 +21,8 @@ const datosDe = (d: { data(): unknown }): Record<string, unknown> => d.data() as
 /** Tiempo que la importación se da antes de detenerse limpiamente (el callable vive 60 s); se retoma con el mismo `operacionId`. */
 const PRESUPUESTO_IMPORTACION_MS = 40_000;
 
-/**
- * Lector de hojas (.xlsx) que inyecta el coordinador en el entorno como `lectorHojas` (ver `LectorHojas` del paquete);
- * mientras no esté, un .xlsx se rechaza con un mensaje claro y el CSV sigue funcionando.
- */
-const lectorDe = (c: Contexto): LectorHojas | undefined => (c.e as { readonly lectorHojas?: LectorHojas }).lectorHojas;
+/** Lector de hojas (.xlsx) que inyecta el coordinador en el entorno; sin él, un .xlsx se rechaza con un mensaje claro. */
+const lectorDe = (c: Contexto): LectorHojas | undefined => c.e.lectorHojas;
 
 /** Decodifica base64 estricto con tope de bytes (el archivo llega dentro del JSON). */
 function base64(valor: string): Uint8Array {
