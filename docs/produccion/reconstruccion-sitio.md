@@ -49,7 +49,8 @@ Solo staging. El CI principal (`ci-node-firebase.yml`) ya no despliega el sitio 
 4. Prueba del sitio compilado con contenido real (`pruebas/website/dist-real.test.ts`, con `EXIGIR_DIST=1`: si falta `dist/website` falla, no se omite).
 5. `preparar-sitio-tenant.sh`: exige que `dist/firebase.json` declare solo `hosting`, con una entrada, sin `target` y con el `site` esperado; rechaza el sitio del panel (`FIREBASE_SITE_PANEL`, variable del Environment, obligatoria).
 6. Autenticación por WIF, copia del sitio vivo al canal `previa`, `firebase deploy --only hosting` (se revisa el registro además del código de salida) y humo de `/`, `/productos` (comprueba `cleanUrls`) y `/api/cotizacion?mercado=BO`. La entrada del sitio en `firebase.json` lleva `cleanUrls` (#72).
-7. Cierre: `completada`, o `fallida` si algo falló o el run se canceló (un trabajo no queda `en_curso` para siempre).
+7. Cierre: `completada`, o `fallida` si algo falló o el run se canceló (un trabajo no queda `en_curso` para siempre). `estado` reintenta ante `502`, `503`, `504` y errores de red (4 intentos, con esperas de 2, 5 y 10 s); si aun así falla el cierre `completada`, no se marca `fallida` (el sitio ya está desplegado y probado) y el run queda en rojo.
+8. Rezagados: tras un despliegue y humo correctos, haya o no trabajo propio, `contenido-sitio.mjs rezagados` marca `completada` los trabajos que quedaron `en_curso` en corridas anteriores (el grupo de concurrencia por sitio garantiza que no hay otro corredor y el sitio ya contiene lo publicado). Solo imprime el conteo; un `409` o `404` no es error, cualquier otro fallo pone el run en rojo.
 
 **Secretos del Environment `staging`** (valores por stdin, nunca en el repositorio): `SITIOS_TENANT`, `SITIO_NEGOCIO_<CLAVE>` (una por sitio, con la clave en mayúsculas) y `SITIO_RECONSTRUCCION_SECRETO`. Además `GCP_WIF_PROVIDER` y `GCP_SA_DEPLOY_STAGING`.
 

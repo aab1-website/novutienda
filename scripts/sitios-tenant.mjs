@@ -6,7 +6,7 @@
 // Contrato:
 // - SITIOS_TENANT (variable de entorno, o --sitios) es un JSON `[{ clave, tenant, sitio, url }]`:
 //     clave   ^[a-z0-9]{1,12}$, única; es lo único que se imprime en logs públicos.
-//     tenant  id de tenant del núcleo (^[a-z0-9][a-z0-9-]{0,62}$).
+//     tenant  id de tenant del núcleo (^[a-z0-9][a-z0-9-]{0,62}$), único: un tenant, un sitio (comparten la cola de reconstrucción).
 //     sitio   id del sitio de Hosting, ^[a-z0-9-]{6,30}$, único.
 //     url     https sin ruta (solo origen).
 // - `matriz` imprime `{"include":[{clave,tenant,sitio,url}]}` (formato de `strategy.matrix` de GitHub); con --clave, solo esa entrada
@@ -58,6 +58,7 @@ export function parsearSitios(texto) {
   const errores = [];
   const claves = new Set();
   const sitios = new Set();
+  const tenants = new Set();
   const salida = [];
   datos.forEach((e, i) => {
     const donde = `entrada ${i + 1}`;
@@ -70,6 +71,8 @@ export function parsearSitios(texto) {
     else if (claves.has(e.clave)) errores.push(`${donde}: clave repetida`);
     else claves.add(e.clave);
     if (typeof e.tenant !== 'string' || !RE_TENANT.test(e.tenant)) errores.push(`${donde}: tenant inválido`);
+    else if (tenants.has(e.tenant)) errores.push(`${donde}: tenant repetido`);
+    else tenants.add(e.tenant);
     if (typeof e.sitio !== 'string' || !RE_SITIO.test(e.sitio)) errores.push(`${donde}: sitio inválido`);
     else if (sitios.has(e.sitio)) errores.push(`${donde}: sitio repetido`);
     else sitios.add(e.sitio);

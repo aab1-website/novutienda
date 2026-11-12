@@ -28,6 +28,11 @@ describe('parsearSitios', () => {
     expect(errores(json([A, { ...B, clave: 'a1' }]))).toEqual(['entrada 2: clave repetida']);
     expect(errores(json([A, { ...B, sitio: 'sitio-aaaa' }]))).toEqual(['entrada 2: sitio repetido']);
   });
+  it('rechaza un tenant repetido (un tenant, un sitio) sin imprimir su valor', () => {
+    const e = errores(json([A, { ...B, tenant: 'tienda-a' }]));
+    expect(e).toEqual(['entrada 2: tenant repetido']);
+    expect(e.join(' ')).not.toContain('tienda-a');
+  });
   it('valida los patrones de cada campo', () => {
     expect(errores(json([{ ...A, clave: 'Mayus' }]))).toContain('entrada 1: clave inválida');
     expect(errores(json([{ ...A, clave: 'a'.repeat(13) }]))).toContain('entrada 1: clave inválida');

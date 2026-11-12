@@ -2,6 +2,7 @@
 //
 //   node scripts/contenido-sitio.mjs pendiente --tenant <t> --url <https://origen>
 //   node scripts/contenido-sitio.mjs estado <id> <en_curso|completada|fallida> --tenant <t> --url <https://origen>
+//   node scripts/contenido-sitio.mjs rezagados --tenant <t> --url <https://origen> [--excepto <id>]
 //   node scripts/contenido-sitio.mjs generar --salida <ruta> --tenant <t> --url <https://origen>
 //
 // Contrato (docs/produccion/reconstruccion-sitio.md):
@@ -12,9 +13,15 @@
 //   --tenant y --url reemplazan a TENANT_ID y SITIO_URL (un proceso por sitio de la matriz). --url es https sin ruta.
 // - `pendiente`: imprime el id del trabajo `pendiente` más antiguo, o nada. Código 0.
 // - `estado`: POST firmado. Códigos: 0 bien (también «repetido»), 3 el trabajo lo tomó otro (409), 4 inexistente (404), 1 otro fallo.
+// - `rezagados`: lista los trabajos `en_curso` del tenant y marca `completada` cada uno salvo --excepto. Imprime solo el conteo
+//   («rezagados cerrados: n»). Un 409 o 404 en un trabajo no detiene a los demás ni es error; otro fallo da código 1 al final,
+//   también si tras 10 rondas aún quedan trabajos en_curso sin ver.
+//   Úsese solo DESPUÉS de un despliegue y humo correctos (el sitio ya contiene lo publicado).
+// - Reintentos: error de red, tiempo agotado o respuesta 502/503/504 se reintentan hasta 4 intentos en total (esperas de 2, 5 y 10 s; `pendiente` hace 1 solo, opción `intentos`),
+//   firmando de nuevo cada intento con la marca de tiempo del momento. Los 3xx y 4xx no se reintentan.
 // - `generar`: GET firmado de `publicado`, disponibilidad pública en lotes de 50, mapeo `contenidoDesdePublicado` (que `plataforma/registro.ts`
 //   debe reexportar) y escritura del JSON validado en --salida. Imprime solo conteos.
-// - Seguridad: sin redirecciones (`redirect: 'error'`), tiempo máximo de 30 s por petición; http://localhost y 127.0.0.1 solo con
+// - Seguridad: sin redirecciones (`redirect: 'manual'`; un 3xx falla sin reintentarse), tiempo máximo de 30 s por petición; http://localhost y 127.0.0.1 solo con
 //   NODE_ENV=test. --salida se borra antes de escribir y queda con modo 0600.
 // - Nunca imprime el secreto, la firma, las respuestas ni datos de productos; los errores dan el motivo, no valores.
 import { createHmac } from 'node:crypto';
@@ -29,6 +36,13 @@ export const LOTE_DISPONIBILIDAD = 50;
 export const CODIGO_TOMADO_POR_OTRO = 3;
 export const CODIGO_INEXISTENTE = 4;
 export const TIEMPO_MAXIMO_MS = 30_000;
+export const ESPERAS_REINTENTO_MS = [2_000, 5_000, 10_000];
+export const ESTADOS_REINTENTABLES = [502, 503, 504];
+const RONDAS_REZAGADOS = 10;
+export const INTENTOS_POR_DEFECTO = 4;
+
+// Con `redirect: 'manual'` una redirección llega como respuesta (tipo opaqueredirect o estado 3xx): se rechaza sin seguirla ni reintentar.
+const esRedireccion = (resp) => resp.type === 'opaqueredirect' || (resp.status >= 300 && resp.status < 400);
 const RE_ID_PRODUCTO = /^[a-z0-9][a-z0-9-]{1,59}$/;
 
 /** Misma firma que `calcularFirma` del núcleo (HMAC-SHA256 hex de `{marca}.{cuerpo firmado}`), sin cargar el núcleo. */
@@ -71,29 +85,53 @@ export function cabecerasFirmadas({ secreto, metodo, ruta, cuerpo = '', ahoraMs,
 // Firebase Hosting reordena la consulta alfabéticamente antes de entregarla a la función, y la firma cubre la URL tal como la ve el servidor:
 // los parámetros se firman y se envían YA ordenados por clave (estado antes que tenantId).
 export const rutaPendientes = (tenant) => `/api/sitio/v1/reconstrucciones?estado=pendiente&tenantId=${encodeURIComponent(tenant)}`;
+export const rutaEnCurso = (tenant) => `/api/sitio/v1/reconstrucciones?estado=en_curso&tenantId=${encodeURIComponent(tenant)}`;
 export const rutaEstado = (id) => `/api/sitio/v1/reconstrucciones/${encodeURIComponent(id)}/estado`;
 export const rutaPublicado = (tenant) => `/api/sitio/v1/publicado?tenantId=${encodeURIComponent(tenant)}`;
 export const rutaDisponibilidad = (ids) => `/api/disponibilidad?ids=${ids.map(encodeURIComponent).join(',')}`;
 
-/** Petición firmada; devuelve { estado, json } y nunca propaga el cuerpo de un error. */
-export async function pedirFirmado({ url, secreto, metodo, ruta, cuerpo, ahoraMs = Date.now(), calcularFirma = calcularFirmaLocal, fetchFn = fetch }) {
-  const texto = cuerpo === undefined ? '' : JSON.stringify(cuerpo);
-  const cabeceras = cabecerasFirmadas({ secreto, metodo, ruta, cuerpo: texto, ahoraMs, calcularFirma });
-  if (cuerpo !== undefined) cabeceras['Content-Type'] = 'application/json';
-  let r;
-  try {
-    r = await fetchFn(`${url}${ruta}`, {
-      method: metodo,
-      headers: cabeceras,
-      body: cuerpo === undefined ? undefined : texto,
-      redirect: 'error',
-      signal: AbortSignal.timeout(TIEMPO_MAXIMO_MS),
-    });
-  } catch {
-    throw new ErrorContenidoSitio('no se pudo contactar al sitio');
+export const esperarReal = (ms) => new Promise((ok) => setTimeout(ok, ms));
+const avisarReal = (mensaje) => console.error(`contenido-sitio: ${mensaje}`);
+
+/**
+ * Ejecuta `intento(n)` (n = 0 el primero), que devuelve { reintentable: boolean, valor }, con las esperas de ESPERAS_REINTENTO_MS.
+ * Hace como máximo `intentos` intentos en total (por defecto 4); devuelve el último { reintentable, valor }.
+ */
+async function conReintentos(intento, esperar = esperarReal, avisar = avisarReal, intentos = INTENTOS_POR_DEFECTO) {
+  const reintentos = Math.max(0, Math.min(intentos - 1, ESPERAS_REINTENTO_MS.length));
+  for (let n = 0; ; n++) {
+    const r = await intento(n);
+    if (!r.reintentable || n >= reintentos) return r;
+    avisar(`reintento ${n + 1} de ${reintentos}`);
+    await esperar(ESPERAS_REINTENTO_MS[n]);
   }
-  const json = await r.json().catch(() => null);
-  return { estado: r.status, json };
+}
+
+/** Petición firmada con reintentos; devuelve { estado, json } y nunca propaga el cuerpo de un error. */
+export async function pedirFirmado({ url, secreto, metodo, ruta, cuerpo, ahoraMs = Date.now(), calcularFirma = calcularFirmaLocal, fetchFn = fetch, esperar = esperarReal, avisar = avisarReal, intentos = INTENTOS_POR_DEFECTO }) {
+  const texto = cuerpo === undefined ? '' : JSON.stringify(cuerpo);
+  const r = await conReintentos(async (n) => {
+    // Cada intento se firma de nuevo con la hora del momento (el primero respeta `ahoraMs`).
+    const cabeceras = cabecerasFirmadas({ secreto, metodo, ruta, cuerpo: texto, ahoraMs: n === 0 ? ahoraMs : Date.now(), calcularFirma });
+    if (cuerpo !== undefined) cabeceras['Content-Type'] = 'application/json';
+    let resp;
+    try {
+      resp = await fetchFn(`${url}${ruta}`, {
+        method: metodo,
+        headers: cabeceras,
+        body: cuerpo === undefined ? undefined : texto,
+        redirect: 'manual',
+        signal: AbortSignal.timeout(TIEMPO_MAXIMO_MS),
+      });
+    } catch {
+      return { reintentable: true, valor: null };
+    }
+    if (esRedireccion(resp)) return { reintentable: false, valor: null };
+    const json = await resp.json().catch(() => null);
+    return { reintentable: ESTADOS_REINTENTABLES.includes(resp.status), valor: { estado: resp.status, json } };
+  }, esperar, avisar, intentos);
+  if (r.valor === null) throw new ErrorContenidoSitio('no se pudo contactar al sitio');
+  return r.valor;
 }
 
 function exigirOk(r, que) {
@@ -102,9 +140,9 @@ function exigirOk(r, que) {
   if (r.estado < 200 || r.estado >= 300) throw new ErrorContenidoSitio(`${que}: respuesta ${r.estado}`);
 }
 
-/** Id del trabajo pendiente más antiguo, o null. */
+/** Id del trabajo pendiente más antiguo, o null. Sin reintentos (1 intento): el sondeo del workflow tiene tiempo acotado. */
 export async function trabajoPendiente(opciones) {
-  const r = await pedirFirmado({ ...opciones, metodo: 'GET', ruta: rutaPendientes(opciones.tenant) });
+  const r = await pedirFirmado({ ...opciones, intentos: 1, metodo: 'GET', ruta: rutaPendientes(opciones.tenant) });
   exigirOk(r, 'pendiente');
   const trabajos = Array.isArray(r.json?.trabajos) ? r.json.trabajos : [];
   const id = trabajos.find((t) => t && typeof t.id === 'string' && RE_ID_TRABAJO.test(t.id))?.id;
@@ -120,6 +158,42 @@ export async function cambiarEstado(opciones, id, estado) {
   if (r.estado === 404) throw new ErrorContenidoSitio('estado: el trabajo no existe (404)', CODIGO_INEXISTENTE);
   exigirOk(r, 'estado');
   return r.json?.repetido === true ? 'repetido' : 'cambiado';
+}
+
+/** Ids de los trabajos `en_curso` del tenant (el servidor entrega hasta 20 por consulta). */
+export async function trabajosEnCurso(opciones) {
+  const r = await pedirFirmado({ ...opciones, metodo: 'GET', ruta: rutaEnCurso(opciones.tenant) });
+  exigirOk(r, 'rezagados');
+  const trabajos = Array.isArray(r.json?.trabajos) ? r.json.trabajos : [];
+  return trabajos.filter((t) => t && typeof t.id === 'string' && RE_ID_TRABAJO.test(t.id)).map((t) => t.id);
+}
+
+/**
+ * Marca `completada` los trabajos `en_curso` salvo `excepto`. Devuelve { cerrados, fallos }. Un 409 o 404 (otro corredor lo cerró) no cuenta
+ * como fallo ni detiene a los demás. Nunca expone ids.
+ */
+export async function cerrarRezagados(opciones, excepto = undefined) {
+  const vistos = new Set(excepto === undefined ? [] : [excepto]);
+  let cerrados = 0;
+  let fallos = 0;
+  let agotadas = false;
+  for (let ronda = 0; ronda < RONDAS_REZAGADOS; ronda++) {
+    const nuevos = (await trabajosEnCurso(opciones)).filter((id) => !vistos.has(id));
+    if (nuevos.length === 0) break;
+    for (const id of nuevos) {
+      vistos.add(id);
+      try {
+        await cambiarEstado(opciones, id, 'completada');
+        cerrados++;
+      } catch (e) {
+        if (!(e instanceof ErrorContenidoSitio) || (e.codigo !== CODIGO_TOMADO_POR_OTRO && e.codigo !== CODIGO_INEXISTENTE)) fallos++;
+      }
+    }
+    if (ronda === RONDAS_REZAGADOS - 1) agotadas = true;
+  }
+  // Tras las rondas, si aún hay trabajos en_curso sin ver no se corta en silencio: cuenta como fallo.
+  if (agotadas && (await trabajosEnCurso(opciones)).some((id) => !vistos.has(id))) fallos++;
+  return { cerrados, fallos };
 }
 
 /** Ids de producto (sin el prefijo `producto__`) de la respuesta de `publicado`. */
@@ -139,17 +213,22 @@ export function lotes(ids, tamano = LOTE_DISPONIBILIDAD) {
 }
 
 /** Disponibilidad pública por lotes: { id: boolean }. Ausente en la respuesta = no disponible (lo resuelve el mapeo). */
-export async function leerDisponibilidad({ url, ids, fetchFn = fetch }) {
+export async function leerDisponibilidad({ url, ids, fetchFn = fetch, esperar = esperarReal, avisar = avisarReal }) {
   const salida = {};
   for (const lote of lotes(ids)) {
-    let r;
-    try {
-      r = await fetchFn(`${url}${rutaDisponibilidad(lote)}`, { method: 'GET', redirect: 'error', signal: AbortSignal.timeout(TIEMPO_MAXIMO_MS) });
-    } catch {
-      throw new ErrorContenidoSitio('disponibilidad: no se pudo contactar al sitio');
-    }
-    if (!r.ok) throw new ErrorContenidoSitio(`disponibilidad: respuesta ${r.status}`);
-    const json = await r.json().catch(() => null);
+    const r = await conReintentos(async () => {
+      let resp;
+      try {
+        resp = await fetchFn(`${url}${rutaDisponibilidad(lote)}`, { method: 'GET', redirect: 'manual', signal: AbortSignal.timeout(TIEMPO_MAXIMO_MS) });
+      } catch {
+        return { reintentable: true, valor: null };
+      }
+      if (esRedireccion(resp)) return { reintentable: false, valor: null };
+      return { reintentable: ESTADOS_REINTENTABLES.includes(resp.status), valor: resp };
+    }, esperar, avisar);
+    if (r.valor === null) throw new ErrorContenidoSitio('disponibilidad: no se pudo contactar al sitio');
+    if (!r.valor.ok) throw new ErrorContenidoSitio(`disponibilidad: respuesta ${r.valor.status}`);
+    const json = await r.valor.json().catch(() => null);
     const mapa = json?.disponibilidad;
     if (typeof mapa === 'object' && mapa !== null) for (const [id, v] of Object.entries(mapa)) salida[id] = v === 'disponible';
   }
@@ -174,16 +253,16 @@ export function negocioDesdeEntorno(env) {
 }
 
 /** Genera el contenido: devuelve { contenido, productos }. `mapear` es `contenidoDesdePublicado` del módulo del sitio. */
-export async function generarContenido({ tenant, url, secreto, env, calcularFirma = calcularFirmaLocal, mapear, ahoraMs, fetchFn = fetch }) {
+export async function generarContenido({ tenant, url, secreto, env, calcularFirma = calcularFirmaLocal, mapear, ahoraMs, fetchFn = fetch, esperar = esperarReal, avisar = avisarReal }) {
   // La base lleva el bucket como ruta; el esquema del sitio valida el ORIGEN (CSP) y arma las url de fotos con la base completa.
   const baseMedios = normalizarUrl(env.MEDIOS_BASE_URL ?? '', env.NODE_ENV === 'test', 'MEDIOS_BASE_URL', true);
   const origenMedios = new URL(baseMedios).origin;
   const negocio = negocioDesdeEntorno(env);
-  const r = await pedirFirmado({ url, secreto, metodo: 'GET', ruta: rutaPublicado(tenant), ahoraMs, calcularFirma, fetchFn });
+  const r = await pedirFirmado({ url, secreto, metodo: 'GET', ruta: rutaPublicado(tenant), ahoraMs, calcularFirma, fetchFn, esperar, avisar });
   exigirOk(r, 'publicado');
   const todos = idsDeProductos(r.json);
   const ids = idsValidos(todos);
-  const disponibilidad = await leerDisponibilidad({ url, ids, fetchFn });
+  const disponibilidad = await leerDisponibilidad({ url, ids, fetchFn, esperar, avisar });
   const entorno = { origen: url, origenMedios, baseMedios, appCheck: appCheckDesdeEntorno(env), recaptchaSiteKey: env.VITE_RECAPTCHA_ENTERPRISE_SITE_KEY || null, disponibilidad };
   let contenido;
   try {
@@ -217,17 +296,18 @@ async function cargarDependencias() {
 }
 
 /** Punto de entrada: devuelve { codigo, salida?, error? }; las dependencias se pueden inyectar en pruebas. */
-export async function ejecutar(args, env = process.env, deps = undefined, fetchFn = fetch) {
+export async function ejecutar(args, env = process.env, deps = undefined, fetchFn = fetch, red = {}) {
+  const { esperar = esperarReal, avisar = avisarReal } = red;
   try {
     const [sub] = args;
-    if (!['pendiente', 'estado', 'generar'].includes(sub)) throw new ErrorContenidoSitio('uso: contenido-sitio.mjs pendiente | estado <id> <estado> | generar --salida <ruta>  (con --tenant y --url)', 2);
+    if (!['pendiente', 'estado', 'rezagados', 'generar'].includes(sub)) throw new ErrorContenidoSitio('uso: contenido-sitio.mjs pendiente | estado <id> <estado> | rezagados [--excepto <id>] | generar --salida <ruta>  (con --tenant y --url)', 2);
     const tenant = validarTenant(valor(args, 'tenant'));
     const url = normalizarUrl(valor(args, 'url'), env.NODE_ENV === 'test');
     const secreto = env.SITIO_RECONSTRUCCION_SECRETO ?? '';
     if (secreto === '') throw new ErrorContenidoSitio('falta SITIO_RECONSTRUCCION_SECRETO');
     // El registro (TypeScript) se carga solo en `generar`: `pendiente` y `estado` no necesitan node_modules.
     const d = sub === 'generar' ? (deps ?? (await cargarDependencias())) : deps;
-    const base = { tenant, url, secreto, calcularFirma: d?.calcularFirma, fetchFn };
+    const base = { tenant, url, secreto, calcularFirma: d?.calcularFirma, fetchFn, esperar, avisar };
     if (sub === 'pendiente') {
       const id = await trabajoPendiente(base);
       return { codigo: 0, salida: id ?? undefined };
@@ -237,9 +317,16 @@ export async function ejecutar(args, env = process.env, deps = undefined, fetchF
       const r = await cambiarEstado(base, id, estado);
       return { codigo: 0, salida: `estado ${r}` };
     }
+    if (sub === 'rezagados') {
+      const excepto = valor(args, 'excepto');
+      if (excepto !== undefined && !RE_ID_TRABAJO.test(excepto)) throw new ErrorContenidoSitio('--excepto inválido', 2);
+      const { cerrados, fallos } = await cerrarRezagados(base, excepto);
+      if (fallos > 0) return { codigo: 1, salida: `rezagados cerrados: ${cerrados}`, error: `rezagados: ${fallos} trabajos no se pudieron cerrar` };
+      return { codigo: 0, salida: `rezagados cerrados: ${cerrados}` };
+    }
     const salida = valor(args, 'salida');
     if (salida === undefined || salida === '') throw new ErrorContenidoSitio('falta --salida', 2);
-    const { contenido, productos, invalidos } = await generarContenido({ tenant, url, secreto, env, calcularFirma: d?.calcularFirma, mapear: d.mapear, fetchFn });
+    const { contenido, productos, invalidos } = await generarContenido({ tenant, url, secreto, env, calcularFirma: d?.calcularFirma, mapear: d.mapear, fetchFn, esperar, avisar });
     const destino = resolve(salida);
     mkdirSync(dirname(destino), { recursive: true });
     rmSync(destino, { force: true }); // un archivo previo con otros permisos no se reutiliza
