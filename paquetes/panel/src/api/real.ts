@@ -13,6 +13,7 @@
 import type { Entrada, NombreCallable, Salida } from './contrato.js';
 import { ROLES_ACCION } from './acciones.generado.js';
 import { ErrorApi } from './errores.js';
+import { ponerMarca } from './marca.js';
 import type {
   AprobacionPos, ConteoAbierto, ConteoVista, ListaConMarca, MarcaOcultamiento, ProductoDeConteo, CotizacionesVigentes, CreditoVista, Medio, MermaVista, MovimientoVista, ProductoPanel,
   Rol, TurnoPos, UbicacionId, UnidadSerie, UsuarioVista, VentaPos,
@@ -73,7 +74,7 @@ const lista = (r: unknown, clave: string): Obj[] => {
  * Marca de ocultamiento de una respuesta (`existenciasOcultas: true` + `conteosAbiertos`), o `undefined`. Falla cerrado: si llega
  * `existenciasOcultas` sin una lista válida, la marca queda con lista vacía en lugar de perderse.
  */
-function marcaDe(r: unknown): MarcaOcultamiento | undefined {
+function marcaDeRespuesta(r: unknown): MarcaOcultamiento | undefined {
   const o = (r ?? {}) as Obj;
   if (o['existenciasOcultas'] !== true) return undefined;
   const conteosAbiertos = (Array.isArray(o['conteosAbiertos']) ? (o['conteosAbiertos'] as Obj[]) : []).map(
@@ -81,11 +82,8 @@ function marcaDe(r: unknown): MarcaOcultamiento | undefined {
   );
   return { existenciasOcultas: true, conteosAbiertos };
 }
-/** La lista con la marca como propiedades (solo si la respuesta la trae). */
-const conMarca = <T>(items: T[], r: unknown): ListaConMarca<T> => {
-  const m = marcaDe(r);
-  return m === undefined ? items : Object.assign(items, m);
-};
+/** La lista con la marca como propiedades no enumerables y de solo lectura (solo si la respuesta la trae). */
+const conMarcaDe = <T>(items: T[], r: unknown): ListaConMarca<T> => ponerMarca(items, marcaDeRespuesta(r));
 /** Cantidad que puede venir oculta: `null` se conserva (oculto), un número sirve, ausente es 0 (sin documento de existencia). */
 const cantidadOculta = (v: unknown): number | null => (v === null ? null : typeof v === 'number' ? v : 0);
 
@@ -309,14 +307,14 @@ export const TRADUCCION: { readonly [N in NombreCallable]: Traduccion<N> } = {
       if (c.rol === 'adm') {
         costos = new Map(lista(await c.llamar('inventarios', 'costos', {}), 'costos').map((x) => [String(x['productoId']), Number(x['costoUSD'])]));
       }
-      return conMarca(productos.map((p) => aProducto(p, costos)), respuesta);
+      return conMarcaDe(productos.map((p) => aProducto(p, costos)), respuesta);
     },
   },
   listarSeries: {
     usa: ['inventarios.series'],
     ejecutar: async (c, e) => {
       const r = await c.llamar('inventarios', 'series', sinVacios({ productoId: e.productoId, ubicacionId: e.ubicacionId, soloDisponibles: e.soloDisponibles }));
-      return conMarca(lista(r, 'unidades') as unknown as UnidadSerie[], r);
+      return conMarcaDe(lista(r, 'unidades') as unknown as UnidadSerie[], r);
     },
   },
   buscarSerie: {
@@ -336,7 +334,7 @@ export const TRADUCCION: { readonly [N in NombreCallable]: Traduccion<N> } = {
       });
       // El servidor filtra por tipo y por persona; `costoUSDUnit` solo llega al administrador y la vista no lo usa.
       const r = await c.llamar('inventarios', 'movimientos', datos);
-      return { movimientos: lista(r, 'movimientos').map(aMovimiento), cortada: campo(r, 'cortada') === true, ...marcaDe(r) };
+      return { movimientos: lista(r, 'movimientos').map(aMovimiento), cortada: campo(r, 'cortada') === true, ...marcaDeRespuesta(r) };
     },
   },
   listarMermas: {
