@@ -151,7 +151,7 @@ describe('doble: venta', () => {
     const grande: Carrito = { mercado: 'BO', moneda: 'BOB', lineas: [{ productoId: 'parlante', cantidad: 5 }] };
     const err = await falla(e.api.llamar('confirmarVenta', { requestId: uuid(), carrito: grande, pagos: efectivo(87000) }));
     expect(err.detalle.codigo).toBe('stock-insuficiente');
-    expect(mensajeDeError(err)).toContain('parlante en tienda');
+    expect(mensajeDeError(err)).toContain('pidió 5');
     await e.api.llamar('confirmarVenta', { requestId: uuid(), carrito: carritoTv(), pagos: efectivo(313200) });
     expect((await falla(e.api.llamar('confirmarVenta', { requestId: uuid(), carrito: carritoTv(), pagos: efectivo(313200) }))).detalle.codigo).toBe('serie-no-disponible');
   });

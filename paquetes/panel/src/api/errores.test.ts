@@ -1,5 +1,5 @@
-import { describe, expect, it } from 'vitest';
-import { CODIGOS_CONOCIDOS, ErrorApi, MENSAJE_GENERICO, mensajeDeError } from './errores.js';
+import { describe, expect, it, vi } from 'vitest';
+import { CODIGOS_CONOCIDOS, ErrorApi, MENSAJE_DATOS_NO_RECONOCIDOS, MENSAJE_GENERICO, mensajeDeError } from './errores.js';
 
 describe('mensajes de error', () => {
   it('traduce los códigos de los módulos', () => {
@@ -39,7 +39,9 @@ describe('mensajes de error', () => {
   });
   it('agrega los faltantes de stock y los detalles por fila', () => {
     const f = new ErrorApi('failed-precondition', 'x', { codigo: 'stock-insuficiente', faltantes: [{ productoId: 'tv', almacenId: 'tienda', pedido: 3, disponible: 1 }] });
-    expect(mensajeDeError(f)).toContain('tv en tienda: pidió 3, hay 1');
+    expect(mensajeDeError(f)).toContain('tv en tienda: pidió 3, hay 1'); // sin nombre, el código legible
+    const n = new ErrorApi('failed-precondition', 'x', { codigo: 'stock-insuficiente', faltantes: [{ productoId: 'tv-55', almacenId: 'deposito-1', pedido: 2, disponible: 0, productoNombre: 'Televisor', almacenNombre: 'Depósito' }] });
+    expect(mensajeDeError(n)).toContain('Televisor en Depósito: pidió 2, hay 0');
     const d = new ErrorApi('invalid-argument', 'x', { codigo: 'entrada-invalida', detalles: ['línea 2: id inválido'] });
     expect(mensajeDeError(d)).toContain('línea 2: id inválido');
   });
@@ -55,5 +57,58 @@ describe('mensajes de error', () => {
 describe('módulo apagado (L2-6)', () => {
   it('el código modulo-apagado tiene un mensaje claro aunque el servidor traiga otro texto', () => {
     expect(mensajeDeError(new ErrorApi('permission-denied', 'Módulo apagado: pos', { codigo: 'modulo-apagado' }))).toBe('Este módulo no está habilitado para su negocio.');
+  });
+});
+
+describe('mensajes sin datos técnicos (G-07, G-08)', () => {
+  const prohibido = (m: string): void => {
+    expect(m).not.toContain('[400]');
+    expect(m).not.toMatch(/campo desconocido/i);
+    expect(m).not.toMatch(/productoId|version|subidaId|deposito-1|tv-55/);
+  };
+  it('el 400 con campos desconocidos da un texto simple y deja el detalle en el registro', () => {
+    const espia = vi.spyOn(console, 'error').mockImplementation(() => undefined);
+    const e = new ErrorApi('invalid-argument', 'Hay datos inválidos [400]', {
+      codigo: 'entrada-invalida',
+      campos: ['ficha'],
+      detalles: ['ficha: campo desconocido «productoId»', 'ficha: campo desconocido «version»'],
+    });
+    const m = mensajeDeError(e);
+    expect(m).toBe(MENSAJE_DATOS_NO_RECONOCIDOS);
+    prohibido(m);
+    expect(espia).toHaveBeenCalledOnce();
+    espia.mockRestore();
+  });
+  it('un mensaje técnico del servidor no se muestra', () => {
+    const espia = vi.spyOn(console, 'error').mockImplementation(() => undefined);
+    const m = mensajeDeError(new ErrorApi('invalid-argument', 'subidaId inválido', { codigo: 'entrada-invalida' }));
+    expect(m).toBe('Hay datos que no son válidos. Revise el formulario.');
+    prohibido(m);
+    expect(espia).not.toHaveBeenCalled();
+    espia.mockRestore();
+  });
+  it('los detalles técnicos por fila se omiten y los legibles se conservan', () => {
+    const m = mensajeDeError(new ErrorApi('failed-precondition', 'x', { codigo: 'conflicto', detalles: ['Línea 2: el precio es obligatorio'] }));
+    expect(m).toContain('Línea 2: el precio es obligatorio');
+  });
+  it.each([
+    ['limite', 'resource-exhausted', 'El video supera 200 MB'],
+    ['limite', 'resource-exhausted', 'Este producto ya tiene 5 fotos'],
+    ['cuota-excedida', 'resource-exhausted', 'Se alcanzó la cuota de 10 GB de originales'],
+    ['procesamiento', 'failed-precondition', 'La imagen conserva metadatos y se rechazó'],
+    ['tipo-no-permitido', 'invalid-argument', 'El contenido del archivo no corresponde a un tipo permitido'],
+    ['no-disponible', 'failed-precondition', 'La lectura de Excel no está disponible; use CSV'],
+  ])('%s prefiere el motivo del servidor (%s)', (codigo, https, motivo) => {
+    expect(mensajeDeError(new ErrorApi(https, motivo, { codigo }))).toBe(motivo);
+  });
+  it('sin motivo legible cada código usa su texto fijo con qué hacer', () => {
+    for (const c of ['limite', 'cuota-excedida', 'procesamiento', 'tipo-no-permitido', 'no-disponible']) {
+      const m = mensajeDeError(new ErrorApi('internal', 'fallo interno', { codigo: c }));
+      prohibido(m);
+      expect(m.length).toBeGreaterThan(20);
+    }
+  });
+  it('ningún código conocido produce texto técnico', () => {
+    for (const c of CODIGOS_CONOCIDOS) prohibido(mensajeDeError(new ErrorApi('internal', 'x', { codigo: c })));
   });
 });
