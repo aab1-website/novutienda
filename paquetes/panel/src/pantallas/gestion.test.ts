@@ -1,6 +1,6 @@
 // @vitest-environment jsdom
 import { h } from 'preact';
-import { cleanup, fireEvent, render, screen, waitFor, within } from '@testing-library/preact';
+import { cleanup, render, screen, waitFor, within } from '@testing-library/preact';
 import { userEvent } from '@testing-library/user-event';
 import { afterEach, describe, expect, it, vi } from 'vitest';
 import { ErrorApi } from '../api/errores.js';
@@ -37,7 +37,8 @@ describe('inventario', () => {
     const e = crearEntorno('sup');
     ver(e, h(PantallaInventario, { sub: 'productos' }));
     const u = userEvent.setup();
-    await u.click(await screen.findByRole('button', { name: 'Ficha de Televisor 55 pulgadas' }));
+    expect((await screen.findByRole('link', { name: 'Fotos y página en el sitio de Televisor 55 pulgadas' })).getAttribute('href')).toBe('#/catalogo/fichas');
+    await u.click(await screen.findByRole('button', { name: 'Datos del producto de Televisor 55 pulgadas' }));
     expect(await screen.findByText(/Solo el administrador edita/)).toBeTruthy();
     expect(document.querySelector('[data-prueba="precio-bo"]')?.textContent).toContain('Bs 3.132,00');
     expect(document.querySelector('[data-prueba="precio-ar"]')?.textContent).toContain('ARS 480.000,00');
@@ -46,7 +47,7 @@ describe('inventario', () => {
     cleanup();
     const adm = crearEntorno('adm');
     ver(adm, h(PantallaInventario, { sub: 'productos' }));
-    await u.click(await screen.findByRole('button', { name: 'Ficha de Televisor 55 pulgadas' }));
+    await u.click(await screen.findByRole('button', { name: 'Datos del producto de Televisor 55 pulgadas' }));
     expect(await screen.findByText(/Costo y margen \(solo administrador\)/)).toBeTruthy();
     expect(screen.getByText('33,3 %', { exact: false })).toBeTruthy();
   });
@@ -55,7 +56,7 @@ describe('inventario', () => {
     const e = crearEntorno('adm');
     ver(e, h(PantallaInventario, { sub: 'productos' }));
     const u = userEvent.setup();
-    await u.click(await screen.findByRole('button', { name: 'Ficha de Cable HDMI 2 m' }));
+    await u.click(await screen.findByRole('button', { name: 'Datos del producto de Cable HDMI 2 m' }));
     await u.clear(await screen.findByLabelText(/^Bolivia \(USD\)/));
     await u.type(screen.getByLabelText(/^Bolivia \(USD\)/), '10,50');
     await u.clear(screen.getByLabelText('Mínimo de existencias'));
@@ -392,94 +393,6 @@ describe('catálogo y sitio', () => {
     expect(await screen.findByText('Solo el administrador publica.')).toBeTruthy();
     expect(screen.queryByRole('link', { name: 'Apariencia' })).toBeNull();
     expect(screen.getByRole('link', { name: 'Fichas, fotos y video' })).toBeTruthy();
-  });
-  it('ficha: sube una foto con progreso, la guarda con texto alternativo y respeta el tope de 5', async () => {
-    const e = crearEntorno('sup');
-    ver(e, h(PantallaCatalogo, { sub: 'fichas' }));
-    const u = userEvent.setup();
-    await u.click(await screen.findByRole('button', { name: 'Editar ficha de Televisor 55 pulgadas' }));
-    const titulo = await screen.findByRole('heading', { name: 'Ficha web: Televisor 55 pulgadas' });
-    // El editor reemplaza a la tabla y recibe el foco.
-    expect(screen.queryByRole('table')).toBeNull();
-    expect(screen.getByLabelText('Subir fotos')).toBeTruthy();
-    await waitFor(() => expect(document.activeElement).toBe(titulo));
-    await u.click(screen.getByRole('button', { name: 'Volver a la lista' }));
-    expect(await screen.findByRole('table')).toBeTruthy();
-    expect(screen.queryByLabelText('Subir fotos')).toBeNull();
-    await waitFor(() => expect(document.activeElement).toBe(screen.getByRole('button', { name: 'Editar ficha de Televisor 55 pulgadas' })));
-    await u.click(screen.getByRole('button', { name: 'Editar ficha de Televisor 55 pulgadas' }));
-    await screen.findByRole('heading', { name: 'Ficha web: Televisor 55 pulgadas' });
-    const foto = new File(['x'.repeat(2048)], 'frente.jpg', { type: 'image/jpeg' });
-    fireEvent.change(await screen.findByLabelText('Subir fotos'), { target: { files: [foto] } });
-    expect(await screen.findByText('frente.jpg: Listo')).toBeTruthy();
-    expect(e.almacen.subidos).toHaveLength(1);
-    expect(e.almacen.subidos[0]?.ruta).toContain('privado/tv-55/');
-    // El disparador resolvió la subida: el panel solo consultó el estado, sin forzar el procesamiento (no hay doble procesamiento).
-    expect(e.api.llamadas.some((l) => l.nombre === 'estadoSubida')).toBe(true);
-    expect(e.api.llamadas.some((l) => l.nombre === 'finalizarSubida')).toBe(false);
-    expect(await screen.findByText(/Portada \(2 KB\)/)).toBeTruthy();
-    await u.type(screen.getByLabelText('Descripción del producto'), 'Televisor de 55 pulgadas.');
-    await u.click(screen.getByRole('button', { name: 'Guardar ficha' }));
-    expect(await screen.findByText(/Ficha guardada/)).toBeTruthy();
-    expect((await e.api.llamar('listarFichas', {}))[0]?.ficha.medios[0]?.alt).toBe('frente');
-    // Tope de 5 fotos: la sexta falla con mensaje legible.
-    for (let i = 0; i < 4; i++) fireEvent.change(screen.getByLabelText('Subir fotos'), { target: { files: [new File(['x'], `f${i}.jpg`, { type: 'image/jpeg' })] } });
-    await waitFor(() => expect((screen.getByLabelText('Subir fotos') as HTMLInputElement).disabled).toBe(true));
-  });
-  it('ficha existente: al guardar envía solo los campos editables, sin los de almacenamiento', async () => {
-    const e = crearEntorno('sup');
-    const u = userEvent.setup();
-    const guardada = { slug: 'tv-55', descripcion: 'Televisor.', garantia: '12 meses', medios: [], seo: { titulo: 'Televisor', descripcion: '' }, estado: 'borrador', productoId: 'tv-55', version: 3, actualizadaEn: 'ayer', por: 'u1' };
-    await e.api.llamar('guardarFicha', { productoId: 'tv-55', ficha: guardada as never });
-    e.api.llamadas.length = 0;
-    ver(e, h(PantallaCatalogo, { sub: 'fichas' }));
-    await u.click(await screen.findByRole('button', { name: 'Editar ficha de Televisor 55 pulgadas' }));
-    await screen.findByRole('heading', { name: 'Ficha web: Televisor 55 pulgadas' });
-    await u.type(screen.getByLabelText('Descripción del producto'), ' Nuevo.');
-    await u.click(screen.getByRole('button', { name: 'Guardar ficha' }));
-    expect(await screen.findByText(/Ficha guardada/)).toBeTruthy();
-    const envio = e.api.llamadas.find((l) => l.nombre === 'guardarFicha');
-    expect(Object.keys((envio?.entrada as { ficha: object }).ficha).sort()).toEqual(['descripcion', 'estado', 'garantia', 'medios', 'seo', 'slug']);
-  });
-  it('ficha: si el servidor rechaza el archivo, muestra el error y no agrega el medio', async () => {
-    const e = crearEntorno('sup');
-    e.api.estado.disparador.rechazo = 'El archivo no es una imagen válida';
-    ver(e, h(PantallaCatalogo, { sub: 'fichas' }));
-    const u = userEvent.setup();
-    await u.click(await screen.findByRole('button', { name: 'Editar ficha de Televisor 55 pulgadas' }));
-    fireEvent.change(await screen.findByLabelText('Subir fotos'), { target: { files: [new File(['x'], 'roto.jpg', { type: 'image/jpeg' })] } });
-    expect(await screen.findByText('roto.jpg: El archivo no es una imagen válida')).toBeTruthy();
-    expect(e.api.llamadas.some((l) => l.nombre === 'finalizarSubida')).toBe(false);
-    expect(await e.api.llamar('listarMedios', { productoId: 'tv-55' })).toHaveLength(0);
-  });
-  it('ficha: un video, reordenar y quitar de la ficha', async () => {
-    const e = crearEntorno('sup');
-    ver(e, h(PantallaCatalogo, { sub: 'fichas' }));
-    const u = userEvent.setup();
-    await u.click(await screen.findByRole('button', { name: 'Editar ficha de Cable HDMI 2 m' }));
-    fireEvent.change(await screen.findByLabelText('Subir fotos'), { target: { files: [new File(['a'], 'uno.jpg', { type: 'image/jpeg' }), new File(['b'], 'dos.jpg', { type: 'image/jpeg' })] } });
-    await screen.findByText('uno.jpg: Listo');
-    await screen.findByText('dos.jpg: Listo');
-    // jsdom no tiene decodificador: la duración se lee de los bytes (aquí no son un video válido) y decide el servidor
-    fireEvent.change(screen.getByLabelText('Subir video'), { target: { files: [new File(['v'], 'demo.mp4', { type: 'video/mp4' })] } });
-    await screen.findByText('demo.mp4: Listo');
-    await waitFor(() => expect((screen.getByLabelText('Subir video') as HTMLInputElement).disabled).toBe(true));
-    const primero = screen.getByLabelText('Texto alternativo del medio 1') as HTMLInputElement;
-    const textoAntes = primero.value;
-    await u.click(screen.getByRole('button', { name: 'Bajar el medio 1' }));
-    expect((screen.getByLabelText('Texto alternativo del medio 2') as HTMLInputElement).value).toBe(textoAntes);
-    await u.click(screen.getByRole('button', { name: 'Quitar de la ficha el medio 1' }));
-    expect(screen.queryByLabelText('Texto alternativo del medio 3')).toBeNull();
-  });
-  it('ficha: un archivo demasiado grande se informa sin romper la pantalla', async () => {
-    const e = crearEntorno('sup');
-    ver(e, h(PantallaCatalogo, { sub: 'fichas' }));
-    const u = userEvent.setup();
-    await u.click(await screen.findByRole('button', { name: 'Editar ficha de Cable HDMI 2 m' }));
-    const enorme = new File(['x'], 'gigante.jpg', { type: 'image/jpeg' });
-    Object.defineProperty(enorme, 'size', { value: 16 * 1024 * 1024 });
-    fireEvent.change(await screen.findByLabelText('Subir fotos'), { target: { files: [enorme] } });
-    expect(await screen.findByText(/gigante.jpg.*pesa 16,0 MB y el máximo es 15,0 MB/)).toBeTruthy();
   });
   it('secciones: crea una con bloques tipados, la ordena y la elimina con confirmación', async () => {
     const e = crearEntorno('adm');

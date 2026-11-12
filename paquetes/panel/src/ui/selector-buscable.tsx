@@ -1,5 +1,6 @@
 import type { JSX } from 'preact';
-import { useId, useState } from 'preact/hooks';
+import { useState } from 'preact/hooks';
+import { useIdUnico } from './ids.js';
 import { normalizar } from '../util/buscar.js';
 import '../estilos/selector.css';
 
@@ -25,7 +26,7 @@ export interface PropsSelectorBuscable {
 
 /** Combobox con lista (patrón APG): se escribe para acotar, ↑ ↓ Inicio Fin recorren, Enter elige, Esc cierra la lista. */
 export function SelectorBuscable(p: PropsSelectorBuscable): JSX.Element {
-  const id = useId();
+  const id = useIdUnico();
   const max = p.maxResultados ?? 50;
   const [abierta, setAbierta] = useState(false);
   const [consulta, setConsulta] = useState<string | null>(null);
