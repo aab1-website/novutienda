@@ -44,6 +44,18 @@ seguridad:
         shell por variable de entorno (TIPO_ENTRADA), no interpolado en el
         script, que es la inyeccion que la regla busca evitar. Quitarlos
         obligaria a editar el workflow para cada release.
+        Ampliada el 2026-11-12 por decision del propietario: la excepcion
+        se aplica por componente y cubre tambien
+        .github/workflows/reconstruir-sitio.yml, cuyo workflow_dispatch
+        declara la entrada de texto `clave` (que sitio reconstruir o
+        certificar). Esa entrada llega al shell solo por variable de
+        entorno, nunca interpolada; se valida con la expresion cerrada
+        ^[a-z0-9]{1,12}$ (tras quitar, una sola vez y en minusculas, el
+        prefijo opcional `certificar:`) antes de cualquier uso; el
+        workflow solo se lanza desde main y por quien tiene permiso de
+        escritura; y los identificadores del sitio se resuelven desde un
+        secreto del Environment, no desde la entrada. Quitarla obligaria
+        a reconstruir siempre todos los sitios.
       aprobado_por: AndresAlberdi
       creado: "2026-11-04"
       vence: "2027-02-02"
