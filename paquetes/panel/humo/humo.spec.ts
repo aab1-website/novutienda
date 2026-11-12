@@ -169,6 +169,49 @@ for (const esquema of ESQUEMAS) {
       await sinViolaciones(page, 'configuración');
       expect(v.errores).toEqual([]);
     });
+
+    test('confirmación de «Quitar acceso»: diálogo accesible, Esc devuelve el foco y no hay estilos en línea', async ({ page }) => {
+      const v = vigilar(page);
+      await entrar(page, 'adm');
+      await page.getByRole('link', { name: 'Usuarios' }).click();
+      const quitar = page.getByRole('button', { name: 'Quitar acceso' }).first();
+      await expect(quitar).toBeVisible();
+      await quitar.click();
+      const dialogo = page.getByRole('dialog');
+      await expect(dialogo).toBeVisible();
+      await expect(dialogo.getByRole('button', { name: 'Cancelar' })).toBeFocused();
+      await sinViolaciones(page, 'confirmación de quitar acceso');
+      expect(await page.content()).not.toMatch(/\sstyle=/);
+      await page.keyboard.press('Escape');
+      await expect(dialogo).toHaveCount(0);
+      await expect(quitar).toBeFocused();
+      expect(v.errores).toEqual([]);
+    });
+
+    test('celular 360×740 con un diálogo abierto: cubre la pantalla, no desborda y vive en body', async ({ page }) => {
+      const v = vigilar(page);
+      await page.setViewportSize({ width: 360, height: 740 });
+      await entrar(page, 'adm');
+      await page.goto('/#/usuarios');
+      const quitar = page.getByRole('button', { name: 'Quitar acceso' }).first();
+      await expect(quitar).toBeVisible();
+      const anchoAntes = await page.evaluate(() => document.documentElement.scrollWidth);
+      await quitar.click();
+      const dialogo = page.getByRole('dialog');
+      await expect(dialogo).toBeVisible();
+      const caja = await dialogo.boundingBox();
+      expect(caja).not.toBeNull();
+      expect(Math.round(caja?.width ?? 0)).toBe(360);
+      expect(Math.round(caja?.height ?? 0)).toBe(740);
+      // El diálogo (fixed) no agrega ancho a la página.
+      expect(await page.evaluate(() => document.documentElement.scrollWidth)).toBe(anchoAntes);
+      expect(await dialogo.evaluate((d) => d.closest('.dialogo-fondo')?.parentElement === document.body || d.closest('.dialogo-fondo')?.parentElement?.parentElement === document.body)).toBe(true);
+      await sinViolaciones(page, 'diálogo en celular');
+      await page.keyboard.press('Escape');
+      await expect(dialogo).toHaveCount(0);
+      await expect(quitar).toBeFocused();
+      expect(v.errores).toEqual([]);
+    });
   });
 }
 

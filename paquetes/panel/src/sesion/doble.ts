@@ -22,6 +22,9 @@ export class SesionDoble implements Sesion {
   private usuario: UsuarioSesion | null = null;
   private readonly oyentes = new Set<(u: UsuarioSesion | null) => void>();
   verificacionesReenviadas = 0;
+  /** Para pruebas: cuántas renovaciones se pidieron y si el servidor las acepta. */
+  renovaciones = 0;
+  renovable = true;
 
   constructor(private readonly cuentas: readonly CuentaDoble[] = CUENTAS_DOBLE) {}
 
@@ -47,6 +50,11 @@ export class SesionDoble implements Sesion {
   alCambiar(oyente: (u: UsuarioSesion | null) => void): () => void {
     this.oyentes.add(oyente);
     return () => void this.oyentes.delete(oyente);
+  }
+
+  renovar(): Promise<boolean> {
+    this.renovaciones += 1;
+    return Promise.resolve(this.usuario !== null && this.renovable);
   }
 
   reenviarVerificacion(): Promise<void> {
