@@ -164,7 +164,7 @@ export async function crearProducto(tx: TransaccionIdentidad, e: EntradaCrearPro
       const resumen: Resumen = Object.fromEntries(
         MERCADOS.map((m) => [`precio${sufijoMercado(m)}`, (producto.precioUSD as unknown as Record<string, number>)[claveMercado(m)] ?? 0]),
       );
-      return { resultado: { productoId: producto.id }, referencia: { tipo: 'producto', id: producto.id }, tipoMovimiento: 'ingreso', resumen };
+      return { resultado: { productoId: producto.id }, referencia: { tipo: 'producto', id: producto.id }, tipoMovimiento: 'ingreso', resumen, cambiosProducto: [{ productoId: producto.id, cambio: 'creado' }] };
     },
   });
 }
@@ -273,7 +273,7 @@ export async function actualizarProducto(
         if (!centavos(c.costoUSD)) throw new EntradaInvalida('costoUSD inválido');
         t.escribir({ ruta: ruta(t.tenantId, 'costos', productoId), modo: 'set', datos: { costoUSD: c.costoUSD } });
       }
-      return { resultado: { productoId }, referencia: { tipo: 'producto', id: productoId }, tipoMovimiento: 'ajuste', resumen };
+      return { resultado: { productoId }, referencia: { tipo: 'producto', id: productoId }, tipoMovimiento: 'ajuste', resumen, cambiosProducto: [{ productoId, cambio: soloPrecio ? 'precio' : 'editado' }] };
     },
   });
 }
