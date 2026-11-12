@@ -131,7 +131,7 @@ export function FichaProducto({ producto, cot, alGuardar, alCerrar }: { producto
 }
 
 function Productos(): JSX.Element {
-  const { api, usuario } = useApp();
+  const { api, usuario, puedeVer } = useApp();
   const datos = useCarga(async () => ({ productos: await api.llamar('listarProductos', {}), cot: await api.llamar('cotizacionesVigentes', {}) }), []);
   const [q, setQ] = useState('');
   const [soloAlertas, setSoloAlertas] = useState(false);
@@ -175,7 +175,10 @@ function Productos(): JSX.Element {
                   {ALM.map((a) => <td key={a.id} class="num">{p.existencias[a.id]}</td>)}
                   <td class="num">{p.stockTotal ?? '—'}</td>
                   <td>{!p.activo ? 'Inactivo' : p.bajoMinimo ? 'Bajo el mínimo' : p.disponible ? 'Disponible' : 'Agotado'}</td>
-                  <td><Boton chico variante="secundario" onClick={() => setFicha(p)} etiqueta={`Ficha de ${p.nombre}`}>Ficha</Boton></td>
+                  <td>
+                    <Boton chico variante="secundario" onClick={() => setFicha(p)} etiqueta={`Datos del producto de ${p.nombre}`}>Datos del producto</Boton>
+                    {puedeVer('catalogo') && <a href="#/catalogo/fichas" aria-label={`Fotos y página en el sitio de ${p.nombre}`}>Fotos y página en el sitio</a>}
+                  </td>
                 </tr>
               ))}
             </tbody>
