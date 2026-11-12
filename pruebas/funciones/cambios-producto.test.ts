@@ -1,5 +1,5 @@
-// «Cambios sin publicar» contra el emulador: crear, editar y cambiar precio por `inventarios.*` y por `consola.*` suman uno
-// cada uno (evento `producto.cambiado` entregado por el disparador `eventos`); con la consola apagada no cuenta ni falla.
+// «Cambios sin publicar» contra el emulador: crear, editar y cambiar precio por `inventarios.*` suman uno
+// cada uno (la consola ya no crea ni edita productos) (evento `producto.cambiado` entregado por el disparador `eventos`); con la consola apagada no cuenta ni falla.
 import { beforeAll, describe, expect, it, vi } from 'vitest';
 import { accion, crearUsuario, esperar, hayEmulador, herramientas, sembrarTenant, uuid, type Herramientas, type Usuario } from './ayudas.js';
 
@@ -38,16 +38,6 @@ describe.skipIf(!hayEmulador)('cambios de producto -> sitio/estado (emulador)', 
     ok(await accion('inventarios', 'editarProducto', { operacionId: uuid(), productoId: 'inv-1', cambios: { nombre: 'Inv uno b' } }, adm.token, A));
     await llegaA(A, antes + 2);
     ok(await accion('inventarios', 'cambiarPrecioUSD', { operacionId: uuid(), productoId: 'inv-1', precioUSD: { bo: 2000, ar: 2000 } }, adm.token, A));
-    await llegaA(A, antes + 3);
-  });
-
-  it('consola.crearProducto, editarProducto y cambiarPrecioUSD suman 1 cada uno', async () => {
-    const antes = await cambios(A);
-    ok(await accion('consola', 'crearProducto', { productoId: 'con-1', datos: { nombre: 'Con uno', categoria: 'general', activo: true }, precioUSD: { bo: 5, ar: 5 } }, adm.token, A));
-    await llegaA(A, antes + 1);
-    ok(await accion('consola', 'editarProducto', { productoId: 'con-1', cambios: { nombre: 'Con uno b' } }, adm.token, A));
-    await llegaA(A, antes + 2);
-    ok(await accion('consola', 'cambiarPrecioUSD', { productoId: 'con-1', precioUSD: { bo: 6, ar: 6 } }, adm.token, A));
     await llegaA(A, antes + 3);
   });
 

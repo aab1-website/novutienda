@@ -7,3 +7,4 @@ export type { Consumidor } from './consumidores.js';
 export { ejecutorRecibosDesde } from './ejecutor-recibos.js';
 export { catalogoParaPos, inventariosParaPos } from './inventarios-pos.js';
 export { centavosADolares, dolaresACentavos } from './producto-inventarios.js';
+export { crearLectorHojas, leerPrimeraHojaXlsx, XlsxInvalido } from './lector-hojas.js';
