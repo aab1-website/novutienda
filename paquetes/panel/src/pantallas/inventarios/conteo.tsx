@@ -8,6 +8,7 @@ import { useApp } from '../../ui/contexto.js';
 import { Dialogo } from '../../ui/dialogo.js';
 import { useBorrador, useCambiosSinGuardar } from '../../ui/guardia.js';
 import { useAccion, useCarga } from '../../ui/hooks.js';
+import { Tabla } from '../../ui/tabla.js';
 import { normalizar } from '../../util/buscar.js';
 import { avance, contarPendientes, lineasDeCierre, normalizarTexto, revisarTexto, textoGuardado } from './conteo-logica.js';
 import { separar } from './movimientos-resumen.js';
@@ -110,27 +111,29 @@ function ConteoAbierto({ abierto, productos, alCambiar }: { abierto: ConteoVista
       {visibles.length === 0 ? (
         <Vacio titulo="Ningún producto coincide con esa búsqueda" />
       ) : (
-        <table class="tabla">
-          <caption class="solo-lectores">Productos a contar</caption>
-          <thead><tr><th scope="col">Producto</th><th scope="col">Contado</th></tr></thead>
-          <tbody>
-            {visibles.map((p) => (
-              <tr key={p.id}>
-                <th scope="row">{p.nombre}<div class="texto-suave">{p.sku}</div></th>
-                <td>
-                  <FilaConteo
-                    conteoId={abierto.conteoId}
-                    p={p}
-                    escrito={b.valor[p.id] ?? textoGuardado(p, abierto.lineas.find((l) => l.productoId === p.id))}
-                    hecha={abierto.lineas.find((l) => l.productoId === p.id)}
-                    alEscribir={(t) => b.poner((prev) => ({ ...prev, [p.id]: t }))}
-                    alGuardar={alCambiar}
-                  />
-                </td>
-              </tr>
-            ))}
-          </tbody>
-        </table>
+        <div class="tabla-contenedor" role="region" aria-label="Productos a contar" tabIndex={0}>
+          <table class="tabla">
+            <caption class="solo-lectores">Productos a contar</caption>
+            <thead><tr><th scope="col">Producto</th><th scope="col">Contado</th></tr></thead>
+            <tbody>
+              {visibles.map((p) => (
+                <tr key={p.id}>
+                  <th scope="row">{p.nombre}<div class="texto-suave">{p.sku}</div></th>
+                  <td>
+                    <FilaConteo
+                      conteoId={abierto.conteoId}
+                      p={p}
+                      escrito={b.valor[p.id] ?? textoGuardado(p, abierto.lineas.find((l) => l.productoId === p.id))}
+                      hecha={abierto.lineas.find((l) => l.productoId === p.id)}
+                      alEscribir={(t) => b.poner((prev) => ({ ...prev, [p.id]: t }))}
+                      alGuardar={alCambiar}
+                    />
+                  </td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        </div>
       )}
       <div class="fila">
         <Boton
@@ -215,11 +218,18 @@ export function Conteo(): JSX.Element {
                 <div key={c.conteoId} class="tarjeta-interna">
                   <strong>{nombreAlmacen(c.ubicacionId)}</strong> · {fechaHora(c.fecha)}
                   {c.resultado && (
-                    <table class="tabla">
-                      <caption class="solo-lectores">Resultado del conteo</caption>
-                      <thead><tr><th scope="col">Producto</th><th scope="col" class="num">Sistema</th><th scope="col" class="num">Contado</th><th scope="col" class="num">Diferencia</th></tr></thead>
-                      <tbody>{c.resultado.map((r) => <tr key={r.productoId}><th scope="row">{nombre(r.productoId)}</th><td class="num">{r.teorico}</td><td class="num">{r.contado}</td><td class={`num ${r.diferencia < 0 ? 'texto-error' : ''}`}>{r.diferencia}</td></tr>)}</tbody>
-                    </table>
+                    <Tabla
+                      titulo="Resultado del conteo"
+                      filas={c.resultado}
+                      clave={(r) => r.productoId}
+                      porPagina={100}
+                      columnas={[
+                        { id: 'producto', titulo: 'Producto', valor: (r) => nombre(r.productoId), encabezadoFila: true },
+                        { id: 'sistema', titulo: 'Sistema', valor: (r) => r.teorico },
+                        { id: 'contado', titulo: 'Contado', valor: (r) => r.contado },
+                        { id: 'diferencia', titulo: 'Diferencia', valor: (r) => r.diferencia, celda: (r) => <span class={r.diferencia < 0 ? 'texto-error' : ''}>{r.diferencia}</span> },
+                      ]}
+                    />
                   )}
                 </div>
               ))}

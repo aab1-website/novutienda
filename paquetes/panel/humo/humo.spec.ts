@@ -328,9 +328,7 @@ for (const esquema of ESQUEMAS) {
         await cierre.getByRole('button', { name: 'Sí, cerrar y firmar' }).click();
         await expect(page.getByText(/Conteo cerrado y firmado/).first()).toBeVisible();
         await expect(page.getByRole('table', { name: 'Resultado del conteo' })).toBeVisible();
-        // A 360 px la tabla «Resultado del conteo» desborda la página (conteo.tsx: su <table> no va en `.tabla-contenedor`):
-        // defecto del módulo Inventarios, reportado; aquí solo se verifica el desborde donde cabe.
-        if (ancho > 360) await sinDesborde('resultado del conteo');
+        await sinDesborde('resultado del conteo');
 
         // Supervisor: solicita una merma; la resuelve otra persona.
         await irA('Mermas');
