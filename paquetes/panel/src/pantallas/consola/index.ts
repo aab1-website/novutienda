@@ -5,3 +5,5 @@
 export { esperarSubida } from './esperar.js';
 // Lectura de la duración de un video por sus bytes (sin DOM); la usa la prueba contra clips reales de ffmpeg.
 export { leerDuracionVideo } from './validar-archivo.js';
+// Revisión de la página de un producto con los topes del servidor (la compara pruebas/consola/ficha-revision.test.ts).
+export { revisarFicha, TOPES_FICHA, type ErroresFicha } from './ficha-revision.js';
