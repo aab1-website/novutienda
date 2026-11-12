@@ -222,7 +222,8 @@ for (const esquema of ESQUEMAS) {
 
         // Traspaso con selector buscable y confirmación con resumen.
         await page.getByRole('link', { name: 'Traspasos' }).click();
-        await page.getByRole('combobox', { name: /^Producto/ }).fill('cable');
+        await expect(page.getByRole('heading', { name: 'Traspaso entre almacenes' })).toBeVisible();
+        await page.getByRole('combobox', { name: /^Producto/ }).pressSequentially('cable');
         await page.getByRole('option', { name: /Cable HDMI/ }).click();
         await page.getByLabel(/^Cantidad/).fill('4');
         await page.getByRole('button', { name: 'Traspasar' }).click();
@@ -234,7 +235,8 @@ for (const esquema of ESQUEMAS) {
 
         // Ajuste con «quedarán N».
         await page.getByRole('link', { name: 'Ajuste' }).click();
-        await page.getByRole('combobox', { name: /^Producto/ }).fill('cable');
+        await expect(page.getByRole('heading', { name: /Ajuste de existencias/ })).toBeVisible();
+        await page.getByRole('combobox', { name: /^Producto/ }).pressSequentially('cable');
         await page.getByRole('option', { name: /Cable HDMI/ }).click();
         await page.getByLabel(/^Diferencia/).fill('-2');
         await expect(page.getByText('Hay 29, quedarán 27.')).toBeVisible();
