@@ -1,0 +1,9 @@
+/* Selector con búsqueda (combobox con lista). Sin estilos en línea (CSP). */
+.selector-buscable { position: relative; }
+.selector-lista { position: absolute; z-index: 20; left: 0; right: 0; top: 100%; margin: 4px 0 0; padding: 4px; max-height: 280px; overflow-y: auto; list-style: none; background: var(--superficie); border: 1px solid var(--borde-control); border-radius: 10px; box-shadow: 0 6px 18px rgb(0 0 0 / 18%); }
+.selector-opcion { display: flex; flex-direction: column; padding: 8px 10px; min-height: 44px; justify-content: center; border-radius: 8px; cursor: pointer; }
+.selector-opcion[aria-selected='true'] { font-weight: 700; }
+.selector-opcion.selector-activa { background: var(--cta); color: var(--cta-texto); }
+.selector-opcion .texto-suave, .selector-opcion small { font-size: 13px; color: inherit; opacity: .8; }
+.selector-nota { padding: 8px 10px; margin: 0; font-size: 14px; color: var(--texto-suave); }
+.selector-error { color: var(--peligro); font-size: 13px; margin: 0; }

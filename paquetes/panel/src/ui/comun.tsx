@@ -261,6 +261,8 @@ export function Boton(p: {
   etiqueta?: string | undefined;
   /** Por qué no se puede usar ahora. El botón sigue enfocable (`aria-disabled`), el motivo se ve al lado y, al pulsarlo, no ejecuta `onClick` sino `onIntento`. */
   motivo?: string | undefined;
+  /** `false`: el motivo no se pinta, solo queda como descripción accesible y tooltip (para filas repetidas de una tabla). */
+  motivoVisible?: boolean | undefined;
   onIntento?: (() => void) | undefined;
 }): JSX.Element {
   const idMotivo = useId();
@@ -280,6 +282,7 @@ export function Boton(p: {
         class={clase}
         aria-disabled="true"
         aria-describedby={idMotivo}
+        title={p.motivoVisible === false ? p.motivo : undefined}
         aria-label={p.etiqueta}
         onClick={(e) => {
           // Un botón «submit» no debe enviar el formulario mientras tenga motivo.
@@ -289,7 +292,7 @@ export function Boton(p: {
       >
         {p.children}
       </button>
-      <span id={idMotivo} class="motivo">
+      <span id={idMotivo} class={p.motivoVisible === false ? 'solo-lectores' : 'motivo'}>
         {p.motivo}
       </span>
     </span>
