@@ -5,8 +5,8 @@
 import { HttpsError } from 'firebase-functions/v2/https';
 import { z } from 'zod';
 import {
-  abrirConteo, actualizarProducto, ajustar, cerrarConteo, crearProducto, crearUbicacion, esDisponible, exportarProductosCsv, importarProductosCsv,
-  ingresar, leerDocumentoProducto, registrarLineaConteo, resolverMerma, solicitarMerma, traspasar, UBICACION_DISPONIBILIDAD,
+  abrirConteo, actualizarProducto, ajustar, cerrarConteo, crearProducto, crearUbicacion, esDisponible, exportarProductosCsv, importarCsvPorLotes, leerArchivoImportacion, MAX_BYTES_ARCHIVO, type FuenteTabla, type LectorHojas, type LecturaSinBloqueo,
+  ingresar, leerDocumentoProducto, registrarLineaConteo, resolverMerma, simularImportacionCsv, solicitarMerma, traspasar, UBICACION_DISPONIBILIDAD,
   type Autor, type CambiosProducto, type EntradaProducto, type LineaAjuste, type PrecioUSD, type LineaIngreso, type LineaTraspaso, type ProductoExportable,
 } from '@novutienda/inventarios';
 import { MERCADOS } from '@novutienda/nucleo';
@@ -18,6 +18,37 @@ const autor = (c: Contexto): Autor => actorPos(c);
 
 const ruta = (t: string, col: string, id?: string): string => `tenants/${t}/${col}${id === undefined ? '' : `/${id}`}`;
 const datosDe = (d: { data(): unknown }): Record<string, unknown> => d.data() as Record<string, unknown>;
+/**
+ * Tiempo que la importación se da antes de detenerse limpiamente, contado desde que entra (simulación incluida); se retoma
+ * con el mismo `operacionId`. El callable vive 120 s (`index.ts`) y el cliente de Firebase corta a los 70 s por defecto: con
+ * 55 s no se inicia otra tanda pasado ese punto, y la que esté en curso termina antes del corte del cliente.
+ */
+const PRESUPUESTO_IMPORTACION_MS = 55_000;
+
+/** Lecturas de documentos sin transacción (sin bloqueos): la simulación no retiene nada contra la caja. */
+const lecturaSinBloqueo = (c: Contexto): LecturaSinBloqueo => ({
+  get: async (r) => {
+    const snap = await c.e.firestore.doc(r).get();
+    return { existe: snap.exists, data: () => snap.data() };
+  },
+});
+
+/** Lector de hojas (.xlsx) que inyecta el coordinador en el entorno; sin él, un .xlsx se rechaza con un mensaje claro. */
+const lectorDe = (c: Contexto): LectorHojas | undefined => c.e.lectorHojas;
+
+/** Decodifica base64 estricto con tope de bytes (el archivo llega dentro del JSON). */
+function base64(valor: string): Uint8Array {
+  if (!/^[A-Za-z0-9+/]+={0,2}$/.test(valor) || valor.length % 4 !== 0) throw new HttpsError('invalid-argument', 'El archivo debe venir en base64.');
+  const bytes = Buffer.from(valor, 'base64');
+  if (bytes.length === 0 || bytes.length > MAX_BYTES_ARCHIVO) throw new HttpsError('invalid-argument', 'El archivo está vacío o supera 2 MB.');
+  return bytes;
+}
+
+/** Texto CSV o archivo (csv/xlsx) a tabla; los errores del paquete salen como `invalid-argument`/`failed-precondition`. */
+async function leerTabla(c: Contexto, d: { csv?: string | undefined; archivo?: string | undefined }): Promise<FuenteTabla> {
+  if (d.archivo !== undefined) return leerArchivoImportacion(base64(d.archivo), lectorDe(c));
+  return d.csv as string;
+}
 const SERIES = z.array(z.string().min(1).max(60)).min(1).max(500);
 const LINEA_INGRESO = objeto({ productoId: ID_PRODUCTO, cantidad: z.number().int().positive().max(1_000_000), series: SERIES.optional() });
 
@@ -27,6 +58,13 @@ const PRECIO = objeto(Object.fromEntries(MERCADOS.map((m) => [m.toLowerCase(), c
 const SKU = z.string().regex(/^[A-Za-z0-9][A-Za-z0-9._-]{0,39}$/, 'sku inválido');
 const GARANTIA = z.number().int().min(1).max(120);
 const MINIMO = z.number().int().nonnegative().max(1_000_000_000);
+
+/** Ids de productos con existencia en la ubicación de un conteo (solo uso interno del servidor: nunca se devuelven a quien cuenta). */
+async function productosConExistenciaEn(c: Contexto, conteo: Record<string, unknown>): Promise<string[]> {
+  if (typeof conteo['ubicacionId'] !== 'string') return [];
+  const ex = await c.e.firestore.collection(ruta(c.tenantId, 'existencias')).where('ubicacionId', '==', conteo['ubicacionId']).limit(1000).get();
+  return ex.docs.map(datosDe).filter((x) => Number(x['cantidad']) > 0 && typeof x['productoId'] === 'string').map((x) => String(x['productoId']));
+}
 
 export const accionesInventarios: TablaImplementaciones = {
   // ---- Operaciones ------------------------------------------------------------------------------------------
@@ -65,7 +103,10 @@ export const accionesInventarios: TablaImplementaciones = {
       ),
   }),
   resolverMerma: accion({
-    esquema: objeto({ operacionId: ID, mermaId: ID, decision: z.enum(['aprobada', 'rechazada']), motivo: TEXTO(500).optional() }),
+    esquema: objeto({ operacionId: ID, mermaId: ID, decision: z.enum(['aprobada', 'rechazada']), motivo: TEXTO(500).optional() }).refine(
+      (d) => d.decision !== 'rechazada' || (d.motivo !== undefined && d.motivo.trim() !== ''),
+      { message: 'El motivo del rechazo es obligatorio.', path: ['motivo'] },
+    ),
     ejecutar: (c, d) =>
       c.e.db.runTransaction((tx) =>
         resolverMerma(tx, { tenantId: c.tenantId, operacionId: d.operacionId, por: autor(c), mermaId: d.mermaId, decision: d.decision, ...(d.motivo !== undefined ? { motivo: d.motivo } : {}) }),
@@ -96,11 +137,7 @@ export const accionesInventarios: TablaImplementaciones = {
     ejecutar: async (c, d) => {
       // Productos con existencia en la ubicación del conteo: los que nadie contó se tratan como contados en 0.
       const conteo = (await c.e.firestore.doc(ruta(c.tenantId, 'conteos', d.conteoId)).get()).data();
-      let productosConExistencia: string[] = [];
-      if (conteo !== undefined && typeof conteo['ubicacionId'] === 'string') {
-        const ex = await c.e.firestore.collection(ruta(c.tenantId, 'existencias')).where('ubicacionId', '==', conteo['ubicacionId']).limit(1000).get();
-        productosConExistencia = ex.docs.map(datosDe).filter((x) => Number(x['cantidad']) > 0 && typeof x['productoId'] === 'string').map((x) => String(x['productoId']));
-      }
+      const productosConExistencia = conteo === undefined ? [] : await productosConExistenciaEn(c, conteo);
       return c.e.db.runTransaction((tx) => cerrarConteo(tx, { tenantId: c.tenantId, operacionId: d.operacionId, por: autor(c), conteoId: d.conteoId, productosConExistencia }));
     },
   }),
@@ -150,21 +187,41 @@ export const accionesInventarios: TablaImplementaciones = {
         actualizarProducto(tx, { tenantId: c.tenantId, operacionId: d.operacionId, por: autor(c), productoId: d.productoId, cambios: { precioUSD: d.precioUSD as unknown as PrecioUSD } }),
       ),
   }),
-  /** Costo de un producto (solo `adm`): también se fija o se vacía con `editarProducto`. */
-  fijarCosto: accion({
-    esquema: objeto({ operacionId: ID, productoId: ID_PRODUCTO, costoUSD: z.number().nonnegative().max(9_999_999) }),
-    ejecutar: (c, d) =>
-      c.e.db.runTransaction((tx) =>
-        actualizarProducto(tx, { tenantId: c.tenantId, operacionId: d.operacionId, por: autor(c), productoId: d.productoId, cambios: { costoUSD: d.costoUSD } }),
-      ),
-  }),
+  /**
+   * Importación de productos desde CSV (solo `adm`): CREA los nuevos y ACTUALIZA los existentes (se identifican por `id`;
+   * celda vacía = sin cambio). Hasta 1000 filas. Con `simular: true` no escribe nada ni usa `operacionId`: devuelve
+   * `{ simular: true, simulacion }` con el plan fila por fila. Sin `simular` exige `operacionId` y aplica por tandas
+   * (una transacción por tanda, no «todo o nada» entre tandas); ver `importarCsvPorLotes`. El stock solo entra con
+   * `cargaInicial` y solo en productos nuevos sin serie.
+   */
   importarProductosCsv: accion({
-    maxCaracteres: 400_000,
-    esquema: objeto({ operacionId: ID, csv: z.string().min(1).max(262_144), cargaInicial: z.boolean().optional() }),
-    ejecutar: (c, d) =>
-      c.e.db.runTransaction((tx) =>
-        importarProductosCsv(tx, { tenantId: c.tenantId, operacionId: d.operacionId, por: autor(c), csv: d.csv, ...(d.cargaInicial !== undefined ? { cargaInicial: d.cargaInicial } : {}) }),
-      ),
+    maxCaracteres: 2_900_000,
+    esquema: objeto({
+      operacionId: ID.optional(), cargaInicial: z.boolean().optional(),
+      simular: z.boolean().optional(), omitirErrores: z.boolean().optional(),
+      /** Líneas con error que la persona vio en la simulación y acepta omitir; obligatoria con `omitirErrores`. */
+      lineasOmitidas: z.array(z.number().int().min(2).max(1_001)).max(1_000).optional(),
+      /** Texto CSV (compatibilidad). */
+      csv: z.string().min(1).max(262_144).optional(),
+      /** Bytes del archivo .csv o .xlsx en base64 (hasta 2 MB); se distingue por la firma, no por la extensión. */
+      archivo: z.string().min(4).max(2_900_000).optional(),
+    }).refine((d) => (d.csv === undefined) !== (d.archivo === undefined), { message: 'Envíe `archivo` (base64) o `csv`, uno solo.' }),
+    ejecutar: async (c, d) => {
+      const tabla = await leerTabla(c, d);
+      if (d.simular === true) {
+        const simulacion = await simularImportacionCsv(lecturaSinBloqueo(c), {
+          tenantId: c.tenantId, por: autor(c), csv: tabla, ...(d.cargaInicial !== undefined ? { cargaInicial: d.cargaInicial } : {}),
+        });
+        return { simular: true, simulacion };
+      }
+      if (d.operacionId === undefined) throw new HttpsError('invalid-argument', 'Falta operacionId: solo la simulación puede omitirlo.');
+      const r = await importarCsvPorLotes(c.e.db, {
+        tenantId: c.tenantId, operacionId: d.operacionId, por: autor(c), csv: tabla, presupuestoMs: PRESUPUESTO_IMPORTACION_MS, lectura: lecturaSinBloqueo(c),
+        ...(d.lineasOmitidas !== undefined ? { lineasOmitidas: d.lineasOmitidas } : {}),
+        ...(d.cargaInicial !== undefined ? { cargaInicial: d.cargaInicial } : {}), ...(d.omitirErrores !== undefined ? { omitirErrores: d.omitirErrores } : {}),
+      });
+      return { simular: false, ...r };
+    },
   }),
 
   // ---- Lecturas ---------------------------------------------------------------------------------------------
@@ -256,20 +313,33 @@ export const accionesInventarios: TablaImplementaciones = {
       if (d.productoId !== undefined) q = q.where('productoId', '==', d.productoId);
       if (d.desde !== undefined) q = q.where('fecha', '>=', new Date(d.desde));
       if (d.hasta !== undefined) q = q.where('fecha', '<=', new Date(d.hasta));
-      const filas = (await q.limit(filtraEnMemoria ? 1000 : limite).get()).docs
+      // Se pide uno más que el límite para saber si la lista vino cortada; con filtros en memoria la ventana es de 1000.
+      const ventana = filtraEnMemoria ? 1000 : limite + 1;
+      const docs = (await q.limit(ventana).get()).docs;
+      const coinciden = docs
         .map(datosDe)
-        .filter((m) => (d.tipo === undefined || m['tipo'] === d.tipo) && (d.uid === undefined || m['por'] === d.uid))
-        .slice(0, limite);
+        .filter((m) => (d.tipo === undefined || m['tipo'] === d.tipo) && (d.uid === undefined || m['por'] === d.uid));
+      const cortada = coinciden.length > limite || (filtraEnMemoria && docs.length === ventana);
+      const filas = coinciden.slice(0, limite);
       const movimientos = c.rol === 'adm' ? filas : filas.map(({ costoUSDUnit: _costo, ...resto }) => { void _costo; return resto; });
-      return { movimientos };
+      return { movimientos, cortada };
     },
   }),
   mermas: accion({
     esquema: objeto({ estado: z.enum(['solicitada', 'aprobada', 'rechazada']).optional(), limite: LIMITE.optional() }),
     ejecutar: async (c, d) => {
-      let q = c.e.firestore.collection(ruta(c.tenantId, 'mermas')).limit(d.limite ?? 100);
-      if (d.estado !== undefined) q = q.where('estado', '==', d.estado);
-      return { mermas: (await q.get()).docs.map((m) => ({ id: m.id, ...m.data() })) };
+      const limite = d.limite ?? 100;
+      // Más recientes primero. Con `estado`, el filtro se aplica en memoria sobre una ventana de las 1000 más recientes: ordenar y
+      // filtrar por igualdad a la vez pediría un índice compuesto (estado + solicitadaEn) en `firestore.indexes.json`, que no es de
+      // este módulo; ordenar por un solo campo no pide índice. Límite: una merma de ese estado más vieja que las 1000 últimas no sale.
+      const filtra = d.estado !== undefined;
+      const ventana = filtra ? 1000 : limite + 1;
+      const docs = (await c.e.firestore.collection(ruta(c.tenantId, 'mermas')).orderBy('solicitadaEn', 'desc').limit(ventana).get()).docs;
+      const coinciden = docs.filter((m) => !filtra || m.data()['estado'] === d.estado);
+      return {
+        mermas: coinciden.slice(0, limite).map((m) => ({ id: m.id, ...m.data() })),
+        cortada: coinciden.length > limite || (filtra && docs.length === ventana),
+      };
     },
   }),
   /**
@@ -283,7 +353,14 @@ export const accionesInventarios: TablaImplementaciones = {
       if (conteo === undefined) throw new HttpsError('not-found', 'El conteo no existe.');
       const lineas = await c.e.firestore.collection(ruta(c.tenantId, 'conteoLineas')).where('conteoId', '==', d.conteoId).limit(500).get();
       const filas = lineas.docs.map(datosDe);
-      if (c.rol === 'caj' || conteo['estado'] !== 'cerrado') return { conteo, lineas: filas };
+      if (c.rol === 'caj') return { conteo, lineas: filas };
+      if (conteo['estado'] !== 'cerrado') {
+        // Para avisar antes de cerrar: cuántos productos con existencia aún no se contaron. Solo el número (sup/adm), sin ids
+        // ni cantidades; el cierre los cuenta en 0 y abre una merma por cada uno.
+        const contados = new Set(Array.isArray(conteo['productos']) ? (conteo['productos'] as unknown[]).map(String) : []);
+        const faltan = (await productosConExistenciaEn(c, conteo)).filter((p) => !contados.has(p)).length;
+        return { conteo, lineas: filas, faltan };
+      }
       const teoricos = await c.e.firestore.collection(ruta(c.tenantId, 'conteoTeoricos')).where('conteoId', '==', d.conteoId).limit(500).get();
       const porProducto = new Map(teoricos.docs.map((t) => [String(t.data()['productoId']), Number(t.data()['cantidad'])]));
       const resultado = filas.map((l) => {
@@ -318,7 +395,7 @@ export const accionesInventarios: TablaImplementaciones = {
         return {
           id: p.productoId, nombre: p.nombre, categoria: p.categoria ?? '', ...(p.marca !== undefined ? { marca: p.marca } : {}), sku: p.sku ?? p.productoId,
           conSerie: p.conSerie, ...(p.garantiaMeses !== undefined ? { garantiaMeses: p.garantiaMeses } : {}), ...(p.minimo !== undefined ? { minimo: p.minimo } : {}),
-          precioUSD: { bo: p.precioCentavos.bo / 100, ar: p.precioCentavos.ar / 100 }, ...(typeof cu === 'number' ? { costoUSD: cu } : {}), activo: p.activo, publicado: p.publicado,
+          precioUSD: { bo: p.precioCentavos.bo, ar: p.precioCentavos.ar }, ...(typeof cu === 'number' ? { costoUSD: cu } : {}), activo: p.activo, publicado: p.publicado,
         };
       });
       return { csv: exportarProductosCsv(filas) };

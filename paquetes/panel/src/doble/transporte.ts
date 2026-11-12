@@ -4,7 +4,7 @@ import type { Sobre, Transporte } from '../api/transporte.js';
 import type { ProductoPanel, Rol } from '../api/tipos.js';
 import { fechaLaPaz, fallo, type Contexto } from './estado.js';
 import { handlersInventario } from './inventario/inventario.js';
-import { crearProductoConsola, editarProductoConsola, handlersOtros } from './otros.js';
+import { handlersOtros } from './otros.js';
 import { handlersPos } from './pos/pos.js';
 
 type Obj = Record<string, unknown>;
@@ -20,12 +20,6 @@ const igual = (nombre: string): WireHandler => (c, d) => legado(c, nombre, d);
 const ok = (nombre: string, datos: (d: Obj) => object = (d) => d): WireHandler => async (c, d) => {
   await legado(c, nombre, datos(d));
   return { ok: true };
-};
-/** La consola recibe dólares con hasta 2 decimales (§2 de funciones.md); más decimales se rechazan. */
-const centavos = (v: unknown): number => {
-  const n = Number(v);
-  if (!Number.isFinite(n) || n < 0 || Math.abs(n * 100 - Math.round(n * 100)) > 1e-6) throw fallo('entrada-invalida', 'Precio: hasta 2 decimales');
-  return Math.round(n * 100);
 };
 const msAFecha = (ms: unknown): string => fechaLaPaz(Number(ms));
 const sin = (o: Obj, ...claves: string[]): Obj => Object.fromEntries(Object.entries(o).filter(([k]) => !claves.includes(k)));
@@ -74,11 +68,16 @@ const ACCIONES: Readonly<Record<string, WireHandler>> = {
   'inventarios.ingresar': igual('ingresar'), 'inventarios.traspasar': igual('traspasar'), 'inventarios.ajustar': igual('ajustar'),
   'inventarios.solicitarMerma': igual('solicitarMerma'), 'inventarios.resolverMerma': igual('resolverMerma'), 'inventarios.abrirConteo': igual('abrirConteo'),
   'inventarios.registrarLineaConteo': igual('registrarLineaConteo'), 'inventarios.cerrarConteo': igual('cerrarConteo'),
-  'inventarios.importarProductosCsv': igual('importarProductosCsv'),
+  // Una sola acción real: con `simular: true` devuelve la simulación; sin ella, el resultado por tandas.
+  'inventarios.importarProductosCsv': async (c, d) => {
+    const { simular, ...resto } = d;
+    return simular === true
+      ? { simular: true, simulacion: await legado(c, 'simularImportacionProductos', resto) }
+      : { simular: false, ...((await legado(c, 'importarProductosCsv', resto)) as Obj) };
+  },
   'inventarios.crearProducto': igual('crearProducto'),
   'inventarios.editarProducto': igual('actualizarProducto'),
   'inventarios.cambiarPrecioUSD': (c, d) => legado(c, 'actualizarProducto', { operacionId: d['operacionId'], productoId: d['productoId'], cambios: { precioUSD: d['precioUSD'] } }),
-  'inventarios.fijarCosto': (c, d) => legado(c, 'actualizarProducto', { operacionId: d['operacionId'], productoId: d['productoId'], cambios: { costoUSD: d['costoUSD'] } }),
   'inventarios.listarProductos': async (c, d) => {
     const ps = (await legado({ ...c, rol: 'sup' }, 'listarProductos', {})) as ProductoPanel[];
     return { productos: ps.filter((p) => d['soloBajoMinimo'] !== true || p.bajoMinimo).map(productoReal) };
@@ -89,31 +88,35 @@ const ACCIONES: Readonly<Record<string, WireHandler>> = {
   'inventarios.buscarSerie': async (c, d) => ({ unidades: await legado(c, 'buscarSerie', { serie: d['serie'] }) }),
   'inventarios.series': async (c, d) => ({ unidades: await legado(c, 'listarSeries', d) }),
   'inventarios.movimientos': async (c, d) => {
-    const m = (await legado(c, 'listarMovimientos', {
+    const lista = (await legado(c, 'listarMovimientos', {
       ...(d['productoId'] !== undefined ? { productoId: d['productoId'] } : {}),
       ...(d['desde'] !== undefined ? { desde: msAFecha(d['desde']) } : {}),
       ...(d['hasta'] !== undefined ? { hasta: msAFecha(d['hasta']) } : {}),
       ...(d['tipo'] !== undefined ? { tipo: d['tipo'] } : {}),
       ...(d['uid'] !== undefined ? { usuario: d['uid'] } : {}),
       limite: d['limite'] ?? 100,
-    })) as Obj[];
+    })) as { movimientos: Obj[]; cortada: boolean };
     // Forma del documento real: sin `id`, con `referencia` como objeto.
-    return { movimientos: m.map((x) => ({ ...sin(x, 'id', 'referencia'), ...(typeof x['referencia'] === 'string' ? { referencia: { tipo: x['referencia'].split(':')[0], id: x['referencia'].split(':')[1] } } : {}) })) };
+    return { cortada: lista.cortada, movimientos: lista.movimientos.map((x) => ({ ...sin(x, 'id', 'referencia'), ...(typeof x['referencia'] === 'string' ? { referencia: { tipo: x['referencia'].split(':')[0], id: x['referencia'].split(':')[1] } } : {}) })) };
   },
-  'inventarios.mermas': async (c, d) => ({
-    mermas: ((await legado(c, 'listarMermas', d['estado'] === undefined ? {} : { estado: d['estado'] })) as Obj[]).map(({ mermaId, motivoResolucion, fecha, ...r }) => ({
-      id: mermaId, ...r, ...(motivoResolucion !== undefined ? { resolucionMotivo: motivoResolucion } : {}), solicitadaEn: fecha,
-    })),
-  }),
+  'inventarios.mermas': async (c, d) => {
+    const lista = (await legado(c, 'listarMermas', d['estado'] === undefined ? {} : { estado: d['estado'] })) as { mermas: Obj[]; cortada: boolean };
+    return {
+      cortada: lista.cortada,
+      mermas: lista.mermas.map(({ mermaId, motivoResolucion, fecha, ...r }) => ({
+        id: mermaId, ...r, ...(motivoResolucion !== undefined ? { resolucionMotivo: motivoResolucion } : {}), solicitadaEn: fecha,
+      })),
+    };
+  },
   'inventarios.conteos': async (c, d) => ({
-    conteos: lim((await legado(c, 'listarConteos', {})) as Obj[], d).map((k) => ({ id: k['conteoId'], ...sin(k, 'conteoId', 'lineas', 'resultado', 'fecha'), abiertoEn: k['fecha'] })),
+    conteos: lim((await legado(c, 'listarConteos', {})) as Obj[], d).map((k) => ({ id: k['conteoId'], ...sin(k, 'conteoId', 'lineas', 'resultado', 'fecha', 'faltan'), abiertoEn: k['fecha'] })),
   }),
   'inventarios.conteo': async (c, d) => {
     const k = ((await legado(c, 'listarConteos', {})) as Obj[]).find((x) => x['conteoId'] === d['conteoId']);
     if (k === undefined) throw fallo('no-encontrado', 'El conteo no existe');
-    const { lineas, conteoId, resultado, ...r } = k;
+    const { lineas, conteoId, resultado, faltan, ...r } = k;
     // `resultado` (teórico, contado, diferencia) solo llega a sup/adm y con el conteo cerrado (el doble ya lo filtra).
-    return { conteo: { id: conteoId, ...r }, lineas, ...(resultado !== undefined ? { resultado } : {}) };
+    return { conteo: { id: conteoId, ...r }, lineas, ...(resultado !== undefined ? { resultado } : {}), ...(faltan !== undefined ? { faltan } : {}) };
   },
   'inventarios.exportarCsv': (c, d) => legado({ ...c, rol: d['conCostos'] === true ? 'adm' : 'sup' }, 'exportarProductosCsv', {}),
   // recibos
@@ -132,29 +135,12 @@ const ACCIONES: Readonly<Record<string, WireHandler>> = {
   // consola
   'consola.tablero': igual('obtenerTablero'),
   'consola.publicarSitio': igual('publicarSitio'),
-  'consola.crearProducto': async (c, d) => {
-    const p = d['precioUSD'] as Obj;
-    // Mismo cambio de unidades que el servidor: dólares decimales → centavos de Inventarios.
-    crearProductoConsola(c, { ...d, precioUSD: { bo: centavos(p['bo']) / 100, ar: centavos(p['ar']) / 100 } } as never);
-    return { productoId: d['productoId'] };
-  },
-  'consola.editarProducto': async (c, d) => {
-    editarProductoConsola(c, d as never);
-    return { productoId: d['productoId'] };
-  },
-  'consola.cambiarPrecioUSD': async (c, d) => {
-    const p = d['precioUSD'] as Obj;
-    await legado(c, 'cambiarPrecioUSD', { productoId: d['productoId'], precioUSD: { bo: centavos(p['bo']), ar: centavos(p['ar']) } });
-    return { productoId: d['productoId'] };
-  },
   'consola.guardarFicha': async (c, d) => {
     await legado(c, 'guardarFicha', d);
     return { productoId: d['productoId'] };
   },
   'consola.guardarSeccion': ok('guardarSeccion'), 'consola.eliminarSeccion': ok('eliminarSeccion'), 'consola.ordenarSecciones': ok('ordenarSecciones'),
   'consola.guardarCarrusel': ok('guardarCarrusel'), 'consola.guardarConfigSitio': ok('guardarConfigSitio'),
-  'consola.simularImportacion': async (c, d) => ({ simulacion: await legado(c, 'simularImportacion', { contenidoBase64: d['archivo'] }) }),
-  'consola.importarProductos': (c, d) => legado(c, 'importarProductos', { contenidoBase64: d['archivo'], ...(d['omitirErrores'] !== undefined ? { omitirErrores: d['omitirErrores'] } : {}) }),
   'consola.exportarProductosCsv': igual('exportarProductosCsvSitio'),
   'consola.listarUsuarios': async (c) => ({
     usuarios: ((await legado(c, 'listarUsuarios', {})) as Obj[]).map((u) => ({ uid: u['uid'], rol: u['rol'], correo: u['correo'], correoVerificado: u['verificado'], deshabilitado: false })),

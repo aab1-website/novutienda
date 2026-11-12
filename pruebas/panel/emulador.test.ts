@@ -158,19 +158,20 @@ describe.skipIf(!hayEmulador)('panel contra las funciones reales (emulador)', ()
     await api.sup.llamar('traspasar', { operacionId: uuid(), origenId: 'deposito-1', destinoId: 'tienda', lineas: [{ productoId: 'cable-hdmi', cantidad: 4 }] });
     const p = (await api.sup.llamar('listarProductos', {})).find((x) => x.id === 'cable-hdmi');
     expect(p?.existencias['deposito-1']).toBe(6);
-    const movs = await api.sup.llamar('listarMovimientos', { productoId: 'cable-hdmi' });
+    const { movimientos: movs, cortada } = await api.sup.llamar('listarMovimientos', { productoId: 'cable-hdmi' });
+    expect(cortada).toBe(false);
     expect(movs.length).toBeGreaterThan(2);
     expect(movs[0]).toMatchObject({ productoId: 'cable-hdmi' });
     expect(typeof movs[0]?.id).toBe('string');
     expect(typeof movs[0]?.fecha).toBe('string');
-    expect((await api.sup.llamar('listarMovimientos', { tipo: 'traspaso', limite: 20 })).every((m) => m.tipo === 'traspaso')).toBe(true);
+    expect((await api.sup.llamar('listarMovimientos', { tipo: 'traspaso', limite: 20 })).movimientos.every((m) => m.tipo === 'traspaso')).toBe(true);
     // Merma: la pide un vendedor, la resuelve un supervisor.
     const mermaId = uuid();
     await api.caj.llamar('solicitarMerma', { operacionId: mermaId, productoId: 'cable-hdmi', ubicacionId: 'tienda', cantidad: 1, motivo: 'Cable roto' });
-    const pendientes = await api.sup.llamar('listarMermas', { estado: 'solicitada' });
+    const { mermas: pendientes } = await api.sup.llamar('listarMermas', { estado: 'solicitada' });
     expect(pendientes.find((m) => m.mermaId === mermaId)).toMatchObject({ productoId: 'cable-hdmi', cantidad: 1, estado: 'solicitada' });
     await api.sup.llamar('resolverMerma', { operacionId: uuid(), mermaId, decision: 'aprobada' });
-    expect((await api.sup.llamar('listarMermas', { estado: 'aprobada' })).some((m) => m.mermaId === mermaId)).toBe(true);
+    expect((await api.sup.llamar('listarMermas', { estado: 'aprobada' })).mermas.some((m) => m.mermaId === mermaId)).toBe(true);
     // Conteo ciego.
     const conteoId = unico('cnt');
     await api.sup.llamar('abrirConteo', { operacionId: uuid(), conteoId, ubicacionId: 'deposito-1' });

@@ -28,7 +28,6 @@ const ACCIONES_INVENTARIOS: readonly (readonly [string, readonly Rol[]])[] = [
   ['crearProducto', ['adm']],
   ['editarProducto', ['adm']],
   ['cambiarPrecioUSD', ['adm']],
-  ['fijarCosto', ['adm']],
   ['importarProductosCsv', ['adm']],
   ['listarProductos', ['caj', 'sup', 'adm']],
   ['ubicaciones', ['caj', 'sup', 'adm']],

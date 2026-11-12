@@ -74,23 +74,6 @@ describe('inventario', () => {
     expect((await within(d).findByRole('alert')).textContent).toContain('No hay existencias suficientes');
   });
 
-  it('conteo ciego: quien cuenta no ve el teórico; al cerrar se muestran las diferencias', async () => {
-    const e = crearEntorno('sup');
-    ver(e, h(PantallaInventario, { sub: 'conteo' }));
-    const u = userEvent.setup();
-    await u.click(await screen.findByRole('button', { name: 'Abrir conteo' }));
-    await screen.findByText(/Conteo abierto en/);
-    expect(screen.queryByRole('columnheader', { name: 'Sistema' })).toBeNull();
-    await u.type(screen.getByLabelText('Cantidad de Cable HDMI 2 m'), '20');
-    await u.click(within(screen.getByText('Cable HDMI 2 m').closest('tr') as HTMLElement).getByRole('button', { name: 'Registrar' }));
-    expect(await screen.findByText(/contado: 20/)).toBeTruthy();
-    await u.click(screen.getByRole('button', { name: 'Cerrar y firmar el conteo' }));
-    await u.click(await screen.findByRole('button', { name: 'Sí, cerrar y firmar' }));
-    const tabla = await screen.findByRole('table', { name: 'Resultado del conteo' });
-    expect(tabla.textContent).toContain('-5');
-    expect(await screen.findByText(/Conteo cerrado y firmado/)).toBeTruthy();
-  });
-
   it('busca por serie y muestra estado, venta y garantía', async () => {
     const e = crearEntorno('sup');
     await e.api.llamar('abrirTurno', { turnoId: uuid(), apertura: { BOB: 0 } });
@@ -129,8 +112,12 @@ describe('inventario', () => {
     await u.click(await screen.findByRole('button', { name: 'Exportar productos' }));
     expect(await screen.findByText('Archivo exportado.')).toBeTruthy();
     const archivo = new File(['id,nombre,categoria,sku,precioUSDbo,precioUSDar\r\ncsv-1,Del CSV,Cat,C-1,100,110\r\n'], 'p.csv', { type: 'text/csv' });
-    await u.upload(screen.getByLabelText('Archivo CSV a importar'), archivo);
-    expect(await screen.findByText(/1 productos creados/)).toBeTruthy();
+    await u.upload(screen.getByLabelText('Archivo de productos (CSV o Excel)'), archivo);
+    await u.click(await screen.findByRole('button', { name: 'Importar 1 fila' }));
+    const d = await screen.findByRole('dialog', { name: '¿Importar este archivo?' });
+    await u.click(within(d).getByRole('button', { name: 'Sí, importar' }));
+    expect(await screen.findByText(/Importación terminada/, { selector: '.alerta' })).toBeTruthy();
+    expect((await e.api.llamar('listarProductos', {})).some((p) => p.id === 'csv-1')).toBe(true);
   });
 
   it('el supervisor no ve ajuste ni importación', () => {
@@ -159,8 +146,9 @@ describe('mermas', () => {
     cleanup();
     e.como('adm');
     ver(e, h(PantallaMermas, {}));
-    await u.click(await screen.findByRole('button', { name: 'Aprobar' }));
-    expect(await screen.findByText('Aprobada')).toBeTruthy();
+    await u.click(await screen.findByRole('button', { name: 'Aprobar la merma de Cable HDMI 2 m' }));
+    await u.click(within(await screen.findByRole('dialog', { name: '¿Aprobar esta merma?' })).getByRole('button', { name: 'Sí, aprobar' }));
+    expect(await screen.findByText(/Merma de Cable HDMI 2 m aprobada/)).toBeTruthy();
     expect((await e.api.llamar('listarProductos', {})).find((p) => p.id === 'cable-hdmi')?.existencias.tienda).toBe(23);
   });
 });
@@ -392,17 +380,16 @@ describe('catálogo y sitio', () => {
     expect(c?.plantillaActiva).toBe('ciruela');
     expect(c?.whatsappNovuchat).toBe('59171112222');
   });
-  it('importación: simula, bloquea con errores y permite omitirlos', async () => {
+  it('exportar: el Catálogo ya no importa; exporta y enlaza a la importación de Inventario', async () => {
     const e = crearEntorno('adm');
-    ver(e, h(PantallaCatalogo, { sub: 'importar' }));
+    vi.spyOn(URL, 'createObjectURL').mockReturnValue('blob:x');
+    vi.spyOn(URL, 'revokeObjectURL').mockReturnValue(undefined);
+    ver(e, h(PantallaCatalogo, { sub: 'exportar' }));
     const u = userEvent.setup();
-    const csv = 'id,nombre,categoria,sku,precioBO,precioAR,stock\r\nok-1,Uno,Cat,S1,10,11,50\r\nMAL ID,Dos,Cat,S2,1,1,1\r\n';
-    await u.upload(await screen.findByLabelText('Archivo a importar'), new File([csv], 'p.csv', { type: 'text/csv' }));
-    expect(await screen.findByText(/por crear/)).toBeTruthy();
-    expect(screen.getByText(/el CSV no modifica el stock/)).toBeTruthy();
-    expect((screen.getByRole('button', { name: 'Importar' }) as HTMLButtonElement).disabled).toBe(true);
-    await u.click(screen.getByLabelText('Importar omitiendo las filas con error'));
-    await u.click(screen.getByRole('button', { name: 'Importar' }));
-    expect(await screen.findByText('Importadas 1 filas.')).toBeTruthy();
+    expect(await screen.findByText(/Los productos se crean e importan en Inventario/)).toBeTruthy();
+    expect(screen.getByRole('link', { name: 'Ir a la importación de Inventario' }).getAttribute('href')).toBe('#/inventario/csv');
+    expect(screen.queryByLabelText('Archivo a importar')).toBeNull();
+    await u.click(screen.getByRole('button', { name: 'Exportar productos (CSV)' }));
+    expect(await screen.findByText(/productos-sitio\.csv generado/)).toBeTruthy();
   });
 });

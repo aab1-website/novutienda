@@ -64,10 +64,12 @@ export async function guardarFicha(deps: DepsSitio, e: EntradaFicha): Promise<vo
   const rol = exigirRol(e.actor, t, ROLES.editarFichas);
   if (!ID_PRODUCTO.test(e.productoId)) throw new ErrorConsola('entrada-invalida', 'productoId inválido');
   const ficha = exigirValido(validarFichaWeb(e.ficha));
-  if ((await deps.catalogo.leerProducto(t, e.productoId)) === undefined) throw new ErrorConsola('no-encontrado', 'El producto no existe');
   const ahora = ahoraIso(deps);
 
   await deps.db.runTransaction(async (tx) => {
+    // La existencia del producto se lee con ESTA transacción (puerto `existeProductoEnTransaccion`), antes de toda escritura:
+    // si Inventarios cambia el producto mientras tanto, la transacción se reintenta. Inventarios no tiene «eliminar producto» hoy.
+    if (!(await deps.catalogo.existeProductoEnTransaccion(tx, t, e.productoId))) throw new ErrorConsola('no-encontrado', 'El producto no existe');
     const previa = (await tx.get(rutaFicha(t, e.productoId))).data();
     const mapa = (await tx.get(rutaSitio(t, 'slugs'))).data()?.['mapa'];
     const slugs: Record<string, string> = {};

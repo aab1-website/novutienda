@@ -35,8 +35,8 @@ describe('tipos del contrato frente a los módulos', () => {
     afirmar<Cabe<Con.Tablero, Panel.Tablero>>(true);
     afirmar<Cabe<Con.ResultadoPublicacion, Panel.ResultadoPublicacion>>(true);
     afirmar<Cabe<Con.Reserva, Panel.Reserva>>(true);
-    afirmar<Cabe<Con.Simulacion, Panel.Simulacion>>(true);
-    afirmar<Cabe<Con.ResultadoImportacion, Panel.ResultadoImportacion>>(true);
+    afirmar<Cabe<Inv.Simulacion, Panel.Simulacion>>(true);
+    afirmar<Cabe<Inv.ResultadoImportacion, Panel.ResultadoImportacion>>(true);
     expect(true).toBe(true);
   });
 
@@ -91,6 +91,7 @@ describe('listas cerradas y límites', () => {
     expect([...ROLES_CALLABLE.crearProducto]).toEqual([...PERMISOS.producto]);
     expect([...ROLES_CALLABLE.actualizarProducto]).toEqual([...PERMISOS.producto]);
     expect([...ROLES_CALLABLE.importarProductosCsv]).toEqual([...PERMISOS.importacion]);
+    expect([...ROLES_CALLABLE.simularImportacionProductos]).toEqual([...PERMISOS.importacion]);
   });
 });
 

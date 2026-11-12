@@ -47,6 +47,11 @@ export interface EstadoDoble {
   /** Cuentas de Firebase Auth que existen pero aún no son miembros de este negocio (el panel no crea cuentas). */
   cuentasSinRol: Mutable<UsuarioVista>[];
   bytesOriginales: number;
+  /**
+   * Importación de productos por tandas (como el servidor, que parte el archivo por peso de escrituras): `filasPorTanda`
+   * fija el tamaño de la tanda y `fallaEnTanda` (base 1) detiene el proceso en esa tanda, para ensayar `completa: false`.
+   */
+  importacion: { filasPorTanda: number; fallaEnTanda?: number };
 }
 
 const HTTPS_DE_MODULO: Readonly<Record<string, string>> = {
@@ -134,6 +139,7 @@ export function crearEstado(ahora: number): EstadoDoble {
       { uid: 'u-pendiente', correo: 'pendiente@ejemplo.test', rol: 'caj', verificado: false },
     ],
     bytesOriginales: 0,
+    importacion: { filasPorTanda: 40 },
   };
 }
 

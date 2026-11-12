@@ -5,8 +5,11 @@ import { Alerta, Boton, ConCarga, Pestanas, Seccion, Selector } from '../../ui/c
 import { useApp } from '../../ui/contexto.js';
 import { useCarga } from '../../ui/hooks.js';
 import { Tabla } from '../../ui/tabla.js';
-import { Conteo, ImportarExportar, Registro, Series } from './inventario-ops.js';
+import { Conteo } from './conteo.js';
+import { ImportarExportar } from './importar.js';
 import { Ajuste, Ingreso, Traspaso } from './movimientos.js';
+import { Registro } from './registro.js';
+import { Series } from './series.js';
 import { NOMBRE_ALMACEN } from './nombres.js';
 import { ProductoPanelLateral } from './producto-panel.js';
 import './inventario.css';

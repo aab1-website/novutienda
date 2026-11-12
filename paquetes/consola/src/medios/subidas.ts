@@ -133,13 +133,12 @@ export async function reservarSubida(deps: DepsMedios, e: EntradaReserva): Promi
   if (e.tipo === 'video' && (await deps.procesador.disponible?.('video')) === false) {
     throw new ErrorConsola('no-disponible', MENSAJE_VIDEO_NO_DISPONIBLE);
   }
-  if ((await deps.catalogo.leerProducto(t, e.productoId)) === undefined) {
-    throw new ErrorConsola('no-encontrado', 'El producto no existe');
-  }
   const ahora = deps.reloj.ahora();
   const ruta = rutaOriginal(t, e.productoId, e.subidaId);
 
   return deps.db.runTransaction(async (tx) => {
+    // El producto se lee con esta misma transacción, antes de toda escritura.
+    if (!(await deps.catalogo.existeProductoEnTransaccion(tx, t, e.productoId))) throw new ErrorConsola('no-encontrado', 'El producto no existe');
     const previa = leerSubida((await tx.get(rutaSubida(t, e.subidaId))).data());
     const uso = await leerUsoMedios(tx, t);
     if (previa !== undefined) {

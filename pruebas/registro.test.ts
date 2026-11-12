@@ -427,7 +427,7 @@ describe('L2-1: campos L2 del manifiesto (sin efecto)', () => {
 
     // Foto de permisos congelada (pruebas/fotos/permisos-l2.ts): este caso es el que L2-3 NO debe tocar.
     it('las acciones del registro coinciden con la foto de permisos (callable, nombre, roles, propietario; ni de más ni de menos)', () => {
-      expect(FOTO_PERMISOS_L2.length).toBe(89);
+      expect(FOTO_PERMISOS_L2.length).toBe(83);
       expect(normal(registroPlataforma.acciones())).toEqual(normal(FOTO_PERMISOS_L2));
     });
 

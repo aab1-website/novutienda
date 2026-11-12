@@ -1,10 +1,9 @@
 import type { Entrada, NombreCallable, Salida } from '../api/contrato.js';
-import type { DatosProducto, Medio, Recibo, Simulacion, FilaSimulada } from '../api/tipos.js';
+import type { Medio, Recibo } from '../api/tipos.js';
 import { LIMITES_PANEL, PLANTILLAS_SITIO } from '../api/tipos.js';
 import { normalizar } from '../util/buscar.js';
 import { aCsv } from '../util/csv.js';
 import { auditar, exigirRol, fallo, iso, vistaProducto, type Contexto } from './estado.js';
-import { parsearCsv } from './inventario/inventario.js';
 
 type H<N extends NombreCallable> = (c: Contexto, e: Entrada<N>) => Salida<N> | Promise<Salida<N>>;
 
@@ -23,64 +22,6 @@ function anotarCambio(c: Contexto): void {
   c.e.ultimoCambioEn = iso(c.ahora);
 }
 
-function decodificar(b64: string): string {
-  try {
-    return new TextDecoder().decode(Uint8Array.from(atob(b64), (ch) => ch.charCodeAt(0)));
-  } catch {
-    throw fallo('entrada-invalida', 'El archivo no se pudo leer');
-  }
-}
-
-export function simular(c: Contexto, contenidoBase64: string): Simulacion {
-  const filas = parsearCsv(decodificar(contenidoBase64));
-  const [cab = [], ...datos] = filas;
-  const nombres = cab.map((h) => normalizar(h).replace(/[^a-z0-9]/g, ''));
-  if (!nombres.includes('id')) throw fallo('entrada-invalida', 'El archivo no tiene la columna id');
-  if (datos.length > 1000) throw fallo('entrada-invalida', 'Máximo 1000 filas por importación');
-  const ignoradas = cab.filter((h, i) => ['stock', 'existencias', 'cantidad', 'almacen', 'minimo'].includes(nombres[i] ?? '')).map((h) => `${h} (el CSV no modifica el stock)`);
-  const get = (f: string[], col: string): string => f[nombres.indexOf(col)] ?? '';
-  const out: FilaSimulada[] = datos.map((f, i) => {
-    const id = get(f, 'id');
-    const errores: string[] = [];
-    if (!/^[a-z0-9][a-z0-9-]{1,59}$/.test(id)) errores.push('id inválido');
-    if (get(f, 'nombre').trim() === '') errores.push('nombre obligatorio');
-    for (const col of ['preciobo', 'precioar']) if (get(f, col) !== '' && !(Number(get(f, col)) >= 0)) errores.push(`${col}: número no negativo`);
-    const existe = c.e.productos.has(id);
-    const accion: FilaSimulada['accion'] = errores.length > 0 ? 'error' : existe ? 'actualizar' : 'crear';
-    return { linea: i + 2, id, accion, errores, advertencias: [] };
-  });
-  const cuenta = (a: FilaSimulada['accion']): number => out.filter((x) => x.accion === a).length;
-  return { filas: out, resumen: { crear: cuenta('crear'), actualizar: cuenta('actualizar'), sinCambios: cuenta('sin-cambios'), errores: cuenta('error') }, columnasIgnoradas: ignoradas };
-}
-
-export function crearProductoConsola(c: Contexto, e: { productoId: string; datos: DatosProducto; precioUSD: { bo: number; ar: number } }): { ok: true } {
-  if (!/^[a-z0-9][a-z0-9-]{1,59}$/.test(e.productoId)) throw fallo('entrada-invalida', 'productoId inválido');
-  if (c.e.productos.has(e.productoId)) throw fallo('conflicto', 'El producto ya existe');
-  if (c.e.productos.size >= LIMITES_PANEL.productos) throw fallo('limite', 'Máximo 200 productos');
-  const d = e.datos;
-  if (d.nombre.trim() === '' || d.categoria.trim() === '') throw fallo('entrada-invalida', 'nombre y categoría son obligatorios');
-  if ([...c.e.productos.values()].some((x) => x.sku === (d.sku ?? e.productoId.toUpperCase()))) throw fallo('estado-invalido', 'El SKU ya está en uso');
-  c.e.productos.set(e.productoId, {
-    id: e.productoId, nombre: d.nombre, categoria: d.categoria, ...(d.marca ? { marca: d.marca } : {}), sku: d.sku ?? e.productoId.toUpperCase(), activo: d.activo,
-    publicado: d.publicado ?? false, conSerie: d.conSerie ?? false, ...(d.garantiaMeses !== undefined ? { garantiaMeses: d.garantiaMeses } : {}),
-    ...(d.minimo !== undefined ? { minimo: d.minimo } : {}), precioUSD: { bo: Math.round(e.precioUSD.bo * 100), ar: Math.round(e.precioUSD.ar * 100) }, costoUSD: 0,
-    stockTotal: 0, existencias: { tienda: 0, 'deposito-1': 0, 'deposito-2': 0 },
-  });
-  anotarCambio(c);
-  auditar(c, 'producto.crear', `productos/${e.productoId}`);
-  return { ok: true };
-}
-export function editarProductoConsola(c: Contexto, e: { productoId: string; cambios: Partial<DatosProducto> }): { ok: true } {
-  const p = c.e.productos.get(e.productoId);
-  if (p === undefined) throw fallo('no-encontrado', 'El producto no existe');
-  if (Object.keys(e.cambios).length === 0) throw fallo('entrada-invalida', 'No hay cambios');
-  if (e.cambios.conSerie !== undefined && e.cambios.conSerie !== p.conSerie && (p.stockTotal ?? 0) > 0) throw fallo('estado-invalido', 'conSerie no cambia tras el primer movimiento');
-  Object.assign(p, e.cambios);
-  anotarCambio(c);
-  auditar(c, 'producto.editar', `productos/${p.id}`);
-  return { ok: true };
-}
-
 /** Procesa una subida reservada (lo hace el disparador simulado o el respaldo `finalizarSubida`). */
 function procesarSubida(c: Contexto, subidaId: string): Medio {
   const s = c.e.subidas.get(subidaId);
@@ -94,7 +35,7 @@ function procesarSubida(c: Contexto, subidaId: string): Medio {
 }
 
 export const handlersOtros: {
-  [N in 'buscarComprobantes' | 'enviarRecibo' | 'referenciarFacturaSuma' | 'guardarPlantilla' | 'leerPlantilla' | 'obtenerRecibo' | 'obtenerTablero' | 'publicarSitio' | 'cambiarPrecioUSD' | 'guardarFicha' | 'reservarSubida' | 'estadoSubida' | 'finalizarSubida' | 'borrarMedio' | 'guardarSeccion' | 'eliminarSeccion' | 'ordenarSecciones' | 'guardarCarrusel' | 'guardarConfigSitio' | 'simularImportacion' | 'importarProductos' | 'exportarProductosCsvSitio' | 'asignarRol' | 'quitarRol' | 'buscarUsuarioPorCorreo' | 'listarFichas' | 'listarMedios' | 'leerConfigSitio' | 'listarSecciones' | 'listarCarruseles' | 'listarUsuarios' | 'modulosActivos']: H<N>;
+  [N in 'buscarComprobantes' | 'enviarRecibo' | 'referenciarFacturaSuma' | 'guardarPlantilla' | 'leerPlantilla' | 'obtenerRecibo' | 'obtenerTablero' | 'publicarSitio' | 'cambiarPrecioUSD' | 'guardarFicha' | 'reservarSubida' | 'estadoSubida' | 'finalizarSubida' | 'borrarMedio' | 'guardarSeccion' | 'eliminarSeccion' | 'ordenarSecciones' | 'guardarCarrusel' | 'guardarConfigSitio' | 'exportarProductosCsvSitio' | 'asignarRol' | 'quitarRol' | 'buscarUsuarioPorCorreo' | 'listarFichas' | 'listarMedios' | 'leerConfigSitio' | 'listarSecciones' | 'listarCarruseles' | 'listarUsuarios' | 'modulosActivos']: H<N>;
 } = {
   buscarComprobantes(c, e) {
     const q = e.consulta;
@@ -305,38 +246,6 @@ export const handlersOtros: {
     anotarCambio(c);
     auditar(c, 'sitio.config', 'sitio/config');
     return { ok: true };
-  },
-  simularImportacion: (c, e) => simular(c, e.contenidoBase64),
-  importarProductos(c, e) {
-    const sim = simular(c, e.contenidoBase64);
-    if (sim.resumen.errores > 0 && e.omitirErrores !== true) {
-      throw fallo('entrada-invalida', 'El archivo tiene filas con errores', { detalles: sim.filas.filter((f) => f.accion === 'error').map((f) => `Línea ${f.linea}: ${f.errores.join('; ')}.`) });
-    }
-    const filas = parsearCsv(decodificar(e.contenidoBase64));
-    const [cab = [], ...datos] = filas;
-    const nombres = cab.map((h) => normalizar(h).replace(/[^a-z0-9]/g, ''));
-    const get = (f: string[], col: string): string => f[nombres.indexOf(col)] ?? '';
-    let aplicadas = 0;
-    for (const fs of sim.filas) {
-      if (fs.accion !== 'crear' && fs.accion !== 'actualizar') continue;
-      const f = datos[fs.linea - 2];
-      if (f === undefined) continue;
-      const base = c.e.productos.get(fs.id);
-      const precio = { bo: Math.round(Number(get(f, 'preciobo') || 0) * 100), ar: Math.round(Number(get(f, 'precioar') || 0) * 100) };
-      if (base === undefined) {
-        c.e.productos.set(fs.id, {
-          id: fs.id, nombre: get(f, 'nombre'), categoria: get(f, 'categoria') || 'General', sku: get(f, 'sku') || fs.id.toUpperCase(), activo: get(f, 'activo') !== 'no', publicado: false, conSerie: false,
-          precioUSD: precio, costoUSD: 0, stockTotal: 0, existencias: { tienda: 0, 'deposito-1': 0, 'deposito-2': 0 },
-        });
-      } else {
-        base.nombre = get(f, 'nombre') || base.nombre;
-        if (get(f, 'preciobo') !== '' || get(f, 'precioar') !== '') base.precioUSD = precio;
-      }
-      aplicadas += 1;
-    }
-    if (aplicadas > 0) anotarCambio(c);
-    auditar(c, 'importar.productos', 'productos');
-    return { aplicadas, fallidas: [], simulacion: sim };
   },
   exportarProductosCsvSitio(c) {
     const filas = [...c.e.productos.values()].map((p) => [p.id, p.nombre, p.categoria, p.marca ?? '', p.sku, p.activo ? 'si' : 'no', p.garantiaMeses ?? '', p.precioUSD.bo / 100, p.precioUSD.ar / 100]);

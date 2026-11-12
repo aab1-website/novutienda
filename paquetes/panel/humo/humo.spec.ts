@@ -289,6 +289,120 @@ for (const esquema of ESQUEMAS) {
       });
     }
 
+    for (const ancho of [1280, 820, 360]) {
+      test(`Inventario a ${String(ancho)} px: conteo con avance, mermas con motivo, importación con simulación y Catálogo que exporta`, async ({ page }) => {
+        const v = vigilar(page);
+        await page.setViewportSize({ width: ancho, height: 800 });
+        const irA = async (enlace: string): Promise<void> => {
+          if (ancho < 1024) {
+            const boton = page.getByRole('button', { name: 'Menú', exact: true });
+            if ((await boton.getAttribute('aria-expanded')) !== 'true') await boton.click();
+          }
+          await page.getByRole('link', { name: enlace, exact: true }).click();
+          if (ancho < 1024 && (await page.getByRole('button', { name: 'Menú', exact: true }).getAttribute('aria-expanded')) === 'true') await page.keyboard.press('Escape');
+        };
+        const sinDesborde = async (donde: string): Promise<void> => {
+          expect(await page.evaluate(() => document.documentElement.scrollWidth <= document.documentElement.clientWidth), `desborde en ${donde}`).toBe(true);
+          const ids = await page.evaluate(() => [...document.querySelectorAll('[id]')].map((x) => x.id));
+          expect(ids.filter((x, i) => ids.indexOf(x) !== i), `ids repetidos en ${donde}`).toEqual([]);
+        };
+
+        // Supervisor: conteo ciego con guardado al salir del campo, avance y cierre con el aviso de los que faltan.
+        await entrar(page, 'sup');
+        await irA('Inventario');
+        await page.getByRole('link', { name: 'Conteo ciego' }).click();
+        await page.getByRole('button', { name: 'Abrir conteo' }).click();
+        await expect(page.getByText(/Conteo abierto en/)).toBeVisible();
+        const cantidad = page.getByLabel('Cantidad de Cable HDMI 2 m');
+        await cantidad.fill('20');
+        await expect(page.getByText(/Hay 1 cantidad sin guardar/)).toBeVisible();
+        await cantidad.blur();
+        await expect(page.locator('[data-prueba="avance-conteo"]')).toContainText(/Avance: 1 de \d+/);
+        await expect(page.getByText('Guardado', { exact: true }).first()).toBeVisible();
+        await sinViolaciones(page, `conteo con avance a ${String(ancho)} px`);
+        await sinDesborde('conteo');
+        await page.getByRole('button', { name: 'Cerrar y firmar el conteo' }).click();
+        const cierre = page.getByRole('dialog', { name: '¿Cerrar y firmar el conteo?' });
+        await expect(cierre.getByText(/Faltan \d+ productos?; se contarán en 0 y generarán mermas? por resolver/)).toBeVisible();
+        await sinViolaciones(page, `cierre del conteo a ${String(ancho)} px`);
+        await cierre.getByRole('button', { name: 'Sí, cerrar y firmar' }).click();
+        await expect(page.getByText(/Conteo cerrado y firmado/).first()).toBeVisible();
+        await expect(page.getByRole('table', { name: 'Resultado del conteo' })).toBeVisible();
+        await sinDesborde('resultado del conteo');
+
+        // Supervisor: solicita una merma; la resuelve otra persona.
+        await irA('Mermas');
+        await expect(page.getByRole('heading', { name: 'Mermas', level: 1 })).toBeVisible();
+        await page.getByRole('combobox', { name: /^Producto/ }).pressSequentially('cable');
+        await page.getByRole('option', { name: /Cable HDMI/ }).click();
+        await page.getByLabel(/^Motivo/).fill('Cable cortado');
+        await page.getByRole('button', { name: 'Solicitar merma' }).click();
+        await expect(page.getByText(/Merma de Cable HDMI 2 m solicitada/)).toBeVisible();
+        await expect(page.getByText('La resuelve otra persona').first()).toBeVisible();
+
+        // Administrador: filtra por estado y rechaza con motivo.
+        if (ancho < 1024) await page.getByRole('button', { name: 'Menú', exact: true }).click();
+        await page.getByRole('button', { name: 'Salir', exact: true }).click();
+        await expect(page.getByRole('button', { name: 'Entrar' })).toBeVisible();
+        // Sin recargar: el doble vive en memoria y la merma solicitada debe seguir ahí.
+        await page.getByLabel('Correo').fill(CUENTAS.adm[0]);
+        await page.getByLabel('Contraseña').fill(CUENTAS.adm[1]);
+        await page.getByRole('button', { name: 'Entrar' }).click();
+        await irA('Mermas');
+        const rechazar = page.getByRole('button', { name: 'Rechazar la merma de Cable HDMI 2 m' });
+        await expect(rechazar.first()).toBeVisible();
+        await page.getByLabel('Estado').selectOption('aprobada');
+        await expect(rechazar).toHaveCount(0);
+        await page.getByLabel('Estado').selectOption('solicitada');
+        await rechazar.first().click();
+        const dRechazo = page.getByRole('dialog', { name: '¿Rechazar esta merma?' });
+        await dRechazo.getByRole('button', { name: 'Sí, rechazar' }).click();
+        await expect(dRechazo.getByText('Error: Escriba por qué rechaza la merma.')).toBeVisible();
+        await dRechazo.getByLabel(/^Motivo del rechazo/).fill('Está en buen estado');
+        await sinViolaciones(page, `rechazo de merma a ${String(ancho)} px`);
+        await dRechazo.getByRole('button', { name: 'Sí, rechazar' }).click();
+        await expect(dRechazo).toBeHidden();
+        await page.getByLabel('Estado').selectOption('rechazada');
+        await expect(page.getByText('Está en buen estado').first()).toBeVisible();
+        await sinViolaciones(page, `mermas rechazadas a ${String(ancho)} px`);
+        await sinDesborde('mermas');
+
+        // Importación: simulación con una fila con error, importar solo las válidas, confirmar y ver el resultado.
+        await irA('Inventario');
+        await page.getByRole('link', { name: 'Importar y exportar' }).click();
+        await expect(page.getByRole('heading', { name: 'Importar productos' })).toBeVisible();
+        const csv = 'id,nombre,categoria,sku,precioBO,precioAR\r\nnuevo-a,Nuevo A,Cat,NA-1,10.50,11\r\nnuevo-b,Nuevo B,Cat,NB-1,20,22.25\r\nnuevo-c,Nuevo C,Cat,,5,6\r\n';
+        await page.getByLabel('Archivo de productos (CSV o Excel)').setInputFiles({ name: 'productos.csv', mimeType: 'text/csv', buffer: Buffer.from(csv) });
+        await expect(page.getByText('2 se crearán, 0 se actualizarán, 0 sin cambios, 1 con error.').first()).toBeVisible();
+        const simulacion = page.getByRole('table', { name: 'Simulación de la importación' });
+        await expect(simulacion).toBeVisible();
+        await expect(simulacion.getByText(/Columna «sku»: es obligatorio para crear/)).toBeVisible();
+        await sinViolaciones(page, `simulación a ${String(ancho)} px`);
+        await sinDesborde('simulación');
+        await page.getByRole('button', { name: 'Importar las filas válidas y omitir las 1 con error' }).click();
+        const confirmar = page.getByRole('dialog', { name: '¿Importar solo las filas válidas?' });
+        await expect(confirmar.getByText(/se omiten 1 fila con error/)).toBeVisible();
+        await sinViolaciones(page, `confirmación de importación a ${String(ancho)} px`);
+        await confirmar.getByRole('button', { name: 'Sí, importar y omitir las filas con error' }).click();
+        await expect(page.getByText(/Importación terminada: 2 productos creados/).first()).toBeVisible();
+        await expect(page.getByRole('heading', { name: 'Resultado de la importación' })).toBeVisible();
+        await sinDesborde('resultado de la importación');
+
+        // Catálogo: ya no importa; exporta y enlaza a Inventario.
+        await irA('Catálogo y sitio');
+        await page.getByRole('link', { name: 'Exportar', exact: true }).click();
+        await expect(page.getByText(/Los productos se crean e importan en Inventario/)).toBeVisible();
+        await expect(page.getByRole('button', { name: 'Exportar productos (CSV)' })).toBeVisible();
+        await expect(page.getByLabel('Archivo a importar')).toHaveCount(0);
+        await sinViolaciones(page, `exportar del catálogo a ${String(ancho)} px`);
+        await sinDesborde('exportar del catálogo');
+        await page.getByRole('link', { name: 'Ir a la importación de Inventario' }).click();
+        await expect(page).toHaveURL(/#\/inventario\/csv$/);
+        await expect(page.getByRole('heading', { name: 'Importar productos' })).toBeVisible();
+        expect(v.errores).toEqual([]);
+      });
+    }
+
     test('catálogo básico: tablero, ficha con subida de foto, apariencia con vista previa y configuración', async ({ page }) => {
       const v = vigilar(page);
       await entrar(page, 'adm');

@@ -1,6 +1,6 @@
 import { beforeEach, describe, expect, it } from 'vitest';
 import {
-  consumirProductoCambiado, crearProductoConsola, ejecutorConsola, editarProductoConsola, guardarConfigSitio, publicarSitio,
+  consumirProductoCambiado, ejecutorConsola, guardarConfigSitio, publicarSitio,
 } from '@novutienda/consola';
 import { ErrorEvento, type SobreEvento } from '@novutienda/nucleo';
 import { actor, CatalogoDoble, nuevaDb, RelojFijo, T } from './dobles.js';
@@ -40,19 +40,10 @@ describe('consumirProductoCambiado', () => {
     expect(db.dato(ESTADO)).toBeUndefined();
   });
 
-  it('las operaciones de producto por consola no anotan el cambio: lo cuenta solo el evento de Inventarios', async () => {
-    const deps = { db, catalogo: new CatalogoDoble(), reloj: new RelojFijo() };
-    const adm = actor('adm');
-    await crearProductoConsola(deps, {
-      tenantId: T, actor: adm, productoId: 'p1', datos: { nombre: 'A', categoria: 'C', sku: 'S1' }, precioUSD: { bo: 1, ar: 1 },
-    });
-    await editarProductoConsola(deps, { tenantId: T, actor: adm, productoId: 'p1', cambios: { nombre: 'B' } });
+  it('el estado del sitio solo lo mueven los eventos de Inventarios: sin eventos no hay cambios', () => {
     expect(db.dato(ESTADO)).toBeUndefined();
-    // El evento que publica la biblioteca de Inventarios en esas mismas transacciones es la única vía: suma una vez por evento.
-    await consumirProductoCambiado(ejecutorConsola(db), evento('pc-consola-crear-p1', { productoId: 'p1', cambio: 'creado' }));
-    await consumirProductoCambiado(ejecutorConsola(db), evento('e5', { productoId: 'p1', cambio: 'editado' }));
-    expect(db.dato(ESTADO)?.['cambios']).toBe(2);
   });
+
   describe('corte de la publicación', () => {
     const CORTE = '2026-11-12T10:00:00.000Z';
     beforeEach(() => {
