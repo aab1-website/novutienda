@@ -91,7 +91,21 @@ export const handlersInventario: {
       if (e.cambios.conSerie !== undefined && e.cambios.conSerie !== p.conSerie && c.e.movimientos.some((m) => m.productoId === p.id)) {
         throw fallo('estado-invalido', 'conSerie no cambia tras el primer movimiento');
       }
-      Object.assign(p, e.cambios);
+      const { marca, garantiaMeses, minimo, costoUSD, precioUSD, ...directos } = e.cambios;
+      if (precioUSD !== undefined) {
+        for (const v of [precioUSD.bo, precioUSD.ar]) {
+          if (!Number.isSafeInteger(v) || v < 0 || v > 10_000_000_000) throw fallo('entrada-invalida', 'Precio: centavos enteros');
+        }
+      }
+      if (garantiaMeses != null && (!Number.isInteger(garantiaMeses) || garantiaMeses < 1 || garantiaMeses > 120)) throw fallo('entrada-invalida', 'Garantía: de 1 a 120 meses');
+      if (minimo != null && (!Number.isInteger(minimo) || minimo < 0)) throw fallo('entrada-invalida', 'Mínimo inválido');
+      Object.assign(p, directos);
+      // `null` vacía el dato; ausente = sin cambio.
+      if (marca === null) delete p.marca; else if (marca !== undefined) p.marca = marca;
+      if (garantiaMeses === null) delete p.garantiaMeses; else if (garantiaMeses !== undefined) p.garantiaMeses = garantiaMeses;
+      if (minimo === null) delete p.minimo; else if (minimo !== undefined) p.minimo = minimo;
+      if (costoUSD === null) p.costoUSD = 0; else if (costoUSD !== undefined) p.costoUSD = costoUSD;
+      if (precioUSD !== undefined) p.precioUSD = { bo: precioUSD.bo, ar: precioUSD.ar };
       c.e.cambiosSinPublicar += 1;
       auditar(c, 'inventarios.producto-actualizar', `productos/${p.id}`);
       return { productoId: p.id };

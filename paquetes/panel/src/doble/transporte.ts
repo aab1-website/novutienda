@@ -75,6 +75,9 @@ const ACCIONES: Readonly<Record<string, WireHandler>> = {
   'inventarios.solicitarMerma': igual('solicitarMerma'), 'inventarios.resolverMerma': igual('resolverMerma'), 'inventarios.abrirConteo': igual('abrirConteo'),
   'inventarios.registrarLineaConteo': igual('registrarLineaConteo'), 'inventarios.cerrarConteo': igual('cerrarConteo'),
   'inventarios.importarProductosCsv': igual('importarProductosCsv'),
+  'inventarios.crearProducto': igual('crearProducto'),
+  'inventarios.editarProducto': igual('actualizarProducto'),
+  'inventarios.cambiarPrecioUSD': (c, d) => legado(c, 'actualizarProducto', { operacionId: d['operacionId'], productoId: d['productoId'], cambios: { precioUSD: d['precioUSD'] } }),
   'inventarios.fijarCosto': (c, d) => legado(c, 'actualizarProducto', { operacionId: d['operacionId'], productoId: d['productoId'], cambios: { costoUSD: d['costoUSD'] } }),
   'inventarios.listarProductos': async (c, d) => {
     const ps = (await legado({ ...c, rol: 'sup' }, 'listarProductos', {})) as ProductoPanel[];

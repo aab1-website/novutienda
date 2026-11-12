@@ -367,7 +367,7 @@ describe('doble: inventarios', () => {
     const e = crearEntorno('adm');
     const nuevo = { id: 'mouse-1', nombre: 'Mouse', categoria: 'Accesorios', sku: 'MOUSE-1', precioUSD: { bo: 1000, ar: 1100 }, costoUSD: 500 };
     await e.api.llamar('crearProducto', { operacionId: uuid(), producto: nuevo });
-    expect((await falla(e.api.llamar('crearProducto', { operacionId: uuid(), producto: nuevo }))).detalle.codigo).toBe('conflicto');
+    expect((await falla(e.api.llamar('crearProducto', { operacionId: uuid(), producto: nuevo }))).detalle.codigo).toBe('estado-invalido');
     expect((await falla(e.api.llamar('crearProducto', { operacionId: uuid(), producto: { ...nuevo, id: 'Malo' } }))).detalle.codigo).toBe('entrada-invalida');
     expect((await falla(e.api.llamar('crearProducto', { operacionId: uuid(), producto: { ...nuevo, id: 'mouse-2' } }))).detalle.codigo).toBe('estado-invalido');
     await e.api.llamar('actualizarProducto', { operacionId: uuid(), productoId: 'mouse-1', cambios: { minimo: 4 } });
@@ -546,22 +546,29 @@ describe('doble: catálogo y sitio', () => {
     expect(await e.api.llamar('listarCarruseles', {})).toHaveLength(1);
     expect(await e.api.llamar('listarMedios', { productoId: 'tv-55' })).toHaveLength(1);
   });
-  it('productos desde la consola: precios en centavos (el servidor los recibe en dólares), tope de 200 y edición', async () => {
+  it('productos de Inventarios: precios y costo en centavos, tope de 200 y edición', async () => {
     const e = crearEntorno('adm');
     const nuevo = { id: 'nuevo-x', nombre: 'X', categoria: 'C', sku: 'NX', precioUSD: { bo: 1250, ar: 1300 }, costoUSD: 700 };
     await e.api.llamar('crearProducto', { operacionId: uuid(), producto: nuevo });
     const creado = (await e.api.llamar('listarProductos', {})).find((p) => p.id === 'nuevo-x');
     expect(creado?.precioUSD).toEqual({ bo: 1250, ar: 1300 });
     expect(creado?.costoUSD).toBe(700);
-    // En el cable del servidor el precio viaja en dólares decimales y el costo en centavos.
+    // En el cable del servidor (inventarios) precios y costo viajan en centavos, dentro de la misma llamada.
     const alta = e.api.transporte.invocaciones.find((i) => i.accion === 'crearProducto');
-    expect(alta?.datos).toMatchObject({ precioUSD: { bo: 12.5, ar: 13 } });
-    expect(e.api.transporte.invocaciones.find((i) => i.accion === 'fijarCosto')?.datos).toMatchObject({ costoUSD: 700 });
-    expect((await falla(e.api.llamar('crearProducto', { operacionId: uuid(), producto: nuevo }))).detalle.codigo).toBe('conflicto');
+    expect(alta?.datos).toMatchObject({ producto: { precioUSD: { bo: 1250, ar: 1300 }, costoUSD: 700 } });
+    expect(e.api.transporte.invocaciones.some((i) => i.accion === 'fijarCosto')).toBe(false);
+    expect((await falla(e.api.llamar('crearProducto', { operacionId: uuid(), producto: nuevo }))).detalle.codigo).toBe('estado-invalido');
     expect((await falla(e.api.llamar('cambiarPrecioUSD', { productoId: 'nuevo-x', precioUSD: { bo: 123.4, ar: 100 } }))).detalle.codigo).toBe('entrada-invalida');
     await e.api.llamar('cambiarPrecioUSD', { productoId: 'nuevo-x', precioUSD: { bo: 1999, ar: 2000 } });
-    expect(e.api.transporte.invocaciones.filter((i) => i.accion === 'cambiarPrecioUSD').at(-1)?.datos).toMatchObject({ precioUSD: { bo: 19.99, ar: 20 } });
-    await e.api.llamar('actualizarProducto', { operacionId: uuid(), productoId: 'nuevo-x', cambios: { nombre: 'Equis' } });
+    expect(e.api.transporte.invocaciones.filter((i) => i.accion === 'cambiarPrecioUSD').at(-1)?.datos).toMatchObject({ precioUSD: { bo: 1999, ar: 2000 } });
+    await e.api.llamar('actualizarProducto', { operacionId: uuid(), productoId: 'nuevo-x', cambios: { nombre: 'Equis', marca: 'M', garantiaMeses: 12, minimo: 3 } });
+    // `null` vacía marca, garantía, mínimo y costo.
+    await e.api.llamar('actualizarProducto', { operacionId: uuid(), productoId: 'nuevo-x', cambios: { marca: null, garantiaMeses: null, minimo: null, costoUSD: null } });
+    const vaciado = (await e.api.llamar('listarProductos', {})).find((p) => p.id === 'nuevo-x');
+    expect(vaciado?.marca).toBeUndefined();
+    expect(vaciado?.garantiaMeses).toBeUndefined();
+    expect(vaciado?.minimo).toBeUndefined();
+    expect(vaciado?.costoUSD).toBe(0);
     await falla(e.api.llamar('actualizarProducto', { operacionId: uuid(), productoId: 'nada', cambios: { nombre: 'a' } }));
     await falla(e.api.llamar('cambiarPrecioUSD', { productoId: 'nada', precioUSD: { bo: 100, ar: 100 } }));
   });

@@ -269,14 +269,14 @@ export interface EntradaProducto {
 export interface CambiosProducto {
   readonly nombre?: string;
   readonly categoria?: string;
-  readonly marca?: string;
+  readonly marca?: string | null;
   readonly activo?: boolean;
   readonly publicado?: boolean;
   readonly conSerie?: boolean;
-  readonly garantiaMeses?: number;
-  readonly minimo?: number;
+  readonly garantiaMeses?: number | null;
+  readonly minimo?: number | null;
   readonly precioUSD?: PrecioUSDCentavos;
-  readonly costoUSD?: number;
+  readonly costoUSD?: number | null;
 }
 
 export interface LineaIngreso {
