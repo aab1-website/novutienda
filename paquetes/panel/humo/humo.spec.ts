@@ -33,7 +33,10 @@ async function entrar(page: Page, rol: keyof typeof CUENTAS): Promise<void> {
   await page.getByLabel('Correo').fill(CUENTAS[rol][0]);
   await page.getByLabel('Contraseña').fill(CUENTAS[rol][1]);
   await page.getByRole('button', { name: 'Entrar' }).click();
-  await expect(page.getByRole('navigation', { name: 'Menú principal' })).toBeVisible();
+  // Bajo 1024 px el menú está plegado tras el botón «Menú»; desde 1024 px el nav se ve.
+  const ancho = page.viewportSize()?.width ?? 1280;
+  if (ancho < 1024) await expect(page.getByRole('button', { name: 'Menú', exact: true })).toBeVisible();
+  else await expect(page.getByRole('navigation', { name: 'Menú principal' })).toBeVisible();
 }
 
 const hostPropio = (u: string): boolean => /^(http:\/\/127\.0\.0\.1|data:|blob:)/.test(u);
@@ -186,6 +189,42 @@ for (const esquema of ESQUEMAS) {
       await expect(dialogo).toHaveCount(0);
       await expect(quitar).toBeFocused();
       expect(v.errores).toEqual([]);
+    });
+
+    for (const [ancho, alto] of [[360, 740], [820, 1180]] as const) {
+      test(`cabecera plegable a ${ancho} px: botón «Menú», Esc devuelve el foco, sin desborde y accesible`, async ({ page }) => {
+        const v = vigilar(page);
+        await page.setViewportSize({ width: ancho, height: alto });
+        await entrar(page, 'adm');
+        const boton = page.getByRole('button', { name: 'Menú', exact: true });
+        const nav = page.getByRole('navigation', { name: 'Menú principal' });
+        const sinDesborde = async (): Promise<void> => {
+          expect(await page.evaluate(() => document.documentElement.scrollWidth <= window.innerWidth)).toBe(true);
+        };
+        await expect(boton).toHaveAttribute('aria-expanded', 'false');
+        await expect(nav).toBeHidden();
+        await sinDesborde();
+        await sinViolaciones(page, `menú cerrado a ${ancho} px`);
+        await boton.click();
+        await expect(boton).toHaveAttribute('aria-expanded', 'true');
+        await expect(nav).toBeVisible();
+        await sinDesborde();
+        await sinViolaciones(page, `menú abierto a ${ancho} px`);
+        await page.keyboard.press('Escape');
+        await expect(boton).toHaveAttribute('aria-expanded', 'false');
+        await expect(nav).toBeHidden();
+        await expect(boton).toBeFocused();
+        expect(v.errores).toEqual([]);
+      });
+    }
+
+    test('cabecera a 1280 px: el menú se ve sin botón «Menú»', async ({ page }) => {
+      await page.setViewportSize({ width: 1280, height: 800 });
+      await entrar(page, 'adm');
+      await expect(page.getByRole('navigation', { name: 'Menú principal' })).toBeVisible();
+      await expect(page.getByRole('button', { name: 'Menú', exact: true })).toBeHidden();
+      expect(await page.evaluate(() => document.documentElement.scrollWidth <= window.innerWidth)).toBe(true);
+      await sinViolaciones(page, 'cabecera a 1280 px');
     });
 
     test('Usuarios: tabla con búsqueda y orden a 1280 px, y sin desborde a 360 px', async ({ page }) => {

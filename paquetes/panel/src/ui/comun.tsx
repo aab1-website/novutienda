@@ -1,5 +1,5 @@
 import type { ComponentChildren, JSX } from 'preact';
-import { useId, useState } from 'preact/hooks';
+import { useEffect, useId, useRef, useState } from 'preact/hooks';
 import { Dialogo } from './dialogo.js';
 import { contadorAnunciable, textoContador } from './formulario.js';
 import type { Carga } from './hooks.js';
@@ -324,8 +324,14 @@ export function ConCarga<T>({ carga, children }: { carga: Carga<T>; children: (d
 }
 
 export function Pestanas(p: { etiqueta: string; base: string; actual: string; items: readonly { id: string; titulo: string }[] }): JSX.Element {
+  const nav = useRef<HTMLElement>(null);
+  // Las pestañas se desplazan en horizontal: la activa se acerca a la vista (jsdom no implementa scrollIntoView).
+  useEffect(() => {
+    const activa = nav.current?.querySelector<HTMLElement>('[aria-current="page"]');
+    if (typeof activa?.scrollIntoView === 'function') activa.scrollIntoView({ block: 'nearest', inline: 'nearest' });
+  }, [p.actual]);
   return (
-    <nav class="pestanas" aria-label={p.etiqueta}>
+    <nav ref={nav} class="pestanas" aria-label={p.etiqueta}>
       {p.items.map((i) => (
         <a key={i.id} href={`#/${p.base}/${i.id}`} aria-current={p.actual === i.id ? 'page' : undefined}>
           {i.titulo}

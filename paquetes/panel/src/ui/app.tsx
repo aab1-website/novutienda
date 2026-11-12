@@ -7,6 +7,7 @@ import { ITEMS_MENU, menuPara, parsearRuta, puedeVer, rutaPorOmision, type Modul
 import { ProveedorAvisos } from './avisos.js';
 import { Cargando, Vacio } from './comun.js';
 import { CtxApp } from './contexto.js';
+import { ProveedorGuardia, useGuardia } from './guardia.js';
 import { Login } from './login.js';
 import { PantallaAprobaciones } from '../pantallas/pos/aprobaciones.js';
 import { PantallaCatalogo } from '../pantallas/consola/catalogo.js';
@@ -30,6 +31,8 @@ function useHash(): string {
   }, []);
   return h;
 }
+
+const existe_ = (seccion: string): boolean => seccion === '' || ITEMS_MENU.some((i) => i.id === seccion);
 
 function useUsuario(sesion: Sesion): UsuarioSesion | null {
   const [u, setU] = useState<UsuarioSesion | null>(sesion.actual());
@@ -141,9 +144,22 @@ function AppInterna({ sesion, api, almacen }: { sesion: Sesion; api: ClienteApi;
     if (inicio !== null) window.location.hash = inicio;
   }, [rol, carga.estado, modulos, ruta.seccion]);
 
+  const tituloPantalla = usuario === null ? undefined : menuPara(usuario.rol, modulos).find((i) => i.id === ruta.seccion)?.titulo;
   useEffect(() => {
-    document.title = usuario === null ? `Ingreso · ${NOMBRE_APP}` : `${usuario.tenantId} · ${NOMBRE_APP}`;
-  }, [usuario]);
+    document.title =
+      usuario === null ? `Ingreso · ${NOMBRE_APP}` : `${tituloPantalla === undefined ? '' : `${tituloPantalla} · `}${usuario.tenantId} · ${NOMBRE_APP}`;
+  }, [usuario, tituloPantalla]);
+
+  const principalListo = usuario !== null && existe_(ruta.seccion) && !(carga.estado === 'cargando' && !puedeVer(usuario.rol, ruta.seccion, modulos));
+  // Al cambiar de pantalla el foco pasa al encabezado principal (G-12): quien usa lector de pantalla o teclado se entera del cambio.
+  useEffect(() => {
+    if (!principalListo) return;
+    const main = document.getElementById('contenido');
+    const titulo = main?.querySelector<HTMLElement>('h1') ?? main;
+    if (titulo === null || titulo === undefined) return;
+    if (titulo !== main) titulo.tabIndex = -1;
+    titulo.focus({ preventScroll: false });
+  }, [principalListo, ruta.seccion]);
 
   if (usuario === null || contexto === null) return <Login sesion={sesion} nombre={NOMBRE_APP} motivo={vencida ? 'vencida' : undefined} />;
 
@@ -156,37 +172,21 @@ function AppInterna({ sesion, api, almacen }: { sesion: Sesion; api: ClienteApi;
 
   return (
     <CtxApp.Provider value={contexto}>
+      <ProveedorGuardia>
       <a class="salto" href="#contenido" onClick={(e) => { e.preventDefault(); document.getElementById('contenido')?.focus(); }}>
         Saltar al contenido
       </a>
-      <header class="cabecera">
-        <div class="cabecera-interior">
-          <span class="marca-nombre">{NOMBRE_APP}</span>
-          <span class="marca-tenant" title={`Comercio: ${usuario.tenantId}`}>Comercio: {usuario.tenantId}</span>
-          {carga.estado === 'cargando' ? (
-            <span class="menu" />
-          ) : (
-            <nav aria-label="Menú principal" class="menu">
-              {menu.map((i) => (
-                <a key={i.id} href={`#/${i.id}`} aria-current={ruta.seccion === i.id ? 'page' : undefined}>
-                  {i.titulo}
-                </a>
-              ))}
-            </nav>
-          )}
-          <div class="controles">
-            <button type="button" class="boton boton-secundario boton-chico" onClick={alternarTema}>
-              {textoTema}
-            </button>
-            <span class="texto-suave usuario-actual">
-              {usuario.correo} · {ROL_TEXTO[usuario.rol]}
-            </span>
-            <button type="button" class="boton boton-secundario boton-chico" onClick={contexto.cerrarSesion}>
-              Salir
-            </button>
-          </div>
-        </div>
-      </header>
+      <Cabecera
+        usuario={usuario}
+        tenant={usuario.tenantId}
+        cargando={carga.estado === 'cargando'}
+        menu={menu}
+        seccion={ruta.seccion}
+        hash={hash}
+        textoTema={textoTema}
+        alternarTema={alternarTema}
+        cerrarSesion={contexto.cerrarSesion}
+      />
       <main id="contenido" tabIndex={-1} class="contenedor principal">
         {!existe ? (
           <Vacio titulo="Esta página no existe" detalle="Elija una opción del menú." />
@@ -198,6 +198,96 @@ function AppInterna({ sesion, api, almacen }: { sesion: Sesion; api: ClienteApi;
           <Vacio titulo="No tiene acceso a esta página" detalle={carga.estado === 'error' ? 'No se pudieron cargar los módulos de su negocio. Recargue la página.' : 'Elija una opción de su menú.'} />
         )}
       </main>
+      </ProveedorGuardia>
     </CtxApp.Provider>
+  );
+}
+
+interface PropsCabecera {
+  readonly usuario: UsuarioSesion;
+  readonly tenant: string;
+  readonly cargando: boolean;
+  readonly menu: readonly { id: string; titulo: string }[];
+  readonly seccion: string;
+  readonly hash: string;
+  readonly textoTema: string;
+  readonly alternarTema: () => void;
+  readonly cerrarSesion: () => void;
+}
+
+/**
+ * Cabecera. Desde 1024 px se ve completa; por debajo queda una sola fila (marca, comercio y botón «Menú») y el resto
+ * (navegación, tema, usuario, salir) se pliega en un panel. El botón lleva `aria-expanded` y `aria-controls`; Esc cierra
+ * y devuelve el foco al botón; al abrir, el foco pasa al primer enlace; navegar cierra el panel.
+ */
+function Cabecera(p: PropsCabecera): JSX.Element {
+  const [abierto, setAbierto] = useState(false);
+  const boton = useRef<HTMLButtonElement>(null);
+  const panel = useRef<HTMLDivElement>(null);
+  const { confirmarSalida } = useGuardia();
+
+  // Navegar (cualquier cambio de ruta) cierra el menú.
+  useEffect(() => setAbierto(false), [p.hash]);
+  useEffect(() => {
+    if (!abierto) return undefined;
+    panel.current?.querySelector<HTMLElement>('a[href]')?.focus();
+    const alTeclear = (e: KeyboardEvent): void => {
+      if (e.key !== 'Escape') return;
+      e.stopPropagation();
+      setAbierto(false);
+      boton.current?.focus();
+    };
+    const alClicFuera = (e: MouseEvent): void => {
+      if (e.target instanceof Node && !panel.current?.contains(e.target) && !boton.current?.contains(e.target)) setAbierto(false);
+    };
+    document.addEventListener('keydown', alTeclear);
+    document.addEventListener('click', alClicFuera);
+    return () => {
+      document.removeEventListener('keydown', alTeclear);
+      document.removeEventListener('click', alClicFuera);
+    };
+  }, [abierto]);
+
+  return (
+    <header class="cabecera">
+      <div class="cabecera-interior">
+        <span class="marca-nombre">{NOMBRE_APP}</span>
+        <span class="marca-tenant" title={`Comercio: ${p.tenant}`}>Comercio: {p.tenant}</span>
+        <button
+          ref={boton}
+          type="button"
+          class="boton boton-secundario boton-chico boton-menu"
+          aria-expanded={abierto}
+          aria-controls="cabecera-panel"
+          onClick={() => setAbierto((a) => !a)}
+        >
+          Menú
+        </button>
+        <div id="cabecera-panel" ref={panel} class={abierto ? 'cabecera-panel abierto' : 'cabecera-panel'}>
+          {p.cargando ? (
+            <span class="menu" />
+          ) : (
+            <nav aria-label="Menú principal" class="menu">
+              {p.menu.map((i) => (
+                <a key={i.id} href={`#/${i.id}`} aria-current={p.seccion === i.id ? 'page' : undefined}>
+                  {i.titulo}
+                </a>
+              ))}
+            </nav>
+          )}
+          <div class="controles">
+            <button type="button" class="boton boton-secundario boton-chico" onClick={p.alternarTema}>
+              {p.textoTema}
+            </button>
+            <span class="texto-suave usuario-actual">
+              {p.usuario.correo} · {ROL_TEXTO[p.usuario.rol]}
+            </span>
+            <button type="button" class="boton boton-secundario boton-chico" onClick={() => confirmarSalida(p.cerrarSesion)}>
+              Salir
+            </button>
+          </div>
+        </div>
+      </div>
+    </header>
   );
 }
