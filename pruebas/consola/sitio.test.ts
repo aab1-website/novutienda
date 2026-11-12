@@ -89,6 +89,26 @@ describe('servicios de la consola', () => {
       expect(db.coleccion(`tenants/${T}/auditoria`).filter((a) => a['accion'] === 'ficha.guardar')).toHaveLength(0);
       expect(catalogo.productos.has('fantasma-1')).toBe(false);
     });
+    it('la existencia del producto se lee con la transacción de la escritura y un producto inexistente no escribe nada', async () => {
+      const txs: unknown[] = [];
+      const original = db.runTransaction.bind(db);
+      db.runTransaction = ((fn: Parameters<typeof original>[0]) => original((tx) => { txs.push(tx); return fn(tx); })) as typeof db.runTransaction;
+      catalogo.txExistencia.length = 0;
+      await guardarFicha(ds(), { tenantId: T, actor: adm, productoId: 'cam-1', ficha: ficha('con-tx') });
+      expect(catalogo.txExistencia.length).toBeGreaterThan(0);
+      for (const tx of catalogo.txExistencia) expect(txs).toContain(tx);
+      catalogo.txExistencia.length = 0;
+      await expect(guardarFicha(ds(), { tenantId: T, actor: adm, productoId: 'fantasma-2', ficha: ficha('fantasma2') })).rejects.toMatchObject({ codigo: 'no-encontrado' });
+      expect(db.dato(`tenants/${T}/fichasWeb/fantasma-2`)).toBeUndefined();
+      expect(db.dato(`tenants/${T}/sitio/slugs`)?.['mapa']).not.toHaveProperty('fantasma2');
+      for (const tx of catalogo.txExistencia) expect(txs).toContain(tx);
+    });
+    it('reservarSubida también comprueba el producto con su transacción', async () => {
+      catalogo.txExistencia.length = 0;
+      await expect(reservarSubida(deps(), { tenantId: T, actor: adm, subidaId: 'medio-8888', productoId: 'fantasma-3', tipo: 'foto', bytes: 10 })).rejects.toMatchObject({ codigo: 'no-encontrado' });
+      expect(catalogo.txExistencia).toHaveLength(1);
+      expect(db.dato(`tenants/${T}/subidas/medio-8888`)).toBeUndefined();
+    });
     it('no admite más de 5 fotos ni más de 1 video en la ficha', async () => {
       const fotos: string[] = [];
       for (let i = 0; i < 5; i += 1) fotos.push(await medio('cam-1'));

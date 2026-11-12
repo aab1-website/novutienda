@@ -1,4 +1,4 @@
-import type { Actor } from '@novutienda/nucleo';
+import type { Actor, TransaccionIdentidad } from '@novutienda/nucleo';
 import type {
   AlmacenMedios, CatalogoPuerto, ConsultaSubidas, DisparadorSitio, Existencia, InfoMedio,
   ProcesadorMedios, ProductoCatalogo, Reloj, SolicitudProcesado, VersionProcesada,
@@ -43,6 +43,13 @@ export class CatalogoDoble implements CatalogoPuerto {
   }
   leerProducto(_t: string, id: string): Promise<ProductoCatalogo | undefined> {
     return Promise.resolve(this.productos.get(id));
+  }
+  /** Transacciones con las que se consultó la existencia (para comprobar que son las de la escritura). */
+  readonly txExistencia: TransaccionIdentidad[] = [];
+  async existeProductoEnTransaccion(tx: TransaccionIdentidad, _t: string, id: string): Promise<boolean> {
+    this.txExistencia.push(tx);
+    await tx.get(`__producto__/${id}`); // lectura real con tx, como el adaptador: entra al control de conflictos
+    return this.productos.has(id);
   }
   existenciasPorAlmacen(_t: string, id: string): Promise<readonly Existencia[]> {
     return Promise.resolve(this.existencias.get(id) ?? []);

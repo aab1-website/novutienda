@@ -1,7 +1,7 @@
 // Puertos inyectables de la consola. Inventarios (productos, precios, stock) y la
 // infraestructura (Storage, procesamiento, programación) los implementan; aquí solo
 // se declara el contrato. La consola no importa ningún otro módulo.
-import type { BaseDatosIdentidad } from '@novutienda/nucleo';
+import type { BaseDatosIdentidad, TransaccionIdentidad } from '@novutienda/nucleo';
 import type { PlanProcesamiento } from './medios/plan.js';
 import type { TipoMedio } from './medios/tipos-archivo.js';
 
@@ -71,6 +71,12 @@ export interface CatalogoPuerto {
   listarProductos(tenantId: string): Promise<readonly ProductoCatalogo[]>;
   leerProducto(tenantId: string, productoId: string): Promise<ProductoCatalogo | undefined>;
   existenciasPorAlmacen(tenantId: string, productoId: string): Promise<readonly Existencia[]>;
+  /**
+   * Si el producto existe en Inventarios, leído CON la transacción `tx` de quien llama (no abre otra): así la lectura
+   * forma parte de la misma transacción serializable que escribe la ficha o la reserva y se revalida en cada reintento.
+   * Es una lectura: debe llamarse antes de la primera escritura de `tx`.
+   */
+  existeProductoEnTransaccion(tx: TransaccionIdentidad, tenantId: string, productoId: string): Promise<boolean>;
 }
 
 /** Almacenamiento de objetos (Storage), por ruta. */
