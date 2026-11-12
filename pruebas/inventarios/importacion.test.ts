@@ -17,11 +17,12 @@ beforeEach(async () => {
 });
 
 const CAB = 'id,nombre,categoria,sku,precioUSDbo,precioUSDar';
-const importar = (csv: string, extra: { operacionId?: string; por?: Autor; cargaInicial?: boolean; omitirErrores?: boolean; base?: DobleDb } = {}): Promise<ResultadoImportacion> =>
+const importar = (csv: string, extra: { operacionId?: string; por?: Autor; cargaInicial?: boolean; omitirErrores?: boolean; lineasOmitidas?: number[]; base?: DobleDb } = {}): Promise<ResultadoImportacion> =>
   importarCsvPorLotes(extra.base ?? db, {
     tenantId: T, operacionId: extra.operacionId ?? op('imp'), por: extra.por ?? ADM, csv,
     ...(extra.cargaInicial !== undefined ? { cargaInicial: extra.cargaInicial } : {}),
     ...(extra.omitirErrores !== undefined ? { omitirErrores: extra.omitirErrores } : {}),
+    ...(extra.lineasOmitidas !== undefined ? { lineasOmitidas: extra.lineasOmitidas } : {}),
   });
 const simular = (csv: string, por: Autor = ADM, cargaInicial = false): Promise<Simulacion> =>
   db.runTransaction((tx) => simularImportacionCsv(tx, { tenantId: T, por, csv, cargaInicial }));
@@ -110,14 +111,14 @@ describe('importación por lotes', () => {
     expect(error).toBeInstanceOf(EntradaInvalida);
     expect((error as EntradaInvalida).detalles[0]).toMatch(/línea 3: id:/);
     expect(doc(db, 'productos', 'buena')).toBeUndefined();
-    const r = await importar(csv, { omitirErrores: true });
+    const r = await importar(csv, { omitirErrores: true, lineasOmitidas: [3] });
     expect(r).toMatchObject({ completa: true, creados: 2, omitidas: 1 });
   });
 
   it('respeta el tope de productos del plan', async () => {
     await importar(`${CAB}\n${filasNuevas(198)}\n`);
     await expect(importar(`${CAB}\n${filasNuevas(5, 500)}\n`)).rejects.toThrow(/con errores/);
-    const r = await importar(`${CAB}\n${filasNuevas(5, 500)}\n`, { omitirErrores: true });
+    const r = await importar(`${CAB}\n${filasNuevas(5, 500)}\n`, { omitirErrores: true, lineasOmitidas: [4, 5, 6] });
     expect(r).toMatchObject({ creados: 2, omitidas: 3 });
     expect(contar(db, 'productos')).toBe(200);
   });

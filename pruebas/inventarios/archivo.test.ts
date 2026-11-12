@@ -29,7 +29,7 @@ describe('lectura de archivos (csv o xlsx por firma)', () => {
     // La segunda fila es nueva y sin SKU: error por fila y columna (se exige SKU; no se inventa).
     expect(sim.filas.map((f) => f.accion)).toEqual(['crear', 'error']);
     expect(sim.filas[1]?.errores).toEqual([{ columna: 'sku', motivo: 'es obligatorio para crear' }]);
-    const r = await importarCsvPorLotes(db, { tenantId: T, operacionId: op('xl'), por: ADM, csv: filas, omitirErrores: true });
+    const r = await importarCsvPorLotes(db, { tenantId: T, operacionId: op('xl'), por: ADM, csv: filas, omitirErrores: true, lineasOmitidas: [3] });
     expect(r).toMatchObject({ completa: true, creados: 1, omitidas: 1 });
     expect(doc(db, 'productos', 'xl-1')?.['precioUSD']).toEqual({ bo: 1250, ar: 10 });
     expect(doc(db, 'productos', 'xl-2')).toBeUndefined();

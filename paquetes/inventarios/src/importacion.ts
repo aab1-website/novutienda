@@ -1,4 +1,4 @@
-import type { CambioProductoCambiado, TransaccionIdentidad } from '@novutienda/nucleo';
+import type { CambioProductoCambiado, TransaccionIdentidad, TransaccionMin } from '@novutienda/nucleo';
 import { EntradaInvalida, ErrorInventario, SinPermiso } from './errores.js';
 import { esProductoId, esSku, exigirSegmento, exigirTenant, UBICACIONES } from './ids.js';
 import { Lector, type Autor, type Datos } from './motor.js';
@@ -7,8 +7,17 @@ import { leerCupo, prepararEdicion, prepararProductoNuevo, reservarLimite, valid
 
 export const MAX_BYTES_CSV = 256 * 1024;
 
-/** Neutraliza una celda que un programa de planillas interpretaría como fórmula (= + - @, tab, CR). */
-export const neutralizarCelda = (v: string): string => (/^[=+\-@\t\r]/.test(v) ? `'${v}` : v);
+/**
+ * Neutraliza una celda que un programa de planillas interpretaría como fórmula (= + - @, tab, CR), también si ya viene con
+ * apóstrofes delante (así la operación es exactamente invertible: ver `deshacerNeutralizacion`).
+ */
+export const neutralizarCelda = (v: string): string => (/^'*[=+\-@\t\r]/.test(v) ? `'${v}` : v);
+
+/**
+ * Inversa exacta de `neutralizarCelda`: quita UN apóstrofe inicial solo si lo que sigue (tras los demás apóstrofes) empieza
+ * con = + - @, tab o CR. Así exportar y volver a importar no cambia ningún texto.
+ */
+export const deshacerNeutralizacion = (v: string): string => (/^'+[=+\-@\t\r]/.test(v) ? v.slice(1) : v);
 
 /** Analiza CSV (RFC 4180): comas, comillas dobles, saltos de línea dentro de comillas. */
 export function analizarCsv(texto: string): string[][] {
@@ -123,13 +132,27 @@ const SI = new Set(['si', 'sí', 'true', '1', 'verdadero', 'x']);
 const NO = new Set(['no', 'false', '0', 'falso']);
 const TEXTO_OK = (v: string, max: number): boolean => v.length <= max && !/[<>]/.test(v) && ![...v].some((c) => (c.codePointAt(0) ?? 0) < 32);
 
-/** Convierte un importe a centavos enteros: `centavos` exige un entero; `usd` admite hasta 2 decimales (coma o punto). */
+const NUMERO = /^\d{1,12}(?:[.,]\d{1,20})?$/;
+/** Ruido de coma flotante que se tolera al pasar a la unidad entera (una celda numérica de Excel llega como `1234.5599999999999`). */
+const TOLERANCIA_FLOTANTE = 1e-6;
+
+/**
+ * Convierte un número escrito (punto o coma decimal; sin signos ni separadores de miles) a un entero de la unidad
+ * `escala` (1 = entero, 100 = centavos), o `undefined`. Rechaza decimales reales (`12.345` en USD, `3.5` en un entero) pero
+ * tolera el ruido de coma flotante de las planillas: |x·escala − round(x·escala)| < 1e-6 (`12.1`, `1234.5599999999999`, `3.0`).
+ * El resultado es el entero más cercano, así que el redondeo es exacto al centavo.
+ */
+export function aEnteroEscalado(v: string, escala: number): number | undefined {
+  if (!NUMERO.test(v)) return undefined;
+  const x = Number(v.replace(',', '.')) * escala;
+  const r = Math.round(x);
+  return Number.isSafeInteger(r) && Math.abs(x - r) < TOLERANCIA_FLOTANTE ? r : undefined;
+}
+
+/** Convierte un importe a centavos enteros: `centavos` exige un entero (`1250` o `1250.0`); `usd` admite hasta 2 decimales reales (coma o punto). */
 function importe(v: string, unidad: Unidad): number | undefined {
-  if (unidad === 'centavos') return /^\d{1,11}$/.test(v) && Number(v) <= 100_000_000_00 ? Number(v) : undefined;
-  const m = /^(\d{1,8})(?:[.,](\d{1,2}))?$/.exec(v);
-  if (m === null) return undefined;
-  const c = Number(m[1]) * 100 + Number((m[2] ?? '').padEnd(2, '0'));
-  return c <= 100_000_000_00 ? c : undefined;
+  const c = aEnteroEscalado(v, unidad === 'centavos' ? 1 : 100);
+  return c !== undefined && c <= 100_000_000_00 ? c : undefined;
 }
 
 /**
@@ -189,13 +212,16 @@ export function leerCsvFilas(fuente: FuenteTabla, cargaInicial: boolean): Lectur
     else if (ids.has(id)) err('id', 'id repetido en el archivo');
     ids.add(id);
     for (const [c, max] of [['nombre', 120], ['categoria', 60], ['marca', 60]] as const) {
-      const v = celda(c);
-      if (v === undefined) continue;
+      const crudo = celda(c);
+      if (crudo === undefined) continue;
+      // La exportación antepone «'» a lo que parece fórmula; aquí se deshace exactamente eso (ida y vuelta sin cambios). Una celda
+      // con fórmula SIN ese apóstrofe es de una persona (no de la exportación): se guarda neutralizada, con aviso.
+      const v = deshacerNeutralizacion(crudo);
       if (!TEXTO_OK(v, max)) {
         err(c, `texto inválido (máximo ${String(max)} caracteres, sin < ni >)`);
         continue;
       }
-      const n = neutralizarCelda(v);
+      const n = v !== crudo ? v : neutralizarCelda(v);
       if (n !== v) advertencias.push(`${c}: empieza con un carácter de fórmula; se guardó con «'» delante`);
       d[c] = n;
     }
@@ -218,13 +244,15 @@ export function leerCsvFilas(fuente: FuenteTabla, cargaInicial: boolean): Lectur
     }
     const gar = celda('garantiaMeses');
     if (gar !== undefined) {
-      if (!/^\d{1,3}$/.test(gar) || Number(gar) < 1 || Number(gar) > 120) err('garantiaMeses', 'entero de 1 a 120');
-      else d.garantiaMeses = Number(gar);
+      const n = aEnteroEscalado(gar, 1);
+      if (n === undefined || n < 1 || n > 120) err('garantiaMeses', 'entero de 1 a 120');
+      else d.garantiaMeses = n;
     }
     const min = celda('minimo');
     if (min !== undefined) {
-      if (!/^\d{1,10}$/.test(min) || Number(min) > 1_000_000_000) err('minimo', 'entero no negativo');
-      else d.minimo = Number(min);
+      const n = aEnteroEscalado(min, 1);
+      if (n === undefined || n > 1_000_000_000) err('minimo', 'entero no negativo');
+      else d.minimo = n;
     }
     for (const [c, destino] of [['precioBO', 'bo'], ['precioAR', 'ar'], ['costoUSD', 'costoUSD']] as const) {
       const v = celda(c);
@@ -237,13 +265,17 @@ export function leerCsvFilas(fuente: FuenteTabla, cargaInicial: boolean): Lectur
     for (const [c, ubicacionId] of Object.entries(COLUMNAS_STOCK) as [Columna, string][]) {
       const v = celda(c);
       if (v === undefined) continue;
-      if (!/^\d{1,7}$/.test(v) || Number(v) > 1_000_000) err(c, 'entero no negativo (máximo 1.000.000)');
-      else if (Number(v) > 0) stock.push({ ubicacionId, cantidad: Number(v) });
+      const n = aEnteroEscalado(v, 1);
+      if (n === undefined || n > 1_000_000) err(c, 'entero no negativo (máximo 1.000.000)');
+      else if (n > 0) stock.push({ ubicacionId, cantidad: n });
     }
     salida.push({ linea, id, datos: d, stock, errores, advertencias });
   }
   return { filas: salida, columnasIgnoradas: ignoradas };
 }
+
+/** Lo único que la simulación necesita de la base: lecturas de documentos (una transacción las cumple, y un lector sin bloqueo también). */
+export type LecturaSinBloqueo = Pick<TransaccionMin, 'get'>;
 
 export interface FilaImportada {
   readonly producto: EntradaProducto;
@@ -354,7 +386,11 @@ async function planificarFila(lector: Lector, fila: FilaLeida): Promise<PlanFila
   // Producto existente: se actualiza solo lo que el archivo trae y difiere; una celda vacía no borra nada.
   // El stock de un producto que ya existe no se toca (y así un reintento tras un corte no falla por lo ya creado).
   if (fila.stock.length > 0) plan.advertencias.push('stock ignorado: el producto ya existe; su stock se mueve con ingreso, traspaso o ajuste');
-  if (d.sku !== undefined && d.sku !== previo['sku']) plan.errores.push(ERR('sku', 'no se edita una vez creado el producto'));
+  if (d.sku !== undefined && d.sku !== previo['sku']) {
+    // Excel quita los ceros a la izquierda de una celda numérica (`00123` llega como `123`): no se pueden recuperar.
+    const perdioCeros = typeof previo['sku'] === 'string' && /^\d+$/.test(d.sku) && /^0+\d+$/.test(previo['sku']) && previo['sku'].replace(/^0+/, '') === d.sku.replace(/^0+/, '');
+    plan.errores.push(ERR('sku', perdioCeros ? 'no coincide con el SKU del producto: Excel quitó ceros a la izquierda; formatee la columna SKU como texto en Excel' : 'no se edita una vez creado el producto'));
+  }
   const c: { -readonly [k in keyof CambiosProducto]: CambiosProducto[k] } = {};
   for (const k of ['nombre', 'categoria', 'marca', 'activo', 'publicado', 'garantiaMeses', 'minimo'] as const) {
     const v = d[k];
@@ -390,7 +426,7 @@ async function planificarFila(lector: Lector, fila: FilaLeida): Promise<PlanFila
 /** Escrituras que una fila puede pedir; no depende del estado, así el reparto en lotes es estable ante un reintento. */
 const pesoFila = (f: FilaLeida): number => 10 + 4 * f.stock.length;
 
-function leer(tx: TransaccionIdentidad, tenantId: string, csv: FuenteTabla, cargaInicial: boolean): { lector: Lector; lectura: LecturaCsv } {
+function leer(tx: LecturaSinBloqueo, tenantId: string, csv: FuenteTabla, cargaInicial: boolean): { lector: Lector; lectura: LecturaCsv } {
   return { lector: new Lector(tx, exigirTenant(tenantId)), lectura: leerCsvFilas(csv, cargaInicial) };
 }
 
@@ -399,7 +435,7 @@ function leer(tx: TransaccionIdentidad, tenantId: string, csv: FuenteTabla, carg
  * ni consumir ningún `operacionId`. Incluye el tope de productos del plan.
  */
 export async function simularImportacionCsv(
-  tx: TransaccionIdentidad,
+  tx: LecturaSinBloqueo,
   e: { tenantId: string; por: Autor; csv: FuenteTabla; cargaInicial?: boolean },
 ): Promise<Simulacion> {
   const por = exigirAutor(e.por);
@@ -524,6 +560,8 @@ export interface ResultadoImportacion {
   readonly productos: readonly string[];
   /** Motivo de la detención, si `completa` es `false`. */
   readonly detencion?: string;
+  /** `true` si no se escribió nada porque los datos cambiaron desde la simulación que vio la persona: `simulacion` es la nueva. */
+  readonly desactualizada?: boolean;
   readonly simulacion: Simulacion;
 }
 
@@ -536,14 +574,36 @@ export interface ResultadoImportacion {
  */
 export async function importarCsvPorLotes(
   db: BaseTransaccional,
-  e: { tenantId: string; operacionId: string; por: Autor; csv: FuenteTabla; cargaInicial?: boolean; omitirErrores?: boolean; presupuestoMs?: number; ahora?: () => number },
+  e: { tenantId: string; operacionId: string; por: Autor; csv: FuenteTabla; cargaInicial?: boolean; omitirErrores?: boolean; lineasOmitidas?: readonly number[]; lectura?: LecturaSinBloqueo; presupuestoMs?: number; ahora?: () => number },
 ): Promise<ResultadoImportacion> {
   exigirSegmento(e.operacionId, 'operacionId');
+  // El plazo cuenta desde el principio: la simulación de hasta 1000 filas también gasta tiempo de la llamada.
+  const ahora = e.ahora ?? Date.now;
+  const limite = e.presupuestoMs === undefined ? Infinity : ahora() + e.presupuestoMs;
   const cargaInicial = e.cargaInicial === true;
   const por = exigirAutor(e.por);
-  const simulacion = await db.runTransaction((tx) => simularImportacionCsv(tx, { tenantId: e.tenantId, por, csv: e.csv, cargaInicial }));
+  // Simulación SIN bloqueo (lecturas sueltas, no transacción de lectura y escritura): no retiene documentos contra la caja.
+  // La validación real se repite dentro de cada tanda. Sin `lectura`, se usa una transacción (dobles de prueba).
+  const simulacion =
+    e.lectura !== undefined
+      ? await simularImportacionCsv(e.lectura, { tenantId: e.tenantId, por, csv: e.csv, cargaInicial })
+      : await db.runTransaction((tx) => simularImportacionCsv(tx, { tenantId: e.tenantId, por, csv: e.csv, cargaInicial }));
   if (simulacion.resumen.errores > 0 && e.omitirErrores !== true) {
     throw new EntradaInvalida(`El archivo tiene ${String(simulacion.resumen.errores)} fila(s) con errores; corríjalas o importe omitiéndolas`, detalleErrores(simulacion.filas).slice(0, 50));
+  }
+  if (e.omitirErrores === true) {
+    // Omitir es una decisión sobre filas concretas que la persona vio: se exige la lista y debe coincidir EXACTAMENTE con las
+    // filas con error de esta simulación; si no, no se escribe nada (los datos o el archivo cambiaron desde que simuló).
+    if (e.lineasOmitidas === undefined) throw new EntradaInvalida('Con omitirErrores debe enviar lineasOmitidas: las líneas con error que acepta omitir');
+    const vistas = new Set(e.lineasOmitidas);
+    const ahoraConError = simulacion.filas.filter((f) => f.accion === 'error').map((f) => f.linea);
+    if (vistas.size !== ahoraConError.length || ahoraConError.some((l) => !vistas.has(l))) {
+      return {
+        completa: false, creados: 0, actualizados: 0, sinCambios: 0, omitidas: 0, lotes: { total: 0, aplicados: 0 }, productos: [], desactualizada: true,
+        detencion: 'El archivo o los datos cambiaron desde la simulación; vuelva a simular. No se escribió nada.',
+        simulacion,
+      };
+    }
   }
   const buenas = new Set(simulacion.filas.filter((f) => f.accion !== 'error').map((f) => f.linea));
   const filas = leerCsvFilas(e.csv, cargaInicial).filas.filter((f) => buenas.has(f.linea));
@@ -557,8 +617,6 @@ export async function importarCsvPorLotes(
     (lotes[lotes.length - 1] as FilaLeida[]).push(f);
     peso += pesoFila(f);
   }
-  const ahora = e.ahora ?? Date.now;
-  const limite = e.presupuestoMs === undefined ? Infinity : ahora() + e.presupuestoMs;
   const total = { creados: 0, actualizados: 0, sinCambios: 0 };
   const productos: string[] = [];
   let aplicados = 0;

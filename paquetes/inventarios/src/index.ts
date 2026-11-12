@@ -23,11 +23,11 @@ export type { LineaAjuste, LineaIngreso, LineaTraspaso } from './stock.js';
 export { resolverMerma, solicitarMerma } from './merma.js';
 export { abrirConteo, cerrarConteo, registrarLineaConteo } from './conteo.js';
 export {
-  analizarCsv, centavosAUsd, COLUMNAS_EXPORTACION, exportarProductosCsv, importarCsvPorLotes, importarProductosCsv, leerCsvFilas, leerCsvProductos, MAX_FILAS_IMPORTACION, neutralizarCelda, simularImportacionCsv,
+  aEnteroEscalado, analizarCsv, centavosAUsd, deshacerNeutralizacion, COLUMNAS_EXPORTACION, exportarProductosCsv, importarCsvPorLotes, importarProductosCsv, leerCsvFilas, leerCsvProductos, MAX_FILAS_IMPORTACION, neutralizarCelda, simularImportacionCsv,
 } from './importacion.js';
 export { leerArchivoImportacion, MAX_BYTES_ARCHIVO, MAX_COLUMNAS_ARCHIVO, MAX_FILAS_ARCHIVO, validarMatriz } from './archivo.js';
 export type { LectorHojas } from './archivo.js';
-export type { BaseTransaccional, ErrorFila, FuenteTabla, FilaImportada, FilaSimulada, ProductoExportable, ResultadoImportacion, Simulacion } from './importacion.js';
+export type { LecturaSinBloqueo, BaseTransaccional, ErrorFila, FuenteTabla, FilaImportada, FilaSimulada, ProductoExportable, ResultadoImportacion, Simulacion } from './importacion.js';
 export { PERMISOS } from './operacion.js';
 export type { ResultadoOperacion } from './operacion.js';
 

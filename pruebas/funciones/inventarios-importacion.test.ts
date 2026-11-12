@@ -84,4 +84,35 @@ describe.skipIf(!hayEmulador)('inventarios: importación, conteo y lecturas (emu
     const rechazadas = cuerpo(await accion('inventarios', 'mermas', { estado: 'rechazada' }, sup.token, A))['mermas'] as Obj[];
     expect(rechazadas.find((x) => x['id'] === mermaId)).toMatchObject({ resolucionMotivo: 'Conteo mal hecho' });
   });
+  it('mermas sale de la más reciente a la más antigua, también filtrada por estado; rechazar sin motivo se rechaza en el servidor', async () => {
+    const ids: string[] = [];
+    for (let i = 0; i < 3; i++) {
+      const operacionId = unico('mm');
+      ids.push(operacionId);
+      const r = await accion('inventarios', 'solicitarMerma', { operacionId, productoId: 'lapiz', ubicacionId: 'tienda', cantidad: 1, motivo: 'roto' }, caj.token, A);
+      expect(r.status, JSON.stringify(r.error)).toBe(200);
+      await new Promise((ok) => setTimeout(ok, 30));
+    }
+    const todas = (cuerpo(await accion('inventarios', 'mermas', {}, sup.token, A))['mermas'] as Obj[]).map((x) => x['id']);
+    expect(todas.slice(0, 3)).toEqual([...ids].reverse());
+    const solicitadas = (cuerpo(await accion('inventarios', 'mermas', { estado: 'solicitada' }, sup.token, A))['mermas'] as Obj[]).map((x) => x['id']);
+    expect(solicitadas.slice(0, 3)).toEqual([...ids].reverse());
+    for (const motivo of [undefined, '', '   ', 'x'.repeat(501)]) {
+      const r = await accion('inventarios', 'resolverMerma', { operacionId: unico('op'), mermaId: ids[0], decision: 'rechazada', ...(motivo !== undefined ? { motivo } : {}) }, adm.token, A);
+      expect(r.status).toBe(400);
+    }
+    expect((await h.firestore.doc(`tenants/${A}/mermas/${ids[0]}`).get()).data()?.['estado']).toBe('solicitada');
+  });
+
+  it('importar con omitirErrores exige lineasOmitidas y rechaza sin escribir si no coinciden con la simulación', async () => {
+    const csv = `${CAB}\nom-1,Om,c,OM-1,1,1\nMAL ID,x,c,OM-2,1,1\n`;
+    const sin = await accion('inventarios', 'importarProductosCsv', { operacionId: unico('op'), csv, omitirErrores: true }, adm.token, A);
+    expect(sin.status).toBe(400);
+    const desfase = await accion('inventarios', 'importarProductosCsv', { operacionId: unico('op'), csv, omitirErrores: true, lineasOmitidas: [2] }, adm.token, A);
+    expect(desfase.status, JSON.stringify(desfase.error)).toBe(200);
+    expect(cuerpo(desfase)).toMatchObject({ completa: false, desactualizada: true, creados: 0 });
+    expect((await h.firestore.doc(`tenants/${A}/productos/om-1`).get()).exists).toBe(false);
+    const ok = await accion('inventarios', 'importarProductosCsv', { operacionId: unico('op'), csv, omitirErrores: true, lineasOmitidas: [3] }, adm.token, A);
+    expect(cuerpo(ok)).toMatchObject({ completa: true, creados: 1, omitidas: 1 });
+  });
 });

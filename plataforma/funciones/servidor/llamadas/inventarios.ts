@@ -5,7 +5,7 @@
 import { HttpsError } from 'firebase-functions/v2/https';
 import { z } from 'zod';
 import {
-  abrirConteo, actualizarProducto, ajustar, cerrarConteo, crearProducto, crearUbicacion, esDisponible, exportarProductosCsv, importarCsvPorLotes, leerArchivoImportacion, MAX_BYTES_ARCHIVO, type FuenteTabla, type LectorHojas,
+  abrirConteo, actualizarProducto, ajustar, cerrarConteo, crearProducto, crearUbicacion, esDisponible, exportarProductosCsv, importarCsvPorLotes, leerArchivoImportacion, MAX_BYTES_ARCHIVO, type FuenteTabla, type LectorHojas, type LecturaSinBloqueo,
   ingresar, leerDocumentoProducto, registrarLineaConteo, resolverMerma, simularImportacionCsv, solicitarMerma, traspasar, UBICACION_DISPONIBILIDAD,
   type Autor, type CambiosProducto, type EntradaProducto, type LineaAjuste, type PrecioUSD, type LineaIngreso, type LineaTraspaso, type ProductoExportable,
 } from '@novutienda/inventarios';
@@ -18,8 +18,20 @@ const autor = (c: Contexto): Autor => actorPos(c);
 
 const ruta = (t: string, col: string, id?: string): string => `tenants/${t}/${col}${id === undefined ? '' : `/${id}`}`;
 const datosDe = (d: { data(): unknown }): Record<string, unknown> => d.data() as Record<string, unknown>;
-/** Tiempo que la importación se da antes de detenerse limpiamente (el callable vive 60 s); se retoma con el mismo `operacionId`. */
-const PRESUPUESTO_IMPORTACION_MS = 40_000;
+/**
+ * Tiempo que la importación se da antes de detenerse limpiamente, contado desde que entra (simulación incluida); se retoma
+ * con el mismo `operacionId`. El callable vive 120 s (`index.ts`) y el cliente de Firebase corta a los 70 s por defecto: con
+ * 55 s no se inicia otra tanda pasado ese punto, y la que esté en curso termina antes del corte del cliente.
+ */
+const PRESUPUESTO_IMPORTACION_MS = 55_000;
+
+/** Lecturas de documentos sin transacción (sin bloqueos): la simulación no retiene nada contra la caja. */
+const lecturaSinBloqueo = (c: Contexto): LecturaSinBloqueo => ({
+  get: async (r) => {
+    const snap = await c.e.firestore.doc(r).get();
+    return { existe: snap.exists, data: () => snap.data() };
+  },
+});
 
 /** Lector de hojas (.xlsx) que inyecta el coordinador en el entorno; sin él, un .xlsx se rechaza con un mensaje claro. */
 const lectorDe = (c: Contexto): LectorHojas | undefined => c.e.lectorHojas;
@@ -91,7 +103,10 @@ export const accionesInventarios: TablaImplementaciones = {
       ),
   }),
   resolverMerma: accion({
-    esquema: objeto({ operacionId: ID, mermaId: ID, decision: z.enum(['aprobada', 'rechazada']), motivo: TEXTO(500).optional() }),
+    esquema: objeto({ operacionId: ID, mermaId: ID, decision: z.enum(['aprobada', 'rechazada']), motivo: TEXTO(500).optional() }).refine(
+      (d) => d.decision !== 'rechazada' || (d.motivo !== undefined && d.motivo.trim() !== ''),
+      { message: 'El motivo del rechazo es obligatorio.', path: ['motivo'] },
+    ),
     ejecutar: (c, d) =>
       c.e.db.runTransaction((tx) =>
         resolverMerma(tx, { tenantId: c.tenantId, operacionId: d.operacionId, por: autor(c), mermaId: d.mermaId, decision: d.decision, ...(d.motivo !== undefined ? { motivo: d.motivo } : {}) }),
@@ -184,6 +199,8 @@ export const accionesInventarios: TablaImplementaciones = {
     esquema: objeto({
       operacionId: ID.optional(), cargaInicial: z.boolean().optional(),
       simular: z.boolean().optional(), omitirErrores: z.boolean().optional(),
+      /** Líneas con error que la persona vio en la simulación y acepta omitir; obligatoria con `omitirErrores`. */
+      lineasOmitidas: z.array(z.number().int().min(2).max(1_001)).max(1_000).optional(),
       /** Texto CSV (compatibilidad). */
       csv: z.string().min(1).max(262_144).optional(),
       /** Bytes del archivo .csv o .xlsx en base64 (hasta 2 MB); se distingue por la firma, no por la extensión. */
@@ -192,14 +209,15 @@ export const accionesInventarios: TablaImplementaciones = {
     ejecutar: async (c, d) => {
       const tabla = await leerTabla(c, d);
       if (d.simular === true) {
-        const simulacion = await c.e.db.runTransaction((tx) =>
-          simularImportacionCsv(tx, { tenantId: c.tenantId, por: autor(c), csv: tabla, ...(d.cargaInicial !== undefined ? { cargaInicial: d.cargaInicial } : {}) }),
-        );
+        const simulacion = await simularImportacionCsv(lecturaSinBloqueo(c), {
+          tenantId: c.tenantId, por: autor(c), csv: tabla, ...(d.cargaInicial !== undefined ? { cargaInicial: d.cargaInicial } : {}),
+        });
         return { simular: true, simulacion };
       }
       if (d.operacionId === undefined) throw new HttpsError('invalid-argument', 'Falta operacionId: solo la simulación puede omitirlo.');
       const r = await importarCsvPorLotes(c.e.db, {
-        tenantId: c.tenantId, operacionId: d.operacionId, por: autor(c), csv: tabla, presupuestoMs: PRESUPUESTO_IMPORTACION_MS,
+        tenantId: c.tenantId, operacionId: d.operacionId, por: autor(c), csv: tabla, presupuestoMs: PRESUPUESTO_IMPORTACION_MS, lectura: lecturaSinBloqueo(c),
+        ...(d.lineasOmitidas !== undefined ? { lineasOmitidas: d.lineasOmitidas } : {}),
         ...(d.cargaInicial !== undefined ? { cargaInicial: d.cargaInicial } : {}), ...(d.omitirErrores !== undefined ? { omitirErrores: d.omitirErrores } : {}),
       });
       return { simular: false, ...r };
@@ -311,10 +329,17 @@ export const accionesInventarios: TablaImplementaciones = {
     esquema: objeto({ estado: z.enum(['solicitada', 'aprobada', 'rechazada']).optional(), limite: LIMITE.optional() }),
     ejecutar: async (c, d) => {
       const limite = d.limite ?? 100;
-      let q = c.e.firestore.collection(ruta(c.tenantId, 'mermas')).limit(limite + 1);
-      if (d.estado !== undefined) q = q.where('estado', '==', d.estado);
-      const docs = (await q.get()).docs;
-      return { mermas: docs.slice(0, limite).map((m) => ({ id: m.id, ...m.data() })), cortada: docs.length > limite };
+      // Más recientes primero. Con `estado`, el filtro se aplica en memoria sobre una ventana de las 1000 más recientes: ordenar y
+      // filtrar por igualdad a la vez pediría un índice compuesto (estado + solicitadaEn) en `firestore.indexes.json`, que no es de
+      // este módulo; ordenar por un solo campo no pide índice. Límite: una merma de ese estado más vieja que las 1000 últimas no sale.
+      const filtra = d.estado !== undefined;
+      const ventana = filtra ? 1000 : limite + 1;
+      const docs = (await c.e.firestore.collection(ruta(c.tenantId, 'mermas')).orderBy('solicitadaEn', 'desc').limit(ventana).get()).docs;
+      const coinciden = docs.filter((m) => !filtra || m.data()['estado'] === d.estado);
+      return {
+        mermas: coinciden.slice(0, limite).map((m) => ({ id: m.id, ...m.data() })),
+        cortada: coinciden.length > limite || (filtra && docs.length === ventana),
+      };
     },
   }),
   /**
