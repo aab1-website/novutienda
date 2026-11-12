@@ -5,7 +5,7 @@ import { cleanup, render, screen, waitFor } from '@testing-library/preact';
 import { userEvent } from '@testing-library/user-event';
 import { afterEach, describe, expect, it, vi } from 'vitest';
 import { cuentaDeCapas } from './capas.js';
-import { BotonConfirmado } from './comun.js';
+import { Area, BotonConfirmado, Campo } from './comun.js';
 import { ProveedorAvisos, useAvisos } from './avisos.js';
 import { Dialogo } from './dialogo.js';
 
@@ -316,5 +316,32 @@ describe('BotonConfirmado', () => {
     expect(document.activeElement?.closest('.dialogo')).not.toBeNull();
     await u.tab({ shift: true });
     expect(document.activeElement?.closest('.aviso')).not.toBeNull();
+  });
+});
+
+describe('Dialogo: ids estables', () => {
+  it('los campos que aparecen tras un re-render no repiten ids dentro del diálogo ni con la página', async () => {
+    function Contenido(): JSX.Element {
+      const [mas, setMas] = useState(false);
+      return h(
+        Dialogo,
+        { titulo: 'Con campos', onCerrar: () => undefined },
+        h(Campo, { etiqueta: 'Uno', valor: '', onInput: () => undefined }),
+        h('button', { type: 'button', onClick: () => setMas(true) }, 'Agregar'),
+        mas && h(Campo, { etiqueta: 'Dos', valor: '', onInput: () => undefined }),
+        mas && h(Area, { etiqueta: 'Tres', valor: '', onInput: () => undefined }),
+      );
+    }
+    const u = userEvent.setup();
+    render(h('div', null, h(Campo, { etiqueta: 'De fondo', valor: '', onInput: () => undefined }), h(Contenido, null)));
+    await u.click(screen.getByRole('button', { name: 'Agregar' }));
+    const ids = [...document.querySelectorAll('[id]')].map((x) => x.id);
+    expect(ids.length).toBeGreaterThan(4);
+    expect(new Set(ids).size).toBe(ids.length);
+    for (const nombre of ['De fondo', 'Uno', 'Dos', 'Tres']) {
+      const campo = screen.getByLabelText(nombre);
+      expect((campo as HTMLElement).closest('label') ?? document.querySelector(`label[for="${campo.id}"]`)).not.toBeNull();
+    }
+    expect(screen.getByLabelText('Dos').id).not.toBe(screen.getByLabelText('Uno').id);
   });
 });

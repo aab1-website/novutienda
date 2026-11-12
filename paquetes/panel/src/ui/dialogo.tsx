@@ -78,7 +78,7 @@ export function Dialogo(p: PropsDialogo): JSX.Element {
   return <Portal><DialogoInterno {...p} /></Portal>;
 }
 
-// No se usa `useId`: cada portal es otra raíz de preact y sus ids pueden repetirse entre raíces.
+// Ni `useId` de preact (se repite entre raíces y tras re-renders del portal): `useIdUnico` en `ids.ts`.
 let contadorDeIds = 0;
 
 function DialogoInterno(p: PropsDialogo): JSX.Element {
