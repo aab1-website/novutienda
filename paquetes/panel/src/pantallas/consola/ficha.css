@@ -1,0 +1,21 @@
+/* Página de un producto en el panel lateral. Solo clases: la CSP no admite estilos en línea. */
+.ficha-cuerpo { display: flex; flex-direction: column; gap: 24px; }
+.ficha-formulario { display: flex; flex-direction: column; gap: 24px; }
+.ficha-bloque { display: flex; flex-direction: column; gap: 12px; margin: 0; padding: 0; border: 0; }
+.ficha-bloque h3 { margin: 0; font-size: 18px; }
+.ficha-zona { display: flex; flex-direction: column; gap: 8px; padding: 16px; border: 2px dashed var(--borde-control); border-radius: 12px; background: var(--superficie-2); }
+.ficha-zona-sobre { border-color: var(--acento); background: var(--seccion); }
+.ficha-zona-botones { display: flex; flex-wrap: wrap; gap: 12px; }
+.ficha-zona-botones .boton { flex: 1 1 180px; min-height: 56px; font-size: 18px; }
+.ficha-zona-texto { margin: 0; text-align: center; }
+.ficha-subidas { display: flex; flex-direction: column; gap: 8px; margin: 0; padding: 0; list-style: none; }
+.ficha-subida { display: flex; flex-wrap: wrap; align-items: center; gap: 6px 12px; padding: 10px 12px; border: 1px solid var(--borde); border-radius: 10px; }
+.ficha-subida-error { border-color: var(--peligro); }
+.ficha-subida-nombre { font-weight: 600; overflow-wrap: anywhere; }
+.ficha-subida-error .ficha-subida-estado { color: var(--peligro); font-weight: 500; }
+.ficha-subida progress { flex: 1 1 160px; height: 14px; accent-color: var(--cta); }
+.ficha-medios { display: flex; flex-direction: column; gap: 16px; margin: 0; padding: 0; list-style: none; }
+.ficha-medio { display: flex; flex-direction: column; gap: 8px; padding: 12px; border: 1px solid var(--borde); border-radius: 12px; }
+.ficha-medio-titulo { margin: 0; }
+.ficha-sin-adjuntar ul { margin: 0; padding: 0; list-style: none; }
+.ficha-textos { gap: 16px; }

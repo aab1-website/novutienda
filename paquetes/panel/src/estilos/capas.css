@@ -22,9 +22,14 @@ html { scroll-padding-bottom: 120px; }
 .dialogo-pie { display: flex; flex: none; flex-wrap: wrap; justify-content: flex-end; gap: 10px; padding: 12px 20px; padding-bottom: max(12px, env(safe-area-inset-bottom)); border-top: 1px solid var(--borde); background: var(--superficie); }
 /* Un diálogo abierto desde otro es hermano suyo en `body` y, al montarse después, queda encima. */
 
+@media (max-width: 1023.98px) {
+  /* El panel lateral ocupa la pantalla completa bajo 1024 px: a 820 px quedarían unos 180 px de lista visibles. */
+  .dialogo-lateral .dialogo { width: 100%; max-width: none; height: 100vh; height: 100dvh; max-height: 100vh; max-height: 100dvh; border: 0; border-radius: 0; }
+}
+
 @media (max-width: 767.98px) {
   .dialogo-centro { padding: 0; }
-  .dialogo-centro .dialogo, .dialogo-lateral .dialogo { width: 100%; max-width: none; height: 100vh; height: 100dvh; max-height: 100vh; max-height: 100dvh; border: 0; border-radius: 0; }
+  .dialogo-centro .dialogo { width: 100%; max-width: none; height: 100vh; height: 100dvh; max-height: 100vh; max-height: 100dvh; border: 0; border-radius: 0; }
 }
 
 .avisos { position: fixed; right: 16px; bottom: 16px; z-index: 300; display: flex; flex-direction: column; gap: 8px; width: min(420px, calc(100vw - 32px)); pointer-events: none; }

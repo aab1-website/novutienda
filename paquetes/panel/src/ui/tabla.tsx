@@ -1,5 +1,6 @@
 import type { ComponentChildren, JSX } from 'preact';
-import { useEffect, useId, useRef, useState } from 'preact/hooks';
+import { useEffect, useRef, useState } from 'preact/hooks';
+import { useIdUnico } from './ids.js';
 import { filtrar, ordenar, paginar, type Orden } from './tabla-logica.js';
 import '../estilos/tabla.css';
 
@@ -44,7 +45,7 @@ const AJUSTE_ARIA = { asc: 'ascending', desc: 'descending' } as const;
  * explícitos para seguir siendo una tabla aunque el CSS cambie `display` (en celular se vuelve tarjetas).
  */
 export function Tabla<F>(p: PropsTabla<F>): JSX.Element {
-  const id = useId();
+  const id = useIdUnico();
   const porPagina = p.porPagina ?? 25;
   const [texto, setTexto] = useState('');
   const [valores, setValores] = useState<Record<string, string>>({});
