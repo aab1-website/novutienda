@@ -1,4 +1,4 @@
-import type { MotivoStockCambiado, Rol, TransaccionIdentidad } from '@novutienda/nucleo';
+import type { MotivoStockCambiado, Resumen, Rol, TransaccionIdentidad } from '@novutienda/nucleo';
 import { aplicarPlan, type Contexto } from './aplicar.js';
 import { EntradaInvalida, OperacionConflicto, SinPermiso } from './errores.js';
 import { hashCarga } from './hash.js';
@@ -50,6 +50,8 @@ export interface Construido {
   readonly referencia: Referencia;
   readonly tipoMovimiento: MotivoStockCambiado;
   readonly motivo?: string;
+  /** Resumen de la auditoría (valores simples, sin datos personales). */
+  readonly resumen?: Resumen;
 }
 
 export interface EspecOperacion {
@@ -95,6 +97,7 @@ export async function ejecutarOperacion(
     hashCarga: hash,
     resultado: c.resultado,
     ...(c.motivo !== undefined ? { motivo: c.motivo } : {}),
+    ...(c.resumen !== undefined ? { resumen: c.resumen } : {}),
   };
   aplicarPlan(tx, trabajo.plan(), ctx);
   return { resultado: c.resultado, repetida: false };
