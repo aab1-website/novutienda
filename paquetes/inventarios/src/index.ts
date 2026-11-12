@@ -22,8 +22,10 @@ export { ajustar, ingresar, traspasar } from './stock.js';
 export type { LineaAjuste, LineaIngreso, LineaTraspaso } from './stock.js';
 export { resolverMerma, solicitarMerma } from './merma.js';
 export { abrirConteo, cerrarConteo, registrarLineaConteo } from './conteo.js';
-export { analizarCsv, exportarProductosCsv, importarProductosCsv, leerCsvProductos, neutralizarCelda } from './importacion.js';
-export type { ProductoExportable } from './importacion.js';
+export {
+  analizarCsv, exportarProductosCsv, importarCsvPorLotes, importarProductosCsv, leerCsvFilas, leerCsvProductos, MAX_FILAS_IMPORTACION, neutralizarCelda, simularImportacionCsv,
+} from './importacion.js';
+export type { BaseTransaccional, ErrorFila, FilaImportada, FilaSimulada, ProductoExportable, ResultadoImportacion, Simulacion } from './importacion.js';
 export { PERMISOS } from './operacion.js';
 export type { ResultadoOperacion } from './operacion.js';
 
