@@ -120,10 +120,6 @@ function AppInterna({ sesion, api, almacen }: { sesion: Sesion; api: ClienteApi;
     setVencida(true);
     void sesion.cerrar();
   }, [sesion]);
-  const contexto = useMemo(
-    () => (usuario === null ? null : { api, almacen, usuario, cerrarSesion: () => void sesion.cerrar(), sesionVencida, renovarSesion: () => sesion.renovar() }),
-    [api, almacen, usuario, sesion, sesionVencida],
-  );
 
   useEffect(() => {
     if (usuario === null) return;
@@ -137,6 +133,13 @@ function AppInterna({ sesion, api, almacen }: { sesion: Sesion; api: ClienteApi;
   const carga = useModulosActivos(api, usuario?.uid);
   const modulos: ModulosActivos = carga.estado === 'lista' ? carga.modulos : null;
   const rol = usuario?.rol;
+  const contexto = useMemo(
+    () =>
+      usuario === null
+        ? null
+        : { api, almacen, usuario, cerrarSesion: () => void sesion.cerrar(), sesionVencida, renovarSesion: () => sesion.renovar(), puedeVer: (seccion: string) => puedeVer(usuario.rol, seccion, modulos) },
+    [api, almacen, usuario, sesion, sesionVencida, modulos],
+  );
 
   useEffect(() => {
     if (rol === undefined || carga.estado === 'cargando' || ruta.seccion !== '') return;

@@ -13,6 +13,8 @@ export interface ContextoApp {
   readonly sesionVencida: () => void;
   /** Fuerza la renovación del token de la sesión; `false` si no se pudo (ahí sí la sesión venció). */
   readonly renovarSesion: () => Promise<boolean>;
+  /** ¿Esta sección del menú es visible para el rol y los módulos activos? Falla cerrado mientras los módulos no se conocen. */
+  readonly puedeVer: (seccion: string) => boolean;
 }
 
 export const CtxApp = createContext<ContextoApp | null>(null);
