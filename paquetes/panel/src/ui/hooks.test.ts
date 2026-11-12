@@ -19,8 +19,9 @@ describe('useCarga', () => {
     await waitFor(() => expect(document.querySelector('[data-prueba="estado"]')?.textContent).toMatch(/^-\|[^-]/));
   });
 
-  it('unauthenticated avisa a la aplicación que la sesión venció; otros errores no', async () => {
+  it('unauthenticated con renovación fallida avisa a la aplicación que la sesión venció; otros errores no', async () => {
     const entorno = crearEntorno('adm');
+    entorno.renovacion.acepta = false;
     render(entorno.envolver(h(Caso, { fn: () => Promise.reject(new ErrorApi('unauthenticated', 'x')) })));
     await waitFor(() => expect(entorno.sesionesVencidas()).toBeGreaterThan(0));
     cleanup();
@@ -28,6 +29,35 @@ describe('useCarga', () => {
     render(otro.envolver(h(Caso, { fn: () => Promise.reject(new ErrorApi('unavailable', 'x')) })));
     await waitFor(() => expect(document.querySelector('[data-prueba="estado"]')?.textContent).not.toBe('-|-'));
     expect(otro.sesionesVencidas()).toBe(0);
+  });
+
+  it('unauthenticated con token renovable: se reintenta una vez y no se cierra la sesión', async () => {
+    const entorno = crearEntorno('adm');
+    let n = 0;
+    const fn = (): Promise<string> => (++n === 1 ? Promise.reject(new ErrorApi('unauthenticated', 'x')) : Promise.resolve('bien'));
+    render(entorno.envolver(h(Caso, { fn })));
+    await waitFor(() => expect(document.querySelector('[data-prueba="estado"]')?.textContent).toBe('bien|-'));
+    expect(entorno.renovacion.llamadas).toBe(1);
+    expect(n).toBe(2);
+    expect(entorno.sesionesVencidas()).toBe(0);
+  });
+
+  it('unauthenticated que no es de sesión (App Check) con token válido: error normal con el mensaje del servidor, sin cerrar sesión ni bucle', async () => {
+    const entorno = crearEntorno('adm');
+    const fn = vi.fn(() => Promise.reject(new ErrorApi('unauthenticated', 'La aplicación no está verificada (App Check).')));
+    render(entorno.envolver(h(Caso, { fn })));
+    await waitFor(() => expect(document.querySelector('[data-prueba="estado"]')?.textContent).toMatch(/^-\|[^-]/));
+    expect(document.querySelector('[data-prueba="estado"]')?.textContent).toContain('App Check');
+    expect(fn).toHaveBeenCalledTimes(2);
+    expect(entorno.renovacion.llamadas).toBe(1);
+    expect(entorno.sesionesVencidas()).toBe(0);
+  });
+
+  it('con el token renovado, si el servidor sigue diciendo que la sesión no vale, la sesión venció', async () => {
+    const entorno = crearEntorno('adm');
+    render(entorno.envolver(h(Caso, { fn: () => Promise.reject(new ErrorApi('unauthenticated', 'La sesión no es válida o fue revocada. Vuelva a iniciar sesión.')) })));
+    await waitFor(() => expect(entorno.sesionesVencidas()).toBeGreaterThan(0));
+    expect(entorno.renovacion.llamadas).toBe(1);
   });
 
   it('un recargar con las mismas dependencias que falla conserva los datos y deja el error', async () => {
@@ -47,12 +77,34 @@ describe('useAccion', () => {
     return h('div', null, h('button', { type: 'button', onClick: () => void a.ejecutar(p.fn) }, 'Ir'), h('p', { 'data-prueba': 'error' }, a.error ?? '-'));
   }
 
-  it('unauthenticated avisa que la sesión venció y no deja error local', async () => {
+  it('unauthenticated con renovación fallida avisa que la sesión venció y no deja error local', async () => {
     const entorno = crearEntorno('adm');
+    entorno.renovacion.acepta = false;
     render(entorno.envolver(h(Caso, { fn: () => Promise.reject(new ErrorApi('unauthenticated', 'x')) })));
     await act(async () => void fireEvent.click(screen.getByRole('button', { name: 'Ir' })));
-    expect(entorno.sesionesVencidas()).toBe(1);
+    await waitFor(() => expect(entorno.sesionesVencidas()).toBe(1));
     expect(document.querySelector('[data-prueba="error"]')?.textContent).toBe('-');
+  });
+
+  it('unauthenticated con token renovable: la acción se reintenta una vez y la sesión sigue', async () => {
+    const entorno = crearEntorno('adm');
+    let n = 0;
+    const fn = vi.fn(() => (++n === 1 ? Promise.reject(new ErrorApi('unauthenticated', 'x')) : Promise.resolve('listo')));
+    render(entorno.envolver(h(Caso, { fn })));
+    await act(async () => void fireEvent.click(screen.getByRole('button', { name: 'Ir' })));
+    await waitFor(() => expect(fn).toHaveBeenCalledTimes(2));
+    expect(entorno.sesionesVencidas()).toBe(0);
+    expect(document.querySelector('[data-prueba="error"]')?.textContent).toBe('-');
+  });
+
+  it('unauthenticated de App Check con token válido: error local con el mensaje del servidor, sin cerrar sesión', async () => {
+    const entorno = crearEntorno('adm');
+    const fn = vi.fn(() => Promise.reject(new ErrorApi('unauthenticated', 'La aplicación no está verificada (App Check).')));
+    render(entorno.envolver(h(Caso, { fn })));
+    await act(async () => void fireEvent.click(screen.getByRole('button', { name: 'Ir' })));
+    await waitFor(() => expect(document.querySelector('[data-prueba="error"]')?.textContent).toContain('App Check'));
+    expect(fn).toHaveBeenCalledTimes(2);
+    expect(entorno.sesionesVencidas()).toBe(0);
   });
 
   it('evita el doble envío mientras está ocupada', async () => {

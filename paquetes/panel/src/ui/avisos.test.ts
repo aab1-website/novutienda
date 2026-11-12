@@ -28,6 +28,45 @@ const region = (tipo: 'estado' | 'error'): HTMLElement => document.querySelector
 const avanzar = (ms: number): void => void act(() => void vi.advanceTimersByTime(ms));
 
 describe('ProveedorAvisos', () => {
+  it('puntero y foco pausan por separado: salir con el puntero no reanuda si el foco sigue dentro', () => {
+    const { avisos } = montar();
+    act(() => void avisos().ok('Guardado'));
+    const caja = screen.getByText('Guardado').parentElement as HTMLElement;
+    fireEvent.mouseEnter(caja);
+    fireEvent.focusIn(caja);
+    fireEvent.mouseLeave(caja);
+    avanzar(20_000);
+    expect(screen.getByText('Guardado')).toBeTruthy();
+    fireEvent.focusOut(caja);
+    avanzar(MS_AVISO);
+    expect(screen.queryByText('Guardado')).toBeNull();
+  });
+
+  it('«Cerrar» devuelve el foco a quien lo tenía antes de entrar al aviso, o al título', () => {
+    const { avisos } = montar();
+    const anterior = document.createElement('button');
+    document.body.append(anterior);
+    act(() => void avisos().error('Falló'));
+    anterior.focus();
+    const cerrar = screen.getByRole('button', { name: 'Cerrar' });
+    cerrar.focus();
+    fireEvent.focusIn(cerrar, { relatedTarget: anterior });
+    fireEvent.click(cerrar);
+    act(() => void vi.advanceTimersByTime(5));
+    expect(document.activeElement).toBe(anterior);
+    anterior.remove();
+    // Sin origen conocido, al título de la pantalla.
+    const titulo = document.createElement('h1');
+    document.body.append(titulo);
+    act(() => void avisos().error('Otro'));
+    const otro = screen.getByRole('button', { name: 'Cerrar' });
+    otro.focus();
+    fireEvent.click(otro);
+    act(() => void vi.advanceTimersByTime(5));
+    expect(document.activeElement).toBe(titulo);
+    titulo.remove();
+  });
+
   it('las dos regiones vivas existen desde el montaje, vacías, y fuera del fondo inerte', () => {
     montar();
     expect(region('estado').getAttribute('aria-live')).toBe('polite');
@@ -170,7 +209,9 @@ describe('useAccion con avisos', () => {
     cleanup();
     render(h(ProveedorAvisos, null, h(Caso, { fn: fallar, modo: 'ambos' })));
     await pulsar('Ir');
-    expect(region('error').textContent).toContain('Falló esto');
+    // Con «ambos» el aviso se ve pero no se anuncia dos veces: no cae en la región asertiva.
+    expect(region('error').children).toHaveLength(0);
+    expect(document.querySelector('[data-region="avisos-error-visual"]')?.textContent).toContain('Falló esto');
     expect(document.querySelector('[data-prueba="local"]')).not.toBeNull();
     cleanup();
     render(h(ProveedorAvisos, null, h(Caso, { fn: fallar, modo: 'local' })));

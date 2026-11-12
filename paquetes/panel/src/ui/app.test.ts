@@ -166,10 +166,12 @@ describe('sesión vencida (G-15)', () => {
     window.location.hash = '#/usuarios';
     await screen.findByText(/Personas con acceso/);
     vencer = true;
+    sesion.renovable = false;
     window.location.hash = '#/configuracion';
     expect(await screen.findByText(/Su sesión venció\. Ingrese de nuevo para seguir donde estaba/)).toBeTruthy();
     expect(screen.queryByRole('navigation', { name: 'Menú principal' })).toBeNull();
     vencer = false;
+    sesion.renovable = true;
     await entrar('adm@ejemplo.test', 'clave-adm-1');
     await screen.findByRole('navigation', { name: 'Menú principal' });
     expect(window.location.hash).toBe('#/configuracion');

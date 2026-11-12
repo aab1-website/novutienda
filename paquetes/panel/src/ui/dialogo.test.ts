@@ -6,6 +6,7 @@ import { userEvent } from '@testing-library/user-event';
 import { afterEach, describe, expect, it, vi } from 'vitest';
 import { cuentaDeCapas } from './capas.js';
 import { BotonConfirmado } from './comun.js';
+import { ProveedorAvisos, useAvisos } from './avisos.js';
 import { Dialogo } from './dialogo.js';
 
 afterEach(() => {
@@ -245,5 +246,75 @@ describe('BotonConfirmado', () => {
     await u.keyboard('{Escape}');
     expect(alConfirmar).not.toHaveBeenCalled();
     expect(document.activeElement).toBe(screen.getByRole('button', { name: 'Quitar acceso' }));
+  });
+
+  it('se monta en body: abierto desde un <form> y una fila con onClick no envía el formulario ni dispara el clic', async () => {
+    const alEnviar = vi.fn((e: Event) => e.preventDefault());
+    const alClicFila = vi.fn();
+    const alGuardar = vi.fn();
+    function Origen(): JSX.Element {
+      const [abierto, setAbierto] = useState(false);
+      return h(
+        'form',
+        { onSubmit: alEnviar },
+        h(
+          'div',
+          { 'data-prueba': 'fila', onClick: alClicFila },
+          h('button', { type: 'button', onClick: () => setAbierto(true) }, 'Abrir'),
+          abierto && h(Dialogo, { titulo: 'Editar', onCerrar: () => setAbierto(false), pie: h('button', { type: 'submit', onClick: alGuardar }, 'Guardar') }, h('input', { type: 'text', 'aria-label': 'Nombre' })),
+        ),
+      );
+    }
+    const u = userEvent.setup();
+    render(h(Origen, null));
+    await u.click(screen.getByRole('button', { name: 'Abrir' }));
+    alClicFila.mockClear();
+    const dialogo = screen.getByRole('dialog');
+    expect(dialogo.closest('form')).toBeNull();
+    expect(dialogo.closest('[data-prueba="fila"]')).toBeNull();
+    expect(dialogo.closest('body > div')?.parentElement).toBe(document.body);
+    await u.click(screen.getByLabelText('Nombre'));
+    await u.type(screen.getByLabelText('Nombre'), '{Enter}');
+    await u.click(screen.getByRole('button', { name: 'Guardar' }));
+    expect(alGuardar).toHaveBeenCalledTimes(1);
+    expect(alEnviar).not.toHaveBeenCalled();
+    expect(alClicFila).not.toHaveBeenCalled();
+    await u.keyboard('{Escape}');
+    expect(screen.queryByRole('dialog')).toBeNull();
+    expect(document.body.querySelectorAll('.dialogo-fondo')).toHaveLength(0);
+  });
+
+  it('conserva los contextos de la pantalla (avisos) dentro del portal', async () => {
+    function Dentro(): JSX.Element {
+      const avisos = useAvisos();
+      return h('button', { type: 'button', onClick: () => void avisos.ok('Hecho desde el diálogo') }, 'Avisar');
+    }
+    const u = userEvent.setup();
+    render(h(ProveedorAvisos, null, h(Dialogo, { titulo: 'T', onCerrar: () => undefined }, h(Dentro, null))));
+    await u.click(screen.getByRole('button', { name: 'Avisar' }));
+    expect(screen.getByText('Hecho desde el diálogo')).toBeTruthy();
+  });
+
+  it('los avisos entran en el ciclo de Tab del diálogo y siguen sin estar inertes', async () => {
+    function Avisador(): JSX.Element {
+      const avisos = useAvisos();
+      return h('button', { type: 'button', onClick: () => void avisos.error('Falló algo', { reintentar: () => undefined }) }, 'Provocar');
+    }
+    const u = userEvent.setup();
+    render(h(ProveedorAvisos, null, h(Dialogo, { titulo: 'T', onCerrar: () => undefined, foco: 'seguro' }, h(Avisador, null))));
+    await u.click(screen.getByRole('button', { name: 'Provocar' }));
+    const reintentar = screen.getByRole('button', { name: 'Reintentar' });
+    expect(reintentar.closest('[inert]')).toBeNull();
+    // Orden: Cerrar, Provocar, Reintentar y Cerrar del aviso; vuelve a Cerrar del diálogo.
+    screen.getByRole('button', { name: 'Provocar' }).focus();
+    await u.tab();
+    expect(document.activeElement).toBe(reintentar);
+    await u.tab();
+    expect(document.activeElement?.textContent).toBe('Cerrar');
+    expect(document.activeElement?.closest('.aviso')).not.toBeNull();
+    await u.tab();
+    expect(document.activeElement?.closest('.dialogo')).not.toBeNull();
+    await u.tab({ shift: true });
+    expect(document.activeElement?.closest('.aviso')).not.toBeNull();
   });
 });

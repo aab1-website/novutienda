@@ -19,6 +19,8 @@ export interface Entorno {
   como(rol: Rol): UsuarioSesion;
   /** Cuántas veces una pantalla avisó que la sesión venció. */
   sesionesVencidas(): number;
+  /** Renovación del token: cuántas veces se pidió y si el servidor la acepta (por omisión, sí). */
+  readonly renovacion: { llamadas: number; acepta: boolean };
   /** Envuelve un nodo con el contexto de la aplicación. */
   envolver(nodo: Nodo): Nodo;
 }
@@ -32,17 +34,23 @@ export function crearEntorno(rol: Rol = 'caj', ahora: () => number = () => AHORA
   let vencidas = 0;
   const api = new ClienteDoble({ usuario: () => ({ uid: actual.uid, rol: actual.rol }), ahora });
   const almacen = new AlmacenSubidasDoble();
+  const renovacion = { llamadas: 0, acepta: true };
+  const renovar = (): Promise<boolean> => {
+    renovacion.llamadas += 1;
+    return Promise.resolve(renovacion.acepta);
+  };
   const entorno: Entorno = {
     api,
     almacen,
     usuario: () => actual,
     sesionesVencidas: () => vencidas,
+    renovacion,
     como(r) {
       actual = usuarioDe(r);
       return actual;
     },
     envolver(nodo) {
-      return h(ProveedorAvisos, null, h(CtxApp.Provider, { value: { api, almacen, usuario: actual, cerrarSesion: () => undefined, sesionVencida: () => void (vencidas += 1) } }, nodo));
+      return h(ProveedorAvisos, null, h(CtxApp.Provider, { value: { api, almacen, usuario: actual, cerrarSesion: () => undefined, sesionVencida: () => void (vencidas += 1), renovarSesion: renovar } }, nodo));
     },
   };
   return entorno;

@@ -108,7 +108,7 @@ function AppInterna({ sesion, api, almacen }: { sesion: Sesion; api: ClienteApi;
   const hash = useHash();
   const [tema, alternarTema] = useTema();
   const ruta = parsearRuta(hash);
-  // G-15: el servidor dijo «unauthenticated». Se guarda la ruta, se cierra la sesión y el ingreso explica por qué; al
+  // G-15: el servidor dijo «unauthenticated» y el token no se pudo renovar (ver hooks.ts). Se guarda la ruta, se cierra la sesión y el ingreso explica por qué; al
   // entrar de nuevo, la ruta sigue en la barra de direcciones y se vuelve a ella.
   const sesionVencida = useCallback(() => {
     if (yaVencida.current) return;
@@ -118,7 +118,7 @@ function AppInterna({ sesion, api, almacen }: { sesion: Sesion; api: ClienteApi;
     void sesion.cerrar();
   }, [sesion]);
   const contexto = useMemo(
-    () => (usuario === null ? null : { api, almacen, usuario, cerrarSesion: () => void sesion.cerrar(), sesionVencida }),
+    () => (usuario === null ? null : { api, almacen, usuario, cerrarSesion: () => void sesion.cerrar(), sesionVencida, renovarSesion: () => sesion.renovar() }),
     [api, almacen, usuario, sesion, sesionVencida],
   );
 

@@ -1,7 +1,9 @@
-import type { ComponentChildren, JSX } from 'preact';
-import { useId, useLayoutEffect, useRef, useState } from 'preact/hooks';
+import { h, render, type ComponentChildren, type JSX } from 'preact';
+import { useContext, useLayoutEffect, useRef, useState } from 'preact/hooks';
 import '../estilos/capas.css';
-import { abrirCapa, devolverFoco, enfocables, indiceDeFoco } from './capas.js';
+import { CtxAvisos } from './avisos.js';
+import { CtxApp } from './contexto.js';
+import { abrirCapa, devolverFoco, enfocables, enfocablesVivos, indiceDeFoco } from './capas.js';
 
 export interface PropsDialogo {
   titulo: string;
@@ -31,15 +33,60 @@ function focoInicial(el: HTMLElement, foco: 'campo' | 'cerrar' | 'seguro'): HTML
   return dentro.find((x) => x.matches(CAMPOS)) ?? dentro[0] ?? cerrar ?? el;
 }
 
+/** Ciclo de Tab: lo enfocable del diálogo (sin los diálogos anidados) y, después, los avisos vivos. */
+function tabular(e: KeyboardEvent, el: HTMLElement): void {
+  const lista = [...enfocables(el).filter((x) => x.closest('.dialogo') === el), ...enfocablesVivos()];
+  const i = indiceDeFoco(lista.length, lista.indexOf(document.activeElement as HTMLElement), e.shiftKey);
+  e.preventDefault();
+  (i === -1 ? el : lista[i])?.focus();
+}
+
 /**
- * Ventana modal accesible (montada = abierta): role=dialog, aria-modal, título y descripción asociados, foco atrapado,
+ * Monta sus hijos en un contenedor propio de `document.body` (portal mínimo: `render` de preact en vez de
+ * `preact/compat`, que pesa ~2,5 KB comprimidos). Como es otro árbol, los contextos no se heredan: se vuelven a
+ * proveer aquí los dos que usa el panel (aplicación y avisos). Si aparece un contexto nuevo, súmelo a este portal.
+ */
+function Portal({ children }: { children?: ComponentChildren }): null {
+  const app = useContext(CtxApp);
+  const avisos = useContext(CtxAvisos);
+  const contenedor = useRef<HTMLDivElement | null>(null);
+  contenedor.current ??= document.createElement('div');
+  useLayoutEffect(() => {
+    const c = contenedor.current;
+    if (c === null) return undefined;
+    document.body.append(c);
+    return () => {
+      render(null, c);
+      c.remove();
+    };
+  }, []);
+  useLayoutEffect(() => {
+    if (contenedor.current !== null) render(h(CtxApp.Provider, { value: app }, h(CtxAvisos.Provider, { value: avisos }, children)), contenedor.current);
+  });
+  return null;
+}
+
+/**
+ * Ventana modal accesible (montada = abierta, en un portal sobre `body`: los clics y envíos de lo que hay dentro no
+ * llegan al `<form>` ni a la fila con `onClick` de quien la abrió): role=dialog, aria-modal, título y descripción asociados, foco atrapado,
  * Esc, fondo inerte, página sin desplazar y devolución del foco al control que la abrió.
+ *
+ * Norma: los avisos fijos siguen vivos con el diálogo abierto (entran en su ciclo de Tab), pero un error de la acción
+ * del diálogo va LOCAL, dentro de él, junto a lo que falló: use `error: 'local'` o `'ambos'` en `useAccion`, no `'aviso'`.
  */
 export function Dialogo(p: PropsDialogo): JSX.Element {
+  return <Portal><DialogoInterno {...p} /></Portal>;
+}
+
+// No se usa `useId`: cada portal es otra raíz de preact y sus ids pueden repetirse entre raíces.
+let contadorDeIds = 0;
+
+function DialogoInterno(p: PropsDialogo): JSX.Element {
   const variante = p.variante ?? 'lateral';
   const raiz = useRef<HTMLDivElement>(null);
-  const idTitulo = useId();
-  const idDescripcion = useId();
+  const [serie] = useState(() => (contadorDeIds += 1));
+  const idTitulo = `dialogo-${serie}-titulo`;
+  const idDescripcion = `dialogo-${serie}-descripcion`;
   const [preguntando, setPreguntando] = useState(false);
   const respaldo = useRef(p.alCerrarEnfocar);
   respaldo.current = p.alCerrarEnfocar;
@@ -50,7 +97,17 @@ export function Dialogo(p: PropsDialogo): JSX.Element {
     const previo = document.activeElement instanceof HTMLElement ? document.activeElement : null;
     const soltar = abrirCapa(el.parentElement ?? el);
     focoInicial(el, p.foco ?? 'campo').focus();
+    // Los avisos (fuera del diálogo, `data-capa-viva`) entran en el ciclo de Tab: el teclado alcanza «Reintentar»/«Cerrar».
+    // Cuando el foco está en un aviso, el Tab no pasa por el diálogo: lo atiende el documento, solo el diálogo de más arriba.
+    const enAviso = (e: KeyboardEvent): void => {
+      const objetivo = e.target;
+      if (e.key !== 'Tab' || !(objetivo instanceof Element) || el.contains(objetivo) || objetivo.closest('[data-capa-viva]') === null) return;
+      const abiertos = document.querySelectorAll('.dialogo');
+      if (abiertos[abiertos.length - 1] === el) tabular(e, el);
+    };
+    document.addEventListener('keydown', enAviso);
     return () => {
+      document.removeEventListener('keydown', enAviso);
       soltar();
       devolverFoco(previo, () => respaldo.current?.() ?? null);
     };
@@ -73,10 +130,7 @@ export function Dialogo(p: PropsDialogo): JSX.Element {
     }
     if (e.key !== 'Tab') return;
     e.stopPropagation();
-    const lista = enfocables(el).filter((x) => x.closest('.dialogo') === el);
-    const i = indiceDeFoco(lista.length, lista.indexOf(document.activeElement as HTMLElement), e.shiftKey);
-    e.preventDefault();
-    (i === -1 ? el : lista[i])?.focus();
+    tabular(e, el);
   };
 
   return (

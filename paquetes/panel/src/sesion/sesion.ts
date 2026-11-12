@@ -23,6 +23,8 @@ export interface Sesion {
   actual(): UsuarioSesion | null;
   /** Se invoca al cambiar la sesión; devuelve la función para dejar de escuchar. */
   alCambiar(oyente: (u: UsuarioSesion | null) => void): () => void;
+  /** Fuerza la renovación del token de la sesión actual; `false` si no hay sesión o el servidor la rechaza. */
+  renovar(): Promise<boolean>;
   /** Reenvía el correo de verificación (solo tras un inicio con correo no verificado). */
   reenviarVerificacion(): Promise<void>;
 }
