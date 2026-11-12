@@ -239,4 +239,36 @@ describe('validarNegocio', () => {
     const r = validarNegocio({ ...negocioBase(), categorias: { 'cat-uno': { nombre: 'X', icono: 'inventado' } } });
     expect(r.ok).toBe(false);
   });
+
+  it('copia el enlace de la foto del carrusel y lo valida con la lista blanca de enlaces', () => {
+    const con = (enlace: string) => respuesta({ carrusel__ambar: { plantilla: 'ambar', items: [{ ...medioFoto('m/car'), enlace }, medioFoto('m/car2')] } });
+    const ok = contenidoDesdePublicado(con('https://ejemplo.invalid/oferta'), negocioBase(), entorno);
+    expect(ok.carruseles.ambar[0]!.enlace).toBe('https://ejemplo.invalid/oferta');
+    expect(ok.carruseles.ambar[1]!.enlace).toBeUndefined();
+    expect(contenidoDesdePublicado(con('/productos'), negocioBase(), entorno).carruseles.ambar[0]!.enlace).toBe('/productos');
+  });
+
+  it('descarta con advertencia el enlace de carrusel fuera de la lista blanca, inseguro o largo, sin tumbar la reconstrucción', () => {
+    const con = (enlace: string) => respuesta({ carrusel__ambar: { plantilla: 'ambar', items: [medioFoto('m/car2'), { ...medioFoto('m/car'), enlace }] } });
+    const largo = `https://ejemplo.invalid/${'a'.repeat(600)}`;
+    for (const malo of ['https://otro.invalid/secreto-x', 'javascript:alert(1)', largo]) {
+      const adv: string[] = [];
+      const c = contenidoDesdePublicado(con(malo), negocioBase(), entorno, adv);
+      expect(c.carruseles.ambar[1]!.enlace).toBeUndefined();
+      expect(adv).toEqual(['documentos.carrusel__ambar.items[1].enlace: enlace descartado (fuera de la lista blanca o demasiado largo)']);
+      expect(adv.join('')).not.toContain('secreto-x');
+      expect(adv.join('')).not.toContain('javascript');
+    }
+    expect(() => contenidoDesdePublicado(con('https://otro.invalid/x'), negocioBase(), entorno)).not.toThrow();
+    const adv: string[] = [];
+    contenidoDesdePublicado(con('https://ejemplo.invalid/oferta'), negocioBase(), entorno, adv);
+    expect(adv).toEqual([]);
+  });
+
+  it('trae la versión y la fecha de publicación del estado (o del sitio, o nulas)', () => {
+    const c = contenidoDesdePublicado(respuesta({}, { version: 7, publicadoEn: '2026-11-10T12:00:00.000Z' }), negocioBase(), entorno);
+    expect(c.publicacion).toEqual({ version: 7, publicadoEn: '2026-11-10T12:00:00.000Z' });
+    const sinFecha = contenidoDesdePublicado(respuesta(), negocioBase(), entorno);
+    expect(sinFecha.publicacion).toEqual({ version: 3, publicadoEn: null });
+  });
 });

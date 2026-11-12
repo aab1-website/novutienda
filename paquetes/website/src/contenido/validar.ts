@@ -79,6 +79,9 @@ function esCorreoSimple(correo: string): boolean {
   return punto > 0 && punto < dominio.length - 1 && !dominio.endsWith('.');
 }
 
+/** Largo máximo de un enlace de las secciones editables y de las fotos de carrusel. */
+export const LARGO_MAXIMO_ENLACE = 500;
+
 /** Enlaces de las secciones editables: ruta propia, tel:, mailto: o https a un anfitrión de la lista blanca. */
 export function urlEnlaceSegura(url: string, permitidos: readonly string[]): boolean {
   if (url.startsWith('/')) return esRutaPropia(url);
@@ -141,7 +144,17 @@ class Lector {
   }
 }
 
-function leerFoto(l: Lector, v: unknown, ruta: string, origenes: readonly (string | null)[]): Foto {
+function leerFoto(l: Lector, v: unknown, ruta: string, origenes: readonly (string | null)[], enlacesPermitidos?: readonly string[]): Foto {
+  const f = leerFotoBase(l, v, ruta, origenes);
+  if (enlacesPermitidos === undefined || !esObj(v) || v['enlace'] === undefined || v['enlace'] === null) return f;
+  // Enlace de una foto de carrusel: misma regla que los enlaces de las secciones (ruta propia, tel:, mailto: o https de la lista blanca).
+  const enlace = l.texto(v['enlace'], `${ruta}.enlace`, 1, LARGO_MAXIMO_ENLACE);
+  if (enlace === '') return f;
+  if (!urlEnlaceSegura(enlace, enlacesPermitidos)) { l.falla(`${ruta}.enlace`, 'enlace fuera de la lista blanca'); return f; }
+  return { ...f, enlace };
+}
+
+function leerFotoBase(l: Lector, v: unknown, ruta: string, origenes: readonly (string | null)[]): Foto {
   const o = l.obj(v, ruta);
   const url = l.texto(o['url'], `${ruta}.url`, 1, 500);
   if (url !== '' && !urlMedioSegura(url, origenes)) l.falla(`${ruta}.url`, 'debe ser una ruta propia o un origen de medios declarado');
@@ -260,7 +273,7 @@ function leerBloque(l: Lector, v: unknown, ruta: string, cfg: Contenido['config'
     case 'imagen':
       return { tipo: 'imagen', foto: leerFoto(l, o['foto'], `${ruta}.foto`, origenes) };
     case 'carrusel':
-      return { tipo: 'carrusel', fotos: l.lista(o['fotos'], `${ruta}.fotos`, LIMITES_SITIO.fotosPorCarrusel, 1).map((f, i) => leerFoto(l, f, `${ruta}.fotos[${i}]`, origenes)) };
+      return { tipo: 'carrusel', fotos: l.lista(o['fotos'], `${ruta}.fotos`, LIMITES_SITIO.fotosPorCarrusel, 1).map((f, i) => leerFoto(l, f, `${ruta}.fotos[${i}]`, origenes, cfg.enlacesPermitidos)) };
     case 'enlaces':
       return {
         tipo: 'enlaces',
@@ -395,6 +408,23 @@ export function validarNegocio(entrada: unknown, origenes: readonly (string | nu
   return l.errores.length > 0 ? { ok: false, errores: l.errores } : { ok: true, negocio };
 }
 
+/** Versión y fecha de la publicación de la que se compiló el sitio (opcional: el contenido de ejemplo no las trae). */
+function leerPublicacion(l: Lector, v: unknown): Contenido['publicacion'] {
+  if (v === undefined) return undefined;
+  const o = l.obj(v, 'publicacion');
+  let version: number | null = null;
+  if (o['version'] !== null && o['version'] !== undefined) {
+    version = l.numero(o['version'], 'publicacion.version', 0, 1_000_000_000);
+    if (!Number.isInteger(version)) { l.falla('publicacion.version', 'debe ser un entero'); version = null; }
+  }
+  let publicadoEn: string | null = null;
+  if (o['publicadoEn'] !== null && o['publicadoEn'] !== undefined) {
+    publicadoEn = l.texto(o['publicadoEn'], 'publicacion.publicadoEn', 10, 40);
+    if (publicadoEn !== '' && Number.isNaN(Date.parse(publicadoEn))) { l.falla('publicacion.publicadoEn', 'debe ser una fecha ISO'); publicadoEn = null; }
+  }
+  return { version, publicadoEn };
+}
+
 /** Valida y normaliza el contenido completo. No confía en ningún campo. */
 export function validarContenido(entrada: unknown): ResultadoValidacion {
   const l = new Lector();
@@ -486,9 +516,11 @@ export function validarContenido(entrada: unknown): ResultadoValidacion {
   const car = l.obj(raiz['carruseles'], 'carruseles');
   const carruseles = {} as Record<IdPlantilla, readonly Foto[]>;
   for (const id of IDS_PLANTILLA) {
-    carruseles[id] = l.lista(car[id], `carruseles.${id}`, LIMITES_SITIO.carruselesPorPlantilla, 1).map((f, i) => leerFoto(l, f, `carruseles.${id}[${i}]`, origenes));
+    carruseles[id] = l.lista(car[id], `carruseles.${id}`, LIMITES_SITIO.carruselesPorPlantilla, 1).map((f, i) => leerFoto(l, f, `carruseles.${id}[${i}]`, origenes, config.enlacesPermitidos));
   }
 
+  const publicacion = leerPublicacion(l, raiz['publicacion']);
+
   if (l.errores.length > 0) return { ok: false, errores: l.errores };
-  return { ok: true, contenido: { config, portada, beneficios, categorias, marcas, identidad, productos, secciones, carruseles } };
+  return { ok: true, contenido: { config, portada, beneficios, categorias, marcas, identidad, productos, secciones, carruseles, ...(publicacion !== undefined ? { publicacion } : {}) } };
 }

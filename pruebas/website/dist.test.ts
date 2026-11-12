@@ -82,4 +82,32 @@ describe.skipIf(!compilado)('CSP del sitio compilado', () => {
     const css = readFileSync(join(DIST, 'plantillas.css'), 'utf8');
     for (const id of ['cielo', 'bosque', 'ambar', 'grafito', 'ciruela']) expect(css).toContain(`data-plantilla="${id}"`);
   });
+
+  it('la ficha pinta la descripción con elementos reales, escapada y sin saltar niveles; la tarjeta usa texto plano', () => {
+    const ficha = readFileSync(join(DIST, 'producto/televisor-ejemplo-55.html'), 'utf8');
+    const desc = /<div class="ficha-descripcion">([\s\S]*?)<\/div>\s*(?:<p class="ficha-garantia"|<\/div>)/.exec(ficha)?.[1] ?? '';
+    expect(desc).toContain('<h2 class="descripcion-titulo">Características</h2>');
+    expect(desc).toContain('<h3 class="descripcion-titulo">Conexiones</h3>');
+    expect(desc).toMatch(/<ul class="descripcion-lista"><li>Pantalla de <strong>55 pulgadas<\/strong><\/li><li>Resolución 4K<\/li><\/ul>/);
+    expect(desc).toContain('&lt;b&gt;Texto literal&lt;/b&gt;');
+    expect(desc).not.toMatch(/##|\* |<b>/);
+    expect((ficha.match(/<h1[\s>]/g) ?? []).length).toBe(1);
+    const lista = readFileSync(join(DIST, 'productos/televisores.html'), 'utf8');
+    const tarjeta = /<p class="tarjeta-descripcion">([^<]*)<\/p>/.exec(lista)?.[1] ?? '';
+    expect(tarjeta).not.toMatch(/#|\*/);
+  });
+
+  it('declara de qué contenido se compiló: /version-contenido.json con conteos y huella', () => {
+    const v = JSON.parse(readFileSync(join(DIST, 'version-contenido.json'), 'utf8')) as Record<string, unknown>;
+    expect(Object.keys(v).sort()).toEqual(['esquema', 'huella', 'huellaSinDisponibilidad', 'productos', 'publicadoEn', 'secciones', 'version']);
+    expect(v['esquema']).toBe(2);
+    expect(v['huella']).toMatch(/^[0-9a-f]{64}$/);
+    expect(v['huellaSinDisponibilidad']).toMatch(/^[0-9a-f]{64}$/);
+    expect(v['productos']).toBeGreaterThan(0);
+  });
+
+  it('el carrusel de la portada con enlace lo pinta como enlace con nombre accesible', () => {
+    const portada = readFileSync(join(DIST, 'index.html'), 'utf8');
+    expect(portada).toMatch(/<a [^>]*class="carrusel-enlace activa"[^>]*href="\/productos"[^>]*aria-label="[^"]+"|<a [^>]*href="\/productos"[^>]*class="carrusel-enlace activa"/);
+  });
 });

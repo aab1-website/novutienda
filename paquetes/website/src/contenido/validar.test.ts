@@ -147,4 +147,19 @@ describe('URL seguras', () => {
     expect(urlEnlaceSegura('http://ok.example/x', ['ok.example'])).toBe(false);
     expect(urlEnlaceSegura('data:text/html,hola', ['ok.example'])).toBe(false);
   });
+
+  it('el enlace de una foto de carrusel pasa por la lista blanca; la publicación es opcional y validada', () => {
+    const con = (enlace: unknown, pub?: unknown): readonly string[] => {
+      const c = clon();
+      const car = c['carruseles'] as Record<string, Record<string, unknown>[]>;
+      car['cielo']![0]!['enlace'] = enlace;
+      if (pub !== undefined) c['publicacion'] = pub;
+      return errores(c);
+    };
+    expect(con('/productos')).toEqual([]);
+    expect(con('https://www.ejemplo.invalid/x')).toEqual([]);
+    expect(con('https://evil.example/').join()).toContain('carruseles.cielo[0].enlace: enlace fuera de la lista blanca');
+    expect(con('/productos', { version: 2, publicadoEn: '2026-11-10T12:00:00Z' })).toEqual([]);
+    expect(con('/productos', { version: 1.5, publicadoEn: 'ayer' }).join()).toContain('publicacion');
+  });
 });

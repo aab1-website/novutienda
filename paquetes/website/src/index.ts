@@ -23,6 +23,8 @@ export * from './lib/cotizacion-cliente.js';
 export * from './lib/precio-vista.js';
 export * from './lib/convertidor.js';
 export * from './lib/seo.js';
+export * from './lib/descripcion.js';
+export * from './lib/huella.js';
 export * from './lib/indexacion.js';
 export * from './lib/eventos.js';
 
