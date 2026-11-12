@@ -10,11 +10,12 @@ import { enfocarPrimerError } from '../../ui/formulario.js';
 import { useBorrador, useCambiosSinGuardar } from '../../ui/guardia.js';
 import { useAccion, useCarga, type Accion } from '../../ui/hooks.js';
 import { SelectorBuscable } from '../../ui/selector-buscable.js';
-import { TablaMovimientos, useProductos } from './inventario-ops.js';
 import {
   claveLinea, haySeQuedan, leerDiferencia, MAX_LINEAS, resumenAjuste, resumenIngreso, resumenTraspaso, revisarAjuste, revisarLineas, type FilaLinea, type LecturaExistencia, type Resumen,
 } from './movimientos-resumen.js';
 import { nombreAlmacen, OPCIONES_ALMACEN } from './nombres.js';
+import { TablaMovimientos } from './registro.js';
+import { useProductos } from './usar-productos.js';
 import './inventario.css';
 
 const filaVacia = (): FilaLinea => ({ id: nuevoId(), productoId: '', cantidad: '', series: '' });
@@ -235,8 +236,8 @@ export function Traspaso(): JSX.Element {
         {s.resumen !== null && <Confirmacion resumen={s.resumen} accion={s.accion} alConfirmar={confirmar} alVolver={() => { s.setResumen(null); s.accion.limpiar(); }} />}
       </Seccion>
       <Seccion titulo="Últimos traspasos">
-        {movs.datos && movs.datos.length === 0 && <Vacio titulo="Todavía no hay traspasos" />}
-        {movs.datos && movs.datos.length > 0 && <TablaMovimientos movs={movs.datos} productos={prod.lista} />}
+        {movs.datos && movs.datos.movimientos.length === 0 && <Vacio titulo="Todavía no hay traspasos" />}
+        {movs.datos && movs.datos.movimientos.length > 0 && <TablaMovimientos movs={movs.datos.movimientos} productos={prod.lista} cortada={movs.datos.cortada} />}
       </Seccion>
     </div>
   );

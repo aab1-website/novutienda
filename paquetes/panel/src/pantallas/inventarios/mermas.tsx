@@ -1,117 +1,210 @@
 import type { JSX } from 'preact';
-import { useState } from 'preact/hooks';
+import { useEffect, useRef, useState } from 'preact/hooks';
 import { nuevoId } from '../../api/cliente.js';
-import type { UbicacionId } from '../../api/tipos.js';
-import { Alerta, Boton, Campo, Cargando, ErrorCarga, Selector, Seccion, Vacio, fechaHora } from '../../ui/comun.js';
+import type { MermaVista, ProductoPanel, UbicacionId } from '../../api/tipos.js';
+import { useAvisos } from '../../ui/avisos.js';
+import { Alerta, Boton, Campo, ConCarga, Selector, Seccion, fechaHora } from '../../ui/comun.js';
 import { useApp } from '../../ui/contexto.js';
+import { Dialogo } from '../../ui/dialogo.js';
+import { enfocarPrimerError } from '../../ui/formulario.js';
+import { useBorrador, useCambiosSinGuardar } from '../../ui/guardia.js';
 import { useAccion, useCarga } from '../../ui/hooks.js';
+import { Tabla } from '../../ui/tabla.js';
 import { SelectorProducto } from './movimientos.js';
+import { MERMA_INICIAL, MOTIVO_MAX, MOTIVO_RECHAZO_FALTA, ESTADO_TEXTO, OPCIONES_ESTADO, ordenarMermas, resumenResolucion, revisarSolicitud, type BorradorMerma, type FiltroEstado } from './mermas-logica.js';
+import { separar } from './movimientos-resumen.js';
+import { nombreAlmacen, OPCIONES_ALMACEN } from './nombres.js';
+import './inventario.css';
 
-const ALMACENES = [{ valor: 'tienda', texto: 'Tienda' }, { valor: 'deposito-1', texto: 'Depósito 1' }, { valor: 'deposito-2', texto: 'Depósito 2' }];
-const ESTADO_TEXTO = { solicitada: 'Pendiente', aprobada: 'Aprobada', rechazada: 'Rechazada' } as const;
-
-export function PantallaMermas(): JSX.Element {
-  const { api, usuario } = useApp();
-  const productos = useCarga(() => api.llamar('listarProductos', {}), []);
-  const mermas = useCarga(() => api.llamar('listarMermas', {}), []);
+/** Diálogo de aprobar o rechazar una merma. Rechazar exige motivo, junto al campo. */
+function ResolverMerma({ merma, producto, decision, alCerrar, alResolver, alProcesar, alCerrarEnfocar }: {
+  merma: MermaVista;
+  producto: ProductoPanel | undefined;
+  decision: 'aprobada' | 'rechazada';
+  alCerrar: () => void;
+  alResolver: () => void;
+  /** Avisa a la fila que su merma se está procesando (o que ya terminó). */
+  alProcesar: (procesando: boolean) => void;
+  alCerrarEnfocar: () => HTMLElement | null;
+}): JSX.Element {
+  const { api } = useApp();
+  const avisos = useAvisos();
   const accion = useAccion();
-  const res = useAccion();
-  const [productoId, setProductoId] = useState('');
-  const [ubicacionId, setUbicacionId] = useState<UbicacionId>('tienda');
-  const [cantidad, setCantidad] = useState('1');
-  const [series, setSeries] = useState('');
   const [motivo, setMotivo] = useState('');
-  const [operacionId, setOperacionId] = useState(nuevoId);
-  const [ok, setOk] = useState<string | null>(null);
-
-  const lista = productos.datos ?? [];
-  const p = lista.find((x) => x.id === productoId);
-  const listaSeries = series.split(/[\s,;]+/).filter((s) => s !== '');
-
-  const solicitar = (e: Event): void => {
-    e.preventDefault();
-    if (p === undefined) return;
+  const [intento, setIntento] = useState(false);
+  const operacionId = useRef(nuevoId());
+  const rechaza = decision === 'rechazada';
+  const falta = rechaza && motivo.trim() === '';
+  const nombre = producto?.nombre ?? merma.productoId;
+  const confirmar = (): void => {
+    setIntento(true);
+    if (falta) return;
+    alProcesar(true);
     void accion.ejecutar(async () => {
-      await api.llamar('solicitarMerma', {
-        operacionId, productoId: p.id, ubicacionId, cantidad: p.conSerie ? listaSeries.length : Math.floor(Number(cantidad) || 0),
-        ...(p.conSerie ? { series: listaSeries } : {}), motivo: motivo.trim(),
-      });
-      setOk('Merma solicitada. Un supervisor o administrador debe resolverla; no mueve el stock hasta entonces.');
-      setMotivo('');
-      setSeries('');
-      setOperacionId(nuevoId());
-      mermas.recargar();
-    });
+      await api.llamar('resolverMerma', { operacionId: operacionId.current, mermaId: merma.mermaId, decision, ...(rechaza ? { motivo: motivo.trim() } : {}) });
+      avisos.ok(rechaza ? `Merma de ${nombre} rechazada.` : `Merma de ${nombre} aprobada: el stock ya se descontó.`);
+      alResolver();
+    }).finally(() => alProcesar(false));
   };
+  return (
+    <Dialogo
+      variante="centro"
+      titulo={rechaza ? '¿Rechazar esta merma?' : '¿Aprobar esta merma?'}
+      descripcion="Revise antes de confirmar."
+      foco={rechaza ? 'campo' : 'seguro'}
+      sucio={rechaza && motivo.trim() !== ''}
+      onCerrar={alCerrar}
+      alCerrarEnfocar={alCerrarEnfocar}
+      pie={
+        <>
+          <button type="button" class="boton boton-secundario" data-seguro onClick={alCerrar}>Volver</button>
+          <Boton variante={rechaza ? 'peligro' : 'cta'} onClick={confirmar} ocupado={accion.ocupado}>{rechaza ? 'Sí, rechazar' : 'Sí, aprobar'}</Boton>
+        </>
+      }
+    >
+      <ul class="lista-simple inv-resumen" data-prueba="resumen-merma">
+        {resumenResolucion(merma, producto, decision).map((l) => <li key={l}>{l}</li>)}
+      </ul>
+      {rechaza && (
+        <Campo etiqueta="Motivo del rechazo" requerido tope={MOTIVO_MAX} valor={motivo} onInput={setMotivo} error={intento && falta ? MOTIVO_RECHAZO_FALTA : undefined} />
+      )}
+      {accion.error !== null && <Alerta>{accion.error}</Alerta>}
+    </Dialogo>
+  );
+}
 
-  const resolver = (mermaId: string, decision: 'aprobada' | 'rechazada'): void => {
-    void res.ejecutar(async () => {
-      await api.llamar('resolverMerma', { operacionId: nuevoId(), mermaId, decision });
-      mermas.recargar();
-      productos.recargar();
+function Solicitar({ productos, alSolicitar }: { productos: readonly ProductoPanel[]; alSolicitar: () => void }): JSX.Element {
+  const { api } = useApp();
+  const avisos = useAvisos();
+  const accion = useAccion();
+  const clave = 'inventarios.merma.solicitud';
+  const [inicial] = useState<BorradorMerma>(MERMA_INICIAL);
+  const b = useBorrador<BorradorMerma>(clave, inicial);
+  const e = b.valor;
+  const sucio = b.hayBorrador && (e.productoId !== '' || e.series.trim() !== '' || e.motivo.trim() !== '' || e.cantidad !== '1');
+  const { marcarGuardado } = useCambiosSinGuardar(sucio, [clave]);
+  const [intento, setIntento] = useState(false);
+  const [pideFoco, setPideFoco] = useState(0);
+  const formulario = useRef<HTMLFormElement>(null);
+  const operacion = useRef<{ firma: string; id: string } | null>(null);
+  useEffect(() => {
+    if (pideFoco > 0 && formulario.current !== null) enfocarPrimerError(formulario.current);
+  }, [pideFoco]);
+  const p = productos.find((x) => x.id === e.productoId);
+  const errores = intento ? revisarSolicitud(e, p) : {};
+  const series = separar(e.series);
+
+  const solicitar = (ev: Event): void => {
+    ev.preventDefault();
+    setIntento(true);
+    if (p === undefined || Object.keys(revisarSolicitud(e, p)).length > 0) {
+      setPideFoco((n) => n + 1);
+      return;
+    }
+    const cantidad = p.conSerie ? series.length : Number(e.cantidad.trim());
+    const firma = JSON.stringify([p.id, e.ubicacionId, cantidad, series, e.motivo.trim()]);
+    if (operacion.current?.firma !== firma) operacion.current = { firma, id: nuevoId() };
+    const operacionId = operacion.current.id;
+    void accion.ejecutar(async () => {
+      await api.llamar('solicitarMerma', { operacionId, productoId: p.id, ubicacionId: e.ubicacionId as UbicacionId, cantidad, ...(p.conSerie ? { series } : {}), motivo: e.motivo.trim() });
+      avisos.ok(`Merma de ${p.nombre} solicitada. Un supervisor o administrador debe resolverla; no mueve el stock hasta entonces.`);
+      operacion.current = null;
+      marcarGuardado();
+      b.descartar();
+      setIntento(false);
+      alSolicitar();
     });
   };
 
   return (
-    <div>
+    <Seccion titulo="Solicitar una merma">
+      <form ref={formulario} class="formulario" onSubmit={solicitar} noValidate>
+        <div class="cuadricula">
+          <SelectorProducto productos={productos} valor={e.productoId} onCambio={(v) => b.poner({ ...e, productoId: v })} error={errores['producto']} />
+          <Selector etiqueta="Almacén" valor={e.ubicacionId} onCambio={(v) => b.poner({ ...e, ubicacionId: v })} opciones={OPCIONES_ALMACEN} />
+          {p?.conSerie ? (
+            <Campo etiqueta="Series (separadas por coma)" valor={e.series} onInput={(v) => b.poner({ ...e, series: v })} requerido error={errores['series']} />
+          ) : (
+            <Campo etiqueta="Cantidad" valor={e.cantidad} onInput={(v) => b.poner({ ...e, cantidad: v })} inputMode="numeric" requerido error={errores['cantidad']} />
+          )}
+          <Campo etiqueta="Motivo" valor={e.motivo} onInput={(v) => b.poner({ ...e, motivo: v })} requerido tope={MOTIVO_MAX} error={errores['motivo']} />
+        </div>
+        {accion.error && <Alerta>{accion.error}</Alerta>}
+        <Boton tipo="submit" ocupado={accion.ocupado}>Solicitar merma</Boton>
+      </form>
+    </Seccion>
+  );
+}
+
+export function PantallaMermas(): JSX.Element {
+  const { api, usuario } = useApp();
+  const productos = useCarga(() => api.llamar('listarProductos', {}), []);
+  const [estado, setEstado] = useState<FiltroEstado>('solicitada');
+  const mermas = useCarga(() => api.llamar('listarMermas', estado === '' ? {} : { estado }), [estado]);
+  const [resolviendo, setResolviendo] = useState<{ merma: MermaVista; decision: 'aprobada' | 'rechazada'; etiqueta: string } | null>(null);
+  const [procesando, setProcesando] = useState<string | null>(null);
+  const raiz = useRef<HTMLDivElement>(null);
+  const lista = productos.datos ?? [];
+  const nombre = (id: string): string => lista.find((x) => x.id === id)?.nombre ?? id;
+  const volverAlBoton = (): HTMLElement | null =>
+    Array.from(raiz.current?.querySelectorAll<HTMLElement>('button') ?? []).find((x) => x.getAttribute('aria-label') === resolviendo?.etiqueta) ?? null;
+
+  return (
+    <div ref={raiz}>
       <h1>Mermas</h1>
-      <Seccion titulo="Solicitar una merma">
-        {productos.cargando && <Cargando />}
-        {productos.error && <ErrorCarga error={productos.error} reintentar={productos.recargar} />}
-        {productos.datos && (
-          <form class="formulario" onSubmit={solicitar} noValidate>
-            <div class="cuadricula">
-              <SelectorProducto productos={lista} valor={productoId} onCambio={setProductoId} />
-              <Selector etiqueta="Almacén" valor={ubicacionId} onCambio={(v) => setUbicacionId(v as UbicacionId)} opciones={ALMACENES} />
-              {p?.conSerie ? (
-                <Campo etiqueta="Series (separadas por coma)" valor={series} onInput={setSeries} requerido />
-              ) : (
-                <Campo etiqueta="Cantidad" valor={cantidad} onInput={setCantidad} inputMode="numeric" requerido />
-              )}
-              <Campo etiqueta="Motivo" valor={motivo} onInput={setMotivo} requerido />
-            </div>
-            {accion.error && <Alerta>{accion.error}</Alerta>}
-            {ok && <Alerta tipo="ok">{ok}</Alerta>}
-            <Boton tipo="submit" ocupado={accion.ocupado} deshabilitado={p === undefined || motivo.trim() === '' || (p.conSerie && listaSeries.length === 0)}>
-              Solicitar merma
-            </Boton>
-          </form>
-        )}
-      </Seccion>
+      <ConCarga carga={productos}>{(ps) => <Solicitar productos={ps} alSolicitar={mermas.recargar} />}</ConCarga>
       <Seccion titulo="Mermas registradas">
-        {mermas.cargando && <Cargando />}
-        {mermas.error && <ErrorCarga error={mermas.error} reintentar={mermas.recargar} />}
-        {res.error && <Alerta>{res.error}</Alerta>}
-        {mermas.datos && mermas.datos.length === 0 && <Vacio titulo="No hay mermas registradas" />}
-        {mermas.datos && mermas.datos.length > 0 && (
-          <table class="tabla">
-            <caption class="solo-lectores">Mermas</caption>
-            <thead><tr><th scope="col">Fecha</th><th scope="col">Producto</th><th scope="col" class="num">Cantidad</th><th scope="col">Motivo</th><th scope="col">Estado</th><th scope="col"><span class="solo-lectores">Acciones</span></th></tr></thead>
-            <tbody>
-              {mermas.datos.map((m) => (
-                <tr key={m.mermaId}>
-                  <td>{fechaHora(m.fecha)}</td>
-                  <td>{lista.find((x) => x.id === m.productoId)?.nombre ?? m.productoId}{m.series.length > 0 ? ` (${m.series.join(', ')})` : ''}</td>
-                  <td class="num">{m.cantidad}</td>
-                  <td>{m.motivo}</td>
-                  <td>{ESTADO_TEXTO[m.estado]}</td>
-                  <td>
-                    {m.estado === 'solicitada' &&
-                      (m.solicitadaPor === usuario.uid ? (
-                        <span class="texto-suave">La resuelve otra persona</span>
-                      ) : (
-                        <div class="fila">
-                          <Boton chico onClick={() => resolver(m.mermaId, 'aprobada')} ocupado={res.ocupado}>Aprobar</Boton>
-                          <Boton chico variante="secundario" onClick={() => resolver(m.mermaId, 'rechazada')} ocupado={res.ocupado}>Rechazar</Boton>
-                        </div>
-                      ))}
-                  </td>
-                </tr>
-              ))}
-            </tbody>
-          </table>
-        )}
+        <div class="inv-filtro">
+          <Selector etiqueta="Estado" valor={estado} onCambio={(v) => setEstado(v as FiltroEstado)} opciones={OPCIONES_ESTADO.map((o) => ({ valor: o.valor, texto: o.texto }))} />
+        </div>
+        <ConCarga carga={mermas}>
+          {({ mermas: filas, cortada }) => (
+            <Tabla
+              titulo="Mermas"
+              filas={ordenarMermas(filas)}
+              clave={(m) => m.mermaId}
+              porPagina={25}
+              buscar={{ etiqueta: 'Buscar por producto o motivo', en: (m) => [nombre(m.productoId), m.motivo, m.motivoResolucion ?? ''] }}
+              cortada={cortada ? { mostradas: filas.length, mensaje: `Se muestran las primeras ${String(filas.length)} mermas; hay más. Filtre por estado para ver el resto.` } : undefined}
+              vacio={{ titulo: estado === 'solicitada' ? 'No hay mermas pendientes' : 'No hay mermas registradas' }}
+              columnas={[
+                { id: 'fecha', titulo: 'Fecha', valor: (m) => m.fecha, celda: (m) => fechaHora(m.fecha) },
+                { id: 'producto', titulo: 'Producto', valor: (m) => nombre(m.productoId), celda: (m) => `${nombre(m.productoId)}${m.series.length > 0 ? ` (${m.series.join(', ')})` : ''} · ${nombreAlmacen(m.ubicacionId)}` },
+                { id: 'cantidad', titulo: 'Cantidad', valor: (m) => m.cantidad },
+                { id: 'motivo', titulo: 'Motivo', valor: (m) => m.motivo },
+                { id: 'estado', titulo: 'Estado', valor: (m) => ESTADO_TEXTO[m.estado], celda: (m) => (procesando === m.mermaId ? 'Procesando…' : ESTADO_TEXTO[m.estado]) },
+                { id: 'resolucion', titulo: 'Motivo de la resolución', valor: (m) => m.motivoResolucion ?? '', celda: (m) => m.motivoResolucion ?? '—' },
+              ]}
+              acciones={(m) =>
+                m.estado !== 'solicitada' ? null : m.solicitadaPor === usuario.uid ? (
+                  <span class="texto-suave">La resuelve otra persona</span>
+                ) : (
+                  <div class="fila">
+                    <Boton chico ocupado={procesando === m.mermaId} etiqueta={`Aprobar la merma de ${nombre(m.productoId)}`} onClick={() => { setResolviendo({ merma: m, decision: 'aprobada', etiqueta: `Aprobar la merma de ${nombre(m.productoId)}` }); }}>Aprobar</Boton>
+                    <Boton chico variante="secundario" deshabilitado={procesando === m.mermaId} etiqueta={`Rechazar la merma de ${nombre(m.productoId)}`} onClick={() => { setResolviendo({ merma: m, decision: 'rechazada', etiqueta: `Rechazar la merma de ${nombre(m.productoId)}` }); }}>Rechazar</Boton>
+                  </div>
+                )
+              }
+            />
+          )}
+        </ConCarga>
       </Seccion>
+      {resolviendo !== null && (
+        <ResolverMerma
+          key={`${resolviendo.merma.mermaId}-${resolviendo.decision}`}
+          merma={resolviendo.merma}
+          producto={lista.find((x) => x.id === resolviendo.merma.productoId)}
+          decision={resolviendo.decision}
+          alCerrar={() => setResolviendo(null)}
+          alProcesar={(v) => setProcesando(v ? resolviendo.merma.mermaId : null)}
+          alCerrarEnfocar={volverAlBoton}
+          alResolver={() => {
+            setResolviendo(null);
+            mermas.recargar();
+            productos.recargar();
+          }}
+        />
+      )}
     </div>
   );
 }
