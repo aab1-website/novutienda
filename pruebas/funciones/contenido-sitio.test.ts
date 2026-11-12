@@ -374,7 +374,7 @@ describe('generar', () => {
     modo.productos = 120;
     const salida = join(dir, 'sub', 'contenido.json');
     const r = await ejecutar(['generar', '--salida', salida, ...args], env, deps, fetchLocal);
-    expect(r).toEqual({ codigo: 0, salida: 'contenido generado: 120 productos' }); // el lote exige código 0
+    expect(r).toEqual({ codigo: 0, salida: 'contenido generado: 120 productos\nadvertencias del mapeo: 0' }); // el lote exige código 0
     const leido = leerConModo(salida);
     expect(leido.modo).toBe(0o600);
     const escrito = JSON.parse(leido.texto) as { productos: string[]; disponibilidad: Record<string, boolean> };
@@ -426,7 +426,7 @@ describe('generar', () => {
       ? Promise.resolve(new Response(JSON.stringify({ documentos: { 'producto__p0': {}, 'producto__MAL ID': {} } }), { status: 200 }))
       : fetchLocal(entrada, init)) as typeof fetch;
     const r = await ejecutar(['generar', '--salida', salida, ...args], env, deps, publicadoMalo);
-    expect(r).toEqual({ codigo: 0, salida: 'contenido generado: 1 productos (aviso: 1 ids de producto inválidos sin consultar)' });
+    expect(r).toEqual({ codigo: 0, salida: 'contenido generado: 1 productos (aviso: 1 ids de producto inválidos sin consultar)\nadvertencias del mapeo: 0' });
     const releido = leerConModo(salida);
     expect(releido.modo).toBe(0o600);
     expect(releido.texto).not.toContain('viejo');
@@ -464,5 +464,19 @@ describe('generar', () => {
     expect(visto?.baseMedios).toBe('https://medios.example.com/bucket-stg');
     await llamar({ VITE_RECAPTCHA_ENTERPRISE_SITE_KEY: 'k', VITE_FIREBASE_API_KEY: 'a', VITE_FIREBASE_APP_ID: 'i', VITE_FIREBASE_PROJECT_ID: 'p' });
     expect(visto?.appCheck).toEqual({ claveSitio: 'k', apiKey: 'a', appId: 'i', projectId: 'p' });
+  });
+  it('las advertencias del mapeo se cuentan e imprimen solo como rutas con ids enmascarados; el código sigue en 0', async () => {
+    const privado = 'sec-privada';
+    const mapear = (_p: unknown, _n: unknown, _e: unknown, adv?: string[]) => {
+      adv?.push(`documentos.seccion__${privado}.bloques[0].items[2].enlace: enlace descartado (x)`, 'documentos.carrusel__cielo.items[0].enlace: enlace descartado (x)');
+      return { productos: [], disponibilidad: {} };
+    };
+    const salida = join(dir, 'adv.json');
+    const r = await ejecutar(['generar', '--salida', salida, ...args], env, { calcularFirma, mapear }, fetchLocal);
+    expect(r.codigo).toBe(0);
+    expect(r.salida).toBe('contenido generado: 3 productos\nadvertencias del mapeo: 2\n  documentos.seccion__*.bloques[0].items[2].enlace\n  documentos.carrusel__cielo.items[0].enlace');
+    expect(JSON.stringify(r)).not.toContain(privado);
+    const g = await generarContenido({ tenant: TENANT, url: ORIGEN, secreto: SECRETO, env, calcularFirma, mapear, fetchFn: fetchLocal });
+    expect(g.advertencias).toHaveLength(2);
   });
 });

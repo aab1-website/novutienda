@@ -35,7 +35,7 @@ Errores: `401 firma_invalida`, `400 tenant_invalido | estado_invalido | entrada_
 
 Solo staging. El CI principal (`ci-node-firebase.yml`) ya no despliega el sitio público en staging (su guardia lo impide); este workflow es el único que despliega los sitios de tenant.
 
-**Disparadores.** `schedule` cada 15 minutos (DC2): reconstruye solo los sitios con un trabajo `pendiente`. `workflow_dispatch` (entrada `clave`, vacía = todos): reconstruye aunque no haya trabajo en la cola. `workflow_run`: el CI terminó en éxito un push a `main` y el código nuevo del sitio llega a staging con el contenido real. El checkout usa siempre el HEAD de `main`, nunca el `head_sha` del evento `workflow_run`. `schedule` y `workflow_dispatch` exigen `main`. GitHub atrasa los `schedule` en horas de carga y los apaga tras 60 días sin actividad en el repositorio: si el sondeo deja de correr, se revisa eso primero.
+**Disparadores.** `schedule` cada 15 minutos (DC2): reconstruye solo los sitios con un trabajo `pendiente`. `workflow_dispatch` (entrada `clave`, vacía = todos): reconstruye aunque no haya trabajo en la cola; con el prefijo `certificar:` solo certifica, sin desplegar (sección «Certificación»). `workflow_run`: el CI terminó en éxito un push a `main` y el código nuevo del sitio llega a staging con el contenido real. El checkout usa siempre el HEAD de `main`, nunca el `head_sha` del evento `workflow_run`. `schedule` y `workflow_dispatch` exigen `main`. GitHub atrasa los `schedule` en horas de carga y los apaga tras 60 días sin actividad en el repositorio: si el sondeo deja de correr, se revisa eso primero.
 
 **Job `sondear`** (sin `pnpm install`): lee `SITIOS_TENANT`, arma la matriz con `scripts/sitios-tenant.mjs matriz` y, en `schedule`, consulta la cola firmada de cada sitio (`scripts/contenido-sitio.mjs pendiente`) y deja solo los que tienen trabajo. Un sitio que no responde no detiene a los demás: se reconstruyen igual y el run queda en rojo. Con `SITIOS_TENANT` sin configurar, el sondeo programado termina sin hacer nada.
 
@@ -49,8 +49,9 @@ Solo staging. El CI principal (`ci-node-firebase.yml`) ya no despliega el sitio 
 4. Prueba del sitio compilado con contenido real (`pruebas/website/dist-real.test.ts`, con `EXIGIR_DIST=1`: si falta `dist/website` falla, no se omite).
 5. `preparar-sitio-tenant.sh`: exige que `dist/firebase.json` declare solo `hosting`, con una entrada, sin `target` y con el `site` esperado; rechaza el sitio del panel (`FIREBASE_SITE_PANEL`, variable del Environment, obligatoria).
 6. Autenticación por WIF, copia del sitio vivo al canal `previa`, `firebase deploy --only hosting` (se revisa el registro además del código de salida) y humo de `/`, `/productos` (comprueba `cleanUrls`) y `/api/cotizacion?mercado=BO`. La entrada del sitio en `firebase.json` lleva `cleanUrls` (#72).
-7. Cierre: `completada`, o `fallida` si algo falló o el run se canceló (un trabajo no queda `en_curso` para siempre). `estado` reintenta ante `502`, `503`, `504` y errores de red (4 intentos, con esperas de 2, 5 y 10 s); si aun así falla el cierre `completada`, no se marca `fallida` (el sitio ya está desplegado y probado) y el run queda en rojo.
-8. Rezagados: tras un despliegue y humo correctos, haya o no trabajo propio, `contenido-sitio.mjs rezagados` marca `completada` los trabajos que quedaron `en_curso` en corridas anteriores (el grupo de concurrencia por sitio garantiza que no hay otro corredor y el sitio ya contiene lo publicado). Solo imprime el conteo; un `409` o `404` no es error, cualquier otro fallo pone el run en rojo.
+7. Certificación del sitio desplegado contra el contenido del build (`scripts/certificar-sitio.mjs --contenido`, sin secretos de la cola ni del negocio; ver «Certificación»). Si falla, el trabajo no se cierra `completada`.
+8. Cierre: `completada`, o `fallida` si algo falló (incluida la certificación) o el run se canceló (un trabajo no queda `en_curso` para siempre). `estado` reintenta ante `502`, `503`, `504` y errores de red (4 intentos, con esperas de 2, 5 y 10 s); si aun así falla el cierre `completada`, no se marca `fallida` (el sitio ya está desplegado y probado) y el run queda en rojo.
+9. Rezagados: tras un despliegue, humo y certificación correctos, haya o no trabajo propio, `contenido-sitio.mjs rezagados` marca `completada` los trabajos que quedaron `en_curso` en corridas anteriores (el grupo de concurrencia por sitio garantiza que no hay otro corredor y el sitio ya contiene lo publicado). Solo imprime el conteo; un `409` o `404` no es error, cualquier otro fallo pone el run en rojo.
 
 **Secretos del Environment `staging`** (valores por stdin, nunca en el repositorio): `SITIOS_TENANT`, `SITIO_NEGOCIO_<CLAVE>` (una por sitio, con la clave en mayúsculas) y `SITIO_RECONSTRUCCION_SECRETO`. Además `GCP_WIF_PROVIDER` y `GCP_SA_DEPLOY_STAGING`.
 
@@ -69,6 +70,36 @@ Solo staging. El CI principal (`ci-node-firebase.yml`) ya no despliega el sitio 
 **Estado en staging (10/11/2026).** Los secretos y la variable del Environment `staging` ya están cargados y la primera reconstrucción real se hizo (PR #66, #68 a #72).
 
 **Pendientes.** (a) Decisión de Andres: el despliegue usa `GCP_SA_DEPLOY_STAGING`, que tiene permisos de todo el pase. Se propone una cuenta de servicio propia de la reconstrucción con solo `roles/firebasehosting.admin`, para que un fallo del flujo no alcance Functions ni reglas. (b) Cargar el logo de `t1`. (c) Borrar la variable de repositorio `TENANT_ID` tras el pase de producción.
+
+## Certificación
+
+**Qué compara.** `scripts/certificar-sitio.mjs` contrasta lo que sirve el sitio con un contenido de referencia: `/version-contenido.json` (versión, fecha de publicación, conteos de productos y secciones y `huellaSinDisponibilidad`), el índice de productos, cada ficha (nombre, código, precios y JSON-LD), la portada, las secciones, la disponibilidad y la cotización. Una huella distinta solo por disponibilidad es un aviso, no un error.
+
+**Referencia según el modo.** Tras un despliegue, el paso «Certificar el sitio desplegado contra el contenido del build» pasa con `--contenido` el mismo archivo con el que se compiló el sitio: una publicación hecha entre el build y la certificación no da una falsa alarma. Ese paso no recibe `SITIO_RECONSTRUCCION_SECRETO` ni `SITIO_NEGOCIO_<CLAVE>` y no exige `VITE_*` ni `MEDIOS_BASE_URL`. A pedido, el paso «Certificar a pedido (sin desplegar)» regenera el contenido publicado con el mismo código y entorno que `contenido-sitio.mjs generar` y por eso es el único que recibe esos secretos y comprueba los faltantes. En este modo, si hay una publicación aún sin reconstruir, la certificación falla en `huella`: es el resultado correcto, porque el sitio no está al día con lo publicado.
+
+**Alcance real.** Lo que no se compara campo a campo:
+
+- Las secciones solo se comprueban por respuesta `200`, no por su contenido.
+- La portada se comprueba por plantilla y configuración, no por cada bloque.
+- El índice de productos no compara marca ni categoría.
+- Las páginas de categoría no se visitan.
+
+Todo lo demás del contenido lo cubre `huellaSinDisponibilidad`, que declara el propio sitio compilado en `/version-contenido.json`: una diferencia de contenido fuera de lo comparado campo a campo aparece como huella distinta.
+
+**Códigos de salida.** Todo código distinto de 0 pone el run en rojo; sin `continue-on-error`.
+
+- `0`: coincide (puede haber avisos). Tras un despliegue, el trabajo se cierra `completada`.
+- `1`: diferencias firmes. El paso se repite **una vez** tras 20 s, porque la purga del CDN de Hosting tras un release puede tardar unos segundos en llegar a todos los bordes y el script no reintenta ante una versión vieja; una diferencia real persiste y sigue fallando («el sitio NO coincide con lo publicado»).
+- `2`: uso inválido del script. No se reintenta.
+- `3`: error de operación: no se pudo comparar (sitio caído, falta un secreto, fallo al regenerar). No se reintenta y el mensaje dice «no se pudo certificar (error de operación)», no que el sitio no coincide.
+
+Tras un despliegue, cualquier fallo de la certificación cierra el trabajo `fallida`. A pedido no hay trabajo y no se toca la cola.
+
+**Cómo se lee.** El log solo muestra conteos y nombres de comprobación: nunca identificadores, nombres ni URL (un producto se nombra por su posición, «producto #k»). La tabla por comprobación está en el resumen del job, bajo «Certificación del sitio `<clave>` (intento n/2)». Si el paso terminó antes de comparar, el resumen lo dice con el código de salida.
+
+**A pedido, sin desplegar.** Se lanza con `workflow_dispatch` desde `main`, con la entrada `clave` igual a `certificar:<clave>` (un sitio) o `certificar:` (todos). El job resuelve el sitio, hace checkout, prepara Node, instala dependencias y certifica. No toma trabajos de la cola, no compila, no despliega, no cierra trabajos y no toca los rezagados. El job `reconstruir` declara `environment: staging` para leer sus secretos, así que este modo también deja un registro de despliegue en GitHub aunque no despliegue nada; es cosmético y no se cambia (`deployment: false`, que usa `sondear`, no se aplica aquí porque no está verificado que admita una expresión condicional solo para este modo sin afectar al despliegue real). Se reutiliza la entrada `clave` con un prefijo reservado (el `:` no es válido en una clave) en vez de declarar otra entrada. Motivo: Checkov CKV_GHA_7 marca toda entrada de `workflow_dispatch`, y este workflow ya la tiene por `clave`.
+
+Pendiente de decisión del propietario: la omisión de Checkov `CKV_GHA_7` se aplica a todo el componente, aunque la excepción de `.devsecops.yml` se justificó solo para `release.yml`.
 
 ## El build de producción no admite el contenido de ejemplo
 
