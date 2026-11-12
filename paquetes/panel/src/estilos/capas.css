@@ -1,0 +1,47 @@
+/* Capas del panel: diálogo (centrado o panel lateral) y avisos. Solo clases: la CSP no admite estilos en línea.
+   Un solo corte de celular: 767.98px. Las variables --velo y --sombra salen de panel.css (una por tema). */
+html.sin-desplazar { overflow: hidden; }
+html { scroll-padding-bottom: 120px; }
+
+.boton-icono { display: inline-flex; align-items: center; justify-content: center; flex: none; width: 44px; height: 44px; padding: 0; border: 1px solid transparent; border-radius: 12px; background: transparent; color: var(--texto); cursor: pointer; }
+.boton-icono:hover { border-color: var(--borde-control); color: var(--acento); }
+
+.dialogo-fondo { position: fixed; inset: 0; z-index: 200; display: flex; background: var(--velo); }
+.dialogo-centro { align-items: center; justify-content: center; padding: 16px; }
+.dialogo-lateral.dialogo-derecha { justify-content: flex-end; }
+.dialogo-lateral.dialogo-izquierda { justify-content: flex-start; }
+.dialogo { display: flex; flex-direction: column; width: 100%; min-height: 0; background: var(--superficie); color: var(--texto); box-shadow: var(--sombra); outline: none; }
+.dialogo-centro .dialogo { max-width: 560px; max-height: calc(100dvh - 32px); border: 1px solid var(--borde); border-radius: 16px; }
+.dialogo-lateral .dialogo { max-width: 640px; height: 100%; }
+.dialogo-derecha.dialogo-lateral .dialogo { border-left: 1px solid var(--borde); }
+.dialogo-izquierda.dialogo-lateral .dialogo { border-right: 1px solid var(--borde); }
+.dialogo-cabecera { display: flex; align-items: center; justify-content: space-between; gap: 12px; flex: none; padding: 10px 12px 10px 20px; border-bottom: 1px solid var(--borde); background: var(--superficie); }
+.dialogo-titulo { margin: 0; font-size: 20px; }
+.dialogo-cuerpo { flex: 1 1 auto; min-height: 0; overflow-y: auto; overscroll-behavior: contain; padding: 16px 20px; }
+.dialogo-descripcion { color: var(--texto-suave); }
+.dialogo-pie { display: flex; flex: none; flex-wrap: wrap; justify-content: flex-end; gap: 10px; padding: 12px 20px; padding-bottom: max(12px, env(safe-area-inset-bottom)); border-top: 1px solid var(--borde); background: var(--superficie); }
+.dialogo .dialogo-fondo { z-index: 210; }
+
+@media (max-width: 767.98px) {
+  .dialogo-centro { padding: 0; }
+  .dialogo-centro .dialogo, .dialogo-lateral .dialogo { inset: 0; width: 100%; max-width: none; height: 100dvh; max-height: 100dvh; border: 0; border-radius: 0; }
+}
+
+.avisos { position: fixed; right: 16px; bottom: 16px; z-index: 300; display: flex; flex-direction: column; gap: 8px; width: min(420px, calc(100vw - 32px)); pointer-events: none; }
+.avisos-region { display: flex; flex-direction: column; gap: 8px; }
+.aviso { display: flex; align-items: flex-start; flex-wrap: wrap; gap: 8px 12px; padding: 12px 14px; border: 1px solid var(--borde-control); border-left-width: 6px; border-radius: 10px; background: var(--superficie); color: var(--texto); box-shadow: var(--sombra); pointer-events: auto; }
+.aviso-texto { flex: 1 1 200px; margin: 0; }
+.aviso-acciones { display: flex; gap: 8px; margin-left: auto; }
+.aviso-ok { border-left-color: var(--acento); }
+.aviso-info { border-left-color: var(--borde-control); }
+.aviso-error { border-color: var(--peligro); }
+
+@media (max-width: 767.98px) {
+  .avisos { right: 0; left: 0; bottom: 0; width: auto; padding: 8px; padding-bottom: max(8px, env(safe-area-inset-bottom)); }
+}
+
+.campo-error { margin: 0; font-size: 14px; font-weight: 500; color: var(--peligro); }
+.contador { margin: 0; font-size: 13px; color: var(--texto-suave); text-align: right; }
+.boton-con-motivo { display: inline-flex; flex-wrap: wrap; align-items: center; gap: 4px 10px; }
+.motivo { font-size: 13px; color: var(--texto-suave); }
+.boton[aria-disabled='true'] { opacity: .75; cursor: not-allowed; }

@@ -169,6 +169,24 @@ for (const esquema of ESQUEMAS) {
       await sinViolaciones(page, 'configuración');
       expect(v.errores).toEqual([]);
     });
+
+    test('confirmación de «Quitar acceso»: diálogo accesible, Esc devuelve el foco y no hay estilos en línea', async ({ page }) => {
+      const v = vigilar(page);
+      await entrar(page, 'adm');
+      await page.getByRole('link', { name: 'Usuarios' }).click();
+      const quitar = page.getByRole('button', { name: 'Quitar acceso' }).first();
+      await expect(quitar).toBeVisible();
+      await quitar.click();
+      const dialogo = page.getByRole('dialog');
+      await expect(dialogo).toBeVisible();
+      await expect(dialogo.getByRole('button', { name: 'Cancelar' })).toBeFocused();
+      await sinViolaciones(page, 'confirmación de quitar acceso');
+      expect(await page.content()).not.toMatch(/\sstyle=/);
+      await page.keyboard.press('Escape');
+      await expect(dialogo).toHaveCount(0);
+      await expect(quitar).toBeFocused();
+      expect(v.errores).toEqual([]);
+    });
   });
 }
 

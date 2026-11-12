@@ -5,6 +5,7 @@ import { userEvent } from '@testing-library/user-event';
 import { afterEach, beforeEach, describe, expect, it } from 'vitest';
 import { crearEntorno } from '../ayuda-pruebas.js';
 import { CUENTAS_DOBLE, SesionDoble } from '../sesion/doble.js';
+import { ErrorApi } from '../api/errores.js';
 import { App } from './app.js';
 
 afterEach(() => {
@@ -147,5 +148,31 @@ describe('menú por rol', () => {
     expect(localStorage.getItem('panel.tema')).toBe('claro');
     await u.click(screen.getByRole('button', { name: 'Tema: claro' }));
     expect(document.documentElement.hasAttribute('data-tema')).toBe(false);
+  });
+});
+
+describe('sesión vencida (G-15)', () => {
+  it('un callable que responde «unauthenticated» cierra la sesión, explica el motivo y, al ingresar, vuelve a la misma ruta', async () => {
+    const sesion = new SesionDoble();
+    const entorno = crearEntorno('adm');
+    let vencer = false;
+    const base = entorno.api;
+    const api = {
+      llamar: (nombre: string, ...resto: unknown[]) => (vencer && nombre !== 'modulosActivos' ? Promise.reject(new ErrorApi('unauthenticated', 'x')) : (base.llamar as (...a: unknown[]) => Promise<unknown>)(nombre, ...resto)),
+    } as unknown as typeof entorno.api;
+    render(h(App, { sesion, api, almacen: entorno.almacen }));
+    await entrar('adm@ejemplo.test', 'clave-adm-1');
+    await screen.findByRole('navigation', { name: 'Menú principal' });
+    window.location.hash = '#/usuarios';
+    await screen.findByText(/Personas con acceso/);
+    vencer = true;
+    window.location.hash = '#/configuracion';
+    expect(await screen.findByText(/Su sesión venció\. Ingrese de nuevo para seguir donde estaba/)).toBeTruthy();
+    expect(screen.queryByRole('navigation', { name: 'Menú principal' })).toBeNull();
+    vencer = false;
+    await entrar('adm@ejemplo.test', 'clave-adm-1');
+    await screen.findByRole('navigation', { name: 'Menú principal' });
+    expect(window.location.hash).toBe('#/configuracion');
+    expect(screen.queryByText(/Su sesión venció/)).toBeNull();
   });
 });

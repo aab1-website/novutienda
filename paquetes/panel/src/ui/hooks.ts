@@ -1,5 +1,9 @@
-import { useCallback, useEffect, useRef, useState } from 'preact/hooks';
-import { mensajeDeError } from '../api/errores.js';
+import { useCallback, useContext, useEffect, useRef, useState } from 'preact/hooks';
+import { ErrorApi, mensajeDeError } from '../api/errores.js';
+import { useAvisos } from './avisos.js';
+import { CtxApp } from './contexto.js';
+
+const esSesionVencida = (e: unknown): boolean => e instanceof ErrorApi && e.codigoHttps === 'unauthenticated';
 
 export interface Carga<T> {
   readonly datos: T | undefined;
@@ -17,6 +21,9 @@ export function useCarga<T>(fn: () => Promise<T>, deps: readonly unknown[], cada
   const fnRef = useRef(fn);
   fnRef.current = fn;
   const depsPrevias = useRef<readonly unknown[] | null>(null);
+  const ctx = useContext(CtxApp);
+  const vencidaRef = useRef(ctx?.sesionVencida);
+  vencidaRef.current = ctx?.sesionVencida;
 
   useEffect(() => {
     let vivo = true;
@@ -35,6 +42,7 @@ export function useCarga<T>(fn: () => Promise<T>, deps: readonly unknown[], cada
         },
         (e: unknown) => {
           if (!vivo) return;
+          if (esSesionVencida(e)) vencidaRef.current?.();
           setError(mensajeDeError(e));
           setCargando(false);
         },
@@ -52,10 +60,17 @@ export function useCarga<T>(fn: () => Promise<T>, deps: readonly unknown[], cada
   return { datos, error, cargando, recargar };
 }
 
+export interface OpcionesAccion<R> {
+  /** Aviso de éxito (texto fijo o calculado con el resultado). Sin esto no hay aviso. */
+  readonly exito?: string | ((resultado: R) => string);
+  /** Dónde se ve el error: `local` (el de siempre, en `error`), `aviso` (aviso fijo) o `ambos`. */
+  readonly error?: 'local' | 'aviso' | 'ambos';
+}
+
 export interface Accion {
   readonly ocupado: boolean;
   readonly error: string | null;
-  readonly ejecutar: <R>(fn: () => Promise<R>) => Promise<R | undefined>;
+  readonly ejecutar: <R>(fn: () => Promise<R>, opciones?: OpcionesAccion<R>) => Promise<R | undefined>;
   readonly limpiar: () => void;
 }
 
@@ -64,15 +79,30 @@ export function useAccion(): Accion {
   const [ocupado, setOcupado] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const enCurso = useRef(false);
-  const ejecutar = useCallback(async <R,>(fn: () => Promise<R>): Promise<R | undefined> => {
+  const avisos = useAvisos();
+  const ctx = useContext(CtxApp);
+  const avisosRef = useRef(avisos);
+  avisosRef.current = avisos;
+  const vencidaRef = useRef(ctx?.sesionVencida);
+  vencidaRef.current = ctx?.sesionVencida;
+  const ejecutar = useCallback(async <R,>(fn: () => Promise<R>, opciones?: OpcionesAccion<R>): Promise<R | undefined> => {
     if (enCurso.current) return undefined;
     enCurso.current = true;
     setOcupado(true);
     setError(null);
     try {
-      return await fn();
+      const r = await fn();
+      if (opciones?.exito !== undefined) avisosRef.current.ok(typeof opciones.exito === 'function' ? opciones.exito(r) : opciones.exito);
+      return r;
     } catch (e) {
-      setError(mensajeDeError(e));
+      if (esSesionVencida(e) && vencidaRef.current !== undefined) {
+        vencidaRef.current();
+        return undefined;
+      }
+      const texto = mensajeDeError(e);
+      const modo = opciones?.error ?? 'local';
+      if (modo !== 'aviso') setError(texto);
+      if (modo !== 'local') avisosRef.current.error(texto);
       return undefined;
     } finally {
       enCurso.current = false;

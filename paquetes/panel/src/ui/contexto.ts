@@ -9,6 +9,8 @@ export interface ContextoApp {
   readonly almacen: AlmacenSubidas;
   readonly usuario: UsuarioSesion;
   readonly cerrarSesion: () => void;
+  /** La sesión venció (el servidor respondió «unauthenticated»): cierra la sesión y lleva al ingreso conservando la ruta. */
+  readonly sesionVencida: () => void;
 }
 
 export const CtxApp = createContext<ContextoApp | null>(null);

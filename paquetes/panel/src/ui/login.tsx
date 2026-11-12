@@ -3,7 +3,7 @@ import { useState } from 'preact/hooks';
 import type { ResultadoInicio, Sesion } from '../sesion/sesion.js';
 import { Alerta, Boton, Campo } from './comun.js';
 
-export function Login({ sesion, nombre }: { sesion: Sesion; nombre: string }): JSX.Element {
+export function Login({ sesion, nombre, motivo }: { sesion: Sesion; nombre: string; motivo?: 'vencida' | undefined }): JSX.Element {
   const [correo, setCorreo] = useState('');
   const [clave, setClave] = useState('');
   const [ocupado, setOcupado] = useState(false);
@@ -27,6 +27,7 @@ export function Login({ sesion, nombre }: { sesion: Sesion; nombre: string }): J
       <form class="tarjeta login-caja" onSubmit={enviar} noValidate>
         <h1>{nombre}</h1>
         <p class="texto-suave">Inicie sesión con su correo verificado y su contraseña.</p>
+        {motivo === 'vencida' && <Alerta tipo="info">Su sesión venció. Ingrese de nuevo para seguir donde estaba.</Alerta>}
         <Campo etiqueta="Correo" tipo="email" valor={correo} onInput={setCorreo} requerido autocompletar="username" inputMode="email" nombre="correo" />
         <Campo etiqueta="Contraseña" tipo="password" valor={clave} onInput={setClave} requerido autocompletar="current-password" nombre="clave" />
         {resultado?.tipo === 'correo-no-verificado' && (
