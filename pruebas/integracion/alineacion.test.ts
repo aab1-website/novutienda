@@ -106,22 +106,23 @@ describe('alta y auditoría atómicas (I-14)', () => {
     expect(auditorias()).toBe(antes.auditorias);
   });
 
-  it('si falla la anotación del cambio, la edición de Inventarios tampoco queda', async () => {
+  it('si falla la publicación del evento producto.cambiado, la edición de Inventarios tampoco queda', async () => {
     const antes = doc(e, T, 'productos/lapiz');
     const antesAud = auditorias();
-    const deps = { db: dbQueFalla((r) => r.endsWith('/sitio/estado')), catalogo: e.catalogoConsola, reloj: { ahora: () => e.reloj.ahora } };
+    const deps = { db: dbQueFalla((r) => r.includes('/eventos/')), catalogo: e.catalogoConsola, reloj: { ahora: () => e.reloj.ahora } };
     await expect(editarProductoConsola(deps, { tenantId: T, actor: admin, productoId: 'lapiz', cambios: { nombre: 'Otro nombre', activo: false } })).rejects.toThrow('falla simulada');
     expect(doc(e, T, 'productos/lapiz')).toEqual(antes);
     expect(doc(e, T, 'existenciasPublicas/lapiz')?.['disponible']).toBe(true);
     expect(auditorias()).toBe(antesAud);
   });
 
-  it('sin fallas, todo queda junto: producto, anotación de cambio y auditoría', async () => {
+  it('sin fallas, todo queda junto: producto, evento (que anota el cambio al entregarse) y auditoría', async () => {
     const antesAud = auditorias();
     const deps = { db: e.db, catalogo: e.catalogoConsola, reloj: { ahora: () => e.reloj.ahora } };
     await crearProductoConsola(deps, { tenantId: T, actor: admin, productoId: 'taladro', datos: datos(), precioUSD: { bo: 1, ar: 1 } });
     expect(doc(e, T, 'productos/taladro')).toBeDefined();
-    expect(sitio()).toMatchObject({ cambios: 1 });
+    expect(sitio()).toBeUndefined(); // consola ya no anota por su cuenta: lo hace el consumidor del evento
+    expect(e.db.coleccion(`tenants/${T}/eventos`).filter((x) => x.datos['tipo'] === 'producto.cambiado' && (x.datos['datos'] as { productoId?: string }).productoId === 'taladro')).toHaveLength(1);
     expect(e.db.coleccion(`tenants/${T}/auditoria`).filter((a) => a.datos['accion'] === 'producto.crear')).toHaveLength(1);
     expect(auditorias()).toBeGreaterThan(antesAud);
   });

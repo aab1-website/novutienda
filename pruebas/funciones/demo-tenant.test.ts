@@ -21,7 +21,7 @@ import {
 import {
   aplicarPersonal, generarContrasena, operadorDe, validarEntradaPersonal, type AlmacenCredenciales, type AuthOperador, type Credencial, type UsuarioAuth,
 } from '../../plataforma/operador/personal.js';
-import { accion, crearUsuario, hayEmulador, hoyLaPaz, herramientas, http, iniciarSesion, TENANT_TODO_ENCENDIDO, unico, type Herramientas } from './ayudas.js';
+import { accion, crearUsuario, esperar, hayEmulador, hoyLaPaz, herramientas, http, iniciarSesion, TENANT_TODO_ENCENDIDO, unico, type Herramientas } from './ayudas.js';
 
 vi.setConfig({ testTimeout: 120_000, hookTimeout: 120_000 });
 
@@ -511,6 +511,12 @@ describe.skipIf(!hayEmulador)('siembra completa de la demostración (emulador)',
   let caj: { uid: string; correo: string };
 
   type Dato = Record<string, unknown>;
+  const esperarCambiosTratados = (): Promise<true> =>
+    esperar(async () => {
+      const publicados = (await h.firestore.collection(`tenants/${tenant}/eventos`).where('tipo', '==', 'producto.cambiado').get()).size;
+      const tratados = (await h.firestore.collection(`tenants/${tenant}/procesados`).listDocuments()).filter((d) => d.id.startsWith('consola~id~')).length;
+      return tratados >= publicados;
+    }, 60_000, 'eventos producto.cambiado tratados por la consola').then(() => true as const);
   const ok = async (actor: 'adm' | 'caj', modulo: string, nombre: string, datos: unknown): Promise<Dato> => {
     // El claim del cajero se asigna durante la corrida: el token se pide fresco.
     const token = actor === 'adm' ? adm.token : await iniciarSesion(caj.correo);
@@ -574,6 +580,9 @@ describe.skipIf(!hayEmulador)('siembra completa de la demostración (emulador)',
     expect(primera.bloqueos).toEqual([]);
     expect(primera.pasos.length).toBeGreaterThan(20);
     for (const p of primera.pasos) {
+      // Los cambios de producto llegan a «sin publicar» por el bus (asíncrono): antes de publicar se espera a que la consola
+      // haya tratado todos los eventos, o uno tardío volvería a dejar cambios pendientes tras la publicación.
+      if (p.tipo === 'llamada' && p.accion === 'publicarSitio') await esperarCambiosTratados();
       if (p.tipo === 'llamada') await ok(p.como, p.modulo, p.accion, p.datos);
     }
 
