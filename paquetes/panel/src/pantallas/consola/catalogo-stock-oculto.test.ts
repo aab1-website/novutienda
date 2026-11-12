@@ -7,16 +7,25 @@ import { PantallaCatalogo } from './catalogo.js';
 
 afterEach(cleanup);
 
-const SUBS = ['tablero', 'apariencia', 'fichas', 'exportar', 'secciones'];
+/** Pestaña → encabezado que confirma que cargó. */
+const SUBS: Record<string, RegExp> = {
+  tablero: /^Sitio$/,
+  apariencia: /^Plantilla de color$/,
+  fichas: /^Páginas de producto en el sitio$/,
+  exportar: /^Exportar productos$/,
+  secciones: /^Secciones del menú/,
+};
 
 describe('catálogo: no muestra existencias ni disponibilidad', () => {
   it.each(['sup', 'adm'] as const)('%s con un conteo abierto: ninguna pestaña muestra cantidades, «agotado» ni «disponible»', async (rol) => {
     const e = crearEntorno('sup');
     await e.api.llamar('abrirConteo', { operacionId: uuid(), conteoId: 'conteo-tienda', ubicacionId: 'tienda' });
     e.como(rol);
-    for (const sub of SUBS) {
+    for (const [sub, encabezado] of Object.entries(SUBS)) {
       const { container, unmount } = render(e.envolver(h(PantallaCatalogo, { sub })));
-      await new Promise((r) => setTimeout(r, 20));
+      // Quien no es adm solo ve «tablero» y «fichas»; las demás pestañas caen en el tablero.
+      const cargada = rol === 'adm' || sub === 'fichas' ? encabezado : SUBS['tablero']!;
+      await screen.findByText(cargada, undefined, { timeout: 3000 });
       expect(container.textContent ?? '', sub).not.toMatch(/agotad|existencias|en stock|stock|unidades disponibles/i);
       unmount();
     }

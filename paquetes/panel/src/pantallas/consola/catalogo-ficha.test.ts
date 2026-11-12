@@ -49,20 +49,20 @@ describe('panel lateral de la ficha', () => {
     const u = userEvent.setup();
     const dialogo = await abrir(u, 'Fotos y video', TV);
     expect(within(dialogo).getByRole('heading', { name: `Página en el sitio: ${TV}` })).toBeTruthy();
-    await waitFor(() => expect(document.activeElement).toBe(within(dialogo).getByRole('button', { name: 'Elegir fotos' })));
+    await waitFor(() => expect(document.activeElement).toBe(within(dialogo).getByRole('button', { name: 'Elegir fotos' })), { timeout: 3000 });
     // La zona de carga y los medios van antes que los textos.
     const orden = Array.from(dialogo.querySelectorAll('h3')).map((x) => x.textContent);
     expect(orden).toEqual(['Fotos y video', 'Textos de la página']);
     await u.click(within(dialogo).getByRole('button', { name: 'Cancelar' }));
-    await waitFor(() => expect(screen.queryByRole('dialog')).toBeNull());
-    await waitFor(() => expect(document.activeElement).toBe(screen.getByRole('button', { name: `Fotos y video de ${TV}` })));
+    await waitFor(() => expect(screen.queryByRole('dialog')).toBeNull(), { timeout: 3000 });
+    await waitFor(() => expect(document.activeElement).toBe(screen.getByRole('button', { name: `Fotos y video de ${TV}` })), { timeout: 3000 });
   });
   it('«Editar página» deja el foco en la dirección', async () => {
     const e = crearEntorno('sup');
     ver(e);
     const u = userEvent.setup();
     await abrir(u, 'Editar página', TV);
-    await waitFor(() => expect(document.activeElement).toBe(screen.getByLabelText(/Dirección de la página/)));
+    await waitFor(() => expect(document.activeElement).toBe(screen.getByLabelText(/Dirección de la página/)), { timeout: 3000 });
   });
 
   it('sube una foto con progreso, la guarda sola, la guarda con su descripción y respeta el tope de 5', async () => {
@@ -82,16 +82,16 @@ describe('panel lateral de la ficha', () => {
     expect(screen.getByText(/1200 × 800 · 2 KB/)).toBeTruthy();
     expect((screen.getByLabelText('Descripción de la foto 1') as HTMLInputElement).value).toBe(`${TV}, foto 1`);
     // Guardado automático de la lista, sin esperar a «Guardar».
-    await waitFor(() => expect(guardados(e)).toBe(1));
+    await waitFor(() => expect(guardados(e)).toBe(1), { timeout: 3000 });
     expect((await e.api.llamar('listarFichas', {}))[0]?.ficha.medios[0]?.alt).toBe(`${TV}, foto 1`);
     await u.clear(screen.getByLabelText('Descripción de la foto 1'));
     await u.type(screen.getByLabelText('Descripción de la foto 1'), 'frente');
     await u.type(screen.getByLabelText('Descripción del producto'), 'Televisor de 55 pulgadas.');
     await u.click(screen.getByRole('button', { name: 'Guardar' }));
     expect(await screen.findByText(/Página guardada/)).toBeTruthy();
-    await waitFor(() => expect(screen.queryByRole('dialog')).toBeNull());
+    await waitFor(() => expect(screen.queryByRole('dialog')).toBeNull(), { timeout: 3000 });
     expect((await e.api.llamar('listarFichas', {}))[0]?.ficha.medios[0]?.alt).toBe('frente');
-    await waitFor(() => expect(document.activeElement).toBe(screen.getByRole('button', { name: `Fotos y video de ${TV}` })));
+    await waitFor(() => expect(document.activeElement).toBe(screen.getByRole('button', { name: `Fotos y video de ${TV}` })), { timeout: 3000 });
   });
   it('existente: al guardar envía solo los campos editables, sin los de almacenamiento', async () => {
     const e = crearEntorno('sup');

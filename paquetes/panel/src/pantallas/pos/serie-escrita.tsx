@@ -31,29 +31,44 @@ export function SerieEscrita({ productoId, almacenId, elegidas, alCambiar }: Pro
   const { api } = useApp();
   const [texto, setTexto] = useState('');
   const [error, setError] = useState('');
-  const [ocupado, setOcupado] = useState(false);
   const entrada = useRef<HTMLInputElement>(null);
+  // Lecturas pendientes y bloqueo en refs: el estado de Preact no se actualiza entre dos Enter seguidos del lector.
+  const cola = useRef<string[]>([]);
+  const ocupado = useRef(false);
+  const acumuladas = useRef<string[]>([...elegidas]);
+  acumuladas.current = ocupado.current ? acumuladas.current : [...elegidas];
   const idCampo = `serie-escrita-${productoId}`;
 
-  const agregar = async (): Promise<void> => {
-    const serie = texto.trim();
-    if (serie === '' || ocupado) return;
-    setOcupado(true);
+  const validar = async (serie: string): Promise<void> => {
     try {
       const halladas = await api.llamar('buscarSerie', { serie });
-      const exacta = halladas.find((u) => u.serie.toLowerCase() === serie.toLowerCase());
-      const motivo = motivoSerieNoVendible(exacta, productoId, almacenId, elegidas);
+      // El servidor compara la serie exacta: sin normalizar mayúsculas; el producto se filtra aquí porque la búsqueda no lo admite.
+      const exacta = halladas.find((u) => u.serie === serie && u.productoId === productoId) ?? halladas.find((u) => u.serie === serie);
+      const motivo = motivoSerieNoVendible(exacta, productoId, almacenId, acumuladas.current);
       if (motivo !== null || exacta === undefined) {
         setError(motivo ?? 'Esa serie no existe.');
       } else {
         setError('');
-        setTexto('');
-        alCambiar([...elegidas, exacta.serie]);
+        acumuladas.current = [...acumuladas.current, exacta.serie];
+        alCambiar(acumuladas.current);
       }
     } catch (x) {
       setError(mensajeDeError(x));
+    }
+  };
+
+  const agregar = async (): Promise<void> => {
+    const serie = texto.replace(/[\r\n]+/g, '').trim();
+    if (serie === '') return;
+    setTexto('');
+    if (entrada.current) entrada.current.value = '';
+    cola.current.push(serie);
+    if (ocupado.current) return;
+    ocupado.current = true;
+    try {
+      for (let siguiente = cola.current.shift(); siguiente !== undefined; siguiente = cola.current.shift()) await validar(siguiente);
     } finally {
-      setOcupado(false);
+      ocupado.current = false;
       entrada.current?.focus();
     }
   };

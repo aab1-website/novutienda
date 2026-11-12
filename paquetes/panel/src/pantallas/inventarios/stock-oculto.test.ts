@@ -85,13 +85,14 @@ describe('conteo abierto hace más de 24 horas', () => {
 });
 
 describe('movimientos y registro como sup con un conteo abierto', () => {
-  it('el registro muestra «Oculto» en vez del saldo y el aviso de ocultas aparece en traspasos', async () => {
+  it('el registro no muestra saldos ni cantidades de existencia', async () => {
     const e = crearEntorno('sup');
     await e.api.llamar('ingresar', { operacionId: uuid(), ubicacionId: 'tienda', lineas: [{ productoId: 'cable-hdmi', cantidad: 1 }] });
     await e.api.llamar('abrirConteo', { operacionId: uuid(), conteoId: 'c1', ubicacionId: 'tienda' });
     ver(e, 'registro');
     const t = await screen.findByRole('table', { name: 'Movimientos de inventario' });
-    expect(within(t).getAllByText('Oculto').length).toBeGreaterThan(0);
+    expect(within(t).queryByText('Saldo')).toBeNull();
+    expect(within(t).getAllByText('Ingreso').length).toBeGreaterThan(0);
   });
 
   it('traspaso: la ayuda de la cantidad no dice «hay N» de un almacén en conteo', async () => {

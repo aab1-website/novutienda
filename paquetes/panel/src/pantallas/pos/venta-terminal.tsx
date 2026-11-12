@@ -1,6 +1,7 @@
 import type { JSX } from 'preact';
 import { useMemo, useState } from 'preact/hooks';
 import { nuevoId } from '../../api/cliente.js';
+import { marcaDe } from '../../api/marca.js';
 import type { AprobacionPos, CotizacionesVigentes, Mercado, Moneda, ProductoPanel, Recibo, TurnoPos, UbicacionId } from '../../api/tipos.js';
 import { Alerta, Boton, Campo, Cargando, Casilla, ErrorCarga, Selector, Seccion, Vacio } from '../../ui/comun.js';
 import { useApp } from '../../ui/contexto.js';
@@ -88,7 +89,7 @@ export function VentaTerminal({ turno, alCambiar }: { turno: TurnoPos; alCambiar
   const aprobs = useCarga(() => api.llamar('listarAprobaciones', {}), [solicitadaId, paso]);
 
   // La marca viaja como propiedad de la lista: se lee antes de filtrar o mapear.
-  const conteos = datos.datos?.productos.existenciasOcultas === true ? (datos.datos.productos.conteosAbiertos ?? []) : [];
+  const conteos = marcaDe(datos.datos?.productos)?.conteosAbiertos ?? [];
   const productos = datos.datos?.productos ?? [];
   const porId = useMemo(() => new Map(productos.map((p) => [p.id, p])), [productos]);
 

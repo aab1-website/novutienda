@@ -1,6 +1,7 @@
 import type { JSX } from 'preact';
 import { useRef, useState } from 'preact/hooks';
 import type { ProductoPanel, UbicacionId } from '../../api/tipos.js';
+import { marcaDe } from '../../api/marca.js';
 import { Alerta, Boton, ConCarga, Pestanas, Seccion, Selector } from '../../ui/comun.js';
 import { useApp } from '../../ui/contexto.js';
 import { useCarga } from '../../ui/hooks.js';
@@ -51,8 +52,9 @@ function Productos(): JSX.Element {
       <ConCarga carga={carga}>
         {({ productos, cot }) => {
           // La marca viaja en la propia lista: se lee antes de filtrar, que la pierde.
-          const ocultas = productos.existenciasOcultas === true;
-          const conteos = productos.conteosAbiertos;
+          const marca = marcaDe(productos);
+          const ocultas = marca !== undefined;
+          const conteos = marca?.conteosAbiertos ?? [];
           const modo: Mostrar = ocultas && mostrar === 'bajo' ? '' : mostrar;
           const bajos = ocultas ? 0 : productos.filter((p) => p.bajoMinimo === true).length;
           const filas = productos.filter((p) => (modo === 'bajo' ? p.bajoMinimo === true : modo === 'inactivo' ? !p.activo : true));

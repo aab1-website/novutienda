@@ -1,4 +1,5 @@
 import type { ConteoAbierto, ProductoPanel } from '../../api/tipos.js';
+import { marcaDe } from '../../api/marca.js';
 import { useApp } from '../../ui/contexto.js';
 import { useCarga } from '../../ui/hooks.js';
 
@@ -9,12 +10,13 @@ import { useCarga } from '../../ui/hooks.js';
 export function useProductos(): { lista: ProductoPanel[]; cargando: boolean; error: string | null; recargar: () => void; ocultas: boolean; conteos: readonly ConteoAbierto[] } {
   const { api } = useApp();
   const c = useCarga(() => api.llamar('listarProductos', {}), []);
+  const marca = marcaDe(c.datos);
   return {
     lista: c.datos ? [...c.datos] : [],
     cargando: c.cargando,
     error: c.error,
     recargar: c.recargar,
-    ocultas: c.datos?.existenciasOcultas === true,
-    conteos: c.datos?.conteosAbiertos ?? [],
+    ocultas: marca !== undefined,
+    conteos: marca?.conteosAbiertos ?? [],
   };
 }
