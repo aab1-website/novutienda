@@ -448,7 +448,7 @@ describe('catálogo y sitio', () => {
     const u = userEvent.setup();
     await u.click(await screen.findByRole('button', { name: 'Editar ficha de Televisor 55 pulgadas' }));
     fireEvent.change(await screen.findByLabelText('Subir fotos'), { target: { files: [new File(['x'], 'roto.jpg', { type: 'image/jpeg' })] } });
-    expect(await screen.findByText('roto.jpg: No se pudo procesar el archivo. Pruebe con otro.')).toBeTruthy();
+    expect(await screen.findByText('roto.jpg: El archivo no es una imagen válida')).toBeTruthy();
     expect(e.api.llamadas.some((l) => l.nombre === 'finalizarSubida')).toBe(false);
     expect(await e.api.llamar('listarMedios', { productoId: 'tv-55' })).toHaveLength(0);
   });
@@ -460,6 +460,7 @@ describe('catálogo y sitio', () => {
     fireEvent.change(await screen.findByLabelText('Subir fotos'), { target: { files: [new File(['a'], 'uno.jpg', { type: 'image/jpeg' }), new File(['b'], 'dos.jpg', { type: 'image/jpeg' })] } });
     await screen.findByText('uno.jpg: Listo');
     await screen.findByText('dos.jpg: Listo');
+    // jsdom no tiene decodificador: la duración se lee de los bytes (aquí no son un video válido) y decide el servidor
     fireEvent.change(screen.getByLabelText('Subir video'), { target: { files: [new File(['v'], 'demo.mp4', { type: 'video/mp4' })] } });
     await screen.findByText('demo.mp4: Listo');
     await waitFor(() => expect((screen.getByLabelText('Subir video') as HTMLInputElement).disabled).toBe(true));
@@ -478,7 +479,7 @@ describe('catálogo y sitio', () => {
     const enorme = new File(['x'], 'gigante.jpg', { type: 'image/jpeg' });
     Object.defineProperty(enorme, 'size', { value: 16 * 1024 * 1024 });
     fireEvent.change(await screen.findByLabelText('Subir fotos'), { target: { files: [enorme] } });
-    expect(await screen.findByText(/gigante.jpg: Se alcanzó un límite del plan/)).toBeTruthy();
+    expect(await screen.findByText(/gigante.jpg.*pesa 16,0 MB y el máximo es 15,0 MB/)).toBeTruthy();
   });
   it('secciones: crea una con bloques tipados, la ordena y la elimina con confirmación', async () => {
     const e = crearEntorno('adm');

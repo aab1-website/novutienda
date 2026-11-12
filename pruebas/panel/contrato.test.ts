@@ -75,6 +75,7 @@ describe('listas cerradas y límites', () => {
     expect(LIMITES_PANEL.videosPorProducto).toBe(LIMITES_CONSOLA.videosPorProducto);
     expect(LIMITES_PANEL.bytesFoto).toBe(LIMITES_CONSOLA.bytesFoto);
     expect(LIMITES_PANEL.bytesVideo).toBe(LIMITES_CONSOLA.bytesVideo);
+    expect(LIMITES_PANEL.duracionVideoSeg).toBe(LIMITES_CONSOLA.duracionVideoSeg);
     expect(LIMITES_PANEL.seccionesMax).toBe(LIMITES_CONSOLA.seccionesMax);
     expect(LIMITES_PANEL.cuotaOriginalesBytes).toBe(LIMITES_CONSOLA.cuotaOriginalesBytes);
   });

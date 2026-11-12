@@ -11,7 +11,7 @@ export { aKebab, CODIGO_DE_BORDE, CODIGO_MODULO_APAGADO, traducirError } from '.
 export type { CodigoHttps, ErrorTraducido } from './errores.js';
 export { COLECCION_LIMITES, crearLimiteTasa, hashClave } from './limite-tasa.js';
 export { crearLecturaRecibos } from './lectura-recibos.js';
-export { binariosDeVideo, crearProcesadorMedios, procesadorImagenes, procesadorVideo, VideoNoDisponible } from './procesador-medios.js';
+export { binariosDeVideo, crearProcesadorMedios, demuxerPermitido, FormatoVideoNoAdmitido, procesadorImagenes, procesadorVideo, sondaVideo, VideoNoDisponible } from './procesador-medios.js';
 export {
   appCheckReal, appCheckSimulado, esEntornoDePruebas, recaptchaEnterprise, recaptchaSimulado,
 } from './verificadores.js';
