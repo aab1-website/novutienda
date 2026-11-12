@@ -3,7 +3,7 @@ import type { ResultadoOperacion, TipoMovimiento, UbicacionId } from '../../api/
 import { UBICACIONES } from '../../api/tipos.js';
 import { aCsv } from '../../util/csv.js';
 import { importarProductosDoble, simularImportacionDoble } from './importacion.js';
-import { auditar, exigirRol, fallo, iso, recalcular, vistaProducto, type Contexto, type ProductoInterno } from '../estado.js';
+import { auditar, exigirRol, faltantesVisibles, fallo, iso, marcaDoble, proyectarProductoDoble, puedeVerExistencias, recalcular, vistaProducto, type Contexto, type ProductoInterno } from '../estado.js';
 
 type H<N extends NombreCallable> = (c: Contexto, e: Entrada<N>) => Salida<N> | Promise<Salida<N>>;
 
@@ -144,7 +144,7 @@ export const handlersInventario: {
         return { p, l, series: validarSeries(p, l.cantidad, l.series) };
       });
       for (const { p, l, series } of trabajos) {
-        if (p.existencias[o] < l.cantidad) throw fallo('stock-insuficiente', 'Stock insuficiente', { faltantes: [{ productoId: p.id, almacenId: o, pedido: l.cantidad, disponible: p.existencias[o] }] });
+        if (p.existencias[o] < l.cantidad) throw fallo('stock-insuficiente', 'Stock insuficiente', { faltantes: faltantesVisibles(c, [{ productoId: p.id, almacenId: o, pedido: l.cantidad, disponible: p.existencias[o] }]) });
         for (const s of series) {
           const un = c.e.unidades.get(`${p.id}__${s}`);
           if (un === undefined || un.estado !== 'disponible' || un.ubicacionId !== o) throw fallo('serie-no-disponible');
@@ -305,14 +305,21 @@ export const handlersInventario: {
     return { csv: aCsv(cab, filas) };
   },
 
-  listarProductos: (c) => [...c.e.productos.values()].map((p) => vistaProducto(p, c.rol === 'adm')).sort((a, b) => a.nombre.localeCompare(b.nombre)),
+  listarProductos: (c) => {
+    const productos = [...c.e.productos.values()].map((p) => proyectarProductoDoble(c, vistaProducto(p, c.rol === 'adm'))).sort((a, b) => a.nombre.localeCompare(b.nombre));
+    return Object.assign(productos, marcaDoble(c));
+  },
 
-  listarSeries: (c, e) =>
-    [...c.e.unidades.values()]
+  listarSeries: (c, e) => {
+    const unidades = [...c.e.unidades.values()]
       .filter((u) => u.productoId === e.productoId)
       .filter((u) => (e.ubicacionId === undefined ? true : u.ubicacionId === e.ubicacionId))
       .filter((u) => (e.soloDisponibles === true ? u.estado === 'disponible' : true))
-      .sort((a, b) => a.serie.localeCompare(b.serie)),
+      // Con un conteo abierto, quien no es `adm` no recibe las unidades disponibles del almacén en conteo (su número es el stock).
+      .filter((u) => u.estado !== 'disponible' || puedeVerExistencias(c, u.ubicacionId))
+      .sort((a, b) => a.serie.localeCompare(b.serie));
+    return Object.assign(unidades, marcaDoble(c));
+  },
 
   buscarSerie: (c, e) => {
     const q = e.serie.trim().toLowerCase();
@@ -336,7 +343,14 @@ export const handlersInventario: {
       .filter((m) => (e.tipo === undefined ? true : m.tipo === e.tipo))
       .filter((m) => (e.usuario === undefined ? true : m.por === e.usuario));
     const limite = e.limite ?? 200;
-    return { movimientos: coinciden.slice(-limite).reverse(), cortada: coinciden.length > limite };
+    // Con un conteo abierto, quien no es `adm` recibe los movimientos sin el saldo del almacén en conteo.
+    const movimientos = coinciden.slice(-limite).reverse().map((m) => {
+      if (puedeVerExistencias(c, m.ubicacionId)) return m;
+      const { saldoUbicacion: _s, ...resto } = m;
+      void _s;
+      return resto;
+    });
+    return { movimientos, cortada: coinciden.length > limite, ...marcaDoble(c) };
   },
 
   listarMermas: (c, e) => ({ mermas: c.e.mermas.filter((m) => (e.estado === undefined ? true : m.estado === e.estado)).slice().reverse(), cortada: false }),

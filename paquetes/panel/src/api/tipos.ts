@@ -227,7 +227,35 @@ export interface PrecioUSDCentavos {
   readonly ar: number;
 }
 
-/** Producto tal como lo devuelve la lectura del panel (ProductoLeido + existencias por almacén). Montos en centavos de USD. */
+/**
+ * Conteo abierto que oculta existencias a `caj` y `sup` (paquetes/inventarios/src/visibilidad.ts). `ubicacionId` es el almacén
+ * en conteo; `abiertoEn` es ISO 8601 o `null` si el conteo no trae fecha.
+ */
+export interface ConteoAbierto {
+  readonly ubicacionId: string;
+  readonly conteoId: string;
+  readonly abiertoEn: string | null;
+}
+
+/** Marca que el servidor agrega a toda respuesta con existencias ocultas (solo `caj`/`sup` con un conteo abierto). */
+export interface MarcaOcultamiento {
+  readonly existenciasOcultas: true;
+  readonly conteosAbiertos: readonly ConteoAbierto[];
+}
+
+/** La marca, ausente cuando no se oculta nada. */
+export type ConMarca<T> = T & Partial<MarcaOcultamiento>;
+
+/**
+ * Lista que puede llevar la marca de ocultamiento como propiedades de la propia lista (`lista.existenciasOcultas`,
+ * `lista.conteosAbiertos`). Se lee directo; `filter`/`map`/spread producen listas sin marca.
+ */
+export type ListaConMarca<T> = ConMarca<readonly T[]>;
+
+/**
+ * Producto tal como lo devuelve la lectura del panel (ProductoLeido + existencias por almacén). Montos en centavos de USD.
+ * Con un conteo abierto, a `caj`/`sup` lo oculto llega `null` (nunca 0): mostrar `ExistenciaOculta`, no un número.
+ */
 export interface ProductoPanel {
   readonly id: string;
   readonly nombre: string;
@@ -242,12 +270,14 @@ export interface ProductoPanel {
   readonly precioUSD: PrecioUSDCentavos;
   /** Solo se entrega al administrador. Centavos de USD. */
   readonly costoUSD?: number;
-  /** Ausente: el producto no controla stock. */
-  readonly stockTotal?: number;
-  readonly existencias: Readonly<Record<UbicacionId, number>>;
-  readonly bajoMinimo: boolean;
-  /** Regla única `esDisponible` calculada por el servidor. */
-  readonly disponible: boolean;
+  /** Ausente: el producto no controla stock. `null`: oculto por un conteo abierto. */
+  readonly stockTotal?: number | null;
+  /** `null` en cada almacén en conteo (oculto), nunca 0. */
+  readonly existencias: Readonly<Record<UbicacionId, number | null>>;
+  /** `null`: oculto por un conteo abierto. */
+  readonly bajoMinimo: boolean | null;
+  /** Regla única `esDisponible` calculada por el servidor. `null`: oculto (la tienda está en conteo). */
+  readonly disponible: boolean | null;
 }
 
 export interface EntradaProducto {
@@ -315,7 +345,8 @@ export interface MovimientoVista {
   readonly ubicacionId: UbicacionId;
   readonly tipo: TipoMovimiento;
   readonly delta: number;
-  readonly saldoUbicacion: number;
+  /** Ausente si la ubicación del movimiento está en conteo y quien lee no es `adm`. */
+  readonly saldoUbicacion?: number;
   readonly series: readonly string[];
   readonly referencia?: string;
   readonly por: string;

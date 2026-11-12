@@ -7,7 +7,7 @@ import type {
   AprobacionPos, Carrito, Carrusel, CambiosProducto, CobroCredito, CobroCreditoEntrada, ConfigPos, ConfigSitio,
   ConsultaArchivo, PrecioUSDCentavos, ConteoVista, CotizacionesVigentes, CreditoVista, EntradaAuditoriaVista, EntradaProducto, FichaWeb,
   LineaAjuste, LineaIngreso, LineaTraspaso, Medio, MermaVista, MontosPorMoneda, MovimientoCaja, MovimientoCajaEntrada, MovimientoVista,
-  PagoEntrada, PlantillaRecibo, ProductoPanel, Recibo, Reserva, ResultadoAnulacion, ResultadoCierre, ResultadoEnvio,
+  ConMarca, ListaConMarca, PagoEntrada, PlantillaRecibo, ProductoPanel, Recibo, Reserva, ResultadoAnulacion, ResultadoCierre, ResultadoEnvio,
   FuenteImportacion, ResultadoImportacion, ResultadoOperacion, ResultadoEstadoSubida, ResultadoPublicacion, ResultadoVenta, Rol, Seccion, Simulacion, SolicitudAprobacion,
   Tablero, TipoMedio, TurnoPos, UbicacionId, UnidadSerie, UsuarioVista, VentaPos, EstadoMerma,
   TipoMovimiento,
@@ -109,13 +109,14 @@ export interface Contrato {
   leerConfigPos: { entrada: Vacio; salida: ConfigPos };
   leerPlantilla: { entrada: Vacio; salida: PlantillaRecibo };
   cotizacionesVigentes: { entrada: Vacio; salida: CotizacionesVigentes };
-  listarProductos: { entrada: Vacio; salida: readonly ProductoPanel[] };
-  listarSeries: { entrada: { productoId: string; ubicacionId?: UbicacionId; soloDisponibles?: boolean }; salida: readonly UnidadSerie[] };
+  /** Con un conteo abierto y rol `caj`/`sup`, la lista lleva `existenciasOcultas` y `conteosAbiertos` (ver `ListaConMarca`). */
+  listarProductos: { entrada: Vacio; salida: ListaConMarca<ProductoPanel> };
+  listarSeries: { entrada: { productoId: string; ubicacionId?: UbicacionId; soloDisponibles?: boolean }; salida: ListaConMarca<UnidadSerie> };
   buscarSerie: { entrada: { serie: string }; salida: readonly UnidadSerie[] };
   listarMovimientos: {
     entrada: { desde?: string; hasta?: string; productoId?: string; tipo?: TipoMovimiento; usuario?: string; limite?: number };
     /** `cortada`: hay más movimientos que el límite; afine los filtros. */
-    salida: { readonly movimientos: readonly MovimientoVista[]; readonly cortada: boolean };
+    salida: ConMarca<{ readonly movimientos: readonly MovimientoVista[]; readonly cortada: boolean }>;
   };
   /** `estado` filtra en el servidor; `cortada` avisa que hay más que el límite. */
   listarMermas: { entrada: { estado?: EstadoMerma }; salida: { readonly mermas: readonly MermaVista[]; readonly cortada: boolean } };

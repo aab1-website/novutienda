@@ -8,7 +8,7 @@
 export interface DetalleError {
   readonly codigo?: string;
   /** Faltantes de stock (StockInsuficiente). */
-  readonly faltantes?: readonly { readonly productoId: string; readonly almacenId: string; readonly pedido: number; readonly disponible: number; readonly productoNombre?: string; readonly almacenNombre?: string }[];
+  readonly faltantes?: readonly { readonly productoId: string; readonly almacenId: string; readonly pedido: number; readonly disponible?: number; readonly productoNombre?: string; readonly almacenNombre?: string }[];
   /** Mensajes por campo o fila (ErrorConsola.detalles). */
   readonly detalles?: readonly string[];
   /** Rutas de los campos inválidos de `datos` (esquema estricto del servidor; nunca los valores). */
@@ -81,6 +81,7 @@ const POR_CODIGO_MODULO: Readonly<Record<string, string>> = {
   concurrencia: 'Otra persona cambió lo mismo al mismo tiempo. Intente de nuevo.',
   // Inventarios
   'stock-insuficiente': 'No hay existencias suficientes.',
+  'existencias-ocultas': 'Este filtro no está disponible mientras hay un conteo abierto.',
   'serie-no-disponible': 'Esa serie no está disponible en ese almacén.',
   'operacion-conflicto': 'Esa operación ya se hizo con otros datos. Vuelva a empezar.',
   'sin-permiso': 'No tiene permiso para esta acción.',
@@ -150,11 +151,16 @@ export function mensajeDeError(e: unknown): string {
   const sinCodigoConFaltantes = e.detalle.codigo === undefined && e.codigoHttps === 'failed-precondition';
   if ((e.detalle.codigo === 'stock-insuficiente' || sinCodigoConFaltantes) && e.detalle.faltantes !== undefined && e.detalle.faltantes.length > 0) {
     if (sinCodigoConFaltantes) base = POR_CODIGO_MODULO['stock-insuficiente'] ?? base;
-    const f = e.detalle.faltantes
+    const nombre = (x: { productoId: string; almacenId: string; productoNombre?: string; almacenNombre?: string }): string => `${x.productoNombre ?? x.productoId} en ${x.almacenNombre ?? x.almacenId}`;
+    const faltantes = e.detalle.faltantes;
+    if (faltantes.every((x) => x.disponible === undefined)) {
+      // Conteo abierto y rol que no es `adm`: no se dice cuántas hay, solo que no alcanza.
+      base = faltantes.map((x) => `No alcanza el stock de ${nombre(x)}.`).join(' ');
+    } else {
       // Sin nombre se muestra el código del producto y del almacén (legibles): es mejor que no decir cuál falta.
-      .map((x) => `${x.productoNombre ?? x.productoId} en ${x.almacenNombre ?? x.almacenId}: pidió ${x.pedido}, hay ${x.disponible}`)
-      .join('; ');
-    base = `${base} ${f}.`;
+      const f = faltantes.map((x) => (x.disponible === undefined ? `${nombre(x)}: no alcanza` : `${nombre(x)}: pidió ${x.pedido}, hay ${x.disponible}`)).join('; ');
+      base = `${base} ${f}.`;
+    }
   }
   const filas = (e.detalle.detalles ?? []).filter(esLegible);
   if (filas.length > 0) base = `${base} ${filas.join(' ')}`;

@@ -193,6 +193,50 @@ describe('redondeo que llega del servidor (pos.cotizaciones)', () => {
   });
 });
 
+describe('existencias ocultas: el panel distingue «oculto» (null) de «no controla stock» (ausente) y de 0 real', () => {
+  const ejecutar = async (nombre: NombreCallable, respuesta: unknown): Promise<unknown> => {
+    const c = { rol: 'sup' as const, esperar: (): Promise<void> => Promise.resolve(), llamar: (): Promise<unknown> => Promise.resolve(respuesta) };
+    return (TRADUCCION[nombre] as unknown as { ejecutar(c: unknown, e: unknown): Promise<unknown> }).ejecutar(c, {});
+  };
+  const conteos = [{ ubicacionId: 'tienda', conteoId: 'c1', abiertoEn: '2026-11-13T10:00:00.000Z' }, { ubicacionId: 'deposito-1', conteoId: 'c2', abiertoEn: null }];
+  const base = { nombre: 'P', categoria: 'C', sku: 'S', activo: true, publicado: true, conSerie: false };
+
+  it('listarProductos: null se conserva, 0 real es 0, ausente es «no controla stock», y la marca viaja con la lista', async () => {
+    const r = (await ejecutar('listarProductos', {
+      existenciasOcultas: true, conteosAbiertos: conteos,
+      productos: [
+        { id: 'oculto', ...base, stockTotal: null, bajoMinimo: null, disponible: null, existencias: { tienda: null, 'deposito-1': 4 } },
+        { id: 'cero', ...base, stockTotal: 0, bajoMinimo: true, disponible: false, existencias: { tienda: 0 } },
+        { id: 'servicio', ...base, disponible: true, existencias: {} },
+      ],
+    })) as { id: string; stockTotal?: number | null; bajoMinimo: boolean | null; disponible: boolean | null; existencias: Record<string, number | null> }[] & { existenciasOcultas?: true; conteosAbiertos?: unknown };
+    expect(r.existenciasOcultas).toBe(true);
+    expect(r.conteosAbiertos).toEqual(conteos);
+    const [oculto, cero, servicio] = r;
+    expect(oculto).toMatchObject({ stockTotal: null, bajoMinimo: null, disponible: null, existencias: { tienda: null, 'deposito-1': 4, 'deposito-2': 0 } });
+    expect(cero).toMatchObject({ stockTotal: 0, bajoMinimo: true, disponible: false, existencias: { tienda: 0 } });
+    expect(servicio && 'stockTotal' in servicio).toBe(false);
+  });
+
+  it('sin marca en la respuesta, la lista no la trae', async () => {
+    const r = (await ejecutar('listarProductos', { productos: [{ id: 'a', ...base, stockTotal: 3, existencias: { tienda: 3 } }] })) as { existenciasOcultas?: true }[];
+    expect(r.existenciasOcultas).toBeUndefined();
+  });
+
+  it('series y movimientos llevan la marca; un saldo quitado queda ausente, no 0', async () => {
+    const s = (await ejecutar('listarSeries', { unidades: [], existenciasOcultas: true, conteosAbiertos: conteos })) as { existenciasOcultas?: true; conteosAbiertos?: unknown };
+    expect(s.existenciasOcultas).toBe(true);
+    expect(s.conteosAbiertos).toEqual(conteos);
+    const m = (await ejecutar('listarMovimientos', {
+      existenciasOcultas: true, conteosAbiertos: conteos, cortada: false,
+      movimientos: [{ operacionId: 'o', productoId: 'p', ubicacionId: 'tienda', tipo: 'venta', delta: -1, por: 'u', rol: 'caj', fecha: 'f' }, { operacionId: 'o', productoId: 'p', ubicacionId: 'deposito-2', tipo: 'venta', delta: -1, saldoUbicacion: 7, por: 'u', rol: 'caj', fecha: 'f' }],
+    })) as { existenciasOcultas?: true; movimientos: { saldoUbicacion?: number }[] };
+    expect(m.existenciasOcultas).toBe(true);
+    expect('saldoUbicacion' in (m.movimientos[0] ?? {})).toBe(false);
+    expect(m.movimientos[1]?.saldoUbicacion).toBe(7);
+  });
+});
+
 describe('errores del servidor: el panel mapea por details.codigo', () => {
   it('cada código de módulo conocido tiene su mensaje; el del borde usa el mensaje del servidor', () => {
     expect(mensajeDeError(new ErrorApi('failed-precondition', 'x', { codigo: 'serie-no-disponible' }))).toBe('Esa serie no está disponible en ese almacén.');
