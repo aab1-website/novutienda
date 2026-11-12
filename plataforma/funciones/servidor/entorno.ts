@@ -9,6 +9,7 @@ import { getStorage } from 'firebase-admin/storage';
 import type { CatalogoPuerto, DisparadorSitio, ProcesadorMedios } from '@novutienda/consola';
 import { crearLectorDominios, type LectorDominios } from '../../coordinador/dominios.js';
 import { crearLectoresModulos, type LectorEstadoModulos, type LectorModulos } from '../../coordinador/modulos-activos.js';
+import { crearLectorHojas } from '../../coordinador/lector-hojas.js';
 import { crearCatalogoConsola, almacenCotizacionesDesde, catalogoParaPos, inventariosParaPos } from '../../coordinador/index.js';
 import {
   appCheckReal, appCheckSimulado, crearAlmacenMedios, esEntornoDePruebas, crearAuthMin, crearBaseDatos, crearConsultaSubidas, crearEjecutorRecibos, crearGuardarContacto,
@@ -17,6 +18,7 @@ import {
 } from '../../conectores/firebase/index.js';
 import type { AlmacenMedios, ConsultaSubidas } from '@novutienda/consola';
 import type { AlmacenCotizaciones, AuthMin, Redondeo } from '@novutienda/nucleo';
+import type { LectorHojas } from '@novutienda/inventarios';
 import type { DepsPos } from '@novutienda/pos';
 import type { EjecutorRecibos, LecturaRecibos } from '@novutienda/recibos';
 import type { GuardarContacto, LectorDisponibilidad, VerificadorAppCheck, VerificadorRecaptcha } from '@novutienda/website';
@@ -40,6 +42,8 @@ export interface Entorno {
   readonly consultaSubidas: ConsultaSubidas;
   readonly disparadorSitio: DisparadorSitio;
   readonly emisorEnlacePdf: EmisorEnlacePdf;
+  /** Lector de .xlsx de la importación de Inventarios (adaptador del coordinador, con topes contra archivos no confiables). */
+  readonly lectorHojas: LectorHojas;
   readonly ahora: () => number;
   /** Módulos efectivos del tenant (cache de 60 s por instancia); `undefined` si el tenant no existe o es inválido. */
   readonly modulosDelTenant: LectorModulos;
@@ -88,6 +92,7 @@ export function crearEntorno(o: OpcionesEntorno): Entorno {
     consultaSubidas: crearConsultaSubidas(o.firestore),
     disparadorSitio: crearDisparadorSitio(o.firestore, ahora),
     emisorEnlacePdf: o.emisorEnlacePdf ?? (emulador ? emisorEnlaceEmulador(o.bucket) : emisorEnlaceFirmado(o.bucket, ahora)),
+    lectorHojas: crearLectorHojas(),
     ahora,
     modulosDelTenant: lectoresModulos.modulos,
     estadoModulosDelTenant: lectoresModulos.estado,

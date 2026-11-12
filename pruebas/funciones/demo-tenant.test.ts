@@ -21,7 +21,7 @@ import {
 import {
   aplicarPersonal, generarContrasena, operadorDe, validarEntradaPersonal, type AlmacenCredenciales, type AuthOperador, type Credencial, type UsuarioAuth,
 } from '../../plataforma/operador/personal.js';
-import { accion, crearUsuario, hayEmulador, hoyLaPaz, herramientas, http, iniciarSesion, TENANT_TODO_ENCENDIDO, unico, type Herramientas } from './ayudas.js';
+import { accion, crearUsuario, esperar, hayEmulador, hoyLaPaz, herramientas, http, iniciarSesion, TENANT_TODO_ENCENDIDO, unico, type Herramientas } from './ayudas.js';
 
 vi.setConfig({ testTimeout: 120_000, hookTimeout: 120_000 });
 
@@ -259,15 +259,22 @@ describe('fixtures externos: 41 productos, lotes y retiro (puro)', () => {
     const con = planificarDemo(csvExt, fxExt, estado, { ...opc, retirarFueraDelFixture: true });
     const retiros = con.pasos.filter((x) => x.etapa === 'retiro');
     expect(retiros.map((x) => (x.tipo === 'llamada' ? x.datos : null))).toEqual([
-      { productoId: 'ejemplo-tv-55', cambios: { activo: false, publicado: false } },
-      { productoId: 'ejemplo-tv-65', cambios: { activo: false, publicado: false } },
+      { operacionId: `${VERSION_DEMO}-retiro-ejemplo-tv-55`, productoId: 'ejemplo-tv-55', cambios: { activo: false, publicado: false } },
+      { operacionId: `${VERSION_DEMO}-retiro-ejemplo-tv-65`, productoId: 'ejemplo-tv-65', cambios: { activo: false, publicado: false } },
     ]);
-    for (const r of retiros) expect(r.tipo === 'llamada' && r.accion === 'editarProducto' && r.modulo === 'consola').toBe(true);
+    for (const r of retiros) expect(r.tipo === 'llamada' && r.accion === 'editarProducto' && r.modulo === 'inventarios').toBe(true);
     expect(con.diferencias).toContain('por retirar: 2');
     expect(con.pasos.at(-1)?.etapa).toBe('publicacion');
     // Segunda pasada: ya retirados.
     const despues: EstadoDemo = { ...estado, productosVisibilidad: visibles.map((v) => (idsExt.includes(v.id) ? v : { ...v, activo: false, publicado: false })) };
     expect(planificarDemo(csvExt, fxExt, despues, { ...opc, retirarFueraDelFixture: true }).pasos.filter((x) => x.etapa === 'retiro')).toEqual([]);
+  });
+
+  it('una ficha sin producto en el catálogo del fixture bloquea el plan con mensaje claro', () => {
+    const huerfana = { ...fxExt.fichas[0] as FixtureDemo['fichas'][number], productoId: 'sin-producto' };
+    const plan = planificarDemo(csvExt, { ...fxExt, fichas: [...fxExt.fichas, huerfana] }, base, opc);
+    expect(plan.bloqueos).toContain('fichas sin producto en el catálogo del fixture: sin-producto');
+    expect(planificarDemo(csvExt, fxExt, base, opc).bloqueos).toEqual([]);
   });
 
   it('con fixtures propios todos los identificadores llevan demo-x<hash8> y nada coincide con demo-v1', () => {
@@ -511,6 +518,12 @@ describe.skipIf(!hayEmulador)('siembra completa de la demostración (emulador)',
   let caj: { uid: string; correo: string };
 
   type Dato = Record<string, unknown>;
+  const esperarCambiosTratados = (): Promise<true> =>
+    esperar(async () => {
+      const publicados = (await h.firestore.collection(`tenants/${tenant}/eventos`).where('tipo', '==', 'producto.cambiado').get()).size;
+      const tratados = (await h.firestore.collection(`tenants/${tenant}/procesados`).listDocuments()).filter((d) => d.id.startsWith('consola~id~')).length;
+      return tratados >= publicados;
+    }, 60_000, 'eventos producto.cambiado tratados por la consola').then(() => true as const);
   const ok = async (actor: 'adm' | 'caj', modulo: string, nombre: string, datos: unknown): Promise<Dato> => {
     // El claim del cajero se asigna durante la corrida: el token se pide fresco.
     const token = actor === 'adm' ? adm.token : await iniciarSesion(caj.correo);
@@ -574,6 +587,9 @@ describe.skipIf(!hayEmulador)('siembra completa de la demostración (emulador)',
     expect(primera.bloqueos).toEqual([]);
     expect(primera.pasos.length).toBeGreaterThan(20);
     for (const p of primera.pasos) {
+      // Los cambios de producto llegan a «sin publicar» por el bus (asíncrono): antes de publicar se espera a que la consola
+      // haya tratado todos los eventos, o uno tardío volvería a dejar cambios pendientes tras la publicación.
+      if (p.tipo === 'llamada' && p.accion === 'publicarSitio') await esperarCambiosTratados();
       if (p.tipo === 'llamada') await ok(p.como, p.modulo, p.accion, p.datos);
     }
 

@@ -75,6 +75,8 @@ export async function resolverMerma(
   const mermaId = exigirSegmento(e.mermaId, 'mermaId');
   if (e.decision !== 'aprobada' && e.decision !== 'rechazada') throw new EntradaInvalida('decision inválida');
   const decision = e.decision;
+  // Rechazar exige motivo (no vacío, hasta 500 caracteres): lo impone el servidor, no solo el panel.
+  if (decision === 'rechazada' && e.motivo === undefined) throw new EntradaInvalida('El motivo del rechazo es obligatorio');
   const motivo = e.motivo === undefined ? undefined : exigirMotivo(e.motivo);
   const por = exigirAutor(e.por);
   return ejecutarOperacion(tx, {

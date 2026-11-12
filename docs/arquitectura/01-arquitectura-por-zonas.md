@@ -78,8 +78,8 @@ Los cruces heredados se listan en `pruebas/fronteras/deuda.json` (ruta, import, 
 
 | Contrato | Estado | Dónde |
 |---|---|---|
-| Manifiesto de módulo (`colecciones`, `limite`, `emite`, `consume`, `dependeDe`) | existe | `paquetes/nucleo/src/registro/tipos.ts` |
-| Eventos v1 (`venta.confirmada`, `venta.anulada`, `turno.cerrado`, `stock.cambiado`, `stock.bajo`, `recibo.emitido`, `pedido.solicitado`, `pedido.confirmado`) | existe, congelado | `paquetes/nucleo/src/eventos/*.v1.ts` |
+| Manifiesto de módulo (`colecciones`, `limite`, `emite`, `consume`, `consumeOpcional`, `dependeDe`) | existe | `paquetes/nucleo/src/registro/tipos.ts` |
+| Eventos v1 (`venta.confirmada`, `venta.anulada`, `turno.cerrado`, `stock.cambiado`, `stock.bajo`, `recibo.emitido`, `pedido.solicitado`, `pedido.confirmado`, `producto.cambiado`) | existe, congelado | `paquetes/nucleo/src/eventos/*.v1.ts` |
 | Puertos módulo↔módulo (consola→inventarios, pos→inventarios, recibos→db) | existen como código, sin documento | `plataforma/adaptadores/*.ts` → documentar en `docs/arquitectura/coordinador.md` |
 | Callable por módulo `{accion, tenantId, datos}` con esquema zod y rol | existe | `llamadas/marco.ts`, `docs/produccion/funciones.md` |
 | API externa NovuChat v1 / v1.1 | existe, acordado | `docs/integracion-novuchat.md`, `docs/contratos/propiedades-de-producto-v1.1.md` |

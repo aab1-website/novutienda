@@ -227,6 +227,9 @@ const leerReconstruccion = (d: Readonly<Record<string, unknown>> | undefined): {
 export async function publicarSitio(deps: DepsPublicar, e: { tenantId: string; actor: Actor }): Promise<ResultadoPublicacion> {
   const t = tenantValido(e.tenantId);
   const rol = exigirRol(e.actor, t, ROLES.administrar);
+  // Corte: instante ANTERIOR a la lectura del catálogo. Todo cambio con `ocurridoEn` <= corte ya está en `productos`; uno
+  // posterior (aunque la lectura lo haya visto) se cuenta de más, nunca se pierde.
+  const corteIso = new Date(deps.reloj.ahora()).toISOString();
   const productos = await deps.catalogo.listarProductos(t);
   const ahora = deps.reloj.ahora();
   const ahoraIso = new Date(ahora).toISOString();
@@ -287,7 +290,7 @@ export async function publicarSitio(deps: DepsPublicar, e: { tenantId: string; a
       version, publicadoEn: ahoraIso, productos: idsProd, secciones: idsSec, carruseles: idsCar,
       reconstruccion: { programadaPara, ultima: decision.accion === 'reconstruir' ? ahora : null },
     });
-    tx.set(rutaSitio(t, 'estado'), { cambios: 0, ultimoCambioEn: ahoraIso });
+    tx.set(rutaSitio(t, 'estado'), { cambios: 0, ultimoCambioEn: ahoraIso, corteCatalogoEn: corteIso });
     registrarAuditoria(tx, {
       tenantId: t, uid: e.actor.uid, rol, accion: 'sitio.publicar', ruta: rutaPublicado(t, 'estado'),
       resumenDespues: { version, productos: idsProd.length, secciones: idsSec.length },

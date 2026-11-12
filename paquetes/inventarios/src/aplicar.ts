@@ -1,6 +1,9 @@
 import {
   publicarEvento,
   registrarAuditoria,
+  TIPO_PRODUCTO_CAMBIADO_V1,
+  type CambioProductoCambiado,
+  type DatosProductoCambiadoV1,
   type MotivoStockCambiado,
   type Resumen,
   type TransaccionBandeja,
@@ -26,6 +29,8 @@ export interface Contexto {
   readonly resultado: Datos;
   readonly motivo?: string;
   readonly resumen?: Resumen;
+  /** Cambios de catálogo de la operación: publican `producto.cambiado` en la misma transacción. */
+  readonly cambiosProducto?: readonly { readonly productoId: string; readonly cambio: CambioProductoCambiado }[];
 }
 
 /** Adaptador: la transacción de identidad sirve como transacción de la bandeja de eventos. */
@@ -126,6 +131,22 @@ export function aplicarPlan(tx: TransaccionIdentidad, plan: PlanStock, ctx: Cont
       ocurridoEn: plan.ahora,
       claveIdempotencia: id,
       datos: { productoId: a.productoId, saldoTotal: a.saldoTotal, minimo: a.minimo },
+    });
+  }
+  const cambios = ctx.cambiosProducto ?? [];
+  for (const c of cambios) {
+    // Una operación de un solo producto usa `pc-<operacionId>`; la importación suma el producto.
+    const id = cambios.length === 1 ? `pc-${ctx.operacionId}` : `pc-${ctx.operacionId}__${c.productoId}`;
+    const datos: DatosProductoCambiadoV1 = { productoId: c.productoId, cambio: c.cambio };
+    publicarEvento(bandeja, {
+      id,
+      tipo: TIPO_PRODUCTO_CAMBIADO_V1,
+      version: 1,
+      tenantId: t,
+      origen: ORIGEN,
+      ocurridoEn: plan.ahora,
+      claveIdempotencia: id,
+      datos,
     });
   }
   tx.create(ruta(t, 'operaciones', ctx.operacionId), {
