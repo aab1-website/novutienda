@@ -16,7 +16,7 @@ export type { Validacion } from './validar.js';
 export { exigirRol, ROLES } from './permisos.js';
 export type {
   AlmacenMedios, BaseDatosConsola, CatalogoPuerto, ConsultaSubidas, DatosProducto, DisparadorSitio, Existencia, InfoMedio,
-  LectorHojas, PrecioUSD, ProcesadorMedios, ProductoCatalogo, Reloj, SolicitudProcesado, UbicacionId, VersionProcesada,
+  PrecioUSD, ProcesadorMedios, ProductoCatalogo, Reloj, SolicitudProcesado, UbicacionId, VersionProcesada,
 } from './puertos.js';
 export { BYTES_INICIALES, detectarArchivo } from './medios/tipos-archivo.js';
 export type { ArchivoDetectado, FormatoArchivo, TipoMedio } from './medios/tipos-archivo.js';
@@ -27,12 +27,9 @@ export { liberarEnUso, reservarEnUso } from './medios/uso.js';
 export type { UsoMedios } from './medios/uso.js';
 export { MENSAJE_VIDEO_NO_DISPONIBLE, borrarMedio, CAMPOS_RESERVA, estadoSubida, finalizarSubida, limpiarSubidas, reservarSubida } from './medios/subidas.js';
 export type { DepsMedios, Medio, Reserva, ResultadoLimpieza, VersionMedio } from './medios/subidas.js';
-export { aCsv, neutralizarCelda, parsearCsv } from './csv.js';
-export {
-  COLUMNAS_EXPORTACION, MAX_FILAS_IMPORTACION, exportarProductosCsv, importarProductos, simularImportacion,
-} from './importacion.js';
-export type { DepsImportacion, DepsSimulacion, FilaSimulada, ResultadoImportacion, Simulacion } from './importacion.js';
-export { cambiarPrecioUSD, crearProductoConsola, editarProductoConsola, validarDatosProducto, validarPrecioUSD } from './productos.js';
+export { COLUMNAS_EXPORTACION, exportarProductosCsv } from './exportacion.js';
+export { CONSUMIDOR_CONSOLA, consumirProductoCambiado, ejecutorConsola } from './consumidores.js';
+export type { TransaccionConsola } from './consumidores.js';
 export { eliminarSeccion, guardarCarrusel, guardarConfigSitio, guardarFicha, guardarSeccion, ordenarSecciones } from './servicio-sitio.js';
 export {
   calcularDisponibilidadPublica, construirPublicado, decidirReconstruccion, ejecutarReconstruccion, proyectarDisponibilidad,

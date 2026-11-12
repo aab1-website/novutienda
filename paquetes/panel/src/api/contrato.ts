@@ -8,7 +8,7 @@ import type {
   ConsultaArchivo, PrecioUSDCentavos, ConteoVista, CotizacionesVigentes, CreditoVista, EntradaAuditoriaVista, EntradaProducto, FichaWeb,
   LineaAjuste, LineaIngreso, LineaTraspaso, Medio, MermaVista, MontosPorMoneda, MovimientoCaja, MovimientoCajaEntrada, MovimientoVista,
   PagoEntrada, PlantillaRecibo, ProductoPanel, Recibo, Reserva, ResultadoAnulacion, ResultadoCierre, ResultadoEnvio,
-  ResultadoImportacion, ResultadoOperacion, ResultadoEstadoSubida, ResultadoPublicacion, ResultadoVenta, Rol, Seccion, Simulacion, SolicitudAprobacion,
+  FuenteImportacion, ResultadoImportacion, ResultadoOperacion, ResultadoEstadoSubida, ResultadoPublicacion, ResultadoVenta, Rol, Seccion, Simulacion, SolicitudAprobacion,
   Tablero, TipoMedio, TurnoPos, UbicacionId, UnidadSerie, UsuarioVista, VentaPos, EstadoMerma,
   TipoMovimiento,
 } from './tipos.js';
@@ -33,8 +33,9 @@ export interface Contrato {
   cobrarCredito: { entrada: { requestId: string; ventaId: string; cobro: CobroCreditoEntrada }; salida: { cobro: CobroCredito; repetido: boolean } };
   guardarConfigPos: { entrada: { config: ConfigPos }; salida: ConfigPos };
   // ---- Inventarios (cada una lleva `operacionId`, idempotente) ----
-  /** Alta: `consola.crearProducto` (precios en USD decimales en el servidor) y, si trae costo, `inventarios.fijarCosto`. Solo adm. */
+  /** Alta: `inventarios.crearProducto` (centavos de USD, un precio por mercado, costo opcional). Solo adm. */
   crearProducto: { entrada: { operacionId: string; producto: EntradaProducto }; salida: ResultadoOperacion };
+  /** Edición: `inventarios.editarProducto`; campo ausente = sin cambio, `null` vacía marca, garantía, mínimo o costo. */
   actualizarProducto: { entrada: { operacionId: string; productoId: string; cambios: CambiosProducto }; salida: ResultadoOperacion };
   ingresar: { entrada: { operacionId: string; ubicacionId: UbicacionId; lineas: readonly LineaIngreso[] }; salida: ResultadoOperacion };
   traspasar: { entrada: { operacionId: string; origenId: UbicacionId; destinoId: UbicacionId; lineas: readonly LineaTraspaso[] }; salida: ResultadoOperacion };
@@ -43,14 +44,32 @@ export interface Contrato {
     entrada: { operacionId: string; productoId: string; ubicacionId: UbicacionId; cantidad: number; series?: readonly string[]; motivo: string };
     salida: ResultadoOperacion;
   };
-  resolverMerma: { entrada: { operacionId: string; mermaId: string; decision: 'aprobada' | 'rechazada'; motivo?: string }; salida: ResultadoOperacion };
+  /** Rechazar exige `motivo` (el servidor responde 400 sin él). */
+  resolverMerma: {
+    entrada: { operacionId: string; mermaId: string } & ({ decision: 'aprobada'; motivo?: string } | { decision: 'rechazada'; motivo: string });
+    salida: ResultadoOperacion;
+  };
   abrirConteo: { entrada: { operacionId: string; conteoId: string; ubicacionId: UbicacionId }; salida: ResultadoOperacion };
   registrarLineaConteo: {
     entrada: { operacionId: string; conteoId: string; productoId: string; contado?: number; series?: readonly string[] };
     salida: ResultadoOperacion;
   };
   cerrarConteo: { entrada: { operacionId: string; conteoId: string }; salida: ResultadoOperacion };
-  importarProductosCsv: { entrada: { operacionId: string; csv: string; cargaInicial?: boolean }; salida: ResultadoOperacion };
+  /** Simulación fila por fila (`inventarios.importarProductosCsv` con `simular: true`): no escribe ni usa `operacionId`. Solo adm. */
+  simularImportacionProductos: { entrada: FuenteImportacion & { cargaInicial?: boolean }; salida: Simulacion };
+  /**
+   * Importa productos (crea los nuevos y actualiza los existentes) por tandas; con filas con error se rechaza salvo
+   * `omitirErrores`, que exige `lineasOmitidas` (las líneas con error que la persona vio y aceptó omitir): si no coinciden
+   * con las de la simulación nueva del servidor no escribe nada y responde `desactualizada`. Si `completa` es `false` sin
+   * `desactualizada`, se reintenta con el mismo `operacionId`. El stock solo entra con `cargaInicial`.
+   */
+  importarProductosCsv: {
+    entrada: FuenteImportacion & { operacionId: string; cargaInicial?: boolean } & (
+      | { omitirErrores?: false; lineasOmitidas?: undefined }
+      | { omitirErrores: true; lineasOmitidas: readonly number[] }
+    );
+    salida: ResultadoImportacion;
+  };
   /** Función pura del módulo expuesta como callable: devuelve el CSV (celdas neutralizadas) de los productos del tenant. */
   exportarProductosCsv: { entrada: Vacio; salida: { csv: string } };
   // ---- Recibos ----
@@ -59,11 +78,11 @@ export interface Contrato {
   enviarRecibo: { entrada: { reciboId: string; codigoPais?: string }; salida: ResultadoEnvio };
   referenciarFacturaSuma: { entrada: { reciboId: string; facturaSuma: string }; salida: Ok };
   guardarPlantilla: { entrada: { plantilla: PlantillaRecibo }; salida: Ok };
-  // ---- Consola (catálogo y sitio) ----
+  // ---- Consola (catálogo y sitio; no crea, edita ni importa productos: eso es de Inventarios) ----
   obtenerTablero: { entrada: Vacio; salida: Tablero };
   publicarSitio: { entrada: Vacio; salida: ResultadoPublicacion };
-  /** Centavos de USD, como en todo el panel; `real.ts` convierte a dólares decimales porque `consola.cambiarPrecioUSD` los espera así. */
-  cambiarPrecioUSD: { entrada: { productoId: string; precioUSD: PrecioUSDCentavos }; salida: Ok };
+  /** Centavos de USD: `inventarios.cambiarPrecioUSD` (idempotente por `operacionId`, que la pantalla manda siempre). */
+  cambiarPrecioUSD: { entrada: { operacionId: string; productoId: string; precioUSD: PrecioUSDCentavos }; salida: Ok };
   guardarFicha: { entrada: { productoId: string; ficha: FichaWeb }; salida: Ok };
   reservarSubida: { entrada: { subidaId: string; productoId: string; tipo: TipoMedio; bytes: number }; salida: Reserva };
   /** Consulta el estado de una subida sin procesarla (el disparador de Storage la procesa al llegar el original). */
@@ -76,8 +95,6 @@ export interface Contrato {
   ordenarSecciones: { entrada: { orden: readonly string[] }; salida: Ok };
   guardarCarrusel: { entrada: { carrusel: Carrusel }; salida: Ok };
   guardarConfigSitio: { entrada: { config: ConfigSitio }; salida: Ok };
-  simularImportacion: { entrada: { contenidoBase64: string }; salida: Simulacion };
-  importarProductos: { entrada: { contenidoBase64: string; omitirErrores?: boolean }; salida: ResultadoImportacion };
   /** Se renombra (en la consola es `exportarProductosCsv`) para no chocar con la de Inventarios. */
   exportarProductosCsvSitio: { entrada: Vacio; salida: { csv: string } };
   // ---- Identidad (núcleo) ----
@@ -97,9 +114,11 @@ export interface Contrato {
   buscarSerie: { entrada: { serie: string }; salida: readonly UnidadSerie[] };
   listarMovimientos: {
     entrada: { desde?: string; hasta?: string; productoId?: string; tipo?: TipoMovimiento; usuario?: string; limite?: number };
-    salida: readonly MovimientoVista[];
+    /** `cortada`: hay más movimientos que el límite; afine los filtros. */
+    salida: { readonly movimientos: readonly MovimientoVista[]; readonly cortada: boolean };
   };
-  listarMermas: { entrada: { estado?: EstadoMerma }; salida: readonly MermaVista[] };
+  /** `estado` filtra en el servidor; `cortada` avisa que hay más que el límite. */
+  listarMermas: { entrada: { estado?: EstadoMerma }; salida: { readonly mermas: readonly MermaVista[]; readonly cortada: boolean } };
   listarConteos: { entrada: Vacio; salida: readonly ConteoVista[] };
   /** Turno abierto del usuario (o `null`). */
   turnoActual: { entrada: Vacio; salida: TurnoPos | null };

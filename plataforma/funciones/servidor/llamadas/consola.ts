@@ -1,14 +1,11 @@
 // Callable `consola`: catálogo web (productos, precios, fichas), secciones, carrusel, configuración del sitio,
-// importación, publicación y tablero. Las acciones de usuarios (`listarUsuarios`, `buscarUsuarioPorCorreo`,
+// exportación, publicación y tablero. Las acciones de usuarios (`listarUsuarios`, `buscarUsuarioPorCorreo`,
 // `asignarRol`, `quitarRol`) son Central y viven en `usuarios.ts`; `index.ts` las compone en este mismo callable.
-// La consola nunca escribe productos ni stock por su cuenta: crea y edita por Inventarios (puerto del catálogo)
-// dentro de su propia transacción.
-import { HttpsError } from 'firebase-functions/v2/https';
+// La consola no crea ni edita productos ni escribe stock: eso es de Inventarios (`inventarios.crearProducto`, etc.).
 import { z } from 'zod';
 import {
-  cambiarPrecioUSD, crearProductoConsola, editarProductoConsola, eliminarSeccion, exportarProductosCsv, guardarCarrusel,
-  guardarConfigSitio, guardarFicha, guardarSeccion, importarProductos, obtenerTablero, ordenarSecciones, preciosDelDia, publicarSitio,
-  simularImportacion, type DepsImportacion,
+  eliminarSeccion, exportarProductosCsv, guardarCarrusel, guardarConfigSitio, guardarFicha, guardarSeccion, obtenerTablero,
+  ordenarSecciones, preciosDelDia, publicarSitio,
 } from '@novutienda/consola';
 import { leerCotizacion, SinCotizacionUtilizable, type CopiaCotizacion, type Mercado } from '@novutienda/nucleo';
 import { accion, type Contexto, type TablaImplementaciones } from './marco.js';
@@ -19,42 +16,10 @@ type DepsSitio = Parameters<typeof guardarFicha>[0];
 const datosDe = (d: { data(): unknown }): Record<string, unknown> => d.data() as Record<string, unknown>;
 const reloj = (c: Contexto): { ahora(): number } => ({ ahora: c.e.ahora });
 const depsSitio = (c: Contexto): DepsSitio => ({ db: c.e.db, catalogo: c.e.catalogo, reloj: reloj(c) });
-const depsImportacion = (c: Contexto): DepsImportacion => ({ db: c.e.db, catalogo: c.e.catalogo, reloj: reloj(c) });
 const ruta = (t: string, col: string, id?: string): string => `tenants/${t}/${col}${id === undefined ? '' : `/${id}`}`;
 
-const MAX_BYTES_ARCHIVO = 2 * 1024 * 1024;
-
-/** Decodifica base64 estricto con tope de bytes (el archivo llega dentro del JSON). */
-function base64(valor: string): Uint8Array {
-  if (!/^[A-Za-z0-9+/]+={0,2}$/.test(valor) || valor.length % 4 !== 0) throw new HttpsError('invalid-argument', 'El archivo debe venir en base64.');
-  const bytes = Buffer.from(valor, 'base64');
-  if (bytes.length === 0 || bytes.length > MAX_BYTES_ARCHIVO) throw new HttpsError('invalid-argument', 'El archivo está vacío o supera 2 MB.');
-  return new Uint8Array(bytes);
-}
-
 export const accionesConsola: TablaImplementaciones = {
-  // ---- Productos y precios ---------------------------------------------------------------------------------
-  crearProducto: accion({
-    esquema: objeto({ productoId: ID_PRODUCTO, datos: OBJETO, precioUSD: OBJETO }),
-    ejecutar: async (c, d) => {
-      await crearProductoConsola({ db: c.e.db, catalogo: c.e.catalogo, reloj: reloj(c) }, { tenantId: c.tenantId, actor: c.actor, productoId: d.productoId, datos: d.datos, precioUSD: d.precioUSD });
-      return { productoId: d.productoId };
-    },
-  }),
-  editarProducto: accion({
-    esquema: objeto({ productoId: ID_PRODUCTO, cambios: OBJETO }),
-    ejecutar: async (c, d) => {
-      await editarProductoConsola({ db: c.e.db, catalogo: c.e.catalogo, reloj: reloj(c) }, { tenantId: c.tenantId, actor: c.actor, productoId: d.productoId, cambios: d.cambios });
-      return { productoId: d.productoId };
-    },
-  }),
-  cambiarPrecioUSD: accion({
-    esquema: objeto({ productoId: ID_PRODUCTO, precioUSD: OBJETO }),
-    ejecutar: async (c, d) => {
-      await cambiarPrecioUSD({ db: c.e.db, catalogo: c.e.catalogo, reloj: reloj(c) }, { tenantId: c.tenantId, actor: c.actor, productoId: d.productoId, precioUSD: d.precioUSD });
-      return { productoId: d.productoId };
-    },
-  }),
+  // ---- Productos (solo lectura) ---------------------------------------------------------------------------------
   catalogo: accion({
     esquema: VACIO,
     ejecutar: async (c) => ({ productos: await c.e.catalogo.listarProductos(c.tenantId) }),
@@ -153,18 +118,7 @@ export const accionesConsola: TablaImplementaciones = {
     ejecutar: async (c) => ({ config: (await c.e.firestore.doc(ruta(c.tenantId, 'sitio', 'config')).get()).data() ?? null }),
   }),
 
-  // ---- Importación y exportación (CSV; .xlsx no está disponible: ver docs/produccion) ----------------------
-  simularImportacion: accion({
-    maxCaracteres: 3_000_000,
-    esquema: objeto({ archivo: z.string().min(4).max(2_900_000) }),
-    ejecutar: async (c, d) => ({ simulacion: await simularImportacion({ catalogo: c.e.catalogo }, { tenantId: c.tenantId, actor: c.actor, contenido: base64(d.archivo) }) }),
-  }),
-  importarProductos: accion({
-    maxCaracteres: 3_000_000,
-    esquema: objeto({ archivo: z.string().min(4).max(2_900_000), omitirErrores: z.boolean().optional() }),
-    ejecutar: async (c, d) =>
-      importarProductos(depsImportacion(c), { tenantId: c.tenantId, actor: c.actor, contenido: base64(d.archivo), ...(d.omitirErrores !== undefined ? { omitirErrores: d.omitirErrores } : {}) }),
-  }),
+  // ---- Exportación (CSV) -----------------------------------------------------------------------------------
   exportarProductosCsv: accion({
     esquema: VACIO,
     ejecutar: async (c) => ({ csv: exportarProductosCsv(await c.e.catalogo.listarProductos(c.tenantId)) }),

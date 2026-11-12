@@ -1,10 +1,10 @@
 import type { JSX } from 'preact';
 import { useState } from 'preact/hooks';
-import { LIMITES_PANEL, PLANTILLAS_SITIO, type Carrusel, type ConfigSitio, type PlantillaSitio, type Simulacion } from '../../api/tipos.js';
-import { Alerta, Boton, BotonConfirmado, Campo, Cargando, Casilla, Dato, ErrorCarga, Pestanas, Selector, Seccion, Vacio, fechaHora } from '../../ui/comun.js';
+import { LIMITES_PANEL, PLANTILLAS_SITIO, type Carrusel, type ConfigSitio, type PlantillaSitio } from '../../api/tipos.js';
+import { Alerta, Boton, BotonConfirmado, Campo, Cargando, Dato, ErrorCarga, Pestanas, Selector, Seccion, Vacio, fechaHora } from '../../ui/comun.js';
 import { useApp } from '../../ui/contexto.js';
 import { useAccion, useCarga } from '../../ui/hooks.js';
-import { aBase64, formatoBytes } from '../../util/base64.js';
+import { formatoBytes } from '../../util/base64.js';
 import { descargarTexto } from '../../util/csv.js';
 import { PALETAS } from './plantillas-vista.js';
 import { PantallaFichas } from './catalogo-ficha.js';
@@ -12,7 +12,7 @@ import { PantallaSecciones } from './catalogo-secciones.js';
 
 const TODAS = [
   { id: 'tablero', titulo: 'Tablero' }, { id: 'fichas', titulo: 'Fichas, fotos y video' }, { id: 'secciones', titulo: 'Secciones' },
-  { id: 'apariencia', titulo: 'Apariencia' }, { id: 'importar', titulo: 'Importar y exportar' },
+  { id: 'apariencia', titulo: 'Apariencia' }, { id: 'exportar', titulo: 'Exportar' },
 ];
 
 function Uso({ etiqueta, usados, tope, formato }: { etiqueta: string; usados: number; tope: number; formato?: (n: number) => string }): JSX.Element {
@@ -175,51 +175,22 @@ function CarruselEditor({ plantilla, items, setItems, productos, alGuardar }: { 
   );
 }
 
-function Importar(): JSX.Element {
-  const { api } = useApp();
+function Exportar(): JSX.Element {
+  const { api, puedeVer } = useApp();
   const accion = useAccion();
-  const [contenido, setContenido] = useState<string | null>(null);
-  const [sim, setSim] = useState<Simulacion | null>(null);
-  const [omitir, setOmitir] = useState(false);
-  const [msg, setMsg] = useState<string | null>(null);
-  const elegir = (e: Event): void => {
-    const input = e.currentTarget as HTMLInputElement;
-    const f = input.files?.[0];
-    if (f === undefined) return;
-    void accion.ejecutar(async () => {
-      const b64 = aBase64(new Uint8Array(await f.arrayBuffer()));
-      setContenido(b64);
-      setSim(await api.llamar('simularImportacion', { contenidoBase64: b64 }));
-      setMsg(null);
-    });
-  };
+  const [ok, setOk] = useState<string | null>(null);
   return (
-    <Seccion titulo="Importar y exportar productos">
-      <p class="texto-suave">Siempre se simula antes de importar. El archivo no modifica el stock. Se admite CSV (y Excel si el servidor lo habilita).</p>
-      <div class="fila">
-        <Boton variante="secundario" onClick={() => void accion.ejecutar(async () => { descargarTexto('productos-sitio.csv', (await api.llamar('exportarProductosCsvSitio', {})).csv); })}>Exportar productos</Boton>
-      </div>
-      <div class="campo">
-        <label for="archivo-importar">Archivo a importar</label>
-        <input id="archivo-importar" type="file" accept=".csv,.xlsx,text/csv" onChange={elegir} />
-      </div>
+    <Seccion titulo="Exportar productos">
+      <p class="texto-suave">
+        Los productos se crean e importan en Inventario.
+        {puedeVer('inventario') && <> <a href="#/inventario/csv">Ir a la importación de Inventario</a></>}
+      </p>
+      <p class="texto-suave">El archivo trae los productos con sus precios en dólares, con decimales, y puede reimportarse en Inventario.</p>
+      <Boton variante="secundario" ocupado={accion.ocupado} onClick={() => { setOk(null); void accion.ejecutar(async () => { descargarTexto('productos-sitio.csv', (await api.llamar('exportarProductosCsvSitio', {})).csv); setOk('Archivo productos-sitio.csv generado.'); }); }}>
+        Exportar productos (CSV)
+      </Boton>
       {accion.error && <Alerta>{accion.error}</Alerta>}
-      {sim && (
-        <div>
-          <p>Simulación: <strong>{sim.resumen.crear}</strong> por crear, <strong>{sim.resumen.actualizar}</strong> por actualizar, <strong>{sim.resumen.sinCambios}</strong> sin cambios, <strong>{sim.resumen.errores}</strong> con errores.</p>
-          {sim.columnasIgnoradas.length > 0 && <Alerta tipo="info">Se ignoran: {sim.columnasIgnoradas.join(', ')}.</Alerta>}
-          <table class="tabla">
-            <caption class="solo-lectores">Simulación de la importación</caption>
-            <thead><tr><th scope="col">Línea</th><th scope="col">Producto</th><th scope="col">Acción</th><th scope="col">Detalle</th></tr></thead>
-            <tbody>{sim.filas.map((f) => <tr key={f.linea}><td>{f.linea}</td><td>{f.id}</td><td>{f.accion}</td><td>{[...f.errores, ...f.advertencias].join('; ')}</td></tr>)}</tbody>
-          </table>
-          {sim.resumen.errores > 0 && <Casilla etiqueta="Importar omitiendo las filas con error" marcado={omitir} onCambio={setOmitir} />}
-          <Boton ocupado={accion.ocupado} deshabilitado={contenido === null || (sim.resumen.errores > 0 && !omitir) || sim.resumen.crear + sim.resumen.actualizar === 0} onClick={() => void accion.ejecutar(async () => { const r = await api.llamar('importarProductos', { contenidoBase64: contenido ?? '', omitirErrores: omitir }); setMsg(`Importadas ${r.aplicadas} filas.`); setSim(null); setContenido(null); })}>
-            Importar
-          </Boton>
-        </div>
-      )}
-      {msg && <Alerta tipo="ok">{msg}</Alerta>}
+      {ok && <Alerta tipo="ok">{ok}</Alerta>}
     </Seccion>
   );
 }
@@ -237,7 +208,7 @@ export function PantallaCatalogo({ sub }: { sub: string }): JSX.Element {
       {actual === 'fichas' && <PantallaFichas />}
       {actual === 'secciones' && <PantallaSecciones />}
       {actual === 'apariencia' && <Apariencia />}
-      {actual === 'importar' && <Importar />}
+      {actual === 'exportar' && <Exportar />}
     </div>
   );
 }

@@ -269,14 +269,14 @@ export interface EntradaProducto {
 export interface CambiosProducto {
   readonly nombre?: string;
   readonly categoria?: string;
-  readonly marca?: string;
+  readonly marca?: string | null;
   readonly activo?: boolean;
   readonly publicado?: boolean;
   readonly conSerie?: boolean;
-  readonly garantiaMeses?: number;
-  readonly minimo?: number;
+  readonly garantiaMeses?: number | null;
+  readonly minimo?: number | null;
   readonly precioUSD?: PrecioUSDCentavos;
-  readonly costoUSD?: number;
+  readonly costoUSD?: number | null;
 }
 
 export interface LineaIngreso {
@@ -346,6 +346,8 @@ export interface ConteoVista {
   readonly abiertoPor: string;
   readonly cerradoPor?: string;
   readonly fecha: string;
+  /** Productos con existencia que aún nadie contó: el cierre los cuenta en 0 y abre una merma por cada uno. Solo sup/adm y con el conteo abierto. */
+  readonly faltan?: number;
   /** Productos ya contados (el teórico NO viaja mientras el conteo está abierto). */
   readonly lineas: readonly { readonly productoId: string; readonly contado: number; readonly series?: readonly string[] }[];
   /** Solo en un conteo cerrado y solo para sup/adm. */
@@ -528,24 +530,21 @@ export interface ResultadoPublicacion {
   readonly advertencias: readonly string[];
 }
 
-export interface DatosProducto {
-  readonly nombre: string;
-  readonly categoria: string;
-  readonly marca?: string;
-  readonly sku?: string;
-  readonly activo: boolean;
-  readonly garantiaMeses?: number;
-  readonly conSerie?: boolean;
-  readonly minimo?: number;
-  readonly publicado?: boolean;
+/** Error de una fila de importación: `columna` es el encabezado tal como viene en el archivo, o `null` si es de la fila entera. */
+export interface ErrorFilaImportacion {
+  readonly columna: string | null;
+  readonly motivo: string;
 }
 
 export interface FilaSimulada {
+  /** Número de línea del archivo (el encabezado es la 1). */
   readonly linea: number;
   readonly id: string;
   readonly accion: 'crear' | 'actualizar' | 'sin-cambios' | 'error';
-  readonly errores: readonly string[];
+  readonly errores: readonly ErrorFilaImportacion[];
   readonly advertencias: readonly string[];
+  /** Campos que cambiarían (nombres canónicos de columna); vacío salvo en `actualizar`. */
+  readonly cambios: readonly string[];
 }
 
 export interface Simulacion {
@@ -554,9 +553,29 @@ export interface Simulacion {
   readonly columnasIgnoradas: readonly string[];
 }
 
+/**
+ * Origen de una importación de productos: `archivo` es el .csv o .xlsx en base64 (hasta 2 MB; el servidor distingue por la
+ * firma, no por la extensión) o `csv` es el texto. Uno solo.
+ */
+export type FuenteImportacion =
+  | { readonly archivo: string; readonly csv?: undefined }
+  | { readonly csv: string; readonly archivo?: undefined };
+
+/** Resultado de una importación aplicada por tandas (no es «todo o nada» entre tandas). */
 export interface ResultadoImportacion {
-  readonly aplicadas: number;
-  readonly fallidas: readonly { readonly linea: number; readonly id: string; readonly motivo: string }[];
+  /** `false` si se detuvo a mitad: lo ya aplicado queda; se reintenta con el mismo `operacionId`. */
+  readonly completa: boolean;
+  readonly creados: number;
+  readonly actualizados: number;
+  readonly sinCambios: number;
+  /** Filas con error que se omitieron (`omitirErrores`). */
+  readonly omitidas: number;
+  readonly lotes: { readonly total: number; readonly aplicados: number };
+  readonly productos: readonly string[];
+  /** Motivo de la detención, si `completa` es `false`. */
+  readonly detencion?: string;
+  /** `true`: las filas con error ya no son las que se aceptaron omitir; no se escribió nada y `simulacion` es la nueva. */
+  readonly desactualizada?: boolean;
   readonly simulacion: Simulacion;
 }
 

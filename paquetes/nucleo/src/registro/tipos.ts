@@ -99,6 +99,14 @@ export interface ManifiestoModulo {
   readonly colecciones: readonly ColeccionManifiesto[];
   readonly emite: readonly TipoEvento[];
   readonly consume: readonly TipoEvento[];
+  /**
+   * Eventos que el módulo consume SI ESTÁ ENCENDIDO, emitidos por un módulo del que ESTE depende
+   * (`requiere`/`dependeDe`, directo o por cierre). El emisor no depende del consumidor (por eso no
+   * entran en `consume`, que exige lo contrario); el coordinador los entrega solo a los tenants con el
+   * módulo activo. Cada evento debe existir en los contratos v1, no repetirse en `consume` y tener al
+   * menos un emisor en el cierre del consumidor (lo valida el registro).
+   */
+  readonly consumeOpcional?: readonly TipoEvento[];
   /** Rutas de Storage del módulo; sin él, el módulo no declara archivos. */
   readonly almacenamiento?: readonly RutaAlmacenamiento[];
   /** L2: zona a la que pertenece; sin él, `modulo`. */

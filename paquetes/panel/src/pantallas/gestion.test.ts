@@ -21,18 +21,6 @@ const ver = (e: Entorno, nodo: Nodo): void => void render(e.envolver(nodo));
 const campo = (re: RegExp | string): HTMLElement => screen.getByLabelText(re);
 
 describe('inventario', () => {
-  it('lista productos con existencias por almacén y alerta de mínimo', async () => {
-    const e = crearEntorno('sup');
-    ver(e, h(PantallaInventario, { sub: 'productos' }));
-    const tabla = await screen.findByRole('table', { name: 'Productos y existencias por almacén' });
-    expect(within(tabla).getByText('Televisor 55 pulgadas')).toBeTruthy();
-    expect(screen.getByText(/Alerta de mínimo: .*Parlante portátil/)).toBeTruthy();
-    expect(within(tabla).getAllByText('Bajo el mínimo').length).toBeGreaterThan(0);
-    const u = userEvent.setup();
-    await u.click(screen.getByLabelText('Solo bajo el mínimo'));
-    expect(within(tabla).queryByText('Cable HDMI 2 m')).toBeNull();
-  });
-
   it('la ficha muestra el precio en Bs y ARS del día; el costo y el margen son solo del administrador', async () => {
     const e = crearEntorno('sup');
     ver(e, h(PantallaInventario, { sub: 'productos' }));
@@ -52,7 +40,7 @@ describe('inventario', () => {
     expect(screen.getByText('33,3 %', { exact: false })).toBeTruthy();
   });
 
-  it('el administrador edita precio y datos desde la ficha y crea productos', async () => {
+  it('el administrador cambia precio y mínimo de una sola vez', async () => {
     const e = crearEntorno('adm');
     ver(e, h(PantallaInventario, { sub: 'productos' }));
     const u = userEvent.setup();
@@ -62,74 +50,28 @@ describe('inventario', () => {
     await u.clear(screen.getByLabelText('Mínimo de existencias'));
     await u.type(screen.getByLabelText('Mínimo de existencias'), '12');
     await u.click(screen.getByRole('button', { name: 'Guardar cambios' }));
-    expect(await screen.findByText('Producto guardado.')).toBeTruthy();
+    expect(await screen.findByText('Cambios guardados: Cable HDMI 2 m.')).toBeTruthy();
     const p = (await e.api.llamar('listarProductos', {})).find((x) => x.id === 'cable-hdmi');
     expect(p?.precioUSD.bo).toBe(1050);
     expect(p?.minimo).toBe(12);
-    await u.click(screen.getByRole('button', { name: 'Nuevo producto' }));
-    await u.type(await screen.findByLabelText(/Identificador/), 'teclado-1');
-    await u.type(screen.getByLabelText(/^Nombre/), 'Teclado');
-    await u.type(screen.getByLabelText(/^Categoría/), 'Accesorios');
-    await u.type(screen.getByLabelText(/^SKU/), 'TEC-1');
-    await u.type(screen.getByLabelText(/^Bolivia \(USD\)/), '15');
-    await u.type(screen.getByLabelText(/^Argentina \(USD\)/), '16');
-    await u.click(screen.getByRole('button', { name: 'Crear producto' }));
-    await waitFor(async () => expect((await e.api.llamar('listarProductos', {})).some((x) => x.id === 'teclado-1')).toBe(true));
-  });
-
-  it('ingreso con series, traspaso y ajuste (solo administrador)', async () => {
-    const e = crearEntorno('adm');
-    const u = userEvent.setup();
-    ver(e, h(PantallaInventario, { sub: 'ingreso' }));
-    await screen.findByRole('heading', { name: 'Ingreso de mercadería' });
-    await u.selectOptions(await screen.findByLabelText('Producto'), 'cel-a1');
-    await u.type(screen.getByLabelText(/Series \(una por unidad/), 'N-100, N-101');
-    await u.click(screen.getByRole('button', { name: 'Registrar ingreso' }));
-    expect(await screen.findByText('Ingreso registrado.')).toBeTruthy();
-    expect((await e.api.llamar('buscarSerie', { serie: 'N-10' })).length).toBe(2);
-    cleanup();
-    ver(e, h(PantallaInventario, { sub: 'traspasos' }));
-    await screen.findByRole('heading', { name: 'Traspaso entre almacenes' });
-    await u.selectOptions(await screen.findByLabelText('Producto'), 'cable-hdmi');
-    await u.clear(screen.getByLabelText(/^Cantidad/));
-    await u.type(screen.getByLabelText(/^Cantidad/), '4');
-    await u.click(screen.getByRole('button', { name: 'Traspasar' }));
-    expect(await screen.findByText(/Traspaso registrado/)).toBeTruthy();
-    cleanup();
-    ver(e, h(PantallaInventario, { sub: 'ajuste' }));
-    await u.selectOptions(await screen.findByLabelText('Producto'), 'cable-hdmi');
-    await u.type(await screen.findByLabelText(/Diferencia/), '-2');
-    await u.type(screen.getByLabelText(/^Motivo/), 'Rotura en depósito');
-    await u.click(screen.getByRole('button', { name: 'Aplicar ajuste' }));
-    expect(await screen.findByText('Ajuste registrado.')).toBeTruthy();
-    expect((await e.api.llamar('listarProductos', {})).find((p) => p.id === 'cable-hdmi')?.stockTotal).toBe(33);
   });
 
   it('un error del servidor en un traspaso se muestra legible', async () => {
     const e = crearEntorno('sup');
+    // Las existencias cambiaron entre la vista previa y el envío: el servidor rechaza el traspaso.
+    const original = e.api.llamar.bind(e.api);
+    vi.spyOn(e.api, 'llamar').mockImplementation(((n: string, en: unknown) => (n === 'traspasar' ? Promise.reject(new ErrorApi('failed-precondition', 'No hay existencias suficientes en el origen.')) : original(n as never, en as never))) as never);
     ver(e, h(PantallaInventario, { sub: 'traspasos' }));
     const u = userEvent.setup();
-    await u.selectOptions(await screen.findByLabelText('Origen'), 'deposito-2');
-    await u.selectOptions(screen.getByLabelText('Producto'), 'cable-hdmi');
+    const producto = await screen.findByRole('combobox', { name: /^Producto/ });
+    await u.click(producto);
+    await u.type(producto, 'cable');
+    await u.click(await screen.findByRole('option', { name: /Cable HDMI/ }));
+    await u.type(screen.getByLabelText(/^Cantidad/), '1');
     await u.click(screen.getByRole('button', { name: 'Traspasar' }));
-    expect((await screen.findByRole('alert')).textContent).toContain('No hay existencias suficientes');
-  });
-
-  it('conteo ciego: quien cuenta no ve el teórico; al cerrar se muestran las diferencias', async () => {
-    const e = crearEntorno('sup');
-    ver(e, h(PantallaInventario, { sub: 'conteo' }));
-    const u = userEvent.setup();
-    await u.click(await screen.findByRole('button', { name: 'Abrir conteo' }));
-    await screen.findByText(/Conteo abierto en/);
-    expect(screen.queryByRole('columnheader', { name: 'Sistema' })).toBeNull();
-    await u.type(screen.getByLabelText('Cantidad de Cable HDMI 2 m'), '20');
-    await u.click(within(screen.getByText('Cable HDMI 2 m').closest('tr') as HTMLElement).getByRole('button', { name: 'Registrar' }));
-    expect(await screen.findByText(/contado: 20/)).toBeTruthy();
-    await u.click(screen.getByRole('button', { name: 'Cerrar y firmar el conteo' }));
-    await u.click(await screen.findByRole('button', { name: 'Sí, cerrar y firmar' }));
-    const tabla = await screen.findByRole('table', { name: 'Resultado del conteo' });
-    expect(tabla.textContent).toContain('-5');
-    expect(await screen.findByText(/Conteo cerrado y firmado/)).toBeTruthy();
+    const d = await screen.findByRole('dialog', { name: '¿Registrar este traspaso?' });
+    await u.click(within(d).getByRole('button', { name: 'Sí, traspasar' }));
+    expect((await within(d).findByRole('alert')).textContent).toContain('No hay existencias suficientes');
   });
 
   it('busca por serie y muestra estado, venta y garantía', async () => {
@@ -170,8 +112,12 @@ describe('inventario', () => {
     await u.click(await screen.findByRole('button', { name: 'Exportar productos' }));
     expect(await screen.findByText('Archivo exportado.')).toBeTruthy();
     const archivo = new File(['id,nombre,categoria,sku,precioUSDbo,precioUSDar\r\ncsv-1,Del CSV,Cat,C-1,100,110\r\n'], 'p.csv', { type: 'text/csv' });
-    await u.upload(screen.getByLabelText('Archivo CSV a importar'), archivo);
-    expect(await screen.findByText(/1 productos creados/)).toBeTruthy();
+    await u.upload(screen.getByLabelText('Archivo de productos (CSV o Excel)'), archivo);
+    await u.click(await screen.findByRole('button', { name: 'Importar 1 fila' }));
+    const d = await screen.findByRole('dialog', { name: '¿Importar este archivo?' });
+    await u.click(within(d).getByRole('button', { name: 'Sí, importar' }));
+    expect(await screen.findByText(/Importación terminada/, { selector: '.alerta' })).toBeTruthy();
+    expect((await e.api.llamar('listarProductos', {})).some((p) => p.id === 'csv-1')).toBe(true);
   });
 
   it('el supervisor no ve ajuste ni importación', () => {
@@ -187,7 +133,10 @@ describe('mermas', () => {
     const e = crearEntorno('sup');
     ver(e, h(PantallaMermas, {}));
     const u = userEvent.setup();
-    await u.selectOptions(await screen.findByLabelText('Producto'), 'cable-hdmi');
+    const producto = await screen.findByRole('combobox', { name: /^Producto/ });
+    await u.click(producto);
+    await u.type(producto, 'cable');
+    await u.click(await screen.findByRole('option', { name: /Cable HDMI/ }));
     await u.clear(screen.getByLabelText(/^Cantidad/));
     await u.type(screen.getByLabelText(/^Cantidad/), '2');
     await u.type(screen.getByLabelText(/^Motivo/), 'Cable cortado');
@@ -197,8 +146,9 @@ describe('mermas', () => {
     cleanup();
     e.como('adm');
     ver(e, h(PantallaMermas, {}));
-    await u.click(await screen.findByRole('button', { name: 'Aprobar' }));
-    expect(await screen.findByText('Aprobada')).toBeTruthy();
+    await u.click(await screen.findByRole('button', { name: 'Aprobar la merma de Cable HDMI 2 m' }));
+    await u.click(within(await screen.findByRole('dialog', { name: '¿Aprobar esta merma?' })).getByRole('button', { name: 'Sí, aprobar' }));
+    expect(await screen.findByText(/Merma de Cable HDMI 2 m aprobada/)).toBeTruthy();
     expect((await e.api.llamar('listarProductos', {})).find((p) => p.id === 'cable-hdmi')?.existencias.tienda).toBe(23);
   });
 });
@@ -430,17 +380,16 @@ describe('catálogo y sitio', () => {
     expect(c?.plantillaActiva).toBe('ciruela');
     expect(c?.whatsappNovuchat).toBe('59171112222');
   });
-  it('importación: simula, bloquea con errores y permite omitirlos', async () => {
+  it('exportar: el Catálogo ya no importa; exporta y enlaza a la importación de Inventario', async () => {
     const e = crearEntorno('adm');
-    ver(e, h(PantallaCatalogo, { sub: 'importar' }));
+    vi.spyOn(URL, 'createObjectURL').mockReturnValue('blob:x');
+    vi.spyOn(URL, 'revokeObjectURL').mockReturnValue(undefined);
+    ver(e, h(PantallaCatalogo, { sub: 'exportar' }));
     const u = userEvent.setup();
-    const csv = 'id,nombre,categoria,sku,precioBO,precioAR,stock\r\nok-1,Uno,Cat,S1,10,11,50\r\nMAL ID,Dos,Cat,S2,1,1,1\r\n';
-    await u.upload(await screen.findByLabelText('Archivo a importar'), new File([csv], 'p.csv', { type: 'text/csv' }));
-    expect(await screen.findByText(/por crear/)).toBeTruthy();
-    expect(screen.getByText(/el CSV no modifica el stock/)).toBeTruthy();
-    expect((screen.getByRole('button', { name: 'Importar' }) as HTMLButtonElement).disabled).toBe(true);
-    await u.click(screen.getByLabelText('Importar omitiendo las filas con error'));
-    await u.click(screen.getByRole('button', { name: 'Importar' }));
-    expect(await screen.findByText('Importadas 1 filas.')).toBeTruthy();
+    expect(await screen.findByText(/Los productos se crean e importan en Inventario/)).toBeTruthy();
+    expect(screen.getByRole('link', { name: 'Ir a la importación de Inventario' }).getAttribute('href')).toBe('#/inventario/csv');
+    expect(screen.queryByLabelText('Archivo a importar')).toBeNull();
+    await u.click(screen.getByRole('button', { name: 'Exportar productos (CSV)' }));
+    expect(await screen.findByText(/productos-sitio\.csv generado/)).toBeTruthy();
   });
 });

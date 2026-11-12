@@ -25,7 +25,9 @@ const ACCIONES_INVENTARIOS: readonly (readonly [string, readonly Rol[]])[] = [
   ['registrarLineaConteo', ['caj', 'sup', 'adm']],
   ['cerrarConteo', ['sup', 'adm']],
   ['crearUbicacion', ['adm']],
-  ['fijarCosto', ['adm']],
+  ['crearProducto', ['adm']],
+  ['editarProducto', ['adm']],
+  ['cambiarPrecioUSD', ['adm']],
   ['importarProductosCsv', ['adm']],
   ['listarProductos', ['caj', 'sup', 'adm']],
   ['ubicaciones', ['caj', 'sup', 'adm']],
@@ -65,7 +67,7 @@ export const manifiestoInventarios: ManifiestoModulo = {
     // La lee el sitio a través de la API, no el navegador.
     col('existenciasPublicas'),
   ],
-  emite: ['stock.cambiado', 'stock.bajo'],
+  emite: ['stock.cambiado', 'stock.bajo', 'producto.cambiado'],
   // venta.confirmada no se consume: el POS descuenta con el puerto dentro de su propia transacción.
   consume: ['venta.anulada', 'pedido.confirmado'],
   rutasHttp: [{ ruta: '/api/novuchat/v1/inventario' }, { ruta: '/api/novuchat/v1/pedidos/confirmar' }],

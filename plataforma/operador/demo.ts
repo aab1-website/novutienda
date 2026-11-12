@@ -234,6 +234,13 @@ export function planificarDemo(catalogoCsv: string, fx: FixtureDemo, estado: Est
   const ids = idsDeCatalogo(catalogoCsv);
   const lotes = lotesDeCatalogo(catalogoCsv);
   const existentes = ids.filter((i) => estado.productos.includes(i));
+  // Invariante: no hay ficha de catálogo sin producto de inventario.
+  const delCatalogo = new Set(ids);
+  const sinProducto = fx.fichas.filter((f) => !delCatalogo.has(f.productoId)).map((f) => f.productoId);
+  if (sinProducto.length > 0) {
+    bloqueos.push(`fichas sin producto en el catálogo del fixture: ${sinProducto.join(', ')}`);
+    diferencias.push(`fichas huérfanas: ${String(sinProducto.length)}`);
+  }
   let lotesPorCargar = 0;
   let parcial = false;
   lotes.forEach((lote, n) => {
@@ -257,7 +264,7 @@ export function planificarDemo(catalogoCsv: string, fx: FixtureDemo, estado: Est
     const delFixture = new Set(ids);
     const porRetirar = (estado.productosVisibilidad ?? []).filter((p) => !delFixture.has(p.id) && (p.activo || p.publicado));
     if (porRetirar.length > 0) diferencias.push(`por retirar: ${String(porRetirar.length)}`);
-    for (const p of porRetirar) pasos.push(llamada('retiro', 'consola', 'editarProducto', { productoId: p.id, cambios: { activo: false, publicado: false } }));
+    for (const p of porRetirar) pasos.push(llamada('retiro', 'inventarios', 'editarProducto', { operacionId: `${V}-retiro-${p.id}`, productoId: p.id, cambios: { activo: false, publicado: false } }));
   }
 
   // 4) Series, por almacén (todo o nada por almacén).

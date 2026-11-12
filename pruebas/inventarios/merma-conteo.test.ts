@@ -41,8 +41,8 @@ const solicitar = (id: string, o: { productoId?: string; cantidad?: number; seri
       motivo: o.motivo ?? 'rota',
     }),
   );
-const resolver = (id: string, mermaId: string, decision: 'aprobada' | 'rechazada', por: Autor = SUP) =>
-  db.runTransaction((tx) => resolverMerma(tx, { tenantId: T, operacionId: id, mermaId, decision, por }));
+const resolver = (id: string, mermaId: string, decision: 'aprobada' | 'rechazada', por: Autor = SUP, motivo?: string) =>
+  db.runTransaction((tx) => resolverMerma(tx, { tenantId: T, operacionId: id, mermaId, decision, por, ...(motivo !== undefined ? { motivo } : decision === 'rechazada' ? { motivo: 'no procede' } : {}) }));
 
 describe('merma', () => {
   it('solicitar no mueve stock; aprobar descuenta y deja movimiento inmutable', async () => {
@@ -74,6 +74,20 @@ describe('merma', () => {
     await expect(resolver('r4', 'm1', 'rechazada', ADM)).rejects.toBeInstanceOf(EstadoInvalido);
     expect(contar(db, 'movimientos')).toBe(3); // solo los tres ingresos
     verificarInvariantes(db);
+  });
+
+  it('rechazar exige motivo no vacío y de hasta 500 caracteres; aprobar no lo exige', async () => {
+    await solicitar('m1');
+    const sin = (motivo?: string) => db.runTransaction((tx) => resolverMerma(tx, { tenantId: T, operacionId: op('rs'), mermaId: 'm1', decision: 'rechazada', por: SUP, ...(motivo !== undefined ? { motivo } : {}) }));
+    await expect(sin()).rejects.toBeInstanceOf(EntradaInvalida);
+    await expect(sin('   ')).rejects.toBeInstanceOf(EntradaInvalida);
+    await expect(sin('x'.repeat(501))).rejects.toBeInstanceOf(EntradaInvalida);
+    expect(doc(db, 'mermas', 'm1')?.['estado']).toBe('solicitada');
+    await resolver('ra', 'm1', 'rechazada', SUP, 'daño de transporte');
+    expect(doc(db, 'mermas', 'm1')).toMatchObject({ estado: 'rechazada', resolucionMotivo: 'daño de transporte' });
+    await solicitar('m2');
+    await resolver('rb', 'm2', 'aprobada');
+    expect(doc(db, 'mermas', 'm2')?.['estado']).toBe('aprobada');
   });
 
   it('resolver con la misma operacionId es idempotente; con otra decisión, conflicto', async () => {

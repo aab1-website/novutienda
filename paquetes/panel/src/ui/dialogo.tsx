@@ -114,6 +114,23 @@ function DialogoInterno(p: PropsDialogo): JSX.Element {
     // El diálogo se monta una vez por apertura.
   }, []);
 
+  // Un cuerpo que se desplaza y no tiene nada enfocable (p. ej. una ficha de solo lectura) debe alcanzarse con el teclado.
+  const cuerpo = useRef<HTMLDivElement>(null);
+  useLayoutEffect(() => {
+    const c = cuerpo.current;
+    if (c === null || typeof ResizeObserver === 'undefined') return undefined;
+    const revisar = (): void => {
+      const desplaza = c.scrollHeight > c.clientHeight + 1;
+      if (desplaza && enfocables(c).length === 0) c.tabIndex = 0;
+      else c.removeAttribute('tabindex');
+    };
+    const o = new ResizeObserver(revisar);
+    o.observe(c);
+    for (const hijo of Array.from(c.children)) o.observe(hijo);
+    revisar();
+    return () => o.disconnect();
+  }, []);
+
   const intentarCerrar = (): void => {
     if (p.sucio === true) setPreguntando(true);
     else p.onCerrar();
@@ -155,7 +172,7 @@ function DialogoInterno(p: PropsDialogo): JSX.Element {
             </svg>
           </button>
         </div>
-        <div class="dialogo-cuerpo">
+        <div ref={cuerpo} class="dialogo-cuerpo">
           {p.descripcion !== undefined && (
             <p id={idDescripcion} class="dialogo-descripcion">
               {p.descripcion}

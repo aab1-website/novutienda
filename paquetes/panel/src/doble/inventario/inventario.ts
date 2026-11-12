@@ -2,6 +2,7 @@ import type { Entrada, NombreCallable, Salida } from '../../api/contrato.js';
 import type { ResultadoOperacion, TipoMovimiento, UbicacionId } from '../../api/tipos.js';
 import { UBICACIONES } from '../../api/tipos.js';
 import { aCsv } from '../../util/csv.js';
+import { importarProductosDoble, simularImportacionDoble } from './importacion.js';
 import { auditar, exigirRol, fallo, iso, recalcular, vistaProducto, type Contexto, type ProductoInterno } from '../estado.js';
 
 type H<N extends NombreCallable> = (c: Contexto, e: Entrada<N>) => Salida<N> | Promise<Salida<N>>;
@@ -62,7 +63,7 @@ const motivoObligatorio = (m: string): string => {
 };
 
 export const handlersInventario: {
-  [N in 'crearProducto' | 'actualizarProducto' | 'ingresar' | 'traspasar' | 'ajustar' | 'solicitarMerma' | 'resolverMerma' | 'abrirConteo' | 'registrarLineaConteo' | 'cerrarConteo' | 'importarProductosCsv' | 'exportarProductosCsv' | 'listarProductos' | 'listarSeries' | 'buscarSerie' | 'listarMovimientos' | 'listarMermas' | 'listarConteos' | 'cotizacionesVigentes']: H<N>;
+  [N in 'crearProducto' | 'actualizarProducto' | 'ingresar' | 'traspasar' | 'ajustar' | 'solicitarMerma' | 'resolverMerma' | 'abrirConteo' | 'registrarLineaConteo' | 'cerrarConteo' | 'simularImportacionProductos' | 'importarProductosCsv' | 'exportarProductosCsv' | 'listarProductos' | 'listarSeries' | 'buscarSerie' | 'listarMovimientos' | 'listarMermas' | 'listarConteos' | 'cotizacionesVigentes']: H<N>;
 } = {
   crearProducto(c, e) {
     const p = e.producto;
@@ -91,7 +92,21 @@ export const handlersInventario: {
       if (e.cambios.conSerie !== undefined && e.cambios.conSerie !== p.conSerie && c.e.movimientos.some((m) => m.productoId === p.id)) {
         throw fallo('estado-invalido', 'conSerie no cambia tras el primer movimiento');
       }
-      Object.assign(p, e.cambios);
+      const { marca, garantiaMeses, minimo, costoUSD, precioUSD, ...directos } = e.cambios;
+      if (precioUSD !== undefined) {
+        for (const v of [precioUSD.bo, precioUSD.ar]) {
+          if (!Number.isSafeInteger(v) || v < 0 || v > 10_000_000_000) throw fallo('entrada-invalida', 'Precio: centavos enteros');
+        }
+      }
+      if (garantiaMeses != null && (!Number.isInteger(garantiaMeses) || garantiaMeses < 1 || garantiaMeses > 120)) throw fallo('entrada-invalida', 'Garantía: de 1 a 120 meses');
+      if (minimo != null && (!Number.isInteger(minimo) || minimo < 0)) throw fallo('entrada-invalida', 'Mínimo inválido');
+      Object.assign(p, directos);
+      // `null` vacía el dato; ausente = sin cambio.
+      if (marca === null) delete p.marca; else if (marca !== undefined) p.marca = marca;
+      if (garantiaMeses === null) delete p.garantiaMeses; else if (garantiaMeses !== undefined) p.garantiaMeses = garantiaMeses;
+      if (minimo === null) delete p.minimo; else if (minimo !== undefined) p.minimo = minimo;
+      if (costoUSD === null) p.costoUSD = 0; else if (costoUSD !== undefined) p.costoUSD = costoUSD;
+      if (precioUSD !== undefined) p.precioUSD = { bo: precioUSD.bo, ar: precioUSD.ar };
       c.e.cambiosSinPublicar += 1;
       auditar(c, 'inventarios.producto-actualizar', `productos/${p.id}`);
       return { productoId: p.id };
@@ -183,6 +198,7 @@ export const handlersInventario: {
   },
 
   resolverMerma(c, e) {
+    if (e.decision === 'rechazada' && (e.motivo ?? '').trim() === '') throw fallo('entrada-invalida', 'Indique el motivo del rechazo.');
     return operacion(c, 'merma-resolver', e.operacionId, [e.mermaId, e.decision, e.motivo], () => {
       const i = c.e.mermas.findIndex((m) => m.mermaId === e.mermaId);
       const m = c.e.mermas[i];
@@ -268,27 +284,14 @@ export const handlersInventario: {
     });
   },
 
+  simularImportacionProductos(c, e) {
+    exigirRol(c, ['adm']);
+    return simularImportacionDoble(c, e);
+  },
+
   importarProductosCsv(c, e) {
-    return operacion(c, 'importar-csv', e.operacionId, [e.csv, e.cargaInicial], () => {
-      const filas = parsearCsv(e.csv);
-      const [cab = [], ...datos] = filas;
-      for (const col of ['id', 'nombre', 'categoria', 'sku', 'precioUSDbo', 'precioUSDar']) if (!cab.includes(col)) throw fallo('entrada-invalida', `falta la columna ${col}`);
-      if (datos.length < 1 || datos.length > 1000) throw fallo('entrada-invalida', 'El CSV debe tener entre 1 y 1000 filas');
-      const dato = (f: string[], col: string): string => f[cab.indexOf(col)] ?? '';
-      let creados = 0;
-      for (const f of datos) {
-        const id = dato(f, 'id');
-        if (!ID_PRODUCTO.test(id) || c.e.productos.has(id)) throw fallo('entrada-invalida', `Fila inválida o repetida: ${id}`);
-        c.e.productos.set(id, {
-          id, nombre: dato(f, 'nombre'), categoria: dato(f, 'categoria'), sku: dato(f, 'sku'), activo: dato(f, 'activo') !== 'false', publicado: dato(f, 'publicado') === 'true',
-          conSerie: dato(f, 'conSerie') === 'true', precioUSD: { bo: Number(dato(f, 'precioUSDbo')) || 0, ar: Number(dato(f, 'precioUSDar')) || 0 }, costoUSD: Number(dato(f, 'costoUSD')) || 0,
-          stockTotal: 0, existencias: { tienda: 0, 'deposito-1': 0, 'deposito-2': 0 },
-        });
-        creados += 1;
-      }
-      auditar(c, 'inventarios.importar-csv', 'productos');
-      return { creados };
-    });
+    exigirRol(c, ['adm']);
+    return importarProductosDoble(c, e);
   },
 
   exportarProductosCsv(c) {
@@ -325,22 +328,25 @@ export const handlersInventario: {
       .slice(0, 50);
   },
 
-  listarMovimientos: (c, e) =>
-    c.e.movimientos
+  listarMovimientos: (c, e) => {
+    const coinciden = c.e.movimientos
       .filter((m) => (e.desde === undefined ? true : m.fecha.slice(0, 10) >= e.desde))
       .filter((m) => (e.hasta === undefined ? true : m.fecha.slice(0, 10) <= e.hasta))
       .filter((m) => (e.productoId === undefined ? true : m.productoId === e.productoId))
       .filter((m) => (e.tipo === undefined ? true : m.tipo === e.tipo))
-      .filter((m) => (e.usuario === undefined ? true : m.por === e.usuario))
-      .slice(-(e.limite ?? 200))
-      .reverse(),
+      .filter((m) => (e.usuario === undefined ? true : m.por === e.usuario));
+    const limite = e.limite ?? 200;
+    return { movimientos: coinciden.slice(-limite).reverse(), cortada: coinciden.length > limite };
+  },
 
-  listarMermas: (c, e) => c.e.mermas.filter((m) => (e.estado === undefined ? true : m.estado === e.estado)).slice().reverse(),
+  listarMermas: (c, e) => ({ mermas: c.e.mermas.filter((m) => (e.estado === undefined ? true : m.estado === e.estado)).slice().reverse(), cortada: false }),
 
   listarConteos: (c) =>
     [...c.e.conteos.values()].map((k) => ({
       conteoId: k.conteoId, ubicacionId: k.ubicacionId, estado: k.estado, abiertoPor: k.abiertoPor, ...(k.cerradoPor !== undefined ? { cerradoPor: k.cerradoPor } : {}), fecha: k.fecha, lineas: k.lineas,
       ...(c.rol !== 'caj' && k.estado === 'cerrado' && k.resultado !== undefined ? { resultado: k.resultado } : {}),
+      // Solo sup/adm y con el conteo abierto: cuántos productos con existencia nadie ha contado (sin ids ni cantidades).
+      ...(c.rol !== 'caj' && k.estado === 'abierto' ? { faltan: [...c.e.productos.values()].filter((p) => p.existencias[k.ubicacionId] > 0 && !k.lineas.some((l) => l.productoId === p.id)).length } : {}),
     })),
 
   cotizacionesVigentes: (c) => c.e.cotizaciones,

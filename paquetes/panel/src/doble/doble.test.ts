@@ -1,5 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import { AHORA, crearEntorno, uuid } from '../ayuda-pruebas.js';
+import { archivoExcelDoble } from './inventario/importacion.js';
 import { NOMBRES_CALLABLE, ROLES_CALLABLE } from '../api/contrato.js';
 import { ErrorApi, mensajeDeError } from '../api/errores.js';
 import type { Carrito, PagoEntrada } from '../api/tipos.js';
@@ -162,7 +163,7 @@ describe('doble: venta', () => {
   });
   it('producto sin precio (a consultar) y moneda que no corresponde a la lista', async () => {
     const { e } = await conTurno('adm');
-    await e.api.llamar('cambiarPrecioUSD', { productoId: 'cable-hdmi', precioUSD: { bo: 0, ar: 9 } });
+    await e.api.llamar('cambiarPrecioUSD', { operacionId: uuid(), productoId: 'cable-hdmi', precioUSD: { bo: 0, ar: 9 } });
     expect((await falla(e.api.llamar('confirmarVenta', { requestId: uuid(), carrito: { mercado: 'BO', moneda: 'BOB', lineas: [{ productoId: 'cable-hdmi', cantidad: 1 }] }, pagos: efectivo(1) }))).detalle.codigo).toBe('sin-precio');
     expect((await falla(e.api.llamar('confirmarVenta', { requestId: uuid(), carrito: { mercado: 'BO', moneda: 'ARS', lineas: [{ productoId: 'cable-hdmi', cantidad: 1 }] }, pagos: efectivo(1) }))).detalle.codigo).toBe('entrada-invalida');
   });
@@ -316,7 +317,7 @@ describe('doble: inventarios', () => {
     expect((await falla(e.api.llamar('traspasar', { operacionId: uuid(), origenId: 'tienda', destinoId: 'tienda', lineas: [{ productoId: 'cable-hdmi', cantidad: 1 }] }))).detalle.codigo).toBe('entrada-invalida');
     const err = await falla(e.api.llamar('traspasar', { operacionId: uuid(), origenId: 'deposito-2', destinoId: 'tienda', lineas: [{ productoId: 'cable-hdmi', cantidad: 1 }] }));
     expect(err.detalle.codigo).toBe('stock-insuficiente');
-    expect((await e.api.llamar('listarMovimientos', { tipo: 'traspaso' })).length).toBe(2);
+    expect((await e.api.llamar('listarMovimientos', { tipo: 'traspaso' })).movimientos.length).toBe(2);
   });
   it('el ajuste es de administrador, exige motivo y no admite productos con serie', async () => {
     const e = crearEntorno('adm');
@@ -331,14 +332,14 @@ describe('doble: inventarios', () => {
   it('merma: quien solicita no la resuelve; aprobada descuenta y pasa la serie a merma; no se resuelve dos veces', async () => {
     const e = crearEntorno('sup');
     await e.api.llamar('solicitarMerma', { operacionId: 'op-merma-1', productoId: 'tv-55', ubicacionId: 'tienda', cantidad: 1, series: ['TV55-002'], motivo: 'Pantalla rota' });
-    const [m] = await e.api.llamar('listarMermas', { estado: 'solicitada' });
+    const [m] = (await e.api.llamar('listarMermas', { estado: 'solicitada' })).mermas;
     expect(m?.estado).toBe('solicitada');
     const mermaId = m?.mermaId ?? '';
     expect((await falla(e.api.llamar('resolverMerma', { operacionId: uuid(), mermaId, decision: 'aprobada' }))).detalle.codigo).toBe('estado-invalido');
     e.como('adm');
     await e.api.llamar('resolverMerma', { operacionId: uuid(), mermaId, decision: 'aprobada' });
     expect((await e.api.llamar('buscarSerie', { serie: 'TV55-002' }))[0]?.estado).toBe('merma');
-    expect((await falla(e.api.llamar('resolverMerma', { operacionId: uuid(), mermaId, decision: 'rechazada' }))).detalle.codigo).toBe('estado-invalido');
+    expect((await falla(e.api.llamar('resolverMerma', { operacionId: uuid(), mermaId, decision: 'rechazada', motivo: 'x' }))).detalle.codigo).toBe('estado-invalido');
     await falla(e.api.llamar('solicitarMerma', { operacionId: uuid(), productoId: 'tv-55', ubicacionId: 'tienda', cantidad: 1, series: ['TV55-002'], motivo: 'otra vez' }));
   });
   it('conteo ciego: el teórico no viaja mientras está abierto; al cerrar, faltante genera merma y sobrante ingresa', async () => {
@@ -354,10 +355,10 @@ describe('doble: inventarios', () => {
     const cierre = await e.api.llamar('cerrarConteo', { operacionId: uuid(), conteoId });
     expect(cierre.resultado['sinContar']).toEqual(expect.arrayContaining(['tv-55']));
     expect(String(cierre.resultado['avisos'])).toContain('nadie contó');
-    expect((await e.api.llamar('listarMermas', {})).some((m) => m.productoId === 'tv-55')).toBe(true);
+    expect((await e.api.llamar('listarMermas', {})).mermas.some((m) => m.productoId === 'tv-55')).toBe(true);
     const cerrado = (await e.api.llamar('listarConteos', {}))[0];
     expect(cerrado?.resultado).toEqual([{ productoId: 'cable-hdmi', teorico: 25, contado: 20, diferencia: -5 }, { productoId: 'parlante', teorico: 1, contado: 3, diferencia: 2 }]);
-    expect((await e.api.llamar('listarMermas', {})).some((m) => m.productoId === 'cable-hdmi' && m.cantidad === 5)).toBe(true);
+    expect((await e.api.llamar('listarMermas', {})).mermas.some((m) => m.productoId === 'cable-hdmi' && m.cantidad === 5)).toBe(true);
     expect((await e.api.llamar('listarProductos', {})).find((p) => p.id === 'parlante')?.existencias.tienda).toBe(3);
     expect((await falla(e.api.llamar('cerrarConteo', { operacionId: uuid(), conteoId }))).detalle.codigo).toBe('estado-invalido');
     e.como('caj');
@@ -367,7 +368,7 @@ describe('doble: inventarios', () => {
     const e = crearEntorno('adm');
     const nuevo = { id: 'mouse-1', nombre: 'Mouse', categoria: 'Accesorios', sku: 'MOUSE-1', precioUSD: { bo: 1000, ar: 1100 }, costoUSD: 500 };
     await e.api.llamar('crearProducto', { operacionId: uuid(), producto: nuevo });
-    expect((await falla(e.api.llamar('crearProducto', { operacionId: uuid(), producto: nuevo }))).detalle.codigo).toBe('conflicto');
+    expect((await falla(e.api.llamar('crearProducto', { operacionId: uuid(), producto: nuevo }))).detalle.codigo).toBe('estado-invalido');
     expect((await falla(e.api.llamar('crearProducto', { operacionId: uuid(), producto: { ...nuevo, id: 'Malo' } }))).detalle.codigo).toBe('entrada-invalida');
     expect((await falla(e.api.llamar('crearProducto', { operacionId: uuid(), producto: { ...nuevo, id: 'mouse-2' } }))).detalle.codigo).toBe('estado-invalido');
     await e.api.llamar('actualizarProducto', { operacionId: uuid(), productoId: 'mouse-1', cambios: { minimo: 4 } });
@@ -388,9 +389,127 @@ describe('doble: inventarios', () => {
   it('importación CSV: crea productos, rechaza ids repetidos y filas fuera de rango', async () => {
     const e = crearEntorno('adm');
     const csv = 'id,nombre,categoria,sku,precioUSDbo,precioUSDar\r\nnuevo-1,Nuevo,Cat,N-1,1000,1100\r\n';
-    expect((await e.api.llamar('importarProductosCsv', { operacionId: uuid(), csv })).resultado['creados']).toBe(1);
-    expect((await falla(e.api.llamar('importarProductosCsv', { operacionId: uuid(), csv }))).detalle.codigo).toBe('entrada-invalida');
+    const r = await e.api.llamar('importarProductosCsv', { operacionId: uuid(), csv });
+    expect(r).toMatchObject({ completa: true, creados: 1, actualizados: 0, omitidas: 0, lotes: { total: 1, aplicados: 1 }, productos: ['nuevo-1'] });
+    expect((await e.api.llamar('listarProductos', {})).find((p) => p.id === 'nuevo-1')?.precioUSD).toEqual({ bo: 1000, ar: 1100 });
+    // Repetir el archivo con otro operacionId: el producto ya existe y no cambia nada.
+    expect(await e.api.llamar('importarProductosCsv', { operacionId: uuid(), csv })).toMatchObject({ creados: 0, sinCambios: 1 });
     expect((await falla(e.api.llamar('importarProductosCsv', { operacionId: uuid(), csv: 'id,nombre\r\nx,y\r\n' }))).detalle.codigo).toBe('entrada-invalida');
+    expect((await falla(e.api.llamar('importarProductosCsv', { operacionId: uuid(), csv: 'nombre\r\nx\r\n' }))).detalle.codigo).toBe('entrada-invalida');
+  });
+  it('importación: la simulación marca errores por fila y columna; una fila nueva sin SKU es error; el stock se ignora', async () => {
+    const e = crearEntorno('adm');
+    const csv = 'id,nombre,categoria,sku,precioBO,precioAR,stock\r\nok-1,Uno,Cat,S1,10.50,11,50\r\nMAL ID,Dos,Cat,S2,1,1,1\r\nsin-sku,Tres,Cat,,1,1,0\r\ntv-55,Televisor nuevo nombre,,,500,520,0\r\ncable-hdmi,Cable HDMI 2 m,,,,,\r\n';
+    const sim = await e.api.llamar('simularImportacionProductos', { csv });
+    expect(sim.resumen).toEqual({ crear: 1, actualizar: 1, sinCambios: 1, errores: 2 });
+    expect(sim.columnasIgnoradas[0]).toContain('el CSV no modifica el stock');
+    expect(sim.filas[1]).toMatchObject({ linea: 3, accion: 'error', errores: [{ columna: 'id' }] });
+    expect(sim.filas[2]).toMatchObject({ linea: 4, accion: 'error', errores: [{ columna: 'sku', motivo: 'es obligatorio para crear' }] });
+    expect(sim.filas[3]).toMatchObject({ accion: 'actualizar', cambios: ['nombre', 'precioUSD'] });
+    // La simulación no escribe nada ni consume operacionId.
+    expect((await e.api.llamar('listarProductos', {})).some((p) => p.id === 'ok-1')).toBe(false);
+    const err = await falla(e.api.llamar('importarProductosCsv', { operacionId: uuid(), csv }));
+    expect(err.detalle.codigo).toBe('entrada-invalida');
+    const r = await e.api.llamar('importarProductosCsv', { operacionId: uuid(), csv, omitirErrores: true, lineasOmitidas: [3, 4] });
+    expect(r).toMatchObject({ completa: true, creados: 1, actualizados: 1, sinCambios: 1, omitidas: 2 });
+    const ok = (await e.api.llamar('listarProductos', {})).find((p) => p.id === 'ok-1');
+    expect(ok?.existencias.tienda).toBe(0);
+    expect(ok?.precioUSD).toEqual({ bo: 1050, ar: 1100 });
+    // La simulación del servidor viaja con `simular: true` y la importación sin ella.
+    const enviadas = e.api.transporte.invocaciones.filter((i) => i.accion === 'importarProductosCsv').map((i) => i.datos as Record<string, unknown>);
+    expect(enviadas[0]).toMatchObject({ simular: true });
+    expect(enviadas[0]).not.toHaveProperty('operacionId');
+    expect(enviadas.at(-1)).not.toHaveProperty('simular');
+  });
+  it('importación: omitirErrores exige lineasOmitidas y, si no coinciden con la simulación nueva, no escribe nada y devuelve desactualizada', async () => {
+    const e = crearEntorno('adm');
+    const csv = 'id,nombre,categoria,sku\r\nok-1,Uno,Cat,S1\r\nMAL ID,Dos,Cat,S2\r\n';
+    const sin = await falla(e.api.llamar('importarProductosCsv', { operacionId: uuid(), csv, omitirErrores: true } as never));
+    expect(sin.detalle.codigo).toBe('entrada-invalida');
+    expect(sin.codigoHttps).toBe('invalid-argument');
+    const operacionId = uuid();
+    const r = await e.api.llamar('importarProductosCsv', { operacionId, csv, omitirErrores: true, lineasOmitidas: [2] });
+    expect(r).toMatchObject({ completa: false, desactualizada: true, creados: 0, omitidas: 0, lotes: { total: 0, aplicados: 0 } });
+    expect(r.detencion).toContain('No se escribió nada');
+    expect(r.simulacion.resumen.errores).toBe(1);
+    expect((await e.api.llamar('listarProductos', {})).some((p) => p.id === 'ok-1')).toBe(false);
+    const ok = await e.api.llamar('importarProductosCsv', { operacionId, csv, omitirErrores: true, lineasOmitidas: [3] });
+    expect(ok).toMatchObject({ completa: true, creados: 1, omitidas: 1 });
+    expect(ok.desactualizada).toBeUndefined();
+  });
+  it('merma: rechazar sin motivo falla; aprobar no lo exige', async () => {
+    const e = crearEntorno('sup');
+    await e.api.llamar('solicitarMerma', { operacionId: uuid(), productoId: 'cable-hdmi', ubicacionId: 'tienda', cantidad: 1, motivo: 'Dañado' });
+    const mermaId = (await e.api.llamar('listarMermas', { estado: 'solicitada' })).mermas[0]?.mermaId ?? '';
+    e.como('adm');
+    expect((await falla(e.api.llamar('resolverMerma', { operacionId: uuid(), mermaId, decision: 'rechazada' } as never))).detalle.codigo).toBe('entrada-invalida');
+    expect((await falla(e.api.llamar('resolverMerma', { operacionId: uuid(), mermaId, decision: 'rechazada', motivo: '  ' }))).detalle.codigo).toBe('entrada-invalida');
+    expect((await e.api.llamar('listarMermas', { estado: 'solicitada' })).mermas).toHaveLength(1);
+    await e.api.llamar('resolverMerma', { operacionId: uuid(), mermaId, decision: 'aprobada' });
+  });
+  it('importación: carga inicial admite stock; sin ella, las columnas de stock se rechazan', async () => {
+    const e = crearEntorno('adm');
+    const csv = 'id,nombre,categoria,sku,stockTienda\r\ncarga-1,Uno,Cat,C1,7\r\n';
+    expect((await falla(e.api.llamar('simularImportacionProductos', { csv }))).detalle.codigo).toBe('entrada-invalida');
+    await e.api.llamar('importarProductosCsv', { operacionId: uuid(), csv, cargaInicial: true });
+    expect((await e.api.llamar('listarProductos', {})).find((p) => p.id === 'carga-1')?.existencias.tienda).toBe(7);
+  });
+  it('importación: acepta archivo Excel y CSV en base64; exige uno solo y solo el administrador importa', async () => {
+    const e = crearEntorno('adm');
+    const hoja = 'id,nombre,categoria,sku\r\nxl-1,Desde Excel,Cat,XL1\r\n';
+    const sim = await e.api.llamar('simularImportacionProductos', { archivo: archivoExcelDoble(hoja) });
+    expect(sim.resumen.crear).toBe(1);
+    expect(sim.filas[0]?.advertencias[0]).toContain('a consultar');
+    expect((await e.api.llamar('simularImportacionProductos', { archivo: btoa(hoja) })).resumen.crear).toBe(1);
+    await e.api.llamar('importarProductosCsv', { operacionId: uuid(), archivo: archivoExcelDoble(hoja) });
+    expect((await e.api.llamar('listarProductos', {})).some((p) => p.id === 'xl-1')).toBe(true);
+    expect((await falla(e.api.llamar('simularImportacionProductos', { archivo: '***' }))).detalle.codigo).toBe('entrada-invalida');
+    expect((await falla(e.api.llamar('simularImportacionProductos', { csv: hoja, archivo: btoa(hoja) } as never))).detalle.codigo).toBe('entrada-invalida');
+    e.como('sup');
+    expect((await falla(e.api.llamar('importarProductosCsv', { operacionId: uuid(), csv: hoja }))).codigoHttps).toBe('permission-denied');
+  });
+  it('importación por tandas: si una tanda falla el resultado es incompleto y se retoma con el mismo operacionId', async () => {
+    const e = crearEntorno('adm');
+    e.api.estado.importacion = { filasPorTanda: 1, fallaEnTanda: 2 };
+    const csv = 'id,nombre,categoria,sku\r\nlote-1,Uno,Cat,L1\r\nlote-2,Dos,Cat,L2\r\nlote-3,Tres,Cat,L3\r\n';
+    const operacionId = uuid();
+    const parcial = await e.api.llamar('importarProductosCsv', { operacionId, csv });
+    expect(parcial).toMatchObject({ completa: false, creados: 1, lotes: { total: 3, aplicados: 1 }, productos: ['lote-1'] });
+    expect(parcial.detencion).toContain('Tanda 2 de 3');
+    expect((await e.api.llamar('listarProductos', {})).some((p) => p.id === 'lote-2')).toBe(false);
+    e.api.estado.importacion = { filasPorTanda: 1 };
+    const completo = await e.api.llamar('importarProductosCsv', { operacionId, csv });
+    expect(completo).toMatchObject({ completa: true, creados: 3, lotes: { total: 3, aplicados: 3 } });
+    expect((await e.api.llamar('listarProductos', {})).filter((p) => p.id.startsWith('lote-'))).toHaveLength(3);
+  });
+  it('conteo: «faltan» cuenta los productos con existencia sin contar, solo para sup/adm y con el conteo abierto', async () => {
+    const e = crearEntorno('sup');
+    await e.api.llamar('abrirConteo', { operacionId: uuid(), conteoId: 'conteo-f', ubicacionId: 'tienda' });
+    expect((await e.api.llamar('listarConteos', {}))[0]?.faltan).toBe(4);
+    await e.api.llamar('registrarLineaConteo', { operacionId: uuid(), conteoId: 'conteo-f', productoId: 'cable-hdmi', contado: 25 });
+    expect((await e.api.llamar('listarConteos', {}))[0]?.faltan).toBe(3);
+    e.como('caj');
+    expect((await e.api.llamar('listarConteos', {}))[0]?.faltan).toBeUndefined();
+    e.como('sup');
+    await e.api.llamar('cerrarConteo', { operacionId: uuid(), conteoId: 'conteo-f' });
+    expect((await e.api.llamar('listarConteos', {}))[0]?.faltan).toBeUndefined();
+  });
+  it('movimientos y mermas avisan cuando la lista viene cortada', async () => {
+    const e = crearEntorno('sup');
+    for (let i = 0; i < 3; i++) await e.api.llamar('ingresar', { operacionId: uuid(), ubicacionId: 'tienda', lineas: [{ productoId: 'cable-hdmi', cantidad: 1 }] });
+    expect(await e.api.llamar('listarMovimientos', { limite: 2 })).toMatchObject({ cortada: true });
+    expect((await e.api.llamar('listarMovimientos', { limite: 2 })).movimientos).toHaveLength(2);
+    expect(await e.api.llamar('listarMovimientos', { limite: 50 })).toMatchObject({ cortada: false });
+    expect(await e.api.llamar('listarMermas', {})).toEqual({ mermas: [], cortada: false });
+  });
+  it('rechazar una merma guarda el motivo de la resolución', async () => {
+    const e = crearEntorno('sup');
+    await e.api.llamar('solicitarMerma', { operacionId: 'op-merma-r', productoId: 'cable-hdmi', ubicacionId: 'tienda', cantidad: 1, motivo: 'Dañado' });
+    const mermaId = (await e.api.llamar('listarMermas', { estado: 'solicitada' })).mermas[0]?.mermaId ?? '';
+    e.como('adm');
+    await e.api.llamar('resolverMerma', { operacionId: uuid(), mermaId, decision: 'rechazada', motivo: 'Está en buen estado' });
+    expect((await e.api.llamar('listarMermas', { estado: 'rechazada' })).mermas[0]).toMatchObject({ mermaId, estado: 'rechazada', motivoResolucion: 'Está en buen estado' });
+    expect((await e.api.llamar('listarMermas', { estado: 'solicitada' })).mermas).toEqual([]);
   });
 });
 
@@ -546,38 +665,37 @@ describe('doble: catálogo y sitio', () => {
     expect(await e.api.llamar('listarCarruseles', {})).toHaveLength(1);
     expect(await e.api.llamar('listarMedios', { productoId: 'tv-55' })).toHaveLength(1);
   });
-  it('productos desde la consola: precios en centavos (el servidor los recibe en dólares), tope de 200 y edición', async () => {
+  it('productos de Inventarios: precios y costo en centavos, tope de 200 y edición', async () => {
     const e = crearEntorno('adm');
     const nuevo = { id: 'nuevo-x', nombre: 'X', categoria: 'C', sku: 'NX', precioUSD: { bo: 1250, ar: 1300 }, costoUSD: 700 };
     await e.api.llamar('crearProducto', { operacionId: uuid(), producto: nuevo });
     const creado = (await e.api.llamar('listarProductos', {})).find((p) => p.id === 'nuevo-x');
     expect(creado?.precioUSD).toEqual({ bo: 1250, ar: 1300 });
     expect(creado?.costoUSD).toBe(700);
-    // En el cable del servidor el precio viaja en dólares decimales y el costo en centavos.
+    // En el cable del servidor (inventarios) precios y costo viajan en centavos, dentro de la misma llamada.
     const alta = e.api.transporte.invocaciones.find((i) => i.accion === 'crearProducto');
-    expect(alta?.datos).toMatchObject({ precioUSD: { bo: 12.5, ar: 13 } });
-    expect(e.api.transporte.invocaciones.find((i) => i.accion === 'fijarCosto')?.datos).toMatchObject({ costoUSD: 700 });
-    expect((await falla(e.api.llamar('crearProducto', { operacionId: uuid(), producto: nuevo }))).detalle.codigo).toBe('conflicto');
-    expect((await falla(e.api.llamar('cambiarPrecioUSD', { productoId: 'nuevo-x', precioUSD: { bo: 123.4, ar: 100 } }))).detalle.codigo).toBe('entrada-invalida');
-    await e.api.llamar('cambiarPrecioUSD', { productoId: 'nuevo-x', precioUSD: { bo: 1999, ar: 2000 } });
-    expect(e.api.transporte.invocaciones.filter((i) => i.accion === 'cambiarPrecioUSD').at(-1)?.datos).toMatchObject({ precioUSD: { bo: 19.99, ar: 20 } });
-    await e.api.llamar('actualizarProducto', { operacionId: uuid(), productoId: 'nuevo-x', cambios: { nombre: 'Equis' } });
+    expect(alta?.datos).toMatchObject({ producto: { precioUSD: { bo: 1250, ar: 1300 }, costoUSD: 700 } });
+    expect(e.api.transporte.invocaciones.some((i) => i.accion === 'fijarCosto')).toBe(false);
+    expect((await falla(e.api.llamar('crearProducto', { operacionId: uuid(), producto: nuevo }))).detalle.codigo).toBe('estado-invalido');
+    expect((await falla(e.api.llamar('cambiarPrecioUSD', { operacionId: uuid(), productoId: 'nuevo-x', precioUSD: { bo: 123.4, ar: 100 } }))).detalle.codigo).toBe('entrada-invalida');
+    await e.api.llamar('cambiarPrecioUSD', { operacionId: uuid(), productoId: 'nuevo-x', precioUSD: { bo: 1999, ar: 2000 } });
+    expect(e.api.transporte.invocaciones.filter((i) => i.accion === 'cambiarPrecioUSD').at(-1)?.datos).toMatchObject({ precioUSD: { bo: 1999, ar: 2000 } });
+    await e.api.llamar('actualizarProducto', { operacionId: uuid(), productoId: 'nuevo-x', cambios: { nombre: 'Equis', marca: 'M', garantiaMeses: 12, minimo: 3 } });
+    // `null` vacía marca, garantía, mínimo y costo.
+    await e.api.llamar('actualizarProducto', { operacionId: uuid(), productoId: 'nuevo-x', cambios: { marca: null, garantiaMeses: null, minimo: null, costoUSD: null } });
+    const vaciado = (await e.api.llamar('listarProductos', {})).find((p) => p.id === 'nuevo-x');
+    expect(vaciado?.marca).toBeUndefined();
+    expect(vaciado?.garantiaMeses).toBeUndefined();
+    expect(vaciado?.minimo).toBeUndefined();
+    expect(vaciado?.costoUSD).toBe(0);
     await falla(e.api.llamar('actualizarProducto', { operacionId: uuid(), productoId: 'nada', cambios: { nombre: 'a' } }));
-    await falla(e.api.llamar('cambiarPrecioUSD', { productoId: 'nada', precioUSD: { bo: 100, ar: 100 } }));
+    await falla(e.api.llamar('cambiarPrecioUSD', { operacionId: uuid(), productoId: 'nada', precioUSD: { bo: 100, ar: 100 } }));
   });
-  it('importación con simulación: filas con error bloquean salvo omitirlas; el stock se ignora', async () => {
+  it('la consola ya no importa ni crea productos; conserva la exportación del catálogo', async () => {
     const e = crearEntorno('adm');
-    const csv = 'id,nombre,categoria,sku,precioBO,precioAR,stock\r\nok-1,Uno,Cat,S1,10,11,50\r\nMAL ID,Dos,Cat,S2,1,1,1\r\ntv-55,Televisor nuevo nombre,Cat,S3,500,520,0\r\n';
-    const b64 = btoa(csv);
-    const sim = await e.api.llamar('simularImportacion', { contenidoBase64: b64 });
-    expect(sim.resumen).toEqual({ crear: 1, actualizar: 1, sinCambios: 0, errores: 1 });
-    expect(sim.columnasIgnoradas[0]).toContain('el CSV no modifica el stock');
-    const err = await falla(e.api.llamar('importarProductos', { contenidoBase64: b64 }));
-    expect(mensajeDeError(err)).toContain('Línea 3');
-    const r = await e.api.llamar('importarProductos', { contenidoBase64: b64, omitirErrores: true });
-    expect(r.aplicadas).toBe(2);
-    expect((await e.api.llamar('listarProductos', {})).find((p) => p.id === 'ok-1')?.existencias.tienda).toBe(0);
-    expect((await falla(e.api.llamar('simularImportacion', { contenidoBase64: '***' }))).detalle.codigo).toBe('entrada-invalida');
+    for (const accion of ['crearProducto', 'editarProducto', 'cambiarPrecioUSD', 'simularImportacion', 'importarProductos']) {
+      await expect(e.api.transporte.invocar('consola', { accion, tenantId: 'demo', datos: {} })).rejects.toMatchObject({ codigoHttps: 'invalid-argument' });
+    }
     expect((await e.api.llamar('exportarProductosCsvSitio', {})).csv).toContain('precioBO');
   });
 });

@@ -21,7 +21,7 @@ describe('manifiesto', () => {
     expect(por('ubicaciones')?.limite).toBe('almacenes');
     // Lectura solo por callables: el panel no usa Firestore, así que ninguna colección se abre al navegador.
     for (const c of manifiestoInventarios.colecciones) expect(c.lectura, c.ruta).toEqual([]);
-    expect(manifiestoInventarios.emite).toEqual(['stock.cambiado', 'stock.bajo']);
+    expect(manifiestoInventarios.emite).toEqual(['stock.cambiado', 'stock.bajo', 'producto.cambiado']);
     expect(manifiestoInventarios.consume).toEqual(['venta.anulada', 'pedido.confirmado']);
   });
 });

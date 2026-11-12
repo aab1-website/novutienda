@@ -16,7 +16,8 @@ const SIN_LECTURA_DIRECTA: readonly Rol[] = [];
  *    `http/sitio.ts` (conector del sitio); solo el servidor.
  * `sup` puede leer todo y, por las funciones del servidor, editar fichas y subir medios; precios, importación,
  * secciones, apariencia y publicación son de `adm`.
- * No emite ni consume eventos v1: la disponibilidad pública se sirve por `/api/disponibilidad` y la reconstrucción se
+ * No emite eventos v1. Consume `producto.cambiado` de forma opcional (`consumeOpcional`: se consume si Consola está activa en el tenant; lo cablea
+ * el coordinador en `consumidores.ts`). La disponibilidad pública se sirve por `/api/disponibilidad` y la reconstrucción se
  * agenda desde la publicación, no desde el stock.
  */
 const colecciones: readonly ColeccionManifiesto[] = [
@@ -61,9 +62,6 @@ const almacenamiento: readonly RutaAlmacenamiento[] = [
 const accion = (callable: string, nombre: string, roles: readonly Rol[]): AccionManifiesto => ({ callable, nombre, roles });
 
 const ACCIONES_CONSOLA: readonly (readonly [string, readonly Rol[]])[] = [
-  ['crearProducto', ['adm']],
-  ['editarProducto', ['adm']],
-  ['cambiarPrecioUSD', ['adm']],
   ['catalogo', ['sup', 'adm']],
   ['preciosDelDia', ['sup', 'adm']],
   ['guardarFicha', ['sup', 'adm']],
@@ -77,8 +75,6 @@ const ACCIONES_CONSOLA: readonly (readonly [string, readonly Rol[]])[] = [
   ['secciones', ['sup', 'adm']],
   ['carruseles', ['sup', 'adm']],
   ['configSitio', ['sup', 'adm']],
-  ['simularImportacion', ['adm']],
-  ['importarProductos', ['adm']],
   ['exportarProductosCsv', ['sup', 'adm']],
   ['publicarSitio', ['adm']],
   ['tablero', ['sup', 'adm']],
@@ -104,6 +100,7 @@ export const manifiestoConsola: ManifiestoModulo = {
   colecciones,
   emite: [],
   consume: [],
+  consumeOpcional: ['producto.cambiado'],
   almacenamiento,
   acciones: [
     ...ACCIONES_CONSOLA.map(([nombre, roles]) => accion('consola', nombre, roles)),

@@ -1,8 +1,8 @@
-import { LimiteDelPlan, ContadorCorrupto, PLANES, rutaContador, validarTenant, type TransaccionIdentidad } from '@novutienda/nucleo';
+import { LimiteDelPlan, ContadorCorrupto, MERCADOS, PLANES, type Resumen, rutaContador, validarTenant, type TransaccionIdentidad } from '@novutienda/nucleo';
 import { EntradaInvalida, EstadoInvalido, NoEncontrado } from './errores.js';
 import { esDisponible, UBICACION_DISPONIBILIDAD } from './disponibilidad.js';
 import { esProductoId, esSku, exigirProducto, exigirSegmento, exigirUbicacion, idExistencia, ruta } from './ids.js';
-import { bajoMinimo, type Autor, type Datos, type Trabajo } from './motor.js';
+import { bajoMinimo, type Autor, type Datos, type Lector, type Trabajo } from './motor.js';
 import { ejecutarOperacion, exigirAutor, PERMISOS, type ResultadoOperacion } from './operacion.js';
 
 export interface PrecioUSD {
@@ -40,10 +40,24 @@ const texto = (x: unknown, nombre: string, max: number): string => {
 };
 
 function exigirPrecio(x: unknown): PrecioUSD {
-  const p = x as Partial<PrecioUSD> | null | undefined;
-  if (!centavos(p?.bo) || !centavos(p?.ar)) throw new EntradaInvalida('precioUSD requiere bo y ar en centavos enteros');
-  return { bo: p.bo, ar: p.ar };
+  const p = x as Record<string, unknown> | null | undefined;
+  if (typeof p !== 'object' || p === null || Array.isArray(p)) throw new EntradaInvalida('El precio debe indicar un valor por cada mercado');
+  const salida: Record<string, number> = {};
+  // Un precio por cada mercado del núcleo; ninguno puede faltar ni sobrar.
+  for (const m of MERCADOS) {
+    const clave = claveMercado(m);
+    const v = p[clave];
+    if (!centavos(v)) throw new EntradaInvalida(`Falta el precio del mercado ${m} o no es válido (centavos enteros de USD)`);
+    salida[clave] = v;
+  }
+  for (const k of Object.keys(p)) if (!(k in salida)) throw new EntradaInvalida(`Mercado desconocido en el precio: ${k}`);
+  return salida as unknown as PrecioUSD;
 }
+
+/** Clave del precio de un mercado (`BO` -> `bo`). */
+const claveMercado = (m: string): string => m.toLowerCase();
+/** Sufijo legible para la auditoría (`BO` -> `Bo`). */
+const sufijoMercado = (m: string): string => m.charAt(0) + m.slice(1).toLowerCase();
 
 /** Valida estrictamente una entrada de producto (claves desconocidas incluidas). */
 export type ProductoValido = Required<Omit<EntradaProducto, 'garantiaMeses' | 'minimo' | 'costoUSD' | 'marca'>> &
@@ -80,6 +94,16 @@ export function validarEntradaProducto(x: EntradaProducto): ProductoValido {
     ...(x.minimo !== undefined ? { minimo: x.minimo } : {}),
     ...(x.costoUSD !== undefined ? { costoUSD: x.costoUSD } : {}),
   };
+}
+
+/** Cupo de un recurso del plan: cuánto se usa y cuál es el tope (solo lecturas). */
+export async function leerCupo(lector: Lector, tenantId: string, clave: 'productos' | 'almacenes'): Promise<{ usado: number; tope: number }> {
+  const tenant = validarTenant(await lector.leerRuta(`tenants/${tenantId}`));
+  if (!tenant.ok) throw new EstadoInvalido('Tenant inexistente o inválido');
+  const datos = (await lector.leerRuta(rutaContador(tenantId))) ?? {};
+  const usado = datos[clave] ?? 0;
+  if (typeof usado !== 'number' || !Number.isSafeInteger(usado) || usado < 0) throw new ContadorCorrupto(clave, usado);
+  return { usado, tope: PLANES[tenant.valor.plan][clave] };
 }
 
 /** Reserva `n` cupos del límite del plan (lecturas ahora, escritura del contador en el plan). */
@@ -147,22 +171,100 @@ export async function crearProducto(tx: TransaccionIdentidad, e: EntradaCrearPro
     construir: async (t) => {
       await reservarLimite(t, 'productos', 1);
       await prepararProductoNuevo(t, producto);
-      return { resultado: { productoId: producto.id }, referencia: { tipo: 'producto', id: producto.id }, tipoMovimiento: 'ingreso' };
+      const resumen: Resumen = Object.fromEntries(
+        MERCADOS.map((m) => [`precio${sufijoMercado(m)}`, (producto.precioUSD as unknown as Record<string, number>)[claveMercado(m)] ?? 0]),
+      );
+      return { resultado: { productoId: producto.id }, referencia: { tipo: 'producto', id: producto.id }, tipoMovimiento: 'ingreso', resumen, cambiosProducto: [{ productoId: producto.id, cambio: 'creado' }] };
     },
   });
 }
 
+/**
+ * Cambios de una edición. `undefined` = sin cambio. `null` vacía un dato independiente (marca, garantía, mínimo,
+ * costo); nombre, categoría y precios no se pueden vaciar.
+ */
 export interface CambiosProducto {
   readonly nombre?: string;
   readonly categoria?: string;
-  readonly marca?: string;
+  readonly marca?: string | null;
   readonly activo?: boolean;
   readonly publicado?: boolean;
   readonly conSerie?: boolean;
-  readonly garantiaMeses?: number;
-  readonly minimo?: number;
+  readonly garantiaMeses?: number | null;
+  readonly minimo?: number | null;
   readonly precioUSD?: PrecioUSD;
-  readonly costoUSD?: number;
+  readonly costoUSD?: number | null;
+}
+
+/** Escrituras de una edición de la ficha (sin tocar el stock). Devuelve el resumen de la auditoría. */
+export async function prepararEdicion(t: Trabajo, productoId: string, c: CambiosProducto): Promise<Record<string, number | string>> {
+  const prod = await t.lector.leer('productos', productoId);
+  if (prod === undefined) throw new NoEncontrado(`Producto inexistente: ${productoId}`);
+  const tienda = await t.lector.leer('existencias', idExistencia(productoId, UBICACION_DISPONIBILIDAD));
+  const nuevo: Datos = { ...prod };
+  if (c.nombre !== undefined) nuevo['nombre'] = texto(c.nombre, 'nombre', 120);
+  if (c.categoria !== undefined) nuevo['categoria'] = texto(c.categoria, 'categoria', 60);
+  if (c.marca === null) delete nuevo['marca'];
+  else if (c.marca !== undefined) nuevo['marca'] = texto(c.marca, 'marca', 60);
+  for (const k of ['activo', 'publicado'] as const) {
+    if (c[k] !== undefined) {
+      if (typeof c[k] !== 'boolean') throw new EntradaInvalida(`${k} debe ser booleano`);
+      nuevo[k] = c[k];
+    }
+  }
+  if (c.conSerie !== undefined && c.conSerie !== (prod['conSerie'] === true)) {
+    if (typeof c.conSerie !== 'boolean') throw new EntradaInvalida('conSerie debe ser booleano');
+    if (prod['conMovimientos'] === true) {
+      throw new EstadoInvalido('No se puede cambiar si el producto se controla por número de serie: ya tiene movimientos de inventario.');
+    }
+    if (c.conSerie && typeof prod['stockTotal'] !== 'number') throw new EntradaInvalida('un producto con serie debe controlar stock');
+    nuevo['conSerie'] = c.conSerie;
+  }
+  if (c.garantiaMeses === null) delete nuevo['garantiaMeses'];
+  else if (c.garantiaMeses !== undefined) {
+    if (!(Number.isSafeInteger(c.garantiaMeses) && c.garantiaMeses >= 1 && c.garantiaMeses <= 120)) throw new EntradaInvalida('garantiaMeses inválida');
+    nuevo['garantiaMeses'] = c.garantiaMeses;
+  }
+  if (c.minimo === null) delete nuevo['minimo'];
+  else if (c.minimo !== undefined) {
+    if (!(Number.isSafeInteger(c.minimo) && c.minimo >= 0)) throw new EntradaInvalida('minimo inválido');
+    nuevo['minimo'] = c.minimo;
+  }
+  const resumen: Record<string, number | string> = { campos: Object.keys(c).join(',') };
+  if (c.precioUSD !== undefined) {
+    const precio = exigirPrecio(c.precioUSD);
+    const antes = (prod['precioUSD'] ?? {}) as Record<string, unknown>;
+    for (const m of MERCADOS) {
+      const k = claveMercado(m);
+      const previo = antes[k];
+      if (typeof previo === 'number') resumen[`antes${sufijoMercado(m)}`] = previo;
+      resumen[`precio${sufijoMercado(m)}`] = (precio as unknown as Record<string, number>)[k] ?? 0;
+    }
+    nuevo['precioUSD'] = { ...precio };
+  }
+  nuevo['bajoMinimo'] = bajoMinimo(nuevo);
+  nuevo['version'] = (typeof prod['version'] === 'number' ? prod['version'] : 0) + 1;
+  t.escribir({ ruta: ruta(t.tenantId, 'productos', productoId), modo: 'set', datos: nuevo });
+  // La disponibilidad pública depende de `activo`: se recalcula con la misma regla que el resto de operaciones.
+  const stockTotal = nuevo['stockTotal'];
+  const cantidadTienda = typeof tienda?.['cantidad'] === 'number' ? tienda['cantidad'] : 0;
+  t.escribir({
+    ruta: ruta(t.tenantId, 'existenciasPublicas', productoId),
+    modo: 'set',
+    datos: {
+      productoId,
+      disponible: esDisponible({ activo: nuevo['activo'] === true, ...(typeof stockTotal === 'number' ? { stockTotal } : {}) }, cantidadTienda),
+      version: nuevo['version'],
+    },
+  });
+  if (c.costoUSD === null) {
+    // Vaciar el costo: el documento queda sin `costoUSD` (el plan solo escribe, no borra documentos).
+    t.escribir({ ruta: ruta(t.tenantId, 'costos', productoId), modo: 'set', datos: {} });
+  } else if (c.costoUSD !== undefined) {
+    if (!centavos(c.costoUSD)) throw new EntradaInvalida('costoUSD inválido');
+    t.escribir({ ruta: ruta(t.tenantId, 'costos', productoId), modo: 'set', datos: { costoUSD: c.costoUSD } });
+  }
+  return resumen;
 }
 
 /** Edita la ficha (adm). `conSerie` no cambia tras el primer movimiento. No toca el stock. */
@@ -171,67 +273,23 @@ export async function actualizarProducto(
   e: { tenantId: string; operacionId: string; por: Autor; productoId: string; cambios: CambiosProducto },
 ): Promise<ResultadoOperacion<Datos>> {
   const productoId = exigirProducto(e.productoId);
-  const c = e.cambios;
+  // Una clave con `undefined` equivale a no enviarla.
+  const c = Object.fromEntries(Object.entries(e.cambios).filter(([, v]) => v !== undefined)) as CambiosProducto;
   const permitidas = ['nombre', 'categoria', 'marca', 'activo', 'publicado', 'conSerie', 'garantiaMeses', 'minimo', 'precioUSD', 'costoUSD'];
   for (const k of Object.keys(c)) if (!permitidas.includes(k)) throw new EntradaInvalida(`campo no editable: ${k}`);
-  if (Object.keys(c).length === 0) throw new EntradaInvalida('sin cambios');
+  if (Object.keys(c).length === 0) throw new EntradaInvalida('No hay cambios que guardar');
+  const soloPrecio = Object.keys(c).length === 1 && c.precioUSD !== undefined;
   return ejecutarOperacion(tx, {
     tenantId: e.tenantId,
     operacionId: e.operacionId,
     tipo: 'producto-actualizar',
-    accion: 'inventarios.producto-actualizar',
+    accion: soloPrecio ? 'inventarios.producto-precio' : 'inventarios.producto-actualizar',
     carga: { productoId, c },
     por: exigirAutor(e.por),
     roles: PERMISOS.producto,
     construir: async (t) => {
-      const prod = await t.lector.leer('productos', productoId);
-      if (prod === undefined) throw new NoEncontrado(`Producto inexistente: ${productoId}`);
-      const tienda = await t.lector.leer('existencias', idExistencia(productoId, UBICACION_DISPONIBILIDAD));
-      const nuevo: Datos = { ...prod };
-      if (c.nombre !== undefined) nuevo['nombre'] = texto(c.nombre, 'nombre', 120);
-      if (c.categoria !== undefined) nuevo['categoria'] = texto(c.categoria, 'categoria', 60);
-      if (c.marca !== undefined) nuevo['marca'] = texto(c.marca, 'marca', 60);
-      for (const k of ['activo', 'publicado'] as const) {
-        if (c[k] !== undefined) {
-          if (typeof c[k] !== 'boolean') throw new EntradaInvalida(`${k} debe ser booleano`);
-          nuevo[k] = c[k];
-        }
-      }
-      if (c.conSerie !== undefined && c.conSerie !== (prod['conSerie'] === true)) {
-        if (typeof c.conSerie !== 'boolean') throw new EntradaInvalida('conSerie debe ser booleano');
-        if (prod['conMovimientos'] === true) throw new EstadoInvalido('conSerie no cambia tras el primer movimiento');
-        if (c.conSerie && typeof prod['stockTotal'] !== 'number') throw new EntradaInvalida('un producto con serie debe controlar stock');
-        nuevo['conSerie'] = c.conSerie;
-      }
-      if (c.garantiaMeses !== undefined) {
-        if (!(Number.isSafeInteger(c.garantiaMeses) && c.garantiaMeses >= 1 && c.garantiaMeses <= 120)) throw new EntradaInvalida('garantiaMeses inválida');
-        nuevo['garantiaMeses'] = c.garantiaMeses;
-      }
-      if (c.minimo !== undefined) {
-        if (!(Number.isSafeInteger(c.minimo) && c.minimo >= 0)) throw new EntradaInvalida('minimo inválido');
-        nuevo['minimo'] = c.minimo;
-      }
-      if (c.precioUSD !== undefined) nuevo['precioUSD'] = { ...exigirPrecio(c.precioUSD) };
-      nuevo['bajoMinimo'] = bajoMinimo(nuevo);
-      nuevo['version'] = (typeof prod['version'] === 'number' ? prod['version'] : 0) + 1;
-      t.escribir({ ruta: ruta(t.tenantId, 'productos', productoId), modo: 'set', datos: nuevo });
-      // La disponibilidad pública depende de `activo`: se recalcula con la misma regla que el resto de operaciones.
-      const stockTotal = nuevo['stockTotal'];
-      const cantidadTienda = typeof tienda?.['cantidad'] === 'number' ? tienda['cantidad'] : 0;
-      t.escribir({
-        ruta: ruta(t.tenantId, 'existenciasPublicas', productoId),
-        modo: 'set',
-        datos: {
-          productoId,
-          disponible: esDisponible({ activo: nuevo['activo'] === true, ...(typeof stockTotal === 'number' ? { stockTotal } : {}) }, cantidadTienda),
-          version: nuevo['version'],
-        },
-      });
-      if (c.costoUSD !== undefined) {
-        if (!centavos(c.costoUSD)) throw new EntradaInvalida('costoUSD inválido');
-        t.escribir({ ruta: ruta(t.tenantId, 'costos', productoId), modo: 'set', datos: { costoUSD: c.costoUSD } });
-      }
-      return { resultado: { productoId }, referencia: { tipo: 'producto', id: productoId }, tipoMovimiento: 'ajuste' };
+      const resumen = await prepararEdicion(t, productoId, c);
+      return { resultado: { productoId }, referencia: { tipo: 'producto', id: productoId }, tipoMovimiento: 'ajuste', resumen, cambiosProducto: [{ productoId, cambio: soloPrecio ? 'precio' : 'editado' }] };
     },
   });
 }

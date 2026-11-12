@@ -87,6 +87,13 @@ describe('mensajes sin datos técnicos (G-07, G-08)', () => {
     expect(espia).not.toHaveBeenCalled();
     espia.mockRestore();
   });
+  it('el motivo del servidor con dos puntos en medio de la frase se conserva (importación fallida)', () => {
+    const motivo = 'El CSV no toca el stock: las columnas de stock solo se admiten en la carga inicial';
+    expect(mensajeDeError(new ErrorApi('invalid-argument', motivo, { codigo: 'entrada-invalida' }))).toBe(motivo);
+  });
+  it('un mensaje que empieza con una ruta de campo («ficha.titulo: …») sigue sin mostrarse', () => {
+    expect(mensajeDeError(new ErrorApi('invalid-argument', 'ficha.titulo: Required', { codigo: 'entrada-invalida' }))).toBe('Hay datos que no son válidos. Revise el formulario.');
+  });
   it('los detalles técnicos por fila se omiten y los legibles se conservan', () => {
     const m = mensajeDeError(new ErrorApi('failed-precondition', 'x', { codigo: 'conflicto', detalles: ['Línea 2: el precio es obligatorio'] }));
     expect(m).toContain('Línea 2: el precio es obligatorio');

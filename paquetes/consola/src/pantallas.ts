@@ -21,21 +21,17 @@ export const PANTALLAS: readonly Pantalla[] = [
   },
   {
     id: 'productos', titulo: 'Productos', roles: ['sup', 'adm'], lecturas: ['fichasWeb'],
-    llamadas: ['crearProductoConsola', 'editarProductoConsola', 'exportarProductosCsv'],
-    notas: 'Lista desde el puerto del catálogo (Inventarios) con el estado de la ficha; crear y editar son solo adm. Ocultar = estado «oculto» de la ficha.',
+    llamadas: ['exportarProductosCsv'],
+    notas: 'Lista desde el puerto del catálogo (Inventarios) con el estado de la ficha; alta y edición son de Inventarios (la consola no crea productos). Ocultar = estado «oculto» de la ficha.',
   },
   {
     id: 'ficha', titulo: 'Editor de ficha', roles: ['sup', 'adm'], lecturas: ['fichasWeb', 'medios', 'subidas'],
-    llamadas: ['guardarFicha', 'reservarSubida', 'finalizarSubida', 'borrarMedio', 'cambiarPrecioUSD', 'preciosDelDia'],
+    llamadas: ['guardarFicha', 'reservarSubida', 'finalizarSubida', 'borrarMedio', 'preciosDelDia'],
     notas: 'Precio USD por mercado con el Bs/ARS del día al lado (preciosDelDia, política de redondeo inyectada). La subida va a la ruta privada de la reserva; después se finaliza. Solo adm cambia precios.',
   },
   {
-    id: 'categorias-marcas', titulo: 'Categorías y marcas', roles: ['adm'], lecturas: [], llamadas: ['editarProductoConsola'],
-    notas: 'Se derivan de los productos del catálogo; renombrar = editar los productos afectados. No hay colección propia (pendiente de decisión).',
-  },
-  {
-    id: 'importar-exportar', titulo: 'Importar / exportar', roles: ['adm'], lecturas: [], llamadas: ['simularImportacion', 'importarProductos', 'exportarProductosCsv'],
-    notas: 'Siempre se simula antes (fila por fila); el servidor vuelve a validar al importar. El CSV no toca stock. Excel requiere un LectorHojas.',
+    id: 'exportar', titulo: 'Exportar', roles: ['sup', 'adm'], lecturas: [], llamadas: ['exportarProductosCsv'],
+    notas: 'Solo exportación del catálogo. Los productos se importan por Inventarios; la consola no crea productos.',
   },
   {
     id: 'apariencia', titulo: 'Apariencia', roles: ['adm'], lecturas: ['sitio', 'carruseles', 'medios'],

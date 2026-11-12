@@ -5,9 +5,8 @@
 // reales: nombre, forma de `datos` y forma de la respuesta. El cliente real (`firebase.ts`) y el doble en memoria
 // (`doble/transporte.ts`) pasan por esta misma traducción.
 //
-// Unidades: el panel trabaja en centavos. El servidor espera dólares decimales SOLO en `consola.crearProducto`,
-// `consola.editarProducto` y `consola.cambiarPrecioUSD` (§2 de funciones.md); en `inventarios` los precios y costos van en
-// centavos de USD. La conversión vive únicamente en `usd()` y se usa solo en esas acciones.
+// Unidades: el panel trabaja en centavos y el servidor también (precios y costos en centavos de USD); `usd()` solo
+// convierte para mostrar.
 //
 // Todas las acciones que el panel usa existen en el servidor (`ROLES_ACCION`); lo que falte se pide al dueño de las
 // funciones, nunca se inventa en el panel.
@@ -55,7 +54,7 @@ export interface Traduccion<N extends NombreCallable> {
 type Obj = Record<string, unknown>;
 const OK = { ok: true } as const;
 
-/** Centavos de USD → dólares decimales, SOLO para las tres acciones de `consola` que los esperan así (§2). */
+/** Centavos de USD → dólares decimales. Ninguna acción vigente lo pide (todas van en centavos); queda como utilidad de presentación. */
 export const usd = (centavos: number): number => centavos / 100;
 
 /** aaaa-mm-dd (calendario de La Paz, UTC-4) → milisegundos Unix, al inicio o al final del día. */
@@ -247,30 +246,14 @@ export const TRADUCCION: { readonly [N in NombreCallable]: Traduccion<N> } = {
   },
 
   // ---- Inventarios ----
-  crearProducto: {
-    usa: ['consola.crearProducto', 'inventarios.fijarCosto'],
-    ejecutar: async (c, e) => {
-      const p = e.producto;
-      const datos = sinVacios({
-        nombre: p.nombre, categoria: p.categoria, marca: p.marca, sku: p.sku, activo: p.activo ?? true, garantiaMeses: p.garantiaMeses,
-        conSerie: p.conSerie, minimo: p.minimo, publicado: p.publicado,
-      });
-      await c.llamar('consola', 'crearProducto', { productoId: p.id, datos, precioUSD: { bo: usd(p.precioUSD.bo), ar: usd(p.precioUSD.ar) } });
-      if (p.costoUSD !== undefined) await c.llamar('inventarios', 'fijarCosto', { operacionId: e.operacionId, productoId: p.id, costoUSD: p.costoUSD });
-      return { resultado: { productoId: p.id }, repetida: false };
-    },
-  },
+  // Alta, edición y cambio de precio viven en Inventarios: precios y costo en centavos de USD, sin conversión; `null` vacía
+  // marca, garantía, mínimo o costo; la repetición con el mismo `operacionId` devuelve `repetida`.
+  crearProducto: directa('inventarios', 'crearProducto'),
   actualizarProducto: {
-    usa: ['consola.editarProducto', 'consola.cambiarPrecioUSD', 'inventarios.fijarCosto'],
+    usa: ['inventarios.editarProducto'],
     ejecutar: async (c, e) => {
-      const cambios = quitar(e.cambios, 'precioUSD', 'costoUSD');
       if (Object.keys(e.cambios).length === 0) throw new ErrorApi('invalid-argument', 'No hay cambios que guardar.');
-      if (Object.keys(cambios).length > 0) await c.llamar('consola', 'editarProducto', { productoId: e.productoId, cambios });
-      if (e.cambios.precioUSD !== undefined) {
-        await c.llamar('consola', 'cambiarPrecioUSD', { productoId: e.productoId, precioUSD: { bo: usd(e.cambios.precioUSD.bo), ar: usd(e.cambios.precioUSD.ar) } });
-      }
-      if (e.cambios.costoUSD !== undefined) await c.llamar('inventarios', 'fijarCosto', { operacionId: e.operacionId, productoId: e.productoId, costoUSD: e.cambios.costoUSD });
-      return { resultado: { productoId: e.productoId }, repetida: false };
+      return (await c.llamar('inventarios', 'editarProducto', e)) as Salida<'actualizarProducto'>;
     },
   },
   ingresar: directa('inventarios', 'ingresar'),
@@ -281,7 +264,14 @@ export const TRADUCCION: { readonly [N in NombreCallable]: Traduccion<N> } = {
   abrirConteo: directa('inventarios', 'abrirConteo'),
   registrarLineaConteo: directa('inventarios', 'registrarLineaConteo'),
   cerrarConteo: directa('inventarios', 'cerrarConteo'),
-  importarProductosCsv: directa('inventarios', 'importarProductosCsv'),
+  simularImportacionProductos: {
+    usa: ['inventarios.importarProductosCsv'],
+    ejecutar: async (c, e) => campo(await c.llamar('inventarios', 'importarProductosCsv', { ...e, simular: true }), 'simulacion'),
+  },
+  importarProductosCsv: {
+    usa: ['inventarios.importarProductosCsv'],
+    ejecutar: async (c, e) => quitar((await c.llamar('inventarios', 'importarProductosCsv', sinVacios({ ...e }))) as Obj, 'simular') as never,
+  },
   exportarProductosCsv: {
     usa: ['inventarios.exportarCsv'],
     ejecutar: async (c) => ({ csv: String(campo(await c.llamar('inventarios', 'exportarCsv', c.rol === 'adm' ? { conCostos: true } : {}), 'csv')) }),
@@ -319,12 +309,16 @@ export const TRADUCCION: { readonly [N in NombreCallable]: Traduccion<N> } = {
         limite: e.limite ?? 200,
       });
       // El servidor filtra por tipo y por persona; `costoUSDUnit` solo llega al administrador y la vista no lo usa.
-      return lista(await c.llamar('inventarios', 'movimientos', datos), 'movimientos').map(aMovimiento);
+      const r = await c.llamar('inventarios', 'movimientos', datos);
+      return { movimientos: lista(r, 'movimientos').map(aMovimiento), cortada: campo(r, 'cortada') === true };
     },
   },
   listarMermas: {
     usa: ['inventarios.mermas'],
-    ejecutar: async (c, e) => lista(await c.llamar('inventarios', 'mermas', sinVacios({ estado: e.estado, limite: 200 })), 'mermas').map(aMerma),
+    ejecutar: async (c, e) => {
+      const r = await c.llamar('inventarios', 'mermas', sinVacios({ estado: e.estado, limite: 200 }));
+      return { mermas: lista(r, 'mermas').map(aMerma), cortada: campo(r, 'cortada') === true };
+    },
   },
   listarConteos: {
     usa: ['inventarios.conteos', 'inventarios.conteo'],
@@ -338,6 +332,8 @@ export const TRADUCCION: { readonly [N in NombreCallable]: Traduccion<N> } = {
           return sinVacios({
             conteoId: String(k['id']), ubicacionId: k['ubicacionId'] as UbicacionId, estado: k['estado'] as ConteoVista['estado'], abiertoPor: String(k['abiertoPor']),
             cerradoPor: k['cerradoPor'] as string | undefined, fecha: String(k['abiertoEn'] ?? ''), lineas,
+            // `faltan` solo llega a sup/adm con el conteo abierto.
+            faltan: typeof (detalle as Obj)['faltan'] === 'number' ? ((detalle as Obj)['faltan'] as number) : undefined,
             // `resultado` (teórico, contado, diferencia) solo llega a sup/adm y con el conteo cerrado.
             resultado: (detalle as Obj)['resultado'] as ConteoVista['resultado'],
           }) as ConteoVista;
@@ -381,7 +377,7 @@ export const TRADUCCION: { readonly [N in NombreCallable]: Traduccion<N> } = {
   // ---- Consola ----
   obtenerTablero: directa('consola', 'tablero'),
   publicarSitio: directa('consola', 'publicarSitio'),
-  cambiarPrecioUSD: comoOk('consola', 'cambiarPrecioUSD', (e) => ({ productoId: e.productoId, precioUSD: { bo: usd(e.precioUSD.bo), ar: usd(e.precioUSD.ar) } })),
+  cambiarPrecioUSD: comoOk('inventarios', 'cambiarPrecioUSD', (e) => ({ operacionId: e.operacionId, productoId: e.productoId, precioUSD: e.precioUSD })),
   guardarFicha: comoOk('consola', 'guardarFicha', (e) => e),
   reservarSubida: directa('medios', 'reservarSubida'),
   estadoSubida: {
@@ -424,11 +420,6 @@ export const TRADUCCION: { readonly [N in NombreCallable]: Traduccion<N> } = {
   ordenarSecciones: comoOk('consola', 'ordenarSecciones', (e) => e),
   guardarCarrusel: comoOk('consola', 'guardarCarrusel', (e) => e),
   guardarConfigSitio: comoOk('consola', 'guardarConfigSitio', (e) => e),
-  simularImportacion: { usa: ['consola.simularImportacion'], ejecutar: async (c, e) => campo(await c.llamar('consola', 'simularImportacion', { archivo: e.contenidoBase64 }), 'simulacion') },
-  importarProductos: {
-    usa: ['consola.importarProductos'],
-    ejecutar: async (c, e) => (await c.llamar('consola', 'importarProductos', sinVacios({ archivo: e.contenidoBase64, omitirErrores: e.omitirErrores }))) as never,
-  },
   exportarProductosCsvSitio: directa('consola', 'exportarProductosCsv'),
   buscarUsuarioPorCorreo: {
     usa: ['consola.buscarUsuarioPorCorreo'],

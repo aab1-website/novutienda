@@ -47,7 +47,7 @@ const callable = (modulo: string, implementaciones: TablaImplementaciones) =>
 // `invoker: 'public'` explícito: el navegador llama sin credencial de Google Cloud; la identidad, App Check, el rol y el encendido por
 // tenant se verifican dentro del manejador. Sin esto, Cloud Run responde 401 en un despliegue nuevo (visto en `medios`, 09/11/2026).
 export const pos = onCall({ invoker: 'public', memory: '512MiB' }, callable('pos', accionesPos));
-export const inventarios = onCall({ invoker: 'public', memory: '512MiB' }, callable('inventarios', accionesInventarios));
+export const inventarios = onCall({ invoker: 'public', memory: '512MiB', timeoutSeconds: 120 }, callable('inventarios', accionesInventarios));
 // Las acciones de usuarios (Central, `llamadas/usuarios.ts`) viajan en el callable `consola` para no cambiar el contrato del panel.
 export const consola = onCall({ invoker: 'public', memory: '512MiB' }, callable('consola', { ...accionesConsola, ...accionesUsuarios }));
 export const recibos = onCall({ invoker: 'public', memory: '512MiB' }, callable('recibos', accionesRecibos));

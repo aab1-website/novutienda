@@ -57,20 +57,22 @@ describe('CSV', () => {
     expect(doc(db, 'productos', 'lapiz')).toBeUndefined();
   });
 
-  it('rechaza ids repetidos, columnas desconocidas, fórmulas en id/sku, productos existentes y más de 50 filas', async () => {
+  it('rechaza ids repetidos, fórmulas en id/sku y un archivo sin columna id; las columnas desconocidas se informan y se ignoran', async () => {
     await expect(importar(`${CAB}\na1,x,p,S-1,1,1\na1,y,p,S-2,1,1\n`)).rejects.toThrow(EntradaInvalida);
-    await expect(importar(`${CAB},raro\na1,x,p,S-1,1,1,z\n`)).rejects.toThrow(/columna desconocida/);
     await expect(importar(`${CAB}\n=cmd,x,p,S-1,1,1\n`)).rejects.toThrow(EntradaInvalida);
     await expect(importar(`${CAB}\na1,x,p,=S-1,1,1\n`)).rejects.toThrow(EntradaInvalida);
-    await importar(`${CAB}\na1,x,p,S-1,1,1\n`);
-    await expect(importar(`${CAB}\na1,x,p,S-9,1,1\n`)).rejects.toThrow(/ya existe/);
-    const muchas = Array.from({ length: 51 }, (_, i) => `p${String(i)}x,n,c,K${String(i)},1,1`).join('\n');
-    await expect(importar(`${CAB}\n${muchas}\n`)).rejects.toThrow(/entre 1 y 50/);
+    await expect(importar('nombre,sku\nx,S-1\n')).rejects.toThrow(/falta la columna id/);
+    await importar(`${CAB},raro\na1,x,p,S-1,1,1,z\n`);
+    expect(doc(db, 'productos', 'a1')).toBeDefined();
+    const muchas = Array.from({ length: 1001 }, (_, i) => `p${String(i)}x,n,c,K${String(i)},1,1`).join('\n');
+    await expect(importar(`${CAB}\n${muchas}\n`)).rejects.toThrow(/entre 1 y 1000/);
   });
 
-  it('respeta el tope de 200 productos y es idempotente', async () => {
-    const lote = (desde: number) => Array.from({ length: 50 }, (_, i) => `q${String(desde + i)}x,n,c,Q${String(desde + i)},1,1`).join('\n');
-    for (let k = 0; k < 4; k++) await importar(`${CAB}\n${lote(k * 50)}\n`);
+  it('la variante de una sola transacción rechaza lo que no cabe y el tope del plan se respeta', async () => {
+    const fila = (i: number) => `q${String(i)}x,n,c,Q${String(i)},1,1`;
+    const grande = Array.from({ length: 41 }, (_, i) => fila(i)).join('\n');
+    await expect(importar(`${CAB}\n${grande}\n`)).rejects.toThrow(/no cabe en una sola transacción/);
+    for (let k = 0; k < 5; k++) await importar(`${CAB}\n${Array.from({ length: 40 }, (_, i) => fila(k * 40 + i)).join('\n')}\n`);
     await expect(importar(`${CAB}\nextra1,n,c,E1,1,1\n`)).rejects.toThrow(/Límite del plan/);
   });
 

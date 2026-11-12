@@ -1,4 +1,4 @@
-// L3-5: los consumidores que la plataforma suscribe al bus son exactamente los `consume` de los manifiestos.
+// L3-5: los consumidores que la plataforma suscribe al bus son exactamente los `consume` y `consumeOpcional` de los manifiestos.
 import type { BaseDatosIdentidad } from '@novutienda/nucleo';
 import { describe, expect, it } from 'vitest';
 import { consumidoresDePlataforma } from '../../plataforma/coordinador/consumidores.js';
@@ -8,9 +8,9 @@ import { registroPlataforma } from '../../plataforma/registro.js';
 const consumidores = consumidoresDePlataforma({} as BaseDatosIdentidad);
 
 describe('consumidores del bus frente a los manifiestos', () => {
-  it('cada par módulo:evento de consumidoresDePlataforma es un `consume` del manifiesto, y al revés', () => {
+  it('cada par módulo:evento de consumidoresDePlataforma es un `consume` o `consumeOpcional` del manifiesto, y al revés', () => {
     const suscritos = consumidores.flatMap((c) => c.tipos.map((t) => `${c.nombre.split(':')[0]}:${t}`)).sort();
-    const declarados = registroPlataforma.listar().flatMap((m) => m.consume.map((t) => `${m.id}:${t}`)).sort();
+    const declarados = registroPlataforma.listar().flatMap((m) => [...m.consume, ...(m.consumeOpcional ?? [])].map((t) => `${m.id}:${t}`)).sort();
     expect(suscritos).toEqual(declarados);
   });
 

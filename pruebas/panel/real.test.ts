@@ -60,20 +60,23 @@ describe('unidades', () => {
     await (TRADUCCION[nombre] as unknown as { ejecutar(c: unknown, e: unknown): Promise<unknown> }).ejecutar(c, entrada);
     return llamadas;
   }
-  it('el panel trabaja en centavos: solo consola.crearProducto, consola.editarProducto y consola.cambiarPrecioUSD reciben dólares', async () => {
+  it('el panel trabaja en centavos: alta, edición y cambio de precio de Inventarios reciben centavos sin convertir', async () => {
     expect(usd(1250)).toBe(12.5);
     expect(usd(1999)).toBe(19.99);
-    const alta = await enviado('crearProducto', { operacionId: 'o', producto: { id: 'p-1', nombre: 'P', categoria: 'C', sku: 'S', precioUSD: { bo: 1250, ar: 1999 }, costoUSD: 700 } });
-    expect(alta[0]).toMatchObject({ accion: 'crearProducto', datos: { precioUSD: { bo: 12.5, ar: 19.99 } } });
-    // El costo va a Inventarios, que usa centavos.
-    expect(alta[1]).toMatchObject({ accion: 'fijarCosto', datos: { costoUSD: 700 } });
-    const precio = await enviado('cambiarPrecioUSD', { productoId: 'p-1', precioUSD: { bo: 1999, ar: 2000 } });
-    expect(precio[0]).toMatchObject({ accion: 'cambiarPrecioUSD', datos: { precioUSD: { bo: 19.99, ar: 20 } } });
-    const edicion = await enviado('actualizarProducto', { operacionId: 'o', productoId: 'p-1', cambios: { nombre: 'N', precioUSD: { bo: 500, ar: 600 }, costoUSD: 300 } });
-    expect(edicion.map((x) => x.accion)).toEqual(['editarProducto', 'cambiarPrecioUSD', 'fijarCosto']);
-    expect(edicion[0]?.datos).toEqual({ productoId: 'p-1', cambios: { nombre: 'N' } });
-    expect(edicion[1]?.datos).toMatchObject({ precioUSD: { bo: 5, ar: 6 } });
-    expect(edicion[2]?.datos).toMatchObject({ costoUSD: 300 });
+    const producto = { id: 'p-1', nombre: 'P', categoria: 'C', sku: 'S', precioUSD: { bo: 1250, ar: 1999 }, costoUSD: 700 };
+    const alta = await enviado('crearProducto', { operacionId: 'o', producto });
+    expect(alta).toEqual([{ accion: 'crearProducto', datos: { operacionId: 'o', producto } }]);
+    const precio = await enviado('cambiarPrecioUSD', { operacionId: 'o2', productoId: 'p-1', precioUSD: { bo: 1999, ar: 2000 } });
+    expect(precio).toEqual([{ accion: 'cambiarPrecioUSD', datos: { operacionId: 'o2', productoId: 'p-1', precioUSD: { bo: 1999, ar: 2000 } } }]);
+    const cambios = { nombre: 'N', precioUSD: { bo: 500, ar: 600 }, costoUSD: 300, marca: null, garantiaMeses: null, minimo: null };
+    const edicion = await enviado('actualizarProducto', { operacionId: 'o', productoId: 'p-1', cambios });
+    expect(edicion).toEqual([{ accion: 'editarProducto', datos: { operacionId: 'o', productoId: 'p-1', cambios } }]);
+  });
+  it('la importación de Inventario viaja por una sola acción: simular con `simular: true` y aplicar sin él', async () => {
+    const fuente = { archivo: 'UEsDBA==', cargaInicial: true };
+    expect(await enviado('simularImportacionProductos', fuente)).toEqual([{ accion: 'importarProductosCsv', datos: { ...fuente, simular: true } }]);
+    const aplicar = { operacionId: 'o3', csv: 'id\r\nx\r\n', omitirErrores: true, lineasOmitidas: [2, 5] };
+    expect(await enviado('importarProductosCsv', aplicar)).toEqual([{ accion: 'importarProductosCsv', datos: aplicar }]);
   });
   it('el resto de las operaciones con dinero no convierte nada', async () => {
     const venta = { requestId: 'r', carrito: { mercado: 'BO', moneda: 'BOB', lineas: [] }, pagos: [{ medio: 'efectivo', moneda: 'BOB', monto: 5568 }] };
