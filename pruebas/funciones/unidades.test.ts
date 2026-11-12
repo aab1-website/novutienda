@@ -537,6 +537,35 @@ describe('sonda del ffmpeg de video', () => {
     }
   }, 40_000);
 
+  it('las llamadas simultáneas comparten una sola sonda', async () => {
+    const f = falso('echo x >> "$0.corridas"\necho "ffmpeg version 4.4.2-falso" >&2\ncase "$*" in *-encoders*) echo " V..... libx264 H.264";; esac');
+    const pr = falso('echo x >> "$0.corridas"\necho "ffprobe version 4.4.2-falso"');
+    try {
+      const sonda = sondaVideo({ ffmpeg: f.ruta, ffprobe: pr.ruta });
+      const r = await Promise.all(Array.from({ length: 8 }, () => sonda()));
+      expect(r.every((x) => x.disponible)).toBe(true);
+      expect(readFileSync(`${f.ruta}.corridas`, 'utf8').trim().split('\n')).toHaveLength(1);
+      expect(readFileSync(`${pr.ruta}.corridas`, 'utf8').trim().split('\n')).toHaveLength(1);
+    } finally {
+      f.limpiar();
+      pr.limpiar();
+    }
+  });
+
+  it('con timeouts repetidos el aviso se registra una sola vez por instancia', async () => {
+    const f = falso('sleep 30');
+    try {
+      const warn = vi.fn();
+      const p = crearProcesadorMedios(BUCKET, { FFMPEG_PATH: f.ruta, FFPROBE_PATH: f.ruta }, { error: vi.fn(), warn });
+      // Dos rondas de llamadas simultáneas: dos sondas con timeout, un solo aviso.
+      await Promise.all([p.disponible?.('video'), p.disponible?.('video')]);
+      await p.disponible?.('video');
+      expect(warn).toHaveBeenCalledTimes(1);
+    } finally {
+      f.limpiar();
+    }
+  }, 60_000);
+
   it('solo admite la familia mov/mp4 y matroska/webm', () => {
     expect(demuxerPermitido('mov,mp4,m4a,3gp,3g2,mj2')).toBe('mov,mp4,m4a,3gp,3g2,mj2');
     expect(demuxerPermitido('matroska,webm')).toBe('matroska,webm');

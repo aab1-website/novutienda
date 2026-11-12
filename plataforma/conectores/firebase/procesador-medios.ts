@@ -140,11 +140,23 @@ export function sondaVideo(bin: BinariosVideo): () => Promise<EstadoVideo> {
       return { estado: con({ disponible: false, causa: causaDeEjecucion('ffprobe', err) }), definitivo: !esTransitorio(err) };
     }
   };
-  return async () => {
-    if (guardada !== undefined) return guardada;
-    const r = await sondear();
-    if (r.definitivo) guardada = r.estado;
-    return { ...r.estado, ...(r.definitivo ? {} : { transitorio: true }) } as EstadoVideo;
+  // Las peticiones concurrentes comparten la sonda en curso; se suelta al terminar (el definitivo queda en `guardada`).
+  let enCurso: Promise<EstadoVideo> | undefined;
+  return () => {
+    if (guardada !== undefined) return Promise.resolve(guardada);
+    // Con timeout la petición espera hasta 15 s y responde «no disponible»: decisión aceptada, se reintenta en la siguiente.
+    enCurso ??= sondear()
+      .then((r): EstadoVideo => {
+        if (r.definitivo) {
+          guardada = r.estado;
+          return r.estado;
+        }
+        return r.estado.disponible ? r.estado : { ...r.estado, transitorio: true };
+      })
+      .finally(() => {
+        enCurso = undefined;
+      });
+    return enCurso;
   };
 }
 
@@ -280,16 +292,22 @@ export function crearProcesadorMedios(bucket: Bucket, env: Readonly<Record<strin
   const video = bin === undefined ? undefined : procesadorVideo(bucket, bin);
   const sonda = bin === undefined ? undefined : sondaVideo(bin);
   let errorRegistrado = false;
+  let avisoRegistrado = false; // un solo aviso por instancia hasta que la sonda tenga éxito o fallo definitivo
   const estadoVideo = async (): Promise<EstadoVideo> => {
     if (sonda === undefined) return { disponible: false, causa: 'faltan FFMPEG_PATH y FFPROBE_PATH' };
     const e = await sonda();
     if (!e.disponible && registro !== undefined) {
-      if (e.transitorio === true) registro.warn('video no disponible por ahora', { causa: e.causa, version: e.version });
-      else if (!errorRegistrado) {
+      if (e.transitorio === true) {
+        if (!avisoRegistrado) {
+          avisoRegistrado = true;
+          registro.warn('video no disponible por ahora', { causa: e.causa, version: e.version });
+        }
+      } else if (!errorRegistrado) {
         errorRegistrado = true;
         registro.error('video no disponible', { causa: e.causa, version: e.version });
       }
     }
+    if (e.disponible || e.transitorio !== true) avisoRegistrado = false;
     return e;
   };
   const elegirVideo = async (): Promise<Pick<ProcesadorMedios, 'inspeccionar' | 'procesar'>> => {
