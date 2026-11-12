@@ -8,7 +8,7 @@ import type {
   ConsultaArchivo, PrecioUSDCentavos, ConteoVista, CotizacionesVigentes, CreditoVista, EntradaAuditoriaVista, EntradaProducto, FichaWeb,
   LineaAjuste, LineaIngreso, LineaTraspaso, Medio, MermaVista, MontosPorMoneda, MovimientoCaja, MovimientoCajaEntrada, MovimientoVista,
   PagoEntrada, PlantillaRecibo, ProductoPanel, Recibo, Reserva, ResultadoAnulacion, ResultadoCierre, ResultadoEnvio,
-  ResultadoImportacion, ResultadoOperacion, ResultadoEstadoSubida, ResultadoPublicacion, ResultadoVenta, Rol, Seccion, Simulacion, SolicitudAprobacion,
+  FuenteImportacion, ResultadoImportacion, ResultadoOperacion, ResultadoEstadoSubida, ResultadoPublicacion, ResultadoVenta, Rol, Seccion, Simulacion, SolicitudAprobacion,
   Tablero, TipoMedio, TurnoPos, UbicacionId, UnidadSerie, UsuarioVista, VentaPos, EstadoMerma,
   TipoMovimiento,
 } from './tipos.js';
@@ -51,7 +51,13 @@ export interface Contrato {
     salida: ResultadoOperacion;
   };
   cerrarConteo: { entrada: { operacionId: string; conteoId: string }; salida: ResultadoOperacion };
-  importarProductosCsv: { entrada: { operacionId: string; csv: string; cargaInicial?: boolean }; salida: ResultadoOperacion };
+  /** Simulación fila por fila (`inventarios.importarProductosCsv` con `simular: true`): no escribe ni usa `operacionId`. Solo adm. */
+  simularImportacionProductos: { entrada: FuenteImportacion & { cargaInicial?: boolean }; salida: Simulacion };
+  /**
+   * Importa productos (crea los nuevos y actualiza los existentes) por tandas; con filas con error se rechaza salvo
+   * `omitirErrores`. Si `completa` es `false` se reintenta con el mismo `operacionId`. El stock solo entra con `cargaInicial`.
+   */
+  importarProductosCsv: { entrada: FuenteImportacion & { operacionId: string; cargaInicial?: boolean; omitirErrores?: boolean }; salida: ResultadoImportacion };
   /** Función pura del módulo expuesta como callable: devuelve el CSV (celdas neutralizadas) de los productos del tenant. */
   exportarProductosCsv: { entrada: Vacio; salida: { csv: string } };
   // ---- Recibos ----
@@ -60,7 +66,7 @@ export interface Contrato {
   enviarRecibo: { entrada: { reciboId: string; codigoPais?: string }; salida: ResultadoEnvio };
   referenciarFacturaSuma: { entrada: { reciboId: string; facturaSuma: string }; salida: Ok };
   guardarPlantilla: { entrada: { plantilla: PlantillaRecibo }; salida: Ok };
-  // ---- Consola (catálogo y sitio) ----
+  // ---- Consola (catálogo y sitio; no crea, edita ni importa productos: eso es de Inventarios) ----
   obtenerTablero: { entrada: Vacio; salida: Tablero };
   publicarSitio: { entrada: Vacio; salida: ResultadoPublicacion };
   /** Centavos de USD: `inventarios.cambiarPrecioUSD` (idempotente por `operacionId`, que la pantalla manda siempre). */
@@ -77,8 +83,6 @@ export interface Contrato {
   ordenarSecciones: { entrada: { orden: readonly string[] }; salida: Ok };
   guardarCarrusel: { entrada: { carrusel: Carrusel }; salida: Ok };
   guardarConfigSitio: { entrada: { config: ConfigSitio }; salida: Ok };
-  simularImportacion: { entrada: { contenidoBase64: string }; salida: Simulacion };
-  importarProductos: { entrada: { contenidoBase64: string; omitirErrores?: boolean }; salida: ResultadoImportacion };
   /** Se renombra (en la consola es `exportarProductosCsv`) para no chocar con la de Inventarios. */
   exportarProductosCsvSitio: { entrada: Vacio; salida: { csv: string } };
   // ---- Identidad (núcleo) ----
@@ -98,9 +102,11 @@ export interface Contrato {
   buscarSerie: { entrada: { serie: string }; salida: readonly UnidadSerie[] };
   listarMovimientos: {
     entrada: { desde?: string; hasta?: string; productoId?: string; tipo?: TipoMovimiento; usuario?: string; limite?: number };
-    salida: readonly MovimientoVista[];
+    /** `cortada`: hay más movimientos que el límite; afine los filtros. */
+    salida: { readonly movimientos: readonly MovimientoVista[]; readonly cortada: boolean };
   };
-  listarMermas: { entrada: { estado?: EstadoMerma }; salida: readonly MermaVista[] };
+  /** `estado` filtra en el servidor; `cortada` avisa que hay más que el límite. */
+  listarMermas: { entrada: { estado?: EstadoMerma }; salida: { readonly mermas: readonly MermaVista[]; readonly cortada: boolean } };
   listarConteos: { entrada: Vacio; salida: readonly ConteoVista[] };
   /** Turno abierto del usuario (o `null`). */
   turnoActual: { entrada: Vacio; salida: TurnoPos | null };

@@ -90,27 +90,22 @@ las aplica el módulo; el redondeo del precio sale de `tenants/{t}/config/redond
 | `abrirConteo` / `cerrarConteo` | SUP | `{ operacionId, conteoId, ubicacionId }` / `{ operacionId, conteoId }` | idem |
 | `registrarLineaConteo` | TODOS | `{ operacionId, conteoId, productoId, contado?, series? }` | `{ resultado, repetida }` (sin el teórico: conteo ciego) |
 | `crearUbicacion` | ADM | `{ operacionId, ubicacionId, nombre }` | idem |
-| `fijarCosto` | ADM | `{ operacionId, productoId, costoUSD }` | idem |
-| `importarProductosCsv` | ADM | `{ operacionId, csv, cargaInicial? }` (hasta 50 filas) | idem |
+| `importarProductosCsv` | ADM | `{ operacionId?, cargaInicial?, simular?, omitirErrores?, archivo?, csv? }`: `archivo` (base64 de un `.csv` o `.xlsx`, hasta 2 MB) o `csv` (texto), uno solo; hasta 1000 filas; `operacionId` obligatorio salvo con `simular`. Crea los productos nuevos y actualiza los existentes por `id` (celda vacía = sin cambio); el stock solo entra con `cargaInicial` y en productos nuevos sin serie | con `simular: true`: `{ simular: true, simulacion: { filas: [{ linea, id, accion: 'crear'\|'actualizar'\|'sin-cambios'\|'error', errores: [{ columna, motivo }], advertencias[], cambios[] }], resumen, columnasIgnoradas[] } }`; sin `simular`: `{ simular: false, completa, creados, actualizados, sinCambios, omitidas, lotes: { total, aplicados }, productos[], detencion?, simulacion }`. Se aplica por tandas (no es «todo o nada» entre tandas): si `completa` es `false`, se repite con el mismo `operacionId` |
 | `listarProductos` | TODOS | `{ soloBajoMinimo? }` | `{ productos[] }` con `existencias` por almacén, `disponible`, `bajoMinimo`; sin costos |
 | `ubicaciones`, `buscarSerie`, `conteos` | TODOS | `{}` / `{ serie, productoId? }` / `{ estado?, limite? }` | listas |
 | `series` | TODOS | `{ productoId, ubicacionId?, soloDisponibles?, limite? }` | `{ unidades[] }` (`productoId, serie, estado, ubicacionId, ventaRef?` como id de venta, `garantiaHasta?`); sin costos |
-| `conteo` | TODOS | `{ conteoId }` | `{ conteo, lineas[] }`; **conteo ciego:** nunca trae teóricos mientras está abierto ni al vendedor. Con el conteo **cerrado**, `sup`/`adm` reciben además `resultado: [{ productoId, teorico, contado, diferencia }]` |
-| `movimientos` | SUP | `{ productoId?, desde?, hasta?, tipo?, uid?, limite? }` | `{ movimientos[] }`; `costoUSDUnit` solo lo ve ADM. `tipo` y `uid` (autor) se filtran sobre los últimos 1000 movimientos del resto de los filtros, para no exigir índices compuestos nuevos |
-| `mermas`, `exportarCsv` | SUP | `{ estado?, limite? }` / `{ conCostos? }` (costos solo ADM) | listas; `{ csv }` |
+| `conteo` | TODOS | `{ conteoId }` | `{ conteo, lineas[] }` (a `sup`/`adm`, con el conteo abierto, además `faltan`: cuántos productos con existencia aún no se contaron); **conteo ciego:** nunca trae teóricos mientras está abierto ni al vendedor. Con el conteo **cerrado**, `sup`/`adm` reciben además `resultado: [{ productoId, teorico, contado, diferencia }]` |
+| `movimientos` | SUP | `{ productoId?, desde?, hasta?, tipo?, uid?, limite? }` | `{ movimientos[], cortada }`; `costoUSDUnit` solo lo ve ADM. `tipo` y `uid` (autor) se filtran sobre los últimos 1000 movimientos del resto de los filtros, para no exigir índices compuestos nuevos |
+| `mermas`, `exportarCsv` | SUP | `{ estado?, limite? }` / `{ conCostos? }` (costos solo ADM) | `{ mermas[], cortada }`; `{ csv }` con columnas `id, nombre, categoria, marca, sku, conSerie, garantiaMeses, minimo, precioBO, precioAR, costo, activo, publicado` y USD con 2 decimales |
 | `costos` | ADM | `{}` | `{ costos[] }` |
 
 ### `consola`
 | Acción | Roles | `datos` | Devuelve |
 |---|---|---|---|
-| `crearProducto` | ADM | `{ productoId, datos, precioUSD: { bo, ar } }` | `{ productoId }` (tope de 200 productos → `resource-exhausted`) |
-| `editarProducto` | ADM | `{ productoId, cambios }` | idem |
-| `cambiarPrecioUSD` | ADM | `{ productoId, precioUSD: { bo, ar } }` | idem |
 | `catalogo` | SUP | `{}` | `{ productos[] }` con `disponible` |
 | `preciosDelDia` | SUP | `{ precioUSD: { bo, ar } }` | `{ BO, AR }` (`precioFinal` con el redondeo del tenant) |
 | `guardarFicha` / `leerFicha` | SUP | `{ productoId, ficha }` / `{ productoId }` | `{ productoId }` / `{ ficha }` |
 | `guardarSeccion`, `eliminarSeccion`, `ordenarSecciones`, `guardarCarrusel`, `guardarConfigSitio` | ADM | `{ seccion }` / `{ seccionId }` / `{ orden[] }` / `{ carrusel }` / `{ config }` | `{ ok }` |
-| `simularImportacion` / `importarProductos` | ADM | `{ archivo (base64, hasta 2 MB) [, omitirErrores] }` | simulación / resultado (solo CSV; `.xlsx` → `unavailable`) |
 | `exportarProductosCsv` | SUP | `{}` | `{ csv }` |
 | `publicarSitio` | ADM | `{}` | `{ version, productos, decision, advertencias[] }` |
 | `tablero` | SUP | `{}` | tablero (cotizaciones, cambios sin publicar, uso frente a topes) |

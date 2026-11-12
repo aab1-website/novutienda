@@ -72,6 +72,12 @@ describe('unidades', () => {
     const edicion = await enviado('actualizarProducto', { operacionId: 'o', productoId: 'p-1', cambios });
     expect(edicion).toEqual([{ accion: 'editarProducto', datos: { operacionId: 'o', productoId: 'p-1', cambios } }]);
   });
+  it('la importación de Inventario viaja por una sola acción: simular con `simular: true` y aplicar sin él', async () => {
+    const fuente = { archivo: 'UEsDBA==', cargaInicial: true };
+    expect(await enviado('simularImportacionProductos', fuente)).toEqual([{ accion: 'importarProductosCsv', datos: { ...fuente, simular: true } }]);
+    const aplicar = { operacionId: 'o3', csv: 'id\r\nx\r\n', omitirErrores: true };
+    expect(await enviado('importarProductosCsv', aplicar)).toEqual([{ accion: 'importarProductosCsv', datos: aplicar }]);
+  });
   it('el resto de las operaciones con dinero no convierte nada', async () => {
     const venta = { requestId: 'r', carrito: { mercado: 'BO', moneda: 'BOB', lineas: [] }, pagos: [{ medio: 'efectivo', moneda: 'BOB', monto: 5568 }] };
     expect((await enviado('confirmarVenta', venta))[0]?.datos).toEqual(venta);
