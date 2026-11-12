@@ -1,6 +1,6 @@
 // Pruebas sin emulador: traducción de errores, política de redondeo, verificadores, composición de cabeceras y
 // el marco de los callables con un entorno falso.
-import { chmodSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
+import { chmodSync, existsSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { describe, expect, it, vi } from 'vitest';
@@ -453,13 +453,13 @@ describe('sonda del ffmpeg de video', () => {
   const BUCKET = {} as never;
 
   it('con libx264 queda disponible, guarda la versión y corre una sola vez', async () => {
-    const f = falso('echo x >> "$0.corridas"\ncase "$*" in *-version*) echo "ffmpeg version 4.4.2-falso";; *-encoders*) echo " V..... libx264 H.264";; esac');
+    const f = falso('echo x >> "$0.corridas"\necho "ffmpeg version 4.4.2-falso" >&2\ncase "$*" in *-encoders*) echo " V..... libx264 H.264";; esac');
     const pr = falso('echo "ffprobe version 4.4.2-falso"');
     try {
       const sonda = sondaVideo({ ffmpeg: f.ruta, ffprobe: pr.ruta });
       expect(await sonda()).toEqual({ disponible: true, version: 'ffmpeg version 4.4.2-falso | ffprobe version 4.4.2-falso' });
       await sonda();
-      expect(readFileSync(`${f.ruta}.corridas`, 'utf8').trim().split('\n')).toHaveLength(2); // -version y -encoders, una vez
+      expect(readFileSync(`${f.ruta}.corridas`, 'utf8').trim().split('\n')).toHaveLength(1); // solo -encoders (la versión viene en el banner), una vez
       const p = crearProcesadorMedios(BUCKET, { FFMPEG_PATH: f.ruta, FFPROBE_PATH: pr.ruta });
       expect(await p.disponible?.('video')).toBe(true);
       expect(await p.disponible?.('foto')).toBe(true);
@@ -470,7 +470,7 @@ describe('sonda del ffmpeg de video', () => {
   });
 
   it('sin libx264 no está disponible y el video se rechaza con VideoNoDisponible', async () => {
-    const f = falso('case "$*" in *-version*) echo "ffmpeg version 4.4.2-falso";; *-encoders*) echo " A..... aac";; esac');
+    const f = falso('echo "ffmpeg version 4.4.2-falso" >&2\ncase "$*" in *-encoders*) echo " A..... aac";; esac');
     try {
       const p = crearProcesadorMedios(BUCKET, { FFMPEG_PATH: f.ruta, FFPROBE_PATH: '/no/importa' });
       expect(await p.estadoVideo()).toEqual({ disponible: false, causa: 'ffmpeg sin libx264', version: 'ffmpeg version 4.4.2-falso' });
@@ -490,6 +490,81 @@ describe('sonda del ffmpeg de video', () => {
     expect(await sin.disponible?.('video')).toBe(false);
     await expect(sin.procesar({ origen: 'x', tipo: 'video', destinoTemporal: 'y', plan: { items: [] } } as never)).rejects.toBeInstanceOf(VideoNoDisponible);
   });
+
+  it('un binario inexistente da error una sola vez por instancia y con causa «no existe»', async () => {
+    const error = vi.fn();
+    const warn = vi.fn();
+    const p = crearProcesadorMedios(BUCKET, { FFMPEG_PATH: '/no/existe/ffmpeg', FFPROBE_PATH: '/no/existe/ffprobe' }, { error, warn });
+    expect(await p.disponible?.('video')).toBe(false);
+    expect(await p.disponible?.('video')).toBe(false);
+    expect(error).toHaveBeenCalledTimes(1);
+    expect(error).toHaveBeenCalledWith('video no disponible', expect.objectContaining({ causa: 'ffmpeg no existe' }));
+    expect(warn).not.toHaveBeenCalled();
+  });
+
+  it('crear el procesador no ejecuta ningún binario', async () => {
+    const f = falso('echo x >> "$0.corridas"');
+    try {
+      crearProcesadorMedios(BUCKET, { FFMPEG_PATH: f.ruta, FFPROBE_PATH: f.ruta }, { error: vi.fn(), warn: vi.fn() });
+      await new Promise((r) => setTimeout(r, 200));
+      expect(existsSync(`${f.ruta}.corridas`)).toBe(false);
+    } finally {
+      f.limpiar();
+    }
+  });
+
+  it('un timeout da aviso (no error), no se guarda y la siguiente llamada reintenta', async () => {
+    const dir = mkdtempSync(join(tmpdir(), 'ffmpeg-falso-'));
+    const ffmpeg = join(dir, 'ffmpeg');
+    // La primera corrida se cuelga (se mata por tiempo); las siguientes responden.
+    writeFileSync(ffmpeg, `#!/bin/sh\nif [ ! -e "${dir}/ya" ]; then touch "${dir}/ya"; sleep 30; fi\necho "ffmpeg version 4.4.2-falso" >&2\necho " V..... libx264 H.264"\n`);
+    chmodSync(ffmpeg, 0o755);
+    const pr = falso('echo "ffprobe version 4.4.2-falso"');
+    try {
+      const error = vi.fn();
+      const warn = vi.fn();
+      const p = crearProcesadorMedios(BUCKET, { FFMPEG_PATH: ffmpeg, FFPROBE_PATH: pr.ruta }, { error, warn });
+      const t = Date.now();
+      expect(await p.disponible?.('video')).toBe(false);
+      expect(Date.now() - t).toBeGreaterThan(10_000);
+      expect(warn).toHaveBeenCalledWith('video no disponible por ahora', expect.objectContaining({ causa: 'tiempo agotado al sondear ffmpeg' }));
+      expect(error).not.toHaveBeenCalled();
+      expect(await p.disponible?.('video')).toBe(true);
+      expect(error).not.toHaveBeenCalled();
+    } finally {
+      rmSync(dir, { recursive: true, force: true });
+      pr.limpiar();
+    }
+  }, 40_000);
+
+  it('las llamadas simultáneas comparten una sola sonda', async () => {
+    const f = falso('echo x >> "$0.corridas"\necho "ffmpeg version 4.4.2-falso" >&2\ncase "$*" in *-encoders*) echo " V..... libx264 H.264";; esac');
+    const pr = falso('echo x >> "$0.corridas"\necho "ffprobe version 4.4.2-falso"');
+    try {
+      const sonda = sondaVideo({ ffmpeg: f.ruta, ffprobe: pr.ruta });
+      const r = await Promise.all(Array.from({ length: 8 }, () => sonda()));
+      expect(r.every((x) => x.disponible)).toBe(true);
+      expect(readFileSync(`${f.ruta}.corridas`, 'utf8').trim().split('\n')).toHaveLength(1);
+      expect(readFileSync(`${pr.ruta}.corridas`, 'utf8').trim().split('\n')).toHaveLength(1);
+    } finally {
+      f.limpiar();
+      pr.limpiar();
+    }
+  });
+
+  it('con timeouts repetidos el aviso se registra una sola vez por instancia', async () => {
+    const f = falso('sleep 30');
+    try {
+      const warn = vi.fn();
+      const p = crearProcesadorMedios(BUCKET, { FFMPEG_PATH: f.ruta, FFPROBE_PATH: f.ruta }, { error: vi.fn(), warn });
+      // Dos rondas de llamadas simultáneas: dos sondas con timeout, un solo aviso.
+      await Promise.all([p.disponible?.('video'), p.disponible?.('video')]);
+      await p.disponible?.('video');
+      expect(warn).toHaveBeenCalledTimes(1);
+    } finally {
+      f.limpiar();
+    }
+  }, 60_000);
 
   it('solo admite la familia mov/mp4 y matroska/webm', () => {
     expect(demuxerPermitido('mov,mp4,m4a,3gp,3g2,mj2')).toBe('mov,mp4,m4a,3gp,3g2,mj2');

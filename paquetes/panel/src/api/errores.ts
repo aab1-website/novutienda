@@ -8,7 +8,7 @@
 export interface DetalleError {
   readonly codigo?: string;
   /** Faltantes de stock (StockInsuficiente). */
-  readonly faltantes?: readonly { readonly productoId: string; readonly almacenId: string; readonly pedido: number; readonly disponible: number }[];
+  readonly faltantes?: readonly { readonly productoId: string; readonly almacenId: string; readonly pedido: number; readonly disponible: number; readonly productoNombre?: string; readonly almacenNombre?: string }[];
   /** Mensajes por campo o fila (ErrorConsola.detalles). */
   readonly detalles?: readonly string[];
   /** Rutas de los campos inválidos de `datos` (esquema estricto del servidor; nunca los valores). */
@@ -63,12 +63,12 @@ const POR_CODIGO_MODULO: Readonly<Record<string, string>> = {
   // Consola
   'no-encontrado': 'No se encontró lo que buscaba.',
   conflicto: 'Eso ya existe o está en uso. Revise los datos.',
-  limite: 'Se alcanzó un límite del plan.',
+  limite: 'Se alcanzó un límite del plan. Si necesita más, avise al administrador.',
   'cuota-excedida': 'Se superó la cuota de almacenamiento (10 GB).',
-  'tipo-no-permitido': 'El archivo no es de un tipo permitido.',
+  'tipo-no-permitido': 'El archivo no es de un tipo permitido. Elija otro archivo.',
   estado: 'La acción no se puede hacer en el estado actual.',
   'contador-corrupto': 'Hay un contador dañado. Avise al administrador.',
-  procesamiento: 'No se pudo procesar el archivo. Pruebe con otro.',
+  procesamiento: 'No se pudo procesar el archivo. Pruebe con otro o vuelva a intentarlo más tarde.',
   'no-disponible': 'El servicio no está disponible por ahora. Intente de nuevo más tarde.',
   // Identidad
   anonimo: 'Debe iniciar sesión con su correo.',
@@ -117,15 +117,28 @@ const CON_MENSAJE_DEL_SERVIDOR: ReadonlySet<string> = new Set(['failed-precondit
  * Códigos del módulo cuyo texto fijo del panel es demasiado vago: se prefiere el mensaje preciso del servidor
  * («Falta el motivo», «El conteo c1 no está abierto»…) cuando existe y es de los que el servidor controla.
  */
-const PREFIERE_MENSAJE_DEL_SERVIDOR: ReadonlySet<string> = new Set(['entrada-invalida', 'estado', 'estado-invalido', 'no-encontrado']);
+const PREFIERE_MENSAJE_DEL_SERVIDOR: ReadonlySet<string> = new Set(['entrada-invalida', 'estado', 'estado-invalido', 'no-encontrado', 'limite', 'cuota-excedida', 'procesamiento', 'tipo-no-permitido', 'no-disponible']);
+
+/** Texto que el usuario nunca debe ver: código HTTP entre corchetes, «campo desconocido», nombres internos (camelCase) o valores vacíos. */
+const TECNICO = /\[\d{3}\]|campo desconocido|\b[a-z]+[A-Z][A-Za-z]*\b|\bundefined\b|\bnull\b|\b[a-z]+:\s/;
+const esLegible = (t: string): boolean => t.trim() !== '' && !TECNICO.test(t);
+
+export const MENSAJE_DATOS_NO_RECONOCIDOS =
+  'No se pudo guardar: el panel envió un dato que el servidor no reconoce. Recargue la página e intente de nuevo; si sigue, avise al administrador.';
 
 export const MENSAJE_GENERICO = 'Ocurrió un error inesperado. Intente de nuevo.';
 
 /** Mensaje legible para cualquier error (nunca el texto técnico del servidor). */
 export function mensajeDeError(e: unknown): string {
   if (!(e instanceof ErrorApi)) return MENSAJE_GENERICO;
-  const delServidorDisponible = CON_MENSAJE_DEL_SERVIDOR.has(e.codigoHttps) && e.message.trim() !== '' ? e.message.trim() : undefined;
+  const delServidorDisponible = CON_MENSAJE_DEL_SERVIDOR.has(e.codigoHttps) && esLegible(e.message) ? e.message.trim() : undefined;
   const codigo = e.detalle.codigo;
+  // Validación inesperada del servidor (campos que el panel no debió enviar): el detalle técnico va solo al registro.
+  const invalido = e.codigoHttps === 'invalid-argument' || codigo === 'entrada-invalida';
+  if (invalido && ((e.detalle.campos?.length ?? 0) > 0 || [e.message, ...(e.detalle.detalles ?? [])].some((t) => /campo desconocido|\[\d{3}\]/.test(t)))) {
+    console.error('Validación rechazada por el servidor', { codigo, campos: e.detalle.campos, detalles: e.detalle.detalles, mensaje: e.message });
+    return MENSAJE_DATOS_NO_RECONOCIDOS;
+  }
   let modulo = codigo === undefined ? undefined : POR_CODIGO_MODULO[codigo];
   if (codigo !== undefined && PREFIERE_MENSAJE_DEL_SERVIDOR.has(codigo) && delServidorDisponible !== undefined) modulo = delServidorDisponible;
   // El mismo código sirve al egreso de caja y al reembolso de una anulación: se distinguen por el mensaje del servidor.
@@ -137,10 +150,14 @@ export function mensajeDeError(e: unknown): string {
   const sinCodigoConFaltantes = e.detalle.codigo === undefined && e.codigoHttps === 'failed-precondition';
   if ((e.detalle.codigo === 'stock-insuficiente' || sinCodigoConFaltantes) && e.detalle.faltantes !== undefined && e.detalle.faltantes.length > 0) {
     if (sinCodigoConFaltantes) base = POR_CODIGO_MODULO['stock-insuficiente'] ?? base;
-    const f = e.detalle.faltantes.map((x) => `${x.productoId} en ${x.almacenId}: pidió ${x.pedido}, hay ${x.disponible}`).join('; ');
+    const f = e.detalle.faltantes
+      // Sin nombre se muestra el código del producto y del almacén (legibles): es mejor que no decir cuál falta.
+      .map((x) => `${x.productoNombre ?? x.productoId} en ${x.almacenNombre ?? x.almacenId}: pidió ${x.pedido}, hay ${x.disponible}`)
+      .join('; ');
     base = `${base} ${f}.`;
   }
-  if (e.detalle.detalles !== undefined && e.detalle.detalles.length > 0) base = `${base} ${e.detalle.detalles.join(' ')}`;
+  const filas = (e.detalle.detalles ?? []).filter(esLegible);
+  if (filas.length > 0) base = `${base} ${filas.join(' ')}`;
   return base;
 }
 
