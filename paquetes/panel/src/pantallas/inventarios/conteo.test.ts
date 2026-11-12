@@ -34,6 +34,22 @@ describe('conteo ciego', () => {
     expect(screen.getByText(/Avance: 0 de \d+/)).toBeTruthy();
   });
 
+  it('arma la lista con la del conteo: no llama a listarProductos y ningún dato recibido ni el DOM traen existencias', async () => {
+    const e = crearEntorno('sup');
+    const recibido: string[] = [];
+    const original = e.api.llamar.bind(e.api);
+    vi.spyOn(e.api, 'llamar').mockImplementation((async (n: string, en: never) => {
+      const r = await original(n as never, en);
+      recibido.push(JSON.stringify(r));
+      return r;
+    }) as never);
+    await abrir(e);
+    expect(llamadas(e, 'listarProductos')).toHaveLength(0);
+    expect(recibido.join('')).not.toMatch(/existencias|stockTotal|bajoMinimo|faltan|teorico/);
+    expect(screen.queryByRole('columnheader', { name: /Sistema|Existencia|Stock/i })).toBeNull();
+    expect(document.body.textContent).not.toMatch(/Sistema:|Stock|Disponible/);
+  });
+
   it('guarda al salir del campo si cambió, marca «Guardado» y sube el avance', async () => {
     const e = crearEntorno('sup');
     const u = await abrir(e);
@@ -102,7 +118,7 @@ describe('conteo ciego', () => {
     expect(screen.queryByRole('dialog')).toBeNull();
   });
 
-  it('al cerrar confirma con «faltan N; se contarán en 0 y generarán mermas» y firma', async () => {
+  it('al cerrar confirma con «Faltan N productos por contar» calculado en el panel y firma', async () => {
     const e = crearEntorno('sup');
     const u = await abrir(e);
     await u.type(screen.getByLabelText('Cantidad de Cable HDMI 2 m'), '20');
@@ -110,7 +126,7 @@ describe('conteo ciego', () => {
     await waitFor(() => expect(screen.getByText(/Avance: 1 de/)).toBeTruthy());
     await u.click(screen.getByRole('button', { name: 'Cerrar y firmar el conteo' }));
     const d = await screen.findByRole('dialog', { name: '¿Cerrar y firmar el conteo?' });
-    expect(d.textContent).toMatch(/Faltan \d+ productos?; se contarán en 0 y generarán mermas? por resolver/);
+    expect(d.textContent).toMatch(/Faltan \d+ productos por contar\. Los que tengan existencias en el sistema se contarán en 0 y generarán mermas\./);
     expect(d.textContent).toContain('Contó 1 de');
     await u.click(within(d).getByRole('button', { name: 'Sí, cerrar y firmar' }));
     expect(await screen.findByText(/Conteo cerrado y firmado/)).toBeTruthy();

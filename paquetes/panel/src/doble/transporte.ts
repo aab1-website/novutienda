@@ -109,14 +109,14 @@ const ACCIONES: Readonly<Record<string, WireHandler>> = {
     };
   },
   'inventarios.conteos': async (c, d) => ({
-    conteos: lim((await legado(c, 'listarConteos', {})) as Obj[], d).map((k) => ({ id: k['conteoId'], ...sin(k, 'conteoId', 'lineas', 'resultado', 'fecha', 'faltan'), abiertoEn: k['fecha'] })),
+    conteos: lim((await legado(c, 'listarConteos', {})) as Obj[], d).map((k) => ({ id: k['conteoId'], ...sin(k, 'conteoId', 'lineas', 'resultado', 'fecha', 'productos'), abiertoEn: k['fecha'] })),
   }),
   'inventarios.conteo': async (c, d) => {
     const k = ((await legado(c, 'listarConteos', {})) as Obj[]).find((x) => x['conteoId'] === d['conteoId']);
     if (k === undefined) throw fallo('no-encontrado', 'El conteo no existe');
-    const { lineas, conteoId, resultado, faltan, ...r } = k;
+    const { lineas, conteoId, resultado, productos, ...r } = k;
     // `resultado` (teórico, contado, diferencia) solo llega a sup/adm y con el conteo cerrado (el doble ya lo filtra).
-    return { conteo: { id: conteoId, ...r }, lineas, ...(resultado !== undefined ? { resultado } : {}), ...(faltan !== undefined ? { faltan } : {}) };
+    return { conteo: { id: conteoId, ...r }, lineas, ...(resultado !== undefined ? { resultado } : {}), ...(productos !== undefined ? { productos } : {}) };
   },
   'inventarios.exportarCsv': (c, d) => legado({ ...c, rol: d['conCostos'] === true ? 'adm' : 'sup' }, 'exportarProductosCsv', {}),
   // recibos

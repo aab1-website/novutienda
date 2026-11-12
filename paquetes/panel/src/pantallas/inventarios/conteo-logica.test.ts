@@ -1,8 +1,8 @@
 import { describe, expect, it } from 'vitest';
-import type { ProductoPanel } from '../../api/tipos.js';
+import type { ProductoDeConteo } from '../../api/tipos.js';
 import { avance, contarPendientes, lineasDeCierre, normalizarTexto, revisarTexto, textoGuardado } from './conteo-logica.js';
 
-const p = (id: string, conSerie = false): ProductoPanel => ({ id, nombre: id, categoria: 'c', sku: id, activo: true, publicado: false, conSerie, precioUSD: { bo: 1, ar: 1 }, stockTotal: 5, existencias: { tienda: 5, 'deposito-1': 0, 'deposito-2': 0 }, bajoMinimo: false, disponible: true });
+const p = (id: string, conSerie = false): ProductoDeConteo => ({ productoId: id, nombre: id, categoria: 'c', sku: id, conSerie });
 
 describe('revisarTexto', () => {
   it('pide un entero de 0 o más', () => {
@@ -39,14 +39,14 @@ describe('comparación con lo guardado', () => {
 describe('avance y cierre', () => {
   it('«18 de 41»', () => {
     const lista = Array.from({ length: 41 }, (_, i) => p(`p${String(i)}`));
-    const lineas = lista.slice(0, 18).map((x) => ({ productoId: x.id, contado: 1 }));
+    const lineas = lista.slice(0, 18).map((x) => ({ productoId: x.productoId, contado: 1 }));
     expect(avance(lista, lineas).texto).toBe('18 de 41');
   });
-  it('el cierre dice cuántos faltan y que se cuentan en 0 con mermas', () => {
-    const t = lineasDeCierre({ contados: 18, total: 41 }, 23).join(' ');
-    expect(t).toContain('Faltan 23 productos; se contarán en 0 y generarán mermas');
-    expect(lineasDeCierre({ contados: 1, total: 2 }, 1).join(' ')).toContain('Faltan 1 producto; se contarán en 0 y generarán una merma');
-    expect(lineasDeCierre({ contados: 2, total: 2 }, 0).join(' ')).toContain('No falta ningún producto');
-    expect(lineasDeCierre({ contados: 2, total: 2 }, undefined).join(' ')).toContain('se contarán en 0');
+  it('el cierre calcula en el panel cuántos faltan y no afirma cuántas mermas habrá', () => {
+    const t = lineasDeCierre({ contados: 18, total: 41 }).join(' ');
+    expect(t).toContain('Faltan 23 productos por contar. Los que tengan existencias en el sistema se contarán en 0 y generarán mermas.');
+    expect(lineasDeCierre({ contados: 1, total: 2 }).join(' ')).toContain('Faltan 1 producto por contar.');
+    expect(lineasDeCierre({ contados: 2, total: 2 }).join(' ')).not.toMatch(/Faltan|se contarán en 0/);
+    expect(lineasDeCierre({ contados: 2, total: 2 }).join(' ')).toContain('No falta ningún producto por contar.');
   });
 });
