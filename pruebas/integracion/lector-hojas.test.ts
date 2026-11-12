@@ -116,3 +116,35 @@ describe('etiquetas sin cierre (retroceso cuadrático, CWE-1333)', () => {
     expect(ms).toBeLessThan(400);
   });
 });
+
+describe('comentarios, CDATA e instrucciones de procesamiento', () => {
+  const hojaCon = (relleno: string) => `<worksheet><sheetData>${relleno}</sheetData></worksheet>`;
+  const fila = (v: string) => `<row r="1"><c r="A1" t="inlineStr"><is><t>${v}</t></is></c></row>`;
+
+  it('un comentario con filas dentro no produce celdas', async () => {
+    const b = xlsx([['id']], [], hojaCon(`${fila('visible')}<!--<row r="2"><c r="A2" t="inlineStr"><is><t>OCULTO</t></is></c></row>-->`));
+    expect(await leer(b)).toEqual([['visible']]);
+  });
+
+  it('un comentario que envuelve toda la fila deja la hoja vacía', async () => {
+    const b = xlsx([['id']], [], hojaCon(`<!--${fila('OCULTO')}-->`));
+    expect(await leer(b)).toEqual([]);
+  });
+
+  it('un comentario sin cierre se rechaza en menos de 400 ms con 4 MB', async () => {
+    const b = xlsx([['id']], [], hojaCon(`<!--${'<!--'.repeat(1_000_000)}`));
+    const t0 = performance.now();
+    await expect(leer(b)).rejects.toBeInstanceOf(XlsxInvalido);
+    expect(performance.now() - t0).toBeLessThan(400);
+  });
+
+  it('CDATA se rechaza (Excel no lo usa)', async () => {
+    const b = xlsx([['id']], [], hojaCon('<row r="1"><c r="A1" t="inlineStr"><is><t><![CDATA[x]]></t></is></c></row>'));
+    await expect(leer(b)).rejects.toBeInstanceOf(XlsxInvalido);
+  });
+
+  it('una instrucción de procesamiento fuera del prólogo se rechaza; el prólogo se admite', async () => {
+    await expect(leer(xlsx([['id']], [], hojaCon(`<?php x ?>${fila('a')}`)))).rejects.toBeInstanceOf(XlsxInvalido);
+    expect(await leer(xlsx([['id']], [], `<?xml version="1.0" encoding="UTF-8"?>${hojaCon(fila('a'))}`))).toEqual([['a']]);
+  });
+});

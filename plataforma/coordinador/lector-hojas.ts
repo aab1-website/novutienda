@@ -86,9 +86,38 @@ function decodificar(t: string): string {
 }
 const puntoCodigo = (n: number, original: string): string => (n > 0 && n <= 0x10ffff && !(n >= 0xd800 && n <= 0xdfff) ? String.fromCodePoint(n) : original);
 
+/** Quita los comentarios `<!-- -->` en una sola pasada con `indexOf`; un comentario sin cierre es `XlsxInvalido`. */
+function sinComentarios(xml: string): string {
+  let i = xml.indexOf('<!--');
+  if (i < 0) return xml;
+  let salida = '';
+  let desde = 0;
+  while (i >= 0) {
+    const fin = xml.indexOf('-->', i + 4);
+    if (fin < 0) throw new XlsxInvalido('comentario XML sin cerrar');
+    salida += xml.slice(desde, i);
+    desde = fin + 3;
+    i = xml.indexOf('<!--', desde);
+  }
+  return salida + xml.slice(desde);
+}
+
+/**
+ * Deja el XML sin nada que Excel no muestre ni necesite: rechaza DTD/entidades y CDATA (los libros de Excel no lo usan: se rechaza
+ * en vez de interpretarlo), quita los comentarios y rechaza toda instrucción de procesamiento `<?` salvo el prólogo `<?xml ... ?>`.
+ */
 function exigirXmlSeguro(xml: string): string {
   if (/<!DOCTYPE|<!ENTITY/i.test(xml)) throw new XlsxInvalido('XML con DTD/entidades no admitido');
-  return xml;
+  if (xml.includes('<![CDATA[')) throw new XlsxInvalido('XML con CDATA no admitido');
+  let limpio = sinComentarios(xml);
+  const prologo = limpio.replace(/^\uFEFF?\s{0,64}/, '');
+  if (prologo.startsWith('<?xml')) {
+    const fin = prologo.indexOf('?>');
+    if (fin < 0) throw new XlsxInvalido('prólogo XML sin cerrar');
+    limpio = prologo.slice(fin + 2);
+  }
+  if (limpio.includes('<?')) throw new XlsxInvalido('instrucción de procesamiento no admitida');
+  return limpio;
 }
 
 const esEspacio = (c: number): boolean => c === 32 || c === 9 || c === 10 || c === 13;
