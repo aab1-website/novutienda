@@ -9,6 +9,10 @@ export interface ContextoApp {
   readonly almacen: AlmacenSubidas;
   readonly usuario: UsuarioSesion;
   readonly cerrarSesion: () => void;
+  /** La sesión venció (el servidor respondió «unauthenticated» y el token no se pudo renovar): cierra la sesión y lleva al ingreso conservando la ruta. */
+  readonly sesionVencida: () => void;
+  /** Fuerza la renovación del token de la sesión; `false` si no se pudo (ahí sí la sesión venció). */
+  readonly renovarSesion: () => Promise<boolean>;
 }
 
 export const CtxApp = createContext<ContextoApp | null>(null);

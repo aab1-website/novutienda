@@ -69,6 +69,17 @@ export class SesionFirebase implements Sesion {
     return () => void this.oyentes.delete(oyente);
   }
 
+  async renovar(): Promise<boolean> {
+    const u = this.auth.currentUser;
+    if (u === null) return false;
+    try {
+      await u.getIdToken(true);
+      return true;
+    } catch {
+      return false;
+    }
+  }
+
   async reenviarVerificacion(): Promise<void> {
     if (this.pendiente !== null) await sendEmailVerification(this.pendiente);
   }

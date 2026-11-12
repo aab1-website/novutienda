@@ -1,9 +1,10 @@
 import type { JSX } from 'preact';
-import { useEffect, useMemo, useState } from 'preact/hooks';
+import { useCallback, useEffect, useMemo, useRef, useState } from 'preact/hooks';
 import type { ClienteApi } from '../api/cliente.js';
 import type { AlmacenSubidas } from '../subidas/almacen.js';
 import type { Sesion, UsuarioSesion } from '../sesion/sesion.js';
 import { ITEMS_MENU, menuPara, parsearRuta, puedeVer, rutaPorOmision, type ModulosActivos } from '../util/menu.js';
+import { ProveedorAvisos } from './avisos.js';
 import { Cargando, Vacio } from './comun.js';
 import { CtxApp } from './contexto.js';
 import { Login } from './login.js';
@@ -91,12 +92,44 @@ function Pantalla({ seccion, sub }: { seccion: string; sub: string }): JSX.Eleme
   return Componente === undefined ? <Cargando /> : <Componente sub={sub} />;
 }
 
-export function App({ sesion, api, almacen }: { sesion: Sesion; api: ClienteApi; almacen: AlmacenSubidas }): JSX.Element {
+export function App(p: { sesion: Sesion; api: ClienteApi; almacen: AlmacenSubidas }): JSX.Element {
+  return (
+    <ProveedorAvisos>
+      <AppInterna {...p} />
+    </ProveedorAvisos>
+  );
+}
+
+function AppInterna({ sesion, api, almacen }: { sesion: Sesion; api: ClienteApi; almacen: AlmacenSubidas }): JSX.Element {
   const usuario = useUsuario(sesion);
+  const [vencida, setVencida] = useState(false);
+  const rutaGuardada = useRef('');
+  const yaVencida = useRef(false);
   const hash = useHash();
   const [tema, alternarTema] = useTema();
   const ruta = parsearRuta(hash);
-  const contexto = useMemo(() => (usuario === null ? null : { api, almacen, usuario, cerrarSesion: () => void sesion.cerrar() }), [api, almacen, usuario, sesion]);
+  // G-15: el servidor dijo «unauthenticated» y el token no se pudo renovar (ver hooks.ts). Se guarda la ruta, se cierra la sesión y el ingreso explica por qué; al
+  // entrar de nuevo, la ruta sigue en la barra de direcciones y se vuelve a ella.
+  const sesionVencida = useCallback(() => {
+    if (yaVencida.current) return;
+    yaVencida.current = true;
+    rutaGuardada.current = window.location.hash;
+    setVencida(true);
+    void sesion.cerrar();
+  }, [sesion]);
+  const contexto = useMemo(
+    () => (usuario === null ? null : { api, almacen, usuario, cerrarSesion: () => void sesion.cerrar(), sesionVencida, renovarSesion: () => sesion.renovar() }),
+    [api, almacen, usuario, sesion, sesionVencida],
+  );
+
+  useEffect(() => {
+    if (usuario === null) return;
+    const guardada = rutaGuardada.current;
+    rutaGuardada.current = '';
+    yaVencida.current = false;
+    setVencida(false);
+    if (guardada !== '' && window.location.hash !== guardada) window.location.hash = guardada;
+  }, [usuario]);
 
   const carga = useModulosActivos(api, usuario?.uid);
   const modulos: ModulosActivos = carga.estado === 'lista' ? carga.modulos : null;
@@ -112,7 +145,7 @@ export function App({ sesion, api, almacen }: { sesion: Sesion; api: ClienteApi;
     document.title = usuario === null ? `Ingreso · ${NOMBRE_APP}` : `${usuario.tenantId} · ${NOMBRE_APP}`;
   }, [usuario]);
 
-  if (usuario === null || contexto === null) return <Login sesion={sesion} nombre={NOMBRE_APP} />;
+  if (usuario === null || contexto === null) return <Login sesion={sesion} nombre={NOMBRE_APP} motivo={vencida ? 'vencida' : undefined} />;
 
   const menu = menuPara(usuario.rol, modulos);
   const existe = ruta.seccion === '' || ITEMS_MENU.some((i) => i.id === ruta.seccion);
