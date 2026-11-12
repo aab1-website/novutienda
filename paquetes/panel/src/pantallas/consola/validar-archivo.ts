@@ -50,6 +50,11 @@ export function leerDuracionVideo(archivo: Blob, esperaMs = ESPERA_METADATOS_MS)
     v.preload = 'metadata';
     v.onloadedmetadata = (): void => fin(v.duration);
     v.onerror = (): void => fin(undefined);
+    // Solo se asigna una URL de objeto local (`blob:`), creada arriba para este archivo; cualquier otra cosa no se carga.
+    if (!url.startsWith('blob:')) {
+      fin(undefined);
+      return;
+    }
     v.src = url;
   });
 }
