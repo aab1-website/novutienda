@@ -1,7 +1,7 @@
 // Puertos inyectables de la consola. Inventarios (productos, precios, stock) y la
 // infraestructura (Storage, procesamiento, programación) los implementan; aquí solo
 // se declara el contrato. La consola no importa ningún otro módulo.
-import type { BaseDatosIdentidad, TransaccionIdentidad } from '@novutienda/nucleo';
+import type { BaseDatosIdentidad, Rol, TransaccionIdentidad } from '@novutienda/nucleo';
 import type { PlanProcesamiento } from './medios/plan.js';
 import type { TipoMedio } from './medios/tipos-archivo.js';
 
@@ -58,6 +58,27 @@ export interface ProductoCatalogo extends DatosProducto {
   readonly disponible: boolean;
 }
 
+/** Conteo de inventario abierto en una ubicación (forma de la marca que entrega Inventarios). */
+export interface ConteoAbiertoCatalogo {
+  readonly ubicacionId: string;
+  readonly conteoId: string;
+  readonly abiertoEn: string | null;
+}
+
+/** Producto tal como lo ve un rol: con un conteo abierto, `stockTotal` y `disponible` llegan en `null` (no ausentes). */
+export type ProductoCatalogoVisible = Omit<ProductoCatalogo, 'stockTotal' | 'disponible'> & {
+  /** Ausente: el producto no controla stock. `null`: oculto por un conteo abierto. */
+  readonly stockTotal?: number | null;
+  readonly disponible: boolean | null;
+};
+
+/** Listado proyectado por rol; `existenciasOcultas`/`conteosAbiertos` solo vienen cuando hay ocultamiento. */
+export interface ListadoCatalogoVisible {
+  readonly productos: readonly ProductoCatalogoVisible[];
+  readonly existenciasOcultas?: true;
+  readonly conteosAbiertos?: readonly ConteoAbiertoCatalogo[];
+}
+
 export interface Existencia {
   readonly ubicacionId: UbicacionId;
   readonly cantidad: number;
@@ -68,7 +89,14 @@ export interface Existencia {
  * edita productos ni escribe esas colecciones (el alta y la edición son de Inventarios).
  */
 export interface CatalogoPuerto {
+  /** Sin proyección por rol: uso interno del servidor (publicación, vista previa). Nunca se devuelve tal cual a `sup`/`caj`. */
   listarProductos(tenantId: string): Promise<readonly ProductoCatalogo[]>;
+  /**
+   * Lo que ve `rol`: con un conteo abierto y rol distinto de `adm`, `stockTotal` y `disponible` salen en `null` y el listado
+   * lleva `{existenciasOcultas: true, conteosAbiertos}`. Lo implementa el coordinador con `proyectarProducto`,
+   * `conteosAbiertosDe` y `puedeVerExistencias` de Inventarios.
+   */
+  listarProductosParaRol(tenantId: string, rol: Rol | undefined): Promise<ListadoCatalogoVisible>;
   leerProducto(tenantId: string, productoId: string): Promise<ProductoCatalogo | undefined>;
   existenciasPorAlmacen(tenantId: string, productoId: string): Promise<readonly Existencia[]>;
   /**
