@@ -1,0 +1,20 @@
+---
+import { convertirDescripcion, nivelesReales } from '../lib/descripcion';
+
+interface Props { texto: string; /** Nivel del primer título de la descripción (el h1 de la página ya existe). */ nivelBase?: number }
+const { texto, nivelBase = 2 } = Astro.props;
+const bloques = convertirDescripcion(texto);
+const niveles = nivelesReales(bloques, nivelBase);
+---
+<div class="ficha-descripcion">
+  {bloques.map((b) => {
+    if (b.tipo === 'titulo') {
+      const Titulo = `h${niveles.get(b.nivel) ?? nivelBase}`;
+      return <Titulo class="descripcion-titulo">{b.tramos.map((t) => (t.negrita ? <strong>{t.texto}</strong> : t.texto))}</Titulo>;
+    }
+    if (b.tipo === 'lista') {
+      return <ul class="descripcion-lista">{b.items.map((it) => <li>{it.map((t) => (t.negrita ? <strong>{t.texto}</strong> : t.texto))}</li>)}</ul>;
+    }
+    return <p>{b.tramos.map((t) => (t.negrita ? <strong>{t.texto}</strong> : t.texto))}</p>;
+  })}
+</div>

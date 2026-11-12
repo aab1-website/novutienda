@@ -6,13 +6,14 @@ import { contenido } from '../contenido/instancia';
 import type { Producto } from '../contenido/tipos';
 import { srcsetDe, TAMANOS_TARJETA } from '../lib/medios';
 import { rutaProducto } from '../lib/seo';
+import { descripcionPlana, recortar } from '../lib/descripcion';
 
 interface Props { producto: Producto; nivelTitulo?: 2 | 3 }
 const { producto: p, nivelTitulo = 3 } = Astro.props;
 const { config, categorias } = contenido;
 const cat = categorias.find((c) => c.id === p.categoria);
 const foto = p.fotos[0];
-const resumen = p.descripcion.length > 140 ? `${p.descripcion.slice(0, 137).trimEnd()}…` : p.descripcion;
+const resumen = recortar(descripcionPlana(p.descripcion), 140);
 const Titulo = nivelTitulo === 2 ? 'h2' : 'h3';
 ---
 <article class="tarjeta" data-producto-id={p.id}>

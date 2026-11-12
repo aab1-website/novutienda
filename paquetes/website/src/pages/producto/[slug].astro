@@ -2,11 +2,13 @@
 import Base from '../../layouts/Base.astro';
 import Migas from '../../componentes/Migas.astro';
 import Icono from '../../componentes/Icono.astro';
+import DescripcionProducto from '../../componentes/DescripcionProducto.astro';
 import Galeria from '../../islas/Galeria';
 import Precio from '../../islas/Precio';
 import BotonComprar from '../../islas/BotonComprar';
 import EventoVista from '../../islas/EventoVista';
 import { contenido } from '../../contenido/instancia';
+import { descripcionPlana, recortar } from '../../lib/descripcion';
 import { jsonLdProducto, rutaCategoria, rutaProducto } from '../../lib/seo';
 
 export function getStaticPaths() {
@@ -16,7 +18,7 @@ const { producto: p } = Astro.props;
 const { config, categorias } = contenido;
 const cat = categorias.find((c) => c.id === p.categoria);
 const titulo = p.seo.titulo ?? p.nombre;
-const descripcion = p.seo.descripcion ?? (p.descripcion.length > 160 ? `${p.descripcion.slice(0, 157).trimEnd()}…` : p.descripcion);
+const descripcion = recortar(descripcionPlana(p.seo.descripcion ?? p.descripcion), 160);
 ---
 <Base titulo={titulo} descripcion={descripcion} ruta={rutaProducto(p)} imagen={p.fotos[0]?.url} datosEstructurados={[jsonLdProducto(p, contenido)]}>
   <div class="contenedor pagina">
@@ -29,7 +31,7 @@ const descripcion = p.seo.descripcion ?? (p.descripcion.length > 160 ? `${p.desc
         <Precio client:load usd={p.precioUsd} inicial={config.mercadoInicial} mercados={config.mercados} redondeo={config.redondeo} />
         <noscript><p class="aviso-estado">Activa JavaScript para ver el precio o consúltalo por WhatsApp.</p></noscript>
         <BotonComprar client:load id={p.id} nombre={p.nombre} disponible={p.disponible} whatsapp={config.whatsappNovuchat} verificar />
-        <p class="ficha-descripcion">{p.descripcion}</p>
+        <DescripcionProducto texto={p.descripcion} />
         {p.garantia !== null && <p class="ficha-garantia"><Icono nombre="escudo" tamano={20} />Garantía: {p.garantia}</p>}
       </div>
     </div>

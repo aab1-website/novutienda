@@ -8,7 +8,7 @@ import {
   type Bloque, type Categoria, type ConfigAppCheck, type Contenido, type Foto, type IdIcono, type IdPlantilla,
   type Producto, type Seccion,
 } from './tipos.js';
-import { validarContenido, validarNegocio } from './validar.js';
+import { LARGO_MAXIMO_ENLACE, urlEnlaceSegura, validarContenido, validarNegocio } from './validar.js';
 
 export interface EntornoSitio {
   /** Origen público del sitio (https://…). */
@@ -55,14 +55,29 @@ function versionesDe(medio: Obj): VersionMedio[] {
 const masCercana = (vs: readonly VersionMedio[]): VersionMedio | undefined =>
   [...vs].sort((a, b) => Math.abs(a.lado - 960) - Math.abs(b.lado - 960))[0];
 
-function foto(medio: Obj, base: string): Foto | undefined {
+/** Cómo tratar el `enlace` de una foto (solo carruseles): lista blanca y recolector de advertencias (rutas, nunca valores). */
+interface ContextoEnlace {
+  readonly permitidos: readonly string[];
+  readonly advertencias: string[] | undefined;
+  /** Ruta del campo para la advertencia, p. ej. `documentos.carrusel__x.items[2].enlace`. */
+  readonly ruta: (indice: number) => string;
+}
+
+function foto(medio: Obj, base: string, enlaceCtx?: ContextoEnlace, indice = 0): Foto | undefined {
   const webp = versionesDe(medio).filter((v) => v.clase === 'imagen' && v.formato === 'webp');
   const principal = masCercana(webp);
   if (principal === undefined) return undefined;
   const porAncho = new Map<number, VersionMedio>();
   for (const v of webp) if (!porAncho.has(v.lado)) porAncho.set(v.lado, v);
   const versiones = [...porAncho.values()].sort((a, b) => a.lado - b.lado).slice(0, 6).map((v) => ({ url: `${base}/${v.ruta}`, ancho: v.lado }));
-  return { url: `${base}/${principal.ruta}`, alt: cadena(medio['alt']), versiones };
+  let enlace = enlaceCtx === undefined ? '' : cadena(medio['enlace']).trim();
+  // La consola guarda cualquier https de hasta 2000 caracteres; el sitio solo acepta lo seguro y corto. Lo demás se descarta
+  // (la foto queda sin enlace) y se advierte con la ruta del campo, nunca con el valor.
+  if (enlaceCtx !== undefined && enlace !== '' && (enlace.length > LARGO_MAXIMO_ENLACE || !urlEnlaceSegura(enlace, enlaceCtx.permitidos))) {
+    enlaceCtx.advertencias?.push(`${enlaceCtx.ruta(indice)}: enlace descartado (fuera de la lista blanca o demasiado largo)`);
+    enlace = '';
+  }
+  return { url: `${base}/${principal.ruta}`, alt: cadena(medio['alt']), ...(enlace === '' ? {} : { enlace }), versiones };
 }
 
 function video(medio: Obj, base: string): Producto['video'] {
@@ -72,8 +87,17 @@ function video(medio: Obj, base: string): Producto['video'] {
   return v === undefined || p === undefined ? null : { url: `${base}/${v.ruta}`, poster: `${base}/${p.ruta}`, titulo: cadena(medio['alt']) };
 }
 
-const fotosDe = (medios: unknown, base: string, tope: number): Foto[] =>
-  lista(medios).filter(esObj).filter((m) => m['tipo'] !== 'video').flatMap((m) => foto(m, base) ?? []).slice(0, tope);
+/** Fotos (no videos) de una lista de medios, hasta `tope`. Con `enlaceCtx` (carruseles) se conserva el enlace permitido. */
+function fotosDe(medios: unknown, base: string, tope: number, enlaceCtx?: ContextoEnlace): Foto[] {
+  const fotos: Foto[] = [];
+  for (const [i, m] of lista(medios).entries()) {
+    if (fotos.length >= tope) break;
+    if (!esObj(m) || m['tipo'] === 'video') continue;
+    const f = foto(m, base, enlaceCtx, i);
+    if (f !== undefined) fotos.push(f);
+  }
+  return fotos;
+}
 
 /** Tabla genérica palabra clave → ícono (D4). Sin coincidencia: `cuadricula`. */
 const ICONOS_POR_PALABRA: readonly (readonly [IdIcono, readonly string[]])[] = [
@@ -97,7 +121,7 @@ export function nombreDeCategoria(id: string): string {
   return t.charAt(0).toUpperCase() + t.slice(1);
 }
 
-function bloque(b: Obj, base: string): Bloque | undefined {
+function bloque(b: Obj, base: string, rutaBloque: string, permitidos: readonly string[], advertencias: string[] | undefined): Bloque | undefined {
   switch (b['tipo']) {
     case 'texto':
       return { tipo: 'texto', ...(cadena(b['titulo']) === '' ? {} : { titulo: cadena(b['titulo']) }), parrafos: lista(b['parrafos']).map(cadena) };
@@ -106,7 +130,7 @@ function bloque(b: Obj, base: string): Bloque | undefined {
       return f === undefined ? undefined : { tipo: 'imagen', foto: f };
     }
     case 'carrusel':
-      return { tipo: 'carrusel', fotos: fotosDe(lista(b['items']), base, LIMITES_SITIO.fotosPorCarrusel) };
+      return { tipo: 'carrusel', fotos: fotosDe(b['items'], base, LIMITES_SITIO.fotosPorCarrusel, { permitidos, advertencias, ruta: (i) => `${rutaBloque}.items[${i}].enlace` }) };
     case 'enlaces':
       return { tipo: 'enlaces', items: lista(b['items']).filter(esObj).map((i) => ({ texto: cadena(i['texto']), url: cadena(i['url']) })) };
     default:
@@ -115,9 +139,12 @@ function bloque(b: Obj, base: string): Bloque | undefined {
 }
 
 /**
+ * `advertencias` (opcional): si se pasa un arreglo, se le agregan avisos no fatales del mapeo (hoy: enlaces de fotos de carrusel
+ * descartados). Cada aviso nombra solo la ruta del campo, nunca el valor. Quien llama decide si los imprime.
+ *
  * @throws ErrorContenidoPublicado si la respuesta, el negocio o el resultado no son válidos.
  */
-export function contenidoDesdePublicado(respuesta: unknown, negocio: unknown, entorno: EntornoSitio): Contenido {
+export function contenidoDesdePublicado(respuesta: unknown, negocio: unknown, entorno: EntornoSitio, advertencias?: string[]): Contenido {
   const errores: string[] = [];
   const sinBarras = (t: string): string => { let r = t; while (r.endsWith('/')) r = r.slice(0, -1); return r; };
   const origenMedios = sinBarras(entorno.origenMedios);
@@ -183,6 +210,7 @@ export function contenidoDesdePublicado(respuesta: unknown, negocio: unknown, en
   const marcas = [...new Set(productos.map((p) => p.marca).filter((m) => m !== ''))].sort().slice(0, 40);
 
   // Secciones, en el orden del estado
+  const permitidosEnlace = neg?.enlacesPermitidos ?? [];
   const orden = esObj(estado) ? lista(estado['secciones']).filter((x): x is string => typeof x === 'string') : [];
   const secciones: Seccion[] = [];
   for (const [i, id] of orden.entries()) {
@@ -191,7 +219,7 @@ export function contenidoDesdePublicado(respuesta: unknown, negocio: unknown, en
     if (!esObj(d)) { errores.push(`documentos.seccion__${id}: falta o no es un objeto`); continue; }
     secciones.push({
       id, slug: id, titulo: cadena(d['titulo']), orden: secciones.length,
-      bloques: lista(d['bloques']).filter(esObj).flatMap((b) => bloque(b, base) ?? []),
+      bloques: lista(d['bloques']).flatMap((b, k) => (esObj(b) ? (bloque(b, base, `documentos.seccion__${id}.bloques[${k}]`, permitidosEnlace, advertencias) ?? []) : [])),
     });
   }
 
@@ -203,12 +231,13 @@ export function contenidoDesdePublicado(respuesta: unknown, negocio: unknown, en
   const carruseles = {} as Record<IdPlantilla, readonly Foto[]>;
   for (const p of IDS_PLANTILLA) {
     const d = docs?.[`carrusel__${p}`];
-    const propias = esObj(d) ? fotosDe(d['items'], base, LIMITES_SITIO.fotosPorCarrusel) : [];
+    const propias = esObj(d) ? fotosDe(d['items'], base, LIMITES_SITIO.fotosPorCarrusel, { permitidos: permitidosEnlace, advertencias, ruta: (i) => `documentos.carrusel__${p}.items[${i}].enlace` }) : [];
     carruseles[p] = propias.length > 0 ? propias : respaldo;
   }
 
   const s = esObj(sitio) ? sitio : {};
   const med = esObj(s['medicion']) ? s['medicion'] : {};
+  const entero = (x: unknown): number | null => (typeof x === 'number' && Number.isInteger(x) && x >= 0 ? x : null);
   const nulo = (x: unknown): string | null => (typeof x === 'string' && x !== '' ? x : null);
 
   const candidato = {
@@ -232,6 +261,10 @@ export function contenidoDesdePublicado(respuesta: unknown, negocio: unknown, en
     },
     portada: neg?.portada, beneficios: neg?.beneficios, categorias, marcas, identidad: neg?.identidad,
     productos, secciones, carruseles,
+    publicacion: {
+      version: entero(esObj(estado) ? estado['version'] : undefined) ?? entero(s['version']),
+      publicadoEn: esObj(estado) && typeof estado['publicadoEn'] === 'string' && estado['publicadoEn'] !== '' ? estado['publicadoEn'] : null,
+    },
   };
 
   const r = validarContenido(candidato);

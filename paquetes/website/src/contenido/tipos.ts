@@ -34,6 +34,8 @@ export interface Foto {
   /** Ruta o URL de la versión por defecto (pantalla grande). */
   readonly url: string;
   readonly alt: string;
+  /** Enlace de la foto (solo carruseles): ruta propia, tel:, mailto: o https de la lista blanca de enlaces. */
+  readonly enlace?: string;
   /** Versiones por ancho (WebP/AVIF), si existen. */
   readonly versiones?: readonly { readonly url: string; readonly ancho: number }[];
 }
@@ -185,6 +187,8 @@ export interface Contenido {
   readonly secciones: readonly Seccion[];
   /** Fotos del carrusel de la portada, por plantilla. */
   readonly carruseles: Readonly<Record<IdPlantilla, readonly Foto[]>>;
+  /** Versión y fecha de la publicación de la que se compiló (de `publicado/estado`); ausente en el contenido de ejemplo. */
+  readonly publicacion?: { readonly version: number | null; readonly publicadoEn: string | null };
 }
 
 /**

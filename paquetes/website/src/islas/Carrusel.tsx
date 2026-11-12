@@ -3,6 +3,8 @@ import type { Foto } from '../contenido/tipos.js';
 import { srcsetDe } from '../lib/medios.js';
 import { Icono } from './Icono.js';
 
+const esExterno = (url: string): boolean => /^https?:\/\//i.test(url);
+
 interface Props {
   fotos: readonly Foto[];
   etiqueta: string;
@@ -36,18 +38,33 @@ export default function Carrusel({ fotos, etiqueta, intervalo = 6000, decorativo
       if (e.key === 'ArrowLeft') ir(i - 1);
     }}>
       <div class="carrusel-pista" aria-live={auto ? 'off' : 'polite'}>
-        {fotos.map((f, n) => (
-          <img
-            key={f.url + n}
-            class={n === i ? 'carrusel-imagen activa' : 'carrusel-imagen'}
-            src={f.url}
-            srcset={srcsetDe(f)}
-            alt={decorativo ? '' : f.alt}
-            aria-hidden={n === i ? undefined : 'true'}
-            loading={n === 0 ? 'eager' : 'lazy'}
-            decoding="async"
-          />
-        ))}
+        {fotos.map((f, n) => {
+          const activa = n === i;
+          const img = (
+            <img
+              key={f.enlace === undefined ? f.url + n : undefined}
+              class={activa ? 'carrusel-imagen activa' : 'carrusel-imagen'}
+              src={f.url}
+              srcset={srcsetDe(f)}
+              alt={decorativo ? '' : f.alt}
+              aria-hidden={activa || f.enlace !== undefined ? undefined : 'true'}
+              loading={n === 0 ? 'eager' : 'lazy'}
+              decoding="async"
+            />
+          );
+          // Con enlace, la foto activa es un enlace (foco por teclado, nombre accesible); las demás quedan fuera del orden de tabulación.
+          return f.enlace === undefined ? img : (
+            <a
+              key={f.url + n}
+              class={activa ? 'carrusel-enlace activa' : 'carrusel-enlace'}
+              href={f.enlace}
+              rel={esExterno(f.enlace) ? 'noopener' : undefined}
+              aria-label={f.alt}
+              aria-hidden={activa ? undefined : 'true'}
+              tabIndex={activa ? undefined : -1}
+            >{img}</a>
+          );
+        })}
       </div>
       {fotos.length > 1 && (
         <div class="carrusel-controles">
