@@ -1,5 +1,6 @@
 import type { ComponentChildren, JSX } from 'preact';
-import { useEffect, useId, useRef, useState } from 'preact/hooks';
+import { useEffect, useRef, useState } from 'preact/hooks';
+import { useIdUnico } from './ids.js';
 import { Dialogo } from './dialogo.js';
 import { contadorAnunciable, textoContador } from './formulario.js';
 import type { Carga } from './hooks.js';
@@ -102,7 +103,7 @@ const describe = (id: string, ayuda: string | undefined, error: string | undefin
 };
 
 export function Campo(p: PropsCampo): JSX.Element {
-  const id = useId();
+  const id = useIdUnico();
   return (
     <div class="campo">
       <label for={id}>
@@ -140,7 +141,7 @@ export function Area(p: {
   error?: string | undefined;
   tope?: number | undefined;
 }): JSX.Element {
-  const id = useId();
+  const id = useIdUnico();
   return (
     <div class="campo">
       <label for={id}>{p.etiqueta}</label>
@@ -173,7 +174,7 @@ export function Selector(p: {
   ayuda?: string | undefined;
   error?: string | undefined;
 }): JSX.Element {
-  const id = useId();
+  const id = useIdUnico();
   return (
     <div class="campo">
       <label for={id}>{p.etiqueta}</label>
@@ -190,7 +191,7 @@ export function Selector(p: {
 }
 
 export function Casilla(p: { etiqueta: string; marcado: boolean; onCambio: (v: boolean) => void; deshabilitado?: boolean }): JSX.Element {
-  const id = useId();
+  const id = useIdUnico();
   return (
     <div class="casilla">
       <input id={id} type="checkbox" checked={p.marcado} disabled={p.deshabilitado} onChange={(e) => p.onCambio((e.currentTarget as HTMLInputElement).checked)} />
@@ -265,7 +266,7 @@ export function Boton(p: {
   motivoVisible?: boolean | undefined;
   onIntento?: (() => void) | undefined;
 }): JSX.Element {
-  const idMotivo = useId();
+  const idMotivo = useIdUnico();
   const conMotivo = p.motivo !== undefined && p.motivo !== '' && p.ocupado !== true;
   const clase = `boton boton-${p.variante ?? 'cta'} ${p.chico ? 'boton-chico' : ''}`;
   if (!conMotivo) {

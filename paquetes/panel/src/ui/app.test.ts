@@ -199,6 +199,29 @@ describe('cabecera plegable, título y foco', () => {
     expect(boton.getAttribute('aria-expanded')).toBe('false');
     expect(document.activeElement).toBe(boton);
   });
+  it('la redirección inicial no pisa una navegación del usuario ni cierra el menú abierto', async () => {
+    montar();
+    await entrar('adm@ejemplo.test', 'clave-adm-1');
+    // Sin esperar a que se resuelva la redirección a la pantalla por omisión: el usuario ya navega.
+    const boton = await screen.findByRole('button', { name: 'Menú' });
+    window.location.hash = '#/mermas';
+    await new Promise((r) => setTimeout(r, 150));
+    expect(window.location.hash).toBe('#/mermas');
+    const u = userEvent.setup();
+    await u.click(boton);
+    await new Promise((r) => setTimeout(r, 150));
+    expect(boton.getAttribute('aria-expanded')).toBe('true');
+  });
+  it('con la ruta vacía, abrir el menú antes de la redirección inicial no lo cierra', async () => {
+    montar();
+    await entrar('adm@ejemplo.test', 'clave-adm-1');
+    const boton = await screen.findByRole('button', { name: 'Menú' });
+    const u = userEvent.setup();
+    await u.click(boton);
+    await waitFor(() => expect(window.location.hash).toBe('#/venta/terminal'));
+    await new Promise((r) => setTimeout(r, 100));
+    expect(boton.getAttribute('aria-expanded')).toBe('true');
+  });
   it('navegar cierra el menú', async () => {
     montar();
     await entrar('adm@ejemplo.test', 'clave-adm-1');
