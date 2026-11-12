@@ -147,11 +147,8 @@ for (const esquema of ESQUEMAS) {
         await page.setViewportSize({ width: ancho, height: 800 });
         await entrar(page, 'adm');
         const catalogo = page.getByRole('link', { name: 'Catálogo y sitio' });
-        // Bajo 1024 px el menú es un panel plegable; el cierre por cambio de ruta inicial puede ganarle al primer clic.
-        if (ancho < 1024) await expect(async () => {
-          if (!(await catalogo.isVisible())) await page.getByRole('button', { name: 'Menú', exact: true }).click();
-          await expect(catalogo).toBeVisible({ timeout: 1000 });
-        }).toPass({ timeout: 15_000 });
+        if (ancho < 1024) await page.getByRole('button', { name: 'Menú', exact: true }).click();
+        await expect(catalogo).toBeVisible();
         await page.getByRole('link', { name: 'Catálogo y sitio' }).click();
         await page.getByRole('link', { name: 'Fichas, fotos y video' }).click();
         const abrir = page.getByRole('button', { name: 'Fotos y video de Televisor 55 pulgadas' });
@@ -290,11 +287,8 @@ for (const esquema of ESQUEMAS) {
       await page.setViewportSize({ width: 360, height: 740 });
       await entrar(page, 'adm');
       const quitar = page.getByRole('button', { name: 'Quitar acceso' }).first();
-      // Un cambio solo de hash tras entrar puede perderse ante la redirección inicial a la ruta por omisión: se reintenta.
-      await expect(async () => {
-        await page.goto('/#/usuarios');
-        await expect(quitar).toBeVisible({ timeout: 1500 });
-      }).toPass({ timeout: 15_000 });
+      await page.goto('/#/usuarios');
+      await expect(quitar).toBeVisible();
       const anchoAntes = await page.evaluate(() => document.documentElement.scrollWidth);
       await quitar.click();
       const dialogo = page.getByRole('dialog');

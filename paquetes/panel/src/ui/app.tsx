@@ -141,10 +141,16 @@ function AppInterna({ sesion, api, almacen }: { sesion: Sesion; api: ClienteApi;
     [api, almacen, usuario, sesion, sesionVencida, modulos],
   );
 
+  // La redirección inicial solo aplica si la ruta REAL está vacía: `ruta` sale del estado `hash`, que va un evento detrás de la barra de
+  // direcciones, así que un clic del usuario ya hecho pero aún no reflejado no debe pisarse.
+  const redirigidoA = useRef('');
   useEffect(() => {
     if (rol === undefined || carga.estado === 'cargando' || ruta.seccion !== '') return;
+    if (parsearRuta(window.location.hash).seccion !== '') return;
     const inicio = rutaPorOmision(rol, modulos);
-    if (inicio !== null) window.location.hash = inicio;
+    if (inicio === null) return;
+    redirigidoA.current = inicio;
+    window.location.hash = inicio;
   }, [rol, carga.estado, modulos, ruta.seccion]);
 
   const tituloPantalla = usuario === null ? undefined : menuPara(usuario.rol, modulos).find((i) => i.id === ruta.seccion)?.titulo;
@@ -186,6 +192,7 @@ function AppInterna({ sesion, api, almacen }: { sesion: Sesion; api: ClienteApi;
         menu={menu}
         seccion={ruta.seccion}
         hash={hash}
+        redirigidoA={redirigidoA}
         textoTema={textoTema}
         alternarTema={alternarTema}
         cerrarSesion={contexto.cerrarSesion}
@@ -213,6 +220,8 @@ interface PropsCabecera {
   readonly menu: readonly { id: string; titulo: string }[];
   readonly seccion: string;
   readonly hash: string;
+  /** Ruta a la que llevó la redirección inicial: llegar a ella no es navegar, no cierra el menú. */
+  readonly redirigidoA: { current: string };
   readonly textoTema: string;
   readonly alternarTema: () => void;
   readonly cerrarSesion: () => void;
@@ -230,7 +239,13 @@ function Cabecera(p: PropsCabecera): JSX.Element {
   const { confirmarSalida } = useGuardia();
 
   // Navegar (cualquier cambio de ruta) cierra el menú.
-  useEffect(() => setAbierto(false), [p.hash]);
+  useEffect(() => {
+    if (p.redirigidoA.current !== '' && p.hash === p.redirigidoA.current) {
+      p.redirigidoA.current = '';
+      return;
+    }
+    setAbierto(false);
+  }, [p.hash]);
   useEffect(() => {
     if (!abierto) return undefined;
     panel.current?.querySelector<HTMLElement>('a[href]')?.focus();
