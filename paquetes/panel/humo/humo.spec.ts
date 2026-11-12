@@ -125,7 +125,7 @@ for (const esquema of ESQUEMAS) {
       await expect(page.getByRole('table', { name: 'Productos y existencias por almacén' })).toBeVisible();
       await expect(page.getByText(/Alerta de mínimo/)).toBeVisible();
       await sinViolaciones(page, 'inventario');
-      await page.getByRole('button', { name: 'Ficha de Televisor 55 pulgadas' }).click();
+      await page.getByRole('button', { name: 'Datos del producto de Televisor 55 pulgadas' }).click();
       await expect(page.locator('[data-prueba="precio-bo"]')).toContainText('Bs 3.132,00');
       await sinViolaciones(page, 'ficha de producto');
       await page.getByRole('link', { name: 'Conteo ciego' }).click();
@@ -141,6 +141,46 @@ for (const esquema of ESQUEMAS) {
       expect(v.errores).toEqual([]);
     });
 
+    for (const ancho of [1280, 820, 360]) {
+      test(`panel lateral de la ficha a ${String(ancho)} px: subida, error con motivo, guardado, sin desborde e ids únicos`, async ({ page }) => {
+        const v = vigilar(page);
+        await page.setViewportSize({ width: ancho, height: 800 });
+        await entrar(page, 'adm');
+        const catalogo = page.getByRole('link', { name: 'Catálogo y sitio' });
+        // Bajo 1024 px el menú es un panel plegable; el cierre por cambio de ruta inicial puede ganarle al primer clic.
+        if (ancho < 1024) await expect(async () => {
+          if (!(await catalogo.isVisible())) await page.getByRole('button', { name: 'Menú', exact: true }).click();
+          await expect(catalogo).toBeVisible({ timeout: 1000 });
+        }).toPass({ timeout: 15_000 });
+        await page.getByRole('link', { name: 'Catálogo y sitio' }).click();
+        await page.getByRole('link', { name: 'Fichas, fotos y video' }).click();
+        const abrir = page.getByRole('button', { name: 'Fotos y video de Televisor 55 pulgadas' });
+        await expect(abrir).toBeVisible();
+        await abrir.click();
+        const dialogo = page.getByRole('dialog', { name: 'Página en el sitio: Televisor 55 pulgadas' });
+        await expect(dialogo).toBeVisible();
+        await page.getByLabel('Archivos de fotos').setInputFiles({ name: 'frente.jpg', mimeType: 'image/jpeg', buffer: Buffer.from('imagen de prueba') });
+        await expect(page.getByText('frente.jpg: Listo')).toBeVisible();
+        await page.getByLabel('Archivos de fotos').setInputFiles({ name: 'gigante.jpg', mimeType: 'image/jpeg', buffer: Buffer.alloc(16 * 1024 * 1024) });
+        await expect(page.locator('.ficha-subida-estado', { hasText: /gigante\.jpg.*pesa .* y el máximo es/ })).toBeVisible();
+        const caja = await dialogo.boundingBox();
+        if (ancho >= 1024) {
+          expect(caja?.width ?? 0).toBeLessThan(ancho - 200);
+          await expect(abrir).toBeInViewport();
+        } else {
+          expect(Math.round(caja?.width ?? 0)).toBeGreaterThanOrEqual(ancho - 1);
+          expect(Math.round(caja?.height ?? 0)).toBeGreaterThanOrEqual(800 - 1);
+        }
+        expect(await page.evaluate(() => document.documentElement.scrollWidth <= document.documentElement.clientWidth)).toBe(true);
+        const ids = await page.evaluate(() => [...document.querySelectorAll('[id]')].map((x) => x.id));
+        expect(ids.filter((x, i) => ids.indexOf(x) !== i)).toEqual([]);
+        await sinViolaciones(page, `panel de la ficha a ${String(ancho)} px`);
+        await page.getByRole('button', { name: 'Guardar', exact: true }).click();
+        await expect(page.getByText(/Página guardada/)).toBeVisible();
+        expect(v.errores).toEqual([]);
+      });
+    }
+
     test('catálogo básico: tablero, ficha con subida de foto, apariencia con vista previa y configuración', async ({ page }) => {
       const v = vigilar(page);
       await entrar(page, 'adm');
@@ -149,13 +189,13 @@ for (const esquema of ESQUEMAS) {
       await expect(page.getByText(/de 200/).first()).toBeVisible();
       await sinViolaciones(page, 'tablero');
       await page.getByRole('link', { name: 'Fichas, fotos y video' }).click();
-      await page.getByRole('button', { name: 'Editar ficha de Televisor 55 pulgadas' }).click();
-      await page.getByLabel('Subir fotos').setInputFiles({ name: 'frente.jpg', mimeType: 'image/jpeg', buffer: Buffer.from('imagen de prueba') });
+      await page.getByRole('button', { name: 'Fotos y video de Televisor 55 pulgadas' }).click();
+      await expect(page.getByRole('dialog', { name: 'Página en el sitio: Televisor 55 pulgadas' })).toBeVisible();
+      await page.getByLabel('Archivos de fotos').setInputFiles({ name: 'frente.jpg', mimeType: 'image/jpeg', buffer: Buffer.from('imagen de prueba') });
       await expect(page.getByText('frente.jpg: Listo')).toBeVisible();
-      await page.getByLabel('Descripción del producto').fill('Televisor de 55 pulgadas.');
-      await sinViolaciones(page, 'editor de ficha');
-      await page.getByRole('button', { name: 'Guardar ficha' }).click();
-      await expect(page.getByText(/Ficha guardada/)).toBeVisible();
+      await sinViolaciones(page, 'panel de la ficha');
+      await page.getByRole('button', { name: 'Guardar', exact: true }).click();
+      await expect(page.getByText(/Página guardada/)).toBeVisible();
       await page.getByRole('link', { name: 'Apariencia' }).click();
       await expect(page.getByRole('radio')).toHaveCount(5);
       await sinViolaciones(page, 'apariencia');
@@ -249,9 +289,12 @@ for (const esquema of ESQUEMAS) {
       const v = vigilar(page);
       await page.setViewportSize({ width: 360, height: 740 });
       await entrar(page, 'adm');
-      await page.goto('/#/usuarios');
       const quitar = page.getByRole('button', { name: 'Quitar acceso' }).first();
-      await expect(quitar).toBeVisible();
+      // Un cambio solo de hash tras entrar puede perderse ante la redirección inicial a la ruta por omisión: se reintenta.
+      await expect(async () => {
+        await page.goto('/#/usuarios');
+        await expect(quitar).toBeVisible({ timeout: 1500 });
+      }).toPass({ timeout: 15_000 });
       const anchoAntes = await page.evaluate(() => document.documentElement.scrollWidth);
       await quitar.click();
       const dialogo = page.getByRole('dialog');
