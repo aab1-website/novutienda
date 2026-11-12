@@ -59,6 +59,11 @@ export function crearCatalogoConsola(deps: DepsCatalogoConsola): CatalogoPuerto 
       });
     },
 
+    /** Lectura con la transacción del llamador (sin abrir otra): participa del control de conflictos de la escritura. */
+    async existeProductoEnTransaccion(tx, tenantId, productoId) {
+      return (await leerProducto(tx, tenantId, productoId)) !== undefined;
+    },
+
     async existenciasPorAlmacen(tenantId, productoId) {
       return db.runTransaction(async (tx): Promise<Existencia[]> => leerExistencias(tx, tenantId, productoId));
     },
