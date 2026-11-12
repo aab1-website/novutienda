@@ -123,11 +123,13 @@ for (const esquema of ESQUEMAS) {
       await entrar(page, 'sup');
       await page.getByRole('link', { name: 'Inventario' }).click();
       await expect(page.getByRole('table', { name: 'Productos y existencias por almacén' })).toBeVisible();
-      await expect(page.getByText(/Alerta de mínimo/)).toBeVisible();
+      await expect(page.getByText(/productos bajo el mínimo/)).toBeVisible();
       await sinViolaciones(page, 'inventario');
       await page.getByRole('button', { name: 'Datos del producto de Televisor 55 pulgadas' }).click();
       await expect(page.locator('[data-prueba="precio-bo"]')).toContainText('Bs 3.132,00');
       await sinViolaciones(page, 'ficha de producto');
+      await page.getByRole('dialog', { name: 'Datos del producto: Televisor 55 pulgadas' }).getByRole('button', { name: 'Cerrar' }).first().click();
+      await expect(page.getByRole('dialog')).toHaveCount(0);
       await page.getByRole('link', { name: 'Conteo ciego' }).click();
       await page.getByRole('button', { name: 'Abrir conteo' }).click();
       await expect(page.getByText(/Conteo abierto en/)).toBeVisible();
@@ -140,6 +142,113 @@ for (const esquema of ESQUEMAS) {
       await sinViolaciones(page, 'mermas');
       expect(v.errores).toEqual([]);
     });
+
+    for (const ancho of [1280, 820, 360]) {
+      test(`inventario a ${String(ancho)} px: alta y edición en el panel lateral, traspaso y ajuste con confirmación, filtro «bajo el mínimo»`, async ({ page }) => {
+        const v = vigilar(page);
+        await page.setViewportSize({ width: ancho, height: 800 });
+        await entrar(page, 'adm');
+        if (ancho < 1024) await page.getByRole('button', { name: 'Menú', exact: true }).click();
+        await page.getByRole('link', { name: 'Inventario' }).click();
+        const tabla = page.getByRole('table', { name: 'Productos y existencias por almacén' });
+        await expect(tabla).toBeVisible();
+        const sinDesborde = async (): Promise<void> => {
+          expect(await page.evaluate(() => document.documentElement.scrollWidth <= document.documentElement.clientWidth)).toBe(true);
+          const ids = await page.evaluate(() => [...document.querySelectorAll('[id]')].map((x) => x.id));
+          expect(ids.filter((x, i) => ids.indexOf(x) !== i)).toEqual([]);
+        };
+
+        // Alta: guardar vacío marca el error junto al campo; luego se crea.
+        await page.getByRole('button', { name: 'Nuevo producto' }).click();
+        const alta = page.getByRole('dialog', { name: 'Nuevo producto' });
+        await expect(alta).toBeVisible();
+        const caja = await alta.boundingBox();
+        if (ancho >= 1024) {
+          expect(caja?.width ?? 0).toBeLessThan(ancho - 200);
+          await expect(tabla).toBeInViewport();
+        } else {
+          expect(Math.round(caja?.width ?? 0)).toBeGreaterThanOrEqual(ancho - 1);
+          expect(Math.round(caja?.height ?? 0)).toBeGreaterThanOrEqual(800 - 1);
+        }
+        await alta.getByRole('button', { name: 'Crear producto' }).click();
+        await expect(alta.getByText('Escriba el nombre del producto.')).toBeVisible();
+        await expect(alta.getByLabel(/^Nombre/)).toHaveAttribute('aria-invalid', 'true');
+        await sinViolaciones(page, `alta con error a ${String(ancho)} px`);
+        await alta.getByLabel(/^Nombre/).fill('Teclado mecánico');
+        await alta.getByLabel(/^Categoría/).fill('Accesorios');
+        await alta.getByLabel(/^SKU/).fill('TEC-1');
+        await alta.getByLabel(/^Bolivia \(USD\)/).fill('15');
+        await alta.getByLabel(/^Argentina \(USD\)/).fill('16');
+        await sinViolaciones(page, `alta a ${String(ancho)} px`);
+        await alta.getByRole('button', { name: 'Crear producto' }).click();
+        await expect(page.getByText('Producto creado: Teclado mecánico.')).toBeVisible();
+        await expect(alta).toBeHidden();
+
+        // Edición: vaciar un dato advierte antes de guardar.
+        await page.getByRole('button', { name: 'Datos del producto de Parlante portátil' }).click();
+        const edicion = page.getByRole('dialog', { name: 'Datos del producto: Parlante portátil' });
+        await expect(edicion).toBeVisible();
+        await edicion.getByLabel('Marca').fill('');
+        await edicion.getByRole('button', { name: 'Guardar cambios' }).click();
+        const aviso = page.getByRole('dialog', { name: '¿Guardar estos cambios?' });
+        await expect(aviso.getByText(/Se quitará del producto la marca/)).toBeVisible();
+        await sinViolaciones(page, `advertencia de vaciado a ${String(ancho)} px`);
+        await aviso.getByRole('button', { name: 'Sí, guardar' }).click();
+        await expect(page.getByText('Cambios guardados: Parlante portátil.')).toBeVisible();
+        await expect(edicion).toBeHidden();
+
+        // Desactivar advierte.
+        await page.getByRole('button', { name: 'Datos del producto de Cable HDMI 2 m' }).click();
+        const ficha = page.getByRole('dialog', { name: 'Datos del producto: Cable HDMI 2 m' });
+        await ficha.getByLabel('Activo').uncheck();
+        await expect(ficha.getByText(/deja de venderse en caja y sale del sitio/)).toBeVisible();
+        await ficha.getByRole('button', { name: 'Guardar cambios' }).click();
+        const desactivar = page.getByRole('dialog', { name: '¿Guardar estos cambios?' });
+        await expect(desactivar.getByText(/El stock no se pierde/)).toBeVisible();
+        await sinViolaciones(page, `advertencia de desactivar a ${String(ancho)} px`);
+        await desactivar.getByRole('button', { name: 'Volver a editar' }).click();
+        await expect(desactivar).toBeHidden();
+        await ficha.getByLabel('Activo').check();
+        await ficha.getByRole('button', { name: 'Cancelar' }).click();
+        await expect(ficha).toBeHidden();
+        await sinDesborde();
+
+        // «Ver» filtra por bajo el mínimo.
+        await page.getByRole('button', { name: 'Ver', exact: true }).click();
+        await expect(page.getByLabel('Mostrar')).toHaveValue('bajo');
+        await expect(tabla.getByText('Parlante portátil')).toBeVisible();
+        await expect(tabla.getByText('Cable HDMI 2 m')).toHaveCount(0);
+        await sinDesborde();
+
+        // Traspaso con selector buscable y confirmación con resumen.
+        await page.getByRole('link', { name: 'Traspasos' }).click();
+        await page.getByRole('combobox', { name: /^Producto/ }).fill('cable');
+        await page.getByRole('option', { name: /Cable HDMI/ }).click();
+        await page.getByLabel(/^Cantidad/).fill('4');
+        await page.getByRole('button', { name: 'Traspasar' }).click();
+        const traspaso = page.getByRole('dialog', { name: '¿Registrar este traspaso?' });
+        await expect(traspaso.getByText('De Depósito 1 a Tienda:')).toBeVisible();
+        await sinViolaciones(page, `confirmación de traspaso a ${String(ancho)} px`);
+        await traspaso.getByRole('button', { name: 'Sí, traspasar' }).click();
+        await expect(page.getByText(/Traspaso registrado/)).toBeVisible();
+
+        // Ajuste con «quedarán N».
+        await page.getByRole('link', { name: 'Ajuste' }).click();
+        await page.getByRole('combobox', { name: /^Producto/ }).fill('cable');
+        await page.getByRole('option', { name: /Cable HDMI/ }).click();
+        await page.getByLabel(/^Diferencia/).fill('-2');
+        await expect(page.getByText('Hay 29, quedarán 27.')).toBeVisible();
+        await page.getByLabel(/^Motivo/).fill('Rotura en depósito');
+        await page.getByRole('button', { name: 'Aplicar ajuste' }).click();
+        const ajuste = page.getByRole('dialog', { name: '¿Aplicar este ajuste?' });
+        await expect(ajuste.getByText(/quedarán 27/)).toBeVisible();
+        await sinViolaciones(page, `confirmación de ajuste a ${String(ancho)} px`);
+        await ajuste.getByRole('button', { name: 'Sí, aplicar el ajuste' }).click();
+        await expect(page.getByText('Ajuste registrado.')).toBeVisible();
+        await sinDesborde();
+        expect(v.errores).toEqual([]);
+      });
+    }
 
     for (const ancho of [1280, 820, 360]) {
       test(`panel lateral de la ficha a ${String(ancho)} px: subida, error con motivo, guardado, sin desborde e ids únicos`, async ({ page }) => {

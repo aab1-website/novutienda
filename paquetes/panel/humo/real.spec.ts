@@ -110,6 +110,8 @@ test('inventario básico: existencias por almacén desde el servidor, ficha con 
   await expect(page.getByRole('table', { name: 'Productos y existencias por almacén' })).toContainText('Parlante portátil');
   await page.getByRole('button', { name: 'Datos del producto de Cable HDMI 2 m' }).click();
   await expect(page.locator('[data-prueba="precio-bo"]')).toContainText('Bs 56,00');
+  await page.getByRole('dialog', { name: 'Datos del producto: Cable HDMI 2 m' }).getByRole('button', { name: 'Cerrar' }).first().click();
+  await expect(page.getByRole('dialog')).toHaveCount(0);
   await page.getByRole('link', { name: 'Conteo ciego' }).click();
   await page.getByRole('button', { name: 'Abrir conteo' }).click();
   await expect(page.getByText(/Conteo abierto en/)).toBeVisible();

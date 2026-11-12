@@ -21,18 +21,6 @@ const ver = (e: Entorno, nodo: Nodo): void => void render(e.envolver(nodo));
 const campo = (re: RegExp | string): HTMLElement => screen.getByLabelText(re);
 
 describe('inventario', () => {
-  it('lista productos con existencias por almacén y alerta de mínimo', async () => {
-    const e = crearEntorno('sup');
-    ver(e, h(PantallaInventario, { sub: 'productos' }));
-    const tabla = await screen.findByRole('table', { name: 'Productos y existencias por almacén' });
-    expect(within(tabla).getByText('Televisor 55 pulgadas')).toBeTruthy();
-    expect(screen.getByText(/Alerta de mínimo: .*Parlante portátil/)).toBeTruthy();
-    expect(within(tabla).getAllByText('Bajo el mínimo').length).toBeGreaterThan(0);
-    const u = userEvent.setup();
-    await u.click(screen.getByLabelText('Solo bajo el mínimo'));
-    expect(within(tabla).queryByText('Cable HDMI 2 m')).toBeNull();
-  });
-
   it('la ficha muestra el precio en Bs y ARS del día; el costo y el margen son solo del administrador', async () => {
     const e = crearEntorno('sup');
     ver(e, h(PantallaInventario, { sub: 'productos' }));
@@ -52,7 +40,7 @@ describe('inventario', () => {
     expect(screen.getByText('33,3 %', { exact: false })).toBeTruthy();
   });
 
-  it('el administrador edita precio y datos desde la ficha y crea productos', async () => {
+  it('el administrador cambia precio y mínimo de una sola vez', async () => {
     const e = crearEntorno('adm');
     ver(e, h(PantallaInventario, { sub: 'productos' }));
     const u = userEvent.setup();
@@ -62,57 +50,28 @@ describe('inventario', () => {
     await u.clear(screen.getByLabelText('Mínimo de existencias'));
     await u.type(screen.getByLabelText('Mínimo de existencias'), '12');
     await u.click(screen.getByRole('button', { name: 'Guardar cambios' }));
-    expect(await screen.findByText('Producto guardado.')).toBeTruthy();
+    expect(await screen.findByText('Cambios guardados: Cable HDMI 2 m.')).toBeTruthy();
     const p = (await e.api.llamar('listarProductos', {})).find((x) => x.id === 'cable-hdmi');
     expect(p?.precioUSD.bo).toBe(1050);
     expect(p?.minimo).toBe(12);
-    await u.click(screen.getByRole('button', { name: 'Nuevo producto' }));
-    await u.type(await screen.findByLabelText(/Identificador/), 'teclado-1');
-    await u.type(screen.getByLabelText(/^Nombre/), 'Teclado');
-    await u.type(screen.getByLabelText(/^Categoría/), 'Accesorios');
-    await u.type(screen.getByLabelText(/^SKU/), 'TEC-1');
-    await u.type(screen.getByLabelText(/^Bolivia \(USD\)/), '15');
-    await u.type(screen.getByLabelText(/^Argentina \(USD\)/), '16');
-    await u.click(screen.getByRole('button', { name: 'Crear producto' }));
-    await waitFor(async () => expect((await e.api.llamar('listarProductos', {})).some((x) => x.id === 'teclado-1')).toBe(true));
-  });
-
-  it('ingreso con series, traspaso y ajuste (solo administrador)', async () => {
-    const e = crearEntorno('adm');
-    const u = userEvent.setup();
-    ver(e, h(PantallaInventario, { sub: 'ingreso' }));
-    await screen.findByRole('heading', { name: 'Ingreso de mercadería' });
-    await u.selectOptions(await screen.findByLabelText('Producto'), 'cel-a1');
-    await u.type(screen.getByLabelText(/Series \(una por unidad/), 'N-100, N-101');
-    await u.click(screen.getByRole('button', { name: 'Registrar ingreso' }));
-    expect(await screen.findByText('Ingreso registrado.')).toBeTruthy();
-    expect((await e.api.llamar('buscarSerie', { serie: 'N-10' })).length).toBe(2);
-    cleanup();
-    ver(e, h(PantallaInventario, { sub: 'traspasos' }));
-    await screen.findByRole('heading', { name: 'Traspaso entre almacenes' });
-    await u.selectOptions(await screen.findByLabelText('Producto'), 'cable-hdmi');
-    await u.clear(screen.getByLabelText(/^Cantidad/));
-    await u.type(screen.getByLabelText(/^Cantidad/), '4');
-    await u.click(screen.getByRole('button', { name: 'Traspasar' }));
-    expect(await screen.findByText(/Traspaso registrado/)).toBeTruthy();
-    cleanup();
-    ver(e, h(PantallaInventario, { sub: 'ajuste' }));
-    await u.selectOptions(await screen.findByLabelText('Producto'), 'cable-hdmi');
-    await u.type(await screen.findByLabelText(/Diferencia/), '-2');
-    await u.type(screen.getByLabelText(/^Motivo/), 'Rotura en depósito');
-    await u.click(screen.getByRole('button', { name: 'Aplicar ajuste' }));
-    expect(await screen.findByText('Ajuste registrado.')).toBeTruthy();
-    expect((await e.api.llamar('listarProductos', {})).find((p) => p.id === 'cable-hdmi')?.stockTotal).toBe(33);
   });
 
   it('un error del servidor en un traspaso se muestra legible', async () => {
     const e = crearEntorno('sup');
+    // Las existencias cambiaron entre la vista previa y el envío: el servidor rechaza el traspaso.
+    const original = e.api.llamar.bind(e.api);
+    vi.spyOn(e.api, 'llamar').mockImplementation(((n: string, en: unknown) => (n === 'traspasar' ? Promise.reject(new ErrorApi('failed-precondition', 'No hay existencias suficientes en el origen.')) : original(n as never, en as never))) as never);
     ver(e, h(PantallaInventario, { sub: 'traspasos' }));
     const u = userEvent.setup();
-    await u.selectOptions(await screen.findByLabelText('Origen'), 'deposito-2');
-    await u.selectOptions(screen.getByLabelText('Producto'), 'cable-hdmi');
+    const producto = await screen.findByRole('combobox', { name: /^Producto/ });
+    await u.click(producto);
+    await u.type(producto, 'cable');
+    await u.click(await screen.findByRole('option', { name: /Cable HDMI/ }));
+    await u.type(screen.getByLabelText(/^Cantidad/), '1');
     await u.click(screen.getByRole('button', { name: 'Traspasar' }));
-    expect((await screen.findByRole('alert')).textContent).toContain('No hay existencias suficientes');
+    const d = await screen.findByRole('dialog', { name: '¿Registrar este traspaso?' });
+    await u.click(within(d).getByRole('button', { name: 'Sí, traspasar' }));
+    expect((await within(d).findByRole('alert')).textContent).toContain('No hay existencias suficientes');
   });
 
   it('conteo ciego: quien cuenta no ve el teórico; al cerrar se muestran las diferencias', async () => {
@@ -187,7 +146,10 @@ describe('mermas', () => {
     const e = crearEntorno('sup');
     ver(e, h(PantallaMermas, {}));
     const u = userEvent.setup();
-    await u.selectOptions(await screen.findByLabelText('Producto'), 'cable-hdmi');
+    const producto = await screen.findByRole('combobox', { name: /^Producto/ });
+    await u.click(producto);
+    await u.type(producto, 'cable');
+    await u.click(await screen.findByRole('option', { name: /Cable HDMI/ }));
     await u.clear(screen.getByLabelText(/^Cantidad/));
     await u.type(screen.getByLabelText(/^Cantidad/), '2');
     await u.type(screen.getByLabelText(/^Motivo/), 'Cable cortado');
