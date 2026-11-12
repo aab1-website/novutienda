@@ -460,7 +460,7 @@ describe('catálogo y sitio', () => {
     fireEvent.change(await screen.findByLabelText('Subir fotos'), { target: { files: [new File(['a'], 'uno.jpg', { type: 'image/jpeg' }), new File(['b'], 'dos.jpg', { type: 'image/jpeg' })] } });
     await screen.findByText('uno.jpg: Listo');
     await screen.findByText('dos.jpg: Listo');
-    vi.spyOn(URL, 'createObjectURL').mockImplementation(() => { throw new Error('sin soporte'); }); // jsdom no lee metadatos: decide el servidor
+    // jsdom no tiene decodificador: la duración se lee de los bytes (aquí no son un video válido) y decide el servidor
     fireEvent.change(screen.getByLabelText('Subir video'), { target: { files: [new File(['v'], 'demo.mp4', { type: 'video/mp4' })] } });
     await screen.findByText('demo.mp4: Listo');
     await waitFor(() => expect((screen.getByLabelText('Subir video') as HTMLInputElement).disabled).toBe(true));
