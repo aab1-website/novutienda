@@ -146,7 +146,7 @@ export function PantallaUsuarios(): JSX.Element {
             acciones={(u) =>
               u.rol !== 'adm' && (
                 <div class="fila">
-                  <Boton variante="secundario" chico deshabilitado={accion.ocupado} motivo={cambios[u.uid] === undefined || cambios[u.uid] === u.rol ? 'Cambie el rol para guardar' : undefined} onClick={() => asignar(u.uid)}>
+                  <Boton variante="secundario" chico deshabilitado={accion.ocupado} motivoVisible={false} motivo={cambios[u.uid] === undefined || cambios[u.uid] === u.rol ? 'Cambie el rol para guardar' : undefined} onClick={() => asignar(u.uid)}>
                     Guardar rol
                   </Boton>
                   <BotonConfirmado texto="Quitar acceso" pregunta={`¿Quitar el acceso de ${u.correo}?`} textoConfirmar="Sí, quitar" peligro chico onConfirmar={() => quitar(u.uid)} />

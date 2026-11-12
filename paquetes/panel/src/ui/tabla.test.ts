@@ -32,13 +32,41 @@ describe('Tabla', () => {
   it('tiene roles de tabla, contenedor enfocable con nombre y data-etiqueta en cada celda', () => {
     montar(props(filas(3)));
     const region = screen.getByRole('region', { name: 'Personas' });
-    expect(region.getAttribute('tabindex')).toBe('0');
+    expect(region.getAttribute('tabindex')).toBeNull();
     expect(region.className).toContain('tabla-contenedor');
     expect(within(region).getByRole('table', { name: 'Personas' })).toBeTruthy();
     expect(screen.getAllByRole('columnheader')).toHaveLength(3);
     const celdas = screen.getAllByRole('cell');
     expect(celdas[0]?.getAttribute('data-etiqueta')).toBe('Número');
     expect(screen.getAllByRole('rowheader')[0]?.getAttribute('data-etiqueta')).toBe('Nombre');
+  });
+
+  it('el contenedor solo es enfocable cuando hay desplazamiento horizontal', () => {
+    const ancho = Object.getOwnPropertyDescriptor(HTMLElement.prototype, 'scrollWidth');
+    Object.defineProperty(HTMLElement.prototype, 'scrollWidth', { configurable: true, get: () => 800 });
+    try {
+      montar(props(filas(2)));
+      expect(screen.getByRole('region', { name: 'Personas' }).getAttribute('tabindex')).toBe('0');
+    } finally {
+      if (ancho) Object.defineProperty(HTMLElement.prototype, 'scrollWidth', ancho);
+      else Reflect.deleteProperty(HTMLElement.prototype, 'scrollWidth');
+    }
+  });
+
+  it('vista de tarjetas: cada celda lleva su etiqueta y las acciones quedan en la fila', () => {
+    montar(props(filas(2), { vistaCelular: 'tarjetas', acciones: (f) => h('button', { type: 'button' }, `Editar ${f.nombre}`) }));
+    expect(screen.getByRole('table').className).toContain('tabla-tarjetas');
+    const fila = screen.getAllByRole('row')[1] as HTMLElement;
+    expect(within(fila).getAllByRole('cell').map((c) => c.getAttribute('data-etiqueta'))).toEqual(['Número', 'Rol', null]);
+    expect(within(fila).getByRole('rowheader').getAttribute('data-etiqueta')).toBe('Nombre');
+    expect(within(fila).getByRole('button', { name: /Editar/ })).toBeTruthy();
+  });
+
+  it('con filas vacías sigue mostrando el aviso de lista cortada y «Cargar más»', () => {
+    montar(props([], { vacio: { titulo: 'No hay personas' }, cortada: { mostradas: 0, mensaje: 'Lista cortada.' }, masDelServidor: { hay: true, cargar: vi.fn(), cargando: false } }));
+    expect(screen.getByText('No hay personas')).toBeTruthy();
+    expect(screen.getByText('Lista cortada.')).toBeTruthy();
+    expect(screen.getByRole('button', { name: 'Cargar más' })).toBeTruthy();
   });
 
   it('más de cuatro columnas usan tarjetas en celular; con menos, desplazamiento; se puede forzar', () => {

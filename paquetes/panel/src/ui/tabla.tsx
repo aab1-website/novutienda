@@ -1,5 +1,5 @@
 import type { ComponentChildren, JSX } from 'preact';
-import { useId, useState } from 'preact/hooks';
+import { useEffect, useId, useRef, useState } from 'preact/hooks';
 import { filtrar, ordenar, paginar, type Orden } from './tabla-logica.js';
 import '../estilos/tabla.css';
 
@@ -51,9 +51,21 @@ export function Tabla<F>(p: PropsTabla<F>): JSX.Element {
   const [orden, setOrden] = useState<Orden>(null);
   const [pagina, setPagina] = useState(1);
 
-  if (p.filas.length === 0) {
-    return <div class="vacio"><p class="vacio-titulo">{p.vacio?.titulo ?? 'No hay datos'}</p></div>;
-  }
+  const contenedor = useRef<HTMLDivElement>(null);
+  const [desplaza, setDesplaza] = useState(false);
+  useEffect(() => {
+    const el = contenedor.current;
+    if (el === null) {
+      setDesplaza(false);
+      return undefined;
+    }
+    const medir = (): void => setDesplaza(el.scrollWidth > el.clientWidth);
+    medir();
+    window.addEventListener('resize', medir);
+    return () => window.removeEventListener('resize', medir);
+  });
+
+  const vacia = p.filas.length === 0;
 
   const filtros = p.filtros ?? [];
   const visibles = filtrar(p.filas, texto, p.buscar?.en, filtros, valores);
@@ -66,7 +78,7 @@ export function Tabla<F>(p: PropsTabla<F>): JSX.Element {
     setOrden((o) => (o === null || o.columna !== col ? { columna: col, sentido: 'asc' } : o.sentido === 'asc' ? { columna: col, sentido: 'desc' } : null));
     setPagina(1);
   };
-  const hayControles = p.buscar !== undefined || filtros.length > 0;
+  const hayControles = !vacia && (p.buscar !== undefined || filtros.length > 0);
 
   return (
     <div class="tabla-bloque">
@@ -90,11 +102,13 @@ export function Tabla<F>(p: PropsTabla<F>): JSX.Element {
         </div>
       )}
       {p.cortada && <p class="tabla-aviso" role="status">{p.cortada.mensaje}</p>}
-      <p class="solo-lectores" role="status" aria-live="polite">{`Se muestran ${pag.filas.length} de ${pag.total}`}</p>
-      {pag.total === 0 ? (
+      {!vacia && <p class="solo-lectores" role="status" aria-live="polite">{`Se muestran ${pag.filas.length} de ${pag.total}`}</p>}
+      {vacia ? (
+        <div class="vacio"><p class="vacio-titulo">{p.vacio?.titulo ?? 'No hay datos'}</p></div>
+      ) : pag.total === 0 ? (
         <p class="tabla-sin-resultados">Sin resultados con esa búsqueda o esos filtros.</p>
       ) : (
-        <div class="tabla-contenedor" role="region" aria-label={p.titulo} tabindex={0}>
+        <div ref={contenedor} class="tabla-contenedor" role="region" aria-label={p.titulo} tabIndex={desplaza ? 0 : undefined}>
           <table class={`tabla tabla-${modo}`} role="table">
             <caption class="solo-lectores">{p.titulo}</caption>
             <thead role="rowgroup">

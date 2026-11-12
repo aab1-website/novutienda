@@ -16,6 +16,8 @@ export interface PropsSelectorBuscable {
   readonly valor: string | null;
   readonly onCambio: (valor: string) => void;
   readonly requerido?: boolean | undefined;
+  /** Texto de una opción inicial para volver a «sin valor» (se entrega `''` a `onCambio`); solo en campos no obligatorios. */
+  readonly opcionVacia?: string | undefined;
   readonly ayuda?: string | undefined;
   readonly error?: string | undefined;
   readonly maxResultados?: number | undefined;
@@ -31,7 +33,10 @@ export function SelectorBuscable(p: PropsSelectorBuscable): JSX.Element {
 
   const elegida = p.opciones.find((o) => o.valor === p.valor);
   const q = normalizar(consulta ?? '');
-  const coinciden = q === '' ? p.opciones : p.opciones.filter((o) => normalizar(`${o.texto} ${o.detalle ?? ''}`).includes(q));
+  const base = q === '' ? p.opciones : p.opciones.filter((o) => normalizar(`${o.texto} ${o.detalle ?? ''}`).includes(q));
+  const vacia: OpcionBuscable | null = p.opcionVacia !== undefined && p.requerido !== true && q === '' ? { valor: '', texto: p.opcionVacia } : null;
+  const coinciden = vacia === null ? base : [vacia, ...base];
+  const esElegida = (o: OpcionBuscable): boolean => (o.valor === '' ? p.valor === null : o.valor === p.valor);
   const mostradas = coinciden.slice(0, max);
   const restantes = coinciden.length - mostradas.length;
   const idOpcion = (i: number): string => `${id}-op-${i}`;
@@ -49,7 +54,7 @@ export function SelectorBuscable(p: PropsSelectorBuscable): JSX.Element {
   };
   const abrir = (): void => {
     setAbierta(true);
-    setActivo(0);
+    setActivo(Math.max(0, mostradas.findIndex(esElegida)));
   };
 
   const teclado = (e: KeyboardEvent): void => {
@@ -107,7 +112,7 @@ export function SelectorBuscable(p: PropsSelectorBuscable): JSX.Element {
         role="combobox"
         autocomplete="off"
         aria-expanded={abierta}
-        aria-controls={`${id}-lista`}
+        aria-controls={mostradas.length > 0 ? `${id}-lista` : undefined}
         aria-autocomplete="list"
         aria-activedescendant={abierta && mostradas.length > 0 ? idOpcion(Math.min(activo, mostradas.length - 1)) : undefined}
         aria-required={p.requerido ? true : undefined}
@@ -122,18 +127,21 @@ export function SelectorBuscable(p: PropsSelectorBuscable): JSX.Element {
         onKeyDown={teclado}
         onBlur={cerrar}
       />
+      <p class="solo-lectores" role="status">{abierta ? (mostradas.length === 0 ? 'Sin resultados' : restantes > 0 ? `Hay ${restantes} más; escriba para acotar` : '') : ''}</p>
       {abierta && (
         <div class="selector-lista" onMouseDown={(e) => e.preventDefault()}>
-          <ul id={`${id}-lista`} role="listbox" aria-label={p.etiqueta} class="selector-opciones">
-            {mostradas.map((o, i) => (
-              <li key={o.valor} id={idOpcion(i)} role="option" aria-selected={i === activo} class="selector-opcion" onClick={() => elegir(o)}>
-                <span>{o.texto}</span>
-                {o.detalle && <small>{o.detalle}</small>}
-              </li>
-            ))}
-          </ul>
-          {mostradas.length === 0 && <p class="selector-nota" role="status">Sin resultados</p>}
-          {restantes > 0 && <p class="selector-nota" role="status">{`Hay ${restantes} más; escriba para acotar`}</p>}
+          {mostradas.length > 0 && (
+            <ul id={`${id}-lista`} role="listbox" aria-label={p.etiqueta} class="selector-opciones">
+              {mostradas.map((o, i) => (
+                <li key={o.valor} id={idOpcion(i)} role="option" aria-selected={esElegida(o)} class={i === activo ? 'selector-opcion selector-activa' : 'selector-opcion'} onClick={() => elegir(o)}>
+                  <span>{o.texto}</span>
+                  {o.detalle && <small>{o.detalle}</small>}
+                </li>
+              ))}
+            </ul>
+          )}
+          {mostradas.length === 0 && <p class="selector-nota" aria-hidden="true">Sin resultados</p>}
+          {restantes > 0 && <p class="selector-nota" aria-hidden="true">{`Hay ${restantes} más; escriba para acotar`}</p>}
         </div>
       )}
       {p.ayuda && <p id={idAyuda} class="ayuda">{p.ayuda}</p>}

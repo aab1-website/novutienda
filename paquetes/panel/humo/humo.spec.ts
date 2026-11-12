@@ -202,7 +202,7 @@ for (const esquema of ESQUEMAS) {
       await page.setViewportSize({ width: 360, height: 740 });
       await expect(page.getByRole('button', { name: 'Quitar acceso' }).first()).toBeVisible();
       expect(await page.evaluate(() => document.documentElement.scrollWidth)).toBeLessThanOrEqual(360);
-      await sinViolaciones(page, 'usuarios con tarjetas a 360');
+      await sinViolaciones(page, 'usuarios con tabla en modo desplazar a 360');
       expect(v.errores).toEqual([]);
     });
 

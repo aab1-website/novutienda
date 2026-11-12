@@ -14,11 +14,11 @@ const OPCIONES: OpcionBuscable[] = [
   { valor: 'c', texto: 'Cuaderno', detalle: 'Papelería' },
 ];
 
-function montar(extra: { opciones?: OpcionBuscable[]; valor?: string | null; maxResultados?: number; requerido?: boolean; ayuda?: string; error?: string } = {}) {
+function montar(extra: { opciones?: OpcionBuscable[]; valor?: string | null; maxResultados?: number; requerido?: boolean; opcionVacia?: string; ayuda?: string; error?: string } = {}) {
   const onCambio = vi.fn();
   function Envoltorio(): VNode {
     const [v, setV] = useState<string | null>(extra.valor ?? null);
-    const props: PropsSelectorBuscable = { maxResultados: extra.maxResultados, requerido: extra.requerido, ayuda: extra.ayuda, error: extra.error, etiqueta: 'Producto', opciones: extra.opciones ?? OPCIONES, valor: v, onCambio: (x: string) => { setV(x); onCambio(x); } };
+    const props: PropsSelectorBuscable = { maxResultados: extra.maxResultados, requerido: extra.requerido, opcionVacia: extra.opcionVacia, ayuda: extra.ayuda, error: extra.error, etiqueta: 'Producto', opciones: extra.opciones ?? OPCIONES, valor: v, onCambio: (x: string) => { setV(x); onCambio(x); } };
     return h(SelectorBuscable, props) as VNode;
   }
   render(h(Envoltorio, {}));
@@ -50,7 +50,7 @@ describe('SelectorBuscable', () => {
     const opciones = screen.getAllByRole('option');
     expect(opciones).toHaveLength(3);
     expect(entrada.getAttribute('aria-activedescendant')).toBe(opciones[0]?.id);
-    expect(opciones[0]?.getAttribute('aria-selected')).toBe('true');
+    expect(opciones[0]?.getAttribute('aria-selected')).toBe('false');
     await u.keyboard('{ArrowDown}');
     expect(entrada.getAttribute('aria-activedescendant')).toBe(opciones[1]?.id);
     await u.keyboard('{Enter}');
@@ -87,7 +87,9 @@ describe('SelectorBuscable', () => {
     await u.clear(entrada);
     await u.type(entrada, 'zzz');
     expect(screen.queryAllByRole('option')).toHaveLength(0);
-    expect(screen.getByText('Sin resultados')).toBeTruthy();
+    expect(screen.queryByRole('listbox')).toBeNull();
+    expect(entrada.getAttribute('aria-controls')).toBeNull();
+    expect(screen.getByRole('status').textContent).toBe('Sin resultados');
   });
 
   it('Esc cierra la lista y detiene la propagación; con la lista cerrada no la detiene', async () => {
@@ -125,9 +127,39 @@ describe('SelectorBuscable', () => {
     await u.click(entrada);
     await u.keyboard('{ArrowDown}');
     expect(screen.getAllByRole('option')).toHaveLength(5);
-    expect(screen.getByText('Hay 3 más; escriba para acotar')).toBeTruthy();
+    expect(screen.getByRole('status').textContent).toBe('Hay 3 más; escriba para acotar');
     await u.type(entrada, 'cosa 7');
-    expect(screen.queryByText(/escriba para acotar/)).toBeNull();
+    expect(screen.getByRole('status').textContent).toBe('');
+  });
+
+  it('el estado existe siempre en el DOM, aun con la lista cerrada', () => {
+    montar();
+    expect(screen.getByRole('status').textContent).toBe('');
+  });
+
+  it('al abrir, la opción activa es la ya elegida y queda marcada con aria-selected', async () => {
+    const u = userEvent.setup();
+    const { entrada } = montar({ valor: 'b' });
+    await u.click(entrada);
+    await u.keyboard('{ArrowDown}');
+    const opciones = screen.getAllByRole('option');
+    expect(entrada.getAttribute('aria-activedescendant')).toBe(opciones[1]?.id);
+    expect(opciones.map((o) => o.getAttribute('aria-selected'))).toEqual(['false', 'true', 'false']);
+  });
+
+  it('con opcionVacia se puede volver a «sin valor»; si es obligatorio no aparece', async () => {
+    const u = userEvent.setup();
+    const { entrada, onCambio } = montar({ valor: 'b', opcionVacia: 'Sin producto' });
+    await u.click(entrada);
+    await u.keyboard('{ArrowDown}');
+    expect(screen.getAllByRole('option')[0]?.textContent).toBe('Sin producto');
+    await u.click(screen.getByRole('option', { name: 'Sin producto' }));
+    expect(onCambio).toHaveBeenCalledWith('');
+    cleanup();
+    const obligatorio = montar({ requerido: true, opcionVacia: 'Sin producto' });
+    await u.click(obligatorio.entrada);
+    await u.keyboard('{ArrowDown}');
+    expect(screen.getAllByRole('option')).toHaveLength(3);
   });
 
   it('requerido, ayuda y error quedan enlazados al campo', () => {

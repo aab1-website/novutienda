@@ -1,13 +1,13 @@
 import type { Entrada, NombreCallable, Salida } from '../api/contrato.js';
 import type { DatosProducto, Medio, Recibo, Simulacion, FilaSimulada } from '../api/tipos.js';
 import { LIMITES_PANEL, PLANTILLAS_SITIO } from '../api/tipos.js';
+import { normalizar } from '../util/buscar.js';
 import { aCsv } from '../util/csv.js';
 import { auditar, exigirRol, fallo, iso, vistaProducto, type Contexto } from './estado.js';
 import { parsearCsv } from './inventario/inventario.js';
 
 type H<N extends NombreCallable> = (c: Contexto, e: Entrada<N>) => Salida<N> | Promise<Salida<N>>;
 
-const norm = (t: string): string => t.normalize('NFD').replace(/[̀-ͯ]/g, '').toLowerCase().trim();
 const FACTURA = /^[A-Za-z0-9][A-Za-z0-9 ._/-]{0,39}$/;
 const SLUG = /^[a-z0-9]+(?:-[a-z0-9]+)*$/;
 const FECHA = /^\d{4}-\d{2}-\d{2}$/;
@@ -34,7 +34,7 @@ function decodificar(b64: string): string {
 export function simular(c: Contexto, contenidoBase64: string): Simulacion {
   const filas = parsearCsv(decodificar(contenidoBase64));
   const [cab = [], ...datos] = filas;
-  const nombres = cab.map((h) => norm(h).replace(/[^a-z0-9]/g, ''));
+  const nombres = cab.map((h) => normalizar(h).replace(/[^a-z0-9]/g, ''));
   if (!nombres.includes('id')) throw fallo('entrada-invalida', 'El archivo no tiene la columna id');
   if (datos.length > 1000) throw fallo('entrada-invalida', 'Máximo 1000 filas por importación');
   const ignoradas = cab.filter((h, i) => ['stock', 'existencias', 'cantidad', 'almacen', 'minimo'].includes(nombres[i] ?? '')).map((h) => `${h} (el CSV no modifica el stock)`);
@@ -104,10 +104,10 @@ export const handlersOtros: {
     const propias = c.rol === 'caj' ? new Set([...c.e.ventas.values()].filter((v) => v.cajeroUid === c.uid).map((v) => v.ventaId)) : undefined;
     return [...c.e.recibos.values()]
       .filter((r) => propias === undefined || propias.has(r.ventaId))
-      .filter((r) => q.numero === undefined || norm(r.numero).includes(norm(q.numero)))
+      .filter((r) => q.numero === undefined || normalizar(r.numero).includes(normalizar(q.numero)))
       .filter((r) => q.desde === undefined || r.fecha >= q.desde)
       .filter((r) => q.hasta === undefined || r.fecha <= q.hasta)
-      .filter((r) => q.cliente === undefined || (r.cliente !== undefined && norm(r.cliente.nombre).includes(norm(q.cliente))))
+      .filter((r) => q.cliente === undefined || (r.cliente !== undefined && normalizar(r.cliente.nombre).includes(normalizar(q.cliente))))
       .sort((a, b) => b.emitidoEn.localeCompare(a.emitidoEn) || b.numero.localeCompare(a.numero))
       .slice(0, limite);
   },
@@ -314,7 +314,7 @@ export const handlersOtros: {
     }
     const filas = parsearCsv(decodificar(e.contenidoBase64));
     const [cab = [], ...datos] = filas;
-    const nombres = cab.map((h) => norm(h).replace(/[^a-z0-9]/g, ''));
+    const nombres = cab.map((h) => normalizar(h).replace(/[^a-z0-9]/g, ''));
     const get = (f: string[], col: string): string => f[nombres.indexOf(col)] ?? '';
     let aplicadas = 0;
     for (const fs of sim.filas) {
