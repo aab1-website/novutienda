@@ -105,7 +105,8 @@ function nombresEnLlaves(llaves: string): string[] {
 
 /** Miembros del espacio de nombres `alias` que el código toca; `null` si el acceso no se puede resolver (falla cerrado). */
 function miembrosDeEspacio(limpio: string, alias: string): { nombres: string[]; cerrado: boolean } {
-  const a = alias.replace(/\$/g, '\\$');
+  // Escapa TODOS los metacaracteres (incluida la barra invertida): el alias pasa a formar parte de una expresión regular.
+  const a = alias.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
   const nombres: string[] = [];
   let cerrado = false;
   for (const m of limpio.matchAll(new RegExp(String.raw`(?<![\w$.])${a}\s*\??\.\s*([\w$]+)`, 'g'))) nombres.push(m[1] as string);
