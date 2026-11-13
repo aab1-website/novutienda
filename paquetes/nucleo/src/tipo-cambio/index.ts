@@ -12,10 +12,11 @@ export {
 export type {
   ActorCarga, AlmacenCotizaciones, Documento, OpcionesAlmacen, ResultadoEscritura, TransaccionCotizaciones,
 } from './almacen.js';
-export { diasHabilesEntre } from './fechas.js';
+export { diasHabilesEntre, hoyEn } from './fechas.js';
 export type { EsFeriado } from './fechas.js';
-export { aCentavos, precioFinal, redondear } from './precio.js';
-export type { ModoRedondeo, PrecioFinal, Redondeo, ReglaRedondeo } from './precio.js';
+export { aCentavos, precioDeMercado, precioFinal, redondear } from './precio.js';
+export { esReglaRedondeoValida } from './regla-redondeo.js';
+export type { ModoRedondeo, PrecioDeMercado, PrecioFinal, Redondeo, RedondeoPorMoneda, ReglaRedondeo } from './precio.js';
 export { CACHE_COTIZACION, manejarCotizacion } from './handler.js';
 export type { RespuestaHttp } from './handler.js';
 export { bajarTexto } from './descargar.js';

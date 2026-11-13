@@ -3,6 +3,9 @@
  * mercado; el precio final se calcula con la cotización del mercado.
  */
 
+import { mercadosDe, monedaDe, parDe, zonaDe, type ConfiguracionComercial } from '../tenant/mercados.js';
+
+/** Mercados del tenant de tres monedas (LEGADO). Para cualquier tenant, `IdMercado`. */
 export type Mercado = 'BO' | 'AR';
 export type Par = 'BOB/USD' | 'ARS/USD';
 export type Moneda = 'BOB' | 'ARS';
@@ -11,15 +14,44 @@ export type FuenteCotizacion = 'BCB' | 'BNA' | 'BCRA' | 'manual';
 export type EstadoCotizacion = 'vigente' | 'ultimo_verificado';
 export type OrigenCarga = 'automatico' | 'manual';
 
-export const MERCADOS: readonly Mercado[] = ['BO', 'AR'];
+/** Identificador de un mercado declarado por el tenant (dos letras mayúsculas). */
+export type IdMercado = string;
 
-export const PAR_DE: Readonly<Record<Mercado, Par>> = { BO: 'BOB/USD', AR: 'ARS/USD' };
-export const MONEDA_DE: Readonly<Record<Mercado, Moneda>> = { BO: 'BOB', AR: 'ARS' };
-/** Zona horaria con la que se decide «hoy» en cada mercado. */
-export const ZONA_DE: Readonly<Record<Mercado, string>> = {
-  BO: 'America/La_Paz',
-  AR: 'America/Argentina/Buenos_Aires',
+/**
+ * LEGADO: declaración explícita del tenant de tres monedas (BOB, USD, ARS; mercados Bolivia y Argentina; precio base en
+ * dólares). Es la ÚNICA fuente de las constantes `MERCADOS`, `PAR_DE`, `MONEDA_DE` y `ZONA_DE`, que siguen existiendo
+ * mientras el resto del sistema migra a leer la configuración del tenant. Ningún tenant la recibe por defecto: el
+ * tenant declara la suya en su configuración.
+ */
+export const COMERCIAL_LEGADO_TRES_MONEDAS: ConfiguracionComercial = {
+  mercados: [
+    {
+      id: 'BO', nombre: 'Bolivia', monedaVenta: 'BOB', monedaBase: 'USD', zonaHoraria: 'America/La_Paz',
+      tipoCambio: { par: 'BOB/USD', fuentes: ['BCB'] }, redondeo: { tipo: 'decimales', decimales: 2, modo: 'cercano' },
+    },
+    {
+      id: 'AR', nombre: 'Argentina', monedaVenta: 'ARS', monedaBase: 'USD', zonaHoraria: 'America/Argentina/Buenos_Aires',
+      tipoCambio: { par: 'ARS/USD', fuentes: ['BNA', 'BCRA'] }, redondeo: { tipo: 'multiplo', multiplo: 100, modo: 'cercano' },
+    },
+  ],
+  monedas: ['BOB', 'USD', 'ARS'],
 };
+
+const deLegado = <T>(f: (id: Mercado) => T): Readonly<Record<Mercado, T>> =>
+  Object.fromEntries(mercadosDe(COMERCIAL_LEGADO_TRES_MONEDAS).map((id) => [id, f(id as Mercado)])) as Record<Mercado, T>;
+
+/** @deprecated LEGADO del tenant de tres monedas: usar `mercadosDe(comercial)`. */
+export const MERCADOS: readonly Mercado[] = mercadosDe(COMERCIAL_LEGADO_TRES_MONEDAS) as Mercado[];
+
+/** @deprecated LEGADO del tenant de tres monedas: usar `parDe(comercial, id)`. */
+export const PAR_DE: Readonly<Record<Mercado, Par>> = deLegado((id) => parDe(COMERCIAL_LEGADO_TRES_MONEDAS, id) as Par);
+/** @deprecated LEGADO del tenant de tres monedas: usar `monedaDe(comercial, id)`. */
+export const MONEDA_DE: Readonly<Record<Mercado, Moneda>> = deLegado((id) => monedaDe(COMERCIAL_LEGADO_TRES_MONEDAS, id) as Moneda);
+/**
+ * Zona horaria con la que se decide «hoy» en cada mercado.
+ * @deprecated LEGADO del tenant de tres monedas: usar `zonaDe(comercial, id)`.
+ */
+export const ZONA_DE: Readonly<Record<Mercado, string>> = deLegado((id) => zonaDe(COMERCIAL_LEGADO_TRES_MONEDAS, id) as string);
 
 export const esMercado = (x: unknown): x is Mercado => x === 'BO' || x === 'AR';
 
@@ -35,8 +67,9 @@ export type ResultadoLectura<T> = { readonly ok: true; readonly lectura: T } | {
 /** Documento `cotizaciones/{BO|AR}` (y, sin `antes`, cada entrada del historial). */
 export interface CotizacionGuardada {
   readonly cotizacionId: string;
-  readonly mercado: Mercado;
-  readonly par: Par;
+  readonly mercado: IdMercado;
+  /** Par `VENTA/BASE` del mercado (p. ej. `BOB/USD`). */
+  readonly par: string;
   readonly valor: number;
   readonly fecha: string;
   readonly fuente: FuenteCotizacion;
@@ -57,9 +90,10 @@ export interface Ancla {
 }
 
 /** Copia que guarda cada venta o pedido: la cotización con la que se calculó el precio. */
-export interface CopiaCotizacion {
+/** `P` es el tipo del par: el tenant de tres monedas lo tiene acotado (`Par`, valor por defecto); cualquier tenant, `string`. */
+export interface CopiaCotizacion<P extends string = Par> {
   readonly cotizacionId: string;
-  readonly par: Par;
+  readonly par: P;
   readonly valor: number;
   readonly fecha: string;
   readonly fuente: FuenteCotizacion;
@@ -69,7 +103,7 @@ export interface CopiaCotizacion {
 /** Error tipado: no hay cotización utilizable. El consumidor decide (catálogo: 503; flujo de venta: pasa al vendedor). */
 export class SinCotizacionUtilizable extends Error {
   constructor(
-    readonly mercado: Mercado,
+    readonly mercado: IdMercado,
     readonly motivo: string,
   ) {
     super(`sin cotización utilizable para ${mercado}: ${motivo}`);

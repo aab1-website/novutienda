@@ -1,9 +1,15 @@
-import { ZONA_DE, type Mercado } from './tipos.js';
+import { zonaDe, type ConfiguracionComercial } from '../tenant/mercados.js';
+import { COMERCIAL_LEGADO_TRES_MONEDAS, type IdMercado } from './tipos.js';
 
-/** La fecha civil «aaaa-mm-dd» de un instante en la zona horaria del mercado. */
-export function hoyEn(mercado: Mercado, ahoraMs: number): string {
+/**
+ * La fecha civil «aaaa-mm-dd» de un instante en la zona horaria del mercado. Lanza si el tenant no declara el mercado.
+ * `comercial` omitido = declaración del tenant de tres monedas (LEGADO, hasta que cada llamador pase la del tenant).
+ */
+export function hoyEn(mercado: IdMercado, ahoraMs: number, comercial: ConfiguracionComercial = COMERCIAL_LEGADO_TRES_MONEDAS): string {
+  const timeZone = zonaDe(comercial, mercado);
+  if (timeZone === undefined) throw new RangeError(`el mercado ${mercado} no está declarado por el tenant`);
   return new Intl.DateTimeFormat('en-CA', {
-    timeZone: ZONA_DE[mercado], year: 'numeric', month: '2-digit', day: '2-digit',
+    timeZone, year: 'numeric', month: '2-digit', day: '2-digit',
   }).format(new Date(ahoraMs));
 }
 
@@ -13,7 +19,7 @@ export function diasEntre(a: string, b: string): number {
 }
 
 /** Calendario de feriados inyectable: ¿esa fecha «aaaa-mm-dd» es feriado en el mercado? No hay lista por defecto (no se inventan feriados). */
-export type EsFeriado = (fecha: string, mercado: Mercado) => boolean;
+export type EsFeriado = (fecha: string, mercado: IdMercado) => boolean;
 
 /** Tope de días recorridos al contar hábiles; más allá, cualquier límite razonable ya está excedido. */
 const TOPE_RECORRIDO = 400;
@@ -25,7 +31,7 @@ const DIA_MS = 86_400_000;
  * el día de `desde` no cuenta, el de `hasta` sí. 0 si `hasta` no es posterior.
  * Sin calendario, solo se descuentan sábados y domingos.
  */
-export function diasHabilesEntre(desde: string, hasta: string, mercado: Mercado, esFeriado?: EsFeriado): number {
+export function diasHabilesEntre(desde: string, hasta: string, mercado: IdMercado, esFeriado?: EsFeriado): number {
   const total = diasEntre(desde, hasta);
   if (total <= 0) return 0;
   const base = Date.parse(`${desde}T00:00:00Z`);

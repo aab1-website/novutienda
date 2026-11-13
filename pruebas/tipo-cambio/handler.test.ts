@@ -5,7 +5,7 @@ import {
 } from './nucleo-tc.js';
 import { AHORA, AlmacenMemoria, fixture } from './ayudas.js';
 
-const copia = (m: Mercado): CopiaCotizacion => ({
+const copia = (m: string): CopiaCotizacion => ({
   cotizacionId: `${m}-x`, par: m === 'BO' ? 'BOB/USD' : 'ARS/USD', valor: m === 'BO' ? 12.06 : 1520, fecha: '2026-11-04', fuente: m === 'BO' ? 'BCB' : 'BNA', estado: 'vigente',
 });
 

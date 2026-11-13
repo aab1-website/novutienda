@@ -26,11 +26,11 @@ export interface DatosTurnoCerradoV1 {
   readonly turnoId: string;
   readonly cajaId: string;
   readonly cajeroUid: string;
-  /** Al menos una de BOB, USD o ARS; las ausentes no tuvieron movimiento. */
-  readonly monedas: Readonly<Partial<Record<MonedaTurno, ArqueoMoneda>>>;
+  /** Al menos una moneda ISO (por ejemplo BOB, USD o ARS); las ausentes no tuvieron movimiento. */
+  readonly monedas: Readonly<Partial<Record<string, ArqueoMoneda>>>;
 }
 
-const MONEDAS: readonly string[] = ['BOB', 'USD', 'ARS'];
+const MONEDA_ISO = /^[A-Z]{3}$/;
 
 const arqueo = objeto({
   apertura: entero(0),
@@ -48,7 +48,7 @@ const monedasTurno: Campo = (v, r) => {
   const claves = Object.keys(v);
   if (claves.length === 0) return `${r} requiere al menos una moneda`;
   for (const k of claves) {
-    if (!MONEDAS.includes(k)) return `${r}.${k} no es una moneda del turno (BOB, USD, ARS)`;
+    if (!MONEDA_ISO.test(k)) return `${r}.${k} no es una moneda del turno (tres letras mayúsculas)`;
     const e = arqueo((v as Record<string, unknown>)[k], `${r}.${k}`);
     if (e !== null) return e;
   }
@@ -59,7 +59,7 @@ export const validarTurnoCerradoV1 = crearValidador<DatosTurnoCerradoV1>(
   { turnoId: texto, cajaId: texto, cajeroUid: texto, monedas: monedasTurno },
   (d) => {
     for (const [m, a] of Object.entries(d.monedas)) {
-      if (a.diferencia !== a.contado - a.esperado) return `datos.monedas.${m}.diferencia debe ser contado - esperado`;
+      if (a !== undefined && a.diferencia !== a.contado - a.esperado) return `datos.monedas.${m}.diferencia debe ser contado - esperado`;
     }
     return null;
   },
@@ -71,12 +71,12 @@ const usd: ArqueoMoneda = { apertura: 0, esperado: 5000, contado: 5000, diferenc
 const valido: DatosTurnoCerradoV1 = { turnoId: 't1', cajaId: 'c1', cajeroUid: 'u-caj', monedas: { BOB: bob, USD: usd } };
 
 export const fixturesTurnoCerradoV1: Fixtures<DatosTurnoCerradoV1> = {
-  validos: [valido, { ...valido, monedas: { ARS: { ...bob, diferencia: 0, contado: 100000 } } }],
+  validos: [valido, { ...valido, monedas: { ARS: { ...bob, diferencia: 0, contado: 100000 } } }, { ...valido, monedas: { COP: { ...bob, diferencia: 0, contado: 100000 } } }],
   invalidos: [
     { nombre: 'diferencia inconsistente', datos: { ...valido, monedas: { BOB: { ...bob, diferencia: 5 } } } },
     { nombre: 'sin monedas', datos: { ...valido, monedas: {} } },
     { nombre: 'moneda inválida', datos: { ...valido, monedas: { bob } } },
-    { nombre: 'moneda fuera de BOB, USD y ARS', datos: { ...valido, monedas: { EUR: bob } } },
+    { nombre: 'moneda que no es un código de tres letras mayúsculas', datos: { ...valido, monedas: { EURO: bob } } },
     { nombre: 'monto decimal', datos: { ...valido, monedas: { BOB: { ...bob, esperado: 1.5 } } } },
     { nombre: 'falta contado', datos: { ...valido, monedas: { BOB: { ...bob, contado: undefined } } } },
     { nombre: 'falta apertura', datos: { ...valido, monedas: { BOB: { ...bob, apertura: undefined } } } },

@@ -14,11 +14,12 @@
  * - Una fecha futura (tabla del día siguiente del BCB) queda diferida salvo
  *   que `futuroVigente` sea true.
  */
+import type { ConfiguracionComercial } from '../tenant/mercados.js';
 import { diasEntre, hoyEn } from './fechas.js';
 import { esFechaIso } from './texto.js';
 import {
   CONFIG_POR_DEFECTO,
-  type Ancla, type ConfigCotizacion, type FuenteCotizacion, type Lectura, type Mercado, type OrigenCarga,
+  type Ancla, type ConfigCotizacion, type FuenteCotizacion, type IdMercado, type Lectura, type OrigenCarga,
 } from './tipos.js';
 
 export interface Aviso {
@@ -45,7 +46,9 @@ export type Decision =
   };
 
 export interface EntradaDecision {
-  readonly mercado: Mercado;
+  readonly mercado: IdMercado;
+  /** Declaración comercial del tenant (zona horaria del mercado); omitida = la del tenant de tres monedas (LEGADO). */
+  readonly comercial?: ConfiguracionComercial;
   /** Documento guardado hoy (cualquier cosa; se valida). */
   readonly actual: unknown;
   /** Fuente principal (BCB en BO, BNA en AR); null si falló. */
@@ -125,7 +128,7 @@ export function decidirCotizacion(e: EntradaDecision): Decision {
     }
   }
 
-  const hoy = hoyEn(e.mercado, e.ahoraMs);
+  const hoy = hoyEn(e.mercado, e.ahoraMs, e.comercial);
   const adelanto = diasEntre(hoy, elegida.fecha);
   if (adelanto > cfg.diasFuturoMax) return rechazo(`la fecha ${elegida.fecha} es posterior a lo admitido (hoy ${hoy})`);
   if (adelanto > 0 && !cfg.futuroVigente) {

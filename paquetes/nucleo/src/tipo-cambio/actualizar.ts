@@ -9,13 +9,14 @@ import { bajarTexto, type OpcionesDescarga } from './descargar.js';
 import { leerTablaBcb, URL_TABLA_BCB } from './parser-bcb.js';
 import { leerCotizacionesBcra, URL_COTIZACIONES_BCRA } from './parser-bcra.js';
 import { leerPaginaBna, URL_PAGINA_BNA } from './parser-bna.js';
-import { SinCotizacionUtilizable, type ConfigCotizacion, type Lectura, type Mercado } from './tipos.js';
+import { fuentesDe, type ConfiguracionComercial } from '../tenant/mercados.js';
+import { COMERCIAL_LEGADO_TRES_MONEDAS, SinCotizacionUtilizable, type ConfigCotizacion, type IdMercado, type Lectura } from './tipos.js';
 
 /** Lo que se avisa a quien opera. */
 export interface AvisoOperativo {
   /** 'fallas_fuente': alguna fuente no respondió o no se pudo leer; 'cotizacion_vieja': no hay cotización utilizable (falta o supera el límite). */
   readonly tipo: 'fallas_fuente' | 'cotizacion_vieja';
-  readonly mercado: Mercado;
+  readonly mercado: IdMercado;
   readonly detalle: string;
   /** Fallas de las fuentes de esta corrida (solo en 'fallas_fuente'). */
   readonly fallas?: readonly string[];
@@ -36,10 +37,12 @@ export interface ResultadoCorrida extends ResultadoEscritura {
 
 export async function actualizarMercado(
   almacen: AlmacenCotizaciones,
-  mercado: Mercado,
+  mercado: IdMercado,
   ahoraMs: number,
   o: OpcionesDescarga & {
     readonly tenantId: string;
+    /** Declaración comercial del tenant (fuentes, par y zona del mercado); omitida = la del tenant de tres monedas (LEGADO). */
+    readonly comercial?: ConfiguracionComercial;
     readonly config?: Partial<ConfigCotizacion>;
     readonly notificador?: Notificador;
     readonly esFeriado?: EsFeriado;
@@ -69,9 +72,16 @@ export async function actualizarMercado(
     return l.ok ? l.lectura : { error: l.motivo };
   });
 
-  const [principal, control] = mercado === 'BO' ? [await bcb(), null] : await Promise.all([bna(), bcra()]);
-  const r = await escribirCotizacion(almacen, { mercado, principal, control, ahoraMs, ...(o.config ? { config: o.config } : {}) },
-    { tenantId: o.tenantId });
+  const comercial = o.comercial ?? COMERCIAL_LEGADO_TRES_MONEDAS;
+  const lectores = { BCB: bcb, BNA: bna, BCRA: bcra } as const;
+  // Las fuentes del mercado, en orden: la primera es la principal y la segunda el control cruzado (y respaldo).
+  const fuentes = fuentesDe(comercial, mercado).filter((f): f is keyof typeof lectores => f in lectores);
+  const [uno, dos] = fuentes;
+  const [principal, control] = uno === undefined ? [null, null]
+    : dos === undefined ? [await lectores[uno](), null]
+      : await Promise.all([lectores[uno](), lectores[dos]()]);
+  const r = await escribirCotizacion(almacen, { mercado, principal, control, ahoraMs, comercial, ...(o.config ? { config: o.config } : {}) },
+    { tenantId: o.tenantId, comercial });
   await avisar(almacen, mercado, ahoraMs, fallas, o);
   return { ...r, fallas };
 }
@@ -79,10 +89,10 @@ export async function actualizarMercado(
 /** Avisa de fallas de fuente y de una cotización más vieja que el límite (o ausente). Nunca lanza. */
 async function avisar(
   almacen: AlmacenCotizaciones,
-  mercado: Mercado,
+  mercado: IdMercado,
   ahoraMs: number,
   fallas: readonly string[],
-  o: { readonly tenantId: string; readonly config?: Partial<ConfigCotizacion>; readonly notificador?: Notificador; readonly esFeriado?: EsFeriado },
+  o: { readonly tenantId: string; readonly comercial?: ConfiguracionComercial; readonly config?: Partial<ConfigCotizacion>; readonly notificador?: Notificador; readonly esFeriado?: EsFeriado },
 ): Promise<void> {
   if (!o.notificador) return;
   const enviar = async (aviso: AvisoOperativo): Promise<void> => {
@@ -91,7 +101,7 @@ async function avisar(
   if (fallas.length > 0) await enviar({ tipo: 'fallas_fuente', mercado, detalle: `${fallas.length} fuente(s) con falla`, fallas });
   try {
     await leerCotizacion(almacen, mercado, ahoraMs, {
-      tenantId: o.tenantId, ...(o.config ? { config: o.config } : {}), ...(o.esFeriado ? { esFeriado: o.esFeriado } : {}),
+      tenantId: o.tenantId, ...(o.comercial ? { comercial: o.comercial } : {}), ...(o.config ? { config: o.config } : {}), ...(o.esFeriado ? { esFeriado: o.esFeriado } : {}),
     });
   } catch (e) {
     if (!(e instanceof SinCotizacionUtilizable)) throw e;

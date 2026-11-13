@@ -6,14 +6,15 @@
  * (transacción de firebase-admin) lo cablea quien lo use. `crear` debe fallar
  * si el documento ya existe.
  */
+import { parDe, tieneTipoCambio, type ConfiguracionComercial } from '../tenant/mercados.js';
 import { esTenantIdValido } from '../tenant/tenant.js';
 import type { Rol } from '../registro/tipos.js';
 import { anclaParaEscribir, decidirCotizacion, type Decision, type EntradaDecision } from './decidir.js';
 import { diasEntre, diasHabilesEntre, hoyEn, type EsFeriado } from './fechas.js';
 import { esFechaIso } from './texto.js';
 import {
-  CONFIG_POR_DEFECTO, PAR_DE, SinCotizacionUtilizable,
-  type Ancla, type ConfigCotizacion, type CopiaCotizacion, type CotizacionGuardada, type FuenteCotizacion, type Mercado, type OrigenCarga,
+  COMERCIAL_LEGADO_TRES_MONEDAS, CONFIG_POR_DEFECTO, SinCotizacionUtilizable,
+  type Ancla, type ConfigCotizacion, type CopiaCotizacion, type CotizacionGuardada, type FuenteCotizacion, type IdMercado, type OrigenCarga,
 } from './tipos.js';
 
 export type Documento = Readonly<Record<string, unknown>>;
@@ -37,18 +38,29 @@ function tenantValido(tenantId: string): string {
 }
 
 /** `tenants/{t}/cotizaciones/{BO|AR}`. Lanza si el tenantId no es válido (no altera la ruta). */
-export const rutaCotizacion = (tenantId: string, mercado: Mercado): string => `tenants/${tenantValido(tenantId)}/cotizaciones/${mercado}`;
-export const rutaHistorial = (tenantId: string, mercado: Mercado, id: string): string => `${rutaCotizacion(tenantId, mercado)}/historial/${id}`;
+export const rutaCotizacion = (tenantId: string, mercado: IdMercado): string => `tenants/${tenantValido(tenantId)}/cotizaciones/${mercado}`;
+export const rutaHistorial = (tenantId: string, mercado: IdMercado, id: string): string => `${rutaCotizacion(tenantId, mercado)}/historial/${id}`;
 
 /** Id del historial: determinista según mercado, fecha e instante de escritura. */
-export const idCotizacion = (mercado: Mercado, fecha: string, ahoraMs: number): string => `${mercado}-${fecha}-${ahoraMs}`;
+export const idCotizacion = (mercado: IdMercado, fecha: string, ahoraMs: number): string => `${mercado}-${fecha}-${ahoraMs}`;
 
 export interface ResultadoEscritura {
   readonly decision: Decision;
   readonly escrita: CotizacionGuardada | null;
 }
 
-export interface OpcionesAlmacen { readonly tenantId: string }
+export interface OpcionesAlmacen {
+  readonly tenantId: string;
+  /** Declaración comercial del tenant (par y zona horaria de cada mercado); omitida = la del tenant de tres monedas (LEGADO). */
+  readonly comercial?: ConfiguracionComercial;
+}
+
+/** Par `VENTA/BASE` del mercado; lanza si no existe o no tiene tipo de cambio (no hay cotización que guardar). */
+function parDeMercado(c: ConfiguracionComercial, mercado: IdMercado): string {
+  const par = parDe(c, mercado);
+  if (par === null) throw new RangeError(`el mercado ${mercado} no está declarado o no tiene tipo de cambio`);
+  return par;
+}
 
 /** Una corrida automática: lee lo guardado, decide y, si corresponde, escribe documento e historial en una transacción. */
 export async function escribirCotizacion(
@@ -57,11 +69,12 @@ export async function escribirCotizacion(
   opciones: OpcionesAlmacen,
 ): Promise<ResultadoEscritura> {
   const ruta = rutaCotizacion(opciones.tenantId, entrada.mercado);
+  const comercial = opciones.comercial ?? entrada.comercial ?? COMERCIAL_LEGADO_TRES_MONEDAS;
   return almacen.transaccion(async (tx) => {
     const actual = await tx.leer(ruta);
-    const decision = decidirCotizacion({ ...entrada, actual });
+    const decision = decidirCotizacion({ ...entrada, comercial, actual });
     if (decision.accion !== 'escribir') return { decision, escrita: null };
-    const escrita = armar(entrada.mercado, decision.nuevo, entrada.ahoraMs);
+    const escrita = armar(entrada.mercado, decision.nuevo, entrada.ahoraMs, comercial);
     guardar(tx, opciones.tenantId, escrita, actual, 'automatico');
     return { decision, escrita };
   });
@@ -104,7 +117,7 @@ const esAutorizado = (a: ActorCarga): boolean =>
 export async function cargarManual(
   almacen: AlmacenCotizaciones,
   e: {
-    mercado: Mercado; valor: number; fecha: string; actor: ActorCarga; ahoraMs: number;
+    mercado: IdMercado; valor: number; fecha: string; actor: ActorCarga; ahoraMs: number;
     /** Confirmación explícita de un salto mayor al máximo. */
     confirmarSalto?: boolean; config?: Partial<ConfigCotizacion>;
   },
@@ -115,7 +128,9 @@ export async function cargarManual(
   if (!Number.isFinite(e.valor) || e.valor <= 0) throw new RangeError('el valor debe ser un número positivo');
   if (!esFechaIso(e.fecha)) throw new RangeError('la fecha debe ser aaaa-mm-dd');
   if (e.actor.uid.trim() === '') throw new RangeError('hay que indicar quién carga');
-  const adelanto = diasEntre(hoyEn(e.mercado, e.ahoraMs), e.fecha);
+  const comercial = opciones.comercial ?? COMERCIAL_LEGADO_TRES_MONEDAS;
+  if (!tieneTipoCambio(comercial, e.mercado)) throw new RangeError(`el mercado ${e.mercado} no está declarado o no tiene tipo de cambio`);
+  const adelanto = diasEntre(hoyEn(e.mercado, e.ahoraMs, comercial), e.fecha);
   if (adelanto > (cfg.futuroVigente ? cfg.diasFuturoMax : 0)) throw new RangeError('la fecha es futura');
   const ruta = rutaCotizacion(opciones.tenantId, e.mercado);
   return almacen.transaccion(async (tx) => {
@@ -124,7 +139,7 @@ export async function cargarManual(
     if (typeof previo === 'number' && previo > 0 && Math.abs(e.valor - previo) / previo > cfg.saltoMaximo && e.confirmarSalto !== true) {
       throw new SaltoSinConfirmar(previo, e.valor, cfg.saltoMaximo);
     }
-    const escrita = armar(e.mercado, { valor: e.valor, fecha: e.fecha, fuente: 'manual', origen: 'manual', ancla: anclaParaEscribir(leerPrevio(actual), e.fecha) }, e.ahoraMs);
+    const escrita = armar(e.mercado, { valor: e.valor, fecha: e.fecha, fuente: 'manual', origen: 'manual', ancla: anclaParaEscribir(leerPrevio(actual), e.fecha) }, e.ahoraMs, comercial);
     guardar(tx, opciones.tenantId, escrita, actual, e.actor.uid);
     return escrita;
   });
@@ -138,12 +153,13 @@ function leerPrevio(d: Documento | null): { valor: number; fecha: string; ancla?
 }
 
 function armar(
-  mercado: Mercado,
+  mercado: IdMercado,
   n: { valor: number; fecha: string; fuente: FuenteCotizacion; origen: OrigenCarga; ancla: Ancla | null },
   ahoraMs: number,
+  comercial: ConfiguracionComercial,
 ): CotizacionGuardada {
   return {
-    cotizacionId: idCotizacion(mercado, n.fecha, ahoraMs), mercado, par: PAR_DE[mercado],
+    cotizacionId: idCotizacion(mercado, n.fecha, ahoraMs), mercado, par: parDeMercado(comercial, mercado),
     valor: n.valor, fecha: n.fecha, fuente: n.fuente, origen: n.origen, actualizadoEn: new Date(ahoraMs).toISOString(), ancla: n.ancla,
   };
 }
@@ -161,15 +177,32 @@ function guardar(tx: TransaccionCotizaciones, tenantId: string, c: CotizacionGua
  * días HÁBILES (lunes a viernes sin los feriados de `esFeriado`, calendario
  * inyectable; sin él solo se descuentan fines de semana). Lanza
  * `SinCotizacionUtilizable` si falta, está mal formada, tiene una fecha futura
- * que `futuroVigente`/`diasFuturoMax` no admiten o supera `diasLimite` días hábiles.
+ * que `futuroVigente`/`diasFuturoMax` no admiten o supera `diasLimite` días hábiles, o si el mercado no tiene
+ * tipo de cambio. Sin `opciones.comercial` rige la declaración del tenant de tres monedas (LEGADO) y el par
+ * se tipa como `Par`; con ella, como `string`.
  */
-export async function leerCotizacion(
+export function leerCotizacion(
   almacen: AlmacenCotizaciones,
-  mercado: Mercado,
+  mercado: IdMercado,
+  ahoraMs: number,
+  opciones: { readonly tenantId: string; readonly config?: Partial<ConfigCotizacion>; readonly esFeriado?: EsFeriado },
+): Promise<CopiaCotizacion>;
+export function leerCotizacion(
+  almacen: AlmacenCotizaciones,
+  mercado: IdMercado,
   ahoraMs: number,
   opciones: OpcionesAlmacen & { readonly config?: Partial<ConfigCotizacion>; readonly esFeriado?: EsFeriado },
-): Promise<CopiaCotizacion> {
+): Promise<CopiaCotizacion<string>>;
+export async function leerCotizacion(
+  almacen: AlmacenCotizaciones,
+  mercado: IdMercado,
+  ahoraMs: number,
+  opciones: OpcionesAlmacen & { readonly config?: Partial<ConfigCotizacion>; readonly esFeriado?: EsFeriado },
+): Promise<CopiaCotizacion<string>> {
   const cfg = { ...CONFIG_POR_DEFECTO, ...opciones.config };
+  const comercial = opciones.comercial ?? COMERCIAL_LEGADO_TRES_MONEDAS;
+  const par = parDe(comercial, mercado);
+  if (par === null) throw new SinCotizacionUtilizable(mercado, 'el mercado no está declarado o no tiene tipo de cambio');
   const d = await almacen.leer(rutaCotizacion(opciones.tenantId, mercado));
   if (!d) throw new SinCotizacionUtilizable(mercado, 'no hay cotización cargada');
   const { valor, fecha, fuente, cotizacionId } = d;
@@ -177,13 +210,13 @@ export async function leerCotizacion(
   if (!esFechaIso(fecha)) throw new SinCotizacionUtilizable(mercado, 'fecha ausente o mal formada');
   if (typeof cotizacionId !== 'string' || cotizacionId === '') throw new SinCotizacionUtilizable(mercado, 'cotizacionId ausente');
   if (fuente !== 'BCB' && fuente !== 'BNA' && fuente !== 'BCRA' && fuente !== 'manual') throw new SinCotizacionUtilizable(mercado, 'fuente ausente o desconocida');
-  const hoy = hoyEn(mercado, ahoraMs);
+  const hoy = hoyEn(mercado, ahoraMs, comercial);
   const adelanto = diasEntre(hoy, fecha);
   if (adelanto > 0) {
     if (!cfg.futuroVigente || adelanto > cfg.diasFuturoMax) throw new SinCotizacionUtilizable(mercado, 'fecha futura');
-    return { cotizacionId, par: PAR_DE[mercado], valor, fecha, fuente, estado: 'vigente' };
+    return { cotizacionId, par, valor, fecha, fuente, estado: 'vigente' };
   }
   const edad = diasHabilesEntre(fecha, hoy, mercado, opciones.esFeriado);
   if (edad > cfg.diasLimite) throw new SinCotizacionUtilizable(mercado, `la cotización tiene más de ${cfg.diasLimite} días hábiles (${fecha})`);
-  return { cotizacionId, par: PAR_DE[mercado], valor, fecha, fuente, estado: edad <= cfg.diasVigente ? 'vigente' : 'ultimo_verificado' };
+  return { cotizacionId, par, valor, fecha, fuente, estado: edad <= cfg.diasVigente ? 'vigente' : 'ultimo_verificado' };
 }

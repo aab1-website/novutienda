@@ -1,6 +1,6 @@
 import type { Resultado } from '../contratos/claim.js';
 import { esFechaIso } from '../tipo-cambio/texto.js';
-import type { EstadoCotizacion, FuenteCotizacion, Par } from '../tipo-cambio/tipos.js';
+import type { EstadoCotizacion, FuenteCotizacion } from '../tipo-cambio/tipos.js';
 
 /** Validador de un campo: devuelve `null` si es válido o el motivo del rechazo. */
 export type Campo = (valor: unknown, ruta: string) => string | null;
@@ -82,19 +82,22 @@ export const uno =
 /** Fecha civil «aaaa-mm-dd» real de calendario. */
 export const fechaIso: Campo = (v, r) => (esFechaIso(v) ? null : `${r} debe ser una fecha aaaa-mm-dd`);
 
+/** Monedas del tenant de tres monedas (LEGADO). Un evento acepta cualquier moneda ISO 4217 de tres letras mayúsculas. */
 export const MONEDAS_EVENTO = ['BOB', 'USD', 'ARS'] as const;
-export const monedaOperativa: Campo = uno(MONEDAS_EVENTO);
+/** El evento no conoce la configuración del tenant: valida la forma de la moneda; el servidor la contrasta con las declaradas. */
+export const monedaOperativa: Campo = (v, r) => (typeof v === 'string' && /^[A-Z]{3}$/.test(v) ? null : `${r} debe ser un código de moneda de tres letras mayúsculas`);
+export const idMercadoEvento: Campo = (v, r) => (typeof v === 'string' && /^[A-Z]{2}$/.test(v) ? null : `${r} debe ser un mercado de dos letras mayúsculas`);
 export const MEDIOS_PAGO = ['efectivo', 'qr', 'transferencia', 'credito'] as const;
 export const medioPago: Campo = uno(MEDIOS_PAGO);
 
-const PARES: readonly Par[] = ['BOB/USD', 'ARS/USD'];
+const parEvento: Campo = (v, r) => (typeof v === 'string' && /^[A-Z]{3}\/[A-Z]{3}$/.test(v) ? null : `${r} debe ser un par VENTA/BASE (p. ej. BOB/USD)`);
 const FUENTES: readonly FuenteCotizacion[] = ['BCB', 'BNA', 'BCRA', 'manual'];
 const ESTADOS: readonly EstadoCotizacion[] = ['vigente', 'ultimo_verificado'];
 
 /** Copia de cotización del núcleo (`CopiaCotizacion`): la misma forma que guardan ventas y pedidos. */
 export const copiaCotizacion: Campo = objeto({
   cotizacionId: texto,
-  par: uno(PARES),
+  par: parEvento,
   valor: numeroPositivo,
   fecha: fechaIso,
   fuente: uno(FUENTES),
