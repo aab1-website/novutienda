@@ -132,12 +132,14 @@ export function proyectarMovimiento(rol: Rol | undefined, conteos: Conteos, m: R
 export type FaltantesVisibles = { readonly ocultos: false; readonly faltantes: readonly Faltante[] } | { readonly ocultos: true };
 
 /**
- * Faltantes de un `StockInsuficiente` para quien no es `adm`: si ALGUNO cae en una ubicación en conteo, no se entrega ninguno
- * (ni ids, ni cantidades, ni cuántos): solo `ocultos: true`. Si ninguno cae en el alcance, la lista completa como siempre.
- * Así la respuesta no distingue «stock ≥ N» de «stock < N» combinando líneas. El coordinador lo aplica al traducir el error.
+ * Faltantes de un `StockInsuficiente` para quien no es `adm`: con CUALQUIER conteo abierto en el tenant (el mismo criterio que
+ * oculta `stockTotal`, `hayOcultamiento`) no se entrega ninguno (ni ids, ni cantidades, ni cuántos): solo `ocultos: true`, sea
+ * cual sea el almacén de los faltantes. Una venta combina líneas de varios almacenes: si el recorte dependiera del almacén del
+ * faltante, una línea testigo sin stock en otro almacén permitiría distinguir «stock ≥ N» de «< N» en el almacén en conteo.
+ * Sin conteos abiertos, o para `adm`, la lista completa. Rol ausente o desconocido ⇒ oculto. El coordinador lo aplica al traducir el error.
  */
 export function recortarFaltantes(rol: Rol | undefined, conteos: Conteos, faltantes: readonly Faltante[]): FaltantesVisibles {
-  if (faltantes.some((f) => !puedeVerExistencias(rol, f.almacenId, conteos))) return { ocultos: true };
+  if (hayOcultamiento(rol, conteos)) return { ocultos: true };
   return { ocultos: false, faltantes: [...faltantes] };
 }
 

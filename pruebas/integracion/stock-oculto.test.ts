@@ -1,5 +1,5 @@
 // El coordinador (`recortarDetallesDeStock`) y el marco (`comoHttpsError`) con los conteos leídos de un Firestore simulado:
-// con faltantes en un almacén en conteo, caj y sup reciben solo `{ codigo, faltantesOcultos }`; adm y los demás casos, como hoy.
+// con cualquier conteo abierto, caj y sup reciben solo `{ codigo, faltantesOcultos }`; adm y los demás casos, como hoy.
 import { describe, expect, it } from 'vitest';
 import type { Firestore } from 'firebase-admin/firestore';
 import { bloqueoPorConteo, DETALLES_STOCK_OCULTO, recortarDetallesDeStock } from '../../plataforma/coordinador/index.js';
@@ -35,9 +35,22 @@ describe('recortarDetallesDeStock', () => {
     const dos = await recortarDetallesDeStock(db, T, 'caj', detalles([{ almacenId: 'tienda', productoId: 'objetivo' }, { almacenId: 'tienda', productoId: 'sin-stock' }]));
     expect(JSON.stringify(uno)).toBe(JSON.stringify(dos));
   });
-  it('conteo en otro almacén, adm y sin conteo: el detalle sigue como hoy', async () => {
+  it.each(['caj', 'sup'] as const)('%s: el ataque (objetivo en el almacén en conteo + testigo sin stock en otro) da la misma respuesta con P1 >= N y con P1 < N', async (rol) => {
+    const db = dbCon({ tienda: 'c1' });
+    // P1 >= N: el único faltante es el testigo (otro almacén, sin conteo). P1 < N: faltan los dos.
+    const soloTestigo = detalles([{ almacenId: 'deposito-2', productoId: 'p2' }]);
+    const ambos = detalles([{ almacenId: 'tienda', productoId: 'p1' }, { almacenId: 'deposito-2', productoId: 'p2' }]);
+    const a = await recortarDetallesDeStock(db, T, rol, soloTestigo);
+    const b = await recortarDetallesDeStock(db, T, rol, ambos);
+    expect(a).toEqual(DETALLES_STOCK_OCULTO);
+    expect(JSON.stringify(a)).toBe(JSON.stringify(b));
+    // Adm ve la lista completa en ambos casos.
+    expect(await recortarDetallesDeStock(db, T, 'adm', soloTestigo)).toEqual(soloTestigo);
+    expect(await recortarDetallesDeStock(db, T, 'adm', ambos)).toEqual(ambos);
+  });
+  it('conteo en otro almacén que el del faltante: también se oculta a sup; adm y sin conteo, el detalle sigue como hoy', async () => {
     const d = detalles([{ almacenId: 'tienda' }]);
-    expect(await recortarDetallesDeStock(dbCon({ 'deposito-1': 'c1' }), T, 'sup', d)).toEqual(d);
+    expect(await recortarDetallesDeStock(dbCon({ 'deposito-1': 'c1' }), T, 'sup', d)).toEqual(DETALLES_STOCK_OCULTO);
     expect(await recortarDetallesDeStock(dbCon({ tienda: 'c1' }), T, 'adm', d)).toEqual(d);
     expect(await recortarDetallesDeStock(dbCon({}), T, 'caj', d)).toEqual(d);
   });

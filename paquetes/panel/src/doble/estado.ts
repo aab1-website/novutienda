@@ -189,11 +189,11 @@ export function proyectarProductoDoble(c: Contexto, v: ProductoPanel): ProductoP
 }
 
 /**
- * Detalle de un stock insuficiente para el rol (lo que hace el coordinador): si algún faltante cae en un almacén en conteo y
+ * Detalle de un stock insuficiente para el rol (lo que hace el coordinador): con cualquier conteo abierto en el tenant y
  * no es `adm`, solo `faltantesOcultos: true` (sin lista, ids ni cantidades); si no, la lista completa.
  */
 export function detalleDeFaltantes<F extends { readonly almacenId: string }>(c: Contexto, faltantes: readonly F[]): { faltantes: readonly F[] } | { faltantesOcultos: true } {
-  return faltantes.some((f) => !puedeVerExistencias(c, f.almacenId)) ? { faltantesOcultos: true } : { faltantes };
+  return marcaDoble(c) !== undefined ? { faltantesOcultos: true } : { faltantes };
 }
 
 export function recalcular(p: ProductoInterno): void {

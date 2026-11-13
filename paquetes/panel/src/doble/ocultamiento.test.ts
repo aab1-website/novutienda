@@ -122,18 +122,19 @@ describe('doble: existencias ocultas durante un conteo abierto', () => {
       expect(b.message).toBe(a.message);
       expect(mensajeDeError(a)).toBe('No se puede traspasar desde ni hacia Depósito 1 mientras tiene un conteo abierto. Puede hacerlo un administrador o esperar al cierre.');
     }
-    // Otro almacén: sigue el curso normal (aquí, stock insuficiente sin lista porque el origen es la tienda, que no está en conteo).
+    // Otro almacén: sigue el curso normal, pero el rechazo por stock es genérico porque hay un conteo abierto en el tenant.
     const normal = await falla(pide('deposito-2', 'tienda', 999));
-    expect(normal.detalle.codigo).toBe('stock-insuficiente');
-    expect(normal.detalle.faltantes?.[0]?.disponible).toBe(0);
+    expect(normal.detalle).toEqual({ codigo: 'stock-insuficiente', faltantesOcultos: true });
     e.como('adm');
     await expect(pide('deposito-1', 'tienda', 1)).resolves.toBeTruthy();
   });
 
-  it('stock insuficiente al traspasar (conteo en otro almacén del origen): como hoy, con «hay Y»; adm también', async () => {
+  it('stock insuficiente al traspasar (conteo en otro almacén del origen): también genérico para sup; adm ve «hay Y»', async () => {
     const e = await conConteo('sup', ['deposito-1']);
     const pide = (origenId: UbicacionId) => e.api.llamar('traspasar', { operacionId: uuid(), origenId, destinoId: 'deposito-2', lineas: [{ productoId: 'cable-hdmi', cantidad: 999 }] });
-    expect(mensajeDeError(await falla(pide('tienda')))).toContain('pidió 999, hay ');
+    const sup = await falla(pide('tienda'));
+    expect(sup.detalle).toEqual({ codigo: 'stock-insuficiente', faltantesOcultos: true });
+    expect(mensajeDeError(sup)).not.toContain('pidió 999');
     e.como('adm');
     expect(mensajeDeError(await falla(pide('deposito-1')))).toContain('pidió 999, hay 10');
   });
@@ -146,5 +147,21 @@ describe('doble: existencias ocultas durante un conteo abierto', () => {
     }));
     expect(err.detalle).toEqual({ codigo: 'stock-insuficiente', faltantesOcultos: true });
     expect(mensajeDeError(err)).toBe('No alcanza el stock de uno o más productos de esta operación. Durante un conteo abierto no se indica cuál.');
+  });
+
+  it('el ataque (objetivo en el almacén en conteo + testigo sin stock en otro): misma respuesta con P1 >= N y P1 < N; adm ve la lista', async () => {
+    const e = await conConteo('caj');
+    await e.api.llamar('abrirTurno', { turnoId: uuid(), apertura: { BOB: 10000 } });
+    const intento = (cantidad: number) => e.api.llamar('confirmarVenta', {
+      requestId: uuid(),
+      carrito: { mercado: 'BO', moneda: 'BOB', lineas: [{ productoId: 'parlante', cantidad }, { productoId: 'cable-hdmi', cantidad: 1, almacenId: 'deposito-2' }] },
+      pagos: [{ medio: 'efectivo', moneda: 'BOB', monto: cantidad * 17400 + 5568 }],
+    });
+    const a = await falla(intento(1));
+    const b = await falla(intento(999));
+    expect(a.detalle).toEqual({ codigo: 'stock-insuficiente', faltantesOcultos: true });
+    expect(b.detalle).toEqual(a.detalle);
+    expect(b.message).toBe(a.message);
+    expect(mensajeDeError(b)).toBe(mensajeDeError(a));
   });
 });

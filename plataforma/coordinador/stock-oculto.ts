@@ -1,5 +1,5 @@
 // Compositor: aplica la regla de visibilidad de Inventarios (`recortarFaltantes`) al error de stock insuficiente que sale
-// por los callables (venta del POS, merma, traspaso). Mientras un almacén tiene un conteo abierto, `caj` y `sup` no reciben
+// por los callables (venta del POS, merma, traspaso). Mientras haya un conteo abierto en el tenant, `caj` y `sup` no reciben
 // la lista de faltantes (sería el stock); `adm` sí. La lectura de conteos solo ocurre cuando el error es de stock insuficiente.
 import type { Firestore } from 'firebase-admin/firestore';
 import { conteosAbiertosDe, MENSAJE_STOCK_OCULTO, recortarFaltantes, TraspasoBloqueadoPorConteo, type Conteos, type Faltante, type FaltantesVisibles } from '@novutienda/inventarios';
@@ -19,7 +19,7 @@ export async function leerConteosAbiertos(
 }
 
 /**
- * Faltantes para `rol`: la lista, o `{ ocultos: true }` si alguno cae en un almacén en conteo y no es `adm`. Si no se pueden
+ * Faltantes para `rol`: la lista, o `{ ocultos: true }` si hay cualquier conteo abierto en el tenant y no es `adm`. Si no se pueden
  * leer los conteos, falla cerrado: nadie salvo `adm` recibe la lista.
  */
 export async function faltantesVisibles(db: Firestore, tenantId: string, rol: Rol | undefined, faltantes: readonly Faltante[]): Promise<FaltantesVisibles> {

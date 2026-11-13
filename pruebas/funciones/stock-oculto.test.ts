@@ -1,4 +1,4 @@
-// Durante un conteo abierto que alcanza al almacén del faltante, el rechazo por stock insuficiente no entrega a `caj` ni `sup`
+// Durante CUALQUIER conteo abierto en el tenant, el rechazo por stock insuficiente no entrega a `caj` ni `sup`
 // la lista de faltantes (solo `{ codigo, faltantesOcultos }` y un mensaje sin productos) y un traspaso desde o hacia ese almacén
 // se rechaza con `conteo-abierto` (venta del POS, merma y traspaso), por los callables reales (emulador). `adm` recibe siempre
 // la lista y puede traspasar.
@@ -43,11 +43,11 @@ describe.skipIf(!hayEmulador)('stock insuficiente: la cantidad se oculta durante
   ];
   const quien = (r: string): Usuario => (r === 'caj' ? caj : r === 'sup' ? sup : adm);
 
-  async function verifica(visibleParaNoAdm: boolean): Promise<void> {
+  async function verifica(visibleParaNoAdm: boolean, traspasoBloqueado = !visibleParaNoAdm): Promise<void> {
     for (const [nombre, llamar, roles] of origenes) {
       for (const rol of roles) {
         // Con conteo en la tienda, el traspaso de `sup` ya no llega a la validación de stock: lo cubre la prueba de `conteo-abierto`.
-        if (nombre === 'traspaso' && !visibleParaNoAdm && rol !== 'adm') continue;
+        if (nombre === 'traspaso' && traspasoBloqueado && rol !== 'adm') continue;
         const r = await llamar(quien(rol));
         const etiqueta = `${nombre}/${rol}: ${JSON.stringify(r.error)}`;
         expect(r.status, etiqueta).toBe(400);
@@ -79,10 +79,10 @@ describe.skipIf(!hayEmulador)('stock insuficiente: la cantidad se oculta durante
     await verifica(true);
   });
 
-  it('un conteo abierto en OTRO almacén no recorta el faltante de la tienda ni bloquea el traspaso a un tercero', async () => {
+  it('un conteo abierto en OTRO almacén también recorta el faltante de la tienda a caj y sup, pero no bloquea el traspaso a un tercero', async () => {
     const abrir = await inv(sup, 'abrirConteo', { operacionId: unico('op'), conteoId: unico('ct').slice(0, 30), ubicacionId: 'deposito-1' });
     expect(abrir.status, JSON.stringify(abrir.error)).toBe(200);
-    await verifica(true);
+    await verifica(false, false);
   });
 
   it('con un conteo en un almacén, sup no traspasa desde ni hacia él (conteo-abierto, sin cantidades); adm sí', async () => {
@@ -117,12 +117,37 @@ describe.skipIf(!hayEmulador)('stock insuficiente: la cantidad se oculta durante
       const r = await accion('pos', 'confirmarVenta', {
         requestId: uuid(),
         carrito: { mercado: 'BO', moneda: 'BOB', lineas: [{ productoId: 'lapiz', cantidad }, { productoId: 'goma', cantidad: 5 }] },
-        pagos: [{ medio: 'efectivo', moneda: 'BOB', monto: 99_000 }],
+        pagos: [{ medio: 'efectivo', moneda: 'BOB', monto: (cantidad + 5) * 7_000 }],
       }, caj.token, A);
       await accion('pos', 'cerrarTurno', { turnoId, contado: { BOB: 1000 } }, caj.token, A);
       expect(r.status, JSON.stringify(r.error)).toBe(400);
       return JSON.stringify(r.error);
     };
     expect(await venta2(1)).toBe(await venta2(3));
+  });
+
+  it('el ataque (objetivo en el almacén en conteo + testigo sin stock en otro almacén) da la misma respuesta con P1 >= N y P1 < N para caj y sup; adm ve la lista', async () => {
+    const intento = async (u: Usuario, cantidadObjetivo: number): Promise<RespuestaLlamada> => {
+      const turnoId = uuid();
+      await accion('pos', 'abrirTurno', { turnoId, apertura: { BOB: 1000 } }, u.token, A);
+      const r = await accion('pos', 'confirmarVenta', {
+        requestId: uuid(),
+        carrito: { mercado: 'BO', moneda: 'BOB', lineas: [{ productoId: 'lapiz', cantidad: cantidadObjetivo }, { productoId: 'goma', cantidad: 1, almacenId: 'deposito-2' }] },
+        pagos: [{ medio: 'efectivo', moneda: 'BOB', monto: (cantidadObjetivo + 1) * 7_000 }],
+      }, u.token, A);
+      await accion('pos', 'cerrarTurno', { turnoId, contado: { BOB: 1000 } }, u.token, A);
+      return r;
+    };
+    for (const u of [caj, sup]) {
+      const alcanza = await intento(u, 1); // P1 (2 en tienda) >= N: el único faltante es el testigo
+      const noAlcanza = await intento(u, 3); // P1 < N: faltan los dos
+      expect(alcanza.status, JSON.stringify(alcanza.error)).toBe(400);
+      expect(noAlcanza.status, JSON.stringify(noAlcanza.error)).toBe(400);
+      expect(JSON.stringify(alcanza.error)).toBe(JSON.stringify(noAlcanza.error));
+      expect((alcanza.error as { details?: Obj }).details).toEqual({ codigo: 'stock-insuficiente', faltantesOcultos: true });
+      expect((alcanza.error as { message?: string }).message ?? '').not.toMatch(/goma|lapiz/);
+    }
+    expect(faltantes(await intento(adm, 1)).map((f) => f['productoId'])).toEqual(['goma']);
+    expect(faltantes(await intento(adm, 3)).map((f) => f['productoId']).sort()).toEqual(['goma', 'lapiz']);
   });
 });

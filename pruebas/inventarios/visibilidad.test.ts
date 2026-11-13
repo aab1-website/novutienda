@@ -83,7 +83,7 @@ describe('series, movimientos y faltantes', () => {
     expect(proyectarMovimiento('adm', [c('tienda')], mov)).toEqual(mov);
     expect(proyectarMovimiento('sup', SIN, mov)).toEqual(mov);
   });
-  it('recortarFaltantes: si algún faltante cae en un almacén en conteo y no es adm, no entrega ninguno', () => {
+  it('recortarFaltantes: con cualquier conteo abierto y sin ser adm, no entrega ninguno (sea cual sea el almacén del faltante)', () => {
     const f: Faltante[] = [
       { productoId: 'p', almacenId: 'tienda', pedido: 3, disponible: 1 },
       { productoId: 'q', almacenId: 'deposito-1', pedido: 2, disponible: 0 },
@@ -91,8 +91,10 @@ describe('series, movimientos y faltantes', () => {
     expect(recortarFaltantes('caj', [c('tienda')], f)).toEqual({ ocultos: true });
     expect(recortarFaltantes('sup', [c('deposito-1')], f)).toEqual({ ocultos: true });
     expect(recortarFaltantes(undefined, [c('tienda')], f)).toEqual({ ocultos: true });
-    // Ninguno en el alcance, adm o sin conteo: la lista completa, como siempre.
-    expect(recortarFaltantes('caj', [c('deposito-2')], f)).toEqual({ ocultos: false, faltantes: f });
+    // Conteo en un almacén distinto del de los faltantes: también se oculta (el POS combina líneas de varios almacenes).
+    expect(recortarFaltantes('caj', [c('deposito-2')], f)).toEqual({ ocultos: true });
+    expect(recortarFaltantes('caj', [c('deposito-2')], [f[0]!])).toEqual({ ocultos: true });
+    // Adm o sin conteo: la lista completa, como siempre.
     expect(recortarFaltantes('adm', [c('tienda')], f)).toEqual({ ocultos: false, faltantes: f });
     expect(recortarFaltantes('sup', SIN, f)).toEqual({ ocultos: false, faltantes: f });
   });
