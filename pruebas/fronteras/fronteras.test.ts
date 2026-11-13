@@ -66,7 +66,6 @@ describe('fronteras del repositorio real', () => {
       'pruebas/integracion/ejecutor-recibos.test.ts': 'id de tenant real usado como dato',
       'pruebas/tenant/alta.test.ts': 'ruta tenants/<id>/config.json leída como dato',
       'pruebas/tenant/tenant.test.ts': 'id de tenant real usado como dato',
-      'pruebas/tipo-cambio/almacen.test.ts': 'id de tenant de fixture usado como dato',
       'pruebas/funciones/guardia-operador.test.ts': 'ruta local de la guardia del operador usada como dato',
     };
     const archivos = execFileSync('git', ['ls-files', '-z'], { cwd: RAIZ, encoding: 'utf8' }).split('\0')
