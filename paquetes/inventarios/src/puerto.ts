@@ -126,32 +126,46 @@ export async function prepararSalida(
   const t = new Trabajo(new Lector(tx, tenantId));
   await Promise.all(norm.map((l) => t.cargar(l.productoId, l.almacenId)));
 
-  const faltantes: Faltante[] = [];
-  const resueltas: LineaResuelta[] = [];
+  // Fase 1: TODO lo que no depende de la cantidad en stock (producto activo, formato y pertenencia de cada serie al
+  // producto y a la ubicación, coherencia entre series y cantidad). Así una entrada inválida falla siempre igual,
+  // haya o no stock: el error nunca distingue «stock >= N» de «stock < N».
+  const pendientes: { l: LineaNormalizada; series: string[] | undefined }[] = [];
   for (const l of norm) {
     const prod = t.producto(l.productoId);
     if (prod['activo'] !== true) throw new ProductoInactivo(l.productoId, 'inactivo');
     if (typeof prod['stockTotal'] !== 'number') continue;
     const ex = t.existencia(l.productoId, l.almacenId);
-    if (ex.cantidad < l.cantidad) {
-      faltantes.push({ productoId: l.productoId, almacenId: l.almacenId, pedido: l.cantidad, disponible: ex.cantidad });
-      continue;
-    }
-    let series: string[] = [];
+    let series: string[] | undefined;
     if (prod['conSerie'] === true) {
-      if (l.series === undefined) series = ex.series.slice(0, l.cantidad);
+      if (l.series === undefined) series = undefined;
       else if (l.series.length !== l.cantidad) throw new EntradaInvalida(`${l.productoId}: las series deben ser tantas como la cantidad`);
-      else series = l.series;
-      await Promise.all(series.map((s) => t.unidad(l.productoId, s)));
-      for (const s of series) {
-        const u = t.unidadLeida(l.productoId, s);
-        if (u === undefined || u['estado'] !== 'disponible' || u['ubicacionId'] !== l.almacenId || !ex.series.includes(s)) {
-          throw new SerieNoDisponible(l.productoId, s);
+      else {
+        series = l.series;
+        await Promise.all(series.map((s) => t.unidad(l.productoId, s)));
+        for (const s of series) {
+          const u = t.unidadLeida(l.productoId, s);
+          if (u === undefined || u['estado'] !== 'disponible' || u['ubicacionId'] !== l.almacenId || !ex.series.includes(s)) {
+            throw new SerieNoDisponible(l.productoId, s);
+          }
         }
       }
     } else if (l.series !== undefined && l.series.length > 0) {
       throw new EntradaInvalida(`${l.productoId} no lleva serie`);
     }
+    pendientes.push({ l, series });
+  }
+
+  // Fase 2: la cantidad. Con series explícitas ya validadas, hay al menos tantas disponibles como se piden.
+  const faltantes: Faltante[] = [];
+  const resueltas: LineaResuelta[] = [];
+  for (const { l, series: explicitas } of pendientes) {
+    const ex = t.existencia(l.productoId, l.almacenId);
+    if (ex.cantidad < l.cantidad) {
+      faltantes.push({ productoId: l.productoId, almacenId: l.almacenId, pedido: l.cantidad, disponible: ex.cantidad });
+      continue;
+    }
+    const conSerie = t.producto(l.productoId)['conSerie'] === true;
+    const series = conSerie ? (explicitas ?? ex.series.slice(0, l.cantidad)) : [];
     resueltas.push({ productoId: l.productoId, almacenId: l.almacenId, cantidad: l.cantidad, series });
   }
   if (faltantes.length > 0) throw new StockInsuficiente(faltantes);

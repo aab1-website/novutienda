@@ -482,17 +482,20 @@ describe('doble: inventarios', () => {
     expect(completo).toMatchObject({ completa: true, creados: 3, lotes: { total: 3, aplicados: 3 } });
     expect((await e.api.llamar('listarProductos', {})).filter((p) => p.id.startsWith('lote-'))).toHaveLength(3);
   });
-  it('conteo: «faltan» cuenta los productos con existencia sin contar, solo para sup/adm y con el conteo abierto', async () => {
+  it('conteo ciego: con el conteo abierto todo rol recibe la lista a contar sin existencias y ya no llega «faltan»', async () => {
     const e = crearEntorno('sup');
     await e.api.llamar('abrirConteo', { operacionId: uuid(), conteoId: 'conteo-f', ubicacionId: 'tienda' });
-    expect((await e.api.llamar('listarConteos', {}))[0]?.faltan).toBe(4);
-    await e.api.llamar('registrarLineaConteo', { operacionId: uuid(), conteoId: 'conteo-f', productoId: 'cable-hdmi', contado: 25 });
-    expect((await e.api.llamar('listarConteos', {}))[0]?.faltan).toBe(3);
-    e.como('caj');
-    expect((await e.api.llamar('listarConteos', {}))[0]?.faltan).toBeUndefined();
+    for (const rol of ['sup', 'caj'] as const) {
+      e.como(rol);
+      const k = (await e.api.llamar('listarConteos', {}))[0];
+      expect(k?.productos?.map((p) => p.productoId)).toEqual(expect.arrayContaining(['cable-hdmi', 'tv-55']));
+      expect(Object.keys(k?.productos?.[0] ?? {}).sort()).toEqual(expect.arrayContaining(['conSerie', 'nombre', 'productoId', 'sku']));
+      expect(JSON.stringify(k)).not.toMatch(/existencias|stockTotal|bajoMinimo|faltan|teorico/);
+      expect(k).not.toHaveProperty('faltan');
+    }
     e.como('sup');
     await e.api.llamar('cerrarConteo', { operacionId: uuid(), conteoId: 'conteo-f' });
-    expect((await e.api.llamar('listarConteos', {}))[0]?.faltan).toBeUndefined();
+    expect((await e.api.llamar('listarConteos', {}))[0]?.productos).toBeUndefined();
   });
   it('movimientos y mermas avisan cuando la lista viene cortada', async () => {
     const e = crearEntorno('sup');

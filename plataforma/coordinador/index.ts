@@ -8,3 +8,4 @@ export { ejecutorRecibosDesde } from './ejecutor-recibos.js';
 export { catalogoParaPos, inventariosParaPos } from './inventarios-pos.js';
 export { centavosADolares, dolaresACentavos } from './producto-inventarios.js';
 export { crearLectorHojas, leerPrimeraHojaXlsx, XlsxInvalido } from './lector-hojas.js';
+export { bloqueoPorConteo, DETALLES_STOCK_OCULTO, faltantesVisibles, MENSAJE_STOCK_OCULTO, recortarDetallesDeStock } from './stock-oculto.js';

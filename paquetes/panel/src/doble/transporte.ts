@@ -2,7 +2,7 @@ import { ErrorApi } from '../api/errores.js';
 import { rolesDeAccion, type Modulo } from '../api/real.js';
 import type { Sobre, Transporte } from '../api/transporte.js';
 import type { ProductoPanel, Rol } from '../api/tipos.js';
-import { fechaLaPaz, fallo, type Contexto } from './estado.js';
+import { fechaLaPaz, fallo, marcaDoble, type Contexto } from './estado.js';
 import { handlersInventario } from './inventario/inventario.js';
 import { handlersOtros } from './otros.js';
 import { handlersPos } from './pos/pos.js';
@@ -79,14 +79,18 @@ const ACCIONES: Readonly<Record<string, WireHandler>> = {
   'inventarios.editarProducto': igual('actualizarProducto'),
   'inventarios.cambiarPrecioUSD': (c, d) => legado(c, 'actualizarProducto', { operacionId: d['operacionId'], productoId: d['productoId'], cambios: { precioUSD: d['precioUSD'] } }),
   'inventarios.listarProductos': async (c, d) => {
-    const ps = (await legado({ ...c, rol: 'sup' }, 'listarProductos', {})) as ProductoPanel[];
-    return { productos: ps.filter((p) => d['soloBajoMinimo'] !== true || p.bajoMinimo).map(productoReal) };
+    const marca = marcaDoble(c);
+    // Como el servidor: con existencias ocultas, filtrar por «bajo el mínimo» revelaría qué productos lo están.
+    if (marca !== undefined && d['soloBajoMinimo'] === true) throw fallo('existencias-ocultas', 'El filtro «bajo el mínimo» no está disponible mientras hay un conteo abierto.', { ...marca });
+    // `listarProductos` del doble ya aplica el rol (y quita costos `productoReal`).
+    const ps = (await legado(c, 'listarProductos', {})) as ProductoPanel[];
+    return { productos: ps.filter((p) => d['soloBajoMinimo'] !== true || p.bajoMinimo).map(productoReal), ...marca };
   },
   'inventarios.costos': async (c) => ({
     costos: ((await legado({ ...c, rol: 'adm' }, 'listarProductos', {})) as ProductoPanel[]).map((p) => ({ productoId: p.id, costoUSD: p.costoUSD })),
   }),
   'inventarios.buscarSerie': async (c, d) => ({ unidades: await legado(c, 'buscarSerie', { serie: d['serie'] }) }),
-  'inventarios.series': async (c, d) => ({ unidades: await legado(c, 'listarSeries', d) }),
+  'inventarios.series': async (c, d) => ({ unidades: [...((await legado(c, 'listarSeries', d)) as unknown[])], ...marcaDoble(c) }),
   'inventarios.movimientos': async (c, d) => {
     const lista = (await legado(c, 'listarMovimientos', {
       ...(d['productoId'] !== undefined ? { productoId: d['productoId'] } : {}),
@@ -95,9 +99,9 @@ const ACCIONES: Readonly<Record<string, WireHandler>> = {
       ...(d['tipo'] !== undefined ? { tipo: d['tipo'] } : {}),
       ...(d['uid'] !== undefined ? { usuario: d['uid'] } : {}),
       limite: d['limite'] ?? 100,
-    })) as { movimientos: Obj[]; cortada: boolean };
+    })) as { movimientos: Obj[]; cortada: boolean; existenciasOcultas?: true; conteosAbiertos?: unknown };
     // Forma del documento real: sin `id`, con `referencia` como objeto.
-    return { cortada: lista.cortada, movimientos: lista.movimientos.map((x) => ({ ...sin(x, 'id', 'referencia'), ...(typeof x['referencia'] === 'string' ? { referencia: { tipo: x['referencia'].split(':')[0], id: x['referencia'].split(':')[1] } } : {}) })) };
+    return { cortada: lista.cortada, ...marcaDoble(c), movimientos: lista.movimientos.map((x) => ({ ...sin(x, 'id', 'referencia'), ...(typeof x['referencia'] === 'string' ? { referencia: { tipo: x['referencia'].split(':')[0], id: x['referencia'].split(':')[1] } } : {}) })) };
   },
   'inventarios.mermas': async (c, d) => {
     const lista = (await legado(c, 'listarMermas', d['estado'] === undefined ? {} : { estado: d['estado'] })) as { mermas: Obj[]; cortada: boolean };
@@ -109,14 +113,14 @@ const ACCIONES: Readonly<Record<string, WireHandler>> = {
     };
   },
   'inventarios.conteos': async (c, d) => ({
-    conteos: lim((await legado(c, 'listarConteos', {})) as Obj[], d).map((k) => ({ id: k['conteoId'], ...sin(k, 'conteoId', 'lineas', 'resultado', 'fecha', 'faltan'), abiertoEn: k['fecha'] })),
+    conteos: lim((await legado(c, 'listarConteos', {})) as Obj[], d).map((k) => ({ id: k['conteoId'], ...sin(k, 'conteoId', 'lineas', 'resultado', 'fecha', 'productos'), abiertoEn: k['fecha'] })),
   }),
   'inventarios.conteo': async (c, d) => {
     const k = ((await legado(c, 'listarConteos', {})) as Obj[]).find((x) => x['conteoId'] === d['conteoId']);
     if (k === undefined) throw fallo('no-encontrado', 'El conteo no existe');
-    const { lineas, conteoId, resultado, faltan, ...r } = k;
+    const { lineas, conteoId, resultado, productos, ...r } = k;
     // `resultado` (teórico, contado, diferencia) solo llega a sup/adm y con el conteo cerrado (el doble ya lo filtra).
-    return { conteo: { id: conteoId, ...r }, lineas, ...(resultado !== undefined ? { resultado } : {}), ...(faltan !== undefined ? { faltan } : {}) };
+    return { conteo: { id: conteoId, ...r }, lineas, ...(resultado !== undefined ? { resultado } : {}), ...(productos !== undefined ? { productos } : {}) };
   },
   'inventarios.exportarCsv': (c, d) => legado({ ...c, rol: d['conCostos'] === true ? 'adm' : 'sup' }, 'exportarProductosCsv', {}),
   // recibos

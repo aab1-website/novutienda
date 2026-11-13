@@ -1,7 +1,7 @@
-import type { Actor, TransaccionIdentidad } from '@novutienda/nucleo';
+import type { Actor, Rol, TransaccionIdentidad } from '@novutienda/nucleo';
 import type {
-  AlmacenMedios, CatalogoPuerto, ConsultaSubidas, DisparadorSitio, Existencia, InfoMedio,
-  ProcesadorMedios, ProductoCatalogo, ProductoEnTransaccion, Reloj, SolicitudProcesado, VersionProcesada,
+  AlmacenMedios, CatalogoPuerto, ConsultaSubidas, ConteoAbiertoCatalogo, DisparadorSitio, Existencia, InfoMedio,
+  ListadoCatalogoVisible, ProcesadorMedios, ProductoCatalogo, ProductoEnTransaccion, Reloj, SolicitudProcesado, VersionProcesada,
 } from '@novutienda/consola';
 import { ArchivoNoAdmitido, ProcesamientoNoDisponible } from '@novutienda/consola';
 import { DobleDb } from './doble-db.js';
@@ -40,6 +40,14 @@ export class CatalogoDoble implements CatalogoPuerto {
   }
   listarProductos(): Promise<readonly ProductoCatalogo[]> {
     return Promise.resolve([...this.productos.values()]);
+  }
+  /** Conteos abiertos simulados: con alguno y rol distinto de adm, oculta `stockTotal` y `disponible`, como el coordinador. */
+  conteosAbiertos: ConteoAbiertoCatalogo[] = [];
+  listarProductosParaRol(_t: string, rol: Rol | undefined): Promise<ListadoCatalogoVisible> {
+    const oculta = rol !== 'adm' && this.conteosAbiertos.length > 0;
+    const productos = [...this.productos.values()].map((p) =>
+      oculta ? { ...p, ...(p.stockTotal !== undefined ? { stockTotal: null } : {}), disponible: null } : p);
+    return Promise.resolve(oculta ? { productos, existenciasOcultas: true, conteosAbiertos: this.conteosAbiertos } : { productos });
   }
   leerProducto(_t: string, id: string): Promise<ProductoCatalogo | undefined> {
     return Promise.resolve(this.productos.get(id));

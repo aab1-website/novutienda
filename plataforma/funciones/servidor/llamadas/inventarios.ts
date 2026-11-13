@@ -5,9 +5,9 @@
 import { HttpsError } from 'firebase-functions/v2/https';
 import { z } from 'zod';
 import {
-  abrirConteo, actualizarProducto, ajustar, cerrarConteo, crearProducto, crearUbicacion, esDisponible, exportarProductosCsv, importarCsvPorLotes, leerArchivoImportacion, MAX_BYTES_ARCHIVO, type FuenteTabla, type LectorHojas, type LecturaSinBloqueo,
-  ingresar, leerDocumentoProducto, registrarLineaConteo, resolverMerma, simularImportacionCsv, solicitarMerma, traspasar, UBICACION_DISPONIBILIDAD,
-  type Autor, type CambiosProducto, type EntradaProducto, type LineaAjuste, type PrecioUSD, type LineaIngreso, type LineaTraspaso, type ProductoExportable,
+  abrirConteo, actualizarProducto, ajustar, cerrarConteo, conteosAbiertosDe, crearProducto, crearUbicacion, esDisponible, exportarProductosCsv, importarCsvPorLotes, leerArchivoImportacion, MAX_BYTES_ARCHIVO, type FuenteTabla, type LectorHojas, type LecturaSinBloqueo,
+  filtrarUnidadesLista, ingresar, leerDocumentoProducto, marcaOcultamiento, proyectarMovimiento, proyectarProducto, registrarLineaConteo, resolverMerma, simularImportacionCsv, solicitarMerma, traspasar, UBICACION_DISPONIBILIDAD,
+  type Autor, type CambiosProducto, type Conteos, type EntradaProducto, type LineaAjuste, type PrecioUSD, type LineaIngreso, type LineaTraspaso, type ProductoExportable,
 } from '@novutienda/inventarios';
 import { MERCADOS } from '@novutienda/nucleo';
 import { accion, actorPos, type Contexto, type TablaImplementaciones } from './marco.js';
@@ -24,6 +24,8 @@ const datosDe = (d: { data(): unknown }): Record<string, unknown> => d.data() as
  * 55 s no se inicia otra tanda pasado ese punto, y la que esté en curso termina antes del corte del cliente.
  */
 const PRESUPUESTO_IMPORTACION_MS = 55_000;
+/** Tope de unidades leídas por consulta cuando hay ocultamiento (ver `series`). */
+const TOPE_SERIES_CON_OCULTAMIENTO = 5_000;
 
 /** Lecturas de documentos sin transacción (sin bloqueos): la simulación no retiene nada contra la caja. */
 const lecturaSinBloqueo = (c: Contexto): LecturaSinBloqueo => ({
@@ -64,6 +66,19 @@ async function productosConExistenciaEn(c: Contexto, conteo: Record<string, unkn
   if (typeof conteo['ubicacionId'] !== 'string') return [];
   const ex = await c.e.firestore.collection(ruta(c.tenantId, 'existencias')).where('ubicacionId', '==', conteo['ubicacionId']).limit(1000).get();
   return ex.docs.map(datosDe).filter((x) => Number(x['cantidad']) > 0 && typeof x['productoId'] === 'string').map((x) => String(x['productoId']));
+}
+
+/**
+ * Conteos abiertos del tenant y las ubicaciones existentes, para decidir qué existencias ve quien llama (`visibilidad.ts`).
+ * La fuente es `conteoAbiertoId` de cada ubicación (el bloqueo real); `abiertoEn` sale del documento del conteo. Se llama DESPUÉS
+ * de leer los datos a entregar: si un conteo se abre entre las dos lecturas, solo se oculta de más.
+ */
+async function conteosAbiertos(c: Contexto): Promise<{ conteos: Conteos; ubicaciones: string[] }> {
+  const ubic = (await c.e.firestore.collection(ruta(c.tenantId, 'ubicaciones')).get()).docs.map((u) => ({ id: u.id, data: datosDe(u) }));
+  const ids = ubic.map((u) => u.data['conteoAbiertoId']).filter((x): x is string => typeof x === 'string' && x !== '');
+  const docs = await Promise.all(ids.map((id) => c.e.firestore.doc(ruta(c.tenantId, 'conteos', id)).get()));
+  const porId = new Map(docs.filter((d) => d.exists).map((d) => [d.id, datosDe(d)]));
+  return { conteos: conteosAbiertosDe(ubic, porId), ubicaciones: ubic.map((u) => u.id) };
 }
 
 export const accionesInventarios: TablaImplementaciones = {
@@ -225,7 +240,13 @@ export const accionesInventarios: TablaImplementaciones = {
   }),
 
   // ---- Lecturas ---------------------------------------------------------------------------------------------
-  /** Productos con existencias por almacén y disponibilidad (regla única de Inventarios). Sin costos. */
+  /**
+   * Productos con existencias por almacén y disponibilidad (regla única de Inventarios). Sin costos. Para `caj`/`sup`, mientras hay
+   * un conteo abierto, se aplica `visibilidad.ts`: la respuesta lleva `existenciasOcultas: true` y `conteosAbiertos`, y por producto
+   * que controla stock las existencias de la ubicación en conteo, `stockTotal`, `bajoMinimo` y (si la tienda está en conteo)
+   * `disponible` salen como `null`. `soloBajoMinimo` se RECHAZA en ese caso (filtrar por «bajo el mínimo» revelaría qué productos
+   * están bajo el mínimo).
+   */
   listarProductos: accion({
     esquema: objeto({ soloBajoMinimo: z.boolean().optional() }),
     ejecutar: async (c, d) => {
@@ -233,6 +254,11 @@ export const accionesInventarios: TablaImplementaciones = {
         c.e.firestore.collection(ruta(c.tenantId, 'productos')).get(),
         c.e.firestore.collection(ruta(c.tenantId, 'existencias')).get(),
       ]);
+      const { conteos, ubicaciones } = await conteosAbiertos(c);
+      const marca = marcaOcultamiento(c.rol, conteos);
+      if (marca !== undefined && d.soloBajoMinimo === true) {
+        throw new HttpsError('failed-precondition', 'El filtro «bajo el mínimo» no está disponible mientras hay un conteo abierto.', { codigo: 'existencias-ocultas', ...marca });
+      }
       const porProducto = new Map<string, Record<string, number>>();
       for (const x of exis.docs) {
         const dd = x.data();
@@ -245,13 +271,17 @@ export const accionesInventarios: TablaImplementaciones = {
         .filter((p) => d.soloBajoMinimo !== true || p.bajoMinimo)
         .map(({ leido: p, bajoMinimo }) => {
           const existencias = porProducto.get(p.productoId) ?? {};
+          const visible = proyectarProducto(c.rol, conteos, {
+            ...(p.stockTotal !== undefined ? { stockTotal: p.stockTotal } : {}), bajoMinimo, existencias,
+            disponible: esDisponible({ activo: p.activo, ...(p.stockTotal !== undefined ? { stockTotal: p.stockTotal } : {}) }, existencias[UBICACION_DISPONIBILIDAD] ?? 0),
+          }, ubicaciones);
           return {
             id: p.productoId, nombre: p.nombre, categoria: p.categoria ?? '', marca: p.marca, sku: p.sku, activo: p.activo, publicado: p.publicado, conSerie: p.conSerie,
-            garantiaMeses: p.garantiaMeses, minimo: p.minimo, precioCentavosUSD: p.precioCentavos, stockTotal: p.stockTotal, bajoMinimo, existencias,
-            disponible: esDisponible({ activo: p.activo, ...(p.stockTotal !== undefined ? { stockTotal: p.stockTotal } : {}) }, existencias[UBICACION_DISPONIBILIDAD] ?? 0),
+            garantiaMeses: p.garantiaMeses, minimo: p.minimo, precioCentavosUSD: p.precioCentavos, stockTotal: visible.stockTotal, bajoMinimo: visible.bajoMinimo,
+            existencias: visible.existencias, disponible: visible.disponible,
           };
         });
-      return { productos };
+      return { productos, ...(marca ?? {}) };
     },
   }),
   ubicaciones: accion({
@@ -262,7 +292,12 @@ export const accionesInventarios: TablaImplementaciones = {
     esquema: VACIO,
     ejecutar: async (c) => ({ costos: (await c.e.firestore.collection(ruta(c.tenantId, 'costos')).get()).docs.filter((x) => typeof x.data()['costoUSD'] === 'number').map((x) => ({ productoId: x.id, costoUSD: x.data()['costoUSD'] })) }),
   }),
-  /** Búsqueda por serie: estado, almacén, venta y vencimiento de garantía. */
+  /**
+   * Búsqueda por serie: estado, almacén, venta y vencimiento de garantía. Una serie a la vez: confirma que existe y está disponible
+   * en su ubicación, sin lista ni número de disponibles; es lo que permite vender un producto con serie escrita o escaneada
+   * aunque su almacén esté en conteo (no se oculta a propósito). Límite conocido: no hay tope de intentos, así que series
+   * predecibles (consecutivas) pueden enumerarse una a una; hoy no existe un mecanismo de límite de tasa en los callables.
+   */
   buscarSerie: accion({
     esquema: objeto({ serie: TEXTO(60), productoId: ID_PRODUCTO.optional() }),
     ejecutar: async (c, d) => {
@@ -281,7 +316,12 @@ export const accionesInventarios: TablaImplementaciones = {
       let q = c.e.firestore.collection(ruta(c.tenantId, 'unidades')).where('productoId', '==', d.productoId);
       if (d.ubicacionId !== undefined) q = q.where('ubicacionId', '==', d.ubicacionId);
       if (d.soloDisponibles === true) q = q.where('estado', '==', 'disponible');
-      const snap = await q.limit(d.limite ?? 200).get();
+      // Los conteos se leen ANTES de la consulta: con ocultamiento, el número de filas devuelto no puede depender de cuántas
+      // unidades se ocultan (variando `limite` se contarían). Entonces se lee el conjunto completo (con un tope alto), se
+      // quitan las ocultas y SOLO después se aplica `limite`. No hay cursor: la respuesta no tiene otra vía de paginación.
+      const { conteos } = await conteosAbiertos(c);
+      const marca = marcaOcultamiento(c.rol, conteos);
+      const snap = await q.limit(marca === undefined ? (d.limite ?? 200) : TOPE_SERIES_CON_OCULTAMIENTO).get();
       const unidades = snap.docs.map((u) => {
         const x = datosDe(u);
         const ref = x['ventaRef'] as { id?: unknown } | undefined;
@@ -292,7 +332,9 @@ export const accionesInventarios: TablaImplementaciones = {
         };
       });
       unidades.sort((a, b) => String(a.serie).localeCompare(String(b.serie)));
-      return { unidades };
+      // Con un conteo abierto, `caj`/`sup` no reciben las unidades disponibles de la ubicación en conteo (su número es el stock).
+      if (marca === undefined) return { unidades };
+      return { unidades: filtrarUnidadesLista(c.rol, conteos, unidades).slice(0, d.limite ?? 200), ...marca };
     },
   }),
   /**
@@ -321,8 +363,12 @@ export const accionesInventarios: TablaImplementaciones = {
         .filter((m) => (d.tipo === undefined || m['tipo'] === d.tipo) && (d.uid === undefined || m['por'] === d.uid));
       const cortada = coinciden.length > limite || (filtraEnMemoria && docs.length === ventana);
       const filas = coinciden.slice(0, limite);
-      const movimientos = c.rol === 'adm' ? filas : filas.map(({ costoUSDUnit: _costo, ...resto }) => { void _costo; return resto; });
-      return { movimientos, cortada };
+      const sinCostos = c.rol === 'adm' ? filas : filas.map(({ costoUSDUnit: _costo, ...resto }) => { void _costo; return resto; });
+      // Con un conteo abierto, `sup` no recibe saldos (D3): los movimientos se entregan, sin `saldoTotal` ni `saldoUbicacion` de la ubicación en conteo.
+      const { conteos } = await conteosAbiertos(c);
+      const marca = marcaOcultamiento(c.rol, conteos);
+      if (marca === undefined) return { movimientos: sinCostos, cortada };
+      return { movimientos: sinCostos.map((m) => proyectarMovimiento(c.rol, conteos, m)), cortada, ...marca };
     },
   }),
   mermas: accion({
@@ -343,8 +389,9 @@ export const accionesInventarios: TablaImplementaciones = {
     },
   }),
   /**
-   * Conteo ciego: quien cuenta ve sus líneas, nunca los teóricos. `resultado` (teórico, contado, diferencia por
-   * producto) lo reciben `sup`/`adm` SOLO con el conteo cerrado; con el conteo abierto no se lee `conteoTeoricos`.
+   * Conteo ciego: quien cuenta ve sus líneas y la lista de productos a contar, nunca los teóricos ni nada derivado de las
+   * existencias. `resultado` (teórico, contado, diferencia por producto) lo reciben `sup`/`adm` SOLO con el conteo cerrado;
+   * con el conteo abierto no se lee `conteoTeoricos` ni `existencias`.
    */
   conteo: accion({
     esquema: objeto({ conteoId: ID }),
@@ -353,14 +400,19 @@ export const accionesInventarios: TablaImplementaciones = {
       if (conteo === undefined) throw new HttpsError('not-found', 'El conteo no existe.');
       const lineas = await c.e.firestore.collection(ruta(c.tenantId, 'conteoLineas')).where('conteoId', '==', d.conteoId).limit(500).get();
       const filas = lineas.docs.map(datosDe);
-      if (c.rol === 'caj') return { conteo, lineas: filas };
       if (conteo['estado'] !== 'cerrado') {
-        // Para avisar antes de cerrar: cuántos productos con existencia aún no se contaron. Solo el número (sup/adm), sin ids
-        // ni cantidades; el cierre los cuenta en 0 y abre una merma por cada uno.
-        const contados = new Set(Array.isArray(conteo['productos']) ? (conteo['productos'] as unknown[]).map(String) : []);
-        const faltan = (await productosConExistenciaEn(c, conteo)).filter((p) => !contados.has(p)).length;
-        return { conteo, lineas: filas, faltan };
+        // Conteo abierto, para TODOS los roles: lo que hay que contar (id, nombre, sku, serie) y nada que dependa de las
+        // existencias: ni cantidades, ni «bajo el mínimo», ni cuántos faltan (su variación al contar delataría qué productos
+        // tienen stock). El cierre cuenta en 0 lo no contado y lo informa en su resultado.
+        const prods = await c.e.firestore.collection(ruta(c.tenantId, 'productos')).get();
+        const productos = prods.docs
+          .map((p) => leerDocumentoProducto(p.id, p.data()))
+          .filter((p) => p.stockTotal !== undefined)
+          .map((p) => ({ productoId: p.productoId, nombre: p.nombre, sku: p.sku, categoria: p.categoria ?? '', ...(p.marca !== undefined ? { marca: p.marca } : {}), conSerie: p.conSerie }))
+          .sort((x, y) => x.nombre.localeCompare(y.nombre));
+        return { conteo, lineas: filas, productos };
       }
+      if (c.rol === 'caj') return { conteo, lineas: filas };
       const teoricos = await c.e.firestore.collection(ruta(c.tenantId, 'conteoTeoricos')).where('conteoId', '==', d.conteoId).limit(500).get();
       const porProducto = new Map(teoricos.docs.map((t) => [String(t.data()['productoId']), Number(t.data()['cantidad'])]));
       const resultado = filas.map((l) => {

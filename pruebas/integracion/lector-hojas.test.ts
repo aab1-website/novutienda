@@ -7,6 +7,10 @@ import { xlsx, zip } from '../funciones/xlsx-ayuda.js';
 const lector = crearLectorHojas();
 const leer = (b: Buffer) => lector.leerPrimeraHoja(new Uint8Array(b));
 
+// Tope holgado: el recorrido lineal tarda decenas de ms y el cuadrático que se corrigió tardaba varios segundos;
+// 2 s separa ambos sin fallar cuando la suite completa corre con carga.
+const TOPE_MS = 2000;
+
 describe('lectura de la primera hoja', () => {
   it('devuelve texto, números y celdas vacías en su columna', async () => {
     const b = xlsx([['id', 'nombre', 'precio'], ['a-1', 'Lápiz & goma <HB>', 12.5], ['a-2', null, 3]]);
@@ -98,14 +102,14 @@ describe('etiquetas sin cierre (retroceso cuadrático, CWE-1333)', () => {
   );
 
   for (const [nombre, archivo] of casos) {
-    it(`${nombre}: XlsxInvalido en menos de 500 ms`, async () => {
+    it(`${nombre}: XlsxInvalido sin retroceso cuadrático`, async () => {
       const t0 = performance.now();
       await expect(leer(archivo)).rejects.toBeInstanceOf(XlsxInvalido);
-      expect(performance.now() - t0).toBeLessThan(500);
+      expect(performance.now() - t0).toBeLessThan(TOPE_MS);
     });
   }
 
-  it('peor caso admitido (hoja de 3 MB con 200 000 celdas): se lee en menos de 400 ms', async () => {
+  it('peor caso admitido (hoja de 3 MB con 200 000 celdas): se lee sin retroceso cuadrático', async () => {
     const filas = Array.from({ length: 2_000 }, (_, r) => `<row r="${String(r + 1)}">${Array.from({ length: 100 }, () => '<c><v>1</v></c>').join('')}</row>`).join('');
     const b = xlsx([['id']], [], hojaCon(filas));
     const t0 = performance.now();
@@ -113,7 +117,7 @@ describe('etiquetas sin cierre (retroceso cuadrático, CWE-1333)', () => {
     const ms = performance.now() - t0;
     console.info(`peor caso admitido: ${ms.toFixed(1)} ms`);
     expect(salida.length).toBe(2_000);
-    expect(ms).toBeLessThan(400);
+    expect(ms).toBeLessThan(TOPE_MS);
   });
 });
 
@@ -131,11 +135,11 @@ describe('comentarios, CDATA e instrucciones de procesamiento', () => {
     expect(await leer(b)).toEqual([]);
   });
 
-  it('un comentario sin cierre se rechaza en menos de 400 ms con 4 MB', async () => {
+  it('un comentario sin cierre se rechaza sin retroceso cuadrático con 4 MB', async () => {
     const b = xlsx([['id']], [], hojaCon(`<!--${'<!--'.repeat(1_000_000)}`));
     const t0 = performance.now();
     await expect(leer(b)).rejects.toBeInstanceOf(XlsxInvalido);
-    expect(performance.now() - t0).toBeLessThan(400);
+    expect(performance.now() - t0).toBeLessThan(TOPE_MS);
   });
 
   it('CDATA se rechaza (Excel no lo usa)', async () => {

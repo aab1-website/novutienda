@@ -253,6 +253,116 @@ for (const esquema of ESQUEMAS) {
     }
 
     for (const ancho of [1280, 820, 360]) {
+      test(`conteo abierto a ${String(ancho)} px: existencias ocultas a supervisor y cajera, venta por serie escrita, rechazo sin cantidad y restitución al cerrar`, async ({ page }) => {
+        const v = vigilar(page);
+        await page.setViewportSize({ width: ancho, height: 800 });
+        const irA = async (nombre: string): Promise<void> => {
+          if (ancho < 1024) await page.getByRole('button', { name: 'Menú', exact: true }).click();
+          await page.getByRole('link', { name: nombre }).click();
+        };
+        // El doble vive en la página: se cambia de rol con «Salir» y un inicio de sesión, sin recargar.
+        const cambiarA = async (rol: keyof typeof CUENTAS): Promise<void> => {
+          if (ancho < 1024) await page.getByRole('button', { name: 'Menú', exact: true }).click();
+          await page.getByRole('button', { name: 'Salir' }).click();
+          await page.getByLabel('Correo').fill(CUENTAS[rol][0]);
+          await page.getByLabel('Contraseña').fill(CUENTAS[rol][1]);
+          await page.getByRole('button', { name: 'Entrar' }).click();
+          if (ancho < 1024) await expect(page.getByRole('button', { name: 'Menú', exact: true })).toBeVisible();
+          else await expect(page.getByRole('navigation', { name: 'Menú principal' })).toBeVisible();
+        };
+        const sinDesborde = async (): Promise<void> => {
+          expect(await page.evaluate(() => document.documentElement.scrollWidth <= document.documentElement.clientWidth)).toBe(true);
+          const ids = await page.evaluate(() => [...document.querySelectorAll('[id]')].map((x) => x.id));
+          expect(ids.filter((x, i) => ids.indexOf(x) !== i)).toEqual([]);
+        };
+
+        // La cajera abre su turno antes del conteo.
+        await entrar(page, 'caj');
+        await page.getByLabel(/Efectivo inicial en Bolivianos/).fill('100');
+        await page.getByRole('button', { name: 'Abrir turno' }).click();
+        await expect(page.getByRole('heading', { name: 'Productos' })).toBeVisible();
+        await expect(page.getByText(/Tienda: \d/).first()).toBeVisible();
+
+        // El supervisor abre un conteo de la Tienda.
+        await cambiarA('sup');
+        await irA('Inventario');
+        await page.getByRole('link', { name: 'Conteo ciego' }).click();
+        await page.getByRole('button', { name: 'Abrir conteo' }).click();
+        await expect(page.getByText(/Conteo abierto en/)).toBeVisible();
+
+        // Inventario sin cantidades: aviso, «Oculto» y sin el filtro «Bajo el mínimo».
+        await page.getByRole('link', { name: 'Productos y existencias' }).click();
+        const tabla = page.getByRole('table', { name: 'Productos y existencias por almacén' });
+        await expect(tabla).toBeVisible();
+        await expect(page.getByText(/Hay un conteo abierto en Tienda/)).toBeVisible();
+        await expect(tabla.getByText('Oculto').first()).toBeVisible();
+        await expect(page.getByLabel('Mostrar').locator('option', { hasText: 'Bajo el mínimo' })).toHaveCount(0);
+        await expect(page.getByText(/Filtro «Bajo el mínimo»/)).toBeVisible();
+        await expect(page.getByText(/productos bajo el mínimo/)).toHaveCount(0);
+        await sinViolaciones(page, `inventario con conteo abierto a ${String(ancho)} px`);
+        await sinDesborde();
+
+        // La cajera vende sin ver cantidades.
+        await cambiarA('caj');
+        await page.goto('/#/venta/terminal');
+        await expect(page.getByRole('heading', { name: 'Productos' })).toBeVisible();
+        await expect(page.getByText(/Hay un conteo abierto en Tienda/)).toBeVisible();
+        await expect(page.getByRole('img', { name: 'Oculto mientras hay un conteo abierto' }).first()).toBeVisible();
+        expect(await page.locator('body').innerText()).not.toMatch(/Tienda: \d|agotado/i);
+        await sinViolaciones(page, `caja con conteo abierto a ${String(ancho)} px`);
+        await sinDesborde();
+        await page.getByRole('button', { name: 'Agregar Cable HDMI 2 m' }).click();
+        await expect(page.locator('[data-prueba="total"]')).toHaveText('Bs 55,68');
+        await page.getByRole('button', { name: 'Cobrar' }).click();
+        await page.getByLabel(/Monto a aplicar/).fill('55,68');
+        await page.getByLabel(/Efectivo recibido/).fill('100');
+        await page.getByRole('button', { name: 'Confirmar cobro' }).click();
+        await expect(page.getByRole('heading', { name: 'Venta registrada' })).toBeVisible();
+        await page.getByRole('button', { name: 'Nueva venta' }).click();
+
+        // Producto con serie: se escribe la unidad; una serie inválida marca el error junto al campo.
+        await page.getByRole('button', { name: 'Agregar Televisor 55 pulgadas' }).click();
+        await expect(page.getByRole('checkbox')).toHaveCount(0);
+        const serie = page.getByLabel(/Serie de la unidad/);
+        await serie.fill('NO-EXISTE');
+        await serie.press('Enter');
+        await expect(page.getByText('Esa serie no existe.')).toBeVisible();
+        await expect(serie).toHaveAttribute('aria-invalid', 'true');
+        await sinViolaciones(page, `serie inválida a ${String(ancho)} px`);
+        await serie.fill('TV55-001');
+        await serie.press('Enter');
+        await expect(page.getByText('Unidades: 1')).toBeVisible();
+        await sinDesborde();
+
+        // Un rechazo por falta de stock no revela la cantidad.
+        await page.getByRole('button', { name: 'Agregar Parlante portátil' }).click();
+        await page.getByLabel(/^Cantidad/).last().fill('500');
+        await page.getByRole('button', { name: 'Cobrar' }).click();
+        await page.getByLabel(/Monto a aplicar/).fill('90132');
+        await page.getByLabel(/Efectivo recibido/).fill('100000');
+        await page.getByRole('button', { name: 'Confirmar cobro' }).click();
+        const rechazo = page.getByText(/No alcanza el stock/);
+        await expect(rechazo).toBeVisible();
+        expect(await rechazo.innerText()).not.toMatch(/hay \d/);
+
+        // Al cerrar el conteo, la cajera vuelve a ver las cantidades.
+        await cambiarA('sup');
+        await irA('Inventario');
+        await page.getByRole('link', { name: 'Conteo ciego' }).click();
+        await page.getByRole('button', { name: 'Cerrar y firmar el conteo' }).click();
+        await page.getByRole('button', { name: 'Sí, cerrar y firmar' }).click();
+        await expect(page.getByText(/Conteo cerrado|Conteos anteriores/).first()).toBeVisible();
+        await cambiarA('caj');
+        await page.goto('/#/venta/terminal');
+        await expect(page.getByRole('heading', { name: 'Productos' })).toBeVisible();
+        await expect(page.getByText(/Hay un conteo abierto/)).toHaveCount(0);
+        await expect(page.getByText(/Tienda: \d/).first()).toBeVisible();
+        await sinViolaciones(page, `caja tras cerrar el conteo a ${String(ancho)} px`);
+        expect(v.errores).toEqual([]);
+      });
+    }
+
+    for (const ancho of [1280, 820, 360]) {
       test(`panel lateral de la ficha a ${String(ancho)} px: subida, error con motivo, guardado, sin desborde e ids únicos`, async ({ page }) => {
         const v = vigilar(page);
         await page.setViewportSize({ width: ancho, height: 800 });
@@ -323,7 +433,7 @@ for (const esquema of ESQUEMAS) {
         await sinDesborde('conteo');
         await page.getByRole('button', { name: 'Cerrar y firmar el conteo' }).click();
         const cierre = page.getByRole('dialog', { name: '¿Cerrar y firmar el conteo?' });
-        await expect(cierre.getByText(/Faltan \d+ productos?; se contarán en 0 y generarán mermas? por resolver/)).toBeVisible();
+        await expect(cierre.getByText(/Faltan \d+ productos? por contar\. Los que tengan existencias en el sistema se contarán en 0 y generarán mermas\./)).toBeVisible();
         await sinViolaciones(page, `cierre del conteo a ${String(ancho)} px`);
         await cierre.getByRole('button', { name: 'Sí, cerrar y firmar' }).click();
         await expect(page.getByText(/Conteo cerrado y firmado/).first()).toBeVisible();

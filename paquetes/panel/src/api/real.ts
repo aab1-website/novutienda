@@ -13,8 +13,9 @@
 import type { Entrada, NombreCallable, Salida } from './contrato.js';
 import { ROLES_ACCION } from './acciones.generado.js';
 import { ErrorApi } from './errores.js';
+import { ponerMarca } from './marca.js';
 import type {
-  AprobacionPos, ConteoVista, CotizacionesVigentes, CreditoVista, Medio, MermaVista, MovimientoVista, ProductoPanel,
+  AprobacionPos, ConteoAbierto, ConteoVista, ListaConMarca, MarcaOcultamiento, ProductoDeConteo, CotizacionesVigentes, CreditoVista, Medio, MermaVista, MovimientoVista, ProductoPanel,
   Rol, TurnoPos, UbicacionId, UnidadSerie, UsuarioVista, VentaPos,
 } from './tipos.js';
 import { fijarRedondeo } from '../util/precio.js';
@@ -69,6 +70,23 @@ const lista = (r: unknown, clave: string): Obj[] => {
   const v = (r as Obj | null)?.[clave];
   return Array.isArray(v) ? (v as Obj[]) : [];
 };
+/**
+ * Marca de ocultamiento de una respuesta (`existenciasOcultas: true` + `conteosAbiertos`), o `undefined`. Falla cerrado: si llega
+ * `existenciasOcultas` sin una lista válida, la marca queda con lista vacía en lugar de perderse.
+ */
+function marcaDeRespuesta(r: unknown): MarcaOcultamiento | undefined {
+  const o = (r ?? {}) as Obj;
+  if (o['existenciasOcultas'] !== true) return undefined;
+  const conteosAbiertos = (Array.isArray(o['conteosAbiertos']) ? (o['conteosAbiertos'] as Obj[]) : []).map(
+    (c): ConteoAbierto => ({ ubicacionId: String(c['ubicacionId']), conteoId: String(c['conteoId']), abiertoEn: typeof c['abiertoEn'] === 'string' ? c['abiertoEn'] : null }),
+  );
+  return { existenciasOcultas: true, conteosAbiertos };
+}
+/** La lista con la marca como propiedades no enumerables y de solo lectura (solo si la respuesta la trae). */
+const conMarcaDe = <T>(items: T[], r: unknown): ListaConMarca<T> => ponerMarca(items, marcaDeRespuesta(r));
+/** Cantidad que puede venir oculta: `null` se conserva (oculto), un número sirve, ausente es 0 (sin documento de existencia). */
+const cantidadOculta = (v: unknown): number | null => (v === null ? null : typeof v === 'number' ? v : 0);
+
 const campo = <T>(r: unknown, clave: string): T => (r as Obj)[clave] as T;
 const sinVacios = <T extends object>(o: T): T => Object.fromEntries(Object.entries(o).filter(([, v]) => v !== undefined)) as T;
 
@@ -103,8 +121,8 @@ const ESTADOS_APROBACION = ['pendiente', 'aprobada', 'rechazada', 'usada'] as co
 // ---------------------------------------------------------------------------------------------------------------------
 
 function aProducto(p: Obj, costos: ReadonlyMap<string, number> | undefined): ProductoPanel {
-  const ex = (p['existencias'] ?? {}) as Record<string, number>;
-  const existencias = { tienda: ex['tienda'] ?? 0, 'deposito-1': ex['deposito-1'] ?? 0, 'deposito-2': ex['deposito-2'] ?? 0 } as Record<UbicacionId, number>;
+  const ex = (p['existencias'] ?? {}) as Record<string, unknown>;
+  const existencias = { tienda: cantidadOculta(ex['tienda']), 'deposito-1': cantidadOculta(ex['deposito-1']), 'deposito-2': cantidadOculta(ex['deposito-2']) } as Record<UbicacionId, number | null>;
   const id = String(p['id']);
   const costo = costos?.get(id);
   return sinVacios({
@@ -120,10 +138,11 @@ function aProducto(p: Obj, costos: ReadonlyMap<string, number> | undefined): Pro
     minimo: p['minimo'] as number | undefined,
     precioUSD: p['precioCentavosUSD'] as ProductoPanel['precioUSD'],
     costoUSD: costo,
-    stockTotal: p['stockTotal'] as number | undefined,
+    // `null` = oculto por un conteo abierto; ausente = no controla stock; un número (incluso 0) es la existencia real.
+    stockTotal: p['stockTotal'] === null ? null : (p['stockTotal'] as number | undefined),
     existencias,
-    bajoMinimo: p['bajoMinimo'] === true,
-    disponible: p['disponible'] === true,
+    bajoMinimo: p['bajoMinimo'] === null ? null : p['bajoMinimo'] === true,
+    disponible: p['disponible'] === null ? null : p['disponible'] === true,
   }) as ProductoPanel;
 }
 
@@ -137,7 +156,8 @@ function aMovimiento(m: Obj): MovimientoVista {
     ubicacionId: m['ubicacionId'] as UbicacionId,
     tipo: m['tipo'] as MovimientoVista['tipo'],
     delta: Number(m['delta']),
-    saldoUbicacion: Number(m['saldoUbicacion']),
+    // Ausente (no 0) cuando el servidor lo quita por un conteo abierto.
+    saldoUbicacion: typeof m['saldoUbicacion'] === 'number' ? m['saldoUbicacion'] : undefined,
     series: (m['series'] as string[] | undefined) ?? [],
     referencia,
     por: String(m['por']),
@@ -280,18 +300,22 @@ export const TRADUCCION: { readonly [N in NombreCallable]: Traduccion<N> } = {
     usa: ['inventarios.listarProductos', 'inventarios.costos'],
     roles: TODOS,
     ejecutar: async (c) => {
-      const productos = lista(await c.llamar('inventarios', 'listarProductos', {}), 'productos');
+      const respuesta = await c.llamar('inventarios', 'listarProductos', {});
+      const productos = lista(respuesta, 'productos');
       // Los costos son solo del administrador (`inventarios.costos`): al resto ni se le piden.
       let costos: Map<string, number> | undefined;
       if (c.rol === 'adm') {
         costos = new Map(lista(await c.llamar('inventarios', 'costos', {}), 'costos').map((x) => [String(x['productoId']), Number(x['costoUSD'])]));
       }
-      return productos.map((p) => aProducto(p, costos));
+      return conMarcaDe(productos.map((p) => aProducto(p, costos)), respuesta);
     },
   },
   listarSeries: {
     usa: ['inventarios.series'],
-    ejecutar: async (c, e) => lista(await c.llamar('inventarios', 'series', sinVacios({ productoId: e.productoId, ubicacionId: e.ubicacionId, soloDisponibles: e.soloDisponibles })), 'unidades') as unknown as UnidadSerie[],
+    ejecutar: async (c, e) => {
+      const r = await c.llamar('inventarios', 'series', sinVacios({ productoId: e.productoId, ubicacionId: e.ubicacionId, soloDisponibles: e.soloDisponibles }));
+      return conMarcaDe(lista(r, 'unidades') as unknown as UnidadSerie[], r);
+    },
   },
   buscarSerie: {
     usa: ['inventarios.buscarSerie'],
@@ -310,7 +334,7 @@ export const TRADUCCION: { readonly [N in NombreCallable]: Traduccion<N> } = {
       });
       // El servidor filtra por tipo y por persona; `costoUSDUnit` solo llega al administrador y la vista no lo usa.
       const r = await c.llamar('inventarios', 'movimientos', datos);
-      return { movimientos: lista(r, 'movimientos').map(aMovimiento), cortada: campo(r, 'cortada') === true };
+      return { movimientos: lista(r, 'movimientos').map(aMovimiento), cortada: campo(r, 'cortada') === true, ...marcaDeRespuesta(r) };
     },
   },
   listarMermas: {
@@ -332,8 +356,8 @@ export const TRADUCCION: { readonly [N in NombreCallable]: Traduccion<N> } = {
           return sinVacios({
             conteoId: String(k['id']), ubicacionId: k['ubicacionId'] as UbicacionId, estado: k['estado'] as ConteoVista['estado'], abiertoPor: String(k['abiertoPor']),
             cerradoPor: k['cerradoPor'] as string | undefined, fecha: String(k['abiertoEn'] ?? ''), lineas,
-            // `faltan` solo llega a sup/adm con el conteo abierto.
-            faltan: typeof (detalle as Obj)['faltan'] === 'number' ? ((detalle as Obj)['faltan'] as number) : undefined,
+            // Con el conteo abierto, la lista a contar (sin existencias) llega a todo rol.
+            productos: Array.isArray((detalle as Obj)['productos']) ? ((detalle as Obj)['productos'] as ProductoDeConteo[]) : undefined,
             // `resultado` (teórico, contado, diferencia) solo llega a sup/adm y con el conteo cerrado.
             resultado: (detalle as Obj)['resultado'] as ConteoVista['resultado'],
           }) as ConteoVista;

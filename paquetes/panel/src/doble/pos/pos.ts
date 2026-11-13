@@ -6,7 +6,7 @@ import { MEDIOS_PAGO, MONEDAS } from '../../api/tipos.js';
 import { diferenciaPorMoneda, efectivoEsperado, monedasDelTurno, sumarTotales, TOTALES_VACIOS } from '../../pantallas/pos/arqueo.js';
 import { MONEDA_DE_MERCADO, precioDeVenta } from '../../util/precio.js';
 import { aCsv } from '../../util/csv.js';
-import { auditar, fallo, fechaLaPaz, iso, recalcular, type Contexto } from '../estado.js';
+import { auditar, detalleDeFaltantes, fallo, fechaLaPaz, iso, recalcular, type Contexto } from '../estado.js';
 
 type H<N extends NombreCallable> = (c: Contexto, e: Entrada<N>) => Salida<N> | Promise<Salida<N>>;
 
@@ -198,7 +198,7 @@ export const handlersPos: {
       const p = c.e.productos.get(l.productoId);
       if (p === undefined) continue;
       if (p.stockTotal !== undefined && p.existencias[l.almacenId as keyof typeof p.existencias] < l.cantidad) {
-        throw fallo('stock-insuficiente', 'Stock insuficiente', { faltantes: [{ productoId: l.productoId, almacenId: l.almacenId, pedido: l.cantidad, disponible: p.existencias[l.almacenId as keyof typeof p.existencias] }] });
+        throw fallo('stock-insuficiente', 'Stock insuficiente', detalleDeFaltantes(c, [{ productoId: l.productoId, almacenId: l.almacenId, pedido: l.cantidad, disponible: p.existencias[l.almacenId as keyof typeof p.existencias] }]));
       }
       for (const s of l.series) {
         const u = c.e.unidades.get(`${l.productoId}__${s}`);

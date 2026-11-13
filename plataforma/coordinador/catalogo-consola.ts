@@ -1,12 +1,13 @@
 // `CatalogoPuerto` de la consola implementado con las funciones de Inventarios (dueño de productos y
 // stock). Solo lectura: la consola no crea ni edita productos (el alta y la edición son de Inventarios).
 import {
-  esDisponible, leerDocumentoProducto, leerExistencias, leerProducto, rutaColeccionProductos, UBICACION_DISPONIBILIDAD, type ProductoLeido,
+  esDisponible, marcaOcultamiento, proyectarProducto, leerDocumentoProducto, leerExistencias, leerProducto, rutaColeccionProductos, UBICACION_DISPONIBILIDAD, type ProductoLeido,
 } from '@novutienda/inventarios';
 import type { BaseDatosIdentidad } from '@novutienda/nucleo';
-import type { CatalogoPuerto, Existencia, PrecioUSD, ProductoCatalogo } from '@novutienda/consola';
+import type { CatalogoPuerto, Existencia, ListadoCatalogoVisible, PrecioUSD, ProductoCatalogo, ProductoCatalogoVisible } from '@novutienda/consola';
 import type { LectorColecciones } from './colecciones.js';
 import { centavosADolares } from './producto-inventarios.js';
+import { leerConteosAbiertos } from './stock-oculto.js';
 
 export interface DepsCatalogoConsola {
   readonly db: BaseDatosIdentidad;
@@ -50,6 +51,32 @@ export function crearCatalogoConsola(deps: DepsCatalogoConsola): CatalogoPuerto 
         return salida;
       });
       return productos.map((p) => aProductoConsola(p, tiendas.get(p.productoId) ?? 0));
+    },
+
+    /** Misma regla que el callable `inventarios.listarProductos`: `adm` ve todo; `caj`/`sup` con un conteo abierto reciben `null` (no se omiten). */
+    async listarProductosParaRol(tenantId, rol): Promise<ListadoCatalogoVisible> {
+      const [docs, ubic] = await Promise.all([lector.listar(rutaColeccionProductos(tenantId)), lector.listar(`tenants/${tenantId}/ubicaciones`)]);
+      const ubicaciones = ubic.map((u) => ({ id: u.id, data: u.datos }));
+      return db.runTransaction(async (tx) => {
+        const conteos = await leerConteosAbiertos(ubicaciones, async (id) => {
+          const d = await tx.get(`tenants/${tenantId}/conteos/${id}`);
+          return d.existe ? d.data() : undefined;
+        });
+        const productos: ProductoCatalogoVisible[] = [];
+        for (const d of docs) {
+          const p = leerDocumentoProducto(d.id, d.datos);
+          const existencias: Record<string, number> = {};
+          for (const x of await leerExistencias(tx, tenantId, p.productoId)) existencias[x.ubicacionId] = x.cantidad;
+          const base = aProductoConsola(p, existencias[UBICACION_DISPONIBILIDAD] ?? 0);
+          const visible = proyectarProducto(rol, conteos, {
+            ...(p.stockTotal !== undefined ? { stockTotal: p.stockTotal } : {}), bajoMinimo: false, existencias, disponible: base.disponible,
+          }, ubicaciones.map((u) => u.id));
+          const { stockTotal: _s, disponible: _d, ...resto } = base;
+          void _s; void _d;
+          productos.push({ ...resto, ...(visible.stockTotal !== undefined ? { stockTotal: visible.stockTotal } : {}), disponible: visible.disponible });
+        }
+        return { productos, ...(marcaOcultamiento(rol, conteos) ?? {}) };
+      });
     },
 
     async leerProducto(tenantId, productoId) {

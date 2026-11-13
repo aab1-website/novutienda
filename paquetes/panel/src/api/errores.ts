@@ -7,8 +7,14 @@
 
 export interface DetalleError {
   readonly codigo?: string;
+  /** Stock insuficiente con faltantes ocultos por un conteo abierto: no hay lista, ids ni cantidades. */
+  readonly faltantesOcultos?: boolean;
+  /** Almacén con conteo abierto que bloquea un traspaso (`conteo-abierto`). */
+  readonly ubicacionId?: string;
+  readonly conteoId?: string;
+  readonly abiertoEn?: string | null;
   /** Faltantes de stock (StockInsuficiente). */
-  readonly faltantes?: readonly { readonly productoId: string; readonly almacenId: string; readonly pedido: number; readonly disponible: number; readonly productoNombre?: string; readonly almacenNombre?: string }[];
+  readonly faltantes?: readonly { readonly productoId: string; readonly almacenId: string; readonly pedido: number; readonly disponible?: number; readonly productoNombre?: string; readonly almacenNombre?: string }[];
   /** Mensajes por campo o fila (ErrorConsola.detalles). */
   readonly detalles?: readonly string[];
   /** Rutas de los campos inválidos de `datos` (esquema estricto del servidor; nunca los valores). */
@@ -81,6 +87,8 @@ const POR_CODIGO_MODULO: Readonly<Record<string, string>> = {
   concurrencia: 'Otra persona cambió lo mismo al mismo tiempo. Intente de nuevo.',
   // Inventarios
   'stock-insuficiente': 'No hay existencias suficientes.',
+  'conteo-abierto': 'No se puede traspasar desde ni hacia un almacén mientras tiene un conteo abierto. Puede hacerlo un administrador o esperar al cierre.',
+  'existencias-ocultas': 'Este filtro no está disponible mientras hay un conteo abierto.',
   'serie-no-disponible': 'Esa serie no está disponible en ese almacén.',
   'operacion-conflicto': 'Esa operación ya se hizo con otros datos. Vuelva a empezar.',
   'sin-permiso': 'No tiene permiso para esta acción.',
@@ -128,6 +136,13 @@ export const MENSAJE_DATOS_NO_RECONOCIDOS =
 
 export const MENSAJE_GENERICO = 'Ocurrió un error inesperado. Intente de nuevo.';
 
+/** Nombres de los almacenes para los mensajes (la capa de API no importa de las pantallas). */
+const NOMBRE_ALMACEN_MENSAJE: Readonly<Record<string, string>> = { tienda: 'Tienda', 'deposito-1': 'Depósito 1', 'deposito-2': 'Depósito 2' };
+
+export const MENSAJE_STOCK_OCULTO = 'No alcanza el stock de uno o más productos de esta operación. Durante un conteo abierto no se indica cuál.';
+export const mensajeConteoAbierto = (almacen: string): string =>
+  `No se puede traspasar desde ni hacia ${almacen} mientras tiene un conteo abierto. Puede hacerlo un administrador o esperar al cierre.`;
+
 /** Mensaje legible para cualquier error (nunca el texto técnico del servidor). */
 export function mensajeDeError(e: unknown): string {
   if (!(e instanceof ErrorApi)) return MENSAJE_GENERICO;
@@ -138,6 +153,11 @@ export function mensajeDeError(e: unknown): string {
   if (invalido && ((e.detalle.campos?.length ?? 0) > 0 || [e.message, ...(e.detalle.detalles ?? [])].some((t) => /campo desconocido|\[\d{3}\]/.test(t)))) {
     console.error('Validación rechazada por el servidor', { codigo, campos: e.detalle.campos, detalles: e.detalle.detalles, mensaje: e.message });
     return MENSAJE_DATOS_NO_RECONOCIDOS;
+  }
+  if (codigo === 'stock-insuficiente' && e.detalle.faltantesOcultos === true) return MENSAJE_STOCK_OCULTO;
+  if (codigo === 'conteo-abierto') {
+    const u = e.detalle.ubicacionId;
+    return u === undefined ? (POR_CODIGO_MODULO['conteo-abierto'] ?? MENSAJE_GENERICO) : mensajeConteoAbierto(NOMBRE_ALMACEN_MENSAJE[u] ?? u);
   }
   let modulo = codigo === undefined ? undefined : POR_CODIGO_MODULO[codigo];
   if (codigo !== undefined && PREFIERE_MENSAJE_DEL_SERVIDOR.has(codigo) && delServidorDisponible !== undefined) modulo = delServidorDisponible;
@@ -150,11 +170,16 @@ export function mensajeDeError(e: unknown): string {
   const sinCodigoConFaltantes = e.detalle.codigo === undefined && e.codigoHttps === 'failed-precondition';
   if ((e.detalle.codigo === 'stock-insuficiente' || sinCodigoConFaltantes) && e.detalle.faltantes !== undefined && e.detalle.faltantes.length > 0) {
     if (sinCodigoConFaltantes) base = POR_CODIGO_MODULO['stock-insuficiente'] ?? base;
-    const f = e.detalle.faltantes
+    const nombre = (x: { productoId: string; almacenId: string; productoNombre?: string; almacenNombre?: string }): string => `${x.productoNombre ?? x.productoId} en ${x.almacenNombre ?? x.almacenId}`;
+    const faltantes = e.detalle.faltantes;
+    if (faltantes.every((x) => x.disponible === undefined)) {
+      // Conteo abierto y rol que no es `adm`: no se dice cuántas hay, solo que no alcanza.
+      base = faltantes.map((x) => `No alcanza el stock de ${nombre(x)}.`).join(' ');
+    } else {
       // Sin nombre se muestra el código del producto y del almacén (legibles): es mejor que no decir cuál falta.
-      .map((x) => `${x.productoNombre ?? x.productoId} en ${x.almacenNombre ?? x.almacenId}: pidió ${x.pedido}, hay ${x.disponible}`)
-      .join('; ');
-    base = `${base} ${f}.`;
+      const f = faltantes.map((x) => (x.disponible === undefined ? `${nombre(x)}: no alcanza` : `${nombre(x)}: pidió ${x.pedido}, hay ${x.disponible}`)).join('; ');
+      base = `${base} ${f}.`;
+    }
   }
   const filas = (e.detalle.detalles ?? []).filter(esLegible);
   if (filas.length > 0) base = `${base} ${filas.join(' ')}`;

@@ -22,7 +22,8 @@ export const accionesConsola: TablaImplementaciones = {
   // ---- Productos (solo lectura) ---------------------------------------------------------------------------------
   catalogo: accion({
     esquema: VACIO,
-    ejecutar: async (c) => ({ productos: await c.e.catalogo.listarProductos(c.tenantId) }),
+    // Con un conteo abierto, sup/caj reciben `stockTotal` y `disponible` en null y la marca `existenciasOcultas`/`conteosAbiertos`.
+    ejecutar: async (c) => ({ ...(await c.e.catalogo.listarProductosParaRol(c.tenantId, c.rol)) }),
   }),
   /** Precio en Bs y en ARS del día para un precio base en USD (editor de ficha), con el redondeo del tenant. */
   preciosDelDia: accion({

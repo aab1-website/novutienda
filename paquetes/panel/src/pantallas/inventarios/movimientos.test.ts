@@ -173,6 +173,40 @@ describe('traspaso', () => {
     expect(await screen.findByText(/Error: El origen y el destino deben ser distintos/)).toBeTruthy();
   });
 
+  it('con conteo abierto en el origen o el destino, sup ve el motivo junto al almacén, «Traspasar» queda desactivado y no llama; adm traspasa', async () => {
+    const motivo = (n: string): string => `No se puede traspasar desde ni hacia ${n} mientras tiene un conteo abierto. Puede hacerlo un administrador o esperar al cierre.`;
+    const e = crearEntorno('sup');
+    await e.api.llamar('abrirConteo', { operacionId: 'a1', conteoId: 'c-dep1', ubicacionId: 'deposito-1' });
+    ver(e, 'traspasos');
+    const u = userEvent.setup();
+    await screen.findByRole('heading', { name: 'Traspaso entre almacenes' });
+    // Origen por omisión: Depósito 1, en conteo.
+    expect((await screen.findAllByText(motivo('Depósito 1'))).length).toBeGreaterThan(0);
+    const boton = screen.getByRole('button', { name: 'Traspasar' });
+    expect(boton.getAttribute('aria-disabled')).toBe('true');
+    await u.click(boton);
+    expect(llamadas(e, 'traspasar').length).toBe(0);
+    // Destino en conteo.
+    await u.selectOptions(screen.getByLabelText('Origen'), 'deposito-2');
+    await u.selectOptions(screen.getByLabelText('Destino'), 'deposito-1');
+    expect((await screen.findAllByText(motivo('Depósito 1'))).length).toBeGreaterThan(0);
+    expect(screen.getByRole('button', { name: 'Traspasar' }).getAttribute('aria-disabled')).toBe('true');
+    // Sin el almacén en conteo, se puede.
+    await u.selectOptions(screen.getByLabelText('Destino'), 'tienda');
+    await waitFor(() => expect(screen.queryByText(motivo('Depósito 1'))).toBeNull());
+    expect(screen.getByRole('button', { name: 'Traspasar' }).getAttribute('aria-disabled')).not.toBe('true');
+  });
+
+  it('adm no ve el motivo ni se le desactiva «Traspasar» con un conteo abierto', async () => {
+    const e = crearEntorno('sup');
+    await e.api.llamar('abrirConteo', { operacionId: 'a1', conteoId: 'c-dep1', ubicacionId: 'deposito-1' });
+    e.como('adm');
+    ver(e, 'traspasos');
+    await screen.findByRole('heading', { name: 'Traspaso entre almacenes' });
+    expect(screen.queryByText(/No se puede traspasar desde ni hacia/)).toBeNull();
+    expect(screen.getByRole('button', { name: 'Traspasar' }).getAttribute('aria-disabled')).not.toBe('true');
+  });
+
   it('el resumen nombra origen y destino; confirma y la tabla usa nombres legibles', async () => {
     const e = crearEntorno('sup');
     ver(e, 'traspasos');

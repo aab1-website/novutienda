@@ -57,18 +57,28 @@ describe.skipIf(!hayEmulador)('inventarios: importación, conteo y lecturas (emu
     expect((await h.firestore.doc(`tenants/${B}/productos/imp-0x`).get()).data()?.['nombre']).toBe('Cambiado');
   });
 
-  it('conteo: «faltan» solo para sup/adm con el conteo abierto, sin ids ni cantidades; al cerrar lo no contado abre merma', async () => {
+  it('conteo ciego: con el conteo abierto ningún rol recibe existencias ni derivados; da la lista a contar; al cerrar hay resultado y mermas', async () => {
     const conteoId = unico('cnt');
     await accion('inventarios', 'abrirConteo', { operacionId: unico('op'), conteoId, ubicacionId: 'tienda' }, sup.token, A);
-    await accion('inventarios', 'registrarLineaConteo', { operacionId: unico('op'), conteoId, productoId: 'lapiz', contado: 10 }, caj.token, A);
-    const vistaSup = cuerpo(await accion('inventarios', 'conteo', { conteoId }, sup.token, A));
-    expect(vistaSup['faltan']).toBeGreaterThanOrEqual(1);
-    expect(JSON.stringify(vistaSup)).not.toMatch(/teorico|esperado|goma/i);
-    expect(cuerpo(await accion('inventarios', 'conteo', { conteoId }, caj.token, A))['faltan']).toBeUndefined();
+    const reg = await accion('inventarios', 'registrarLineaConteo', { operacionId: unico('op'), conteoId, productoId: 'lapiz', contado: 10 }, caj.token, A);
+    expect(JSON.stringify(cuerpo(reg))).not.toMatch(/teorico|esperado|diferencia|existencia|stock|faltan/i);
+    for (const tok of [caj.token, sup.token]) {
+      const vista = cuerpo(await accion('inventarios', 'conteo', { conteoId }, tok, A));
+      const productos = vista['productos'] as Obj[];
+      expect(productos.map((x) => x['productoId'])).toEqual(expect.arrayContaining(['lapiz', 'goma']));
+      expect(productos.every((x) => Object.keys(x).every((k) => ['productoId', 'nombre', 'sku', 'categoria', 'marca', 'conSerie'].includes(k)))).toBe(true);
+      expect(vista['faltan']).toBeUndefined();
+      expect(vista['resultado']).toBeUndefined();
+      expect(JSON.stringify(vista)).not.toMatch(/teorico|esperado|diferencia|existencia|stock|bajoMinimo|faltan|"cantidad"/i);
+    }
     const cierre = await accion('inventarios', 'cerrarConteo', { operacionId: unico('op'), conteoId }, sup.token, A);
     expect(cierre.status, JSON.stringify(cierre.error)).toBe(200);
     expect(cuerpo(cuerpo(cierre))['sinContar']).toContain('goma');
     expect((await h.firestore.doc(`tenants/${A}/mermas/${conteoId}-goma`).get()).data()).toMatchObject({ estado: 'solicitada', cantidad: 4 });
+    const cerrado = cuerpo(await accion('inventarios', 'conteo', { conteoId }, sup.token, A));
+    expect(cerrado['productos']).toBeUndefined();
+    expect((cerrado['resultado'] as Obj[]).find((x) => x['productoId'] === 'lapiz')).toMatchObject({ contado: 10, teorico: expect.any(Number) });
+    expect(cuerpo(await accion('inventarios', 'conteo', { conteoId }, caj.token, A))['resultado']).toBeUndefined();
   });
 
   it('movimientos y mermas informan si la lista vino cortada; mermas filtra por estado y guarda el motivo del rechazo', async () => {
