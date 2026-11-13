@@ -9,7 +9,9 @@ import {
 import {
   esMercado, leerCotizacion, MONEDA_DE, precioFinal, SinCotizacionUtilizable, type CopiaCotizacion, type LimiteTasa, type Mercado, type Redondeo,
 } from '@novutienda/nucleo';
+import { logger } from 'firebase-functions';
 import type { Entorno } from '../entorno.js';
+import { ID_PRODUCTO } from '../llamadas/comunes.js';
 import { json, type PeticionHttp, type RespuestaApi } from './tipos.js';
 
 export const COLECCION_TOKENS = 'novuchatTokens';
@@ -95,13 +97,43 @@ async function catalogo(e: Entorno, tenantId: string, mercado: Mercado, cfg: Con
     throw error;
   }
   const redondeo: Redondeo = await e.redondeo(tenantId);
-  const [prods, existencias] = await Promise.all([
-    e.firestore.collection(`tenants/${tenantId}/productos`).where('publicado', '==', true).where('activo', '==', true).get(),
+  // Una sola definición de «publicado» (DS-1): existe la copia `publicado/producto__<id>` que escribe la publicación de la consola.
+  // La lista de ids sale de `publicado/estado.productos`; `producto.publicado` de Inventarios no se lee.
+  const [estadoDoc, existencias] = await Promise.all([
+    e.firestore.doc(`tenants/${tenantId}/publicado/estado`).get(),
     existenciasPorProducto(e, tenantId),
   ]);
-  const productos = prods.docs.map((p) => leerDocumentoProducto(p.id, p.data())).sort((a, b) => a.nombre.localeCompare(b.nombre) || a.productoId.localeCompare(b.productoId));
-  const copias = productos.length === 0 ? [] : await e.firestore.getAll(...productos.map((p) => e.firestore.doc(`tenants/${tenantId}/publicado/producto__${p.productoId}`)));
-  const copiaDe = new Map(copias.map((d) => [d.id.replace('producto__', ''), d.data()]));
+  const lista: unknown = estadoDoc.data()?.['productos'];
+  const candidatos = Array.isArray(lista) ? [...new Set(lista.filter((x): x is string => typeof x === 'string'))] : [];
+  // Solo ids con la forma de un id de producto (`ID_PRODUCTO`, llamadas/comunes.ts): uno con `/` haría lanzar a `doc()` o leería un documento anidado.
+  const idsPublicados = candidatos.filter((id) => ID_PRODUCTO.safeParse(id).success);
+  if (idsPublicados.length < candidatos.length) logger.warn('catálogo NovuChat: ids de publicado/estado ignorados por inválidos', { ignorados: candidatos.length - idsPublicados.length });
+  const copiaDe = new Map<string, Datos>();
+  const productos: ReturnType<typeof leerDocumentoProducto>[] = [];
+  const LOTE = 100;
+  const lotes: string[][] = [];
+  for (let i = 0; i < idsPublicados.length; i += LOTE) lotes.push(idsPublicados.slice(i, i + LOTE));
+  const leidos = await Promise.all(
+    lotes.map((ids) =>
+      e.firestore.getAll(
+        ...ids.map((id) => e.firestore.doc(`tenants/${tenantId}/publicado/producto__${id}`)),
+        ...ids.map((id) => e.firestore.doc(`tenants/${tenantId}/productos/${id}`)),
+      ),
+    ),
+  );
+  lotes.forEach((ids, n) => {
+    const docs = leidos[n]!;
+    ids.forEach((id, k) => {
+      const copia = docs[k];
+      const vivo = docs[ids.length + k];
+      const datosCopia = copia?.exists === true ? copia.data() : undefined;
+      const datosVivo = vivo?.exists === true ? vivo.data() : undefined;
+      if (datosCopia === undefined || datosVivo === undefined || datosVivo['activo'] !== true) return; // sin copia o vivo, o desactivado: no se ofrece
+      copiaDe.set(id, datosCopia);
+      productos.push(leerDocumentoProducto(id, datosVivo));
+    });
+  });
+  productos.sort((a, b) => a.nombre.localeCompare(b.nombre) || a.productoId.localeCompare(b.productoId));
   // Sin valor por defecto al bucket por defecto: `MEDIOS_BASE_URL` es obligatoria (config.ts) y apunta a un origen público APARTE.
   const base = cfg.mediosBaseUrl;
   if (base === '') throw new Error('MEDIOS_BASE_URL no configurada');
