@@ -19,7 +19,7 @@ derivan del código; las cifras caducan y por eso no se copian.
   medición `pnpm zonas`, agentes por zona con gancho de zona de escritura, `docs/arquitectura/{zonas,coordinador,zona-de-escritura}.md`,
   `CLAUDE.md` con la regla de zonas, `CODEOWNERS` por carpetas reales, frontera en el pre-commit. Sin mover ni cambiar lógica.
 - Arquitectura por zonas, tandas T1 a T4 fusionadas (H2, PR 18 a 22) y L1 cerrada (PR 23 a 27: T5, L1-0, L1-a, L1-b, L1-c): colecciones con dueño y `storage.rules` generado; hito H3 aprobado el 06/11/2026.
-- Arquitectura por zonas, L2 cerrada (bloques L2-0 a L2-9 fusionados): encendido por tenant en ejecución, manifiestos completos, alta de tenant (`scripts/alta-tenant.mjs`); hito H4 aprobado el 07/11/2026. El alta de Casa Bermejo ya se aplicó en staging.
+- Arquitectura por zonas, L2 cerrada (bloques L2-0 a L2-9 fusionados): encendido por tenant en ejecución, manifiestos completos, alta de tenant (`scripts/alta-tenant.mjs`); hito H4 aprobado el 07/11/2026. El alta del tenant de referencia ya se aplicó en staging.
 - Sitio de Hosting por tenant (PR C): scripts (#65) y reconstrucción con matriz en staging (#66, fusionado; ajustes #68 a #72 tras la primera reconstrucción real), documentados en `docs/produccion/reconstruccion-sitio.md`; decisiones DC1 a DC4 en `docs/arquitectura/decisiones.md`.
 - 11/11/2026: sitio real publicado en staging con fotos. En staging hay hoy una copia única de los medios hecha ese día y la lectura sin listado ya está aplicada. **Pendiente de despliegue:** que los medios públicos se escriban en un bucket público aparte (`MEDIOS_BUCKET_PUBLICO`); decisión en `docs/arquitectura/decisiones.md` y operación en `docs/produccion/pase-a-staging.md` 9.5.
 - Arquitectura por zonas, L3 (PR 42 a 46): encendido por tenant también en la API HTTP (`docs/produccion/funciones.md` §4), disparador de medios con consola apagada y limpieza para todos los tenants; sin cambio de contrato con NovuChat.
@@ -37,7 +37,7 @@ derivan del código; las cifras caducan y por eso no se copian.
 - Sitio por tenant: decisión de Andres sobre una cuenta de servicio propia con solo `roles/firebasehosting.admin`; cargar el logo de `t1`; borrar la variable de repositorio `TENANT_ID` tras el pase de producción. Secretos y variable de staging ya cargados (10/11/2026).
 
 - L3 (HTTP, bus de eventos, disparador) cerrada el 09/11/2026 (plano §6.8 y §7): L3-0 a L3-5 fusionados (PR 42 a 47), L3-6 es este cierre. El encendido por tenant rige también para la API HTTP; ver `docs/produccion/funciones.md`.
-- Pase a producción: alta de Casa Bermejo en producción antes del tag (`docs/produccion/primer-tag.md`); está pendiente. Sin el documento del tenant, la API HTTP responde como módulo apagado.
+- Pase a producción: alta del tenant de referencia en producción antes del tag (`docs/produccion/primer-tag.md`); está pendiente. Sin el documento del tenant, la API HTTP responde como módulo apagado.
 - Datos de demostración en staging: código fusionado (scripts `personal-tenant.mjs` y `demo-tenant.mjs`, ficha en `docs/produccion/datos-de-demostracion.md`); aplicarlos en staging es un paso aparte con el visto bueno de Andres.
 - Pase a staging (`docs/produccion/pase-a-staging.md`): proyecto, facturación, Firestore/Storage, Hosting, WIF, secretos, App Check,
   variables y Environments de GitHub, rulesets, alerta de Monitoring.

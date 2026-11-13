@@ -24,7 +24,7 @@ Cloud Scheduler: 3 trabajos (el plan gratuito incluye 3 por cuenta; verificar el
 
 ```ts
 const llamar = httpsCallable(functions, 'pos');            // 'pos' | 'inventarios' | 'consola' | 'recibos' | 'medios'
-const { data } = await llamar({ accion: 'abrirTurno', tenantId: 'casa-bermejo', datos: { turnoId, apertura: { BOB: 10000 } } });
+const { data } = await llamar({ accion: 'abrirTurno', tenantId: '<tenant>', datos: { turnoId, apertura: { BOB: 10000 } } });
 ```
 
 - Sobre estricto: `{ accion: string, tenantId: string, datos?: objeto }`. Claves de más → `invalid-argument`.

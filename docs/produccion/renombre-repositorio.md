@@ -39,6 +39,6 @@ alguien crea otro repositorio con el nombre viejo: no reutilizarlo.
 4. **Rulesets**: siguen aplicando; comprobar que `compuerta-pr` sigue siendo el status check requerido (`gh api repos/$OWNER/novutienda/rulesets/<ID>`).
 5. **Fuera del repositorio**: badges o enlaces en documentos, la ficha del registro de proyectos (`~/Claude-Proyectos/proyectos/`, la
    actualiza la sesión de este proyecto), integraciones que clonen por URL (n8n, si las hubiera) y la configuración de Scorecard/CodeQL
-   (no requieren cambios). El nombre de la carpeta local `CasaBermejo` **no** cambia sin una decisión aparte de Andres (cada carpeta de
+   (no requieren cambios). El nombre de la carpeta local del proyecto **no** cambia sin una decisión aparte de Andres (cada carpeta de
    `~/` es un proyecto; moverla rompe rutas de otras sesiones).
 6. Primer run tras el renombre: un PR trivial confirma que Actions y la compuerta funcionan; OIDC se confirma con el primer despliegue a staging.

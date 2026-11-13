@@ -27,7 +27,7 @@ cotización más vieja que el límite (4 días hábiles) el notificador:
 Costo: las alertas basadas en registros de Cloud Monitoring no cobran por la política; el correo es gratuito. Verificar los precios vigentes en la
 documentación oficial de Google Cloud con fecha antes de crearla.
 
-1. **Canal de notificación** (correo) en el proyecto: `gcloud beta monitoring channels create --display-name="Cotización Casa Bermejo" --type=email --channel-labels=email_address=<CORREO_DEL_CLIENTE> --project=<PROYECTO>` (el correo y el proyecto salen de las variables de GitHub; no se guardan en el repositorio).
+1. **Canal de notificación** (correo) en el proyecto: `gcloud beta monitoring channels create --display-name="Cotización <CLIENTE>" --type=email --channel-labels=email_address=<CORREO_DEL_CLIENTE> --project=<PROYECTO>` (el correo y el proyecto salen de las variables de GitHub; no se guardan en el repositorio).
 2. **Política de alerta basada en registros** sobre este filtro:
 
 ```
