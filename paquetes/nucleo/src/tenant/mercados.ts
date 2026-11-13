@@ -57,6 +57,11 @@ export interface ConfiguracionComercial {
   readonly monedas: readonly string[];
 }
 
+/** Topes de tamaño: se aplican ANTES de recorrer nada. */
+export const MAX_MERCADOS = 20;
+export const MAX_MONEDAS = 20;
+export const MAX_NOMBRE_MERCADO = 80;
+
 const ID_MERCADO = /^[A-Z]{2}$/;
 const MONEDA = /^[A-Z]{3}$/;
 const PAR = /^([A-Z]{3})\/([A-Z]{3})$/;
@@ -83,11 +88,23 @@ function mismaRegla(a: ReglaRedondeo, b: ReglaRedondeo): boolean {
   return a.tipo === 'decimales' ? a.decimales === (b as typeof a).decimales : a.multiplo === (b as typeof a).multiplo;
 }
 
+/** Motivo si el objeto trae claves fuera de la lista (la configuración es cerrada, igual que en el alta). */
+function errorClaves(o: Record<string, unknown>, permitidas: readonly string[], r: string): string | null {
+  const extra = Object.keys(o).find((k) => !permitidas.includes(k));
+  return extra === undefined ? null : `${r}: la clave ${extra} no está permitida`;
+}
+
+const tieneControl = (t: string): boolean => [...t].some((c) => { const n = c.charCodeAt(0); return n < 0x20 || (n >= 0x7f && n <= 0x9f); });
+
 /** Devuelve el motivo del primer defecto de un mercado, o `null`. */
 function errorMercado(m: unknown, r: string): string | null {
   if (!esObjeto(m)) return `${r}: debe ser un objeto`;
+  const extraM = errorClaves(m, ['id', 'nombre', 'monedaVenta', 'monedaBase', 'zonaHoraria', 'tipoCambio', 'redondeo'], r);
+  if (extraM !== null) return extraM;
   if (typeof m['id'] !== 'string' || !ID_MERCADO.test(m['id'])) return `${r}.id: debe ser de dos letras mayúsculas`;
   if (typeof m['nombre'] !== 'string' || m['nombre'].trim() === '') return `${r}.nombre: no puede estar vacío`;
+  if (m['nombre'].length > MAX_NOMBRE_MERCADO) return `${r}.nombre: no puede pasar de ${MAX_NOMBRE_MERCADO} caracteres`;
+  if (tieneControl(m['nombre'])) return `${r}.nombre: no puede tener caracteres de control`;
   if (!esMoneda(m['monedaVenta'])) return `${r}.monedaVenta: debe ser un código ISO 4217 de tres letras mayúsculas`;
   if (!esMoneda(m['monedaBase'])) return `${r}.monedaBase: debe ser un código ISO 4217 de tres letras mayúsculas`;
   for (const campo of ['monedaVenta', 'monedaBase'] as const) {
@@ -98,6 +115,8 @@ function errorMercado(m: unknown, r: string): string | null {
   if (!esZonaHorariaValida(m['zonaHoraria'])) return `${r}.zonaHoraria: no es una zona horaria IANA válida`;
   if (!esReglaRedondeoValida(m['redondeo'] as ReglaRedondeo | undefined)) return `${r}.redondeo: regla de redondeo inválida para ${m['monedaVenta']}`;
   const rd = m['redondeo'] as ReglaRedondeo;
+  const extraR = errorClaves(rd as unknown as Record<string, unknown>, ['tipo', 'decimales', 'multiplo', 'modo'], `${r}.redondeo`);
+  if (extraR !== null) return extraR;
   if (rd.tipo === 'decimales' && rd.decimales > 2) return `${r}.redondeo: no puede tener más de 2 decimales (el dinero se guarda en centavos)`;
   if (rd.tipo === 'multiplo' && (rd.multiplo < 0.01 || Math.abs(rd.multiplo * 100 - Math.round(rd.multiplo * 100)) > 1e-9)) {
     return `${r}.redondeo: el múltiplo debe ser de al menos 0,01 y de centavos exactos`;
@@ -109,6 +128,9 @@ function errorMercado(m: unknown, r: string): string | null {
   }
   if (tc === null || tc === undefined) return `${r}.tipoCambio: es obligatorio si la moneda base (${m['monedaBase']}) difiere de la de venta (${m['monedaVenta']})`;
   if (!esObjeto(tc)) return `${r}.tipoCambio: debe ser un objeto`;
+  const extraT = errorClaves(tc, ['par', 'fuentes'], `${r}.tipoCambio`);
+  if (extraT !== null) return extraT;
+  if (rd.tipo === 'ninguno') return `${r}.redondeo: un mercado con tipo de cambio exige redondeo por decimales (0 a 2) o por múltiplo, no «ninguno»`;
   const par = typeof tc['par'] === 'string' ? PAR.exec(tc['par']) : null;
   if (par === null) return `${r}.tipoCambio.par: debe tener la forma VENTA/BASE (tres letras / tres letras)`;
   if (par[1] !== m['monedaVenta'] || par[2] !== m['monedaBase']) {
@@ -116,6 +138,7 @@ function errorMercado(m: unknown, r: string): string | null {
   }
   const f = tc['fuentes'];
   if (!Array.isArray(f) || f.length === 0) return `${r}.tipoCambio.fuentes: requiere al menos una fuente`;
+  if (f.length > FUENTES_TIPO_CAMBIO.length) return `${r}.tipoCambio.fuentes: no puede tener más de ${FUENTES_TIPO_CAMBIO.length} fuentes`;
   if (!f.every((x) => (FUENTES_TIPO_CAMBIO as readonly unknown[]).includes(x))) {
     return `${r}.tipoCambio.fuentes: solo se admiten ${FUENTES_TIPO_CAMBIO.join(', ')}`;
   }
@@ -132,7 +155,12 @@ function errorMercado(m: unknown, r: string): string | null {
 export function validarConfiguracionComercial(x: unknown): Resultado<ConfiguracionComercial> {
   if (!esObjeto(x)) return { ok: false, error: 'comercial: debe ser un objeto' };
   const mercados = x['mercados'];
+  const extra = errorClaves(x, ['mercados', 'monedas'], 'comercial');
+  if (extra !== null) return { ok: false, error: extra };
   if (!Array.isArray(mercados) || mercados.length === 0) return { ok: false, error: 'comercial.mercados: requiere al menos un mercado' };
+  if (mercados.length > MAX_MERCADOS) return { ok: false, error: `comercial.mercados: no puede tener más de ${MAX_MERCADOS} mercados` };
+  const monedasEntrada = x['monedas'];
+  if (Array.isArray(monedasEntrada) && monedasEntrada.length > MAX_MONEDAS) return { ok: false, error: `comercial.monedas: no puede tener más de ${MAX_MONEDAS} monedas` };
   const ids = new Set<string>();
   for (const [i, m] of mercados.entries()) {
     const e = errorMercado(m, `comercial.mercados[${i}]`);
@@ -160,7 +188,18 @@ export function validarConfiguracionComercial(x: unknown): Resultado<Configuraci
       return { ok: false, error: `comercial.monedas: debe incluir ${m.monedaVenta}, la moneda de venta del mercado ${m.id}` };
     }
   }
-  return { ok: true, valor: x as unknown as ConfiguracionComercial };
+  // Objeto RECONSTRUIDO solo con los campos conocidos: nada de la entrada se reutiliza por referencia.
+  const valor: ConfiguracionComercial = {
+    mercados: (mercados as readonly MercadoTenant[]).map((m) => ({
+      id: m.id, nombre: m.nombre, monedaVenta: m.monedaVenta, monedaBase: m.monedaBase, zonaHoraria: m.zonaHoraria,
+      tipoCambio: m.tipoCambio === null ? null : { par: m.tipoCambio.par, fuentes: [...m.tipoCambio.fuentes] },
+      redondeo: m.redondeo.tipo === 'ninguno' ? { tipo: 'ninguno' }
+        : m.redondeo.tipo === 'decimales' ? { tipo: 'decimales', decimales: m.redondeo.decimales, modo: m.redondeo.modo }
+          : { tipo: 'multiplo', multiplo: m.redondeo.multiplo, modo: m.redondeo.modo },
+    })),
+    monedas: [...(monedas as readonly string[])],
+  };
+  return { ok: true, valor };
 }
 
 // ---- Consultas puras. Un mercado no declarado devuelve `undefined`/`false`: quien llama decide (falla cerrado). ----

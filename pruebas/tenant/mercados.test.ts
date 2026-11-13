@@ -140,6 +140,42 @@ describe('dinero en centavos y redondeo por moneda', () => {
   });
 });
 
+describe('topes de tamaño y forma cerrada', () => {
+  it('rechaza más de 20 mercados o monedas antes de recorrer', () => {
+    const muchos = { mercados: Array.from({ length: 21 }, () => ({})), monedas: ['COP'] };
+    rechaza(muchos, 'más de 20 mercados');
+    rechaza({ ...una(), monedas: Array.from({ length: 21 }, (_, i) => `A${String.fromCharCode(65 + i)}A`) }, 'más de 20 monedas');
+  });
+  it('limita el nombre: largo máximo, vacío y caracteres de control', () => {
+    rechaza(mod((c) => (c.mercados[0].nombre = 'x'.repeat(81))), 'nombre');
+    rechaza(mod((c) => (c.mercados[0].nombre = 'Bo\nlivia')), 'control');
+    expect(validarConfiguracionComercial(mod((c) => (c.mercados[0].nombre = 'x'.repeat(80)))).ok).toBe(true);
+  });
+  it('rechaza claves desconocidas en cada nivel', () => {
+    rechaza(mod((c) => (c.extra = 1)), 'la clave extra');
+    rechaza(mod((c) => (c.mercados[0].extra = 1)), 'mercados[0]: la clave extra');
+    rechaza(mod((c) => (c.mercados[0].tipoCambio.extra = 1)), 'tipoCambio: la clave extra');
+    rechaza(mod((c) => (c.mercados[0].redondeo.extra = 1)), 'redondeo: la clave extra');
+  });
+  it('limita las fuentes', () => {
+    rechaza(mod((c) => (c.mercados[1].tipoCambio.fuentes = ['BNA', 'BCRA', 'manual', 'BCB', 'BNA'])), 'más de 4 fuentes');
+  });
+  it('devuelve un objeto reconstruido, sin reutilizar el de entrada', () => {
+    const entrada = dos();
+    const r = validarConfiguracionComercial(entrada);
+    expect(r.ok).toBe(true);
+    if (r.ok) {
+      expect(r.valor).toEqual(entrada);
+      expect(r.valor).not.toBe(entrada);
+      expect(r.valor.mercados[0]).not.toBe(entrada.mercados[0]);
+      expect(r.valor.mercados[0]!.tipoCambio).not.toBe(entrada.mercados[0]!.tipoCambio);
+    }
+  });
+  it('un mercado con tipo de cambio exige redondeo por decimales o múltiplo, no «ninguno»', () => {
+    rechaza(mod((c) => (c.mercados[0].redondeo = { tipo: 'ninguno' })), 'no «ninguno»');
+  });
+});
+
 describe('consultas puras', () => {
   const c = COMERCIAL_LEGADO_TRES_MONEDAS;
   it('responden por mercado declarado', () => {

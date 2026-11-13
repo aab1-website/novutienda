@@ -82,6 +82,26 @@ describe('precioDeMercado', () => {
   });
 });
 
+describe('precio coherente con los centavos', () => {
+  const sin = (redondeo: object) => ({ ...co, redondeo }) as never;
+  it('el monto es exactamente los centavos, con a lo sumo 2 decimales', () => {
+    expect(precioDeMercado(12.345, sin({ tipo: 'ninguno' }), null)).toEqual({ tipo: 'precio', moneda: 'COP', monto: 12.35, centavos: 1235, sinCotizacion: true });
+    expect(precioDeMercado(10.5, sin({ tipo: 'decimales', decimales: 1, modo: 'arriba' }), null)).toMatchObject({ monto: 10.5, centavos: 1050 });
+    expect(precioDeMercado(17, sin({ tipo: 'multiplo', multiplo: 5, modo: 'abajo' }), null)).toMatchObject({ monto: 15, centavos: 1500 });
+  });
+  it('un precio base positivo que queda en 0 centavos es inválido, con cualquier redondeo', () => {
+    for (const r of [{ tipo: 'ninguno' }, { tipo: 'decimales', decimales: 2, modo: 'cercano' }, { tipo: 'multiplo', multiplo: 0.01, modo: 'cercano' }]) {
+      expect(precioDeMercado(0.004, sin(r), null)).toMatchObject({ tipo: 'invalido' });
+    }
+    expect(precioDeMercado(0.005, sin({ tipo: 'ninguno' }), null)).toMatchObject({ tipo: 'precio', centavos: 1, monto: 0.01 });
+  });
+  it('con cotización menor que 1 no devuelve 0,0008 con 0 centavos', () => {
+    const m = { ...bo, redondeo: { tipo: 'ninguno' } } as never;
+    expect(precioDeMercado(0.001, m, { par: 'BOB/USD', valor: 0.8 })).toMatchObject({ tipo: 'invalido' });
+    expect(precioDeMercado(1, m, { par: 'BOB/USD', valor: 0.8 })).toMatchObject({ tipo: 'precio', monto: 0.8, centavos: 80 });
+  });
+});
+
 describe('zona horaria y /api/cotizacion por tenant', () => {
   it('hoyEn usa la zona declarada y falla cerrado en un mercado no declarado', () => {
     const t = Date.UTC(2026, 10, 14, 3, 0); // 14/11 03:00 UTC = 13/11 22:00 en Bogotá

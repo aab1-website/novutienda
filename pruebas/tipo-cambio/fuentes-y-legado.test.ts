@@ -56,7 +56,8 @@ describe('la API por tenant exige la declaración (falla cerrado)', () => {
     await expect(
       cargarManualDe(almacen, { mercado: 'CL', valor: 950, fecha: '2026-11-04', actor: { uid: 'u', rol: 'adm', proveedor: 'password' }, ahoraMs: AHORA }, { tenantId: 'tenant-x', comercial: c }),
     ).rejects.toThrow(RangeError);
-    await expect(escribirCotizacionDe(almacen, { mercado: 'CL', principal: null, control: null, ahoraMs: AHORA }, { tenantId: 'tenant-x', comercial: c })).resolves.toMatchObject({ escrita: null });
+    await expect(escribirCotizacionDe(almacen, { mercado: 'CL', principal: null, control: null, ahoraMs: AHORA }, { tenantId: 'tenant-x', comercial: c })).rejects.toThrow(RangeError);
+    expect(almacen.docs.size).toBe(0);
   });
 });
 

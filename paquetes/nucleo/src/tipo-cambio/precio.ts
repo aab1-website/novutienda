@@ -75,7 +75,10 @@ function calcular(base: number, e: Entrada, cotizacion: { readonly par: string; 
   const monto = redondear(e.par === null ? base : base * (cotizacion as { valor: number }).valor, e.regla as ReglaRedondeo);
   if (monto <= 0) return { tipo: 'invalido', motivo: 'el redondeo dejó el precio en cero' };
   if (!Number.isSafeInteger(Math.round(limpiar(monto * 100)))) return { tipo: 'invalido', motivo: 'el precio es demasiado grande' };
-  const p = { tipo: 'precio' as const, moneda: e.moneda, monto, centavos: aCentavos(monto) };
+  // Lo mostrado y lo cobrado coinciden: el monto es exactamente los centavos (a lo sumo 2 decimales) y nunca 0.
+  const centavos = aCentavos(monto);
+  if (centavos <= 0) return { tipo: 'invalido', motivo: 'el precio resulta menor a un centavo' };
+  const p = { tipo: 'precio' as const, moneda: e.moneda, monto: centavos / 100, centavos };
   return e.par === null ? { ...p, sinCotizacion: true } : p;
 }
 

@@ -81,8 +81,10 @@ export async function escribirCotizacionDe(
   entrada: Omit<EntradaDecision, 'actual' | 'comercial'>,
   opciones: OpcionesAlmacenDe,
 ): Promise<ResultadoEscritura> {
-  const ruta = rutaCotizacion(opciones.tenantId, entrada.mercado);
   const comercial = opciones.comercial;
+  // Primero el mercado contra la declaración; solo después se arma la ruta o se lee nada.
+  parDeMercado(comercial, entrada.mercado);
+  const ruta = rutaCotizacion(opciones.tenantId, entrada.mercado);
   return almacen.transaccion(async (tx) => {
     const actual = await tx.leer(ruta);
     const decision = decidirCotizacionDe({ ...entrada, comercial, actual });
