@@ -38,6 +38,8 @@ describe.skipIf(!hayEmulador)('API HTTP (emulador)', () => {
         ] },
       ], seo: { titulo: 't', descripcion: 'd' }, precioUSD: { bo: 10, ar: 20 },
     });
+    // Lista de ids publicados (la escribe `publicarSitio`): el catálogo de NovuChat parte de ella (S7-2, una sola definición de «publicado»).
+    await h.firestore.doc(`tenants/${T}/publicado/estado`).set({ version: 1, publicadoEn: '2026-11-04T11:30:00.000Z', productos: [prod, prodSinControl], secciones: [], carruseles: [], reconstruccion: { programadaPara: null, ultima: null } });
     // Token del tenant: solo se guarda su SHA-256 (rotación: hasta dos documentos activos).
     await h.firestore.doc(`novuchatTokens/${sha256(token)}`).set({ tenantId: T, hash: sha256(token), activo: true });
   });
