@@ -1,6 +1,37 @@
 {
-  "nota": "Archivos fuera de paquetes/nucleo/ que importan cada símbolo legado de tipo de cambio. Solo baja; llega a cero al cerrar el plan (plano §6.10).",
+  "nota": "Archivos de producción fuera de paquetes/nucleo/ que importan cada símbolo legado de tipo de cambio y tenant (todo lo @deprecated del núcleo más una lista explícita). Solo baja; llega a cero al cerrar el plan (plano §6.10).",
   "simbolos": {
+    "COMERCIAL_LEGADO_TRES_MONEDAS": [],
+    "MERCADOS": [
+      "paquetes/inventarios/src/productos.ts",
+      "paquetes/panel/src/pantallas/inventarios/nombres.ts",
+      "paquetes/website/src/lib/cotizacion-cliente.ts",
+      "plataforma/funciones/servidor/llamadas/inventarios.ts"
+    ],
+    "MONEDAS": [],
+    "MONEDA_DE": [
+      "paquetes/panel/src/pantallas/inventarios/nombres.ts",
+      "paquetes/website/src/lib/mercado.ts",
+      "plataforma/funciones/servidor/http/novuchat.ts"
+    ],
+    "PAR_DE": [
+      "paquetes/website/src/lib/cotizacion-cliente.ts"
+    ],
+    "ZONA_DE": [],
+    "ZONA_HORARIA": [
+      "paquetes/inventarios/src/motor.ts"
+    ],
+    "actualizarMercado": [
+      "plataforma/funciones/servidor/programadas/cotizacion.ts"
+    ],
+    "cargarManual": [],
+    "comercialLegado": [],
+    "decidirCotizacion": [],
+    "esMercado": [
+      "paquetes/website/src/lib/mercado.ts",
+      "plataforma/funciones/servidor/http/novuchat.ts"
+    ],
+    "escribirCotizacion": [],
     "leerCotizacion": [
       "paquetes/consola/src/tablero.ts",
       "paquetes/pos/src/contexto.ts",
@@ -9,33 +40,15 @@
       "plataforma/funciones/servidor/llamadas/consola.ts",
       "plataforma/funciones/servidor/llamadas/pos.ts"
     ],
-    "escribirCotizacion": [],
-    "cargarManual": [],
-    "actualizarMercado": [
-      "plataforma/funciones/servidor/programadas/cotizacion.ts"
-    ],
     "manejarCotizacion": [
       "paquetes/website/src/api/cotizacion.ts"
     ],
-    "decidirCotizacion": [],
-    "MERCADOS": [
-      "paquetes/inventarios/src/productos.ts",
-      "paquetes/panel/src/pantallas/inventarios/nombres.ts",
-      "paquetes/website/src/lib/cotizacion-cliente.ts",
-      "plataforma/funciones/servidor/llamadas/inventarios.ts"
-    ],
-    "PAR_DE": [
-      "paquetes/website/src/lib/cotizacion-cliente.ts"
-    ],
-    "MONEDA_DE": [
-      "paquetes/panel/src/pantallas/inventarios/nombres.ts",
-      "paquetes/website/src/lib/mercado.ts",
+    "precioFinal": [
+      "paquetes/consola/src/tablero.ts",
+      "paquetes/panel/src/util/precio.ts",
+      "paquetes/pos/src/venta.ts",
+      "paquetes/website/src/lib/precio-vista.ts",
       "plataforma/funciones/servidor/http/novuchat.ts"
-    ],
-    "ZONA_DE": [],
-    "ZONA_HORARIA": [
-      "paquetes/inventarios/src/motor.ts"
-    ],
-    "MONEDAS": []
+    ]
   }
 }

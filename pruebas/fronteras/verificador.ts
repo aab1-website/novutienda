@@ -93,27 +93,63 @@ function sinComentarios(codigo: string): string {
   return codigo.replace(/\/\*[\s\S]*?\*\//g, ' ').replace(/(^|[^:'"`\\])\/\/[^\n]*/g, '$1');
 }
 
-const IMPORTACION_NOMBRADA =
-  /\b(?:import|export)\s+(?:type\s+)?(?:(\w+)\s*,\s*)?(?:(\{[^}]*\})|\*\s+as\s+(\w+))\s*from\s*(['"])(@novutienda\/nucleo(?:\/[^'"\n]*)?)\4/g;
+const NUCLEO = String.raw`['"]@novutienda\/nucleo(?:\/[^'"\n]*)?['"]`;
+const IMPORTACION_NOMBRADA = new RegExp(
+  String.raw`\b(?:import|export)\s+(?:type\s+)?(?:(\w+)\s*,\s*)?(?:(\{[^}]*\})|\*\s+as\s+(\w+))\s*from\s*${NUCLEO}`, 'g');
+const EXPORTAR_TODO = new RegExp(String.raw`\bexport\s+(?:type\s+)?\*\s*(?:as\s+\w+\s*)?from\s*${NUCLEO}`);
+const DINAMICA = new RegExp(String.raw`\bimport\s*\(\s*${NUCLEO}\s*\)`, 'g');
+
+function nombresEnLlaves(llaves: string): string[] {
+  return llaves.slice(1, -1).split(',').map((p) => p.trim().replace(/^type\s+/, '').split(/\s*(?:\sas\s|:|=)\s*/)[0]?.trim() ?? '').filter((n) => n !== '');
+}
+
+/** Miembros del espacio de nombres `alias` que el código toca; `null` si el acceso no se puede resolver (falla cerrado). */
+function miembrosDeEspacio(limpio: string, alias: string): { nombres: string[]; cerrado: boolean } {
+  const a = alias.replace(/\$/g, '\\$');
+  const nombres: string[] = [];
+  let cerrado = false;
+  for (const m of limpio.matchAll(new RegExp(String.raw`(?<![\w$.])${a}\s*\??\.\s*([\w$]+)`, 'g'))) nombres.push(m[1] as string);
+  for (const m of limpio.matchAll(new RegExp(String.raw`(?<![\w$.])${a}\s*(?:\?\.)?\s*\[\s*([^\]]*?)\s*\]`, 'g'))) {
+    const lit = /^(['"`])([\w$]+)\1$/.exec(m[1] as string);
+    if (lit === null) cerrado = true;
+    else nombres.push(lit[2] as string);
+  }
+  for (const m of limpio.matchAll(new RegExp(String.raw`(\{[^}]*\})\s*=\s*(?:await\s+)?${a}(?![\w$])`, 'g'))) nombres.push(...nombresEnLlaves(m[1] as string));
+  return { nombres, cerrado };
+}
 
 /**
- * Símbolos de `simbolos` que el código importa desde `@novutienda/nucleo` (o un subpath), por análisis de importaciones:
- * nombres en llaves (con `as` y `type`) y `import * as ns` con uso `ns.SIMBOLO`. Un nombre igual declarado en local, sin
- * importarlo del núcleo, no cuenta.
+ * Símbolos de `simbolos` que el código toma de `@novutienda/nucleo` (o un subpath), por análisis de importaciones:
+ * nombres en llaves (con `as` y `type`), `export { X } from`, `import * as ns` y `import()` dinámico con acceso por punto,
+ * corchetes con literal o desestructuración. Falla cerrado (cuenta TODOS los símbolos) con `export * from` el núcleo, con
+ * acceso por corchetes con expresión no literal y con un `import()` cuyo resultado no se puede seguir. Un nombre local igual
+ * que no viene del núcleo no cuenta.
  */
 export function simbolosDeNucleoUsados(codigo: string, simbolos: readonly string[]): string[] {
   const limpio = sinComentarios(codigo);
+  if (EXPORTAR_TODO.test(limpio)) return [...simbolos].sort();
   const usados = new Set<string>();
+  let todos = false;
+  const sumar = (nombres: readonly string[]): void => { for (const n of nombres) if (simbolos.includes(n)) usados.add(n); };
+  const espacio = (alias: string): void => {
+    const r = miembrosDeEspacio(limpio, alias);
+    sumar(r.nombres);
+    if (r.cerrado) todos = true;
+  };
   for (const m of limpio.matchAll(IMPORTACION_NOMBRADA)) {
-    if (m[2] !== undefined) {
-      for (const parte of m[2].slice(1, -1).split(',')) {
-        const nombre = parte.trim().replace(/^type\s+/, '').split(/\s+as\s+/)[0]?.trim() ?? '';
-        if (simbolos.includes(nombre)) usados.add(nombre);
-      }
-    }
-    if (m[3] !== undefined) {
-      for (const s of simbolos) if (new RegExp(`\\b${m[3]}\\.${s}\\b`).test(limpio)) usados.add(s);
-    }
+    if (m[2] !== undefined) sumar(nombresEnLlaves(m[2]));
+    if (m[3] !== undefined) espacio(m[3]);
   }
-  return [...usados].sort();
+  for (const m of limpio.matchAll(DINAMICA)) {
+    const antes = limpio.slice(0, m.index);
+    const llaves = /(\{[^}]*\})\s*=\s*(?:await\s+)?$/.exec(antes);
+    const alias = /(?:const|let|var)\s+([\w$]+)\s*=\s*(?:await\s+)?$/.exec(antes);
+    const despues = limpio.slice((m.index ?? 0) + m[0].length);
+    const directo = /^\s*\)\s*\.\s*([\w$]+)/.exec(despues);
+    if (llaves !== null) sumar(nombresEnLlaves(llaves[1] as string));
+    else if (alias !== null) espacio(alias[1] as string);
+    else if (/\(\s*await\s+$/.test(antes) && directo !== null) sumar([directo[1] as string]);
+    else todos = true;
+  }
+  return (todos ? [...simbolos] : [...usados]).sort();
 }
