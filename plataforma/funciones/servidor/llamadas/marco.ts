@@ -9,7 +9,7 @@ import { HttpsError, type CallableRequest } from 'firebase-functions/v2/https';
 import { z } from 'zod';
 import type { Actor, ActorConRol, Rol } from '@novutienda/nucleo';
 import { CODIGO_DE_BORDE, CODIGO_MODULO_APAGADO, traducirError } from '../../../conectores/firebase/index.js';
-import { recortarDetallesDeStock } from '../../../coordinador/index.js';
+import { bloqueoPorConteo, DETALLES_STOCK_OCULTO, MENSAJE_STOCK_OCULTO, recortarDetallesDeStock } from '../../../coordinador/index.js';
 import { autenticar, exigirAppCheck, personalDelTenant, type Sesion, type SesionTenant } from '../autenticacion.js';
 import type { Entorno } from '../entorno.js';
 import { RedondeoInvalido } from '../redondeo.js';
@@ -107,6 +107,11 @@ function conCodigo(error: HttpsError, codigoPorDefecto?: string): HttpsError {
 export function comoHttpsError(error: unknown, contexto: Readonly<Record<string, unknown>>): HttpsError {
   if (error instanceof HttpsError) return conCodigo(error);
   if (error instanceof RedondeoInvalido) return conCodigo(new HttpsError('failed-precondition', error.message), 'redondeo-invalido');
+  const bloqueo = bloqueoPorConteo(error);
+  if (bloqueo !== undefined) {
+    logger.warn('callable rechazado', { ...contexto, codigo: 'failed-precondition' });
+    return new HttpsError('failed-precondition', bloqueo.mensaje, bloqueo.details);
+  }
   const t = traducirError(error);
   if (t.interno) logger.error('error interno en callable', { ...contexto, error: error instanceof Error ? { nombre: error.name, mensaje: error.message } : String(error) });
   else logger.warn('callable rechazado', { ...contexto, codigo: t.code });
@@ -163,10 +168,13 @@ export function crearManejador(o: OpcionesManejador): (req: CallableRequest) => 
     } catch (error) {
       const h = comoHttpsError(error, marca);
       // Único punto por donde pasan los callables: quien no es `adm` no recibe `disponible` de un almacén en conteo. Solo se lee
-      // (conteos del tenant) cuando el error es de stock insuficiente. Sin rol verificado (falló antes) no hay faltantes que recortar.
+      // (conteos del tenant) cuando el error es de stock insuficiente; si algún faltante cae en un almacén en conteo, no recibe la lista. Sin rol verificado (falló antes) no hay faltantes que recortar.
       const d = h.details as { codigo?: unknown } | undefined;
       if (d?.codigo === 'stock-insuficiente' && tenantDelError !== undefined) {
-        throw new HttpsError(h.code, h.message, await recortarDetallesDeStock(o.entorno().firestore, tenantDelError, rolDelError, h.details));
+        const detalles = await recortarDetallesDeStock(o.entorno().firestore, tenantDelError, rolDelError, h.details);
+        const oculto = (detalles as { faltantesOcultos?: unknown }).faltantesOcultos === true;
+        // Con faltantes ocultos el texto tampoco nombra productos ni almacenes (el de `StockInsuficiente` los lista).
+        throw new HttpsError(h.code, oculto ? MENSAJE_STOCK_OCULTO : h.message, oculto ? { ...DETALLES_STOCK_OCULTO } : detalles);
       }
       throw h;
     }

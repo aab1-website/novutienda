@@ -3,7 +3,7 @@ import type { ResultadoOperacion, TipoMovimiento, UbicacionId } from '../../api/
 import { UBICACIONES } from '../../api/tipos.js';
 import { aCsv } from '../../util/csv.js';
 import { importarProductosDoble, simularImportacionDoble } from './importacion.js';
-import { auditar, exigirRol, faltantesVisibles, fallo, iso, marcaDoble, proyectarProductoDoble, puedeVerExistencias, recalcular, vistaProducto, type Contexto, type ProductoInterno } from '../estado.js';
+import { auditar, conteosAbiertosDoble, exigirRol, detalleDeFaltantes, fallo, iso, marcaDoble, proyectarProductoDoble, puedeVerExistencias, recalcular, vistaProducto, type Contexto, type ProductoInterno } from '../estado.js';
 
 type H<N extends NombreCallable> = (c: Contexto, e: Entrada<N>) => Salida<N> | Promise<Salida<N>>;
 
@@ -138,13 +138,18 @@ export const handlersInventario: {
     const o = ubicacion(e.origenId);
     const d = ubicacion(e.destinoId);
     if (o === d) throw fallo('entrada-invalida', 'Origen y destino deben ser distintos');
+    // Con conteo abierto en el origen o el destino solo `adm` traspasa; antes de cualquier validación de cantidades.
+    if (c.rol !== 'adm') {
+      const k = conteosAbiertosDoble(c.e).find((x) => x.ubicacionId === o) ?? conteosAbiertosDoble(c.e).find((x) => x.ubicacionId === d);
+      if (k !== undefined) throw fallo('conteo-abierto', `No se puede traspasar desde ni hacia ${k.ubicacionId} mientras tiene un conteo abierto.`, { ubicacionId: k.ubicacionId, conteoId: k.conteoId, abiertoEn: k.abiertoEn });
+    }
     return operacion(c, 'traspaso', e.operacionId, [o, d, e.lineas], () => {
       const trabajos = e.lineas.map((l) => {
         const p = producto(c, l.productoId);
         return { p, l, series: validarSeries(p, l.cantidad, l.series) };
       });
       for (const { p, l, series } of trabajos) {
-        if (p.existencias[o] < l.cantidad) throw fallo('stock-insuficiente', 'Stock insuficiente', { faltantes: faltantesVisibles(c, [{ productoId: p.id, almacenId: o, pedido: l.cantidad, disponible: p.existencias[o] }]) });
+        if (p.existencias[o] < l.cantidad) throw fallo('stock-insuficiente', 'Stock insuficiente', detalleDeFaltantes(c, [{ productoId: p.id, almacenId: o, pedido: l.cantidad, disponible: p.existencias[o] }]));
         for (const s of series) {
           const un = c.e.unidades.get(`${p.id}__${s}`);
           if (un === undefined || un.estado !== 'disponible' || un.ubicacionId !== o) throw fallo('serie-no-disponible');

@@ -128,16 +128,27 @@ export function proyectarMovimiento(rol: Rol | undefined, conteos: Conteos, m: R
   return sinSaldos;
 }
 
+/** Detalle de un `StockInsuficiente` para quien consulta: la lista completa o solo el aviso de que se ocultó. */
+export type FaltantesVisibles = { readonly ocultos: false; readonly faltantes: readonly Faltante[] } | { readonly ocultos: true };
+
 /**
- * Faltantes de un `StockInsuficiente` para quien no es `adm`: en una ubicación en conteo se quita `disponible` (la cantidad
- * que hay) y se conserva `pedido` (lo pidió quien consulta). El coordinador lo aplica al traducir el error.
+ * Faltantes de un `StockInsuficiente` para quien no es `adm`: si ALGUNO cae en una ubicación en conteo, no se entrega ninguno
+ * (ni ids, ni cantidades, ni cuántos): solo `ocultos: true`. Si ninguno cae en el alcance, la lista completa como siempre.
+ * Así la respuesta no distingue «stock ≥ N» de «stock < N» combinando líneas. El coordinador lo aplica al traducir el error.
  */
-export type FaltanteRecortado = Omit<Faltante, 'disponible'> & { readonly disponible?: number };
-export function recortarFaltantes(rol: Rol | undefined, conteos: Conteos, faltantes: readonly Faltante[]): FaltanteRecortado[] {
-  return faltantes.map((f) => {
-    if (puedeVerExistencias(rol, f.almacenId, conteos)) return { ...f };
-    const { disponible: _d, ...resto } = f;
-    void _d;
-    return resto;
-  });
+export function recortarFaltantes(rol: Rol | undefined, conteos: Conteos, faltantes: readonly Faltante[]): FaltantesVisibles {
+  if (faltantes.some((f) => !puedeVerExistencias(rol, f.almacenId, conteos))) return { ocultos: true };
+  return { ocultos: false, faltantes: [...faltantes] };
+}
+
+/** Texto del error de stock cuando los faltantes se ocultan (sin productos, almacenes ni cantidades). */
+export const MENSAJE_STOCK_OCULTO = 'Stock insuficiente.';
+
+/**
+ * Traspasos: `caj` y `sup` no pueden traspasar desde ni hacia una ubicación con conteo abierto; `adm` sí. Falla cerrado con
+ * rol ausente o desconocido. Devuelve el conteo que bloquea (el del origen primero), o `undefined` si puede seguir.
+ */
+export function conteoQueBloqueaTraspaso(rol: Rol | undefined, conteos: Conteos, origenId: string, destinoId: string): ConteoAbierto | undefined {
+  if (rol === 'adm') return undefined;
+  return conteos.find((c) => c.ubicacionId === origenId) ?? conteos.find((c) => c.ubicacionId === destinoId);
 }

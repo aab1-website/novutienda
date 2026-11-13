@@ -1,5 +1,6 @@
 import type { TransaccionIdentidad } from '@novutienda/nucleo';
-import { EntradaInvalida, ErrorInventario, EstadoInvalido, SerieNoDisponible, StockInsuficiente, type Faltante } from './errores.js';
+import { EntradaInvalida, ErrorInventario, EstadoInvalido, SerieNoDisponible, StockInsuficiente, TraspasoBloqueadoPorConteo, type Faltante } from './errores.js';
+import { conteoQueBloqueaTraspaso, conteosAbiertosDe } from './visibilidad.js';
 import { exigirCantidad, exigirProducto, exigirSeries, exigirUbicacion, MAX_CANTIDAD, MAX_LINEAS, ruta } from './ids.js';
 import { MARCA_SERVIDOR, type Autor, type Datos, type Trabajo } from './motor.js';
 import { ejecutarOperacion, exigirAutor, exigirListaLineas, exigirMotivo, PERMISOS, type ResultadoOperacion } from './operacion.js';
@@ -137,6 +138,15 @@ export async function traspasar(
     por,
     roles: PERMISOS.traspaso,
     construir: async (t) => {
+      // Primero y antes de leer o validar nada que dependa de cantidades: con conteo abierto en el origen o el destino, solo `adm` traspasa.
+      if (por.rol !== 'adm') {
+        const ubic = await Promise.all([origenId, destinoId].map(async (id) => ({ id, data: (await t.lector.leer('ubicaciones', id)) ?? {} })));
+        const idsConteo = ubic.map((u) => u.data['conteoAbiertoId']).filter((x): x is string => typeof x === 'string' && x !== '');
+        const docs = await Promise.all(idsConteo.map(async (id) => [id, await t.lector.leer('conteos', id)] as const));
+        const porId = new Map(docs.filter((d): d is readonly [string, Datos] => d[1] !== undefined));
+        const bloqueo = conteoQueBloqueaTraspaso(por.rol, conteosAbiertosDe(ubic, porId), origenId, destinoId);
+        if (bloqueo !== undefined) throw new TraspasoBloqueadoPorConteo(bloqueo.ubicacionId, bloqueo.conteoId, bloqueo.abiertoEn);
+      }
       await Promise.all(lineas.flatMap((l) => [t.cargar(l.productoId, origenId), t.cargar(l.productoId, destinoId)]));
       // Fase 1: todo lo que no depende de la cantidad en stock, en TODAS las líneas (control de stock, series, pertenencia de
       // cada serie al producto y al origen). Fase 2: la cantidad, con todos los faltantes juntos. Fase 3: los movimientos.

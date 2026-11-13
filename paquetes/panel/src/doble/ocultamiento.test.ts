@@ -110,26 +110,41 @@ describe('doble: existencias ocultas durante un conteo abierto', () => {
     await expect(e.api.transporte.invocar('inventarios', { accion: 'listarProductos', tenantId: 'demo', datos: { soloBajoMinimo: true } })).resolves.toBeTruthy();
   });
 
-  it('stock insuficiente al traspasar: sin «hay Y» para sup en el almacén en conteo; con «hay Y» para adm y en otros almacenes', async () => {
+  it('traspaso: sup no traspasa desde ni hacia el almacén en conteo (conteo-abierto, igual con y sin stock); adm y otros almacenes sí', async () => {
     const e = await conConteo('sup', ['deposito-1']);
-    const pide = (origenId: UbicacionId) => e.api.llamar('traspasar', { operacionId: uuid(), origenId, destinoId: 'tienda', lineas: [{ productoId: 'cable-hdmi', cantidad: 999 }] });
-    const oculto = await falla(pide('deposito-1'));
-    expect(oculto.detalle.faltantes?.[0]?.disponible).toBeUndefined();
-    expect(mensajeDeError(oculto)).toBe('No alcanza el stock de cable-hdmi en deposito-1.');
-    expect(mensajeDeError(await falla(pide('deposito-2')))).toContain('pidió 999, hay 0');
+    const pide = (origenId: UbicacionId, destinoId: UbicacionId, cantidad: number) =>
+      e.api.llamar('traspasar', { operacionId: uuid(), origenId, destinoId, lineas: [{ productoId: 'cable-hdmi', cantidad }] });
+    for (const [o, d] of [['deposito-1', 'tienda'], ['tienda', 'deposito-1']] as const) {
+      const a = await falla(pide(o, d, 1));
+      const b = await falla(pide(o, d, 999));
+      expect(a.detalle).toEqual({ codigo: 'conteo-abierto', ubicacionId: 'deposito-1', conteoId: 'conteo-deposito-1', abiertoEn: new Date(AHORA).toISOString() });
+      expect(b.detalle).toEqual(a.detalle);
+      expect(b.message).toBe(a.message);
+      expect(mensajeDeError(a)).toBe('No se puede traspasar desde ni hacia Depósito 1 mientras tiene un conteo abierto. Puede hacerlo un administrador o esperar al cierre.');
+    }
+    // Otro almacén: sigue el curso normal (aquí, stock insuficiente sin lista porque el origen es la tienda, que no está en conteo).
+    const normal = await falla(pide('deposito-2', 'tienda', 999));
+    expect(normal.detalle.codigo).toBe('stock-insuficiente');
+    expect(normal.detalle.faltantes?.[0]?.disponible).toBe(0);
+    e.como('adm');
+    await expect(pide('deposito-1', 'tienda', 1)).resolves.toBeTruthy();
+  });
+
+  it('stock insuficiente al traspasar (conteo en otro almacén del origen): como hoy, con «hay Y»; adm también', async () => {
+    const e = await conConteo('sup', ['deposito-1']);
+    const pide = (origenId: UbicacionId) => e.api.llamar('traspasar', { operacionId: uuid(), origenId, destinoId: 'deposito-2', lineas: [{ productoId: 'cable-hdmi', cantidad: 999 }] });
+    expect(mensajeDeError(await falla(pide('tienda')))).toContain('pidió 999, hay ');
     e.como('adm');
     expect(mensajeDeError(await falla(pide('deposito-1')))).toContain('pidió 999, hay 10');
   });
 
-  it('stock insuficiente al vender: la cajera no recibe cuántas hay de la tienda en conteo', async () => {
+  it('stock insuficiente al vender: la cajera no recibe qué falta ni cuántas hay de la tienda en conteo', async () => {
     const e = await conConteo('caj');
     await e.api.llamar('abrirTurno', { turnoId: uuid(), apertura: { BOB: 10000 } });
     const err = await falla(e.api.llamar('confirmarVenta', {
       requestId: uuid(), carrito: { mercado: 'BO', moneda: 'BOB', lineas: [{ productoId: 'parlante', cantidad: 5 }] }, pagos: [{ medio: 'efectivo', moneda: 'BOB', monto: 87000 }],
     }));
-    expect(err.detalle.codigo).toBe('stock-insuficiente');
-    expect(err.detalle.faltantes?.[0]?.disponible).toBeUndefined();
-    expect(mensajeDeError(err)).toContain('No alcanza el stock de parlante en tienda.');
-    expect(mensajeDeError(err)).not.toContain('hay ');
+    expect(err.detalle).toEqual({ codigo: 'stock-insuficiente', faltantesOcultos: true });
+    expect(mensajeDeError(err)).toBe('No alcanza el stock de uno o más productos de esta operación. Durante un conteo abierto no se indica cuál.');
   });
 });

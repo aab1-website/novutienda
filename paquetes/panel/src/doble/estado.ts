@@ -188,14 +188,12 @@ export function proyectarProductoDoble(c: Contexto, v: ProductoPanel): ProductoP
   return { ...v, stockTotal: null, bajoMinimo: null, existencias, disponible: puedeVerExistencias(c, 'tienda') ? v.disponible : null };
 }
 
-/** Faltantes de stock sin `disponible` en los almacenes en conteo para quien no es `adm` (lo que hace el coordinador). */
-export function faltantesVisibles<F extends { readonly almacenId: string; readonly disponible: number }>(c: Contexto, faltantes: readonly F[]): (F | Omit<F, 'disponible'>)[] {
-  return faltantes.map((f) => {
-    if (puedeVerExistencias(c, f.almacenId)) return f;
-    const { disponible: _d, ...resto } = f;
-    void _d;
-    return resto;
-  });
+/**
+ * Detalle de un stock insuficiente para el rol (lo que hace el coordinador): si algún faltante cae en un almacén en conteo y
+ * no es `adm`, solo `faltantesOcultos: true` (sin lista, ids ni cantidades); si no, la lista completa.
+ */
+export function detalleDeFaltantes<F extends { readonly almacenId: string }>(c: Contexto, faltantes: readonly F[]): { faltantes: readonly F[] } | { faltantesOcultos: true } {
+  return faltantes.some((f) => !puedeVerExistencias(c, f.almacenId)) ? { faltantesOcultos: true } : { faltantes };
 }
 
 export function recalcular(p: ProductoInterno): void {

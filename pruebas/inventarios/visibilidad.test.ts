@@ -1,7 +1,7 @@
 // Visibilidad de las existencias durante un conteo abierto (`visibilidad.ts`): matriz rol × conteos abiertos × ubicación.
 import { beforeEach, describe, expect, it } from 'vitest';
 import {
-  abrirConteo, cerrarConteo, conteosAbiertosDe, registrarLineaConteo, filtrarUnidadesLista, hayOcultamiento, marcaOcultamiento, proyectarMovimiento, proyectarProducto, puedeVerExistencias,
+  abrirConteo, cerrarConteo, conteoQueBloqueaTraspaso, conteosAbiertosDe, registrarLineaConteo, filtrarUnidadesLista, hayOcultamiento, marcaOcultamiento, proyectarMovimiento, proyectarProducto, puedeVerExistencias,
   recortarFaltantes, StockInsuficiente, type Conteos, type Faltante,
 } from './api.js';
 import type { DobleDb } from './doble-db.js';
@@ -83,14 +83,28 @@ describe('series, movimientos y faltantes', () => {
     expect(proyectarMovimiento('adm', [c('tienda')], mov)).toEqual(mov);
     expect(proyectarMovimiento('sup', SIN, mov)).toEqual(mov);
   });
-  it('recortarFaltantes quita `disponible` solo en la ubicación en conteo y solo a quien no es adm', () => {
+  it('recortarFaltantes: si algún faltante cae en un almacén en conteo y no es adm, no entrega ninguno', () => {
     const f: Faltante[] = [
       { productoId: 'p', almacenId: 'tienda', pedido: 3, disponible: 1 },
       { productoId: 'q', almacenId: 'deposito-1', pedido: 2, disponible: 0 },
     ];
-    expect(recortarFaltantes('caj', [c('tienda')], f)).toEqual([{ productoId: 'p', almacenId: 'tienda', pedido: 3 }, f[1]]);
-    expect(recortarFaltantes('adm', [c('tienda')], f)).toEqual(f);
-    expect(recortarFaltantes('sup', SIN, f)).toEqual(f);
+    expect(recortarFaltantes('caj', [c('tienda')], f)).toEqual({ ocultos: true });
+    expect(recortarFaltantes('sup', [c('deposito-1')], f)).toEqual({ ocultos: true });
+    expect(recortarFaltantes(undefined, [c('tienda')], f)).toEqual({ ocultos: true });
+    // Ninguno en el alcance, adm o sin conteo: la lista completa, como siempre.
+    expect(recortarFaltantes('caj', [c('deposito-2')], f)).toEqual({ ocultos: false, faltantes: f });
+    expect(recortarFaltantes('adm', [c('tienda')], f)).toEqual({ ocultos: false, faltantes: f });
+    expect(recortarFaltantes('sup', SIN, f)).toEqual({ ocultos: false, faltantes: f });
+  });
+  it('conteoQueBloqueaTraspaso: solo adm pasa; origen o destino en conteo bloquean; otro almacén no; falla cerrado', () => {
+    const k = [c('deposito-1')];
+    expect(conteoQueBloqueaTraspaso('sup', k, 'tienda', 'deposito-1')?.ubicacionId).toBe('deposito-1');
+    expect(conteoQueBloqueaTraspaso('caj', k, 'deposito-1', 'tienda')?.conteoId).toBe('c-deposito-1');
+    expect(conteoQueBloqueaTraspaso('adm', k, 'deposito-1', 'tienda')).toBeUndefined();
+    expect(conteoQueBloqueaTraspaso('sup', k, 'tienda', 'deposito-2')).toBeUndefined();
+    expect(conteoQueBloqueaTraspaso('sup', SIN, 'tienda', 'deposito-1')).toBeUndefined();
+    expect(conteoQueBloqueaTraspaso(undefined, k, 'tienda', 'deposito-1')).toBeDefined();
+    expect(conteoQueBloqueaTraspaso('otro' as never, k, 'tienda', 'deposito-1')).toBeDefined();
   });
 });
 
