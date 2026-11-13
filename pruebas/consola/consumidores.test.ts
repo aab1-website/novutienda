@@ -68,6 +68,9 @@ describe('consumirProductoCambiado', () => {
       const catalogo = new CatalogoDoble(db2);
       const reloj = new RelojFijo(Date.UTC(2026, 10, 12, 12, 0, 0));
       const disparador = { programar: () => Promise.resolve(), reconstruir: () => Promise.resolve() };
+      catalogo.agregar('p1');
+      db2.poner(`tenants/${T}/fichasWeb/p1`, { productoId: 'p1', slug: 'p-uno', descripcion: 'D', garantia: '', estado: 'publicado', medios: [{ medioId: 'medio-0001', alt: 'f' }], seo: { titulo: '', descripcion: '' } });
+      db2.poner(`tenants/${T}/medios/medio-0001`, { tipo: 'foto', ancho: 100, alto: 100, versiones: [{ clase: 'imagen', lado: 100, formato: 'webp', ruta: 'x/1.webp' }] });
       const deps = { db: db2, catalogo, reloj, disparador };
       const adm = actor('adm');
       await guardarConfigSitio(deps, { tenantId: T, actor: adm, config: { plantillaActiva: 'ambar', whatsappNovuchat: '59100000000', medicion: {} } });

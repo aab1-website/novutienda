@@ -134,6 +134,9 @@ export interface Publicado {
   readonly advertencias: readonly string[];
 }
 
+/** Foto utilizable por el sitio: medio de tipo foto con versión `imagen` en webp. Una sola noción para toda la consola. */
+const tieneFoto = (m: MedioPublico): boolean => m.tipo === 'foto' && m.versiones.some((v) => v.clase === 'imagen' && v.formato === 'webp');
+
 /**
  * Función pura: arma lo que la reconstrucción del sitio lee. Entran solo fichas en estado `publicado` de
  * productos activos; salen únicamente datos públicos (sin stock, costos, SKU, rutas de originales ni autores).
@@ -157,9 +160,14 @@ export function construirPublicado(e: EntradaPublicado): Publicado {
   for (const p of [...e.productos].sort((a, b) => (a.id < b.id ? -1 : 1))) {
     const f = e.fichas.get(p.id);
     if (f?.estado !== 'publicado' || !p.activo) continue;
+    // El sitio exige marca; un dato viejo sin marca se excluye (no tumba la publicación) y se avisa al comerciante.
+    if ((p.marca ?? '').trim() === '') {
+      advertencias.push(`El producto «${p.nombre}» no se publicó porque no tiene marca; agréguela en Inventario y vuelva a publicar`);
+      continue;
+    }
     productos.push({
       id: p.id, slug: f.slug, nombre: p.nombre, categoria: p.categoria,
-      ...(p.marca === undefined ? {} : { marca: p.marca }),
+      marca: p.marca!,
       descripcion: f.descripcion, garantia: f.garantia,
       ...(p.garantiaMeses === undefined ? {} : { garantiaMeses: p.garantiaMeses }),
       medios: sinNulos(f.medios.map((m) => publico(m.medioId, m.alt, `producto ${p.id}`))),
@@ -174,10 +182,23 @@ export function construirPublicado(e: EntradaPublicado): Publicado {
         const m = publico(b.medioId, b.alt, `sección ${s.id}`);
         return m === undefined ? undefined : { tipo: 'imagen', medio: m };
       }
-      if (b.tipo === 'carrusel') return { tipo: 'carrusel', items: sinNulos(b.items.map((i) => publico(i.medioId, i.alt, `sección ${s.id}`))) };
+      if (b.tipo === 'carrusel') {
+        const items = sinNulos(b.items.map((i) => publico(i.medioId, i.alt, `sección ${s.id}`))).filter(tieneFoto);
+        if (items.length === 0) {
+          advertencias.push(`La sección «${s.titulo}» tenía un carrusel sin fotos disponibles y se omitió`);
+          return undefined;
+        }
+        return { tipo: 'carrusel', items };
+      }
       return b;
     })),
-  }));
+  })).filter((s) => {
+    // El sitio exige de 1 a 12 bloques por sección visible: toda sección que salga sin bloques (vacía de origen o tras omitir
+    // los que no tienen contenido publicable) se omite entera con una advertencia.
+    if (s.bloques.length > 0) return true;
+    advertencias.push(`La sección «${s.titulo}» no se publicó porque no tiene contenido`);
+    return false;
+  });
 
   const carruseles: CarruselPublicado[] = e.carruseles.map((c) => ({
     plantilla: c.plantilla,
@@ -221,20 +242,44 @@ const leerReconstruccion = (d: Readonly<Record<string, unknown>> | undefined): {
 };
 
 /**
+ * Lo que haría fallar la reconstrucción del sitio se rechaza ANTES de escribir nada:
+ *  - sin productos publicables, el sitio no se reconstruye;
+ *  - el sitio exige de 1 a 8 fotos en el carrusel de CADA plantilla. Si la plantilla no tiene carrusel propio con fotos, el sitio usa
+ *    de respaldo la primera foto de los productos (destacados primero, o todos si no hay destacados con foto; los destacados son del
+ *    negocio y siempre son un subconjunto de los productos con foto). Por tanto el respaldo queda vacío si y solo si ningún producto
+ *    publicado tiene una foto utilizable (medio de tipo foto con versión webp de imagen; ver `foto` en
+ *    `website/src/contenido/desde-publicado.ts`). Si además alguna plantilla no tiene carrusel propio, el sitio falla.
+ *    Podría compartirse por el núcleo más adelante (hoy está duplicada a propósito: las fronteras impiden importar website).
+ */
+function exigirPublicable(pub: Publicado, candidatos: number, sinMarca: number): void {
+  if (pub.productos.length === 0) {
+    if (candidatos > 0 && sinMarca === candidatos) {
+      throw new ErrorConsola('estado', 'Ningún producto se puede publicar: agregue la marca en Inventario a los productos publicados');
+    }
+    throw new ErrorConsola('estado', 'Publique al menos un producto activo');
+  }
+  const hayRespaldo = pub.productos.some((p) => p.medios.some(tieneFoto));
+  if (hayRespaldo) return;
+  const propio = (pl: string): boolean => pub.carruseles.some((c) => c.plantilla === pl && c.items.some(tieneFoto));
+  if (PLANTILLAS.some((pl) => !propio(pl))) throw new ErrorConsola('estado', 'Agregue una foto a un producto publicado o cargue el carrusel');
+}
+
+/**
  * Publica: escribe la copia `publicado/` (una sola transacción), pone a cero los cambios sin publicar, registra la
  * auditoría y agenda la reconstrucción (agrupa 10 minutos). Solo adm.
  */
 export async function publicarSitio(deps: DepsPublicar, e: { tenantId: string; actor: Actor }): Promise<ResultadoPublicacion> {
   const t = tenantValido(e.tenantId);
   const rol = exigirRol(e.actor, t, ROLES.administrar);
-  // Corte: instante ANTERIOR a la lectura del catálogo. Todo cambio con `ocurridoEn` <= corte ya está en `productos`; uno
-  // posterior (aunque la lectura lo haya visto) se cuenta de más, nunca se pierde.
-  const corteIso = new Date(deps.reloj.ahora()).toISOString();
-  const productos = await deps.catalogo.listarProductos(t);
-  const ahora = deps.reloj.ahora();
-  const ahoraIso = new Date(ahora).toISOString();
-
   const r = await deps.db.runTransaction(async (tx) => {
+    // La lista se lee DENTRO del cuerpo que se reintenta (no es lectura transaccional): cada intento parte de la lista vigente, así un
+    // producto nuevo con ficha publicada entre intentos no se pierde. Corte: instante ANTERIOR a la lectura de la lista de ESTE
+    // intento. Todo cambio con `ocurridoEn` <= corte ya está en `productos`; uno posterior (aunque la lectura lo haya visto) se
+    // cuenta de más, nunca se pierde.
+    const corteIso = new Date(deps.reloj.ahora()).toISOString();
+    const productos = await deps.catalogo.listarProductos(t);
+    const ahora = deps.reloj.ahora();
+    const ahoraIso = new Date(ahora).toISOString();
     const config = validarConfigSitio((await tx.get(rutaSitio(t, 'config'))).data());
     if (!config.ok) throw new ErrorConsola('estado', 'Configure el sitio (plantilla y WhatsApp) antes de publicar', config.errores);
     const indice = texto((await tx.get(rutaSitio(t, 'indice'))).data()?.['secciones']);
@@ -255,6 +300,26 @@ export async function publicarSitio(deps: DepsPublicar, e: { tenantId: string; a
       const d = (await tx.get(rutaFicha(t, p.id))).data();
       if (d !== undefined) fichas.set(p.id, d as unknown as FichaGuardada);
     }
+    // Relectura de cada producto a publicar DENTRO de la transacción: precio, activo, marca, nombre y categoría salen SOLO de aquí, no de
+    // la lista previa (un cambio entre la lectura y el commit no se pisa; si ocurre durante la transacción, se reintenta). Una lectura
+    // por producto con ficha publicada (hasta 200 por plan, más sus fichas y medios): lejos de cualquier tope de la transacción, y las
+    // escrituras (un documento por producto, sección o carrusel más 4 fijos) quedan por debajo de las 500 de Firestore.
+    // Contención con las ventas: Inventarios escribe el documento del producto en cada movimiento, así que una publicación concurrente
+    // con ventas puede esperar o reintentar (la transacción lo hace sola); las ventas no se bloquean más allá de ese conflicto.
+    const vivos: ProductoCatalogo[] = [];
+    for (const p of productos) {
+      if (fichas.get(p.id)?.estado !== 'publicado') continue;
+      const f = await deps.catalogo.leerProductoEnTransaccion(tx, t, p.id);
+      if (f === undefined) continue;
+      const garantiaMeses = f.garantiaMeses ?? p.garantiaMeses;
+      vivos.push({
+        id: p.id, disponible: p.disponible, nombre: f.nombre, categoria: f.categoria, activo: f.activo, precioUSD: f.precioUSD,
+        ...(f.marca === undefined ? {} : { marca: f.marca }),
+        ...(garantiaMeses === undefined ? {} : { garantiaMeses }),
+      });
+    }
+    const candidatos = vivos.filter((p) => fichas.get(p.id)?.estado === 'publicado' && p.activo);
+    const sinMarca = candidatos.filter((p) => (p.marca ?? '').trim() === '').length;
     const ids = new Set<string>();
     for (const f of fichas.values()) if (f.estado === 'publicado') for (const m of f.medios) ids.add(m.medioId);
     for (const s of secciones) for (const b of s.bloques) {
@@ -270,7 +335,8 @@ export async function publicarSitio(deps: DepsPublicar, e: { tenantId: string; a
     const previo = leerReconstruccion((await tx.get(rutaPublicado(t, 'estado'))).data());
     await leerEstadoSitio(tx, t);
 
-    const pub = construirPublicado({ productos, fichas, medios, config: config.valor, secciones, carruseles });
+    const pub = construirPublicado({ productos: vivos, fichas, medios, config: config.valor, secciones, carruseles });
+    exigirPublicable(pub, candidatos.length, sinMarca);
     const version = previo.version + 1;
     const decision = decidirReconstruccion({ hayPublicacion: true, programadaPara: previo.programadaPara }, ahora, 'publicacion');
 

@@ -39,6 +39,23 @@ const vacio: EstadoDemo = {
   tablero: { versionPublicada: 0, cambiosSinPublicar: 0 }, turnos: [], ventas: [],
 };
 
+describe('publicación del sitio según las fotos (sin emulador)', () => {
+  it('con --sin-fotos en un tenant sin fotos ni carruseles no agenda publicarSitio, lo informa y conserva las ventas', () => {
+    const plan = planificarDemo(csv, fx, vacio, { ...OPC, fotos: false });
+    expect(plan.pasos.some((p) => p.tipo === 'llamada' && p.accion === 'publicarSitio')).toBe(false);
+    expect(plan.diferencias).toContain('sin fotos no se publica el sitio: el sitio exige al menos una foto o los carruseles cargados');
+    expect(plan.pasos.some((p) => p.tipo === 'llamada' && p.accion === 'confirmarVenta')).toBe(true);
+  });
+  it('con fotos por subir sí publica', () => {
+    const plan = planificarDemo(csv, fx, vacio, OPC);
+    expect(plan.pasos.some((p) => p.tipo === 'llamada' && p.accion === 'publicarSitio')).toBe(true);
+  });
+  it('sin fotos pero con carruseles completos sí publica', () => {
+    const plan = planificarDemo(csv, fx, { ...vacio, carruselesCompletos: true }, { ...OPC, fotos: false });
+    expect(plan.pasos.some((p) => p.tipo === 'llamada' && p.accion === 'publicarSitio')).toBe(true);
+  });
+});
+
 describe('fixtures de demostración (sin emulador)', () => {
   it('el CSV pasa leerCsvProductos como carga inicial y no pasa de 50 filas', () => {
     const filas = leerCsvProductos(csv, true);
@@ -580,12 +597,16 @@ describe.skipIf(!hayEmulador)('siembra completa de la demostración (emulador)',
     await h.firestore.doc(`novuchatTokens/${sha256(tokenNovuchat)}`).set({ tenantId: tenant, hash: sha256(tokenNovuchat), activo: true });
   });
 
-  it('la siembra completa deja el catálogo de NovuChat con precio y disponibilidad correctos, y una segunda pasada da 0 pasos', async () => {
+  it('la siembra completa sin fotos no publica el sitio, llega a las ventas y una segunda pasada da 0 pasos', async () => {
     // Fotos fuera: dependen del procesamiento de medios (otra suite).
     const opciones: OpcionesDemo = { fotos: false, ventas: true, bytesFoto };
     const primera = planificarDemo(csv, fx, await leerEstado(), opciones);
     expect(primera.bloqueos).toEqual([]);
     expect(primera.pasos.length).toBeGreaterThan(20);
+    // Sin fotos ni carruseles el sitio no puede publicarse: el plan lo omite, lo informa y sigue con las ventas.
+    expect(primera.pasos.some((p) => p.tipo === 'llamada' && p.accion === 'publicarSitio')).toBe(false);
+    expect(primera.diferencias).toContain('sin fotos no se publica el sitio: el sitio exige al menos una foto o los carruseles cargados');
+    expect(primera.pasos.some((p) => p.tipo === 'llamada' && p.accion === 'confirmarVenta')).toBe(true);
     for (const p of primera.pasos) {
       // Los cambios de producto llegan a «sin publicar» por el bus (asíncrono): antes de publicar se espera a que la consola
       // haya tratado todos los eventos, o uno tardío volvería a dejar cambios pendientes tras la publicación.
@@ -597,17 +618,9 @@ describe.skipIf(!hayEmulador)('siembra completa de la demostración (emulador)',
     expect(segunda.bloqueos).toEqual([]);
     expect(segunda.pasos).toEqual([]);
 
+    // Sin publicación, el catálogo de NovuChat sigue vacío (se alimenta de lo publicado): la demostración no lo ofrece todavía.
     const r = await http('/api/novuchat/v1/catalogo?mercado=BO', { headers: { authorization: `Bearer ${tokenNovuchat}` } });
     expect(r.status).toBe(200);
-    const items = (r.cuerpo as { items: { id: string; precio?: number; precioCentavos?: number; disponible: boolean; stock: number | null }[] }).items;
-    expect(items.length).toBeGreaterThanOrEqual(9);
-    const publicados = leerCsvProductos(csv, true).filter((f) => f.producto.publicado !== false).map((f) => f.producto.id);
-    // ejemplo-tv-65 no tiene precio: el catálogo de NovuChat no lo ofrece (la tienda lo muestra «a consultar» y agotado).
-    const esperados = publicados.filter((id) => id !== 'ejemplo-tv-65');
-    expect(items.map((i) => i.id).sort()).toEqual(esperados.sort());
-    for (const i of items) expect(i.precioCentavos, i.id).toBeGreaterThan(0);
-    expect(items.find((i) => i.id === 'ejemplo-tv-55')).toMatchObject({ disponible: true, stock: 3 });
-    // La venta de muestra descontó el stock de tienda del parlante (12 - 1).
-    expect(items.find((i) => i.id === 'ejemplo-parlante-1')).toMatchObject({ disponible: true, stock: 11 });
+    expect((r.cuerpo as { items: unknown[] }).items).toEqual([]);
   });
 });
