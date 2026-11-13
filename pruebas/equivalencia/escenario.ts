@@ -88,6 +88,11 @@ export async function crearEscenario(): Promise<Escenario> {
       });
     }
   }
+  // Lista de ids publicados que escribe `publicarSitio`: el catálogo de NovuChat parte de ella (una sola definición de «publicado»).
+  e.db.poner(`tenants/${T}/publicado/estado`, {
+    version: 1, publicadoEn: '2026-11-04T11:00:00.000Z', productos: PRODUCTOS.filter((f) => f.publicado !== undefined).map((f) => f.producto.id).sort(),
+    secciones: [], carruseles: [], reconstruccion: { programadaPara: null, ultima: null },
+  });
   await e.db.runTransaction((tx) => actualizarProducto(tx, { tenantId: T, operacionId: op('baja'), por: ADM, productoId: 'p-inactivo', cambios: { activo: false } }));
   return { ...e, depsReales: { ...e.deps, redondeo: REDONDEO } };
 }

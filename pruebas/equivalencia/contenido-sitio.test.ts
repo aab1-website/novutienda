@@ -32,7 +32,8 @@ describe('contenido del sitio del tenant de referencia', () => {
       sitio: { plantillaActiva: 'bosque', whatsappNovuchat: '59170000000', medicion: {}, version: 3 },
       estado: { version: 3, secciones: [] },
     };
-    for (const d of e.db.coleccion(`tenants/${T}/publicado`)) documentos[d.id] = d.datos;
+    // `estado` lo fija esta prueba (versión y secciones propias); las copias de producto salen del escenario.
+    for (const d of e.db.coleccion(`tenants/${T}/publicado`).filter((x) => x.id !== 'estado')) documentos[d.id] = d.datos;
     const respuesta = { documentos, redondeo: REDONDEO };
     const negocioValidado = validarNegocio(negocio());
     expect(negocioValidado.ok, JSON.stringify(negocioValidado)).toBe(true);
