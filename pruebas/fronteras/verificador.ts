@@ -87,3 +87,70 @@ export function buscarTermino(arbol: Arbol, prefijo: string, termino: string): s
     .filter(([ruta, contenido]) => ruta.toLowerCase().includes(t) || contenido.toLowerCase().includes(t))
     .map(([ruta]) => ruta);
 }
+
+/** Quita comentarios de línea y de bloque (aproximado: no entiende cadenas con «//» dentro; basta para importaciones). */
+function sinComentarios(codigo: string): string {
+  return codigo.replace(/\/\*[\s\S]*?\*\//g, ' ').replace(/(^|[^:'"`\\])\/\/[^\n]*/g, '$1');
+}
+
+const NUCLEO = String.raw`['"]@novutienda\/nucleo(?:\/[^'"\n]*)?['"]`;
+const IMPORTACION_NOMBRADA = new RegExp(
+  String.raw`\b(?:import|export)\s+(?:type\s+)?(?:(\w+)\s*,\s*)?(?:(\{[^}]*\})|\*\s+as\s+(\w+))\s*from\s*${NUCLEO}`, 'g');
+const EXPORTAR_TODO = new RegExp(String.raw`\bexport\s+(?:type\s+)?\*\s*(?:as\s+\w+\s*)?from\s*${NUCLEO}`);
+const DINAMICA = new RegExp(String.raw`\bimport\s*\(\s*${NUCLEO}\s*\)`, 'g');
+
+function nombresEnLlaves(llaves: string): string[] {
+  return llaves.slice(1, -1).split(',').map((p) => p.trim().replace(/^type\s+/, '').split(/\s*(?:\sas\s|:|=)\s*/)[0]?.trim() ?? '').filter((n) => n !== '');
+}
+
+/** Miembros del espacio de nombres `alias` que el código toca; `null` si el acceso no se puede resolver (falla cerrado). */
+function miembrosDeEspacio(limpio: string, alias: string): { nombres: string[]; cerrado: boolean } {
+  // Escapa TODOS los metacaracteres (incluida la barra invertida): el alias pasa a formar parte de una expresión regular.
+  const a = alias.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+  const nombres: string[] = [];
+  let cerrado = false;
+  for (const m of limpio.matchAll(new RegExp(String.raw`(?<![\w$.])${a}\s*\??\.\s*([\w$]+)`, 'g'))) nombres.push(m[1] as string);
+  for (const m of limpio.matchAll(new RegExp(String.raw`(?<![\w$.])${a}\s*(?:\?\.)?\s*\[\s*([^\]]*?)\s*\]`, 'g'))) {
+    const lit = /^(['"`])([\w$]+)\1$/.exec(m[1] as string);
+    if (lit === null) cerrado = true;
+    else nombres.push(lit[2] as string);
+  }
+  for (const m of limpio.matchAll(new RegExp(String.raw`(\{[^}]*\})\s*=\s*(?:await\s+)?${a}(?![\w$])`, 'g'))) nombres.push(...nombresEnLlaves(m[1] as string));
+  return { nombres, cerrado };
+}
+
+/**
+ * Símbolos de `simbolos` que el código toma de `@novutienda/nucleo` (o un subpath), por análisis de importaciones:
+ * nombres en llaves (con `as` y `type`), `export { X } from`, `import * as ns` y `import()` dinámico con acceso por punto,
+ * corchetes con literal o desestructuración. Falla cerrado (cuenta TODOS los símbolos) con `export * from` el núcleo, con
+ * acceso por corchetes con expresión no literal y con un `import()` cuyo resultado no se puede seguir. Un nombre local igual
+ * que no viene del núcleo no cuenta.
+ */
+export function simbolosDeNucleoUsados(codigo: string, simbolos: readonly string[]): string[] {
+  const limpio = sinComentarios(codigo);
+  if (EXPORTAR_TODO.test(limpio)) return [...simbolos].sort();
+  const usados = new Set<string>();
+  let todos = false;
+  const sumar = (nombres: readonly string[]): void => { for (const n of nombres) if (simbolos.includes(n)) usados.add(n); };
+  const espacio = (alias: string): void => {
+    const r = miembrosDeEspacio(limpio, alias);
+    sumar(r.nombres);
+    if (r.cerrado) todos = true;
+  };
+  for (const m of limpio.matchAll(IMPORTACION_NOMBRADA)) {
+    if (m[2] !== undefined) sumar(nombresEnLlaves(m[2]));
+    if (m[3] !== undefined) espacio(m[3]);
+  }
+  for (const m of limpio.matchAll(DINAMICA)) {
+    const antes = limpio.slice(0, m.index);
+    const llaves = /(\{[^}]*\})\s*=\s*(?:await\s+)?$/.exec(antes);
+    const alias = /(?:const|let|var)\s+([\w$]+)\s*=\s*(?:await\s+)?$/.exec(antes);
+    const despues = limpio.slice((m.index ?? 0) + m[0].length);
+    const directo = /^\s*\)\s*\.\s*([\w$]+)/.exec(despues);
+    if (llaves !== null) sumar(nombresEnLlaves(llaves[1] as string));
+    else if (alias !== null) espacio(alias[1] as string);
+    else if (/\(\s*await\s+$/.test(antes) && directo !== null) sumar([directo[1] as string]);
+    else todos = true;
+  }
+  return (todos ? [...simbolos] : [...usados]).sort();
+}

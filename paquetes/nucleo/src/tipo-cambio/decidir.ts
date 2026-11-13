@@ -14,11 +14,12 @@
  * - Una fecha futura (tabla del día siguiente del BCB) queda diferida salvo
  *   que `futuroVigente` sea true.
  */
+import type { ConfiguracionComercial } from '../tenant/mercados.js';
 import { diasEntre, hoyEn } from './fechas.js';
 import { esFechaIso } from './texto.js';
 import {
-  CONFIG_POR_DEFECTO,
-  type Ancla, type ConfigCotizacion, type FuenteCotizacion, type Lectura, type Mercado, type OrigenCarga,
+  COMERCIAL_LEGADO_TRES_MONEDAS, CONFIG_POR_DEFECTO,
+  type Ancla, type ConfigCotizacion, type FuenteCotizacion, type IdMercado, type Lectura, type OrigenCarga,
 } from './tipos.js';
 
 export interface Aviso {
@@ -45,7 +46,9 @@ export type Decision =
   };
 
 export interface EntradaDecision {
-  readonly mercado: Mercado;
+  readonly mercado: IdMercado;
+  /** Declaración comercial del tenant (zona horaria del mercado). Obligatoria. */
+  readonly comercial: ConfiguracionComercial;
   /** Documento guardado hoy (cualquier cosa; se valida). */
   readonly actual: unknown;
   /** Fuente principal (BCB en BO, BNA en AR); null si falló. */
@@ -91,7 +94,15 @@ function previoDe(actual: unknown): Previo | null {
 
 const lecturaValida = (l: Lectura): boolean => Number.isFinite(l.valor) && l.valor > 0 && esFechaIso(l.fecha);
 
-export function decidirCotizacion(e: EntradaDecision): Decision {
+/**
+ * LEGADO: decide con la declaración del tenant de tres monedas.
+ * @deprecated Usar `decidirCotizacionDe` con la declaración del tenant.
+ */
+export function decidirCotizacion(e: Omit<EntradaDecision, 'comercial'>): Decision {
+  return decidirCotizacionDe({ ...e, comercial: COMERCIAL_LEGADO_TRES_MONEDAS });
+}
+
+export function decidirCotizacionDe(e: EntradaDecision): Decision {
   const cfg = { ...CONFIG_POR_DEFECTO, ...e.config };
   const avisos: Aviso[] = [];
   const rechazo = (motivo: string): Decision => ({ accion: 'rechazar', motivo, avisos });
@@ -125,7 +136,7 @@ export function decidirCotizacion(e: EntradaDecision): Decision {
     }
   }
 
-  const hoy = hoyEn(e.mercado, e.ahoraMs);
+  const hoy = hoyEn(e.mercado, e.ahoraMs, e.comercial);
   const adelanto = diasEntre(hoy, elegida.fecha);
   if (adelanto > cfg.diasFuturoMax) return rechazo(`la fecha ${elegida.fecha} es posterior a lo admitido (hoy ${hoy})`);
   if (adelanto > 0 && !cfg.futuroVigente) {

@@ -82,6 +82,13 @@ export const uno =
 /** Fecha civil «aaaa-mm-dd» real de calendario. */
 export const fechaIso: Campo = (v, r) => (esFechaIso(v) ? null : `${r} debe ser una fecha aaaa-mm-dd`);
 
+/*
+ * LÍMITE CONOCIDO (PR A, mercados por tenant): los contratos v1 son un contrato congelado y siguen cerrados a los
+ * mercados BO y AR, a las monedas BOB, USD y ARS y a los pares BOB/USD y ARS/USD, y `venta.confirmada` exige
+ * cotización si la moneda no es USD. Un tenant sin tipo de cambio, o con otra moneda, NO puede emitir ventas ni
+ * pedidos v1. Abrirlos es un contrato v2 (propuesta en el informe del PR A; se decide en el PR B3), nunca una
+ * edición de estos archivos.
+ */
 export const MONEDAS_EVENTO = ['BOB', 'USD', 'ARS'] as const;
 export const monedaOperativa: Campo = uno(MONEDAS_EVENTO);
 export const MEDIOS_PAGO = ['efectivo', 'qr', 'transferencia', 'credito'] as const;
