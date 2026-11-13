@@ -349,30 +349,108 @@ describe.skipIf(!hayEmulador)('contrato consola → /publicado → contenido del
     expect(mapear(await leerPublicado(t)).productos[0]!.precioUsd).toEqual({ BO: 150, AR: 250 });
   });
 
-  it('dos definiciones de «publicado»: el sitio mira la ficha y activo; el catálogo de NovuChat exige producto.publicado y activo ADEMÁS de la copia (INCOHERENCIA S7)', async () => {
-    // INCOHERENCIA S7: `construirPublicado` decide por ficha `publicado` + `activo` (consola/src/publicar.ts:159) y NO lee
-    // `producto.publicado`; el catálogo de NovuChat filtra `publicado == true && activo == true` en Firestore y además exige la copia
-    // `publicado/producto__*` (plataforma/funciones/servidor/http/novuchat.ts:99-113). Se afirma lo de HOY.
-    const t = await nuevoTenant();
-    await sembrarProducto(t, { id: 'def-a', publicado: false, ficha: 'publicado' }); // ficha publicada, producto.publicado=false
-    await sembrarProducto(t, { id: 'def-b', publicado: true, ficha: null }); // producto.publicado=true, sin ficha
-    await sembrarProducto(t, { id: 'def-c', publicado: true, ficha: 'borrador' });
-    await sembrarProducto(t, { id: 'def-d', publicado: true, ficha: 'publicado' }); // coinciden las dos definiciones
+  /** Catálogo de NovuChat del tenant (mercado BO) con un token propio. */
+  const catalogoDe = async (t: string): Promise<{ id: string; precioCentavos: number; activo: boolean; disponible: boolean }[]> => {
     const hash = createHash('sha256').update(token).digest('hex');
     await h.firestore.doc(`novuchatTokens/${hash}`).set({ tenantId: t, hash, activo: true });
-    await publicar(t);
-    const catalogoIds = async (): Promise<{ id: string; activo: boolean; disponible: boolean }[]> => {
-      const r = await http('/api/novuchat/v1/catalogo?mercado=BO', { headers: { authorization: `Bearer ${token}` } });
-      expect(r.status, r.texto).toBe(200);
-      return (r.cuerpo as { items: { id: string; activo: boolean; disponible: boolean }[] }).items;
+    const r = await http('/api/novuchat/v1/catalogo?mercado=BO', { headers: { authorization: `Bearer ${token}` } });
+    expect(r.status, r.texto).toBe(200);
+    return (r.cuerpo as { items: { id: string; precioCentavos: number; activo: boolean; disponible: boolean }[] }).items;
+  };
+
+  describe('S7-2: una sola definición de «publicado» (existe la copia publicado/producto__<id>)', () => {
+    it('ficha publicada con producto.publicado=false SÍ está en el catálogo; producto.publicado=true sin ficha publicada NO; el conjunto coincide con el del sitio', async () => {
+      // S7-2: el catálogo de NovuChat parte de `publicado/estado.productos` y de la copia; `producto.publicado` ya no se lee.
+      const t = await nuevoTenant();
+      await sembrarProducto(t, { id: 'def-a', publicado: false, ficha: 'publicado' }); // ficha publicada, producto.publicado=false
+      await sembrarProducto(t, { id: 'def-b', publicado: true, ficha: null }); // producto.publicado=true, sin ficha
+      await sembrarProducto(t, { id: 'def-c', publicado: true, ficha: 'borrador' });
+      await sembrarProducto(t, { id: 'def-d', publicado: true, ficha: 'publicado' }); // coinciden las dos definiciones
+      await publicar(t);
+      const sitio = mapear(await leerPublicado(t)).productos.map((p) => p.id);
+      expect(sitio).toEqual(['def-a', 'def-d']);
+      expect((await catalogoDe(t)).map((i) => i.id)).toEqual(['def-a', 'def-d']);
+      const estado = (await h.firestore.doc(`tenants/${t}/publicado/estado`).get()).data() as { productos: string[] };
+      expect([...estado.productos].sort()).toEqual(sitio);
+    });
+
+    it('desactivado tras publicar con la copia aún presente: el sitio lo sigue mostrando (S7) y el catálogo ya no lo ofrece', async () => {
+      const t = await nuevoTenant();
+      await sembrarProducto(t, { id: 'des-a' });
+      await sembrarProducto(t, { id: 'des-b' });
+      await publicar(t);
+      await h.db.runTransaction((tx) => actualizarProducto(tx, { tenantId: t, operacionId: unico('act'), por: ADM, productoId: 'des-b', cambios: { activo: false } }));
+      expect(mapear(await leerPublicado(t)).productos.map((p) => p.id)).toEqual(['des-a', 'des-b']);
+      expect((await catalogoDe(t)).map((i) => i.id)).toEqual(['des-a']);
+    });
+
+    it('sin publicado/estado (copia a mano de un producto activo): catálogo vacío con 200', async () => {
+      const t = await nuevoTenant();
+      await sembrarProducto(t, { id: 'sin-est', publicado: true });
+      await h.firestore.doc(`tenants/${t}/publicado/producto__sin-est`).set({ id: 'sin-est' });
+      expect((await h.firestore.doc(`tenants/${t}/publicado/estado`).get()).exists).toBe(false);
+      expect(await catalogoDe(t)).toEqual([]);
+    });
+
+    it('el precio del catálogo es el vivo de Inventarios aunque la copia tenga otro', async () => {
+      const t = await nuevoTenant();
+      await sembrarProducto(t, { id: 'viv-a', precio: { bo: 10000, ar: 20000 } });
+      await publicar(t);
+      const antes = (await catalogoDe(t))[0]!.precioCentavos;
+      await h.db.runTransaction((tx) => actualizarProducto(tx, { tenantId: t, operacionId: unico('act'), por: ADM, productoId: 'viv-a', cambios: { precioUSD: { bo: 15000, ar: 25000 } } }));
+      const despues = (await catalogoDe(t))[0]!.precioCentavos;
+      // Cotización BO = 7: 100 USD → 700 BOB (70 000 centavos); 150 USD → 1 050 BOB (105 000 centavos).
+      expect(antes).toBe(70_000);
+      expect(despues).toBe(105_000);
+      expect(mapear(await leerPublicado(t)).productos[0]!.precioUsd).toEqual({ BO: 100, AR: 200 }); // la copia sigue con el precio anterior
+    });
+
+    /** Siembra directa de un producto activo con su copia publicada (rápido, sin pasar por la consola). */
+    const sembrarDirecto = async (t: string, id: string, nombre: string): Promise<void> => {
+      await h.firestore.doc(`tenants/${t}/productos/${id}`).set({
+        id, nombre, categoria: 'televisores', sku: `SKU-${id}`, marca: 'M', precioUSD: { bo: 1000, ar: 1000 }, activo: true, publicado: false, conSerie: false,
+      });
+      await h.firestore.doc(`tenants/${t}/publicado/producto__${id}`).set({ id, nombre });
     };
-    // Sitio: def-a sí (aunque producto.publicado=false), def-b y def-c no, def-d sí.
-    expect(mapear(await leerPublicado(t)).productos.map((p) => p.id)).toEqual(['def-a', 'def-d']);
-    // Catálogo de NovuChat: def-a NO (producto.publicado=false aunque tenga copia), def-d sí.
-    expect((await catalogoIds()).map((i) => i.id)).toEqual(['def-d']);
-    // Tras desactivar def-d sin volver a publicar: el sitio lo sigue mostrando y NovuChat ya no lo lista.
-    await h.db.runTransaction((tx) => actualizarProducto(tx, { tenantId: t, operacionId: unico('act'), por: ADM, productoId: 'def-d', cambios: { activo: false } }));
-    expect(mapear(await leerPublicado(t)).productos.map((p) => p.id)).toEqual(['def-a', 'def-d']);
-    expect(await catalogoIds()).toEqual([]);
+
+    it('más de 100 ids publicados (dos lotes): todos presentes, orden por nombre e id', async () => {
+      const t = await nuevoTenant();
+      const ids = Array.from({ length: 105 }, (_, i) => `lote-${String(i).padStart(3, '0')}`);
+      for (let i = 0; i < ids.length; i += 20) await Promise.all(ids.slice(i, i + 20).map((id) => sembrarDirecto(t, id, id.endsWith('7') ? 'Zeta' : 'Alfa')));
+      await h.firestore.doc(`tenants/${t}/publicado/estado`).set({ productos: [...ids].reverse() });
+      const items = (await catalogoDe(t)).map((i) => i.id);
+      const esperado = [...ids].sort((a, b) => {
+        const na = a.endsWith('7') ? 'Zeta' : 'Alfa';
+        const nb = b.endsWith('7') ? 'Zeta' : 'Alfa';
+        return na.localeCompare(nb) || a.localeCompare(b);
+      });
+      expect(items).toEqual(esperado);
+      expect(items).toContain('lote-104');
+    });
+
+    it('un id inválido o con «/» en estado.productos se ignora y el resto del catálogo responde 200', async () => {
+      const t = await nuevoTenant();
+      await sembrarDirecto(t, 'val-a', 'Alfa');
+      await sembrarDirecto(t, 'val-b', 'Beta');
+      await h.firestore.doc(`tenants/${t}/publicado/estado`).set({ productos: ['val-a', 'val-a/otro', 'a/b/c', '', 'MAYUS', 'val-b'] });
+      expect((await catalogoDe(t)).map((i) => i.id)).toEqual(['val-a', 'val-b']);
+    });
+
+    it('ids duplicados en estado.productos: sin ítems repetidos', async () => {
+      const t = await nuevoTenant();
+      await sembrarDirecto(t, 'dup-a', 'Alfa');
+      await h.firestore.doc(`tenants/${t}/publicado/estado`).set({ productos: ['dup-a', 'dup-a', 'dup-a'] });
+      expect((await catalogoDe(t)).map((i) => i.id)).toEqual(['dup-a']);
+    });
+
+    it('producto borrado en Inventarios con la copia aún presente: no aparece', async () => {
+      const t = await nuevoTenant();
+      await sembrarDirecto(t, 'bor-a', 'Alfa');
+      await sembrarDirecto(t, 'bor-b', 'Beta');
+      await h.firestore.doc(`tenants/${t}/publicado/estado`).set({ productos: ['bor-a', 'bor-b'] });
+      await h.firestore.doc(`tenants/${t}/productos/bor-b`).delete();
+      expect((await h.firestore.doc(`tenants/${t}/publicado/producto__bor-b`).get()).exists).toBe(true);
+      expect((await catalogoDe(t)).map((i) => i.id)).toEqual(['bor-a']);
+    });
   });
 });
