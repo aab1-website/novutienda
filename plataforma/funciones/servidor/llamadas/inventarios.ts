@@ -24,6 +24,8 @@ const datosDe = (d: { data(): unknown }): Record<string, unknown> => d.data() as
  * 55 s no se inicia otra tanda pasado ese punto, y la que esté en curso termina antes del corte del cliente.
  */
 const PRESUPUESTO_IMPORTACION_MS = 55_000;
+/** Tope de unidades leídas por consulta cuando hay ocultamiento (ver `series`). */
+const TOPE_SERIES_CON_OCULTAMIENTO = 5_000;
 
 /** Lecturas de documentos sin transacción (sin bloqueos): la simulación no retiene nada contra la caja. */
 const lecturaSinBloqueo = (c: Contexto): LecturaSinBloqueo => ({
@@ -314,7 +316,12 @@ export const accionesInventarios: TablaImplementaciones = {
       let q = c.e.firestore.collection(ruta(c.tenantId, 'unidades')).where('productoId', '==', d.productoId);
       if (d.ubicacionId !== undefined) q = q.where('ubicacionId', '==', d.ubicacionId);
       if (d.soloDisponibles === true) q = q.where('estado', '==', 'disponible');
-      const snap = await q.limit(d.limite ?? 200).get();
+      // Los conteos se leen ANTES de la consulta: con ocultamiento, el número de filas devuelto no puede depender de cuántas
+      // unidades se ocultan (variando `limite` se contarían). Entonces se lee el conjunto completo (con un tope alto), se
+      // quitan las ocultas y SOLO después se aplica `limite`. No hay cursor: la respuesta no tiene otra vía de paginación.
+      const { conteos } = await conteosAbiertos(c);
+      const marca = marcaOcultamiento(c.rol, conteos);
+      const snap = await q.limit(marca === undefined ? (d.limite ?? 200) : TOPE_SERIES_CON_OCULTAMIENTO).get();
       const unidades = snap.docs.map((u) => {
         const x = datosDe(u);
         const ref = x['ventaRef'] as { id?: unknown } | undefined;
@@ -326,10 +333,8 @@ export const accionesInventarios: TablaImplementaciones = {
       });
       unidades.sort((a, b) => String(a.serie).localeCompare(String(b.serie)));
       // Con un conteo abierto, `caj`/`sup` no reciben las unidades disponibles de la ubicación en conteo (su número es el stock).
-      const { conteos } = await conteosAbiertos(c);
-      const marca = marcaOcultamiento(c.rol, conteos);
       if (marca === undefined) return { unidades };
-      return { unidades: filtrarUnidadesLista(c.rol, conteos, unidades), ...marca };
+      return { unidades: filtrarUnidadesLista(c.rol, conteos, unidades).slice(0, d.limite ?? 200), ...marca };
     },
   }),
   /**

@@ -1,5 +1,5 @@
 import type { TransaccionIdentidad } from '@novutienda/nucleo';
-import { EntradaInvalida, ErrorInventario, EstadoInvalido, SerieNoDisponible } from './errores.js';
+import { EntradaInvalida, ErrorInventario, EstadoInvalido, SerieNoDisponible, StockInsuficiente, type Faltante } from './errores.js';
 import { exigirCantidad, exigirProducto, exigirSeries, exigirUbicacion, MAX_CANTIDAD, MAX_LINEAS, ruta } from './ids.js';
 import { MARCA_SERVIDOR, type Autor, type Datos, type Trabajo } from './motor.js';
 import { ejecutarOperacion, exigirAutor, exigirListaLineas, exigirMotivo, PERMISOS, type ResultadoOperacion } from './operacion.js';
@@ -92,15 +92,20 @@ export async function ingresar(
     roles: PERMISOS.ingreso,
     construir: async (t) => {
       await Promise.all(lineas.map((l) => t.cargar(l.productoId, ubicacionId)));
-      const salida: Datos[] = [];
+      // Validar TODAS las líneas antes de mover ninguna: el orden de los errores no depende del contenido de las demás.
+      const validadas: { l: LineaValida; series: string[] }[] = [];
       for (const l of lineas) {
         exigirControl(t, l.productoId);
         const series = seriesDeLinea(t, l);
         await Promise.all(series.map((s) => t.unidad(l.productoId, s)));
         for (const s of series) {
           if (t.unidadLeida(l.productoId, s) !== undefined) throw new ErrorInventario('already-exists', `La serie ya está registrada: ${l.productoId}/${s}`);
-          t.marcarUnidad({ productoId: l.productoId, serie: s, estado: 'disponible', ubicacionId, modo: 'create' });
         }
+        validadas.push({ l, series });
+      }
+      const salida: Datos[] = [];
+      for (const { l, series } of validadas) {
+        for (const s of series) t.marcarUnidad({ productoId: l.productoId, serie: s, estado: 'disponible', ubicacionId, modo: 'create' });
         t.mover(l.productoId, ubicacionId, l.cantidad, { agregar: series });
         salida.push({ productoId: l.productoId, cantidad: l.cantidad, series: [...series] });
       }
@@ -133,15 +138,31 @@ export async function traspasar(
     roles: PERMISOS.traspaso,
     construir: async (t) => {
       await Promise.all(lineas.flatMap((l) => [t.cargar(l.productoId, origenId), t.cargar(l.productoId, destinoId)]));
-      const salida: Datos[] = [];
+      // Fase 1: todo lo que no depende de la cantidad en stock, en TODAS las líneas (control de stock, series, pertenencia de
+      // cada serie al producto y al origen). Fase 2: la cantidad, con todos los faltantes juntos. Fase 3: los movimientos.
+      // Así un traspaso inválido por otra razón falla igual haya o no stock en el origen.
+      const validadas: { l: LineaValida; series: string[] }[] = [];
       for (const l of lineas) {
         exigirControl(t, l.productoId);
         const series = seriesDeLinea(t, l);
         await Promise.all(series.map((s) => t.unidad(l.productoId, s)));
+        const ex = t.existencia(l.productoId, origenId);
         for (const s of series) {
           const u = t.unidadLeida(l.productoId, s);
-          if (u === undefined || u['estado'] !== 'disponible' || u['ubicacionId'] !== origenId) throw new SerieNoDisponible(l.productoId, s);
-          t.marcarUnidad({ productoId: l.productoId, serie: s, base: u, estado: 'disponible', ubicacionId: destinoId, modo: 'set' });
+          if (u === undefined || u['estado'] !== 'disponible' || u['ubicacionId'] !== origenId || !ex.series.includes(s)) throw new SerieNoDisponible(l.productoId, s);
+        }
+        validadas.push({ l, series });
+      }
+      const faltantes: Faltante[] = [];
+      for (const { l } of validadas) {
+        const disponible = t.existencia(l.productoId, origenId).cantidad;
+        if (disponible < l.cantidad) faltantes.push({ productoId: l.productoId, almacenId: origenId, pedido: l.cantidad, disponible });
+      }
+      if (faltantes.length > 0) throw new StockInsuficiente(faltantes);
+      const salida: Datos[] = [];
+      for (const { l, series } of validadas) {
+        for (const s of series) {
+          t.marcarUnidad({ productoId: l.productoId, serie: s, base: t.unidadLeida(l.productoId, s) as Datos, estado: 'disponible', ubicacionId: destinoId, modo: 'set' });
         }
         t.mover(l.productoId, origenId, -l.cantidad, { quitar: series, tipo: 'traspaso' });
         t.mover(l.productoId, destinoId, l.cantidad, { agregar: series, tipo: 'traspaso' });
@@ -193,8 +214,15 @@ export async function ajustar(
         if (t.producto(l.productoId)['conSerie'] === true) {
           throw new EntradaInvalida(`${l.productoId}: el ajuste no se admite en productos con serie (use ingreso o merma)`);
         }
-        t.mover(l.productoId, l.ubicacionId, l.delta, { tipo: 'ajuste' });
       }
+      // Validadas todas las líneas, se comprueba la cantidad de todas juntas y solo entonces se mueve.
+      const faltantes: Faltante[] = [];
+      for (const l of lineas) {
+        const disponible = t.existencia(l.productoId, l.ubicacionId).cantidad;
+        if (l.delta < 0 && disponible + l.delta < 0) faltantes.push({ productoId: l.productoId, almacenId: l.ubicacionId, pedido: -l.delta, disponible });
+      }
+      if (faltantes.length > 0) throw new StockInsuficiente(faltantes);
+      for (const l of lineas) t.mover(l.productoId, l.ubicacionId, l.delta, { tipo: 'ajuste' });
       return {
         resultado: { lineas: lineas.map((l) => ({ ...l })) },
         referencia: { tipo: 'ajuste', id: e.operacionId },
