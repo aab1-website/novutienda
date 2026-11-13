@@ -1,0 +1,91 @@
+{
+  "columnasIgnoradas": [],
+  "filas": [
+    {
+      "accion": "sin-cambios",
+      "advertencias": [],
+      "cambios": [],
+      "errores": [],
+      "id": "p-adaptador",
+      "linea": 2
+    },
+    {
+      "accion": "sin-cambios",
+      "advertencias": [],
+      "cambios": [],
+      "errores": [],
+      "id": "p-agotado",
+      "linea": 3
+    },
+    {
+      "accion": "sin-cambios",
+      "advertencias": [],
+      "cambios": [],
+      "errores": [],
+      "id": "p-borrador",
+      "linea": 4
+    },
+    {
+      "accion": "sin-cambios",
+      "advertencias": [],
+      "cambios": [],
+      "errores": [],
+      "id": "p-cable",
+      "linea": 5
+    },
+    {
+      "accion": "sin-cambios",
+      "advertencias": [],
+      "cambios": [],
+      "errores": [],
+      "id": "p-celular",
+      "linea": 6
+    },
+    {
+      "accion": "sin-cambios",
+      "advertencias": [],
+      "cambios": [],
+      "errores": [],
+      "id": "p-inactivo",
+      "linea": 7
+    },
+    {
+      "accion": "sin-cambios",
+      "advertencias": [],
+      "cambios": [],
+      "errores": [],
+      "id": "p-lapiz",
+      "linea": 8
+    },
+    {
+      "accion": "sin-cambios",
+      "advertencias": [],
+      "cambios": [],
+      "errores": [],
+      "id": "p-parlante",
+      "linea": 9
+    },
+    {
+      "accion": "sin-cambios",
+      "advertencias": [],
+      "cambios": [],
+      "errores": [],
+      "id": "p-servicio",
+      "linea": 10
+    },
+    {
+      "accion": "sin-cambios",
+      "advertencias": [],
+      "cambios": [],
+      "errores": [],
+      "id": "p-televisor",
+      "linea": 11
+    }
+  ],
+  "resumen": {
+    "actualizar": 0,
+    "crear": 0,
+    "errores": 0,
+    "sinCambios": 10
+  }
+}

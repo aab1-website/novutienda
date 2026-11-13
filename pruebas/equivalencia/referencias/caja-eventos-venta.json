@@ -1,0 +1,221 @@
+[
+  {
+    "claveIdempotencia": "venta-confirmada.00000000-0000-4000-8000-000000000001",
+    "datos": {
+      "cajaId": "caja-1",
+      "cajeroUid": "u-caj",
+      "cliente": {
+        "nombre": "Ana Pérez",
+        "telefono": "70000000"
+      },
+      "cotizacion": {
+        "cotizacionId": "BO-2026-11-04-1793804400000",
+        "estado": "vigente",
+        "fecha": "2026-11-04",
+        "fuente": "manual",
+        "par": "BOB/USD",
+        "valor": 6.965
+      },
+      "lineas": [
+        {
+          "almacenId": "tienda",
+          "cantidad": 1,
+          "garantiaMeses": 12,
+          "nombre": "Celular X1",
+          "precioUnitario": 139293,
+          "productoId": "p-celular",
+          "series": [
+            "A"
+          ]
+        },
+        {
+          "almacenId": "tienda",
+          "cantidad": 2,
+          "nombre": "Lápiz HB",
+          "precioUnitario": 871,
+          "productoId": "p-lapiz",
+          "series": []
+        }
+      ],
+      "moneda": "BOB",
+      "numeroRecibo": "A-000001",
+      "pagos": [
+        {
+          "cambio": 10000,
+          "medio": "efectivo",
+          "moneda": "BOB",
+          "monto": 110000
+        },
+        {
+          "medio": "qr",
+          "moneda": "BOB",
+          "monto": 41035,
+          "referencia": "QR-0001"
+        }
+      ],
+      "total": 141035,
+      "turnoId": "00000000-0000-4000-8000-000000000900",
+      "ventaId": "00000000-0000-4000-8000-000000000001"
+    },
+    "id": "venta-confirmada.00000000-0000-4000-8000-000000000001",
+    "ocurridoEn": "2026-11-04T15:00:00.000Z",
+    "origen": "pos",
+    "publicadoEn": "MARCA",
+    "tenantId": "casa-a",
+    "tipo": "venta.confirmada",
+    "version": 1
+  },
+  {
+    "claveIdempotencia": "venta-confirmada.00000000-0000-4000-8000-000000000002",
+    "datos": {
+      "cajaId": "caja-1",
+      "cajeroUid": "u-caj",
+      "cotizacion": null,
+      "lineas": [
+        {
+          "almacenId": "tienda",
+          "cantidad": 3,
+          "nombre": "Lápiz HB",
+          "precioUnitario": 125,
+          "productoId": "p-lapiz",
+          "series": []
+        },
+        {
+          "almacenId": "tienda",
+          "cantidad": 1,
+          "nombre": "Cable USB",
+          "precioUnitario": 333,
+          "productoId": "p-cable",
+          "series": []
+        }
+      ],
+      "moneda": "USD",
+      "numeroRecibo": "A-000002",
+      "pagos": [
+        {
+          "cambio": 92,
+          "medio": "efectivo",
+          "moneda": "USD",
+          "monto": 500
+        },
+        {
+          "medio": "transferencia",
+          "moneda": "USD",
+          "monto": 300
+        }
+      ],
+      "total": 708,
+      "turnoId": "00000000-0000-4000-8000-000000000900",
+      "ventaId": "00000000-0000-4000-8000-000000000002"
+    },
+    "id": "venta-confirmada.00000000-0000-4000-8000-000000000002",
+    "ocurridoEn": "2026-11-04T15:00:00.000Z",
+    "origen": "pos",
+    "publicadoEn": "MARCA",
+    "tenantId": "casa-a",
+    "tipo": "venta.confirmada",
+    "version": 1
+  },
+  {
+    "claveIdempotencia": "venta-confirmada.00000000-0000-4000-8000-000000000003",
+    "datos": {
+      "cajaId": "caja-1",
+      "cajeroUid": "u-caj",
+      "cotizacion": {
+        "cotizacionId": "AR-2026-11-04-1793804400000",
+        "estado": "vigente",
+        "fecha": "2026-11-04",
+        "fuente": "manual",
+        "par": "ARS/USD",
+        "valor": 1187.35
+      },
+      "lineas": [
+        {
+          "almacenId": "tienda",
+          "cantidad": 1,
+          "nombre": "Parlante portátil",
+          "precioUnitario": 1230000,
+          "productoId": "p-parlante",
+          "series": []
+        },
+        {
+          "almacenId": "tienda",
+          "cantidad": 2,
+          "nombre": "Adaptador",
+          "precioUnitario": 530000,
+          "productoId": "p-adaptador",
+          "series": []
+        }
+      ],
+      "moneda": "ARS",
+      "numeroRecibo": "A-000003",
+      "pagos": [
+        {
+          "cambio": 100000,
+          "medio": "efectivo",
+          "moneda": "ARS",
+          "monto": 2100000
+        },
+        {
+          "medio": "transferencia",
+          "moneda": "ARS",
+          "monto": 290000
+        }
+      ],
+      "total": 2290000,
+      "turnoId": "00000000-0000-4000-8000-000000000900",
+      "ventaId": "00000000-0000-4000-8000-000000000003"
+    },
+    "id": "venta-confirmada.00000000-0000-4000-8000-000000000003",
+    "ocurridoEn": "2026-11-04T15:00:00.000Z",
+    "origen": "pos",
+    "publicadoEn": "MARCA",
+    "tenantId": "casa-a",
+    "tipo": "venta.confirmada",
+    "version": 1
+  },
+  {
+    "claveIdempotencia": "venta-confirmada.00000000-0000-4000-8000-000000000004",
+    "datos": {
+      "cajaId": "caja-1",
+      "cajeroUid": "u-caj",
+      "cotizacion": {
+        "cotizacionId": "BO-2026-11-04-1793804400000",
+        "estado": "vigente",
+        "fecha": "2026-11-04",
+        "fuente": "manual",
+        "par": "BOB/USD",
+        "valor": 6.965
+      },
+      "lineas": [
+        {
+          "almacenId": "tienda",
+          "cantidad": 1,
+          "nombre": "Instalación",
+          "precioUnitario": 10448,
+          "productoId": "p-servicio",
+          "series": []
+        }
+      ],
+      "moneda": "BOB",
+      "numeroRecibo": "A-000004",
+      "pagos": [
+        {
+          "medio": "efectivo",
+          "moneda": "BOB",
+          "monto": 10448
+        }
+      ],
+      "total": 10448,
+      "turnoId": "00000000-0000-4000-8000-000000000900",
+      "ventaId": "00000000-0000-4000-8000-000000000004"
+    },
+    "id": "venta-confirmada.00000000-0000-4000-8000-000000000004",
+    "ocurridoEn": "2026-11-04T15:00:00.000Z",
+    "origen": "pos",
+    "publicadoEn": "MARCA",
+    "tenantId": "casa-a",
+    "tipo": "venta.confirmada",
+    "version": 1
+  }
+]
