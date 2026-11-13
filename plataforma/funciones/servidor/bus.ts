@@ -27,7 +27,9 @@ export function sobreDesdeDocumento(datos: Readonly<Record<string, unknown>>): S
 }
 
 export function consumidoresDe(e: Entorno): readonly Consumidor[] {
-  return consumidoresDePlataforma(e.db, { ahora: () => new Date(e.ahora()).toISOString() }, e.modulosDelTenant);
+  return consumidoresDePlataforma(e.db, { ahora: () => new Date(e.ahora()).toISOString() }, e.modulosDelTenant, {
+    catalogo: e.catalogo, reloj: { ahora: e.ahora }, disparador: e.disparadorSitio,
+  });
 }
 
 /**

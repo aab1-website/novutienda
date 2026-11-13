@@ -4,11 +4,13 @@ Estado: la plataforma **encola y expone**, y la reconstrucción real (compilar A
 
 ## Cómo se encola
 
-- `consola.publicarSitio` copia el contenido a `tenants/{t}/publicado/*` y, según `decidirReconstruccion`, agenda (`programar`) o reconstruye (`reconstruir`) usando el `DisparadorSitio`
-  real, que escribe documentos en `tenants/{t}/reconstrucciones/{id}`:
+- `consola.publicarSitio` copia el contenido a `tenants/{t}/publicado/*` y, según `decidirReconstruccion`, agenda (`programar`) la reconstrucción con el `DisparadorSitio`
+  real, que escribe documentos en `tenants/{t}/reconstrucciones/{id}`. Publicar nunca reconstruye por sí mismo: si la hora agendada ya venció, la toma el temporizador.
+- **Precio vivo.** El consumidor de la consola del evento `producto.cambiado` (lo publica Inventarios en la misma transacción del cambio) también agenda: si el producto tiene copia publicada y su precio cambió, actualiza solo el precio de la copia; si quedó inactivo o se borró, retira la copia. En ambos casos sube la versión publicada en 1 (sin cambiar `publicadoEn`), guarda `precioVivoEn` y agenda con la misma ventana. Nombre, marca y categoría siguen esperando «Publicar» (cuentan como cambio sin publicar). Un producto retirado que se reactiva no vuelve solo al sitio: hay que publicar. Si el retiro deja el sitio sin productos o sin fotos, el sitio se reconstruye igual (catálogo vacío o portada sin carrusel) y `sitio/estado.avisoSitio` lo registra para el tablero.
+- Documentos que escribe el disparador:
   - `prog-{para}`: `{ estado: 'programada', para }` (una reconstrucción agrupada 10 minutos después del primer cambio; id idempotente por tenant y hora).
   - `rec-{motivo}-v{version}-{aaaammddhhmm}`: `{ estado: 'pendiente', version, motivo: 'publicacion' | 'diaria', solicitadaEnMs }`.
-- `temporizadorSitio` (cada 5 minutos) llama `ejecutarReconstruccion(temporizador)`: cuando llega la hora agendada, pasa a `reconstruir` y escribe el trabajo `pendiente`.
+- `temporizadorSitio` (cada 5 minutos) llama `ejecutarReconstruccion(temporizador)`: cuando llega la hora agendada, pasa a `reconstruir` y escribe el trabajo `pendiente`. Es el único camino que reconstruye tras una publicación o un cambio de precio. Si el disparo falla, la hora vencida se conserva y el siguiente tic lo reintenta.
 - A las 07:00 de La Paz, tras actualizar la cotización, se encola la reconstrucción `diaria` (si hay algo publicado).
 
 Estados de un trabajo: `pendiente → en_curso → completada | fallida`. No retroceden.

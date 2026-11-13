@@ -2,7 +2,7 @@ import {
   leerCotizacion, precioFinal, rutaContador, SinCotizacionUtilizable,
   type Actor, type AlmacenCotizaciones, type CopiaCotizacion, type Mercado, type PrecioFinal, type Redondeo,
 } from '@novutienda/nucleo';
-import { leerEstadoSitio } from './cambios.js';
+import { leerEstadoSitio, type AvisoSitio } from './cambios.js';
 import { LIMITES_CONSOLA } from './limites.js';
 import { leerUsoMedios } from './medios/uso.js';
 import { exigirRol, ROLES } from './permisos.js';
@@ -18,6 +18,8 @@ export interface Tablero {
   readonly ultimoCambioEn: string;
   readonly publicadoEn: string | null;
   readonly versionPublicada: number;
+  /** Si un retiro automático dejó el sitio sin productos o sin fotos; `null` si no hay aviso. */
+  readonly avisoSitio: AvisoSitio | null;
   readonly cotizaciones: readonly CotizacionTablero[];
   readonly uso: {
     readonly productos: { readonly usados: number; readonly tope: number };
@@ -59,6 +61,7 @@ export async function obtenerTablero(deps: DepsTablero, e: { tenantId: string; a
     ultimoCambioEn: base.estado.ultimoCambioEn,
     publicadoEn: typeof base.publicado?.['publicadoEn'] === 'string' ? base.publicado['publicadoEn'] : null,
     versionPublicada: entero(base.publicado?.['version']),
+    avisoSitio: base.estado.avisoSitio,
     cotizaciones,
     uso: {
       productos: { usados: entero(base.contadores?.['productos']), tope: LIMITES_CONSOLA.productos },

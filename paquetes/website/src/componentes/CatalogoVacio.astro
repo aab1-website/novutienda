@@ -1,0 +1,11 @@
+---
+import Icono from './Icono.astro';
+import { contenido } from '../contenido/instancia';
+import { enlaceWhatsApp } from '../lib/whatsapp';
+
+const wa = enlaceWhatsApp(contenido.config.whatsappTienda, 'Hola, quisiera saber cuándo tendrán catálogo.');
+---
+<div class="catalogo-vacio centrado">
+  <p class="subtitulo">Pronto publicaremos nuestro catálogo. Escríbenos por WhatsApp.</p>
+  {wa !== null && <a class="boton boton-cta" href={wa} target="_blank" rel="noopener noreferrer"><Icono nombre="mensaje" tamano={18} />ESCRIBIR POR WHATSAPP</a>}
+</div>

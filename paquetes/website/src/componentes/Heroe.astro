@@ -5,11 +5,14 @@ import { contenido } from '../contenido/instancia';
 
 const { config, portada, carruseles } = contenido;
 const [a, b, c] = portada.titulo;
+const fotos = carruseles[config.plantilla];
 ---
 <section class="heroe" aria-labelledby="titulo-heroe">
-  <div class="heroe-carrusel">
-    <Carrusel client:load fotos={carruseles[config.plantilla]} etiqueta="Fotos destacadas" decorativo />
-  </div>
+  {fotos.length > 0 && (
+    <div class="heroe-carrusel">
+      <Carrusel client:load fotos={fotos} etiqueta="Fotos destacadas" decorativo />
+    </div>
+  )}
   <div class="contenedor heroe-contenido">
     <p class="heroe-insignia"><Icono nombre="destello" tamano={14} />{portada.insignia}</p>
     <h1 id="titulo-heroe">{a}<br /><span class="atenuado">{b}</span><span class="acento">{c}</span></h1>

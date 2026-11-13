@@ -8,6 +8,7 @@ import type { ActorPos, DepsPos } from '@novutienda/pos';
 import {
   almacenCotizacionesDesde, catalogoParaPos, consumidoresDePlataforma, crearCatalogoConsola, ejecutorRecibosDesde, inventariosParaPos,
 } from '../../plataforma/coordinador/index.js';
+import type { DisparadorSitio } from '@novutienda/consola';
 import { BandejaMemoria } from './bandeja-memoria.js';
 import { DobleDb } from './doble-db.js';
 
@@ -41,14 +42,33 @@ export interface Entorno {
   readonly bandeja: BandejaMemoria;
   readonly recibos: ReturnType<typeof ejecutorRecibosDesde>;
   readonly catalogoConsola: ReturnType<typeof crearCatalogoConsola>;
+  /** Doble del disparador del sitio: anota cada `programar`/`reconstruir` (no hay nube). */
+  readonly disparador: DisparadorEnMemoria;
   readonly almacen: ReturnType<typeof almacenCotizacionesDesde>;
 }
+
+export interface DisparadorEnMemoria extends DisparadorSitio {
+  readonly programadas: { tenantId: string; para: number }[];
+  readonly reconstrucciones: { tenantId: string; version: number; motivo: 'publicacion' | 'diaria' }[];
+}
+
+const crearDisparador = (): DisparadorEnMemoria => {
+  const programadas: DisparadorEnMemoria['programadas'] = [];
+  const reconstrucciones: DisparadorEnMemoria['reconstrucciones'] = [];
+  return {
+    programadas, reconstrucciones,
+    programar: (tenantId, para) => { programadas.push({ tenantId, para }); return Promise.resolve(); },
+    reconstruir: (tenantId, version, motivo) => { reconstrucciones.push({ tenantId, version, motivo }); return Promise.resolve(); },
+  };
+};
 
 /** Entorno vacío (sin tenants). Fija el reloj de Inventarios, que es global del módulo. */
 export function crearEntorno(): Entorno {
   const reloj = { ahora: AHORA };
   fijarReloj(() => reloj.ahora);
   const db = new DobleDb();
+  const disparador = crearDisparador();
+  const catalogoConsola = crearCatalogoConsola({ db, lector: db });
   const deps: DepsPos = {
     db, inventarios: inventariosParaPos, catalogo: catalogoParaPos, redondeo: REDONDEO, ahora: () => reloj.ahora,
   };
@@ -56,9 +76,12 @@ export function crearEntorno(): Entorno {
     db,
     reloj,
     deps,
-    bandeja: new BandejaMemoria(db, consumidoresDePlataforma(db, { ahora: () => new Date(reloj.ahora).toISOString() }, async (t) => Object.keys((db.dato(`tenants/${t}`)?.['modulos'] as object | undefined) ?? {}) as IdModulo[])),
+    bandeja: new BandejaMemoria(db, consumidoresDePlataforma(db, { ahora: () => new Date(reloj.ahora).toISOString() }, async (t) => Object.keys((db.dato(`tenants/${t}`)?.['modulos'] as object | undefined) ?? {}) as IdModulo[], {
+      catalogo: catalogoConsola, reloj: { ahora: () => reloj.ahora }, disparador,
+    })),
     recibos: ejecutorRecibosDesde(db),
-    catalogoConsola: crearCatalogoConsola({ db, lector: db }),
+    catalogoConsola,
+    disparador,
     almacen: almacenCotizacionesDesde(db),
   };
 }

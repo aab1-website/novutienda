@@ -206,7 +206,7 @@ describe('servicios de la consola', () => {
       expect(db.coleccion(`tenants/${T}/auditoria`).some((a) => a['accion'] === 'sitio.publicar')).toBe(true);
     });
 
-    it('agrupa: una segunda publicación dentro de la ventana no agenda otra; vencida, reconstruye', async () => {
+    it('agrupa: una segunda publicación dentro de la ventana no agenda otra; vencida, espera al temporizador', async () => {
       await configurar();
       await publicable();
       await publicarSitio(dp(), { tenantId: T, actor: adm });
@@ -217,7 +217,9 @@ describe('servicios de la consola', () => {
       expect(r2.version).toBe(2);
       reloj.ms += 8 * 60_000; // pasó la hora agendada sin que el temporizador corriera
       const r3 = await publicarSitio(dp(), { tenantId: T, actor: adm });
-      expect(r3.decision.accion).toBe('reconstruir');
+      expect(r3.decision.accion).toBe('esperar'); // la publicación ya no reconstruye: lo hace siempre el temporizador
+      expect(disparador.eventos).toHaveLength(1);
+      expect(await ejecutarReconstruccion({ db, reloj, disparador }, { tenantId: T, evento: 'temporizador' })).toEqual({ accion: 'reconstruir' });
       expect(disparador.eventos.at(-1)).toBe('reconstruir:3:publicacion');
     });
 
@@ -270,6 +272,28 @@ describe('servicios de la consola', () => {
       expect(await ejecutarReconstruccion(dd, { tenantId: T, evento: 'temporizador' })).toEqual({ accion: 'nada' });
       expect(await ejecutarReconstruccion(dd, { tenantId: T, evento: 'diaria' })).toEqual({ accion: 'reconstruir' });
       expect(disparador.eventos.slice(1)).toEqual(['reconstruir:1:publicacion', 'reconstruir:1:diaria']);
+    });
+
+    it('si reconstruir falla, lo agendado sigue y el siguiente tic lo reintenta sin duplicar', async () => {
+      await configurar();
+      await publicable();
+      await publicarSitio(dp(), { tenantId: T, actor: adm });
+      reloj.ms += 11 * 60_000;
+      let falla = true;
+      const llamadas: string[] = [];
+      const flojo = {
+        programar: () => Promise.resolve(),
+        reconstruir: (_t: string, v: number, m: string) => {
+          llamadas.push(`${String(v)}:${m}`);
+          return falla ? Promise.reject(new Error('caído')) : Promise.resolve();
+        },
+      };
+      const dd = { db, reloj, disparador: flojo };
+      await expect(ejecutarReconstruccion(dd, { tenantId: T, evento: 'temporizador' })).rejects.toThrow('caído');
+      falla = false;
+      expect(await ejecutarReconstruccion(dd, { tenantId: T, evento: 'temporizador' })).toEqual({ accion: 'reconstruir' });
+      expect(await ejecutarReconstruccion(dd, { tenantId: T, evento: 'temporizador' })).toEqual({ accion: 'nada' });
+      expect(llamadas).toEqual(['1:publicacion', '1:publicacion']); // un intento fallido y uno bueno; luego nada
     });
 
     it('la corrida diaria sin nada publicado no hace nada', async () => {
@@ -474,7 +498,7 @@ describe('servicios de la consola', () => {
     it.each([
       [{ hayPublicacion: true, programadaPara: null }, 'publicacion', { accion: 'programar', para: ahora + 600_000 }],
       [{ hayPublicacion: true, programadaPara: ahora + 1 }, 'publicacion', { accion: 'esperar', para: ahora + 1 }],
-      [{ hayPublicacion: true, programadaPara: ahora }, 'publicacion', { accion: 'reconstruir' }],
+      [{ hayPublicacion: true, programadaPara: ahora }, 'publicacion', { accion: 'esperar', para: ahora }], // vencida: solo el temporizador reconstruye
       [{ hayPublicacion: true, programadaPara: null }, 'temporizador', { accion: 'nada' }],
       [{ hayPublicacion: true, programadaPara: ahora + 5 }, 'temporizador', { accion: 'esperar', para: ahora + 5 }],
       [{ hayPublicacion: true, programadaPara: ahora - 5 }, 'temporizador', { accion: 'reconstruir' }],
