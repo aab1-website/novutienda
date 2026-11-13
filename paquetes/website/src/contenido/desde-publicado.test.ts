@@ -204,9 +204,19 @@ describe('casos límite', () => {
     expect(m3).toContain('negocio.categorias[0]');
     expect(m3).not.toContain('Clave Mala');
   });
-  it('sin productos publicados: falla con un mensaje claro (el sitio exige catálogo)', () => {
+  it('sin productos publicados: el contenido es válido, con catálogo, categorías y marcas vacíos y carruseles sin fotos', () => {
     const vacia = { redondeo, documentos: { sitio: { plantillaActiva: 'cielo', whatsappNovuchat: null, medicion: {} }, estado: { secciones: [] } } };
-    expect(falla(vacia)).toContain('no hay productos publicados');
+    const c = contenidoDesdePublicado(vacia, negocioBase(), entorno);
+    expect(c.productos).toEqual([]);
+    expect(c.categorias).toEqual([]);
+    expect(c.marcas).toEqual([]);
+    for (const f of Object.values(c.carruseles)) expect(f).toEqual([]);
+  });
+  it('productos sin ninguna foto y sin carruseles propios: válido, carruseles vacíos', () => {
+    const sinFoto = { producto__uno: prod('p-uno', { medios: [] }), producto__dos: prod('p-dos', { medios: [] }) };
+    const c = contenidoDesdePublicado(respuesta(sinFoto), negocioBase(), entorno);
+    expect(c.productos).toHaveLength(2);
+    for (const f of Object.values(c.carruseles)) expect(f).toEqual([]);
   });
   it('más de 40 categorías: mensaje claro', () => {
     const muchos = Object.fromEntries(Array.from({ length: 41 }, (_, i) => [`producto__c${i}`, prod(`p-c${i}`, { categoria: `cat-${i}` })]));

@@ -112,6 +112,22 @@ describe('validarContenido', () => {
     expect(e).toContain('redondeo.ARS.modo');
   });
 
+  it('acepta cero productos y cero categorías, y carruseles sin fotos (el sitio se reconstruye sin catálogo)', () => {
+    const c = clon();
+    c['productos'] = [];
+    c['categorias'] = [];
+    c['marcas'] = [];
+    for (const k of Object.keys(c['carruseles'] as object)) (c['carruseles'] as Record<string, unknown>)[k] = [];
+    expect(errores(c)).toEqual([]);
+  });
+
+  it('un carrusel de plantilla no pasa de 8 fotos', () => {
+    const c = clon();
+    const car = c['carruseles'] as Record<string, unknown[]>;
+    car['cielo'] = Array.from({ length: 9 }, () => (car['cielo'] as unknown[])[0]);
+    expect(errores(c).join()).toContain('carruseles.cielo');
+  });
+
   it('cada plantilla debe tener su carrusel', () => {
     const c = clon();
     delete (c['carruseles'] as Record<string, unknown>)['bosque'];

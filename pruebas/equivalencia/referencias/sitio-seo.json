@@ -151,44 +151,6 @@
         "@type": "Brand",
         "name": "Marca Ejemplo"
       },
-      "description": "Dado de baja.",
-      "image": [
-        "https://medios.ejemplo.invalid/publico/tenants/casa-a/publico/medios/p-inactivo/bbb-imagen960.webp"
-      ],
-      "name": "Producto retirado",
-      "offers": [
-        {
-          "@type": "Offer",
-          "availability": "https://schema.org/OutOfStock",
-          "eligibleRegion": {
-            "@type": "Country",
-            "name": "BO"
-          },
-          "price": "8.00",
-          "priceCurrency": "USD",
-          "url": "https://tienda.ejemplo.invalid/producto/retirado"
-        },
-        {
-          "@type": "Offer",
-          "availability": "https://schema.org/OutOfStock",
-          "eligibleRegion": {
-            "@type": "Country",
-            "name": "AR"
-          },
-          "price": "8.00",
-          "priceCurrency": "USD",
-          "url": "https://tienda.ejemplo.invalid/producto/retirado"
-        }
-      ],
-      "sku": "p-inactivo"
-    },
-    {
-      "@context": "https://schema.org",
-      "@type": "Product",
-      "brand": {
-        "@type": "Brand",
-        "name": "Marca Ejemplo"
-      },
       "description": "Lápiz de grafito.",
       "image": [
         "https://medios.ejemplo.invalid/publico/tenants/casa-a/publico/medios/p-lapiz/bbb-imagen960.webp"

@@ -343,6 +343,8 @@ export function codigoDe(comprobaciones) {
   return comprobaciones.some((c) => c.estado === 'error') ? 3 : 0;
 }
 
+export const AVISO_SIN_PRODUCTOS = 'el sitio no tiene productos publicados';
+const textoAviso = (a) => (a.texto === undefined ? '' : `: ${a.texto}`);
 export const REF_BUILD = 'referencia: contenido del build';
 export const REF_REGENERADO = 'referencia: contenido regenerado desde lo publicado';
 
@@ -353,7 +355,7 @@ export function armarSalida(comprobaciones, referencia = undefined) {
     lineas.push(`${c.nombre}: ${c.estado}${conteos === '' ? '' : ` (${conteos})`}`);
     if (c.motivo !== undefined) lineas.push(`  motivo: ${c.motivo}`);
     for (const d of c.diferencias) lineas.push(`  diferencias: ${d.n} en ${c.nombre}.${d.campo}${posiciones(d)}`);
-    for (const a of c.avisos) lineas.push(`  aviso: ${a.n === undefined ? '' : `${a.n} en `}${c.nombre}.${a.campo}${posiciones(a)}`);
+    for (const a of c.avisos) lineas.push(`  aviso: ${a.n === undefined ? '' : `${a.n} en `}${c.nombre}.${a.campo}${textoAviso(a)}${posiciones(a)}`);
   }
   const errores = comprobaciones.filter((c) => c.estado === 'error').length;
   const avisos = comprobaciones.filter((c) => c.estado === 'aviso').length;
@@ -371,7 +373,7 @@ export function armarResumen(comprobaciones, referencia = undefined) {
       ...Object.entries(c.conteos).map(([k, n]) => `${k}: ${n}`),
       ...(c.motivo === undefined ? [] : [c.motivo]),
       ...c.diferencias.map((d) => `diferencias: ${d.n} en ${c.nombre}.${d.campo}${posiciones(d)}`),
-      ...c.avisos.map((a) => `aviso: ${a.n === undefined ? '' : `${a.n} en `}${c.nombre}.${a.campo}`),
+      ...c.avisos.map((a) => `aviso: ${a.n === undefined ? '' : `${a.n} en `}${c.nombre}.${a.campo}${textoAviso(a)}`),
     ].join('; ');
     return `| ${c.nombre} | ${c.estado} | ${celda(detalle)} |`;
   });
@@ -457,7 +459,7 @@ export async function certificar({ url, contenido, versionContenido, fetchFn = f
     c.conteos['fichas verificadas'] = productos.length;
     c.diferencias = agruparCampos(fichas.map((f, i) => ({ posicion: i + 1, campos: f.campos })));
     c.conteos['fichas con diferencias'] = fichas.filter((f) => f.campos.length > 0).length;
-    if (productos.length === 0) c.avisos.push({ campo: '0 fichas' });
+    if (productos.length === 0) c.avisos.push({ campo: '0 fichas', texto: AVISO_SIN_PRODUCTOS });
     resultado.push(cerrar(c));
   }
 

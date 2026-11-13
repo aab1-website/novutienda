@@ -53,7 +53,9 @@ function paginaFicha(p: ProductoT, c: ContenidoT): string {
 <astro-island uid="b" component-url="/_astro/BotonComprar.Zz9.js" component-export="default" props="${props({ id: p.id, nombre: p.nombre, disponible: p.disponible, whatsapp: c.config.whatsappNovuchat, verificar: true })}" client="load"></astro-island>
 </main></body></html>`;
 }
-const paginaPortada = (c: ContenidoT): string => paginaFicha(c.productos[0]!, c).replace(/<h1>[\s\S]*<\/h1>/, '<h1>Portada</h1>');
+// La portada no depende de que haya productos: se pinta con un producto de relleno que el verificador no mira.
+const PRODUCTO_RELLENO: ProductoT = { id: 'zz-relleno', slug: 'zz-relleno', nombre: 'Relleno', precioUsd: { BO: 1, AR: 1 }, disponible: true };
+const paginaPortada = (c: ContenidoT): string => paginaFicha(c.productos[0] ?? PRODUCTO_RELLENO, c).replace(/<h1>[\s\S]*<\/h1>/, '<h1>Portada</h1>');
 
 // ---- servidor ----
 interface Modo {
@@ -346,13 +348,49 @@ describe('certificar-sitio: separación de códigos, corte temprano y sin falsos
     expect(r2.salida).toContain('diferencias: 3 en disponibilidad.ids-ausentes');
     sinPrivados(JSON.stringify([r, r2]));
   });
-  it('0 productos: aviso «0 fichas», no error por sí mismo', async () => {
+  it('0 productos coherentes: código 0 con el aviso «el sitio no tiene productos publicados», sin peticiones de fichas', async () => {
     const vacio = armar(VIVA_INICIAL);
     vacio.productos = [];
-    modo.version = { ...modo.version, productos: [] };
+    modo.html = vacio;
+    modo.version = vacio;
     const r = await conBuild([], vacio);
+    expect(r.error).toBeUndefined();
+    expect(r.codigo).toBe(0);
     expect(r.salida).toContain('fichas: aviso');
-    expect(r.salida).toContain('aviso: fichas.0 fichas');
+    expect(r.salida).toContain('aviso: fichas.0 fichas: el sitio no tiene productos publicados');
+    expect(r.salida).toContain('indice: ok (fichas esperadas: 0)');
+    expect(r.salida).toContain('disponibilidad: ok');
+    expect(r.salida).not.toContain('ids-ausentes');
+    expect(peticionesFichas).toBe(0);
+    const resumen = join(mkdtempSync(join(tmpdir(), 'cert-res-')), 'r.md');
+    await conBuild(['--resumen', resumen], vacio);
+    expect(readFileSync(resumen, 'utf8')).toContain('el sitio no tiene productos publicados');
+  });
+  it('contenido con 0 productos pero el sitio sirve un índice con fichas: código 1', async () => {
+    const vacio = armar(VIVA_INICIAL);
+    vacio.productos = [];
+    modo.version = vacio; // la huella coincide; el índice y las fichas del sitio son de otra época
+    const r = await conBuild([], vacio);
+    expect(r.codigo).toBe(1);
+    expect(r.salida).toContain('indice.sobran');
+  });
+  it('contenido con productos pero el sitio sirve el índice vacío: código 1', async () => {
+    const vacio = armar(VIVA_INICIAL);
+    vacio.productos = [];
+    modo.html = vacio;
+    const r = await conBuild();
+    expect(r.codigo).toBe(1);
+    expect(r.salida).toContain('diferencias: 3 en indice.faltan');
+    expect(r.salida).toContain('fichas.estado');
+  });
+  it('portada sin carrusel ni bloque de catálogo, coherente con el contenido: sin diferencias de portada', async () => {
+    const vacio = armar(VIVA_INICIAL);
+    vacio.productos = [];
+    modo.html = vacio;
+    modo.version = vacio;
+    const r = await conBuild([], vacio);
+    expect(r.salida).toContain('portada: ok');
+    expect(r.salida).not.toContain('astro-island');
   });
   it('--contenido sin valor (último o seguido de otra bandera): código 2, no cae al modo regenerado', async () => {
     const a = await correr(['--contenido']);

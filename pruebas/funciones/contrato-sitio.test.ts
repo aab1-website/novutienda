@@ -1,15 +1,17 @@
 // Contrato de punta a punta «la consola publica → GET /api/sitio/v1/publicado → contenidoDesdePublicado → contenido del sitio».
 // Todo con la salida REAL de `publicarSitio` (sobre el catálogo real de Inventarios) y el endpoint firmado real del emulador;
 // el mapeo se alcanza por `plataforma/registro.ts`. Tenant y datos sintéticos. Lo que hoy es una incoherencia entre lo que la
-// consola acepta y lo que el sitio exige se afirma tal cual está HOY y se marca con `INCOHERENCIA S2` / `S7`; lo ya corregido (S2-1) afirma el
-// comportamiento nuevo con un comentario «S2-1: …».
+// consola acepta y lo que el sitio exige se afirma tal cual está HOY y se marca con `INCOHERENCIA S2`; lo ya corregido (S2-1, S7-1, S7-2)
+// afirma el comportamiento nuevo con un comentario «S2-1: …» / «S7-1: …». Ya no quedan incoherencias S7: el precio y la baja de un producto
+// publicado llegan a la copia por el evento `producto.cambiado`, entregado aquí por el bus real (`entregarEvento`).
 import { createHash, randomBytes } from 'node:crypto';
 import { beforeAll, describe, expect, it, vi } from 'vitest';
 import { publicarSitio } from '@novutienda/consola';
 import { actualizarProducto, crearProducto, ingresar, type Autor } from '@novutienda/inventarios';
+import { entregarEvento } from '../../plataforma/funciones/servidor/bus.js';
 import { contenidoDesdePublicado } from '../../plataforma/registro.js';
 import { crearEntorno, type Entorno } from '../../plataforma/funciones/servidor/entorno.js';
-import { firmar, hayEmulador, herramientas, http, sembrarTenant, unico, type Herramientas } from './ayudas.js';
+import { accion, crearUsuario, firmar, hayEmulador, herramientas, http, sembrarTenant, unico, type Herramientas } from './ayudas.js';
 
 vi.setConfig({ testTimeout: 90_000, hookTimeout: 90_000 });
 
@@ -124,6 +126,38 @@ describe.skipIf(!hayEmulador)('contrato consola → /publicado → contenido del
     publicarSitio({ db: e.db, catalogo: e.catalogo, reloj: { ahora: e.ahora }, disparador: e.disparadorSitio }, {
       tenantId: t, actor: { ...actor, claims: { ...actor.claims, pl: { t: { [t]: 'adm' }, v: 1 } } },
     });
+
+  /** Entrega por el bus real todos los `producto.cambiado` del tenant (idempotente: lo ya consumido no se repite). */
+  const entregarCambios = async (t: string): Promise<void> => {
+    const docs = (await h.firestore.collection(`tenants/${t}/eventos`).where('tipo', '==', 'producto.cambiado').get()).docs;
+    for (const d of docs) await entregarEvento(e, t, d.id, d.data());
+  };
+  const cambiosSinPublicar = async (t: string): Promise<number> =>
+    ((await h.firestore.doc(`tenants/${t}/sitio/estado`).get()).data()?.['cambios'] as number | undefined) ?? 0;
+
+  const estadoPublicado = async (t: string): Promise<{ version: number; productos: string[]; reconstruccion?: { programadaPara?: number | null } }> =>
+    (await h.firestore.doc(`tenants/${t}/publicado/estado`).get()).data() as { version: number; productos: string[]; reconstruccion?: { programadaPara?: number | null } };
+  const aviso = async (t: string): Promise<{ motivo: string; en: string } | undefined> =>
+    (await h.firestore.doc(`tenants/${t}/sitio/estado`).get()).data()?.['avisoSitio'] as { motivo: string; en: string } | undefined;
+  const desactivar = (t: string, id: string): Promise<unknown> =>
+    h.db.runTransaction((tx) => actualizarProducto(tx, { tenantId: t, operacionId: unico('act'), por: ADM, productoId: id, cambios: { activo: false } }));
+  const reactivar = (t: string, id: string): Promise<unknown> =>
+    h.db.runTransaction((tx) => actualizarProducto(tx, { tenantId: t, operacionId: unico('act'), por: ADM, productoId: id, cambios: { activo: true } }));
+  /** Tablero de la consola por su callable real (HTTP del emulador de Functions). */
+  const tableroPorCallable = async (t: string): Promise<{ avisoSitio: { motivo: string; en: string } | null; cambiosSinPublicar: number }> => {
+    const u = await crearUsuario(h, { rol: 'adm', tenant: t });
+    const r = await accion('consola', 'tablero', {}, u.token, t);
+    expect(r.error, JSON.stringify(r.error)).toBeUndefined();
+    return r.resultado as { avisoSitio: { motivo: string; en: string } | null; cambiosSinPublicar: number };
+  };
+  /** Simula que el temporizador ya reconstruyó: sin hora agendada y sin trabajos `prog-` pendientes. */
+  const simularTemporizadorReconstruyo = async (t: string): Promise<void> => {
+    const est = (await h.firestore.doc(`tenants/${t}/publicado/estado`).get()).data() as { reconstruccion?: Record<string, unknown> };
+    await h.firestore.doc(`tenants/${t}/publicado/estado`).set({ ...est, reconstruccion: { ...est.reconstruccion, programadaPara: null } });
+    for (const d of (await h.firestore.collection(`tenants/${t}/reconstrucciones`).get()).docs) if (d.id.startsWith('prog-')) await d.ref.delete();
+  };
+  const trabajosProg = async (t: string): Promise<string[]> =>
+    (await h.firestore.collection(`tenants/${t}/reconstrucciones`).get()).docs.map((d) => d.id).filter((id) => id.startsWith('prog-'));
 
   const leerPublicado = async (t: string): Promise<{ documentos: Record<string, Record<string, unknown>>; redondeo: unknown }> => {
     const ruta = `/api/sitio/v1/publicado?tenantId=${t}`;
@@ -274,7 +308,8 @@ describe.skipIf(!hayEmulador)('contrato consola → /publicado → contenido del
     });
 
     it('cero productos publicables: publicar se rechaza y no se publica nada', async () => {
-      // S2-1: sin ningún producto publicable (ficha en borrador, sin ficha) la consola rechaza la publicación en vez de dejar un sitio que no se puede reconstruir.
+      // S2-1: sin ningún producto publicable (ficha en borrador, sin ficha) la consola rechaza la PUBLICACIÓN a mano. Lo que cambió es el mapeo del
+      // sitio: ya admite cero productos (lo cubren los casos del retiro automático más abajo), pero publicar sigue exigiendo al menos uno.
       const t = await nuevoTenant();
       await sembrarProducto(t, { id: 'solo-borrador', ficha: 'borrador' });
       await sembrarProducto(t, { id: 'sin-ficha', ficha: null });
@@ -303,20 +338,103 @@ describe.skipIf(!hayEmulador)('contrato consola → /publicado → contenido del
       expect(c.productos.find((p) => p.id === 'cf-dos')!.fotos).toHaveLength(1);
     });
 
-    it('producto desactivado después de publicar: sigue en la copia y en el sitio hasta la siguiente publicación (INCOHERENCIA S7)', async () => {
-      // INCOHERENCIA S7: desactivar en Inventarios no toca `publicado/`; solo `publicarSitio` filtra por `activo` (consola/src/publicar.ts:159).
-      // Entre una cosa y la otra el sitio sigue mostrando el producto (con disponibilidad según /api/disponibilidad).
+    it('producto desactivado después de publicar: al consumir el evento la copia se retira y el sitio ya no lo incluye (S7-1)', async () => {
+      // S7-1: desactivar en Inventarios publica `producto.cambiado`; la consola retira la copia y el id de `estado.productos` sin volver a publicar.
       const t = await nuevoTenant();
       await sembrarProducto(t, { id: 'des-uno' });
       await sembrarProducto(t, { id: 'des-dos' });
+      await entregarCambios(t);
       await publicar(t);
+      const versionAntes = ((await h.firestore.doc(`tenants/${t}/publicado/estado`).get()).data() as { version: number }).version;
       await h.db.runTransaction((tx) => actualizarProducto(tx, { tenantId: t, operacionId: unico('act'), por: ADM, productoId: 'des-uno', cambios: { activo: false } }));
-      expect(mapear(await leerPublicado(t)).productos.map((p) => p.id)).toEqual(['des-dos', 'des-uno']);
-      const r = await publicar(t);
-      expect(r.productos).toBe(1);
-      const despues = await leerPublicado(t);
-      expect(despues.documentos['producto__des-uno']).toBeUndefined();
-      expect(mapear(despues).productos.map((p) => p.id)).toEqual(['des-dos']);
+      await entregarCambios(t);
+      const resp = await leerPublicado(t);
+      expect(resp.documentos['producto__des-uno']).toBeUndefined();
+      expect(mapear(resp).productos.map((p) => p.id)).toEqual(['des-dos']);
+      const estado = (await h.firestore.doc(`tenants/${t}/publicado/estado`).get()).data() as { productos: string[]; version: number };
+      expect(estado.productos).toEqual(['des-dos']);
+      expect(estado.version).toBe(versionAntes + 1);
+      // Una publicación posterior coincide con lo que ya muestra el sitio.
+      expect((await publicar(t)).productos).toBe(1);
+    });
+
+    it('último producto desactivado: la copia se retira, el sitio queda válido con cero productos, el catálogo responde vacío y la consola avisa «sin_productos»', async () => {
+      const t = await nuevoTenant();
+      await sembrarProducto(t, { id: 'ult-uno' });
+      await entregarCambios(t);
+      await publicar(t);
+      const versionAntes = (await estadoPublicado(t)).version;
+      await desactivar(t, 'ult-uno');
+      await entregarCambios(t);
+      expect((await h.firestore.doc(`tenants/${t}/publicado/producto__ult-uno`).get()).exists).toBe(false);
+      const estado = await estadoPublicado(t);
+      expect(estado.productos).toEqual([]);
+      expect(estado.version).toBe(versionAntes + 1);
+      const resp = await leerPublicado(t);
+      expect(resp.documentos['producto__ult-uno']).toBeUndefined();
+      const c = mapear(resp); // ya no lanza «no hay productos publicados»
+      expect(c.productos).toEqual([]);
+      expect(await catalogoDe(t)).toEqual([]);
+      expect(await aviso(t)).toMatchObject({ motivo: 'sin_productos', en: expect.any(String) });
+      expect(await tableroPorCallable(t)).toMatchObject({ avisoSitio: { motivo: 'sin_productos' } });
+    });
+
+    it('retirar el último producto con foto dejando otro sin foto: el contenido es válido (carruseles vacíos) y el aviso es «sin_fotos»', async () => {
+      // Con las reglas de publicación no se puede publicar un producto sin foto si no hay otro con foto; se publica con ambos y luego
+      // se siembra directamente la copia del producto sin foto (medios: []), como quedaría tras quitar sus fotos.
+      const t = await nuevoTenant();
+      await sembrarProducto(t, { id: 'fot-con' });
+      await sembrarProducto(t, { id: 'fot-sin', fotos: [] });
+      await entregarCambios(t);
+      await publicar(t);
+      expect((await estadoPublicado(t)).productos.sort()).toEqual(['fot-con', 'fot-sin']);
+      expect((await h.firestore.doc(`tenants/${t}/publicado/producto__fot-sin`).get()).data()?.['medios']).toEqual([]);
+      await desactivar(t, 'fot-con');
+      await entregarCambios(t);
+      expect((await estadoPublicado(t)).productos).toEqual(['fot-sin']);
+      const c = mapear(await leerPublicado(t));
+      expect(c.productos.map((p) => p.id)).toEqual(['fot-sin']);
+      expect(c.productos[0]!.fotos).toEqual([]);
+      expect(Object.values(c.carruseles).every((l) => l.length === 0)).toBe(true);
+      expect(await aviso(t)).toMatchObject({ motivo: 'sin_fotos' });
+      expect(await tableroPorCallable(t)).toMatchObject({ avisoSitio: { motivo: 'sin_fotos' } });
+    });
+
+    it('con el sitio sin productos, publicar a mano sigue rechazándose; tras una publicación correcta el aviso desaparece', async () => {
+      const t = await nuevoTenant();
+      await sembrarProducto(t, { id: 'rec-uno' });
+      await entregarCambios(t);
+      await publicar(t);
+      await desactivar(t, 'rec-uno');
+      await entregarCambios(t);
+      expect(await aviso(t)).toMatchObject({ motivo: 'sin_productos' });
+      await expect(publicar(t)).rejects.toMatchObject({ message: 'Publique al menos un producto activo' });
+      expect(await aviso(t)).toMatchObject({ motivo: 'sin_productos' }); // el rechazo no limpia el aviso
+      await sembrarProducto(t, { id: 'rec-dos' });
+      expect((await publicar(t)).productos).toBe(1);
+      expect(await aviso(t)).toBeUndefined();
+      expect((await tableroPorCallable(t)).avisoSitio).toBeNull();
+    });
+
+    it('reactivar un producto retirado no lo republica: no vuelve a la copia ni al catálogo y cuenta como cambio sin publicar', async () => {
+      const t = await nuevoTenant();
+      await sembrarProducto(t, { id: 'rea-uno' });
+      await sembrarProducto(t, { id: 'rea-dos' });
+      await entregarCambios(t);
+      await publicar(t);
+      await desactivar(t, 'rea-uno');
+      await entregarCambios(t);
+      expect((await estadoPublicado(t)).productos).toEqual(['rea-dos']);
+      const versionAntes = (await estadoPublicado(t)).version;
+      const sinPublicarAntes = await cambiosSinPublicar(t);
+      await reactivar(t, 'rea-uno');
+      await entregarCambios(t);
+      expect((await h.firestore.doc(`tenants/${t}/publicado/producto__rea-uno`).get()).exists).toBe(false);
+      expect((await estadoPublicado(t)).productos).toEqual(['rea-dos']);
+      expect((await estadoPublicado(t)).version).toBe(versionAntes);
+      expect(mapear(await leerPublicado(t)).productos.map((p) => p.id)).toEqual(['rea-dos']);
+      expect((await catalogoDe(t)).map((i) => i.id)).toEqual(['rea-dos']);
+      expect(await cambiosSinPublicar(t)).toBeGreaterThan(sinPublicarAntes);
     });
 
     it('ficha en borrador u oculta: no se publica y su copia anterior se borra al volver a publicar', async () => {
@@ -336,17 +454,43 @@ describe.skipIf(!hayEmulador)('contrato consola → /publicado → contenido del
     });
   });
 
-  it('cambio de precio después de publicar: la copia conserva el precio anterior hasta volver a publicar (INCOHERENCIA S7)', async () => {
-    // INCOHERENCIA S7: el precio se copia a `publicado/` al publicar (consola/src/publicar.ts:164-166 y 274); editarlo en Inventarios no lo actualiza
-    // ni marca la copia como vencida, así que el sitio muestra el precio viejo (y el catálogo de NovuChat, que usa el precio vivo
-    // de Inventarios con la ficha de la copia, el nuevo: dos precios para el mismo producto).
+  it('cambio de precio después de publicar: sin volver a publicar, la copia y el sitio traen el precio nuevo y se agenda la reconstrucción (S7-1)', async () => {
+    // S7-1: el cambio de precio en Inventarios publica `producto.cambiado`; la consola actualiza SOLO el precio de la copia, sube la versión
+    // publicada en 1, agenda la reconstrucción (ventana de 10 minutos) y no lo cuenta como «cambio sin publicar».
     const t = await nuevoTenant();
     await sembrarProducto(t, { id: 'pre-uno', precio: { bo: 10000, ar: 20000 } });
+    await entregarCambios(t);
     await publicar(t);
+    // La publicación ya agendó su reconstrucción; se deja el estado como «el temporizador ya reconstruyó» para que lo agendado
+    // después sea obra del consumidor y no un resto de la publicación.
+    await simularTemporizadorReconstruyo(t);
+    expect(await trabajosProg(t)).toEqual([]);
+    const antes = (await h.firestore.doc(`tenants/${t}/publicado/estado`).get()).data() as { version: number };
+    const sinPublicarAntes = await cambiosSinPublicar(t);
     await h.db.runTransaction((tx) => actualizarProducto(tx, { tenantId: t, operacionId: unico('act'), por: ADM, productoId: 'pre-uno', cambios: { precioUSD: { bo: 15000, ar: 25000 } } }));
-    expect(mapear(await leerPublicado(t)).productos[0]!.precioUsd).toEqual({ BO: 100, AR: 200 });
-    await publicar(t);
-    expect(mapear(await leerPublicado(t)).productos[0]!.precioUsd).toEqual({ BO: 150, AR: 250 });
+    await entregarCambios(t);
+    const resp = await leerPublicado(t);
+    expect(resp.documentos['producto__pre-uno']).toMatchObject({ precioUSD: { bo: 150, ar: 250 }, nombre: 'Producto pre-uno' });
+    expect(mapear(resp).productos[0]!.precioUsd).toEqual({ BO: 150, AR: 250 });
+    const estado = (await h.firestore.doc(`tenants/${t}/publicado/estado`).get()).data() as { version: number; precioVivoEn?: string; reconstruccion?: { programadaPara?: number } };
+    expect(estado.version).toBe(antes.version + 1);
+    expect((await h.firestore.doc(`tenants/${t}/publicado/sitio`).get()).data()?.['version']).toBe(antes.version + 1);
+    expect(estado.precioVivoEn).toEqual(expect.any(String));
+    expect(estado.reconstruccion?.programadaPara).toEqual(expect.any(Number));
+    // El trabajo `prog-` es NUEVO: lo creó el consumidor (antes del cambio no había ninguno).
+    expect(await trabajosProg(t)).toHaveLength(1);
+    expect(await cambiosSinPublicar(t)).toBe(sinPublicarAntes);
+    // Entregar de nuevo lo mismo no cambia nada.
+    await entregarCambios(t);
+    expect(((await h.firestore.doc(`tenants/${t}/publicado/estado`).get()).data() as { version: number }).version).toBe(antes.version + 1);
+    // Dos cambios más seguidos se agrupan en la misma reconstrucción agendada: sigue habiendo un solo trabajo.
+    for (const bo of [16000, 17000]) {
+      await h.db.runTransaction((tx) => actualizarProducto(tx, { tenantId: t, operacionId: unico('act'), por: ADM, productoId: 'pre-uno', cambios: { precioUSD: { bo, ar: 25000 } } }));
+      await entregarCambios(t);
+    }
+    expect(await trabajosProg(t)).toHaveLength(1);
+    expect((await estadoPublicado(t)).version).toBe(antes.version + 3);
+    expect((await h.firestore.doc(`tenants/${t}/publicado/producto__pre-uno`).get()).data()?.['precioUSD']).toMatchObject({ bo: 170 });
   });
 
   /** Catálogo de NovuChat del tenant (mercado BO) con un token propio. */
@@ -374,13 +518,17 @@ describe.skipIf(!hayEmulador)('contrato consola → /publicado → contenido del
       expect([...estado.productos].sort()).toEqual(sitio);
     });
 
-    it('desactivado tras publicar con la copia aún presente: el sitio lo sigue mostrando (S7) y el catálogo ya no lo ofrece', async () => {
+    it('desactivado tras publicar: el catálogo ya no lo ofrece y, tras consumir el evento, tampoco la copia ni el sitio (S7-1)', async () => {
       const t = await nuevoTenant();
       await sembrarProducto(t, { id: 'des-a' });
       await sembrarProducto(t, { id: 'des-b' });
+      await entregarCambios(t);
       await publicar(t);
       await h.db.runTransaction((tx) => actualizarProducto(tx, { tenantId: t, operacionId: unico('act'), por: ADM, productoId: 'des-b', cambios: { activo: false } }));
-      expect(mapear(await leerPublicado(t)).productos.map((p) => p.id)).toEqual(['des-a', 'des-b']);
+      expect((await catalogoDe(t)).map((i) => i.id)).toEqual(['des-a']); // el catálogo usa el producto vivo
+      await entregarCambios(t);
+      expect(mapear(await leerPublicado(t)).productos.map((p) => p.id)).toEqual(['des-a']);
+      expect((await h.firestore.doc(`tenants/${t}/publicado/producto__des-b`).get()).exists).toBe(false);
       expect((await catalogoDe(t)).map((i) => i.id)).toEqual(['des-a']);
     });
 
@@ -392,7 +540,7 @@ describe.skipIf(!hayEmulador)('contrato consola → /publicado → contenido del
       expect(await catalogoDe(t)).toEqual([]);
     });
 
-    it('el precio del catálogo es el vivo de Inventarios aunque la copia tenga otro', async () => {
+    it('el precio del catálogo es el vivo de Inventarios, sin esperar a que el evento llegue a la copia', async () => {
       const t = await nuevoTenant();
       await sembrarProducto(t, { id: 'viv-a', precio: { bo: 10000, ar: 20000 } });
       await publicar(t);
@@ -402,7 +550,22 @@ describe.skipIf(!hayEmulador)('contrato consola → /publicado → contenido del
       // Cotización BO = 7: 100 USD → 700 BOB (70 000 centavos); 150 USD → 1 050 BOB (105 000 centavos).
       expect(antes).toBe(70_000);
       expect(despues).toBe(105_000);
-      expect(mapear(await leerPublicado(t)).productos[0]!.precioUsd).toEqual({ BO: 100, AR: 200 }); // la copia sigue con el precio anterior
+      // El disparador del bus del emulador puede entregar el evento en cualquier momento: se entrega aquí también (idempotente) y la copia llega al mismo precio.
+      await entregarCambios(t);
+      expect(mapear(await leerPublicado(t)).productos[0]!.precioUsd).toEqual({ BO: 150, AR: 250 });
+    });
+
+    it('tras un cambio de precio y la entrega del evento, el precio del catálogo de NovuChat y el de la copia publicada coinciden (S7-1)', async () => {
+      const t = await nuevoTenant();
+      await sembrarProducto(t, { id: 'coin-a', precio: { bo: 10000, ar: 20000 } });
+      await entregarCambios(t);
+      await publicar(t);
+      await h.db.runTransaction((tx) => actualizarProducto(tx, { tenantId: t, operacionId: unico('act'), por: ADM, productoId: 'coin-a', cambios: { precioUSD: { bo: 15000, ar: 25000 } } }));
+      await entregarCambios(t);
+      const copiaBo = (mapear(await leerPublicado(t)).productos[0]!.precioUsd as { BO: number }).BO;
+      expect(copiaBo).toBe(150);
+      // Cotización BO = 7: USD de la copia × 7 × 100 = centavos de BOB del catálogo.
+      expect((await catalogoDe(t))[0]!.precioCentavos).toBe(Math.round(copiaBo * 7 * 100));
     });
 
     /** Siembra directa de un producto activo con su copia publicada (rápido, sin pasar por la consola). */

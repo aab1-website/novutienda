@@ -8,7 +8,7 @@ import { entregarEvento, sobreDesdeDocumento } from '../../plataforma/funciones/
 import { crearEntorno, type Entorno } from '../../plataforma/funciones/servidor/entorno.js';
 import { crearNotificador } from '../../plataforma/funciones/servidor/notificador.js';
 import { crearDisparadorSitio } from '../../plataforma/funciones/servidor/disparador-sitio.js';
-import { ejecutarLimpiezaSubidas, ejecutarTemporizadorSitio } from '../../plataforma/funciones/servidor/programadas/consola.js';
+import { ejecutarLimpiezaSubidas, ejecutarReconstruccion, ejecutarTemporizadorSitio } from '../../plataforma/funciones/servidor/programadas/consola.js';
 import { ejecutarCotizaciones, horaEnLaPaz } from '../../plataforma/funciones/servidor/programadas/cotizacion.js';
 import { listarTenants } from '../../plataforma/funciones/servidor/programadas/tenants.js';
 import { procesarObjetoSubido } from '../../plataforma/funciones/servidor/trigger-medios.js';
@@ -191,6 +191,30 @@ describe.skipIf(!hayEmulador)('trabajos programados (Firestore del emulador)', (
     await h.firestore.doc(`tenants/${t}/publicado/estado`).set({ version: 5, reconstruccion: { programadaPara: AHORA - 1000, ultima: null } });
     expect((await ejecutarTemporizadorSitio(e))[t]).toBe('reconstruir');
     expect((await h.firestore.collection(`tenants/${t}/reconstrucciones`).get()).docs[0]?.data()).toMatchObject({ estado: 'pendiente', version: 5 });
+  });
+
+  it('temporizador del sitio: si `reconstruir` falla una vez, la hora vencida queda y el siguiente tic reintenta (no se pierde la reconstrucción)', async () => {
+    const t = unico('tmr-falla').toLowerCase();
+    await h.firestore.doc(`tenants/${t}/publicado/estado`).set({ version: 6, reconstruccion: { programadaPara: AHORA - 1000, ultima: null } });
+    let llamadas = 0;
+    const disparador = {
+      ...e.disparadorSitio,
+      reconstruir: (tenantId: string, version: number, motivo: 'publicacion' | 'diaria') => {
+        llamadas += 1;
+        if (llamadas === 1) return Promise.reject(new Error('fallo transitorio de prueba'));
+        return e.disparadorSitio.reconstruir(tenantId, version, motivo);
+      },
+    };
+    const deps = { db: e.db, reloj: { ahora: e.ahora }, disparador };
+    await expect(ejecutarReconstruccion(deps, { tenantId: t, evento: 'temporizador' })).rejects.toThrow('fallo transitorio de prueba');
+    // La hora vencida sigue agendada y no se encoló nada.
+    expect((await h.firestore.doc(`tenants/${t}/publicado/estado`).get()).data()?.['reconstruccion']).toMatchObject({ programadaPara: AHORA - 1000 });
+    expect((await h.firestore.collection(`tenants/${t}/reconstrucciones`).get()).size).toBe(0);
+    // Siguiente tic: reintenta, encola y recién entonces limpia la hora.
+    expect((await ejecutarReconstruccion(deps, { tenantId: t, evento: 'temporizador' })).accion).toBe('reconstruir');
+    expect(llamadas).toBe(2);
+    expect((await h.firestore.collection(`tenants/${t}/reconstrucciones`).get()).docs[0]?.data()).toMatchObject({ estado: 'pendiente', version: 6 });
+    expect((await h.firestore.doc(`tenants/${t}/publicado/estado`).get()).data()?.['reconstruccion']).toMatchObject({ programadaPara: null });
   });
 
   it('programadas del módulo consola: saltan al tenant con consola apagada (L2-6)', async () => {

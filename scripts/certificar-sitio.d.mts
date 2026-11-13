@@ -7,7 +7,7 @@ export interface Comprobacion {
   estado: 'ok' | 'aviso' | 'error';
   conteos: Record<string, number>;
   diferencias: Diferencia[];
-  avisos: { campo: string; n?: number; posiciones?: number[] }[];
+  avisos: { campo: string; texto?: string; n?: number; posiciones?: number[] }[];
   motivo: string | undefined;
   /** true = no se pudo leer lo que se debía comparar (no es una diferencia del sitio). */
   operacion?: boolean;

@@ -437,7 +437,7 @@ export function validarContenido(entrada: unknown): ResultadoValidacion {
   const beneficios = leerBeneficios(l, raiz['beneficios']);
 
   const idsCat = new Set<string>();
-  const categorias = l.lista(raiz['categorias'], 'categorias', 40, 1).map((c, i) => {
+  const categorias = l.lista(raiz['categorias'], 'categorias', 40).map((c, i) => {
     const o = l.obj(c, `categorias[${i}]`);
     const id = l.texto(o['id'], `categorias[${i}].id`, 1, 60);
     if (!RE_SLUG.test(id)) l.falla(`categorias[${i}].id`, 'identificador inválido');
@@ -516,7 +516,7 @@ export function validarContenido(entrada: unknown): ResultadoValidacion {
   const car = l.obj(raiz['carruseles'], 'carruseles');
   const carruseles = {} as Record<IdPlantilla, readonly Foto[]>;
   for (const id of IDS_PLANTILLA) {
-    carruseles[id] = l.lista(car[id], `carruseles.${id}`, LIMITES_SITIO.carruselesPorPlantilla, 1).map((f, i) => leerFoto(l, f, `carruseles.${id}[${i}]`, origenes, config.enlacesPermitidos));
+    carruseles[id] = l.lista(car[id], `carruseles.${id}`, LIMITES_SITIO.carruselesPorPlantilla).map((f, i) => leerFoto(l, f, `carruseles.${id}[${i}]`, origenes, config.enlacesPermitidos));
   }
 
   const publicacion = leerPublicacion(l, raiz['publicacion']);

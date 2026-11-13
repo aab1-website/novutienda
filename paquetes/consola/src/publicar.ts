@@ -54,7 +54,7 @@ export type DecisionReconstruccion =
 
 /**
  * Función pura. `programadaPara` es la reconstrucción ya agendada (ms) o null. Una publicación agenda a +10 min si no
- * hay nada agendado y, si ya hay, se agrupa. El temporizador reconstruye solo cuando llegó la hora. La corrida diaria
+ * hay nada agendado y, si ya hay (vencida o no), se agrupa y espera al temporizador. El temporizador reconstruye solo cuando llegó la hora. La corrida diaria
  * (tras la publicación del BCB) reconstruye siempre que haya algo publicado.
  */
 export function decidirReconstruccion(
@@ -66,6 +66,9 @@ export function decidirReconstruccion(
   if (evento === 'diaria') return estado.hayPublicacion ? { accion: 'reconstruir' } : { accion: 'nada' };
   const p = estado.programadaPara;
   if (p === null) return evento === 'publicacion' ? { accion: 'programar', para: ahora + ventanaMs } : { accion: 'nada' };
+  // Una publicación o un cambio que llega con la hora ya vencida NO reconstruye: espera al temporizador, que es el único punto
+  // que pasa a `reconstruir` (así un solo lugar avisa a quien reconstruye el sitio).
+  if (evento === 'publicacion') return { accion: 'esperar', para: p };
   return p > ahora ? { accion: 'esperar', para: p } : { accion: 'reconstruir' };
 }
 
@@ -252,16 +255,34 @@ const leerReconstruccion = (d: Readonly<Record<string, unknown>> | undefined): {
  *    Podría compartirse por el núcleo más adelante (hoy está duplicada a propósito: las fronteras impiden importar website).
  */
 function exigirPublicable(pub: Publicado, candidatos: number, sinMarca: number): void {
-  if (pub.productos.length === 0) {
+  const motivo = motivoNoPublicable(pub);
+  if (motivo === 'sin_productos') {
     if (candidatos > 0 && sinMarca === candidatos) {
       throw new ErrorConsola('estado', 'Ningún producto se puede publicar: agregue la marca en Inventario a los productos publicados');
     }
     throw new ErrorConsola('estado', 'Publique al menos un producto activo');
   }
-  const hayRespaldo = pub.productos.some((p) => p.medios.some(tieneFoto));
-  if (hayRespaldo) return;
+  if (motivo === 'sin_fotos') throw new ErrorConsola('estado', 'Agregue una foto a un producto publicado o cargue el carrusel');
+}
+
+export type MotivoSitioIncompleto = 'sin_productos' | 'sin_fotos';
+
+/**
+ * Función pura: la comprobación de `exigirPublicable` sin lanzar. Devuelve por qué un conjunto publicado quedaría sin productos o
+ * sin fotos, o `null` si es publicable. La usan `publicarSitio` (que rechaza) y el retiro automático por producto desactivado
+ * (que solo avisa: el sitio admite quedar sin catálogo o sin fotos). Solo mira productos y carruseles, que existen igual en la
+ * copia `publicado/`.
+ */
+export function motivoNoPublicable(
+  pub: {
+    readonly productos: readonly { readonly medios: readonly MedioPublico[] }[];
+    readonly carruseles: readonly { readonly plantilla: string; readonly items: readonly MedioPublico[] }[];
+  },
+): MotivoSitioIncompleto | null {
+  if (pub.productos.length === 0) return 'sin_productos';
+  if (pub.productos.some((p) => p.medios.some(tieneFoto))) return null;
   const propio = (pl: string): boolean => pub.carruseles.some((c) => c.plantilla === pl && c.items.some(tieneFoto));
-  if (PLANTILLAS.some((pl) => !propio(pl))) throw new ErrorConsola('estado', 'Agregue una foto a un producto publicado o cargue el carrusel');
+  return PLANTILLAS.some((pl) => !propio(pl)) ? 'sin_fotos' : null;
 }
 
 /**
@@ -354,8 +375,9 @@ export async function publicarSitio(deps: DepsPublicar, e: { tenantId: string; a
     const programadaPara = decision.accion === 'programar' ? decision.para : decision.accion === 'esperar' ? decision.para : null;
     tx.set(rutaPublicado(t, 'estado'), {
       version, publicadoEn: ahoraIso, productos: idsProd, secciones: idsSec, carruseles: idsCar,
-      reconstruccion: { programadaPara, ultima: decision.accion === 'reconstruir' ? ahora : null },
+      reconstruccion: { programadaPara, ultima: null },
     });
+    // Poner `sitio/estado` de nuevo limpia también `avisoSitio`: una publicación correcta deja el conjunto publicable.
     tx.set(rutaSitio(t, 'estado'), { cambios: 0, ultimoCambioEn: ahoraIso, corteCatalogoEn: corteIso });
     registrarAuditoria(tx, {
       tenantId: t, uid: e.actor.uid, rol, accion: 'sitio.publicar', ruta: rutaPublicado(t, 'estado'),
@@ -364,8 +386,8 @@ export async function publicarSitio(deps: DepsPublicar, e: { tenantId: string; a
     return { version, productos: idsProd.length, decision, advertencias: pub.advertencias };
   });
 
+  // Con el evento `publicacion` la decisión es solo `programar` o `esperar`: reconstruir es siempre cosa del temporizador.
   if (r.decision.accion === 'programar') await deps.disparador.programar(t, r.decision.para);
-  else if (r.decision.accion === 'reconstruir') await deps.disparador.reconstruir(t, r.version, 'publicacion');
   return r;
 }
 
@@ -378,15 +400,24 @@ export async function ejecutarReconstruccion(
 ): Promise<DecisionReconstruccion> {
   const t = tenantValido(e.tenantId);
   const ahora = deps.reloj.ahora();
-  const { decision, version } = await deps.db.runTransaction(async (tx) => {
+  const { decision, version, programadaPara } = await deps.db.runTransaction(async (tx) => {
     const d = (await tx.get(rutaPublicado(t, 'estado'))).data();
     const prev = leerReconstruccion(d);
     const dec = decidirReconstruccion({ hayPublicacion: d !== undefined, programadaPara: prev.programadaPara }, ahora, e.evento);
-    if (dec.accion === 'reconstruir' && d !== undefined) {
-      tx.set(rutaPublicado(t, 'estado'), { ...d, reconstruccion: { programadaPara: null, ultima: ahora } });
-    }
-    return { decision: dec, version: prev.version };
+    return { decision: dec, version: prev.version, programadaPara: prev.programadaPara };
   });
-  if (decision.accion === 'reconstruir') await deps.disparador.reconstruir(t, version, e.evento === 'diaria' ? 'diaria' : 'publicacion');
+  if (decision.accion !== 'reconstruir') return decision;
+  // Primero se dispara y SOLO después se limpia lo agendado: si `reconstruir` falla, `programadaPara` sigue vencida y el siguiente
+  // tic del temporizador lo reintenta (el disparador real es idempotente por motivo, versión y minuto: no duplica trabajos).
+  await deps.disparador.reconstruir(t, version, e.evento === 'diaria' ? 'diaria' : 'publicacion');
+  await deps.db.runTransaction(async (tx) => {
+    const d = (await tx.get(rutaPublicado(t, 'estado'))).data();
+    if (d === undefined) return;
+    const actual = leerReconstruccion(d);
+    // Si entretanto se agendó otra hora distinta (otro grupo de cambios), se respeta.
+    tx.set(rutaPublicado(t, 'estado'), {
+      ...d, reconstruccion: { programadaPara: actual.programadaPara === programadaPara ? null : actual.programadaPara, ultima: ahora },
+    });
+  });
   return decision;
 }
