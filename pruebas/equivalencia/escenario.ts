@@ -94,5 +94,9 @@ export async function crearEscenario(): Promise<Escenario> {
     secciones: [], carruseles: [], reconstruccion: { programadaPara: null, ultima: null },
   });
   await e.db.runTransaction((tx) => actualizarProducto(tx, { tenantId: T, operacionId: op('baja'), por: ADM, productoId: 'p-inactivo', cambios: { activo: false } }));
+  // S7-1: producción entrega `producto.cambiado` a la consola: al desactivarse, la copia publicada de `p-inactivo` se retira y sale de
+  // `publicado/estado.productos`. Se entrega la bandeja por el mismo camino (consumidores reales, disparador en memoria).
+  const entrega = await e.bandeja.entregar(T);
+  if (entrega.fallidas.length > 0) throw new Error('El escenario no pudo entregar los eventos de Inventarios.');
   return { ...e, depsReales: { ...e.deps, redondeo: REDONDEO } };
 }

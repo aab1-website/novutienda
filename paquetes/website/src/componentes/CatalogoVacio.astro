@@ -3,9 +3,13 @@ import Icono from './Icono.astro';
 import { contenido } from '../contenido/instancia';
 import { enlaceWhatsApp } from '../lib/whatsapp';
 
+// `conBoton: false` cuando la página ya ofrece el botón de WhatsApp en otro bloque (la portada, en «Estamos para ayudarte»).
+interface Props { conBoton?: boolean }
+const { conBoton = true } = Astro.props;
 const wa = enlaceWhatsApp(contenido.config.whatsappTienda, 'Hola, quisiera saber cuándo tendrán catálogo.');
+const mostrarBoton = conBoton && wa !== null;
 ---
-<div class="catalogo-vacio centrado">
-  <p class="subtitulo">Pronto publicaremos nuestro catálogo. Escríbenos por WhatsApp.</p>
-  {wa !== null && <a class="boton boton-cta" href={wa} target="_blank" rel="noopener noreferrer"><Icono nombre="mensaje" tamano={18} />ESCRIBIR POR WHATSAPP</a>}
+<div class="catalogo-vacio">
+  <p class="subtitulo">{mostrarBoton ? 'Pronto publicaremos nuestro catálogo. Escríbenos por WhatsApp.' : 'Pronto publicaremos nuestro catálogo.'}</p>
+  {mostrarBoton && <a class="boton boton-cta" href={wa} target="_blank" rel="noopener noreferrer"><Icono nombre="mensaje" tamano={18} />ESCRIBIR POR WHATSAPP</a>}
 </div>

@@ -22,7 +22,7 @@ const wa = enlaceWhatsApp(config.whatsappTienda, 'Hola, tengo una consulta.');
     <div class="contenedor centrado">
       <span class="etiqueta">Explora por categoría</span>
       <h2 id="titulo-categorias" class="titulo-seccion">Nuestros productos</h2>
-      {productos.length === 0 ? <CatalogoVacio /> : <p class="subtitulo">Elige una categoría para ver sus modelos y precios actualizados.</p>}
+      {productos.length === 0 ? <CatalogoVacio conBoton={false} /> : <p class="subtitulo">Elige una categoría para ver sus modelos y precios actualizados.</p>}
       {productos.length > 0 && (
       <ul class="lista-categorias">
         {categorias.map((c) => (

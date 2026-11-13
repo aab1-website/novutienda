@@ -102,6 +102,7 @@ describe('precio vivo: Inventarios → evento → copia publicada', () => {
     await entregar();
     expect(copia()).toBeUndefined();
     expect(estadoPub()?.['productos']).toEqual([]);
+    expect((doc(e, T, 'sitio/estado')?.['avisoSitio'] as { motivo?: string } | undefined)?.motivo).toBe('sin_productos');
     expect(e.disparador.programadas).toHaveLength(1);
   });
 

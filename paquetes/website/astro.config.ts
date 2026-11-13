@@ -17,7 +17,8 @@ export default defineConfig({
   site: config.origen,
   output: 'static',
   // Fuera del paquete: `dist/` de la raíz ya está ignorado por ESLint y por git.
-  outDir: '../../dist/website',
+  // SITIO_OUT_DIR (solo pruebas de build con otro contenido, ruta absoluta o relativa al paquete): no pisa dist/website.
+  outDir: process.env['SITIO_OUT_DIR'] || '../../dist/website',
   trailingSlash: 'never',
   build: {
     format: 'file',
