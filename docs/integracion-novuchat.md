@@ -1,6 +1,6 @@
 # Integración con NovuChat: contrato propuesto (04/11/2026)
 
-Estado: propuesta de la plataforma Casa Bermejo para acordar con la sesión de NovuChat. Nada de esto está implementado del lado de NovuChat. Alcance: solo la propuesta comercial firmada (catálogo hacia el asistente; cobro por el asistente; pedido registrado en la consola de NovuChat; descuento de stock al confirmar el pedido).
+Estado: propuesta de la plataforma del primer cliente para acordar con la sesión de NovuChat. Nada de esto está implementado del lado de NovuChat. Alcance: solo la propuesta comercial firmada (catálogo hacia el asistente; cobro por el asistente; pedido registrado en la consola de NovuChat; descuento de stock al confirmar el pedido).
 
 ## 1. Catálogo (NovuChat lee de la plataforma)
 `GET /api/novuchat/v1/catalogo?mercado=BO|AR` con `Authorization: Bearer <token del tenant>` (el tenant sale del token; el token se guarda como credencial de n8n y en la plataforma solo su SHA-256; rotación con dos hashes vigentes).
@@ -35,10 +35,10 @@ La plataforma ya implementa y prueba esto (módulo Inventarios: `confirmarPedido
 - P10. El recibo se envía hoy como enlace `wa.me`. La propuesta dice «envío automático»: ¿pueden enviarlo por el número del asistente, y con qué costo?
 
 ## 5. Lectura desde la consola de NovuChat (decisión de Andres, 04/11/2026)
-El panel único de gestión de Casa Bermejo es independiente de la consola de NovuChat (ver docs/panel-unico.md). La consola de NovuChat podrá recuperar información de inventarios y productos de la plataforma con endpoints de solo lectura, con el mismo token por tenant que el catálogo: `GET /api/novuchat/v1/catalogo` (precio final y stock) y, si se necesita más detalle, `GET /api/novuchat/v1/inventario` (existencias por almacén). No se escribe en la plataforma salvo la confirmación de pedido firmada del §2.
+El panel único de gestión del primer cliente es independiente de la consola de NovuChat (ver docs/panel-unico.md). La consola de NovuChat podrá recuperar información de inventarios y productos de la plataforma con endpoints de solo lectura, con el mismo token por tenant que el catálogo: `GET /api/novuchat/v1/catalogo` (precio final y stock) y, si se necesita más detalle, `GET /api/novuchat/v1/inventario` (existencias por almacén). No se escribe en la plataforma salvo la confirmación de pedido firmada del §2.
 
 ## 6. Propiedades de producto (v1.1 aditiva)
-Especificación acordada con NovuChat el 05/11/2026: `docs/contratos/propiedades-de-producto-v1.1.md`. No construida aún; el alcance para `casa-bermejo` es decisión aparte de Andres.
+Especificación acordada con NovuChat el 05/11/2026: `docs/contratos/propiedades-de-producto-v1.1.md`. No construida aún; el alcance para el tenant de referencia es decisión aparte de Andres.
 
 **Destino de la llamada (PR B).** El tenant del pedido firmado sale del host, no de la firma: NovuChat configura `baseUrl` con el dominio del sitio del tenant (por ejemplo `https://tienda-a.test`), nunca con la URL directa de la función (sin `x-forwarded-host` responde `404`). El host debe estar mapeado en `dominios` (`docs/produccion/dominios-de-tenant.md`).
 

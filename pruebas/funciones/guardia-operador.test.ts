@@ -124,7 +124,7 @@ describe('guardia de rutas con git', () => {
     expect(() => exigirFueraDelRepositorio(join(toplevel, '..', '..', '..', '..', t, 'c.json'))).not.toThrow();
   });
 
-  it('la ruta del plan CLIENTES/CASA_BERMEJO/staging/credenciales.json (ignorada) se acepta desde el checkout y desde el worktree', () => {
+  it('la ruta del plan CLIENTES/<CLIENTE>/staging/credenciales.json (ignorada) se acepta desde el checkout y desde el worktree', () => {
     const rel = join('CLIENTES', 'CASA_BERMEJO', 'staging', 'credenciales.json');
     expect(() => exigirFueraDelRepositorio(join(toplevel, rel))).not.toThrow();
     expect(() => exigirFueraDelRepositorio(join(principal, rel))).not.toThrow();

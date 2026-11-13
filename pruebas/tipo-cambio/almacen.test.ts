@@ -37,9 +37,9 @@ describe('escritura: cotizaciones/{BO|AR} + historial inmutable', () => {
   });
   it('la ruta es por tenant y coincide con el manifiesto (tenants/{t}/cotizaciones)', async () => {
     const a = new AlmacenMemoria();
-    await escribirCotizacion(a, { mercado: 'AR', principal: { valor: 1520, fecha: '2026-11-04', fuente: 'BNA' }, control: null, ahoraMs: AHORA }, { tenantId: 'bermejo' });
-    expect(a.docs.has('tenants/bermejo/cotizaciones/AR')).toBe(true);
-    expect(rutaHistorial('bermejo', 'AR', 'x')).toBe('tenants/bermejo/cotizaciones/AR/historial/x');
+    await escribirCotizacion(a, { mercado: 'AR', principal: { valor: 1520, fecha: '2026-11-04', fuente: 'BNA' }, control: null, ahoraMs: AHORA }, { tenantId: 'tenant-x' });
+    expect(a.docs.has('tenants/tenant-x/cotizaciones/AR')).toBe(true);
+    expect(rutaHistorial('tenant-x', 'AR', 'x')).toBe('tenants/tenant-x/cotizaciones/AR/historial/x');
     expect(() => rutaCotizacion('../otro', 'AR')).toThrow(RangeError);
   });
   it('N corridas de +4,9 % con la misma fecha: solo la primera se escribe', async () => {
