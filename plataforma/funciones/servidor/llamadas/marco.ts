@@ -12,6 +12,7 @@ import { CODIGO_DE_BORDE, CODIGO_MODULO_APAGADO, traducirError } from '../../../
 import { bloqueoPorConteo, DETALLES_STOCK_OCULTO, MENSAJE_STOCK_OCULTO, recortarDetallesDeStock } from '../../../coordinador/index.js';
 import { autenticar, exigirAppCheck, personalDelTenant, type Sesion, type SesionTenant } from '../autenticacion.js';
 import type { Entorno } from '../entorno.js';
+import { ComercialInvalida } from '../../../coordinador/comercial.js';
 import { RedondeoInvalido } from '../redondeo.js';
 import { aJson } from '../serializar.js';
 
@@ -107,6 +108,7 @@ function conCodigo(error: HttpsError, codigoPorDefecto?: string): HttpsError {
 export function comoHttpsError(error: unknown, contexto: Readonly<Record<string, unknown>>): HttpsError {
   if (error instanceof HttpsError) return conCodigo(error);
   if (error instanceof RedondeoInvalido) return conCodigo(new HttpsError('failed-precondition', error.message), 'redondeo-invalido');
+  if (error instanceof ComercialInvalida) return conCodigo(new HttpsError('failed-precondition', error.message), 'comercial-invalida');
   const bloqueo = bloqueoPorConteo(error);
   if (bloqueo !== undefined) {
     logger.warn('callable rechazado', { ...contexto, codigo: 'failed-precondition' });

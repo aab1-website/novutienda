@@ -5,7 +5,7 @@
 // corre el núcleo (`actualizarMercado`) y a las 07:00 dispara la reconstrucción diaria del sitio (módulo consola): por
 // la prueba de ubicación coordina dos zonas. El núcleo puro de la cotización vive en `paquetes/nucleo/src/tipo-cambio`.
 import { logger } from 'firebase-functions';
-import { actualizarMercado, type Mercado, type OpcionesDescarga } from '@novutienda/nucleo';
+import { actualizarMercadoDe, mercadosDe, tieneTipoCambio, type ConfiguracionComercial, type OpcionesDescarga } from '@novutienda/nucleo';
 import type { Entorno } from '../entorno.js';
 import { crearNotificador } from '../notificador.js';
 import { ejecutarReconstruccion } from './consola.js';
@@ -18,23 +18,37 @@ export function horaEnLaPaz(ms: number): number {
 
 export interface ResumenCotizacion {
   readonly tenantId: string;
-  readonly mercado: Mercado;
+  readonly mercado: string;
   readonly accion: string;
   readonly fallas: number;
 }
 
+async function comercialOUndefined(e: Entorno, tenantId: string): Promise<ConfiguracionComercial | undefined> {
+  try {
+    return await e.comercialDelTenant(tenantId);
+  } catch (err) {
+    logger.error('cotización: el tenant no tiene configuración comercial válida', { alerta: 'cotizacion', tipo: 'comercial_invalida', tenantId, error: err instanceof Error ? err.name : 'desconocido' });
+    return undefined;
+  }
+}
+
 /**
- * Actualiza BO y AR para cada tenant. Un mercado que falla no impide el otro; si algo lanza, se registra y se
- * relanza al final para que la ejecución figure como fallida (y el aviso al operador no se pierda).
+ * Actualiza, para cada tenant, SOLO los mercados con tipo de cambio de SU configuración comercial: un tenant sin ninguno no
+ * consulta ninguna fuente. Un mercado que falla no impide el otro y un tenant que falla no detiene a los demás; si algo lanza,
+ * se registra y se relanza al final para que la ejecución figure como fallida (y el aviso al operador no se pierda). Un tenant
+ * sin configuración comercial válida se registra como error (`comercial_invalida`) y se salta: sin configuración no hay mercados
+ * que cotizar (falla cerrado), igual que un tenant sin módulos no corre la reconstrucción.
  */
 export async function ejecutarCotizaciones(e: Entorno, descarga: OpcionesDescarga = {}): Promise<ResumenCotizacion[]> {
   const resumen: ResumenCotizacion[] = [];
   let error: unknown;
   for (const tenantId of await listarTenants(e)) {
     const notificador = crearNotificador(e.firestore, tenantId, e.ahora);
-    for (const mercado of ['BO', 'AR'] as const) {
+    const comercial = await comercialOUndefined(e, tenantId);
+    const mercados = comercial === undefined ? [] : mercadosDe(comercial).filter((m) => tieneTipoCambio(comercial, m));
+    for (const mercado of mercados) {
       try {
-        const r = await actualizarMercado(e.almacenCotizaciones, mercado, e.ahora(), { ...descarga, tenantId, notificador });
+        const r = await actualizarMercadoDe(e.almacenCotizaciones, mercado, e.ahora(), { ...descarga, tenantId, notificador, comercial: comercial as ConfiguracionComercial });
         resumen.push({ tenantId, mercado, accion: r.decision.accion, fallas: r.fallas.length });
       } catch (err) {
         error ??= err;
