@@ -293,6 +293,8 @@ mercados (identificador, nombre, moneda de venta, moneda base de precios, zona h
 monedas de caja; es configuración **declarativa** del tenant (zona Tenant, validada por tipos del núcleo), nunca lógica. Sin tipo de
 cambio en un mercado, el precio es el precio base, sin cotización. Si falta la declaración, el sistema falla cerrado: no se toma un tenant de referencia por defecto. Los identificadores, precios guardados, cotizaciones y eventos existentes se conservan.
 
+Los símbolos legado del núcleo (variantes sin `comercial` y constantes `MERCADOS`, `PAR_DE`, `MONEDA_DE`, `ZONA_DE`, `ZONA_HORARIA`, `MONEDAS`) tienen una compuerta que solo baja: `pruebas/fronteras/legado-mercados.json` lista los archivos de producción que aún los importan; nadie nuevo puede sumarse y un archivo que ya no los usa debe salir de la lista. Llega a cero al cerrar el plan.
+
 Decisiones de Andres:
 
 - **D1** Caja en otra moneda: solo las monedas que declare el comercio.

@@ -1,0 +1,41 @@
+{
+  "nota": "Archivos fuera de paquetes/nucleo/ que importan cada símbolo legado de tipo de cambio. Solo baja; llega a cero al cerrar el plan (plano §6.10).",
+  "simbolos": {
+    "leerCotizacion": [
+      "paquetes/consola/src/tablero.ts",
+      "paquetes/pos/src/contexto.ts",
+      "paquetes/website/src/api/cotizacion.ts",
+      "plataforma/funciones/servidor/http/novuchat.ts",
+      "plataforma/funciones/servidor/llamadas/consola.ts",
+      "plataforma/funciones/servidor/llamadas/pos.ts"
+    ],
+    "escribirCotizacion": [],
+    "cargarManual": [],
+    "actualizarMercado": [
+      "plataforma/funciones/servidor/programadas/cotizacion.ts"
+    ],
+    "manejarCotizacion": [
+      "paquetes/website/src/api/cotizacion.ts"
+    ],
+    "decidirCotizacion": [],
+    "MERCADOS": [
+      "paquetes/inventarios/src/productos.ts",
+      "paquetes/panel/src/pantallas/inventarios/nombres.ts",
+      "paquetes/website/src/lib/cotizacion-cliente.ts",
+      "plataforma/funciones/servidor/llamadas/inventarios.ts"
+    ],
+    "PAR_DE": [
+      "paquetes/website/src/lib/cotizacion-cliente.ts"
+    ],
+    "MONEDA_DE": [
+      "paquetes/panel/src/pantallas/inventarios/nombres.ts",
+      "paquetes/website/src/lib/mercado.ts",
+      "plataforma/funciones/servidor/http/novuchat.ts"
+    ],
+    "ZONA_DE": [],
+    "ZONA_HORARIA": [
+      "paquetes/inventarios/src/motor.ts"
+    ],
+    "MONEDAS": []
+  }
+}

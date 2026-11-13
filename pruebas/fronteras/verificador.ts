@@ -87,3 +87,33 @@ export function buscarTermino(arbol: Arbol, prefijo: string, termino: string): s
     .filter(([ruta, contenido]) => ruta.toLowerCase().includes(t) || contenido.toLowerCase().includes(t))
     .map(([ruta]) => ruta);
 }
+
+/** Quita comentarios de línea y de bloque (aproximado: no entiende cadenas con «//» dentro; basta para importaciones). */
+function sinComentarios(codigo: string): string {
+  return codigo.replace(/\/\*[\s\S]*?\*\//g, ' ').replace(/(^|[^:'"`\\])\/\/[^\n]*/g, '$1');
+}
+
+const IMPORTACION_NOMBRADA =
+  /\b(?:import|export)\s+(?:type\s+)?(?:(\w+)\s*,\s*)?(?:(\{[^}]*\})|\*\s+as\s+(\w+))\s*from\s*(['"])(@novutienda\/nucleo(?:\/[^'"\n]*)?)\4/g;
+
+/**
+ * Símbolos de `simbolos` que el código importa desde `@novutienda/nucleo` (o un subpath), por análisis de importaciones:
+ * nombres en llaves (con `as` y `type`) y `import * as ns` con uso `ns.SIMBOLO`. Un nombre igual declarado en local, sin
+ * importarlo del núcleo, no cuenta.
+ */
+export function simbolosDeNucleoUsados(codigo: string, simbolos: readonly string[]): string[] {
+  const limpio = sinComentarios(codigo);
+  const usados = new Set<string>();
+  for (const m of limpio.matchAll(IMPORTACION_NOMBRADA)) {
+    if (m[2] !== undefined) {
+      for (const parte of m[2].slice(1, -1).split(',')) {
+        const nombre = parte.trim().replace(/^type\s+/, '').split(/\s+as\s+/)[0]?.trim() ?? '';
+        if (simbolos.includes(nombre)) usados.add(nombre);
+      }
+    }
+    if (m[3] !== undefined) {
+      for (const s of simbolos) if (new RegExp(`\\b${m[3]}\\.${s}\\b`).test(limpio)) usados.add(s);
+    }
+  }
+  return [...usados].sort();
+}
