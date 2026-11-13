@@ -16,7 +16,7 @@
 | **Las cinco zonas** | **Núcleo** (lo que todo tenant corre igual), **Central** (lo que todo comercio ve igual en su panel y su cuenta), **Plataforma** (lo que ve solo el operador de NovuTienda), **Módulos** (lo que se enciende por tenant con manifiesto), **Tenants** (datos, nunca código). Más tres piezas con nombre: el **registro de módulos**, el **coordinador** (`plataforma/adaptadores` + composición de `plataforma/funciones`) y los **conectores** externos (NovuChat, reconstrucción del sitio, Firebase, bancos) |
 | **La unidad** | El **manifiesto de módulo**, que hoy declara colecciones, límite, eventos que emite y consume; le faltan `zona`, pantallas, acciones de callable y programadas (§3) |
 | **Cómo se hace cumplir** | Carpeta = zona; `fronteras.test.ts` ampliado a `plataforma/` y `pruebas/`; gancho de zona de escritura por agente; agentes por zona; medición de zonas generada, no escrita |
-| **El camino** | Una tanda cero sin mover archivos (docs, agentes, gancho, medición) y cuatro tandas de movimiento **sin cambiar lógica**, más dos fases de lógica (colecciones con dueño; encendido por tenant). Unas 6 jornadas. Nada de esto bloquea el pase a staging ni a producción de Casa Bermejo |
+| **El camino** | Una tanda cero sin mover archivos (docs, agentes, gancho, medición) y cuatro tandas de movimiento **sin cambiar lógica**, más dos fases de lógica (colecciones con dueño; encendido por tenant). Unas 6 jornadas. Nada de esto bloquea el pase a staging ni a producción de T1 |
 | **Costo** | 0 USD de nube; CI por PR; cero cambios de contrato con NovuChat |
 
 ## 1. Relevamiento con números (05/11/2026, `main` en 3f05821)
@@ -29,7 +29,7 @@
 | `paquetes/panel` | 75 | 9.837 |
 | `plataforma/adaptadores` / `plataforma/funciones` | 21 / 24 | 1.209 / 2.352 |
 | `pruebas/` | 77 | 10.862 |
-| `tenants/casa-bermejo` | 0 (solo `config.json`) | — |
+| `tenants/<t>` | 0 (solo `config.json`) | — |
 
 83 suites; 11 Functions exportadas (5 callables, `api`, `eventos`, `subidaFinalizada`, 3 programadas); `firestore.rules` 215 líneas (generadas); `storage.rules` 57 (a mano); 7 manifiestos; 8 páginas del sitio; 17 pantallas del panel. Lección de NovuChat: estas cifras caducan; la fuente viva será `scripts/zonas.mjs` (tanda 0), y este documento solo guarda decisiones.
 
@@ -45,7 +45,7 @@ El sistema se ordenó por **paquete funcional** (qué hace cada pieza). La arqui
 | **Central** | Lo que todo comercio ve igual en su panel y su cuenta, tenga los módulos que tenga: sesión, login, menú, usuarios y roles, configuración del negocio, transporte de callables, App Check | NovuTienda | `paquetes/panel/src/{ui,sesion,api,appcheck,subidas,util/menu}`, `pantallas/{usuarios,configuracion}`, acciones de usuarios de `llamadas/consola.ts` |
 | **Plataforma** | Lo que ve solo el operador de NovuTienda: alta de tenant, planes, propietario, tokens de integraciones, andamiaje de despliegue | NovuTienda | claim `p`, acciones `propietario: true`, `listarTenants`, `scripts/`, `plataforma/funciones/scripts/` |
 | **Módulos** | Lo que se enciende por tenant con manifiesto y límite por plan: inventarios, pos, recibos, consola (catálogo y sitio), website | NovuTienda, un módulo a la vez, con versión | `paquetes/<m>` + su borde en `plataforma/funciones/servidor/llamadas/<m>.ts` + su interfaz en `panel/src/pantallas/*` |
-| **Tenants** | Datos y configuración **declarativa** de un cliente: `tenants/{t}/…` en Firestore, `tenants/<t>/config.json` en el repo, `CLIENTES/<T>/` fuera del repo. **Nunca lógica**: la configuración se valida contra los tipos de `paquetes/nucleo/src/extension` (que son del núcleo, no del tenant) | El comercio desde el panel; NovuTienda desde Plataforma | `tenants/casa-bermejo/config.json` (hoy nadie lo lee); `CLAUDE.md` l. 71 se alinea con esta redacción en T0 |
+| **Tenants** | Datos y configuración **declarativa** de un cliente: `tenants/{t}/…` en Firestore, `tenants/<t>/config.json` en el repo, `CLIENTES/<T>/` fuera del repo. **Nunca lógica**: la configuración se valida contra los tipos de `paquetes/nucleo/src/extension` (que son del núcleo, no del tenant) | El comercio desde el panel; NovuTienda desde Plataforma | `tenants/<t>/config.json` (hoy nadie lo lee); `CLAUDE.md` l. 71 se alinea con esta redacción en T0 |
 
 Nota (H2, 06/11/2026): la programada de cotización (`programadas/cotizacion.ts`) quedó en la zona **coordinador**, no núcleo; el porqué y la alternativa (fase L) están en §6.5.
 
@@ -120,7 +120,7 @@ Zona sin nombre: `scripts/`, `plataforma/funciones/scripts/`, `deploy.sh`, `secu
 ## 6. Decisiones por estatus
 
 ### 6.1 Ya tomadas por Andres (no se tocan)
-Opción A (un proyecto Firebase, `tenants/{t}`); repo público modo A; alcance = PDF + Anexo A; 3 roles; panel único separado de la consola de NovuChat; lectura solo por callables; us-east1; esquema común de propiedades con NovuChat (C′), capacidad apagada para Casa Bermejo.
+Opción A (un proyecto Firebase, `tenants/{t}`); repo público modo A; alcance = PDF + Anexo A; 3 roles; panel único separado de la consola de NovuChat; lectura solo por callables; us-east1; esquema común de propiedades con NovuChat (C′), capacidad apagada para T1.
 
 ### 6.2 Recomendadas por este plano (vigentes salvo que Andres diga otra cosa)
 1. Cinco zonas con **Central y Plataforma explícitas**, sin mover paquetes de primer nivel: la zona se expresa con `zona` en el manifiesto, subcarpetas y `CODEOWNERS`, no con una mudanza de `pnpm-workspace`, ESLint, vitest, tsconfig, firebase.json y CI (tanda 5 descartada ahora).
@@ -226,7 +226,7 @@ Plan: `NOVUTIENDA_plan-L2-encendido-por-tenant_2026-11-06.md` (en `~/CLAUDE_DESC
 
 **Decisiones de Andres del 06/11/2026 (botones):**
 - **D1: campo `requiere[]`.** Dependencias de ejecución por puertos (pos→inventarios, consola→inventarios, website→consola e inventarios). Cuenta para el encendido y el alta, **no autoriza importaciones**; `dependeDe` queda sin cambios. Descartado sumarlas a `dependeDe` (aflojaría la frontera) y descartado no declararlas («pos sin inventarios» fallaría al ejecutar).
-- **D2: `tenants/<t>/config.json` v2** = `{ version: 2, plan, zonaHoraria, monedas, modulos: [ids] }`, con las versiones tomadas del manifiesto. Casa Bermejo con inventarios, pos, recibos, consola y website. Descartadas la copia literal del documento `Tenant` y mantener `modulosActivos`.
+- **D2: `tenants/<t>/config.json` v2** = `{ version: 2, plan, zonaHoraria, monedas, modulos: [ids] }`, con las versiones tomadas del manifiesto. T1 con inventarios, pos, recibos, consola y website. Descartadas la copia literal del documento `Tenant` y mantener `modulosActivos`.
 - **D3: acción central `modulosActivos` en el callable `consola`**, como las de usuarios (sin Function nueva). Descartados un callable nuevo y el claim.
 - **D4: `publico/**` se acota a `publico/medios/**` en L2-8** (reduce permisos).
 - **D5: el encendido en L2 llega a callables, menú y programadas.** HTTP, bus y disparador, a L3.
@@ -235,7 +235,7 @@ Plan: `NOVUTIENDA_plan-L2-encendido-por-tenant_2026-11-06.md` (en `~/CLAUDE_DESC
 1. «Pre-commit `--all-files` limpio en main» no puede cumplirse: `no-commit-to-branch` falla siempre sobre `main`. Se mide en una rama que parte de `main`, o con `SKIP=no-commit-to-branch`.
 2. §7 estimaba L2 en 1,5 jornadas; son unas 4 a 5.
 3. `dependeDe` no recoge las dependencias de ejecución por puertos (D1).
-4. `tenants/casa-bermejo/config.json` contradecía al documento de staging y al tipo `Tenant` (D2).
+4. `tenants/<t>/config.json` contradecía al documento de staging y al tipo `Tenant` (D2).
 5. `index.ts` no puede derivar sus exportaciones del registro (Firebase necesita nombres estáticos): se derivan los parámetros y una prueba exige que el conjunto exportado sea el del registro.
 6. El callable `consola` lleva acciones de Central: el control es por dueño de la acción.
 7. El registro prohíbe la raíz `tenants`: darle dueño exige una excepción explícita limitada al manifiesto `plataforma`.
@@ -365,6 +365,6 @@ Mover con lógica mezclada en un repo público con squash es irrevisable → tan
 
 ## 11. Lo que NO se hace en este cambio
 
-No se mueven paquetes de primer nivel ni se parte `plataforma/funciones` en paquetes; no se cambia ningún contrato con NovuChat; no se agregan planes ni se cambian límites; no se construyen propiedades de producto ni la copia de medios al bucket público (van en sus propios PR); no se toca el pase a staging ni a producción de Casa Bermejo, que siguen su guion.
+No se mueven paquetes de primer nivel ni se parte `plataforma/funciones` en paquetes; no se cambia ningún contrato con NovuChat; no se agregan planes ni se cambian límites; no se construyen propiedades de producto ni la copia de medios al bucket público (van en sus propios PR); no se toca el pase a staging ni a producción de T1, que siguen su guion.
 
 - **Decisión de Andres (06/11/2026, botón, cierre de H2):** el cruce `pantallas/pos/venta-terminal.tsx → recibos/recibo-vista` se resuelve con `dependeDe: ['nucleo', 'recibos']` en el manifiesto de pos (el POS imprime y envía recibos: la dependencia es real y el registro la ordena); descartado partir la vista. La deuda queda en 1 (`servicios.ts → doble`, L2).

@@ -53,6 +53,12 @@ describe('fronteras del repositorio real', () => {
   it('no aparece «bermejo» en paquetes/', () => {
     expect(buscarTermino(leerArbol('paquetes'), 'paquetes/', 'bermejo')).toEqual([]);
   });
+
+  it('no aparece «bermejo» en docs/, README.md ni ESTADO.md (repositorio público)', () => {
+    const arbol: Record<string, string> = { ...leerArbol('docs') };
+    for (const f of ['README.md', 'ESTADO.md']) arbol[f] = readFileSync(join(RAIZ, f), 'utf8');
+    expect([...buscarTermino(arbol, 'docs/', 'bermejo'), ...buscarTermino(arbol, 'README.md', 'bermejo'), ...buscarTermino(arbol, 'ESTADO.md', 'bermejo')]).toEqual([]);
+  });
 });
 
 // El alta del primer administrador no pasa por actor autorizado: solo puede alcanzarlo el operador (scripts) y el núcleo, nunca un callable ni el sitio.
@@ -272,6 +278,7 @@ describe('verificador con árboles inventados', () => {
     expect(buscarTermino({ 'paquetes/x/a.ts': 'const n = "Casa Bermejo";' }, 'paquetes/', 'bermejo')).toEqual(['paquetes/x/a.ts']);
     expect(buscarTermino({ 'paquetes/bermejo/a.ts': '' }, 'paquetes/', 'bermejo')).toEqual(['paquetes/bermejo/a.ts']);
     expect(buscarTermino({ 'tenants/casa-bermejo/a.json': 'bermejo' }, 'paquetes/', 'bermejo')).toEqual([]);
+    expect(buscarTermino({ 'docs/a.md': 'Casa Bermejo', 'README.md': 'ok' }, 'docs/', 'bermejo')).toEqual(['docs/a.md']);
   });
 
   it('extrae importaciones estáticas, dinámicas y require', () => {
