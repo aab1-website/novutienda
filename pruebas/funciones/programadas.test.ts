@@ -244,7 +244,17 @@ describe.skipIf(!hayEmulador)('trabajos programados (Firestore del emulador)', (
 
   it('publicar: el sitio agenda la reconstrucción en la cola real', async () => {
     const t = unico('pub').toLowerCase();
-    await sembrarTenant(h, t, { productos: [{ id: 'lapiz', nombre: 'Lápiz', precioUSD: { bo: 100, ar: 100 }, tienda: 2 }] });
+    await sembrarTenant(h, t, { productos: [{ id: 'lapiz', nombre: 'Lápiz', marca: 'Marca de Prueba', precioUSD: { bo: 100, ar: 100 }, tienda: 2 }] });
+    // S2-1: publicar exige al menos un producto publicable (activo, con marca y ficha publicada) y una foto utilizable.
+    await h.firestore.doc(`tenants/${t}/medios/medio-lapiz-1`).set({
+      id: 'medio-lapiz-1', productoId: 'lapiz', tipo: 'foto', formatoOriginal: 'jpeg', bytesOriginal: 1000, rutaOriginal: `tenants/${t}/privado/originales/lapiz/s`,
+      ancho: 1600, alto: 900, creadoEn: AHORA, por: 'u',
+      versiones: [{ clase: 'imagen', lado: 960, formato: 'webp', ruta: `tenants/${t}/publico/medios/lapiz/medio-lapiz-1-imagen960.webp`, bytes: 100 }],
+    });
+    await h.firestore.doc(`tenants/${t}/fichasWeb/lapiz`).set({
+      productoId: 'lapiz', slug: 'lapiz', descripcion: 'Descripción.', garantia: '12 meses', medios: [{ medioId: 'medio-lapiz-1', alt: 'Foto' }],
+      seo: { titulo: 'T', descripcion: 'D' }, estado: 'publicado',
+    });
     await h.firestore.doc(`tenants/${t}/sitio/config`).set({ plantillaActiva: 'cielo', whatsappNovuchat: '59170000000', medicion: {} });
     const adm = await crearUsuario(h, { rol: 'adm', tenant: t });
     const actor = { uid: adm.uid, claims: { firebase: { sign_in_provider: 'password' }, pl: { t: { [t]: 'adm' }, v: 1 } } };

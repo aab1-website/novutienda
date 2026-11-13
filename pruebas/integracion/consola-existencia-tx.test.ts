@@ -3,7 +3,7 @@
 import { guardarFicha, reservarSubida, type DepsMedios } from '@novutienda/consola';
 import type { Actor } from '@novutienda/nucleo';
 import { beforeEach, describe, expect, it } from 'vitest';
-import { T, entornoListo, type Entorno } from './entorno.js';
+import { T, altaProducto, entornoListo, producto, type Entorno } from './entorno.js';
 
 const sup: Actor = { uid: 'u-sup', claims: { firebase: { sign_in_provider: 'password' }, pl: { t: { [T]: 'sup' }, v: 1 } } };
 const ficha = { slug: 'lapiz-hb', descripcion: 'Descripción', garantia: '12 meses', medios: [], seo: { titulo: 'T', descripcion: 'D' }, estado: 'publicado' } as const;
@@ -33,9 +33,18 @@ describe('existeProductoEnTransaccion con el catálogo real', () => {
     expect(e.db.dato(`tenants/${T}/fichasWeb/fantasma`)).toBeUndefined();
   });
 
-  it('guardar la ficha de un producto existente funciona', async () => {
-    await guardarFicha(deps(), { tenantId: T, actor: sup, productoId: 'lapiz', ficha });
-    expect(e.db.dato(`tenants/${T}/fichasWeb/lapiz`)).toMatchObject({ slug: 'lapiz-hb' });
+  it('guardar la ficha publicada de un producto existente con marca funciona', async () => {
+    await altaProducto(e, T, producto('regla', { marca: 'Aurora' }));
+    await guardarFicha(deps(), { tenantId: T, actor: sup, productoId: 'regla', ficha });
+    expect(e.db.dato(`tenants/${T}/fichasWeb/regla`)).toMatchObject({ slug: 'lapiz-hb' });
+  });
+
+  it('S2-1: pasar a publicado la ficha de un producto sin marca se rechaza sin escribir; como borrador se guarda', async () => {
+    const antes = escrituras();
+    await expect(guardarFicha(deps(), { tenantId: T, actor: sup, productoId: 'lapiz', ficha })).rejects.toMatchObject({ codigo: 'estado' });
+    expect(escrituras()).toBe(antes);
+    await guardarFicha(deps(), { tenantId: T, actor: sup, productoId: 'lapiz', ficha: { ...ficha, estado: 'borrador' } });
+    expect(e.db.dato(`tenants/${T}/fichasWeb/lapiz`)).toMatchObject({ estado: 'borrador' });
   });
 
   it('reservar una subida para un producto inexistente se rechaza sin escribir; para uno existente funciona', async () => {

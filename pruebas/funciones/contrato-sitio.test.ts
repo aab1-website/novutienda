@@ -1,8 +1,8 @@
 // Contrato de punta a punta «la consola publica → GET /api/sitio/v1/publicado → contenidoDesdePublicado → contenido del sitio».
 // Todo con la salida REAL de `publicarSitio` (sobre el catálogo real de Inventarios) y el endpoint firmado real del emulador;
 // el mapeo se alcanza por `plataforma/registro.ts`. Tenant y datos sintéticos. Lo que hoy es una incoherencia entre lo que la
-// consola acepta y lo que el sitio exige se afirma tal cual está HOY y se marca con `INCOHERENCIA S2` / `S7`: al corregirla, la
-// afirmación cambia a propósito.
+// consola acepta y lo que el sitio exige se afirma tal cual está HOY y se marca con `INCOHERENCIA S2` / `S7`; lo ya corregido (S2-1) afirma el
+// comportamiento nuevo con un comentario «S2-1: …».
 import { createHash, randomBytes } from 'node:crypto';
 import { beforeAll, describe, expect, it, vi } from 'vitest';
 import { publicarSitio } from '@novutienda/consola';
@@ -211,20 +211,32 @@ describe.skipIf(!hayEmulador)('contrato consola → /publicado → contenido del
   });
 
   describe('casos límite: lo que la consola acepta y el sitio rechaza o acepta hoy', () => {
-    it('producto sin marca: la consola publica, el sitio rechaza TODA la reconstrucción (INCOHERENCIA S2)', async () => {
-      // INCOHERENCIA S2: Inventarios admite `marca` ausente (inventarios/src/productos.ts:18) y `construirPublicado` la omite (consola/src/publicar.ts:162);
-      // `contenidoDesdePublicado` la exige (website/src/contenido/desde-publicado.ts:147) y un solo producto sin marca tumba el sitio entero.
+    it('producto sin marca: se excluye con advertencia y el resto se publica', async () => {
+      // S2-1: la consola excluye el producto sin marca (con advertencia) en vez de publicar un documento que tumbaría la reconstrucción del sitio.
       const t = await nuevoTenant();
       await sembrarProducto(t, { id: 'con-marca' });
       await sembrarProducto(t, { id: 'sin-marca', marca: null });
       const r = await publicar(t);
-      expect(r.productos).toBe(2);
+      expect(r.productos).toBe(1);
+      expect(r.advertencias).toEqual([expect.stringContaining('no tiene marca')]);
       const resp = await leerPublicado(t);
-      expect(resp.documentos['producto__sin-marca']).toBeDefined();
-      expect(resp.documentos['producto__sin-marca']).not.toHaveProperty('marca');
-      const m = mensajeDeError(() => mapear(resp));
-      expect(m).toContain('documentos.producto__sin-marca.marca: falta');
-      expect(m).not.toContain('con-marca');
+      expect(resp.documentos['producto__sin-marca']).toBeUndefined();
+      expect(resp.documentos['producto__con-marca']).toBeDefined();
+      expect(mapear(resp).productos.map((p) => p.id)).toEqual(['con-marca']);
+    });
+
+    it('tras excluir un producto sin marca, el mapeo del resto funciona y el contenido es válido', async () => {
+      const t = await nuevoTenant();
+      await sembrarProducto(t, { id: 'ok-uno', marca: 'Aurora', categoria: 'televisores' });
+      await sembrarProducto(t, { id: 'ok-dos', marca: 'Lumina', categoria: 'aires' });
+      await sembrarProducto(t, { id: 'ok-sin', marca: null });
+      const r = await publicar(t);
+      expect(r).toMatchObject({ productos: 2, advertencias: [expect.stringContaining('no tiene marca')] });
+      const c = mapear(await leerPublicado(t));
+      expect(c.productos.map((p) => p.id)).toEqual(['ok-dos', 'ok-uno']);
+      expect(c.marcas).toEqual(['Aurora', 'Lumina']);
+      expect(c.categorias.map((k) => k.id)).toEqual(['aires', 'televisores']);
+      expect(c.carruseles.bosque.length).toBeGreaterThan(0);
     });
 
     it('enlace https de una sección a un host no permitido: la consola lo guarda y publica, el sitio rechaza todo (INCOHERENCIA S2)', async () => {
@@ -244,9 +256,8 @@ describe.skipIf(!hayEmulador)('contrato consola → /publicado → contenido del
       expect(mapear(resp, negocio({ enlacesPermitidos: ['ejemplo.invalid', 'ajeno.example.org'] })).secciones).toHaveLength(1);
     });
 
-    it('bloque carrusel cuyos medios faltan: se publica con advertencia y el sitio rechaza todo (INCOHERENCIA S2)', async () => {
-      // INCOHERENCIA S2: `construirPublicado` omite el medio inexistente y deja `items: []` (consola/src/publicar.ts:144-146 y 177, advertencia solo
-      // en el resultado de publicar); el sitio exige de 1 a 8 fotos por carrusel (validar.ts:263) y falla toda la reconstrucción.
+    it('bloque carrusel cuyos medios faltan: se omite con advertencia, la sección sin bloques también y el sitio se reconstruye', async () => {
+      // S2-1: el bloque carrusel sin fotos y la sección que queda sin bloques no se publican (con advertencia), así que el sitio no falla.
       const t = await nuevoTenant();
       await sembrarProducto(t, { id: 'car-uno' });
       await h.firestore.doc(`tenants/${t}/secciones/galeria`).set({ id: 'galeria', titulo: 'Galería', visible: true, bloques: [
@@ -254,23 +265,21 @@ describe.skipIf(!hayEmulador)('contrato consola → /publicado → contenido del
       ] });
       await h.firestore.doc(`tenants/${t}/sitio/indice`).set({ secciones: ['galeria'] });
       const r = await publicar(t);
-      expect(r.advertencias).toEqual([expect.stringContaining('no existe y se omitió')]);
+      expect(r.advertencias).toEqual(expect.arrayContaining([
+        expect.stringContaining('no existe y se omitió'), expect.stringContaining('carrusel sin fotos'), expect.stringContaining('no se publicó porque no tiene contenido'),
+      ]));
       const resp = await leerPublicado(t);
-      expect(resp.documentos['seccion__galeria']).toMatchObject({ bloques: [{ tipo: 'carrusel', items: [] }] });
-      expect(mensajeDeError(() => mapear(resp))).toContain('secciones[0].bloques[0].fotos: debe ser una lista de 1 a 8 elementos');
+      expect(resp.documentos['seccion__galeria']).toBeUndefined();
+      expect(mapear(resp).secciones).toEqual([]);
     });
 
-    it('cero productos publicados: publicar tiene éxito (0 productos) y el sitio no se reconstruye (INCOHERENCIA S2)', async () => {
-      // INCOHERENCIA S2: `publicarSitio` no exige ningún producto (consola/src/publicar.ts:249-273 solo exige la config del sitio); el mapeo sí
-      // (desde-publicado.ts:178) y además la consecuencia en cascada (categorías y carruseles vacíos).
+    it('cero productos publicables: publicar se rechaza y no se publica nada', async () => {
+      // S2-1: sin ningún producto publicable (ficha en borrador, sin ficha) la consola rechaza la publicación en vez de dejar un sitio que no se puede reconstruir.
       const t = await nuevoTenant();
       await sembrarProducto(t, { id: 'solo-borrador', ficha: 'borrador' });
       await sembrarProducto(t, { id: 'sin-ficha', ficha: null });
-      const r = await publicar(t);
-      expect(r).toMatchObject({ productos: 0 });
-      const resp = await leerPublicado(t);
-      expect(Object.keys(resp.documentos).filter((k) => k.startsWith('producto__'))).toEqual([]);
-      expect(mensajeDeError(() => mapear(resp))).toContain('no hay productos publicados');
+      await expect(publicar(t)).rejects.toMatchObject({ message: 'Publique al menos un producto activo' });
+      expect((await h.firestore.doc(`tenants/${t}/publicado/estado`).get()).exists).toBe(false);
     });
 
     it('precio 0 en un mercado: se publica y el sitio lo acepta como «precio a consultar»', async () => {
@@ -282,14 +291,11 @@ describe.skipIf(!hayEmulador)('contrato consola → /publicado → contenido del
       expect(mapear(resp).productos[0]!.precioUsd).toEqual({ BO: 0, AR: 50 });
     });
 
-    it('producto sin foto: pasa si otro producto aporta fotos al carrusel; si es el único, el sitio rechaza todo (INCOHERENCIA S2)', async () => {
-      // INCOHERENCIA S2: la consola publica un producto sin fotos (fichas.ts admite `medios: []`); el sitio necesita al menos una
-      // foto en algún producto para armar los carruseles de respaldo (desde-publicado.ts:201).
+    it('producto sin foto: si es el único se rechaza publicar; si otro producto aporta fotos, se publica', async () => {
+      // S2-1: sin ninguna foto utilizable (y sin carrusel propio) la consola rechaza publicar; con la foto de otro producto el sitio arma sus carruseles.
       const t = await nuevoTenant();
       await sembrarProducto(t, { id: 'sf-uno', fotos: [] });
-      await publicar(t);
-      const resp = await leerPublicado(t);
-      expect(mensajeDeError(() => mapear(resp))).toContain('carruseles.cielo: debe ser una lista de 1 a 8 elementos');
+      await expect(publicar(t)).rejects.toMatchObject({ message: 'Agregue una foto a un producto publicado o cargue el carrusel' });
       await sembrarProducto(t, { id: 'cf-dos' });
       await publicar(t);
       const c = mapear(await leerPublicado(t));

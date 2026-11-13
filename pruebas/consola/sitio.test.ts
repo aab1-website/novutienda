@@ -168,6 +168,13 @@ describe('servicios de la consola', () => {
     const dp = () => ({ db, catalogo, reloj, disparador });
     const configurar = (): Promise<void> => guardarConfigSitio(ds(), { tenantId: T, actor: adm, config: { plantillaActiva: 'ambar', whatsappNovuchat: '59100000000', medicion: {} } });
 
+    /** Deja publicable el producto `id`: ficha publicada con una foto real. */
+    const publicable = async (id = 'cam-1'): Promise<string> => {
+      const m = await medio(id);
+      await guardarFicha(ds(), { tenantId: T, actor: adm, productoId: id, ficha: ficha(`slug-${id}`, [{ medioId: m, alt: 'Frente' }]) });
+      return m;
+    };
+
     it('exige configuración del sitio y rol adm', async () => {
       await expect(publicarSitio(dp(), { tenantId: T, actor: adm })).rejects.toMatchObject({ codigo: 'estado' });
       await configurar();
@@ -201,6 +208,7 @@ describe('servicios de la consola', () => {
 
     it('agrupa: una segunda publicación dentro de la ventana no agenda otra; vencida, reconstruye', async () => {
       await configurar();
+      await publicable();
       await publicarSitio(dp(), { tenantId: T, actor: adm });
       reloj.ms += 3 * 60_000;
       const r2 = await publicarSitio(dp(), { tenantId: T, actor: adm });
@@ -215,7 +223,8 @@ describe('servicios de la consola', () => {
 
     it('retira de la copia lo que ya no está publicado (oculto o desactivado)', async () => {
       await configurar();
-      await guardarFicha(ds(), { tenantId: T, actor: adm, productoId: 'cam-1', ficha: ficha('camara-uno') });
+      await publicable('cam-1');
+      await publicable('cam-2');
       await publicarSitio(dp(), { tenantId: T, actor: adm });
       expect(db.dato(`tenants/${T}/publicado/producto__cam-1`)).toBeDefined();
       await guardarFicha(ds(), { tenantId: T, actor: adm, productoId: 'cam-1', ficha: ficha('camara-uno', [], 'oculto') });
@@ -226,6 +235,7 @@ describe('servicios de la consola', () => {
     it('publica secciones visibles y carruseles con sus medios resueltos', async () => {
       const m = await medio('cam-1');
       await configurar();
+      await publicable('cam-2');
       await guardarSeccion(ds(), { tenantId: T, actor: adm, seccion: { id: 'nosotros', titulo: 'Nosotros', visible: true, bloques: [{ tipo: 'imagen', medioId: m, alt: 'Local' }, { tipo: 'enlaces', items: [{ texto: 'WhatsApp', url: 'https://wa.me/59100000000' }] }] } });
       await guardarSeccion(ds(), { tenantId: T, actor: adm, seccion: { id: 'oculta', titulo: 'Oculta', visible: false, bloques: [] } });
       await guardarCarrusel(ds(), { tenantId: T, actor: adm, carrusel: { plantilla: 'ambar', items: [{ medioId: m, alt: 'Portada', enlace: '/catalogo' }] } });
@@ -240,7 +250,7 @@ describe('servicios de la consola', () => {
 
     it('construirPublicado omite medios inexistentes con una advertencia', () => {
       const p = construirPublicado({
-        productos: [{ id: 'a-1', nombre: 'A', categoria: 'c', activo: true, disponible: true, precioUSD: { bo: 0, ar: 0 } }],
+        productos: [{ id: 'a-1', nombre: 'A', categoria: 'c', marca: 'M', activo: true, disponible: true, precioUSD: { bo: 0, ar: 0 } }],
         fichas: new Map([['a-1', { productoId: 'a-1', ...ficha('a-uno', [{ medioId: 'perdido-1', alt: 'x' }]) } as never]]),
         medios: new Map(), config: { plantillaActiva: 'cielo', whatsappNovuchat: '59100000000', medicion: {} }, secciones: [], carruseles: [],
       });
@@ -251,6 +261,7 @@ describe('servicios de la consola', () => {
 
     it('el temporizador y la corrida diaria reconstruyen una sola vez', async () => {
       await configurar();
+      await publicable();
       await publicarSitio(dp(), { tenantId: T, actor: adm });
       const dd = { db, reloj, disparador };
       expect(await ejecutarReconstruccion(dd, { tenantId: T, evento: 'temporizador' })).toMatchObject({ accion: 'esperar' });
@@ -264,6 +275,197 @@ describe('servicios de la consola', () => {
     it('la corrida diaria sin nada publicado no hace nada', async () => {
       expect(await ejecutarReconstruccion({ db, reloj, disparador }, { tenantId: T, evento: 'diaria' })).toEqual({ accion: 'nada' });
       expect(disparador.eventos).toEqual([]);
+    });
+  });
+
+  describe('publicar valida lo que el sitio exige (S2)', () => {
+    const dp = () => ({ db, catalogo, reloj, disparador });
+    const configurar = (): Promise<void> => guardarConfigSitio(ds(), { tenantId: T, actor: adm, config: { plantillaActiva: 'ambar', whatsappNovuchat: '59100000000', medicion: {} } });
+    const publicable = async (id: string): Promise<string> => {
+      const m = await medio(id);
+      await guardarFicha(ds(), { tenantId: T, actor: adm, productoId: id, ficha: ficha(`slug-${id}`, [{ medioId: m, alt: 'Frente' }]) });
+      return m;
+    };
+    const sinEscrituras = (): void => {
+      expect(db.dato(`tenants/${T}/publicado/estado`)).toBeUndefined();
+      expect(db.dato(`tenants/${T}/publicado/sitio`)).toBeUndefined();
+      expect(db.coleccion(`tenants/${T}/auditoria`).some((a) => a['accion'] === 'sitio.publicar')).toBe(false);
+      expect(disparador.eventos).toEqual([]);
+    };
+
+    it('guardarFicha rechaza publicar un producto sin marca, pero admite borrador', async () => {
+      catalogo.agregar('sin-marca', { marca: undefined as never });
+      catalogo.productos.set('sin-marca', { id: 'sin-marca', nombre: 'Sin marca', categoria: 'g', activo: true, disponible: true, precioUSD: { bo: 1, ar: 1 } });
+      await expect(guardarFicha(ds(), { tenantId: T, actor: adm, productoId: 'sin-marca', ficha: ficha('sin-marca') })).rejects.toMatchObject({
+        codigo: 'estado', message: 'Agregue la marca del producto en Inventario antes de publicarlo',
+      });
+      expect(db.dato(`tenants/${T}/fichasWeb/sin-marca`)).toBeUndefined();
+      await guardarFicha(ds(), { tenantId: T, actor: adm, productoId: 'sin-marca', ficha: ficha('sin-marca', [], 'borrador') });
+      expect(db.dato(`tenants/${T}/fichasWeb/sin-marca`)).toBeDefined();
+    });
+
+    it('un producto publicado con dato viejo sin marca se excluye con advertencia y no tumba la publicación', async () => {
+      await configurar();
+      await publicable('cam-1');
+      catalogo.productos.set('cam-2', { id: 'cam-2', nombre: 'Viejo', categoria: 'g', activo: true, disponible: true, precioUSD: { bo: 1, ar: 1 } });
+      db.poner(`tenants/${T}/fichasWeb/cam-2`, { productoId: 'cam-2', ...ficha('viejo') });
+      const r = await publicarSitio(dp(), { tenantId: T, actor: adm });
+      expect(r.productos).toBe(1);
+      expect(r.advertencias).toEqual([expect.stringContaining('«Viejo» no se publicó porque no tiene marca')]);
+      expect(db.dato(`tenants/${T}/publicado/producto__cam-2`)).toBeUndefined();
+    });
+
+    it('un bloque carrusel sin medios se omite; la sección que queda sin bloques se omite entera; ambos con advertencia', async () => {
+      await configurar();
+      const m = await publicable('cam-1');
+      // Dato que la consola ya no puede crear pero puede existir (un medio borrado después de guardar la sección).
+      db.poner(`tenants/${T}/secciones/mixta`, { id: 'mixta', titulo: 'mixta', visible: true, bloques: [{ tipo: 'carrusel', items: [{ medioId: 'medio-9999', alt: 'x' }] }, { tipo: 'imagen', medioId: m, alt: 'Local' }] });
+      db.poner(`tenants/${T}/secciones/vacia`, { id: 'vacia', titulo: 'vacia', visible: true, bloques: [{ tipo: 'carrusel', items: [{ medioId: 'medio-9998', alt: 'x' }] }] });
+      db.poner(`tenants/${T}/sitio/indice`, { secciones: ['mixta', 'vacia'] });
+      const r = await publicarSitio(dp(), { tenantId: T, actor: adm });
+      const mixta = db.dato(`tenants/${T}/publicado/seccion__mixta`) as { bloques: { tipo: string }[] };
+      expect(mixta.bloques.map((b) => b.tipo)).toEqual(['imagen']);
+      expect(db.dato(`tenants/${T}/publicado/seccion__vacia`)).toBeUndefined();
+      expect(db.dato(`tenants/${T}/publicado/estado`)).toMatchObject({ secciones: ['mixta'] });
+      expect(r.advertencias.some((a) => a.includes('«mixta» tenía un carrusel sin fotos'))).toBe(true);
+      expect(r.advertencias.some((a) => a === 'La sección «vacia» no se publicó porque no tiene contenido')).toBe(true);
+    });
+
+    it('una sección visible sin bloques desde el origen se omite con advertencia', async () => {
+      await configurar();
+      await publicable('cam-1');
+      db.poner(`tenants/${T}/secciones/hueca`, { id: 'hueca', titulo: 'Hueca', visible: true, bloques: [] });
+      db.poner(`tenants/${T}/sitio/indice`, { secciones: ['hueca'] });
+      const r = await publicarSitio(dp(), { tenantId: T, actor: adm });
+      expect(db.dato(`tenants/${T}/publicado/seccion__hueca`)).toBeUndefined();
+      expect(r.advertencias).toContain('La sección «Hueca» no se publicó porque no tiene contenido');
+    });
+
+    it('un carrusel de sección cuyo medio no es una foto utilizable (video) se omite', async () => {
+      await configurar();
+      await publicable('cam-1');
+      const v = await medio('cam-1', 'video');
+      db.poner(`tenants/${T}/secciones/vid`, { id: 'vid', titulo: 'vid', visible: true, bloques: [{ tipo: 'carrusel', items: [{ medioId: v, alt: 'x' }] }] });
+      db.poner(`tenants/${T}/sitio/indice`, { secciones: ['vid'] });
+      const r = await publicarSitio(dp(), { tenantId: T, actor: adm });
+      expect(db.dato(`tenants/${T}/publicado/seccion__vid`)).toBeUndefined();
+      expect(r.advertencias.some((a) => a.includes('«vid» tenía un carrusel sin fotos'))).toBe(true);
+    });
+
+    it('una marca borrada entre la lista y la transacción excluye el producto con advertencia', async () => {
+      await configurar();
+      await publicable('cam-1');
+      await publicable('cam-2');
+      catalogo.agregar('cam-2', { marca: 'Otra' });
+      const lista = catalogo.listarProductos.bind(catalogo);
+      catalogo.listarProductos = async () => {
+        const r = await lista();
+        catalogo.agregar('cam-2', { marca: undefined as never });
+        return r;
+      };
+      const r = await publicarSitio(dp(), { tenantId: T, actor: adm });
+      expect(r.productos).toBe(1);
+      expect(db.dato(`tenants/${T}/publicado/producto__cam-2`)).toBeUndefined();
+      expect(r.advertencias.some((a) => a.includes('no tiene marca'))).toBe(true);
+    });
+
+    it('si todos los candidatos se excluyen por marca, el error lo dice; sin candidatos, pide publicar un producto', async () => {
+      await configurar();
+      await publicable('cam-1');
+      catalogo.agregar('cam-1', { marca: undefined as never });
+      await expect(publicarSitio(dp(), { tenantId: T, actor: adm })).rejects.toMatchObject({
+        codigo: 'estado', message: 'Ningún producto se puede publicar: agregue la marca en Inventario a los productos publicados',
+      });
+      sinEscrituras();
+    });
+
+    it('un producto con ficha publicada que aparece tras el primer intento entra en el reintento', async () => {
+      await configurar();
+      await publicable('cam-1');
+      catalogo.agregar('cam-2');
+      db.poner(`tenants/${T}/fichasWeb/cam-2`, { productoId: 'cam-2', ...ficha('dos') });
+      const lista = catalogo.listarProductos.bind(catalogo);
+      let llamadas = 0;
+      catalogo.listarProductos = async () => {
+        llamadas += 1;
+        const r = await lista();
+        return llamadas === 1 ? r.filter((p) => p.id !== 'cam-2') : r;
+      };
+      const base = db.runTransaction.bind(db);
+      let primera = true;
+      db.runTransaction = (async (fn: Parameters<typeof base>[0]) => {
+        if (primera) { primera = false; await base(async (tx) => { await fn(tx); throw new Error('conflicto simulado'); }).catch(() => undefined); }
+        return base(fn);
+      }) as typeof db.runTransaction;
+      const r = await publicarSitio(dp(), { tenantId: T, actor: adm });
+      expect(llamadas).toBe(2);
+      expect(r.productos).toBe(2);
+    });
+
+    it('cero productos publicables: falla con error de estado y no escribe ni agenda nada', async () => {
+      await configurar();
+      await guardarFicha(ds(), { tenantId: T, actor: adm, productoId: 'cam-1', ficha: ficha('borrador-uno', [], 'borrador') });
+      await expect(publicarSitio(dp(), { tenantId: T, actor: adm })).rejects.toMatchObject({ codigo: 'estado', message: 'Publique al menos un producto activo' });
+      sinEscrituras();
+    });
+
+    it('sin foto en productos y sin carrusel propio en todas las plantillas: falla sin escribir; con foto o con los cinco carruseles, pasa', async () => {
+      await configurar();
+      await guardarFicha(ds(), { tenantId: T, actor: adm, productoId: 'cam-1', ficha: ficha('sin-foto', []) });
+      await expect(publicarSitio(dp(), { tenantId: T, actor: adm })).rejects.toMatchObject({ codigo: 'estado', message: 'Agregue una foto a un producto publicado o cargue el carrusel' });
+      sinEscrituras();
+      // Carrusel solo en una plantilla: el sitio falla en las otras cuatro, la consola también.
+      const m = await medio('cam-1');
+      await guardarCarrusel(ds(), { tenantId: T, actor: adm, carrusel: { plantilla: 'cielo', items: [{ medioId: m, alt: 'a' }] } });
+      await expect(publicarSitio(dp(), { tenantId: T, actor: adm })).rejects.toMatchObject({ codigo: 'estado' });
+      for (const pl of ['bosque', 'ambar', 'grafito', 'ciruela']) {
+        await guardarCarrusel(ds(), { tenantId: T, actor: adm, carrusel: { plantilla: pl, items: [{ medioId: m, alt: 'a' }] } });
+      }
+      expect((await publicarSitio(dp(), { tenantId: T, actor: adm })).productos).toBe(1);
+    });
+
+    it('una foto de producto basta como respaldo', async () => {
+      await configurar();
+      await publicable('cam-1');
+      expect((await publicarSitio(dp(), { tenantId: T, actor: adm })).productos).toBe(1);
+    });
+
+    it('relee cada producto en la transacción: un precio que cambia entre la lectura y el commit no se pisa', async () => {
+      await configurar();
+      await publicable('cam-1');
+      let cambiado = false;
+      const lista = catalogo.listarProductos.bind(catalogo);
+      catalogo.listarProductos = async () => {
+        const r = await lista();
+        // cambio de Inventarios justo después de listar y antes de la transacción de publicación
+        if (!cambiado) { cambiado = true; catalogo.agregar('cam-1', { marca: 'Nueva', nombre: 'Renombrado', precioUSD: { bo: 99, ar: 98 } }); }
+        return r;
+      };
+      await publicarSitio(dp(), { tenantId: T, actor: adm });
+      expect(db.dato(`tenants/${T}/publicado/producto__cam-1`)).toMatchObject({ nombre: 'Renombrado', marca: 'Nueva', precioUSD: { bo: 99, ar: 98 } });
+    });
+
+    it('un producto desactivado entre la lectura y el commit sale de la copia', async () => {
+      await configurar();
+      await publicable('cam-1');
+      await publicable('cam-2');
+      const lista = catalogo.listarProductos.bind(catalogo);
+      catalogo.listarProductos = async () => {
+        const r = await lista();
+        catalogo.agregar('cam-2', { activo: false });
+        return r;
+      };
+      const r = await publicarSitio(dp(), { tenantId: T, actor: adm });
+      expect(r.productos).toBe(1);
+      expect(db.dato(`tenants/${T}/publicado/producto__cam-2`)).toBeUndefined();
+    });
+
+    it('la relectura usa la transacción de la publicación', async () => {
+      await configurar();
+      await publicable('cam-1');
+      catalogo.txExistencia.length = 0;
+      await publicarSitio(dp(), { tenantId: T, actor: adm });
+      expect(catalogo.txExistencia).toHaveLength(1);
     });
   });
 
