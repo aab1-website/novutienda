@@ -58,6 +58,12 @@ export interface ProductoCatalogo extends DatosProducto {
   readonly disponible: boolean;
 }
 
+/**
+ * Lo mínimo del producto que se relee DENTRO de una transacción (guardar ficha, publicar): existencia implícita (el método devuelve
+ * `undefined` si no existe), `activo`, `marca`, `nombre`, `categoria` y `precioUSD` (dólares decimales, igual que `ProductoCatalogo`).
+ */
+export type ProductoEnTransaccion = Pick<ProductoCatalogo, 'id' | 'nombre' | 'categoria' | 'marca' | 'activo' | 'precioUSD' | 'garantiaMeses'>;
+
 /** Conteo de inventario abierto en una ubicación (forma de la marca que entrega Inventarios). */
 export interface ConteoAbiertoCatalogo {
   readonly ubicacionId: string;
@@ -105,6 +111,12 @@ export interface CatalogoPuerto {
    * Es una lectura: debe llamarse antes de la primera escritura de `tx`.
    */
   existeProductoEnTransaccion(tx: TransaccionIdentidad, tenantId: string, productoId: string): Promise<boolean>;
+  /**
+   * Como `existeProductoEnTransaccion`, pero devuelve los datos mínimos del producto (o `undefined` si no existe), leídos con la
+   * transacción `tx` de quien llama. Es una lectura: debe llamarse antes de la primera escritura de `tx`. No debe leer existencias.
+   * `marca` ausente o vacía = el producto no tiene marca.
+   */
+  leerProductoEnTransaccion(tx: TransaccionIdentidad, tenantId: string, productoId: string): Promise<ProductoEnTransaccion | undefined>;
 }
 
 /** Almacenamiento de objetos (Storage), por ruta. */

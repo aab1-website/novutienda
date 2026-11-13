@@ -82,6 +82,8 @@ export interface EstadoDemo {
   readonly subidas?: Readonly<Record<string, 'reservada' | 'procesada' | 'borrando' | 'rechazada'>>;
   /** Ids de medios ya procesados, por producto. */
   readonly medios: Readonly<Record<string, readonly string[]>>;
+  /** `true` si las cinco plantillas ya tienen carrusel propio con fotos (el sitio lo exige si no hay fotos de producto). Por defecto, no. */
+  readonly carruselesCompletos?: boolean;
   readonly tablero: { readonly versionPublicada: number; readonly cambiosSinPublicar: number };
   readonly turnos: readonly { readonly turnoId: string; readonly estado: string }[];
   /** Ids de venta (UUID) existentes entre las de la demostración. */
@@ -368,7 +370,13 @@ export function planificarDemo(catalogoCsv: string, fx: FixtureDemo, estado: Est
   // 9) Publicación: si algo del sitio o del catálogo cambió, o nunca se publicó.
   const cambioSitio = pasos.some((p) => p.etapa !== 'roles');
   const sinPublicar = estado.tablero.versionPublicada === 0 || estado.tablero.cambiosSinPublicar > 0;
-  if (cambioSitio || sinPublicar) {
+  // El sitio exige al menos una foto utilizable de producto o los carruseles propios cargados: sin ninguna, publicar se rechaza
+  // y cortaría el resto del plan. Se omite la publicación (y se dice) para que los pasos siguientes sigan.
+  const hayFotoDeProducto = [...mediosFicha.values()].some((l) => l.length > 0);
+  const puedePublicar = hayFotoDeProducto || estado.carruselesCompletos === true;
+  if ((cambioSitio || sinPublicar) && !puedePublicar) {
+    diferencias.push('sin fotos no se publica el sitio: el sitio exige al menos una foto o los carruseles cargados');
+  } else if (cambioSitio || sinPublicar) {
     diferencias.push('sitio por publicar');
     pasos.push(llamada('publicacion', 'consola', 'publicarSitio', {}));
   }

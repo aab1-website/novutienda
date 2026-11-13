@@ -16,7 +16,7 @@ export type { Validacion } from './validar.js';
 export { exigirRol, ROLES } from './permisos.js';
 export type {
   AlmacenMedios, BaseDatosConsola, CatalogoPuerto, ConsultaSubidas, ConteoAbiertoCatalogo, ListadoCatalogoVisible, ProductoCatalogoVisible, DatosProducto, DisparadorSitio, Existencia, InfoMedio,
-  PrecioUSD, ProcesadorMedios, ProductoCatalogo, Reloj, SolicitudProcesado, UbicacionId, VersionProcesada,
+  PrecioUSD, ProcesadorMedios, ProductoCatalogo, ProductoEnTransaccion, Reloj, SolicitudProcesado, UbicacionId, VersionProcesada,
 } from './puertos.js';
 export { BYTES_INICIALES, detectarArchivo } from './medios/tipos-archivo.js';
 export type { ArchivoDetectado, FormatoArchivo, TipoMedio } from './medios/tipos-archivo.js';

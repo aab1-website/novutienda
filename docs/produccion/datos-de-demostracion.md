@@ -41,7 +41,7 @@ Siempre `--verificar` (solo lectura) antes de `--aplicar`.
    `node scripts/personal-tenant.mjs <tenant> --entrada <personal.json> --verificar`, luego el mismo comando con `--aplicar`.
 2. Datos:
    `node scripts/demo-tenant.mjs <tenant> --credenciales <credenciales.json> --web <web.json> --verificar`, luego con `--aplicar`.
-   Opciones: `--sin-fotos` omite la subida de fotos; `--sin-ventas` omite las tres ventas.
+   Opciones: `--sin-fotos` omite la subida de fotos (en un tenant sin fotos ni carruseles el plan tampoco publica el sitio, porque el sitio exige al menos una foto o los carruseles cargados, y lo informa; el resto de los pasos sigue); `--sin-ventas` omite las tres ventas.
 3. Revisar el panel con las cuentas demo. Las contraseñas están solo en `credenciales.json`.
 
 Si el plan muestra `BLOQUEO`, `--aplicar` no escribe nada: se corrige la causa y se repite `--verificar`.
