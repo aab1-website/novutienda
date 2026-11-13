@@ -1,0 +1,180 @@
+{
+  "cuerpo": {
+    "cotizacion": {
+      "estado": "vigente",
+      "fecha": "2026-11-04",
+      "fuente": "manual",
+      "id": "AR-2026-11-04-1793804400000",
+      "par": "ARS/USD",
+      "valor": 1187.35
+    },
+    "generadoEn": "2026-11-04T15:00:00.000Z",
+    "items": [
+      {
+        "activo": true,
+        "area": "general",
+        "descripcion": "Solo con precio en Argentina.",
+        "disponible": true,
+        "foto": "https://medios.ejemplo.invalid/publico/tenants/casa-a/publico/medios/p-adaptador/bbb-imagen960.webp",
+        "fotos": [
+          "https://medios.ejemplo.invalid/publico/tenants/casa-a/publico/medios/p-adaptador/bbb-imagen960.webp"
+        ],
+        "id": "p-adaptador",
+        "moneda": "ARS",
+        "nombre": "Adaptador",
+        "precio": 5300,
+        "precioCentavos": 530000,
+        "stock": 4,
+        "stockPorAlmacen": {
+          "deposito-1": 0,
+          "deposito-2": 0,
+          "tienda": 4
+        },
+        "urlProducto": "https://tienda.ejemplo.invalid/producto/adaptador"
+      },
+      {
+        "activo": true,
+        "area": "general",
+        "descripcion": "Sin existencias.",
+        "disponible": false,
+        "foto": "https://medios.ejemplo.invalid/publico/tenants/casa-a/publico/medios/p-agotado/bbb-imagen960.webp",
+        "fotos": [
+          "https://medios.ejemplo.invalid/publico/tenants/casa-a/publico/medios/p-agotado/bbb-imagen960.webp"
+        ],
+        "id": "p-agotado",
+        "moneda": "ARS",
+        "nombre": "Cargador agotado",
+        "precio": 17800,
+        "precioCentavos": 1780000,
+        "stock": 0,
+        "stockPorAlmacen": {
+          "deposito-1": 0,
+          "deposito-2": 0,
+          "tienda": 0
+        },
+        "urlProducto": "https://tienda.ejemplo.invalid/producto/cargador-agotado"
+      },
+      {
+        "activo": true,
+        "area": "general",
+        "descripcion": "Celular de ejemplo.",
+        "disponible": true,
+        "foto": "https://medios.ejemplo.invalid/publico/tenants/casa-a/publico/medios/p-celular/bbb-imagen960.webp",
+        "fotos": [
+          "https://medios.ejemplo.invalid/publico/tenants/casa-a/publico/medios/p-celular/bbb-imagen960.webp"
+        ],
+        "id": "p-celular",
+        "moneda": "ARS",
+        "nombre": "Celular X1",
+        "precio": 249300,
+        "precioCentavos": 24930000,
+        "stock": 3,
+        "stockPorAlmacen": {
+          "deposito-1": 0,
+          "deposito-2": 0,
+          "tienda": 3
+        },
+        "urlProducto": "https://tienda.ejemplo.invalid/producto/celular-x1"
+      },
+      {
+        "activo": true,
+        "area": "general",
+        "descripcion": "No controla stock.",
+        "disponible": true,
+        "foto": "https://medios.ejemplo.invalid/publico/tenants/casa-a/publico/medios/p-servicio/bbb-imagen960.webp",
+        "fotos": [
+          "https://medios.ejemplo.invalid/publico/tenants/casa-a/publico/medios/p-servicio/bbb-imagen960.webp"
+        ],
+        "id": "p-servicio",
+        "moneda": "ARS",
+        "nombre": "Instalación",
+        "precio": 17800,
+        "precioCentavos": 1780000,
+        "stock": null,
+        "stockPorAlmacen": {
+          "deposito-1": 0,
+          "deposito-2": 0,
+          "tienda": 0
+        },
+        "urlProducto": "https://tienda.ejemplo.invalid/producto/instalacion"
+      },
+      {
+        "activo": true,
+        "area": "general",
+        "descripcion": "Lápiz de grafito.",
+        "disponible": true,
+        "foto": "https://medios.ejemplo.invalid/publico/tenants/casa-a/publico/medios/p-lapiz/bbb-imagen960.webp",
+        "fotos": [
+          "https://medios.ejemplo.invalid/publico/tenants/casa-a/publico/medios/p-lapiz/bbb-imagen960.webp"
+        ],
+        "id": "p-lapiz",
+        "moneda": "ARS",
+        "nombre": "Lápiz HB",
+        "precio": 1600,
+        "precioCentavos": 160000,
+        "stock": 10,
+        "stockPorAlmacen": {
+          "deposito-1": 5,
+          "deposito-2": 0,
+          "tienda": 10
+        },
+        "urlProducto": "https://tienda.ejemplo.invalid/producto/lapiz-hb"
+      },
+      {
+        "activo": true,
+        "area": "general",
+        "descripcion": "Decimales incómodos.",
+        "disponible": true,
+        "foto": "https://medios.ejemplo.invalid/publico/tenants/casa-a/publico/medios/p-parlante/bbb-imagen960.webp",
+        "fotos": [
+          "https://medios.ejemplo.invalid/publico/tenants/casa-a/publico/medios/p-parlante/bbb-imagen960.webp"
+        ],
+        "id": "p-parlante",
+        "moneda": "ARS",
+        "nombre": "Parlante portátil",
+        "precio": 12300,
+        "precioCentavos": 1230000,
+        "stock": 2,
+        "stockPorAlmacen": {
+          "deposito-1": 6,
+          "deposito-2": 0,
+          "tienda": 2
+        },
+        "urlProducto": "https://tienda.ejemplo.invalid/producto/parlante-portatil"
+      },
+      {
+        "activo": true,
+        "area": "general",
+        "descripcion": "Solo en depósito.",
+        "disponible": false,
+        "foto": "https://medios.ejemplo.invalid/publico/tenants/casa-a/publico/medios/p-televisor/bbb-imagen960.webp",
+        "fotos": [
+          "https://medios.ejemplo.invalid/publico/tenants/casa-a/publico/medios/p-televisor/bbb-imagen960.webp"
+        ],
+        "id": "p-televisor",
+        "moneda": "ARS",
+        "nombre": "Televisor 50\"",
+        "precio": 534900,
+        "precioCentavos": 53490000,
+        "stock": 0,
+        "stockPorAlmacen": {
+          "deposito-1": 2,
+          "deposito-2": 0,
+          "tienda": 0
+        },
+        "urlProducto": "https://tienda.ejemplo.invalid/producto/televisor-50"
+      }
+    ],
+    "mercado": "AR",
+    "moneda": "ARS",
+    "version": 1
+  },
+  "headers": {
+    "Cache-Control": "private, max-age=60",
+    "Content-Type": "application/json; charset=utf-8",
+    "ETag": "\"454efc98328f10e1a2d1c50f99c1c00f\"",
+    "Vary": "Authorization",
+    "X-Content-Type-Options": "nosniff"
+  },
+  "status": 200
+}

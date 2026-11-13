@@ -1,0 +1,12 @@
+{
+  "cuerpo": {
+    "error": "sin_cotizacion"
+  },
+  "headers": {
+    "Cache-Control": "no-store",
+    "Content-Type": "application/json; charset=utf-8",
+    "Retry-After": "300",
+    "X-Content-Type-Options": "nosniff"
+  },
+  "status": 503
+}

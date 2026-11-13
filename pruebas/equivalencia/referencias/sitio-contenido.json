@@ -1,0 +1,1028 @@
+{
+  "beneficios": [
+    {
+      "descripcion": "Garantía oficial y marcas líderes.",
+      "icono": "check",
+      "titulo": {
+        "confirmada": false,
+        "texto": "PRODUCTOS ORIGINALES"
+      }
+    },
+    {
+      "descripcion": "Coordinamos la entrega según tu ubicación.",
+      "icono": "tendencia",
+      "titulo": {
+        "confirmada": true,
+        "texto": "ENVÍOS COORDINADOS"
+      }
+    },
+    {
+      "descripcion": "Asesoramiento y pedidos rápidos por WhatsApp.",
+      "icono": "usuario",
+      "titulo": {
+        "confirmada": true,
+        "texto": "COMPRA ASESORADA"
+      }
+    },
+    {
+      "descripcion": "Atención personalizada con líneas locales.",
+      "icono": "mensaje",
+      "titulo": {
+        "confirmada": true,
+        "texto": "ATENCIÓN EN DOS PAÍSES"
+      }
+    }
+  ],
+  "carruseles": {
+    "ambar": [
+      {
+        "alt": "Adaptador",
+        "url": "https://medios.ejemplo.invalid/publico/tenants/casa-a/publico/medios/p-adaptador/bbb-imagen960.webp",
+        "versiones": [
+          {
+            "ancho": 480,
+            "url": "https://medios.ejemplo.invalid/publico/tenants/casa-a/publico/medios/p-adaptador/aaa-imagen480.webp"
+          },
+          {
+            "ancho": 960,
+            "url": "https://medios.ejemplo.invalid/publico/tenants/casa-a/publico/medios/p-adaptador/bbb-imagen960.webp"
+          }
+        ]
+      },
+      {
+        "alt": "Cargador agotado",
+        "url": "https://medios.ejemplo.invalid/publico/tenants/casa-a/publico/medios/p-agotado/bbb-imagen960.webp",
+        "versiones": [
+          {
+            "ancho": 480,
+            "url": "https://medios.ejemplo.invalid/publico/tenants/casa-a/publico/medios/p-agotado/aaa-imagen480.webp"
+          },
+          {
+            "ancho": 960,
+            "url": "https://medios.ejemplo.invalid/publico/tenants/casa-a/publico/medios/p-agotado/bbb-imagen960.webp"
+          }
+        ]
+      },
+      {
+        "alt": "Cable USB",
+        "url": "https://medios.ejemplo.invalid/publico/tenants/casa-a/publico/medios/p-cable/bbb-imagen960.webp",
+        "versiones": [
+          {
+            "ancho": 480,
+            "url": "https://medios.ejemplo.invalid/publico/tenants/casa-a/publico/medios/p-cable/aaa-imagen480.webp"
+          },
+          {
+            "ancho": 960,
+            "url": "https://medios.ejemplo.invalid/publico/tenants/casa-a/publico/medios/p-cable/bbb-imagen960.webp"
+          }
+        ]
+      },
+      {
+        "alt": "Celular X1",
+        "url": "https://medios.ejemplo.invalid/publico/tenants/casa-a/publico/medios/p-celular/bbb-imagen960.webp",
+        "versiones": [
+          {
+            "ancho": 480,
+            "url": "https://medios.ejemplo.invalid/publico/tenants/casa-a/publico/medios/p-celular/aaa-imagen480.webp"
+          },
+          {
+            "ancho": 960,
+            "url": "https://medios.ejemplo.invalid/publico/tenants/casa-a/publico/medios/p-celular/bbb-imagen960.webp"
+          }
+        ]
+      },
+      {
+        "alt": "Producto retirado",
+        "url": "https://medios.ejemplo.invalid/publico/tenants/casa-a/publico/medios/p-inactivo/bbb-imagen960.webp",
+        "versiones": [
+          {
+            "ancho": 480,
+            "url": "https://medios.ejemplo.invalid/publico/tenants/casa-a/publico/medios/p-inactivo/aaa-imagen480.webp"
+          },
+          {
+            "ancho": 960,
+            "url": "https://medios.ejemplo.invalid/publico/tenants/casa-a/publico/medios/p-inactivo/bbb-imagen960.webp"
+          }
+        ]
+      },
+      {
+        "alt": "Lápiz HB",
+        "url": "https://medios.ejemplo.invalid/publico/tenants/casa-a/publico/medios/p-lapiz/bbb-imagen960.webp",
+        "versiones": [
+          {
+            "ancho": 480,
+            "url": "https://medios.ejemplo.invalid/publico/tenants/casa-a/publico/medios/p-lapiz/aaa-imagen480.webp"
+          },
+          {
+            "ancho": 960,
+            "url": "https://medios.ejemplo.invalid/publico/tenants/casa-a/publico/medios/p-lapiz/bbb-imagen960.webp"
+          }
+        ]
+      },
+      {
+        "alt": "Parlante portátil",
+        "url": "https://medios.ejemplo.invalid/publico/tenants/casa-a/publico/medios/p-parlante/bbb-imagen960.webp",
+        "versiones": [
+          {
+            "ancho": 480,
+            "url": "https://medios.ejemplo.invalid/publico/tenants/casa-a/publico/medios/p-parlante/aaa-imagen480.webp"
+          },
+          {
+            "ancho": 960,
+            "url": "https://medios.ejemplo.invalid/publico/tenants/casa-a/publico/medios/p-parlante/bbb-imagen960.webp"
+          }
+        ]
+      },
+      {
+        "alt": "Instalación",
+        "url": "https://medios.ejemplo.invalid/publico/tenants/casa-a/publico/medios/p-servicio/bbb-imagen960.webp",
+        "versiones": [
+          {
+            "ancho": 480,
+            "url": "https://medios.ejemplo.invalid/publico/tenants/casa-a/publico/medios/p-servicio/aaa-imagen480.webp"
+          },
+          {
+            "ancho": 960,
+            "url": "https://medios.ejemplo.invalid/publico/tenants/casa-a/publico/medios/p-servicio/bbb-imagen960.webp"
+          }
+        ]
+      }
+    ],
+    "bosque": [
+      {
+        "alt": "Adaptador",
+        "url": "https://medios.ejemplo.invalid/publico/tenants/casa-a/publico/medios/p-adaptador/bbb-imagen960.webp",
+        "versiones": [
+          {
+            "ancho": 480,
+            "url": "https://medios.ejemplo.invalid/publico/tenants/casa-a/publico/medios/p-adaptador/aaa-imagen480.webp"
+          },
+          {
+            "ancho": 960,
+            "url": "https://medios.ejemplo.invalid/publico/tenants/casa-a/publico/medios/p-adaptador/bbb-imagen960.webp"
+          }
+        ]
+      },
+      {
+        "alt": "Cargador agotado",
+        "url": "https://medios.ejemplo.invalid/publico/tenants/casa-a/publico/medios/p-agotado/bbb-imagen960.webp",
+        "versiones": [
+          {
+            "ancho": 480,
+            "url": "https://medios.ejemplo.invalid/publico/tenants/casa-a/publico/medios/p-agotado/aaa-imagen480.webp"
+          },
+          {
+            "ancho": 960,
+            "url": "https://medios.ejemplo.invalid/publico/tenants/casa-a/publico/medios/p-agotado/bbb-imagen960.webp"
+          }
+        ]
+      },
+      {
+        "alt": "Cable USB",
+        "url": "https://medios.ejemplo.invalid/publico/tenants/casa-a/publico/medios/p-cable/bbb-imagen960.webp",
+        "versiones": [
+          {
+            "ancho": 480,
+            "url": "https://medios.ejemplo.invalid/publico/tenants/casa-a/publico/medios/p-cable/aaa-imagen480.webp"
+          },
+          {
+            "ancho": 960,
+            "url": "https://medios.ejemplo.invalid/publico/tenants/casa-a/publico/medios/p-cable/bbb-imagen960.webp"
+          }
+        ]
+      },
+      {
+        "alt": "Celular X1",
+        "url": "https://medios.ejemplo.invalid/publico/tenants/casa-a/publico/medios/p-celular/bbb-imagen960.webp",
+        "versiones": [
+          {
+            "ancho": 480,
+            "url": "https://medios.ejemplo.invalid/publico/tenants/casa-a/publico/medios/p-celular/aaa-imagen480.webp"
+          },
+          {
+            "ancho": 960,
+            "url": "https://medios.ejemplo.invalid/publico/tenants/casa-a/publico/medios/p-celular/bbb-imagen960.webp"
+          }
+        ]
+      },
+      {
+        "alt": "Producto retirado",
+        "url": "https://medios.ejemplo.invalid/publico/tenants/casa-a/publico/medios/p-inactivo/bbb-imagen960.webp",
+        "versiones": [
+          {
+            "ancho": 480,
+            "url": "https://medios.ejemplo.invalid/publico/tenants/casa-a/publico/medios/p-inactivo/aaa-imagen480.webp"
+          },
+          {
+            "ancho": 960,
+            "url": "https://medios.ejemplo.invalid/publico/tenants/casa-a/publico/medios/p-inactivo/bbb-imagen960.webp"
+          }
+        ]
+      },
+      {
+        "alt": "Lápiz HB",
+        "url": "https://medios.ejemplo.invalid/publico/tenants/casa-a/publico/medios/p-lapiz/bbb-imagen960.webp",
+        "versiones": [
+          {
+            "ancho": 480,
+            "url": "https://medios.ejemplo.invalid/publico/tenants/casa-a/publico/medios/p-lapiz/aaa-imagen480.webp"
+          },
+          {
+            "ancho": 960,
+            "url": "https://medios.ejemplo.invalid/publico/tenants/casa-a/publico/medios/p-lapiz/bbb-imagen960.webp"
+          }
+        ]
+      },
+      {
+        "alt": "Parlante portátil",
+        "url": "https://medios.ejemplo.invalid/publico/tenants/casa-a/publico/medios/p-parlante/bbb-imagen960.webp",
+        "versiones": [
+          {
+            "ancho": 480,
+            "url": "https://medios.ejemplo.invalid/publico/tenants/casa-a/publico/medios/p-parlante/aaa-imagen480.webp"
+          },
+          {
+            "ancho": 960,
+            "url": "https://medios.ejemplo.invalid/publico/tenants/casa-a/publico/medios/p-parlante/bbb-imagen960.webp"
+          }
+        ]
+      },
+      {
+        "alt": "Instalación",
+        "url": "https://medios.ejemplo.invalid/publico/tenants/casa-a/publico/medios/p-servicio/bbb-imagen960.webp",
+        "versiones": [
+          {
+            "ancho": 480,
+            "url": "https://medios.ejemplo.invalid/publico/tenants/casa-a/publico/medios/p-servicio/aaa-imagen480.webp"
+          },
+          {
+            "ancho": 960,
+            "url": "https://medios.ejemplo.invalid/publico/tenants/casa-a/publico/medios/p-servicio/bbb-imagen960.webp"
+          }
+        ]
+      }
+    ],
+    "cielo": [
+      {
+        "alt": "Adaptador",
+        "url": "https://medios.ejemplo.invalid/publico/tenants/casa-a/publico/medios/p-adaptador/bbb-imagen960.webp",
+        "versiones": [
+          {
+            "ancho": 480,
+            "url": "https://medios.ejemplo.invalid/publico/tenants/casa-a/publico/medios/p-adaptador/aaa-imagen480.webp"
+          },
+          {
+            "ancho": 960,
+            "url": "https://medios.ejemplo.invalid/publico/tenants/casa-a/publico/medios/p-adaptador/bbb-imagen960.webp"
+          }
+        ]
+      },
+      {
+        "alt": "Cargador agotado",
+        "url": "https://medios.ejemplo.invalid/publico/tenants/casa-a/publico/medios/p-agotado/bbb-imagen960.webp",
+        "versiones": [
+          {
+            "ancho": 480,
+            "url": "https://medios.ejemplo.invalid/publico/tenants/casa-a/publico/medios/p-agotado/aaa-imagen480.webp"
+          },
+          {
+            "ancho": 960,
+            "url": "https://medios.ejemplo.invalid/publico/tenants/casa-a/publico/medios/p-agotado/bbb-imagen960.webp"
+          }
+        ]
+      },
+      {
+        "alt": "Cable USB",
+        "url": "https://medios.ejemplo.invalid/publico/tenants/casa-a/publico/medios/p-cable/bbb-imagen960.webp",
+        "versiones": [
+          {
+            "ancho": 480,
+            "url": "https://medios.ejemplo.invalid/publico/tenants/casa-a/publico/medios/p-cable/aaa-imagen480.webp"
+          },
+          {
+            "ancho": 960,
+            "url": "https://medios.ejemplo.invalid/publico/tenants/casa-a/publico/medios/p-cable/bbb-imagen960.webp"
+          }
+        ]
+      },
+      {
+        "alt": "Celular X1",
+        "url": "https://medios.ejemplo.invalid/publico/tenants/casa-a/publico/medios/p-celular/bbb-imagen960.webp",
+        "versiones": [
+          {
+            "ancho": 480,
+            "url": "https://medios.ejemplo.invalid/publico/tenants/casa-a/publico/medios/p-celular/aaa-imagen480.webp"
+          },
+          {
+            "ancho": 960,
+            "url": "https://medios.ejemplo.invalid/publico/tenants/casa-a/publico/medios/p-celular/bbb-imagen960.webp"
+          }
+        ]
+      },
+      {
+        "alt": "Producto retirado",
+        "url": "https://medios.ejemplo.invalid/publico/tenants/casa-a/publico/medios/p-inactivo/bbb-imagen960.webp",
+        "versiones": [
+          {
+            "ancho": 480,
+            "url": "https://medios.ejemplo.invalid/publico/tenants/casa-a/publico/medios/p-inactivo/aaa-imagen480.webp"
+          },
+          {
+            "ancho": 960,
+            "url": "https://medios.ejemplo.invalid/publico/tenants/casa-a/publico/medios/p-inactivo/bbb-imagen960.webp"
+          }
+        ]
+      },
+      {
+        "alt": "Lápiz HB",
+        "url": "https://medios.ejemplo.invalid/publico/tenants/casa-a/publico/medios/p-lapiz/bbb-imagen960.webp",
+        "versiones": [
+          {
+            "ancho": 480,
+            "url": "https://medios.ejemplo.invalid/publico/tenants/casa-a/publico/medios/p-lapiz/aaa-imagen480.webp"
+          },
+          {
+            "ancho": 960,
+            "url": "https://medios.ejemplo.invalid/publico/tenants/casa-a/publico/medios/p-lapiz/bbb-imagen960.webp"
+          }
+        ]
+      },
+      {
+        "alt": "Parlante portátil",
+        "url": "https://medios.ejemplo.invalid/publico/tenants/casa-a/publico/medios/p-parlante/bbb-imagen960.webp",
+        "versiones": [
+          {
+            "ancho": 480,
+            "url": "https://medios.ejemplo.invalid/publico/tenants/casa-a/publico/medios/p-parlante/aaa-imagen480.webp"
+          },
+          {
+            "ancho": 960,
+            "url": "https://medios.ejemplo.invalid/publico/tenants/casa-a/publico/medios/p-parlante/bbb-imagen960.webp"
+          }
+        ]
+      },
+      {
+        "alt": "Instalación",
+        "url": "https://medios.ejemplo.invalid/publico/tenants/casa-a/publico/medios/p-servicio/bbb-imagen960.webp",
+        "versiones": [
+          {
+            "ancho": 480,
+            "url": "https://medios.ejemplo.invalid/publico/tenants/casa-a/publico/medios/p-servicio/aaa-imagen480.webp"
+          },
+          {
+            "ancho": 960,
+            "url": "https://medios.ejemplo.invalid/publico/tenants/casa-a/publico/medios/p-servicio/bbb-imagen960.webp"
+          }
+        ]
+      }
+    ],
+    "ciruela": [
+      {
+        "alt": "Adaptador",
+        "url": "https://medios.ejemplo.invalid/publico/tenants/casa-a/publico/medios/p-adaptador/bbb-imagen960.webp",
+        "versiones": [
+          {
+            "ancho": 480,
+            "url": "https://medios.ejemplo.invalid/publico/tenants/casa-a/publico/medios/p-adaptador/aaa-imagen480.webp"
+          },
+          {
+            "ancho": 960,
+            "url": "https://medios.ejemplo.invalid/publico/tenants/casa-a/publico/medios/p-adaptador/bbb-imagen960.webp"
+          }
+        ]
+      },
+      {
+        "alt": "Cargador agotado",
+        "url": "https://medios.ejemplo.invalid/publico/tenants/casa-a/publico/medios/p-agotado/bbb-imagen960.webp",
+        "versiones": [
+          {
+            "ancho": 480,
+            "url": "https://medios.ejemplo.invalid/publico/tenants/casa-a/publico/medios/p-agotado/aaa-imagen480.webp"
+          },
+          {
+            "ancho": 960,
+            "url": "https://medios.ejemplo.invalid/publico/tenants/casa-a/publico/medios/p-agotado/bbb-imagen960.webp"
+          }
+        ]
+      },
+      {
+        "alt": "Cable USB",
+        "url": "https://medios.ejemplo.invalid/publico/tenants/casa-a/publico/medios/p-cable/bbb-imagen960.webp",
+        "versiones": [
+          {
+            "ancho": 480,
+            "url": "https://medios.ejemplo.invalid/publico/tenants/casa-a/publico/medios/p-cable/aaa-imagen480.webp"
+          },
+          {
+            "ancho": 960,
+            "url": "https://medios.ejemplo.invalid/publico/tenants/casa-a/publico/medios/p-cable/bbb-imagen960.webp"
+          }
+        ]
+      },
+      {
+        "alt": "Celular X1",
+        "url": "https://medios.ejemplo.invalid/publico/tenants/casa-a/publico/medios/p-celular/bbb-imagen960.webp",
+        "versiones": [
+          {
+            "ancho": 480,
+            "url": "https://medios.ejemplo.invalid/publico/tenants/casa-a/publico/medios/p-celular/aaa-imagen480.webp"
+          },
+          {
+            "ancho": 960,
+            "url": "https://medios.ejemplo.invalid/publico/tenants/casa-a/publico/medios/p-celular/bbb-imagen960.webp"
+          }
+        ]
+      },
+      {
+        "alt": "Producto retirado",
+        "url": "https://medios.ejemplo.invalid/publico/tenants/casa-a/publico/medios/p-inactivo/bbb-imagen960.webp",
+        "versiones": [
+          {
+            "ancho": 480,
+            "url": "https://medios.ejemplo.invalid/publico/tenants/casa-a/publico/medios/p-inactivo/aaa-imagen480.webp"
+          },
+          {
+            "ancho": 960,
+            "url": "https://medios.ejemplo.invalid/publico/tenants/casa-a/publico/medios/p-inactivo/bbb-imagen960.webp"
+          }
+        ]
+      },
+      {
+        "alt": "Lápiz HB",
+        "url": "https://medios.ejemplo.invalid/publico/tenants/casa-a/publico/medios/p-lapiz/bbb-imagen960.webp",
+        "versiones": [
+          {
+            "ancho": 480,
+            "url": "https://medios.ejemplo.invalid/publico/tenants/casa-a/publico/medios/p-lapiz/aaa-imagen480.webp"
+          },
+          {
+            "ancho": 960,
+            "url": "https://medios.ejemplo.invalid/publico/tenants/casa-a/publico/medios/p-lapiz/bbb-imagen960.webp"
+          }
+        ]
+      },
+      {
+        "alt": "Parlante portátil",
+        "url": "https://medios.ejemplo.invalid/publico/tenants/casa-a/publico/medios/p-parlante/bbb-imagen960.webp",
+        "versiones": [
+          {
+            "ancho": 480,
+            "url": "https://medios.ejemplo.invalid/publico/tenants/casa-a/publico/medios/p-parlante/aaa-imagen480.webp"
+          },
+          {
+            "ancho": 960,
+            "url": "https://medios.ejemplo.invalid/publico/tenants/casa-a/publico/medios/p-parlante/bbb-imagen960.webp"
+          }
+        ]
+      },
+      {
+        "alt": "Instalación",
+        "url": "https://medios.ejemplo.invalid/publico/tenants/casa-a/publico/medios/p-servicio/bbb-imagen960.webp",
+        "versiones": [
+          {
+            "ancho": 480,
+            "url": "https://medios.ejemplo.invalid/publico/tenants/casa-a/publico/medios/p-servicio/aaa-imagen480.webp"
+          },
+          {
+            "ancho": 960,
+            "url": "https://medios.ejemplo.invalid/publico/tenants/casa-a/publico/medios/p-servicio/bbb-imagen960.webp"
+          }
+        ]
+      }
+    ],
+    "grafito": [
+      {
+        "alt": "Adaptador",
+        "url": "https://medios.ejemplo.invalid/publico/tenants/casa-a/publico/medios/p-adaptador/bbb-imagen960.webp",
+        "versiones": [
+          {
+            "ancho": 480,
+            "url": "https://medios.ejemplo.invalid/publico/tenants/casa-a/publico/medios/p-adaptador/aaa-imagen480.webp"
+          },
+          {
+            "ancho": 960,
+            "url": "https://medios.ejemplo.invalid/publico/tenants/casa-a/publico/medios/p-adaptador/bbb-imagen960.webp"
+          }
+        ]
+      },
+      {
+        "alt": "Cargador agotado",
+        "url": "https://medios.ejemplo.invalid/publico/tenants/casa-a/publico/medios/p-agotado/bbb-imagen960.webp",
+        "versiones": [
+          {
+            "ancho": 480,
+            "url": "https://medios.ejemplo.invalid/publico/tenants/casa-a/publico/medios/p-agotado/aaa-imagen480.webp"
+          },
+          {
+            "ancho": 960,
+            "url": "https://medios.ejemplo.invalid/publico/tenants/casa-a/publico/medios/p-agotado/bbb-imagen960.webp"
+          }
+        ]
+      },
+      {
+        "alt": "Cable USB",
+        "url": "https://medios.ejemplo.invalid/publico/tenants/casa-a/publico/medios/p-cable/bbb-imagen960.webp",
+        "versiones": [
+          {
+            "ancho": 480,
+            "url": "https://medios.ejemplo.invalid/publico/tenants/casa-a/publico/medios/p-cable/aaa-imagen480.webp"
+          },
+          {
+            "ancho": 960,
+            "url": "https://medios.ejemplo.invalid/publico/tenants/casa-a/publico/medios/p-cable/bbb-imagen960.webp"
+          }
+        ]
+      },
+      {
+        "alt": "Celular X1",
+        "url": "https://medios.ejemplo.invalid/publico/tenants/casa-a/publico/medios/p-celular/bbb-imagen960.webp",
+        "versiones": [
+          {
+            "ancho": 480,
+            "url": "https://medios.ejemplo.invalid/publico/tenants/casa-a/publico/medios/p-celular/aaa-imagen480.webp"
+          },
+          {
+            "ancho": 960,
+            "url": "https://medios.ejemplo.invalid/publico/tenants/casa-a/publico/medios/p-celular/bbb-imagen960.webp"
+          }
+        ]
+      },
+      {
+        "alt": "Producto retirado",
+        "url": "https://medios.ejemplo.invalid/publico/tenants/casa-a/publico/medios/p-inactivo/bbb-imagen960.webp",
+        "versiones": [
+          {
+            "ancho": 480,
+            "url": "https://medios.ejemplo.invalid/publico/tenants/casa-a/publico/medios/p-inactivo/aaa-imagen480.webp"
+          },
+          {
+            "ancho": 960,
+            "url": "https://medios.ejemplo.invalid/publico/tenants/casa-a/publico/medios/p-inactivo/bbb-imagen960.webp"
+          }
+        ]
+      },
+      {
+        "alt": "Lápiz HB",
+        "url": "https://medios.ejemplo.invalid/publico/tenants/casa-a/publico/medios/p-lapiz/bbb-imagen960.webp",
+        "versiones": [
+          {
+            "ancho": 480,
+            "url": "https://medios.ejemplo.invalid/publico/tenants/casa-a/publico/medios/p-lapiz/aaa-imagen480.webp"
+          },
+          {
+            "ancho": 960,
+            "url": "https://medios.ejemplo.invalid/publico/tenants/casa-a/publico/medios/p-lapiz/bbb-imagen960.webp"
+          }
+        ]
+      },
+      {
+        "alt": "Parlante portátil",
+        "url": "https://medios.ejemplo.invalid/publico/tenants/casa-a/publico/medios/p-parlante/bbb-imagen960.webp",
+        "versiones": [
+          {
+            "ancho": 480,
+            "url": "https://medios.ejemplo.invalid/publico/tenants/casa-a/publico/medios/p-parlante/aaa-imagen480.webp"
+          },
+          {
+            "ancho": 960,
+            "url": "https://medios.ejemplo.invalid/publico/tenants/casa-a/publico/medios/p-parlante/bbb-imagen960.webp"
+          }
+        ]
+      },
+      {
+        "alt": "Instalación",
+        "url": "https://medios.ejemplo.invalid/publico/tenants/casa-a/publico/medios/p-servicio/bbb-imagen960.webp",
+        "versiones": [
+          {
+            "ancho": 480,
+            "url": "https://medios.ejemplo.invalid/publico/tenants/casa-a/publico/medios/p-servicio/aaa-imagen480.webp"
+          },
+          {
+            "ancho": 960,
+            "url": "https://medios.ejemplo.invalid/publico/tenants/casa-a/publico/medios/p-servicio/bbb-imagen960.webp"
+          }
+        ]
+      }
+    ]
+  },
+  "categorias": [
+    {
+      "icono": "cuadricula",
+      "id": "accesorios",
+      "nombre": "Accesorios"
+    },
+    {
+      "icono": "parlante",
+      "id": "audio",
+      "nombre": "Audio"
+    },
+    {
+      "icono": "cuadricula",
+      "id": "celulares",
+      "nombre": "Celulares"
+    },
+    {
+      "icono": "cuadricula",
+      "id": "papeleria",
+      "nombre": "Papeleria"
+    },
+    {
+      "icono": "cuadricula",
+      "id": "servicios",
+      "nombre": "Servicios"
+    }
+  ],
+  "config": {
+    "appCheck": null,
+    "correo": null,
+    "direccion": "Calle Ficticia 123",
+    "enlacesPermitidos": [
+      "ejemplo.invalid"
+    ],
+    "esEjemplo": false,
+    "horario": null,
+    "lema": "Lema de ejemplo",
+    "logo": null,
+    "medicion": {
+      "google": null,
+      "meta": null,
+      "searchConsole": null,
+      "tiktok": null
+    },
+    "mercadoInicial": "BO",
+    "mercados": [
+      "BO",
+      "AR"
+    ],
+    "nombre": "Tienda de Ejemplo",
+    "origen": "https://tienda.ejemplo.invalid",
+    "origenMedios": "https://medios.ejemplo.invalid",
+    "plantilla": "bosque",
+    "recaptchaSiteKey": null,
+    "redondeo": {
+      "ARS": {
+        "modo": "cercano",
+        "multiplo": 100,
+        "tipo": "multiplo"
+      },
+      "BOB": {
+        "decimales": 2,
+        "modo": "cercano",
+        "tipo": "decimales"
+      }
+    },
+    "telefono": null,
+    "textoPrivacidad": [
+      "Texto de privacidad de ejemplo."
+    ],
+    "whatsappNovuchat": "59170000000",
+    "whatsappTienda": null
+  },
+  "identidad": {
+    "cifra": {
+      "detalle": "CLIENTES SATISFECHOS",
+      "valor": {
+        "confirmada": false,
+        "texto": "Más de 1.000"
+      }
+    },
+    "etiqueta": "NUESTRA IDENTIDAD Y VALORES",
+    "foto": null,
+    "sello": {
+      "confirmada": false,
+      "texto": "CALIDAD, GARANTÍA Y RESPALDO EN NUESTROS PRODUCTOS."
+    },
+    "texto": "EJEMPLO. Somos una tienda inventada para probar el sitio. Aquí el negocio cuenta quién es y cómo atiende a sus clientes.",
+    "titulo": "CONOCE NUESTRA HISTORIA",
+    "valores": [
+      {
+        "icono": "escudo",
+        "texto": "Ejemplo: te acompañamos antes y después de tu compra.",
+        "titulo": "Confianza"
+      },
+      {
+        "icono": "camion",
+        "texto": "Ejemplo: coordinamos el envío contigo.",
+        "titulo": "Entregas"
+      }
+    ]
+  },
+  "marcas": [
+    "Marca Ejemplo"
+  ],
+  "portada": {
+    "insignia": "CONTENIDO DE EJEMPLO",
+    "texto": "Electrodomésticos de las mejores marcas. Coordina tu compra directamente con nosotros. (Texto de ejemplo.)",
+    "textoBotonCatalogo": "VER CATÁLOGO DE PRODUCTOS",
+    "textoBotonConsulta": "HACER UNA CONSULTA",
+    "titulo": [
+      "TECNOLOGÍA QUE",
+      "CONECTA TU ",
+      "HOGAR."
+    ]
+  },
+  "productos": [
+    {
+      "categoria": "accesorios",
+      "descripcion": "Solo con precio en Argentina.",
+      "destacado": false,
+      "disponible": true,
+      "fotos": [
+        {
+          "alt": "Adaptador",
+          "url": "https://medios.ejemplo.invalid/publico/tenants/casa-a/publico/medios/p-adaptador/bbb-imagen960.webp",
+          "versiones": [
+            {
+              "ancho": 480,
+              "url": "https://medios.ejemplo.invalid/publico/tenants/casa-a/publico/medios/p-adaptador/aaa-imagen480.webp"
+            },
+            {
+              "ancho": 960,
+              "url": "https://medios.ejemplo.invalid/publico/tenants/casa-a/publico/medios/p-adaptador/bbb-imagen960.webp"
+            }
+          ]
+        }
+      ],
+      "garantia": null,
+      "id": "p-adaptador",
+      "marca": "Marca Ejemplo",
+      "nombre": "Adaptador",
+      "precioUsd": {
+        "AR": 4.5,
+        "BO": 0
+      },
+      "seo": {},
+      "slug": "adaptador",
+      "video": null
+    },
+    {
+      "categoria": "accesorios",
+      "descripcion": "Sin existencias.",
+      "destacado": false,
+      "disponible": false,
+      "fotos": [
+        {
+          "alt": "Cargador agotado",
+          "url": "https://medios.ejemplo.invalid/publico/tenants/casa-a/publico/medios/p-agotado/bbb-imagen960.webp",
+          "versiones": [
+            {
+              "ancho": 480,
+              "url": "https://medios.ejemplo.invalid/publico/tenants/casa-a/publico/medios/p-agotado/aaa-imagen480.webp"
+            },
+            {
+              "ancho": 960,
+              "url": "https://medios.ejemplo.invalid/publico/tenants/casa-a/publico/medios/p-agotado/bbb-imagen960.webp"
+            }
+          ]
+        }
+      ],
+      "garantia": null,
+      "id": "p-agotado",
+      "marca": "Marca Ejemplo",
+      "nombre": "Cargador agotado",
+      "precioUsd": {
+        "AR": 15,
+        "BO": 15
+      },
+      "seo": {},
+      "slug": "cargador-agotado",
+      "video": null
+    },
+    {
+      "categoria": "accesorios",
+      "descripcion": "Solo con precio en Bolivia.",
+      "destacado": false,
+      "disponible": true,
+      "fotos": [
+        {
+          "alt": "Cable USB",
+          "url": "https://medios.ejemplo.invalid/publico/tenants/casa-a/publico/medios/p-cable/bbb-imagen960.webp",
+          "versiones": [
+            {
+              "ancho": 480,
+              "url": "https://medios.ejemplo.invalid/publico/tenants/casa-a/publico/medios/p-cable/aaa-imagen480.webp"
+            },
+            {
+              "ancho": 960,
+              "url": "https://medios.ejemplo.invalid/publico/tenants/casa-a/publico/medios/p-cable/bbb-imagen960.webp"
+            }
+          ]
+        }
+      ],
+      "garantia": null,
+      "id": "p-cable",
+      "marca": "Marca Ejemplo",
+      "nombre": "Cable USB",
+      "precioUsd": {
+        "AR": 0,
+        "BO": 3.33
+      },
+      "seo": {},
+      "slug": "cable-usb",
+      "video": null
+    },
+    {
+      "categoria": "celulares",
+      "descripcion": "Celular de ejemplo.",
+      "destacado": false,
+      "disponible": true,
+      "fotos": [
+        {
+          "alt": "Celular X1",
+          "url": "https://medios.ejemplo.invalid/publico/tenants/casa-a/publico/medios/p-celular/bbb-imagen960.webp",
+          "versiones": [
+            {
+              "ancho": 480,
+              "url": "https://medios.ejemplo.invalid/publico/tenants/casa-a/publico/medios/p-celular/aaa-imagen480.webp"
+            },
+            {
+              "ancho": 960,
+              "url": "https://medios.ejemplo.invalid/publico/tenants/casa-a/publico/medios/p-celular/bbb-imagen960.webp"
+            }
+          ]
+        }
+      ],
+      "garantia": "12 meses",
+      "id": "p-celular",
+      "marca": "Marca Ejemplo",
+      "nombre": "Celular X1",
+      "precioUsd": {
+        "AR": 209.99,
+        "BO": 199.99
+      },
+      "seo": {},
+      "slug": "celular-x1",
+      "video": null
+    },
+    {
+      "categoria": "accesorios",
+      "descripcion": "Dado de baja.",
+      "destacado": false,
+      "disponible": false,
+      "fotos": [
+        {
+          "alt": "Producto retirado",
+          "url": "https://medios.ejemplo.invalid/publico/tenants/casa-a/publico/medios/p-inactivo/bbb-imagen960.webp",
+          "versiones": [
+            {
+              "ancho": 480,
+              "url": "https://medios.ejemplo.invalid/publico/tenants/casa-a/publico/medios/p-inactivo/aaa-imagen480.webp"
+            },
+            {
+              "ancho": 960,
+              "url": "https://medios.ejemplo.invalid/publico/tenants/casa-a/publico/medios/p-inactivo/bbb-imagen960.webp"
+            }
+          ]
+        }
+      ],
+      "garantia": null,
+      "id": "p-inactivo",
+      "marca": "Marca Ejemplo",
+      "nombre": "Producto retirado",
+      "precioUsd": {
+        "AR": 8,
+        "BO": 8
+      },
+      "seo": {},
+      "slug": "retirado",
+      "video": null
+    },
+    {
+      "categoria": "papeleria",
+      "descripcion": "Lápiz de grafito.",
+      "destacado": false,
+      "disponible": true,
+      "fotos": [
+        {
+          "alt": "Lápiz HB",
+          "url": "https://medios.ejemplo.invalid/publico/tenants/casa-a/publico/medios/p-lapiz/bbb-imagen960.webp",
+          "versiones": [
+            {
+              "ancho": 480,
+              "url": "https://medios.ejemplo.invalid/publico/tenants/casa-a/publico/medios/p-lapiz/aaa-imagen480.webp"
+            },
+            {
+              "ancho": 960,
+              "url": "https://medios.ejemplo.invalid/publico/tenants/casa-a/publico/medios/p-lapiz/bbb-imagen960.webp"
+            }
+          ]
+        }
+      ],
+      "garantia": null,
+      "id": "p-lapiz",
+      "marca": "Marca Ejemplo",
+      "nombre": "Lápiz HB",
+      "precioUsd": {
+        "AR": 1.33,
+        "BO": 1.25
+      },
+      "seo": {},
+      "slug": "lapiz-hb",
+      "video": null
+    },
+    {
+      "categoria": "audio",
+      "descripcion": "Decimales incómodos.",
+      "destacado": false,
+      "disponible": true,
+      "fotos": [
+        {
+          "alt": "Parlante portátil",
+          "url": "https://medios.ejemplo.invalid/publico/tenants/casa-a/publico/medios/p-parlante/bbb-imagen960.webp",
+          "versiones": [
+            {
+              "ancho": 480,
+              "url": "https://medios.ejemplo.invalid/publico/tenants/casa-a/publico/medios/p-parlante/aaa-imagen480.webp"
+            },
+            {
+              "ancho": 960,
+              "url": "https://medios.ejemplo.invalid/publico/tenants/casa-a/publico/medios/p-parlante/bbb-imagen960.webp"
+            }
+          ]
+        }
+      ],
+      "garantia": null,
+      "id": "p-parlante",
+      "marca": "Marca Ejemplo",
+      "nombre": "Parlante portátil",
+      "precioUsd": {
+        "AR": 10.33,
+        "BO": 19.99
+      },
+      "seo": {},
+      "slug": "parlante-portatil",
+      "video": null
+    },
+    {
+      "categoria": "servicios",
+      "descripcion": "No controla stock.",
+      "destacado": false,
+      "disponible": true,
+      "fotos": [
+        {
+          "alt": "Instalación",
+          "url": "https://medios.ejemplo.invalid/publico/tenants/casa-a/publico/medios/p-servicio/bbb-imagen960.webp",
+          "versiones": [
+            {
+              "ancho": 480,
+              "url": "https://medios.ejemplo.invalid/publico/tenants/casa-a/publico/medios/p-servicio/aaa-imagen480.webp"
+            },
+            {
+              "ancho": 960,
+              "url": "https://medios.ejemplo.invalid/publico/tenants/casa-a/publico/medios/p-servicio/bbb-imagen960.webp"
+            }
+          ]
+        }
+      ],
+      "garantia": null,
+      "id": "p-servicio",
+      "marca": "Marca Ejemplo",
+      "nombre": "Instalación",
+      "precioUsd": {
+        "AR": 15,
+        "BO": 15
+      },
+      "seo": {},
+      "slug": "instalacion",
+      "video": null
+    },
+    {
+      "categoria": "audio",
+      "descripcion": "Solo en depósito.",
+      "destacado": false,
+      "disponible": false,
+      "fotos": [
+        {
+          "alt": "Televisor 50\"",
+          "url": "https://medios.ejemplo.invalid/publico/tenants/casa-a/publico/medios/p-televisor/bbb-imagen960.webp",
+          "versiones": [
+            {
+              "ancho": 480,
+              "url": "https://medios.ejemplo.invalid/publico/tenants/casa-a/publico/medios/p-televisor/aaa-imagen480.webp"
+            },
+            {
+              "ancho": 960,
+              "url": "https://medios.ejemplo.invalid/publico/tenants/casa-a/publico/medios/p-televisor/bbb-imagen960.webp"
+            }
+          ]
+        }
+      ],
+      "garantia": null,
+      "id": "p-televisor",
+      "marca": "Marca Ejemplo",
+      "nombre": "Televisor 50\"",
+      "precioUsd": {
+        "AR": 450.5,
+        "BO": 450.5
+      },
+      "seo": {},
+      "slug": "televisor-50",
+      "video": null
+    }
+  ],
+  "publicacion": {
+    "publicadoEn": null,
+    "version": 3
+  },
+  "secciones": []
+}

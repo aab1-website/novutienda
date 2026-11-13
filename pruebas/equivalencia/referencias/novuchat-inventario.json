@@ -1,0 +1,166 @@
+{
+  "cuerpo": {
+    "generadoEn": "2026-11-04T15:00:00.000Z",
+    "items": [
+      {
+        "activo": true,
+        "bajoMinimo": false,
+        "conSerie": false,
+        "id": "p-adaptador",
+        "minimo": null,
+        "nombre": "Adaptador",
+        "sku": "SKU-p-adaptador",
+        "stockPorAlmacen": {
+          "deposito-1": 0,
+          "deposito-2": 0,
+          "tienda": 4
+        },
+        "stockTotal": 4
+      },
+      {
+        "activo": true,
+        "bajoMinimo": false,
+        "conSerie": false,
+        "id": "p-agotado",
+        "minimo": null,
+        "nombre": "Cargador agotado",
+        "sku": "SKU-p-agotado",
+        "stockPorAlmacen": {
+          "deposito-1": 0,
+          "deposito-2": 0,
+          "tienda": 0
+        },
+        "stockTotal": 0
+      },
+      {
+        "activo": true,
+        "bajoMinimo": false,
+        "conSerie": false,
+        "id": "p-borrador",
+        "minimo": null,
+        "nombre": "Borrador sin publicar",
+        "sku": "SKU-p-borrador",
+        "stockPorAlmacen": {
+          "deposito-1": 0,
+          "deposito-2": 0,
+          "tienda": 9
+        },
+        "stockTotal": 9
+      },
+      {
+        "activo": true,
+        "bajoMinimo": false,
+        "conSerie": false,
+        "id": "p-cable",
+        "minimo": null,
+        "nombre": "Cable USB",
+        "sku": "SKU-p-cable",
+        "stockPorAlmacen": {
+          "deposito-1": 0,
+          "deposito-2": 0,
+          "tienda": 7
+        },
+        "stockTotal": 7
+      },
+      {
+        "activo": true,
+        "bajoMinimo": false,
+        "conSerie": true,
+        "id": "p-celular",
+        "minimo": 1,
+        "nombre": "Celular X1",
+        "sku": "SKU-p-celular",
+        "stockPorAlmacen": {
+          "deposito-1": 0,
+          "deposito-2": 0,
+          "tienda": 3
+        },
+        "stockTotal": 3
+      },
+      {
+        "activo": false,
+        "bajoMinimo": false,
+        "conSerie": false,
+        "id": "p-inactivo",
+        "minimo": null,
+        "nombre": "Producto retirado",
+        "sku": "SKU-p-inactivo",
+        "stockPorAlmacen": {
+          "deposito-1": 0,
+          "deposito-2": 0,
+          "tienda": 4
+        },
+        "stockTotal": 4
+      },
+      {
+        "activo": true,
+        "bajoMinimo": false,
+        "conSerie": false,
+        "id": "p-lapiz",
+        "minimo": null,
+        "nombre": "Lápiz HB",
+        "sku": "SKU-p-lapiz",
+        "stockPorAlmacen": {
+          "deposito-1": 5,
+          "deposito-2": 0,
+          "tienda": 10
+        },
+        "stockTotal": 15
+      },
+      {
+        "activo": true,
+        "bajoMinimo": false,
+        "conSerie": false,
+        "id": "p-parlante",
+        "minimo": null,
+        "nombre": "Parlante portátil",
+        "sku": "SKU-p-parlante",
+        "stockPorAlmacen": {
+          "deposito-1": 6,
+          "deposito-2": 0,
+          "tienda": 2
+        },
+        "stockTotal": 8
+      },
+      {
+        "activo": true,
+        "bajoMinimo": false,
+        "conSerie": false,
+        "id": "p-servicio",
+        "minimo": null,
+        "nombre": "Instalación",
+        "sku": "SKU-p-servicio",
+        "stockPorAlmacen": {
+          "deposito-1": 0,
+          "deposito-2": 0,
+          "tienda": 0
+        },
+        "stockTotal": null
+      },
+      {
+        "activo": true,
+        "bajoMinimo": false,
+        "conSerie": false,
+        "id": "p-televisor",
+        "minimo": null,
+        "nombre": "Televisor 50\"",
+        "sku": "SKU-p-televisor",
+        "stockPorAlmacen": {
+          "deposito-1": 2,
+          "deposito-2": 0,
+          "tienda": 0
+        },
+        "stockTotal": 2
+      }
+    ],
+    "version": 1
+  },
+  "headers": {
+    "Cache-Control": "private, max-age=60",
+    "Content-Type": "application/json; charset=utf-8",
+    "ETag": "\"07bcae98870d6334d5b43f5d7dc7be53\"",
+    "Vary": "Authorization",
+    "X-Content-Type-Options": "nosniff"
+  },
+  "status": 200
+}

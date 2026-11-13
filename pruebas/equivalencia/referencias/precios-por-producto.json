@@ -1,0 +1,888 @@
+{
+  "cotizaciones": {
+    "AR": {
+      "cotizacionId": "AR-2026-11-04-1793804400000",
+      "estado": "vigente",
+      "fecha": "2026-11-04",
+      "fuente": "manual",
+      "par": "ARS/USD",
+      "valor": 1187.35
+    },
+    "BO": {
+      "cotizacionId": "BO-2026-11-04-1793804400000",
+      "estado": "vigente",
+      "fecha": "2026-11-04",
+      "fuente": "manual",
+      "par": "BOB/USD",
+      "valor": 6.965
+    }
+  },
+  "filas": [
+    {
+      "id": "p-lapiz",
+      "panel": {
+        "ARS": {
+          "centavos": 160000,
+          "moneda": "ARS",
+          "tipo": "precio"
+        },
+        "BOB": {
+          "centavos": 871,
+          "moneda": "BOB",
+          "tipo": "precio"
+        },
+        "BOB_sinCotizacion": {
+          "tipo": "sin_cotizacion"
+        },
+        "USD_AR": {
+          "centavos": 133,
+          "moneda": "USD",
+          "tipo": "precio"
+        },
+        "USD_BO": {
+          "centavos": 125,
+          "moneda": "USD",
+          "tipo": "precio"
+        }
+      },
+      "precioFinal": {
+        "AR": {
+          "centavos": 160000,
+          "moneda": "ARS",
+          "monto": 1600,
+          "tipo": "precio"
+        },
+        "BO": {
+          "centavos": 871,
+          "moneda": "BOB",
+          "monto": 8.71,
+          "tipo": "precio"
+        }
+      },
+      "precioUSDcentavos": {
+        "ar": 133,
+        "bo": 125
+      },
+      "preciosDelDia": {
+        "AR": {
+          "centavos": 160000,
+          "moneda": "ARS",
+          "monto": 1600,
+          "tipo": "precio"
+        },
+        "BO": {
+          "centavos": 871,
+          "moneda": "BOB",
+          "monto": 8.71,
+          "tipo": "precio"
+        }
+      },
+      "preciosDelDiaSinCotizacion": {
+        "AR": {
+          "tipo": "sin_cotizacion"
+        },
+        "BO": {
+          "tipo": "sin_cotizacion"
+        }
+      },
+      "sitio": {
+        "AR": {
+          "aviso": null,
+          "centavos": 160000,
+          "texto": "$ 1.600",
+          "tipo": "precio"
+        },
+        "BO": {
+          "aviso": null,
+          "centavos": 871,
+          "texto": "Bs 8,71",
+          "tipo": "precio"
+        },
+        "BOcargando": {
+          "tipo": "cargando"
+        },
+        "BOsinCotizacion": {
+          "tipo": "sin_cotizacion"
+        }
+      }
+    },
+    {
+      "id": "p-celular",
+      "panel": {
+        "ARS": {
+          "centavos": 24930000,
+          "moneda": "ARS",
+          "tipo": "precio"
+        },
+        "BOB": {
+          "centavos": 139293,
+          "moneda": "BOB",
+          "tipo": "precio"
+        },
+        "BOB_sinCotizacion": {
+          "tipo": "sin_cotizacion"
+        },
+        "USD_AR": {
+          "centavos": 20999,
+          "moneda": "USD",
+          "tipo": "precio"
+        },
+        "USD_BO": {
+          "centavos": 19999,
+          "moneda": "USD",
+          "tipo": "precio"
+        }
+      },
+      "precioFinal": {
+        "AR": {
+          "centavos": 24930000,
+          "moneda": "ARS",
+          "monto": 249300,
+          "tipo": "precio"
+        },
+        "BO": {
+          "centavos": 139293,
+          "moneda": "BOB",
+          "monto": 1392.93,
+          "tipo": "precio"
+        }
+      },
+      "precioUSDcentavos": {
+        "ar": 20999,
+        "bo": 19999
+      },
+      "preciosDelDia": {
+        "AR": {
+          "centavos": 24930000,
+          "moneda": "ARS",
+          "monto": 249300,
+          "tipo": "precio"
+        },
+        "BO": {
+          "centavos": 139293,
+          "moneda": "BOB",
+          "monto": 1392.93,
+          "tipo": "precio"
+        }
+      },
+      "preciosDelDiaSinCotizacion": {
+        "AR": {
+          "tipo": "sin_cotizacion"
+        },
+        "BO": {
+          "tipo": "sin_cotizacion"
+        }
+      },
+      "sitio": {
+        "AR": {
+          "aviso": null,
+          "centavos": 24930000,
+          "texto": "$ 249.300",
+          "tipo": "precio"
+        },
+        "BO": {
+          "aviso": null,
+          "centavos": 139293,
+          "texto": "Bs 1.392,93",
+          "tipo": "precio"
+        },
+        "BOcargando": {
+          "tipo": "cargando"
+        },
+        "BOsinCotizacion": {
+          "tipo": "sin_cotizacion"
+        }
+      }
+    },
+    {
+      "id": "p-cable",
+      "panel": {
+        "ARS": {
+          "tipo": "sin_precio"
+        },
+        "BOB": {
+          "centavos": 2319,
+          "moneda": "BOB",
+          "tipo": "precio"
+        },
+        "BOB_sinCotizacion": {
+          "tipo": "sin_cotizacion"
+        },
+        "USD_AR": {
+          "tipo": "sin_precio"
+        },
+        "USD_BO": {
+          "centavos": 333,
+          "moneda": "USD",
+          "tipo": "precio"
+        }
+      },
+      "precioFinal": {
+        "AR": {
+          "tipo": "sin_precio"
+        },
+        "BO": {
+          "centavos": 2319,
+          "moneda": "BOB",
+          "monto": 23.19,
+          "tipo": "precio"
+        }
+      },
+      "precioUSDcentavos": {
+        "ar": 0,
+        "bo": 333
+      },
+      "preciosDelDia": {
+        "AR": {
+          "tipo": "sin_precio"
+        },
+        "BO": {
+          "centavos": 2319,
+          "moneda": "BOB",
+          "monto": 23.19,
+          "tipo": "precio"
+        }
+      },
+      "preciosDelDiaSinCotizacion": {
+        "AR": {
+          "tipo": "sin_cotizacion"
+        },
+        "BO": {
+          "tipo": "sin_cotizacion"
+        }
+      },
+      "sitio": {
+        "AR": {
+          "tipo": "consultar"
+        },
+        "BO": {
+          "aviso": null,
+          "centavos": 2319,
+          "texto": "Bs 23,19",
+          "tipo": "precio"
+        },
+        "BOcargando": {
+          "tipo": "cargando"
+        },
+        "BOsinCotizacion": {
+          "tipo": "sin_cotizacion"
+        }
+      }
+    },
+    {
+      "id": "p-adaptador",
+      "panel": {
+        "ARS": {
+          "centavos": 530000,
+          "moneda": "ARS",
+          "tipo": "precio"
+        },
+        "BOB": {
+          "tipo": "sin_precio"
+        },
+        "BOB_sinCotizacion": {
+          "tipo": "sin_precio"
+        },
+        "USD_AR": {
+          "centavos": 450,
+          "moneda": "USD",
+          "tipo": "precio"
+        },
+        "USD_BO": {
+          "tipo": "sin_precio"
+        }
+      },
+      "precioFinal": {
+        "AR": {
+          "centavos": 530000,
+          "moneda": "ARS",
+          "monto": 5300,
+          "tipo": "precio"
+        },
+        "BO": {
+          "tipo": "sin_precio"
+        }
+      },
+      "precioUSDcentavos": {
+        "ar": 450,
+        "bo": 0
+      },
+      "preciosDelDia": {
+        "AR": {
+          "centavos": 530000,
+          "moneda": "ARS",
+          "monto": 5300,
+          "tipo": "precio"
+        },
+        "BO": {
+          "tipo": "sin_precio"
+        }
+      },
+      "preciosDelDiaSinCotizacion": {
+        "AR": {
+          "tipo": "sin_cotizacion"
+        },
+        "BO": {
+          "tipo": "sin_cotizacion"
+        }
+      },
+      "sitio": {
+        "AR": {
+          "aviso": null,
+          "centavos": 530000,
+          "texto": "$ 5.300",
+          "tipo": "precio"
+        },
+        "BO": {
+          "tipo": "consultar"
+        },
+        "BOcargando": {
+          "tipo": "consultar"
+        },
+        "BOsinCotizacion": {
+          "tipo": "consultar"
+        }
+      }
+    },
+    {
+      "id": "p-parlante",
+      "panel": {
+        "ARS": {
+          "centavos": 1230000,
+          "moneda": "ARS",
+          "tipo": "precio"
+        },
+        "BOB": {
+          "centavos": 13923,
+          "moneda": "BOB",
+          "tipo": "precio"
+        },
+        "BOB_sinCotizacion": {
+          "tipo": "sin_cotizacion"
+        },
+        "USD_AR": {
+          "centavos": 1033,
+          "moneda": "USD",
+          "tipo": "precio"
+        },
+        "USD_BO": {
+          "centavos": 1999,
+          "moneda": "USD",
+          "tipo": "precio"
+        }
+      },
+      "precioFinal": {
+        "AR": {
+          "centavos": 1230000,
+          "moneda": "ARS",
+          "monto": 12300,
+          "tipo": "precio"
+        },
+        "BO": {
+          "centavos": 13923,
+          "moneda": "BOB",
+          "monto": 139.23,
+          "tipo": "precio"
+        }
+      },
+      "precioUSDcentavos": {
+        "ar": 1033,
+        "bo": 1999
+      },
+      "preciosDelDia": {
+        "AR": {
+          "centavos": 1230000,
+          "moneda": "ARS",
+          "monto": 12300,
+          "tipo": "precio"
+        },
+        "BO": {
+          "centavos": 13923,
+          "moneda": "BOB",
+          "monto": 139.23,
+          "tipo": "precio"
+        }
+      },
+      "preciosDelDiaSinCotizacion": {
+        "AR": {
+          "tipo": "sin_cotizacion"
+        },
+        "BO": {
+          "tipo": "sin_cotizacion"
+        }
+      },
+      "sitio": {
+        "AR": {
+          "aviso": null,
+          "centavos": 1230000,
+          "texto": "$ 12.300",
+          "tipo": "precio"
+        },
+        "BO": {
+          "aviso": null,
+          "centavos": 13923,
+          "texto": "Bs 139,23",
+          "tipo": "precio"
+        },
+        "BOcargando": {
+          "tipo": "cargando"
+        },
+        "BOsinCotizacion": {
+          "tipo": "sin_cotizacion"
+        }
+      }
+    },
+    {
+      "id": "p-televisor",
+      "panel": {
+        "ARS": {
+          "centavos": 53490000,
+          "moneda": "ARS",
+          "tipo": "precio"
+        },
+        "BOB": {
+          "centavos": 313773,
+          "moneda": "BOB",
+          "tipo": "precio"
+        },
+        "BOB_sinCotizacion": {
+          "tipo": "sin_cotizacion"
+        },
+        "USD_AR": {
+          "centavos": 45050,
+          "moneda": "USD",
+          "tipo": "precio"
+        },
+        "USD_BO": {
+          "centavos": 45050,
+          "moneda": "USD",
+          "tipo": "precio"
+        }
+      },
+      "precioFinal": {
+        "AR": {
+          "centavos": 53490000,
+          "moneda": "ARS",
+          "monto": 534900,
+          "tipo": "precio"
+        },
+        "BO": {
+          "centavos": 313773,
+          "moneda": "BOB",
+          "monto": 3137.73,
+          "tipo": "precio"
+        }
+      },
+      "precioUSDcentavos": {
+        "ar": 45050,
+        "bo": 45050
+      },
+      "preciosDelDia": {
+        "AR": {
+          "centavos": 53490000,
+          "moneda": "ARS",
+          "monto": 534900,
+          "tipo": "precio"
+        },
+        "BO": {
+          "centavos": 313773,
+          "moneda": "BOB",
+          "monto": 3137.73,
+          "tipo": "precio"
+        }
+      },
+      "preciosDelDiaSinCotizacion": {
+        "AR": {
+          "tipo": "sin_cotizacion"
+        },
+        "BO": {
+          "tipo": "sin_cotizacion"
+        }
+      },
+      "sitio": {
+        "AR": {
+          "aviso": null,
+          "centavos": 53490000,
+          "texto": "$ 534.900",
+          "tipo": "precio"
+        },
+        "BO": {
+          "aviso": null,
+          "centavos": 313773,
+          "texto": "Bs 3.137,73",
+          "tipo": "precio"
+        },
+        "BOcargando": {
+          "tipo": "cargando"
+        },
+        "BOsinCotizacion": {
+          "tipo": "sin_cotizacion"
+        }
+      }
+    },
+    {
+      "id": "p-agotado",
+      "panel": {
+        "ARS": {
+          "centavos": 1780000,
+          "moneda": "ARS",
+          "tipo": "precio"
+        },
+        "BOB": {
+          "centavos": 10448,
+          "moneda": "BOB",
+          "tipo": "precio"
+        },
+        "BOB_sinCotizacion": {
+          "tipo": "sin_cotizacion"
+        },
+        "USD_AR": {
+          "centavos": 1500,
+          "moneda": "USD",
+          "tipo": "precio"
+        },
+        "USD_BO": {
+          "centavos": 1500,
+          "moneda": "USD",
+          "tipo": "precio"
+        }
+      },
+      "precioFinal": {
+        "AR": {
+          "centavos": 1780000,
+          "moneda": "ARS",
+          "monto": 17800,
+          "tipo": "precio"
+        },
+        "BO": {
+          "centavos": 10448,
+          "moneda": "BOB",
+          "monto": 104.48,
+          "tipo": "precio"
+        }
+      },
+      "precioUSDcentavos": {
+        "ar": 1500,
+        "bo": 1500
+      },
+      "preciosDelDia": {
+        "AR": {
+          "centavos": 1780000,
+          "moneda": "ARS",
+          "monto": 17800,
+          "tipo": "precio"
+        },
+        "BO": {
+          "centavos": 10448,
+          "moneda": "BOB",
+          "monto": 104.48,
+          "tipo": "precio"
+        }
+      },
+      "preciosDelDiaSinCotizacion": {
+        "AR": {
+          "tipo": "sin_cotizacion"
+        },
+        "BO": {
+          "tipo": "sin_cotizacion"
+        }
+      },
+      "sitio": {
+        "AR": {
+          "aviso": null,
+          "centavos": 1780000,
+          "texto": "$ 17.800",
+          "tipo": "precio"
+        },
+        "BO": {
+          "aviso": null,
+          "centavos": 10448,
+          "texto": "Bs 104,48",
+          "tipo": "precio"
+        },
+        "BOcargando": {
+          "tipo": "cargando"
+        },
+        "BOsinCotizacion": {
+          "tipo": "sin_cotizacion"
+        }
+      }
+    },
+    {
+      "id": "p-inactivo",
+      "panel": {
+        "ARS": {
+          "centavos": 950000,
+          "moneda": "ARS",
+          "tipo": "precio"
+        },
+        "BOB": {
+          "centavos": 5572,
+          "moneda": "BOB",
+          "tipo": "precio"
+        },
+        "BOB_sinCotizacion": {
+          "tipo": "sin_cotizacion"
+        },
+        "USD_AR": {
+          "centavos": 800,
+          "moneda": "USD",
+          "tipo": "precio"
+        },
+        "USD_BO": {
+          "centavos": 800,
+          "moneda": "USD",
+          "tipo": "precio"
+        }
+      },
+      "precioFinal": {
+        "AR": {
+          "centavos": 950000,
+          "moneda": "ARS",
+          "monto": 9500,
+          "tipo": "precio"
+        },
+        "BO": {
+          "centavos": 5572,
+          "moneda": "BOB",
+          "monto": 55.72,
+          "tipo": "precio"
+        }
+      },
+      "precioUSDcentavos": {
+        "ar": 800,
+        "bo": 800
+      },
+      "preciosDelDia": {
+        "AR": {
+          "centavos": 950000,
+          "moneda": "ARS",
+          "monto": 9500,
+          "tipo": "precio"
+        },
+        "BO": {
+          "centavos": 5572,
+          "moneda": "BOB",
+          "monto": 55.72,
+          "tipo": "precio"
+        }
+      },
+      "preciosDelDiaSinCotizacion": {
+        "AR": {
+          "tipo": "sin_cotizacion"
+        },
+        "BO": {
+          "tipo": "sin_cotizacion"
+        }
+      },
+      "sitio": {
+        "AR": {
+          "aviso": null,
+          "centavos": 950000,
+          "texto": "$ 9.500",
+          "tipo": "precio"
+        },
+        "BO": {
+          "aviso": null,
+          "centavos": 5572,
+          "texto": "Bs 55,72",
+          "tipo": "precio"
+        },
+        "BOcargando": {
+          "tipo": "cargando"
+        },
+        "BOsinCotizacion": {
+          "tipo": "sin_cotizacion"
+        }
+      }
+    },
+    {
+      "id": "p-servicio",
+      "panel": {
+        "ARS": {
+          "centavos": 1780000,
+          "moneda": "ARS",
+          "tipo": "precio"
+        },
+        "BOB": {
+          "centavos": 10448,
+          "moneda": "BOB",
+          "tipo": "precio"
+        },
+        "BOB_sinCotizacion": {
+          "tipo": "sin_cotizacion"
+        },
+        "USD_AR": {
+          "centavos": 1500,
+          "moneda": "USD",
+          "tipo": "precio"
+        },
+        "USD_BO": {
+          "centavos": 1500,
+          "moneda": "USD",
+          "tipo": "precio"
+        }
+      },
+      "precioFinal": {
+        "AR": {
+          "centavos": 1780000,
+          "moneda": "ARS",
+          "monto": 17800,
+          "tipo": "precio"
+        },
+        "BO": {
+          "centavos": 10448,
+          "moneda": "BOB",
+          "monto": 104.48,
+          "tipo": "precio"
+        }
+      },
+      "precioUSDcentavos": {
+        "ar": 1500,
+        "bo": 1500
+      },
+      "preciosDelDia": {
+        "AR": {
+          "centavos": 1780000,
+          "moneda": "ARS",
+          "monto": 17800,
+          "tipo": "precio"
+        },
+        "BO": {
+          "centavos": 10448,
+          "moneda": "BOB",
+          "monto": 104.48,
+          "tipo": "precio"
+        }
+      },
+      "preciosDelDiaSinCotizacion": {
+        "AR": {
+          "tipo": "sin_cotizacion"
+        },
+        "BO": {
+          "tipo": "sin_cotizacion"
+        }
+      },
+      "sitio": {
+        "AR": {
+          "aviso": null,
+          "centavos": 1780000,
+          "texto": "$ 17.800",
+          "tipo": "precio"
+        },
+        "BO": {
+          "aviso": null,
+          "centavos": 10448,
+          "texto": "Bs 104,48",
+          "tipo": "precio"
+        },
+        "BOcargando": {
+          "tipo": "cargando"
+        },
+        "BOsinCotizacion": {
+          "tipo": "sin_cotizacion"
+        }
+      }
+    },
+    {
+      "id": "p-borrador",
+      "panel": {
+        "ARS": {
+          "centavos": 590000,
+          "moneda": "ARS",
+          "tipo": "precio"
+        },
+        "BOB": {
+          "centavos": 3483,
+          "moneda": "BOB",
+          "tipo": "precio"
+        },
+        "BOB_sinCotizacion": {
+          "tipo": "sin_cotizacion"
+        },
+        "USD_AR": {
+          "centavos": 500,
+          "moneda": "USD",
+          "tipo": "precio"
+        },
+        "USD_BO": {
+          "centavos": 500,
+          "moneda": "USD",
+          "tipo": "precio"
+        }
+      },
+      "precioFinal": {
+        "AR": {
+          "centavos": 590000,
+          "moneda": "ARS",
+          "monto": 5900,
+          "tipo": "precio"
+        },
+        "BO": {
+          "centavos": 3483,
+          "moneda": "BOB",
+          "monto": 34.83,
+          "tipo": "precio"
+        }
+      },
+      "precioUSDcentavos": {
+        "ar": 500,
+        "bo": 500
+      },
+      "preciosDelDia": {
+        "AR": {
+          "centavos": 590000,
+          "moneda": "ARS",
+          "monto": 5900,
+          "tipo": "precio"
+        },
+        "BO": {
+          "centavos": 3483,
+          "moneda": "BOB",
+          "monto": 34.83,
+          "tipo": "precio"
+        }
+      },
+      "preciosDelDiaSinCotizacion": {
+        "AR": {
+          "tipo": "sin_cotizacion"
+        },
+        "BO": {
+          "tipo": "sin_cotizacion"
+        }
+      },
+      "sitio": {
+        "AR": {
+          "aviso": null,
+          "centavos": 590000,
+          "texto": "$ 5.900",
+          "tipo": "precio"
+        },
+        "BO": {
+          "aviso": null,
+          "centavos": 3483,
+          "texto": "Bs 34,83",
+          "tipo": "precio"
+        },
+        "BOcargando": {
+          "tipo": "cargando"
+        },
+        "BOsinCotizacion": {
+          "tipo": "sin_cotizacion"
+        }
+      }
+    }
+  ],
+  "redondeo": {
+    "ARS": {
+      "modo": "cercano",
+      "multiplo": 100,
+      "tipo": "multiplo"
+    },
+    "BOB": {
+      "decimales": 2,
+      "modo": "cercano",
+      "tipo": "decimales"
+    }
+  }
+}

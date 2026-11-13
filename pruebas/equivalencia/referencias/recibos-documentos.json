@@ -1,0 +1,242 @@
+[
+  {
+    "cliente": {
+      "nombre": "Ana Pérez",
+      "telefono": "70000000"
+    },
+    "cotizacion": {
+      "cotizacionId": "BO-2026-11-04-1793804400000",
+      "estado": "vigente",
+      "fecha": "2026-11-04",
+      "fuente": "manual",
+      "par": "BOB/USD",
+      "valor": 6.965
+    },
+    "creadoEn": "MARCA",
+    "emitidoEn": "2026-11-04T15:00:00.000Z",
+    "envioWhatsapp": {
+      "estado": "no_enviado"
+    },
+    "estado": "EMITIDO",
+    "fecha": "2026-11-04",
+    "lineas": [
+      {
+        "cantidad": 1,
+        "garantiaHasta": "2027-11-04",
+        "garantiaMeses": 12,
+        "nombre": "Celular X1",
+        "precioUnitario": 139293,
+        "productoId": "p-celular",
+        "series": [
+          "A"
+        ],
+        "subtotal": 139293
+      },
+      {
+        "cantidad": 2,
+        "nombre": "Lápiz HB",
+        "precioUnitario": 871,
+        "productoId": "p-lapiz",
+        "series": [],
+        "subtotal": 1742
+      }
+    ],
+    "moneda": "BOB",
+    "numero": "A-000001",
+    "pagos": [
+      {
+        "medio": "efectivo",
+        "moneda": "BOB",
+        "monto": 110000
+      },
+      {
+        "medio": "qr",
+        "moneda": "BOB",
+        "monto": 41035
+      }
+    ],
+    "plantilla": {
+      "negocio": {
+        "direccion": "Calle Ficticia 123",
+        "nit": "1000000000",
+        "nombre": "Tienda de Ejemplo",
+        "telefono": "70000000"
+      },
+      "pie": "Gracias por su compra.",
+      "politicaGarantia": "Garantía según ficha del producto."
+    },
+    "reciboId": "recibo-00000000-0000-4000-8000-000000000001",
+    "tenantId": "casa-a",
+    "total": 141035,
+    "ventaId": "00000000-0000-4000-8000-000000000001"
+  },
+  {
+    "cotizacion": null,
+    "creadoEn": "MARCA",
+    "emitidoEn": "2026-11-04T15:00:00.000Z",
+    "envioWhatsapp": {
+      "estado": "no_enviado"
+    },
+    "estado": "EMITIDO",
+    "fecha": "2026-11-04",
+    "lineas": [
+      {
+        "cantidad": 3,
+        "nombre": "Lápiz HB",
+        "precioUnitario": 125,
+        "productoId": "p-lapiz",
+        "series": [],
+        "subtotal": 375
+      },
+      {
+        "cantidad": 1,
+        "nombre": "Cable USB",
+        "precioUnitario": 333,
+        "productoId": "p-cable",
+        "series": [],
+        "subtotal": 333
+      }
+    ],
+    "moneda": "USD",
+    "numero": "A-000002",
+    "pagos": [
+      {
+        "medio": "efectivo",
+        "moneda": "USD",
+        "monto": 500
+      },
+      {
+        "medio": "transferencia",
+        "moneda": "USD",
+        "monto": 300
+      }
+    ],
+    "plantilla": {
+      "negocio": {
+        "direccion": "Calle Ficticia 123",
+        "nit": "1000000000",
+        "nombre": "Tienda de Ejemplo",
+        "telefono": "70000000"
+      },
+      "pie": "Gracias por su compra.",
+      "politicaGarantia": "Garantía según ficha del producto."
+    },
+    "reciboId": "recibo-00000000-0000-4000-8000-000000000002",
+    "tenantId": "casa-a",
+    "total": 708,
+    "ventaId": "00000000-0000-4000-8000-000000000002"
+  },
+  {
+    "cotizacion": {
+      "cotizacionId": "AR-2026-11-04-1793804400000",
+      "estado": "vigente",
+      "fecha": "2026-11-04",
+      "fuente": "manual",
+      "par": "ARS/USD",
+      "valor": 1187.35
+    },
+    "creadoEn": "MARCA",
+    "emitidoEn": "2026-11-04T15:00:00.000Z",
+    "envioWhatsapp": {
+      "estado": "no_enviado"
+    },
+    "estado": "EMITIDO",
+    "fecha": "2026-11-04",
+    "lineas": [
+      {
+        "cantidad": 1,
+        "nombre": "Parlante portátil",
+        "precioUnitario": 1230000,
+        "productoId": "p-parlante",
+        "series": [],
+        "subtotal": 1230000
+      },
+      {
+        "cantidad": 2,
+        "nombre": "Adaptador",
+        "precioUnitario": 530000,
+        "productoId": "p-adaptador",
+        "series": [],
+        "subtotal": 1060000
+      }
+    ],
+    "moneda": "ARS",
+    "numero": "A-000003",
+    "pagos": [
+      {
+        "medio": "efectivo",
+        "moneda": "ARS",
+        "monto": 2100000
+      },
+      {
+        "medio": "transferencia",
+        "moneda": "ARS",
+        "monto": 290000
+      }
+    ],
+    "plantilla": {
+      "negocio": {
+        "direccion": "Calle Ficticia 123",
+        "nit": "1000000000",
+        "nombre": "Tienda de Ejemplo",
+        "telefono": "70000000"
+      },
+      "pie": "Gracias por su compra.",
+      "politicaGarantia": "Garantía según ficha del producto."
+    },
+    "reciboId": "recibo-00000000-0000-4000-8000-000000000003",
+    "tenantId": "casa-a",
+    "total": 2290000,
+    "ventaId": "00000000-0000-4000-8000-000000000003"
+  },
+  {
+    "cotizacion": {
+      "cotizacionId": "BO-2026-11-04-1793804400000",
+      "estado": "vigente",
+      "fecha": "2026-11-04",
+      "fuente": "manual",
+      "par": "BOB/USD",
+      "valor": 6.965
+    },
+    "creadoEn": "MARCA",
+    "emitidoEn": "2026-11-04T15:00:00.000Z",
+    "envioWhatsapp": {
+      "estado": "no_enviado"
+    },
+    "estado": "EMITIDO",
+    "fecha": "2026-11-04",
+    "lineas": [
+      {
+        "cantidad": 1,
+        "nombre": "Instalación",
+        "precioUnitario": 10448,
+        "productoId": "p-servicio",
+        "series": [],
+        "subtotal": 10448
+      }
+    ],
+    "moneda": "BOB",
+    "numero": "A-000004",
+    "pagos": [
+      {
+        "medio": "efectivo",
+        "moneda": "BOB",
+        "monto": 10448
+      }
+    ],
+    "plantilla": {
+      "negocio": {
+        "direccion": "Calle Ficticia 123",
+        "nit": "1000000000",
+        "nombre": "Tienda de Ejemplo",
+        "telefono": "70000000"
+      },
+      "pie": "Gracias por su compra.",
+      "politicaGarantia": "Garantía según ficha del producto."
+    },
+    "reciboId": "recibo-00000000-0000-4000-8000-000000000004",
+    "tenantId": "casa-a",
+    "total": 10448,
+    "ventaId": "00000000-0000-4000-8000-000000000004"
+  }
+]

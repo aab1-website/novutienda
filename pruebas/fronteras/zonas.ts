@@ -44,6 +44,7 @@ export const ZONA_POR_ARCHIVO: readonly ReglaZona[] = [
 
   // ---- Pruebas: la zona que prueban (plano §3, fila `pruebas:<zona>`) ----------------------------
   { patron: /^pruebas\/(funciones|integracion)\//, zona: 'pruebas:coordinador' },
+  { patron: /^pruebas\/equivalencia\//, zona: 'pruebas:coordinador', nota: 'batería de equivalencia de Casa Bermejo: ejerce el contrato con NovuChat, el sitio, la caja y los CSV de punta a punta (como integracion/)' },
   { patron: /^pruebas\/registro\.test\.ts$/, zona: 'pruebas:coordinador', nota: 'prueba el registro de módulos' },
   { patron: /^pruebas\/fotos\//, zona: 'pruebas:coordinador', nota: 'fotos congeladas de permisos y menú que ata el registro; L2-3 y L2-4 no las tocan' },
   { patron: /^pruebas\/panel\//, zona: 'pruebas:central' },
