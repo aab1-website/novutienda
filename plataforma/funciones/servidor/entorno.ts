@@ -26,7 +26,7 @@ import type { GuardarContacto, LectorDisponibilidad, VerificadorAppCheck, Verifi
 import { exigirBucketPublico, PARAMETROS } from './config.js';
 import { crearDisparadorSitio } from './disparador-sitio.js';
 import { emisorEnlaceEmulador, emisorEnlaceFirmado, type EmisorEnlacePdf } from './enlace-pdf.js';
-import { comoRedondeoLegado, lectorRedondeo, type LectorRedondeo } from './redondeo.js';
+import { lectorRedondeo, lectorRedondeoDe, type LectorRedondeo } from './redondeo.js';
 
 export interface Entorno {
   readonly firestore: Firestore;
@@ -57,9 +57,9 @@ export interface Entorno {
    * documento inválido lanzan `ComercialInvalida`; nunca entrega una configuración por defecto. Firma: `(tenantId: string) => Promise<ConfiguracionComercial>`.
    */
   readonly comercialDelTenant: LectorComercial;
-  /** Política de redondeo efectiva por moneda de venta del tenant (su configuración; `config/redondeo` la sobrescribe si existe). */
+  /** Política de redondeo efectiva por moneda de venta del tenant (su configuración; `config/redondeo` la sobrescribe si existe). Un cambio del operador tarda hasta 60 s en propagarse. */
   readonly redondeoDelTenant: LectorRedondeo;
-  /** @deprecated LEGADO con la forma BOB/ARS (falla si el tenant no vende en ambas): usar `redondeoDelTenant` (B2 a B4). */
+  /** @deprecated LEGADO, como en main: política BOB/ARS de `config/redondeo`, sin leer `tenants/{t}`. Usar `redondeoDelTenant` (B2 a B4). */
   readonly redondeo: (tenantId: string) => Promise<Redondeo>;
   /** `DepsPos` del tenant, con la política de redondeo de su configuración. */
   depsPos(tenantId: string): Promise<DepsPos>;
@@ -84,8 +84,8 @@ export function crearEntorno(o: OpcionesEntorno): Entorno {
   const env = o.env ?? process.env;
   const db = crearBaseDatos(o.firestore);
   const comercialDelTenant = crearLectorComercial(o.firestore, ahora);
-  const redondeoDelTenant = lectorRedondeo(db, ahora, comercialDelTenant);
-  const redondeo = async (tenantId: string): Promise<Redondeo> => comoRedondeoLegado(await redondeoDelTenant(tenantId));
+  const redondeoDelTenant = lectorRedondeoDe(db, ahora, comercialDelTenant);
+  const redondeo = lectorRedondeo(db, ahora); // LEGADO: como en main (misma fuente y mismos fallos), hasta B2 a B4
   const emulador = env['FUNCTIONS_EMULATOR'] === 'true';
   const lectoresModulos = crearLectoresModulos(o.firestore, ahora);
   return {

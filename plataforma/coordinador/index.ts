@@ -9,5 +9,5 @@ export { catalogoParaPos, inventariosParaPos } from './inventarios-pos.js';
 export { centavosADolares, dolaresACentavos } from './producto-inventarios.js';
 export { crearLectorHojas, leerPrimeraHojaXlsx, XlsxInvalido } from './lector-hojas.js';
 export { bloqueoPorConteo, DETALLES_STOCK_OCULTO, faltantesVisibles, MENSAJE_STOCK_OCULTO, recortarDetallesDeStock } from './stock-oculto.js';
-export { ComercialInvalida, crearLectorComercial, vistaComercial, TTL_COMERCIAL_MS, TTL_COMERCIAL_NEGATIVO_MS } from './comercial.js';
+export { ComercialInvalida, crearLectorComercial, vistaComercial, TTL_COMERCIAL_MS, TTL_COMERCIAL_NEGATIVO_MS, MAX_ENTRADAS_COMERCIAL } from './comercial.js';
 export type { LectorComercial, VistaComercial } from './comercial.js';

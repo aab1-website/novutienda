@@ -56,8 +56,8 @@ describe.skipIf(!hayEmulador)('configuración comercial del tenant (emulador)', 
     expect(c.mercados.map((m) => m.id)).toEqual(['CO']);
     expect(c.monedas).toEqual(['COP']);
     expect(await e.redondeoDelTenant(t)).toEqual({ COP: { tipo: 'multiplo', multiplo: 50, modo: 'cercano' } });
-    // La forma BOB/ARS de los callers de B2 a B4 no existe para este tenant: falla cerrado.
-    await expect(e.redondeo(t)).rejects.toThrow(RedondeoInvalido);
+    // `e.redondeo` (LEGADO, hasta B2 a B4) se comporta como en main: lee solo `config/redondeo`, no `tenants/{t}`.
+    expect(await e.redondeo(await sembrar('rl', { estado: 'activo', plan: 'base', modulos: {} }))).toEqual({ BOB: { tipo: 'decimales', decimales: 2, modo: 'cercano' }, ARS: { tipo: 'multiplo', multiplo: 100, modo: 'cercano' } });
   });
 
   it('la proyección para el panel trae mercados y monedas de caja, nunca fuentes ni par', async () => {

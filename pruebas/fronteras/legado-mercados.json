@@ -42,7 +42,8 @@
       "paquetes/consola/src/tablero.ts",
       "paquetes/panel/src/util/precio.ts",
       "paquetes/pos/src/venta.ts",
-      "paquetes/website/src/lib/precio-vista.ts"
+      "paquetes/website/src/lib/precio-vista.ts",
+      "plataforma/funciones/servidor/http/novuchat.ts"
     ]
   }
 }

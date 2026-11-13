@@ -107,8 +107,15 @@ function conCodigo(error: HttpsError, codigoPorDefecto?: string): HttpsError {
  */
 export function comoHttpsError(error: unknown, contexto: Readonly<Record<string, unknown>>): HttpsError {
   if (error instanceof HttpsError) return conCodigo(error);
-  if (error instanceof RedondeoInvalido) return conCodigo(new HttpsError('failed-precondition', error.message), 'redondeo-invalido');
-  if (error instanceof ComercialInvalida) return conCodigo(new HttpsError('failed-precondition', error.message), 'comercial-invalida');
+  if (error instanceof RedondeoInvalido) {
+    logger.error('callable rechazado', { ...contexto, alerta: 'redondeo', motivo: 'redondeo-invalido' });
+    return conCodigo(new HttpsError('failed-precondition', error.message), 'redondeo-invalido');
+  }
+  if (error instanceof ComercialInvalida) {
+    // Solo el motivo ('inexistente' o 'invalido'): nunca el documento ni datos personales.
+    logger.error('callable rechazado', { ...contexto, alerta: 'comercial', motivo: error.motivo });
+    return conCodigo(new HttpsError('failed-precondition', error.message), 'comercial-invalida');
+  }
   const bloqueo = bloqueoPorConteo(error);
   if (bloqueo !== undefined) {
     logger.warn('callable rechazado', { ...contexto, codigo: 'failed-precondition' });

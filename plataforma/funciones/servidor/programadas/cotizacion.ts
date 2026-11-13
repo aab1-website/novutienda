@@ -5,7 +5,8 @@
 // corre el núcleo (`actualizarMercado`) y a las 07:00 dispara la reconstrucción diaria del sitio (módulo consola): por
 // la prueba de ubicación coordina dos zonas. El núcleo puro de la cotización vive en `paquetes/nucleo/src/tipo-cambio`.
 import { logger } from 'firebase-functions';
-import { actualizarMercadoDe, mercadosDe, tieneTipoCambio, type ConfiguracionComercial, type OpcionesDescarga } from '@novutienda/nucleo';
+import { actualizarMercadoDe, mercadosDe, tieneTipoCambio, type OpcionesDescarga } from '@novutienda/nucleo';
+import { ComercialInvalida } from '../../../coordinador/comercial.js';
 import type { Entorno } from '../entorno.js';
 import { crearNotificador } from '../notificador.js';
 import { ejecutarReconstruccion } from './consola.js';
@@ -23,15 +24,6 @@ export interface ResumenCotizacion {
   readonly fallas: number;
 }
 
-async function comercialOUndefined(e: Entorno, tenantId: string): Promise<ConfiguracionComercial | undefined> {
-  try {
-    return await e.comercialDelTenant(tenantId);
-  } catch (err) {
-    logger.error('cotización: el tenant no tiene configuración comercial válida', { alerta: 'cotizacion', tipo: 'comercial_invalida', tenantId, error: err instanceof Error ? err.name : 'desconocido' });
-    return undefined;
-  }
-}
-
 /**
  * Actualiza, para cada tenant, SOLO los mercados con tipo de cambio de SU configuración comercial: un tenant sin ninguno no
  * consulta ninguna fuente. Un mercado que falla no impide el otro y un tenant que falla no detiene a los demás; si algo lanza,
@@ -44,11 +36,21 @@ export async function ejecutarCotizaciones(e: Entorno, descarga: OpcionesDescarg
   let error: unknown;
   for (const tenantId of await listarTenants(e)) {
     const notificador = crearNotificador(e.firestore, tenantId, e.ahora);
-    const comercial = await comercialOUndefined(e, tenantId);
-    const mercados = comercial === undefined ? [] : mercadosDe(comercial).filter((m) => tieneTipoCambio(comercial, m));
-    for (const mercado of mercados) {
+    // Solo una configuración inexistente o inválida se salta (con alerta). Cualquier otro error (p. ej. un fallo de lectura de
+    // Firestore) sigue el camino de siempre: se registra, los demás tenants continúan y la corrida falla al final.
+    const lectura = await e.comercialDelTenant(tenantId).then((c) => ({ c }), (err: unknown) => ({ err }));
+    if ('err' in lectura) {
+      if (lectura.err instanceof ComercialInvalida) logger.error('cotización: el tenant no tiene configuración comercial válida', { alerta: 'cotizacion', tipo: 'comercial_invalida', tenantId, error: lectura.err.name });
+      else {
+        error ??= lectura.err;
+        logger.error('falló la lectura de la configuración comercial', { alerta: 'cotizacion', tipo: 'corrida_fallida', tenantId, error: lectura.err instanceof Error ? lectura.err.name : 'desconocido' });
+      }
+    }
+    const comercial = 'c' in lectura ? lectura.c : undefined;
+    const pendientes = comercial === undefined ? [] : mercadosDe(comercial).filter((m) => tieneTipoCambio(comercial, m)).map((m) => [m, comercial] as const);
+    for (const [mercado, cfg] of pendientes) {
       try {
-        const r = await actualizarMercadoDe(e.almacenCotizaciones, mercado, e.ahora(), { ...descarga, tenantId, notificador, comercial: comercial as ConfiguracionComercial });
+        const r = await actualizarMercadoDe(e.almacenCotizaciones, mercado, e.ahora(), { ...descarga, tenantId, notificador, comercial: cfg });
         resumen.push({ tenantId, mercado, accion: r.decision.accion, fallas: r.fallas.length });
       } catch (err) {
         error ??= err;

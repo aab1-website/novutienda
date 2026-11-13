@@ -1,6 +1,6 @@
 // Lector de la configuración comercial (coordinador) con un Firestore de documentos en memoria: sin emulador.
 import { describe, expect, it } from 'vitest';
-import { ComercialInvalida, crearLectorComercial, TTL_COMERCIAL_MS, TTL_COMERCIAL_NEGATIVO_MS, vistaComercial } from '../../plataforma/coordinador/index.js';
+import { ComercialInvalida, crearLectorComercial, TTL_COMERCIAL_MS, TTL_COMERCIAL_NEGATIVO_MS, MAX_ENTRADAS_COMERCIAL, vistaComercial } from '../../plataforma/coordinador/index.js';
 
 const docs = new Map<string, unknown>();
 let lecturas = 0;
@@ -49,5 +49,18 @@ describe('lector de la configuración comercial', () => {
     expect(vistaComercial(c).monedasCaja).toEqual(['BOB', 'USD', 'ARS']);
     docs.set('tenants/viejo2', { estado: 'activo', plan: 'base', modulos: {}, zonaHoraria: 'America/La_Paz', monedas: ['BOB'] });
     await expect(leer('viejo2')).rejects.toThrow(ComercialInvalida);
+  });
+
+  it('la caché expulsa las entradas vencidas y no pasa del tope', async () => {
+    const lector = crearLectorComercial(firestore, () => reloj);
+    for (let i = 0; i < MAX_ENTRADAS_COMERCIAL + 50; i += 1) {
+      docs.set(`tenants/t${String(i)}`, UNO);
+      await lector(`t${String(i)}`);
+    }
+    lecturas = 0;
+    await lector('t0'); // la más antigua fue descartada: se vuelve a leer
+    expect(lecturas).toBe(1);
+    await lector(`t${String(MAX_ENTRADAS_COMERCIAL + 49)}`); // la última sigue en caché
+    expect(lecturas).toBe(1);
   });
 });

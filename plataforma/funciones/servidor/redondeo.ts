@@ -55,34 +55,52 @@ export function interpretarRedondeoDe(datos: Readonly<Record<string, unknown>> |
   return salida;
 }
 
-/** Lector con caché corta por tenant (la política cambia casi nunca). `invalidar()` la vacía (pruebas). */
+/**
+ * LEGADO, idéntico a main: lector con caché corta por tenant de la política BOB/ARS (misma fuente, `config/redondeo`, y mismos
+ * fallos: no lee `tenants/{t}`). Lo usan los callers de caja, consola y sitio hasta B2 a B4.
+ * @deprecated Usar `lectorRedondeoDe`.
+ */
+export function lectorRedondeo(db: BaseDatosIdentidad, ahora: () => number, ttlMs = 60_000): (tenantId: string) => Promise<Redondeo> {
+  const cache = new Map<string, { readonly hasta: number; readonly valor: Redondeo }>();
+  return async (tenantId) => {
+    const t = ahora();
+    const previo = cache.get(tenantId);
+    if (previo !== undefined && previo.hasta > t) return previo.valor;
+    const valor = interpretarRedondeo(await db.runTransaction(async (tx) => (await tx.get(rutaRedondeo(tenantId))).data()));
+    cache.set(tenantId, { hasta: t + ttlMs, valor });
+    return valor;
+  };
+}
+
+/** Lector de la política efectiva por tenant. `invalidar()` la vacía (pruebas). */
 export interface LectorRedondeo {
   (tenantId: string): Promise<RedondeoPorMoneda>;
   invalidar(tenantId?: string): void;
 }
 
-export function lectorRedondeo(
+/**
+ * Política efectiva del tenant (`interpretarRedondeoDe`). Propagación: un cambio del operador en `tenants/{t}` o en
+ * `config/redondeo` tarda como máximo 60 s en notarse en una instancia ya caliente. Las dos cachés NO se encadenan: este lector
+ * guarda solo el documento `config/redondeo` (60 s) y recalcula la política en cada llamada (cálculo puro) con la configuración
+ * comercial que entrega su lector (60 s propios), de modo que cada fuente expira por su cuenta.
+ */
+export function lectorRedondeoDe(
   db: BaseDatosIdentidad,
   ahora: () => number,
   comercialDe: (tenantId: string) => Promise<ConfiguracionComercial>,
   ttlMs = 60_000,
 ): LectorRedondeo {
-  const cache = new Map<string, { readonly hasta: number; readonly valor: RedondeoPorMoneda }>();
+  const cache = new Map<string, { readonly hasta: number; readonly datos: Readonly<Record<string, unknown>> | undefined }>();
   const leer = async (tenantId: string): Promise<RedondeoPorMoneda> => {
-    const t = ahora();
-    const previo = cache.get(tenantId);
-    if (previo !== undefined && previo.hasta > t) return previo.valor;
     const comercial = await comercialDe(tenantId);
-    const valor = interpretarRedondeoDe(await db.runTransaction(async (tx) => (await tx.get(rutaRedondeo(tenantId))).data()), comercial);
-    cache.set(tenantId, { hasta: t + ttlMs, valor });
-    return valor;
+    const t = ahora();
+    let entrada = cache.get(tenantId);
+    if (entrada === undefined || entrada.hasta <= t) {
+      const datos = await db.runTransaction(async (tx) => (await tx.get(rutaRedondeo(tenantId))).data());
+      entrada = { hasta: t + ttlMs, datos };
+      cache.set(tenantId, entrada);
+    }
+    return interpretarRedondeoDe(entrada.datos, comercial);
   };
   return Object.assign(leer, { invalidar: (tenantId?: string): void => { if (tenantId === undefined) cache.clear(); else cache.delete(tenantId); } });
-}
-
-/** LEGADO (callers de caja, consola y sitio hasta B2-B4): la política con la forma BOB/ARS. Falla si el tenant no vende en ambas. */
-export function comoRedondeoLegado(p: RedondeoPorMoneda): Redondeo {
-  const { BOB, ARS } = p;
-  if (BOB === undefined || ARS === undefined) throw new RedondeoInvalido();
-  return { BOB, ARS };
 }

@@ -3,12 +3,14 @@
 // admite el documento de la forma anterior (sin `comercial`): `comercialDe` lo deriva, de forma explícita, del tenant de tres
 // monedas. Falla cerrado: tenant inexistente, id inválido o documento inválido lanzan `ComercialInvalida`; jamás se entrega una
 // configuración por defecto. Caché por instancia, del mismo estilo que el lector de redondeo y el de módulos: los resultados
-// buenos duran 60 s y los errores 10 s (un id inventado no debe costar una lectura por petición).
+// buenos duran 60 s (un cambio del operador tarda como máximo 60 s en una instancia caliente) y los errores 10 s (un id inventado no debe costar una lectura por petición).
 import { comercialDe, esTenantIdValido, validarTenant, type ConfiguracionComercial } from '@novutienda/nucleo';
 import type { LectorDocumento } from './modulos-activos.js';
 
 export const TTL_COMERCIAL_MS = 60_000;
 export const TTL_COMERCIAL_NEGATIVO_MS = 10_000;
+/** Tope de entradas de la caché (la más antigua se descarta): un token o un id inventado no puede hacerla crecer sin límite. */
+export const MAX_ENTRADAS_COMERCIAL = 500;
 
 export type MotivoComercialInvalida = 'inexistente' | 'invalido';
 
@@ -30,17 +32,27 @@ type Entrada = { readonly hasta: number; readonly valor: ConfiguracionComercial 
 
 export function crearLectorComercial(firestore: LectorDocumento, ahora: () => number): LectorComercial {
   const cache = new Map<string, Entrada>();
+  const guardar = (tenantId: string, e: Entrada, ahoraMs: number): void => {
+    for (const [k, v] of cache) if (v.hasta <= ahoraMs) cache.delete(k); // expulsa las vencidas
+    while (cache.size >= MAX_ENTRADAS_COMERCIAL) {
+      const antigua = cache.keys().next().value; // el Map conserva el orden de inserción: la primera es la más antigua
+      if (antigua === undefined) break;
+      cache.delete(antigua);
+    }
+    cache.set(tenantId, e);
+  };
   const leer = async (tenantId: string): Promise<ConfiguracionComercial> => {
     if (!esTenantIdValido(tenantId)) throw new ComercialInvalida('invalido');
     const t = ahora();
     const previo = cache.get(tenantId);
+    if (previo !== undefined && previo.hasta <= t) cache.delete(tenantId);
     if (previo !== undefined && previo.hasta > t) {
       if ('valor' in previo) return previo.valor;
       throw new ComercialInvalida(previo.motivo);
     }
     const snap = await firestore.doc(`tenants/${tenantId}`).get();
     const fallar = (motivo: MotivoComercialInvalida): never => {
-      cache.set(tenantId, { hasta: t + TTL_COMERCIAL_NEGATIVO_MS, motivo });
+      guardar(tenantId, { hasta: t + TTL_COMERCIAL_NEGATIVO_MS, motivo }, t);
       throw new ComercialInvalida(motivo);
     };
     if (!snap.exists) return fallar('inexistente');
@@ -48,7 +60,7 @@ export function crearLectorComercial(firestore: LectorDocumento, ahora: () => nu
     if (!v.ok) return fallar('invalido');
     const c = comercialDe(v.valor);
     if (!c.ok) return fallar('invalido');
-    cache.set(tenantId, { hasta: t + TTL_COMERCIAL_MS, valor: c.valor });
+    guardar(tenantId, { hasta: t + TTL_COMERCIAL_MS, valor: c.valor }, t);
     return c.valor;
   };
   return Object.assign(leer, {
