@@ -6,7 +6,7 @@ export type { LineaResuelta, LineaSalida, OpcionesSalida, PlanReversion, PlanSal
 
 // Errores tipados.
 export {
-  EntradaInvalida, ErrorInventario, EstadoInvalido, NoEncontrado, OperacionConflicto, ProductoInactivo, SerieNoDisponible, SinPermiso, StockInsuficiente,
+  EntradaInvalida, ErrorInventario, EstadoInvalido, NoEncontrado, OperacionConflicto, ProductoInactivo, SerieNoDisponible, SinPermiso, StockInsuficiente, TraspasoBloqueadoPorConteo,
 } from './errores.js';
 export type { CodigoError, Faltante } from './errores.js';
 
@@ -43,3 +43,9 @@ export type { UbicacionId } from './ids.js';
 export type { Autor } from './motor.js';
 /** Solo para pruebas: fija el reloj con el que se estampan los planes. */
 export { fijarReloj, fechaLocal, ZONA_HORARIA_POR_DEFECTO } from './motor.js';
+
+// Visibilidad de las existencias durante un conteo abierto (único punto de decisión; ver `visibilidad.ts`).
+export {
+  conteoQueBloqueaTraspaso, conteosAbiertosDe, filtrarUnidadesLista, hayOcultamiento, marcaOcultamiento, proyectarMovimiento, proyectarProducto, puedeVerExistencias, recortarFaltantes, MENSAJE_STOCK_OCULTO,
+} from './visibilidad.js';
+export type { ConteoAbierto, Conteos, FaltantesVisibles, MarcaOcultamiento, ProductoProyectado, ProductoVisible } from './visibilidad.js';

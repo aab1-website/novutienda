@@ -2,7 +2,9 @@ import type { JSX } from 'preact';
 import { useEffect, useRef, useState } from 'preact/hooks';
 import { nuevoId } from '../../api/cliente.js';
 import type { ProductoPanel, UbicacionId } from '../../api/tipos.js';
+import { mensajeConteoAbierto } from '../../api/errores.js';
 import { useAvisos } from '../../ui/avisos.js';
+import { AvisoConteoAbierto } from '../../ui/existencia.js';
 import { Alerta, Boton, Campo, Cargando, ErrorCarga, Selector, Seccion, Vacio } from '../../ui/comun.js';
 import { useApp } from '../../ui/contexto.js';
 import { Dialogo } from '../../ui/dialogo.js';
@@ -11,7 +13,7 @@ import { useBorrador, useCambiosSinGuardar } from '../../ui/guardia.js';
 import { useAccion, useCarga, type Accion } from '../../ui/hooks.js';
 import { SelectorBuscable } from '../../ui/selector-buscable.js';
 import {
-  claveLinea, haySeQuedan, leerDiferencia, MAX_LINEAS, resumenAjuste, resumenIngreso, resumenTraspaso, revisarAjuste, revisarLineas, type FilaLinea, type LecturaExistencia, type Resumen,
+  claveLinea, haySeQuedan, lecturaDe, leerDiferencia, MAX_LINEAS, resumenAjuste, resumenIngreso, resumenTraspaso, revisarAjuste, revisarLineas, type FilaLinea, type LecturaExistencia, type Resumen,
 } from './movimientos-resumen.js';
 import { nombreAlmacen, OPCIONES_ALMACEN } from './nombres.js';
 import { TablaMovimientos } from './registro.js';
@@ -119,7 +121,7 @@ function LineasProducto({ filas, setFilas, productos, errores, origen }: {
               ) : (
                 <Campo
                   etiqueta="Cantidad" valor={f.cantidad} inputMode="numeric" requerido onInput={(v) => cambiar({ cantidad: v })} error={errores[claveLinea(f, 'cantidad')]}
-                  ayuda={origen != null && p !== undefined ? `En ${nombreAlmacen(origen)} hay ${String(p.existencias[origen])}.` : undefined}
+                  ayuda={origen != null && p !== undefined ? (p.existencias[origen] === null ? 'La existencia está oculta mientras hay un conteo abierto.' : `En ${nombreAlmacen(origen)} hay ${String(p.existencias[origen])}.`) : undefined}
                 />
               )}
             </div>
@@ -174,6 +176,7 @@ export function Ingreso(): JSX.Element {
   };
   return (
     <Seccion titulo="Ingreso de mercadería">
+      {prod.ocultas && <AvisoConteoAbierto conteos={prod.conteos} nombreAlmacen={nombreAlmacen} />}
       <form ref={s.formulario} class="formulario" onSubmit={revisar} noValidate>
         <Selector etiqueta="Almacén de destino" valor={e.almacen} onCambio={(v) => b.poner({ ...e, almacen: v })} opciones={OPCIONES_ALMACEN} />
         <LineasProducto filas={e.filas} setFilas={(filas) => b.poner({ ...e, filas })} productos={prod.lista} errores={errores} />
@@ -185,7 +188,7 @@ export function Ingreso(): JSX.Element {
 }
 
 export function Traspaso(): JSX.Element {
-  const { api } = useApp();
+  const { api, usuario } = useApp();
   const prod = useProductos();
   const movs = useCarga(() => api.llamar('listarMovimientos', { tipo: 'traspaso', limite: 20 }), []);
   const [inicial] = useState<EstadoLineas>(() => ({ almacen: 'deposito-1', destino: 'tienda', filas: [filaVacia()] }));
@@ -201,8 +204,12 @@ export function Traspaso(): JSX.Element {
   const rev = revisarLineas(e.filas, prod.lista, origen);
   const errores = s.intento ? rev.errores : {};
   const iguales = origen === destino;
+  // Con conteo abierto en el origen o el destino, solo `adm` traspasa (el servidor sigue siendo quien decide).
+  const enConteo = prod.ocultas && usuario.rol !== 'adm' ? (prod.conteos.find((k) => k.ubicacionId === origen) ?? prod.conteos.find((k) => k.ubicacionId === destino)) : undefined;
+  const motivoConteo = enConteo === undefined ? undefined : mensajeConteoAbierto(nombreAlmacen(enConteo.ubicacionId));
   const revisar = (ev: Event): void => {
     ev.preventDefault();
+    if (motivoConteo !== undefined) return;
     s.setIntento(true);
     if (rev.lineas === null || iguales) s.pedirFoco();
     else s.setResumen(resumenTraspaso(rev.lineas, origen, destino, prod.lista));
@@ -225,13 +232,14 @@ export function Traspaso(): JSX.Element {
   return (
     <div>
       <Seccion titulo="Traspaso entre almacenes">
+        {prod.ocultas && <AvisoConteoAbierto conteos={prod.conteos} nombreAlmacen={nombreAlmacen} />}
         <form ref={s.formulario} class="formulario" onSubmit={revisar} noValidate>
           <div class="cuadricula">
-            <Selector etiqueta="Origen" valor={e.almacen} onCambio={(v) => b.poner({ ...e, almacen: v })} opciones={OPCIONES_ALMACEN} />
-            <Selector etiqueta="Destino" valor={e.destino} onCambio={(v) => b.poner({ ...e, destino: v })} opciones={OPCIONES_ALMACEN} error={s.intento && iguales ? 'El origen y el destino deben ser distintos.' : undefined} />
+            <Selector etiqueta="Origen" valor={e.almacen} onCambio={(v) => b.poner({ ...e, almacen: v })} opciones={OPCIONES_ALMACEN} error={motivoConteo !== undefined && enConteo?.ubicacionId === origen ? motivoConteo : undefined} />
+            <Selector etiqueta="Destino" valor={e.destino} onCambio={(v) => b.poner({ ...e, destino: v })} opciones={OPCIONES_ALMACEN} error={s.intento && iguales ? 'El origen y el destino deben ser distintos.' : motivoConteo !== undefined && enConteo?.ubicacionId === destino ? motivoConteo : undefined} />
           </div>
           <LineasProducto filas={e.filas} setFilas={(filas) => b.poner({ ...e, filas })} productos={prod.lista} errores={errores} origen={origen} />
-          <Boton tipo="submit" ocupado={s.accion.ocupado && s.resumen === null}>Traspasar</Boton>
+          <Boton tipo="submit" ocupado={s.accion.ocupado && s.resumen === null} motivo={motivoConteo}>Traspasar</Boton>
         </form>
         {s.resumen !== null && <Confirmacion resumen={s.resumen} accion={s.accion} alConfirmar={confirmar} alVolver={() => { s.setResumen(null); s.accion.limpiar(); }} />}
       </Seccion>
@@ -283,7 +291,7 @@ export function Ajuste(): JSX.Element {
         (ps) => {
           if (turno !== lecturaVigente.current) return;
           const fresco = ps.find((x) => x.id === productoId)?.existencias[almacen];
-          setLectura(fresco === undefined ? { estado: 'fallo' } : { estado: 'ok', hay: fresco });
+          setLectura(fresco === undefined ? { estado: 'fallo' } : lecturaDe(fresco));
         },
         () => {
           if (turno === lecturaVigente.current) setLectura({ estado: 'fallo' });

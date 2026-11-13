@@ -1,5 +1,5 @@
 import type { EstadoMerma, MermaVista, ProductoPanel } from '../../api/tipos.js';
-import { MAX_CANTIDAD, separar } from './movimientos-resumen.js';
+import { MAX_CANTIDAD, separar, TEXTO_EXISTENCIAS_OCULTAS } from './movimientos-resumen.js';
 import { nombreAlmacen } from './nombres.js';
 
 export const ESTADO_TEXTO: Readonly<Record<EstadoMerma, string>> = { solicitada: 'Pendiente', aprobada: 'Aprobada', rechazada: 'Rechazada' };
@@ -38,8 +38,10 @@ export function revisarSolicitud(b: BorradorMerma, p: ProductoPanel | undefined)
     const t = b.cantidad.trim();
     if (!/^\d+$/.test(t) || Number(t) < 1) e['cantidad'] = 'Escriba una cantidad entera mayor que 0.';
     else if (Number(t) > MAX_CANTIDAD) e['cantidad'] = `El máximo es ${String(MAX_CANTIDAD)}.`;
-    else if (p !== undefined && b.ubicacionId in p.existencias && Number(t) > p.existencias[b.ubicacionId as keyof ProductoPanel['existencias']]) {
-      e['cantidad'] = `En ${nombreAlmacen(b.ubicacionId)} hay ${String(p.existencias[b.ubicacionId as keyof ProductoPanel['existencias']])}: no se puede dar de baja más.`;
+    else {
+      // Con la existencia oculta (null) no se compara: valida el servidor.
+      const hay = p !== undefined && b.ubicacionId in p.existencias ? p.existencias[b.ubicacionId as keyof ProductoPanel['existencias']] : null;
+      if (hay !== null && Number(t) > hay) e['cantidad'] = `En ${nombreAlmacen(b.ubicacionId)} hay ${String(hay)}: no se puede dar de baja más.`;
     }
   }
   if (b.motivo.trim() === '') e['motivo'] = 'Escriba el motivo de la merma.';
@@ -55,5 +57,5 @@ export function resumenResolucion(m: MermaVista, p: ProductoPanel | undefined, d
   const base = [`${String(m.cantidad)} × ${nombre}${series} en ${nombreAlmacen(m.ubicacionId)}.`, `Motivo de la solicitud: ${m.motivo}`];
   if (decision === 'rechazada') return [...base, 'El stock no cambia.'];
   const hay = p?.existencias[m.ubicacionId];
-  return [...base, ...(hay === undefined ? [] : [`Hay ${String(hay)}, quedarán ${String(hay - m.cantidad)}.`]), 'Se descuenta del stock y no se deshace desde aquí.'];
+  return [...base, ...(hay === undefined ? [] : hay === null ? [TEXTO_EXISTENCIAS_OCULTAS] : [`Hay ${String(hay)}, quedarán ${String(hay - m.cantidad)}.`]), 'Se descuenta del stock y no se deshace desde aquí.'];
 }

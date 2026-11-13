@@ -110,8 +110,8 @@ describe('puerto: salida', () => {
     verificarInvariantes(db);
   });
 
-  it('serie de otro almacén, inexistente o con cantidad distinta se rechaza', async () => {
-    await expect(vender('v1', [{ productoId: 'celular', cantidad: 1, almacenId: 'deposito-1', series: ['S1'] }])).rejects.toBeInstanceOf(StockInsuficiente);
+  it('serie de otro almacén (SerieNoDisponible, no StockInsuficiente: no revela el stock), inexistente o con cantidad distinta se rechaza', async () => {
+    await expect(vender('v1', [{ productoId: 'celular', cantidad: 1, almacenId: 'deposito-1', series: ['S1'] }])).rejects.toBeInstanceOf(SerieNoDisponible);
     await expect(vender('v2', [{ productoId: 'celular', cantidad: 1, almacenId: 'tienda', series: ['NOEXISTE'] }])).rejects.toBeInstanceOf(SerieNoDisponible);
     await expect(vender('v3', [{ productoId: 'celular', cantidad: 2, almacenId: 'tienda', series: ['S1'] }])).rejects.toBeInstanceOf(EntradaInvalida);
     await expect(vender('v4', [{ productoId: 'celular', cantidad: 1, almacenId: 'tienda', series: [] }])).rejects.toBeInstanceOf(EntradaInvalida);

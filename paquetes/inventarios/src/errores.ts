@@ -42,6 +42,22 @@ export class StockInsuficiente extends ErrorInventario {
   }
 }
 
+/**
+ * Traspaso rechazado porque el origen o el destino tiene un conteo abierto y quien opera no es `adm`. Se lanza ANTES de toda
+ * validación que dependa de cantidades; el mensaje no lleva cantidades ni productos. El nombre (`ConteoAbierto`) fija el código
+ * `conteo-abierto` del borde.
+ */
+export class TraspasoBloqueadoPorConteo extends ErrorInventario {
+  constructor(
+    readonly ubicacionId: string,
+    readonly conteoId: string,
+    readonly abiertoEn: string | null,
+  ) {
+    super('failed-precondition', `No se puede traspasar desde ni hacia ${ubicacionId} mientras tiene un conteo abierto.`);
+    this.name = 'ConteoAbierto';
+  }
+}
+
 /** La serie no existe, no está disponible o está en otro almacén: la segunda venta de una serie falla aquí. */
 export class SerieNoDisponible extends ErrorInventario {
   constructor(

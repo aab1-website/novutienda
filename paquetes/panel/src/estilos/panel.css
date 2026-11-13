@@ -168,3 +168,7 @@ legend { padding: 0 6px; font-weight: 700; }
   body { background: #fff; color: #000; }
 }
 @media (prefers-reduced-motion: reduce) { * { transition: none !important; scroll-behavior: auto !important; } }
+.existencia-oculta { color: var(--texto-suave); font-style: italic; }
+.aviso-conteo { flex: 1 1 auto; }
+.aviso-conteo-linea { margin: 0 0 4px; }
+.aviso-conteo-vencido { color: var(--peligro); }

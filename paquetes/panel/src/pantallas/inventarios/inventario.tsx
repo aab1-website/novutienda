@@ -1,16 +1,18 @@
 import type { JSX } from 'preact';
 import { useRef, useState } from 'preact/hooks';
 import type { ProductoPanel, UbicacionId } from '../../api/tipos.js';
+import { marcaDe } from '../../api/marca.js';
 import { Alerta, Boton, ConCarga, Pestanas, Seccion, Selector } from '../../ui/comun.js';
 import { useApp } from '../../ui/contexto.js';
 import { useCarga } from '../../ui/hooks.js';
+import { AvisoConteoAbierto, ExistenciaOculta } from '../../ui/existencia.js';
 import { Tabla } from '../../ui/tabla.js';
 import { Conteo } from './conteo.js';
 import { ImportarExportar } from './importar.js';
 import { Ajuste, Ingreso, Traspaso } from './movimientos.js';
 import { Registro } from './registro.js';
 import { Series } from './series.js';
-import { NOMBRE_ALMACEN } from './nombres.js';
+import { NOMBRE_ALMACEN, nombreAlmacen } from './nombres.js';
 import { ProductoPanelLateral } from './producto-panel.js';
 import './inventario.css';
 
@@ -29,7 +31,9 @@ const ALMACENES: readonly UbicacionId[] = ['tienda', 'deposito-1', 'deposito-2']
 type Mostrar = '' | 'bajo' | 'inactivo';
 const OPCIONES_MOSTRAR: readonly { valor: Mostrar; texto: string }[] = [{ valor: '', texto: 'Todos' }, { valor: 'bajo', texto: 'Bajo el mínimo' }, { valor: 'inactivo', texto: 'Inactivos' }];
 
-const estadoDe = (p: ProductoPanel): string => (!p.activo ? 'Inactivo' : p.bajoMinimo ? 'Bajo el mínimo' : p.disponible ? 'Disponible' : 'Agotado');
+/** Texto del estado; `null` si está oculto por un conteo abierto (no se inventa «Agotado»). */
+const estadoDe = (p: ProductoPanel): string | null => (!p.activo ? 'Inactivo' : p.bajoMinimo === null || p.disponible === null ? null : p.bajoMinimo ? 'Bajo el mínimo' : p.disponible ? 'Disponible' : 'Agotado');
+export const MOTIVO_FILTRO_MINIMO = 'No disponible mientras hay un conteo abierto';
 const plural = (n: number, uno: string, varios: string): string => `${String(n)} ${n === 1 ? uno : varios}`;
 
 function Productos(): JSX.Element {
@@ -47,19 +51,26 @@ function Productos(): JSX.Element {
     <div ref={raiz}>
       <ConCarga carga={carga}>
         {({ productos, cot }) => {
-          const bajos = productos.filter((p) => p.bajoMinimo).length;
-          const filas = productos.filter((p) => (mostrar === 'bajo' ? p.bajoMinimo : mostrar === 'inactivo' ? !p.activo : true));
+          // La marca viaja en la propia lista: se lee antes de filtrar, que la pierde.
+          const marca = marcaDe(productos);
+          const ocultas = marca !== undefined;
+          const conteos = marca?.conteosAbiertos ?? [];
+          const modo: Mostrar = ocultas && mostrar === 'bajo' ? '' : mostrar;
+          const bajos = ocultas ? 0 : productos.filter((p) => p.bajoMinimo === true).length;
+          const filas = productos.filter((p) => (modo === 'bajo' ? p.bajoMinimo === true : modo === 'inactivo' ? !p.activo : true));
+          const opcionesMostrar = ocultas ? OPCIONES_MOSTRAR.filter((o) => o.valor !== 'bajo') : OPCIONES_MOSTRAR;
           return (
             <>
+              {ocultas && <AvisoConteoAbierto conteos={conteos} nombreAlmacen={nombreAlmacen} />}
               {bajos > 0 && (
                 <Alerta tipo="info">
                   <span data-prueba="linea-minimo">{plural(bajos, 'producto bajo el mínimo', 'productos bajo el mínimo')} · </span>
-                  <Boton chico variante="secundario" onClick={() => setMostrar(mostrar === 'bajo' ? '' : 'bajo')}>{mostrar === 'bajo' ? 'Ver todos' : 'Ver'}</Boton>
+                  <Boton chico variante="secundario" onClick={() => setMostrar(modo === 'bajo' ? '' : 'bajo')}>{modo === 'bajo' ? 'Ver todos' : 'Ver'}</Boton>
                 </Alerta>
               )}
               <Seccion titulo="Productos" acciones={esAdm ? <Boton chico onClick={() => setAbierto({ producto: null, etiqueta: 'Nuevo producto' })}>Nuevo producto</Boton> : undefined}>
                 <div class="inv-filtro">
-                  <Selector etiqueta="Mostrar" valor={mostrar} onCambio={(v) => setMostrar(v as Mostrar)} opciones={OPCIONES_MOSTRAR.map((o) => ({ valor: o.valor, texto: o.texto }))} />
+                  <Selector etiqueta="Mostrar" valor={modo} onCambio={(v) => setMostrar(v as Mostrar)} opciones={opcionesMostrar.map((o) => ({ valor: o.valor, texto: o.texto }))} ayuda={ocultas ? `Filtro «Bajo el mínimo»: ${MOTIVO_FILTRO_MINIMO}.` : undefined} />
                 </div>
                 <Tabla
                   titulo="Productos y existencias por almacén"
@@ -67,12 +78,18 @@ function Productos(): JSX.Element {
                   clave={(p) => p.id}
                   buscar={{ etiqueta: 'Buscar por nombre, SKU, categoría o marca', en: (p) => [p.nombre, p.sku, p.categoria, p.marca ?? ''] }}
                   porPagina={25}
-                  vacio={{ titulo: mostrar === '' ? 'No hay productos. Cree el primero con «Nuevo producto».' : 'Ningún producto cumple ese filtro.' }}
+                  vacio={{ titulo: modo === '' ? 'No hay productos. Cree el primero con «Nuevo producto».' : 'Ningún producto cumple ese filtro.' }}
                   columnas={[
                     { id: 'producto', titulo: 'Producto', valor: (p) => p.nombre, encabezadoFila: true, ordenable: true, celda: (p) => <>{p.nombre}<div class="texto-suave">{p.sku}</div></> },
-                    ...ALMACENES.map((a) => ({ id: a, titulo: NOMBRE_ALMACEN[a], valor: (p: ProductoPanel) => p.existencias[a], ordenable: true })),
-                    { id: 'total', titulo: 'Total', valor: (p) => p.stockTotal ?? -1, celda: (p) => p.stockTotal ?? '—', ordenable: true },
-                    { id: 'estado', titulo: 'Estado', valor: estadoDe, ordenable: true },
+                    ...ALMACENES.map((a) => ({
+                      id: a,
+                      titulo: NOMBRE_ALMACEN[a],
+                      valor: (p: ProductoPanel) => p.existencias[a] ?? -1,
+                      celda: (p: ProductoPanel) => (p.existencias[a] === null ? <ExistenciaOculta /> : p.existencias[a]),
+                      ordenable: !ocultas,
+                    })),
+                    { id: 'total', titulo: 'Total', valor: (p) => p.stockTotal ?? -1, celda: (p) => (p.stockTotal === null ? <ExistenciaOculta /> : (p.stockTotal ?? '—')), ordenable: !ocultas },
+                    { id: 'estado', titulo: 'Estado', valor: (p) => estadoDe(p) ?? '', celda: (p) => estadoDe(p) ?? <ExistenciaOculta />, ordenable: !ocultas },
                   ]}
                   acciones={(p) => (
                     <div class="fila">

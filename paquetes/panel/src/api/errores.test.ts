@@ -45,6 +45,24 @@ describe('mensajes de error', () => {
     const d = new ErrorApi('invalid-argument', 'x', { codigo: 'entrada-invalida', detalles: ['línea 2: id inválido'] });
     expect(mensajeDeError(d)).toContain('línea 2: id inválido');
   });
+  it('sin `disponible` (conteo abierto) no dice cuántas hay; con `disponible`, como siempre; mezclados, ambos', () => {
+    const sin = new ErrorApi('failed-precondition', 'x', { codigo: 'stock-insuficiente', faltantes: [{ productoId: 'tv', almacenId: 'tienda', pedido: 3, productoNombre: 'Televisor', almacenNombre: 'Tienda' }] });
+    expect(mensajeDeError(sin)).toBe('No alcanza el stock de Televisor en Tienda.');
+    const dos = new ErrorApi('failed-precondition', 'x', { codigo: 'stock-insuficiente', faltantes: [{ productoId: 'a', almacenId: 'tienda', pedido: 1 }, { productoId: 'b', almacenId: 'tienda', pedido: 1 }] });
+    expect(mensajeDeError(dos)).toBe('No alcanza el stock de a en tienda. No alcanza el stock de b en tienda.');
+    const mezcla = new ErrorApi('failed-precondition', 'x', { codigo: 'stock-insuficiente', faltantes: [{ productoId: 'a', almacenId: 'tienda', pedido: 1 }, { productoId: 'b', almacenId: 'deposito-1', pedido: 2, disponible: 1 }] });
+    expect(mensajeDeError(mezcla)).toBe('No hay existencias suficientes. a en tienda: no alcanza; b en deposito-1: pidió 2, hay 1.');
+  });
+  it('stock insuficiente con faltantes ocultos y conteo abierto en un traspaso tienen mensaje propio, sin nombrar nada', () => {
+    const o = new ErrorApi('failed-precondition', 'Stock insuficiente.', { codigo: 'stock-insuficiente', faltantesOcultos: true });
+    expect(mensajeDeError(o)).toBe('No alcanza el stock de uno o más productos de esta operación. Durante un conteo abierto no se indica cuál.');
+    const c = new ErrorApi('failed-precondition', 'x', { codigo: 'conteo-abierto', ubicacionId: 'deposito-2', conteoId: 'c', abiertoEn: null });
+    expect(mensajeDeError(c)).toBe('No se puede traspasar desde ni hacia Depósito 2 mientras tiene un conteo abierto. Puede hacerlo un administrador o esperar al cierre.');
+  });
+  it('el filtro rechazado por existencias ocultas tiene mensaje propio', () => {
+    expect(mensajeDeError(new ErrorApi('failed-precondition', 'texto del servidor', { codigo: 'existencias-ocultas' }))).toBe('Este filtro no está disponible mientras hay un conteo abierto.');
+    expect(CODIGOS_CONOCIDOS).toContain('existencias-ocultas');
+  });
   it('todos los códigos de ErrorPos, ErrorConsola e identidad tienen mensaje', () => {
     const pos = ['entrada-invalida', 'no-autorizado', 'dato-corrupto', 'sin-turno', 'turno-ajeno', 'turno-no-abierto', 'turno-ya-abierto', 'request-en-uso', 'precio-alterado', 'producto-inexistente', 'producto-inactivo', 'sin-precio', 'series-invalidas', 'descuento-sin-aprobacion', 'aprobacion-inexistente', 'aprobacion-no-aprobada', 'aprobacion-usada', 'aprobacion-vencida', 'aprobacion-no-coincide', 'autoaprobacion', 'pagos-invalidos', 'medio-no-habilitado', 'conteo-faltante', 'egreso-excede-efectivo', 'venta-inexistente', 'venta-ya-anulada', 'anulacion-sin-solicitud', 'credito-inexistente', 'credito-saldo-insuficiente'];
     const consola = ['no-autorizado', 'entrada-invalida', 'no-encontrado', 'conflicto', 'limite', 'cuota-excedida', 'tipo-no-permitido', 'estado', 'contador-corrupto', 'procesamiento', 'no-disponible'];

@@ -237,13 +237,16 @@ export class Trabajo {
     if (!Number.isSafeInteger(delta) || delta === 0) throw new EstadoInvalido('delta inválido');
     if (!entero(prod['stockTotal'])) throw new EstadoInvalido(`El producto ${productoId} no controla stock`);
     const nueva = ex.cantidad + delta;
+    const quitar = opciones.quitar ?? [];
+    const agregar = opciones.agregar ?? [];
+    // Las series se comprueban ANTES que la cantidad: una serie que no pertenece falla igual haya o no stock.
+    if (prod['conSerie'] === true) {
+      for (const s of quitar) if (!ex.series.includes(s)) throw new SerieNoDisponible(productoId, s);
+    }
     if (nueva < 0) {
       throw new StockInsuficiente([{ productoId, almacenId: ubicacionId, pedido: -delta, disponible: ex.cantidad }]);
     }
-    const quitar = opciones.quitar ?? [];
-    const agregar = opciones.agregar ?? [];
     if (prod['conSerie'] === true) {
-      for (const s of quitar) if (!ex.series.includes(s)) throw new SerieNoDisponible(productoId, s);
       const restantes = ex.series.filter((s) => !quitar.includes(s));
       for (const s of agregar) if (restantes.includes(s)) throw new EstadoInvalido(`Serie ya disponible: ${s}`);
       const series = [...restantes, ...agregar];

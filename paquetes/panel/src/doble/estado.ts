@@ -1,7 +1,8 @@
 import type { Rol } from '@novutienda/nucleo';
 import { ErrorApi } from '../api/errores.js';
+import { UBICACIONES } from '../api/tipos.js';
 import type {
-  AprobacionPos, Carrusel, CobroCredito, ConfigPos, ConfigSitio, ConteoVista, CotizacionesVigentes, CreditoVista, EntradaAuditoriaVista,
+  AprobacionPos, Carrusel, ConteoAbierto, MarcaOcultamiento, CobroCredito, ConfigPos, ConfigSitio, ConteoVista, CotizacionesVigentes, CreditoVista, EntradaAuditoriaVista,
   FichaWeb, Medio, MermaVista, MovimientoCaja, MovimientoVista, PlantillaRecibo, ProductoPanel, Recibo, Seccion, SubidaVista, TurnoPos,
   UbicacionId, UnidadSerie, UsuarioVista, VentaPos,
 } from '../api/tipos.js';
@@ -152,6 +153,47 @@ export function vistaProducto(p: ProductoInterno, verCosto: boolean): ProductoPa
     bajoMinimo: !sinStock && p.minimo !== undefined && (p.stockTotal ?? 0) <= p.minimo,
     disponible: p.activo && (sinStock || p.existencias.tienda > 0),
   };
+}
+
+// ---------------------------------------------------------------------------------------------------------------------
+// Ocultamiento de existencias durante un conteo abierto (mismas reglas que paquetes/inventarios/src/visibilidad.ts)
+// ---------------------------------------------------------------------------------------------------------------------
+
+/** Conteos abiertos del doble (uno por almacén), ordenados por almacén. */
+export function conteosAbiertosDoble(e: EstadoDoble): ConteoAbierto[] {
+  return [...e.conteos.values()]
+    .filter((k) => k.estado === 'abierto')
+    .map((k) => ({ ubicacionId: k.ubicacionId, conteoId: k.conteoId, abiertoEn: k.fecha }))
+    .sort((a, b) => a.ubicacionId.localeCompare(b.ubicacionId));
+}
+
+/** `adm` ve siempre; los demás ven un almacén solo si no tiene un conteo abierto. */
+export function puedeVerExistencias(c: Contexto, ubicacionId: string): boolean {
+  return c.rol === 'adm' || !conteosAbiertosDoble(c.e).some((k) => k.ubicacionId === ubicacionId);
+}
+
+/** La marca de la respuesta, o `undefined` si a este rol no se le oculta nada. */
+export function marcaDoble(c: Contexto): MarcaOcultamiento | undefined {
+  const conteos = conteosAbiertosDoble(c.e);
+  return c.rol !== 'adm' && conteos.length > 0 ? { existenciasOcultas: true, conteosAbiertos: conteos } : undefined;
+}
+
+/**
+ * Producto visible para el rol: con ocultamiento, en los que controlan stock el total y «bajo el mínimo» salen `null`, las
+ * existencias de cada almacén en conteo también y «disponible» solo si la tienda está en conteo. Lo demás se conserva.
+ */
+export function proyectarProductoDoble(c: Contexto, v: ProductoPanel): ProductoPanel {
+  if (marcaDoble(c) === undefined || v.stockTotal === undefined) return v;
+  const existencias = Object.fromEntries(UBICACIONES.map((u) => [u, puedeVerExistencias(c, u) ? v.existencias[u] : null])) as Record<UbicacionId, number | null>;
+  return { ...v, stockTotal: null, bajoMinimo: null, existencias, disponible: puedeVerExistencias(c, 'tienda') ? v.disponible : null };
+}
+
+/**
+ * Detalle de un stock insuficiente para el rol (lo que hace el coordinador): con cualquier conteo abierto en el tenant y
+ * no es `adm`, solo `faltantesOcultos: true` (sin lista, ids ni cantidades); si no, la lista completa.
+ */
+export function detalleDeFaltantes<F extends { readonly almacenId: string }>(c: Contexto, faltantes: readonly F[]): { faltantes: readonly F[] } | { faltantesOcultos: true } {
+  return marcaDoble(c) !== undefined ? { faltantesOcultos: true } : { faltantes };
 }
 
 export function recalcular(p: ProductoInterno): void {
