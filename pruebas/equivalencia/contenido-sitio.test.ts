@@ -25,7 +25,7 @@ const negocio = () => {
   };
 };
 
-describe('contenido del sitio de Casa Bermejo', () => {
+describe('contenido del sitio del tenant de referencia', () => {
   it('contenido desde lo publicado: precios base por mercado, mercados, redondeo y SEO con moneda', async () => {
     const e = await crearEscenario();
     const documentos: Record<string, unknown> = {

@@ -288,22 +288,21 @@ Decisiones y riesgos: `decisiones.md` (entrada «Multitenant»). Este plano fija
 
 ### 6.10 Mercados y monedas son configuración del tenant
 
-Regla de Andres: la triple moneda es opcional para los clientes de NovuTienda y particular de Casa Bermejo. Cada tenant declara sus
+Regla de Andres: la triple moneda es opcional para los clientes de NovuTienda y particular del tenant de tres monedas. Cada tenant declara sus
 mercados (identificador, nombre, moneda de venta, moneda base de precios, zona horaria, tipo de cambio o ninguno, redondeo) y sus
 monedas de caja; es configuración **declarativa** del tenant (zona Tenant, validada por tipos del núcleo), nunca lógica. Sin tipo de
-cambio en un mercado, el precio es el precio base, sin cotización. Si falta la declaración, el sistema falla cerrado: no se toma Casa
-Bermejo por defecto. Los identificadores, precios guardados, cotizaciones y eventos existentes se conservan.
+cambio en un mercado, el precio es el precio base, sin cotización. Si falta la declaración, el sistema falla cerrado: no se toma un tenant de referencia por defecto. Los identificadores, precios guardados, cotizaciones y eventos existentes se conservan.
 
 Decisiones de Andres:
 
 - **D1** Caja en otra moneda: solo las monedas que declare el comercio.
-- **D2** Moneda base de precios: la de cada mercado (Casa Bermejo sigue en dólares).
+- **D2** Moneda base de precios: la de cada mercado (el tenant de tres monedas sigue en dólares).
 - **D3** Tipo de cambio: opcional por mercado.
-- **D4** Tope por plan: el plan base admite 1 mercado y 1 moneda; varios, en un plan superior (el de Casa Bermejo).
+- **D4** Tope por plan: el plan base admite 1 mercado y 1 moneda; varios, en un plan superior (el del tenant de tres monedas).
 - **D5** Quién edita los mercados: solo NovuTienda; el administrador del comercio los ve, no los cambia.
 - **D6** Segundo comercio de prueba en staging, con autorización antes de crearlo.
 
-**Regla de la batería de equivalencia:** el comportamiento de Casa Bermejo está fijado por `pruebas/equivalencia/` (fotos versionadas,
+**Regla de la batería de equivalencia:** el comportamiento del tenant de referencia está fijado por `pruebas/equivalencia/` (fotos versionadas,
 comparación byte a byte). Todo cambio del modelo de mercados y monedas debe dejarla idéntica. Si una foto cambia a propósito, se
 regenera con `pnpm equivalencia:actualizar` (nunca en CI) y la razón se escribe en `pruebas/equivalencia/CAMBIOS.md`; la prueba
 `candado.test.ts` falla si las referencias cambian sin ese registro.

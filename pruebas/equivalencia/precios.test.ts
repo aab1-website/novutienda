@@ -10,7 +10,7 @@ import { compararConFotoJson } from './foto.js';
 
 const usd = (centavos: number): number => centavos / 100;
 
-describe('precios por mercado de Casa Bermejo', () => {
+describe('precios por mercado del tenant de referencia', () => {
   it('precioFinal y preciosDelDia por producto y mercado, con cotización guardada', async () => {
     const e = await crearEscenario();
     const BO = await leerCotizacion(e.almacen, 'BO', e.reloj.ahora, { tenantId: T });

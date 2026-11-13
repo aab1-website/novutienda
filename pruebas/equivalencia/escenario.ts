@@ -1,4 +1,4 @@
-// Escenario fijo con la FORMA de Casa Bermejo: tres monedas (BOB, USD, ARS), mercados Bolivia y Argentina, precios
+// Escenario fijo con la FORMA del tenant de referencia: tres monedas (BOB, USD, ARS), mercados Bolivia y Argentina, precios
 // base en USD (centavos), cotizaciones BO y AR, la política de redondeo vigente y un reloj fijo. Todo es ficticio:
 // nombres, ids y series inventados; ningún dato del cliente. Reloj e ids se inyectan: la suite no usa tiempo real,
 // red ni aleatoriedad.
@@ -10,7 +10,7 @@ import { ADM, AHORA, SUP, T, UUID, crearEntorno, op, type Entorno } from '../int
 
 export { ADM, AHORA, SUP, T, UUID };
 
-/** Política vigente de Casa Bermejo: BOB a dos decimales, ARS al múltiplo de 100 más cercano. */
+/** Política vigente del tenant de referencia: BOB a dos decimales, ARS al múltiplo de 100 más cercano. */
 export const REDONDEO: Redondeo = REDONDEO_POR_DEFECTO;
 
 /** Cotizaciones con decimales que provocan redondeos hacia arriba y hacia abajo en ambos mercados. */

@@ -1,4 +1,4 @@
-// Jornada fija de caja de Casa Bermejo: un turno con ventas en BOB, USD y ARS, pagos mixtos con vuelto y dos
+// Jornada fija de caja del tenant de referencia: un turno con ventas en BOB, USD y ARS, pagos mixtos con vuelto y dos
 // movimientos de caja. La comparten las pruebas de caja y de recibos. Reloj e ids inyectados.
 import { abrirTurno, confirmarVenta, registrarMovimientoCaja, type Carrito } from '@novutienda/pos';
 import { rutaPlantilla } from '@novutienda/recibos';

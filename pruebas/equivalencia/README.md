@@ -1,6 +1,6 @@
-# Batería de equivalencia de Casa Bermejo
+# Batería de equivalencia del tenant de referencia
 
-Fija, con «fotos» versionadas en `referencias/`, lo que hoy produce el sistema para Casa Bermejo (tres monedas BOB/USD/ARS,
+Fija, con «fotos» versionadas en `referencias/`, lo que hoy produce el sistema para el tenant de referencia (tres monedas BOB/USD/ARS,
 mercados Bolivia y Argentina, precios base en USD, cotizaciones, redondeo). Todo PR posterior debe dejarlas idénticas:
 la comparación es byte a byte y, al fallar, muestra las líneas que difieren. Datos ficticios; reloj e ids inyectados;
 sin red ni emulador; corre con `pnpm test`.

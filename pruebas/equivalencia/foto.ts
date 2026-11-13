@@ -1,5 +1,5 @@
 // Fotos de referencia de la batería de equivalencia: guardan, como texto estable, lo que hoy produce el sistema para
-// Casa Bermejo. La comparación es byte a byte; al fallar muestra un diff legible por línea. Las referencias solo se
+// el tenant de referencia. La comparación es byte a byte; al fallar muestra un diff legible por línea. Las referencias solo se
 // regeneran de forma explícita (EQUIVALENCIA_ACTUALIZAR=1, vía `pnpm equivalencia:actualizar`) y nunca en CI.
 import { existsSync, mkdirSync, readFileSync, writeFileSync } from 'node:fs';
 import { dirname, join } from 'node:path';
@@ -48,7 +48,7 @@ export function compararConFoto(nombre: string, contenido: string): void {
   expect(existsSync(ruta), `falta la referencia ${nombre}; genérela con \`pnpm equivalencia:actualizar\` y explíquela en CAMBIOS.md`).toBe(true);
   const esperado = readFileSync(ruta, 'utf8');
   if (esperado !== contenido) {
-    throw new Error(`La salida cambió respecto de la referencia «${nombre}» (Casa Bermejo no debe cambiar en silencio):\n${diferencias(esperado, contenido)}`);
+    throw new Error(`La salida cambió respecto de la referencia «${nombre}» (el tenant de referencia no debe cambiar en silencio):\n${diferencias(esperado, contenido)}`);
   }
 }
 

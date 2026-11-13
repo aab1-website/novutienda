@@ -1,4 +1,4 @@
-// `pnpm equivalencia:actualizar`: regenera las referencias de la batería de equivalencia de Casa Bermejo.
+// `pnpm equivalencia:actualizar`: regenera las referencias de la batería de equivalencia del tenant de referencia.
 // Es deliberado y manual: NO corre en CI. Tras regenerar, escribe el sello nuevo y agrega a CAMBIOS.md una entrada
 // «PENDIENTE»; la prueba `registro.test.ts` falla hasta que alguien reemplace PENDIENTE por el porqué del cambio.
 import { spawnSync } from 'node:child_process';
@@ -27,6 +27,6 @@ if (sello === antes) {
 writeFileSync(`${refs}${ARCHIVO_SELLO}`, `${sello}\n`);
 const cambios = `${aqui}CAMBIOS.md`;
 if (!leerCambios(readFileSync(cambios, 'utf8')).some((e) => e.sello === sello)) {
-  appendFileSync(cambios, `\n## Regeneración ${sello.slice(0, 12)}\n\nSello: ${sello}\nMotivo: PENDIENTE (explique qué comportamiento cambió y por qué es intencional para Casa Bermejo)\n`);
+  appendFileSync(cambios, `\n## Regeneración ${sello.slice(0, 12)}\n\nSello: ${sello}\nMotivo: PENDIENTE (explique qué comportamiento cambió y por qué es intencional para el tenant de referencia)\n`);
 }
 console.log(`Referencias regeneradas. Sello ${sello.slice(0, 12)}. Reemplace PENDIENTE en pruebas/equivalencia/CAMBIOS.md.`);

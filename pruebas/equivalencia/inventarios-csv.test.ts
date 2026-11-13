@@ -18,7 +18,7 @@ const exportables = async (): Promise<{ e: Awaited<ReturnType<typeof crearEscena
   return { e, productos };
 };
 
-describe('CSV de productos de Casa Bermejo', () => {
+describe('CSV de productos del tenant de referencia', () => {
   it('exportación: columnas, precios en USD con dos decimales (precioBO / precioAR), precios en 0 y decimales incómodos', async () => {
     const { productos } = await exportables();
     const csv = exportarProductosCsv(productos);

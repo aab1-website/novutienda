@@ -7,7 +7,7 @@ import { T, caj, doc } from '../integracion/entorno.js';
 import { TURNO, jornada } from './jornada.js';
 import { compararConFotoJson, compararConFoto } from './foto.js';
 
-describe('caja de Casa Bermejo en tres monedas', () => {
+describe('caja del tenant de referencia en tres monedas', () => {
   it('ventas: totales, conversión, pagos y vuelto por moneda', async () => {
     const { e } = await jornada();
     const ventas = e.db.coleccion(`tenants/${T}/ventas`).sort((a, b) => a.id.localeCompare(b.id)).map((v) => ({ id: v.id, ...v.datos }) as Record<string, unknown>);

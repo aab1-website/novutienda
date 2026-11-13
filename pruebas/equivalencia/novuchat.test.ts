@@ -31,7 +31,7 @@ const peticion = (ruta: string, consulta: Record<string, string> = {}, extra: Pa
 const sirve = (): Promise<boolean> => Promise.resolve(true);
 
 /** `generadoEn` viene del reloj inyectado (fijo); se deja tal cual: el reloj no es real. */
-describe('NovuChat: contrato actual de Casa Bermejo', () => {
+describe('NovuChat: contrato actual del tenant de referencia', () => {
   it('catálogo del mercado BO (bolivianos)', async () => {
     const { entorno, cfg } = await preparar();
     const r = await manejarCatalogo(entorno, peticion('/api/novuchat/v1/catalogo', { mercado: 'BO' }), cfg, sirve);

@@ -6,7 +6,7 @@ import { T, UUID, doc } from '../integracion/entorno.js';
 import { compararConFoto, compararConFotoJson } from './foto.js';
 import { jornada } from './jornada.js';
 
-describe('recibos de Casa Bermejo', () => {
+describe('recibos del tenant de referencia', () => {
   it('documento y vista de un recibo por moneda, con totales, pagos y vuelto', async () => {
     const { e } = await jornada();
     const entrega = await e.bandeja.entregar(T);
