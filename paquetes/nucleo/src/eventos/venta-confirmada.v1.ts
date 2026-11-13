@@ -69,6 +69,7 @@ export interface DatosVentaConfirmadaV1 {
   readonly cliente?: ClienteVenta;
 }
 
+const PAR_DE_MONEDA: Readonly<Record<string, string>> = { BOB: 'BOB/USD', ARS: 'ARS/USD' };
 
 export const validarVentaConfirmadaV1 = crearValidador<DatosVentaConfirmadaV1>(
   {
@@ -111,7 +112,7 @@ export const validarVentaConfirmadaV1 = crearValidador<DatosVentaConfirmadaV1>(
       if (d.cotizacion !== null) return 'datos.cotizacion debe ser null si la venta es toda en USD';
     } else {
       if (d.cotizacion === null) return 'datos.cotizacion es obligatoria si algún monto no está en USD';
-      if (!d.cotizacion.par.startsWith(`${d.moneda}/`)) return `datos.cotizacion.par no corresponde a la moneda ${d.moneda}`;
+      if (d.cotizacion.par !== PAR_DE_MONEDA[d.moneda]) return `datos.cotizacion.par no corresponde a la moneda ${d.moneda}`;
     }
     const s = errorSeriesLineas(d.lineas, 'datos.lineas');
     if (s !== null) return s;

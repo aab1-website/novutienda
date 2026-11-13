@@ -1,19 +1,16 @@
-import type { CopiaCotizacion } from '../tipo-cambio/tipos.js';
+import { MONEDA_DE, PAR_DE, type CopiaCotizacion, type Mercado } from '../tipo-cambio/tipos.js';
 import { arreglo, cantidadPositiva, objeto, texto } from './esquema.js';
 
 /** Piezas internas compartidas por los contratos de pedido (no se exportan desde el índice). */
 
 export const esquemaLineasPedido = arreglo(objeto({ productoId: texto, cantidad: cantidadPositiva }), 1);
 
-/**
- * Coherencia entre mercado, moneda y cotización. El evento no ve la configuración del tenant, así que exige lo que
- * se puede comprobar sin ella: la moneda del pedido es uno de los dos lados del par de la cotización (`VENTA/BASE`).
- */
+/** Coherencia entre mercado, moneda y cotización. */
 export function errorMercadoMonedaCotizacion(
-  d: { readonly mercado: string; readonly moneda: string; readonly cotizacion: CopiaCotizacion<string> },
+  d: { readonly mercado: Mercado; readonly moneda: string; readonly cotizacion: CopiaCotizacion },
 ): string | null {
-  const [venta, base] = d.cotizacion.par.split('/');
-  if (d.moneda !== venta && d.moneda !== base) return `datos.moneda no corresponde al mercado ${d.mercado}`;
+  if (d.moneda !== 'USD' && d.moneda !== MONEDA_DE[d.mercado]) return `datos.moneda no corresponde al mercado ${d.mercado}`;
+  if (d.cotizacion.par !== PAR_DE[d.mercado]) return `datos.cotizacion.par no corresponde al mercado ${d.mercado}`;
   return null;
 }
 

@@ -31,6 +31,11 @@ export const PLANES: { readonly [plan in PlanId]: TopesPlan } = {
   multimercado: { productos: 200, usuarios: 3, cajas: 1, almacenes: 3, mercados: 5, monedas: 5 },
 };
 
+/*
+ * Importante: el documento de tenant en forma LEGADO (sin `comercial`, con `zonaHoraria` y `monedas`) NO pasa por
+ * `validarComercialContraPlan`: se acepta tal cual en cualquier plan hasta que el PR E lo migre a `comercial` con el plan
+ * `multimercado`. Desde que lleva `comercial`, `validarTenant` mide la configuración contra los topes del plan.
+ */
 export const esPlanId = (x: unknown): x is PlanId => typeof x === 'string' && Object.hasOwn(PLANES, x);
 
 /** Valida la configuración comercial contra los topes del plan; el error dice qué tope se superó. */

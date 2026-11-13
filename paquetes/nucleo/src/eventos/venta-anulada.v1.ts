@@ -81,7 +81,6 @@ export const fixturesVentaAnuladaV1: Fixtures<DatosVentaAnuladaV1> = {
     { ...valido, lineas: [{ productoId: 'p2', cantidad: 3, almacenId: 'a1', series: [] }], turnoIdReembolso: 't1' },
     { ...valido, reembolsos: [{ medio: 'efectivo', moneda: 'BOB', monto: 80000 }, { medio: 'qr', moneda: 'BOB', monto: 45000 }] },
     { ...valido, reembolsos: [] },
-    { ...valido, reembolsos: [{ medio: 'efectivo', moneda: 'EUR', monto: 125000 }] },
   ],
   invalidos: [
     { nombre: 'sin motivo', datos: { ...valido, motivo: undefined } },
@@ -100,7 +99,7 @@ export const fixturesVentaAnuladaV1: Fixtures<DatosVentaAnuladaV1> = {
     { nombre: 'reembolso de monto cero', datos: { ...valido, reembolsos: [{ ...valido.reembolsos[0], monto: 0 }] } },
     { nombre: 'medio de reembolso desconocido', datos: { ...valido, reembolsos: [{ ...valido.reembolsos[0], medio: 'cheque' }] } },
     { nombre: 'reembolso por crédito', datos: { ...valido, reembolsos: [{ ...valido.reembolsos[0], medio: 'credito' }] } },
-    { nombre: 'moneda de reembolso inválida', datos: { ...valido, reembolsos: [{ ...valido.reembolsos[0], moneda: 'eur' }] } },
+    { nombre: 'moneda de reembolso inválida', datos: { ...valido, reembolsos: [{ ...valido.reembolsos[0], moneda: 'EUR' }] } },
     { nombre: 'reembolsos en monedas distintas', datos: { ...valido, reembolsos: [valido.reembolsos[0], { medio: 'qr', moneda: 'USD', monto: 100 }] } },
     { nombre: 'dos reembolsos del mismo medio', datos: { ...valido, reembolsos: [valido.reembolsos[0], valido.reembolsos[0]] } },
   ],

@@ -18,7 +18,7 @@ import type { ConfiguracionComercial } from '../tenant/mercados.js';
 import { diasEntre, hoyEn } from './fechas.js';
 import { esFechaIso } from './texto.js';
 import {
-  CONFIG_POR_DEFECTO,
+  COMERCIAL_LEGADO_TRES_MONEDAS, CONFIG_POR_DEFECTO,
   type Ancla, type ConfigCotizacion, type FuenteCotizacion, type IdMercado, type Lectura, type OrigenCarga,
 } from './tipos.js';
 
@@ -47,8 +47,8 @@ export type Decision =
 
 export interface EntradaDecision {
   readonly mercado: IdMercado;
-  /** Declaración comercial del tenant (zona horaria del mercado); omitida = la del tenant de tres monedas (LEGADO). */
-  readonly comercial?: ConfiguracionComercial;
+  /** Declaración comercial del tenant (zona horaria del mercado). Obligatoria. */
+  readonly comercial: ConfiguracionComercial;
   /** Documento guardado hoy (cualquier cosa; se valida). */
   readonly actual: unknown;
   /** Fuente principal (BCB en BO, BNA en AR); null si falló. */
@@ -94,7 +94,15 @@ function previoDe(actual: unknown): Previo | null {
 
 const lecturaValida = (l: Lectura): boolean => Number.isFinite(l.valor) && l.valor > 0 && esFechaIso(l.fecha);
 
-export function decidirCotizacion(e: EntradaDecision): Decision {
+/**
+ * LEGADO: decide con la declaración del tenant de tres monedas.
+ * @deprecated Usar `decidirCotizacionDe` con la declaración del tenant.
+ */
+export function decidirCotizacion(e: Omit<EntradaDecision, 'comercial'>): Decision {
+  return decidirCotizacionDe({ ...e, comercial: COMERCIAL_LEGADO_TRES_MONEDAS });
+}
+
+export function decidirCotizacionDe(e: EntradaDecision): Decision {
   const cfg = { ...CONFIG_POR_DEFECTO, ...e.config };
   const avisos: Aviso[] = [];
   const rechazo = (motivo: string): Decision => ({ accion: 'rechazar', motivo, avisos });

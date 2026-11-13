@@ -114,6 +114,32 @@ describe('configuración comercial: rechazos con el campo en el motivo', () => {
   });
 });
 
+describe('dinero en centavos y redondeo por moneda', () => {
+  it('rechaza monedas de tres o más decimales', () => {
+    for (const k of ['KWD', 'BHD', 'JOD', 'OMR', 'TND']) {
+      rechaza(mod((c) => { c.mercados[0].monedaVenta = k; c.monedas = [k]; c.mercados[0].monedaBase = k; c.mercados[0].tipoCambio = null; }, una), 'más de 2 decimales');
+    }
+    rechaza(mod((c) => (c.monedas.push('KWD')), una), 'comercial.monedas');
+    rechaza(mod((c) => { c.mercados[0].monedaBase = 'BHD'; c.mercados[0].tipoCambio = { par: 'COP/BHD', fuentes: ['manual'] }; }, una), 'monedaBase');
+  });
+  it('rechaza un redondeo con más de 2 decimales y acepta 0, 1 y 2', () => {
+    rechaza(mod((c) => (c.mercados[0].redondeo = { tipo: 'decimales', decimales: 3, modo: 'cercano' })), 'más de 2 decimales');
+    rechaza(mod((c) => (c.mercados[0].redondeo = { tipo: 'multiplo', multiplo: 0.001, modo: 'cercano' })), 'múltiplo');
+    for (const d of [0, 1, 2]) {
+      expect(validarConfiguracionComercial(mod((c) => (c.mercados[0].redondeo = { tipo: 'decimales', decimales: d, modo: 'cercano' }))).ok).toBe(true);
+    }
+    expect(validarConfiguracionComercial(mod((c) => (c.mercados[0].redondeo = { tipo: 'multiplo', multiplo: 0.05, modo: 'arriba' }))).ok).toBe(true);
+  });
+  it('dos mercados en la misma moneda deben tener el mismo redondeo', () => {
+    const dosEnUna = (r2: unknown) => mod((c) => {
+      c.mercados.push({ ...c.mercados[0], id: 'CX', nombre: 'Otro', redondeo: r2 });
+    }, una);
+    expect(validarConfiguracionComercial(dosEnUna({ modo: 'cercano', multiplo: 50, tipo: 'multiplo' })).ok).toBe(true);
+    rechaza(dosEnUna({ tipo: 'multiplo', multiplo: 100, modo: 'cercano' }), 'misma moneda');
+    rechaza(dosEnUna({ tipo: 'ninguno' }), 'mercados[1].redondeo');
+  });
+});
+
 describe('consultas puras', () => {
   const c = COMERCIAL_LEGADO_TRES_MONEDAS;
   it('responden por mercado declarado', () => {

@@ -6,7 +6,7 @@ import {
   PAR_DE,
   ZONA_DE,
   hoyEn,
-  manejarCotizacion,
+  manejarCotizacionDe,
   mercadoDe,
   mercadosDe,
   monedaDe,
@@ -86,13 +86,13 @@ describe('zona horaria y /api/cotizacion por tenant', () => {
   it('hoyEn usa la zona declarada y falla cerrado en un mercado no declarado', () => {
     const t = Date.UTC(2026, 10, 14, 3, 0); // 14/11 03:00 UTC = 13/11 22:00 en Bogotá
     expect(hoyEn('CO', t, unaMoneda)).toBe('2026-11-13');
-    expect(hoyEn('BO', t)).toBe('2026-11-13');
-    expect(() => hoyEn('CO', t)).toThrow(RangeError);
+    expect(hoyEn('BO', t, COMERCIAL_LEGADO_TRES_MONEDAS)).toBe('2026-11-13');
+    expect(() => hoyEn('CO', t, COMERCIAL_LEGADO_TRES_MONEDAS)).toThrow(RangeError);
   });
   it('un mercado sin tipo de cambio no aparece en la cotización general ni se pide', async () => {
     const leer = async (): Promise<CopiaCotizacion<string>> => { throw new Error('no se debe leer'); };
-    expect(await manejarCotizacion({ metodo: 'GET' }, leer, unaMoneda)).toMatchObject({ status: 200, cuerpo: { cotizaciones: {} } });
-    expect(await manejarCotizacion({ metodo: 'GET', mercado: 'CO' }, leer, unaMoneda)).toMatchObject({ status: 200, cuerpo: { cotizaciones: {}, sinTipoCambio: ['CO'] } });
-    expect(await manejarCotizacion({ metodo: 'GET', mercado: 'BO' }, leer, unaMoneda)).toMatchObject({ status: 400 });
+    expect(await manejarCotizacionDe({ metodo: 'GET' }, leer, unaMoneda)).toMatchObject({ status: 200, cuerpo: { cotizaciones: {} } });
+    expect(await manejarCotizacionDe({ metodo: 'GET', mercado: 'CO' }, leer, unaMoneda)).toMatchObject({ status: 200, cuerpo: { cotizaciones: {}, sinTipoCambio: ['CO'] } });
+    expect(await manejarCotizacionDe({ metodo: 'GET', mercado: 'BO' }, leer, unaMoneda)).toMatchObject({ status: 400 });
   });
 });

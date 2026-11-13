@@ -22,6 +22,7 @@ export type IdMercado = string;
  * dólares). Es la ÚNICA fuente de las constantes `MERCADOS`, `PAR_DE`, `MONEDA_DE` y `ZONA_DE`, que siguen existiendo
  * mientras el resto del sistema migra a leer la configuración del tenant. Ningún tenant la recibe por defecto: el
  * tenant declara la suya en su configuración.
+ * @deprecated Solo para las variantes legado y las constantes derivadas; se retira con el último llamador.
  */
 export const COMERCIAL_LEGADO_TRES_MONEDAS: ConfiguracionComercial = {
   mercados: [

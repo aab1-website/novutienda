@@ -15,6 +15,19 @@ import { esReglaRedondeoValida, type ReglaRedondeo } from '../tipo-cambio/regla-
 export const FUENTES_TIPO_CAMBIO = ['BCB', 'BNA', 'BCRA', 'manual'] as const;
 export type FuenteTipoCambio = (typeof FUENTES_TIPO_CAMBIO)[number];
 
+/**
+ * Para qué par sirve cada fuente automática (lo que el lector del núcleo entrega de verdad): el BCB publica Bs por USD;
+ * el BNA y el BCRA (A 3500), pesos argentinos por USD. `manual` no atada a un par: la carga una persona.
+ */
+export const PAR_DE_FUENTE: Readonly<Record<Exclude<FuenteTipoCambio, 'manual'>, string>> = {
+  BCB: 'BOB/USD',
+  BNA: 'ARS/USD',
+  BCRA: 'ARS/USD',
+};
+
+/** Monedas ISO 4217 con tres o más decimales: el dinero se guarda en centavos (×100) y no las representa. */
+export const MONEDAS_SIN_CENTAVOS_EXACTOS: readonly string[] = ['BHD', 'IQD', 'JOD', 'KWD', 'LYD', 'OMR', 'TND', 'CLF', 'UYW'];
+
 /** Tipo de cambio de un mercado: par `VENTA/BASE` y fuentes en orden (principal, control cruzado). */
 export interface TipoCambioMercado {
   readonly par: string;
@@ -63,6 +76,13 @@ export function esZonaHorariaValida(x: unknown): x is string {
 
 const esMoneda = (x: unknown): x is string => typeof x === 'string' && MONEDA.test(x);
 
+function mismaRegla(a: ReglaRedondeo, b: ReglaRedondeo): boolean {
+  if (a.tipo !== b.tipo) return false;
+  if (a.tipo === 'ninguno' || b.tipo === 'ninguno') return true;
+  if (a.modo !== b.modo) return false;
+  return a.tipo === 'decimales' ? a.decimales === (b as typeof a).decimales : a.multiplo === (b as typeof a).multiplo;
+}
+
 /** Devuelve el motivo del primer defecto de un mercado, o `null`. */
 function errorMercado(m: unknown, r: string): string | null {
   if (!esObjeto(m)) return `${r}: debe ser un objeto`;
@@ -70,8 +90,18 @@ function errorMercado(m: unknown, r: string): string | null {
   if (typeof m['nombre'] !== 'string' || m['nombre'].trim() === '') return `${r}.nombre: no puede estar vacío`;
   if (!esMoneda(m['monedaVenta'])) return `${r}.monedaVenta: debe ser un código ISO 4217 de tres letras mayúsculas`;
   if (!esMoneda(m['monedaBase'])) return `${r}.monedaBase: debe ser un código ISO 4217 de tres letras mayúsculas`;
+  for (const campo of ['monedaVenta', 'monedaBase'] as const) {
+    if (MONEDAS_SIN_CENTAVOS_EXACTOS.includes(m[campo] as string)) {
+      return `${r}.${campo}: ${String(m[campo])} tiene más de 2 decimales y el dinero se guarda en centavos; no se admite`;
+    }
+  }
   if (!esZonaHorariaValida(m['zonaHoraria'])) return `${r}.zonaHoraria: no es una zona horaria IANA válida`;
   if (!esReglaRedondeoValida(m['redondeo'] as ReglaRedondeo | undefined)) return `${r}.redondeo: regla de redondeo inválida para ${m['monedaVenta']}`;
+  const rd = m['redondeo'] as ReglaRedondeo;
+  if (rd.tipo === 'decimales' && rd.decimales > 2) return `${r}.redondeo: no puede tener más de 2 decimales (el dinero se guarda en centavos)`;
+  if (rd.tipo === 'multiplo' && (rd.multiplo < 0.01 || Math.abs(rd.multiplo * 100 - Math.round(rd.multiplo * 100)) > 1e-9)) {
+    return `${r}.redondeo: el múltiplo debe ser de al menos 0,01 y de centavos exactos`;
+  }
   const tc = m['tipoCambio'];
   if (m['monedaBase'] === m['monedaVenta']) {
     if (tc !== null) return `${r}.tipoCambio: debe ser null si la moneda base y la de venta son la misma`;
@@ -90,6 +120,11 @@ function errorMercado(m: unknown, r: string): string | null {
     return `${r}.tipoCambio.fuentes: solo se admiten ${FUENTES_TIPO_CAMBIO.join(', ')}`;
   }
   if (new Set(f).size !== f.length) return `${r}.tipoCambio.fuentes: tiene fuentes repetidas`;
+  for (const fuente of f as readonly FuenteTipoCambio[]) {
+    if (fuente !== 'manual' && PAR_DE_FUENTE[fuente] !== tc['par']) {
+      return `${r}.tipoCambio.fuentes: la fuente ${fuente} solo sirve para ${PAR_DE_FUENTE[fuente]}, no para ${String(tc['par'])}; otro par admite solo manual`;
+    }
+  }
   return null;
 }
 
@@ -110,6 +145,16 @@ export function validarConfiguracionComercial(x: unknown): Resultado<Configuraci
   if (!Array.isArray(monedas) || monedas.length === 0) return { ok: false, error: 'comercial.monedas: requiere al menos una moneda' };
   if (!monedas.every(esMoneda)) return { ok: false, error: 'comercial.monedas: cada moneda debe ser un código ISO 4217 de tres letras mayúsculas' };
   if (new Set(monedas).size !== monedas.length) return { ok: false, error: 'comercial.monedas: tiene monedas repetidas' };
+  const sinCentavos = monedas.find((x) => MONEDAS_SIN_CENTAVOS_EXACTOS.includes(x as string));
+  if (sinCentavos !== undefined) return { ok: false, error: `comercial.monedas: ${String(sinCentavos)} tiene más de 2 decimales y el dinero se guarda en centavos; no se admite` };
+  const reglaPorMoneda = new Map<string, MercadoTenant>();
+  for (const [i, m] of (mercados as readonly MercadoTenant[]).entries()) {
+    const previo = reglaPorMoneda.get(m.monedaVenta);
+    if (previo === undefined) reglaPorMoneda.set(m.monedaVenta, m);
+    else if (!mismaRegla(previo.redondeo, m.redondeo)) {
+      return { ok: false, error: `comercial.mercados[${i}].redondeo: debe ser igual al del mercado ${previo.id}, que vende en la misma moneda (${m.monedaVenta})` };
+    }
+  }
   for (const m of mercados as readonly MercadoTenant[]) {
     if (!monedas.includes(m.monedaVenta)) {
       return { ok: false, error: `comercial.monedas: debe incluir ${m.monedaVenta}, la moneda de venta del mercado ${m.id}` };

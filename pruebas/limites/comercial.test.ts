@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { COMERCIAL_LEGADO_TRES_MONEDAS, PLANES, esPlanId, validarComercialContraPlan, type ConfiguracionComercial } from '@novutienda/nucleo';
+import { validarTenant, COMERCIAL_LEGADO_TRES_MONEDAS, PLANES, esPlanId, validarComercialContraPlan, type ConfiguracionComercial } from '@novutienda/nucleo';
 
 const una: ConfiguracionComercial = {
   mercados: [{ id: 'CO', nombre: 'Colombia', monedaVenta: 'COP', monedaBase: 'COP', zonaHoraria: 'America/Bogota', tipoCambio: null, redondeo: { tipo: 'ninguno' } }],
@@ -24,5 +24,15 @@ describe('topes comerciales por plan', () => {
   });
   it('el plan multimercado admite el tenant de tres monedas', () => {
     expect(validarComercialContraPlan('multimercado', COMERCIAL_LEGADO_TRES_MONEDAS).ok).toBe(true);
+  });
+});
+
+describe('forma legado frente a los topes', () => {
+  it('el documento legado en plan base sigue válido: no pasa por validarComercialContraPlan hasta el PR E', () => {
+    const legado = { estado: 'activo', plan: 'base', modulos: {}, zonaHoraria: 'America/La_Paz', monedas: ['BOB', 'USD', 'ARS'] };
+    expect(validarTenant(legado).ok).toBe(true);
+    // la misma configuración, declarada como v3, sí se mide contra el plan
+    expect(validarTenant({ estado: 'activo', plan: 'base', modulos: {}, comercial: COMERCIAL_LEGADO_TRES_MONEDAS }).ok).toBe(false);
+    expect(validarTenant({ estado: 'activo', plan: 'multimercado', modulos: {}, comercial: COMERCIAL_LEGADO_TRES_MONEDAS }).ok).toBe(true);
   });
 });

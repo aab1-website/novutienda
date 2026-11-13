@@ -9,7 +9,7 @@
 import { parDe, tieneTipoCambio, type ConfiguracionComercial } from '../tenant/mercados.js';
 import { esTenantIdValido } from '../tenant/tenant.js';
 import type { Rol } from '../registro/tipos.js';
-import { anclaParaEscribir, decidirCotizacion, type Decision, type EntradaDecision } from './decidir.js';
+import { anclaParaEscribir, decidirCotizacionDe, type Decision, type EntradaDecision } from './decidir.js';
 import { diasEntre, diasHabilesEntre, hoyEn, type EsFeriado } from './fechas.js';
 import { esFechaIso } from './texto.js';
 import {
@@ -49,10 +49,11 @@ export interface ResultadoEscritura {
   readonly escrita: CotizacionGuardada | null;
 }
 
-export interface OpcionesAlmacen {
-  readonly tenantId: string;
-  /** Declaración comercial del tenant (par y zona horaria de cada mercado); omitida = la del tenant de tres monedas (LEGADO). */
-  readonly comercial?: ConfiguracionComercial;
+export interface OpcionesAlmacen { readonly tenantId: string }
+
+/** Opciones de la API por tenant: la declaración comercial (par y zona horaria de cada mercado) es OBLIGATORIA. */
+export interface OpcionesAlmacenDe extends OpcionesAlmacen {
+  readonly comercial: ConfiguracionComercial;
 }
 
 /** Par `VENTA/BASE` del mercado; lanza si no existe o no tiene tipo de cambio (no hay cotización que guardar). */
@@ -62,17 +63,29 @@ function parDeMercado(c: ConfiguracionComercial, mercado: IdMercado): string {
   return par;
 }
 
-/** Una corrida automática: lee lo guardado, decide y, si corresponde, escribe documento e historial en una transacción. */
-export async function escribirCotizacion(
+/**
+ * LEGADO: corrida automática con la declaración del tenant de tres monedas.
+ * @deprecated Usar `escribirCotizacionDe` con la declaración del tenant.
+ */
+export function escribirCotizacion(
   almacen: AlmacenCotizaciones,
-  entrada: Omit<EntradaDecision, 'actual'>,
+  entrada: Omit<EntradaDecision, 'actual' | 'comercial'>,
   opciones: OpcionesAlmacen,
 ): Promise<ResultadoEscritura> {
+  return escribirCotizacionDe(almacen, entrada, { ...opciones, comercial: COMERCIAL_LEGADO_TRES_MONEDAS });
+}
+
+/** Una corrida automática: lee lo guardado, decide y, si corresponde, escribe documento e historial en una transacción. */
+export async function escribirCotizacionDe(
+  almacen: AlmacenCotizaciones,
+  entrada: Omit<EntradaDecision, 'actual' | 'comercial'>,
+  opciones: OpcionesAlmacenDe,
+): Promise<ResultadoEscritura> {
   const ruta = rutaCotizacion(opciones.tenantId, entrada.mercado);
-  const comercial = opciones.comercial ?? entrada.comercial ?? COMERCIAL_LEGADO_TRES_MONEDAS;
+  const comercial = opciones.comercial;
   return almacen.transaccion(async (tx) => {
     const actual = await tx.leer(ruta);
-    const decision = decidirCotizacion({ ...entrada, comercial, actual });
+    const decision = decidirCotizacionDe({ ...entrada, comercial, actual });
     if (decision.accion !== 'escribir') return { decision, escrita: null };
     const escrita = armar(entrada.mercado, decision.nuevo, entrada.ahoraMs, comercial);
     guardar(tx, opciones.tenantId, escrita, actual, 'automatico');
@@ -108,27 +121,39 @@ const esAutorizado = (a: ActorCarga): boolean =>
   (a.rol === 'adm' && a.proveedor === 'password') || (a.rol === 'propietario' && a.proveedor === 'google.com');
 
 /**
+ * LEGADO: carga manual con la declaración del tenant de tres monedas.
+ * @deprecated Usar `cargarManualDe` con la declaración del tenant.
+ */
+export function cargarManual(
+  almacen: AlmacenCotizaciones,
+  e: Parameters<typeof cargarManualDe>[1],
+  opciones: OpcionesAlmacen,
+): Promise<CotizacionGuardada> {
+  return cargarManualDe(almacen, e, { ...opciones, comercial: COMERCIAL_LEGADO_TRES_MONEDAS });
+}
+
+/**
  * Carga manual (corrección por una persona). Exige administrador del tenant
  * (sesión con contraseña) o propietario; `por` es el uid del actor. Valida
  * valor y fecha con la configuración recibida. Si el valor se aparta del
  * guardado más que `saltoMaximo`, exige `confirmarSalto: true`. Queda marcada
  * `origen: 'manual'` y las corridas automáticas no la pisan con fecha igual o anterior.
  */
-export async function cargarManual(
+export async function cargarManualDe(
   almacen: AlmacenCotizaciones,
   e: {
     mercado: IdMercado; valor: number; fecha: string; actor: ActorCarga; ahoraMs: number;
     /** Confirmación explícita de un salto mayor al máximo. */
     confirmarSalto?: boolean; config?: Partial<ConfigCotizacion>;
   },
-  opciones: OpcionesAlmacen,
+  opciones: OpcionesAlmacenDe,
 ): Promise<CotizacionGuardada> {
   if (!esAutorizado(e.actor)) throw new CargaNoAutorizada();
   const cfg = { ...CONFIG_POR_DEFECTO, ...e.config };
   if (!Number.isFinite(e.valor) || e.valor <= 0) throw new RangeError('el valor debe ser un número positivo');
   if (!esFechaIso(e.fecha)) throw new RangeError('la fecha debe ser aaaa-mm-dd');
   if (e.actor.uid.trim() === '') throw new RangeError('hay que indicar quién carga');
-  const comercial = opciones.comercial ?? COMERCIAL_LEGADO_TRES_MONEDAS;
+  const comercial = opciones.comercial;
   if (!tieneTipoCambio(comercial, e.mercado)) throw new RangeError(`el mercado ${e.mercado} no está declarado o no tiene tipo de cambio`);
   const adelanto = diasEntre(hoyEn(e.mercado, e.ahoraMs, comercial), e.fecha);
   if (adelanto > (cfg.futuroVigente ? cfg.diasFuturoMax : 0)) throw new RangeError('la fecha es futura');
@@ -173,34 +198,34 @@ function guardar(tx: TransaccionCotizaciones, tenantId: string, c: CotizacionGua
 }
 
 /**
- * Lee la cotización que rige y le pone el estado. La antigüedad se cuenta en
- * días HÁBILES (lunes a viernes sin los feriados de `esFeriado`, calendario
- * inyectable; sin él solo se descuentan fines de semana). Lanza
- * `SinCotizacionUtilizable` si falta, está mal formada, tiene una fecha futura
- * que `futuroVigente`/`diasFuturoMax` no admiten o supera `diasLimite` días hábiles, o si el mercado no tiene
- * tipo de cambio. Sin `opciones.comercial` rige la declaración del tenant de tres monedas (LEGADO) y el par
- * se tipa como `Par`; con ella, como `string`.
+ * LEGADO: lee la cotización con la declaración del tenant de tres monedas (par tipado como `Par`).
+ * @deprecated Usar `leerCotizacionDe` con la declaración del tenant.
  */
 export function leerCotizacion(
   almacen: AlmacenCotizaciones,
   mercado: IdMercado,
   ahoraMs: number,
   opciones: { readonly tenantId: string; readonly config?: Partial<ConfigCotizacion>; readonly esFeriado?: EsFeriado },
-): Promise<CopiaCotizacion>;
-export function leerCotizacion(
+): Promise<CopiaCotizacion> {
+  return leerCotizacionDe(almacen, mercado, ahoraMs, { ...opciones, comercial: COMERCIAL_LEGADO_TRES_MONEDAS }) as Promise<CopiaCotizacion>;
+}
+
+/**
+ * Lee la cotización que rige y le pone el estado. La antigüedad se cuenta en
+ * días HÁBILES (lunes a viernes sin los feriados de `esFeriado`, calendario
+ * inyectable; sin él solo se descuentan fines de semana). Lanza
+ * `SinCotizacionUtilizable` si falta, está mal formada, tiene una fecha futura
+ * que `futuroVigente`/`diasFuturoMax` no admiten o supera `diasLimite` días hábiles, o si el mercado no está
+ * declarado o no tiene tipo de cambio. `opciones.comercial` es obligatorio.
+ */
+export async function leerCotizacionDe(
   almacen: AlmacenCotizaciones,
   mercado: IdMercado,
   ahoraMs: number,
-  opciones: OpcionesAlmacen & { readonly config?: Partial<ConfigCotizacion>; readonly esFeriado?: EsFeriado },
-): Promise<CopiaCotizacion<string>>;
-export async function leerCotizacion(
-  almacen: AlmacenCotizaciones,
-  mercado: IdMercado,
-  ahoraMs: number,
-  opciones: OpcionesAlmacen & { readonly config?: Partial<ConfigCotizacion>; readonly esFeriado?: EsFeriado },
+  opciones: OpcionesAlmacenDe & { readonly config?: Partial<ConfigCotizacion>; readonly esFeriado?: EsFeriado },
 ): Promise<CopiaCotizacion<string>> {
   const cfg = { ...CONFIG_POR_DEFECTO, ...opciones.config };
-  const comercial = opciones.comercial ?? COMERCIAL_LEGADO_TRES_MONEDAS;
+  const comercial = opciones.comercial;
   const par = parDe(comercial, mercado);
   if (par === null) throw new SinCotizacionUtilizable(mercado, 'el mercado no está declarado o no tiene tipo de cambio');
   const d = await almacen.leer(rutaCotizacion(opciones.tenantId, mercado));

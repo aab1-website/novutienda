@@ -1,11 +1,11 @@
 import { zonaDe, type ConfiguracionComercial } from '../tenant/mercados.js';
-import { COMERCIAL_LEGADO_TRES_MONEDAS, type IdMercado } from './tipos.js';
+import type { IdMercado } from './tipos.js';
 
 /**
  * La fecha civil «aaaa-mm-dd» de un instante en la zona horaria del mercado. Lanza si el tenant no declara el mercado.
- * `comercial` omitido = declaración del tenant de tres monedas (LEGADO, hasta que cada llamador pase la del tenant).
+ * `comercial` es obligatorio: nunca se asume la declaración de un tenant.
  */
-export function hoyEn(mercado: IdMercado, ahoraMs: number, comercial: ConfiguracionComercial = COMERCIAL_LEGADO_TRES_MONEDAS): string {
+export function hoyEn(mercado: IdMercado, ahoraMs: number, comercial: ConfiguracionComercial): string {
   const timeZone = zonaDe(comercial, mercado);
   if (timeZone === undefined) throw new RangeError(`el mercado ${mercado} no está declarado por el tenant`);
   return new Intl.DateTimeFormat('en-CA', {

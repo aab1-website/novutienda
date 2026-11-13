@@ -46,6 +46,7 @@ export const MONEDAS: readonly Moneda[] = ['BOB', 'USD', 'ARS'];
  * `America/La_Paz` y BOB, USD y ARS, equivale a la declaración explícita del tenant de tres monedas. Cualquier otra
  * combinación es inválida (no se inventan mercados). Se retira cuando el documento se vuelva a dar de alta con
  * `comercial` (PR E).
+ * @deprecated LEGADO: el documento v3 declara `comercial`.
  */
 export function comercialLegado(x: { readonly zonaHoraria?: unknown; readonly monedas?: unknown }): Resultado<ConfiguracionComercial> {
   if (x.zonaHoraria !== ZONA_HORARIA) return { ok: false, error: `zonaHoraria debe ser ${ZONA_HORARIA}` };

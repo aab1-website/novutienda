@@ -6,10 +6,10 @@
  * los que no (200 si al menos uno responde, 503 si ninguno). Con `mercado`
  * explícito, 200 o 503 de ese mercado. Un mercado sin tipo de cambio no tiene cotización: se omite del pedido
  * general y, pedido por su id, responde 200 con `cotizaciones: {}` y `sinTipoCambio` con su id.
- * `comercial` omitido = declaración del tenant de tres monedas (LEGADO).
+ * `comercial` es obligatorio en `manejarCotizacionDe`.
  */
 import { esMercadoDe, mercadosDe, tieneTipoCambio, type ConfiguracionComercial } from '../tenant/mercados.js';
-import { COMERCIAL_LEGADO_TRES_MONEDAS, SinCotizacionUtilizable, type CopiaCotizacion, type IdMercado } from './tipos.js';
+import { COMERCIAL_LEGADO_TRES_MONEDAS, SinCotizacionUtilizable, type CopiaCotizacion, type IdMercado, type Mercado } from './tipos.js';
 
 /** Caché: navegador 60 s, CDN 5 min. */
 export const CACHE_COTIZACION = 'public, max-age=60, s-maxage=300';
@@ -22,11 +22,21 @@ export interface RespuestaHttp {
 
 const JSON_UTF8 = 'application/json; charset=utf-8';
 
-export async function manejarCotizacion(
+/**
+ * LEGADO: responde con la declaración del tenant de tres monedas (mercados BO y AR).
+ * @deprecated Usar `manejarCotizacionDe` con la declaración del tenant.
+ */
+export function manejarCotizacion(
   req: { readonly metodo: string; readonly mercado?: string | null },
-  // Método (no propiedad): los lectores LEGADO tipados con `Mercado` siguen siendo asignables.
-  leer: { bivarianceHack(mercado: IdMercado): Promise<CopiaCotizacion<string>> }['bivarianceHack'],
-  comercial: ConfiguracionComercial = COMERCIAL_LEGADO_TRES_MONEDAS,
+  leer: (mercado: Mercado) => Promise<CopiaCotizacion>,
+): Promise<RespuestaHttp> {
+  return manejarCotizacionDe(req, leer as (mercado: IdMercado) => Promise<CopiaCotizacion<string>>, COMERCIAL_LEGADO_TRES_MONEDAS);
+}
+
+export async function manejarCotizacionDe(
+  req: { readonly metodo: string; readonly mercado?: string | null },
+  leer: (mercado: IdMercado) => Promise<CopiaCotizacion<string>>,
+  comercial: ConfiguracionComercial,
 ): Promise<RespuestaHttp> {
   const sinCache = { 'Content-Type': JSON_UTF8, 'Cache-Control': 'no-store' };
   if (req.metodo.toUpperCase() !== 'GET') {
