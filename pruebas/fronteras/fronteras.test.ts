@@ -1,4 +1,5 @@
-import { readdirSync, readFileSync } from 'node:fs';
+import { execFileSync } from 'node:child_process';
+import { existsSync, readdirSync, readFileSync } from 'node:fs';
 import { join, relative, sep } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { describe, expect, it } from 'vitest';
@@ -54,10 +55,25 @@ describe('fronteras del repositorio real', () => {
     expect(buscarTermino(leerArbol('paquetes'), 'paquetes/', 'bermejo')).toEqual([]);
   });
 
-  it('no aparece «bermejo» en docs/, README.md ni ESTADO.md (repositorio público)', () => {
-    const arbol: Record<string, string> = { ...leerArbol('docs') };
-    for (const f of ['README.md', 'ESTADO.md']) arbol[f] = readFileSync(join(RAIZ, f), 'utf8');
-    expect([...buscarTermino(arbol, 'docs/', 'bermejo'), ...buscarTermino(arbol, 'README.md', 'bermejo'), ...buscarTermino(arbol, 'ESTADO.md', 'bermejo')]).toEqual([]);
+  // Repositorio público: el nombre del cliente solo vive en `tenants/` y en los identificadores de tenant usados como dato.
+  // La lista de excepciones es corta y justificada; quitar una exige cambiar el dato (id de tenant, ruta) y no solo el texto.
+  it('el nombre del cliente no aparece en ningún archivo versionado salvo tenants/ y las excepciones', () => {
+    const EXCEPCIONES: Record<string, string> = {
+      'pnpm-lock.yaml': 'generado',
+      'pruebas/fronteras/fronteras.test.ts': 'la propia prueba nombra el término que prohíbe',
+      'pruebas/website/prohibiciones.test.ts': 'la propia prueba nombra el término que prohíbe',
+      'pruebas/funciones/ayudas.ts': 'id de tenant real usado como dato (carpeta tenants/)',
+      'pruebas/integracion/ejecutor-recibos.test.ts': 'id de tenant real usado como dato',
+      'pruebas/tenant/alta.test.ts': 'ruta tenants/<id>/config.json leída como dato',
+      'pruebas/tenant/tenant.test.ts': 'id de tenant real usado como dato',
+      'pruebas/tipo-cambio/almacen.test.ts': 'id de tenant de fixture usado como dato',
+      'pruebas/funciones/guardia-operador.test.ts': 'ruta local de la guardia del operador usada como dato',
+    };
+    const archivos = execFileSync('git', ['ls-files', '-z'], { cwd: RAIZ, encoding: 'utf8' }).split('\0')
+      .filter((f) => f && !f.startsWith('tenants/') && !(f in EXCEPCIONES) && existsSync(join(RAIZ, f)));
+    const arbol: Record<string, string> = {};
+    for (const f of archivos) arbol[f] = /\.(png|jpe?g|webp|gif|ico|pdf|woff2?)$/i.test(f) ? '' : readFileSync(join(RAIZ, f), 'utf8');
+    expect(buscarTermino(arbol, '', 'bermejo')).toEqual([]);
   });
 });
 

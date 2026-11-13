@@ -21,7 +21,7 @@ const tenantDe = (c: unknown): Tenant => {
 };
 
 describe('alta de tenant: config.json v2 -> Tenant', () => {
-  it('el config.json de Casa Bermejo es v2 y construye un Tenant válido con las versiones del manifiesto', () => {
+  it('el config.json del tenant de referencia es v2 y construye un Tenant válido con las versiones del manifiesto', () => {
     const c = JSON.parse(readFileSync('tenants/casa-bermejo/config.json', 'utf8')) as unknown;
     const t = tenantDe(c);
     expect(Object.keys(t.modulos).sort()).toEqual(['consola', 'inventarios', 'pos', 'recibos', 'website']);

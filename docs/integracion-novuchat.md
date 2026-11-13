@@ -38,7 +38,7 @@ La plataforma ya implementa y prueba esto (módulo Inventarios: `confirmarPedido
 El panel único de gestión del primer cliente es independiente de la consola de NovuChat (ver docs/panel-unico.md). La consola de NovuChat podrá recuperar información de inventarios y productos de la plataforma con endpoints de solo lectura, con el mismo token por tenant que el catálogo: `GET /api/novuchat/v1/catalogo` (precio final y stock) y, si se necesita más detalle, `GET /api/novuchat/v1/inventario` (existencias por almacén). No se escribe en la plataforma salvo la confirmación de pedido firmada del §2.
 
 ## 6. Propiedades de producto (v1.1 aditiva)
-Especificación acordada con NovuChat el 05/11/2026: `docs/contratos/propiedades-de-producto-v1.1.md`. No construida aún; el alcance para T1 es decisión aparte de Andres.
+Especificación acordada con NovuChat el 05/11/2026: `docs/contratos/propiedades-de-producto-v1.1.md`. No construida aún; el alcance para el tenant de referencia es decisión aparte de Andres.
 
 **Destino de la llamada (PR B).** El tenant del pedido firmado sale del host, no de la firma: NovuChat configura `baseUrl` con el dominio del sitio del tenant (por ejemplo `https://tienda-a.test`), nunca con la URL directa de la función (sin `x-forwarded-host` responde `404`). El host debe estar mapeado en `dominios` (`docs/produccion/dominios-de-tenant.md`).
 
