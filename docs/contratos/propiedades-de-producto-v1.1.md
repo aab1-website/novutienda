@@ -1,6 +1,6 @@
 # Contrato canónico: propiedades (opciones) de producto — v1.1 aditiva (05/11/2026)
 
-Estado: **especificación acordada** entre NovuTienda y NovuChat (decisión de Andres, 05/11/2026, en la sesión de NovuChat: esquema común, dos módulos). Vale para ambas plataformas: NovuTienda lo implementa en su catálogo (fuente para tenants con tienda, POS o almacenes); NovuChat implementa la versión mínima del mismo esquema en su catálogo propio (clientes sin tienda). **Nada de esto está construido** en ninguno de los dos lados. El alcance para el tenant `casa-bermejo` (fuera del PDF firmado) es una decisión aparte de Andres: no se activa por tenant sin ella.
+Estado: **especificación acordada** entre NovuTienda y NovuChat (decisión de Andres, 05/11/2026, en la sesión de NovuChat: esquema común, dos módulos). Vale para ambas plataformas: NovuTienda lo implementa en su catálogo (fuente para tenants con tienda, POS o almacenes); NovuChat implementa la versión mínima del mismo esquema en su catálogo propio (clientes sin tienda). **Nada de esto está construido** en ninguno de los dos lados. El alcance para el tenant de referencia (fuera del PDF firmado) es una decisión aparte de Andres: no se activa por tenant sin ella.
 
 Extiende `docs/integracion-novuchat.md` sin modificar v1: todo campo nuevo es opcional y un consumidor que lo ignore sigue funcionando.
 

@@ -28,7 +28,7 @@ los fixtures, en `scripts/demo/` (todos ficticios).
 2. Firebase Auth con proveedor de correo y contraseña habilitado.
 3. Cotización vigente (las ventas la necesitan).
 4. `GOOGLE_CLOUD_PROJECT` definido con el proyecto de staging (por el operador, en su shell; no se escribe en el repositorio).
-5. Archivos locales **fuera del repositorio**, en `CLIENTES/CASA_BERMEJO/staging/`:
+5. Archivos locales **fuera del repositorio**, en `CLIENTES/<CLIENTE>/staging/`:
    - `personal.json` (o se usa `scripts/demo/personal.json`, genérico): `{ "cuentas": [{ "correo", "rol": "adm|sup|caj", "nombre"? }] }`.
    - `credenciales.json`: lo crea `personal-tenant.mjs` con permisos 0600 y contraseñas aleatorias; ambos scripts rechazan una ruta dentro del repositorio.
    - `web.json`: configuración web del proyecto (`apiKey`, `projectId`, `storageBucket`).

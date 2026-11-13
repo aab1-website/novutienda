@@ -34,7 +34,7 @@ Lo mismo vale escrito en `.claude/zona` del worktree, una línea por prefijo (`d
 - Todo gancho nuevo trae su prueba que lo invoca como lo invoca Claude Code (JSON por stdin) con un caso que rechaza y uno que acepta; la salida real va al PR.
 - Todo agente nuevo declara su zona con el valor de `NOVUTIENDA_ZONA`, qué lee antes, qué no puede hacer y su modelo (`opus` si su salida es un veredicto que nadie vuelve a mirar; `sonnet` si después pasan pruebas o un revisor).
 - `ESTADO.md` es corto y remite a `pnpm zonas`; `CLAUDE.md` es estable (sin fechas, cifras ni pendientes).
-- Ningún valor real: sin tokens, identificadores ni clientes (la prueba de fronteras prohíbe «bermejo» en `paquetes/`).
+- Ningún valor real: sin tokens, identificadores ni clientes (la prueba de fronteras prohíbe el nombre del cliente en `paquetes/`, `docs/`, `README.md` y `ESTADO.md`).
 
 ## Terminado
 
