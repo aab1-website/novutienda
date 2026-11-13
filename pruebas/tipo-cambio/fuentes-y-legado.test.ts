@@ -63,7 +63,7 @@ describe('la API por tenant exige la declaración (falla cerrado)', () => {
 
 /** Símbolos LEGADO del núcleo: marcados `@deprecated`. La lista solo puede achicarse. */
 const LEGADO_ADMITIDO = [
-  'COMERCIAL_LEGADO_TRES_MONEDAS', 'MERCADOS', 'MONEDAS', 'MONEDA_DE', 'PAR_DE', 'ZONA_DE', 'ZONA_HORARIA', 'comercialLegado',
+  'COMERCIAL_LEGADO_TRES_MONEDAS', 'MERCADOS', 'MONEDAS', 'MONEDA_DE', 'PAR_DE', 'ZONA_DE', 'ZONA_HORARIA', 'comercialLegado', 'esMercado',
   'actualizarMercado', 'cargarManual', 'decidirCotizacion', 'escribirCotizacion', 'leerCotizacion', 'manejarCotizacion', 'precioFinal',
 ].sort();
 

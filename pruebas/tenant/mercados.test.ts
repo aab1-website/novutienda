@@ -216,6 +216,20 @@ describe('documento de tenant v3 y legado', () => {
   it('acepta un tenant de una moneda en el plan base', () => {
     expect(validarTenant({ ...base, plan: 'base', comercial: una() }).ok).toBe(true);
   });
+  it('con v3 devuelve la configuración reconstruida, no la de entrada', () => {
+    const doc = { ...base, comercial: dos() };
+    const r = validarTenant(doc);
+    expect(r.ok).toBe(true);
+    if (r.ok) {
+      expect(r.valor.comercial).toEqual(doc.comercial);
+      expect(r.valor.comercial).not.toBe(doc.comercial);
+    }
+  });
+  it('rechaza mezclar comercial con la forma anterior (zonaHoraria o monedas), coherente o no', () => {
+    for (const mezcla of [{ zonaHoraria: 'America/La_Paz' }, { monedas: ['BOB', 'USD', 'ARS'] }, { zonaHoraria: 'America/Lima', monedas: ['COP'] }]) {
+      expect(validarTenant({ ...base, comercial: dos(), ...mezcla })).toMatchObject({ ok: false, error: expect.stringContaining('no puede convivir') });
+    }
+  });
   it('rechaza la v3 inválida, con el campo', () => {
     const r = validarTenant({ ...base, comercial: mod((c) => (c.monedas = ['BOB'])) });
     expect(r).toMatchObject({ ok: false, error: expect.stringContaining('comercial.monedas') });

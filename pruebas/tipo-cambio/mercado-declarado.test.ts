@@ -116,3 +116,14 @@ describe('zona horaria y /api/cotizacion por tenant', () => {
     expect(await manejarCotizacionDe({ metodo: 'GET', mercado: 'BO' }, leer, unaMoneda)).toMatchObject({ status: 400 });
   });
 });
+
+describe('esMercado (legado) y esMercadoDe', () => {
+  it('esMercadoDe cubre el mismo uso con los mercados declarados', async () => {
+    const { esMercado, esMercadoDe } = await import('@novutienda/nucleo');
+    for (const id of ['BO', 'AR', 'CL', 'bo', '', 1, null, undefined]) {
+      expect(esMercadoDe(COMERCIAL_LEGADO_TRES_MONEDAS, id)).toBe(esMercado(id));
+    }
+    expect(esMercadoDe(unaMoneda, 'CO')).toBe(true);
+    expect(esMercadoDe(unaMoneda, 'BO')).toBe(false);
+  });
+});

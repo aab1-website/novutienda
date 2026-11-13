@@ -54,6 +54,10 @@ export const MONEDA_DE: Readonly<Record<Mercado, Moneda>> = deLegado((id) => mon
  */
 export const ZONA_DE: Readonly<Record<Mercado, string>> = deLegado((id) => zonaDe(COMERCIAL_LEGADO_TRES_MONEDAS, id) as string);
 
+/**
+ * LEGADO: solo reconoce BO y AR.
+ * @deprecated Usar `esMercadoDe(comercial, id)`, que consulta los mercados declarados por el tenant (mismo uso: guardia de tipo de un id recibido).
+ */
 export const esMercado = (x: unknown): x is Mercado => x === 'BO' || x === 'AR';
 
 /** Lo que una fuente entrega ya leído: valor en unidades de moneda local por USD y fecha aaaa-mm-dd. */

@@ -76,11 +76,17 @@ export function validarTenant(x: unknown): Resultado<Tenant> {
   if (!esObjeto(x)) return { ok: false, error: 'El tenant debe ser un objeto' };
   if (!esEstadoTenant(x['estado'])) return { ok: false, error: 'Estado de tenant ausente o desconocido' };
   if (!esPlanId(x['plan'])) return { ok: false, error: 'Plan desconocido' };
+  let comercial: ConfiguracionComercial | undefined;
   if (x['comercial'] !== undefined) {
+    // La forma v3 no convive con la anterior: se rechaza la mezcla (no hay dos fuentes de verdad que puedan discrepar).
+    if (x['zonaHoraria'] !== undefined || x['monedas'] !== undefined) {
+      return { ok: false, error: 'comercial no puede convivir con zonaHoraria ni monedas (forma anterior): declare solo comercial' };
+    }
     const c = validarConfiguracionComercial(x['comercial']);
     if (!c.ok) return c;
     const p = validarComercialContraPlan(x['plan'], c.valor);
     if (!p.ok) return p;
+    comercial = c.valor;
   } else if (x['zonaHoraria'] === undefined && x['monedas'] === undefined) {
     return { ok: false, error: 'comercial: el tenant debe declarar sus mercados y monedas' };
   } else {
@@ -100,5 +106,6 @@ export function validarTenant(x: unknown): Resultado<Tenant> {
       return { ok: false, error: `Submódulos inválidos en el módulo ${id}` };
     }
   }
-  return { ok: true, valor: x as unknown as Tenant };
+  // v3: se devuelve la configuración RECONSTRUIDA por la validación; la forma legado se devuelve tal cual.
+  return { ok: true, valor: (comercial === undefined ? x : { ...x, comercial }) as unknown as Tenant };
 }
