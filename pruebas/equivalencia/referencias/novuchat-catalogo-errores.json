@@ -1,0 +1,77 @@
+{
+  "credencialMala": {
+    "cuerpo": {
+      "error": "credencial_invalida"
+    },
+    "headers": {
+      "Cache-Control": "no-store",
+      "Content-Type": "application/json; charset=utf-8",
+      "X-Content-Type-Options": "nosniff"
+    },
+    "status": 401
+  },
+  "mercadoInvalido": {
+    "cuerpo": {
+      "error": "mercado_invalido"
+    },
+    "headers": {
+      "Cache-Control": "no-store",
+      "Content-Type": "application/json; charset=utf-8",
+      "X-Content-Type-Options": "nosniff"
+    },
+    "status": 400
+  },
+  "metodo": {
+    "cuerpo": {
+      "error": "metodo_no_permitido"
+    },
+    "headers": {
+      "Allow": "GET",
+      "Cache-Control": "no-store",
+      "Content-Type": "application/json; charset=utf-8",
+      "X-Content-Type-Options": "nosniff"
+    },
+    "status": 405
+  },
+  "moduloApagado": {
+    "cuerpo": {
+      "error": "credencial_invalida"
+    },
+    "headers": {
+      "Cache-Control": "no-store",
+      "Content-Type": "application/json; charset=utf-8",
+      "X-Content-Type-Options": "nosniff"
+    },
+    "status": 401
+  },
+  "noModificado": {
+    "headers": {
+      "Cache-Control": "private, max-age=60",
+      "ETag": "\"65ff94f43f253474101784ab21ff6d1b\"",
+      "Vary": "Authorization"
+    },
+    "status": 304
+  },
+  "sinCredencial": {
+    "cuerpo": {
+      "error": "sin_credencial"
+    },
+    "headers": {
+      "Cache-Control": "no-store",
+      "Content-Type": "application/json; charset=utf-8",
+      "X-Content-Type-Options": "nosniff"
+    },
+    "status": 401
+  },
+  "sinMercado": {
+    "cuerpo": {
+      "error": "mercado_invalido"
+    },
+    "headers": {
+      "Cache-Control": "no-store",
+      "Content-Type": "application/json; charset=utf-8",
+      "X-Content-Type-Options": "nosniff"
+    },
+    "status": 400
+  }
+}

@@ -1,0 +1,31 @@
+{
+  "p-adaptador__tienda": {
+    "cantidad": 2,
+    "productoId": "p-adaptador",
+    "ubicacionId": "tienda"
+  },
+  "p-cable__tienda": {
+    "cantidad": 6,
+    "productoId": "p-cable",
+    "ubicacionId": "tienda"
+  },
+  "p-celular__tienda": {
+    "cantidad": 2,
+    "productoId": "p-celular",
+    "series": [
+      "B",
+      "C"
+    ],
+    "ubicacionId": "tienda"
+  },
+  "p-lapiz__tienda": {
+    "cantidad": 5,
+    "productoId": "p-lapiz",
+    "ubicacionId": "tienda"
+  },
+  "p-parlante__tienda": {
+    "cantidad": 1,
+    "productoId": "p-parlante",
+    "ubicacionId": "tienda"
+  }
+}

@@ -1,0 +1,212 @@
+{
+  "abierto": {
+    "abiertoEnMs": 1793804400000,
+    "apertura": {
+      "ARS": 100000,
+      "BOB": 20000,
+      "USD": 5000
+    },
+    "cajaId": "caja-1",
+    "cajeroUid": "u-caj",
+    "creadoEn": "MARCA",
+    "estado": "abierto",
+    "totales": {
+      "ARS": {
+        "credito": 0,
+        "efectivo": 2000000,
+        "egresos": 0,
+        "ingresos": 50000,
+        "qr": 0,
+        "transferencia": 290000
+      },
+      "BOB": {
+        "credito": 0,
+        "efectivo": 110448,
+        "egresos": 0,
+        "ingresos": 0,
+        "qr": 41035,
+        "transferencia": 0
+      },
+      "USD": {
+        "credito": 0,
+        "efectivo": 408,
+        "egresos": 400,
+        "ingresos": 0,
+        "qr": 0,
+        "transferencia": 300
+      }
+    },
+    "turnoId": "00000000-0000-4000-8000-000000000900"
+  },
+  "cierre": {
+    "arqueo": {
+      "ARS": {
+        "apertura": 100000,
+        "contado": 2145000,
+        "credito": 0,
+        "diferencia": -5000,
+        "efectivo": 2000000,
+        "esperado": 2150000,
+        "qr": 0,
+        "transferencia": 290000
+      },
+      "BOB": {
+        "apertura": 20000,
+        "contado": 130548,
+        "credito": 0,
+        "diferencia": 100,
+        "efectivo": 110448,
+        "esperado": 130448,
+        "qr": 41035,
+        "transferencia": 0
+      },
+      "USD": {
+        "apertura": 5000,
+        "contado": 5008,
+        "credito": 0,
+        "diferencia": 0,
+        "efectivo": 408,
+        "esperado": 5008,
+        "qr": 0,
+        "transferencia": 300
+      }
+    },
+    "turno": {
+      "abiertoEnMs": 1793804400000,
+      "apertura": {
+        "ARS": 100000,
+        "BOB": 20000,
+        "USD": 5000
+      },
+      "cajaId": "caja-1",
+      "cajeroUid": "u-caj",
+      "cerradoEnMs": 1793804400000,
+      "cerradoPor": "u-caj",
+      "contado": {
+        "ARS": 2145000,
+        "BOB": 130548,
+        "USD": 5008
+      },
+      "diferencia": {
+        "ARS": -5000,
+        "BOB": 100,
+        "USD": 0
+      },
+      "esperado": {
+        "ARS": 2150000,
+        "BOB": 130448,
+        "USD": 5008
+      },
+      "estado": "cerrado",
+      "totales": {
+        "ARS": {
+          "credito": 0,
+          "efectivo": 2000000,
+          "egresos": 0,
+          "ingresos": 50000,
+          "qr": 0,
+          "transferencia": 290000
+        },
+        "BOB": {
+          "credito": 0,
+          "efectivo": 110448,
+          "egresos": 0,
+          "ingresos": 0,
+          "qr": 41035,
+          "transferencia": 0
+        },
+        "USD": {
+          "credito": 0,
+          "efectivo": 408,
+          "egresos": 400,
+          "ingresos": 0,
+          "qr": 0,
+          "transferencia": 300
+        }
+      },
+      "turnoId": "00000000-0000-4000-8000-000000000900"
+    }
+  },
+  "movimientos": [
+    {
+      "creadoEn": "MARCA",
+      "creadoEnMs": 1793804400000,
+      "id": "00000000-0000-4000-8000-000000000070",
+      "moneda": "USD",
+      "monto": 400,
+      "motivo": "compra de insumos",
+      "registradoPor": "u-caj",
+      "requestId": "00000000-0000-4000-8000-000000000070",
+      "tipo": "egreso",
+      "turnoId": "00000000-0000-4000-8000-000000000900"
+    },
+    {
+      "creadoEn": "MARCA",
+      "creadoEnMs": 1793804400000,
+      "id": "00000000-0000-4000-8000-000000000071",
+      "moneda": "ARS",
+      "monto": 50000,
+      "motivo": "fondo adicional",
+      "registradoPor": "u-caj",
+      "requestId": "00000000-0000-4000-8000-000000000071",
+      "tipo": "ingreso",
+      "turnoId": "00000000-0000-4000-8000-000000000900"
+    }
+  ],
+  "turnoCerrado": {
+    "abiertoEnMs": 1793804400000,
+    "apertura": {
+      "ARS": 100000,
+      "BOB": 20000,
+      "USD": 5000
+    },
+    "cajaId": "caja-1",
+    "cajeroUid": "u-caj",
+    "cerradoEnMs": 1793804400000,
+    "cerradoPor": "u-caj",
+    "contado": {
+      "ARS": 2145000,
+      "BOB": 130548,
+      "USD": 5008
+    },
+    "creadoEn": "MARCA",
+    "diferencia": {
+      "ARS": -5000,
+      "BOB": 100,
+      "USD": 0
+    },
+    "esperado": {
+      "ARS": 2150000,
+      "BOB": 130448,
+      "USD": 5008
+    },
+    "estado": "cerrado",
+    "totales": {
+      "ARS": {
+        "credito": 0,
+        "efectivo": 2000000,
+        "egresos": 0,
+        "ingresos": 50000,
+        "qr": 0,
+        "transferencia": 290000
+      },
+      "BOB": {
+        "credito": 0,
+        "efectivo": 110448,
+        "egresos": 0,
+        "ingresos": 0,
+        "qr": 41035,
+        "transferencia": 0
+      },
+      "USD": {
+        "credito": 0,
+        "efectivo": 408,
+        "egresos": 400,
+        "ingresos": 0,
+        "qr": 0,
+        "transferencia": 300
+      }
+    },
+    "turnoId": "00000000-0000-4000-8000-000000000900"
+  }
+}

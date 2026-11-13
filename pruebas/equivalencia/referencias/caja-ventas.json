@@ -1,0 +1,210 @@
+[
+  {
+    "cajaId": "caja-1",
+    "cajeroUid": "u-caj",
+    "cliente": {
+      "nombre": "Ana Pérez",
+      "telefono": "70000000"
+    },
+    "cotizacion": {
+      "cotizacionId": "BO-2026-11-04-1793804400000",
+      "estado": "vigente",
+      "fecha": "2026-11-04",
+      "fuente": "manual",
+      "par": "BOB/USD",
+      "valor": 6.965
+    },
+    "creadoEn": "MARCA",
+    "creadoEnMs": 1793804400000,
+    "estado": "confirmada",
+    "id": "00000000-0000-4000-8000-000000000001",
+    "lineas": [
+      {
+        "almacenId": "tienda",
+        "cantidad": 1,
+        "garantiaMeses": 12,
+        "nombre": "Celular X1",
+        "precioUnitario": 139293,
+        "productoId": "p-celular",
+        "series": [
+          "A"
+        ]
+      },
+      {
+        "almacenId": "tienda",
+        "cantidad": 2,
+        "nombre": "Lápiz HB",
+        "precioUnitario": 871,
+        "productoId": "p-lapiz",
+        "series": []
+      }
+    ],
+    "mercado": "BO",
+    "moneda": "BOB",
+    "pagos": [
+      {
+        "cambio": 10000,
+        "medio": "efectivo",
+        "moneda": "BOB",
+        "monto": 110000
+      },
+      {
+        "medio": "qr",
+        "moneda": "BOB",
+        "monto": 41035,
+        "referencia": "QR-0001",
+        "registradoPor": "u-caj"
+      }
+    ],
+    "receiptNo": 1,
+    "serie": "A",
+    "subtotal": 141035,
+    "total": 141035,
+    "turnoId": "00000000-0000-4000-8000-000000000900",
+    "ventaId": "00000000-0000-4000-8000-000000000001"
+  },
+  {
+    "cajaId": "caja-1",
+    "cajeroUid": "u-caj",
+    "cotizacion": null,
+    "creadoEn": "MARCA",
+    "creadoEnMs": 1793804400000,
+    "estado": "confirmada",
+    "id": "00000000-0000-4000-8000-000000000002",
+    "lineas": [
+      {
+        "almacenId": "tienda",
+        "cantidad": 3,
+        "nombre": "Lápiz HB",
+        "precioUnitario": 125,
+        "productoId": "p-lapiz",
+        "series": []
+      },
+      {
+        "almacenId": "tienda",
+        "cantidad": 1,
+        "nombre": "Cable USB",
+        "precioUnitario": 333,
+        "productoId": "p-cable",
+        "series": []
+      }
+    ],
+    "mercado": "BO",
+    "moneda": "USD",
+    "pagos": [
+      {
+        "cambio": 92,
+        "medio": "efectivo",
+        "moneda": "USD",
+        "monto": 500
+      },
+      {
+        "medio": "transferencia",
+        "moneda": "USD",
+        "monto": 300
+      }
+    ],
+    "receiptNo": 2,
+    "serie": "A",
+    "subtotal": 708,
+    "total": 708,
+    "turnoId": "00000000-0000-4000-8000-000000000900",
+    "ventaId": "00000000-0000-4000-8000-000000000002"
+  },
+  {
+    "cajaId": "caja-1",
+    "cajeroUid": "u-caj",
+    "cotizacion": {
+      "cotizacionId": "AR-2026-11-04-1793804400000",
+      "estado": "vigente",
+      "fecha": "2026-11-04",
+      "fuente": "manual",
+      "par": "ARS/USD",
+      "valor": 1187.35
+    },
+    "creadoEn": "MARCA",
+    "creadoEnMs": 1793804400000,
+    "estado": "confirmada",
+    "id": "00000000-0000-4000-8000-000000000003",
+    "lineas": [
+      {
+        "almacenId": "tienda",
+        "cantidad": 1,
+        "nombre": "Parlante portátil",
+        "precioUnitario": 1230000,
+        "productoId": "p-parlante",
+        "series": []
+      },
+      {
+        "almacenId": "tienda",
+        "cantidad": 2,
+        "nombre": "Adaptador",
+        "precioUnitario": 530000,
+        "productoId": "p-adaptador",
+        "series": []
+      }
+    ],
+    "mercado": "AR",
+    "moneda": "ARS",
+    "pagos": [
+      {
+        "cambio": 100000,
+        "medio": "efectivo",
+        "moneda": "ARS",
+        "monto": 2100000
+      },
+      {
+        "medio": "transferencia",
+        "moneda": "ARS",
+        "monto": 290000
+      }
+    ],
+    "receiptNo": 3,
+    "serie": "A",
+    "subtotal": 2290000,
+    "total": 2290000,
+    "turnoId": "00000000-0000-4000-8000-000000000900",
+    "ventaId": "00000000-0000-4000-8000-000000000003"
+  },
+  {
+    "cajaId": "caja-1",
+    "cajeroUid": "u-caj",
+    "cotizacion": {
+      "cotizacionId": "BO-2026-11-04-1793804400000",
+      "estado": "vigente",
+      "fecha": "2026-11-04",
+      "fuente": "manual",
+      "par": "BOB/USD",
+      "valor": 6.965
+    },
+    "creadoEn": "MARCA",
+    "creadoEnMs": 1793804400000,
+    "estado": "confirmada",
+    "id": "00000000-0000-4000-8000-000000000004",
+    "lineas": [
+      {
+        "almacenId": "tienda",
+        "cantidad": 1,
+        "nombre": "Instalación",
+        "precioUnitario": 10448,
+        "productoId": "p-servicio",
+        "series": []
+      }
+    ],
+    "mercado": "BO",
+    "moneda": "BOB",
+    "pagos": [
+      {
+        "medio": "efectivo",
+        "moneda": "BOB",
+        "monto": 10448
+      }
+    ],
+    "receiptNo": 4,
+    "serie": "A",
+    "subtotal": 10448,
+    "total": 10448,
+    "turnoId": "00000000-0000-4000-8000-000000000900",
+    "ventaId": "00000000-0000-4000-8000-000000000004"
+  }
+]

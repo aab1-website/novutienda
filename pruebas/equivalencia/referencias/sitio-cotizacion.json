@@ -1,0 +1,119 @@
+{
+  "AR": {
+    "cuerpo": {
+      "cotizaciones": {
+        "AR": {
+          "cotizacionId": "AR-2026-11-04-1793804400000",
+          "estado": "vigente",
+          "fecha": "2026-11-04",
+          "fuente": "manual",
+          "par": "ARS/USD",
+          "valor": 1187.35
+        }
+      }
+    },
+    "headers": {
+      "Cache-Control": "public, max-age=60, s-maxage=300",
+      "Content-Type": "application/json; charset=utf-8"
+    },
+    "status": 200
+  },
+  "BO": {
+    "cuerpo": {
+      "cotizaciones": {
+        "BO": {
+          "cotizacionId": "BO-2026-11-04-1793804400000",
+          "estado": "vigente",
+          "fecha": "2026-11-04",
+          "fuente": "manual",
+          "par": "BOB/USD",
+          "valor": 6.965
+        }
+      }
+    },
+    "headers": {
+      "Cache-Control": "public, max-age=60, s-maxage=300",
+      "Content-Type": "application/json; charset=utf-8"
+    },
+    "status": 200
+  },
+  "arSinCotizacion": {
+    "cuerpo": {
+      "error": "sin_cotizacion",
+      "mercado": "AR"
+    },
+    "headers": {
+      "Cache-Control": "no-store",
+      "Content-Type": "application/json; charset=utf-8",
+      "Retry-After": "300"
+    },
+    "status": 503
+  },
+  "barraFinal": {
+    "cuerpo": {
+      "cotizaciones": {
+        "BO": {
+          "cotizacionId": "BO-2026-11-04-1793804400000",
+          "estado": "vigente",
+          "fecha": "2026-11-04",
+          "fuente": "manual",
+          "par": "BOB/USD",
+          "valor": 6.965
+        }
+      }
+    },
+    "headers": {
+      "Cache-Control": "public, max-age=60, s-maxage=300",
+      "Content-Type": "application/json; charset=utf-8"
+    },
+    "status": 200
+  },
+  "invalido": {
+    "cuerpo": {
+      "error": "mercado_invalido"
+    },
+    "headers": {
+      "Cache-Control": "no-store",
+      "Content-Type": "application/json; charset=utf-8"
+    },
+    "status": 400
+  },
+  "metodo": {
+    "cuerpo": {
+      "error": "metodo_no_permitido"
+    },
+    "headers": {
+      "Allow": "GET",
+      "Cache-Control": "no-store",
+      "Content-Type": "application/json; charset=utf-8"
+    },
+    "status": 405
+  },
+  "sinMercado": {
+    "cuerpo": {
+      "cotizaciones": {
+        "AR": {
+          "cotizacionId": "AR-2026-11-04-1793804400000",
+          "estado": "vigente",
+          "fecha": "2026-11-04",
+          "fuente": "manual",
+          "par": "ARS/USD",
+          "valor": 1187.35
+        },
+        "BO": {
+          "cotizacionId": "BO-2026-11-04-1793804400000",
+          "estado": "vigente",
+          "fecha": "2026-11-04",
+          "fuente": "manual",
+          "par": "BOB/USD",
+          "valor": 6.965
+        }
+      }
+    },
+    "headers": {
+      "Cache-Control": "public, max-age=60, s-maxage=300",
+      "Content-Type": "application/json; charset=utf-8"
+    },
+    "status": 200
+  }
+}

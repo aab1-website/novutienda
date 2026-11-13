@@ -1,0 +1,156 @@
+{
+  "csv": "id,nombre,categoria,marca,sku,conSerie,garantiaMeses,minimo,precioBO,precioAR,costo,activo,publicado\r\np-adaptador,Adaptador,general,,SKU-p-adaptador,false,,,0.00,4.50,,true,true\r\np-agotado,Cargador agotado,general,,SKU-p-agotado,false,,,15.00,15.00,,true,true\r\np-borrador,Borrador sin publicar,general,,SKU-p-borrador,false,,,5.00,5.00,,true,false\r\np-cable,Cable USB,general,,SKU-p-cable,false,,,3.33,0.00,,true,true\r\np-celular,Celular X1,general,Marca Ejemplo,SKU-p-celular,true,12,1,199.99,209.99,,true,true\r\np-inactivo,Producto retirado,general,,SKU-p-inactivo,false,,,8.00,8.00,,false,true\r\np-lapiz,Lápiz HB,general,,SKU-p-lapiz,false,,,1.30,1.33,,true,true\r\np-parlante,Parlante portátil,general,,SKU-p-parlante,false,,,19.99,10.33,,true,true\r\np-servicio,Instalación,general,,SKU-p-servicio,false,,,15.00,15.00,,true,true\r\np-televisor,\"Televisor 50\"\"\",general,,SKU-p-televisor,false,,,450.50,450.50,,true,true\r\np-nuevo,Producto nuevo,general,,SKU-p-nuevo,false,,,\"12,5\",0,,true,true\r\np-grande,Producto grande,general,,SKU-p-grande,false,,,\"1.234,56\",99.99,,true,true\r\nMAL ID,x,general,,SKU-x,false,,,1,1,,true,true\r\np-raro,Raro,general,,SKU-raro,false,,,abc,1,,true,true\r\np-negativo,Negativo,general,,SKU-neg,false,,,-5,1,,true,true\r\n",
+  "simulacion": {
+    "columnasIgnoradas": [],
+    "filas": [
+      {
+        "accion": "sin-cambios",
+        "advertencias": [],
+        "cambios": [],
+        "errores": [],
+        "id": "p-adaptador",
+        "linea": 2
+      },
+      {
+        "accion": "sin-cambios",
+        "advertencias": [],
+        "cambios": [],
+        "errores": [],
+        "id": "p-agotado",
+        "linea": 3
+      },
+      {
+        "accion": "sin-cambios",
+        "advertencias": [],
+        "cambios": [],
+        "errores": [],
+        "id": "p-borrador",
+        "linea": 4
+      },
+      {
+        "accion": "sin-cambios",
+        "advertencias": [],
+        "cambios": [],
+        "errores": [],
+        "id": "p-cable",
+        "linea": 5
+      },
+      {
+        "accion": "sin-cambios",
+        "advertencias": [],
+        "cambios": [],
+        "errores": [],
+        "id": "p-celular",
+        "linea": 6
+      },
+      {
+        "accion": "sin-cambios",
+        "advertencias": [],
+        "cambios": [],
+        "errores": [],
+        "id": "p-inactivo",
+        "linea": 7
+      },
+      {
+        "accion": "actualizar",
+        "advertencias": [],
+        "cambios": [
+          "precioUSD"
+        ],
+        "errores": [],
+        "id": "p-lapiz",
+        "linea": 8
+      },
+      {
+        "accion": "sin-cambios",
+        "advertencias": [],
+        "cambios": [],
+        "errores": [],
+        "id": "p-parlante",
+        "linea": 9
+      },
+      {
+        "accion": "sin-cambios",
+        "advertencias": [],
+        "cambios": [],
+        "errores": [],
+        "id": "p-servicio",
+        "linea": 10
+      },
+      {
+        "accion": "sin-cambios",
+        "advertencias": [],
+        "cambios": [],
+        "errores": [],
+        "id": "p-televisor",
+        "linea": 11
+      },
+      {
+        "accion": "crear",
+        "advertencias": [],
+        "cambios": [],
+        "errores": [],
+        "id": "p-nuevo",
+        "linea": 12
+      },
+      {
+        "accion": "error",
+        "advertencias": [],
+        "cambios": [],
+        "errores": [
+          {
+            "columna": "precioBO",
+            "motivo": "importe en USD, hasta 2 decimales, sin signos ni fórmulas"
+          }
+        ],
+        "id": "p-grande",
+        "linea": 13
+      },
+      {
+        "accion": "error",
+        "advertencias": [],
+        "cambios": [],
+        "errores": [
+          {
+            "columna": "id",
+            "motivo": "id inválido (minúsculas, números y guiones, 2 a 60 caracteres)"
+          }
+        ],
+        "id": "MAL ID",
+        "linea": 14
+      },
+      {
+        "accion": "error",
+        "advertencias": [],
+        "cambios": [],
+        "errores": [
+          {
+            "columna": "precioBO",
+            "motivo": "importe en USD, hasta 2 decimales, sin signos ni fórmulas"
+          }
+        ],
+        "id": "p-raro",
+        "linea": 15
+      },
+      {
+        "accion": "error",
+        "advertencias": [],
+        "cambios": [],
+        "errores": [
+          {
+            "columna": "precioBO",
+            "motivo": "importe en USD, hasta 2 decimales, sin signos ni fórmulas"
+          }
+        ],
+        "id": "p-negativo",
+        "linea": 16
+      }
+    ],
+    "resumen": {
+      "actualizar": 1,
+      "crear": 1,
+      "errores": 4,
+      "sinCambios": 9
+    }
+  }
+}

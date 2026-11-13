@@ -1,0 +1,47 @@
+{
+  "existencias": {
+    "p-adaptador__tienda": 4,
+    "p-borrador__tienda": 9,
+    "p-cable__tienda": 7,
+    "p-celular__tienda": 2,
+    "p-inactivo__tienda": 4,
+    "p-lapiz__deposito-1": 5,
+    "p-lapiz__tienda": 7,
+    "p-parlante__deposito-1": 6,
+    "p-parlante__tienda": 2,
+    "p-televisor__deposito-1": 2
+  },
+  "resultados": {
+    "confirma": {
+      "cuerpo": {
+        "ok": true,
+        "operacionId": "nc-pd-1",
+        "repetida": false
+      },
+      "status": 200
+    },
+    "repite": {
+      "cuerpo": {
+        "ok": true,
+        "operacionId": "nc-pd-1",
+        "repetida": true
+      },
+      "status": 200
+    },
+    "sinStock": {
+      "cuerpo": {
+        "error": "stock-insuficiente",
+        "faltantes": [
+          {
+            "almacenId": "tienda",
+            "disponible": 7,
+            "pedido": 12,
+            "productoId": "p-lapiz"
+          }
+        ],
+        "ok": false
+      },
+      "status": 409
+    }
+  }
+}

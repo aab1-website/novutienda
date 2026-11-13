@@ -18,7 +18,8 @@
     "reglas:verificar": "node scripts/reglas.mjs verificar",
     "registro:generar": "node scripts/registro-panel.mjs generar",
     "registro:verificar": "node scripts/registro-panel.mjs verificar",
-    "zonas": "node scripts/zonas.mjs"
+    "zonas": "node scripts/zonas.mjs",
+    "equivalencia:actualizar": "node pruebas/equivalencia/actualizar.mjs"
   },
   "devDependencies": {
     "@eslint/js": "10.0.1",

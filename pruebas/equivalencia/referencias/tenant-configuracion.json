@@ -1,0 +1,78 @@
+{
+  "configRepositorio": {
+    "modulos": [
+      "inventarios",
+      "pos",
+      "recibos",
+      "consola",
+      "website"
+    ],
+    "monedas": [
+      "BOB",
+      "USD",
+      "ARS"
+    ],
+    "plan": "base",
+    "version": 2,
+    "zonaHoraria": "America/La_Paz"
+  },
+  "documentoDelTenant": {
+    "ok": true,
+    "valor": {
+      "estado": "activo",
+      "modulos": {
+        "consola": {
+          "submodulos": [],
+          "version": "0.1.0"
+        },
+        "inventarios": {
+          "submodulos": [],
+          "version": "0.1.0"
+        },
+        "pos": {
+          "submodulos": [],
+          "version": "0.1.0"
+        },
+        "recibos": {
+          "submodulos": [],
+          "version": "0.1.0"
+        },
+        "website": {
+          "submodulos": [],
+          "version": "0.1.0"
+        }
+      },
+      "monedas": [
+        "BOB",
+        "USD",
+        "ARS"
+      ],
+      "plan": "base",
+      "zonaHoraria": "America/La_Paz"
+    }
+  },
+  "monedaFueraDeLista": {
+    "error": "monedas debe ser BOB, USD y ARS",
+    "ok": false
+  },
+  "monedaPorMercado": {
+    "AR": "ARS",
+    "BO": "BOB"
+  },
+  "redondeoPorDefecto": {
+    "ARS": {
+      "modo": "cercano",
+      "multiplo": 100,
+      "tipo": "multiplo"
+    },
+    "BOB": {
+      "decimales": 2,
+      "modo": "cercano",
+      "tipo": "decimales"
+    }
+  },
+  "zonaHorariaOtra": {
+    "error": "zonaHoraria debe ser America/La_Paz",
+    "ok": false
+  }
+}

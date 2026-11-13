@@ -1,0 +1,338 @@
+{
+  "organizacion": {
+    "@context": "https://schema.org",
+    "@type": "Store",
+    "address": {
+      "@type": "PostalAddress",
+      "streetAddress": "Calle Ficticia 123"
+    },
+    "name": "Tienda de Ejemplo",
+    "url": "https://tienda.ejemplo.invalid"
+  },
+  "productos": [
+    {
+      "@context": "https://schema.org",
+      "@type": "Product",
+      "brand": {
+        "@type": "Brand",
+        "name": "Marca Ejemplo"
+      },
+      "description": "Solo con precio en Argentina.",
+      "image": [
+        "https://medios.ejemplo.invalid/publico/tenants/casa-a/publico/medios/p-adaptador/bbb-imagen960.webp"
+      ],
+      "name": "Adaptador",
+      "offers": [
+        {
+          "@type": "Offer",
+          "availability": "https://schema.org/InStock",
+          "eligibleRegion": {
+            "@type": "Country",
+            "name": "AR"
+          },
+          "price": "4.50",
+          "priceCurrency": "USD",
+          "url": "https://tienda.ejemplo.invalid/producto/adaptador"
+        }
+      ],
+      "sku": "p-adaptador"
+    },
+    {
+      "@context": "https://schema.org",
+      "@type": "Product",
+      "brand": {
+        "@type": "Brand",
+        "name": "Marca Ejemplo"
+      },
+      "description": "Sin existencias.",
+      "image": [
+        "https://medios.ejemplo.invalid/publico/tenants/casa-a/publico/medios/p-agotado/bbb-imagen960.webp"
+      ],
+      "name": "Cargador agotado",
+      "offers": [
+        {
+          "@type": "Offer",
+          "availability": "https://schema.org/OutOfStock",
+          "eligibleRegion": {
+            "@type": "Country",
+            "name": "BO"
+          },
+          "price": "15.00",
+          "priceCurrency": "USD",
+          "url": "https://tienda.ejemplo.invalid/producto/cargador-agotado"
+        },
+        {
+          "@type": "Offer",
+          "availability": "https://schema.org/OutOfStock",
+          "eligibleRegion": {
+            "@type": "Country",
+            "name": "AR"
+          },
+          "price": "15.00",
+          "priceCurrency": "USD",
+          "url": "https://tienda.ejemplo.invalid/producto/cargador-agotado"
+        }
+      ],
+      "sku": "p-agotado"
+    },
+    {
+      "@context": "https://schema.org",
+      "@type": "Product",
+      "brand": {
+        "@type": "Brand",
+        "name": "Marca Ejemplo"
+      },
+      "description": "Solo con precio en Bolivia.",
+      "image": [
+        "https://medios.ejemplo.invalid/publico/tenants/casa-a/publico/medios/p-cable/bbb-imagen960.webp"
+      ],
+      "name": "Cable USB",
+      "offers": [
+        {
+          "@type": "Offer",
+          "availability": "https://schema.org/InStock",
+          "eligibleRegion": {
+            "@type": "Country",
+            "name": "BO"
+          },
+          "price": "3.33",
+          "priceCurrency": "USD",
+          "url": "https://tienda.ejemplo.invalid/producto/cable-usb"
+        }
+      ],
+      "sku": "p-cable"
+    },
+    {
+      "@context": "https://schema.org",
+      "@type": "Product",
+      "brand": {
+        "@type": "Brand",
+        "name": "Marca Ejemplo"
+      },
+      "description": "Celular de ejemplo.",
+      "image": [
+        "https://medios.ejemplo.invalid/publico/tenants/casa-a/publico/medios/p-celular/bbb-imagen960.webp"
+      ],
+      "name": "Celular X1",
+      "offers": [
+        {
+          "@type": "Offer",
+          "availability": "https://schema.org/InStock",
+          "eligibleRegion": {
+            "@type": "Country",
+            "name": "BO"
+          },
+          "price": "199.99",
+          "priceCurrency": "USD",
+          "url": "https://tienda.ejemplo.invalid/producto/celular-x1"
+        },
+        {
+          "@type": "Offer",
+          "availability": "https://schema.org/InStock",
+          "eligibleRegion": {
+            "@type": "Country",
+            "name": "AR"
+          },
+          "price": "209.99",
+          "priceCurrency": "USD",
+          "url": "https://tienda.ejemplo.invalid/producto/celular-x1"
+        }
+      ],
+      "sku": "p-celular",
+      "warranty": {
+        "@type": "WarrantyPromise",
+        "description": "12 meses"
+      }
+    },
+    {
+      "@context": "https://schema.org",
+      "@type": "Product",
+      "brand": {
+        "@type": "Brand",
+        "name": "Marca Ejemplo"
+      },
+      "description": "Dado de baja.",
+      "image": [
+        "https://medios.ejemplo.invalid/publico/tenants/casa-a/publico/medios/p-inactivo/bbb-imagen960.webp"
+      ],
+      "name": "Producto retirado",
+      "offers": [
+        {
+          "@type": "Offer",
+          "availability": "https://schema.org/OutOfStock",
+          "eligibleRegion": {
+            "@type": "Country",
+            "name": "BO"
+          },
+          "price": "8.00",
+          "priceCurrency": "USD",
+          "url": "https://tienda.ejemplo.invalid/producto/retirado"
+        },
+        {
+          "@type": "Offer",
+          "availability": "https://schema.org/OutOfStock",
+          "eligibleRegion": {
+            "@type": "Country",
+            "name": "AR"
+          },
+          "price": "8.00",
+          "priceCurrency": "USD",
+          "url": "https://tienda.ejemplo.invalid/producto/retirado"
+        }
+      ],
+      "sku": "p-inactivo"
+    },
+    {
+      "@context": "https://schema.org",
+      "@type": "Product",
+      "brand": {
+        "@type": "Brand",
+        "name": "Marca Ejemplo"
+      },
+      "description": "Lápiz de grafito.",
+      "image": [
+        "https://medios.ejemplo.invalid/publico/tenants/casa-a/publico/medios/p-lapiz/bbb-imagen960.webp"
+      ],
+      "name": "Lápiz HB",
+      "offers": [
+        {
+          "@type": "Offer",
+          "availability": "https://schema.org/InStock",
+          "eligibleRegion": {
+            "@type": "Country",
+            "name": "BO"
+          },
+          "price": "1.25",
+          "priceCurrency": "USD",
+          "url": "https://tienda.ejemplo.invalid/producto/lapiz-hb"
+        },
+        {
+          "@type": "Offer",
+          "availability": "https://schema.org/InStock",
+          "eligibleRegion": {
+            "@type": "Country",
+            "name": "AR"
+          },
+          "price": "1.33",
+          "priceCurrency": "USD",
+          "url": "https://tienda.ejemplo.invalid/producto/lapiz-hb"
+        }
+      ],
+      "sku": "p-lapiz"
+    },
+    {
+      "@context": "https://schema.org",
+      "@type": "Product",
+      "brand": {
+        "@type": "Brand",
+        "name": "Marca Ejemplo"
+      },
+      "description": "Decimales incómodos.",
+      "image": [
+        "https://medios.ejemplo.invalid/publico/tenants/casa-a/publico/medios/p-parlante/bbb-imagen960.webp"
+      ],
+      "name": "Parlante portátil",
+      "offers": [
+        {
+          "@type": "Offer",
+          "availability": "https://schema.org/InStock",
+          "eligibleRegion": {
+            "@type": "Country",
+            "name": "BO"
+          },
+          "price": "19.99",
+          "priceCurrency": "USD",
+          "url": "https://tienda.ejemplo.invalid/producto/parlante-portatil"
+        },
+        {
+          "@type": "Offer",
+          "availability": "https://schema.org/InStock",
+          "eligibleRegion": {
+            "@type": "Country",
+            "name": "AR"
+          },
+          "price": "10.33",
+          "priceCurrency": "USD",
+          "url": "https://tienda.ejemplo.invalid/producto/parlante-portatil"
+        }
+      ],
+      "sku": "p-parlante"
+    },
+    {
+      "@context": "https://schema.org",
+      "@type": "Product",
+      "brand": {
+        "@type": "Brand",
+        "name": "Marca Ejemplo"
+      },
+      "description": "No controla stock.",
+      "image": [
+        "https://medios.ejemplo.invalid/publico/tenants/casa-a/publico/medios/p-servicio/bbb-imagen960.webp"
+      ],
+      "name": "Instalación",
+      "offers": [
+        {
+          "@type": "Offer",
+          "availability": "https://schema.org/InStock",
+          "eligibleRegion": {
+            "@type": "Country",
+            "name": "BO"
+          },
+          "price": "15.00",
+          "priceCurrency": "USD",
+          "url": "https://tienda.ejemplo.invalid/producto/instalacion"
+        },
+        {
+          "@type": "Offer",
+          "availability": "https://schema.org/InStock",
+          "eligibleRegion": {
+            "@type": "Country",
+            "name": "AR"
+          },
+          "price": "15.00",
+          "priceCurrency": "USD",
+          "url": "https://tienda.ejemplo.invalid/producto/instalacion"
+        }
+      ],
+      "sku": "p-servicio"
+    },
+    {
+      "@context": "https://schema.org",
+      "@type": "Product",
+      "brand": {
+        "@type": "Brand",
+        "name": "Marca Ejemplo"
+      },
+      "description": "Solo en depósito.",
+      "image": [
+        "https://medios.ejemplo.invalid/publico/tenants/casa-a/publico/medios/p-televisor/bbb-imagen960.webp"
+      ],
+      "name": "Televisor 50\"",
+      "offers": [
+        {
+          "@type": "Offer",
+          "availability": "https://schema.org/OutOfStock",
+          "eligibleRegion": {
+            "@type": "Country",
+            "name": "BO"
+          },
+          "price": "450.50",
+          "priceCurrency": "USD",
+          "url": "https://tienda.ejemplo.invalid/producto/televisor-50"
+        },
+        {
+          "@type": "Offer",
+          "availability": "https://schema.org/OutOfStock",
+          "eligibleRegion": {
+            "@type": "Country",
+            "name": "AR"
+          },
+          "price": "450.50",
+          "priceCurrency": "USD",
+          "url": "https://tienda.ejemplo.invalid/producto/televisor-50"
+        }
+      ],
+      "sku": "p-televisor"
+    }
+  ]
+}
