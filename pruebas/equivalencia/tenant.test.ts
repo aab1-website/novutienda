@@ -1,6 +1,6 @@
 // Configuración declarativa del tenant de referencia: lo que declara el tenant (monedas, plan, zona horaria, módulos), cómo
 // lo valida el núcleo y la política de redondeo por defecto. Es el punto de partida del modelo de mercados y monedas.
-import { existsSync, readdirSync, readFileSync } from 'node:fs';
+import { readdirSync, readFileSync } from 'node:fs';
 import { fileURLToPath } from 'node:url';
 import { MONEDA_DE, validarTenant } from '@novutienda/nucleo';
 import { describe, it } from 'vitest';
@@ -11,9 +11,14 @@ import { compararConFotoJson } from './foto.js';
 // El tenant del repositorio con tres monedas (BOB, USD y ARS): se busca por su configuración, no por su nombre.
 const RAIZ = fileURLToPath(new URL('../../tenants/', import.meta.url));
 const configs = readdirSync(RAIZ)
-  .map((n) => `${RAIZ}${n}/config.json`)
-  .filter((r) => existsSync(r))
-  .map((r) => JSON.parse(readFileSync(r, 'utf8')) as { monedas?: string[] })
+  .flatMap((n) => {
+    try {
+      return [JSON.parse(readFileSync(`${RAIZ}${n}/config.json`, 'utf8')) as { monedas?: string[] }];
+    } catch (e) {
+      if ((e as NodeJS.ErrnoException).code === 'ENOENT' || (e as NodeJS.ErrnoException).code === 'ENOTDIR') return [];
+      throw e;
+    }
+  })
   .filter((c) => c.monedas?.join() === 'BOB,USD,ARS');
 const configRepo: unknown = configs[0];
 

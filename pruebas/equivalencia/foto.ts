@@ -1,10 +1,9 @@
 // Fotos de referencia de la batería de equivalencia: guardan, como texto estable, lo que hoy produce el sistema para
 // el tenant de referencia. La comparación es byte a byte; al fallar muestra un diff legible por línea. Las referencias solo se
 // regeneran de forma explícita (EQUIVALENCIA_ACTUALIZAR=1, vía `pnpm equivalencia:actualizar`) y nunca en CI.
-import { existsSync, mkdirSync, readFileSync, writeFileSync } from 'node:fs';
+import { mkdirSync, readFileSync, writeFileSync } from 'node:fs';
 import { dirname, join } from 'node:path';
 import { fileURLToPath } from 'node:url';
-import { expect } from 'vitest';
 
 export const CARPETA_REFERENCIAS = fileURLToPath(new URL('./referencias/', import.meta.url));
 
@@ -33,6 +32,16 @@ export function diferencias(esperado: string, actual: string, maximo = 12): stri
   return salida.join('\n');
 }
 
+/** Lee el archivo en una sola operación (sin comprobar antes si existe); `undefined` si no está. */
+function leerSiExiste(ruta: string): string | undefined {
+  try {
+    return readFileSync(ruta, 'utf8');
+  } catch (e) {
+    if ((e as NodeJS.ErrnoException).code === 'ENOENT') return undefined;
+    throw e;
+  }
+}
+
 /**
  * Compara `contenido` (texto) con `referencias/<nombre>`. En modo de actualización escribe la referencia (solo si cambió).
  * En CI la actualización está prohibida.
@@ -42,11 +51,11 @@ export function compararConFoto(nombre: string, contenido: string): void {
   if (actualizando()) {
     if (process.env['CI'] !== undefined && process.env['CI'] !== '') throw new Error('Las referencias de equivalencia no se regeneran en CI');
     mkdirSync(dirname(ruta), { recursive: true });
-    if (!existsSync(ruta) || readFileSync(ruta, 'utf8') !== contenido) writeFileSync(ruta, contenido);
+    if (leerSiExiste(ruta) !== contenido) writeFileSync(ruta, contenido);
     return;
   }
-  expect(existsSync(ruta), `falta la referencia ${nombre}; genérela con \`pnpm equivalencia:actualizar\` y explíquela en CAMBIOS.md`).toBe(true);
-  const esperado = readFileSync(ruta, 'utf8');
+  const esperado = leerSiExiste(ruta);
+  if (esperado === undefined) throw new Error(`falta la referencia ${nombre}; genérela con \`pnpm equivalencia:actualizar\` y explíquela en CAMBIOS.md`);
   if (esperado !== contenido) {
     throw new Error(`La salida cambió respecto de la referencia «${nombre}» (el tenant de referencia no debe cambiar en silencio):\n${diferencias(esperado, contenido)}`);
   }

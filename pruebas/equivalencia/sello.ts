@@ -3,7 +3,7 @@
 // exige que el sello guardado coincida con las referencias y que CAMBIOS.md explique el último cambio.
 // Solo usa `node:`: lo carga también `actualizar.mjs` con el stripping de tipos de Node.
 import { createHash } from 'node:crypto';
-import { existsSync, readFileSync, readdirSync } from 'node:fs';
+import { readFileSync, readdirSync } from 'node:fs';
 import { join } from 'node:path';
 
 export const ARCHIVO_SELLO = 'SELLO';
@@ -20,7 +20,12 @@ export function calcularSello(carpeta: string): string {
 
 export function leerSello(carpeta: string): string | undefined {
   const ruta = join(carpeta, ARCHIVO_SELLO);
-  return existsSync(ruta) ? readFileSync(ruta, 'utf8').trim() : undefined;
+  try {
+    return readFileSync(ruta, 'utf8').trim();
+  } catch (e) {
+    if ((e as NodeJS.ErrnoException).code === 'ENOENT') return undefined;
+    throw e;
+  }
 }
 
 export interface EntradaCambios {
