@@ -76,8 +76,9 @@ export const accionesUsuarios: TablaImplementaciones = {
   }),
   /**
    * Mercados y monedas del comercio de la sesión (Central, solo lectura): el panel arma sus selectores con ellos. Nunca
-   * recibe un tenant del cliente. Falla cerrado: una configuración inválida lanza `ComercialInvalida`, que el marco
-   * traduce a `failed-precondition` sin detalle interno.
+   * recibe un tenant del cliente. Falla cerrado: si la configuración es inválida, el
+   * marco la rechaza antes con 403 `modulo-apagado`; `ComercialInvalida` (`failed-precondition`, `comercial-invalida`) solo
+   * aparece si las cachés de módulos y de configuración tienen distinta edad.
    */
   configuracionComercial: accion({
     esquema: VACIO,

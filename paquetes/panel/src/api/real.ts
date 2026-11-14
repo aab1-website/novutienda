@@ -90,12 +90,18 @@ const cantidadOculta = (v: unknown): number | null => (v === null ? null : typeo
 /** Forma defensiva de la vista comercial del servidor: lo que no cumple el tipo se descarta, nunca se inventa. */
 function vistaComercialDe(r: unknown): VistaComercial {
   const o = (r ?? {}) as Obj;
-  const mercados = Array.isArray(o['mercados']) ? (o['mercados'] as Obj[]) : [];
+  const crudos = Array.isArray(o['mercados']) ? (o['mercados'] as unknown[]) : [];
   const monedas = Array.isArray(o['monedasCaja']) ? (o['monedasCaja'] as unknown[]) : [];
+  const mercados: Array<VistaComercial['mercados'][number]> = [];
+  for (const x of crudos) {
+    if (typeof x !== 'object' || x === null) continue;
+    const m = x as Obj;
+    const { id, nombre, monedaVenta, monedaBase, tieneTipoCambio } = m;
+    if (typeof id !== 'string' || typeof nombre !== 'string' || typeof monedaVenta !== 'string' || typeof monedaBase !== 'string' || typeof tieneTipoCambio !== 'boolean') continue;
+    mercados.push({ id, nombre, monedaVenta, monedaBase, tieneTipoCambio });
+  }
   return {
-    mercados: mercados.map((m) => ({
-      id: String(m['id']), nombre: String(m['nombre']), monedaVenta: String(m['monedaVenta']), monedaBase: String(m['monedaBase']), tieneTipoCambio: m['tieneTipoCambio'] === true,
-    })),
+    mercados,
     monedasCaja: monedas.filter((x): x is string => typeof x === 'string'),
   };
 }

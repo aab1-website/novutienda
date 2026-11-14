@@ -288,6 +288,11 @@ describe('configuracionComercial (Central, solo lectura)', () => {
   it('descarta lo que no cumple la forma en vez de inventarlo', async () => {
     expect(await ejecutar(() => Promise.resolve({ mercados: 'x', monedasCaja: [1, 'BOB'] }))).toEqual({ mercados: [], monedasCaja: ['BOB'] });
   });
+  it('descarta sin lanzar los mercados null, sin id o con tipo equivocado', async () => {
+    const bueno = vista.mercados[0];
+    const r = await ejecutar(() => Promise.resolve({ mercados: [null, { ...bueno, id: undefined }, { ...bueno, tieneTipoCambio: 'si' }, { ...bueno, nombre: 3 }, 'x', bueno], monedasCaja: [] }));
+    expect(r).toEqual({ mercados: [bueno], monedasCaja: [] });
+  });
   it('lo pueden llamar los tres roles', () => {
     expect([...ROLES_CALLABLE.configuracionComercial].sort()).toEqual(['adm', 'caj', 'sup']);
   });

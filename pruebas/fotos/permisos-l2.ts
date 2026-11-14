@@ -92,7 +92,7 @@ export const FOTO_PERMISOS_L2: readonly AccionFoto[] = [
   f('consola', 'buscarUsuarioPorCorreo', ['adm'], true),
   f('consola', 'asignarRol', ['adm'], true),
   f('consola', 'quitarRol', ['adm'], true),
-  // L2-6 (D3): acción central nueva; todos los roles, sin propietario. Las 85 anteriores no cambian.
+  // L2-6 (D3): acción central nueva; todos los roles, sin propietario. Las 82 anteriores no cambian.
   f('consola', 'modulosActivos', ['sup', 'adm', 'caj']),
   f('consola', 'configuracionComercial', ['sup', 'adm', 'caj']),
 ];
