@@ -2,7 +2,7 @@
 // 04/11/2026): BOB con dos decimales; ARS al múltiplo de 100 más cercano. Sin documento rige esa política;
 // con un documento inválido NO se adivina: se falla (un precio mal redondeado se cobra).
 import { z } from 'zod';
-import { redondeoPorMoneda, type BaseDatosIdentidad, type ConfiguracionComercial, type Redondeo, type RedondeoPorMoneda } from '@novutienda/nucleo';
+import { esReglaRedondeoValida, redondeoPorMoneda, type BaseDatosIdentidad, type ConfiguracionComercial, type Redondeo, type RedondeoPorMoneda } from '@novutienda/nucleo';
 
 /** @deprecated LEGADO del tenant de tres monedas: la política por defecto sale de `redondeoPorMoneda(comercial)`. */
 export const REDONDEO_POR_DEFECTO: Redondeo = {
@@ -12,10 +12,9 @@ export const REDONDEO_POR_DEFECTO: Redondeo = {
 
 const modo = z.enum(['cercano', 'arriba', 'abajo']);
 const regla = z.discriminatedUnion('tipo', [
-  z.object({ tipo: z.literal('ninguno') }).strict(),
-  z.object({ tipo: z.literal('decimales'), decimales: z.number().int().min(0).max(6), modo }).strict(),
-  z.object({ tipo: z.literal('multiplo'), multiplo: z.number().positive().max(1_000_000), modo }).strict(),
-]);
+  z.object({ tipo: z.literal('decimales'), decimales: z.number().int().min(0).max(2), modo }).strict(),
+  z.object({ tipo: z.literal('multiplo'), multiplo: z.number().min(0.01).max(1_000_000), modo }).strict(),
+]).refine((r) => esReglaRedondeoValida(r)); // D7: múltiplo exacto en centavos; sin «ninguno» ni más de 2 decimales
 const esquemaRedondeo = z.object({ BOB: regla, ARS: regla }).strict();
 
 export class RedondeoInvalido extends Error {

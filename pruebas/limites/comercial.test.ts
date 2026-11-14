@@ -2,7 +2,7 @@ import { describe, expect, it } from 'vitest';
 import { validarTenant, COMERCIAL_LEGADO_TRES_MONEDAS, PLANES, esPlanId, validarComercialContraPlan, type ConfiguracionComercial } from '@novutienda/nucleo';
 
 const una: ConfiguracionComercial = {
-  mercados: [{ id: 'CO', nombre: 'Colombia', monedaVenta: 'COP', monedaBase: 'COP', zonaHoraria: 'America/Bogota', tipoCambio: null, redondeo: { tipo: 'ninguno' } }],
+  mercados: [{ id: 'CO', nombre: 'Colombia', monedaVenta: 'COP', monedaBase: 'COP', zonaHoraria: 'America/Bogota', tipoCambio: null, redondeo: { tipo: 'decimales', decimales: 2, modo: 'cercano' } }],
   monedas: ['COP'],
 };
 

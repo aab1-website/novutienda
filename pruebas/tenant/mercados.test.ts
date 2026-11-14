@@ -171,8 +171,21 @@ describe('topes de tamaño y forma cerrada', () => {
       expect(r.valor.mercados[0]!.tipoCambio).not.toBe(entrada.mercados[0]!.tipoCambio);
     }
   });
-  it('un mercado con tipo de cambio exige redondeo por decimales o múltiplo, no «ninguno»', () => {
-    rechaza(mod((c) => (c.mercados[0].redondeo = { tipo: 'ninguno' })), 'no «ninguno»');
+  it('ningún mercado, con o sin tipo de cambio, admite «ninguno» (D7)', () => {
+    rechaza(mod((c) => (c.mercados[0].redondeo = { tipo: 'ninguno' })), 'sin redondear');
+    rechaza(mod((c) => (c.mercados[0].redondeo = { tipo: 'ninguno' }), una), 'sin redondear');
+  });
+  it('cada regla de redondeo rechazada dice por qué y las admitidas pasan', () => {
+    const malas: [unknown, string][] = [
+      [{ tipo: 'decimales', decimales: 3, modo: 'cercano' }, 'más de 2 decimales'], [{ tipo: 'decimales', decimales: -1, modo: 'cercano' }, 'decimales'],
+      [{ tipo: 'decimales', decimales: 1.5, modo: 'cercano' }, 'decimales'], [{ tipo: 'multiplo', multiplo: 0.005, modo: 'cercano' }, 'múltiplo'],
+      [{ tipo: 'multiplo', multiplo: 0, modo: 'cercano' }, 'múltiplo'], [{ tipo: 'multiplo', multiplo: 0.015, modo: 'cercano' }, 'centavos exactos'],
+      [{ tipo: 'multiplo', multiplo: Infinity, modo: 'cercano' }, 'múltiplo'], [{ tipo: 'decimales', decimales: 2, modo: 'raro' }, 'modo'], [undefined, 'falta la regla'],
+    ];
+    for (const [r, motivo] of malas) rechaza(mod((c) => (c.mercados[0].redondeo = r as never), una), motivo);
+    for (const r of [{ tipo: 'multiplo', multiplo: 0.01, modo: 'abajo' }, { tipo: 'multiplo', multiplo: 0.05, modo: 'cercano' }, { tipo: 'multiplo', multiplo: 100, modo: 'arriba' }]) {
+      expect(validarConfiguracionComercial(mod((c) => (c.mercados[0].redondeo = r as never), una)).ok).toBe(true);
+    }
   });
 });
 

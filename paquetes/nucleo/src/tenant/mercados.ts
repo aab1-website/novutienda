@@ -9,7 +9,7 @@
  * - Falla cerrado: sin `mercados` la configuración es inválida; jamás se asume una por defecto.
  */
 import type { Resultado } from '../contratos/claim.js';
-import { esReglaRedondeoValida, type ReglaRedondeo } from '../tipo-cambio/regla-redondeo.js';
+import { motivoReglaRedondeoInvalida, type ReglaRedondeo } from '../tipo-cambio/regla-redondeo.js';
 
 /** Fuentes de cotización que el sistema sabe leer. */
 export const FUENTES_TIPO_CAMBIO = ['BCB', 'BNA', 'BCRA', 'manual'] as const;
@@ -83,7 +83,6 @@ const esMoneda = (x: unknown): x is string => typeof x === 'string' && MONEDA.te
 
 function mismaRegla(a: ReglaRedondeo, b: ReglaRedondeo): boolean {
   if (a.tipo !== b.tipo) return false;
-  if (a.tipo === 'ninguno' || b.tipo === 'ninguno') return true;
   if (a.modo !== b.modo) return false;
   return a.tipo === 'decimales' ? a.decimales === (b as typeof a).decimales : a.multiplo === (b as typeof a).multiplo;
 }
@@ -113,14 +112,11 @@ function errorMercado(m: unknown, r: string): string | null {
     }
   }
   if (!esZonaHorariaValida(m['zonaHoraria'])) return `${r}.zonaHoraria: no es una zona horaria IANA válida`;
-  if (!esReglaRedondeoValida(m['redondeo'] as ReglaRedondeo | undefined)) return `${r}.redondeo: regla de redondeo inválida para ${m['monedaVenta']}`;
+  const motivoRegla = motivoReglaRedondeoInvalida(m['redondeo']);
+  if (motivoRegla !== null) return `${r}.redondeo: ${motivoRegla} (${String(m['monedaVenta'])})`;
   const rd = m['redondeo'] as ReglaRedondeo;
   const extraR = errorClaves(rd as unknown as Record<string, unknown>, ['tipo', 'decimales', 'multiplo', 'modo'], `${r}.redondeo`);
   if (extraR !== null) return extraR;
-  if (rd.tipo === 'decimales' && rd.decimales > 2) return `${r}.redondeo: no puede tener más de 2 decimales (el dinero se guarda en centavos)`;
-  if (rd.tipo === 'multiplo' && (rd.multiplo < 0.01 || Math.abs(rd.multiplo * 100 - Math.round(rd.multiplo * 100)) > 1e-9)) {
-    return `${r}.redondeo: el múltiplo debe ser de al menos 0,01 y de centavos exactos`;
-  }
   const tc = m['tipoCambio'];
   if (m['monedaBase'] === m['monedaVenta']) {
     if (tc !== null) return `${r}.tipoCambio: debe ser null si la moneda base y la de venta son la misma`;
@@ -130,7 +126,6 @@ function errorMercado(m: unknown, r: string): string | null {
   if (!esObjeto(tc)) return `${r}.tipoCambio: debe ser un objeto`;
   const extraT = errorClaves(tc, ['par', 'fuentes'], `${r}.tipoCambio`);
   if (extraT !== null) return extraT;
-  if (rd.tipo === 'ninguno') return `${r}.redondeo: un mercado con tipo de cambio exige redondeo por decimales (0 a 2) o por múltiplo, no «ninguno»`;
   const par = typeof tc['par'] === 'string' ? PAR.exec(tc['par']) : null;
   if (par === null) return `${r}.tipoCambio.par: debe tener la forma VENTA/BASE (tres letras / tres letras)`;
   if (par[1] !== m['monedaVenta'] || par[2] !== m['monedaBase']) {
@@ -193,8 +188,7 @@ export function validarConfiguracionComercial(x: unknown): Resultado<Configuraci
     mercados: (mercados as readonly MercadoTenant[]).map((m) => ({
       id: m.id, nombre: m.nombre, monedaVenta: m.monedaVenta, monedaBase: m.monedaBase, zonaHoraria: m.zonaHoraria,
       tipoCambio: m.tipoCambio === null ? null : { par: m.tipoCambio.par, fuentes: [...m.tipoCambio.fuentes] },
-      redondeo: m.redondeo.tipo === 'ninguno' ? { tipo: 'ninguno' }
-        : m.redondeo.tipo === 'decimales' ? { tipo: 'decimales', decimales: m.redondeo.decimales, modo: m.redondeo.modo }
+      redondeo: m.redondeo.tipo === 'decimales' ? { tipo: 'decimales', decimales: m.redondeo.decimales, modo: m.redondeo.modo }
           : { tipo: 'multiplo', multiplo: m.redondeo.multiplo, modo: m.redondeo.modo },
     })),
     monedas: [...(monedas as readonly string[])],

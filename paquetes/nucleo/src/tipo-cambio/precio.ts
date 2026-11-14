@@ -46,7 +46,6 @@ export function aCentavos(monto: number): number {
 }
 
 export function redondear(monto: number, regla: ReglaRedondeo): number {
-  if (regla.tipo === 'ninguno') return limpiar(monto);
   if (regla.tipo === 'decimales') {
     const f = 10 ** regla.decimales;
     return aplicar(limpiar(monto * f), regla.modo) / f;
@@ -104,24 +103,8 @@ export function precioFinal(
   cotizacion: { readonly par: string; readonly valor: number },
   redondeo: RedondeoPorMoneda,
 ): PrecioFinal {
-  // Lógica idéntica, línea por línea, a la de main: el legado no cambia (ni siquiera con redondeo `ninguno`,
-  // más de 2 decimales o montos menores a un centavo). El comportamiento estricto vive solo en `precioDeMercado`.
-  if (typeof usd !== 'number' || !Number.isFinite(usd) || usd < 0) return { tipo: 'invalido', motivo: 'el precio base en USD debe ser un número no negativo' };
-  if (usd === 0) return { tipo: 'sin_precio' };
-  if (cotizacion.par !== PAR_DE[mercado]) return { tipo: 'invalido', motivo: `la cotización ${cotizacion.par} no corresponde al mercado ${mercado}` };
-  if (!Number.isFinite(cotizacion.valor) || cotizacion.valor <= 0) return { tipo: 'invalido', motivo: 'el valor de la cotización debe ser positivo' };
+  // Envoltura delgada: el MISMO cálculo que `precioDeMercado`, con los datos fijos del mercado legado (base USD, par y moneda).
   const moneda = MONEDA_DE[mercado];
-  const regla = redondeo[moneda];
-  if (!reglaValidaLegado(regla)) return { tipo: 'invalido', motivo: `falta una regla de redondeo válida para ${moneda}` };
-  const monto = redondear(usd * cotizacion.valor, regla as ReglaRedondeo);
-  if (monto <= 0) return { tipo: 'invalido', motivo: 'el redondeo dejó el precio en cero' };
-  if (!Number.isSafeInteger(Math.round(limpiar(monto * 100)))) return { tipo: 'invalido', motivo: 'el precio es demasiado grande' };
-  return { tipo: 'precio', moneda, monto, centavos: aCentavos(monto) };
-}
-
-function reglaValidaLegado(r: ReglaRedondeo | undefined): boolean {
-  if (!r) return false;
-  if (r.tipo === 'decimales') return Number.isInteger(r.decimales) && r.decimales >= 0 && r.decimales <= 6;
-  if (r.tipo === 'multiplo') return Number.isFinite(r.multiplo) && r.multiplo > 0;
-  return r.tipo === 'ninguno';
+  const r = calcular(usd, { idMercado: mercado, moneda, monedaBase: 'USD', par: PAR_DE[mercado], regla: redondeo[moneda] }, cotizacion);
+  return r.tipo === 'precio' ? { tipo: 'precio', moneda, monto: r.monto, centavos: r.centavos } : r;
 }
