@@ -26,10 +26,8 @@
     "escribirCotizacion": [],
     "leerCotizacion": [
       "paquetes/consola/src/tablero.ts",
-      "paquetes/pos/src/contexto.ts",
       "paquetes/website/src/api/cotizacion.ts",
-      "plataforma/funciones/servidor/llamadas/consola.ts",
-      "plataforma/funciones/servidor/llamadas/pos.ts"
+      "plataforma/funciones/servidor/llamadas/consola.ts"
     ],
     "manejarCotizacion": [
       "paquetes/website/src/api/cotizacion.ts"
@@ -37,7 +35,6 @@
     "precioFinal": [
       "paquetes/consola/src/tablero.ts",
       "paquetes/panel/src/util/precio.ts",
-      "paquetes/pos/src/venta.ts",
       "paquetes/website/src/lib/precio-vista.ts",
       "plataforma/funciones/servidor/http/novuchat.ts"
     ]
