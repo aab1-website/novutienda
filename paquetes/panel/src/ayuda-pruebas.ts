@@ -1,6 +1,5 @@
 // Utilidades compartidas de las pruebas del panel (no forma parte de la aplicación).
 import { h, type JSX } from 'preact';
-import { act } from 'preact/test-utils';
 import { ClienteDoble } from './doble/doble.js';
 import type { Rol } from './api/tipos.js';
 import { AlmacenSubidasDoble } from './subidas/almacen.js';
@@ -9,18 +8,6 @@ import { CtxApp } from './ui/contexto.js';
 import type { UsuarioSesion } from './sesion/sesion.js';
 import { puedeVer, type ModulosActivos } from './util/menu.js';
 import { PANTALLAS } from './util/pantallas.generado.js';
-
-/**
- * Deja sin efectos de preact pendientes. `useEffect` programa un setTimeout de
- * 35 ms que llama a cancelAnimationFrame; si jsdom se desmonta antes, ese
- * temporizador falla fuera de la prueba. Se vacía con act() y se espera a que
- * el temporizador venza mientras jsdom sigue vivo. Úsese en el afterEach,
- * después de cleanup().
- */
-export async function vaciarEfectos(): Promise<void> {
-  await act(() => {});
-  await new Promise<void>((resolver) => setTimeout(resolver, 50));
-}
 
 export const AHORA = Date.UTC(2026, 10, 4, 15, 0, 0);
 

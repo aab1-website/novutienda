@@ -3,14 +3,13 @@ import { h } from 'preact';
 import { cleanup, render, screen, waitFor, within } from '@testing-library/preact';
 import { userEvent } from '@testing-library/user-event';
 import { afterEach, beforeEach, describe, expect, it } from 'vitest';
-import { crearEntorno, vaciarEfectos } from '../ayuda-pruebas.js';
+import { crearEntorno } from '../ayuda-pruebas.js';
 import { CUENTAS_DOBLE, SesionDoble } from '../sesion/doble.js';
 import { ErrorApi } from '../api/errores.js';
 import { App } from './app.js';
 
-afterEach(async () => {
+afterEach(() => {
   cleanup();
-  await vaciarEfectos();
   window.location.hash = '';
   localStorage.clear();
 });
