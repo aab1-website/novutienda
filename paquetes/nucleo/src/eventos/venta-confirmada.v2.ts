@@ -1,14 +1,14 @@
 import type { CopiaCotizacion } from '../tipo-cambio/tipos.js';
 import {
   arreglo, cantidadPositiva, centavos, copiaCotizacionAbierta, crearValidador, entero, errorMonedaCotizacion, errorSeriesLineas,
-  medioPago, moneda, objeto, oNulo, opcional, texto, type Fixtures,
+  idMercado, medioPago, moneda, objeto, oNulo, opcional, texto, type Fixtures,
 } from './esquema.js';
 import type { ClienteVenta, DescuentoVenta, LineaVentaConfirmada, MedioPagoVenta } from './venta-confirmada.v1.js';
 
 /**
  * Contrato v2 de la venta: los mismos campos que la v1 (mismos nombres y semántica), con cualquier moneda ISO declarada
- * por el tenant, `monedaBase` explícita y cotización opcional con cualquier par `VENTA/BASE`. Una venta v1 es un caso
- * de v2 con `monedaBase: 'USD'`. Que la moneda exista en el tenant lo comprueba el servidor (`coherenteConComercial`).
+ * por el tenant, `monedaBase` explícita, `mercado` obligatorio y cotización opcional con cualquier par `VENTA/BASE`. Una venta v1 se lleva a v2
+ * con `monedaBase: 'USD'` y un mercado (`normalizarDatosAV2`: deducido si la moneda lo determina, explícito si no). Que la moneda exista en el tenant lo comprueba el servidor (`coherenteConComercial`).
  */
 export const TIPO_VENTA_CONFIRMADA_V2 = 'venta.confirmada';
 
@@ -27,6 +27,11 @@ export interface DatosVentaConfirmadaV2 {
   readonly cajaId: string;
   readonly cajeroUid: string;
   readonly numeroRecibo: string;
+  /**
+   * Mercado en que se vendió (dos letras mayúsculas, declarado por el tenant). Obligatorio: la moneda y la moneda base
+   * se comprueban contra ESTE mercado, no contra «algún mercado» (`coherenteConComercial`).
+   */
+  readonly mercado: string;
   /** Moneda de venta: precios, descuento, total y pagos están en ella. */
   readonly moneda: string;
   /** Moneda en que el tenant guarda el precio base de lo vendido. */
@@ -47,6 +52,7 @@ export const validarVentaConfirmadaV2 = crearValidador<DatosVentaConfirmadaV2>(
     cajaId: texto,
     cajeroUid: texto,
     numeroRecibo: texto,
+    mercado: idMercado,
     moneda,
     monedaBase: moneda,
     total: centavos,
@@ -110,6 +116,7 @@ const valido: DatosVentaConfirmadaV2 = {
   cajaId: 'c1',
   cajeroUid: 'u-caj',
   numeroRecibo: 'A-000001',
+  mercado: 'CL',
   moneda: 'CLP',
   monedaBase: 'EUR',
   total: 20000,
@@ -129,8 +136,8 @@ export const fixturesVentaConfirmadaV2: Fixtures<DatosVentaConfirmadaV2> = {
   validos: [
     valido,
     sinCotizacion,
-    { ...sinCotizacion, moneda: 'USD', monedaBase: 'USD', pagos: [{ medio: 'qr', moneda: 'USD', monto: 20000 }] },
-    { ...valido, moneda: 'BOB', monedaBase: 'USD', cotizacion: { ...cotizacionClp, par: 'BOB/USD', fuente: 'BCB' }, pagos: [{ medio: 'qr', moneda: 'BOB', monto: 20000 }] },
+    { ...sinCotizacion, mercado: 'BO', moneda: 'USD', monedaBase: 'USD', pagos: [{ medio: 'qr', moneda: 'USD', monto: 20000 }] },
+    { ...valido, mercado: 'BO', moneda: 'BOB', monedaBase: 'USD', cotizacion: { ...cotizacionClp, par: 'BOB/USD', fuente: 'BCB' }, pagos: [{ medio: 'qr', moneda: 'BOB', monto: 20000 }] },
   ],
   invalidos: [
     { nombre: 'moneda con cotización nula y distinta de la base', datos: { ...valido, cotizacion: null } },
@@ -138,6 +145,8 @@ export const fixturesVentaConfirmadaV2: Fixtures<DatosVentaConfirmadaV2> = {
     { nombre: 'cotización con par distinto de moneda/base', datos: { ...valido, cotizacion: { ...cotizacionClp, par: 'EUR/CLP' } } },
     { nombre: 'cotización con par de otra moneda', datos: { ...valido, cotizacion: { ...cotizacionClp, par: 'BOB/EUR' } } },
     { nombre: 'sin cotización (clave ausente)', datos: { ...valido, cotizacion: undefined } },
+    { nombre: 'sin mercado', datos: { ...valido, mercado: undefined } },
+    { nombre: 'mercado en minúsculas', datos: { ...valido, mercado: 'cl' } },
     { nombre: 'sin moneda base', datos: { ...valido, monedaBase: undefined } },
     { nombre: 'moneda base en minúsculas', datos: { ...valido, monedaBase: 'eur' } },
     { nombre: 'moneda de dos letras', datos: { ...valido, moneda: 'CL' } },

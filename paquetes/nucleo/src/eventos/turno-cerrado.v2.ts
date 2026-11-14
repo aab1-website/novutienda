@@ -7,6 +7,9 @@ import type { ArqueoMoneda } from './turno-cerrado.v1.js';
  */
 export const TIPO_TURNO_CERRADO_V2 = 'turno.cerrado';
 
+/** Tope de monedas por cierre: el mismo que las monedas de caja del tenant (`MAX_MONEDAS`). */
+export const MAX_MONEDAS_TURNO = 20;
+
 export interface DatosTurnoCerradoV2 {
   readonly turnoId: string;
   readonly cajaId: string;
@@ -30,6 +33,7 @@ const monedasTurno: Campo = (v, r) => {
   if (typeof v !== 'object' || v === null || Array.isArray(v)) return `${r} debe ser un objeto`;
   const claves = Object.keys(v);
   if (claves.length === 0) return `${r} requiere al menos una moneda`;
+  if (claves.length > MAX_MONEDAS_TURNO) return `${r} admite como máximo ${MAX_MONEDAS_TURNO} monedas`;
   for (const k of claves) {
     const m = moneda(k, `${r}.${k}`);
     if (m !== null) return m;

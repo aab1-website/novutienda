@@ -10,7 +10,7 @@ import { fixturesPedidoConfirmadoV2, validarPedidoConfirmadoV2 } from './pedido-
 import { fixturesPedidoSolicitadoV1, validarPedidoSolicitadoV1 } from './pedido-solicitado.v1.js';
 import { fixturesPedidoSolicitadoV2, validarPedidoSolicitadoV2 } from './pedido-solicitado.v2.js';
 import { fixturesTurnoCerradoV1, validarTurnoCerradoV1 } from './turno-cerrado.v1.js';
-import { fixturesTurnoCerradoV2, validarTurnoCerradoV2 } from './turno-cerrado.v2.js';
+import { MAX_MONEDAS_TURNO, fixturesTurnoCerradoV2, validarTurnoCerradoV2 } from './turno-cerrado.v2.js';
 import { fixturesVentaAnuladaV1, validarVentaAnuladaV1 } from './venta-anulada.v1.js';
 import { fixturesVentaAnuladaV2, validarVentaAnuladaV2 } from './venta-anulada.v2.js';
 import { fixturesVentaConfirmadaV1, validarVentaConfirmadaV1 } from './venta-confirmada.v1.js';
@@ -75,23 +75,47 @@ describe('validarEvento con versiones', () => {
   const sobre = (tipo: string, version: number, datos: unknown) => ({
     id: 'e1', tipo, version, tenantId: 't1', origen: 'pos', ocurridoEn: '2026-11-04T12:00:00Z', claveIdempotencia: 'k1', datos,
   });
-  it('acepta un v2 válido y rechaza un v2 inválido', () => {
-    expect(validarEvento(sobre('venta.confirmada', 2, fixturesVentaConfirmadaV2.validos[0])).ok).toBe(true);
-    expect(validarEvento(sobre('venta.confirmada', 2, { ...fixturesVentaConfirmadaV2.validos[0], cotizacion: null })).ok).toBe(false);
+  const ambas = { versiones: [1, 2] } as const;
+  it('sin opciones solo acepta la versión 1: un v2 válido se rechaza igual que antes de existir la 2', () => {
+    const v2 = sobre('venta.confirmada', 2, fixturesVentaConfirmadaV2.validos[0]);
+    expect(validarEvento(v2)).toEqual({ ok: false, error: 'Versión de evento desconocida' });
+    expect(validarEvento(v2, {})).toEqual({ ok: false, error: 'Versión de evento desconocida' });
+    expect(validarEvento(v2, { versiones: [1] }).ok).toBe(false);
+    expect(validarEvento(sobre('venta.confirmada', 1, fixturesVentaConfirmadaV1.validos[0])).ok).toBe(true);
+  });
+  it('con versiones [1, 2] acepta un v2 válido y rechaza un v2 inválido', () => {
+    expect(validarEvento(sobre('venta.confirmada', 2, fixturesVentaConfirmadaV2.validos[0]), ambas).ok).toBe(true);
+    expect(validarEvento(sobre('venta.confirmada', 1, fixturesVentaConfirmadaV1.validos[0]), ambas).ok).toBe(true);
+    expect(validarEvento(sobre('venta.confirmada', 2, { ...fixturesVentaConfirmadaV2.validos[0], cotizacion: null }), ambas).ok).toBe(false);
+  });
+  it('con versiones [2] rechaza la 1', () => {
+    expect(validarEvento(sobre('venta.confirmada', 1, fixturesVentaConfirmadaV1.validos[0]), { versiones: [2] }).ok).toBe(false);
   });
   it('los datos v2 con sobre v1 (y al revés) se rechazan: cada versión valida con su contrato', () => {
-    expect(validarEvento(sobre('venta.confirmada', 1, fixturesVentaConfirmadaV2.validos[0])).ok).toBe(false);
-    expect(validarEvento(sobre('venta.confirmada', 2, fixturesVentaConfirmadaV1.validos[0])).ok).toBe(false);
+    expect(validarEvento(sobre('venta.confirmada', 1, fixturesVentaConfirmadaV2.validos[0]), ambas).ok).toBe(false);
+    expect(validarEvento(sobre('venta.confirmada', 2, fixturesVentaConfirmadaV1.validos[0]), ambas).ok).toBe(false);
   });
   it('un tipo sin v2 no admite la versión 2', () => {
-    const r = validarEvento(sobre('stock.bajo', 2, {}));
+    const r = validarEvento(sobre('stock.bajo', 2, {}), ambas);
     expect(r.ok).toBe(false);
   });
   it.each([0, 3, 1.5, '2', null])('rechaza la versión no registrada %s', (version) => {
-    expect(validarEvento({ ...sobre('venta.anulada', 1, fixturesVentaAnuladaV2.validos[0]), version })).toEqual({ ok: false, error: 'Versión de evento desconocida' });
+    expect(validarEvento({ ...sobre('venta.anulada', 1, fixturesVentaAnuladaV2.validos[0]), version }, ambas)).toEqual({ ok: false, error: 'Versión de evento desconocida' });
   });
   it('rechaza una versión heredada del prototipo', () => {
-    expect(validarEvento({ ...sobre('venta.anulada', 1, {}), version: 'constructor' }).ok).toBe(false);
+    expect(validarEvento({ ...sobre('venta.anulada', 1, {}), version: 'constructor' }, ambas).ok).toBe(false);
+  });
+});
+
+describe('turno.cerrado v2: tope de monedas', () => {
+  const arqueo = en(Object.values(en(fixturesTurnoCerradoV2.validos, 0).monedas), 0);
+  const con = (n: number) => ({
+    ...en(fixturesTurnoCerradoV2.validos, 0),
+    monedas: Object.fromEntries(Array.from({ length: n }, (_, i) => [`A${String.fromCharCode(65 + i)}B`, arqueo])),
+  });
+  it('admite 20 monedas y rechaza 21', () => {
+    expect(validarTurnoCerradoV2(con(MAX_MONEDAS_TURNO)).ok).toBe(true);
+    expect(validarTurnoCerradoV2(con(MAX_MONEDAS_TURNO + 1))).toMatchObject({ ok: false, error: expect.stringMatching(/máximo 20/) });
   });
 });
 
@@ -102,11 +126,16 @@ describe('los fixtures v1 validan igual', () => {
   });
 });
 
+/** Una venta v1 en USD es ambigua entre mercados: se le pasa uno explícito; lo demás se deduce. */
+const mercadoSiAmbigua = (d: unknown): { mercado?: string } => ((d as { moneda?: string }).moneda === 'USD' && !('mercado' in (d as object)) ? { mercado: 'BO' } : {});
+
 describe('normalizar un evento v1 a v2 (ida)', () => {
   it.each(v1)('todo %s v1 válido se normaliza a un v2 válido', (tipo, _validar, fixtures) => {
     const validarV2 = CONTRATOS_V2[tipo]!;
     for (const d of fixtures.validos) {
-      const r = validarV2(normalizarDatosAV2(tipo, d));
+      const n = normalizarDatosAV2(tipo, d, { comercial: legado, ...mercadoSiAmbigua(d) });
+      expect(n).toMatchObject({ ok: true });
+      const r = validarV2(n.ok ? n.valor : undefined);
       expect(r, JSON.stringify(r)).toMatchObject({ ok: true });
     }
   });
@@ -115,31 +144,55 @@ describe('normalizar un evento v1 a v2 (ida)', () => {
       id: 'e1', tipo: 'venta.confirmada', version: 1, tenantId: 't1', origen: 'pos', ocurridoEn: '2026-11-04T12:00:00Z',
       claveIdempotencia: 'k1', datos: fixturesVentaConfirmadaV1.validos[0],
     };
-    const n = normalizarEventoAV2(sobre);
-    expect(n.version).toBe(2);
-    expect(validarEvento(n).ok).toBe(true);
+    const r = normalizarEventoAV2(sobre, { comercial: legado, mercado: 'BO' });
+    if (!r.ok) throw new Error(r.error);
+    expect(r.valor.version).toBe(2);
+    expect(validarEvento(r.valor, { versiones: [1, 2] }).ok).toBe(true);
     expect(sobre.version).toBe(1);
   });
-  it('la venta v1 gana monedaBase USD y conserva su cotización; en USD queda null', () => {
+  it('la venta v1 gana monedaBase USD y mercado, y conserva su cotización; en USD queda null', () => {
     const bob = en(fixturesVentaConfirmadaV1.validos, 0);
     const usd = en(fixturesVentaConfirmadaV1.validos, 1);
-    expect(normalizarDatosAV2('venta.confirmada', bob)).toMatchObject({ monedaBase: 'USD', cotizacion: bob.cotizacion });
-    expect(normalizarDatosAV2('venta.confirmada', usd)).toMatchObject({ monedaBase: 'USD', cotizacion: null });
+    expect(normalizarDatosAV2('venta.confirmada', bob, { comercial: legado })).toMatchObject({ ok: true, valor: { monedaBase: 'USD', mercado: 'BO', cotizacion: bob.cotizacion } });
+    expect(normalizarDatosAV2('venta.confirmada', usd, { comercial: legado, mercado: 'AR' })).toMatchObject({ ok: true, valor: { monedaBase: 'USD', mercado: 'AR', cotizacion: null } });
   });
-  it('un pedido v1 en USD (con cotización en v1) pasa a cotización null; en moneda local la conserva', () => {
+  it('la venta v1 en moneda local deduce su mercado cuando es único; el mercado explícito debe ser posible', () => {
+    const bob = en(fixturesVentaConfirmadaV1.validos, 0);
+    expect(bob.moneda).toBe('BOB');
+    expect(normalizarDatosAV2('venta.confirmada', bob, { comercial: legado })).toMatchObject({ ok: true, valor: { mercado: 'BO' } });
+    expect(normalizarDatosAV2('venta.confirmada', bob, { comercial: legado, mercado: 'AR' })).toMatchObject({ ok: false });
+    expect(normalizarDatosAV2('venta.confirmada', bob, { comercial: legado, mercado: 'ZZ' })).toMatchObject({ ok: false });
+  });
+  it('la venta v1 en la moneda base compartida es ambigua: exige mercado explícito y falla cerrado sin él', () => {
+    const usd = en(fixturesVentaConfirmadaV1.validos, 1);
+    expect(usd.moneda).toBe('USD');
+    const sin = normalizarDatosAV2('venta.confirmada', usd, { comercial: legado });
+    expect(sin).toMatchObject({ ok: false });
+    expect(!sin.ok && sin.error).toMatch(/ambigua/);
+    expect(normalizarDatosAV2('venta.confirmada', usd)).toMatchObject({ ok: false });
+    expect(normalizarDatosAV2('venta.confirmada', usd, { comercial: legado, mercado: 'BO' })).toMatchObject({ ok: true, valor: { mercado: 'BO' } });
+    expect(normalizarEventoAV2({ id: 'e', tipo: 'venta.confirmada', version: 1, tenantId: 't', origen: 'pos', ocurridoEn: '2026-11-04T12:00:00Z', claveIdempotencia: 'k', datos: usd }, { comercial: legado })).toMatchObject({ ok: false });
+  });
+  it('con un solo mercado la venta en la moneda base se deduce; sin mercado que la admita, falla', () => {
+    const usd = en(fixturesVentaConfirmadaV1.validos, 1);
+    expect(normalizarDatosAV2('venta.confirmada', usd, { comercial: { mercados: [en(legado.mercados, 0)], monedas: legado.monedas } })).toMatchObject({ ok: true, valor: { mercado: en(legado.mercados, 0).id } });
+    expect(normalizarDatosAV2('venta.confirmada', usd, { comercial: baseEuro })).toMatchObject({ ok: false });
+  });
+  it('el pedido v1 ya trae su mercado: se normaliza sin contexto; en USD pierde la cotización de referencia (pérdida aceptada)', () => {
     const d = en(fixturesPedidoSolicitadoV1.validos, 0);
-    expect(normalizarDatosAV2('pedido.solicitado', d)).toMatchObject({ monedaBase: 'USD', cotizacion: d.cotizacion });
+    expect(normalizarDatosAV2('pedido.solicitado', d)).toMatchObject({ ok: true, valor: { monedaBase: 'USD', mercado: d.mercado, cotizacion: d.cotizacion } });
     const enUsd = { ...d, moneda: 'USD' };
     expect(validarPedidoSolicitadoV1(enUsd).ok).toBe(true);
     const n = normalizarDatosAV2('pedido.solicitado', enUsd);
-    expect(n).toMatchObject({ moneda: 'USD', cotizacion: null });
-    expect(validarPedidoSolicitadoV2(n).ok).toBe(true);
+    expect(n).toMatchObject({ ok: true, valor: { moneda: 'USD', cotizacion: null } });
+    expect(validarPedidoSolicitadoV2(n.ok ? n.valor : undefined).ok).toBe(true);
   });
   it('un tipo sin v2 y un sobre v2 salen sin cambios', () => {
     const stock = { id: 'e', tipo: 'stock.bajo', version: 1, tenantId: 't', origen: 'inventarios', ocurridoEn: '2026-11-04T12:00:00Z', claveIdempotencia: 'k', datos: {} } as SobreEvento;
-    expect(normalizarEventoAV2(stock)).toBe(stock);
+    expect(normalizarEventoAV2(stock)).toEqual({ ok: true, valor: stock });
+    expect(normalizarEventoAV2(stock).ok && (normalizarEventoAV2(stock) as { valor: SobreEvento }).valor).toBe(stock);
     const e2 = { ...stock, tipo: 'venta.anulada', version: 2 } as SobreEvento;
-    expect(normalizarEventoAV2(e2)).toBe(e2);
+    expect(normalizarEventoAV2(e2)).toEqual({ ok: true, valor: e2 });
   });
 });
 
@@ -199,6 +252,19 @@ describe('coherenteConComercial', () => {
     expect(coherenteConComercial(sobre('pedido.solicitado', 2, { ...en(ped, 0), monedaBase: 'USD', cotizacion: { ...en(ped, 0).cotizacion!, par: 'CLP/USD' } }), clp).ok).toBe(false);
     expect(coherenteConComercial(sobre('pedido.solicitado', 2, { ...en(ped, 0), moneda: 'BOB', cotizacion: { ...en(ped, 0).cotizacion!, par: 'BOB/EUR' } }), clp).ok).toBe(false);
     expect(coherenteConComercial(sobre('venta.confirmada', 2, venta[3]), clp).ok).toBe(false);
+    expect(coherenteConComercial(sobre('venta.confirmada', 2, { ...en(venta, 0), monedaBase: 'USD', cotizacion: { ...en(venta, 0).cotizacion!, par: 'CLP/USD' } }), clp).ok).toBe(false);
+  });
+  it('la venta se valida contra SU mercado, no contra «algún mercado»', () => {
+    const dosMercados: ConfiguracionComercial = {
+      mercados: [mercado({ id: 'CL', monedaVenta: 'CLP', monedaBase: 'EUR', tipoCambio: { par: 'CLP/EUR', fuentes: ['manual'] } }), mercado({ id: 'BO', monedaVenta: 'BOB' })],
+      monedas: ['CLP', 'EUR', 'BOB', 'USD'],
+    };
+    expect(coherenteConComercial(sobre('venta.confirmada', 2, venta[0]), dosMercados).ok).toBe(true);
+    expect(coherenteConComercial(sobre('venta.confirmada', 2, venta[3]), dosMercados).ok).toBe(true);
+    // CLP/EUR existe en CL, pero la venta dice BO: se rechaza aunque «algún mercado» la admita.
+    expect(coherenteConComercial(sobre('venta.confirmada', 2, { ...en(venta, 0), mercado: 'BO' }), dosMercados).ok).toBe(false);
+    expect(coherenteConComercial(sobre('venta.confirmada', 2, { ...en(venta, 3), mercado: 'CL' }), dosMercados).ok).toBe(false);
+    expect(coherenteConComercial(sobre('venta.confirmada', 2, { ...en(venta, 0), mercado: 'ZZ' }), dosMercados).ok).toBe(false);
   });
   it('rechaza una moneda de venta fuera de las monedas de caja', () => {
     expect(coherenteConComercial(sobre('venta.confirmada', 2, venta[0]), { ...clp, monedas: ['CLP'] }).ok).toBe(true);
@@ -216,7 +282,12 @@ describe('coherenteConComercial', () => {
       ['turno.cerrado', fixturesTurnoCerradoV1.validos], ['pedido.solicitado', fixturesPedidoSolicitadoV1.validos],
       ['pedido.confirmado', fixturesPedidoConfirmadoV1.validos],
     ];
-    for (const [tipo, datos] of todos) for (const d of datos) expect(coherenteConComercial(sobre(tipo, 1, d), legado)).toMatchObject({ ok: true });
+    for (const [tipo, datos] of todos) for (const d of datos) expect(coherenteConComercial(sobre(tipo, 1, d), legado, mercadoSiAmbigua(d).mercado)).toMatchObject({ ok: true });
+  });
+  it('una venta v1 en USD sin mercado explícito falla cerrado; con él se comprueba', () => {
+    const usd = en(fixturesVentaConfirmadaV1.validos, 1);
+    expect(coherenteConComercial(sobre('venta.confirmada', 1, usd), legado)).toMatchObject({ ok: false });
+    expect(coherenteConComercial(sobre('venta.confirmada', 1, usd), legado, 'AR')).toMatchObject({ ok: true });
   });
   it('un tipo sin mercado ni moneda es coherente siempre', () => {
     expect(coherenteConComercial(sobre('stock.bajo', 1, {}), clp).ok).toBe(true);

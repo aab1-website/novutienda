@@ -45,26 +45,26 @@ function errorPedido(c: ConfiguracionComercial, d: DatosPedidoSolicitadoV2 | Dat
 }
 
 function errorVenta(c: ConfiguracionComercial, d: DatosVentaConfirmadaV2): string | null {
+  const m = mercadoDe(c, d.mercado);
+  if (m === undefined) return `datos.mercado: el mercado ${d.mercado} no existe en el tenant`;
   const enCaja = monedaEnCaja(c, d.moneda, 'datos.moneda');
   if (enCaja !== null) return enCaja;
-  if (d.moneda === d.monedaBase) {
-    return c.mercados.some((m) => m.monedaBase === d.monedaBase || m.monedaVenta === d.monedaBase)
-      ? null
-      : `datos.monedaBase: la moneda ${d.monedaBase} no es base ni de venta de ningún mercado del tenant`;
-  }
-  const par = `${d.moneda}/${d.monedaBase}`;
-  return c.mercados.some((m) => m.monedaVenta === d.moneda && m.monedaBase === d.monedaBase && m.tipoCambio?.par === par)
-    ? null
-    : `datos.cotizacion.par: ningún mercado del tenant tiene el par ${par}`;
+  if (d.monedaBase !== m.monedaBase) return `datos.monedaBase debe ser la moneda base del mercado ${d.mercado} (${m.monedaBase})`;
+  if (d.moneda === d.monedaBase) return null;
+  if (d.moneda !== m.monedaVenta) return `datos.moneda no corresponde al mercado ${d.mercado}`;
+  return m.tipoCambio?.par === `${d.moneda}/${d.monedaBase}` ? null : `datos.cotizacion.par: el mercado ${d.mercado} no tiene el par ${d.moneda}/${d.monedaBase}`;
 }
 
 /**
  * ¿Es coherente el evento con la configuración comercial del tenant? Lo comprueba el servidor al emitir o consumir:
- * el esquema v2 no conoce al tenant. Pura. Un evento v1 se normaliza a v2 antes de comprobarlo; un tipo sin mercado ni
+ * el esquema v2 no conoce al tenant. Pura. Un evento v1 se normaliza a v2 antes de comprobarlo (una venta v1 en la
+ * moneda base, ambigua entre mercados, exige `mercado` explícito y sin él falla cerrado); un tipo sin mercado ni
  * moneda (stock, producto, recibo) es coherente siempre. Se asume un evento ya validado por `validarEvento`.
  */
-export function coherenteConComercial(evento: SobreEvento, comercial: ConfiguracionComercial): Resultado<true> {
-  const e = normalizarEventoAV2(evento);
+export function coherenteConComercial(evento: SobreEvento, comercial: ConfiguracionComercial, mercado?: string): Resultado<true> {
+  const n = normalizarEventoAV2(evento, mercado === undefined ? { comercial } : { comercial, mercado });
+  if (!n.ok) return n;
+  const e = n.valor;
   if (e.version !== 2) return OK;
   switch (e.tipo) {
     case 'venta.confirmada': {

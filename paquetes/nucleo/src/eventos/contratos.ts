@@ -49,20 +49,31 @@ export const CONTRATOS_POR_VERSION: Readonly<Record<number, Readonly<Record<stri
   2: CONTRATOS_V2,
 };
 
+/** Versiones de evento que se entregan por omisión: solo la 1, como antes de existir la 2 (nadie recibe v2 sin pedirlo). */
+export const VERSIONES_POR_OMISION: readonly (1 | 2)[] = [1];
+
+export interface OpcionesValidarEvento {
+  /** Versiones del sobre que quien llama entiende; por omisión, solo la 1. Un v2 solo llega a quien lo declara. */
+  readonly versiones?: readonly (1 | 2)[];
+}
+
 /**
  * Valida el sobre y los datos según el contrato de su tipo y versión.
- * Rechaza versiones y tipos desconocidos.
+ * Rechaza versiones y tipos desconocidos. Sin opciones acepta SOLO la versión 1 (igual que antes de la 2): un
+ * consumidor que entiende la 2 lo declara con `{ versiones: [1, 2] }`.
  */
-export function validarEvento(x: unknown): Resultado<SobreEvento> {
+export function validarEvento(x: unknown, opciones: OpcionesValidarEvento = {}): Resultado<SobreEvento> {
+  const versiones = opciones.versiones ?? VERSIONES_POR_OMISION;
   if (typeof x === 'object' && x !== null && 'version' in x) {
     const v = (x as { version: unknown }).version;
-    if (typeof v !== 'number' || !Object.hasOwn(CONTRATOS_POR_VERSION, v)) return { ok: false, error: 'Versión de evento desconocida' };
+    if (v !== 1 && v !== 2) return { ok: false, error: 'Versión de evento desconocida' };
+    if (!versiones.includes(v) || !Object.hasOwn(CONTRATOS_POR_VERSION, v)) return { ok: false, error: 'Versión de evento desconocida' };
   }
-  const sobre = validarSobre(x, [1, 2]);
+  const sobre = validarSobre(x, versiones);
   if (!sobre.ok) return sobre;
   const contratos = CONTRATOS_POR_VERSION[sobre.valor.version];
   const validador = contratos !== undefined && Object.hasOwn(contratos, sobre.valor.tipo) ? contratos[sobre.valor.tipo] : undefined;
-  if (validador === undefined) return { ok: false, error: `Tipo de evento desconocido: ${sobre.valor.tipo} (versión ${sobre.valor.version})` };
+  if (validador === undefined) return { ok: false, error: `Tipo de evento desconocido: ${sobre.valor.tipo}` };
   const datos = validador(sobre.valor.datos);
   return datos.ok ? sobre : { ok: false, error: datos.error };
 }
