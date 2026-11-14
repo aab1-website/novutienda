@@ -49,25 +49,21 @@ export class ProductoCorrupto extends Error {
 export const rutaColeccionProductos = (tenantId: string): string => `tenants/${tenantId}/productos`;
 
 /**
- * Precios guardados. Con la configuración del tenant: uno entero por CADA mercado declarado (falta alguno = documento corrupto)
- * y solo esos se entregan. Sin ella (consumidores que aún no la reciben): las claves de mercado guardadas (dos letras), todas enteras,
- * y al menos una.
+ * Precios guardados.
+ * - Con la configuración del tenant: un entero no negativo por CADA mercado declarado y solo esos se entregan.
+ *   Un producto sin la clave de un mercado declarado es corrupto (estricto a propósito): agregar un mercado a un tenant que ya
+ *   tiene productos exige completar antes esos precios. Decisión abierta: ver si debe tolerarse «sin precio» (0) en ese caso.
+ * - Sin ella (lectores que aún no la reciben: caja, consola, asistente): se comporta EXACTAMENTE como antes de los mercados por
+ *   tenant, exige `bo` y `ar` enteros y entrega solo esos dos. Un tenant sin esos mercados FALLA CERRADO (`ProductoCorrupto`) en esos
+ *   lectores hasta que migren (B3, B4, D): nunca devuelve `undefined` ni calcula mal en silencio.
  */
 function preciosDe(productoId: string, p: Datos, comercial: ConfiguracionComercial | undefined): PreciosCentavos {
   const salida: Record<string, number> = {};
-  if (comercial !== undefined) {
-    for (const m of comercial.mercados) {
-      const v = p[claveDePrecio(m.id)];
-      if (!entero(v)) throw new ProductoCorrupto(productoId, 'precioUSD');
-      salida[claveDePrecio(m.id)] = v;
-    }
-  } else {
-    for (const [k, v] of Object.entries(p)) {
-      if (!/^[a-z]{2}$/.test(k)) continue;
-      if (!entero(v)) throw new ProductoCorrupto(productoId, 'precioUSD');
-      salida[k] = v;
-    }
-    if (Object.keys(salida).length === 0) throw new ProductoCorrupto(productoId, 'precioUSD');
+  const claves = comercial !== undefined ? comercial.mercados.map((m) => claveDePrecio(m.id)) : ['bo', 'ar'];
+  for (const k of claves) {
+    const v = p[k];
+    if (!entero(v)) throw new ProductoCorrupto(productoId, 'precioUSD');
+    salida[k] = v;
   }
   return salida as unknown as PreciosCentavos;
 }

@@ -84,7 +84,7 @@ describe('exportación en USD con decimales: ida y vuelta', () => {
   });
 
   it('encabezados y valores', () => {
-    const csv = exportarProductosCsv([{ id: 'a1', nombre: 'A', categoria: 'c', sku: 'S-1', conSerie: false, precioUSD: { bo: 1250, ar: 10 }, costoUSD: 800, activo: true, publicado: true }]);
+    const csv = exportarProductosCsv([{ id: 'a1', nombre: 'A', categoria: 'c', sku: 'S-1', conSerie: false, precioUSD: { bo: 1250, ar: 10 }, costoUSD: 800, activo: true, publicado: true }], COMERCIAL_TRES);
     const [cab, fila] = csv.split('\r\n');
     expect(cab?.split(',')).toEqual([...columnasDeExportacion(COMERCIAL_TRES)]);
     expect(cab).toContain('precioBO,precioAR,costo,');
@@ -97,7 +97,7 @@ describe('exportación en USD con decimales: ida y vuelta', () => {
     const exportables: ProductoExportable[] = precios.map(([id, bo, ar, costo]) => ({
       id, nombre: id, categoria: 'general', sku: `SKU-${id}`, conSerie: false, precioUSD: { bo, ar }, costoUSD: costo, activo: true, publicado: true,
     }));
-    const csv = exportarProductosCsv(exportables);
+    const csv = exportarProductosCsv(exportables, COMERCIAL_TRES);
     expect(csv).toContain('0.10,1234.50,8.00');
     const sim = await simular(csv);
     const precioCambiado = sim.filas.filter((f) => f.cambios.includes('precioUSD'));

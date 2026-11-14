@@ -3,7 +3,7 @@
 // las suites; aquí, un comercio de UN mercado sin tipo de cambio y los casos de falla cerrado.
 import { beforeEach, describe, expect, it } from 'vitest';
 import {
-  actualizarProducto, aplicarSalida, claveDePrecio, columnasDeExportacion, EntradaInvalida, EstadoInvalido, exportarProductosCsv,
+  actualizarProducto, aplicarSalida, claveDePrecio, columnasDeExportacion, EntradaInvalida, EstadoInvalido, exportarProductosCsv, exportarProductosCsvLegado,
   fijarReloj, importarCsvPorLotes, importarProductosCsv, leerCsvFilas, leerDocumentoProducto, leerProducto, prepararSalida, ProductoCorrupto,
   simularImportacionCsv, zonaPrincipalDe,
 } from './api.js';
@@ -138,5 +138,45 @@ describe('falla cerrado: sin configuración comercial válida no hay operación'
     await cargar(db, 'celular', 'tienda', 1, ['A']);
     db.poner(`tenants/${T}`, { estado: 'activo', plan: 'base', modulos: {} });
     await expect(db.runTransaction((tx) => prepararSalida(tx, T, [{ productoId: 'celular', almacenId: 'tienda', cantidad: 1, series: ['A'] }]))).rejects.toBeInstanceOf(EstadoInvalido);
+  });
+});
+
+describe('lectura sin configuración: idéntica a antes de los mercados por tenant, o falla cerrado', () => {
+  const base = { nombre: 'x', activo: true, conSerie: false };
+  it('con bo y ar enteros entrega solo esos dos', () => {
+    expect({ ...leerDocumentoProducto('x', { ...base, precioUSD: { bo: 1, ar: 2, pe: 3 } }).precioCentavos }).toEqual({ bo: 1, ar: 2 });
+  });
+  it('si falta bo o ar (o no es entero, o es negativo) lanza ProductoCorrupto', () => {
+    for (const precioUSD of [{ bo: 1 }, { ar: 2 }, { bo: 1, ar: 1.5 }, { bo: -1, ar: 1 }, { bo: '1', ar: 1 }, {}]) {
+      expect(() => leerDocumentoProducto('x', { ...base, precioUSD })).toThrow(ProductoCorrupto);
+    }
+  });
+  it('un producto de un tenant de un mercado leído sin configuración LANZA, no devuelve undefined', async () => {
+    conUnMercado();
+    await altaProducto(db, pe('lapiz'));
+    await expect(db.runTransaction((tx) => leerProducto(tx, T, 'lapiz'))).rejects.toBeInstanceOf(ProductoCorrupto);
+  });
+  it('con configuración falta un mercado declarado = corrupto (a propósito)', () => {
+    expect(() => leerDocumentoProducto('x', { ...base, precioUSD: { bo: 1 } }, COMERCIAL_TRES)).toThrow(ProductoCorrupto);
+  });
+});
+
+describe('claves heredadas del prototipo', () => {
+  it('un precio con «constructor» o «__proto__» propios se rechaza como mercado desconocido', async () => {
+    for (const json of ['{"bo":1,"ar":1,"constructor":1}', '{"bo":1,"ar":1,"__proto__":1}']) {
+      await expect(altaProducto(db, { ...producto('x1'), precioUSD: JSON.parse(json) as never })).rejects.toThrow(/Mercado desconocido/);
+    }
+  });
+  it('un encabezado «constructor» o «toString» es una columna ignorada, no una columna conocida', () => {
+    const r = leerCsvFilas('id,nombre,categoria,sku,constructor,toString,__proto__\na1,A,c,S-1,1,2,3\n', false, COMERCIAL_TRES);
+    expect(r.columnasIgnoradas).toEqual(['constructor', 'toString', '__proto__']);
+    expect(r.filas[0]?.errores).toEqual([]);
+  });
+});
+
+describe('exportarProductosCsvLegado (@deprecated)', () => {
+  it('emite precioBO y precioAR igual que exportarProductosCsv con la configuración de tres monedas', () => {
+    const fila = { id: 'a1', nombre: 'A', categoria: 'c', sku: 'S-1', conSerie: false, precioUSD: { bo: 1250, ar: 10 }, activo: true, publicado: true };
+    expect(exportarProductosCsvLegado([fila])).toBe(exportarProductosCsv([fila], COMERCIAL_TRES));
   });
 });

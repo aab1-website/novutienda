@@ -21,7 +21,7 @@ describe('marca del producto', () => {
       importarProductosCsv(tx, { tenantId: T, operacionId: op(), por: ADM, csv: 'id,nombre,categoria,marca,sku,precioUSDbo,precioUSDar\nsierra,Sierra,herr,=Dewalt,S-1,1,1\n' }),
     );
     expect(doc(db, 'productos', 'sierra')).toMatchObject({ marca: "'=Dewalt" });
-    const csv = exportarProductosCsv([{ id: 'x1', nombre: 'X', categoria: 'c', marca: 'Bosch', sku: 'X-1', conSerie: false, precioUSD: { bo: 1, ar: 1 }, activo: true, publicado: false }]);
+    const csv = exportarProductosCsv([{ id: 'x1', nombre: 'X', categoria: 'c', marca: 'Bosch', sku: 'X-1', conSerie: false, precioUSD: { bo: 1, ar: 1 }, activo: true, publicado: false }], COMERCIAL_TRES);
     expect(csv).toContain('x1,X,c,Bosch,X-1');
   });
 

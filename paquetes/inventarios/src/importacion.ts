@@ -79,6 +79,7 @@ const ALIAS_FIJOS: Readonly<Record<string, readonly [Columna, Unidad | null]>> =
   id: ['id', null], codigo: ['id', null], nombre: ['nombre', null], categoria: ['categoria', null], marca: ['marca', null], sku: ['sku', null],
   conserie: ['conSerie', null], activo: ['activo', null], publicado: ['publicado', null],
   garantiameses: ['garantiaMeses', null], garantia: ['garantiaMeses', null], minimo: ['minimo', null],
+  // PENDIENTE: el costo sigue en USD aunque la moneda base de un mercado sea otra; su moneda es una decisión abierta.
   costousd: ['costoUSD', 'centavos'], costo: ['costoUSD', 'decimal'],
   stocktienda: ['stockTienda', null], stockdeposito1: ['stockDeposito1', null], stockdeposito2: ['stockDeposito2', null],
 };
@@ -199,7 +200,7 @@ export function leerCsvFilas(fuente: FuenteTabla, cargaInicial: boolean, comerci
   const ignoradas: string[] = [];
   for (const [i, h] of cab.entries()) {
     const n = normalizar(h);
-    const alias = ALIAS[n];
+    const alias = Object.hasOwn(ALIAS, n) ? ALIAS[n] : undefined;
     if (alias === undefined) {
       if (n !== '') ignoradas.push(SUENA_A_STOCK.has(n) ? `${h} (el CSV no modifica el stock salvo en la carga inicial, con stockTienda, stockDeposito1 y stockDeposito2)` : h);
       continue;
@@ -732,25 +733,21 @@ export const columnasDeExportacion = (comercial: ConfiguracionComercial): readon
   'id', 'nombre', 'categoria', 'marca', 'sku', 'conSerie', 'garantiaMeses', 'minimo', ...comercial.mercados.map((m) => columnaDePrecio(m.id)), 'costo', 'activo', 'publicado',
 ];
 
+/** Exporta productos a CSV neutralizando toda celda de texto que empiece con = + - @. Sin costos salvo que vengan. */
+export function exportarProductosCsv(productos: readonly ProductoExportable[], comercial: ConfiguracionComercial): string {
+  const claves = comercial.mercados.map((m) => claveDePrecio(m.id));
+  return csvDe(productos, claves, columnasDeExportacion(comercial));
+}
+
 /**
- * Exporta productos a CSV neutralizando toda celda de texto que empiece con = + - @. Sin costos salvo que vengan.
- * `comercial` fija las columnas de precio. TRANSITORIO: sin ella (llamadores que aún no la reciben) las columnas salen de las claves
- * de precio de los productos, que deben ser las mismas en todos; sin productos no hay columnas de precio.
+ * @deprecated Solo para la batería de equivalencia del tenant de tres monedas: se comporta exactamente como antes de los mercados
+ * por tenant (columnas `precioBO` y `precioAR`, en ese orden, sin configuración). Usar `exportarProductosCsv(productos, comercial)`.
  */
-export function exportarProductosCsv(productos: readonly ProductoExportable[], comercial?: ConfiguracionComercial): string {
-  let claves: string[];
-  let encabezados: readonly string[];
-  if (comercial !== undefined) {
-    claves = comercial.mercados.map((m) => claveDePrecio(m.id));
-    encabezados = columnasDeExportacion(comercial);
-  } else {
-    claves = Object.keys(productos[0]?.precioUSD ?? {});
-    for (const p of productos) {
-      const k = Object.keys(p.precioUSD);
-      if (k.length !== claves.length || !claves.every((x) => k.includes(x))) throw new EntradaInvalida('Los productos no tienen los mismos mercados: indique la configuración comercial');
-    }
-    encabezados = ['id', 'nombre', 'categoria', 'marca', 'sku', 'conSerie', 'garantiaMeses', 'minimo', ...claves.map((k) => columnaDePrecio(k.toUpperCase())), 'costo', 'activo', 'publicado'];
-  }
+export function exportarProductosCsvLegado(productos: readonly ProductoExportable[]): string {
+  return csvDe(productos, ['bo', 'ar'], ['id', 'nombre', 'categoria', 'marca', 'sku', 'conSerie', 'garantiaMeses', 'minimo', 'precioBO', 'precioAR', 'costo', 'activo', 'publicado']);
+}
+
+function csvDe(productos: readonly ProductoExportable[], claves: readonly string[], encabezados: readonly string[]): string {
   const filas = productos.map((p) =>
     [
       p.id, p.nombre, p.categoria, p.marca ?? '', p.sku, String(p.conSerie), p.garantiaMeses?.toString() ?? '', p.minimo?.toString() ?? '',

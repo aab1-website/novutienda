@@ -91,7 +91,7 @@ describe('ida y vuelta de la neutralización', () => {
         conSerie: false, precioUSD: { bo: 1000, ar: 1100 }, activo: p['activo'] as boolean, publicado: p['publicado'] as boolean,
       });
     }
-    const csv = exportarProductosCsv(filas);
+    const csv = exportarProductosCsv(filas, COMERCIAL_TRES);
     expect(csv).toContain("'-Cable");
     const sim = await db.runTransaction((tx) => simularImportacionCsv(tx, { tenantId: T, por: ADM, csv }));
     expect(sim.filas.map((f) => f.accion)).toEqual(Array(nombres.length).fill('sin-cambios'));

@@ -60,7 +60,7 @@ function exigirPrecio(x: unknown, comercial: ConfiguracionComercial): PreciosPor
     if (!centavos(v)) throw new EntradaInvalida(`Falta el precio del mercado ${m.id} o no es válido (centavos enteros de ${m.monedaBase})`);
     salida[clave] = v;
   }
-  for (const k of Object.keys(p)) if (!(k in salida)) throw new EntradaInvalida(`Mercado desconocido en el precio: ${k}`);
+  for (const k of Object.keys(p)) if (!Object.hasOwn(salida, k)) throw new EntradaInvalida(`Mercado desconocido en el precio: ${k}`);
   return salida;
 }
 
