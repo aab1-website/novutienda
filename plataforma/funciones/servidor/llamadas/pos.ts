@@ -4,10 +4,10 @@ import { HttpsError } from 'firebase-functions/v2/https';
 import { z } from 'zod';
 import {
   abrirTurno, aprobarAnulacion, cerrarTurno, cerrarTurnoForzado, cobrarCredito, confirmarVenta, csvMovimientosCaja, csvVentas, MAX_FILAS_CSV, recortarExportacion,
-  guardarConfigPos, leerConfigPos, proyectarTurno, registrarMovimientoCaja, resolverAprobacion, solicitarAnulacion, solicitarAprobacion,
+  guardarConfigPos, leerConfigPos, leerTurno, proyectarTurno, registrarMovimientoCaja, resolverAprobacion, solicitarAnulacion, solicitarAprobacion,
   type Carrito, type CobroCreditoEntrada, type MovimientoCaja, type MovimientoCajaEntrada, type SolicitudAprobacion, type VentaPos,
 } from '@novutienda/pos';
-import { leerCotizacion, SinCotizacionUtilizable, type CopiaCotizacion, type Mercado } from '@novutienda/nucleo';
+import { leerCotizacionDe, mercadosDe, SinCotizacionUtilizable, tieneTipoCambio, type CopiaCotizacion } from '@novutienda/nucleo';
 import { accion, actorPos, type TablaImplementaciones } from './marco.js';
 import { LIMITE, MS, OBJETO, UUID, VACIO, objeto, validarRango, TEXTO } from './comunes.js';
 
@@ -70,7 +70,10 @@ export const accionesPos: TablaImplementaciones = {
   // ---- Configuración ----------------------------------------------------------------------------------------
   leerConfig: accion({
     esquema: VACIO,
-    ejecutar: async (c) => ({ config: await c.e.db.runTransaction((tx) => leerConfigPos(tx, c.tenantId)) }),
+    ejecutar: async (c) => {
+      const comercial = await c.e.comercialDelTenant(c.tenantId);
+      return { config: await c.e.db.runTransaction((tx) => leerConfigPos(tx, c.tenantId, comercial)) };
+    },
   }),
   guardarConfig: accion({
     esquema: objeto({ config: OBJETO }),
@@ -87,7 +90,10 @@ export const accionesPos: TablaImplementaciones = {
       const turno = (await c.e.firestore.doc(ruta(c.tenantId, 'turnos', String(activo['turnoId']))).get()).data();
       if (turno === undefined) return { turno: null, cajaOcupada: false };
       if (c.rol === 'caj' && turno['cajeroUid'] !== c.sesion.uid) return { turno: null, cajaOcupada: true };
-      return { turno, cajaOcupada: false, proyeccion: proyectarTurno({ apertura: turno['apertura'] as never, totales: turno['totales'] as never }) };
+      const { monedas } = await c.e.comercialDelTenant(c.tenantId);
+      // Lectura validada: una clave que no sea una moneda ISO de tres letras nunca llega a la respuesta.
+      const valido = leerTurno(turno, monedas);
+      return { turno: { ...turno, apertura: valido.apertura, totales: valido.totales }, cajaOcupada: false, proyeccion: proyectarTurno(valido, monedas) };
     },
   }),
   /** Ventas: el vendedor solo las suyas; `sup`/`adm` todas (o solo las suyas con `soloMias`). */
@@ -160,21 +166,24 @@ export const accionesPos: TablaImplementaciones = {
     },
   }),
   /**
-   * Cotizaciones vigentes de los dos mercados (`null` si no hay una utilizable) y la política de redondeo del tenant,
+   * Cotizaciones vigentes de los mercados declarados (`null` si no hay una utilizable o el mercado no tiene tipo de cambio) y la política de redondeo del tenant,
    * para que el POS calcule el precio final con la misma regla que el servidor. No devuelve nada sensible.
    */
   cotizaciones: accion({
     esquema: VACIO,
     ejecutar: async (c) => {
-      const cotizaciones: Record<Mercado, CopiaCotizacion | null> = { BO: null, AR: null };
-      for (const m of ['BO', 'AR'] as const) {
+      const comercial = await c.e.comercialDelTenant(c.tenantId);
+      const cotizaciones: Record<string, CopiaCotizacion<string> | null> = {};
+      for (const m of mercadosDe(comercial)) {
+        cotizaciones[m] = null;
+        if (!tieneTipoCambio(comercial, m)) continue;
         try {
-          cotizaciones[m] = await leerCotizacion(c.e.almacenCotizaciones, m, c.e.ahora(), { tenantId: c.tenantId });
+          cotizaciones[m] = await leerCotizacionDe(c.e.almacenCotizaciones, m, c.e.ahora(), { tenantId: c.tenantId, comercial });
         } catch (error) {
           if (!(error instanceof SinCotizacionUtilizable)) throw error;
         }
       }
-      return { cotizaciones, redondeo: await c.e.redondeo(c.tenantId) };
+      return { cotizaciones, redondeo: await c.e.redondeoDelTenant(c.tenantId) };
     },
   }),
 
@@ -189,9 +198,11 @@ export const accionesPos: TablaImplementaciones = {
       const turno = (await c.e.firestore.doc(ruta(c.tenantId, 'turnos', turnoId)).get()).data();
       if (turno === undefined) return { turno: null };
       const ventas = await c.e.firestore.collection(ruta(c.tenantId, 'ventas')).where('turnoId', '==', turnoId).orderBy('creadoEnMs', 'desc').limit(20).get();
+      const { monedas } = await c.e.comercialDelTenant(c.tenantId);
+      const valido = leerTurno(turno, monedas);
       return {
-        turno,
-        proyeccion: proyectarTurno({ apertura: turno['apertura'] as never, totales: turno['totales'] as never }),
+        turno: { ...turno, apertura: valido.apertura, totales: valido.totales },
+        proyeccion: proyectarTurno(valido, monedas),
         ultimasVentas: ventas.docs.map(datosDe),
       };
     },

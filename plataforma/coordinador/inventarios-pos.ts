@@ -1,10 +1,9 @@
 // Cableado del POS con Inventarios: `PuertoInventarios` (salida y reversión de stock dentro de la
 // transacción del POS) y `PuertoCatalogo` (lectura del producto para vender).
 import {
-  aplicarReversion, aplicarSalida, leerProducto, prepararReversion, prepararSalida,
+  aplicarReversion, aplicarSalida, leerProducto, precioEnMercado, prepararReversion, prepararSalida,
   type Autor, type PlanReversion as PlanReversionInventarios, type PlanSalida as PlanSalidaInventarios,
 } from '@novutienda/inventarios';
-import type { Mercado } from '@novutienda/nucleo';
 import type { ProductoCatalogo, PuertoCatalogo, PuertoInventarios, QuienMueve } from '@novutienda/pos';
 import { centavosADolares } from './producto-inventarios.js';
 
@@ -35,18 +34,24 @@ export const inventariosParaPos: PuertoInventarios = {
   },
 };
 
-const MERCADOS: readonly [Mercado, 'bo' | 'ar'][] = [['BO', 'bo'], ['AR', 'ar']];
-
-/** Lee el producto con la forma que pide el POS; precios en USD decimales. `null` si no existe. */
+/**
+ * Lee el producto con la forma que pide el POS. `preciosBase`: decimal en la moneda base de cada mercado declarado; un mercado
+ * en el que el producto está «sin precio» NO lleva clave (la caja lo rechaza con `sin-precio`). `null` si no existe.
+ */
 export const catalogoParaPos: PuertoCatalogo = {
-  async leerProducto(tx, tenantId, productoId): Promise<ProductoCatalogo | null> {
-    const p = await leerProducto(tx, tenantId, productoId);
+  async leerProducto(tx, tenantId, productoId, comercial): Promise<ProductoCatalogo | null> {
+    const p = await leerProducto(tx, tenantId, productoId, comercial);
     if (p === undefined) return null;
+    const preciosBase: Record<string, number> = {};
+    for (const m of comercial.mercados) {
+      const centavos = precioEnMercado(p, m.id);
+      if (centavos !== null) preciosBase[m.id] = centavosADolares(centavos);
+    }
     return {
       productoId,
       nombre: p.nombre,
       activo: p.activo,
-      preciosUsd: Object.fromEntries(MERCADOS.map(([m, k]) => [m, centavosADolares(p.precioCentavos[k])])),
+      preciosBase,
       controlaSeries: p.conSerie,
       ...(p.garantiaMeses !== undefined ? { garantiaMeses: p.garantiaMeses } : {}),
     };

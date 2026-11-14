@@ -112,7 +112,7 @@ export function crearEntorno(o: OpcionesEntorno): Entorno {
     redondeoDelTenant,
     redondeo,
     depsPos: async (tenantId) => ({
-      db, inventarios: inventariosParaPos, catalogo: catalogoParaPos, redondeo: await redondeo(tenantId), ahora,
+      db, inventarios: inventariosParaPos, catalogo: catalogoParaPos, comercial: await comercialDelTenant(tenantId), redondeo: await redondeoDelTenant(tenantId), ahora,
     }),
     leerDisponibilidad: (tenantId) => crearLectorDisponibilidad(o.firestore, tenantId),
     guardarContacto: (tenantId) => crearGuardarContacto(o.firestore, tenantId),

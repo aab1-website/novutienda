@@ -1,6 +1,7 @@
 import {
   esTenantIdValido,
-  leerCotizacion,
+  leerCotizacionDe,
+  versionDeEventos,
   publicarEvento,
   registrarAuditoria,
   type AlmacenCotizaciones,
@@ -8,8 +9,8 @@ import {
   type ConfigCotizacion,
   type CopiaCotizacion,
   type EsFeriado,
-  type Mercado,
-  type Redondeo,
+  type ConfiguracionComercial,
+  type RedondeoPorMoneda,
   type Resumen,
   type SobreEvento,
   type TransaccionBandeja,
@@ -25,10 +26,12 @@ export interface DepsPos {
   readonly inventarios: PuertoInventarios;
   readonly catalogo: PuertoCatalogo;
   /**
-   * Política de redondeo del precio final. La política está sin decidir: no hay valor por
-   * defecto a propósito (lo exige `precioFinal`); el coordinador la cablea desde la decisión vigente.
+   * Política de redondeo del precio final, por moneda de venta. No hay valor por defecto a propósito:
+   * el coordinador la cablea desde la configuración del comercio.
    */
-  readonly redondeo: Redondeo;
+  readonly redondeo: RedondeoPorMoneda;
+  /** Configuración comercial del comercio: mercados, monedas de caja y zonas. La caja no tiene nada fijo. */
+  readonly comercial: ConfiguracionComercial;
   /** Reloj en milisegundos (inyectable para pruebas). */
   readonly ahora?: () => number;
   readonly esFeriado?: EsFeriado;
@@ -39,6 +42,22 @@ export interface DepsPos {
 
 export const VIGENCIA_APROBACION_POR_DEFECTO_MS = 15 * 60 * 1000;
 export const ahoraDe = (deps: DepsPos): number => (deps.ahora ?? Date.now)();
+
+/**
+ * Guardia temporal: un comercio que no cabe en la versión 1 de los eventos necesita eventos v2, que la caja aún no
+ * emite. Se lanza ANTES de escribir nada.
+ */
+export function exigirConfiguracionSoportada(deps: DepsPos): void {
+  if (versionDeEventos(deps.comercial) === 2) throw new ErrorPos('entrada-invalida', 'La caja aún no admite la configuración de este comercio');
+}
+
+/** Exige que la moneda sea una de las monedas de caja declaradas por el comercio. */
+export function exigirMonedaDeCaja(deps: DepsPos, moneda: unknown, nombre = 'moneda'): string {
+  if (typeof moneda !== 'string' || !deps.comercial.monedas.includes(moneda)) {
+    throw new ErrorPos('entrada-invalida', `${nombre}: la moneda no está entre las que el comercio declara para la caja`);
+  }
+  return moneda;
+}
 
 type Datos = Readonly<Record<string, unknown>>;
 
@@ -118,10 +137,11 @@ export function cotizacionVigente(
   deps: DepsPos,
   tx: TransaccionIdentidad,
   tenantId: string,
-  mercado: Mercado,
-): Promise<CopiaCotizacion> {
-  return leerCotizacion(almacenDeTransaccion(tx), mercado, ahoraDe(deps), {
+  mercado: string,
+): Promise<CopiaCotizacion<string>> {
+  return leerCotizacionDe(almacenDeTransaccion(tx), mercado, ahoraDe(deps), {
     tenantId,
+    comercial: deps.comercial,
     ...(deps.configCotizacion !== undefined ? { config: deps.configCotizacion } : {}),
     ...(deps.esFeriado !== undefined ? { esFeriado: deps.esFeriado } : {}),
   });

@@ -50,6 +50,14 @@ describe.skipIf(!hayEmulador)('configuración comercial del tenant (emulador)', 
     expect(await e.redondeo(t)).toEqual({ BOB: { tipo: 'decimales', decimales: 2, modo: 'cercano' }, ARS: { tipo: 'multiplo', multiplo: 100, modo: 'cercano' } });
   });
 
+  it('para el tenant de tres monedas la política nueva es idéntica a la del lector legado: sin documento y con documento BOB/ARS', async () => {
+    const sinDoc = await sembrar('eq1', TENANT_TODO_ENCENDIDO);
+    expect(await e.redondeoDelTenant(sinDoc)).toEqual(await e.redondeo(sinDoc));
+    const conDoc = await sembrar('eq2', TENANT_TODO_ENCENDIDO);
+    await h.firestore.doc(`tenants/${conDoc}/config/redondeo`).set({ BOB: { tipo: 'decimales', decimales: 1, modo: 'arriba' }, ARS: { tipo: 'multiplo', multiplo: 10, modo: 'abajo' } });
+    expect(await e.redondeoDelTenant(conDoc)).toEqual(await e.redondeo(conDoc));
+  });
+
   it('un tenant de un mercado sin tipo de cambio recibe SU configuración, no la de tres monedas', async () => {
     const t = await sembrar('c1', UN_MERCADO);
     const c = await e.comercialDelTenant(t);

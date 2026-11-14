@@ -71,10 +71,10 @@ export async function cobrarCredito(
     if (credito['estado'] !== 'pendiente') throw new ErrorPos('credito-inexistente', 'El crédito no tiene saldo pendiente');
     const saldo = enteroDe(credito, 'saldo');
     if (monto > saldo) throw new ErrorPos('credito-saldo-insuficiente', 'El cobro supera el saldo del crédito');
-    const moneda = textoDe(credito, 'moneda') as 'BOB' | 'USD' | 'ARS';
-    const config = await leerConfigPos(tx, tenantId);
+    const moneda = textoDe(credito, 'moneda');
+    const config = await leerConfigPos(tx, tenantId, deps.comercial);
     if (!config.mediosHabilitados.includes(c.medio)) throw new ErrorPos('medio-no-habilitado', `El medio ${c.medio} no está habilitado`);
-    const abierto = await leerTurnoAbierto(tx, tenantId);
+    const abierto = await leerTurnoAbierto(tx, tenantId, deps.comercial.monedas);
     if (abierto === undefined) throw new ErrorPos('sin-turno', 'No hay un turno abierto donde registrar el cobro');
     exigirOperarTurno(abierto.turno, actor);
     const cobro: CobroCredito = {

@@ -121,7 +121,7 @@ export const handlersPos: {
     const apertura: Partial<Record<Moneda, number>> = {};
     for (const [m, v] of Object.entries(e.apertura)) {
       if (!MONEDAS.includes(m as Moneda)) throw fallo('entrada-invalida', 'moneda desconocida');
-      apertura[m as Moneda] = exigirMonto(v, `apertura.${m}`);
+      apertura[m as Moneda] = exigirMonto(v ?? Number.NaN, `apertura.${m}`);
     }
     if (Object.keys(apertura).length === 0) throw fallo('entrada-invalida', 'apertura necesita al menos una moneda');
     const t: TurnoPos = { turnoId: id, cajaId: 'caja-1', cajeroUid: c.uid, estado: 'abierto', apertura, totales: {}, abiertoEnMs: c.ahora };
@@ -450,24 +450,24 @@ export const handlersPos: {
       .reverse(),
 };
 
-function cerrar(c: Contexto, turnoId: string, contado: Partial<Record<Moneda, number>>, forzado: boolean, motivo?: string): ResultadoCierre {
+function cerrar(c: Contexto, turnoId: string, contado: Partial<Record<string, number>>, forzado: boolean, motivo?: string): ResultadoCierre {
   const t = c.e.turnos.get(exigirUuid(turnoId, 'turnoId'));
   if (t === undefined) throw fallo('sin-turno', 'El turno no existe');
   if (t.estado !== 'abierto') throw fallo('turno-no-abierto');
   if (!forzado && t.cajeroUid !== c.uid) throw fallo('turno-ajeno');
-  const monedas = new Set<Moneda>([...monedasDelTurno(t), ...MONEDAS.filter((m) => contado[m] !== undefined)]);
+  const monedas = new Set<string>([...monedasDelTurno(t), ...Object.keys(contado).filter((m) => contado[m] !== undefined)]);
   for (const m of monedas) {
     const v = contado[m];
     if (v === undefined) throw fallo('conteo-faltante');
     exigirMonto(v, `contado.${m}`);
   }
   const dif = diferenciaPorMoneda(t, contado);
-  const esperado: Partial<Record<Moneda, number>> = {};
+  const esperado: Partial<Record<string, number>> = {};
   const arqueo: ResultadoCierre['arqueo'] = {};
   for (const m of monedas) {
     const e = efectivoEsperado(t.apertura[m] ?? 0, t.totales[m] ?? TOTALES_VACIOS);
     esperado[m] = e;
-    (arqueo as Partial<Record<Moneda, { esperado: number; contado: number; diferencia: number }>>)[m] = { esperado: e, contado: contado[m] ?? 0, diferencia: (contado[m] ?? 0) - e };
+    (arqueo as Partial<Record<string, { esperado: number; contado: number; diferencia: number }>>)[m] = { esperado: e, contado: contado[m] ?? 0, diferencia: (contado[m] ?? 0) - e };
   }
   const cerrado: TurnoPos = {
     ...t, estado: forzado ? 'cerrado_forzado' : 'cerrado', cerradoEnMs: c.ahora, cerradoPor: c.uid, ...(motivo !== undefined ? { motivoCierre: motivo } : {}),

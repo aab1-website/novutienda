@@ -1,4 +1,3 @@
-import type { Moneda } from '@novutienda/nucleo';
 import type { MontosPorMoneda, TotalesMoneda, TotalesTurno, TurnoPos } from '../../api/tipos.js';
 import { MONEDAS } from '../../api/tipos.js';
 
@@ -7,8 +6,17 @@ export const TOTALES_VACIOS: TotalesMoneda = { efectivo: 0, qr: 0, transferencia
 /** Efectivo esperado: apertura + efectivo neto + ingresos − egresos (QR, transferencia y crédito nunca suman). */
 export const efectivoEsperado = (apertura: number, t: TotalesMoneda): number => apertura + t.efectivo + t.ingresos - t.egresos;
 
-export function monedasDelTurno(t: Pick<TurnoPos, 'apertura' | 'totales'>): Moneda[] {
-  return MONEDAS.filter((m) => t.apertura[m] !== undefined || t.totales[m] !== undefined);
+/** Códigos en orden estable: primero las monedas conocidas (BOB, USD, ARS) y después cualquier otra, por código. */
+export function ordenarMonedas(codigos: Iterable<string>): string[] {
+  const todos = new Set(codigos);
+  const conocidas: string[] = MONEDAS.filter((m) => todos.has(m));
+  const otras = [...todos].filter((m) => !conocidas.includes(m)).sort();
+  return [...conocidas, ...otras];
+}
+
+export function monedasDelTurno(t: Pick<TurnoPos, 'apertura' | 'totales'>): string[] {
+  const hay = (r: Readonly<Partial<Record<string, unknown>>>): string[] => Object.keys(r).filter((m) => r[m] !== undefined);
+  return ordenarMonedas([...hay(t.apertura), ...hay(t.totales)]);
 }
 
 export interface ProyeccionMoneda {
@@ -22,8 +30,8 @@ export interface ProyeccionMoneda {
 }
 
 /** Supervisión en vivo: proyección por moneda (misma fórmula que el servidor). */
-export function proyectarTurno(t: Pick<TurnoPos, 'apertura' | 'totales'>): Partial<Record<Moneda, ProyeccionMoneda>> {
-  const r: Partial<Record<Moneda, ProyeccionMoneda>> = {};
+export function proyectarTurno(t: Pick<TurnoPos, 'apertura' | 'totales'>): Partial<Record<string, ProyeccionMoneda>> {
+  const r: Partial<Record<string, ProyeccionMoneda>> = {};
   for (const m of monedasDelTurno(t)) {
     const x = t.totales[m] ?? TOTALES_VACIOS;
     const apertura = t.apertura[m] ?? 0;
@@ -33,10 +41,10 @@ export function proyectarTurno(t: Pick<TurnoPos, 'apertura' | 'totales'>): Parti
 }
 
 /** Diferencia = contado − esperado, SIN tope en cero (una falta queda negativa). */
-export function diferenciaPorMoneda(t: Pick<TurnoPos, 'apertura' | 'totales'>, contado: MontosPorMoneda): Partial<Record<Moneda, number>> {
-  const r: Partial<Record<Moneda, number>> = {};
+export function diferenciaPorMoneda(t: Pick<TurnoPos, 'apertura' | 'totales'>, contado: MontosPorMoneda): Partial<Record<string, number>> {
+  const r: Partial<Record<string, number>> = {};
   const p = proyectarTurno(t);
-  for (const m of MONEDAS) {
+  for (const m of ordenarMonedas(Object.keys(contado))) {
     const c = contado[m];
     const e = p[m];
     if (c !== undefined && e !== undefined) r[m] = c - e.efectivoEsperado;
@@ -45,7 +53,7 @@ export function diferenciaPorMoneda(t: Pick<TurnoPos, 'apertura' | 'totales'>, c
 }
 
 /** Suma `delta` a los totales de una moneda (devuelve un objeto nuevo). */
-export function sumarTotales(totales: TotalesTurno, moneda: Moneda, delta: Partial<TotalesMoneda>): TotalesTurno {
+export function sumarTotales(totales: TotalesTurno, moneda: string, delta: Partial<TotalesMoneda>): TotalesTurno {
   const b = totales[moneda] ?? TOTALES_VACIOS;
   return {
     ...totales,

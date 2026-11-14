@@ -128,7 +128,7 @@ describe('confirmarVenta: precios y total', () => {
       confirmarVenta(e.deps, T, caj, UUID(5), { mercado, moneda: mercado === 'BO' ? 'BOB' : 'ARS', lineas: [{ productoId: id, cantidad: 1 }] }, [efectivo(1)]);
     expect(await codigo(v('p3', 'AR'))).toBe('sin-precio');
     expect(await codigo(v('nada'))).toBe('producto-inexistente');
-    e.db.poner(`tenants/${T}/_productos/p1`, { productoId: 'p1', nombre: 'x', activo: false, preciosUsd: { BO: 1 }, controlaSeries: false });
+    e.db.poner(`tenants/${T}/_productos/p1`, { productoId: 'p1', nombre: 'x', activo: false, preciosBase: { BO: 1 }, controlaSeries: false });
     expect(await codigo(v('p1'))).toBe('producto-inactivo');
   });
   it('valida el carrito', async () => {
@@ -222,7 +222,7 @@ describe('confirmarVenta: stock y series', () => {
       const e = crearEntorno();
       await abrir(e);
       for (const id of ['p2', 'p4']) {
-        e.db.poner(`tenants/${T}/_productos/${id}`, { productoId: id, nombre: `Producto ${id}`, activo: true, controlaSeries: true, preciosUsd: { BO: 100, AR: 100 } });
+        e.db.poner(`tenants/${T}/_productos/${id}`, { productoId: id, nombre: `Producto ${id}`, activo: true, controlaSeries: true, preciosBase: { BO: 100, AR: 100 } });
         e.db.poner(`tenants/${T}/_stock/tienda~${id}`, { cantidad: 0, series: [] });
       }
       return e;

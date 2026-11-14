@@ -1,6 +1,6 @@
 import type { JSX } from 'preact';
 import { useState } from 'preact/hooks';
-import { MONEDAS, type Moneda, type MontosPorMoneda, type TurnoPos } from '../../api/tipos.js';
+import { type MontosPorMoneda, type TurnoPos } from '../../api/tipos.js';
 import { Alerta, BotonConfirmado, Boton, Campo, Cargando, ErrorCarga, Pestanas, Seccion, Vacio, fechaHora } from '../../ui/comun.js';
 import { useApp } from '../../ui/contexto.js';
 import { useAccion, useCarga } from '../../ui/hooks.js';
@@ -15,13 +15,13 @@ function TurnoVivo({ t, alCambiar }: { t: TurnoPos; alCambiar: () => void }): JS
   const accion = useAccion();
   const [motivo, setMotivo] = useState('');
   const [abierto, setAbierto] = useState(false);
-  const [textos, setTextos] = useState<Record<Moneda, string>>({ BOB: '', USD: '', ARS: '' });
+  const [textos, setTextos] = useState<Record<string, string>>({});
   const proy = proyectarTurno(t);
   const monedas = monedasDelTurno(t);
-  const contado: Partial<Record<Moneda, number>> = {};
+  const contado: Partial<Record<string, number>> = {};
   let falta = false;
   for (const m of monedas) {
-    const c = textoACentavos(textos[m]);
+    const c = textoACentavos(textos[m] ?? '');
     if (c === null) falta = true;
     else contado[m] = c;
   }
@@ -37,7 +37,7 @@ function TurnoVivo({ t, alCambiar }: { t: TurnoPos; alCambiar: () => void }): JS
           <tr><th scope="col">Moneda</th><th scope="col" class="num">Efectivo esperado</th><th scope="col" class="num">QR</th><th scope="col" class="num">Transferencia</th><th scope="col" class="num">Crédito</th><th scope="col" class="num">Ingresos</th><th scope="col" class="num">Egresos</th></tr>
         </thead>
         <tbody>
-          {MONEDAS.filter((m) => proy[m] !== undefined).map((m) => {
+          {monedas.filter((m) => proy[m] !== undefined).map((m) => {
             const p = proy[m];
             if (p === undefined) return null;
             return (
@@ -59,7 +59,7 @@ function TurnoVivo({ t, alCambiar }: { t: TurnoPos; alCambiar: () => void }): JS
           <form class="formulario" onSubmit={(e) => e.preventDefault()} noValidate>
             <Campo etiqueta="Motivo del cierre forzado" valor={motivo} onInput={setMotivo} requerido />
             {monedas.map((m) => (
-              <Campo key={m} etiqueta={`Efectivo contado en ${m}`} valor={textos[m]} onInput={(v) => setTextos({ ...textos, [m]: v })} inputMode="decimal" requerido />
+              <Campo key={m} etiqueta={`Efectivo contado en ${m}`} valor={textos[m] ?? ''} onInput={(v) => setTextos({ ...textos, [m]: v })} inputMode="decimal" requerido />
             ))}
             {accion.error && <Alerta>{accion.error}</Alerta>}
             <div class="fila">

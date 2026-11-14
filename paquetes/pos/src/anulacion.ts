@@ -117,7 +117,7 @@ export async function aprobarAnulacion(
     if (venta.solicitudAnulacion.por === actor.uid || venta.cajeroUid === actor.uid) {
       throw new ErrorPos('autoaprobacion', 'Nadie puede aprobar la anulación de una venta que vendió o que solicitó anular');
     }
-    const abierto = await leerTurnoAbierto(tx, tenantId);
+    const abierto = await leerTurnoAbierto(tx, tenantId, deps.comercial.monedas);
     if (abierto === undefined) throw new ErrorPos('sin-turno', 'No hay un turno abierto donde registrar el reembolso');
     const creditoPago = venta.pagos.find((p) => p.medio === 'credito');
     let credito: Readonly<Record<string, unknown>> | undefined;
@@ -161,6 +161,8 @@ export async function aprobarAnulacion(
       creadoEnMs: ahora,
       creadoEn: tx.marcaTiempoServidor(),
     });
+    // Emite v1 a propósito: la venta anulada tiene forma v1 (la guardia temporal no aplica a vaciar estado existente).
+    // El PR de emisión v2 lo revisa.
     publicar(tx, {
       tenantId,
       tipo: 'venta.anulada',

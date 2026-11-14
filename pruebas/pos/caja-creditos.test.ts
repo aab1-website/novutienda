@@ -3,7 +3,7 @@ import {
   CONFIG_POS_POR_DEFECTO, leerConfigPos, cerrarTurno,
 } from '@novutienda/pos';
 import { describe, expect, it } from 'vitest';
-import { T, TURNO, UUID, abrir, adm, auditoria, caj, caj2, carritoP1, crearEntorno, sup, venderP1 } from './ayudas.js';
+import { COMERCIAL_REFERENCIA, T, TURNO, UUID, abrir, adm, auditoria, caj, caj2, carritoP1, crearEntorno, sup, venderP1 } from './ayudas.js';
 
 const codigo = async (p: Promise<unknown>): Promise<string> => {
   try {
@@ -132,25 +132,25 @@ describe('configuración del POS', () => {
     expect(await codigo(guardarConfigPos(e.deps, T, sup, valida))).toBe('no-autorizado');
     await guardarConfigPos(e.deps, T, adm, valida);
     expect(auditoria(e).some((x) => x['accion'] === 'pos.config.guardar')).toBe(true);
-    const cfg = await e.db.runTransaction((tx) => leerConfigPos(tx, T));
+    const cfg = await e.db.runTransaction((tx) => leerConfigPos(tx, T, COMERCIAL_REFERENCIA));
     expect(cfg.serieRecibo).toBe('B');
     expect(cfg.topesDescuentoBp.caj).toBe(500);
   });
 
   it('sin configuración rigen los valores iniciales, con 5 % para el vendedor', async () => {
     const e = crearEntorno();
-    expect((await e.db.runTransaction((tx) => leerConfigPos(tx, T))).topesDescuentoBp.caj).toBe(500);
+    expect((await e.db.runTransaction((tx) => leerConfigPos(tx, T, COMERCIAL_REFERENCIA))).topesDescuentoBp.caj).toBe(500);
     expect(CONFIG_POS_POR_DEFECTO.mediosHabilitados).toContain('efectivo');
   });
 
   it('una configuración guardada inválida es dato corrupto', async () => {
     const e = crearEntorno();
     e.db.poner(`tenants/${T}/pos_config/main`, { config: { x: 1 } });
-    expect(await codigo(e.db.runTransaction((tx) => leerConfigPos(tx, T)))).toBe('dato-corrupto');
+    expect(await codigo(e.db.runTransaction((tx) => leerConfigPos(tx, T, COMERCIAL_REFERENCIA)))).toBe('dato-corrupto');
   });
 
   it('rechaza entradas inválidas', () => {
-    const mal = (cambio: Record<string, unknown>) => () => validarConfigPos({ ...valida, ...cambio });
+    const mal = (cambio: Record<string, unknown>) => () => validarConfigPos({ ...valida, ...cambio }, ['BOB', 'USD', 'ARS']);
     expect(mal({ logoUrl: 'javascript:alert(1)' })).toThrow(ErrorPos);
     expect(mal({ logoUrl: 'http://x.test/a.png' })).toThrow(ErrorPos);
     expect(mal({ colores: { primario: 'rojo', secundario: '#ffffff' } })).toThrow(ErrorPos);
