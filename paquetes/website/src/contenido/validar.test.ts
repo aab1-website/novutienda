@@ -108,8 +108,19 @@ describe('validarContenido', () => {
     const c = clon();
     (c['config'] as Record<string, unknown>)['redondeo'] = { BOB: { tipo: 'decimales', decimales: 9, modo: 'cercano' }, ARS: { tipo: 'multiplo', multiplo: 0, modo: 'raro' } };
     const e = errores(c).join();
-    expect(e).toContain('redondeo.BOB.decimales');
-    expect(e).toContain('redondeo.ARS.modo');
+    expect(e).toContain('redondeo.BOB');
+    expect(e).toContain('redondeo.ARS');
+  });
+
+  it.each([
+    ['ninguno', { tipo: 'ninguno', modo: 'cercano' }],
+    ['decimales: 3', { tipo: 'decimales', decimales: 3, modo: 'cercano' }],
+    ['decimales: 1.5', { tipo: 'decimales', decimales: 1.5, modo: 'cercano' }],
+    ['multiplo: 0.015', { tipo: 'multiplo', multiplo: 0.015, modo: 'cercano' }],
+  ])('rechaza la regla de redondeo %s', (_n, regla) => {
+    const c = clon();
+    (c['config'] as Record<string, unknown>)['redondeo'] = { BOB: regla };
+    expect(errores(c).join()).toContain('redondeo.BOB');
   });
 
   it('cada plantilla debe tener su carrusel', () => {

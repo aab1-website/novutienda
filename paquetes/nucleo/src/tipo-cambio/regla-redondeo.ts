@@ -23,7 +23,7 @@ export function motivoReglaRedondeoInvalida(r: unknown): string | null {
   } else if (r['tipo'] === 'multiplo') {
     const m = r['multiplo'];
     if (typeof m !== 'number' || !Number.isFinite(m)) return 'el múltiplo debe ser un número';
-    if (m < 0.01 || Math.abs(m * 100 - Math.round(m * 100)) > 1e-9) return 'el múltiplo debe ser de al menos 0,01 y de centavos exactos';
+    if (m < 0.01 || Math.round(m * 100) / 100 !== m) return 'el múltiplo debe ser de al menos 0,01 y de centavos exactos';
   } else {
     return 'el tipo de redondeo debe ser decimales o multiplo («sin redondear» ya no se admite)';
   }
