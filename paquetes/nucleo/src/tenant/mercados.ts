@@ -55,7 +55,12 @@ export interface ConfiguracionComercial {
   readonly mercados: readonly MercadoTenant[];
   /** Monedas de caja: contienen la `monedaVenta` de cada mercado. */
   readonly monedas: readonly string[];
+  /** Moneda ISO 4217 con hasta 2 decimales en que se llevan los costos (una sola por comercio). Opcional: si falta, se entiende USD. No tiene que estar entre las monedas de caja ni ser la base o la de venta de un mercado. */
+  readonly monedaCosto?: string;
 }
+
+/** Moneda de costo cuando el comercio no declara una. */
+export const MONEDA_COSTO_POR_DEFECTO = 'USD';
 
 /** Topes de tamaño: se aplican ANTES de recorrer nada. */
 export const MAX_MERCADOS = 20;
@@ -150,7 +155,7 @@ function errorMercado(m: unknown, r: string): string | null {
 export function validarConfiguracionComercial(x: unknown): Resultado<ConfiguracionComercial> {
   if (!esObjeto(x)) return { ok: false, error: 'comercial: debe ser un objeto' };
   const mercados = x['mercados'];
-  const extra = errorClaves(x, ['mercados', 'monedas'], 'comercial');
+  const extra = errorClaves(x, ['mercados', 'monedas', 'monedaCosto'], 'comercial');
   if (extra !== null) return { ok: false, error: extra };
   if (!Array.isArray(mercados) || mercados.length === 0) return { ok: false, error: 'comercial.mercados: requiere al menos un mercado' };
   if (mercados.length > MAX_MERCADOS) return { ok: false, error: `comercial.mercados: no puede tener más de ${MAX_MERCADOS} mercados` };
@@ -183,6 +188,13 @@ export function validarConfiguracionComercial(x: unknown): Resultado<Configuraci
       return { ok: false, error: `comercial.monedas: debe incluir ${m.monedaVenta}, la moneda de venta del mercado ${m.id}` };
     }
   }
+  const costo = x['monedaCosto'];
+  if (costo !== undefined) {
+    if (!esMoneda(costo)) return { ok: false, error: 'comercial.monedaCosto: debe ser un código ISO 4217 de tres letras mayúsculas' };
+    if (MONEDAS_SIN_CENTAVOS_EXACTOS.includes(costo)) {
+      return { ok: false, error: `comercial.monedaCosto: ${costo} tiene más de 2 decimales y el dinero se guarda en centavos; no se admite` };
+    }
+  }
   // Objeto RECONSTRUIDO solo con los campos conocidos: nada de la entrada se reutiliza por referencia.
   const valor: ConfiguracionComercial = {
     mercados: (mercados as readonly MercadoTenant[]).map((m) => ({
@@ -192,6 +204,7 @@ export function validarConfiguracionComercial(x: unknown): Resultado<Configuraci
           : { tipo: 'multiplo', multiplo: m.redondeo.multiplo, modo: m.redondeo.modo },
     })),
     monedas: [...(monedas as readonly string[])],
+    ...(costo === undefined ? {} : { monedaCosto: costo as string }),
   };
   return { ok: true, valor };
 }
@@ -216,3 +229,5 @@ export const redondeoPorMoneda = (c: ConfiguracionComercial): Readonly<Record<st
   Object.fromEntries(c.mercados.map((m) => [m.monedaVenta, m.redondeo]));
 /** ¿El tenant declara más de un mercado o más de una moneda de caja? (la interfaz muestra selectores solo entonces). */
 export const esMultimercado = (c: ConfiguracionComercial): boolean => c.mercados.length > 1 || c.monedas.length > 1;
+/** Moneda de costo efectiva: la declarada o USD. */
+export const monedaCostoDe = (c: ConfiguracionComercial): string => c.monedaCosto ?? MONEDA_COSTO_POR_DEFECTO;

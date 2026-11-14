@@ -8,6 +8,7 @@ import {
   mercadoDe,
   mercadosDe,
   monedaBaseDe,
+  monedaCostoDe,
   monedaDe,
   monedasCaja,
   parDe,
@@ -264,5 +265,47 @@ describe('documento de tenant v3 y legado', () => {
     const r = validarTenant(doc);
     expect(r.ok).toBe(true);
     if (r.ok) expect(comercialDe(r.valor)).toEqual({ ok: true, valor: COMERCIAL_LEGADO_TRES_MONEDAS });
+  });
+});
+
+describe('moneda de costo del comercio', () => {
+  it('ausente: se entiende USD y la configuración validada no la declara', () => {
+    expect(monedaCostoDe(dos())).toBe('USD');
+    const r = validarConfiguracionComercial(dos());
+    expect(r.ok).toBe(true);
+    if (r.ok) {
+      expect('monedaCosto' in r.valor).toBe(false);
+      expect(monedaCostoDe(r.valor)).toBe('USD');
+    }
+  });
+  it('declarada y válida: se conserva', () => {
+    const r = validarConfiguracionComercial(mod((c) => { c['monedaCosto'] = 'EUR'; }));
+    expect(r.ok).toBe(true);
+    if (r.ok) expect(monedaCostoDe(r.valor)).toBe('EUR');
+  });
+  it('declarada con mala forma: se rechaza', () => {
+    for (const mala of ['usd', 'US', 'USDD', '', null, 840]) rechaza(mod((c) => { c['monedaCosto'] = mala; }), 'comercial.monedaCosto');
+  });
+  it('fuera de las monedas de caja y de todo mercado: se acepta', () => {
+    const r = validarConfiguracionComercial({ ...una(), monedaCosto: 'CNY' });
+    expect(r.ok).toBe(true);
+    if (r.ok) expect(monedaCostoDe(r.valor)).toBe('CNY');
+  });
+  it('el legado da USD', () => {
+    expect(monedaCostoDe(COMERCIAL_LEGADO_TRES_MONEDAS)).toBe('USD');
+    const r = comercialLegado({ zonaHoraria: 'America/La_Paz', monedas: ['ARS', 'BOB', 'USD'] });
+    expect(r.ok).toBe(true);
+    if (r.ok) expect(monedaCostoDe(r.valor)).toBe('USD');
+  });
+  it('moneda de más de 2 decimales: se rechaza', () => {
+    rechaza(mod((c) => { c['monedaCosto'] = 'KWD'; }), 'comercial.monedaCosto: KWD tiene más de 2 decimales');
+  });
+  it('pasa por validarTenant y comercialDe hasta monedaCostoDe', () => {
+    const r = validarTenant({ estado: 'activo', plan: 'base', modulos: {}, comercial: { ...una(), monedaCosto: 'EUR' } });
+    expect(r.ok).toBe(true);
+    if (!r.ok) return;
+    const c = comercialDe(r.valor);
+    expect(c.ok).toBe(true);
+    if (c.ok) expect(monedaCostoDe(c.valor)).toBe('EUR');
   });
 });
