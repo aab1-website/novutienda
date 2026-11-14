@@ -6,7 +6,7 @@ import { HttpsError } from 'firebase-functions/v2/https';
 import { z } from 'zod';
 import {
   abrirConteo, actualizarProducto, claveDePrecio, ajustar, cerrarConteo, conteosAbiertosDe, crearProducto, crearUbicacion, esDisponible, exportarProductosCsv, importarCsvPorLotes, leerArchivoImportacion, MAX_BYTES_ARCHIVO, type FuenteTabla, type LectorHojas, type LecturaSinBloqueo,
-  filtrarUnidadesLista, ingresar, leerDocumentoProducto, marcaOcultamiento, proyectarMovimiento, proyectarProducto, registrarLineaConteo, resolverMerma, simularImportacionCsv, solicitarMerma, traspasar, UBICACION_DISPONIBILIDAD,
+  filtrarUnidadesLista, ingresar, leerDocumentoProducto, marcaOcultamiento, mercadosSinPrecio, proyectarMovimiento, proyectarProducto, registrarLineaConteo, resolverMerma, simularImportacionCsv, solicitarMerma, traspasar, UBICACION_DISPONIBILIDAD,
   type Autor, type CambiosProducto, type Conteos, type EntradaProducto, type LineaAjuste, type PrecioUSD, type LineaIngreso, type LineaTraspaso, type ProductoExportable,
 } from '@novutienda/inventarios';
 import { mercadosDe } from '@novutienda/nucleo';
@@ -289,7 +289,7 @@ export const accionesInventarios: TablaImplementaciones = {
           return {
             id: p.productoId, nombre: p.nombre, categoria: p.categoria ?? '', marca: p.marca, sku: p.sku, activo: p.activo, publicado: p.publicado, conSerie: p.conSerie,
             garantiaMeses: p.garantiaMeses, minimo: p.minimo, precioCentavosUSD: p.precioCentavos, stockTotal: visible.stockTotal, bajoMinimo: visible.bajoMinimo,
-            existencias: visible.existencias, disponible: visible.disponible,
+            existencias: visible.existencias, disponible: visible.disponible, sinPrecio: mercadosSinPrecio(p, comercial),
           };
         });
       return { productos, ...(marca ?? {}) };
@@ -415,9 +415,10 @@ export const accionesInventarios: TablaImplementaciones = {
         // Conteo abierto, para TODOS los roles: lo que hay que contar (id, nombre, sku, serie) y nada que dependa de las
         // existencias: ni cantidades, ni «bajo el mínimo», ni cuántos faltan (su variación al contar delataría qué productos
         // tienen stock). El cierre cuenta en 0 lo no contado y lo informa en su resultado.
+        const comercial = await c.e.comercialDelTenant(c.tenantId);
         const prods = await c.e.firestore.collection(ruta(c.tenantId, 'productos')).get();
         const productos = prods.docs
-          .map((p) => leerDocumentoProducto(p.id, p.data()))
+          .map((p) => leerDocumentoProducto(p.id, p.data(), comercial))
           .filter((p) => p.stockTotal !== undefined)
           .map((p) => ({ productoId: p.productoId, nombre: p.nombre, sku: p.sku, categoria: p.categoria ?? '', ...(p.marca !== undefined ? { marca: p.marca } : {}), conSerie: p.conSerie }))
           .sort((x, y) => x.nombre.localeCompare(y.nombre));
@@ -459,7 +460,7 @@ export const accionesInventarios: TablaImplementaciones = {
         return {
           id: p.productoId, nombre: p.nombre, categoria: p.categoria ?? '', ...(p.marca !== undefined ? { marca: p.marca } : {}), sku: p.sku ?? p.productoId,
           conSerie: p.conSerie, ...(p.garantiaMeses !== undefined ? { garantiaMeses: p.garantiaMeses } : {}), ...(p.minimo !== undefined ? { minimo: p.minimo } : {}),
-          precioUSD: Object.fromEntries(mercadosDe(comercial).map((id) => [claveDePrecio(id), p.precioCentavos[claveDePrecio(id)] ?? 0])), ...(typeof cu === 'number' ? { costoUSD: cu } : {}), activo: p.activo, publicado: p.publicado,
+          precioUSD: Object.fromEntries(mercadosDe(comercial).flatMap((id) => { const v = p.precioCentavos[claveDePrecio(id)]; return v === undefined ? [] : [[claveDePrecio(id), v] as const]; })), ...(typeof cu === 'number' ? { costoUSD: cu } : {}), activo: p.activo, publicado: p.publicado,
         };
       });
       return { csv: exportarProductosCsv(filas, comercial) };
