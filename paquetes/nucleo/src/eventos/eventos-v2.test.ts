@@ -3,7 +3,8 @@ import type { SobreEvento } from '../contratos/sobre-evento.js';
 import { COMERCIAL_LEGADO_TRES_MONEDAS } from '../tipo-cambio/tipos.js';
 import type { ConfiguracionComercial, MercadoTenant } from '../tenant/mercados.js';
 import { coherenteConComercial, versionDeEventos } from './comercial-v2.js';
-import { CONTRATOS_POR_VERSION, CONTRATOS_V1, CONTRATOS_V2, validarEvento } from './contratos.js';
+import { consumir, publicarEvento, type EjecutorTransacciones, type TransaccionBandeja } from './bandeja.js';
+import { CONTRATOS_POR_VERSION, CONTRATOS_V1, CONTRATOS_V2, VERSIONES_REGISTRADAS, validarEvento } from './contratos.js';
 import { normalizarDatosAV2, normalizarEventoAV2 } from './normalizar-v2.js';
 import { fixturesPedidoConfirmadoV1, validarPedidoConfirmadoV1 } from './pedido-confirmado.v1.js';
 import { fixturesPedidoConfirmadoV2, validarPedidoConfirmadoV2 } from './pedido-confirmado.v2.js';
@@ -295,5 +296,38 @@ describe('coherenteConComercial', () => {
   });
   it('un tipo sin mercado ni moneda es coherente siempre', () => {
     expect(coherenteConComercial(sobre('stock.bajo', 1, {}), clp).ok).toBe(true);
+  });
+});
+
+describe('bandeja con versiones', () => {
+  const sobre = (version: 1 | 2, datos: unknown): SobreEvento =>
+    ({ id: 'e1', tipo: 'venta.confirmada', version, tenantId: 't1', origen: 'pos', ocurridoEn: '2026-11-04T12:00:00Z', claveIdempotencia: 'k1', datos }) as SobreEvento;
+  const evV1 = sobre(1, fixturesVentaConfirmadaV1.validos[0]);
+  const evV2 = sobre(2, fixturesVentaConfirmadaV2.validos[0]);
+  const nuevaTx = () => {
+    const creados: string[] = [];
+    const tx: TransaccionBandeja = { create: (r) => { creados.push(r); }, existe: () => Promise.resolve(false), marcaTiempoServidor: () => 'ts' };
+    const ejecutor: EjecutorTransacciones = { transaccion: (fn) => fn(tx) };
+    return { tx, ejecutor, creados };
+  };
+  it('VERSIONES_REGISTRADAS son 1 y 2', () => {
+    expect(VERSIONES_REGISTRADAS).toEqual([1, 2]);
+  });
+  it('publicar: v2 se rechaza por omisión y se acepta con [1, 2]; v1 sigue igual', () => {
+    const { tx, creados } = nuevaTx();
+    expect(() => { publicarEvento(tx, evV2); }).toThrow('Versión de evento desconocida');
+    expect(creados).toHaveLength(0);
+    publicarEvento(tx, evV2, { versiones: [1, 2] });
+    publicarEvento(tx, evV1);
+    expect(creados).toHaveLength(2);
+  });
+  it('consumir: v2 se rechaza por omisión y se acepta con versiones [1, 2]; v1 sigue igual', async () => {
+    const { ejecutor } = nuevaTx();
+    const llamadas: number[] = [];
+    const manejador = (_tx: TransaccionBandeja, e: SobreEvento) => { llamadas.push(e.version); return Promise.resolve(); };
+    await expect(consumir(ejecutor, { consumidor: 'c', evento: evV2, manejador })).rejects.toThrow('Versión de evento desconocida');
+    expect(await consumir(ejecutor, { consumidor: 'c', evento: evV2, manejador, versiones: [1, 2] })).toBe(true);
+    expect(await consumir(ejecutor, { consumidor: 'c', evento: evV1, manejador })).toBe(true);
+    expect(llamadas).toEqual([2, 1]);
   });
 });
