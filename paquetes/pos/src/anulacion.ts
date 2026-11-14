@@ -161,6 +161,8 @@ export async function aprobarAnulacion(
       creadoEnMs: ahora,
       creadoEn: tx.marcaTiempoServidor(),
     });
+    // Emite v1 a propósito: la venta anulada tiene forma v1 (la guardia temporal no aplica a vaciar estado existente).
+    // El PR de emisión v2 lo revisa.
     publicar(tx, {
       tenantId,
       tipo: 'venta.anulada',

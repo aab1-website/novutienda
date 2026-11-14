@@ -4,7 +4,7 @@ import { HttpsError } from 'firebase-functions/v2/https';
 import { z } from 'zod';
 import {
   abrirTurno, aprobarAnulacion, cerrarTurno, cerrarTurnoForzado, cobrarCredito, confirmarVenta, csvMovimientosCaja, csvVentas, MAX_FILAS_CSV, recortarExportacion,
-  guardarConfigPos, leerConfigPos, proyectarTurno, registrarMovimientoCaja, resolverAprobacion, solicitarAnulacion, solicitarAprobacion,
+  guardarConfigPos, leerConfigPos, leerTurno, proyectarTurno, registrarMovimientoCaja, resolverAprobacion, solicitarAnulacion, solicitarAprobacion,
   type Carrito, type CobroCreditoEntrada, type MovimientoCaja, type MovimientoCajaEntrada, type SolicitudAprobacion, type VentaPos,
 } from '@novutienda/pos';
 import { leerCotizacionDe, mercadosDe, SinCotizacionUtilizable, tieneTipoCambio, type CopiaCotizacion } from '@novutienda/nucleo';
@@ -91,7 +91,9 @@ export const accionesPos: TablaImplementaciones = {
       if (turno === undefined) return { turno: null, cajaOcupada: false };
       if (c.rol === 'caj' && turno['cajeroUid'] !== c.sesion.uid) return { turno: null, cajaOcupada: true };
       const { monedas } = await c.e.comercialDelTenant(c.tenantId);
-      return { turno, cajaOcupada: false, proyeccion: proyectarTurno({ apertura: turno['apertura'] as never, totales: turno['totales'] as never }, monedas) };
+      // Lectura validada: una clave que no sea una moneda ISO de tres letras nunca llega a la respuesta.
+      const valido = leerTurno(turno, monedas);
+      return { turno: { ...turno, apertura: valido.apertura, totales: valido.totales }, cajaOcupada: false, proyeccion: proyectarTurno(valido, monedas) };
     },
   }),
   /** Ventas: el vendedor solo las suyas; `sup`/`adm` todas (o solo las suyas con `soloMias`). */
@@ -197,9 +199,10 @@ export const accionesPos: TablaImplementaciones = {
       if (turno === undefined) return { turno: null };
       const ventas = await c.e.firestore.collection(ruta(c.tenantId, 'ventas')).where('turnoId', '==', turnoId).orderBy('creadoEnMs', 'desc').limit(20).get();
       const { monedas } = await c.e.comercialDelTenant(c.tenantId);
+      const valido = leerTurno(turno, monedas);
       return {
-        turno,
-        proyeccion: proyectarTurno({ apertura: turno['apertura'] as never, totales: turno['totales'] as never }, monedas),
+        turno: { ...turno, apertura: valido.apertura, totales: valido.totales },
+        proyeccion: proyectarTurno(valido, monedas),
         ultimasVentas: ventas.docs.map(datosDe),
       };
     },

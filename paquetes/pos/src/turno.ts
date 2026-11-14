@@ -6,9 +6,7 @@ import {
 } from './contexto.js';
 import { ErrorPos } from './errores.js';
 import { leerTurno, textoDe } from './lectura.js';
-import { CAJA_UNICA, type ActorPos, type MontosPorMoneda, type TurnoPos } from './tipos.js';
-
-const MONEDA_ISO = /^[A-Z]{3}$/;
+import { CAJA_UNICA, MONEDA_ISO, type ActorPos, type MontosPorMoneda, type TurnoPos } from './tipos.js';
 
 /**
  * Valida un objeto de montos por moneda (apertura o conteo): códigos ISO, centavos enteros no negativos y, si se pasa
@@ -38,6 +36,8 @@ export async function abrirTurno(
   turnoIdEntrada: string,
   aperturaEntrada: unknown,
 ): Promise<TurnoPos> {
+  // Un turno nuevo en un comercio que requiere eventos v2 no se podría cerrar: se rechaza antes de escribir nada.
+  exigirConfiguracionSoportada(deps);
   exigirTenant(tenantId);
   exigirActor(actor);
   const turnoId = exigirUuid(turnoIdEntrada, 'turnoId');
@@ -84,7 +84,11 @@ async function cerrar(
   contadoEntrada: unknown,
   opc: OpcionesCierre,
 ): Promise<{ turno: TurnoPos; arqueo: DatosTurnoCerradoV1['monedas'] }> {
+  // Guardia temporal (eventos v2 aún no emitidos). El cambio de configuración a v2 con un turno abierto lo impedirá la
+  // herramienta de alta; aquí el cierre sigue con la guardia.
   exigirConfiguracionSoportada(deps);
+  // Rechazo temprano, sin leer nada: forma del conteo (claves ISO de tres letras, montos válidos). Lo que depende del
+  // turno (monedas declaradas y las que el turno movió) se valida dentro de la transacción.
   const contado = validarMontosPorMoneda(contadoEntrada, 'contado', false);
   const ahora = ahoraDe(deps);
   return deps.db.runTransaction(async (tx: TransaccionIdentidad) => {

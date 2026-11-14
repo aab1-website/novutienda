@@ -8,8 +8,10 @@ export const MEDIOS_PAGO: readonly MedioPago[] = ['efectivo', 'qr', 'transferenc
  * @deprecated Usar `monedasCaja(comercial)`.
  */
 export const MONEDAS_POS: readonly string[] = ['BOB', 'USD', 'ARS'];
-/** Orden por omisión de las funciones puras cuando no reciben las monedas declaradas (el del tenant de referencia). */
-export const ORDEN_MONEDAS_POR_OMISION: readonly string[] = ['BOB', 'USD', 'ARS'];
+/** Orden por omisión de las funciones puras cuando no reciben las monedas declaradas (el del tenant de referencia): mismo valor que `MONEDAS_POS`. */
+export const ORDEN_MONEDAS_POR_OMISION: readonly string[] = MONEDAS_POS;
+/** Código de moneda ISO de tres letras mayúsculas: única definición del módulo. */
+export const MONEDA_ISO = /^[A-Z]{3}$/;
 export const ALMACENES_POS: readonly string[] = ['tienda', 'deposito-1', 'deposito-2'];
 /** El plan contrata una sola caja activa por turno. */
 export const CAJA_UNICA = 'caja-1';

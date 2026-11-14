@@ -19,23 +19,28 @@ export interface EntradaPrecioLinea {
   readonly redondeo: RedondeoPorMoneda;
 }
 
+/** Regla de redondeo efectiva (la política del comercio) de la moneda de venta del mercado; sin ella, falla cerrado. */
+function reglaEfectiva(e: EntradaPrecioLinea): ReglaRedondeo {
+  const regla = e.redondeo[e.mercado.monedaVenta];
+  if (regla === undefined) throw new ErrorPos('dato-corrupto', `No hay regla de redondeo para ${e.mercado.monedaVenta} en el comercio`);
+  return regla;
+}
+
 /**
  * Precio unitario de una línea, en centavos enteros (función pura).
  * - Sin precio en el mercado: `sin-precio` con el nombre del producto y del mercado.
- * - Mercado sin tipo de cambio: el precio base redondeado con la regla del mercado.
+ * - Mercado sin tipo de cambio: el precio base redondeado con la regla efectiva de la moneda de venta (`redondeo`).
  * - Venta en la moneda base: el precio base tal cual (`aCentavos`), sin redondeo ni cotización.
  * - Otro caso: precio base × cotización con la regla de redondeo de la moneda de venta.
  */
 export function centavosDeLinea(e: EntradaPrecioLinea): number {
   const { mercado, base } = e;
   if (base === undefined) throw new ErrorPos('sin-precio', `El producto «${e.nombre}» no tiene precio en ${mercado.nombre}; complételo en Inventarios`);
-  if (mercado.tipoCambio === null) return centavosDe(precioDeMercado(base, mercado, null));
+  if (mercado.tipoCambio === null) return centavosDe(precioDeMercado(base, { ...mercado, redondeo: reglaEfectiva(e) }, null));
   if (e.moneda === mercado.monedaBase) {
     if (!Number.isFinite(base) || base <= 0) throw new ErrorPos('sin-precio', 'El producto no tiene precio (a consultar)');
     return aCentavos(base);
   }
   if (e.cotizacion === null) throw new ErrorPos('dato-corrupto', 'Falta la cotización');
-  const regla = e.redondeo[mercado.monedaVenta];
-  // Sin regla de redondeo para la moneda, la venta falla cerrada: `precioDeMercado` la rechaza con su motivo.
-  return centavosDe(precioDeMercado(base, { ...mercado, redondeo: regla as ReglaRedondeo }, { par: e.cotizacion.par, valor: e.cotizacion.valor }));
+  return centavosDe(precioDeMercado(base, { ...mercado, redondeo: reglaEfectiva(e) }, { par: e.cotizacion.par, valor: e.cotizacion.valor }));
 }

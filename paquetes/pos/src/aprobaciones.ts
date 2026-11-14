@@ -1,6 +1,6 @@
 import type { TransaccionIdentidad } from '@novutienda/nucleo';
 import {
-  VIGENCIA_APROBACION_POR_DEFECTO_MS, ahoraDe, auditar, exigirActor, exigirCentavos, exigirMonedaDeCaja, exigirRol, exigirTenant, exigirTexto, exigirUuid,
+  VIGENCIA_APROBACION_POR_DEFECTO_MS, ahoraDe, auditar, exigirActor, exigirCentavos, exigirConfiguracionSoportada, exigirMonedaDeCaja, exigirRol, exigirTenant, exigirTexto, exigirUuid,
   leerObligatorio, rutaAprobacion, type DepsPos,
 } from './contexto.js';
 import { ErrorPos } from './errores.js';
@@ -45,6 +45,8 @@ export async function solicitarAprobacion(
   aprobacionIdEntrada: string,
   s: SolicitudAprobacion,
 ): Promise<AprobacionPos> {
+  // Agrega estado nuevo (una aprobación para una venta que aún no se puede confirmar): se rechaza antes de escribir.
+  exigirConfiguracionSoportada(deps);
   exigirTenant(tenantId);
   exigirActor(actor);
   const aprobacionId = exigirUuid(aprobacionIdEntrada, 'aprobacionId');

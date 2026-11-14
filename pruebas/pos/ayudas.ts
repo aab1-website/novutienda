@@ -83,7 +83,7 @@ export const COMERCIAL_REFERENCIA: ConfiguracionComercial = {
     },
     {
       id: 'AR', nombre: 'Argentina', monedaVenta: 'ARS', monedaBase: 'USD', zonaHoraria: 'America/Argentina/Buenos_Aires',
-      tipoCambio: { par: 'ARS/USD', fuentes: ['BNA', 'BCRA'] }, redondeo: { tipo: 'decimales', decimales: 2, modo: 'cercano' },
+      tipoCambio: { par: 'ARS/USD', fuentes: ['BNA', 'BCRA'] }, redondeo: { tipo: 'multiplo', multiplo: 100, modo: 'cercano' },
     },
   ],
   monedas: ['BOB', 'USD', 'ARS'],
@@ -91,7 +91,7 @@ export const COMERCIAL_REFERENCIA: ConfiguracionComercial = {
 
 export const REDONDEO: RedondeoPorMoneda = {
   BOB: { tipo: 'decimales', decimales: 2, modo: 'cercano' },
-  ARS: { tipo: 'decimales', decimales: 2, modo: 'cercano' },
+  ARS: { tipo: 'multiplo', multiplo: 100, modo: 'cercano' },
 };
 
 export interface Entorno {

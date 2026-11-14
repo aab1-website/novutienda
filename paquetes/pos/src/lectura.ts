@@ -1,5 +1,5 @@
 import { ErrorPos } from './errores.js';
-import { ORDEN_MONEDAS_POR_OMISION, type MontosPorMoneda, type TotalesMoneda, type TotalesTurno, type TurnoPos, type VentaPos } from './tipos.js';
+import { MONEDA_ISO, ORDEN_MONEDAS_POR_OMISION, type MontosPorMoneda, type TotalesMoneda, type TotalesTurno, type TurnoPos, type VentaPos } from './tipos.js';
 
 type Datos = Readonly<Record<string, unknown>>;
 
@@ -13,8 +13,6 @@ const texto = (x: unknown, que: string): string => {
   if (typeof x !== 'string' || x === '') throw corrupto(que);
   return x;
 };
-
-const MONEDA_ISO = /^[A-Z]{3}$/;
 
 /**
  * Ordena códigos de moneda: primero los declarados (en su orden) y después el resto, ordenado.

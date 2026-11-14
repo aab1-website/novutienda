@@ -1,8 +1,8 @@
 // La caja usa la configuración comercial del comercio: mercados, monedas de caja, precio por mercado y orden de monedas.
 // El tenant de referencia (BOB, USD, ARS; mercados BO y AR con base USD) debe quedar idéntico al comportamiento anterior.
-import { aCentavos, precioFinal, type ConfiguracionComercial, type MercadoTenant } from '@novutienda/nucleo';
+import { aCentavos, precioFinal, type ConfiguracionComercial, type MercadoTenant, type RedondeoPorMoneda } from '@novutienda/nucleo';
 import {
-  abrirTurno, aprobarAnulacion, calcularArqueo, centavosDeLinea, cerrarTurno, configPosPorDefecto, confirmarVenta, ErrorPos, guardarConfigPos,
+  abrirTurno, aprobarAnulacion, calcularArqueo, centavosDeLinea, cerrarTurno, cerrarTurnoForzado, cobrarCredito, configPosPorDefecto, confirmarVenta, ErrorPos, guardarConfigPos,
   leerConfigPos, proyectarTurno, registrarMovimientoCaja, solicitarAnulacion, solicitarAprobacion, validarConfigPos, type Carrito,
 } from '@novutienda/pos';
 import { describe, expect, it } from 'vitest';
@@ -96,28 +96,78 @@ describe('validación del mercado y la moneda contra la configuración del comer
   });
 });
 
+describe('orden de errores del cierre', () => {
+  it('un conteo con forma inválida se rechaza como entrada inválida sin leer el turno', async () => {
+    const e = crearEntorno();
+    for (const contado of [{ bob: 1 }, { BOBS: 1 }, { BOB: -1 }, { BOB: 1.5 }, []]) {
+      expect(await codigo(cerrarTurno(e.deps, T, caj, TURNO, contado))).toBe('entrada-invalida');
+    }
+    expect(await codigo(cerrarTurno(e.deps, T, caj, TURNO, { BOB: 1 }))).toBe('sin-turno');
+  });
+});
+
 describe('guardia temporal de la versión 2 de los eventos', () => {
-  it('confirmar venta y cerrar turno se rechazan antes de escribir nada', async () => {
+  const NO_ADMITE = { codigo: 'entrada-invalida', message: 'La caja aún no admite la configuración de este comercio' };
+  const instantanea = (e: Entorno) => JSON.stringify([e.db.coleccion(`tenants/${T}/eventos`), e.db.coleccion(`tenants/${T}/auditoria`), e.db.dato(`tenants/${T}/turnos/${TURNO}`), e.db.dato(`tenants/${T}/pos_config/turno_activo`)]);
+
+  it('confirmar venta y cerrar turno (normal y forzado) se rechazan antes de escribir nada', async () => {
     const e = crearEntorno();
     await abrir(e);
-    const antes = JSON.stringify(e.db.coleccion(`tenants/${T}/eventos`));
+    const antes = instantanea(e);
     for (const comercial of [SOLO_CL, CL_PE]) {
       const d = con(e, comercial);
       const v = await error(confirmarVenta(d, T, caj, UUID(1), carrito(comercial.mercados[0]?.id ?? '', comercial.monedas[0] ?? ''), pagoEfectivo(comercial.monedas[0] ?? '', 1)));
-      expect(v).toMatchObject({ codigo: 'entrada-invalida', message: 'La caja aún no admite la configuración de este comercio' });
-      const c = await error(cerrarTurno(d, T, caj, TURNO, { BOB: 10000 }));
-      expect(c).toMatchObject({ codigo: 'entrada-invalida', message: 'La caja aún no admite la configuración de este comercio' });
+      expect(v).toMatchObject(NO_ADMITE);
+      expect(await error(cerrarTurno(d, T, caj, TURNO, { BOB: 10000 }))).toMatchObject(NO_ADMITE);
+      expect(await error(cerrarTurnoForzado(d, T, adm, TURNO, { BOB: 10000 }, 'motivo'))).toMatchObject(NO_ADMITE);
     }
     expect(e.db.dato(`tenants/${T}/ventas/${UUID(1)}`)).toBeUndefined();
     expect((e.db.dato(`tenants/${T}/turnos/${TURNO}`) as { estado: string }).estado).toBe('abierto');
-    expect(JSON.stringify(e.db.coleccion(`tenants/${T}/eventos`))).toBe(antes);
+    expect(instantanea(e)).toBe(antes);
+  });
+
+  it('abrir un turno se rechaza y no se escribe nada (el comercio no podría cerrarlo)', async () => {
+    for (const comercial of [SOLO_CL, CL_PE]) {
+      const e = crearEntorno();
+      const d = con(e, comercial);
+      expect(await error(abrirTurno(d, T, caj, TURNO, { [comercial.monedas[0] ?? '']: 10000 }))).toMatchObject(NO_ADMITE);
+      expect(e.db.dato(`tenants/${T}/turnos/${TURNO}`)).toBeUndefined();
+      expect(e.db.dato(`tenants/${T}/pos_config/turno_activo`)).toBeUndefined();
+      expect(e.db.coleccion(`tenants/${T}/auditoria`)).toHaveLength(0);
+    }
+  });
+
+  it('registrar un movimiento de caja y solicitar una aprobación se rechazan sin escribir', async () => {
+    const e = crearEntorno();
+    await abrir(e);
+    const antes = instantanea(e);
+    const d = con(e, CL_PE);
+    expect(await error(registrarMovimientoCaja(d, T, caj, UUID(70), { tipo: 'ingreso', moneda: 'CLP', monto: 1, motivo: 'm' }))).toMatchObject(NO_ADMITE);
+    expect(await error(solicitarAprobacion(d, T, caj, UUID(71), { tipo: 'descuento', moneda: 'CLP', monto: 1, motivo: 'm' }))).toMatchObject(NO_ADMITE);
+    expect(e.db.dato(`tenants/${T}/movimientos_caja/${UUID(70)}`)).toBeUndefined();
+    expect(e.db.dato(`tenants/${T}/aprobaciones_descuento/${UUID(71)}`)).toBeUndefined();
+    expect(instantanea(e)).toBe(antes);
+  });
+
+  it('no alcanza a vaciar estado existente: cobrar un crédito y anular una venta siguen permitidos', async () => {
+    const e = crearEntorno();
+    await abrir(e);
+    const venta = await venderP1(e, 1);
+    const d = con(e, CL_PE);
+    // Los códigos de error de datos o permisos pueden aparecer, pero nunca el de la guardia.
+    const c = await error(cobrarCredito(d, T, caj, UUID(80), UUID(81), { medio: 'efectivo', monto: 1 }));
+    expect(c?.message).not.toBe(NO_ADMITE.message);
+    const s = await error(solicitarAnulacion(d, T, caj, venta.venta.ventaId, 'motivo'));
+    expect(s?.message).not.toBe(NO_ADMITE.message);
+    const a = await error(aprobarAnulacion(d, T, sup, venta.venta.ventaId, 'motivo'));
+    expect(a?.message).not.toBe(NO_ADMITE.message);
   });
 });
 
 describe('precio de la línea (función pura)', () => {
   const cl = SOLO_CL.mercados[0] as MercadoTenant;
   const pe = CL_PE.mercados[1] as MercadoTenant;
-  const entrada = { nombre: 'X', cotizacion: null, redondeo: {} };
+  const entrada = { nombre: 'X', cotizacion: null, redondeo: { CLP: cl.redondeo } as RedondeoPorMoneda };
   it('mercado sin tipo de cambio: el precio base redondeado con la regla del mercado', () => {
     expect(centavosDeLinea({ ...entrada, mercado: cl, moneda: 'CLP', base: 1234 })).toBe(123000);
     expect(centavosDeLinea({ ...entrada, mercado: cl, moneda: 'CLP', base: 1236 })).toBe(124000);
@@ -127,6 +177,15 @@ describe('precio de la línea (función pura)', () => {
     expect(() => centavosDeLinea({ ...entrada, mercado: cl, moneda: 'CLP', base: undefined })).toThrow('El producto «X» no tiene precio en Chile; complételo en Inventarios');
     expect(() => centavosDeLinea({ ...entrada, mercado: cl, moneda: 'CLP', base: 0 })).toThrow(/a consultar/);
     expect(() => centavosDeLinea({ ...entrada, mercado: pe, moneda: 'USD', base: 0 })).toThrow(/a consultar/);
+  });
+  it('mercado sin tipo de cambio: manda la regla efectiva del comercio, no la del mercado', () => {
+    const efectiva = { tipo: 'multiplo', multiplo: 100, modo: 'cercano' } as const;
+    expect(centavosDeLinea({ ...entrada, mercado: cl, moneda: 'CLP', base: 1234, redondeo: { CLP: efectiva } })).toBe(120000);
+    expect(centavosDeLinea({ ...entrada, mercado: cl, moneda: 'CLP', base: 1260, redondeo: { CLP: efectiva } })).toBe(130000);
+    expect(centavosDeLinea({ ...entrada, mercado: cl, moneda: 'CLP', base: 1260 })).toBe(126000);
+  });
+  it('mercado sin tipo de cambio y sin regla efectiva: falla cerrado con un error claro', () => {
+    expect(() => centavosDeLinea({ ...entrada, mercado: cl, moneda: 'CLP', base: 1234, redondeo: {} })).toThrow(/regla de redondeo para CLP/);
   });
   it('con tipo de cambio: en la base es el precio tal cual; en la venta usa la cotización y la regla de la moneda', () => {
     expect(centavosDeLinea({ ...entrada, mercado: pe, moneda: 'USD', base: 12.345 })).toBe(aCentavos(12.345));

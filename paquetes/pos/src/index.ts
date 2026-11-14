@@ -9,6 +9,7 @@ export { formatearNumeroRecibo } from './contexto.js';
 export * from './tipos.js';
 export { CONFIG_POS_POR_DEFECTO, configPosPorDefecto, guardarConfigPos, leerConfigPos, TOPE_DESCUENTO_CAJ_BP, validarConfigPos } from './config.js';
 export type { ConfigPos } from './config.js';
+export { leerTurno } from './lectura.js';
 export { abrirTurno, cerrarTurno, cerrarTurnoForzado, leerTurnoAbierto } from './turno.js';
 export {
   calcularArqueo, efectivoDisponible, efectivoEsperado, proyectarTurno, reconstruirTotales,

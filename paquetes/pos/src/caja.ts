@@ -1,6 +1,6 @@
 import { efectivoDisponible, sumarTotales } from './arqueo.js';
 import {
-  ahoraDe, auditar, exigirActor, exigirCentavos, exigirMonedaDeCaja, exigirTenant, exigirTexto, exigirUuid, leerObligatorio, rutaMovimiento, rutaTurno, type DepsPos,
+  ahoraDe, auditar, exigirActor, exigirCentavos, exigirConfiguracionSoportada, exigirMonedaDeCaja, exigirTenant, exigirTexto, exigirUuid, leerObligatorio, rutaMovimiento, rutaTurno, type DepsPos,
 } from './contexto.js';
 import { ErrorPos } from './errores.js';
 import { textoDe } from './lectura.js';
@@ -43,6 +43,8 @@ export async function registrarMovimientoCaja(
   requestIdEntrada: string,
   m: MovimientoCajaEntrada,
 ): Promise<{ movimiento: MovimientoCaja; repetido: boolean }> {
+  // Agrega estado nuevo de caja: en un comercio que requiere eventos v2 se rechaza antes de escribir nada.
+  exigirConfiguracionSoportada(deps);
   exigirTenant(tenantId);
   exigirActor(actor);
   const requestId = exigirUuid(requestIdEntrada, 'requestId');
