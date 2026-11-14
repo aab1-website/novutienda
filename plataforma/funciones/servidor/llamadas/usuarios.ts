@@ -6,6 +6,7 @@ import { z } from 'zod';
 import { asignarRol, leerClaim, quitarRol, type Rol } from '@novutienda/nucleo';
 import { accion, moduloApagado, type TablaImplementaciones } from './marco.js';
 import { UID, VACIO, objeto } from './comunes.js';
+import { vistaComercial } from '../../../coordinador/comercial.js';
 
 const ruta = (t: string, col: string, id?: string): string => `tenants/${t}/${col}${id === undefined ? '' : `/${id}`}`;
 
@@ -72,5 +73,14 @@ export const accionesUsuarios: TablaImplementaciones = {
       if (modulos === undefined) throw moduloApagado('Este negocio no está habilitado.');
       return { modulos: [...modulos] };
     },
+  }),
+  /**
+   * Mercados y monedas del comercio de la sesión (Central, solo lectura): el panel arma sus selectores con ellos. Nunca
+   * recibe un tenant del cliente. Falla cerrado: una configuración inválida lanza `ComercialInvalida`, que el marco
+   * traduce a `failed-precondition` sin detalle interno.
+   */
+  configuracionComercial: accion({
+    esquema: VACIO,
+    ejecutar: async (c) => vistaComercial(await c.e.comercialDelTenant(c.tenantId)),
   }),
 };

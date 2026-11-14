@@ -16,7 +16,7 @@ import { ErrorApi } from './errores.js';
 import { ponerMarca } from './marca.js';
 import type {
   AprobacionPos, ConteoAbierto, ConteoVista, ListaConMarca, MarcaOcultamiento, ProductoDeConteo, CotizacionesVigentes, CreditoVista, Medio, MermaVista, MovimientoVista, ProductoPanel,
-  Rol, TurnoPos, UbicacionId, UnidadSerie, UsuarioVista, VentaPos,
+  Rol, TurnoPos, UbicacionId, UnidadSerie, UsuarioVista, VentaPos, VistaComercial,
 } from './tipos.js';
 import { fijarRedondeo } from '../util/precio.js';
 
@@ -86,6 +86,19 @@ function marcaDeRespuesta(r: unknown): MarcaOcultamiento | undefined {
 const conMarcaDe = <T>(items: T[], r: unknown): ListaConMarca<T> => ponerMarca(items, marcaDeRespuesta(r));
 /** Cantidad que puede venir oculta: `null` se conserva (oculto), un número sirve, ausente es 0 (sin documento de existencia). */
 const cantidadOculta = (v: unknown): number | null => (v === null ? null : typeof v === 'number' ? v : 0);
+
+/** Forma defensiva de la vista comercial del servidor: lo que no cumple el tipo se descarta, nunca se inventa. */
+function vistaComercialDe(r: unknown): VistaComercial {
+  const o = (r ?? {}) as Obj;
+  const mercados = Array.isArray(o['mercados']) ? (o['mercados'] as Obj[]) : [];
+  const monedas = Array.isArray(o['monedasCaja']) ? (o['monedasCaja'] as unknown[]) : [];
+  return {
+    mercados: mercados.map((m) => ({
+      id: String(m['id']), nombre: String(m['nombre']), monedaVenta: String(m['monedaVenta']), monedaBase: String(m['monedaBase']), tieneTipoCambio: m['tieneTipoCambio'] === true,
+    })),
+    monedasCaja: monedas.filter((x): x is string => typeof x === 'string'),
+  };
+}
 
 const campo = <T>(r: unknown, clave: string): T => (r as Obj)[clave] as T;
 const sinVacios = <T extends object>(o: T): T => Object.fromEntries(Object.entries(o).filter(([, v]) => v !== undefined)) as T;
@@ -475,6 +488,10 @@ export const TRADUCCION: { readonly [N in NombreCallable]: Traduccion<N> } = {
       const m = campo<unknown>(await c.llamar('consola', 'modulosActivos', {}), 'modulos');
       return (Array.isArray(m) ? m.filter((x): x is string => typeof x === 'string') : []) as never;
     },
+  },
+  configuracionComercial: {
+    usa: ['consola.configuracionComercial'],
+    ejecutar: async (c) => vistaComercialDe(await c.llamar('consola', 'configuracionComercial', {})),
   },
 };
 
