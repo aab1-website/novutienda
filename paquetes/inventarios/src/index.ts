@@ -33,7 +33,7 @@ export type { ResultadoOperacion } from './operacion.js';
 
 // Eventos y endpoint firmado.
 export {
-  ACTOR_SISTEMA, confirmarPedido, confirmarPedidoFirmado, consumirPedidoConfirmado, consumirVentaAnulada, ejecutorDesde, leerCuerpoPedido,
+  ACTOR_SISTEMA, confirmarPedido, confirmarPedidoFirmado, consumirPedidoConfirmado, consumirVentaAnulada, ejecutorDesde, leerCuerpoPedido, VERSIONES_CONSUMO_INVENTARIOS,
 } from './pedido.js';
 export type { ItemPedido, RespuestaHttp, ResultadoPedido, SolicitudConfirmarPedido, TransaccionInventario } from './pedido.js';
 

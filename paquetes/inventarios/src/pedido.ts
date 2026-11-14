@@ -4,6 +4,7 @@ import {
   type BaseDatosIdentidad,
   type DatosPedidoConfirmadoV1,
   type DatosVentaAnuladaV1,
+  type DatosVentaAnuladaV2,
   type EjecutorTransacciones,
   type SobreEvento,
   type TransaccionBandeja,
@@ -20,6 +21,12 @@ import { Lector, type Autor, type Datos } from './motor.js';
 export const ACTOR_SISTEMA: Autor = { uid: 'sistema-pedidos', rol: 'sup' };
 export const ALMACEN_PEDIDOS = 'tienda';
 export const CONSUMIDOR = 'inventarios';
+
+/**
+ * Versiones de cada evento que Inventarios entiende. `venta.anulada` v2 solo cambia la moneda de los reembolsos,
+ * que el manejador no lee; `pedido.confirmado` sigue en la 1 (los pedidos v2 aún no tienen emisor).
+ */
+export const VERSIONES_CONSUMO_INVENTARIOS = { 'venta.anulada': [1, 2], 'pedido.confirmado': [1] } as const;
 
 export interface ItemPedido {
   readonly productoId: string;
@@ -113,6 +120,7 @@ export function consumirPedidoConfirmado(
   return consumir(ejecutor, {
     consumidor: CONSUMIDOR,
     evento,
+    versiones: VERSIONES_CONSUMO_INVENTARIOS['pedido.confirmado'],
     manejador: async (tx, ev) => {
       if (ev.tipo !== 'pedido.confirmado') throw new EntradaInvalida(`Tipo inesperado: ${ev.tipo}`);
       const d = ev.datos as DatosPedidoConfirmadoV1;
@@ -132,9 +140,10 @@ export function consumirVentaAnulada(
   return consumir(ejecutor, {
     consumidor: CONSUMIDOR,
     evento,
+    versiones: VERSIONES_CONSUMO_INVENTARIOS['venta.anulada'],
     manejador: async (tx, ev) => {
       if (ev.tipo !== 'venta.anulada') throw new EntradaInvalida(`Tipo inesperado: ${ev.tipo}`);
-      const d = ev.datos as DatosVentaAnuladaV1;
+      const d = ev.datos as DatosVentaAnuladaV1 | DatosVentaAnuladaV2;
       const ref: ReferenciaSalida = { tipo: 'venta', id: exigirSegmento(d.ventaId, 'ventaId') };
       const plan = await prepararReversion(tx, ev.tenantId, ref);
       for (const l of plan.lineas) {
