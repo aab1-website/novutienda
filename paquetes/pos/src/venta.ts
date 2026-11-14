@@ -45,6 +45,8 @@ export interface ResultadoVenta {
 const MONEDA_DEL_MERCADO: Readonly<Record<Mercado, Moneda>> = { BO: 'BOB', AR: 'ARS' };
 const MAX_LINEAS = 100;
 const MAX_CANTIDAD = 100_000;
+/** Unidades con número de serie que admite una venta, sumando todas las líneas. */
+export const MAX_SERIES_POR_VENTA = 100;
 
 function validarCarrito(c: Carrito): void {
   if (typeof c !== 'object' || c === null) throw new ErrorPos('entrada-invalida', 'Carrito inválido');
@@ -57,6 +59,7 @@ function validarCarrito(c: Carrito): void {
     throw new ErrorPos('entrada-invalida', `El carrito debe tener entre 1 y ${MAX_LINEAS} líneas`);
   }
   const vistas = new Set<string>();
+  let totalSeries = 0;
   for (const l of c.lineas) {
     if (typeof l?.productoId !== 'string' || l.productoId === '' || l.productoId.includes('/')) throw new ErrorPos('entrada-invalida', 'productoId inválido');
     if (typeof l.cantidad !== 'number' || !Number.isSafeInteger(l.cantidad) || l.cantidad < 1 || l.cantidad > MAX_CANTIDAD) {
@@ -68,6 +71,11 @@ function validarCarrito(c: Carrito): void {
     if (vistas.has(clave)) throw new ErrorPos('entrada-invalida', 'Un producto no puede repetirse en el mismo almacén; sume las cantidades');
     vistas.add(clave);
     if (l.precioMostrado !== undefined) exigirCentavos(l.precioMostrado, 'precioMostrado');
+    if (Array.isArray(l.series)) totalSeries += l.series.length;
+  }
+  // Antes de cualquier lectura: un pedido desmedido no sirve de sonda ni de carga.
+  if (totalSeries > MAX_SERIES_POR_VENTA) {
+    throw new ErrorPos('series-invalidas', `Una venta admite hasta ${MAX_SERIES_POR_VENTA} unidades con serie`);
   }
   if (c.totalMostrado !== undefined) exigirCentavos(c.totalMostrado, 'totalMostrado');
   if (c.descuento !== undefined) {

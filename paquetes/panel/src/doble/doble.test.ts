@@ -160,6 +160,8 @@ describe('doble: venta', () => {
     const { e } = await conTurno();
     expect((await falla(e.api.llamar('confirmarVenta', { requestId: uuid(), carrito: carritoTv({}, 2, ['TV55-001']), pagos: efectivo(1) }))).detalle.codigo).toBe('series-invalidas');
     expect((await falla(e.api.llamar('confirmarVenta', { requestId: uuid(), carrito: { mercado: 'BO', moneda: 'BOB', lineas: [{ productoId: 'cable-hdmi', cantidad: 1, series: ['X'] }] }, pagos: efectivo(1) }))).detalle.codigo).toBe('series-invalidas');
+    const muchas = Array.from({ length: 101 }, (_, i) => `S${i}`);
+    expect((await falla(e.api.llamar('confirmarVenta', { requestId: uuid(), carrito: { mercado: 'BO', moneda: 'BOB', lineas: [{ productoId: 'cable-hdmi', cantidad: 1, series: muchas }] }, pagos: efectivo(1) }))).detalle.codigo).toBe('series-invalidas');
   });
   it('producto sin precio (a consultar) y moneda que no corresponde a la lista', async () => {
     const { e } = await conTurno('adm');

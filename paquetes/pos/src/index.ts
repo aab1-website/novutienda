@@ -14,7 +14,7 @@ export {
   calcularArqueo, efectivoDisponible, efectivoEsperado, proyectarTurno, reconstruirTotales,
 } from './arqueo.js';
 export type { OperacionesTurno, ProyeccionMoneda } from './arqueo.js';
-export { confirmarVenta } from './venta.js';
+export { confirmarVenta, MAX_SERIES_POR_VENTA } from './venta.js';
 export type { Carrito, LineaCarrito, ResultadoVenta } from './venta.js';
 export { resolverAprobacion, solicitarAprobacion } from './aprobaciones.js';
 export type { AprobacionPos, SolicitudAprobacion } from './aprobaciones.js';
