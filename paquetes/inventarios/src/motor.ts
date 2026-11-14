@@ -48,6 +48,7 @@ export interface MovimientoPlan {
   readonly saldoUbicacion: number;
   readonly saldoTotal: number;
   readonly series: readonly string[];
+  /** Centavos de la moneda de costo del comercio (`monedaCostoDe`; USD si no declara otra). */
   readonly costoUSDUnit?: number;
   /** Tipo propio del movimiento; si falta, el de la operación. */
   readonly tipo?: MotivoStockCambiado;
