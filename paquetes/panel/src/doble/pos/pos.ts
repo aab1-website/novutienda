@@ -8,7 +8,12 @@ import { MONEDA_DE_MERCADO, precioDeVenta } from '../../util/precio.js';
 import { aCsv } from '../../util/csv.js';
 import { auditar, detalleDeFaltantes, fallo, fechaLaPaz, iso, recalcular, type Contexto } from '../estado.js';
 
-/** Igual que `MAX_SERIES_POR_VENTA` de `@novutienda/pos` (el panel no importa el módulo). */
+/**
+ * Debe coincidir con `MAX_SERIES_POR_VENTA` de `@novutienda/pos` (el panel no importa el módulo).
+ * Lo cubre la prueba «tope de unidades con serie por venta» de `src/doble/doble.test.ts`
+ * (101 rechazadas con el mensaje exacto, 100 pasan) junto con `pruebas/pos/venta.test.ts`,
+ * que fija `MAX_SERIES_POR_VENTA` en 100.
+ */
 const TOPE_SERIES_POR_VENTA = 100;
 
 type H<N extends NombreCallable> = (c: Contexto, e: Entrada<N>) => Salida<N> | Promise<Salida<N>>;

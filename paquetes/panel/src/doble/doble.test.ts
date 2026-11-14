@@ -160,8 +160,42 @@ describe('doble: venta', () => {
     const { e } = await conTurno();
     expect((await falla(e.api.llamar('confirmarVenta', { requestId: uuid(), carrito: carritoTv({}, 2, ['TV55-001']), pagos: efectivo(1) }))).detalle.codigo).toBe('series-invalidas');
     expect((await falla(e.api.llamar('confirmarVenta', { requestId: uuid(), carrito: { mercado: 'BO', moneda: 'BOB', lineas: [{ productoId: 'cable-hdmi', cantidad: 1, series: ['X'] }] }, pagos: efectivo(1) }))).detalle.codigo).toBe('series-invalidas');
-    const muchas = Array.from({ length: 101 }, (_, i) => `S${i}`);
-    expect((await falla(e.api.llamar('confirmarVenta', { requestId: uuid(), carrito: { mercado: 'BO', moneda: 'BOB', lineas: [{ productoId: 'cable-hdmi', cantidad: 1, series: muchas }] }, pagos: efectivo(1) }))).detalle.codigo).toBe('series-invalidas');
+  });
+  describe('tope de unidades con serie por venta', () => {
+    // Siembra series válidas en el estado de la prueba (no en los datos por omisión).
+    const sembrar = async (nTv: number, nCel: number) => {
+      const { e } = await conTurno();
+      const est = e.api.estado;
+      const tv = est.productos.get('tv-55');
+      const cel = est.productos.get('cel-a1');
+      if (tv === undefined || cel === undefined) throw new Error('Faltan productos del doble');
+      tv.precioUSD = { bo: 100, ar: 100 };
+      cel.precioUSD = { bo: 100, ar: 100 };
+      tv.existencias.tienda = nTv;
+      cel.existencias.tienda = nCel;
+      const series = (pref: string, n: number): string[] => Array.from({ length: n }, (_, i) => `${pref}-${i}`);
+      const tvS = series('TOPE-TV', nTv);
+      const celS = series('TOPE-CEL', nCel);
+      for (const [id, ss] of [['tv-55', tvS], ['cel-a1', celS]] as const) {
+        for (const s of ss) est.unidades.set(`${id}__${s}`, { productoId: id, serie: s, estado: 'disponible', ubicacionId: 'tienda' });
+      }
+      const carrito: Carrito = {
+        mercado: 'BO', moneda: 'USD',
+        lineas: [{ productoId: 'tv-55', cantidad: nTv, series: tvS }, { productoId: 'cel-a1', cantidad: nCel, series: celS }],
+      };
+      return { e, carrito };
+    };
+    it('101 unidades con serie válidas se rechazan con el mensaje del tope', async () => {
+      const { e, carrito } = await sembrar(60, 41);
+      const err = await falla(e.api.llamar('confirmarVenta', { requestId: uuid(), carrito, pagos: [{ medio: 'efectivo', moneda: 'USD', monto: 101 * 100 }] }));
+      expect(err.detalle.codigo).toBe('series-invalidas');
+      expect(mensajeDeError(err)).toBe('Una venta admite hasta 100 unidades con serie');
+    });
+    it('exactamente 100 unidades con serie pasan el tope', async () => {
+      const { e, carrito } = await sembrar(60, 40);
+      const r = await e.api.llamar('confirmarVenta', { requestId: uuid(), carrito, pagos: [{ medio: 'efectivo', moneda: 'USD', monto: 100 * 100 }] });
+      expect(r.venta.lineas.reduce((n, l) => n + l.series.length, 0)).toBe(100);
+    });
   });
   it('producto sin precio (a consultar) y moneda que no corresponde a la lista', async () => {
     const { e } = await conTurno('adm');
@@ -383,7 +417,7 @@ describe('doble: inventarios', () => {
   });
   it('el CSV de exportación neutraliza celdas que empiezan con = + - @', async () => {
     const e = crearEntorno('adm');
-    await e.api.llamar('crearProducto', { operacionId: uuid(), producto: { id: 'formula-1', nombre: '=HYPERLINK("x")', categoria: '+cmd', sku: 'F-1', precioUSD: { bo: 1, ar: 1 } } });
+    await e.api.llamar('crearProducto', { operacionId: uuid(), producto: { id: 'formula-1', nombre: '=HYPERLINK("x")', categoria: '+cmd', sku: 'F-1', precioUSD: { bo: 100, ar: 100 } } });
     const { csv } = await e.api.llamar('exportarProductosCsv', {});
     expect(csv).toContain(`"'=HYPERLINK(""x"")"`);
     expect(csv).toContain("'+cmd");

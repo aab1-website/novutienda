@@ -71,7 +71,12 @@ function validarCarrito(c: Carrito): void {
     if (vistas.has(clave)) throw new ErrorPos('entrada-invalida', 'Un producto no puede repetirse en el mismo almacén; sume las cantidades');
     vistas.add(clave);
     if (l.precioMostrado !== undefined) exigirCentavos(l.precioMostrado, 'precioMostrado');
-    if (Array.isArray(l.series)) totalSeries += l.series.length;
+    if (l.series !== undefined) {
+      if (!Array.isArray(l.series) || l.series.some((s: unknown) => typeof s !== 'string' || s.trim() === '' || s.length > 100)) {
+        throw new ErrorPos('series-invalidas', 'Las series deben ser una lista de textos no vacíos de hasta 100 caracteres');
+      }
+      totalSeries += l.series.length;
+    }
   }
   // Antes de cualquier lectura: un pedido desmedido no sirve de sonda ni de carga.
   if (totalSeries > MAX_SERIES_POR_VENTA) {

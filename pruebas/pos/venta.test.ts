@@ -255,6 +255,25 @@ describe('confirmarVenta: stock y series', () => {
       expect({ productos, salidas, transacciones }).toEqual({ productos: 0, salidas: 0, transacciones: 0 });
     });
 
+    it.each([
+      ['texto', 'S1'],
+      ['objeto', { 0: 'S1', length: 1 }],
+      ['elemento vacío', ['']],
+      ['elemento numérico', [5]],
+      ['elemento de 101 caracteres', ['x'.repeat(101)]],
+    ])('series con forma inválida (%s) se rechaza con cero lecturas', async (_n, series) => {
+      const e = await preparar();
+      let productos = 0;
+      let transacciones = 0;
+      const deps = { ...e.deps, catalogo: { leerProducto: (...a: Parameters<typeof catalogoDoble.leerProducto>) => (productos++, catalogoDoble.leerProducto(...a)) } };
+      const db = { runTransaction: (...a: Parameters<typeof e.db.runTransaction>) => (transacciones++, e.db.runTransaction(...a)) };
+      const c = { mercado: 'BO' as const, moneda: 'BOB' as const, lineas: [{ productoId: 'p2', cantidad: 1, series: series as never }] };
+      const err = await confirmarVenta({ ...deps, db: db as typeof e.db }, T, caj, UUID(1), c, [efectivo(1)]).catch((x: unknown) => x);
+      expect(err).toBeInstanceOf(ErrorPos);
+      expect((err as ErrorPos).codigo).toBe('series-invalidas');
+      expect({ productos, transacciones }).toEqual({ productos: 0, transacciones: 0 });
+    });
+
     it('exactamente 100 unidades con serie pasan', async () => {
       const e = await preparar();
       e.db.poner(`tenants/${T}/_stock/tienda~p2`, { cantidad: 60, series: serie('A', 60) });
