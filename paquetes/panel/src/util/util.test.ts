@@ -1,11 +1,11 @@
-import { describe, expect, it } from 'vitest';
+import { afterEach, describe, expect, it } from 'vitest';
 import { aBase64, formatoBytes } from './base64.js';
 import { aCsv, celdaCsv } from './csv.js';
 import { diferenciaPorMoneda, efectivoEsperado, proyectarTurno, sumarTotales, TOTALES_VACIOS } from '../pantallas/pos/arqueo.js';
 import { centavosATexto, formatearMonto, textoACentavos } from './dinero.js';
 import { ITEMS_MENU, menuPara, parsearRuta, puedeVer, rutaPorOmision } from './menu.js';
 import { calcularPagos, type FilaPago } from '../pantallas/pos/pagos.js';
-import { precioDeVenta, REDONDEO } from './precio.js';
+import { fijarRedondeo, precioDeVenta, redondeoActual, REDONDEO, restablecerRedondeo } from './precio.js';
 import { leerClaimPanel } from '../sesion/claim.js';
 import { PALETAS } from '../pantallas/consola/plantillas-vista.js';
 import { PLANTILLAS_SITIO } from '../api/tipos.js';
@@ -196,5 +196,27 @@ describe('rango de exportación', () => {
     expect(validarRango('2025-11-03', '2026-11-04')).toMatch(/366/);
     expect(validarRango('2026-11-05', '2026-11-04')).toMatch(/posterior/);
     expect(validarRango('', '2026-11-04')).toMatch(/fechas/);
+  });
+});
+
+describe('fijarRedondeo: regla única', () => {
+  afterEach(() => restablecerRedondeo());
+  const ok = { tipo: 'decimales', decimales: 1, modo: 'abajo' };
+
+  it('acepta reglas admitidas', () => {
+    const r = { BOB: ok, ARS: { tipo: 'multiplo', multiplo: 0.05, modo: 'cercano' } };
+    fijarRedondeo(r);
+    expect(redondeoActual()).toEqual(r);
+  });
+
+  it.each([
+    ['ninguno', { tipo: 'ninguno' }],
+    ['más de 2 decimales', { tipo: 'decimales', decimales: 3, modo: 'cercano' }],
+    ['múltiplo menor a 0,01', { tipo: 'multiplo', multiplo: 0.001, modo: 'cercano' }],
+    ['modo desconocido', { tipo: 'decimales', decimales: 2, modo: 'x' }],
+  ])('ignora %s y conserva el redondeo anterior', (_n, mala) => {
+    fijarRedondeo({ BOB: mala, ARS: ok });
+    fijarRedondeo({ BOB: ok, ARS: mala });
+    expect(redondeoActual()).toBe(REDONDEO);
   });
 });
