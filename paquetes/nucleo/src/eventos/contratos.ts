@@ -49,10 +49,10 @@ export const CONTRATOS_POR_VERSION: Readonly<Record<number, Readonly<Record<stri
   2: CONTRATOS_V2,
 };
 
-/** Versiones de evento que se entregan por omisión: solo la 1, como antes de existir la 2 (nadie recibe v2 sin pedirlo). */
 /** Todas las versiones del sobre que el núcleo conoce; un consumidor que las entiende todas pasa `{ versiones: VERSIONES_REGISTRADAS }`. */
 export const VERSIONES_REGISTRADAS = [1, 2] as const;
 
+/** Versiones de evento que se entregan por omisión: solo la 1, como antes de existir la 2 (nadie recibe v2 sin pedirlo). */
 export const VERSIONES_POR_OMISION: readonly (1 | 2)[] = [1];
 
 export interface OpcionesValidarEvento {
