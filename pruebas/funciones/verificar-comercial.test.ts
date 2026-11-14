@@ -2,6 +2,7 @@
 // (`scripts/verificar-comercial.mjs`): lógica pura, guardias de entorno y corrida completa contra el emulador.
 import { spawnSync } from 'node:child_process';
 import { describe, expect, it } from 'vitest';
+import { motivoReglaRedondeoInvalida } from '@novutienda/nucleo';
 import { hayEmulador, herramientas, unico } from './ayudas.js';
 import { lineasDelInforme, motivoIncumpleD7, verificarComercial, type InformeComercial, type ResultadoVerificacion } from '../../plataforma/operador/verificar-comercial.js';
 
@@ -28,21 +29,24 @@ describe('motivoIncumpleD7', () => {
     expect(motivoIncumpleD7(r)).toBeNull();
   });
 
-  it('«ninguno» no cumple', () => {
-    expect(motivoIncumpleD7({ tipo: 'ninguno' })).toBe('regla ninguno');
+  it('«ninguno» no cumple y dice por qué', () => {
+    expect(motivoIncumpleD7({ tipo: 'ninguno' })).toBe(motivoReglaRedondeoInvalida({ tipo: 'ninguno' }));
+    expect(motivoIncumpleD7({ tipo: 'ninguno' })).toContain('«sin redondear» ya no se admite');
   });
-  it('más de 2 decimales no cumple y dice cuántos', () => {
-    expect(motivoIncumpleD7({ tipo: 'decimales', decimales: 3, modo: 'cercano' })).toBe('decimales 3');
-    expect(motivoIncumpleD7({ tipo: 'decimales', decimales: 6, modo: 'cercano' })).toBe('decimales 6');
+  it('más de 2 decimales no cumple', () => {
+    for (const decimales of [3, 6]) {
+      expect(motivoIncumpleD7({ tipo: 'decimales', decimales, modo: 'cercano' })).toContain('no se admite más de 2 decimales');
+    }
   });
-  it('un múltiplo menor de 0,01 o fuera de centavos no cumple', () => {
-    for (const multiplo of [0.005, 0.001, 0.015, 0.125, 2.505]) {
-      expect(motivoIncumpleD7({ tipo: 'multiplo', multiplo, modo: 'cercano' })).toBe('múltiplo no exacto en centavos');
+  it('un múltiplo menor de 0,01 o fuera de centavos no cumple (sin tolerancia)', () => {
+    for (const multiplo of [0.005, 0.001, 0.015, 0.125, 2.505, 0.1 + 0.2]) {
+      expect(motivoIncumpleD7({ tipo: 'multiplo', multiplo, modo: 'cercano' })).toContain('al menos 0,01 y de centavos exactos');
     }
   });
   it('una regla mal formada no cumple', () => {
     for (const r of [undefined, null, 'x', { tipo: 'otro' }, { tipo: 'decimales', decimales: 2 }, { tipo: 'multiplo', multiplo: 0, modo: 'cercano' }]) {
-      expect(motivoIncumpleD7(r)).toBe('regla inválida');
+      expect(motivoIncumpleD7(r)).toBe(motivoReglaRedondeoInvalida(r));
+      expect(motivoIncumpleD7(r)).not.toBeNull();
     }
   });
 });
@@ -57,24 +61,24 @@ describe('verificarComercial', () => {
   it('v3: evalúa la regla declarada de cada moneda de venta', () => {
     expect(verificarComercial(v3(D2), undefined)).toMatchObject({ ok: true, informe: { forma: 'v3 (comercial)', cumple: true, monedas: [{ moneda: 'BOB', cumple: true }] } });
     const r = verificarComercial(v3({ tipo: 'ninguno' }), undefined);
-    expect(r).toMatchObject({ ok: true, informe: { cumple: false, monedas: [{ moneda: 'BOB', cumple: false, motivo: 'regla ninguno' }] } });
+    expect(r).toMatchObject({ ok: true, informe: { cumple: false, monedas: [{ moneda: 'BOB', cumple: false, motivo: motivoReglaRedondeoInvalida({ tipo: 'ninguno' }) }] } });
   });
 
   it('el documento config/redondeo manda sobre la configuración', () => {
     const malo = verificarComercial(LEGADO, { BOB: D2, ARS: { tipo: 'multiplo', multiplo: 0.005, modo: 'cercano' } });
     expect(malo).toMatchObject({ ok: true, informe: { origen: 'documento config/redondeo', cumple: false } });
-    expect(lineasDelInforme(informeDe(malo)).slice(3)).toEqual(['BOB: cumple D7', 'ARS: NO cumple (múltiplo no exacto en centavos)']);
+    expect(lineasDelInforme(informeDe(malo)).slice(3)).toEqual(['BOB: cumple D7', `ARS: NO cumple (${motivoReglaRedondeoInvalida({ tipo: 'multiplo', multiplo: 0.005, modo: 'cercano' })})`]);
     expect(verificarComercial(v3({ tipo: 'ninguno' }), { BOB: D2 })).toMatchObject({ ok: true, informe: { cumple: true } });
   });
 
   it('una moneda de venta sin regla en el documento no cumple', () => {
     const r = verificarComercial(LEGADO, { BOB: D2 });
-    expect(r).toMatchObject({ ok: true, informe: { cumple: false, monedas: [{ moneda: 'BOB', cumple: true }, { moneda: 'ARS', cumple: false, motivo: 'regla inválida' }] } });
+    expect(r).toMatchObject({ ok: true, informe: { cumple: false, monedas: [{ moneda: 'BOB', cumple: true }, { moneda: 'ARS', cumple: false, motivo: 'falta la regla de redondeo' }] } });
   });
 
   it('dos mercados con la misma moneda dan una sola línea; basta una regla mala', () => {
     const t = { ...v3(D2), plan: 'multimercado', comercial: { mercados: [mercado('BO', 'BOB', D2), mercado('XX', 'BOB', { tipo: 'decimales', decimales: 3, modo: 'cercano' })], monedas: ['BOB'] } };
-    expect(verificarComercial(t, undefined)).toMatchObject({ ok: true, informe: { cumple: false, monedas: [{ moneda: 'BOB', motivo: 'decimales 3' }] } });
+    expect(verificarComercial(t, undefined)).toMatchObject({ ok: true, informe: { cumple: false, monedas: [{ moneda: 'BOB', motivo: motivoReglaRedondeoInvalida({ tipo: 'decimales', decimales: 3, modo: 'cercano' }) }] } });
   });
 
   it('plan desconocido se informa como tal; tenant ausente o ilegible falla', () => {
@@ -138,7 +142,7 @@ describe.skipIf(!hayEmulador)('scripts/verificar-comercial.mjs contra el emulado
 
     const b = correr(mal);
     expect(b.status, b.stderr).toBe(1);
-    expect(b.stdout).toContain('BOB: NO cumple (regla ninguno)');
+    expect(b.stdout).toContain(`BOB: NO cumple (${motivoReglaRedondeoInvalida({ tipo: 'ninguno' })})`);
 
     const c = correr(sin);
     expect(c.status, c.stderr).toBe(0);
@@ -147,7 +151,7 @@ describe.skipIf(!hayEmulador)('scripts/verificar-comercial.mjs contra el emulado
 
     const d = correr(doc);
     expect(d.status, d.stderr).toBe(1);
-    expect(d.stdout).toContain('BOB: NO cumple (decimales 3)');
+    expect(d.stdout).toContain(`BOB: NO cumple (${motivoReglaRedondeoInvalida({ tipo: 'decimales', decimales: 3, modo: 'cercano' })})`);
     expect(d.stdout).toContain('ARS: cumple D7');
 
     const e = correr(unico('vc-no').toLowerCase());

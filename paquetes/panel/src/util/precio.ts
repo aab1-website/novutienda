@@ -1,4 +1,4 @@
-import { aCentavos, precioFinal, type Mercado, type Moneda, type Redondeo } from '@novutienda/nucleo';
+import { aCentavos, esReglaRedondeoValida, precioFinal, type Mercado, type Moneda, type Redondeo } from '@novutienda/nucleo';
 import type { CotizacionVista } from '../api/tipos.js';
 
 /**
@@ -13,12 +13,15 @@ export const REDONDEO: Redondeo = {
 
 let redondeoVigente: Redondeo = REDONDEO;
 
-/** Fija el redondeo que devolvió el servidor (política del negocio). Ignora lo que no tenga la forma esperada. */
+/**
+ * Fija el redondeo que devolvió el servidor (política del negocio). Usa la validación del núcleo (regla única: 0, 1 o 2
+ * decimales, o un múltiplo de al menos 0,01). Si falta una regla o no es admitida (`ninguno`, más de 2 decimales), la
+ * ignora por completo y conserva el redondeo anterior.
+ */
 export function fijarRedondeo(r: unknown): void {
   if (typeof r !== 'object' || r === null) return;
   const o = r as Record<string, unknown>;
-  const valida = (x: unknown): boolean => typeof x === 'object' && x !== null && ['ninguno', 'decimales', 'multiplo'].includes(String((x as { tipo?: unknown }).tipo));
-  if (valida(o['BOB']) && valida(o['ARS'])) redondeoVigente = r as Redondeo;
+  if (esReglaRedondeoValida(o['BOB']) && esReglaRedondeoValida(o['ARS'])) redondeoVigente = r as Redondeo;
 }
 
 /** Redondeo en uso: el del servidor si ya llegó; si no, el respaldo por defecto. */

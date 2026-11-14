@@ -3,6 +3,7 @@
  * archivo de ejemplo) se comprueba antes de generar una sola página. Un contenido
  * inválido detiene el build con la lista completa de errores, no solo el primero.
  */
+import { motivoReglaRedondeoInvalida } from '@novutienda/nucleo';
 import type { Mercado } from '@novutienda/nucleo';
 import {
   IDS_ICONO, IDS_PLANTILLA, LIMITES_SITIO,
@@ -175,18 +176,14 @@ function leerAfirmacion(l: Lector, v: unknown, ruta: string): { texto: string; c
 }
 
 function leerRegla(l: Lector, v: unknown, ruta: string): Contenido['config']['redondeo']['BOB'] {
-  const o = l.obj(v, ruta);
-  const modo = (['cercano', 'arriba', 'abajo'] as const).find((m) => m === o['modo']);
-  const tipo = o['tipo'];
-  if (tipo === 'ninguno') return { tipo: 'ninguno' };
-  if (modo === undefined) {
-    l.falla(`${ruta}.modo`, 'debe ser cercano, arriba o abajo');
-    return { tipo: 'ninguno' };
+  // D7: la validación es la única del núcleo; el valor de reemplazo solo se usa tras registrar la falla.
+  const respaldo = { tipo: 'decimales', decimales: 2, modo: 'cercano' } as const;
+  const motivo = motivoReglaRedondeoInvalida(v);
+  if (motivo !== null) {
+    l.falla(ruta, motivo);
+    return respaldo;
   }
-  if (tipo === 'decimales') return { tipo, decimales: Math.trunc(l.numero(o['decimales'], `${ruta}.decimales`, 0, 6)), modo };
-  if (tipo === 'multiplo') return { tipo, multiplo: l.numero(o['multiplo'], `${ruta}.multiplo`, 0.01, 1_000_000), modo };
-  l.falla(`${ruta}.tipo`, 'debe ser ninguno, decimales o multiplo');
-  return { tipo: 'ninguno' };
+  return v as Contenido['config']['redondeo']['BOB'];
 }
 
 function leerConfig(l: Lector, v: unknown): Contenido['config'] {

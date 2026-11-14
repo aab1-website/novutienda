@@ -15,3 +15,8 @@ Motivo: Línea base. Fotografía del comportamiento del tenant de referencia en 
 
 Sello: 3103c927af563c92d30758bc7bc73e534dfc01db6fcbdc6efd711d076af152d2
 Motivo: Se amplía la cobertura, no cambió el comportamiento. Se agregan tres referencias nuevas del catálogo del asistente con config/redondeo en «ninguno», en «decimales: 3» y con un precio menor a un centavo. Se generaron con el código de main previo a la migración de mercados por tenant (oráculo) y las demás referencias quedan idénticas.
+
+## Una sola regla de redondeo (D7) f153070a8101
+
+Sello: f153070a810191653c8972bb10c683ba542715f0e9699281322ec5255f27094a
+Motivo: Cambio de comportamiento deliberado, decisión D7 del dueño (13/11/2026): el redondeo admite solo 0, 1 o 2 decimales o un múltiplo de al menos 0,01; desaparecen el modo «ninguno» y los decimales mayores a 2. Cambian solo tres referencias, las del catálogo de NovuChat con reglas ahora prohibidas (redondeo-ninguno, redondeo-decimales3 y redondeo-subcentavo): ya no recogen precios sino el fallo cerrado del conector (RedondeoInvalido, que el manejador api convierte en 500 «interno», sin precios). El tenant de referencia cumple la regla nueva, comprobado en staging en solo lectura, así que sus demás referencias quedan idénticas.

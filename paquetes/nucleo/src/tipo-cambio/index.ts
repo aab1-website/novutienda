@@ -16,7 +16,7 @@ export type {
 export { diasHabilesEntre, hoyEn } from './fechas.js';
 export type { EsFeriado } from './fechas.js';
 export { aCentavos, precioDeMercado, precioFinal, redondear } from './precio.js';
-export { esReglaRedondeoValida } from './regla-redondeo.js';
+export { esReglaRedondeoValida, motivoReglaRedondeoInvalida } from './regla-redondeo.js';
 export type { ModoRedondeo, PrecioDeMercado, PrecioFinal, Redondeo, RedondeoPorMoneda, ReglaRedondeo } from './precio.js';
 export { CACHE_COTIZACION, manejarCotizacion, manejarCotizacionDe } from './handler.js';
 export type { RespuestaHttp } from './handler.js';

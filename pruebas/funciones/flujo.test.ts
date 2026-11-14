@@ -185,7 +185,7 @@ describe.skipIf(!hayEmulador)('flujo POS → evento → recibo (emulador)', () =
   it('una configuración de redondeo inválida no se adivina: falla con precondición', async () => {
     const C = 'flujo-c';
     await sembrarTenant(h, C);
-    await h.firestore.doc(`tenants/${C}/config/redondeo`).set({ BOB: { tipo: 'decimales', decimales: -1, modo: 'cercano' }, ARS: { tipo: 'ninguno' } });
+    await h.firestore.doc(`tenants/${C}/config/redondeo`).set({ BOB: { tipo: 'decimales', decimales: -1, modo: 'cercano' }, ARS: { tipo: 'multiplo', multiplo: 500, modo: 'arriba' } });
     const admC = await crearUsuario(h, { rol: 'adm', tenant: C });
     const r = await accion('consola', 'preciosDelDia', { precioUSD: { bo: 1, ar: 1 } }, admC.token, C);
     expect(r.status).toBe(400);
@@ -193,7 +193,7 @@ describe.skipIf(!hayEmulador)('flujo POS → evento → recibo (emulador)', () =
     // Una política válida distinta se respeta (ARS al múltiplo de 500 hacia arriba).
     const D = 'flujo-d';
     await sembrarTenant(h, D);
-    await h.firestore.doc(`tenants/${D}/config/redondeo`).set({ BOB: { tipo: 'ninguno' }, ARS: { tipo: 'multiplo', multiplo: 500, modo: 'arriba' } });
+    await h.firestore.doc(`tenants/${D}/config/redondeo`).set({ BOB: { tipo: 'decimales', decimales: 2, modo: 'cercano' }, ARS: { tipo: 'multiplo', multiplo: 500, modo: 'arriba' } });
     const admD = await crearUsuario(h, { rol: 'adm', tenant: D });
     const d = await accion('consola', 'preciosDelDia', { precioUSD: { bo: 10.01, ar: 10.01 } }, admD.token, D);
     expect(d.resultado).toMatchObject({ BO: { monto: 70.07 }, AR: { monto: 10_500 } });

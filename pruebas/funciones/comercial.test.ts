@@ -93,10 +93,10 @@ describe.skipIf(!hayEmulador)('configuración comercial del tenant (emulador)', 
 
   it('el documento config/redondeo solo se acepta con exactamente las monedas de venta del tenant', async () => {
     const t = await sembrar('rd', UN_MERCADO);
-    await h.firestore.doc(`tenants/${t}/config/redondeo`).set({ COP: { tipo: 'ninguno' } });
-    expect(await e.redondeoDelTenant(t)).toEqual({ COP: { tipo: 'ninguno' } });
+    await h.firestore.doc(`tenants/${t}/config/redondeo`).set({ COP: { tipo: 'multiplo', multiplo: 50, modo: 'cercano' } });
+    expect(await e.redondeoDelTenant(t)).toEqual({ COP: { tipo: 'multiplo', multiplo: 50, modo: 'cercano' } });
     const u = await sembrar('rd2', UN_MERCADO);
-    await h.firestore.doc(`tenants/${u}/config/redondeo`).set({ BOB: { tipo: 'ninguno' }, ARS: { tipo: 'ninguno' } });
+    await h.firestore.doc(`tenants/${u}/config/redondeo`).set({ BOB: { tipo: 'decimales', decimales: 2, modo: 'cercano' }, ARS: { tipo: 'decimales', decimales: 2, modo: 'cercano' } });
     await expect(e.redondeoDelTenant(u)).rejects.toThrow(RedondeoInvalido);
   });
 
