@@ -86,8 +86,7 @@ export const fechaIso: Campo = (v, r) => (esFechaIso(v) ? null : `${r} debe ser 
  * LÍMITE CONOCIDO (PR A, mercados por tenant): los contratos v1 son un contrato congelado y siguen cerrados a los
  * mercados BO y AR, a las monedas BOB, USD y ARS y a los pares BOB/USD y ARS/USD, y `venta.confirmada` exige
  * cotización si la moneda no es USD. Un tenant sin tipo de cambio, o con otra moneda, NO puede emitir ventas ni
- * pedidos v1. Abrirlos es un contrato v2 (propuesta en el informe del PR A; se decide en el PR B3), nunca una
- * edición de estos archivos.
+ * pedidos v1. Los contratos `*.v2.ts` (ventas, anulaciones, turnos y pedidos) los abren; los v1 no se editan.
  */
 export const MONEDAS_EVENTO = ['BOB', 'USD', 'ARS'] as const;
 export const monedaOperativa: Campo = uno(MONEDAS_EVENTO);
@@ -107,6 +106,32 @@ export const copiaCotizacion: Campo = objeto({
   fuente: uno(FUENTES),
   estado: uno(ESTADOS),
 });
+
+/** Identificador de mercado declarado por un tenant: dos letras mayúsculas (contratos v2). */
+export const idMercado: Campo = (v, r) =>
+  typeof v === 'string' && /^[A-Z]{2}$/.test(v) ? null : `${r} debe ser un identificador de mercado de 2 letras mayúsculas`;
+
+/** Copia de cotización de los contratos v2: la misma forma, con cualquier par `VENTA/BASE`. */
+export const copiaCotizacionAbierta: Campo = objeto({
+  cotizacionId: texto,
+  par,
+  valor: numeroPositivo,
+  fecha: fechaIso,
+  fuente: uno(FUENTES),
+  estado: uno(ESTADOS),
+});
+
+/**
+ * Coherencia de los contratos v2 entre moneda, moneda base y cotización: sin cotización si y solo si la moneda es la
+ * base; con cotización, su par es `moneda/monedaBase`. Que la moneda exista en el tenant NO se comprueba aquí.
+ */
+export function errorMonedaCotizacion(
+  d: { readonly moneda: string; readonly monedaBase: string; readonly cotizacion: { readonly par: string } | null },
+): string | null {
+  if (d.moneda === d.monedaBase) return d.cotizacion === null ? null : 'datos.cotizacion debe ser null si la moneda es la moneda base';
+  if (d.cotizacion === null) return 'datos.cotizacion es obligatoria si la moneda no es la moneda base';
+  return d.cotizacion.par === `${d.moneda}/${d.monedaBase}` ? null : `datos.cotizacion.par debe ser ${d.moneda}/${d.monedaBase}`;
+}
 
 /** Series no vacías sin repetidos en la línea; si hay series, su cantidad debe igualar `cantidad`. */
 export function errorSeries(series: readonly string[], cantidad: number, ruta: string): string | null {
