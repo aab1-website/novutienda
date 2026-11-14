@@ -99,7 +99,7 @@ export const ZONA_POR_ARCHIVO: readonly ReglaZona[] = [
   // `rootDir: src` del paquete y el arranque `doble/arranque.tsx` los alcanzan solo dentro de src/ (servicios.ts ya no monta el doble).
   { patron: new RegExp(`^paquetes/panel/src/doble/(${M})/`), zona: 'pruebas:modulo:$1', nota: 'doble de módulo (T2)' },
   { patron: /^paquetes\/panel\/src\/doble\//, zona: 'pruebas:central', nota: 'doble del transporte y del estado' },
-  { patron: /^paquetes\/panel\/src\/ayuda-pruebas\.ts$/, zona: 'pruebas:central' },
+  { patron: /^paquetes\/panel\/src\/(ayuda|preparacion)-pruebas\.ts$/, zona: 'pruebas:central' },
   { patron: /^paquetes\/panel\//, zona: 'central' },
   { patron: new RegExp(`^paquetes/(${M})/`), zona: 'modulo:$1' },
 ];

@@ -5,6 +5,7 @@ export default defineConfig({
     include: ['pruebas/**/*.test.ts', 'paquetes/*/src/**/*.test.ts'],
     exclude: ['**/node_modules/**', '.claude/worktrees/**'],
     environment: 'node',
+    setupFiles: ['paquetes/panel/src/preparacion-pruebas.ts'],
     coverage: {
       provider: 'v8',
       reporter: ['text', 'json-summary'],
