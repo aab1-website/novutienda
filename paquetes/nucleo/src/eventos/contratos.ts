@@ -66,8 +66,7 @@ export function validarEvento(x: unknown, opciones: OpcionesValidarEvento = {}):
   const versiones = opciones.versiones ?? VERSIONES_POR_OMISION;
   if (typeof x === 'object' && x !== null && 'version' in x) {
     const v = (x as { version: unknown }).version;
-    if (v !== 1 && v !== 2) return { ok: false, error: 'Versión de evento desconocida' };
-    if (!versiones.includes(v) || !Object.hasOwn(CONTRATOS_POR_VERSION, v)) return { ok: false, error: 'Versión de evento desconocida' };
+    if (!versiones.includes(v as 1 | 2) || !Object.hasOwn(CONTRATOS_POR_VERSION, v as 1 | 2)) return { ok: false, error: 'Versión de evento desconocida' };
   }
   const sobre = validarSobre(x, versiones);
   if (!sobre.ok) return sobre;

@@ -247,6 +247,10 @@ describe('coherenteConComercial', () => {
   it('rechaza un mercado que el tenant no declara', () => {
     expect(coherenteConComercial(sobre('pedido.confirmado', 2, fixturesPedidoConfirmadoV2.validos[0]), legado)).toMatchObject({ ok: false });
     expect(coherenteConComercial(sobre('pedido.solicitado', 2, { ...ped[0], mercado: 'ZZ' }), clp)).toMatchObject({ ok: false });
+    // un `mercado` explícito que no coincide con el del evento (v2 o v1) falla; si coincide, pasa
+    const propio = en(ped, 0).mercado;
+    expect(coherenteConComercial(sobre('pedido.solicitado', 2, ped[0]), clp, propio).ok).toBe(true);
+    expect(coherenteConComercial(sobre('pedido.solicitado', 2, ped[0]), clp, 'ZZ')).toMatchObject({ ok: false });
   });
   it('rechaza moneda, base o par que el mercado no tiene', () => {
     expect(coherenteConComercial(sobre('pedido.solicitado', 2, { ...en(ped, 0), monedaBase: 'USD', cotizacion: { ...en(ped, 0).cotizacion!, par: 'CLP/USD' } }), clp).ok).toBe(false);

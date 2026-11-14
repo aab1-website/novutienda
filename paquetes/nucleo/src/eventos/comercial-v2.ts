@@ -35,6 +35,10 @@ function monedaEnCaja(c: ConfiguracionComercial, moneda: string, ruta: string): 
   return monedasCaja(c).includes(moneda) ? null : `${ruta}: la moneda ${moneda} no está entre las monedas del tenant`;
 }
 
+/**
+ * Al pedido no se le exige que su moneda esté entre las de caja: es intencional, el pedido es en línea y no pasa por
+ * caja; basta con que corresponda al mercado (su moneda de venta o su moneda base).
+ */
 function errorPedido(c: ConfiguracionComercial, d: DatosPedidoSolicitadoV2 | DatosPedidoConfirmadoV2): string | null {
   const m = mercadoDe(c, d.mercado);
   if (m === undefined) return `datos.mercado: el mercado ${d.mercado} no existe en el tenant`;
@@ -66,6 +70,10 @@ export function coherenteConComercial(evento: SobreEvento, comercial: Configurac
   if (!n.ok) return n;
   const e = n.valor;
   if (e.version !== 2) return OK;
+  const mercadoEvento = (e.datos as { mercado?: unknown }).mercado;
+  if (mercado !== undefined && typeof mercadoEvento === 'string' && mercado !== mercadoEvento) {
+    return falla(`datos.mercado: el evento es del mercado ${mercadoEvento} y se indicó ${mercado}`);
+  }
   switch (e.tipo) {
     case 'venta.confirmada': {
       const m = errorVenta(comercial, e.datos as DatosVentaConfirmadaV2);

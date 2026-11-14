@@ -4,7 +4,8 @@ import type { MedioPagoVenta } from './venta-confirmada.v1.js';
 
 /**
  * Contrato v2 de la anulación: igual que la v1, con reembolsos en cualquier moneda ISO declarada por el tenant.
- * Que la moneda exista en el tenant lo comprueba el servidor (`coherenteConComercial`).
+ * Que la moneda exista en el tenant lo comprueba el servidor (`coherenteConComercial`). Cruzar la anulación con su
+ * venta (reembolsos en la moneda de la venta) también le toca al servidor, igual que en la v1.
  */
 export const TIPO_VENTA_ANULADA_V2 = 'venta.anulada';
 

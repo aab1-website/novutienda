@@ -29,8 +29,7 @@ export function validarSobre(x: unknown, versiones: readonly (1 | 2)[] = [1]): R
     const v = o[c];
     if (typeof v !== 'string' || v === '') return { ok: false, error: `Campo ${c} requerido` };
   }
-  if (o['version'] !== 1 && o['version'] !== 2) return { ok: false, error: `version debe ser ${versiones.join(' o ')}` };
-  if (!versiones.includes(o['version'])) return { ok: false, error: `version debe ser ${versiones.join(' o ')}` };
+  if (!versiones.includes(o['version'] as 1 | 2)) return { ok: false, error: `version debe ser ${versiones.join(' o ')}` };
   if (!ISO_UTC.test(o['ocurridoEn'] as string) || Number.isNaN(Date.parse(o['ocurridoEn'] as string))) {
     return { ok: false, error: 'ocurridoEn debe ser ISO 8601 UTC' };
   }
