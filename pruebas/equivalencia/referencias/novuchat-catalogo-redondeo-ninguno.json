@@ -1,0 +1,362 @@
+{
+  "AR": {
+    "cuerpo": {
+      "cotizacion": {
+        "estado": "vigente",
+        "fecha": "2026-11-04",
+        "fuente": "manual",
+        "id": "AR-2026-11-04-1793804400000",
+        "par": "ARS/USD",
+        "valor": 1187.35
+      },
+      "generadoEn": "2026-11-04T15:00:00.000Z",
+      "items": [
+        {
+          "activo": true,
+          "area": "general",
+          "descripcion": "Solo con precio en Argentina.",
+          "disponible": true,
+          "foto": "https://medios.ejemplo.invalid/publico/tenants/casa-a/publico/medios/p-adaptador/bbb-imagen960.webp",
+          "fotos": [
+            "https://medios.ejemplo.invalid/publico/tenants/casa-a/publico/medios/p-adaptador/bbb-imagen960.webp"
+          ],
+          "id": "p-adaptador",
+          "moneda": "ARS",
+          "nombre": "Adaptador",
+          "precio": 5343.075,
+          "precioCentavos": 534308,
+          "stock": 4,
+          "stockPorAlmacen": {
+            "deposito-1": 0,
+            "deposito-2": 0,
+            "tienda": 4
+          },
+          "urlProducto": "https://tienda.ejemplo.invalid/producto/adaptador"
+        },
+        {
+          "activo": true,
+          "area": "general",
+          "descripcion": "Sin existencias.",
+          "disponible": false,
+          "foto": "https://medios.ejemplo.invalid/publico/tenants/casa-a/publico/medios/p-agotado/bbb-imagen960.webp",
+          "fotos": [
+            "https://medios.ejemplo.invalid/publico/tenants/casa-a/publico/medios/p-agotado/bbb-imagen960.webp"
+          ],
+          "id": "p-agotado",
+          "moneda": "ARS",
+          "nombre": "Cargador agotado",
+          "precio": 17810.25,
+          "precioCentavos": 1781025,
+          "stock": 0,
+          "stockPorAlmacen": {
+            "deposito-1": 0,
+            "deposito-2": 0,
+            "tienda": 0
+          },
+          "urlProducto": "https://tienda.ejemplo.invalid/producto/cargador-agotado"
+        },
+        {
+          "activo": true,
+          "area": "general",
+          "descripcion": "Celular de ejemplo.",
+          "disponible": true,
+          "foto": "https://medios.ejemplo.invalid/publico/tenants/casa-a/publico/medios/p-celular/bbb-imagen960.webp",
+          "fotos": [
+            "https://medios.ejemplo.invalid/publico/tenants/casa-a/publico/medios/p-celular/bbb-imagen960.webp"
+          ],
+          "id": "p-celular",
+          "moneda": "ARS",
+          "nombre": "Celular X1",
+          "precio": 249331.6265,
+          "precioCentavos": 24933163,
+          "stock": 3,
+          "stockPorAlmacen": {
+            "deposito-1": 0,
+            "deposito-2": 0,
+            "tienda": 3
+          },
+          "urlProducto": "https://tienda.ejemplo.invalid/producto/celular-x1"
+        },
+        {
+          "activo": true,
+          "area": "general",
+          "descripcion": "No controla stock.",
+          "disponible": true,
+          "foto": "https://medios.ejemplo.invalid/publico/tenants/casa-a/publico/medios/p-servicio/bbb-imagen960.webp",
+          "fotos": [
+            "https://medios.ejemplo.invalid/publico/tenants/casa-a/publico/medios/p-servicio/bbb-imagen960.webp"
+          ],
+          "id": "p-servicio",
+          "moneda": "ARS",
+          "nombre": "Instalación",
+          "precio": 17810.25,
+          "precioCentavos": 1781025,
+          "stock": null,
+          "stockPorAlmacen": {
+            "deposito-1": 0,
+            "deposito-2": 0,
+            "tienda": 0
+          },
+          "urlProducto": "https://tienda.ejemplo.invalid/producto/instalacion"
+        },
+        {
+          "activo": true,
+          "area": "general",
+          "descripcion": "Lápiz de grafito.",
+          "disponible": true,
+          "foto": "https://medios.ejemplo.invalid/publico/tenants/casa-a/publico/medios/p-lapiz/bbb-imagen960.webp",
+          "fotos": [
+            "https://medios.ejemplo.invalid/publico/tenants/casa-a/publico/medios/p-lapiz/bbb-imagen960.webp"
+          ],
+          "id": "p-lapiz",
+          "moneda": "ARS",
+          "nombre": "Lápiz HB",
+          "precio": 1579.1755,
+          "precioCentavos": 157918,
+          "stock": 10,
+          "stockPorAlmacen": {
+            "deposito-1": 5,
+            "deposito-2": 0,
+            "tienda": 10
+          },
+          "urlProducto": "https://tienda.ejemplo.invalid/producto/lapiz-hb"
+        },
+        {
+          "activo": true,
+          "area": "general",
+          "descripcion": "Decimales incómodos.",
+          "disponible": true,
+          "foto": "https://medios.ejemplo.invalid/publico/tenants/casa-a/publico/medios/p-parlante/bbb-imagen960.webp",
+          "fotos": [
+            "https://medios.ejemplo.invalid/publico/tenants/casa-a/publico/medios/p-parlante/bbb-imagen960.webp"
+          ],
+          "id": "p-parlante",
+          "moneda": "ARS",
+          "nombre": "Parlante portátil",
+          "precio": 12265.3255,
+          "precioCentavos": 1226533,
+          "stock": 2,
+          "stockPorAlmacen": {
+            "deposito-1": 6,
+            "deposito-2": 0,
+            "tienda": 2
+          },
+          "urlProducto": "https://tienda.ejemplo.invalid/producto/parlante-portatil"
+        },
+        {
+          "activo": true,
+          "area": "general",
+          "descripcion": "Solo en depósito.",
+          "disponible": false,
+          "foto": "https://medios.ejemplo.invalid/publico/tenants/casa-a/publico/medios/p-televisor/bbb-imagen960.webp",
+          "fotos": [
+            "https://medios.ejemplo.invalid/publico/tenants/casa-a/publico/medios/p-televisor/bbb-imagen960.webp"
+          ],
+          "id": "p-televisor",
+          "moneda": "ARS",
+          "nombre": "Televisor 50\"",
+          "precio": 534901.175,
+          "precioCentavos": 53490118,
+          "stock": 0,
+          "stockPorAlmacen": {
+            "deposito-1": 2,
+            "deposito-2": 0,
+            "tienda": 0
+          },
+          "urlProducto": "https://tienda.ejemplo.invalid/producto/televisor-50"
+        }
+      ],
+      "mercado": "AR",
+      "moneda": "ARS",
+      "version": 1
+    },
+    "headers": {
+      "Cache-Control": "private, max-age=60",
+      "Content-Type": "application/json; charset=utf-8",
+      "ETag": "\"da3cbcca461df0b7390207d1d621fd08\"",
+      "Vary": "Authorization",
+      "X-Content-Type-Options": "nosniff"
+    },
+    "status": 200
+  },
+  "BO": {
+    "cuerpo": {
+      "cotizacion": {
+        "estado": "vigente",
+        "fecha": "2026-11-04",
+        "fuente": "manual",
+        "id": "BO-2026-11-04-1793804400000",
+        "par": "BOB/USD",
+        "valor": 6.965
+      },
+      "generadoEn": "2026-11-04T15:00:00.000Z",
+      "items": [
+        {
+          "activo": true,
+          "area": "general",
+          "descripcion": "Solo con precio en Bolivia.",
+          "disponible": true,
+          "foto": "https://medios.ejemplo.invalid/publico/tenants/casa-a/publico/medios/p-cable/bbb-imagen960.webp",
+          "fotos": [
+            "https://medios.ejemplo.invalid/publico/tenants/casa-a/publico/medios/p-cable/bbb-imagen960.webp"
+          ],
+          "id": "p-cable",
+          "moneda": "BOB",
+          "nombre": "Cable USB",
+          "precio": 23.19345,
+          "precioCentavos": 2319,
+          "stock": 7,
+          "stockPorAlmacen": {
+            "deposito-1": 0,
+            "deposito-2": 0,
+            "tienda": 7
+          },
+          "urlProducto": "https://tienda.ejemplo.invalid/producto/cable-usb"
+        },
+        {
+          "activo": true,
+          "area": "general",
+          "descripcion": "Sin existencias.",
+          "disponible": false,
+          "foto": "https://medios.ejemplo.invalid/publico/tenants/casa-a/publico/medios/p-agotado/bbb-imagen960.webp",
+          "fotos": [
+            "https://medios.ejemplo.invalid/publico/tenants/casa-a/publico/medios/p-agotado/bbb-imagen960.webp"
+          ],
+          "id": "p-agotado",
+          "moneda": "BOB",
+          "nombre": "Cargador agotado",
+          "precio": 104.475,
+          "precioCentavos": 10448,
+          "stock": 0,
+          "stockPorAlmacen": {
+            "deposito-1": 0,
+            "deposito-2": 0,
+            "tienda": 0
+          },
+          "urlProducto": "https://tienda.ejemplo.invalid/producto/cargador-agotado"
+        },
+        {
+          "activo": true,
+          "area": "general",
+          "descripcion": "Celular de ejemplo.",
+          "disponible": true,
+          "foto": "https://medios.ejemplo.invalid/publico/tenants/casa-a/publico/medios/p-celular/bbb-imagen960.webp",
+          "fotos": [
+            "https://medios.ejemplo.invalid/publico/tenants/casa-a/publico/medios/p-celular/bbb-imagen960.webp"
+          ],
+          "id": "p-celular",
+          "moneda": "BOB",
+          "nombre": "Celular X1",
+          "precio": 1392.93035,
+          "precioCentavos": 139293,
+          "stock": 3,
+          "stockPorAlmacen": {
+            "deposito-1": 0,
+            "deposito-2": 0,
+            "tienda": 3
+          },
+          "urlProducto": "https://tienda.ejemplo.invalid/producto/celular-x1"
+        },
+        {
+          "activo": true,
+          "area": "general",
+          "descripcion": "No controla stock.",
+          "disponible": true,
+          "foto": "https://medios.ejemplo.invalid/publico/tenants/casa-a/publico/medios/p-servicio/bbb-imagen960.webp",
+          "fotos": [
+            "https://medios.ejemplo.invalid/publico/tenants/casa-a/publico/medios/p-servicio/bbb-imagen960.webp"
+          ],
+          "id": "p-servicio",
+          "moneda": "BOB",
+          "nombre": "Instalación",
+          "precio": 104.475,
+          "precioCentavos": 10448,
+          "stock": null,
+          "stockPorAlmacen": {
+            "deposito-1": 0,
+            "deposito-2": 0,
+            "tienda": 0
+          },
+          "urlProducto": "https://tienda.ejemplo.invalid/producto/instalacion"
+        },
+        {
+          "activo": true,
+          "area": "general",
+          "descripcion": "Lápiz de grafito.",
+          "disponible": true,
+          "foto": "https://medios.ejemplo.invalid/publico/tenants/casa-a/publico/medios/p-lapiz/bbb-imagen960.webp",
+          "fotos": [
+            "https://medios.ejemplo.invalid/publico/tenants/casa-a/publico/medios/p-lapiz/bbb-imagen960.webp"
+          ],
+          "id": "p-lapiz",
+          "moneda": "BOB",
+          "nombre": "Lápiz HB",
+          "precio": 8.70625,
+          "precioCentavos": 871,
+          "stock": 10,
+          "stockPorAlmacen": {
+            "deposito-1": 5,
+            "deposito-2": 0,
+            "tienda": 10
+          },
+          "urlProducto": "https://tienda.ejemplo.invalid/producto/lapiz-hb"
+        },
+        {
+          "activo": true,
+          "area": "general",
+          "descripcion": "Decimales incómodos.",
+          "disponible": true,
+          "foto": "https://medios.ejemplo.invalid/publico/tenants/casa-a/publico/medios/p-parlante/bbb-imagen960.webp",
+          "fotos": [
+            "https://medios.ejemplo.invalid/publico/tenants/casa-a/publico/medios/p-parlante/bbb-imagen960.webp"
+          ],
+          "id": "p-parlante",
+          "moneda": "BOB",
+          "nombre": "Parlante portátil",
+          "precio": 139.23035,
+          "precioCentavos": 13923,
+          "stock": 2,
+          "stockPorAlmacen": {
+            "deposito-1": 6,
+            "deposito-2": 0,
+            "tienda": 2
+          },
+          "urlProducto": "https://tienda.ejemplo.invalid/producto/parlante-portatil"
+        },
+        {
+          "activo": true,
+          "area": "general",
+          "descripcion": "Solo en depósito.",
+          "disponible": false,
+          "foto": "https://medios.ejemplo.invalid/publico/tenants/casa-a/publico/medios/p-televisor/bbb-imagen960.webp",
+          "fotos": [
+            "https://medios.ejemplo.invalid/publico/tenants/casa-a/publico/medios/p-televisor/bbb-imagen960.webp"
+          ],
+          "id": "p-televisor",
+          "moneda": "BOB",
+          "nombre": "Televisor 50\"",
+          "precio": 3137.7325,
+          "precioCentavos": 313773,
+          "stock": 0,
+          "stockPorAlmacen": {
+            "deposito-1": 2,
+            "deposito-2": 0,
+            "tienda": 0
+          },
+          "urlProducto": "https://tienda.ejemplo.invalid/producto/televisor-50"
+        }
+      ],
+      "mercado": "BO",
+      "moneda": "BOB",
+      "version": 1
+    },
+    "headers": {
+      "Cache-Control": "private, max-age=60",
+      "Content-Type": "application/json; charset=utf-8",
+      "ETag": "\"929772af74fc396c1ae210bb867a9de7\"",
+      "Vary": "Authorization",
+      "X-Content-Type-Options": "nosniff"
+    },
+    "status": 200
+  }
+}

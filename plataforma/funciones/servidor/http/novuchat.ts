@@ -7,7 +7,7 @@ import {
   esDisponible, leerDocumentoProducto, UBICACION_DISPONIBILIDAD, UBICACIONES, confirmarPedidoFirmado,
 } from '@novutienda/inventarios';
 import {
-  esMercado, leerCotizacion, MONEDA_DE, precioFinal, SinCotizacionUtilizable, type CopiaCotizacion, type LimiteTasa, type Mercado, type Redondeo,
+  esMercadoDe, leerCotizacionDe, mercadoDe, precioFinal, SinCotizacionUtilizable, type ConfiguracionComercial, type CopiaCotizacion, type LimiteTasa,
 } from '@novutienda/nucleo';
 import { logger } from 'firebase-functions';
 import type { Entorno } from '../entorno.js';
@@ -88,15 +88,18 @@ async function existenciasPorProducto(e: Entorno, tenantId: string): Promise<Map
 const stockPorAlmacen = (por: Record<string, number> | undefined): Record<string, number> =>
   Object.fromEntries(UBICACIONES.map((u) => [u, por?.[u] ?? 0]));
 
-async function catalogo(e: Entorno, tenantId: string, mercado: Mercado, cfg: ConfigNovuchat): Promise<{ estable: Record<string, unknown>; generadoEn: string } | RespuestaApi> {
-  let cot: CopiaCotizacion;
+async function catalogo(e: Entorno, tenantId: string, comercial: ConfiguracionComercial, mercadoId: 'BO' | 'AR', cfg: ConfigNovuchat): Promise<{ estable: Record<string, unknown>; generadoEn: string } | RespuestaApi> {
+  // `mercadoId` ya se comprobó contra los mercados del tenant (`esMercadoDe`), por eso `mercadoDe` no devuelve `undefined`.
+  const mercado = mercadoDe(comercial, mercadoId)!;
+  let cot: CopiaCotizacion<string>;
   try {
-    cot = await leerCotizacion(e.almacenCotizaciones, mercado, e.ahora(), { tenantId });
+    cot = await leerCotizacionDe(e.almacenCotizaciones, mercadoId, e.ahora(), { tenantId, comercial });
   } catch (error) {
     if (error instanceof SinCotizacionUtilizable) return json(503, { error: 'sin_cotizacion' }, { 'Retry-After': '300' });
     throw error;
   }
-  const redondeo: Redondeo = await e.redondeo(tenantId);
+  // Redondeo: la misma fuente y los mismos fallos que en main (`e.redondeo`, `config/redondeo`).
+  const redondeo = await e.redondeo(tenantId);
   // Una sola definición de «publicado» (DS-1): existe la copia `publicado/producto__<id>` que escribe la publicación de la consola.
   // La lista de ids sale de `publicado/estado.productos`; `producto.publicado` de Inventarios no se lee.
   const [estadoDoc, existencias] = await Promise.all([
@@ -137,13 +140,17 @@ async function catalogo(e: Entorno, tenantId: string, mercado: Mercado, cfg: Con
   // Sin valor por defecto al bucket por defecto: `MEDIOS_BASE_URL` es obligatoria (config.ts) y apunta a un origen público APARTE.
   const base = cfg.mediosBaseUrl;
   if (base === '') throw new Error('MEDIOS_BASE_URL no configurada');
-  const moneda = MONEDA_DE[mercado];
-  const clave = mercado === 'BO' ? 'bo' : 'ar';
+  const moneda = mercado.monedaVenta;
+  // Los precios de Inventarios se guardan hoy por `bo`/`ar` (B2 los pasa a los mercados del tenant); por eso el mercado es BO o AR.
+  const clave = mercadoId === 'BO' ? 'bo' : 'ar';
   const items: Record<string, unknown>[] = [];
   for (const p of productos) {
     const pub = copiaDe.get(p.productoId);
     if (pub === undefined) continue; // sin copia publicada no hay ficha que mostrar
-    const precio = precioFinal(p.precioCentavos[clave] / 100, mercado, cot, redondeo);
+    // LEGADO a propósito (idéntico a main): `precioDeMercado` es más estricto (centavos, tope de decimales) y cambiaría el precio, la
+    // lista de ítems y el ETag del tenant de tres monedas cuando su `config/redondeo` usa `ninguno` o `decimales` de 3 a 6.
+    // Unificarlos exige antes decidir qué reglas de redondeo se admiten: pendiente de Andres.
+    const precio = precioFinal(p.precioCentavos[clave] / 100, mercadoId, cot, redondeo);
     if (precio.tipo !== 'precio') continue; // sin precio en este mercado
     const por = stockPorAlmacen(existencias.get(p.productoId));
     // Un producto que NO controla stock (sin `stockTotal`) está disponible mientras esté activo: `stock` va en `null` (no 0, que
@@ -162,7 +169,7 @@ async function catalogo(e: Entorno, tenantId: string, mercado: Mercado, cfg: Con
   return {
     generadoEn: new Date(e.ahora()).toISOString(),
     estable: {
-      version: 1, mercado, moneda,
+      version: 1, mercado: mercadoId, moneda,
       cotizacion: { id: cot.cotizacionId, par: cot.par, valor: cot.valor, fecha: cot.fecha, fuente: cot.fuente, estado: cot.estado },
       items,
     },
@@ -183,8 +190,11 @@ export async function manejarCatalogo(e: Entorno, req: PeticionHttp, cfg: Config
   const limitado = await limitar(cfg, a.hash, e.ahora());
   if (limitado !== undefined) return limitado;
   const mercado = req.consulta['mercado'];
-  if (!esMercado(mercado)) return json(400, { error: 'mercado_invalido' });
-  const c = await catalogo(e, a.tenantId, mercado, cfg);
+  // El mercado debe ser uno de los del tenant; cualquier otro responde lo mismo que hoy un mercado inválido.
+  const comercial = await e.comercialDelTenant(a.tenantId);
+  // Hasta B2 los precios de Inventarios existen solo para BO y AR: otro mercado del tenant responde como uno inválido.
+  if (!esMercadoDe(comercial, mercado) || (mercado !== 'BO' && mercado !== 'AR')) return json(400, { error: 'mercado_invalido' });
+  const c = await catalogo(e, a.tenantId, comercial, mercado, cfg);
   if (esRespuesta(c)) return c;
   const { estable, generadoEn } = c;
   return conEtag(req, estable, { version: 1, mercado: estable['mercado'], moneda: estable['moneda'], generadoEn, cotizacion: estable['cotizacion'], items: estable['items'] });

@@ -1,7 +1,7 @@
 // (a) Contrato con NovuChat: catálogo por mercado BO y AR, inventario y pedido firmado, con los manejadores reales
 // (`http/novuchat.ts`) sobre un Firestore de lectura doble. Reloj e ids fijos: sin emulador.
 import { calcularFirma } from '@novutienda/nucleo/servidor';
-import { limiteMemoria } from '@novutienda/nucleo';
+import { comercialLegado, limiteMemoria } from '@novutienda/nucleo';
 import { describe, expect, it } from 'vitest';
 import type { Entorno as EntornoServidor } from '../../plataforma/funciones/servidor/entorno.js';
 import { COLECCION_TOKENS, manejarCatalogo, manejarInventario, manejarPedido, sha256Hex, type ConfigNovuchat } from '../../plataforma/funciones/servidor/http/novuchat.js';
@@ -13,11 +13,17 @@ import { compararConFotoJson } from './foto.js';
 const TOKEN = 'token-ficticio-de-equivalencia';
 const SECRETO = 'secreto-ficticio-de-pedidos';
 
+const derivada = comercialLegado({ zonaHoraria: 'America/La_Paz', monedas: ['BOB', 'USD', 'ARS'] });
+if (!derivada.ok) throw new Error(derivada.error);
+const comercial = derivada.valor;
+
 async function preparar() {
   const e = await crearEscenario();
   e.db.poner(`${COLECCION_TOKENS}/${sha256Hex(TOKEN)}`, { tenantId: T, hash: sha256Hex(TOKEN), activo: true });
   const entorno = {
     firestore: firestoreDoble(e.db), db: e.db, almacenCotizaciones: e.almacen, ahora: () => AHORA, redondeo: () => Promise.resolve(REDONDEO),
+    // El documento del tenant de referencia es de la forma anterior: la configuración sale de la derivación explícita del núcleo.
+    comercialDelTenant: () => Promise.resolve(comercial), redondeoDelTenant: () => Promise.resolve(REDONDEO),
   } as unknown as EntornoServidor;
   const cfg: ConfigNovuchat = {
     sitioUrl: 'https://tienda.ejemplo.invalid', mediosBaseUrl: 'https://medios.ejemplo.invalid/publico', limite: limiteMemoria(1000, 60_000), secretoPedidos: SECRETO,
