@@ -624,6 +624,18 @@ export interface ResultadoImportacion {
 // Identidad, auditoría y cotizaciones (núcleo)
 // ---------------------------------------------------------------------------------------------------------------------
 
+/** Mercados y monedas del comercio de la sesión, tal como los entrega el servidor (nunca las fuentes del tipo de cambio). */
+export interface VistaComercial {
+  readonly mercados: readonly {
+    readonly id: string;
+    readonly nombre: string;
+    readonly monedaVenta: string;
+    readonly monedaBase: string;
+    readonly tieneTipoCambio: boolean;
+  }[];
+  readonly monedasCaja: readonly string[];
+}
+
 export interface UsuarioVista {
   readonly uid: string;
   readonly correo: string;
