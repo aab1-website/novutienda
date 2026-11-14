@@ -1,20 +1,27 @@
-import { abrirCaja, cerrarCaja, type DatosTurnoCerradoV1, type Moneda, type TransaccionIdentidad } from '@novutienda/nucleo';
-import { calcularArqueo } from './arqueo.js';
+import { abrirCaja, cerrarCaja, type DatosTurnoCerradoV1, type TransaccionIdentidad } from '@novutienda/nucleo';
+import { calcularArqueo, monedasDelTurno } from './arqueo.js';
 import {
-  ahoraDe, auditar, exigirActor, exigirCentavos, exigirRol, exigirTenant, exigirTexto, exigirUuid, leerObligatorio, publicar,
+  ahoraDe, auditar, exigirActor, exigirConfiguracionSoportada, exigirCentavos, exigirRol, exigirTenant, exigirTexto, exigirUuid, leerObligatorio, publicar,
   rutaTurno, rutaTurnoActivo, type DepsPos,
 } from './contexto.js';
 import { ErrorPos } from './errores.js';
 import { leerTurno, textoDe } from './lectura.js';
-import { CAJA_UNICA, MONEDAS_POS, type ActorPos, type MontosPorMoneda, type TurnoPos } from './tipos.js';
+import { CAJA_UNICA, type ActorPos, type MontosPorMoneda, type TurnoPos } from './tipos.js';
 
-/** Valida un objeto de montos por moneda (apertura o conteo): solo BOB, USD, ARS, centavos enteros no negativos. */
-export function validarMontosPorMoneda(x: unknown, nombre: string, exigirAlguna: boolean): MontosPorMoneda {
+const MONEDA_ISO = /^[A-Z]{3}$/;
+
+/**
+ * Valida un objeto de montos por moneda (apertura o conteo): códigos ISO, centavos enteros no negativos y, si se pasa
+ * `permitidas`, solo esas monedas.
+ */
+export function validarMontosPorMoneda(x: unknown, nombre: string, exigirAlguna: boolean, permitidas?: readonly string[]): MontosPorMoneda {
   if (typeof x !== 'object' || x === null || Array.isArray(x)) throw new ErrorPos('entrada-invalida', `${nombre} debe indicar los montos por moneda`);
-  const r: Partial<Record<Moneda, number>> = {};
+  const r: Record<string, number> = {};
   for (const [k, v] of Object.entries(x)) {
-    if (!MONEDAS_POS.includes(k as Moneda)) throw new ErrorPos('entrada-invalida', `${nombre}: moneda desconocida «${k}»`);
-    r[k as Moneda] = exigirCentavos(v, `${nombre}.${k}`);
+    if (!MONEDA_ISO.test(k) || (permitidas !== undefined && !permitidas.includes(k))) {
+      throw new ErrorPos('entrada-invalida', `${nombre}: moneda desconocida «${k}»`);
+    }
+    r[k] = exigirCentavos(v, `${nombre}.${k}`);
   }
   if (exigirAlguna && Object.keys(r).length === 0) throw new ErrorPos('entrada-invalida', `${nombre} necesita al menos una moneda`);
   return r;
@@ -34,13 +41,13 @@ export async function abrirTurno(
   exigirTenant(tenantId);
   exigirActor(actor);
   const turnoId = exigirUuid(turnoIdEntrada, 'turnoId');
-  const apertura = validarMontosPorMoneda(aperturaEntrada, 'apertura', true);
+  const apertura = validarMontosPorMoneda(aperturaEntrada, 'apertura', true, deps.comercial.monedas);
   const ahora = ahoraDe(deps);
   return deps.db.runTransaction(async (tx) => {
     const previo = await leerObligatorio(tx, rutaTurno(tenantId, turnoId));
     if (previo !== undefined) {
       if (textoDe(previo, 'cajeroUid') !== actor.uid) throw new ErrorPos('request-en-uso', 'Ese identificador de turno ya se usó');
-      return leerTurno(previo);
+      return leerTurno(previo, deps.comercial.monedas);
     }
     if ((await tx.get(rutaTurnoActivo(tenantId))).existe) throw new ErrorPos('turno-ya-abierto', 'Ya hay un turno abierto en la caja');
     await abrirCaja(tx, tenantId);
@@ -77,22 +84,25 @@ async function cerrar(
   contadoEntrada: unknown,
   opc: OpcionesCierre,
 ): Promise<{ turno: TurnoPos; arqueo: DatosTurnoCerradoV1['monedas'] }> {
+  exigirConfiguracionSoportada(deps);
   const contado = validarMontosPorMoneda(contadoEntrada, 'contado', false);
   const ahora = ahoraDe(deps);
   return deps.db.runTransaction(async (tx: TransaccionIdentidad) => {
     const raw = await leerObligatorio(tx, rutaTurno(tenantId, turnoId));
     if (raw === undefined) throw new ErrorPos('sin-turno', 'El turno no existe');
-    const turno = leerTurno(raw);
+    const turno = leerTurno(raw, deps.comercial.monedas);
     // Solo se cierra un turno abierto: un doble cierre liberaría el cupo de la caja de otro turno.
     if (turno.estado !== 'abierto') throw new ErrorPos('turno-no-abierto', 'El turno ya está cerrado');
     if (!opc.forzado && turno.cajeroUid !== actor.uid) throw new ErrorPos('turno-ajeno', 'Solo quien abrió el turno puede cerrarlo');
     const activo = await leerObligatorio(tx, rutaTurnoActivo(tenantId));
-    const arqueo = calcularArqueo(turno, contado);
+    // El conteo admite las monedas declaradas y las que el turno ya movió (un turno viejo se puede cerrar).
+    validarMontosPorMoneda(contado, 'contado', false, [...deps.comercial.monedas, ...monedasDelTurno(turno)]);
+    const arqueo = calcularArqueo(turno, contado, deps.comercial.monedas) as DatosTurnoCerradoV1['monedas'];
     await cerrarCaja(tx, tenantId);
-    const esperado: Partial<Record<Moneda, number>> = {};
-    const contadoFinal: Partial<Record<Moneda, number>> = {};
-    const diferencia: Partial<Record<Moneda, number>> = {};
-    for (const [m, a] of Object.entries(arqueo) as [Moneda, (typeof arqueo)[Moneda] & object][]) {
+    const esperado: Record<string, number> = {};
+    const contadoFinal: Record<string, number> = {};
+    const diferencia: Record<string, number> = {};
+    for (const [m, a] of Object.entries(arqueo) as [string, NonNullable<(typeof arqueo)[keyof typeof arqueo]>][]) {
       esperado[m] = a.esperado;
       contadoFinal[m] = a.contado;
       diferencia[m] = a.diferencia;
@@ -156,12 +166,12 @@ export async function cerrarTurnoForzado(
 }
 
 /** Turno abierto vigente (puntero `pos_config/turno_activo`), leído dentro de la transacción. */
-export async function leerTurnoAbierto(tx: TransaccionIdentidad, tenantId: string): Promise<{ turno: TurnoPos; raw: Readonly<Record<string, unknown>> } | undefined> {
+export async function leerTurnoAbierto(tx: TransaccionIdentidad, tenantId: string, declaradas?: readonly string[]): Promise<{ turno: TurnoPos; raw: Readonly<Record<string, unknown>> } | undefined> {
   const activo = await leerObligatorio(tx, rutaTurnoActivo(tenantId));
   if (activo === undefined) return undefined;
   const raw = await leerObligatorio(tx, rutaTurno(tenantId, textoDe(activo, 'turnoId')));
   if (raw === undefined) throw new ErrorPos('dato-corrupto', 'El turno activo no existe');
-  const turno = leerTurno(raw);
+  const turno = leerTurno(raw, declaradas);
   if (turno.estado !== 'abierto') throw new ErrorPos('dato-corrupto', 'El turno activo no está abierto');
   return { turno, raw };
 }

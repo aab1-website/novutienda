@@ -1,6 +1,5 @@
-import type { Moneda } from '@novutienda/nucleo';
 import { ErrorPos } from './errores.js';
-import { MONEDAS_POS, type MontosPorMoneda, type TotalesMoneda, type TotalesTurno, type TurnoPos, type VentaPos } from './tipos.js';
+import { ORDEN_MONEDAS_POR_OMISION, type MontosPorMoneda, type TotalesMoneda, type TotalesTurno, type TurnoPos, type VentaPos } from './tipos.js';
 
 type Datos = Readonly<Record<string, unknown>>;
 
@@ -15,19 +14,36 @@ const texto = (x: unknown, que: string): string => {
   return x;
 };
 
-function montos(x: unknown, que: string): MontosPorMoneda {
+const MONEDA_ISO = /^[A-Z]{3}$/;
+
+/**
+ * Ordena códigos de moneda: primero los declarados (en su orden) y después el resto, ordenado.
+ * Una venta o un turno viejos pueden traer una moneda que el comercio ya no declara: se leen igual.
+ */
+export function ordenarMonedas(presentes: Iterable<string>, declaradas: readonly string[] = ORDEN_MONEDAS_POR_OMISION): string[] {
+  const set = new Set(presentes);
+  return [...declaradas.filter((m) => set.has(m)), ...[...set].filter((m) => !declaradas.includes(m)).sort()];
+}
+
+/** Claves de moneda de un objeto guardado: cualquier código ISO de tres letras mayúsculas; otra cosa es dato corrupto. */
+function clavesMoneda(x: Datos, que: string, declaradas: readonly string[]): string[] {
+  const claves = Object.keys(x).filter((k) => x[k] !== undefined);
+  for (const k of claves) if (!MONEDA_ISO.test(k)) throw corrupto(`${que}: moneda «${k}»`);
+  return ordenarMonedas(claves, declaradas);
+}
+
+function montos(x: unknown, que: string, declaradas: readonly string[]): MontosPorMoneda {
   if (!esObjeto(x)) throw corrupto(que);
-  const r: Partial<Record<Moneda, number>> = {};
-  for (const m of MONEDAS_POS) if (x[m] !== undefined) r[m] = entero(x[m], `${que}.${m}`);
+  const r: Record<string, number> = {};
+  for (const m of clavesMoneda(x, que, declaradas)) r[m] = entero(x[m], `${que}.${m}`);
   return r;
 }
 
-function totales(x: unknown): TotalesTurno {
+function totales(x: unknown, declaradas: readonly string[]): TotalesTurno {
   if (!esObjeto(x)) throw corrupto('totales');
-  const r: Partial<Record<Moneda, TotalesMoneda>> = {};
-  for (const m of MONEDAS_POS) {
+  const r: Record<string, TotalesMoneda> = {};
+  for (const m of clavesMoneda(x, 'totales', declaradas)) {
     const t = x[m];
-    if (t === undefined) continue;
     if (!esObjeto(t)) throw corrupto(`totales.${m}`);
     r[m] = {
       efectivo: entero(t['efectivo'], 'efectivo'),
@@ -41,7 +57,8 @@ function totales(x: unknown): TotalesTurno {
   return r;
 }
 
-export function leerTurno(d: Datos | undefined): TurnoPos {
+/** `declaradas`: monedas del comercio, para ordenar las claves; por omisión, el orden del tenant de referencia. */
+export function leerTurno(d: Datos | undefined, declaradas: readonly string[] = ORDEN_MONEDAS_POR_OMISION): TurnoPos {
   if (!esObjeto(d)) throw corrupto('turno');
   const estado = d['estado'];
   if (estado !== 'abierto' && estado !== 'cerrado' && estado !== 'cerrado_forzado') throw corrupto('estado del turno');
@@ -50,8 +67,8 @@ export function leerTurno(d: Datos | undefined): TurnoPos {
     cajaId: texto(d['cajaId'], 'cajaId'),
     cajeroUid: texto(d['cajeroUid'], 'cajeroUid'),
     estado,
-    apertura: montos(d['apertura'], 'apertura'),
-    totales: totales(d['totales']),
+    apertura: montos(d['apertura'], 'apertura', declaradas),
+    totales: totales(d['totales'], declaradas),
     abiertoEnMs: entero(d['abiertoEnMs'], 'abiertoEnMs'),
   };
 }
@@ -65,7 +82,7 @@ export function leerVenta(d: Datos | undefined): VentaPos {
   texto(d['turnoId'], 'turnoId');
   texto(d['cajeroUid'], 'cajeroUid');
   entero(d['total'], 'total');
-  if (!MONEDAS_POS.includes(d['moneda'] as Moneda)) throw corrupto('moneda');
+  if (typeof d['moneda'] !== 'string' || !MONEDA_ISO.test(d['moneda'])) throw corrupto('moneda');
   if (!Array.isArray(d['lineas']) || !Array.isArray(d['pagos'])) throw corrupto('líneas o pagos');
   return d as unknown as VentaPos;
 }

@@ -1,8 +1,15 @@
-import type { CopiaCotizacion, Mercado, Moneda } from '@novutienda/nucleo';
+import type { CopiaCotizacion } from '@novutienda/nucleo';
 
 export type MedioPago = 'efectivo' | 'qr' | 'transferencia' | 'credito';
 export const MEDIOS_PAGO: readonly MedioPago[] = ['efectivo', 'qr', 'transferencia', 'credito'];
-export const MONEDAS_POS: readonly Moneda[] = ['BOB', 'USD', 'ARS'];
+/**
+ * Monedas del tenant de referencia, en su orden. Solo sirve de orden por omisión de las funciones puras:
+ * las monedas de la caja salen de la configuración comercial del comercio (`deps.comercial.monedas`).
+ * @deprecated Usar `monedasCaja(comercial)`.
+ */
+export const MONEDAS_POS: readonly string[] = ['BOB', 'USD', 'ARS'];
+/** Orden por omisión de las funciones puras cuando no reciben las monedas declaradas (el del tenant de referencia). */
+export const ORDEN_MONEDAS_POR_OMISION: readonly string[] = ['BOB', 'USD', 'ARS'];
 export const ALMACENES_POS: readonly string[] = ['tienda', 'deposito-1', 'deposito-2'];
 /** El plan contrata una sola caja activa por turno. */
 export const CAJA_UNICA = 'caja-1';
@@ -22,8 +29,8 @@ export interface TotalesMoneda {
   readonly egresos: number;
 }
 
-export type TotalesTurno = Readonly<Partial<Record<Moneda, TotalesMoneda>>>;
-export type MontosPorMoneda = Readonly<Partial<Record<Moneda, number>>>;
+export type TotalesTurno = Readonly<Partial<Record<string, TotalesMoneda>>>;
+export type MontosPorMoneda = Readonly<Partial<Record<string, number>>>;
 
 export type EstadoTurno = 'abierto' | 'cerrado' | 'cerrado_forzado';
 
@@ -56,7 +63,7 @@ export interface LineaVenta {
 
 export interface PagoVentaPos {
   readonly medio: MedioPago;
-  readonly moneda: Moneda;
+  readonly moneda: string;
   readonly monto: number;
   readonly cambio?: number;
   readonly referencia?: string;
@@ -77,9 +84,9 @@ export interface VentaPos {
   readonly cajaId: string;
   readonly cajeroUid: string;
   readonly estado: 'confirmada' | 'anulada';
-  readonly moneda: Moneda;
-  readonly mercado: Mercado;
-  readonly cotizacion: CopiaCotizacion | null;
+  readonly moneda: string;
+  readonly mercado: string;
+  readonly cotizacion: CopiaCotizacion<string> | null;
   readonly lineas: readonly LineaVenta[];
   readonly subtotal: number;
   readonly descuento?: DescuentoVentaPos;

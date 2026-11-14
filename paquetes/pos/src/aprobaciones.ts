@@ -1,11 +1,11 @@
-import type { Moneda, TransaccionIdentidad } from '@novutienda/nucleo';
+import type { TransaccionIdentidad } from '@novutienda/nucleo';
 import {
-  VIGENCIA_APROBACION_POR_DEFECTO_MS, ahoraDe, auditar, exigirActor, exigirCentavos, exigirRol, exigirTenant, exigirTexto, exigirUuid,
+  VIGENCIA_APROBACION_POR_DEFECTO_MS, ahoraDe, auditar, exigirActor, exigirCentavos, exigirMonedaDeCaja, exigirRol, exigirTenant, exigirTexto, exigirUuid,
   leerObligatorio, rutaAprobacion, type DepsPos,
 } from './contexto.js';
 import { ErrorPos } from './errores.js';
 import { enteroDe, textoDe } from './lectura.js';
-import { MONEDAS_POS, type ActorPos } from './tipos.js';
+import type { ActorPos } from './tipos.js';
 
 export type TipoAprobacion = 'descuento' | 'credito';
 export type EstadoAprobacion = 'pendiente' | 'aprobada' | 'rechazada' | 'usada';
@@ -15,7 +15,7 @@ export interface AprobacionPos {
   readonly aprobacionId: string;
   readonly tipo: TipoAprobacion;
   readonly estado: EstadoAprobacion;
-  readonly moneda: Moneda;
+  readonly moneda: string;
   /** Tope aprobado en centavos (descuento máximo o crédito máximo). */
   readonly monto: number;
   readonly motivo: string;
@@ -31,7 +31,7 @@ export interface AprobacionPos {
 
 export interface SolicitudAprobacion {
   readonly tipo: TipoAprobacion;
-  readonly moneda: Moneda;
+  readonly moneda: string;
   readonly monto: number;
   readonly motivo: string;
   readonly deudor?: string;
@@ -49,7 +49,7 @@ export async function solicitarAprobacion(
   exigirActor(actor);
   const aprobacionId = exigirUuid(aprobacionIdEntrada, 'aprobacionId');
   if (s.tipo !== 'descuento' && s.tipo !== 'credito') throw new ErrorPos('entrada-invalida', 'tipo de aprobación inválido');
-  if (!MONEDAS_POS.includes(s.moneda)) throw new ErrorPos('entrada-invalida', 'moneda inválida');
+  exigirMonedaDeCaja(deps, s.moneda);
   const monto = exigirCentavos(s.monto, 'monto', 1);
   const motivo = exigirTexto(s.motivo, 'motivo');
   const deudor = s.tipo === 'credito' ? exigirTexto(s.deudor, 'deudor', 100) : undefined;
@@ -119,7 +119,7 @@ export async function resolverAprobacion(
 
 export interface UsoEsperado {
   readonly tipo: TipoAprobacion;
-  readonly moneda: Moneda;
+  readonly moneda: string;
   readonly monto: number;
   readonly deudor?: string;
 }

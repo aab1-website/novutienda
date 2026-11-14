@@ -1,16 +1,17 @@
-import { aCentavos, precioFinal, type CopiaCotizacion, type Mercado, type Moneda, type TransaccionIdentidad } from '@novutienda/nucleo';
+import { esMercadoDe, mercadoDe, monedaBaseDe, monedaDe, type CopiaCotizacion, type TransaccionIdentidad } from '@novutienda/nucleo';
 import { leerAprobacionParaUso, marcarAprobacionUsada, type AprobacionLeida } from './aprobaciones.js';
 import { sumarTotales, deltaPorMedio } from './arqueo.js';
 import { TOTAL_MAXIMO, descuentoExcedeTope, validarPagos } from './calculo.js';
 import { leerConfigPos } from './config.js';
 import {
-  ahoraDe, auditar, formatearNumeroRecibo, cotizacionVigente, exigirActor, exigirCentavos, exigirTenant, exigirTexto, exigirUuid, leerObligatorio, publicar,
+  ahoraDe, auditar, formatearNumeroRecibo, cotizacionVigente, exigirActor, exigirCentavos, exigirTenant, exigirTexto, exigirUuid, exigirConfiguracionSoportada, leerObligatorio, publicar,
   rutaContadorRecibo, rutaCredito, rutaTurno, rutaVenta, type DepsPos,
 } from './contexto.js';
 import { ErrorPos } from './errores.js';
 import { leerVenta } from './lectura.js';
+import { centavosDeLinea } from './precio.js';
 import {
-  ALMACENES_POS, MONEDAS_POS, type ActorPos, type LineaVenta, type TotalesTurno, type VentaPos,
+  ALMACENES_POS, type ActorPos, type LineaVenta, type TotalesTurno, type VentaPos,
 } from './tipos.js';
 import { leerTurnoAbierto } from './turno.js';
 
@@ -25,10 +26,10 @@ export interface LineaCarrito {
 }
 
 export interface Carrito {
-  /** Lista de precios del mercado de la venta (BO o AR). */
-  readonly mercado: Mercado;
-  /** BOB solo con BO, ARS solo con AR; USD con cualquiera. */
-  readonly moneda: Moneda;
+  /** Lista de precios del mercado de la venta: uno de los mercados que declara el comercio. */
+  readonly mercado: string;
+  /** La moneda de venta o la moneda base de ESE mercado, y además una de las monedas de caja del comercio. */
+  readonly moneda: string;
   readonly lineas: readonly LineaCarrito[];
   readonly descuento?: { readonly monto: number; readonly motivo: string };
   readonly cliente?: { readonly nombre: string; readonly telefono?: string };
@@ -42,17 +43,17 @@ export interface ResultadoVenta {
   readonly repetida: boolean;
 }
 
-const MONEDA_DEL_MERCADO: Readonly<Record<Mercado, Moneda>> = { BO: 'BOB', AR: 'ARS' };
 const MAX_LINEAS = 100;
 const MAX_CANTIDAD = 100_000;
 /** Unidades con número de serie que admite una venta, sumando todas las líneas. */
 export const MAX_SERIES_POR_VENTA = 100;
 
-function validarCarrito(c: Carrito): void {
+function validarCarrito(deps: DepsPos, c: Carrito): void {
   if (typeof c !== 'object' || c === null) throw new ErrorPos('entrada-invalida', 'Carrito inválido');
-  if (c.mercado !== 'BO' && c.mercado !== 'AR') throw new ErrorPos('entrada-invalida', 'mercado debe ser BO o AR');
-  if (!MONEDAS_POS.includes(c.moneda)) throw new ErrorPos('entrada-invalida', 'moneda inválida');
-  if (c.moneda !== 'USD' && c.moneda !== MONEDA_DEL_MERCADO[c.mercado]) {
+  const { comercial } = deps;
+  if (!esMercadoDe(comercial, c.mercado)) throw new ErrorPos('entrada-invalida', 'El mercado no es uno de los que declara el comercio');
+  if (typeof c.moneda !== 'string' || !comercial.monedas.includes(c.moneda)) throw new ErrorPos('entrada-invalida', 'moneda inválida');
+  if (c.moneda !== monedaDe(comercial, c.mercado) && c.moneda !== monedaBaseDe(comercial, c.mercado)) {
     throw new ErrorPos('entrada-invalida', 'La moneda no corresponde a la lista de precios del mercado');
   }
   if (!Array.isArray(c.lineas) || c.lineas.length === 0 || c.lineas.length > MAX_LINEAS) {
@@ -98,25 +99,15 @@ async function precioDeLinea(
   tx: TransaccionIdentidad,
   tenantId: string,
   c: Carrito,
-  cotizacion: CopiaCotizacion | null,
+  cotizacion: CopiaCotizacion<string> | null,
   l: LineaCarrito,
 ): Promise<LineaVenta> {
-  const prod = await deps.catalogo.leerProducto(tx, tenantId, l.productoId);
+  const prod = await deps.catalogo.leerProducto(tx, tenantId, l.productoId, deps.comercial);
   if (prod === null) throw new ErrorPos('producto-inexistente', 'El producto no existe');
   if (!prod.activo) throw new ErrorPos('producto-inactivo', 'El producto está inactivo');
-  const usd = prod.preciosUsd[c.mercado];
-  if (usd === undefined) throw new ErrorPos('sin-precio', 'El producto no tiene precio en esta lista');
-  let centavos: number;
-  if (c.moneda === 'USD') {
-    if (!Number.isFinite(usd) || usd <= 0) throw new ErrorPos('sin-precio', 'El producto no tiene precio (a consultar)');
-    centavos = aCentavos(usd);
-  } else {
-    if (cotizacion === null) throw new ErrorPos('dato-corrupto', 'Falta la cotización');
-    const p = precioFinal(usd, c.mercado, { par: cotizacion.par, valor: cotizacion.valor }, deps.redondeo);
-    if (p.tipo === 'sin_precio') throw new ErrorPos('sin-precio', 'El producto no tiene precio (a consultar)');
-    if (p.tipo === 'invalido') throw new ErrorPos('sin-precio', `No se pudo calcular el precio: ${p.motivo}`);
-    centavos = p.centavos;
-  }
+  const mercado = mercadoDe(deps.comercial, c.mercado);
+  if (mercado === undefined) throw new ErrorPos('entrada-invalida', 'El mercado no es uno de los que declara el comercio');
+  const centavos = centavosDeLinea({ mercado, moneda: c.moneda, base: prod.preciosBase[c.mercado], nombre: prod.nombre, cotizacion, redondeo: deps.redondeo });
   if (l.precioMostrado !== undefined && l.precioMostrado !== centavos) {
     throw new ErrorPos('precio-alterado', 'El precio mostrado no coincide con el del servidor');
   }
@@ -159,7 +150,8 @@ export async function confirmarVenta(
   exigirTenant(tenantId);
   exigirActor(actor);
   const ventaId = exigirUuid(requestId, 'requestId');
-  validarCarrito(carrito);
+  exigirConfiguracionSoportada(deps);
+  validarCarrito(deps, carrito);
   const ahora = ahoraDe(deps);
   return deps.db.runTransaction(async (tx) => {
     // 1) Idempotencia.
@@ -170,13 +162,16 @@ export async function confirmarVenta(
       return { venta: v, repetida: true };
     }
     // 2) Turno abierto del usuario y caja activa.
-    const abierto = await leerTurnoAbierto(tx, tenantId);
+    const abierto = await leerTurnoAbierto(tx, tenantId, deps.comercial.monedas);
     if (abierto === undefined) throw new ErrorPos('sin-turno', 'No hay un turno abierto: abra el turno antes de vender');
     const { turno } = abierto;
     if (turno.cajeroUid !== actor.uid) throw new ErrorPos('turno-ajeno', 'El turno abierto es de otro usuario');
-    const config = await leerConfigPos(tx, tenantId);
+    const config = await leerConfigPos(tx, tenantId, deps.comercial);
     // 3) Precios y total recalculados en el servidor.
-    const cotizacion = carrito.moneda === 'USD' ? null : await cotizacionVigente(deps, tx, tenantId, carrito.mercado);
+    const mercadoVenta = mercadoDe(deps.comercial, carrito.mercado);
+    const cotizacion = mercadoVenta?.tipoCambio != null && carrito.moneda === mercadoVenta.monedaVenta
+      ? await cotizacionVigente(deps, tx, tenantId, carrito.mercado)
+      : null;
     const lineas: LineaVenta[] = [];
     for (const l of carrito.lineas) lineas.push(await precioDeLinea(deps, tx, tenantId, carrito, cotizacion, l));
     const subtotal = lineas.reduce((s, l) => s + l.cantidad * l.precioUnitario, 0);

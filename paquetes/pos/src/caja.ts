@@ -1,16 +1,15 @@
-import type { Moneda } from '@novutienda/nucleo';
 import { efectivoDisponible, sumarTotales } from './arqueo.js';
 import {
-  ahoraDe, auditar, exigirActor, exigirCentavos, exigirTenant, exigirTexto, exigirUuid, leerObligatorio, rutaMovimiento, rutaTurno, type DepsPos,
+  ahoraDe, auditar, exigirActor, exigirCentavos, exigirMonedaDeCaja, exigirTenant, exigirTexto, exigirUuid, leerObligatorio, rutaMovimiento, rutaTurno, type DepsPos,
 } from './contexto.js';
 import { ErrorPos } from './errores.js';
 import { textoDe } from './lectura.js';
-import { MONEDAS_POS, type ActorPos, type TurnoPos } from './tipos.js';
+import { type ActorPos, type TurnoPos } from './tipos.js';
 import { leerTurnoAbierto } from './turno.js';
 
 export interface MovimientoCajaEntrada {
   readonly tipo: 'ingreso' | 'egreso';
-  readonly moneda: Moneda;
+  readonly moneda: string;
   readonly monto: number;
   readonly motivo: string;
   readonly comprobante?: string;
@@ -19,7 +18,7 @@ export interface MovimientoCajaEntrada {
 export interface MovimientoCaja {
   readonly requestId: string;
   readonly tipo: 'ingreso' | 'egreso';
-  readonly moneda: Moneda;
+  readonly moneda: string;
   readonly monto: number;
   readonly motivo: string;
   readonly comprobante?: string;
@@ -48,7 +47,7 @@ export async function registrarMovimientoCaja(
   exigirActor(actor);
   const requestId = exigirUuid(requestIdEntrada, 'requestId');
   if (m.tipo !== 'ingreso' && m.tipo !== 'egreso') throw new ErrorPos('entrada-invalida', 'tipo debe ser ingreso o egreso');
-  if (!MONEDAS_POS.includes(m.moneda)) throw new ErrorPos('entrada-invalida', 'moneda inválida');
+  exigirMonedaDeCaja(deps, m.moneda);
   const monto = exigirCentavos(m.monto, 'monto', 1);
   const motivo = exigirTexto(m.motivo, 'El motivo');
   const comprobante = m.comprobante === undefined ? undefined : exigirTexto(m.comprobante, 'comprobante', 100);
@@ -59,7 +58,7 @@ export async function registrarMovimientoCaja(
       if (textoDe(previo, 'registradoPor') !== actor.uid) throw new ErrorPos('request-en-uso', 'Ese identificador ya se usó');
       return { movimiento: previo as unknown as MovimientoCaja, repetido: true };
     }
-    const abierto = await leerTurnoAbierto(tx, tenantId);
+    const abierto = await leerTurnoAbierto(tx, tenantId, deps.comercial.monedas);
     if (abierto === undefined) throw new ErrorPos('sin-turno', 'No hay un turno abierto');
     exigirOperarTurno(abierto.turno, actor);
     if (m.tipo === 'egreso' && monto > efectivoDisponible(abierto.turno, m.moneda)) {

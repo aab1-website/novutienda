@@ -1,9 +1,9 @@
-import type { Moneda, Rol, TransaccionIdentidad } from '@novutienda/nucleo';
+import type { ConfiguracionComercial, Rol, TransaccionIdentidad } from '@novutienda/nucleo';
 import {
   ahoraDe, auditar, exigirActor, exigirRol, exigirTenant, leerObligatorio, rutaConfig, type DepsPos,
 } from './contexto.js';
 import { ErrorPos } from './errores.js';
-import { MEDIOS_PAGO, MONEDAS_POS, type ActorPos, type MedioPago } from './tipos.js';
+import { MEDIOS_PAGO, type ActorPos, type MedioPago } from './tipos.js';
 
 /** Configuración del POS (`pos_config/main`). Topes de descuento en puntos básicos (500 = 5 %). */
 export interface ConfigPos {
@@ -12,7 +12,7 @@ export interface ConfigPos {
   readonly logoUrl?: string;
   readonly colores: { readonly primario: string; readonly secundario: string };
   readonly mediosHabilitados: readonly MedioPago[];
-  readonly monedaPorDefecto: Moneda;
+  readonly monedaPorDefecto: string;
   readonly topesDescuentoBp: Readonly<Record<Rol, number>>;
   readonly textoRecibo: string;
   /** Serie del correlativo del recibo (`contadores/recibo_{serie}`). */
@@ -22,8 +22,9 @@ export interface ConfigPos {
 export const TOPE_DESCUENTO_CAJ_BP = 500;
 
 /**
- * Valores iniciales. El tope de `caj` es la decisión de Andres (5 %). El de `sup` y `adm`
+ * Valores iniciales del tenant de referencia. El tope de `caj` es la decisión de Andres (5 %). El de `sup` y `adm`
  * (100 %) es un supuesto: son quienes aprueban; el administrador lo ajusta en la configuración.
+ * @deprecated Usar `configPosPorDefecto(comercial)`: la moneda por defecto sale de la configuración del comercio.
  */
 export const CONFIG_POS_POR_DEFECTO: ConfigPos = {
   negocio: { nombre: 'Mi negocio' },
@@ -34,6 +35,13 @@ export const CONFIG_POS_POR_DEFECTO: ConfigPos = {
   textoRecibo: '',
   serieRecibo: 'A',
 };
+
+/** Valores iniciales de un comercio: igual que `CONFIG_POS_POR_DEFECTO`, con la moneda de venta de su primer mercado. */
+export function configPosPorDefecto(comercial: ConfiguracionComercial): ConfigPos {
+  const primero = comercial.mercados[0]?.monedaVenta;
+  if (primero === undefined) throw new ErrorPos('dato-corrupto', 'La configuración comercial no declara mercados');
+  return { ...CONFIG_POS_POR_DEFECTO, monedaPorDefecto: primero };
+}
 
 type Obj = Readonly<Record<string, unknown>>;
 const esObjeto = (x: unknown): x is Obj => typeof x === 'object' && x !== null && !Array.isArray(x);
@@ -53,7 +61,7 @@ const HEX = /^#[0-9a-fA-F]{6}$/;
 const SERIE = /^[A-Z0-9]{1,6}$/;
 
 /** Valida una configuración completa; lanza `ErrorPos('entrada-invalida')`. Rechaza claves desconocidas. */
-export function validarConfigPos(x: unknown): ConfigPos {
+export function validarConfigPos(x: unknown, monedasDeclaradas?: readonly string[]): ConfigPos {
   if (!esObjeto(x)) throw invalida('debe ser un objeto');
   soloClaves(x, ['negocio', 'logoUrl', 'colores', 'mediosHabilitados', 'monedaPorDefecto', 'topesDescuentoBp', 'textoRecibo', 'serieRecibo'], 'la configuración');
   const n = x['negocio'];
@@ -77,7 +85,8 @@ export function validarConfigPos(x: unknown): ConfigPos {
     throw invalida('mediosHabilitados debe listar sin repetir al menos un medio válido');
   }
   const moneda = x['monedaPorDefecto'];
-  if (!MONEDAS_POS.includes(moneda as Moneda)) throw invalida('monedaPorDefecto debe ser BOB, USD o ARS');
+  if (typeof moneda !== 'string' || !/^[A-Z]{3}$/.test(moneda)) throw invalida('monedaPorDefecto debe ser un código de moneda de tres letras mayúsculas');
+  if (monedasDeclaradas !== undefined && !monedasDeclaradas.includes(moneda)) throw invalida('monedaPorDefecto debe ser una de las monedas que el comercio declara para la caja');
   const t = x['topesDescuentoBp'];
   if (!esObjeto(t)) throw invalida('topesDescuentoBp es obligatorio');
   soloClaves(t, ['caj', 'sup', 'adm'], 'topesDescuentoBp');
@@ -94,7 +103,7 @@ export function validarConfigPos(x: unknown): ConfigPos {
     ...(logoUrl !== undefined ? { logoUrl } : {}),
     colores: { primario: c['primario'], secundario: c['secundario'] },
     mediosHabilitados: medios as MedioPago[],
-    monedaPorDefecto: moneda as Moneda,
+    monedaPorDefecto: moneda,
     topesDescuentoBp: { caj: t['caj'] as number, sup: t['sup'] as number, adm: t['adm'] as number },
     textoRecibo,
     serieRecibo: serie,
@@ -102,10 +111,11 @@ export function validarConfigPos(x: unknown): ConfigPos {
 }
 
 /** Lee la configuración dentro de la transacción; ausente = valores iniciales; presente e inválida = error. */
-export async function leerConfigPos(tx: TransaccionIdentidad, tenantId: string): Promise<ConfigPos> {
+export async function leerConfigPos(tx: TransaccionIdentidad, tenantId: string, comercial: ConfiguracionComercial): Promise<ConfigPos> {
   const d = await leerObligatorio(tx, rutaConfig(tenantId));
-  if (d === undefined) return CONFIG_POS_POR_DEFECTO;
+  if (d === undefined) return configPosPorDefecto(comercial);
   try {
+    // Lectura tolerante: no se exige que la moneda guardada siga declarada (la configuración vieja se lee y se corrige al guardar).
     return validarConfigPos(d['config']);
   } catch {
     throw new ErrorPos('dato-corrupto', 'La configuración guardada del POS es inválida');
@@ -117,7 +127,7 @@ export async function guardarConfigPos(deps: DepsPos, tenantId: string, actor: A
   exigirTenant(tenantId);
   exigirActor(actor);
   exigirRol(actor, ['adm'], 'cambiar la configuración del POS');
-  const nueva = validarConfigPos(config);
+  const nueva = validarConfigPos(config, deps.comercial.monedas);
   const ahora = ahoraDe(deps);
   await deps.db.runTransaction(async (tx) => {
     const previa = await leerObligatorio(tx, rutaConfig(tenantId));

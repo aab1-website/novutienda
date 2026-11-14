@@ -1,6 +1,5 @@
-import type { Moneda } from '@novutienda/nucleo';
 import { ErrorPos } from './errores.js';
-import { MEDIOS_PAGO, MONEDAS_POS, type ActorPos, type MedioPago, type PagoVentaPos } from './tipos.js';
+import { MEDIOS_PAGO, type ActorPos, type MedioPago, type PagoVentaPos } from './tipos.js';
 
 /** Tope práctico de una venta (centavos): mantiene toda la aritmética dentro de los enteros seguros. */
 export const TOTAL_MAXIMO = 100_000_000_000;
@@ -11,7 +10,7 @@ const pagoInvalido = (m: string): ErrorPos => new ErrorPos('pagos-invalidos', m)
 export const descuentoExcedeTope = (subtotal: number, monto: number, topeBp: number): boolean => monto * 10000 > topeBp * subtotal;
 
 export interface ContextoPagos {
-  readonly moneda: Moneda;
+  readonly moneda: string;
   readonly total: number;
   readonly medios: readonly MedioPago[];
   readonly actor: ActorPos;
@@ -34,8 +33,8 @@ export function validarPagos(pagos: unknown, ctx: ContextoPagos): PagoVentaPos[]
     const medio = o['medio'] as MedioPago;
     if (!MEDIOS_PAGO.includes(medio)) throw pagoInvalido('Medio de pago desconocido');
     if (!ctx.medios.includes(medio)) throw new ErrorPos('medio-no-habilitado', `El medio ${medio} no está habilitado`);
-    const moneda = o['moneda'] as Moneda;
-    if (!MONEDAS_POS.includes(moneda) || moneda !== ctx.moneda) throw pagoInvalido(`Todos los pagos deben ser en ${ctx.moneda}, la moneda de la venta`);
+    const moneda = o['moneda'];
+    if (typeof moneda !== 'string' || moneda !== ctx.moneda) throw pagoInvalido(`Todos los pagos deben ser en ${ctx.moneda}, la moneda de la venta`);
     const monto = o['monto'];
     if (typeof monto !== 'number' || !Number.isSafeInteger(monto) || monto < 1) throw pagoInvalido('El monto del pago debe ser un entero de centavos positivo');
     const cambioEntrada = o['cambio'];
