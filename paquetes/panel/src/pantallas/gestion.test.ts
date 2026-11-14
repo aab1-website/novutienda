@@ -4,7 +4,7 @@ import { cleanup, render, screen, waitFor, within } from '@testing-library/preac
 import { userEvent } from '@testing-library/user-event';
 import { afterEach, describe, expect, it, vi } from 'vitest';
 import { ErrorApi } from '../api/errores.js';
-import { crearEntorno, uuid, type Entorno, type Nodo } from '../ayuda-pruebas.js';
+import { crearEntorno, uuid, vaciarEfectos, type Entorno, type Nodo } from '../ayuda-pruebas.js';
 import { PantallaCatalogo } from './consola/catalogo.js';
 import { PantallaConfiguracion } from './configuracion.js';
 import { PantallaInventario } from './inventarios/inventario.js';
@@ -13,8 +13,9 @@ import { PantallaVenta } from './pos/venta.js';
 import { PantallaRecibos } from './recibos/recibos.js';
 import { PantallaUsuarios } from './usuarios.js';
 
-afterEach(() => {
+afterEach(async () => {
   cleanup();
+  await vaciarEfectos();
   vi.restoreAllMocks();
 });
 
