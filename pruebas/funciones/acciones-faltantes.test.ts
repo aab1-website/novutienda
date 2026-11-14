@@ -53,11 +53,11 @@ describe.skipIf(!hayEmulador)('acciones faltantes del panel (emulador)', () => {
     it('respeta la política del tenant; sin cotización cargada devuelve null por mercado', async () => {
       const C = 'falt-c';
       await sembrarTenant(h, C);
-      await h.firestore.doc(`tenants/${C}/config/redondeo`).set({ BOB: { tipo: 'ninguno' }, ARS: { tipo: 'multiplo', multiplo: 500, modo: 'arriba' } });
+      await h.firestore.doc(`tenants/${C}/config/redondeo`).set({ BOB: { tipo: 'decimales', decimales: 2, modo: 'cercano' }, ARS: { tipo: 'multiplo', multiplo: 500, modo: 'arriba' } });
       const u = await crearUsuario(h, { rol: 'caj', tenant: C });
       const r = await accion('pos', 'cotizaciones', {}, u.token, C);
       expect(r.status).toBe(200);
-      expect(cuerpo(r)['redondeo']).toEqual({ BOB: { tipo: 'ninguno' }, ARS: { tipo: 'multiplo', multiplo: 500, modo: 'arriba' } });
+      expect(cuerpo(r)['redondeo']).toEqual({ BOB: { tipo: 'decimales', decimales: 2, modo: 'cercano' }, ARS: { tipo: 'multiplo', multiplo: 500, modo: 'arriba' } });
       const D = 'falt-d';
       await h.firestore.doc(`tenants/${D}`).set(TENANT_TODO_ENCENDIDO);
       const v = await crearUsuario(h, { rol: 'caj', tenant: D });

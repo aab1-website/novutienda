@@ -147,9 +147,8 @@ async function catalogo(e: Entorno, tenantId: string, comercial: ConfiguracionCo
   for (const p of productos) {
     const pub = copiaDe.get(p.productoId);
     if (pub === undefined) continue; // sin copia publicada no hay ficha que mostrar
-    // LEGADO a propósito (idéntico a main): `precioDeMercado` es más estricto (centavos, tope de decimales) y cambiaría el precio, la
-    // lista de ítems y el ETag del tenant de tres monedas cuando su `config/redondeo` usa `ninguno` o `decimales` de 3 a 6.
-    // Unificarlos exige antes decidir qué reglas de redondeo se admiten: pendiente de Andres.
+    // D7: una sola regla de redondeo (0 a 2 decimales o un múltiplo de centavos). Una configuración con otra regla ya falló antes,
+    // en `e.redondeo` (`RedondeoInvalido`), y el catálogo no sale: falla cerrado, sin precios.
     const precio = precioFinal(p.precioCentavos[clave] / 100, mercadoId, cot, redondeo);
     if (precio.tipo !== 'precio') continue; // sin precio en este mercado
     const por = stockPorAlmacen(existencias.get(p.productoId));

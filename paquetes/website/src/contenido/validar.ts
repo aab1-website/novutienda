@@ -178,15 +178,16 @@ function leerRegla(l: Lector, v: unknown, ruta: string): Contenido['config']['re
   const o = l.obj(v, ruta);
   const modo = (['cercano', 'arriba', 'abajo'] as const).find((m) => m === o['modo']);
   const tipo = o['tipo'];
-  if (tipo === 'ninguno') return { tipo: 'ninguno' };
+  // D7: el sitio no admite «ninguno» ni más de 2 decimales; el valor de reemplazo solo se usa tras registrar la falla.
+  const respaldo = { tipo: 'decimales', decimales: 2, modo: 'cercano' } as const;
   if (modo === undefined) {
     l.falla(`${ruta}.modo`, 'debe ser cercano, arriba o abajo');
-    return { tipo: 'ninguno' };
+    return respaldo;
   }
-  if (tipo === 'decimales') return { tipo, decimales: Math.trunc(l.numero(o['decimales'], `${ruta}.decimales`, 0, 6)), modo };
+  if (tipo === 'decimales') return { tipo, decimales: Math.trunc(l.numero(o['decimales'], `${ruta}.decimales`, 0, 2)), modo };
   if (tipo === 'multiplo') return { tipo, multiplo: l.numero(o['multiplo'], `${ruta}.multiplo`, 0.01, 1_000_000), modo };
-  l.falla(`${ruta}.tipo`, 'debe ser ninguno, decimales o multiplo');
-  return { tipo: 'ninguno' };
+  l.falla(`${ruta}.tipo`, 'debe ser decimales o multiplo');
+  return respaldo;
 }
 
 function leerConfig(l: Lector, v: unknown): Contenido['config'] {

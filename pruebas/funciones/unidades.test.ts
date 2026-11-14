@@ -124,11 +124,18 @@ describe('política de redondeo', () => {
     expect(REDONDEO_POR_DEFECTO.ARS).toEqual({ tipo: 'multiplo', multiplo: 100, modo: 'cercano' });
   });
   it('acepta una política válida y rechaza lo inválido, ajeno o con claves de más', () => {
-    expect(interpretarRedondeo({ BOB: { tipo: 'ninguno' }, ARS: { tipo: 'multiplo', multiplo: 500, modo: 'arriba' } }).ARS).toEqual({ tipo: 'multiplo', multiplo: 500, modo: 'arriba' });
-    for (const malo of [{}, { BOB: { tipo: 'ninguno' } }, { BOB: { tipo: 'decimales', decimales: 9, modo: 'cercano' }, ARS: { tipo: 'ninguno' } },
-      { BOB: { tipo: 'multiplo', multiplo: 0, modo: 'cercano' }, ARS: { tipo: 'ninguno' } }, { BOB: { tipo: 'ninguno' }, ARS: { tipo: 'ninguno' }, USD: {} },
-      { BOB: { tipo: 'raro' }, ARS: { tipo: 'ninguno' } }]) {
+    expect(interpretarRedondeo({ BOB: { tipo: 'decimales', decimales: 0, modo: 'abajo' }, ARS: { tipo: 'multiplo', multiplo: 500, modo: 'arriba' } }).ARS).toEqual({ tipo: 'multiplo', multiplo: 500, modo: 'arriba' });
+    const ok = { tipo: 'decimales', decimales: 2, modo: 'cercano' };
+    for (const malo of [{}, { BOB: ok }, { BOB: { tipo: 'decimales', decimales: 9, modo: 'cercano' }, ARS: ok },
+      { BOB: { tipo: 'multiplo', multiplo: 0, modo: 'cercano' }, ARS: ok }, { BOB: ok, ARS: ok, USD: {} }, { BOB: { tipo: 'raro' }, ARS: ok }]) {
       expect(() => interpretarRedondeo(malo)).toThrow(RedondeoInvalido);
+    }
+  });
+  it('D7: «ninguno», más de 2 decimales y un múltiplo que no es exacto en centavos se rechazan', () => {
+    const ok = { tipo: 'decimales', decimales: 2, modo: 'cercano' };
+    for (const mala of [{ tipo: 'ninguno' }, { tipo: 'decimales', decimales: 3, modo: 'cercano' }, { tipo: 'decimales', decimales: 6, modo: 'abajo' }, { tipo: 'multiplo', multiplo: 0.005, modo: 'cercano' }]) {
+      expect(() => interpretarRedondeo({ BOB: mala, ARS: ok })).toThrow(RedondeoInvalido);
+      expect(() => interpretarRedondeo({ BOB: ok, ARS: mala })).toThrow(RedondeoInvalido);
     }
   });
 });
