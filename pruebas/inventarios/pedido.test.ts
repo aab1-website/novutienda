@@ -205,6 +205,40 @@ describe('eventos consumidos', () => {
     verificarInvariantes(db);
   });
 
+  it('venta.anulada v2 repone stock y series igual que la v1 (reembolso en otra moneda)', async () => {
+    await db.runTransaction(async (tx) => {
+      const plan = await prepararSalida(tx, T, [
+        { productoId: 'lapiz', cantidad: 2, almacenId: 'tienda' },
+        { productoId: 'celular', cantidad: 1, almacenId: 'tienda', series: ['B'] },
+      ]);
+      aplicarSalida(tx, plan, { tipo: 'venta', id: 'v1' }, CAJ);
+    });
+    const ev = {
+      ...sobre('venta.anulada', 'ea1b', 'v1', {
+        ventaId: 'v1', turnoId: 't1', motivo: 'error', anuladaPor: 'u-caj', aprobadoPor: 'u-sup',
+        lineas: [
+          { productoId: 'lapiz', cantidad: 2, almacenId: 'tienda', series: [] },
+          { productoId: 'celular', cantidad: 1, almacenId: 'tienda', series: ['B'] },
+        ],
+        reembolsos: [{ medio: 'efectivo', moneda: 'CLP', monto: 100 }],
+        turnoIdReembolso: 't1',
+      }),
+      version: 2,
+    } as unknown as SobreEvento;
+    expect(await consumirVentaAnulada(ejecutorDesde(db), ev)).toBe(true);
+    expect(await consumirVentaAnulada(ejecutorDesde(db), ev)).toBe(false);
+    expect(doc(db, 'existencias', 'lapiz__tienda')?.['cantidad']).toBe(5);
+    expect(doc(db, 'unidades', 'celular__B')?.['estado']).toBe('disponible');
+    expect(doc(db, 'movimientos', 'venta-anula-v1__lapiz__tienda')).toMatchObject({ por: 'u-sup', tipo: 'anulacion' });
+    verificarInvariantes(db);
+  });
+
+  it('pedido.confirmado v2 se rechaza (solo se entiende la versión 1)', async () => {
+    const ev = { ...pedidoEv('p7', [{ productoId: 'lapiz', cantidad: 1 }]), version: 2 } as unknown as SobreEvento;
+    await expect(consumirPedidoConfirmado(ejecutorDesde(db), ev)).rejects.toThrow();
+    expect(doc(db, 'existencias', 'lapiz__tienda')?.['cantidad']).toBe(5);
+  });
+
   it('venta.anulada con líneas distintas a las descontadas falla y no escribe', async () => {
     await db.runTransaction(async (tx) => {
       const plan = await prepararSalida(tx, T, [{ productoId: 'lapiz', cantidad: 2, almacenId: 'tienda' }]);
