@@ -126,6 +126,13 @@ describe('mensajes sin datos técnicos (G-07, G-08)', () => {
   ])('%s prefiere el motivo del servidor (%s)', (codigo, https, motivo) => {
     expect(mensajeDeError(new ErrorApi(https, motivo, { codigo }))).toBe(motivo);
   });
+  it('series-invalidas muestra el motivo del servidor (tope de series y serie repetida) y, sin motivo, el texto fijo', () => {
+    for (const m of ['Una venta admite hasta 100 unidades con serie', 'Indique una serie distinta por unidad', 'El producto no se controla por serie']) {
+      expect(mensajeDeError(new ErrorApi('invalid-argument', m, { codigo: 'series-invalidas' }))).toBe(m);
+    }
+    expect(mensajeDeError(new ErrorApi('invalid-argument', ' ', { codigo: 'series-invalidas' }))).toBe('Indique una serie distinta por cada unidad.');
+    expect(mensajeDeError(new ErrorApi('invalid-argument', 'series[0]: Required', { codigo: 'series-invalidas' }))).toBe('Indique una serie distinta por cada unidad.');
+  });
   it('sin motivo legible cada código usa su texto fijo con qué hacer', () => {
     for (const c of ['limite', 'cuota-excedida', 'procesamiento', 'tipo-no-permitido', 'no-disponible']) {
       const m = mensajeDeError(new ErrorApi('internal', 'fallo interno', { codigo: c }));
