@@ -1,4 +1,4 @@
-import { validarEvento } from './contratos.js';
+import { validarEvento, type OpcionesValidarEvento } from './contratos.js';
 import type { SobreEvento } from '../contratos/sobre-evento.js';
 
 /** Transacción mínima inyectable para la bandeja (la adapta firebase-admin en el borde). */
@@ -50,8 +50,8 @@ export const rutaDescartado = (tenantId: string, consumidor: string, id: string)
   `${procesados(tenantId)}/${segmento(consumidor, 'consumidor')}${SEPARADOR}descartado${SEPARADOR}${segmento(id, 'id')}`;
 
 /** Publica el evento en la bandeja de salida dentro de la transacción del negocio. */
-export function publicarEvento(tx: TransaccionBandeja, evento: SobreEvento): void {
-  const v = validarEvento(evento);
+export function publicarEvento(tx: TransaccionBandeja, evento: SobreEvento, opciones: OpcionesValidarEvento = {}): void {
+  const v = validarEvento(evento, opciones);
   if (!v.ok) throw new ErrorEvento(v.error);
   segmento(evento.claveIdempotencia, 'claveIdempotencia');
   tx.create(rutaEvento(evento.tenantId, evento.id), { ...evento, publicadoEn: tx.marcaTiempoServidor() });
@@ -80,12 +80,14 @@ export async function consumir<T extends TransaccionBandeja>(
     evento: SobreEvento;
     manejador: (tx: T, evento: SobreEvento) => Promise<void>;
     maxIntentos?: number;
+    /** Versiones del sobre que el consumidor entiende; por omisión, solo la 1. */
+    versiones?: readonly (1 | 2)[];
   },
 ): Promise<boolean> {
   const { consumidor, evento, manejador } = opciones;
   const maxIntentos = opciones.maxIntentos ?? MAX_INTENTOS_POR_DEFECTO;
   if (!Number.isInteger(maxIntentos) || maxIntentos < 1) throw new ErrorEvento('maxIntentos debe ser un entero positivo');
-  const v = validarEvento(evento);
+  const v = validarEvento(evento, opciones.versiones === undefined ? {} : { versiones: opciones.versiones });
   if (!v.ok) throw new ErrorEvento(v.error);
   const rutaId = rutaProcesado(evento.tenantId, consumidor, evento.id);
   const rutaClave = rutaProcesadoPorClave(evento.tenantId, consumidor, evento.tipo, evento.claveIdempotencia);

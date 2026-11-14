@@ -3,7 +3,7 @@ export {
   rutaProcesadoPorClave,
 } from './bandeja.js';
 export type { EjecutorTransacciones, TransaccionBandeja } from './bandeja.js';
-export { CONTRATOS_POR_VERSION, CONTRATOS_V1, CONTRATOS_V2, VERSIONES_POR_OMISION, validarEvento } from './contratos.js';
+export { CONTRATOS_POR_VERSION, CONTRATOS_V1, CONTRATOS_V2, VERSIONES_POR_OMISION, VERSIONES_REGISTRADAS, validarEvento } from './contratos.js';
 export type { OpcionesValidarEvento } from './contratos.js';
 export type { Campo, Fixtures } from './esquema.js';
 export * from './venta-confirmada.v1.js';
