@@ -32,6 +32,14 @@ describe('moneda de costo BOB', () => {
     expect(() => leerCsvFilas(`${cab('costoUSD')}a1,A,1234\r\n`, false, BOB)).toThrow(EntradaInvalida);
     expect(() => leerCsvFilas(`${cab('costoUSD')}a1,A,1234\r\n`, false, BOB)).toThrow('La moneda de costo de este comercio es BOB: use la columna «costo» (importe en BOB)');
   });
+  it('rechaza las variantes del encabezado costoUSD', () => {
+    for (const h of ['Costo USD', 'costo_usd', 'COSTO-usd', 'Cóstó USD']) {
+      expect(() => leerCsvFilas(`${cab(h)}a1,A,1234\r\n`, false, BOB), h).toThrow(EntradaInvalida);
+    }
+  });
+  it('costo y costobob a la vez es columna repetida', () => {
+    expect(() => leerCsvFilas('id,nombre,costo,costobob\r\na1,A,1,2\r\n', false, BOB)).toThrow('columna repetida');
+  });
   it('los errores de importe nombran BOB', () => {
     const m = JSON.stringify(leerCsvFilas(`${cab('costo')}a1,A,1.234\r\n`, false, BOB).filas[0]?.errores);
     expect(m).toContain('BOB');
@@ -51,4 +59,12 @@ describe('exportación e ida y vuelta', () => {
       expect(costoDe(csv, c)).toBe(1234);
     });
   }
+});
+
+describe('moneda de costo EUR (tercera moneda)', () => {
+  const EUR: ConfiguracionComercial = { ...COMERCIAL_TRES, monedaCosto: 'EUR' };
+  it('acepta costoeur y costobob no cuenta como costo', () => {
+    expect(costoDe(`${cab('costoeur')}a1,A,12.34\r\n`, EUR)).toBe(1234);
+    expect(costoDe(`${cab('costobob')}a1,A,12.34\r\n`, EUR)).toBeUndefined();
+  });
 });

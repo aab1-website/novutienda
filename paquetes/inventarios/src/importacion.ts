@@ -95,6 +95,8 @@ const ALIAS_FIJOS: Readonly<Record<string, readonly [Columna, Unidad | null]>> =
 function aliasDe(comercial: ConfiguracionComercial): Readonly<Record<string, readonly [Columna, Unidad | null]>> {
   const alias: Record<string, readonly [Columna, Unidad | null]> = { ...ALIAS_FIJOS };
   const monedaCosto = monedaCostoDe(comercial);
+  // Costo: `costousd` va en centavos SOLO por compatibilidad con el formato anterior (existe únicamente con moneda de costo USD);
+  // `costo` y `costo<m>` van siempre en importe decimal (hasta 2 decimales) de la moneda de costo del comercio.
   if (monedaCosto === 'USD') {
     alias['costousd'] = ['costoUSD', 'centavos'];
     alias['costo'] = ['costoUSD', 'decimal'];
