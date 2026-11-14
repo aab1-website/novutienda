@@ -164,7 +164,7 @@ export const accionesInventarios: TablaImplementaciones = {
     ejecutar: (c, d) =>
       c.e.db.runTransaction((tx) => crearUbicacion(tx, { tenantId: c.tenantId, operacionId: d.operacionId, por: autor(c), ubicacionId: d.ubicacionId, nombre: d.nombre })),
   }),
-  /** Alta de un producto (solo `adm`); respeta el tope de productos del plan. Precios y costo en centavos de USD. */
+  /** Alta de un producto (solo `adm`); respeta el tope de productos del plan. Precios en centavos de la moneda base del mercado; costo en centavos de la moneda de costo del comercio (`monedaCostoDe`). */
   crearProducto: accion({
     esquema: objeto({
       operacionId: ID,
