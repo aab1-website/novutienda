@@ -1,4 +1,4 @@
-import type { CambioProductoCambiado, ConfiguracionComercial, TransaccionIdentidad, TransaccionMin } from '@novutienda/nucleo';
+import { monedaCostoDe, type CambioProductoCambiado, type ConfiguracionComercial, type TransaccionIdentidad, type TransaccionMin } from '@novutienda/nucleo';
 import { claveDePrecio, resolverComercial } from './comercial.js';
 import { EntradaInvalida, ErrorInventario, SinPermiso } from './errores.js';
 import { esProductoId, esSku, exigirSegmento, exigirTenant, UBICACIONES } from './ids.js';
@@ -72,15 +72,15 @@ type Columna = ColumnaFija | `precio:${string}`;
 type Unidad = 'centavos' | 'decimal';
 
 /**
- * Encabezados fijos (se comparan sin tildes, mayúsculas ni signos). `costoUSD` va en centavos enteros y `costo` en USD con
- * hasta 2 decimales (formato de la consola y de la exportación).
+ * Encabezados fijos (se comparan sin tildes, mayúsculas ni signos). El costo se lee en la moneda de costo del comercio
+ * (`monedaCostoDe`): con USD, `costoUSD` va en centavos enteros y `costo` en dólares con hasta 2 decimales (formato de la consola y
+ * de la exportación); con otra moneda M, `costo` y `costo<m>` van en importe decimal de M (ver `aliasDe`).
  */
 const ALIAS_FIJOS: Readonly<Record<string, readonly [Columna, Unidad | null]>> = {
   id: ['id', null], codigo: ['id', null], nombre: ['nombre', null], categoria: ['categoria', null], marca: ['marca', null], sku: ['sku', null],
   conserie: ['conSerie', null], activo: ['activo', null], publicado: ['publicado', null],
   garantiameses: ['garantiaMeses', null], garantia: ['garantiaMeses', null], minimo: ['minimo', null],
-  // PENDIENTE: el costo sigue en USD aunque la moneda base de un mercado sea otra; su moneda es una decisión abierta.
-  costousd: ['costoUSD', 'centavos'], costo: ['costoUSD', 'decimal'],
+  // Los alias del costo dependen de la moneda de costo del comercio: los agrega `aliasDe`.
   stocktienda: ['stockTienda', null], stockdeposito1: ['stockDeposito1', null], stockdeposito2: ['stockDeposito2', null],
 };
 
@@ -94,6 +94,16 @@ const ALIAS_FIJOS: Readonly<Record<string, readonly [Columna, Unidad | null]>> =
  */
 function aliasDe(comercial: ConfiguracionComercial): Readonly<Record<string, readonly [Columna, Unidad | null]>> {
   const alias: Record<string, readonly [Columna, Unidad | null]> = { ...ALIAS_FIJOS };
+  const monedaCosto = monedaCostoDe(comercial);
+  // Costo: `costousd` va en centavos SOLO por compatibilidad con el formato anterior (existe únicamente con moneda de costo USD);
+  // `costo` y `costo<m>` van siempre en importe decimal (hasta 2 decimales) de la moneda de costo del comercio.
+  if (monedaCosto === 'USD') {
+    alias['costousd'] = ['costoUSD', 'centavos'];
+    alias['costo'] = ['costoUSD', 'decimal'];
+  } else {
+    alias['costo'] = ['costoUSD', 'decimal'];
+    alias[`costo${monedaCosto.toLowerCase()}`] = ['costoUSD', 'decimal'];
+  }
   for (const m of comercial.mercados) {
     const col: Columna = `precio:${claveDePrecio(m.id)}`;
     const x = m.id.toLowerCase();
@@ -185,6 +195,7 @@ function importe(v: string, unidad: Unidad): number | undefined {
  */
 export function leerCsvFilas(fuente: FuenteTabla, cargaInicial: boolean, comercial: ConfiguracionComercial): LecturaCsv {
   const ALIAS = aliasDe(comercial);
+  const monedaCosto = monedaCostoDe(comercial);
   let filas: readonly (readonly string[])[];
   if (typeof fuente === 'string') {
     if (fuente.length === 0 || fuente.length > MAX_BYTES_CSV) throw new EntradaInvalida('CSV vacío o demasiado grande');
@@ -200,6 +211,9 @@ export function leerCsvFilas(fuente: FuenteTabla, cargaInicial: boolean, comerci
   const ignoradas: string[] = [];
   for (const [i, h] of cab.entries()) {
     const n = normalizar(h);
+    if (n === 'costousd' && monedaCosto !== 'USD') {
+      throw new EntradaInvalida(`La moneda de costo de este comercio es ${monedaCosto}: use la columna «costo» (importe en ${monedaCosto})`);
+    }
     const alias = Object.hasOwn(ALIAS, n) ? ALIAS[n] : undefined;
     if (alias === undefined) {
       if (n !== '') ignoradas.push(SUENA_A_STOCK.has(n) ? `${h} (el CSV no modifica el stock salvo en la carga inicial, con stockTienda, stockDeposito1 y stockDeposito2)` : h);
@@ -281,7 +295,7 @@ export function leerCsvFilas(fuente: FuenteTabla, cargaInicial: boolean, comerci
     }
     const importes: [Columna, string, string][] = [
       ...comercial.mercados.map((m) => [`precio:${claveDePrecio(m.id)}` as Columna, m.monedaBase, claveDePrecio(m.id)] as [Columna, string, string]),
-      ['costoUSD', 'USD', 'costoUSD'],
+      ['costoUSD', monedaCosto, 'costoUSD'],
     ];
     for (const [c, moneda, destino] of importes) {
       const v = celda(c);
@@ -701,6 +715,7 @@ export async function importarCsvPorLotes(
 }
 
 export interface ProductoExportable {
+  /** `costoUSD`: centavos de la moneda de costo del comercio (`monedaCostoDe`); el nombre se conserva, no se migra. */
   readonly id: string;
   readonly nombre: string;
   readonly categoria: string;
@@ -729,7 +744,7 @@ export function centavosAUsd(c: number): string {
 
 /**
  * Encabezados de la exportación: una columna de precio por mercado declarado, en el orden de la configuración (`precioBO`,
- * `precioAR` para el tenant de tres monedas), y el costo en USD con decimales. La importación lee los mismos nombres.
+ * `precioAR` para el tenant de tres monedas), y el costo (`costo`) en la moneda de costo, con decimales. La importación lee los mismos nombres.
  */
 export const columnasDeExportacion = (comercial: ConfiguracionComercial): readonly string[] => [
   'id', 'nombre', 'categoria', 'marca', 'sku', 'conSerie', 'garantiaMeses', 'minimo', ...comercial.mercados.map((m) => columnaDePrecio(m.id)), 'costo', 'activo', 'publicado',

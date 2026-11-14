@@ -34,6 +34,7 @@ export interface EntradaProducto {
   readonly garantiaMeses?: number;
   readonly minimo?: number;
   readonly precioUSD: PrecioUSD;
+  /** Centavos de la moneda de costo del comercio (`monedaCostoDe`; USD si no declara otra). El nombre se conserva: no se migra. */
   readonly costoUSD?: number;
   /** `false` = el producto no controla stock (no tendrá `stockTotal`). Por defecto controla. */
   readonly controlaStock?: boolean;
