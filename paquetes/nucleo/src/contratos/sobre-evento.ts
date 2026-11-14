@@ -5,7 +5,8 @@ import type { Resultado } from './claim.js';
 export interface SobreEvento<D = unknown> {
   readonly id: string;
   readonly tipo: TipoEvento;
-  readonly version: 1;
+  /** Versión del contrato de `datos`: 1 (congelada) o 2 (mercados y monedas del tenant). */
+  readonly version: 1 | 2;
   readonly tenantId: string;
   readonly origen: IdModulo;
   /** Instante ISO 8601 en UTC. */
@@ -17,15 +18,19 @@ export interface SobreEvento<D = unknown> {
 const CAMPOS_TEXTO = ['id', 'tipo', 'tenantId', 'origen', 'ocurridoEn', 'claveIdempotencia'] as const;
 const ISO_UTC = /^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}(\.\d+)?Z$/;
 
-/** Valida el sobre; el contenido de `datos` lo valida el contrato de cada evento. */
-export function validarSobre(x: unknown): Resultado<SobreEvento> {
+/**
+ * Valida el sobre; el contenido de `datos` lo valida el contrato de cada evento. Por defecto solo admite la versión 1
+ * (comportamiento que no cambia); `validarEvento` pasa las versiones registradas.
+ */
+export function validarSobre(x: unknown, versiones: readonly (1 | 2)[] = [1]): Resultado<SobreEvento> {
   if (typeof x !== 'object' || x === null || Array.isArray(x)) return { ok: false, error: 'El sobre debe ser un objeto' };
   const o = x as Record<string, unknown>;
   for (const c of CAMPOS_TEXTO) {
     const v = o[c];
     if (typeof v !== 'string' || v === '') return { ok: false, error: `Campo ${c} requerido` };
   }
-  if (o['version'] !== 1) return { ok: false, error: 'version debe ser 1' };
+  if (o['version'] !== 1 && o['version'] !== 2) return { ok: false, error: `version debe ser ${versiones.join(' o ')}` };
+  if (!versiones.includes(o['version'])) return { ok: false, error: `version debe ser ${versiones.join(' o ')}` };
   if (!ISO_UTC.test(o['ocurridoEn'] as string) || Number.isNaN(Date.parse(o['ocurridoEn'] as string))) {
     return { ok: false, error: 'ocurridoEn debe ser ISO 8601 UTC' };
   }

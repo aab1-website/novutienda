@@ -54,7 +54,7 @@ const sobre = (parcial: Partial<SobreEvento> = {}): SobreEvento => ({
 describe('validarEvento', () => {
   it('acepta un evento completo válido', () => expect(validarEvento(sobre()).ok).toBe(true));
   it('rechaza una versión desconocida', () => {
-    const r = validarEvento({ ...sobre(), version: 2 });
+    const r = validarEvento({ ...sobre(), version: 3 });
     expect(r).toEqual({ ok: false, error: 'Versión de evento desconocida' });
   });
   it('rechaza un tipo desconocido, incluso heredado del prototipo', () => {
@@ -105,7 +105,7 @@ describe('publicarEvento', () => {
   });
   it('rechaza una versión desconocida', async () => {
     const { ejecutor } = crearBase();
-    const malo = { ...sobre(), version: 2 } as unknown as SobreEvento;
+    const malo = { ...sobre(), version: 3 } as unknown as SobreEvento;
     await expect(ejecutor.transaccion((tx) => Promise.resolve(publicarEvento(tx, malo)))).rejects.toThrow(/Versión/);
   });
   it('rechaza ids con caracteres de ruta', async () => {
@@ -154,7 +154,7 @@ describe('consumir', () => {
   });
   it('rechaza una versión desconocida sin abrir transacción', async () => {
     const { ejecutor } = crearBase();
-    const malo = { ...sobre(), version: 2 } as unknown as SobreEvento;
+    const malo = { ...sobre(), version: 3 } as unknown as SobreEvento;
     await expect(consumir(ejecutor, { consumidor: 'a', evento: malo, manejador: () => Promise.resolve() })).rejects.toThrow(/Versión/);
   });
 });
