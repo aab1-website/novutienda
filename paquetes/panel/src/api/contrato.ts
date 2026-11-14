@@ -10,7 +10,7 @@ import type {
   ConMarca, ListaConMarca, PagoEntrada, PlantillaRecibo, ProductoPanel, Recibo, Reserva, ResultadoAnulacion, ResultadoCierre, ResultadoEnvio,
   FuenteImportacion, ResultadoImportacion, ResultadoOperacion, ResultadoEstadoSubida, ResultadoPublicacion, ResultadoVenta, Rol, Seccion, Simulacion, SolicitudAprobacion,
   Tablero, TipoMedio, TurnoPos, UbicacionId, UnidadSerie, UsuarioVista, VentaPos, EstadoMerma,
-  TipoMovimiento,
+  TipoMovimiento, VistaComercial,
 } from './tipos.js';
 
 type Vacio = Record<string, never>;
@@ -143,6 +143,8 @@ export interface Contrato {
   listarUsuarios: { entrada: Vacio; salida: readonly UsuarioVista[] };
   /** Ids de los módulos encendidos del negocio (el menú del panel se arma con ellos). */
   modulosActivos: { entrada: Vacio; salida: readonly string[] };
+  /** Mercados y monedas del comercio de la sesión (solo lectura). */
+  configuracionComercial: { entrada: Vacio; salida: VistaComercial };
 }
 
 export type NombreCallable = keyof Contrato;

@@ -765,3 +765,13 @@ describe('doble: buscar usuario por correo y exportar ventas', () => {
     expect((await falla(crearEntorno('caj').api.llamar('exportarVentasCsv', {}))).codigoHttps).toBe('permission-denied');
   });
 });
+
+describe('doble: configuracionComercial', () => {
+  it('cualquier rol recibe la forma de tres monedas del tenant de referencia', async () => {
+    for (const rol of ['caj', 'sup', 'adm'] as const) {
+      const v = await crearEntorno(rol).api.llamar('configuracionComercial', {});
+      expect(v.monedasCaja).toEqual(['BOB', 'USD', 'ARS']);
+      expect(v.mercados.map((m) => [m.id, m.monedaVenta, m.monedaBase, m.tieneTipoCambio])).toEqual([['BO', 'BOB', 'USD', true], ['AR', 'ARS', 'USD', true]]);
+    }
+  });
+});

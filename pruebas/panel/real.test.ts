@@ -270,3 +270,30 @@ describe('buscarUsuarioPorCorreo y exportarVentasCsv', () => {
     expect([...ROLES_CALLABLE.exportarVentasCsv].sort()).toEqual(['adm', 'sup']);
   });
 });
+
+describe('configuracionComercial (Central, solo lectura)', () => {
+  const vista = { mercados: [{ id: 'BO', nombre: 'Bolivia', monedaVenta: 'BOB', monedaBase: 'USD', tieneTipoCambio: true }], monedasCaja: ['BOB', 'USD'] };
+  const ejecutar = (llamar: (modulo: string, accion: string, datos?: object) => Promise<unknown>): Promise<unknown> =>
+    (TRADUCCION.configuracionComercial as unknown as { ejecutar(c: unknown, e: unknown): Promise<unknown> }).ejecutar({ rol: 'caj', esperar: (): Promise<void> => Promise.resolve(), llamar }, {});
+
+  it('llama a consola.configuracionComercial sin datos (nunca un tenant) y entrega la vista tipada', async () => {
+    const enviadas: unknown[] = [];
+    const r = await ejecutar((modulo, accion, datos) => {
+      enviadas.push({ modulo, accion, datos });
+      return Promise.resolve(vista);
+    });
+    expect(r).toEqual(vista);
+    expect(enviadas).toEqual([{ modulo: 'consola', accion: 'configuracionComercial', datos: {} }]);
+  });
+  it('descarta lo que no cumple la forma en vez de inventarlo', async () => {
+    expect(await ejecutar(() => Promise.resolve({ mercados: 'x', monedasCaja: [1, 'BOB'] }))).toEqual({ mercados: [], monedasCaja: ['BOB'] });
+  });
+  it('descarta sin lanzar los mercados null, sin id o con tipo equivocado', async () => {
+    const bueno = vista.mercados[0];
+    const r = await ejecutar(() => Promise.resolve({ mercados: [null, { ...bueno, id: undefined }, { ...bueno, tieneTipoCambio: 'si' }, { ...bueno, nombre: 3 }, 'x', bueno], monedasCaja: [] }));
+    expect(r).toEqual({ mercados: [bueno], monedasCaja: [] });
+  });
+  it('lo pueden llamar los tres roles', () => {
+    expect([...ROLES_CALLABLE.configuracionComercial].sort()).toEqual(['adm', 'caj', 'sup']);
+  });
+});
