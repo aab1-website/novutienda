@@ -55,7 +55,7 @@ export interface ConfiguracionComercial {
   readonly mercados: readonly MercadoTenant[];
   /** Monedas de caja: contienen la `monedaVenta` de cada mercado. */
   readonly monedas: readonly string[];
-  /** Moneda ISO 4217 en que se llevan los costos (una sola por comercio). Opcional: si falta, se entiende USD. No tiene que estar entre las monedas de caja ni ser la base o la de venta de un mercado. */
+  /** Moneda ISO 4217 con hasta 2 decimales en que se llevan los costos (una sola por comercio). Opcional: si falta, se entiende USD. No tiene que estar entre las monedas de caja ni ser la base o la de venta de un mercado. */
   readonly monedaCosto?: string;
 }
 
@@ -191,6 +191,9 @@ export function validarConfiguracionComercial(x: unknown): Resultado<Configuraci
   const costo = x['monedaCosto'];
   if (costo !== undefined) {
     if (!esMoneda(costo)) return { ok: false, error: 'comercial.monedaCosto: debe ser un código ISO 4217 de tres letras mayúsculas' };
+    if (MONEDAS_SIN_CENTAVOS_EXACTOS.includes(costo)) {
+      return { ok: false, error: `comercial.monedaCosto: ${costo} tiene más de 2 decimales y el dinero se guarda en centavos; no se admite` };
+    }
   }
   // Objeto RECONSTRUIDO solo con los campos conocidos: nada de la entrada se reutiliza por referencia.
   const valor: ConfiguracionComercial = {

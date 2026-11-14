@@ -293,7 +293,19 @@ describe('moneda de costo del comercio', () => {
   });
   it('el legado da USD', () => {
     expect(monedaCostoDe(COMERCIAL_LEGADO_TRES_MONEDAS)).toBe('USD');
-    const r = comercialLegado({});
+    const r = comercialLegado({ zonaHoraria: 'America/La_Paz', monedas: ['ARS', 'BOB', 'USD'] });
+    expect(r.ok).toBe(true);
     if (r.ok) expect(monedaCostoDe(r.valor)).toBe('USD');
+  });
+  it('moneda de más de 2 decimales: se rechaza', () => {
+    rechaza(mod((c) => { c['monedaCosto'] = 'KWD'; }), 'comercial.monedaCosto: KWD tiene más de 2 decimales');
+  });
+  it('pasa por validarTenant y comercialDe hasta monedaCostoDe', () => {
+    const r = validarTenant({ estado: 'activo', plan: 'base', modulos: {}, comercial: { ...una(), monedaCosto: 'EUR' } });
+    expect(r.ok).toBe(true);
+    if (!r.ok) return;
+    const c = comercialDe(r.valor);
+    expect(c.ok).toBe(true);
+    if (c.ok) expect(monedaCostoDe(c.valor)).toBe('EUR');
   });
 });
