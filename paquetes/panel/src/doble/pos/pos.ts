@@ -8,6 +8,14 @@ import { MONEDA_DE_MERCADO, precioDeVenta } from '../../util/precio.js';
 import { aCsv } from '../../util/csv.js';
 import { auditar, detalleDeFaltantes, fallo, fechaLaPaz, iso, recalcular, type Contexto } from '../estado.js';
 
+/**
+ * Debe coincidir con `MAX_SERIES_POR_VENTA` de `@novutienda/pos` (el panel no importa el módulo).
+ * Lo cubre la prueba «tope de unidades con serie por venta» de `src/doble/doble.test.ts`
+ * (101 rechazadas con el mensaje exacto, 100 pasan) junto con `pruebas/pos/venta.test.ts`,
+ * que fija `MAX_SERIES_POR_VENTA` en 100.
+ */
+const TOPE_SERIES_POR_VENTA = 100;
+
 type H<N extends NombreCallable> = (c: Contexto, e: Entrada<N>) => Salida<N> | Promise<Salida<N>>;
 
 const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[1-8][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;
@@ -143,6 +151,8 @@ export const handlersPos: {
     const k = e.carrito;
     if (k.moneda !== 'USD' && k.moneda !== MONEDA_DE_MERCADO[k.mercado]) throw fallo('entrada-invalida', 'La moneda no corresponde a la lista de precios');
     if (k.lineas.length === 0) throw fallo('entrada-invalida', 'Carrito vacío');
+    const totalSeries = k.lineas.reduce((n, l) => n + (Array.isArray(l.series) ? l.series.length : 0), 0);
+    if (totalSeries > TOPE_SERIES_POR_VENTA) throw fallo('series-invalidas', `Una venta admite hasta ${TOPE_SERIES_POR_VENTA} unidades con serie`);
     const cot = k.moneda === 'USD' ? null : c.e.cotizaciones[k.mercado];
     const lineas: LineaVenta[] = [];
     const vistas = new Set<string>();
