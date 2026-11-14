@@ -9,7 +9,7 @@ import {
   type Autor,
 } from './api.js';
 import type { DobleDb } from './doble-db.js';
-import { ADM, doc, nuevoEntorno, op, SUP, T, verificarInvariantes } from './entorno.js';
+import { ADM, COMERCIAL_TRES, doc, nuevoEntorno, op, SUP, T, verificarInvariantes } from './entorno.js';
 
 let db: DobleDb;
 beforeEach(async () => {
@@ -91,7 +91,7 @@ describe('CSV', () => {
     const csv = exportarProductosCsv([
       { id: 'a1', nombre: '=2+2', categoria: 'x, y', marca: '=Bosch', sku: 'S-1', conSerie: false, precioUSD: { bo: 1, ar: 2 }, activo: true, publicado: false },
       { id: 'a2', nombre: '@cmd', categoria: '-1', sku: 'S-2', conSerie: true, garantiaMeses: 12, precioUSD: { bo: 1, ar: 2 }, activo: true, publicado: true },
-    ]);
+    ], COMERCIAL_TRES);
     expect(csv).toContain(`a1,'=2+2,"x, y",'=Bosch,S-1`);
     expect(csv).toContain(`a2,'@cmd,'-1,,S-2`);
     expect(analizarCsv(csv)).toHaveLength(3);

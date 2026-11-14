@@ -20,6 +20,7 @@ import {
   MAX_LINEAS,
   idUnidad,
 } from './ids.js';
+import { resolverComercial, zonaPrincipalDe } from './comercial.js';
 import { Lector, sumarMeses, Trabajo, type Autor, type Datos, type PlanStock } from './motor.js';
 import { exigirAutor } from './operacion.js';
 
@@ -106,7 +107,10 @@ function normalizar(lineas: readonly LineaSalida[]): LineaNormalizada[] {
 }
 
 export interface OpcionesSalida {
-  /** Zona de la fecha de calendario de `garantiaHasta`. Por defecto `America/La_Paz`, como Recibos. */
+  /**
+   * Zona de la fecha de calendario de `garantiaHasta`: la del mercado de la venta (`zonaDe(comercial, mercado)`). Sin ella se usa
+   * la del mercado principal del tenant (`zonaPrincipalDe`), leída de su documento; sin configuración válida, falla cerrado.
+   */
   readonly zonaHoraria?: string;
 }
 
@@ -170,6 +174,14 @@ export async function prepararSalida(
   }
   if (faltantes.length > 0) throw new StockInsuficiente(faltantes);
 
+  // La zona solo se necesita si alguna unidad vendida lleva garantía; se resuelve ANTES de las escrituras (todas las lecturas primero).
+  const llevaGarantia = (l: LineaResuelta): boolean => {
+    const m = t.producto(l.productoId)['garantiaMeses'];
+    return l.series.length > 0 && typeof m === 'number' && Number.isSafeInteger(m) && m > 0;
+  };
+  const zonaGarantia = resueltas.some(llevaGarantia)
+    ? (opciones.zonaHoraria ?? zonaPrincipalDe(await resolverComercial(t.lector, tenantId)))
+    : undefined;
   for (const l of resueltas) {
     t.mover(l.productoId, l.almacenId, -l.cantidad, { quitar: l.series });
     const meses = t.producto(l.productoId)['garantiaMeses'];
@@ -180,7 +192,7 @@ export async function prepararSalida(
         ...(t.unidadLeida(l.productoId, s) !== undefined ? { base: t.unidadLeida(l.productoId, s) as Datos } : {}),
         estado: 'vendida',
         ubicacionId: l.almacenId,
-        ...(typeof meses === 'number' && Number.isSafeInteger(meses) && meses > 0 ? { garantiaHasta: sumarMeses(t.ahora, meses, opciones.zonaHoraria) } : {}),
+        ...(typeof meses === 'number' && Number.isSafeInteger(meses) && meses > 0 ? { garantiaHasta: sumarMeses(t.ahora, meses, zonaGarantia as string) } : {}),
         modo: 'set',
       });
     }

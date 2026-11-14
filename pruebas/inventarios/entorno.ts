@@ -9,12 +9,28 @@ import {
   type EntradaProducto,
 } from './api.js';
 import { DobleDb } from './doble-db.js';
+import type { ConfiguracionComercial } from '@novutienda/nucleo';
 
 export const T = 't1';
 export const ADM: Autor = { uid: 'u-adm', rol: 'adm' };
 export const SUP: Autor = { uid: 'u-sup', rol: 'sup' };
 export const SUP2: Autor = { uid: 'u-sup2', rol: 'sup' };
 export const CAJ: Autor = { uid: 'u-caj', rol: 'caj' };
+
+/** El tenant de tres monedas (documento anterior, sin `comercial`): sus mercados son BO y AR, con base en USD. */
+export const COMERCIAL_TRES: ConfiguracionComercial = {
+  mercados: [
+    { id: 'BO', nombre: 'Bolivia', monedaVenta: 'BOB', monedaBase: 'USD', zonaHoraria: 'America/La_Paz', tipoCambio: { par: 'BOB/USD', fuentes: ['BCB'] }, redondeo: { tipo: 'decimales', decimales: 2, modo: 'cercano' } },
+    { id: 'AR', nombre: 'Argentina', monedaVenta: 'ARS', monedaBase: 'USD', zonaHoraria: 'America/Argentina/Buenos_Aires', tipoCambio: { par: 'ARS/USD', fuentes: ['BNA', 'BCRA'] }, redondeo: { tipo: 'multiplo', multiplo: 100, modo: 'cercano' } },
+  ],
+  monedas: ['BOB', 'USD', 'ARS'],
+};
+
+/** Un comercio de UN mercado, una moneda y sin tipo de cambio (el precio base es el precio). */
+export const COMERCIAL_UN_MERCADO: ConfiguracionComercial = {
+  mercados: [{ id: 'PE', nombre: 'Perú', monedaVenta: 'PEN', monedaBase: 'PEN', zonaHoraria: 'America/Lima', tipoCambio: null, redondeo: { tipo: 'decimales', decimales: 2, modo: 'cercano' } }],
+  monedas: ['PEN'],
+};
 
 export const tenantOk = { estado: 'activo', plan: 'base', modulos: {}, zonaHoraria: 'America/La_Paz', monedas: ['BOB', 'USD', 'ARS'] };
 

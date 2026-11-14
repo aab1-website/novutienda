@@ -4,7 +4,7 @@ import {
   type LecturaSinBloqueo, type ProductoExportable,
 } from './api.js';
 import type { DobleDb } from './doble-db.js';
-import { ADM, altaProducto, contar, doc, nuevoEntorno, op, producto, T } from './entorno.js';
+import { ADM, altaProducto, COMERCIAL_TRES, contar, doc, nuevoEntorno, op, producto, T } from './entorno.js';
 
 let db: DobleDb;
 beforeEach(async () => {
@@ -91,7 +91,7 @@ describe('ida y vuelta de la neutralización', () => {
         conSerie: false, precioUSD: { bo: 1000, ar: 1100 }, activo: p['activo'] as boolean, publicado: p['publicado'] as boolean,
       });
     }
-    const csv = exportarProductosCsv(filas);
+    const csv = exportarProductosCsv(filas, COMERCIAL_TRES);
     expect(csv).toContain("'-Cable");
     const sim = await db.runTransaction((tx) => simularImportacionCsv(tx, { tenantId: T, por: ADM, csv }));
     expect(sim.filas.map((f) => f.accion)).toEqual(Array(nombres.length).fill('sin-cambios'));
@@ -102,7 +102,7 @@ describe('ida y vuelta de la neutralización', () => {
   });
 
   it('una celda con fórmula sin apóstrofe (de una persona) se sigue guardando neutralizada, con aviso', () => {
-    const [f] = leerCsvFilas(`${CAB}\nx1,=1+1,c,S-1,1,1\n`, false).filas;
+    const [f] = leerCsvFilas(`${CAB}\nx1,=1+1,c,S-1,1,1\n`, false, COMERCIAL_TRES).filas;
     expect(f?.datos.nombre).toBe("'=1+1");
     expect(f?.advertencias[0]).toMatch(/fórmula/);
   });
@@ -110,16 +110,16 @@ describe('ida y vuelta de la neutralización', () => {
 
 describe('celdas numéricas de Excel', () => {
   it('redondea al centavo tolerando ruido de coma flotante y rechaza decimales reales', () => {
-    const f = leerCsvFilas(`id,nombre,categoria,sku,precioBO,precioAR,costo\na1,A,c,S-1,1234.5599999999999,12.1,0.07\na2,A,c,S-2,12.345,1.005,3\n`, false).filas;
+    const f = leerCsvFilas(`id,nombre,categoria,sku,precioBO,precioAR,costo\na1,A,c,S-1,1234.5599999999999,12.1,0.07\na2,A,c,S-2,12.345,1.005,3\n`, false, COMERCIAL_TRES).filas;
     expect(f[0]?.errores).toEqual([]);
-    expect(f[0]?.datos).toMatchObject({ bo: 123456, ar: 1210, costoUSD: 7 });
+    expect(f[0]?.datos).toMatchObject({ precios: { bo: 123456, ar: 1210 }, costoUSD: 7 });
     expect(f[1]?.errores.map((e) => e.columna)).toEqual(['precioBO', 'precioAR']);
     expect(aEnteroEscalado('0.1', 100)).toBe(10);
     expect(aEnteroEscalado('2,5', 100)).toBe(250);
   });
 
   it('enteros con .0 se aceptan; con decimales reales no', () => {
-    const f = leerCsvFilas('id,nombre,categoria,sku,garantia,minimo\na1,A,c,S-1,3.0,5.0000000000000004\na2,A,c,S-2,3.5,2.5\n', false).filas;
+    const f = leerCsvFilas('id,nombre,categoria,sku,garantia,minimo\na1,A,c,S-1,3.0,5.0000000000000004\na2,A,c,S-2,3.5,2.5\n', false, COMERCIAL_TRES).filas;
     expect(f[0]?.datos).toMatchObject({ garantiaMeses: 3, minimo: 5 });
     expect(f[1]?.errores.map((e) => e.columna)).toEqual(['garantia', 'minimo']);
   });
@@ -132,7 +132,7 @@ describe('celdas numéricas de Excel', () => {
   });
 
   it('un id y un SKU numéricos (12) se toman como texto', () => {
-    const [f] = leerCsvFilas('id,nombre,categoria,sku\n12,A,c,34\n', false).filas;
+    const [f] = leerCsvFilas('id,nombre,categoria,sku\n12,A,c,34\n', false, COMERCIAL_TRES).filas;
     expect(f).toMatchObject({ id: '12', datos: { sku: '34' } });
     expect(f?.errores).toEqual([]);
   });

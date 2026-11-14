@@ -1,4 +1,4 @@
-import { ZONA_HORARIA, type MotivoStockCambiado, type Rol, type TransaccionMin } from '@novutienda/nucleo';
+import { type MotivoStockCambiado, type Rol, type TransaccionMin } from '@novutienda/nucleo';
 import { ErrorInventario, EstadoInvalido, ProductoInactivo, SerieNoDisponible, StockInsuficiente } from './errores.js';
 import { esDisponible, UBICACION_DISPONIBILIDAD } from './disponibilidad.js';
 import { idExistencia, idUnidad, ruta } from './ids.js';
@@ -108,18 +108,18 @@ export function bajoMinimo(p: Datos): boolean {
   return entero(min) && entero(p['stockTotal']) && p['stockTotal'] <= min;
 }
 
-/** Zona de las fechas de calendario (la misma que fija el tenant y que usa Recibos). */
-export const ZONA_HORARIA_POR_DEFECTO = ZONA_HORARIA;
-
-/** Fecha de calendario aaaa-mm-dd de un instante ISO en la zona dada (no en UTC). */
-export function fechaLocal(instanteIso: string, zona: string = ZONA_HORARIA_POR_DEFECTO): string {
+/**
+ * Fecha de calendario aaaa-mm-dd de un instante ISO en la zona dada (no en UTC). La zona NO tiene valor por omisión: la
+ * decide quien llama con la configuración del tenant (la del mercado de la operación o, si no hay mercado, `zonaPrincipalDe`).
+ */
+export function fechaLocal(instanteIso: string, zona: string): string {
   const partes = new Intl.DateTimeFormat('en-CA', { timeZone: zona, year: 'numeric', month: '2-digit', day: '2-digit' }).formatToParts(new Date(instanteIso));
   const g = (t: string): string => partes.find((x) => x.type === t)?.value ?? '';
   return `${g('year')}-${g('month')}-${g('day')}`;
 }
 
 /** Fin de garantía: suma meses a la fecha de calendario del instante en la zona (si el día no existe, el último del mes). */
-export function sumarMeses(instanteIso: string, meses: number, zona: string = ZONA_HORARIA_POR_DEFECTO): string {
+export function sumarMeses(instanteIso: string, meses: number, zona: string): string {
   const [a, m, d] = fechaLocal(instanteIso, zona).split('-').map(Number) as [number, number, number];
   const indice = a * 12 + (m - 1) + meses;
   const anio = Math.floor(indice / 12);

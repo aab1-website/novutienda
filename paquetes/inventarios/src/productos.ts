@@ -1,15 +1,25 @@
-import { LimiteDelPlan, ContadorCorrupto, MERCADOS, PLANES, type Resumen, rutaContador, validarTenant, type TransaccionIdentidad } from '@novutienda/nucleo';
+import { LimiteDelPlan, ContadorCorrupto, PLANES, type ConfiguracionComercial, type Resumen, rutaContador, validarTenant, type TransaccionIdentidad } from '@novutienda/nucleo';
+import { claveDePrecio, resolverComercial, sufijoDeAuditoria } from './comercial.js';
 import { EntradaInvalida, EstadoInvalido, NoEncontrado } from './errores.js';
 import { esDisponible, UBICACION_DISPONIBILIDAD } from './disponibilidad.js';
 import { esProductoId, esSku, exigirProducto, exigirSegmento, exigirUbicacion, idExistencia, ruta } from './ids.js';
-import { bajoMinimo, type Autor, type Datos, type Lector, type Trabajo } from './motor.js';
+import { bajoMinimo, Lector, type Autor, type Datos, type Trabajo } from './motor.js';
 import { ejecutarOperacion, exigirAutor, PERMISOS, type ResultadoOperacion } from './operacion.js';
 
-export interface PrecioUSD {
-  /** Centavos de USD por mercado (Bolivia, Argentina). */
-  readonly bo: number;
-  readonly ar: number;
-}
+/**
+ * Precio por mercado del tenant, con la clave `claveDePrecio(idMercado)` y el valor en centavos de la moneda BASE de ese
+ * mercado (USD en el tenant de tres monedas). El campo guardado se sigue llamando `precioUSD` por compatibilidad: no se migra.
+ *
+ * TRANSITORIO: `bo` y `ar` figuran como obligatorios en el TIPO solo para que el panel (contrato `Cabe<...>`), la batería de
+ * equivalencia y el coordinador sigan compilando sin cambios en este PR; en tiempo de ejecución se exige un precio por cada
+ * mercado que declara el tenant y por ninguno más (un tenant de un mercado no tiene `bo` ni `ar`). El panel (PR C) y los demás
+ * consumidores lo migran y se retira el tipo con `bo`/`ar`.
+ */
+// eslint-disable-next-line @typescript-eslint/no-explicit-any -- el índice `any` deja asignar la interfaz `{ bo, ar }` del panel (transitorio, ver arriba)
+export type PrecioUSD = { readonly bo: number; readonly ar: number; readonly [claveDeMercado: string]: any };
+
+/** Precios por clave de mercado tal como se validan y se guardan. */
+type PreciosPorClave = Readonly<Record<string, number>>;
 
 export interface EntradaProducto {
   readonly id: string;
@@ -39,31 +49,26 @@ const texto = (x: unknown, nombre: string, max: number): string => {
   return x;
 };
 
-function exigirPrecio(x: unknown): PrecioUSD {
+function exigirPrecio(x: unknown, comercial: ConfiguracionComercial): PreciosPorClave {
   const p = x as Record<string, unknown> | null | undefined;
   if (typeof p !== 'object' || p === null || Array.isArray(p)) throw new EntradaInvalida('El precio debe indicar un valor por cada mercado');
   const salida: Record<string, number> = {};
-  // Un precio por cada mercado del núcleo; ninguno puede faltar ni sobrar.
-  for (const m of MERCADOS) {
-    const clave = claveMercado(m);
+  // Un precio por cada mercado declarado por el tenant; ninguno puede faltar ni sobrar.
+  for (const m of comercial.mercados) {
+    const clave = claveDePrecio(m.id);
     const v = p[clave];
-    if (!centavos(v)) throw new EntradaInvalida(`Falta el precio del mercado ${m} o no es válido (centavos enteros de USD)`);
+    if (!centavos(v)) throw new EntradaInvalida(`Falta el precio del mercado ${m.id} o no es válido (centavos enteros de ${m.monedaBase})`);
     salida[clave] = v;
   }
-  for (const k of Object.keys(p)) if (!(k in salida)) throw new EntradaInvalida(`Mercado desconocido en el precio: ${k}`);
-  return salida as unknown as PrecioUSD;
+  for (const k of Object.keys(p)) if (!Object.hasOwn(salida, k)) throw new EntradaInvalida(`Mercado desconocido en el precio: ${k}`);
+  return salida;
 }
-
-/** Clave del precio de un mercado (`BO` -> `bo`). */
-const claveMercado = (m: string): string => m.toLowerCase();
-/** Sufijo legible para la auditoría (`BO` -> `Bo`). */
-const sufijoMercado = (m: string): string => m.charAt(0) + m.slice(1).toLowerCase();
 
 /** Valida estrictamente una entrada de producto (claves desconocidas incluidas). */
 export type ProductoValido = Required<Omit<EntradaProducto, 'garantiaMeses' | 'minimo' | 'costoUSD' | 'marca'>> &
   Pick<EntradaProducto, 'garantiaMeses' | 'minimo' | 'costoUSD' | 'marca'>;
 
-export function validarEntradaProducto(x: EntradaProducto): ProductoValido {
+export function validarEntradaProducto(x: EntradaProducto, comercial: ConfiguracionComercial): ProductoValido {
   if (typeof x !== 'object' || x === null) throw new EntradaInvalida('producto inválido');
   for (const k of Object.keys(x)) if (!CLAVES_PRODUCTO.has(k)) throw new EntradaInvalida(`campo desconocido: ${k}`);
   if (!esProductoId(x.id)) throw new EntradaInvalida(`id de producto inválido: ${String(x.id)}`);
@@ -88,7 +93,7 @@ export function validarEntradaProducto(x: EntradaProducto): ProductoValido {
     publicado: x.publicado ?? false,
     conSerie,
     controlaStock,
-    precioUSD: exigirPrecio(x.precioUSD),
+    precioUSD: exigirPrecio(x.precioUSD, comercial) as PrecioUSD,
     ...(x.marca !== undefined ? { marca: texto(x.marca, 'marca', 60) } : {}),
     ...(x.garantiaMeses !== undefined ? { garantiaMeses: x.garantiaMeses } : {}),
     ...(x.minimo !== undefined ? { minimo: x.minimo } : {}),
@@ -155,11 +160,14 @@ export interface EntradaCrearProducto {
   readonly operacionId: string;
   readonly por: Autor;
   readonly producto: EntradaProducto;
+  /** Mercados del tenant (la inyecta el borde). Si falta, se lee del documento del tenant; sin ninguno, falla cerrado. */
+  readonly comercial?: ConfiguracionComercial;
 }
 
 /** Crea un producto (adm). Respeta el tope de 200 productos del plan. */
 export async function crearProducto(tx: TransaccionIdentidad, e: EntradaCrearProducto): Promise<ResultadoOperacion<Datos>> {
-  const producto = validarEntradaProducto(e.producto);
+  const comercial = await resolverComercial(new Lector(tx, e.tenantId), e.tenantId, e.comercial);
+  const producto = validarEntradaProducto(e.producto, comercial);
   return ejecutarOperacion(tx, {
     tenantId: e.tenantId,
     operacionId: e.operacionId,
@@ -172,7 +180,7 @@ export async function crearProducto(tx: TransaccionIdentidad, e: EntradaCrearPro
       await reservarLimite(t, 'productos', 1);
       await prepararProductoNuevo(t, producto);
       const resumen: Resumen = Object.fromEntries(
-        MERCADOS.map((m) => [`precio${sufijoMercado(m)}`, (producto.precioUSD as unknown as Record<string, number>)[claveMercado(m)] ?? 0]),
+        comercial.mercados.map((m) => [`precio${sufijoDeAuditoria(m.id)}`, (producto.precioUSD as PreciosPorClave)[claveDePrecio(m.id)] ?? 0]),
       );
       return { resultado: { productoId: producto.id }, referencia: { tipo: 'producto', id: producto.id }, tipoMovimiento: 'ingreso', resumen, cambiosProducto: [{ productoId: producto.id, cambio: 'creado' }] };
     },
@@ -197,7 +205,7 @@ export interface CambiosProducto {
 }
 
 /** Escrituras de una edición de la ficha (sin tocar el stock). Devuelve el resumen de la auditoría. */
-export async function prepararEdicion(t: Trabajo, productoId: string, c: CambiosProducto): Promise<Record<string, number | string>> {
+export async function prepararEdicion(t: Trabajo, productoId: string, c: CambiosProducto, inyectada?: ConfiguracionComercial): Promise<Record<string, number | string>> {
   const prod = await t.lector.leer('productos', productoId);
   if (prod === undefined) throw new NoEncontrado(`Producto inexistente: ${productoId}`);
   const tienda = await t.lector.leer('existencias', idExistencia(productoId, UBICACION_DISPONIBILIDAD));
@@ -232,13 +240,14 @@ export async function prepararEdicion(t: Trabajo, productoId: string, c: Cambios
   }
   const resumen: Record<string, number | string> = { campos: Object.keys(c).join(',') };
   if (c.precioUSD !== undefined) {
-    const precio = exigirPrecio(c.precioUSD);
+    const comercial = await resolverComercial(t.lector, t.tenantId, inyectada);
+    const precio = exigirPrecio(c.precioUSD, comercial);
     const antes = (prod['precioUSD'] ?? {}) as Record<string, unknown>;
-    for (const m of MERCADOS) {
-      const k = claveMercado(m);
+    for (const m of comercial.mercados) {
+      const k = claveDePrecio(m.id);
       const previo = antes[k];
-      if (typeof previo === 'number') resumen[`antes${sufijoMercado(m)}`] = previo;
-      resumen[`precio${sufijoMercado(m)}`] = (precio as unknown as Record<string, number>)[k] ?? 0;
+      if (typeof previo === 'number') resumen[`antes${sufijoDeAuditoria(m.id)}`] = previo;
+      resumen[`precio${sufijoDeAuditoria(m.id)}`] = precio[k] ?? 0;
     }
     nuevo['precioUSD'] = { ...precio };
   }
@@ -270,7 +279,7 @@ export async function prepararEdicion(t: Trabajo, productoId: string, c: Cambios
 /** Edita la ficha (adm). `conSerie` no cambia tras el primer movimiento. No toca el stock. */
 export async function actualizarProducto(
   tx: TransaccionIdentidad,
-  e: { tenantId: string; operacionId: string; por: Autor; productoId: string; cambios: CambiosProducto },
+  e: { tenantId: string; operacionId: string; por: Autor; productoId: string; cambios: CambiosProducto; comercial?: ConfiguracionComercial },
 ): Promise<ResultadoOperacion<Datos>> {
   const productoId = exigirProducto(e.productoId);
   // Una clave con `undefined` equivale a no enviarla.
@@ -288,7 +297,7 @@ export async function actualizarProducto(
     por: exigirAutor(e.por),
     roles: PERMISOS.producto,
     construir: async (t) => {
-      const resumen = await prepararEdicion(t, productoId, c);
+      const resumen = await prepararEdicion(t, productoId, c, e.comercial);
       return { resultado: { productoId }, referencia: { tipo: 'producto', id: productoId }, tipoMovimiento: 'ajuste', resumen, cambiosProducto: [{ productoId, cambio: soloPrecio ? 'precio' : 'editado' }] };
     },
   });

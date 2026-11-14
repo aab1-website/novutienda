@@ -1,10 +1,17 @@
 // (e) CSV exportado de productos y simulación de importación de un CSV con `precioBO` / `precioAR`, con las
 // funciones reales de Inventarios sobre los productos fijos. La simulación no escribe: se comprueba.
 import { exportarProductosCsv, simularImportacionCsv, type ProductoExportable } from '@novutienda/inventarios';
+import { comercialLegado } from '@novutienda/nucleo';
 import { describe, expect, it } from 'vitest';
 import { ADM, T } from './escenario.js';
 import { crearEscenario } from './escenario.js';
 import { compararConFoto, compararConFotoJson } from './foto.js';
+
+// Configuración comercial del tenant de referencia (tres monedas), derivada como lo hace el servidor para el documento
+// de la forma anterior: la exportación REAL (con configuración) debe producir lo mismo que antes.
+const derivada = comercialLegado({ zonaHoraria: 'America/La_Paz', monedas: ['BOB', 'USD', 'ARS'] });
+if (!derivada.ok) throw new Error('la configuración de referencia no es válida');
+const COMERCIAL = derivada.valor;
 
 const exportables = async (): Promise<{ e: Awaited<ReturnType<typeof crearEscenario>>; productos: ProductoExportable[] }> => {
   const e = await crearEscenario();
@@ -21,14 +28,14 @@ const exportables = async (): Promise<{ e: Awaited<ReturnType<typeof crearEscena
 describe('CSV de productos del tenant de referencia', () => {
   it('exportación: columnas, precios en USD con dos decimales (precioBO / precioAR), precios en 0 y decimales incómodos', async () => {
     const { productos } = await exportables();
-    const csv = exportarProductosCsv(productos);
+    const csv = exportarProductosCsv(productos, COMERCIAL);
     expect(csv.split('\r\n')[0]).toContain('precioBO,precioAR');
     compararConFoto('inventarios-exportacion.csv', csv);
   });
 
   it('simulación: volver a importar lo exportado no cambia nada', async () => {
     const { e, productos } = await exportables();
-    const sim = await e.db.runTransaction((tx) => simularImportacionCsv(tx, { tenantId: T, por: ADM, csv: exportarProductosCsv(productos), cargaInicial: false }));
+    const sim = await e.db.runTransaction((tx) => simularImportacionCsv(tx, { tenantId: T, por: ADM, csv: exportarProductosCsv(productos, COMERCIAL), cargaInicial: false }));
     expect(sim.resumen.errores).toBe(0);
     expect(sim.resumen.crear + sim.resumen.actualizar).toBe(0);
     compararConFotoJson('inventarios-simulacion-roundtrip.json', sim);
@@ -36,7 +43,7 @@ describe('CSV de productos del tenant de referencia', () => {
 
   it('simulación: alta, cambio de precio en un solo mercado, precio 0, formatos de número y filas con error', async () => {
     const { e, productos } = await exportables();
-    const base = exportarProductosCsv(productos).split('\r\n');
+    const base = exportarProductosCsv(productos, COMERCIAL).split('\r\n');
     const filaLapiz = base.findIndex((l) => l.startsWith('p-lapiz,'));
     base[filaLapiz] = 'p-lapiz,Lápiz HB,general,,SKU-p-lapiz,false,,,1.30,1.33,,true,true'; // solo cambia precioBO
     const csv = [
