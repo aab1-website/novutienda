@@ -1,13 +1,16 @@
-import type { Moneda } from '@novutienda/nucleo';
+const PREFIJO: Readonly<Record<string, string>> = { BOB: 'Bs', USD: 'USD', ARS: 'ARS' };
 
-const PREFIJO: Readonly<Record<Moneda, string>> = { BOB: 'Bs', USD: 'USD', ARS: 'ARS' };
+/** Prefijo con que se muestra una moneda; una moneda no listada se muestra con su código tal cual. */
+export function prefijoMoneda(moneda: string): string {
+  return Object.hasOwn(PREFIJO, moneda) ? (PREFIJO[moneda] as string) : moneda;
+}
 
 /** Centavos enteros a texto: «Bs 1.234,50» (miles con punto, decimales con coma). */
-export function formatearMonto(centavos: number, moneda: Moneda): string {
+export function formatearMonto(centavos: number, moneda: string): string {
   const signo = centavos < 0 ? '-' : '';
   const a = Math.abs(Math.round(centavos));
   const entero = String(Math.floor(a / 100)).replace(/\B(?=(\d{3})+(?!\d))/g, '.');
-  return `${signo}${PREFIJO[moneda]} ${entero},${String(a % 100).padStart(2, '0')}`;
+  return `${signo}${prefijoMoneda(moneda)} ${entero},${String(a % 100).padStart(2, '0')}`;
 }
 
 /** Número entero de centavos a texto editable («12,50»). */

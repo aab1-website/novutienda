@@ -1,7 +1,7 @@
 import { afterEach, describe, expect, it } from 'vitest';
 import { aBase64, formatoBytes } from './base64.js';
 import { aCsv, celdaCsv } from './csv.js';
-import { diferenciaPorMoneda, efectivoEsperado, proyectarTurno, sumarTotales, TOTALES_VACIOS } from '../pantallas/pos/arqueo.js';
+import { diferenciaPorMoneda, efectivoEsperado, monedasDelTurno, proyectarTurno, sumarTotales, TOTALES_VACIOS } from '../pantallas/pos/arqueo.js';
 import { centavosATexto, formatearMonto, textoACentavos } from './dinero.js';
 import { ITEMS_MENU, menuPara, parsearRuta, puedeVer, rutaPorOmision } from './menu.js';
 import { calcularPagos, type FilaPago } from '../pantallas/pos/pagos.js';
@@ -17,6 +17,8 @@ describe('dinero', () => {
   it('formatea centavos con miles y coma decimal', () => {
     expect(formatearMonto(123450, 'BOB')).toBe('Bs 1.234,50');
     expect(formatearMonto(5, 'USD')).toBe('USD 0,05');
+    expect(formatearMonto(123450, 'CLP')).toBe('CLP 1.234,50');
+    expect(formatearMonto(5, 'toString')).toBe('toString 0,05');
     expect(formatearMonto(-1000, 'ARS')).toBe('-ARS 10,00');
     expect(formatearMonto(100000000, 'ARS')).toBe('ARS 1.000.000,00');
   });
@@ -71,6 +73,13 @@ describe('arqueo', () => {
     expect(diferenciaPorMoneda(t, { BOB: 14000 })).toEqual({ BOB: -500 });
     expect(diferenciaPorMoneda(t, { BOB: 15000 })).toEqual({ BOB: 500 });
     expect(diferenciaPorMoneda(t, {})).toEqual({});
+  });
+  it('una moneda no listada aparece en el turno, la proyección y la diferencia sin romper', () => {
+    const x = { apertura: { CLP: 1000, BOB: 500 }, totales: { CLP: { ...TOTALES_VACIOS, efectivo: 200 } } };
+    expect(monedasDelTurno(x)).toEqual(['BOB', 'CLP']);
+    expect(proyectarTurno(x).CLP?.efectivoEsperado).toBe(1200);
+    expect(diferenciaPorMoneda(x, { CLP: 1000, BOB: 500 })).toEqual({ BOB: 0, CLP: -200 });
+    expect(sumarTotales(x.totales, 'CLP', { qr: 5 }).CLP?.qr).toBe(5);
   });
   it('suma totales sin mutar', () => {
     const a = sumarTotales({}, 'USD', { efectivo: 100 });

@@ -15,7 +15,7 @@ export const MONEDAS: readonly Moneda[] = ['BOB', 'USD', 'ARS'];
 export type UbicacionId = 'tienda' | 'deposito-1' | 'deposito-2';
 export const UBICACIONES: readonly UbicacionId[] = ['tienda', 'deposito-1', 'deposito-2'];
 
-export type MontosPorMoneda = Readonly<Partial<Record<Moneda, number>>>;
+export type MontosPorMoneda = Readonly<Partial<Record<string, number>>>;
 
 export interface TotalesMoneda {
   readonly efectivo: number;
@@ -25,7 +25,7 @@ export interface TotalesMoneda {
   readonly ingresos: number;
   readonly egresos: number;
 }
-export type TotalesTurno = Readonly<Partial<Record<Moneda, TotalesMoneda>>>;
+export type TotalesTurno = Readonly<Partial<Record<string, TotalesMoneda>>>;
 export type EstadoTurno = 'abierto' | 'cerrado' | 'cerrado_forzado';
 
 export interface TurnoPos {
@@ -56,7 +56,7 @@ export interface LineaVenta {
 
 export interface PagoVentaPos {
   readonly medio: MedioPago;
-  readonly moneda: Moneda;
+  readonly moneda: string;
   readonly monto: number;
   readonly cambio?: number;
   readonly referencia?: string;
@@ -69,9 +69,9 @@ export interface VentaPos {
   readonly cajaId: string;
   readonly cajeroUid: string;
   readonly estado: 'confirmada' | 'anulada';
-  readonly moneda: Moneda;
-  readonly mercado: Mercado;
-  readonly cotizacion: CopiaCotizacion | null;
+  readonly moneda: string;
+  readonly mercado: string;
+  readonly cotizacion: CopiaCotizacion<string> | null;
   readonly lineas: readonly LineaVenta[];
   readonly subtotal: number;
   readonly descuento?: { readonly monto: number; readonly motivo: string; readonly aprobadoPor?: string; readonly aprobacionId?: string };
@@ -122,7 +122,7 @@ export interface AprobacionPos {
   readonly aprobacionId: string;
   readonly tipo: TipoAprobacion;
   readonly estado: EstadoAprobacion;
-  readonly moneda: Moneda;
+  readonly moneda: string;
   readonly monto: number;
   readonly motivo: string;
   readonly deudor?: string;
@@ -142,7 +142,7 @@ export interface SolicitudAprobacion {
 
 export interface ReembolsoAnulacion {
   readonly medio: Exclude<MedioPago, 'credito'>;
-  readonly moneda: Moneda;
+  readonly moneda: string;
   readonly monto: number;
 }
 
@@ -154,7 +154,7 @@ export interface ResultadoAnulacion {
 
 export interface MovimientoCajaEntrada {
   readonly tipo: 'ingreso' | 'egreso';
-  readonly moneda: Moneda;
+  readonly moneda: string;
   readonly monto: number;
   readonly motivo: string;
   readonly comprobante?: string;
@@ -185,7 +185,7 @@ export interface CobroCredito extends CobroCreditoEntrada {
 export interface CreditoVista {
   readonly ventaId: string;
   readonly deudor: string;
-  readonly moneda: Moneda;
+  readonly moneda: string;
   readonly monto: number;
   readonly saldo: number;
   readonly cobrado: number;
@@ -200,7 +200,7 @@ export interface ConfigPos {
   readonly logoUrl?: string;
   readonly colores: { readonly primario: string; readonly secundario: string };
   readonly mediosHabilitados: readonly MedioPago[];
-  readonly monedaPorDefecto: Moneda;
+  readonly monedaPorDefecto: string;
   /** Puntos básicos: 500 = 5 %. */
   readonly topesDescuentoBp: Readonly<Record<Rol, number>>;
   readonly textoRecibo: string;
@@ -215,7 +215,7 @@ export interface ArqueoMoneda {
 
 export interface ResultadoCierre {
   readonly turno: TurnoPos;
-  readonly arqueo: Readonly<Partial<Record<Moneda, ArqueoMoneda>>>;
+  readonly arqueo: Readonly<Partial<Record<string, ArqueoMoneda>>>;
 }
 
 // ---------------------------------------------------------------------------------------------------------------------
@@ -431,7 +431,7 @@ export interface Recibo {
   readonly moneda: string;
   readonly total: number;
   readonly descuento?: { readonly monto: number; readonly motivo: string };
-  readonly cotizacion: CopiaCotizacion | null;
+  readonly cotizacion: CopiaCotizacion<string> | null;
   readonly lineas: readonly LineaRecibo[];
   readonly pagos: readonly { readonly medio: string; readonly moneda: string; readonly monto: number }[];
   readonly facturaSuma?: string;
