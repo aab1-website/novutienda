@@ -443,7 +443,9 @@ async function planificarFila(lector: Lector, fila: FilaLeida, comercial: Config
     const k = claveDePrecio(m.id);
     const traido = d.precios?.[k];
     if (traido !== undefined && traido !== antes[k]) cambiaPrecio = true;
-    nuevosPrecios[k] = traido ?? (antes[k] as number | undefined) ?? 0;
+    // Sin precio traído ni guardado: el mercado sigue «sin precio» (no se escribe 0).
+    const valor = traido ?? (antes[k] as number | undefined);
+    if (valor !== undefined) nuevosPrecios[k] = valor;
   }
   if (cambiaPrecio) {
     c.precioUSD = nuevosPrecios as unknown as PrecioUSD;
@@ -707,7 +709,7 @@ export interface ProductoExportable {
   readonly conSerie: boolean;
   readonly garantiaMeses?: number;
   readonly minimo?: number;
-  /** Centavos de la moneda base (como se guardan), por clave de mercado; la exportación los escribe con 2 decimales, que la importación lee sin cambiar precios. */
+  /** Parcial: un mercado «sin precio» no tiene clave y se exporta como celda vacía. Centavos de la moneda base (como se guardan), por clave de mercado; la exportación los escribe con 2 decimales, que la importación lee sin cambiar precios. */
   readonly precioUSD: Readonly<Record<string, number>>;
   readonly costoUSD?: number;
   readonly activo: boolean;
@@ -751,7 +753,7 @@ function csvDe(productos: readonly ProductoExportable[], claves: readonly string
   const filas = productos.map((p) =>
     [
       p.id, p.nombre, p.categoria, p.marca ?? '', p.sku, String(p.conSerie), p.garantiaMeses?.toString() ?? '', p.minimo?.toString() ?? '',
-      ...claves.map((k) => centavosAUsd(p.precioUSD[k] ?? 0)), p.costoUSD === undefined ? '' : centavosAUsd(p.costoUSD), String(p.activo), String(p.publicado),
+      ...claves.map((k) => (p.precioUSD[k] === undefined ? '' : centavosAUsd(p.precioUSD[k]))), p.costoUSD === undefined ? '' : centavosAUsd(p.costoUSD), String(p.activo), String(p.publicado),
     ].map(celdaCsv).join(','),
   );
   return `${[encabezados.join(','), ...filas].join('\r\n')}\r\n`;

@@ -49,7 +49,7 @@ const texto = (x: unknown, nombre: string, max: number): string => {
   return x;
 };
 
-function exigirPrecio(x: unknown, comercial: ConfiguracionComercial): PreciosPorClave {
+function exigirPrecio(x: unknown, comercial: ConfiguracionComercial, previos?: Record<string, unknown>): PreciosPorClave {
   const p = x as Record<string, unknown> | null | undefined;
   if (typeof p !== 'object' || p === null || Array.isArray(p)) throw new EntradaInvalida('El precio debe indicar un valor por cada mercado');
   const salida: Record<string, number> = {};
@@ -57,6 +57,11 @@ function exigirPrecio(x: unknown, comercial: ConfiguracionComercial): PreciosPor
   for (const m of comercial.mercados) {
     const clave = claveDePrecio(m.id);
     const v = p[clave];
+    // Al editar, un mercado sin precio guardado puede seguir sin precio; uno que ya tiene precio no se puede quitar.
+    if (previos !== undefined && !Object.hasOwn(p, clave)) {
+      if (Object.hasOwn(previos, clave)) throw new EntradaInvalida(`No se puede quitar el precio de ${m.id}`);
+      continue;
+    }
     if (!centavos(v)) throw new EntradaInvalida(`Falta el precio del mercado ${m.id} o no es válido (centavos enteros de ${m.monedaBase})`);
     salida[clave] = v;
   }
@@ -241,13 +246,14 @@ export async function prepararEdicion(t: Trabajo, productoId: string, c: Cambios
   const resumen: Record<string, number | string> = { campos: Object.keys(c).join(',') };
   if (c.precioUSD !== undefined) {
     const comercial = await resolverComercial(t.lector, t.tenantId, inyectada);
-    const precio = exigirPrecio(c.precioUSD, comercial);
     const antes = (prod['precioUSD'] ?? {}) as Record<string, unknown>;
+    const precio = exigirPrecio(c.precioUSD, comercial, antes);
     for (const m of comercial.mercados) {
       const k = claveDePrecio(m.id);
       const previo = antes[k];
       if (typeof previo === 'number') resumen[`antes${sufijoDeAuditoria(m.id)}`] = previo;
-      resumen[`precio${sufijoDeAuditoria(m.id)}`] = precio[k] ?? 0;
+      const nuevoPrecio = precio[k];
+      if (nuevoPrecio !== undefined) resumen[`precio${sufijoDeAuditoria(m.id)}`] = nuevoPrecio;
     }
     nuevo['precioUSD'] = { ...precio };
   }

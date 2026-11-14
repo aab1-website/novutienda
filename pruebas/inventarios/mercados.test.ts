@@ -67,8 +67,9 @@ describe('comercio de UN mercado (PE, sin tipo de cambio)', () => {
     await altaProducto(db, pe('lapiz'));
     const leido = await db.runTransaction((tx) => leerProducto(tx, T, 'lapiz', COMERCIAL_UN_MERCADO));
     expect({ ...leido?.precioCentavos }).toEqual({ pe: 1500 });
-    // Un documento al que le falta el precio de un mercado declarado está corrupto (falla cerrado).
-    expect(() => leerDocumentoProducto('x', { nombre: 'x', activo: true, conSerie: false, precioUSD: { bo: 1 } }, COMERCIAL_UN_MERCADO)).toThrow(ProductoCorrupto);
+    // Un documento al que le falta el precio de un mercado declarado está «sin precio» ahí; uno con valor inválido sigue corrupto.
+    expect({ ...leerDocumentoProducto('x', { nombre: 'x', activo: true, conSerie: false, precioUSD: { bo: 1 } }, COMERCIAL_UN_MERCADO).precioCentavos }).toEqual({});
+    expect(() => leerDocumentoProducto('x', { nombre: 'x', activo: true, conSerie: false, precioUSD: { pe: null } }, COMERCIAL_UN_MERCADO)).toThrow(ProductoCorrupto);
   });
 
   it('la importación acepta solo su columna y avisa que ignora las de otros mercados', async () => {
@@ -156,8 +157,9 @@ describe('lectura sin configuración: idéntica a antes de los mercados por tena
     await altaProducto(db, pe('lapiz'));
     await expect(db.runTransaction((tx) => leerProducto(tx, T, 'lapiz'))).rejects.toBeInstanceOf(ProductoCorrupto);
   });
-  it('con configuración falta un mercado declarado = corrupto (a propósito)', () => {
-    expect(() => leerDocumentoProducto('x', { ...base, precioUSD: { bo: 1 } }, COMERCIAL_TRES)).toThrow(ProductoCorrupto);
+  it('con configuración falta un mercado declarado = sin precio en ese mercado (no corrupto)', () => {
+    const leido = leerDocumentoProducto('x', { ...base, precioUSD: { bo: 1 } }, COMERCIAL_TRES);
+    expect({ ...leido.precioCentavos }).toEqual({ bo: 1 });
   });
 });
 

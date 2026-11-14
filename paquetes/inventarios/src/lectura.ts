@@ -50,9 +50,9 @@ export const rutaColeccionProductos = (tenantId: string): string => `tenants/${t
 
 /**
  * Precios guardados.
- * - Con la configuración del tenant: un entero no negativo por CADA mercado declarado y solo esos se entregan.
- *   Un producto sin la clave de un mercado declarado es corrupto (estricto a propósito): agregar un mercado a un tenant que ya
- *   tiene productos exige completar antes esos precios. Decisión abierta: ver si debe tolerarse «sin precio» (0) en ese caso.
+ * - Con la configuración del tenant: solo se entregan los mercados declarados. Si la clave de un mercado declarado NO existe, el
+ *   producto está «sin precio» en ese mercado (caso de un mercado agregado a un comercio que ya tenía productos): no se vende ni se
+ *   publica ahí y no se incluye en `precioCentavos`. Si la clave existe pero no es un entero no negativo (incluido `null`), es corrupto.
  * - Sin ella (lectores que aún no la reciben: caja, consola, asistente): se comporta EXACTAMENTE como antes de los mercados por
  *   tenant, exige `bo` y `ar` enteros y entrega solo esos dos. Un tenant sin esos mercados FALLA CERRADO (`ProductoCorrupto`) en esos
  *   lectores hasta que migren (B3, B4, D): nunca devuelve `undefined` ni calcula mal en silencio.
@@ -61,11 +61,23 @@ function preciosDe(productoId: string, p: Datos, comercial: ConfiguracionComerci
   const salida: Record<string, number> = {};
   const claves = comercial !== undefined ? comercial.mercados.map((m) => claveDePrecio(m.id)) : ['bo', 'ar'];
   for (const k of claves) {
+    if (comercial !== undefined && !Object.hasOwn(p, k)) continue;
     const v = p[k];
     if (!entero(v)) throw new ProductoCorrupto(productoId, 'precioUSD');
     salida[k] = v;
   }
   return salida as unknown as PreciosCentavos;
+}
+
+/** Precio del producto en un mercado (centavos de la moneda base) o `null` si está «sin precio» en él. */
+export function precioEnMercado(p: ProductoLeido, idMercado: string): number | null {
+  const k = claveDePrecio(idMercado);
+  return Object.hasOwn(p.precioCentavos, k) ? (p.precioCentavos[k] ?? null) : null;
+}
+
+/** Ids de los mercados declarados en los que el producto está «sin precio», en el orden de la configuración. */
+export function mercadosSinPrecio(p: ProductoLeido, comercial: ConfiguracionComercial): readonly string[] {
+  return comercial.mercados.filter((m) => precioEnMercado(p, m.id) === null).map((m) => m.id);
 }
 
 /** Valida el documento de producto; lo que no cumple se rechaza, nunca se corrige. */

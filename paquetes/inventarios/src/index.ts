@@ -13,7 +13,7 @@ export type { CodigoError, Faltante } from './errores.js';
 // Operaciones.
 export { esDisponible, skuDesdeId, UBICACION_DISPONIBILIDAD } from './disponibilidad.js';
 export {
-  leerDocumentoProducto, leerExistencias, leerProducto, ProductoCorrupto, rutaColeccionProductos,
+  leerDocumentoProducto, leerExistencias, leerProducto, mercadosSinPrecio, precioEnMercado, ProductoCorrupto, rutaColeccionProductos,
 } from './lectura.js';
 export type { ExistenciaLeida, PreciosCentavos, ProductoLeido } from './lectura.js';
 export { actualizarProducto, crearProducto, crearUbicacion, validarEntradaProducto } from './productos.js';
