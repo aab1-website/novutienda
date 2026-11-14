@@ -15,7 +15,7 @@ export { esDisponible, skuDesdeId, UBICACION_DISPONIBILIDAD } from './disponibil
 export {
   leerDocumentoProducto, leerExistencias, leerProducto, ProductoCorrupto, rutaColeccionProductos,
 } from './lectura.js';
-export type { ExistenciaLeida, ProductoLeido } from './lectura.js';
+export type { ExistenciaLeida, PreciosCentavos, ProductoLeido } from './lectura.js';
 export { actualizarProducto, crearProducto, crearUbicacion, validarEntradaProducto } from './productos.js';
 export type { CambiosProducto, EntradaCrearProducto, EntradaProducto, PrecioUSD } from './productos.js';
 export { ajustar, ingresar, traspasar } from './stock.js';
@@ -23,7 +23,7 @@ export type { LineaAjuste, LineaIngreso, LineaTraspaso } from './stock.js';
 export { resolverMerma, solicitarMerma } from './merma.js';
 export { abrirConteo, cerrarConteo, registrarLineaConteo } from './conteo.js';
 export {
-  aEnteroEscalado, analizarCsv, centavosAUsd, deshacerNeutralizacion, COLUMNAS_EXPORTACION, exportarProductosCsv, importarCsvPorLotes, importarProductosCsv, leerCsvFilas, leerCsvProductos, MAX_FILAS_IMPORTACION, neutralizarCelda, simularImportacionCsv,
+  aEnteroEscalado, analizarCsv, centavosAUsd, deshacerNeutralizacion, columnasDeExportacion, exportarProductosCsv, importarCsvPorLotes, importarProductosCsv, leerCsvFilas, leerCsvProductos, MAX_FILAS_IMPORTACION, neutralizarCelda, simularImportacionCsv,
 } from './importacion.js';
 export { leerArchivoImportacion, MAX_BYTES_ARCHIVO, MAX_COLUMNAS_ARCHIVO, MAX_FILAS_ARCHIVO, validarMatriz } from './archivo.js';
 export type { LectorHojas } from './archivo.js';
@@ -42,7 +42,10 @@ export { esIdSegmento, esProductoId, esSerie, esUbicacionId, UBICACIONES } from 
 export type { UbicacionId } from './ids.js';
 export type { Autor } from './motor.js';
 /** Solo para pruebas: fija el reloj con el que se estampan los planes. */
-export { fijarReloj, fechaLocal, ZONA_HORARIA_POR_DEFECTO } from './motor.js';
+export { fijarReloj, fechaLocal } from './motor.js';
+
+// Mercados del tenant: la clave con que se guarda el precio de cada uno y la zona de las fechas sin mercado.
+export { claveDePrecio, zonaPrincipalDe } from './comercial.js';
 
 // Visibilidad de las existencias durante un conteo abierto (único punto de decisión; ver `visibilidad.ts`).
 export {

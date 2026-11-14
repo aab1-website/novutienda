@@ -4,7 +4,7 @@ import {
   leerProducto, prepararSalida, ProductoCorrupto, skuDesdeId, traspasar, validarEntradaProducto,
 } from './api.js';
 import type { DobleDb } from './doble-db.js';
-import { ADM, altaProducto, CAJ, cargar, doc, nuevoEntorno, op, producto, SUP, T, verificarInvariantes } from './entorno.js';
+import { ADM, altaProducto, COMERCIAL_TRES, CAJ, cargar, doc, nuevoEntorno, op, producto, SUP, T, verificarInvariantes } from './entorno.js';
 
 let db: DobleDb;
 beforeEach(async () => {
@@ -27,8 +27,8 @@ describe('marca del producto', () => {
 
   it('rechaza una marca vacía o demasiado larga', () => {
     const base = producto('m1');
-    expect(() => validarEntradaProducto({ ...base, marca: '' })).toThrow(EntradaInvalida);
-    expect(() => validarEntradaProducto({ ...base, marca: 'x'.repeat(61) })).toThrow(EntradaInvalida);
+    expect(() => validarEntradaProducto({ ...base, marca: '' }, COMERCIAL_TRES)).toThrow(EntradaInvalida);
+    expect(() => validarEntradaProducto({ ...base, marca: 'x'.repeat(61) }, COMERCIAL_TRES)).toThrow(EntradaInvalida);
   });
 });
 
@@ -83,7 +83,7 @@ describe('garantía con fecha de calendario en La Paz', () => {
 
   it('a las 22:00 en La Paz (02:00 UTC del día siguiente) cuenta el día de La Paz', async () => {
     fijarReloj(() => Date.UTC(2026, 10, 5, 2, 0, 0));
-    expect(fechaLocal('2026-11-05T02:00:00.000Z')).toBe('2026-11-04');
+    expect(fechaLocal('2026-11-05T02:00:00.000Z', 'America/La_Paz')).toBe('2026-11-04');
     await vender('A');
     expect(doc(db, 'unidades', 'celular__A')?.['garantiaHasta']).toBe('2027-11-04');
   });
@@ -123,6 +123,6 @@ describe('lectores públicos y SKU por defecto', () => {
     expect(skuDesdeId(largo)).toHaveLength(40);
     expect(skuDesdeId(largo)).toBe(skuDesdeId(largo));
     expect(skuDesdeId(`${'a'.repeat(59)}b`)).not.toBe(skuDesdeId(largo));
-    expect(() => validarEntradaProducto({ ...producto('x1'), sku: skuDesdeId(largo) })).not.toThrow();
+    expect(() => validarEntradaProducto({ ...producto('x1'), sku: skuDesdeId(largo) }, COMERCIAL_TRES)).not.toThrow();
   });
 });

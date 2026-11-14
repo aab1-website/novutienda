@@ -3,10 +3,8 @@
   "simbolos": {
     "COMERCIAL_LEGADO_TRES_MONEDAS": [],
     "MERCADOS": [
-      "paquetes/inventarios/src/productos.ts",
       "paquetes/panel/src/pantallas/inventarios/nombres.ts",
-      "paquetes/website/src/lib/cotizacion-cliente.ts",
-      "plataforma/funciones/servidor/llamadas/inventarios.ts"
+      "paquetes/website/src/lib/cotizacion-cliente.ts"
     ],
     "MONEDAS": [],
     "MONEDA_DE": [
@@ -17,9 +15,7 @@
       "paquetes/website/src/lib/cotizacion-cliente.ts"
     ],
     "ZONA_DE": [],
-    "ZONA_HORARIA": [
-      "paquetes/inventarios/src/motor.ts"
-    ],
+    "ZONA_HORARIA": [],
     "actualizarMercado": [],
     "cargarManual": [],
     "comercialLegado": [],

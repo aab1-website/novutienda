@@ -4,7 +4,7 @@ import { actualizarProducto, crearProducto, EntradaInvalida, EstadoInvalido, Sin
 import { accionesInventarios } from '../../plataforma/funciones/servidor/llamadas/inventarios.js';
 import { tablasCompuestas } from '../funciones/tablas.js';
 import type { DobleDb } from './doble-db.js';
-import { ADM, altaProducto, cargar, CAJ, contar, doc, nuevoEntorno, op, producto, SUP, T } from './entorno.js';
+import { ADM, altaProducto, cargar, CAJ, COMERCIAL_TRES, contar, doc, nuevoEntorno, op, producto, SUP, T } from './entorno.js';
 
 let db: DobleDb;
 beforeEach(async () => {
@@ -75,7 +75,7 @@ describe('edición', () => {
 });
 
 describe('callables inventarios.*Producto', () => {
-  const ctx = (rol: string) => ({ tenantId: T, rol, sesion: { uid: `u-${rol}` }, e: { db } }) as never;
+  const ctx = (rol: string) => ({ tenantId: T, rol, sesion: { uid: `u-${rol}` }, e: { db, comercialDelTenant: () => Promise.resolve(COMERCIAL_TRES) } }) as never;
   it('el registro da solo adm a las tres acciones', () => {
     const t = tablasCompuestas()['inventarios'] ?? {};
     for (const n of ['crearProducto', 'editarProducto', 'cambiarPrecioUSD']) expect(t[n]?.roles).toEqual(['adm']);
