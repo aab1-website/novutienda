@@ -1,5 +1,5 @@
-// (c) Precios del día y precio final por mercado: `precioFinal` y el redondeo del núcleo, `preciosDelDia` de la
-// consola, `precioDeVenta` del panel y `vistaPrecio` del sitio, sobre los productos fijos y la política vigente.
+// (c) Precios del día y precio final por mercado: `precioFinal` y el redondeo del núcleo, `preciosDelDiaDe` de la
+// consola, `precioDeCobro` de la caja del panel y `vistaPrecio` del sitio, sobre los productos fijos y la política vigente.
 import { COMERCIAL_LEGADO_TRES_MONEDAS, precioFinal, redondear, leerCotizacion } from '@novutienda/nucleo';
 import { preciosDelDiaDe } from '@novutienda/consola';
 import { precioDeCobro, type MercadoDeclarado } from '@novutienda/panel/pos';
