@@ -3,6 +3,7 @@ import { useRef, useState } from 'preact/hooks';
 import type { ProductoPanel, UbicacionId } from '../../api/tipos.js';
 import { marcaDe } from '../../api/marca.js';
 import { Alerta, Boton, ConCarga, Pestanas, Seccion, Selector } from '../../ui/comun.js';
+import { useConfiguracionComercial } from '../../ui/comercial.js';
 import { useApp } from '../../ui/contexto.js';
 import { useCarga } from '../../ui/hooks.js';
 import { AvisoConteoAbierto, ExistenciaOculta } from '../../ui/existencia.js';
@@ -36,8 +37,15 @@ const estadoDe = (p: ProductoPanel): string | null => (!p.activo ? 'Inactivo' : 
 export const MOTIVO_FILTRO_MINIMO = 'No disponible mientras hay un conteo abierto';
 const plural = (n: number, uno: string, varios: string): string => `${String(n)} ${n === 1 ? uno : varios}`;
 
+/** Mercados en que el producto está «sin precio», con el nombre declarado por el comercio (sin el nombre, el id). */
+function nombresSinPrecio(p: ProductoPanel, mercados: readonly { readonly id: string; readonly nombre: string }[]): string[] {
+  return (p.sinPrecio ?? []).map((id) => mercados.find((m) => m.id === id)?.nombre ?? id);
+}
+
 function Productos(): JSX.Element {
   const { api, usuario, puedeVer } = useApp();
+  const comercial = useConfiguracionComercial();
+  const mercados = comercial.estado === 'lista' ? comercial.comercial.mercados : [];
   const carga = useCarga(async () => ({ productos: await api.llamar('listarProductos', {}), cot: await api.llamar('cotizacionesVigentes', {}) }), []);
   const [mostrar, setMostrar] = useState<Mostrar>('');
   const [abierto, setAbierto] = useState<{ producto: ProductoPanel | null; etiqueta: string } | null>(null);
@@ -68,7 +76,8 @@ function Productos(): JSX.Element {
                   <Boton chico variante="secundario" onClick={() => setMostrar(modo === 'bajo' ? '' : 'bajo')}>{modo === 'bajo' ? 'Ver todos' : 'Ver'}</Boton>
                 </Alerta>
               )}
-              <Seccion titulo="Productos" acciones={esAdm ? <Boton chico onClick={() => setAbierto({ producto: null, etiqueta: 'Nuevo producto' })}>Nuevo producto</Boton> : undefined}>
+              <Seccion titulo="Productos" acciones={esAdm && comercial.estado === 'lista' ? <Boton chico onClick={() => setAbierto({ producto: null, etiqueta: 'Nuevo producto' })}>Nuevo producto</Boton> : undefined}>
+                {comercial.estado === 'error' && <Alerta>{`No se pudo leer la configuración comercial: ${comercial.mensaje}`}</Alerta>}
                 <div class="inv-filtro">
                   <Selector etiqueta="Mostrar" valor={modo} onCambio={(v) => setMostrar(v as Mostrar)} opciones={opcionesMostrar.map((o) => ({ valor: o.valor, texto: o.texto }))} ayuda={ocultas ? `Filtro «Bajo el mínimo»: ${MOTIVO_FILTRO_MINIMO}.` : undefined} />
                 </div>
@@ -80,7 +89,7 @@ function Productos(): JSX.Element {
                   porPagina={25}
                   vacio={{ titulo: modo === '' ? 'No hay productos. Cree el primero con «Nuevo producto».' : 'Ningún producto cumple ese filtro.' }}
                   columnas={[
-                    { id: 'producto', titulo: 'Producto', valor: (p) => p.nombre, encabezadoFila: true, ordenable: true, celda: (p) => <>{p.nombre}<div class="texto-suave">{p.sku}</div></> },
+                    { id: 'producto', titulo: 'Producto', valor: (p) => p.nombre, encabezadoFila: true, ordenable: true, celda: (p) => <>{p.nombre}<div class="texto-suave">{p.sku}</div>{(p.sinPrecio ?? []).length > 0 && <div class="texto-suave" data-prueba="sin-precio"><strong>Sin precio</strong>{mercados.length > 1 ? `: ${nombresSinPrecio(p, mercados).join(', ')}` : ''}</div>}</> },
                     ...ALMACENES.map((a) => ({
                       id: a,
                       titulo: NOMBRE_ALMACEN[a],
@@ -99,11 +108,12 @@ function Productos(): JSX.Element {
                   )}
                 />
               </Seccion>
-              {abierto !== null && (
+              {abierto !== null && comercial.estado === 'lista' && (
                 <ProductoPanelLateral
                   key={abierto.producto?.id ?? 'nuevo'}
                   producto={abierto.producto}
                   cot={cot}
+                  comercial={comercial.comercial}
                   existentes={productos.map((p) => ({ id: p.id, sku: p.sku }))}
                   alCerrarEnfocar={volverAlBoton}
                   alCerrar={(guardado) => {

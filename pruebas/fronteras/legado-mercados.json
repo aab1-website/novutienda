@@ -3,12 +3,10 @@
   "simbolos": {
     "COMERCIAL_LEGADO_TRES_MONEDAS": [],
     "MERCADOS": [
-      "paquetes/panel/src/pantallas/inventarios/nombres.ts",
       "paquetes/website/src/lib/cotizacion-cliente.ts"
     ],
     "MONEDAS": [],
     "MONEDA_DE": [
-      "paquetes/panel/src/pantallas/inventarios/nombres.ts",
       "paquetes/website/src/lib/mercado.ts"
     ],
     "PAR_DE": [

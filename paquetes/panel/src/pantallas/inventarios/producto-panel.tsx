@@ -1,7 +1,7 @@
 import type { JSX } from 'preact';
 import { useEffect, useRef, useState } from 'preact/hooks';
 import { nuevoId } from '../../api/cliente.js';
-import type { CotizacionesVigentes, ProductoPanel } from '../../api/tipos.js';
+import type { CotizacionVista, CotizacionesVigentes, ProductoPanel, VistaComercial } from '../../api/tipos.js';
 import { useAvisos } from '../../ui/avisos.js';
 import { Alerta, Boton, Campo, Casilla, Dato } from '../../ui/comun.js';
 import { useApp } from '../../ui/contexto.js';
@@ -10,21 +10,29 @@ import { enfocarPrimerError } from '../../ui/formulario.js';
 import { useBorrador, useCambiosSinGuardar, useGuardia } from '../../ui/guardia.js';
 import { useAccion } from '../../ui/hooks.js';
 import { formatearMonto, textoACentavos } from '../../util/dinero.js';
-import { precioDeVenta } from '../../util/precio.js';
-import { MERCADOS_PRECIO } from './nombres.js';
+import { precioDeVentaMercado, reglasDeclaradasActuales } from '../../util/precio.js';
+import { mercadosDePrecio, nombreMoneda, type MercadoPrecio } from './nombres.js';
 import {
   aEntrada, cambiosDeEdicion, clavePrecio, errorDeServidor, formInicial, identificadorSugerido, listaEnTexto, mismoForm, revisarProducto, TOPES_PRODUCTO,
   type ErroresProducto, type FormProducto,
 } from './producto-revision.js';
 import './inventario.css';
 
-function Precio({ usd, m, cot }: { usd: number; m: (typeof MERCADOS_PRECIO)[number]; cot: CotizacionesVigentes }): JSX.Element {
-  const p = precioDeVenta(usd, m.mercado, m.moneda, cot[m.mercado]);
-  return <span>{p.tipo === 'precio' ? formatearMonto(p.centavos, p.moneda) : p.tipo === 'sin_precio' ? 'A consultar' : 'Sin cotización'}</span>;
+/**
+ * Precio de venta de hoy en un mercado declarado. D21: sin la regla de redondeo del comercio no se calcula ni se muestra
+ * ningún precio (no hay respaldo fijo).
+ */
+function Precio({ base, m, cot, mercados }: { base: number; m: MercadoPrecio; cot: CotizacionesVigentes; mercados: VistaComercial['mercados'] }): JSX.Element {
+  const declarado = mercados.find((x) => x.id === m.id);
+  if (declarado === undefined) return <span>—</span>;
+  const cotizacion = (cot as Readonly<Record<string, CotizacionVista | null | undefined>>)[m.id] ?? null;
+  const p = precioDeVentaMercado(base, declarado, cotizacion, reglasDeclaradasActuales());
+  return <span>{p.tipo === 'precio' ? formatearMonto(p.centavos, p.moneda) : p.tipo === 'sin_precio' ? 'A consultar' : p.tipo === 'sin_cotizacion' ? 'Sin cotización' : 'Sin regla de redondeo'}</span>;
 }
 
-function margen(precio: number | null, costo: number | null): string {
-  if (precio === null || costo === null || precio <= 0) return '—';
+/** Margen sobre el precio base; solo si el costo y el precio están en la misma moneda (si no, no se mezclan). */
+function margen(precio: number | null, costo: number | null, monedaPrecio: string, monedaCosto: string | undefined): string {
+  if (precio === null || costo === null || precio <= 0 || monedaCosto === undefined || monedaCosto !== monedaPrecio) return '—';
   return `${(((precio - costo) / precio) * 100).toFixed(1).replace('.', ',')} %`;
 }
 
@@ -32,6 +40,8 @@ export interface PropsProductoPanel {
   /** `null` = producto nuevo. */
   readonly producto: ProductoPanel | null;
   readonly cot: CotizacionesVigentes;
+  /** Mercados y monedas declarados por el comercio (nombre, moneda de venta y base, moneda de costo si es administrador). */
+  readonly comercial: VistaComercial;
   /** Identificadores y SKU que ya existen, para avisar antes de enviar. */
   readonly existentes: readonly { readonly id: string; readonly sku: string }[];
   /** Cierra el panel; `guardado` dice si se guardó algo (la lista se vuelve a leer). */
@@ -40,7 +50,7 @@ export interface PropsProductoPanel {
 }
 
 /** Alta y edición de un producto en el panel lateral. «Guardar» nunca se apaga: revisa y marca el error junto al campo. */
-export function ProductoPanelLateral({ producto, cot, existentes, alCerrar, alCerrarEnfocar }: PropsProductoPanel): JSX.Element {
+export function ProductoPanelLateral({ producto, cot, comercial, existentes, alCerrar, alCerrarEnfocar }: PropsProductoPanel): JSX.Element {
   const { api, usuario } = useApp();
   const avisos = useAvisos();
   const { confirmarSalida } = useGuardia();
@@ -48,7 +58,10 @@ export function ProductoPanelLateral({ producto, cot, existentes, alCerrar, alCe
   const esAdm = usuario.rol === 'adm';
   const nuevo = producto === null;
   const clave = `inventarios.producto.${producto?.id ?? 'nuevo'}`;
-  const inicial = formInicial(producto);
+  const mercados = mercadosDePrecio(comercial.mercados);
+  const monedaCosto = comercial.monedaCosto;
+  const sinPrecio = (producto?.sinPrecio ?? []).filter((id) => mercados.some((m) => m.id === id));
+  const inicial = formInicial(producto, mercados);
   const borrador = useBorrador<FormProducto | null>(clave, null);
   const f = borrador.valor ?? inicial;
   const sucio = borrador.valor !== null && !mismoForm(borrador.valor, inicial);
@@ -69,9 +82,12 @@ export function ProductoPanelLateral({ producto, cot, existentes, alCerrar, alCe
     return id;
   };
 
-  const ctx = { nuevo, existentes: nuevo ? existentes : [] };
+  const ctx = {
+    nuevo, existentes: nuevo ? existentes : [], mercados, monedaCosto,
+    sinPrecio: mercados.filter((m) => sinPrecio.includes(m.id)).map((m) => m.clave),
+  };
   const errores: ErroresProducto = { ...(intento ? revisarProducto(f, ctx) : {}), ...delServidor };
-  const edicion = producto === null ? null : cambiosDeEdicion(f, producto, esAdm);
+  const edicion = producto === null ? null : cambiosDeEdicion(f, producto, esAdm, mercados);
 
   useEffect(() => {
     if (pideFoco > 0 && cuerpo.current !== null) enfocarPrimerError(cuerpo.current);
@@ -95,7 +111,7 @@ export function ProductoPanelLateral({ producto, cot, existentes, alCerrar, alCe
     void accion.ejecutar(async () => {
       try {
         if (producto === null) {
-          const producto2 = aEntrada(f);
+          const producto2 = aEntrada(f, mercados);
           if (producto2 === null) return;
           await api.llamar('crearProducto', { operacionId: idDeOperacion('crear', JSON.stringify(producto2)), producto: producto2 });
         } else if (edicion !== null) {
@@ -103,7 +119,7 @@ export function ProductoPanelLateral({ producto, cot, existentes, alCerrar, alCe
           await api.llamar('actualizarProducto', { operacionId: idDeOperacion('actualizar', JSON.stringify(edicion.cambios)), productoId: producto.id, cambios: edicion.cambios });
         }
       } catch (e) {
-        const deCampo = errorDeServidor(e);
+        const deCampo = errorDeServidor(e, mercados);
         if (deCampo === null) throw e;
         setConfirmando(false);
         setDelServidor({ [deCampo.campo]: deCampo.texto });
@@ -141,8 +157,13 @@ export function ProductoPanelLateral({ producto, cot, existentes, alCerrar, alCe
   };
 
   const soloLectura = !esAdm;
-  const precios = MERCADOS_PRECIO.map((m) => ({ m, centavos: textoACentavos(f.precios[m.clave] ?? '') }));
+  const precios = mercados.map((m) => ({ m, centavos: textoACentavos(f.precios[m.clave] ?? '') }));
   const costo = f.costo.trim() === '' ? null : textoACentavos(f.costo);
+  const unico = mercados.length === 1;
+  const bases = [...new Set(mercados.map((m) => m.monedaBase))];
+  const leyendaPrecios = bases.length === 1 ? `Precio base en ${nombreMoneda(bases[0] as string)}${unico ? '' : ' por mercado'}` : 'Precio base por mercado';
+  const ayudaPrecios = (unico ? 'Obligatorio. ' : 'Obligatorio en cada mercado. ') + (comercial.mercados.some((x) => x.tieneTipoCambio)
+    ? 'El precio en moneda local se calcula con la cotización del día.' : 'El precio de venta se calcula con la regla de redondeo del comercio.');
 
   return (
     <Dialogo
@@ -205,13 +226,14 @@ export function ProductoPanelLateral({ producto, cot, existentes, alCerrar, alCe
           )}
           {!f.activo && !nuevo && producto.activo && <p class="ayuda" data-prueba="aviso-desactivar">Al desactivarlo, deja de venderse en caja y sale del sitio en la siguiente publicación. El stock no se pierde.</p>}
           <fieldset class="inv-bloque">
-            <legend>Precio base en dólares por mercado</legend>
-            <p class="ayuda">Obligatorio en cada mercado. El precio en moneda local se calcula con la cotización del día.</p>
+            <legend>{leyendaPrecios}</legend>
+            <p class="ayuda">{ayudaPrecios}</p>
             <div class="cuadricula">
               {precios.map(({ m, centavos }) => (
                 <div key={m.clave}>
-                  <Campo etiqueta={`${m.nombre} (USD)`} valor={f.precios[m.clave] ?? ''} inputMode="decimal" requerido deshabilitado={soloLectura} error={errores[clavePrecio(m.clave)]} onInput={(v) => poner({ precios: { ...f.precios, [m.clave]: v } })} />
-                  <p class="texto-suave" data-prueba={`precio-${m.clave}`}>Hoy: {centavos !== null ? <Precio usd={centavos} m={m} cot={cot} /> : '—'}</p>
+                  <Campo etiqueta={unico ? `Precio base (${m.monedaBase})` : `${m.nombre} (${m.monedaBase})`} valor={f.precios[m.clave] ?? ''} inputMode="decimal" requerido={nuevo || !sinPrecio.includes(m.id)} deshabilitado={soloLectura} error={errores[clavePrecio(m.clave)]} onInput={(v) => poner({ precios: { ...f.precios, [m.clave]: v } })} />
+                  {sinPrecio.includes(m.id) && <p class="ayuda" data-prueba={`sin-precio-${m.clave}`}><strong>Sin precio</strong>{unico ? '' : ` en ${m.nombre}`}: no se vende ni se publica hasta ponerle uno.</p>}
+                  <p class="texto-suave" data-prueba={`precio-${m.clave}`}>Hoy: {centavos !== null ? <Precio base={centavos} m={m} cot={cot} mercados={comercial.mercados} /> : '—'}</p>
                 </div>
               ))}
             </div>
@@ -219,9 +241,9 @@ export function ProductoPanelLateral({ producto, cot, existentes, alCerrar, alCe
           {esAdm && (
             <fieldset class="inv-bloque">
               <legend>Costo y margen (solo administrador)</legend>
-              <Campo etiqueta="Costo (USD)" valor={f.costo} inputMode="decimal" error={errores['costo']} ayuda="Opcional. Si lo deja vacío, se quita el costo del producto." onInput={(v) => poner({ costo: v })} />
+              <Campo etiqueta={monedaCosto === undefined ? 'Costo' : `Costo (${monedaCosto})`} valor={f.costo} inputMode="decimal" error={errores['costo']} ayuda="Opcional. Si lo deja vacío, se quita el costo del producto." onInput={(v) => poner({ costo: v })} />
               <dl class="datos">
-                {precios.map(({ m, centavos }) => <Dato key={m.clave} etiqueta={`Margen ${m.nombre}`}>{margen(centavos, costo)}</Dato>)}
+                {precios.map(({ m, centavos }) => <Dato key={m.clave} etiqueta={unico ? 'Margen' : `Margen ${m.nombre}`}>{margen(centavos, costo, m.monedaBase, monedaCosto)}</Dato>)}
               </dl>
             </fieldset>
           )}

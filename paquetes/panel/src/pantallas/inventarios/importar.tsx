@@ -5,6 +5,7 @@ import { ErrorApi } from '../../api/errores.js';
 import type { FilaSimulada, ResultadoImportacion, Simulacion } from '../../api/tipos.js';
 import { useAvisos } from '../../ui/avisos.js';
 import { Alerta, Boton, Casilla, Seccion } from '../../ui/comun.js';
+import { useConfiguracionComercial } from '../../ui/comercial.js';
 import { useApp } from '../../ui/contexto.js';
 import { Dialogo } from '../../ui/dialogo.js';
 import { useCambiosSinGuardar } from '../../ui/guardia.js';
@@ -14,7 +15,7 @@ import { Tabla } from '../../ui/tabla.js';
 import { aBase64, formatoBytes } from '../../util/base64.js';
 import { aCsv, descargarTexto } from '../../util/csv.js';
 import {
-  ACCION_TEXTO, ACEPTA_ARCHIVO, aplicables, COLUMNAS_ARCHIVO, COLUMNAS_STOCK, encabezadosPlantilla, lineasConfirmacion, MAX_BYTES_ARCHIVO, MAX_FILAS, ordenarFilas, resumenSimulacion,
+  ACCION_TEXTO, ACEPTA_ARCHIVO, aplicables, columnasArchivo, COLUMNAS_STOCK, encabezadosPlantilla, lineasConfirmacion, MAX_BYTES_ARCHIVO, MAX_FILAS, notaPrecios, ordenarFilas, resumenSimulacion,
   avisoOmitidas, lineasConError, TEXTO_ARCHIVO_CAMBIO, TEXTO_DESACTUALIZADA, textoDetencion, textoError, textoResultado, textoTandas, validarArchivo,
 } from './importar-logica.js';
 import './inventario.css';
@@ -60,6 +61,7 @@ function TablaSimulacion({ sim }: { sim: Simulacion }): JSX.Element {
 /** Importar productos (carga inicial y actualización masiva) y exportarlos. Los productos entran solo por aquí. */
 export function ImportarExportar(): JSX.Element {
   const { api, usuario } = useApp();
+  const comercial = useConfiguracionComercial();
   const avisos = useAvisos();
   const idArchivo = useIdUnico();
   const exportacion = useAccion();
@@ -88,7 +90,8 @@ export function ImportarExportar(): JSX.Element {
     }, { exito: 'Archivo exportado.', error: 'ambos' });
   };
   const plantilla = (): void => {
-    descargarTexto(inicial ? 'plantilla-carga-inicial.csv' : 'plantilla-productos.csv', aCsv(encabezadosPlantilla(inicial), []));
+    if (comercial.estado !== 'lista') return;
+    descargarTexto(inicial ? 'plantilla-carga-inicial.csv' : 'plantilla-productos.csv', aCsv(encabezadosPlantilla(inicial, comercial.comercial.mercados, comercial.comercial.monedaCosto), []));
   };
 
   const simular = (f: Fuente, cargaInicial: boolean): void => {
@@ -204,12 +207,14 @@ export function ImportarExportar(): JSX.Element {
         <details>
           <summary>Qué columnas lleva el archivo</summary>
           <ul class="lista-simple">
-            {COLUMNAS_ARCHIVO.map((c) => <li key={c.nombre}><strong>{c.nombre}</strong>: {c.texto}</li>)}
+            {comercial.estado === 'lista' && columnasArchivo(comercial.comercial.mercados, comercial.comercial.monedaCosto).map((c) => <li key={c.nombre}><strong>{c.nombre}</strong>: {c.texto}</li>)}
           </ul>
-          <p class="texto-suave">Si el producto ya existe, solo se cambian las columnas que el archivo trae. Una fila nueva sin SKU es un error. Los precios van en dólares, con decimales.</p>
+          {comercial.estado === 'cargando' && <p class="texto-suave">Cargando las columnas del comercio…</p>}
+          {comercial.estado === 'error' && <Alerta>{`No se pudo leer la configuración comercial: ${comercial.mensaje}`}</Alerta>}
+          <p class="texto-suave">Si el producto ya existe, solo se cambian las columnas que el archivo trae. Una fila nueva sin SKU es un error.{comercial.estado === 'lista' ? ` ${notaPrecios(comercial.comercial.mercados)}` : ''}</p>
         </details>
         <div class="fila">
-          <Boton variante="secundario" onClick={plantilla}>Descargar plantilla</Boton>
+          <Boton variante="secundario" onClick={plantilla} deshabilitado={comercial.estado !== 'lista'}>Descargar plantilla</Boton>
           <Boton variante="secundario" onClick={exportar} ocupado={exportacion.ocupado}>Exportar productos</Boton>
         </div>
         <p class="texto-suave">«Exportar productos» baja los productos actuales en este mismo formato: sirve para editarlos en una planilla y volver a cargarlos.</p>

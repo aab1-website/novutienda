@@ -263,3 +263,41 @@ describe('importar: por tandas', () => {
     expect(screen.queryByText(/Los datos cambiaron/)).toBeNull();
   });
 });
+
+describe('importar: columnas según los mercados declarados', () => {
+  it('el comercio de referencia ve las columnas y la nota de siempre', async () => {
+    const e = crearEntorno('adm');
+    ver(e);
+    expect(await screen.findByText('precioBO')).toBeTruthy();
+    expect(screen.getByText('precioAR')).toBeTruthy();
+    expect(screen.getByText(/precio del mercado de Bolivia, en dólares con hasta 2 decimales \(por ejemplo 1234.50\)/)).toBeTruthy();
+    expect(screen.getByText(/Los precios van en dólares, con decimales/)).toBeTruthy();
+    expect(screen.getByText(/costo en dólares con hasta 2 decimales \(opcional\)/)).toBeTruthy();
+  });
+
+  it('un comercio de un mercado y una moneda ve una sola columna de precio y su moneda', async () => {
+    const e = crearEntorno('adm', undefined, { comercial: { mercados: [{ id: 'PE', nombre: 'Perú', monedaVenta: 'PEN', monedaBase: 'PEN', tieneTipoCambio: false }], monedasCaja: ['PEN'], monedaCosto: 'PEN' } });
+    ver(e);
+    expect(await screen.findByText('precioPE')).toBeTruthy();
+    expect(screen.queryByText('precioBO')).toBeNull();
+    expect(screen.queryByText('precioAR')).toBeNull();
+    expect(screen.getByText(/costo en PEN con hasta 2 decimales/)).toBeTruthy();
+    expect(screen.getByText(/Los precios van en PEN, con decimales/)).toBeTruthy();
+  });
+
+  it('con un comercio de un solo mercado, la simulación y el resultado usan solo su columna de precio', async () => {
+    const comercial = { mercados: [{ id: 'PE', nombre: 'Perú', monedaVenta: 'PEN', monedaBase: 'PEN', tieneTipoCambio: false }], monedasCaja: ['PEN'], monedaCosto: 'PEN' } as const;
+    const e = crearEntorno('adm', undefined, { comercial: { ...comercial, mercados: [...comercial.mercados], monedasCaja: [...comercial.monedasCaja] } });
+    const texto = 'id,nombre,categoria,sku,precioPE\r\nnuevo-pe,Nuevo PE,Cat,PE-1,12.50\r\nnuevo-bo,Nuevo BO,Cat,PE-2,\r\n';
+    const sim = await e.api.llamar('simularImportacionProductos', { csv: texto });
+    expect(sim.resumen).toMatchObject({ crear: 2, errores: 0 });
+    expect(sim.filas[1]?.advertencias.join(' ')).toMatch(/sin precio/);
+    const r = await e.api.llamar('importarProductosCsv', { operacionId: 'op-un-mercado', csv: texto });
+    expect(r).toMatchObject({ completa: true, creados: 2 });
+    const lista = await e.api.llamar('listarProductos', {});
+    expect(lista.find((p) => p.id === 'nuevo-pe')?.precioUSD).toEqual({ pe: 1250 });
+    expect(lista.find((p) => p.id === 'nuevo-bo')?.precioUSD).toEqual({ pe: 0 });
+    const ajeno = await e.api.llamar('simularImportacionProductos', { csv: 'id,nombre,categoria,sku,precioBO\r\nx-1,X,Cat,X-1,5\r\n' });
+    expect(ajeno.columnasIgnoradas).toContain('precioBO');
+  });
+});
