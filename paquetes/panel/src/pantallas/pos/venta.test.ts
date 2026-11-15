@@ -298,3 +298,118 @@ describe('supervisión en vivo', () => {
     }
   });
 });
+
+const UN_MERCADO = {
+  mercados: [{ id: 'BO', nombre: 'Bolivia', monedaVenta: 'BOB', monedaBase: 'BOB', tieneTipoCambio: false }],
+  monedasCaja: ['BOB'],
+};
+
+describe('venta: mercados y monedas declarados', () => {
+  it('el comercio de referencia abre turno en el orden declarado: bolivianos, dólares, pesos', async () => {
+    const e = crearEntorno('caj');
+    ver(e, 'terminal');
+    await screen.findByRole('heading', { name: 'Abrir turno' });
+    const campos = await screen.findAllByLabelText(/Efectivo inicial en/);
+    const etiquetas = campos.map((x) => (x as HTMLInputElement).labels?.[0]?.textContent ?? '');
+    expect(etiquetas.map((t) => /Bolivianos|Dólares|Pesos/.exec(t)?.[0])).toEqual(['Bolivianos', 'Dólares', 'Pesos']);
+  });
+
+  it('el comercio de referencia ve las dos listas de precios y las monedas de Bolivia', async () => {
+    const e = crearEntorno('caj');
+    await abrirTurno(e);
+    expect(screen.getByLabelText('Lista de precios')).toBeTruthy();
+    const monedas = [...(screen.getByLabelText('Moneda de la venta') as HTMLSelectElement).options].map((o) => o.value);
+    expect(monedas).toEqual(['BOB', 'USD']);
+  });
+
+  it('un solo mercado y una sola moneda: sin selectores, apertura y caja solo en esa moneda, y cobra', async () => {
+    const e = crearEntorno('caj', undefined, { comercial: UN_MERCADO, redondeo: { BOB: { tipo: 'decimales', decimales: 2, modo: 'cercano' } } });
+    ver(e, 'terminal');
+    const u = userEvent.setup();
+    await screen.findByRole('heading', { name: 'Abrir turno' });
+    expect(screen.getAllByLabelText(/Efectivo inicial en/).length).toBe(1);
+    await u.type(campo(/Efectivo inicial en Bolivianos/), '100');
+    await u.click(screen.getByRole('button', { name: 'Abrir turno' }));
+    await screen.findByRole('heading', { name: 'Productos' });
+    expect(screen.queryByLabelText('Lista de precios')).toBeNull();
+    expect(screen.queryByLabelText('Moneda de la venta')).toBeNull();
+    expect(screen.queryByText(/Cotización:/)).toBeNull();
+    await u.click(await screen.findByRole('button', { name: 'Agregar Cable HDMI 2 m' }));
+    await waitFor(() => expect(document.querySelector('[data-prueba="total"]')?.textContent).toBe('Bs 8,00'));
+    await u.click(screen.getByRole('button', { name: 'Cobrar' }));
+    await screen.findByRole('heading', { name: 'Cobro' });
+    await u.type(campo(/Monto a aplicar/), '8');
+    await u.click(screen.getByRole('button', { name: 'Confirmar cobro' }));
+    await screen.findByRole('heading', { name: 'Venta registrada' });
+    const venta = (await e.api.llamar('listarVentas', {}))[0];
+    expect(venta).toMatchObject({ mercado: 'BO', moneda: 'BOB', total: 800 });
+  });
+
+  it('la caja ofrece solo las monedas declaradas', async () => {
+    const e = crearEntorno('caj', undefined, { comercial: UN_MERCADO });
+    await e.api.llamar('abrirTurno', { turnoId: uuid(), apertura: { BOB: 10000 } });
+    ver(e, 'caja');
+    const sel = (await screen.findByLabelText('Moneda')) as HTMLSelectElement;
+    expect([...sel.options].map((o) => o.value)).toEqual(['BOB']);
+  });
+
+  it('sin regla de redondeo avisa y no muestra precio (D21)', async () => {
+    const e = crearEntorno('caj', undefined, { comercial: UN_MERCADO, redondeo: {} });
+    await e.api.llamar('abrirTurno', { turnoId: uuid(), apertura: { BOB: 10000 } });
+    ver(e, 'terminal');
+    expect(await screen.findByText(/Falta la regla de redondeo de BOB/)).toBeTruthy();
+    expect((await screen.findAllByText('Sin regla de redondeo')).length).toBeGreaterThan(0);
+    expect((screen.getByRole('button', { name: 'Agregar Cable HDMI 2 m' }) as HTMLButtonElement).disabled).toBe(true);
+  });
+
+  it('un mercado sin cotización avisa y no deja agregar en su moneda de venta', async () => {
+    const e = crearEntorno('caj');
+    e.api.estado.cotizaciones = { ...e.api.estado.cotizaciones, BO: null };
+    await abrirTurno(e);
+    expect(await screen.findByText(/No hay una cotización utilizable/)).toBeTruthy();
+    expect((screen.getByRole('button', { name: 'Agregar Cable HDMI 2 m' }) as HTMLButtonElement).disabled).toBe(true);
+  });
+  it('un mercado declarado sin tipo de cambio cobra en su moneda base con el monto redondeado que acepta el servidor', async () => {
+    const comercial = {
+      mercados: [{ id: 'BO', nombre: 'Bolivia', monedaVenta: 'BOB', monedaBase: 'USD', tieneTipoCambio: false }],
+      monedasCaja: ['BOB', 'USD'],
+    };
+    const e = crearEntorno('caj', undefined, { comercial, redondeo: { BOB: { tipo: 'multiplo', multiplo: 5, modo: 'cercano' } } });
+    await e.api.llamar('abrirTurno', { turnoId: uuid(), apertura: { BOB: 10000, USD: 10000 } });
+    ver(e, 'terminal');
+    const u = userEvent.setup();
+    await screen.findByRole('heading', { name: 'Productos' });
+    await u.selectOptions(screen.getByLabelText('Moneda de la venta'), 'USD');
+    await u.click(await screen.findByRole('button', { name: 'Agregar Cable HDMI 2 m' }));
+    // 8,00 redondeado al múltiplo de 5 de la moneda de venta: 10,00 (no 8,00).
+    await waitFor(() => expect(document.querySelector('[data-prueba="total"]')?.textContent).toMatch(/10,00/));
+    await u.click(screen.getByRole('button', { name: 'Cobrar' }));
+    await screen.findByRole('heading', { name: 'Cobro' });
+    await u.type(campo(/Monto a aplicar/), '10');
+    await u.click(screen.getByRole('button', { name: 'Confirmar cobro' }));
+    await screen.findByRole('heading', { name: 'Venta registrada' });
+    const venta = (await e.api.llamar('listarVentas', {}))[0];
+    expect(venta).toMatchObject({ mercado: 'BO', moneda: 'USD', total: 1000 });
+  });
+
+  it('al cambiar de mercado con el carrito cargado, las líneas se conservan y se recalculan al precio del otro mercado', async () => {
+    const e = crearEntorno('caj');
+    await abrirTurno(e);
+    const u = userEvent.setup();
+    await u.click(await screen.findByRole('button', { name: 'Agregar Cable HDMI 2 m' }));
+    const total = (): string => document.querySelector('[data-prueba="total"]')?.textContent ?? '';
+    await waitFor(() => expect(total()).not.toBe(''));
+    const enBolivia = total();
+    await u.selectOptions(screen.getByLabelText('Lista de precios'), 'AR');
+    await waitFor(() => expect(total()).not.toBe(enBolivia));
+    expect(total()).toBe('ARS 9.000,00');
+    expect(screen.getByRole('button', { name: 'Cobrar' })).toBeTruthy();
+  });
+
+  it('sin monedas de caja declaradas, el turno no se abre y avisa', async () => {
+    const e = crearEntorno('caj', undefined, { comercial: { ...UN_MERCADO, monedasCaja: [] } });
+    ver(e, 'terminal');
+    expect(await screen.findByText(/no tiene monedas de caja declaradas/)).toBeTruthy();
+    expect(screen.queryByRole('button', { name: 'Abrir turno' })).toBeNull();
+  });
+});
