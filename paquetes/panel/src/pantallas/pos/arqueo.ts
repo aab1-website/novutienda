@@ -89,12 +89,15 @@ export const precioBaseDeMercado = (p: Pick<ProductoPanel, 'precioUSD'>, id: str
 export const hayReglaDeRedondeo = (m: Pick<MercadoDeclarado, 'monedaVenta'>): boolean => esReglaRedondeoValida(reglasDeclaradasActuales()?.[m.monedaVenta]);
 
 /**
- * Precio de un producto en el mercado y la moneda de cobro elegidos. En la moneda base es el precio base sin conversión;
- * en la moneda de venta aplica `precioDeVentaMercado` (cotización y regla de redondeo del comercio, sin respaldo fijo).
+ * Precio de un producto en el mercado y la moneda de cobro elegidos. En un mercado CON tipo de cambio, la moneda base es el
+ * precio base sin conversión; en uno SIN tipo de cambio el servidor redondea siempre con la regla de la moneda de venta
+ * (`centavosDeLinea`), así que el panel hace lo mismo. En la moneda de venta aplica `precioDeVentaMercado` (cotización y regla de redondeo del comercio, sin respaldo fijo).
  */
 export function precioDeCobro(p: Pick<ProductoPanel, 'precioUSD'>, mercado: MercadoDeclarado, moneda: string, cot: CotizacionesVigentes, reglas: RedondeoPorMoneda | null = reglasDeclaradasActuales()): PrecioMercadoVista {
   const base = precioBaseDeMercado(p, mercado.id);
-  if (moneda === mercado.monedaBase && moneda !== mercado.monedaVenta) return base > 0 ? { tipo: 'precio', centavos: base, moneda } : { tipo: 'sin_precio' };
+  if (mercado.tieneTipoCambio && moneda === mercado.monedaBase && moneda !== mercado.monedaVenta) return base > 0 ? { tipo: 'precio', centavos: base, moneda } : { tipo: 'sin_precio' };
   const c = cotizacionDeMercado(cot, mercado.id);
-  return precioDeVentaMercado(base, mercado, c === null ? null : { par: c.par, valor: c.valor }, reglas);
+  const r = precioDeVentaMercado(base, mercado, c === null ? null : { par: c.par, valor: c.valor }, reglas);
+  // Sin tipo de cambio y cobrando en la moneda base: el monto redondeado se cobra en la moneda elegida.
+  return r.tipo === 'precio' && !mercado.tieneTipoCambio ? { ...r, moneda } : r;
 }

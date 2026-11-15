@@ -25,6 +25,7 @@ function Apertura({ alAbrir }: { alAbrir: () => void }): JSX.Element {
   const comercial = useConfiguracionComercial();
   if (comercial.estado === 'cargando') return <Cargando />;
   if (comercial.estado === 'error') return <Alerta>{comercial.mensaje}</Alerta>;
+  if (comercial.comercial.monedasCaja.length === 0) return <Alerta>El comercio no tiene monedas de caja declaradas.</Alerta>;
   return <AperturaLista monedas={comercial.comercial.monedasCaja} alAbrir={alAbrir} />;
 }
 

@@ -369,4 +369,47 @@ describe('venta: mercados y monedas declarados', () => {
     expect(await screen.findByText(/No hay una cotización utilizable/)).toBeTruthy();
     expect((screen.getByRole('button', { name: 'Agregar Cable HDMI 2 m' }) as HTMLButtonElement).disabled).toBe(true);
   });
+  it('un mercado declarado sin tipo de cambio cobra en su moneda base con el monto redondeado que acepta el servidor', async () => {
+    const comercial = {
+      mercados: [{ id: 'BO', nombre: 'Bolivia', monedaVenta: 'BOB', monedaBase: 'USD', tieneTipoCambio: false }],
+      monedasCaja: ['BOB', 'USD'],
+    };
+    const e = crearEntorno('caj', undefined, { comercial, redondeo: { BOB: { tipo: 'multiplo', multiplo: 5, modo: 'cercano' } } });
+    await e.api.llamar('abrirTurno', { turnoId: uuid(), apertura: { BOB: 10000, USD: 10000 } });
+    ver(e, 'terminal');
+    const u = userEvent.setup();
+    await screen.findByRole('heading', { name: 'Productos' });
+    await u.selectOptions(screen.getByLabelText('Moneda de la venta'), 'USD');
+    await u.click(await screen.findByRole('button', { name: 'Agregar Cable HDMI 2 m' }));
+    // 8,00 redondeado al múltiplo de 5 de la moneda de venta: 10,00 (no 8,00).
+    await waitFor(() => expect(document.querySelector('[data-prueba="total"]')?.textContent).toMatch(/10,00/));
+    await u.click(screen.getByRole('button', { name: 'Cobrar' }));
+    await screen.findByRole('heading', { name: 'Cobro' });
+    await u.type(campo(/Monto a aplicar/), '10');
+    await u.click(screen.getByRole('button', { name: 'Confirmar cobro' }));
+    await screen.findByRole('heading', { name: 'Venta registrada' });
+    const venta = (await e.api.llamar('listarVentas', {}))[0];
+    expect(venta).toMatchObject({ mercado: 'BO', moneda: 'USD', total: 1000 });
+  });
+
+  it('al cambiar de mercado con el carrito cargado, las líneas se conservan y se recalculan al precio del otro mercado', async () => {
+    const e = crearEntorno('caj');
+    await abrirTurno(e);
+    const u = userEvent.setup();
+    await u.click(await screen.findByRole('button', { name: 'Agregar Cable HDMI 2 m' }));
+    const total = (): string => document.querySelector('[data-prueba="total"]')?.textContent ?? '';
+    await waitFor(() => expect(total()).not.toBe(''));
+    const enBolivia = total();
+    await u.selectOptions(screen.getByLabelText('Lista de precios'), 'AR');
+    await waitFor(() => expect(total()).not.toBe(enBolivia));
+    expect(total()).toBe('ARS 9.000,00');
+    expect(screen.getByRole('button', { name: 'Cobrar' })).toBeTruthy();
+  });
+
+  it('sin monedas de caja declaradas, el turno no se abre y avisa', async () => {
+    const e = crearEntorno('caj', undefined, { comercial: { ...UN_MERCADO, monedasCaja: [] } });
+    ver(e, 'terminal');
+    expect(await screen.findByText(/no tiene monedas de caja declaradas/)).toBeTruthy();
+    expect(screen.queryByRole('button', { name: 'Abrir turno' })).toBeNull();
+  });
 });
