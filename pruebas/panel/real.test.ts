@@ -117,6 +117,68 @@ describe('redondeo: el panel calcula con la misma política que el servidor', ()
   });
 });
 
+describe('estadoSubida', () => {
+  it('traduce a medios.estadoSubida y entrega el medio con la forma del panel solo si está procesada', async () => {
+    const llamadas: { modulo: string; accion: string; datos: unknown }[] = [];
+    const respuesta = (r: unknown) => ({ rol: 'sup' as const, esperar: (): Promise<void> => Promise.resolve(), llamar: (modulo: string, accion: string, datos?: object): Promise<unknown> => { llamadas.push({ modulo, accion, datos }); return Promise.resolve(r); } });
+    const t = TRADUCCION.estadoSubida as unknown as { usa: string[]; ejecutar(c: unknown, e: unknown): Promise<unknown> };
+    expect(t.usa).toEqual(['medios.estadoSubida']);
+    expect(await t.ejecutar(respuesta({ estado: 'procesada', medio: { id: 'sub-1', productoId: 'p', tipo: 'foto' } }), { subidaId: 'sub-1' })).toEqual({ estado: 'procesada', medio: { id: 'sub-1', productoId: 'p', tipo: 'foto' } });
+    expect(await t.ejecutar(respuesta({ estado: 'reservada' }), { subidaId: 'sub-1' })).toEqual({ estado: 'reservada' });
+    expect(await t.ejecutar(respuesta({ estado: 'rechazada', motivo: 'm' }), { subidaId: 'sub-1' })).toEqual({ estado: 'rechazada', motivo: 'm' });
+    expect(llamadas[0]).toEqual({ modulo: 'medios', accion: 'estadoSubida', datos: { subidaId: 'sub-1' } });
+  });
+});
+
+describe('finalizarSubida frente al disparador de Storage', () => {
+  it('reintenta mientras el servidor responde «ya fue resuelta» y devuelve el medio; si persiste, el error sube', async () => {
+    let intentos = 0;
+    const c = (fallan: number): unknown => ({
+      rol: 'sup', esperar: () => Promise.resolve(),
+      llamar: () => {
+        intentos += 1;
+        return intentos <= fallan ? Promise.reject(new ErrorApi('failed-precondition', 'La subida ya fue resuelta por otra solicitud')) : Promise.resolve({ medio: { id: 'sub-1', productoId: 'p' } });
+      },
+    });
+    const t = TRADUCCION.finalizarSubida as unknown as { ejecutar(c: unknown, e: unknown): Promise<{ id: string }> };
+    expect((await t.ejecutar(c(2), { subidaId: 'sub-1' })).id).toBe('sub-1');
+    expect(intentos).toBe(3);
+    intentos = 0;
+    await expect(t.ejecutar(c(100), { subidaId: 'sub-1' })).rejects.toBeInstanceOf(ErrorApi);
+    expect(intentos).toBe(8);
+    intentos = 0;
+    const otro = { rol: 'sup', esperar: () => Promise.resolve(), llamar: () => { intentos += 1; return Promise.reject(new ErrorApi('permission-denied', 'x')); } };
+    await expect(t.ejecutar(otro, { subidaId: 'sub-1' })).rejects.toMatchObject({ codigoHttps: 'permission-denied' });
+    expect(intentos).toBe(1);
+  });
+});
+
+describe('finalizarSubida de un video: la llamada se corta por tiempo mientras el servidor procesa', () => {
+  const t = TRADUCCION.finalizarSubida as unknown as { ejecutar(c: unknown, e: unknown): Promise<{ id: string }> };
+  const contexto = (codigo: string, fallan: number, esperas: number[]): unknown => {
+    let n = 0;
+    return {
+      rol: 'sup', esperar: (ms: number) => { esperas.push(ms); return Promise.resolve(); },
+      llamar: () => { n += 1; return n <= fallan ? Promise.reject(new ErrorApi(codigo, 'x')) : Promise.resolve({ medio: { id: 'sub-1', productoId: 'p' } }); },
+    };
+  };
+  it('reintenta con retroceso creciente (tope de 8 s) y devuelve el medio', async () => {
+    const esperas: number[] = [];
+    expect((await t.ejecutar(contexto('deadline-exceeded', 6, esperas), { subidaId: 'sub-1' })).id).toBe('sub-1');
+    expect(esperas).toEqual([1500, 2250, 3375, 5063, 7595, 8000]);
+  });
+  it('se rinde al agotar ~2 minutos de espera y no reintenta errores definitivos', async () => {
+    const esperas: number[] = [];
+    await expect(t.ejecutar(contexto('unavailable', 1000, esperas), { subidaId: 'sub-1' })).rejects.toMatchObject({ codigoHttps: 'unavailable' });
+    const total = esperas.reduce((a, b) => a + b, 0);
+    expect(total).toBeGreaterThanOrEqual(120_000);
+    expect(total).toBeLessThan(130_000);
+    const definitivas: number[] = [];
+    await expect(t.ejecutar(contexto('permission-denied', 1, definitivas), { subidaId: 'sub-1' })).rejects.toMatchObject({ codigoHttps: 'permission-denied' });
+    expect(definitivas).toEqual([]);
+  });
+});
+
 describe('redondeo que llega del servidor (pos.cotizaciones)', () => {
   const cot = { cotizacionId: 'x', par: 'ARS/USD' as const, valor: 1000, fecha: '2026-11-04', fuente: 'BNA', estado: 'vigente' as const };
   const BOB = { tipo: 'decimales', decimales: 2, modo: 'cercano' };
