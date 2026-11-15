@@ -408,3 +408,40 @@ describe('marca «sin precio»', () => {
     expect(llamadas(e, 'actualizarProducto')[0]?.entrada['cambios']).toEqual({ categoria: 'Cables' });
   });
 });
+
+describe('el doble exige los precios como el servidor', () => {
+  const alta = (precioUSD: Record<string, number>): Promise<unknown> =>
+    crearEntorno('adm').api.llamar('crearProducto', { operacionId: 'op-alta-1', producto: { id: 'lapiz-2', nombre: 'Lápiz', categoria: 'Papelería', sku: 'LAP-2', precioUSD } as never });
+  const editarPrecios = (precioUSD: Record<string, number>): Promise<unknown> =>
+    crearEntorno('adm').api.llamar('actualizarProducto', { operacionId: 'op-edi-1', productoId: 'cable-hdmi', cambios: { precioUSD } as never });
+
+  it('rechaza quitar u omitir un precio existente al editar', async () => {
+    await expect(editarPrecios({ bo: 1000 })).rejects.toThrow('No se puede quitar el precio de AR');
+  });
+
+  it('rechaza un mercado no declarado al editar', async () => {
+    await expect(editarPrecios({ bo: 1000, ar: 900, xx: 5 })).rejects.toThrow('Mercado desconocido en el precio: xx');
+  });
+
+  it('el alta exige precio en todos los mercados declarados', async () => {
+    await expect(alta({ bo: 1000 })).rejects.toThrow('Falta el precio del mercado AR');
+    await expect(alta({ bo: 1000, ar: 900 })).resolves.toBeTruthy();
+  });
+
+  it('acepta editar con todos los precios', async () => {
+    await expect(editarPrecios({ bo: 1000, ar: 900 })).resolves.toBeTruthy();
+  });
+});
+
+describe('configuración comercial con error', () => {
+  it('muestra el error de carga arriba de la tabla en vez de no abrir nada', async () => {
+    const e = crearEntorno('adm');
+    const original = e.api.llamar.bind(e.api);
+    vi.spyOn(e.api, 'llamar').mockImplementation(((n: string, en: unknown) => (n === 'configuracionComercial' ? Promise.reject(new ErrorApi('unavailable', 'sin conexión')) : original(n as never, en as never))) as never);
+    ver(e);
+    const u = userEvent.setup();
+    await u.click(await screen.findByRole('button', { name: `Datos del producto de ${CABLE}` }));
+    expect((await screen.findByText(/No se pudo leer la configuración comercial/)).textContent).toContain('configuración comercial');
+    expect(screen.queryByRole('dialog')).toBeNull();
+  });
+});

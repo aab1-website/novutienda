@@ -77,6 +77,7 @@ function Productos(): JSX.Element {
                 </Alerta>
               )}
               <Seccion titulo="Productos" acciones={esAdm && comercial.estado === 'lista' ? <Boton chico onClick={() => setAbierto({ producto: null, etiqueta: 'Nuevo producto' })}>Nuevo producto</Boton> : undefined}>
+                {comercial.estado === 'error' && <Alerta>{`No se pudo leer la configuración comercial: ${comercial.mensaje}`}</Alerta>}
                 <div class="inv-filtro">
                   <Selector etiqueta="Mostrar" valor={modo} onCambio={(v) => setMostrar(v as Mostrar)} opciones={opcionesMostrar.map((o) => ({ valor: o.valor, texto: o.texto }))} ayuda={ocultas ? `Filtro «Bajo el mínimo»: ${MOTIVO_FILTRO_MINIMO}.` : undefined} />
                 </div>
@@ -107,7 +108,6 @@ function Productos(): JSX.Element {
                   )}
                 />
               </Seccion>
-              {comercial.estado === 'error' && <Alerta>{`No se pudo leer la configuración comercial: ${comercial.mensaje}`}</Alerta>}
               {abierto !== null && comercial.estado === 'lista' && (
                 <ProductoPanelLateral
                   key={abierto.producto?.id ?? 'nuevo'}
