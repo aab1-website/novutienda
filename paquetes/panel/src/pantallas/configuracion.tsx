@@ -1,9 +1,11 @@
 import type { JSX } from 'preact';
 import { useEffect, useState } from 'preact/hooks';
-import { MEDIOS_PAGO, MONEDAS, type ConfigPos, type MedioPago, type Moneda, type PlantillaRecibo } from '../api/tipos.js';
+import { MEDIOS_PAGO, type ConfigPos, type MercadoDeclarado, type MedioPago, type Moneda, type PlantillaRecibo } from '../api/tipos.js';
 import { Alerta, Area, Boton, Campo, Cargando, Casilla, ErrorCarga, Pestanas, Selector, Seccion } from '../ui/comun.js';
 import { useApp } from '../ui/contexto.js';
 import { useAccion, useCarga } from '../ui/hooks.js';
+import { useConfiguracionComercial } from '../ui/comercial.js';
+import { Tabla } from '../ui/tabla.js';
 
 const MEDIO_TEXTO: Record<MedioPago, string> = { efectivo: 'Efectivo', qr: 'QR', transferencia: 'Transferencia', credito: 'Crédito' };
 const bpAPorciento = (bp: number): string => String(bp / 100).replace('.', ',');
@@ -16,6 +18,7 @@ const opc = (t: string): string | undefined => (t.trim() === '' ? undefined : t.
 function ConfigPosForm(): JSX.Element {
   const { api } = useApp();
   const cfg = useCarga(() => api.llamar('leerConfigPos', {}), []);
+  const comercial = useConfiguracionComercial();
   const accion = useAccion();
   const [c, setC] = useState<ConfigPos | null>(null);
   const [topes, setTopes] = useState({ caj: '', sup: '', adm: '' });
@@ -28,6 +31,8 @@ function ConfigPosForm(): JSX.Element {
   }, [cfg.datos]);
   if (cfg.cargando || c === null) return cfg.error ? <ErrorCarga error={cfg.error} reintentar={cfg.recargar} /> : <Cargando />;
 
+  // Las monedas de cobro son las que declara el comercio; sin su configuración solo se ofrece la vigente (no se inventan).
+  const monedas = comercial.estado === 'lista' ? comercial.comercial.monedasCaja : [c.monedaPorDefecto];
   const bp = { caj: porcientoABp(topes.caj), sup: porcientoABp(topes.sup), adm: porcientoABp(topes.adm) };
   const topesOk = bp.caj !== null && bp.sup !== null && bp.adm !== null;
   const guardar = (e: Event): void => {
@@ -59,7 +64,7 @@ function ConfigPosForm(): JSX.Element {
           <Campo etiqueta="Dirección web del logo (https)" valor={c.logoUrl ?? ''} onInput={(v) => { setOk(false); setC({ ...c, logoUrl: v }); }} />
           <Campo etiqueta="Color primario" tipo="color" valor={c.colores.primario} onInput={(v) => setC({ ...c, colores: { ...c.colores, primario: v } })} />
           <Campo etiqueta="Color secundario" tipo="color" valor={c.colores.secundario} onInput={(v) => setC({ ...c, colores: { ...c.colores, secundario: v } })} />
-          <Selector etiqueta="Moneda por defecto" valor={c.monedaPorDefecto} onCambio={(v) => setC({ ...c, monedaPorDefecto: v as Moneda })} opciones={MONEDAS.map((m) => ({ valor: m, texto: m }))} />
+          <Selector etiqueta="Moneda por defecto" valor={c.monedaPorDefecto} onCambio={(v) => setC({ ...c, monedaPorDefecto: v as Moneda })} deshabilitado={comercial.estado !== 'lista'} opciones={monedas.map((m) => ({ valor: m, texto: m }))} />
           <Campo etiqueta="Serie del recibo" valor={c.serieRecibo} onInput={(v) => setC({ ...c, serieRecibo: v })} maxLength={6} ayuda="1 a 6 letras mayúsculas o dígitos. Se define solo aquí." />
         </div>
         <fieldset>
@@ -128,13 +133,52 @@ function PlantillaForm(): JSX.Element {
   );
 }
 
+const TEXTO_CAMBIO = (m: MercadoDeclarado): string => (m.tieneTipoCambio ? `Sí (${m.monedaVenta}/${m.monedaBase})` : 'No: el precio base es el precio');
+
+/** Mercados y monedas del comercio, solo lectura: los define el operador de la plataforma, no se editan aquí. */
+function MercadosYMonedas(): JSX.Element {
+  const c = useConfiguracionComercial();
+  return (
+    <Seccion titulo="Mercados y monedas">
+      <p class="texto-suave">Solo lectura. Los mercados y las monedas los define el operador de la plataforma; para cambiarlos, solicítelo a él.</p>
+      {c.estado === 'cargando' && <Cargando />}
+      {c.estado === 'error' && <Alerta>{`No se pudieron cargar los mercados y monedas. ${c.mensaje}`}</Alerta>}
+      {c.estado === 'lista' && (
+        <>
+          <Tabla
+            titulo="Mercados del comercio"
+            filas={c.comercial.mercados}
+            clave={(m) => m.id}
+            vacio={{ titulo: 'No hay mercados declarados' }}
+            columnas={[
+              { id: 'mercado', titulo: 'Mercado', valor: (m) => m.nombre, encabezadoFila: true },
+              { id: 'venta', titulo: 'Moneda de venta', valor: (m) => m.monedaVenta },
+              { id: 'base', titulo: 'Moneda base del precio', valor: (m) => m.monedaBase },
+              { id: 'cambio', titulo: 'Tipo de cambio', valor: TEXTO_CAMBIO },
+            ]}
+          />
+          <p>Monedas de cobro en caja: {c.comercial.monedasCaja.join(', ')}.</p>
+          {c.comercial.monedaCosto !== undefined && <p>Moneda del costo: {c.comercial.monedaCosto}.</p>}
+        </>
+      )}
+    </Seccion>
+  );
+}
+
 export function PantallaConfiguracion({ sub }: { sub: string }): JSX.Element {
   const actual = sub === 'recibo' ? 'recibo' : 'negocio';
   return (
     <div>
       <h1>Configuración</h1>
       <Pestanas etiqueta="Configuración" base="configuracion" actual={actual} items={[{ id: 'negocio', titulo: 'Negocio y POS' }, { id: 'recibo', titulo: 'Plantilla del recibo' }]} />
-      {actual === 'negocio' ? <ConfigPosForm /> : <PlantillaForm />}
+      {actual === 'negocio' ? (
+        <>
+          <ConfigPosForm />
+          <MercadosYMonedas />
+        </>
+      ) : (
+        <PlantillaForm />
+      )}
     </div>
   );
 }

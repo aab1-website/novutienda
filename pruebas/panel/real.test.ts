@@ -218,6 +218,19 @@ describe('existencias ocultas: el panel distingue «oculto» (null) de «no cont
     expect(servicio && 'stockTotal' in servicio).toBe(false);
   });
 
+  it('listarProductos: copia sinPrecio del servidor y lo omite si no llega o no es una lista', async () => {
+    const r = (await ejecutar('listarProductos', {
+      productos: [
+        { id: 'a', ...base, existencias: {}, sinPrecio: ['BO', 7, 'AR'] },
+        { id: 'b', ...base, existencias: {}, sinPrecio: 'BO' },
+        { id: 'c', ...base, existencias: {} },
+      ],
+    })) as { id: string; sinPrecio?: string[] }[];
+    expect(r[0]?.sinPrecio).toEqual(['BO', 'AR']);
+    expect(r[1] && 'sinPrecio' in r[1]).toBe(false);
+    expect(r[2] && 'sinPrecio' in r[2]).toBe(false);
+  });
+
   it('sin marca en la respuesta, la lista no la trae', async () => {
     const r = (await ejecutar('listarProductos', { productos: [{ id: 'a', ...base, stockTotal: 3, existencias: { tienda: 3 } }] })) as unknown[] & { existenciasOcultas?: true };
     expect(r.existenciasOcultas).toBeUndefined();
@@ -292,6 +305,11 @@ describe('configuracionComercial (Central, solo lectura)', () => {
     const bueno = vista.mercados[0];
     const r = await ejecutar(() => Promise.resolve({ mercados: [null, { ...bueno, id: undefined }, { ...bueno, tieneTipoCambio: 'si' }, { ...bueno, nombre: 3 }, 'x', bueno], monedasCaja: [] }));
     expect(r).toEqual({ mercados: [bueno], monedasCaja: [] });
+  });
+  it('copia la moneda de costo (solo el código) y no inventa una si falta o no es texto', async () => {
+    const bueno = vista.mercados[0];
+    expect(await ejecutar(() => Promise.resolve({ mercados: [bueno], monedasCaja: ['BOB'], monedaCosto: 'USD' }))).toEqual({ mercados: [bueno], monedasCaja: ['BOB'], monedaCosto: 'USD' });
+    expect(await ejecutar(() => Promise.resolve({ mercados: [bueno], monedasCaja: ['BOB'], monedaCosto: 5 }))).toEqual({ mercados: [bueno], monedasCaja: ['BOB'] });
   });
   it('lo pueden llamar los tres roles', () => {
     expect([...ROLES_CALLABLE.configuracionComercial].sort()).toEqual(['adm', 'caj', 'sup']);

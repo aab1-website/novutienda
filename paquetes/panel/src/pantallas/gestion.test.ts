@@ -310,6 +310,38 @@ describe('usuarios y configuración', () => {
     expect(c.topesDescuentoBp).toEqual({ caj: 850, sup: 5000, adm: 10000 });
     expect(c.mediosHabilitados).not.toContain('qr');
   });
+  it('muestra los mercados y monedas del comercio de referencia en solo lectura y ofrece sus monedas', async () => {
+    const e = crearEntorno('adm');
+    ver(e, h(PantallaConfiguracion, { sub: 'negocio' }));
+    await screen.findByRole('heading', { name: 'Mercados y monedas' });
+    const tabla = await screen.findByRole('table', { name: /Mercados del comercio/ });
+    expect(within(tabla).getByText('Bolivia')).toBeTruthy();
+    expect(within(tabla).getByText('Argentina')).toBeTruthy();
+    expect(screen.getByText(/Monedas de cobro en caja: BOB, USD, ARS\./)).toBeTruthy();
+    expect(screen.getByText(/Moneda del costo: USD\./)).toBeTruthy();
+    await waitFor(() => expect(within(campo('Moneda por defecto')).getAllByRole('option').map((o) => o.textContent)).toEqual(['BOB', 'USD', 'ARS']));
+    expect(screen.queryByRole('button', { name: /mercado/i })).toBeNull();
+  });
+  it('un comercio de una sola moneda: solo ofrece esa moneda y un único mercado', async () => {
+    const e = crearEntorno('adm', undefined, { comercial: { mercados: [{ id: 'PE', nombre: 'Peru', monedaVenta: 'PEN', monedaBase: 'PEN', tieneTipoCambio: false }], monedasCaja: ['PEN'], monedaCosto: 'PEN' } });
+    ver(e, h(PantallaConfiguracion, { sub: 'negocio' }));
+    const tabla = await screen.findByRole('table', { name: /Mercados del comercio/ });
+    expect(within(tabla).getByText('Peru')).toBeTruthy();
+    expect(within(tabla).queryByText('Bolivia')).toBeNull();
+    expect(within(tabla).getByText('No: el precio base es el precio')).toBeTruthy();
+    await waitFor(() => expect(within(campo('Moneda por defecto')).getAllByRole('option').map((o) => o.textContent)).toEqual(['PEN']));
+  });
+  it('falla cerrado: sin la configuración comercial no se inventan monedas ni mercados', async () => {
+    const e = crearEntorno('adm');
+    const llamar = e.api.llamar.bind(e.api) as (n: string, x: unknown) => Promise<unknown>;
+    vi.spyOn(e.api, 'llamar').mockImplementation(((n: string, x: unknown) =>
+      n === 'configuracionComercial' ? Promise.reject(new ErrorApi('internal', 'x')) : llamar(n, x)) as never);
+    ver(e, h(PantallaConfiguracion, { sub: 'negocio' }));
+    expect((await screen.findByText(/No se pudieron cargar los mercados y monedas/))).toBeTruthy();
+    expect(screen.queryByRole('table', { name: /Mercados del comercio/ })).toBeNull();
+    await screen.findByRole('heading', { name: 'Datos del negocio y del POS' });
+    expect(within(campo('Moneda por defecto')).getAllByRole('option').map((o) => o.textContent)).toEqual(['BOB']);
+  });
   it('plantilla del recibo', async () => {
     const e = crearEntorno('adm');
     ver(e, h(PantallaConfiguracion, { sub: 'recibo' }));

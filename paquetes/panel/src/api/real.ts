@@ -103,6 +103,7 @@ function vistaComercialDe(r: unknown): VistaComercial {
   return {
     mercados,
     monedasCaja: monedas.filter((x): x is string => typeof x === 'string'),
+    ...(typeof o['monedaCosto'] === 'string' ? { monedaCosto: o['monedaCosto'] } : {}),
   };
 }
 
@@ -156,6 +157,7 @@ function aProducto(p: Obj, costos: ReadonlyMap<string, number> | undefined): Pro
     garantiaMeses: p['garantiaMeses'] as number | undefined,
     minimo: p['minimo'] as number | undefined,
     precioUSD: p['precioCentavosUSD'] as ProductoPanel['precioUSD'],
+    sinPrecio: Array.isArray(p['sinPrecio']) ? (p['sinPrecio'] as unknown[]).filter((x): x is string => typeof x === 'string') : undefined,
     costoUSD: costo,
     // `null` = oculto por un conteo abierto; ausente = no controla stock; un número (incluso 0) es la existencia real.
     stockTotal: p['stockTotal'] === null ? null : (p['stockTotal'] as number | undefined),

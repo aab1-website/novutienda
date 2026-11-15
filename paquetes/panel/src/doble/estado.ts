@@ -1,10 +1,10 @@
-import type { Rol } from '@novutienda/nucleo';
+import type { RedondeoPorMoneda, Rol } from '@novutienda/nucleo';
 import { ErrorApi } from '../api/errores.js';
 import { UBICACIONES } from '../api/tipos.js';
 import type {
   AprobacionPos, Carrusel, ConteoAbierto, MarcaOcultamiento, CobroCredito, ConfigPos, ConfigSitio, ConteoVista, CotizacionesVigentes, CreditoVista, EntradaAuditoriaVista,
   FichaWeb, Medio, MermaVista, MovimientoCaja, MovimientoVista, PlantillaRecibo, ProductoPanel, Recibo, Seccion, SubidaVista, TurnoPos,
-  UbicacionId, UnidadSerie, UsuarioVista, VentaPos,
+  UbicacionId, UnidadSerie, UsuarioVista, VentaPos, VistaComercial,
 } from '../api/tipos.js';
 
 /** Producto interno del doble: igual que ProductoPanel pero con el costo siempre presente. */
@@ -45,6 +45,10 @@ export interface EstadoDoble {
   usuarios: Mutable<UsuarioVista>[];
   /** Módulos encendidos del negocio (el doble los enciende todos; una prueba puede apagar alguno). */
   modulos: string[];
+  /** Mercados y monedas del comercio (por omisión, el de tres monedas de referencia). Una prueba puede reemplazarlo. */
+  comercial: VistaComercial;
+  /** Reglas de redondeo por moneda de venta que devuelve `pos.cotizaciones`. */
+  redondeo: RedondeoPorMoneda;
   /** Cuentas de Firebase Auth que existen pero aún no son miembros de este negocio (el panel no crea cuentas). */
   cuentasSinRol: Mutable<UsuarioVista>[];
   bytesOriginales: number;
@@ -130,6 +134,15 @@ export function crearEstado(ahora: number): EstadoDoble {
     configSitio: { plantillaActiva: 'cielo', whatsappNovuchat: '59170000000', medicion: {} },
     cambiosSinPublicar: 0, ultimoCambioEn: iso(ahora), publicadoEn: null, versionPublicada: 0,
     modulos: ['inventarios', 'pos', 'recibos', 'consola', 'website'],
+    comercial: {
+      mercados: [
+        { id: 'BO', nombre: 'Bolivia', monedaVenta: 'BOB', monedaBase: 'USD', tieneTipoCambio: true },
+        { id: 'AR', nombre: 'Argentina', monedaVenta: 'ARS', monedaBase: 'USD', tieneTipoCambio: true },
+      ],
+      monedasCaja: ['BOB', 'USD', 'ARS'],
+      monedaCosto: 'USD',
+    },
+    redondeo: { BOB: { tipo: 'decimales', decimales: 2, modo: 'cercano' }, ARS: { tipo: 'multiplo', multiplo: 100, modo: 'cercano' } },
     usuarios: [
       { uid: 'u-adm', correo: 'adm@ejemplo.test', rol: 'adm', verificado: true },
       { uid: 'u-sup', correo: 'sup@ejemplo.test', rol: 'sup', verificado: true },

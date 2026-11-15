@@ -5,7 +5,8 @@ import { diferenciaPorMoneda, efectivoEsperado, monedasDelTurno, proyectarTurno,
 import { centavosATexto, formatearMonto, textoACentavos } from './dinero.js';
 import { ITEMS_MENU, menuPara, parsearRuta, puedeVer, rutaPorOmision } from './menu.js';
 import { calcularPagos, type FilaPago } from '../pantallas/pos/pagos.js';
-import { fijarRedondeo, precioDeVenta, redondeoActual, REDONDEO, restablecerRedondeo } from './precio.js';
+import { fijarRedondeo, precioDeVenta, precioDeVentaMercado, redondeoActual, reglasDeclaradasActuales, REDONDEO, restablecerRedondeo } from './precio.js';
+import type { MercadoDeclarado } from '../api/tipos.js';
 import { leerClaimPanel } from '../sesion/claim.js';
 import { PALETAS } from '../pantallas/consola/plantillas-vista.js';
 import { PLANTILLAS_SITIO } from '../api/tipos.js';
@@ -59,6 +60,44 @@ describe('precio de venta', () => {
     expect(precioDeVenta(0, 'BO', 'BOB', cot('BOB/USD', 7))).toEqual({ tipo: 'sin_precio' });
     expect(precioDeVenta(800, 'BO', 'BOB', null)).toEqual({ tipo: 'sin_cotizacion' });
     expect(precioDeVenta(800, 'BO', 'BOB', cot('ARS/USD', 7))).toEqual({ tipo: 'sin_cotizacion' });
+  });
+});
+
+describe('precio de venta por mercado declarado', () => {
+  const bo: MercadoDeclarado = { id: 'BO', nombre: 'Bolivia', monedaVenta: 'BOB', monedaBase: 'USD', tieneTipoCambio: true };
+  const ar: MercadoDeclarado = { id: 'AR', nombre: 'Argentina', monedaVenta: 'ARS', monedaBase: 'USD', tieneTipoCambio: true };
+  const pe: MercadoDeclarado = { id: 'PE', nombre: 'Peru', monedaVenta: 'PEN', monedaBase: 'PEN', tieneTipoCambio: false };
+  const reglas = { BOB: REDONDEO.BOB, ARS: REDONDEO.ARS, PEN: { tipo: 'decimales', decimales: 1, modo: 'abajo' } } as const;
+
+  it('da lo mismo que la función vieja para los mercados BO y AR con el redondeo vigente', () => {
+    for (const usdC of [1, 99, 800, 1049, 1051, 1234, 45000, 48000]) {
+      expect(precioDeVentaMercado(usdC, bo, cot('BOB/USD', 6.96), reglas)).toEqual(precioDeVenta(usdC, 'BO', 'BOB', cot('BOB/USD', 6.96)));
+      expect(precioDeVentaMercado(usdC, ar, cot('ARS/USD', 1033.3), reglas)).toEqual(precioDeVenta(usdC, 'AR', 'ARS', cot('ARS/USD', 1033.3)));
+    }
+  });
+  it('un mercado sin tipo de cambio redondea el precio base con la regla de su moneda', () => {
+    // 12,37 PEN con un decimal hacia abajo = 12,30
+    expect(precioDeVentaMercado(1237, pe, null, reglas)).toEqual({ tipo: 'precio', centavos: 1230, moneda: 'PEN' });
+  });
+  it('sin_precio, sin_cotizacion y sin_redondeo', () => {
+    expect(precioDeVentaMercado(0, bo, cot('BOB/USD', 7), reglas)).toEqual({ tipo: 'sin_precio' });
+    expect(precioDeVentaMercado(800, bo, null, reglas)).toEqual({ tipo: 'sin_cotizacion' });
+    expect(precioDeVentaMercado(800, bo, cot('ARS/USD', 7), reglas)).toEqual({ tipo: 'sin_cotizacion' });
+    expect(precioDeVentaMercado(800, bo, cot('BOB/USD', 7), null)).toEqual({ tipo: 'sin_redondeo' });
+    expect(precioDeVentaMercado(800, bo, cot('BOB/USD', 7), { ARS: REDONDEO.ARS })).toEqual({ tipo: 'sin_redondeo' });
+    expect(precioDeVentaMercado(800, bo, cot('BOB/USD', 7), { BOB: { tipo: 'ninguno' } as never })).toEqual({ tipo: 'sin_redondeo' });
+  });
+  it('D21: sin la regla del comercio no hay precio, aunque exista el respaldo fijo de la función vieja', () => {
+    restablecerRedondeo();
+    expect(reglasDeclaradasActuales()).toBeNull();
+    expect(precioDeVentaMercado(800, bo, cot('BOB/USD', 7))).toEqual({ tipo: 'sin_redondeo' });
+    expect(precioDeVenta(800, 'BO', 'BOB', cot('BOB/USD', 7)).tipo).toBe('precio');
+  });
+  it('adopta las reglas válidas del servidor por moneda declarada y descarta las inválidas', () => {
+    fijarRedondeo({ ...reglas, USD: { tipo: 'decimales', decimales: 5, modo: 'cercano' } });
+    expect(Object.keys(reglasDeclaradasActuales() ?? {}).sort()).toEqual(['ARS', 'BOB', 'PEN']);
+    expect(precioDeVentaMercado(1237, pe, null)).toEqual({ tipo: 'precio', centavos: 1230, moneda: 'PEN' });
+    restablecerRedondeo();
   });
 });
 

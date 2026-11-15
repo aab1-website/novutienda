@@ -268,6 +268,8 @@ export interface ProductoPanel {
   readonly garantiaMeses?: number;
   readonly minimo?: number;
   readonly precioUSD: PrecioUSDCentavos;
+  /** Ids de los mercados declarados en los que el producto no tiene precio (los entrega el servidor). */
+  readonly sinPrecio?: readonly string[];
   /** Solo se entrega al administrador. Centavos de USD. */
   readonly costoUSD?: number;
   /** Ausente: el producto no controla stock. `null`: oculto por un conteo abierto. */
@@ -634,7 +636,18 @@ export interface VistaComercial {
     readonly tieneTipoCambio: boolean;
   }[];
   readonly monedasCaja: readonly string[];
+  /** Código de la moneda en que se declara el costo (nunca montos). Ausente si el servidor no lo entregó: no se supone ninguna. */
+  readonly monedaCosto?: string;
 }
+
+/** Mercado declarado por el comercio, tal como lo entrega `configuracionComercial`. */
+export type MercadoDeclarado = VistaComercial['mercados'][number];
+/** Código ISO 4217 de una moneda declarada por el comercio (abierto: ya no se limita a BOB, USD y ARS). */
+export type CodigoMoneda = string;
+/** Identificador de un mercado declarado (dos letras mayúsculas). */
+export type IdMercado = string;
+/** Precios base por mercado, en centavos de la moneda base del mercado, con el id del mercado en minúsculas como clave. */
+export type PreciosPorMercado = Readonly<Record<string, number>>;
 
 export interface UsuarioVista {
   readonly uid: string;
