@@ -18,7 +18,7 @@ describe('catálogo: exportar', () => {
     render(e.envolver(h(PantallaCatalogo, { sub: 'exportar' })));
     const u = userEvent.setup();
     expect(screen.getByText(/Los productos se crean e importan en Inventario/)).toBeTruthy();
-    expect(await screen.findByText(/precios en dólares, con decimales, y puede reimportarse en Inventario/)).toBeTruthy();
+    expect(screen.getByText(/precios en dólares, con decimales, y puede reimportarse en Inventario/)).toBeTruthy();
     expect(screen.getByRole('link', { name: 'Ir a la importación de Inventario' }).getAttribute('href')).toBe('#/inventario/csv');
     await u.click(screen.getByRole('button', { name: 'Exportar productos (CSV)' }));
     expect(await screen.findByText(/productos-sitio\.csv generado/)).toBeTruthy();
@@ -41,10 +41,25 @@ describe('catálogo: mercados declarados', () => {
     expect(await screen.findByText(/Bolivia:/)).toBeTruthy();
     expect(screen.getByText(/Argentina:/)).toBeTruthy();
   });
-  it('un comercio de un solo mercado ve su nombre y su moneda base; un id no declarado se muestra tal cual', async () => {
-    const e = crearEntorno('adm', undefined, { comercial: { mercados: [{ id: 'PE', nombre: 'Perú', monedaVenta: 'PEN', monedaBase: 'PEN', tieneTipoCambio: false }], monedasCaja: ['PEN'] } });
-    render(e.envolver(h(PantallaCatalogo, { sub: 'exportar' })));
-    expect(await screen.findByText(/precios en PEN, con decimales/)).toBeTruthy();
-    expect(screen.queryByText(/dólares/)).toBeNull();
+  it('un id de mercado no declarado se muestra tal cual', async () => {
+    const e = crearEntorno('adm', undefined, { comercial: { mercados: [{ id: 'BO', nombre: 'Bolivia', monedaVenta: 'BOB', monedaBase: 'USD', tieneTipoCambio: true }], monedasCaja: ['BOB'] } });
+    render(e.envolver(h(PantallaCatalogo, { sub: 'tablero' })));
+    expect(await screen.findByText(/Bolivia:/)).toBeTruthy();
+    expect(screen.getByText(/AR:/)).toBeTruthy();
+  });
+  it('mientras la configuración comercial carga, no muestra mercados', async () => {
+    const e = crearEntorno('adm');
+    vi.spyOn(e.api, 'llamar').mockImplementation((() => new Promise(() => undefined)) as never);
+    render(e.envolver(h(PantallaCatalogo, { sub: 'tablero' })));
+    expect(screen.queryByText(/Bolivia:|BO:/)).toBeNull();
+    expect(document.body.textContent ?? '').toMatch(/Cargando/);
+  });
+  it('si la configuración comercial falla, muestra el error y no ids crudos', async () => {
+    const e = crearEntorno('adm');
+    const llamar = e.api.llamar.bind(e.api) as (n: string, x: unknown) => Promise<unknown>;
+    vi.spyOn(e.api, 'llamar').mockImplementation(((n: string, x: unknown) => (n === 'configuracionComercial' ? Promise.reject(new Error('falla comercial')) : llamar(n, x))) as never);
+    render(e.envolver(h(PantallaCatalogo, { sub: 'tablero' })));
+    await waitFor(() => expect(document.querySelector('[role="alert"], .alerta')).not.toBeNull());
+    expect(screen.queryByText(/BO:|AR:/)).toBeNull();
   });
 });

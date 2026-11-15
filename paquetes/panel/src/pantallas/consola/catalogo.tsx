@@ -26,19 +26,17 @@ function Uso({ etiqueta, usados, tope, formato }: { etiqueta: string; usados: nu
   );
 }
 
-// Nombre corriente de las monedas más usadas; cualquier otra se muestra con su código.
-const NOMBRES_MONEDA: Readonly<Record<string, string>> = { USD: 'dólares', BOB: 'bolivianos', ARS: 'pesos argentinos' };
-
 function Tablero(): JSX.Element {
   const { api, usuario } = useApp();
   const comercial = useConfiguracionComercial();
-  const nombreMercado = (id: string): string => (comercial.estado === 'lista' ? comercial.comercial.mercados.find((m) => m.id === id)?.nombre : undefined) ?? id;
   const t = useCarga(() => api.llamar('obtenerTablero', {}), []);
   const accion = useAccion();
   const [msg, setMsg] = useState<string | null>(null);
-  if (t.cargando) return <Cargando />;
+  if (comercial.estado === 'cargando' || t.cargando) return <Cargando />;
+  if (comercial.estado === 'error') return <ErrorCarga error={comercial.mensaje} />;
   if (t.error || !t.datos) return <ErrorCarga error={t.error ?? 'Sin datos'} reintentar={t.recargar} />;
   const d = t.datos;
+  const nombreMercado = (id: string): string => comercial.comercial.mercados.find((m) => m.id === id)?.nombre ?? id;
   return (
     <div>
       <Seccion titulo="Sitio">
@@ -183,8 +181,6 @@ function CarruselEditor({ plantilla, items, setItems, productos, alGuardar }: { 
 
 function Exportar(): JSX.Element {
   const { api, puedeVer } = useApp();
-  const comercial = useConfiguracionComercial();
-  const bases = comercial.estado === 'lista' ? [...new Set(comercial.comercial.mercados.map((m) => m.monedaBase))].map((c) => NOMBRES_MONEDA[c] ?? c) : [];
   const accion = useAccion();
   const [ok, setOk] = useState<string | null>(null);
   return (
@@ -193,7 +189,7 @@ function Exportar(): JSX.Element {
         Los productos se crean e importan en Inventario.
         {puedeVer('inventario') && <> <a href="#/inventario/csv">Ir a la importación de Inventario</a></>}
       </p>
-      {bases.length > 0 && <p class="texto-suave">El archivo trae los productos con sus precios en {bases.join(' y ')}, con decimales, y puede reimportarse en Inventario.</p>}
+      <p class="texto-suave">El archivo trae los productos con sus precios en dólares, con decimales, y puede reimportarse en Inventario.</p>
       <Boton variante="secundario" ocupado={accion.ocupado} onClick={() => { setOk(null); void accion.ejecutar(async () => { descargarTexto('productos-sitio.csv', (await api.llamar('exportarProductosCsvSitio', {})).csv); setOk('Archivo productos-sitio.csv generado.'); }); }}>
         Exportar productos (CSV)
       </Boton>
