@@ -6,7 +6,6 @@ import { useApp } from '../../ui/contexto.js';
 import { useCarga } from '../../ui/hooks.js';
 import { AccionesRecibo, ReciboVista } from './recibo-vista.js';
 import { formatearMonto } from '../../util/dinero.js';
-import type { Moneda } from '../../api/tipos.js';
 
 export function PantallaRecibos(): JSX.Element {
   const { api, usuario } = useApp();
@@ -58,7 +57,7 @@ export function PantallaRecibos(): JSX.Element {
                   <th scope="row">{r.numero}</th>
                   <td>{fechaHora(r.emitidoEn)}</td>
                   <td>{r.cliente?.nombre ?? '—'}</td>
-                  <td class="num">{formatearMonto(r.total, r.moneda as Moneda)}</td>
+                  <td class="num">{formatearMonto(r.total, r.moneda)}</td>
                   <td>{r.estado === 'ANULADO' ? 'ANULADO' : 'Emitido'}{r.facturaSuma ? ` · SUMA ${r.facturaSuma}` : ''}</td>
                   <td>
                     <Boton chico variante="secundario" onClick={() => setElegido(r.reciboId)} etiqueta={`Ver recibo ${r.numero}`}>Ver</Boton>

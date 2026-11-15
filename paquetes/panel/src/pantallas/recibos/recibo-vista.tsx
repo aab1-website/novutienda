@@ -1,7 +1,6 @@
 import type { JSX } from 'preact';
 import { useState } from 'preact/hooks';
 import type { Recibo } from '../../api/tipos.js';
-import type { Moneda } from '../../api/tipos.js';
 import { formatearMonto } from '../../util/dinero.js';
 import { Alerta, Boton, Campo, fechaHora } from '../../ui/comun.js';
 import { useApp } from '../../ui/contexto.js';
@@ -11,7 +10,7 @@ const MEDIO_TEXTO: Record<string, string> = { efectivo: 'Efectivo', qr: 'QR', tr
 
 /** Comprobante imprimible. Todo texto se pinta como texto (Preact escapa); no se inserta HTML. */
 export function ReciboVista({ recibo, registradoPor }: { recibo: Recibo; registradoPor?: Readonly<Record<string, string>> }): JSX.Element {
-  const m = recibo.moneda as Moneda;
+  const m = recibo.moneda;
   return (
     <article class="recibo" aria-label={`Recibo ${recibo.numero}`}>
       {recibo.estado === 'ANULADO' && <p class="recibo-anulado">ANULADO</p>}
@@ -57,7 +56,7 @@ export function ReciboVista({ recibo, registradoPor }: { recibo: Recibo; registr
       <ul class="lista-simple">
         {recibo.pagos.map((p, i) => (
           <li key={i}>
-            {p.medio === 'qr' ? `QR registrado por ${registradoPor?.['qr'] ?? 'el vendedor'}` : (MEDIO_TEXTO[p.medio] ?? p.medio)}: {formatearMonto(p.monto, p.moneda as Moneda)}
+            {p.medio === 'qr' ? `QR registrado por ${registradoPor?.['qr'] ?? 'el vendedor'}` : (MEDIO_TEXTO[p.medio] ?? p.medio)}: {formatearMonto(p.monto, p.moneda)}
           </li>
         ))}
       </ul>
