@@ -82,6 +82,6 @@ export const accionesUsuarios: TablaImplementaciones = {
    */
   configuracionComercial: accion({
     esquema: VACIO,
-    ejecutar: async (c) => vistaComercial(await c.e.comercialDelTenant(c.tenantId)),
+    ejecutar: async (c) => vistaComercial(await c.e.comercialDelTenant(c.tenantId), c.rol === 'adm'),
   }),
 };

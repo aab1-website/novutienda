@@ -4,7 +4,7 @@
 // monedas. Falla cerrado: tenant inexistente, id inválido o documento inválido lanzan `ComercialInvalida`; jamás se entrega una
 // configuración por defecto. Caché por instancia, del mismo estilo que el lector de redondeo y el de módulos: los resultados
 // buenos duran 60 s (un cambio del operador tarda como máximo 60 s en una instancia caliente) y los errores 10 s (un id inventado no debe costar una lectura por petición).
-import { comercialDe, esTenantIdValido, validarTenant, type ConfiguracionComercial } from '@novutienda/nucleo';
+import { comercialDe, esTenantIdValido, monedaCostoDe, validarTenant, type ConfiguracionComercial } from '@novutienda/nucleo';
 import type { LectorDocumento } from './modulos-activos.js';
 
 export const TTL_COMERCIAL_MS = 60_000;
@@ -81,14 +81,17 @@ export interface VistaComercial {
     readonly tieneTipoCambio: boolean;
   }[];
   readonly monedasCaja: readonly string[];
+  /** Solo el código de la moneda en que se declara el costo (nunca montos); solo se entrega al rol `adm`. */
+  readonly monedaCosto?: string;
 }
 
 /** Proyección de solo lectura para el panel (callable `configuracionComercial`, de Central). */
-export function vistaComercial(c: ConfiguracionComercial): VistaComercial {
-  return {
+export function vistaComercial(c: ConfiguracionComercial, incluirCosto = false): VistaComercial {
+  const base: VistaComercial = {
     mercados: c.mercados.map((m) => ({
       id: m.id, nombre: m.nombre, monedaVenta: m.monedaVenta, monedaBase: m.monedaBase, tieneTipoCambio: m.tipoCambio !== null,
     })),
     monedasCaja: [...c.monedas],
   };
+  return incluirCosto ? { ...base, monedaCosto: monedaCostoDe(c) } : base;
 }
