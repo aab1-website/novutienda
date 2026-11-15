@@ -70,7 +70,7 @@ describe.skipIf(!hayEmulador)('configuración comercial del tenant (emulador)', 
 
   it('la proyección para el panel trae mercados y monedas de caja, nunca fuentes ni par', async () => {
     const v3 = vistaComercial(await e.comercialDelTenant(await sembrar('v1', UN_MERCADO)));
-    expect(v3).toEqual({ mercados: [{ id: 'CO', nombre: 'Colombia', monedaVenta: 'COP', monedaBase: 'COP', tieneTipoCambio: false }], monedasCaja: ['COP'] });
+    expect(v3).toEqual({ mercados: [{ id: 'CO', nombre: 'Colombia', monedaVenta: 'COP', monedaBase: 'COP', tieneTipoCambio: false }], monedasCaja: ['COP'], monedaCosto: 'USD' });
     const v = vistaComercial(await e.comercialDelTenant(await sembrar('v3', TENANT_TODO_ENCENDIDO)));
     expect(v.mercados.map((m) => m.tieneTipoCambio)).toEqual([true, true]);
     expect(JSON.stringify(v)).not.toMatch(/fuentes|par|BCB|BNA|BCRA/);

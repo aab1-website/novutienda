@@ -19,6 +19,7 @@ const TRES_MONEDAS = {
     { id: 'AR', nombre: 'Argentina', monedaVenta: 'ARS', monedaBase: 'USD', tieneTipoCambio: true },
   ],
   monedasCaja: ['BOB', 'USD', 'ARS'],
+  monedaCosto: 'USD',
 };
 
 describe.skipIf(!hayEmulador)('consola.configuracionComercial (emulador)', () => {
@@ -33,7 +34,7 @@ describe.skipIf(!hayEmulador)('consola.configuracionComercial (emulador)', () =>
     await sembrarTenant(h, B);
     await h.firestore.doc(`tenants/${B}`).set({
       estado: 'activo', plan: 'multimercado', modulos: TENANT_TODO_ENCENDIDO.modulos,
-      comercial: { mercados: [{ id: 'PE', nombre: 'Perú', monedaVenta: 'PEN', monedaBase: 'USD', zonaHoraria: 'America/Lima', tipoCambio: { par: 'PEN/USD', fuentes: ['manual'] }, redondeo: { tipo: 'decimales', decimales: 2, modo: 'cercano' } }], monedas: ['PEN', 'USD'] },
+      comercial: { mercados: [{ id: 'PE', nombre: 'Perú', monedaVenta: 'PEN', monedaBase: 'USD', zonaHoraria: 'America/Lima', tipoCambio: { par: 'PEN/USD', fuentes: ['manual'] }, redondeo: { tipo: 'decimales', decimales: 2, modo: 'cercano' } }], monedas: ['PEN', 'USD'], monedaCosto: 'EUR' },
     });
     // Configuración inválida: monedas fuera de lo admitido por la forma anterior.
     await h.firestore.doc(`tenants/${C}`).set({ ...TENANT_TODO_ENCENDIDO, monedas: ['BOB'] });
@@ -56,7 +57,7 @@ describe.skipIf(!hayEmulador)('consola.configuracionComercial (emulador)', () =>
 
   it('un usuario de otro tenant obtiene la suya y no puede pedir la ajena', async () => {
     const suya = await accion('consola', 'configuracionComercial', {}, deB.token, B);
-    expect(suya.resultado).toEqual({ mercados: [{ id: 'PE', nombre: 'Perú', monedaVenta: 'PEN', monedaBase: 'USD', tieneTipoCambio: true }], monedasCaja: ['PEN', 'USD'] });
+    expect(suya.resultado).toEqual({ mercados: [{ id: 'PE', nombre: 'Perú', monedaVenta: 'PEN', monedaBase: 'USD', tieneTipoCambio: true }], monedasCaja: ['PEN', 'USD'], monedaCosto: 'EUR' });
     expect((await accion('consola', 'configuracionComercial', {}, deB.token, A)).status).toBe(403);
     expect((await accion('consola', 'configuracionComercial', {}, u.adm.token, B)).status).toBe(403);
   });
