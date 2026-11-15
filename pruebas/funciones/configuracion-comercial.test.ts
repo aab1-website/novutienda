@@ -19,7 +19,6 @@ const TRES_MONEDAS = {
     { id: 'AR', nombre: 'Argentina', monedaVenta: 'ARS', monedaBase: 'USD', tieneTipoCambio: true },
   ],
   monedasCaja: ['BOB', 'USD', 'ARS'],
-  monedaCosto: 'USD',
 };
 
 describe.skipIf(!hayEmulador)('consola.configuracionComercial (emulador)', () => {
@@ -51,12 +50,13 @@ describe.skipIf(!hayEmulador)('consola.configuracionComercial (emulador)', () =>
     for (const rol of ['caj', 'sup', 'adm'] as const) {
       const r = await accion('consola', 'configuracionComercial', {}, u[rol].token, A);
       expect(r.status, JSON.stringify(r.error)).toBe(200);
-      expect(r.resultado, rol).toEqual(TRES_MONEDAS);
+      // El código de la moneda de costo llega solo al rol `adm`; `caj` y `sup` no reciben el campo.
+      expect(r.resultado, rol).toEqual(rol === 'adm' ? { ...TRES_MONEDAS, monedaCosto: 'USD' } : TRES_MONEDAS);
     }
   });
 
   it('un usuario de otro tenant obtiene la suya y no puede pedir la ajena', async () => {
-    const suya = await accion('consola', 'configuracionComercial', {}, deB.token, B);
+    const suya = await accion('consola', 'configuracionComercial', {}, deB.token, B); // deB es `adm`
     expect(suya.resultado).toEqual({ mercados: [{ id: 'PE', nombre: 'Perú', monedaVenta: 'PEN', monedaBase: 'USD', tieneTipoCambio: true }], monedasCaja: ['PEN', 'USD'], monedaCosto: 'EUR' });
     expect((await accion('consola', 'configuracionComercial', {}, deB.token, A)).status).toBe(403);
     expect((await accion('consola', 'configuracionComercial', {}, u.adm.token, B)).status).toBe(403);
