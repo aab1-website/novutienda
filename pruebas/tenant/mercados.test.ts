@@ -1,6 +1,7 @@
 import { describe, expect, it } from 'vitest';
 import {
   COMERCIAL_LEGADO_TRES_MONEDAS,
+  claveDePrecio,
   comercialDe,
   comercialLegado,
   esMultimercado,
@@ -307,5 +308,13 @@ describe('moneda de costo del comercio', () => {
     const c = comercialDe(r.valor);
     expect(c.ok).toBe(true);
     if (c.ok) expect(monedaCostoDe(c.valor)).toBe('EUR');
+  });
+});
+
+describe('claveDePrecio', () => {
+  it('es el id del mercado en minúsculas', () => {
+    expect(claveDePrecio('BO')).toBe('bo');
+    expect(claveDePrecio('AR')).toBe('ar');
+    expect(claveDePrecio('bo')).toBe('bo');
   });
 });

@@ -2,10 +2,10 @@ import { beforeEach, describe, expect, it } from 'vitest';
 import {
   decidirReconstruccion, eliminarSeccion, ejecutarReconstruccion,
   finalizarSubida, guardarCarrusel, guardarConfigSitio, guardarFicha, guardarSeccion, LIMITES_CONSOLA, obtenerTablero, ordenarSecciones,
-  preciosDelDia, proyectarDisponibilidad, publicarSitio, reservarSubida, calcularDisponibilidadPublica, construirPublicado,
+  proyectarDisponibilidad, publicarSitio, reservarSubida, calcularDisponibilidadPublica, construirPublicado,
   type DepsMedios,
 } from '@novutienda/consola';
-import { rutaContador, type AlmacenCotizaciones, type CopiaCotizacion, type Redondeo } from '@novutienda/nucleo';
+import { COMERCIAL_LEGADO_TRES_MONEDAS, rutaContador, type AlmacenCotizaciones } from '@novutienda/nucleo';
 import { actor, AlmacenDoble, CatalogoDoble, DisparadorDoble, JPG, MP4, nuevaDb, ProcesadorSimulado, RelojFijo, T } from './dobles.js';
 
 const adm = actor('adm');
@@ -515,7 +515,7 @@ describe('servicios de la consola', () => {
       db.poner(rutaContador(T), { productos: 37, usuarios: 2 });
       db.poner(`tenants/${T}/uso/medios`, { bytes: 5 * 1024 ** 3, productos: {} });
       const t = await obtenerTablero(
-        { db, reloj, cotizaciones: almacenCot({ [`tenants/${T}/cotizaciones/BO`]: cot(6.96, '2026-11-04', 'BOB/USD') }) },
+        { db, reloj, comercial: COMERCIAL_LEGADO_TRES_MONEDAS, cotizaciones: almacenCot({ [`tenants/${T}/cotizaciones/BO`]: cot(6.96, '2026-11-04', 'BOB/USD') }) },
         { tenantId: T, actor: sup },
       );
       expect(t.cambiosSinPublicar).toBe(1);
@@ -524,17 +524,7 @@ describe('servicios de la consola', () => {
       expect(t.uso).toEqual({
         productos: { usados: 37, tope: 200 }, usuarios: { usados: 2, tope: 3 }, originalesBytes: { usados: 5 * 1024 ** 3, tope: 10 * 1024 ** 3 },
       });
-      await expect(obtenerTablero({ db, reloj, cotizaciones: almacenCot({}) }, { tenantId: T, actor: actor('caj') })).rejects.toMatchObject({ codigo: 'no-autorizado' });
-    });
-
-    const redondeo: Redondeo = { BOB: { tipo: 'decimales', decimales: 2, modo: 'cercano' }, ARS: { tipo: 'multiplo', multiplo: 100, modo: 'arriba' } };
-    const copia = (par: 'BOB/USD' | 'ARS/USD', valor: number): CopiaCotizacion => ({ cotizacionId: 'x', par, valor, fecha: '2026-11-04', fuente: 'BCB', estado: 'vigente' });
-
-    it('calcula el Bs/ARS del día con precioFinal y distingue sin precio y sin cotización', () => {
-      const p = preciosDelDia({ bo: 10, ar: 10.5 }, { BO: copia('BOB/USD', 12.06), AR: copia('ARS/USD', 1520) }, redondeo);
-      expect(p.BO).toEqual({ tipo: 'precio', moneda: 'BOB', monto: 120.6, centavos: 12060 });
-      expect(p.AR).toMatchObject({ tipo: 'precio', moneda: 'ARS', monto: 16000 });
-      expect(preciosDelDia({ bo: 0, ar: 5 }, { BO: copia('BOB/USD', 12.06) }, redondeo)).toEqual({ BO: { tipo: 'sin_precio' }, AR: { tipo: 'sin_cotizacion' } });
+      await expect(obtenerTablero({ db, reloj, comercial: COMERCIAL_LEGADO_TRES_MONEDAS, cotizaciones: almacenCot({}) }, { tenantId: T, actor: actor('caj') })).rejects.toMatchObject({ codigo: 'no-autorizado' });
     });
 
     async function configurar(): Promise<void> {

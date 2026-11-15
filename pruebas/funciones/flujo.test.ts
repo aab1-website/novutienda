@@ -182,6 +182,21 @@ describe.skipIf(!hayEmulador)('flujo POS → evento → recibo (emulador)', () =
     expect(r.resultado).toMatchObject({ BO: { tipo: 'precio', moneda: 'BOB', monto: 70.07 }, AR: { tipo: 'precio', moneda: 'ARS', monto: 10_000 } });
   });
 
+  it('preciosDelDia: falta de precio, clave no declarada y más de 20 claves', async () => {
+    // Solo llega el precio de Bolivia: Argentina queda como «falta precio».
+    const falta = await accion('consola', 'preciosDelDia', { precioUSD: { bo: 10.01 } }, adm.token, A);
+    expect(falta.status, JSON.stringify(falta.error)).toBe(200);
+    expect(falta.resultado).toMatchObject({ BO: { tipo: 'precio', monto: 70.07 }, AR: { tipo: 'falta_precio' } });
+    // Una clave de un mercado que el comercio no declara se rechaza, sin eco del valor.
+    const ajena = await accion('consola', 'preciosDelDia', { precioUSD: { bo: 1, zz: 1 } }, adm.token, A);
+    expect(ajena.status).toBe(400);
+    expect(ajena.error?.status).toBe('INVALID_ARGUMENT');
+    // Claves en mayúsculas o con otra forma no pasan la validación.
+    expect((await accion('consola', 'preciosDelDia', { precioUSD: { BO: 1 } }, adm.token, A)).status).toBe(400);
+    const muchas = Object.fromEntries(Array.from({ length: 21 }, (_, i) => [`${String.fromCharCode(97 + Math.floor(i / 7))}${String.fromCharCode(97 + (i % 7))}`, 1]));
+    expect((await accion('consola', 'preciosDelDia', { precioUSD: muchas }, adm.token, A)).status).toBe(400);
+  });
+
   it('una configuración de redondeo inválida no se adivina: falla con precondición', async () => {
     const C = 'flujo-c';
     await sembrarTenant(h, C);

@@ -25,9 +25,7 @@
     ],
     "escribirCotizacion": [],
     "leerCotizacion": [
-      "paquetes/consola/src/tablero.ts",
-      "paquetes/website/src/api/cotizacion.ts",
-      "plataforma/funciones/servidor/llamadas/consola.ts"
+      "paquetes/website/src/api/cotizacion.ts"
     ],
     "manejarCotizacion": [
       "paquetes/website/src/api/cotizacion.ts"
