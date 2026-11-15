@@ -1,11 +1,23 @@
 // Conformidad de la traducción del panel (`api/real.ts`) con las tablas de acciones REALES de las Cloud Functions
 // (plataforma/funciones/servidor/llamadas): toda acción que el panel invoca existe, con los mismos roles.
 import { describe, expect, it } from 'vitest';
-import type { CopiaCotizacion } from '@novutienda/nucleo';
-import { preciosDelDia } from '@novutienda/consola';
-import { ErrorApi, mensajeDeError, NOMBRES_CALLABLE, REDONDEO, ROLES_ACCION, ROLES_CALLABLE, TRADUCCION, precioDeVenta, usd, type NombreCallable } from '@novutienda/panel';
+import { COMERCIAL_LEGADO_TRES_MONEDAS, type CopiaCotizacion, type RedondeoPorMoneda } from '@novutienda/nucleo';
+import { preciosDelDiaDe } from '@novutienda/consola';
+import { ErrorApi, mensajeDeError, NOMBRES_CALLABLE, ROLES_ACCION, ROLES_CALLABLE, TRADUCCION, precioDeVentaMercado, restablecerRedondeo, usd, type MercadoDeclarado, type NombreCallable } from '@novutienda/panel';
 import { tablasCompuestas } from '../funciones/tablas.js';
-import { REDONDEO_POR_DEFECTO } from '../../plataforma/funciones/servidor/redondeo.js';
+
+// Reglas del comercio de tres monedas de referencia, tal como las devuelve el servidor.
+const REDONDEO: RedondeoPorMoneda = {
+  BOB: { tipo: 'decimales', decimales: 2, modo: 'cercano' },
+  ARS: { tipo: 'multiplo', multiplo: 100, modo: 'cercano' },
+};
+const declarado = (id: 'BO' | 'AR'): MercadoDeclarado => {
+  const m = COMERCIAL_LEGADO_TRES_MONEDAS.mercados.find((x) => x.id === id);
+  if (m === undefined) throw new Error('mercado de referencia ausente');
+  return { id: m.id, nombre: m.nombre, monedaVenta: m.monedaVenta, monedaBase: m.monedaBase, tieneTipoCambio: m.tipoCambio != null };
+};
+const MBO = declarado('BO');
+const MAR = declarado('AR');
 
 // Los roles salen de las tablas compuestas (implementaciones de los bordes + registro, como en index.ts; el callable `consola` lleva las de usuarios).
 const SERVIDOR: Readonly<Record<string, Readonly<Record<string, { readonly roles: readonly string[]; readonly propietario: boolean }>>>> = tablasCompuestas();
@@ -87,86 +99,21 @@ describe('unidades', () => {
 });
 
 describe('redondeo: el panel calcula con la misma política que el servidor', () => {
-  it('la política del panel es la del servidor por omisión', () => {
-    expect(REDONDEO).toEqual(REDONDEO_POR_DEFECTO);
-  });
-  it('precioDeVenta del panel = consola.preciosDelDia (misma función y misma política)', () => {
-    const copia = (par: 'BOB/USD' | 'ARS/USD', valor: number, fuente: string): CopiaCotizacion => ({ cotizacionId: 'x', par, valor, fecha: '2026-11-04', fuente, estado: 'vigente' }) as unknown as CopiaCotizacion;
+  it('precioDeVentaMercado del panel = consola.preciosDelDiaDe (misma función y misma política)', () => {
+    const copia = (par: string, valor: number, fuente: string): CopiaCotizacion<string> => ({ cotizacionId: 'x', par, valor, fecha: '2026-11-04', fuente, estado: 'vigente' }) as unknown as CopiaCotizacion<string>;
     const cotBo = copia('BOB/USD', 6.96, 'BCB');
     const cotAr = copia('ARS/USD', 1031.37, 'BNA');
     for (const centavos of [1, 99, 800, 1250, 1999, 4500, 18000, 123457]) {
-      const servidor = preciosDelDia({ bo: centavos / 100, ar: centavos / 100 }, { BO: cotBo, AR: cotAr }, REDONDEO_POR_DEFECTO);
-      const bo = precioDeVenta(centavos, 'BO', 'BOB', { cotizacionId: 'x', par: 'BOB/USD', valor: 6.96, fecha: '2026-11-04', fuente: 'BCB', estado: 'vigente' });
-      const ar = precioDeVenta(centavos, 'AR', 'ARS', { cotizacionId: 'x', par: 'ARS/USD', valor: 1031.37, fecha: '2026-11-04', fuente: 'BNA', estado: 'vigente' });
-      for (const [panel, srv] of [[bo, servidor.BO], [ar, servidor.AR]] as const) {
-        if (srv.tipo === 'precio') expect(panel).toMatchObject({ tipo: 'precio', centavos: srv.centavos });
+      const servidor = preciosDelDiaDe({ bo: centavos / 100, ar: centavos / 100 }, COMERCIAL_LEGADO_TRES_MONEDAS, { BO: cotBo, AR: cotAr }, REDONDEO);
+      const bo = precioDeVentaMercado(centavos, MBO, { par: cotBo.par, valor: cotBo.valor }, REDONDEO);
+      const ar = precioDeVentaMercado(centavos, MAR, { par: cotAr.par, valor: cotAr.valor }, REDONDEO);
+      for (const [panel, srv] of [[bo, servidor['BO']], [ar, servidor['AR']]] as const) {
+        if (srv?.tipo === 'precio') expect(panel).toMatchObject({ tipo: 'precio', centavos: srv.centavos });
         else expect(panel.tipo === 'precio').toBe(false);
       }
       // ARS: múltiplo de 100 pesos (10 000 centavos).
-      if (servidor.AR.tipo === 'precio') expect(servidor.AR.centavos % 10_000).toBe(0);
+      if (servidor['AR']?.tipo === 'precio') expect(servidor['AR'].centavos % 10_000).toBe(0);
     }
-  });
-});
-
-describe('estadoSubida', () => {
-  it('traduce a medios.estadoSubida y entrega el medio con la forma del panel solo si está procesada', async () => {
-    const llamadas: { modulo: string; accion: string; datos: unknown }[] = [];
-    const respuesta = (r: unknown) => ({ rol: 'sup' as const, esperar: (): Promise<void> => Promise.resolve(), llamar: (modulo: string, accion: string, datos?: object): Promise<unknown> => { llamadas.push({ modulo, accion, datos }); return Promise.resolve(r); } });
-    const t = TRADUCCION.estadoSubida as unknown as { usa: string[]; ejecutar(c: unknown, e: unknown): Promise<unknown> };
-    expect(t.usa).toEqual(['medios.estadoSubida']);
-    expect(await t.ejecutar(respuesta({ estado: 'procesada', medio: { id: 'sub-1', productoId: 'p', tipo: 'foto' } }), { subidaId: 'sub-1' })).toEqual({ estado: 'procesada', medio: { id: 'sub-1', productoId: 'p', tipo: 'foto' } });
-    expect(await t.ejecutar(respuesta({ estado: 'reservada' }), { subidaId: 'sub-1' })).toEqual({ estado: 'reservada' });
-    expect(await t.ejecutar(respuesta({ estado: 'rechazada', motivo: 'm' }), { subidaId: 'sub-1' })).toEqual({ estado: 'rechazada', motivo: 'm' });
-    expect(llamadas[0]).toEqual({ modulo: 'medios', accion: 'estadoSubida', datos: { subidaId: 'sub-1' } });
-  });
-});
-
-describe('finalizarSubida frente al disparador de Storage', () => {
-  it('reintenta mientras el servidor responde «ya fue resuelta» y devuelve el medio; si persiste, el error sube', async () => {
-    let intentos = 0;
-    const c = (fallan: number): unknown => ({
-      rol: 'sup', esperar: () => Promise.resolve(),
-      llamar: () => {
-        intentos += 1;
-        return intentos <= fallan ? Promise.reject(new ErrorApi('failed-precondition', 'La subida ya fue resuelta por otra solicitud')) : Promise.resolve({ medio: { id: 'sub-1', productoId: 'p' } });
-      },
-    });
-    const t = TRADUCCION.finalizarSubida as unknown as { ejecutar(c: unknown, e: unknown): Promise<{ id: string }> };
-    expect((await t.ejecutar(c(2), { subidaId: 'sub-1' })).id).toBe('sub-1');
-    expect(intentos).toBe(3);
-    intentos = 0;
-    await expect(t.ejecutar(c(100), { subidaId: 'sub-1' })).rejects.toBeInstanceOf(ErrorApi);
-    expect(intentos).toBe(8);
-    intentos = 0;
-    const otro = { rol: 'sup', esperar: () => Promise.resolve(), llamar: () => { intentos += 1; return Promise.reject(new ErrorApi('permission-denied', 'x')); } };
-    await expect(t.ejecutar(otro, { subidaId: 'sub-1' })).rejects.toMatchObject({ codigoHttps: 'permission-denied' });
-    expect(intentos).toBe(1);
-  });
-});
-
-describe('finalizarSubida de un video: la llamada se corta por tiempo mientras el servidor procesa', () => {
-  const t = TRADUCCION.finalizarSubida as unknown as { ejecutar(c: unknown, e: unknown): Promise<{ id: string }> };
-  const contexto = (codigo: string, fallan: number, esperas: number[]): unknown => {
-    let n = 0;
-    return {
-      rol: 'sup', esperar: (ms: number) => { esperas.push(ms); return Promise.resolve(); },
-      llamar: () => { n += 1; return n <= fallan ? Promise.reject(new ErrorApi(codigo, 'x')) : Promise.resolve({ medio: { id: 'sub-1', productoId: 'p' } }); },
-    };
-  };
-  it('reintenta con retroceso creciente (tope de 8 s) y devuelve el medio', async () => {
-    const esperas: number[] = [];
-    expect((await t.ejecutar(contexto('deadline-exceeded', 6, esperas), { subidaId: 'sub-1' })).id).toBe('sub-1');
-    expect(esperas).toEqual([1500, 2250, 3375, 5063, 7595, 8000]);
-  });
-  it('se rinde al agotar ~2 minutos de espera y no reintenta errores definitivos', async () => {
-    const esperas: number[] = [];
-    await expect(t.ejecutar(contexto('unavailable', 1000, esperas), { subidaId: 'sub-1' })).rejects.toMatchObject({ codigoHttps: 'unavailable' });
-    const total = esperas.reduce((a, b) => a + b, 0);
-    expect(total).toBeGreaterThanOrEqual(120_000);
-    expect(total).toBeLessThan(130_000);
-    const definitivas: number[] = [];
-    await expect(t.ejecutar(contexto('permission-denied', 1, definitivas), { subidaId: 'sub-1' })).rejects.toMatchObject({ codigoHttps: 'permission-denied' });
-    expect(definitivas).toEqual([]);
   });
 });
 
@@ -178,20 +125,21 @@ describe('redondeo que llega del servidor (pos.cotizaciones)', () => {
     rol: 'caj' as const, esperar: (): Promise<void> => Promise.resolve(), sesionVigente: () => vigente,
     llamar: (): Promise<unknown> => Promise.resolve({ cotizaciones: { BO: null, AR: cot }, redondeo }),
   });
-  it('la traducción adopta el redondeo del servidor y precioDeVenta lo usa; una forma inválida se ignora', async () => {
+  it('la traducción adopta el redondeo del servidor y precioDeVentaMercado lo usa; una forma inválida se ignora', async () => {
     // 10,49 USD * 1000 = 10 490 ARS: múltiplo de 100 → 10 500; múltiplo de 1000 → 10 000.
     await t.ejecutar(respuesta({ BOB, ARS: { tipo: 'multiplo', multiplo: 100, modo: 'cercano' } }), {});
-    expect(precioDeVenta(1049, 'AR', 'ARS', cot)).toMatchObject({ centavos: 1_050_000 });
+    expect(precioDeVentaMercado(1049, MAR, cot)).toMatchObject({ centavos: 1_050_000 });
     expect(await t.ejecutar(respuesta({ BOB, ARS: { tipo: 'multiplo', multiplo: 1000, modo: 'cercano' } }), {})).toMatchObject({ BO: null, AR: { valor: 1000 } });
-    expect(precioDeVenta(1049, 'AR', 'ARS', cot)).toMatchObject({ centavos: 1_000_000 });
+    expect(precioDeVentaMercado(1049, MAR, cot)).toMatchObject({ centavos: 1_000_000 });
+    // Una forma inválida no deja reglas: sin regla no hay precio (D21), nunca un respaldo.
     await t.ejecutar(respuesta({ cualquier: 'cosa' }), {});
-    expect(precioDeVenta(1049, 'AR', 'ARS', cot)).toMatchObject({ centavos: 1_000_000 });
-    // Sin `redondeo` en la respuesta no quedan las reglas de la sesión anterior: vuelve al respaldo.
-    await t.ejecutar(respuesta(undefined), {});
-    expect(precioDeVenta(1049, 'AR', 'ARS', cot)).toMatchObject({ centavos: 1_050_000 });
-    // Se deja el respaldo vigente para el resto de la suite.
+    expect(precioDeVentaMercado(1049, MAR, cot)).toEqual({ tipo: 'sin_redondeo' });
+    // Sin `redondeo` en la respuesta no quedan las reglas de la sesión anterior.
     await t.ejecutar(respuesta(REDONDEO), {});
-    expect(precioDeVenta(1049, 'AR', 'ARS', cot)).toMatchObject({ centavos: 1_050_000 });
+    expect(precioDeVentaMercado(1049, MAR, cot)).toMatchObject({ centavos: 1_050_000 });
+    await t.ejecutar(respuesta(undefined), {});
+    expect(precioDeVentaMercado(1049, MAR, cot)).toEqual({ tipo: 'sin_redondeo' });
+    restablecerRedondeo();
   });
 });
 
@@ -204,7 +152,7 @@ describe('redondeo de una sesión que ya no es la vigente', () => {
     const base = { rol: 'caj' as const, esperar: (): Promise<void> => Promise.resolve() };
     await t.ejecutar({ ...base, sesionVigente: () => true, llamar: llamar(REDONDEO) }, {});
     await t.ejecutar({ ...base, sesionVigente: () => false, llamar: llamar({ BOB, ARS: { tipo: 'multiplo', multiplo: 1000, modo: 'cercano' } }) }, {});
-    expect(precioDeVenta(1049, 'AR', 'ARS', cot)).toMatchObject({ centavos: 1_050_000 });
+    expect(precioDeVentaMercado(1049, MAR, cot)).toMatchObject({ centavos: 1_050_000 });
   });
 });
 

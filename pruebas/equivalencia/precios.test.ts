@@ -2,13 +2,24 @@
 // consola, `precioDeVenta` del panel y `vistaPrecio` del sitio, sobre los productos fijos y la política vigente.
 import { COMERCIAL_LEGADO_TRES_MONEDAS, precioFinal, redondear, leerCotizacion } from '@novutienda/nucleo';
 import { preciosDelDiaDe } from '@novutienda/consola';
-import { precioDeVenta } from '@novutienda/panel';
+import { precioDeVentaMercado, type MercadoDeclarado } from '@novutienda/panel';
 import { vistaPrecio } from '@novutienda/website';
 import { describe, expect, it } from 'vitest';
 import { COTIZACION_AR, COTIZACION_BO, PRODUCTOS, REDONDEO, T, crearEscenario } from './escenario.js';
 import { compararConFotoJson } from './foto.js';
 
 const usd = (centavos: number): number => centavos / 100;
+
+const declarado = (id: 'BO' | 'AR'): MercadoDeclarado => {
+  const m = COMERCIAL_LEGADO_TRES_MONEDAS.mercados.find((x) => x.id === id);
+  if (m === undefined) throw new Error('mercado de referencia ausente');
+  return { id: m.id, nombre: m.nombre, monedaVenta: m.monedaVenta, monedaBase: m.monedaBase, tieneTipoCambio: m.tipoCambio != null };
+};
+const MBO = declarado('BO');
+const MAR = declarado('AR');
+const enUsd = (centavos: number): { tipo: 'precio'; centavos: number; moneda: 'USD' } | { tipo: 'sin_precio' } =>
+  centavos <= 0 ? { tipo: 'sin_precio' } : { tipo: 'precio', centavos, moneda: 'USD' };
+const par = (c: { par: string; valor: number }): { par: string; valor: number } => ({ par: c.par, valor: c.valor });
 
 describe('precios por mercado del tenant de referencia', () => {
   it('precioFinal y preciosDelDia por producto y mercado, con cotización guardada', async () => {
@@ -24,8 +35,8 @@ describe('precios por mercado del tenant de referencia', () => {
         preciosDelDia: preciosDelDiaDe({ bo: usd(p.bo), ar: usd(p.ar) }, COMERCIAL_LEGADO_TRES_MONEDAS, { BO, AR }, REDONDEO),
         preciosDelDiaSinCotizacion: preciosDelDiaDe({ bo: usd(p.bo), ar: usd(p.ar) }, COMERCIAL_LEGADO_TRES_MONEDAS, {}, REDONDEO),
         panel: {
-          BOB: precioDeVenta(p.bo, 'BO', 'BOB', BO), ARS: precioDeVenta(p.ar, 'AR', 'ARS', AR), USD_BO: precioDeVenta(p.bo, 'BO', 'USD', BO), USD_AR: precioDeVenta(p.ar, 'AR', 'USD', AR),
-          BOB_sinCotizacion: precioDeVenta(p.bo, 'BO', 'BOB', null),
+          BOB: precioDeVentaMercado(p.bo, MBO, par(BO), REDONDEO), ARS: precioDeVentaMercado(p.ar, MAR, par(AR), REDONDEO), USD_BO: enUsd(p.bo), USD_AR: enUsd(p.ar),
+          BOB_sinCotizacion: precioDeVentaMercado(p.bo, MBO, null, REDONDEO),
         },
         sitio: { BO: vistaPrecio(usd(p.bo), 'BO', BO, REDONDEO), AR: vistaPrecio(usd(p.ar), 'AR', AR, REDONDEO), BOcargando: vistaPrecio(usd(p.bo), 'BO', undefined, REDONDEO), BOsinCotizacion: vistaPrecio(usd(p.bo), 'BO', null, REDONDEO) },
       };

@@ -1,29 +1,14 @@
-import { aCentavos, esReglaRedondeoValida, precioDeMercado, precioFinal, type Mercado, type Moneda, type Redondeo, type RedondeoPorMoneda, type ReglaRedondeo } from '@novutienda/nucleo';
-import type { CodigoMoneda, CotizacionVista, MercadoDeclarado } from '../api/tipos.js';
+import { aCentavos, esReglaRedondeoValida, precioDeMercado, type RedondeoPorMoneda, type ReglaRedondeo } from '@novutienda/nucleo';
+import type { CodigoMoneda, MercadoDeclarado } from '../api/tipos.js';
 
 /**
- * Redondeo POR DEFECTO de las decisiones de negocio (04/11/2026): BOB a dos decimales; ARS al múltiplo de 100 más cercano.
- * Es solo el respaldo mientras carga: el redondeo vigente es el que devuelve el servidor (`pos.cotizaciones`), que es el
- * que aplica al cobrar; el POS rechaza (`precio-alterado`) cualquier diferencia.
- */
-export const REDONDEO: Redondeo = {
-  BOB: { tipo: 'decimales', decimales: 2, modo: 'cercano' },
-  ARS: { tipo: 'multiplo', multiplo: 100, modo: 'cercano' },
-} as Redondeo;
-
-let redondeoVigente: Redondeo = REDONDEO;
-
-/**
- * Fija el redondeo que devolvió el servidor (política del negocio). Usa la validación del núcleo (regla única: 0, 1 o 2
- * decimales, o un múltiplo de al menos 0,01). Si falta una regla o no es admitida (`ninguno`, más de 2 decimales), la
- * ignora por completo y conserva el redondeo anterior.
+ * Adopta las reglas de redondeo que devolvió el servidor (política del comercio). Usa la validación del núcleo (0, 1 o 2
+ * decimales, o un múltiplo de al menos 0,01) y descarta las reglas no admitidas. Sin respuesta, vuelve al estado inicial.
  */
 export function fijarRedondeo(r: unknown): void {
   // Una respuesta sin redondeo no deja reglas de otra sesión: vuelve al estado inicial (D21).
   if (typeof r !== 'object' || r === null) { restablecerRedondeo(); return; }
-  const o = r as Record<string, unknown>;
   fijarReglasDeclaradas(r);
-  if (esReglaRedondeoValida(o['BOB']) && esReglaRedondeoValida(o['ARS'])) redondeoVigente = r as Redondeo;
 }
 
 /**
@@ -45,35 +30,10 @@ export function fijarReglasDeclaradas(r: unknown): void {
 /** Reglas por moneda declarada ya recibidas, o `null` si aún no llegaron. */
 export const reglasDeclaradasActuales = (): RedondeoPorMoneda | null => reglasDeclaradas;
 
-/** Redondeo en uso: el del servidor si ya llegó; si no, el respaldo por defecto. */
-export const redondeoActual = (): Redondeo => redondeoVigente;
-
-/** Vuelve al respaldo por defecto (cambio de negocio o de sesión, y pruebas). */
+/** Olvida las reglas recibidas (cambio de negocio o de sesión, y pruebas). */
 export const restablecerRedondeo = (): void => {
-  redondeoVigente = REDONDEO;
   reglasDeclaradas = null;
 };
-
-export const MONEDA_DE_MERCADO: Readonly<Record<Mercado, Moneda>> = { BO: 'BOB', AR: 'ARS' };
-
-export type PrecioVista =
-  | { readonly tipo: 'precio'; readonly centavos: number; readonly moneda: Moneda }
-  | { readonly tipo: 'sin_precio' }
-  | { readonly tipo: 'sin_cotizacion' };
-
-/**
- * Precio de venta en la moneda elegida. USD: el precio base en centavos. BOB/ARS: `precioFinal` del núcleo (la misma
- * función del sitio y del servidor) con la cotización vigente del mercado.
- */
-export function precioDeVenta(usdCentavos: number, mercado: Mercado, moneda: Moneda, cotizacion: CotizacionVista | null): PrecioVista {
-  if (usdCentavos <= 0) return { tipo: 'sin_precio' };
-  if (moneda === 'USD') return { tipo: 'precio', centavos: usdCentavos, moneda };
-  if (cotizacion === null) return { tipo: 'sin_cotizacion' };
-  const r = precioFinal(usdCentavos / 100, mercado, { par: cotizacion.par, valor: cotizacion.valor }, redondeoVigente);
-  if (r.tipo === 'sin_precio') return { tipo: 'sin_precio' };
-  if (r.tipo === 'invalido') return { tipo: 'sin_cotizacion' };
-  return { tipo: 'precio', centavos: r.centavos, moneda: r.moneda };
-}
 
 export { aCentavos };
 
@@ -86,7 +46,7 @@ export type PrecioMercadoVista =
 /**
  * Precio de venta en un mercado declarado por el comercio, sobre `precioDeMercado` del núcleo. `baseCentavos` está en la
  * moneda base del mercado. D21: sin una regla de redondeo válida para la moneda de venta (`reglas` nulo o sin esa
- * moneda) no hay precio (`sin_redondeo`); no usa el respaldo fijo. Un mercado con tipo de cambio exige una cotización;
+ * moneda) no hay precio (`sin_redondeo`); Un mercado con tipo de cambio exige una cotización;
  * si falta o no corresponde, `sin_cotizacion`. Base 0 es `sin_precio` (a consultar), nunca gratis.
  */
 export function precioDeVentaMercado(
