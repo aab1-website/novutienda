@@ -81,17 +81,17 @@ export interface VistaComercial {
     readonly tieneTipoCambio: boolean;
   }[];
   readonly monedasCaja: readonly string[];
-  /** Solo el código de la moneda en que se declara el costo; nunca montos. */
-  readonly monedaCosto: string;
+  /** Solo el código de la moneda en que se declara el costo (nunca montos); solo se entrega al rol `adm`. */
+  readonly monedaCosto?: string;
 }
 
 /** Proyección de solo lectura para el panel (callable `configuracionComercial`, de Central). */
-export function vistaComercial(c: ConfiguracionComercial): VistaComercial {
-  return {
+export function vistaComercial(c: ConfiguracionComercial, incluirCosto = false): VistaComercial {
+  const base: VistaComercial = {
     mercados: c.mercados.map((m) => ({
       id: m.id, nombre: m.nombre, monedaVenta: m.monedaVenta, monedaBase: m.monedaBase, tieneTipoCambio: m.tipoCambio !== null,
     })),
     monedasCaja: [...c.monedas],
-    monedaCosto: monedaCostoDe(c),
   };
+  return incluirCosto ? { ...base, monedaCosto: monedaCostoDe(c) } : base;
 }
