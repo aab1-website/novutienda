@@ -212,6 +212,12 @@ export function validarConfiguracionComercial(x: unknown): Resultado<Configuraci
 // ---- Consultas puras. Un mercado no declarado devuelve `undefined`/`false`: quien llama decide (falla cerrado). ----
 
 export const mercadosDe = (c: ConfiguracionComercial): readonly string[] => c.mercados.map((m) => m.id);
+/**
+ * Clave con la que se guarda el precio de un mercado en `precioUSD` del producto: el id en minúsculas (`BO` -> `bo`).
+ * Función única: nadie más deriva la clave a mano.
+ */
+export const claveDePrecio = (idMercado: string): string => idMercado.toLowerCase();
+
 export const mercadoDe = (c: ConfiguracionComercial, id: string): MercadoTenant | undefined => c.mercados.find((m) => m.id === id);
 export const esMercadoDe = (c: ConfiguracionComercial, id: unknown): id is string => typeof id === 'string' && mercadoDe(c, id) !== undefined;
 /** Moneda de venta del mercado. */
