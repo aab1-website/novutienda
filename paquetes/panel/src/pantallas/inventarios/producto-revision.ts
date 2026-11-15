@@ -1,7 +1,7 @@
 import { ErrorApi } from '../../api/errores.js';
-import type { CambiosProducto, EntradaProducto, PrecioUSDCentavos, ProductoPanel } from '../../api/tipos.js';
+import type { CambiosProducto, CodigoMoneda, EntradaProducto, PrecioUSDCentavos, PreciosPorMercado, ProductoPanel } from '../../api/tipos.js';
 import { centavosATexto, textoACentavos } from '../../util/dinero.js';
-import { MERCADOS_PRECIO } from './nombres.js';
+import { nombreMoneda, type MercadoPrecio } from './nombres.js';
 
 /**
  * Revisión del alta y la edición de un producto antes de enviarla: el error de cada campo, con las mismas reglas que el
@@ -13,7 +13,8 @@ export const TOPES_PRODUCTO = { nombre: 120, categoria: 60, marca: 60, sku: 40, 
 const MAX_CENTAVOS = 10_000_000_000;
 const ID = /^[a-z0-9][a-z0-9-]{1,59}$/;
 const SKU = /^[A-Za-z0-9][A-Za-z0-9._-]{0,39}$/;
-const MONTO = 'Escriba un monto en dólares, por ejemplo 12,50.';
+/** «Escriba un monto en dólares, por ejemplo 12,50.»; sin moneda conocida no se nombra ninguna. */
+const montoEn = (moneda: CodigoMoneda | undefined): string => `Escriba un monto${moneda === undefined ? '' : ` en ${nombreMoneda(moneda)}`}, por ejemplo 12,50.`;
 
 export interface FormProducto {
   id: string;
@@ -28,7 +29,7 @@ export interface FormProducto {
   costo: string;
   activo: boolean;
   conSerie: boolean;
-  /** Texto del precio por clave de mercado (`bo`, `ar`…): se recorren los mercados del núcleo. */
+  /** Texto del precio por clave de mercado (`bo`, `ar`…): se recorren los mercados declarados por el comercio. */
   precios: Readonly<Record<string, string>>;
 }
 
@@ -37,9 +38,18 @@ export type ErroresProducto = Readonly<Record<string, string>>;
 
 export const clavePrecio = (clave: string): string => `precio.${clave}`;
 
-export function formInicial(p: ProductoPanel | null): FormProducto {
+/** Precio base del producto en un mercado (centavos de su moneda base), o `undefined` si está «sin precio» ahí. */
+export function precioDelProducto(p: ProductoPanel, clave: string): number | undefined {
+  const precios = p.precioUSD as unknown as PreciosPorMercado;
+  return Object.hasOwn(precios, clave) ? precios[clave] : undefined;
+}
+
+export function formInicial(p: ProductoPanel | null, mercados: readonly MercadoPrecio[]): FormProducto {
   const precios: Record<string, string> = {};
-  for (const m of MERCADOS_PRECIO) precios[m.clave] = p === null ? '' : centavosATexto(p.precioUSD[m.clave]);
+  for (const m of mercados) {
+    const c = p === null ? undefined : precioDelProducto(p, m.clave);
+    precios[m.clave] = c === undefined ? '' : centavosATexto(c);
+  }
   return {
     id: p?.id ?? '', idEditado: false, nombre: p?.nombre ?? '', categoria: p?.categoria ?? '', marca: p?.marca ?? '', sku: p?.sku ?? '',
     garantia: p?.garantiaMeses === undefined ? '' : String(p.garantiaMeses), minimo: p?.minimo === undefined ? '' : String(p.minimo),
@@ -65,6 +75,12 @@ const entero = (t: string): number | null => (/^\d+$/.test(t.trim()) ? Number(t.
 
 export interface ContextoRevision {
   readonly nuevo: boolean;
+  /** Mercados declarados por el comercio, en su orden. */
+  readonly mercados: readonly MercadoPrecio[];
+  /** Moneda de costo del comercio; ausente si no se entregó (no se nombra ninguna). */
+  readonly monedaCosto?: CodigoMoneda | undefined;
+  /** Claves de los mercados en que el producto que se edita ya está «sin precio»: ahí se puede dejar vacío. */
+  readonly sinPrecio?: readonly string[];
   readonly existentes: readonly { readonly id: string; readonly sku: string }[];
 }
 
@@ -94,23 +110,26 @@ export function revisarProducto(f: FormProducto, ctx: ContextoRevision): Errores
   if (f.minimo.trim() !== '' && entero(f.minimo) === null) e['minimo'] = 'Indique un número entero desde 0, o déjelo vacío.';
   if (f.costo.trim() !== '') {
     const c = textoACentavos(f.costo);
-    if (c === null) e['costo'] = MONTO;
+    if (c === null) e['costo'] = montoEn(ctx.monedaCosto);
     else if (c > MAX_CENTAVOS) e['costo'] = 'El monto es demasiado alto.';
   }
-  for (const m of MERCADOS_PRECIO) {
+  for (const m of ctx.mercados) {
     const t = f.precios[m.clave] ?? '';
     const c = textoACentavos(t);
-    if (t.trim() === '') e[clavePrecio(m.clave)] = `Falta el precio de ${m.nombre}. Es obligatorio en cada mercado.`;
-    else if (c === null) e[clavePrecio(m.clave)] = MONTO;
+    // Al editar, un mercado puede seguir sin precio solo si ya lo estaba; el alta exige todos y no se quita un precio existente.
+    if (t.trim() === '') {
+      if (ctx.nuevo || !(ctx.sinPrecio ?? []).includes(m.clave)) e[clavePrecio(m.clave)] = `Falta el precio de ${m.nombre}. Es obligatorio en cada mercado.`;
+    } else if (c === null) e[clavePrecio(m.clave)] = montoEn(m.monedaBase);
     else if (c > MAX_CENTAVOS) e[clavePrecio(m.clave)] = 'El monto es demasiado alto.';
   }
   return e;
 }
 
-/** Precio en centavos por mercado; `null` si algún mercado no es válido. */
-export function preciosACentavos(f: FormProducto): PrecioUSDCentavos | null {
+/** Precio en centavos por mercado declarado; un mercado vacío se omite (solo si ya estaba sin precio); `null` si alguno no es válido. */
+export function preciosACentavos(f: FormProducto, mercados: readonly MercadoPrecio[]): PrecioUSDCentavos | null {
   const salida: Record<string, number> = {};
-  for (const m of MERCADOS_PRECIO) {
+  for (const m of mercados) {
+    if ((f.precios[m.clave] ?? '').trim() === '') continue;
     const c = textoACentavos(f.precios[m.clave] ?? '');
     if (c === null) return null;
     salida[m.clave] = c;
@@ -119,8 +138,8 @@ export function preciosACentavos(f: FormProducto): PrecioUSDCentavos | null {
 }
 
 /** Entrada de alta; solo con un formulario ya revisado. */
-export function aEntrada(f: FormProducto): EntradaProducto | null {
-  const precioUSD = preciosACentavos(f);
+export function aEntrada(f: FormProducto, mercados: readonly MercadoPrecio[]): EntradaProducto | null {
+  const precioUSD = preciosACentavos(f, mercados);
   if (precioUSD === null) return null;
   const costo = f.costo.trim() === '' ? undefined : textoACentavos(f.costo);
   return {
@@ -140,7 +159,7 @@ export interface CambiosDeEdicion {
 }
 
 /** Diferencias entre el formulario y el producto: `null` en lo que se vacía (marca, garantía, mínimo, costo). */
-export function cambiosDeEdicion(f: FormProducto, p: ProductoPanel, puedeEditarCosto: boolean): CambiosDeEdicion {
+export function cambiosDeEdicion(f: FormProducto, p: ProductoPanel, puedeEditarCosto: boolean, mercados: readonly MercadoPrecio[]): CambiosDeEdicion {
   const c: { -readonly [K in keyof CambiosProducto]: CambiosProducto[K] } = {};
   const vaciados: string[] = [];
   if (f.nombre.trim() !== p.nombre) c.nombre = f.nombre.trim();
@@ -177,8 +196,9 @@ export function cambiosDeEdicion(f: FormProducto, p: ProductoPanel, puedeEditarC
       if (costo !== null && costo !== p.costoUSD) c.costoUSD = costo;
     }
   }
-  const precios = preciosACentavos(f);
-  const cambiaPrecio = precios !== null && MERCADOS_PRECIO.some((m) => precios[m.clave] !== p.precioUSD[m.clave]);
+  const precios = preciosACentavos(f, mercados);
+  const nuevos = precios as unknown as PreciosPorMercado | null;
+  const cambiaPrecio = nuevos !== null && mercados.some((m) => Object.hasOwn(nuevos, m.clave) && nuevos[m.clave] !== precioDelProducto(p, m.clave));
   if (precios !== null && cambiaPrecio) c.precioUSD = precios;
   return { cambios: c, vaciados, desactiva: p.activo && !f.activo };
 }
@@ -192,14 +212,14 @@ export function listaEnTexto(items: readonly string[]): string {
 const CAMPO_DE_RUTA: Readonly<Record<string, string>> = { id: 'id', nombre: 'nombre', categoria: 'categoria', marca: 'marca', sku: 'sku', garantiaMeses: 'garantia', conSerie: 'conSerie', minimo: 'minimo', costoUSD: 'costo' };
 
 /** El campo al que corresponde un error del servidor, con su texto; `null` si no es de un campo (va como error general). */
-export function errorDeServidor(e: unknown): { campo: string; texto: string } | null {
+export function errorDeServidor(e: unknown, mercados: readonly MercadoPrecio[]): { campo: string; texto: string } | null {
   if (!(e instanceof ErrorApi)) return null;
   if (/\bsku\b/i.test(e.message) && /uso|existe/i.test(e.message)) return { campo: 'sku', texto: 'Ese SKU ya lo usa otro producto.' };
   if (/(n[uú]mero de serie|conSerie)/i.test(e.message) && /movimientos?/i.test(e.message)) return { campo: 'conSerie', texto: 'No se puede cambiar: el producto ya tuvo movimientos.' };
   if (/producto .* ya existe/i.test(e.message)) return { campo: 'id', texto: 'Ya existe un producto con ese identificador. Cambie el identificador.' };
   for (const ruta of e.detalle.campos ?? []) {
     const ultimo = ruta.split('.').pop() ?? '';
-    const m = MERCADOS_PRECIO.find((x) => x.clave === ultimo);
+    const m = mercados.find((x) => x.clave === ultimo);
     if (m !== undefined && /precio/i.test(ruta)) return { campo: clavePrecio(m.clave), texto: `El servidor no aceptó el precio de ${m.nombre}. Revíselo.` };
     const campo = CAMPO_DE_RUTA[ultimo];
     if (campo !== undefined) return { campo, texto: 'El servidor no aceptó este dato. Revíselo.' };

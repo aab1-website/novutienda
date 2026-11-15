@@ -1,11 +1,21 @@
 import { describe, expect, it } from 'vitest';
 import { ErrorApi } from '../../api/errores.js';
 import type { ProductoPanel } from '../../api/tipos.js';
+import type { MercadoDeclarado } from '../../api/tipos.js';
+import { mercadosDePrecio } from './nombres.js';
 import { aEntrada, cambiosDeEdicion, errorDeServidor, formInicial, identificadorSugerido, listaEnTexto, revisarProducto, type FormProducto } from './producto-revision.js';
 
 const EXISTENTES = [{ id: 'cable-hdmi', sku: 'CABLE-HDMI' }];
-const CTX = { nuevo: true, existentes: EXISTENTES };
-const valido = (): FormProducto => ({ ...formInicial(null), id: 'teclado-1', nombre: 'Teclado', categoria: 'Accesorios', sku: 'TEC-1', precios: { bo: '15', ar: '16' } });
+const REF: readonly MercadoDeclarado[] = [
+  { id: 'BO', nombre: 'Bolivia', monedaVenta: 'BOB', monedaBase: 'USD', tieneTipoCambio: true },
+  { id: 'AR', nombre: 'Argentina', monedaVenta: 'ARS', monedaBase: 'USD', tieneTipoCambio: true },
+];
+const UNO: readonly MercadoDeclarado[] = [{ id: 'PE', nombre: 'Perú', monedaVenta: 'PEN', monedaBase: 'PEN', tieneTipoCambio: false }];
+const M = mercadosDePrecio(REF);
+const M1 = mercadosDePrecio(UNO);
+const errSrv = (e: unknown): ReturnType<typeof errorDeServidor> => errorDeServidor(e, M);
+const CTX = { nuevo: true, existentes: EXISTENTES, mercados: M, monedaCosto: 'USD' };
+const valido = (): FormProducto => ({ ...formInicial(null, M), id: 'teclado-1', nombre: 'Teclado', categoria: 'Accesorios', sku: 'TEC-1', precios: { bo: '15', ar: '16' } });
 const producto = (extra: Partial<ProductoPanel> = {}): ProductoPanel => ({
   id: 'cable-hdmi', nombre: 'Cable HDMI 2 m', categoria: 'Accesorios', marca: 'Cabletec', sku: 'CABLE-HDMI', activo: true, publicado: true, conSerie: false, garantiaMeses: 6, minimo: 10,
   precioUSD: { bo: 800, ar: 900 }, costoUSD: 300, stockTotal: 35, existencias: { tienda: 25, 'deposito-1': 10, 'deposito-2': 0 }, bajoMinimo: false, disponible: true, ...extra,
@@ -31,13 +41,13 @@ describe('revisión del producto', () => {
     expect(revisarProducto(valido(), CTX)).toEqual({});
   });
   it('marca un error por campo, con el mensaje de cada uno', () => {
-    const e = revisarProducto({ ...formInicial(null) }, CTX);
+    const e = revisarProducto({ ...formInicial(null, M) }, CTX);
     expect(Object.keys(e).sort()).toEqual(['categoria', 'id', 'nombre', 'precio.ar', 'precio.bo', 'sku']);
     expect(e['precio.ar']).toMatch(/Falta el precio de Argentina/);
     expect(e['precio.bo']).toMatch(/Falta el precio de Bolivia/);
   });
   it('recorre los mercados del núcleo y no pide nada de más en una edición', () => {
-    const e = revisarProducto({ ...formInicial(producto()), precios: { bo: '', ar: 'x' } }, { nuevo: false, existentes: EXISTENTES });
+    const e = revisarProducto({ ...formInicial(producto(), M), precios: { bo: '', ar: 'x' } }, { ...CTX, nuevo: false });
     expect(e['precio.bo']).toBeTruthy();
     expect(e['precio.ar']).toMatch(/monto en dólares/);
     expect(e['id']).toBeUndefined();
@@ -64,27 +74,27 @@ describe('revisión del producto', () => {
 
 describe('alta y edición hacia el servidor', () => {
   it('arma la entrada de alta en centavos, sin los opcionales vacíos', () => {
-    expect(aEntrada(valido())).toEqual({ id: 'teclado-1', nombre: 'Teclado', categoria: 'Accesorios', sku: 'TEC-1', activo: true, conSerie: false, precioUSD: { bo: 1500, ar: 1600 } });
+    expect(aEntrada(valido(), M)).toEqual({ id: 'teclado-1', nombre: 'Teclado', categoria: 'Accesorios', sku: 'TEC-1', activo: true, conSerie: false, precioUSD: { bo: 1500, ar: 1600 } });
   });
   it('en una edición sin tocar nada no hay cambios', () => {
-    const r = cambiosDeEdicion(formInicial(producto()), producto(), true);
+    const r = cambiosDeEdicion(formInicial(producto(), M), producto(), true, M);
     expect(r.cambios).toEqual({});
     expect(r.vaciados).toEqual([]);
     expect(r.desactiva).toBe(false);
   });
   it('vaciar un dato independiente envía null y lo declara para advertir', () => {
-    const f = { ...formInicial(producto()), marca: '  ', garantia: '', minimo: '', costo: '' };
-    const r = cambiosDeEdicion(f, producto(), true);
+    const f = { ...formInicial(producto(), M), marca: '  ', garantia: '', minimo: '', costo: '' };
+    const r = cambiosDeEdicion(f, producto(), true, M);
     expect(r.cambios).toEqual({ marca: null, garantiaMeses: null, minimo: null, costoUSD: null });
     expect(r.vaciados).toEqual(['la marca', 'la garantía', 'el mínimo de existencias', 'el costo']);
   });
   it('un dato que ya estaba vacío no cuenta como vaciado; sin permiso de costo no se toca el costo', () => {
     const p = producto({ marca: undefined as never });
-    expect(cambiosDeEdicion(formInicial(p), p, true).vaciados).toEqual([]);
-    expect(cambiosDeEdicion({ ...formInicial(producto()), costo: '' }, producto(), false).cambios).toEqual({});
+    expect(cambiosDeEdicion(formInicial(p, M), p, true, M).vaciados).toEqual([]);
+    expect(cambiosDeEdicion({ ...formInicial(producto(), M), costo: '' }, producto(), false, M).cambios).toEqual({});
   });
   it('el precio va dentro de los cambios (una sola llamada) y desactivar se declara', () => {
-    const r = cambiosDeEdicion({ ...formInicial(producto()), precios: { bo: '10,50', ar: '9' }, activo: false }, producto(), true);
+    const r = cambiosDeEdicion({ ...formInicial(producto(), M), precios: { bo: '10,50', ar: '9' }, activo: false }, producto(), true, M);
     expect(r.cambios).toEqual({ activo: false, precioUSD: { bo: 1050, ar: 900 } });
     expect(r.desactiva).toBe(true);
   });
@@ -97,19 +107,57 @@ describe('alta y edición hacia el servidor', () => {
 
 describe('errores del servidor a su campo', () => {
   it('SKU en uso e identificador repetido', () => {
-    expect(errorDeServidor(new ErrorApi('failed-precondition', 'El sku TEC-1 ya está en uso', { codigo: 'estado-invalido' }))?.campo).toBe('sku');
-    expect(errorDeServidor(new ErrorApi('failed-precondition', 'El producto teclado-1 ya existe', { codigo: 'estado-invalido' }))?.campo).toBe('id');
+    expect(errSrv(new ErrorApi('failed-precondition', 'El sku TEC-1 ya está en uso', { codigo: 'estado-invalido' }))?.campo).toBe('sku');
+    expect(errSrv(new ErrorApi('failed-precondition', 'El producto teclado-1 ya existe', { codigo: 'estado-invalido' }))?.campo).toBe('id');
   });
   it('el rechazo de conSerie por movimientos va a su casilla', () => {
-    expect(errorDeServidor(new ErrorApi('failed-precondition', 'No se puede cambiar si el producto se controla por número de serie: ya tiene movimientos de inventario.', { codigo: 'estado-invalido' }))?.campo).toBe('conSerie');
-    expect(errorDeServidor(new ErrorApi('failed-precondition', 'conSerie no cambia tras el primer movimiento', { codigo: 'estado-invalido' }))?.campo).toBe('conSerie');
+    expect(errSrv(new ErrorApi('failed-precondition', 'No se puede cambiar si el producto se controla por número de serie: ya tiene movimientos de inventario.', { codigo: 'estado-invalido' }))?.campo).toBe('conSerie');
+    expect(errSrv(new ErrorApi('failed-precondition', 'conSerie no cambia tras el primer movimiento', { codigo: 'estado-invalido' }))?.campo).toBe('conSerie');
   });
   it('rutas de campos inválidos, incluido el precio de un mercado', () => {
-    expect(errorDeServidor(new ErrorApi('invalid-argument', 'x', { codigo: 'entrada-invalida', campos: ['cambios.garantiaMeses'] }))?.campo).toBe('garantia');
-    expect(errorDeServidor(new ErrorApi('invalid-argument', 'x', { codigo: 'entrada-invalida', campos: ['producto.precioUSD.ar'] }))?.campo).toBe('precio.ar');
+    expect(errSrv(new ErrorApi('invalid-argument', 'x', { codigo: 'entrada-invalida', campos: ['cambios.garantiaMeses'] }))?.campo).toBe('garantia');
+    expect(errSrv(new ErrorApi('invalid-argument', 'x', { codigo: 'entrada-invalida', campos: ['producto.precioUSD.ar'] }))?.campo).toBe('precio.ar');
   });
   it('lo que no es de un campo queda como error general', () => {
-    expect(errorDeServidor(new ErrorApi('resource-exhausted', 'tope', { codigo: 'limite-del-plan' }))).toBeNull();
-    expect(errorDeServidor(new Error('x'))).toBeNull();
+    expect(errSrv(new ErrorApi('resource-exhausted', 'tope', { codigo: 'limite-del-plan' }))).toBeNull();
+    expect(errSrv(new Error('x'))).toBeNull();
+  });
+});
+
+describe('un comercio con un solo mercado y una sola moneda', () => {
+  const ctx1 = { nuevo: true, existentes: EXISTENTES, mercados: M1, monedaCosto: 'PEN' };
+  const base1 = (): FormProducto => ({ ...formInicial(null, M1), id: 'lapiz', nombre: 'Lápiz', categoria: 'Útiles', sku: 'LAP-1', precios: { pe: '2,50' } });
+  it('solo pide y envía el precio de su mercado, con la clave derivada del id', () => {
+    expect(Object.keys(formInicial(null, M1).precios)).toEqual(['pe']);
+    expect(revisarProducto(base1(), ctx1)).toEqual({});
+    expect(Object.keys(revisarProducto(formInicial(null, M1), ctx1))).toContain('precio.pe');
+    expect(aEntrada(base1(), M1)?.precioUSD).toEqual({ pe: 250 });
+  });
+  it('nombra la moneda del comercio en el error de un monto, no dólares fijos', () => {
+    expect(revisarProducto({ ...base1(), precios: { pe: 'x' } }, ctx1)['precio.pe']).toBe('Escriba un monto en PEN, por ejemplo 12,50.');
+    expect(revisarProducto({ ...base1(), costo: 'x' }, ctx1)['costo']).toBe('Escriba un monto en PEN, por ejemplo 12,50.');
+  });
+  it('sin moneda de costo conocida el error no nombra ninguna', () => {
+    expect(revisarProducto({ ...base1(), costo: 'x' }, { ...ctx1, monedaCosto: undefined })['costo']).toBe('Escriba un monto, por ejemplo 12,50.');
+  });
+  it('el servidor ubica el error en el precio del mercado declarado', () => {
+    expect(errorDeServidor(new ErrorApi('invalid-argument', 'x', { codigo: 'entrada-invalida', campos: ['producto.precioUSD.pe'] }), M1)?.campo).toBe('precio.pe');
+  });
+});
+
+describe('producto sin precio en un mercado', () => {
+  const sinAr = producto({ precioUSD: { bo: 800 } as never, sinPrecio: ['AR'] });
+  it('el formulario queda vacío ahí y editar otro dato no obliga a ponerlo', () => {
+    const f = formInicial(sinAr, M);
+    expect(f.precios).toEqual({ bo: '8,00', ar: '' });
+    expect(revisarProducto(f, { ...CTX, nuevo: false, sinPrecio: ['ar'] })).toEqual({});
+    expect(cambiosDeEdicion({ ...f, categoria: 'Otra' }, sinAr, true, M).cambios).toEqual({ categoria: 'Otra' });
+  });
+  it('quitar un precio existente sigue siendo un error y el alta exige todos', () => {
+    expect(revisarProducto({ ...formInicial(sinAr, M), precios: { bo: '', ar: '' } }, { ...CTX, nuevo: false, sinPrecio: ['ar'] })['precio.bo']).toBeTruthy();
+    expect(revisarProducto({ ...valido(), precios: { bo: '1', ar: '' } }, { ...CTX, sinPrecio: ['ar'] })['precio.ar']).toBeTruthy();
+  });
+  it('ponerle precio lo envía; el mercado vacío no se envía', () => {
+    expect(cambiosDeEdicion({ ...formInicial(sinAr, M), precios: { bo: '8', ar: '12' } }, sinAr, true, M).cambios).toEqual({ precioUSD: { bo: 800, ar: 1200 } });
   });
 });

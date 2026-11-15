@@ -5,7 +5,8 @@ import { userEvent } from '@testing-library/user-event';
 import { afterEach, describe, expect, it, vi } from 'vitest';
 import { ErrorApi } from '../../api/errores.js';
 import { crearEntorno, type Entorno } from '../../ayuda-pruebas.js';
-import type { Rol } from '../../api/tipos.js';
+import type { Rol, VistaComercial } from '../../api/tipos.js';
+import { reglasDeclaradasActuales, restablecerRedondeo } from '../../util/precio.js';
 import { ProveedorGuardia } from '../../ui/guardia.js';
 import { PantallaInventario } from './inventario.js';
 
@@ -325,5 +326,85 @@ describe('edición', () => {
     expect(within(d).queryByRole('button', { name: 'Guardar cambios' })).toBeNull();
     expect(within(d).queryByText(/Costo y margen/)).toBeNull();
     expect(within(d).getAllByRole('button', { name: 'Cerrar' }).length).toBe(2);
+  });
+});
+
+const UN_MERCADO: VistaComercial = {
+  mercados: [{ id: 'PE', nombre: 'Perú', monedaVenta: 'PEN', monedaBase: 'PEN', tieneTipoCambio: false }],
+  monedasCaja: ['PEN'],
+  monedaCosto: 'PEN',
+};
+const REDONDEO_PE = { PEN: { tipo: 'decimales', decimales: 2, modo: 'cercano' } } as const;
+
+describe('comercio de un solo mercado y una sola moneda', () => {
+  it('pide un solo precio sin nombre de mercado y rotula el costo con su moneda', async () => {
+    const e = crearEntorno('adm', undefined, { comercial: UN_MERCADO, redondeo: REDONDEO_PE });
+    ver(e);
+    const u = userEvent.setup();
+    const d = await nuevoProducto(u);
+    expect(within(d).getByLabelText(/^Precio base \(PEN\)/)).toBeTruthy();
+    expect(within(d).queryByLabelText(/Bolivia/)).toBeNull();
+    expect(within(d).getByText('Precio base en PEN')).toBeTruthy();
+    expect(within(d).getByLabelText(/^Costo \(PEN\)/)).toBeTruthy();
+    expect(within(d).getByText('Margen')).toBeTruthy();
+    expect(within(d).queryByText(/Margen Perú/)).toBeNull();
+    await u.type(within(d).getByLabelText(/^Precio base/), '12,5');
+    await waitFor(() => expect(d.querySelector('[data-prueba="precio-pe"]')?.textContent).toContain('PEN 12,50'));
+  });
+
+  it('crea el producto con la clave del mercado declarado y sin otras', async () => {
+    const e = crearEntorno('adm', undefined, { comercial: UN_MERCADO, redondeo: REDONDEO_PE });
+    ver(e);
+    const u = userEvent.setup();
+    const d = await nuevoProducto(u);
+    await u.type(screen.getByLabelText(/^Nombre/), 'Lápiz');
+    await u.type(screen.getByLabelText(/^Categoría/), 'Útiles');
+    await u.type(screen.getByLabelText(/^SKU/), 'LAP-1');
+    await u.type(screen.getByLabelText(/^Precio base/), '2,50');
+    await u.click(within(d).getByRole('button', { name: 'Crear producto' }));
+    await waitFor(() => expect(llamadas(e, 'crearProducto').length).toBe(1));
+    expect(llamadas(e, 'crearProducto')[0]?.entrada['producto']).toMatchObject({ id: 'lapiz', precioUSD: { pe: 250 } });
+  });
+
+  it('un no administrador no ve costo ni moneda de costo inventada', async () => {
+    const e = crearEntorno('sup', undefined, { comercial: { mercados: UN_MERCADO.mercados, monedasCaja: ['PEN'] }, redondeo: REDONDEO_PE });
+    ver(e);
+    const u = userEvent.setup();
+    const d = await editar(u);
+    expect(within(d).queryByText(/Costo y margen/)).toBeNull();
+    expect(within(d).queryByLabelText(/^Costo/)).toBeNull();
+  });
+});
+
+describe('D21: sin regla de redondeo no se muestra precio calculado', () => {
+  it('en vez del precio dice que falta la regla del comercio', async () => {
+    const e = crearEntorno('adm', undefined, { comercial: UN_MERCADO, redondeo: {} });
+    ver(e);
+    const u = userEvent.setup();
+    const d = await nuevoProducto(u);
+    await u.type(within(d).getByLabelText(/^Precio base/), '12,5');
+    await waitFor(() => expect(d.querySelector('[data-prueba="precio-pe"]')?.textContent).toContain('Sin regla de redondeo'));
+    expect(d.querySelector('[data-prueba="precio-pe"]')?.textContent).not.toMatch(/\d,\d\d/);
+    expect(reglasDeclaradasActuales()).toEqual({});
+    restablecerRedondeo();
+  });
+});
+
+describe('marca «sin precio»', () => {
+  it('se ve en la ficha del producto y deja editar sin exigir ese precio', async () => {
+    const e = crearEntorno('adm');
+    // Producto de referencia al que se le quitó el precio de un mercado declarado (clave ausente).
+    const productos = e.api.estado.productos as unknown as Map<string, { precioUSD: Record<string, number> }>;
+    delete (productos.get('cable-hdmi') as { precioUSD: Record<string, number> }).precioUSD['ar'];
+    ver(e);
+    const u = userEvent.setup();
+    const d = await editar(u);
+    expect(d.querySelector('[data-prueba="sin-precio-ar"]')?.textContent).toContain('Sin precio en Argentina');
+    expect(d.querySelector('[data-prueba="sin-precio-bo"]')).toBeNull();
+    await u.clear(within(d).getByLabelText(/^Categoría/));
+    await u.type(within(d).getByLabelText(/^Categoría/), 'Cables');
+    await u.click(within(d).getByRole('button', { name: 'Guardar cambios' }));
+    await waitFor(() => expect(llamadas(e, 'actualizarProducto').length).toBe(1));
+    expect(llamadas(e, 'actualizarProducto')[0]?.entrada['cambios']).toEqual({ categoria: 'Cables' });
   });
 });

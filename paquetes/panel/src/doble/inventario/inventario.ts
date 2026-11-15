@@ -94,7 +94,7 @@ export const handlersInventario: {
       }
       const { marca, garantiaMeses, minimo, costoUSD, precioUSD, ...directos } = e.cambios;
       if (precioUSD !== undefined) {
-        for (const v of [precioUSD.bo, precioUSD.ar]) {
+        for (const v of Object.values(precioUSD)) {
           if (!Number.isSafeInteger(v) || v < 0 || v > 10_000_000_000) throw fallo('entrada-invalida', 'Precio: centavos enteros');
         }
       }
@@ -106,7 +106,7 @@ export const handlersInventario: {
       if (garantiaMeses === null) delete p.garantiaMeses; else if (garantiaMeses !== undefined) p.garantiaMeses = garantiaMeses;
       if (minimo === null) delete p.minimo; else if (minimo !== undefined) p.minimo = minimo;
       if (costoUSD === null) p.costoUSD = 0; else if (costoUSD !== undefined) p.costoUSD = costoUSD;
-      if (precioUSD !== undefined) p.precioUSD = { bo: precioUSD.bo, ar: precioUSD.ar };
+      if (precioUSD !== undefined) p.precioUSD = { ...p.precioUSD, ...precioUSD };
       c.e.cambiosSinPublicar += 1;
       auditar(c, 'inventarios.producto-actualizar', `productos/${p.id}`);
       return { productoId: p.id };
@@ -302,16 +302,23 @@ export const handlersInventario: {
   exportarProductosCsv(c) {
     exigirRol(c, ['sup', 'adm']);
     const verCosto = c.rol === 'adm';
-    const cab = ['id', 'nombre', 'categoria', 'marca', 'sku', 'conSerie', 'garantiaMeses', 'minimo', 'precioUSDbo', 'precioUSDar', ...(verCosto ? ['costoUSD'] : []), 'activo', 'publicado'];
+    const claves = c.e.comercial.mercados.map((m) => m.id.toLowerCase());
+    const precios = (p: ProductoInterno): (number | string)[] => claves.map((k) => (p.precioUSD as unknown as Readonly<Record<string, number>>)[k] ?? '');
+    const cab = ['id', 'nombre', 'categoria', 'marca', 'sku', 'conSerie', 'garantiaMeses', 'minimo', ...claves.map((k) => `precioUSD${k}`), ...(verCosto ? ['costoUSD'] : []), 'activo', 'publicado'];
     const filas = [...c.e.productos.values()].map((p) => [
-      p.id, p.nombre, p.categoria, p.marca ?? '', p.sku, p.conSerie, p.garantiaMeses ?? '', p.minimo ?? '', p.precioUSD.bo, p.precioUSD.ar,
+      p.id, p.nombre, p.categoria, p.marca ?? '', p.sku, p.conSerie, p.garantiaMeses ?? '', p.minimo ?? '', ...precios(p),
       ...(verCosto ? [p.costoUSD] : []), p.activo, p.publicado,
     ]);
     return { csv: aCsv(cab, filas) };
   },
 
   listarProductos: (c) => {
-    const productos = [...c.e.productos.values()].map((p) => proyectarProductoDoble(c, vistaProducto(p, c.rol === 'adm'))).sort((a, b) => a.nombre.localeCompare(b.nombre));
+    // Como el servidor: los ids de los mercados declarados en que el producto no tiene precio (clave ausente).
+    const sinPrecio = (p: ProductoInterno): readonly string[] => c.e.comercial.mercados.filter((m) => !Object.hasOwn(p.precioUSD, m.id.toLowerCase())).map((m) => m.id);
+    const productos = [...c.e.productos.values()].map((p) => {
+      const sp = sinPrecio(p);
+      return proyectarProductoDoble(c, { ...vistaProducto(p, c.rol === 'adm'), ...(sp.length > 0 ? { sinPrecio: sp } : {}) });
+    }).sort((a, b) => a.nombre.localeCompare(b.nombre));
     return Object.assign(productos, marcaDoble(c));
   },
 

@@ -1,7 +1,12 @@
 import { describe, expect, it } from 'vitest';
-import type { FilaSimulada, ResultadoImportacion, Simulacion } from '../../api/tipos.js';
-import { aplicables, encabezadosPlantilla, lineasConfirmacion, MAX_BYTES_ARCHIVO, ordenarFilas, resumenSimulacion, textoError, textoResultado, textoTandas, validarArchivo } from './importar-logica.js';
+import type { FilaSimulada, MercadoDeclarado, ResultadoImportacion, Simulacion } from '../../api/tipos.js';
+import { aplicables, columnasArchivo, encabezadosPlantilla, lineasConfirmacion, MAX_BYTES_ARCHIVO, notaPrecios, ordenarFilas, resumenSimulacion, textoError, textoResultado, textoTandas, validarArchivo } from './importar-logica.js';
 
+const REF: readonly MercadoDeclarado[] = [
+  { id: 'BO', nombre: 'Bolivia', monedaVenta: 'BOB', monedaBase: 'USD', tieneTipoCambio: true },
+  { id: 'AR', nombre: 'Argentina', monedaVenta: 'ARS', monedaBase: 'USD', tieneTipoCambio: true },
+];
+const UNO: readonly MercadoDeclarado[] = [{ id: 'PE', nombre: 'Perú', monedaVenta: 'PEN', monedaBase: 'PEN', tieneTipoCambio: false }];
 const fila = (linea: number, accion: FilaSimulada['accion']): FilaSimulada => ({ linea, id: `p${String(linea)}`, accion, errores: [], advertencias: [], cambios: [] });
 const sim = (resumen: Simulacion['resumen']): Simulacion => ({ filas: [], resumen, columnasIgnoradas: [] });
 
@@ -52,8 +57,26 @@ describe('confirmación y resultado', () => {
     expect(textoTandas(r)).toBe('2 de 5 tandas aplicadas');
   });
   it('la plantilla de carga inicial suma las columnas de existencias y la normal no', () => {
-    expect(encabezadosPlantilla(false)).not.toContain('stockTienda');
-    expect(encabezadosPlantilla(true)).toContain('stockDeposito2');
-    expect(encabezadosPlantilla(false)).toContain('sku');
+    expect(encabezadosPlantilla(false, REF, 'USD')).not.toContain('stockTienda');
+    expect(encabezadosPlantilla(true, REF, 'USD')).toContain('stockDeposito2');
+    expect(encabezadosPlantilla(false, REF, 'USD')).toContain('sku');
+  });
+  it('el comercio de referencia ve las mismas columnas, textos y orden de siempre', () => {
+    expect(encabezadosPlantilla(false, REF, 'USD')).toEqual(['id', 'nombre', 'categoria', 'marca', 'sku', 'conSerie', 'garantiaMeses', 'minimo', 'precioBO', 'precioAR', 'costo', 'activo', 'publicado']);
+    const c = columnasArchivo(REF, 'USD');
+    expect(c.find((x) => x.nombre === 'precioBO')?.texto).toBe('precio del mercado de Bolivia, en dólares con hasta 2 decimales (por ejemplo 1234.50).');
+    expect(c.find((x) => x.nombre === 'precioAR')?.texto).toBe('precio del mercado de Argentina, en dólares con hasta 2 decimales.');
+    expect(c.find((x) => x.nombre === 'costo')?.texto).toBe('costo en dólares con hasta 2 decimales (opcional).');
+    expect(notaPrecios(REF)).toBe('Los precios van en dólares, con decimales.');
+  });
+  it('un comercio de un mercado y una moneda: una sola columna de precio, en su moneda', () => {
+    expect(encabezadosPlantilla(false, UNO, 'PEN')).toEqual(['id', 'nombre', 'categoria', 'marca', 'sku', 'conSerie', 'garantiaMeses', 'minimo', 'precioPE', 'costo', 'activo', 'publicado']);
+    const c = columnasArchivo(UNO, 'PEN');
+    expect(c.find((x) => x.nombre === 'precioPE')?.texto).toBe('precio del mercado de Perú, en PEN con hasta 2 decimales (por ejemplo 1234.50).');
+    expect(c.find((x) => x.nombre === 'costo')?.texto).toBe('costo en PEN con hasta 2 decimales (opcional).');
+    expect(notaPrecios(UNO)).toBe('Los precios van en PEN, con decimales.');
+  });
+  it('sin moneda de costo conocida no se nombra ninguna', () => {
+    expect(columnasArchivo(UNO).find((x) => x.nombre === 'costo')?.texto).toBe('costo con hasta 2 decimales (opcional).');
   });
 });

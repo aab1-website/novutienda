@@ -109,3 +109,33 @@ describe('productos en tabla', () => {
     expect(await screen.findByText(/No hay productos\. Cree el primero/)).toBeTruthy();
   });
 });
+
+describe('marca «sin precio» en la tabla', () => {
+  const sinPrecioEn = (e: Entorno, clave: string): void => {
+    const productos = e.api.estado.productos as unknown as Map<string, { precioUSD: Record<string, number> }>;
+    delete (productos.get('cable-hdmi') as { precioUSD: Record<string, number> }).precioUSD[clave];
+  };
+  it('con dos mercados nombra los mercados sin precio, con el nombre declarado', async () => {
+    const e = crearEntorno('sup');
+    sinPrecioEn(e, 'ar');
+    ver(e);
+    const t = await tabla();
+    const marcas = t.querySelectorAll('[data-prueba="sin-precio"]');
+    expect(marcas.length).toBe(1);
+    expect(marcas[0]?.textContent).toBe('Sin precio: Argentina');
+  });
+  it('con un solo mercado la marca no nombra ningún mercado', async () => {
+    const e = crearEntorno('sup', undefined, { comercial: { mercados: [{ id: 'PE', nombre: 'Perú', monedaVenta: 'PEN', monedaBase: 'PEN', tieneTipoCambio: false }], monedasCaja: ['PEN'] } });
+    ver(e);
+    const t = await tabla();
+    // Todos los productos de referencia carecen de la clave `pe`: la marca aparece sin nombrar mercado.
+    const marca = t.querySelector('[data-prueba="sin-precio"]');
+    expect(marca?.textContent).toBe('Sin precio');
+  });
+  it('el comercio de referencia sin faltantes no muestra ninguna marca', async () => {
+    const e = crearEntorno('sup');
+    ver(e);
+    const t = await tabla();
+    expect(t.querySelectorAll('[data-prueba="sin-precio"]').length).toBe(0);
+  });
+});

@@ -263,3 +263,25 @@ describe('importar: por tandas', () => {
     expect(screen.queryByText(/Los datos cambiaron/)).toBeNull();
   });
 });
+
+describe('importar: columnas según los mercados declarados', () => {
+  it('el comercio de referencia ve las columnas y la nota de siempre', async () => {
+    const e = crearEntorno('adm');
+    ver(e);
+    expect(await screen.findByText('precioBO')).toBeTruthy();
+    expect(screen.getByText('precioAR')).toBeTruthy();
+    expect(screen.getByText(/precio del mercado de Bolivia, en dólares con hasta 2 decimales \(por ejemplo 1234.50\)/)).toBeTruthy();
+    expect(screen.getByText(/Los precios van en dólares, con decimales/)).toBeTruthy();
+    expect(screen.getByText(/costo en dólares con hasta 2 decimales \(opcional\)/)).toBeTruthy();
+  });
+
+  it('un comercio de un mercado y una moneda ve una sola columna de precio y su moneda', async () => {
+    const e = crearEntorno('adm', undefined, { comercial: { mercados: [{ id: 'PE', nombre: 'Perú', monedaVenta: 'PEN', monedaBase: 'PEN', tieneTipoCambio: false }], monedasCaja: ['PEN'], monedaCosto: 'PEN' } });
+    ver(e);
+    expect(await screen.findByText('precioPE')).toBeTruthy();
+    expect(screen.queryByText('precioBO')).toBeNull();
+    expect(screen.queryByText('precioAR')).toBeNull();
+    expect(screen.getByText(/costo en PEN con hasta 2 decimales/)).toBeTruthy();
+    expect(screen.getByText(/Los precios van en PEN, con decimales/)).toBeTruthy();
+  });
+});
