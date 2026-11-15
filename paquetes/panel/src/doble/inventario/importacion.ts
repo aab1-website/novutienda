@@ -6,7 +6,8 @@
 // contenido tras esa firma se toma como la hoja en texto CSV (`archivoExcelDoble` lo arma en las pruebas).
 import type { Entrada } from '../../api/contrato.js';
 import type { ErrorFilaImportacion, FilaSimulada, ResultadoImportacion, Simulacion } from '../../api/tipos.js';
-import { auditar, fallo, type Contexto } from '../estado.js';
+import { claveDePrecio } from '@novutienda/nucleo';
+import { auditar, fallo, type Contexto, type ProductoInterno } from '../estado.js';
 import { parsearCsv } from './inventario.js';
 
 const FIRMA_EXCEL = 'PK\u0003\u0004';
@@ -17,16 +18,25 @@ const SKU = /^[A-Za-z0-9][A-Za-z0-9._-]{0,39}$/;
 const SI = new Set(['si', 'sí', 'true', '1', 'verdadero', 'x']);
 const NO = new Set(['no', 'false', '0', 'falso']);
 
-type Columna = 'id' | 'nombre' | 'categoria' | 'marca' | 'sku' | 'conSerie' | 'activo' | 'publicado' | 'garantiaMeses' | 'minimo' | 'precioBO' | 'precioAR' | 'costoUSD' | 'stockTienda' | 'stockDeposito1' | 'stockDeposito2';
+type Columna = 'id' | 'nombre' | 'categoria' | 'marca' | 'sku' | 'conSerie' | 'activo' | 'publicado' | 'garantiaMeses' | 'minimo' | 'costoUSD' | 'stockTienda' | 'stockDeposito1' | 'stockDeposito2' | `precio:${string}`;
 type Unidad = 'centavos' | 'usd';
-const ALIAS: Readonly<Record<string, readonly [Columna, Unidad | null]>> = {
+const ALIAS_FIJOS: Readonly<Record<string, readonly [Columna, Unidad | null]>> = {
   id: ['id', null], codigo: ['id', null], nombre: ['nombre', null], categoria: ['categoria', null], marca: ['marca', null], sku: ['sku', null],
   conserie: ['conSerie', null], activo: ['activo', null], publicado: ['publicado', null], garantiameses: ['garantiaMeses', null], garantia: ['garantiaMeses', null],
-  minimo: ['minimo', null], preciousdbo: ['precioBO', 'centavos'], preciousdar: ['precioAR', 'centavos'], preciobo: ['precioBO', 'usd'], precioar: ['precioAR', 'usd'],
-  costousd: ['costoUSD', 'centavos'], costo: ['costoUSD', 'usd'],
+  minimo: ['minimo', null],   costousd: ['costoUSD', 'centavos'], costo: ['costoUSD', 'usd'],
   stocktienda: ['stockTienda', null], stockdeposito1: ['stockDeposito1', null], stockdeposito2: ['stockDeposito2', null],
 };
 const SUENA_A_STOCK = new Set(['stock', 'existencias', 'existencia', 'cantidad', 'almacen', 'ubicacion', 'deposito', 'tienda']);
+/** Los alias de columna: los fijos y, por cada mercado declarado por el comercio, `precioUSD<id>` (centavos) y `precio<id>` (decimales). */
+function aliasDe(c: Contexto): Readonly<Record<string, readonly [Columna, Unidad | null]>> {
+  const a: Record<string, readonly [Columna, Unidad | null]> = { ...ALIAS_FIJOS };
+  for (const m of c.e.comercial.mercados) {
+    const col: Columna = `precio:${claveDePrecio(m.id)}`;
+    a[normalizar(`precioUSD${m.id}`)] = [col, 'centavos'];
+    a[normalizar(`precio${m.id}`)] = [col, 'usd'];
+  }
+  return a;
+}
 const STOCK = { stockTienda: 'tienda', stockDeposito1: 'deposito-1', stockDeposito2: 'deposito-2' } as const;
 const normalizar = (t: string): string => t.normalize('NFD').replace(/[̀-ͯ]/g, '').toLowerCase().replace(/[^a-z0-9]/g, '');
 
@@ -57,18 +67,19 @@ function importe(v: string, unidad: Unidad): number | undefined {
 
 interface Fila {
   linea: number; id: string; errores: ErrorFilaImportacion[]; advertencias: string[];
-  d: { nombre?: string; categoria?: string; marca?: string; sku?: string; conSerie?: boolean; activo?: boolean; publicado?: boolean; garantiaMeses?: number; minimo?: number; bo?: number; ar?: number; costoUSD?: number };
+  d: { nombre?: string; categoria?: string; marca?: string; sku?: string; conSerie?: boolean; activo?: boolean; publicado?: boolean; garantiaMeses?: number; minimo?: number; precios: Record<string, number>; costoUSD?: number };
   stock: { ubicacionId: 'tienda' | 'deposito-1' | 'deposito-2'; cantidad: number }[];
 }
 
 function leer(c: Contexto, entrada: { archivo?: string | undefined; csv?: string | undefined }, cargaInicial: boolean): { filas: Fila[]; ignoradas: string[] } {
   const [cab, ...datos] = parsearCsv(texto(entrada));
   if (cab === undefined) throw fallo('entrada-invalida', 'CSV sin encabezado');
+  const ALIAS = aliasDe(c);
   const indice = new Map<Columna, { i: number; etiqueta: string; unidad: Unidad | null }>();
   const ignoradas: string[] = [];
   for (const [i, h] of cab.entries()) {
     const n = normalizar(h);
-    const alias = ALIAS[n];
+    const alias = Object.hasOwn(ALIAS, n) ? ALIAS[n] : undefined;
     if (alias === undefined) {
       if (n !== '') ignoradas.push(SUENA_A_STOCK.has(n) ? `${h} (el CSV no modifica el stock salvo en la carga inicial)` : h);
       continue;
@@ -83,7 +94,7 @@ function leer(c: Contexto, entrada: { archivo?: string | undefined; csv?: string
   const skus = new Set<string>();
   const filas: Fila[] = [];
   for (const [k, f] of datos.entries()) {
-    const fila: Fila = { linea: k + 2, id: '', errores: [], advertencias: [], d: {}, stock: [] };
+    const fila: Fila = { linea: k + 2, id: '', errores: [], advertencias: [], d: { precios: {} }, stock: [] };
     const celda = (col: Columna): string | undefined => {
       const x = indice.get(col);
       const v = x === undefined ? undefined : (f[x.i] ?? '').trim();
@@ -121,13 +132,15 @@ function leer(c: Contexto, entrada: { archivo?: string | undefined; csv?: string
     if (gar !== undefined) { if (!/^\d{1,3}$/.test(gar) || Number(gar) < 1 || Number(gar) > 120) err('garantiaMeses', 'entero de 1 a 120'); else fila.d.garantiaMeses = Number(gar); }
     const min = celda('minimo');
     if (min !== undefined) { if (!/^\d{1,10}$/.test(min)) err('minimo', 'entero no negativo'); else fila.d.minimo = Number(min); }
-    for (const [col, destino] of [['precioBO', 'bo'], ['precioAR', 'ar'], ['costoUSD', 'costoUSD']] as const) {
+    const columnasImporte: (readonly [Columna, string | null])[] = [...c.e.comercial.mercados.map((m) => [`precio:${claveDePrecio(m.id)}`, claveDePrecio(m.id)] as const), ['costoUSD', null]];
+    for (const [col, clave] of columnasImporte) {
       const v = celda(col);
       if (v === undefined) continue;
       const unidad = indice.get(col)?.unidad ?? 'centavos';
       const n = importe(v, unidad);
       if (n === undefined) err(col, unidad === 'centavos' ? 'importe en centavos de USD: entero sin signos ni fórmulas' : 'importe en USD, hasta 2 decimales, sin signos ni fórmulas');
-      else fila.d[destino] = n;
+      else if (clave === null) fila.d.costoUSD = n;
+      else fila.d.precios[clave] = n;
     }
     for (const [col, ubicacionId] of Object.entries(STOCK) as [Columna, 'tienda' | 'deposito-1' | 'deposito-2'][]) {
       const v = celda(col);
@@ -137,7 +150,6 @@ function leer(c: Contexto, entrada: { archivo?: string | undefined; csv?: string
     }
     filas.push(fila);
   }
-  void c;
   return { filas, ignoradas };
 }
 
@@ -156,7 +168,7 @@ function planificar(c: Contexto, f: Fila, nuevos: number): { accion: FilaSimulad
     else if ([...c.e.productos.values()].some((p) => p.sku === d.sku)) errores.push({ columna: 'sku', motivo: 'ya está en uso por otro producto' });
     if (d.conSerie === true && f.stock.length > 0) errores.push({ columna: 'stock', motivo: 'un producto con serie no admite carga de stock por CSV (use el ingreso con series)' });
     if (c.e.productos.size + nuevos >= 200) errores.push({ columna: null, motivo: 'supera el límite de 200 productos del plan' });
-    if (d.bo === undefined || d.ar === undefined) advertencias.push('sin precio en algún mercado: quedará «a consultar» (0)');
+    if (c.e.comercial.mercados.some((m) => d.precios[claveDePrecio(m.id)] === undefined)) advertencias.push('sin precio en algún mercado: quedará «a consultar» (0)');
     return { accion: errores.length > 0 ? 'error' : 'crear', errores, advertencias, cambios };
   }
   if (f.stock.length > 0) advertencias.push('stock ignorado: el producto ya existe; su stock se mueve con ingreso, traspaso o ajuste');
@@ -168,7 +180,8 @@ function planificar(c: Contexto, f: Fila, nuevos: number): { accion: FilaSimulad
     if (c.e.movimientos.some((m) => m.productoId === previo.id)) errores.push({ columna: 'conSerie', motivo: 'no se puede cambiar: el producto ya tiene movimientos de inventario' });
     else cambios.push('conSerie');
   }
-  if ((d.bo !== undefined && d.bo !== previo.precioUSD.bo) || (d.ar !== undefined && d.ar !== previo.precioUSD.ar)) cambios.push('precioUSD');
+  const preciosPrevios = previo.precioUSD as unknown as Readonly<Record<string, number>>;
+  if (Object.entries(d.precios).some(([k, v]) => v !== preciosPrevios[k])) cambios.push('precioUSD');
   if (d.costoUSD !== undefined && d.costoUSD !== previo.costoUSD) cambios.push('costoUSD');
   if (errores.length > 0) return { accion: 'error', errores, advertencias, cambios: [] };
   return { accion: cambios.length > 0 ? 'actualizar' : 'sin-cambios', errores, advertencias, cambios };
@@ -239,7 +252,7 @@ export function importarProductosDoble(c: Contexto, e: Entrada<'importarProducto
           id: f.id, nombre: f.d.nombre as string, categoria: f.d.categoria as string, ...(f.d.marca !== undefined ? { marca: f.d.marca } : {}), sku: f.d.sku as string,
           activo: f.d.activo ?? true, publicado: f.d.publicado ?? false, conSerie: f.d.conSerie ?? false,
           ...(f.d.garantiaMeses !== undefined ? { garantiaMeses: f.d.garantiaMeses } : {}), ...(f.d.minimo !== undefined ? { minimo: f.d.minimo } : {}),
-          precioUSD: { bo: f.d.bo ?? 0, ar: f.d.ar ?? 0 }, costoUSD: f.d.costoUSD ?? 0, stockTotal: 0, existencias: { tienda: 0, 'deposito-1': 0, 'deposito-2': 0 },
+          precioUSD: Object.fromEntries(c.e.comercial.mercados.map((m) => [claveDePrecio(m.id), f.d.precios[claveDePrecio(m.id)] ?? 0])) as unknown as ProductoInterno['precioUSD'], costoUSD: f.d.costoUSD ?? 0, stockTotal: 0, existencias: { tienda: 0, 'deposito-1': 0, 'deposito-2': 0 },
         });
         const p = c.e.productos.get(f.id);
         if (p !== undefined) {
@@ -251,9 +264,9 @@ export function importarProductosDoble(c: Contexto, e: Entrada<'importarProducto
       } else if (accion === 'actualizar') {
         const p = c.e.productos.get(f.id);
         if (p === undefined) continue;
-        const { bo, ar, costoUSD, ...directos } = f.d;
+        const { precios, costoUSD, ...directos } = f.d;
         Object.assign(p, Object.fromEntries(Object.entries(directos).filter(([k, v]) => v !== undefined && k !== 'sku')));
-        if (bo !== undefined || ar !== undefined) p.precioUSD = { bo: bo ?? p.precioUSD.bo, ar: ar ?? p.precioUSD.ar };
+        if (Object.keys(precios).length > 0) p.precioUSD = { ...(p.precioUSD as unknown as Record<string, number>), ...precios } as unknown as ProductoInterno['precioUSD'];
         if (costoUSD !== undefined) p.costoUSD = costoUSD;
         r.actualizados += 1;
         productos.push(f.id);

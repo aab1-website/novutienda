@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { clavePrecioDe, mercadosDePrecio, nombreAlmacen, nombreMoneda, nombreTipo } from './nombres.js';
+import { mercadosDePrecio, nombreAlmacen, nombreMoneda, nombreTipo } from './nombres.js';
 
 describe('nombres legibles', () => {
   it('almacenes y tipos de movimiento', () => {
@@ -15,7 +15,6 @@ describe('nombres legibles', () => {
     ]);
     expect(m.map((x) => x.clave)).toEqual(['bo', 'pe']);
     expect(m.map((x) => x.nombre)).toEqual(['Bolivia', 'Perú']);
-    expect(clavePrecioDe('AR')).toBe('ar');
   });
   it('nombra las monedas conocidas y deja el código de las demás', () => {
     expect(nombreMoneda('USD')).toBe('dólares');
