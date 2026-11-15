@@ -1,7 +1,7 @@
 // (c) Precios del día y precio final por mercado: `precioFinal` y el redondeo del núcleo, `preciosDelDia` de la
 // consola, `precioDeVenta` del panel y `vistaPrecio` del sitio, sobre los productos fijos y la política vigente.
-import { precioFinal, redondear, leerCotizacion } from '@novutienda/nucleo';
-import { preciosDelDia } from '@novutienda/consola';
+import { COMERCIAL_LEGADO_TRES_MONEDAS, precioFinal, redondear, leerCotizacion } from '@novutienda/nucleo';
+import { preciosDelDiaDe } from '@novutienda/consola';
 import { precioDeVenta } from '@novutienda/panel';
 import { vistaPrecio } from '@novutienda/website';
 import { describe, expect, it } from 'vitest';
@@ -21,8 +21,8 @@ describe('precios por mercado del tenant de referencia', () => {
       return {
         id: f.producto.id, precioUSDcentavos: p,
         precioFinal: { BO: precioFinal(usd(p.bo), 'BO', BO, REDONDEO), AR: precioFinal(usd(p.ar), 'AR', AR, REDONDEO) },
-        preciosDelDia: preciosDelDia({ bo: usd(p.bo), ar: usd(p.ar) }, { BO, AR }, REDONDEO),
-        preciosDelDiaSinCotizacion: preciosDelDia({ bo: usd(p.bo), ar: usd(p.ar) }, {}, REDONDEO),
+        preciosDelDia: preciosDelDiaDe({ bo: usd(p.bo), ar: usd(p.ar) }, COMERCIAL_LEGADO_TRES_MONEDAS, { BO, AR }, REDONDEO),
+        preciosDelDiaSinCotizacion: preciosDelDiaDe({ bo: usd(p.bo), ar: usd(p.ar) }, COMERCIAL_LEGADO_TRES_MONEDAS, {}, REDONDEO),
         panel: {
           BOB: precioDeVenta(p.bo, 'BO', 'BOB', BO), ARS: precioDeVenta(p.ar, 'AR', 'ARS', AR), USD_BO: precioDeVenta(p.bo, 'BO', 'USD', BO), USD_AR: precioDeVenta(p.ar, 'AR', 'USD', AR),
           BOB_sinCotizacion: precioDeVenta(p.bo, 'BO', 'BOB', null),
