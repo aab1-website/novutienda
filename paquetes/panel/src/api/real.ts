@@ -36,6 +36,8 @@ export interface ContextoReal {
   llamar(modulo: Modulo, accion: string, datos?: object): Promise<unknown>;
   /** Rol de quien llama (solo para elegir entre acciones; el servidor decide el permiso). */
   readonly rol: Rol | undefined;
+  /** Verdadero si la sesión que hizo la llamada sigue siendo la vigente; una respuesta tardía de otra sesión no debe fijar estado global. */
+  sesionVigente(): boolean;
   /** Espera entre reintentos (inyectable en las pruebas). */
   esperar(ms: number): Promise<void>;
 }
@@ -392,7 +394,7 @@ export const TRADUCCION: { readonly [N in NombreCallable]: Traduccion<N> } = {
     roles: TODOS,
     ejecutar: async (c) => {
       const r = (await c.llamar('pos', 'cotizaciones', {})) as Obj;
-      fijarRedondeo(r['redondeo']);
+      if (c.sesionVigente()) fijarRedondeo(r['redondeo']);
       return (r['cotizaciones'] ?? { BO: null, AR: null }) as CotizacionesVigentes;
     },
   },

@@ -30,6 +30,23 @@ describe('configuración comercial ligada a la sesión', () => {
     expect(espia.mock.calls.filter((c) => c[0] === 'configuracionComercial')).toHaveLength(2);
   });
 
+  it('el mismo uid que cambia de rol (administrador a cajero): se vuelve a pedir y no conserva monedaCosto', async () => {
+    const e = crearEntorno('adm');
+    let rol: 'adm' | 'caj' = 'adm';
+    const espia = vi.spyOn(e.api, 'llamar').mockImplementation(((n: string) =>
+      n === 'configuracionComercial'
+        ? Promise.resolve({ mercados: [], monedasCaja: ['BOB'], ...(rol === 'adm' ? { monedaCosto: 'USD' } : {}) })
+        : Promise.resolve({})) as never);
+    const con = (r: 'adm' | 'caj'): JSX.Element =>
+      h(CtxApp.Provider, { value: { api: e.api, almacen: e.almacen, usuario: { ...usuarioDe('adm'), rol: r }, cerrarSesion: () => undefined, sesionVencida: () => undefined, renovarSesion: () => Promise.resolve(true), puedeVer: () => true } }, h(Sonda, {}));
+    const { rerender } = render(con('adm'));
+    await waitFor(() => expect(texto()).toBe('lista:USD:BOB'));
+    rol = 'caj';
+    rerender(con('caj'));
+    await waitFor(() => expect(texto()).toBe('lista:sin-costo:BOB'));
+    expect(espia.mock.calls.filter((c) => c[0] === 'configuracionComercial')).toHaveLength(2);
+  });
+
   it('cambio de tenant con el mismo usuario: se vuelve a pedir', async () => {
     const e = crearEntorno('adm');
     let moneda = 'BOB';

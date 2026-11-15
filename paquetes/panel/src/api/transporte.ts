@@ -22,14 +22,19 @@ export interface Transporte {
 export class ClienteRemoto implements ClienteApi {
   constructor(
     private readonly transporte: Transporte,
-    private readonly contexto: () => { readonly tenantId: string; readonly rol: Rol | undefined },
+    private readonly contexto: () => { readonly tenantId: string; readonly rol: Rol | undefined; readonly uid?: string | undefined },
   ) {}
 
   async llamar<N extends NombreCallable>(nombre: N, entrada: Entrada<N>): Promise<Salida<N>> {
     const t = TRADUCCION[nombre] as unknown as Traduccion<N>;
-    const { tenantId, rol } = this.contexto();
+    const { tenantId, rol, uid } = this.contexto();
     const c: ContextoReal = {
       rol,
+      // La sesión que pidió sigue siendo la vigente (mismo comercio, usuario y rol) al resolver la respuesta.
+      sesionVigente: () => {
+        const ahora = this.contexto();
+        return ahora.tenantId === tenantId && ahora.rol === rol && ahora.uid === uid;
+      },
       esperar: (ms) => new Promise((r) => setTimeout(r, ms)),
       llamar: (modulo, accion, datos) => this.transporte.invocar(modulo, { accion, tenantId, ...(datos !== undefined ? { datos } : {}) }),
     };
