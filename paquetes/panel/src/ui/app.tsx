@@ -18,6 +18,7 @@ import { PantallaRecibos } from '../pantallas/recibos/recibos.js';
 import { PantallaSupervision } from '../pantallas/pos/supervision.js';
 import { PantallaUsuarios } from '../pantallas/usuarios.js';
 import { PantallaVenta } from '../pantallas/pos/venta.js';
+import { restablecerRedondeo } from '../util/precio.js';
 
 const NOMBRE_APP = 'Panel de gestión';
 const ROL_TEXTO = { caj: 'Vendedor', sup: 'Supervisor', adm: 'Administrador' } as const;
@@ -129,6 +130,12 @@ function AppInterna({ sesion, api, almacen }: { sesion: Sesion; api: ClienteApi;
     setVencida(false);
     if (guardada !== '' && window.location.hash !== guardada) window.location.hash = guardada;
   }, [usuario]);
+
+  // Al cerrar la sesión (o vencerse) no quedan reglas de redondeo de ese comercio para quien entre después.
+  const sinSesion = usuario === null;
+  useEffect(() => {
+    if (sinSesion) restablecerRedondeo();
+  }, [sinSesion]);
 
   const carga = useModulosActivos(api, usuario?.uid);
   const modulos: ModulosActivos = carga.estado === 'lista' ? carga.modulos : null;

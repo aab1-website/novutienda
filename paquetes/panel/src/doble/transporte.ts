@@ -63,7 +63,7 @@ const ACCIONES: Readonly<Record<string, WireHandler>> = {
   'pos.movimientosCaja': async (c, d) => ({ movimientos: lim((await legado(c, 'listarMovimientosCaja', { turnoId: d['turnoId'] })) as Obj[], d, 100) }),
   'pos.creditos': async (c, d) => ({ creditos: lim((await legado(c, 'listarCreditos', d['estado'] === undefined ? {} : { estado: d['estado'] })) as Obj[], d, 100) }),
   'pos.turnos': async (c, d) => ({ turnos: lim((await legado(c, 'listarTurnos', {})) as Obj[], d, 30) }),
-  'pos.cotizaciones': (c) => ({ cotizaciones: c.e.cotizaciones }),
+  'pos.cotizaciones': (c) => ({ cotizaciones: c.e.cotizaciones, redondeo: c.e.redondeo }),
   // inventarios
   'inventarios.ingresar': igual('ingresar'), 'inventarios.traspasar': igual('traspasar'), 'inventarios.ajustar': igual('ajustar'),
   'inventarios.solicitarMerma': igual('solicitarMerma'), 'inventarios.resolverMerma': igual('resolverMerma'), 'inventarios.abrirConteo': igual('abrirConteo'),

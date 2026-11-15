@@ -288,14 +288,8 @@ export const handlersOtros: {
   listarCarruseles: (c) => [...c.e.carruseles.values()],
   listarUsuarios: (c) => c.e.usuarios,
   modulosActivos: (c) => [...c.e.modulos],
-  // Forma de tres monedas actual (el tenant de referencia): BO vende en BOB y AR en ARS, ambos con base USD y tipo de cambio.
-  configuracionComercial: () => ({
-    mercados: [
-      { id: 'BO', nombre: 'Bolivia', monedaVenta: 'BOB', monedaBase: 'USD', tieneTipoCambio: true },
-      { id: 'AR', nombre: 'Argentina', monedaVenta: 'ARS', monedaBase: 'USD', tieneTipoCambio: true },
-    ],
-    monedasCaja: ['BOB', 'USD', 'ARS'],
-  }),
+  // Por omisión, la forma de tres monedas del tenant de referencia (BO vende en BOB y AR en ARS, base USD); `c.e.comercial` la reemplaza.
+  configuracionComercial: (c) => c.e.comercial,
   buscarUsuarioPorCorreo(c, e) {
     exigirRol(c, ['adm']);
     const buscado = e.correo.trim().toLowerCase();

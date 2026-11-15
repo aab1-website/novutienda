@@ -36,6 +36,8 @@ export interface ContextoReal {
   llamar(modulo: Modulo, accion: string, datos?: object): Promise<unknown>;
   /** Rol de quien llama (solo para elegir entre acciones; el servidor decide el permiso). */
   readonly rol: Rol | undefined;
+  /** Verdadero si la sesión que hizo la llamada sigue siendo la vigente; una respuesta tardía de otra sesión no debe fijar estado global. */
+  sesionVigente(): boolean;
   /** Espera entre reintentos (inyectable en las pruebas). */
   esperar(ms: number): Promise<void>;
 }
@@ -103,6 +105,7 @@ function vistaComercialDe(r: unknown): VistaComercial {
   return {
     mercados,
     monedasCaja: monedas.filter((x): x is string => typeof x === 'string'),
+    ...(typeof o['monedaCosto'] === 'string' ? { monedaCosto: o['monedaCosto'] } : {}),
   };
 }
 
@@ -156,6 +159,7 @@ function aProducto(p: Obj, costos: ReadonlyMap<string, number> | undefined): Pro
     garantiaMeses: p['garantiaMeses'] as number | undefined,
     minimo: p['minimo'] as number | undefined,
     precioUSD: p['precioCentavosUSD'] as ProductoPanel['precioUSD'],
+    sinPrecio: Array.isArray(p['sinPrecio']) ? (p['sinPrecio'] as unknown[]).filter((x): x is string => typeof x === 'string') : undefined,
     costoUSD: costo,
     // `null` = oculto por un conteo abierto; ausente = no controla stock; un número (incluso 0) es la existencia real.
     stockTotal: p['stockTotal'] === null ? null : (p['stockTotal'] as number | undefined),
@@ -390,7 +394,7 @@ export const TRADUCCION: { readonly [N in NombreCallable]: Traduccion<N> } = {
     roles: TODOS,
     ejecutar: async (c) => {
       const r = (await c.llamar('pos', 'cotizaciones', {})) as Obj;
-      fijarRedondeo(r['redondeo']);
+      if (c.sesionVigente()) fijarRedondeo(r['redondeo']);
       return (r['cotizaciones'] ?? { BO: null, AR: null }) as CotizacionesVigentes;
     },
   },
