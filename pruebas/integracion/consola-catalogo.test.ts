@@ -1,7 +1,7 @@
 // La consola LEE el catálogo; todo producto nace y cambia por Inventarios (dueño de productos y stock).
 import { calcularDisponibilidadPublica, obtenerTablero, preciosDelDia } from '@novutienda/consola';
 import { actualizarProducto, crearProducto, type CambiosProducto } from '@novutienda/inventarios';
-import { LimiteDelPlan, verificarYReservar, type Actor } from '@novutienda/nucleo';
+import { COMERCIAL_LEGADO_TRES_MONEDAS, LimiteDelPlan, verificarYReservar, type Actor } from '@novutienda/nucleo';
 import { abrirTurno, confirmarVenta } from '@novutienda/pos';
 import { beforeEach, describe, expect, it } from 'vitest';
 import { ADM, REDONDEO, T, UUID, altaProducto, cargarStock, caj, cotizacionVigente, doc, entornoListo, op, producto, type Entorno } from './entorno.js';
@@ -129,7 +129,7 @@ describe('límite de 200 productos en la misma transacción del alta de Inventar
     expect(doc(e, T, 'contadores/uso')).toMatchObject({ productos: 200 });
     // Mismo contador que el del núcleo.
     await expect(e.db.runTransaction((tx) => verificarYReservar(tx, T, 'productos'))).rejects.toBeInstanceOf(LimiteDelPlan);
-    const tablero = await obtenerTablero({ db: e.db, cotizaciones: e.almacen, reloj: { ahora: () => e.reloj.ahora } }, { tenantId: T, actor: admin });
+    const tablero = await obtenerTablero({ db: e.db, comercial: COMERCIAL_LEGADO_TRES_MONEDAS, cotizaciones: e.almacen, reloj: { ahora: () => e.reloj.ahora } }, { tenantId: T, actor: admin });
     expect(tablero.uso.productos).toEqual({ usados: 200, tope: 200 });
     expect(tablero.cotizaciones.map((c) => c.estado)).toEqual(['vigente', 'vigente']);
   }, 60_000);

@@ -27,7 +27,7 @@ export const PANTALLAS: readonly Pantalla[] = [
   {
     id: 'ficha', titulo: 'Editor de ficha', roles: ['sup', 'adm'], lecturas: ['fichasWeb', 'medios', 'subidas'],
     llamadas: ['guardarFicha', 'reservarSubida', 'finalizarSubida', 'borrarMedio', 'preciosDelDia'],
-    notas: 'Precio USD por mercado con el Bs/ARS del día al lado (preciosDelDia, política de redondeo inyectada). La subida va a la ruta privada de la reserva; después se finaliza. Solo adm cambia precios.',
+    notas: 'Precio base por mercado con el precio del día en la moneda de cada mercado al lado (preciosDelDia, redondeo vigente del comercio). La subida va a la ruta privada de la reserva; después se finaliza. Solo adm cambia precios.',
   },
   {
     id: 'exportar', titulo: 'Exportar', roles: ['sup', 'adm'], lecturas: [], llamadas: ['exportarProductosCsv'],
