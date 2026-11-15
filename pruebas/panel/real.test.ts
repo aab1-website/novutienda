@@ -185,8 +185,10 @@ describe('redondeo que llega del servidor (pos.cotizaciones)', () => {
     expect(await t.ejecutar(respuesta({ BOB, ARS: { tipo: 'multiplo', multiplo: 1000, modo: 'cercano' } }), {})).toMatchObject({ BO: null, AR: { valor: 1000 } });
     expect(precioDeVenta(1049, 'AR', 'ARS', cot)).toMatchObject({ centavos: 1_000_000 });
     await t.ejecutar(respuesta({ cualquier: 'cosa' }), {});
-    await t.ejecutar(respuesta(undefined), {});
     expect(precioDeVenta(1049, 'AR', 'ARS', cot)).toMatchObject({ centavos: 1_000_000 });
+    // Sin `redondeo` en la respuesta no quedan las reglas de la sesión anterior: vuelve al respaldo.
+    await t.ejecutar(respuesta(undefined), {});
+    expect(precioDeVenta(1049, 'AR', 'ARS', cot)).toMatchObject({ centavos: 1_050_000 });
     // Se deja el respaldo vigente para el resto de la suite.
     await t.ejecutar(respuesta(REDONDEO), {});
     expect(precioDeVenta(1049, 'AR', 'ARS', cot)).toMatchObject({ centavos: 1_050_000 });

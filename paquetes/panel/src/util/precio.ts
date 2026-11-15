@@ -19,13 +19,13 @@ let redondeoVigente: Redondeo = REDONDEO;
  * ignora por completo y conserva el redondeo anterior.
  */
 export function fijarRedondeo(r: unknown): void {
-  if (typeof r !== 'object' || r === null) return;
+  // Una respuesta sin redondeo no deja reglas de otra sesión: vuelve al estado inicial (D21).
+  if (typeof r !== 'object' || r === null) { restablecerRedondeo(); return; }
   const o = r as Record<string, unknown>;
   fijarReglasDeclaradas(r);
   if (esReglaRedondeoValida(o['BOB']) && esReglaRedondeoValida(o['ARS'])) redondeoVigente = r as Redondeo;
 }
 
-/** Redondeo en uso: el del servidor si ya llegó; si no, el respaldo por defecto. */
 /**
  * Reglas de redondeo por moneda de venta declarada, tal como las devolvió el servidor. Sin respaldo: mientras no llegó
  * ninguna regla válida, la función nueva de precio no muestra precio (D21). Solo se conservan las reglas válidas.
@@ -37,7 +37,7 @@ export function fijarReglasDeclaradas(r: unknown): void {
   if (typeof r !== 'object' || r === null) return;
   const validas: Record<string, ReglaRedondeo> = {};
   for (const [moneda, regla] of Object.entries(r as Record<string, unknown>)) {
-    if (esReglaRedondeoValida(regla)) validas[moneda] = regla as ReglaRedondeo;
+    if (esReglaRedondeoValida(regla)) validas[moneda] = regla;
   }
   reglasDeclaradas = validas;
 }
@@ -45,6 +45,7 @@ export function fijarReglasDeclaradas(r: unknown): void {
 /** Reglas por moneda declarada ya recibidas, o `null` si aún no llegaron. */
 export const reglasDeclaradasActuales = (): RedondeoPorMoneda | null => reglasDeclaradas;
 
+/** Redondeo en uso: el del servidor si ya llegó; si no, el respaldo por defecto. */
 export const redondeoActual = (): Redondeo => redondeoVigente;
 
 /** Vuelve al respaldo por defecto (cambio de negocio o de sesión, y pruebas). */
@@ -101,7 +102,7 @@ export function precioDeVentaMercado(
   const r = precioDeMercado(
     baseCentavos / 100,
     {
-      id: mercado.id, monedaVenta: mercado.monedaVenta, monedaBase: mercado.monedaBase, redondeo: regla as ReglaRedondeo,
+      id: mercado.id, monedaVenta: mercado.monedaVenta, monedaBase: mercado.monedaBase, redondeo: regla,
       tipoCambio: mercado.tieneTipoCambio ? { par: `${mercado.monedaVenta}/${mercado.monedaBase}`, fuentes: [] } : null,
     },
     cotizacion,

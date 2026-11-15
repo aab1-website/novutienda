@@ -257,6 +257,14 @@ describe('fijarRedondeo: regla única', () => {
     expect(redondeoActual()).toEqual(r);
   });
 
+  it('una respuesta sin redondeo no deja las reglas de la sesión anterior', () => {
+    fijarRedondeo({ BOB: ok, ARS: ok });
+    expect(reglasDeclaradasActuales()).not.toBeNull();
+    fijarRedondeo(undefined);
+    expect(reglasDeclaradasActuales()).toBeNull();
+    expect(redondeoActual()).toBe(REDONDEO);
+  });
+
   it.each([
     ['ninguno', { tipo: 'ninguno' }],
     ['más de 2 decimales', { tipo: 'decimales', decimales: 3, modo: 'cercano' }],

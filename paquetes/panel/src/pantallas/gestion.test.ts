@@ -341,6 +341,20 @@ describe('usuarios y configuración', () => {
     expect(screen.queryByRole('table', { name: /Mercados del comercio/ })).toBeNull();
     await screen.findByRole('heading', { name: 'Datos del negocio y del POS' });
     expect(within(campo('Moneda por defecto')).getAllByRole('option').map((o) => o.textContent)).toEqual(['BOB']);
+    expect((campo('Moneda por defecto') as HTMLSelectElement).disabled).toBe(true);
+  });
+  it('mientras carga la configuración comercial, la moneda por defecto vigente se muestra deshabilitada', async () => {
+    const e = crearEntorno('adm');
+    const llamar = e.api.llamar.bind(e.api) as (n: string, x: unknown) => Promise<unknown>;
+    let abrir: (v: unknown) => void = () => undefined;
+    vi.spyOn(e.api, 'llamar').mockImplementation(((n: string, x: unknown) =>
+      n === 'configuracionComercial' ? new Promise((r) => { abrir = r; }) : llamar(n, x)) as never);
+    ver(e, h(PantallaConfiguracion, { sub: 'negocio' }));
+    await screen.findByRole('heading', { name: 'Datos del negocio y del POS' });
+    expect(within(campo('Moneda por defecto')).getAllByRole('option').map((o) => o.textContent)).toEqual(['BOB']);
+    expect((campo('Moneda por defecto') as HTMLSelectElement).disabled).toBe(true);
+    abrir({ mercados: [], monedasCaja: ['BOB', 'USD'] });
+    await waitFor(() => expect((campo('Moneda por defecto') as HTMLSelectElement).disabled).toBe(false));
   });
   it('plantilla del recibo', async () => {
     const e = crearEntorno('adm');
