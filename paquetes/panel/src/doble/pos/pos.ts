@@ -2,9 +2,8 @@ import type { Entrada, NombreCallable, Salida } from '../../api/contrato.js';
 import type {
   AprobacionPos, LineaVenta, Moneda, MovimientoCaja, PagoVentaPos, Recibo, ResultadoCierre, TurnoPos, VentaPos,
 } from '../../api/tipos.js';
-import { MEDIOS_PAGO, MONEDAS } from '../../api/tipos.js';
-import { diferenciaPorMoneda, efectivoEsperado, monedasDelTurno, sumarTotales, TOTALES_VACIOS } from '../../pantallas/pos/arqueo.js';
-import { MONEDA_DE_MERCADO, precioDeVenta } from '../../util/precio.js';
+import { MEDIOS_PAGO } from '../../api/tipos.js';
+import { cotizacionDeMercado, diferenciaPorMoneda, efectivoEsperado, monedasDeCobro, monedasDelTurno, precioDeCobro, sumarTotales, TOTALES_VACIOS } from '../../pantallas/pos/arqueo.js';
 import { aCsv } from '../../util/csv.js';
 import { auditar, detalleDeFaltantes, fallo, fechaLaPaz, iso, recalcular, type Contexto } from '../estado.js';
 
@@ -120,7 +119,7 @@ export const handlersPos: {
     if (turnoAbierto(c) !== undefined) throw fallo('turno-ya-abierto');
     const apertura: Partial<Record<Moneda, number>> = {};
     for (const [m, v] of Object.entries(e.apertura)) {
-      if (!MONEDAS.includes(m as Moneda)) throw fallo('entrada-invalida', 'moneda desconocida');
+      if (!c.e.comercial.monedasCaja.includes(m)) throw fallo('entrada-invalida', 'moneda desconocida');
       apertura[m as Moneda] = exigirMonto(v ?? Number.NaN, `apertura.${m}`);
     }
     if (Object.keys(apertura).length === 0) throw fallo('entrada-invalida', 'apertura necesita al menos una moneda');
@@ -149,11 +148,14 @@ export const handlersPos: {
     if (turno === undefined) throw fallo('sin-turno');
     if (turno.cajeroUid !== c.uid) throw fallo('turno-ajeno');
     const k = e.carrito;
-    if (k.moneda !== 'USD' && k.moneda !== MONEDA_DE_MERCADO[k.mercado]) throw fallo('entrada-invalida', 'La moneda no corresponde a la lista de precios');
+    // D19: en cada mercado declarado se cobra solo en su moneda de venta o su moneda base.
+    const mercado = c.e.comercial.mercados.find((m) => m.id === k.mercado);
+    if (mercado === undefined) throw fallo('entrada-invalida', 'El mercado no está declarado');
+    if (!monedasDeCobro(mercado).includes(k.moneda)) throw fallo('entrada-invalida', 'La moneda no corresponde a la lista de precios');
     if (k.lineas.length === 0) throw fallo('entrada-invalida', 'Carrito vacío');
     const totalSeries = k.lineas.reduce((n, l) => n + (Array.isArray(l.series) ? l.series.length : 0), 0);
     if (totalSeries > TOPE_SERIES_POR_VENTA) throw fallo('series-invalidas', `Una venta admite hasta ${TOPE_SERIES_POR_VENTA} unidades con serie`);
-    const cot = k.moneda === 'USD' ? null : c.e.cotizaciones[k.mercado];
+    const cot = k.moneda === mercado.monedaBase && k.moneda !== mercado.monedaVenta ? null : cotizacionDeMercado(c.e.cotizaciones, mercado.id);
     const lineas: LineaVenta[] = [];
     const vistas = new Set<string>();
     for (const l of k.lineas) {
@@ -165,8 +167,7 @@ export const handlersPos: {
       const p = c.e.productos.get(l.productoId);
       if (p === undefined) throw fallo('producto-inexistente');
       if (!p.activo) throw fallo('producto-inactivo');
-      const usd = k.mercado === 'BO' ? p.precioUSD.bo : p.precioUSD.ar;
-      const pv = precioDeVenta(usd, k.mercado, k.moneda, cot);
+      const pv = precioDeCobro(p, mercado, k.moneda, c.e.cotizaciones, c.e.redondeo);
       if (pv.tipo !== 'precio') throw fallo('sin-precio');
       if (l.precioMostrado !== undefined && l.precioMostrado !== pv.centavos) throw fallo('precio-alterado');
       const series = l.series ?? [];

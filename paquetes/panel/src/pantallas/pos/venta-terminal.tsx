@@ -2,14 +2,15 @@ import type { JSX } from 'preact';
 import { useMemo, useState } from 'preact/hooks';
 import { nuevoId } from '../../api/cliente.js';
 import { marcaDe } from '../../api/marca.js';
-import type { AprobacionPos, CotizacionesVigentes, Mercado, Moneda, ProductoPanel, Recibo, TurnoPos, UbicacionId } from '../../api/tipos.js';
+import type { AprobacionPos, CotizacionesVigentes, MercadoDeclarado, Mercado, Moneda, ProductoPanel, Recibo, TurnoPos, UbicacionId } from '../../api/tipos.js';
 import { Alerta, Boton, Campo, Cargando, Casilla, ErrorCarga, Selector, Seccion, Vacio } from '../../ui/comun.js';
+import { useConfiguracionComercial } from '../../ui/comercial.js';
 import { useApp } from '../../ui/contexto.js';
 import { AvisoConteoAbierto, ExistenciaOculta, TEXTO_OCULTO } from '../../ui/existencia.js';
 import { useAccion, useCarga } from '../../ui/hooks.js';
 import { AccionesRecibo, ReciboVista } from '../recibos/recibo-vista.js';
 import { formatearMonto, textoACentavos } from '../../util/dinero.js';
-import { MONEDA_DE_MERCADO, precioDeVenta } from '../../util/precio.js';
+import { cotizacionDeMercado, hayReglaDeRedondeo, monedasDeCobro, precioDeCobro } from './arqueo.js';
 import { SerieEscrita } from './serie-escrita.js';
 import { VentaCobro, type DatosCobro } from './venta-cobro.js';
 
@@ -48,19 +49,34 @@ function SelectorSeriesLista({ producto, almacenId, elegidas, alCambiar }: { pro
   );
 }
 
-function Cotizacion({ cot, mercado, moneda }: { cot: CotizacionesVigentes; mercado: Mercado; moneda: Moneda }): JSX.Element {
-  if (moneda === 'USD') return <p class="texto-suave">Precios en dólares: sin conversión.</p>;
-  const c = cot[mercado];
-  if (c === null) return <Alerta>No hay una cotización utilizable para este mercado. Venda en dólares o avise al administrador.</Alerta>;
+const NOMBRE_EN_TEXTO: Readonly<Record<string, string>> = { USD: 'dólares', BOB: 'bolivianos', ARS: 'pesos argentinos' };
+const enTexto = (m: string): string => NOMBRE_EN_TEXTO[m] ?? m;
+
+function Cotizacion({ cot, mercado, moneda }: { cot: CotizacionesVigentes; mercado: MercadoDeclarado; moneda: string }): JSX.Element | null {
+  if (!hayReglaDeRedondeo(mercado) && moneda === mercado.monedaVenta) {
+    return <Alerta>Falta la regla de redondeo de {mercado.monedaVenta} para este comercio: no se muestran precios en esa moneda. Avise al administrador.</Alerta>;
+  }
+  if (!mercado.tieneTipoCambio) return null;
+  if (moneda === mercado.monedaBase) return <p class="texto-suave">Precios en {enTexto(moneda)}: sin conversión.</p>;
+  const c = cotizacionDeMercado(cot, mercado.id);
+  if (c === null) return <Alerta>No hay una cotización utilizable para este mercado. Venda en {enTexto(mercado.monedaBase)} o avise al administrador.</Alerta>;
   return (
     <p class="texto-suave" data-prueba="cotizacion">
-      Cotización: 1 USD = {String(c.valor).replace('.', ',')} {MONEDA_DE_MERCADO[mercado]} · {c.fuente} · {c.fecha}
+      Cotización: 1 {mercado.monedaBase} = {String(c.valor).replace('.', ',')} {mercado.monedaVenta} · {c.fuente} · {c.fecha}
       {c.estado === 'ultimo_verificado' ? ' · último valor verificado (la fuente no lo renueva)' : ' · vigente'}
     </p>
   );
 }
 
 export function VentaTerminal({ turno, alCambiar }: { turno: TurnoPos; alCambiar: () => void }): JSX.Element {
+  const comercial = useConfiguracionComercial();
+  if (comercial.estado === 'cargando') return <Cargando />;
+  if (comercial.estado === 'error') return <Alerta>{comercial.mensaje}</Alerta>;
+  if (comercial.comercial.mercados.length === 0) return <Alerta>El comercio no tiene mercados declarados.</Alerta>;
+  return <TerminalLista turno={turno} alCambiar={alCambiar} mercados={comercial.comercial.mercados} />;
+}
+
+function TerminalLista({ turno, alCambiar, mercados }: { turno: TurnoPos; alCambiar: () => void; mercados: readonly MercadoDeclarado[] }): JSX.Element {
   const { api, usuario } = useApp();
   const datos = useCarga(
     async () => ({
@@ -73,8 +89,9 @@ export function VentaTerminal({ turno, alCambiar }: { turno: TurnoPos; alCambiar
   );
   const [busqueda, setBusqueda] = useState('');
   const [categoria, setCategoria] = useState('');
-  const [mercado, setMercado] = useState<Mercado>('BO');
-  const [moneda, setMoneda] = useState<Moneda>('BOB');
+  // Mercado y moneda iniciales: el primer mercado declarado y su moneda de venta.
+  const [mercadoId, setMercadoId] = useState(mercados[0]?.id ?? '');
+  const [moneda, setMoneda] = useState(mercados[0]?.monedaVenta ?? '');
   const [lineas, setLineas] = useState<LineaUI[]>([]);
   const [verSeries, setVerSeries] = useState<string | null>(null);
   const [descTexto, setDescTexto] = useState('');
@@ -100,10 +117,12 @@ export function VentaTerminal({ turno, alCambiar }: { turno: TurnoPos; alCambiar
   if (datos.error || !datos.datos) return <ErrorCarga error={datos.error ?? 'Sin datos'} reintentar={datos.recargar} />;
   const { cot, config, ventas } = datos.datos;
 
-  const monedas: Moneda[] = [MONEDA_DE_MERCADO[mercado], 'USD'];
-  const cambiarMercado = (m: Mercado): void => {
-    setMercado(m);
-    setMoneda(MONEDA_DE_MERCADO[m]);
+  const mercado = mercados.find((m) => m.id === mercadoId) ?? mercados[0];
+  if (mercado === undefined) return <Alerta>El comercio no tiene mercados declarados.</Alerta>;
+  const monedas = monedasDeCobro(mercado);
+  const cambiarMercado = (id: string): void => {
+    setMercadoId(id);
+    setMoneda(mercados.find((m) => m.id === id)?.monedaVenta ?? '');
   };
   const categorias = [...new Set(productos.map((p) => p.categoria))].sort();
   const q = busqueda.trim().toLowerCase();
@@ -115,8 +134,7 @@ export function VentaTerminal({ turno, alCambiar }: { turno: TurnoPos; alCambiar
   for (const v of ventas) for (const l of v.lineas) vendidos.set(l.productoId, (vendidos.get(l.productoId) ?? 0) + l.cantidad);
   const rapidos = [...productos.filter((p) => p.activo && p.disponible !== false)].sort((a, b) => (vendidos.get(b.id) ?? 0) - (vendidos.get(a.id) ?? 0) || a.nombre.localeCompare(b.nombre)).slice(0, 6);
 
-  const precioDe = (p: ProductoPanel): ReturnType<typeof precioDeVenta> =>
-    precioDeVenta(mercado === 'BO' ? p.precioUSD.bo : p.precioUSD.ar, mercado, moneda, cot[mercado]);
+  const precioDe = (p: ProductoPanel): ReturnType<typeof precioDeCobro> => precioDeCobro(p, mercado, moneda, cot);
 
   const agregar = (p: ProductoPanel): void => {
     setLineas((ls) => {
@@ -156,16 +174,17 @@ export function VentaTerminal({ turno, alCambiar }: { turno: TurnoPos; alCambiar
   const pedirAprobacion = (): void => {
     void solicitud.ejecutar(async () => {
       const id = nuevoId();
-      await api.llamar('solicitarAprobacion', { aprobacionId: id, solicitud: { tipo: 'descuento', moneda, monto, motivo: descMotivo.trim() } });
+      await api.llamar('solicitarAprobacion', { aprobacionId: id, solicitud: { tipo: 'descuento', moneda: moneda as Moneda, monto, motivo: descMotivo.trim() } });
       setSolicitadaId(id);
     });
   };
 
   if (paso === 'cobro') {
     const cobro: DatosCobro = {
-      mercado, moneda, config, total,
+      mercado: mercado.id, moneda, config, total,
       carrito: {
-        mercado, moneda,
+        // El contrato del carrito aún tipa los dos mercados de siempre; el servidor valida contra lo declarado.
+        mercado: mercado.id as Mercado, moneda: moneda as Moneda,
         lineas: lineas.map((l, i) => ({ productoId: l.productoId, cantidad: l.cantidad, almacenId: l.almacenId, ...(l.series.length > 0 ? { series: l.series } : {}), ...(precios[i]?.tipo === 'precio' ? { precioMostrado: (precios[i] as { centavos: number }).centavos } : {}) })),
         ...(monto > 0 ? { descuento: { monto, motivo: descMotivo.trim() } } : {}),
         ...(cliente.trim() !== '' ? { cliente: { nombre: cliente.trim(), ...(telefono.trim() !== '' ? { telefono: telefono.trim() } : {}) } } : {}),
@@ -183,8 +202,8 @@ export function VentaTerminal({ turno, alCambiar }: { turno: TurnoPos; alCambiar
         <div class="cuadricula">
           <Campo etiqueta="Buscar por nombre, SKU o marca" valor={busqueda} onInput={setBusqueda} nombre="buscar" />
           <Selector etiqueta="Categoría" valor={categoria} onCambio={setCategoria} opciones={[{ valor: '', texto: 'Todas' }, ...categorias.map((c) => ({ valor: c, texto: c }))]} />
-          <Selector etiqueta="Lista de precios" valor={mercado} onCambio={(v) => cambiarMercado(v as Mercado)} opciones={[{ valor: 'BO', texto: 'Bolivia' }, { valor: 'AR', texto: 'Argentina' }]} />
-          <Selector etiqueta="Moneda de la venta" valor={moneda} onCambio={(v) => setMoneda(v as Moneda)} opciones={monedas.map((m) => ({ valor: m, texto: m }))} />
+          {mercados.length > 1 && <Selector etiqueta="Lista de precios" valor={mercado.id} onCambio={cambiarMercado} opciones={mercados.map((m) => ({ valor: m.id, texto: m.nombre }))} />}
+          {monedas.length > 1 && <Selector etiqueta="Moneda de la venta" valor={moneda} onCambio={setMoneda} opciones={monedas.map((m) => ({ valor: m, texto: m }))} />}
         </div>
         <Cotizacion cot={cot} mercado={mercado} moneda={moneda} />
         {rapidos.length > 0 && (
@@ -212,7 +231,7 @@ export function VentaTerminal({ turno, alCambiar }: { turno: TurnoPos; alCambiar
                       {p.conSerie ? ' · con serie' : ''}
                     </div>
                     <div class="precio" data-prueba="precio">
-                      {pr.tipo === 'precio' ? formatearMonto(pr.centavos, pr.moneda) : pr.tipo === 'sin_precio' ? 'A consultar' : 'Sin cotización'}
+                      {pr.tipo === 'precio' ? formatearMonto(pr.centavos, pr.moneda) : pr.tipo === 'sin_precio' ? 'A consultar' : pr.tipo === 'sin_redondeo' ? 'Sin regla de redondeo' : 'Sin cotización'}
                     </div>
                   </div>
                   <Boton chico variante="secundario" onClick={() => agregar(p)} deshabilitado={pr.tipo !== 'precio'} etiqueta={`Agregar ${p.nombre}`}>
