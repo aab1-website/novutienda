@@ -1,6 +1,6 @@
 import {
   leerCotizacionDe, precioDeMercado, precioFinal, claveDePrecio, rutaContador, SinCotizacionUtilizable,
-  type Actor, type AlmacenCotizaciones, type ConfiguracionComercial, type CopiaCotizacion, type Mercado, type PrecioDeMercado, type PrecioFinal, type Redondeo, type RedondeoPorMoneda,
+  type Actor, type AlmacenCotizaciones, type ConfiguracionComercial, type CopiaCotizacion, type Mercado, type PrecioDeMercado, type PrecioFinal, type ReglaRedondeo, type Redondeo, type RedondeoPorMoneda,
 } from '@novutienda/nucleo';
 import { leerEstadoSitio } from './cambios.js';
 import { LIMITES_CONSOLA } from './limites.js';
@@ -113,8 +113,11 @@ export function preciosDelDiaDe(
     if (base === undefined) { salida[m.id] = { tipo: 'falta_precio' }; continue; }
     const c = cotizaciones[m.id];
     if (m.tipoCambio != null && c === undefined) { salida[m.id] = { tipo: 'sin_cotizacion' }; continue; }
-    const regla = redondeo[m.monedaVenta];
-    salida[m.id] = precioDeMercado(base, { ...m, redondeo: regla as typeof m.redondeo }, c ?? null);
+    const regla: ReglaRedondeo | undefined = redondeo[m.monedaVenta];
+    // `precioDeMercado` exige la regla en su tipo: sin regla vigente la respuesta es inválida, como la del núcleo.
+    salida[m.id] = regla === undefined
+      ? { tipo: 'invalido', motivo: `falta una regla de redondeo válida para ${m.monedaVenta}` }
+      : precioDeMercado(base, { ...m, redondeo: regla }, c ?? null);
   }
   return salida;
 }

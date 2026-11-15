@@ -1,8 +1,8 @@
 // Precio del día por mercado declarado (`preciosDelDiaDe`) y tablero por mercado (D24). La referencia es el comportamiento
 // del tenant de tres monedas: `precioFinal` del núcleo con la política vigente por moneda.
-import { obtenerTablero, preciosDelDiaDe } from '@novutienda/consola';
+import { obtenerTablero, preciosDelDia, preciosDelDiaDe } from '@novutienda/consola';
 import {
-  COMERCIAL_LEGADO_TRES_MONEDAS, precioFinal, type ConfiguracionComercial, type CopiaCotizacion, type RedondeoPorMoneda,
+  COMERCIAL_LEGADO_TRES_MONEDAS, type ConfiguracionComercial, type CopiaCotizacion, type Redondeo, type RedondeoPorMoneda,
 } from '@novutienda/nucleo';
 import { describe, expect, it } from 'vitest';
 import { actor, nuevaDb, RelojFijo, T } from './dobles.js';
@@ -25,15 +25,17 @@ const CON_LOCAL: ConfiguracionComercial = {
 };
 
 describe('preciosDelDiaDe', () => {
-  it('con la configuración de tres monedas da lo mismo que precioFinal (propiedad con semilla fija)', () => {
+  it('con la configuración de tres monedas da lo mismo que la función vieja preciosDelDia (propiedad con semilla fija)', () => {
     let s = 20261114;
     const sig = (): number => { s = (s * 1_664_525 + 1_013_904_223) % 4_294_967_296; return s / 4_294_967_296; };
     for (let i = 0; i < 500; i++) {
       const bo = Math.round(sig() * 100_000) / 100, ar = Math.round(sig() * 100_000) / 100;
-      const r = preciosDelDiaDe({ bo, ar }, COMERCIAL_LEGADO_TRES_MONEDAS, COT, REDONDEO);
-      const esperado = (m: 'BO' | 'AR', usd: number) => (usd === 0 ? { tipo: 'sin_precio' } : precioFinal(usd, m, COT[m], REDONDEO));
-      expect(r['BO'], `bo=${bo}`).toEqual(esperado('BO', bo));
-      expect(r['AR'], `ar=${ar}`).toEqual(esperado('AR', ar));
+      // Alterna cotizaciones ausentes para ejercitar `sin_cotizacion`.
+      const cot = { ...(i % 5 === 1 ? {} : { BO: COT.BO }), ...(i % 7 === 3 ? {} : { AR: COT.AR }) };
+      const r = preciosDelDiaDe({ bo, ar }, COMERCIAL_LEGADO_TRES_MONEDAS, cot, REDONDEO);
+      const esperado = preciosDelDia({ bo, ar }, cot as Parameters<typeof preciosDelDia>[1], REDONDEO as Redondeo);
+      expect(r['BO'], `bo=${bo} i=${i}`).toEqual(esperado.BO);
+      expect(r['AR'], `ar=${ar} i=${i}`).toEqual(esperado.AR);
     }
   });
 
