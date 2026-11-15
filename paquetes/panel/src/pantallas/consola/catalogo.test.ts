@@ -33,3 +33,33 @@ describe('catálogo: exportar', () => {
     expect(screen.getByRole('link', { name: 'Exportar' })).toBeTruthy();
   });
 });
+
+describe('catálogo: mercados declarados', () => {
+  it('el tenant de referencia ve los nombres de sus mercados', async () => {
+    const e = crearEntorno('adm');
+    render(e.envolver(h(PantallaCatalogo, { sub: 'tablero' })));
+    expect(await screen.findByText(/Bolivia:/)).toBeTruthy();
+    expect(screen.getByText(/Argentina:/)).toBeTruthy();
+  });
+  it('un id de mercado no declarado se muestra tal cual', async () => {
+    const e = crearEntorno('adm', undefined, { comercial: { mercados: [{ id: 'BO', nombre: 'Bolivia', monedaVenta: 'BOB', monedaBase: 'USD', tieneTipoCambio: true }], monedasCaja: ['BOB'] } });
+    render(e.envolver(h(PantallaCatalogo, { sub: 'tablero' })));
+    expect(await screen.findByText(/Bolivia:/)).toBeTruthy();
+    expect(screen.getByText(/AR:/)).toBeTruthy();
+  });
+  it('mientras la configuración comercial carga, no muestra mercados', async () => {
+    const e = crearEntorno('adm');
+    vi.spyOn(e.api, 'llamar').mockImplementation((() => new Promise(() => undefined)) as never);
+    render(e.envolver(h(PantallaCatalogo, { sub: 'tablero' })));
+    expect(screen.queryByText(/Bolivia:|BO:/)).toBeNull();
+    expect(document.body.textContent ?? '').toMatch(/Cargando/);
+  });
+  it('si la configuración comercial falla, muestra el error y no ids crudos', async () => {
+    const e = crearEntorno('adm');
+    const llamar = e.api.llamar.bind(e.api) as (n: string, x: unknown) => Promise<unknown>;
+    vi.spyOn(e.api, 'llamar').mockImplementation(((n: string, x: unknown) => (n === 'configuracionComercial' ? Promise.reject(new Error('falla comercial')) : llamar(n, x))) as never);
+    render(e.envolver(h(PantallaCatalogo, { sub: 'tablero' })));
+    await waitFor(() => expect(document.querySelector('[role="alert"], .alerta')).not.toBeNull());
+    expect(screen.queryByText(/BO:|AR:/)).toBeNull();
+  });
+});

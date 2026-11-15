@@ -2,6 +2,7 @@ import type { JSX } from 'preact';
 import { useState } from 'preact/hooks';
 import { LIMITES_PANEL, PLANTILLAS_SITIO, type Carrusel, type ConfigSitio, type PlantillaSitio } from '../../api/tipos.js';
 import { Alerta, Boton, BotonConfirmado, Campo, Cargando, Dato, ErrorCarga, Pestanas, Selector, Seccion, Vacio, fechaHora } from '../../ui/comun.js';
+import { useConfiguracionComercial } from '../../ui/comercial.js';
 import { useApp } from '../../ui/contexto.js';
 import { useAccion, useCarga } from '../../ui/hooks.js';
 import { formatoBytes } from '../../util/base64.js';
@@ -27,12 +28,15 @@ function Uso({ etiqueta, usados, tope, formato }: { etiqueta: string; usados: nu
 
 function Tablero(): JSX.Element {
   const { api, usuario } = useApp();
+  const comercial = useConfiguracionComercial();
   const t = useCarga(() => api.llamar('obtenerTablero', {}), []);
   const accion = useAccion();
   const [msg, setMsg] = useState<string | null>(null);
-  if (t.cargando) return <Cargando />;
+  if (comercial.estado === 'cargando' || t.cargando) return <Cargando />;
+  if (comercial.estado === 'error') return <ErrorCarga error={comercial.mensaje} />;
   if (t.error || !t.datos) return <ErrorCarga error={t.error ?? 'Sin datos'} reintentar={t.recargar} />;
   const d = t.datos;
+  const nombreMercado = (id: string): string => comercial.comercial.mercados.find((m) => m.id === id)?.nombre ?? id;
   return (
     <div>
       <Seccion titulo="Sitio">
@@ -53,7 +57,7 @@ function Tablero(): JSX.Element {
         <ul class="lista-simple">
           {d.cotizaciones.map((c) => (
             <li key={c.mercado}>
-              {c.mercado === 'BO' ? 'Bolivia' : 'Argentina'}:{' '}
+              {nombreMercado(c.mercado)}:{' '}
               {c.estado === 'sin_cotizacion' ? <span class="texto-error">sin cotización utilizable ({c.motivo})</span> : <span>{c.par} = {String(c.valor).replace('.', ',')} · {c.fuente} · {c.fecha} · {c.estado === 'vigente' ? 'vigente' : 'último valor verificado'}</span>}
             </li>
           ))}
