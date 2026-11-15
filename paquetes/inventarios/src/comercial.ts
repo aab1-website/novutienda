@@ -5,12 +5,7 @@
 import { comercialDe, validarTenant, type ConfiguracionComercial, type MercadoTenant } from '@novutienda/nucleo';
 import { EstadoInvalido } from './errores.js';
 
-/**
- * Clave con la que se guarda el precio de un mercado en `precioUSD` del producto: el id en minúsculas (`BO` -> `bo`).
- * Es la forma ya guardada del tenant de tres monedas (`bo`, `ar`): un tenant nuevo guarda con la misma regla. Función única:
- * nadie más deriva la clave a mano.
- */
-export const claveDePrecio = (idMercado: string): string => idMercado.toLowerCase();
+export { claveDePrecio } from '@novutienda/nucleo';
 
 /** Sufijo legible de la auditoría (`BO` -> `Bo`): conserva los nombres `precioBo`/`antesBo` del resumen. */
 export const sufijoDeAuditoria = (idMercado: string): string => idMercado.charAt(0) + idMercado.slice(1).toLowerCase();
