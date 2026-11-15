@@ -1,7 +1,7 @@
 import type { JSX } from 'preact';
 import { useRef, useState } from 'preact/hooks';
 import { nuevoId } from '../../api/cliente.js';
-import type { AprobacionPos, Carrito, ConfigPos, Mercado, MedioPago, Moneda } from '../../api/tipos.js';
+import type { AprobacionPos, Carrito, ConfigPos, MedioPago, Moneda } from '../../api/tipos.js';
 import { Alerta, Boton, Campo, Cargando, Selector, Seccion } from '../../ui/comun.js';
 import { useApp } from '../../ui/contexto.js';
 import { useAccion, useCarga } from '../../ui/hooks.js';
@@ -9,8 +9,8 @@ import { formatearMonto, textoACentavos } from '../../util/dinero.js';
 import { calcularPagos, NOMBRE_MEDIO, type FilaPago } from './pagos.js';
 
 export interface DatosCobro {
-  mercado: Mercado;
-  moneda: Moneda;
+  mercado: string;
+  moneda: string;
   config: ConfigPos;
   total: number;
   carrito: Carrito;
@@ -28,7 +28,7 @@ export function VentaCobro({ datos, volver, alVender }: { datos: DatosCobro; vol
   const [solicitadaId, setSolicitadaId] = useState<string | null>(null);
   const aprobs = useCarga(() => api.llamar('listarAprobaciones', {}), [solicitadaId]);
 
-  const { pagos, restante, cambioTotal, errores } = calcularPagos(filas, total, moneda);
+  const { pagos, restante, cambioTotal, errores } = calcularPagos(filas, total, moneda as Moneda);
     const credito = filas.find((f) => f.medio === 'credito');
   const montoCredito = credito === undefined ? 0 : (textoACentavos(credito.monto) ?? 0);
   const deudor = carrito.cliente?.nombre ?? '';
@@ -58,7 +58,7 @@ export function VentaCobro({ datos, volver, alVender }: { datos: DatosCobro; vol
   const pedirCredito = (): void => {
     void solicitud.ejecutar(async () => {
       const id = nuevoId();
-      await api.llamar('solicitarAprobacion', { aprobacionId: id, solicitud: { tipo: 'credito', moneda, monto: montoCredito, motivo: `Crédito para ${deudor}`, deudor } });
+      await api.llamar('solicitarAprobacion', { aprobacionId: id, solicitud: { tipo: 'credito', moneda: moneda as Moneda, monto: montoCredito, motivo: `Crédito para ${deudor}`, deudor } });
       setSolicitadaId(id);
     });
   };
