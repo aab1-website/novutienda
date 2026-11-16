@@ -1,7 +1,7 @@
 import { ErrorApi } from '../api/errores.js';
 import { rolesDeAccion, type Modulo } from '../api/real.js';
 import type { Sobre, Transporte } from '../api/transporte.js';
-import type { ProductoPanel, Rol } from '../api/tipos.js';
+import { ID_NEGOCIO, type ProductoPanel, type Rol } from '../api/tipos.js';
 import { fechaLaPaz, fallo, marcaDoble, type Contexto } from './estado.js';
 import { handlersInventario } from './inventario/inventario.js';
 import { handlersOtros } from './otros.js';
@@ -172,11 +172,19 @@ const ACCIONES: Readonly<Record<string, WireHandler>> = {
   'consola.fichas': (c) => legado(c, 'listarFichas', {}).then((fichas) => ({ fichas })),
   'consola.secciones': (c) => legado(c, 'listarSecciones', {}).then((secciones) => ({ secciones })),
   'consola.carruseles': (c) => legado(c, 'listarCarruseles', {}).then((carruseles) => ({ carruseles })),
+  'consola.leerLogo': (c) => legado(c, 'leerLogo', {}).then((logo) => ({ logo })),
+  'consola.quitarLogo': igual('quitarLogo'),
   'consola.configSitio': (c) => legado(c, 'leerConfigSitio', {}).then((config) => ({ config })),
   // medios
-  'medios.reservarSubida': igual('reservarSubida'),
-  'medios.estadoSubida': igual('estadoSubida'),
-  'medios.finalizarSubida': async (c, d) => ({ medio: await legado(c, 'finalizarSubida', d) }),
+  'medios.reservarSubida': (c, d) => (d['tipo'] === 'logo'
+    ? (d['productoId'] === ID_NEGOCIO ? legado(c, 'reservarSubidaLogo', { subidaId: d['subidaId'], bytes: d['bytes'] }) : Promise.reject(fallo('entrada-invalida', 'productoId inválido')))
+    : legado(c, 'reservarSubida', d)),
+  'medios.estadoSubida': (c, d) => legado(c, c.e.subidas.get(String(d['subidaId']))?.tipo === 'logo' ? 'estadoSubidaLogo' : 'estadoSubida', d),
+  'medios.finalizarSubida': async (c, d) => {
+    // El servidor decide por la subida; el doble, por su tipo.
+    const logo = c.e.subidas.get(String(d['subidaId']))?.tipo === 'logo';
+    return { medio: await legado(c, logo ? 'finalizarSubidaLogo' : 'finalizarSubida', d) };
+  },
   'medios.borrarMedio': ok('borrarMedio'),
   'medios.listarMedios': async (c, d) => ({ medios: lim((await legado(c, 'listarMedios', { productoId: d['productoId'] })) as Obj[], d, 20) }),
 };

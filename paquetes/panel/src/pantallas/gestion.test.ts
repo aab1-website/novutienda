@@ -705,6 +705,78 @@ describe('configuración: avisos, motivos y cambios sin guardar', () => {
       await screen.findByLabelText('Pie de página');
       for (const etiqueta of [/^Nombre del negocio/, 'Dirección', 'Teléfono', 'NIT', /logo/]) expect(screen.queryByLabelText(etiqueta)).toBeNull();
     });
+    describe('logo subido', () => {
+      const BASE = 'https://medios.ejemplo.test';
+      afterEach(() => vi.unstubAllEnvs());
+      const subirLogo = async (e: Entorno): Promise<void> => {
+        const id = uuid();
+        await e.api.llamar('reservarSubidaLogo', { subidaId: id, bytes: 100 });
+        await e.api.llamar('finalizarSubidaLogo', { subidaId: id });
+      };
+      const seccion = async (e: Entorno): Promise<void> => {
+        ver(e, h(PantallaConfiguracion, { sub: 'negocio' }));
+        await screen.findByRole('heading', { name: 'Datos del negocio' });
+        await waitFor(() => expect(document.querySelector('[data-prueba^="logo-"]')).not.toBeNull());
+      };
+      it('con logo subido lo muestra como imagen con su texto y deja la dirección web de respaldo', async () => {
+        vi.stubEnv('VITE_MEDIOS_BASE_URL', `${BASE}/`);
+        const e = crearEntorno('adm');
+        await subirLogo(e);
+        await seccion(e);
+        const img = screen.getByAltText('Logo del negocio') as HTMLImageElement;
+        expect(img.getAttribute('src')).toMatch(new RegExp(`^${BASE}/_negocio/logo-[0-9a-f-]+\\.webp$`));
+        expect(img.getAttribute('referrerpolicy')).toBe('no-referrer');
+        expect(img.getAttribute('width')).toBe('96');
+        const enlace = screen.getByRole('link', { name: 'Catálogo y sitio → Apariencia' });
+        expect(enlace.getAttribute('href')).toBe('#/catalogo/apariencia');
+        expect(screen.getByText(/Este logo se sube en/)).toBeTruthy();
+        expect(screen.getAllByLabelText(/logo/)).toHaveLength(1);
+      });
+      it('sin logo subido pero con dirección escrita conserva el campo como respaldo y avisa que se puede subir un archivo', async () => {
+        const e = crearEntorno('adm');
+        await e.api.llamar('guardarConfigPos', { config: { ...(await e.api.llamar('leerConfigPos', {})), logoUrl: 'https://logos.ejemplo.test/a.png' } });
+        await seccion(e);
+        expect((campo(/logo/) as HTMLInputElement).value).toBe('https://logos.ejemplo.test/a.png');
+        expect(screen.queryByAltText('Logo del negocio')).toBeNull();
+        expect(document.querySelector('[data-prueba="logo-sin-subir"]')?.textContent).toContain('Puede subir un archivo en Catálogo y sitio');
+      });
+      it('sin logo ni dirección dice que no hay logo subido', async () => {
+        const e = crearEntorno('adm');
+        await seccion(e);
+        expect(document.querySelector('[data-prueba="logo-sin-subir"]')?.textContent).toContain('Sin logo subido');
+        expect(screen.queryByAltText('Logo del negocio')).toBeNull();
+      });
+      it('una ruta maliciosa o una base ausente no pintan ninguna imagen', async () => {
+        vi.stubEnv('VITE_MEDIOS_BASE_URL', BASE);
+        for (const ruta of ['../secreto/logo.webp', 'a/./b.webp', 'a/%2e%2e/b.webp', '/abs.webp', 'a b.webp', 'https://malo.test/x.webp', '']) {
+          cleanup();
+          const e = crearEntorno('adm');
+          await subirLogo(e);
+          const logo = e.api.estado.logo as NonNullable<typeof e.api.estado.logo>;
+          e.api.estado.logo = { ...logo, medio: { ...logo.medio, versiones: logo.medio.versiones.map((v) => ({ ...v, ruta })) } };
+          await seccion(e);
+          expect(document.querySelector('img'), ruta).toBeNull();
+          expect(document.querySelector('[data-prueba="logo-subido"]')).not.toBeNull();
+        }
+        cleanup();
+        vi.stubEnv('VITE_MEDIOS_BASE_URL', '');
+        const e = crearEntorno('adm');
+        await subirLogo(e);
+        await seccion(e);
+        expect(document.querySelector('img')).toBeNull();
+      });
+      it('si la acción falla (módulo apagado o error) dice «Sin logo subido» y la pantalla sigue entera', async () => {
+        const e = crearEntorno('adm');
+        const llamar = e.api.llamar.bind(e.api) as (n: string, x: unknown) => Promise<unknown>;
+        vi.spyOn(e.api, 'llamar').mockImplementation(((n: string, x: unknown) =>
+          n === 'leerLogo' ? Promise.reject(new ErrorApi('permission-denied', 'Módulo apagado')) : llamar(n, x)) as never);
+        await seccion(e);
+        expect(document.querySelector('[data-prueba="logo-no-disponible"]')?.textContent).toBe('Sin logo subido');
+        expect(screen.queryByRole('alert')).toBeNull();
+        expect(campo('NIT')).toBeTruthy();
+        expect(screen.getByRole('button', { name: 'Guardar datos del negocio' })).toBeTruthy();
+      });
+    });
     it('al guardar escribe en la caja y en la plantilla, y conserva lo demás de cada una', async () => {
       const e = crearEntorno('adm');
       ver(e, h(PantallaConfiguracion, { sub: 'negocio' }));

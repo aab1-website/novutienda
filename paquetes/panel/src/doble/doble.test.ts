@@ -617,6 +617,64 @@ describe('doble: catálogo y sitio', () => {
     expect(await e.api.llamar('reservarSubida', { subidaId: id, productoId: 'cable-hdmi', tipo: 'foto', bytes: 10 })).toEqual(a);
     expect((await falla(e.api.llamar('reservarSubida', { subidaId: id, productoId: 'cable-hdmi', tipo: 'foto', bytes: 11 }))).detalle.codigo).toBe('conflicto');
   });
+  it('logo: solo adm, tope de 2 MiB, un solo logo vigente, quitar idempotente', async () => {
+    const adm = crearEntorno('adm');
+    const MIB = 1024 * 1024;
+    expect(await adm.api.llamar('leerLogo', {})).toBeNull();
+    expect((await falla(adm.api.llamar('reservarSubidaLogo', { subidaId: uuid(), bytes: 2 * MIB + 1 }))).detalle.codigo).toBe('limite');
+    expect((await falla(adm.api.llamar('reservarSubidaLogo', { subidaId: uuid(), bytes: 0 }))).detalle.codigo).toBe('entrada-invalida');
+    const primero = uuid();
+    const r = await adm.api.llamar('reservarSubidaLogo', { subidaId: primero, bytes: 2 * MIB });
+    expect(await adm.api.llamar('reservarSubidaLogo', { subidaId: primero, bytes: 2 * MIB })).toEqual(r);
+    expect((await falla(adm.api.llamar('reservarSubidaLogo', { subidaId: primero, bytes: 10 }))).detalle.codigo).toBe('conflicto');
+    await adm.almacen.subir(r.rutaOriginal, new Blob(['x']), () => undefined);
+    const medio = await adm.api.llamar('finalizarSubidaLogo', { subidaId: primero });
+    expect(medio).toMatchObject({ id: primero, tipo: 'logo', productoId: '_negocio' });
+    expect((await adm.api.llamar('finalizarSubidaLogo', { subidaId: primero })).id).toBe(primero);
+    const vigente = await adm.api.llamar('leerLogo', {});
+    expect(vigente?.medioId).toBe(primero);
+    expect(vigente?.versiones.map((v) => v.formato).sort()).toEqual(['png', 'webp']);
+    // El logo no es una foto de producto: no aparece entre sus medios y no cuenta contra su tope.
+    expect(await adm.api.llamar('listarMedios', { productoId: '_negocio' })).toEqual([]);
+    // Un logo nuevo reemplaza al vigente y la cuota se libera.
+    const segundo = uuid();
+    await adm.api.llamar('reservarSubidaLogo', { subidaId: segundo, bytes: 1000 });
+    await adm.api.llamar('finalizarSubidaLogo', { subidaId: segundo });
+    expect((await adm.api.llamar('leerLogo', {}))?.medioId).toBe(segundo);
+    expect(adm.api.estado.bytesOriginales).toBe(1000);
+    expect(await adm.api.llamar('quitarLogo', {})).toEqual({ quitado: true });
+    expect(await adm.api.llamar('quitarLogo', {})).toEqual({ quitado: false });
+    expect(await adm.api.llamar('leerLogo', {})).toBeNull();
+    expect(adm.api.estado.bytesOriginales).toBe(0);
+  });
+  it('logo: el disparador simulado lo resuelve y un rechazo lo deja rechazado sin logo', async () => {
+    const e = crearEntorno('adm');
+    const id = uuid();
+    await e.api.llamar('reservarSubidaLogo', { subidaId: id, bytes: 100 });
+    expect(await e.api.llamar('estadoSubidaLogo', { subidaId: id })).toEqual({ estado: 'reservada' });
+    await new Promise((x) => setTimeout(x, 30));
+    const listo = await e.api.llamar('estadoSubidaLogo', { subidaId: id });
+    expect(listo.estado).toBe('procesada');
+    expect(listo.medio).toMatchObject({ id, tipo: 'logo' });
+    e.api.estado.disparador.rechazo = 'El archivo no es una imagen JPG, PNG o WebP';
+    const malo = uuid();
+    await e.api.llamar('reservarSubidaLogo', { subidaId: malo, bytes: 100 });
+    await e.api.llamar('estadoSubidaLogo', { subidaId: malo });
+    await new Promise((x) => setTimeout(x, 30));
+    expect(await e.api.llamar('estadoSubidaLogo', { subidaId: malo })).toMatchObject({ estado: 'rechazada', motivo: 'El archivo no es una imagen JPG, PNG o WebP' });
+    expect((await e.api.llamar('leerLogo', {}))?.medioId).toBe(id);
+  });
+  it('logo: sup lo lee pero no lo sube ni lo quita; caj no lo ve', async () => {
+    const adm = crearEntorno('adm');
+    const id = uuid();
+    await adm.api.llamar('reservarSubidaLogo', { subidaId: id, bytes: 100 });
+    await adm.api.llamar('finalizarSubidaLogo', { subidaId: id });
+    const sup = crearEntorno('sup');
+    expect(await sup.api.llamar('leerLogo', {})).toBeNull();
+    expect((await falla(sup.api.llamar('reservarSubidaLogo', { subidaId: uuid(), bytes: 100 }))).codigoHttps).toBe('permission-denied');
+    expect((await falla(sup.api.llamar('quitarLogo', {}))).codigoHttps).toBe('permission-denied');
+    expect((await falla(crearEntorno('caj').api.llamar('leerLogo', {}))).codigoHttps).toBe('permission-denied');
+  });
   it('estadoSubida: el disparador simulado resuelve la subida unos milisegundos después; finalizarSubida queda como respaldo', async () => {
     const e = crearEntorno('sup');
     const reservar = (subidaId = uuid()) => e.api.llamar('reservarSubida', { subidaId, productoId: 'tv-55', tipo: 'foto', bytes: 100 });
