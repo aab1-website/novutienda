@@ -778,6 +778,31 @@ describe('configuración: avisos, motivos y cambios sin guardar', () => {
       expect((await e.api.llamar('leerPlantilla', {})).negocio.nombre).toBe('Negocio de ejemplo');
       expect(screen.queryByText(/son distintos/)).toBeNull();
     });
+    it('«Guardar plantilla» conserva los datos del negocio vigentes, no los cargados al abrir', async () => {
+      const e = crearEntorno('adm');
+      ver(e, h(PantallaConfiguracion, { sub: 'recibo' }));
+      const u = userEvent.setup();
+      await u.type(await screen.findByLabelText('Pie de página'), ' Fin.');
+      const pl = await e.api.llamar('leerPlantilla', {});
+      await e.api.llamar('guardarPlantilla', { plantilla: { ...pl, negocio: { ...pl.negocio, nombre: 'Nombre nuevo' } } });
+      await u.click(screen.getByRole('button', { name: 'Guardar plantilla' }));
+      await screen.findByText('Plantilla guardada.');
+      const g = await e.api.llamar('leerPlantilla', {});
+      expect(g.negocio.nombre).toBe('Nombre nuevo');
+      expect(g.pie).toContain('Fin.');
+    });
+    it('«Guardar plantilla» con el nombre vacío dice que se guarden primero los datos del negocio y no envía', async () => {
+      const e = crearEntorno('adm');
+      const pl = await e.api.llamar('leerPlantilla', {});
+      vi.spyOn(e.api, 'llamar').mockImplementation(((n: string) => n === 'leerPlantilla' ? Promise.resolve({ ...pl, negocio: { ...pl.negocio, nombre: '' } }) : Promise.resolve({})) as never);
+      ver(e, h(PantallaConfiguracion, { sub: 'recibo' }));
+      await screen.findByLabelText('Pie de página');
+      expect(screen.getByText('Guarde primero los Datos del negocio')).toBeTruthy();
+      const b = screen.getByRole('button', { name: 'Guardar plantilla' });
+      expect(b.getAttribute('aria-disabled')).toBe('true');
+      await userEvent.setup().click(b);
+      expect(e.api.llamadas.map((l) => l.nombre)).not.toContain('guardarPlantilla');
+    });
     it('sin diferencias no muestra el aviso de divergencia', async () => {
       const e = crearEntorno('adm');
       ver(e, h(PantallaConfiguracion, { sub: 'negocio' }));

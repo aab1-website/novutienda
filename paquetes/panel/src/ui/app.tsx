@@ -264,9 +264,16 @@ function Cabecera(p: PropsCabecera): JSX.Element {
     const alClicFuera = (e: MouseEvent): void => {
       if (e.target instanceof Node && !panel.current?.contains(e.target) && !boton.current?.contains(e.target)) setAbierto(false);
     };
+    // Al pasar a pantalla ancha el menú ya es la barra de siempre: se cierra y se sueltan los oyentes.
+    const ancho = typeof window.matchMedia === 'function' ? window.matchMedia('(min-width: 1024px)') : null;
+    const alCambiarAncho = (): void => {
+      if (ancho?.matches === true) setAbierto(false);
+    };
+    ancho?.addEventListener('change', alCambiarAncho);
     document.addEventListener('keydown', alTeclear);
     document.addEventListener('click', alClicFuera);
     return () => {
+      ancho?.removeEventListener('change', alCambiarAncho);
       document.removeEventListener('keydown', alTeclear);
       document.removeEventListener('click', alClicFuera);
     };

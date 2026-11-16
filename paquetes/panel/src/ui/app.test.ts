@@ -1,8 +1,8 @@
 // @vitest-environment jsdom
 import { h } from 'preact';
-import { cleanup, render, screen, waitFor, within } from '@testing-library/preact';
+import { act, cleanup, render, screen, waitFor, within } from '@testing-library/preact';
 import { userEvent } from '@testing-library/user-event';
-import { afterEach, beforeEach, describe, expect, it } from 'vitest';
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { crearEntorno } from '../ayuda-pruebas.js';
 import { CUENTAS_DOBLE, SesionDoble } from '../sesion/doble.js';
 import { ErrorApi } from '../api/errores.js';
@@ -250,6 +250,18 @@ describe('cabecera plegable, título y foco', () => {
       await u.click(screen.getByRole('link', { name: 'Mermas' }));
       await waitFor(() => expect(window.location.hash).toBe('#/mermas'));
       await waitFor(() => expect(boton.getAttribute('aria-expanded')).toBe('false'));
+    });
+    it('al pasar a pantalla ancha con el menú abierto se cierra y se sueltan los oyentes', async () => {
+      const oyentes = new Set<() => void>();
+      const mq = { matches: false, addEventListener: (_: string, f: () => void) => oyentes.add(f), removeEventListener: (_: string, f: () => void) => oyentes.delete(f) };
+      window.matchMedia = vi.fn(() => mq) as never;
+      const { boton } = await abrir();
+      expect(oyentes.size).toBe(1);
+      mq.matches = true;
+      act(() => oyentes.forEach((f) => f()));
+      await waitFor(() => expect(boton.getAttribute('aria-expanded')).toBe('false'));
+      expect(oyentes.size).toBe(0);
+      delete (window as { matchMedia?: unknown }).matchMedia;
     });
     it('al abrirlo no cambia la ruta ni duplica el menú', async () => {
       const { panel } = await abrir();

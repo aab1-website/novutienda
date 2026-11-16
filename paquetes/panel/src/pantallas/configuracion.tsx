@@ -211,6 +211,7 @@ function ConfigPosForm(): JSX.Element {
     const enviado = JSON.stringify([c, topes]);
     void accion.ejecutar(async () => {
       // Los datos del negocio y el logo se editan en su propia sección: se toman de lo guardado, no de lo cargado al abrir.
+      // Límite aceptado: entre releer y escribir puede colarse otro guardado, porque el servidor reemplaza el registro completo.
       const vigente = await api.llamar('leerConfigPos', {});
       const config: ConfigPos = { negocio: vigente.negocio, ...(vigente.logoUrl !== undefined ? { logoUrl: vigente.logoUrl } : {}), ...resto };
       await api.llamar('guardarConfigPos', { config });
@@ -282,16 +283,20 @@ function PlantillaForm(): JSX.Element {
     avisoGuardado.current = 0;
     setP(nueva);
   };
+  const sinNombre = n.nombre.trim() === '';
   const guardar = (e: Event): void => {
     e.preventDefault();
-    const plantilla: PlantillaRecibo = {
-      // El negocio y el logo se editan en «Datos del negocio»: aquí se conservan tal como están guardados.
-      negocio: n,
-      ...(p.logoUrl !== undefined ? { logoUrl: p.logoUrl } : {}), ...(opc(p.pie ?? '') ? { pie: opc(p.pie ?? '') as string } : {}),
-      ...(opc(p.politicaGarantia ?? '') ? { politicaGarantia: opc(p.politicaGarantia ?? '') as string } : {}), ...(opc(p.politicaCambios ?? '') ? { politicaCambios: opc(p.politicaCambios ?? '') as string } : {}),
-    };
+    if (sinNombre) return;
     const enviado = JSON.stringify(p);
     void accion.ejecutar(async () => {
+      // El negocio y el logo se editan en «Datos del negocio»: se toman de lo guardado ahora, no de lo cargado al abrir.
+      // Límite aceptado: entre releer y escribir puede colarse otro guardado, porque el servidor reemplaza el registro completo.
+      const vigente = await api.llamar('leerPlantilla', {});
+      const plantilla: PlantillaRecibo = {
+        negocio: vigente.negocio,
+        ...(vigente.logoUrl !== undefined ? { logoUrl: vigente.logoUrl } : {}), ...(opc(p.pie ?? '') ? { pie: opc(p.pie ?? '') as string } : {}),
+        ...(opc(p.politicaGarantia ?? '') ? { politicaGarantia: opc(p.politicaGarantia ?? '') as string } : {}), ...(opc(p.politicaCambios ?? '') ? { politicaCambios: opc(p.politicaCambios ?? '') as string } : {}),
+      };
       await api.llamar('guardarPlantilla', { plantilla });
       marcarGuardado();
       setBase(enviado);
@@ -306,7 +311,7 @@ function PlantillaForm(): JSX.Element {
         <Area etiqueta="Política de garantía" valor={p.politicaGarantia ?? ''} onInput={(v) => poner({ ...p, politicaGarantia: v })} />
         <Area etiqueta="Política de cambios" valor={p.politicaCambios ?? ''} onInput={(v) => poner({ ...p, politicaCambios: v })} />
         {accion.error && <Alerta>{accion.error}</Alerta>}
-        <Boton tipo="submit" ocupado={accion.ocupado}>Guardar plantilla</Boton>
+        <Boton tipo="submit" ocupado={accion.ocupado} motivo={sinNombre ? 'Guarde primero los Datos del negocio' : undefined}>Guardar plantilla</Boton>
       </form>
     </Seccion>
   );
