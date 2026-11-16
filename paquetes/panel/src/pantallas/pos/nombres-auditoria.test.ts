@@ -73,3 +73,16 @@ describe('supervisión: auditoría legible', () => {
     expect(await screen.findByText(/Se muestran los 100 registros más recientes y puede haber más/)).toBeTruthy();
   });
 });
+
+describe('supervisión: filtro por acción', () => {
+  it('con una acción elegida avisa que el filtro revisa solo los registros más recientes', async () => {
+    const e = crearEntorno('sup');
+    render(e.envolver(h(PantallaSupervision, { sub: 'auditoria' })));
+    const u = userEvent.setup();
+    await screen.findByRole('button', { name: 'Filtrar' });
+    expect(screen.queryByText(/últimos 1000/)).toBeNull();
+    await u.selectOptions(screen.getByLabelText('Acción'), 'Apertura de turno');
+    await u.click(screen.getByRole('button', { name: 'Filtrar' }));
+    expect(await screen.findByText(/últimos 1000/)).toBeTruthy();
+  });
+});

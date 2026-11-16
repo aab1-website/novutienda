@@ -161,6 +161,7 @@ function Auditoria(): JSX.Element {
       </form>
       {lista.cargando && <Cargando />}
       {lista.error && <ErrorCarga error={lista.error} reintentar={lista.recargar} />}
+      {'accion' in filtro && <Alerta tipo="info">Con una acción elegida el filtro revisa solo los registros más recientes (el servidor mira los últimos 1000): puede faltar alguno antiguo. Acote las fechas para ver menos y más reciente.</Alerta>}
       {lista.datos && (
         <Tabla
           titulo="Registro de auditoría"

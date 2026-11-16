@@ -7,7 +7,7 @@ import { ErrorApi } from '../../api/errores.js';
 import type { VentaPos } from '../../api/tipos.js';
 import { AHORA, crearEntorno, uuid, type Entorno } from '../../ayuda-pruebas.js';
 import { ProveedorGuardia } from '../../ui/guardia.js';
-import { conNombresDeFaltantes } from './venta-cobro.js';
+import { conNombresDeFaltantes, VentaCobro } from './venta-cobro.js';
 import { PantallaVenta } from './venta.js';
 
 afterEach(() => {
@@ -312,5 +312,102 @@ describe('V-07 y V-08: historial con fechas, búsqueda, corte, recibo y anulaci�
     expect(await screen.findByText('Anulación de A-000002 solicitada.')).toBeTruthy();
     await waitFor(() => expect(screen.queryByRole('dialog')).toBeNull());
     expect(await screen.findByText('Anulación solicitada')).toBeTruthy();
+  });
+});
+
+describe('cobro sin duplicar y espera acotada de la aprobación', () => {
+  it('si la venta se registró pero la respuesta no llegó, el reintento usa el mismo identificador y queda una sola venta', async () => {
+    const e = crearEntorno('caj');
+    await conTurno(e);
+    const original = e.api.llamar.bind(e.api);
+    let fallar = true;
+    (e.api as { llamar: unknown }).llamar = async (n: string, entrada: unknown) => {
+      const r = await original(n as never, entrada as never);
+      if (n === 'confirmarVenta' && fallar) {
+        fallar = false;
+        throw new ErrorApi('unavailable', 'sin red');
+      }
+      return r;
+    };
+    const u = userEvent.setup();
+    await u.click(await screen.findByRole('button', { name: 'Agregar Cable HDMI 2 m' }));
+    await u.click(boton('Cobrar'));
+    await u.click(await screen.findByRole('button', { name: 'Confirmar cobro' }));
+    await waitFor(() => expect(e.api.llamadas.filter((l) => l.nombre === 'confirmarVenta')).toHaveLength(1));
+    // Se vuelve al carrito y se cobra de nuevo: el identificador sigue siendo el del borrador.
+    await u.click(await screen.findByRole('button', { name: 'Volver al carrito' }));
+    await u.click(boton('Cobrar'));
+    await u.click(await screen.findByRole('button', { name: 'Confirmar cobro' }));
+    await screen.findByRole('heading', { name: 'Venta registrada' });
+    const ids = e.api.llamadas.filter((l) => l.nombre === 'confirmarVenta').map((l) => (l.entrada as { requestId: string }).requestId);
+    expect(ids).toHaveLength(2);
+    expect(ids[1]).toBe(ids[0]);
+    expect(await e.api.llamar('listarVentas', {})).toHaveLength(1);
+    // La venta siguiente estrena identificador.
+    await u.click(boton('Nueva venta'));
+    await u.click(await screen.findByRole('button', { name: 'Agregar Cable HDMI 2 m' }));
+    await u.click(boton('Cobrar'));
+    await u.click(await screen.findByRole('button', { name: 'Confirmar cobro' }));
+    await screen.findByRole('heading', { name: 'Venta registrada' });
+    const todos = e.api.llamadas.filter((l) => l.nombre === 'confirmarVenta').map((l) => (l.entrada as { requestId: string }).requestId);
+    expect(todos[2]).not.toBe(ids[0]);
+  });
+
+  const pedirDescuento = async (u: ReturnType<typeof userEvent.setup>): Promise<void> => {
+    await u.click(await screen.findByRole('button', { name: 'Agregar Cable HDMI 2 m' }));
+    await u.type(campo(/Descuento \(monto\)/), '10');
+    await u.type(campo(/Motivo del descuento/), 'Cliente frecuente');
+  };
+  const consultas = (e: Entorno): number => e.api.llamadas.filter((l) => l.nombre === 'listarAprobaciones').length;
+
+  it('una solicitud ajena o vieja no activa la consulta periódica y se ofrece «Volver a consultar»', async () => {
+    vi.useFakeTimers({ toFake: ['setInterval', 'clearInterval'] });
+    const e = crearEntorno('caj');
+    await e.api.llamar('abrirTurno', { turnoId: uuid(), apertura: { BOB: 10000 } });
+    await e.api.llamar('solicitarAprobacion', { aprobacionId: uuid(), solicitud: { tipo: 'descuento', moneda: 'BOB', monto: 1000, motivo: 'Vieja' } });
+    render(pantalla(e, 'terminal'));
+    await screen.findByRole('heading', { name: 'Productos' });
+    await pedirDescuento(userEvent.setup());
+    expect(await screen.findByText(/ya no se consulta sola/)).toBeTruthy();
+    const antes = consultas(e);
+    await vi.advanceTimersByTimeAsync(30_000);
+    expect(consultas(e)).toBe(antes);
+    await userEvent.setup().click(boton('Volver a consultar'));
+    await waitFor(() => expect(consultas(e)).toBe(antes + 1));
+  });
+
+  it('a los 10 minutos sin respuesta deja de consultar y ofrece «Volver a consultar», que reanuda', async () => {
+    vi.useFakeTimers({ toFake: ['setInterval', 'clearInterval'] });
+    const e = crearEntorno('caj');
+    await conTurno(e);
+    const u = userEvent.setup();
+    await pedirDescuento(u);
+    await u.click(await screen.findByRole('button', { name: 'Solicitar aprobación' }));
+    expect(await screen.findByText(/Esperando la aprobación/)).toBeTruthy();
+    await vi.advanceTimersByTimeAsync(600_000 + 4000);
+    expect(await screen.findByText(/ya no se consulta sola/)).toBeTruthy();
+    const antes = consultas(e);
+    await vi.advanceTimersByTimeAsync(60_000);
+    expect(consultas(e)).toBe(antes);
+    await u.click(boton('Volver a consultar'));
+    expect(await screen.findByText(/Esperando la aprobación/)).toBeTruthy();
+  });
+});
+
+describe('monto prellenado del cobro', () => {
+  it('sigue al total mientras no se edite y respeta lo escrito', async () => {
+    const e = crearEntorno('caj');
+    const config = await e.api.llamar('leerConfigPos', {});
+    const base = { mercado: 'BO', moneda: 'BOB', config, carrito: { mercado: 'BO', moneda: 'BOB', lineas: [], totalMostrado: 1000 }, aprobacionId: undefined, requestId: uuid() } as unknown as Parameters<typeof VentaCobro>[0]['datos'];
+    const montar = (total: number) => e.envolver(h(VentaCobro, { datos: { ...base, total }, volver: () => undefined, alVender: () => undefined }));
+    const r = render(montar(1000));
+    expect((campo(/Monto a aplicar/) as HTMLInputElement).value).toBe('10,00');
+    r.rerender(montar(2500));
+    await waitFor(() => expect((campo(/Monto a aplicar/) as HTMLInputElement).value).toBe('25,00'));
+    const u = userEvent.setup();
+    await u.clear(campo(/Monto a aplicar/));
+    await u.type(campo(/Monto a aplicar/), '7');
+    r.rerender(montar(3000));
+    expect((campo(/Monto a aplicar/) as HTMLInputElement).value).toBe('7');
   });
 });

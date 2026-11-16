@@ -95,7 +95,7 @@ export function VentaHistorial(): JSX.Element {
           columnas={[
             { id: 'recibo', titulo: 'Recibo', valor: numeroDe, encabezadoFila: true },
             { id: 'fecha', titulo: 'Fecha', valor: (v) => v.creadoEnMs, celda: (v) => fechaHora(v.creadoEnMs), ordenable: true },
-            { id: 'total', titulo: 'Total', valor: (v) => v.total, celda: (v) => formatearMonto(v.total, v.moneda), ordenable: true },
+            { id: 'total', titulo: 'Total', valor: (v) => `${v.moneda}-${String(v.total).padStart(15, '0')}`, celda: (v) => formatearMonto(v.total, v.moneda), ordenable: true },
             { id: 'estado', titulo: 'Estado', valor: estadoDe },
             { id: 'anulacion', titulo: 'Anulación', valor: (v) => (v.solicitudAnulacion && v.estado === 'confirmada' ? `Motivo: ${v.solicitudAnulacion.motivo}` : '') },
           ]}

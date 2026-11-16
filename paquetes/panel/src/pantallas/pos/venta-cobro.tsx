@@ -11,6 +11,49 @@ import { calcularPagos, NOMBRE_MEDIO, type FilaPago } from './pagos.js';
 
 /** Cada cuántos milisegundos se consulta una aprobación solicitada mientras sigue pendiente. */
 export const MS_SONDEO_APROBACION = 4000;
+/** Tope de la espera automática: 150 consultas de 4 s son 10 minutos; luego hay que pedir «Volver a consultar». */
+export const CONSULTAS_MAXIMAS_APROBACION = 150;
+
+/**
+ * Espera una solicitud que ESTA pantalla acaba de pedir (`solicitadaId`): cada 4 s mira solo la lista de pendientes para
+ * saber si sigue ahí. Se detiene al resolverse, al desmontar, al quedar sin id (carrito descartado) o a los 10 minutos.
+ * Una solicitud vieja o ajena nunca la activa.
+ */
+export function useEsperaAprobacion(solicitadaId: string | null, alResolverse: () => void): { consultando: boolean; agotada: boolean; reanudar: () => void } {
+  const { api } = useApp();
+  const [estado, setEstado] = useState<'consultando' | 'resuelta' | 'agotada'>('consultando');
+  const [ronda, setRonda] = useState(0);
+  const alRef = useRef(alResolverse);
+  alRef.current = alResolverse;
+  useEffect(() => {
+    if (solicitadaId === null) return undefined;
+    setEstado('consultando');
+    let vivo = true;
+    let consultas = 0;
+    const t = setInterval(() => {
+      consultas += 1;
+      if (consultas > CONSULTAS_MAXIMAS_APROBACION) {
+        clearInterval(t);
+        setEstado('agotada');
+        return;
+      }
+      api.llamar('listarAprobaciones', { estado: 'pendiente' }).then(
+        (p) => {
+          if (!vivo || p.some((a) => a.aprobacionId === solicitadaId)) return;
+          clearInterval(t);
+          setEstado('resuelta');
+          alRef.current();
+        },
+        () => undefined,
+      );
+    }, MS_SONDEO_APROBACION);
+    return () => {
+      vivo = false;
+      clearInterval(t);
+    };
+  }, [solicitadaId, ronda]);
+  return { consultando: solicitadaId !== null && estado === 'consultando', agotada: solicitadaId !== null && estado === 'agotada', reanudar: () => setRonda((n) => n + 1) };
+}
 
 export interface DatosCobro {
   mercado: string;
@@ -19,6 +62,8 @@ export interface DatosCobro {
   total: number;
   carrito: Carrito;
   aprobacionId: string | undefined;
+  /** Identificador del cobro: vive en el borrador del carrito; el mismo reintento no puede duplicar la venta. */
+  requestId: string;
   /** Nombres de lo ya cargado en el terminal, para completar un faltante de stock que el servidor trae sin nombre. */
   nombreProducto?: ((productoId: string) => string | undefined) | undefined;
   nombreAlmacen?: ((almacenId: string) => string | undefined) | undefined;
@@ -39,16 +84,18 @@ export function VentaCobro({ datos, volver, alVender }: { datos: DatosCobro; vol
   const { api, usuario } = useApp();
   const { moneda, total, config, carrito } = datos;
   const [filas, setFilas] = useState<FilaPago[]>([{ id: nuevoId(), medio: 'efectivo', monto: total > 0 ? centavosATexto(total) : '', recibido: '', referencia: '' }]);
-  const requestId = useRef(nuevoId());
+  const [montoEditado, setMontoEditado] = useState(false);
   const accion = useAccion();
   const solicitud = useAccion();
   const [aprobCredito, setAprobCredito] = useState('');
   const [solicitadaId, setSolicitadaId] = useState<string | null>(null);
-  // La aprobación del crédito se consulta sola solo mientras haya una solicitud pendiente.
-  const [sondeo, setSondeo] = useState<number | undefined>(undefined);
-  const aprobs = useCarga(() => api.llamar('listarAprobaciones', {}), [solicitadaId], sondeo);
-  const hayPendiente = (aprobs.datos ?? []).some((a) => a.tipo === 'credito' && a.estado === 'pendiente');
-  useEffect(() => setSondeo(hayPendiente ? MS_SONDEO_APROBACION : undefined), [hayPendiente]);
+  const aprobs = useCarga(() => api.llamar('listarAprobaciones', {}), [solicitadaId]);
+  const espera = useEsperaAprobacion(solicitadaId, aprobs.recargar);
+
+  // El monto de la primera fila sigue al total mientras la persona no lo haya escrito.
+  useEffect(() => {
+    if (!montoEditado) setFilas((fs) => fs.map((f, i) => (i === 0 ? { ...f, monto: total > 0 ? centavosATexto(total) : '' } : f)));
+  }, [total, montoEditado]);
 
   const { pagos, restante, cambioTotal, errores } = calcularPagos(filas, total, moneda);
   const credito = filas.find((f) => f.medio === 'credito');
@@ -73,14 +120,17 @@ export function VentaCobro({ datos, volver, alVender }: { datos: DatosCobro; vol
     return 'Agregue un pago.';
   })();
 
-  const actualizar = (id: string, cambio: Partial<FilaPago>): void => setFilas(filas.map((f) => (f.id === id ? { ...f, ...cambio } : f)));
+  const actualizar = (id: string, cambio: Partial<FilaPago>): void => {
+    if (cambio.monto !== undefined && filas[0]?.id === id) setMontoEditado(true);
+    setFilas(filas.map((f) => (f.id === id ? { ...f, ...cambio } : f)));
+  };
   const agregar = (): void => setFilas([...filas, { id: nuevoId(), medio: config.mediosHabilitados.find((m) => !filas.some((f) => f.medio === m)) ?? 'efectivo', monto: restante > 0 ? String(restante / 100).replace('.', ',') : '', recibido: '', referencia: '' }]);
 
   const cobrar = (): void => {
     void accion.ejecutar(async () => {
       try {
         const r = await api.llamar('confirmarVenta', {
-          requestId: requestId.current, carrito, pagos,
+          requestId: datos.requestId, carrito, pagos,
           ...(datos.aprobacionId !== undefined ? { aprobacionId: datos.aprobacionId } : {}),
           ...(necesitaAprobCredito ? { aprobacionCreditoId: aprobCredito } : {}),
         });
@@ -142,7 +192,14 @@ export function VentaCobro({ datos, volver, alVender }: { datos: DatosCobro; vol
               <Selector etiqueta="Aprobación del crédito" valor={aprobCredito} onCambio={setAprobCredito} opciones={[{ valor: '', texto: 'Elija una aprobación' }, ...aprobadasCredito.map((a) => ({ valor: a.aprobacionId, texto: `Hasta ${formatearMonto(a.monto, a.moneda)}` }))]} />
             ) : pendienteCredito ? (
               <>
-                <Alerta tipo="info">Esperando la aprobación del supervisor: se consulta sola cada pocos segundos.</Alerta>
+                {espera.consultando && pendienteCredito.aprobacionId === solicitadaId ? (
+                  <Alerta tipo="info">Esperando la aprobación del supervisor: se consulta sola cada pocos segundos.</Alerta>
+                ) : (
+                  <>
+                    <Alerta tipo="info">Hay una solicitud pendiente y ya no se consulta sola.</Alerta>
+                    <Boton chico variante="secundario" onClick={() => { aprobs.recargar(); espera.reanudar(); }}>Volver a consultar</Boton>
+                  </>
+                )}
               </>
             ) : (
               <Boton chico variante="secundario" onClick={pedirCredito} ocupado={solicitud.ocupado} deshabilitado={deudor === '' || montoCredito <= 0}>

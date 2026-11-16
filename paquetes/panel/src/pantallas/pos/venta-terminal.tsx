@@ -14,7 +14,7 @@ import { AccionesRecibo, ReciboVista } from '../recibos/recibo-vista.js';
 import { formatearMonto, textoACentavos } from '../../util/dinero.js';
 import { cotizacionDeMercado, hayReglaDeRedondeo, monedasDeCobro, precioDeCobro } from './arqueo.js';
 import { SerieEscrita } from './serie-escrita.js';
-import { MS_SONDEO_APROBACION, VentaCobro, type DatosCobro } from './venta-cobro.js';
+import { useEsperaAprobacion, VentaCobro, type DatosCobro } from './venta-cobro.js';
 import './venta.css';
 
 /** El recibo se consulta cada 3 s, hasta 30 s, antes de ofrecer «Reintentar». */
@@ -88,6 +88,9 @@ interface BorradorVenta {
   aprobacionId: string;
   cliente: string;
   telefono: string;
+  /** Identificador del cobro: se renueva solo al descartar el borrador (venta confirmada o «Nueva venta»). */
+  requestId: string;
+  solicitadaId: string | null;
 }
 
 export function VentaTerminal({ turno, alCambiar }: { turno: TurnoPos; alCambiar: () => void }): JSX.Element {
@@ -122,6 +125,8 @@ function TerminalLista({ turno, alCambiar, mercados }: { turno: TurnoPos; alCamb
     aprobacionId: '',
     cliente: '',
     telefono: '',
+    requestId: nuevoId(),
+    solicitadaId: null,
   });
   const { mercadoId, moneda, lineas, descTexto, descMotivo, aprobacionId, cliente, telefono } = borrador.valor;
   const cambiar = (c: Partial<BorradorVenta>): void => borrador.poner((p) => ({ ...p, ...c }));
@@ -138,12 +143,11 @@ function TerminalLista({ turno, alCambiar, mercados }: { turno: TurnoPos; alCamb
   const [recibo, setRecibo] = useState<{ recibo: Recibo | null; ventaId: string } | null>(null);
   const solicitud = useAccion();
   const avisos = useAvisos();
-  const [solicitadaId, setSolicitadaId] = useState<string | null>(null);
-  // La aprobación se consulta sola solo mientras haya una solicitud de descuento pendiente.
-  const [sondeo, setSondeo] = useState<number | undefined>(undefined);
-  const aprobs = useCarga(() => api.llamar('listarAprobaciones', {}), [solicitadaId, paso], sondeo);
-  const hayPendiente = (aprobs.datos ?? []).some((a) => a.tipo === 'descuento' && a.estado === 'pendiente');
-  useEffect(() => setSondeo(hayPendiente ? MS_SONDEO_APROBACION : undefined), [hayPendiente]);
+  const solicitadaId = borrador.valor.solicitadaId;
+  const setSolicitadaId = (v: string | null): void => cambiar({ solicitadaId: v });
+  const aprobs = useCarga(() => api.llamar('listarAprobaciones', {}), [solicitadaId, paso]);
+  // Solo se espera la solicitud que esta pantalla acaba de pedir; vive en el borrador y se va con él.
+  const espera = useEsperaAprobacion(solicitadaId, aprobs.recargar);
   const refCarrito = useRef<HTMLDivElement>(null);
 
   // La marca viaja como propiedad de la lista: se lee antes de filtrar o mapear.
@@ -251,6 +255,7 @@ function TerminalLista({ turno, alCambiar, mercados }: { turno: TurnoPos; alCamb
         totalMostrado: total,
       },
       aprobacionId: excede ? aprobacionId : undefined,
+      requestId: borrador.valor.requestId,
       nombreProducto: (id) => porId.get(id)?.nombre,
       nombreAlmacen: (id) => ALMACENES.find((a) => a.valor === id)?.texto,
     };
@@ -372,7 +377,14 @@ function TerminalLista({ turno, alCambiar, mercados }: { turno: TurnoPos; alCamb
                   opciones={[{ valor: '', texto: 'Elija una aprobación' }, ...aprobadas.map((a) => ({ valor: a.aprobacionId, texto: `Hasta ${formatearMonto(a.monto, a.moneda)} · ${a.motivo}` }))]}
                 />
               ) : pendiente ? (
+                espera.consultando && pendiente.aprobacionId === solicitadaId ? (
                 <Alerta tipo="info">Esperando la aprobación del supervisor: se consulta sola cada pocos segundos.</Alerta>
+              ) : (
+                <>
+                  <Alerta tipo="info">Hay una solicitud pendiente y ya no se consulta sola.</Alerta>
+                  <Boton chico variante="secundario" onClick={() => { aprobs.recargar(); espera.reanudar(); }}>Volver a consultar</Boton>
+                </>
+              )
               ) : (
                 <Boton chico variante="secundario" onClick={pedirAprobacion} ocupado={solicitud.ocupado}>
                   Solicitar aprobación
