@@ -13,10 +13,11 @@ interface Cuenta {
   disabled: boolean;
   providerData: { providerId: string }[];
   customClaims?: Record<string, unknown>;
-  metadata: { lastSignInTime?: string };
+  metadata: { creationTime?: string; lastSignInTime?: string };
 }
 
 const tok = (t: Record<string, string>, proveedor = 'password') => ({ uid: 'x', firebase: { sign_in_provider: proveedor }, pl: { t, v: 1 } });
+const CREACION = 'Mon, 16 Nov 2026 15:00:00 GMT';
 const pw = { providerData: [{ providerId: 'password' }], emailVerified: true, disabled: false, metadata: {} };
 
 function montaje(opciones: { usados?: number } = {}) {
@@ -59,7 +60,7 @@ function montaje(opciones: { usados?: number } = {}) {
     createUser: async (p: { email: string; password: string; emailVerified: boolean }) => {
       registro.push(`crear:${p.password.length}:${String(p.emailVerified)}`);
       const uid = `nuevo${String((secuencia += 1))}`;
-      return poner(uid, { email: p.email, emailVerified: p.emailVerified, providerData: [{ providerId: 'password' }] });
+      return poner(uid, { email: p.email, emailVerified: p.emailVerified, providerData: [{ providerId: 'password' }], metadata: { creationTime: CREACION, lastSignInTime: CREACION } }); // como Auth: sin uso, el último ingreso es la creación
     },
     deleteUser: async (uid: string) => {
       cuentas.delete(uid);
@@ -192,7 +193,7 @@ describe('anularInvitacion y cuentas caducadas', () => {
       await m.llamar(c, 'invitarUsuario', { correo, rol: 'caj' });
       const cuenta = [...m.cuentas.values()].find((x) => x.email === correo);
       if (cuenta === undefined) throw new Error('no se creó');
-      if (estado === 'sesion') cuenta.metadata = { lastSignInTime: 'ayer' };
+      if (estado === 'sesion') cuenta.metadata = { creationTime: CREACION, lastSignInTime: 'Mon, 16 Nov 2026 16:00:00 GMT' };
       if (estado === 'rol') cuenta.customClaims = { pl: { t: { t2: 'caj' }, v: 1 } };
       if (estado === 'invitacion') m.db.poner(`tenants/t2/miembros/${cuenta.uid}`, { estado: 'invitado', uid: cuenta.uid, rolReservado: 'caj', invitadoPor: 'otro', invitadoEnMs: 1, venceEnMs: 99_999_999_999, cuentaCreada: false });
       await m.llamar(c, 'anularInvitacion', { uid: cuenta.uid });

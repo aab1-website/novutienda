@@ -65,7 +65,12 @@ async function borrarCuentaDeInvitacion(e: Entorno, uid: string): Promise<boolea
   try {
     const libre = async (): Promise<boolean> => {
       const u = await e.auth.getUser(uid);
-      if (u.metadata.lastSignInTime || u.metadata.lastRefreshTime) return false;
+      // Auth marca `lastSignInTime` igual a `creationTime` en una cuenta creada por el Admin SDK que nadie usó: «nunca inició sesión»
+      // es no haber renovado el token y no tener un ingreso posterior a la creación. Un valor ausente o ilegible se trata como uso.
+      if (u.metadata.lastRefreshTime) return false;
+      const ingreso = u.metadata.lastSignInTime ? Date.parse(u.metadata.lastSignInTime) : Number.NaN;
+      if (Number.isNaN(ingreso) && u.metadata.lastSignInTime) return false;
+      if (!Number.isNaN(ingreso) && ingreso !== Date.parse(u.metadata.creationTime)) return false;
       if (u.customClaims !== undefined && Object.keys(u.customClaims).length > 0) return false; // alguna membresía o permiso: se conserva
       return (await puertos(e).indiceInvitaciones.tenantsDe(uid)).length === 0;
     };
