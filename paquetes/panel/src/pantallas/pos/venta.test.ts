@@ -413,3 +413,71 @@ describe('venta: mercados y monedas declarados', () => {
     expect(screen.queryByRole('button', { name: 'Abrir turno' })).toBeNull();
   });
 });
+
+describe('cierre y supervisión: orden de monedas declarado por el comercio', () => {
+  const APERTURA = { ARS: 100000, USD: 2000, BOB: 10000 };
+  const leyendas = (): string[] => [...document.querySelectorAll('legend')].map((l) => l.textContent ?? '');
+  const filas = (tabla: HTMLElement): string[] => [...tabla.querySelectorAll('tbody th')].map((t) => t.textContent ?? '');
+
+  it('el cierre de turno del comercio de referencia lista bolivianos, dólares, pesos, aunque la apertura venga en otro orden', async () => {
+    const e = crearEntorno('caj');
+    await e.api.llamar('abrirTurno', { turnoId: uuid(), apertura: APERTURA });
+    ver(e, 'cierre');
+    await screen.findByRole('heading', { name: 'Cierre de turno' });
+    expect(leyendas()).toEqual(['BOB', 'USD', 'ARS']);
+    const u = userEvent.setup();
+    await u.type(campo(/Efectivo contado en BOB/), '100');
+    await u.type(campo(/Efectivo contado en USD/), '20');
+    await u.type(campo(/Efectivo contado en ARS/), '900');
+    expect(document.querySelector('[data-prueba="diferencia-ARS"]')?.textContent).toContain('(faltante)');
+    await u.click(screen.getByRole('button', { name: 'Cerrar turno' }));
+    await u.click(await screen.findByRole('button', { name: 'Sí, cerrar turno' }));
+    await screen.findByRole('heading', { name: 'Turno cerrado' });
+    expect(filas(screen.getByRole('table', { name: 'Arqueo del turno cerrado' }))).toEqual(['BOB', 'USD', 'ARS']);
+  });
+
+  it('la supervisión en vivo del comercio de referencia muestra el mismo orden y los mismos montos que el cierre', async () => {
+    const e = crearEntorno('caj');
+    await e.api.llamar('abrirTurno', { turnoId: uuid(), apertura: APERTURA });
+    e.como('adm');
+    render(e.envolver(h(PantallaSupervision, { sub: 'vivo' })));
+    const tabla = await screen.findByRole('table', { name: 'Totales en vivo del turno' });
+    expect(filas(tabla)).toEqual(['BOB', 'USD', 'ARS']);
+    const celdas = [...tabla.querySelectorAll('tbody tr')].map((f) => f.querySelector('td')?.textContent);
+    expect(celdas).toEqual(['Bs 100,00', 'USD 20,00', 'ARS 1.000,00']);
+    cleanup();
+    e.como('caj');
+    ver(e, 'cierre');
+    await screen.findByRole('heading', { name: 'Cierre de turno' });
+    const esperados = [...document.querySelectorAll('fieldset')].map((f) => f.querySelectorAll('dd')[1]?.textContent);
+    expect(esperados).toEqual(celdas);
+  });
+
+  it('un comercio con otro orden declarado lo ve igual en cierre y supervisión', async () => {
+    const comercial = { ...UN_MERCADO, monedasCaja: ['USD', 'BOB'] };
+    const e = crearEntorno('caj', undefined, { comercial });
+    await e.api.llamar('abrirTurno', { turnoId: uuid(), apertura: { BOB: 10000, USD: 2000 } });
+    ver(e, 'cierre');
+    await screen.findByRole('heading', { name: 'Cierre de turno' });
+    expect(leyendas()).toEqual(['USD', 'BOB']);
+    cleanup();
+    e.como('adm');
+    render(e.envolver(h(PantallaSupervision, { sub: 'vivo' })));
+    const tabla = await screen.findByRole('table', { name: 'Totales en vivo del turno' });
+    expect(filas(tabla)).toEqual(['USD', 'BOB']);
+  });
+
+  it('un comercio de una sola moneda ve solo esa moneda en cierre y supervisión', async () => {
+    const e = crearEntorno('caj', undefined, { comercial: UN_MERCADO });
+    await e.api.llamar('abrirTurno', { turnoId: uuid(), apertura: { BOB: 10000 } });
+    ver(e, 'cierre');
+    await screen.findByRole('heading', { name: 'Cierre de turno' });
+    expect(leyendas()).toEqual(['BOB']);
+    cleanup();
+    e.como('adm');
+    render(e.envolver(h(PantallaSupervision, { sub: 'vivo' })));
+    const tabla = await screen.findByRole('table', { name: 'Totales en vivo del turno' });
+    expect(filas(tabla)).toEqual(['BOB']);
+    expect(tabla.textContent).toContain('Bs 100,00');
+  });
+});
