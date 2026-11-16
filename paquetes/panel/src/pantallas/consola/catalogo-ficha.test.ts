@@ -383,7 +383,7 @@ describe('panel lateral de la ficha', () => {
     // Publicar sin descripción también se marca, en su campo.
     await u.clear(slug);
     await u.type(slug, 'tv-55');
-    await u.selectOptions(screen.getByLabelText('Estado'), 'publicado');
+    await u.selectOptions(screen.getByLabelText('En el sitio'), 'publicado');
     await u.click(screen.getByRole('button', { name: 'Guardar' }));
     expect(await screen.findByText(/Para publicar la página, escriba la descripción/)).toBeTruthy();
     await waitFor(() => expect(document.activeElement).toBe(screen.getByLabelText(/Descripción del producto/)));
@@ -501,5 +501,22 @@ describe('«Qué falta» por producto', () => {
     });
     expect(aviso.textContent).toMatch(/cambio.? sin publicar/);
     expect(within(aviso as HTMLElement).getByRole('link', { name: 'Ver el Tablero' }).getAttribute('href')).toBe('#/catalogo/tablero');
+  });
+});
+
+describe('estado de la página en el sitio', () => {
+  it('el campo se llama «En el sitio» y sus textos no usan el verbo de publicar el sitio; el valor guardado no cambia', async () => {
+    const e = crearEntorno('sup');
+    ver(e);
+    const u = userEvent.setup();
+    await abrir(u, 'Editar página', TV);
+    const campo = (await screen.findByLabelText('En el sitio')) as HTMLSelectElement;
+    expect(screen.queryByLabelText('Estado')).toBeNull();
+    expect(Array.from(campo.options).map((o) => [o.value, o.textContent])).toEqual([['borrador', 'Borrador'], ['publicado', 'Visible en el sitio'], ['oculto', 'Oculto']]);
+    await u.type(screen.getByLabelText('Descripción del producto'), 'Pantalla grande');
+    await u.selectOptions(campo, 'publicado');
+    await u.click(screen.getByRole('button', { name: 'Guardar' }));
+    await waitFor(() => expect(guardados(e)).toBe(1));
+    expect((await e.api.llamar('listarFichas', {}))[0]?.ficha.estado).toBe('publicado');
   });
 });

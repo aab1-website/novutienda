@@ -43,7 +43,7 @@ function Tablero(): JSX.Element {
         <dl class="datos">
           <Dato etiqueta="Cambios sin publicar"><span data-prueba="cambios">{d.cambiosSinPublicar}</span></Dato>
           <Dato etiqueta="Último cambio">{fechaHora(d.ultimoCambioEn)}</Dato>
-          <Dato etiqueta="Publicado">{d.publicadoEn === null ? 'Todavía no se publicó' : `${fechaHora(d.publicadoEn)} (versión ${d.versionPublicada})`}</Dato>
+          <Dato etiqueta="Última publicación del sitio">{d.publicadoEn === null ? 'Todavía no se publicó' : `${fechaHora(d.publicadoEn)} (versión ${d.versionPublicada})`}</Dato>
         </dl>
         {usuario.rol === 'adm' ? (
           <BotonConfirmado texto="Publicar el sitio" pregunta="¿Publicar los cambios? El sitio se reconstruye en unos minutos." textoConfirmar="Sí, publicar" deshabilitado={accion.ocupado || d.cambiosSinPublicar === 0} onConfirmar={() => void accion.ejecutar(async () => { const r = await api.llamar('publicarSitio', {}); setMsg(`Publicado: versión ${r.version}, ${r.productos} productos.${r.advertencias.length ? ` Avisos: ${r.advertencias.join(' ')}` : ''}`); t.recargar(); })} />

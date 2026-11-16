@@ -63,3 +63,13 @@ describe('catálogo: mercados declarados', () => {
     expect(screen.queryByText(/BO:|AR:/)).toBeNull();
   });
 });
+
+describe('catálogo: tablero', () => {
+  it('la fecha de publicación se llama «Última publicación del sitio»', async () => {
+    const e = crearEntorno('adm');
+    render(e.envolver(h(PantallaCatalogo, { sub: 'tablero' })));
+    expect(await screen.findByText('Última publicación del sitio')).toBeTruthy();
+    expect(screen.getByText('Todavía no se publicó')).toBeTruthy();
+    expect(screen.queryByText('Publicado')).toBeNull();
+  });
+});

@@ -16,7 +16,7 @@ import { claveAlt, revisarFicha, TOPES_FICHA } from './ficha-revision.js';
 import { cumpleFiltro, siguientePaso, textoCambiosSinPublicar, textoQueFalta } from './pasos-ficha.js';
 import { useSubidas, type Subida } from './subidas-ficha.js';
 
-const ESTADOS: { valor: EstadoFicha; texto: string }[] = [{ valor: 'borrador', texto: 'Borrador' }, { valor: 'publicado', texto: 'Publicado' }, { valor: 'oculto', texto: 'Oculto' }];
+const ESTADOS: { valor: EstadoFicha; texto: string }[] = [{ valor: 'borrador', texto: 'Borrador' }, { valor: 'publicado', texto: 'Visible en el sitio' }, { valor: 'oculto', texto: 'Oculto' }];
 const slugDe = (t: string): string => t.normalize('NFD').replace(/[̀-ͯ]/g, '').toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/^-+|-+$/g, '');
 const ACEPTA_FOTO = 'image/jpeg,image/png,image/webp,image/heic,image/heif,.heic,.heif';
 const ACEPTA_VIDEO = 'video/mp4,video/x-m4v,video/quicktime,video/webm,.m4v';
@@ -353,7 +353,7 @@ function PanelFicha({ producto, modo, alCerrar, alCerrarEnfocar }: PropsPanel): 
         <section class="ficha-bloque ficha-textos" aria-labelledby="ficha-textos-titulo">
           <h3 id="ficha-textos-titulo">Textos de la página</h3>
           <Campo etiqueta="Dirección de la página" valor={f.slug} tope={TOPES_FICHA.slugMax} requerido error={errores['slug']} ayuda="Minúsculas, números y guiones. Ejemplo: televisor-55." onInput={(v) => { setErrorSlug(null); cambiar({ slug: v }); }} />
-          <Selector etiqueta="Estado" valor={f.estado} onCambio={(v) => cambiar({ estado: v as EstadoFicha })} opciones={ESTADOS} />
+          <Selector etiqueta="En el sitio" valor={f.estado} onCambio={(v) => cambiar({ estado: v as EstadoFicha })} opciones={ESTADOS} />
           <Campo etiqueta="Garantía (texto)" valor={f.garantia} tope={TOPES_FICHA.garantia} error={errores['garantia']} onInput={(v) => cambiar({ garantia: v })} />
           <Area etiqueta="Descripción del producto" valor={f.descripcion} filas={5} tope={TOPES_FICHA.descripcion} error={errores['descripcion']} onInput={(v) => cambiar({ descripcion: v })} />
           <Campo etiqueta="Título para buscadores" valor={f.seo.titulo} tope={TOPES_FICHA.seoTitulo} error={errores['seo.titulo']} onInput={(v) => cambiar({ seo: { ...f.seo, titulo: v } })} />
