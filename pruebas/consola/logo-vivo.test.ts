@@ -23,6 +23,7 @@ describe('logo del negocio en lo publicado (logo vivo)', () => {
   const png = (marca: number): Uint8Array => { const b = new Uint8Array(PNG); b[100] = marca; return b; };
 
   async function subirLogo(bytes: Uint8Array): Promise<string> {
+    proc.sal = String(bytes[100]); // cada logo (por su marca) produce versiones propias: no comparten rutas
     n += 1;
     const subidaId = `logov-${String(n).padStart(5, '0')}`;
     const r = await reservarSubida(deps(), { tenantId: T, actor: adm, subidaId, productoId: ID_NEGOCIO, tipo: 'logo', bytes: bytes.length });
@@ -209,6 +210,63 @@ describe('logo del negocio en lo publicado (logo vivo)', () => {
       reloj.ms += LIMITES_CONSOLA.esperaBorradoLogoMs;
       await limpiarSubidas({ ...deps(), consulta: new ConsultaDoble(db) }, T);
       for (const r of vigente) expect(almacen.objetos.has(r)).toBe(true);
+    });
+    it('la cola de borrando: la subida diferida vence a la hora de borrado y, mientras no toca, no se toca el almacén ni cuenta', async () => {
+      await publicable();
+      await subirLogo(png(1));
+      const idA = (db.dato(`tenants/${T}/sitio/logo`) as { medioId: string }).medioId;
+      await publicarSitio(dp(), { tenantId: T, actor: adm });
+      await subirLogo(png(2));
+      const sub = db.dato(`tenants/${T}/subidas/${idA}`) as Record<string, unknown>;
+      expect(sub['estado']).toBe('borrando');
+      expect(sub['venceEn']).toBe(reloj.ms + LIMITES_CONSOLA.esperaBorradoLogoMs);
+      expect(sub['borrarDesde']).toBe(reloj.ms + LIMITES_CONSOLA.esperaBorradoLogoMs);
+      expect(sub['rutas']).toEqual([]);
+      const original = almacen.borrar.bind(almacen);
+      let llamadas = 0;
+      almacen.borrar = async (r) => { llamadas += 1; return original(r); };
+      almacen.borrarPrefijo = async () => { llamadas += 1; };
+      expect(await limpiarSubidas({ ...deps(), consulta: new ConsultaDoble(db) }, T)).toEqual({ vencidas: 0, reintentadas: 0 });
+      expect(llamadas).toBe(0);
+      reloj.ms += LIMITES_CONSOLA.esperaBorradoLogoMs;
+      expect(await limpiarSubidas({ ...deps(), consulta: new ConsultaDoble(db) }, T)).toEqual({ vencidas: 0, reintentadas: 1 });
+      expect(db.dato(`tenants/${T}/subidas/${idA}`)).toBeUndefined();
+    });
+    it('intercalación: una limpieza que corre mientras se vuelve a subir el mismo logo no borra sus rutas', async () => {
+      await publicable();
+      await subirLogo(png(1)); // A
+      await publicarSitio(dp(), { tenantId: T, actor: adm });
+      const idA = (db.dato(`tenants/${T}/sitio/logo`) as { medioId: string }).medioId;
+      const rutasA = (sitio()?.['logo'] as { versiones: { ruta: string }[] }).versiones.map((v) => v.ruta);
+      await subirLogo(png(2)); // B: A queda diferido
+      expect(db.dato(`tenants/${T}/subidas/${idA}`)?.['estado']).toBe('borrando');
+      // Ya toca borrar A (la espera venció) y llega la subida de A otra vez; la limpieza corre justo después de procesar y antes del commit.
+      db.poner(`tenants/${T}/subidas/${idA}`, { ...db.dato(`tenants/${T}/subidas/${idA}`), borrarDesde: 0, venceEn: 0 });
+      proc.despuesDeProcesar = async () => {
+        proc.despuesDeProcesar = undefined;
+        await limpiarSubidas({ ...deps(), consulta: new ConsultaDoble(db) }, T);
+        for (const r of rutasA) expect(almacen.objetos.has(r)).toBe(true); // bloqueada: hay un logo en subida
+      };
+      await subirLogo(png(1)); // A de nuevo (mismas rutas con hash)
+      const vigentes = (sitio()?.['logo'] as { versiones: { ruta: string }[] }).versiones.map((v) => v.ruta);
+      expect(vigentes.sort()).toEqual([...rutasA].sort());
+      // La misma transacción que confirmó el logo nuevo sacó esas rutas de lo pendiente: ninguna pasada posterior las borra.
+      expect((db.dato(`tenants/${T}/subidas/${idA}`)?.['rutasDiferidas'] ?? []) as string[]).toEqual([]);
+      await limpiarSubidas({ ...deps(), consulta: new ConsultaDoble(db) }, T);
+      for (const r of vigentes) expect(almacen.objetos.has(r)).toBe(true);
+      expect(db.dato(`tenants/${T}/subidas/${idA}`)).toBeUndefined(); // A quedó cerrada sin borrar nada; solo B espera sus 24 h
+    });
+    it('sin intercalación pero con el nuevo logo ya confirmado: la lectura del vigente también protege lo compartido', async () => {
+      await publicable();
+      await subirLogo(png(1));
+      const idA = (db.dato(`tenants/${T}/sitio/logo`) as { medioId: string }).medioId;
+      await subirLogo(png(2));
+      db.poner(`tenants/${T}/sitio/logoDiferidas`, { ids: [] }); // índice perdido: queda la protección por lectura del vigente
+      await subirLogo(png(1));
+      reloj.ms += LIMITES_CONSOLA.esperaBorradoLogoMs;
+      await limpiarSubidas({ ...deps(), consulta: new ConsultaDoble(db) }, T);
+      for (const v of (db.dato(`tenants/${T}/sitio/logo`) as { versiones: { ruta: string }[] }).versiones) expect(almacen.objetos.has(v.ruta)).toBe(true);
+      expect(idA).toBeDefined();
     });
     it('si falla el borrado del logo anterior, lo publicado ya apunta al nuevo (y el anterior queda para limpiarSubidas)', async () => {
       await publicable();

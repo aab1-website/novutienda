@@ -1,5 +1,5 @@
 import type { TransaccionIdentidad } from '@novutienda/nucleo';
-import { decidirReconstruccion } from './publicar.js';
+import { avanzarPublicadoVivo } from './publicar.js';
 import type { DisparadorSitio, Reloj } from './puertos.js';
 import { rutaPublicado } from './rutas.js';
 import { esObjeto } from './validar.js';
@@ -52,18 +52,14 @@ export function escribirLogoVivo(
   const { estado, sitio } = lectura;
   if (estado === undefined || sitio === undefined) return { aplicado: false, programar: null };
   const ahora = reloj.ahora();
-  const rec = esObjeto(estado['reconstruccion']) ? estado['reconstruccion'] : {};
-  const previaPara = typeof rec['programadaPara'] === 'number' ? rec['programadaPara'] : null;
-  const decision = decidirReconstruccion({ hayPublicacion: true, programadaPara: previaPara }, ahora, 'publicacion');
-  const programadaPara = decision.accion === 'programar' || decision.accion === 'esperar' ? decision.para : previaPara;
-  const version = (typeof estado['version'] === 'number' ? estado['version'] : 0) + 1;
+  const { version, reconstruccion, programar } = avanzarPublicadoVivo(estado, ahora);
   const sinLogo: Record<string, unknown> = { ...sitio };
   delete sinLogo['logo'];
   tx.set(rutaPublicado(t, 'sitio'), { ...sinLogo, version, ...(logo === undefined ? {} : { logo }) });
   tx.set(rutaPublicado(t, 'estado'), {
-    ...estado, version, logoVivoEn: new Date(ahora).toISOString(), reconstruccion: { ...rec, programadaPara },
+    ...estado, version, logoVivoEn: new Date(ahora).toISOString(), reconstruccion,
   });
-  return { aplicado: true, programar: decision.accion === 'programar' ? decision.para : null };
+  return { aplicado: true, programar };
 }
 
 export async function agendarLogoVivo(disparador: DisparadorSitio | undefined, t: string, para: number | null): Promise<void> {

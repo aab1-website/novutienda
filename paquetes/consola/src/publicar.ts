@@ -73,6 +73,25 @@ export function decidirReconstruccion(
   return p > ahora ? { accion: 'esperar', para: p } : { accion: 'reconstruir' };
 }
 
+/**
+ * Cambio «vivo» de lo publicado (precio, logo): calcula la versión siguiente (+1) y agenda la reconstrucción como una publicación
+ * (ventana de 10 minutos; con una hora ya vencida la decisión es «esperar»: reconstruir es siempre cosa del temporizador).
+ * Compartida por el precio vivo y el logo vivo. `programar` es la hora a pasar a `disparador.programar` tras el commit, solo si
+ * esta transacción fue la primera del grupo.
+ */
+export function avanzarPublicadoVivo(
+  estadoPublicado: Readonly<Record<string, unknown>>, ahora: number,
+): { readonly version: number; readonly reconstruccion: Record<string, unknown>; readonly decision: DecisionReconstruccion; readonly programar: number | null } {
+  const rec = esObjeto(estadoPublicado['reconstruccion']) ? estadoPublicado['reconstruccion'] : {};
+  const previaPara = typeof rec['programadaPara'] === 'number' ? rec['programadaPara'] : null;
+  const decision = decidirReconstruccion({ hayPublicacion: true, programadaPara: previaPara }, ahora, 'publicacion');
+  const programadaPara = decision.accion === 'programar' || decision.accion === 'esperar' ? decision.para : previaPara;
+  return {
+    version: (typeof estadoPublicado['version'] === 'number' ? estadoPublicado['version'] : 0) + 1,
+    reconstruccion: { ...rec, programadaPara }, decision, programar: decision.accion === 'programar' ? decision.para : null,
+  };
+}
+
 // ---------------------------------------------------------------------------------------------
 // Copia publicada (`publicado/`)
 // ---------------------------------------------------------------------------------------------
