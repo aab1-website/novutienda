@@ -1,6 +1,7 @@
 import type { JSX } from 'preact';
 import { useEffect, useRef, useState } from 'preact/hooks';
 import { nuevoId } from '../../api/cliente.js';
+import { ErrorApi } from '../../api/errores.js';
 import type { CotizacionVista, CotizacionesVigentes, ProductoPanel, VistaComercial } from '../../api/tipos.js';
 import { useAvisos } from '../../ui/avisos.js';
 import { Alerta, Boton, Campo, Casilla, Dato } from '../../ui/comun.js';
@@ -11,9 +12,10 @@ import { useBorrador, useCambiosSinGuardar, useGuardia } from '../../ui/guardia.
 import { useAccion } from '../../ui/hooks.js';
 import { formatearMonto, textoACentavos } from '../../util/dinero.js';
 import { precioDeVentaMercado, reglasDeclaradasActuales } from '../../util/precio.js';
+import { identificadorParaAlta } from './identificador.js';
 import { mercadosDePrecio, nombreMoneda, type MercadoPrecio } from './nombres.js';
 import {
-  aEntrada, cambiosDeEdicion, clavePrecio, errorDeServidor, formInicial, identificadorSugerido, listaEnTexto, mismoForm, revisarProducto, TOPES_PRODUCTO,
+  aEntrada, avisoDeSku, cambiosDeEdicion, clavePrecio, errorDeServidor, errorDeSku, esProductoYaExiste, formInicial, leerBorrador, listaEnTexto, mismoForm, revisarProducto, TOPES_PRODUCTO,
   type ErroresProducto, type FormProducto,
 } from './producto-revision.js';
 import './inventario.css';
@@ -42,7 +44,7 @@ export interface PropsProductoPanel {
   readonly cot: CotizacionesVigentes;
   /** Mercados y monedas declarados por el comercio (nombre, moneda de venta y base, moneda de costo si es administrador). */
   readonly comercial: VistaComercial;
-  /** Identificadores y SKU que ya existen, para avisar antes de enviar. */
+  /** Claves y SKU que ya existen: las claves solo sirven para no repetir la automática; la persona no las ve. */
   readonly existentes: readonly { readonly id: string; readonly sku: string }[];
   /** Cierra el panel; `guardado` dice si se guardó algo (la lista se vuelve a leer). */
   readonly alCerrar: (guardado: boolean) => void;
@@ -63,10 +65,13 @@ export function ProductoPanelLateral({ producto, cot, comercial, existentes, alC
   const sinPrecio = (producto?.sinPrecio ?? []).filter((id) => mercados.some((m) => m.id === id));
   const inicial = formInicial(producto, mercados);
   const borrador = useBorrador<FormProducto | null>(clave, null);
-  const f = borrador.valor ?? inicial;
-  const sucio = borrador.valor !== null && !mismoForm(borrador.valor, inicial);
+  const guardado = leerBorrador(borrador.valor);
+  const f = guardado ?? inicial;
+  const sucio = guardado !== null && !mismoForm(guardado, inicial);
   const { marcarGuardado } = useCambiosSinGuardar(sucio, [clave]);
   const [intento, setIntento] = useState(false);
+  /** La persona ya salió del campo SKU: el aviso de SKU repetido aparece sin esperar a «Guardar». */
+  const [skuTocado, setSkuTocado] = useState(false);
   const [delServidor, setDelServidor] = useState<ErroresProducto>({});
   const [confirmando, setConfirmando] = useState(false);
   const [pideFoco, setPideFoco] = useState(0);
@@ -86,7 +91,9 @@ export function ProductoPanelLateral({ producto, cot, comercial, existentes, alC
     nuevo, existentes: nuevo ? existentes : [], mercados, monedaCosto,
     sinPrecio: mercados.filter((m) => sinPrecio.includes(m.id)).map((m) => m.clave),
   };
-  const errores: ErroresProducto = { ...(intento ? revisarProducto(f, ctx) : {}), ...delServidor };
+  const errorSkuAlSalir = nuevo && skuTocado ? errorDeSku(f.sku, existentes) : null;
+  const errores: ErroresProducto = { ...(errorSkuAlSalir !== null ? { sku: errorSkuAlSalir } : {}), ...(intento ? revisarProducto(f, ctx) : {}), ...delServidor };
+  const avisoSku = nuevo && (skuTocado || intento) ? avisoDeSku(f.sku, existentes) : null;
   const edicion = producto === null ? null : cambiosDeEdicion(f, producto, esAdm, mercados);
 
   useEffect(() => {
@@ -96,10 +103,6 @@ export function ProductoPanelLateral({ producto, cot, comercial, existentes, alC
   const poner = (c: Partial<FormProducto>): void => {
     setDelServidor({});
     borrador.poner({ ...f, ...c });
-  };
-  const ponerNombre = (v: string): void => {
-    const ids = new Set(existentes.map((x) => x.id));
-    poner({ nombre: v, ...(nuevo && !f.idEditado ? { id: identificadorSugerido(v, ids) } : {}) });
   };
 
   const cerrar = (): void => {
@@ -111,9 +114,23 @@ export function ProductoPanelLateral({ producto, cot, comercial, existentes, alC
     void accion.ejecutar(async () => {
       try {
         if (producto === null) {
-          const producto2 = aEntrada(f, mercados);
-          if (producto2 === null) return;
-          await api.llamar('crearProducto', { operacionId: idDeOperacion('crear', JSON.stringify(producto2)), producto: producto2 });
+          // La clave interna es automática y la persona no la ve. Si otro producto (que este panel no tenía cargado) ya la usa, el
+          // servidor lo dice y se prueba la siguiente, hasta 5 veces. Un reintento por red con los mismos datos conserva el `operacionId`.
+          const ocupados = new Set(existentes.map((x) => x.id));
+          let creado = false;
+          for (let n = 0; n < 5 && !creado; n += 1) {
+            const clave = identificadorParaAlta(f.nombre.trim(), f.sku.trim(), ocupados);
+            const entrada = aEntrada(f, mercados, clave);
+            if (entrada === null) return;
+            try {
+              await api.llamar('crearProducto', { operacionId: idDeOperacion(`crear:${clave}`, JSON.stringify(entrada)), producto: entrada });
+              creado = true;
+            } catch (e) {
+              if (!esProductoYaExiste(e)) throw e;
+              ocupados.add(clave);
+            }
+          }
+          if (!creado) throw new ErrorApi('failed-precondition', 'No se pudo crear el producto. Intente de nuevo.', { codigo: 'estado-invalido' });
         } else if (edicion !== null) {
           // Una sola llamada con todo lo cambiado (datos y precio): atómica y con un solo evento.
           await api.llamar('actualizarProducto', { operacionId: idDeOperacion('actualizar', JSON.stringify(edicion.cambios)), productoId: producto.id, cambios: edicion.cambios });
@@ -183,23 +200,19 @@ export function ProductoPanelLateral({ producto, cot, comercial, existentes, alC
       <div ref={cuerpo} class="inv-cuerpo">
         {soloLectura && <Alerta tipo="info">Solo el administrador edita productos y precios. Usted puede consultar los datos.</Alerta>}
         <form class="formulario inv-formulario" onSubmit={(e) => { e.preventDefault(); guardar(); }} noValidate>
-          <Campo etiqueta="Nombre" valor={f.nombre} tope={TOPES_PRODUCTO.nombre} requerido deshabilitado={soloLectura} error={errores['nombre']} onInput={ponerNombre} />
-          {nuevo && (
-            <Campo
-              etiqueta="Identificador" valor={f.id} tope={TOPES_PRODUCTO.id} requerido error={errores['id']}
-              ayuda="Código interno, se genera desde el nombre. Minúsculas, números y guiones. No se puede cambiar después."
-              onInput={(v) => poner({ id: v, idEditado: true })}
-            />
-          )}
+          <Campo etiqueta="Nombre" valor={f.nombre} tope={TOPES_PRODUCTO.nombre} requerido deshabilitado={soloLectura} error={errores['nombre']} onInput={(v) => poner({ nombre: v })} />
           <Campo etiqueta="Categoría" valor={f.categoria} tope={TOPES_PRODUCTO.categoria} requerido deshabilitado={soloLectura} error={errores['categoria']} onInput={(v) => poner({ categoria: v })} />
           <Campo
             etiqueta="Marca" valor={f.marca} tope={TOPES_PRODUCTO.marca} deshabilitado={soloLectura} error={errores['marca']}
             ayuda={nuevo ? 'Opcional.' : 'Opcional. Si la deja vacía, se quita la marca del producto.'} onInput={(v) => poner({ marca: v })}
           />
-          <Campo
-            etiqueta="SKU" valor={f.sku} tope={TOPES_PRODUCTO.sku} requerido={nuevo} deshabilitado={!nuevo || soloLectura} error={errores['sku']}
-            ayuda={nuevo ? 'El código con que identifica el producto en su negocio. No se puede cambiar después.' : 'El SKU no se edita.'} onInput={(v) => poner({ sku: v })}
-          />
+          <div onFocusOut={() => setSkuTocado(true)}>
+            <Campo
+              etiqueta="SKU" valor={f.sku} tope={TOPES_PRODUCTO.sku} requerido={nuevo} deshabilitado={!nuevo || soloLectura} error={errores['sku']}
+              ayuda={nuevo ? 'El código con que identifica el producto en su negocio. No se puede cambiar después.' : 'El SKU no se edita.'} onInput={(v) => poner({ sku: v })}
+            />
+            {avisoSku !== null && errores['sku'] === undefined && <p class="ayuda" role="status" data-prueba="aviso-sku-parecido">{avisoSku}</p>}
+          </div>
           <Campo
             etiqueta="Garantía (meses)" valor={f.garantia} inputMode="numeric" deshabilitado={soloLectura} error={errores['garantia']}
             ayuda="Opcional, de 1 a 120. Vacía = sin garantía registrada." onInput={(v) => poner({ garantia: v })}

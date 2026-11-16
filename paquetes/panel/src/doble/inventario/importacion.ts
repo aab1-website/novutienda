@@ -8,6 +8,7 @@ import type { Entrada } from '../../api/contrato.js';
 import type { ErrorFilaImportacion, FilaSimulada, ResultadoImportacion, Simulacion } from '../../api/tipos.js';
 import { claveDePrecio } from '@novutienda/nucleo';
 import { auditar, fallo, type Contexto, type ProductoInterno } from '../estado.js';
+import { identificadorParaAlta, PARECIDO_SKU } from '../../pantallas/inventarios/identificador.js';
 import { parsearCsv } from './inventario.js';
 
 const FIRMA_EXCEL = 'PK\u0003\u0004';
@@ -21,7 +22,7 @@ const NO = new Set(['no', 'false', '0', 'falso']);
 type Columna = 'id' | 'nombre' | 'categoria' | 'marca' | 'sku' | 'conSerie' | 'activo' | 'publicado' | 'garantiaMeses' | 'minimo' | 'costoUSD' | 'stockTienda' | 'stockDeposito1' | 'stockDeposito2' | `precio:${string}`;
 type Unidad = 'centavos' | 'usd';
 const ALIAS_FIJOS: Readonly<Record<string, readonly [Columna, Unidad | null]>> = {
-  id: ['id', null], codigo: ['id', null], nombre: ['nombre', null], categoria: ['categoria', null], marca: ['marca', null], sku: ['sku', null],
+  id: ['id', null], codigo: ['sku', null], nombre: ['nombre', null], categoria: ['categoria', null], marca: ['marca', null], sku: ['sku', null],
   conserie: ['conSerie', null], activo: ['activo', null], publicado: ['publicado', null], garantiameses: ['garantiaMeses', null], garantia: ['garantiaMeses', null],
   minimo: ['minimo', null],   costousd: ['costoUSD', 'centavos'], costo: ['costoUSD', 'usd'],
   stocktienda: ['stockTienda', null], stockdeposito1: ['stockDeposito1', null], stockdeposito2: ['stockDeposito2', null],
@@ -87,11 +88,12 @@ function leer(c: Contexto, entrada: { archivo?: string | undefined; csv?: string
     if (indice.has(alias[0])) throw fallo('entrada-invalida', `columna repetida: ${h}`);
     indice.set(alias[0], { i, etiqueta: h, unidad: alias[1] });
   }
-  if (!indice.has('id')) throw fallo('entrada-invalida', 'falta la columna id');
+  if (!indice.has('id') && !indice.has('sku')) throw fallo('entrada-invalida', 'falta la columna sku: cada producto se reconoce por su SKU');
   if (!cargaInicial && (Object.keys(STOCK) as Columna[]).some((k) => indice.has(k))) throw fallo('entrada-invalida', 'El CSV no toca el stock: las columnas de stock solo se admiten en la carga inicial');
   if (datos.length < 1 || datos.length > MAX_FILAS) throw fallo('entrada-invalida', `El CSV debe tener entre 1 y ${MAX_FILAS} filas`);
   const ids = new Set<string>();
   const skus = new Set<string>();
+  const porMinusculas = new Map<string, { sku: string; avisos: string[] }[]>();
   const filas: Fila[] = [];
   for (const [k, f] of datos.entries()) {
     const fila: Fila = { linea: k + 2, id: '', errores: [], advertencias: [], d: { precios: {} }, stock: [] };
@@ -103,9 +105,11 @@ function leer(c: Contexto, entrada: { archivo?: string | undefined; csv?: string
     const err = (col: Columna, motivo: string): void => void fila.errores.push({ columna: indice.get(col)?.etiqueta ?? col, motivo });
     if (f.length !== cab.length) fila.errores.push({ columna: null, motivo: 'el número de columnas no coincide con el encabezado' });
     fila.id = celda('id') ?? '';
-    if (!ID_PRODUCTO.test(fila.id)) err('id', 'id inválido (minúsculas, números y guiones, 2 a 60 caracteres)');
-    else if (ids.has(fila.id)) err('id', 'id repetido en el archivo');
-    ids.add(fila.id);
+    if (fila.id !== '') {
+      if (!ID_PRODUCTO.test(fila.id)) err('id', 'id inválido (minúsculas, números y guiones, 2 a 60 caracteres)');
+      else if (ids.has(fila.id)) err('id', 'id repetido en el archivo');
+      ids.add(fila.id);
+    }
     for (const col of ['nombre', 'categoria', 'marca'] as const) {
       const v = celda(col);
       if (v === undefined) continue;
@@ -119,7 +123,17 @@ function leer(c: Contexto, entrada: { archivo?: string | undefined; csv?: string
       else {
         fila.d.sku = sku;
         skus.add(sku);
+        const parecidos = porMinusculas.get(sku.toLowerCase()) ?? [];
+        if (parecidos.some((x) => x.sku !== sku)) {
+          fila.advertencias.push(PARECIDO_SKU);
+          for (const x of parecidos) if (x.sku !== sku && !x.avisos.includes(PARECIDO_SKU)) x.avisos.push(PARECIDO_SKU);
+        }
+        parecidos.push({ sku, avisos: fila.advertencias });
+        porMinusculas.set(sku.toLowerCase(), parecidos);
       }
+    } else if (fila.id === '') {
+      if (indice.has('sku')) err('sku', 'es obligatorio cuando la fila no trae id');
+      else fila.errores.push({ columna: null, motivo: 'la fila no trae ni id ni sku' });
     }
     for (const col of ['conSerie', 'activo', 'publicado'] as const) {
       const v = celda(col);
@@ -154,22 +168,49 @@ function leer(c: Contexto, entrada: { archivo?: string | undefined; csv?: string
 }
 
 /** Qué haría una fila contra el estado actual (solo lectura). */
-function planificar(c: Contexto, f: Fila, nuevos: number): { accion: FilaSimulada['accion']; errores: ErrorFilaImportacion[]; advertencias: string[]; cambios: string[] } {
+interface Plan { accion: FilaSimulada['accion']; errores: ErrorFilaImportacion[]; advertencias: string[]; cambios: string[]; id: string; nombre?: string; sku?: string }
+
+function planificar(c: Contexto, f: Fila, nuevos: number, asignados: Set<string>): Plan {
   const errores = [...f.errores];
   const advertencias = [...f.advertencias];
   const cambios: string[] = [];
-  if (errores.length > 0) return { accion: 'error', errores, advertencias, cambios };
-  const previo = c.e.productos.get(f.id);
   const d = f.d;
+  const nombreSku = { ...(d.nombre !== undefined ? { nombre: d.nombre } : {}), ...(d.sku !== undefined ? { sku: d.sku } : {}) };
+  if (errores.length > 0) return { accion: 'error', errores, advertencias, cambios, id: f.id, ...nombreSku };
+  const dueno = d.sku === undefined ? undefined : [...c.e.productos.values()].find((p) => p.sku === d.sku);
+  let id = f.id;
+  let previo: ProductoInterno | undefined;
+  if (id === '') {
+    if (dueno === undefined) {
+      const ocupados = new Set([...asignados, ...c.e.productos.keys()]);
+      id = identificadorParaAlta(d.nombre ?? '', d.sku ?? '', ocupados);
+    } else {
+      id = dueno.id;
+      previo = dueno;
+    }
+  } else {
+    previo = c.e.productos.get(id);
+    if (previo !== undefined && dueno !== undefined && dueno.id !== id) {
+      return { accion: 'error', errores: [{ columna: 'sku', motivo: `el SKU pertenece a otro producto (${dueno.nombre})` }], advertencias, cambios, id, ...nombreSku };
+    }
+  }
+  if (previo !== undefined) {
+    if (d.nombre === undefined) nombreSku.nombre = previo.nombre;
+    if (d.sku === undefined) nombreSku.sku = previo.sku;
+  }
+  if (d.sku !== undefined) {
+    const parecido = [...c.e.productos.values()].some((p) => p.id !== id && p.sku !== d.sku && p.sku.toLowerCase() === (d.sku as string).toLowerCase());
+    if (parecido && !advertencias.includes(PARECIDO_SKU)) advertencias.push(PARECIDO_SKU);
+  }
   if (previo === undefined) {
     if (d.nombre === undefined) errores.push({ columna: 'nombre', motivo: 'es obligatorio para crear' });
     if (d.categoria === undefined) errores.push({ columna: 'categoria', motivo: 'es obligatoria para crear' });
     if (d.sku === undefined) errores.push({ columna: 'sku', motivo: 'es obligatorio para crear' });
-    else if ([...c.e.productos.values()].some((p) => p.sku === d.sku)) errores.push({ columna: 'sku', motivo: 'ya está en uso por otro producto' });
+    else if (dueno !== undefined) errores.push({ columna: 'sku', motivo: 'ya está en uso por otro producto' });
     if (d.conSerie === true && f.stock.length > 0) errores.push({ columna: 'stock', motivo: 'un producto con serie no admite carga de stock por CSV (use el ingreso con series)' });
     if (c.e.productos.size + nuevos >= 200) errores.push({ columna: null, motivo: 'supera el límite de 200 productos del plan' });
     if (c.e.comercial.mercados.some((m) => d.precios[claveDePrecio(m.id)] === undefined)) advertencias.push('sin precio en algún mercado: quedará «a consultar» (0)');
-    return { accion: errores.length > 0 ? 'error' : 'crear', errores, advertencias, cambios };
+    return { accion: errores.length > 0 ? 'error' : 'crear', errores, advertencias, cambios, id, ...nombreSku };
   }
   if (f.stock.length > 0) advertencias.push('stock ignorado: el producto ya existe; su stock se mueve con ingreso, traspaso o ajuste');
   if (d.sku !== undefined && d.sku !== previo.sku) errores.push({ columna: 'sku', motivo: 'no se edita una vez creado el producto' });
@@ -183,17 +224,21 @@ function planificar(c: Contexto, f: Fila, nuevos: number): { accion: FilaSimulad
   const preciosPrevios = previo.precioUSD as unknown as Readonly<Record<string, number>>;
   if (Object.entries(d.precios).some(([k, v]) => v !== preciosPrevios[k])) cambios.push('precioUSD');
   if (d.costoUSD !== undefined && d.costoUSD !== previo.costoUSD) cambios.push('costoUSD');
-  if (errores.length > 0) return { accion: 'error', errores, advertencias, cambios: [] };
-  return { accion: cambios.length > 0 ? 'actualizar' : 'sin-cambios', errores, advertencias, cambios };
+  if (errores.length > 0) return { accion: 'error', errores, advertencias, cambios: [], id, ...nombreSku };
+  return { accion: cambios.length > 0 ? 'actualizar' : 'sin-cambios', errores, advertencias, cambios, id, ...nombreSku };
 }
 
 export function simularImportacionDoble(c: Contexto, e: Entrada<'simularImportacionProductos'>): Simulacion {
   const { filas, ignoradas } = leer(c, e, e.cargaInicial === true);
   let nuevos = 0;
+  const asignados = new Set(filas.map((f) => f.id).filter((x) => x !== ''));
   const out: FilaSimulada[] = filas.map((f) => {
-    const p = planificar(c, f, nuevos);
-    if (p.accion === 'crear') nuevos += 1;
-    return { linea: f.linea, id: f.id, ...p };
+    const { id, nombre, sku, ...p } = planificar(c, f, nuevos, asignados);
+    if (p.accion === 'crear') {
+      nuevos += 1;
+      asignados.add(id);
+    }
+    return { linea: f.linea, id, ...(nombre !== undefined ? { nombre } : {}), ...(sku !== undefined ? { sku } : {}), ...p };
   });
   const n = (a: FilaSimulada['accion']): number => out.filter((x) => x.accion === a).length;
   return { filas: out, resumen: { crear: n('crear'), actualizar: n('actualizar'), sinCambios: n('sin-cambios'), errores: n('error') }, columnasIgnoradas: ignoradas };
@@ -222,7 +267,8 @@ export function importarProductosDoble(c: Contexto, e: Entrada<'importarProducto
   }
   const { filas } = leer(c, e, cargaInicial);
   const buenas = new Map(simulacion.filas.filter((f) => f.accion !== 'error').map((f) => [f.linea, f.accion]));
-  const aplicables = filas.filter((f) => buenas.has(f.linea));
+  const idDe = new Map(simulacion.filas.map((f) => [f.linea, f.id]));
+  const aplicables = filas.map((f) => ({ ...f, id: idDe.get(f.linea) ?? f.id })).filter((f) => buenas.has(f.linea));
   const { filasPorTanda, fallaEnTanda } = c.e.importacion;
   const total = Math.ceil(aplicables.length / filasPorTanda);
   const r = { creados: 0, actualizados: 0, sinCambios: 0 };

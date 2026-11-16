@@ -25,11 +25,10 @@ export interface ColumnaDoc {
 }
 
 const ANTES_DE_PRECIOS: readonly ColumnaDoc[] = [
-  { nombre: 'id', texto: 'identificador del producto (letras minúsculas, números y guiones). Es lo que une cada fila con un producto.' },
   { nombre: 'nombre', texto: 'nombre del producto.' },
   { nombre: 'categoria', texto: 'categoría.' },
   { nombre: 'marca', texto: 'marca (opcional).' },
-  { nombre: 'sku', texto: 'código del producto. Obligatorio en una fila nueva: sin SKU, la fila es un error.' },
+  { nombre: 'sku', texto: 'código del producto. Cada producto se reconoce por su SKU: si ya existe se actualiza y, si no, se crea. Obligatorio en cada fila.' },
   { nombre: 'conSerie', texto: 'si, no (si cada unidad lleva número de serie).' },
   { nombre: 'garantiaMeses', texto: 'meses de garantía (opcional).' },
   { nombre: 'minimo', texto: 'existencia mínima antes de avisar (opcional).' },
@@ -70,6 +69,12 @@ export const COLUMNAS_STOCK: readonly ColumnaDoc[] = [
 
 export const encabezadosPlantilla = (cargaInicial: boolean, mercados: readonly MercadoDeclarado[], monedaCosto?: CodigoMoneda): string[] =>
   [...columnasArchivo(mercados, monedaCosto), ...(cargaInicial ? COLUMNAS_STOCK : [])].map((c) => c.nombre);
+
+/** Lo que la pantalla muestra de una fila: el nombre y el SKU del producto, nunca su clave interna. */
+export function datosDeFila(f: FilaSimulada): { nombre: string; sku: string } {
+  const g = f as FilaSimulada & { readonly nombre?: string; readonly sku?: string };
+  return { nombre: g.nombre ?? '', sku: g.sku ?? '' };
+}
 
 export const ACCION_TEXTO: Readonly<Record<FilaSimulada['accion'], string>> = {
   crear: 'Se creará', actualizar: 'Se actualizará', 'sin-cambios': 'Sin cambios', error: 'Con error',
