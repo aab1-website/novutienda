@@ -1,6 +1,7 @@
 import type { ComponentChildren, JSX, RefObject } from 'preact';
 import { useEffect, useRef, useState } from 'preact/hooks';
 import { ErrorApi, mensajeDeError } from '../../api/errores.js';
+import { Miniatura } from './miniatura-vista.js';
 import { LIMITES_PANEL, type EstadoFicha, type FichaWeb, type Medio, type ProductoPanel } from '../../api/tipos.js';
 import { Alerta, Area, Boton, BotonConfirmado, Campo, ConCarga, Selector, Seccion, Vacio } from '../../ui/comun.js';
 import { useApp } from '../../ui/contexto.js';
@@ -318,7 +319,10 @@ function PanelFicha({ producto, modo, alCerrar, alCerrarEnfocar }: PropsPanel): 
               const nombre = esVideo ? 'Video' : `Foto ${String(i + 1)}${i === 0 ? ' (portada)' : ''}`;
               return (
                 <li key={m.medioId} class="ficha-medio">
-                  <p class="ficha-medio-titulo"><strong>{nombre}</strong>{info ? ` · ${medidas(info)}` : ' · sin subir'}</p>
+                  <div class="fila fila-alinear">
+                    <Miniatura medio={info} alt={m.alt.trim() !== '' ? m.alt : nombre} respaldo={esVideo ? 'Video' : 'Foto'} orden={i + 1} />
+                    <p class="ficha-medio-titulo"><strong>{nombre}</strong>{info ? ` · ${medidas(info)}` : ' · sin subir'}</p>
+                  </div>
                   <Campo etiqueta={esVideo ? 'Descripción del video' : `Descripción de la foto ${String(i + 1)}`} valor={m.alt} tope={TOPES_FICHA.alt} ayuda="Cuenta qué se ve. La leen los lectores de pantalla." error={errores[claveAlt(i)]} onInput={(v) => cambiar({ medios: f.medios.map((x, j) => (j === i ? { ...x, alt: v } : x)) })} />
                   <div class="fila">
                     <Boton chico variante="secundario" onClick={() => mover(i, -1)} deshabilitado={i === 0} etiqueta={`Mover arriba el medio ${String(i + 1)}`}>Mover arriba</Boton>
@@ -339,6 +343,7 @@ function PanelFicha({ producto, modo, alCerrar, alCerrarEnfocar }: PropsPanel): 
                   const fotos = f.medios.filter((x) => tipoDe(x.medioId) === 'foto').length;
                   return (
                     <li key={m.id} class="fila">
+                      <Miniatura medio={m} alt={`${m.tipo === 'video' ? 'Video' : 'Foto'} subido sin agregar a la página`} respaldo={m.tipo === 'video' ? 'Video' : 'Foto'} />
                       <span>{m.tipo === 'video' ? 'Video' : 'Foto'} · {medidas(m)}</span>
                       <Boton chico variante="secundario" onClick={() => cambiar({ medios: [...f.medios, { medioId: m.id, alt: sugerida(m.tipo, fotos + 1) }] })} etiqueta={`Agregar a la página ${m.tipo === 'video' ? 'el video' : 'la foto'} de ${medidas(m)}`}>Agregar a la página</Boton>
                       <BotonConfirmado chico peligro texto="Borrar archivo" pregunta="¿Borrar el archivo para siempre?" textoConfirmar="Sí, borrar" onConfirmar={() => borrar(m.id)} />

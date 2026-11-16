@@ -1,7 +1,8 @@
 import type { JSX } from 'preact';
 import { useEffect, useRef, useState } from 'preact/hooks';
-import { LIMITES_PANEL, PLANTILLAS_SITIO, type Carrusel, type ConfigSitio, type PlantillaSitio } from '../../api/tipos.js';
-import { mensajeDeError } from '../../api/errores.js';
+import { Miniatura } from './miniatura-vista.js';
+import { LIMITES_PANEL, PLANTILLAS_SITIO, type Carrusel, type Medio, type ConfigSitio, type PlantillaSitio } from '../../api/tipos.js';
+import { ErrorApi, mensajeDeError } from '../../api/errores.js';
 import { Alerta, Boton, BotonConfirmado, Campo, Cargando, Dato, ErrorCarga, Pestanas, Seccion, Vacio, fechaHora } from '../../ui/comun.js';
 import { useAvisos } from '../../ui/avisos.js';
 import { useBorrador, useCambiosSinGuardar } from '../../ui/guardia.js';
@@ -232,6 +233,24 @@ function CarruselEditor({ plantilla, items, setItems, productos }: { plantilla: 
     n[i + d] = x;
     setItems(n);
   };
+  // Medios vistos en esta sesión: permiten mostrar la miniatura de las fotos que ya se agregaron.
+  const conocidos = useRef(new Map<string, Medio>());
+  // Tras recargar, solo se leen los medios de los productos que tienen fotos en este carrusel. El ítem no trae su producto:
+  // se resuelve con las fichas (`listarFichas`), que ya relacionan cada foto con su producto. Un fallo de sesión se deja
+  // propagar al manejo de sesión del panel; cualquier otro deja el respaldo.
+  const faltan = items.map((i) => i.medioId).filter((id) => !conocidos.current.has(id));
+  const guardados = useCarga(async () => {
+    if (faltan.length === 0) return [] as Medio[];
+    const sinSesion = (e: unknown): boolean => e instanceof ErrorApi && e.codigoHttps === 'unauthenticated';
+    const seguro = async <T,>(f: () => Promise<T>, vacio: T): Promise<T> => {
+      try { return await f(); } catch (e) { if (sinSesion(e)) throw e; return vacio; }
+    };
+    const fichas = await seguro(() => api.llamar('listarFichas', {}), []);
+    const productosDe = new Set(fichas.filter((f) => f.ficha.medios.some((m) => faltan.includes(m.medioId))).map((f) => f.productoId));
+    return (await Promise.all([...productosDe].map((productoId) => seguro(() => api.llamar('listarMedios', { productoId }), [] as readonly Medio[])))).flat();
+  }, [faltan.join(',')]);
+  for (const m of guardados.datos ?? []) conocidos.current.set(m.id, m);
+  for (const m of fotos.datos ?? []) conocidos.current.set(m.id, m);
   const nombreProducto = productos.find((p) => p.id === productoId)?.nombre ?? '';
   return (
     <Seccion titulo={`Carrusel de portada (${PALETAS[plantilla].nombre})`}>
@@ -240,6 +259,7 @@ function CarruselEditor({ plantilla, items, setItems, productos }: { plantilla: 
         {items.map((it, i) => (
           <li key={it.medioId} class="fila fila-alinear">
             <span>{i + 1}.</span>
+            <Miniatura medio={conocidos.current.get(it.medioId)} alt={it.alt.trim() !== '' ? it.alt : `Foto ${String(i + 1)} del carrusel`} respaldo={`Foto ${it.medioId.slice(0, 6)}`} orden={i + 1} />
             <Campo etiqueta={`Texto alternativo de la foto ${i + 1}`} valor={it.alt} error={it.alt.trim() === '' ? 'Escriba qué se ve en la foto.' : undefined} onInput={(v) => setItems(items.map((x, j) => (j === i ? { ...x, alt: v } : x)))} />
             <Boton chico variante="secundario" onClick={() => mover(i, -1)} deshabilitado={i === 0} etiqueta={`Subir foto ${i + 1}`}>Subir</Boton>
             <Boton chico variante="secundario" onClick={() => mover(i, 1)} deshabilitado={i === items.length - 1} etiqueta={`Bajar foto ${i + 1}`}>Bajar</Boton>
@@ -251,7 +271,10 @@ function CarruselEditor({ plantilla, items, setItems, productos }: { plantilla: 
         <div class="fila fila-alinear">
           <SelectorBuscable etiqueta="Producto de la foto" valor={productoId} onCambio={setProductoId} opciones={productos.map((p) => ({ valor: p.id, texto: p.nombre }))} ayuda="Escriba para buscar el producto y luego elija la foto." />
           {(fotos.datos ?? []).filter((m) => m.tipo === 'foto' && !items.some((i) => i.medioId === m.id)).map((m) => (
-            <Boton key={m.id} chico variante="secundario" onClick={() => setItems([...items, { medioId: m.id, alt: nombreProducto }])}>Agregar foto {m.id.slice(0, 6)}</Boton>
+            <Boton key={m.id} chico variante="secundario" etiqueta={`Agregar foto ${m.id.slice(0, 6)}`} onClick={() => setItems([...items, { medioId: m.id, alt: nombreProducto }])}>
+              <Miniatura medio={m} alt={nombreProducto !== '' ? `Foto de ${nombreProducto}` : 'Foto del producto'} respaldo={`Foto ${m.id.slice(0, 6)}`} />
+              Agregar foto {m.id.slice(0, 6)}
+            </Boton>
           ))}
         </div>
       )}
