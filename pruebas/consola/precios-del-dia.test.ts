@@ -2,7 +2,7 @@
 // del tenant de tres monedas: `precioFinal` del núcleo con la política vigente por moneda.
 import { obtenerTablero, preciosDelDiaDe } from '@novutienda/consola';
 import {
-  COMERCIAL_LEGADO_TRES_MONEDAS, type ConfiguracionComercial, type CopiaCotizacion, type RedondeoPorMoneda,
+  COMERCIAL_LEGADO_TRES_MONEDAS, type ConfiguracionComercial, type CopiaCotizacion, precioFinal, type Redondeo, type RedondeoPorMoneda,
 } from '@novutienda/nucleo';
 import { describe, expect, it } from 'vitest';
 import { actor, nuevaDb, RelojFijo, T } from './dobles.js';
@@ -33,8 +33,8 @@ describe('preciosDelDiaDe', () => {
       // Alterna cotizaciones ausentes para ejercitar `sin_cotizacion`.
       const cot = { ...(i % 5 === 1 ? {} : { BO: COT.BO }), ...(i % 7 === 3 ? {} : { AR: COT.AR }) };
       const r = preciosDelDiaDe({ bo, ar }, COMERCIAL_LEGADO_TRES_MONEDAS, cot, REDONDEO);
-      if (!('BO' in cot)) expect(r['BO'], `bo=${bo} i=${i}`).toEqual({ tipo: 'sin_cotizacion' });
-      if (!('AR' in cot)) expect(r['AR'], `ar=${ar} i=${i}`).toEqual({ tipo: 'sin_cotizacion' });
+      expect(r['BO'], `bo=${bo} i=${i}`).toEqual('BO' in cot ? precioFinal(bo, 'BO', COT.BO, REDONDEO as Redondeo) : { tipo: 'sin_cotizacion' });
+      expect(r['AR'], `ar=${ar} i=${i}`).toEqual('AR' in cot ? precioFinal(ar, 'AR', COT.AR, REDONDEO as Redondeo) : { tipo: 'sin_cotizacion' });
     }
   });
 
