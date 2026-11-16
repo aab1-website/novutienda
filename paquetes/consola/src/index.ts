@@ -37,7 +37,7 @@ export {
   publicarSitio,
 } from './publicar.js';
 export type { DecisionReconstruccion, EventoReconstruccion, Publicado, ResultadoPublicacion } from './publicar.js';
-export { obtenerTablero, preciosDelDia, preciosDelDiaDe } from './tablero.js';
+export { obtenerTablero, preciosDelDiaDe } from './tablero.js';
 export type { Tablero, PrecioDelDiaDeMercado } from './tablero.js';
 export type { AvisoSitio } from './cambios.js';
 export type { MotivoSitioIncompleto } from './publicar.js';
