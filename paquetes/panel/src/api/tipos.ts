@@ -1,9 +1,9 @@
 // Tipos del contrato del panel. Se re-declaran (no se importan de los módulos) para que el panel no dependa de su
 // código: cada tipo copia la forma serializable que devuelve la función pública del módulo indicado. Los montos son
 // centavos enteros, igual que en el POS. Las fechas viajan como milisegundos (`...Ms`) o texto ISO, como en el módulo.
-import type { CopiaCotizacion, Mercado, Moneda, Rol } from '@novutienda/nucleo';
+import type { CopiaCotizacion, Rol } from '@novutienda/nucleo';
 
-export type { CopiaCotizacion, Mercado, Moneda, Rol };
+export type { CopiaCotizacion, Rol };
 
 // ---------------------------------------------------------------------------------------------------------------------
 // POS (docs/modulos/pos.md; paquetes/pos/src/tipos.ts)
@@ -11,7 +11,6 @@ export type { CopiaCotizacion, Mercado, Moneda, Rol };
 
 export type MedioPago = 'efectivo' | 'qr' | 'transferencia' | 'credito';
 export const MEDIOS_PAGO: readonly MedioPago[] = ['efectivo', 'qr', 'transferencia', 'credito'];
-export const MONEDAS: readonly Moneda[] = ['BOB', 'USD', 'ARS'];
 export type UbicacionId = 'tienda' | 'deposito-1' | 'deposito-2';
 export const UBICACIONES: readonly UbicacionId[] = ['tienda', 'deposito-1', 'deposito-2'];
 
@@ -94,7 +93,7 @@ export interface LineaCarrito {
 
 export interface Carrito {
   readonly mercado: string;
-  readonly moneda: Moneda;
+  readonly moneda: CodigoMoneda;
   readonly lineas: readonly LineaCarrito[];
   readonly descuento?: { readonly monto: number; readonly motivo: string };
   readonly cliente?: { readonly nombre: string; readonly telefono?: string };
@@ -135,7 +134,7 @@ export interface AprobacionPos {
 
 export interface SolicitudAprobacion {
   readonly tipo: TipoAprobacion;
-  readonly moneda: Moneda;
+  readonly moneda: CodigoMoneda;
   readonly monto: number;
   readonly motivo: string;
   readonly deudor?: string;
