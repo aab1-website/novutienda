@@ -1,6 +1,6 @@
 // @vitest-environment jsdom
 import { h } from 'preact';
-import { cleanup, render, screen, waitFor, within } from '@testing-library/preact';
+import { cleanup, fireEvent, render, screen, waitFor, within } from '@testing-library/preact';
 import { userEvent } from '@testing-library/user-event';
 import { afterEach, describe, expect, it, vi } from 'vitest';
 import { ErrorApi } from '../../api/errores.js';
@@ -128,5 +128,78 @@ describe('secciones: motivos, guardia y cancelar', () => {
     await u.click(screen.getByRole('button', { name: 'Guardar sección' }));
     await waitFor(() => expect(document.querySelector('[role="alert"], .alerta')).not.toBeNull());
     expect((screen.getByLabelText(/Párrafos/) as HTMLTextAreaElement).value).toBe('Uno');
+  });
+});
+
+const BASE_MEDIOS = 'https://medios.ejemplo.test';
+/** Hace que `listarMedios` entregue versiones WebP, como el servidor tras procesar la foto. */
+const conVersiones = (e: Entorno): void => {
+  const original = e.api.llamar.bind(e.api) as (n: string, d: unknown) => Promise<unknown>;
+  vi.spyOn(e.api, 'llamar').mockImplementation(((n: string, d: unknown) =>
+    original(n, d).then((r) => (n === 'listarMedios' ? (r as { id: string }[]).map((m) => ({ ...m, versiones: [{ clase: 'imagen', lado: 960, formato: 'webp', ruta: `t/${m.id}-960.webp`, bytes: 9 }, { clase: 'imagen', lado: 480, formato: 'webp', ruta: `t/${m.id}-480.webp`, bytes: 5 }] })) : r))) as never);
+};
+
+describe('secciones: miniaturas en el selector de foto', () => {
+  const subir = async (e: Entorno): Promise<string> => {
+    const r = await e.api.llamar('reservarSubida', { subidaId: '11111111-1111-4111-8111-111111111111', productoId: 'tv-55', tipo: 'foto', bytes: 10 });
+    await e.api.llamar('finalizarSubida', { subidaId: r.subidaId });
+    return r.subidaId;
+  };
+  const elegirProducto = async (u: U): Promise<void> => {
+    await u.click(await screen.findByRole('button', { name: 'Nueva sección' }));
+    await u.click(screen.getByRole('button', { name: '+ Imagen' }));
+    await u.type(await screen.findByRole('combobox', { name: /producto/ }), 'Televisor');
+    await u.click(await screen.findByRole('option', { name: /Televisor/ }));
+  };
+
+  it('con base de medios muestra la miniatura elegible con teclado', async () => {
+    vi.stubEnv('VITE_MEDIOS_BASE_URL', BASE_MEDIOS);
+    const e = crearEntorno('adm');
+    const id = await subir(e);
+    conVersiones(e);
+    ver(e);
+    const u = userEvent.setup();
+    await elegirProducto(u);
+    const radio = await screen.findByRole('radio', { name: /^Foto 1/ });
+    const img = radio.parentElement?.querySelector('img');
+    expect(img?.getAttribute('src')).toBe(`${BASE_MEDIOS}/t/${id}-480.webp`);
+    expect(img?.getAttribute('loading')).toBe('lazy');
+    expect(img?.getAttribute('decoding')).toBe('async');
+    expect(img?.getAttribute('referrerpolicy')).toBe('no-referrer');
+    radio.focus();
+    await u.keyboard(' ');
+    expect((radio as HTMLInputElement).checked).toBe(true);
+    expect(screen.queryByText('Elija la foto del bloque 1.')).toBeNull();
+    vi.unstubAllEnvs();
+  });
+
+  it('sin base muestra el texto de respaldo y no una imagen rota', async () => {
+    vi.stubEnv('VITE_MEDIOS_BASE_URL', '');
+    const e = crearEntorno('adm');
+    await subir(e);
+    conVersiones(e);
+    ver(e);
+    const u = userEvent.setup();
+    await elegirProducto(u);
+    const radio = await screen.findByRole('radio', { name: /^Foto 1/ });
+    expect(radio.parentElement?.querySelector('img')).toBeNull();
+    expect(radio.parentElement?.querySelector('[data-respaldo]')?.textContent).toMatch(/Foto 111111.*n\.º 1.*1200 × 800/);
+    vi.unstubAllEnvs();
+  });
+
+  it('si la imagen falla al cargar cae al respaldo', async () => {
+    vi.stubEnv('VITE_MEDIOS_BASE_URL', BASE_MEDIOS);
+    const e = crearEntorno('adm');
+    await subir(e);
+    conVersiones(e);
+    ver(e);
+    const u = userEvent.setup();
+    await elegirProducto(u);
+    const radio = await screen.findByRole('radio', { name: /^Foto 1/ });
+    const img = radio.parentElement?.querySelector('img') as HTMLElement;
+    fireEvent.error(img);
+    await waitFor(() => expect(document.querySelector('.selector-miniaturas img')).toBeNull());
+    expect(document.querySelector('.selector-miniaturas [data-respaldo]')).toBeTruthy();
+    vi.unstubAllEnvs();
   });
 });

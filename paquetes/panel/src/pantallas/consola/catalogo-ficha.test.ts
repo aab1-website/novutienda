@@ -531,3 +531,65 @@ describe('estado de la página en el sitio', () => {
     expect((await e.api.llamar('listarFichas', {}))[0]?.ficha.estado).toBe('publicado');
   });
 });
+
+const BASE_MEDIOS = 'https://medios.ejemplo.test';
+/** Hace que `listarMedios` entregue versiones WebP, como el servidor tras procesar la foto. */
+const conVersiones = (e: Entorno): void => {
+  const original = e.api.llamar.bind(e.api) as (n: string, d: unknown) => Promise<unknown>;
+  vi.spyOn(e.api, 'llamar').mockImplementation(((n: string, d: unknown) =>
+    original(n, d).then((r) => (n === 'listarMedios' ? (r as { id: string }[]).map((m) => ({ ...m, versiones: [{ clase: 'imagen', lado: 960, formato: 'webp', ruta: `t/${m.id}-960.webp`, bytes: 9 }, { clase: 'imagen', lado: 480, formato: 'webp', ruta: `t/${m.id}-480.webp`, bytes: 5 }] })) : r))) as never);
+};
+
+describe('miniaturas de la ficha', () => {
+  const preparar = async (e: Entorno, adjunta: boolean): Promise<string> => {
+    const r = await e.api.llamar('reservarSubida', { subidaId: '22222222-2222-4222-8222-222222222222', productoId: 'tv-55', tipo: 'foto', bytes: 10 });
+    await e.api.llamar('finalizarSubida', { subidaId: r.subidaId });
+    if (adjunta) {
+      const ficha = { slug: 'tv-55', descripcion: 'Televisor.', garantia: '12 meses', medios: [{ medioId: r.subidaId, alt: 'Frente del televisor' }], seo: { titulo: 'Televisor', descripcion: '' }, estado: 'borrador' };
+      await e.api.llamar('guardarFicha', { productoId: 'tv-55', ficha: ficha as never });
+    }
+    return r.subidaId;
+  };
+
+  it('muestra la miniatura de la foto de la ficha con su texto alternativo real', async () => {
+    vi.stubEnv('VITE_MEDIOS_BASE_URL', BASE_MEDIOS);
+    const e = crearEntorno('sup');
+    const id = await preparar(e, true);
+    conVersiones(e);
+    ver(e);
+    const u = userEvent.setup();
+    const dialogo = await abrir(u, 'Fotos y video', TV);
+    const img = (await within(dialogo).findByAltText('Frente del televisor')) as HTMLImageElement;
+    expect(img.getAttribute('src')).toBe(`${BASE_MEDIOS}/t/${id}-480.webp`);
+    expect(img.getAttribute('loading')).toBe('lazy');
+    expect(img.getAttribute('referrerpolicy')).toBe('no-referrer');
+    vi.unstubAllEnvs();
+  });
+
+  it('sin base muestra el respaldo con el número de orden y las medidas', async () => {
+    vi.stubEnv('VITE_MEDIOS_BASE_URL', '');
+    const e = crearEntorno('sup');
+    await preparar(e, true);
+    conVersiones(e);
+    ver(e);
+    const u = userEvent.setup();
+    const dialogo = await abrir(u, 'Fotos y video', TV);
+    await within(dialogo).findByText('Foto 1 (portada)');
+    expect(dialogo.querySelector('img')).toBeNull();
+    expect(dialogo.querySelector('[data-respaldo]')?.textContent).toBe('Foto · n.º 1 · 1200 × 800');
+    vi.unstubAllEnvs();
+  });
+
+  it('también muestra miniatura en los archivos subidos que no están en la página', async () => {
+    vi.stubEnv('VITE_MEDIOS_BASE_URL', BASE_MEDIOS);
+    const e = crearEntorno('sup');
+    const id = await preparar(e, false);
+    conVersiones(e);
+    ver(e);
+    const u = userEvent.setup();
+    const dialogo = await abrir(u, 'Fotos y video', TV);
+    await within(dialogo).findByText('Archivos subidos que no están en la página:');
+    expect(dialogo.querySelector('img')?.getAttribute('src')).toBe(`${BASE_MEDIOS}/t/${id}-480.webp`);
+    vi.unstubAllEnvs();
+  });
+});

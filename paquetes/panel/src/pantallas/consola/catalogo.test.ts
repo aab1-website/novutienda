@@ -196,3 +196,56 @@ describe('catálogo: apariencia', () => {
     await waitFor(() => expect(cierre()).toBe(true));
   });
 });
+
+const BASE_MEDIOS = 'https://medios.ejemplo.test';
+/** Hace que `listarMedios` entregue versiones WebP, como el servidor tras procesar la foto. */
+const conVersiones = (e: Entorno): void => {
+  const original = e.api.llamar.bind(e.api) as (n: string, d: unknown) => Promise<unknown>;
+  vi.spyOn(e.api, 'llamar').mockImplementation(((n: string, d: unknown) =>
+    original(n, d).then((r) => (n === 'listarMedios' ? (r as { id: string }[]).map((m) => ({ ...m, versiones: [{ clase: 'imagen', lado: 960, formato: 'webp', ruta: `t/${m.id}-960.webp`, bytes: 9 }, { clase: 'imagen', lado: 480, formato: 'webp', ruta: `t/${m.id}-480.webp`, bytes: 5 }] })) : r))) as never);
+};
+
+describe('catálogo: miniaturas del carrusel', () => {
+  const ver = (e: Entorno): void => void render(e.envolver(h(ProveedorGuardia, null, h(PantallaCatalogo, { sub: 'apariencia' }))));
+  const preparar = async (e: Entorno): Promise<string> => {
+    const r = await e.api.llamar('reservarSubida', { subidaId: uuid(), productoId: 'tv-55', tipo: 'foto', bytes: 10 });
+    await e.api.llamar('finalizarSubida', { subidaId: r.subidaId });
+    return r.subidaId;
+  };
+  const elegir = async (u: ReturnType<typeof userEvent.setup>): Promise<void> => {
+    await u.type(await screen.findByRole('combobox', { name: 'Producto de la foto' }), 'Televisor');
+    await u.click(await screen.findByRole('option', { name: /Televisor/ }));
+  };
+
+  it('muestra la miniatura al elegir y al agregar la foto al carrusel', async () => {
+    vi.stubEnv('VITE_MEDIOS_BASE_URL', BASE_MEDIOS);
+    const e = crearEntorno('adm');
+    const id = await preparar(e);
+    conVersiones(e);
+    ver(e);
+    const u = userEvent.setup();
+    await elegir(u);
+    const boton = await screen.findByRole('button', { name: /^Agregar foto/ });
+    expect(boton.querySelector('img')?.getAttribute('src')).toBe(`${BASE_MEDIOS}/t/${id}-480.webp`);
+    await u.click(boton);
+    const item = (await screen.findByLabelText('Texto alternativo de la foto 1')).closest('li');
+    expect(item?.querySelector('img')?.getAttribute('src')).toBe(`${BASE_MEDIOS}/t/${id}-480.webp`);
+    expect(item?.querySelector('img')?.getAttribute('referrerpolicy')).toBe('no-referrer');
+    vi.unstubAllEnvs();
+  });
+
+  it('sin base muestra el respaldo con el orden y las medidas', async () => {
+    vi.stubEnv('VITE_MEDIOS_BASE_URL', '');
+    const e = crearEntorno('adm');
+    await preparar(e);
+    conVersiones(e);
+    ver(e);
+    const u = userEvent.setup();
+    await elegir(u);
+    await u.click(await screen.findByRole('button', { name: /^Agregar foto/ }));
+    const item = (await screen.findByLabelText('Texto alternativo de la foto 1')).closest('li');
+    expect(item?.querySelector('img')).toBeNull();
+    expect(item?.querySelector('[data-respaldo]')?.textContent).toMatch(/n\.º 1 · 1200 × 800/);
+    vi.unstubAllEnvs();
+  });
+});
