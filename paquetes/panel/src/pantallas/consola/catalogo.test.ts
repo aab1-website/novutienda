@@ -1,12 +1,13 @@
 // @vitest-environment jsdom
 import { h } from 'preact';
-import { cleanup, render, screen, waitFor } from '@testing-library/preact';
+import { cleanup, fireEvent, render, screen, waitFor } from '@testing-library/preact';
 import { userEvent } from '@testing-library/user-event';
 import { afterEach, describe, expect, it, vi } from 'vitest';
 import { ErrorApi } from '../../api/errores.js';
 import { crearEntorno, uuid, type Entorno } from '../../ayuda-pruebas.js';
 import { ProveedorGuardia } from '../../ui/guardia.js';
 import { PantallaCatalogo } from './catalogo.js';
+import { BloqueLogo } from './logo-vista.js';
 import { PALETAS } from './plantillas-vista.js';
 
 afterEach(() => {
@@ -297,5 +298,98 @@ describe('catálogo: miniaturas del carrusel', () => {
     ver(e);
     const item = (await screen.findByLabelText('Texto alternativo de la foto 1')).closest('li');
     expect(item?.querySelector('[data-respaldo]')).toBeTruthy();
+  });
+});
+
+describe('catálogo: logo del negocio', () => {
+  const ver = (e: Entorno): void => void render(e.envolver(h(ProveedorGuardia, null, h(PantallaCatalogo, { sub: 'apariencia' }))));
+  const archivo = (nombre: string, tipo: string, bytes = 10): File => new File([new Uint8Array(bytes)], nombre, { type: tipo });
+  const subir = async (nombre = 'logo.png', tipo = 'image/png'): Promise<void> => {
+    fireEvent.change(await screen.findByLabelText('Archivo del logo'), { target: { files: [archivo(nombre, tipo)] } });
+  };
+
+  it('sin logo: «Subir logo»; subir uno lo muestra y deja «Reemplazar logo» sin tocar «Guardar apariencia»', async () => {
+    vi.stubEnv('VITE_MEDIOS_BASE_URL', BASE_MEDIOS);
+    const e = crearEntorno('adm');
+    ver(e);
+    expect(await screen.findByRole('button', { name: 'Subir logo' })).toBeTruthy();
+    expect(screen.getByText(/El logo se guarda al subirlo/)).toBeTruthy();
+    await subir();
+    expect(await screen.findByText(/Logo guardado/)).toBeTruthy();
+    const img = (await screen.findByAltText('Logo del negocio')) as HTMLImageElement;
+    expect(img.getAttribute('src')).toMatch(new RegExp(`^${BASE_MEDIOS}/_negocio/logo-.*\\.webp$`));
+    expect(img.getAttribute('referrerpolicy')).toBe('no-referrer');
+    expect(screen.getByRole('button', { name: 'Reemplazar logo' })).toBeTruthy();
+    expect(e.api.llamadas.some((l) => l.nombre === 'guardarConfigSitio')).toBe(false);
+  });
+  it('reemplazar deja un solo logo vigente', async () => {
+    vi.stubEnv('VITE_MEDIOS_BASE_URL', BASE_MEDIOS);
+    const e = crearEntorno('adm');
+    ver(e);
+    await subir('uno.png', 'image/png');
+    await screen.findByAltText('Logo del negocio');
+    const primero = e.api.estado.logo?.medio.id;
+    await subir('dos.webp', 'image/webp');
+    await waitFor(() => expect(e.api.estado.logo?.medio.id).not.toBe(primero));
+    expect(e.api.estado.logo).not.toBeNull();
+    await waitFor(() => expect((screen.getByAltText('Logo del negocio') as HTMLImageElement).getAttribute('src')).toContain(e.api.estado.logo?.medio.id ?? 'x'));
+  });
+  it('un archivo demasiado grande se rechaza antes de subir, con su motivo', async () => {
+    const e = crearEntorno('adm');
+    ver(e);
+    await screen.findByLabelText('Archivo del logo');
+    const grande = archivo('enorme.png', 'image/png');
+    Object.defineProperty(grande, 'size', { value: 3 * 1024 * 1024 });
+    fireEvent.change(screen.getByLabelText('Archivo del logo'), { target: { files: [grande] } });
+    expect(await screen.findByText(/enorme\.png: El logo «enorme\.png» pesa .* y el máximo es/)).toBeTruthy();
+    expect(e.api.llamadas.some((l) => l.nombre === 'reservarSubidaLogo')).toBe(false);
+  });
+  it('un SVG o un tipo no admitido se rechaza antes de subir', async () => {
+    const e = crearEntorno('adm');
+    ver(e);
+    await subir('marca.svg', 'image/svg+xml');
+    expect(await screen.findByText(/es un SVG y no se admite/)).toBeTruthy();
+    await subir('doc.pdf', 'application/pdf');
+    expect(await screen.findByText(/no es un formato permitido para el logo/)).toBeTruthy();
+    expect(e.api.llamadas.some((l) => l.nombre === 'reservarSubidaLogo')).toBe(false);
+  });
+  it('si el servidor rechaza el archivo, muestra su motivo y no ofrece «Reintentar»', async () => {
+    const e = crearEntorno('adm');
+    e.api.estado.disparador.rechazo = 'El archivo no es una imagen válida';
+    ver(e);
+    await subir('roto.png');
+    expect(await screen.findByText(/roto\.png: El archivo no es una imagen válida/)).toBeTruthy();
+    expect(screen.queryByRole('button', { name: 'Reintentar' })).toBeNull();
+    expect(screen.getByRole('button', { name: 'Elegir otro archivo' })).toBeTruthy();
+    expect(e.api.estado.logo).toBeNull();
+  });
+  it('quitar pide confirmación y deja sin logo', async () => {
+    const e = crearEntorno('adm');
+    ver(e);
+    const u = userEvent.setup();
+    await subir();
+    await screen.findByRole('button', { name: 'Reemplazar logo' });
+    await u.click(screen.getByRole('button', { name: 'Quitar logo' }));
+    expect(e.api.estado.logo).not.toBeNull();
+    await u.click(screen.getByRole('button', { name: 'Sí, quitar' }));
+    expect(await screen.findByText(/Logo quitado/)).toBeTruthy();
+    expect(e.api.estado.logo).toBeNull();
+    expect(await screen.findByRole('button', { name: 'Subir logo' })).toBeTruthy();
+  });
+  it('sin base de medios muestra el respaldo de texto', async () => {
+    vi.stubEnv('VITE_MEDIOS_BASE_URL', '');
+    const e = crearEntorno('adm');
+    ver(e);
+    await subir();
+    expect(await screen.findByText(/la vista previa no está disponible/)).toBeTruthy();
+    expect(screen.queryByAltText('Logo del negocio')).toBeNull();
+  });
+  it('el supervisor solo ve el logo: sin botones y con el aviso', async () => {
+    // La pestaña Apariencia es del administrador; el bloque se prueba solo para el caso de verse con otro rol.
+    const e = crearEntorno('sup');
+    render(e.envolver(h(BloqueLogo, {})));
+    expect(await screen.findByText('Solo el administrador cambia el logo.')).toBeTruthy();
+    expect(screen.queryByRole('button', { name: /logo/i })).toBeNull();
+    expect(screen.queryByLabelText('Archivo del logo')).toBeNull();
   });
 });

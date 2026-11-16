@@ -15,6 +15,7 @@ import { descargarTexto } from '../../util/csv.js';
 import { PALETAS } from './plantillas-vista.js';
 import { PantallaFichas } from './catalogo-ficha.js';
 import { PantallaSecciones } from './catalogo-secciones.js';
+import { BloqueLogo } from './logo-vista.js';
 
 const TODAS = [
   { id: 'tablero', titulo: 'Tablero' }, { id: 'fichas', titulo: 'Fichas, fotos y video' }, { id: 'secciones', titulo: 'Secciones' },
@@ -191,6 +192,7 @@ function Apariencia(): JSX.Element {
 
   return (
     <div>
+      <BloqueLogo />
       <Seccion titulo="Plantilla de color">
         <p class="texto-suave">Cinco plantillas, cada una con tema claro y oscuro. Las vistas son aproximadas; el sitio muestra la definitiva. Cada plantilla tiene su propio carrusel: al cambiar de plantilla, lo que editó en las otras se conserva.</p>
         <fieldset class="plantillas">
