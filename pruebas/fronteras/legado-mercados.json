@@ -29,8 +29,7 @@
       "paquetes/website/src/api/cotizacion.ts"
     ],
     "precioFinal": [
-      "paquetes/website/src/lib/precio-vista.ts",
-      "plataforma/funciones/servidor/http/novuchat.ts"
+      "paquetes/website/src/lib/precio-vista.ts"
     ]
   }
 }
