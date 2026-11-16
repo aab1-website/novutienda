@@ -250,8 +250,8 @@ describe('supervisión en vivo', () => {
     await e.api.llamar('abrirTurno', { turnoId: uuid(), apertura: { BOB: 0 } });
     render(e.envolver(h(PantallaSupervision, { sub: 'auditoria' })));
     const u = userEvent.setup();
-    expect(await screen.findByText('pos.turno.abrir')).toBeTruthy();
-    await u.type(screen.getByLabelText(/Acción contiene/), 'no-existe');
+    expect(await screen.findByText('Apertura de turno')).toBeTruthy();
+    await u.selectOptions(screen.getByLabelText('Acción'), 'Cierre de turno');
     await u.click(screen.getByRole('button', { name: 'Filtrar' }));
     expect(await screen.findByText('No hay registros con esos filtros')).toBeTruthy();
     const crear = vi.spyOn(URL, 'createObjectURL').mockReturnValue('blob:x');
