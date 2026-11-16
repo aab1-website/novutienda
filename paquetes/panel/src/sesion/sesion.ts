@@ -27,4 +27,9 @@ export interface Sesion {
   renovar(): Promise<boolean>;
   /** Reenvía el correo de verificación (solo tras un inicio con correo no verificado). */
   reenviarVerificacion(): Promise<void>;
+  /**
+   * Envía el correo de restablecimiento de contraseña. Siempre se resuelve igual, exista o no la cuenta (y falle o no el
+   * envío): quien llama no puede saber si el correo tiene una cuenta.
+   */
+  recuperarContrasena(correo: string): Promise<void>;
 }

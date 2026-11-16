@@ -1,11 +1,33 @@
 import type { JSX } from 'preact';
 import { useState } from 'preact/hooks';
-import type { ConsultaArchivo, Recibo } from '../../api/tipos.js';
-import { Alerta, Boton, Campo, Cargando, ErrorCarga, Seccion, Vacio, fechaHora } from '../../ui/comun.js';
+import type { ConsultaArchivo, EstadoEnvio, Recibo } from '../../api/tipos.js';
+import { Boton, Campo, ConCarga, Seccion, fechaHora } from '../../ui/comun.js';
+import { Dialogo } from '../../ui/dialogo.js';
+import { Tabla } from '../../ui/tabla.js';
 import { useApp } from '../../ui/contexto.js';
 import { useCarga } from '../../ui/hooks.js';
 import { AccionesRecibo, ReciboVista } from './recibo-vista.js';
 import { formatearMonto } from '../../util/dinero.js';
+
+/** Tope de la lista que devuelve el servidor por consulta. */
+export const TOPE_LISTA = 50;
+
+const TEXTO_ENVIO: Record<EstadoEnvio, string> = {
+  no_enviado: 'Sin enviar',
+  sin_telefono: 'Sin teléfono del cliente',
+  enlace_generado: 'Enlace preparado',
+  enviado: 'Enviado',
+  fallido: 'No se pudo preparar',
+};
+
+/** Texto legible del estado de envío; un valor desconocido nunca se muestra crudo. */
+export function textoEnvio(estado: EstadoEnvio): string {
+  return TEXTO_ENVIO[estado] ?? 'Estado desconocido';
+}
+
+function textoEstado(r: Recibo): string {
+  return `${r.estado === 'ANULADO' ? 'Anulado' : 'Emitido'}${r.facturaSuma ? ` · SUMA ${r.facturaSuma}` : ''}`;
+}
 
 export function PantallaRecibos(): JSX.Element {
   const { api, usuario } = useApp();
@@ -42,38 +64,38 @@ export function PantallaRecibos(): JSX.Element {
         </form>
       </Seccion>
       <Seccion titulo="Comprobantes">
-        {lista.cargando && <Cargando />}
-        {lista.error && <ErrorCarga error={lista.error} reintentar={lista.recargar} />}
-        {lista.datos && lista.datos.length === 0 && <Vacio titulo="No hay recibos que coincidan" detalle="Cambie los filtros o haga una venta." />}
-        {lista.datos && lista.datos.length > 0 && (
-          <table class="tabla">
-            <caption class="solo-lectores">Recibos emitidos</caption>
-            <thead>
-              <tr><th scope="col">Número</th><th scope="col">Fecha</th><th scope="col">Cliente</th><th scope="col" class="num">Total</th><th scope="col">Estado</th><th scope="col"><span class="solo-lectores">Acciones</span></th></tr>
-            </thead>
-            <tbody>
-              {lista.datos.map((r) => (
-                <tr key={r.reciboId}>
-                  <th scope="row">{r.numero}</th>
-                  <td>{fechaHora(r.emitidoEn)}</td>
-                  <td>{r.cliente?.nombre ?? '—'}</td>
-                  <td class="num">{formatearMonto(r.total, r.moneda)}</td>
-                  <td>{r.estado === 'ANULADO' ? 'ANULADO' : 'Emitido'}{r.facturaSuma ? ` · SUMA ${r.facturaSuma}` : ''}</td>
-                  <td>
-                    <Boton chico variante="secundario" onClick={() => setElegido(r.reciboId)} etiqueta={`Ver recibo ${r.numero}`}>Ver</Boton>
-                  </td>
-                </tr>
-              ))}
-            </tbody>
-          </table>
-        )}
+        <ConCarga carga={lista}>
+          {(recibos) => (
+            <Tabla
+              titulo="Recibos emitidos"
+              filas={recibos}
+              clave={(r) => r.reciboId}
+              porPagina={25}
+              vistaCelular="desplazar"
+              buscar={{ etiqueta: 'Buscar en esta lista', en: (r) => [r.numero, r.cliente?.nombre ?? '', r.facturaSuma ?? ''] }}
+              cortada={recibos.length >= TOPE_LISTA ? { mostradas: recibos.length, mensaje: `Se muestran los ${String(recibos.length)} recibos más recientes; puede haber más. Acote la búsqueda por número, cliente o fechas para ver el resto.` } : undefined}
+              vacio={{ titulo: 'No hay recibos que coincidan' }}
+              columnas={[
+                { id: 'numero', titulo: 'Número', valor: (r) => r.numero, encabezadoFila: true, ordenable: true },
+                { id: 'fecha', titulo: 'Fecha', valor: (r) => r.emitidoEn, celda: (r) => fechaHora(r.emitidoEn), ordenable: true },
+                { id: 'cliente', titulo: 'Cliente', valor: (r) => r.cliente?.nombre ?? '—' },
+                { id: 'total', titulo: 'Total', valor: (r) => r.total, celda: (r) => formatearMonto(r.total, r.moneda) },
+                { id: 'estado', titulo: 'Estado', valor: (r) => textoEstado(r) },
+                { id: 'whatsapp', titulo: 'WhatsApp', valor: (r) => textoEnvio(r.envioWhatsapp.estado) },
+              ]}
+              acciones={(r) => (
+                <Boton chico variante="secundario" onClick={() => setElegido(r.reciboId)} etiqueta={`Ver recibo ${r.numero}`}>Ver</Boton>
+              )}
+            />
+          )}
+        </ConCarga>
       </Seccion>
       {sel && (
-        <Seccion titulo={`Recibo ${sel.numero}`} acciones={<Boton chico variante="secundario" onClick={() => setElegido(null)}>Cerrar vista</Boton>}>
-          {sel.envioWhatsapp.estado !== 'no_enviado' && <Alerta tipo="info">WhatsApp: {sel.envioWhatsapp.estado === 'enlace_generado' ? 'enlace preparado' : sel.envioWhatsapp.estado === 'sin_telefono' ? 'sin teléfono del cliente' : sel.envioWhatsapp.estado}.</Alerta>}
+        <Dialogo titulo={`Recibo ${sel.numero}`} foco="cerrar" onCerrar={() => setElegido(null)}>
+          <p>WhatsApp: {textoEnvio(sel.envioWhatsapp.estado)}.</p>
           <AccionesRecibo recibo={sel} alCambiar={lista.recargar} />
           <ReciboVista recibo={sel} registradoPor={{ qr: 'el vendedor' }} />
-        </Seccion>
+        </Dialogo>
       )}
     </div>
   );
