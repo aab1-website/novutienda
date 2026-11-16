@@ -28,6 +28,8 @@ export class SesionFirebase implements Sesion {
   ) {
     // Sin resolvedor de ventanas emergentes: no se cargan marcos ni scripts de Google (CSP estricta).
     this.auth = initializeAuth(initializeApp(config), { persistence: [indexedDBLocalPersistence, browserLocalPersistence] });
+    // Los correos de Firebase Auth (restablecer contraseña, verificación) salen en español; se fija una vez, antes de cualquier envío.
+    this.auth.languageCode = 'es';
     if (urlEmulador !== undefined) connectAuthEmulator(this.auth, urlEmulador, { disableWarnings: true });
     onAuthStateChanged(this.auth, (u) => {
       void this.adoptar(u).then((x) => {
