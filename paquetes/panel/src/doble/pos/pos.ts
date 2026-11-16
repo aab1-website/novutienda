@@ -285,13 +285,13 @@ export const handlersPos: {
     if (e.motivo !== undefined && e.decision !== 'rechazar') throw fallo('entrada-invalida', 'El motivo solo se admite al rechazar');
     // Mismo criterio del servidor: sin caracteres de control; vacío o solo espacios = ausente; tope de 200.
     // eslint-disable-next-line no-control-regex
-    const limpio = e.motivo === undefined ? '' : e.motivo.replace(/[\u0000-\u001f\u007f-\u009f]/g, '').trim();
-    if (limpio.length > 200) throw fallo('entrada-invalida', 'El motivo admite hasta 200 caracteres');
+    const limpio = e.motivo === undefined ? '' : e.motivo.replace(/[\u0000-\u001f\u007f-\u009f\u200b-\u200d\u2028\u2029\u202a-\u202e\u2066-\u2069\ufeff]/g, '');
+    if (limpio.trim() !== '' && limpio.length > 200) throw fallo('entrada-invalida', 'El motivo admite hasta 200 caracteres');
     const n: AprobacionPos = e.decision === 'aprobar'
       ? { ...a, estado: 'aprobada', aprobadoPor: c.uid, aprobadoRol: c.rol }
-      : { ...a, estado: 'rechazada', aprobadoPor: c.uid, aprobadoRol: c.rol, ...(limpio !== '' ? { motivoRechazo: limpio } : {}) };
+      : { ...a, estado: 'rechazada', aprobadoPor: c.uid, aprobadoRol: c.rol, ...(limpio.trim() !== '' ? { motivoRechazo: limpio.trim() } : {}) };
     c.e.aprobaciones.set(a.aprobacionId, n);
-    auditar(c, `pos.aprobacion.${e.decision}`, `aprobaciones/${a.aprobacionId}`, limpio !== '' ? limpio : undefined);
+    auditar(c, `pos.aprobacion.${e.decision}`, `aprobaciones/${a.aprobacionId}`, limpio.trim() !== '' ? limpio.trim() : undefined);
     return n;
   },
 

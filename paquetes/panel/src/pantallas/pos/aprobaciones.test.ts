@@ -4,7 +4,7 @@ import { cleanup, render, screen, waitFor, within } from '@testing-library/preac
 import { userEvent } from '@testing-library/user-event';
 import { afterEach, describe, expect, it, vi } from 'vitest';
 import { crearEntorno, uuid, type Entorno } from '../../ayuda-pruebas.js';
-import { PantallaAprobaciones, RECHAZO_CON_MOTIVO } from './aprobaciones.js';
+import { PantallaAprobaciones } from './aprobaciones.js';
 
 afterEach(() => {
   cleanup();
@@ -52,7 +52,6 @@ describe('aprobaciones: confirmar antes de resolver (A-02)', () => {
     const u = userEvent.setup();
     await u.click(await screen.findByRole('button', { name: 'Rechazar solicitud de descuento' }));
     const dialogo = await screen.findByRole('dialog', { name: '¿Rechazar esta solicitud?' });
-    expect(RECHAZO_CON_MOTIVO).toBe(true);
     expect(within(dialogo).getByLabelText(/Motivo del rechazo/)).toBeTruthy();
     await u.click(within(dialogo).getByRole('button', { name: 'Volver' }));
     await waitFor(() => expect(screen.queryByRole('dialog')).toBeNull());
@@ -87,6 +86,15 @@ describe('aprobaciones: confirmar antes de resolver (A-02)', () => {
     await u.click(within(dialogo).getByRole('button', { name: 'Sí, rechazar' }));
     await waitFor(() => expect(resoluciones(e)).toHaveLength(2));
     expect(e.api.llamadas.filter((l) => l.nombre === 'resolverAprobacion')[1]?.entrada).toEqual({ aprobacionId: id2, decision: 'rechazar' });
+  });
+
+  it('el doble mide igual que el servidor: 200 con espacios alrededor falla; invisibles se quitan', async () => {
+    const e = crearEntorno('caj');
+    const id = await pedir(e, 1000);
+    e.como('sup');
+    await expect(e.api.llamar('resolverAprobacion', { aprobacionId: id, decision: 'rechazar', motivo: ` ${'x'.repeat(200)} ` })).rejects.toBeTruthy();
+    const r = await e.api.llamar('resolverAprobacion', { aprobacionId: id, decision: 'rechazar', motivo: 'A\u200bB\u202eC\u2028D' });
+    expect(r.motivoRechazo).toBe('ABCD');
   });
 
   it('solo la fila que se está resolviendo dice «Procesando…»', async () => {

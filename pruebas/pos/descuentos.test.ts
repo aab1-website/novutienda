@@ -170,6 +170,15 @@ describe('motivo opcional del rechazo', () => {
     expect(ok.motivoRechazo).toHaveLength(200);
   });
 
+  it('200 caracteres con espacios alrededor se miden crudos (error); invisibles y bidi se quitan', async () => {
+    const e = crearEntorno();
+    await abrir(e);
+    await pedir(e, 67);
+    expect(await codigo(resolverAprobacion(e.deps, T, sup, UUID(67), 'rechazar', ` ${'x'.repeat(200)} `))).toBe('entrada-invalida');
+    const r = await resolverAprobacion(e.deps, T, sup, UUID(67), 'rechazar', 'A\u200bB\ufeffC\u2028D\u202eE\u2066F');
+    expect(r.motivoRechazo).toBe('ABCDEF');
+  });
+
   it('un motivo enviado con «aprobar» se rechaza y la solicitud sigue pendiente', async () => {
     const e = crearEntorno();
     await abrir(e);

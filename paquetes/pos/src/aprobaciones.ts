@@ -90,7 +90,7 @@ export async function solicitarAprobacion(
 function motivoOpcional(x: unknown): string | undefined {
   if (typeof x !== 'string') throw new ErrorPos('entrada-invalida', 'motivo debe ser texto');
   // eslint-disable-next-line no-control-regex
-  const limpio = x.replace(/[\u0000-\u001f\u007f-\u009f]/g, '');
+  const limpio = x.replace(/[\u0000-\u001f\u007f-\u009f\u200b-\u200d\u2028\u2029\u202a-\u202e\u2066-\u2069\ufeff]/g, '');
   if (limpio.trim() === '') return undefined;
   return exigirTexto(limpio, 'motivo', 200);
 }
