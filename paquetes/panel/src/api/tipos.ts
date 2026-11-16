@@ -516,6 +516,14 @@ export interface Carrusel {
 }
 
 export type TipoMedio = 'foto' | 'video';
+/** Versión procesada de un medio, tal como la entrega el servidor. `ruta` es la ruta pública (con hash de contenido) en el almacén de medios. */
+export interface VersionMedio {
+  readonly clase: 'imagen' | 'video' | 'poster';
+  readonly lado: number;
+  readonly formato: 'avif' | 'webp' | 'mp4';
+  readonly ruta: string;
+  readonly bytes: number;
+}
 export interface Medio {
   readonly id: string;
   readonly productoId: string;
@@ -524,6 +532,7 @@ export interface Medio {
   readonly ancho: number;
   readonly alto: number;
   readonly duracionSeg?: number;
+  readonly versiones?: readonly VersionMedio[];
   readonly creadoEn: number;
   readonly por: string;
 }
@@ -652,7 +661,8 @@ export type PreciosPorMercado = Readonly<Record<string, number>>;
 
 export interface UsuarioVista {
   readonly uid: string;
-  readonly correo: string;
+  /** `null` si la cuenta no tiene correo. */
+  readonly correo: string | null;
   readonly rol: Rol;
   readonly verificado: boolean;
 }

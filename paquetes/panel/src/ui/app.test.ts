@@ -1,8 +1,8 @@
 // @vitest-environment jsdom
 import { h } from 'preact';
-import { cleanup, render, screen, waitFor, within } from '@testing-library/preact';
+import { act, cleanup, render, screen, waitFor, within } from '@testing-library/preact';
 import { userEvent } from '@testing-library/user-event';
-import { afterEach, beforeEach, describe, expect, it } from 'vitest';
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { crearEntorno } from '../ayuda-pruebas.js';
 import { CUENTAS_DOBLE, SesionDoble } from '../sesion/doble.js';
 import { ErrorApi } from '../api/errores.js';
@@ -37,10 +37,10 @@ async function entrar(correo: string, clave: string): Promise<void> {
 }
 
 describe('inicio de sesión', () => {
-  it('un correo no verificado muestra «verifica tu correo» y no entra', async () => {
+  it('un correo no verificado muestra «verifique su correo» y no entra', async () => {
     montar();
     await entrar('nuevo@ejemplo.test', 'clave-nuevo-1');
-    expect(await screen.findByText(/Verifica tu correo/)).toBeTruthy();
+    expect(await screen.findByText(/Verifique su correo/)).toBeTruthy();
     expect(screen.queryByRole('navigation', { name: 'Menú principal' })).toBeNull();
     await userEvent.setup().click(screen.getByRole('button', { name: 'Reenviar enlace' }));
     expect(await screen.findByText(/Enlace reenviado/)).toBeTruthy();
@@ -56,7 +56,7 @@ describe('inicio de sesión', () => {
   });
 });
 
-describe('comercio en el encabezado', () => {
+describe('identificador del comercio', () => {
   const cuentas = [
     ...CUENTAS_DOBLE,
     { correo: 'otro@ejemplo.test', contrasena: 'clave-otro-1', uid: 'u-otro', tenantId: 'otro-comercio', rol: 'adm' as const, verificado: true },
@@ -72,18 +72,20 @@ describe('comercio en el encabezado', () => {
     expect(screen.queryByText(/Comercio:/)).toBeNull();
     expect(document.title).toBe('Ingreso · Panel de gestión');
   });
-  it('muestra el comercio de la sesión y lo pone en el título; cambia al ingresar con otro', async () => {
+  it('ni la cabecera ni el título de la pestaña llevan el identificador del comercio', async () => {
     montarCon();
     await entrar('adm@ejemplo.test', 'clave-adm-1');
     const cab = await screen.findByRole('banner');
-    expect(within(cab).getByText('Comercio: demo')).toBeTruthy();
-    await waitFor(() => expect(document.title).toBe('Venta · demo · Panel de gestión'));
+    await waitFor(() => expect(document.title).toBe('Venta · Panel de gestión'));
+    expect(cab.textContent).not.toContain('demo');
+    expect(within(cab).queryByText(/Comercio:/)).toBeNull();
     await userEvent.setup().click(screen.getByRole('button', { name: 'Salir' }));
     await screen.findByRole('button', { name: 'Entrar' });
-    expect(screen.queryByText(/Comercio:/)).toBeNull();
     await entrar('otro@ejemplo.test', 'clave-otro-1');
-    expect(await screen.findByText('Comercio: otro-comercio')).toBeTruthy();
-    await waitFor(() => expect(document.title).toBe('Venta · otro-comercio · Panel de gestión'));
+    const cab2 = await screen.findByRole('banner');
+    await waitFor(() => expect(document.title).toBe('Venta · Panel de gestión'));
+    expect(cab2.textContent).not.toContain('otro-comercio');
+    expect(document.title).not.toContain('otro-comercio');
   });
 });
 
@@ -199,6 +201,75 @@ describe('cabecera plegable, título y foco', () => {
     expect(boton.getAttribute('aria-expanded')).toBe('false');
     expect(document.activeElement).toBe(boton);
   });
+  describe('menú de hamburguesa', () => {
+    const abrir = async (): Promise<{ u: ReturnType<typeof userEvent.setup>; boton: HTMLElement; panel: HTMLElement }> => {
+      montar();
+      await entrar('adm@ejemplo.test', 'clave-adm-1');
+      await screen.findByRole('navigation', { name: 'Menú principal' });
+      await waitFor(() => expect(document.activeElement?.textContent).toBe('Venta'));
+      const u = userEvent.setup();
+      const boton = screen.getByRole('button', { name: 'Menú' });
+      const panel = document.getElementById(boton.getAttribute('aria-controls') ?? '') as HTMLElement;
+      await u.click(boton);
+      expect(boton.getAttribute('aria-expanded')).toBe('true');
+      return { u, boton, panel };
+    };
+    it('el botón es el primero de la cabecera, dibuja tres barras y su nombre accesible es «Menú»', async () => {
+      montar();
+      await entrar('adm@ejemplo.test', 'clave-adm-1');
+      const boton = await screen.findByRole('button', { name: 'Menú' });
+      expect(document.querySelector('.cabecera-interior')?.firstElementChild).toBe(boton);
+      expect(boton.querySelectorAll('.hamburguesa > span')).toHaveLength(3);
+      expect(boton.textContent).toBe('');
+      expect(document.querySelectorAll('nav[aria-label="Menú principal"]')).toHaveLength(1);
+    });
+    it('el mismo botón lo cierra y el foco vuelve al botón', async () => {
+      const { u, boton, panel } = await abrir();
+      expect(panel.classList.contains('abierto')).toBe(true);
+      expect(document.activeElement).toBe(within(panel).getAllByRole('link')[0]);
+      await u.click(boton);
+      expect(boton.getAttribute('aria-expanded')).toBe('false');
+      expect(panel.classList.contains('abierto')).toBe(false);
+      expect(document.activeElement).toBe(boton);
+    });
+    it('Escape lo cierra y el foco vuelve al botón', async () => {
+      const { u, boton } = await abrir();
+      await u.keyboard('{Escape}');
+      expect(boton.getAttribute('aria-expanded')).toBe('false');
+      expect(document.activeElement).toBe(boton);
+    });
+    it('tocar fuera lo cierra; tocar dentro del panel no', async () => {
+      const { u, boton, panel } = await abrir();
+      await u.click(panel);
+      expect(boton.getAttribute('aria-expanded')).toBe('true');
+      await u.click(document.getElementById('contenido') as HTMLElement);
+      expect(boton.getAttribute('aria-expanded')).toBe('false');
+    });
+    it('elegir un enlace navega y lo cierra', async () => {
+      const { u, boton } = await abrir();
+      await u.click(screen.getByRole('link', { name: 'Mermas' }));
+      await waitFor(() => expect(window.location.hash).toBe('#/mermas'));
+      await waitFor(() => expect(boton.getAttribute('aria-expanded')).toBe('false'));
+    });
+    it('al pasar a pantalla ancha con el menú abierto se cierra y se sueltan los oyentes', async () => {
+      const oyentes = new Set<() => void>();
+      const mq = { matches: false, addEventListener: (_: string, f: () => void) => oyentes.add(f), removeEventListener: (_: string, f: () => void) => oyentes.delete(f) };
+      window.matchMedia = vi.fn(() => mq) as never;
+      const { boton } = await abrir();
+      expect(oyentes.size).toBe(1);
+      mq.matches = true;
+      act(() => oyentes.forEach((f) => f()));
+      await waitFor(() => expect(boton.getAttribute('aria-expanded')).toBe('false'));
+      expect(oyentes.size).toBe(0);
+      delete (window as { matchMedia?: unknown }).matchMedia;
+    });
+    it('al abrirlo no cambia la ruta ni duplica el menú', async () => {
+      const { panel } = await abrir();
+      const antes = window.location.hash;
+      expect(panel.querySelectorAll('nav')).toHaveLength(1);
+      expect(window.location.hash).toBe(antes);
+    });
+  });
   it('la redirección inicial no pisa una navegación del usuario ni cierra el menú abierto', async () => {
     montar();
     await entrar('adm@ejemplo.test', 'clave-adm-1');
@@ -239,11 +310,11 @@ describe('cabecera plegable, título y foco', () => {
     await screen.findByRole('navigation', { name: 'Menú principal' });
     await waitFor(() => expect(document.activeElement?.textContent).toBe('Venta'));
     window.location.hash = '#/mermas';
-    await waitFor(() => expect(document.title).toBe('Mermas · demo · Panel de gestión'));
+    await waitFor(() => expect(document.title).toBe('Mermas · Panel de gestión'));
     await waitFor(() => expect(document.activeElement?.textContent).toBe('Mermas'));
     expect(document.activeElement?.tagName).toBe('H1');
     window.location.hash = '#/usuarios';
-    await waitFor(() => expect(document.title).toBe('Usuarios · demo · Panel de gestión'));
+    await waitFor(() => expect(document.title).toBe('Usuarios · Panel de gestión'));
     await waitFor(() => expect(document.activeElement?.textContent).toBe('Usuarios'));
   });
 });

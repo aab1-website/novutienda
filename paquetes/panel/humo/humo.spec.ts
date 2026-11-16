@@ -53,7 +53,7 @@ for (const esquema of ESQUEMAS) {
       await page.getByLabel('Correo').fill('nuevo@ejemplo.test');
       await page.getByLabel('Contraseña').fill('clave-nuevo-1');
       await page.getByRole('button', { name: 'Entrar' }).click();
-      await expect(page.getByText(/Verifica tu correo/)).toBeVisible();
+      await expect(page.getByText(/Verifique su correo/)).toBeVisible();
       await expect(page.getByRole('navigation', { name: 'Menú principal' })).toHaveCount(0);
       await sinViolaciones(page, 'correo sin verificar');
       await page.getByLabel('Correo').fill('adm@ejemplo.test');

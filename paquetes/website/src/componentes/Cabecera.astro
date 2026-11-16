@@ -21,6 +21,16 @@ const actual = (href: string): boolean => (href === '/' ? ruta === '/' : !href.i
 ---
 <header class="cabecera">
   <div class="contenedor cabecera-interior">
+    <details class="menu-movil">
+      <summary aria-label="Menú">
+        <svg aria-hidden="true" focusable="false" width="24" height="24" viewBox="0 0 24 24"><path d="M3 6h18M3 12h18M3 18h18" stroke="currentColor" stroke-width="2" stroke-linecap="round" fill="none" /></svg>
+      </summary>
+      <nav aria-label="Principal (móvil)">
+        <ul class="menu-movil-lista">
+          {items.map((i) => <li><a href={i.href} aria-current={actual(i.href) ? 'page' : undefined}>{i.texto}</a></li>)}
+        </ul>
+      </nav>
+    </details>
     <a class="marca" href="/">
       {config.logo !== null && <img src={config.logo.url} alt="" width="44" height="44" />}
       <span class="marca-texto">
