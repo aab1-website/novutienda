@@ -10,20 +10,13 @@ import { formatearMonto } from '../../util/dinero.js';
 /** Cada cuántos milisegundos se vuelven a consultar las listas por aprobar. */
 export const MS_SONDEO_LISTAS = 10_000;
 
-/**
- * El rechazo admitirá un motivo OPCIONAL (decisión del dueño), pero el servidor y el contrato de `resolverAprobacion`
- * todavía no lo reciben. Mientras tanto el diálogo ya tiene el lugar del campo y NO envía nada: al activarlo hay que
- * pasarlo en la llamada junto con el cambio de contrato.
- */
-export const RECHAZO_CON_MOTIVO = false;
 
 const resumenDe = (a: AprobacionPos): string => `${a.tipo === 'descuento' ? 'Descuento' : `Crédito para ${a.deudor ?? ''}`} hasta ${formatearMonto(a.monto, a.moneda)}`;
 
-function DialogoResolucion({ a, decision, correo, conMotivo, alCerrar, alResolver, enProceso }: {
+function DialogoResolucion({ a, decision, correo, alCerrar, alResolver, enProceso }: {
   a: AprobacionPos;
   decision: 'aprobar' | 'rechazar';
   correo: string;
-  conMotivo: boolean;
   alCerrar: () => void;
   alResolver: () => void;
   /** Avisa a la lista cuándo esta solicitud está procesándose, para que solo su fila lo diga. */
@@ -31,14 +24,14 @@ function DialogoResolucion({ a, decision, correo, conMotivo, alCerrar, alResolve
 }): JSX.Element {
   const { api } = useApp();
   const accion = useAccion();
-  // Reservado para el motivo opcional del rechazo: todavía no se envía (ver `RECHAZO_CON_MOTIVO`).
   const [motivoRechazo, setMotivoRechazo] = useState('');
   const aprueba = decision === 'aprobar';
   const confirmar = (): void => {
     enProceso(true);
     void accion
       .ejecutar(async () => {
-        await api.llamar('resolverAprobacion', { aprobacionId: a.aprobacionId, decision });
+        const motivo = motivoRechazo.trim();
+        await api.llamar('resolverAprobacion', { aprobacionId: a.aprobacionId, decision, ...(!aprueba && motivo !== '' ? { motivo } : {}) });
         return true;
       }, { exito: aprueba ? 'Solicitud aprobada.' : 'Solicitud rechazada.', error: 'local' })
       .then((ok) => {
@@ -66,7 +59,7 @@ function DialogoResolucion({ a, decision, correo, conMotivo, alCerrar, alResolve
         <li>Lo pide: {correo}</li>
         <li>Solicitado: {fechaHora(a.solicitadoEnMs)}</li>
       </ul>
-      {!aprueba && conMotivo && <Campo etiqueta="Motivo del rechazo (opcional)" valor={motivoRechazo} onInput={setMotivoRechazo} />}
+      {!aprueba && <Campo etiqueta="Motivo del rechazo (opcional)" valor={motivoRechazo} onInput={setMotivoRechazo} tope={200} />}
       {accion.error && <Alerta>{accion.error}</Alerta>}
     </Dialogo>
   );
@@ -107,7 +100,7 @@ function Solicitudes(): JSX.Element {
           </li>
         ))}
       </ul>
-      {abierta && <DialogoResolucion a={abierta.a} decision={abierta.decision} correo={correoDe(abierta.a.solicitadoPor)} conMotivo={RECHAZO_CON_MOTIVO} alCerrar={cerrar} alResolver={() => { cerrar(); lista.recargar(); }} enProceso={(v) => setEnCurso(v ? { id: abierta.a.aprobacionId, decision: abierta.decision } : null)} />}
+      {abierta && <DialogoResolucion a={abierta.a} decision={abierta.decision} correo={correoDe(abierta.a.solicitadoPor)} alCerrar={cerrar} alResolver={() => { cerrar(); lista.recargar(); }} enProceso={(v) => setEnCurso(v ? { id: abierta.a.aprobacionId, decision: abierta.decision } : null)} />}
     </Seccion>
   );
 }
