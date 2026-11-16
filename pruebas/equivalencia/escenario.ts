@@ -26,7 +26,7 @@ export const TENANT = {
 };
 
 interface Fila {
-  readonly producto: EntradaProducto;
+  readonly producto: ProductoBase;
   readonly tienda?: number;
   readonly deposito?: number;
   readonly series?: readonly string[];
@@ -34,7 +34,8 @@ interface Fila {
   readonly publicado?: { readonly slug: string; readonly descripcion: string; readonly categoria: string; readonly marca: string };
 }
 
-const base = (id: string, nombre: string, precioUSD: { bo: number; ar: number }, extra: Partial<EntradaProducto> = {}): EntradaProducto => ({
+type ProductoBase = EntradaProducto & { readonly precioUSD: { readonly bo: number; readonly ar: number } };
+const base = (id: string, nombre: string, precioUSD: { bo: number; ar: number }, extra: Partial<EntradaProducto> = {}): ProductoBase => ({
   id, nombre, categoria: 'general', sku: `SKU-${id}`, precioUSD, publicado: true, ...extra,
 });
 
