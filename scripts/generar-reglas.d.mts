@@ -9,6 +9,8 @@ export interface ColeccionReglas {
 export interface ArchivoSubidaReglas {
   readonly tipo: string;
   readonly bytesMax: number;
+  /** Producto fijo de este tipo (`^[a-z0-9_-]+$`); los demás tipos lo excluyen. */
+  readonly destino?: string;
   readonly contentType: string;
 }
 export interface RutaAlmacenamientoReglas {

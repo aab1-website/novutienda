@@ -189,6 +189,7 @@ ${bloques.join('\n\n')}
 const SEGMENTO_ALM = /^(?:[A-Za-z][A-Za-z0-9_-]*|\{[A-Za-z][A-Za-z0-9_]*\})$/;
 const SEGMENTO_RESTO = /^\{[A-Za-z][A-Za-z0-9_]*=\*\*\}$/;
 const TIPO_ARCHIVO = /^[a-z][a-z0-9_]*$/;
+const DESTINO_ARCHIVO = /^[a-z0-9_-]+$/;
 const VARIABLES_RESERVADAS = new Set(['tenantId', 'todo', 'bucket']);
 const CONTENT_TYPE = /^[a-z]+\/\([a-z0-9|-]+\)$/;
 
@@ -251,6 +252,9 @@ function validarAlmacenamiento(m, a) {
     if (!CONTENT_TYPE.test(f.contentType)) {
       throw new ErrorGenerador(`${donde}: contentType de "${f.tipo}" no cumple el patrón (por ejemplo image/(jpeg|png))`);
     }
+    if (f.destino !== undefined && (typeof f.destino !== 'string' || !DESTINO_ARCHIVO.test(f.destino))) {
+      throw new ErrorGenerador(`${donde}: destino de "${f.tipo}" no cumple el patrón ^[a-z0-9_-]+$`);
+    }
   }
 }
 
@@ -266,12 +270,20 @@ function bytesTexto(n) {
 export const CAMPOS_PLANTILLA_RESERVA = Object.freeze(['estado', 'venceEn', 'productoId', 'por', 'bytes', 'tipo']);
 
 function funcionReserva(reserva, archivos) {
-  const ramas = archivos.map(
-    (f) =>
-      `(r.tipo == '${f.tipo}'\n` +
+  // `destino` (opcional) fija el producto de un tipo: esa rama exige ese producto y las demás lo excluyen.
+  // Solo restringe; los valores ya pasaron DESTINO_ARCHIVO, así que no pueden inyectar sintaxis.
+  const destinos = [...new Set(archivos.filter((f) => f.destino !== undefined).map((f) => f.destino))];
+  const ramas = archivos.map((f) => {
+    const producto =
+      f.destino !== undefined
+        ? `\n              && productoId == '${f.destino}'`
+        : destinos.map((d) => `\n              && productoId != '${d}'`).join('');
+    return (
+      `(r.tipo == '${f.tipo}'${producto}\n` +
       `              && request.resource.size <= ${bytesTexto(f.bytesMax)}\n` +
-      `              && request.resource.contentType.matches('${f.contentType}'))`,
-  );
+      `              && request.resource.contentType.matches('${f.contentType}'))`
+    );
+  });
   return `    // Reserva hecha en Firestore por el servidor; una sola lectura cruzada por petición.
     function reservaValida(tenantId, productoId, subidaId) {
       let r = firestore.get(/databases/(default)/documents/tenants/$(tenantId)/${reserva}/$(subidaId)).data;
