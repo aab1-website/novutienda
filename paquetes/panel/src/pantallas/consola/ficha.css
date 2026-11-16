@@ -19,3 +19,4 @@
 .ficha-medio-titulo { margin: 0; }
 .ficha-sin-adjuntar ul { margin: 0; padding: 0; list-style: none; }
 .ficha-textos { gap: 16px; }
+.ficha-falta { display: flex; flex-direction: column; align-items: flex-start; gap: 6px; }

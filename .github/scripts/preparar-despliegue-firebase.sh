@@ -22,6 +22,7 @@
 # del proyecto; si MEDIOS_BASE_URL es de Cloud Storage (cualquiera de sus tres formas), su bucket debe ser exactamente ese.
 # FFMPEG_PATH y FFPROBE_PATH valen /usr/bin/ffmpeg y /usr/bin/ffprobe salvo P_FFMPEG_PATH / P_FFPROBE_PATH; nunca vacíos.
 # Ningún parámetro de Functions puede ser PLATAFORMA_PRUEBAS ni FUNCTIONS_EMULATOR (la guardia no se apaga en la nube).
+# VITE_MEDIOS_BASE_URL (opcional): la variable del repositorio con la que se construyó el panel; ver paso 2a.
 # Los errores nunca imprimen los valores.
 set -euo pipefail
 
@@ -76,6 +77,33 @@ if ! diff <(jq -S "$filtro" firebase.json) <(jq -S "$filtro" dist/firebase.json)
   error "dist/firebase.json no corresponde al firebase.json de este commit (fuera de la CSP del sitio)."
 fi
 cp dist/firebase.json firebase.json
+
+# 2a. CSP sellada del panel frente a la base de medios del ambiente (MEDIOS_BASE_URL, ya validada arriba y normalizada
+#     sin barras finales en $base). img-src debe contener EXACTAMENTE el token "$base/" (con barra final): sin él, el
+#     navegador bloquea las miniaturas; con otro prefijo, el panel apuntaría a un almacén distinto del que sirve
+#     Functions. VITE_MEDIOS_BASE_URL (entrada opcional) es la variable del repositorio con la que se construyó el panel:
+#       - production: falla siempre que el token falte (con o sin la variable). Falla cerrado.
+#       - staging: si el token falta y la variable aún no existe, ::warning:: y se continúa (transición hasta crearla);
+#         si la variable existe y el token falta (otra base, build viejo), falla.
+csp_panel="$(jq -r '[.hosting[] | select(.target == "panel") | .headers[]? | select(.source == "**") | .headers[]?
+  | select((.key | ascii_downcase) == "content-security-policy") | .value] | if length == 1 then .[0] else "" end' firebase.json)"
+[[ -n "$csp_panel" ]] || error "dist/firebase.json no trae exactamente una Content-Security-Policy del panel (target panel, source **)."
+img_src=""
+IFS=';' read -r -a directivas <<<"$csp_panel"
+for directiva in "${directivas[@]}"; do
+  read -r -a tokens <<<"$directiva"
+  if [[ "${tokens[0]:-}" == "img-src" ]]; then
+    [[ -z "$img_src" ]] || error "La CSP del panel repite img-src."
+    img_src=" ${tokens[*]:1} "
+  fi
+done
+if [[ "$img_src" != *" $base/ "* ]]; then
+  if [[ "$AMBIENTE" == "staging" && -z "${VITE_MEDIOS_BASE_URL:-}" ]]; then
+    echo "::warning::La CSP del panel no incluye la base de medios del ambiente en img-src porque falta la variable del repositorio VITE_MEDIOS_BASE_URL_STAGING. Staging se despliega igual, pero el panel no mostrará miniaturas; cree la variable con el mismo valor que MEDIOS_BASE_URL."
+  else
+    error "La CSP sellada del panel no contiene en img-src exactamente la base de medios del ambiente (MEDIOS_BASE_URL con barra final). Revise VITE_MEDIOS_BASE_URL_$([[ "$AMBIENTE" == "production" ]] && echo PROD || echo STAGING): debe tener el mismo valor que MEDIOS_BASE_URL."
+  fi
+fi
 
 # 2b. Guardia de alcance (PR C, R8): FIREBASE_DEPLOY_ONLY no puede desplegar los sitios de tenant desde este CI.
 #     staging: lista permitida (functions, firestore, storage, hosting:panel); production: DC3 y nunca un sitio de tenant.

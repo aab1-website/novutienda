@@ -456,13 +456,13 @@ function cerrar(c: Contexto, turnoId: string, contado: Partial<Record<string, nu
   if (t === undefined) throw fallo('sin-turno', 'El turno no existe');
   if (t.estado !== 'abierto') throw fallo('turno-no-abierto');
   if (!forzado && t.cajeroUid !== c.uid) throw fallo('turno-ajeno');
-  const monedas = new Set<string>([...monedasDelTurno(t), ...Object.keys(contado).filter((m) => contado[m] !== undefined)]);
+  const monedas = new Set<string>([...monedasDelTurno(t, c.e.comercial.monedasCaja), ...Object.keys(contado).filter((m) => contado[m] !== undefined)]);
   for (const m of monedas) {
     const v = contado[m];
     if (v === undefined) throw fallo('conteo-faltante');
     exigirMonto(v, `contado.${m}`);
   }
-  const dif = diferenciaPorMoneda(t, contado);
+  const dif = diferenciaPorMoneda(t, contado, c.e.comercial.monedasCaja);
   const esperado: Partial<Record<string, number>> = {};
   const arqueo: ResultadoCierre['arqueo'] = {};
   for (const m of monedas) {
