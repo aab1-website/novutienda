@@ -25,3 +25,8 @@ Motivo: Cambio de comportamiento deliberado, decisión D7 del dueño (13/11/2026
 
 Sello: 479878bdf7d0c128abf2b7c5fedc27b5ff1c3eb423b91eec6f6724eb41f6bc93
 Motivo: Cambio de comportamiento deliberado, decisión del dueño del producto del 16/11/2026 («Actualizar esas 3 referencias»): la clave interna del producto es automática y oculta, la planilla exportada sale sin la columna id y la importación reconoce cada producto por su SKU; la fila simulada lleva nombre y sku. Cambian solo tres referencias de inventario: inventarios-exportacion.csv (sin la columna id), inventarios-simulacion-roundtrip.json e inventarios-simulacion-cambios.json (cada fila con nombre y sku; en la segunda, la planilla de entrada ya no lleva id, las altas reciben clave generada y la fila sin SKU falla por «es obligatorio cuando la fila no trae id»). NO cambian precios, caja, recibos, catálogo del asistente, sitio ni tenant, ni los importes, el stock, el orden o los resúmenes de la simulación; una planilla vieja con id se sigue aceptando y se comprueba aparte en inventarios-csv.test.ts.
+
+## Regeneración b48b7a52b4fa
+
+Sello: b48b7a52b4fa3bb82fec8dfd214e6e499d88145533e89ce7d115118ffe7306a0
+Motivo: Misma decisión del dueño del producto del 16/11/2026 (clave interna oculta, exportación sin id, reconocimiento por SKU), tras la revisión del módulo. Cambia una sola referencia, inventarios-simulacion-cambios.json, y solo el texto del error de la fila sin SKU: pasa de «es obligatorio cuando la fila no trae id» a «Falta el SKU: cada producto se reconoce por su SKU». No cambia ninguna otra referencia, ni importes, acciones, resúmenes ni advertencias, y no se agregó ninguna advertencia nueva a las filas de la batería.

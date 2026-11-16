@@ -137,7 +137,7 @@
         "errores": [
           {
             "columna": "sku",
-            "motivo": "es obligatorio cuando la fila no trae id"
+            "motivo": "Falta el SKU: cada producto se reconoce por su SKU"
           }
         ],
         "id": "",
