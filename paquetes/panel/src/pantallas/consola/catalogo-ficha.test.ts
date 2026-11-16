@@ -383,7 +383,7 @@ describe('panel lateral de la ficha', () => {
     // Publicar sin descripción también se marca, en su campo.
     await u.clear(slug);
     await u.type(slug, 'tv-55');
-    await u.selectOptions(screen.getByLabelText('Estado'), 'publicado');
+    await u.selectOptions(screen.getByLabelText('En el sitio'), 'publicado');
     await u.click(screen.getByRole('button', { name: 'Guardar' }));
     expect(await screen.findByText(/Para publicar la página, escriba la descripción/)).toBeTruthy();
     await waitFor(() => expect(document.activeElement).toBe(screen.getByLabelText(/Descripción del producto/)));
@@ -434,5 +434,100 @@ describe('panel lateral de la ficha', () => {
     expect(await screen.findByRole('dialog', { name: '¿Salir sin guardar?' })).toBeTruthy();
     expect(window.location.hash).toBe('#/consola');
     window.location.hash = '';
+  });
+});
+
+describe('«Qué falta» por producto', () => {
+  const fichaBase = { slug: 'tv-55', descripcion: '', garantia: '', medios: [], seo: { titulo: '', descripcion: '' }, estado: 'borrador' as const };
+
+  it('sin página, la fila dice qué falta y el botón abre la página para crearla', async () => {
+    const e = crearEntorno('sup');
+    ver(e);
+    const u = userEvent.setup();
+    const tabla = await screen.findByRole('table', { name: 'Productos y su página en el sitio' });
+    expect(within(tabla).getAllByText('Falta: página, descripción, foto, visible en el sitio').length).toBeGreaterThan(0);
+    await abrir(u, 'Crear la página', TV);
+    expect(await screen.findByLabelText(/Dirección de la página/)).toBeTruthy();
+  });
+
+  it('el siguiente paso sigue a la ficha: descripción, fotos y mostrar en el sitio', async () => {
+    const e = crearEntorno('sup');
+    await e.api.llamar('guardarFicha', { productoId: 'tv-55', ficha: { ...fichaBase, descripcion: 'Pantalla grande' } });
+    ver(e);
+    const u = userEvent.setup();
+    const boton = await screen.findByRole('button', { name: `Subir fotos de ${TV}` });
+    expect(boton.textContent).toBe('Subir fotos');
+    await u.click(boton);
+    await screen.findByRole('dialog', { name: `Página en el sitio: ${TV}` });
+    await waitFor(() => expect(document.activeElement?.closest('.ficha-zona')).not.toBeNull());
+  });
+
+  it('una página completa dice «Completa» y no ofrece paso; nunca afirma que ya salió en el sitio', async () => {
+    const e = crearEntorno('sup');
+    const r = await e.api.llamar('reservarSubida', { subidaId: crypto.randomUUID(), productoId: 'tv-55', tipo: 'foto', bytes: 10 });
+    const m = await e.api.llamar('finalizarSubida', { subidaId: r.subidaId });
+    await e.api.llamar('guardarFicha', { productoId: 'tv-55', ficha: { ...fichaBase, descripcion: 'Pantalla grande', medios: [{ medioId: m.id, alt: 'Frente' }], estado: 'publicado' } });
+    ver(e);
+    await screen.findByText('Completa');
+    expect(screen.queryByText(/ya sali|ya est[aá] en el sitio/i)).toBeNull();
+  });
+
+  it('el filtro acota a «Sin página», «Borrador» y «Sin fotos»', async () => {
+    const e = crearEntorno('sup');
+    await e.api.llamar('guardarFicha', { productoId: 'tv-55', ficha: fichaBase });
+    ver(e);
+    const u = userEvent.setup();
+    const tabla = await screen.findByRole('table', { name: 'Productos y su página en el sitio' });
+    await u.selectOptions(screen.getByLabelText('Mostrar'), 'borrador');
+    expect(within(tabla).getByText(TV)).toBeTruthy();
+    expect(within(tabla).queryByText(CABLE)).toBeNull();
+    await u.selectOptions(screen.getByLabelText('Mostrar'), 'sin-pagina');
+    expect(within(tabla).queryByText(TV)).toBeNull();
+    expect(within(tabla).getByText(CABLE)).toBeTruthy();
+  });
+
+  it('si el Tablero falla, la lista sigue y no aparece el aviso de cambios sin publicar', async () => {
+    const e = crearEntorno('sup');
+    await e.api.llamar('guardarFicha', { productoId: 'tv-55', ficha: fichaBase });
+    const llamar = e.api.llamar.bind(e.api) as (n: string, x: unknown) => Promise<unknown>;
+    vi.spyOn(e.api, 'llamar').mockImplementation(((n: string, x: unknown) => (n === 'obtenerTablero' ? Promise.reject(new ErrorApi('unavailable', 'sin conexión')) : llamar(n, x))) as never);
+    ver(e);
+    expect(await screen.findByRole('table', { name: 'Productos y su página en el sitio' })).toBeTruthy();
+    expect(document.querySelector('[data-prueba="sin-publicar"]')).toBeNull();
+    expect(screen.queryByText(/0 cambios sin publicar/)).toBeNull();
+  });
+
+  it('avisa los cambios sin publicar con enlace al Tablero', async () => {
+    const e = crearEntorno('sup');
+    ver(e);
+    await screen.findByRole('table', { name: 'Productos y su página en el sitio' });
+    expect(document.querySelector('[data-prueba="sin-publicar"]')).toBeNull();
+    cleanup();
+    await e.api.llamar('guardarFicha', { productoId: 'tv-55', ficha: fichaBase });
+    ver(e);
+    const aviso = await waitFor(() => {
+      const x = document.querySelector('[data-prueba="sin-publicar"]');
+      if (x === null) throw new Error('falta');
+      return x;
+    });
+    expect(aviso.textContent).toMatch(/cambio.? sin publicar/);
+    expect(within(aviso as HTMLElement).getByRole('link', { name: 'Ver el Tablero' }).getAttribute('href')).toBe('#/catalogo/tablero');
+  });
+});
+
+describe('estado de la página en el sitio', () => {
+  it('el campo se llama «En el sitio» y sus textos no usan el verbo de publicar el sitio; el valor guardado no cambia', async () => {
+    const e = crearEntorno('sup');
+    ver(e);
+    const u = userEvent.setup();
+    await abrir(u, 'Editar página', TV);
+    const campo = (await screen.findByLabelText('En el sitio')) as HTMLSelectElement;
+    expect(screen.queryByLabelText('Estado')).toBeNull();
+    expect(Array.from(campo.options).map((o) => [o.value, o.textContent])).toEqual([['borrador', 'Borrador'], ['publicado', 'Visible en el sitio'], ['oculto', 'Oculto']]);
+    await u.type(screen.getByLabelText('Descripción del producto'), 'Pantalla grande');
+    await u.selectOptions(campo, 'publicado');
+    await u.click(screen.getByRole('button', { name: 'Guardar' }));
+    await waitFor(() => expect(guardados(e)).toBe(1));
+    expect((await e.api.llamar('listarFichas', {}))[0]?.ficha.estado).toBe('publicado');
   });
 });
