@@ -326,6 +326,7 @@ gh api --method POST "repos/$OWNER/$REPO/environments/production/deployment-bran
 | `VITE_RECAPTCHA_ENTERPRISE_SITE_KEY_STAGING` / `_PROD` | repositorio | clave de sitio de reCAPTCHA Enterprise (8.2) para el App Check del panel |
 | `VITE_FIREBASE_STORAGE_BUCKET_STAGING` / `_PROD` | repositorio | nombre del bucket de Storage del proyecto (`gcloud storage buckets list`) |
 | `VITE_FIREBASE_APP_ID_STAGING` / `_PROD` | repositorio | `appId` de la app web del panel (8.1): App Check lo usa en `…/apps/{appId}:exchange…` |
+| `VITE_MEDIOS_BASE_URL_STAGING` / `_PROD` | repositorio | base pública de medios de 9.5, **con barra final**; el build la pasa al panel como `VITE_MEDIOS_BASE_URL` y de ella sale el único origen extra de `img-src`. Debe coincidir con `MEDIOS_BASE_URL` de las Functions; si no coinciden, el despliegue se frena |
 | `SITIO_CONTENIDO` | repositorio | solo `production`: ruta al JSON de contenido publicado; sin él, el build de producción falla (`reconstruccion-sitio.md`) |
 
 `construir` FALLA si, con el proyecto del ambiente configurado, falta alguna de `VITE_FIREBASE_API_KEY_*`, `VITE_RECAPTCHA_ENTERPRISE_SITE_KEY_*`, `VITE_FIREBASE_STORAGE_BUCKET_*` o
@@ -356,6 +357,8 @@ Cada comando de IAM es escritura en el proyecto: pide el «sí» de Andres. Cach
 (5) recién entonces fusionar y desplegar. Si se despliega antes del rol, `publicar` falla con 403 y las fotos nuevas no se ven. Verificación: publicar una foto de prueba, leerla
 por la URL pública (200) y pedir el listado del bucket sin credenciales (debe dar 403). **Limpieza del legado (D4):** los derivados que quedaron en el bucket por defecto se borran
 solo después de esa prueba; el borrado de un medio ya limpia también la copia legada.
+
+**Miniaturas del panel (decisión del 16/11/2026; `docs/arquitectura/decisiones.md`).** La política de contenido del panel agrega a `img-src`, y a nada más (ni `media-src` ni `connect-src`), el prefijo exacto de la base pública de medios con barra final, tomado de `VITE_MEDIOS_BASE_URL` en el build (variables `VITE_MEDIOS_BASE_URL_STAGING` y `VITE_MEDIOS_BASE_URL_PROD`). Debe coincidir con `MEDIOS_BASE_URL` de las Functions; el despliegue se frena si no coinciden. Se cargan antes de fusionar. Se deshace revirtiendo el cambio y borrando las variables.
 
 Comandos: `gh variable set <NOMBRE> --repo "$OWNER/$REPO" [--env staging] --body "<valor>"` y
 `… | gh secret set <NOMBRE> --repo "$OWNER/$REPO" [--env staging]` (valor por stdin, nunca en `--body`).

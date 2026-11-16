@@ -198,6 +198,43 @@ test.describe('precio, país y compra', () => {
   });
 });
 
+test.describe('menú plegable en celular', () => {
+  test.use({ viewport: { width: 360, height: 740 } });
+
+  test('hamburguesa a la izquierda: se alcanza con Tab, abre con Enter, panel en columna, aria-current y cabecera compacta', async ({ page }) => {
+    await simularApi(page);
+    await decidirConsentimiento(page, false, false);
+    await page.goto('/productos');
+    await islasListas(page);
+    await expect(page.getByRole('navigation', { name: 'Principal', exact: true })).toBeHidden();
+    const cabecera = page.locator('header.cabecera');
+    expect((await cabecera.boundingBox())?.height ?? 999).toBeLessThanOrEqual(140);
+    const boton = page.locator('.menu-movil > summary');
+    await expect(boton).toHaveAccessibleName('Menú');
+    for (let i = 0; i < 10 && !(await boton.evaluate((el) => el === document.activeElement)); i += 1) await page.keyboard.press('Tab');
+    await expect(boton).toBeFocused();
+    await page.keyboard.press('Enter');
+    const nav = page.getByRole('navigation', { name: 'Principal (móvil)' });
+    await expect(nav).toBeVisible();
+    const enlaces = nav.getByRole('link');
+    const n = await enlaces.count();
+    expect(n).toBeGreaterThanOrEqual(4);
+    let anterior = -1;
+    for (let i = 0; i < n; i += 1) {
+      const caja = await enlaces.nth(i).boundingBox();
+      expect(caja?.height ?? 0).toBeGreaterThanOrEqual(44);
+      expect(caja?.x ?? 999).toBeLessThan(60);
+      expect(caja?.y ?? 0).toBeGreaterThan(anterior);
+      anterior = caja?.y ?? 0;
+    }
+    await expect(nav.getByRole('link', { name: 'Productos' })).toHaveAttribute('aria-current', 'page');
+    await expect(nav.getByRole('link', { name: 'Contacto' })).not.toHaveAttribute('aria-current', 'page');
+    expect((await cabecera.boundingBox())?.height ?? 999).toBeLessThanOrEqual(140);
+    await page.keyboard.press('Enter');
+    await expect(nav).toBeHidden();
+  });
+});
+
 test.describe('ficha, tema y formulario', () => {
   test('ficha: hasta 5 fotos y 1 video con preload none, garantía y JSON-LD Product/Offer', async ({ page }) => {
     await simularApi(page);
@@ -330,6 +367,26 @@ test.describe('accesibilidad (axe) en claro y oscuro con las 5 plantillas', () =
           }, [plantilla, tema] as const);
           await auditar(page, `${plantilla}/${tema}${ruta}`);
         }
+      });
+    }
+  }
+
+  for (const plantilla of PLANTILLAS) {
+    for (const tema of ['claro', 'oscuro'] as const) {
+      test(`celular con el menú abierto: ${plantilla} / ${tema}`, async ({ page }) => {
+        await page.setViewportSize({ width: 360, height: 740 });
+        await page.emulateMedia({ reducedMotion: 'reduce' });
+        await simularApi(page);
+        await decidirConsentimiento(page, false, false);
+        await page.goto('/');
+        await page.waitForLoadState('networkidle');
+        await page.evaluate(([p, t]) => {
+          document.documentElement.dataset['plantilla'] = p;
+          document.documentElement.dataset['tema'] = t;
+        }, [plantilla, tema] as const);
+        await page.locator('.menu-movil > summary').click();
+        await expect(page.getByRole('navigation', { name: 'Principal (móvil)' })).toBeVisible();
+        await auditar(page, `movil/${plantilla}/${tema}`);
       });
     }
   }

@@ -660,7 +660,8 @@ export type PreciosPorMercado = Readonly<Record<string, number>>;
 
 export interface UsuarioVista {
   readonly uid: string;
-  readonly correo: string;
+  /** `null` si la cuenta no tiene correo. */
+  readonly correo: string | null;
   readonly rol: Rol;
   readonly verificado: boolean;
 }
