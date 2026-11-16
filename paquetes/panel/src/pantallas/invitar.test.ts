@@ -39,7 +39,7 @@ describe('invitar a una persona', () => {
     expect(within(pendientes).getByText('ana@ejemplo.test')).toBeTruthy();
     expect(within(pendientes).getByText('Administrador')).toBeTruthy();
     expect(within(pendientes).getByText(/Vence el /)).toBeTruthy();
-    expect(await screen.findByText('Personas con acceso (3 de 3)')).toBeTruthy(); // la invitación ocupa el cupo
+    expect(await screen.findByText('Personas con acceso (2) e invitaciones pendientes (1), de 3 del plan')).toBeTruthy(); // sin cifra engañosa: la invitación ocupa un cupo
     expect(document.body.textContent).not.toMatch(/Firebase Console|Add user/);
   });
 
@@ -125,5 +125,29 @@ describe('invitar a una persona', () => {
     await e.api.llamar('invitarUsuario', { correo: 'ana@ejemplo.test', rol: 'caj' });
     e.como('sup');
     expect((await e.api.llamar('listarUsuarios', {})).some((x) => x.estado === 'invitado')).toBe(false);
+  });
+
+  it('si el correo no se pudo enviar, el administrador lo ve, no se dice «Invitación enviada» y la invitación queda en la lista', async () => {
+    const e = crearEntorno('adm');
+    await conCupo(e);
+    e.envio.falla = true;
+    ver(e);
+    await invitar('ana@ejemplo.test');
+    expect((await screen.findAllByRole('alert'))[0]?.textContent).toContain('La invitación quedó registrada, pero no se pudo enviar el correo. Use Reenviar.');
+    expect(regionAvisos().textContent).not.toContain('Invitación enviada');
+    expect(await screen.findByRole('table', { name: 'Invitaciones pendientes' })).toBeTruthy();
+    e.envio.falla = false;
+    await userEvent.setup().click(await screen.findByRole('button', { name: 'Reenviar' }));
+    await waitFor(() => expect(e.correosDeAcceso).toEqual(['ana@ejemplo.test']));
+  });
+
+  it('asignar rol a una invitación pendiente la sobrescribe y la persona queda activa (como el servidor)', async () => {
+    const e = crearEntorno('adm');
+    await conCupo(e);
+    await e.api.llamar('invitarUsuario', { correo: 'ana@ejemplo.test', rol: 'adm' });
+    await e.api.llamar('asignarRol', { uid: 'u-invitado-1', rol: 'sup' });
+    const ana = (await e.api.llamar('listarUsuarios', {})).find((u) => u.uid === 'u-invitado-1');
+    expect(ana).toMatchObject({ rol: 'sup' });
+    expect(ana?.estado).toBeUndefined();
   });
 });

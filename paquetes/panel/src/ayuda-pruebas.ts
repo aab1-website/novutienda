@@ -26,6 +26,8 @@ export interface Entorno {
   readonly renovacion: { llamadas: number; acepta: boolean };
   /** Correos a los que el panel envió el enlace para fijar la contraseña (tras invitar o reenviar). */
   readonly correosDeAcceso: string[];
+  /** Si `falla` es `true`, el envío del correo del enlace falla (red, límite del servicio). */
+  readonly envio: { falla: boolean };
   /** Módulos activos que ve `puedeVer` (por omisión, todos; `null` = aún no se sabe, solo Central). Se puede cambiar entre renders. */
   modulos: ModulosActivos;
   /** Envuelve un nodo con el contexto de la aplicación. */
@@ -40,10 +42,12 @@ export function crearEntorno(rol: Rol = 'caj', ahora: () => number = () => AHORA
   let actual = usuarioDe(rol);
   let vencidas = 0;
   const correosDeAcceso: string[] = [];
+  const envio = { falla: false };
   const api = conCorreoDeInvitacion(new ClienteDoble({ usuario: () => ({ uid: actual.uid, rol: actual.rol }), ahora, ...comercio }), {
-    recuperarContrasena: (correo) => {
+    enviarEnlaceDeAcceso: (correo) => {
+      if (envio.falla) return Promise.resolve(false);
       correosDeAcceso.push(correo);
-      return Promise.resolve();
+      return Promise.resolve(true);
     },
   });
   const almacen = new AlmacenSubidasDoble();
@@ -56,6 +60,7 @@ export function crearEntorno(rol: Rol = 'caj', ahora: () => number = () => AHORA
     api,
     almacen,
     correosDeAcceso,
+    envio,
     usuario: () => actual,
     sesionesVencidas: () => vencidas,
     renovacion,

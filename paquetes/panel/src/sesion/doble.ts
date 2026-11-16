@@ -88,6 +88,16 @@ export class SesionDoble implements Sesion {
     return Promise.resolve();
   }
 
+  /** Para pruebas: si es `true`, el envío del enlace de acceso falla. */
+  fallaElEnlace = false;
+  enlacesDeAcceso: string[] = [];
+
+  enviarEnlaceDeAcceso(correo: string): Promise<boolean> {
+    if (this.fallaElEnlace) return Promise.resolve(false);
+    this.enlacesDeAcceso.push(correo.trim().toLowerCase());
+    return Promise.resolve(true);
+  }
+
   private avisar(): void {
     for (const o of this.oyentes) o(this.usuario);
   }

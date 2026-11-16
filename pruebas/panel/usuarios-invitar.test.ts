@@ -301,4 +301,31 @@ describe('activarInvitaciones (callable sin tenant ni rol)', () => {
     expect(m.db.dato('tenants/t1/miembros/nuevo1')).toMatchObject({ estado: 'invitado' });
     await expect(manejador(m, false)(pedido('nuevo1', false))).resolves.toMatchObject({ activadas: 1 }); // sin exigencia (desarrollo)
   });
+
+  it('límite de tasa propio por persona: la 11.ª activación en una hora se rechaza', async () => {
+    const { m } = await conInvitacion();
+    (m.e as unknown as { limiteActivaciones: unknown }).limiteActivaciones = limiteMemoria(10, 3_600_000);
+    for (let i = 0; i < 10; i++) await manejador(m)(pedido('nuevo1')).catch(() => undefined);
+    await expect(manejador(m)(pedido('nuevo1'))).rejects.toMatchObject({ code: 'resource-exhausted', details: { codigo: 'limite-activaciones' } });
+  });
+});
+
+describe('borrado de cuentas de invitación (carreras)', () => {
+  it('si entre la primera lectura y el borrado llega otra invitación, no se borra', async () => {
+    const m = montaje();
+    const c = m.como('adm1', 'adm');
+    await m.llamar(c, 'invitarUsuario', { correo: 'nueva@ejemplo.test', rol: 'caj' });
+    const indice = (m.e as unknown as { indiceInvitaciones: { tenantsDe(uid: string): Promise<string[]> } }).indiceInvitaciones;
+    const original = indice.tenantsDe.bind(indice);
+    let lecturas = 0;
+    indice.tenantsDe = async (uid) => {
+      const r = await original(uid);
+      lecturas += 1;
+      if (lecturas === 1) m.db.poner(`tenants/t2/miembros/${uid}`, { estado: 'invitado', uid, rolReservado: 'caj', invitadoPor: 'otro', invitadoEnMs: 1, venceEnMs: 99_999_999_999, cuentaCreada: false });
+      return r;
+    };
+    await m.llamar(c, 'anularInvitacion', { uid: 'nuevo1' });
+    expect(m.cuentas.has('nuevo1')).toBe(true);
+    expect(lecturas).toBe(2); // volvió a leer justo antes de borrar
+  });
 });

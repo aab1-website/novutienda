@@ -6,6 +6,8 @@ import { TransporteFirebase } from '../api/firebase.js';
 import { leerClaimPanel } from './claim.js';
 import type { ResultadoInicio, Sesion, UsuarioSesion } from './sesion.js';
 
+export const MENSAJE_SIN_CONEXION = 'No se pudo comprobar su acceso. Revise su conexión.';
+
 /** Sesión real con Firebase Auth (correo y contraseña). Un correo no verificado cierra la sesión y no entra. */
 export class SesionFirebase implements Sesion {
   private readonly auth: Auth;
@@ -36,19 +38,22 @@ export class SesionFirebase implements Sesion {
   }
 
   private async adoptar(u: User | null): Promise<UsuarioSesion | null> {
-    return (await this.evaluar(u)).usuario;
+    return (await this.evaluar(u, false)).usuario;
   }
 
   /**
-   * Lee el rol del claim. Si la cuenta no tiene rol en ningún comercio, intenta UNA vez activar sus invitaciones y, si activó
-   * alguna, refresca el token para que el rol aparezca. Si el servidor dice que el correo no está verificado, envía el correo
-   * de verificación y lo informa (no entra).
+   * Lee el rol del claim.
+   * - Sin rol en ningún comercio: activa sus invitaciones (al cargar, una vez por cuenta; en un inicio explícito, siempre una
+   *   consulta nueva) y, si activó alguna, refresca el token para que el rol aparezca. Si el servidor dice que el correo no está
+   *   verificado, envía la verificación y lo informa. Si la consulta falla (red), lo informa como `sinConexion`.
+   * - Con rol: solo en un inicio explícito (la persona escribió su contraseña) se comprueba UNA vez, en segundo plano y sin
+   *   bloquear la entrada, si tiene una invitación a otro comercio; si activó algo, refresca el token y avisa.
    */
-  private async evaluar(u: User | null): Promise<{ usuario: UsuarioSesion | null; sinVerificar: boolean }> {
-    if (u === null || !u.emailVerified) return { usuario: null, sinVerificar: false };
+  private async evaluar(u: User | null, explicito: boolean): Promise<{ usuario: UsuarioSesion | null; sinVerificar: boolean; sinConexion: boolean }> {
+    if (u === null || !u.emailVerified) return { usuario: null, sinVerificar: false, sinConexion: false };
     let c = leerClaimPanel((await u.getIdTokenResult(true)).claims);
     if (c === null) {
-      const r = await this.activar(u);
+      const r = await this.activar(u, explicito);
       if (r === 'correo-no-verificado') {
         this.pendiente = u;
         try {
@@ -56,29 +61,44 @@ export class SesionFirebase implements Sesion {
         } catch {
           // El envío puede fallar (límite del servicio); el usuario puede pedirlo de nuevo con «Reenviar enlace».
         }
-        return { usuario: null, sinVerificar: true };
+        return { usuario: null, sinVerificar: true, sinConexion: false };
       }
+      if (r === 'error') return { usuario: null, sinVerificar: false, sinConexion: true };
       if (r === 'activadas') c = leerClaimPanel((await u.getIdTokenResult(true)).claims);
+    } else if (explicito) {
+      void this.activarEnSegundoPlano(u, c.tenantId, c.rol);
     }
-    return { usuario: c === null ? null : { uid: u.uid, correo: u.email ?? '', tenantId: c.tenantId, rol: c.rol }, sinVerificar: false };
+    return { usuario: c === null ? null : { uid: u.uid, correo: u.email ?? '', tenantId: c.tenantId, rol: c.rol }, sinVerificar: false, sinConexion: false };
   }
 
-  private activar(u: User): Promise<'activadas' | 'nada' | 'correo-no-verificado' | 'error'> {
-    const previa = this.activaciones.get(u.uid);
+  private async activarEnSegundoPlano(u: User, tenantId: string, rol: UsuarioSesion['rol']): Promise<void> {
+    try {
+      if ((await this.activar(u, true)) !== 'activadas') return;
+      const c = leerClaimPanel((await u.getIdTokenResult(true)).claims);
+      if (c === null || (c.tenantId === tenantId && c.rol === rol)) return;
+      this.usuario = { uid: u.uid, correo: u.email ?? '', tenantId: c.tenantId, rol: c.rol };
+      for (const o of this.oyentes) o(this.usuario);
+    } catch {
+      // En segundo plano: un fallo no afecta a la sesión ya abierta.
+    }
+  }
+
+  private activar(u: User, nueva = false): Promise<'activadas' | 'nada' | 'correo-no-verificado' | 'error'> {
+    const previa = nueva ? undefined : this.activaciones.get(u.uid);
     if (previa !== undefined) return previa;
-    const nueva = this.activador().then(
+    const consulta = this.activador().then(
       (r): 'activadas' | 'nada' => (typeof r === 'object' && r !== null && Number((r as { activadas?: unknown }).activadas) > 0 ? 'activadas' : 'nada'),
       (e: unknown): 'correo-no-verificado' | 'error' => {
         const d = typeof e === 'object' && e !== null ? (e as { detalle?: { codigo?: unknown } }).detalle : undefined;
         return d?.codigo === 'correo-no-verificado' ? 'correo-no-verificado' : 'error';
       },
     );
-    this.activaciones.set(u.uid, nueva);
+    this.activaciones.set(u.uid, consulta);
     // Un fallo no definitivo (red, servicio) no se recuerda: la próxima entrada lo intenta de nuevo.
-    void nueva.then((r) => {
-      if (r === 'error' || r === 'correo-no-verificado') this.activaciones.delete(u.uid);
+    void consulta.then((r) => {
+      if ((r === 'error' || r === 'correo-no-verificado') && this.activaciones.get(u.uid) === consulta) this.activaciones.delete(u.uid);
     });
-    return nueva;
+    return consulta;
   }
 
   async iniciar(correo: string, contrasena: string): Promise<ResultadoInicio> {
@@ -89,8 +109,9 @@ export class SesionFirebase implements Sesion {
         this.pendiente = cred.user;
         return { tipo: 'correo-no-verificado' };
       }
-      const { usuario, sinVerificar } = await this.evaluar(cred.user);
+      const { usuario, sinVerificar, sinConexion } = await this.evaluar(cred.user, true);
       if (sinVerificar) return { tipo: 'correo-no-verificado' };
+      if (sinConexion) return { tipo: 'error', mensaje: MENSAJE_SIN_CONEXION };
       if (usuario === null) {
         await signOut(this.auth);
         return { tipo: 'sin-acceso' };
@@ -132,6 +153,18 @@ export class SesionFirebase implements Sesion {
 
   async reenviarVerificacion(): Promise<void> {
     if (this.pendiente !== null) await sendEmailVerification(this.pendiente);
+  }
+
+  async enviarEnlaceDeAcceso(correo: string): Promise<boolean> {
+    try {
+      await sendPasswordResetEmail(this.auth, correo.trim());
+      return true;
+    } catch (e) {
+      const codigo = typeof e === 'object' && e !== null && 'code' in e ? String((e as { code: unknown }).code) : 'desconocido';
+      console.warn('Enlace de acceso no enviado', codigo);
+      // Cuenta inexistente (o sin invitar): igual que un envío correcto, para no revelar nada.
+      return /user-not-found|invalid-email/.test(codigo);
+    }
   }
 
   async recuperarContrasena(correo: string): Promise<void> {

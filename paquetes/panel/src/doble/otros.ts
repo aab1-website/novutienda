@@ -322,7 +322,6 @@ export const handlersOtros: {
   asignarRol(c, e) {
     if (e.rol === 'adm') throw fallo('jerarquia');
     const u = c.e.usuarios.find((x) => x.uid === e.uid);
-    if (u?.estado === 'invitado') throw fallo('estado', 'La persona aún no activó su invitación.');
     if (u === undefined) {
       // Alta: la cuenta ya existe en Auth (el panel no la crea); exige correo verificado y cupo en el plan.
       const i = c.e.cuentasSinRol.findIndex((x) => x.uid === e.uid);
@@ -332,6 +331,14 @@ export const handlersOtros: {
       if (c.e.usuarios.length >= LIMITES_PANEL.usuarios) throw fallo('limite', 'Máximo 3 usuarios');
       c.e.cuentasSinRol.splice(i, 1);
       c.e.usuarios.push({ ...cuenta, rol: e.rol });
+      auditar(c, 'identidad.asignar-rol', `usuarios/${e.uid}`);
+      return { ok: true };
+    }
+    if (u.estado === 'invitado') {
+      // Como el servidor: la asignación sobrescribe la invitación pendiente y la persona queda activa (el cupo ya estaba reservado).
+      const i = c.e.usuarios.indexOf(u);
+      c.e.usuarios[i] = { uid: u.uid, correo: u.correo, rol: e.rol, verificado: u.verificado };
+      c.e.invitaciones.cuentasCreadas.delete(u.uid);
       auditar(c, 'identidad.asignar-rol', `usuarios/${e.uid}`);
       return { ok: true };
     }

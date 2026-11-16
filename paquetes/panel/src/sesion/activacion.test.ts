@@ -47,20 +47,44 @@ describe('activación al iniciar sesión (Firebase)', () => {
     expect(u.getIdTokenResult).toHaveBeenCalledTimes(2); // lectura inicial y refresco tras activar
   });
 
-  it('con rol no llama a la activación', async () => {
-    fb.signIn.mockResolvedValue({ user: usuarioFb([conRol]) });
+  it('con rol: la comprobación en segundo plano ocurre una sola vez por inicio explícito, no por cada lectura del token', async () => {
+    const u = usuarioFb([conRol]);
+    fb.signIn.mockResolvedValue({ user: u });
     const activador = vi.fn(async () => ({ activadas: 0 }));
     const s = new SesionFirebase({ apiKey: 'x', authDomain: 'x', projectId: 'x' }, undefined, activador);
     expect((await s.iniciar('ana@ejemplo.test', 'clave')).tipo).toBe('ok');
-    expect(activador).not.toHaveBeenCalled();
+    await vi.waitFor(() => expect(activador).toHaveBeenCalledTimes(1));
+    await new Promise((r) => setTimeout(r, 10));
+    expect(activador).toHaveBeenCalledTimes(1);
   });
 
-  it('sin invitaciones (nada que activar) no entra y no insiste en la misma sesión', async () => {
-    fb.signIn.mockResolvedValue({ user: usuarioFb([{}]) });
-    const activador = vi.fn(async () => ({ activadas: 0, sinEfecto: 0, fallidas: 0 }));
+  it('sin invitaciones: «sin acceso»; «Volver a comprobar» (otro inicio explícito) consulta de nuevo y ya no queda fijo', async () => {
+    const u = usuarioFb([{}]);
+    fb.signIn.mockResolvedValue({ user: u });
+    let activadas = 0;
+    const activador = vi.fn(async () => ({ activadas }));
     const s = new SesionFirebase({ apiKey: 'x', authDomain: 'x', projectId: 'x' }, undefined, activador);
     expect((await s.iniciar('ana@ejemplo.test', 'clave')).tipo).toBe('sin-acceso');
-    expect((await s.iniciar('ana@ejemplo.test', 'clave')).tipo).toBe('sin-acceso');
+    activadas = 1;
+    u.getIdTokenResult.mockImplementation(async () => ({ claims: activador.mock.calls.length > 1 ? conRol : {} }));
+    expect((await s.iniciar('ana@ejemplo.test', 'clave')).tipo).toBe('ok');
+    expect(activador).toHaveBeenCalledTimes(2);
+  });
+
+  it('con rol en otro comercio: un inicio explícito comprueba UNA vez en segundo plano, sin bloquear, y avisa si activó algo', async () => {
+    const u = usuarioFb([conRol]);
+    fb.signIn.mockResolvedValue({ user: u });
+    let activada = false;
+    u.getIdTokenResult.mockImplementation(async () => ({ claims: activada ? { pl: { t: { aaa: 'sup', demo: 'caj' }, v: 1 } } : conRol }));
+    const activador = vi.fn(async () => {
+      activada = true;
+      return { activadas: 1 };
+    });
+    const s = new SesionFirebase({ apiKey: 'x', authDomain: 'x', projectId: 'x' }, undefined, activador);
+    const vistos: unknown[] = [];
+    s.alCambiar((x) => vistos.push(x?.tenantId));
+    expect(await s.iniciar('ana@ejemplo.test', 'clave')).toMatchObject({ tipo: 'ok', usuario: { tenantId: 'demo' } });
+    await vi.waitFor(() => expect(vistos).toEqual(['aaa'])); // token refrescado y sesión actualizada
     expect(activador).toHaveBeenCalledTimes(1);
   });
 
@@ -76,13 +100,13 @@ describe('activación al iniciar sesión (Firebase)', () => {
     expect(s.actual()).toBeNull();
   });
 
-  it('un fallo de red en la activación no entra, no rompe y se reintenta en la siguiente entrada', async () => {
+  it('un fallo de red en la activación dice que no se pudo comprobar el acceso (no «sin acceso») y se reintenta', async () => {
     fb.signIn.mockResolvedValue({ user: usuarioFb([{}]) });
     const activador = vi.fn(async () => {
       throw new ErrorApi('unavailable', 'x');
     });
     const s = new SesionFirebase({ apiKey: 'x', authDomain: 'x', projectId: 'x' }, undefined, activador);
-    expect((await s.iniciar('ana@ejemplo.test', 'clave')).tipo).toBe('sin-acceso');
+    expect(await s.iniciar('ana@ejemplo.test', 'clave')).toEqual({ tipo: 'error', mensaje: 'No se pudo comprobar su acceso. Revise su conexión.' });
     await s.iniciar('ana@ejemplo.test', 'clave');
     expect(activador).toHaveBeenCalledTimes(2);
   });
@@ -109,24 +133,33 @@ describe('activación al iniciar sesión (doble)', () => {
 });
 
 describe('correo del enlace tras invitar o reenviar', () => {
+  const doble = (): ClienteDoble => new ClienteDoble({ usuario: () => ({ uid: 'u-adm', rol: 'adm' }) });
+
   it('envía el correo solo si la acción tuvo éxito, y nunca por otras acciones', async () => {
-    const enviados: string[] = [];
-    const api = conCorreoDeInvitacion(new ClienteDoble({ usuario: () => ({ uid: 'u-adm', rol: 'adm' }) }), { recuperarContrasena: async (c) => void enviados.push(c) });
+    const sesion = new SesionDoble();
+    const api = conCorreoDeInvitacion(doble(), sesion);
     await api.llamar('quitarRol', { uid: 'u-sup' });
     await api.llamar('listarUsuarios', {});
-    expect(enviados).toEqual([]);
+    expect(sesion.enlacesDeAcceso).toEqual([]);
     await api.llamar('invitarUsuario', { correo: 'ana@ejemplo.test', rol: 'caj' });
-    expect(enviados).toEqual(['ana@ejemplo.test']);
+    expect(sesion.enlacesDeAcceso).toEqual(['ana@ejemplo.test']);
     expect(api.estado.usuarios.some((u) => u.estado === 'invitado')).toBe(true); // conserva el estado del doble
     await expect(api.llamar('invitarUsuario', { correo: 'otra@ejemplo.test', rol: 'caj' })).rejects.toBeInstanceOf(ErrorApi); // plan lleno
-    expect(enviados).toEqual(['ana@ejemplo.test']);
+    expect(sesion.enlacesDeAcceso).toEqual(['ana@ejemplo.test']); // el servidor falló: no se envía nada
   });
 
-  it('un fallo al enviar no deshace la invitación', async () => {
-    const api = conCorreoDeInvitacion(new ClienteDoble({ usuario: () => ({ uid: 'u-adm', rol: 'adm' }) }), {
-      recuperarContrasena: () => Promise.reject(new Error('sin red')),
-    });
+  it('si el envío falla, la invitación queda registrada y se avisa con el error «correo-no-enviado» (no «Invitación enviada»)', async () => {
+    const sesion = new SesionDoble();
+    sesion.fallaElEnlace = true;
+    const api = conCorreoDeInvitacion(doble(), sesion);
     await api.llamar('quitarRol', { uid: 'u-sup' });
-    await expect(api.llamar('invitarUsuario', { correo: 'ana@ejemplo.test', rol: 'caj' })).resolves.toMatchObject({ ok: true });
+    await expect(api.llamar('invitarUsuario', { correo: 'ana@ejemplo.test', rol: 'caj' })).rejects.toMatchObject({ detalle: { codigo: 'correo-no-enviado' } });
+    expect(api.estado.usuarios.some((u) => u.estado === 'invitado')).toBe(true);
+  });
+
+  it('un envío que lanza una excepción cuenta como fallo', async () => {
+    const api = conCorreoDeInvitacion(doble(), { enviarEnlaceDeAcceso: () => Promise.reject(new Error('sin red')) });
+    await api.llamar('quitarRol', { uid: 'u-sup' });
+    await expect(api.llamar('invitarUsuario', { correo: 'ana@ejemplo.test', rol: 'caj' })).rejects.toMatchObject({ detalle: { codigo: 'correo-no-enviado' } });
   });
 });

@@ -24,6 +24,8 @@ const MENSAJE_INVITACION = 'Invitación enviada';
 /** Tope de invitaciones y reenvíos por comercio y hora (el límite es del actor, no del correo). */
 export const MAXIMO_INVITACIONES_POR_HORA = 5;
 export const VENTANA_INVITACIONES_MS = 3_600_000;
+/** Tope de activaciones por persona y hora. */
+export const MAXIMO_ACTIVACIONES_POR_HORA = 10;
 
 /**
  * Puertos que el coordinador debe sumar al `Entorno` (el marco no los trae todavía):
@@ -61,10 +63,14 @@ const sinCuenta = (error: unknown): boolean => (error as { code?: unknown }).cod
  */
 async function borrarCuentaDeInvitacion(e: Entorno, uid: string): Promise<boolean> {
   try {
-    const u = await e.auth.getUser(uid);
-    if (u.metadata.lastSignInTime || u.metadata.lastRefreshTime) return false;
-    if (u.customClaims !== undefined && Object.keys(u.customClaims).length > 0) return false; // alguna membresía o permiso: se conserva
-    if ((await puertos(e).indiceInvitaciones.tenantsDe(uid)).length > 0) return false;
+    const libre = async (): Promise<boolean> => {
+      const u = await e.auth.getUser(uid);
+      if (u.metadata.lastSignInTime || u.metadata.lastRefreshTime) return false;
+      if (u.customClaims !== undefined && Object.keys(u.customClaims).length > 0) return false; // alguna membresía o permiso: se conserva
+      return (await puertos(e).indiceInvitaciones.tenantsDe(uid)).length === 0;
+    };
+    // Dos lecturas, la segunda justo antes de borrar: otra invitación o una activación pudo llegar entre ambas. Ante la duda, no se borra.
+    if (!(await libre()) || !(await libre())) return false;
     await e.auth.deleteUser(uid);
     return true;
   } catch (error) {
@@ -165,14 +171,19 @@ export const accionesUsuarios: TablaImplementaciones = {
       await limitarInvitaciones(c);
       const cuenta = await cuentaParaInvitar(c.e, d.correo);
       const respuesta = { ok: true, mensaje: MENSAJE_INVITACION };
-      if (cuenta === undefined) return respuesta; // cuenta sin contraseña: misma respuesta, sin invitar
+      // Riesgo aceptado: una cuenta sin proveedor de contraseña (o del propietario) recibe la misma respuesta pero no queda invitada
+      // ni ocupa cupo; un administrador podría notarlo en su lista. Se acepta: solo lo ve un administrador de este comercio y no
+      // revela datos de otro comercio.
+      if (cuenta === undefined) return respuesta;
+      let r;
       try {
-        const r = await invitarMiembro(depsInvitar(c.e), c.actor, c.tenantId, cuenta.uid, d.rol as Rol, cuenta.creada);
-        await borrarCuentas(c.e, r.cuentasCaducadas);
+        r = await invitarMiembro(depsInvitar(c.e), c.actor, c.tenantId, cuenta.uid, d.rol as Rol, cuenta.creada);
       } catch (error) {
-        if (cuenta.creada) await borrarCuentaDeInvitacion(c.e, cuenta.uid); // la cuenta nació en esta llamada: no queda huérfana
+        // Solo si la cuenta nació en ESTA llamada (y, además, sin invitaciones ni rol: ver `borrarCuentaDeInvitacion`).
+        if (cuenta.creada) await borrarCuentaDeInvitacion(c.e, cuenta.uid);
         throw error;
       }
+      await borrarCuentas(c.e, r.cuentasCaducadas);
       return respuesta;
     },
   }),
@@ -227,6 +238,14 @@ export const accionesUsuarios: TablaImplementaciones = {
 };
 
 // ---- Activación (callable propio, sin tenant ni rol) ---------------------------------------------------------------
+/**
+ * Puerto que el coordinador debe sumar al `Entorno`: `limiteActivaciones: LimiteTasa`, de `MAXIMO_ACTIVACIONES_POR_HORA` por
+ * `VENTANA_INVITACIONES_MS`, con clave por uid. Mientras no exista, la activación no se limita.
+ */
+export interface PuertoLimiteActivaciones {
+  readonly limiteActivaciones?: LimiteTasa;
+}
+
 export interface OpcionesActivacion {
   readonly entorno: () => Entorno;
   readonly appCheckExigido: () => boolean;
@@ -255,6 +274,11 @@ export function manejadorActivarInvitaciones(o: OpcionesActivacion): (req: Calla
         throw new HttpsError('unauthenticated', 'La sesión no es válida o fue revocada. Vuelva a iniciar sesión.');
       }
       if (proveedorDe(claims) !== 'password') throw new HttpsError('permission-denied', 'El personal debe ingresar con correo y contraseña.');
+      const limite = (e as PuertoLimiteActivaciones).limiteActivaciones;
+      if (limite !== undefined) {
+        const t = await limite.intentar(`activar:${claims.uid}`, e.ahora());
+        if (!t.permitido) throw new HttpsError('resource-exhausted', 'Demasiados intentos. Intente de nuevo más tarde.', { codigo: 'limite-activaciones', reintentarEnSeg: t.reintentarEnSeg });
+      }
       if (claims.email_verified !== true) throw new HttpsError('failed-precondition', 'Verifique su correo para ingresar.', { codigo: 'correo-no-verificado' });
       const r = await activarInvitaciones(depsInvitar(e), claims.uid, true);
       if (r.fallidos.length > 0) logger.warn('activación parcial', { alerta: 'invitaciones', fallidos: r.fallidos.length });

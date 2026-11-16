@@ -42,6 +42,10 @@ export function PantallaUsuarios(): JSX.Element {
   const invitaciones = lista.datos?.filter((u) => u.estado === 'invitado');
   const cantidad = lista.datos?.length ?? 0;
   const lleno = lista.datos !== undefined && cantidad >= tope;
+  const conAcceso = miembros?.length ?? 0;
+  const pendientesN = invitaciones?.length ?? 0;
+  // Sin cifra engañosa: las personas con acceso y las invitaciones pendientes se cuentan por separado, ambas dentro del plan.
+  const tituloAcceso = pendientesN === 0 ? `Personas con acceso (${conAcceso} de ${tope})` : `Personas con acceso (${conAcceso}) e invitaciones pendientes (${pendientesN}), de ${tope} del plan`;
   const invitar = useAccion();
   const pendientes = useAccion();
   const [correoInvitado, setCorreoInvitado] = useState('');
@@ -81,15 +85,21 @@ export function PantallaUsuarios(): JSX.Element {
     const correoLimpio = correoInvitado.trim().toLowerCase();
     if (correoLimpio === '') return;
     void invitar.ejecutar(async () => {
-      await api.llamar('invitarUsuario', { correo: correoLimpio, rol: rolInvitado });
+      try {
+        await api.llamar('invitarUsuario', { correo: correoLimpio, rol: rolInvitado });
+      } finally {
+        lista.recargar(); // aunque falle el correo, la invitación ya quedó registrada
+      }
       setCorreoInvitado('');
-      lista.recargar();
     }, { exito: 'Invitación enviada', error: 'ambos' });
   };
   const reenviar = (uid: string, correoDeLaInvitacion: string): void => {
     void pendientes.ejecutar(async () => {
-      await api.llamar('reenviarInvitacion', { uid, correo: correoDeLaInvitacion });
-      lista.recargar();
+      try {
+        await api.llamar('reenviarInvitacion', { uid, correo: correoDeLaInvitacion });
+      } finally {
+        lista.recargar();
+      }
     }, { exito: 'Invitación enviada', error: 'ambos' });
   };
   const anular = (uid: string): void => {
@@ -170,7 +180,7 @@ export function PantallaUsuarios(): JSX.Element {
           />
         )}
       </Seccion>
-      <Seccion titulo={`Personas con acceso (${cantidad} de ${tope})`}>
+      <Seccion titulo={tituloAcceso}>
         <p class="texto-suave">El plan incluye {tope} usuarios. Solo el propietario de la plataforma puede cambiar o quitar a un administrador.</p>
         {lista.cargando && <Cargando />}
         {lista.error && <ErrorCarga error={lista.error} reintentar={lista.recargar} />}
