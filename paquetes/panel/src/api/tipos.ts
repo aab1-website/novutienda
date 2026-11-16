@@ -593,6 +593,8 @@ export interface FilaSimulada {
   /** Número de línea del archivo (el encabezado es la 1). */
   readonly linea: number;
   readonly id: string;
+  readonly nombre?: string | undefined;
+  readonly sku?: string | undefined;
   readonly accion: 'crear' | 'actualizar' | 'sin-cambios' | 'error';
   readonly errores: readonly ErrorFilaImportacion[];
   readonly advertencias: readonly string[];
