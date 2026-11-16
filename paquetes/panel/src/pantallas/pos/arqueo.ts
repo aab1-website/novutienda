@@ -1,6 +1,5 @@
 import { esReglaRedondeoValida, type RedondeoPorMoneda } from '@novutienda/nucleo';
 import type { CotizacionesVigentes, MercadoDeclarado, MontosPorMoneda, PreciosPorMercado, ProductoPanel, TotalesMoneda, TotalesTurno, TurnoPos } from '../../api/tipos.js';
-import { MONEDAS } from '../../api/tipos.js';
 import { precioDeVentaMercado, reglasDeclaradasActuales, type PrecioMercadoVista } from '../../util/precio.js';
 
 export const TOTALES_VACIOS: TotalesMoneda = { efectivo: 0, qr: 0, transferencia: 0, credito: 0, ingresos: 0, egresos: 0 };
@@ -10,16 +9,16 @@ export const efectivoEsperado = (apertura: number, t: TotalesMoneda): number => 
 
 /**
  * Códigos en orden estable. Con `orden` (las monedas de caja declaradas por el comercio) primero van esas, en ese orden;
- * sin él, primero las monedas conocidas (BOB, USD, ARS). Después, cualquier otra, por código.
+ * sin él, o para las que no estén en él, orden alfabético por código.
  */
-export function ordenarMonedas(codigos: Iterable<string>, orden: readonly string[] = MONEDAS): string[] {
+export function ordenarMonedas(codigos: Iterable<string>, orden: readonly string[] = []): string[] {
   const todos = new Set(codigos);
   const conocidas: string[] = orden.filter((m, i) => todos.has(m) && orden.indexOf(m) === i);
   const otras = [...todos].filter((m) => !conocidas.includes(m)).sort();
   return [...conocidas, ...otras];
 }
 
-export function monedasDelTurno(t: Pick<TurnoPos, 'apertura' | 'totales'>, orden?: readonly string[]): string[] {
+export function monedasDelTurno(t: Pick<TurnoPos, 'apertura' | 'totales'>, orden: readonly string[]): string[] {
   const hay = (r: Readonly<Partial<Record<string, unknown>>>): string[] => Object.keys(r).filter((m) => r[m] !== undefined);
   return ordenarMonedas([...hay(t.apertura), ...hay(t.totales)], orden);
 }
@@ -35,9 +34,9 @@ export interface ProyeccionMoneda {
 }
 
 /** Supervisión en vivo: proyección por moneda (misma fórmula que el servidor). */
-export function proyectarTurno(t: Pick<TurnoPos, 'apertura' | 'totales'>): Partial<Record<string, ProyeccionMoneda>> {
+export function proyectarTurno(t: Pick<TurnoPos, 'apertura' | 'totales'>, orden: readonly string[]): Partial<Record<string, ProyeccionMoneda>> {
   const r: Partial<Record<string, ProyeccionMoneda>> = {};
-  for (const m of monedasDelTurno(t)) {
+  for (const m of monedasDelTurno(t, orden)) {
     const x = t.totales[m] ?? TOTALES_VACIOS;
     const apertura = t.apertura[m] ?? 0;
     r[m] = { apertura, efectivoEsperado: efectivoEsperado(apertura, x), qr: x.qr, transferencia: x.transferencia, credito: x.credito, ingresos: x.ingresos, egresos: x.egresos };
@@ -46,10 +45,10 @@ export function proyectarTurno(t: Pick<TurnoPos, 'apertura' | 'totales'>): Parti
 }
 
 /** Diferencia = contado − esperado, SIN tope en cero (una falta queda negativa). */
-export function diferenciaPorMoneda(t: Pick<TurnoPos, 'apertura' | 'totales'>, contado: MontosPorMoneda): Partial<Record<string, number>> {
+export function diferenciaPorMoneda(t: Pick<TurnoPos, 'apertura' | 'totales'>, contado: MontosPorMoneda, orden: readonly string[]): Partial<Record<string, number>> {
   const r: Partial<Record<string, number>> = {};
-  const p = proyectarTurno(t);
-  for (const m of ordenarMonedas(Object.keys(contado))) {
+  const p = proyectarTurno(t, orden);
+  for (const m of ordenarMonedas(Object.keys(contado), orden)) {
     const c = contado[m];
     const e = p[m];
     if (c !== undefined && e !== undefined) r[m] = c - e.efectivoEsperado;
@@ -77,9 +76,9 @@ export function sumarTotales(totales: TotalesTurno, moneda: string, delta: Parti
 export const monedasDeCobro = (m: Pick<MercadoDeclarado, 'monedaVenta' | 'monedaBase'>): string[] =>
   m.monedaVenta === m.monedaBase ? [m.monedaVenta] : [m.monedaVenta, m.monedaBase];
 
-/** Cotización vigente de un mercado declarado, buscada por su id (el tipo de Central solo indexa los dos mercados de siempre). */
-export const cotizacionDeMercado = (cot: CotizacionesVigentes, id: string): CotizacionesVigentes[keyof CotizacionesVigentes] =>
-  (cot as Readonly<Record<string, CotizacionesVigentes[keyof CotizacionesVigentes] | undefined>>)[id] ?? null;
+/** Cotización vigente de un mercado declarado, buscada por su id (las cotizaciones se indexan por el id del mercado declarado; sin entrada, null). */
+export const cotizacionDeMercado = (cot: CotizacionesVigentes, id: string): CotizacionesVigentes[string] =>
+  cot[id] ?? null;
 
 /** Precio base del producto (centavos de la moneda base) en un mercado declarado; 0 si no tiene precio ahí. */
 export const precioBaseDeMercado = (p: Pick<ProductoPanel, 'precioUSD'>, id: string): number =>
