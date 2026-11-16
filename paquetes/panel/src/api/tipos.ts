@@ -608,6 +608,8 @@ export interface Tablero {
   readonly ultimoCambioEn: string;
   readonly publicadoEn: string | null;
   readonly versionPublicada: number;
+  /** Si un retiro automático dejó el sitio sin productos o sin fotos (`en`: instante ISO del retiro); `null` si no hay aviso. */
+  readonly avisoSitio: { readonly motivo: 'sin_productos' | 'sin_fotos'; readonly en: string } | null;
   readonly cotizaciones: readonly CotizacionTablero[];
   readonly uso: {
     readonly productos: { readonly usados: number; readonly tope: number };

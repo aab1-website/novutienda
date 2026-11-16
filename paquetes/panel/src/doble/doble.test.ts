@@ -712,6 +712,17 @@ describe('doble: catálogo y sitio', () => {
     expect(e.api.estado.bytesOriginales).toBe(cuota - 100);
     expect((await falla(e.api.llamar('estadoSubida', { subidaId: uuid() }))).detalle.codigo).toBe('no-encontrado');
   });
+  it('tablero: el aviso del sitio incompleto es configurable y una publicación correcta lo limpia', async () => {
+    const e = crearEntorno('adm');
+    expect((await e.api.llamar('obtenerTablero', {})).avisoSitio).toBeNull();
+    for (const motivo of ['sin_productos', 'sin_fotos'] as const) {
+      e.api.estado.avisoSitio = { motivo, en: '2026-11-16T10:00:00.000Z' };
+      expect((await e.api.llamar('obtenerTablero', {})).avisoSitio).toEqual({ motivo, en: '2026-11-16T10:00:00.000Z' });
+    }
+    await e.api.llamar('publicarSitio', {});
+    expect((await e.api.llamar('obtenerTablero', {})).avisoSitio).toBeNull();
+  });
+
   it('ficha: slug único, texto alternativo, medios del producto; publicar la deja en el tablero', async () => {
     const e = crearEntorno('sup');
     const r = await e.api.llamar('reservarSubida', { subidaId: uuid(), productoId: 'tv-55', tipo: 'foto', bytes: 10 });
