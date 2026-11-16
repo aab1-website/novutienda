@@ -56,7 +56,7 @@ describe('inicio de sesión', () => {
   });
 });
 
-describe('comercio en el encabezado', () => {
+describe('identificador del comercio', () => {
   const cuentas = [
     ...CUENTAS_DOBLE,
     { correo: 'otro@ejemplo.test', contrasena: 'clave-otro-1', uid: 'u-otro', tenantId: 'otro-comercio', rol: 'adm' as const, verificado: true },
@@ -72,18 +72,20 @@ describe('comercio en el encabezado', () => {
     expect(screen.queryByText(/Comercio:/)).toBeNull();
     expect(document.title).toBe('Ingreso · Panel de gestión');
   });
-  it('muestra el comercio de la sesión y lo pone en el título; cambia al ingresar con otro', async () => {
+  it('ni la cabecera ni el título de la pestaña llevan el identificador del comercio', async () => {
     montarCon();
     await entrar('adm@ejemplo.test', 'clave-adm-1');
     const cab = await screen.findByRole('banner');
-    expect(within(cab).getByText('Comercio: demo')).toBeTruthy();
-    await waitFor(() => expect(document.title).toBe('Venta · demo · Panel de gestión'));
+    await waitFor(() => expect(document.title).toBe('Venta · Panel de gestión'));
+    expect(cab.textContent).not.toContain('demo');
+    expect(within(cab).queryByText(/Comercio:/)).toBeNull();
     await userEvent.setup().click(screen.getByRole('button', { name: 'Salir' }));
     await screen.findByRole('button', { name: 'Entrar' });
-    expect(screen.queryByText(/Comercio:/)).toBeNull();
     await entrar('otro@ejemplo.test', 'clave-otro-1');
-    expect(await screen.findByText('Comercio: otro-comercio')).toBeTruthy();
-    await waitFor(() => expect(document.title).toBe('Venta · otro-comercio · Panel de gestión'));
+    const cab2 = await screen.findByRole('banner');
+    await waitFor(() => expect(document.title).toBe('Venta · Panel de gestión'));
+    expect(cab2.textContent).not.toContain('otro-comercio');
+    expect(document.title).not.toContain('otro-comercio');
   });
 });
 
@@ -239,11 +241,11 @@ describe('cabecera plegable, título y foco', () => {
     await screen.findByRole('navigation', { name: 'Menú principal' });
     await waitFor(() => expect(document.activeElement?.textContent).toBe('Venta'));
     window.location.hash = '#/mermas';
-    await waitFor(() => expect(document.title).toBe('Mermas · demo · Panel de gestión'));
+    await waitFor(() => expect(document.title).toBe('Mermas · Panel de gestión'));
     await waitFor(() => expect(document.activeElement?.textContent).toBe('Mermas'));
     expect(document.activeElement?.tagName).toBe('H1');
     window.location.hash = '#/usuarios';
-    await waitFor(() => expect(document.title).toBe('Usuarios · demo · Panel de gestión'));
+    await waitFor(() => expect(document.title).toBe('Usuarios · Panel de gestión'));
     await waitFor(() => expect(document.activeElement?.textContent).toBe('Usuarios'));
   });
 });
