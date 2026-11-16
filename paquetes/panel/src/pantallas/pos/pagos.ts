@@ -1,4 +1,4 @@
-import type { MedioPago, Moneda, PagoEntrada } from '../../api/tipos.js';
+import type { MedioPago, PagoEntrada } from '../../api/tipos.js';
 import { textoACentavos } from '../../util/dinero.js';
 
 export interface FilaPago {
@@ -12,7 +12,7 @@ export interface FilaPago {
 export const NOMBRE_MEDIO: Record<MedioPago, string> = { efectivo: 'Efectivo', qr: 'QR (registro manual)', transferencia: 'Transferencia', credito: 'Crédito' };
 
 /** Cálculo puro de los pagos: restante por cobrar, cambio y errores de captura. */
-export function calcularPagos(filas: readonly FilaPago[], total: number, moneda: Moneda): { pagos: PagoEntrada[]; neto: number; restante: number; cambioTotal: number; errores: string[] } {
+export function calcularPagos(filas: readonly FilaPago[], total: number, moneda: string): { pagos: PagoEntrada[]; neto: number; restante: number; cambioTotal: number; errores: string[] } {
   const errores: string[] = [];
   const pagos: PagoEntrada[] = [];
   let neto = 0;

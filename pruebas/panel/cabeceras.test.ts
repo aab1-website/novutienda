@@ -16,8 +16,8 @@ afterAll(() => rmSync(raiz, { recursive: true, force: true }));
 
 /** Variables VITE_* con las que se sella; por defecto ninguna, para que el resultado no dependa del entorno de quien corre la prueba. */
 function sellar(nombre: string, ...extra: string[]): Cab[] {
-  const { VITE_FIREBASE_PROJECT_ID: _p, VITE_FIREBASE_STORAGE_BUCKET: _b, ...entorno } = process.env;
-  void _p; void _b;
+  const { VITE_FIREBASE_PROJECT_ID: _p, VITE_FIREBASE_STORAGE_BUCKET: _b, VITE_MEDIOS_BASE_URL: _m, ...entorno } = process.env;
+  void _p; void _b; void _m;
   const dir = join(raiz, nombre);
   mkdirSync(dir);
   writeFileSync(join(dir, 'index.html'), '<!doctype html><html><head><meta charset="utf-8"></head><body><div id="app"></div></body></html>');
@@ -82,6 +82,33 @@ describe('CSP del panel con el proyecto y el bucket (variables VITE_* del build)
       expect(() => sellar(`malo-${malo.length}`, malo)).toThrow();
     }
   });
+});
+
+describe('CSP del panel con el almacén público de medios (VITE_MEDIOS_BASE_URL)', () => {
+  const base = 'https://medios.ejemplo.test/bucket-publico';
+  const sin = valor(sellar('medios-sin'), 'Content-Security-Policy');
+  const con = valor(sellar('medios-con', `VITE_MEDIOS_BASE_URL=${base}`), 'Content-Security-Policy');
+  it('agrega la fuente exacta, con barra final, solo a img-src', () => {
+    expect(directiva(con, 'img-src')).toEqual([...directiva(sin, 'img-src'), `${base}/`]);
+    expect(con.replace(` ${base}/`, '')).toBe(sin);
+    expect(con.split(base).length).toBe(2);
+  });
+  it('tolera una barra final en la variable', () => {
+    expect(directiva(valor(sellar('medios-barra', `VITE_MEDIOS_BASE_URL=${base}/`), 'Content-Security-Policy'), 'img-src')).toContain(`${base}/`);
+  });
+  it('sin la variable la CSP no cambia y en el emulador se ignora', () => {
+    expect(sin).not.toContain('medios.ejemplo.test');
+    expect(valor(sellar('medios-emu', '--emulador', `VITE_MEDIOS_BASE_URL=${base}`), 'Content-Security-Policy')).not.toContain('medios.ejemplo.test');
+  });
+  it('rechaza valores maliciosos o mal formados', () => {
+    const malos = [
+      `${base}; script-src *`, 'https://medios.ejemplo.test/a b', 'https://*.ejemplo.test/bucket', 'https://medios.ejemplo.test/*', 'http://medios.ejemplo.test/bucket',
+      'https://medios.ejemplo.test', 'https://medios.ejemplo.test/', `${base},https://otro.test/x`, `${base}'`, `${base}"`, 'https://storage.googleapis.com/',
+      `${base}?x=1`, 'medios.ejemplo.test/bucket', 'https://u:p@medios.ejemplo.test/bucket', 'https://medios.ejemplo.test/../x', 'https://medios.ejemplo.test:8443/bucket', 'https://medios.ejemplo.test/a//b',
+    ];
+    malos.forEach((m, i) => expect(() => sellar(`medios-malo-${i}`, `VITE_MEDIOS_BASE_URL=${m}`), m).toThrow());
+    expect(() => sellar('medios-defecto', 'VITE_FIREBASE_STORAGE_BUCKET=bucket-demo', 'VITE_MEDIOS_BASE_URL=https://storage.googleapis.com/bucket-demo')).toThrow();
+  }, 60_000);
 });
 
 describe('CSP del panel (compilación para el emulador)', () => {
