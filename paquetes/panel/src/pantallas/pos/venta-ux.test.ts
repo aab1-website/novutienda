@@ -130,6 +130,38 @@ describe('V-03: la aprobación llega sola', () => {
   });
 });
 
+describe('la cajera ve el rechazo de su solicitud', () => {
+  const rechazar = async (e: ReturnType<typeof crearEntorno>, motivo?: string): Promise<void> => {
+    e.como('sup');
+    const pendiente = (await e.api.llamar('listarAprobaciones', { estado: 'pendiente' }))[0];
+    await e.api.llamar('resolverAprobacion', { aprobacionId: pendiente?.aprobacionId ?? '', decision: 'rechazar', ...(motivo !== undefined ? { motivo } : {}) });
+    e.como('caj');
+  };
+  for (const [titulo, motivo] of [['con motivo', 'Supera el tope'], ['sin motivo', undefined]] as const) {
+    it(`${titulo}: aviso claro y la consulta se detiene`, async () => {
+      vi.useFakeTimers({ toFake: ['setInterval', 'clearInterval'] });
+      const e = crearEntorno('caj');
+      await conTurno(e);
+      const u = userEvent.setup();
+      await u.click(await screen.findByRole('button', { name: 'Agregar Cable HDMI 2 m' }));
+      await u.type(campo(/Descuento \(monto\)/), '10');
+      await u.type(campo(/Motivo del descuento/), 'Cliente frecuente');
+      await u.click(await screen.findByRole('button', { name: 'Solicitar aprobación' }));
+      expect(await screen.findByText(/Esperando la aprobación/)).toBeTruthy();
+      await rechazar(e, motivo);
+      await vi.advanceTimersByTimeAsync(4000);
+      const aviso = await screen.findByText(/Su solicitud fue rechazada/);
+      if (motivo === undefined) expect(aviso.textContent).not.toContain('Motivo:');
+      else expect(aviso.textContent).toContain(`Motivo: ${motivo}`);
+      expect(screen.queryByText(/Esperando la aprobación/)).toBeNull();
+      await vi.advanceTimersByTimeAsync(5000);
+      const antes = e.api.llamadas.filter((l) => l.nombre === 'listarAprobaciones').length;
+      await vi.advanceTimersByTimeAsync(20_000);
+      expect(e.api.llamadas.filter((l) => l.nombre === 'listarAprobaciones').length).toBe(antes);
+    });
+  }
+});
+
 describe('V-04 y G-06: monto prellenado y motivo de cada falta', () => {
   it('la primera fila de pago arranca con el total', async () => {
     const e = crearEntorno('caj');

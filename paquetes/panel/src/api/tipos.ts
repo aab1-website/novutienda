@@ -130,6 +130,7 @@ export interface AprobacionPos {
   readonly solicitadoEnMs: number;
   readonly aprobadoPor?: string;
   readonly aprobadoRol?: string;
+  readonly motivoRechazo?: string | undefined;
 }
 
 export interface SolicitudAprobacion {
