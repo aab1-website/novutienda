@@ -1,5 +1,6 @@
 // Utilidades compartidas de las pruebas del panel (no forma parte de la aplicación).
 import { h, type JSX } from 'preact';
+import { conCorreoDeInvitacion } from './api/invitaciones.js';
 import { ClienteDoble, type OpcionesDoble } from './doble/doble.js';
 import type { Rol } from './api/tipos.js';
 import { AlmacenSubidasDoble } from './subidas/almacen.js';
@@ -23,6 +24,8 @@ export interface Entorno {
   sesionesVencidas(): number;
   /** Renovación del token: cuántas veces se pidió y si el servidor la acepta (por omisión, sí). */
   readonly renovacion: { llamadas: number; acepta: boolean };
+  /** Correos a los que el panel envió el enlace para fijar la contraseña (tras invitar o reenviar). */
+  readonly correosDeAcceso: string[];
   /** Módulos activos que ve `puedeVer` (por omisión, todos; `null` = aún no se sabe, solo Central). Se puede cambiar entre renders. */
   modulos: ModulosActivos;
   /** Envuelve un nodo con el contexto de la aplicación. */
@@ -36,7 +39,13 @@ export function usuarioDe(rol: Rol): UsuarioSesion {
 export function crearEntorno(rol: Rol = 'caj', ahora: () => number = () => AHORA, comercio: Pick<OpcionesDoble, 'comercial' | 'redondeo'> = {}): Entorno {
   let actual = usuarioDe(rol);
   let vencidas = 0;
-  const api = new ClienteDoble({ usuario: () => ({ uid: actual.uid, rol: actual.rol }), ahora, ...comercio });
+  const correosDeAcceso: string[] = [];
+  const api = conCorreoDeInvitacion(new ClienteDoble({ usuario: () => ({ uid: actual.uid, rol: actual.rol }), ahora, ...comercio }), {
+    recuperarContrasena: (correo) => {
+      correosDeAcceso.push(correo);
+      return Promise.resolve();
+    },
+  });
   const almacen = new AlmacenSubidasDoble();
   const renovacion = { llamadas: 0, acepta: true };
   const renovar = (): Promise<boolean> => {
@@ -46,6 +55,7 @@ export function crearEntorno(rol: Rol = 'caj', ahora: () => number = () => AHORA
   const entorno: Entorno = {
     api,
     almacen,
+    correosDeAcceso,
     usuario: () => actual,
     sesionesVencidas: () => vencidas,
     renovacion,

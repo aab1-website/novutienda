@@ -265,18 +265,16 @@ describe('usuarios y configuración', () => {
     expect(await screen.findByText(/todavía no está verificado/)).toBeTruthy();
     expect(screen.queryByRole('button', { name: /Asignar rol/ })).toBeNull();
   });
-  it('alta: cuenta inexistente muestra las instrucciones para crearla; el panel no crea cuentas', async () => {
+  it('alta: cuenta inexistente ofrece invitarla (ya no manda a la consola del proveedor); la búsqueda no asigna ni crea nada', async () => {
     const e = crearEntorno('adm');
     await e.api.llamar('quitarRol', { uid: 'u-sup' });
     ver(e, h(PantallaUsuarios, {}));
     const u = userEvent.setup();
     await u.type(await screen.findByLabelText(/Correo de la persona/), 'nadie@ejemplo.test');
     await u.click(screen.getByRole('button', { name: 'Buscar cuenta' }));
-    const pasos = await screen.findByRole('region', { name: 'Cómo crear la cuenta' });
-    expect(within(pasos).getAllByRole('listitem')).toHaveLength(4);
-    expect(pasos.textContent).toContain('Add user');
-    expect(pasos.textContent).toContain('nadie@ejemplo.test');
-    expect(pasos.textContent).toContain('Reenviar enlace');
+    const aviso = await screen.findByText(/No existe una cuenta con el correo nadie@ejemplo.test/);
+    expect(aviso.textContent).toContain('Invitar a una persona');
+    expect(document.body.textContent).not.toMatch(/Add user|Firebase Console/);
     expect(screen.queryByRole('button', { name: /Asignar rol/ })).toBeNull();
     expect(e.api.llamadas.map((l) => l.nombre)).not.toContain('asignarRol');
   });
@@ -567,7 +565,7 @@ describe('usuarios: avisos, motivos y datos ausentes', () => {
     await u.clear(screen.getByLabelText(/Correo de la persona/));
     await u.type(screen.getByLabelText(/Correo de la persona/), 'nadie@ejemplo.test');
     await u.click(screen.getByRole('button', { name: 'Buscar cuenta' }));
-    expect(await screen.findByRole('region', { name: 'Cómo crear la cuenta' })).toBeTruthy();
+    expect(await screen.findByText(/No existe una cuenta con el correo nadie@ejemplo.test/)).toBeTruthy();
   });
 });
 

@@ -82,6 +82,7 @@ const POR_CODIGO_MODULO: Readonly<Record<string, string>> = {
   claim: 'No se pudo actualizar el rol. Intente de nuevo.',
   'correo-no-verificado': 'Verifique su correo para continuar.',
   jerarquia: 'Solo el propietario de la plataforma puede cambiar a un administrador.',
+  'limite-invitaciones': 'Se enviaron demasiadas invitaciones. Intente de nuevo en una hora.',
   'ultimo-adm': 'No se puede quitar al último administrador.',
   'no-miembro': 'Esa persona no pertenece al negocio.',
   concurrencia: 'Otra persona cambió lo mismo al mismo tiempo. Intente de nuevo.',

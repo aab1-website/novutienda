@@ -20,20 +20,9 @@ type Resultado =
   | { readonly tipo: 'ya-miembro'; readonly correo: string }
   | { readonly tipo: 'inexistente'; readonly correo: string };
 
-/** Instrucciones para una cuenta que no existe: el panel NO crea cuentas de Firebase Auth. */
-function InstruccionesCuenta({ correo }: { correo: string }): JSX.Element {
-  return (
-    <div role="region" aria-label="Cómo crear la cuenta">
-      <Alerta tipo="info">No existe una cuenta con el correo {correo}. Este panel no crea cuentas; siga estos pasos y vuelva a buscar.</Alerta>
-      <ol>
-        <li>El propietario de la plataforma crea la cuenta en Firebase Console, sección Authentication, pestaña Users, botón «Add user»: correo {correo} y una contraseña de al menos 6 caracteres que usted entregará a la persona por un medio seguro.</li>
-        <li>La persona abre este panel e inicia sesión con ese correo y esa contraseña. Verá «Verifique su correo» y debe pulsar «Reenviar enlace».</li>
-        <li>La persona abre el mensaje que le llega a su correo y pulsa el enlace de verificación.</li>
-        <li>Vuelva a esta pantalla y pulse «Buscar cuenta» de nuevo para asignarle el rol.</li>
-      </ol>
-    </div>
-  );
-}
+const ROLES_INVITABLES: readonly Rol[] = ['caj', 'sup', 'adm'];
+const DIA_MS = 24 * 60 * 60 * 1000;
+const fechaDe = (ms: number): string => new Date(ms).toLocaleDateString('es-BO', { day: 'numeric', month: 'long', year: 'numeric', timeZone: 'America/La_Paz' });
 
 export function PantallaUsuarios(): JSX.Element {
   const { api, usuario } = useApp();
@@ -48,15 +37,22 @@ export function PantallaUsuarios(): JSX.Element {
   const [correo, setCorreo] = useState('');
   const [rolNuevo, setRolNuevo] = useState<Rol>('caj');
   const [resultado, setResultado] = useState<Resultado | null>(null);
+  // Las invitaciones pendientes ocupan un cupo del plan, pero aún no son personas con acceso.
+  const miembros = lista.datos?.filter((u) => u.estado !== 'invitado');
+  const invitaciones = lista.datos?.filter((u) => u.estado === 'invitado');
   const cantidad = lista.datos?.length ?? 0;
   const lleno = lista.datos !== undefined && cantidad >= tope;
+  const invitar = useAccion();
+  const pendientes = useAccion();
+  const [correoInvitado, setCorreoInvitado] = useState('');
+  const [rolInvitado, setRolInvitado] = useState<Rol>('caj');
 
   const buscar = (): void => {
     const buscado = correo.trim().toLowerCase();
     if (buscado === '') return;
     setResultado(null);
     void alta.ejecutar(async () => {
-      const miembro = lista.datos?.find((u) => correoDe(u).toLowerCase() === buscado);
+      const miembro = miembros?.find((u) => correoDe(u).toLowerCase() === buscado);
       if (miembro !== undefined) {
         setResultado({ tipo: 'ya-miembro', correo: buscado });
         return;
@@ -79,6 +75,28 @@ export function PantallaUsuarios(): JSX.Element {
       setCorreo('');
       lista.recargar();
     }, { exito: `Listo: ${r.correo} ahora es ${ROL_TEXTO[rolNuevo].toLowerCase()}. La persona lo verá al volver a iniciar sesión.`, error: 'ambos' });
+  };
+
+  const enviarInvitacion = (): void => {
+    const correoLimpio = correoInvitado.trim().toLowerCase();
+    if (correoLimpio === '') return;
+    void invitar.ejecutar(async () => {
+      await api.llamar('invitarUsuario', { correo: correoLimpio, rol: rolInvitado });
+      setCorreoInvitado('');
+      lista.recargar();
+    }, { exito: 'Invitación enviada', error: 'ambos' });
+  };
+  const reenviar = (uid: string, correoDeLaInvitacion: string): void => {
+    void pendientes.ejecutar(async () => {
+      await api.llamar('reenviarInvitacion', { uid, correo: correoDeLaInvitacion });
+      lista.recargar();
+    }, { exito: 'Invitación enviada', error: 'ambos' });
+  };
+  const anular = (uid: string): void => {
+    void pendientes.ejecutar(async () => {
+      await api.llamar('anularInvitacion', { uid });
+      lista.recargar();
+    }, { exito: 'Invitación anulada.', error: 'ambos' });
   };
 
   const asignar = (uid: string): void => {
@@ -112,13 +130,44 @@ export function PantallaUsuarios(): JSX.Element {
         {!lleno && resultado?.tipo === 'ya-miembro' && <Alerta tipo="info">{resultado.correo} ya tiene acceso. Cambie su rol en la tabla de abajo.</Alerta>}
         {!lleno && resultado?.tipo === 'sin-verificar' && <Alerta tipo="info">La cuenta de {resultado.correo} existe, pero su correo todavía no está verificado. Pida a la persona que inicie sesión en este panel, pulse «Reenviar enlace» y abra el enlace que le llegue; luego busque de nuevo.</Alerta>}
         {!lleno && resultado?.tipo === 'sin-contrasena' && <Alerta tipo="info">La cuenta de {resultado.correo} no tiene contraseña. El personal debe ingresar con correo y contraseña: pida al propietario de la plataforma que le asigne una.</Alerta>}
-        {!lleno && resultado?.tipo === 'inexistente' && <InstruccionesCuenta correo={resultado.correo} />}
+        {!lleno && resultado?.tipo === 'inexistente' && <Alerta tipo="info">No existe una cuenta con el correo {resultado.correo}. Invítela en «Invitar a una persona»: recibirá un enlace para elegir su contraseña.</Alerta>}
         {!lleno && resultado?.tipo === 'verificada' && (
           <div class="formulario">
             <Alerta tipo="ok">Cuenta encontrada y con el correo verificado: {resultado.correo}.</Alerta>
             <Selector etiqueta="Rol que tendrá" valor={rolNuevo} onCambio={(v) => setRolNuevo(v as Rol)} opciones={(['caj', 'sup'] as const).map((r) => ({ valor: r, texto: ROL_TEXTO[r] }))} />
             <Boton onClick={() => darAlta(resultado)} ocupado={alta.ocupado}>{`Asignar rol de ${ROL_TEXTO[rolNuevo].toLowerCase()}`}</Boton>
           </div>
+        )}
+      </Seccion>
+      <Seccion titulo="Invitar a una persona">
+        <p class="texto-suave">La persona recibe un enlace por correo para elegir su contraseña y, al entrar, ya tiene el rol que usted elija. La invitación ocupa un cupo del plan y caduca a los 7 días.</p>
+        <form class="formulario" onSubmit={(e) => { e.preventDefault(); if (!lleno) enviarInvitacion(); }} noValidate>
+          <Campo etiqueta="Correo para invitar" tipo="email" inputMode="email" autocompletar="off" valor={correoInvitado} onInput={setCorreoInvitado} />
+          <Selector etiqueta="Rol de la invitación" valor={rolInvitado} onCambio={(v) => setRolInvitado(v as Rol)} opciones={ROLES_INVITABLES.map((r) => ({ valor: r, texto: ROL_TEXTO[r] }))} />
+          <div class="fila">
+            <Boton tipo="submit" ocupado={invitar.ocupado} motivo={lleno ? 'El plan no tiene cupos libres: anule una invitación o quite un acceso' : correoInvitado.trim() === '' ? 'Escriba el correo para invitar' : undefined}>Invitar</Boton>
+          </div>
+        </form>
+        {invitar.error && <Alerta>{invitar.error}</Alerta>}
+        {pendientes.error && <Alerta>{pendientes.error}</Alerta>}
+        {invitaciones !== undefined && invitaciones.length > 0 && (
+          <Tabla
+            titulo="Invitaciones pendientes"
+            filas={invitaciones}
+            clave={(u) => u.uid}
+            vacio={{ titulo: 'No hay invitaciones pendientes' }}
+            columnas={[
+              { id: 'correo', titulo: 'Correo', valor: (u) => correoDe(u), encabezadoFila: true, ordenable: true, celda: (u) => correoDe(u) },
+              { id: 'rol', titulo: 'Rol reservado', valor: (u) => ROL_TEXTO[u.rol], celda: (u) => ROL_TEXTO[u.rol] },
+              { id: 'vence', titulo: 'Vence', valor: (u) => String(u.venceEnMs ?? 0), celda: (u) => `Vence el ${fechaDe(u.venceEnMs ?? 0)}${(u.venceEnMs ?? 0) - Date.now() < DIA_MS ? ' (queda menos de un día)' : ''}` },
+            ]}
+            acciones={(u) => (
+              <div class="fila">
+                <Boton variante="secundario" chico ocupado={pendientes.ocupado} onClick={() => reenviar(u.uid, correoDe(u))}>Reenviar</Boton>
+                <BotonConfirmado texto="Anular" pregunta={`¿Anular la invitación de ${correoDe(u)}?`} textoConfirmar="Sí, anular" peligro chico onConfirmar={() => anular(u.uid)} />
+              </div>
+            )}
+          />
         )}
       </Seccion>
       <Seccion titulo={`Personas con acceso (${cantidad} de ${tope})`}>
@@ -129,7 +178,7 @@ export function PantallaUsuarios(): JSX.Element {
         {lista.datos && (
           <Tabla
             titulo="Usuarios del negocio"
-            filas={lista.datos}
+            filas={miembros ?? []}
             clave={(u) => u.uid}
             buscar={{ etiqueta: 'Buscar por correo', en: (u) => [correoDe(u)] }}
             vacio={{ titulo: 'No hay usuarios' }}

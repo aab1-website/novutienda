@@ -8,6 +8,12 @@ export interface CuentaDoble {
   readonly tenantId: string;
   readonly rol: Rol;
   readonly verificado: boolean;
+  /**
+   * Cuenta que entra sin rol y con una invitación pendiente: al iniciar sesión se llama a la activación UNA vez.
+   * `pendiente` la activa (la cuenta recibe `tenantId` y `rol`); `servidor-no-verificado` simula que el servidor responde
+   * `correo-no-verificado` aunque el cliente crea lo contrario.
+   */
+  readonly activacion?: 'pendiente' | 'servidor-no-verificado';
 }
 
 /** Cuentas de desarrollo y pruebas. NO son credenciales reales. */
@@ -27,6 +33,9 @@ export class SesionDoble implements Sesion {
   /** Para pruebas: cuántas renovaciones se pidieron y si el servidor las acepta. */
   renovaciones = 0;
   renovable = true;
+  /** Para pruebas: cuántas veces se llamó a la activación de invitaciones. */
+  activaciones = 0;
+  private readonly activadas = new Set<string>();
 
   constructor(private readonly cuentas: readonly CuentaDoble[] = CUENTAS_DOBLE) {}
 
@@ -34,6 +43,15 @@ export class SesionDoble implements Sesion {
     const c = this.cuentas.find((x) => x.correo === correo.trim().toLowerCase());
     if (c === undefined || c.contrasena !== contrasena) return Promise.resolve({ tipo: 'credenciales-invalidas' });
     if (!c.verificado) return Promise.resolve({ tipo: 'correo-no-verificado' });
+    if (c.activacion !== undefined && !this.activadas.has(c.uid)) {
+      this.activaciones += 1;
+      if (c.activacion === 'servidor-no-verificado') {
+        this.verificacionesReenviadas += 1; // envía el correo de verificación
+        return Promise.resolve({ tipo: 'correo-no-verificado' });
+      }
+      this.activadas.add(c.uid);
+      this.renovaciones += 1; // el token se refresca para que aparezca el rol
+    }
     this.usuario = { uid: c.uid, correo: c.correo, tenantId: c.tenantId, rol: c.rol };
     this.avisar();
     return Promise.resolve({ tipo: 'ok', usuario: this.usuario });

@@ -662,8 +662,13 @@ export interface UsuarioVista {
   readonly uid: string;
   /** `null` si la cuenta no tiene correo. */
   readonly correo: string | null;
+  /** Rol vigente; en una invitación pendiente, el rol reservado. */
   readonly rol: Rol;
   readonly verificado: boolean;
+  /** `invitado`: invitación pendiente (ocupa un cupo y aún no tiene acceso). Ausente o `activo`: miembro. */
+  readonly estado?: 'activo' | 'invitado';
+  /** Solo en una invitación: instante (ms) en que caduca. */
+  readonly venceEnMs?: number;
 }
 
 export interface EntradaAuditoriaVista {

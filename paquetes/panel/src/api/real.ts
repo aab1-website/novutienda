@@ -477,6 +477,21 @@ export const TRADUCCION: { readonly [N in NombreCallable]: Traduccion<N> } = {
   },
   asignarRol: comoOk('consola', 'asignarRol', (e) => e),
   quitarRol: comoOk('consola', 'quitarRol', (e) => e),
+  invitarUsuario: {
+    usa: ['consola.invitarUsuario'],
+    ejecutar: async (c, e) => {
+      await c.llamar('consola', 'invitarUsuario', { correo: e.correo.trim(), rol: e.rol });
+      return { ok: true, mensaje: 'Invitación enviada' }; // texto fijo del panel: el mismo en todos los casos
+    },
+  },
+  anularInvitacion: comoOk('consola', 'anularInvitacion', (e) => e),
+  reenviarInvitacion: {
+    usa: ['consola.reenviarInvitacion'],
+    ejecutar: async (c, e) => {
+      const r = (await c.llamar('consola', 'reenviarInvitacion', { uid: e.uid })) as Obj;
+      return { ok: true, mensaje: 'Invitación enviada', venceEnMs: typeof r['venceEnMs'] === 'number' ? r['venceEnMs'] : 0 };
+    },
+  },
   listarFichas: { usa: ['consola.fichas'], ejecutar: async (c) => lista(await c.llamar('consola', 'fichas', {}), 'fichas') as never },
   listarMedios: {
     usa: ['medios.listarMedios'],
@@ -489,7 +504,10 @@ export const TRADUCCION: { readonly [N in NombreCallable]: Traduccion<N> } = {
     usa: ['consola.listarUsuarios'],
     ejecutar: async (c) =>
       lista(await c.llamar('consola', 'listarUsuarios', {}), 'usuarios').map(
-        (u): UsuarioVista => ({ uid: String(u['uid']), correo: typeof u['correo'] === 'string' ? u['correo'] : '', rol: u['rol'] as Rol, verificado: u['correoVerificado'] === true }),
+        (u): UsuarioVista =>
+          u['estado'] === 'invitado'
+            ? { uid: String(u['uid']), correo: typeof u['correo'] === 'string' ? u['correo'] : '', rol: u['rolReservado'] as Rol, verificado: false, estado: 'invitado', venceEnMs: typeof u['venceEnMs'] === 'number' ? u['venceEnMs'] : 0 }
+            : { uid: String(u['uid']), correo: typeof u['correo'] === 'string' ? u['correo'] : '', rol: u['rol'] as Rol, verificado: u['correoVerificado'] === true },
       ),
   },
   modulosActivos: {
