@@ -71,6 +71,13 @@ async function borrarCuentaDeInvitacion(e: Entorno, uid: string): Promise<boolea
       const ingreso = u.metadata.lastSignInTime ? Date.parse(u.metadata.lastSignInTime) : Number.NaN;
       if (Number.isNaN(ingreso) && u.metadata.lastSignInTime) return false;
       if (!Number.isNaN(ingreso) && ingreso !== Date.parse(u.metadata.creationTime)) return false;
+      // Fijar la contraseña con el enlace deja `emailVerified` en verdadero y adelanta `tokensValidAfterTime`: la persona ya empezó
+      // a usar la cuenta aunque no haya entrado. Cualquier valor ausente o ilegible que no pruebe lo contrario conserva la cuenta.
+      if (u.emailVerified !== false) return false;
+      if (u.tokensValidAfterTime !== undefined && u.tokensValidAfterTime !== null) {
+        const t = Date.parse(u.tokensValidAfterTime);
+        if (Number.isNaN(t) || t !== Date.parse(u.metadata.creationTime)) return false;
+      }
       if (u.customClaims !== undefined && Object.keys(u.customClaims).length > 0) return false; // alguna membresía o permiso: se conserva
       return (await puertos(e).indiceInvitaciones.tenantsDe(uid)).length === 0;
     };

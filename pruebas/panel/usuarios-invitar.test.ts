@@ -10,6 +10,7 @@ interface Cuenta {
   uid: string;
   email: string;
   emailVerified: boolean;
+  tokensValidAfterTime?: string;
   disabled: boolean;
   providerData: { providerId: string }[];
   customClaims?: Record<string, unknown>;
@@ -60,7 +61,7 @@ function montaje(opciones: { usados?: number } = {}) {
     createUser: async (p: { email: string; password: string; emailVerified: boolean }) => {
       registro.push(`crear:${p.password.length}:${String(p.emailVerified)}`);
       const uid = `nuevo${String((secuencia += 1))}`;
-      return poner(uid, { email: p.email, emailVerified: p.emailVerified, providerData: [{ providerId: 'password' }], metadata: { creationTime: CREACION, lastSignInTime: CREACION } }); // como Auth: sin uso, el último ingreso es la creación
+      return poner(uid, { email: p.email, emailVerified: p.emailVerified, providerData: [{ providerId: 'password' }], metadata: { creationTime: CREACION, lastSignInTime: CREACION }, tokensValidAfterTime: CREACION }); // como Auth: sin uso, el último ingreso es la creación
     },
     deleteUser: async (uid: string) => {
       cuentas.delete(uid);
@@ -186,14 +187,17 @@ describe('anularInvitacion y cuentas caducadas', () => {
     expect(m.cuentas.has('libre')).toBe(true); // ya existía
   });
 
-  it('no borra la cuenta si inició sesión, tiene otra membresía o tiene otra invitación', async () => {
+  it('no borra la cuenta si inició sesión, fijó su contraseña con el enlace, tiene otra membresía o tiene otra invitación', async () => {
     const m = montaje();
     const c = m.como('adm1', 'adm');
-    for (const [correo, estado] of [['a@ejemplo.test', 'sesion'], ['b@ejemplo.test', 'rol'], ['c@ejemplo.test', 'invitacion']] as const) {
+    for (const [correo, estado] of [['a@ejemplo.test', 'sesion'], ['b@ejemplo.test', 'rol'], ['c@ejemplo.test', 'invitacion'], ['d@ejemplo.test', 'enlace'], ['e@ejemplo.test', 'clave']] as const) {
       await m.llamar(c, 'invitarUsuario', { correo, rol: 'caj' });
       const cuenta = [...m.cuentas.values()].find((x) => x.email === correo);
       if (cuenta === undefined) throw new Error('no se creó');
       if (estado === 'sesion') cuenta.metadata = { creationTime: CREACION, lastSignInTime: 'Mon, 16 Nov 2026 16:00:00 GMT' };
+      // Fijar la contraseña con el enlace: el correo queda verificado y los tokens se invalidan hasta ese momento.
+      if (estado === 'enlace') cuenta.emailVerified = true;
+      if (estado === 'clave') cuenta.tokensValidAfterTime = 'Mon, 16 Nov 2026 16:00:00 GMT';
       if (estado === 'rol') cuenta.customClaims = { pl: { t: { t2: 'caj' }, v: 1 } };
       if (estado === 'invitacion') m.db.poner(`tenants/t2/miembros/${cuenta.uid}`, { estado: 'invitado', uid: cuenta.uid, rolReservado: 'caj', invitadoPor: 'otro', invitadoEnMs: 1, venceEnMs: 99_999_999_999, cuentaCreada: false });
       await m.llamar(c, 'anularInvitacion', { uid: cuenta.uid });
