@@ -22,6 +22,8 @@ export interface AprobacionPos {
   readonly deudor?: string;
   readonly solicitadoPor: string;
   readonly solicitadoEnMs: number;
+  /** Motivo opcional que escribe quien rechaza (distinto del `motivo` de la solicitud). */
+  readonly motivoRechazo?: string;
   readonly aprobadoPor?: string;
   readonly aprobadoRol?: string;
   readonly resueltoEnMs?: number;
@@ -84,6 +86,15 @@ export async function solicitarAprobacion(
   });
 }
 
+/** Motivo opcional del rechazo: sin caracteres de control; vacío o solo espacios equivale a ausente; tope de 200. */
+function motivoOpcional(x: unknown): string | undefined {
+  if (typeof x !== 'string') throw new ErrorPos('entrada-invalida', 'motivo debe ser texto');
+  // eslint-disable-next-line no-control-regex
+  const limpio = x.replace(/[\u0000-\u001f\u007f-\u009f]/g, '');
+  if (limpio.trim() === '') return undefined;
+  return exigirTexto(limpio, 'motivo', 200);
+}
+
 /** Aprueba o rechaza (solo `sup` o `adm`, nunca quien la solicitó). La aprobación vence y se usa una sola vez. */
 export async function resolverAprobacion(
   deps: DepsPos,
@@ -91,12 +102,15 @@ export async function resolverAprobacion(
   actor: ActorPos,
   aprobacionIdEntrada: string,
   decision: 'aprobar' | 'rechazar',
+  motivoEntrada?: string,
 ): Promise<AprobacionPos> {
   exigirTenant(tenantId);
   exigirActor(actor);
   exigirRol(actor, ['sup', 'adm'], 'resolver aprobaciones');
   const aprobacionId = exigirUuid(aprobacionIdEntrada, 'aprobacionId');
   if (decision !== 'aprobar' && decision !== 'rechazar') throw new ErrorPos('entrada-invalida', 'decisión inválida');
+  if (motivoEntrada !== undefined && decision !== 'rechazar') throw new ErrorPos('entrada-invalida', 'El motivo solo se admite al rechazar');
+  const motivoRechazo = motivoEntrada === undefined ? undefined : motivoOpcional(motivoEntrada);
   const ahora = ahoraDe(deps);
   const vigencia = deps.vigenciaAprobacionMs ?? VIGENCIA_APROBACION_POR_DEFECTO_MS;
   return deps.db.runTransaction(async (tx) => {
@@ -107,13 +121,14 @@ export async function resolverAprobacion(
     const nueva =
       decision === 'aprobar'
         ? { ...raw, estado: 'aprobada', aprobadoPor: actor.uid, aprobadoRol: actor.rol, resueltoEnMs: ahora, venceEnMs: ahora + vigencia }
-        : { ...raw, estado: 'rechazada', aprobadoPor: actor.uid, aprobadoRol: actor.rol, resueltoEnMs: ahora };
+        : { ...raw, estado: 'rechazada', aprobadoPor: actor.uid, aprobadoRol: actor.rol, resueltoEnMs: ahora, ...(motivoRechazo !== undefined ? { motivoRechazo } : {}) };
     tx.set(rutaAprobacion(tenantId, aprobacionId), nueva);
     auditar(tx, tenantId, actor, {
       accion: decision === 'aprobar' ? 'pos.aprobacion.aprobar' : 'pos.aprobacion.rechazar',
       ruta: rutaAprobacion(tenantId, aprobacionId),
       antes: { estado: 'pendiente' },
       despues: { estado: nueva.estado },
+      ...(motivoRechazo !== undefined ? { motivo: motivoRechazo } : {}),
     });
     return nueva as unknown as AprobacionPos;
   });

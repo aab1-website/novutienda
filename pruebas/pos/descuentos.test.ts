@@ -1,6 +1,6 @@
 import { confirmarVenta, ErrorPos, resolverAprobacion, solicitarAprobacion } from '@novutienda/pos';
 import { describe, expect, it } from 'vitest';
-import { T, UUID, abrir, adm, caj, caj2, carritoP1, crearEntorno, efectivo, eventos, sup, sup2, type Entorno } from './ayudas.js';
+import { T, UUID, abrir, adm, auditoria, caj, caj2, carritoP1, crearEntorno, efectivo, eventos, sup, sup2, type Entorno } from './ayudas.js';
 
 const codigo = async (p: Promise<unknown>): Promise<string> => {
   try {
@@ -125,5 +125,56 @@ describe('descuentos', () => {
     expect(await codigo(solicitarAprobacion(e.deps, T, caj, UUID(61), { ...base, monto: 0 }))).toBe('entrada-invalida');
     expect(await codigo(solicitarAprobacion(e.deps, T, caj, UUID(61), { ...base, tipo: 'credito' }))).toBe('entrada-invalida');
     expect(await codigo(resolverAprobacion(e.deps, T, sup, UUID(60), 'x' as never))).toBe('entrada-invalida');
+  });
+});
+
+describe('motivo opcional del rechazo', () => {
+  const pedir = async (e: Entorno, n: number) => {
+    await solicitarAprobacion(e.deps, T, caj, UUID(n), { tipo: 'descuento', moneda: 'BOB', monto: 7000, motivo: 'pedido del cliente' });
+  };
+  const leer = async (e: Entorno, n: number) => await Promise.resolve(e.db.dato(`tenants/${T}/aprobaciones_descuento/${UUID(n)}`) as Record<string, unknown>);
+
+  it('rechazar con motivo lo guarda aparte del motivo de la solicitud, recortado, y la auditoría lo lleva', async () => {
+    const e = crearEntorno();
+    await abrir(e);
+    await pedir(e, 60);
+    const r = await resolverAprobacion(e.deps, T, sup, UUID(60), 'rechazar', '  Excede lo permitido  ');
+    expect(r).toMatchObject({ estado: 'rechazada', motivoRechazo: 'Excede lo permitido', motivo: 'pedido del cliente' });
+    expect((await leer(e, 60))['motivoRechazo']).toBe('Excede lo permitido');
+    const aud = auditoria(e).find((a) => a['accion'] === 'pos.aprobacion.rechazar');
+    expect(aud?.['motivo']).toBe('Excede lo permitido');
+  });
+
+  it('sin motivo, con solo espacios o con solo caracteres de control: documento idéntico al de hoy', async () => {
+    const e = crearEntorno();
+    await abrir(e);
+    for (const [n, m] of [[61, undefined], [62, '   '], [63, '\u0000\u0007\n']] as const) {
+      await pedir(e, n);
+      await resolverAprobacion(e.deps, T, sup, UUID(n), 'rechazar', m);
+      const d = await leer(e, n);
+      expect(d['estado']).toBe('rechazada');
+      expect('motivoRechazo' in d).toBe(false);
+    }
+  });
+
+  it('quita los caracteres de control y respeta el tope de 200', async () => {
+    const e = crearEntorno();
+    await abrir(e);
+    await pedir(e, 64);
+    const r = await resolverAprobacion(e.deps, T, sup, UUID(64), 'rechazar', 'Muy\u0000 alto\u0007\n');
+    expect(r.motivoRechazo).toBe('Muy alto');
+    await pedir(e, 65);
+    expect(await codigo(resolverAprobacion(e.deps, T, sup, UUID(65), 'rechazar', 'x'.repeat(201)))).toBe('entrada-invalida');
+    expect((await leer(e, 65))['estado']).toBe('pendiente');
+    const ok = await resolverAprobacion(e.deps, T, sup, UUID(65), 'rechazar', 'x'.repeat(200));
+    expect(ok.motivoRechazo).toHaveLength(200);
+  });
+
+  it('un motivo enviado con «aprobar» se rechaza y la solicitud sigue pendiente', async () => {
+    const e = crearEntorno();
+    await abrir(e);
+    await pedir(e, 66);
+    expect(await codigo(resolverAprobacion(e.deps, T, sup, UUID(66), 'aprobar', 'por qué'))).toBe('entrada-invalida');
+    expect((await leer(e, 66))['estado']).toBe('pendiente');
   });
 });
