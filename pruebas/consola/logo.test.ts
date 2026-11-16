@@ -1,4 +1,5 @@
 import { beforeEach, describe, expect, it } from 'vitest';
+import { limiteMemoria } from '@novutienda/nucleo';
 import {
   finalizarSubida, ID_NEGOCIO, leerLogo, LIMITES_CONSOLA, limpiarSubidas, planificarProcesamiento, quitarLogo, reservarSubida, type DepsMedios,
 } from '@novutienda/consola';
@@ -158,6 +159,47 @@ describe('logo del negocio por archivo', () => {
       const r = await limpiarSubidas({ ...deps, consulta: new ConsultaDoble(db) }, T);
       expect(r.vencidas).toBe(1);
       expect(uso().bytes).toBe(0);
+    });
+  });
+
+  describe('endurecimiento', () => {
+    it('al quitar, solo borra rutas de la carpeta _negocio del propio comercio', async () => {
+      const { subidaId } = await reservarLogo(png(11));
+      const m = await finalizarSubida(deps, { tenantId: T, actor: adm, subidaId });
+      const ajena = `tenants/otro/publico/medios/_negocio/x-logo512.png`;
+      const deProducto = `tenants/${T}/publico/medios/cam-1/y-imagen480.webp`;
+      almacen.subir(ajena, new Uint8Array([1]));
+      almacen.subir(deProducto, new Uint8Array([1]));
+      db.poner(`tenants/${T}/medios/${subidaId}`, { ...m, versiones: [...m.versiones, { clase: 'logo', lado: 1, formato: 'png', ruta: ajena, bytes: 1 }, { clase: 'logo', lado: 1, formato: 'webp', ruta: deProducto, bytes: 1 }] });
+      await quitarLogo(deps, { tenantId: T, actor: adm });
+      expect(almacen.objetos.has(ajena)).toBe(true);
+      expect(almacen.objetos.has(deProducto)).toBe(true);
+      for (const v of m.versiones) expect(almacen.objetos.has(v.ruta)).toBe(false);
+    });
+    it('si sitio/logo apunta a un medio que no es un logo, no se borra nada', async () => {
+      const foto = id();
+      const rf = await reservarSubida(deps, { tenantId: T, actor: adm, subidaId: foto, productoId: 'cam-1', tipo: 'foto', bytes: JPG.length });
+      almacen.subir(rf.rutaOriginal, JPG);
+      const mf = await finalizarSubida(deps, { tenantId: T, actor: adm, subidaId: foto });
+      db.poner(`tenants/${T}/sitio/logo`, { medioId: foto, ancho: 1, alto: 1, versiones: [] });
+      await quitarLogo(deps, { tenantId: T, actor: adm });
+      expect(almacen.objetos.has(rf.rutaOriginal)).toBe(true);
+      for (const v of mf.versiones) expect(almacen.objetos.has(v.ruta)).toBe(true);
+    });
+    it('el logo tiene su propio tope de 25 megapíxeles; la foto conserva el suyo', async () => {
+      proc.info = { ancho: 6000, alto: 5000 }; // 30 MP
+      const { subidaId } = await reservarLogo(png(12));
+      await expect(finalizarSubida(deps, { tenantId: T, actor: adm, subidaId })).rejects.toMatchObject({ codigo: 'limite' });
+      const f = id();
+      const rf = await reservarSubida(deps, { tenantId: T, actor: adm, subidaId: f, productoId: 'cam-1', tipo: 'foto', bytes: JPG.length });
+      almacen.subir(rf.rutaOriginal, JPG);
+      await expect(finalizarSubida(deps, { tenantId: T, actor: adm, subidaId: f })).resolves.toBeDefined();
+    });
+    it('limita a 10 reservas de logo por hora y por comercio', async () => {
+      const d = { ...deps, limiteLogo: limiteMemoria(LIMITES_CONSOLA.logosPorHora, 3_600_000) };
+      const e = { tenantId: T, actor: adm, productoId: ID_NEGOCIO, tipo: 'logo' as const, bytes: 100 };
+      for (let i = 0; i < 10; i += 1) await reservarSubida(d, { ...e, subidaId: `limite-${String(i).padStart(4, '0')}` });
+      await expect(reservarSubida(d, { ...e, subidaId: 'limite-9999' })).rejects.toMatchObject({ codigo: 'limite' });
     });
   });
 

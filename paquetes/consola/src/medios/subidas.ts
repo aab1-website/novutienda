@@ -1,4 +1,4 @@
-import { registrarAuditoria, type Actor, type TransaccionIdentidad } from '@novutienda/nucleo';
+import { registrarAuditoria, type Actor, type LimiteTasa, type TransaccionIdentidad } from '@novutienda/nucleo';
 import { anotarCambio, leerEstadoSitio } from '../cambios.js';
 import { ArchivoNoAdmitido, ErrorConsola, ProcesamientoNoDisponible, type CodigoErrorConsola } from '../errores.js';
 import { LIMITES_CONSOLA } from '../limites.js';
@@ -25,6 +25,10 @@ export interface DepsMedios {
   readonly procesador: ProcesadorMedios;
   readonly catalogo: CatalogoPuerto;
   readonly reloj: Reloj;
+  /** Límite de frecuencia para reservar logos (por comercio). Sin él no se limita. */
+  readonly limiteLogo?: LimiteTasa;
+  /** Registro de avisos sin datos personales (solo cantidades). */
+  readonly avisar?: (mensaje: string, datos: Readonly<Record<string, number>>) => void;
   /** Generador del identificador de invocación (solo para pruebas; por defecto aleatorio). */
   readonly nuevoId?: () => string;
 }
@@ -137,6 +141,9 @@ export async function reservarSubida(deps: DepsMedios, e: EntradaReserva): Promi
     throw new ErrorConsola('no-disponible', MENSAJE_VIDEO_NO_DISPONIBLE);
   }
   const ahora = deps.reloj.ahora();
+  if (e.tipo === 'logo' && deps.limiteLogo !== undefined && !(await deps.limiteLogo.intentar(`logo:${t}`, ahora)).permitido) {
+    throw new ErrorConsola('limite', 'Se subieron demasiados logos en poco tiempo; intente más tarde');
+  }
   const ruta = rutaOriginal(t, e.productoId, e.subidaId);
 
   return deps.db.runTransaction(async (tx) => {
@@ -193,6 +200,18 @@ export interface Medio {
   readonly versiones: readonly VersionMedio[];
   readonly creadoEn: number;
   readonly por: string;
+}
+
+/**
+ * Rutas de objetos que se pueden borrar al reemplazar o quitar un logo: solo las de la carpeta `_negocio` del propio comercio.
+ * Si el documento no es un logo (`esLogo` falso) no se borra nada; cualquier otra ruta se descarta y se registra sin datos personales.
+ */
+function rutasPropiasDelLogo(deps: DepsMedios, t: string, esLogo: boolean, candidatas: readonly unknown[]): string[] {
+  const prefijos = [`tenants/${t}/privado/originales/${ID_NEGOCIO}/`, `tenants/${t}/publico/medios/${ID_NEGOCIO}/`];
+  const validas = candidatas.filter((r): r is string => typeof r === 'string' && r !== '');
+  const propias = esLogo ? validas.filter((r) => prefijos.some((p) => r.startsWith(p)) && !r.includes('..')) : [];
+  if (propias.length !== validas.length) deps.avisar?.('logo: se omitió el borrado de rutas ajenas a la carpeta del logo', { descartadas: validas.length - propias.length });
+  return propias;
 }
 
 /** Versión publicada del logo (PNG y WebP, lado mayor de 512 como máximo). */
@@ -367,7 +386,7 @@ async function procesarReclamada(
     if (!Number.isInteger(info.ancho) || !Number.isInteger(info.alto) || info.ancho < 1 || info.alto < 1) {
       return await rechazar(deps, t, s, reclamo, 'procesamiento', 'No se pudieron leer las dimensiones del archivo', []);
     }
-    if (s.tipo !== 'video' && info.ancho * info.alto > LIMITES_CONSOLA.pixelesFotoMax) {
+    if (s.tipo !== 'video' && info.ancho * info.alto > (s.tipo === 'logo' ? LIMITES_CONSOLA.pixelesLogoMax : LIMITES_CONSOLA.pixelesFotoMax)) {
       return await rechazar(deps, t, s, reclamo, 'limite', 'La imagen tiene demasiados píxeles', []);
     }
     if (s.tipo === 'video') {
@@ -451,8 +470,8 @@ async function procesarReclamada(
         // por contenido idéntico (misma ruta con hash) se conservan. Solo se tocan objetos del propio logo del negocio.
         if (previo !== undefined && previoMedio !== undefined) {
           const nuevas = new Set(medio.versiones.map((v) => v.ruta));
-          const rutas = [previoMedio.rutaOriginal, ...(previoMedio.versiones ?? []).map((v) => v.ruta)]
-            .filter((r): r is string => typeof r === 'string' && !nuevas.has(r));
+          const rutas = rutasPropiasDelLogo(deps, t, previoMedio.tipo === 'logo' && previoMedio.productoId === ID_NEGOCIO && (previoSubida === undefined || (previoSubida.tipo === 'logo' && previoSubida.productoId === ID_NEGOCIO)),
+            [previoMedio.rutaOriginal, ...(previoMedio.versiones ?? []).map((v) => v.ruta)].filter((r) => !nuevas.has(r as string)));
           usoNuevo = liberarEnUso(usoNuevo, ID_NEGOCIO, 'logo', previoMedio.bytesOriginal ?? 0);
           tx.delete(rutaMedio(t, previo.medioId));
           const base: Subida = previoSubida ?? {
@@ -718,7 +737,8 @@ export async function quitarLogo(deps: DepsMedios, e: EntradaLogo): Promise<{ re
     const sub = leerSubida((await tx.get(rutaSubida(t, logo.medioId))).data());
     const uso = await leerUsoMedios(tx, t);
     const estado = await leerEstadoSitio(tx, t);
-    const rutas = [m?.rutaOriginal, ...(m?.versiones ?? logo.versiones).map((v) => v.ruta)].filter((r): r is string => typeof r === 'string' && r !== '');
+    const rutas = rutasPropiasDelLogo(deps, t, (m === undefined || (m.tipo === 'logo' && m.productoId === ID_NEGOCIO)) && (sub === undefined || (sub.tipo === 'logo' && sub.productoId === ID_NEGOCIO)),
+      [m?.rutaOriginal, ...(m?.versiones ?? logo.versiones).map((v) => v.ruta)]);
     const bytes = m?.bytesOriginal ?? 0;
     escribirUsoMedios(tx, t, liberarEnUso(uso, ID_NEGOCIO, 'logo', bytes));
     tx.delete(rutaSitio(t, 'logo'));

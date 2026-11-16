@@ -17,6 +17,10 @@ export const LIMITES_CONSOLA = {
   /** Logo del negocio: tope del archivo subido y lado mayor de las versiones publicadas. */
   bytesLogo: 2 * MIB,
   ladoLogo: 512,
+  /** Píxeles máximos del logo (25 megapíxeles; las fotos conservan su tope de 100). */
+  pixelesLogoMax: 25_000_000,
+  /** Reservas de logo permitidas por hora y por comercio. */
+  logosPorHora: 10,
   duracionVideoSeg: 60,
   cuotaOriginalesBytes: 10 * 1024 * MIB,
   /** Protección contra imágenes «bomba»: píxeles máximos de una foto (100 megapíxeles). */
