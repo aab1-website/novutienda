@@ -155,6 +155,14 @@ function leerFoto(l: Lector, v: unknown, ruta: string, origenes: readonly (strin
   return { ...f, enlace };
 }
 
+/** URL opcional de una imagen de marca (icono, imagen al compartir): ausente o null = null; si viene, debe ser de un origen de medios declarado. */
+function urlLogo(l: Lector, v: unknown, ruta: string, origenes: readonly (string | null)[]): string | null {
+  if (v === undefined || v === null) return null;
+  const url = l.texto(v, ruta, 1, 500);
+  if (url !== '' && !urlMedioSegura(url, origenes)) l.falla(ruta, 'debe ser una ruta propia o un origen de medios declarado');
+  return url === '' ? null : url;
+}
+
 function leerFotoBase(l: Lector, v: unknown, ruta: string, origenes: readonly (string | null)[]): Foto {
   const o = l.obj(v, ruta);
   const url = l.texto(o['url'], `${ruta}.url`, 1, 500);
@@ -236,10 +244,13 @@ function leerConfig(l: Lector, v: unknown): Contenido['config'] {
     return h;
   });
   const red = l.obj(o['redondeo'], 'config.redondeo');
+  const origenesLogo = [typeof o['origen'] === 'string' ? o['origen'] : null, typeof origenMedios === 'string' ? origenMedios : null];
   return {
     nombre: l.texto(o['nombre'], 'config.nombre', 1, 80),
     lema: l.texto(o['lema'], 'config.lema', 0, 160),
     logo: o['logo'] === null ? null : leerFoto(l, o['logo'], 'config.logo', [typeof o['origen'] === 'string' ? o['origen'] : null, typeof origenMedios === 'string' ? origenMedios : null]),
+    ...(o['iconoSitio'] === undefined || o['iconoSitio'] === null ? {} : { iconoSitio: urlLogo(l, o['iconoSitio'], 'config.iconoSitio', origenesLogo) }),
+    ...(o['imagenCompartir'] === undefined || o['imagenCompartir'] === null ? {} : { imagenCompartir: urlLogo(l, o['imagenCompartir'], 'config.imagenCompartir', origenesLogo) }),
     origen: typeof o['origen'] === 'string' ? o['origen'] : '',
     plantilla: plantilla ?? 'cielo',
     whatsappNovuchat: wa('whatsappNovuchat'),

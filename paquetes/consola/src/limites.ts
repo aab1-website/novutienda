@@ -35,4 +35,6 @@ export const LIMITES_CONSOLA = {
   vencimientoProcesandoMs: 10 * 60 * 1000,
   /** Ventana de agrupación de cambios antes de reconstruir el sitio. */
   ventanaReconstruccionMs: 10 * 60 * 1000,
+  /** Espera antes de borrar las versiones PÚBLICAS de un logo reemplazado o quitado: el sitio ya construido aún puede estar usándolas. */
+  esperaBorradoLogoMs: 24 * 60 * 60 * 1000,
 } as const;

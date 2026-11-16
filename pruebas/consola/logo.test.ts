@@ -138,6 +138,10 @@ describe('logo del negocio por archivo', () => {
       expect(db.dato(`tenants/${T}/sitio/logo`)).toMatchObject({ medioId: b.subidaId });
       expect(db.dato(`tenants/${T}/medios/${a.subidaId}`)).toBeUndefined();
       expect(almacen.objetos.has(a.r.rutaOriginal)).toBe(false);
+      // Las versiones PÚBLICAS del anterior esperan 24 horas (el sitio ya construido puede estar usándolas); el original ya no está.
+      for (const v of ma.versiones) expect(almacen.objetos.has(v.ruta)).toBe(true);
+      (deps.reloj as RelojFijo).ms += LIMITES_CONSOLA.esperaBorradoLogoMs;
+      await limpiarSubidas({ ...deps, consulta: new ConsultaDoble(db) }, T);
       for (const v of ma.versiones) if (!mb.versiones.some((x) => x.ruta === v.ruta)) expect(almacen.objetos.has(v.ruta)).toBe(false);
       for (const v of mb.versiones) expect(almacen.objetos.has(v.ruta)).toBe(true);
       expect(mb.versiones.map((v) => v.lado)).toEqual([300, 300]);
@@ -174,7 +178,12 @@ describe('logo del negocio por archivo', () => {
       await quitarLogo(deps, { tenantId: T, actor: adm });
       expect(almacen.objetos.has(ajena)).toBe(true);
       expect(almacen.objetos.has(deProducto)).toBe(true);
+      for (const v of m.versiones) expect(almacen.objetos.has(v.ruta)).toBe(true); // diferido 24 h
+      (deps.reloj as RelojFijo).ms += LIMITES_CONSOLA.esperaBorradoLogoMs;
+      await limpiarSubidas({ ...deps, consulta: new ConsultaDoble(db) }, T);
       for (const v of m.versiones) expect(almacen.objetos.has(v.ruta)).toBe(false);
+      expect(almacen.objetos.has(ajena)).toBe(true);
+      expect(almacen.objetos.has(deProducto)).toBe(true);
     });
     it('si sitio/logo apunta a un medio que no es un logo, no se borra nada', async () => {
       const foto = id();
@@ -267,8 +276,12 @@ describe('logo del negocio por archivo', () => {
       expect(db.dato(`tenants/${T}/sitio/logo`)).toBeUndefined();
       expect(db.dato(`tenants/${T}/medios/${subidaId}`)).toBeUndefined();
       expect(almacen.objetos.has(r.rutaOriginal)).toBe(false);
-      for (const v of m.versiones) expect(almacen.objetos.has(v.ruta)).toBe(false);
+      for (const v of m.versiones) expect(almacen.objetos.has(v.ruta)).toBe(true); // las públicas esperan 24 h
       expect(uso().bytes).toBe(0);
+      (deps.reloj as RelojFijo).ms += LIMITES_CONSOLA.esperaBorradoLogoMs;
+      await limpiarSubidas({ ...deps, consulta: new ConsultaDoble(db) }, T);
+      for (const v of m.versiones) expect(almacen.objetos.has(v.ruta)).toBe(false);
+      expect(db.dato(`tenants/${T}/subidas/${subidaId}`)).toBeUndefined();
       await expect(leerLogo(deps, { tenantId: T, actor: adm })).resolves.toBeNull();
       await expect(quitarLogo(deps, { tenantId: T, actor: adm })).resolves.toEqual({ quitado: false });
     });
