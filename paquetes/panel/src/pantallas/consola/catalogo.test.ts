@@ -252,11 +252,50 @@ describe('catálogo: miniaturas del carrusel', () => {
     vi.stubEnv('VITE_MEDIOS_BASE_URL', BASE_MEDIOS);
     const e = crearEntorno('adm');
     const id = await preparar(e);
+    await e.api.llamar('guardarFicha', { productoId: 'tv-55', ficha: { slug: 'tv-55', descripcion: 'Televisor.', garantia: '12 meses', medios: [{ medioId: id, alt: 'Frente del televisor' }], seo: { titulo: 'Televisor', descripcion: '' }, estado: 'borrador' } as never });
     const cfg = await e.api.llamar('leerConfigSitio', {});
     await e.api.llamar('guardarCarrusel', { carrusel: { plantilla: (cfg as NonNullable<typeof cfg>).plantillaActiva, items: [{ medioId: id, alt: 'Frente del televisor' }] } });
     conVersiones(e);
     ver(e);
     const item = (await screen.findByLabelText('Texto alternativo de la foto 1')).closest('li');
     await waitFor(() => expect(item?.querySelector('img')?.getAttribute('src')).toBe(`${BASE_MEDIOS}/t/${id}-480.webp`));
+  });
+
+  it('con 40 productos, la foto del producto 35 en el carrusel muestra su miniatura con una sola lectura de medios', async () => {
+    vi.stubEnv('VITE_MEDIOS_BASE_URL', BASE_MEDIOS);
+    const e = crearEntorno('adm');
+    const productos = await e.api.llamar('listarProductos', {});
+    const base = productos[0] as NonNullable<(typeof productos)[number]>;
+    const muchos = Array.from({ length: 40 }, (_, i) => ({ ...base, id: `prod-${String(i + 1).padStart(2, '0')}`, nombre: `Producto ${String(i + 1)}` }));
+    const original = e.api.llamar.bind(e.api) as (n: string, d: unknown) => Promise<unknown>;
+    const id = await preparar(e);
+    const medio = { id, productoId: 'prod-35', tipo: 'foto', bytesOriginal: 10, ancho: 1200, alto: 800, creadoEn: 0, por: 'u', versiones: [{ clase: 'imagen', lado: 480, formato: 'webp', ruta: `t/${id}-480.webp`, bytes: 5 }] };
+    const ficha = { slug: 'p35', descripcion: '', garantia: '', medios: [{ medioId: id, alt: 'x' }], seo: { titulo: 'p', descripcion: '' }, estado: 'borrador' };
+    const cfg = await e.api.llamar('leerConfigSitio', {});
+    await e.api.llamar('guardarCarrusel', { carrusel: { plantilla: (cfg as NonNullable<typeof cfg>).plantillaActiva, items: [{ medioId: id, alt: 'Foto 35' }] } });
+    const lecturas: string[] = [];
+    vi.spyOn(e.api, 'llamar').mockImplementation(((n: string, d: unknown) => {
+      if (n === 'listarProductos') return Promise.resolve(muchos);
+      if (n === 'listarFichas') return Promise.resolve([{ productoId: 'prod-35', ficha }]);
+      if (n === 'listarMedios') { lecturas.push((d as { productoId: string }).productoId); return Promise.resolve((d as { productoId: string }).productoId === 'prod-35' ? [medio] : []); }
+      return original(n, d);
+    }) as never);
+    ver(e);
+    const item = (await screen.findByLabelText('Texto alternativo de la foto 1')).closest('li');
+    await waitFor(() => expect(item?.querySelector('img')?.getAttribute('src')).toBe(`${BASE_MEDIOS}/t/${id}-480.webp`));
+    expect(lecturas).toEqual(['prod-35']);
+  });
+
+  it('un fallo que no es de sesión deja el respaldo sin romper la pantalla', async () => {
+    vi.stubEnv('VITE_MEDIOS_BASE_URL', BASE_MEDIOS);
+    const e = crearEntorno('adm');
+    const id = await preparar(e);
+    const cfg = await e.api.llamar('leerConfigSitio', {});
+    await e.api.llamar('guardarCarrusel', { carrusel: { plantilla: (cfg as NonNullable<typeof cfg>).plantillaActiva, items: [{ medioId: id, alt: 'Frente' }] } });
+    const original = e.api.llamar.bind(e.api) as (n: string, d: unknown) => Promise<unknown>;
+    vi.spyOn(e.api, 'llamar').mockImplementation(((n: string, d: unknown) => (n === 'listarFichas' ? Promise.reject(new ErrorApi('internal', 'falla')) : original(n, d))) as never);
+    ver(e);
+    const item = (await screen.findByLabelText('Texto alternativo de la foto 1')).closest('li');
+    expect(item?.querySelector('[data-respaldo]')).toBeTruthy();
   });
 });

@@ -2,7 +2,7 @@ import type { JSX } from 'preact';
 import { useEffect, useRef, useState } from 'preact/hooks';
 import { Miniatura } from './miniatura-vista.js';
 import { LIMITES_PANEL, PLANTILLAS_SITIO, type Carrusel, type Medio, type ConfigSitio, type PlantillaSitio } from '../../api/tipos.js';
-import { mensajeDeError } from '../../api/errores.js';
+import { ErrorApi, mensajeDeError } from '../../api/errores.js';
 import { Alerta, Boton, BotonConfirmado, Campo, Cargando, Dato, ErrorCarga, Pestanas, Seccion, Vacio, fechaHora } from '../../ui/comun.js';
 import { useAvisos } from '../../ui/avisos.js';
 import { useBorrador, useCambiosSinGuardar } from '../../ui/guardia.js';
@@ -219,9 +219,6 @@ function Apariencia(): JSX.Element {
   );
 }
 
-/** Tope de productos cuyos medios se leen para las miniaturas del carrusel. */
-const TOPE_PRODUCTOS_MINIATURAS = 30;
-
 function CarruselEditor({ plantilla, items, setItems, productos }: { plantilla: PlantillaSitio; items: Items; setItems: (i: Items) => void; productos: { id: string; nombre: string }[] }): JSX.Element {
   const { api } = useApp();
   // Sin producto elegido de antemano: se busca y se elige.
@@ -238,12 +235,20 @@ function CarruselEditor({ plantilla, items, setItems, productos }: { plantilla: 
   };
   // Medios vistos en esta sesión: permiten mostrar la miniatura de las fotos que ya se agregaron.
   const conocidos = useRef(new Map<string, Medio>());
-  // Tras recargar, los medios de los productos se leen con `listarMedios` (en paralelo, con tope) para mostrar lo ya guardado.
-  const hayItems = items.length > 0;
-  const guardados = useCarga(
-    async () => (hayItems ? (await Promise.all(productos.slice(0, TOPE_PRODUCTOS_MINIATURAS).map((p) => api.llamar('listarMedios', { productoId: p.id }).catch(() => [] as Medio[])))).flat() : []),
-    [hayItems, productos.map((p) => p.id).join(',')],
-  );
+  // Tras recargar, solo se leen los medios de los productos que tienen fotos en este carrusel. El ítem no trae su producto:
+  // se resuelve con las fichas (`listarFichas`), que ya relacionan cada foto con su producto. Un fallo de sesión se deja
+  // propagar al manejo de sesión del panel; cualquier otro deja el respaldo.
+  const faltan = items.map((i) => i.medioId).filter((id) => !conocidos.current.has(id));
+  const guardados = useCarga(async () => {
+    if (faltan.length === 0) return [] as Medio[];
+    const sinSesion = (e: unknown): boolean => e instanceof ErrorApi && e.codigoHttps === 'unauthenticated';
+    const seguro = async <T,>(f: () => Promise<T>, vacio: T): Promise<T> => {
+      try { return await f(); } catch (e) { if (sinSesion(e)) throw e; return vacio; }
+    };
+    const fichas = await seguro(() => api.llamar('listarFichas', {}), []);
+    const productosDe = new Set(fichas.filter((f) => f.ficha.medios.some((m) => faltan.includes(m.medioId))).map((f) => f.productoId));
+    return (await Promise.all([...productosDe].map((productoId) => seguro(() => api.llamar('listarMedios', { productoId }), [] as readonly Medio[])))).flat();
+  }, [faltan.join(',')]);
   for (const m of guardados.datos ?? []) conocidos.current.set(m.id, m);
   for (const m of fotos.datos ?? []) conocidos.current.set(m.id, m);
   const nombreProducto = productos.find((p) => p.id === productoId)?.nombre ?? '';
