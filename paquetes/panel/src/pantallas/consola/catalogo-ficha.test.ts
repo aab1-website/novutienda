@@ -486,6 +486,17 @@ describe('«Qué falta» por producto', () => {
     expect(within(tabla).getByText(CABLE)).toBeTruthy();
   });
 
+  it('si el Tablero falla, la lista sigue y no aparece el aviso de cambios sin publicar', async () => {
+    const e = crearEntorno('sup');
+    await e.api.llamar('guardarFicha', { productoId: 'tv-55', ficha: fichaBase });
+    const llamar = e.api.llamar.bind(e.api) as (n: string, x: unknown) => Promise<unknown>;
+    vi.spyOn(e.api, 'llamar').mockImplementation(((n: string, x: unknown) => (n === 'obtenerTablero' ? Promise.reject(new ErrorApi('unavailable', 'sin conexión')) : llamar(n, x))) as never);
+    ver(e);
+    expect(await screen.findByRole('table', { name: 'Productos y su página en el sitio' })).toBeTruthy();
+    expect(document.querySelector('[data-prueba="sin-publicar"]')).toBeNull();
+    expect(screen.queryByText(/0 cambios sin publicar/)).toBeNull();
+  });
+
   it('avisa los cambios sin publicar con enlace al Tablero', async () => {
     const e = crearEntorno('sup');
     ver(e);

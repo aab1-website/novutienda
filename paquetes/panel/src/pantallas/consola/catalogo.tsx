@@ -1,5 +1,5 @@
 import type { JSX } from 'preact';
-import { useState } from 'preact/hooks';
+import { useEffect, useRef, useState } from 'preact/hooks';
 import { LIMITES_PANEL, PLANTILLAS_SITIO, type Carrusel, type ConfigSitio, type PlantillaSitio } from '../../api/tipos.js';
 import { mensajeDeError } from '../../api/errores.js';
 import { Alerta, Boton, BotonConfirmado, Campo, Cargando, Dato, ErrorCarga, Pestanas, Seccion, Vacio, fechaHora } from '../../ui/comun.js';
@@ -128,6 +128,15 @@ function Apariencia(): JSX.Element {
   });
   const sucio = datos.datos !== undefined && (cfgSucia || editadas.length > 0);
   const { marcarGuardado } = useCambiosSinGuardar(sucio, [CLAVE_CONFIG, CLAVE_CARRUSELES]);
+  // Lo guardado se borra del borrador cuando llegan los datos nuevos, no antes: así no se ve un instante el valor viejo.
+  const porLiberar = useRef<{ cfg: boolean; carruseles: PlantillaSitio[] }>({ cfg: false, carruseles: [] });
+  useEffect(() => {
+    const p = porLiberar.current;
+    if (!p.cfg && p.carruseles.length === 0) return;
+    porLiberar.current = { cfg: false, carruseles: [] };
+    if (p.cfg) cfgB.descartar();
+    if (p.carruseles.length > 0) carrB.poner((prev) => { const resto = { ...prev }; for (const q of p.carruseles) delete resto[q]; return resto; });
+  }, [datos.datos]);
   if (datos.cargando && datos.datos === undefined) return <Cargando />;
   if (datos.error || !datos.datos) return <ErrorCarga error={datos.error ?? 'Sin datos'} reintentar={datos.recargar} />;
   const med = c.medicion;
@@ -140,7 +149,7 @@ function Apariencia(): JSX.Element {
   const setItems = (i: Items): void => carrB.poner((prev) => ({ ...prev, [c.plantillaActiva]: i }));
   const whatsappValido = WHATSAPP.test(c.whatsappNovuchat);
   const sinTexto = editadas.find((p) => (carrB.valor[p] ?? []).some((i) => i.alt.trim() === ''));
-  const motivo = !whatsappValido
+  const motivo = cfgSucia && !whatsappValido
     ? 'Escriba el WhatsApp del asistente: solo dígitos, con código de país (de 8 a 15 dígitos).'
     : sinTexto !== undefined
       ? `Escriba el texto alternativo de cada foto del carrusel de ${PALETAS[sinTexto].nombre}.`
@@ -150,13 +159,13 @@ function Apariencia(): JSX.Element {
 
   const guardar = (): void => {
     const pasos: PasoGuardado[] = [];
-    if (cfgSucia) pasos.push({ nombre: 'la plantilla y los datos del sitio', guardar: () => api.llamar('guardarConfigSitio', { config: c }), alGuardar: cfgB.descartar });
+    if (cfgSucia) pasos.push({ nombre: 'la plantilla y los datos del sitio', guardar: () => api.llamar('guardarConfigSitio', { config: c }), alGuardar: () => { porLiberar.current.cfg = true; } });
     for (const p of editadas) {
       const itemsP = carrB.valor[p] ?? [];
       pasos.push({
         nombre: `el carrusel de ${PALETAS[p].nombre}`,
         guardar: () => api.llamar('guardarCarrusel', { carrusel: { plantilla: p, items: itemsP } }),
-        alGuardar: () => carrB.poner((prev) => { const { [p]: _guardado, ...resto } = prev; void _guardado; return resto; }),
+        alGuardar: () => { porLiberar.current.carruseles.push(p); },
       });
     }
     void accion.ejecutar(async () => {

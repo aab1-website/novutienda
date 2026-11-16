@@ -106,6 +106,35 @@ describe('catálogo: apariencia', () => {
     expect(screen.getByText(/Use solo dígitos, con código de país/)).toBeTruthy();
   });
 
+  it('sin WhatsApp en el servidor, un cambio solo en el carrusel se guarda', async () => {
+    const e = crearEntorno('adm');
+    await e.api.llamar('guardarConfigSitio', { config: { plantillaActiva: 'cielo', whatsappNovuchat: '59171112222', medicion: {} } });
+    await subirFoto(e);
+    const llamar = e.api.llamar.bind(e.api) as (n: string, x: unknown) => Promise<unknown>;
+    vi.spyOn(e.api, 'llamar').mockImplementation(((n: string, x: unknown) => (n === 'leerConfigSitio' ? Promise.resolve({ plantillaActiva: 'cielo', whatsappNovuchat: '', medicion: {} }) : llamar(n, x))) as never);
+    ver(e);
+    const u = userEvent.setup();
+    await agregarFoto(u);
+    await u.click(await screen.findByRole('button', { name: 'Guardar apariencia' }));
+    expect(await screen.findByText(/Apariencia guardada/)).toBeTruthy();
+    expect(e.api.llamadas.filter((l) => l.nombre === 'guardarConfigSitio')).toHaveLength(1);
+    expect(e.api.llamadas.filter((l) => l.nombre === 'guardarCarrusel')).toHaveLength(1);
+  });
+
+  it('lo guardado sale del borrador al llegar los datos nuevos: el campo no vuelve al valor viejo', async () => {
+    const e = crearEntorno('adm');
+    ver(e);
+    const u = userEvent.setup();
+    await screen.findByRole('button', { name: 'Guardar apariencia' });
+    await u.clear(whatsapp());
+    await u.type(whatsapp(), '59171112222');
+    await u.click(screen.getByRole('button', { name: 'Guardar apariencia' }));
+    expect(await screen.findByText(/Apariencia guardada/)).toBeTruthy();
+    expect((whatsapp() as HTMLInputElement).value).toBe('59171112222');
+    await waitFor(() => expect(e.api.llamadas.filter((l) => l.nombre === 'leerConfigSitio').length).toBeGreaterThan(1));
+    expect(screen.getByText('No hay cambios por guardar.')).toBeTruthy();
+  });
+
   it('cambiar de plantilla no borra lo editado en el carrusel de la otra', async () => {
     const e = crearEntorno('adm');
     await subirFoto(e);

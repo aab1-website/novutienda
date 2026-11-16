@@ -396,7 +396,7 @@ export function PantallaFichas(): JSX.Element {
     productos: await api.llamar('listarProductos', {}),
     fichas: await api.llamar('listarFichas', {}),
     // El aviso de cambios sin publicar es una ayuda: si el Tablero no responde, la lista sigue funcionando.
-    sinPublicar: await api.llamar('obtenerTablero', {}).then((t) => t.cambiosSinPublicar, () => 0),
+    sinPublicar: await api.llamar('obtenerTablero', {}).then((t) => t.cambiosSinPublicar, () => null),
   }), []);
   const [abierta, setAbierta] = useState<Abierta | null>(null);
   const lista = useRef<HTMLDivElement>(null);
@@ -414,7 +414,7 @@ export function PantallaFichas(): JSX.Element {
             const fichaDe = (id: string): FichaWeb | undefined => d.fichas.find((y) => y.productoId === id)?.ficha;
             return (
               <>
-              {d.sinPublicar > 0 && <p class="texto-suave" data-prueba="sin-publicar">{textoCambiosSinPublicar(d.sinPublicar)}. <a href="#/catalogo/tablero">Ver el Tablero</a></p>}
+              {d.sinPublicar !== null && d.sinPublicar > 0 && <p class="texto-suave" data-prueba="sin-publicar">{textoCambiosSinPublicar(d.sinPublicar)}. <a href="#/catalogo/tablero">Ver el Tablero</a></p>}
               <Tabla
                 titulo="Productos y su página en el sitio"
                 filas={d.productos}
