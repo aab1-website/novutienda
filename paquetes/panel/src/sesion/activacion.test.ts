@@ -23,11 +23,6 @@ vi.mock('firebase/auth', () => ({
   signInWithEmailAndPassword: fb.signIn,
   signOut: async () => undefined,
 }));
-// Las acciones nuevas aún no están en la tabla generada de roles (se regenera aparte); al regenerarla, este bloque sobra.
-vi.mock('../api/acciones.generado.js', async (original) => {
-  const m = await original<typeof import('../api/acciones.generado.js')>();
-  return { ...m, ROLES_ACCION: { ...m.ROLES_ACCION, 'consola.invitarUsuario': ['adm'], 'consola.anularInvitacion': ['adm'], 'consola.reenviarInvitacion': ['adm'] } };
-});
 vi.mock('../api/firebase.js', () => ({ TransporteFirebase: class {} }));
 
 const { SesionFirebase } = await import('./firebase.js');

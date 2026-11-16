@@ -12,8 +12,8 @@ describe('índices compuestos de Firestore', () => {
   it.each(['movimientos(tipo asc, fecha desc)', 'movimientos(por asc, fecha desc)', 'auditoria(accion asc, en desc)', 'auditoria(uid asc, en desc)'])('declara %s', (esperado) => {
     expect(firmas).toContain(esperado);
   });
-  it('no hay índices repetidos y todos son de colección', () => {
+  it('no hay índices repetidos y todos son de colección, salvo el de grupo de las invitaciones (`miembros`)', () => {
     expect(new Set(firmas).size).toBe(firmas.length);
-    expect(indexes.every((i) => i.queryScope === 'COLLECTION')).toBe(true);
+    expect(indexes.filter((i) => i.queryScope !== 'COLLECTION').map((i) => `${i.collectionGroup}:${i.queryScope}`)).toEqual(['miembros:COLLECTION_GROUP']);
   });
 });

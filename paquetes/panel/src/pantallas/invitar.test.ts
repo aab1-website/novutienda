@@ -8,12 +8,6 @@ import { ErrorApi } from '../api/errores.js';
 import { crearEntorno, type Entorno } from '../ayuda-pruebas.js';
 import { PantallaUsuarios } from './usuarios.js';
 
-// Las tres acciones nuevas aún no están en la tabla generada de roles (la regenera quien dirige el registro). Mientras tanto, se
-// completa aquí; al regenerar `acciones.generado.ts`, este bloque sobra y se retira.
-vi.mock('../api/acciones.generado.js', async (original) => {
-  const m = await original<typeof import('../api/acciones.generado.js')>();
-  return { ...m, ROLES_ACCION: { ...m.ROLES_ACCION, 'consola.invitarUsuario': ['adm'], 'consola.anularInvitacion': ['adm'], 'consola.reenviarInvitacion': ['adm'] } };
-});
 
 afterEach(() => {
   cleanup();
