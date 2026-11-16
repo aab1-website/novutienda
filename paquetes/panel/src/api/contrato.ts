@@ -26,7 +26,7 @@ export interface Contrato {
     salida: ResultadoVenta;
   };
   solicitarAprobacion: { entrada: { aprobacionId: string; solicitud: SolicitudAprobacion }; salida: AprobacionPos };
-  resolverAprobacion: { entrada: { aprobacionId: string; decision: 'aprobar' | 'rechazar' }; salida: AprobacionPos };
+  resolverAprobacion: { entrada: { aprobacionId: string; decision: 'aprobar' | 'rechazar'; motivo?: string | undefined }; salida: AprobacionPos };
   solicitarAnulacion: { entrada: { ventaId: string; motivo: string }; salida: VentaPos };
   aprobarAnulacion: { entrada: { ventaId: string; motivo: string }; salida: ResultadoAnulacion };
   registrarMovimientoCaja: { entrada: { requestId: string; movimiento: MovimientoCajaEntrada }; salida: { movimiento: MovimientoCaja; repetido: boolean } };
