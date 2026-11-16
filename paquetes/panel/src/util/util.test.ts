@@ -1,7 +1,7 @@
 import { afterEach, describe, expect, it } from 'vitest';
 import { aBase64, formatoBytes } from './base64.js';
 import { aCsv, celdaCsv } from './csv.js';
-import { diferenciaPorMoneda, efectivoEsperado, monedasDelTurno, proyectarTurno, sumarTotales, TOTALES_VACIOS } from '../pantallas/pos/arqueo.js';
+import { diferenciaPorMoneda, efectivoEsperado, monedasDelTurno, ordenarMonedas, proyectarTurno, sumarTotales, TOTALES_VACIOS } from '../pantallas/pos/arqueo.js';
 import { centavosATexto, formatearMonto, textoACentavos } from './dinero.js';
 import { ITEMS_MENU, menuPara, parsearRuta, puedeVer, rutaPorOmision } from './menu.js';
 import { calcularPagos, type FilaPago } from '../pantallas/pos/pagos.js';
@@ -80,23 +80,32 @@ describe('precio de venta por mercado declarado', () => {
 });
 
 describe('arqueo', () => {
+  const ORDEN = ['BOB', 'USD', 'ARS'];
   const t = { apertura: { BOB: 10000 }, totales: { BOB: { ...TOTALES_VACIOS, efectivo: 5000, qr: 9000, transferencia: 1000, credito: 300, ingresos: 200, egresos: 700 } } } as const;
   it('el efectivo esperado ignora QR, transferencia y crédito', () => {
     expect(efectivoEsperado(10000, t.totales.BOB)).toBe(14500);
-    expect(proyectarTurno(t).BOB?.efectivoEsperado).toBe(14500);
-    expect(proyectarTurno(t).BOB?.qr).toBe(9000);
+    expect(proyectarTurno(t, ORDEN).BOB?.efectivoEsperado).toBe(14500);
+    expect(proyectarTurno(t, ORDEN).BOB?.qr).toBe(9000);
   });
   it('la diferencia puede ser negativa', () => {
-    expect(diferenciaPorMoneda(t, { BOB: 14000 })).toEqual({ BOB: -500 });
-    expect(diferenciaPorMoneda(t, { BOB: 15000 })).toEqual({ BOB: 500 });
-    expect(diferenciaPorMoneda(t, {})).toEqual({});
+    expect(diferenciaPorMoneda(t, { BOB: 14000 }, ORDEN)).toEqual({ BOB: -500 });
+    expect(diferenciaPorMoneda(t, { BOB: 15000 }, ORDEN)).toEqual({ BOB: 500 });
+    expect(diferenciaPorMoneda(t, {}, ORDEN)).toEqual({});
   });
   it('una moneda no listada aparece en el turno, la proyección y la diferencia sin romper', () => {
     const x = { apertura: { CLP: 1000, BOB: 500 }, totales: { CLP: { ...TOTALES_VACIOS, efectivo: 200 } } };
-    expect(monedasDelTurno(x)).toEqual(['BOB', 'CLP']);
-    expect(proyectarTurno(x).CLP?.efectivoEsperado).toBe(1200);
-    expect(diferenciaPorMoneda(x, { CLP: 1000, BOB: 500 })).toEqual({ BOB: 0, CLP: -200 });
+    expect(monedasDelTurno(x, ORDEN)).toEqual(['BOB', 'CLP']);
+    expect(proyectarTurno(x, ORDEN).CLP?.efectivoEsperado).toBe(1200);
+    expect(diferenciaPorMoneda(x, { CLP: 1000, BOB: 500 }, ORDEN)).toEqual({ BOB: 0, CLP: -200 });
     expect(sumarTotales(x.totales, 'CLP', { qr: 5 }).CLP?.qr).toBe(5);
+  });
+  it('el orden declarado manda; sin él, orden alfabético estable (no una lista fija)', () => {
+    const x = { apertura: { USD: 1, ARS: 1, BOB: 1, CLP: 1 }, totales: {} };
+    expect(monedasDelTurno(x, ['USD', 'BOB'])).toEqual(['USD', 'BOB', 'ARS', 'CLP']);
+    expect(monedasDelTurno(x, [])).toEqual(['ARS', 'BOB', 'CLP', 'USD']);
+    expect(ordenarMonedas(['USD', 'BOB', 'ARS'])).toEqual(['ARS', 'BOB', 'USD']);
+    expect(ordenarMonedas(['BOB', 'USD'], ['USD', 'USD', 'BOB'])).toEqual(['USD', 'BOB']);
+    expect(Object.keys(proyectarTurno(x, ['USD', 'BOB']))).toEqual(['USD', 'BOB', 'ARS', 'CLP']);
   });
   it('suma totales sin mutar', () => {
     const a = sumarTotales({}, 'USD', { efectivo: 100 });

@@ -28,7 +28,7 @@ export function VentaCobro({ datos, volver, alVender }: { datos: DatosCobro; vol
   const [solicitadaId, setSolicitadaId] = useState<string | null>(null);
   const aprobs = useCarga(() => api.llamar('listarAprobaciones', {}), [solicitadaId]);
 
-  const { pagos, restante, cambioTotal, errores } = calcularPagos(filas, total, moneda as Moneda);
+  const { pagos, restante, cambioTotal, errores } = calcularPagos(filas, total, moneda);
     const credito = filas.find((f) => f.medio === 'credito');
   const montoCredito = credito === undefined ? 0 : (textoACentavos(credito.monto) ?? 0);
   const deudor = carrito.cliente?.nombre ?? '';
