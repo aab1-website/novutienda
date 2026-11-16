@@ -244,12 +244,13 @@ function leerConfig(l: Lector, v: unknown): Contenido['config'] {
     return h;
   });
   const red = l.obj(o['redondeo'], 'config.redondeo');
+  const origenesLogo = [typeof o['origen'] === 'string' ? o['origen'] : null, typeof origenMedios === 'string' ? origenMedios : null];
   return {
     nombre: l.texto(o['nombre'], 'config.nombre', 1, 80),
     lema: l.texto(o['lema'], 'config.lema', 0, 160),
     logo: o['logo'] === null ? null : leerFoto(l, o['logo'], 'config.logo', [typeof o['origen'] === 'string' ? o['origen'] : null, typeof origenMedios === 'string' ? origenMedios : null]),
-    iconoSitio: urlLogo(l, o['iconoSitio'], 'config.iconoSitio', [typeof o['origen'] === 'string' ? o['origen'] : null, typeof origenMedios === 'string' ? origenMedios : null]),
-    imagenCompartir: urlLogo(l, o['imagenCompartir'], 'config.imagenCompartir', [typeof o['origen'] === 'string' ? o['origen'] : null, typeof origenMedios === 'string' ? origenMedios : null]),
+    ...(o['iconoSitio'] === undefined || o['iconoSitio'] === null ? {} : { iconoSitio: urlLogo(l, o['iconoSitio'], 'config.iconoSitio', origenesLogo) }),
+    ...(o['imagenCompartir'] === undefined || o['imagenCompartir'] === null ? {} : { imagenCompartir: urlLogo(l, o['imagenCompartir'], 'config.imagenCompartir', origenesLogo) }),
     origen: typeof o['origen'] === 'string' ? o['origen'] : '',
     plantilla: plantilla ?? 'cielo',
     whatsappNovuchat: wa('whatsappNovuchat'),

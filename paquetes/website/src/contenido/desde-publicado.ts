@@ -247,8 +247,9 @@ export function contenidoDesdePublicado(respuesta: unknown, negocio: unknown, en
   const candidato = {
     config: {
       nombre: neg?.nombre, lema: neg?.lema, logo: logoSubido?.cabecera ?? neg?.logo ?? null,
-      iconoSitio: logoSubido === undefined ? null : logoSubido.icono,
-      imagenCompartir: logoSubido?.compartir ?? null,
+      // Las claves solo existen si hay valor: sin logo subido el config queda idéntico al de antes.
+      ...(logoSubido?.icono == null ? {} : { iconoSitio: logoSubido.icono }),
+      ...(logoSubido === undefined ? {} : { imagenCompartir: logoSubido.compartir }),
       origen: entorno.origen,
       plantilla: s['plantillaActiva'],
       whatsappNovuchat: nulo(s['whatsappNovuchat']),

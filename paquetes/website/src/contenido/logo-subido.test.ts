@@ -58,8 +58,8 @@ describe('logo subido en el sitio', () => {
   it('solo dirección escrita: se conserva el comportamiento actual', () => {
     const { c } = armar(undefined, manual);
     expect(c.config.logo?.url).toBe(manual.url);
-    expect(c.config.iconoSitio).toBeNull();
-    expect(c.config.imagenCompartir).toBeNull();
+    expect(c.config).not.toHaveProperty('iconoSitio');
+    expect(c.config).not.toHaveProperty('imagenCompartir');
     expect(iconoDelSitio(c.config.iconoSitio, c.config.logo)).toBe(manual.url);
     expect(imagenAlCompartir(undefined, c.config.imagenCompartir)).toBeUndefined();
   });
@@ -79,7 +79,7 @@ describe('logo subido en el sitio', () => {
   ])('logo inválido (%s): se descarta con aviso y no tumba; queda la dirección escrita', (_n, logo) => {
     const { c, adv } = armar(logo, manual);
     expect(c.config.logo?.url).toBe(manual.url);
-    expect(c.config.iconoSitio).toBeNull();
+    expect(c.config).not.toHaveProperty('iconoSitio');
     expect(adv).toHaveLength(1);
     expect(adv[0]).toContain('documentos.sitio.logo');
     expect(adv[0]).not.toContain('tenants/');
