@@ -99,6 +99,7 @@ describe('venta: terminal y cobro de punta a punta', () => {
     e.como('sup');
     render(e.envolver(h(PantallaAprobaciones, { sub: 'descuentos' })));
     await u.click(await screen.findByRole('button', { name: 'Aprobar solicitud de descuento' }));
+    await u.click(await screen.findByRole('button', { name: 'Sí, aprobar' }));
     await waitFor(() => expect(screen.queryByRole('button', { name: 'Aprobar solicitud de descuento' })).toBeNull());
     expect((await e.api.llamar('listarAprobaciones', { estado: 'aprobada' })).length).toBe(1);
   });
