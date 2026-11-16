@@ -104,7 +104,7 @@ describe('CSP del panel con el almacén público de medios (VITE_MEDIOS_BASE_URL
     const malos = [
       `${base}; script-src *`, 'https://medios.ejemplo.test/a b', 'https://*.ejemplo.test/bucket', 'https://medios.ejemplo.test/*', 'http://medios.ejemplo.test/bucket',
       'https://medios.ejemplo.test', 'https://medios.ejemplo.test/', `${base},https://otro.test/x`, `${base}'`, `${base}"`, 'https://storage.googleapis.com/',
-      `${base}?x=1`, 'medios.ejemplo.test/bucket', 'https://u:p@medios.ejemplo.test/bucket', 'https://medios.ejemplo.test/../x',
+      `${base}?x=1`, 'medios.ejemplo.test/bucket', 'https://u:p@medios.ejemplo.test/bucket', 'https://medios.ejemplo.test/../x', 'https://medios.ejemplo.test:8443/bucket', 'https://medios.ejemplo.test/a//b',
     ];
     malos.forEach((m, i) => expect(() => sellar(`medios-malo-${i}`, `VITE_MEDIOS_BASE_URL=${m}`), m).toThrow());
     expect(() => sellar('medios-defecto', 'VITE_FIREBASE_STORAGE_BUCKET=bucket-demo', 'VITE_MEDIOS_BASE_URL=https://storage.googleapis.com/bucket-demo')).toThrow();

@@ -77,7 +77,7 @@ if (MEDIOS !== '') {
   const porDefecto = `https://storage.googleapis.com/${BUCKET}`;
   const bien =
     url !== undefined && url.protocol === 'https:' && !/[;,'"\s*\\]/.test(MEDIOS) && url.username === '' && url.password === '' &&
-    url.search === '' && url.hash === '' && url.pathname.length > 1 && !url.pathname.includes('..') && url.href.replace(/\/$/, '') === MEDIOS &&
+    url.search === '' && url.hash === '' && url.port === '' && url.pathname.length > 1 && !url.pathname.includes('//') && !url.pathname.includes('..') && url.href.replace(/\/$/, '') === MEDIOS &&
     MEDIOS !== porDefecto && !(BUCKET !== '' && MEDIOS === `https://firebasestorage.googleapis.com/v0/b/${BUCKET}`);
   if (!bien) {
     console.error('sellar: VITE_MEDIOS_BASE_URL debe ser https://<host>/<ruta-del-bucket> sin «;», comas, comillas, espacios ni comodines, y distinta del bucket por defecto.');
