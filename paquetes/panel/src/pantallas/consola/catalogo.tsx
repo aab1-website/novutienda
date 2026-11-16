@@ -32,6 +32,14 @@ function Uso({ etiqueta, usados, tope, formato }: { etiqueta: string; usados: nu
   );
 }
 
+function textoAvisoSitio(a: { readonly motivo: 'sin_productos' | 'sin_fotos'; readonly en: string }): string {
+  const f = fechaHora(a.en);
+  const desde = f === '' ? '' : ` (desde el ${f})`;
+  return a.motivo === 'sin_productos'
+    ? `El sitio quedó sin productos publicados${desde}. Active o publique al menos un producto en Inventario y luego publique el sitio.`
+    : `El sitio quedó sin fotos${desde}. Agregue una foto a un producto publicado o cargue el carrusel y luego publique el sitio.`;
+}
+
 function Tablero(): JSX.Element {
   const { api, usuario } = useApp();
   const comercial = useConfiguracionComercial();
@@ -51,6 +59,16 @@ function Tablero(): JSX.Element {
           <Dato etiqueta="Último cambio">{fechaHora(d.ultimoCambioEn)}</Dato>
           <Dato etiqueta="Última publicación del sitio">{d.publicadoEn === null ? 'Todavía no se publicó' : `${fechaHora(d.publicadoEn)} (versión ${d.versionPublicada})`}</Dato>
         </dl>
+        {d.avisoSitio !== null && (
+          <Alerta tipo="info">
+            <p data-prueba="aviso-sitio">{textoAvisoSitio(d.avisoSitio)}</p>
+            {d.avisoSitio.motivo === 'sin_productos' ? (
+              <a href="#/inventario">Ir a Inventario</a>
+            ) : (
+              <><a href="#/catalogo/fichas">Ir a las fichas</a> · <a href="#/catalogo/secciones">Ir a las secciones y el carrusel</a></>
+            )}
+          </Alerta>
+        )}
         {usuario.rol === 'adm' ? (
           <BotonConfirmado texto="Publicar el sitio" pregunta="¿Publicar los cambios? El sitio se reconstruye en unos minutos." textoConfirmar="Sí, publicar" deshabilitado={accion.ocupado || d.cambiosSinPublicar === 0} onConfirmar={() => void accion.ejecutar(async () => { const r = await api.llamar('publicarSitio', {}); setMsg(`Publicado: versión ${r.version}, ${r.productos} productos.${r.advertencias.length ? ` Avisos: ${r.advertencias.join(' ')}` : ''}`); t.recargar(); })} />
         ) : (

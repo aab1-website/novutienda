@@ -435,3 +435,54 @@ describe('catálogo: logo del negocio', () => {
     expect(screen.queryByLabelText('Archivo del logo')).toBeNull();
   });
 });
+
+describe('catálogo: aviso del sitio incompleto', () => {
+  const EN = '2026-11-16T10:00:00.000Z';
+  it('sin_productos: muestra el texto con la fecha local y el enlace a Inventario', async () => {
+    const e = crearEntorno('adm');
+    e.api.estado.avisoSitio = { motivo: 'sin_productos', en: EN };
+    render(e.envolver(h(PantallaCatalogo, { sub: 'tablero' })));
+    const t = await screen.findByText(/El sitio quedó sin productos publicados \(desde el 16\/11\/2026 06:00\)\. Active o publique al menos un producto en Inventario y luego publique el sitio\./);
+    expect(t.textContent).not.toContain('2026-11-16T');
+    expect(screen.getByRole('link', { name: 'Ir a Inventario' }).getAttribute('href')).toBe('#/inventario');
+  });
+  it('sin_fotos: muestra el texto y los enlaces a fichas y carrusel', async () => {
+    const e = crearEntorno('adm');
+    e.api.estado.avisoSitio = { motivo: 'sin_fotos', en: EN };
+    render(e.envolver(h(PantallaCatalogo, { sub: 'tablero' })));
+    expect(await screen.findByText(/El sitio quedó sin fotos \(desde el 16\/11\/2026 06:00\)\. Agregue una foto a un producto publicado o cargue el carrusel y luego publique el sitio\./)).toBeTruthy();
+    expect(screen.getByRole('link', { name: 'Ir a las fichas' }).getAttribute('href')).toBe('#/catalogo/fichas');
+    expect(screen.getByRole('link', { name: 'Ir a las secciones y el carrusel' }).getAttribute('href')).toBe('#/catalogo/secciones');
+  });
+  it('null: sin alerta', async () => {
+    const e = crearEntorno('adm');
+    render(e.envolver(h(PantallaCatalogo, { sub: 'tablero' })));
+    await screen.findByRole('heading', { name: 'Sitio' });
+    expect(screen.queryByText(/El sitio quedó sin/)).toBeNull();
+  });
+  it('fecha inválida: se omite el paréntesis', async () => {
+    const e = crearEntorno('adm');
+    e.api.estado.avisoSitio = { motivo: 'sin_fotos', en: 'no-es-fecha' };
+    render(e.envolver(h(PantallaCatalogo, { sub: 'tablero' })));
+    expect(await screen.findByText('El sitio quedó sin fotos. Agregue una foto a un producto publicado o cargue el carrusel y luego publique el sitio.')).toBeTruthy();
+  });
+  it('el supervisor ve la alerta y el texto de que solo el administrador publica', async () => {
+    const e = crearEntorno('sup');
+    e.api.estado.avisoSitio = { motivo: 'sin_productos', en: EN };
+    render(e.envolver(h(PantallaCatalogo, { sub: 'tablero' })));
+    expect(await screen.findByText(/El sitio quedó sin productos publicados/)).toBeTruthy();
+    expect(screen.getByText('Solo el administrador publica.')).toBeTruthy();
+  });
+  it('tras publicar, el aviso desaparece', async () => {
+    const e = crearEntorno('adm');
+    await e.api.llamar('actualizarProducto', { operacionId: uuid(), productoId: 'cable-hdmi', cambios: { nombre: 'Cable HDMI 2,5 m' } });
+    e.api.estado.avisoSitio = { motivo: 'sin_fotos', en: EN };
+    render(e.envolver(h(PantallaCatalogo, { sub: 'tablero' })));
+    const u = userEvent.setup();
+    await screen.findByText(/El sitio quedó sin fotos/);
+    await u.click(screen.getByRole('button', { name: 'Publicar el sitio' }));
+    await u.click(await screen.findByRole('button', { name: 'Sí, publicar' }));
+    expect(await screen.findByText(/Publicado: versión 1/)).toBeTruthy();
+    await waitFor(() => expect(screen.queryByText(/El sitio quedó sin fotos/)).toBeNull());
+  });
+});
