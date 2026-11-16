@@ -13,6 +13,7 @@ import { Tabla } from '../../ui/tabla.js';
 import { formatoBytes } from '../../util/base64.js';
 import './ficha.css';
 import { claveAlt, revisarFicha, TOPES_FICHA } from './ficha-revision.js';
+import { cumpleFiltro, siguientePaso, textoCambiosSinPublicar, textoQueFalta } from './pasos-ficha.js';
 import { useSubidas, type Subida } from './subidas-ficha.js';
 
 const ESTADOS: { valor: EstadoFicha; texto: string }[] = [{ valor: 'borrador', texto: 'Borrador' }, { valor: 'publicado', texto: 'Publicado' }, { valor: 'oculto', texto: 'Oculto' }];
@@ -391,7 +392,12 @@ interface Abierta {
 
 export function PantallaFichas(): JSX.Element {
   const { api } = useApp();
-  const carga = useCarga(async () => ({ productos: await api.llamar('listarProductos', {}), fichas: await api.llamar('listarFichas', {}) }), []);
+  const carga = useCarga(async () => ({
+    productos: await api.llamar('listarProductos', {}),
+    fichas: await api.llamar('listarFichas', {}),
+    // El aviso de cambios sin publicar es una ayuda: si el Tablero no responde, la lista sigue funcionando.
+    sinPublicar: await api.llamar('obtenerTablero', {}).then((t) => t.cambiosSinPublicar, () => 0),
+  }), []);
   const [abierta, setAbierta] = useState<Abierta | null>(null);
   const lista = useRef<HTMLDivElement>(null);
   const producto = carga.datos?.productos.find((x) => x.id === abierta?.productoId);
@@ -407,16 +413,33 @@ export function PantallaFichas(): JSX.Element {
           {(d) => {
             const fichaDe = (id: string): FichaWeb | undefined => d.fichas.find((y) => y.productoId === id)?.ficha;
             return (
+              <>
+              {d.sinPublicar > 0 && <p class="texto-suave" data-prueba="sin-publicar">{textoCambiosSinPublicar(d.sinPublicar)}. <a href="#/catalogo/tablero">Ver el Tablero</a></p>}
               <Tabla
                 titulo="Productos y su página en el sitio"
                 filas={d.productos}
                 clave={(x) => x.id}
                 buscar={{ etiqueta: 'Buscar producto', en: (x) => [x.nombre, x.sku] }}
                 vacio={{ titulo: 'No hay productos' }}
+                filtros={[{ id: 'pagina', etiqueta: 'Mostrar', opciones: [{ valor: 'sin-pagina', texto: 'Sin página' }, { valor: 'borrador', texto: 'Borrador' }, { valor: 'sin-fotos', texto: 'Sin fotos' }], aplica: (x, v) => cumpleFiltro(fichaDe(x.id), v) }]}
                 columnas={[
                   { id: 'producto', titulo: 'Producto', valor: (x) => x.nombre, encabezadoFila: true, ordenable: true },
                   { id: 'pagina', titulo: 'Página', valor: (x) => { const f = fichaDe(x.id); return f === undefined ? 'Sin página' : (ESTADOS.find((e) => e.valor === f.estado)?.texto ?? ''); }, ordenable: true },
                   { id: 'medios', titulo: 'Fotos y video', valor: (x) => fichaDe(x.id)?.medios.length ?? 0, celda: (x) => `${String(fichaDe(x.id)?.medios.length ?? 0)} en la ficha`, ordenable: true },
+                  {
+                    id: 'falta', titulo: 'Qué falta', ordenable: true,
+                    valor: (x) => textoQueFalta(fichaDe(x.id)),
+                    celda: (x) => {
+                      const paso = siguientePaso(fichaDe(x.id));
+                      const etiqueta = paso === null ? '' : `${paso.accion} de ${x.nombre}`;
+                      return (
+                        <div class="ficha-falta">
+                          <span>{textoQueFalta(fichaDe(x.id))}</span>
+                          {paso !== null && <Boton chico etiqueta={etiqueta} onClick={() => setAbierta({ productoId: x.id, modo: paso.modo, etiqueta })}>{paso.accion}</Boton>}
+                        </div>
+                      );
+                    },
+                  },
                 ]}
                 acciones={(x) => (
                   <div class="fila">
@@ -425,6 +448,7 @@ export function PantallaFichas(): JSX.Element {
                   </div>
                 )}
               />
+              </>
             );
           }}
         </ConCarga>
