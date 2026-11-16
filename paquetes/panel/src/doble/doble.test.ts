@@ -224,6 +224,11 @@ describe('doble: descuentos y aprobaciones', () => {
     const tercero = carritoTv({ descuento: { monto: montoDesc, motivo: 'Otra vez' } }, 1, ['TV55-003']);
     expect((await falla(e.api.llamar('confirmarVenta', { requestId: uuid(), carrito: tercero, pagos: efectivo(293200), aprobacionId }))).detalle.codigo).toBe('aprobacion-usada');
   });
+  it('la solicitud de aprobación exige una moneda de la caja del comercio', async () => {
+    const e = crearEntorno('sup');
+    const fallo = await falla(e.api.llamar('solicitarAprobacion', { aprobacionId: uuid(), solicitud: { tipo: 'descuento', moneda: 'XXX', monto: 100, motivo: 'x' } }));
+    expect(fallo.detalle.codigo).toBe('entrada-invalida');
+  });
   it('nadie aprueba su propia solicitud ni se resuelve dos veces', async () => {
     const e = crearEntorno('sup');
     const aprobacionId = uuid();
