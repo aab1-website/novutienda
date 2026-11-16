@@ -2,6 +2,7 @@ import type { JSX } from 'preact';
 import { useState } from 'preact/hooks';
 import { type MontosPorMoneda, type TurnoPos } from '../../api/tipos.js';
 import { Alerta, BotonConfirmado, Boton, Campo, Cargando, ErrorCarga, Pestanas, Seccion, Vacio, fechaHora } from '../../ui/comun.js';
+import { useConfiguracionComercial } from '../../ui/comercial.js';
 import { useApp } from '../../ui/contexto.js';
 import { useAccion, useCarga } from '../../ui/hooks.js';
 import { monedasDelTurno, proyectarTurno } from './arqueo.js';
@@ -10,14 +11,14 @@ import { formatearMonto, textoACentavos } from '../../util/dinero.js';
 import { rangoUltimoMes, validarRango } from '../../util/rango.js';
 
 
-function TurnoVivo({ t, alCambiar }: { t: TurnoPos; alCambiar: () => void }): JSX.Element {
+function TurnoVivo({ t, orden, alCambiar }: { t: TurnoPos; orden: readonly string[]; alCambiar: () => void }): JSX.Element {
   const { api, usuario } = useApp();
   const accion = useAccion();
   const [motivo, setMotivo] = useState('');
   const [abierto, setAbierto] = useState(false);
   const [textos, setTextos] = useState<Record<string, string>>({});
-  const proy = proyectarTurno(t);
-  const monedas = monedasDelTurno(t);
+  const proy = proyectarTurno(t, orden);
+  const monedas = monedasDelTurno(t, orden);
   const contado: Partial<Record<string, number>> = {};
   let falta = false;
   for (const m of monedas) {
@@ -77,12 +78,16 @@ function TurnoVivo({ t, alCambiar }: { t: TurnoPos; alCambiar: () => void }): JS
 function EnVivo(): JSX.Element {
   const { api } = useApp();
   const turnos = useCarga(() => api.llamar('listarTurnos', { estado: 'abierto' }), [], 10_000);
+  const comercial = useConfiguracionComercial();
+  if (comercial.estado === 'cargando') return <Cargando />;
+  if (comercial.estado === 'error') return <Alerta>{comercial.mensaje}</Alerta>;
+  const orden = comercial.comercial.monedasCaja;
   return (
     <Seccion titulo="Cajas abiertas (se actualiza cada 10 segundos)" acciones={<Boton chico variante="secundario" onClick={turnos.recargar}>Actualizar</Boton>}>
       {turnos.cargando && <Cargando />}
       {turnos.error && <ErrorCarga error={turnos.error} reintentar={turnos.recargar} />}
       {turnos.datos && turnos.datos.length === 0 && <Vacio titulo="No hay turnos abiertos" />}
-      <ul class="lista-simple">{(turnos.datos ?? []).map((t) => <TurnoVivo key={t.turnoId} t={t} alCambiar={turnos.recargar} />)}</ul>
+      <ul class="lista-simple">{(turnos.datos ?? []).map((t) => <TurnoVivo key={t.turnoId} t={t} orden={orden} alCambiar={turnos.recargar} />)}</ul>
     </Seccion>
   );
 }
