@@ -113,7 +113,7 @@ export function crearEntorno(o: OpcionesEntorno): Entorno {
     estadoModulosDelTenant: lectoresModulos.estado,
     tenantDelHost: crearLectorDominios(o.firestore, ahora),
     comercialDelTenant,
-    logoDelNegocio: crearLogoDelNegocio({ db, modulosDelTenant: lectoresModulos.modulos, baseMedios: o.mediosBaseUrl ?? '' }),
+    logoDelNegocio: crearLogoDelNegocio({ db, modulosDelTenant: lectoresModulos.modulos, baseMedios: o.mediosBaseUrl ?? '', avisar: (m, d) => logger.warn(m, d) }),
     redondeoDelTenant,
     redondeo,
     depsPos: async (tenantId) => ({

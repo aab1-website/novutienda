@@ -15,23 +15,36 @@ export interface DepsLogoNegocio {
   readonly modulosDelTenant: LectorModulos;
   /** Origen público de los medios (`MEDIOS_BASE_URL`); con o sin barra final. Vacío: no hay URL que entregar. */
   readonly baseMedios: string;
+  /** Registro estructurado de avisos, sin datos personales (el servidor entrega `logger.warn`). */
+  readonly avisar?: (mensaje: string, datos: Readonly<Record<string, string>>) => void;
 }
 
 const ACTOR_SERVICIO = 'servicio:recibos';
 
+const escapar = (t: string): string => t.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+
+/**
+ * El logo es decorativo: ante cualquier fallo de lectura devuelve `null` (el recibo usa la dirección de su plantilla) y avisa;
+ * nunca frena la emisión.
+ */
 export function crearLogoDelNegocio(deps: DepsLogoNegocio): LogoDelNegocio {
   const base = deps.baseMedios.trim().replace(/\/+$/, '');
   return async (tenantId) => {
-    if (base === '' || !esTenantIdValido(tenantId)) return null;
-    if (!((await deps.modulosDelTenant(tenantId)) ?? []).includes('consola')) return null;
-    const claim = construirClaim({ [tenantId]: 'sup' }, 1);
-    if (!claim.ok) return null;
-    const logo = await leerLogo({ db: deps.db }, { tenantId, actor: { uid: ACTOR_SERVICIO, claims: claim.valor } });
-    if (logo === null) return null;
-    const prefijo = `tenants/${tenantId}/publico/medios/_negocio/`;
-    const version = logo.versiones.find((v) => v.formato === 'png') ?? logo.versiones.find((v) => v.formato === 'webp');
-    const ruta = version?.ruta;
-    if (ruta === undefined || !ruta.startsWith(prefijo) || ruta.includes('..') || ruta.length === prefijo.length) return null;
-    return `${base}/${ruta}`;
+    try {
+      if (base === '' || !esTenantIdValido(tenantId)) return null;
+      if (!((await deps.modulosDelTenant(tenantId)) ?? []).includes('consola')) return null;
+      const claim = construirClaim({ [tenantId]: 'sup' }, 1);
+      if (!claim.ok) return null;
+      const logo = await leerLogo({ db: deps.db }, { tenantId, actor: { uid: ACTOR_SERVICIO, claims: claim.valor } });
+      if (logo === null) return null;
+      const lista = new RegExp(`^tenants/${escapar(tenantId)}/publico/medios/_negocio/[A-Za-z0-9._-]+$`);
+      const version = logo.versiones.find((v) => v.formato === 'png') ?? logo.versiones.find((v) => v.formato === 'webp');
+      const ruta = version?.ruta;
+      if (ruta === undefined || !lista.test(ruta) || ruta.includes('..')) return null;
+      return `${base}/${ruta}`;
+    } catch (err) {
+      deps.avisar?.('logo del negocio: no se pudo leer; el recibo usa la dirección de la plantilla', { tenantId, error: err instanceof Error ? err.name : 'desconocido' });
+      return null;
+    }
   };
 }

@@ -39,7 +39,7 @@ describe('puerto logoDelNegocio', () => {
     expect(await con(docs, { modulos: undefined })(T)).toBeNull();
   });
   it('ruta fuera del prefijo del logo del negocio: null', async () => {
-    for (const ruta of [`tenants/otro/publico/medios/_negocio/x.png`, `${`tenants/${T}/publico/medios/p1`}/x.png`, `${P}/../p1/x.png`, `${P}/`, 'x.png']) {
+    for (const ruta of [`tenants/otro/publico/medios/_negocio/x.png`, `${`tenants/${T}/publico/medios/p1`}/x.png`, `${P}/../p1/x.png`, `${P}/`, 'x.png', `${P}/a%2e.png`, `${P}/a.png?x=1`, `${P}/a.png#f`, `${P}/a\\b.png`, `${P}/sub/a.png`, `${P}/a b.png`]) {
       expect(await con({ [RUTA_DOC]: docLogo([{ formato: 'png', lado: 512, ruta }]) })(T)).toBeNull();
     }
   });
@@ -49,6 +49,17 @@ describe('puerto logoDelNegocio', () => {
     expect(await con(docs, { base: 'https://medios.ejemplo.test/' })(T)).toBe(esperado);
     expect(await con(docs, { base: 'https://medios.ejemplo.test//' })(T)).toBe(esperado);
     expect(await con(docs, { base: '' })(T)).toBeNull();
+  });
+  it('si la lectura falla: null y aviso sin datos personales, nunca lanza', async () => {
+    const avisos: unknown[][] = [];
+    const roto = crearLogoDelNegocio({
+      db: { runTransaction: async () => { throw new Error('boom'); } }, baseMedios: 'https://m.test', modulosDelTenant: async () => ['consola'],
+      avisar: (...a) => avisos.push(a),
+    });
+    expect(await roto(T)).toBeNull();
+    expect(avisos).toHaveLength(1);
+    const falla = crearLogoDelNegocio({ db: db({}), baseMedios: 'https://m.test', modulosDelTenant: async () => { throw new Error('x'); } });
+    expect(await falla(T)).toBeNull();
   });
   it('tenant inválido: null', async () => {
     expect(await con({})('../x')).toBeNull();
