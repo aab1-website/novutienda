@@ -44,8 +44,8 @@ export const accionesPos: TablaImplementaciones = {
     ejecutar: async (c, d) => solicitarAprobacion(await c.e.depsPos(c.tenantId), c.tenantId, actorPos(c), d.aprobacionId, d.solicitud as unknown as SolicitudAprobacion),
   }),
   resolverAprobacion: accion({
-    esquema: objeto({ aprobacionId: UUID, decision: z.enum(['aprobar', 'rechazar']) }),
-    ejecutar: async (c, d) => resolverAprobacion(await c.e.depsPos(c.tenantId), c.tenantId, actorPos(c), d.aprobacionId, d.decision),
+    esquema: objeto({ aprobacionId: UUID, decision: z.enum(['aprobar', 'rechazar']), motivo: z.string().max(200).optional() }),
+    ejecutar: async (c, d) => resolverAprobacion(await c.e.depsPos(c.tenantId), c.tenantId, actorPos(c), d.aprobacionId, d.decision, d.motivo),
   }),
   solicitarAnulacion: accion({
     esquema: objeto({ ventaId: UUID, motivo: TEXTO(200) }),
