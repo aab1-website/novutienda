@@ -888,3 +888,19 @@ describe('doble: configuracionComercial', () => {
     }
   });
 });
+
+describe('doble: precio por mercado abierto', () => {
+  it('un comercio con un solo mercado crea y edita su precio y rechaza uno de otro mercado', async () => {
+    const e = crearEntorno('adm', () => AHORA, {
+      comercial: { mercados: [{ id: 'PE', nombre: 'Perú', monedaVenta: 'PEN', monedaBase: 'USD', tieneTipoCambio: true }], monedasCaja: ['PEN', 'USD'], monedaCosto: 'USD' },
+      redondeo: { PEN: { tipo: 'decimales', decimales: 2, modo: 'cercano' } },
+    });
+    const producto = { id: 'solo-pe', nombre: 'Solo PE', categoria: 'Varios', sku: 'SP-1' };
+    await e.api.llamar('crearProducto', { operacionId: uuid(), producto: { ...producto, precioUSD: { pe: 1500 } } });
+    expect((await e.api.llamar('listarProductos', {})).find((p) => p.id === 'solo-pe')?.precioUSD).toEqual({ pe: 1500 });
+    await e.api.llamar('actualizarProducto', { operacionId: uuid(), productoId: 'solo-pe', cambios: { precioUSD: { pe: 1800 } } });
+    expect((await e.api.llamar('listarProductos', {})).find((p) => p.id === 'solo-pe')?.precioUSD).toEqual({ pe: 1800 });
+    expect((await falla(e.api.llamar('crearProducto', { operacionId: uuid(), producto: { ...producto, id: 'solo-bo', sku: 'SB-1', precioUSD: { bo: 1500 } } }))).detalle.codigo).toBe('entrada-invalida');
+    expect((await falla(e.api.llamar('actualizarProducto', { operacionId: uuid(), productoId: 'solo-pe', cambios: { precioUSD: { bo: 100 } } }))).detalle.codigo).toBe('entrada-invalida');
+  });
+});
