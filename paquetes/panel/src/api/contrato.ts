@@ -113,6 +113,16 @@ export interface Contrato {
   asignarRol: { entrada: { uid: string; rol: Rol }; salida: Ok };
   quitarRol: { entrada: { uid: string }; salida: Ok };
   /**
+   * Invita a una persona por correo con un rol reservado (solo `adm`; también puede invitar administradores). La respuesta es
+   * SIEMPRE la misma, exista o no la cuenta y pertenezca o no a otro negocio. El correo con el enlace lo envía el panel
+   * (`conCorreoDeInvitacion`) tras la respuesta; la invitación ocupa un cupo del plan y caduca a los 7 días.
+   */
+  invitarUsuario: { entrada: { correo: string; rol: Rol }; salida: { ok: true; mensaje: string } };
+  /** Anula una invitación pendiente: libera el cupo. */
+  anularInvitacion: { entrada: { uid: string }; salida: Ok };
+  /** Extiende 7 días una invitación. `correo` no viaja al servidor: es para reenviar el enlace desde el panel. */
+  reenviarInvitacion: { entrada: { uid: string; correo: string }; salida: { ok: true; mensaje: string; venceEnMs: number } };
+  /**
    * Busca una cuenta existente por correo para asignarle rol (solo `adm`). Por privacidad responde solo si la cuenta ya es
    * miembro de este negocio o no pertenece a ninguno; en cualquier otro caso responde «no encontrado», igual que si no existiera.
    */

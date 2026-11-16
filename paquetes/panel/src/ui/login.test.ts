@@ -109,3 +109,25 @@ describe('ingreso: recuperar y mostrar la contraseña', () => {
     expect(screen.getByRole('button', { name: 'Mostrar contraseña' }).hasAttribute('aria-pressed')).toBe(false);
   });
 });
+
+describe('ingreso: sin acceso y sin conexión', () => {
+  it('«Volver a comprobar» repite el inicio de sesión y «Reintentar» lo repite ante un fallo de conexión', async () => {
+    const sesion = new SesionDoble();
+    const iniciar = vi
+      .spyOn(sesion, 'iniciar')
+      .mockResolvedValueOnce({ tipo: 'sin-acceso' })
+      .mockResolvedValueOnce({ tipo: 'error', mensaje: 'No se pudo comprobar su acceso. Revise su conexión.' })
+      .mockResolvedValue({ tipo: 'sin-acceso' });
+    render(h(Login, { sesion, nombre: 'Panel' }));
+    const u = userEvent.setup();
+    await u.type(screen.getByLabelText(/Correo/), 'ana@ejemplo.test');
+    await u.type(screen.getByLabelText(/Contraseña/), 'clave');
+    await u.click(screen.getByRole('button', { name: 'Entrar' }));
+    await u.click(await screen.findByRole('button', { name: 'Volver a comprobar' }));
+    expect(await screen.findByText('No se pudo comprobar su acceso. Revise su conexión.')).toBeTruthy();
+    await u.click(screen.getByRole('button', { name: 'Reintentar' }));
+    await waitFor(() => expect(iniciar).toHaveBeenCalledTimes(3));
+    expect(await screen.findByRole('button', { name: 'Volver a comprobar' })).toBeTruthy();
+  });
+});
+

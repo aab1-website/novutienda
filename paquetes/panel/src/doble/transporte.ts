@@ -147,7 +147,11 @@ const ACCIONES: Readonly<Record<string, WireHandler>> = {
   'consola.guardarCarrusel': ok('guardarCarrusel'), 'consola.guardarConfigSitio': ok('guardarConfigSitio'),
   'consola.exportarProductosCsv': igual('exportarProductosCsvSitio'),
   'consola.listarUsuarios': async (c) => ({
-    usuarios: ((await legado(c, 'listarUsuarios', {})) as Obj[]).map((u) => ({ uid: u['uid'], rol: u['rol'], correo: u['correo'], correoVerificado: u['verificado'], deshabilitado: false })),
+    usuarios: ((await legado(c, 'listarUsuarios', {})) as Obj[]).map((u) =>
+      u['estado'] === 'invitado'
+        ? { uid: u['uid'], estado: 'invitado', rolReservado: u['rol'], venceEnMs: u['venceEnMs'], correo: u['correo'] }
+        : { uid: u['uid'], rol: u['rol'], correo: u['correo'], correoVerificado: u['verificado'], deshabilitado: false },
+    ),
   }),
   'consola.modulosActivos': async (c) => ({ modulos: (await legado(c, 'modulosActivos', {})) as string[] }),
   'consola.configuracionComercial': (c) => legado(c, 'configuracionComercial', {}),
@@ -159,6 +163,9 @@ const ACCIONES: Readonly<Record<string, WireHandler>> = {
     await legado(c, 'quitarRol', d);
     return { claim: {} };
   },
+  'consola.invitarUsuario': async (c, d) => legado(c, 'invitarUsuario', d),
+  'consola.anularInvitacion': ok('anularInvitacion'),
+  'consola.reenviarInvitacion': async (c, d) => legado(c, 'reenviarInvitacion', { ...d, correo: '' }),
   'consola.auditoria': async (c, d) => ({
     entradas: await legado(c, 'listarAuditoria', {
       ...sin(d, 'desde', 'hasta'), ...(d['desde'] !== undefined ? { desde: msAFecha(d['desde']) } : {}), ...(d['hasta'] !== undefined ? { hasta: msAFecha(d['hasta']) } : {}),

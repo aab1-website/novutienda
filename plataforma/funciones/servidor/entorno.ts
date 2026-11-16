@@ -13,12 +13,12 @@ import { crearLectorComercial, type LectorComercial } from '../../coordinador/co
 import { crearLectorHojas } from '../../coordinador/lector-hojas.js';
 import { crearCatalogoConsola, crearLogoDelNegocio, almacenCotizacionesDesde, catalogoParaPos, inventariosParaPos, type LogoDelNegocio } from '../../coordinador/index.js';
 import {
-  appCheckReal, appCheckSimulado, crearAlmacenMedios, esEntornoDePruebas, crearAuthMin, crearBaseDatos, crearConsultaSubidas, crearEjecutorRecibos, crearGuardarContacto,
+  appCheckReal, appCheckSimulado, crearAlmacenMedios, esEntornoDePruebas, crearAuthMin, crearBaseDatos, crearConsultaSubidas, crearEjecutorRecibos, crearGuardarContacto, crearIndiceInvitaciones, crearLimiteTasa,
   crearLecturaRecibos, crearLectorDisponibilidad, crearProcesadorMedios, recaptchaEnterprise, recaptchaSimulado,
   type BaseDatosFirestore, type Bucket,
 } from '../../conectores/firebase/index.js';
 import type { AlmacenMedios, ConsultaSubidas } from '@novutienda/consola';
-import type { AlmacenCotizaciones, AuthMin, Redondeo } from '@novutienda/nucleo';
+import type { AlmacenCotizaciones, AuthMin, IndiceInvitaciones, LimiteTasa, Redondeo } from '@novutienda/nucleo';
 import type { LectorHojas } from '@novutienda/inventarios';
 import type { DepsPos } from '@novutienda/pos';
 import type { EjecutorRecibos, LecturaRecibos } from '@novutienda/recibos';
@@ -26,6 +26,7 @@ import type { GuardarContacto, LectorDisponibilidad, VerificadorAppCheck, Verifi
 import { exigirBucketPublico, PARAMETROS } from './config.js';
 import { crearDisparadorSitio } from './disparador-sitio.js';
 import { emisorEnlaceEmulador, emisorEnlaceFirmado, type EmisorEnlacePdf } from './enlace-pdf.js';
+import { MAXIMO_ACTIVACIONES_POR_HORA, MAXIMO_INVITACIONES_POR_HORA, VENTANA_INVITACIONES_MS } from './llamadas/usuarios.js';
 import { lectorRedondeo, lectorRedondeoDe, type LectorRedondeo } from './redondeo.js';
 
 export interface Entorno {
@@ -45,6 +46,12 @@ export interface Entorno {
   readonly emisorEnlacePdf: EmisorEnlacePdf;
   /** Lector de .xlsx de la importación de Inventarios (adaptador del coordinador, con topes contra archivos no confiables). */
   readonly lectorHojas: LectorHojas;
+  /** Consultas de invitaciones (`miembros` en estado `invitado`), para `llamadas/usuarios.ts` y la activación. */
+  readonly indiceInvitaciones: IndiceInvitaciones;
+  /** Tope de activaciones por uid y hora (clave `activar:{uid}`). */
+  readonly limiteActivaciones: LimiteTasa;
+  /** Tope de invitaciones y reenvíos por comercio y hora (5). */
+  readonly limiteInvitaciones: LimiteTasa;
   readonly ahora: () => number;
   /** Módulos efectivos del tenant (cache de 60 s por instancia); `undefined` si el tenant no existe o es inválido. */
   readonly modulosDelTenant: LectorModulos;
@@ -108,6 +115,10 @@ export function crearEntorno(o: OpcionesEntorno): Entorno {
     disparadorSitio: crearDisparadorSitio(o.firestore, ahora),
     emisorEnlacePdf: o.emisorEnlacePdf ?? (emulador ? emisorEnlaceEmulador(o.bucket) : emisorEnlaceFirmado(o.bucket, ahora)),
     lectorHojas: crearLectorHojas(),
+    // La clave es `invitar:{tenantId}` (sin IP ni datos personales): la sal solo separa el espacio de claves, no es secreta.
+    indiceInvitaciones: crearIndiceInvitaciones(o.firestore),
+    limiteInvitaciones: crearLimiteTasa(o.firestore, { maximo: MAXIMO_INVITACIONES_POR_HORA, ventanaMs: VENTANA_INVITACIONES_MS, sal: 'invitaciones-v1' }),
+    limiteActivaciones: crearLimiteTasa(o.firestore, { maximo: MAXIMO_ACTIVACIONES_POR_HORA, ventanaMs: VENTANA_INVITACIONES_MS, sal: 'invitaciones-v1' }),
     ahora,
     modulosDelTenant: lectoresModulos.modulos,
     estadoModulosDelTenant: lectoresModulos.estado,

@@ -8,8 +8,10 @@ const fuente = readFileSync(new URL('../../plataforma/funciones/servidor/index.t
 describe('callables con invocación pública', () => {
   const declaraciones = fuente.split('\n').filter((l) => /^export const \w+ = onCall\(/.test(l));
 
-  it('hay cinco callables', () => {
-    expect(declaraciones.map((l) => l.split(' ')[2])).toEqual(['pos', 'inventarios', 'consola', 'recibos', 'medios']);
+  it('hay seis callables', () => {
+    // `activarInvitaciones` también es público a propósito: lo llama quien acaba de iniciar sesión desde el navegador; el manejador
+    // exige App Check, token de ID vigente y no revocado, proveedor de contraseña y correo verificado.
+    expect(declaraciones.map((l) => l.split(' ')[2])).toEqual(['pos', 'inventarios', 'consola', 'activarInvitaciones', 'recibos', 'medios']);
   });
 
   it.each(declaraciones.map((l) => [l.split(' ')[2], l]))('%s declara invoker público', (_n, linea) => {

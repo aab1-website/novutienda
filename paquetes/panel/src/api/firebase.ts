@@ -13,11 +13,20 @@ import type { Sobre, Transporte } from './transporte.js';
 export class TransporteFirebase implements Transporte {
   constructor(private readonly region: string = 'us-east1') {}
 
-  async invocar(modulo: Modulo, sobre: Sobre): Promise<unknown> {
+  invocar(modulo: Modulo, sobre: Sobre): Promise<unknown> {
+    return this.invocarCallable(modulo, sobre);
+  }
+
+  /** Activa las invitaciones de la persona que acaba de entrar: callable propio, sin tenant ni rol. */
+  activarInvitaciones(): Promise<unknown> {
+    return this.invocarCallable('activarInvitaciones', {});
+  }
+
+  private async invocarCallable(callable: string, datos: object): Promise<unknown> {
     await this.prepararAppCheck();
-    const fn = httpsCallable<Sobre, unknown>(getFunctions(getApp(), this.region), modulo);
+    const fn = httpsCallable<object, unknown>(getFunctions(getApp(), this.region), callable);
     try {
-      return (await fn(sobre)).data;
+      return (await fn(datos)).data;
     } catch (e) {
       const o = (typeof e === 'object' && e !== null ? e : {}) as { code?: unknown; message?: unknown; details?: unknown };
       const codigo = typeof o.code === 'string' ? o.code.replace(/^functions\//, '') : 'internal';

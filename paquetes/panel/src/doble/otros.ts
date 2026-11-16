@@ -48,6 +48,28 @@ function procesarSubida(c: Contexto, subidaId: string): Medio {
   return m;
 }
 
+const CADUCIDAD_INVITACION_MS = 7 * 24 * 60 * 60 * 1000;
+const MAXIMO_INVITACIONES_POR_HORA = 5;
+
+/** Límite del servidor: 5 invitaciones o reenvíos por hora y comercio. */
+function limitarInvitaciones(c: Contexto): void {
+  const envios = c.e.invitaciones.envios.filter((t) => c.ahora - t < 3_600_000);
+  if (envios.length >= MAXIMO_INVITACIONES_POR_HORA) throw fallo('limite-invitaciones', 'Demasiadas invitaciones.');
+  envios.push(c.ahora);
+  c.e.invitaciones.envios = envios;
+}
+
+/** Barrido perezoso: una invitación vencida se borra y libera su cupo. */
+function barrerVencidas(c: Contexto): void {
+  for (let i = c.e.usuarios.length - 1; i >= 0; i--) {
+    const u = c.e.usuarios[i];
+    if (u?.estado === 'invitado' && (u.venceEnMs ?? 0) <= c.ahora) {
+      c.e.usuarios.splice(i, 1);
+      c.e.invitaciones.cuentasCreadas.delete(u.uid);
+    }
+  }
+}
+
 /** Disparador de Storage simulado: resuelve la subida unos milisegundos después de la primera consulta de estado. */
 function estadoDeSubida(c: Contexto, subidaId: string, tipo: 'logo' | 'producto'): { estado: SubidaVista['estado']; motivo?: string } {
   const s = c.e.subidas.get(subidaId);
@@ -71,7 +93,7 @@ function estadoDeSubida(c: Contexto, subidaId: string, tipo: 'logo' | 'producto'
 }
 
 export const handlersOtros: {
-  [N in 'buscarComprobantes' | 'enviarRecibo' | 'referenciarFacturaSuma' | 'guardarPlantilla' | 'leerPlantilla' | 'obtenerRecibo' | 'obtenerTablero' | 'publicarSitio' | 'cambiarPrecioUSD' | 'guardarFicha' | 'reservarSubida' | 'estadoSubida' | 'finalizarSubida' | 'reservarSubidaLogo' | 'estadoSubidaLogo' | 'finalizarSubidaLogo' | 'leerLogo' | 'quitarLogo' | 'borrarMedio' | 'guardarSeccion' | 'eliminarSeccion' | 'ordenarSecciones' | 'guardarCarrusel' | 'guardarConfigSitio' | 'exportarProductosCsvSitio' | 'asignarRol' | 'quitarRol' | 'buscarUsuarioPorCorreo' | 'listarFichas' | 'listarMedios' | 'leerConfigSitio' | 'listarSecciones' | 'listarCarruseles' | 'listarUsuarios' | 'modulosActivos' | 'configuracionComercial']: H<N>;
+  [N in 'buscarComprobantes' | 'enviarRecibo' | 'referenciarFacturaSuma' | 'guardarPlantilla' | 'leerPlantilla' | 'obtenerRecibo' | 'obtenerTablero' | 'publicarSitio' | 'cambiarPrecioUSD' | 'guardarFicha' | 'reservarSubida' | 'estadoSubida' | 'finalizarSubida' | 'borrarMedio' | 'guardarSeccion' | 'eliminarSeccion' | 'ordenarSecciones' | 'guardarCarrusel' | 'guardarConfigSitio' | 'exportarProductosCsvSitio' | 'asignarRol' | 'quitarRol' | 'invitarUsuario' | 'anularInvitacion' | 'reenviarInvitacion' | 'buscarUsuarioPorCorreo' | 'listarFichas' | 'listarMedios' | 'leerConfigSitio' | 'listarSecciones' | 'listarCarruseles' | 'listarUsuarios' | 'modulosActivos' | 'configuracionComercial' | 'reservarSubidaLogo' | 'estadoSubidaLogo' | 'finalizarSubidaLogo' | 'leerLogo' | 'quitarLogo']: H<N>;
 } = {
   buscarComprobantes(c, e) {
     const q = e.consulta;
@@ -317,6 +339,52 @@ export const handlersOtros: {
     const filas = [...c.e.productos.values()].map((p) => [p.id, p.nombre, p.categoria, p.marca ?? '', p.sku, p.activo ? 'si' : 'no', p.garantiaMeses ?? '', p.precioUSD.bo / 100, p.precioUSD.ar / 100]);
     return { csv: aCsv(['id', 'nombre', 'categoria', 'marca', 'sku', 'activo', 'garantiaMeses', 'precioBO', 'precioAR'], filas) };
   },
+  invitarUsuario(c, e) {
+    exigirRol(c, ['adm']);
+    limitarInvitaciones(c);
+    const correo = e.correo.trim().toLowerCase();
+    const respuesta = { ok: true as const, mensaje: 'Invitación enviada' };
+    barrerVencidas(c);
+    const previa = c.e.usuarios.find((x) => x.correo?.toLowerCase() === correo);
+    if (previa?.estado === 'invitado') {
+      previa.rol = e.rol; // otra invitación para el mismo correo: se actualiza el rol, sin cupo nuevo
+      return respuesta;
+    }
+    if (previa !== undefined) return respuesta; // ya es miembro: misma respuesta, sin cambios
+    if (c.e.usuarios.length >= LIMITES_PANEL.usuarios) throw fallo('limite-del-plan');
+    const i = c.e.cuentasSinRol.findIndex((x) => x.correo?.toLowerCase() === correo);
+    const existente = c.e.cuentasSinRol[i];
+    let uid: string;
+    if (existente !== undefined) {
+      uid = existente.uid;
+      c.e.cuentasSinRol.splice(i, 1);
+    } else {
+      uid = `u-invitado-${String(c.e.invitaciones.siguiente++)}`;
+      c.e.invitaciones.cuentasCreadas.add(uid);
+    }
+    c.e.usuarios.push({ uid, correo, rol: e.rol, verificado: false, estado: 'invitado', venceEnMs: c.ahora + CADUCIDAD_INVITACION_MS });
+    auditar(c, 'miembro.invitar', `usuarios/${uid}`);
+    return respuesta;
+  },
+  anularInvitacion(c, e) {
+    exigirRol(c, ['adm']);
+    const i = c.e.usuarios.findIndex((x) => x.uid === e.uid && x.estado === 'invitado');
+    const u = c.e.usuarios[i];
+    if (u === undefined) throw fallo('no-miembro');
+    c.e.usuarios.splice(i, 1);
+    if (!c.e.invitaciones.cuentasCreadas.delete(u.uid)) c.e.cuentasSinRol.push({ ...u, rol: 'caj', verificado: u.verificado, estado: 'activo' }); // una cuenta que ya existía vuelve a quedar libre
+    auditar(c, 'miembro.anular-invitacion', `usuarios/${e.uid}`);
+    return { ok: true };
+  },
+  reenviarInvitacion(c, e) {
+    exigirRol(c, ['adm']);
+    limitarInvitaciones(c);
+    const u = c.e.usuarios.find((x) => x.uid === e.uid && x.estado === 'invitado');
+    if (u === undefined) throw fallo('no-miembro');
+    u.venceEnMs = c.ahora + CADUCIDAD_INVITACION_MS;
+    auditar(c, 'miembro.reenviar-invitacion', `usuarios/${e.uid}`);
+    return { ok: true, mensaje: 'Invitación enviada', venceEnMs: u.venceEnMs };
+  },
   asignarRol(c, e) {
     if (e.rol === 'adm') throw fallo('jerarquia');
     const u = c.e.usuarios.find((x) => x.uid === e.uid);
@@ -332,6 +400,14 @@ export const handlersOtros: {
       auditar(c, 'identidad.asignar-rol', `usuarios/${e.uid}`);
       return { ok: true };
     }
+    if (u.estado === 'invitado') {
+      // Como el servidor: la asignación sobrescribe la invitación pendiente y la persona queda activa (el cupo ya estaba reservado).
+      const i = c.e.usuarios.indexOf(u);
+      c.e.usuarios[i] = { uid: u.uid, correo: u.correo, rol: e.rol, verificado: u.verificado };
+      c.e.invitaciones.cuentasCreadas.delete(u.uid);
+      auditar(c, 'identidad.asignar-rol', `usuarios/${e.uid}`);
+      return { ok: true };
+    }
     if (u.rol === 'adm') throw fallo('jerarquia');
     u.rol = e.rol;
     auditar(c, 'identidad.asignar-rol', `usuarios/${e.uid}`);
@@ -341,6 +417,7 @@ export const handlersOtros: {
     const i = c.e.usuarios.findIndex((x) => x.uid === e.uid);
     const u = c.e.usuarios[i];
     if (u === undefined) throw fallo('no-miembro');
+    if (u.estado === 'invitado') throw fallo('estado', 'Es una invitación: anúlela.');
     if (u.rol === 'adm') throw fallo('jerarquia');
     c.e.usuarios.splice(i, 1);
     c.e.cuentasSinRol.push({ ...u, rol: 'caj' });
@@ -352,14 +429,19 @@ export const handlersOtros: {
   leerConfigSitio: (c) => c.e.configSitio,
   listarSecciones: (c) => c.e.secciones,
   listarCarruseles: (c) => [...c.e.carruseles.values()],
-  listarUsuarios: (c) => c.e.usuarios,
+  listarUsuarios(c) {
+    barrerVencidas(c);
+    // Las invitaciones las ve solo el administrador, como en el servidor.
+    return c.e.usuarios.filter((u) => u.estado !== 'invitado' || c.rol === 'adm');
+  },
   modulosActivos: (c) => [...c.e.modulos],
   // Por omisión, la forma de tres monedas del tenant de referencia (BO vende en BOB y AR en ARS, base USD); `c.e.comercial` la reemplaza.
   configuracionComercial: (c) => c.e.comercial,
   buscarUsuarioPorCorreo(c, e) {
     exigirRol(c, ['adm']);
     const buscado = e.correo.trim().toLowerCase();
-    const u = [...c.e.usuarios, ...c.e.cuentasSinRol].find((x) => x.correo?.toLowerCase() === buscado);
+    // Una invitación pendiente no hace miembro: no se revela (como en el servidor).
+    const u = [...c.e.usuarios.filter((x) => x.estado !== 'invitado'), ...c.e.cuentasSinRol].find((x) => x.correo?.toLowerCase() === buscado);
     if (u === undefined) throw fallo('no-encontrado', 'No existe una cuenta con ese correo.');
     return { uid: u.uid, correoVerificado: u.verificado, conContrasena: true };
   },

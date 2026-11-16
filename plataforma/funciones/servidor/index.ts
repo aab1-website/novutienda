@@ -26,7 +26,7 @@ import { crearManejador, type TablaImplementaciones } from './llamadas/marco.js'
 import { accionesMedios } from './llamadas/medios.js';
 import { accionesPos } from './llamadas/pos.js';
 import { accionesRecibos } from './llamadas/recibos.js';
-import { accionesUsuarios } from './llamadas/usuarios.js';
+import { accionesUsuarios, manejadorActivarInvitaciones } from './llamadas/usuarios.js';
 import { ejecutarLimpiezaSubidas, ejecutarTemporizadorSitio } from './programadas/consola.js';
 import { ejecutarCotizaciones } from './programadas/cotizacion.js';
 import { procesarObjetoSubido } from './trigger-medios.js';
@@ -50,6 +50,8 @@ export const pos = onCall({ invoker: 'public', memory: '512MiB' }, callable('pos
 export const inventarios = onCall({ invoker: 'public', memory: '512MiB', timeoutSeconds: 120 }, callable('inventarios', accionesInventarios));
 // Las acciones de usuarios (Central, `llamadas/usuarios.ts`) viajan en el callable `consola` para no cambiar el contrato del panel.
 export const consola = onCall({ invoker: 'public', memory: '512MiB' }, callable('consola', { ...accionesConsola, ...accionesUsuarios }));
+// Activación de invitaciones al iniciar sesión: callable propio (sin tenant ni rol); el manejador exige App Check, token vigente y correo verificado.
+export const activarInvitaciones = onCall({ invoker: 'public', memory: '512MiB' }, manejadorActivarInvitaciones({ entorno, appCheckExigido }));
 export const recibos = onCall({ invoker: 'public', memory: '512MiB' }, callable('recibos', accionesRecibos));
 export const medios = onCall({ invoker: 'public', memory: '2GiB', timeoutSeconds: 540, maxInstances: 3 }, callable('medios', accionesMedios));
 

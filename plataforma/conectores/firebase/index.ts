@@ -10,6 +10,7 @@ export { crearLectorDisponibilidad } from './disponibilidad.js';
 export { aKebab, CODIGO_DE_BORDE, CODIGO_MODULO_APAGADO, traducirError } from './errores.js';
 export type { CodigoHttps, ErrorTraducido } from './errores.js';
 export { COLECCION_LIMITES, crearLimiteTasa, hashClave } from './limite-tasa.js';
+export { crearIndiceInvitaciones } from './indice-invitaciones.js';
 export { crearLecturaRecibos } from './lectura-recibos.js';
 export { binariosDeVideo, crearProcesadorMedios, demuxerPermitido, FormatoVideoNoAdmitido, procesadorImagenes, procesadorVideo, sondaVideo, VideoNoDisponible } from './procesador-medios.js';
 export {

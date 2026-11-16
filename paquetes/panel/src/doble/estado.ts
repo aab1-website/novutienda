@@ -53,6 +53,8 @@ export interface EstadoDoble {
   redondeo: RedondeoPorMoneda;
   /** Cuentas de Firebase Auth que existen pero aún no son miembros de este negocio (el panel no crea cuentas). */
   cuentasSinRol: Mutable<UsuarioVista>[];
+  /** Invitaciones: instantes de los envíos de la última hora (límite de 5 por hora) y uid de las cuentas nacidas con una invitación. */
+  invitaciones: { envios: number[]; cuentasCreadas: Set<string>; siguiente: number };
   bytesOriginales: number;
   /**
    * Importación de productos por tandas (como el servidor, que parte el archivo por peso de escrituras): `filasPorTanda`
@@ -65,7 +67,7 @@ const HTTPS_DE_MODULO: Readonly<Record<string, string>> = {
   'entrada-invalida': 'invalid-argument', 'no-autorizado': 'permission-denied', 'sin-permiso': 'permission-denied', 'no-encontrado': 'not-found',
   'producto-inexistente': 'not-found', 'venta-inexistente': 'not-found', 'aprobacion-inexistente': 'not-found', 'credito-inexistente': 'not-found',
   'operacion-conflicto': 'already-exists', conflicto: 'already-exists', 'request-en-uso': 'already-exists', limite: 'resource-exhausted',
-  'cuota-excedida': 'resource-exhausted', 'limite-del-plan': 'failed-precondition',
+  'cuota-excedida': 'resource-exhausted', 'limite-del-plan': 'failed-precondition', 'limite-invitaciones': 'resource-exhausted',
 };
 
 /** Error del módulo con su código HTTPS (por omisión `failed-precondition`). */
@@ -154,6 +156,7 @@ export function crearEstado(ahora: number): EstadoDoble {
       { uid: 'u-nueva', correo: 'nueva@ejemplo.test', rol: 'caj', verificado: true },
       { uid: 'u-pendiente', correo: 'pendiente@ejemplo.test', rol: 'caj', verificado: false },
     ],
+    invitaciones: { envios: [], cuentasCreadas: new Set(), siguiente: 1 },
     bytesOriginales: 0,
     importacion: { filasPorTanda: 40 },
   };
