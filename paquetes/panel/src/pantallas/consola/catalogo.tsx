@@ -1,7 +1,11 @@
 import type { JSX } from 'preact';
 import { useState } from 'preact/hooks';
 import { LIMITES_PANEL, PLANTILLAS_SITIO, type Carrusel, type ConfigSitio, type PlantillaSitio } from '../../api/tipos.js';
-import { Alerta, Boton, BotonConfirmado, Campo, Cargando, Dato, ErrorCarga, Pestanas, Selector, Seccion, Vacio, fechaHora } from '../../ui/comun.js';
+import { mensajeDeError } from '../../api/errores.js';
+import { Alerta, Boton, BotonConfirmado, Campo, Cargando, Dato, ErrorCarga, Pestanas, Seccion, Vacio, fechaHora } from '../../ui/comun.js';
+import { useAvisos } from '../../ui/avisos.js';
+import { useBorrador, useCambiosSinGuardar } from '../../ui/guardia.js';
+import { SelectorBuscable } from '../../ui/selector-buscable.js';
 import { useConfiguracionComercial } from '../../ui/comercial.js';
 import { useApp } from '../../ui/contexto.js';
 import { useAccion, useCarga } from '../../ui/hooks.js';
@@ -81,63 +85,135 @@ function VistaPrevia({ id, tema }: { id: PlantillaSitio; tema: 'claro' | 'oscuro
   );
 }
 
+const CLAVE_CONFIG = 'consola.apariencia.config';
+const CLAVE_CARRUSELES = 'consola.apariencia.carruseles';
+const WHATSAPP = /^[1-9]\d{7,14}$/;
+const CONFIG_INICIAL: ConfigSitio = { plantillaActiva: 'cielo', whatsappNovuchat: '', medicion: {} };
+type Items = Carrusel['items'];
+type Borradores = Partial<Record<PlantillaSitio, Items>>;
+
+/** Forma comparable de la configuración: el orden de las claves de `medicion` no cuenta. */
+const huellaConfig = (c: ConfigSitio): string => JSON.stringify([c.plantillaActiva, c.whatsappNovuchat, c.medicion.ga4 ?? '', c.medicion.searchConsole ?? '', c.medicion.metaPixel ?? '', c.medicion.tiktokPixel ?? '']);
+const huellaItems = (i: Items): string => JSON.stringify(i);
+const lista = (x: readonly string[]): string => x.join(' y ');
+
+interface PasoGuardado {
+  readonly nombre: string;
+  readonly guardar: () => Promise<unknown>;
+  readonly alGuardar: () => void;
+}
+
+/** Dice con exactitud qué quedó guardado y qué no, con el motivo de cada falla. */
+function textoParcial(hechos: readonly string[], fallos: readonly { nombre: string; motivo: string }[]): string {
+  const fallaron = fallos.map((f) => `${f.nombre} (${f.motivo.replace(/[.\s]+$/, '')})`).join('; ');
+  const antes = hechos.length === 0 ? 'No quedó guardado nada.' : `Quedó guardado: ${lista(hechos)}.`;
+  return `${antes} No quedó guardado: ${fallaron}. Lo que escribió sigue aquí: corrija y pulse «Guardar apariencia» otra vez.`;
+}
+
 function Apariencia(): JSX.Element {
   const { api } = useApp();
+  const avisos = useAvisos();
   const datos = useCarga(async () => ({ config: await api.llamar('leerConfigSitio', {}), carruseles: await api.llamar('listarCarruseles', {}), productos: await api.llamar('listarProductos', {}) }), []);
   const accion = useAccion();
-  const [cfg, setCfg] = useState<ConfigSitio | null>(null);
-  const [ok, setOk] = useState<string | null>(null);
-  const [items, setItems] = useState<Carrusel['items'] | null>(null);
-  if (datos.cargando) return <Cargando />;
+  // Un borrador de la configuración y uno de carrusel por plantilla: cambiar de plantilla no borra lo editado.
+  const cfgB = useBorrador<ConfigSitio | null>(CLAVE_CONFIG, null);
+  const carrB = useBorrador<Borradores>(CLAVE_CARRUSELES, {});
+  const servidor = datos.datos?.config ?? CONFIG_INICIAL;
+  const c: ConfigSitio = cfgB.valor ?? servidor;
+  const delServidor = (p: PlantillaSitio): Items => datos.datos?.carruseles.find((x) => x.plantilla === p)?.items ?? [];
+  const cfgSucia = cfgB.valor !== null && huellaConfig(cfgB.valor) !== huellaConfig(servidor);
+  const editadas = PLANTILLAS_SITIO.filter((p) => {
+    const d = carrB.valor[p];
+    return d !== undefined && huellaItems(d) !== huellaItems(delServidor(p));
+  });
+  const sucio = datos.datos !== undefined && (cfgSucia || editadas.length > 0);
+  const { marcarGuardado } = useCambiosSinGuardar(sucio, [CLAVE_CONFIG, CLAVE_CARRUSELES]);
+  if (datos.cargando && datos.datos === undefined) return <Cargando />;
   if (datos.error || !datos.datos) return <ErrorCarga error={datos.error ?? 'Sin datos'} reintentar={datos.recargar} />;
-  const c: ConfigSitio = cfg ?? datos.datos.config ?? { plantillaActiva: 'cielo', whatsappNovuchat: '', medicion: {} };
   const med = c.medicion;
   const setMed = (k: keyof ConfigSitio['medicion'], v: string): void => {
     const { [k]: _quitado, ...resto } = med;
     void _quitado;
-    setCfg({ ...c, medicion: v.trim() === '' ? resto : { ...resto, [k]: v.trim() } });
-    setOk(null);
+    cfgB.poner({ ...c, medicion: v.trim() === '' ? resto : { ...resto, [k]: v.trim() } });
   };
-  const carrusel = datos.datos.carruseles.find((x) => x.plantilla === c.plantillaActiva);
-  const itemsActuales = items ?? carrusel?.items ?? [];
+  const items = carrB.valor[c.plantillaActiva] ?? delServidor(c.plantillaActiva);
+  const setItems = (i: Items): void => carrB.poner((prev) => ({ ...prev, [c.plantillaActiva]: i }));
+  const whatsappValido = WHATSAPP.test(c.whatsappNovuchat);
+  const sinTexto = editadas.find((p) => (carrB.valor[p] ?? []).some((i) => i.alt.trim() === ''));
+  const motivo = !whatsappValido
+    ? 'Escriba el WhatsApp del asistente: solo dígitos, con código de país (de 8 a 15 dígitos).'
+    : sinTexto !== undefined
+      ? `Escriba el texto alternativo de cada foto del carrusel de ${PALETAS[sinTexto].nombre}.`
+      : !sucio
+        ? 'No hay cambios por guardar.'
+        : undefined;
+
+  const guardar = (): void => {
+    const pasos: PasoGuardado[] = [];
+    if (cfgSucia) pasos.push({ nombre: 'la plantilla y los datos del sitio', guardar: () => api.llamar('guardarConfigSitio', { config: c }), alGuardar: cfgB.descartar });
+    for (const p of editadas) {
+      const itemsP = carrB.valor[p] ?? [];
+      pasos.push({
+        nombre: `el carrusel de ${PALETAS[p].nombre}`,
+        guardar: () => api.llamar('guardarCarrusel', { carrusel: { plantilla: p, items: itemsP } }),
+        alGuardar: () => carrB.poner((prev) => { const { [p]: _guardado, ...resto } = prev; void _guardado; return resto; }),
+      });
+    }
+    void accion.ejecutar(async () => {
+      const hechos: string[] = [];
+      const fallos: { nombre: string; motivo: string }[] = [];
+      for (const paso of pasos) {
+        try {
+          await paso.guardar();
+          paso.alGuardar();
+          hechos.push(paso.nombre);
+        } catch (e) {
+          fallos.push({ nombre: paso.nombre, motivo: mensajeDeError(e) });
+        }
+      }
+      datos.recargar();
+      if (fallos.length === 0) {
+        marcarGuardado();
+        avisos.ok('Apariencia guardada. Falta publicar el sitio.');
+      } else avisos.error(textoParcial(hechos, fallos));
+    });
+  };
+
   return (
     <div>
       <Seccion titulo="Plantilla de color">
-        <p class="texto-suave">Cinco plantillas, cada una con tema claro y oscuro. Las vistas son aproximadas; el sitio muestra la definitiva.</p>
+        <p class="texto-suave">Cinco plantillas, cada una con tema claro y oscuro. Las vistas son aproximadas; el sitio muestra la definitiva. Cada plantilla tiene su propio carrusel: al cambiar de plantilla, lo que editó en las otras se conserva.</p>
         <fieldset class="plantillas">
           <legend>Plantilla activa</legend>
           {PLANTILLAS_SITIO.map((id) => (
             <label key={id} class={`plantilla-opcion ${c.plantillaActiva === id ? 'activa' : ''}`}>
-              <input type="radio" name="plantilla" value={id} checked={c.plantillaActiva === id} onChange={() => { setCfg({ ...c, plantillaActiva: id }); setItems(null); setOk(null); }} />
+              <input type="radio" name="plantilla" value={id} checked={c.plantillaActiva === id} onChange={() => cfgB.poner({ ...c, plantillaActiva: id })} />
               <span class="plantilla-nombre">{PALETAS[id].nombre}</span>
               <span class="fila"><VistaPrevia id={id} tema="claro" /><VistaPrevia id={id} tema="oscuro" /></span>
             </label>
           ))}
         </fieldset>
         <div class="cuadricula">
-          <Campo etiqueta="WhatsApp del asistente (solo dígitos, con código de país)" valor={c.whatsappNovuchat} onInput={(v) => { setCfg({ ...c, whatsappNovuchat: v }); setOk(null); }} inputMode="numeric" requerido />
-          <Campo etiqueta="Google Analytics (G-…)" valor={med.ga4 ?? ''} onInput={(v) => setMed('ga4', v)} />
-          <Campo etiqueta="Search Console" valor={med.searchConsole ?? ''} onInput={(v) => setMed('searchConsole', v)} />
-          <Campo etiqueta="Píxel de Meta" valor={med.metaPixel ?? ''} onInput={(v) => setMed('metaPixel', v)} />
-          <Campo etiqueta="Píxel de TikTok" valor={med.tiktokPixel ?? ''} onInput={(v) => setMed('tiktokPixel', v)} />
+          <Campo etiqueta="WhatsApp del asistente (solo dígitos, con código de país)" valor={c.whatsappNovuchat} onInput={(v) => cfgB.poner({ ...c, whatsappNovuchat: v })} inputMode="numeric" requerido ayuda="Ejemplo: 59171234567 (sin +, espacios ni guiones)." error={c.whatsappNovuchat !== '' && !whatsappValido ? 'Use solo dígitos, con código de país, de 8 a 15 dígitos.' : undefined} />
+          <Campo etiqueta="Google Analytics (G-…)" valor={med.ga4 ?? ''} onInput={(v) => setMed('ga4', v)} ayuda="Opcional. Ejemplo: G-ABC123XYZ." />
+          <Campo etiqueta="Search Console" valor={med.searchConsole ?? ''} onInput={(v) => setMed('searchConsole', v)} ayuda="Opcional. Código de verificación del sitio." />
+          <Campo etiqueta="Píxel de Meta" valor={med.metaPixel ?? ''} onInput={(v) => setMed('metaPixel', v)} ayuda="Opcional. Solo dígitos, de 8 a 20." />
+          <Campo etiqueta="Píxel de TikTok" valor={med.tiktokPixel ?? ''} onInput={(v) => setMed('tiktokPixel', v)} ayuda="Opcional. Letras mayúsculas y dígitos, de 10 a 30." />
         </div>
-        {accion.error && <Alerta>{accion.error}</Alerta>}
-        {ok && <Alerta tipo="ok">{ok}</Alerta>}
-        <Boton ocupado={accion.ocupado} deshabilitado={!/^[1-9]\d{7,14}$/.test(c.whatsappNovuchat)} onClick={() => void accion.ejecutar(async () => { await api.llamar('guardarConfigSitio', { config: c }); setOk('Apariencia guardada. Falta publicar el sitio.'); setCfg(null); datos.recargar(); })}>
-          Guardar apariencia
-        </Boton>
       </Seccion>
-      <CarruselEditor plantilla={c.plantillaActiva} items={itemsActuales} setItems={setItems} productos={datos.datos.productos.map((p) => ({ id: p.id, nombre: p.nombre }))} alGuardar={datos.recargar} />
+      <CarruselEditor plantilla={c.plantillaActiva} items={items} setItems={setItems} productos={datos.datos.productos.map((p) => ({ id: p.id, nombre: p.nombre }))} />
+      <Boton ocupado={accion.ocupado} motivo={motivo} onClick={guardar}>
+        Guardar apariencia
+      </Boton>
     </div>
   );
 }
 
-function CarruselEditor({ plantilla, items, setItems, productos, alGuardar }: { plantilla: PlantillaSitio; items: Carrusel['items']; setItems: (i: Carrusel['items']) => void; productos: { id: string; nombre: string }[]; alGuardar: () => void }): JSX.Element {
+function CarruselEditor({ plantilla, items, setItems, productos }: { plantilla: PlantillaSitio; items: Items; setItems: (i: Items) => void; productos: { id: string; nombre: string }[] }): JSX.Element {
   const { api } = useApp();
-  const accion = useAccion();
-  const [productoId, setProductoId] = useState(productos[0]?.id ?? '');
-  const fotos = useCarga(() => (productoId === '' ? Promise.resolve([]) : api.llamar('listarMedios', { productoId })), [productoId]);
-  const [ok, setOk] = useState(false);
+  // Sin producto elegido de antemano: se busca y se elige.
+  const [productoId, setProductoId] = useState<string | null>(null);
+  const fotos = useCarga(() => (productoId === null ? Promise.resolve([]) : api.llamar('listarMedios', { productoId })), [productoId]);
   const mover = (i: number, d: number): void => {
     const n = [...items];
     const x = n[i];
@@ -147,6 +223,7 @@ function CarruselEditor({ plantilla, items, setItems, productos, alGuardar }: { 
     n[i + d] = x;
     setItems(n);
   };
+  const nombreProducto = productos.find((p) => p.id === productoId)?.nombre ?? '';
   return (
     <Seccion titulo={`Carrusel de portada (${PALETAS[plantilla].nombre})`}>
       {items.length === 0 && <Vacio titulo="El carrusel no tiene fotos" detalle="Agregue hasta 8 fotos de los productos." />}
@@ -154,7 +231,7 @@ function CarruselEditor({ plantilla, items, setItems, productos, alGuardar }: { 
         {items.map((it, i) => (
           <li key={it.medioId} class="fila fila-alinear">
             <span>{i + 1}.</span>
-            <Campo etiqueta={`Texto alternativo de la foto ${i + 1}`} valor={it.alt} onInput={(v) => setItems(items.map((x, j) => (j === i ? { ...x, alt: v } : x)))} />
+            <Campo etiqueta={`Texto alternativo de la foto ${i + 1}`} valor={it.alt} error={it.alt.trim() === '' ? 'Escriba qué se ve en la foto.' : undefined} onInput={(v) => setItems(items.map((x, j) => (j === i ? { ...x, alt: v } : x)))} />
             <Boton chico variante="secundario" onClick={() => mover(i, -1)} deshabilitado={i === 0} etiqueta={`Subir foto ${i + 1}`}>Subir</Boton>
             <Boton chico variante="secundario" onClick={() => mover(i, 1)} deshabilitado={i === items.length - 1} etiqueta={`Bajar foto ${i + 1}`}>Bajar</Boton>
             <Boton chico variante="peligro" onClick={() => setItems(items.filter((_, j) => j !== i))} etiqueta={`Quitar foto ${i + 1}`}>Quitar</Boton>
@@ -163,18 +240,12 @@ function CarruselEditor({ plantilla, items, setItems, productos, alGuardar }: { 
       </ol>
       {items.length < 8 && (
         <div class="fila fila-alinear">
-          <Selector etiqueta="Producto de la foto" valor={productoId} onCambio={setProductoId} opciones={productos.map((p) => ({ valor: p.id, texto: p.nombre }))} />
+          <SelectorBuscable etiqueta="Producto de la foto" valor={productoId} onCambio={setProductoId} opciones={productos.map((p) => ({ valor: p.id, texto: p.nombre }))} ayuda="Escriba para buscar el producto y luego elija la foto." />
           {(fotos.datos ?? []).filter((m) => m.tipo === 'foto' && !items.some((i) => i.medioId === m.id)).map((m) => (
-            <Boton key={m.id} chico variante="secundario" onClick={() => setItems([...items, { medioId: m.id, alt: '' }])}>Agregar foto {m.id.slice(0, 6)}</Boton>
+            <Boton key={m.id} chico variante="secundario" onClick={() => setItems([...items, { medioId: m.id, alt: nombreProducto }])}>Agregar foto {m.id.slice(0, 6)}</Boton>
           ))}
         </div>
       )}
-      {accion.error && <Alerta>{accion.error}</Alerta>}
-      {ok && <Alerta tipo="ok">Carrusel guardado.</Alerta>}
-      <Boton ocupado={accion.ocupado} deshabilitado={items.some((i) => i.alt.trim() === '')} onClick={() => void accion.ejecutar(async () => { await api.llamar('guardarCarrusel', { carrusel: { plantilla, items } }); setOk(true); alGuardar(); })}>
-        Guardar carrusel
-      </Boton>
-      {items.some((i) => i.alt.trim() === '') && <p class="texto-suave">Cada foto necesita texto alternativo.</p>}
     </Seccion>
   );
 }
