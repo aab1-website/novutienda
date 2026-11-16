@@ -9,14 +9,8 @@ import { ejecutarOperacion, exigirAutor, PERMISOS, type ResultadoOperacion } fro
 /**
  * Precio por mercado del tenant, con la clave `claveDePrecio(idMercado)` y el valor en centavos de la moneda BASE de ese
  * mercado (USD en el tenant de tres monedas). El campo guardado se sigue llamando `precioUSD` por compatibilidad: no se migra.
- *
- * TRANSITORIO: `bo` y `ar` figuran como obligatorios en el TIPO solo para que el panel (contrato `Cabe<...>`), la batería de
- * equivalencia y el coordinador sigan compilando sin cambios en este PR; en tiempo de ejecución se exige un precio por cada
- * mercado que declara el tenant y por ninguno más (un tenant de un mercado no tiene `bo` ni `ar`). El panel (PR C) y los demás
- * consumidores lo migran y se retira el tipo con `bo`/`ar`.
  */
-// eslint-disable-next-line @typescript-eslint/no-explicit-any -- el índice `any` deja asignar la interfaz `{ bo, ar }` del panel (transitorio, ver arriba)
-export type PrecioUSD = { readonly bo: number; readonly ar: number; readonly [claveDeMercado: string]: any };
+export type PrecioUSD = Readonly<Record<string, number>>;
 
 /** Precios por clave de mercado tal como se validan y se guardan. */
 type PreciosPorClave = Readonly<Record<string, number>>;
@@ -99,7 +93,7 @@ export function validarEntradaProducto(x: EntradaProducto, comercial: Configurac
     publicado: x.publicado ?? false,
     conSerie,
     controlaStock,
-    precioUSD: exigirPrecio(x.precioUSD, comercial) as PrecioUSD,
+    precioUSD: exigirPrecio(x.precioUSD, comercial),
     ...(x.marca !== undefined ? { marca: texto(x.marca, 'marca', 60) } : {}),
     ...(x.garantiaMeses !== undefined ? { garantiaMeses: x.garantiaMeses } : {}),
     ...(x.minimo !== undefined ? { minimo: x.minimo } : {}),
