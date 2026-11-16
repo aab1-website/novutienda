@@ -1,5 +1,5 @@
 import { ErrorApi } from '../../api/errores.js';
-import type { CambiosProducto, CodigoMoneda, EntradaProducto, PrecioUSDCentavos, PreciosPorMercado, ProductoPanel } from '../../api/tipos.js';
+import type { CambiosProducto, CodigoMoneda, EntradaProducto, PreciosPorMercado, ProductoPanel } from '../../api/tipos.js';
 import { centavosATexto, textoACentavos } from '../../util/dinero.js';
 import { PARECIDO_SKU } from './identificador.js';
 import { nombreMoneda, type MercadoPrecio } from './nombres.js';
@@ -37,7 +37,7 @@ export const clavePrecio = (clave: string): string => `precio.${clave}`;
 
 /** Precio base del producto en un mercado (centavos de su moneda base), o `undefined` si está «sin precio» ahí. */
 export function precioDelProducto(p: ProductoPanel, clave: string): number | undefined {
-  const precios = p.precioUSD as unknown as PreciosPorMercado;
+  const precios = p.precioUSD;
   return Object.hasOwn(precios, clave) ? precios[clave] : undefined;
 }
 
@@ -136,7 +136,7 @@ export function revisarProducto(f: FormProducto, ctx: ContextoRevision): Errores
 }
 
 /** Precio en centavos por mercado declarado; un mercado vacío se omite (solo si ya estaba sin precio); `null` si alguno no es válido. */
-export function preciosACentavos(f: FormProducto, mercados: readonly MercadoPrecio[]): PrecioUSDCentavos | null {
+export function preciosACentavos(f: FormProducto, mercados: readonly MercadoPrecio[]): PreciosPorMercado | null {
   const salida: Record<string, number> = {};
   for (const m of mercados) {
     if ((f.precios[m.clave] ?? '').trim() === '') continue;
@@ -144,7 +144,7 @@ export function preciosACentavos(f: FormProducto, mercados: readonly MercadoPrec
     if (c === null) return null;
     salida[m.clave] = c;
   }
-  return salida as unknown as PrecioUSDCentavos;
+  return salida;
 }
 
 /** Entrada de alta; solo con un formulario ya revisado. */
@@ -207,8 +207,7 @@ export function cambiosDeEdicion(f: FormProducto, p: ProductoPanel, puedeEditarC
     }
   }
   const precios = preciosACentavos(f, mercados);
-  const nuevos = precios as unknown as PreciosPorMercado | null;
-  const cambiaPrecio = nuevos !== null && mercados.some((m) => Object.hasOwn(nuevos, m.clave) && nuevos[m.clave] !== precioDelProducto(p, m.clave));
+  const cambiaPrecio = precios !== null && mercados.some((m) => Object.hasOwn(precios, m.clave) && precios[m.clave] !== precioDelProducto(p, m.clave));
   if (precios !== null && cambiaPrecio) c.precioUSD = precios;
   return { cambios: c, vaciados, desactiva: p.activo && !f.activo };
 }
