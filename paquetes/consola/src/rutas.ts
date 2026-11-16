@@ -2,6 +2,11 @@ import { esTenantIdValido } from '@novutienda/nucleo';
 import { ErrorConsola } from './errores.js';
 
 export const ID_PRODUCTO = /^[a-z0-9][a-z0-9-]{1,59}$/;
+/**
+ * Destino fijo del logo del negocio. Ningún producto puede llamarse así: `ID_PRODUCTO` exige empezar con [a-z0-9]
+ * (y `_` no cumple), de modo que `_negocio` nunca choca con un producto real ni se verifica contra el catálogo.
+ */
+export const ID_NEGOCIO = '_negocio';
 export const ID_SUBIDA = /^[A-Za-z0-9_-]{8,40}$/;
 export const ID_SECCION = /^[a-z0-9][a-z0-9-]{0,29}$/;
 
@@ -14,7 +19,7 @@ export function tenantValido(tenantId: string): string {
 export const rutaFicha = (t: string, productoId: string): string => `tenants/${t}/fichasWeb/${productoId}`;
 export const rutaSeccion = (t: string, id: string): string => `tenants/${t}/secciones/${id}`;
 export const rutaCarrusel = (t: string, plantilla: string): string => `tenants/${t}/carruseles/${plantilla}`;
-export const rutaSitio = (t: string, doc: 'config' | 'indice' | 'slugs' | 'estado'): string => `tenants/${t}/sitio/${doc}`;
+export const rutaSitio = (t: string, doc: 'config' | 'indice' | 'slugs' | 'estado' | 'logo'): string => `tenants/${t}/sitio/${doc}`;
 export const rutaPublicado = (t: string, doc: string): string => `tenants/${t}/publicado/${doc}`;
 export const rutaSubida = (t: string, id: string): string => `tenants/${t}/subidas/${id}`;
 export const rutaMedio = (t: string, id: string): string => `tenants/${t}/medios/${id}`;

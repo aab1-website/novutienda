@@ -39,7 +39,10 @@ service firebase.storage {
               && request.resource.contentType.matches('image/(jpeg|png|webp|heic)'))
             || (r.tipo == 'video'
               && request.resource.size <= 200 * 1024 * 1024
-              && request.resource.contentType.matches('video/(mp4|quicktime|webm)')));
+              && request.resource.contentType.matches('video/(mp4|quicktime|webm)'))
+            || (r.tipo == 'logo'
+              && request.resource.size <= 2 * 1024 * 1024
+              && request.resource.contentType.matches('image/(jpeg|png|webp)')));
     }
 
     // Módulo recibos

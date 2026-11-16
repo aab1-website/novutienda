@@ -36,7 +36,7 @@ const colecciones: readonly ColeccionManifiesto[] = [
  * Rutas de Storage (relativas a `tenants/{t}/`). Quién escribe cada una:
  *  - `privado/originales/...`: el navegador SOLO crea (nunca actualiza ni borra), con rol sup/adm y una reserva vigente en
  *    `subidas` hecha antes por el servidor. Los campos de la reserva (`estado`, `venceEn`, `productoId`, `por`, `bytes`, `tipo`)
- *    son contrato con `src/medios/subidas.ts`; `tipo` es `'foto'` o `'video'`. Lectura: solo el servidor.
+ *    son contrato con `src/medios/subidas.ts`; `tipo` es `'foto'`, `'video'` o `'logo'` (el logo va a `_negocio/{subidaId}` y el servidor lo reserva solo para `adm`). Lectura: solo el servidor.
  *  - `privado/procesando/**`: temporales; lee y escribe solo el servidor.
  *  - `publico/medios/**`: el servidor procesa y publica; lo lee el sitio (lectura pública). Es la única ruta pública que usa
  *    el módulo (`rutaPublicaMedio`); nada más bajo `publico/` queda legible.
@@ -52,6 +52,7 @@ const almacenamiento: readonly RutaAlmacenamiento[] = [
       archivos: [
         { tipo: 'foto', bytesMax: LIMITES_CONSOLA.bytesFoto, contentType: 'image/(jpeg|png|webp|heic)' },
         { tipo: 'video', bytesMax: LIMITES_CONSOLA.bytesVideo, contentType: 'video/(mp4|quicktime|webm)' },
+        { tipo: 'logo', bytesMax: LIMITES_CONSOLA.bytesLogo, contentType: 'image/(jpeg|png|webp)' },
       ],
     },
   },
@@ -75,6 +76,8 @@ const ACCIONES_CONSOLA: readonly (readonly [string, readonly Rol[]])[] = [
   ['secciones', ['sup', 'adm']],
   ['carruseles', ['sup', 'adm']],
   ['configSitio', ['sup', 'adm']],
+  ['leerLogo', ['sup', 'adm']],
+  ['quitarLogo', ['adm']],
   ['exportarProductosCsv', ['sup', 'adm']],
   ['publicarSitio', ['adm']],
   ['tablero', ['sup', 'adm']],

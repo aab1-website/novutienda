@@ -15,7 +15,7 @@ export const depsMedios = (c: Pick<Contexto, 'e'>): DepsMedios => ({
 
 export const accionesMedios: TablaImplementaciones = {
   reservarSubida: accion({
-    esquema: objeto({ subidaId: SUBIDA_ID, productoId: ID_PRODUCTO, tipo: z.enum(['foto', 'video']), bytes: z.number().int().positive().max(200 * 1024 * 1024) }),
+    esquema: objeto({ subidaId: SUBIDA_ID, productoId: z.union([ID_PRODUCTO, z.literal('_negocio')]), tipo: z.enum(['foto', 'video', 'logo']), bytes: z.number().int().positive().max(200 * 1024 * 1024) }),
     ejecutar: (c, d) => reservarSubida(depsMedios(c), { tenantId: c.tenantId, actor: c.actor, subidaId: d.subidaId, productoId: d.productoId, tipo: d.tipo, bytes: d.bytes }),
   }),
   finalizarSubida: accion({

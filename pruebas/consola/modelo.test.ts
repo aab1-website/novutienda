@@ -185,6 +185,7 @@ describe('almacenamiento de la consola', () => {
       archivos: [
         { tipo: 'foto', bytesMax: LIMITES_CONSOLA.bytesFoto, contentType: 'image/(jpeg|png|webp|heic)' },
         { tipo: 'video', bytesMax: LIMITES_CONSOLA.bytesVideo, contentType: 'video/(mp4|quicktime|webm)' },
+        { tipo: 'logo', bytesMax: LIMITES_CONSOLA.bytesLogo, contentType: 'image/(jpeg|png|webp)' },
       ],
     });
     expect(proc).toEqual({ ruta: 'privado/procesando/{ruta=**}', lectura: 'servidor', escritura: 'servidor' });

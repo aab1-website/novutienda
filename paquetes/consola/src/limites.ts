@@ -14,6 +14,9 @@ export const LIMITES_CONSOLA = {
   videosPorProducto: 1,
   bytesFoto: 15 * MIB,
   bytesVideo: 200 * MIB,
+  /** Logo del negocio: tope del archivo subido y lado mayor de las versiones publicadas. */
+  bytesLogo: 2 * MIB,
+  ladoLogo: 512,
   duracionVideoSeg: 60,
   cuotaOriginalesBytes: 10 * 1024 * MIB,
   /** Protección contra imágenes «bomba»: píxeles máximos de una foto (100 megapíxeles). */
