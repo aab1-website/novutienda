@@ -11,7 +11,7 @@ import { crearLectorDominios, type LectorDominios } from '../../coordinador/domi
 import { crearLectoresModulos, type LectorEstadoModulos, type LectorModulos } from '../../coordinador/modulos-activos.js';
 import { crearLectorComercial, type LectorComercial } from '../../coordinador/comercial.js';
 import { crearLectorHojas } from '../../coordinador/lector-hojas.js';
-import { crearCatalogoConsola, almacenCotizacionesDesde, catalogoParaPos, inventariosParaPos } from '../../coordinador/index.js';
+import { crearCatalogoConsola, crearLogoDelNegocio, almacenCotizacionesDesde, catalogoParaPos, inventariosParaPos, type LogoDelNegocio } from '../../coordinador/index.js';
 import {
   appCheckReal, appCheckSimulado, crearAlmacenMedios, esEntornoDePruebas, crearAuthMin, crearBaseDatos, crearConsultaSubidas, crearEjecutorRecibos, crearGuardarContacto,
   crearLecturaRecibos, crearLectorDisponibilidad, crearProcesadorMedios, recaptchaEnterprise, recaptchaSimulado,
@@ -57,6 +57,8 @@ export interface Entorno {
    * documento inválido lanzan `ComercialInvalida`; nunca entrega una configuración por defecto. Firma: `(tenantId: string) => Promise<ConfiguracionComercial>`.
    */
   readonly comercialDelTenant: LectorComercial;
+  /** Puerto de Recibos: URL pública del logo subido del negocio (módulo consola), o `null`. Sin `mediosBaseUrl` siempre devuelve `null`. */
+  readonly logoDelNegocio: LogoDelNegocio;
   /** Política de redondeo efectiva por moneda de venta del tenant (su configuración; `config/redondeo` la sobrescribe si existe). Un cambio del operador tarda hasta 60 s en propagarse. */
   readonly redondeoDelTenant: LectorRedondeo;
   /** @deprecated LEGADO, como en main: política BOB/ARS de `config/redondeo`, sin leer `tenants/{t}`. Usar `redondeoDelTenant` (B2 a B4). */
@@ -77,6 +79,8 @@ export interface OpcionesEntorno {
   readonly env?: Readonly<Record<string, string | undefined>>;
   readonly emisorEnlacePdf?: EmisorEnlacePdf;
   readonly procesador?: ProcesadorMedios;
+  /** Origen público de los medios (`MEDIOS_BASE_URL`); vacío o ausente: el logo subido no se entrega a Recibos. */
+  readonly mediosBaseUrl?: string;
 }
 
 export function crearEntorno(o: OpcionesEntorno): Entorno {
@@ -109,6 +113,7 @@ export function crearEntorno(o: OpcionesEntorno): Entorno {
     estadoModulosDelTenant: lectoresModulos.estado,
     tenantDelHost: crearLectorDominios(o.firestore, ahora),
     comercialDelTenant,
+    logoDelNegocio: crearLogoDelNegocio({ db, modulosDelTenant: lectoresModulos.modulos, baseMedios: o.mediosBaseUrl ?? '' }),
     redondeoDelTenant,
     redondeo,
     depsPos: async (tenantId) => ({
@@ -136,7 +141,7 @@ export function entorno(): Entorno {
     const nombrePublico = exigirBucketPublico(PARAMETROS.mediosBucketPublico.value(), bucket.name, esEntornoDePruebas(process.env));
     const bucketPublico = nombrePublico === '' ? bucket : almacenamiento.bucket(nombrePublico);
     const procesador = crearProcesadorMedios(bucket, env, esEntornoDePruebas(process.env) ? undefined : logger);
-    unico = crearEntorno({ firestore: getFirestore(), auth: getAuth(), bucket, bucketPublico, env, procesador });
+    unico = crearEntorno({ firestore: getFirestore(), auth: getAuth(), bucket, bucketPublico, env, procesador, mediosBaseUrl: PARAMETROS.mediosBaseUrl.value() });
   }
   return unico;
 }

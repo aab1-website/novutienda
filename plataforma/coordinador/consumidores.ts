@@ -5,7 +5,11 @@ import { consumirPedidoConfirmado, consumirVentaAnulada, ejecutorDesde } from '@
 import type { BaseDatosIdentidad, SobreEvento } from '@novutienda/nucleo';
 import { manejarVentaAnulada, manejarVentaConfirmada, type OpcionesEmision } from '@novutienda/recibos';
 import { ejecutorRecibosDesde } from './ejecutor-recibos.js';
+import type { LogoDelNegocio } from './logo-negocio.js';
 import type { LectorModulos } from './modulos-activos.js';
+
+/** Opciones de emisión de Recibos más el puerto del logo (Recibos lo declara en `OpcionesEmision.logoDelNegocio`; mientras tanto se entrega estructuralmente). */
+export type OpcionesRecibosPlataforma = OpcionesEmision & { readonly logoDelNegocio?: LogoDelNegocio };
 
 export interface Consumidor {
   /** Nombre para el informe (no es el nombre del consumidor de la bandeja). */
@@ -22,7 +26,7 @@ export interface Consumidor {
  * `consola:producto.cambiado`): con el módulo apagado no hacen nada y devuelven `false` (evento tratado, sin reintento).
  * Sin lector, el consumidor opcional se trata como encendido.
  */
-export function consumidoresDePlataforma(db: BaseDatosIdentidad, opcionesRecibos: OpcionesEmision = {}, modulosDelTenant?: LectorModulos): Consumidor[] {
+export function consumidoresDePlataforma(db: BaseDatosIdentidad, opcionesRecibos: OpcionesRecibosPlataforma = {}, modulosDelTenant?: LectorModulos): Consumidor[] {
   const recibos = ejecutorRecibosDesde(db);
   const inventarios = ejecutorDesde(db);
   const consola = ejecutorConsola(db);
