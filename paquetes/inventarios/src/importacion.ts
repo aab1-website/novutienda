@@ -4,7 +4,7 @@ import { EntradaInvalida, ErrorInventario, SinPermiso } from './errores.js';
 import { esProductoId, esSku, exigirSegmento, identificadorParaAlta, exigirTenant, UBICACIONES } from './ids.js';
 import { Lector, type Autor, type Datos } from './motor.js';
 import { ejecutarOperacion, exigirAutor, PERMISOS, type ResultadoOperacion } from './operacion.js';
-import { leerCupo, prepararEdicion, prepararProductoNuevo, reservarLimite, validarEntradaProducto, type CambiosProducto, type EntradaProducto, type PrecioUSD, type ProductoValido } from './productos.js';
+import { leerCupo, prepararEdicion, prepararProductoNuevo, reservarLimite, validarEntradaProducto, type CambiosProducto, type EntradaProducto, type ProductoValido } from './productos.js';
 
 export const MAX_BYTES_CSV = 256 * 1024;
 
@@ -418,7 +418,7 @@ function crearEntrada(fila: FilaLeida, comercial: ConfiguracionComercial): Entra
     nombre: d.nombre as string,
     categoria: d.categoria as string,
     sku: d.sku as string,
-    precioUSD: Object.fromEntries(comercial.mercados.map((m) => [claveDePrecio(m.id), d.precios?.[claveDePrecio(m.id)] ?? 0])) as unknown as PrecioUSD,
+    precioUSD: Object.fromEntries(comercial.mercados.map((m) => [claveDePrecio(m.id), d.precios?.[claveDePrecio(m.id)] ?? 0])),
     ...(d.marca !== undefined ? { marca: d.marca } : {}),
     ...(d.conSerie !== undefined ? { conSerie: d.conSerie } : {}),
     ...(d.activo !== undefined ? { activo: d.activo } : {}),
@@ -587,7 +587,7 @@ async function planificarFila(lector: Lector, fila: FilaLeida, comercial: Config
     if (valor !== undefined) nuevosPrecios[k] = valor;
   }
   if (cambiaPrecio) {
-    c.precioUSD = nuevosPrecios as unknown as PrecioUSD;
+    c.precioUSD = nuevosPrecios;
     plan.cambios.push('precioUSD');
   }
   if (d.costoUSD !== undefined && d.costoUSD !== (await lector.leer('costos', plan.id))?.['costoUSD']) {

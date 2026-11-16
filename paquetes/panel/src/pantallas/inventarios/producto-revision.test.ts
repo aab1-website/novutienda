@@ -145,6 +145,12 @@ describe('un comercio con un solo mercado y una sola moneda', () => {
   it('sin moneda de costo conocida el error no nombra ninguna', () => {
     expect(revisarProducto({ ...base1(), costo: 'x' }, { ...ctx1, monedaCosto: undefined })['costo']).toBe('Escriba un monto, por ejemplo 12,50.');
   });
+  it('una edición del precio del único mercado envía solo `{pe}`, sin conversiones', () => {
+    const p1 = producto({ precioUSD: { pe: 250 } });
+    expect(formInicial(p1, M1).precios).toEqual({ pe: '2,50' });
+    expect(cambiosDeEdicion(formInicial(p1, M1), p1, true, M1).cambios).toEqual({});
+    expect(cambiosDeEdicion({ ...formInicial(p1, M1), precios: { pe: '3' } }, p1, true, M1).cambios).toEqual({ precioUSD: { pe: 300 } });
+  });
   it('el servidor ubica el error en el precio del mercado declarado', () => {
     expect(errorDeServidor(new ErrorApi('invalid-argument', 'x', { codigo: 'entrada-invalida', campos: ['producto.precioUSD.pe'] }), M1)?.campo).toBe('precio.pe');
   });

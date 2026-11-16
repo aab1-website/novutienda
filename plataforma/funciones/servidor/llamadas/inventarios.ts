@@ -7,7 +7,7 @@ import { z } from 'zod';
 import {
   abrirConteo, actualizarProducto, claveDePrecio, ajustar, cerrarConteo, conteosAbiertosDe, crearProducto, crearUbicacion, esDisponible, exportarProductosCsv, importarCsvPorLotes, leerArchivoImportacion, MAX_BYTES_ARCHIVO, type FuenteTabla, type LectorHojas, type LecturaSinBloqueo, type LeerCatalogo,
   filtrarUnidadesLista, ingresar, leerDocumentoProducto, marcaOcultamiento, mercadosSinPrecio, proyectarMovimiento, proyectarProducto, registrarLineaConteo, resolverMerma, simularImportacionCsv, solicitarMerma, traspasar, UBICACION_DISPONIBILIDAD,
-  type Autor, type CambiosProducto, type Conteos, type EntradaProducto, type LineaAjuste, type PrecioUSD, type LineaIngreso, type LineaTraspaso, type ProductoExportable,
+  type Autor, type CambiosProducto, type Conteos, type EntradaProducto, type LineaAjuste, type LineaIngreso, type LineaTraspaso, type ProductoExportable,
 } from '@novutienda/inventarios';
 import { mercadosDe } from '@novutienda/nucleo';
 import { accion, actorPos, type Contexto, type TablaImplementaciones } from './marco.js';
@@ -211,7 +211,7 @@ export const accionesInventarios: TablaImplementaciones = {
     ejecutar: async (c, d) => {
       const comercial = await c.e.comercialDelTenant(c.tenantId);
       return c.e.db.runTransaction((tx) =>
-        actualizarProducto(tx, { tenantId: c.tenantId, operacionId: d.operacionId, por: autor(c), productoId: d.productoId, cambios: { precioUSD: d.precioUSD as unknown as PrecioUSD }, comercial }),
+        actualizarProducto(tx, { tenantId: c.tenantId, operacionId: d.operacionId, por: autor(c), productoId: d.productoId, cambios: { precioUSD: d.precioUSD }, comercial }),
       );
     },
   }),

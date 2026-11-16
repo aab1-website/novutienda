@@ -222,11 +222,6 @@ export interface ResultadoCierre {
 // Inventarios (docs/modulos/inventarios.md)
 // ---------------------------------------------------------------------------------------------------------------------
 
-export interface PrecioUSDCentavos {
-  readonly bo: number;
-  readonly ar: number;
-}
-
 /**
  * Conteo abierto que oculta existencias a `caj` y `sup` (paquetes/inventarios/src/visibilidad.ts). `ubicacionId` es el almacén
  * en conteo; `abiertoEn` es ISO 8601 o `null` si el conteo no trae fecha.
@@ -267,7 +262,7 @@ export interface ProductoPanel {
   readonly conSerie: boolean;
   readonly garantiaMeses?: number;
   readonly minimo?: number;
-  readonly precioUSD: PrecioUSDCentavos;
+  readonly precioUSD: PreciosPorMercado;
   /** Ids de los mercados declarados en los que el producto no tiene precio (los entrega el servidor). */
   readonly sinPrecio?: readonly string[];
   /** Solo se entrega al administrador. Centavos de USD. */
@@ -293,7 +288,7 @@ export interface EntradaProducto {
   readonly conSerie?: boolean;
   readonly garantiaMeses?: number;
   readonly minimo?: number;
-  readonly precioUSD: PrecioUSDCentavos;
+  readonly precioUSD: PreciosPorMercado;
   readonly costoUSD?: number;
   readonly controlaStock?: boolean;
 }
@@ -307,7 +302,7 @@ export interface CambiosProducto {
   readonly conSerie?: boolean;
   readonly garantiaMeses?: number | null;
   readonly minimo?: number | null;
-  readonly precioUSD?: PrecioUSDCentavos;
+  readonly precioUSD?: PreciosPorMercado;
   readonly costoUSD?: number | null;
 }
 

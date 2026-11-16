@@ -46,6 +46,8 @@ describe('tipos del contrato frente a los módulos', () => {
     afirmar<Cabe<Panel.MovimientoCajaEntrada, Pos.MovimientoCajaEntrada>>(true);
     afirmar<Cabe<Panel.CobroCreditoEntrada, Pos.CobroCreditoEntrada>>(true);
     afirmar<Cabe<Panel.ConfigPos, Pos.ConfigPos>>(true);
+    afirmar<Cabe<Panel.PreciosPorMercado, Inv.PrecioUSD>>(true);
+    afirmar<Cabe<Inv.PrecioUSD, Panel.PreciosPorMercado>>(true);
     afirmar<Cabe<Panel.EntradaProducto, Inv.EntradaProducto>>(true);
     afirmar<Cabe<Panel.CambiosProducto, Inv.CambiosProducto>>(true);
     afirmar<Cabe<Panel.LineaIngreso, Inv.LineaIngreso>>(true);

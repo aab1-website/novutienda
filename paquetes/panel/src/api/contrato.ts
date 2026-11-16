@@ -5,7 +5,7 @@
 // por esa misma traducción, de modo que las pruebas del panel ejercitan la forma real de la llamada.
 import type {
   AprobacionPos, Carrito, Carrusel, CambiosProducto, CobroCredito, CobroCreditoEntrada, ConfigPos, ConfigSitio,
-  ConsultaArchivo, PrecioUSDCentavos, ConteoVista, CotizacionesVigentes, CreditoVista, EntradaAuditoriaVista, EntradaProducto, FichaWeb,
+  ConsultaArchivo, PreciosPorMercado, ConteoVista, CotizacionesVigentes, CreditoVista, EntradaAuditoriaVista, EntradaProducto, FichaWeb,
   LineaAjuste, LineaIngreso, LineaTraspaso, LogoNegocio, Medio, MedioLogo, ResultadoEstadoSubidaLogo, MermaVista, MontosPorMoneda, MovimientoCaja, MovimientoCajaEntrada, MovimientoVista,
   ConMarca, ListaConMarca, PagoEntrada, PlantillaRecibo, ProductoPanel, Recibo, Reserva, ResultadoAnulacion, ResultadoCierre, ResultadoEnvio,
   FuenteImportacion, ResultadoImportacion, ResultadoOperacion, ResultadoEstadoSubida, ResultadoPublicacion, ResultadoVenta, Rol, Seccion, Simulacion, SolicitudAprobacion,
@@ -81,8 +81,8 @@ export interface Contrato {
   // ---- Consola (catálogo y sitio; no crea, edita ni importa productos: eso es de Inventarios) ----
   obtenerTablero: { entrada: Vacio; salida: Tablero };
   publicarSitio: { entrada: Vacio; salida: ResultadoPublicacion };
-  /** Centavos de USD: `inventarios.cambiarPrecioUSD` (idempotente por `operacionId`, que la pantalla manda siempre). */
-  cambiarPrecioUSD: { entrada: { operacionId: string; productoId: string; precioUSD: PrecioUSDCentavos }; salida: Ok };
+  /** Un precio por cada mercado declarado por el comercio, en centavos de la moneda base: `inventarios.cambiarPrecioUSD` (idempotente por `operacionId`, que la pantalla manda siempre). */
+  cambiarPrecioUSD: { entrada: { operacionId: string; productoId: string; precioUSD: PreciosPorMercado }; salida: Ok };
   guardarFicha: { entrada: { productoId: string; ficha: FichaWeb }; salida: Ok };
   reservarSubida: { entrada: { subidaId: string; productoId: string; tipo: TipoMedio; bytes: number }; salida: Reserva };
   /**
