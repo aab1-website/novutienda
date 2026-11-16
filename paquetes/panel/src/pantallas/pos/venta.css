@@ -1,0 +1,8 @@
+/* Venta: barra fija del carrito en pantalla angosta. Solo clases: la CSP no admite estilos en línea. */
+.venta-barra { display: none; }
+.venta-carrito:focus { outline: 2px solid var(--acento); outline-offset: 4px; border-radius: 16px; }
+/* Misma cifra que la regla `.terminal` de panel.css: por debajo de 960 px el carrito queda bajo la lista. */
+@media (max-width: 959.98px) {
+  .venta-barra { display: flex; align-items: center; justify-content: space-between; gap: 12px; position: fixed; left: 0; right: 0; bottom: 0; z-index: 30; padding: 10px 16px; background: var(--superficie); border-top: 1px solid var(--borde); box-shadow: var(--sombra); font-weight: 600; }
+  .terminal { padding-bottom: 72px; }
+}

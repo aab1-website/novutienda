@@ -1,11 +1,13 @@
 import type { JSX } from 'preact';
 import { useState } from 'preact/hooks';
 import { type MontosPorMoneda, type TurnoPos } from '../../api/tipos.js';
-import { Alerta, BotonConfirmado, Boton, Campo, Cargando, ErrorCarga, Pestanas, Seccion, Vacio, fechaHora } from '../../ui/comun.js';
+import { Alerta, BotonConfirmado, Boton, Campo, Cargando, ErrorCarga, Pestanas, Selector, Seccion, Vacio, fechaHora } from '../../ui/comun.js';
 import { useConfiguracionComercial } from '../../ui/comercial.js';
 import { useApp } from '../../ui/contexto.js';
 import { useAccion, useCarga } from '../../ui/hooks.js';
+import { Tabla } from '../../ui/tabla.js';
 import { monedasDelTurno, proyectarTurno } from './arqueo.js';
+import { nombreDeAccion, ACCIONES_AUDITORIA } from './nombres-auditoria.js';
 import { aCsv, descargarTexto } from '../../util/csv.js';
 import { formatearMonto, textoACentavos } from '../../util/dinero.js';
 import { rangoUltimoMes, validarRango } from '../../util/rango.js';
@@ -126,24 +128,31 @@ function ExportarVentas(): JSX.Element {
   );
 }
 
+/** Tope de registros que se piden por consulta: se manda explícito para que el panel y el servidor cuenten lo mismo. */
+export const TOPE_AUDITORIA = 100;
+const ROL_TEXTO: Readonly<Record<string, string>> = { caj: 'Vendedor', sup: 'Supervisor', adm: 'Administrador' };
+
 function Auditoria(): JSX.Element {
   const { api } = useApp();
   const [desde, setDesde] = useState('');
   const [hasta, setHasta] = useState('');
   const [accion, setAccion] = useState('');
   const [filtro, setFiltro] = useState({});
-  const lista = useCarga(() => api.llamar('listarAuditoria', filtro), [filtro]);
+  const lista = useCarga(() => api.llamar('listarAuditoria', { ...filtro, limite: TOPE_AUDITORIA }), [filtro]);
+  const usuarios = useCarga(() => api.llamar('listarUsuarios', {}), []);
+  const correoDe = (uid: string): string => usuarios.datos?.find((u) => u.uid === uid)?.correo || 'usuario no identificado';
   const exportar = (): void => {
     const filas = (lista.datos ?? []).map((a) => [a.fecha, a.uid, a.rol, a.accion, a.ruta, a.motivo]);
     descargarTexto('auditoria.csv', aCsv(['fecha', 'usuario', 'rol', 'accion', 'ruta', 'motivo'], filas));
   };
+  const registros = lista.datos ?? [];
   return (
     <Seccion titulo="Auditoría del POS">
-      <form class="formulario" onSubmit={(e) => { e.preventDefault(); setFiltro({ ...(desde ? { desde } : {}), ...(hasta ? { hasta } : {}), ...(accion.trim() ? { accion: accion.trim() } : {}) }); }} role="search" noValidate>
+      <form class="formulario" onSubmit={(e) => { e.preventDefault(); setFiltro({ ...(desde ? { desde } : {}), ...(hasta ? { hasta } : {}), ...(accion ? { accion } : {}) }); }} role="search" noValidate>
         <div class="cuadricula">
           <Campo etiqueta="Desde" tipo="date" valor={desde} onInput={setDesde} />
           <Campo etiqueta="Hasta" tipo="date" valor={hasta} onInput={setHasta} />
-          <Campo etiqueta="Acción contiene" valor={accion} onInput={setAccion} ayuda="Ejemplo: pos.venta" />
+          <Selector etiqueta="Acción" valor={accion} onCambio={setAccion} opciones={[{ valor: '', texto: 'Todas las acciones' }, ...ACCIONES_AUDITORIA.map((a) => ({ valor: a.codigo, texto: a.nombre }))]} ayuda="Elija una acción para ver solo esas." />
         </div>
         <div class="fila">
           <Boton tipo="submit">Filtrar</Boton>
@@ -152,17 +161,21 @@ function Auditoria(): JSX.Element {
       </form>
       {lista.cargando && <Cargando />}
       {lista.error && <ErrorCarga error={lista.error} reintentar={lista.recargar} />}
-      {lista.datos && lista.datos.length === 0 && <Vacio titulo="No hay registros con esos filtros" />}
-      {lista.datos && lista.datos.length > 0 && (
-        <table class="tabla">
-          <caption class="solo-lectores">Registro de auditoría</caption>
-          <thead><tr><th scope="col">Fecha</th><th scope="col">Usuario</th><th scope="col">Acción</th><th scope="col">Motivo</th></tr></thead>
-          <tbody>
-            {lista.datos.map((a) => (
-              <tr key={a.id}><td>{fechaHora(a.fecha)}</td><td>{a.uid} ({a.rol})</td><td>{a.accion}</td><td>{a.motivo ?? ''}</td></tr>
-            ))}
-          </tbody>
-        </table>
+      {'accion' in filtro && <Alerta tipo="info">Con una acción elegida el filtro revisa solo los registros más recientes (el servidor mira los últimos 1000): puede faltar alguno antiguo. Acote las fechas para ver menos y más reciente.</Alerta>}
+      {lista.datos && (
+        <Tabla
+          titulo="Registro de auditoría"
+          filas={registros}
+          clave={(a) => a.id}
+          vacio={{ titulo: 'No hay registros con esos filtros' }}
+          cortada={registros.length >= TOPE_AUDITORIA ? { mostradas: registros.length, mensaje: `Se muestran los ${registros.length} registros más recientes y puede haber más. Acote las fechas o elija una acción.` } : undefined}
+          columnas={[
+            { id: 'fecha', titulo: 'Fecha', valor: (a) => a.fecha, celda: (a) => fechaHora(a.fecha), ordenable: true },
+            { id: 'usuario', titulo: 'Usuario', valor: (a) => correoDe(a.uid), celda: (a) => `${correoDe(a.uid)} (${ROL_TEXTO[a.rol] ?? a.rol})` },
+            { id: 'accion', titulo: 'Acción', valor: (a) => nombreDeAccion(a.accion) },
+            { id: 'motivo', titulo: 'Motivo', valor: (a) => a.motivo ?? '' },
+          ]}
+        />
       )}
     </Seccion>
   );
