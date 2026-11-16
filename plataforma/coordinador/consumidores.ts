@@ -1,6 +1,6 @@
 // Consumidores de producción del bus: los que la plataforma suscribe a los eventos de Recibos e Inventarios.
 // El bus real (`servidor/bus.ts`) y las pruebas de integración usan esta misma lista.
-import { consumirProductoCambiado, ejecutorConsola } from '@novutienda/consola';
+import { consumirProductoCambiado, ejecutorConsola, type DepsConsumidorProducto } from '@novutienda/consola';
 import { consumirPedidoConfirmado, consumirVentaAnulada, ejecutorDesde } from '@novutienda/inventarios';
 import type { BaseDatosIdentidad, SobreEvento } from '@novutienda/nucleo';
 import { manejarVentaAnulada, manejarVentaConfirmada, type OpcionesEmision } from '@novutienda/recibos';
@@ -21,8 +21,11 @@ export interface Consumidor {
  * `modulosDelTenant` filtra los consumidores OPCIONALES (los que no están en el `consume` de ningún manifiesto, como
  * `consola:producto.cambiado`): con el módulo apagado no hacen nada y devuelven `false` (evento tratado, sin reintento).
  * Sin lector, el consumidor opcional se trata como encendido.
+ *
+ * `depsConsola` son las piezas que la consola necesita para el precio vivo (catálogo real, reloj y disparador del sitio): las
+ * pone quien compone (el entorno del servidor o el de las pruebas), porque el consumidor no construye puertos.
  */
-export function consumidoresDePlataforma(db: BaseDatosIdentidad, opcionesRecibos: OpcionesEmision = {}, modulosDelTenant?: LectorModulos): Consumidor[] {
+export function consumidoresDePlataforma(db: BaseDatosIdentidad, opcionesRecibos: OpcionesEmision = {}, modulosDelTenant: LectorModulos | undefined, depsConsola: DepsConsumidorProducto): Consumidor[] {
   const recibos = ejecutorRecibosDesde(db);
   const inventarios = ejecutorDesde(db);
   const consola = ejecutorConsola(db);
@@ -36,7 +39,7 @@ export function consumidoresDePlataforma(db: BaseDatosIdentidad, opcionesRecibos
       tipos: ['producto.cambiado'],
       manejar: async (e) => {
         if (modulosDelTenant !== undefined && ((await modulosDelTenant(e.tenantId)) ?? []).includes('consola') === false) return false;
-        return consumirProductoCambiado(consola, e);
+        return consumirProductoCambiado(consola, e, depsConsola);
       },
     },
   ];

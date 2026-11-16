@@ -4,6 +4,7 @@ import Heroe from '../componentes/Heroe.astro';
 import Beneficios from '../componentes/Beneficios.astro';
 import Identidad from '../componentes/Identidad.astro';
 import TarjetaProducto from '../componentes/TarjetaProducto.astro';
+import CatalogoVacio from '../componentes/CatalogoVacio.astro';
 import Icono from '../componentes/Icono.astro';
 import { contenido } from '../contenido/instancia';
 import { productosDeCategoria, textoModelos } from '../contenido/consultas';
@@ -21,7 +22,8 @@ const wa = enlaceWhatsApp(config.whatsappTienda, 'Hola, tengo una consulta.');
     <div class="contenedor centrado">
       <span class="etiqueta">Explora por categoría</span>
       <h2 id="titulo-categorias" class="titulo-seccion">Nuestros productos</h2>
-      <p class="subtitulo">Elige una categoría para ver sus modelos y precios actualizados.</p>
+      {productos.length === 0 ? <CatalogoVacio conBoton={false} /> : <p class="subtitulo">Elige una categoría para ver sus modelos y precios actualizados.</p>}
+      {productos.length > 0 && (
       <ul class="lista-categorias">
         {categorias.map((c) => (
           <li>
@@ -40,6 +42,7 @@ const wa = enlaceWhatsApp(config.whatsappTienda, 'Hola, tengo una consulta.');
           </a>
         </li>
       </ul>
+      )}
       {destacados.length > 0 && (
         <section class="destacados" aria-labelledby="titulo-destacados">
           <h2 id="titulo-destacados">Productos destacados</h2>

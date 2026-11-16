@@ -385,6 +385,14 @@ describe('generar', () => {
     expect(JSON.stringify(r)).not.toContain(SECRETO);
     expect(JSON.stringify(r)).not.toContain('Producto-privado');
   });
+  it('publicado sin productos: escribe el contenido, sale 0 y no pide disponibilidad', async () => {
+    modo.productos = 0;
+    const salida = join(dir, 'vacio.json');
+    const r = await ejecutar(['generar', '--salida', salida, ...args], env, deps, fetchLocal);
+    expect(r).toEqual({ codigo: 0, salida: 'contenido generado: 0 productos\nadvertencias del mapeo: 0' });
+    expect((JSON.parse(leerConModo(salida).texto) as { productos: string[] }).productos).toHaveLength(0);
+    expect(peticiones.filter((p) => p.ruta.startsWith('/api/disponibilidad'))).toHaveLength(0);
+  });
   it('si el mapeo rechaza el contenido, no se escribe la salida y el error no trae valores', async () => {
     modo.productos = 201;
     const salida = join(dir, 'malo.json');

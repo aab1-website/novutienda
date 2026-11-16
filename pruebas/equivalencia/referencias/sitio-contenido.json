@@ -92,20 +92,6 @@
         ]
       },
       {
-        "alt": "Producto retirado",
-        "url": "https://medios.ejemplo.invalid/publico/tenants/casa-a/publico/medios/p-inactivo/bbb-imagen960.webp",
-        "versiones": [
-          {
-            "ancho": 480,
-            "url": "https://medios.ejemplo.invalid/publico/tenants/casa-a/publico/medios/p-inactivo/aaa-imagen480.webp"
-          },
-          {
-            "ancho": 960,
-            "url": "https://medios.ejemplo.invalid/publico/tenants/casa-a/publico/medios/p-inactivo/bbb-imagen960.webp"
-          }
-        ]
-      },
-      {
         "alt": "Lápiz HB",
         "url": "https://medios.ejemplo.invalid/publico/tenants/casa-a/publico/medios/p-lapiz/bbb-imagen960.webp",
         "versiones": [
@@ -144,6 +130,20 @@
           {
             "ancho": 960,
             "url": "https://medios.ejemplo.invalid/publico/tenants/casa-a/publico/medios/p-servicio/bbb-imagen960.webp"
+          }
+        ]
+      },
+      {
+        "alt": "Televisor 50\"",
+        "url": "https://medios.ejemplo.invalid/publico/tenants/casa-a/publico/medios/p-televisor/bbb-imagen960.webp",
+        "versiones": [
+          {
+            "ancho": 480,
+            "url": "https://medios.ejemplo.invalid/publico/tenants/casa-a/publico/medios/p-televisor/aaa-imagen480.webp"
+          },
+          {
+            "ancho": 960,
+            "url": "https://medios.ejemplo.invalid/publico/tenants/casa-a/publico/medios/p-televisor/bbb-imagen960.webp"
           }
         ]
       }
@@ -206,20 +206,6 @@
         ]
       },
       {
-        "alt": "Producto retirado",
-        "url": "https://medios.ejemplo.invalid/publico/tenants/casa-a/publico/medios/p-inactivo/bbb-imagen960.webp",
-        "versiones": [
-          {
-            "ancho": 480,
-            "url": "https://medios.ejemplo.invalid/publico/tenants/casa-a/publico/medios/p-inactivo/aaa-imagen480.webp"
-          },
-          {
-            "ancho": 960,
-            "url": "https://medios.ejemplo.invalid/publico/tenants/casa-a/publico/medios/p-inactivo/bbb-imagen960.webp"
-          }
-        ]
-      },
-      {
         "alt": "Lápiz HB",
         "url": "https://medios.ejemplo.invalid/publico/tenants/casa-a/publico/medios/p-lapiz/bbb-imagen960.webp",
         "versiones": [
@@ -258,6 +244,20 @@
           {
             "ancho": 960,
             "url": "https://medios.ejemplo.invalid/publico/tenants/casa-a/publico/medios/p-servicio/bbb-imagen960.webp"
+          }
+        ]
+      },
+      {
+        "alt": "Televisor 50\"",
+        "url": "https://medios.ejemplo.invalid/publico/tenants/casa-a/publico/medios/p-televisor/bbb-imagen960.webp",
+        "versiones": [
+          {
+            "ancho": 480,
+            "url": "https://medios.ejemplo.invalid/publico/tenants/casa-a/publico/medios/p-televisor/aaa-imagen480.webp"
+          },
+          {
+            "ancho": 960,
+            "url": "https://medios.ejemplo.invalid/publico/tenants/casa-a/publico/medios/p-televisor/bbb-imagen960.webp"
           }
         ]
       }
@@ -320,20 +320,6 @@
         ]
       },
       {
-        "alt": "Producto retirado",
-        "url": "https://medios.ejemplo.invalid/publico/tenants/casa-a/publico/medios/p-inactivo/bbb-imagen960.webp",
-        "versiones": [
-          {
-            "ancho": 480,
-            "url": "https://medios.ejemplo.invalid/publico/tenants/casa-a/publico/medios/p-inactivo/aaa-imagen480.webp"
-          },
-          {
-            "ancho": 960,
-            "url": "https://medios.ejemplo.invalid/publico/tenants/casa-a/publico/medios/p-inactivo/bbb-imagen960.webp"
-          }
-        ]
-      },
-      {
         "alt": "Lápiz HB",
         "url": "https://medios.ejemplo.invalid/publico/tenants/casa-a/publico/medios/p-lapiz/bbb-imagen960.webp",
         "versiones": [
@@ -372,6 +358,20 @@
           {
             "ancho": 960,
             "url": "https://medios.ejemplo.invalid/publico/tenants/casa-a/publico/medios/p-servicio/bbb-imagen960.webp"
+          }
+        ]
+      },
+      {
+        "alt": "Televisor 50\"",
+        "url": "https://medios.ejemplo.invalid/publico/tenants/casa-a/publico/medios/p-televisor/bbb-imagen960.webp",
+        "versiones": [
+          {
+            "ancho": 480,
+            "url": "https://medios.ejemplo.invalid/publico/tenants/casa-a/publico/medios/p-televisor/aaa-imagen480.webp"
+          },
+          {
+            "ancho": 960,
+            "url": "https://medios.ejemplo.invalid/publico/tenants/casa-a/publico/medios/p-televisor/bbb-imagen960.webp"
           }
         ]
       }
@@ -434,20 +434,6 @@
         ]
       },
       {
-        "alt": "Producto retirado",
-        "url": "https://medios.ejemplo.invalid/publico/tenants/casa-a/publico/medios/p-inactivo/bbb-imagen960.webp",
-        "versiones": [
-          {
-            "ancho": 480,
-            "url": "https://medios.ejemplo.invalid/publico/tenants/casa-a/publico/medios/p-inactivo/aaa-imagen480.webp"
-          },
-          {
-            "ancho": 960,
-            "url": "https://medios.ejemplo.invalid/publico/tenants/casa-a/publico/medios/p-inactivo/bbb-imagen960.webp"
-          }
-        ]
-      },
-      {
         "alt": "Lápiz HB",
         "url": "https://medios.ejemplo.invalid/publico/tenants/casa-a/publico/medios/p-lapiz/bbb-imagen960.webp",
         "versiones": [
@@ -486,6 +472,20 @@
           {
             "ancho": 960,
             "url": "https://medios.ejemplo.invalid/publico/tenants/casa-a/publico/medios/p-servicio/bbb-imagen960.webp"
+          }
+        ]
+      },
+      {
+        "alt": "Televisor 50\"",
+        "url": "https://medios.ejemplo.invalid/publico/tenants/casa-a/publico/medios/p-televisor/bbb-imagen960.webp",
+        "versiones": [
+          {
+            "ancho": 480,
+            "url": "https://medios.ejemplo.invalid/publico/tenants/casa-a/publico/medios/p-televisor/aaa-imagen480.webp"
+          },
+          {
+            "ancho": 960,
+            "url": "https://medios.ejemplo.invalid/publico/tenants/casa-a/publico/medios/p-televisor/bbb-imagen960.webp"
           }
         ]
       }
@@ -548,20 +548,6 @@
         ]
       },
       {
-        "alt": "Producto retirado",
-        "url": "https://medios.ejemplo.invalid/publico/tenants/casa-a/publico/medios/p-inactivo/bbb-imagen960.webp",
-        "versiones": [
-          {
-            "ancho": 480,
-            "url": "https://medios.ejemplo.invalid/publico/tenants/casa-a/publico/medios/p-inactivo/aaa-imagen480.webp"
-          },
-          {
-            "ancho": 960,
-            "url": "https://medios.ejemplo.invalid/publico/tenants/casa-a/publico/medios/p-inactivo/bbb-imagen960.webp"
-          }
-        ]
-      },
-      {
         "alt": "Lápiz HB",
         "url": "https://medios.ejemplo.invalid/publico/tenants/casa-a/publico/medios/p-lapiz/bbb-imagen960.webp",
         "versiones": [
@@ -600,6 +586,20 @@
           {
             "ancho": 960,
             "url": "https://medios.ejemplo.invalid/publico/tenants/casa-a/publico/medios/p-servicio/bbb-imagen960.webp"
+          }
+        ]
+      },
+      {
+        "alt": "Televisor 50\"",
+        "url": "https://medios.ejemplo.invalid/publico/tenants/casa-a/publico/medios/p-televisor/bbb-imagen960.webp",
+        "versiones": [
+          {
+            "ancho": 480,
+            "url": "https://medios.ejemplo.invalid/publico/tenants/casa-a/publico/medios/p-televisor/aaa-imagen480.webp"
+          },
+          {
+            "ancho": 960,
+            "url": "https://medios.ejemplo.invalid/publico/tenants/casa-a/publico/medios/p-televisor/bbb-imagen960.webp"
           }
         ]
       }
@@ -852,39 +852,6 @@
       },
       "seo": {},
       "slug": "celular-x1",
-      "video": null
-    },
-    {
-      "categoria": "accesorios",
-      "descripcion": "Dado de baja.",
-      "destacado": false,
-      "disponible": false,
-      "fotos": [
-        {
-          "alt": "Producto retirado",
-          "url": "https://medios.ejemplo.invalid/publico/tenants/casa-a/publico/medios/p-inactivo/bbb-imagen960.webp",
-          "versiones": [
-            {
-              "ancho": 480,
-              "url": "https://medios.ejemplo.invalid/publico/tenants/casa-a/publico/medios/p-inactivo/aaa-imagen480.webp"
-            },
-            {
-              "ancho": 960,
-              "url": "https://medios.ejemplo.invalid/publico/tenants/casa-a/publico/medios/p-inactivo/bbb-imagen960.webp"
-            }
-          ]
-        }
-      ],
-      "garantia": null,
-      "id": "p-inactivo",
-      "marca": "Marca Ejemplo",
-      "nombre": "Producto retirado",
-      "precioUsd": {
-        "AR": 8,
-        "BO": 8
-      },
-      "seo": {},
-      "slug": "retirado",
       "video": null
     },
     {

@@ -1,4 +1,5 @@
 ---
+import CatalogoVacio from './CatalogoVacio.astro';
 import Filtros from '../islas/Filtros';
 import TarjetaProducto from './TarjetaProducto.astro';
 import { contenido } from '../contenido/instancia';
@@ -15,7 +16,9 @@ const filtrables = productos.map((p) => ({ id: p.id, marca: p.marca, usd: p.prec
   <a href="/productos" aria-current={categoriaActual === undefined ? 'page' : undefined}>Todos</a>
   {categorias.map((c) => <a href={rutaCategoria(c.id)} aria-current={categoriaActual === c.id ? 'page' : undefined}>{c.nombre}</a>)}
 </nav>
-{productos.length === 0 ? (
+{productos.length === 0 && contenido.productos.length === 0 ? (
+  <CatalogoVacio />
+) : productos.length === 0 ? (
   <p class="subtitulo">Por ahora no hay productos en esta categoría.</p>
 ) : (
   <div class="catalogo">

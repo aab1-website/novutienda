@@ -202,7 +202,6 @@ export function contenidoDesdePublicado(respuesta: unknown, negocio: unknown, en
   const sobrescritas = neg?.categorias ?? {};
   const idsCategoria = [...new Set(productos.map((p) => p.categoria))].sort();
   if (idsCategoria.length > LIMITE_CATEGORIAS) errores.push(`categorias: hay más de ${LIMITE_CATEGORIAS} categorías distintas (tope del sitio)`);
-  if (productos.length === 0) errores.push('documentos.producto__*: no hay productos publicados; el sitio no se reconstruye sin catálogo: publique al menos uno desde el panel');
   const categorias: Categoria[] = idsCategoria.slice(0, LIMITE_CATEGORIAS).map((id) => {
     const o = Object.hasOwn(sobrescritas, id) ? sobrescritas[id] : undefined;
     return { id, nombre: o?.nombre ?? nombreDeCategoria(id), icono: o?.icono ?? iconoDeCategoria(id) };
@@ -223,7 +222,8 @@ export function contenidoDesdePublicado(respuesta: unknown, negocio: unknown, en
     });
   }
 
-  // Carruseles (D5): el cargado por el comercio o, si no hay, las primeras fotos de los destacados (o de los productos)
+  // Carruseles (D5): el cargado por el comercio o, si no hay, las primeras fotos de los destacados (o de los productos).
+  // Sin ninguna foto el carrusel queda vacío y es válido: la portada no lo pinta.
   const conFoto = productos.filter((p) => p.fotos.length > 0);
   const origenCarrusel = conFoto.filter((p) => destacados.has(p.id));
   const respaldo: Foto[] = (origenCarrusel.length > 0 ? origenCarrusel : conFoto)

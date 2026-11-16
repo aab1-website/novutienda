@@ -1,11 +1,14 @@
 // L3-5: los consumidores que la plataforma suscribe al bus son exactamente los `consume` y `consumeOpcional` de los manifiestos.
+import type { CatalogoPuerto, DisparadorSitio } from '@novutienda/consola';
 import type { BaseDatosIdentidad } from '@novutienda/nucleo';
 import { describe, expect, it } from 'vitest';
 import { consumidoresDePlataforma } from '../../plataforma/coordinador/consumidores.js';
 import { registroPlataforma } from '../../plataforma/registro.js';
 
 // Construir los consumidores no toca la base: solo se leen su nombre y sus tipos.
-const consumidores = consumidoresDePlataforma({} as BaseDatosIdentidad);
+const consumidores = consumidoresDePlataforma({} as BaseDatosIdentidad, {}, undefined, {
+  catalogo: {} as CatalogoPuerto, reloj: { ahora: () => 0 }, disparador: {} as DisparadorSitio,
+});
 
 describe('consumidores del bus frente a los manifiestos', () => {
   it('cada par módulo:evento de consumidoresDePlataforma es un `consume` o `consumeOpcional` del manifiesto, y al revés', () => {

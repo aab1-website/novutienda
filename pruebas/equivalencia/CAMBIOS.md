@@ -30,3 +30,8 @@ Motivo: Cambio de comportamiento deliberado, decisión del dueño del producto d
 
 Sello: b48b7a52b4fa3bb82fec8dfd214e6e499d88145533e89ce7d115118ffe7306a0
 Motivo: Misma decisión del dueño del producto del 16/11/2026 (clave interna oculta, exportación sin id, reconocimiento por SKU), tras la revisión del módulo. Cambia una sola referencia, inventarios-simulacion-cambios.json, y solo el texto del error de la fila sin SKU: pasa de «es obligatorio cuando la fila no trae id» a «Falta el SKU: cada producto se reconoce por su SKU». No cambia ninguna otra referencia, ni importes, acciones, resúmenes ni advertencias, y no se agregó ninguna advertencia nueva a las filas de la batería.
+
+## Regeneración 98661c34c65a
+
+Sello: 98661c34c65a42d407563c2d48c7f492ff750eab5d03ffba5d66d05df9c272b2
+Motivo: Cambio de comportamiento deliberado, bloque S7-1 «precio vivo» (decisiones del dueño D-5 y DS-4: al desactivar un producto, sale del sitio en minutos). El escenario entrega a la consola el evento `producto.cambiado` de la desactivación de `p-inactivo`, como hace producción, y la consola retira la copia publicada de ese producto. Cambian solo dos referencias: sitio-contenido.json y sitio-seo.json dejan de incluir «Producto retirado». No cambia nada de precios, cotizaciones, inventario, caja, recibos ni del catálogo del asistente. Regenerado sobre las referencias vigentes de main (sello b48b7a52b4fa), sin pisarlas.
