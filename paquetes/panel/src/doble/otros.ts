@@ -151,7 +151,7 @@ export const handlersOtros: {
       return x === null ? { mercado: m, estado: 'sin_cotizacion' as const, motivo: 'No hay una cotización utilizable' } : { mercado: m, estado: x.estado, par: x.par, valor: x.valor, fecha: x.fecha, fuente: x.fuente };
     });
     return {
-      cambiosSinPublicar: c.e.cambiosSinPublicar, ultimoCambioEn: c.e.ultimoCambioEn, publicadoEn: c.e.publicadoEn, versionPublicada: c.e.versionPublicada, cotizaciones: cot,
+      cambiosSinPublicar: c.e.cambiosSinPublicar, ultimoCambioEn: c.e.ultimoCambioEn, publicadoEn: c.e.publicadoEn, versionPublicada: c.e.versionPublicada, avisoSitio: c.e.avisoSitio, cotizaciones: cot,
       uso: {
         productos: { usados: c.e.productos.size, tope: LIMITES_PANEL.productos }, usuarios: { usados: c.e.usuarios.length, tope: LIMITES_PANEL.usuarios },
         originalesBytes: { usados: c.e.bytesOriginales, tope: LIMITES_PANEL.cuotaOriginalesBytes },
@@ -162,6 +162,7 @@ export const handlersOtros: {
     if (c.e.configSitio === null) throw fallo('estado', 'Configure el sitio (plantilla y WhatsApp) antes de publicar');
     c.e.versionPublicada += 1;
     c.e.cambiosSinPublicar = 0;
+    c.e.avisoSitio = null;
     c.e.publicadoEn = iso(c.ahora);
     auditar(c, 'sitio.publicar', 'publicado/estado');
     return { version: c.e.versionPublicada, productos: [...c.e.productos.values()].filter((p) => p.activo).length, decision: { accion: 'programar', para: c.ahora + 600_000 }, advertencias: [] };
