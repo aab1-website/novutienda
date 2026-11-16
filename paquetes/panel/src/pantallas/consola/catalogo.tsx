@@ -63,7 +63,7 @@ function Tablero(): JSX.Element {
           <Alerta tipo="info">
             <p data-prueba="aviso-sitio">{textoAvisoSitio(d.avisoSitio)}</p>
             {d.avisoSitio.motivo === 'sin_productos' ? (
-              puedeVer('inventario') ? <a href="#/inventario">Ir a Inventario</a> : <p>Pida al administrador que active o publique un producto.</p>
+              puedeVer('inventario') ? <a href="#/inventario">Ir a Inventario</a> : <p>{usuario.rol === 'adm' ? 'El módulo de Inventario no está activo.' : 'Pida al administrador que active o publique un producto.'}</p>
             ) : (
               <>
                 <a href="#/catalogo/fichas">Agregar fotos a un producto</a>

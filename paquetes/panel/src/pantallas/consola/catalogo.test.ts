@@ -471,7 +471,17 @@ describe('catálogo: aviso del sitio incompleto', () => {
     e.api.estado.avisoSitio = { motivo: 'sin_productos', en: EN };
     render(e.envolver(h(PantallaCatalogo, { sub: 'tablero' })));
     expect(await screen.findByText(/El sitio quedó sin productos publicados/)).toBeTruthy();
+    expect(screen.getByRole('link', { name: 'Ir a Inventario' }).getAttribute('href')).toBe('#/inventario');
     expect(screen.getByText('Solo el administrador publica.')).toBeTruthy();
+  });
+  it.each([['adm', 'El módulo de Inventario no está activo.'], ['sup', 'Pida al administrador que active o publique un producto.']] as const)('sin el módulo de Inventario (%s): sin enlace y con el texto alternativo', async (rol, texto) => {
+    const e = crearEntorno(rol);
+    e.modulos = (e.modulos ?? []).filter((m) => m !== 'inventarios');
+    e.api.estado.avisoSitio = { motivo: 'sin_productos', en: EN };
+    render(e.envolver(h(PantallaCatalogo, { sub: 'tablero' })));
+    await screen.findByText(/El sitio quedó sin productos publicados/);
+    expect(screen.queryByRole('link', { name: 'Ir a Inventario' })).toBeNull();
+    expect(screen.getByText(texto)).toBeTruthy();
   });
   it('el supervisor con sin_fotos ve solo el enlace a las fichas', async () => {
     const e = crearEntorno('sup');
