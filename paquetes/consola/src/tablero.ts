@@ -1,17 +1,17 @@
 import {
-  leerCotizacionDe, precioDeMercado, precioFinal, claveDePrecio, rutaContador, SinCotizacionUtilizable,
-  type Actor, type AlmacenCotizaciones, type ConfiguracionComercial, type CopiaCotizacion, type Mercado, type PrecioDeMercado, type PrecioFinal, type ReglaRedondeo, type Redondeo, type RedondeoPorMoneda,
+  leerCotizacionDe, precioDeMercado, claveDePrecio, rutaContador, SinCotizacionUtilizable,
+  type Actor, type AlmacenCotizaciones, type ConfiguracionComercial, type CopiaCotizacion, type PrecioDeMercado, type ReglaRedondeo, type RedondeoPorMoneda,
 } from '@novutienda/nucleo';
 import { leerEstadoSitio, type AvisoSitio } from './cambios.js';
 import { LIMITES_CONSOLA } from './limites.js';
 import { leerUsoMedios } from './medios/uso.js';
 import { exigirRol, ROLES } from './permisos.js';
-import type { BaseDatosConsola, PrecioUSD, Reloj } from './puertos.js';
+import type { BaseDatosConsola, Reloj } from './puertos.js';
 import { rutaPublicado, tenantValido } from './rutas.js';
 
 export type CotizacionTablero =
-  | { readonly mercado: Mercado; readonly estado: 'vigente' | 'ultimo_verificado'; readonly par: string; readonly valor: number; readonly fecha: string; readonly fuente: string }
-  | { readonly mercado: Mercado; readonly estado: 'sin_cotizacion'; readonly motivo: string };
+  | { readonly mercado: string; readonly estado: 'vigente' | 'ultimo_verificado'; readonly par: string; readonly valor: number; readonly fecha: string; readonly fuente: string }
+  | { readonly mercado: string; readonly estado: 'sin_cotizacion'; readonly motivo: string };
 
 export interface Tablero {
   readonly cambiosSinPublicar: number;
@@ -50,10 +50,9 @@ export async function obtenerTablero(deps: DepsTablero, e: { tenantId: string; a
   }));
   const cotizaciones: CotizacionTablero[] = [];
   // D24: un mercado sin tipo de cambio no aparece (no tiene cotización que mostrar).
-  // El tipo público sigue siendo `Mercado` (BO|AR) hasta que el panel lo ensanche (C2); el valor es el id declarado.
   for (const { id, tipoCambio } of deps.comercial.mercados) {
     if (tipoCambio == null) continue;
-    const mercado = id as Mercado;
+    const mercado = id;
     try {
       const c = await leerCotizacionDe(deps.cotizaciones, mercado, deps.reloj.ahora(), { tenantId: t, comercial: deps.comercial });
       cotizaciones.push({ mercado, estado: c.estado, par: c.par, valor: c.valor, fecha: c.fecha, fuente: c.fuente });
@@ -75,25 +74,6 @@ export async function obtenerTablero(deps: DepsTablero, e: { tenantId: string; a
       originalesBytes: { usados: base.medios.bytes, tope: LIMITES_CONSOLA.cuotaOriginalesBytes },
     },
   };
-}
-
-/** @deprecated Tenant de tres monedas. Usar `preciosDelDiaDe`; se retira cuando las pruebas de panel e integración migren (B4-2, parte final). */
-export type PrecioDelDia = PrecioFinal | { readonly tipo: 'sin_cotizacion' };
-
-/**
- * Editor de ficha: el precio en Bs y en ARS del día, calculado con la misma función del sitio (`precioFinal`).
- * La política de redondeo se inyecta: no hay valor por defecto (está sin decidir).
- */
-export function preciosDelDia(
-  precio: PrecioUSD,
-  cotizaciones: Readonly<Partial<Record<Mercado, CopiaCotizacion>>>,
-  redondeo: Redondeo,
-): { readonly BO: PrecioDelDia; readonly AR: PrecioDelDia } {
-  const calcular = (mercado: Mercado, usd: number): PrecioDelDia => {
-    const c = cotizaciones[mercado];
-    return c === undefined ? { tipo: 'sin_cotizacion' } : precioFinal(usd, mercado, c, redondeo);
-  };
-  return { BO: calcular('BO', precio.bo), AR: calcular('AR', precio.ar) };
 }
 
 export type PrecioDelDiaDeMercado = PrecioDeMercado | { readonly tipo: 'sin_cotizacion' } | { readonly tipo: 'falta_precio' };
