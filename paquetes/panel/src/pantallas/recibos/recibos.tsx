@@ -74,7 +74,7 @@ export function PantallaRecibos(): JSX.Element {
               vistaCelular="desplazar"
               buscar={{ etiqueta: 'Buscar en esta lista', en: (r) => [r.numero, r.cliente?.nombre ?? '', r.facturaSuma ?? ''] }}
               cortada={recibos.length >= TOPE_LISTA ? { mostradas: recibos.length, mensaje: `Se muestran los ${String(recibos.length)} recibos más recientes; puede haber más. Acote la búsqueda por número, cliente o fechas para ver el resto.` } : undefined}
-              vacio={{ titulo: 'No hay recibos que coincidan. Cambie los filtros o haga una venta.' }}
+              vacio={{ titulo: 'No hay recibos que coincidan' }}
               columnas={[
                 { id: 'numero', titulo: 'Número', valor: (r) => r.numero, encabezadoFila: true, ordenable: true },
                 { id: 'fecha', titulo: 'Fecha', valor: (r) => r.emitidoEn, celda: (r) => fechaHora(r.emitidoEn), ordenable: true },

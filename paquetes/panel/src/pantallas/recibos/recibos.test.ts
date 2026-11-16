@@ -87,4 +87,29 @@ describe('Archivo de recibos', () => {
     await screen.findByRole('button', { name: `Ver recibo ${base.numero}` });
     expect(screen.queryByText(/más recientes/)).toBeNull();
   });
+
+  it('el resultado del envío por WhatsApp sale por los avisos compartidos', async () => {
+    const { e, base } = await conRecibo();
+    const u = userEvent.setup();
+    render(e.envolver(h(PantallaRecibos, {})));
+    await u.click(await screen.findByRole('button', { name: `Ver recibo ${base.numero}` }));
+    await u.click(await screen.findByRole('button', { name: 'Preparar WhatsApp' }));
+    const region = document.querySelector('[data-region="avisos-estado"]') as HTMLElement;
+    expect(await within(region).findByText('Enlace de WhatsApp preparado.')).toBeTruthy();
+  });
+
+  it('un error de la acción se ve junto a ella y también como aviso', async () => {
+    const { e, base } = await conRecibo();
+    const original = e.api.llamar.bind(e.api);
+    vi.spyOn(e.api, 'llamar').mockImplementation((async (n: string, en: never) => {
+      if (n === 'enviarRecibo') throw new Error('fallo de prueba');
+      return original(n as never, en);
+    }) as never);
+    const u = userEvent.setup();
+    render(e.envolver(h(PantallaRecibos, {})));
+    await u.click(await screen.findByRole('button', { name: `Ver recibo ${base.numero}` }));
+    await u.click(await screen.findByRole('button', { name: 'Preparar WhatsApp' }));
+    await waitFor(() => expect(document.querySelectorAll('.aviso-error').length).toBeGreaterThan(0));
+    expect(within(screen.getByRole('dialog')).getByRole('alert')).toBeTruthy();
+  });
 });
