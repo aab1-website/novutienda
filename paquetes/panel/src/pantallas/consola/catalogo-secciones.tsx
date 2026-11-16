@@ -1,10 +1,11 @@
 import type { JSX } from 'preact';
-import { useState } from 'preact/hooks';
+import { useId, useState } from 'preact/hooks';
 import { LIMITES_PANEL, type Bloque, type Seccion as SeccionWeb } from '../../api/tipos.js';
-import { Alerta, Area, Boton, BotonConfirmado, Campo, Casilla, Cargando, ErrorCarga, Selector, Seccion, Vacio } from '../../ui/comun.js';
+import { Alerta, Area, Boton, BotonConfirmado, Campo, Casilla, Cargando, ErrorCarga, Seccion, Vacio } from '../../ui/comun.js';
 import { useApp } from '../../ui/contexto.js';
 import { useBorrador, useCambiosSinGuardar, useGuardia } from '../../ui/guardia.js';
 import { useAccion, useCarga } from '../../ui/hooks.js';
+import { Miniatura } from './miniatura-vista.js';
 import { SelectorBuscable } from '../../ui/selector-buscable.js';
 
 const idDe = (t: string): string => t.normalize('NFD').replace(/[̀-ͯ]/g, '').toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/^-+|-+$/g, '').slice(0, 40);
@@ -61,13 +62,33 @@ function SelectorFoto({ valor, alElegir, etiqueta }: { valor: string; alElegir: 
   const productos = useCarga(() => api.llamar('listarProductos', {}), []);
   // Sin producto elegido de antemano: se busca y se elige.
   const [productoId, setProductoId] = useState<string | null>(null);
+  const grupo = useId();
   const medios = useCarga(() => (productoId === null ? Promise.resolve([]) : api.llamar('listarMedios', { productoId })), [productoId]);
   const fotos = (medios.datos ?? []).filter((m) => m.tipo === 'foto');
-  const actualSuelta = valor !== '' && !fotos.some((m) => m.id === valor) ? [{ valor, texto: `Foto ${valor.slice(0, 6)}` }] : [];
+  const actualSuelta = valor !== '' && !fotos.some((m) => m.id === valor);
+  const nombreProducto = (productos.datos ?? []).find((p) => p.id === productoId)?.nombre;
   return (
     <div class="cuadricula">
       <SelectorBuscable etiqueta={`${etiqueta}: producto`} valor={productoId} onCambio={setProductoId} opciones={(productos.datos ?? []).map((p) => ({ valor: p.id, texto: p.nombre }))} />
-      <Selector etiqueta={`${etiqueta}: foto`} valor={valor} onCambio={alElegir} opciones={[{ valor: '', texto: productoId === null && valor === '' ? 'Primero elija el producto' : 'Elija una foto' }, ...actualSuelta, ...fotos.map((m) => ({ valor: m.id, texto: `Foto ${m.id.slice(0, 6)}` }))]} />
+      <fieldset class="selector-miniaturas" aria-label={`${etiqueta}: foto`}>
+        {valor === '' && fotos.length === 0 && <p class="texto-suave">{productoId === null ? 'Primero elija el producto' : 'Este producto no tiene fotos'}</p>}
+        <label>
+          <input type="radio" name={grupo} value="" checked={valor === ''} aria-label="Sin foto" onChange={() => alElegir('')} />
+          <span class="miniatura miniatura-respaldo">Sin foto</span>
+        </label>
+        {actualSuelta && (
+          <label key={valor}>
+            <input type="radio" name={grupo} value={valor} checked aria-label={`Foto ${valor.slice(0, 6)} (actual)`} onChange={() => alElegir(valor)} />
+            <Miniatura alt="Foto actual" respaldo={`Foto ${valor.slice(0, 6)}`} />
+          </label>
+        )}
+        {fotos.map((m, i) => (
+          <label key={m.id}>
+            <input type="radio" name={grupo} value={m.id} checked={m.id === valor} aria-label={`Foto ${String(i + 1)}${nombreProducto !== undefined ? ` de ${nombreProducto}` : ''}`} onChange={() => alElegir(m.id)} />
+            <Miniatura medio={m} alt={`Foto ${String(i + 1)}${nombreProducto !== undefined ? ` de ${nombreProducto}` : ''}`} respaldo={`Foto ${m.id.slice(0, 6)}`} orden={i + 1} />
+          </label>
+        ))}
+      </fieldset>
     </div>
   );
 }

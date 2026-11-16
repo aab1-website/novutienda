@@ -221,6 +221,7 @@ function TerminalLista({ turno, alCambiar, mercados }: { turno: TurnoPos; alCamb
   const total = subtotal - (descInvalido ? 0 : monto);
   const aprobadas: AprobacionPos[] = (aprobs.datos ?? []).filter((a) => a.tipo === 'descuento' && a.estado === 'aprobada' && a.moneda === moneda && a.monto >= monto);
   const pendiente = (aprobs.datos ?? []).find((a) => a.tipo === 'descuento' && a.estado === 'pendiente' && a.moneda === moneda && a.monto >= monto);
+  const rechazada = solicitadaId === null ? undefined : (aprobs.datos ?? []).find((a) => a.aprobacionId === solicitadaId && a.estado === 'rechazada');
   const falta = excede && aprobacionId === '';
   const motivoNoCobrar = ((): string | undefined => {
     if (lineas.length === 0) return 'Agregue al menos un producto al carrito.';
@@ -386,9 +387,16 @@ function TerminalLista({ turno, alCambiar, mercados }: { turno: TurnoPos; alCamb
                 </>
               )
               ) : (
-                <Boton chico variante="secundario" onClick={pedirAprobacion} ocupado={solicitud.ocupado}>
-                  Solicitar aprobación
-                </Boton>
+                <>
+                  {rechazada && (
+                    <Alerta>
+                      Su solicitud fue rechazada.{rechazada.motivoRechazo !== undefined && rechazada.motivoRechazo !== '' ? ` Motivo: ${rechazada.motivoRechazo}` : ''}
+                    </Alerta>
+                  )}
+                  <Boton chico variante="secundario" onClick={pedirAprobacion} ocupado={solicitud.ocupado}>
+                    {rechazada ? 'Solicitar de nuevo' : 'Solicitar aprobación'}
+                  </Boton>
+                </>
               )}
               {solicitud.error && <Alerta>{solicitud.error}</Alerta>}
             </div>
