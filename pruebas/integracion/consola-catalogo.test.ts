@@ -1,5 +1,5 @@
 // La consola LEE el catálogo; todo producto nace y cambia por Inventarios (dueño de productos y stock).
-import { calcularDisponibilidadPublica, obtenerTablero, preciosDelDia } from '@novutienda/consola';
+import { calcularDisponibilidadPublica, obtenerTablero, preciosDelDiaDe } from '@novutienda/consola';
 import { actualizarProducto, crearProducto, type CambiosProducto } from '@novutienda/inventarios';
 import { COMERCIAL_LEGADO_TRES_MONEDAS, LimiteDelPlan, verificarYReservar, type Actor } from '@novutienda/nucleo';
 import { abrirTurno, confirmarVenta } from '@novutienda/pos';
@@ -36,7 +36,7 @@ describe('Inventarios -> catálogo de la consola -> POS: el precio y los datos d
     ]);
     expect(ar.venta.lineas[0]?.precioUnitario).toBe(1325000); // 13,25 USD x 1 000
     // El editor de la consola calcula con la misma función y llega al mismo precio.
-    const precios = preciosDelDia({ bo: 12.5, ar: 13.25 }, { BO: await cotizacionVigente(e, 'BO'), AR: await cotizacionVigente(e, 'AR') }, REDONDEO);
+    const precios = preciosDelDiaDe({ bo: 12.5, ar: 13.25 }, COMERCIAL_LEGADO_TRES_MONEDAS, { BO: await cotizacionVigente(e, 'BO'), AR: await cotizacionVigente(e, 'AR') }, REDONDEO);
     expect(precios).toMatchObject({ BO: { tipo: 'precio', centavos: 8750 }, AR: { tipo: 'precio', centavos: 1325000 } });
     verificarInvariantes(e, T);
   });

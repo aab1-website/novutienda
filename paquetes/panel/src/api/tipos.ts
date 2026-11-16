@@ -93,7 +93,7 @@ export interface LineaCarrito {
 }
 
 export interface Carrito {
-  readonly mercado: Mercado;
+  readonly mercado: string;
   readonly moneda: Moneda;
   readonly lineas: readonly LineaCarrito[];
   readonly descuento?: { readonly monto: number; readonly motivo: string };
@@ -104,7 +104,7 @@ export interface Carrito {
 /** Pago que envía el cliente (campos que `validarPagos` admite). */
 export interface PagoEntrada {
   readonly medio: MedioPago;
-  readonly moneda: Moneda;
+  readonly moneda: string;
   readonly monto: number;
   readonly cambio?: number;
   readonly referencia?: string;
@@ -550,8 +550,8 @@ export interface SubidaVista {
 }
 
 export type CotizacionTablero =
-  | { readonly mercado: Mercado; readonly estado: 'vigente' | 'ultimo_verificado'; readonly par: string; readonly valor: number; readonly fecha: string; readonly fuente: string }
-  | { readonly mercado: Mercado; readonly estado: 'sin_cotizacion'; readonly motivo: string };
+  | { readonly mercado: string; readonly estado: 'vigente' | 'ultimo_verificado'; readonly par: string; readonly valor: number; readonly fecha: string; readonly fuente: string }
+  | { readonly mercado: string; readonly estado: 'sin_cotizacion'; readonly motivo: string };
 
 export interface Tablero {
   readonly cambiosSinPublicar: number;
@@ -668,10 +668,10 @@ export interface EntradaAuditoriaVista {
 
 export interface CotizacionVista {
   readonly cotizacionId: string;
-  readonly par: 'BOB/USD' | 'ARS/USD';
+  readonly par: string;
   readonly valor: number;
   readonly fecha: string;
   readonly fuente: string;
   readonly estado: 'vigente' | 'ultimo_verificado';
 }
-export type CotizacionesVigentes = Readonly<Record<Mercado, CotizacionVista | null>>;
+export type CotizacionesVigentes = Readonly<Record<string, CotizacionVista | null>>;

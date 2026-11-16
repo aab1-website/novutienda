@@ -4,8 +4,10 @@
 // el emulador y APP_CHECK_EXIGIDO=true, y allí su ausencia es un fallo (pruebas/funciones/emulador.test.ts).
 import sharp from 'sharp';
 import { beforeAll, describe, expect, it, vi } from 'vitest';
-import { ClienteRemoto, ErrorApi, mensajeDeError, precioDeVenta, type Rol, type Transporte } from '@novutienda/panel';
+import { ClienteRemoto, ErrorApi, mensajeDeError, precioDeVentaMercado, type MercadoDeclarado, type Rol, type Transporte } from '@novutienda/panel';
 import { esperarSubida } from '@novutienda/panel/consola';
+import { preciosDelDiaDe } from '@novutienda/consola';
+import { COMERCIAL_LEGADO_TRES_MONEDAS, type CopiaCotizacion } from '@novutienda/nucleo';
 import { crearUsuario, esperar, hayEmulador, herramientas, llamar, sembrarTenant, uuid, unico, type Herramientas, type Usuario } from '../funciones/ayudas.js';
 
 vi.setConfig({ testTimeout: 90_000, hookTimeout: 90_000 });
@@ -82,9 +84,13 @@ describe.skipIf(!hayEmulador)('panel contra las funciones reales (emulador)', ()
     expect(await api.sup.llamar('turnoActual', {})).not.toBeNull();
 
     // Precio de venta calculado por el panel con la cotización vigente y el redondeo del servidor.
-    const cot = (await api.sup.llamar('cotizacionesVigentes', {})).BO;
-    const unit = precioDeVenta(800, 'BO', 'BOB', cot);
+    const cot = (await api.sup.llamar('cotizacionesVigentes', {}))['BO'] ?? null;
+    const mercado: MercadoDeclarado = { id: 'BO', nombre: 'Bolivia', monedaVenta: 'BOB', monedaBase: 'USD', tieneTipoCambio: true };
+    const unit = precioDeVentaMercado(800, mercado, cot === null ? null : { par: cot.par, valor: cot.valor });
     expect(unit).toMatchObject({ tipo: 'precio', centavos: 5600 });
+    // Mismo resultado que el servidor (`preciosDelDiaDe` de la consola) con la política vigente del comercio.
+    const servidor = preciosDelDiaDe({ bo: 8, ar: 8 }, COMERCIAL_LEGADO_TRES_MONEDAS, cot === null ? {} : { BO: cot as unknown as CopiaCotizacion<string> }, { BOB: { tipo: 'decimales', decimales: 2, modo: 'cercano' }, ARS: { tipo: 'multiplo', multiplo: 100, modo: 'cercano' } })['BO'];
+    expect(servidor).toMatchObject({ tipo: 'precio', centavos: 5600 });
     const total = 2 * 5600;
     const requestId = uuid();
     const r = await api.caj.llamar('confirmarVenta', {

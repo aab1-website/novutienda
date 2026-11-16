@@ -1,6 +1,6 @@
 import type { JSX } from 'preact';
 import { useEffect, useState } from 'preact/hooks';
-import { MEDIOS_PAGO, type ConfigPos, type MercadoDeclarado, type MedioPago, type Moneda, type PlantillaRecibo } from '../api/tipos.js';
+import { MEDIOS_PAGO, type ConfigPos, type MercadoDeclarado, type MedioPago, type PlantillaRecibo } from '../api/tipos.js';
 import { Alerta, Area, Boton, Campo, Cargando, Casilla, ErrorCarga, Pestanas, Selector, Seccion } from '../ui/comun.js';
 import { useApp } from '../ui/contexto.js';
 import { useAccion, useCarga } from '../ui/hooks.js';
@@ -64,7 +64,7 @@ function ConfigPosForm(): JSX.Element {
           <Campo etiqueta="Dirección web del logo (https)" valor={c.logoUrl ?? ''} onInput={(v) => { setOk(false); setC({ ...c, logoUrl: v }); }} />
           <Campo etiqueta="Color primario" tipo="color" valor={c.colores.primario} onInput={(v) => setC({ ...c, colores: { ...c.colores, primario: v } })} />
           <Campo etiqueta="Color secundario" tipo="color" valor={c.colores.secundario} onInput={(v) => setC({ ...c, colores: { ...c.colores, secundario: v } })} />
-          <Selector etiqueta="Moneda por defecto" valor={c.monedaPorDefecto} onCambio={(v) => setC({ ...c, monedaPorDefecto: v as Moneda })} deshabilitado={comercial.estado !== 'lista'} opciones={monedas.map((m) => ({ valor: m, texto: m }))} />
+          <Selector etiqueta="Moneda por defecto" valor={c.monedaPorDefecto} onCambio={(v) => setC({ ...c, monedaPorDefecto: v })} deshabilitado={comercial.estado !== 'lista'} opciones={monedas.map((m) => ({ valor: m, texto: m }))} />
           <Campo etiqueta="Serie del recibo" valor={c.serieRecibo} onInput={(v) => setC({ ...c, serieRecibo: v })} maxLength={6} ayuda="1 a 6 letras mayúsculas o dígitos. Se define solo aquí." />
         </div>
         <fieldset>

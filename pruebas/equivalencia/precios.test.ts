@@ -1,8 +1,9 @@
-// (c) Precios del día y precio final por mercado: `precioFinal` y el redondeo del núcleo, `preciosDelDia` de la
-// consola, `precioDeVenta` del panel y `vistaPrecio` del sitio, sobre los productos fijos y la política vigente.
+// (c) Precios del día y precio final por mercado: `precioFinal` y el redondeo del núcleo, `preciosDelDiaDe` de la
+// consola, `precioDeCobro` de la caja del panel y `vistaPrecio` del sitio, sobre los productos fijos y la política vigente.
 import { COMERCIAL_LEGADO_TRES_MONEDAS, precioFinal, redondear, leerCotizacion } from '@novutienda/nucleo';
 import { preciosDelDiaDe } from '@novutienda/consola';
-import { precioDeVenta } from '@novutienda/panel';
+import { precioDeCobro, type MercadoDeclarado } from '@novutienda/panel/pos';
+import { vistaComercial } from '../../plataforma/coordinador/comercial.js';
 import { vistaPrecio } from '@novutienda/website';
 import { describe, expect, it } from 'vitest';
 import { COTIZACION_AR, COTIZACION_BO, PRODUCTOS, REDONDEO, T, crearEscenario } from './escenario.js';
@@ -10,22 +11,35 @@ import { compararConFotoJson } from './foto.js';
 
 const usd = (centavos: number): number => centavos / 100;
 
+// Los mercados declarados salen de la proyección real del servidor (la misma que recibe el panel).
+const MERCADOS = vistaComercial(COMERCIAL_LEGADO_TRES_MONEDAS).mercados;
+const mercado = (id: 'BO' | 'AR'): MercadoDeclarado => {
+  const m = MERCADOS.find((x) => x.id === id);
+  if (m === undefined) throw new Error('mercado de referencia ausente');
+  return m;
+};
+const MBO = mercado('BO');
+const MAR = mercado('AR');
+
 describe('precios por mercado del tenant de referencia', () => {
   it('precioFinal y preciosDelDia por producto y mercado, con cotización guardada', async () => {
     const e = await crearEscenario();
     const BO = await leerCotizacion(e.almacen, 'BO', e.reloj.ahora, { tenantId: T });
     const AR = await leerCotizacion(e.almacen, 'AR', e.reloj.ahora, { tenantId: T });
     expect([BO.valor, AR.valor]).toEqual([COTIZACION_BO, COTIZACION_AR]);
+    const cot = { BO, AR };
     const filas = PRODUCTOS.map((f) => {
       const p = f.producto.precioUSD;
+      const prod = { precioUSD: p };
       return {
         id: f.producto.id, precioUSDcentavos: p,
         precioFinal: { BO: precioFinal(usd(p.bo), 'BO', BO, REDONDEO), AR: precioFinal(usd(p.ar), 'AR', AR, REDONDEO) },
         preciosDelDia: preciosDelDiaDe({ bo: usd(p.bo), ar: usd(p.ar) }, COMERCIAL_LEGADO_TRES_MONEDAS, { BO, AR }, REDONDEO),
         preciosDelDiaSinCotizacion: preciosDelDiaDe({ bo: usd(p.bo), ar: usd(p.ar) }, COMERCIAL_LEGADO_TRES_MONEDAS, {}, REDONDEO),
         panel: {
-          BOB: precioDeVenta(p.bo, 'BO', 'BOB', BO), ARS: precioDeVenta(p.ar, 'AR', 'ARS', AR), USD_BO: precioDeVenta(p.bo, 'BO', 'USD', BO), USD_AR: precioDeVenta(p.ar, 'AR', 'USD', AR),
-          BOB_sinCotizacion: precioDeVenta(p.bo, 'BO', 'BOB', null),
+          BOB: precioDeCobro(prod, MBO, 'BOB', cot, REDONDEO), ARS: precioDeCobro(prod, MAR, 'ARS', cot, REDONDEO),
+          USD_BO: precioDeCobro(prod, MBO, 'USD', cot, REDONDEO), USD_AR: precioDeCobro(prod, MAR, 'USD', cot, REDONDEO),
+          BOB_sinCotizacion: precioDeCobro(prod, MBO, 'BOB', { BO: null, AR: null }, REDONDEO),
         },
         sitio: { BO: vistaPrecio(usd(p.bo), 'BO', BO, REDONDEO), AR: vistaPrecio(usd(p.ar), 'AR', AR, REDONDEO), BOcargando: vistaPrecio(usd(p.bo), 'BO', undefined, REDONDEO), BOsinCotizacion: vistaPrecio(usd(p.bo), 'BO', null, REDONDEO) },
       };

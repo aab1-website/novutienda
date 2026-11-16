@@ -395,7 +395,7 @@ export const TRADUCCION: { readonly [N in NombreCallable]: Traduccion<N> } = {
     ejecutar: async (c) => {
       const r = (await c.llamar('pos', 'cotizaciones', {})) as Obj;
       if (c.sesionVigente()) fijarRedondeo(r['redondeo']);
-      return (r['cotizaciones'] ?? { BO: null, AR: null }) as CotizacionesVigentes;
+      return (r['cotizaciones'] ?? {}) as CotizacionesVigentes;
     },
   },
 
