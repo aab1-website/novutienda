@@ -102,7 +102,6 @@ export function PantallaUsuarios(): JSX.Element {
         ) : (
           <form class="formulario" onSubmit={(e) => { e.preventDefault(); buscar(); }} noValidate>
             <Campo etiqueta="Correo de la persona" tipo="email" inputMode="email" autocompletar="off" valor={correo} onInput={(v) => { setCorreo(v); setResultado(null); }} ayuda="La cuenta debe existir con correo y contraseña, y el correo debe estar verificado." />
-            <Selector etiqueta="Rol que tendrá" valor={rolNuevo} onCambio={(v) => setRolNuevo(v as Rol)} opciones={(['caj', 'sup'] as const).map((r) => ({ valor: r, texto: ROL_TEXTO[r] }))} />
             <div class="fila"><Boton tipo="submit" ocupado={alta.ocupado} motivo={correo.trim() === '' ? 'Escriba el correo de la persona' : undefined}>Buscar cuenta</Boton></div>
           </form>
         )}
@@ -112,8 +111,9 @@ export function PantallaUsuarios(): JSX.Element {
         {!lleno && resultado?.tipo === 'sin-contrasena' && <Alerta tipo="info">La cuenta de {resultado.correo} no tiene contraseña. El personal debe ingresar con correo y contraseña: pida al propietario de la plataforma que le asigne una.</Alerta>}
         {!lleno && resultado?.tipo === 'inexistente' && <InstruccionesCuenta correo={resultado.correo} />}
         {!lleno && resultado?.tipo === 'verificada' && (
-          <div class="fila">
+          <div class="formulario">
             <Alerta tipo="ok">Cuenta encontrada y con el correo verificado: {resultado.correo}.</Alerta>
+            <Selector etiqueta="Rol que tendrá" valor={rolNuevo} onCambio={(v) => setRolNuevo(v as Rol)} opciones={(['caj', 'sup'] as const).map((r) => ({ valor: r, texto: ROL_TEXTO[r] }))} />
             <Boton onClick={() => darAlta(resultado)} ocupado={alta.ocupado}>{`Asignar rol de ${ROL_TEXTO[rolNuevo].toLowerCase()}`}</Boton>
           </div>
         )}

@@ -293,7 +293,7 @@ export const handlersOtros: {
   buscarUsuarioPorCorreo(c, e) {
     exigirRol(c, ['adm']);
     const buscado = e.correo.trim().toLowerCase();
-    const u = [...c.e.usuarios, ...c.e.cuentasSinRol].find((x) => x.correo.toLowerCase() === buscado);
+    const u = [...c.e.usuarios, ...c.e.cuentasSinRol].find((x) => (x.correo as string | null | undefined)?.toLowerCase() === buscado);
     if (u === undefined) throw fallo('no-encontrado', 'No existe una cuenta con ese correo.');
     return { uid: u.uid, correoVerificado: u.verificado, conContrasena: true };
   },

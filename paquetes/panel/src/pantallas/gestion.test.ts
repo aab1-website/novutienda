@@ -246,9 +246,10 @@ describe('usuarios y configuración', () => {
     ver(e, h(PantallaUsuarios, {}));
     const u = userEvent.setup();
     await u.type(await screen.findByLabelText(/Correo de la persona/), ' Nueva@Ejemplo.test ');
-    await u.selectOptions(screen.getByLabelText('Rol que tendrá'), 'sup');
+    expect(screen.queryByLabelText('Rol que tendrá')).toBeNull();
     await u.click(screen.getByRole('button', { name: 'Buscar cuenta' }));
     expect(await screen.findByText(/Cuenta encontrada y con el correo verificado/)).toBeTruthy();
+    await u.selectOptions(screen.getByLabelText('Rol que tendrá'), 'sup');
     await u.click(screen.getByRole('button', { name: 'Asignar rol de supervisor' }));
     expect(await screen.findByText(/nueva@ejemplo.test ahora es supervisor/)).toBeTruthy();
     expect(await screen.findByText('Personas con acceso (3 de 3)')).toBeTruthy();
@@ -550,6 +551,11 @@ describe('usuarios: avisos, motivos y datos ausentes', () => {
     await u.type(await screen.findByLabelText(/Correo de la persona/), 'adm@ejemplo.test');
     await u.click(screen.getByRole('button', { name: 'Buscar cuenta' }));
     expect(await screen.findByText(/ya tiene acceso/)).toBeTruthy();
+    // Y una cuenta que no existe, con una cuenta de correo nulo en la lista del servicio: responde «no encontrada», no se rompe.
+    await u.clear(screen.getByLabelText(/Correo de la persona/));
+    await u.type(screen.getByLabelText(/Correo de la persona/), 'nadie@ejemplo.test');
+    await u.click(screen.getByRole('button', { name: 'Buscar cuenta' }));
+    expect(await screen.findByRole('region', { name: 'Cómo crear la cuenta' })).toBeTruthy();
   });
 });
 
