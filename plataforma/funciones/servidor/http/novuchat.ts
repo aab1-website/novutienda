@@ -99,7 +99,7 @@ async function catalogo(e: Entorno, tenantId: string, comercial: ConfiguracionCo
     throw error;
   }
   // Redondeo: la misma fuente y los mismos fallos que en main (`e.redondeo`, `config/redondeo`).
-  // Indexado por la moneda de venta del mercado declarado: sin regla para ella, `precioDeMercado` lo da por inválido y el producto se omite.
+  // Indexado por la moneda de venta del mercado declarado: sin regla para ella el producto se salta antes de llamar a `precioDeMercado`.
   const redondeo: Readonly<Record<string, ReglaRedondeo | undefined>> = await e.redondeo(tenantId);
   // Una sola definición de «publicado» (DS-1): existe la copia `publicado/producto__<id>` que escribe la publicación de la consola.
   // La lista de ids sale de `publicado/estado.productos`; `producto.publicado` de Inventarios no se lee.

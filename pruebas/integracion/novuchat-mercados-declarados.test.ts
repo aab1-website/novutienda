@@ -1,7 +1,7 @@
 // El asistente (catálogo e inventario) lee los precios por los mercados que declara el comercio, no por dos claves fijas: un
 // producto al que le falta el precio de un mercado se omite en él y no tumba la respuesta; sin regla de redondeo para la
 // moneda se omite; sin configuración comercial válida el inventario falla cerrado. Todo con datos ficticios.
-import { comercialLegado, limiteMemoria, type ConfiguracionComercial } from '@novutienda/nucleo';
+import { comercialLegado, limiteMemoria, validarConfiguracionComercial, type ConfiguracionComercial } from '@novutienda/nucleo';
 import { describe, expect, it } from 'vitest';
 import { ComercialInvalida } from '../../plataforma/coordinador/index.js';
 import type { Entorno } from '../../plataforma/funciones/servidor/entorno.js';
@@ -15,6 +15,14 @@ const derivada = comercialLegado({ zonaHoraria: 'America/La_Paz', monedas: ['BOB
 if (!derivada.ok) throw new Error(derivada.error);
 const COMERCIAL: ConfiguracionComercial = derivada.valor;
 const ID = 'p-solo-bo';
+const SOLO_BO = ((): ConfiguracionComercial => {
+  const r = validarConfiguracionComercial({
+    mercados: [{ id: 'BO', nombre: 'BO', monedaVenta: 'BOB', monedaBase: 'USD', zonaHoraria: 'America/La_Paz', tipoCambio: { par: 'BOB/USD', fuentes: ['BCB'] }, redondeo: { tipo: 'decimales', decimales: 2, modo: 'cercano' } }],
+    monedas: ['BOB', 'USD'],
+  });
+  if (!r.ok) throw new Error(r.error);
+  return r.valor;
+})();
 
 async function preparar(opciones: { redondeo?: unknown; comercial?: () => Promise<ConfiguracionComercial> } = {}) {
   const e = await crearEscenario();
@@ -68,5 +76,23 @@ describe('NovuChat: mercados declarados', () => {
   it('comercio sin declaración comercial: el inventario falla cerrado con ComercialInvalida, sin salida', async () => {
     const { entorno, cfg } = await preparar({ comercial: () => Promise.reject(new ComercialInvalida('inexistente')) });
     await expect(manejarInventario(entorno, peticion('/i'), cfg, sirve)).rejects.toBeInstanceOf(ComercialInvalida);
+  });
+
+  it('un comercio que declara solo BO responde 400 mercado_invalido a mercado=AR', async () => {
+    const { entorno, cfg } = await preparar({ comercial: () => Promise.resolve(SOLO_BO) });
+    const r = await manejarCatalogo(entorno, peticion('/c', { mercado: 'AR' }), cfg, sirve);
+    expect(r.status).toBe(400);
+    expect(r.cuerpo).toEqual({ error: 'mercado_invalido' });
+  });
+
+  it('mercado=bo en minúscula responde 400', async () => {
+    const { entorno, cfg } = await preparar();
+    expect((await manejarCatalogo(entorno, peticion('/c', { mercado: 'bo' }), cfg, sirve)).status).toBe(400);
+  });
+
+  it('un comercio de la forma anterior (derivado de sus tres monedas) sigue respondiendo el inventario', async () => {
+    const { entorno, cfg } = await preparar(); // COMERCIAL es la derivación de las tres monedas
+    const r = await manejarInventario(entorno, peticion('/i'), cfg, sirve);
+    expect(r.status).toBe(200);
   });
 });
