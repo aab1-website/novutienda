@@ -450,3 +450,56 @@ describe('almacenamiento de recibos', () => {
     expect(manifiestoRecibos.almacenamiento).toEqual([{ ruta: 'privado/recibos/{ruta=**}', lectura: 'servidor', escritura: 'servidor' }]);
   });
 });
+
+describe('logo subido del negocio', () => {
+  const base = { negocio: { nombre: 'Tienda X' }, logoUrl: 'https://ejemplo.test/plantilla.png' };
+  const SUBIDO = 'https://medios.test/t1/logo.png';
+  const conPlantilla = (): DobleDb => {
+    const db = new DobleDb();
+    db.poner(rutaPlantilla('t1'), base);
+    return db;
+  };
+
+  it('con puerto y logo subido, el recibo guarda el subido', async () => {
+    const db = conPlantilla();
+    const pedidos: string[] = [];
+    await manejarVentaConfirmada(db, eventoVenta('t1', 'v1'), { ...AHORA, logoDelNegocio: (t) => { pedidos.push(t); return Promise.resolve(SUBIDO); } });
+    expect(pedidos).toEqual(['t1']);
+    expect(recibo(db, 't1', 'v1').plantilla.logoUrl).toBe(SUBIDO);
+  });
+
+  it('con puerto que devuelve null, usa el logo de la plantilla', async () => {
+    const db = conPlantilla();
+    await manejarVentaConfirmada(db, eventoVenta('t1', 'v1'), { ...AHORA, logoDelNegocio: () => Promise.resolve(null) });
+    expect(recibo(db, 't1', 'v1').plantilla.logoUrl).toBe(base.logoUrl);
+  });
+
+  it('con logo subido y plantilla sin logo, el recibo lleva el subido', async () => {
+    const db = new DobleDb();
+    await manejarVentaConfirmada(db, eventoVenta('t1', 'v1'), { ...AHORA, logoDelNegocio: () => Promise.resolve(SUBIDO) });
+    expect(recibo(db, 't1', 'v1').plantilla.logoUrl).toBe(SUBIDO);
+  });
+
+  it('sin puerto, igual que hoy', async () => {
+    const db = conPlantilla();
+    await manejarVentaConfirmada(db, eventoVenta('t1', 'v1'), AHORA);
+    expect(recibo(db, 't1', 'v1').plantilla).toEqual(base);
+  });
+
+  it('si el puerto falla, la emisión falla y no queda recibo a medias', async () => {
+    const db = conPlantilla();
+    await expect(
+      manejarVentaConfirmada(db, eventoVenta('t1', 'v1'), { ...AHORA, logoDelNegocio: () => Promise.reject(new Error('sin medios')) }),
+    ).rejects.toThrow(/sin medios/);
+    expect(db.coleccion('tenants/t1/recibos')).toHaveLength(0);
+    expect(db.coleccion('tenants/t1/auditoria')).toHaveLength(0);
+  });
+
+  it('un recibo emitido antes no cambia al emitir otro con un logo nuevo', async () => {
+    const db = conPlantilla();
+    await manejarVentaConfirmada(db, eventoVenta('t1', 'v1'), AHORA);
+    await manejarVentaConfirmada(db, eventoVenta('t1', 'v2', { numeroRecibo: 'A-000002' }), { ...AHORA, logoDelNegocio: () => Promise.resolve(SUBIDO) });
+    expect(recibo(db, 't1', 'v1').plantilla.logoUrl).toBe(base.logoUrl);
+    expect(recibo(db, 't1', 'v2').plantilla.logoUrl).toBe(SUBIDO);
+  });
+});
