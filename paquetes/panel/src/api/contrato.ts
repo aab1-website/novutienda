@@ -81,7 +81,7 @@ export interface Contrato {
   // ---- Consola (catálogo y sitio; no crea, edita ni importa productos: eso es de Inventarios) ----
   obtenerTablero: { entrada: Vacio; salida: Tablero };
   publicarSitio: { entrada: Vacio; salida: ResultadoPublicacion };
-  /** Centavos de USD: `inventarios.cambiarPrecioUSD` (idempotente por `operacionId`, que la pantalla manda siempre). */
+  /** Un precio por cada mercado declarado por el comercio, en centavos de la moneda base: `inventarios.cambiarPrecioUSD` (idempotente por `operacionId`, que la pantalla manda siempre). */
   cambiarPrecioUSD: { entrada: { operacionId: string; productoId: string; precioUSD: PreciosPorMercado }; salida: Ok };
   guardarFicha: { entrada: { productoId: string; ficha: FichaWeb }; salida: Ok };
   reservarSubida: { entrada: { subidaId: string; productoId: string; tipo: TipoMedio; bytes: number }; salida: Reserva };

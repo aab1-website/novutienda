@@ -326,7 +326,7 @@ export const handlersOtros: {
     return { ok: true };
   },
   exportarProductosCsvSitio(c) {
-    const filas = [...c.e.productos.values()].map((p) => [p.id, p.nombre, p.categoria, p.marca ?? '', p.sku, p.activo ? 'si' : 'no', p.garantiaMeses ?? '', (p.precioUSD['bo'] ?? 0) / 100, (p.precioUSD['ar'] ?? 0) / 100]);
+    const filas = [...c.e.productos.values()].map((p) => [p.id, p.nombre, p.categoria, p.marca ?? '', p.sku, p.activo ? 'si' : 'no', p.garantiaMeses ?? '', p.precioUSD['bo'] === undefined ? '' : p.precioUSD['bo'] / 100, p.precioUSD['ar'] === undefined ? '' : p.precioUSD['ar'] / 100]);
     return { csv: aCsv(['id', 'nombre', 'categoria', 'marca', 'sku', 'activo', 'garantiaMeses', 'precioBO', 'precioAR'], filas) };
   },
   invitarUsuario(c, e) {

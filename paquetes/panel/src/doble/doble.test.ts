@@ -903,4 +903,12 @@ describe('doble: precio por mercado abierto', () => {
     expect((await falla(e.api.llamar('crearProducto', { operacionId: uuid(), producto: { ...producto, id: 'solo-bo', sku: 'SB-1', precioUSD: { bo: 1500 } } }))).detalle.codigo).toBe('entrada-invalida');
     expect((await falla(e.api.llamar('actualizarProducto', { operacionId: uuid(), productoId: 'solo-pe', cambios: { precioUSD: { bo: 100 } } }))).detalle.codigo).toBe('entrada-invalida');
   });
+  it('la exportación para el sitio deja vacía la celda del precio ausente', async () => {
+    const e = crearEntorno('adm', () => AHORA, {
+      comercial: { mercados: [{ id: 'BO', nombre: 'Bolivia', monedaVenta: 'BOB', monedaBase: 'USD', tieneTipoCambio: true }], monedasCaja: ['BOB', 'USD'], monedaCosto: 'USD' },
+    });
+    await e.api.llamar('crearProducto', { operacionId: uuid(), producto: { id: 'solo-bo', nombre: 'Solo BO', categoria: 'Varios', sku: 'SB-9', precioUSD: { bo: 1250 } } });
+    const fila = (await e.api.llamar('exportarProductosCsvSitio', {})).csv.split('\n').find((l) => l.startsWith('solo-bo'));
+    expect(fila?.trimEnd()).toMatch(/,12\.5,$/);
+  });
 });
