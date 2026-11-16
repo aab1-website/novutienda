@@ -2,9 +2,10 @@ import { registrarAuditoria, type Actor, type LimiteTasa, type TransaccionIdenti
 import { anotarCambio, leerEstadoSitio } from '../cambios.js';
 import { ArchivoNoAdmitido, ErrorConsola, ProcesamientoNoDisponible, type CodigoErrorConsola } from '../errores.js';
 import { LIMITES_CONSOLA } from '../limites.js';
+import { agendarLogoVivo, escribirLogoVivo, leerPublicadoParaLogo, proyectarLogoPublico } from '../logo-publico.js';
 import { exigirRol, ROLES } from '../permisos.js';
 import { PLANTILLAS } from '../plantillas.js';
-import type { AlmacenMedios, BaseDatosConsola, CatalogoPuerto, ConsultaSubidas, ProcesadorMedios, Reloj } from '../puertos.js';
+import type { AlmacenMedios, BaseDatosConsola, CatalogoPuerto, ConsultaSubidas, DisparadorSitio, ProcesadorMedios, Reloj } from '../puertos.js';
 import {
   dirTemporal, ID_NEGOCIO, ID_PRODUCTO, ID_SUBIDA, prefijoTemporal, rutaCarrusel, rutaFicha, rutaMedio, rutaOriginal, rutaPublicaMedio, rutaSeccion, rutaSitio,
   rutaSubida, tenantValido,
@@ -25,6 +26,11 @@ export interface DepsMedios {
   readonly procesador: ProcesadorMedios;
   readonly catalogo: CatalogoPuerto;
   readonly reloj: Reloj;
+  /**
+   * Logo vivo: con algo ya publicado, subir o quitar el logo actualiza `publicado/sitio.logo` y agenda la reconstrucción por aquí.
+   * Opcional: sin él se actualiza igual lo publicado y la reconstrucción queda para el próximo disparo (publicación o diaria).
+   */
+  readonly disparador?: DisparadorSitio;
   /** Límite de frecuencia para reservar logos (por comercio). Sin él no se limita. */
   readonly limiteLogo?: LimiteTasa;
   /** Registro de avisos sin datos personales (solo cantidades). */
@@ -460,6 +466,7 @@ async function procesarReclamada(
 
   const ahoraIso = new Date(deps.reloj.ahora()).toISOString();
   let logoAnterior: string | undefined;
+  let agendar: number | null = null;
   try {
     await deps.db.runTransaction(async (tx) => {
       const actual = leerSubida((await tx.get(rutaSubida(t, s.id))).data());
@@ -469,13 +476,21 @@ async function procesarReclamada(
       const previo = s.tipo === 'logo' ? await leerLogoEnTx(tx, t) : undefined;
       const previoMedio = previo === undefined || previo.medioId === s.id ? undefined : (await tx.get(rutaMedio(t, previo.medioId))).data() as Partial<MedioSubido> | undefined;
       const previoSubida = previoMedio === undefined || previo === undefined ? undefined : leerSubida((await tx.get(rutaSubida(t, previo.medioId))).data());
+      const publicadoLogo = s.tipo === 'logo' ? await leerPublicadoParaLogo(tx, t) : undefined;
       if (actual?.estado !== 'procesando' || actual.procesandoPor !== reclamo) {
         throw new ErrorConsola('estado', 'La subida ya fue resuelta por otra solicitud');
       }
+      agendar = null; // el cuerpo se reintenta: cada intento decide de nuevo
+      let logoVivo = false;
       // Si el archivo real es más chico que lo reservado, se devuelve la diferencia a la cuota.
       let usoNuevo: UsoMedios = { ...uso, bytes: Math.max(0, uso.bytes - (s.bytes - real)) };
       if (s.tipo === 'logo') {
         tx.set(rutaSitio(t, 'logo'), { ...docLogo(medio), actualizadoEn: ahoraIso, por: e.actor.uid });
+        // Logo vivo, en la MISMA transacción que el reemplazo: `publicado/sitio.logo` pasa a las versiones nuevas a la vez que
+        // `sitio/logo`, y los objetos del anterior se borran solo DESPUÉS del commit. Si algo falla, o nada cambia o ambos cambian.
+        const vivo = escribirLogoVivo(tx, t, publicadoLogo!, proyectarLogoPublico(t, docLogo(medio)), deps.reloj);
+        logoVivo = vivo.aplicado;
+        agendar = vivo.programar;
         // Un solo logo vigente: el anterior (su medio, su original y sus versiones) se borra; las versiones que el nuevo comparte
         // por contenido idéntico (misma ruta con hash) se conservan. Solo se tocan objetos del propio logo del negocio.
         if (previo !== undefined && previoMedio !== undefined && !esDelLogo(previoMedio, previoSubida)) {
@@ -499,7 +514,7 @@ async function procesarReclamada(
       escribirUsoMedios(tx, t, usoNuevo);
       tx.set(rutaMedio(t, s.id), { ...medio });
       tx.set(rutaSubida(t, s.id), aDoc({ ...sinReclamo(actual), estado: 'procesada', bytes: real }));
-      anotarCambio(tx, t, estado, ahoraIso);
+      if (!logoVivo) anotarCambio(tx, t, estado, ahoraIso);
       registrarAuditoria(tx, {
         tenantId: t, uid: e.actor.uid, rol, accion: 'medio.subir', ruta: rutaMedio(t, s.id),
         resumenDespues: { productoId: s.productoId, tipo: s.tipo, bytes: real },
@@ -520,6 +535,7 @@ async function procesarReclamada(
     throw err;
   }
   await deps.almacen.borrar(temporales).catch(() => undefined); // los temporales no afectan los datos
+  await agendarLogoVivo(deps.disparador, t, agendar).catch(() => undefined); // el temporizador diario cubre un agendado perdido
   // El borrado de los objetos del logo anterior se reintenta en `limpiarSubidas` si falla (queda en `borrando`).
   if (logoAnterior !== undefined) await borrarYCerrar(deps, t, logoAnterior).catch(() => undefined);
   return medio;
@@ -744,18 +760,23 @@ export async function quitarLogo(deps: DepsMedios, e: EntradaLogo): Promise<{ re
   const t = tenantValido(e.tenantId);
   const rol = exigirRol(e.actor, t, ROLES.administrar);
   const ahoraIso = new Date(deps.reloj.ahora()).toISOString();
+  let agendar: number | null = null;
   const res = await deps.db.runTransaction(async (tx): Promise<{ readonly medioId: string | undefined } | undefined> => {
+    agendar = null; // el cuerpo se reintenta
     const logo = await leerLogoEnTx(tx, t);
     if (logo === undefined) return undefined;
     const m = (await tx.get(rutaMedio(t, logo.medioId))).data() as Partial<MedioSubido> | undefined;
     const sub = leerSubida((await tx.get(rutaSubida(t, logo.medioId))).data());
     const uso = await leerUsoMedios(tx, t);
     const estado = await leerEstadoSitio(tx, t);
+    const publicadoLogo = await leerPublicadoParaLogo(tx, t);
     if (!esDelLogo(m, sub)) {
       // `sitio/logo` apunta a algo que no es un logo de `_negocio`: solo se quita la referencia (sin tocar medio, cuota ni subida).
       deps.avisar?.('logo: la referencia no apuntaba a un logo; solo se quitó la referencia', {});
       tx.delete(rutaSitio(t, 'logo'));
-      anotarCambio(tx, t, estado, ahoraIso);
+      const vivo = escribirLogoVivo(tx, t, publicadoLogo, undefined, deps.reloj);
+      agendar = vivo.programar;
+      if (!vivo.aplicado) anotarCambio(tx, t, estado, ahoraIso);
       registrarAuditoria(tx, { tenantId: t, uid: e.actor.uid, rol, accion: 'logo.quitar', ruta: rutaSitio(t, 'logo'), resumenAntes: { medioId: logo.medioId, bytes: 0 } });
       return { medioId: undefined };
     }
@@ -770,13 +791,17 @@ export async function quitarLogo(deps: DepsMedios, e: EntradaLogo): Promise<{ re
       rutaOriginal: m?.rutaOriginal ?? '', creadaEn: m?.creadoEn ?? 0, venceEn: 0, por: e.actor.uid,
     };
     tx.set(rutaSubida(t, logo.medioId), aDoc({ ...base, estado: 'borrando', destino: 'eliminar', rutas }));
-    anotarCambio(tx, t, estado, ahoraIso);
+    // Logo vivo: lo publicado deja de referir al logo en esta misma transacción; los archivos se borran después del commit.
+    const vivo = escribirLogoVivo(tx, t, publicadoLogo, undefined, deps.reloj);
+    agendar = vivo.programar;
+    if (!vivo.aplicado) anotarCambio(tx, t, estado, ahoraIso);
     registrarAuditoria(tx, {
       tenantId: t, uid: e.actor.uid, rol, accion: 'logo.quitar', ruta: rutaSitio(t, 'logo'), resumenAntes: { medioId: logo.medioId, bytes },
     });
     return { medioId: logo.medioId };
   });
   if (res === undefined) return { quitado: false };
+  await agendarLogoVivo(deps.disparador, t, agendar).catch(() => undefined);
   if (res.medioId !== undefined) await borrarYCerrar(deps, t, res.medioId);
   return { quitado: true };
 }

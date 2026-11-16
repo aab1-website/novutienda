@@ -3,6 +3,7 @@ import { leerEstadoSitio } from './cambios.js';
 import { ErrorConsola } from './errores.js';
 import type { FichaWeb } from './fichas.js';
 import { LIMITES_CONSOLA } from './limites.js';
+import { proyectarLogoPublico } from './logo-publico.js';
 import type { Medio } from './medios/subidas.js';
 import { exigirRol, ROLES } from './permisos.js';
 import { PLANTILLAS } from './plantillas.js';
@@ -354,6 +355,8 @@ export async function publicarSitio(deps: DepsPublicar, e: { tenantId: string; a
       if (d !== undefined) medios.set(id, d as unknown as Medio);
     }
     const previo = leerReconstruccion((await tx.get(rutaPublicado(t, 'estado'))).data());
+    // Logo subido del negocio: se lee aquí (antes de escribir) y se publica solo con rutas de su carpeta pública.
+    const logo = proyectarLogoPublico(t, (await tx.get(rutaSitio(t, 'logo'))).data());
     await leerEstadoSitio(tx, t);
 
     const pub = construirPublicado({ productos: vivos, fichas, medios, config: config.valor, secciones, carruseles });
@@ -364,7 +367,8 @@ export async function publicarSitio(deps: DepsPublicar, e: { tenantId: string; a
     for (const p of pub.productos) tx.set(rutaPublicado(t, `producto__${p.id}`), { ...p });
     for (const s of pub.secciones) tx.set(rutaPublicado(t, `seccion__${s.id}`), { ...s });
     for (const c of pub.carruseles) tx.set(rutaPublicado(t, `carrusel__${c.plantilla}`), { ...c });
-    tx.set(rutaPublicado(t, 'sitio'), { ...pub.config, version });
+    // Sin logo subido el campo no se escribe; como `set` reemplaza el documento, un logo publicado antes desaparece.
+    tx.set(rutaPublicado(t, 'sitio'), { ...pub.config, version, ...(logo === undefined ? {} : { logo }) });
     const idsProd = pub.productos.map((p) => p.id);
     const idsSec = pub.secciones.map((s) => s.id);
     const idsCar = pub.carruseles.map((c) => c.plantilla);
