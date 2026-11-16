@@ -58,12 +58,13 @@ describe('simulación', () => {
   });
 
   it('reconoce los dos formatos de columnas y avisa de las ignoradas', async () => {
-    const sim = await simular('codigo,nombre,categoria,sku,precio_bo,precioAR,garantia,stock,color\nx1,X,c,S-1,"12,5",3,6,9,rojo\n');
+    // Cambio de expectativa a propósito: `codigo` ahora es el SKU (antes era el id), así que ya no puede ir junto a `sku`.
+    const sim = await simular('codigo,nombre,categoria,precio_bo,precioAR,garantia,stock,color\nS-1,X,c,"12,5",3,6,9,rojo\n');
     expect(sim.filas[0]).toMatchObject({ accion: 'crear', errores: [] });
     expect(sim.columnasIgnoradas.join(' ')).toMatch(/stock.*no modifica el stock/);
     expect(sim.columnasIgnoradas).toContain('color');
-    await importar('codigo,nombre,categoria,sku,precio_bo,precioAR,garantia\nx1,X,c,S-1,"12,5",3,6\n');
-    expect(doc(db, 'productos', 'x1')).toMatchObject({ precioUSD: { bo: 1250, ar: 300 }, garantiaMeses: 6 });
+    await importar('codigo,nombre,categoria,precio_bo,precioAR,garantia\nS-1,X,c,"12,5",3,6\n');
+    expect(doc(db, 'productos', 's-1')).toMatchObject({ sku: 'S-1', precioUSD: { bo: 1250, ar: 300 }, garantiaMeses: 6 });
   });
 });
 

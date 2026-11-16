@@ -30,7 +30,7 @@ describe('claveDePrecio', () => {
 
 describe('tenant de tres monedas: columnas de siempre', () => {
   it('la exportación emite precioBO y precioAR en ese orden', () => {
-    expect(columnasDeExportacion(COMERCIAL_TRES)).toEqual(['id', 'nombre', 'categoria', 'marca', 'sku', 'conSerie', 'garantiaMeses', 'minimo', 'precioBO', 'precioAR', 'costo', 'activo', 'publicado']);
+    expect(columnasDeExportacion(COMERCIAL_TRES)).toEqual(['nombre', 'categoria', 'marca', 'sku', 'conSerie', 'garantiaMeses', 'minimo', 'precioBO', 'precioAR', 'costo', 'activo', 'publicado']);
   });
   it('acepta precioBO, precioBOusd, precio_bo (USD) y precioUSDbo (centavos)', () => {
     const f = leerCsvFilas('id,nombre,categoria,sku,precioBOusd,precio_ar\na1,A,c,S-1,12.50,1.10\n', false, COMERCIAL_TRES).filas;
@@ -87,7 +87,7 @@ describe('comercio de UN mercado (PE, sin tipo de cambio)', () => {
   it('la exportación emite solo su columna y la vuelta no cambia nada', async () => {
     await altaProducto(db, pe('lapiz'));
     const csv = exportarProductosCsv([{ id: 'lapiz', nombre: 'Producto lapiz', categoria: 'general', sku: 'SKU-lapiz', conSerie: false, precioUSD: { pe: 1500 }, activo: true, publicado: false }], COMERCIAL_UN_MERCADO);
-    expect(csv.split('\r\n')[0]).toBe('id,nombre,categoria,marca,sku,conSerie,garantiaMeses,minimo,precioPE,costo,activo,publicado');
+    expect(csv.split('\r\n')[0]).toBe('nombre,categoria,marca,sku,conSerie,garantiaMeses,minimo,precioPE,costo,activo,publicado');
     expect(csv.split('\r\n')[1]).toContain(',15.00,');
     const sim = await db.runTransaction((tx) => simularImportacionCsv(tx, { tenantId: T, por: ADM, csv }));
     expect(sim.columnasIgnoradas).toEqual([]);

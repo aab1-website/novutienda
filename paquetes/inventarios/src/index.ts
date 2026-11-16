@@ -38,7 +38,7 @@ export {
 export type { ItemPedido, RespuestaHttp, ResultadoPedido, SolicitudConfirmarPedido, TransaccionInventario } from './pedido.js';
 
 // Utilidades de dominio.
-export { esIdSegmento, esProductoId, esSerie, esUbicacionId, UBICACIONES } from './ids.js';
+export { esIdSegmento, esProductoId, identificadorParaAlta, esSerie, esUbicacionId, UBICACIONES } from './ids.js';
 export type { UbicacionId } from './ids.js';
 export type { Autor } from './motor.js';
 /** Solo para pruebas: fija el reloj con el que se estampan los planes. */

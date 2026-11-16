@@ -21,8 +21,10 @@ beforeEach(async () => {
   db = await nuevoEntorno();
 });
 
-const sembrar = (id: string, precioUSD: Record<string, number>): void =>
+const sembrar = (id: string, precioUSD: Record<string, number>): void => {
+  db.poner(`tenants/${T}/skus/SKU-${id}`, { productoId: id });
   db.poner(`tenants/${T}/productos/${id}`, { nombre: `Producto ${id}`, categoria: 'c', sku: `SKU-${id}`, activo: true, publicado: false, conSerie: false, precioUSD, bajoMinimo: false, version: 1 });
+};
 
 describe('lectura', () => {
   it('un mercado declarado sin clave no lanza: precioEnMercado da null y mercadosSinPrecio lo nombra', () => {
@@ -77,7 +79,7 @@ describe('llamadas', () => {
     sembrar('prod-a', { bo: 100, ar: 200 });
     const r = (await accionesInventarios['exportarCsv']?.ejecutar(ctx(COMERCIAL_TRES_PE), {})) as { csv: string };
     const fila = r.csv.split('\r\n')[1]!.split(',');
-    expect(fila.slice(8, 11)).toEqual(['1.00', '2.00', '']);
+    expect(fila.slice(7, 10)).toEqual(['1.00', '2.00', '']);
   });
 });
 

@@ -88,7 +88,7 @@ describe('exportación en USD con decimales: ida y vuelta', () => {
     const [cab, fila] = csv.split('\r\n');
     expect(cab?.split(',')).toEqual([...columnasDeExportacion(COMERCIAL_TRES)]);
     expect(cab).toContain('precioBO,precioAR,costo,');
-    expect(fila).toBe('a1,A,c,,S-1,false,,,12.50,0.10,8.00,true,true');
+    expect(fila).toBe('A,c,,S-1,false,,,12.50,0.10,8.00,true,true');
   });
 
   it('reimportar lo exportado no cambia ningún precio ni costo', async () => {
