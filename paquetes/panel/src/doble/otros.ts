@@ -89,7 +89,7 @@ export const handlersOtros: {
 
   obtenerTablero(c) {
     const cot = (['BO', 'AR'] as const).map((m) => {
-      const x = c.e.cotizaciones[m];
+      const x = c.e.cotizaciones[m] ?? null;
       return x === null ? { mercado: m, estado: 'sin_cotizacion' as const, motivo: 'No hay una cotización utilizable' } : { mercado: m, estado: x.estado, par: x.par, valor: x.valor, fecha: x.fecha, fuente: x.fuente };
     });
     return {
