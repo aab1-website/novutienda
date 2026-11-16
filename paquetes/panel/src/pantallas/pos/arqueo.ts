@@ -1,5 +1,5 @@
 import { esReglaRedondeoValida, type RedondeoPorMoneda } from '@novutienda/nucleo';
-import type { CotizacionesVigentes, MercadoDeclarado, MontosPorMoneda, PreciosPorMercado, ProductoPanel, TotalesMoneda, TotalesTurno, TurnoPos } from '../../api/tipos.js';
+import type { CotizacionesVigentes, MercadoDeclarado, MontosPorMoneda, ProductoPanel, TotalesMoneda, TotalesTurno, TurnoPos } from '../../api/tipos.js';
 import { precioDeVentaMercado, reglasDeclaradasActuales, type PrecioMercadoVista } from '../../util/precio.js';
 
 export const TOTALES_VACIOS: TotalesMoneda = { efectivo: 0, qr: 0, transferencia: 0, credito: 0, ingresos: 0, egresos: 0 };
@@ -82,7 +82,7 @@ export const cotizacionDeMercado = (cot: CotizacionesVigentes, id: string): Coti
 
 /** Precio base del producto (centavos de la moneda base) en un mercado declarado; 0 si no tiene precio ahí. */
 export const precioBaseDeMercado = (p: Pick<ProductoPanel, 'precioUSD'>, id: string): number =>
-  (p.precioUSD as unknown as PreciosPorMercado)[id.toLowerCase()] ?? 0;
+  p.precioUSD[id.toLowerCase()] ?? 0;
 
 /** Verdadero si hay una regla de redondeo válida para la moneda de venta del mercado (D21: sin ella no se muestra precio). */
 export const hayReglaDeRedondeo = (m: Pick<MercadoDeclarado, 'monedaVenta'>): boolean => esReglaRedondeoValida(reglasDeclaradasActuales()?.[m.monedaVenta]);
