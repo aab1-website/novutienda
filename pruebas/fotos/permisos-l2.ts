@@ -83,6 +83,8 @@ export const FOTO_PERMISOS_L2: readonly AccionFoto[] = [
   f('consola', 'secciones', ['sup', 'adm']),
   f('consola', 'carruseles', ['sup', 'adm']),
   f('consola', 'configSitio', ['sup', 'adm']),
+  f('consola', 'leerLogo', ['sup', 'adm']),
+  f('consola', 'quitarLogo', ['adm']),
   f('consola', 'exportarProductosCsv', ['sup', 'adm']),
   f('consola', 'publicarSitio', ['adm']),
   f('consola', 'tablero', ['sup', 'adm']),

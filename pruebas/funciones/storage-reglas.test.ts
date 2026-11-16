@@ -25,7 +25,7 @@ const sesion = (rol: string, extra: Record<string, unknown> = {}): Record<string
 describe.skipIf(!hayEmuladorStorage)('reglas de Storage (emulador)', () => {
   let env: RulesTestEnvironment;
 
-  async function reservar(id: string, o: { tipo?: 'foto' | 'video'; bytes?: number; por?: string; estado?: string; producto?: string; venceEn?: number | null } = {}): Promise<void> {
+  async function reservar(id: string, o: { tipo?: 'foto' | 'video' | 'logo'; bytes?: number; por?: string; estado?: string; producto?: string; venceEn?: number | null } = {}): Promise<void> {
     await env.withSecurityRulesDisabled(async (ctx) => {
       await ctx.firestore().doc(`tenants/${T}/subidas/${id}`).set({
         id, productoId: o.producto ?? PRODUCTO, tipo: o.tipo ?? 'foto', bytes: o.bytes ?? 15 * MIB, estado: o.estado ?? 'reservada', por: o.por ?? 'u-sup',
@@ -103,6 +103,32 @@ describe.skipIf(!hayEmuladorStorage)('reglas de Storage (emulador)', () => {
       await assertFails(subir(sup, original('subida-033'), 1024, 'video/mp4'));
       await reservar('subida-034', { tipo: 'video', bytes: MIB });
       await assertFails(subir(sup, original('subida-034'), 1024, 'image/jpeg'));
+    });
+
+    it('logo: adm con reserva `logo` crea el original en `_negocio`; niega más de 2 MiB, SVG, HEIC, reserva ajena o vencida y el update', async () => {
+      const adm = env.authenticatedContext('u-adm', sesion('adm'));
+      const logo = (sub: string): string => original(sub, '_negocio');
+      await reservar('logo-0001', { por: 'u-adm', tipo: 'logo', producto: '_negocio', bytes: 2 * MIB });
+      await assertSucceeds(subir(adm, logo('logo-0001'), 1024, 'image/png'));
+      await reservar('logo-0002', { por: 'u-adm', tipo: 'logo', producto: '_negocio', bytes: 4 * MIB });
+      await assertFails(subir(adm, logo('logo-0002'), 2 * MIB + 1, 'image/png'));
+      await reservar('logo-0003', { por: 'u-adm', tipo: 'logo', producto: '_negocio', bytes: MIB });
+      await assertFails(subir(adm, logo('logo-0003'), 1024, 'image/svg+xml'));
+      await assertFails(subir(adm, logo('logo-0003'), 1024, 'image/heic'));
+      await reservar('logo-0004', { por: 'otra-persona', tipo: 'logo', producto: '_negocio', bytes: MIB });
+      await assertFails(subir(adm, logo('logo-0004'), 1024, 'image/webp'));
+      await reservar('logo-0005', { por: 'u-adm', tipo: 'logo', producto: '_negocio', bytes: MIB, venceEn: Date.now() - 1000 });
+      await assertFails(subir(adm, logo('logo-0005'), 1024, 'image/webp'));
+      await assertFails(subir(adm, logo('logo-0001'), 2048, 'image/png')); // update de un original ya creado
+      // Una reserva de foto no sirve para el destino del logo.
+      await reservar('logo-0006', { por: 'u-adm', tipo: 'foto', producto: '_negocio', bytes: MIB });
+      // La regla generada lleva `productoId != '_negocio'` en foto y video: esta reserva ya no sirve ni siquiera con un tipo que `foto` admite.
+      await assertFails(subir(adm, logo('logo-0006'), 1024, 'image/heic'));
+      // Espejos: un video contra `_negocio`, y una reserva `logo` contra un producto real, fallan.
+      await reservar('logo-0007', { por: 'u-adm', tipo: 'video', producto: '_negocio', bytes: MIB });
+      await assertFails(subir(adm, logo('logo-0007'), 1024, 'video/mp4'));
+      await reservar('logo-0008', { por: 'u-adm', tipo: 'logo', producto: PRODUCTO, bytes: MIB });
+      await assertFails(subir(adm, original('logo-0008'), 1024, 'image/png'));
     });
 
     it('solo crea: no reemplaza ni borra ni lee un original desde el navegador', async () => {

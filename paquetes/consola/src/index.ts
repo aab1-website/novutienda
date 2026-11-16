@@ -2,6 +2,7 @@ export { manifiestoConsola } from './manifiesto.js';
 export { ArchivoNoAdmitido, ErrorConsola, ProcesamientoNoDisponible } from './errores.js';
 export type { CodigoErrorConsola } from './errores.js';
 export { LIMITES_CONSOLA } from './limites.js';
+export { ID_NEGOCIO } from './rutas.js';
 export { PLANTILLAS, esPlantilla } from './plantillas.js';
 export type { PlantillaId } from './plantillas.js';
 export { validarEnlace } from './enlaces.js';
@@ -18,15 +19,15 @@ export type {
   AlmacenMedios, BaseDatosConsola, CatalogoPuerto, ConsultaSubidas, ConteoAbiertoCatalogo, ListadoCatalogoVisible, ProductoCatalogoVisible, DatosProducto, DisparadorSitio, Existencia, InfoMedio,
   PrecioUSD, ProcesadorMedios, ProductoCatalogo, ProductoEnTransaccion, Reloj, SolicitudProcesado, UbicacionId, VersionProcesada,
 } from './puertos.js';
-export { BYTES_INICIALES, detectarArchivo } from './medios/tipos-archivo.js';
-export type { ArchivoDetectado, FormatoArchivo, TipoMedio } from './medios/tipos-archivo.js';
+export { BYTES_INICIALES, detectarArchivo, FORMATOS_LOGO } from './medios/tipos-archivo.js';
+export type { ArchivoDetectado, FormatoArchivo, TipoMedio, TipoSubida } from './medios/tipos-archivo.js';
 export { contieneMetadatos } from './medios/metadatos.js';
 export { ALTURAS_VIDEO, ANCHOS_FOTO, FORMATOS_FOTO, nombreVersion, planificarProcesamiento } from './medios/plan.js';
 export type { ItemPlan, PlanProcesamiento } from './medios/plan.js';
 export { liberarEnUso, reservarEnUso } from './medios/uso.js';
 export type { UsoMedios } from './medios/uso.js';
-export { MENSAJE_VIDEO_NO_DISPONIBLE, borrarMedio, CAMPOS_RESERVA, estadoSubida, finalizarSubida, limpiarSubidas, reservarSubida } from './medios/subidas.js';
-export type { DepsMedios, Medio, Reserva, ResultadoLimpieza, VersionMedio } from './medios/subidas.js';
+export { MENSAJE_VIDEO_NO_DISPONIBLE, borrarMedio, CAMPOS_RESERVA, estadoSubida, finalizarSubida, leerLogo, limpiarSubidas, quitarLogo, reservarSubida } from './medios/subidas.js';
+export type { DepsMedios, EntradaLogo, LogoNegocio, Medio, MedioLogo, MedioSubido, Reserva, ResultadoLimpieza, VersionLogo, VersionMedio } from './medios/subidas.js';
 export { COLUMNAS_EXPORTACION, exportarProductosCsv } from './exportacion.js';
 export { CONSUMIDOR_CONSOLA, consumirProductoCambiado, ejecutorConsola } from './consumidores.js';
 export type { TransaccionConsola } from './consumidores.js';

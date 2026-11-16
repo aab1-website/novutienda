@@ -2,20 +2,27 @@
 // borrado y listado. Va aparte del callable de la consola porque procesar fotos y videos pide más memoria y
 // tiempo. Normalmente la finaliza el disparador de Storage; la acción `finalizarSubida` es el camino explícito
 // (idempotente) para que el panel espere el resultado.
+import { logger } from 'firebase-functions';
 import { z } from 'zod';
-import { borrarMedio, ErrorConsola, finalizarSubida, reservarSubida, type DepsMedios } from '@novutienda/consola';
+import { limiteMemoria } from '@novutienda/nucleo';
+import { borrarMedio, ErrorConsola, finalizarSubida, LIMITES_CONSOLA, reservarSubida, type DepsMedios } from '@novutienda/consola';
 import { accion, type Contexto, type TablaImplementaciones } from './marco.js';
 import { ID_PRODUCTO, LIMITE, objeto } from './comunes.js';
 
 const SUBIDA_ID = z.string().regex(/^[A-Za-z0-9_-]{8,40}$/, 'identificador de subida inválido');
 
+// Ventana fija en memoria por instancia: frena el abuso sin tocar otra zona; no es global entre instancias.
+const limiteLogo = limiteMemoria(LIMITES_CONSOLA.logosPorHora, 60 * 60 * 1000);
+
 export const depsMedios = (c: Pick<Contexto, 'e'>): DepsMedios => ({
+  limiteLogo,
+  avisar: (mensaje, datos) => logger.warn(mensaje, datos),
   db: c.e.db, almacen: c.e.almacenMedios, procesador: c.e.procesador, catalogo: c.e.catalogo, reloj: { ahora: c.e.ahora },
 });
 
 export const accionesMedios: TablaImplementaciones = {
   reservarSubida: accion({
-    esquema: objeto({ subidaId: SUBIDA_ID, productoId: ID_PRODUCTO, tipo: z.enum(['foto', 'video']), bytes: z.number().int().positive().max(200 * 1024 * 1024) }),
+    esquema: objeto({ subidaId: SUBIDA_ID, productoId: z.union([ID_PRODUCTO, z.literal('_negocio')]), tipo: z.enum(['foto', 'video', 'logo']), bytes: z.number().int().positive().max(200 * 1024 * 1024) }),
     ejecutar: (c, d) => reservarSubida(depsMedios(c), { tenantId: c.tenantId, actor: c.actor, subidaId: d.subidaId, productoId: d.productoId, tipo: d.tipo, bytes: d.bytes }),
   }),
   finalizarSubida: accion({

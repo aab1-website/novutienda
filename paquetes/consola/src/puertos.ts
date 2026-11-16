@@ -143,15 +143,16 @@ export interface InfoMedio {
 }
 
 export interface VersionProcesada {
-  readonly clase: 'imagen' | 'video' | 'poster';
+  readonly clase: 'imagen' | 'video' | 'poster' | 'logo';
   readonly lado: number;
-  readonly formato: 'avif' | 'webp' | 'mp4';
+  readonly formato: 'avif' | 'webp' | 'mp4' | 'png';
   /** Ruta temporal privada donde dejó el resultado. */
   readonly rutaTemporal: string;
 }
 
 export interface SolicitudProcesado {
   readonly origen: string;
+  /** `foto` también para el logo: el plan (`plan.tipo === 'logo'`) dice qué salidas producir. */
   readonly tipo: TipoMedio;
   readonly plan: PlanProcesamiento;
   /** Carpeta privada donde dejar las versiones. */

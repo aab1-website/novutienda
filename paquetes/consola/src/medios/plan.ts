@@ -1,4 +1,5 @@
-import type { TipoMedio } from './tipos-archivo.js';
+import { LIMITES_CONSOLA } from '../limites.js';
+import type { TipoSubida } from './tipos-archivo.js';
 
 export const ANCHOS_FOTO = [480, 960, 1600, 2400] as const;
 export const FORMATOS_FOTO = ['avif', 'webp'] as const;
@@ -6,14 +7,14 @@ export const ALTURAS_VIDEO = [720, 1080] as const;
 export const ANCHO_POSTER = 1280;
 
 export interface ItemPlan {
-  readonly clase: 'imagen' | 'video' | 'poster';
-  /** Ancho (imagen, póster) o altura del lado corto (video), en píxeles. */
+  readonly clase: 'imagen' | 'video' | 'poster' | 'logo';
+  /** Ancho (imagen, póster), altura del lado corto (video) o lado mayor (logo), en píxeles. */
   readonly lado: number;
-  readonly formato: 'avif' | 'webp' | 'mp4';
+  readonly formato: 'avif' | 'webp' | 'mp4' | 'png';
 }
 
 export interface PlanProcesamiento {
-  readonly tipo: TipoMedio;
+  readonly tipo: TipoSubida;
   /** Siempre verdadero: EXIF, GPS, XMP e IPTC se eliminan de toda salida. */
   readonly quitarMetadatos: true;
   readonly items: readonly ItemPlan[];
@@ -22,14 +23,18 @@ export interface PlanProcesamiento {
 /**
  * Plan de procesamiento. Nunca se amplía más allá del original. Fotos: 480/960/1600/2400 de
  * ancho en AVIF y WebP. Video: 720p/1080p (sobre el lado corto, para que el vertical también
- * cuente) en MP4 más un póster WebP.
+ * cuente) en MP4 más un póster WebP. Logo: una salida PNG y otra WebP con el lado mayor en 512 como máximo
+ * (sin ampliar), siempre recodificadas para no conservar metadatos.
  */
-export function planificarProcesamiento(tipo: TipoMedio, ancho: number, alto: number): PlanProcesamiento {
+export function planificarProcesamiento(tipo: TipoSubida, ancho: number, alto: number): PlanProcesamiento {
   if (!Number.isInteger(ancho) || !Number.isInteger(alto) || ancho < 1 || alto < 1) {
     throw new RangeError('dimensiones inválidas');
   }
   const items: ItemPlan[] = [];
-  if (tipo === 'foto') {
+  if (tipo === 'logo') {
+    const lado = Math.min(LIMITES_CONSOLA.ladoLogo, Math.max(ancho, alto));
+    items.push({ clase: 'logo', lado, formato: 'png' }, { clase: 'logo', lado, formato: 'webp' });
+  } else if (tipo === 'foto') {
     const anchos = ANCHOS_FOTO.filter((a) => a <= ancho);
     const usados: number[] = anchos.length > 0 ? anchos : [ancho];
     for (const lado of usados) for (const formato of FORMATOS_FOTO) items.push({ clase: 'imagen', lado, formato });

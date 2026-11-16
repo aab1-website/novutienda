@@ -3,7 +3,8 @@ import { LIMITES_CONSOLA } from '../limites.js';
 import { ErrorConsola } from '../errores.js';
 import { rutaUsoMedios } from '../rutas.js';
 import { esObjeto } from '../validar.js';
-import type { TipoMedio } from './tipos-archivo.js';
+import { ID_NEGOCIO } from '../rutas.js';
+import type { TipoSubida } from './tipos-archivo.js';
 
 export interface ConteoProducto {
   readonly fotos: number;
@@ -41,7 +42,12 @@ export function escribirUsoMedios(tx: TransaccionIdentidad, tenantId: string, us
 const conteo = (uso: UsoMedios, productoId: string): ConteoProducto => uso.productos[productoId] ?? { fotos: 0, videos: 0 };
 
 /** Reserva un medio y sus bytes. Lanza `limite` (sexta foto, segundo video) o `cuota-excedida`. */
-export function reservarEnUso(uso: UsoMedios, productoId: string, tipo: TipoMedio, bytes: number): UsoMedios {
+export function reservarEnUso(uso: UsoMedios, productoId: string, tipo: TipoSubida, bytes: number): UsoMedios {
+  // El logo solo cuenta bytes: no es una foto ni un video de ningún producto.
+  if (tipo === 'logo') {
+    if (uso.bytes + bytes > LIMITES_CONSOLA.cuotaOriginalesBytes) throw new ErrorConsola('cuota-excedida', 'Se alcanzó la cuota de 10 GB de originales');
+    return { bytes: uso.bytes + bytes, productos: uso.productos };
+  }
   const c = conteo(uso, productoId);
   if (tipo === 'foto' && c.fotos >= LIMITES_CONSOLA.fotosPorProducto) {
     throw new ErrorConsola('limite', `Este producto ya tiene ${String(LIMITES_CONSOLA.fotosPorProducto)} fotos`);
@@ -59,7 +65,8 @@ export function reservarEnUso(uso: UsoMedios, productoId: string, tipo: TipoMedi
 }
 
 /** Libera un medio y sus bytes; nunca baja de cero. */
-export function liberarEnUso(uso: UsoMedios, productoId: string, tipo: TipoMedio, bytes: number): UsoMedios {
+export function liberarEnUso(uso: UsoMedios, productoId: string, tipo: TipoSubida, bytes: number): UsoMedios {
+  if (tipo === 'logo' || productoId === ID_NEGOCIO) return { bytes: Math.max(0, uso.bytes - bytes), productos: uso.productos };
   const c = conteo(uso, productoId);
   const nuevo = tipo === 'foto' ? { ...c, fotos: Math.max(0, c.fotos - 1) } : { ...c, videos: Math.max(0, c.videos - 1) };
   const { [productoId]: _quitado, ...resto } = uso.productos;
