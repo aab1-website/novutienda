@@ -5,7 +5,7 @@
 import { HttpsError } from 'firebase-functions/v2/https';
 import { z } from 'zod';
 import {
-  abrirConteo, actualizarProducto, claveDePrecio, ajustar, cerrarConteo, conteosAbiertosDe, crearProducto, crearUbicacion, esDisponible, exportarProductosCsv, importarCsvPorLotes, leerArchivoImportacion, MAX_BYTES_ARCHIVO, type FuenteTabla, type LectorHojas, type LecturaSinBloqueo,
+  abrirConteo, actualizarProducto, claveDePrecio, ajustar, cerrarConteo, conteosAbiertosDe, crearProducto, crearUbicacion, esDisponible, exportarProductosCsv, importarCsvPorLotes, leerArchivoImportacion, MAX_BYTES_ARCHIVO, type FuenteTabla, type LectorHojas, type LecturaSinBloqueo, type LeerCatalogo,
   filtrarUnidadesLista, ingresar, leerDocumentoProducto, marcaOcultamiento, mercadosSinPrecio, proyectarMovimiento, proyectarProducto, registrarLineaConteo, resolverMerma, simularImportacionCsv, solicitarMerma, traspasar, UBICACION_DISPONIBILIDAD,
   type Autor, type CambiosProducto, type Conteos, type EntradaProducto, type LineaAjuste, type PrecioUSD, type LineaIngreso, type LineaTraspaso, type ProductoExportable,
 } from '@novutienda/inventarios';
@@ -34,6 +34,10 @@ const lecturaSinBloqueo = (c: Contexto): LecturaSinBloqueo => ({
     return { existe: snap.exists, data: () => snap.data() };
   },
 });
+
+/** Todos los productos del comercio (id, SKU y nombre), una sola vez: la importación reconoce filas sin id con ellos. */
+const catalogoDe = (c: Contexto): LeerCatalogo => async () =>
+  (await c.e.firestore.collection(ruta(c.tenantId, 'productos')).get()).docs.map((p) => ({ id: p.id, sku: String(p.data()['sku'] ?? ''), nombre: String(p.data()['nombre'] ?? '') }));
 
 /** Lector de hojas (.xlsx) que inyecta el coordinador en el entorno; sin él, un .xlsx se rechaza con un mensaje claro. */
 const lectorDe = (c: Contexto): LectorHojas | undefined => c.e.lectorHojas;
@@ -235,13 +239,13 @@ export const accionesInventarios: TablaImplementaciones = {
       const comercial = await c.e.comercialDelTenant(c.tenantId);
       if (d.simular === true) {
         const simulacion = await simularImportacionCsv(lecturaSinBloqueo(c), {
-          tenantId: c.tenantId, por: autor(c), csv: tabla, comercial, ...(d.cargaInicial !== undefined ? { cargaInicial: d.cargaInicial } : {}),
+          tenantId: c.tenantId, por: autor(c), csv: tabla, comercial, catalogo: catalogoDe(c), ...(d.cargaInicial !== undefined ? { cargaInicial: d.cargaInicial } : {}),
         });
         return { simular: true, simulacion };
       }
       if (d.operacionId === undefined) throw new HttpsError('invalid-argument', 'Falta operacionId: solo la simulación puede omitirlo.');
       const r = await importarCsvPorLotes(c.e.db, {
-        tenantId: c.tenantId, operacionId: d.operacionId, por: autor(c), csv: tabla, comercial, presupuestoMs: PRESUPUESTO_IMPORTACION_MS, lectura: lecturaSinBloqueo(c),
+        tenantId: c.tenantId, operacionId: d.operacionId, por: autor(c), csv: tabla, comercial, presupuestoMs: PRESUPUESTO_IMPORTACION_MS, lectura: lecturaSinBloqueo(c), catalogo: catalogoDe(c),
         ...(d.lineasOmitidas !== undefined ? { lineasOmitidas: d.lineasOmitidas } : {}),
         ...(d.cargaInicial !== undefined ? { cargaInicial: d.cargaInicial } : {}), ...(d.omitirErrores !== undefined ? { omitirErrores: d.omitirErrores } : {}),
       });

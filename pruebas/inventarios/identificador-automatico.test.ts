@@ -17,9 +17,12 @@ beforeEach(async () => {
   db = await nuevoEntorno();
 });
 
+/** Como el borde: todos los productos del comercio, leídos una vez. */
+const catalogo = (): Promise<{ id: string; sku: string; nombre: string }[]> =>
+  Promise.resolve(db.coleccion(`tenants/${T}/productos`).map((d) => ({ id: d.ruta.split('/').pop() ?? '', sku: String(d.datos['sku']), nombre: String(d.datos['nombre']) })));
 const importar = (csv: string, operacionId = op('imp'), por: Autor = ADM): Promise<ResultadoImportacion> =>
-  importarCsvPorLotes(db, { tenantId: T, operacionId, por, csv });
-const simular = (csv: string): Promise<Simulacion> => db.runTransaction((tx) => simularImportacionCsv(tx, { tenantId: T, por: ADM, csv }));
+  importarCsvPorLotes(db, { tenantId: T, operacionId, por, csv, catalogo });
+const simular = (csv: string): Promise<Simulacion> => db.runTransaction((tx) => simularImportacionCsv(tx, { tenantId: T, por: ADM, csv, catalogo }));
 const ids = (): string[] => db.coleccion(`tenants/${T}/productos`).map((d) => d.ruta.split('/').pop() ?? '').sort();
 const SIN_ID = 'nombre,categoria,sku,precioUSDbo,precioUSDar';
 
@@ -137,5 +140,56 @@ describe('SKU que solo difiere en mayúsculas', () => {
     const s2 = await simular(`${SIN_ID}\nNuevo,c,abc-9,1,1\n`);
     expect(s2.filas[0]).toMatchObject({ accion: 'crear' });
     expect(s2.filas[0]?.advertencias.join(' ')).toMatch(/Se parece al SKU de otro producto/);
+  });
+});
+
+describe('sin id: SKU que Excel recortó, producto antiguo, nombre repetido y planilla vieja', () => {
+  it('«123» no crea un duplicado ni toca otro producto cuando existe «00123»', async () => {
+    await altaProducto(db, producto('cero', { sku: '00123' }));
+    const sim = await simular(`${SIN_ID}\nOtro,c,123,1,1\n`);
+    expect(sim.filas[0]?.accion).toBe('error');
+    expect(sim.filas[0]?.errores[0]?.motivo).toMatch(/Excel quitó ceros a la izquierda/);
+    // También si otro producto tiene el SKU «123» exacto: se actualiza ese, no el de ceros.
+    await altaProducto(db, producto('exacto', { sku: '123' }));
+    const s2 = await simular(`${SIN_ID}\nOtro,c,123,1,1\n`);
+    expect(s2.filas[0]).toMatchObject({ accion: 'actualizar', id: 'exacto' });
+    await expect(importar(`${SIN_ID}\nOtro,c,12345,1,1\n`)).resolves.toMatchObject({ creados: 1 });
+  });
+
+  it('un producto antiguo sin documento en el índice de SKU se reconoce por el catálogo', async () => {
+    db.poner(`tenants/${T}/productos/viejo`, { nombre: 'Viejo', categoria: 'c', sku: 'VIE-1', activo: true, publicado: false, conSerie: false, precioUSD: { bo: 1, ar: 1 }, bajoMinimo: false, version: 1 });
+    const sim = await simular(`${SIN_ID}\nViejo 2,c,VIE-1,1,1\n`);
+    expect(sim.filas[0]).toMatchObject({ accion: 'actualizar', id: 'viejo' });
+  });
+
+  it('crear con un nombre que ya existe (sin mayúsculas ni espacios de más) avisa, no es error', async () => {
+    await altaProducto(db, producto('lapiz', { nombre: 'Lápiz HB' }));
+    const sim = await simular(`${SIN_ID}\n"  lápiz   hb ",c,NUEVO-1,1,1\n`);
+    expect(sim.filas[0]?.accion).toBe('crear');
+    expect(sim.filas[0]?.advertencias).toContain('Ya existe un producto con ese nombre');
+  });
+
+  it('el parecido por mayúsculas compara contra cualquier combinación', async () => {
+    await altaProducto(db, producto('mixto', { sku: 'AbC-1' }));
+    const sim = await simular(`${SIN_ID}\nN,c,aBc-1,1,1\n`);
+    expect(sim.filas[0]?.advertencias).toContain('Se parece al SKU de otro producto (difiere solo en mayúsculas)');
+  });
+
+  it('planilla vieja con `codigo` = clave interna y sin columna sku: error claro, nunca actualiza en silencio', async () => {
+    await altaProducto(db, producto('lapiz'));
+    const sim = await simular('codigo,nombre,categoria\nlapiz,Lápiz,c\n');
+    expect(sim.filas[0]?.accion).toBe('error');
+    expect(sim.filas[0]?.errores[0]?.motivo).toMatch(/La columna codigo ahora es el SKU/);
+    await expect(importar('codigo,nombre,categoria\nlapiz,Lápiz,c\n')).rejects.toThrow(/con errores/);
+    // Si el valor SÍ es un SKU, es el SKU.
+    const ok = await simular('codigo,nombre,categoria\nSKU-lapiz,Lápiz,c\n');
+    expect(ok.filas[0]).toMatchObject({ accion: 'actualizar', id: 'lapiz' });
+  });
+
+  it('los mensajes de una planilla nueva no hablan de id; con columna id sí', async () => {
+    const nueva = await simular('nombre,categoria,sku\nX,c,\n');
+    expect(nueva.filas[0]?.errores[0]?.motivo).toBe('Falta el SKU: cada producto se reconoce por su SKU');
+    const vieja = await simular('id,nombre,categoria,sku\n,X,c,\n');
+    expect(vieja.filas[0]?.errores[0]?.motivo).toMatch(/SKU o el id/);
   });
 });

@@ -349,4 +349,20 @@ describe('importar: el producto se reconoce por su SKU (el doble se comporta com
     expect(sim.filas[0]).toMatchObject({ accion: 'crear' });
     expect(sim.filas[0]?.advertencias).toContain('Se parece al SKU de otro producto (difiere solo en mayúsculas)');
   });
+
+  it('Excel recortó los ceros del SKU: error, sin duplicar; nombre repetido avisa; planilla vieja con codigo falla claro', async () => {
+    const e = crearEntorno('adm');
+    const precioUSD = { bo: 100, ar: 100 } as never;
+    await e.api.llamar('crearProducto', { operacionId: 'op-cero', producto: { id: 'cero', nombre: 'Con ceros', categoria: 'C', sku: '00123', precioUSD } });
+    const ceros = await e.api.llamar('simularImportacionProductos', { csv: `${CAB_SIN_ID}Otro,C,123,1,1\r\n` });
+    expect(ceros.filas[0]?.accion).toBe('error');
+    expect(ceros.filas[0]?.errores[0]?.motivo).toMatch(/Excel quitó ceros a la izquierda/);
+    const nombre = await e.api.llamar('simularImportacionProductos', { csv: `${CAB_SIN_ID}"  con   CEROS ",C,NUEVO-9,1,1\r\n` });
+    expect(nombre.filas[0]).toMatchObject({ accion: 'crear' });
+    expect(nombre.filas[0]?.advertencias).toContain('Ya existe un producto con ese nombre');
+    const vieja = await e.api.llamar('simularImportacionProductos', { csv: 'codigo,nombre,categoria\r\ncero,X,C\r\n' });
+    expect(vieja.filas[0]?.errores[0]?.motivo).toMatch(/La columna codigo ahora es el SKU/);
+    const sinSku = await e.api.llamar('simularImportacionProductos', { csv: 'nombre,categoria,sku\r\nX,C,\r\n' });
+    expect(sinSku.filas[0]?.errores[0]?.motivo).toBe('Falta el SKU: cada producto se reconoce por su SKU');
+  });
 });

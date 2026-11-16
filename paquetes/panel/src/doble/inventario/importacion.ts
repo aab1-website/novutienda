@@ -67,7 +67,7 @@ function importe(v: string, unidad: Unidad): number | undefined {
 }
 
 interface Fila {
-  linea: number; id: string; errores: ErrorFilaImportacion[]; advertencias: string[];
+  linea: number; id: string; skuDeCodigo?: boolean; errores: ErrorFilaImportacion[]; advertencias: string[];
   d: { nombre?: string; categoria?: string; marca?: string; sku?: string; conSerie?: boolean; activo?: boolean; publicado?: boolean; garantiaMeses?: number; minimo?: number; precios: Record<string, number>; costoUSD?: number };
   stock: { ubicacionId: 'tienda' | 'deposito-1' | 'deposito-2'; cantidad: number }[];
 }
@@ -96,7 +96,7 @@ function leer(c: Contexto, entrada: { archivo?: string | undefined; csv?: string
   const porMinusculas = new Map<string, { sku: string; avisos: string[] }[]>();
   const filas: Fila[] = [];
   for (const [k, f] of datos.entries()) {
-    const fila: Fila = { linea: k + 2, id: '', errores: [], advertencias: [], d: { precios: {} }, stock: [] };
+    const fila: Fila = { linea: k + 2, id: '', ...(indice.has('sku') && normalizar(indice.get('sku')?.etiqueta ?? '') === 'codigo' ? { skuDeCodigo: true } : {}), errores: [], advertencias: [], d: { precios: {} }, stock: [] };
     const celda = (col: Columna): string | undefined => {
       const x = indice.get(col);
       const v = x === undefined ? undefined : (f[x.i] ?? '').trim();
@@ -132,7 +132,8 @@ function leer(c: Contexto, entrada: { archivo?: string | undefined; csv?: string
         porMinusculas.set(sku.toLowerCase(), parecidos);
       }
     } else if (fila.id === '') {
-      if (indice.has('sku')) err('sku', 'es obligatorio cuando la fila no trae id');
+      if (!indice.has('id')) err('sku', 'Falta el SKU: cada producto se reconoce por su SKU');
+      else if (indice.has('sku')) err('sku', 'Falta el SKU o el id: cada fila necesita uno de los dos');
       else fila.errores.push({ columna: null, motivo: 'la fila no trae ni id ni sku' });
     }
     for (const col of ['conSerie', 'activo', 'publicado'] as const) {
@@ -178,6 +179,16 @@ function planificar(c: Contexto, f: Fila, nuevos: number, asignados: Set<string>
   const nombreSku = { ...(d.nombre !== undefined ? { nombre: d.nombre } : {}), ...(d.sku !== undefined ? { sku: d.sku } : {}) };
   if (errores.length > 0) return { accion: 'error', errores, advertencias, cambios, id: f.id, ...nombreSku };
   const dueno = d.sku === undefined ? undefined : [...c.e.productos.values()].find((p) => p.sku === d.sku);
+  if (f.id === '' && d.sku !== undefined && dueno === undefined) {
+    // Excel quita los ceros a la izquierda: sin id no se crea un duplicado ni se toca otro producto.
+    const sinCeros = (t: string): string => t.replace(/^0+/, '');
+    if (/^\d+$/.test(d.sku) && [...c.e.productos.values()].some((p) => /^0+\d+$/.test(p.sku) && sinCeros(p.sku) === sinCeros(d.sku as string))) {
+      return { accion: 'error', errores: [{ columna: 'sku', motivo: 'no coincide con el SKU del producto: Excel quitó ceros a la izquierda; formatee la columna SKU como texto en Excel' }], advertencias, cambios, id: f.id, ...nombreSku };
+    }
+    if (f.skuDeCodigo === true && c.e.productos.has(d.sku)) {
+      return { accion: 'error', errores: [{ columna: 'sku', motivo: 'La columna codigo ahora es el SKU; esta planilla parece usar el código anterior de los productos. Use la columna sku con el SKU de cada producto' }], advertencias, cambios, id: f.id, ...nombreSku };
+    }
+  }
   let id = f.id;
   let previo: ProductoInterno | undefined;
   if (id === '') {
@@ -209,11 +220,16 @@ function planificar(c: Contexto, f: Fila, nuevos: number, asignados: Set<string>
     else if (dueno !== undefined) errores.push({ columna: 'sku', motivo: 'ya está en uso por otro producto' });
     if (d.conSerie === true && f.stock.length > 0) errores.push({ columna: 'stock', motivo: 'un producto con serie no admite carga de stock por CSV (use el ingreso con series)' });
     if (c.e.productos.size + nuevos >= 200) errores.push({ columna: null, motivo: 'supera el límite de 200 productos del plan' });
+    const comparable = (t: string): string => t.trim().replace(/\s+/g, ' ').toLowerCase();
+    if (d.nombre !== undefined && [...c.e.productos.values()].some((p) => comparable(p.nombre) === comparable(d.nombre as string))) advertencias.push('Ya existe un producto con ese nombre');
     if (c.e.comercial.mercados.some((m) => d.precios[claveDePrecio(m.id)] === undefined)) advertencias.push('sin precio en algún mercado: quedará «a consultar» (0)');
     return { accion: errores.length > 0 ? 'error' : 'crear', errores, advertencias, cambios, id, ...nombreSku };
   }
   if (f.stock.length > 0) advertencias.push('stock ignorado: el producto ya existe; su stock se mueve con ingreso, traspaso o ajuste');
-  if (d.sku !== undefined && d.sku !== previo.sku) errores.push({ columna: 'sku', motivo: 'no se edita una vez creado el producto' });
+  if (d.sku !== undefined && d.sku !== previo.sku) {
+    const perdioCeros = /^\d+$/.test(d.sku) && /^0+\d+$/.test(previo.sku) && previo.sku.replace(/^0+/, '') === d.sku.replace(/^0+/, '');
+    errores.push({ columna: 'sku', motivo: perdioCeros ? 'no coincide con el SKU del producto: Excel quitó ceros a la izquierda; formatee la columna SKU como texto en Excel' : 'no se edita una vez creado el producto' });
+  }
   for (const k of ['nombre', 'categoria', 'marca', 'activo', 'publicado', 'garantiaMeses', 'minimo'] as const) {
     if (d[k] !== undefined && d[k] !== previo[k]) cambios.push(k);
   }
