@@ -99,7 +99,7 @@ export const handlersInventario: {
       c.e.productos.set(p.id, {
         id: p.id, nombre: p.nombre, categoria: p.categoria, ...(p.marca !== undefined ? { marca: p.marca } : {}), sku: p.sku, activo: p.activo ?? true,
         publicado: p.publicado ?? false, conSerie: p.conSerie ?? false, ...(p.garantiaMeses !== undefined ? { garantiaMeses: p.garantiaMeses } : {}),
-        ...(p.minimo !== undefined ? { minimo: p.minimo } : {}), precioUSD: precios as unknown as ProductoInterno['precioUSD'], costoUSD: p.costoUSD ?? 0,
+        ...(p.minimo !== undefined ? { minimo: p.minimo } : {}), precioUSD: precios, costoUSD: p.costoUSD ?? 0,
         ...(controla ? { stockTotal: 0 } : {}), existencias: { tienda: 0, 'deposito-1': 0, 'deposito-2': 0 },
       });
       c.e.cambiosSinPublicar += 1;
@@ -116,7 +116,7 @@ export const handlersInventario: {
         throw fallo('estado-invalido', 'conSerie no cambia tras el primer movimiento');
       }
       const { marca, garantiaMeses, minimo, costoUSD, precioUSD, ...directos } = e.cambios;
-      const precios = precioUSD !== undefined ? exigirPrecioDoble(c, precioUSD, p.precioUSD as unknown as Record<string, unknown>) : undefined;
+      const precios = precioUSD !== undefined ? exigirPrecioDoble(c, precioUSD, p.precioUSD) : undefined;
       if (garantiaMeses != null && (!Number.isInteger(garantiaMeses) || garantiaMeses < 1 || garantiaMeses > 120)) throw fallo('entrada-invalida', 'Garantía: de 1 a 120 meses');
       if (minimo != null && (!Number.isInteger(minimo) || minimo < 0)) throw fallo('entrada-invalida', 'Mínimo inválido');
       Object.assign(p, directos);
@@ -322,7 +322,7 @@ export const handlersInventario: {
     exigirRol(c, ['sup', 'adm']);
     const verCosto = c.rol === 'adm';
     const claves = c.e.comercial.mercados.map((m) => claveDePrecio(m.id));
-    const precios = (p: ProductoInterno): (number | string)[] => claves.map((k) => (p.precioUSD as unknown as Readonly<Record<string, number>>)[k] ?? '');
+    const precios = (p: ProductoInterno): (number | string)[] => claves.map((k) => p.precioUSD[k] ?? '');
     const cab = ['nombre', 'categoria', 'marca', 'sku', 'conSerie', 'garantiaMeses', 'minimo', ...claves.map((k) => `precioUSD${k}`), ...(verCosto ? ['costoUSD'] : []), 'activo', 'publicado'];
     const filas = [...c.e.productos.values()].map((p) => [
       p.nombre, p.categoria, p.marca ?? '', p.sku, p.conSerie, p.garantiaMeses ?? '', p.minimo ?? '', ...precios(p),
