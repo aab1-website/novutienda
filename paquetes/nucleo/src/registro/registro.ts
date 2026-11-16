@@ -39,7 +39,7 @@ export interface ManifiestoBase {
               readonly tipo: string;
               readonly roles: readonly string[];
               readonly reserva: string;
-              readonly archivos: readonly { readonly tipo: string; readonly bytesMax: number; readonly contentType: string }[];
+              readonly archivos: readonly { readonly tipo: string; readonly bytesMax: number; readonly contentType: string; readonly destino?: string }[];
             };
       }[]
     | undefined;
@@ -93,6 +93,7 @@ const SEGMENTO = /^[A-Za-z][A-Za-z0-9_-]*$/;
 // Almacenamiento: mismo segmento, o variable `{nombre}`; `{nombre=**}` solo al final.
 const SEGMENTO_ALM = /^(?:[A-Za-z][A-Za-z0-9_-]*|\{[A-Za-z][A-Za-z0-9_]*\})$/;
 const TIPO_ARCHIVO = /^[a-z][a-z0-9_]*$/;
+const DESTINO_ARCHIVO = /^[a-z0-9_-]+$/;
 const VARIABLES_RESERVADAS = ['tenantId', 'todo', 'bucket'];
 const SEGMENTO_RESTO = /^\{[A-Za-z][A-Za-z0-9_]*=\*\*\}$/;
 const CONTENT_TYPE = /^[a-z]+\/\([a-z0-9|-]+\)$/;
@@ -380,6 +381,9 @@ function validarAlmacenamiento(m: ManifiestoBase, a: NonNullable<ManifiestoBase[
     }
     if (!CONTENT_TYPE.test(f.contentType)) {
       throw new ErrorRegistro(`${donde}: contentType de "${f.tipo}" no cumple el patrón (por ejemplo image/(jpeg|png))`);
+    }
+    if (f.destino !== undefined && (typeof f.destino !== 'string' || !DESTINO_ARCHIVO.test(f.destino))) {
+      throw new ErrorRegistro(`${donde}: destino de "${f.tipo}" no cumple el patrón ^[a-z0-9_-]+$`);
     }
   }
 }
