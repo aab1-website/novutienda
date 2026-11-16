@@ -15,9 +15,10 @@ import { ROLES_ACCION } from './acciones.generado.js';
 import { ErrorApi } from './errores.js';
 import { ponerMarca } from './marca.js';
 import type {
-  AprobacionPos, ConteoAbierto, ConteoVista, ListaConMarca, MarcaOcultamiento, ProductoDeConteo, CotizacionesVigentes, CreditoVista, Medio, MermaVista, MovimientoVista, ProductoPanel,
+  AprobacionPos, ConteoAbierto, ConteoVista, ListaConMarca, MarcaOcultamiento, ProductoDeConteo, CotizacionesVigentes, CreditoVista, Medio, MedioLogo, MermaVista, MovimientoVista, ProductoPanel,
   Rol, TurnoPos, UbicacionId, UnidadSerie, UsuarioVista, VentaPos, VistaComercial,
 } from './tipos.js';
+import { ID_NEGOCIO } from './tipos.js';
 import { fijarRedondeo } from '../util/precio.js';
 
 export type Modulo = 'pos' | 'inventarios' | 'consola' | 'recibos' | 'medios';
@@ -208,6 +209,35 @@ function aMerma(m: Obj): MermaVista {
 
 function aMedio(m: Obj): Medio {
   return { ...(quitar(m, 'id') as unknown as Medio), id: String(m['id']) };
+}
+function aMedioLogo(m: Obj): MedioLogo {
+  return { ...(quitar(m, 'id') as unknown as MedioLogo), id: String(m['id']) };
+}
+
+/**
+ * `finalizarSubida` con reintentos. El disparador de Storage también finaliza la subida al llegar el original: si gana él,
+ * esta llamada responde «ya fue resuelta» (failed-precondition) aunque el medio ya esté listo. La acción es idempotente: se
+ * reintenta hasta que devuelva el medio; si la subida fue rechazada de verdad, el error persiste y se muestra.
+ */
+async function finalizarConReintentos<T>(c: Parameters<Traduccion<'finalizarSubida'>['ejecutar']>[0], e: { subidaId: string }, convertir: (m: Obj) => T): Promise<T> {
+  let intentosResuelta = 0;
+  let esperado = 0;
+  let espera = ESPERA_FINALIZAR_MS;
+  for (;;) {
+    try {
+      return convertir(campo(await c.llamar('medios', 'finalizarSubida', e), 'medio') as Obj);
+    } catch (err) {
+      if (!(err instanceof ErrorApi)) throw err;
+      if (err.codigoHttps === 'failed-precondition' && (intentosResuelta += 1) < REINTENTOS_FINALIZAR) {
+        await c.esperar(ESPERA_FINALIZAR_MS);
+      } else if ((err.codigoHttps === 'deadline-exceeded' || err.codigoHttps === 'unavailable') && esperado < ESPERA_SUBIDA_MAXIMA_MS) {
+        // La llamada se cortó, pero el servidor puede seguir procesando: se reintenta con retroceso (hasta ~2 minutos).
+        await c.esperar(espera);
+        esperado += espera;
+        espera = Math.min(Math.round(espera * 1.5), ESPERA_SUBIDA_TOPE_MS);
+      } else throw err;
+    }
+  }
 }
 
 // ---------------------------------------------------------------------------------------------------------------------
@@ -427,6 +457,20 @@ export const TRADUCCION: { readonly [N in NombreCallable]: Traduccion<N> } = {
   cambiarPrecioUSD: comoOk('inventarios', 'cambiarPrecioUSD', (e) => ({ operacionId: e.operacionId, productoId: e.productoId, precioUSD: e.precioUSD })),
   guardarFicha: comoOk('consola', 'guardarFicha', (e) => e),
   reservarSubida: directa('medios', 'reservarSubida'),
+  reservarSubidaLogo: {
+    usa: ['medios.reservarSubida'],
+    ejecutar: async (c, e) => (await c.llamar('medios', 'reservarSubida', { subidaId: e.subidaId, productoId: ID_NEGOCIO, tipo: 'logo', bytes: e.bytes })) as never,
+  },
+  estadoSubidaLogo: {
+    usa: ['medios.estadoSubida'],
+    ejecutar: async (c, e) => {
+      const r = (await c.llamar('medios', 'estadoSubida', e)) as Obj;
+      const medio = r['medio'];
+      return { estado: r['estado'] as never, ...(typeof medio === 'object' && medio !== null ? { medio: aMedioLogo(medio as Obj) } : {}), ...(typeof r['motivo'] === 'string' ? { motivo: r['motivo'] } : {}) };
+    },
+  },
+  leerLogo: { usa: ['consola.leerLogo'], ejecutar: async (c) => (campo(await c.llamar('consola', 'leerLogo', {}), 'logo') ?? null) as never },
+  quitarLogo: directa('consola', 'quitarLogo'),
   estadoSubida: {
     usa: ['medios.estadoSubida'],
     ejecutar: async (c, e) => {
@@ -435,32 +479,8 @@ export const TRADUCCION: { readonly [N in NombreCallable]: Traduccion<N> } = {
       return { estado: r['estado'] as never, ...(typeof medio === 'object' && medio !== null ? { medio: aMedio(medio as Obj) } : {}), ...(typeof r['motivo'] === 'string' ? { motivo: r['motivo'] } : {}) };
     },
   },
-  finalizarSubida: {
-    usa: ['medios.finalizarSubida'],
-    ejecutar: async (c, e) => {
-      // El disparador de Storage también finaliza la subida al llegar el original: si gana él, esta llamada responde
-      // «ya fue resuelta» (failed-precondition) aunque el medio ya esté listo. La acción es idempotente: se reintenta
-      // hasta que devuelva el medio; si la subida fue rechazada de verdad, el error persiste y se muestra.
-      let intentosResuelta = 0;
-      let esperado = 0;
-      let espera = ESPERA_FINALIZAR_MS;
-      for (;;) {
-        try {
-          return aMedio(campo(await c.llamar('medios', 'finalizarSubida', e), 'medio') as Obj);
-        } catch (err) {
-          if (!(err instanceof ErrorApi)) throw err;
-          if (err.codigoHttps === 'failed-precondition' && (intentosResuelta += 1) < REINTENTOS_FINALIZAR) {
-            await c.esperar(ESPERA_FINALIZAR_MS);
-          } else if ((err.codigoHttps === 'deadline-exceeded' || err.codigoHttps === 'unavailable') && esperado < ESPERA_SUBIDA_MAXIMA_MS) {
-            // La llamada se cortó, pero el servidor puede seguir procesando: se reintenta con retroceso (hasta ~2 minutos).
-            await c.esperar(espera);
-            esperado += espera;
-            espera = Math.min(Math.round(espera * 1.5), ESPERA_SUBIDA_TOPE_MS);
-          } else throw err;
-        }
-      }
-    },
-  },
+  finalizarSubida: { usa: ['medios.finalizarSubida'], ejecutar: (c, e) => finalizarConReintentos(c, e, aMedio) },
+  finalizarSubidaLogo: { usa: ['medios.finalizarSubida'], ejecutar: (c, e) => finalizarConReintentos(c, e, aMedioLogo) },
   borrarMedio: comoOk('medios', 'borrarMedio', (e) => e),
   guardarSeccion: comoOk('consola', 'guardarSeccion', (e) => e),
   eliminarSeccion: comoOk('consola', 'eliminarSeccion', (e) => e),

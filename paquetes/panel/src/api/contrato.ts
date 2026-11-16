@@ -6,7 +6,7 @@
 import type {
   AprobacionPos, Carrito, Carrusel, CambiosProducto, CobroCredito, CobroCreditoEntrada, ConfigPos, ConfigSitio,
   ConsultaArchivo, PrecioUSDCentavos, ConteoVista, CotizacionesVigentes, CreditoVista, EntradaAuditoriaVista, EntradaProducto, FichaWeb,
-  LineaAjuste, LineaIngreso, LineaTraspaso, Medio, MermaVista, MontosPorMoneda, MovimientoCaja, MovimientoCajaEntrada, MovimientoVista,
+  LineaAjuste, LineaIngreso, LineaTraspaso, LogoNegocio, Medio, MedioLogo, ResultadoEstadoSubidaLogo, MermaVista, MontosPorMoneda, MovimientoCaja, MovimientoCajaEntrada, MovimientoVista,
   ConMarca, ListaConMarca, PagoEntrada, PlantillaRecibo, ProductoPanel, Recibo, Reserva, ResultadoAnulacion, ResultadoCierre, ResultadoEnvio,
   FuenteImportacion, ResultadoImportacion, ResultadoOperacion, ResultadoEstadoSubida, ResultadoPublicacion, ResultadoVenta, Rol, Seccion, Simulacion, SolicitudAprobacion,
   Tablero, TipoMedio, TurnoPos, UbicacionId, UnidadSerie, UsuarioVista, VentaPos, EstadoMerma,
@@ -85,6 +85,18 @@ export interface Contrato {
   cambiarPrecioUSD: { entrada: { operacionId: string; productoId: string; precioUSD: PrecioUSDCentavos }; salida: Ok };
   guardarFicha: { entrada: { productoId: string; ficha: FichaWeb }; salida: Ok };
   reservarSubida: { entrada: { subidaId: string; productoId: string; tipo: TipoMedio; bytes: number }; salida: Reserva };
+  /**
+   * Logo del negocio, solo `adm`: misma subida reanudable que las fotos (reservar, subir a `rutaOriginal`, esperar/finalizar), con
+   * destino fijo (el panel no manda `productoId`), tope `BYTES_LOGO` y solo JPG, PNG o WebP (el servidor lo valida por contenido).
+   * Subir un logo nuevo reemplaza al vigente. Mismas reglas de idempotencia que `reservarSubida`.
+   */
+  reservarSubidaLogo: { entrada: { subidaId: string; bytes: number }; salida: Reserva };
+  estadoSubidaLogo: { entrada: { subidaId: string }; salida: ResultadoEstadoSubidaLogo };
+  finalizarSubidaLogo: { entrada: { subidaId: string }; salida: MedioLogo };
+  /** Logo vigente del negocio (`sup` y `adm`) o `null` si no hay uno subido. */
+  leerLogo: { entrada: Vacio; salida: LogoNegocio | null };
+  /** Quita el logo subido (solo `adm`); idempotente: sin logo responde `{ quitado: false }`. No toca la dirección web escrita a mano. */
+  quitarLogo: { entrada: Vacio; salida: { quitado: boolean } };
   /** Consulta el estado de una subida sin procesarla (el disparador de Storage la procesa al llegar el original). */
   estadoSubida: { entrada: { subidaId: string }; salida: ResultadoEstadoSubida };
   /** Respaldo: fuerza el procesamiento si el disparador no resolvió la subida (idempotente). */

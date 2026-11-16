@@ -1,6 +1,6 @@
 import type { Entrada, NombreCallable, Salida } from '../api/contrato.js';
-import type { Medio, Recibo } from '../api/tipos.js';
-import { LIMITES_PANEL, PLANTILLAS_SITIO } from '../api/tipos.js';
+import type { Medio, MedioLogo, Recibo, SubidaVista } from '../api/tipos.js';
+import { BYTES_LOGO, ID_NEGOCIO, LIMITES_PANEL, PLANTILLAS_SITIO } from '../api/tipos.js';
 import { normalizar } from '../util/buscar.js';
 import { aCsv } from '../util/csv.js';
 import { auditar, exigirRol, fallo, iso, vistaProducto, type Contexto } from './estado.js';
@@ -22,10 +22,24 @@ function anotarCambio(c: Contexto): void {
   c.e.ultimoCambioEn = iso(c.ahora);
 }
 
+/** Procesa la subida de un logo: un solo logo vigente (el anterior se reemplaza y libera su cuota). */
+function procesarSubidaLogo(c: Contexto, subidaId: string): MedioLogo {
+  const s = c.e.subidas.get(subidaId);
+  if (s === undefined || s.tipo !== 'logo') throw fallo('no-encontrado', 'La subida no existe');
+  if (c.e.logo !== null) c.e.bytesOriginales = Math.max(0, c.e.bytesOriginales - c.e.logo.medio.bytesOriginal);
+  const version = (formato: 'png' | 'webp', bytes: number): MedioLogo['versiones'][number] => ({ clase: 'logo', formato, lado: 512, ruta: `_negocio/logo-${subidaId}.${formato}`, bytes });
+  const logo: MedioLogo = { id: subidaId, productoId: ID_NEGOCIO, tipo: 'logo', bytesOriginal: s.bytes, ancho: 512, alto: 512, versiones: [version('png', 9000), version('webp', 4000)], creadoEn: c.ahora, por: c.uid };
+  c.e.logo = { medio: logo, actualizadoEn: c.ahora };
+  c.e.subidas.set(subidaId, { ...s, estado: 'procesada' });
+  anotarCambio(c);
+  auditar(c, 'logo.subir', 'sitio/logo');
+  return logo;
+}
+
 /** Procesa una subida reservada (lo hace el disparador simulado o el respaldo `finalizarSubida`). */
 function procesarSubida(c: Contexto, subidaId: string): Medio {
   const s = c.e.subidas.get(subidaId);
-  if (s === undefined) throw fallo('no-encontrado', 'La subida no existe');
+  if (s === undefined || s.tipo === 'logo') throw fallo('no-encontrado', 'La subida no existe');
   const m: Medio = { id: subidaId, productoId: s.productoId, tipo: s.tipo, bytesOriginal: s.bytes, ancho: 1200, alto: 800, ...(s.tipo === 'video' ? { duracionSeg: 30 } : {}), creadoEn: c.ahora, por: c.uid };
   c.e.medios.set(m.id, m);
   c.e.subidas.set(subidaId, { ...s, estado: 'procesada' });
@@ -34,8 +48,30 @@ function procesarSubida(c: Contexto, subidaId: string): Medio {
   return m;
 }
 
+/** Disparador de Storage simulado: resuelve la subida unos milisegundos después de la primera consulta de estado. */
+function estadoDeSubida(c: Contexto, subidaId: string, tipo: 'logo' | 'producto'): { estado: SubidaVista['estado']; motivo?: string } {
+  const s = c.e.subidas.get(subidaId);
+  if (s === undefined || (s.tipo === 'logo') !== (tipo === 'logo')) throw fallo('no-encontrado', 'La subida no existe');
+  if (s.estado === 'reservada') {
+    const desde = s.consultadaDesde ?? Date.now();
+    c.e.subidas.set(subidaId, { ...s, consultadaDesde: desde });
+    if (Date.now() - desde >= c.e.disparador.demoraMs) {
+      const rechazo = c.e.disparador.rechazo;
+      if (rechazo === undefined) {
+        if (tipo === 'logo') procesarSubidaLogo(c, subidaId);
+        else procesarSubida(c, subidaId);
+      } else {
+        c.e.subidas.set(subidaId, { ...s, consultadaDesde: desde, estado: 'rechazada', motivo: rechazo });
+        c.e.bytesOriginales = Math.max(0, c.e.bytesOriginales - s.bytes);
+      }
+    }
+  }
+  const actual = c.e.subidas.get(subidaId) as NonNullable<ReturnType<typeof c.e.subidas.get>>;
+  return { estado: actual.estado, ...(actual.motivo !== undefined ? { motivo: actual.motivo } : {}) };
+}
+
 export const handlersOtros: {
-  [N in 'buscarComprobantes' | 'enviarRecibo' | 'referenciarFacturaSuma' | 'guardarPlantilla' | 'leerPlantilla' | 'obtenerRecibo' | 'obtenerTablero' | 'publicarSitio' | 'cambiarPrecioUSD' | 'guardarFicha' | 'reservarSubida' | 'estadoSubida' | 'finalizarSubida' | 'borrarMedio' | 'guardarSeccion' | 'eliminarSeccion' | 'ordenarSecciones' | 'guardarCarrusel' | 'guardarConfigSitio' | 'exportarProductosCsvSitio' | 'asignarRol' | 'quitarRol' | 'buscarUsuarioPorCorreo' | 'listarFichas' | 'listarMedios' | 'leerConfigSitio' | 'listarSecciones' | 'listarCarruseles' | 'listarUsuarios' | 'modulosActivos' | 'configuracionComercial']: H<N>;
+  [N in 'buscarComprobantes' | 'enviarRecibo' | 'referenciarFacturaSuma' | 'guardarPlantilla' | 'leerPlantilla' | 'obtenerRecibo' | 'obtenerTablero' | 'publicarSitio' | 'cambiarPrecioUSD' | 'guardarFicha' | 'reservarSubida' | 'estadoSubida' | 'finalizarSubida' | 'reservarSubidaLogo' | 'estadoSubidaLogo' | 'finalizarSubidaLogo' | 'leerLogo' | 'quitarLogo' | 'borrarMedio' | 'guardarSeccion' | 'eliminarSeccion' | 'ordenarSecciones' | 'guardarCarrusel' | 'guardarConfigSitio' | 'exportarProductosCsvSitio' | 'asignarRol' | 'quitarRol' | 'buscarUsuarioPorCorreo' | 'listarFichas' | 'listarMedios' | 'leerConfigSitio' | 'listarSecciones' | 'listarCarruseles' | 'listarUsuarios' | 'modulosActivos' | 'configuracionComercial']: H<N>;
 } = {
   buscarComprobantes(c, e) {
     const q = e.consulta;
@@ -157,25 +193,55 @@ export const handlersOtros: {
     c.e.bytesOriginales += e.bytes;
     return { subidaId: e.subidaId, rutaOriginal: `privado/${e.productoId}/${e.subidaId}`, venceEn: c.ahora + 6 * 3600_000 };
   },
-  estadoSubida(c, e) {
-    const s = c.e.subidas.get(e.subidaId);
-    if (s === undefined) throw fallo('no-encontrado', 'La subida no existe');
-    if (s.estado === 'reservada') {
-      // Disparador de Storage simulado: resuelve la subida unos milisegundos después de la primera consulta.
-      const desde = s.consultadaDesde ?? Date.now();
-      c.e.subidas.set(e.subidaId, { ...s, consultadaDesde: desde });
-      if (Date.now() - desde >= c.e.disparador.demoraMs) {
-        const rechazo = c.e.disparador.rechazo;
-        if (rechazo === undefined) procesarSubida(c, e.subidaId);
-        else {
-          c.e.subidas.set(e.subidaId, { ...s, consultadaDesde: desde, estado: 'rechazada', motivo: rechazo });
-          c.e.bytesOriginales = Math.max(0, c.e.bytesOriginales - s.bytes);
-        }
-      }
+  reservarSubidaLogo(c, e) {
+    // El logo es solo del administrador y va al destino fijo del negocio; el servidor valida JPG/PNG/WebP por contenido.
+    exigirRol(c, ['adm']);
+    const previa = c.e.subidas.get(e.subidaId);
+    const respuesta = { subidaId: e.subidaId, rutaOriginal: `privado/${ID_NEGOCIO}/${e.subidaId}`, venceEn: c.ahora + 6 * 3600_000 };
+    if (previa !== undefined) {
+      if (previa.tipo === 'logo' && previa.bytes === e.bytes && previa.estado === 'reservada') return respuesta;
+      throw fallo('conflicto', 'Ya existe una subida con ese identificador');
     }
-    const actual = c.e.subidas.get(e.subidaId) as NonNullable<ReturnType<typeof c.e.subidas.get>>;
-    const medio = actual.estado === 'procesada' ? c.e.medios.get(e.subidaId) : undefined;
-    return { estado: actual.estado, ...(medio !== undefined ? { medio } : {}), ...(actual.motivo !== undefined ? { motivo: actual.motivo } : {}) };
+    if (!Number.isSafeInteger(e.bytes) || e.bytes <= 0) throw fallo('entrada-invalida', 'Tamaño inválido');
+    if (e.bytes > BYTES_LOGO) throw fallo('limite', 'El logo supera 2 MB');
+    if (c.e.bytesOriginales + e.bytes > LIMITES_PANEL.cuotaOriginalesBytes) throw fallo('cuota-excedida');
+    c.e.subidas.set(e.subidaId, { subidaId: e.subidaId, productoId: ID_NEGOCIO, tipo: 'logo', estado: 'reservada', bytes: e.bytes });
+    c.e.bytesOriginales += e.bytes;
+    return respuesta;
+  },
+  estadoSubidaLogo(c, e) {
+    const r = estadoDeSubida(c, e.subidaId, 'logo');
+    const medio = r.estado === 'procesada' && c.e.logo?.medio.id === e.subidaId ? c.e.logo.medio : undefined;
+    return { estado: r.estado, ...(medio !== undefined ? { medio } : {}), ...(r.motivo !== undefined ? { motivo: r.motivo } : {}) };
+  },
+  finalizarSubidaLogo(c, e) {
+    exigirRol(c, ['adm']);
+    const s = c.e.subidas.get(e.subidaId);
+    if (s === undefined || s.tipo !== 'logo') throw fallo('no-encontrado', 'La subida no existe');
+    if (s.estado === 'procesada' && c.e.logo?.medio.id === e.subidaId) return c.e.logo.medio;
+    if (s.estado !== 'reservada') throw fallo('estado', 'La subida ya no está pendiente');
+    return procesarSubidaLogo(c, e.subidaId);
+  },
+  leerLogo(c) {
+    exigirRol(c, ['sup', 'adm']);
+    const l = c.e.logo;
+    if (l === null) return null;
+    return { medioId: l.medio.id, ancho: l.medio.ancho, alto: l.medio.alto, versiones: l.medio.versiones.map(({ formato, lado, ruta, bytes }) => ({ formato, lado, ruta, bytes })), actualizadoEn: iso(l.actualizadoEn) };
+  },
+  quitarLogo(c) {
+    exigirRol(c, ['adm']);
+    const l = c.e.logo;
+    if (l === null) return { quitado: false };
+    c.e.bytesOriginales = Math.max(0, c.e.bytesOriginales - l.medio.bytesOriginal);
+    c.e.logo = null;
+    anotarCambio(c);
+    auditar(c, 'logo.quitar', 'sitio/logo');
+    return { quitado: true };
+  },
+  estadoSubida(c, e) {
+    const r = estadoDeSubida(c, e.subidaId, 'producto');
+    const medio = r.estado === 'procesada' ? c.e.medios.get(e.subidaId) : undefined;
+    return { estado: r.estado, ...(medio !== undefined ? { medio } : {}), ...(r.motivo !== undefined ? { motivo: r.motivo } : {}) };
   },
   finalizarSubida(c, e) {
     const s = c.e.subidas.get(e.subidaId);
