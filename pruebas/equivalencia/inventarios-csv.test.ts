@@ -44,19 +44,33 @@ describe('CSV de productos del tenant de referencia', () => {
   it('simulación: alta, cambio de precio en un solo mercado, precio 0, formatos de número y filas con error', async () => {
     const { e, productos } = await exportables();
     const base = exportarProductosCsv(productos, COMERCIAL).split('\r\n');
-    const filaLapiz = base.findIndex((l) => l.startsWith('p-lapiz,'));
-    base[filaLapiz] = 'p-lapiz,Lápiz HB,general,,SKU-p-lapiz,false,,,1.30,1.33,,true,true'; // solo cambia precioBO
+    const filaLapiz = base.findIndex((l) => l.includes(',SKU-p-lapiz,'));
+    base[filaLapiz] = 'Lápiz HB,general,,SKU-p-lapiz,false,,,1.30,1.33,,true,true'; // solo cambia precioBO; se reconoce por su SKU
     const csv = [
       ...base.filter((l) => l !== ''),
-      'p-nuevo,Producto nuevo,general,,SKU-p-nuevo,false,,,"12,5",0,,true,true', // alta con precio en un solo mercado
-      'p-grande,Producto grande,general,,SKU-p-grande,false,,,"1.234,56",99.99,,true,true', // separadores de miles y decimales
-      'MAL ID,x,general,,SKU-x,false,,,1,1,,true,true',
-      'p-raro,Raro,general,,SKU-raro,false,,,abc,1,,true,true',
-      'p-negativo,Negativo,general,,SKU-neg,false,,,-5,1,,true,true',
+      'Producto nuevo,general,,SKU-p-nuevo,false,,,"12,5",0,,true,true', // alta con precio en un solo mercado
+      'Producto grande,general,,SKU-p-grande,false,,,"1.234,56",99.99,,true,true', // separadores de miles y decimales
+      'x,general,,,false,,,1,1,,true,true', // sin SKU: ya no hay id con que reconocerla
+      'Raro,general,,SKU-raro,false,,,abc,1,,true,true',
+      'Negativo,general,,SKU-neg,false,,,-5,1,,true,true',
     ].join('\r\n') + '\r\n';
     const antes = JSON.stringify([...e.db.docs]);
     const sim = await e.db.runTransaction((tx) => simularImportacionCsv(tx, { tenantId: T, por: ADM, csv, cargaInicial: false }));
     expect(JSON.stringify([...e.db.docs])).toBe(antes); // simular no escribe
     compararConFotoJson('inventarios-simulacion-cambios.json', { csv, simulacion: sim });
+  });
+
+  it('planilla vieja CON columna id: se sigue aceptando igual (el id se respeta) y un id inválido se rechaza', async () => {
+    const { e, productos } = await exportables();
+    const sinId = exportarProductosCsv(productos, COMERCIAL);
+    expect(sinId.split('\r\n')[0]?.startsWith('id,')).toBe(false); // la exportación ya no trae id
+    const conId = sinId.split('\r\n').filter((l) => l !== '').map((l, i) => (i === 0 ? `id,${l}` : `${productos[i - 1]?.id ?? ''},${l}`)).join('\r\n') + '\r\n';
+    const simular = (csv: string): ReturnType<typeof simularImportacionCsv> => e.db.runTransaction((tx) => simularImportacionCsv(tx, { tenantId: T, por: ADM, csv, cargaInicial: false }));
+    const viejo = await simular(conId);
+    expect(viejo.resumen.errores).toBe(0);
+    expect(viejo.resumen.crear + viejo.resumen.actualizar).toBe(0);
+    const malo = await simular(`${conId}MAL ID,x,general,,SKU-x,false,,,1,1,,true,true\r\n`);
+    expect(malo.resumen.errores).toBe(1);
+    expect(JSON.stringify(malo)).toContain('id inválido');
   });
 });

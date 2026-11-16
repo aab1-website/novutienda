@@ -7,7 +7,9 @@
       "cambios": [],
       "errores": [],
       "id": "p-adaptador",
-      "linea": 2
+      "linea": 2,
+      "nombre": "Adaptador",
+      "sku": "SKU-p-adaptador"
     },
     {
       "accion": "sin-cambios",
@@ -15,7 +17,9 @@
       "cambios": [],
       "errores": [],
       "id": "p-agotado",
-      "linea": 3
+      "linea": 3,
+      "nombre": "Cargador agotado",
+      "sku": "SKU-p-agotado"
     },
     {
       "accion": "sin-cambios",
@@ -23,7 +27,9 @@
       "cambios": [],
       "errores": [],
       "id": "p-borrador",
-      "linea": 4
+      "linea": 4,
+      "nombre": "Borrador sin publicar",
+      "sku": "SKU-p-borrador"
     },
     {
       "accion": "sin-cambios",
@@ -31,7 +37,9 @@
       "cambios": [],
       "errores": [],
       "id": "p-cable",
-      "linea": 5
+      "linea": 5,
+      "nombre": "Cable USB",
+      "sku": "SKU-p-cable"
     },
     {
       "accion": "sin-cambios",
@@ -39,7 +47,9 @@
       "cambios": [],
       "errores": [],
       "id": "p-celular",
-      "linea": 6
+      "linea": 6,
+      "nombre": "Celular X1",
+      "sku": "SKU-p-celular"
     },
     {
       "accion": "sin-cambios",
@@ -47,7 +57,9 @@
       "cambios": [],
       "errores": [],
       "id": "p-inactivo",
-      "linea": 7
+      "linea": 7,
+      "nombre": "Producto retirado",
+      "sku": "SKU-p-inactivo"
     },
     {
       "accion": "sin-cambios",
@@ -55,7 +67,9 @@
       "cambios": [],
       "errores": [],
       "id": "p-lapiz",
-      "linea": 8
+      "linea": 8,
+      "nombre": "Lápiz HB",
+      "sku": "SKU-p-lapiz"
     },
     {
       "accion": "sin-cambios",
@@ -63,7 +77,9 @@
       "cambios": [],
       "errores": [],
       "id": "p-parlante",
-      "linea": 9
+      "linea": 9,
+      "nombre": "Parlante portátil",
+      "sku": "SKU-p-parlante"
     },
     {
       "accion": "sin-cambios",
@@ -71,7 +87,9 @@
       "cambios": [],
       "errores": [],
       "id": "p-servicio",
-      "linea": 10
+      "linea": 10,
+      "nombre": "Instalación",
+      "sku": "SKU-p-servicio"
     },
     {
       "accion": "sin-cambios",
@@ -79,7 +97,9 @@
       "cambios": [],
       "errores": [],
       "id": "p-televisor",
-      "linea": 11
+      "linea": 11,
+      "nombre": "Televisor 50\"",
+      "sku": "SKU-p-televisor"
     }
   ],
   "resumen": {
