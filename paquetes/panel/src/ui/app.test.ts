@@ -40,7 +40,7 @@ describe('inicio de sesión', () => {
   it('un correo no verificado muestra «verifica tu correo» y no entra', async () => {
     montar();
     await entrar('nuevo@ejemplo.test', 'clave-nuevo-1');
-    expect(await screen.findByText(/Verifica tu correo/)).toBeTruthy();
+    expect(await screen.findByText(/Verifique su correo/)).toBeTruthy();
     expect(screen.queryByRole('navigation', { name: 'Menú principal' })).toBeNull();
     await userEvent.setup().click(screen.getByRole('button', { name: 'Reenviar enlace' }));
     expect(await screen.findByText(/Enlace reenviado/)).toBeTruthy();

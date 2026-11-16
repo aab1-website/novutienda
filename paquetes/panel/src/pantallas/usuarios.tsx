@@ -23,7 +23,7 @@ function InstruccionesCuenta({ correo }: { correo: string }): JSX.Element {
       <Alerta tipo="info">No existe una cuenta con el correo {correo}. Este panel no crea cuentas; siga estos pasos y vuelva a buscar.</Alerta>
       <ol>
         <li>El propietario de la plataforma crea la cuenta en Firebase Console, sección Authentication, pestaña Users, botón «Add user»: correo {correo} y una contraseña de al menos 6 caracteres que usted entregará a la persona por un medio seguro.</li>
-        <li>La persona abre este panel e inicia sesión con ese correo y esa contraseña. Verá «Verifica tu correo» y debe pulsar «Reenviar enlace».</li>
+        <li>La persona abre este panel e inicia sesión con ese correo y esa contraseña. Verá «Verifique su correo» y debe pulsar «Reenviar enlace».</li>
         <li>La persona abre el mensaje que le llega a su correo y pulsa el enlace de verificación.</li>
         <li>Vuelva a esta pantalla y pulse «Buscar cuenta» de nuevo para asignarle el rol.</li>
       </ol>

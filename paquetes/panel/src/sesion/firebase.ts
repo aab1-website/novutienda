@@ -1,6 +1,6 @@
 import { initializeApp, type FirebaseOptions } from 'firebase/app';
 import {
-  browserLocalPersistence, connectAuthEmulator, indexedDBLocalPersistence, initializeAuth, onAuthStateChanged, sendEmailVerification, signInWithEmailAndPassword, signOut, type Auth, type User,
+  browserLocalPersistence, connectAuthEmulator, indexedDBLocalPersistence, initializeAuth, onAuthStateChanged, sendEmailVerification, sendPasswordResetEmail, signInWithEmailAndPassword, signOut, type Auth, type User,
 } from 'firebase/auth';
 import { leerClaimPanel } from './claim.js';
 import type { ResultadoInicio, Sesion, UsuarioSesion } from './sesion.js';
@@ -82,5 +82,13 @@ export class SesionFirebase implements Sesion {
 
   async reenviarVerificacion(): Promise<void> {
     if (this.pendiente !== null) await sendEmailVerification(this.pendiente);
+  }
+
+  async recuperarContrasena(correo: string): Promise<void> {
+    try {
+      await sendPasswordResetEmail(this.auth, correo.trim());
+    } catch {
+      // Cuenta inexistente, correo mal escrito o servicio caído: la respuesta es la misma, para no revelar qué correos tienen cuenta.
+    }
   }
 }
