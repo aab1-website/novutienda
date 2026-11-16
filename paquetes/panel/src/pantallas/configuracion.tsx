@@ -1,6 +1,6 @@
 import type { JSX } from 'preact';
 import { useEffect, useRef, useState } from 'preact/hooks';
-import { MEDIOS_PAGO, type ConfigPos, type MercadoDeclarado, type MedioPago, type PlantillaRecibo } from '../api/tipos.js';
+import { MEDIOS_PAGO, type ConfigPos, type LogoNegocio, type MercadoDeclarado, type MedioPago, type PlantillaRecibo } from '../api/tipos.js';
 import { Alerta, Area, Boton, Campo, Cargando, Casilla, ErrorCarga, Pestanas, Selector, Seccion } from '../ui/comun.js';
 import { useAvisos } from '../ui/avisos.js';
 import { ErrorApi, mensajeDeError } from '../api/errores.js';
@@ -9,6 +9,7 @@ import { useCambiosSinGuardar } from '../ui/guardia.js';
 import { useAccion, useCarga } from '../ui/hooks.js';
 import { useConfiguracionComercial } from '../ui/comercial.js';
 import { Tabla } from '../ui/tabla.js';
+import { baseDeMedios, urlDelLogo } from '../util/logo.js';
 
 const MEDIO_TEXTO: Record<MedioPago, string> = { efectivo: 'Efectivo', qr: 'QR', transferencia: 'Transferencia', credito: 'Crédito' };
 const bpAPorciento = (bp: number): string => String(bp / 100).replace('.', ',');
@@ -26,6 +27,34 @@ const datosDe = (n: ConfigPos['negocio'], logo: string | undefined): DatosNegoci
 const normal = (d: DatosNegocio): string => JSON.stringify(CAMPOS_NEGOCIO.map((k) => d[k].trim()));
 const negocioDe = (d: DatosNegocio): ConfigPos['negocio'] => ({ nombre: d.nombre.trim(), ...(opc(d.direccion) ? { direccion: opc(d.direccion) as string } : {}), ...(opc(d.telefono) ? { telefono: opc(d.telefono) as string } : {}), ...(opc(d.nit) ? { nit: opc(d.nit) as string } : {}) });
 
+type EstadoLogo = { readonly estado: 'subido'; readonly logo: LogoNegocio } | { readonly estado: 'sin-logo' } | { readonly estado: 'no-disponible' };
+
+/**
+ * Logo subido como archivo (se sube en Catálogo y sitio). Sin logo subido, la dirección web de abajo sigue siendo el respaldo;
+ * si la acción no está disponible (módulo apagado, sin permiso o error), solo se dice «Sin logo subido».
+ */
+function LogoSubido({ estado, conDireccion }: { readonly estado: EstadoLogo; readonly conDireccion: boolean }): JSX.Element {
+  // Si la imagen no carga (ruta caída, base mal configurada) se muestra el texto del caso, nunca un ícono roto.
+  const [fallida, setFallida] = useState<string | null>(null);
+  const urlVista = estado.estado === 'subido' ? urlDelLogo(baseDeMedios(), estado.logo) : null;
+  if (estado.estado === 'no-disponible') return <p class="texto-suave" data-prueba="logo-no-disponible">Sin logo subido</p>;
+  if (estado.estado === 'sin-logo' || (urlVista !== null && fallida === urlVista)) {
+    return (
+      <p class="texto-suave" data-prueba="logo-sin-subir">
+        {conDireccion ? 'Se usa la dirección web de abajo como respaldo. ' : 'Sin logo subido. '}
+        Puede subir un archivo en <a href="#/catalogo/apariencia">Catálogo y sitio</a>.
+      </p>
+    );
+  }
+  const url = urlVista;
+  return (
+    <div data-prueba="logo-subido">
+      {url !== null && <img src={url} alt="Logo del negocio" referrerpolicy="no-referrer" onError={() => setFallida(url)} width={96} height={96} style="width:96px;height:96px;object-fit:contain" />}
+      <p class="texto-suave">Este logo se sube en <a href="#/catalogo/apariencia">Catálogo y sitio → Apariencia</a>. La dirección web de abajo queda de respaldo.</p>
+    </div>
+  );
+}
+
 /**
  * Datos del negocio: se editan una vez y se guardan en sus dos destinos (configuración de la caja y plantilla de recibos)
  * con las acciones existentes. El guardado no es atómico: se dice cuál quedó guardado y cuál no, y se reintenta solo el que falló.
@@ -34,6 +63,8 @@ function DatosDelNegocio(): JSX.Element {
   const { api, sesionVencida, renovarSesion } = useApp();
   const caja = useCarga(() => api.llamar('leerConfigPos', {}), []);
   const recibos = useCarga(() => api.llamar('leerPlantilla', {}), []);
+  // El logo subido es de otro módulo: si no se puede leer, la pantalla sigue sin él.
+  const logo = useCarga<EstadoLogo>(() => api.llamar('leerLogo', {}).then((l): EstadoLogo => (l === null ? { estado: 'sin-logo' } : { estado: 'subido', logo: l }), (): EstadoLogo => ({ estado: 'no-disponible' })), []);
   const avisos = useAvisos();
   const [d, setD] = useState<DatosNegocio | null>(null);
   const [base, setBase] = useState('');
@@ -155,6 +186,7 @@ function DatosDelNegocio(): JSX.Element {
           <Campo etiqueta="NIT" valor={d.nit} onInput={(v) => poner('nit', v)} />
           <Campo etiqueta="Dirección web del logo (https)" valor={d.logoUrl} onInput={(v) => poner('logoUrl', v)} />
         </div>
+        {logo.datos !== undefined && <LogoSubido estado={logo.datos} conDireccion={d.logoUrl.trim() !== ''} />}
         {resultado !== '' && <Alerta>{resultado}</Alerta>}
         {pendientes.length > 0 && enviado !== null && (
           <div class="acciones">
