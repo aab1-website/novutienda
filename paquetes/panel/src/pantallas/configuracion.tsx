@@ -1,8 +1,10 @@
 import type { JSX } from 'preact';
-import { useEffect, useState } from 'preact/hooks';
+import { useEffect, useRef, useState } from 'preact/hooks';
 import { MEDIOS_PAGO, type ConfigPos, type MercadoDeclarado, type MedioPago, type PlantillaRecibo } from '../api/tipos.js';
 import { Alerta, Area, Boton, Campo, Cargando, Casilla, ErrorCarga, Pestanas, Selector, Seccion } from '../ui/comun.js';
+import { useAvisos } from '../ui/avisos.js';
 import { useApp } from '../ui/contexto.js';
+import { useCambiosSinGuardar } from '../ui/guardia.js';
 import { useAccion, useCarga } from '../ui/hooks.js';
 import { useConfiguracionComercial } from '../ui/comercial.js';
 import { Tabla } from '../ui/tabla.js';
@@ -20,15 +22,22 @@ function ConfigPosForm(): JSX.Element {
   const cfg = useCarga(() => api.llamar('leerConfigPos', {}), []);
   const comercial = useConfiguracionComercial();
   const accion = useAccion();
+  const avisos = useAvisos();
   const [c, setC] = useState<ConfigPos | null>(null);
   const [topes, setTopes] = useState({ caj: '', sup: '', adm: '' });
-  const [ok, setOk] = useState(false);
+  // Lo último cargado o guardado: lo que difiera de esto es «cambios sin guardar».
+  const [base, setBase] = useState<string | null>(null);
+  const avisoGuardado = useRef(0);
   useEffect(() => {
     if (cfg.datos !== undefined) {
+      const t = { caj: bpAPorciento(cfg.datos.topesDescuentoBp.caj), sup: bpAPorciento(cfg.datos.topesDescuentoBp.sup), adm: bpAPorciento(cfg.datos.topesDescuentoBp.adm) };
       setC(cfg.datos);
-      setTopes({ caj: bpAPorciento(cfg.datos.topesDescuentoBp.caj), sup: bpAPorciento(cfg.datos.topesDescuentoBp.sup), adm: bpAPorciento(cfg.datos.topesDescuentoBp.adm) });
+      setTopes(t);
+      setBase(JSON.stringify([cfg.datos, t]));
     }
   }, [cfg.datos]);
+  const sucio = c !== null && base !== null && JSON.stringify([c, topes]) !== base;
+  const { marcarGuardado } = useCambiosSinGuardar(sucio);
   if (cfg.cargando || c === null) return cfg.error ? <ErrorCarga error={cfg.error} reintentar={cfg.recargar} /> : <Cargando />;
 
   // Las monedas de cobro son las que declara el comercio; sin su configuración solo se ofrece la vigente (no se inventan).
@@ -45,13 +54,30 @@ function ConfigPosForm(): JSX.Element {
       colores: c.colores, mediosHabilitados: c.mediosHabilitados, monedaPorDefecto: c.monedaPorDefecto,
       topesDescuentoBp: { caj: bp.caj as number, sup: bp.sup as number, adm: bp.adm as number }, textoRecibo: c.textoRecibo, serieRecibo: c.serieRecibo.trim().toUpperCase(),
     };
+    const enviado = JSON.stringify([c, topes]);
     void accion.ejecutar(async () => {
       await api.llamar('guardarConfigPos', { config });
-      setOk(true);
-    });
+      marcarGuardado();
+      setBase(enviado);
+      avisoGuardado.current = avisos.ok('Configuración guardada.');
+    }, { error: 'ambos' });
   };
-  const cambiarNegocio = (k: keyof ConfigPos['negocio'], v: string): void => { setOk(false); setC({ ...c, negocio: { ...c.negocio, [k]: v } }); };
-  const alternarMedio = (m: MedioPago, v: boolean): void => { setOk(false); setC({ ...c, mediosHabilitados: v ? [...c.mediosHabilitados, m] : c.mediosHabilitados.filter((x) => x !== m) }); };
+  // Al cambiar algo, el «guardado» anterior ya no describe lo que se ve: se retira.
+  const editado = (): void => {
+    if (avisoGuardado.current !== 0) avisos.cerrar(avisoGuardado.current);
+    avisoGuardado.current = 0;
+  };
+  const poner = (nuevo: ConfigPos): void => { editado(); setC(nuevo); };
+  const ponerTopes = (nuevo: typeof topes): void => { editado(); setTopes(nuevo); };
+  const cambiarNegocio = (k: keyof ConfigPos['negocio'], v: string): void => poner({ ...c, negocio: { ...c.negocio, [k]: v } });
+  const alternarMedio = (m: MedioPago, v: boolean): void => poner({ ...c, mediosHabilitados: v ? [...c.mediosHabilitados, m] : c.mediosHabilitados.filter((x) => x !== m) });
+  const motivo = !topesOk
+    ? 'Los topes de descuento deben estar entre 0 y 100'
+    : c.mediosHabilitados.length === 0
+      ? 'Habilite al menos un medio de pago'
+      : c.negocio.nombre.trim() === ''
+        ? 'Escriba el nombre del negocio'
+        : undefined;
 
   return (
     <Seccion titulo="Datos del negocio y del POS">
@@ -61,11 +87,11 @@ function ConfigPosForm(): JSX.Element {
           <Campo etiqueta="Dirección" valor={c.negocio.direccion ?? ''} onInput={(v) => cambiarNegocio('direccion', v)} />
           <Campo etiqueta="Teléfono" valor={c.negocio.telefono ?? ''} onInput={(v) => cambiarNegocio('telefono', v)} />
           <Campo etiqueta="NIT" valor={c.negocio.nit ?? ''} onInput={(v) => cambiarNegocio('nit', v)} />
-          <Campo etiqueta="Dirección web del logo (https)" valor={c.logoUrl ?? ''} onInput={(v) => { setOk(false); setC({ ...c, logoUrl: v }); }} />
-          <Campo etiqueta="Color primario" tipo="color" valor={c.colores.primario} onInput={(v) => setC({ ...c, colores: { ...c.colores, primario: v } })} />
-          <Campo etiqueta="Color secundario" tipo="color" valor={c.colores.secundario} onInput={(v) => setC({ ...c, colores: { ...c.colores, secundario: v } })} />
-          <Selector etiqueta="Moneda por defecto" valor={c.monedaPorDefecto} onCambio={(v) => setC({ ...c, monedaPorDefecto: v })} deshabilitado={comercial.estado !== 'lista'} opciones={monedas.map((m) => ({ valor: m, texto: m }))} />
-          <Campo etiqueta="Serie del recibo" valor={c.serieRecibo} onInput={(v) => setC({ ...c, serieRecibo: v })} maxLength={6} ayuda="1 a 6 letras mayúsculas o dígitos. Se define solo aquí." />
+          <Campo etiqueta="Dirección web del logo (https)" valor={c.logoUrl ?? ''} onInput={(v) => poner({ ...c, logoUrl: v })} />
+          <Campo etiqueta="Color primario" tipo="color" valor={c.colores.primario} onInput={(v) => poner({ ...c, colores: { ...c.colores, primario: v } })} ayuda="Color de su negocio en el punto de venta." />
+          <Campo etiqueta="Color secundario" tipo="color" valor={c.colores.secundario} onInput={(v) => poner({ ...c, colores: { ...c.colores, secundario: v } })} ayuda="Color de apoyo de su negocio en el punto de venta." />
+          <Selector etiqueta="Moneda por defecto" valor={c.monedaPorDefecto} onCambio={(v) => poner({ ...c, monedaPorDefecto: v })} deshabilitado={comercial.estado !== 'lista'} opciones={monedas.map((m) => ({ valor: m, texto: m }))} />
+          <Campo etiqueta="Serie del recibo" valor={c.serieRecibo} onInput={(v) => poner({ ...c, serieRecibo: v })} maxLength={6} ayuda="1 a 6 letras mayúsculas o dígitos. Se define solo aquí." />
         </div>
         <fieldset>
           <legend>Medios de pago habilitados</legend>
@@ -74,17 +100,14 @@ function ConfigPosForm(): JSX.Element {
         <fieldset>
           <legend>Tope de descuento sin aprobación (% del subtotal)</legend>
           <div class="cuadricula">
-            <Campo etiqueta="Vendedor" valor={topes.caj} onInput={(v) => { setOk(false); setTopes({ ...topes, caj: v }); }} inputMode="decimal" ayuda="Decisión vigente: 5 %." />
-            <Campo etiqueta="Supervisor" valor={topes.sup} onInput={(v) => { setOk(false); setTopes({ ...topes, sup: v }); }} inputMode="decimal" />
-            <Campo etiqueta="Administrador" valor={topes.adm} onInput={(v) => { setOk(false); setTopes({ ...topes, adm: v }); }} inputMode="decimal" />
+            <Campo etiqueta="Vendedor" valor={topes.caj} onInput={(v) => ponerTopes({ ...topes, caj: v })} inputMode="decimal" ayuda="Porcentaje máximo que puede dar sin pedir aprobación." />
+            <Campo etiqueta="Supervisor" valor={topes.sup} onInput={(v) => ponerTopes({ ...topes, sup: v })} inputMode="decimal" />
+            <Campo etiqueta="Administrador" valor={topes.adm} onInput={(v) => ponerTopes({ ...topes, adm: v })} inputMode="decimal" />
           </div>
         </fieldset>
-        <Area etiqueta="Texto del recibo" valor={c.textoRecibo} onInput={(v) => { setOk(false); setC({ ...c, textoRecibo: v }); }} />
-        {!topesOk && <Alerta>Los topes de descuento deben estar entre 0 y 100.</Alerta>}
-        {c.mediosHabilitados.length === 0 && <Alerta>Habilite al menos un medio de pago.</Alerta>}
+        <Area etiqueta="Texto del recibo" valor={c.textoRecibo} onInput={(v) => poner({ ...c, textoRecibo: v })} />
         {accion.error && <Alerta>{accion.error}</Alerta>}
-        {ok && <Alerta tipo="ok">Configuración guardada.</Alerta>}
-        <Boton tipo="submit" ocupado={accion.ocupado} deshabilitado={!topesOk || c.mediosHabilitados.length === 0 || c.negocio.nombre.trim() === ''}>
+        <Boton tipo="submit" ocupado={accion.ocupado} motivo={motivo}>
           Guardar configuración
         </Boton>
       </form>
@@ -96,12 +119,21 @@ function PlantillaForm(): JSX.Element {
   const { api } = useApp();
   const pl = useCarga(() => api.llamar('leerPlantilla', {}), []);
   const accion = useAccion();
+  const avisos = useAvisos();
   const [p, setP] = useState<PlantillaRecibo | null>(null);
-  const [ok, setOk] = useState(false);
-  useEffect(() => { if (pl.datos !== undefined) setP(pl.datos); }, [pl.datos]);
+  const [base, setBase] = useState<string | null>(null);
+  const avisoGuardado = useRef(0);
+  useEffect(() => { if (pl.datos !== undefined) { setP(pl.datos); setBase(JSON.stringify(pl.datos)); } }, [pl.datos]);
+  const sucio = p !== null && base !== null && JSON.stringify(p) !== base;
+  const { marcarGuardado } = useCambiosSinGuardar(sucio);
   if (pl.cargando || p === null) return pl.error ? <ErrorCarga error={pl.error} reintentar={pl.recargar} /> : <Cargando />;
   const n = p.negocio;
-  const cambiarNegocio = (k: keyof PlantillaRecibo['negocio'], v: string): void => { setOk(false); setP({ ...p, negocio: { ...n, [k]: v } }); };
+  const poner = (nueva: PlantillaRecibo): void => {
+    if (avisoGuardado.current !== 0) avisos.cerrar(avisoGuardado.current);
+    avisoGuardado.current = 0;
+    setP(nueva);
+  };
+  const cambiarNegocio = (k: keyof PlantillaRecibo['negocio'], v: string): void => poner({ ...p, negocio: { ...n, [k]: v } });
   const guardar = (e: Event): void => {
     e.preventDefault();
     const plantilla: PlantillaRecibo = {
@@ -109,7 +141,13 @@ function PlantillaForm(): JSX.Element {
       ...(opc(p.logoUrl ?? '') ? { logoUrl: opc(p.logoUrl ?? '') as string } : {}), ...(opc(p.pie ?? '') ? { pie: opc(p.pie ?? '') as string } : {}),
       ...(opc(p.politicaGarantia ?? '') ? { politicaGarantia: opc(p.politicaGarantia ?? '') as string } : {}), ...(opc(p.politicaCambios ?? '') ? { politicaCambios: opc(p.politicaCambios ?? '') as string } : {}),
     };
-    void accion.ejecutar(async () => { await api.llamar('guardarPlantilla', { plantilla }); setOk(true); });
+    const enviado = JSON.stringify(p);
+    void accion.ejecutar(async () => {
+      await api.llamar('guardarPlantilla', { plantilla });
+      marcarGuardado();
+      setBase(enviado);
+      avisoGuardado.current = avisos.ok('Plantilla guardada.');
+    }, { error: 'ambos' });
   };
   return (
     <Seccion titulo="Plantilla del recibo">
@@ -120,14 +158,13 @@ function PlantillaForm(): JSX.Element {
           <Campo etiqueta="Dirección" valor={n.direccion ?? ''} onInput={(v) => cambiarNegocio('direccion', v)} />
           <Campo etiqueta="Teléfono" valor={n.telefono ?? ''} onInput={(v) => cambiarNegocio('telefono', v)} />
           <Campo etiqueta="NIT" valor={n.nit ?? ''} onInput={(v) => cambiarNegocio('nit', v)} />
-          <Campo etiqueta="Dirección web del logo (https)" valor={p.logoUrl ?? ''} onInput={(v) => { setOk(false); setP({ ...p, logoUrl: v }); }} />
+          <Campo etiqueta="Dirección web del logo (https)" valor={p.logoUrl ?? ''} onInput={(v) => poner({ ...p, logoUrl: v })} />
         </div>
-        <Area etiqueta="Pie de página" valor={p.pie ?? ''} onInput={(v) => { setOk(false); setP({ ...p, pie: v }); }} />
-        <Area etiqueta="Política de garantía" valor={p.politicaGarantia ?? ''} onInput={(v) => { setOk(false); setP({ ...p, politicaGarantia: v }); }} />
-        <Area etiqueta="Política de cambios" valor={p.politicaCambios ?? ''} onInput={(v) => { setOk(false); setP({ ...p, politicaCambios: v }); }} />
+        <Area etiqueta="Pie de página" valor={p.pie ?? ''} onInput={(v) => poner({ ...p, pie: v })} />
+        <Area etiqueta="Política de garantía" valor={p.politicaGarantia ?? ''} onInput={(v) => poner({ ...p, politicaGarantia: v })} />
+        <Area etiqueta="Política de cambios" valor={p.politicaCambios ?? ''} onInput={(v) => poner({ ...p, politicaCambios: v })} />
         {accion.error && <Alerta>{accion.error}</Alerta>}
-        {ok && <Alerta tipo="ok">Plantilla guardada.</Alerta>}
-        <Boton tipo="submit" ocupado={accion.ocupado} deshabilitado={n.nombre.trim() === ''}>Guardar plantilla</Boton>
+        <Boton tipo="submit" ocupado={accion.ocupado} motivo={n.nombre.trim() === '' ? 'Escriba el nombre del negocio' : undefined}>Guardar plantilla</Boton>
       </form>
     </Seccion>
   );

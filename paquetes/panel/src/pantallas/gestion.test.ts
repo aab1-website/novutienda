@@ -1,6 +1,6 @@
 // @vitest-environment jsdom
 import { h } from 'preact';
-import { cleanup, render, screen, waitFor, within } from '@testing-library/preact';
+import { cleanup, fireEvent, render, screen, waitFor, within } from '@testing-library/preact';
 import { userEvent } from '@testing-library/user-event';
 import { afterEach, describe, expect, it, vi } from 'vitest';
 import { ErrorApi } from '../api/errores.js';
@@ -9,6 +9,7 @@ import { PantallaCatalogo } from './consola/catalogo.js';
 import { PantallaConfiguracion } from './configuracion.js';
 import { PantallaInventario } from './inventarios/inventario.js';
 import { PantallaMermas } from './inventarios/mermas.js';
+import { ProveedorGuardia } from '../ui/guardia.js';
 import { PantallaVenta } from './pos/venta.js';
 import { PantallaRecibos } from './recibos/recibos.js';
 import { PantallaUsuarios } from './usuarios.js';
@@ -300,7 +301,8 @@ describe('usuarios y configuración', () => {
     await u.clear(campo('Supervisor'));
     await u.type(campo('Supervisor'), '200');
     expect(await screen.findByText(/entre 0 y 100/)).toBeTruthy();
-    expect((screen.getByRole('button', { name: 'Guardar configuración' }) as HTMLButtonElement).disabled).toBe(true);
+    // El botón sigue enfocable (aria-disabled) y el motivo está a la vista.
+    expect(screen.getByRole('button', { name: 'Guardar configuración' }).getAttribute('aria-disabled')).toBe('true');
     await u.clear(campo('Supervisor'));
     await u.type(campo('Supervisor'), '50');
     await u.click(screen.getByLabelText('QR'));
@@ -548,5 +550,117 @@ describe('usuarios: avisos, motivos y datos ausentes', () => {
     await u.type(await screen.findByLabelText(/Correo de la persona/), 'adm@ejemplo.test');
     await u.click(screen.getByRole('button', { name: 'Buscar cuenta' }));
     expect(await screen.findByText(/ya tiene acceso/)).toBeTruthy();
+  });
+});
+
+describe('configuración: avisos, motivos y cambios sin guardar', () => {
+  const conGuardia = async (e: Entorno, sub: 'negocio' | 'recibo'): Promise<void> => {
+    window.location.hash = '#/configuracion';
+    // Deja correr los eventos de hash pendientes (de la prueba anterior y de esta) antes de montar.
+    await new Promise((r) => setTimeout(r, 20));
+    render(e.envolver(h(ProveedorGuardia, null, h('div', null, h('a', { href: '#/otra' }, 'Otra pantalla'), h(PantallaConfiguracion, { sub })))));
+  };
+  const irA = (): void => (document.querySelector('a[href="#/otra"]') as HTMLElement).click();
+  afterEach(() => { window.location.hash = ''; });
+
+  it('«Configuración guardada» sale por el aviso compartido y se retira al cambiar algo', async () => {
+    const e = crearEntorno('adm');
+    ver(e, h(PantallaConfiguracion, { sub: 'negocio' }));
+    const u = userEvent.setup();
+    await screen.findByRole('heading', { name: 'Datos del negocio y del POS' });
+    await u.type(campo('Dirección'), ' 1');
+    await u.click(screen.getByRole('button', { name: 'Guardar configuración' }));
+    await waitFor(() => expect(regionAvisos('estado').textContent).toContain('Configuración guardada.'));
+    await u.type(campo('Teléfono'), '7');
+    await waitFor(() => expect(regionAvisos('estado').textContent).not.toContain('Configuración guardada.'));
+  });
+  it('cambiar un color también retira el «guardado»', async () => {
+    const e = crearEntorno('adm');
+    ver(e, h(PantallaConfiguracion, { sub: 'negocio' }));
+    const u = userEvent.setup();
+    await screen.findByRole('heading', { name: 'Datos del negocio y del POS' });
+    await u.click(screen.getByRole('button', { name: 'Guardar configuración' }));
+    await waitFor(() => expect(regionAvisos('estado').textContent).toContain('Configuración guardada.'));
+    fireEvent.input(campo('Color primario'), { target: { value: '#112233' } });
+    await waitFor(() => expect(regionAvisos('estado').textContent).not.toContain('Configuración guardada.'));
+  });
+  it('un error al guardar se ve junto al botón y en el aviso compartido', async () => {
+    const e = crearEntorno('adm');
+    const llamar = e.api.llamar.bind(e.api) as (n: string, x: unknown) => Promise<unknown>;
+    vi.spyOn(e.api, 'llamar').mockImplementation(((n: string, x: unknown) =>
+      n === 'guardarConfigPos' ? Promise.reject(new ErrorApi('failed-precondition', 'No se pudo guardar la configuración.')) : llamar(n, x)) as never);
+    ver(e, h(PantallaConfiguracion, { sub: 'negocio' }));
+    await screen.findByRole('heading', { name: 'Datos del negocio y del POS' });
+    await userEvent.setup().click(screen.getByRole('button', { name: 'Guardar configuración' }));
+    const local = await screen.findByRole('alert');
+    expect(regionAvisos('error-visual').textContent).toContain('No se pudo guardar la configuración.');
+    expect(local.textContent).toContain('No se pudo guardar la configuración.');
+  });
+  it('los botones apagados dicen por qué', async () => {
+    const e = crearEntorno('adm');
+    ver(e, h(PantallaConfiguracion, { sub: 'negocio' }));
+    const u = userEvent.setup();
+    await screen.findByRole('heading', { name: 'Datos del negocio y del POS' });
+    await u.clear(campo(/^Nombre del negocio/));
+    expect(screen.getByText('Escriba el nombre del negocio')).toBeTruthy();
+    await u.type(campo(/^Nombre del negocio/), 'Tienda');
+    await u.click(screen.getByLabelText('Efectivo'));
+    await u.click(screen.getByLabelText('QR'));
+    await u.click(screen.getByLabelText('Transferencia'));
+    await u.click(screen.getByLabelText('Crédito'));
+    expect(screen.getByText('Habilite al menos un medio de pago')).toBeTruthy();
+    expect(e.api.llamadas.map((l) => l.nombre)).not.toContain('guardarConfigPos');
+    await u.click(screen.getByRole('button', { name: 'Guardar configuración' }));
+    expect(e.api.llamadas.map((l) => l.nombre)).not.toContain('guardarConfigPos');
+  });
+  it('la plantilla sin nombre del negocio dice por qué no se guarda', async () => {
+    const e = crearEntorno('adm');
+    ver(e, h(PantallaConfiguracion, { sub: 'recibo' }));
+    await userEvent.setup().clear(await screen.findByLabelText(/^Nombre del negocio/));
+    expect(screen.getByText('Escriba el nombre del negocio')).toBeTruthy();
+    expect(screen.getByRole('button', { name: 'Guardar plantilla' }).getAttribute('aria-disabled')).toBe('true');
+  });
+  it('sin cambios no hay pregunta al salir', async () => {
+    const e = crearEntorno('adm');
+    await conGuardia(e, 'negocio');
+    await screen.findByRole('heading', { name: 'Datos del negocio y del POS' });
+    irA();
+    expect(screen.queryByRole('dialog')).toBeNull();
+    await waitFor(() => expect(window.location.hash).toBe('#/otra'));
+  });
+  it('con cambios sin guardar pregunta antes de salir', async () => {
+    const e = crearEntorno('adm');
+    await conGuardia(e, 'negocio');
+    await screen.findByRole('heading', { name: 'Datos del negocio y del POS' });
+    await userEvent.setup().type(campo('Dirección'), ' 2');
+    irA();
+    expect(await screen.findByRole('dialog', { name: '¿Salir sin guardar?' })).toBeTruthy();
+    expect(window.location.hash).toBe('#/configuracion');
+  });
+  it('tras guardar ya no pregunta', async () => {
+    const e = crearEntorno('adm');
+    await conGuardia(e, 'negocio');
+    const u = userEvent.setup();
+    await screen.findByRole('heading', { name: 'Datos del negocio y del POS' });
+    await u.type(campo('Dirección'), ' 2');
+    await u.click(screen.getByRole('button', { name: 'Guardar configuración' }));
+    await screen.findByText('Configuración guardada.');
+    irA();
+    expect(screen.queryByRole('dialog')).toBeNull();
+    await waitFor(() => expect(window.location.hash).toBe('#/otra'));
+  });
+  it('la plantilla del recibo también protege los cambios sin guardar', async () => {
+    const e = crearEntorno('adm');
+    await conGuardia(e, 'recibo');
+    const u = userEvent.setup();
+    await u.type(await screen.findByLabelText('Pie de página'), ' Gracias.');
+    irA();
+    expect(await screen.findByRole('dialog', { name: '¿Salir sin guardar?' })).toBeTruthy();
+  });
+  it('no deja textos internos a la vista', async () => {
+    const e = crearEntorno('adm');
+    ver(e, h(PantallaConfiguracion, { sub: 'negocio' }));
+    await screen.findByRole('heading', { name: 'Datos del negocio y del POS' });
+    expect(document.body.textContent).not.toMatch(/Decisión vigente/);
   });
 });
