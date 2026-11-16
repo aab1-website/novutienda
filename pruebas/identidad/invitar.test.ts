@@ -177,6 +177,16 @@ describe('invitarMiembro', () => {
     await expect(invitarMiembro(m.deps, caj1, 't1', 'n1', 'sup')).rejects.toMatchObject({ codigo: 'no-autorizado' });
   });
 
+  it('reinvitar con el mismo rol por otra persona la respalda: cambia invitadoPor, sin cupo nuevo, y audita el anterior', async () => {
+    const m = montaje();
+    await invitarMiembro(m.deps, adm1, 't1', 'n1', 'caj');
+    await invitarMiembro(m.deps, dueno, 't1', 'n1', 'caj');
+    expect(m.db.dato('tenants/t1/miembros/n1')?.['invitadoPor']).toBe('dueno');
+    expect(m.uso()).toBe(1);
+    const ultima = m.db.coleccion('tenants/t1/auditoria').at(-1);
+    expect(ultima).toMatchObject({ accion: 'miembro.invitar', resumenAntes: { invitadoPor: 'adm1' }, resumenDespues: { invitadoPor: 'dueno' } });
+  });
+
   it('quien ya tiene rol en el claim del comercio, o es propietario, no se invita ni se rebaja', async () => {
     const m = montaje();
     for (const uid of ['caj1', 'dueno']) {

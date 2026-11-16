@@ -165,7 +165,7 @@ export async function invitarMiembro(
     const previo = await tx.get(rutaMiembro(tenantId, uid));
     if (previo.existe) {
       const d = previo.data();
-      if (!esInvitado(d) || d['rolReservado'] === rolReservado) return; // miembro activo o misma invitación: sin cambios
+      if (!esInvitado(d) || (d['rolReservado'] === rolReservado && d['invitadoPor'] === actor.uid)) return; // miembro activo o misma invitación del mismo invitador: sin cambios
       tx.set(rutaMiembro(tenantId, uid), { ...d, rolReservado, invitadoPor: actor.uid }); // otro rol: se actualiza (y quien reinvita pasa a ser quien invitó), sin cupo nuevo
       registrarAuditoria(tx, {
         tenantId,
@@ -173,8 +173,12 @@ export async function invitarMiembro(
         rol: 'adm',
         accion: 'miembro.invitar',
         ruta: rutaMiembro(tenantId, uid),
-        resumenAntes: { estado: 'invitado', rolReservado: esRol(d['rolReservado']) ? d['rolReservado'] : null },
-        resumenDespues: { estado: 'invitado', rolReservado },
+        resumenAntes: {
+          estado: 'invitado',
+          rolReservado: esRol(d['rolReservado']) ? d['rolReservado'] : null,
+          invitadoPor: typeof d['invitadoPor'] === 'string' ? d['invitadoPor'] : null,
+        },
+        resumenDespues: { estado: 'invitado', rolReservado, invitadoPor: actor.uid },
       });
       return;
     }
