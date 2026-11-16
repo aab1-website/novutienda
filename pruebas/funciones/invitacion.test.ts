@@ -135,6 +135,30 @@ describe.skipIf(!hayEmulador)('invitaciones (emuladores)', () => {
     expect(await miembro(t, uidSesion)).toBeUndefined();
   });
 
+  it('una cuenta que ya usó el enlace para fijar su contraseña no se borra al anular la invitación', async () => {
+    const t = await comercio();
+    const adm = await crearUsuario(h, { rol: 'adm', tenant: t });
+    const usos = async (): Promise<number> => Number((await h.firestore.doc(`tenants/${t}/contadores/uso`).get()).data()?.['usuarios'] ?? 0);
+    const antes = await usos();
+    const correo = correoNuevo();
+    await invitar(adm.token, t, correo);
+    const uid = await uidDe(correo);
+    expect(await usos()).toBe(antes + 1);
+    const enlace = await h.auth.generatePasswordResetLink(correo);
+    const oobCode = new URL(enlace).searchParams.get('oobCode') ?? '';
+    const host = process.env['FIREBASE_AUTH_EMULATOR_HOST'] ?? '127.0.0.1:8240';
+    const r = await fetch(`http://${host}/identitytoolkit.googleapis.com/v1/accounts:resetPassword?key=clave-falsa`, {
+      method: 'POST',
+      headers: { 'content-type': 'application/json' },
+      body: JSON.stringify({ oobCode, newPassword: CLAVE }),
+    });
+    expect(r.status).toBe(200); // la persona fijó su clave, sin llegar a entrar
+    expect((await accion('consola', 'anularInvitacion', { uid }, adm.token, t)).status).toBe(200);
+    expect((await h.auth.getUser(uid)).uid).toBe(uid); // la cuenta se conserva
+    expect(await miembro(t, uid)).toBeUndefined(); // la invitación queda anulada
+    expect(await usos()).toBe(antes); // y el cupo, liberado
+  });
+
   it('reenviar extiende el vencimiento y responde igual', async () => {
     const t = await comercio();
     const adm = await crearUsuario(h, { rol: 'adm', tenant: t });
