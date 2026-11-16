@@ -128,10 +128,10 @@ export const JPG_CON_EXIF = new Uint8Array([0xff, 0xd8, 0xff, 0xe1, 0x00, 0x10, 
 export const JPG_LIMPIO = new Uint8Array([0xff, 0xd8, 0xff, 0xe0, 0x00, 0x04, 0, 0, 0xff, 0xda, 0, 2, 9, 9, 9]);
 
 /** Contenido distinto para cada versión: así el hash por contenido las distingue. */
-const contenidoVersion = (v: { clase: string; lado: number; formato: string }, sucio: boolean): Uint8Array => {
+const contenidoVersion = (v: { clase: string; lado: number; formato: string }, sucio: boolean, sal = ''): Uint8Array => {
   if (v.clase === 'video') return new Uint8Array([...texto(`video${String(v.lado)}`), 1, 2, 3]);
   if (sucio) return new Uint8Array([...JPG_CON_EXIF, ...texto(`${v.formato}${String(v.lado)}`)]);
-  return new Uint8Array([...JPG_LIMPIO, ...texto(`${v.formato}${String(v.lado)}${v.clase}`)]);
+  return new Uint8Array([...JPG_LIMPIO, ...texto(`${v.formato}${String(v.lado)}${v.clase}${sal}`)]);
 };
 
 /** Procesador simulado: respeta el plan y escribe versiones en el almacén. */
@@ -144,6 +144,10 @@ export class ProcesadorSimulado implements ProcesadorMedios {
   dejarMetadatos = false;
   omitirUna = false;
   escribirFuera = false;
+  /** Cambia el contenido (y por tanto la ruta con hash) de lo que produce: dos logos con sal distinta no comparten versiones. */
+  sal = '';
+  /** Se ejecuta tras procesar y antes de devolver (para provocar intercalaciones en las pruebas). */
+  despuesDeProcesar: (() => Promise<void>) | undefined = undefined;
   constructor(private readonly almacen: AlmacenDoble) {}
   async disponible(tipo: 'foto' | 'video'): Promise<boolean> {
     return tipo === 'video' ? this.videoDisponible : true;
@@ -158,9 +162,10 @@ export class ProcesadorSimulado implements ProcesadorMedios {
     const salida: VersionProcesada[] = [];
     for (const item of this.omitirUna ? s.plan.items.slice(1) : s.plan.items) {
       const ruta = `${this.escribirFuera ? 'tenants/otro/privado' : s.destinoTemporal}/${item.clase}-${String(item.lado)}.${item.formato}`;
-      this.almacen.subir(ruta, contenidoVersion(item, this.dejarMetadatos));
+      this.almacen.subir(ruta, contenidoVersion(item, this.dejarMetadatos, this.sal));
       salida.push({ ...item, rutaTemporal: ruta });
     }
+    await this.despuesDeProcesar?.();
     return salida;
   }
 }

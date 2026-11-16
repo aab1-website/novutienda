@@ -8,7 +8,7 @@ import {
 } from '@novutienda/nucleo';
 import { anotarCambio, leerEstadoSitio } from './cambios.js';
 import { PLANTILLAS } from './plantillas.js';
-import { decidirReconstruccion, motivoNoPublicable, type MedioPublico } from './publicar.js';
+import { avanzarPublicadoVivo, motivoNoPublicable, type MedioPublico } from './publicar.js';
 import type { CatalogoPuerto, DisparadorSitio, Reloj } from './puertos.js';
 import { rutaPublicado } from './rutas.js';
 import { esObjeto } from './validar.js';
@@ -139,12 +139,7 @@ export async function consumirProductoCambiado(
         motivoAviso = motivoNoPublicable({ productos: restantes.length === 0 ? [] : productosQuedan, carruseles });
       }
       const ahora = deps.reloj.ahora();
-      const reconstruccion = esObjeto(dEstadoPub['reconstruccion']) ? dEstadoPub['reconstruccion'] : {};
-      const previaPara = typeof reconstruccion['programadaPara'] === 'number' ? reconstruccion['programadaPara'] : null;
-      // Con una hora ya vencida la decisión es «esperar»: quien pasa a reconstruir es siempre el temporizador.
-      const decision = decidirReconstruccion({ hayPublicacion: true, programadaPara: previaPara }, ahora, 'publicacion');
-      const programadaPara = decision.accion === 'programar' || decision.accion === 'esperar' ? decision.para : previaPara;
-      const version = (typeof dEstadoPub['version'] === 'number' ? dEstadoPub['version'] : 0) + 1;
+      const { version, reconstruccion, decision } = avanzarPublicadoVivo(dEstadoPub, ahora);
 
       // Escrituras (después de todas las lecturas).
       if (retirar) tx.delete(rutaCopia);
@@ -158,7 +153,7 @@ export async function consumirProductoCambiado(
       tx.set(rutaEstadoPub, {
         ...dEstadoPub, version, precioVivoEn: new Date(ahora).toISOString(),
         productos: retirar ? idsPublicados.filter((id) => id !== productoId) : idsPublicados,
-        reconstruccion: { ...reconstruccion, programadaPara },
+        reconstruccion,
       });
       if (textoCambia) contarComoAntes();
       if (motivoAviso !== null) anotarCambio(tx, t, estado, ev.ocurridoEn, { motivo: motivoAviso, en: new Date(ahora).toISOString() });

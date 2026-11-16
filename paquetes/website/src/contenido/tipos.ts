@@ -144,6 +144,10 @@ export interface ConfigSitio {
   readonly lema: string;
   /** Logotipo (imagen cuadrada), o null para mostrar solo el nombre. */
   readonly logo: Foto | null;
+  /** Icono del sitio (PNG del logo subido), o null: se usa `logo`. */
+  readonly iconoSitio?: string | null;
+  /** Imagen al compartir (logo subido) cuando la página no tiene foto propia, o null. */
+  readonly imagenCompartir?: string | null;
   /** Origen público del sitio (https://…), para URL canónicas y JSON-LD. */
   readonly origen: string;
   readonly plantilla: IdPlantilla;
