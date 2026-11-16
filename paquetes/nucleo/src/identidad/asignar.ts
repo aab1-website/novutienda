@@ -75,11 +75,11 @@ const RANGO: { readonly [r in Rol]: number } = { caj: 1, sup: 2, adm: 3 };
 const INTENTOS_CLAIM = 3;
 const OPERADOR_VALIDO = /^[a-z0-9:._@-]{1,128}$/;
 
-const esRol = (x: unknown): x is Rol => typeof x === 'string' && ROLES.includes(x);
+export const esRol = (x: unknown): x is Rol => typeof x === 'string' && ROLES.includes(x);
 
 /** Serialización por uid dentro del proceso (la carrera entre procesos se detecta con la versión `v`). */
 const colas = new Map<string, Promise<unknown>>();
-function enSerie<T>(uid: string, fn: () => Promise<T>): Promise<T> {
+export function enSerie<T>(uid: string, fn: () => Promise<T>): Promise<T> {
   const previa = colas.get(uid) ?? Promise.resolve();
   const actual = previa.then(fn, fn);
   const marca = actual.then(
@@ -93,9 +93,9 @@ function enSerie<T>(uid: string, fn: () => Promise<T>): Promise<T> {
   return actual;
 }
 
-const rutaRoles = (tenantId: string): string => `tenants/${tenantId}/contadores/roles`;
+export const rutaRoles = (tenantId: string): string => `tenants/${tenantId}/contadores/roles`;
 
-function leerAdmins(datos: Readonly<Record<string, unknown>> | undefined): number {
+export function leerAdmins(datos: Readonly<Record<string, unknown>> | undefined): number {
   const n = datos?.['adm'];
   if (n === undefined) return 0;
   if (typeof n !== 'number' || !Number.isSafeInteger(n) || n < 0) {
@@ -104,7 +104,7 @@ function leerAdmins(datos: Readonly<Record<string, unknown>> | undefined): numbe
   return n;
 }
 
-interface Autorizacion {
+export interface Autorizacion {
   readonly propietario: boolean;
 }
 
@@ -113,7 +113,7 @@ interface Autorizacion {
  * solo el token: un administrador degradado con un token previo no puede operar.
  * El proveedor sí se toma del token (es de la sesión).
  */
-async function autorizar(deps: DepsIdentidad, actor: Actor, tenantId: string): Promise<Autorizacion> {
+export async function autorizar(deps: DepsIdentidad, actor: Actor, tenantId: string): Promise<Autorizacion> {
   const proveedor = proveedorDe(actor.claims);
   if (proveedor === 'anonymous') throw new ErrorIdentidad('anonimo', 'Una sesión anónima no puede cambiar roles');
   let vigentes: Readonly<Record<string, unknown>> | undefined;
@@ -146,7 +146,7 @@ function verificarJerarquia(aut: Autorizacion, rolNuevo: Rol | null, rolPrevio: 
   }
 }
 
-function claimDe(destino: { readonly customClaims?: Readonly<Record<string, unknown>> | undefined }) {
+export function claimDe(destino: { readonly customClaims?: Readonly<Record<string, unknown>> | undefined }) {
   const previo = destino.customClaims;
   const leido = previo !== undefined && 'pl' in previo ? leerClaim(previo) : undefined;
   if (leido !== undefined && !leido.ok) throw new ErrorIdentidad('claim', leido.error);
@@ -154,7 +154,7 @@ function claimDe(destino: { readonly customClaims?: Readonly<Record<string, unkn
 }
 
 /** Claim nuevo para `tenantId` (rol o quitado), validado y medido sobre el claim COMPLETO combinado. */
-function componerClaim(
+export function componerClaim(
   previo: Readonly<Record<string, unknown>> | undefined,
   base: ClaimPlataforma['pl'] | undefined,
   tenantId: string,
@@ -277,7 +277,7 @@ async function cambiarRol(
  * Escribe el claim releyendo el estado vigente justo antes (versión `v`) y
  * comprobando después; si otro proceso lo cambió en medio, recompone y reintenta.
  */
-async function escribirClaim(deps: DepsIdentidad, uid: string, tenantId: string, rol: Rol | null): Promise<ClaimPlataforma> {
+export async function escribirClaim(deps: DepsIdentidad, uid: string, tenantId: string, rol: Rol | null): Promise<ClaimPlataforma> {
   for (let intento = 0; intento < INTENTOS_CLAIM; intento++) {
     const { previo, base } = claimDe(await deps.auth.getUser(uid));
     const { claim, completo } = componerClaim(previo, base, tenantId, rol);

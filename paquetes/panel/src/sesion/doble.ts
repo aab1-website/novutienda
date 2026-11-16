@@ -22,6 +22,8 @@ export class SesionDoble implements Sesion {
   private usuario: UsuarioSesion | null = null;
   private readonly oyentes = new Set<(u: UsuarioSesion | null) => void>();
   verificacionesReenviadas = 0;
+  /** Para pruebas: correos a los que se envió un restablecimiento (solo cuentas que existen, como en el servicio real). */
+  restablecimientos: string[] = [];
   /** Para pruebas: cuántas renovaciones se pidieron y si el servidor las acepta. */
   renovaciones = 0;
   renovable = true;
@@ -59,6 +61,12 @@ export class SesionDoble implements Sesion {
 
   reenviarVerificacion(): Promise<void> {
     this.verificacionesReenviadas += 1;
+    return Promise.resolve();
+  }
+
+  recuperarContrasena(correo: string): Promise<void> {
+    const c = this.cuentas.find((x) => x.correo === correo.trim().toLowerCase());
+    if (c !== undefined) this.restablecimientos.push(c.correo);
     return Promise.resolve();
   }
 

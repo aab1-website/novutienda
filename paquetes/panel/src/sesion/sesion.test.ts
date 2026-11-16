@@ -27,4 +27,10 @@ describe('sesión (doble)', () => {
     expect(vistos).toEqual(['sup', null]);
     expect(CUENTAS_DOBLE.length).toBe(4);
   });
+  it('recuperar la contraseña resuelve igual con cuenta y sin ella', async () => {
+    const s = new SesionDoble();
+    await expect(s.recuperarContrasena(' ADM@ejemplo.test ')).resolves.toBeUndefined();
+    await expect(s.recuperarContrasena('nadie@ejemplo.test')).resolves.toBeUndefined();
+    expect(s.restablecimientos).toEqual(['adm@ejemplo.test']);
+  });
 });
