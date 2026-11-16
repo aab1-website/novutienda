@@ -202,6 +202,66 @@ describe('generador de reglas', () => {
       expect(generarReglasAlmacenamiento(cuatro())).toBe(t);
     });
 
+    describe('destino fijo por tipo de archivo', () => {
+      const conDestino = (destino: unknown, tipo2: Record<string, unknown> = {}) =>
+        mod('c', [
+          subidaCon({
+            archivos: [
+              { tipo: 'foto', bytesMax: 1024, contentType: 'image/(png)' },
+              { tipo: 'logo', bytesMax: 1024, contentType: 'image/(png)', destino, ...tipo2 },
+            ],
+          }),
+        ]);
+
+      it('sin destinos la salida no cambia (ningún productoId extra)', () => {
+        const t = generarReglasAlmacenamiento([mod('c', [originales])]);
+        expect(t).not.toMatch(/&& productoId [=!]=/);
+        expect(t).toContain("(r.tipo == 'foto'\n              && request.resource.size <= 15 * 1024 * 1024");
+      });
+
+      it('la rama con destino lo exige y las demás lo excluyen', () => {
+        const t = generarReglasAlmacenamiento([conDestino('_negocio')]);
+        expect(t).toContain("(r.tipo == 'logo'\n              && productoId == '_negocio'\n              && request.resource.size");
+        expect(t).toContain("(r.tipo == 'foto'\n              && productoId != '_negocio'\n              && request.resource.size");
+      });
+
+      it('dos tipos con el mismo destino lo exigen ambos y se excluye una sola vez en los demás', () => {
+        const t = generarReglasAlmacenamiento([
+          mod('c', [
+            subidaCon({
+              archivos: [
+                { tipo: 'foto', bytesMax: 1, contentType: 'image/(png)' },
+                { tipo: 'logo', bytesMax: 1, contentType: 'image/(png)', destino: 'x' },
+                { tipo: 'sello', bytesMax: 1, contentType: 'image/(png)', destino: 'x' },
+              ],
+            }),
+          ]),
+        ]);
+        expect(t.match(/productoId == 'x'/g)).toHaveLength(2);
+        expect(t.match(/productoId != 'x'/g)).toHaveLength(1);
+      });
+
+      it('destinos distintos se excluyen todos en las ramas sin destino', () => {
+        const t = generarReglasAlmacenamiento([
+          mod('c', [
+            subidaCon({
+              archivos: [
+                { tipo: 'foto', bytesMax: 1, contentType: 'image/(png)' },
+                { tipo: 'logo', bytesMax: 1, contentType: 'image/(png)', destino: 'a' },
+                { tipo: 'sello', bytesMax: 1, contentType: 'image/(png)', destino: 'b-1' },
+              ],
+            }),
+          ]),
+        ]);
+        expect(t).toContain("&& productoId != 'a'\n              && productoId != 'b-1'");
+        expect(t).toContain("(r.tipo == 'logo'\n              && productoId == 'a'");
+      });
+
+      it.each(["a'b", 'a b', 'a)', "a' || true || '", 'a||b', '', 'A', '"x"', 'a\nb', 7, null])('rechaza el destino %j', (d) => {
+        rechaza([conDestino(d)], /destino/);
+      });
+    });
+
     it('emite bytesMax como entero si no es múltiplo de 1 MiB', () => {
       const t = generarReglasAlmacenamiento([
         mod('c', [subidaCon({ archivos: [{ tipo: 'a', bytesMax: 5_000_000, contentType: 'image/(png)' }] })]),

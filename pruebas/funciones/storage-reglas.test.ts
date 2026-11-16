@@ -122,7 +122,13 @@ describe.skipIf(!hayEmuladorStorage)('reglas de Storage (emulador)', () => {
       await assertFails(subir(adm, logo('logo-0001'), 2048, 'image/png')); // update de un original ya creado
       // Una reserva de foto no sirve para el destino del logo.
       await reservar('logo-0006', { por: 'u-adm', tipo: 'foto', producto: '_negocio', bytes: MIB });
+      // La regla generada lleva `productoId != '_negocio'` en foto y video: esta reserva ya no sirve ni siquiera con un tipo que `foto` admite.
       await assertFails(subir(adm, logo('logo-0006'), 1024, 'image/heic'));
+      // Espejos: un video contra `_negocio`, y una reserva `logo` contra un producto real, fallan.
+      await reservar('logo-0007', { por: 'u-adm', tipo: 'video', producto: '_negocio', bytes: MIB });
+      await assertFails(subir(adm, logo('logo-0007'), 1024, 'video/mp4'));
+      await reservar('logo-0008', { por: 'u-adm', tipo: 'logo', producto: PRODUCTO, bytes: MIB });
+      await assertFails(subir(adm, original('logo-0008'), 1024, 'image/png'));
     });
 
     it('solo crea: no reemplaza ni borra ni lee un original desde el navegador', async () => {

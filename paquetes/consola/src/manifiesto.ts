@@ -1,5 +1,6 @@
 import type { AccionManifiesto, ColeccionManifiesto, ManifiestoModulo, Rol, RutaAlmacenamiento } from '@novutienda/nucleo';
 import { LIMITES_CONSOLA } from './limites.js';
+import { ID_NEGOCIO } from './rutas.js';
 
 /** Ninguna colección se lee directo desde el navegador: el panel no usa Firestore y consulta por los callables (decisiones.md). */
 const SIN_LECTURA_DIRECTA: readonly Rol[] = [];
@@ -52,7 +53,7 @@ const almacenamiento: readonly RutaAlmacenamiento[] = [
       archivos: [
         { tipo: 'foto', bytesMax: LIMITES_CONSOLA.bytesFoto, contentType: 'image/(jpeg|png|webp|heic)' },
         { tipo: 'video', bytesMax: LIMITES_CONSOLA.bytesVideo, contentType: 'video/(mp4|quicktime|webm)' },
-        { tipo: 'logo', bytesMax: LIMITES_CONSOLA.bytesLogo, contentType: 'image/(jpeg|png|webp)' },
+        { tipo: 'logo', bytesMax: LIMITES_CONSOLA.bytesLogo, contentType: 'image/(jpeg|png|webp)', destino: ID_NEGOCIO },
       ],
     },
   },

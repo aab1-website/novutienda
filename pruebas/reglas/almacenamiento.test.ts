@@ -101,6 +101,21 @@ describe('almacenamiento: entradas hostiles', () => {
     expect(() => registrar(manifiesto('m', [a]))).toThrow(ErrorRegistro);
   });
 
+  it.each(["x' || true || 'y", 'a)', 'a b', 'A', '', '{x}', 'a/b'])('rechaza el destino %j', (destino) => {
+    const a = conSubida({ archivos: [{ tipo: 'logo', bytesMax: 10, contentType: 'image/(png)', destino }] });
+    expect(() => registrar(manifiesto('m', [a]))).toThrow(/destino de "logo" no cumple el patrón/);
+  });
+
+  it.each(['_negocio', 'a-1', 'x'])('acepta el destino %j y acepta su ausencia', (destino) => {
+    const a = conSubida({
+      archivos: [
+        { tipo: 'foto', bytesMax: 10, contentType: 'image/(png)' },
+        { tipo: 'logo', bytesMax: 10, contentType: 'image/(png)', destino },
+      ],
+    });
+    expect(() => registrar(manifiesto('m', [a]))).not.toThrow();
+  });
+
   it('el mensaje del tipo es exacto', () => {
     const a = conSubida({ archivos: [{ tipo: 'Foto', bytesMax: 10, contentType: 'image/png' }] });
     expect(() => registrar(manifiesto('m', [a]))).toThrow('tipo de archivo "Foto" no cumple el patrón ^[a-z][a-z0-9_]*$');
