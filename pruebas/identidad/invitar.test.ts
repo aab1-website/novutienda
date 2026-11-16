@@ -37,7 +37,7 @@ const caj1 = { uid: 'caj1', claims: tok({ t1: 'caj' }, 'password') };
 const adm2 = { uid: 'adm2', claims: tok({ t2: 'adm' }, 'password') };
 const dueno = { uid: 'dueno', claims: tok({}, 'google.com', { p: true }) };
 
-function montaje(opciones: { usados?: number; admins?: number; fallosClaim?: number; alSetear?: () => Promise<void> } = {}) {
+function montaje(opciones: { usados?: number; admins?: number; fallosClaim?: number; alSetear?: () => Promise<void>; alVerInvitador?: () => void } = {}) {
   const db = new DobleDb();
   db.poner('tenants/t1', { plan: 'base', estado: 'activo', modulos: {}, zonaHoraria: 'America/La_Paz', monedas: ['BOB', 'USD', 'ARS'] });
   db.poner('tenants/t1/contadores/uso', { usuarios: opciones.usados ?? 0 });
@@ -58,8 +58,9 @@ function montaje(opciones: { usados?: number; admins?: number; fallosClaim?: num
   let fallosRestantes = opciones.fallosClaim ?? 0;
   const auth: AuthMin = {
     getUser: async (uid) => {
+      if (uid === 'adm1') opciones.alVerInvitador?.();
       const u = usuarios[uid];
-      if (!u) throw new Error('no existe');
+      if (!u) throw Object.assign(new Error('no existe'), { code: 'auth/user-not-found' });
       return u;
     },
     setCustomUserClaims: async (uid, claims) => {
@@ -171,6 +172,8 @@ describe('invitarMiembro', () => {
     expect(m.db.dato('tenants/t1/miembros/n1')?.['rolReservado']).toBe('adm');
     expect(m.uso()).toBe(1);
     expect(aud(m.db)).toEqual(['miembro.invitar', 'miembro.invitar']);
+    await invitarMiembro(m.deps, dueno, 't1', 'n1', 'sup');
+    expect(m.db.dato('tenants/t1/miembros/n1')?.['invitadoPor']).toBe('dueno');
     await expect(invitarMiembro(m.deps, caj1, 't1', 'n1', 'sup')).rejects.toMatchObject({ codigo: 'no-autorizado' });
   });
 
@@ -325,6 +328,31 @@ describe('activarInvitaciones', () => {
     const r = await activarInvitaciones(m.deps, 'n1', true);
     expect(r.fallidos).toEqual([{ tenantId: 't1', codigo: 'estado' }]);
     expect(m.db.dato('tenants/t1/miembros/n1')).toMatchObject({ rol: 'caj', estado: 'activo' });
+  });
+
+  it('si el rol reservado cambia entre la lectura y la transacción, se activa con el vigente', async () => {
+    const m: ReturnType<typeof montaje> = montaje({
+      admins: 1,
+      alVerInvitador: () => {
+        const d = m.db.dato('tenants/t1/miembros/n1');
+        if (d?.['rolReservado'] === 'adm') m.db.poner('tenants/t1/miembros/n1', { ...d, rolReservado: 'caj' });
+      },
+    });
+    await invitarMiembro(m.deps, adm1, 't1', 'n1', 'adm');
+    const r = await activarInvitaciones(m.deps, 'n1', true);
+    expect(r.activados).toEqual(['t1']);
+    expect(m.db.dato('tenants/t1/miembros/n1')).toMatchObject({ rol: 'caj', estado: 'activo' });
+    expect(m.usuarios['n1']?.customClaims).toMatchObject({ pl: { t: { t1: 'caj' } } });
+    expect(m.db.dato('tenants/t1/contadores/roles')).toEqual({ adm: 1 });
+  });
+
+  it('quien invitó ya no existe: sin efecto, no fallido', async () => {
+    const m = montaje();
+    await invitarMiembro(m.deps, adm1, 't1', 'n1', 'caj');
+    delete m.usuarios['adm1'];
+    expect(await activarInvitaciones(m.deps, 'n1', true)).toEqual({ activados: [], sinEfecto: ['t1'], fallidos: [] });
+    expect(m.db.dato('tenants/t1/miembros/n1')).toBeUndefined();
+    expect(m.uso()).toBe(0);
   });
 
   it('el correo se exige también a Auth: el booleano del llamador no basta', async () => {

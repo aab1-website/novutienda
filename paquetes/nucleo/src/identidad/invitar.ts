@@ -166,7 +166,7 @@ export async function invitarMiembro(
     if (previo.existe) {
       const d = previo.data();
       if (!esInvitado(d) || d['rolReservado'] === rolReservado) return; // miembro activo o misma invitación: sin cambios
-      tx.set(rutaMiembro(tenantId, uid), { ...d, rolReservado }); // otro rol: se actualiza, sin cupo nuevo
+      tx.set(rutaMiembro(tenantId, uid), { ...d, rolReservado, invitadoPor: actor.uid }); // otro rol: se actualiza (y quien reinvita pasa a ser quien invitó), sin cupo nuevo
       registrarAuditoria(tx, {
         tenantId,
         uid: actor.uid,
@@ -361,8 +361,11 @@ async function activarEn(deps: DepsInvitar, uid: string, tenantId: string): Prom
   if (!tieneRol) {
     try {
       autorizado = await inviteSigueAutorizado(deps, vista.invitadoPor, tenantId);
-    } catch {
-      throw new ErrorIdentidad('no-autorizado', 'No se pudo verificar a quien invitó');
+    } catch (e) {
+      // Quien invitó ya no existe: la invitación queda sin efecto. Cualquier otro fallo de Auth no decide nada.
+      if ((e as { code?: unknown }).code !== 'auth/user-not-found') {
+        throw new ErrorIdentidad('no-autorizado', 'No se pudo verificar a quien invitó');
+      }
     }
   }
   const descartar = tieneRol || !autorizado;
@@ -386,7 +389,7 @@ async function activarEn(deps: DepsInvitar, uid: string, tenantId: string): Prom
       });
       return 'sin-efecto';
     }
-    const rol = vista.rolReservado;
+    const rol = leerInvitacion(uid, d).rolReservado; // siempre el valor leído en ESTA transacción, nunca el de la vista previa
     tx.set(ruta, { rol, estado: 'activo', actualizado: ahora, por: vista.invitadoPor });
     if (rol === 'adm') tx.set(rutaRoles(tenantId), { adm: leerAdmins(roles.data()) + 1 });
     registrarAuditoria(tx, {
