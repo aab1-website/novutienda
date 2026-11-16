@@ -411,3 +411,65 @@ describe('monto prellenado del cobro', () => {
     expect((campo(/Monto a aplicar/) as HTMLInputElement).value).toBe('7');
   });
 });
+
+describe('revisión: venta repetida, sesión vencida y filas editadas', () => {
+  it('una respuesta «repetida» se dice con claridad y muestra el recibo original', async () => {
+    const e = crearEntorno('caj');
+    await conTurno(e);
+    const original = e.api.llamar.bind(e.api);
+    (e.api as { llamar: unknown }).llamar = async (n: string, entrada: unknown) => {
+      const r = await original(n as never, entrada as never);
+      return n === 'confirmarVenta' ? { ...(r as object), repetida: true } : r;
+    };
+    const u = userEvent.setup();
+    await u.click(await screen.findByRole('button', { name: 'Agregar Cable HDMI 2 m' }));
+    await u.click(boton('Cobrar'));
+    await u.click(await screen.findByRole('button', { name: 'Confirmar cobro' }));
+    expect(await screen.findByText(/Esta venta ya estaba registrada/)).toBeTruthy();
+    expect(screen.queryByText('La venta se registró correctamente.')).toBeNull();
+    expect(await screen.findByRole('article', { name: 'Recibo A-000001' })).toBeTruthy();
+  });
+
+  it('la espera de la aprobación no calla una sesión vencida: se detiene y avisa al panel', async () => {
+    vi.useFakeTimers({ toFake: ['setInterval', 'clearInterval'] });
+    const e = crearEntorno('caj');
+    await conTurno(e);
+    const u = userEvent.setup();
+    await u.click(await screen.findByRole('button', { name: 'Agregar Cable HDMI 2 m' }));
+    await u.type(campo(/Descuento \(monto\)/), '10');
+    await u.type(campo(/Motivo del descuento/), 'Cliente frecuente');
+    await u.click(await screen.findByRole('button', { name: 'Solicitar aprobación' }));
+    expect(await screen.findByText(/Esperando la aprobación/)).toBeTruthy();
+    const original = e.api.llamar.bind(e.api);
+    let sondeos = 0;
+    (e.api as { llamar: unknown }).llamar = async (n: string, entrada: unknown) => {
+      if (n === 'listarAprobaciones' && (entrada as { estado?: string }).estado === 'pendiente') {
+        sondeos += 1;
+        throw new ErrorApi('unauthenticated', 'La sesión no es válida');
+      }
+      return original(n as never, entrada as never);
+    };
+    e.renovacion.acepta = false;
+    await vi.advanceTimersByTimeAsync(4000);
+    await waitFor(() => expect(e.sesionesVencidas()).toBe(1));
+    await vi.advanceTimersByTimeAsync(60_000);
+    expect(sondeos).toBe(1);
+  });
+
+  it('el total no pisa una fila editada cuando se quita la primera', async () => {
+    const e = crearEntorno('caj');
+    const config = await e.api.llamar('leerConfigPos', {});
+    const base = { mercado: 'BO', moneda: 'BOB', config, carrito: { mercado: 'BO', moneda: 'BOB', lineas: [], totalMostrado: 1000 }, aprobacionId: undefined, requestId: uuid() } as unknown as Parameters<typeof VentaCobro>[0]['datos'];
+    const montar = (total: number) => e.envolver(h(VentaCobro, { datos: { ...base, total }, volver: () => undefined, alVender: () => undefined }));
+    const r = render(montar(1000));
+    const u = userEvent.setup();
+    await u.click(screen.getByRole('button', { name: 'Agregar otro medio' }));
+    const segundo = screen.getAllByRole('group', { name: /Pago/ })[1] as HTMLElement;
+    await u.clear(within(segundo).getByLabelText(/Monto a aplicar/));
+    await u.type(within(segundo).getByLabelText(/Monto a aplicar/), '3');
+    await u.click(within(screen.getAllByRole('group', { name: /Pago/ })[0] as HTMLElement).getByRole('button', { name: 'Quitar este pago' }));
+    r.rerender(montar(2500));
+    await waitFor(() => expect(screen.getAllByRole('group', { name: /Pago/ })).toHaveLength(1));
+    expect((campo(/Monto a aplicar/) as HTMLInputElement).value).toBe('3');
+  });
+});

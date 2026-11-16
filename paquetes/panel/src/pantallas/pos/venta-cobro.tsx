@@ -20,7 +20,7 @@ export const CONSULTAS_MAXIMAS_APROBACION = 150;
  * Una solicitud vieja o ajena nunca la activa.
  */
 export function useEsperaAprobacion(solicitadaId: string | null, alResolverse: () => void): { consultando: boolean; agotada: boolean; reanudar: () => void } {
-  const { api } = useApp();
+  const { api, sesionVencida, renovarSesion } = useApp();
   const [estado, setEstado] = useState<'consultando' | 'resuelta' | 'agotada'>('consultando');
   const [ronda, setRonda] = useState(0);
   const alRef = useRef(alResolverse);
@@ -44,7 +44,17 @@ export function useEsperaAprobacion(solicitadaId: string | null, alResolverse: (
           setEstado('resuelta');
           alRef.current();
         },
-        () => undefined,
+        (e: unknown) => {
+          // Una sesión vencida no se calla ni se reintenta 10 minutos: se detiene y actúa el manejo de sesión del panel.
+          if (e instanceof ErrorApi && e.codigoHttps === 'unauthenticated') {
+            void renovarSesion().then((ok) => {
+              if (ok || !vivo) return;
+              clearInterval(t);
+              setEstado('agotada');
+              sesionVencida();
+            });
+          }
+        },
       );
     }, MS_SONDEO_APROBACION);
     return () => {
@@ -80,11 +90,12 @@ export function conNombresDeFaltantes(e: unknown, datos: Pick<DatosCobro, 'nombr
   return new ErrorApi(e.codigoHttps, e.message, { ...e.detalle, faltantes });
 }
 
-export function VentaCobro({ datos, volver, alVender }: { datos: DatosCobro; volver: () => void; alVender: (ventaId: string) => void }): JSX.Element {
+export function VentaCobro({ datos, volver, alVender }: { datos: DatosCobro; volver: () => void; alVender: (ventaId: string, repetida: boolean) => void }): JSX.Element {
   const { api, usuario } = useApp();
   const { moneda, total, config, carrito } = datos;
   const [filas, setFilas] = useState<FilaPago[]>([{ id: nuevoId(), medio: 'efectivo', monto: total > 0 ? centavosATexto(total) : '', recibido: '', referencia: '' }]);
-  const [montoEditado, setMontoEditado] = useState(false);
+  // Filas cuyo monto escribió la persona: el total no las pisa.
+  const [editadas, setEditadas] = useState<ReadonlySet<string>>(new Set());
   const accion = useAccion();
   const solicitud = useAccion();
   const [aprobCredito, setAprobCredito] = useState('');
@@ -94,8 +105,8 @@ export function VentaCobro({ datos, volver, alVender }: { datos: DatosCobro; vol
 
   // El monto de la primera fila sigue al total mientras la persona no lo haya escrito.
   useEffect(() => {
-    if (!montoEditado) setFilas((fs) => fs.map((f, i) => (i === 0 ? { ...f, monto: total > 0 ? centavosATexto(total) : '' } : f)));
-  }, [total, montoEditado]);
+    setFilas((fs) => (fs.length === 1 && fs[0] !== undefined && !editadas.has(fs[0].id) ? [{ ...fs[0], monto: total > 0 ? centavosATexto(total) : '' }] : fs));
+  }, [total, editadas]);
 
   const { pagos, restante, cambioTotal, errores } = calcularPagos(filas, total, moneda);
   const credito = filas.find((f) => f.medio === 'credito');
@@ -121,7 +132,7 @@ export function VentaCobro({ datos, volver, alVender }: { datos: DatosCobro; vol
   })();
 
   const actualizar = (id: string, cambio: Partial<FilaPago>): void => {
-    if (cambio.monto !== undefined && filas[0]?.id === id) setMontoEditado(true);
+    if (cambio.monto !== undefined) setEditadas((s) => new Set(s).add(id));
     setFilas(filas.map((f) => (f.id === id ? { ...f, ...cambio } : f)));
   };
   const agregar = (): void => setFilas([...filas, { id: nuevoId(), medio: config.mediosHabilitados.find((m) => !filas.some((f) => f.medio === m)) ?? 'efectivo', monto: restante > 0 ? String(restante / 100).replace('.', ',') : '', recibido: '', referencia: '' }]);
@@ -134,7 +145,7 @@ export function VentaCobro({ datos, volver, alVender }: { datos: DatosCobro; vol
           ...(datos.aprobacionId !== undefined ? { aprobacionId: datos.aprobacionId } : {}),
           ...(necesitaAprobCredito ? { aprobacionCreditoId: aprobCredito } : {}),
         });
-        alVender(r.venta.ventaId);
+        alVender(r.venta.ventaId, r.repetida === true);
       } catch (e) {
         throw conNombresDeFaltantes(e, datos);
       }

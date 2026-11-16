@@ -140,7 +140,7 @@ function TerminalLista({ turno, alCambiar, mercados }: { turno: TurnoPos; alCamb
   const setTelefono = (v: string): void => cambiar({ telefono: v });
   const [verSeries, setVerSeries] = useState<string | null>(null);
   const [paso, setPaso] = useState<'carrito' | 'cobro'>('carrito');
-  const [recibo, setRecibo] = useState<{ recibo: Recibo | null; ventaId: string } | null>(null);
+  const [recibo, setRecibo] = useState<{ recibo: Recibo | null; ventaId: string; repetida: boolean } | null>(null);
   const solicitud = useAccion();
   const avisos = useAvisos();
   const solicitadaId = borrador.valor.solicitadaId;
@@ -156,7 +156,7 @@ function TerminalLista({ turno, alCambiar, mercados }: { turno: TurnoPos; alCamb
   const porId = useMemo(() => new Map(productos.map((p) => [p.id, p])), [productos]);
 
   if (recibo !== null) {
-    return <ReciboFinal ventaId={recibo.ventaId} nuevaVenta={() => { setRecibo(null); borrador.descartar(); setPaso('carrito'); alCambiar(); datos.recargar(); }} />;
+    return <ReciboFinal ventaId={recibo.ventaId} repetida={recibo.repetida} nuevaVenta={() => { setRecibo(null); borrador.descartar(); setPaso('carrito'); alCambiar(); datos.recargar(); }} />;
   }
   if (datos.cargando) return <Cargando />;
   if (datos.error || !datos.datos) return <ErrorCarga error={datos.error ?? 'Sin datos'} reintentar={datos.recargar} />;
@@ -260,7 +260,7 @@ function TerminalLista({ turno, alCambiar, mercados }: { turno: TurnoPos; alCamb
       nombreAlmacen: (id) => ALMACENES.find((a) => a.valor === id)?.texto,
     };
     // La venta ya está registrada: el borrador se descarta aquí para que no reaparezca al volver a la pestaña.
-    return <VentaCobro datos={cobro} volver={() => setPaso('carrito')} alVender={(ventaId) => { borrador.descartar(); setRecibo({ ventaId, recibo: null }); }} />;
+    return <VentaCobro datos={cobro} volver={() => setPaso('carrito')} alVender={(ventaId, repetida) => { borrador.descartar(); setRecibo({ ventaId, recibo: null, repetida }); }} />;
   }
 
   return (
@@ -422,7 +422,7 @@ function TerminalLista({ turno, alCambiar, mercados }: { turno: TurnoPos; alCamb
   );
 }
 
-function ReciboFinal({ ventaId, nuevaVenta }: { ventaId: string; nuevaVenta: () => void }): JSX.Element {
+function ReciboFinal({ ventaId, repetida, nuevaVenta }: { ventaId: string; repetida: boolean; nuevaVenta: () => void }): JSX.Element {
   const { api, usuario } = useApp();
   const [intento, setIntento] = useState(0);
   const viva = useRef(true);
@@ -441,7 +441,11 @@ function ReciboFinal({ ventaId, nuevaVenta }: { ventaId: string; nuevaVenta: () 
   );
   return (
     <Seccion titulo="Venta registrada" acciones={<Boton onClick={nuevaVenta}>Nueva venta</Boton>}>
-      <Alerta tipo="ok">La venta se registró correctamente.</Alerta>
+      {repetida ? (
+        <Alerta tipo="info">Esta venta ya estaba registrada: el cobro anterior sí llegó al servidor. No se cobró de nuevo; este es su recibo original.</Alerta>
+      ) : (
+        <Alerta tipo="ok">La venta se registró correctamente.</Alerta>
+      )}
       {r.cargando && <Cargando texto="Preparando el recibo…" />}
       {r.error && <ErrorCarga error={r.error} reintentar={r.recargar} />}
       {!r.cargando && !r.error && r.datos === null && (
