@@ -168,6 +168,7 @@ export async function reservarSubida(deps: DepsMedios, e: EntradaReserva): Promi
     if (e.tipo !== 'logo' && !(await deps.catalogo.existeProductoEnTransaccion(tx, t, e.productoId))) throw new ErrorConsola('no-encontrado', 'El producto no existe');
     const previa = leerSubida((await tx.get(rutaSubida(t, e.subidaId))).data());
     const uso = await leerUsoMedios(tx, t);
+    const enSubida = e.tipo === 'logo' ? (await tx.get(rutaSitio(t, 'logoEnSubida'))).data()?.['hasta'] : undefined;
     if (previa !== undefined) {
       if (previa.productoId === e.productoId && previa.tipo === e.tipo && previa.bytes === e.bytes && previa.estado === 'reservada') {
         return { subidaId: previa.id, rutaOriginal: previa.rutaOriginal, venceEn: previa.venceEn };
@@ -181,6 +182,12 @@ export async function reservarSubida(deps: DepsMedios, e: EntradaReserva): Promi
     };
     const s: Subida = { id: e.subidaId, rutaOriginal: ruta, creadaEn: ahora, ...campos };
     tx.set(rutaSubida(t, e.subidaId), aDoc(s));
+    // Marca «hay un logo en subida» hasta que la reserva (y su procesamiento) ya no pueda estar viva: mientras dure, la limpieza
+    // diferida de logos anteriores no borra nada. No hace falta apagarla: caduca sola.
+    if (e.tipo === 'logo') {
+      const hasta = venceEn + LIMITES_CONSOLA.vencimientoProcesandoMs;
+      tx.set(rutaSitio(t, 'logoEnSubida'), { hasta: typeof enSubida === 'number' ? Math.max(enSubida, hasta) : hasta });
+    }
     return { subidaId: e.subidaId, rutaOriginal: ruta, venceEn };
   });
 }
@@ -314,11 +321,19 @@ async function borrarYCerrar(deps: DepsMedios, t: string, subidaId: string): Pro
       });
       return true;
     }
-    // Un logo que se está subiendo puede estar por compartir (por contenido idéntico) estas rutas: no se borra; se reintenta.
-    if (await hayLogoEnSubida(deps, t)) return false;
-    // El logo vigente puede compartir rutas (A, luego B, luego A otra vez): esas NO se borran.
-    const vigente = new Set(leerDocLogo(await leerDoc(deps.db, rutaSitio(t, 'logo')))?.versiones.map((v) => v.ruta));
-    await deps.almacen.borrar(diferidas.filter((r) => !vigente.has(r)));
+    // Justo antes de borrar se vuelve a leer, en una transacción, el documento de la subida, el logo vigente y la marca de «logo en
+    // subida»: se borra solo lo que SIGUE pendiente y no es vigente, y nada mientras un logo se esté subiendo (se reintenta después).
+    const ahora = deps.reloj.ahora();
+    const aBorrar = await deps.db.runTransaction(async (tx): Promise<readonly string[] | undefined> => {
+      const actual = leerSubida((await tx.get(rutaSubida(t, subidaId))).data());
+      const vigente = new Set(leerDocLogo((await tx.get(rutaSitio(t, 'logo'))).data())?.versiones.map((v) => v.ruta));
+      const hasta = (await tx.get(rutaSitio(t, 'logoEnSubida'))).data()?.['hasta'];
+      if (actual?.estado !== 'borrando') return [];
+      if (typeof hasta === 'number' && hasta > ahora) return undefined;
+      return (actual.rutasDiferidas ?? []).filter((r) => !vigente.has(r));
+    });
+    if (aBorrar === undefined) return false;
+    if (aBorrar.length > 0) await deps.almacen.borrar(aBorrar);
   }
   await deps.almacen.borrarPrefijo?.(prefijoTemporal(t, subidaId)); // restos de invocaciones que murieron a medias
   await deps.db.runTransaction(async (tx) => {
@@ -335,23 +350,21 @@ async function borrarYCerrar(deps: DepsMedios, t: string, subidaId: string): Pro
   return true;
 }
 
-/** ¿Hay una subida de logo reservada o en proceso? Sin consulta (no es la limpieza) se asume que no. */
-async function hayLogoEnSubida(deps: DepsMedios, t: string): Promise<boolean> {
-  const consulta = (deps as Partial<{ readonly consulta: ConsultaSubidas }>).consulta;
-  if (consulta === undefined) return false;
-  for (const estado of ['reservada', 'procesando'] as const) {
-    if ((await consulta.listarPorEstado(t, estado, 200)).some((x) => x.data['tipo'] === 'logo' || x.data['productoId'] === ID_NEGOCIO)) return true;
-  }
-  return false;
-}
-
 /** `sitio/logoDiferidas`: ids de las subidas de logo con versiones públicas esperando su borrado (para quitarles lo que un logo nuevo comparte). */
+/**
+ * Tope de ids recordados: 50. Si se supera, se descartan los más antiguos (se avisa con la cantidad). Un id descartado deja de recibir
+ * el recorte de rutas compartidas al confirmar un logo nuevo, pero sigue protegido: la limpieza vuelve a leer el logo vigente y la
+ * marca de logo en subida antes de borrar.
+ */
 const MAX_DIFERIDAS = 50;
 async function leerIndiceDiferidas(tx: TransaccionIdentidad, t: string): Promise<string[]> {
   const ids = (await tx.get(rutaSitio(t, 'logoDiferidas'))).data()?.['ids'];
   return Array.isArray(ids) ? ids.filter((x): x is string => typeof x === 'string') : [];
 }
-function escribirIndiceDiferidas(tx: TransaccionIdentidad, t: string, ids: readonly string[]): void {
+function escribirIndiceDiferidas(
+  tx: TransaccionIdentidad, t: string, ids: readonly string[], avisar?: DepsMedios['avisar'],
+): void {
+  if (ids.length > MAX_DIFERIDAS) avisar?.('logo: el índice de borrados diferidos superó su tope y se descartaron los más antiguos', { descartados: ids.length - MAX_DIFERIDAS });
   tx.set(rutaSitio(t, 'logoDiferidas'), { ids: ids.slice(-MAX_DIFERIDAS) });
 }
 
@@ -599,7 +612,7 @@ async function procesarReclamada(
           if (rutas.rutasDiferidas !== undefined) indiceNuevo = [...indiceNuevo, previo.medioId];
           logoAnterior = previo.medioId;
         }
-        if (indiceNuevo.length !== indiceDif.length || indiceNuevo.some((x, i) => x !== indiceDif[i])) escribirIndiceDiferidas(tx, t, indiceNuevo);
+        if (indiceNuevo.length !== indiceDif.length || indiceNuevo.some((x, i) => x !== indiceDif[i])) escribirIndiceDiferidas(tx, t, indiceNuevo, deps.avisar);
       }
       escribirUsoMedios(tx, t, usoNuevo);
       tx.set(rutaMedio(t, s.id), { ...medio });
@@ -881,7 +894,7 @@ export async function quitarLogo(deps: DepsMedios, e: EntradaLogo): Promise<{ re
       rutaOriginal: m?.rutaOriginal ?? '', creadaEn: m?.creadoEn ?? 0, venceEn: 0, por: e.actor.uid,
     };
     tx.set(rutaSubida(t, logo.medioId), aDoc({ ...base, estado: 'borrando', destino: 'eliminar', ...rutas }));
-    if (rutas.rutasDiferidas !== undefined) escribirIndiceDiferidas(tx, t, [...indiceDif, logo.medioId]);
+    if (rutas.rutasDiferidas !== undefined) escribirIndiceDiferidas(tx, t, [...indiceDif, logo.medioId], deps.avisar);
     // Logo vivo: lo publicado deja de referir al logo en esta misma transacción; los archivos se borran después del commit.
     const vivo = escribirLogoVivo(tx, t, publicadoLogo, undefined, deps.reloj);
     agendar = vivo.programar;

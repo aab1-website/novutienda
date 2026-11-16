@@ -256,6 +256,62 @@ describe('logo del negocio en lo publicado (logo vivo)', () => {
       for (const r of vigentes) expect(almacen.objetos.has(r)).toBe(true);
       expect(db.dato(`tenants/${T}/subidas/${idA}`)).toBeUndefined(); // A quedó cerrada sin borrar nada; solo B espera sus 24 h
     });
+    it('con un logo reservado no se borra nada diferido, aunque haya cientos de reservas de productos delante', async () => {
+      await publicable();
+      await subirLogo(png(1));
+      const idA = (db.dato(`tenants/${T}/sitio/logo`) as { medioId: string }).medioId;
+      const rutasA = ((await Promise.resolve(db.dato(`tenants/${T}/medios/${idA}`))) as { versiones: { ruta: string }[] }).versiones.map((v) => v.ruta);
+      await subirLogo(png(2)); // A queda diferido
+      for (let i = 0; i < 300; i += 1) {
+        db.poner(`tenants/${T}/subidas/prod-${String(i).padStart(4, '0')}`, { estado: 'reservada', venceEn: reloj.ms + 1000 + i, productoId: 'cam-1', tipo: 'foto', id: `prod-${String(i)}`, bytes: 1, por: 'u', rutaOriginal: 'x', creadaEn: 1 });
+      }
+      proc.sal = '3';
+      const r = await reservarSubida(deps(), { tenantId: T, actor: adm, subidaId: 'logo-pendiente-1', productoId: ID_NEGOCIO, tipo: 'logo', bytes: PNG.length });
+      almacen.subir(r.rutaOriginal, png(3));
+      db.poner(`tenants/${T}/subidas/${idA}`, { ...db.dato(`tenants/${T}/subidas/${idA}`), borrarDesde: 0, venceEn: 0 });
+      await limpiarSubidas({ ...deps(), consulta: new ConsultaDoble(db) }, T);
+      for (const x of rutasA) expect(almacen.objetos.has(x)).toBe(true);
+      expect(db.dato(`tenants/${T}/subidas/${idA}`)?.['estado']).toBe('borrando');
+      // La marca caduca sola; entonces el borrado procede.
+      reloj.ms += LIMITES_CONSOLA.vigenciaReservaMs + LIMITES_CONSOLA.vencimientoProcesandoMs + 1;
+      await limpiarSubidas({ ...deps(), consulta: new ConsultaDoble(db) }, T);
+      for (const x of rutasA) expect(almacen.objetos.has(x)).toBe(false);
+    });
+    it('al borrar vuelve a leer lo pendiente: lo que el vigente ya usa no se borra aunque el documento lo siguiera listando', async () => {
+      await publicable();
+      await subirLogo(png(1));
+      const idA = (db.dato(`tenants/${T}/sitio/logo`) as { medioId: string }).medioId;
+      const rutasA = (db.dato(`tenants/${T}/sitio/logo`) as { versiones: { ruta: string }[] }).versiones.map((v) => v.ruta);
+      await subirLogo(png(2));
+      // El índice se perdió y el logo vigente pasa a ser A otra vez sin que el documento diferido de A se entere.
+      db.poner(`tenants/${T}/sitio/logoDiferidas`, { ids: [] });
+      const vig = db.dato(`tenants/${T}/sitio/logo`) as Record<string, unknown>;
+      db.poner(`tenants/${T}/sitio/logo`, { ...vig, versiones: rutasA.map((ruta) => ({ formato: ruta.endsWith('png') ? 'png' : 'webp', lado: 512, ruta, bytes: 1 })) });
+      reloj.ms += LIMITES_CONSOLA.esperaBorradoLogoMs;
+      await limpiarSubidas({ ...deps(), consulta: new ConsultaDoble(db) }, T);
+      for (const x of rutasA) expect(almacen.objetos.has(x)).toBe(true);
+      expect(idA).toBeDefined();
+    });
+    it('el índice de borrados diferidos se recorta a 50 y avisa solo la cantidad', async () => {
+      const avisos: { m: string; d: Record<string, number> }[] = [];
+      const base = deps;
+      const conAviso = (): DepsMedios => ({ ...base(), avisar: (m, d) => { avisos.push({ m, d }); } });
+      await publicable();
+      for (let i = 0; i < 53; i += 1) {
+        proc.sal = String(i);
+        n += 1;
+        const subidaId = `logov-${String(n).padStart(5, '0')}`;
+        const bytes = png(i + 1);
+        const r = await reservarSubida(conAviso(), { tenantId: T, actor: adm, subidaId, productoId: ID_NEGOCIO, tipo: 'logo', bytes: bytes.length });
+        almacen.subir(r.rutaOriginal, bytes);
+        await finalizarSubida(conAviso(), { tenantId: T, actor: adm, subidaId });
+      }
+      expect((db.dato(`tenants/${T}/sitio/logoDiferidas`) as { ids: string[] }).ids).toHaveLength(50);
+      expect(avisos.length).toBeGreaterThan(0);
+      expect(avisos[0]?.d).toEqual({ descartados: 1 });
+      expect(JSON.stringify(avisos)).not.toContain('tenants/');
+      expect(JSON.stringify(avisos)).not.toContain('logov-');
+    });
     it('sin intercalación pero con el nuevo logo ya confirmado: la lectura del vigente también protege lo compartido', async () => {
       await publicable();
       await subirLogo(png(1));
