@@ -1,9 +1,11 @@
 // Tipos del contrato del panel. Se re-declaran (no se importan de los módulos) para que el panel no dependa de su
 // código: cada tipo copia la forma serializable que devuelve la función pública del módulo indicado. Los montos son
 // centavos enteros, igual que en el POS. Las fechas viajan como milisegundos (`...Ms`) o texto ISO, como en el módulo.
-import type { CopiaCotizacion, Mercado, Moneda, Rol } from '@novutienda/nucleo';
+import type { CopiaCotizacion, Moneda as MonedaCerrada, Rol } from '@novutienda/nucleo';
 
-export type { CopiaCotizacion, Mercado, Moneda, Rol };
+export type { CopiaCotizacion, Rol };
+/** @deprecated Tipo cerrado de tres monedas; use `CodigoMoneda`. Lo usan aún Carrito.moneda y SolicitudAprobacion.moneda (tipos.ts), pantallas/pos (venta-terminal.tsx:5,242,252; venta-cobro.tsx:5,158) y doble/pos/pos.ts (3,42,44,75,88,120,123 y 189-203, que exigen Moneda): pasarlos a CodigoMoneda es del módulo pos. */
+export type Moneda = MonedaCerrada;
 
 // ---------------------------------------------------------------------------------------------------------------------
 // POS (docs/modulos/pos.md; paquetes/pos/src/tipos.ts)
@@ -11,7 +13,6 @@ export type { CopiaCotizacion, Mercado, Moneda, Rol };
 
 export type MedioPago = 'efectivo' | 'qr' | 'transferencia' | 'credito';
 export const MEDIOS_PAGO: readonly MedioPago[] = ['efectivo', 'qr', 'transferencia', 'credito'];
-export const MONEDAS: readonly Moneda[] = ['BOB', 'USD', 'ARS'];
 export type UbicacionId = 'tienda' | 'deposito-1' | 'deposito-2';
 export const UBICACIONES: readonly UbicacionId[] = ['tienda', 'deposito-1', 'deposito-2'];
 

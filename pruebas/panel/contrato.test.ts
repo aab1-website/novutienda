@@ -6,7 +6,7 @@ import { PERMISOS } from '@novutienda/inventarios';
 import { ALMACENES_POS, MEDIOS_PAGO as MEDIOS_POS, MONEDAS_POS } from '@novutienda/pos';
 import { LIMITES_CONSOLA, PANTALLAS, PLANTILLAS } from '@novutienda/consola';
 import { UBICACIONES } from '@novutienda/inventarios';
-import { manifiestoPanel, MEDIOS_PAGO, MONEDAS, NOMBRES_CALLABLE, PLANTILLAS_SITIO, LIMITES_PANEL, ROLES_CALLABLE, UBICACIONES as UBIC_PANEL } from '@novutienda/panel';
+import { manifiestoPanel, MEDIOS_PAGO, NOMBRES_CALLABLE, PLANTILLAS_SITIO, LIMITES_PANEL, ROLES_CALLABLE, UBICACIONES as UBIC_PANEL } from '@novutienda/panel';
 import type * as Panel from '@novutienda/panel';
 import type * as Pos from '@novutienda/pos';
 import type * as Inv from '@novutienda/inventarios';
@@ -63,7 +63,8 @@ describe('tipos del contrato frente a los módulos', () => {
 describe('listas cerradas y límites', () => {
   it('medios de pago, monedas y almacenes del POS', () => {
     expect([...MEDIOS_PAGO]).toEqual([...MEDIOS_POS]);
-    expect([...MONEDAS]).toEqual([...MONEDAS_POS]);
+    // Comercio de referencia con las tres monedas de hoy.
+    expect(['BOB', 'USD', 'ARS']).toEqual([...MONEDAS_POS]);
     expect([...UBIC_PANEL]).toEqual([...ALMACENES_POS]);
     expect([...UBIC_PANEL]).toEqual([...UBICACIONES]);
   });
