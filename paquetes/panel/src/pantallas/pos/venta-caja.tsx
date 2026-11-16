@@ -1,7 +1,7 @@
 import type { JSX } from 'preact';
 import { useState } from 'preact/hooks';
 import { nuevoId } from '../../api/cliente.js';
-import type { Moneda, TurnoPos } from '../../api/tipos.js';
+import type { TurnoPos } from '../../api/tipos.js';
 import { Alerta, Boton, Campo, Cargando, ErrorCarga, Selector, Seccion, Vacio, fechaHora } from '../../ui/comun.js';
 import { useConfiguracionComercial } from '../../ui/comercial.js';
 import { useApp } from '../../ui/contexto.js';
@@ -36,7 +36,7 @@ function VentaCajaLista({ turno, alCambiar, monedas }: { turno: TurnoPos; alCamb
     e.preventDefault();
     if (c === null || c <= 0) return;
     void accion.ejecutar(async () => {
-      await api.llamar('registrarMovimientoCaja', { requestId, movimiento: { tipo, moneda: moneda as Moneda, monto: c, motivo: motivo.trim(), ...(comprobante.trim() !== '' ? { comprobante: comprobante.trim() } : {}) } });
+      await api.llamar('registrarMovimientoCaja', { requestId, movimiento: { tipo, moneda, monto: c, motivo: motivo.trim(), ...(comprobante.trim() !== '' ? { comprobante: comprobante.trim() } : {}) } });
       setOk(`${tipo === 'ingreso' ? 'Ingreso' : 'Egreso'} registrado.`);
       setMonto('');
       setMotivo('');

@@ -1,13 +1,14 @@
 import type { JSX } from 'preact';
 import { useState } from 'preact/hooks';
 import { type MontosPorMoneda, type ResultadoCierre, type TurnoPos } from '../../api/tipos.js';
-import { Alerta, BotonConfirmado, Campo, Dato, Seccion } from '../../ui/comun.js';
+import { Alerta, BotonConfirmado, Cargando, Campo, Dato, Seccion } from '../../ui/comun.js';
+import { useConfiguracionComercial } from '../../ui/comercial.js';
 import { useApp } from '../../ui/contexto.js';
 import { useAccion } from '../../ui/hooks.js';
 import { diferenciaPorMoneda, monedasDelTurno, ordenarMonedas, proyectarTurno } from './arqueo.js';
 import { formatearMonto, textoACentavos } from '../../util/dinero.js';
 
-export function ResumenArqueo({ cierre }: { cierre: ResultadoCierre }): JSX.Element {
+export function ResumenArqueo({ cierre, orden }: { cierre: ResultadoCierre; orden: readonly string[] }): JSX.Element {
   return (
     <table class="tabla">
       <caption>Arqueo del turno cerrado</caption>
@@ -15,7 +16,7 @@ export function ResumenArqueo({ cierre }: { cierre: ResultadoCierre }): JSX.Elem
         <tr><th scope="col">Moneda</th><th scope="col" class="num">Esperado</th><th scope="col" class="num">Contado</th><th scope="col" class="num">Diferencia</th></tr>
       </thead>
       <tbody>
-        {ordenarMonedas(Object.keys(cierre.arqueo)).filter((m) => cierre.arqueo[m] !== undefined).map((m) => {
+        {ordenarMonedas(Object.keys(cierre.arqueo), orden).filter((m) => cierre.arqueo[m] !== undefined).map((m) => {
           const a = cierre.arqueo[m];
           if (a === undefined) return null;
           return (
@@ -32,10 +33,18 @@ export function ResumenArqueo({ cierre }: { cierre: ResultadoCierre }): JSX.Elem
   );
 }
 
+/** El orden de las monedas sale de lo que declaró el comercio (`monedasCaja`), igual que en la supervisión. */
 export function VentaCierre({ turno, alCerrar }: { turno: TurnoPos; alCerrar: () => void }): JSX.Element {
+  const comercial = useConfiguracionComercial();
+  if (comercial.estado === 'cargando') return <Cargando />;
+  if (comercial.estado === 'error') return <Alerta>{comercial.mensaje}</Alerta>;
+  return <CierreListo turno={turno} orden={comercial.comercial.monedasCaja} alCerrar={alCerrar} />;
+}
+
+function CierreListo({ turno, orden, alCerrar }: { turno: TurnoPos; orden: readonly string[]; alCerrar: () => void }): JSX.Element {
   const { api } = useApp();
   const accion = useAccion();
-  const monedas = monedasDelTurno(turno);
+  const monedas = monedasDelTurno(turno, orden);
   const [textos, setTextos] = useState<Record<string, string>>({});
   const [cierre, setCierre] = useState<ResultadoCierre | null>(null);
 
@@ -43,13 +52,13 @@ export function VentaCierre({ turno, alCerrar }: { turno: TurnoPos; alCerrar: ()
     return (
       <Seccion titulo="Turno cerrado">
         <Alerta tipo="ok">El turno se cerró. La diferencia negativa (faltante) queda registrada tal cual.</Alerta>
-        <ResumenArqueo cierre={cierre} />
+        <ResumenArqueo cierre={cierre} orden={orden} />
         <button type="button" class="boton boton-cta" onClick={alCerrar}>Continuar</button>
       </Seccion>
     );
   }
 
-  const proy = proyectarTurno(turno);
+  const proy = proyectarTurno(turno, orden);
   const contado: Partial<Record<string, number>> = {};
   let falta = false;
   for (const m of monedas) {
@@ -57,7 +66,7 @@ export function VentaCierre({ turno, alCerrar }: { turno: TurnoPos; alCerrar: ()
     if (c === null) falta = true;
     else contado[m] = c;
   }
-  const dif = diferenciaPorMoneda(turno, contado as MontosPorMoneda);
+  const dif = diferenciaPorMoneda(turno, contado as MontosPorMoneda, orden);
 
   return (
     <Seccion titulo="Cierre de turno">

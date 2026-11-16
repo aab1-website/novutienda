@@ -2,7 +2,7 @@ import type { JSX } from 'preact';
 import { useMemo, useState } from 'preact/hooks';
 import { nuevoId } from '../../api/cliente.js';
 import { marcaDe } from '../../api/marca.js';
-import type { AprobacionPos, CotizacionesVigentes, MercadoDeclarado, Mercado, Moneda, ProductoPanel, Recibo, TurnoPos, UbicacionId } from '../../api/tipos.js';
+import type { AprobacionPos, CotizacionesVigentes, MercadoDeclarado, Moneda, ProductoPanel, Recibo, TurnoPos, UbicacionId } from '../../api/tipos.js';
 import { Alerta, Boton, Campo, Cargando, Casilla, ErrorCarga, Selector, Seccion, Vacio } from '../../ui/comun.js';
 import { useConfiguracionComercial } from '../../ui/comercial.js';
 import { useApp } from '../../ui/contexto.js';
@@ -183,8 +183,8 @@ function TerminalLista({ turno, alCambiar, mercados }: { turno: TurnoPos; alCamb
     const cobro: DatosCobro = {
       mercado: mercado.id, moneda, config, total,
       carrito: {
-        // El contrato del carrito aún tipa los dos mercados de siempre; el servidor valida contra lo declarado.
-        mercado: mercado.id as Mercado, moneda: moneda as Moneda,
+        // El mercado viaja como id declarado por el comercio; el contrato del carrito tipa la moneda con las conocidas y el servidor valida contra lo declarado.
+        mercado: mercado.id, moneda: moneda as Moneda,
         lineas: lineas.map((l, i) => ({ productoId: l.productoId, cantidad: l.cantidad, almacenId: l.almacenId, ...(l.series.length > 0 ? { series: l.series } : {}), ...(precios[i]?.tipo === 'precio' ? { precioMostrado: (precios[i] as { centavos: number }).centavos } : {}) })),
         ...(monto > 0 ? { descuento: { monto, motivo: descMotivo.trim() } } : {}),
         ...(cliente.trim() !== '' ? { cliente: { nombre: cliente.trim(), ...(telefono.trim() !== '' ? { telefono: telefono.trim() } : {}) } } : {}),
