@@ -56,6 +56,7 @@ describe('venta: terminal y cobro de punta a punta', () => {
     await waitFor(() => expect(document.querySelector('[data-prueba="total"]')?.textContent).toBe('Bs 55,68'));
     await u.click(screen.getByRole('button', { name: 'Cobrar' }));
     await screen.findByRole('heading', { name: 'Cobro' });
+    await u.clear(campo(/Monto a aplicar/));
     await u.type(campo(/Monto a aplicar/), '55,68');
     await u.type(campo(/Efectivo recibido/), '100');
     expect(document.querySelector('[data-prueba="cambio"]')?.textContent).toBe('Bs 44,32');
@@ -75,7 +76,7 @@ describe('venta: terminal y cobro de punta a punta', () => {
     const u = userEvent.setup();
     await u.click(await screen.findByRole('button', { name: 'Agregar Televisor 55 pulgadas' }));
     expect(await screen.findByText('Elija al menos una serie.')).toBeTruthy();
-    expect((screen.getByRole('button', { name: 'Cobrar' }) as HTMLButtonElement).disabled).toBe(true);
+    expect(screen.getByRole('button', { name: 'Cobrar' }).getAttribute('aria-disabled')).toBe('true');
     await u.click(await screen.findByRole('checkbox', { name: 'TV55-001' }));
     await waitFor(() => expect(document.querySelector('[data-prueba="total"]')?.textContent).toBe('Bs 3.132,00'));
     expect((screen.getByRole('button', { name: 'Cobrar' }) as HTMLButtonElement).disabled).toBe(false);
@@ -90,7 +91,7 @@ describe('venta: terminal y cobro de punta a punta', () => {
     await u.type(campo(/Descuento \(monto\)/), '200');
     await u.type(campo(/Motivo del descuento/), 'Cliente frecuente');
     expect(await screen.findByText(/supera su tope/)).toBeTruthy();
-    expect((screen.getByRole('button', { name: 'Cobrar' }) as HTMLButtonElement).disabled).toBe(true);
+    expect(screen.getByRole('button', { name: 'Cobrar' }).getAttribute('aria-disabled')).toBe('true');
     await u.click(screen.getByRole('button', { name: 'Solicitar aprobación' }));
     expect(await screen.findByText(/Solicitud enviada/)).toBeTruthy();
     // El supervisor la aprueba desde su pantalla.
@@ -110,6 +111,7 @@ describe('venta: terminal y cobro de punta a punta', () => {
     await u.type(campo(/Cliente \(opcional\)/), 'Ana Pérez');
     await u.click(screen.getByRole('button', { name: 'Cobrar' }));
     await screen.findByRole('heading', { name: 'Cobro' });
+    await u.clear(campo(/Monto a aplicar/));
     await u.type(campo(/Monto a aplicar/), '20');
     await u.click(screen.getByRole('button', { name: 'Agregar otro medio' }));
     const pagos = screen.getAllByRole('group', { name: /Pago/ });
@@ -120,7 +122,7 @@ describe('venta: terminal y cobro de punta a punta', () => {
     await u.type(within(segundo).getByLabelText(/Referencia del QR/), 'REF-77');
     expect(within(segundo).getByText(/QR registrado por sup@ejemplo.test/)).toBeTruthy();
     expect(document.querySelector('[data-prueba="restante"]')?.textContent).toBe('Bs 15,68');
-    expect((screen.getByRole('button', { name: 'Confirmar cobro' }) as HTMLButtonElement).disabled).toBe(true);
+    expect(screen.getByRole('button', { name: 'Confirmar cobro' }).getAttribute('aria-disabled')).toBe('true');
     await u.click(screen.getByRole('button', { name: 'Agregar otro medio' }));
     const tercero = screen.getAllByRole('group', { name: /Pago/ })[2] as HTMLElement;
     await u.selectOptions(within(tercero).getByLabelText('Medio'), 'credito');
@@ -141,6 +143,7 @@ describe('venta: terminal y cobro de punta a punta', () => {
     await u.click(await screen.findByRole('button', { name: 'Agregar Parlante portátil' }));
     await u.click(screen.getByRole('button', { name: 'Cobrar' }));
     await screen.findByRole('heading', { name: 'Cobro' });
+    await u.clear(campo(/Monto a aplicar/));
     await u.type(campo(/Monto a aplicar/), '174');
     // Otro usuario vende la última unidad: el servidor responde stock insuficiente.
     const antes = e.api.estado.productos.get('parlante');
@@ -338,6 +341,7 @@ describe('venta: mercados y monedas declarados', () => {
     await waitFor(() => expect(document.querySelector('[data-prueba="total"]')?.textContent).toBe('Bs 8,00'));
     await u.click(screen.getByRole('button', { name: 'Cobrar' }));
     await screen.findByRole('heading', { name: 'Cobro' });
+    await u.clear(campo(/Monto a aplicar/));
     await u.type(campo(/Monto a aplicar/), '8');
     await u.click(screen.getByRole('button', { name: 'Confirmar cobro' }));
     await screen.findByRole('heading', { name: 'Venta registrada' });
@@ -385,6 +389,7 @@ describe('venta: mercados y monedas declarados', () => {
     await waitFor(() => expect(document.querySelector('[data-prueba="total"]')?.textContent).toMatch(/10,00/));
     await u.click(screen.getByRole('button', { name: 'Cobrar' }));
     await screen.findByRole('heading', { name: 'Cobro' });
+    await u.clear(campo(/Monto a aplicar/));
     await u.type(campo(/Monto a aplicar/), '10');
     await u.click(screen.getByRole('button', { name: 'Confirmar cobro' }));
     await screen.findByRole('heading', { name: 'Venta registrada' });

@@ -1,12 +1,16 @@
 import type { JSX } from 'preact';
-import { useRef, useState } from 'preact/hooks';
+import { useEffect, useRef, useState } from 'preact/hooks';
 import { nuevoId } from '../../api/cliente.js';
+import { ErrorApi } from '../../api/errores.js';
 import type { AprobacionPos, Carrito, ConfigPos, MedioPago, Moneda } from '../../api/tipos.js';
 import { Alerta, Boton, Campo, Cargando, Selector, Seccion } from '../../ui/comun.js';
 import { useApp } from '../../ui/contexto.js';
 import { useAccion, useCarga } from '../../ui/hooks.js';
-import { formatearMonto, textoACentavos } from '../../util/dinero.js';
+import { centavosATexto, formatearMonto, textoACentavos } from '../../util/dinero.js';
 import { calcularPagos, NOMBRE_MEDIO, type FilaPago } from './pagos.js';
+
+/** Cada cuántos milisegundos se consulta una aprobación solicitada mientras sigue pendiente. */
+export const MS_SONDEO_APROBACION = 4000;
 
 export interface DatosCobro {
   mercado: string;
@@ -15,21 +19,39 @@ export interface DatosCobro {
   total: number;
   carrito: Carrito;
   aprobacionId: string | undefined;
+  /** Nombres de lo ya cargado en el terminal, para completar un faltante de stock que el servidor trae sin nombre. */
+  nombreProducto?: ((productoId: string) => string | undefined) | undefined;
+  nombreAlmacen?: ((almacenId: string) => string | undefined) | undefined;
+}
+
+/** Si el servidor devolvió faltantes sin nombre de producto o de almacén, los completa con lo que el panel ya tiene. */
+export function conNombresDeFaltantes(e: unknown, datos: Pick<DatosCobro, 'nombreProducto' | 'nombreAlmacen'>): unknown {
+  if (!(e instanceof ErrorApi) || e.detalle.faltantes === undefined) return e;
+  const faltantes = e.detalle.faltantes.map((f) => ({
+    ...f,
+    ...(f.productoNombre === undefined && datos.nombreProducto?.(f.productoId) !== undefined ? { productoNombre: datos.nombreProducto(f.productoId) as string } : {}),
+    ...(f.almacenNombre === undefined && datos.nombreAlmacen?.(f.almacenId) !== undefined ? { almacenNombre: datos.nombreAlmacen(f.almacenId) as string } : {}),
+  }));
+  return new ErrorApi(e.codigoHttps, e.message, { ...e.detalle, faltantes });
 }
 
 export function VentaCobro({ datos, volver, alVender }: { datos: DatosCobro; volver: () => void; alVender: (ventaId: string) => void }): JSX.Element {
   const { api, usuario } = useApp();
   const { moneda, total, config, carrito } = datos;
-  const [filas, setFilas] = useState<FilaPago[]>([{ id: nuevoId(), medio: 'efectivo', monto: '', recibido: '', referencia: '' }]);
+  const [filas, setFilas] = useState<FilaPago[]>([{ id: nuevoId(), medio: 'efectivo', monto: total > 0 ? centavosATexto(total) : '', recibido: '', referencia: '' }]);
   const requestId = useRef(nuevoId());
   const accion = useAccion();
   const solicitud = useAccion();
   const [aprobCredito, setAprobCredito] = useState('');
   const [solicitadaId, setSolicitadaId] = useState<string | null>(null);
-  const aprobs = useCarga(() => api.llamar('listarAprobaciones', {}), [solicitadaId]);
+  // La aprobación del crédito se consulta sola solo mientras haya una solicitud pendiente.
+  const [sondeo, setSondeo] = useState<number | undefined>(undefined);
+  const aprobs = useCarga(() => api.llamar('listarAprobaciones', {}), [solicitadaId], sondeo);
+  const hayPendiente = (aprobs.datos ?? []).some((a) => a.tipo === 'credito' && a.estado === 'pendiente');
+  useEffect(() => setSondeo(hayPendiente ? MS_SONDEO_APROBACION : undefined), [hayPendiente]);
 
   const { pagos, restante, cambioTotal, errores } = calcularPagos(filas, total, moneda);
-    const credito = filas.find((f) => f.medio === 'credito');
+  const credito = filas.find((f) => f.medio === 'credito');
   const montoCredito = credito === undefined ? 0 : (textoACentavos(credito.monto) ?? 0);
   const deudor = carrito.cliente?.nombre ?? '';
   const necesitaAprobCredito = credito !== undefined && usuario.rol === 'caj';
@@ -41,18 +63,32 @@ export function VentaCobro({ datos, volver, alVender }: { datos: DatosCobro; vol
   ];
   const listo = restante === 0 && errores.length === 0 && erroresExtra.length === 0 && filas.length > 0;
 
+  // Un motivo por cada falta, el primero que aplique; los errores de cada fila ya dicen cuál es.
+  const motivoNoCobrar = ((): string | undefined => {
+    if (listo) return undefined;
+    if (errores[0] !== undefined) return errores[0];
+    if (erroresExtra[0] !== undefined) return erroresExtra[0];
+    if (restante > 0) return `Falta cobrar ${formatearMonto(restante, moneda)}.`;
+    if (restante < 0) return 'Los pagos superan el total: ajuste los montos.';
+    return 'Agregue un pago.';
+  })();
+
   const actualizar = (id: string, cambio: Partial<FilaPago>): void => setFilas(filas.map((f) => (f.id === id ? { ...f, ...cambio } : f)));
   const agregar = (): void => setFilas([...filas, { id: nuevoId(), medio: config.mediosHabilitados.find((m) => !filas.some((f) => f.medio === m)) ?? 'efectivo', monto: restante > 0 ? String(restante / 100).replace('.', ',') : '', recibido: '', referencia: '' }]);
 
   const cobrar = (): void => {
     void accion.ejecutar(async () => {
-      const r = await api.llamar('confirmarVenta', {
-        requestId: requestId.current, carrito, pagos,
-        ...(datos.aprobacionId !== undefined ? { aprobacionId: datos.aprobacionId } : {}),
-        ...(necesitaAprobCredito ? { aprobacionCreditoId: aprobCredito } : {}),
-      });
-      alVender(r.venta.ventaId);
-    });
+      try {
+        const r = await api.llamar('confirmarVenta', {
+          requestId: requestId.current, carrito, pagos,
+          ...(datos.aprobacionId !== undefined ? { aprobacionId: datos.aprobacionId } : {}),
+          ...(necesitaAprobCredito ? { aprobacionCreditoId: aprobCredito } : {}),
+        });
+        alVender(r.venta.ventaId);
+      } catch (e) {
+        throw conNombresDeFaltantes(e, datos);
+      }
+    }, { error: 'ambos' });
   };
 
   const pedirCredito = (): void => {
@@ -60,7 +96,7 @@ export function VentaCobro({ datos, volver, alVender }: { datos: DatosCobro; vol
       const id = nuevoId();
       await api.llamar('solicitarAprobacion', { aprobacionId: id, solicitud: { tipo: 'credito', moneda: moneda as Moneda, monto: montoCredito, motivo: `Crédito para ${deudor}`, deudor } });
       setSolicitadaId(id);
-    });
+    }, { exito: 'Solicitud de crédito enviada al supervisor.', error: 'ambos' });
   };
 
   return (
@@ -106,8 +142,7 @@ export function VentaCobro({ datos, volver, alVender }: { datos: DatosCobro; vol
               <Selector etiqueta="Aprobación del crédito" valor={aprobCredito} onCambio={setAprobCredito} opciones={[{ valor: '', texto: 'Elija una aprobación' }, ...aprobadasCredito.map((a) => ({ valor: a.aprobacionId, texto: `Hasta ${formatearMonto(a.monto, a.moneda)}` }))]} />
             ) : pendienteCredito ? (
               <>
-                <Alerta tipo="info">Solicitud enviada. Espere la aprobación del supervisor.</Alerta>
-                <Boton chico variante="secundario" onClick={aprobs.recargar}>Actualizar aprobaciones</Boton>
+                <Alerta tipo="info">Esperando la aprobación del supervisor: se consulta sola cada pocos segundos.</Alerta>
               </>
             ) : (
               <Boton chico variante="secundario" onClick={pedirCredito} ocupado={solicitud.ocupado} deshabilitado={deudor === '' || montoCredito <= 0}>
@@ -122,12 +157,8 @@ export function VentaCobro({ datos, volver, alVender }: { datos: DatosCobro; vol
         <div><dt>Restante por cobrar</dt><dd data-prueba="restante">{formatearMonto(restante, moneda)}</dd></div>
         {cambioTotal > 0 && <div><dt>Cambio a entregar</dt><dd data-prueba="cambio">{formatearMonto(cambioTotal, moneda)}</dd></div>}
       </dl>
-      {restante < 0 && <Alerta>Los pagos superan el total. Ajuste los montos.</Alerta>}
-      {[...errores, ...erroresExtra].map((e) => (
-        <p key={e} class="texto-error">{e}</p>
-      ))}
       {accion.error && <Alerta>{accion.error}</Alerta>}
-      <Boton onClick={cobrar} ocupado={accion.ocupado} deshabilitado={!listo}>
+      <Boton onClick={cobrar} ocupado={accion.ocupado} motivo={motivoNoCobrar}>
         Confirmar cobro
       </Boton>
     </Seccion>

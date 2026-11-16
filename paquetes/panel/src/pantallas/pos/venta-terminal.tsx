@@ -1,18 +1,29 @@
 import type { JSX } from 'preact';
-import { useMemo, useState } from 'preact/hooks';
+import { useEffect, useMemo, useRef, useState } from 'preact/hooks';
 import { nuevoId } from '../../api/cliente.js';
 import { marcaDe } from '../../api/marca.js';
 import type { AprobacionPos, CotizacionesVigentes, MercadoDeclarado, Moneda, ProductoPanel, Recibo, TurnoPos, UbicacionId } from '../../api/tipos.js';
 import { Alerta, Boton, Campo, Cargando, Casilla, ErrorCarga, Selector, Seccion, Vacio } from '../../ui/comun.js';
 import { useConfiguracionComercial } from '../../ui/comercial.js';
+import { useAvisos } from '../../ui/avisos.js';
 import { useApp } from '../../ui/contexto.js';
+import { useBorrador } from '../../ui/guardia.js';
 import { AvisoConteoAbierto, ExistenciaOculta, TEXTO_OCULTO } from '../../ui/existencia.js';
 import { useAccion, useCarga } from '../../ui/hooks.js';
 import { AccionesRecibo, ReciboVista } from '../recibos/recibo-vista.js';
 import { formatearMonto, textoACentavos } from '../../util/dinero.js';
 import { cotizacionDeMercado, hayReglaDeRedondeo, monedasDeCobro, precioDeCobro } from './arqueo.js';
 import { SerieEscrita } from './serie-escrita.js';
-import { VentaCobro, type DatosCobro } from './venta-cobro.js';
+import { MS_SONDEO_APROBACION, VentaCobro, type DatosCobro } from './venta-cobro.js';
+import './venta.css';
+
+/** El recibo se consulta cada 3 s, hasta 30 s, antes de ofrecer «Reintentar». */
+export const MS_ENTRE_CONSULTAS_RECIBO = 3000;
+export const CONSULTAS_RECIBO = 10;
+/** Por debajo de este ancho el carrito queda debajo de la lista (misma cifra que `venta.css`). */
+const ANCHO_DOS_COLUMNAS = 960;
+
+const esPantallaAngosta = (): boolean => typeof window.matchMedia === 'function' && window.matchMedia(`(max-width: ${ANCHO_DOS_COLUMNAS - 0.02}px)`).matches;
 
 export interface LineaUI {
   productoId: string;
@@ -68,6 +79,17 @@ function Cotizacion({ cot, mercado, moneda }: { cot: CotizacionesVigentes; merca
   );
 }
 
+interface BorradorVenta {
+  mercadoId: string;
+  moneda: string;
+  lineas: LineaUI[];
+  descTexto: string;
+  descMotivo: string;
+  aprobacionId: string;
+  cliente: string;
+  telefono: string;
+}
+
 export function VentaTerminal({ turno, alCambiar }: { turno: TurnoPos; alCambiar: () => void }): JSX.Element {
   const comercial = useConfiguracionComercial();
   if (comercial.estado === 'cargando') return <Cargando />;
@@ -90,20 +112,39 @@ function TerminalLista({ turno, alCambiar, mercados }: { turno: TurnoPos; alCamb
   const [busqueda, setBusqueda] = useState('');
   const [categoria, setCategoria] = useState('');
   // Mercado y moneda iniciales: el primer mercado declarado y su moneda de venta.
-  const [mercadoId, setMercadoId] = useState(mercados[0]?.id ?? '');
-  const [moneda, setMoneda] = useState(mercados[0]?.monedaVenta ?? '');
-  const [lineas, setLineas] = useState<LineaUI[]>([]);
+  // La venta en curso sobrevive a ir a otra pestaña y volver (sin guardia: se conserva sola). «Nueva venta» la descarta.
+  const borrador = useBorrador<BorradorVenta>(`venta:carrito:${turno.turnoId}`, {
+    mercadoId: mercados[0]?.id ?? '',
+    moneda: mercados[0]?.monedaVenta ?? '',
+    lineas: [],
+    descTexto: '',
+    descMotivo: '',
+    aprobacionId: '',
+    cliente: '',
+    telefono: '',
+  });
+  const { mercadoId, moneda, lineas, descTexto, descMotivo, aprobacionId, cliente, telefono } = borrador.valor;
+  const cambiar = (c: Partial<BorradorVenta>): void => borrador.poner((p) => ({ ...p, ...c }));
+  const setMercadoId = (v: string): void => cambiar({ mercadoId: v });
+  const setMoneda = (v: string): void => cambiar({ moneda: v });
+  const setLineas = (v: LineaUI[] | ((p: LineaUI[]) => LineaUI[])): void => borrador.poner((p) => ({ ...p, lineas: typeof v === 'function' ? v(p.lineas) : v }));
+  const setDescTexto = (v: string): void => cambiar({ descTexto: v });
+  const setDescMotivo = (v: string): void => cambiar({ descMotivo: v });
+  const setAprobacionId = (v: string): void => cambiar({ aprobacionId: v });
+  const setCliente = (v: string): void => cambiar({ cliente: v });
+  const setTelefono = (v: string): void => cambiar({ telefono: v });
   const [verSeries, setVerSeries] = useState<string | null>(null);
-  const [descTexto, setDescTexto] = useState('');
-  const [descMotivo, setDescMotivo] = useState('');
-  const [aprobacionId, setAprobacionId] = useState('');
-  const [cliente, setCliente] = useState('');
-  const [telefono, setTelefono] = useState('');
   const [paso, setPaso] = useState<'carrito' | 'cobro'>('carrito');
   const [recibo, setRecibo] = useState<{ recibo: Recibo | null; ventaId: string } | null>(null);
   const solicitud = useAccion();
+  const avisos = useAvisos();
   const [solicitadaId, setSolicitadaId] = useState<string | null>(null);
-  const aprobs = useCarga(() => api.llamar('listarAprobaciones', {}), [solicitadaId, paso]);
+  // La aprobación se consulta sola solo mientras haya una solicitud de descuento pendiente.
+  const [sondeo, setSondeo] = useState<number | undefined>(undefined);
+  const aprobs = useCarga(() => api.llamar('listarAprobaciones', {}), [solicitadaId, paso], sondeo);
+  const hayPendiente = (aprobs.datos ?? []).some((a) => a.tipo === 'descuento' && a.estado === 'pendiente');
+  useEffect(() => setSondeo(hayPendiente ? MS_SONDEO_APROBACION : undefined), [hayPendiente]);
+  const refCarrito = useRef<HTMLDivElement>(null);
 
   // La marca viaja como propiedad de la lista: se lee antes de filtrar o mapear.
   const conteos = marcaDe(datos.datos?.productos)?.conteosAbiertos ?? [];
@@ -111,7 +152,7 @@ function TerminalLista({ turno, alCambiar, mercados }: { turno: TurnoPos; alCamb
   const porId = useMemo(() => new Map(productos.map((p) => [p.id, p])), [productos]);
 
   if (recibo !== null) {
-    return <ReciboFinal ventaId={recibo.ventaId} nuevaVenta={() => { setRecibo(null); setLineas([]); setDescTexto(''); setDescMotivo(''); setAprobacionId(''); setCliente(''); setTelefono(''); setPaso('carrito'); alCambiar(); datos.recargar(); }} />;
+    return <ReciboFinal ventaId={recibo.ventaId} nuevaVenta={() => { setRecibo(null); borrador.descartar(); setPaso('carrito'); alCambiar(); datos.recargar(); }} />;
   }
   if (datos.cargando) return <Cargando />;
   if (datos.error || !datos.datos) return <ErrorCarga error={datos.error ?? 'Sin datos'} reintentar={datos.recargar} />;
@@ -144,6 +185,14 @@ function TerminalLista({ turno, alCambiar, mercados }: { turno: TurnoPos; alCamb
       return [...ls, { productoId: p.id, almacenId: 'tienda', cantidad: p.conSerie ? 0 : 1, series: [] }];
     });
     if (p.conSerie) setVerSeries(p.id);
+    // En pantalla angosta el carrito queda debajo de la lista: sin esto «Agregar» no cambiaría nada a la vista.
+    if (esPantallaAngosta()) avisos.info(`Se agregó ${p.nombre} al carrito.`);
+  };
+  const irAlCarrito = (): void => {
+    const el = refCarrito.current;
+    if (el === null) return;
+    el.scrollIntoView?.({ block: 'start' });
+    el.focus();
   };
 
   const lineaValida = (l: LineaUI): boolean => {
@@ -169,14 +218,25 @@ function TerminalLista({ turno, alCambiar, mercados }: { turno: TurnoPos; alCamb
   const aprobadas: AprobacionPos[] = (aprobs.datos ?? []).filter((a) => a.tipo === 'descuento' && a.estado === 'aprobada' && a.moneda === moneda && a.monto >= monto);
   const pendiente = (aprobs.datos ?? []).find((a) => a.tipo === 'descuento' && a.estado === 'pendiente' && a.moneda === moneda && a.monto >= monto);
   const falta = excede && aprobacionId === '';
-  const listo = lineas.length > 0 && lineas.every(lineaValida) && todosConPrecio && !descInvalido && !falta && config.mediosHabilitados.length > 0;
+  const motivoNoCobrar = ((): string | undefined => {
+    if (lineas.length === 0) return 'Agregue al menos un producto al carrito.';
+    const sinSerie = lineas.find((l) => porId.get(l.productoId)?.conSerie === true && (l.series.length === 0 || l.series.length !== l.cantidad));
+    if (sinSerie !== undefined) return `Elija las series de ${porId.get(sinSerie.productoId)?.nombre ?? 'un producto'}.`;
+    if (!lineas.every(lineaValida)) return 'Indique una cantidad de al menos 1 en cada producto.';
+    if (!todosConPrecio) return 'Hay productos sin precio en esta moneda: quítelos o cambie la moneda.';
+    if (descInvalido) return 'Corrija el descuento: debe ser menor al subtotal y llevar un motivo.';
+    if (falta) return 'El descuento necesita la aprobación de un supervisor: solicítela abajo.';
+    if (config.mediosHabilitados.length === 0) return 'No hay medios de pago habilitados: avise al administrador.';
+    return undefined;
+  })();
+  const unidades = lineas.reduce((n, l) => n + l.cantidad, 0);
 
   const pedirAprobacion = (): void => {
     void solicitud.ejecutar(async () => {
       const id = nuevoId();
       await api.llamar('solicitarAprobacion', { aprobacionId: id, solicitud: { tipo: 'descuento', moneda: moneda as Moneda, monto, motivo: descMotivo.trim() } });
       setSolicitadaId(id);
-    });
+    }, { exito: 'Solicitud enviada al supervisor.', error: 'ambos' });
   };
 
   if (paso === 'cobro') {
@@ -191,12 +251,16 @@ function TerminalLista({ turno, alCambiar, mercados }: { turno: TurnoPos; alCamb
         totalMostrado: total,
       },
       aprobacionId: excede ? aprobacionId : undefined,
+      nombreProducto: (id) => porId.get(id)?.nombre,
+      nombreAlmacen: (id) => ALMACENES.find((a) => a.valor === id)?.texto,
     };
-    return <VentaCobro datos={cobro} volver={() => setPaso('carrito')} alVender={(ventaId) => setRecibo({ ventaId, recibo: null })} />;
+    // La venta ya está registrada: el borrador se descarta aquí para que no reaparezca al volver a la pestaña.
+    return <VentaCobro datos={cobro} volver={() => setPaso('carrito')} alVender={(ventaId) => { borrador.descartar(); setRecibo({ ventaId, recibo: null }); }} />;
   }
 
   return (
-    <div class="terminal">
+    <div>
+      <div class="terminal">
       <AvisoConteoAbierto conteos={conteos} />
       <Seccion titulo="Productos">
         <div class="cuadricula">
@@ -244,6 +308,7 @@ function TerminalLista({ turno, alCambiar, mercados }: { turno: TurnoPos; alCamb
         )}
       </Seccion>
 
+      <div ref={refCarrito} tabIndex={-1} class="venta-carrito" role="group" aria-label="Carrito">
       <Seccion titulo="Carrito">
         {lineas.length === 0 ? (
           <Vacio titulo="El carrito está vacío" detalle="Agregue productos desde la lista." />
@@ -307,15 +372,10 @@ function TerminalLista({ turno, alCambiar, mercados }: { turno: TurnoPos; alCamb
                   opciones={[{ valor: '', texto: 'Elija una aprobación' }, ...aprobadas.map((a) => ({ valor: a.aprobacionId, texto: `Hasta ${formatearMonto(a.monto, a.moneda)} · ${a.motivo}` }))]}
                 />
               ) : pendiente ? (
-                <Alerta tipo="info">Solicitud enviada. Espere la aprobación del supervisor y actualice.</Alerta>
+                <Alerta tipo="info">Esperando la aprobación del supervisor: se consulta sola cada pocos segundos.</Alerta>
               ) : (
                 <Boton chico variante="secundario" onClick={pedirAprobacion} ocupado={solicitud.ocupado}>
                   Solicitar aprobación
-                </Boton>
-              )}
-              {pendiente && (
-                <Boton chico variante="secundario" onClick={aprobs.recargar}>
-                  Actualizar aprobaciones
                 </Boton>
               )}
               {solicitud.error && <Alerta>{solicitud.error}</Alerta>}
@@ -332,34 +392,52 @@ function TerminalLista({ turno, alCambiar, mercados }: { turno: TurnoPos; alCamb
           {monto > 0 && !descInvalido && <div><dt>Descuento</dt><dd>-{formatearMonto(monto, moneda)}</dd></div>}
           <div class="total"><dt>Total</dt><dd data-prueba="total">{formatearMonto(total, moneda)}</dd></div>
         </dl>
-        <Boton onClick={() => setPaso('cobro')} deshabilitado={!listo}>
+        <Boton onClick={() => setPaso('cobro')} motivo={motivoNoCobrar}>
           Cobrar
         </Boton>
       </Seccion>
+      </div>
+      </div>
+      {unidades > 0 && (
+        <div class="venta-barra" role="region" aria-label="Resumen del carrito">
+          <span data-prueba="barra-resumen">
+            {unidades} {unidades === 1 ? 'producto' : 'productos'} · {formatearMonto(total, moneda)}
+          </span>
+          <Boton chico onClick={irAlCarrito}>Ver carrito</Boton>
+        </div>
+      )}
     </div>
   );
 }
 
 function ReciboFinal({ ventaId, nuevaVenta }: { ventaId: string; nuevaVenta: () => void }): JSX.Element {
   const { api, usuario } = useApp();
-  // El módulo de recibos emite el comprobante al consumir el evento; puede tardar unos segundos.
+  const [intento, setIntento] = useState(0);
+  const viva = useRef(true);
+  useEffect(() => () => void (viva.current = false), []);
+  // El módulo de recibos emite el comprobante al consumir el evento; puede tardar unos segundos: se consulta cada 3 s hasta 30 s.
   const r = useCarga(
     async () => {
-      for (let i = 0; i < 5; i++) {
+      for (let i = 0; ; i++) {
         const x = await api.llamar('obtenerRecibo', { ventaId });
         if (x !== null) return x;
-        await new Promise((res) => setTimeout(res, 800));
+        if (i >= CONSULTAS_RECIBO || !viva.current) return null;
+        await new Promise((res) => setTimeout(res, MS_ENTRE_CONSULTAS_RECIBO));
       }
-      return null;
     },
-    [ventaId],
+    [ventaId, intento],
   );
   return (
     <Seccion titulo="Venta registrada" acciones={<Boton onClick={nuevaVenta}>Nueva venta</Boton>}>
       <Alerta tipo="ok">La venta se registró correctamente.</Alerta>
       {r.cargando && <Cargando texto="Preparando el recibo…" />}
       {r.error && <ErrorCarga error={r.error} reintentar={r.recargar} />}
-      {!r.cargando && r.datos === null && <Alerta tipo="info">El recibo todavía no está listo. Búsquelo en «Mis recibos» en unos instantes.</Alerta>}
+      {!r.cargando && !r.error && r.datos === null && (
+        <Alerta tipo="info">
+          El recibo todavía no está listo.
+          <Boton chico variante="secundario" onClick={() => setIntento((n) => n + 1)}>Reintentar</Boton>
+        </Alerta>
+      )}
       {r.datos && (
         <>
           <AccionesRecibo recibo={r.datos} alCambiar={r.recargar} />
