@@ -5,10 +5,11 @@
 import { z } from 'zod';
 import {
   eliminarSeccion, exportarProductosCsv, guardarCarrusel, guardarConfigSitio, guardarFicha, guardarSeccion, obtenerTablero,
-  ordenarSecciones, preciosDelDiaDe, publicarSitio,
+  leerLogo, ordenarSecciones, preciosDelDiaDe, publicarSitio, quitarLogo,
 } from '@novutienda/consola';
 import { claveDePrecio, leerCotizacionDe, MAX_MERCADOS, SinCotizacionUtilizable, type CopiaCotizacion } from '@novutienda/nucleo';
 import { HttpsError } from 'firebase-functions/v2/https';
+import { depsMedios } from './medios.js';
 import { accion, type Contexto, type TablaImplementaciones } from './marco.js';
 import { ID_PRODUCTO, LIMITE, MS, OBJETO, UID, VACIO, objeto, validarRango } from './comunes.js';
 
@@ -128,6 +129,17 @@ export const accionesConsola: TablaImplementaciones = {
   configSitio: accion({
     esquema: VACIO,
     ejecutar: async (c) => ({ config: (await c.e.firestore.doc(ruta(c.tenantId, 'sitio', 'config')).get()).data() ?? null }),
+  }),
+
+  /** Logo subido como archivo: el vigente (ruta pública de sus versiones PNG y WebP) o `null`. */
+  leerLogo: accion({
+    esquema: VACIO,
+    ejecutar: async (c) => ({ logo: await leerLogo(depsMedios(c), { tenantId: c.tenantId, actor: c.actor }) }),
+  }),
+  /** Quita el logo subido (solo `adm`); no toca ninguna URL de logo escrita a mano en otros módulos. */
+  quitarLogo: accion({
+    esquema: VACIO,
+    ejecutar: (c) => quitarLogo(depsMedios(c), { tenantId: c.tenantId, actor: c.actor }),
   }),
 
   // ---- Exportación (CSV) -----------------------------------------------------------------------------------

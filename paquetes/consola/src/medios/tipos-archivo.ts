@@ -1,10 +1,15 @@
 export type TipoMedio = 'foto' | 'video';
+/** Tipo de una subida: los medios de un producto más el logo del negocio (un archivo, destino fijo `_negocio`). */
+export type TipoSubida = TipoMedio | 'logo';
 export type FormatoArchivo = 'jpg' | 'png' | 'webp' | 'heic' | 'mp4' | 'mov' | 'webm';
 
 export interface ArchivoDetectado {
   readonly tipo: TipoMedio;
   readonly formato: FormatoArchivo;
 }
+
+/** Formatos de imagen que admite el logo. SVG (puede llevar código) y HEIC quedan fuera. */
+export const FORMATOS_LOGO: readonly FormatoArchivo[] = ['jpg', 'png', 'webp'];
 
 /** Bytes que se leen del inicio del objeto para decidir su tipo. */
 export const BYTES_INICIALES = 64;
