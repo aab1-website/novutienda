@@ -533,6 +533,18 @@ describe('usuarios: avisos, motivos y datos ausentes', () => {
     expect(boton.getAttribute('aria-disabled')).toBe('true');
     expect(document.getElementById(boton.getAttribute('aria-describedby') ?? '')?.textContent).toBe('Cambie el rol para guardar');
   });
+  it('el tope de usuarios es el que devuelve el servidor, no la constante', async () => {
+    const e = crearEntorno('adm');
+    const llamar = e.api.llamar.bind(e.api) as (n: string, x: unknown) => Promise<unknown>;
+    vi.spyOn(e.api, 'llamar').mockImplementation((async (n: string, x: unknown) => {
+      const r = await llamar(n, x);
+      return n === 'obtenerTablero' ? { ...(r as { uso: object }), uso: { ...(r as { uso: object }).uso, usuarios: { usados: 3, tope: 5 } } } : r;
+    }) as never);
+    ver(e, h(PantallaUsuarios, {}));
+    expect(await screen.findByText(/El plan incluye 5 usuarios\./)).toBeTruthy();
+    expect(await screen.findByText('Personas con acceso (3 de 5)')).toBeTruthy();
+    expect(screen.getByRole('button', { name: 'Buscar cuenta' })).toBeTruthy();
+  });
   it('el tope de usuarios sale del dato y no de un texto fijo', async () => {
     const e = crearEntorno('adm');
     ver(e, h(PantallaUsuarios, {}));
@@ -617,6 +629,15 @@ describe('configuración: avisos, motivos y cambios sin guardar', () => {
     expect(screen.getByText('Habilite al menos un medio de pago')).toBeTruthy();
     expect(e.api.llamadas.map((l) => l.nombre)).not.toContain('guardarConfigPos');
     await u.click(screen.getByRole('button', { name: 'Guardar configuración' }));
+    expect(e.api.llamadas.map((l) => l.nombre)).not.toContain('guardarConfigPos');
+  });
+  it('Enter con el nombre vacío no envía nada', async () => {
+    const e = crearEntorno('adm');
+    ver(e, h(PantallaConfiguracion, { sub: 'negocio' }));
+    const u = userEvent.setup();
+    await screen.findByRole('heading', { name: 'Datos del negocio y del POS' });
+    await u.clear(campo(/^Nombre del negocio/));
+    await u.type(campo('Dirección'), 'x{Enter}');
     expect(e.api.llamadas.map((l) => l.nombre)).not.toContain('guardarConfigPos');
   });
   it('la plantilla sin nombre del negocio dice por qué no se guarda', async () => {

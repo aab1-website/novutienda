@@ -1,10 +1,13 @@
 import type { JSX } from 'preact';
-import { useState } from 'preact/hooks';
+import { useEffect, useState } from 'preact/hooks';
 import type { ResultadoInicio, Sesion } from '../sesion/sesion.js';
 import { Alerta, Boton, Campo } from './comun.js';
 
 /** Respuesta única al pedir el restablecimiento: no dice si el correo tiene una cuenta. */
 export const MENSAJE_RECUPERACION = 'Si el correo tiene una cuenta, le llegará un enlace para elegir una contraseña nueva. Revise también la carpeta de correo no deseado.';
+
+/** Segundos que el cliente espera antes de dejar pedir otro enlace de restablecimiento. */
+export const ESPERA_RECUPERACION_S = 60;
 
 export function Login({ sesion, nombre, motivo }: { sesion: Sesion; nombre: string; motivo?: 'vencida' | undefined }): JSX.Element {
   const [correo, setCorreo] = useState('');
@@ -15,6 +18,13 @@ export function Login({ sesion, nombre, motivo }: { sesion: Sesion; nombre: stri
   const [reenviado, setReenviado] = useState(false);
   const [recuperando, setRecuperando] = useState(false);
   const [recuperacion, setRecuperacion] = useState<'enviada' | 'sin-correo' | null>(null);
+  const [espera, setEspera] = useState(0);
+  // Cuenta regresiva en el cliente: frena el reenvío repetido (el servicio real también limita por su cuenta).
+  useEffect(() => {
+    if (espera <= 0) return;
+    const t = setTimeout(() => setEspera((s) => s - 1), 1000);
+    return () => clearTimeout(t);
+  }, [espera]);
 
   const enviar = (e: Event): void => {
     e.preventDefault();
@@ -22,15 +32,17 @@ export function Login({ sesion, nombre, motivo }: { sesion: Sesion; nombre: stri
     setOcupado(true);
     setReenviado(false);
     setRecuperacion(null);
+    setVerClave(false);
     sesion
       .iniciar(correo, clave)
       .then((r) => setResultado(r))
       .catch(() => setResultado({ tipo: 'error', mensaje: 'No se pudo iniciar sesión. Intente de nuevo.' }))
+      .then(() => setVerClave(false))
       .finally(() => setOcupado(false));
   };
 
   const recuperar = (): void => {
-    if (recuperando) return;
+    if (recuperando || espera > 0) return;
     setResultado(null);
     if (correo.trim() === '') {
       setRecuperacion('sin-correo');
@@ -43,6 +55,7 @@ export function Login({ sesion, nombre, motivo }: { sesion: Sesion; nombre: stri
       .catch(() => undefined)
       .finally(() => {
         setRecuperacion('enviada');
+        setEspera(ESPERA_RECUPERACION_S);
         setRecuperando(false);
       });
   };
@@ -56,12 +69,12 @@ export function Login({ sesion, nombre, motivo }: { sesion: Sesion; nombre: stri
         <Campo etiqueta="Correo" tipo="email" valor={correo} onInput={setCorreo} requerido autocompletar="username" inputMode="email" nombre="correo" />
         <Campo etiqueta="Contraseña" tipo={verClave ? 'text' : 'password'} valor={clave} onInput={setClave} requerido autocompletar="current-password" nombre="clave" />
         <div class="fila">
-          <button type="button" class="boton boton-secundario boton-chico" aria-pressed={verClave} onClick={() => setVerClave(!verClave)}>
+          <button type="button" class="boton boton-secundario boton-chico" onClick={() => setVerClave(!verClave)}>
             {verClave ? 'Ocultar contraseña' : 'Mostrar contraseña'}
           </button>
-          <button type="button" class="boton boton-secundario boton-chico" disabled={recuperando} onClick={recuperar}>
+          <Boton variante="secundario" chico ocupado={recuperando} onClick={recuperar} motivo={espera > 0 ? `Podrá pedir otro enlace en ${espera} s` : undefined}>
             Olvidé mi contraseña
-          </button>
+          </Boton>
         </div>
         {recuperacion === 'enviada' && <Alerta tipo="info">{MENSAJE_RECUPERACION}</Alerta>}
         {recuperacion === 'sin-correo' && <Alerta>Escriba su correo en el campo de arriba y pulse de nuevo «Olvidé mi contraseña».</Alerta>}

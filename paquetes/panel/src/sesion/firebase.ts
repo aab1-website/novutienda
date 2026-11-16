@@ -87,7 +87,10 @@ export class SesionFirebase implements Sesion {
   async recuperarContrasena(correo: string): Promise<void> {
     try {
       await sendPasswordResetEmail(this.auth, correo.trim());
-    } catch {
+    } catch (e) {
+      // Solo el código del error (nunca el correo) queda en el registro del navegador.
+      const codigo = typeof e === 'object' && e !== null && 'code' in e ? String((e as { code: unknown }).code) : 'desconocido';
+      console.warn('Restablecimiento de contraseña no enviado', codigo);
       // Cuenta inexistente, correo mal escrito o servicio caído: la respuesta es la misma, para no revelar qué correos tienen cuenta.
     }
   }

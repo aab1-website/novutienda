@@ -37,7 +37,7 @@ async function entrar(correo: string, clave: string): Promise<void> {
 }
 
 describe('inicio de sesión', () => {
-  it('un correo no verificado muestra «verifica tu correo» y no entra', async () => {
+  it('un correo no verificado muestra «verifique su correo» y no entra', async () => {
     montar();
     await entrar('nuevo@ejemplo.test', 'clave-nuevo-1');
     expect(await screen.findByText(/Verifique su correo/)).toBeTruthy();

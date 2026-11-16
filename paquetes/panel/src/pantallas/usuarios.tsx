@@ -38,6 +38,9 @@ function InstruccionesCuenta({ correo }: { correo: string }): JSX.Element {
 export function PantallaUsuarios(): JSX.Element {
   const { api, usuario } = useApp();
   const lista = useCarga(() => api.llamar('listarUsuarios', {}), []);
+  // El tope del plan lo dice el servidor; la constante es solo respaldo mientras llega o si la consulta falla.
+  const tablero = useCarga(() => api.llamar('obtenerTablero', {}), []);
+  const tope = tablero.datos?.uso.usuarios.tope ?? LIMITES_PANEL.usuarios;
   // Dos acciones: cada aviso de error aparece junto a la sección donde se actuó (y también como aviso fijo).
   const alta = useAccion();
   const tabla = useAccion();
@@ -46,7 +49,7 @@ export function PantallaUsuarios(): JSX.Element {
   const [rolNuevo, setRolNuevo] = useState<Rol>('caj');
   const [resultado, setResultado] = useState<Resultado | null>(null);
   const cantidad = lista.datos?.length ?? 0;
-  const lleno = lista.datos !== undefined && cantidad >= LIMITES_PANEL.usuarios;
+  const lleno = lista.datos !== undefined && cantidad >= tope;
 
   const buscar = (): void => {
     const buscado = correo.trim().toLowerCase();
@@ -98,7 +101,7 @@ export function PantallaUsuarios(): JSX.Element {
       <h1>Usuarios</h1>
       <Seccion titulo="Agregar una persona">
         {lleno ? (
-          <Alerta tipo="info">El plan incluye {LIMITES_PANEL.usuarios} usuarios y ya están todos ocupados. Para agregar a otra persona, quite primero el acceso de alguien.</Alerta>
+          <Alerta tipo="info">El plan incluye {tope} usuarios y ya están todos ocupados. Para agregar a otra persona, quite primero el acceso de alguien.</Alerta>
         ) : (
           <form class="formulario" onSubmit={(e) => { e.preventDefault(); buscar(); }} noValidate>
             <Campo etiqueta="Correo de la persona" tipo="email" inputMode="email" autocompletar="off" valor={correo} onInput={(v) => { setCorreo(v); setResultado(null); }} ayuda="La cuenta debe existir con correo y contraseña, y el correo debe estar verificado." />
@@ -118,8 +121,8 @@ export function PantallaUsuarios(): JSX.Element {
           </div>
         )}
       </Seccion>
-      <Seccion titulo={`Personas con acceso (${cantidad} de ${LIMITES_PANEL.usuarios})`}>
-        <p class="texto-suave">El plan incluye {LIMITES_PANEL.usuarios} usuarios. Solo el propietario de la plataforma puede cambiar o quitar a un administrador.</p>
+      <Seccion titulo={`Personas con acceso (${cantidad} de ${tope})`}>
+        <p class="texto-suave">El plan incluye {tope} usuarios. Solo el propietario de la plataforma puede cambiar o quitar a un administrador.</p>
         {lista.cargando && <Cargando />}
         {lista.error && <ErrorCarga error={lista.error} reintentar={lista.recargar} />}
         {tabla.error && <Alerta>{tabla.error}</Alerta>}

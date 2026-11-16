@@ -1,12 +1,15 @@
 // @vitest-environment jsdom
 import { h } from 'preact';
-import { cleanup, render, screen } from '@testing-library/preact';
+import { act, cleanup, render, screen, waitFor } from '@testing-library/preact';
 import { userEvent } from '@testing-library/user-event';
-import { afterEach, describe, expect, it } from 'vitest';
+import { afterEach, describe, expect, it, vi } from 'vitest';
 import { SesionDoble } from '../sesion/doble.js';
-import { Login, MENSAJE_RECUPERACION } from './login.js';
+import { ESPERA_RECUPERACION_S, Login, MENSAJE_RECUPERACION } from './login.js';
 
-afterEach(cleanup);
+afterEach(() => {
+  cleanup();
+  vi.useRealTimers();
+});
 
 const montar = (): SesionDoble => {
   const sesion = new SesionDoble();
@@ -72,5 +75,37 @@ describe('ingreso: recuperar y mostrar la contraseña', () => {
     const aviso = await screen.findByText(/Verifique su correo/);
     expect(aviso.textContent).not.toMatch(/\b(tu|te|tus|verifica)\b/i);
     expect(s.actual()).toBeNull();
+  });
+
+  it('tras pedir el enlace espera 60 s antes de permitir otro, con el motivo a la vista', async () => {
+    vi.useFakeTimers({ shouldAdvanceTime: true });
+    const s = montar();
+    const u = userEvent.setup({ advanceTimers: (ms) => vi.advanceTimersByTime(ms) });
+    await u.type(screen.getByLabelText(/Correo/), 'adm@ejemplo.test');
+    await u.click(screen.getByRole('button', { name: 'Olvidé mi contraseña' }));
+    await screen.findByText(MENSAJE_RECUPERACION);
+    expect(ESPERA_RECUPERACION_S).toBe(60);
+    expect(screen.getByText(/Podrá pedir otro enlace en 60 s/)).toBeTruthy();
+    await u.click(screen.getByRole('button', { name: 'Olvidé mi contraseña' }));
+    expect(s.restablecimientos).toHaveLength(1);
+    for (let i = 0; i < 30; i += 1) await act(() => { vi.advanceTimersByTime(1000); });
+    expect(screen.getByText(/Podrá pedir otro enlace en 30 s/)).toBeTruthy();
+    for (let i = 0; i < 31; i += 1) await act(() => { vi.advanceTimersByTime(1000); });
+    await waitFor(() => expect(screen.queryByText(/Podrá pedir otro enlace/)).toBeNull());
+    await u.click(screen.getByRole('button', { name: 'Olvidé mi contraseña' }));
+    expect(s.restablecimientos).toHaveLength(2);
+  });
+
+  it('al enviar el formulario la contraseña vuelve a ocultarse', async () => {
+    montar();
+    const u = userEvent.setup();
+    await u.type(screen.getByLabelText(/Correo/), 'adm@ejemplo.test');
+    await u.type(screen.getByLabelText(/Contraseña/), 'mal');
+    await u.click(screen.getByRole('button', { name: 'Mostrar contraseña' }));
+    expect((screen.getByLabelText(/Contraseña/) as HTMLInputElement).type).toBe('text');
+    await u.click(screen.getByRole('button', { name: 'Entrar' }));
+    await screen.findByText(/no son correctos/);
+    expect((screen.getByLabelText(/Contraseña/) as HTMLInputElement).type).toBe('password');
+    expect(screen.getByRole('button', { name: 'Mostrar contraseña' }).hasAttribute('aria-pressed')).toBe(false);
   });
 });

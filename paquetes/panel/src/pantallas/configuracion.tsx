@@ -46,7 +46,8 @@ function ConfigPosForm(): JSX.Element {
   const topesOk = bp.caj !== null && bp.sup !== null && bp.adm !== null;
   const guardar = (e: Event): void => {
     e.preventDefault();
-    if (!topesOk) return;
+    // El botón ya lo impide; el envío por teclado (Enter) también se valida aquí.
+    if (!topesOk || c.mediosHabilitados.length === 0 || c.negocio.nombre.trim() === '') return;
     const n = c.negocio;
     const config: ConfigPos = {
       negocio: { nombre: n.nombre.trim(), ...(opc(n.direccion ?? '') ? { direccion: opc(n.direccion ?? '') as string } : {}), ...(opc(n.telefono ?? '') ? { telefono: opc(n.telefono ?? '') as string } : {}), ...(opc(n.nit ?? '') ? { nit: opc(n.nit ?? '') as string } : {}) },
@@ -136,6 +137,7 @@ function PlantillaForm(): JSX.Element {
   const cambiarNegocio = (k: keyof PlantillaRecibo['negocio'], v: string): void => poner({ ...p, negocio: { ...n, [k]: v } });
   const guardar = (e: Event): void => {
     e.preventDefault();
+    if (n.nombre.trim() === '') return;
     const plantilla: PlantillaRecibo = {
       negocio: { nombre: n.nombre.trim(), ...(opc(n.direccion ?? '') ? { direccion: opc(n.direccion ?? '') as string } : {}), ...(opc(n.telefono ?? '') ? { telefono: opc(n.telefono ?? '') as string } : {}), ...(opc(n.nit ?? '') ? { nit: opc(n.nit ?? '') as string } : {}) },
       ...(opc(p.logoUrl ?? '') ? { logoUrl: opc(p.logoUrl ?? '') as string } : {}), ...(opc(p.pie ?? '') ? { pie: opc(p.pie ?? '') as string } : {}),
