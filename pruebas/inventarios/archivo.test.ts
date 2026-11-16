@@ -20,7 +20,7 @@ const HOJA = [
   ['xl-1', 'Hoja uno', 'c', 'XL-1', '12.50', '0.10'],
   ['xl-2', 'Hoja dos', 'c'], // fila corta: celdas finales vacías
 ];
-const simular = (f: FuenteTabla) => db.runTransaction((tx) => simularImportacionCsv(tx, { tenantId: T, por: ADM, csv: f }));
+const simular = (f: FuenteTabla) => db.runTransaction((tx) => simularImportacionCsv(tx, { catalogo: sinCatalogo, tenantId: T, por: ADM, csv: f }));
 
 describe('lectura de archivos (csv o xlsx por firma)', () => {
   it('xlsx con el doble del puerto: simulación e importación real', async () => {
@@ -29,7 +29,7 @@ describe('lectura de archivos (csv o xlsx por firma)', () => {
     // La segunda fila es nueva y sin SKU: error por fila y columna (se exige SKU; no se inventa).
     expect(sim.filas.map((f) => f.accion)).toEqual(['crear', 'error']);
     expect(sim.filas[1]?.errores).toEqual([{ columna: 'sku', motivo: 'es obligatorio para crear' }]);
-    const r = await importarCsvPorLotes(db, { tenantId: T, operacionId: op('xl'), por: ADM, csv: filas, omitirErrores: true, lineasOmitidas: [3] });
+    const r = await importarCsvPorLotes(db, { catalogo: sinCatalogo, tenantId: T, operacionId: op('xl'), por: ADM, csv: filas, omitirErrores: true, lineasOmitidas: [3] });
     expect(r).toMatchObject({ completa: true, creados: 1, omitidas: 1 });
     expect(doc(db, 'productos', 'xl-1')?.['precioUSD']).toEqual({ bo: 1250, ar: 10 });
     expect(doc(db, 'productos', 'xl-2')).toBeUndefined();
@@ -103,7 +103,7 @@ describe('exportación en USD con decimales: ida y vuelta', () => {
     const precioCambiado = sim.filas.filter((f) => f.cambios.includes('precioUSD'));
     expect(precioCambiado).toEqual([]);
     expect(sim.filas.every((f) => f.errores.length === 0)).toBe(true);
-    const r = await importarCsvPorLotes(db, { tenantId: T, operacionId: op('ida'), por: ADM, csv });
+    const r = await importarCsvPorLotes(db, { catalogo: sinCatalogo, tenantId: T, operacionId: op('ida'), por: ADM, csv });
     expect(r.completa).toBe(true);
     for (const [id, bo, ar] of precios) expect(doc(db, 'productos', id)?.['precioUSD']).toEqual({ bo, ar });
   });
@@ -113,3 +113,6 @@ describe('exportación en USD con decimales: ida y vuelta', () => {
     expect(sim.filas[0]?.accion).toBe('crear');
   });
 });
+
+/** Sin productos previos que reconocer: el catálogo es explícito, nunca se omite. */
+const sinCatalogo = (): Promise<never[]> => Promise.resolve([]);

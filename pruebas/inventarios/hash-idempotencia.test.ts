@@ -17,7 +17,10 @@ describe('hash de idempotencia idéntico al de main (tenant de tres monedas)', (
   it('tanda de importación (crear y actualizar, con stock)', async () => {
     const db = await nuevoEntorno();
     const csv = 'id,nombre,categoria,sku,precioBO,precioAR,costo,stockTienda\nlapiz,Lápiz,c,L-1,12.50,13.25,1.10,3\ngoma,Goma,c,G-1,,2.00,,\n';
-    await importarCsvPorLotes(db, { tenantId: T, operacionId: 'hash-imp', por: ADM, csv, cargaInicial: true });
+    await importarCsvPorLotes(db, { catalogo: sinCatalogo, tenantId: T, operacionId: 'hash-imp', por: ADM, csv, cargaInicial: true });
     expect(doc(db, 'operaciones', 'hash-imp-l1')?.['hashCarga']).toBe(HASH_IMPORTAR_LOTE);
   });
 });
+
+/** Sin productos previos que reconocer: el catálogo es explícito, nunca se omite. */
+const sinCatalogo = (): Promise<never[]> => Promise.resolve([]);

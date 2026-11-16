@@ -19,13 +19,13 @@ beforeEach(async () => {
 const CAB = 'id,nombre,categoria,sku,precioUSDbo,precioUSDar';
 const importar = (csv: string, extra: { operacionId?: string; por?: Autor; cargaInicial?: boolean; omitirErrores?: boolean; lineasOmitidas?: number[]; base?: DobleDb } = {}): Promise<ResultadoImportacion> =>
   importarCsvPorLotes(extra.base ?? db, {
-    tenantId: T, operacionId: extra.operacionId ?? op('imp'), por: extra.por ?? ADM, csv,
+    catalogo: sinCatalogo, tenantId: T, operacionId: extra.operacionId ?? op('imp'), por: extra.por ?? ADM, csv,
     ...(extra.cargaInicial !== undefined ? { cargaInicial: extra.cargaInicial } : {}),
     ...(extra.omitirErrores !== undefined ? { omitirErrores: extra.omitirErrores } : {}),
     ...(extra.lineasOmitidas !== undefined ? { lineasOmitidas: extra.lineasOmitidas } : {}),
   });
 const simular = (csv: string, por: Autor = ADM, cargaInicial = false): Promise<Simulacion> =>
-  db.runTransaction((tx) => simularImportacionCsv(tx, { tenantId: T, por, csv, cargaInicial }));
+  db.runTransaction((tx) => simularImportacionCsv(tx, { catalogo: sinCatalogo, tenantId: T, por, csv, cargaInicial }));
 const eventos = () => db.coleccion(`tenants/${T}/eventos`).filter((e) => e.datos['tipo'] === 'producto.cambiado');
 const filasNuevas = (n: number, desde = 0): string => Array.from({ length: n }, (_, i) => `p${String(desde + i)}x,Nombre,c,K${String(desde + i)},100,200`).join('\n');
 
@@ -172,3 +172,6 @@ describe('importación por lotes', () => {
     await expect(importar(`${CAB}\na1,x,p,S-1,1,1\n`, { por: SUP })).rejects.toBeInstanceOf(SinPermiso);
   });
 });
+
+/** Sin productos previos que reconocer: el catálogo es explícito, nunca se omite. */
+const sinCatalogo = (): Promise<never[]> => Promise.resolve([]);

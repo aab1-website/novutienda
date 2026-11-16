@@ -13,7 +13,7 @@ beforeEach(async () => {
 
 const CAB = 'id,nombre,categoria,sku,precioUSDbo,precioUSDar';
 const importar = (csv: string, extra: { omitirErrores?: boolean; lineasOmitidas?: number[]; lectura?: LecturaSinBloqueo; presupuestoMs?: number; ahora?: () => number; base?: Pick<DobleDb, 'runTransaction'> } = {}) =>
-  importarCsvPorLotes(extra.base ?? db, { tenantId: T, operacionId: op('imp'), por: ADM, csv, ...extra, ...{ base: undefined } });
+  importarCsvPorLotes(extra.base ?? db, { catalogo: sinCatalogo, tenantId: T, operacionId: op('imp'), por: ADM, csv, ...extra, ...{ base: undefined } });
 
 describe('omitirErrores exige las líneas que la persona vio', () => {
   const csv = `${CAB}\nbuena,Buena,c,B-1,1,1\nMAL ID,x,c,B-2,1,1\notra,Otra,c,B-3,1,1\n`;
@@ -59,7 +59,7 @@ describe('simulación sin bloqueo y plazo', () => {
         return Promise.resolve({ existe: d !== undefined, data: () => d });
       },
     };
-    const r = await importarCsvPorLotes(base, { tenantId: T, operacionId: op('imp'), por: ADM, csv: `${CAB}\na1,A,c,S-1,1,1\n`, lectura, presupuestoMs: 500, ahora: () => t });
+    const r = await importarCsvPorLotes(base, { catalogo: sinCatalogo, tenantId: T, operacionId: op('imp'), por: ADM, csv: `${CAB}\na1,A,c,S-1,1,1\n`, lectura, presupuestoMs: 500, ahora: () => t });
     expect(transacciones).toBe(0);
     expect(r).toMatchObject({ completa: false, creados: 0, lotes: { total: 1, aplicados: 0 } });
     expect(r.detencion).toMatch(/tiempo/);
@@ -68,7 +68,7 @@ describe('simulación sin bloqueo y plazo', () => {
 
   it('simularImportacionCsv acepta solo lecturas (sin tx)', async () => {
     const lectura: LecturaSinBloqueo = { get: (ruta) => { const d = db.dato(ruta); return Promise.resolve({ existe: d !== undefined, data: () => d }); } };
-    const sim = await simularImportacionCsv(lectura, { tenantId: T, por: ADM, csv: `${CAB}\na1,A,c,S-1,1,1\n` });
+    const sim = await simularImportacionCsv(lectura, { catalogo: sinCatalogo, tenantId: T, por: ADM, csv: `${CAB}\na1,A,c,S-1,1,1\n` });
     expect(sim.resumen.crear).toBe(1);
   });
 });
@@ -93,7 +93,7 @@ describe('ida y vuelta de la neutralización', () => {
     }
     const csv = exportarProductosCsv(filas, COMERCIAL_TRES);
     expect(csv).toContain("'-Cable");
-    const sim = await db.runTransaction((tx) => simularImportacionCsv(tx, { tenantId: T, por: ADM, csv }));
+    const sim = await db.runTransaction((tx) => simularImportacionCsv(tx, { catalogo: sinCatalogo, tenantId: T, por: ADM, csv }));
     expect(sim.filas.map((f) => f.accion)).toEqual(Array(nombres.length).fill('sin-cambios'));
     const antes = JSON.stringify(db.coleccion(`tenants/${T}/productos`));
     const r = await importar(csv);
@@ -126,7 +126,7 @@ describe('celdas numéricas de Excel', () => {
 
   it('un SKU que Excel dejó sin ceros a la izquierda pide formatear la columna como texto', async () => {
     await altaProducto(db, producto('cable', { sku: '00123' }));
-    const sim = await db.runTransaction((tx) => simularImportacionCsv(tx, { tenantId: T, por: ADM, csv: `${CAB}\ncable,Cable,general,123,1,1\n` }));
+    const sim = await db.runTransaction((tx) => simularImportacionCsv(tx, { catalogo: sinCatalogo, tenantId: T, por: ADM, csv: `${CAB}\ncable,Cable,general,123,1,1\n` }));
     expect(sim.filas[0]?.accion).toBe('error');
     expect(sim.filas[0]?.errores[0]?.motivo).toMatch(/formatee la columna SKU como texto en Excel/);
   });
@@ -138,3 +138,5 @@ describe('celdas numéricas de Excel', () => {
   });
 });
 
+/** Sin productos previos que reconocer: el catálogo es explícito, nunca se omite. */
+const sinCatalogo = (): Promise<never[]> => Promise.resolve([]);

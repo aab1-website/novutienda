@@ -189,6 +189,16 @@ function planificar(c: Contexto, f: Fila, nuevos: number, asignados: Set<string>
       return { accion: 'error', errores: [{ columna: 'sku', motivo: 'La columna codigo ahora es el SKU; esta planilla parece usar el código anterior de los productos. Use la columna sku con el SKU de cada producto' }], advertencias, cambios, id: f.id, ...nombreSku };
     }
   }
+  if (f.id === '' && d.sku !== undefined && dueno !== undefined) {
+    if (f.skuDeCodigo === true && dueno.id !== d.sku && c.e.productos.has(d.sku)) {
+      return { accion: 'error', errores: [{ columna: 'sku', motivo: `Esta planilla es ambigua: «${d.sku}» es el SKU de un producto y también el código anterior de otro. Use una columna sku con el SKU de cada producto` }], advertencias, cambios, id: f.id, ...nombreSku };
+    }
+    if (/^\d+$/.test(d.sku)) {
+      const sinCeros = (t: string): string => t.replace(/^0+/, '');
+      const conCeros = [...c.e.productos.values()].find((p) => p.sku !== d.sku && /^0+\d+$/.test(p.sku) && sinCeros(p.sku) === sinCeros(d.sku as string));
+      if (conCeros !== undefined) advertencias.push(`Existe otro producto con SKU ${conCeros.sku}: verifique que Excel no haya quitado ceros a la izquierda`);
+    }
+  }
   let id = f.id;
   let previo: ProductoInterno | undefined;
   if (id === '') {

@@ -37,7 +37,7 @@ const lecturaSinBloqueo = (c: Contexto): LecturaSinBloqueo => ({
 
 /** Todos los productos del comercio (id, SKU y nombre), una sola vez: la importación reconoce filas sin id con ellos. */
 const catalogoDe = (c: Contexto): LeerCatalogo => async () =>
-  (await c.e.firestore.collection(ruta(c.tenantId, 'productos')).get()).docs.map((p) => ({ id: p.id, sku: String(p.data()['sku'] ?? ''), nombre: String(p.data()['nombre'] ?? '') }));
+  (await c.e.firestore.collection(ruta(c.tenantId, 'productos')).select('sku', 'nombre').get()).docs.map((p) => ({ id: p.id, sku: String(p.data()['sku'] ?? ''), nombre: String(p.data()['nombre'] ?? '') }));
 
 /** Lector de hojas (.xlsx) que inyecta el coordinador en el entorno; sin él, un .xlsx se rechaza con un mensaje claro. */
 const lectorDe = (c: Contexto): LectorHojas | undefined => c.e.lectorHojas;

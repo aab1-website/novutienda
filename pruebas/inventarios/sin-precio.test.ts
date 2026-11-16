@@ -109,7 +109,7 @@ describe('edición', () => {
 });
 
 describe('importación y exportación', () => {
-  const imp = (csv: string) => db.runTransaction((tx) => importarProductosCsv(tx, { tenantId: T, operacionId: op('imp'), por: ADM, csv, comercial: COMERCIAL_TRES_PE }));
+  const imp = (csv: string) => db.runTransaction((tx) => importarProductosCsv(tx, { catalogo: sinCatalogo, tenantId: T, operacionId: op('imp'), por: ADM, csv, comercial: COMERCIAL_TRES_PE }));
 
   it('cambiar solo un mercado de un producto existente deja el otro ausente, no en 0', async () => {
     sembrar('prod-a', { bo: 100, ar: 200 });
@@ -125,7 +125,10 @@ describe('importación y exportación', () => {
     const leido = await db.runTransaction((tx) => leerProducto(tx, T, 'prod-a', COMERCIAL_TRES_PE));
     const csv = exportarProductosCsv([{ id: 'prod-a', nombre: 'Producto prod-a', categoria: 'c', sku: 'SKU-prod-a', conSerie: false, precioUSD: { ...leido!.precioCentavos }, activo: true, publicado: false }], COMERCIAL_TRES_PE);
     expect(csv.split('\r\n')[1]).toContain(',1.00,2.00,,');
-    const sim = await db.runTransaction((tx) => simularImportacionCsv(tx, { tenantId: T, por: ADM, csv, comercial: COMERCIAL_TRES_PE }));
+    const sim = await db.runTransaction((tx) => simularImportacionCsv(tx, { catalogo: sinCatalogo, tenantId: T, por: ADM, csv, comercial: COMERCIAL_TRES_PE }));
     expect(sim.filas[0]?.accion).toBe('sin-cambios');
   });
 });
+
+/** Sin productos previos que reconocer: el catálogo es explícito, nunca se omite. */
+const sinCatalogo = (): Promise<never[]> => Promise.resolve([]);

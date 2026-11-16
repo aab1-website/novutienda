@@ -36,14 +36,14 @@ describe('consola:producto.cambiado cuenta cada cambio de producto una vez', () 
 
   it('la importación CSV de Inventarios de N productos suma N (un evento por producto)', async () => {
     const csv = ['id,nombre,categoria,sku,precioUSDbo,precioUSDar', ...[1, 2, 3].map((n) => `imp-${String(n)},Imp ${String(n)},general,SKU-IMP-${String(n)},10,10`)].join('\n');
-    await e.db.runTransaction((tx) => importarProductosCsv(tx, { tenantId: T, operacionId: op(), por: ADM, csv }));
+    await e.db.runTransaction((tx) => importarProductosCsv(tx, { catalogo: sinCatalogo, tenantId: T, operacionId: op(), por: ADM, csv }));
     expect(eventosDe(e, T, 'producto.cambiado')).toHaveLength(5);
     expect(await entregar()).toBe(3);
   });
 
   it('la importación de Inventarios que actualiza datos y precio de un producto existente y crea otro suma un cambio por producto', async () => {
     const csv = 'id,nombre,categoria,sku,precioUSDbo,precioUSDar\nlapiz,Lápiz 2,general,SKU-lapiz,15,15\nnuevo,Nuevo,general,SKU-nuevo,5,5\n';
-    await e.db.runTransaction((tx) => importarProductosCsv(tx, { tenantId: T, operacionId: op(), por: ADM, csv }));
+    await e.db.runTransaction((tx) => importarProductosCsv(tx, { catalogo: sinCatalogo, tenantId: T, operacionId: op(), por: ADM, csv }));
     expect(await entregar()).toBe(2); // lapiz: un evento con datos y precio juntos; nuevo: alta
   });
 
@@ -71,3 +71,6 @@ describe('consola:producto.cambiado cuenta cada cambio de producto una vez', () 
     expect(doc(e, T, 'sitio/estado')).toMatchObject({ cambios: 2 });
   });
 });
+
+/** Sin productos previos que reconocer: el catálogo es explícito, nunca se omite. */
+const sinCatalogo = (): Promise<never[]> => Promise.resolve([]);

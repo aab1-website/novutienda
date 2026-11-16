@@ -35,7 +35,7 @@ describe('CSV de productos del tenant de referencia', () => {
 
   it('simulación: volver a importar lo exportado no cambia nada', async () => {
     const { e, productos } = await exportables();
-    const sim = await e.db.runTransaction((tx) => simularImportacionCsv(tx, { tenantId: T, por: ADM, csv: exportarProductosCsv(productos, COMERCIAL), cargaInicial: false }));
+    const sim = await e.db.runTransaction((tx) => simularImportacionCsv(tx, { catalogo: sinCatalogo, tenantId: T, por: ADM, csv: exportarProductosCsv(productos, COMERCIAL), cargaInicial: false }));
     expect(sim.resumen.errores).toBe(0);
     expect(sim.resumen.crear + sim.resumen.actualizar).toBe(0);
     compararConFotoJson('inventarios-simulacion-roundtrip.json', sim);
@@ -55,7 +55,7 @@ describe('CSV de productos del tenant de referencia', () => {
       'Negativo,general,,SKU-neg,false,,,-5,1,,true,true',
     ].join('\r\n') + '\r\n';
     const antes = JSON.stringify([...e.db.docs]);
-    const sim = await e.db.runTransaction((tx) => simularImportacionCsv(tx, { tenantId: T, por: ADM, csv, cargaInicial: false }));
+    const sim = await e.db.runTransaction((tx) => simularImportacionCsv(tx, { catalogo: sinCatalogo, tenantId: T, por: ADM, csv, cargaInicial: false }));
     expect(JSON.stringify([...e.db.docs])).toBe(antes); // simular no escribe
     compararConFotoJson('inventarios-simulacion-cambios.json', { csv, simulacion: sim });
   });
@@ -65,7 +65,7 @@ describe('CSV de productos del tenant de referencia', () => {
     const sinId = exportarProductosCsv(productos, COMERCIAL);
     expect(sinId.split('\r\n')[0]?.startsWith('id,')).toBe(false); // la exportación ya no trae id
     const conId = sinId.split('\r\n').filter((l) => l !== '').map((l, i) => (i === 0 ? `id,${l}` : `${productos[i - 1]?.id ?? ''},${l}`)).join('\r\n') + '\r\n';
-    const simular = (csv: string): ReturnType<typeof simularImportacionCsv> => e.db.runTransaction((tx) => simularImportacionCsv(tx, { tenantId: T, por: ADM, csv, cargaInicial: false }));
+    const simular = (csv: string): ReturnType<typeof simularImportacionCsv> => e.db.runTransaction((tx) => simularImportacionCsv(tx, { catalogo: sinCatalogo, tenantId: T, por: ADM, csv, cargaInicial: false }));
     const viejo = await simular(conId);
     expect(viejo.resumen.errores).toBe(0);
     expect(viejo.resumen.crear + viejo.resumen.actualizar).toBe(0);
@@ -74,3 +74,6 @@ describe('CSV de productos del tenant de referencia', () => {
     expect(JSON.stringify(malo)).toContain('id inválido');
   });
 });
+
+/** Sin productos previos que reconocer: el catálogo es explícito, nunca se omite. */
+const sinCatalogo = (): Promise<never[]> => Promise.resolve([]);

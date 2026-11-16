@@ -17,7 +17,7 @@ beforeEach(async () => {
 });
 
 const importar = (csv: string, cargaInicial = false, por: Autor = ADM, operacionId = op('csv')) =>
-  db.runTransaction((tx) => importarProductosCsv(tx, { tenantId: T, operacionId, por, csv, cargaInicial }));
+  db.runTransaction((tx) => importarProductosCsv(tx, { catalogo: sinCatalogo, tenantId: T, operacionId, por, csv, cargaInicial }));
 
 const CAB = 'id,nombre,categoria,sku,precioUSDbo,precioUSDar';
 
@@ -98,3 +98,6 @@ describe('CSV', () => {
     expect(analizarCsv(csv)).toHaveLength(3);
   });
 });
+
+/** Sin productos previos que reconocer: el catálogo es explícito, nunca se omite. */
+const sinCatalogo = (): Promise<never[]> => Promise.resolve([]);

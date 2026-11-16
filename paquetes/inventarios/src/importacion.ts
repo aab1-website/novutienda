@@ -475,6 +475,18 @@ async function planificarFila(lector: Lector, fila: FilaLeida, comercial: Config
       return plan;
     }
   }
+  if (fila.id === '' && d.sku !== undefined && dueno !== undefined) {
+    // Planilla vieja: el valor de `codigo` es el SKU de un producto Y la clave anterior de otro: ambiguo, no se toca nada.
+    if (fila.skuDeCodigo === true && dueno !== d.sku && (catalogo.some((p) => p.id === d.sku) || (esProductoId(d.sku) && (await lector.leer('productos', d.sku)) !== undefined))) {
+      plan.errores.push(ERR('sku', `Esta planilla es ambigua: «${d.sku}» es el SKU de un producto y también el código anterior de otro. Use una columna sku con el SKU de cada producto`));
+      return plan;
+    }
+    // Se respeta el SKU exacto, pero si otro producto tiene el mismo SKU con ceros a la izquierda puede ser que Excel los quitara.
+    if (/^\d+$/.test(d.sku)) {
+      const conCeros = catalogo.find((p) => p.sku !== d.sku && /^0+\d+$/.test(p.sku) && sinCeros(p.sku) === sinCeros(d.sku as string));
+      if (conCeros !== undefined) plan.advertencias.push(`Existe otro producto con SKU ${conCeros.sku}: verifique que Excel no haya quitado ceros a la izquierda`);
+    }
+  }
   let previo: Datos | undefined;
   if (fila.id === '') {
     // Sin id: el producto es el que tiene ese SKU; si nadie lo tiene, se crea con una clave generada.
@@ -605,12 +617,12 @@ async function leer(
  */
 export async function simularImportacionCsv(
   tx: LecturaSinBloqueo,
-  e: { tenantId: string; por: Autor; csv: FuenteTabla; cargaInicial?: boolean; comercial?: ConfiguracionComercial; catalogo?: LeerCatalogo },
+  e: { tenantId: string; por: Autor; csv: FuenteTabla; cargaInicial?: boolean; comercial?: ConfiguracionComercial; catalogo: LeerCatalogo },
 ): Promise<Simulacion> {
   const por = exigirAutor(e.por);
   if (!PERMISOS.importacion.includes(por.rol)) throw new SinPermiso(`El rol ${por.rol} no puede ejecutar importar-csv`);
   const { lector, lectura, comercial } = await leer(tx, e.tenantId, e.csv, e.cargaInicial === true, e.comercial);
-  const catalogo = e.catalogo === undefined ? [] : await e.catalogo();
+  const catalogo = await e.catalogo();
   const { usado, tope } = await leerCupo(lector, e.tenantId, 'productos');
   let creados = 0;
   const filas: FilaSimulada[] = [];
@@ -709,7 +721,7 @@ async function importarLote(
  */
 export async function importarProductosCsv(
   tx: TransaccionIdentidad,
-  e: { tenantId: string; operacionId: string; por: Autor; csv: FuenteTabla; cargaInicial?: boolean; comercial?: ConfiguracionComercial; catalogo?: LeerCatalogo },
+  e: { tenantId: string; operacionId: string; por: Autor; csv: FuenteTabla; cargaInicial?: boolean; comercial?: ConfiguracionComercial; catalogo: LeerCatalogo },
 ): Promise<ResultadoOperacion<Datos>> {
   const cargaInicial = e.cargaInicial === true;
   const { lectura, comercial } = await leer(tx, e.tenantId, e.csv, cargaInicial, e.comercial);
@@ -720,7 +732,7 @@ export async function importarProductosCsv(
   if (mal.length > 0) {
     throw new EntradaInvalida(`CSV rechazado (${String(mal.length)} error(es))`, mal.slice(0, 20).map((f) => `línea ${String(f.linea)}: ${f.errores.map((x) => x.motivo).join('; ')}`));
   }
-  return importarLote(tx, { tenantId: e.tenantId, operacionId: e.operacionId, por: e.por, cargaInicial, filas: lectura.filas, comercial, reservados: new Set(lectura.filas.map((f) => f.id).filter((x) => x !== '')), catalogo: e.catalogo === undefined ? [] : await e.catalogo() });
+  return importarLote(tx, { tenantId: e.tenantId, operacionId: e.operacionId, por: e.por, cargaInicial, filas: lectura.filas, comercial, reservados: new Set(lectura.filas.map((f) => f.id).filter((x) => x !== '')), catalogo: await e.catalogo() });
 }
 
 export interface BaseTransaccional {
@@ -753,7 +765,7 @@ export interface ResultadoImportacion {
  */
 export async function importarCsvPorLotes(
   db: BaseTransaccional,
-  e: { tenantId: string; operacionId: string; por: Autor; csv: FuenteTabla; cargaInicial?: boolean; omitirErrores?: boolean; lineasOmitidas?: readonly number[]; catalogo?: LeerCatalogo; lectura?: LecturaSinBloqueo; presupuestoMs?: number; ahora?: () => number; comercial?: ConfiguracionComercial },
+  e: { tenantId: string; operacionId: string; por: Autor; csv: FuenteTabla; cargaInicial?: boolean; omitirErrores?: boolean; lineasOmitidas?: readonly number[]; catalogo: LeerCatalogo; lectura?: LecturaSinBloqueo; presupuestoMs?: number; ahora?: () => number; comercial?: ConfiguracionComercial },
 ): Promise<ResultadoImportacion> {
   exigirSegmento(e.operacionId, 'operacionId');
   // El plazo cuenta desde el principio: la simulación de hasta 1000 filas también gasta tiempo de la llamada.
@@ -768,7 +780,7 @@ export async function importarCsvPorLotes(
     ? resolverComercial(new Lector(e.lectura, exigirTenant(e.tenantId)), e.tenantId)
     : db.runTransaction((tx) => resolverComercial(new Lector(tx, exigirTenant(e.tenantId)), e.tenantId)));
   // Todos los productos, leídos una sola vez: sirven a la simulación y a todas las tandas.
-  const catalogo = e.catalogo === undefined ? [] : await e.catalogo();
+  const catalogo = await e.catalogo();
   const leerCat: LeerCatalogo = () => Promise.resolve(catalogo);
   const simulacion =
     e.lectura !== undefined

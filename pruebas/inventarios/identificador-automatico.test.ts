@@ -193,3 +193,27 @@ describe('sin id: SKU que Excel recortó, producto antiguo, nombre repetido y pl
     expect(vieja.filas[0]?.errores[0]?.motivo).toMatch(/SKU o el id/);
   });
 });
+
+describe('ceros perdidos y planilla ambigua con los dos productos', () => {
+  it('«123» actualiza el SKU exacto pero avisa que existe «0123»', async () => {
+    await altaProducto(db, producto('cero', { sku: '0123' }));
+    await altaProducto(db, producto('exacto', { sku: '123' }));
+    const sim = await simular(`${SIN_ID}\nOtro,c,123,1,1\n`);
+    expect(sim.filas[0]).toMatchObject({ accion: 'actualizar', id: 'exacto' });
+    expect(sim.filas[0]?.advertencias).toContain('Existe otro producto con SKU 0123: verifique que Excel no haya quitado ceros a la izquierda');
+  });
+
+  it('`codigo` que es el SKU de A y la clave anterior de B es ambiguo: error y no se actualiza nada', async () => {
+    await altaProducto(db, producto('lapiz'));
+    await altaProducto(db, producto('goma', { sku: 'lapiz' }));
+    const sim = await simular('codigo,nombre,categoria\nlapiz,Cambiado,c\n');
+    expect(sim.filas[0]?.accion).toBe('error');
+    expect(sim.filas[0]?.errores[0]?.motivo).toMatch(/ambigua/);
+    await expect(importar('codigo,nombre,categoria\nlapiz,Cambiado,c\n')).rejects.toThrow(/con errores/);
+    expect(doc(db, 'productos', 'goma')).toMatchObject({ nombre: 'Producto goma' });
+  });
+
+  it('sin catálogo explícito la importación no corre (no se apagan los controles en silencio)', async () => {
+    await expect(importarCsvPorLotes(db, { tenantId: T, operacionId: op('x'), por: ADM, csv: `${SIN_ID}\nA,c,A-1,1,1\n` } as never)).rejects.toThrow();
+  });
+});

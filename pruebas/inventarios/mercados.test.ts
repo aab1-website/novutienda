@@ -74,13 +74,13 @@ describe('comercio de UN mercado (PE, sin tipo de cambio)', () => {
 
   it('la importación acepta solo su columna y avisa que ignora las de otros mercados', async () => {
     const csv = 'id,nombre,categoria,sku,precioPE,precioBO\nlapiz,Lápiz,c,L-1,12.50,9.99\n';
-    const sim = await db.runTransaction((tx) => simularImportacionCsv(tx, { tenantId: T, por: ADM, csv }));
+    const sim = await db.runTransaction((tx) => simularImportacionCsv(tx, { catalogo: sinCatalogo, tenantId: T, por: ADM, csv }));
     expect(sim.columnasIgnoradas).toEqual(['precioBO']);
     expect(sim.filas[0]?.accion).toBe('crear');
-    const r = await importarCsvPorLotes(db, { tenantId: T, operacionId: op('imp'), por: ADM, csv });
+    const r = await importarCsvPorLotes(db, { catalogo: sinCatalogo, tenantId: T, operacionId: op('imp'), por: ADM, csv });
     expect(r).toMatchObject({ completa: true, creados: 1 });
     expect(doc(db, 'productos', 'lapiz')?.['precioUSD']).toEqual({ pe: 1250 });
-    await db.runTransaction((tx) => importarProductosCsv(tx, { tenantId: T, operacionId: op('imp'), por: ADM, csv: 'id,nombre,categoria,sku,precioPENpe\nboli,Bolí,c,B-1,300\n' }));
+    await db.runTransaction((tx) => importarProductosCsv(tx, { catalogo: sinCatalogo, tenantId: T, operacionId: op('imp'), por: ADM, csv: 'id,nombre,categoria,sku,precioPENpe\nboli,Bolí,c,B-1,300\n' }));
     expect(doc(db, 'productos', 'boli')?.['precioUSD']).toEqual({ pe: 300 });
   });
 
@@ -89,7 +89,7 @@ describe('comercio de UN mercado (PE, sin tipo de cambio)', () => {
     const csv = exportarProductosCsv([{ id: 'lapiz', nombre: 'Producto lapiz', categoria: 'general', sku: 'SKU-lapiz', conSerie: false, precioUSD: { pe: 1500 }, activo: true, publicado: false }], COMERCIAL_UN_MERCADO);
     expect(csv.split('\r\n')[0]).toBe('nombre,categoria,marca,sku,conSerie,garantiaMeses,minimo,precioPE,costo,activo,publicado');
     expect(csv.split('\r\n')[1]).toContain(',15.00,');
-    const sim = await db.runTransaction((tx) => simularImportacionCsv(tx, { tenantId: T, por: ADM, csv }));
+    const sim = await db.runTransaction((tx) => simularImportacionCsv(tx, { catalogo: sinCatalogo, tenantId: T, por: ADM, csv }));
     expect(sim.columnasIgnoradas).toEqual([]);
     expect(sim.filas[0]?.accion).toBe('sin-cambios');
   });
@@ -124,7 +124,7 @@ describe('falla cerrado: sin configuración comercial válida no hay operación'
   it('tenant inexistente', async () => {
     db.poner(`tenants/${T}`, undefined);
     await expect(altaProducto(db, producto('x1'))).rejects.toBeInstanceOf(EstadoInvalido);
-    await expect(db.runTransaction((tx) => simularImportacionCsv(tx, { tenantId: T, por: ADM, csv: 'id,nombre\na,b\n' }))).rejects.toBeInstanceOf(EstadoInvalido);
+    await expect(db.runTransaction((tx) => simularImportacionCsv(tx, { catalogo: sinCatalogo, tenantId: T, por: ADM, csv: 'id,nombre\na,b\n' }))).rejects.toBeInstanceOf(EstadoInvalido);
   });
   it('comercial inválido (mercado sin moneda de venta declarada)', async () => {
     db.poner(`tenants/${T}`, { ...UNO, comercial: { mercados: [{ id: 'pe' }], monedas: ['PEN'] } });
@@ -182,3 +182,6 @@ describe('exportarProductosCsvLegado (@deprecated)', () => {
     expect(exportarProductosCsvLegado([fila])).toBe(exportarProductosCsv([fila], COMERCIAL_TRES));
   });
 });
+
+/** Sin productos previos que reconocer: el catálogo es explícito, nunca se omite. */
+const sinCatalogo = (): Promise<never[]> => Promise.resolve([]);

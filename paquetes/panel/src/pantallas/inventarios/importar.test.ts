@@ -365,4 +365,18 @@ describe('importar: el producto se reconoce por su SKU (el doble se comporta com
     const sinSku = await e.api.llamar('simularImportacionProductos', { csv: 'nombre,categoria,sku\r\nX,C,\r\n' });
     expect(sinSku.filas[0]?.errores[0]?.motivo).toBe('Falta el SKU: cada producto se reconoce por su SKU');
   });
+
+  it('«123» actualiza el SKU exacto y avisa de «0123»; `codigo` ambiguo (SKU de uno y clave de otro) es error', async () => {
+    const e = crearEntorno('adm');
+    const precioUSD = { bo: 100, ar: 100 } as never;
+    await e.api.llamar('crearProducto', { operacionId: 'o1', producto: { id: 'cero', nombre: 'Cero', categoria: 'C', sku: '0123', precioUSD } });
+    await e.api.llamar('crearProducto', { operacionId: 'o2', producto: { id: 'exacto', nombre: 'Exacto', categoria: 'C', sku: '123', precioUSD } });
+    const sim = await e.api.llamar('simularImportacionProductos', { csv: `${CAB_SIN_ID}Otro,C,123,1,1\r\n` });
+    expect(sim.filas[0]?.accion).toBe('actualizar');
+    expect(sim.filas[0]?.advertencias).toContain('Existe otro producto con SKU 0123: verifique que Excel no haya quitado ceros a la izquierda');
+    await e.api.llamar('crearProducto', { operacionId: 'o3', producto: { id: 'lapiz', nombre: 'Lápiz', categoria: 'C', sku: 'LAP-1', precioUSD } });
+    await e.api.llamar('crearProducto', { operacionId: 'o4', producto: { id: 'goma', nombre: 'Goma', categoria: 'C', sku: 'lapiz', precioUSD } });
+    const amb = await e.api.llamar('simularImportacionProductos', { csv: 'codigo,nombre,categoria\r\nlapiz,X,C\r\n' });
+    expect(amb.filas[0]?.errores[0]?.motivo).toMatch(/ambigua/);
+  });
 });
