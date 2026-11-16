@@ -40,7 +40,7 @@ export function BloqueLogo(): JSX.Element {
     const input = e.currentTarget as HTMLInputElement;
     const f = input.files?.[0];
     input.value = '';
-    if (f !== undefined) subida.elegir(f);
+    if (f !== undefined && !quitar.ocupado) subida.elegir(f);
   };
   const quitarLogo = (): void =>
     void quitar.ejecutar(async () => {
@@ -60,7 +60,7 @@ export function BloqueLogo(): JSX.Element {
         <>
           <p class="texto-suave">{TEXTO_FORMATOS_LOGO}, hasta 2 MB (no se admite SVG). El logo se guarda al subirlo: no depende de «Guardar apariencia».</p>
           <div class="fila">
-            <Boton onClick={() => entrada.current?.click()} ocupado={subida.enCurso} motivo={subida.enCurso ? 'Hay una subida en curso' : undefined}>
+            <Boton onClick={() => entrada.current?.click()} motivo={subida.enCurso ? 'Hay una subida en curso' : quitar.ocupado ? 'Se está quitando el logo' : undefined}>
               {hayLogo ? 'Reemplazar logo' : 'Subir logo'}
             </Boton>
             {hayLogo && <BotonConfirmado texto="Quitar logo" pregunta="¿Quitar el logo del negocio?" resumen="El sitio dejará de mostrarlo cuando se publique." textoConfirmar="Sí, quitar" peligro deshabilitado={subida.enCurso || quitar.ocupado} onConfirmar={quitarLogo} />}

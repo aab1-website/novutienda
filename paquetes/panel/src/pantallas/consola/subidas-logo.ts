@@ -35,7 +35,8 @@ export function validarLogo(a: Pick<File, 'name' | 'size' | 'type'>): string | u
 const pausa = (ms: number): Promise<void> => new Promise((r) => setTimeout(r, ms));
 
 /** Como `esperarSubida` de las fotos, con las acciones del logo: consulta el estado y, pasado el respaldo, finaliza una vez. */
-export async function esperarSubidaLogo(api: ClienteApi, subidaId: string, o: OpcionesEspera = {}): Promise<MedioLogo> {
+export async function esperarSubidaLogo(api: ClienteApi, subidaId: string, o: OpcionesEspera & { readonly cancelado?: () => boolean } = {}): Promise<MedioLogo> {
+  const cancelado = o.cancelado ?? ((): boolean => false);
   const esperar = o.esperar ?? pausa;
   const ahora = o.ahora ?? ((): number => Date.now());
   const respaldoTrasMs = o.respaldoTrasMs ?? RESPALDO_TRAS_MS;
@@ -43,6 +44,7 @@ export async function esperarSubidaLogo(api: ClienteApi, subidaId: string, o: Op
   let espera = ESPERA_INICIAL_MS;
   let respaldoHecho = false;
   for (;;) {
+    if (cancelado()) throw new Error('subida abandonada');
     try {
       const r = await api.llamar('estadoSubidaLogo', { subidaId });
       if (r.estado === 'procesada' && r.medio !== undefined) return r.medio;
@@ -52,6 +54,7 @@ export async function esperarSubidaLogo(api: ClienteApi, subidaId: string, o: Op
       const transitorio = e instanceof ErrorApi && (e.codigoHttps === 'unavailable' || e.codigoHttps === 'deadline-exceeded');
       if (!transitorio) throw e;
     }
+    if (cancelado()) throw new Error('subida abandonada');
     if (!respaldoHecho && ahora() - inicio >= respaldoTrasMs) {
       respaldoHecho = true;
       try {
@@ -137,7 +140,9 @@ export function useSubidaLogo(alListo: (medio: MedioLogo) => void): SubidaLogo {
       const inicio = Date.now();
       ir('procesando', { segundos: 0 });
       reloj = setInterval(() => cambiar({ segundos: Math.round((Date.now() - inicio) / 1000) }), 1000);
+      // El almacén no permite cancelar la subida en curso: al salir de la pantalla solo se deja de esperar y nunca se finaliza.
       const medio = await esperarSubidaLogo(api, id, {
+        cancelado: () => abandonado.current,
         esperar: async (ms) => {
           if (abandonado.current) throw new Error('subida abandonada');
           await pausa(ms);

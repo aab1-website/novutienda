@@ -384,6 +384,48 @@ describe('catálogo: logo del negocio', () => {
     expect(await screen.findByText(/la vista previa no está disponible/)).toBeTruthy();
     expect(screen.queryByAltText('Logo del negocio')).toBeNull();
   });
+  it('al salir de la pantalla a mitad de la subida no se finaliza ni se avisa', async () => {
+    const e = crearEntorno('adm');
+    e.api.estado.disparador.demoraMs = Infinity;
+    const { unmount } = render(e.envolver(h(ProveedorGuardia, null, h(PantallaCatalogo, { sub: 'apariencia' }))));
+    await subir();
+    await waitFor(() => expect(e.api.llamadas.some((l) => l.nombre === 'estadoSubidaLogo')).toBe(true));
+    unmount();
+    await new Promise((r) => setTimeout(r, 400));
+    expect(e.api.llamadas.some((l) => l.nombre === 'finalizarSubidaLogo')).toBe(false);
+    expect(e.api.estado.logo).toBeNull();
+  });
+  it('«Subir logo» y «Quitar logo» se deshabilitan entre sí mientras hay una subida o se quita', async () => {
+    const e = crearEntorno('adm');
+    ver(e);
+    const u = userEvent.setup();
+    await subir();
+    await screen.findByRole('button', { name: 'Reemplazar logo' });
+    // Subida en curso: el servidor tarda en procesar.
+    e.api.estado.disparador.demoraMs = Infinity;
+    await subir('otro.png');
+    const quitar = await screen.findByRole('button', { name: 'Quitar logo' });
+    await waitFor(() => expect((quitar as HTMLButtonElement).disabled).toBe(true));
+    expect(screen.getByRole('button', { name: 'Reemplazar logo' }).getAttribute('aria-disabled')).toBe('true');
+    expect(screen.getByText('Hay una subida en curso')).toBeTruthy();
+    void u;
+  });
+  it('mientras se quita el logo, «Reemplazar logo» queda deshabilitado con su motivo', async () => {
+    const e = crearEntorno('adm');
+    ver(e);
+    const u = userEvent.setup();
+    await subir();
+    await screen.findByRole('button', { name: 'Reemplazar logo' });
+    const original = e.api.llamar.bind(e.api);
+    let soltar: () => void = () => undefined;
+    vi.spyOn(e.api, 'llamar').mockImplementation(((n: string, d: unknown) => (n === 'quitarLogo' ? new Promise((r) => { soltar = () => r(original(n as never, d as never)); }) : original(n as never, d as never))) as never);
+    await u.click(screen.getByRole('button', { name: 'Quitar logo' }));
+    await u.click(screen.getByRole('button', { name: 'Sí, quitar' }));
+    expect(await screen.findByText('Se está quitando el logo')).toBeTruthy();
+    expect(screen.getByRole('button', { name: 'Reemplazar logo' }).getAttribute('aria-disabled')).toBe('true');
+    soltar();
+    expect(await screen.findByText(/Logo quitado/)).toBeTruthy();
+  });
   it('el supervisor solo ve el logo: sin botones y con el aviso', async () => {
     // La pestaña Apariencia es del administrador; el bloque se prueba solo para el caso de verse con otro rol.
     const e = crearEntorno('sup');

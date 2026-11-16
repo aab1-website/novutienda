@@ -54,3 +54,16 @@ describe('esperarSubidaLogo', () => {
     expect(e.api.llamadas.filter((l) => l.nombre === 'finalizarSubidaLogo')).toHaveLength(1);
   });
 });
+
+describe('esperarSubidaLogo: cancelación', () => {
+  it('si se abandona la pantalla no consulta ni finaliza, aunque haya pasado el respaldo', async () => {
+    const e = crearEntorno('adm');
+    e.api.estado.disparador.demoraMs = Infinity;
+    const r = await e.api.llamar('reservarSubidaLogo', { subidaId: crypto.randomUUID(), bytes: 10 });
+    let t = 0;
+    let salio = false;
+    const espera = esperarSubidaLogo(e.api, r.subidaId, { cancelado: () => salio, esperar: () => { salio = true; return Promise.resolve(); }, ahora: () => (t += 20_000) });
+    await expect(espera).rejects.toThrow('subida abandonada');
+    expect(e.api.llamadas.some((l) => l.nombre === 'finalizarSubidaLogo')).toBe(false);
+  });
+});
