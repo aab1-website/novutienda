@@ -146,6 +146,15 @@ describe.skipIf(!hayEmulador)('invitaciones (emuladores)', () => {
     expect(r.resultado).toMatchObject({ ok: true, mensaje: 'Invitación enviada' });
   });
 
+  it('la 11.ª activación en una hora se rechaza (límite por uid)', async () => {
+    const t = await comercio();
+    const u = await crearUsuario(h, { rol: 'caj', tenant: t, verificado: false });
+    const estados: (string | undefined)[] = [];
+    for (let i = 0; i < 11; i += 1) estados.push((await llamar('activarInvitaciones', {}, u.token)).error?.status);
+    expect(estados.slice(0, 10).every((s) => s !== 'RESOURCE_EXHAUSTED')).toBe(true);
+    expect(estados[10]).toBe('RESOURCE_EXHAUSTED');
+  });
+
   it('activarInvitaciones exige sesión', async () => {
     expect((await llamar('activarInvitaciones', {}, undefined)).status).toBe(401);
   });
