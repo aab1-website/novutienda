@@ -295,7 +295,7 @@ describe('usuarios y configuración', () => {
     const e = crearEntorno('adm');
     ver(e, h(PantallaConfiguracion, { sub: 'negocio' }));
     const u = userEvent.setup();
-    await screen.findByRole('heading', { name: 'Datos del negocio y del POS' });
+    await screen.findByRole('heading', { name: 'Punto de venta' });
     expect((campo('Vendedor') as HTMLInputElement).value).toBe('5');
     await u.clear(campo('Vendedor'));
     await u.type(campo('Vendedor'), '8,5');
@@ -342,7 +342,7 @@ describe('usuarios y configuración', () => {
     ver(e, h(PantallaConfiguracion, { sub: 'negocio' }));
     expect((await screen.findByText(/No se pudieron cargar los mercados y monedas/))).toBeTruthy();
     expect(screen.queryByRole('table', { name: /Mercados del comercio/ })).toBeNull();
-    await screen.findByRole('heading', { name: 'Datos del negocio y del POS' });
+    await screen.findByRole('heading', { name: 'Punto de venta' });
     expect(within(campo('Moneda por defecto')).getAllByRole('option').map((o) => o.textContent)).toEqual(['BOB']);
     expect((campo('Moneda por defecto') as HTMLSelectElement).disabled).toBe(true);
   });
@@ -353,7 +353,7 @@ describe('usuarios y configuración', () => {
     vi.spyOn(e.api, 'llamar').mockImplementation(((n: string, x: unknown) =>
       n === 'configuracionComercial' ? new Promise((r) => { abrir = r; }) : llamar(n, x)) as never);
     ver(e, h(PantallaConfiguracion, { sub: 'negocio' }));
-    await screen.findByRole('heading', { name: 'Datos del negocio y del POS' });
+    await screen.findByRole('heading', { name: 'Punto de venta' });
     expect(within(campo('Moneda por defecto')).getAllByRole('option').map((o) => o.textContent)).toEqual(['BOB']);
     expect((campo('Moneda por defecto') as HTMLSelectElement).disabled).toBe(true);
     abrir({ mercados: [], monedasCaja: ['BOB', 'USD'] });
@@ -585,18 +585,18 @@ describe('configuración: avisos, motivos y cambios sin guardar', () => {
     const e = crearEntorno('adm');
     ver(e, h(PantallaConfiguracion, { sub: 'negocio' }));
     const u = userEvent.setup();
-    await screen.findByRole('heading', { name: 'Datos del negocio y del POS' });
+    await screen.findByRole('heading', { name: 'Punto de venta' });
     await u.type(campo('Dirección'), ' 1');
-    await u.click(screen.getByRole('button', { name: 'Guardar configuración' }));
-    await waitFor(() => expect(regionAvisos('estado').textContent).toContain('Configuración guardada.'));
+    await u.click(screen.getByRole('button', { name: 'Guardar datos del negocio' }));
+    await waitFor(() => expect(regionAvisos('estado').textContent).toContain('Datos del negocio guardados'));
     await u.type(campo('Teléfono'), '7');
-    await waitFor(() => expect(regionAvisos('estado').textContent).not.toContain('Configuración guardada.'));
+    await waitFor(() => expect(regionAvisos('estado').textContent).not.toContain('Datos del negocio guardados'));
   });
   it('cambiar un color también retira el «guardado»', async () => {
     const e = crearEntorno('adm');
     ver(e, h(PantallaConfiguracion, { sub: 'negocio' }));
     const u = userEvent.setup();
-    await screen.findByRole('heading', { name: 'Datos del negocio y del POS' });
+    await screen.findByRole('heading', { name: 'Punto de venta' });
     await u.click(screen.getByRole('button', { name: 'Guardar configuración' }));
     await waitFor(() => expect(regionAvisos('estado').textContent).toContain('Configuración guardada.'));
     fireEvent.input(campo('Color primario'), { target: { value: '#112233' } });
@@ -608,7 +608,7 @@ describe('configuración: avisos, motivos y cambios sin guardar', () => {
     vi.spyOn(e.api, 'llamar').mockImplementation(((n: string, x: unknown) =>
       n === 'guardarConfigPos' ? Promise.reject(new ErrorApi('failed-precondition', 'No se pudo guardar la configuración.')) : llamar(n, x)) as never);
     ver(e, h(PantallaConfiguracion, { sub: 'negocio' }));
-    await screen.findByRole('heading', { name: 'Datos del negocio y del POS' });
+    await screen.findByRole('heading', { name: 'Punto de venta' });
     await userEvent.setup().click(screen.getByRole('button', { name: 'Guardar configuración' }));
     const local = await screen.findByRole('alert');
     expect(regionAvisos('error-visual').textContent).toContain('No se pudo guardar la configuración.');
@@ -618,9 +618,11 @@ describe('configuración: avisos, motivos y cambios sin guardar', () => {
     const e = crearEntorno('adm');
     ver(e, h(PantallaConfiguracion, { sub: 'negocio' }));
     const u = userEvent.setup();
-    await screen.findByRole('heading', { name: 'Datos del negocio y del POS' });
+    await screen.findByRole('heading', { name: 'Punto de venta' });
     await u.clear(campo(/^Nombre del negocio/));
     expect(screen.getByText('Escriba el nombre del negocio')).toBeTruthy();
+    await u.click(screen.getByRole('button', { name: 'Guardar datos del negocio' }));
+    expect(e.api.llamadas.map((l) => l.nombre)).not.toContain('guardarConfigPos');
     await u.type(campo(/^Nombre del negocio/), 'Tienda');
     await u.click(screen.getByLabelText('Efectivo'));
     await u.click(screen.getByLabelText('QR'));
@@ -635,22 +637,23 @@ describe('configuración: avisos, motivos y cambios sin guardar', () => {
     const e = crearEntorno('adm');
     ver(e, h(PantallaConfiguracion, { sub: 'negocio' }));
     const u = userEvent.setup();
-    await screen.findByRole('heading', { name: 'Datos del negocio y del POS' });
+    await screen.findByRole('heading', { name: 'Punto de venta' });
     await u.clear(campo(/^Nombre del negocio/));
     await u.type(campo('Dirección'), 'x{Enter}');
     expect(e.api.llamadas.map((l) => l.nombre)).not.toContain('guardarConfigPos');
+    expect(e.api.llamadas.map((l) => l.nombre)).not.toContain('guardarPlantilla');
   });
-  it('la plantilla sin nombre del negocio dice por qué no se guarda', async () => {
+  it('la plantilla del recibo ya no pide el nombre ni el logo: se editan en «Datos del negocio»', async () => {
     const e = crearEntorno('adm');
     ver(e, h(PantallaConfiguracion, { sub: 'recibo' }));
-    await userEvent.setup().clear(await screen.findByLabelText(/^Nombre del negocio/));
-    expect(screen.getByText('Escriba el nombre del negocio')).toBeTruthy();
-    expect(screen.getByRole('button', { name: 'Guardar plantilla' }).getAttribute('aria-disabled')).toBe('true');
+    await screen.findByLabelText('Pie de página');
+    expect(screen.queryByLabelText(/^Nombre del negocio/)).toBeNull();
+    expect(screen.queryByLabelText(/logo/)).toBeNull();
   });
   it('sin cambios no hay pregunta al salir', async () => {
     const e = crearEntorno('adm');
     await conGuardia(e, 'negocio');
-    await screen.findByRole('heading', { name: 'Datos del negocio y del POS' });
+    await screen.findByRole('heading', { name: 'Punto de venta' });
     irA();
     expect(screen.queryByRole('dialog')).toBeNull();
     await waitFor(() => expect(window.location.hash).toBe('#/otra'));
@@ -658,7 +661,7 @@ describe('configuración: avisos, motivos y cambios sin guardar', () => {
   it('con cambios sin guardar pregunta antes de salir', async () => {
     const e = crearEntorno('adm');
     await conGuardia(e, 'negocio');
-    await screen.findByRole('heading', { name: 'Datos del negocio y del POS' });
+    await screen.findByRole('heading', { name: 'Punto de venta' });
     await userEvent.setup().type(campo('Dirección'), ' 2');
     irA();
     expect(await screen.findByRole('dialog', { name: '¿Salir sin guardar?' })).toBeTruthy();
@@ -668,10 +671,10 @@ describe('configuración: avisos, motivos y cambios sin guardar', () => {
     const e = crearEntorno('adm');
     await conGuardia(e, 'negocio');
     const u = userEvent.setup();
-    await screen.findByRole('heading', { name: 'Datos del negocio y del POS' });
+    await screen.findByRole('heading', { name: 'Punto de venta' });
     await u.type(campo('Dirección'), ' 2');
-    await u.click(screen.getByRole('button', { name: 'Guardar configuración' }));
-    await screen.findByText('Configuración guardada.');
+    await u.click(screen.getByRole('button', { name: 'Guardar datos del negocio' }));
+    await waitFor(() => expect(regionAvisos('estado').textContent).toContain('Datos del negocio guardados'));
     irA();
     expect(screen.queryByRole('dialog')).toBeNull();
     await waitFor(() => expect(window.location.hash).toBe('#/otra'));
@@ -684,10 +687,108 @@ describe('configuración: avisos, motivos y cambios sin guardar', () => {
     irA();
     expect(await screen.findByRole('dialog', { name: '¿Salir sin guardar?' })).toBeTruthy();
   });
+  describe('datos del negocio, una sola vez', () => {
+    const rechazar = (e: Entorno, accion: string, mensaje: string, vecesQueFalla = 1): void => {
+      const llamar = e.api.llamar.bind(e.api) as (n: string, x: unknown) => Promise<unknown>;
+      let fallos = 0;
+      vi.spyOn(e.api, 'llamar').mockImplementation(((n: string, x: unknown) =>
+        n === accion && fallos++ < vecesQueFalla ? Promise.reject(new ErrorApi('failed-precondition', mensaje)) : llamar(n, x)) as never);
+    };
+    it('hay una sola sección con nombre, dirección, teléfono, NIT y logo, y ninguna otra los repite', async () => {
+      const e = crearEntorno('adm');
+      ver(e, h(PantallaConfiguracion, { sub: 'negocio' }));
+      await screen.findByRole('heading', { name: 'Datos del negocio' });
+      for (const etiqueta of [/^Nombre del negocio/, 'Dirección', 'Teléfono', 'NIT', /logo/]) expect(screen.getAllByLabelText(etiqueta)).toHaveLength(1);
+      cleanup();
+      ver(e, h(PantallaConfiguracion, { sub: 'recibo' }));
+      await screen.findByLabelText('Pie de página');
+      for (const etiqueta of [/^Nombre del negocio/, 'Dirección', 'Teléfono', 'NIT', /logo/]) expect(screen.queryByLabelText(etiqueta)).toBeNull();
+    });
+    it('al guardar escribe en la caja y en la plantilla, y conserva lo demás de cada una', async () => {
+      const e = crearEntorno('adm');
+      ver(e, h(PantallaConfiguracion, { sub: 'negocio' }));
+      const u = userEvent.setup();
+      await screen.findByRole('heading', { name: 'Datos del negocio' });
+      await u.clear(campo('NIT'));
+      await u.type(campo('NIT'), '12345');
+      await u.click(screen.getByRole('button', { name: 'Guardar datos del negocio' }));
+      await waitFor(() => expect(regionAvisos('estado').textContent).toContain('Datos del negocio guardados en la configuración de la caja y en la plantilla de recibos.'));
+      expect((await e.api.llamar('leerConfigPos', {})).negocio.nit).toBe('12345');
+      const pl = await e.api.llamar('leerPlantilla', {});
+      expect(pl.negocio.nit).toBe('12345');
+      expect(pl.pie).toBe('Comprobante no fiscal.');
+    });
+    it('si falla la plantilla, dice que la caja quedó guardada y reintenta solo la plantilla', async () => {
+      const e = crearEntorno('adm');
+      rechazar(e, 'guardarPlantilla', 'La plantilla no se pudo guardar.');
+      ver(e, h(PantallaConfiguracion, { sub: 'negocio' }));
+      const u = userEvent.setup();
+      await screen.findByRole('heading', { name: 'Datos del negocio' });
+      await u.type(campo('Dirección'), ' 9');
+      await u.click(screen.getByRole('button', { name: 'Guardar datos del negocio' }));
+      const alerta = await screen.findByRole('alert');
+      expect(alerta.textContent).toBe('Los datos del negocio se guardaron en la configuración de la caja, pero no en la plantilla de recibos: La plantilla no se pudo guardar.');
+      expect((await e.api.llamar('leerConfigPos', {})).negocio.direccion).toBe('Calle Ejemplo 123 9');
+      expect((await e.api.llamar('leerPlantilla', {})).negocio.direccion).toBe('Calle Ejemplo 123');
+      expect(screen.queryByRole('button', { name: 'Reintentar en la configuración de la caja' })).toBeNull();
+      const cajaAntes = e.api.llamadas.filter((l) => l.nombre === 'guardarConfigPos').length;
+      await u.click(screen.getByRole('button', { name: 'Reintentar en la plantilla de recibos' }));
+      await waitFor(() => expect(regionAvisos('estado').textContent).toContain('Datos del negocio guardados en la configuración de la caja y en la plantilla de recibos.'));
+      expect((await e.api.llamar('leerPlantilla', {})).negocio.direccion).toBe('Calle Ejemplo 123 9');
+      expect(e.api.llamadas.filter((l) => l.nombre === 'guardarConfigPos')).toHaveLength(cajaAntes);
+      expect(screen.queryByRole('button', { name: /Reintentar/ })).toBeNull();
+    });
+    it('si falla la caja, dice que la plantilla quedó guardada y reintenta solo la caja', async () => {
+      const e = crearEntorno('adm');
+      rechazar(e, 'guardarConfigPos', 'La caja no se pudo guardar.');
+      ver(e, h(PantallaConfiguracion, { sub: 'negocio' }));
+      const u = userEvent.setup();
+      await screen.findByRole('heading', { name: 'Datos del negocio' });
+      await u.type(campo('Teléfono'), '1');
+      await u.click(screen.getByRole('button', { name: 'Guardar datos del negocio' }));
+      expect((await screen.findByRole('alert')).textContent).toBe('Los datos del negocio se guardaron en la plantilla de recibos, pero no en la configuración de la caja: La caja no se pudo guardar.');
+      await u.click(screen.getByRole('button', { name: 'Reintentar en la configuración de la caja' }));
+      await waitFor(() => expect(regionAvisos('estado').textContent).toContain('Datos del negocio guardados'));
+      expect((await e.api.llamar('leerConfigPos', {})).negocio.telefono).toBe('700000001');
+    });
+    it('con un guardado a medias avisa antes de salir', async () => {
+      const e = crearEntorno('adm');
+      rechazar(e, 'guardarPlantilla', 'No se pudo.');
+      await conGuardia(e, 'negocio');
+      const u = userEvent.setup();
+      await screen.findByRole('heading', { name: 'Datos del negocio' });
+      await u.type(campo('Dirección'), ' 9');
+      await u.click(screen.getByRole('button', { name: 'Guardar datos del negocio' }));
+      await screen.findByRole('alert');
+      irA();
+      expect(await screen.findByRole('dialog', { name: '¿Salir sin guardar?' })).toBeTruthy();
+    });
+    it('si la caja y la plantilla traen valores distintos, muestra los de la caja, avisa y no escribe nada', async () => {
+      const e = crearEntorno('adm');
+      const pl = await e.api.llamar('leerPlantilla', {});
+      await e.api.llamar('guardarPlantilla', { plantilla: { ...pl, negocio: { ...pl.negocio, nombre: 'Otro nombre' } } });
+      const antes = e.api.llamadas.length;
+      ver(e, h(PantallaConfiguracion, { sub: 'negocio' }));
+      await screen.findByRole('heading', { name: 'Datos del negocio' });
+      expect((campo(/^Nombre del negocio/) as HTMLInputElement).value).toBe('Negocio de ejemplo');
+      expect(screen.getByText(/son distintos/)).toBeTruthy();
+      expect(e.api.llamadas.slice(antes).map((l) => l.nombre).filter((n) => n.startsWith('guardar'))).toEqual([]);
+      await userEvent.setup().click(screen.getByRole('button', { name: 'Guardar datos del negocio' }));
+      await waitFor(() => expect(regionAvisos('estado').textContent).toContain('Datos del negocio guardados'));
+      expect((await e.api.llamar('leerPlantilla', {})).negocio.nombre).toBe('Negocio de ejemplo');
+      expect(screen.queryByText(/son distintos/)).toBeNull();
+    });
+    it('sin diferencias no muestra el aviso de divergencia', async () => {
+      const e = crearEntorno('adm');
+      ver(e, h(PantallaConfiguracion, { sub: 'negocio' }));
+      await screen.findByRole('heading', { name: 'Datos del negocio' });
+      expect(screen.queryByText(/son distintos/)).toBeNull();
+    });
+  });
   it('no deja textos internos a la vista', async () => {
     const e = crearEntorno('adm');
     ver(e, h(PantallaConfiguracion, { sub: 'negocio' }));
-    await screen.findByRole('heading', { name: 'Datos del negocio y del POS' });
+    await screen.findByRole('heading', { name: 'Punto de venta' });
     expect(document.body.textContent).not.toMatch(/Decisión vigente/);
   });
 });
