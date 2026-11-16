@@ -183,7 +183,7 @@ function TerminalLista({ turno, alCambiar, mercados }: { turno: TurnoPos; alCamb
     const cobro: DatosCobro = {
       mercado: mercado.id, moneda, config, total,
       carrito: {
-        // El contrato del carrito aún tipa los dos mercados de siempre; el servidor valida contra lo declarado.
+        // El mercado viaja como id declarado por el comercio; el contrato del carrito tipa la moneda con las conocidas y el servidor valida contra lo declarado.
         mercado: mercado.id, moneda: moneda as Moneda,
         lineas: lineas.map((l, i) => ({ productoId: l.productoId, cantidad: l.cantidad, almacenId: l.almacenId, ...(l.series.length > 0 ? { series: l.series } : {}), ...(precios[i]?.tipo === 'precio' ? { precioMostrado: (precios[i] as { centavos: number }).centavos } : {}) })),
         ...(monto > 0 ? { descuento: { monto, motivo: descMotivo.trim() } } : {}),

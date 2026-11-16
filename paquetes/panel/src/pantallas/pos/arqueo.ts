@@ -76,7 +76,7 @@ export function sumarTotales(totales: TotalesTurno, moneda: string, delta: Parti
 export const monedasDeCobro = (m: Pick<MercadoDeclarado, 'monedaVenta' | 'monedaBase'>): string[] =>
   m.monedaVenta === m.monedaBase ? [m.monedaVenta] : [m.monedaVenta, m.monedaBase];
 
-/** Cotización vigente de un mercado declarado, buscada por su id (el tipo de Central solo indexa los dos mercados de siempre). */
+/** Cotización vigente de un mercado declarado, buscada por su id (las cotizaciones se indexan por el id del mercado declarado; sin entrada, null). */
 export const cotizacionDeMercado = (cot: CotizacionesVigentes, id: string): CotizacionesVigentes[string] =>
   cot[id] ?? null;
 
