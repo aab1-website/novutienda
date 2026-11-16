@@ -265,6 +265,7 @@ export const handlersPos: {
     const previa = c.e.aprobaciones.get(id);
     if (previa !== undefined) return previa;
     const s = e.solicitud;
+    if (!c.e.comercial.monedasCaja.includes(s.moneda)) throw fallo('entrada-invalida', 'moneda desconocida');
     exigirMonto(s.monto, 'monto', 1);
     exigirTexto(s.motivo, 'motivo');
     if (s.tipo === 'credito') exigirTexto(s.deudor ?? '', 'deudor');
