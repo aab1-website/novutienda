@@ -195,8 +195,8 @@ describe.skipIf(!hayEmulador)('contrato del logo: consola → /publicado → con
       expect(advertencias).toEqual([expect.stringMatching(/^documentos\.sitio\.logo: logo descartado \(/)]);
       expect(advertencias[0]).not.toContain(t); // el aviso lleva la ruta del campo, nunca el valor
       expect(contenido.config.logo).toEqual({ url: LOGO_ESCRITO, alt: 'Logo escrito' });
-      expect(contenido.config.iconoSitio).toBeNull();
-      expect(contenido.config.imagenCompartir).toBeNull();
+      expect(contenido.config).not.toHaveProperty('iconoSitio');
+      expect(contenido.config).not.toHaveProperty('imagenCompartir');
       expect(contenido.productos.map((p) => p.id)).toEqual(['tv-uno']);
     });
 
@@ -208,8 +208,8 @@ describe.skipIf(!hayEmulador)('contrato del logo: consola → /publicado → con
       const { contenido, advertencias } = leerSitio(resp, negocio({ logo: { url: LOGO_ESCRITO, alt: 'Logo escrito' } }));
       expect(advertencias).toEqual([]);
       expect(contenido.config.logo).toEqual({ url: LOGO_ESCRITO, alt: 'Logo escrito' });
-      expect(contenido.config.iconoSitio).toBeNull();
-      expect(contenido.config.imagenCompartir).toBeNull();
+      expect(contenido.config).not.toHaveProperty('iconoSitio');
+      expect(contenido.config).not.toHaveProperty('imagenCompartir');
     });
   });
 
@@ -235,6 +235,6 @@ describe.skipIf(!hayEmulador)('contrato del logo: consola → /publicado → con
     const { contenido, advertencias } = leerSitio(resp, negocio({ logo: { url: LOGO_ESCRITO, alt: 'Logo escrito' } }));
     expect(advertencias).toEqual([]);
     expect(contenido.config.logo!.url).toBe(LOGO_ESCRITO);
-    expect(contenido.config.iconoSitio).toBeNull();
+    expect(contenido.config).not.toHaveProperty('iconoSitio');
   });
 });
