@@ -58,6 +58,12 @@ interface Subida {
   readonly destino?: Destino;
   readonly motivo?: string;
   readonly rutas?: readonly string[];
+  /**
+   * Solo logos reemplazados o quitados: versiones públicas que se borran más tarde (`borrarDesde`, ms), cuando el sitio ya construido
+   * no puede seguir usándolas. `limpiarSubidas` las encuentra porque la subida queda en `borrando` hasta entonces.
+   */
+  readonly rutasDiferidas?: readonly string[];
+  readonly borrarDesde?: number;
   /** Solo con `procesando`: identificador de la invocación que reclamó la subida y cuándo vence ese reclamo. */
   readonly procesandoPor?: string;
   readonly procesandoVenceEn?: number;
@@ -86,6 +92,8 @@ function leerSubida(d: Readonly<Record<string, unknown>> | undefined): Subida | 
     ...(typeof pPor === 'string' ? { procesandoPor: pPor } : {}),
     ...(typeof pVence === 'number' ? { procesandoVenceEn: pVence } : {}),
     ...(Array.isArray(rutas) ? { rutas: rutas.filter((r): r is string => typeof r === 'string') } : {}),
+    ...(Array.isArray(d['rutasDiferidas']) ? { rutasDiferidas: d['rutasDiferidas'].filter((r): r is string => typeof r === 'string') } : {}),
+    ...(typeof d['borrarDesde'] === 'number' ? { borrarDesde: d['borrarDesde'] } : {}),
   };
 }
 
@@ -227,6 +235,20 @@ function rutasPropiasDelLogo(deps: DepsMedios, t: string, esLogo: boolean, candi
   return propias;
 }
 
+/**
+ * Reparte las rutas de un logo que deja de ser el vigente: el original privado y lo no público se borran ya; las versiones públicas
+ * (`tenants/{t}/publico/...`) quedan diferidas `esperaBorradoLogoMs`. La cuota (que cuenta solo el original) se libera al reemplazar:
+ * el original sí se borra en ese momento, así que no hay holgura de cuota; las versiones públicas no cuentan en ella.
+ */
+function repartirRutasLogo(t: string, rutas: readonly string[], ahora: number): Pick<Subida, 'rutas' | 'rutasDiferidas' | 'borrarDesde'> {
+  const publico = `tenants/${t}/publico/`;
+  const diferidas = rutas.filter((r) => r.startsWith(publico));
+  return {
+    rutas: rutas.filter((r) => !r.startsWith(publico)),
+    ...(diferidas.length === 0 ? {} : { rutasDiferidas: diferidas, borrarDesde: ahora + LIMITES_CONSOLA.esperaBorradoLogoMs }),
+  };
+}
+
 /** Versión publicada del logo (PNG y WebP, lado mayor de 512 como máximo). */
 export interface VersionLogo {
   readonly clase: 'logo';
@@ -273,6 +295,15 @@ async function borrarYCerrar(deps: DepsMedios, t: string, subidaId: string): Pro
   const s = leerSubida((await leerDoc(deps.db, rutaSubida(t, subidaId))));
   if (s?.estado !== 'borrando') return;
   await deps.almacen.borrar(s.rutas ?? [s.rutaOriginal]);
+  const diferidas = s.rutasDiferidas ?? [];
+  if (diferidas.length > 0) {
+    // Logo reemplazado o quitado: sus versiones públicas esperan a que el sitio ya no las use. La subida sigue en `borrando`
+    // y cada pasada de `limpiarSubidas` vuelve aquí.
+    if (deps.reloj.ahora() < (s.borrarDesde ?? 0)) return;
+    // El logo vigente puede compartir rutas por contenido idéntico (A, luego B, luego A otra vez): esas NO se borran.
+    const vigente = new Set(leerDocLogo(await leerDoc(deps.db, rutaSitio(t, 'logo')))?.versiones.map((v) => v.ruta));
+    await deps.almacen.borrar(diferidas.filter((r) => !vigente.has(r)));
+  }
   await deps.almacen.borrarPrefijo?.(prefijoTemporal(t, subidaId)); // restos de invocaciones que murieron a medias
   await deps.db.runTransaction(async (tx) => {
     const actual = leerSubida((await tx.get(rutaSubida(t, subidaId))).data());
@@ -499,15 +530,15 @@ async function procesarReclamada(
           deps.avisar?.('logo: la referencia anterior no apuntaba a un logo; solo se reemplazó la referencia', {});
         } else if (previo !== undefined && previoMedio !== undefined) {
           const nuevas = new Set(medio.versiones.map((v) => v.ruta));
-          const rutas = rutasPropiasDelLogo(deps, t, true,
-            [previoMedio.rutaOriginal, ...(previoMedio.versiones ?? []).map((v) => v.ruta)].filter((r) => !nuevas.has(r as string)));
+          const rutas = repartirRutasLogo(t, rutasPropiasDelLogo(deps, t, true,
+            [previoMedio.rutaOriginal, ...(previoMedio.versiones ?? []).map((v) => v.ruta)].filter((r) => !nuevas.has(r as string))), deps.reloj.ahora());
           usoNuevo = liberarEnUso(usoNuevo, ID_NEGOCIO, 'logo', previoMedio.bytesOriginal ?? 0);
           tx.delete(rutaMedio(t, previo.medioId));
           const base: Subida = previoSubida ?? {
             id: previo.medioId, productoId: ID_NEGOCIO, tipo: 'logo', bytes: previoMedio.bytesOriginal ?? 0, estado: 'procesada',
             rutaOriginal: previoMedio.rutaOriginal ?? '', creadaEn: previoMedio.creadoEn ?? 0, venceEn: 0, por: e.actor.uid,
           };
-          tx.set(rutaSubida(t, previo.medioId), aDoc({ ...base, estado: 'borrando', destino: 'eliminar', rutas }));
+          tx.set(rutaSubida(t, previo.medioId), aDoc({ ...base, estado: 'borrando', destino: 'eliminar', ...rutas }));
           logoAnterior = previo.medioId;
         }
       }
@@ -780,8 +811,8 @@ export async function quitarLogo(deps: DepsMedios, e: EntradaLogo): Promise<{ re
       registrarAuditoria(tx, { tenantId: t, uid: e.actor.uid, rol, accion: 'logo.quitar', ruta: rutaSitio(t, 'logo'), resumenAntes: { medioId: logo.medioId, bytes: 0 } });
       return { medioId: undefined };
     }
-    const rutas = rutasPropiasDelLogo(deps, t, true,
-      [m?.rutaOriginal, ...(m?.versiones ?? logo.versiones).map((v) => v.ruta)]);
+    const rutas = repartirRutasLogo(t, rutasPropiasDelLogo(deps, t, true,
+      [m?.rutaOriginal, ...(m?.versiones ?? logo.versiones).map((v) => v.ruta)]), deps.reloj.ahora());
     const bytes = m?.bytesOriginal ?? 0;
     escribirUsoMedios(tx, t, liberarEnUso(uso, ID_NEGOCIO, 'logo', bytes));
     tx.delete(rutaSitio(t, 'logo'));
@@ -790,7 +821,7 @@ export async function quitarLogo(deps: DepsMedios, e: EntradaLogo): Promise<{ re
       id: logo.medioId, productoId: ID_NEGOCIO, tipo: 'logo', bytes, estado: 'procesada',
       rutaOriginal: m?.rutaOriginal ?? '', creadaEn: m?.creadoEn ?? 0, venceEn: 0, por: e.actor.uid,
     };
-    tx.set(rutaSubida(t, logo.medioId), aDoc({ ...base, estado: 'borrando', destino: 'eliminar', rutas }));
+    tx.set(rutaSubida(t, logo.medioId), aDoc({ ...base, estado: 'borrando', destino: 'eliminar', ...rutas }));
     // Logo vivo: lo publicado deja de referir al logo en esta misma transacción; los archivos se borran después del commit.
     const vivo = escribirLogoVivo(tx, t, publicadoLogo, undefined, deps.reloj);
     agendar = vivo.programar;

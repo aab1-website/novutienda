@@ -1,8 +1,8 @@
 import { beforeEach, describe, expect, it } from 'vitest';
 import {
-  finalizarSubida, guardarConfigSitio, guardarFicha, ID_NEGOCIO, publicarSitio, quitarLogo, reservarSubida, type DepsMedios,
+  finalizarSubida, guardarConfigSitio, guardarFicha, ID_NEGOCIO, LIMITES_CONSOLA, limpiarSubidas, publicarSitio, quitarLogo, reservarSubida, type DepsMedios,
 } from '@novutienda/consola';
-import { actor, AlmacenDoble, CatalogoDoble, DisparadorDoble, JPG, nuevaDb, PNG, ProcesadorSimulado, RelojFijo, T } from './dobles.js';
+import { actor, AlmacenDoble, CatalogoDoble, ConsultaDoble, DisparadorDoble, JPG, nuevaDb, PNG, ProcesadorSimulado, RelojFijo, T } from './dobles.js';
 
 const adm = actor('adm');
 const PREFIJO = `tenants/${T}/publico/medios/_negocio/`;
@@ -159,8 +159,56 @@ describe('logo del negocio en lo publicado (logo vivo)', () => {
       await subirLogo(png(2));
       const nuevas = (sitio()?.['logo'] as { versiones: { ruta: string }[] }).versiones.map((v) => v.ruta);
       for (const r of nuevas) expect(almacen.objetos.has(r)).toBe(true);
+      // Las versiones públicas del anterior siguen existiendo (el sitio construido puede usarlas) hasta las 24 horas.
+      for (const r of viejas) expect(almacen.objetos.has(r)).toBe(true);
+      reloj.ms += LIMITES_CONSOLA.esperaBorradoLogoMs - 1;
+      await limpiarSubidas({ ...deps(), consulta: new ConsultaDoble(db) }, T);
+      for (const r of viejas) expect(almacen.objetos.has(r)).toBe(true);
+      reloj.ms += 1;
+      await limpiarSubidas({ ...deps(), consulta: new ConsultaDoble(db) }, T);
       for (const r of viejas.filter((x) => !nuevas.includes(x))) expect(almacen.objetos.has(r)).toBe(false); // lo compartido por hash se conserva
       expect((db.dato(`tenants/${T}/sitio/logo`) as { versiones: { ruta: string }[] }).versiones.map((v) => v.ruta)).toEqual(nuevas);
+    });
+    it('quitar: las públicas esperan 24 h y después se borran; lo publicado ya no las usa', async () => {
+      await publicable();
+      await subirLogo(png(1));
+      await publicarSitio(dp(), { tenantId: T, actor: adm });
+      const viejas = (sitio()?.['logo'] as { versiones: { ruta: string }[] }).versiones.map((v) => v.ruta);
+      await quitarLogo(deps(), { tenantId: T, actor: adm });
+      expect(sitio()).not.toHaveProperty('logo');
+      for (const r of viejas) expect(almacen.objetos.has(r)).toBe(true);
+      reloj.ms += LIMITES_CONSOLA.esperaBorradoLogoMs;
+      await limpiarSubidas({ ...deps(), consulta: new ConsultaDoble(db) }, T);
+      for (const r of viejas) expect(almacen.objetos.has(r)).toBe(false);
+    });
+    it('dos reemplazos seguidos no dejan huérfanos, y la limpieza no toca los del logo vigente', async () => {
+      await publicable();
+      await subirLogo(png(1));
+      await publicarSitio(dp(), { tenantId: T, actor: adm });
+      const rutasDe = (): string[] => (sitio()?.['logo'] as { versiones: { ruta: string }[] }).versiones.map((v) => v.ruta);
+      const a = rutasDe();
+      await subirLogo(png(2));
+      const b = rutasDe();
+      await subirLogo(png(3));
+      const c = rutasDe();
+      reloj.ms += LIMITES_CONSOLA.esperaBorradoLogoMs;
+      await limpiarSubidas({ ...deps(), consulta: new ConsultaDoble(db) }, T);
+      for (const r of [...a, ...b].filter((x) => !c.includes(x))) expect(almacen.objetos.has(r)).toBe(false);
+      for (const r of c) expect(almacen.objetos.has(r)).toBe(true);
+      const logoPrefijo = [...almacen.objetos.keys()].filter((r) => r.startsWith(PREFIJO));
+      expect(logoPrefijo.sort()).toEqual([...c].sort());
+      expect(db.coleccion(`tenants/${T}/subidas`).filter((x) => x['estado'] === 'borrando')).toHaveLength(0);
+    });
+    it('A, luego B, luego A otra vez: la limpieza diferida de A no borra el logo vigente', async () => {
+      await publicable();
+      await subirLogo(png(1));
+      await publicarSitio(dp(), { tenantId: T, actor: adm });
+      await subirLogo(png(2));
+      await subirLogo(png(1));
+      const vigente = (sitio()?.['logo'] as { versiones: { ruta: string }[] }).versiones.map((v) => v.ruta);
+      reloj.ms += LIMITES_CONSOLA.esperaBorradoLogoMs;
+      await limpiarSubidas({ ...deps(), consulta: new ConsultaDoble(db) }, T);
+      for (const r of vigente) expect(almacen.objetos.has(r)).toBe(true);
     });
     it('si falla el borrado del logo anterior, lo publicado ya apunta al nuevo (y el anterior queda para limpiarSubidas)', async () => {
       await publicable();
