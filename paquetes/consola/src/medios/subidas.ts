@@ -141,7 +141,10 @@ export async function reservarSubida(deps: DepsMedios, e: EntradaReserva): Promi
     throw new ErrorConsola('no-disponible', MENSAJE_VIDEO_NO_DISPONIBLE);
   }
   const ahora = deps.reloj.ahora();
-  if (e.tipo === 'logo' && deps.limiteLogo !== undefined && !(await deps.limiteLogo.intentar(`logo:${t}`, ahora)).permitido) {
+  // Límite de frecuencia: el cupo se consume solo con una reserva nueva, no en reintentos idempotentes de la misma `subidaId`.
+  // Es por instancia (ventana en memoria): con varias instancias el tope real puede llegar a 3 veces el nominal.
+  if (e.tipo === 'logo' && deps.limiteLogo !== undefined && leerSubida(await leerDoc(deps.db, rutaSubida(t, e.subidaId))) === undefined
+    && !(await deps.limiteLogo.intentar(`logo:${t}`, ahora)).permitido) {
     throw new ErrorConsola('limite', 'Se subieron demasiados logos en poco tiempo; intente más tarde');
   }
   const ruta = rutaOriginal(t, e.productoId, e.subidaId);
@@ -206,6 +209,10 @@ export interface Medio {
  * Rutas de objetos que se pueden borrar al reemplazar o quitar un logo: solo las de la carpeta `_negocio` del propio comercio.
  * Si el documento no es un logo (`esLogo` falso) no se borra nada; cualquier otra ruta se descarta y se registra sin datos personales.
  */
+function esDelLogo(m: { readonly tipo?: unknown; readonly productoId?: unknown } | undefined, sub: Subida | undefined): boolean {
+  return (m === undefined || (m.tipo === 'logo' && m.productoId === ID_NEGOCIO)) && (sub === undefined || (sub.tipo === 'logo' && sub.productoId === ID_NEGOCIO));
+}
+
 function rutasPropiasDelLogo(deps: DepsMedios, t: string, esLogo: boolean, candidatas: readonly unknown[]): string[] {
   const prefijos = [`tenants/${t}/privado/originales/${ID_NEGOCIO}/`, `tenants/${t}/publico/medios/${ID_NEGOCIO}/`];
   const validas = candidatas.filter((r): r is string => typeof r === 'string' && r !== '');
@@ -342,13 +349,16 @@ export async function finalizarSubida(deps: DepsMedios, e: EntradaFinalizar): Pr
   // Exclusión mutua: el disparador de Storage y la acción explícita pueden finalizar la MISMA subida a la vez. Solo gana
   // quien pasa la subida de `reservada` a `procesando` en una transacción; el resto no procesa ni rechaza nada.
   const reclamo = (deps.nuevoId ?? idAleatorio)();
+  // El rol del logo se exige ANTES de pasar la subida a `procesando`: un `sup` no la deja reclamada ni la altera.
+  if (rol !== 'adm' && leerSubida(await leerDoc(deps.db, rutaSubida(t, e.subidaId)))?.tipo === 'logo') {
+    throw new ErrorConsola('no-autorizado', 'No tiene permiso para esta acción');
+  }
   const r = await reclamar(deps, t, e.subidaId, reclamo);
   if ('medio' in r) {
     if (r.medio.tipo === 'logo' && rol !== 'adm') throw new ErrorConsola('no-autorizado', 'No tiene permiso para esta acción');
     return r.medio;
   }
   try {
-    if (r.subida.tipo === 'logo' && rol !== 'adm') throw new ErrorConsola('no-autorizado', 'No tiene permiso para esta acción');
     return await procesarReclamada(deps, t, e, rol, reclamo, r.subida);
   } catch (err) {
     // Cualquier salida con error devuelve la subida a `reservada` si esta invocación aún la tiene (si `rechazar` o el ganador ya la
@@ -468,9 +478,13 @@ async function procesarReclamada(
         tx.set(rutaSitio(t, 'logo'), { ...docLogo(medio), actualizadoEn: ahoraIso, por: e.actor.uid });
         // Un solo logo vigente: el anterior (su medio, su original y sus versiones) se borra; las versiones que el nuevo comparte
         // por contenido idéntico (misma ruta con hash) se conservan. Solo se tocan objetos del propio logo del negocio.
-        if (previo !== undefined && previoMedio !== undefined) {
+        if (previo !== undefined && previoMedio !== undefined && !esDelLogo(previoMedio, previoSubida)) {
+          // La referencia vigente apunta a algo que no es un logo de `_negocio`: solo se reemplaza la referencia; no se toca
+          // ni su medio, ni su cuota, ni su subida.
+          deps.avisar?.('logo: la referencia anterior no apuntaba a un logo; solo se reemplazó la referencia', {});
+        } else if (previo !== undefined && previoMedio !== undefined) {
           const nuevas = new Set(medio.versiones.map((v) => v.ruta));
-          const rutas = rutasPropiasDelLogo(deps, t, previoMedio.tipo === 'logo' && previoMedio.productoId === ID_NEGOCIO && (previoSubida === undefined || (previoSubida.tipo === 'logo' && previoSubida.productoId === ID_NEGOCIO)),
+          const rutas = rutasPropiasDelLogo(deps, t, true,
             [previoMedio.rutaOriginal, ...(previoMedio.versiones ?? []).map((v) => v.ruta)].filter((r) => !nuevas.has(r as string)));
           usoNuevo = liberarEnUso(usoNuevo, ID_NEGOCIO, 'logo', previoMedio.bytesOriginal ?? 0);
           tx.delete(rutaMedio(t, previo.medioId));
@@ -730,14 +744,22 @@ export async function quitarLogo(deps: DepsMedios, e: EntradaLogo): Promise<{ re
   const t = tenantValido(e.tenantId);
   const rol = exigirRol(e.actor, t, ROLES.administrar);
   const ahoraIso = new Date(deps.reloj.ahora()).toISOString();
-  const medioId = await deps.db.runTransaction(async (tx) => {
+  const res = await deps.db.runTransaction(async (tx): Promise<{ readonly medioId: string | undefined } | undefined> => {
     const logo = await leerLogoEnTx(tx, t);
     if (logo === undefined) return undefined;
     const m = (await tx.get(rutaMedio(t, logo.medioId))).data() as Partial<MedioSubido> | undefined;
     const sub = leerSubida((await tx.get(rutaSubida(t, logo.medioId))).data());
     const uso = await leerUsoMedios(tx, t);
     const estado = await leerEstadoSitio(tx, t);
-    const rutas = rutasPropiasDelLogo(deps, t, (m === undefined || (m.tipo === 'logo' && m.productoId === ID_NEGOCIO)) && (sub === undefined || (sub.tipo === 'logo' && sub.productoId === ID_NEGOCIO)),
+    if (!esDelLogo(m, sub)) {
+      // `sitio/logo` apunta a algo que no es un logo de `_negocio`: solo se quita la referencia (sin tocar medio, cuota ni subida).
+      deps.avisar?.('logo: la referencia no apuntaba a un logo; solo se quitó la referencia', {});
+      tx.delete(rutaSitio(t, 'logo'));
+      anotarCambio(tx, t, estado, ahoraIso);
+      registrarAuditoria(tx, { tenantId: t, uid: e.actor.uid, rol, accion: 'logo.quitar', ruta: rutaSitio(t, 'logo'), resumenAntes: { medioId: logo.medioId, bytes: 0 } });
+      return { medioId: undefined };
+    }
+    const rutas = rutasPropiasDelLogo(deps, t, true,
       [m?.rutaOriginal, ...(m?.versiones ?? logo.versiones).map((v) => v.ruta)]);
     const bytes = m?.bytesOriginal ?? 0;
     escribirUsoMedios(tx, t, liberarEnUso(uso, ID_NEGOCIO, 'logo', bytes));
@@ -752,9 +774,9 @@ export async function quitarLogo(deps: DepsMedios, e: EntradaLogo): Promise<{ re
     registrarAuditoria(tx, {
       tenantId: t, uid: e.actor.uid, rol, accion: 'logo.quitar', ruta: rutaSitio(t, 'logo'), resumenAntes: { medioId: logo.medioId, bytes },
     });
-    return logo.medioId;
+    return { medioId: logo.medioId };
   });
-  if (medioId === undefined) return { quitado: false };
-  await borrarYCerrar(deps, t, medioId);
+  if (res === undefined) return { quitado: false };
+  if (res.medioId !== undefined) await borrarYCerrar(deps, t, res.medioId);
   return { quitado: true };
 }

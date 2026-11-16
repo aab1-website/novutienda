@@ -182,9 +182,43 @@ describe('logo del negocio por archivo', () => {
       almacen.subir(rf.rutaOriginal, JPG);
       const mf = await finalizarSubida(deps, { tenantId: T, actor: adm, subidaId: foto });
       db.poner(`tenants/${T}/sitio/logo`, { medioId: foto, ancho: 1, alto: 1, versiones: [] });
-      await quitarLogo(deps, { tenantId: T, actor: adm });
+      const usoAntes = JSON.stringify(uso());
+      const subidaAntes = JSON.stringify(db.dato(`tenants/${T}/subidas/${foto}`));
+      await expect(quitarLogo(deps, { tenantId: T, actor: adm })).resolves.toEqual({ quitado: true });
       expect(almacen.objetos.has(rf.rutaOriginal)).toBe(true);
       for (const v of mf.versiones) expect(almacen.objetos.has(v.ruta)).toBe(true);
+      // Solo se quita la referencia: el medio, la cuota y el estado de la subida quedan intactos.
+      expect(db.dato(`tenants/${T}/sitio/logo`)).toBeUndefined();
+      expect(db.dato(`tenants/${T}/medios/${foto}`)).toBeDefined();
+      expect(JSON.stringify(uso())).toBe(usoAntes);
+      expect(JSON.stringify(db.dato(`tenants/${T}/subidas/${foto}`))).toBe(subidaAntes);
+    });
+    it('al reemplazar una referencia que no es un logo, solo cambia la referencia', async () => {
+      const foto = id();
+      const rf = await reservarSubida(deps, { tenantId: T, actor: adm, subidaId: foto, productoId: 'cam-1', tipo: 'foto', bytes: JPG.length });
+      almacen.subir(rf.rutaOriginal, JPG);
+      await finalizarSubida(deps, { tenantId: T, actor: adm, subidaId: foto });
+      db.poner(`tenants/${T}/sitio/logo`, { medioId: foto, ancho: 1, alto: 1, versiones: [] });
+      const { subidaId } = await reservarLogo(png(13));
+      await finalizarSubida(deps, { tenantId: T, actor: adm, subidaId });
+      expect(db.dato(`tenants/${T}/sitio/logo`)).toMatchObject({ medioId: subidaId });
+      expect(db.dato(`tenants/${T}/medios/${foto}`)).toBeDefined();
+      expect(db.dato(`tenants/${T}/subidas/${foto}`)).toMatchObject({ estado: 'procesada' });
+      expect(almacen.objetos.has(rf.rutaOriginal)).toBe(true);
+      expect(uso().bytes).toBe(JPG.length + PNG.length);
+    });
+    it('el reintento idempotente de una reserva no consume cupo del límite', async () => {
+      const d = { ...deps, limiteLogo: limiteMemoria(2, 3_600_000) };
+      const e = { tenantId: T, actor: adm, productoId: ID_NEGOCIO, tipo: 'logo' as const, bytes: 100 };
+      for (let i = 0; i < 5; i += 1) await reservarSubida(d, { ...e, subidaId: 'reintento-0001' });
+      await reservarSubida(d, { ...e, subidaId: 'reintento-0002' });
+      await expect(reservarSubida(d, { ...e, subidaId: 'reintento-0003' })).rejects.toMatchObject({ codigo: 'limite' });
+    });
+    it('un supervisor no deja la subida de logo en procesando', async () => {
+      const { subidaId } = await reservarLogo(png(14));
+      await expect(finalizarSubida(deps, { tenantId: T, actor: actor('sup'), subidaId })).rejects.toMatchObject({ codigo: 'no-autorizado' });
+      expect(db.dato(`tenants/${T}/subidas/${subidaId}`)).toMatchObject({ estado: 'reservada' });
+      expect(db.dato(`tenants/${T}/subidas/${subidaId}`)?.['procesandoPor']).toBeUndefined();
     });
     it('el logo tiene su propio tope de 25 megapíxeles; la foto conserva el suyo', async () => {
       proc.info = { ancho: 6000, alto: 5000 }; // 30 MP
