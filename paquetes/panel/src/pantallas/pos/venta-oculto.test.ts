@@ -28,6 +28,7 @@ const montar = async (rol: Rol, conConteo: boolean): Promise<Entorno> => {
 async function cobrarEfectivo(u: ReturnType<typeof userEvent.setup>, monto: string): Promise<void> {
   await u.click(screen.getByRole('button', { name: 'Cobrar' }));
   await screen.findByRole('heading', { name: 'Cobro' });
+  await u.clear(campo(/Monto a aplicar/));
   await u.type(campo(/Monto a aplicar/), monto);
   await u.type(campo(/Efectivo recibido/), '100000');
 }
@@ -81,8 +82,9 @@ describe('caja con un conteo abierto', () => {
     await u.type(cant, '500');
     await cobrarEfectivo(u, '87000');
     await u.click(screen.getByRole('button', { name: 'Confirmar cobro' }));
-    const msg = await screen.findByText(/No alcanza el stock/);
-    expect(msg.textContent).not.toMatch(/hay \d/);
+    // El error se ve junto al botón y también como aviso fijo: ninguno dice la cantidad.
+    const mensajes = await screen.findAllByText(/No alcanza el stock/);
+    for (const msg of mensajes) expect(msg.textContent).not.toMatch(/hay \d/);
   });
 
   it('adm: ve las cantidades y la lista de series, sin aviso', async () => {
