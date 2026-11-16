@@ -37,11 +37,11 @@ function textoAvisoSitio(a: { readonly motivo: 'sin_productos' | 'sin_fotos'; re
   const desde = f === '' ? '' : ` (desde el ${f})`;
   return a.motivo === 'sin_productos'
     ? `El sitio quedó sin productos publicados${desde}. Active o publique al menos un producto en Inventario y luego publique el sitio.`
-    : `El sitio quedó sin fotos${desde}. Agregue una foto a un producto publicado o cargue el carrusel y luego publique el sitio.`;
+    : `El sitio quedó sin fotos${desde}. Agregue al menos una foto a un producto visible en el sitio y luego publique el sitio.`;
 }
 
 function Tablero(): JSX.Element {
-  const { api, usuario } = useApp();
+  const { api, usuario, puedeVer } = useApp();
   const comercial = useConfiguracionComercial();
   const t = useCarga(() => api.llamar('obtenerTablero', {}), []);
   const accion = useAccion();
@@ -63,9 +63,12 @@ function Tablero(): JSX.Element {
           <Alerta tipo="info">
             <p data-prueba="aviso-sitio">{textoAvisoSitio(d.avisoSitio)}</p>
             {d.avisoSitio.motivo === 'sin_productos' ? (
-              <a href="#/inventario">Ir a Inventario</a>
+              puedeVer('inventario') ? <a href="#/inventario">Ir a Inventario</a> : <p>Pida al administrador que active o publique un producto.</p>
             ) : (
-              <><a href="#/catalogo/fichas">Ir a las fichas</a> · <a href="#/catalogo/secciones">Ir a las secciones y el carrusel</a></>
+              <>
+                <a href="#/catalogo/fichas">Agregar fotos a un producto</a>
+                {usuario.rol === 'adm' && <> · <a href="#/catalogo/apariencia">Carrusel de la portada</a></>}
+              </>
             )}
           </Alerta>
         )}

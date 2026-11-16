@@ -450,9 +450,9 @@ describe('catálogo: aviso del sitio incompleto', () => {
     const e = crearEntorno('adm');
     e.api.estado.avisoSitio = { motivo: 'sin_fotos', en: EN };
     render(e.envolver(h(PantallaCatalogo, { sub: 'tablero' })));
-    expect(await screen.findByText(/El sitio quedó sin fotos \(desde el 16\/11\/2026 06:00\)\. Agregue una foto a un producto publicado o cargue el carrusel y luego publique el sitio\./)).toBeTruthy();
-    expect(screen.getByRole('link', { name: 'Ir a las fichas' }).getAttribute('href')).toBe('#/catalogo/fichas');
-    expect(screen.getByRole('link', { name: 'Ir a las secciones y el carrusel' }).getAttribute('href')).toBe('#/catalogo/secciones');
+    expect(await screen.findByText(/El sitio quedó sin fotos \(desde el 16\/11\/2026 06:00\)\. Agregue al menos una foto a un producto visible en el sitio y luego publique el sitio\./)).toBeTruthy();
+    expect(screen.getByRole('link', { name: 'Agregar fotos a un producto' }).getAttribute('href')).toBe('#/catalogo/fichas');
+    expect(screen.getByRole('link', { name: 'Carrusel de la portada' }).getAttribute('href')).toBe('#/catalogo/apariencia');
   });
   it('null: sin alerta', async () => {
     const e = crearEntorno('adm');
@@ -464,7 +464,7 @@ describe('catálogo: aviso del sitio incompleto', () => {
     const e = crearEntorno('adm');
     e.api.estado.avisoSitio = { motivo: 'sin_fotos', en: 'no-es-fecha' };
     render(e.envolver(h(PantallaCatalogo, { sub: 'tablero' })));
-    expect(await screen.findByText('El sitio quedó sin fotos. Agregue una foto a un producto publicado o cargue el carrusel y luego publique el sitio.')).toBeTruthy();
+    expect(await screen.findByText('El sitio quedó sin fotos. Agregue al menos una foto a un producto visible en el sitio y luego publique el sitio.')).toBeTruthy();
   });
   it('el supervisor ve la alerta y el texto de que solo el administrador publica', async () => {
     const e = crearEntorno('sup');
@@ -472,6 +472,14 @@ describe('catálogo: aviso del sitio incompleto', () => {
     render(e.envolver(h(PantallaCatalogo, { sub: 'tablero' })));
     expect(await screen.findByText(/El sitio quedó sin productos publicados/)).toBeTruthy();
     expect(screen.getByText('Solo el administrador publica.')).toBeTruthy();
+  });
+  it('el supervisor con sin_fotos ve solo el enlace a las fichas', async () => {
+    const e = crearEntorno('sup');
+    e.api.estado.avisoSitio = { motivo: 'sin_fotos', en: EN };
+    render(e.envolver(h(PantallaCatalogo, { sub: 'tablero' })));
+    await screen.findByText(/El sitio quedó sin fotos/);
+    expect(screen.getByRole('link', { name: 'Agregar fotos a un producto' }).getAttribute('href')).toBe('#/catalogo/fichas');
+    expect(screen.queryByRole('link', { name: 'Carrusel de la portada' })).toBeNull();
   });
   it('tras publicar, el aviso desaparece', async () => {
     const e = crearEntorno('adm');
