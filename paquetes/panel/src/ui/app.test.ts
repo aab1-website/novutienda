@@ -201,6 +201,63 @@ describe('cabecera plegable, título y foco', () => {
     expect(boton.getAttribute('aria-expanded')).toBe('false');
     expect(document.activeElement).toBe(boton);
   });
+  describe('menú de hamburguesa', () => {
+    const abrir = async (): Promise<{ u: ReturnType<typeof userEvent.setup>; boton: HTMLElement; panel: HTMLElement }> => {
+      montar();
+      await entrar('adm@ejemplo.test', 'clave-adm-1');
+      await screen.findByRole('navigation', { name: 'Menú principal' });
+      await waitFor(() => expect(document.activeElement?.textContent).toBe('Venta'));
+      const u = userEvent.setup();
+      const boton = screen.getByRole('button', { name: 'Menú' });
+      const panel = document.getElementById(boton.getAttribute('aria-controls') ?? '') as HTMLElement;
+      await u.click(boton);
+      expect(boton.getAttribute('aria-expanded')).toBe('true');
+      return { u, boton, panel };
+    };
+    it('el botón es el primero de la cabecera, dibuja tres barras y su nombre accesible es «Menú»', async () => {
+      montar();
+      await entrar('adm@ejemplo.test', 'clave-adm-1');
+      const boton = await screen.findByRole('button', { name: 'Menú' });
+      expect(document.querySelector('.cabecera-interior')?.firstElementChild).toBe(boton);
+      expect(boton.querySelectorAll('.hamburguesa > span')).toHaveLength(3);
+      expect(boton.textContent).toBe('');
+      expect(document.querySelectorAll('nav[aria-label="Menú principal"]')).toHaveLength(1);
+    });
+    it('el mismo botón lo cierra y el foco vuelve al botón', async () => {
+      const { u, boton, panel } = await abrir();
+      expect(panel.classList.contains('abierto')).toBe(true);
+      expect(document.activeElement).toBe(within(panel).getAllByRole('link')[0]);
+      await u.click(boton);
+      expect(boton.getAttribute('aria-expanded')).toBe('false');
+      expect(panel.classList.contains('abierto')).toBe(false);
+      expect(document.activeElement).toBe(boton);
+    });
+    it('Escape lo cierra y el foco vuelve al botón', async () => {
+      const { u, boton } = await abrir();
+      await u.keyboard('{Escape}');
+      expect(boton.getAttribute('aria-expanded')).toBe('false');
+      expect(document.activeElement).toBe(boton);
+    });
+    it('tocar fuera lo cierra; tocar dentro del panel no', async () => {
+      const { u, boton, panel } = await abrir();
+      await u.click(panel);
+      expect(boton.getAttribute('aria-expanded')).toBe('true');
+      await u.click(document.getElementById('contenido') as HTMLElement);
+      expect(boton.getAttribute('aria-expanded')).toBe('false');
+    });
+    it('elegir un enlace navega y lo cierra', async () => {
+      const { u, boton } = await abrir();
+      await u.click(screen.getByRole('link', { name: 'Mermas' }));
+      await waitFor(() => expect(window.location.hash).toBe('#/mermas'));
+      await waitFor(() => expect(boton.getAttribute('aria-expanded')).toBe('false'));
+    });
+    it('al abrirlo no cambia la ruta ni duplica el menú', async () => {
+      const { panel } = await abrir();
+      const antes = window.location.hash;
+      expect(panel.querySelectorAll('nav')).toHaveLength(1);
+      expect(window.location.hash).toBe(antes);
+    });
+  });
   it('la redirección inicial no pisa una navegación del usuario ni cierra el menú abierto', async () => {
     montar();
     await entrar('adm@ejemplo.test', 'clave-adm-1');

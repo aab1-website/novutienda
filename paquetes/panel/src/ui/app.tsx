@@ -233,9 +233,10 @@ interface PropsCabecera {
 }
 
 /**
- * Cabecera. Desde 1024 px se ve completa; por debajo queda una sola fila (marca, comercio y botón «Menú») y el resto
- * (navegación, tema, usuario, salir) se pliega en un panel. El botón lleva `aria-expanded` y `aria-controls`; Esc cierra
- * y devuelve el foco al botón; al abrir, el foco pasa al primer enlace; navegar cierra el panel.
+ * Cabecera. Desde 1024 px se ve completa; por debajo queda una sola fila (botón de hamburguesa «Menú» a la izquierda y la marca)
+ * y el resto (navegación, tema, usuario, salir) se pliega en un panel vertical pegado al borde izquierdo. El botón lleva
+ * `aria-expanded` y `aria-controls`; Esc, tocar fuera y el mismo botón cierran y devuelven el foco al botón; al abrir, el
+ * foco pasa al primer enlace; navegar cierra el panel. El panel queda bajo los diálogos y los avisos (capas.css).
  */
 function Cabecera(p: PropsCabecera): JSX.Element {
   const [abierto, setAbierto] = useState(false);
@@ -274,17 +275,22 @@ function Cabecera(p: PropsCabecera): JSX.Element {
   return (
     <header class="cabecera">
       <div class="cabecera-interior">
-        <span class="marca-nombre">{NOMBRE_APP}</span>
         <button
           ref={boton}
           type="button"
           class="boton boton-secundario boton-chico boton-menu"
+          aria-label="Menú"
           aria-expanded={abierto}
           aria-controls="cabecera-panel"
           onClick={() => setAbierto((a) => !a)}
         >
-          Menú
+          <span class="hamburguesa" aria-hidden="true">
+            <span />
+            <span />
+            <span />
+          </span>
         </button>
+        <span class="marca-nombre">{NOMBRE_APP}</span>
         <div id="cabecera-panel" ref={panel} class={abierto ? 'cabecera-panel abierto' : 'cabecera-panel'}>
           {p.cargando ? (
             <span class="menu" />
