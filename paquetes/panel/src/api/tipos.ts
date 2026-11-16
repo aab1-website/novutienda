@@ -537,6 +537,47 @@ export interface Medio {
   readonly por: string;
 }
 
+/** Tipo de una subida: foto o video de un producto, o el logo del negocio. */
+export type TipoSubida = TipoMedio | 'logo';
+/** `productoId` con el que el servidor guarda la subida de un logo (el logo no pertenece a ningún producto). */
+export const ID_NEGOCIO = '_negocio';
+/** Tope del archivo de logo, igual que el servidor (JPG, PNG o WebP). */
+export const BYTES_LOGO = 2 * 1024 * 1024;
+/** Versión publicada del logo (PNG y WebP, lado mayor de 512 como máximo); `ruta` es relativa a la base de medios. */
+export interface VersionLogo {
+  readonly clase: 'logo';
+  readonly formato: 'png' | 'webp';
+  readonly lado: number;
+  readonly ruta: string;
+  readonly bytes: number;
+}
+/** Medio de una subida de logo (aparte de `Medio` para que ninguna ficha ni sección lo tome por una foto de producto). */
+export interface MedioLogo {
+  readonly id: string;
+  readonly productoId: typeof ID_NEGOCIO;
+  readonly tipo: 'logo';
+  readonly bytesOriginal: number;
+  readonly ancho: number;
+  readonly alto: number;
+  readonly versiones: readonly VersionLogo[];
+  readonly creadoEn: number;
+  readonly por: string;
+}
+/** Respuesta de `estadoSubidaLogo`: `medio` solo con `procesada`; `motivo` si se rechazó. */
+export interface ResultadoEstadoSubidaLogo {
+  readonly estado: EstadoSubida;
+  readonly medio?: MedioLogo;
+  readonly motivo?: string;
+}
+/** Logo vigente del negocio (`leerLogo`); guarda rutas relativas, no URL. */
+export interface LogoNegocio {
+  readonly medioId: string;
+  readonly ancho: number;
+  readonly alto: number;
+  readonly versiones: readonly { readonly formato: 'png' | 'webp'; readonly lado: number; readonly ruta: string; readonly bytes: number }[];
+  readonly actualizadoEn: string;
+}
+
 export interface Reserva {
   readonly subidaId: string;
   /** Ruta privada a la que el cliente sube (subida reanudable). */
@@ -665,8 +706,13 @@ export interface UsuarioVista {
   readonly uid: string;
   /** `null` si la cuenta no tiene correo. */
   readonly correo: string | null;
+  /** Rol vigente; en una invitación pendiente, el rol reservado. */
   readonly rol: Rol;
   readonly verificado: boolean;
+  /** `invitado`: invitación pendiente (ocupa un cupo y aún no tiene acceso). Ausente o `activo`: miembro. */
+  readonly estado?: 'activo' | 'invitado';
+  /** Solo en una invitación: instante (ms) en que caduca. */
+  readonly venceEnMs?: number;
 }
 
 export interface EntradaAuditoriaVista {

@@ -14,8 +14,10 @@ const exportadas = (disparador: string): string[] => [...codigo.matchAll(new Reg
 const ordenados = (l: readonly string[]): string[] => [...new Set(l)].sort();
 
 describe('exportaciones de las Functions frente al registro', () => {
-  it('los callables exportados son exactamente los `callable` del registro', () => {
-    expect(exportadas('onCall')).toEqual(ordenados(registroPlataforma.acciones().map((a) => a.callable)));
+  it('los callables exportados son los `callable` del registro más `activarInvitaciones`', () => {
+    // `activarInvitaciones` es un callable propio sin tenant ni rol (la persona aún no tiene rol): no es una acción del registro.
+    // Su manejador exige App Check, token vigente y correo verificado, y tiene límite por uid.
+    expect(exportadas('onCall')).toEqual(ordenados([...registroPlataforma.acciones().map((a) => a.callable), 'activarInvitaciones']));
   });
 
   it('las programadas exportadas son exactamente las del registro, y toman su horario de él', () => {

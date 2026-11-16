@@ -11,3 +11,5 @@ export { crearLectorHojas, leerPrimeraHojaXlsx, XlsxInvalido } from './lector-ho
 export { bloqueoPorConteo, DETALLES_STOCK_OCULTO, faltantesVisibles, MENSAJE_STOCK_OCULTO, recortarDetallesDeStock } from './stock-oculto.js';
 export { ComercialInvalida, crearLectorComercial, vistaComercial, TTL_COMERCIAL_MS, TTL_COMERCIAL_NEGATIVO_MS, MAX_ENTRADAS_COMERCIAL } from './comercial.js';
 export type { LectorComercial, VistaComercial } from './comercial.js';
+export { crearLogoDelNegocio } from './logo-negocio.js';
+export type { DepsLogoNegocio, LogoDelNegocio } from './logo-negocio.js';

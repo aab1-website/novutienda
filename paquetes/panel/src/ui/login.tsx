@@ -92,8 +92,22 @@ export function Login({ sesion, nombre, motivo }: { sesion: Sesion; nombre: stri
           </Alerta>
         )}
         {resultado?.tipo === 'credenciales-invalidas' && <Alerta>El correo o la contraseña no son correctos.</Alerta>}
-        {resultado?.tipo === 'sin-acceso' && <Alerta>Su cuenta no tiene acceso a ningún negocio. Pida al administrador que le asigne un rol.</Alerta>}
-        {resultado?.tipo === 'error' && <Alerta>{resultado.mensaje}</Alerta>}
+        {resultado?.tipo === 'sin-acceso' && (
+          <Alerta>
+            <span>Su cuenta no tiene acceso a ningún negocio. Pida al administrador que le asigne un rol o le envíe una invitación.</span>
+            <button type="button" class="boton boton-secundario boton-chico" disabled={ocupado} onClick={() => enviar(new Event('submit'))}>
+              Volver a comprobar
+            </button>
+          </Alerta>
+        )}
+        {resultado?.tipo === 'error' && (
+          <Alerta>
+            <span>{resultado.mensaje}</span>
+            <button type="button" class="boton boton-secundario boton-chico" disabled={ocupado || correo.trim() === '' || clave === ''} onClick={() => enviar(new Event('submit'))}>
+              Reintentar
+            </button>
+          </Alerta>
+        )}
         <Boton tipo="submit" ocupado={ocupado} deshabilitado={correo.trim() === '' || clave === ''}>
           Entrar
         </Boton>

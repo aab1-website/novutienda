@@ -3,7 +3,7 @@ import { ErrorApi } from '../api/errores.js';
 import { UBICACIONES } from '../api/tipos.js';
 import type {
   AprobacionPos, Carrusel, ConteoAbierto, MarcaOcultamiento, CobroCredito, ConfigPos, ConfigSitio, ConteoVista, CotizacionesVigentes, CreditoVista, EntradaAuditoriaVista,
-  FichaWeb, Medio, MermaVista, MovimientoCaja, MovimientoVista, PlantillaRecibo, ProductoPanel, Recibo, Seccion, SubidaVista, TurnoPos,
+  FichaWeb, Medio, MedioLogo, MermaVista, MovimientoCaja, MovimientoVista, PlantillaRecibo, ProductoPanel, Recibo, Seccion, SubidaVista, TipoSubida, TurnoPos,
   UbicacionId, UnidadSerie, UsuarioVista, VentaPos, VistaComercial,
 } from '../api/tipos.js';
 
@@ -32,7 +32,9 @@ export interface EstadoDoble {
   auditoria: EntradaAuditoriaVista[];
   fichas: Map<string, FichaWeb>;
   medios: Map<string, Medio>;
-  subidas: Map<string, SubidaVista & { productoId: string; bytes: number; /** Instante (reloj real) de la primera consulta de estado: sirve al disparador simulado. */ consultadaDesde?: number }>;
+  /** Logo vigente del negocio (un solo logo): su medio y el instante de la última subida; `null` si no hay. */
+  logo: { medio: MedioLogo; actualizadoEn: number } | null;
+  subidas: Map<string, Omit<SubidaVista, 'tipo'> & { tipo: TipoSubida; productoId: string; bytes: number; /** Instante (reloj real) de la primera consulta de estado: sirve al disparador simulado. */ consultadaDesde?: number }>;
   /** Disparador de Storage simulado: resuelve la subida `demoraMs` después de la primera consulta de estado (`Infinity` = disparador caído). */
   disparador: { demoraMs: number; rechazo?: string };
   secciones: Seccion[];
@@ -51,6 +53,8 @@ export interface EstadoDoble {
   redondeo: RedondeoPorMoneda;
   /** Cuentas de Firebase Auth que existen pero aún no son miembros de este negocio (el panel no crea cuentas). */
   cuentasSinRol: Mutable<UsuarioVista>[];
+  /** Invitaciones: instantes de los envíos de la última hora (límite de 5 por hora) y uid de las cuentas nacidas con una invitación. */
+  invitaciones: { envios: number[]; cuentasCreadas: Set<string>; siguiente: number };
   bytesOriginales: number;
   /**
    * Importación de productos por tandas (como el servidor, que parte el archivo por peso de escrituras): `filasPorTanda`
@@ -63,7 +67,7 @@ const HTTPS_DE_MODULO: Readonly<Record<string, string>> = {
   'entrada-invalida': 'invalid-argument', 'no-autorizado': 'permission-denied', 'sin-permiso': 'permission-denied', 'no-encontrado': 'not-found',
   'producto-inexistente': 'not-found', 'venta-inexistente': 'not-found', 'aprobacion-inexistente': 'not-found', 'credito-inexistente': 'not-found',
   'operacion-conflicto': 'already-exists', conflicto: 'already-exists', 'request-en-uso': 'already-exists', limite: 'resource-exhausted',
-  'cuota-excedida': 'resource-exhausted', 'limite-del-plan': 'failed-precondition',
+  'cuota-excedida': 'resource-exhausted', 'limite-del-plan': 'failed-precondition', 'limite-invitaciones': 'resource-exhausted',
 };
 
 /** Error del módulo con su código HTTPS (por omisión `failed-precondition`). */
@@ -130,7 +134,7 @@ export function crearEstado(ahora: number): EstadoDoble {
       topesDescuentoBp: { caj: 500, sup: 10000, adm: 10000 }, textoRecibo: 'Gracias por su compra.', serieRecibo: 'A',
     },
     plantilla: { negocio: { nombre: 'Negocio de ejemplo', direccion: 'Calle Ejemplo 123', telefono: '70000000' }, pie: 'Comprobante no fiscal.', politicaGarantia: 'Garantía según ficha del producto.', politicaCambios: 'Cambios dentro de 7 días con el comprobante.' },
-    auditoria: [], fichas: new Map(), medios: new Map(), subidas: new Map(), disparador: { demoraMs: 15 }, secciones: [], carruseles: new Map(),
+    auditoria: [], fichas: new Map(), medios: new Map(), logo: null, subidas: new Map(), disparador: { demoraMs: 15 }, secciones: [], carruseles: new Map(),
     configSitio: { plantillaActiva: 'cielo', whatsappNovuchat: '59170000000', medicion: {} },
     cambiosSinPublicar: 0, ultimoCambioEn: iso(ahora), publicadoEn: null, versionPublicada: 0,
     modulos: ['inventarios', 'pos', 'recibos', 'consola', 'website'],
@@ -152,6 +156,7 @@ export function crearEstado(ahora: number): EstadoDoble {
       { uid: 'u-nueva', correo: 'nueva@ejemplo.test', rol: 'caj', verificado: true },
       { uid: 'u-pendiente', correo: 'pendiente@ejemplo.test', rol: 'caj', verificado: false },
     ],
+    invitaciones: { envios: [], cuentasCreadas: new Set(), siguiente: 1 },
     bytesOriginales: 0,
     importacion: { filasPorTanda: 40 },
   };
