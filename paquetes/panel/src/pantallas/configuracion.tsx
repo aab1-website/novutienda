@@ -34,8 +34,11 @@ type EstadoLogo = { readonly estado: 'subido'; readonly logo: LogoNegocio } | { 
  * si la acción no está disponible (módulo apagado, sin permiso o error), solo se dice «Sin logo subido».
  */
 function LogoSubido({ estado, conDireccion }: { readonly estado: EstadoLogo; readonly conDireccion: boolean }): JSX.Element {
+  // Si la imagen no carga (ruta caída, base mal configurada) se muestra el texto del caso, nunca un ícono roto.
+  const [fallida, setFallida] = useState<string | null>(null);
+  const urlVista = estado.estado === 'subido' ? urlDelLogo(baseDeMedios(), estado.logo) : null;
   if (estado.estado === 'no-disponible') return <p class="texto-suave" data-prueba="logo-no-disponible">Sin logo subido</p>;
-  if (estado.estado === 'sin-logo') {
+  if (estado.estado === 'sin-logo' || (urlVista !== null && fallida === urlVista)) {
     return (
       <p class="texto-suave" data-prueba="logo-sin-subir">
         {conDireccion ? 'Se usa la dirección web de abajo como respaldo. ' : 'Sin logo subido. '}
@@ -43,10 +46,10 @@ function LogoSubido({ estado, conDireccion }: { readonly estado: EstadoLogo; rea
       </p>
     );
   }
-  const url = urlDelLogo(baseDeMedios(), estado.logo);
+  const url = urlVista;
   return (
     <div data-prueba="logo-subido">
-      {url !== null && <img src={url} alt="Logo del negocio" referrerpolicy="no-referrer" width={96} height={96} style="width:96px;height:96px;object-fit:contain" />}
+      {url !== null && <img src={url} alt="Logo del negocio" referrerpolicy="no-referrer" onError={() => setFallida(url)} width={96} height={96} style="width:96px;height:96px;object-fit:contain" />}
       <p class="texto-suave">Este logo se sube en <a href="#/catalogo/apariencia">Catálogo y sitio → Apariencia</a>. La dirección web de abajo queda de respaldo.</p>
     </div>
   );

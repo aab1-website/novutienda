@@ -673,6 +673,9 @@ describe('doble: catálogo y sitio', () => {
     expect(await sup.api.llamar('leerLogo', {})).toBeNull();
     expect((await falla(sup.api.llamar('reservarSubidaLogo', { subidaId: uuid(), bytes: 100 }))).codigoHttps).toBe('permission-denied');
     expect((await falla(sup.api.llamar('quitarLogo', {}))).codigoHttps).toBe('permission-denied');
+    // Una subida de logo reservada por el administrador: la supervisora tampoco puede finalizarla.
+    sup.api.estado.subidas.set(id, { subidaId: id, productoId: '_negocio', tipo: 'logo', estado: 'reservada', bytes: 100 });
+    expect((await falla(sup.api.llamar('finalizarSubidaLogo', { subidaId: id }))).codigoHttps).toBe('permission-denied');
     expect((await falla(crearEntorno('caj').api.llamar('leerLogo', {}))).codigoHttps).toBe('permission-denied');
   });
   it('estadoSubida: el disparador simulado resuelve la subida unos milisegundos después; finalizarSubida queda como respaldo', async () => {

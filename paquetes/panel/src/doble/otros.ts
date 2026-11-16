@@ -215,6 +215,7 @@ export const handlersOtros: {
     return { estado: r.estado, ...(medio !== undefined ? { medio } : {}), ...(r.motivo !== undefined ? { motivo: r.motivo } : {}) };
   },
   finalizarSubidaLogo(c, e) {
+    exigirRol(c, ['adm']);
     const s = c.e.subidas.get(e.subidaId);
     if (s === undefined || s.tipo !== 'logo') throw fallo('no-encontrado', 'La subida no existe');
     if (s.estado === 'procesada' && c.e.logo?.medio.id === e.subidaId) return c.e.logo.medio;

@@ -746,6 +746,15 @@ describe('configuración: avisos, motivos y cambios sin guardar', () => {
         expect(document.querySelector('[data-prueba="logo-sin-subir"]')?.textContent).toContain('Sin logo subido');
         expect(screen.queryByAltText('Logo del negocio')).toBeNull();
       });
+      it('si la imagen no carga, muestra el texto del caso y no un ícono roto', async () => {
+        vi.stubEnv('VITE_MEDIOS_BASE_URL', BASE);
+        const e = crearEntorno('adm');
+        await subirLogo(e);
+        await seccion(e);
+        fireEvent.error(screen.getByAltText('Logo del negocio'));
+        await waitFor(() => expect(screen.queryByAltText('Logo del negocio')).toBeNull());
+        expect(document.querySelector('[data-prueba="logo-sin-subir"]')?.textContent).toContain('Sin logo subido');
+      });
       it('una ruta maliciosa o una base ausente no pintan ninguna imagen', async () => {
         vi.stubEnv('VITE_MEDIOS_BASE_URL', BASE);
         for (const ruta of ['../secreto/logo.webp', 'a/./b.webp', 'a/%2e%2e/b.webp', '/abs.webp', 'a b.webp', 'https://malo.test/x.webp', '']) {
