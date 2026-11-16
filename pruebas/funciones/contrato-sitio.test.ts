@@ -1,7 +1,6 @@
 // Contrato de punta a punta «la consola publica → GET /api/sitio/v1/publicado → contenidoDesdePublicado → contenido del sitio».
 // Todo con la salida REAL de `publicarSitio` (sobre el catálogo real de Inventarios) y el endpoint firmado real del emulador;
-// el mapeo se alcanza por `plataforma/registro.ts`. Tenant y datos sintéticos. Lo que hoy es una incoherencia entre lo que la
-// consola acepta y lo que el sitio exige se afirma tal cual está HOY y se marca con `INCOHERENCIA S2`; lo ya corregido (S2-1, S7-1, S7-2)
+// el mapeo se alcanza por `plataforma/registro.ts`. Tenant y datos sintéticos. Ya no queda ninguna incoherencia marcada: lo corregido (S2-1, S2-2, S7-1, S7-2)
 // afirma el comportamiento nuevo con un comentario «S2-1: …» / «S7-1: …». Ya no quedan incoherencias S7: el precio y la baja de un producto
 // publicado llegan a la copia por el evento `producto.cambiado`, entregado aquí por el bus real (`entregarEvento`).
 import { createHash, randomBytes } from 'node:crypto';
@@ -169,10 +168,6 @@ describe.skipIf(!hayEmulador)('contrato consola → /publicado → contenido del
 
   const mapear = (resp: unknown, neg: unknown = negocio(), disponibilidad: Record<string, boolean> = {}) =>
     contenidoDesdePublicado(resp, neg, { ...ENTORNO_BASE, disponibilidad });
-  const mensajeDeError = (fn: () => unknown): string => {
-    try { fn(); } catch (err) { expect((err as Error).name).toBe('ErrorContenidoPublicado'); return (err as Error).message; }
-    return '';
-  };
 
   it('camino feliz: lo cargado en la consola llega íntegro al contenido del sitio, con precios en unidades y secciones en orden', async () => {
     const t = await nuevoTenant();
@@ -273,9 +268,9 @@ describe.skipIf(!hayEmulador)('contrato consola → /publicado → contenido del
       expect(c.carruseles.bosque.length).toBeGreaterThan(0);
     });
 
-    it('enlace https de una sección a un host no permitido: la consola lo guarda y publica, el sitio rechaza todo (INCOHERENCIA S2)', async () => {
-      // INCOHERENCIA S2: `validarEnlace` de la consola (consola/src/enlaces.ts) solo mira el formato; la lista `enlacesPermitidos`
-      // (website/src/contenido/validar.ts:271) vive en el negocio del sitio y la consola no la conoce.
+    it('enlace https de una sección a un host no permitido: la consola lo guarda y publica; el sitio lo descarta con advertencia y no lanza (S2-2)', async () => {
+      // S2-2: `validarEnlace` de la consola solo mira el formato; la lista `enlacesPermitidos` vive en el negocio del sitio. El mapeo ya no
+      // rechaza todo: descarta el ítem (advertencia por ruta, sin el valor), omite el bloque sin enlaces y la sección sin bloques.
       const t = await nuevoTenant();
       await sembrarProducto(t, { id: 'enl-uno' });
       await h.firestore.doc(`tenants/${t}/secciones/enlaces`).set({ id: 'enlaces', titulo: 'Enlaces', visible: true, bloques: [
@@ -285,9 +280,35 @@ describe.skipIf(!hayEmulador)('contrato consola → /publicado → contenido del
       await publicar(t);
       const resp = await leerPublicado(t);
       expect(resp.documentos['seccion__enlaces']).toBeDefined();
-      expect(mensajeDeError(() => mapear(resp))).toContain('secciones[0].bloques[0].items[0].url: enlace fuera de la lista blanca');
-      // Con el host en la lista del negocio el mismo publicado pasa: la lista es la única diferencia.
+      const adv: string[] = [];
+      const c = contenidoDesdePublicado(resp, negocio(), { ...ENTORNO_BASE, disponibilidad: {} }, adv);
+      expect(c.productos.map((p) => p.id)).toEqual(['enl-uno']);
+      expect(c.secciones).toEqual([]);
+      expect(JSON.stringify(c)).not.toContain('ajeno.example.org');
+      expect(adv).toEqual(expect.arrayContaining([
+        'documentos.seccion__enlaces.bloques[0].items[0].url: enlace descartado (fuera de la lista blanca o demasiado largo)',
+        'documentos.seccion__enlaces.bloques[0]: bloque omitido (sin enlaces válidos)',
+        'documentos.seccion__enlaces: sección omitida (sin bloques válidos)',
+      ]));
+      expect(adv.some((m) => m.includes('ajeno.example.org') || m.includes('https://'))).toBe(false);
+      // Con el host en la lista del negocio el mismo publicado conserva la sección: la lista es la única diferencia.
       expect(mapear(resp, negocio({ enlacesPermitidos: ['ejemplo.invalid', 'ajeno.example.org'] })).secciones).toHaveLength(1);
+    });
+
+    it('sección con un enlace permitido y otro no permitido: se descarta solo el ajeno y la sección sigue en el contenido (S2-2)', async () => {
+      const t = await nuevoTenant();
+      await sembrarProducto(t, { id: 'enm-uno' });
+      await h.firestore.doc(`tenants/${t}/secciones/mixta`).set({ id: 'mixta', titulo: 'Mixta', visible: true, bloques: [
+        { tipo: 'enlaces', items: [{ texto: 'Ajeno', url: 'https://ajeno.example.org/x' }, { texto: 'Propio', url: 'https://ejemplo.invalid/ok' }] },
+      ] });
+      await h.firestore.doc(`tenants/${t}/sitio/indice`).set({ secciones: ['mixta'] });
+      await publicar(t);
+      const adv: string[] = [];
+      const c = contenidoDesdePublicado(await leerPublicado(t), negocio(), { ...ENTORNO_BASE, disponibilidad: {} }, adv);
+      expect(c.secciones.map((s) => s.slug)).toEqual(['mixta']);
+      expect(c.secciones[0]!.bloques).toEqual([{ tipo: 'enlaces', items: [{ texto: 'Propio', url: 'https://ejemplo.invalid/ok' }] }]);
+      expect(JSON.stringify(c)).not.toContain('ajeno.example.org');
+      expect(adv).toEqual(['documentos.seccion__mixta.bloques[0].items[0].url: enlace descartado (fuera de la lista blanca o demasiado largo)']);
     });
 
     it('bloque carrusel cuyos medios faltan: se omite con advertencia, la sección sin bloques también y el sitio se reconstruye', async () => {
