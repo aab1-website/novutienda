@@ -8,6 +8,7 @@ import {
   type Bloque, type Categoria, type ConfigAppCheck, type Contenido, type Foto, type IdIcono, type IdPlantilla,
   type Producto, type Seccion,
 } from './tipos.js';
+import { logoDesdePublicado } from './logo-subido.js';
 import { LARGO_MAXIMO_ENLACE, urlEnlaceSegura, validarContenido, validarNegocio } from './validar.js';
 
 export interface EntornoSitio {
@@ -240,9 +241,14 @@ export function contenidoDesdePublicado(respuesta: unknown, negocio: unknown, en
   const entero = (x: unknown): number | null => (typeof x === 'number' && Number.isInteger(x) && x >= 0 ? x : null);
   const nulo = (x: unknown): string | null => (typeof x === 'string' && x !== '' ? x : null);
 
+  // Logo subido por archivo: manda sobre la dirección escrita a mano; inválido = se descarta con aviso y todo sigue como sin él.
+  const logoSubido = logoDesdePublicado(s['logo'], base, origenMedios, neg?.nombre ?? '', advertencias);
+
   const candidato = {
     config: {
-      nombre: neg?.nombre, lema: neg?.lema, logo: neg?.logo ?? null,
+      nombre: neg?.nombre, lema: neg?.lema, logo: logoSubido?.cabecera ?? neg?.logo ?? null,
+      iconoSitio: logoSubido === undefined ? null : logoSubido.icono,
+      imagenCompartir: logoSubido?.compartir ?? null,
       origen: entorno.origen,
       plantilla: s['plantillaActiva'],
       whatsappNovuchat: nulo(s['whatsappNovuchat']),
