@@ -471,3 +471,82 @@ describe('catálogo y sitio', () => {
     expect(await screen.findByText(/productos-sitio\.csv generado/)).toBeTruthy();
   });
 });
+
+const regionAvisos = (tipo: 'estado' | 'error-visual'): HTMLElement => document.querySelector(`[data-region="avisos-${tipo}"]`) as HTMLElement;
+
+describe('usuarios: avisos, motivos y datos ausentes', () => {
+  it('el resultado se anuncia en el aviso compartido', async () => {
+    const e = crearEntorno('adm');
+    ver(e, h(PantallaUsuarios, {}));
+    const u = userEvent.setup();
+    await u.selectOptions(await screen.findByLabelText('Rol de caj@ejemplo.test'), 'sup');
+    await u.click(screen.getAllByRole('button', { name: 'Guardar rol' })[1] as HTMLElement);
+    await waitFor(() => expect(regionAvisos('estado').textContent).toContain('Rol actualizado'));
+  });
+  it('un error se ve en la sección donde se actuó y también en el aviso compartido', async () => {
+    const e = crearEntorno('adm');
+    const llamar = e.api.llamar.bind(e.api) as (n: string, x: unknown) => Promise<unknown>;
+    vi.spyOn(e.api, 'llamar').mockImplementation(((n: string, x: unknown) =>
+      n === 'quitarRol' ? Promise.reject(new ErrorApi('failed-precondition', 'x', { codigo: 'ultimo-adm' })) : llamar(n, x)) as never);
+    ver(e, h(PantallaUsuarios, {}));
+    const u = userEvent.setup();
+    await u.click((await screen.findAllByRole('button', { name: 'Quitar acceso' }))[0] as HTMLElement);
+    await u.click(screen.getByRole('button', { name: 'Sí, quitar' }));
+    const local = await screen.findByRole('alert');
+    expect(local.textContent).toContain('No se puede quitar al último administrador.');
+    expect(local.closest('section')?.querySelector('h2')?.textContent).toContain('Personas con acceso');
+    expect(regionAvisos('error-visual').textContent).toContain('No se puede quitar al último administrador.');
+  });
+  it('un error de la búsqueda aparece junto a «Buscar cuenta», no en la otra tarjeta', async () => {
+    const e = crearEntorno('adm');
+    await e.api.llamar('quitarRol', { uid: 'u-sup' });
+    const llamar = e.api.llamar.bind(e.api) as (n: string, x: unknown) => Promise<unknown>;
+    vi.spyOn(e.api, 'llamar').mockImplementation(((n: string, x: unknown) =>
+      n === 'buscarUsuarioPorCorreo' ? Promise.reject(new ErrorApi('unavailable', 'x')) : llamar(n, x)) as never);
+    ver(e, h(PantallaUsuarios, {}));
+    const u = userEvent.setup();
+    await u.type(await screen.findByLabelText(/Correo de la persona/), 'alguien@ejemplo.test');
+    await u.click(screen.getByRole('button', { name: 'Buscar cuenta' }));
+    const local = await screen.findByRole('alert');
+    expect(local.closest('section')?.querySelector('h2')?.textContent).toBe('Agregar una persona');
+    expect(regionAvisos('error-visual').textContent).not.toBe('');
+  });
+  it('«Buscar cuenta» apagado dice por qué y no envía', async () => {
+    const e = crearEntorno('adm');
+    await e.api.llamar('quitarRol', { uid: 'u-sup' });
+    ver(e, h(PantallaUsuarios, {}));
+    const boton = await screen.findByRole('button', { name: 'Buscar cuenta' });
+    expect(boton.getAttribute('aria-disabled')).toBe('true');
+    expect(screen.getByText('Escriba el correo de la persona')).toBeTruthy();
+    await userEvent.setup().click(boton);
+    expect(e.api.llamadas.map((l) => l.nombre)).not.toContain('buscarUsuarioPorCorreo');
+    await userEvent.setup().type(screen.getByLabelText(/Correo de la persona/), 'a@ejemplo.test');
+    expect(screen.queryByText('Escriba el correo de la persona')).toBeNull();
+  });
+  it('«Guardar rol» sin cambios dice por qué (descripción accesible)', async () => {
+    const e = crearEntorno('adm');
+    ver(e, h(PantallaUsuarios, {}));
+    const boton = (await screen.findAllByRole('button', { name: 'Guardar rol' }))[0] as HTMLElement;
+    expect(boton.getAttribute('aria-disabled')).toBe('true');
+    expect(document.getElementById(boton.getAttribute('aria-describedby') ?? '')?.textContent).toBe('Cambie el rol para guardar');
+  });
+  it('el tope de usuarios sale del dato y no de un texto fijo', async () => {
+    const e = crearEntorno('adm');
+    ver(e, h(PantallaUsuarios, {}));
+    expect(await screen.findByText(/El plan incluye 3 usuarios\./)).toBeTruthy();
+    expect(screen.queryByText(/incluye tres/)).toBeNull();
+  });
+  it('una cuenta sin correo no se pinta como «null» y no rompe la búsqueda', async () => {
+    const e = crearEntorno('adm');
+    e.api.estado.usuarios = e.api.estado.usuarios.filter((x) => x.uid !== 'u-sup' && x.uid !== 'u-caj');
+    e.api.estado.usuarios.unshift({ uid: 'u-sc', correo: null as never, rol: 'caj', verificado: true });
+    ver(e, h(PantallaUsuarios, {}));
+    expect(await screen.findByText('Sin correo registrado')).toBeTruthy();
+    expect(document.body.textContent).not.toMatch(/null|undefined/);
+    expect(screen.getByLabelText('Rol de Sin correo registrado')).toBeTruthy();
+    const u = userEvent.setup();
+    await u.type(await screen.findByLabelText(/Correo de la persona/), 'adm@ejemplo.test');
+    await u.click(screen.getByRole('button', { name: 'Buscar cuenta' }));
+    expect(await screen.findByText(/ya tiene acceso/)).toBeTruthy();
+  });
+});
