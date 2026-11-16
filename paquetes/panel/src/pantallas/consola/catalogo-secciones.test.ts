@@ -10,6 +10,7 @@ import { PantallaSecciones } from './catalogo-secciones.js';
 
 afterEach(() => {
   cleanup();
+  vi.unstubAllEnvs();
   vi.restoreAllMocks();
 });
 
@@ -170,7 +171,6 @@ describe('secciones: miniaturas en el selector de foto', () => {
     await u.keyboard(' ');
     expect((radio as HTMLInputElement).checked).toBe(true);
     expect(screen.queryByText('Elija la foto del bloque 1.')).toBeNull();
-    vi.unstubAllEnvs();
   });
 
   it('sin base muestra el texto de respaldo y no una imagen rota', async () => {
@@ -184,7 +184,6 @@ describe('secciones: miniaturas en el selector de foto', () => {
     const radio = await screen.findByRole('radio', { name: /^Foto 1/ });
     expect(radio.parentElement?.querySelector('img')).toBeNull();
     expect(radio.parentElement?.querySelector('[data-respaldo]')?.textContent).toMatch(/Foto 111111.*n\.º 1.*1200 × 800/);
-    vi.unstubAllEnvs();
   });
 
   it('si la imagen falla al cargar cae al respaldo', async () => {
@@ -200,6 +199,23 @@ describe('secciones: miniaturas en el selector de foto', () => {
     fireEvent.error(img);
     await waitFor(() => expect(document.querySelector('.selector-miniaturas img')).toBeNull());
     expect(document.querySelector('.selector-miniaturas [data-respaldo]')).toBeTruthy();
-    vi.unstubAllEnvs();
+  });
+
+  it('«Sin foto» quita la foto elegida', async () => {
+    vi.stubEnv('VITE_MEDIOS_BASE_URL', BASE_MEDIOS);
+    const e = crearEntorno('adm');
+    await subir(e);
+    conVersiones(e);
+    ver(e);
+    const u = userEvent.setup();
+    await elegirProducto(u);
+    const radio = await screen.findByRole('radio', { name: /^Foto 1/ });
+    await u.click(radio);
+    expect(screen.queryByText('Elija la foto del bloque 1.')).toBeNull();
+    await u.click(screen.getByRole('radio', { name: 'Sin foto' }));
+    await waitFor(() => expect((screen.getByRole('radio', { name: 'Sin foto' }) as HTMLInputElement).checked).toBe(true));
+    expect((screen.getByRole('radio', { name: /^Foto 1/ }) as HTMLInputElement).checked).toBe(false);
+    // Sin foto elegida el sistema vuelve a explicar por qué no se puede guardar.
+    expect(screen.getByRole('button', { name: 'Guardar sección' }).getAttribute('aria-disabled')).toBe('true');
   });
 });

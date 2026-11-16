@@ -27,11 +27,13 @@ describe('urlMiniatura', () => {
     expect(urlMiniatura(BASE, medio('foto', [v('imagen', 480, 'avif', 'a.avif')]))).toBeNull();
     expect(urlMiniatura(BASE, medio('video', [v('video', 720, 'mp4', 'a.mp4')]))).toBeNull();
   });
-  it.each(['/abs/a.webp', 'https://malo.test/a.webp', 'javascript:alert(1)', 'data:image/webp;base64,AA', 'a/../b.webp', '../b.webp', 'a//b.webp', 'a\\b.webp', 'a.webp?x=1', 'a.webp#x', ''])('rechaza la ruta %j', (ruta) => {
+  it.each(['/abs/a.webp', 'https://malo.test/a.webp', 'javascript:alert(1)', 'data:image/webp;base64,AA', 'a/../b.webp', '../b.webp', 'a//b.webp', 'a\\b.webp', 'a.webp?x=1', 'a.webp#x', '', '%2e%2e/x.webp', 'a%2fb.webp', 'a b/x.webp', 'a/b c.webp', 'a%20b.webp', './x.webp', 'a/./x.webp', 'a/', 'a/b.webp/'])('rechaza la ruta %j', (ruta) => {
     expect(rutaSegura(ruta)).toBe(false);
     expect(urlMiniatura(BASE, medio('foto', [v('imagen', 480, 'webp', ruta)]))).toBeNull();
   });
   it('acepta una ruta con hash de contenido', () => {
     expect(rutaSegura('t/p/m-480-3fa9c1.webp')).toBe(true);
+    // Forma real del servidor: tenants/<t>/publico/medios/<producto>/<hash32>-<clase><lado>.<formato>
+    expect(rutaSegura('tenants/t-1/publico/medios/tv-55/0123456789abcdef0123456789abcdef-imagen480.webp')).toBe(true);
   });
 });

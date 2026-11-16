@@ -3,13 +3,13 @@ import type { Medio, VersionMedio } from '../../api/tipos.js';
 /** Base pública del almacén de medios, de la variable de compilación; vacía si no está definida. */
 export const baseMedios = (): string => String(import.meta.env['VITE_MEDIOS_BASE_URL'] ?? '').trim();
 
-/** Una ruta pública válida es relativa, sin esquema, sin `..`, sin `//` y sin caracteres de control o de escape. */
+/** Segmento permitido de una ruta pública: letras, dígitos, punto, guion y guion bajo (lo que genera el servidor). */
+const SEGMENTO = /^[A-Za-z0-9._-]+$/;
+
+/** Lista blanca: segmentos `[A-Za-z0-9._-]+` separados por `/`, sin `.` ni `..`, sin `%`, espacios ni barra inicial o final. */
 export function rutaSegura(ruta: string): boolean {
-  if (ruta === '' || ruta.startsWith('/')) return false;
-  if (/^[a-z][a-z0-9+.-]*:/i.test(ruta)) return false;
-  if (ruta.includes('..') || ruta.includes('//') || ruta.includes('\\') || ruta.includes('?') || ruta.includes('#')) return false;
-  // eslint-disable-next-line no-control-regex
-  return !/[\u0000-\u001f\u007f]/.test(ruta);
+  if (ruta === '') return false;
+  return ruta.split('/').every((s) => SEGMENTO.test(s) && s !== '.' && s !== '..' && !s.includes('..'));
 }
 
 const masChica = (vs: readonly VersionMedio[]): VersionMedio | undefined => [...vs].sort((a, b) => a.lado - b.lado || a.bytes - b.bytes)[0];

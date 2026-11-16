@@ -10,6 +10,7 @@ import { PantallaFichas } from './catalogo-ficha.js';
 
 afterEach(() => {
   cleanup();
+  vi.unstubAllEnvs();
   vi.restoreAllMocks();
   document.documentElement.className = '';
 });
@@ -563,7 +564,6 @@ describe('miniaturas de la ficha', () => {
     expect(img.getAttribute('src')).toBe(`${BASE_MEDIOS}/t/${id}-480.webp`);
     expect(img.getAttribute('loading')).toBe('lazy');
     expect(img.getAttribute('referrerpolicy')).toBe('no-referrer');
-    vi.unstubAllEnvs();
   });
 
   it('sin base muestra el respaldo con el número de orden y las medidas', async () => {
@@ -577,7 +577,6 @@ describe('miniaturas de la ficha', () => {
     await within(dialogo).findByText('Foto 1 (portada)');
     expect(dialogo.querySelector('img')).toBeNull();
     expect(dialogo.querySelector('[data-respaldo]')?.textContent).toBe('Foto · n.º 1 · 1200 × 800');
-    vi.unstubAllEnvs();
   });
 
   it('también muestra miniatura en los archivos subidos que no están en la página', async () => {
@@ -590,6 +589,5 @@ describe('miniaturas de la ficha', () => {
     const dialogo = await abrir(u, 'Fotos y video', TV);
     await within(dialogo).findByText('Archivos subidos que no están en la página:');
     expect(dialogo.querySelector('img')?.getAttribute('src')).toBe(`${BASE_MEDIOS}/t/${id}-480.webp`);
-    vi.unstubAllEnvs();
   });
 });

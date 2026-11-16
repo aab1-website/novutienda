@@ -1,5 +1,5 @@
 import type { JSX } from 'preact';
-import { useState } from 'preact/hooks';
+import { useId, useState } from 'preact/hooks';
 import { LIMITES_PANEL, type Bloque, type Seccion as SeccionWeb } from '../../api/tipos.js';
 import { Alerta, Area, Boton, BotonConfirmado, Campo, Casilla, Cargando, ErrorCarga, Seccion, Vacio } from '../../ui/comun.js';
 import { useApp } from '../../ui/contexto.js';
@@ -57,14 +57,12 @@ function motivoSinGuardar(s: SeccionLocal): string | undefined {
   return undefined;
 }
 
-let serieGrupo = 0;
-
 function SelectorFoto({ valor, alElegir, etiqueta }: { valor: string; alElegir: (id: string) => void; etiqueta: string }): JSX.Element {
   const { api } = useApp();
   const productos = useCarga(() => api.llamar('listarProductos', {}), []);
   // Sin producto elegido de antemano: se busca y se elige.
   const [productoId, setProductoId] = useState<string | null>(null);
-  const [grupo] = useState(() => `foto-${String((serieGrupo += 1))}`);
+  const grupo = useId();
   const medios = useCarga(() => (productoId === null ? Promise.resolve([]) : api.llamar('listarMedios', { productoId })), [productoId]);
   const fotos = (medios.datos ?? []).filter((m) => m.tipo === 'foto');
   const actualSuelta = valor !== '' && !fotos.some((m) => m.id === valor);
@@ -74,6 +72,10 @@ function SelectorFoto({ valor, alElegir, etiqueta }: { valor: string; alElegir: 
       <SelectorBuscable etiqueta={`${etiqueta}: producto`} valor={productoId} onCambio={setProductoId} opciones={(productos.datos ?? []).map((p) => ({ valor: p.id, texto: p.nombre }))} />
       <fieldset class="selector-miniaturas" aria-label={`${etiqueta}: foto`}>
         {valor === '' && fotos.length === 0 && <p class="texto-suave">{productoId === null ? 'Primero elija el producto' : 'Este producto no tiene fotos'}</p>}
+        <label>
+          <input type="radio" name={grupo} value="" checked={valor === ''} aria-label="Sin foto" onChange={() => alElegir('')} />
+          <span class="miniatura miniatura-respaldo">Sin foto</span>
+        </label>
         {actualSuelta && (
           <label key={valor}>
             <input type="radio" name={grupo} value={valor} checked aria-label={`Foto ${valor.slice(0, 6)} (actual)`} onChange={() => alElegir(valor)} />

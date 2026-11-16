@@ -11,6 +11,7 @@ import { PALETAS } from './plantillas-vista.js';
 
 afterEach(() => {
   cleanup();
+  vi.unstubAllEnvs();
   vi.restoreAllMocks();
 });
 
@@ -231,7 +232,6 @@ describe('catálogo: miniaturas del carrusel', () => {
     const item = (await screen.findByLabelText('Texto alternativo de la foto 1')).closest('li');
     expect(item?.querySelector('img')?.getAttribute('src')).toBe(`${BASE_MEDIOS}/t/${id}-480.webp`);
     expect(item?.querySelector('img')?.getAttribute('referrerpolicy')).toBe('no-referrer');
-    vi.unstubAllEnvs();
   });
 
   it('sin base muestra el respaldo con el orden y las medidas', async () => {
@@ -246,6 +246,17 @@ describe('catálogo: miniaturas del carrusel', () => {
     const item = (await screen.findByLabelText('Texto alternativo de la foto 1')).closest('li');
     expect(item?.querySelector('img')).toBeNull();
     expect(item?.querySelector('[data-respaldo]')?.textContent).toMatch(/n\.º 1 · 1200 × 800/);
-    vi.unstubAllEnvs();
+  });
+
+  it('tras recargar, las fotos ya guardadas del carrusel muestran su miniatura', async () => {
+    vi.stubEnv('VITE_MEDIOS_BASE_URL', BASE_MEDIOS);
+    const e = crearEntorno('adm');
+    const id = await preparar(e);
+    const cfg = await e.api.llamar('leerConfigSitio', {});
+    await e.api.llamar('guardarCarrusel', { carrusel: { plantilla: (cfg as NonNullable<typeof cfg>).plantillaActiva, items: [{ medioId: id, alt: 'Frente del televisor' }] } });
+    conVersiones(e);
+    ver(e);
+    const item = (await screen.findByLabelText('Texto alternativo de la foto 1')).closest('li');
+    await waitFor(() => expect(item?.querySelector('img')?.getAttribute('src')).toBe(`${BASE_MEDIOS}/t/${id}-480.webp`));
   });
 });

@@ -219,6 +219,9 @@ function Apariencia(): JSX.Element {
   );
 }
 
+/** Tope de productos cuyos medios se leen para las miniaturas del carrusel. */
+const TOPE_PRODUCTOS_MINIATURAS = 30;
+
 function CarruselEditor({ plantilla, items, setItems, productos }: { plantilla: PlantillaSitio; items: Items; setItems: (i: Items) => void; productos: { id: string; nombre: string }[] }): JSX.Element {
   const { api } = useApp();
   // Sin producto elegido de antemano: se busca y se elige.
@@ -235,6 +238,13 @@ function CarruselEditor({ plantilla, items, setItems, productos }: { plantilla: 
   };
   // Medios vistos en esta sesión: permiten mostrar la miniatura de las fotos que ya se agregaron.
   const conocidos = useRef(new Map<string, Medio>());
+  // Tras recargar, los medios de los productos se leen con `listarMedios` (en paralelo, con tope) para mostrar lo ya guardado.
+  const hayItems = items.length > 0;
+  const guardados = useCarga(
+    async () => (hayItems ? (await Promise.all(productos.slice(0, TOPE_PRODUCTOS_MINIATURAS).map((p) => api.llamar('listarMedios', { productoId: p.id }).catch(() => [] as Medio[])))).flat() : []),
+    [hayItems, productos.map((p) => p.id).join(',')],
+  );
+  for (const m of guardados.datos ?? []) conocidos.current.set(m.id, m);
   for (const m of fotos.datos ?? []) conocidos.current.set(m.id, m);
   const nombreProducto = productos.find((p) => p.id === productoId)?.nombre ?? '';
   return (
