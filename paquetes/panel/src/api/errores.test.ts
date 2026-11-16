@@ -4,7 +4,7 @@ import { CODIGOS_CONOCIDOS, ErrorApi, MENSAJE_DATOS_NO_RECONOCIDOS, MENSAJE_GENE
 describe('mensajes de error', () => {
   it('traduce los códigos de los módulos', () => {
     expect(mensajeDeError(new ErrorApi('failed-precondition', 'x', { codigo: 'sin-turno' }))).toContain('Abra el turno');
-    expect(mensajeDeError(new ErrorApi('failed-precondition', 'x', { codigo: 'correo-no-verificado' }))).toBe('Verifica tu correo para continuar.');
+    expect(mensajeDeError(new ErrorApi('failed-precondition', 'x', { codigo: 'correo-no-verificado' }))).toBe('Verifique su correo para continuar.');
   });
   it('para entrada-invalida, estado, estado-invalido y no-encontrado muestra el mensaje preciso del servidor si existe', () => {
     expect(mensajeDeError(new ErrorApi('invalid-argument', 'El motivo es obligatorio', { codigo: 'entrada-invalida' }))).toBe('El motivo es obligatorio');

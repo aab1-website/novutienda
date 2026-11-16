@@ -37,7 +37,7 @@ test('inicio de sesión real: contraseña incorrecta, correo sin verificar y acc
   await page.getByLabel('Correo').fill(sinVerificar.correo);
   await page.getByLabel('Contraseña').fill(CLAVE);
   await page.getByRole('button', { name: 'Entrar' }).click();
-  await expect(page.getByText(/Verifica tu correo/)).toBeVisible();
+  await expect(page.getByText(/Verifique su correo/)).toBeVisible();
   await expect(page.getByRole('navigation', { name: 'Menú principal' })).toHaveCount(0);
   await entrar(page, caj);
   await expect(page.getByRole('link', { name: 'Inventario' })).toHaveCount(0);
