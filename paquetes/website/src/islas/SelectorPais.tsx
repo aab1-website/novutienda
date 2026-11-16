@@ -30,7 +30,7 @@ export default function SelectorPais({ inicial, mercados }: Props) {
     <>
       <div class="selector-pais" role="group" aria-label="País y moneda de los precios">
         {mercados.map((m) => (
-          <button key={m} type="button" class={`pastilla bandera-${m.toLowerCase()}`} aria-pressed={m === mercado} aria-label={PAIS[m].aria} onClick={() => elegir(m)}>
+          <button key={m} type="button" class={`pastilla bandera-${m.toLowerCase()}`} aria-pressed={m === mercado} aria-label={`${monedaDe(m)}: ${PAIS[m].aria.toLowerCase()}`} onClick={() => elegir(m)}>
             <span class="bandera" aria-hidden="true" />
             {monedaDe(m)}
           </button>
