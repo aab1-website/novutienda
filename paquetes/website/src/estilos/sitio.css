@@ -52,6 +52,7 @@ main:focus { outline: none; }
 .menu a:hover, .menu a[aria-current='page'] { color: var(--cb-acento); }
 .menu a[aria-current='page'] { text-decoration: underline; text-underline-offset: 6px; }
 .controles { display: flex; align-items: center; gap: 8px; }
+.menu-movil { display: none; }
 .selector-pais { display: flex; padding: 3px; border-radius: 999px; border: 1px solid var(--cb-borde-control); background: var(--cb-superficie); }
 .pastilla { display: inline-flex; align-items: center; gap: 6px; min-height: 36px; padding: 0 12px; border: 0; border-radius: 999px; background: transparent; font-size: 12px; font-weight: 700; letter-spacing: .04em; cursor: pointer; }
 .pastilla[aria-pressed='true'] { background: var(--cb-cta); color: var(--cb-cta-texto); }
@@ -280,6 +281,22 @@ h3.descripcion-titulo, h4.descripcion-titulo { font-size: 17px; }
 .consentimiento-categorias label { display: flex; align-items: flex-start; gap: 8px; }
 
 @media (max-width: 900px) {
+  .cabecera nav[aria-label='Principal'] { display: none; }
+  .cabecera-interior { justify-content: flex-start; align-items: center; gap: 8px 12px; padding-top: 8px; padding-bottom: 8px; }
+  .marca-lema { display: none; }
+  .marca { flex: 1 1 0; min-width: 0; }
+  .marca-nombre { font-size: 16px; line-height: 1.1; overflow-wrap: anywhere; }
+  .controles { flex-basis: 100%; flex-wrap: nowrap; justify-content: space-between; gap: 4px; }
+  .controles .pastilla { padding: 0 8px; }
+  .menu-movil { display: block; order: -1; }
+  .menu-movil > summary { display: flex; align-items: center; justify-content: center; width: 48px; height: 48px; border: 1px solid var(--cb-borde-control); border-radius: 8px; background: var(--cb-superficie-2); color: var(--cb-texto); cursor: pointer; list-style: none; }
+  .menu-movil > summary::-webkit-details-marker { display: none; }
+  .menu-movil > summary:hover { color: var(--cb-acento); }
+  .menu-movil > nav { position: absolute; top: 100%; left: 0; width: min(280px, 85vw); max-height: calc(100vh - 100%); overflow-y: auto; background: var(--cb-superficie); border: 1px solid var(--cb-borde); border-left: 0; border-radius: 0 8px 8px 0; box-shadow: 4px 8px 24px rgba(0, 0, 0, .35); }
+  .menu-movil-lista { display: flex; flex-direction: column; margin: 0; padding: 8px; list-style: none; }
+  .menu-movil-lista a { display: flex; align-items: center; min-height: 44px; padding: 0 14px; border-radius: 8px; font-size: 16px; font-weight: 500; text-decoration: none; }
+  .menu-movil-lista a:hover, .menu-movil-lista a[aria-current='page'] { color: var(--cb-acento); }
+  .menu-movil-lista a[aria-current='page'] { text-decoration: underline; text-underline-offset: 6px; }
   .catalogo, .ficha { grid-template-columns: 1fr; }
   .heroe { display: flex; flex-direction: column-reverse; }
   .heroe-carrusel { position: relative; inset: auto; width: 100%; height: 260px; }

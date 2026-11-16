@@ -3,7 +3,6 @@
 // ejecución del cableado; las afirmaciones de tipos viven en las llamadas a `expectTypeOf`.
 import * as inventarios from '@novutienda/inventarios';
 import type { Autor, LineaSalida as LineaInventarios, ReferenciaSalida } from '@novutienda/inventarios';
-import type { Mercado } from '@novutienda/nucleo';
 import type { LineaSalida as LineaPos, ProductoCatalogo, PuertoCatalogo, PuertoInventarios, QuienMueve, ReferenciaMovimiento } from '@novutienda/pos';
 import { describe, expect, expectTypeOf, it } from 'vitest';
 import { catalogoParaPos, inventariosParaPos } from '../../plataforma/coordinador/index.js';
@@ -49,7 +48,7 @@ describe('contrato de tipos POS <-> Inventarios', () => {
   });
 
   it('el producto del catálogo del POS usa los mismos mercados que el núcleo', () => {
-    expectTypeOf<keyof NonNullable<ProductoCatalogo['preciosUsd']>>().toEqualTypeOf<Mercado>();
+    expectTypeOf<ProductoCatalogo['preciosBase']>().toEqualTypeOf<Readonly<Record<string, number>>>();
   });
 });
 

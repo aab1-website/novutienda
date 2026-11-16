@@ -1,9 +1,9 @@
 import type { JSX } from 'preact';
 import { useState } from 'preact/hooks';
 import type { Recibo } from '../../api/tipos.js';
-import type { Moneda } from '../../api/tipos.js';
 import { formatearMonto } from '../../util/dinero.js';
 import { Alerta, Boton, Campo, fechaHora } from '../../ui/comun.js';
+import { useAvisos } from '../../ui/avisos.js';
 import { useApp } from '../../ui/contexto.js';
 import { useAccion } from '../../ui/hooks.js';
 
@@ -11,7 +11,7 @@ const MEDIO_TEXTO: Record<string, string> = { efectivo: 'Efectivo', qr: 'QR', tr
 
 /** Comprobante imprimible. Todo texto se pinta como texto (Preact escapa); no se inserta HTML. */
 export function ReciboVista({ recibo, registradoPor }: { recibo: Recibo; registradoPor?: Readonly<Record<string, string>> }): JSX.Element {
-  const m = recibo.moneda as Moneda;
+  const m = recibo.moneda;
   return (
     <article class="recibo" aria-label={`Recibo ${recibo.numero}`}>
       {recibo.estado === 'ANULADO' && <p class="recibo-anulado">ANULADO</p>}
@@ -57,7 +57,7 @@ export function ReciboVista({ recibo, registradoPor }: { recibo: Recibo; registr
       <ul class="lista-simple">
         {recibo.pagos.map((p, i) => (
           <li key={i}>
-            {p.medio === 'qr' ? `QR registrado por ${registradoPor?.['qr'] ?? 'el vendedor'}` : (MEDIO_TEXTO[p.medio] ?? p.medio)}: {formatearMonto(p.monto, p.moneda as Moneda)}
+            {p.medio === 'qr' ? `QR registrado por ${registradoPor?.['qr'] ?? 'el vendedor'}` : (MEDIO_TEXTO[p.medio] ?? p.medio)}: {formatearMonto(p.monto, p.moneda)}
           </li>
         ))}
       </ul>
@@ -77,35 +77,30 @@ export function ReciboVista({ recibo, registradoPor }: { recibo: Recibo; registr
 /** Acciones del comprobante: imprimir, enlace de WhatsApp (`wa.me`, lo envía la persona) y referencia de la factura SUMA. */
 export function AccionesRecibo({ recibo, alCambiar }: { recibo: Recibo; alCambiar: () => void }): JSX.Element {
   const { api, usuario } = useApp();
+  const avisos = useAvisos();
   const wa = useAccion();
   const suma = useAccion();
   const [enlace, setEnlace] = useState<string | null>(null);
-  const [aviso, setAviso] = useState<string | null>(null);
   const [factura, setFactura] = useState(recibo.facturaSuma ?? '');
-  const [guardada, setGuardada] = useState(false);
 
   const enviar = (): void => {
     void wa.ejecutar(async () => {
       // El servidor genera y guarda el PDF y devuelve el enlace `wa.me` que la persona abre y envía.
       const r = await api.llamar('enviarRecibo', { reciboId: recibo.reciboId });
       setEnlace(r.enlace ?? null);
-      setAviso(
-        r.estado === 'sin_telefono'
-          ? 'La venta no tiene teléfono del cliente.'
-          : r.estado === 'fallido'
-            ? 'No se pudo preparar el enlace.'
-            : null,
-      );
+      if (r.estado === 'sin_telefono') avisos.info('La venta no tiene teléfono del cliente.');
+      else if (r.estado === 'fallido') avisos.error('No se pudo preparar el enlace.');
+      else avisos.ok('Enlace de WhatsApp preparado.');
       alCambiar();
-    });
+    }, { error: 'ambos' });
   };
 
   const guardarFactura = (): void => {
     void suma.ejecutar(async () => {
       await api.llamar('referenciarFacturaSuma', { reciboId: recibo.reciboId, facturaSuma: factura.trim() });
-      setGuardada(true);
+      avisos.ok('Referencia de factura guardada.');
       alCambiar();
-    });
+    }, { error: 'ambos' });
   };
 
   return (
@@ -124,17 +119,15 @@ export function AccionesRecibo({ recibo, alCambiar }: { recibo: Recibo; alCambia
         )}
       </div>
       {wa.error && <Alerta>{wa.error}</Alerta>}
-      {aviso && <Alerta tipo="info">{aviso}</Alerta>}
       {usuario.rol !== 'caj' && recibo.estado !== 'ANULADO' && (
         <div class="fila fila-alinear">
-          <Campo etiqueta="N.º de factura SUMA" valor={factura} onInput={(v) => { setFactura(v); setGuardada(false); }} maxLength={40} ayuda="Solo referencia: el sistema no factura." />
+          <Campo etiqueta="N.º de factura SUMA" valor={factura} onInput={(v) => { setFactura(v); }} maxLength={40} ayuda="Solo referencia: el sistema no factura." />
           <Boton variante="secundario" chico onClick={guardarFactura} ocupado={suma.ocupado} deshabilitado={factura.trim() === ''}>
             Guardar referencia
           </Boton>
         </div>
       )}
       {suma.error && <Alerta>{suma.error}</Alerta>}
-      {guardada && <Alerta tipo="ok">Referencia de factura guardada.</Alerta>}
     </div>
   );
 }

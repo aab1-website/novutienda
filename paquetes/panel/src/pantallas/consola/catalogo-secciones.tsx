@@ -1,22 +1,94 @@
 import type { JSX } from 'preact';
-import { useState } from 'preact/hooks';
+import { useId, useState } from 'preact/hooks';
 import { LIMITES_PANEL, type Bloque, type Seccion as SeccionWeb } from '../../api/tipos.js';
-import { Alerta, Area, Boton, BotonConfirmado, Campo, Casilla, Cargando, ErrorCarga, Selector, Seccion, Vacio } from '../../ui/comun.js';
+import { Alerta, Area, Boton, BotonConfirmado, Campo, Casilla, Cargando, ErrorCarga, Seccion, Vacio } from '../../ui/comun.js';
 import { useApp } from '../../ui/contexto.js';
+import { useBorrador, useCambiosSinGuardar, useGuardia } from '../../ui/guardia.js';
 import { useAccion, useCarga } from '../../ui/hooks.js';
+import { Miniatura } from './miniatura-vista.js';
+import { SelectorBuscable } from '../../ui/selector-buscable.js';
 
 const idDe = (t: string): string => t.normalize('NFD').replace(/[̀-ͯ]/g, '').toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/^-+|-+$/g, '').slice(0, 40);
+
+/**
+ * Identificador local y estable de cada bloque y de cada foto de un carrusel: sirve de `key` y de pieza del estado de
+ * los campos, así que quitar un bloque nunca deja el texto de uno en el lugar de otro. No se envía al servidor.
+ */
+let serieLocal = 0;
+const nuevoUid = (): string => `l${String((serieLocal += 1))}`;
+
+interface FotoLocal { readonly uid: string; readonly medioId: string; readonly alt: string }
+type BloqueLocal =
+  | { readonly uid: string; readonly tipo: 'texto'; readonly titulo: string; readonly parrafos: readonly string[] }
+  | { readonly uid: string; readonly tipo: 'imagen'; readonly medioId: string; readonly alt: string }
+  | { readonly uid: string; readonly tipo: 'carrusel'; readonly items: readonly FotoLocal[] }
+  | { readonly uid: string; readonly tipo: 'enlaces'; readonly items: readonly { readonly texto: string; readonly url: string }[] };
+interface SeccionLocal { readonly id: string; readonly titulo: string; readonly visible: boolean; readonly bloques: readonly BloqueLocal[] }
+
+function aLocal(s: SeccionWeb): SeccionLocal {
+  const bloque = (b: Bloque): BloqueLocal => (b.tipo === 'carrusel' ? { uid: nuevoUid(), tipo: 'carrusel', items: b.items.map((x) => ({ uid: nuevoUid(), ...x })) } : { uid: nuevoUid(), ...b });
+  return { id: s.id, titulo: s.titulo, visible: s.visible, bloques: s.bloques.map(bloque) };
+}
+
+/** Lo que se guarda: sin los identificadores locales. */
+function aWeb(s: SeccionLocal): SeccionWeb {
+  const bloque = (b: BloqueLocal): Bloque => {
+    switch (b.tipo) {
+      case 'texto': return { tipo: 'texto', titulo: b.titulo, parrafos: b.parrafos };
+      case 'imagen': return { tipo: 'imagen', medioId: b.medioId, alt: b.alt };
+      case 'carrusel': return { tipo: 'carrusel', items: b.items.map((x) => ({ medioId: x.medioId, alt: x.alt })) };
+      case 'enlaces': return { tipo: 'enlaces', items: b.items };
+    }
+  };
+  return { id: s.id, titulo: s.titulo, visible: s.visible, bloques: s.bloques.map(bloque) };
+}
+
+const huella = (s: SeccionLocal): string => JSON.stringify(aWeb(s));
+const NOMBRE_BLOQUE = { texto: 'Texto', imagen: 'Imagen', carrusel: 'Carrusel', enlaces: 'Enlaces' } as const;
+
+/** Primera razón por la que la sección aún no se puede guardar (con el siguiente paso), o `undefined`. */
+function motivoSinGuardar(s: SeccionLocal): string | undefined {
+  if (s.titulo.trim() === '') return 'Escriba el título de la sección.';
+  if (s.bloques.length === 0) return 'Agregue al menos un bloque a la sección.';
+  for (const [i, b] of s.bloques.entries()) {
+    if (b.tipo === 'imagen' && b.medioId === '') return `Elija la foto del bloque ${String(i + 1)}.`;
+    if (b.tipo === 'carrusel' && b.items.some((x) => x.medioId === '')) return `Elija la foto que falta en el carrusel del bloque ${String(i + 1)}.`;
+  }
+  return undefined;
+}
 
 function SelectorFoto({ valor, alElegir, etiqueta }: { valor: string; alElegir: (id: string) => void; etiqueta: string }): JSX.Element {
   const { api } = useApp();
   const productos = useCarga(() => api.llamar('listarProductos', {}), []);
-  const [productoId, setProductoId] = useState('');
-  const pid = productoId || productos.datos?.[0]?.id || '';
-  const medios = useCarga(() => (pid === '' ? Promise.resolve([]) : api.llamar('listarMedios', { productoId: pid })), [pid]);
+  // Sin producto elegido de antemano: se busca y se elige.
+  const [productoId, setProductoId] = useState<string | null>(null);
+  const grupo = useId();
+  const medios = useCarga(() => (productoId === null ? Promise.resolve([]) : api.llamar('listarMedios', { productoId })), [productoId]);
+  const fotos = (medios.datos ?? []).filter((m) => m.tipo === 'foto');
+  const actualSuelta = valor !== '' && !fotos.some((m) => m.id === valor);
+  const nombreProducto = (productos.datos ?? []).find((p) => p.id === productoId)?.nombre;
   return (
     <div class="cuadricula">
-      <Selector etiqueta={`${etiqueta}: producto`} valor={pid} onCambio={setProductoId} opciones={(productos.datos ?? []).map((p) => ({ valor: p.id, texto: p.nombre }))} />
-      <Selector etiqueta={`${etiqueta}: foto`} valor={valor} onCambio={alElegir} opciones={[{ valor: '', texto: 'Elija una foto' }, ...(medios.datos ?? []).filter((m) => m.tipo === 'foto').map((m) => ({ valor: m.id, texto: `Foto ${m.id.slice(0, 6)}` }))]} />
+      <SelectorBuscable etiqueta={`${etiqueta}: producto`} valor={productoId} onCambio={setProductoId} opciones={(productos.datos ?? []).map((p) => ({ valor: p.id, texto: p.nombre }))} />
+      <fieldset class="selector-miniaturas" aria-label={`${etiqueta}: foto`}>
+        {valor === '' && fotos.length === 0 && <p class="texto-suave">{productoId === null ? 'Primero elija el producto' : 'Este producto no tiene fotos'}</p>}
+        <label>
+          <input type="radio" name={grupo} value="" checked={valor === ''} aria-label="Sin foto" onChange={() => alElegir('')} />
+          <span class="miniatura miniatura-respaldo">Sin foto</span>
+        </label>
+        {actualSuelta && (
+          <label key={valor}>
+            <input type="radio" name={grupo} value={valor} checked aria-label={`Foto ${valor.slice(0, 6)} (actual)`} onChange={() => alElegir(valor)} />
+            <Miniatura alt="Foto actual" respaldo={`Foto ${valor.slice(0, 6)}`} />
+          </label>
+        )}
+        {fotos.map((m, i) => (
+          <label key={m.id}>
+            <input type="radio" name={grupo} value={m.id} checked={m.id === valor} aria-label={`Foto ${String(i + 1)}${nombreProducto !== undefined ? ` de ${nombreProducto}` : ''}`} onChange={() => alElegir(m.id)} />
+            <Miniatura medio={m} alt={`Foto ${String(i + 1)}${nombreProducto !== undefined ? ` de ${nombreProducto}` : ''}`} respaldo={`Foto ${m.id.slice(0, 6)}`} orden={i + 1} />
+          </label>
+        ))}
+      </fieldset>
     </div>
   );
 }
@@ -27,7 +99,7 @@ function AreaLibre({ etiqueta, inicial, filas, alCambiar }: { etiqueta: string; 
   return <Area etiqueta={etiqueta} valor={v} filas={filas} onInput={(x) => { setV(x); alCambiar(x); }} />;
 }
 
-function EditorBloque({ b, set, quitar }: { b: Bloque; set: (b: Bloque) => void; quitar: () => void }): JSX.Element {
+function EditorBloque({ b, n, set, quitar }: { b: BloqueLocal; n: number; set: (b: BloqueLocal) => void; quitar: () => void }): JSX.Element {
   let cuerpo: JSX.Element;
   if (b.tipo === 'texto') {
     cuerpo = (
@@ -47,13 +119,13 @@ function EditorBloque({ b, set, quitar }: { b: Bloque; set: (b: Bloque) => void;
     cuerpo = (
       <>
         {b.items.map((it, i) => (
-          <div key={i} class="fila fila-alinear">
-            <SelectorFoto etiqueta={`Foto ${i + 1}`} valor={it.medioId} alElegir={(id) => set({ ...b, items: b.items.map((x, j) => (j === i ? { ...x, medioId: id } : x)) })} />
-            <Campo etiqueta={`Texto alternativo de la foto ${i + 1}`} valor={it.alt} onInput={(v) => set({ ...b, items: b.items.map((x, j) => (j === i ? { ...x, alt: v } : x)) })} />
-            <Boton chico variante="secundario" onClick={() => set({ ...b, items: b.items.filter((_, j) => j !== i) })}>Quitar foto</Boton>
+          <div key={it.uid} class="fila fila-alinear">
+            <SelectorFoto etiqueta={`Foto ${i + 1}`} valor={it.medioId} alElegir={(id) => set({ ...b, items: b.items.map((x) => (x.uid === it.uid ? { ...x, medioId: id } : x)) })} />
+            <Campo etiqueta={`Texto alternativo de la foto ${i + 1}`} valor={it.alt} onInput={(v) => set({ ...b, items: b.items.map((x) => (x.uid === it.uid ? { ...x, alt: v } : x)) })} />
+            <Boton chico variante="secundario" onClick={() => set({ ...b, items: b.items.filter((x) => x.uid !== it.uid) })}>Quitar foto</Boton>
           </div>
         ))}
-        {b.items.length < 8 && <Boton chico variante="secundario" onClick={() => set({ ...b, items: [...b.items, { medioId: '', alt: '' }] })}>Agregar foto al carrusel</Boton>}
+        {b.items.length < 8 && <Boton chico variante="secundario" onClick={() => set({ ...b, items: [...b.items, { uid: nuevoUid(), medioId: '', alt: '' }] })}>Agregar foto al carrusel</Boton>}
       </>
     );
   } else {
@@ -66,12 +138,11 @@ function EditorBloque({ b, set, quitar }: { b: Bloque; set: (b: Bloque) => void;
       />
     );
   }
-  const nombre = { texto: 'Texto', imagen: 'Imagen', carrusel: 'Carrusel', enlaces: 'Enlaces' }[b.tipo];
   return (
     <fieldset class="fila-pago">
-      <legend>Bloque de {nombre.toLowerCase()}</legend>
+      <legend>Bloque de {NOMBRE_BLOQUE[b.tipo].toLowerCase()}</legend>
       {cuerpo}
-      <Boton chico variante="peligro" onClick={quitar}>Quitar bloque</Boton>
+      <BotonConfirmado chico peligro texto="Quitar bloque" pregunta={`¿Quitar el bloque ${String(n)} (${NOMBRE_BLOQUE[b.tipo].toLowerCase()})?`} resumen="Se pierde lo escrito en este bloque. Los demás no cambian." textoConfirmar="Sí, quitar" onConfirmar={quitar} />
     </fieldset>
   );
 }
@@ -79,36 +150,50 @@ function EditorBloque({ b, set, quitar }: { b: Bloque; set: (b: Bloque) => void;
 function EditorSeccion({ inicial, alTerminar }: { inicial: SeccionWeb; alTerminar: (guardada: boolean) => void }): JSX.Element {
   const { api } = useApp();
   const accion = useAccion();
-  const [s, setS] = useState<SeccionWeb>(inicial);
+  const { confirmarSalida } = useGuardia();
   const nueva = inicial.titulo === '';
+  const clave = `consola.seccion.${nueva ? 'nueva' : inicial.id}`;
+  const [base] = useState(() => aLocal(inicial));
+  const borrador = useBorrador<SeccionLocal | null>(clave, null);
+  const s = borrador.valor ?? base;
+  const sucio = borrador.valor !== null && huella(borrador.valor) !== huella(base);
+  const { marcarGuardado } = useCambiosSinGuardar(sucio, [clave]);
+  const setS = (n: SeccionLocal): void => borrador.poner(n);
+  const motivo = motivoSinGuardar(s);
   const guardar = (e: Event): void => {
     e.preventDefault();
+    if (motivo !== undefined) return;
     void accion.ejecutar(async () => {
-      await api.llamar('guardarSeccion', { seccion: { ...s, id: nueva ? idDe(s.titulo) : s.id } });
+      const web = aWeb(s);
+      await api.llamar('guardarSeccion', { seccion: { ...web, id: nueva ? idDe(s.titulo) : s.id } });
+      marcarGuardado();
+      borrador.descartar();
       alTerminar(true);
-    });
+    }, { error: 'ambos', exito: 'Sección guardada. Falta publicar el sitio.' });
   };
-  const nuevoBloque = (tipo: Bloque['tipo']): Bloque =>
-    tipo === 'texto' ? { tipo, titulo: '', parrafos: [] } : tipo === 'imagen' ? { tipo, medioId: '', alt: '' } : tipo === 'carrusel' ? { tipo, items: [] } : { tipo, items: [] };
+  const nuevoBloque = (tipo: Bloque['tipo']): BloqueLocal => {
+    const uid = nuevoUid();
+    return tipo === 'texto' ? { uid, tipo, titulo: '', parrafos: [] } : tipo === 'imagen' ? { uid, tipo, medioId: '', alt: '' } : { uid, tipo, items: [] };
+  };
   return (
-    <Seccion titulo={nueva ? 'Nueva sección' : `Sección: ${inicial.titulo}`} acciones={<Boton chico variante="secundario" onClick={() => alTerminar(false)}>Cancelar</Boton>}>
+    <Seccion titulo={nueva ? 'Nueva sección' : `Sección: ${inicial.titulo}`} acciones={<Boton chico variante="secundario" onClick={() => confirmarSalida(() => { borrador.descartar(); alTerminar(false); })}>Cancelar</Boton>}>
       <form class="formulario" onSubmit={guardar} noValidate>
         <Campo etiqueta="Título (texto del menú)" valor={s.titulo} onInput={(v) => setS({ ...s, titulo: v })} requerido />
         <Casilla etiqueta="Visible en el menú" marcado={s.visible} onCambio={(v) => setS({ ...s, visible: v })} />
         {s.bloques.map((b, i) => (
-          <EditorBloque key={i} b={b} set={(nb) => setS({ ...s, bloques: s.bloques.map((x, j) => (j === i ? nb : x)) })} quitar={() => setS({ ...s, bloques: s.bloques.filter((_, j) => j !== i) })} />
+          <EditorBloque key={b.uid} b={b} n={i + 1} set={(nb) => setS({ ...s, bloques: s.bloques.map((x) => (x.uid === b.uid ? nb : x)) })} quitar={() => setS({ ...s, bloques: s.bloques.filter((x) => x.uid !== b.uid) })} />
         ))}
         {s.bloques.length < 10 && (
           <div class="fila" role="group" aria-label="Agregar bloque">
             {(['texto', 'imagen', 'carrusel', 'enlaces'] as const).map((t) => (
               <Boton key={t} chico variante="secundario" onClick={() => setS({ ...s, bloques: [...s.bloques, nuevoBloque(t)] })}>
-                + {{ texto: 'Texto', imagen: 'Imagen', carrusel: 'Carrusel', enlaces: 'Enlaces' }[t]}
+                + {NOMBRE_BLOQUE[t]}
               </Boton>
             ))}
           </div>
         )}
         {accion.error && <Alerta>{accion.error}</Alerta>}
-        <Boton tipo="submit" ocupado={accion.ocupado} deshabilitado={s.titulo.trim() === '' || s.bloques.length === 0}>Guardar sección</Boton>
+        <Boton tipo="submit" ocupado={accion.ocupado} motivo={motivo}>Guardar sección</Boton>
       </form>
     </Seccion>
   );
@@ -136,7 +221,7 @@ export function PantallaSecciones(): JSX.Element {
     });
   };
   return (
-    <Seccion titulo={`Secciones del menú (${secciones.length} de ${LIMITES_PANEL.seccionesMax})`} acciones={<Boton chico onClick={() => setEditando({ id: '', titulo: '', visible: true, bloques: [] })} deshabilitado={secciones.length >= LIMITES_PANEL.seccionesMax}>Nueva sección</Boton>}>
+    <Seccion titulo={`Secciones del menú (${secciones.length} de ${LIMITES_PANEL.seccionesMax})`} acciones={<Boton chico onClick={() => setEditando({ id: '', titulo: '', visible: true, bloques: [] })} motivo={secciones.length >= LIMITES_PANEL.seccionesMax ? `Ya hay ${String(LIMITES_PANEL.seccionesMax)} secciones: elimine una para crear otra.` : undefined}>Nueva sección</Boton>}>
       <p class="texto-suave">Cada sección se arma con bloques tipados (texto, imagen, carrusel y enlaces); nunca con HTML libre.</p>
       {secciones.length === 0 && <Vacio titulo="Todavía no hay secciones" />}
       {accion.error && <Alerta>{accion.error}</Alerta>}

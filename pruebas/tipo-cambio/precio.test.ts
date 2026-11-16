@@ -24,8 +24,10 @@ describe('precioFinal', () => {
     expect(precioFinal(10, 'BO', bo, { ...R, BOB: { tipo: 'multiplo', multiplo: 0, modo: 'cercano' } })).toMatchObject({ tipo: 'invalido' });
     expect(precioFinal(0.0001, 'BO', bo, { ...R, BOB: { tipo: 'decimales', decimales: 2, modo: 'abajo' } })).toMatchObject({ tipo: 'invalido', motivo: expect.stringContaining('cero') });
   });
-  it('«ninguno» deja el monto sin redondear', () => {
-    expect(precioFinal(10, 'BO', bo, { ...R, BOB: { tipo: 'ninguno' } })).toEqual({ tipo: 'precio', moneda: 'BOB', monto: 120.6, centavos: 12060 });
+  it('rechaza las reglas que D7 ya no admite: «ninguno», más de 2 decimales y múltiplos que no son de centavos exactos', () => {
+    for (const mala of [{ tipo: 'ninguno' }, { tipo: 'decimales', decimales: 3, modo: 'cercano' }, { tipo: 'decimales', decimales: 6, modo: 'abajo' }, { tipo: 'multiplo', multiplo: 0.005, modo: 'cercano' }, { tipo: 'multiplo', multiplo: 0.001, modo: 'cercano' }]) {
+      expect(precioFinal(10, 'BO', bo, { ...R, BOB: mala as never }), JSON.stringify(mala)).toEqual({ tipo: 'invalido', motivo: 'falta una regla de redondeo válida para BOB' });
+    }
   });
 });
 
@@ -41,7 +43,6 @@ describe('redondear', () => {
     expect(redondear(1234, { tipo: 'multiplo', multiplo: 50, modo: 'abajo' })).toBe(1200);
     expect(redondear(1234, { tipo: 'multiplo', multiplo: 50, modo: 'arriba' })).toBe(1250);
     expect(redondear(1226, { tipo: 'multiplo', multiplo: 50, modo: 'cercano' })).toBe(1250);
-    expect(redondear(7.123, { tipo: 'ninguno' })).toBe(7.123);
   });
 });
 
@@ -56,10 +57,10 @@ describe('aCentavos', () => {
   it('lanza si no es un entero seguro, y precioFinal lo marca inválido', () => {
     expect(() => aCentavos(1e300)).toThrow(RangeError);
     expect(() => aCentavos(Number.NaN)).toThrow(RangeError);
-    expect(precioFinal(1e300, 'BO', bo, { ...R, BOB: { tipo: 'ninguno' } })).toMatchObject({ tipo: 'invalido' });
+    expect(precioFinal(1e300, 'BO', bo, R)).toMatchObject({ tipo: 'invalido' });
   });
-  it('con redondeo «ninguno» el precio trae centavos enteros', () => {
-    const r = precioFinal(10.123, 'BO', bo, { ...R, BOB: { tipo: 'ninguno' } });
+  it('con una regla admitida el precio trae centavos enteros', () => {
+    const r = precioFinal(10.123, 'BO', bo, R);
     expect(r).toMatchObject({ tipo: 'precio', centavos: 12208 });
   });
 });

@@ -83,6 +83,8 @@ export const FOTO_PERMISOS_L2: readonly AccionFoto[] = [
   f('consola', 'secciones', ['sup', 'adm']),
   f('consola', 'carruseles', ['sup', 'adm']),
   f('consola', 'configSitio', ['sup', 'adm']),
+  f('consola', 'leerLogo', ['sup', 'adm']),
+  f('consola', 'quitarLogo', ['adm']),
   f('consola', 'exportarProductosCsv', ['sup', 'adm']),
   f('consola', 'publicarSitio', ['adm']),
   f('consola', 'tablero', ['sup', 'adm']),
@@ -92,6 +94,11 @@ export const FOTO_PERMISOS_L2: readonly AccionFoto[] = [
   f('consola', 'buscarUsuarioPorCorreo', ['adm'], true),
   f('consola', 'asignarRol', ['adm'], true),
   f('consola', 'quitarRol', ['adm'], true),
-  // L2-6 (D3): acción central nueva; todos los roles, sin propietario. Las 85 anteriores no cambian.
+  // L2-6 (D3): acción central nueva; todos los roles, sin propietario. Las 82 anteriores no cambian.
   f('consola', 'modulosActivos', ['sup', 'adm', 'caj']),
+  f('consola', 'configuracionComercial', ['sup', 'adm', 'caj']),
+  // Invitar por correo (U-01): el administrador invita, anula y reenvía; el propietario de la plataforma también (igual que asignarRol).
+  f('consola', 'invitarUsuario', ['adm'], true),
+  f('consola', 'anularInvitacion', ['adm'], true),
+  f('consola', 'reenviarInvitacion', ['adm'], true),
 ];

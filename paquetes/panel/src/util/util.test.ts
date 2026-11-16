@@ -1,11 +1,12 @@
-import { describe, expect, it } from 'vitest';
+import { afterEach, describe, expect, it } from 'vitest';
 import { aBase64, formatoBytes } from './base64.js';
 import { aCsv, celdaCsv } from './csv.js';
-import { diferenciaPorMoneda, efectivoEsperado, proyectarTurno, sumarTotales, TOTALES_VACIOS } from '../pantallas/pos/arqueo.js';
+import { diferenciaPorMoneda, efectivoEsperado, monedasDelTurno, ordenarMonedas, proyectarTurno, sumarTotales, TOTALES_VACIOS } from '../pantallas/pos/arqueo.js';
 import { centavosATexto, formatearMonto, textoACentavos } from './dinero.js';
 import { ITEMS_MENU, menuPara, parsearRuta, puedeVer, rutaPorOmision } from './menu.js';
 import { calcularPagos, type FilaPago } from '../pantallas/pos/pagos.js';
-import { precioDeVenta, REDONDEO } from './precio.js';
+import { fijarRedondeo, precioDeVentaMercado, reglasDeclaradasActuales, restablecerRedondeo } from './precio.js';
+import type { MercadoDeclarado } from '../api/tipos.js';
 import { leerClaimPanel } from '../sesion/claim.js';
 import { PALETAS } from '../pantallas/consola/plantillas-vista.js';
 import { PLANTILLAS_SITIO } from '../api/tipos.js';
@@ -17,6 +18,8 @@ describe('dinero', () => {
   it('formatea centavos con miles y coma decimal', () => {
     expect(formatearMonto(123450, 'BOB')).toBe('Bs 1.234,50');
     expect(formatearMonto(5, 'USD')).toBe('USD 0,05');
+    expect(formatearMonto(123450, 'CLP')).toBe('CLP 1.234,50');
+    expect(formatearMonto(5, 'toString')).toBe('toString 0,05');
     expect(formatearMonto(-1000, 'ARS')).toBe('-ARS 10,00');
     expect(formatearMonto(100000000, 'ARS')).toBe('ARS 1.000.000,00');
   });
@@ -38,39 +41,71 @@ describe('dinero', () => {
   });
 });
 
-describe('precio de venta', () => {
-  it('BOB a dos decimales con la función del núcleo', () => {
-    // 450 USD × 6,96 = 3132,00
-    expect(precioDeVenta(45000, 'BO', 'BOB', cot('BOB/USD', 6.96))).toEqual({ tipo: 'precio', centavos: 313200, moneda: 'BOB' });
+describe('precio de venta por mercado declarado', () => {
+  const bo: MercadoDeclarado = { id: 'BO', nombre: 'Bolivia', monedaVenta: 'BOB', monedaBase: 'USD', tieneTipoCambio: true };
+  const ar: MercadoDeclarado = { id: 'AR', nombre: 'Argentina', monedaVenta: 'ARS', monedaBase: 'USD', tieneTipoCambio: true };
+  const pe: MercadoDeclarado = { id: 'PE', nombre: 'Peru', monedaVenta: 'PEN', monedaBase: 'PEN', tieneTipoCambio: false };
+  const reglas = { BOB: { tipo: 'decimales', decimales: 2, modo: 'cercano' }, ARS: { tipo: 'multiplo', multiplo: 100, modo: 'cercano' }, PEN: { tipo: 'decimales', decimales: 1, modo: 'abajo' } } as const;
+
+  it('BOB a dos decimales y ARS al múltiplo de 100 más cercano, con la regla del comercio', () => {
     // 12,34 USD × 6,96 = 85,8864 → 85,89
-    expect(precioDeVenta(1234, 'BO', 'BOB', cot('BOB/USD', 6.96))).toEqual({ tipo: 'precio', centavos: 8589, moneda: 'BOB' });
+    expect(precioDeVentaMercado(1234, bo, cot('BOB/USD', 6.96), reglas)).toEqual({ tipo: 'precio', centavos: 8589, moneda: 'BOB' });
+    // 10,49 USD × 1033,3 = 10838,92 → 10800; 10,51 USD → 10859,98 → 10900
+    expect(precioDeVentaMercado(1049, ar, cot('ARS/USD', 1033.3), reglas)).toEqual({ tipo: 'precio', centavos: 1080000, moneda: 'ARS' });
+    expect(precioDeVentaMercado(1051, ar, cot('ARS/USD', 1033.3), reglas)).toEqual({ tipo: 'precio', centavos: 1090000, moneda: 'ARS' });
   });
-  it('ARS al múltiplo de 100 más cercano', () => {
-    // 10,49 USD × 1033,3 = 10838,92 → 10800
-    expect(precioDeVenta(1049, 'AR', 'ARS', cot('ARS/USD', 1033.3))).toEqual({ tipo: 'precio', centavos: 1080000, moneda: 'ARS' });
-    // 10,51 USD × 1033,3 = 10859,98 → 10900
-    expect(precioDeVenta(1051, 'AR', 'ARS', cot('ARS/USD', 1033.3))).toEqual({ tipo: 'precio', centavos: 1090000, moneda: 'ARS' });
-    expect(REDONDEO.ARS).toEqual({ tipo: 'multiplo', multiplo: 100, modo: 'cercano' });
+  it('un mercado sin tipo de cambio redondea el precio base con la regla de su moneda', () => {
+    // 12,37 PEN con un decimal hacia abajo = 12,30
+    expect(precioDeVentaMercado(1237, pe, null, reglas)).toEqual({ tipo: 'precio', centavos: 1230, moneda: 'PEN' });
   });
-  it('USD no usa cotización; precio 0 es a consultar; sin cotización avisa', () => {
-    expect(precioDeVenta(800, 'BO', 'USD', null)).toEqual({ tipo: 'precio', centavos: 800, moneda: 'USD' });
-    expect(precioDeVenta(0, 'BO', 'BOB', cot('BOB/USD', 7))).toEqual({ tipo: 'sin_precio' });
-    expect(precioDeVenta(800, 'BO', 'BOB', null)).toEqual({ tipo: 'sin_cotizacion' });
-    expect(precioDeVenta(800, 'BO', 'BOB', cot('ARS/USD', 7))).toEqual({ tipo: 'sin_cotizacion' });
+  it('sin_precio, sin_cotizacion y sin_redondeo', () => {
+    expect(precioDeVentaMercado(0, bo, cot('BOB/USD', 7), reglas)).toEqual({ tipo: 'sin_precio' });
+    expect(precioDeVentaMercado(800, bo, null, reglas)).toEqual({ tipo: 'sin_cotizacion' });
+    expect(precioDeVentaMercado(800, bo, cot('ARS/USD', 7), reglas)).toEqual({ tipo: 'sin_cotizacion' });
+    expect(precioDeVentaMercado(800, bo, cot('BOB/USD', 7), null)).toEqual({ tipo: 'sin_redondeo' });
+    expect(precioDeVentaMercado(800, bo, cot('BOB/USD', 7), { ARS: reglas.ARS })).toEqual({ tipo: 'sin_redondeo' });
+    expect(precioDeVentaMercado(800, bo, cot('BOB/USD', 7), { BOB: { tipo: 'ninguno' } as never })).toEqual({ tipo: 'sin_redondeo' });
+  });
+  it('D21: sin la regla del comercio no hay precio ni respaldo', () => {
+    restablecerRedondeo();
+    expect(reglasDeclaradasActuales()).toBeNull();
+    expect(precioDeVentaMercado(800, bo, cot('BOB/USD', 7))).toEqual({ tipo: 'sin_redondeo' });
+  });
+  it('adopta las reglas válidas del servidor por moneda declarada y descarta las inválidas', () => {
+    fijarRedondeo({ ...reglas, USD: { tipo: 'decimales', decimales: 5, modo: 'cercano' } });
+    expect(Object.keys(reglasDeclaradasActuales() ?? {}).sort()).toEqual(['ARS', 'BOB', 'PEN']);
+    expect(precioDeVentaMercado(1237, pe, null)).toEqual({ tipo: 'precio', centavos: 1230, moneda: 'PEN' });
+    restablecerRedondeo();
   });
 });
 
 describe('arqueo', () => {
+  const ORDEN = ['BOB', 'USD', 'ARS'];
   const t = { apertura: { BOB: 10000 }, totales: { BOB: { ...TOTALES_VACIOS, efectivo: 5000, qr: 9000, transferencia: 1000, credito: 300, ingresos: 200, egresos: 700 } } } as const;
   it('el efectivo esperado ignora QR, transferencia y crédito', () => {
     expect(efectivoEsperado(10000, t.totales.BOB)).toBe(14500);
-    expect(proyectarTurno(t).BOB?.efectivoEsperado).toBe(14500);
-    expect(proyectarTurno(t).BOB?.qr).toBe(9000);
+    expect(proyectarTurno(t, ORDEN).BOB?.efectivoEsperado).toBe(14500);
+    expect(proyectarTurno(t, ORDEN).BOB?.qr).toBe(9000);
   });
   it('la diferencia puede ser negativa', () => {
-    expect(diferenciaPorMoneda(t, { BOB: 14000 })).toEqual({ BOB: -500 });
-    expect(diferenciaPorMoneda(t, { BOB: 15000 })).toEqual({ BOB: 500 });
-    expect(diferenciaPorMoneda(t, {})).toEqual({});
+    expect(diferenciaPorMoneda(t, { BOB: 14000 }, ORDEN)).toEqual({ BOB: -500 });
+    expect(diferenciaPorMoneda(t, { BOB: 15000 }, ORDEN)).toEqual({ BOB: 500 });
+    expect(diferenciaPorMoneda(t, {}, ORDEN)).toEqual({});
+  });
+  it('una moneda no listada aparece en el turno, la proyección y la diferencia sin romper', () => {
+    const x = { apertura: { CLP: 1000, BOB: 500 }, totales: { CLP: { ...TOTALES_VACIOS, efectivo: 200 } } };
+    expect(monedasDelTurno(x, ORDEN)).toEqual(['BOB', 'CLP']);
+    expect(proyectarTurno(x, ORDEN).CLP?.efectivoEsperado).toBe(1200);
+    expect(diferenciaPorMoneda(x, { CLP: 1000, BOB: 500 }, ORDEN)).toEqual({ BOB: 0, CLP: -200 });
+    expect(sumarTotales(x.totales, 'CLP', { qr: 5 }).CLP?.qr).toBe(5);
+  });
+  it('el orden declarado manda; sin él, orden alfabético estable (no una lista fija)', () => {
+    const x = { apertura: { USD: 1, ARS: 1, BOB: 1, CLP: 1 }, totales: {} };
+    expect(monedasDelTurno(x, ['USD', 'BOB'])).toEqual(['USD', 'BOB', 'ARS', 'CLP']);
+    expect(monedasDelTurno(x, [])).toEqual(['ARS', 'BOB', 'CLP', 'USD']);
+    expect(ordenarMonedas(['USD', 'BOB', 'ARS'])).toEqual(['ARS', 'BOB', 'USD']);
+    expect(ordenarMonedas(['BOB', 'USD'], ['USD', 'USD', 'BOB'])).toEqual(['USD', 'BOB']);
+    expect(Object.keys(proyectarTurno(x, ['USD', 'BOB']))).toEqual(['USD', 'BOB', 'ARS', 'CLP']);
   });
   it('suma totales sin mutar', () => {
     const a = sumarTotales({}, 'USD', { efectivo: 100 });
@@ -196,5 +231,33 @@ describe('rango de exportación', () => {
     expect(validarRango('2025-11-03', '2026-11-04')).toMatch(/366/);
     expect(validarRango('2026-11-05', '2026-11-04')).toMatch(/posterior/);
     expect(validarRango('', '2026-11-04')).toMatch(/fechas/);
+  });
+});
+
+describe('fijarRedondeo: regla única', () => {
+  afterEach(() => restablecerRedondeo());
+  const ok = { tipo: 'decimales', decimales: 1, modo: 'abajo' };
+
+  it('acepta reglas admitidas', () => {
+    const r = { BOB: ok, ARS: { tipo: 'multiplo', multiplo: 0.05, modo: 'cercano' } };
+    fijarRedondeo(r);
+    expect(reglasDeclaradasActuales()).toEqual(r);
+  });
+
+  it('una respuesta sin redondeo no deja las reglas de la sesión anterior', () => {
+    fijarRedondeo({ BOB: ok, ARS: ok });
+    expect(reglasDeclaradasActuales()).not.toBeNull();
+    fijarRedondeo(undefined);
+    expect(reglasDeclaradasActuales()).toBeNull();
+  });
+
+  it.each([
+    ['ninguno', { tipo: 'ninguno' }],
+    ['más de 2 decimales', { tipo: 'decimales', decimales: 3, modo: 'cercano' }],
+    ['múltiplo menor a 0,01', { tipo: 'multiplo', multiplo: 0.001, modo: 'cercano' }],
+    ['modo desconocido', { tipo: 'decimales', decimales: 2, modo: 'x' }],
+  ])('descarta la regla con %s y conserva las válidas', (_n, mala) => {
+    fijarRedondeo({ BOB: mala, ARS: ok });
+    expect(reglasDeclaradasActuales()).toEqual({ ARS: ok });
   });
 });

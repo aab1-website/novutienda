@@ -24,7 +24,13 @@ export const manifiestoPanel: ManifiestoModulo = {
     { callable: 'consola', nombre: 'buscarUsuarioPorCorreo', roles: ['adm'], propietario: true },
     { callable: 'consola', nombre: 'asignarRol', roles: ['adm'], propietario: true },
     { callable: 'consola', nombre: 'quitarRol', roles: ['adm'], propietario: true },
+    // Invitar por correo (U-01): el administrador invita con un rol reservado; la activación va en su propio callable (sin tenant ni rol).
+    { callable: 'consola', nombre: 'invitarUsuario', roles: ['adm'], propietario: true },
+    { callable: 'consola', nombre: 'anularInvitacion', roles: ['adm'], propietario: true },
+    { callable: 'consola', nombre: 'reenviarInvitacion', roles: ['adm'], propietario: true },
     // L2-6: ids de los módulos efectivos del tenant (el panel arma su menú con ellos). Sin propietario: exige rol.
     { callable: 'consola', nombre: 'modulosActivos', roles: ['caj', 'sup', 'adm'], propietario: false },
+    // Mercados y monedas del comercio de la sesión (solo lectura): todos los roles necesitan saber en qué monedas se trabaja.
+    { callable: 'consola', nombre: 'configuracionComercial', roles: ['caj', 'sup', 'adm'], propietario: false },
   ],
 };

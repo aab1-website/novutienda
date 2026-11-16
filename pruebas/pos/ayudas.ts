@@ -1,4 +1,4 @@
-import type { Redondeo, TransaccionIdentidad } from '@novutienda/nucleo';
+import type { ConfiguracionComercial, RedondeoPorMoneda, TransaccionIdentidad } from '@novutienda/nucleo';
 import type {
   ActorPos, DepsPos, LineaSalida, ProductoCatalogo, PuertoCatalogo, PuertoInventarios, ReferenciaMovimiento,
 } from '@novutienda/pos';
@@ -74,9 +74,24 @@ export const catalogoDoble: PuertoCatalogo = {
   },
 };
 
-export const REDONDEO: Redondeo = {
+/** Configuración del tenant de referencia: tres monedas (BOB, USD, ARS), mercados BO y AR con base USD. */
+export const COMERCIAL_REFERENCIA: ConfiguracionComercial = {
+  mercados: [
+    {
+      id: 'BO', nombre: 'Bolivia', monedaVenta: 'BOB', monedaBase: 'USD', zonaHoraria: 'America/La_Paz',
+      tipoCambio: { par: 'BOB/USD', fuentes: ['BCB'] }, redondeo: { tipo: 'decimales', decimales: 2, modo: 'cercano' },
+    },
+    {
+      id: 'AR', nombre: 'Argentina', monedaVenta: 'ARS', monedaBase: 'USD', zonaHoraria: 'America/Argentina/Buenos_Aires',
+      tipoCambio: { par: 'ARS/USD', fuentes: ['BNA', 'BCRA'] }, redondeo: { tipo: 'multiplo', multiplo: 100, modo: 'cercano' },
+    },
+  ],
+  monedas: ['BOB', 'USD', 'ARS'],
+};
+
+export const REDONDEO: RedondeoPorMoneda = {
   BOB: { tipo: 'decimales', decimales: 2, modo: 'cercano' },
-  ARS: { tipo: 'decimales', decimales: 2, modo: 'cercano' },
+  ARS: { tipo: 'multiplo', multiplo: 100, modo: 'cercano' },
 };
 
 export interface Entorno {
@@ -92,15 +107,15 @@ export function crearEntorno(): Entorno {
   db.poner(`tenants/${T}/cotizaciones/BO`, { cotizacionId: 'BO-2026-11-04-1', valor: 7, fecha: '2026-11-04', fuente: 'BCB' });
   db.poner(`tenants/${T}/cotizaciones/AR`, { cotizacionId: 'AR-2026-11-04-1', valor: 1000, fecha: '2026-11-04', fuente: 'BNA' });
   // p1: 10 USD (sin serie); p2: 100 USD con series; p3: sin precio en AR.
-  const prod = (id: string, d: Partial<ProductoCatalogo> & { preciosUsd: ProductoCatalogo['preciosUsd'] }): void =>
+  const prod = (id: string, d: Partial<ProductoCatalogo> & { preciosBase: ProductoCatalogo['preciosBase'] }): void =>
     db.poner(`tenants/${T}/_productos/${id}`, { productoId: id, nombre: `Producto ${id}`, activo: true, controlaSeries: false, ...d });
-  prod('p1', { preciosUsd: { BO: 10, AR: 10 } });
-  prod('p2', { preciosUsd: { BO: 100, AR: 100 }, controlaSeries: true, garantiaMeses: 12 });
-  prod('p3', { preciosUsd: { BO: 5 } });
+  prod('p1', { preciosBase: { BO: 10, AR: 10 } });
+  prod('p2', { preciosBase: { BO: 100, AR: 100 }, controlaSeries: true, garantiaMeses: 12 });
+  prod('p3', { preciosBase: { BO: 5 } });
   db.poner(rutaStock('tienda', 'p1'), { cantidad: 10, series: [] });
   db.poner(rutaStock('tienda', 'p2'), { cantidad: 3, series: ['S1', 'S2', 'S3'] });
   db.poner(rutaStock('tienda', 'p3'), { cantidad: 1, series: [] });
-  const deps: DepsPos = { db, inventarios: inventariosDoble, catalogo: catalogoDoble, redondeo: REDONDEO, ahora: () => reloj.ahora };
+  const deps: DepsPos = { db, inventarios: inventariosDoble, catalogo: catalogoDoble, redondeo: REDONDEO, comercial: COMERCIAL_REFERENCIA, ahora: () => reloj.ahora };
   return { db, deps, reloj };
 }
 

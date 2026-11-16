@@ -37,6 +37,8 @@ export interface ArchivoSubida {
   readonly bytesMax: number;
   /** Patrón de tipo de contenido, por ejemplo `image/(jpeg|png|webp|heic)`. */
   readonly contentType: string;
+  /** Producto fijo (`productoId`) en el que solo vale este tipo; sin él, vale en cualquiera. Patrón `^[a-z0-9_-]+$`. */
+  readonly destino?: string;
 }
 
 /** Escritura del cliente solo contra una reserva hecha antes por el servidor. */

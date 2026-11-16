@@ -20,7 +20,9 @@ export async function crearServicios(): Promise<Servicios> {
   const emuladores = emulador ? await import('./emuladores.js') : undefined;
   const sesion = new SesionFirebase(configuracionFirebase(), emuladores?.URL_AUTH_EMULADOR);
   emuladores?.conectarFuncionesYAlmacen();
-  const api = new ClienteRemoto(new TransporteFirebase(), () => ({ tenantId: sesion.actual()?.tenantId ?? '', rol: sesion.actual()?.rol }));
+  const { conCorreoDeInvitacion } = await import('./api/invitaciones.js');
+  const remoto = new ClienteRemoto(new TransporteFirebase(), () => ({ tenantId: sesion.actual()?.tenantId ?? '', rol: sesion.actual()?.rol, uid: sesion.actual()?.uid }));
+  const api = conCorreoDeInvitacion(remoto, sesion);
   const { AlmacenSubidasFirebase } = await import('./subidas/firebase.js');
   return { sesion, api, almacen: new AlmacenSubidasFirebase() };
 }

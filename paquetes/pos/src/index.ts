@@ -7,14 +7,17 @@ export type {
 export type { DepsPos } from './contexto.js';
 export { formatearNumeroRecibo } from './contexto.js';
 export * from './tipos.js';
-export { CONFIG_POS_POR_DEFECTO, guardarConfigPos, leerConfigPos, TOPE_DESCUENTO_CAJ_BP, validarConfigPos } from './config.js';
+export { CONFIG_POS_POR_DEFECTO, configPosPorDefecto, guardarConfigPos, leerConfigPos, TOPE_DESCUENTO_CAJ_BP, validarConfigPos } from './config.js';
 export type { ConfigPos } from './config.js';
+export { leerTurno } from './lectura.js';
 export { abrirTurno, cerrarTurno, cerrarTurnoForzado, leerTurnoAbierto } from './turno.js';
 export {
   calcularArqueo, efectivoDisponible, efectivoEsperado, proyectarTurno, reconstruirTotales,
 } from './arqueo.js';
 export type { OperacionesTurno, ProyeccionMoneda } from './arqueo.js';
-export { confirmarVenta } from './venta.js';
+export { centavosDeLinea } from './precio.js';
+export type { EntradaPrecioLinea } from './precio.js';
+export { confirmarVenta, MAX_SERIES_POR_VENTA } from './venta.js';
 export type { Carrito, LineaCarrito, ResultadoVenta } from './venta.js';
 export { resolverAprobacion, solicitarAprobacion } from './aprobaciones.js';
 export type { AprobacionPos, SolicitudAprobacion } from './aprobaciones.js';

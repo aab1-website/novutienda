@@ -27,4 +27,14 @@ export interface Sesion {
   renovar(): Promise<boolean>;
   /** Reenvía el correo de verificación (solo tras un inicio con correo no verificado). */
   reenviarVerificacion(): Promise<void>;
+  /**
+   * Envía el correo de restablecimiento de contraseña. Siempre se resuelve igual, exista o no la cuenta (y falle o no el
+   * envío): quien llama no puede saber si el correo tiene una cuenta.
+   */
+  recuperarContrasena(correo: string): Promise<void>;
+  /**
+   * Envía el enlace para fijar la contraseña tras invitar o reenviar. `true` si salió o si la cuenta no existe (no se distingue,
+   * para no revelar nada); `false` solo ante un fallo real del envío (red, límite del servicio).
+   */
+  enviarEnlaceDeAcceso(correo: string): Promise<boolean>;
 }

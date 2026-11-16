@@ -1,5 +1,6 @@
-import type { ErrorFilaImportacion, FilaSimulada, ResultadoImportacion, Simulacion } from '../../api/tipos.js';
+import type { CodigoMoneda, ErrorFilaImportacion, FilaSimulada, MercadoDeclarado, ResultadoImportacion, Simulacion } from '../../api/tipos.js';
 import { formatoBytes } from '../../util/base64.js';
+import { nombreMoneda } from './nombres.js';
 
 /** Lógica pura de la importación de productos (la pantalla es `importar.tsx`). */
 
@@ -23,22 +24,41 @@ export interface ColumnaDoc {
   readonly texto: string;
 }
 
-/** Columnas del archivo, en el orden de la exportación (que a su vez sirve de plantilla). */
-export const COLUMNAS_ARCHIVO: readonly ColumnaDoc[] = [
-  { nombre: 'id', texto: 'identificador del producto (letras minúsculas, números y guiones). Es lo que une cada fila con un producto.' },
+const ANTES_DE_PRECIOS: readonly ColumnaDoc[] = [
   { nombre: 'nombre', texto: 'nombre del producto.' },
   { nombre: 'categoria', texto: 'categoría.' },
   { nombre: 'marca', texto: 'marca (opcional).' },
-  { nombre: 'sku', texto: 'código del producto. Obligatorio en una fila nueva: sin SKU, la fila es un error.' },
+  { nombre: 'sku', texto: 'código del producto. Cada producto se reconoce por su SKU: si ya existe se actualiza y, si no, se crea. Obligatorio en cada fila.' },
   { nombre: 'conSerie', texto: 'si, no (si cada unidad lleva número de serie).' },
   { nombre: 'garantiaMeses', texto: 'meses de garantía (opcional).' },
   { nombre: 'minimo', texto: 'existencia mínima antes de avisar (opcional).' },
-  { nombre: 'precioBO', texto: 'precio del mercado de Bolivia, en dólares con hasta 2 decimales (por ejemplo 1234.50).' },
-  { nombre: 'precioAR', texto: 'precio del mercado de Argentina, en dólares con hasta 2 decimales.' },
-  { nombre: 'costo', texto: 'costo en dólares con hasta 2 decimales (opcional).' },
+];
+const DESPUES_DE_PRECIOS: readonly ColumnaDoc[] = [
   { nombre: 'activo', texto: 'si, no.' },
   { nombre: 'publicado', texto: 'si, no.' },
 ];
+
+/** Importe con hasta 2 decimales, en la moneda indicada («en dólares con hasta 2 decimales»). */
+const importeEn = (moneda: CodigoMoneda | undefined): string => `${moneda === undefined ? '' : `en ${nombreMoneda(moneda)} `}con hasta 2 decimales`;
+
+/**
+ * Columnas del archivo, en el orden de la exportación (que a su vez sirve de plantilla): una columna de precio por cada
+ * mercado declarado por el comercio (`precio<ID>`, en la moneda base del mercado) y el costo en la moneda de costo del
+ * comercio (`monedaCosto`; si no se conoce, no se nombra ninguna). La primera columna de precio lleva el ejemplo.
+ */
+export function columnasArchivo(mercados: readonly MercadoDeclarado[], monedaCosto?: CodigoMoneda): readonly ColumnaDoc[] {
+  const precios = mercados.map((m, i): ColumnaDoc => ({
+    nombre: `precio${m.id}`,
+    texto: `precio del mercado de ${m.nombre}, ${importeEn(m.monedaBase)}${i === 0 ? ' (por ejemplo 1234.50)' : ''}.`,
+  }));
+  return [...ANTES_DE_PRECIOS, ...precios, { nombre: 'costo', texto: `costo ${importeEn(monedaCosto)} (opcional).` }, ...DESPUES_DE_PRECIOS];
+}
+
+/** Cierre de la lista de columnas: en qué moneda van los precios. */
+export function notaPrecios(mercados: readonly MercadoDeclarado[]): string {
+  const bases = [...new Set(mercados.map((m) => m.monedaBase))];
+  return bases.length === 1 ? `Los precios van en ${nombreMoneda(bases[0] as string)}, con decimales.` : 'Cada precio va en la moneda base de su mercado, con decimales.';
+}
 
 /** Solo en la carga inicial. */
 export const COLUMNAS_STOCK: readonly ColumnaDoc[] = [
@@ -47,7 +67,14 @@ export const COLUMNAS_STOCK: readonly ColumnaDoc[] = [
   { nombre: 'stockDeposito2', texto: 'existencias iniciales en el Depósito 2.' },
 ];
 
-export const encabezadosPlantilla = (cargaInicial: boolean): string[] => [...COLUMNAS_ARCHIVO, ...(cargaInicial ? COLUMNAS_STOCK : [])].map((c) => c.nombre);
+export const encabezadosPlantilla = (cargaInicial: boolean, mercados: readonly MercadoDeclarado[], monedaCosto?: CodigoMoneda): string[] =>
+  [...columnasArchivo(mercados, monedaCosto), ...(cargaInicial ? COLUMNAS_STOCK : [])].map((c) => c.nombre);
+
+/** Lo que la pantalla muestra de una fila: el nombre y el SKU del producto, nunca su clave interna. */
+export function datosDeFila(f: FilaSimulada): { nombre: string; sku: string } {
+  const g = f as FilaSimulada & { readonly nombre?: string; readonly sku?: string };
+  return { nombre: g.nombre ?? '', sku: g.sku ?? '' };
+}
 
 export const ACCION_TEXTO: Readonly<Record<FilaSimulada['accion'], string>> = {
   crear: 'Se creará', actualizar: 'Se actualizará', 'sin-cambios': 'Sin cambios', error: 'Con error',

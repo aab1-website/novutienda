@@ -15,7 +15,7 @@ export const MONEDAS: readonly Moneda[] = ['BOB', 'USD', 'ARS'];
 export type UbicacionId = 'tienda' | 'deposito-1' | 'deposito-2';
 export const UBICACIONES: readonly UbicacionId[] = ['tienda', 'deposito-1', 'deposito-2'];
 
-export type MontosPorMoneda = Readonly<Partial<Record<Moneda, number>>>;
+export type MontosPorMoneda = Readonly<Partial<Record<string, number>>>;
 
 export interface TotalesMoneda {
   readonly efectivo: number;
@@ -25,7 +25,7 @@ export interface TotalesMoneda {
   readonly ingresos: number;
   readonly egresos: number;
 }
-export type TotalesTurno = Readonly<Partial<Record<Moneda, TotalesMoneda>>>;
+export type TotalesTurno = Readonly<Partial<Record<string, TotalesMoneda>>>;
 export type EstadoTurno = 'abierto' | 'cerrado' | 'cerrado_forzado';
 
 export interface TurnoPos {
@@ -56,7 +56,7 @@ export interface LineaVenta {
 
 export interface PagoVentaPos {
   readonly medio: MedioPago;
-  readonly moneda: Moneda;
+  readonly moneda: string;
   readonly monto: number;
   readonly cambio?: number;
   readonly referencia?: string;
@@ -69,9 +69,9 @@ export interface VentaPos {
   readonly cajaId: string;
   readonly cajeroUid: string;
   readonly estado: 'confirmada' | 'anulada';
-  readonly moneda: Moneda;
-  readonly mercado: Mercado;
-  readonly cotizacion: CopiaCotizacion | null;
+  readonly moneda: string;
+  readonly mercado: string;
+  readonly cotizacion: CopiaCotizacion<string> | null;
   readonly lineas: readonly LineaVenta[];
   readonly subtotal: number;
   readonly descuento?: { readonly monto: number; readonly motivo: string; readonly aprobadoPor?: string; readonly aprobacionId?: string };
@@ -93,7 +93,7 @@ export interface LineaCarrito {
 }
 
 export interface Carrito {
-  readonly mercado: Mercado;
+  readonly mercado: string;
   readonly moneda: Moneda;
   readonly lineas: readonly LineaCarrito[];
   readonly descuento?: { readonly monto: number; readonly motivo: string };
@@ -104,7 +104,7 @@ export interface Carrito {
 /** Pago que envía el cliente (campos que `validarPagos` admite). */
 export interface PagoEntrada {
   readonly medio: MedioPago;
-  readonly moneda: Moneda;
+  readonly moneda: string;
   readonly monto: number;
   readonly cambio?: number;
   readonly referencia?: string;
@@ -122,7 +122,7 @@ export interface AprobacionPos {
   readonly aprobacionId: string;
   readonly tipo: TipoAprobacion;
   readonly estado: EstadoAprobacion;
-  readonly moneda: Moneda;
+  readonly moneda: string;
   readonly monto: number;
   readonly motivo: string;
   readonly deudor?: string;
@@ -130,6 +130,7 @@ export interface AprobacionPos {
   readonly solicitadoEnMs: number;
   readonly aprobadoPor?: string;
   readonly aprobadoRol?: string;
+  readonly motivoRechazo?: string | undefined;
 }
 
 export interface SolicitudAprobacion {
@@ -142,7 +143,7 @@ export interface SolicitudAprobacion {
 
 export interface ReembolsoAnulacion {
   readonly medio: Exclude<MedioPago, 'credito'>;
-  readonly moneda: Moneda;
+  readonly moneda: string;
   readonly monto: number;
 }
 
@@ -154,7 +155,7 @@ export interface ResultadoAnulacion {
 
 export interface MovimientoCajaEntrada {
   readonly tipo: 'ingreso' | 'egreso';
-  readonly moneda: Moneda;
+  readonly moneda: string;
   readonly monto: number;
   readonly motivo: string;
   readonly comprobante?: string;
@@ -185,7 +186,7 @@ export interface CobroCredito extends CobroCreditoEntrada {
 export interface CreditoVista {
   readonly ventaId: string;
   readonly deudor: string;
-  readonly moneda: Moneda;
+  readonly moneda: string;
   readonly monto: number;
   readonly saldo: number;
   readonly cobrado: number;
@@ -200,7 +201,7 @@ export interface ConfigPos {
   readonly logoUrl?: string;
   readonly colores: { readonly primario: string; readonly secundario: string };
   readonly mediosHabilitados: readonly MedioPago[];
-  readonly monedaPorDefecto: Moneda;
+  readonly monedaPorDefecto: string;
   /** Puntos básicos: 500 = 5 %. */
   readonly topesDescuentoBp: Readonly<Record<Rol, number>>;
   readonly textoRecibo: string;
@@ -215,7 +216,7 @@ export interface ArqueoMoneda {
 
 export interface ResultadoCierre {
   readonly turno: TurnoPos;
-  readonly arqueo: Readonly<Partial<Record<Moneda, ArqueoMoneda>>>;
+  readonly arqueo: Readonly<Partial<Record<string, ArqueoMoneda>>>;
 }
 
 // ---------------------------------------------------------------------------------------------------------------------
@@ -268,6 +269,8 @@ export interface ProductoPanel {
   readonly garantiaMeses?: number;
   readonly minimo?: number;
   readonly precioUSD: PrecioUSDCentavos;
+  /** Ids de los mercados declarados en los que el producto no tiene precio (los entrega el servidor). */
+  readonly sinPrecio?: readonly string[];
   /** Solo se entrega al administrador. Centavos de USD. */
   readonly costoUSD?: number;
   /** Ausente: el producto no controla stock. `null`: oculto por un conteo abierto. */
@@ -431,7 +434,7 @@ export interface Recibo {
   readonly moneda: string;
   readonly total: number;
   readonly descuento?: { readonly monto: number; readonly motivo: string };
-  readonly cotizacion: CopiaCotizacion | null;
+  readonly cotizacion: CopiaCotizacion<string> | null;
   readonly lineas: readonly LineaRecibo[];
   readonly pagos: readonly { readonly medio: string; readonly moneda: string; readonly monto: number }[];
   readonly facturaSuma?: string;
@@ -513,6 +516,14 @@ export interface Carrusel {
 }
 
 export type TipoMedio = 'foto' | 'video';
+/** Versión procesada de un medio, tal como la entrega el servidor. `ruta` es la ruta pública (con hash de contenido) en el almacén de medios. */
+export interface VersionMedio {
+  readonly clase: 'imagen' | 'video' | 'poster';
+  readonly lado: number;
+  readonly formato: 'avif' | 'webp' | 'mp4';
+  readonly ruta: string;
+  readonly bytes: number;
+}
 export interface Medio {
   readonly id: string;
   readonly productoId: string;
@@ -521,8 +532,50 @@ export interface Medio {
   readonly ancho: number;
   readonly alto: number;
   readonly duracionSeg?: number;
+  readonly versiones?: readonly VersionMedio[];
   readonly creadoEn: number;
   readonly por: string;
+}
+
+/** Tipo de una subida: foto o video de un producto, o el logo del negocio. */
+export type TipoSubida = TipoMedio | 'logo';
+/** `productoId` con el que el servidor guarda la subida de un logo (el logo no pertenece a ningún producto). */
+export const ID_NEGOCIO = '_negocio';
+/** Tope del archivo de logo, igual que el servidor (JPG, PNG o WebP). */
+export const BYTES_LOGO = 2 * 1024 * 1024;
+/** Versión publicada del logo (PNG y WebP, lado mayor de 512 como máximo); `ruta` es relativa a la base de medios. */
+export interface VersionLogo {
+  readonly clase: 'logo';
+  readonly formato: 'png' | 'webp';
+  readonly lado: number;
+  readonly ruta: string;
+  readonly bytes: number;
+}
+/** Medio de una subida de logo (aparte de `Medio` para que ninguna ficha ni sección lo tome por una foto de producto). */
+export interface MedioLogo {
+  readonly id: string;
+  readonly productoId: typeof ID_NEGOCIO;
+  readonly tipo: 'logo';
+  readonly bytesOriginal: number;
+  readonly ancho: number;
+  readonly alto: number;
+  readonly versiones: readonly VersionLogo[];
+  readonly creadoEn: number;
+  readonly por: string;
+}
+/** Respuesta de `estadoSubidaLogo`: `medio` solo con `procesada`; `motivo` si se rechazó. */
+export interface ResultadoEstadoSubidaLogo {
+  readonly estado: EstadoSubida;
+  readonly medio?: MedioLogo;
+  readonly motivo?: string;
+}
+/** Logo vigente del negocio (`leerLogo`); guarda rutas relativas, no URL. */
+export interface LogoNegocio {
+  readonly medioId: string;
+  readonly ancho: number;
+  readonly alto: number;
+  readonly versiones: readonly { readonly formato: 'png' | 'webp'; readonly lado: number; readonly ruta: string; readonly bytes: number }[];
+  readonly actualizadoEn: string;
 }
 
 export interface Reserva {
@@ -548,8 +601,8 @@ export interface SubidaVista {
 }
 
 export type CotizacionTablero =
-  | { readonly mercado: Mercado; readonly estado: 'vigente' | 'ultimo_verificado'; readonly par: string; readonly valor: number; readonly fecha: string; readonly fuente: string }
-  | { readonly mercado: Mercado; readonly estado: 'sin_cotizacion'; readonly motivo: string };
+  | { readonly mercado: string; readonly estado: 'vigente' | 'ultimo_verificado'; readonly par: string; readonly valor: number; readonly fecha: string; readonly fuente: string }
+  | { readonly mercado: string; readonly estado: 'sin_cotizacion'; readonly motivo: string };
 
 export interface Tablero {
   readonly cambiosSinPublicar: number;
@@ -581,6 +634,8 @@ export interface FilaSimulada {
   /** Número de línea del archivo (el encabezado es la 1). */
   readonly linea: number;
   readonly id: string;
+  readonly nombre?: string | undefined;
+  readonly sku?: string | undefined;
   readonly accion: 'crear' | 'actualizar' | 'sin-cambios' | 'error';
   readonly errores: readonly ErrorFilaImportacion[];
   readonly advertencias: readonly string[];
@@ -624,11 +679,40 @@ export interface ResultadoImportacion {
 // Identidad, auditoría y cotizaciones (núcleo)
 // ---------------------------------------------------------------------------------------------------------------------
 
+/** Mercados y monedas del comercio de la sesión, tal como los entrega el servidor (nunca las fuentes del tipo de cambio). */
+export interface VistaComercial {
+  readonly mercados: readonly {
+    readonly id: string;
+    readonly nombre: string;
+    readonly monedaVenta: string;
+    readonly monedaBase: string;
+    readonly tieneTipoCambio: boolean;
+  }[];
+  readonly monedasCaja: readonly string[];
+  /** Código de la moneda en que se declara el costo (nunca montos). Ausente si el servidor no lo entregó: no se supone ninguna. */
+  readonly monedaCosto?: string;
+}
+
+/** Mercado declarado por el comercio, tal como lo entrega `configuracionComercial`. */
+export type MercadoDeclarado = VistaComercial['mercados'][number];
+/** Código ISO 4217 de una moneda declarada por el comercio (abierto: ya no se limita a BOB, USD y ARS). */
+export type CodigoMoneda = string;
+/** Identificador de un mercado declarado (dos letras mayúsculas). */
+export type IdMercado = string;
+/** Precios base por mercado, en centavos de la moneda base del mercado, con el id del mercado en minúsculas como clave. */
+export type PreciosPorMercado = Readonly<Record<string, number>>;
+
 export interface UsuarioVista {
   readonly uid: string;
-  readonly correo: string;
+  /** `null` si la cuenta no tiene correo. */
+  readonly correo: string | null;
+  /** Rol vigente; en una invitación pendiente, el rol reservado. */
   readonly rol: Rol;
   readonly verificado: boolean;
+  /** `invitado`: invitación pendiente (ocupa un cupo y aún no tiene acceso). Ausente o `activo`: miembro. */
+  readonly estado?: 'activo' | 'invitado';
+  /** Solo en una invitación: instante (ms) en que caduca. */
+  readonly venceEnMs?: number;
 }
 
 export interface EntradaAuditoriaVista {
@@ -643,10 +727,10 @@ export interface EntradaAuditoriaVista {
 
 export interface CotizacionVista {
   readonly cotizacionId: string;
-  readonly par: 'BOB/USD' | 'ARS/USD';
+  readonly par: string;
   readonly valor: number;
   readonly fecha: string;
   readonly fuente: string;
   readonly estado: 'vigente' | 'ultimo_verificado';
 }
-export type CotizacionesVigentes = Readonly<Record<Mercado, CotizacionVista | null>>;
+export type CotizacionesVigentes = Readonly<Record<string, CotizacionVista | null>>;

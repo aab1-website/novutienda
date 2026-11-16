@@ -1,5 +1,8 @@
 export type { EstadoTenant, Moneda, ModuloTenant, Tenant } from './tenant.js';
+export * from './mercados.js';
 export {
+  comercialDe,
+  comercialLegado,
   ESTADOS_TENANT,
   esEstadoTenant,
   esTenantIdValido,

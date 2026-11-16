@@ -1,6 +1,5 @@
-import { MERCADOS } from '@novutienda/nucleo';
 import { describe, expect, it } from 'vitest';
-import { MERCADOS_PRECIO, nombreAlmacen, nombreTipo } from './nombres.js';
+import { mercadosDePrecio, nombreAlmacen, nombreMoneda, nombreTipo } from './nombres.js';
 
 describe('nombres legibles', () => {
   it('almacenes y tipos de movimiento', () => {
@@ -9,8 +8,16 @@ describe('nombres legibles', () => {
     expect(nombreTipo('anulacion')).toBe('Anulación');
     expect(nombreTipo('raro')).toBe('raro');
   });
-  it('los mercados salen del núcleo, con su clave de precio', () => {
-    expect(MERCADOS_PRECIO.map((m) => m.mercado)).toEqual([...MERCADOS]);
-    expect(MERCADOS_PRECIO.map((m) => m.clave)).toEqual(['bo', 'ar']);
+  it('los mercados salen de lo declarado por el comercio, con su clave de precio y su nombre', () => {
+    const m = mercadosDePrecio([
+      { id: 'BO', nombre: 'Bolivia', monedaVenta: 'BOB', monedaBase: 'USD', tieneTipoCambio: true },
+      { id: 'PE', nombre: 'Perú', monedaVenta: 'PEN', monedaBase: 'PEN', tieneTipoCambio: false },
+    ]);
+    expect(m.map((x) => x.clave)).toEqual(['bo', 'pe']);
+    expect(m.map((x) => x.nombre)).toEqual(['Bolivia', 'Perú']);
+  });
+  it('nombra las monedas conocidas y deja el código de las demás', () => {
+    expect(nombreMoneda('USD')).toBe('dólares');
+    expect(nombreMoneda('PEN')).toBe('PEN');
   });
 });

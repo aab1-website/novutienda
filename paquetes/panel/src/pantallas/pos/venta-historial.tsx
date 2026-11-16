@@ -1,74 +1,116 @@
 import type { JSX } from 'preact';
 import { useState } from 'preact/hooks';
 import type { VentaPos } from '../../api/tipos.js';
-import { Alerta, Boton, Campo, Cargando, ErrorCarga, Seccion, Vacio, fechaHora } from '../../ui/comun.js';
+import { Alerta, Boton, Campo, Cargando, ErrorCarga, Seccion, fechaHora } from '../../ui/comun.js';
 import { useApp } from '../../ui/contexto.js';
+import { Dialogo } from '../../ui/dialogo.js';
 import { useAccion, useCarga } from '../../ui/hooks.js';
+import { Tabla } from '../../ui/tabla.js';
 import { formatearMonto } from '../../util/dinero.js';
+import { ReciboVista } from '../recibos/recibo-vista.js';
 
-function Fila({ v, alCambiar }: { v: VentaPos; alCambiar: () => void }): JSX.Element {
+/** Tope de ventas que el servidor devuelve por consulta (`listarVentas` pide 200). */
+export const TOPE_VENTAS = 200;
+
+const numeroDe = (v: VentaPos): string => `${v.serie}-${String(v.receiptNo).padStart(6, '0')}`;
+const estadoDe = (v: VentaPos): string => (v.estado === 'anulada' ? 'Anulada' : v.solicitudAnulacion ? 'Anulación solicitada' : 'Confirmada');
+
+function DialogoRecibo({ v, alCerrar }: { v: VentaPos; alCerrar: () => void }): JSX.Element {
+  const { api, usuario } = useApp();
+  const r = useCarga(() => api.llamar('obtenerRecibo', { ventaId: v.ventaId }), [v.ventaId]);
+  return (
+    <Dialogo titulo={`Recibo ${numeroDe(v)}`} variante="lateral" foco="cerrar" onCerrar={alCerrar}>
+      {r.cargando && <Cargando texto="Cargando el recibo…" />}
+      {r.error && <ErrorCarga error={r.error} reintentar={r.recargar} />}
+      {!r.cargando && !r.error && r.datos === null && <Alerta tipo="info">Esta venta todavía no tiene recibo emitido. Pruebe de nuevo en unos instantes.</Alerta>}
+      {r.datos && <ReciboVista recibo={r.datos} registradoPor={{ qr: usuario.correo }} />}
+    </Dialogo>
+  );
+}
+
+function DialogoAnulacion({ v, alCerrar, alSolicitar }: { v: VentaPos; alCerrar: () => void; alSolicitar: () => void }): JSX.Element {
   const { api, usuario } = useApp();
   const accion = useAccion();
-  const [abierto, setAbierto] = useState(false);
   const [motivo, setMotivo] = useState('');
-  const numero = `${v.serie}-${String(v.receiptNo).padStart(6, '0')}`;
   const solicitar = (): void => {
-    void accion.ejecutar(async () => {
-      await api.llamar('solicitarAnulacion', { ventaId: v.ventaId, motivo: motivo.trim() });
-      setAbierto(false);
-      alCambiar();
-    });
+    if (motivo.trim() === '') return;
+    void accion
+      .ejecutar(async () => {
+        await api.llamar('solicitarAnulacion', { ventaId: v.ventaId, motivo: motivo.trim() });
+        return true;
+      }, { exito: `Anulación de ${numeroDe(v)} solicitada.`, error: 'local' })
+      .then((ok) => {
+        if (ok === true) alSolicitar();
+      });
   };
   return (
-    <tr>
-      <th scope="row">{numero}</th>
-      <td>{fechaHora(v.creadoEnMs)}</td>
-      <td class="num">{formatearMonto(v.total, v.moneda)}</td>
-      <td>
-        {v.estado === 'anulada' ? 'Anulada' : v.solicitudAnulacion ? 'Anulación solicitada' : 'Confirmada'}
-      </td>
-      <td>
-        {v.estado === 'confirmada' && !v.solicitudAnulacion && !abierto && (
-          <Boton chico variante="secundario" onClick={() => setAbierto(true)} etiqueta={`Solicitar anulación de ${numero}`}>
-            Solicitar anulación
-          </Boton>
-        )}
-        {abierto && (
-          <form class="formulario" onSubmit={(e) => { e.preventDefault(); solicitar(); }} noValidate>
-            <Campo etiqueta="Motivo de la anulación" valor={motivo} onInput={setMotivo} requerido />
-            {accion.error && <Alerta>{accion.error}</Alerta>}
-            <div class="fila">
-              <Boton tipo="submit" chico ocupado={accion.ocupado} deshabilitado={motivo.trim() === ''}>Enviar solicitud</Boton>
-              <Boton chico variante="secundario" onClick={() => setAbierto(false)}>Cancelar</Boton>
-            </div>
-            <p class="texto-suave">{usuario.rol === 'caj' ? 'La aprobará un supervisor o administrador.' : 'La aprobará otra persona (supervisor o administrador).'}</p>
-          </form>
-        )}
-        {v.solicitudAnulacion && v.estado === 'confirmada' && <span class="texto-suave">Motivo: {v.solicitudAnulacion.motivo}</span>}
-      </td>
-    </tr>
+    <Dialogo
+      titulo={`Solicitar la anulación de ${numeroDe(v)}`}
+      variante="centro"
+      descripcion={usuario.rol === 'caj' ? 'La aprobará un supervisor o administrador.' : 'La aprobará otra persona (supervisor o administrador).'}
+      sucio={motivo.trim() !== ''}
+      onCerrar={alCerrar}
+      pie={
+        <>
+          <Boton variante="secundario" onClick={alCerrar}>Cancelar</Boton>
+          <Boton variante="peligro" onClick={solicitar} ocupado={accion.ocupado} motivo={motivo.trim() === '' ? 'Escriba el motivo de la anulación.' : undefined}>Enviar solicitud</Boton>
+        </>
+      }
+    >
+      <form class="formulario" onSubmit={(e) => { e.preventDefault(); solicitar(); }} noValidate>
+        <p>Total {formatearMonto(v.total, v.moneda)} · {fechaHora(v.creadoEnMs)}</p>
+        <Campo etiqueta="Motivo de la anulación" valor={motivo} onInput={setMotivo} requerido />
+        {accion.error && <Alerta>{accion.error}</Alerta>}
+      </form>
+    </Dialogo>
   );
 }
 
 export function VentaHistorial(): JSX.Element {
   const { api, usuario } = useApp();
-  const ventas = useCarga(() => api.llamar('listarVentas', {}), []);
+  const [desde, setDesde] = useState('');
+  const [hasta, setHasta] = useState('');
+  const rangoMalo = desde !== '' && hasta !== '' && desde > hasta;
+  const ventas = useCarga(() => api.llamar('listarVentas', rangoMalo ? {} : { ...(desde !== '' ? { desde } : {}), ...(hasta !== '' ? { hasta } : {}) }), [desde, hasta, rangoMalo]);
+  const [verRecibo, setVerRecibo] = useState<VentaPos | null>(null);
+  const [anular, setAnular] = useState<VentaPos | null>(null);
+  const filas = ventas.datos ?? [];
   return (
     <Seccion titulo={usuario.rol === 'caj' ? 'Mis ventas' : 'Ventas'}>
+      <div class="cuadricula">
+        <Campo etiqueta="Ventas desde" tipo="date" valor={desde} onInput={setDesde} />
+        <Campo etiqueta="Ventas hasta" tipo="date" valor={hasta} onInput={setHasta} ayuda="Sin fechas se muestran las más recientes." />
+      </div>
+      {rangoMalo && <Alerta>La fecha Desde no puede ser posterior a Hasta.</Alerta>}
       {ventas.cargando && <Cargando />}
       {ventas.error && <ErrorCarga error={ventas.error} reintentar={ventas.recargar} />}
-      {ventas.datos && ventas.datos.length === 0 && <Vacio titulo="Todavía no hay ventas" />}
-      {ventas.datos && ventas.datos.length > 0 && (
-        <table class="tabla">
-          <caption class="solo-lectores">Ventas registradas</caption>
-          <thead>
-            <tr><th scope="col">Recibo</th><th scope="col">Fecha</th><th scope="col" class="num">Total</th><th scope="col">Estado</th><th scope="col">Anulación</th></tr>
-          </thead>
-          <tbody>
-            {ventas.datos.map((v) => <Fila key={v.ventaId} v={v} alCambiar={ventas.recargar} />)}
-          </tbody>
-        </table>
+      {ventas.datos && (
+        <Tabla
+          titulo="Ventas registradas"
+          filas={filas}
+          clave={(v) => v.ventaId}
+          vacio={{ titulo: desde !== '' || hasta !== '' ? 'No hay ventas en esas fechas' : 'Todavía no hay ventas' }}
+          buscar={{ etiqueta: 'Buscar por número de recibo', en: (v) => [numeroDe(v)] }}
+          cortada={filas.length >= TOPE_VENTAS ? { mostradas: filas.length, mensaje: `Se muestran las ${filas.length} ventas más recientes y puede haber más. Acote las fechas para ver las demás.` } : undefined}
+          columnas={[
+            { id: 'recibo', titulo: 'Recibo', valor: numeroDe, encabezadoFila: true },
+            { id: 'fecha', titulo: 'Fecha', valor: (v) => v.creadoEnMs, celda: (v) => fechaHora(v.creadoEnMs), ordenable: true },
+            { id: 'total', titulo: 'Total', valor: (v) => `${v.moneda}-${String(v.total).padStart(15, '0')}`, celda: (v) => formatearMonto(v.total, v.moneda), ordenable: true },
+            { id: 'estado', titulo: 'Estado', valor: estadoDe },
+            { id: 'anulacion', titulo: 'Anulación', valor: (v) => (v.solicitudAnulacion && v.estado === 'confirmada' ? `Motivo: ${v.solicitudAnulacion.motivo}` : '') },
+          ]}
+          acciones={(v) => (
+            <div class="fila">
+              <Boton chico variante="secundario" onClick={() => setVerRecibo(v)} etiqueta={`Ver recibo ${numeroDe(v)}`}>Ver recibo</Boton>
+              {v.estado === 'confirmada' && !v.solicitudAnulacion && (
+                <Boton chico variante="secundario" onClick={() => setAnular(v)} etiqueta={`Solicitar anulación de ${numeroDe(v)}`}>Solicitar anulación</Boton>
+              )}
+            </div>
+          )}
+        />
       )}
+      {verRecibo && <DialogoRecibo v={verRecibo} alCerrar={() => setVerRecibo(null)} />}
+      {anular && <DialogoAnulacion v={anular} alCerrar={() => setAnular(null)} alSolicitar={() => { setAnular(null); ventas.recargar(); }} />}
     </Seccion>
   );
 }

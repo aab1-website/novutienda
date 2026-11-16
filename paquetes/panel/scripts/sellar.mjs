@@ -69,7 +69,23 @@ if (BUCKET !== '' && !/^[a-z0-9][a-z0-9._-]{2,221}$/.test(BUCKET)) {
   process.exit(1);
 }
 const FUNCIONES = PROYECTO === '' ? 'https://*.cloudfunctions.net' : `https://us-east1-${PROYECTO}.cloudfunctions.net`;
+// VITE_MEDIOS_BASE_URL (opcional): prefijo del almacén público de medios (miniaturas). Solo se agrega a img-src, con barra final.
+const MEDIOS = emulador ? '' : (process.env.VITE_MEDIOS_BASE_URL ?? '').trim().replace(/\/+$/, '');
+if (MEDIOS !== '') {
+  let url;
+  try { url = new URL(MEDIOS); } catch { url = undefined; }
+  const porDefecto = `https://storage.googleapis.com/${BUCKET}`;
+  const bien =
+    url !== undefined && url.protocol === 'https:' && !/[;,'"\s*\\]/.test(MEDIOS) && url.username === '' && url.password === '' &&
+    url.search === '' && url.hash === '' && url.port === '' && url.pathname.length > 1 && !url.pathname.includes('//') && !url.pathname.includes('..') && url.href.replace(/\/$/, '') === MEDIOS &&
+    MEDIOS !== porDefecto && !(BUCKET !== '' && MEDIOS === `https://firebasestorage.googleapis.com/v0/b/${BUCKET}`);
+  if (!bien) {
+    console.error('sellar: VITE_MEDIOS_BASE_URL debe ser https://<host>/<ruta-del-bucket> sin «;», comas, comillas, espacios ni comodines, y distinta del bucket por defecto.');
+    process.exit(1);
+  }
+}
 const ALMACEN_IMG = BUCKET === '' ? 'https://storage.googleapis.com https://firebasestorage.googleapis.com' : `https://storage.googleapis.com/${BUCKET}/ https://firebasestorage.googleapis.com/v0/b/${BUCKET}/`;
+const IMG_MEDIOS = MEDIOS === '' ? '' : ` ${MEDIOS}/`;
 const ALMACEN_MEDIA = BUCKET === '' ? 'https://storage.googleapis.com' : `https://storage.googleapis.com/${BUCKET}/`;
 const RECAPTCHA_SCRIPT = emulador ? '' : ' https://www.google.com/recaptcha/ https://www.gstatic.com/recaptcha/';
 const RECAPTCHA_CONEXION = emulador ? '' : ' https://content-firebaseappcheck.googleapis.com https://www.google.com';
@@ -79,7 +95,7 @@ const csp = [
   "default-src 'none'",
   `script-src 'self'${RECAPTCHA_SCRIPT}`,
   "style-src 'self'",
-  `img-src 'self' data: blob: ${ALMACEN_IMG}`,
+  `img-src 'self' data: blob: ${ALMACEN_IMG}${IMG_MEDIOS}`,
   "font-src 'self'",
   `connect-src 'self' https://identitytoolkit.googleapis.com https://securetoken.googleapis.com ${FUNCIONES} https://firebasestorage.googleapis.com${RECAPTCHA_CONEXION}${CONEXIONES_EMULADOR}`,
   `frame-src ${RECAPTCHA_MARCO}`,

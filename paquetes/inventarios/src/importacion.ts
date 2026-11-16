@@ -1,9 +1,10 @@
-import type { CambioProductoCambiado, TransaccionIdentidad, TransaccionMin } from '@novutienda/nucleo';
+import { monedaCostoDe, type CambioProductoCambiado, type ConfiguracionComercial, type TransaccionIdentidad, type TransaccionMin } from '@novutienda/nucleo';
+import { claveDePrecio, resolverComercial } from './comercial.js';
 import { EntradaInvalida, ErrorInventario, SinPermiso } from './errores.js';
-import { esProductoId, esSku, exigirSegmento, exigirTenant, UBICACIONES } from './ids.js';
+import { esProductoId, esSku, exigirSegmento, identificadorParaAlta, exigirTenant, UBICACIONES } from './ids.js';
 import { Lector, type Autor, type Datos } from './motor.js';
 import { ejecutarOperacion, exigirAutor, PERMISOS, type ResultadoOperacion } from './operacion.js';
-import { leerCupo, prepararEdicion, prepararProductoNuevo, reservarLimite, validarEntradaProducto, type CambiosProducto, type EntradaProducto, type ProductoValido } from './productos.js';
+import { leerCupo, prepararEdicion, prepararProductoNuevo, reservarLimite, validarEntradaProducto, type CambiosProducto, type EntradaProducto, type PrecioUSD, type ProductoValido } from './productos.js';
 
 export const MAX_BYTES_CSV = 256 * 1024;
 
@@ -62,26 +63,60 @@ export const MAX_FILAS_IMPORTACION = 1000;
 /** Escrituras que se admiten por transacción de importación (Firestore permite 500; queda margen para el registro). */
 const PRESUPUESTO_ESCRITURAS = 400;
 
-type Columna =
+type ColumnaFija =
   | 'id' | 'nombre' | 'categoria' | 'marca' | 'sku' | 'conSerie' | 'activo' | 'publicado' | 'garantiaMeses' | 'minimo'
-  | 'precioBO' | 'precioAR' | 'costoUSD' | 'stockTienda' | 'stockDeposito1' | 'stockDeposito2';
-type Unidad = 'centavos' | 'usd';
+  | 'costoUSD' | 'stockTienda' | 'stockDeposito1' | 'stockDeposito2';
+/** Una columna de precio por mercado declarado: `precio:<clave>` (la clave es `claveDePrecio(id)`). */
+type Columna = ColumnaFija | `precio:${string}`;
+/** `centavos`: entero de la unidad menor; `decimal`: importe con hasta 2 decimales en la moneda base. */
+type Unidad = 'centavos' | 'decimal';
 
 /**
- * Encabezados admitidos (se comparan sin tildes, mayúsculas ni signos). Los dos formatos anteriores siguen valiendo:
- * `precioUSDbo`, `precioUSDar` y `costoUSD` van en centavos enteros (formato de Inventarios y de su exportación);
- * `precioBO`, `precioAR`, `costo` (y `precio_bo`, `precioBOusd`...) van en USD con hasta 2 decimales (formato de la consola
- * y de la exportación).
+ * Encabezados fijos (se comparan sin tildes, mayúsculas ni signos). El costo se lee en la moneda de costo del comercio
+ * (`monedaCostoDe`): con USD, `costoUSD` va en centavos enteros y `costo` en dólares con hasta 2 decimales (formato de la consola y
+ * de la exportación); con otra moneda M, `costo` y `costo<m>` van en importe decimal de M (ver `aliasDe`).
  */
-const ALIAS: Readonly<Record<string, readonly [Columna, Unidad | null]>> = {
-  id: ['id', null], codigo: ['id', null], nombre: ['nombre', null], categoria: ['categoria', null], marca: ['marca', null], sku: ['sku', null],
+const ALIAS_FIJOS: Readonly<Record<string, readonly [Columna, Unidad | null]>> = {
+  id: ['id', null], codigo: ['sku', null], nombre: ['nombre', null], categoria: ['categoria', null], marca: ['marca', null], sku: ['sku', null],
   conserie: ['conSerie', null], activo: ['activo', null], publicado: ['publicado', null],
   garantiameses: ['garantiaMeses', null], garantia: ['garantiaMeses', null], minimo: ['minimo', null],
-  preciousdbo: ['precioBO', 'centavos'], preciousdar: ['precioAR', 'centavos'],
-  preciobo: ['precioBO', 'usd'], preciobousd: ['precioBO', 'usd'], precioar: ['precioAR', 'usd'], precioarusd: ['precioAR', 'usd'],
-  costousd: ['costoUSD', 'centavos'], costo: ['costoUSD', 'usd'],
+  // Los alias del costo dependen de la moneda de costo del comercio: los agrega `aliasDe`.
   stocktienda: ['stockTienda', null], stockdeposito1: ['stockDeposito1', null], stockdeposito2: ['stockDeposito2', null],
 };
+
+/**
+ * Columnas de precio DINÁMICAS: tres por cada mercado declarado (id `X`, moneda base `B`), todas ya normalizadas:
+ * - `precioX`, `precioXB` (y `precio_x`, `precioXb`...): importe en la moneda base con hasta 2 decimales (`precioBO`, `precioBOusd`);
+ * - `precioBX`: centavos enteros de la moneda base (`precioUSDbo`, el formato de la exportación anterior).
+ * Para el tenant de tres monedas resultan exactamente las columnas de siempre. Si dos mercados chocaran en un nombre, vale el
+ * primero declarado. Una columna de un mercado no declarado no existe aquí: se informa como ignorada, igual que cualquier columna
+ * desconocida.
+ */
+function aliasDe(comercial: ConfiguracionComercial): Readonly<Record<string, readonly [Columna, Unidad | null]>> {
+  const alias: Record<string, readonly [Columna, Unidad | null]> = { ...ALIAS_FIJOS };
+  const monedaCosto = monedaCostoDe(comercial);
+  // Costo: `costousd` va en centavos SOLO por compatibilidad con el formato anterior (existe únicamente con moneda de costo USD);
+  // `costo` y `costo<m>` van siempre en importe decimal (hasta 2 decimales) de la moneda de costo del comercio.
+  if (monedaCosto === 'USD') {
+    alias['costousd'] = ['costoUSD', 'centavos'];
+    alias['costo'] = ['costoUSD', 'decimal'];
+  } else {
+    alias['costo'] = ['costoUSD', 'decimal'];
+    alias[`costo${monedaCosto.toLowerCase()}`] = ['costoUSD', 'decimal'];
+  }
+  for (const m of comercial.mercados) {
+    const col: Columna = `precio:${claveDePrecio(m.id)}`;
+    const x = m.id.toLowerCase();
+    const b = m.monedaBase.toLowerCase();
+    for (const [nombre, unidad] of [[`precio${x}`, 'decimal'], [`precio${x}${b}`, 'decimal'], [`precio${b}${x}`, 'centavos']] as const) {
+      if (!(nombre in alias)) alias[nombre] = [col, unidad];
+    }
+  }
+  return alias;
+}
+
+/** Nombre de la columna de precio de un mercado en la exportación (`precioBO`). */
+export const columnaDePrecio = (idMercado: string): string => `precio${idMercado}`;
 const COLUMNAS_STOCK = { stockTienda: UBICACIONES[0], stockDeposito1: UBICACIONES[1], stockDeposito2: UBICACIONES[2] } as const;
 /** Nombres que sugieren stock pero no son columnas de carga: se avisa que se ignoran. */
 const SUENA_A_STOCK = new Set(['stock', 'existencias', 'existencia', 'cantidad', 'almacen', 'ubicacion', 'deposito', 'tienda']);
@@ -107,27 +142,39 @@ interface DatosFila {
   publicado?: boolean;
   garantiaMeses?: number;
   minimo?: number;
-  /** Centavos de USD. */
-  bo?: number;
-  ar?: number;
+  /** Centavos de la moneda base, por `claveDePrecio(idMercado)`; solo los mercados que trae la fila. */
+  precios?: Record<string, number>;
   costoUSD?: number;
 }
 
 export interface FilaLeida {
   /** Número de línea del archivo (el encabezado es la 1). */
   readonly linea: number;
+  /** `''` si la fila no trae id: se reconoce por su SKU. */
   readonly id: string;
   readonly datos: DatosFila;
   readonly stock: readonly { readonly ubicacionId: string; readonly cantidad: number }[];
   readonly errores: readonly ErrorFila[];
   readonly advertencias: readonly string[];
+  /** El SKU viene de una columna llamada `codigo` (planillas viejas la usaban para la clave interna). */
+  readonly skuDeCodigo?: boolean;
 }
+
+/** Lo que la importación necesita de cada producto existente para reconocer filas sin id. */
+export interface ProductoCatalogo {
+  readonly id: string;
+  readonly sku: string;
+  readonly nombre: string;
+}
+/** Lee TODOS los productos del comercio, una sola vez (el plan limita su cantidad). */
+export type LeerCatalogo = () => Promise<readonly ProductoCatalogo[]>;
 
 export interface LecturaCsv {
   readonly filas: readonly FilaLeida[];
   readonly columnasIgnoradas: readonly string[];
 }
 
+const PARECIDO = 'Se parece al SKU de otro producto (difiere solo en mayúsculas)';
 const SI = new Set(['si', 'sí', 'true', '1', 'verdadero', 'x']);
 const NO = new Set(['no', 'false', '0', 'falso']);
 const TEXTO_OK = (v: string, max: number): boolean => v.length <= max && !/[<>]/.test(v) && ![...v].some((c) => (c.codePointAt(0) ?? 0) < 32);
@@ -159,7 +206,9 @@ function importe(v: string, unidad: Unidad): number | undefined {
  * Lee el CSV. Los errores de encabezado, tamaño o formato general lanzan `EntradaInvalida`; los errores de cada fila
  * (formato de una celda) se anotan en la fila para que la simulación los informe todos juntos.
  */
-export function leerCsvFilas(fuente: FuenteTabla, cargaInicial: boolean): LecturaCsv {
+export function leerCsvFilas(fuente: FuenteTabla, cargaInicial: boolean, comercial: ConfiguracionComercial): LecturaCsv {
+  const ALIAS = aliasDe(comercial);
+  const monedaCosto = monedaCostoDe(comercial);
   let filas: readonly (readonly string[])[];
   if (typeof fuente === 'string') {
     if (fuente.length === 0 || fuente.length > MAX_BYTES_CSV) throw new EntradaInvalida('CSV vacío o demasiado grande');
@@ -175,7 +224,10 @@ export function leerCsvFilas(fuente: FuenteTabla, cargaInicial: boolean): Lectur
   const ignoradas: string[] = [];
   for (const [i, h] of cab.entries()) {
     const n = normalizar(h);
-    const alias = ALIAS[n];
+    if (n === 'costousd' && monedaCosto !== 'USD') {
+      throw new EntradaInvalida(`La moneda de costo de este comercio es ${monedaCosto}: use la columna «costo» (importe en ${monedaCosto})`);
+    }
+    const alias = Object.hasOwn(ALIAS, n) ? ALIAS[n] : undefined;
     if (alias === undefined) {
       if (n !== '') ignoradas.push(SUENA_A_STOCK.has(n) ? `${h} (el CSV no modifica el stock salvo en la carga inicial, con stockTienda, stockDeposito1 y stockDeposito2)` : h);
       continue;
@@ -183,7 +235,7 @@ export function leerCsvFilas(fuente: FuenteTabla, cargaInicial: boolean): Lectur
     if (indice.has(alias[0])) throw new EntradaInvalida(`columna repetida: ${h}`);
     indice.set(alias[0], { i, etiqueta: h, unidad: alias[1] });
   }
-  if (!indice.has('id')) throw new EntradaInvalida('falta la columna id');
+  if (!indice.has('id') && !indice.has('sku')) throw new EntradaInvalida('falta la columna sku: cada producto se reconoce por su SKU');
   const conStock = (Object.keys(COLUMNAS_STOCK) as Columna[]).filter((c) => indice.has(c));
   if (!cargaInicial && conStock.length > 0) throw new EntradaInvalida('El CSV no toca el stock: las columnas de stock solo se admiten en la carga inicial');
   if (datos.length < 1 || datos.length > MAX_FILAS_IMPORTACION) throw new EntradaInvalida(`El CSV debe tener entre 1 y ${String(MAX_FILAS_IMPORTACION)} filas`);
@@ -191,6 +243,8 @@ export function leerCsvFilas(fuente: FuenteTabla, cargaInicial: boolean): Lectur
   const salida: FilaLeida[] = [];
   const ids = new Set<string>();
   const skus = new Set<string>();
+  /** SKU en minúsculas → avisos de las filas que lo traen: dos SKU que solo difieren en mayúsculas se permiten, con aviso. */
+  const porMinusculas = new Map<string, { sku: string; avisos: string[] }[]>();
   for (const [k, f] of datos.entries()) {
     const linea = k + 2;
     if (f.every((x) => x.trim() === '')) continue;
@@ -207,10 +261,13 @@ export function leerCsvFilas(fuente: FuenteTabla, cargaInicial: boolean): Lectur
     const err = (c: Columna, motivo: string): void => {
       errores.push({ columna: indice.get(c)?.etiqueta ?? c, motivo });
     };
+    // El id es opcional (planillas viejas lo traen y se respeta); sin id, la fila se reconoce por su SKU.
     const id = celda('id') ?? '';
-    if (!esProductoId(id)) err('id', 'id inválido (minúsculas, números y guiones, 2 a 60 caracteres)');
-    else if (ids.has(id)) err('id', 'id repetido en el archivo');
-    ids.add(id);
+    if (id !== '') {
+      if (!esProductoId(id)) err('id', 'id inválido (minúsculas, números y guiones, 2 a 60 caracteres)');
+      else if (ids.has(id)) err('id', 'id repetido en el archivo');
+      ids.add(id);
+    }
     for (const [c, max] of [['nombre', 120], ['categoria', 60], ['marca', 60]] as const) {
       const crudo = celda(c);
       if (crudo === undefined) continue;
@@ -232,7 +289,20 @@ export function leerCsvFilas(fuente: FuenteTabla, cargaInicial: boolean): Lectur
       else {
         d.sku = sku;
         skus.add(sku);
+        const parecidos = porMinusculas.get(sku.toLowerCase()) ?? [];
+        const aviso = PARECIDO;
+        if (parecidos.some((x) => x.sku !== sku)) {
+          advertencias.push(aviso);
+          for (const x of parecidos) if (x.sku !== sku && !x.avisos.includes(aviso)) x.avisos.push(aviso);
+        }
+        parecidos.push({ sku, avisos: advertencias });
+        porMinusculas.set(sku.toLowerCase(), parecidos);
       }
+    } else if (id === '') {
+      // Sin jerga para quien usa una planilla nueva (sin columna id); el texto técnico solo si la planilla trae esa columna.
+      if (!indice.has('id')) err('sku', 'Falta el SKU: cada producto se reconoce por su SKU');
+      else if (indice.has('sku')) err('sku', 'Falta el SKU o el id: cada fila necesita uno de los dos');
+      else errores.push({ columna: null, motivo: 'la fila no trae ni id ni sku' });
     }
     for (const c of ['conSerie', 'activo', 'publicado'] as const) {
       const v = celda(c);
@@ -254,13 +324,18 @@ export function leerCsvFilas(fuente: FuenteTabla, cargaInicial: boolean): Lectur
       if (n === undefined || n > 1_000_000_000) err('minimo', 'entero no negativo');
       else d.minimo = n;
     }
-    for (const [c, destino] of [['precioBO', 'bo'], ['precioAR', 'ar'], ['costoUSD', 'costoUSD']] as const) {
+    const importes: [Columna, string, string][] = [
+      ...comercial.mercados.map((m) => [`precio:${claveDePrecio(m.id)}` as Columna, m.monedaBase, claveDePrecio(m.id)] as [Columna, string, string]),
+      ['costoUSD', monedaCosto, 'costoUSD'],
+    ];
+    for (const [c, moneda, destino] of importes) {
       const v = celda(c);
       if (v === undefined) continue;
       const unidad = indice.get(c)?.unidad ?? 'centavos';
       const n = importe(v, unidad);
-      if (n === undefined) err(c, unidad === 'centavos' ? 'importe en centavos de USD: entero sin signos ni fórmulas' : 'importe en USD, hasta 2 decimales, sin signos ni fórmulas');
-      else d[destino] = n;
+      if (n === undefined) err(c, unidad === 'centavos' ? `importe en centavos de ${moneda}: entero sin signos ni fórmulas` : `importe en ${moneda}, hasta 2 decimales, sin signos ni fórmulas`);
+      else if (destino === 'costoUSD') d.costoUSD = n;
+      else (d.precios ??= {})[destino] = n;
     }
     for (const [c, ubicacionId] of Object.entries(COLUMNAS_STOCK) as [Columna, string][]) {
       const v = celda(c);
@@ -269,7 +344,7 @@ export function leerCsvFilas(fuente: FuenteTabla, cargaInicial: boolean): Lectur
       if (n === undefined || n > 1_000_000) err(c, 'entero no negativo (máximo 1.000.000)');
       else if (n > 0) stock.push({ ubicacionId, cantidad: n });
     }
-    salida.push({ linea, id, datos: d, stock, errores, advertencias });
+    salida.push({ linea, id, datos: d, stock, errores, advertencias, ...(indice.has('sku') && normalizar(indice.get('sku')?.etiqueta ?? '') === 'codigo' ? { skuDeCodigo: true } : {}) });
   }
   return { filas: salida, columnasIgnoradas: ignoradas };
 }
@@ -286,12 +361,16 @@ export interface FilaImportada {
  * Lectura estricta para quien solo CREA (la carga de demostración): cada fila debe ser un producto completo y válido;
  * acumula los errores por fila y lanza una sola `EntradaInvalida`. No mira la base de datos.
  */
-export function leerCsvProductos(csv: FuenteTabla, cargaInicial: boolean): FilaImportada[] {
-  const { filas } = leerCsvFilas(csv, cargaInicial);
+export function leerCsvProductos(csv: FuenteTabla, cargaInicial: boolean, comercial: ConfiguracionComercial): FilaImportada[] {
+  const { filas } = leerCsvFilas(csv, cargaInicial, comercial);
   const errores: string[] = [];
   const salida: FilaImportada[] = [];
-  for (const f of filas) {
-    const d = f.datos;
+  const ocupados = new Set(filas.map((f) => f.id).filter((x) => x !== ''));
+  for (const fila of filas) {
+    const d = fila.datos;
+    // Una fila sin id recibe una clave generada (solo crea; esta lectura no mira la base de datos).
+    const f: FilaLeida = fila.id !== '' || fila.errores.length > 0 ? fila : { ...fila, id: identificadorParaAlta(d.nombre ?? '', d.sku ?? '', ocupados) };
+    if (fila.id === '' && f.id !== '') ocupados.add(f.id);
     const propios = f.errores.map((x) => (x.columna === null ? x.motivo : `${x.columna}: ${x.motivo}`));
     for (const [c, v] of [['nombre', d.nombre], ['categoria', d.categoria], ['sku', d.sku]] as const) if (v === undefined) propios.push(`${c}: es obligatorio`);
     if (d.conSerie === true && f.stock.length > 0) propios.push('un producto con serie no admite carga de stock por CSV (use el ingreso con series)');
@@ -300,13 +379,13 @@ export function leerCsvProductos(csv: FuenteTabla, cargaInicial: boolean): FilaI
       continue;
     }
     try {
-      validarEntradaProducto(crearEntrada(f));
+      validarEntradaProducto(crearEntrada(f, comercial), comercial);
     } catch (e) {
       if (!(e instanceof EntradaInvalida)) throw e;
       errores.push(`fila ${String(f.linea)}: ${e.message}`);
       continue;
     }
-    salida.push({ producto: crearEntrada(f), stock: f.stock });
+    salida.push({ producto: crearEntrada(f, comercial), stock: f.stock });
   }
   if (errores.length > 0) throw new EntradaInvalida(`CSV rechazado (${String(errores.length)} error(es))`, errores.slice(0, 20));
   return salida;
@@ -314,7 +393,10 @@ export function leerCsvProductos(csv: FuenteTabla, cargaInicial: boolean): FilaI
 
 export interface FilaSimulada {
   readonly linea: number;
+  /** Clave interna (solo para el servidor y los registros); la pantalla muestra `nombre` y `sku`, nunca esto. */
   readonly id: string;
+  readonly nombre?: string;
+  readonly sku?: string;
   readonly accion: 'crear' | 'actualizar' | 'sin-cambios' | 'error';
   readonly errores: readonly ErrorFila[];
   readonly advertencias: readonly string[];
@@ -329,14 +411,14 @@ export interface Simulacion {
 }
 
 /** Producto nuevo a partir de una fila (el precio que falta queda en 0, «a consultar»). */
-function crearEntrada(fila: FilaLeida): EntradaProducto {
+function crearEntrada(fila: FilaLeida, comercial: ConfiguracionComercial): EntradaProducto {
   const d = fila.datos;
   return {
     id: fila.id,
     nombre: d.nombre as string,
     categoria: d.categoria as string,
     sku: d.sku as string,
-    precioUSD: { bo: d.bo ?? 0, ar: d.ar ?? 0 },
+    precioUSD: Object.fromEntries(comercial.mercados.map((m) => [claveDePrecio(m.id), d.precios?.[claveDePrecio(m.id)] ?? 0])) as unknown as PrecioUSD,
     ...(d.marca !== undefined ? { marca: d.marca } : {}),
     ...(d.conSerie !== undefined ? { conSerie: d.conSerie } : {}),
     ...(d.activo !== undefined ? { activo: d.activo } : {}),
@@ -349,6 +431,10 @@ function crearEntrada(fila: FilaLeida): EntradaProducto {
 
 interface PlanFila {
   readonly fila: FilaLeida;
+  /** Clave resuelta (la de la fila, la del producto que tiene ese SKU o una generada). */
+  id: string;
+  nombre?: string;
+  sku?: string;
   accion: FilaSimulada['accion'];
   errores: ErrorFila[];
   advertencias: string[];
@@ -360,21 +446,104 @@ interface PlanFila {
 const ERR = (columna: string | null, motivo: string): ErrorFila => ({ columna, motivo });
 
 /** Decide qué haría una fila contra el estado actual (solo lecturas). La validación es del servidor. */
-async function planificarFila(lector: Lector, fila: FilaLeida): Promise<PlanFila> {
-  const plan: PlanFila = { fila, accion: 'error', errores: [...fila.errores], advertencias: [...fila.advertencias], cambios: [] };
-  if (plan.errores.length > 0) return plan;
+const sinCeros = (t: string): string => t.replace(/^0+/, '');
+const TEXTO_CEROS = 'no coincide con el SKU del producto: Excel quitó ceros a la izquierda; formatee la columna SKU como texto en Excel';
+const nombreComparable = (t: string): string => t.trim().replace(/\s+/g, ' ').toLowerCase();
+
+async function planificarFila(lector: Lector, fila: FilaLeida, comercial: ConfiguracionComercial, asignados: Set<string>, catalogo: readonly ProductoCatalogo[]): Promise<PlanFila> {
   const d = fila.datos;
-  const previo = await lector.leer('productos', fila.id);
+  const plan: PlanFila = {
+    fila, id: fila.id, accion: 'error', errores: [...fila.errores], advertencias: [...fila.advertencias], cambios: [],
+    ...(d.nombre !== undefined ? { nombre: d.nombre } : {}), ...(d.sku !== undefined ? { sku: d.sku } : {}),
+  };
+  if (plan.errores.length > 0) return plan;
+  const duenoDe = async (sku: string): Promise<string | undefined> => {
+    const r = await lector.leer('skus', sku);
+    return r === undefined ? undefined : typeof r['productoId'] === 'string' ? r['productoId'] : '';
+  };
+  // Fuente de verdad: el índice de SKU y, además, todos los productos leídos (un producto antiguo podría no estar en el índice).
+  const dueno = d.sku === undefined ? undefined : ((await duenoDe(d.sku)) ?? catalogo.find((p) => p.sku === d.sku)?.id);
+  if (fila.id === '' && d.sku !== undefined && dueno === undefined) {
+    // Excel quita los ceros a la izquierda (`00123` llega como `123`): sin id no se puede crear un duplicado ni tocar otro producto.
+    if (/^\d+$/.test(d.sku) && catalogo.some((p) => /^0+\d+$/.test(p.sku) && sinCeros(p.sku) === sinCeros(d.sku as string))) {
+      plan.errores.push(ERR('sku', TEXTO_CEROS));
+      return plan;
+    }
+    // Planilla vieja: `codigo` llevaba la clave interna. Si no es ningún SKU pero sí la clave de un producto, no se adivina.
+    if (fila.skuDeCodigo === true && (catalogo.some((p) => p.id === d.sku) || (esProductoId(d.sku) && (await lector.leer('productos', d.sku)) !== undefined))) {
+      plan.errores.push(ERR('sku', 'La columna codigo ahora es el SKU; esta planilla parece usar el código anterior de los productos. Use la columna sku con el SKU de cada producto'));
+      return plan;
+    }
+  }
+  if (fila.id === '' && d.sku !== undefined && dueno !== undefined) {
+    // Planilla vieja: el valor de `codigo` es el SKU de un producto Y la clave anterior de otro: ambiguo, no se toca nada.
+    if (fila.skuDeCodigo === true && dueno !== d.sku && (catalogo.some((p) => p.id === d.sku) || (esProductoId(d.sku) && (await lector.leer('productos', d.sku)) !== undefined))) {
+      plan.errores.push(ERR('sku', `Esta planilla es ambigua: «${d.sku}» es el SKU de un producto y también el código anterior de otro. Use una columna sku con el SKU de cada producto`));
+      return plan;
+    }
+    // Se respeta el SKU exacto, pero si otro producto tiene el mismo SKU con ceros a la izquierda puede ser que Excel los quitara.
+    if (/^\d+$/.test(d.sku)) {
+      const conCeros = catalogo.find((p) => p.sku !== d.sku && /^0+\d+$/.test(p.sku) && sinCeros(p.sku) === sinCeros(d.sku as string));
+      if (conCeros !== undefined) plan.advertencias.push(`Existe otro producto con SKU ${conCeros.sku}: verifique que Excel no haya quitado ceros a la izquierda`);
+    }
+  }
+  let previo: Datos | undefined;
+  if (fila.id === '') {
+    // Sin id: el producto es el que tiene ese SKU; si nadie lo tiene, se crea con una clave generada.
+    if (dueno === undefined) {
+      const ocupados = new Set(asignados);
+      for (;;) {
+        const c = identificadorParaAlta(d.nombre ?? '', d.sku ?? '', ocupados);
+        if (ocupados.has(c) || (await lector.leer('productos', c)) !== undefined) ocupados.add(c);
+        else {
+          plan.id = c;
+          break;
+        }
+      }
+    } else {
+      plan.id = dueno;
+      previo = dueno === '' ? undefined : await lector.leer('productos', dueno);
+      if (previo === undefined) {
+        plan.errores.push(ERR('sku', 'el SKU está registrado pero su producto no existe; revise con soporte'));
+        return plan;
+      }
+    }
+  } else {
+    previo = await lector.leer('productos', fila.id);
+    if (previo !== undefined && dueno !== undefined && dueno !== fila.id) {
+      const otro = dueno === '' ? undefined : await lector.leer('productos', dueno);
+      const nombreOtro = typeof otro?.['nombre'] === 'string' ? ` (${otro['nombre']})` : '';
+      plan.errores.push(ERR('sku', `el SKU pertenece a otro producto${nombreOtro}`));
+      return plan;
+    }
+  }
+  if (previo !== undefined) {
+    if (plan.nombre === undefined && typeof previo['nombre'] === 'string') plan.nombre = previo['nombre'];
+    if (plan.sku === undefined && typeof previo['sku'] === 'string') plan.sku = previo['sku'];
+  }
+  if (d.sku !== undefined) {
+    // Un SKU que solo difiere en mayúsculas es otro SKU (se permite), pero se avisa. Solo se pueden mirar las variantes todo en
+    // minúsculas y todo en mayúsculas: la base se consulta por documento, no por búsqueda.
+    const minus = d.sku.toLowerCase();
+    let parecido = catalogo.some((p) => p.id !== plan.id && p.sku !== d.sku && p.sku.toLowerCase() === minus);
+    for (const v of new Set([minus, d.sku.toUpperCase()])) {
+      if (parecido || v === d.sku) continue;
+      const otro = await duenoDe(v);
+      if (otro !== undefined && otro !== plan.id) parecido = true;
+    }
+    if (parecido && !plan.advertencias.includes(PARECIDO)) plan.advertencias.push(PARECIDO);
+  }
   if (previo === undefined) {
     if (d.nombre === undefined) plan.errores.push(ERR('nombre', 'es obligatorio para crear'));
     if (d.categoria === undefined) plan.errores.push(ERR('categoria', 'es obligatoria para crear'));
     if (d.sku === undefined) plan.errores.push(ERR('sku', 'es obligatorio para crear'));
-    else if ((await lector.leer('skus', d.sku)) !== undefined) plan.errores.push(ERR('sku', 'ya está en uso por otro producto'));
-    if (d.bo === undefined || d.ar === undefined) plan.advertencias.push('sin precio en algún mercado: quedará «a consultar» (0)');
+    else if (dueno !== undefined) plan.errores.push(ERR('sku', 'ya está en uso por otro producto'));
+    if (d.nombre !== undefined && catalogo.some((p) => nombreComparable(p.nombre) === nombreComparable(d.nombre as string))) plan.advertencias.push('Ya existe un producto con ese nombre');
+    if (comercial.mercados.some((m) => d.precios?.[claveDePrecio(m.id)] === undefined)) plan.advertencias.push('sin precio en algún mercado: quedará «a consultar» (0)');
     if (d.conSerie === true && fila.stock.length > 0) plan.errores.push(ERR('stock', 'un producto con serie no admite carga de stock por CSV (use el ingreso con series)'));
     if (plan.errores.length > 0) return plan;
     try {
-      plan.producto = validarEntradaProducto(crearEntrada(fila));
+      plan.producto = validarEntradaProducto(crearEntrada({ ...fila, id: plan.id }, comercial), comercial);
     } catch (e) {
       if (!(e instanceof EntradaInvalida)) throw e;
       plan.errores.push(ERR(null, e.message));
@@ -389,7 +558,7 @@ async function planificarFila(lector: Lector, fila: FilaLeida): Promise<PlanFila
   if (d.sku !== undefined && d.sku !== previo['sku']) {
     // Excel quita los ceros a la izquierda de una celda numérica (`00123` llega como `123`): no se pueden recuperar.
     const perdioCeros = typeof previo['sku'] === 'string' && /^\d+$/.test(d.sku) && /^0+\d+$/.test(previo['sku']) && previo['sku'].replace(/^0+/, '') === d.sku.replace(/^0+/, '');
-    plan.errores.push(ERR('sku', perdioCeros ? 'no coincide con el SKU del producto: Excel quitó ceros a la izquierda; formatee la columna SKU como texto en Excel' : 'no se edita una vez creado el producto'));
+    plan.errores.push(ERR('sku', perdioCeros ? TEXTO_CEROS : 'no se edita una vez creado el producto'));
   }
   const c: { -readonly [k in keyof CambiosProducto]: CambiosProducto[k] } = {};
   for (const k of ['nombre', 'categoria', 'marca', 'activo', 'publicado', 'garantiaMeses', 'minimo'] as const) {
@@ -407,13 +576,21 @@ async function planificarFila(lector: Lector, fila: FilaLeida): Promise<PlanFila
     }
   }
   const antes = (previo['precioUSD'] ?? {}) as Record<string, unknown>;
-  const bo = d.bo ?? (antes['bo'] as number | undefined);
-  const ar = d.ar ?? (antes['ar'] as number | undefined);
-  if ((d.bo !== undefined && d.bo !== antes['bo']) || (d.ar !== undefined && d.ar !== antes['ar'])) {
-    c.precioUSD = { bo: bo ?? 0, ar: ar ?? 0 };
+  const nuevosPrecios: Record<string, number> = {};
+  let cambiaPrecio = false;
+  for (const m of comercial.mercados) {
+    const k = claveDePrecio(m.id);
+    const traido = d.precios?.[k];
+    if (traido !== undefined && traido !== antes[k]) cambiaPrecio = true;
+    // Sin precio traído ni guardado: el mercado sigue «sin precio» (no se escribe 0).
+    const valor = traido ?? (antes[k] as number | undefined);
+    if (valor !== undefined) nuevosPrecios[k] = valor;
+  }
+  if (cambiaPrecio) {
+    c.precioUSD = nuevosPrecios as unknown as PrecioUSD;
     plan.cambios.push('precioUSD');
   }
-  if (d.costoUSD !== undefined && d.costoUSD !== (await lector.leer('costos', fila.id))?.['costoUSD']) {
+  if (d.costoUSD !== undefined && d.costoUSD !== (await lector.leer('costos', plan.id))?.['costoUSD']) {
     c.costoUSD = d.costoUSD;
     plan.cambios.push('costoUSD');
   }
@@ -426,8 +603,12 @@ async function planificarFila(lector: Lector, fila: FilaLeida): Promise<PlanFila
 /** Escrituras que una fila puede pedir; no depende del estado, así el reparto en lotes es estable ante un reintento. */
 const pesoFila = (f: FilaLeida): number => 10 + 4 * f.stock.length;
 
-function leer(tx: LecturaSinBloqueo, tenantId: string, csv: FuenteTabla, cargaInicial: boolean): { lector: Lector; lectura: LecturaCsv } {
-  return { lector: new Lector(tx, exigirTenant(tenantId)), lectura: leerCsvFilas(csv, cargaInicial) };
+async function leer(
+  tx: LecturaSinBloqueo, tenantId: string, csv: FuenteTabla, cargaInicial: boolean, inyectada?: ConfiguracionComercial,
+): Promise<{ lector: Lector; lectura: LecturaCsv; comercial: ConfiguracionComercial }> {
+  const lector = new Lector(tx, exigirTenant(tenantId));
+  const comercial = await resolverComercial(lector, tenantId, inyectada);
+  return { lector, comercial, lectura: leerCsvFilas(csv, cargaInicial, comercial) };
 }
 
 /**
@@ -436,23 +617,26 @@ function leer(tx: LecturaSinBloqueo, tenantId: string, csv: FuenteTabla, cargaIn
  */
 export async function simularImportacionCsv(
   tx: LecturaSinBloqueo,
-  e: { tenantId: string; por: Autor; csv: FuenteTabla; cargaInicial?: boolean },
+  e: { tenantId: string; por: Autor; csv: FuenteTabla; cargaInicial?: boolean; comercial?: ConfiguracionComercial; catalogo: LeerCatalogo },
 ): Promise<Simulacion> {
   const por = exigirAutor(e.por);
   if (!PERMISOS.importacion.includes(por.rol)) throw new SinPermiso(`El rol ${por.rol} no puede ejecutar importar-csv`);
-  const { lector, lectura } = leer(tx, e.tenantId, e.csv, e.cargaInicial === true);
+  const { lector, lectura, comercial } = await leer(tx, e.tenantId, e.csv, e.cargaInicial === true, e.comercial);
+  const catalogo = await e.catalogo();
   const { usado, tope } = await leerCupo(lector, e.tenantId, 'productos');
   let creados = 0;
   const filas: FilaSimulada[] = [];
+  const asignados = new Set(lectura.filas.map((f) => f.id).filter((x) => x !== ''));
   for (const f of lectura.filas) {
-    const p = await planificarFila(lector, f);
+    const p = await planificarFila(lector, f, comercial, asignados, catalogo);
     if (p.accion === 'crear') {
       if (usado + creados >= tope) {
         p.accion = 'error';
         p.errores.push(ERR(null, `supera el límite de ${String(tope)} productos del plan`));
       } else creados += 1;
     }
-    filas.push({ linea: f.linea, id: f.id, accion: p.accion, errores: p.errores, advertencias: p.advertencias, cambios: p.cambios });
+    if (p.accion === 'crear') asignados.add(p.id);
+    filas.push({ linea: f.linea, id: p.id, ...(p.nombre !== undefined ? { nombre: p.nombre } : {}), ...(p.sku !== undefined ? { sku: p.sku } : {}), accion: p.accion, errores: p.errores, advertencias: p.advertencias, cambios: p.cambios });
   }
   const n = (a: FilaSimulada['accion']): number => filas.filter((f) => f.accion === a).length;
   return {
@@ -475,7 +659,7 @@ interface ResultadoLote {
 /** Aplica una tanda de filas en UNA transacción (todo o nada dentro de la tanda). Relee el estado: no confía en la simulación. */
 async function importarLote(
   tx: TransaccionIdentidad,
-  e: { tenantId: string; operacionId: string; por: Autor; cargaInicial: boolean; filas: readonly FilaLeida[] },
+  e: { tenantId: string; operacionId: string; por: Autor; cargaInicial: boolean; filas: readonly FilaLeida[]; comercial: ConfiguracionComercial; reservados: ReadonlySet<string>; catalogo: readonly ProductoCatalogo[] },
 ): Promise<ResultadoOperacion<Datos>> {
   return ejecutarOperacion(tx, {
     tenantId: e.tenantId,
@@ -483,12 +667,19 @@ async function importarLote(
     tipo: 'importar-csv',
     accion: 'inventarios.importar-csv',
     // La identidad de la tanda es el contenido del archivo, no el estado: un reintento produce el mismo hash.
-    carga: { cargaInicial: e.cargaInicial, filas: e.filas.map((f) => ({ id: f.id, datos: f.datos, stock: f.stock })) },
+    // Los precios van planos (`bo`, `ar`...) como siempre: el hash de una tanda del tenant de tres monedas no cambia.
+    carga: { cargaInicial: e.cargaInicial, filas: e.filas.map((f) => ({ id: f.id, datos: { ...f.datos, precios: undefined, ...f.datos.precios }, stock: f.stock })) },
     por: exigirAutor(e.por),
     roles: PERMISOS.importacion,
     construir: async (t) => {
       const planes: PlanFila[] = [];
-      for (const f of e.filas) planes.push(await planificarFila(t.lector, f));
+      // Las claves que el archivo trae explícitas (de cualquier tanda) y las ya generadas en esta tanda no se reparten dos veces.
+      const asignados = new Set(e.reservados);
+      for (const f of e.filas) {
+        const p = await planificarFila(t.lector, f, e.comercial, asignados, e.catalogo);
+        if (p.accion === 'crear') asignados.add(p.id);
+        planes.push(p);
+      }
       const malas = planes.filter((p) => p.accion === 'error');
       if (malas.length > 0) {
         throw new EntradaInvalida(
@@ -504,14 +695,14 @@ async function importarLote(
         if (p.accion === 'crear' && p.producto !== undefined) {
           await prepararProductoNuevo(t, p.producto, UBICACIONES);
           for (const s of p.fila.stock) t.mover(p.producto.id, s.ubicacionId, s.cantidad, { tipo: 'ingreso' });
-          cambios.push({ productoId: p.fila.id, cambio: 'creado' });
+          cambios.push({ productoId: p.id, cambio: 'creado' });
           resultado.creados += 1;
-          resultado.productos.push(p.fila.id);
+          resultado.productos.push(p.id);
         } else if (p.accion === 'actualizar' && p.edicion !== undefined) {
-          await prepararEdicion(t, p.fila.id, p.edicion);
-          cambios.push({ productoId: p.fila.id, cambio: p.cambios.length === 1 && p.cambios[0] === 'precioUSD' ? 'precio' : 'editado' });
+          await prepararEdicion(t, p.id, p.edicion, e.comercial);
+          cambios.push({ productoId: p.id, cambio: p.cambios.length === 1 && p.cambios[0] === 'precioUSD' ? 'precio' : 'editado' });
           resultado.actualizados += 1;
-          resultado.productos.push(p.fila.id);
+          resultado.productos.push(p.id);
         } else resultado.sinCambios += 1;
       }
       return {
@@ -530,10 +721,10 @@ async function importarLote(
  */
 export async function importarProductosCsv(
   tx: TransaccionIdentidad,
-  e: { tenantId: string; operacionId: string; por: Autor; csv: FuenteTabla; cargaInicial?: boolean },
+  e: { tenantId: string; operacionId: string; por: Autor; csv: FuenteTabla; cargaInicial?: boolean; comercial?: ConfiguracionComercial; catalogo: LeerCatalogo },
 ): Promise<ResultadoOperacion<Datos>> {
   const cargaInicial = e.cargaInicial === true;
-  const { lectura } = leer(tx, e.tenantId, e.csv, cargaInicial);
+  const { lectura, comercial } = await leer(tx, e.tenantId, e.csv, cargaInicial, e.comercial);
   if (lectura.filas.reduce((s, f) => s + pesoFila(f), 0) > PRESUPUESTO_ESCRITURAS) {
     throw new EntradaInvalida('El archivo no cabe en una sola transacción; use la importación por lotes');
   }
@@ -541,7 +732,7 @@ export async function importarProductosCsv(
   if (mal.length > 0) {
     throw new EntradaInvalida(`CSV rechazado (${String(mal.length)} error(es))`, mal.slice(0, 20).map((f) => `línea ${String(f.linea)}: ${f.errores.map((x) => x.motivo).join('; ')}`));
   }
-  return importarLote(tx, { tenantId: e.tenantId, operacionId: e.operacionId, por: e.por, cargaInicial, filas: lectura.filas });
+  return importarLote(tx, { tenantId: e.tenantId, operacionId: e.operacionId, por: e.por, cargaInicial, filas: lectura.filas, comercial, reservados: new Set(lectura.filas.map((f) => f.id).filter((x) => x !== '')), catalogo: await e.catalogo() });
 }
 
 export interface BaseTransaccional {
@@ -574,7 +765,7 @@ export interface ResultadoImportacion {
  */
 export async function importarCsvPorLotes(
   db: BaseTransaccional,
-  e: { tenantId: string; operacionId: string; por: Autor; csv: FuenteTabla; cargaInicial?: boolean; omitirErrores?: boolean; lineasOmitidas?: readonly number[]; lectura?: LecturaSinBloqueo; presupuestoMs?: number; ahora?: () => number },
+  e: { tenantId: string; operacionId: string; por: Autor; csv: FuenteTabla; cargaInicial?: boolean; omitirErrores?: boolean; lineasOmitidas?: readonly number[]; catalogo: LeerCatalogo; lectura?: LecturaSinBloqueo; presupuestoMs?: number; ahora?: () => number; comercial?: ConfiguracionComercial },
 ): Promise<ResultadoImportacion> {
   exigirSegmento(e.operacionId, 'operacionId');
   // El plazo cuenta desde el principio: la simulación de hasta 1000 filas también gasta tiempo de la llamada.
@@ -584,10 +775,17 @@ export async function importarCsvPorLotes(
   const por = exigirAutor(e.por);
   // Simulación SIN bloqueo (lecturas sueltas, no transacción de lectura y escritura): no retiene documentos contra la caja.
   // La validación real se repite dentro de cada tanda. Sin `lectura`, se usa una transacción (dobles de prueba).
+  // La configuración se resuelve una vez (inyectada o del documento del tenant) y vale para toda la importación.
+  const comercial = e.comercial ?? await (e.lectura !== undefined
+    ? resolverComercial(new Lector(e.lectura, exigirTenant(e.tenantId)), e.tenantId)
+    : db.runTransaction((tx) => resolverComercial(new Lector(tx, exigirTenant(e.tenantId)), e.tenantId)));
+  // Todos los productos, leídos una sola vez: sirven a la simulación y a todas las tandas.
+  const catalogo = await e.catalogo();
+  const leerCat: LeerCatalogo = () => Promise.resolve(catalogo);
   const simulacion =
     e.lectura !== undefined
-      ? await simularImportacionCsv(e.lectura, { tenantId: e.tenantId, por, csv: e.csv, cargaInicial })
-      : await db.runTransaction((tx) => simularImportacionCsv(tx, { tenantId: e.tenantId, por, csv: e.csv, cargaInicial }));
+      ? await simularImportacionCsv(e.lectura, { tenantId: e.tenantId, por, csv: e.csv, cargaInicial, comercial, catalogo: leerCat })
+      : await db.runTransaction((tx) => simularImportacionCsv(tx, { tenantId: e.tenantId, por, csv: e.csv, cargaInicial, comercial, catalogo: leerCat }));
   if (simulacion.resumen.errores > 0 && e.omitirErrores !== true) {
     throw new EntradaInvalida(`El archivo tiene ${String(simulacion.resumen.errores)} fila(s) con errores; corríjalas o importe omitiéndolas`, detalleErrores(simulacion.filas).slice(0, 50));
   }
@@ -606,7 +804,9 @@ export async function importarCsvPorLotes(
     }
   }
   const buenas = new Set(simulacion.filas.filter((f) => f.accion !== 'error').map((f) => f.linea));
-  const filas = leerCsvFilas(e.csv, cargaInicial).filas.filter((f) => buenas.has(f.linea));
+  const todas = leerCsvFilas(e.csv, cargaInicial, comercial).filas;
+  const reservados = new Set(todas.map((f) => f.id).filter((x) => x !== ''));
+  const filas = todas.filter((f) => buenas.has(f.linea));
   const lotes: FilaLeida[][] = [];
   let peso = 0;
   for (const f of filas) {
@@ -628,7 +828,7 @@ export async function importarCsvPorLotes(
     }
     try {
       const r = await db.runTransaction((tx) =>
-        importarLote(tx, { tenantId: e.tenantId, operacionId: `${e.operacionId}-l${String(i + 1)}`, por, cargaInicial, filas: lote }),
+        importarLote(tx, { tenantId: e.tenantId, operacionId: `${e.operacionId}-l${String(i + 1)}`, por, cargaInicial, filas: lote, comercial, reservados, catalogo }),
       );
       const x = r.resultado as unknown as ResultadoLote;
       total.creados += x.creados;
@@ -654,6 +854,7 @@ export async function importarCsvPorLotes(
 }
 
 export interface ProductoExportable {
+  /** `costoUSD`: centavos de la moneda de costo del comercio (`monedaCostoDe`); el nombre se conserva, no se migra. */
   readonly id: string;
   readonly nombre: string;
   readonly categoria: string;
@@ -662,8 +863,8 @@ export interface ProductoExportable {
   readonly conSerie: boolean;
   readonly garantiaMeses?: number;
   readonly minimo?: number;
-  /** Centavos de USD (como se guardan); la exportación los escribe en USD con 2 decimales, que la importación lee sin cambiar precios. */
-  readonly precioUSD: { readonly bo: number; readonly ar: number };
+  /** Parcial: un mercado «sin precio» no tiene clave y se exporta como celda vacía. Centavos de la moneda base (como se guardan), por clave de mercado; la exportación los escribe con 2 decimales, que la importación lee sin cambiar precios. */
+  readonly precioUSD: Readonly<Record<string, number>>;
   readonly costoUSD?: number;
   readonly activo: boolean;
   readonly publicado: boolean;
@@ -680,16 +881,34 @@ export function centavosAUsd(c: number): string {
   return `${String(Math.floor(e / 100))}.${String(e % 100).padStart(2, '0')}`;
 }
 
-/** Encabezados de la exportación: precios y costo en USD con decimales (los que el importador lee en USD). */
-export const COLUMNAS_EXPORTACION = ['id', 'nombre', 'categoria', 'marca', 'sku', 'conSerie', 'garantiaMeses', 'minimo', 'precioBO', 'precioAR', 'costo', 'activo', 'publicado'] as const;
+/**
+ * Encabezados de la exportación: una columna de precio por mercado declarado, en el orden de la configuración (`precioBO`,
+ * `precioAR` para el tenant de tres monedas), y el costo (`costo`) en la moneda de costo, con decimales. La importación lee los mismos nombres.
+ */
+export const columnasDeExportacion = (comercial: ConfiguracionComercial): readonly string[] => [
+  'nombre', 'categoria', 'marca', 'sku', 'conSerie', 'garantiaMeses', 'minimo', ...comercial.mercados.map((m) => columnaDePrecio(m.id)), 'costo', 'activo', 'publicado',
+];
 
 /** Exporta productos a CSV neutralizando toda celda de texto que empiece con = + - @. Sin costos salvo que vengan. */
-export function exportarProductosCsv(productos: readonly ProductoExportable[]): string {
+export function exportarProductosCsv(productos: readonly ProductoExportable[], comercial: ConfiguracionComercial): string {
+  const claves = comercial.mercados.map((m) => claveDePrecio(m.id));
+  return csvDe(productos, claves, columnasDeExportacion(comercial));
+}
+
+/**
+ * @deprecated Solo para la batería de equivalencia del tenant de tres monedas: se comporta exactamente como antes de los mercados
+ * por tenant (columnas `precioBO` y `precioAR`, en ese orden, sin configuración). Usar `exportarProductosCsv(productos, comercial)`.
+ */
+export function exportarProductosCsvLegado(productos: readonly ProductoExportable[]): string {
+  return csvDe(productos, ['bo', 'ar'], ['nombre', 'categoria', 'marca', 'sku', 'conSerie', 'garantiaMeses', 'minimo', 'precioBO', 'precioAR', 'costo', 'activo', 'publicado']);
+}
+
+function csvDe(productos: readonly ProductoExportable[], claves: readonly string[], encabezados: readonly string[]): string {
   const filas = productos.map((p) =>
     [
-      p.id, p.nombre, p.categoria, p.marca ?? '', p.sku, String(p.conSerie), p.garantiaMeses?.toString() ?? '', p.minimo?.toString() ?? '',
-      centavosAUsd(p.precioUSD.bo), centavosAUsd(p.precioUSD.ar), p.costoUSD === undefined ? '' : centavosAUsd(p.costoUSD), String(p.activo), String(p.publicado),
+      p.nombre, p.categoria, p.marca ?? '', p.sku, String(p.conSerie), p.garantiaMeses?.toString() ?? '', p.minimo?.toString() ?? '',
+      ...claves.map((k) => (p.precioUSD[k] === undefined ? '' : centavosAUsd(p.precioUSD[k]))), p.costoUSD === undefined ? '' : centavosAUsd(p.costoUSD), String(p.activo), String(p.publicado),
     ].map(celdaCsv).join(','),
   );
-  return `${[COLUMNAS_EXPORTACION.join(','), ...filas].join('\r\n')}\r\n`;
+  return `${[encabezados.join(','), ...filas].join('\r\n')}\r\n`;
 }

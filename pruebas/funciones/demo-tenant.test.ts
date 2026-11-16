@@ -7,7 +7,7 @@ import { createHash, randomBytes } from 'node:crypto';
 import { readFileSync, readdirSync, statSync } from 'node:fs';
 import { join } from 'node:path';
 import { beforeAll, describe, expect, it, vi } from 'vitest';
-import { construirClaim, cargarManual } from '@novutienda/nucleo';
+import { comercialDe, construirClaim, cargarManual, validarTenant, type ConfiguracionComercial } from '@novutienda/nucleo';
 import { DobleDb } from '../limites/doble-db.js';
 import { almacenCotizacionesDesde } from '../../plataforma/coordinador/index.js';
 import { validarConfigSitio, validarFichaWeb } from '@novutienda/consola';
@@ -24,6 +24,15 @@ import {
 import { accion, crearUsuario, esperar, hayEmulador, hoyLaPaz, herramientas, http, iniciarSesion, TENANT_TODO_ENCENDIDO, unico, type Herramientas } from './ayudas.js';
 
 vi.setConfig({ testTimeout: 120_000, hookTimeout: 120_000 });
+
+/** La configuración comercial del tenant de la demostración, derivada como lo hace el servidor (documento de tres monedas). */
+const COMERCIAL: ConfiguracionComercial = (() => {
+  const t = validarTenant(TENANT_TODO_ENCENDIDO);
+  if (!t.ok) throw new Error('el tenant de prueba no valida');
+  const c = comercialDe(t.valor);
+  if (!c.ok) throw new Error('el tenant de prueba no tiene configuración comercial');
+  return c.valor;
+})();
 
 const DIR = join(process.cwd(), 'scripts/demo');
 const csv = readFileSync(join(DIR, 'catalogo.csv'), 'utf8');
@@ -58,7 +67,7 @@ describe('publicación del sitio según las fotos (sin emulador)', () => {
 
 describe('fixtures de demostración (sin emulador)', () => {
   it('el CSV pasa leerCsvProductos como carga inicial y no pasa de 50 filas', () => {
-    const filas = leerCsvProductos(csv, true);
+    const filas = leerCsvProductos(csv, true, COMERCIAL);
     expect(filas.length).toBeGreaterThanOrEqual(10);
     expect(filas.length).toBeLessThanOrEqual(50);
     expect(idsDeCatalogo(csv)).toEqual(filas.map((f) => f.producto.id));
@@ -82,7 +91,7 @@ describe('fixtures de demostración (sin emulador)', () => {
   });
 
   it('ids, slug, marca y precio coinciden con el espejo del sitio (ejemplo.ts)', () => {
-    const filas = new Map(leerCsvProductos(csv, true).map((f) => [f.producto.id, f.producto]));
+    const filas = new Map(leerCsvProductos(csv, true, COMERCIAL).map((f) => [f.producto.id, f.producto]));
     for (const f of fx.fichas) {
       const espejo = contenidoEjemplo.productos.find((p) => p.id === f.productoId);
       expect(espejo, f.productoId).toBeDefined();
@@ -97,7 +106,7 @@ describe('fixtures de demostración (sin emulador)', () => {
   });
 
   it('solo un producto queda bajo su mínimo; ejemplo-tv-65 sin precio y agotado en tienda', () => {
-    const filas = leerCsvProductos(csv, true);
+    const filas = leerCsvProductos(csv, true, COMERCIAL);
     const bajos = filas.filter((f) => {
       const total = f.stock.reduce((s, x) => s + x.cantidad, 0) + fx.series.filter((g) => g.productoId === f.producto.id).reduce((s, g) => s + g.series.length, 0);
       return f.producto.minimo !== undefined && total <= f.producto.minimo;
@@ -236,14 +245,14 @@ describe('fixtures externos: 41 productos, lotes y retiro (puro)', () => {
     const csv120 = `${[cab, ...Array.from({ length: 120 }, (_, i) => `p${String(i)},P,c,,S${String(i)},false,,,1,1,,true,true,,,`)].join('\r\n')}\r\n`;
     const lotes = lotesDeCatalogo(csv120);
     expect(lotes.map((x) => x.ids.length)).toEqual([50, 50, 20]);
-    for (const x of lotes) expect(leerCsvProductos(x.csv, true).length).toBe(x.ids.length);
+    for (const x of lotes) expect(leerCsvProductos(x.csv, true, COMERCIAL).length).toBe(x.ids.length);
     expect(lotes.flatMap((x) => x.ids)).toEqual(idsDeCatalogo(csv120));
     const pasos = planificarDemo(csv120, { ...fxExt, fichas: [] }, base, { ...opc, fotos: false }).pasos.filter((p) => p.etapa === 'catalogo');
     expect(pasos.map((p) => (p.tipo === 'llamada' ? p.datos['operacionId'] : ''))).toEqual(['demo-v1-catalogo', 'demo-v1-catalogo-2', 'demo-v1-catalogo-3']);
   });
 
   it('con 41 productos y fichas de 14 fotos: el plan completo y, con el estado al día, cero pasos', () => {
-    expect(leerCsvProductos(csvExt, true)).toHaveLength(N);
+    expect(leerCsvProductos(csvExt, true, COMERCIAL)).toHaveLength(N);
     const p = planificarDemo(csvExt, fxExt, base, opc);
     expect(p.bloqueos).toEqual([]);
     expect(p.pasos.filter((x) => x.etapa === 'fotos')).toHaveLength(14 + 40);

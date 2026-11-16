@@ -5,11 +5,11 @@
 import { HttpsError } from 'firebase-functions/v2/https';
 import { z } from 'zod';
 import {
-  abrirConteo, actualizarProducto, ajustar, cerrarConteo, conteosAbiertosDe, crearProducto, crearUbicacion, esDisponible, exportarProductosCsv, importarCsvPorLotes, leerArchivoImportacion, MAX_BYTES_ARCHIVO, type FuenteTabla, type LectorHojas, type LecturaSinBloqueo,
-  filtrarUnidadesLista, ingresar, leerDocumentoProducto, marcaOcultamiento, proyectarMovimiento, proyectarProducto, registrarLineaConteo, resolverMerma, simularImportacionCsv, solicitarMerma, traspasar, UBICACION_DISPONIBILIDAD,
+  abrirConteo, actualizarProducto, claveDePrecio, ajustar, cerrarConteo, conteosAbiertosDe, crearProducto, crearUbicacion, esDisponible, exportarProductosCsv, importarCsvPorLotes, leerArchivoImportacion, MAX_BYTES_ARCHIVO, type FuenteTabla, type LectorHojas, type LecturaSinBloqueo, type LeerCatalogo,
+  filtrarUnidadesLista, ingresar, leerDocumentoProducto, marcaOcultamiento, mercadosSinPrecio, proyectarMovimiento, proyectarProducto, registrarLineaConteo, resolverMerma, simularImportacionCsv, solicitarMerma, traspasar, UBICACION_DISPONIBILIDAD,
   type Autor, type CambiosProducto, type Conteos, type EntradaProducto, type LineaAjuste, type PrecioUSD, type LineaIngreso, type LineaTraspaso, type ProductoExportable,
 } from '@novutienda/inventarios';
-import { MERCADOS } from '@novutienda/nucleo';
+import { mercadosDe } from '@novutienda/nucleo';
 import { accion, actorPos, type Contexto, type TablaImplementaciones } from './marco.js';
 import { ID, ID_PRODUCTO, LIMITE, MS, TEXTO, UBICACION, VACIO, objeto, validarRango } from './comunes.js';
 
@@ -35,6 +35,10 @@ const lecturaSinBloqueo = (c: Contexto): LecturaSinBloqueo => ({
   },
 });
 
+/** Todos los productos del comercio (id, SKU y nombre), una sola vez: la importación reconoce filas sin id con ellos. */
+const catalogoDe = (c: Contexto): LeerCatalogo => async () =>
+  (await c.e.firestore.collection(ruta(c.tenantId, 'productos')).select('sku', 'nombre').get()).docs.map((p) => ({ id: p.id, sku: String(p.data()['sku'] ?? ''), nombre: String(p.data()['nombre'] ?? '') }));
+
 /** Lector de hojas (.xlsx) que inyecta el coordinador en el entorno; sin él, un .xlsx se rechaza con un mensaje claro. */
 const lectorDe = (c: Contexto): LectorHojas | undefined => c.e.lectorHojas;
 
@@ -55,8 +59,11 @@ const SERIES = z.array(z.string().min(1).max(60)).min(1).max(500);
 const LINEA_INGRESO = objeto({ productoId: ID_PRODUCTO, cantidad: z.number().int().positive().max(1_000_000), series: SERIES.optional() });
 
 const centavos = z.number().int().nonnegative().max(100_000_000_00);
-/** Un precio por cada mercado del núcleo (centavos de USD); no se escribe `bo`/`ar` a mano. */
-const PRECIO = objeto(Object.fromEntries(MERCADOS.map((m) => [m.toLowerCase(), centavos])) as Record<string, typeof centavos>);
+/**
+ * Precios por clave de mercado (`claveDePrecio`, centavos de la moneda base). Aquí solo se valida la forma; que haya UN precio por
+ * CADA mercado que declara el tenant y ninguno más lo exige Inventarios con la configuración del tenant.
+ */
+const PRECIO = z.record(z.string().regex(/^[a-z]{2}$/), centavos).refine((r) => Object.keys(r).length <= 20, 'demasiados mercados');
 const SKU = z.string().regex(/^[A-Za-z0-9][A-Za-z0-9._-]{0,39}$/, 'sku inválido');
 const GARANTIA = z.number().int().min(1).max(120);
 const MINIMO = z.number().int().nonnegative().max(1_000_000_000);
@@ -161,7 +168,7 @@ export const accionesInventarios: TablaImplementaciones = {
     ejecutar: (c, d) =>
       c.e.db.runTransaction((tx) => crearUbicacion(tx, { tenantId: c.tenantId, operacionId: d.operacionId, por: autor(c), ubicacionId: d.ubicacionId, nombre: d.nombre })),
   }),
-  /** Alta de un producto (solo `adm`); respeta el tope de productos del plan. Precios y costo en centavos de USD. */
+  /** Alta de un producto (solo `adm`); respeta el tope de productos del plan. Precios en centavos de la moneda base del mercado; costo en centavos de la moneda de costo del comercio (`monedaCostoDe`). */
   crearProducto: accion({
     esquema: objeto({
       operacionId: ID,
@@ -171,10 +178,12 @@ export const accionesInventarios: TablaImplementaciones = {
         precioUSD: PRECIO, costoUSD: centavos.optional(), controlaStock: z.boolean().optional(),
       }),
     }),
-    ejecutar: (c, d) =>
-      c.e.db.runTransaction((tx) =>
-        crearProducto(tx, { tenantId: c.tenantId, operacionId: d.operacionId, por: autor(c), producto: d.producto as unknown as EntradaProducto }),
-      ),
+    ejecutar: async (c, d) => {
+      const comercial = await c.e.comercialDelTenant(c.tenantId);
+      return c.e.db.runTransaction((tx) =>
+        crearProducto(tx, { tenantId: c.tenantId, operacionId: d.operacionId, por: autor(c), producto: d.producto as unknown as EntradaProducto, comercial }),
+      );
+    },
   }),
   /**
    * Edición de la ficha de inventario (solo `adm`). Campo ausente = sin cambio; `null` vacía marca, garantía, mínimo o costo.
@@ -189,18 +198,22 @@ export const accionesInventarios: TablaImplementaciones = {
         minimo: MINIMO.nullable().optional(), precioUSD: PRECIO.optional(), costoUSD: centavos.nullable().optional(),
       }),
     }),
-    ejecutar: (c, d) =>
-      c.e.db.runTransaction((tx) =>
-        actualizarProducto(tx, { tenantId: c.tenantId, operacionId: d.operacionId, por: autor(c), productoId: d.productoId, cambios: d.cambios as unknown as CambiosProducto }),
-      ),
+    ejecutar: async (c, d) => {
+      const comercial = await c.e.comercialDelTenant(c.tenantId);
+      return c.e.db.runTransaction((tx) =>
+        actualizarProducto(tx, { tenantId: c.tenantId, operacionId: d.operacionId, por: autor(c), productoId: d.productoId, cambios: d.cambios as unknown as CambiosProducto, comercial }),
+      );
+    },
   }),
-  /** Cambia el precio base por mercado (solo `adm`): centavos de USD. La auditoría guarda el precio anterior y el nuevo. */
+  /** Cambia el precio base por mercado del tenant (solo `adm`): centavos de la moneda base de cada mercado. La auditoría guarda el precio anterior y el nuevo. */
   cambiarPrecioUSD: accion({
     esquema: objeto({ operacionId: ID, productoId: ID_PRODUCTO, precioUSD: PRECIO }),
-    ejecutar: (c, d) =>
-      c.e.db.runTransaction((tx) =>
-        actualizarProducto(tx, { tenantId: c.tenantId, operacionId: d.operacionId, por: autor(c), productoId: d.productoId, cambios: { precioUSD: d.precioUSD as unknown as PrecioUSD } }),
-      ),
+    ejecutar: async (c, d) => {
+      const comercial = await c.e.comercialDelTenant(c.tenantId);
+      return c.e.db.runTransaction((tx) =>
+        actualizarProducto(tx, { tenantId: c.tenantId, operacionId: d.operacionId, por: autor(c), productoId: d.productoId, cambios: { precioUSD: d.precioUSD as unknown as PrecioUSD }, comercial }),
+      );
+    },
   }),
   /**
    * Importación de productos desde CSV (solo `adm`): CREA los nuevos y ACTUALIZA los existentes (se identifican por `id`;
@@ -223,15 +236,16 @@ export const accionesInventarios: TablaImplementaciones = {
     }).refine((d) => (d.csv === undefined) !== (d.archivo === undefined), { message: 'Envíe `archivo` (base64) o `csv`, uno solo.' }),
     ejecutar: async (c, d) => {
       const tabla = await leerTabla(c, d);
+      const comercial = await c.e.comercialDelTenant(c.tenantId);
       if (d.simular === true) {
         const simulacion = await simularImportacionCsv(lecturaSinBloqueo(c), {
-          tenantId: c.tenantId, por: autor(c), csv: tabla, ...(d.cargaInicial !== undefined ? { cargaInicial: d.cargaInicial } : {}),
+          tenantId: c.tenantId, por: autor(c), csv: tabla, comercial, catalogo: catalogoDe(c), ...(d.cargaInicial !== undefined ? { cargaInicial: d.cargaInicial } : {}),
         });
         return { simular: true, simulacion };
       }
       if (d.operacionId === undefined) throw new HttpsError('invalid-argument', 'Falta operacionId: solo la simulación puede omitirlo.');
       const r = await importarCsvPorLotes(c.e.db, {
-        tenantId: c.tenantId, operacionId: d.operacionId, por: autor(c), csv: tabla, presupuestoMs: PRESUPUESTO_IMPORTACION_MS, lectura: lecturaSinBloqueo(c),
+        tenantId: c.tenantId, operacionId: d.operacionId, por: autor(c), csv: tabla, comercial, presupuestoMs: PRESUPUESTO_IMPORTACION_MS, lectura: lecturaSinBloqueo(c), catalogo: catalogoDe(c),
         ...(d.lineasOmitidas !== undefined ? { lineasOmitidas: d.lineasOmitidas } : {}),
         ...(d.cargaInicial !== undefined ? { cargaInicial: d.cargaInicial } : {}), ...(d.omitirErrores !== undefined ? { omitirErrores: d.omitirErrores } : {}),
       });
@@ -250,6 +264,7 @@ export const accionesInventarios: TablaImplementaciones = {
   listarProductos: accion({
     esquema: objeto({ soloBajoMinimo: z.boolean().optional() }),
     ejecutar: async (c, d) => {
+      const comercial = await c.e.comercialDelTenant(c.tenantId);
       const [prods, exis] = await Promise.all([
         c.e.firestore.collection(ruta(c.tenantId, 'productos')).get(),
         c.e.firestore.collection(ruta(c.tenantId, 'existencias')).get(),
@@ -267,7 +282,7 @@ export const accionesInventarios: TablaImplementaciones = {
         }
       }
       const productos = prods.docs
-        .map((p) => ({ leido: leerDocumentoProducto(p.id, p.data()), bajoMinimo: p.data()['bajoMinimo'] === true }))
+        .map((p) => ({ leido: leerDocumentoProducto(p.id, p.data(), comercial), bajoMinimo: p.data()['bajoMinimo'] === true }))
         .filter((p) => d.soloBajoMinimo !== true || p.bajoMinimo)
         .map(({ leido: p, bajoMinimo }) => {
           const existencias = porProducto.get(p.productoId) ?? {};
@@ -278,7 +293,7 @@ export const accionesInventarios: TablaImplementaciones = {
           return {
             id: p.productoId, nombre: p.nombre, categoria: p.categoria ?? '', marca: p.marca, sku: p.sku, activo: p.activo, publicado: p.publicado, conSerie: p.conSerie,
             garantiaMeses: p.garantiaMeses, minimo: p.minimo, precioCentavosUSD: p.precioCentavos, stockTotal: visible.stockTotal, bajoMinimo: visible.bajoMinimo,
-            existencias: visible.existencias, disponible: visible.disponible,
+            existencias: visible.existencias, disponible: visible.disponible, sinPrecio: mercadosSinPrecio(p, comercial),
           };
         });
       return { productos, ...(marca ?? {}) };
@@ -404,9 +419,10 @@ export const accionesInventarios: TablaImplementaciones = {
         // Conteo abierto, para TODOS los roles: lo que hay que contar (id, nombre, sku, serie) y nada que dependa de las
         // existencias: ni cantidades, ni «bajo el mínimo», ni cuántos faltan (su variación al contar delataría qué productos
         // tienen stock). El cierre cuenta en 0 lo no contado y lo informa en su resultado.
+        const comercial = await c.e.comercialDelTenant(c.tenantId);
         const prods = await c.e.firestore.collection(ruta(c.tenantId, 'productos')).get();
         const productos = prods.docs
-          .map((p) => leerDocumentoProducto(p.id, p.data()))
+          .map((p) => leerDocumentoProducto(p.id, p.data(), comercial))
           .filter((p) => p.stockTotal !== undefined)
           .map((p) => ({ productoId: p.productoId, nombre: p.nombre, sku: p.sku, categoria: p.categoria ?? '', ...(p.marca !== undefined ? { marca: p.marca } : {}), conSerie: p.conSerie }))
           .sort((x, y) => x.nombre.localeCompare(y.nombre));
@@ -435,6 +451,7 @@ export const accionesInventarios: TablaImplementaciones = {
     esquema: objeto({ conCostos: z.boolean().optional() }),
     ejecutar: async (c, d) => {
       const conCostos = d.conCostos === true;
+      const comercial = await c.e.comercialDelTenant(c.tenantId);
       if (conCostos && c.rol !== 'adm') throw new HttpsError('permission-denied', 'Solo el administrador exporta costos.');
       const [prods, costos] = await Promise.all([
         c.e.firestore.collection(ruta(c.tenantId, 'productos')).get(),
@@ -442,15 +459,15 @@ export const accionesInventarios: TablaImplementaciones = {
       ]);
       const costo = new Map(costos?.docs.map((x) => [x.id, x.data()['costoUSD']]) ?? []);
       const filas: ProductoExportable[] = prods.docs.map((x) => {
-        const p = leerDocumentoProducto(x.id, x.data());
+        const p = leerDocumentoProducto(x.id, x.data(), comercial);
         const cu = costo.get(x.id);
         return {
           id: p.productoId, nombre: p.nombre, categoria: p.categoria ?? '', ...(p.marca !== undefined ? { marca: p.marca } : {}), sku: p.sku ?? p.productoId,
           conSerie: p.conSerie, ...(p.garantiaMeses !== undefined ? { garantiaMeses: p.garantiaMeses } : {}), ...(p.minimo !== undefined ? { minimo: p.minimo } : {}),
-          precioUSD: { bo: p.precioCentavos.bo, ar: p.precioCentavos.ar }, ...(typeof cu === 'number' ? { costoUSD: cu } : {}), activo: p.activo, publicado: p.publicado,
+          precioUSD: Object.fromEntries(mercadosDe(comercial).flatMap((id) => { const v = p.precioCentavos[claveDePrecio(id)]; return v === undefined ? [] : [[claveDePrecio(id), v] as const]; })), ...(typeof cu === 'number' ? { costoUSD: cu } : {}), activo: p.activo, publicado: p.publicado,
         };
       });
-      return { csv: exportarProductosCsv(filas) };
+      return { csv: exportarProductosCsv(filas, comercial) };
     },
   }),
 };

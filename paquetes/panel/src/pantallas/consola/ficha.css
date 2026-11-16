@@ -19,3 +19,13 @@
 .ficha-medio-titulo { margin: 0; }
 .ficha-sin-adjuntar ul { margin: 0; padding: 0; list-style: none; }
 .ficha-textos { gap: 16px; }
+.ficha-falta { display: flex; flex-direction: column; align-items: flex-start; gap: 6px; }
+
+/* Miniaturas de fotos y video (tamaño fijo; sin hueco roto). */
+.miniatura { display: inline-block; width: 64px; height: 64px; flex: none; box-sizing: border-box; border-radius: 8px; border: 1px solid var(--borde); background: var(--fondo-suave, transparent); object-fit: cover; }
+.miniatura-respaldo { display: inline-flex; align-items: center; justify-content: center; padding: 4px; overflow: hidden; text-align: center; font-size: 0.7rem; line-height: 1.2; overflow-wrap: anywhere; }
+.selector-miniaturas { display: flex; flex-wrap: wrap; gap: 8px; margin: 0; padding: 0; border: 0; }
+.selector-miniaturas label { display: inline-flex; cursor: pointer; border-radius: 10px; }
+.selector-miniaturas input { position: absolute; opacity: 0; width: 1px; height: 1px; }
+.selector-miniaturas input:checked + .miniatura { outline: 3px solid var(--acento, currentColor); outline-offset: 2px; }
+.selector-miniaturas input:focus-visible + .miniatura { outline: 3px solid var(--acento, currentColor); outline-offset: 2px; box-shadow: 0 0 0 5px rgba(0, 0, 0, 0.25); }

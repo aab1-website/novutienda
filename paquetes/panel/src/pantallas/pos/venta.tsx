@@ -1,8 +1,9 @@
 import type { JSX } from 'preact';
 import { useState } from 'preact/hooks';
 import { nuevoId } from '../../api/cliente.js';
-import { MONEDAS, type Moneda, type MontosPorMoneda } from '../../api/tipos.js';
+import type { MontosPorMoneda } from '../../api/tipos.js';
 import { Alerta, Boton, Campo, Cargando, ErrorCarga, Pestanas, Seccion } from '../../ui/comun.js';
+import { useConfiguracionComercial } from '../../ui/comercial.js';
 import { useApp } from '../../ui/contexto.js';
 import { useAccion, useCarga } from '../../ui/hooks.js';
 import { textoACentavos } from '../../util/dinero.js';
@@ -18,18 +19,27 @@ const PESTANAS = [
   { id: 'historial', titulo: 'Ventas y anulaciones' },
   { id: 'cierre', titulo: 'Cierre de turno' },
 ];
-const NOMBRE_MONEDA: Record<Moneda, string> = { BOB: 'Bolivianos (BOB)', USD: 'Dólares (USD)', ARS: 'Pesos argentinos (ARS)' };
+const NOMBRE_MONEDA: Readonly<Record<string, string>> = { BOB: 'Bolivianos (BOB)', USD: 'Dólares (USD)', ARS: 'Pesos argentinos (ARS)' };
 
 function Apertura({ alAbrir }: { alAbrir: () => void }): JSX.Element {
+  const comercial = useConfiguracionComercial();
+  if (comercial.estado === 'cargando') return <Cargando />;
+  if (comercial.estado === 'error') return <Alerta>{comercial.mensaje}</Alerta>;
+  if (comercial.comercial.monedasCaja.length === 0) return <Alerta>El comercio no tiene monedas de caja declaradas.</Alerta>;
+  return <AperturaLista monedas={comercial.comercial.monedasCaja} alAbrir={alAbrir} />;
+}
+
+/** Las monedas de cobro salen de lo que declaró el comercio, en el orden declarado. */
+function AperturaLista({ monedas, alAbrir }: { monedas: readonly string[]; alAbrir: () => void }): JSX.Element {
   const { api } = useApp();
   const accion = useAccion();
-  const [textos, setTextos] = useState<Record<Moneda, string>>({ BOB: '', USD: '', ARS: '' });
+  const [textos, setTextos] = useState<Readonly<Record<string, string>>>({});
   const [turnoId] = useState(nuevoId);
-  const apertura: Partial<Record<Moneda, number>> = {};
+  const apertura: Record<string, number> = {};
   let invalido = false;
-  for (const m of MONEDAS) {
-    if (textos[m].trim() === '') continue;
-    const c = textoACentavos(textos[m]);
+  for (const m of monedas) {
+    if ((textos[m] ?? '').trim() === '') continue;
+    const c = textoACentavos(textos[m] ?? '');
     if (c === null) invalido = true;
     else apertura[m] = c;
   }
@@ -46,8 +56,8 @@ function Apertura({ alAbrir }: { alAbrir: () => void }): JSX.Element {
       <form onSubmit={abrir} class="formulario" noValidate>
         <p class="texto-suave">Cuente el efectivo con que empieza la caja en cada moneda. Deje vacía la moneda que no use; escriba 0 si la usa y no hay efectivo.</p>
         <div class="cuadricula">
-          {MONEDAS.map((m) => (
-            <Campo key={m} etiqueta={`Efectivo inicial en ${NOMBRE_MONEDA[m]}`} valor={textos[m]} inputMode="decimal" onInput={(v) => setTextos({ ...textos, [m]: v })} ayuda="Ejemplo: 150,50" />
+          {monedas.map((m) => (
+            <Campo key={m} etiqueta={`Efectivo inicial en ${NOMBRE_MONEDA[m] ?? m}`} valor={textos[m] ?? ''} inputMode="decimal" onInput={(v) => setTextos({ ...textos, [m]: v })} ayuda="Ejemplo: 150,50" />
           ))}
         </div>
         {invalido && <Alerta>Escriba montos válidos, con hasta dos decimales.</Alerta>}

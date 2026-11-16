@@ -2,7 +2,8 @@ import type { ClienteApi } from '../api/cliente.js';
 import { ROLES_CALLABLE, type Entrada, type NombreCallable, type Salida } from '../api/contrato.js';
 import { ErrorApi } from '../api/errores.js';
 import { ClienteRemoto } from '../api/transporte.js';
-import type { Rol } from '../api/tipos.js';
+import type { Rol, VistaComercial } from '../api/tipos.js';
+import type { RedondeoPorMoneda } from '@novutienda/nucleo';
 import { crearEstado, type Contexto, type EstadoDoble } from './estado.js';
 import { TransporteDoble } from './transporte.js';
 
@@ -13,6 +14,10 @@ export interface OpcionesDoble {
   readonly ahora?: () => number;
   /** Retraso artificial por llamada, en ms (para ver estados de carga). */
   readonly retrasoMs?: number;
+  /** Mercados y monedas del comercio; por omisión, el de tres monedas de referencia. */
+  readonly comercial?: VistaComercial;
+  /** Reglas de redondeo por moneda de venta que devuelve `pos.cotizaciones`; por omisión, las del comercio de referencia. */
+  readonly redondeo?: RedondeoPorMoneda;
 }
 
 /**
@@ -33,6 +38,8 @@ export class ClienteDoble implements ClienteApi {
   constructor(private readonly o: OpcionesDoble) {
     this.ahora = o.ahora ?? ((): number => Date.now());
     this.estado = crearEstado(this.ahora());
+    if (o.comercial !== undefined) this.estado.comercial = o.comercial;
+    if (o.redondeo !== undefined) this.estado.redondeo = o.redondeo;
     const tenantId = o.tenantId ?? 'demo';
     const contexto = (): Contexto => {
       const { uid, rol } = this.o.usuario();

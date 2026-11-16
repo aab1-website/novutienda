@@ -80,8 +80,10 @@ const POR_CODIGO_MODULO: Readonly<Record<string, string>> = {
   anonimo: 'Debe iniciar sesión con su correo.',
   proveedor: 'Esa cuenta no puede iniciar sesión así.',
   claim: 'No se pudo actualizar el rol. Intente de nuevo.',
-  'correo-no-verificado': 'Verifica tu correo para continuar.',
+  'correo-no-verificado': 'Verifique su correo para continuar.',
   jerarquia: 'Solo el propietario de la plataforma puede cambiar a un administrador.',
+  'correo-no-enviado': 'La invitación quedó registrada, pero no se pudo enviar el correo. Use Reenviar.',
+  'limite-invitaciones': 'Se enviaron demasiadas invitaciones. Intente de nuevo en una hora.',
   'ultimo-adm': 'No se puede quitar al último administrador.',
   'no-miembro': 'Esa persona no pertenece al negocio.',
   concurrencia: 'Otra persona cambió lo mismo al mismo tiempo. Intente de nuevo.',
@@ -125,7 +127,7 @@ const CON_MENSAJE_DEL_SERVIDOR: ReadonlySet<string> = new Set(['failed-precondit
  * Códigos del módulo cuyo texto fijo del panel es demasiado vago: se prefiere el mensaje preciso del servidor
  * («Falta el motivo», «El conteo c1 no está abierto»…) cuando existe y es de los que el servidor controla.
  */
-const PREFIERE_MENSAJE_DEL_SERVIDOR: ReadonlySet<string> = new Set(['entrada-invalida', 'estado', 'estado-invalido', 'no-encontrado', 'limite', 'cuota-excedida', 'procesamiento', 'tipo-no-permitido', 'no-disponible']);
+const PREFIERE_MENSAJE_DEL_SERVIDOR: ReadonlySet<string> = new Set(['entrada-invalida', 'estado', 'estado-invalido', 'no-encontrado', 'limite', 'cuota-excedida', 'procesamiento', 'tipo-no-permitido', 'no-disponible', 'series-invalidas']);
 
 /** Texto que el usuario nunca debe ver: código HTTP entre corchetes, «campo desconocido», nombres internos (camelCase), una ruta de campo al inicio («ficha.titulo: …»; los dos puntos en medio de una frase son prosa) o valores vacíos. */
 const TECNICO = /\[\d{3}\]|campo desconocido|\b[a-z]+[A-Z][A-Za-z]*\b|\bundefined\b|\bnull\b|^\s*[a-z][\w.[\]]*:\s/;

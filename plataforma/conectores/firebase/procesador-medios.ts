@@ -33,7 +33,7 @@ async function subir(bucket: Bucket, ruta: string, bytes: Buffer, contentType: s
   await bucket.file(ruta).save(bytes, { contentType, resumable: false });
 }
 
-const TIPO_CONTENIDO = { avif: 'image/avif', webp: 'image/webp', mp4: 'video/mp4' } as const;
+const TIPO_CONTENIDO = { avif: 'image/avif', webp: 'image/webp', png: 'image/png', mp4: 'video/mp4' } as const;
 
 export function procesadorImagenes(bucket: Bucket): Pick<ProcesadorMedios, 'inspeccionar' | 'procesar'> {
   return {
@@ -50,6 +50,16 @@ export function procesadorImagenes(bucket: Bucket): Pick<ProcesadorMedios, 'insp
       const buf = await descargar(bucket, s.origen, BYTES_MAX_FOTO);
       const salida: VersionProcesada[] = [];
       for (const item of s.plan.items) {
+        if (s.plan.tipo === 'logo') {
+          if (item.clase !== 'logo' || (item.formato !== 'png' && item.formato !== 'webp')) throw new Error('el plan de un logo solo admite PNG o WebP');
+          // Lado mayor ajustado a `lado` sin ampliar; siempre se recodifica (sin metadatos) y la orientación EXIF se aplica.
+          const logo = sharp(buf, opcionesSharp).rotate().resize({ width: item.lado, height: item.lado, fit: 'inside', withoutEnlargement: true });
+          const bytesLogo = item.formato === 'png' ? await logo.png({ compressionLevel: 9 }).toBuffer() : await logo.webp({ quality: 85 }).toBuffer();
+          const rutaLogo = `${s.destinoTemporal}/logo${String(item.lado)}.${item.formato}`;
+          await subir(bucket, rutaLogo, bytesLogo, TIPO_CONTENIDO[item.formato]);
+          salida.push({ clase: 'logo', lado: item.lado, formato: item.formato, rutaTemporal: rutaLogo });
+          continue;
+        }
         if (item.clase !== 'imagen' || (item.formato !== 'avif' && item.formato !== 'webp')) throw new Error('el plan de una foto solo admite imágenes AVIF o WebP');
         // `rotate()` aplica la orientación EXIF; sharp descarta todos los metadatos salvo que se pida conservarlos.
         const base = sharp(buf, opcionesSharp).rotate().resize({ width: item.lado, withoutEnlargement: true });
@@ -317,8 +327,8 @@ export function crearProcesadorMedios(bucket: Bucket, env: Readonly<Record<strin
   };
   return {
     estadoVideo,
-    disponible: async (tipo) => tipo === 'foto' || (await estadoVideo()).disponible,
-    inspeccionar: async (ruta, tipo) => (tipo === 'foto' ? imagenes : await elegirVideo()).inspeccionar(ruta, tipo),
-    procesar: async (s) => (s.tipo === 'foto' ? imagenes : await elegirVideo()).procesar(s),
+    disponible: async (tipo) => tipo !== 'video' || (await estadoVideo()).disponible,
+    inspeccionar: async (ruta, tipo) => (tipo !== 'video' ? imagenes : await elegirVideo()).inspeccionar(ruta, tipo),
+    procesar: async (s) => (s.tipo !== 'video' ? imagenes : await elegirVideo()).procesar(s),
   };
 }

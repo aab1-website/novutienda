@@ -4,7 +4,7 @@ import { CODIGOS_CONOCIDOS, ErrorApi, MENSAJE_DATOS_NO_RECONOCIDOS, MENSAJE_GENE
 describe('mensajes de error', () => {
   it('traduce los códigos de los módulos', () => {
     expect(mensajeDeError(new ErrorApi('failed-precondition', 'x', { codigo: 'sin-turno' }))).toContain('Abra el turno');
-    expect(mensajeDeError(new ErrorApi('failed-precondition', 'x', { codigo: 'correo-no-verificado' }))).toBe('Verifica tu correo para continuar.');
+    expect(mensajeDeError(new ErrorApi('failed-precondition', 'x', { codigo: 'correo-no-verificado' }))).toBe('Verifique su correo para continuar.');
   });
   it('para entrada-invalida, estado, estado-invalido y no-encontrado muestra el mensaje preciso del servidor si existe', () => {
     expect(mensajeDeError(new ErrorApi('invalid-argument', 'El motivo es obligatorio', { codigo: 'entrada-invalida' }))).toBe('El motivo es obligatorio');
@@ -125,6 +125,13 @@ describe('mensajes sin datos técnicos (G-07, G-08)', () => {
     ['no-disponible', 'failed-precondition', 'La lectura de Excel no está disponible; use CSV'],
   ])('%s prefiere el motivo del servidor (%s)', (codigo, https, motivo) => {
     expect(mensajeDeError(new ErrorApi(https, motivo, { codigo }))).toBe(motivo);
+  });
+  it('series-invalidas muestra el motivo del servidor (tope de series y serie repetida) y, sin motivo, el texto fijo', () => {
+    for (const m of ['Una venta admite hasta 100 unidades con serie', 'Indique una serie distinta por unidad', 'El producto no se controla por serie']) {
+      expect(mensajeDeError(new ErrorApi('invalid-argument', m, { codigo: 'series-invalidas' }))).toBe(m);
+    }
+    expect(mensajeDeError(new ErrorApi('invalid-argument', ' ', { codigo: 'series-invalidas' }))).toBe('Indique una serie distinta por cada unidad.');
+    expect(mensajeDeError(new ErrorApi('invalid-argument', 'series[0]: Required', { codigo: 'series-invalidas' }))).toBe('Indique una serie distinta por cada unidad.');
   });
   it('sin motivo legible cada código usa su texto fijo con qué hacer', () => {
     for (const c of ['limite', 'cuota-excedida', 'procesamiento', 'tipo-no-permitido', 'no-disponible']) {

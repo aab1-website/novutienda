@@ -4,8 +4,10 @@
 // el emulador y APP_CHECK_EXIGIDO=true, y allí su ausencia es un fallo (pruebas/funciones/emulador.test.ts).
 import sharp from 'sharp';
 import { beforeAll, describe, expect, it, vi } from 'vitest';
-import { ClienteRemoto, ErrorApi, mensajeDeError, precioDeVenta, type Rol, type Transporte } from '@novutienda/panel';
+import { ClienteRemoto, ErrorApi, mensajeDeError, precioDeVentaMercado, type MercadoDeclarado, type Rol, type Transporte } from '@novutienda/panel';
 import { esperarSubida } from '@novutienda/panel/consola';
+import { preciosDelDiaDe } from '@novutienda/consola';
+import { COMERCIAL_LEGADO_TRES_MONEDAS, type CopiaCotizacion } from '@novutienda/nucleo';
 import { crearUsuario, esperar, hayEmulador, herramientas, llamar, sembrarTenant, uuid, unico, type Herramientas, type Usuario } from '../funciones/ayudas.js';
 
 vi.setConfig({ testTimeout: 90_000, hookTimeout: 90_000 });
@@ -82,9 +84,13 @@ describe.skipIf(!hayEmulador)('panel contra las funciones reales (emulador)', ()
     expect(await api.sup.llamar('turnoActual', {})).not.toBeNull();
 
     // Precio de venta calculado por el panel con la cotización vigente y el redondeo del servidor.
-    const cot = (await api.sup.llamar('cotizacionesVigentes', {})).BO;
-    const unit = precioDeVenta(800, 'BO', 'BOB', cot);
+    const cot = (await api.sup.llamar('cotizacionesVigentes', {}))['BO'] ?? null;
+    const mercado: MercadoDeclarado = { id: 'BO', nombre: 'Bolivia', monedaVenta: 'BOB', monedaBase: 'USD', tieneTipoCambio: true };
+    const unit = precioDeVentaMercado(800, mercado, cot === null ? null : { par: cot.par, valor: cot.valor });
     expect(unit).toMatchObject({ tipo: 'precio', centavos: 5600 });
+    // Mismo resultado que el servidor (`preciosDelDiaDe` de la consola) con la política vigente del comercio.
+    const servidor = preciosDelDiaDe({ bo: 8, ar: 8 }, COMERCIAL_LEGADO_TRES_MONEDAS, cot === null ? {} : { BO: cot as unknown as CopiaCotizacion<string> }, { BOB: { tipo: 'decimales', decimales: 2, modo: 'cercano' }, ARS: { tipo: 'multiplo', multiplo: 100, modo: 'cercano' } })['BO'];
+    expect(servidor).toMatchObject({ tipo: 'precio', centavos: 5600 });
     const total = 2 * 5600;
     const requestId = uuid();
     const r = await api.caj.llamar('confirmarVenta', {
@@ -202,7 +208,12 @@ describe.skipIf(!hayEmulador)('panel contra las funciones reales (emulador)', ()
     await api.adm.llamar('actualizarProducto', { operacionId: uuid(), productoId: 'mouse-1', cambios: { nombre: 'Mouse óptico', minimo: 3, costoUSD: 800 } });
     mouse = (await api.adm.llamar('listarProductos', {})).find((p) => p.id === 'mouse-1');
     expect(mouse).toMatchObject({ nombre: 'Mouse óptico', precioUSD: { bo: 1300, ar: 2000 }, costoUSD: 800, minimo: 3 });
-    expect((await api.adm.llamar('exportarProductosCsv', {})).csv).toContain('mouse-1');
+    // La planilla de inventarios reconoce el producto por su SKU y no trae la clave interna.
+    const csvInventarios = (await api.adm.llamar('exportarProductosCsv', {})).csv;
+    expect(csvInventarios).toContain('MOUSE-1');
+    expect(csvInventarios).not.toContain('mouse-1');
+    expect(csvInventarios.replace(/^\ufeff/, '').split(/\r?\n/)[0]?.split(',')).not.toContain('id');
+    // La exportación para el sitio (módulo consola) conserva su columna id.
     expect((await api.adm.llamar('exportarProductosCsvSitio', {})).csv).toContain('mouse-1');
     const tablero = await api.sup.llamar('obtenerTablero', {});
     expect(tablero.cambiosSinPublicar).toBeGreaterThan(0);

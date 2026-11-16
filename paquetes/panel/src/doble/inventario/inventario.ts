@@ -1,6 +1,7 @@
 import type { Entrada, NombreCallable, Salida } from '../../api/contrato.js';
 import type { ResultadoOperacion, TipoMovimiento, UbicacionId } from '../../api/tipos.js';
 import { UBICACIONES } from '../../api/tipos.js';
+import { claveDePrecio } from '@novutienda/nucleo';
 import { aCsv } from '../../util/csv.js';
 import { importarProductosDoble, simularImportacionDoble } from './importacion.js';
 import { auditar, conteosAbiertosDoble, exigirRol, detalleDeFaltantes, fallo, iso, marcaDoble, proyectarProductoDoble, puedeVerExistencias, recalcular, vistaProducto, type Contexto, type ProductoInterno } from '../estado.js';
@@ -22,6 +23,27 @@ function operacion(c: Contexto, tipo: string, operacionId: string, carga: unknow
   const resultado = f();
   c.e.operaciones.set(operacionId, { hash, resultado });
   return { resultado, repetida: false };
+}
+
+const centavosValidos = (x: unknown): x is number => typeof x === 'number' && Number.isSafeInteger(x) && x >= 0 && x <= 100_000_000_00;
+
+/** Como `exigirPrecio` del servidor: un valor por cada mercado declarado; al editar, un precio existente no se puede quitar ni omitir. */
+function exigirPrecioDoble(c: Contexto, x: unknown, previos?: Readonly<Record<string, unknown>>): Record<string, number> {
+  if (typeof x !== 'object' || x === null || Array.isArray(x)) throw fallo('entrada-invalida', 'El precio debe indicar un valor por cada mercado');
+  const p = x as Record<string, unknown>;
+  const salida: Record<string, number> = {};
+  for (const m of c.e.comercial.mercados) {
+    const clave = claveDePrecio(m.id);
+    if (previos !== undefined && !Object.hasOwn(p, clave)) {
+      if (Object.hasOwn(previos, clave)) throw fallo('entrada-invalida', `No se puede quitar el precio de ${m.id}`);
+      continue;
+    }
+    const v = p[clave];
+    if (!centavosValidos(v)) throw fallo('entrada-invalida', `Falta el precio del mercado ${m.id} o no es válido (centavos enteros de ${m.monedaBase})`);
+    salida[clave] = v;
+  }
+  for (const k of Object.keys(p)) if (!Object.hasOwn(salida, k)) throw fallo('entrada-invalida', `Mercado desconocido en el precio: ${k}`);
+  return salida;
 }
 
 function ubicacion(x: string): UbicacionId {
@@ -69,6 +91,7 @@ export const handlersInventario: {
     const p = e.producto;
     if (!ID_PRODUCTO.test(p.id)) throw fallo('entrada-invalida', 'Identificador de producto inválido');
     return operacion(c, 'producto-crear', e.operacionId, p, () => {
+      const precios = exigirPrecioDoble(c, p.precioUSD);
       if (c.e.productos.has(p.id)) throw fallo('estado-invalido', `El producto ${p.id} ya existe`);
       if ([...c.e.productos.values()].some((x) => x.sku === p.sku)) throw fallo('estado-invalido', 'El SKU ya está en uso');
       if (c.e.productos.size >= 200) throw fallo('limite-del-plan');
@@ -76,7 +99,7 @@ export const handlersInventario: {
       c.e.productos.set(p.id, {
         id: p.id, nombre: p.nombre, categoria: p.categoria, ...(p.marca !== undefined ? { marca: p.marca } : {}), sku: p.sku, activo: p.activo ?? true,
         publicado: p.publicado ?? false, conSerie: p.conSerie ?? false, ...(p.garantiaMeses !== undefined ? { garantiaMeses: p.garantiaMeses } : {}),
-        ...(p.minimo !== undefined ? { minimo: p.minimo } : {}), precioUSD: p.precioUSD, costoUSD: p.costoUSD ?? 0,
+        ...(p.minimo !== undefined ? { minimo: p.minimo } : {}), precioUSD: precios as unknown as ProductoInterno['precioUSD'], costoUSD: p.costoUSD ?? 0,
         ...(controla ? { stockTotal: 0 } : {}), existencias: { tienda: 0, 'deposito-1': 0, 'deposito-2': 0 },
       });
       c.e.cambiosSinPublicar += 1;
@@ -93,11 +116,7 @@ export const handlersInventario: {
         throw fallo('estado-invalido', 'conSerie no cambia tras el primer movimiento');
       }
       const { marca, garantiaMeses, minimo, costoUSD, precioUSD, ...directos } = e.cambios;
-      if (precioUSD !== undefined) {
-        for (const v of [precioUSD.bo, precioUSD.ar]) {
-          if (!Number.isSafeInteger(v) || v < 0 || v > 10_000_000_000) throw fallo('entrada-invalida', 'Precio: centavos enteros');
-        }
-      }
+      const precios = precioUSD !== undefined ? exigirPrecioDoble(c, precioUSD, p.precioUSD as unknown as Record<string, unknown>) : undefined;
       if (garantiaMeses != null && (!Number.isInteger(garantiaMeses) || garantiaMeses < 1 || garantiaMeses > 120)) throw fallo('entrada-invalida', 'Garantía: de 1 a 120 meses');
       if (minimo != null && (!Number.isInteger(minimo) || minimo < 0)) throw fallo('entrada-invalida', 'Mínimo inválido');
       Object.assign(p, directos);
@@ -106,7 +125,7 @@ export const handlersInventario: {
       if (garantiaMeses === null) delete p.garantiaMeses; else if (garantiaMeses !== undefined) p.garantiaMeses = garantiaMeses;
       if (minimo === null) delete p.minimo; else if (minimo !== undefined) p.minimo = minimo;
       if (costoUSD === null) p.costoUSD = 0; else if (costoUSD !== undefined) p.costoUSD = costoUSD;
-      if (precioUSD !== undefined) p.precioUSD = { bo: precioUSD.bo, ar: precioUSD.ar };
+      if (precios !== undefined) p.precioUSD = { ...p.precioUSD, ...precios };
       c.e.cambiosSinPublicar += 1;
       auditar(c, 'inventarios.producto-actualizar', `productos/${p.id}`);
       return { productoId: p.id };
@@ -302,16 +321,23 @@ export const handlersInventario: {
   exportarProductosCsv(c) {
     exigirRol(c, ['sup', 'adm']);
     const verCosto = c.rol === 'adm';
-    const cab = ['id', 'nombre', 'categoria', 'marca', 'sku', 'conSerie', 'garantiaMeses', 'minimo', 'precioUSDbo', 'precioUSDar', ...(verCosto ? ['costoUSD'] : []), 'activo', 'publicado'];
+    const claves = c.e.comercial.mercados.map((m) => claveDePrecio(m.id));
+    const precios = (p: ProductoInterno): (number | string)[] => claves.map((k) => (p.precioUSD as unknown as Readonly<Record<string, number>>)[k] ?? '');
+    const cab = ['nombre', 'categoria', 'marca', 'sku', 'conSerie', 'garantiaMeses', 'minimo', ...claves.map((k) => `precioUSD${k}`), ...(verCosto ? ['costoUSD'] : []), 'activo', 'publicado'];
     const filas = [...c.e.productos.values()].map((p) => [
-      p.id, p.nombre, p.categoria, p.marca ?? '', p.sku, p.conSerie, p.garantiaMeses ?? '', p.minimo ?? '', p.precioUSD.bo, p.precioUSD.ar,
+      p.nombre, p.categoria, p.marca ?? '', p.sku, p.conSerie, p.garantiaMeses ?? '', p.minimo ?? '', ...precios(p),
       ...(verCosto ? [p.costoUSD] : []), p.activo, p.publicado,
     ]);
     return { csv: aCsv(cab, filas) };
   },
 
   listarProductos: (c) => {
-    const productos = [...c.e.productos.values()].map((p) => proyectarProductoDoble(c, vistaProducto(p, c.rol === 'adm'))).sort((a, b) => a.nombre.localeCompare(b.nombre));
+    // Como el servidor: los ids de los mercados declarados en que el producto no tiene precio (clave ausente).
+    const sinPrecio = (p: ProductoInterno): readonly string[] => c.e.comercial.mercados.filter((m) => !Object.hasOwn(p.precioUSD, claveDePrecio(m.id))).map((m) => m.id);
+    const productos = [...c.e.productos.values()].map((p) => {
+      const sp = sinPrecio(p);
+      return proyectarProductoDoble(c, { ...vistaProducto(p, c.rol === 'adm'), ...(sp.length > 0 ? { sinPrecio: sp } : {}) });
+    }).sort((a, b) => a.nombre.localeCompare(b.nombre));
     return Object.assign(productos, marcaDoble(c));
   },
 

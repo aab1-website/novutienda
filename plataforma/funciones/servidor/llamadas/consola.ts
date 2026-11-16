@@ -5,9 +5,11 @@
 import { z } from 'zod';
 import {
   eliminarSeccion, exportarProductosCsv, guardarCarrusel, guardarConfigSitio, guardarFicha, guardarSeccion, obtenerTablero,
-  ordenarSecciones, preciosDelDia, publicarSitio,
+  leerLogo, ordenarSecciones, preciosDelDiaDe, publicarSitio, quitarLogo,
 } from '@novutienda/consola';
-import { leerCotizacion, SinCotizacionUtilizable, type CopiaCotizacion, type Mercado } from '@novutienda/nucleo';
+import { claveDePrecio, leerCotizacionDe, MAX_MERCADOS, SinCotizacionUtilizable, type CopiaCotizacion } from '@novutienda/nucleo';
+import { HttpsError } from 'firebase-functions/v2/https';
+import { depsMedios } from './medios.js';
 import { accion, type Contexto, type TablaImplementaciones } from './marco.js';
 import { ID_PRODUCTO, LIMITE, MS, OBJETO, UID, VACIO, objeto, validarRango } from './comunes.js';
 
@@ -25,19 +27,29 @@ export const accionesConsola: TablaImplementaciones = {
     // Con un conteo abierto, sup/caj reciben `stockTotal` y `disponible` en null y la marca `existenciasOcultas`/`conteosAbiertos`.
     ejecutar: async (c) => ({ ...(await c.e.catalogo.listarProductosParaRol(c.tenantId, c.rol)) }),
   }),
-  /** Precio en Bs y en ARS del día para un precio base en USD (editor de ficha), con el redondeo del tenant. */
+  /**
+   * Precio del día de cada mercado declarado por el comercio para los precios base dados (`precioUSD`, por clave de mercado
+   * en minúsculas, en la moneda base del mercado), con el redondeo vigente del comercio. Una clave de un mercado no declarado se rechaza.
+   */
   preciosDelDia: accion({
-    esquema: objeto({ precioUSD: objeto({ bo: z.number().nonnegative().max(9_999_999), ar: z.number().nonnegative().max(9_999_999) }) }),
+    esquema: objeto({
+      precioUSD: z.record(z.string().regex(/^[a-z]{2}$/), z.number().nonnegative().max(9_999_999))
+        .refine((r) => Object.keys(r).length <= MAX_MERCADOS, `Como máximo ${MAX_MERCADOS} mercados.`),
+    }),
     ejecutar: async (c, d) => {
-      const cotizaciones: Partial<Record<Mercado, CopiaCotizacion>> = {};
-      for (const m of ['BO', 'AR'] as const) {
+      const comercial = await c.e.comercialDelTenant(c.tenantId);
+      const claves = new Set(comercial.mercados.map((m) => claveDePrecio(m.id)));
+      if (Object.keys(d.precioUSD).some((k) => !claves.has(k))) throw new HttpsError('invalid-argument', 'Hay un precio de un mercado que el comercio no declara.');
+      const cotizaciones: Record<string, CopiaCotizacion<string>> = {};
+      for (const m of comercial.mercados) {
+        if (m.tipoCambio == null) continue;
         try {
-          cotizaciones[m] = await leerCotizacion(c.e.almacenCotizaciones, m, c.e.ahora(), { tenantId: c.tenantId });
+          cotizaciones[m.id] = await leerCotizacionDe(c.e.almacenCotizaciones, m.id, c.e.ahora(), { tenantId: c.tenantId, comercial });
         } catch (error) {
           if (!(error instanceof SinCotizacionUtilizable)) throw error;
         }
       }
-      return preciosDelDia(d.precioUSD, cotizaciones, await c.e.redondeo(c.tenantId));
+      return preciosDelDiaDe(d.precioUSD, comercial, cotizaciones, await c.e.redondeoDelTenant(c.tenantId));
     },
   }),
 
@@ -119,6 +131,17 @@ export const accionesConsola: TablaImplementaciones = {
     ejecutar: async (c) => ({ config: (await c.e.firestore.doc(ruta(c.tenantId, 'sitio', 'config')).get()).data() ?? null }),
   }),
 
+  /** Logo subido como archivo: el vigente (ruta pública de sus versiones PNG y WebP) o `null`. */
+  leerLogo: accion({
+    esquema: VACIO,
+    ejecutar: async (c) => ({ logo: await leerLogo(depsMedios(c), { tenantId: c.tenantId, actor: c.actor }) }),
+  }),
+  /** Quita el logo subido (solo `adm`); no toca ninguna URL de logo escrita a mano en otros módulos. */
+  quitarLogo: accion({
+    esquema: VACIO,
+    ejecutar: (c) => quitarLogo(depsMedios(c), { tenantId: c.tenantId, actor: c.actor }),
+  }),
+
   // ---- Exportación (CSV) -----------------------------------------------------------------------------------
   exportarProductosCsv: accion({
     esquema: VACIO,
@@ -132,7 +155,7 @@ export const accionesConsola: TablaImplementaciones = {
   }),
   tablero: accion({
     esquema: VACIO,
-    ejecutar: (c) => obtenerTablero({ db: c.e.db, cotizaciones: c.e.almacenCotizaciones, reloj: reloj(c) }, { tenantId: c.tenantId, actor: c.actor }),
+    ejecutar: async (c) => obtenerTablero({ db: c.e.db, cotizaciones: c.e.almacenCotizaciones, comercial: await c.e.comercialDelTenant(c.tenantId), reloj: reloj(c) }, { tenantId: c.tenantId, actor: c.actor }),
   }),
   alertas: accion({
     esquema: objeto({ limite: LIMITE.optional() }),

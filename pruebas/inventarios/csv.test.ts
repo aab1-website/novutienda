@@ -9,7 +9,7 @@ import {
   type Autor,
 } from './api.js';
 import type { DobleDb } from './doble-db.js';
-import { ADM, doc, nuevoEntorno, op, SUP, T, verificarInvariantes } from './entorno.js';
+import { ADM, COMERCIAL_TRES, doc, nuevoEntorno, op, SUP, T, verificarInvariantes } from './entorno.js';
 
 let db: DobleDb;
 beforeEach(async () => {
@@ -17,7 +17,7 @@ beforeEach(async () => {
 });
 
 const importar = (csv: string, cargaInicial = false, por: Autor = ADM, operacionId = op('csv')) =>
-  db.runTransaction((tx) => importarProductosCsv(tx, { tenantId: T, operacionId, por, csv, cargaInicial }));
+  db.runTransaction((tx) => importarProductosCsv(tx, { catalogo: sinCatalogo, tenantId: T, operacionId, por, csv, cargaInicial }));
 
 const CAB = 'id,nombre,categoria,sku,precioUSDbo,precioUSDar';
 
@@ -57,11 +57,12 @@ describe('CSV', () => {
     expect(doc(db, 'productos', 'lapiz')).toBeUndefined();
   });
 
-  it('rechaza ids repetidos, fórmulas en id/sku y un archivo sin columna id; las columnas desconocidas se informan y se ignoran', async () => {
+  it('rechaza ids repetidos, fórmulas en id/sku y un archivo sin columna id ni sku; las columnas desconocidas se informan y se ignoran', async () => {
     await expect(importar(`${CAB}\na1,x,p,S-1,1,1\na1,y,p,S-2,1,1\n`)).rejects.toThrow(EntradaInvalida);
     await expect(importar(`${CAB}\n=cmd,x,p,S-1,1,1\n`)).rejects.toThrow(EntradaInvalida);
     await expect(importar(`${CAB}\na1,x,p,=S-1,1,1\n`)).rejects.toThrow(EntradaInvalida);
-    await expect(importar('nombre,sku\nx,S-1\n')).rejects.toThrow(/falta la columna id/);
+    // Cambio de expectativa a propósito: antes «falta la columna id»; ahora el id es opcional y solo se exige id o sku.
+    await expect(importar('nombre,categoria\nx,c\n')).rejects.toThrow(/falta la columna sku/);
     await importar(`${CAB},raro\na1,x,p,S-1,1,1,z\n`);
     expect(doc(db, 'productos', 'a1')).toBeDefined();
     const muchas = Array.from({ length: 1001 }, (_, i) => `p${String(i)}x,n,c,K${String(i)},1,1`).join('\n');
@@ -91,9 +92,12 @@ describe('CSV', () => {
     const csv = exportarProductosCsv([
       { id: 'a1', nombre: '=2+2', categoria: 'x, y', marca: '=Bosch', sku: 'S-1', conSerie: false, precioUSD: { bo: 1, ar: 2 }, activo: true, publicado: false },
       { id: 'a2', nombre: '@cmd', categoria: '-1', sku: 'S-2', conSerie: true, garantiaMeses: 12, precioUSD: { bo: 1, ar: 2 }, activo: true, publicado: true },
-    ]);
-    expect(csv).toContain(`a1,'=2+2,"x, y",'=Bosch,S-1`);
-    expect(csv).toContain(`a2,'@cmd,'-1,,S-2`);
+    ], COMERCIAL_TRES);
+    expect(csv).toContain(`'=2+2,"x, y",'=Bosch,S-1`);
+    expect(csv).toContain(`'@cmd,'-1,,S-2`);
     expect(analizarCsv(csv)).toHaveLength(3);
   });
 });
+
+/** Sin productos previos que reconocer: el catálogo es explícito, nunca se omite. */
+const sinCatalogo = (): Promise<never[]> => Promise.resolve([]);

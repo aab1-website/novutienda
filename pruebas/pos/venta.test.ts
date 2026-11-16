@@ -1,8 +1,8 @@
 import { LimiteDelPlan, SinCotizacionUtilizable, validarEvento } from '@novutienda/nucleo';
-import { confirmarVenta, ErrorPos } from '@novutienda/pos';
+import { confirmarVenta, ErrorPos, MAX_SERIES_POR_VENTA } from '@novutienda/pos';
 import { describe, expect, it } from 'vitest';
 import {
-  AHORA, SerieNoDisponible, StockInsuficiente, T, UUID, abrir, adm, auditoria, caj, caj2, carritoP1, crearEntorno, efectivo, eventos, stock, sup,
+  AHORA, SerieNoDisponible, StockInsuficiente, T, UUID, abrir, adm, auditoria, caj, caj2, carritoP1, catalogoDoble, crearEntorno, efectivo, eventos, inventariosDoble, stock, sup,
   venderP1,
 } from './ayudas.js';
 
@@ -128,7 +128,7 @@ describe('confirmarVenta: precios y total', () => {
       confirmarVenta(e.deps, T, caj, UUID(5), { mercado, moneda: mercado === 'BO' ? 'BOB' : 'ARS', lineas: [{ productoId: id, cantidad: 1 }] }, [efectivo(1)]);
     expect(await codigo(v('p3', 'AR'))).toBe('sin-precio');
     expect(await codigo(v('nada'))).toBe('producto-inexistente');
-    e.db.poner(`tenants/${T}/_productos/p1`, { productoId: 'p1', nombre: 'x', activo: false, preciosUsd: { BO: 1 }, controlaSeries: false });
+    e.db.poner(`tenants/${T}/_productos/p1`, { productoId: 'p1', nombre: 'x', activo: false, preciosBase: { BO: 1 }, controlaSeries: false });
     expect(await codigo(v('p1'))).toBe('producto-inactivo');
   });
   it('valida el carrito', async () => {
@@ -215,6 +215,78 @@ describe('confirmarVenta: stock y series', () => {
     expect(await v('p2', 1)).toBe('series-invalidas');
     expect(await v('p2', 2, ['S1', 'S1'])).toBe('series-invalidas');
     expect(await v('p1', 1, ['S1'])).toBe('series-invalidas');
+  });
+  describe('tope de unidades con serie por venta', () => {
+    const serie = (pref: string, n: number): string[] => Array.from({ length: n }, (_, i) => `${pref}${i}`);
+    const preparar = async () => {
+      const e = crearEntorno();
+      await abrir(e);
+      for (const id of ['p2', 'p4']) {
+        e.db.poner(`tenants/${T}/_productos/${id}`, { productoId: id, nombre: `Producto ${id}`, activo: true, controlaSeries: true, preciosBase: { BO: 100, AR: 100 } });
+        e.db.poner(`tenants/${T}/_stock/tienda~${id}`, { cantidad: 0, series: [] });
+      }
+      return e;
+    };
+    const carrito = (a: number, b: number) => ({
+      mercado: 'BO' as const,
+      moneda: 'BOB' as const,
+      lineas: [
+        { productoId: 'p2', cantidad: a, series: serie('A', a) },
+        { productoId: 'p4', cantidad: b, series: serie('B', b) },
+      ],
+    });
+
+    it('101 unidades con serie repartidas en varias líneas se rechazan antes de toda lectura', async () => {
+      const e = await preparar();
+      let productos = 0;
+      let salidas = 0;
+      const deps = {
+        ...e.deps,
+        catalogo: { leerProducto: (...a: Parameters<typeof catalogoDoble.leerProducto>) => (productos++, catalogoDoble.leerProducto(...a)) },
+        inventarios: { ...inventariosDoble, prepararSalida: (...a: Parameters<typeof inventariosDoble.prepararSalida>) => (salidas++, inventariosDoble.prepararSalida(...a)) },
+      };
+      let transacciones = 0;
+      const db = { runTransaction: (...a: Parameters<typeof e.db.runTransaction>) => (transacciones++, e.db.runTransaction(...a)) };
+      const err = await confirmarVenta({ ...deps, db: db as typeof e.db }, T, caj, UUID(1), carrito(60, 41), [efectivo(1)]).catch((x: unknown) => x);
+      expect(err).toBeInstanceOf(ErrorPos);
+      expect((err as ErrorPos).codigo).toBe('series-invalidas');
+      expect((err as ErrorPos).message).toBe(`Una venta admite hasta ${MAX_SERIES_POR_VENTA} unidades con serie`);
+      expect(MAX_SERIES_POR_VENTA).toBe(100);
+      expect({ productos, salidas, transacciones }).toEqual({ productos: 0, salidas: 0, transacciones: 0 });
+    });
+
+    it.each([
+      ['texto', 'S1'],
+      ['objeto', { 0: 'S1', length: 1 }],
+      ['elemento vacío', ['']],
+      ['elemento numérico', [5]],
+      ['elemento de 101 caracteres', ['x'.repeat(101)]],
+    ])('series con forma inválida (%s) se rechaza con cero lecturas', async (_n, series) => {
+      const e = await preparar();
+      let productos = 0;
+      let transacciones = 0;
+      const deps = { ...e.deps, catalogo: { leerProducto: (...a: Parameters<typeof catalogoDoble.leerProducto>) => (productos++, catalogoDoble.leerProducto(...a)) } };
+      const db = { runTransaction: (...a: Parameters<typeof e.db.runTransaction>) => (transacciones++, e.db.runTransaction(...a)) };
+      const c = { mercado: 'BO' as const, moneda: 'BOB' as const, lineas: [{ productoId: 'p2', cantidad: 1, series: series as never }] };
+      const err = await confirmarVenta({ ...deps, db: db as typeof e.db }, T, caj, UUID(1), c, [efectivo(1)]).catch((x: unknown) => x);
+      expect(err).toBeInstanceOf(ErrorPos);
+      expect((err as ErrorPos).codigo).toBe('series-invalidas');
+      expect({ productos, transacciones }).toEqual({ productos: 0, transacciones: 0 });
+    });
+
+    it('exactamente 100 unidades con serie pasan', async () => {
+      const e = await preparar();
+      e.db.poner(`tenants/${T}/_stock/tienda~p2`, { cantidad: 60, series: serie('A', 60) });
+      e.db.poner(`tenants/${T}/_stock/tienda~p4`, { cantidad: 40, series: serie('B', 40) });
+      const r = await confirmarVenta(e.deps, T, caj, UUID(1), carrito(60, 40), [efectivo(7_000_000)]);
+      expect(r.venta.lineas.reduce((n, l) => n + l.series.length, 0)).toBe(100);
+    });
+
+    it('una venta sin series no se ve afectada', async () => {
+      const e = crearEntorno();
+      await abrir(e);
+      expect((await confirmarVenta(e.deps, T, caj, UUID(1), carritoP1(5), [efectivo(35_000)])).repetida).toBe(false);
+    });
   });
   it('dos ventas simultáneas de la última unidad: una gana', async () => {
     const e = crearEntorno();

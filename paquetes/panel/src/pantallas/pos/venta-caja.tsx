@@ -1,18 +1,28 @@
 import type { JSX } from 'preact';
 import { useState } from 'preact/hooks';
 import { nuevoId } from '../../api/cliente.js';
-import { MONEDAS, type Moneda, type TurnoPos } from '../../api/tipos.js';
+import type { TurnoPos } from '../../api/tipos.js';
 import { Alerta, Boton, Campo, Cargando, ErrorCarga, Selector, Seccion, Vacio, fechaHora } from '../../ui/comun.js';
+import { useConfiguracionComercial } from '../../ui/comercial.js';
 import { useApp } from '../../ui/contexto.js';
 import { useAccion, useCarga } from '../../ui/hooks.js';
 import { efectivoEsperado, TOTALES_VACIOS } from './arqueo.js';
 import { formatearMonto, textoACentavos } from '../../util/dinero.js';
 
 export function VentaCaja({ turno, alCambiar }: { turno: TurnoPos; alCambiar: () => void }): JSX.Element {
+  const comercial = useConfiguracionComercial();
+  if (comercial.estado === 'cargando') return <Cargando />;
+  if (comercial.estado === 'error') return <Alerta>{comercial.mensaje}</Alerta>;
+  const monedas = comercial.comercial.monedasCaja;
+  if (monedas.length === 0) return <Alerta>El comercio no tiene monedas de caja declaradas.</Alerta>;
+  return <VentaCajaLista turno={turno} alCambiar={alCambiar} monedas={monedas} />;
+}
+
+function VentaCajaLista({ turno, alCambiar, monedas }: { turno: TurnoPos; alCambiar: () => void; monedas: readonly string[] }): JSX.Element {
   const { api } = useApp();
   const accion = useAccion();
   const [tipo, setTipo] = useState<'ingreso' | 'egreso'>('egreso');
-  const [moneda, setMoneda] = useState<Moneda>('BOB');
+  const [moneda, setMoneda] = useState<string>(monedas[0] ?? '');
   const [monto, setMonto] = useState('');
   const [motivo, setMotivo] = useState('');
   const [comprobante, setComprobante] = useState('');
@@ -43,7 +53,7 @@ export function VentaCaja({ turno, alCambiar }: { turno: TurnoPos; alCambiar: ()
         <form class="formulario" onSubmit={enviar} noValidate>
           <div class="cuadricula">
             <Selector etiqueta="Tipo" valor={tipo} onCambio={(v) => setTipo(v as 'ingreso' | 'egreso')} opciones={[{ valor: 'egreso', texto: 'Egreso (sale dinero)' }, { valor: 'ingreso', texto: 'Ingreso (entra dinero)' }]} />
-            <Selector etiqueta="Moneda" valor={moneda} onCambio={(v) => setMoneda(v as Moneda)} opciones={MONEDAS.map((m) => ({ valor: m, texto: m }))} />
+            <Selector etiqueta="Moneda" valor={moneda} onCambio={(v) => setMoneda(v)} opciones={monedas.map((m) => ({ valor: m, texto: m }))} />
             <Campo etiqueta="Monto" valor={monto} onInput={setMonto} inputMode="decimal" requerido />
             <Campo etiqueta="Motivo" valor={motivo} onInput={setMotivo} requerido />
             <Campo etiqueta="Comprobante (opcional)" valor={comprobante} onInput={setComprobante} />

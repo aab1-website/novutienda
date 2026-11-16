@@ -3,7 +3,7 @@
 import {
   UBICACIONES, crearProducto, crearUbicacion, fijarReloj, ingresar, type Autor, type EntradaProducto,
 } from '@novutienda/inventarios';
-import { cargarManual, leerCotizacion, type CopiaCotizacion, type IdModulo, type Mercado, type Redondeo } from '@novutienda/nucleo';
+import { COMERCIAL_LEGADO_TRES_MONEDAS, cargarManual, leerCotizacion, type CopiaCotizacion, type IdModulo, type Mercado, type Redondeo } from '@novutienda/nucleo';
 import type { ActorPos, DepsPos } from '@novutienda/pos';
 import {
   almacenCotizacionesDesde, catalogoParaPos, consumidoresDePlataforma, crearCatalogoConsola, ejecutorRecibosDesde, inventariosParaPos,
@@ -70,7 +70,7 @@ export function crearEntorno(): Entorno {
   const disparador = crearDisparador();
   const catalogoConsola = crearCatalogoConsola({ db, lector: db });
   const deps: DepsPos = {
-    db, inventarios: inventariosParaPos, catalogo: catalogoParaPos, redondeo: REDONDEO, ahora: () => reloj.ahora,
+    db, inventarios: inventariosParaPos, catalogo: catalogoParaPos, comercial: COMERCIAL_LEGADO_TRES_MONEDAS, redondeo: REDONDEO, ahora: () => reloj.ahora,
   };
   return {
     db,

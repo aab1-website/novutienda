@@ -18,6 +18,7 @@ import { PantallaRecibos } from '../pantallas/recibos/recibos.js';
 import { PantallaSupervision } from '../pantallas/pos/supervision.js';
 import { PantallaUsuarios } from '../pantallas/usuarios.js';
 import { PantallaVenta } from '../pantallas/pos/venta.js';
+import { restablecerRedondeo } from '../util/precio.js';
 
 const NOMBRE_APP = 'Panel de gestión';
 const ROL_TEXTO = { caj: 'Vendedor', sup: 'Supervisor', adm: 'Administrador' } as const;
@@ -130,6 +131,12 @@ function AppInterna({ sesion, api, almacen }: { sesion: Sesion; api: ClienteApi;
     if (guardada !== '' && window.location.hash !== guardada) window.location.hash = guardada;
   }, [usuario]);
 
+  // Al cerrar la sesión (o vencerse) no quedan reglas de redondeo de ese comercio para quien entre después.
+  const sinSesion = usuario === null;
+  useEffect(() => {
+    if (sinSesion) restablecerRedondeo();
+  }, [sinSesion]);
+
   const carga = useModulosActivos(api, usuario?.uid);
   const modulos: ModulosActivos = carga.estado === 'lista' ? carga.modulos : null;
   const rol = usuario?.rol;
@@ -156,7 +163,7 @@ function AppInterna({ sesion, api, almacen }: { sesion: Sesion; api: ClienteApi;
   const tituloPantalla = usuario === null ? undefined : menuPara(usuario.rol, modulos).find((i) => i.id === ruta.seccion)?.titulo;
   useEffect(() => {
     document.title =
-      usuario === null ? `Ingreso · ${NOMBRE_APP}` : `${tituloPantalla === undefined ? '' : `${tituloPantalla} · `}${usuario.tenantId} · ${NOMBRE_APP}`;
+      usuario === null ? `Ingreso · ${NOMBRE_APP}` : `${tituloPantalla === undefined ? '' : `${tituloPantalla} · `}${NOMBRE_APP}`;
   }, [usuario, tituloPantalla]);
 
   const principalListo = usuario !== null && existe_(ruta.seccion) && !(carga.estado === 'cargando' && !puedeVer(usuario.rol, ruta.seccion, modulos));
@@ -187,7 +194,6 @@ function AppInterna({ sesion, api, almacen }: { sesion: Sesion; api: ClienteApi;
       </a>
       <Cabecera
         usuario={usuario}
-        tenant={usuario.tenantId}
         cargando={carga.estado === 'cargando'}
         menu={menu}
         seccion={ruta.seccion}
@@ -215,7 +221,6 @@ function AppInterna({ sesion, api, almacen }: { sesion: Sesion; api: ClienteApi;
 
 interface PropsCabecera {
   readonly usuario: UsuarioSesion;
-  readonly tenant: string;
   readonly cargando: boolean;
   readonly menu: readonly { id: string; titulo: string }[];
   readonly seccion: string;
@@ -228,9 +233,10 @@ interface PropsCabecera {
 }
 
 /**
- * Cabecera. Desde 1024 px se ve completa; por debajo queda una sola fila (marca, comercio y botón «Menú») y el resto
- * (navegación, tema, usuario, salir) se pliega en un panel. El botón lleva `aria-expanded` y `aria-controls`; Esc cierra
- * y devuelve el foco al botón; al abrir, el foco pasa al primer enlace; navegar cierra el panel.
+ * Cabecera. Desde 1024 px se ve completa; por debajo queda una sola fila (botón de hamburguesa «Menú» a la izquierda y la marca)
+ * y el resto (navegación, tema, usuario, salir) se pliega en un panel vertical pegado al borde izquierdo. El botón lleva
+ * `aria-expanded` y `aria-controls`; Esc, tocar fuera y el mismo botón cierran y devuelven el foco al botón; al abrir, el
+ * foco pasa al primer enlace; navegar cierra el panel. El panel queda bajo los diálogos y los avisos (capas.css).
  */
 function Cabecera(p: PropsCabecera): JSX.Element {
   const [abierto, setAbierto] = useState(false);
@@ -258,9 +264,16 @@ function Cabecera(p: PropsCabecera): JSX.Element {
     const alClicFuera = (e: MouseEvent): void => {
       if (e.target instanceof Node && !panel.current?.contains(e.target) && !boton.current?.contains(e.target)) setAbierto(false);
     };
+    // Al pasar a pantalla ancha el menú ya es la barra de siempre: se cierra y se sueltan los oyentes.
+    const ancho = typeof window.matchMedia === 'function' ? window.matchMedia('(min-width: 1024px)') : null;
+    const alCambiarAncho = (): void => {
+      if (ancho?.matches === true) setAbierto(false);
+    };
+    ancho?.addEventListener('change', alCambiarAncho);
     document.addEventListener('keydown', alTeclear);
     document.addEventListener('click', alClicFuera);
     return () => {
+      ancho?.removeEventListener('change', alCambiarAncho);
       document.removeEventListener('keydown', alTeclear);
       document.removeEventListener('click', alClicFuera);
     };
@@ -269,18 +282,22 @@ function Cabecera(p: PropsCabecera): JSX.Element {
   return (
     <header class="cabecera">
       <div class="cabecera-interior">
-        <span class="marca-nombre">{NOMBRE_APP}</span>
-        <span class="marca-tenant" title={`Comercio: ${p.tenant}`}>Comercio: {p.tenant}</span>
         <button
           ref={boton}
           type="button"
           class="boton boton-secundario boton-chico boton-menu"
+          aria-label="Menú"
           aria-expanded={abierto}
           aria-controls="cabecera-panel"
           onClick={() => setAbierto((a) => !a)}
         >
-          Menú
+          <span class="hamburguesa" aria-hidden="true">
+            <span />
+            <span />
+            <span />
+          </span>
         </button>
+        <span class="marca-nombre">{NOMBRE_APP}</span>
         <div id="cabecera-panel" ref={panel} class={abierto ? 'cabecera-panel abierto' : 'cabecera-panel'}>
           {p.cargando ? (
             <span class="menu" />

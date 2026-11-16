@@ -13,9 +13,9 @@ export type { CodigoError, Faltante } from './errores.js';
 // Operaciones.
 export { esDisponible, skuDesdeId, UBICACION_DISPONIBILIDAD } from './disponibilidad.js';
 export {
-  leerDocumentoProducto, leerExistencias, leerProducto, ProductoCorrupto, rutaColeccionProductos,
+  leerDocumentoProducto, leerExistencias, leerProducto, mercadosSinPrecio, precioEnMercado, ProductoCorrupto, rutaColeccionProductos,
 } from './lectura.js';
-export type { ExistenciaLeida, ProductoLeido } from './lectura.js';
+export type { ExistenciaLeida, PreciosCentavos, ProductoLeido } from './lectura.js';
 export { actualizarProducto, crearProducto, crearUbicacion, validarEntradaProducto } from './productos.js';
 export type { CambiosProducto, EntradaCrearProducto, EntradaProducto, PrecioUSD } from './productos.js';
 export { ajustar, ingresar, traspasar } from './stock.js';
@@ -23,26 +23,29 @@ export type { LineaAjuste, LineaIngreso, LineaTraspaso } from './stock.js';
 export { resolverMerma, solicitarMerma } from './merma.js';
 export { abrirConteo, cerrarConteo, registrarLineaConteo } from './conteo.js';
 export {
-  aEnteroEscalado, analizarCsv, centavosAUsd, deshacerNeutralizacion, COLUMNAS_EXPORTACION, exportarProductosCsv, importarCsvPorLotes, importarProductosCsv, leerCsvFilas, leerCsvProductos, MAX_FILAS_IMPORTACION, neutralizarCelda, simularImportacionCsv,
+  aEnteroEscalado, analizarCsv, centavosAUsd, deshacerNeutralizacion, columnasDeExportacion, exportarProductosCsv, exportarProductosCsvLegado, importarCsvPorLotes, importarProductosCsv, leerCsvFilas, leerCsvProductos, MAX_FILAS_IMPORTACION, neutralizarCelda, simularImportacionCsv,
 } from './importacion.js';
 export { leerArchivoImportacion, MAX_BYTES_ARCHIVO, MAX_COLUMNAS_ARCHIVO, MAX_FILAS_ARCHIVO, validarMatriz } from './archivo.js';
 export type { LectorHojas } from './archivo.js';
-export type { LecturaSinBloqueo, BaseTransaccional, ErrorFila, FuenteTabla, FilaImportada, FilaSimulada, ProductoExportable, ResultadoImportacion, Simulacion } from './importacion.js';
+export type { LeerCatalogo, ProductoCatalogo, LecturaSinBloqueo, BaseTransaccional, ErrorFila, FuenteTabla, FilaImportada, FilaSimulada, ProductoExportable, ResultadoImportacion, Simulacion } from './importacion.js';
 export { PERMISOS } from './operacion.js';
 export type { ResultadoOperacion } from './operacion.js';
 
 // Eventos y endpoint firmado.
 export {
-  ACTOR_SISTEMA, confirmarPedido, confirmarPedidoFirmado, consumirPedidoConfirmado, consumirVentaAnulada, ejecutorDesde, leerCuerpoPedido,
+  ACTOR_SISTEMA, confirmarPedido, confirmarPedidoFirmado, consumirPedidoConfirmado, consumirVentaAnulada, ejecutorDesde, leerCuerpoPedido, VERSIONES_CONSUMO_INVENTARIOS,
 } from './pedido.js';
 export type { ItemPedido, RespuestaHttp, ResultadoPedido, SolicitudConfirmarPedido, TransaccionInventario } from './pedido.js';
 
 // Utilidades de dominio.
-export { esIdSegmento, esProductoId, esSerie, esUbicacionId, UBICACIONES } from './ids.js';
+export { esIdSegmento, esProductoId, identificadorParaAlta, esSerie, esUbicacionId, UBICACIONES } from './ids.js';
 export type { UbicacionId } from './ids.js';
 export type { Autor } from './motor.js';
 /** Solo para pruebas: fija el reloj con el que se estampan los planes. */
-export { fijarReloj, fechaLocal, ZONA_HORARIA_POR_DEFECTO } from './motor.js';
+export { fijarReloj, fechaLocal } from './motor.js';
+
+// Mercados del tenant: la clave con que se guarda el precio de cada uno y la zona de las fechas sin mercado.
+export { claveDePrecio, zonaPrincipalDe } from './comercial.js';
 
 // Visibilidad de las existencias durante un conteo abierto (único punto de decisión; ver `visibilidad.ts`).
 export {

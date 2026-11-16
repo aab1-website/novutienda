@@ -30,7 +30,7 @@ describe('importar: qué es y cómo se arma el archivo', () => {
     expect(screen.getByText(/actualizar muchos a la vez/)).toBeTruthy();
     expect(screen.getByText(/solo por Inventario/)).toBeTruthy();
     expect(screen.getByText('Qué columnas lleva el archivo')).toBeTruthy();
-    expect(screen.getByText(/Una fila nueva sin SKU es un error/)).toBeTruthy();
+    expect(screen.getByText(/Cada producto se reconoce por su SKU/)).toBeTruthy();
     expect(screen.getByRole('button', { name: 'Descargar plantilla' })).toBeTruthy();
     expect(screen.getByRole('button', { name: 'Exportar productos' })).toBeTruthy();
     expect(entradaArchivo().accept).toContain('.xlsx');
@@ -68,7 +68,8 @@ describe('importar: siempre simulación primero', () => {
     expect(llamadas(e, 'importarProductosCsv')).toHaveLength(0);
     const t = screen.getByRole('table', { name: 'Simulación de la importación' });
     const filas = within(t).getAllByRole('row');
-    expect(filas[1]?.textContent).toContain('nuevo-c');
+    expect(filas[1]?.textContent).toContain('Nuevo C');
+    expect(filas[1]?.textContent).not.toContain('nuevo-c');
     expect(filas[1]?.textContent).toContain('Columna «sku»: es obligatorio para crear');
     expect(filas[1]?.textContent).toContain('Con error');
   });
@@ -261,5 +262,121 @@ describe('importar: por tandas', () => {
     expect(ids).toHaveLength(2);
     expect(ids[0]).not.toBe(ids[1]);
     expect(screen.queryByText(/Los datos cambiaron/)).toBeNull();
+  });
+});
+
+describe('importar: columnas según los mercados declarados', () => {
+  it('el comercio de referencia ve las columnas y la nota de siempre', async () => {
+    const e = crearEntorno('adm');
+    ver(e);
+    expect(await screen.findByText('precioBO')).toBeTruthy();
+    expect(screen.getByText('precioAR')).toBeTruthy();
+    expect(screen.getByText(/precio del mercado de Bolivia, en dólares con hasta 2 decimales \(por ejemplo 1234.50\)/)).toBeTruthy();
+    expect(screen.getByText(/Los precios van en dólares, con decimales/)).toBeTruthy();
+    expect(screen.getByText(/costo en dólares con hasta 2 decimales \(opcional\)/)).toBeTruthy();
+  });
+
+  it('un comercio de un mercado y una moneda ve una sola columna de precio y su moneda', async () => {
+    const e = crearEntorno('adm', undefined, { comercial: { mercados: [{ id: 'PE', nombre: 'Perú', monedaVenta: 'PEN', monedaBase: 'PEN', tieneTipoCambio: false }], monedasCaja: ['PEN'], monedaCosto: 'PEN' } });
+    ver(e);
+    expect(await screen.findByText('precioPE')).toBeTruthy();
+    expect(screen.queryByText('precioBO')).toBeNull();
+    expect(screen.queryByText('precioAR')).toBeNull();
+    expect(screen.getByText(/costo en PEN con hasta 2 decimales/)).toBeTruthy();
+    expect(screen.getByText(/Los precios van en PEN, con decimales/)).toBeTruthy();
+  });
+
+  it('con un comercio de un solo mercado, la simulación y el resultado usan solo su columna de precio', async () => {
+    const comercial = { mercados: [{ id: 'PE', nombre: 'Perú', monedaVenta: 'PEN', monedaBase: 'PEN', tieneTipoCambio: false }], monedasCaja: ['PEN'], monedaCosto: 'PEN' } as const;
+    const e = crearEntorno('adm', undefined, { comercial: { ...comercial, mercados: [...comercial.mercados], monedasCaja: [...comercial.monedasCaja] } });
+    const texto = 'id,nombre,categoria,sku,precioPE\r\nnuevo-pe,Nuevo PE,Cat,PE-1,12.50\r\nnuevo-bo,Nuevo BO,Cat,PE-2,\r\n';
+    const sim = await e.api.llamar('simularImportacionProductos', { csv: texto });
+    expect(sim.resumen).toMatchObject({ crear: 2, errores: 0 });
+    expect(sim.filas[1]?.advertencias.join(' ')).toMatch(/sin precio/);
+    const r = await e.api.llamar('importarProductosCsv', { operacionId: 'op-un-mercado', csv: texto });
+    expect(r).toMatchObject({ completa: true, creados: 2 });
+    const lista = await e.api.llamar('listarProductos', {});
+    expect(lista.find((p) => p.id === 'nuevo-pe')?.precioUSD).toEqual({ pe: 1250 });
+    expect(lista.find((p) => p.id === 'nuevo-bo')?.precioUSD).toEqual({ pe: 0 });
+    const ajeno = await e.api.llamar('simularImportacionProductos', { csv: 'id,nombre,categoria,sku,precioBO\r\nx-1,X,Cat,X-1,5\r\n' });
+    expect(ajeno.columnasIgnoradas).toContain('precioBO');
+  });
+});
+
+describe('importar: el producto se reconoce por su SKU (el doble se comporta como el servidor)', () => {
+  const CAB_SIN_ID = 'nombre,categoria,sku,precioBO,precioAR\r\n';
+
+  it('sin columna id: crea con clave generada, actualiza por SKU y no repite al reintentar', async () => {
+    const e = crearEntorno('adm');
+    const base = (await e.api.llamar('listarProductos', {})).length;
+    const csv = `${CAB_SIN_ID}Taladro Bosch,Herr,TAL-1,10,11\r\nTaladro Bosch,Herr,TAL-2,12,13\r\n`;
+    const sim = await e.api.llamar('simularImportacionProductos', { csv });
+    expect(sim.resumen).toMatchObject({ crear: 2, errores: 0 });
+    expect(sim.filas.map((f) => (f as { sku?: string }).sku)).toEqual(['TAL-1', 'TAL-2']);
+    await e.api.llamar('importarProductosCsv', { operacionId: 'op-sin-id', csv });
+    const lista = await e.api.llamar('listarProductos', {});
+    expect(lista.length).toBe(base + 2);
+    expect(lista.filter((p) => p.id.startsWith('taladro-bosch')).map((p) => p.id).sort()).toEqual(['taladro-bosch', 'taladro-bosch-2']);
+    const otra = await e.api.llamar('importarProductosCsv', { operacionId: 'op-sin-id-2', csv });
+    expect(otra).toMatchObject({ creados: 0 });
+    expect((await e.api.llamar('listarProductos', {})).length).toBe(base + 2);
+  });
+
+  it('id y SKU de productos distintos: error claro; `codigo` es el SKU; fila sin id ni SKU es error', async () => {
+    const e = crearEntorno('adm');
+    const [a, b] = await e.api.llamar('listarProductos', {});
+    const cruzado = await e.api.llamar('simularImportacionProductos', { csv: `id,nombre,categoria,sku\r\n${a?.id ?? ''},X,C,${b?.sku ?? ''}\r\n` });
+    expect(cruzado.filas[0]?.errores[0]?.motivo).toBe(`el SKU pertenece a otro producto (${b?.nombre ?? ''})`);
+    const porCodigo = await e.api.llamar('simularImportacionProductos', { csv: `codigo,nombre,categoria\r\n${a?.sku ?? ''},${a?.nombre ?? ''},${a?.categoria ?? ''}\r\n` });
+    expect(porCodigo.filas[0]?.accion).toBe('sin-cambios');
+    const sinSku = await e.api.llamar('simularImportacionProductos', { csv: 'nombre,categoria,sku\r\nX,C,\r\n' });
+    expect(sinSku.filas[0]?.errores[0]).toMatchObject({ columna: 'sku' });
+  });
+
+  it('exportar y volver a importar no cambia nada, y la planilla sale sin la columna id', async () => {
+    const e = crearEntorno('adm');
+    const { csv } = await e.api.llamar('exportarProductosCsv', {});
+    expect(csv.split('\n')[0]?.split(',')).not.toContain('id');
+    const sim = await e.api.llamar('simularImportacionProductos', { csv });
+    expect(sim.resumen).toMatchObject({ crear: 0, actualizar: 0, errores: 0 });
+  });
+
+  it('un SKU que solo difiere en mayúsculas se permite, con aviso', async () => {
+    const e = crearEntorno('adm');
+    const [a] = await e.api.llamar('listarProductos', {});
+    const raro = (a?.sku ?? '').toLowerCase() === a?.sku ? (a?.sku ?? '').toUpperCase() : (a?.sku ?? '').toLowerCase();
+    const sim = await e.api.llamar('simularImportacionProductos', { csv: `${CAB_SIN_ID}Nuevo,C,${raro},1,1\r\n` });
+    expect(sim.filas[0]).toMatchObject({ accion: 'crear' });
+    expect(sim.filas[0]?.advertencias).toContain('Se parece al SKU de otro producto (difiere solo en mayúsculas)');
+  });
+
+  it('Excel recortó los ceros del SKU: error, sin duplicar; nombre repetido avisa; planilla vieja con codigo falla claro', async () => {
+    const e = crearEntorno('adm');
+    const precioUSD = { bo: 100, ar: 100 } as never;
+    await e.api.llamar('crearProducto', { operacionId: 'op-cero', producto: { id: 'cero', nombre: 'Con ceros', categoria: 'C', sku: '00123', precioUSD } });
+    const ceros = await e.api.llamar('simularImportacionProductos', { csv: `${CAB_SIN_ID}Otro,C,123,1,1\r\n` });
+    expect(ceros.filas[0]?.accion).toBe('error');
+    expect(ceros.filas[0]?.errores[0]?.motivo).toMatch(/Excel quitó ceros a la izquierda/);
+    const nombre = await e.api.llamar('simularImportacionProductos', { csv: `${CAB_SIN_ID}"  con   CEROS ",C,NUEVO-9,1,1\r\n` });
+    expect(nombre.filas[0]).toMatchObject({ accion: 'crear' });
+    expect(nombre.filas[0]?.advertencias).toContain('Ya existe un producto con ese nombre');
+    const vieja = await e.api.llamar('simularImportacionProductos', { csv: 'codigo,nombre,categoria\r\ncero,X,C\r\n' });
+    expect(vieja.filas[0]?.errores[0]?.motivo).toMatch(/La columna codigo ahora es el SKU/);
+    const sinSku = await e.api.llamar('simularImportacionProductos', { csv: 'nombre,categoria,sku\r\nX,C,\r\n' });
+    expect(sinSku.filas[0]?.errores[0]?.motivo).toBe('Falta el SKU: cada producto se reconoce por su SKU');
+  });
+
+  it('«123» actualiza el SKU exacto y avisa de «0123»; `codigo` ambiguo (SKU de uno y clave de otro) es error', async () => {
+    const e = crearEntorno('adm');
+    const precioUSD = { bo: 100, ar: 100 } as never;
+    await e.api.llamar('crearProducto', { operacionId: 'o1', producto: { id: 'cero', nombre: 'Cero', categoria: 'C', sku: '0123', precioUSD } });
+    await e.api.llamar('crearProducto', { operacionId: 'o2', producto: { id: 'exacto', nombre: 'Exacto', categoria: 'C', sku: '123', precioUSD } });
+    const sim = await e.api.llamar('simularImportacionProductos', { csv: `${CAB_SIN_ID}Otro,C,123,1,1\r\n` });
+    expect(sim.filas[0]?.accion).toBe('actualizar');
+    expect(sim.filas[0]?.advertencias).toContain('Existe otro producto con SKU 0123: verifique que Excel no haya quitado ceros a la izquierda');
+    await e.api.llamar('crearProducto', { operacionId: 'o3', producto: { id: 'lapiz', nombre: 'Lápiz', categoria: 'C', sku: 'LAP-1', precioUSD } });
+    await e.api.llamar('crearProducto', { operacionId: 'o4', producto: { id: 'goma', nombre: 'Goma', categoria: 'C', sku: 'lapiz', precioUSD } });
+    const amb = await e.api.llamar('simularImportacionProductos', { csv: 'codigo,nombre,categoria\r\nlapiz,X,C\r\n' });
+    expect(amb.filas[0]?.errores[0]?.motivo).toMatch(/ambigua/);
   });
 });

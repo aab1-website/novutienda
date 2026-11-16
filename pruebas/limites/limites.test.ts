@@ -21,8 +21,8 @@ function nuevaDb(uso: Record<string, number> = {}): DobleDb {
 }
 
 describe('límites del plan', () => {
-  it('el plan base fija 200 productos, 3 usuarios, 1 caja activa y 3 almacenes', () => {
-    expect(PLANES.base).toEqual({ productos: 200, usuarios: 3, cajas: 1, almacenes: 3 });
+  it('el plan base fija 200 productos, 3 usuarios, 1 caja activa, 3 almacenes, 1 mercado y 1 moneda', () => {
+    expect(PLANES.base).toEqual({ productos: 200, usuarios: 3, cajas: 1, almacenes: 3, mercados: 1, monedas: 1 });
   });
 
   it('reserva y cuenta hasta el tope', async () => {

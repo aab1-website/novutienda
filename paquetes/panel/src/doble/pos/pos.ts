@@ -2,11 +2,18 @@ import type { Entrada, NombreCallable, Salida } from '../../api/contrato.js';
 import type {
   AprobacionPos, LineaVenta, Moneda, MovimientoCaja, PagoVentaPos, Recibo, ResultadoCierre, TurnoPos, VentaPos,
 } from '../../api/tipos.js';
-import { MEDIOS_PAGO, MONEDAS } from '../../api/tipos.js';
-import { diferenciaPorMoneda, efectivoEsperado, monedasDelTurno, sumarTotales, TOTALES_VACIOS } from '../../pantallas/pos/arqueo.js';
-import { MONEDA_DE_MERCADO, precioDeVenta } from '../../util/precio.js';
+import { MEDIOS_PAGO } from '../../api/tipos.js';
+import { cotizacionDeMercado, diferenciaPorMoneda, efectivoEsperado, monedasDeCobro, monedasDelTurno, precioDeCobro, sumarTotales, TOTALES_VACIOS } from '../../pantallas/pos/arqueo.js';
 import { aCsv } from '../../util/csv.js';
 import { auditar, detalleDeFaltantes, fallo, fechaLaPaz, iso, recalcular, type Contexto } from '../estado.js';
+
+/**
+ * Debe coincidir con `MAX_SERIES_POR_VENTA` de `@novutienda/pos` (el panel no importa el módulo).
+ * Lo cubre la prueba «tope de unidades con serie por venta» de `src/doble/doble.test.ts`
+ * (101 rechazadas con el mensaje exacto, 100 pasan) junto con `pruebas/pos/venta.test.ts`,
+ * que fija `MAX_SERIES_POR_VENTA` en 100.
+ */
+const TOPE_SERIES_POR_VENTA = 100;
 
 type H<N extends NombreCallable> = (c: Contexto, e: Entrada<N>) => Salida<N> | Promise<Salida<N>>;
 
@@ -112,8 +119,8 @@ export const handlersPos: {
     if (turnoAbierto(c) !== undefined) throw fallo('turno-ya-abierto');
     const apertura: Partial<Record<Moneda, number>> = {};
     for (const [m, v] of Object.entries(e.apertura)) {
-      if (!MONEDAS.includes(m as Moneda)) throw fallo('entrada-invalida', 'moneda desconocida');
-      apertura[m as Moneda] = exigirMonto(v, `apertura.${m}`);
+      if (!c.e.comercial.monedasCaja.includes(m)) throw fallo('entrada-invalida', 'moneda desconocida');
+      apertura[m as Moneda] = exigirMonto(v ?? Number.NaN, `apertura.${m}`);
     }
     if (Object.keys(apertura).length === 0) throw fallo('entrada-invalida', 'apertura necesita al menos una moneda');
     const t: TurnoPos = { turnoId: id, cajaId: 'caja-1', cajeroUid: c.uid, estado: 'abierto', apertura, totales: {}, abiertoEnMs: c.ahora };
@@ -141,9 +148,14 @@ export const handlersPos: {
     if (turno === undefined) throw fallo('sin-turno');
     if (turno.cajeroUid !== c.uid) throw fallo('turno-ajeno');
     const k = e.carrito;
-    if (k.moneda !== 'USD' && k.moneda !== MONEDA_DE_MERCADO[k.mercado]) throw fallo('entrada-invalida', 'La moneda no corresponde a la lista de precios');
+    // D19: en cada mercado declarado se cobra solo en su moneda de venta o su moneda base.
+    const mercado = c.e.comercial.mercados.find((m) => m.id === k.mercado);
+    if (mercado === undefined) throw fallo('entrada-invalida', 'El mercado no está declarado');
+    if (!monedasDeCobro(mercado).includes(k.moneda)) throw fallo('entrada-invalida', 'La moneda no corresponde a la lista de precios');
     if (k.lineas.length === 0) throw fallo('entrada-invalida', 'Carrito vacío');
-    const cot = k.moneda === 'USD' ? null : c.e.cotizaciones[k.mercado];
+    const totalSeries = k.lineas.reduce((n, l) => n + (Array.isArray(l.series) ? l.series.length : 0), 0);
+    if (totalSeries > TOPE_SERIES_POR_VENTA) throw fallo('series-invalidas', `Una venta admite hasta ${TOPE_SERIES_POR_VENTA} unidades con serie`);
+    const cot = k.moneda === mercado.monedaBase && k.moneda !== mercado.monedaVenta ? null : cotizacionDeMercado(c.e.cotizaciones, mercado.id);
     const lineas: LineaVenta[] = [];
     const vistas = new Set<string>();
     for (const l of k.lineas) {
@@ -155,8 +167,7 @@ export const handlersPos: {
       const p = c.e.productos.get(l.productoId);
       if (p === undefined) throw fallo('producto-inexistente');
       if (!p.activo) throw fallo('producto-inactivo');
-      const usd = k.mercado === 'BO' ? p.precioUSD.bo : p.precioUSD.ar;
-      const pv = precioDeVenta(usd, k.mercado, k.moneda, cot);
+      const pv = precioDeCobro(p, mercado, k.moneda, c.e.cotizaciones, c.e.redondeo);
       if (pv.tipo !== 'precio') throw fallo('sin-precio');
       if (l.precioMostrado !== undefined && l.precioMostrado !== pv.centavos) throw fallo('precio-alterado');
       const series = l.series ?? [];
@@ -271,9 +282,16 @@ export const handlersPos: {
     if (a === undefined) throw fallo('aprobacion-inexistente');
     if (a.estado !== 'pendiente') throw fallo('estado', 'La aprobación ya fue resuelta');
     if (a.solicitadoPor === c.uid) throw fallo('autoaprobacion');
-    const n: AprobacionPos = e.decision === 'aprobar' ? { ...a, estado: 'aprobada', aprobadoPor: c.uid, aprobadoRol: c.rol } : { ...a, estado: 'rechazada', aprobadoPor: c.uid, aprobadoRol: c.rol };
+    if (e.motivo !== undefined && e.decision !== 'rechazar') throw fallo('entrada-invalida', 'El motivo solo se admite al rechazar');
+    // Mismo criterio del servidor: sin caracteres de control; vacío o solo espacios = ausente; tope de 200.
+    // eslint-disable-next-line no-control-regex
+    const limpio = e.motivo === undefined ? '' : e.motivo.replace(/[\u0000-\u001f\u007f-\u009f\u200b-\u200d\u2028\u2029\u202a-\u202e\u2066-\u2069\ufeff]/g, '');
+    if (limpio.trim() !== '' && limpio.length > 200) throw fallo('entrada-invalida', 'El motivo admite hasta 200 caracteres');
+    const n: AprobacionPos = e.decision === 'aprobar'
+      ? { ...a, estado: 'aprobada', aprobadoPor: c.uid, aprobadoRol: c.rol }
+      : { ...a, estado: 'rechazada', aprobadoPor: c.uid, aprobadoRol: c.rol, ...(limpio.trim() !== '' ? { motivoRechazo: limpio.trim() } : {}) };
     c.e.aprobaciones.set(a.aprobacionId, n);
-    auditar(c, `pos.aprobacion.${e.decision}`, `aprobaciones/${a.aprobacionId}`);
+    auditar(c, `pos.aprobacion.${e.decision}`, `aprobaciones/${a.aprobacionId}`, limpio.trim() !== '' ? limpio.trim() : undefined);
     return n;
   },
 
@@ -440,24 +458,24 @@ export const handlersPos: {
       .reverse(),
 };
 
-function cerrar(c: Contexto, turnoId: string, contado: Partial<Record<Moneda, number>>, forzado: boolean, motivo?: string): ResultadoCierre {
+function cerrar(c: Contexto, turnoId: string, contado: Partial<Record<string, number>>, forzado: boolean, motivo?: string): ResultadoCierre {
   const t = c.e.turnos.get(exigirUuid(turnoId, 'turnoId'));
   if (t === undefined) throw fallo('sin-turno', 'El turno no existe');
   if (t.estado !== 'abierto') throw fallo('turno-no-abierto');
   if (!forzado && t.cajeroUid !== c.uid) throw fallo('turno-ajeno');
-  const monedas = new Set<Moneda>([...monedasDelTurno(t), ...MONEDAS.filter((m) => contado[m] !== undefined)]);
+  const monedas = new Set<string>([...monedasDelTurno(t, c.e.comercial.monedasCaja), ...Object.keys(contado).filter((m) => contado[m] !== undefined)]);
   for (const m of monedas) {
     const v = contado[m];
     if (v === undefined) throw fallo('conteo-faltante');
     exigirMonto(v, `contado.${m}`);
   }
-  const dif = diferenciaPorMoneda(t, contado);
-  const esperado: Partial<Record<Moneda, number>> = {};
+  const dif = diferenciaPorMoneda(t, contado, c.e.comercial.monedasCaja);
+  const esperado: Partial<Record<string, number>> = {};
   const arqueo: ResultadoCierre['arqueo'] = {};
   for (const m of monedas) {
     const e = efectivoEsperado(t.apertura[m] ?? 0, t.totales[m] ?? TOTALES_VACIOS);
     esperado[m] = e;
-    (arqueo as Partial<Record<Moneda, { esperado: number; contado: number; diferencia: number }>>)[m] = { esperado: e, contado: contado[m] ?? 0, diferencia: (contado[m] ?? 0) - e };
+    (arqueo as Partial<Record<string, { esperado: number; contado: number; diferencia: number }>>)[m] = { esperado: e, contado: contado[m] ?? 0, diferencia: (contado[m] ?? 0) - e };
   }
   const cerrado: TurnoPos = {
     ...t, estado: forzado ? 'cerrado_forzado' : 'cerrado', cerradoEnMs: c.ahora, cerradoPor: c.uid, ...(motivo !== undefined ? { motivoCierre: motivo } : {}),

@@ -1,0 +1,18 @@
+{
+  "decimales3": {
+    "AR": {
+      "falla": "RedondeoInvalido"
+    },
+    "BO": {
+      "falla": "RedondeoInvalido"
+    }
+  },
+  "ninguno": {
+    "AR": {
+      "falla": "RedondeoInvalido"
+    },
+    "BO": {
+      "falla": "RedondeoInvalido"
+    }
+  }
+}

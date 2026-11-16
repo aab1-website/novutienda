@@ -1,4 +1,4 @@
-import type { Mercado, TransaccionIdentidad } from '@novutienda/nucleo';
+import type { ConfiguracionComercial, TransaccionIdentidad } from '@novutienda/nucleo';
 
 /**
  * Plan de salida de stock preparado por Inventarios (solo lecturas). Para el POS es opaco:
@@ -45,8 +45,11 @@ export interface ProductoCatalogo {
   /** Nombre vigente; la venta guarda una copia al momento de vender. */
   readonly nombre: string;
   readonly activo: boolean;
-  /** Precio base en USD por mercado (el precio final lo calcula el POS con la cotización). */
-  readonly preciosUsd: Readonly<Partial<Record<Mercado, number>>>;
+  /**
+   * Precio base por mercado, decimal en la moneda base de ESE mercado (el precio final lo calcula el POS con la
+   * cotización). Clave ausente = «sin precio en ese mercado»; 0 = «a consultar».
+   */
+  readonly preciosBase: Readonly<Record<string, number>>;
   readonly controlaSeries: boolean;
   readonly garantiaMeses?: number;
 }
@@ -56,5 +59,5 @@ export interface ProductoCatalogo {
  * stock: el coordinador lo cablea con la API pública de Inventarios.
  */
 export interface PuertoCatalogo {
-  leerProducto(tx: TransaccionIdentidad, tenantId: string, productoId: string): Promise<ProductoCatalogo | null>;
+  leerProducto(tx: TransaccionIdentidad, tenantId: string, productoId: string, comercial: ConfiguracionComercial): Promise<ProductoCatalogo | null>;
 }

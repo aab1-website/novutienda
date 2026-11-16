@@ -17,6 +17,8 @@ export interface OpcionesEmision {
   readonly ahora?: () => string;
   /** Zona horaria del tenant para la fecha del comprobante y el cálculo de la garantía. */
   readonly zonaHoraria?: string;
+  /** URL pública del logo subido del negocio (lo conecta el coordinador). Si entrega una URL, manda sobre `plantilla.logoUrl`; si es `null` o no hay puerto, queda la plantilla. */
+  readonly logoDelNegocio?: (tenantId: string) => Promise<string | null>;
 }
 
 /** Fecha aaaa-mm-dd de un instante en la zona dada. */
@@ -60,7 +62,7 @@ function lineasDe(d: DatosVentaConfirmadaV1, fecha: string): LineaRecibo[] {
   }));
 }
 
-async function emitirDesdeEvento(tx: TransaccionRecibos, evento: SobreEvento, opciones: OpcionesEmision): Promise<void> {
+async function emitirDesdeEvento(tx: TransaccionRecibos, evento: SobreEvento, opciones: OpcionesEmision, logoSubido: string | null): Promise<void> {
   const d = evento.datos as DatosVentaConfirmadaV1;
   const tenantId = evento.tenantId;
   const reciboId = reciboIdDe(d.ventaId);
@@ -68,7 +70,10 @@ async function emitirDesdeEvento(tx: TransaccionRecibos, evento: SobreEvento, op
   // Red de seguridad: aunque el procesado ya deduplica, un comprobante existente nunca se reemite.
   if ((await tx.leer(ruta)) !== undefined) return;
 
-  const plantilla = plantillaVigente(await tx.leer(rutaPlantilla(tenantId)));
+  const plantillaBase = plantillaVigente(await tx.leer(rutaPlantilla(tenantId)));
+  // El logo subido manda; la dirección escrita en la plantilla queda de respaldo. La copia guardada en el recibo lleva el logo efectivo.
+  const logoUrl = logoSubido ?? plantillaBase.logoUrl;
+  const plantilla = logoUrl === undefined ? plantillaBase : { ...plantillaBase, logoUrl };
   // El número lo asignó el POS dentro de la transacción de la venta: aquí no se numera.
   const numero = d.numeroRecibo;
   // Si la anulación llegó antes que la venta, el recibo nace ANULADO.
@@ -129,11 +134,14 @@ function exigirTipo(evento: SobreEvento, tipo: string): void {
  */
 export function manejarVentaConfirmada(ejecutor: EjecutorRecibos, evento: SobreEvento, opciones: OpcionesEmision = {}): Promise<boolean> {
   exigirTipo(evento, 'venta.confirmada');
-  return consumir(ejecutor, {
-    consumidor: CONSUMIDOR_RECIBOS,
-    evento,
-    manejador: (tx, e) => emitirDesdeEvento(tx, e, opciones),
-  });
+  // El puerto se resuelve ANTES de abrir la transacción; si falla, el error sube (el bus reintenta) y no queda recibo a medias.
+  return (opciones.logoDelNegocio?.(evento.tenantId) ?? Promise.resolve(null)).then((logoSubido) =>
+    consumir(ejecutor, {
+      consumidor: CONSUMIDOR_RECIBOS,
+      evento,
+      manejador: (tx, e) => emitirDesdeEvento(tx, e, opciones, logoSubido),
+    }),
+  );
 }
 
 async function anularDesdeEvento(tx: TransaccionRecibos, evento: SobreEvento, opciones: OpcionesEmision): Promise<void> {

@@ -9,15 +9,16 @@ import { getStorage } from 'firebase-admin/storage';
 import type { CatalogoPuerto, DisparadorSitio, ProcesadorMedios } from '@novutienda/consola';
 import { crearLectorDominios, type LectorDominios } from '../../coordinador/dominios.js';
 import { crearLectoresModulos, type LectorEstadoModulos, type LectorModulos } from '../../coordinador/modulos-activos.js';
+import { crearLectorComercial, type LectorComercial } from '../../coordinador/comercial.js';
 import { crearLectorHojas } from '../../coordinador/lector-hojas.js';
-import { crearCatalogoConsola, almacenCotizacionesDesde, catalogoParaPos, inventariosParaPos } from '../../coordinador/index.js';
+import { crearCatalogoConsola, crearLogoDelNegocio, almacenCotizacionesDesde, catalogoParaPos, inventariosParaPos, type LogoDelNegocio } from '../../coordinador/index.js';
 import {
-  appCheckReal, appCheckSimulado, crearAlmacenMedios, esEntornoDePruebas, crearAuthMin, crearBaseDatos, crearConsultaSubidas, crearEjecutorRecibos, crearGuardarContacto,
+  appCheckReal, appCheckSimulado, crearAlmacenMedios, esEntornoDePruebas, crearAuthMin, crearBaseDatos, crearConsultaSubidas, crearEjecutorRecibos, crearGuardarContacto, crearIndiceInvitaciones, crearLimiteTasa,
   crearLecturaRecibos, crearLectorDisponibilidad, crearProcesadorMedios, recaptchaEnterprise, recaptchaSimulado,
   type BaseDatosFirestore, type Bucket,
 } from '../../conectores/firebase/index.js';
 import type { AlmacenMedios, ConsultaSubidas } from '@novutienda/consola';
-import type { AlmacenCotizaciones, AuthMin, Redondeo } from '@novutienda/nucleo';
+import type { AlmacenCotizaciones, AuthMin, IndiceInvitaciones, LimiteTasa, Redondeo } from '@novutienda/nucleo';
 import type { LectorHojas } from '@novutienda/inventarios';
 import type { DepsPos } from '@novutienda/pos';
 import type { EjecutorRecibos, LecturaRecibos } from '@novutienda/recibos';
@@ -25,7 +26,8 @@ import type { GuardarContacto, LectorDisponibilidad, VerificadorAppCheck, Verifi
 import { exigirBucketPublico, PARAMETROS } from './config.js';
 import { crearDisparadorSitio } from './disparador-sitio.js';
 import { emisorEnlaceEmulador, emisorEnlaceFirmado, type EmisorEnlacePdf } from './enlace-pdf.js';
-import { lectorRedondeo } from './redondeo.js';
+import { MAXIMO_ACTIVACIONES_POR_HORA, MAXIMO_INVITACIONES_POR_HORA, VENTANA_INVITACIONES_MS } from './llamadas/usuarios.js';
+import { lectorRedondeo, lectorRedondeoDe, type LectorRedondeo } from './redondeo.js';
 
 export interface Entorno {
   readonly firestore: Firestore;
@@ -44,6 +46,12 @@ export interface Entorno {
   readonly emisorEnlacePdf: EmisorEnlacePdf;
   /** Lector de .xlsx de la importación de Inventarios (adaptador del coordinador, con topes contra archivos no confiables). */
   readonly lectorHojas: LectorHojas;
+  /** Consultas de invitaciones (`miembros` en estado `invitado`), para `llamadas/usuarios.ts` y la activación. */
+  readonly indiceInvitaciones: IndiceInvitaciones;
+  /** Tope de activaciones por uid y hora (clave `activar:{uid}`). */
+  readonly limiteActivaciones: LimiteTasa;
+  /** Tope de invitaciones y reenvíos por comercio y hora (5). */
+  readonly limiteInvitaciones: LimiteTasa;
   readonly ahora: () => number;
   /** Módulos efectivos del tenant (cache de 60 s por instancia); `undefined` si el tenant no existe o es inválido. */
   readonly modulosDelTenant: LectorModulos;
@@ -51,6 +59,16 @@ export interface Entorno {
   readonly estadoModulosDelTenant: LectorEstadoModulos;
   /** Tenant del host de la petición (`dominios/{host}`, caché de 60 s; `undefined` si no hay mapeo). */
   readonly tenantDelHost: LectorDominios;
+  /**
+   * Mercados y monedas del tenant (`tenants/{t}`, caché de 60 s; `invalidar()` para pruebas). Falla cerrado: tenant inexistente o
+   * documento inválido lanzan `ComercialInvalida`; nunca entrega una configuración por defecto. Firma: `(tenantId: string) => Promise<ConfiguracionComercial>`.
+   */
+  readonly comercialDelTenant: LectorComercial;
+  /** Puerto de Recibos: URL pública del logo subido del negocio (módulo consola), o `null`. Sin `mediosBaseUrl` siempre devuelve `null`. */
+  readonly logoDelNegocio: LogoDelNegocio;
+  /** Política de redondeo efectiva por moneda de venta del tenant (su configuración; `config/redondeo` la sobrescribe si existe). Un cambio del operador tarda hasta 60 s en propagarse. */
+  readonly redondeoDelTenant: LectorRedondeo;
+  /** @deprecated LEGADO, como en main: política BOB/ARS de `config/redondeo`, sin leer `tenants/{t}`. Usar `redondeoDelTenant` (B2 a B4). */
   readonly redondeo: (tenantId: string) => Promise<Redondeo>;
   /** `DepsPos` del tenant, con la política de redondeo de su configuración. */
   depsPos(tenantId: string): Promise<DepsPos>;
@@ -68,13 +86,17 @@ export interface OpcionesEntorno {
   readonly env?: Readonly<Record<string, string | undefined>>;
   readonly emisorEnlacePdf?: EmisorEnlacePdf;
   readonly procesador?: ProcesadorMedios;
+  /** Origen público de los medios (`MEDIOS_BASE_URL`); vacío o ausente: el logo subido no se entrega a Recibos. */
+  readonly mediosBaseUrl?: string;
 }
 
 export function crearEntorno(o: OpcionesEntorno): Entorno {
   const ahora = o.ahora ?? Date.now;
   const env = o.env ?? process.env;
   const db = crearBaseDatos(o.firestore);
-  const redondeo = lectorRedondeo(db, ahora);
+  const comercialDelTenant = crearLectorComercial(o.firestore, ahora);
+  const redondeoDelTenant = lectorRedondeoDe(db, ahora, comercialDelTenant);
+  const redondeo = lectorRedondeo(db, ahora); // LEGADO: como en main (misma fuente y mismos fallos), hasta B2 a B4
   const emulador = env['FUNCTIONS_EMULATOR'] === 'true';
   const lectoresModulos = crearLectoresModulos(o.firestore, ahora);
   return {
@@ -93,13 +115,20 @@ export function crearEntorno(o: OpcionesEntorno): Entorno {
     disparadorSitio: crearDisparadorSitio(o.firestore, ahora),
     emisorEnlacePdf: o.emisorEnlacePdf ?? (emulador ? emisorEnlaceEmulador(o.bucket) : emisorEnlaceFirmado(o.bucket, ahora)),
     lectorHojas: crearLectorHojas(),
+    // La clave es `invitar:{tenantId}` (sin IP ni datos personales): la sal solo separa el espacio de claves, no es secreta.
+    indiceInvitaciones: crearIndiceInvitaciones(o.firestore),
+    limiteInvitaciones: crearLimiteTasa(o.firestore, { maximo: MAXIMO_INVITACIONES_POR_HORA, ventanaMs: VENTANA_INVITACIONES_MS, sal: 'invitaciones-v1' }),
+    limiteActivaciones: crearLimiteTasa(o.firestore, { maximo: MAXIMO_ACTIVACIONES_POR_HORA, ventanaMs: VENTANA_INVITACIONES_MS, sal: 'invitaciones-v1' }),
     ahora,
     modulosDelTenant: lectoresModulos.modulos,
     estadoModulosDelTenant: lectoresModulos.estado,
     tenantDelHost: crearLectorDominios(o.firestore, ahora),
+    comercialDelTenant,
+    logoDelNegocio: crearLogoDelNegocio({ db, modulosDelTenant: lectoresModulos.modulos, baseMedios: o.mediosBaseUrl ?? '', avisar: (m, d) => logger.warn(m, d) }),
+    redondeoDelTenant,
     redondeo,
     depsPos: async (tenantId) => ({
-      db, inventarios: inventariosParaPos, catalogo: catalogoParaPos, redondeo: await redondeo(tenantId), ahora,
+      db, inventarios: inventariosParaPos, catalogo: catalogoParaPos, comercial: await comercialDelTenant(tenantId), redondeo: await redondeoDelTenant(tenantId), ahora,
     }),
     leerDisponibilidad: (tenantId) => crearLectorDisponibilidad(o.firestore, tenantId),
     guardarContacto: (tenantId) => crearGuardarContacto(o.firestore, tenantId),
@@ -123,7 +152,7 @@ export function entorno(): Entorno {
     const nombrePublico = exigirBucketPublico(PARAMETROS.mediosBucketPublico.value(), bucket.name, esEntornoDePruebas(process.env));
     const bucketPublico = nombrePublico === '' ? bucket : almacenamiento.bucket(nombrePublico);
     const procesador = crearProcesadorMedios(bucket, env, esEntornoDePruebas(process.env) ? undefined : logger);
-    unico = crearEntorno({ firestore: getFirestore(), auth: getAuth(), bucket, bucketPublico, env, procesador });
+    unico = crearEntorno({ firestore: getFirestore(), auth: getAuth(), bucket, bucketPublico, env, procesador, mediosBaseUrl: PARAMETROS.mediosBaseUrl.value() });
   }
   return unico;
 }

@@ -1,7 +1,8 @@
 import type { JSX } from 'preact';
 import { useEffect, useRef, useState } from 'preact/hooks';
 import { nuevoId } from '../../api/cliente.js';
-import type { CotizacionesVigentes, ProductoPanel } from '../../api/tipos.js';
+import { ErrorApi } from '../../api/errores.js';
+import type { CotizacionVista, CotizacionesVigentes, ProductoPanel, VistaComercial } from '../../api/tipos.js';
 import { useAvisos } from '../../ui/avisos.js';
 import { Alerta, Boton, Campo, Casilla, Dato } from '../../ui/comun.js';
 import { useApp } from '../../ui/contexto.js';
@@ -10,21 +11,30 @@ import { enfocarPrimerError } from '../../ui/formulario.js';
 import { useBorrador, useCambiosSinGuardar, useGuardia } from '../../ui/guardia.js';
 import { useAccion } from '../../ui/hooks.js';
 import { formatearMonto, textoACentavos } from '../../util/dinero.js';
-import { precioDeVenta } from '../../util/precio.js';
-import { MERCADOS_PRECIO } from './nombres.js';
+import { precioDeVentaMercado, reglasDeclaradasActuales } from '../../util/precio.js';
+import { identificadorParaAlta } from './identificador.js';
+import { mercadosDePrecio, nombreMoneda, type MercadoPrecio } from './nombres.js';
 import {
-  aEntrada, cambiosDeEdicion, clavePrecio, errorDeServidor, formInicial, identificadorSugerido, listaEnTexto, mismoForm, revisarProducto, TOPES_PRODUCTO,
+  aEntrada, avisoDeSku, cambiosDeEdicion, clavePrecio, errorDeServidor, errorDeSku, esProductoYaExiste, formInicial, leerBorrador, listaEnTexto, mismoForm, revisarProducto, TOPES_PRODUCTO,
   type ErroresProducto, type FormProducto,
 } from './producto-revision.js';
 import './inventario.css';
 
-function Precio({ usd, m, cot }: { usd: number; m: (typeof MERCADOS_PRECIO)[number]; cot: CotizacionesVigentes }): JSX.Element {
-  const p = precioDeVenta(usd, m.mercado, m.moneda, cot[m.mercado]);
-  return <span>{p.tipo === 'precio' ? formatearMonto(p.centavos, p.moneda) : p.tipo === 'sin_precio' ? 'A consultar' : 'Sin cotización'}</span>;
+/**
+ * Precio de venta de hoy en un mercado declarado. D21: sin la regla de redondeo del comercio no se calcula ni se muestra
+ * ningún precio (no hay respaldo fijo).
+ */
+function Precio({ base, m, cot, mercados }: { base: number; m: MercadoPrecio; cot: CotizacionesVigentes; mercados: VistaComercial['mercados'] }): JSX.Element {
+  const declarado = mercados.find((x) => x.id === m.id);
+  if (declarado === undefined) return <span>—</span>;
+  const cotizacion = (cot as Readonly<Record<string, CotizacionVista | null | undefined>>)[m.id] ?? null;
+  const p = precioDeVentaMercado(base, declarado, cotizacion, reglasDeclaradasActuales());
+  return <span>{p.tipo === 'precio' ? formatearMonto(p.centavos, p.moneda) : p.tipo === 'sin_precio' ? 'A consultar' : p.tipo === 'sin_cotizacion' ? 'Sin cotización' : 'Sin regla de redondeo'}</span>;
 }
 
-function margen(precio: number | null, costo: number | null): string {
-  if (precio === null || costo === null || precio <= 0) return '—';
+/** Margen sobre el precio base; solo si el costo y el precio están en la misma moneda (si no, no se mezclan). */
+function margen(precio: number | null, costo: number | null, monedaPrecio: string, monedaCosto: string | undefined): string {
+  if (precio === null || costo === null || precio <= 0 || monedaCosto === undefined || monedaCosto !== monedaPrecio) return '—';
   return `${(((precio - costo) / precio) * 100).toFixed(1).replace('.', ',')} %`;
 }
 
@@ -32,7 +42,9 @@ export interface PropsProductoPanel {
   /** `null` = producto nuevo. */
   readonly producto: ProductoPanel | null;
   readonly cot: CotizacionesVigentes;
-  /** Identificadores y SKU que ya existen, para avisar antes de enviar. */
+  /** Mercados y monedas declarados por el comercio (nombre, moneda de venta y base, moneda de costo si es administrador). */
+  readonly comercial: VistaComercial;
+  /** Claves y SKU que ya existen: las claves solo sirven para no repetir la automática; la persona no las ve. */
   readonly existentes: readonly { readonly id: string; readonly sku: string }[];
   /** Cierra el panel; `guardado` dice si se guardó algo (la lista se vuelve a leer). */
   readonly alCerrar: (guardado: boolean) => void;
@@ -40,7 +52,7 @@ export interface PropsProductoPanel {
 }
 
 /** Alta y edición de un producto en el panel lateral. «Guardar» nunca se apaga: revisa y marca el error junto al campo. */
-export function ProductoPanelLateral({ producto, cot, existentes, alCerrar, alCerrarEnfocar }: PropsProductoPanel): JSX.Element {
+export function ProductoPanelLateral({ producto, cot, comercial, existentes, alCerrar, alCerrarEnfocar }: PropsProductoPanel): JSX.Element {
   const { api, usuario } = useApp();
   const avisos = useAvisos();
   const { confirmarSalida } = useGuardia();
@@ -48,12 +60,18 @@ export function ProductoPanelLateral({ producto, cot, existentes, alCerrar, alCe
   const esAdm = usuario.rol === 'adm';
   const nuevo = producto === null;
   const clave = `inventarios.producto.${producto?.id ?? 'nuevo'}`;
-  const inicial = formInicial(producto);
+  const mercados = mercadosDePrecio(comercial.mercados);
+  const monedaCosto = comercial.monedaCosto;
+  const sinPrecio = (producto?.sinPrecio ?? []).filter((id) => mercados.some((m) => m.id === id));
+  const inicial = formInicial(producto, mercados);
   const borrador = useBorrador<FormProducto | null>(clave, null);
-  const f = borrador.valor ?? inicial;
-  const sucio = borrador.valor !== null && !mismoForm(borrador.valor, inicial);
+  const guardado = leerBorrador(borrador.valor);
+  const f = guardado ?? inicial;
+  const sucio = guardado !== null && !mismoForm(guardado, inicial);
   const { marcarGuardado } = useCambiosSinGuardar(sucio, [clave]);
   const [intento, setIntento] = useState(false);
+  /** La persona ya salió del campo SKU: el aviso de SKU repetido aparece sin esperar a «Guardar». */
+  const [skuTocado, setSkuTocado] = useState(false);
   const [delServidor, setDelServidor] = useState<ErroresProducto>({});
   const [confirmando, setConfirmando] = useState(false);
   const [pideFoco, setPideFoco] = useState(0);
@@ -69,9 +87,14 @@ export function ProductoPanelLateral({ producto, cot, existentes, alCerrar, alCe
     return id;
   };
 
-  const ctx = { nuevo, existentes: nuevo ? existentes : [] };
-  const errores: ErroresProducto = { ...(intento ? revisarProducto(f, ctx) : {}), ...delServidor };
-  const edicion = producto === null ? null : cambiosDeEdicion(f, producto, esAdm);
+  const ctx = {
+    nuevo, existentes: nuevo ? existentes : [], mercados, monedaCosto,
+    sinPrecio: mercados.filter((m) => sinPrecio.includes(m.id)).map((m) => m.clave),
+  };
+  const errorSkuAlSalir = nuevo && skuTocado ? errorDeSku(f.sku, existentes) : null;
+  const errores: ErroresProducto = { ...(errorSkuAlSalir !== null ? { sku: errorSkuAlSalir } : {}), ...(intento ? revisarProducto(f, ctx) : {}), ...delServidor };
+  const avisoSku = nuevo && (skuTocado || intento) ? avisoDeSku(f.sku, existentes) : null;
+  const edicion = producto === null ? null : cambiosDeEdicion(f, producto, esAdm, mercados);
 
   useEffect(() => {
     if (pideFoco > 0 && cuerpo.current !== null) enfocarPrimerError(cuerpo.current);
@@ -80,10 +103,6 @@ export function ProductoPanelLateral({ producto, cot, existentes, alCerrar, alCe
   const poner = (c: Partial<FormProducto>): void => {
     setDelServidor({});
     borrador.poner({ ...f, ...c });
-  };
-  const ponerNombre = (v: string): void => {
-    const ids = new Set(existentes.map((x) => x.id));
-    poner({ nombre: v, ...(nuevo && !f.idEditado ? { id: identificadorSugerido(v, ids) } : {}) });
   };
 
   const cerrar = (): void => {
@@ -95,15 +114,29 @@ export function ProductoPanelLateral({ producto, cot, existentes, alCerrar, alCe
     void accion.ejecutar(async () => {
       try {
         if (producto === null) {
-          const producto2 = aEntrada(f);
-          if (producto2 === null) return;
-          await api.llamar('crearProducto', { operacionId: idDeOperacion('crear', JSON.stringify(producto2)), producto: producto2 });
+          // La clave interna es automática y la persona no la ve. Si otro producto (que este panel no tenía cargado) ya la usa, el
+          // servidor lo dice y se prueba la siguiente, hasta 5 veces. Un reintento por red con los mismos datos conserva el `operacionId`.
+          const ocupados = new Set(existentes.map((x) => x.id));
+          let creado = false;
+          for (let n = 0; n < 5 && !creado; n += 1) {
+            const clave = identificadorParaAlta(f.nombre.trim(), f.sku.trim(), ocupados);
+            const entrada = aEntrada(f, mercados, clave);
+            if (entrada === null) return;
+            try {
+              await api.llamar('crearProducto', { operacionId: idDeOperacion(`crear:${clave}`, JSON.stringify(entrada)), producto: entrada });
+              creado = true;
+            } catch (e) {
+              if (!esProductoYaExiste(e)) throw e;
+              ocupados.add(clave);
+            }
+          }
+          if (!creado) throw new ErrorApi('failed-precondition', 'No se pudo crear el producto. Intente de nuevo.', { codigo: 'estado-invalido' });
         } else if (edicion !== null) {
           // Una sola llamada con todo lo cambiado (datos y precio): atómica y con un solo evento.
           await api.llamar('actualizarProducto', { operacionId: idDeOperacion('actualizar', JSON.stringify(edicion.cambios)), productoId: producto.id, cambios: edicion.cambios });
         }
       } catch (e) {
-        const deCampo = errorDeServidor(e);
+        const deCampo = errorDeServidor(e, mercados);
         if (deCampo === null) throw e;
         setConfirmando(false);
         setDelServidor({ [deCampo.campo]: deCampo.texto });
@@ -141,8 +174,13 @@ export function ProductoPanelLateral({ producto, cot, existentes, alCerrar, alCe
   };
 
   const soloLectura = !esAdm;
-  const precios = MERCADOS_PRECIO.map((m) => ({ m, centavos: textoACentavos(f.precios[m.clave] ?? '') }));
+  const precios = mercados.map((m) => ({ m, centavos: textoACentavos(f.precios[m.clave] ?? '') }));
   const costo = f.costo.trim() === '' ? null : textoACentavos(f.costo);
+  const unico = mercados.length === 1;
+  const bases = [...new Set(mercados.map((m) => m.monedaBase))];
+  const leyendaPrecios = bases.length === 1 ? `Precio base en ${nombreMoneda(bases[0] as string)}${unico ? '' : ' por mercado'}` : 'Precio base por mercado';
+  const ayudaPrecios = (unico ? 'Obligatorio. ' : 'Obligatorio en cada mercado. ') + (comercial.mercados.some((x) => x.tieneTipoCambio)
+    ? 'El precio en moneda local se calcula con la cotización del día.' : 'El precio de venta se calcula con la regla de redondeo del comercio.');
 
   return (
     <Dialogo
@@ -162,23 +200,19 @@ export function ProductoPanelLateral({ producto, cot, existentes, alCerrar, alCe
       <div ref={cuerpo} class="inv-cuerpo">
         {soloLectura && <Alerta tipo="info">Solo el administrador edita productos y precios. Usted puede consultar los datos.</Alerta>}
         <form class="formulario inv-formulario" onSubmit={(e) => { e.preventDefault(); guardar(); }} noValidate>
-          <Campo etiqueta="Nombre" valor={f.nombre} tope={TOPES_PRODUCTO.nombre} requerido deshabilitado={soloLectura} error={errores['nombre']} onInput={ponerNombre} />
-          {nuevo && (
-            <Campo
-              etiqueta="Identificador" valor={f.id} tope={TOPES_PRODUCTO.id} requerido error={errores['id']}
-              ayuda="Código interno, se genera desde el nombre. Minúsculas, números y guiones. No se puede cambiar después."
-              onInput={(v) => poner({ id: v, idEditado: true })}
-            />
-          )}
+          <Campo etiqueta="Nombre" valor={f.nombre} tope={TOPES_PRODUCTO.nombre} requerido deshabilitado={soloLectura} error={errores['nombre']} onInput={(v) => poner({ nombre: v })} />
           <Campo etiqueta="Categoría" valor={f.categoria} tope={TOPES_PRODUCTO.categoria} requerido deshabilitado={soloLectura} error={errores['categoria']} onInput={(v) => poner({ categoria: v })} />
           <Campo
             etiqueta="Marca" valor={f.marca} tope={TOPES_PRODUCTO.marca} deshabilitado={soloLectura} error={errores['marca']}
             ayuda={nuevo ? 'Opcional.' : 'Opcional. Si la deja vacía, se quita la marca del producto.'} onInput={(v) => poner({ marca: v })}
           />
-          <Campo
-            etiqueta="SKU" valor={f.sku} tope={TOPES_PRODUCTO.sku} requerido={nuevo} deshabilitado={!nuevo || soloLectura} error={errores['sku']}
-            ayuda={nuevo ? 'El código con que identifica el producto en su negocio. No se puede cambiar después.' : 'El SKU no se edita.'} onInput={(v) => poner({ sku: v })}
-          />
+          <div onFocusOut={() => setSkuTocado(true)}>
+            <Campo
+              etiqueta="SKU" valor={f.sku} tope={TOPES_PRODUCTO.sku} requerido={nuevo} deshabilitado={!nuevo || soloLectura} error={errores['sku']}
+              ayuda={nuevo ? 'El código con que identifica el producto en su negocio. No se puede cambiar después.' : 'El SKU no se edita.'} onInput={(v) => poner({ sku: v })}
+            />
+            {avisoSku !== null && errores['sku'] === undefined && <p class="ayuda" role="status" data-prueba="aviso-sku-parecido">{avisoSku}</p>}
+          </div>
           <Campo
             etiqueta="Garantía (meses)" valor={f.garantia} inputMode="numeric" deshabilitado={soloLectura} error={errores['garantia']}
             ayuda="Opcional, de 1 a 120. Vacía = sin garantía registrada." onInput={(v) => poner({ garantia: v })}
@@ -205,13 +239,14 @@ export function ProductoPanelLateral({ producto, cot, existentes, alCerrar, alCe
           )}
           {!f.activo && !nuevo && producto.activo && <p class="ayuda" data-prueba="aviso-desactivar">Al desactivarlo, deja de venderse en caja y sale del sitio en la siguiente publicación. El stock no se pierde.</p>}
           <fieldset class="inv-bloque">
-            <legend>Precio base en dólares por mercado</legend>
-            <p class="ayuda">Obligatorio en cada mercado. El precio en moneda local se calcula con la cotización del día.</p>
+            <legend>{leyendaPrecios}</legend>
+            <p class="ayuda">{ayudaPrecios}</p>
             <div class="cuadricula">
               {precios.map(({ m, centavos }) => (
                 <div key={m.clave}>
-                  <Campo etiqueta={`${m.nombre} (USD)`} valor={f.precios[m.clave] ?? ''} inputMode="decimal" requerido deshabilitado={soloLectura} error={errores[clavePrecio(m.clave)]} onInput={(v) => poner({ precios: { ...f.precios, [m.clave]: v } })} />
-                  <p class="texto-suave" data-prueba={`precio-${m.clave}`}>Hoy: {centavos !== null ? <Precio usd={centavos} m={m} cot={cot} /> : '—'}</p>
+                  <Campo etiqueta={unico ? `Precio base (${m.monedaBase})` : `${m.nombre} (${m.monedaBase})`} valor={f.precios[m.clave] ?? ''} inputMode="decimal" requerido={nuevo || !sinPrecio.includes(m.id)} deshabilitado={soloLectura} error={errores[clavePrecio(m.clave)]} onInput={(v) => poner({ precios: { ...f.precios, [m.clave]: v } })} />
+                  {sinPrecio.includes(m.id) && <p class="ayuda" data-prueba={`sin-precio-${m.clave}`}><strong>Sin precio</strong>{unico ? '' : ` en ${m.nombre}`}: no se vende ni se publica hasta ponerle uno.</p>}
+                  <p class="texto-suave" data-prueba={`precio-${m.clave}`}>Hoy: {centavos !== null ? <Precio base={centavos} m={m} cot={cot} mercados={comercial.mercados} /> : '—'}</p>
                 </div>
               ))}
             </div>
@@ -219,9 +254,9 @@ export function ProductoPanelLateral({ producto, cot, existentes, alCerrar, alCe
           {esAdm && (
             <fieldset class="inv-bloque">
               <legend>Costo y margen (solo administrador)</legend>
-              <Campo etiqueta="Costo (USD)" valor={f.costo} inputMode="decimal" error={errores['costo']} ayuda="Opcional. Si lo deja vacío, se quita el costo del producto." onInput={(v) => poner({ costo: v })} />
+              <Campo etiqueta={monedaCosto === undefined ? 'Costo' : `Costo (${monedaCosto})`} valor={f.costo} inputMode="decimal" error={errores['costo']} ayuda="Opcional. Si lo deja vacío, se quita el costo del producto." onInput={(v) => poner({ costo: v })} />
               <dl class="datos">
-                {precios.map(({ m, centavos }) => <Dato key={m.clave} etiqueta={`Margen ${m.nombre}`}>{margen(centavos, costo)}</Dato>)}
+                {precios.map(({ m, centavos }) => <Dato key={m.clave} etiqueta={unico ? 'Margen' : `Margen ${m.nombre}`}>{margen(centavos, costo, m.monedaBase, monedaCosto)}</Dato>)}
               </dl>
             </fieldset>
           )}

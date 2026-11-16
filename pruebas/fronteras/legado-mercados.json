@@ -1,0 +1,37 @@
+{
+  "nota": "Archivos de producción fuera de paquetes/nucleo/ que importan cada símbolo legado de tipo de cambio y tenant (todo lo @deprecated del núcleo más una lista explícita). Solo baja; llega a cero al cerrar el plan (plano §6.10).",
+  "simbolos": {
+    "COMERCIAL_LEGADO_TRES_MONEDAS": [],
+    "MERCADOS": [
+      "paquetes/website/src/lib/cotizacion-cliente.ts"
+    ],
+    "MONEDAS": [],
+    "MONEDA_DE": [
+      "paquetes/website/src/lib/mercado.ts"
+    ],
+    "PAR_DE": [
+      "paquetes/website/src/lib/cotizacion-cliente.ts"
+    ],
+    "ZONA_DE": [],
+    "ZONA_HORARIA": [],
+    "actualizarMercado": [],
+    "cargarManual": [],
+    "comercialLegado": [],
+    "decidirCotizacion": [],
+    "esMercado": [
+      "paquetes/website/src/lib/mercado.ts"
+    ],
+    "escribirCotizacion": [],
+    "leerCotizacion": [
+      "paquetes/website/src/api/cotizacion.ts"
+    ],
+    "manejarCotizacion": [
+      "paquetes/website/src/api/cotizacion.ts"
+    ],
+    "precioFinal": [
+      "paquetes/consola/src/tablero.ts",
+      "paquetes/website/src/lib/precio-vista.ts",
+      "plataforma/funciones/servidor/http/novuchat.ts"
+    ]
+  }
+}

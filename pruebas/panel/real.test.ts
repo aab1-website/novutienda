@@ -1,11 +1,23 @@
 // Conformidad de la traducción del panel (`api/real.ts`) con las tablas de acciones REALES de las Cloud Functions
 // (plataforma/funciones/servidor/llamadas): toda acción que el panel invoca existe, con los mismos roles.
 import { describe, expect, it } from 'vitest';
-import type { CopiaCotizacion } from '@novutienda/nucleo';
-import { preciosDelDia } from '@novutienda/consola';
-import { ErrorApi, mensajeDeError, NOMBRES_CALLABLE, REDONDEO, ROLES_ACCION, ROLES_CALLABLE, TRADUCCION, precioDeVenta, usd, type NombreCallable } from '@novutienda/panel';
+import { COMERCIAL_LEGADO_TRES_MONEDAS, type CopiaCotizacion, type RedondeoPorMoneda } from '@novutienda/nucleo';
+import { preciosDelDiaDe } from '@novutienda/consola';
+import { ErrorApi, mensajeDeError, NOMBRES_CALLABLE, ROLES_ACCION, ROLES_CALLABLE, TRADUCCION, precioDeVentaMercado, restablecerRedondeo, usd, type MercadoDeclarado, type NombreCallable } from '@novutienda/panel';
 import { tablasCompuestas } from '../funciones/tablas.js';
-import { REDONDEO_POR_DEFECTO } from '../../plataforma/funciones/servidor/redondeo.js';
+
+// Reglas del comercio de tres monedas de referencia, tal como las devuelve el servidor.
+const REDONDEO: RedondeoPorMoneda = {
+  BOB: { tipo: 'decimales', decimales: 2, modo: 'cercano' },
+  ARS: { tipo: 'multiplo', multiplo: 100, modo: 'cercano' },
+};
+const declarado = (id: 'BO' | 'AR'): MercadoDeclarado => {
+  const m = COMERCIAL_LEGADO_TRES_MONEDAS.mercados.find((x) => x.id === id);
+  if (m === undefined) throw new Error('mercado de referencia ausente');
+  return { id: m.id, nombre: m.nombre, monedaVenta: m.monedaVenta, monedaBase: m.monedaBase, tieneTipoCambio: m.tipoCambio != null };
+};
+const MBO = declarado('BO');
+const MAR = declarado('AR');
 
 // Los roles salen de las tablas compuestas (implementaciones de los bordes + registro, como en index.ts; el callable `consola` lleva las de usuarios).
 const SERVIDOR: Readonly<Record<string, Readonly<Record<string, { readonly roles: readonly string[]; readonly propietario: boolean }>>>> = tablasCompuestas();
@@ -87,23 +99,20 @@ describe('unidades', () => {
 });
 
 describe('redondeo: el panel calcula con la misma política que el servidor', () => {
-  it('la política del panel es la del servidor por omisión', () => {
-    expect(REDONDEO).toEqual(REDONDEO_POR_DEFECTO);
-  });
-  it('precioDeVenta del panel = consola.preciosDelDia (misma función y misma política)', () => {
-    const copia = (par: 'BOB/USD' | 'ARS/USD', valor: number, fuente: string): CopiaCotizacion => ({ cotizacionId: 'x', par, valor, fecha: '2026-11-04', fuente, estado: 'vigente' }) as unknown as CopiaCotizacion;
+  it('precioDeVentaMercado del panel = consola.preciosDelDiaDe (misma función y misma política)', () => {
+    const copia = (par: string, valor: number, fuente: string): CopiaCotizacion<string> => ({ cotizacionId: 'x', par, valor, fecha: '2026-11-04', fuente, estado: 'vigente' }) as unknown as CopiaCotizacion<string>;
     const cotBo = copia('BOB/USD', 6.96, 'BCB');
     const cotAr = copia('ARS/USD', 1031.37, 'BNA');
     for (const centavos of [1, 99, 800, 1250, 1999, 4500, 18000, 123457]) {
-      const servidor = preciosDelDia({ bo: centavos / 100, ar: centavos / 100 }, { BO: cotBo, AR: cotAr }, REDONDEO_POR_DEFECTO);
-      const bo = precioDeVenta(centavos, 'BO', 'BOB', { cotizacionId: 'x', par: 'BOB/USD', valor: 6.96, fecha: '2026-11-04', fuente: 'BCB', estado: 'vigente' });
-      const ar = precioDeVenta(centavos, 'AR', 'ARS', { cotizacionId: 'x', par: 'ARS/USD', valor: 1031.37, fecha: '2026-11-04', fuente: 'BNA', estado: 'vigente' });
-      for (const [panel, srv] of [[bo, servidor.BO], [ar, servidor.AR]] as const) {
-        if (srv.tipo === 'precio') expect(panel).toMatchObject({ tipo: 'precio', centavos: srv.centavos });
+      const servidor = preciosDelDiaDe({ bo: centavos / 100, ar: centavos / 100 }, COMERCIAL_LEGADO_TRES_MONEDAS, { BO: cotBo, AR: cotAr }, REDONDEO);
+      const bo = precioDeVentaMercado(centavos, MBO, { par: cotBo.par, valor: cotBo.valor }, REDONDEO);
+      const ar = precioDeVentaMercado(centavos, MAR, { par: cotAr.par, valor: cotAr.valor }, REDONDEO);
+      for (const [panel, srv] of [[bo, servidor['BO']], [ar, servidor['AR']]] as const) {
+        if (srv?.tipo === 'precio') expect(panel).toMatchObject({ tipo: 'precio', centavos: srv.centavos });
         else expect(panel.tipo === 'precio').toBe(false);
       }
       // ARS: múltiplo de 100 pesos (10 000 centavos).
-      if (servidor.AR.tipo === 'precio') expect(servidor.AR.centavos % 10_000).toBe(0);
+      if (servidor['AR']?.tipo === 'precio') expect(servidor['AR'].centavos % 10_000).toBe(0);
     }
   });
 });
@@ -174,22 +183,38 @@ describe('redondeo que llega del servidor (pos.cotizaciones)', () => {
   const cot = { cotizacionId: 'x', par: 'ARS/USD' as const, valor: 1000, fecha: '2026-11-04', fuente: 'BNA', estado: 'vigente' as const };
   const BOB = { tipo: 'decimales', decimales: 2, modo: 'cercano' };
   const t = TRADUCCION.cotizacionesVigentes as unknown as { ejecutar(c: unknown, e: unknown): Promise<{ AR: unknown; BO: unknown }> };
-  const respuesta = (redondeo: unknown) => ({
-    rol: 'caj' as const, esperar: (): Promise<void> => Promise.resolve(),
+  const respuesta = (redondeo: unknown, vigente = true) => ({
+    rol: 'caj' as const, esperar: (): Promise<void> => Promise.resolve(), sesionVigente: () => vigente,
     llamar: (): Promise<unknown> => Promise.resolve({ cotizaciones: { BO: null, AR: cot }, redondeo }),
   });
-  it('la traducción adopta el redondeo del servidor y precioDeVenta lo usa; una forma inválida se ignora', async () => {
+  it('la traducción adopta el redondeo del servidor y precioDeVentaMercado lo usa; una forma inválida se ignora', async () => {
     // 10,49 USD * 1000 = 10 490 ARS: múltiplo de 100 → 10 500; múltiplo de 1000 → 10 000.
     await t.ejecutar(respuesta({ BOB, ARS: { tipo: 'multiplo', multiplo: 100, modo: 'cercano' } }), {});
-    expect(precioDeVenta(1049, 'AR', 'ARS', cot)).toMatchObject({ centavos: 1_050_000 });
+    expect(precioDeVentaMercado(1049, MAR, cot)).toMatchObject({ centavos: 1_050_000 });
     expect(await t.ejecutar(respuesta({ BOB, ARS: { tipo: 'multiplo', multiplo: 1000, modo: 'cercano' } }), {})).toMatchObject({ BO: null, AR: { valor: 1000 } });
-    expect(precioDeVenta(1049, 'AR', 'ARS', cot)).toMatchObject({ centavos: 1_000_000 });
+    expect(precioDeVentaMercado(1049, MAR, cot)).toMatchObject({ centavos: 1_000_000 });
+    // Una forma inválida no deja reglas: sin regla no hay precio (D21), nunca un respaldo.
     await t.ejecutar(respuesta({ cualquier: 'cosa' }), {});
-    await t.ejecutar(respuesta(undefined), {});
-    expect(precioDeVenta(1049, 'AR', 'ARS', cot)).toMatchObject({ centavos: 1_000_000 });
-    // Se deja el respaldo vigente para el resto de la suite.
+    expect(precioDeVentaMercado(1049, MAR, cot)).toEqual({ tipo: 'sin_redondeo' });
+    // Sin `redondeo` en la respuesta no quedan las reglas de la sesión anterior.
     await t.ejecutar(respuesta(REDONDEO), {});
-    expect(precioDeVenta(1049, 'AR', 'ARS', cot)).toMatchObject({ centavos: 1_050_000 });
+    expect(precioDeVentaMercado(1049, MAR, cot)).toMatchObject({ centavos: 1_050_000 });
+    await t.ejecutar(respuesta(undefined), {});
+    expect(precioDeVentaMercado(1049, MAR, cot)).toEqual({ tipo: 'sin_redondeo' });
+    restablecerRedondeo();
+  });
+});
+
+describe('redondeo de una sesión que ya no es la vigente', () => {
+  it('una respuesta tardía de otra sesión no fija las reglas del comercio anterior', async () => {
+    const t = TRADUCCION.cotizacionesVigentes as unknown as { ejecutar(c: unknown, e: unknown): Promise<unknown> };
+    const cot = { cotizacionId: 'x', par: 'ARS/USD' as const, valor: 1000, fecha: '2026-11-04', fuente: 'BNA', estado: 'vigente' as const };
+    const llamar = (redondeo: unknown) => () => Promise.resolve({ cotizaciones: { BO: null, AR: cot }, redondeo });
+    const BOB = { tipo: 'decimales', decimales: 2, modo: 'cercano' };
+    const base = { rol: 'caj' as const, esperar: (): Promise<void> => Promise.resolve() };
+    await t.ejecutar({ ...base, sesionVigente: () => true, llamar: llamar(REDONDEO) }, {});
+    await t.ejecutar({ ...base, sesionVigente: () => false, llamar: llamar({ BOB, ARS: { tipo: 'multiplo', multiplo: 1000, modo: 'cercano' } }) }, {});
+    expect(precioDeVentaMercado(1049, MAR, cot)).toMatchObject({ centavos: 1_050_000 });
   });
 });
 
@@ -216,6 +241,19 @@ describe('existencias ocultas: el panel distingue «oculto» (null) de «no cont
     expect(oculto).toMatchObject({ stockTotal: null, bajoMinimo: null, disponible: null, existencias: { tienda: null, 'deposito-1': 4, 'deposito-2': 0 } });
     expect(cero).toMatchObject({ stockTotal: 0, bajoMinimo: true, disponible: false, existencias: { tienda: 0 } });
     expect(servicio && 'stockTotal' in servicio).toBe(false);
+  });
+
+  it('listarProductos: copia sinPrecio del servidor y lo omite si no llega o no es una lista', async () => {
+    const r = (await ejecutar('listarProductos', {
+      productos: [
+        { id: 'a', ...base, existencias: {}, sinPrecio: ['BO', 7, 'AR'] },
+        { id: 'b', ...base, existencias: {}, sinPrecio: 'BO' },
+        { id: 'c', ...base, existencias: {} },
+      ],
+    })) as { id: string; sinPrecio?: string[] }[];
+    expect(r[0]?.sinPrecio).toEqual(['BO', 'AR']);
+    expect(r[1] && 'sinPrecio' in r[1]).toBe(false);
+    expect(r[2] && 'sinPrecio' in r[2]).toBe(false);
   });
 
   it('sin marca en la respuesta, la lista no la trae', async () => {
@@ -268,5 +306,37 @@ describe('buscarUsuarioPorCorreo y exportarVentasCsv', () => {
     expect(d.hasta - d.desde).toBeLessThanOrEqual(366 * 86_400_000);
     expect([...ROLES_CALLABLE.buscarUsuarioPorCorreo]).toEqual(['adm']);
     expect([...ROLES_CALLABLE.exportarVentasCsv].sort()).toEqual(['adm', 'sup']);
+  });
+});
+
+describe('configuracionComercial (Central, solo lectura)', () => {
+  const vista = { mercados: [{ id: 'BO', nombre: 'Bolivia', monedaVenta: 'BOB', monedaBase: 'USD', tieneTipoCambio: true }], monedasCaja: ['BOB', 'USD'] };
+  const ejecutar = (llamar: (modulo: string, accion: string, datos?: object) => Promise<unknown>): Promise<unknown> =>
+    (TRADUCCION.configuracionComercial as unknown as { ejecutar(c: unknown, e: unknown): Promise<unknown> }).ejecutar({ rol: 'caj', esperar: (): Promise<void> => Promise.resolve(), llamar }, {});
+
+  it('llama a consola.configuracionComercial sin datos (nunca un tenant) y entrega la vista tipada', async () => {
+    const enviadas: unknown[] = [];
+    const r = await ejecutar((modulo, accion, datos) => {
+      enviadas.push({ modulo, accion, datos });
+      return Promise.resolve(vista);
+    });
+    expect(r).toEqual(vista);
+    expect(enviadas).toEqual([{ modulo: 'consola', accion: 'configuracionComercial', datos: {} }]);
+  });
+  it('descarta lo que no cumple la forma en vez de inventarlo', async () => {
+    expect(await ejecutar(() => Promise.resolve({ mercados: 'x', monedasCaja: [1, 'BOB'] }))).toEqual({ mercados: [], monedasCaja: ['BOB'] });
+  });
+  it('descarta sin lanzar los mercados null, sin id o con tipo equivocado', async () => {
+    const bueno = vista.mercados[0];
+    const r = await ejecutar(() => Promise.resolve({ mercados: [null, { ...bueno, id: undefined }, { ...bueno, tieneTipoCambio: 'si' }, { ...bueno, nombre: 3 }, 'x', bueno], monedasCaja: [] }));
+    expect(r).toEqual({ mercados: [bueno], monedasCaja: [] });
+  });
+  it('copia la moneda de costo (solo el código) y no inventa una si falta o no es texto', async () => {
+    const bueno = vista.mercados[0];
+    expect(await ejecutar(() => Promise.resolve({ mercados: [bueno], monedasCaja: ['BOB'], monedaCosto: 'USD' }))).toEqual({ mercados: [bueno], monedasCaja: ['BOB'], monedaCosto: 'USD' });
+    expect(await ejecutar(() => Promise.resolve({ mercados: [bueno], monedasCaja: ['BOB'], monedaCosto: 5 }))).toEqual({ mercados: [bueno], monedasCaja: ['BOB'] });
+  });
+  it('lo pueden llamar los tres roles', () => {
+    expect([...ROLES_CALLABLE.configuracionComercial].sort()).toEqual(['adm', 'caj', 'sup']);
   });
 });

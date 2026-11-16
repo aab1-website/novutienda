@@ -1,5 +1,5 @@
-export type { ClaveLimite, PlanId, TopesPlan } from './planes.js';
-export { esPlanId, PLANES } from './planes.js';
+export type { ClaveComercial, ClaveLimite, PlanId, TopesPlan } from './planes.js';
+export { esPlanId, PLANES, validarComercialContraPlan } from './planes.js';
 export type { BaseDatosMin, DocLeido, TransaccionMin } from './transaccion.js';
 export {
   abrirCaja,

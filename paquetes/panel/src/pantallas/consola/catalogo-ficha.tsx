@@ -1,6 +1,7 @@
 import type { ComponentChildren, JSX, RefObject } from 'preact';
 import { useEffect, useRef, useState } from 'preact/hooks';
 import { ErrorApi, mensajeDeError } from '../../api/errores.js';
+import { Miniatura } from './miniatura-vista.js';
 import { LIMITES_PANEL, type EstadoFicha, type FichaWeb, type Medio, type ProductoPanel } from '../../api/tipos.js';
 import { Alerta, Area, Boton, BotonConfirmado, Campo, ConCarga, Selector, Seccion, Vacio } from '../../ui/comun.js';
 import { useApp } from '../../ui/contexto.js';
@@ -13,9 +14,10 @@ import { Tabla } from '../../ui/tabla.js';
 import { formatoBytes } from '../../util/base64.js';
 import './ficha.css';
 import { claveAlt, revisarFicha, TOPES_FICHA } from './ficha-revision.js';
+import { cumpleFiltro, siguientePaso, textoCambiosSinPublicar, textoQueFalta } from './pasos-ficha.js';
 import { useSubidas, type Subida } from './subidas-ficha.js';
 
-const ESTADOS: { valor: EstadoFicha; texto: string }[] = [{ valor: 'borrador', texto: 'Borrador' }, { valor: 'publicado', texto: 'Publicado' }, { valor: 'oculto', texto: 'Oculto' }];
+const ESTADOS: { valor: EstadoFicha; texto: string }[] = [{ valor: 'borrador', texto: 'Borrador' }, { valor: 'publicado', texto: 'Visible en el sitio' }, { valor: 'oculto', texto: 'Oculto' }];
 const slugDe = (t: string): string => t.normalize('NFD').replace(/[̀-ͯ]/g, '').toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/^-+|-+$/g, '');
 const ACEPTA_FOTO = 'image/jpeg,image/png,image/webp,image/heic,image/heif,.heic,.heif';
 const ACEPTA_VIDEO = 'video/mp4,video/x-m4v,video/quicktime,video/webm,.m4v';
@@ -317,7 +319,10 @@ function PanelFicha({ producto, modo, alCerrar, alCerrarEnfocar }: PropsPanel): 
               const nombre = esVideo ? 'Video' : `Foto ${String(i + 1)}${i === 0 ? ' (portada)' : ''}`;
               return (
                 <li key={m.medioId} class="ficha-medio">
-                  <p class="ficha-medio-titulo"><strong>{nombre}</strong>{info ? ` · ${medidas(info)}` : ' · sin subir'}</p>
+                  <div class="fila fila-alinear">
+                    <Miniatura medio={info} alt={m.alt.trim() !== '' ? m.alt : nombre} respaldo={esVideo ? 'Video' : 'Foto'} orden={i + 1} />
+                    <p class="ficha-medio-titulo"><strong>{nombre}</strong>{info ? ` · ${medidas(info)}` : ' · sin subir'}</p>
+                  </div>
                   <Campo etiqueta={esVideo ? 'Descripción del video' : `Descripción de la foto ${String(i + 1)}`} valor={m.alt} tope={TOPES_FICHA.alt} ayuda="Cuenta qué se ve. La leen los lectores de pantalla." error={errores[claveAlt(i)]} onInput={(v) => cambiar({ medios: f.medios.map((x, j) => (j === i ? { ...x, alt: v } : x)) })} />
                   <div class="fila">
                     <Boton chico variante="secundario" onClick={() => mover(i, -1)} deshabilitado={i === 0} etiqueta={`Mover arriba el medio ${String(i + 1)}`}>Mover arriba</Boton>
@@ -338,6 +343,7 @@ function PanelFicha({ producto, modo, alCerrar, alCerrarEnfocar }: PropsPanel): 
                   const fotos = f.medios.filter((x) => tipoDe(x.medioId) === 'foto').length;
                   return (
                     <li key={m.id} class="fila">
+                      <Miniatura medio={m} alt={`${m.tipo === 'video' ? 'Video' : 'Foto'} subido sin agregar a la página`} respaldo={m.tipo === 'video' ? 'Video' : 'Foto'} />
                       <span>{m.tipo === 'video' ? 'Video' : 'Foto'} · {medidas(m)}</span>
                       <Boton chico variante="secundario" onClick={() => cambiar({ medios: [...f.medios, { medioId: m.id, alt: sugerida(m.tipo, fotos + 1) }] })} etiqueta={`Agregar a la página ${m.tipo === 'video' ? 'el video' : 'la foto'} de ${medidas(m)}`}>Agregar a la página</Boton>
                       <BotonConfirmado chico peligro texto="Borrar archivo" pregunta="¿Borrar el archivo para siempre?" textoConfirmar="Sí, borrar" onConfirmar={() => borrar(m.id)} />
@@ -352,7 +358,7 @@ function PanelFicha({ producto, modo, alCerrar, alCerrarEnfocar }: PropsPanel): 
         <section class="ficha-bloque ficha-textos" aria-labelledby="ficha-textos-titulo">
           <h3 id="ficha-textos-titulo">Textos de la página</h3>
           <Campo etiqueta="Dirección de la página" valor={f.slug} tope={TOPES_FICHA.slugMax} requerido error={errores['slug']} ayuda="Minúsculas, números y guiones. Ejemplo: televisor-55." onInput={(v) => { setErrorSlug(null); cambiar({ slug: v }); }} />
-          <Selector etiqueta="Estado" valor={f.estado} onCambio={(v) => cambiar({ estado: v as EstadoFicha })} opciones={ESTADOS} />
+          <Selector etiqueta="En el sitio" valor={f.estado} onCambio={(v) => cambiar({ estado: v as EstadoFicha })} opciones={ESTADOS} />
           <Campo etiqueta="Garantía (texto)" valor={f.garantia} tope={TOPES_FICHA.garantia} error={errores['garantia']} onInput={(v) => cambiar({ garantia: v })} />
           <Area etiqueta="Descripción del producto" valor={f.descripcion} filas={5} tope={TOPES_FICHA.descripcion} error={errores['descripcion']} onInput={(v) => cambiar({ descripcion: v })} />
           <Campo etiqueta="Título para buscadores" valor={f.seo.titulo} tope={TOPES_FICHA.seoTitulo} error={errores['seo.titulo']} onInput={(v) => cambiar({ seo: { ...f.seo, titulo: v } })} />
@@ -391,7 +397,12 @@ interface Abierta {
 
 export function PantallaFichas(): JSX.Element {
   const { api } = useApp();
-  const carga = useCarga(async () => ({ productos: await api.llamar('listarProductos', {}), fichas: await api.llamar('listarFichas', {}) }), []);
+  const carga = useCarga(async () => ({
+    productos: await api.llamar('listarProductos', {}),
+    fichas: await api.llamar('listarFichas', {}),
+    // El aviso de cambios sin publicar es una ayuda: si el Tablero no responde, la lista sigue funcionando.
+    sinPublicar: await api.llamar('obtenerTablero', {}).then((t) => t.cambiosSinPublicar, () => null),
+  }), []);
   const [abierta, setAbierta] = useState<Abierta | null>(null);
   const lista = useRef<HTMLDivElement>(null);
   const producto = carga.datos?.productos.find((x) => x.id === abierta?.productoId);
@@ -407,16 +418,33 @@ export function PantallaFichas(): JSX.Element {
           {(d) => {
             const fichaDe = (id: string): FichaWeb | undefined => d.fichas.find((y) => y.productoId === id)?.ficha;
             return (
+              <>
+              {d.sinPublicar !== null && d.sinPublicar > 0 && <p class="texto-suave" data-prueba="sin-publicar">{textoCambiosSinPublicar(d.sinPublicar)}. <a href="#/catalogo/tablero">Ver el Tablero</a></p>}
               <Tabla
                 titulo="Productos y su página en el sitio"
                 filas={d.productos}
                 clave={(x) => x.id}
                 buscar={{ etiqueta: 'Buscar producto', en: (x) => [x.nombre, x.sku] }}
                 vacio={{ titulo: 'No hay productos' }}
+                filtros={[{ id: 'pagina', etiqueta: 'Mostrar', opciones: [{ valor: 'sin-pagina', texto: 'Sin página' }, { valor: 'borrador', texto: 'Borrador' }, { valor: 'sin-fotos', texto: 'Sin fotos' }], aplica: (x, v) => cumpleFiltro(fichaDe(x.id), v) }]}
                 columnas={[
                   { id: 'producto', titulo: 'Producto', valor: (x) => x.nombre, encabezadoFila: true, ordenable: true },
                   { id: 'pagina', titulo: 'Página', valor: (x) => { const f = fichaDe(x.id); return f === undefined ? 'Sin página' : (ESTADOS.find((e) => e.valor === f.estado)?.texto ?? ''); }, ordenable: true },
                   { id: 'medios', titulo: 'Fotos y video', valor: (x) => fichaDe(x.id)?.medios.length ?? 0, celda: (x) => `${String(fichaDe(x.id)?.medios.length ?? 0)} en la ficha`, ordenable: true },
+                  {
+                    id: 'falta', titulo: 'Qué falta', ordenable: true,
+                    valor: (x) => textoQueFalta(fichaDe(x.id)),
+                    celda: (x) => {
+                      const paso = siguientePaso(fichaDe(x.id));
+                      const etiqueta = paso === null ? '' : `${paso.accion} de ${x.nombre}`;
+                      return (
+                        <div class="ficha-falta">
+                          <span>{textoQueFalta(fichaDe(x.id))}</span>
+                          {paso !== null && <Boton chico etiqueta={etiqueta} onClick={() => setAbierta({ productoId: x.id, modo: paso.modo, etiqueta })}>{paso.accion}</Boton>}
+                        </div>
+                      );
+                    },
+                  },
                 ]}
                 acciones={(x) => (
                   <div class="fila">
@@ -425,6 +453,7 @@ export function PantallaFichas(): JSX.Element {
                   </div>
                 )}
               />
+              </>
             );
           }}
         </ConCarga>

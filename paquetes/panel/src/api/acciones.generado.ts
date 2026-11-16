@@ -72,6 +72,8 @@ export const ROLES_ACCION: Readonly<Record<string, readonly Rol[]>> = {
   'consola.secciones': ['sup', 'adm'],
   'consola.carruseles': ['sup', 'adm'],
   'consola.configSitio': ['sup', 'adm'],
+  'consola.leerLogo': ['sup', 'adm'],
+  'consola.quitarLogo': ['adm'],
   'consola.exportarProductosCsv': ['sup', 'adm'],
   'consola.publicarSitio': ['adm'],
   'consola.tablero': ['sup', 'adm'],
@@ -86,5 +88,9 @@ export const ROLES_ACCION: Readonly<Record<string, readonly Rol[]>> = {
   'consola.buscarUsuarioPorCorreo': ['adm'],
   'consola.asignarRol': ['adm'],
   'consola.quitarRol': ['adm'],
+  'consola.invitarUsuario': ['adm'],
+  'consola.anularInvitacion': ['adm'],
+  'consola.reenviarInvitacion': ['adm'],
   'consola.modulosActivos': ['caj', 'sup', 'adm'],
+  'consola.configuracionComercial': ['caj', 'sup', 'adm'],
 };

@@ -65,3 +65,9 @@ Antes de fusionar o desplegar este cambio, los tenants existentes sin `estado` d
 - **`storage.rules` no cambia.** La ventana residual en Storage es la vigencia de una reserva de subida ya emitida antes de suspender.
 - **El sitio publicado y los medios públicos siguen visibles al suspender:** lo que ya ve el público se acepta tal cual. Para retirarlos hay que
   despublicar o reconstruir el sitio por separado (`docs/produccion/reconstruccion-sitio.md`).
+
+## Verificar el redondeo de un tenant (`scripts/verificar-comercial.mjs`)
+
+Solo lectura, solo staging o emulador: `NOVUTIENDA_AMBIENTE=staging GCP_PROJECT_ID_STAGING=<proyecto> GOOGLE_CLOUD_PROJECT=<proyecto> node scripts/verificar-comercial.mjs <tenant> --proyecto <proyecto>`.
+Imprime la forma del tenant (anterior o `comercial`), el plan y una línea por moneda (`<MONEDA>: cumple D7` o `NO cumple (motivo)`); no vuelca documentos.
+Salida 0 si todo cumple, 1 si alguna moneda no cumple, 2 si no pudo leer o el entorno no es válido. Lógica en `plataforma/operador/verificar-comercial.ts`.

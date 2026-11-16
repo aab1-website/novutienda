@@ -1,11 +1,12 @@
-import type { ArqueoMoneda, Moneda } from '@novutienda/nucleo';
+import type { ArqueoMoneda } from '@novutienda/nucleo';
 import { ErrorPos } from './errores.js';
-import { MONEDAS_POS, type MedioPago, type MontosPorMoneda, type TotalesMoneda, type TotalesTurno, type TurnoPos } from './tipos.js';
+import { ordenarMonedas } from './lectura.js';
+import { ORDEN_MONEDAS_POR_OMISION, type MedioPago, type MontosPorMoneda, type TotalesMoneda, type TotalesTurno, type TurnoPos } from './tipos.js';
 
 export const TOTALES_VACIOS: TotalesMoneda = { efectivo: 0, qr: 0, transferencia: 0, credito: 0, ingresos: 0, egresos: 0 };
 
 /** Suma `delta` a los totales de una moneda (función pura; devuelve un objeto nuevo). */
-export function sumarTotales(totales: TotalesTurno, moneda: Moneda, delta: Partial<TotalesMoneda>): TotalesTurno {
+export function sumarTotales(totales: TotalesTurno, moneda: string, delta: Partial<TotalesMoneda>): TotalesTurno {
   const base = totales[moneda] ?? TOTALES_VACIOS;
   const nuevo: TotalesMoneda = {
     efectivo: base.efectivo + (delta.efectivo ?? 0),
@@ -30,13 +31,19 @@ export const deltaPorMedio = (medio: MedioPago, monto: number): Partial<TotalesM
 export const efectivoEsperado = (apertura: number, t: TotalesMoneda): number => apertura + t.efectivo + t.ingresos - t.egresos;
 
 /** Efectivo disponible hoy en la caja para una moneda (misma fórmula que el esperado). */
-export function efectivoDisponible(turno: Pick<TurnoPos, 'apertura' | 'totales'>, moneda: Moneda): number {
+export function efectivoDisponible(turno: Pick<TurnoPos, 'apertura' | 'totales'>, moneda: string): number {
   return efectivoEsperado(turno.apertura[moneda] ?? 0, turno.totales[moneda] ?? TOTALES_VACIOS);
 }
 
-/** Monedas con apertura o movimiento en el turno, en orden fijo. */
-export const monedasDelTurno = (turno: Pick<TurnoPos, 'apertura' | 'totales'>): Moneda[] =>
-  MONEDAS_POS.filter((m) => turno.apertura[m] !== undefined || turno.totales[m] !== undefined);
+/**
+ * Monedas con apertura o movimiento en el turno: primero las declaradas (en su orden) y después el resto, ordenado.
+ * Sin `declaradas`, el orden del tenant de referencia.
+ */
+export const monedasDelTurno = (turno: Pick<TurnoPos, 'apertura' | 'totales'>, declaradas: readonly string[] = ORDEN_MONEDAS_POR_OMISION): string[] =>
+  ordenarMonedas(
+    [...Object.keys(turno.apertura), ...Object.keys(turno.totales)].filter((m) => turno.apertura[m] !== undefined || turno.totales[m] !== undefined),
+    declaradas,
+  );
 
 /**
  * Arqueo por moneda. `diferencia = contado − esperado` SIN tope en cero: una falta queda negativa.
@@ -45,11 +52,11 @@ export const monedasDelTurno = (turno: Pick<TurnoPos, 'apertura' | 'totales'>): 
 export function calcularArqueo(
   turno: Pick<TurnoPos, 'apertura' | 'totales'>,
   contado: MontosPorMoneda,
-): Partial<Record<Moneda, ArqueoMoneda>> {
-  const resultado: Partial<Record<Moneda, ArqueoMoneda>> = {};
-  const monedas = new Set<Moneda>([...monedasDelTurno(turno), ...MONEDAS_POS.filter((m) => contado[m] !== undefined)]);
-  for (const m of MONEDAS_POS) {
-    if (!monedas.has(m)) continue;
+  declaradas: readonly string[] = ORDEN_MONEDAS_POR_OMISION,
+): Partial<Record<string, ArqueoMoneda>> {
+  const resultado: Record<string, ArqueoMoneda> = {};
+  const monedas = ordenarMonedas([...monedasDelTurno(turno, declaradas), ...Object.keys(contado).filter((m) => contado[m] !== undefined)], declaradas);
+  for (const m of monedas) {
     const c = contado[m];
     if (c === undefined) throw new ErrorPos('conteo-faltante', `Falta el conteo de efectivo en ${m}`);
     if (!Number.isSafeInteger(c) || c < 0) throw new ErrorPos('entrada-invalida', `El conteo de ${m} debe ser un entero de centavos no negativo`);
@@ -82,9 +89,9 @@ export interface ProyeccionMoneda {
 }
 
 /** Supervisión en vivo: proyección del turno en curso por moneda (función pura). */
-export function proyectarTurno(turno: Pick<TurnoPos, 'apertura' | 'totales'>): Partial<Record<Moneda, ProyeccionMoneda>> {
-  const r: Partial<Record<Moneda, ProyeccionMoneda>> = {};
-  for (const m of monedasDelTurno(turno)) {
+export function proyectarTurno(turno: Pick<TurnoPos, 'apertura' | 'totales'>, declaradas: readonly string[] = ORDEN_MONEDAS_POR_OMISION): Partial<Record<string, ProyeccionMoneda>> {
+  const r: Record<string, ProyeccionMoneda> = {};
+  for (const m of monedasDelTurno(turno, declaradas)) {
     const t = turno.totales[m] ?? TOTALES_VACIOS;
     const apertura = turno.apertura[m] ?? 0;
     r[m] = { apertura, efectivoEsperado: efectivoEsperado(apertura, t), qr: t.qr, transferencia: t.transferencia, credito: t.credito, ingresos: t.ingresos, egresos: t.egresos };
@@ -94,12 +101,12 @@ export function proyectarTurno(turno: Pick<TurnoPos, 'apertura' | 'totales'>): P
 
 /** Documentos mínimos para reconstruir los totales de un turno desde cero (control cruzado). */
 export interface OperacionesTurno {
-  readonly ventas: readonly { turnoId: string; moneda: Moneda; pagos: readonly { medio: MedioPago; monto: number; cambio?: number }[] }[];
-  readonly cobrosCredito: readonly { turnoId: string; moneda: Moneda; medio: MedioPago; monto: number }[];
-  readonly movimientos: readonly { turnoId: string; moneda: Moneda; tipo: 'ingreso' | 'egreso'; monto: number }[];
+  readonly ventas: readonly { turnoId: string; moneda: string; pagos: readonly { medio: MedioPago; monto: number; cambio?: number }[] }[];
+  readonly cobrosCredito: readonly { turnoId: string; moneda: string; medio: MedioPago; monto: number }[];
+  readonly movimientos: readonly { turnoId: string; moneda: string; tipo: 'ingreso' | 'egreso'; monto: number }[];
   readonly anulaciones: readonly {
     turnoIdReembolso: string;
-    moneda: Moneda;
+    moneda: string;
     reembolsos: readonly { medio: MedioPago; monto: number }[];
     creditoCancelado: number;
   }[];

@@ -15,9 +15,10 @@ import { ROLES_ACCION } from './acciones.generado.js';
 import { ErrorApi } from './errores.js';
 import { ponerMarca } from './marca.js';
 import type {
-  AprobacionPos, ConteoAbierto, ConteoVista, ListaConMarca, MarcaOcultamiento, ProductoDeConteo, CotizacionesVigentes, CreditoVista, Medio, MermaVista, MovimientoVista, ProductoPanel,
-  Rol, TurnoPos, UbicacionId, UnidadSerie, UsuarioVista, VentaPos,
+  AprobacionPos, ConteoAbierto, ConteoVista, ListaConMarca, MarcaOcultamiento, ProductoDeConteo, CotizacionesVigentes, CreditoVista, Medio, MedioLogo, MermaVista, MovimientoVista, ProductoPanel,
+  Rol, TurnoPos, UbicacionId, UnidadSerie, UsuarioVista, VentaPos, VistaComercial,
 } from './tipos.js';
+import { ID_NEGOCIO } from './tipos.js';
 import { fijarRedondeo } from '../util/precio.js';
 
 export type Modulo = 'pos' | 'inventarios' | 'consola' | 'recibos' | 'medios';
@@ -36,6 +37,8 @@ export interface ContextoReal {
   llamar(modulo: Modulo, accion: string, datos?: object): Promise<unknown>;
   /** Rol de quien llama (solo para elegir entre acciones; el servidor decide el permiso). */
   readonly rol: Rol | undefined;
+  /** Verdadero si la sesión que hizo la llamada sigue siendo la vigente; una respuesta tardía de otra sesión no debe fijar estado global. */
+  sesionVigente(): boolean;
   /** Espera entre reintentos (inyectable en las pruebas). */
   esperar(ms: number): Promise<void>;
 }
@@ -87,6 +90,26 @@ const conMarcaDe = <T>(items: T[], r: unknown): ListaConMarca<T> => ponerMarca(i
 /** Cantidad que puede venir oculta: `null` se conserva (oculto), un número sirve, ausente es 0 (sin documento de existencia). */
 const cantidadOculta = (v: unknown): number | null => (v === null ? null : typeof v === 'number' ? v : 0);
 
+/** Forma defensiva de la vista comercial del servidor: lo que no cumple el tipo se descarta, nunca se inventa. */
+function vistaComercialDe(r: unknown): VistaComercial {
+  const o = (r ?? {}) as Obj;
+  const crudos = Array.isArray(o['mercados']) ? (o['mercados'] as unknown[]) : [];
+  const monedas = Array.isArray(o['monedasCaja']) ? (o['monedasCaja'] as unknown[]) : [];
+  const mercados: Array<VistaComercial['mercados'][number]> = [];
+  for (const x of crudos) {
+    if (typeof x !== 'object' || x === null) continue;
+    const m = x as Obj;
+    const { id, nombre, monedaVenta, monedaBase, tieneTipoCambio } = m;
+    if (typeof id !== 'string' || typeof nombre !== 'string' || typeof monedaVenta !== 'string' || typeof monedaBase !== 'string' || typeof tieneTipoCambio !== 'boolean') continue;
+    mercados.push({ id, nombre, monedaVenta, monedaBase, tieneTipoCambio });
+  }
+  return {
+    mercados,
+    monedasCaja: monedas.filter((x): x is string => typeof x === 'string'),
+    ...(typeof o['monedaCosto'] === 'string' ? { monedaCosto: o['monedaCosto'] } : {}),
+  };
+}
+
 const campo = <T>(r: unknown, clave: string): T => (r as Obj)[clave] as T;
 const sinVacios = <T extends object>(o: T): T => Object.fromEntries(Object.entries(o).filter(([, v]) => v !== undefined)) as T;
 
@@ -137,6 +160,7 @@ function aProducto(p: Obj, costos: ReadonlyMap<string, number> | undefined): Pro
     garantiaMeses: p['garantiaMeses'] as number | undefined,
     minimo: p['minimo'] as number | undefined,
     precioUSD: p['precioCentavosUSD'] as ProductoPanel['precioUSD'],
+    sinPrecio: Array.isArray(p['sinPrecio']) ? (p['sinPrecio'] as unknown[]).filter((x): x is string => typeof x === 'string') : undefined,
     costoUSD: costo,
     // `null` = oculto por un conteo abierto; ausente = no controla stock; un número (incluso 0) es la existencia real.
     stockTotal: p['stockTotal'] === null ? null : (p['stockTotal'] as number | undefined),
@@ -185,6 +209,35 @@ function aMerma(m: Obj): MermaVista {
 
 function aMedio(m: Obj): Medio {
   return { ...(quitar(m, 'id') as unknown as Medio), id: String(m['id']) };
+}
+function aMedioLogo(m: Obj): MedioLogo {
+  return { ...(quitar(m, 'id') as unknown as MedioLogo), id: String(m['id']) };
+}
+
+/**
+ * `finalizarSubida` con reintentos. El disparador de Storage también finaliza la subida al llegar el original: si gana él,
+ * esta llamada responde «ya fue resuelta» (failed-precondition) aunque el medio ya esté listo. La acción es idempotente: se
+ * reintenta hasta que devuelva el medio; si la subida fue rechazada de verdad, el error persiste y se muestra.
+ */
+async function finalizarConReintentos<T>(c: Parameters<Traduccion<'finalizarSubida'>['ejecutar']>[0], e: { subidaId: string }, convertir: (m: Obj) => T): Promise<T> {
+  let intentosResuelta = 0;
+  let esperado = 0;
+  let espera = ESPERA_FINALIZAR_MS;
+  for (;;) {
+    try {
+      return convertir(campo(await c.llamar('medios', 'finalizarSubida', e), 'medio') as Obj);
+    } catch (err) {
+      if (!(err instanceof ErrorApi)) throw err;
+      if (err.codigoHttps === 'failed-precondition' && (intentosResuelta += 1) < REINTENTOS_FINALIZAR) {
+        await c.esperar(ESPERA_FINALIZAR_MS);
+      } else if ((err.codigoHttps === 'deadline-exceeded' || err.codigoHttps === 'unavailable') && esperado < ESPERA_SUBIDA_MAXIMA_MS) {
+        // La llamada se cortó, pero el servidor puede seguir procesando: se reintenta con retroceso (hasta ~2 minutos).
+        await c.esperar(espera);
+        esperado += espera;
+        espera = Math.min(Math.round(espera * 1.5), ESPERA_SUBIDA_TOPE_MS);
+      } else throw err;
+    }
+  }
 }
 
 // ---------------------------------------------------------------------------------------------------------------------
@@ -371,8 +424,8 @@ export const TRADUCCION: { readonly [N in NombreCallable]: Traduccion<N> } = {
     roles: TODOS,
     ejecutar: async (c) => {
       const r = (await c.llamar('pos', 'cotizaciones', {})) as Obj;
-      fijarRedondeo(r['redondeo']);
-      return (r['cotizaciones'] ?? { BO: null, AR: null }) as CotizacionesVigentes;
+      if (c.sesionVigente()) fijarRedondeo(r['redondeo']);
+      return (r['cotizaciones'] ?? {}) as CotizacionesVigentes;
     },
   },
 
@@ -404,6 +457,20 @@ export const TRADUCCION: { readonly [N in NombreCallable]: Traduccion<N> } = {
   cambiarPrecioUSD: comoOk('inventarios', 'cambiarPrecioUSD', (e) => ({ operacionId: e.operacionId, productoId: e.productoId, precioUSD: e.precioUSD })),
   guardarFicha: comoOk('consola', 'guardarFicha', (e) => e),
   reservarSubida: directa('medios', 'reservarSubida'),
+  reservarSubidaLogo: {
+    usa: ['medios.reservarSubida'],
+    ejecutar: async (c, e) => (await c.llamar('medios', 'reservarSubida', { subidaId: e.subidaId, productoId: ID_NEGOCIO, tipo: 'logo', bytes: e.bytes })) as never,
+  },
+  estadoSubidaLogo: {
+    usa: ['medios.estadoSubida'],
+    ejecutar: async (c, e) => {
+      const r = (await c.llamar('medios', 'estadoSubida', e)) as Obj;
+      const medio = r['medio'];
+      return { estado: r['estado'] as never, ...(typeof medio === 'object' && medio !== null ? { medio: aMedioLogo(medio as Obj) } : {}), ...(typeof r['motivo'] === 'string' ? { motivo: r['motivo'] } : {}) };
+    },
+  },
+  leerLogo: { usa: ['consola.leerLogo'], ejecutar: async (c) => (campo(await c.llamar('consola', 'leerLogo', {}), 'logo') ?? null) as never },
+  quitarLogo: directa('consola', 'quitarLogo'),
   estadoSubida: {
     usa: ['medios.estadoSubida'],
     ejecutar: async (c, e) => {
@@ -412,32 +479,8 @@ export const TRADUCCION: { readonly [N in NombreCallable]: Traduccion<N> } = {
       return { estado: r['estado'] as never, ...(typeof medio === 'object' && medio !== null ? { medio: aMedio(medio as Obj) } : {}), ...(typeof r['motivo'] === 'string' ? { motivo: r['motivo'] } : {}) };
     },
   },
-  finalizarSubida: {
-    usa: ['medios.finalizarSubida'],
-    ejecutar: async (c, e) => {
-      // El disparador de Storage también finaliza la subida al llegar el original: si gana él, esta llamada responde
-      // «ya fue resuelta» (failed-precondition) aunque el medio ya esté listo. La acción es idempotente: se reintenta
-      // hasta que devuelva el medio; si la subida fue rechazada de verdad, el error persiste y se muestra.
-      let intentosResuelta = 0;
-      let esperado = 0;
-      let espera = ESPERA_FINALIZAR_MS;
-      for (;;) {
-        try {
-          return aMedio(campo(await c.llamar('medios', 'finalizarSubida', e), 'medio') as Obj);
-        } catch (err) {
-          if (!(err instanceof ErrorApi)) throw err;
-          if (err.codigoHttps === 'failed-precondition' && (intentosResuelta += 1) < REINTENTOS_FINALIZAR) {
-            await c.esperar(ESPERA_FINALIZAR_MS);
-          } else if ((err.codigoHttps === 'deadline-exceeded' || err.codigoHttps === 'unavailable') && esperado < ESPERA_SUBIDA_MAXIMA_MS) {
-            // La llamada se cortó, pero el servidor puede seguir procesando: se reintenta con retroceso (hasta ~2 minutos).
-            await c.esperar(espera);
-            esperado += espera;
-            espera = Math.min(Math.round(espera * 1.5), ESPERA_SUBIDA_TOPE_MS);
-          } else throw err;
-        }
-      }
-    },
-  },
+  finalizarSubida: { usa: ['medios.finalizarSubida'], ejecutar: (c, e) => finalizarConReintentos(c, e, aMedio) },
+  finalizarSubidaLogo: { usa: ['medios.finalizarSubida'], ejecutar: (c, e) => finalizarConReintentos(c, e, aMedioLogo) },
   borrarMedio: comoOk('medios', 'borrarMedio', (e) => e),
   guardarSeccion: comoOk('consola', 'guardarSeccion', (e) => e),
   eliminarSeccion: comoOk('consola', 'eliminarSeccion', (e) => e),
@@ -454,6 +497,21 @@ export const TRADUCCION: { readonly [N in NombreCallable]: Traduccion<N> } = {
   },
   asignarRol: comoOk('consola', 'asignarRol', (e) => e),
   quitarRol: comoOk('consola', 'quitarRol', (e) => e),
+  invitarUsuario: {
+    usa: ['consola.invitarUsuario'],
+    ejecutar: async (c, e) => {
+      await c.llamar('consola', 'invitarUsuario', { correo: e.correo.trim(), rol: e.rol });
+      return { ok: true, mensaje: 'Invitación enviada' }; // texto fijo del panel: el mismo en todos los casos
+    },
+  },
+  anularInvitacion: comoOk('consola', 'anularInvitacion', (e) => e),
+  reenviarInvitacion: {
+    usa: ['consola.reenviarInvitacion'],
+    ejecutar: async (c, e) => {
+      const r = (await c.llamar('consola', 'reenviarInvitacion', { uid: e.uid })) as Obj;
+      return { ok: true, mensaje: 'Invitación enviada', venceEnMs: typeof r['venceEnMs'] === 'number' ? r['venceEnMs'] : 0 };
+    },
+  },
   listarFichas: { usa: ['consola.fichas'], ejecutar: async (c) => lista(await c.llamar('consola', 'fichas', {}), 'fichas') as never },
   listarMedios: {
     usa: ['medios.listarMedios'],
@@ -466,7 +524,10 @@ export const TRADUCCION: { readonly [N in NombreCallable]: Traduccion<N> } = {
     usa: ['consola.listarUsuarios'],
     ejecutar: async (c) =>
       lista(await c.llamar('consola', 'listarUsuarios', {}), 'usuarios').map(
-        (u): UsuarioVista => ({ uid: String(u['uid']), correo: typeof u['correo'] === 'string' ? u['correo'] : '', rol: u['rol'] as Rol, verificado: u['correoVerificado'] === true }),
+        (u): UsuarioVista =>
+          u['estado'] === 'invitado'
+            ? { uid: String(u['uid']), correo: typeof u['correo'] === 'string' ? u['correo'] : '', rol: u['rolReservado'] as Rol, verificado: false, estado: 'invitado', venceEnMs: typeof u['venceEnMs'] === 'number' ? u['venceEnMs'] : 0 }
+            : { uid: String(u['uid']), correo: typeof u['correo'] === 'string' ? u['correo'] : '', rol: u['rol'] as Rol, verificado: u['correoVerificado'] === true },
       ),
   },
   modulosActivos: {
@@ -475,6 +536,10 @@ export const TRADUCCION: { readonly [N in NombreCallable]: Traduccion<N> } = {
       const m = campo<unknown>(await c.llamar('consola', 'modulosActivos', {}), 'modulos');
       return (Array.isArray(m) ? m.filter((x): x is string => typeof x === 'string') : []) as never;
     },
+  },
+  configuracionComercial: {
+    usa: ['consola.configuracionComercial'],
+    ejecutar: async (c) => vistaComercialDe(await c.llamar('consola', 'configuracionComercial', {})),
   },
 };
 

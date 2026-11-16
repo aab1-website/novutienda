@@ -161,6 +161,42 @@ describe('doble: venta', () => {
     expect((await falla(e.api.llamar('confirmarVenta', { requestId: uuid(), carrito: carritoTv({}, 2, ['TV55-001']), pagos: efectivo(1) }))).detalle.codigo).toBe('series-invalidas');
     expect((await falla(e.api.llamar('confirmarVenta', { requestId: uuid(), carrito: { mercado: 'BO', moneda: 'BOB', lineas: [{ productoId: 'cable-hdmi', cantidad: 1, series: ['X'] }] }, pagos: efectivo(1) }))).detalle.codigo).toBe('series-invalidas');
   });
+  describe('tope de unidades con serie por venta', () => {
+    // Siembra series válidas en el estado de la prueba (no en los datos por omisión).
+    const sembrar = async (nTv: number, nCel: number) => {
+      const { e } = await conTurno();
+      const est = e.api.estado;
+      const tv = est.productos.get('tv-55');
+      const cel = est.productos.get('cel-a1');
+      if (tv === undefined || cel === undefined) throw new Error('Faltan productos del doble');
+      tv.precioUSD = { bo: 100, ar: 100 };
+      cel.precioUSD = { bo: 100, ar: 100 };
+      tv.existencias.tienda = nTv;
+      cel.existencias.tienda = nCel;
+      const series = (pref: string, n: number): string[] => Array.from({ length: n }, (_, i) => `${pref}-${i}`);
+      const tvS = series('TOPE-TV', nTv);
+      const celS = series('TOPE-CEL', nCel);
+      for (const [id, ss] of [['tv-55', tvS], ['cel-a1', celS]] as const) {
+        for (const s of ss) est.unidades.set(`${id}__${s}`, { productoId: id, serie: s, estado: 'disponible', ubicacionId: 'tienda' });
+      }
+      const carrito: Carrito = {
+        mercado: 'BO', moneda: 'USD',
+        lineas: [{ productoId: 'tv-55', cantidad: nTv, series: tvS }, { productoId: 'cel-a1', cantidad: nCel, series: celS }],
+      };
+      return { e, carrito };
+    };
+    it('101 unidades con serie válidas se rechazan con el mensaje del tope', async () => {
+      const { e, carrito } = await sembrar(60, 41);
+      const err = await falla(e.api.llamar('confirmarVenta', { requestId: uuid(), carrito, pagos: [{ medio: 'efectivo', moneda: 'USD', monto: 101 * 100 }] }));
+      expect(err.detalle.codigo).toBe('series-invalidas');
+      expect(mensajeDeError(err)).toBe('Una venta admite hasta 100 unidades con serie');
+    });
+    it('exactamente 100 unidades con serie pasan el tope', async () => {
+      const { e, carrito } = await sembrar(60, 40);
+      const r = await e.api.llamar('confirmarVenta', { requestId: uuid(), carrito, pagos: [{ medio: 'efectivo', moneda: 'USD', monto: 100 * 100 }] });
+      expect(r.venta.lineas.reduce((n, l) => n + l.series.length, 0)).toBe(100);
+    });
+  });
   it('producto sin precio (a consultar) y moneda que no corresponde a la lista', async () => {
     const { e } = await conTurno('adm');
     await e.api.llamar('cambiarPrecioUSD', { operacionId: uuid(), productoId: 'cable-hdmi', precioUSD: { bo: 0, ar: 9 } });
@@ -381,7 +417,7 @@ describe('doble: inventarios', () => {
   });
   it('el CSV de exportación neutraliza celdas que empiezan con = + - @', async () => {
     const e = crearEntorno('adm');
-    await e.api.llamar('crearProducto', { operacionId: uuid(), producto: { id: 'formula-1', nombre: '=HYPERLINK("x")', categoria: '+cmd', sku: 'F-1', precioUSD: { bo: 1, ar: 1 } } });
+    await e.api.llamar('crearProducto', { operacionId: uuid(), producto: { id: 'formula-1', nombre: '=HYPERLINK("x")', categoria: '+cmd', sku: 'F-1', precioUSD: { bo: 100, ar: 100 } } });
     const { csv } = await e.api.llamar('exportarProductosCsv', {});
     expect(csv).toContain(`"'=HYPERLINK(""x"")"`);
     expect(csv).toContain("'+cmd");
@@ -581,6 +617,67 @@ describe('doble: catálogo y sitio', () => {
     expect(await e.api.llamar('reservarSubida', { subidaId: id, productoId: 'cable-hdmi', tipo: 'foto', bytes: 10 })).toEqual(a);
     expect((await falla(e.api.llamar('reservarSubida', { subidaId: id, productoId: 'cable-hdmi', tipo: 'foto', bytes: 11 }))).detalle.codigo).toBe('conflicto');
   });
+  it('logo: solo adm, tope de 2 MiB, un solo logo vigente, quitar idempotente', async () => {
+    const adm = crearEntorno('adm');
+    const MIB = 1024 * 1024;
+    expect(await adm.api.llamar('leerLogo', {})).toBeNull();
+    expect((await falla(adm.api.llamar('reservarSubidaLogo', { subidaId: uuid(), bytes: 2 * MIB + 1 }))).detalle.codigo).toBe('limite');
+    expect((await falla(adm.api.llamar('reservarSubidaLogo', { subidaId: uuid(), bytes: 0 }))).detalle.codigo).toBe('entrada-invalida');
+    const primero = uuid();
+    const r = await adm.api.llamar('reservarSubidaLogo', { subidaId: primero, bytes: 2 * MIB });
+    expect(await adm.api.llamar('reservarSubidaLogo', { subidaId: primero, bytes: 2 * MIB })).toEqual(r);
+    expect((await falla(adm.api.llamar('reservarSubidaLogo', { subidaId: primero, bytes: 10 }))).detalle.codigo).toBe('conflicto');
+    await adm.almacen.subir(r.rutaOriginal, new Blob(['x']), () => undefined);
+    const medio = await adm.api.llamar('finalizarSubidaLogo', { subidaId: primero });
+    expect(medio).toMatchObject({ id: primero, tipo: 'logo', productoId: '_negocio' });
+    expect((await adm.api.llamar('finalizarSubidaLogo', { subidaId: primero })).id).toBe(primero);
+    const vigente = await adm.api.llamar('leerLogo', {});
+    expect(vigente?.medioId).toBe(primero);
+    expect(vigente?.versiones.map((v) => v.formato).sort()).toEqual(['png', 'webp']);
+    // El logo no es una foto de producto: no aparece entre sus medios y no cuenta contra su tope.
+    expect(await adm.api.llamar('listarMedios', { productoId: '_negocio' })).toEqual([]);
+    // Un logo nuevo reemplaza al vigente y la cuota se libera.
+    const segundo = uuid();
+    await adm.api.llamar('reservarSubidaLogo', { subidaId: segundo, bytes: 1000 });
+    await adm.api.llamar('finalizarSubidaLogo', { subidaId: segundo });
+    expect((await adm.api.llamar('leerLogo', {}))?.medioId).toBe(segundo);
+    expect(adm.api.estado.bytesOriginales).toBe(1000);
+    expect(await adm.api.llamar('quitarLogo', {})).toEqual({ quitado: true });
+    expect(await adm.api.llamar('quitarLogo', {})).toEqual({ quitado: false });
+    expect(await adm.api.llamar('leerLogo', {})).toBeNull();
+    expect(adm.api.estado.bytesOriginales).toBe(0);
+  });
+  it('logo: el disparador simulado lo resuelve y un rechazo lo deja rechazado sin logo', async () => {
+    const e = crearEntorno('adm');
+    const id = uuid();
+    await e.api.llamar('reservarSubidaLogo', { subidaId: id, bytes: 100 });
+    expect(await e.api.llamar('estadoSubidaLogo', { subidaId: id })).toEqual({ estado: 'reservada' });
+    await new Promise((x) => setTimeout(x, 30));
+    const listo = await e.api.llamar('estadoSubidaLogo', { subidaId: id });
+    expect(listo.estado).toBe('procesada');
+    expect(listo.medio).toMatchObject({ id, tipo: 'logo' });
+    e.api.estado.disparador.rechazo = 'El archivo no es una imagen JPG, PNG o WebP';
+    const malo = uuid();
+    await e.api.llamar('reservarSubidaLogo', { subidaId: malo, bytes: 100 });
+    await e.api.llamar('estadoSubidaLogo', { subidaId: malo });
+    await new Promise((x) => setTimeout(x, 30));
+    expect(await e.api.llamar('estadoSubidaLogo', { subidaId: malo })).toMatchObject({ estado: 'rechazada', motivo: 'El archivo no es una imagen JPG, PNG o WebP' });
+    expect((await e.api.llamar('leerLogo', {}))?.medioId).toBe(id);
+  });
+  it('logo: sup lo lee pero no lo sube ni lo quita; caj no lo ve', async () => {
+    const adm = crearEntorno('adm');
+    const id = uuid();
+    await adm.api.llamar('reservarSubidaLogo', { subidaId: id, bytes: 100 });
+    await adm.api.llamar('finalizarSubidaLogo', { subidaId: id });
+    const sup = crearEntorno('sup');
+    expect(await sup.api.llamar('leerLogo', {})).toBeNull();
+    expect((await falla(sup.api.llamar('reservarSubidaLogo', { subidaId: uuid(), bytes: 100 }))).codigoHttps).toBe('permission-denied');
+    expect((await falla(sup.api.llamar('quitarLogo', {}))).codigoHttps).toBe('permission-denied');
+    // Una subida de logo reservada por el administrador: la supervisora tampoco puede finalizarla.
+    sup.api.estado.subidas.set(id, { subidaId: id, productoId: '_negocio', tipo: 'logo', estado: 'reservada', bytes: 100 });
+    expect((await falla(sup.api.llamar('finalizarSubidaLogo', { subidaId: id }))).codigoHttps).toBe('permission-denied');
+    expect((await falla(crearEntorno('caj').api.llamar('leerLogo', {}))).codigoHttps).toBe('permission-denied');
+  });
   it('estadoSubida: el disparador simulado resuelve la subida unos milisegundos después; finalizarSubida queda como respaldo', async () => {
     const e = crearEntorno('sup');
     const reservar = (subidaId = uuid()) => e.api.llamar('reservarSubida', { subidaId, productoId: 'tv-55', tipo: 'foto', bytes: 100 });
@@ -763,5 +860,15 @@ describe('doble: buscar usuario por correo y exportar ventas', () => {
     expect(csv.split('\r\n')[0]).toContain('ventaId');
     expect((await e.api.llamar('exportarVentasCsv', { desde: '2000-01-01', hasta: '2000-01-02' })).csv.trim().split('\r\n')).toHaveLength(1);
     expect((await falla(crearEntorno('caj').api.llamar('exportarVentasCsv', {}))).codigoHttps).toBe('permission-denied');
+  });
+});
+
+describe('doble: configuracionComercial', () => {
+  it('cualquier rol recibe la forma de tres monedas del tenant de referencia', async () => {
+    for (const rol of ['caj', 'sup', 'adm'] as const) {
+      const v = await crearEntorno(rol).api.llamar('configuracionComercial', {});
+      expect(v.monedasCaja).toEqual(['BOB', 'USD', 'ARS']);
+      expect(v.mercados.map((m) => [m.id, m.monedaVenta, m.monedaBase, m.tieneTipoCambio])).toEqual([['BO', 'BOB', 'USD', true], ['AR', 'ARS', 'USD', true]]);
+    }
   });
 });

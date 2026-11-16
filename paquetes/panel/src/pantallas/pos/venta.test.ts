@@ -56,6 +56,7 @@ describe('venta: terminal y cobro de punta a punta', () => {
     await waitFor(() => expect(document.querySelector('[data-prueba="total"]')?.textContent).toBe('Bs 55,68'));
     await u.click(screen.getByRole('button', { name: 'Cobrar' }));
     await screen.findByRole('heading', { name: 'Cobro' });
+    await u.clear(campo(/Monto a aplicar/));
     await u.type(campo(/Monto a aplicar/), '55,68');
     await u.type(campo(/Efectivo recibido/), '100');
     expect(document.querySelector('[data-prueba="cambio"]')?.textContent).toBe('Bs 44,32');
@@ -75,7 +76,7 @@ describe('venta: terminal y cobro de punta a punta', () => {
     const u = userEvent.setup();
     await u.click(await screen.findByRole('button', { name: 'Agregar Televisor 55 pulgadas' }));
     expect(await screen.findByText('Elija al menos una serie.')).toBeTruthy();
-    expect((screen.getByRole('button', { name: 'Cobrar' }) as HTMLButtonElement).disabled).toBe(true);
+    expect(screen.getByRole('button', { name: 'Cobrar' }).getAttribute('aria-disabled')).toBe('true');
     await u.click(await screen.findByRole('checkbox', { name: 'TV55-001' }));
     await waitFor(() => expect(document.querySelector('[data-prueba="total"]')?.textContent).toBe('Bs 3.132,00'));
     expect((screen.getByRole('button', { name: 'Cobrar' }) as HTMLButtonElement).disabled).toBe(false);
@@ -90,7 +91,7 @@ describe('venta: terminal y cobro de punta a punta', () => {
     await u.type(campo(/Descuento \(monto\)/), '200');
     await u.type(campo(/Motivo del descuento/), 'Cliente frecuente');
     expect(await screen.findByText(/supera su tope/)).toBeTruthy();
-    expect((screen.getByRole('button', { name: 'Cobrar' }) as HTMLButtonElement).disabled).toBe(true);
+    expect(screen.getByRole('button', { name: 'Cobrar' }).getAttribute('aria-disabled')).toBe('true');
     await u.click(screen.getByRole('button', { name: 'Solicitar aprobación' }));
     expect(await screen.findByText(/Solicitud enviada/)).toBeTruthy();
     // El supervisor la aprueba desde su pantalla.
@@ -98,6 +99,7 @@ describe('venta: terminal y cobro de punta a punta', () => {
     e.como('sup');
     render(e.envolver(h(PantallaAprobaciones, { sub: 'descuentos' })));
     await u.click(await screen.findByRole('button', { name: 'Aprobar solicitud de descuento' }));
+    await u.click(await screen.findByRole('button', { name: 'Sí, aprobar' }));
     await waitFor(() => expect(screen.queryByRole('button', { name: 'Aprobar solicitud de descuento' })).toBeNull());
     expect((await e.api.llamar('listarAprobaciones', { estado: 'aprobada' })).length).toBe(1);
   });
@@ -110,6 +112,7 @@ describe('venta: terminal y cobro de punta a punta', () => {
     await u.type(campo(/Cliente \(opcional\)/), 'Ana Pérez');
     await u.click(screen.getByRole('button', { name: 'Cobrar' }));
     await screen.findByRole('heading', { name: 'Cobro' });
+    await u.clear(campo(/Monto a aplicar/));
     await u.type(campo(/Monto a aplicar/), '20');
     await u.click(screen.getByRole('button', { name: 'Agregar otro medio' }));
     const pagos = screen.getAllByRole('group', { name: /Pago/ });
@@ -120,7 +123,7 @@ describe('venta: terminal y cobro de punta a punta', () => {
     await u.type(within(segundo).getByLabelText(/Referencia del QR/), 'REF-77');
     expect(within(segundo).getByText(/QR registrado por sup@ejemplo.test/)).toBeTruthy();
     expect(document.querySelector('[data-prueba="restante"]')?.textContent).toBe('Bs 15,68');
-    expect((screen.getByRole('button', { name: 'Confirmar cobro' }) as HTMLButtonElement).disabled).toBe(true);
+    expect(screen.getByRole('button', { name: 'Confirmar cobro' }).getAttribute('aria-disabled')).toBe('true');
     await u.click(screen.getByRole('button', { name: 'Agregar otro medio' }));
     const tercero = screen.getAllByRole('group', { name: /Pago/ })[2] as HTMLElement;
     await u.selectOptions(within(tercero).getByLabelText('Medio'), 'credito');
@@ -141,6 +144,7 @@ describe('venta: terminal y cobro de punta a punta', () => {
     await u.click(await screen.findByRole('button', { name: 'Agregar Parlante portátil' }));
     await u.click(screen.getByRole('button', { name: 'Cobrar' }));
     await screen.findByRole('heading', { name: 'Cobro' });
+    await u.clear(campo(/Monto a aplicar/));
     await u.type(campo(/Monto a aplicar/), '174');
     // Otro usuario vende la última unidad: el servidor responde stock insuficiente.
     const antes = e.api.estado.productos.get('parlante');
@@ -246,8 +250,8 @@ describe('supervisión en vivo', () => {
     await e.api.llamar('abrirTurno', { turnoId: uuid(), apertura: { BOB: 0 } });
     render(e.envolver(h(PantallaSupervision, { sub: 'auditoria' })));
     const u = userEvent.setup();
-    expect(await screen.findByText('pos.turno.abrir')).toBeTruthy();
-    await u.type(screen.getByLabelText(/Acción contiene/), 'no-existe');
+    expect(await screen.findByText('Apertura de turno')).toBeTruthy();
+    await u.selectOptions(screen.getByLabelText('Acción'), 'Cierre de turno');
     await u.click(screen.getByRole('button', { name: 'Filtrar' }));
     expect(await screen.findByText('No hay registros con esos filtros')).toBeTruthy();
     const crear = vi.spyOn(URL, 'createObjectURL').mockReturnValue('blob:x');
@@ -296,5 +300,190 @@ describe('supervisión en vivo', () => {
     } finally {
       vi.useRealTimers();
     }
+  });
+});
+
+const UN_MERCADO = {
+  mercados: [{ id: 'BO', nombre: 'Bolivia', monedaVenta: 'BOB', monedaBase: 'BOB', tieneTipoCambio: false }],
+  monedasCaja: ['BOB'],
+};
+
+describe('venta: mercados y monedas declarados', () => {
+  it('el comercio de referencia abre turno en el orden declarado: bolivianos, dólares, pesos', async () => {
+    const e = crearEntorno('caj');
+    ver(e, 'terminal');
+    await screen.findByRole('heading', { name: 'Abrir turno' });
+    const campos = await screen.findAllByLabelText(/Efectivo inicial en/);
+    const etiquetas = campos.map((x) => (x as HTMLInputElement).labels?.[0]?.textContent ?? '');
+    expect(etiquetas.map((t) => /Bolivianos|Dólares|Pesos/.exec(t)?.[0])).toEqual(['Bolivianos', 'Dólares', 'Pesos']);
+  });
+
+  it('el comercio de referencia ve las dos listas de precios y las monedas de Bolivia', async () => {
+    const e = crearEntorno('caj');
+    await abrirTurno(e);
+    expect(screen.getByLabelText('Lista de precios')).toBeTruthy();
+    const monedas = [...(screen.getByLabelText('Moneda de la venta') as HTMLSelectElement).options].map((o) => o.value);
+    expect(monedas).toEqual(['BOB', 'USD']);
+  });
+
+  it('un solo mercado y una sola moneda: sin selectores, apertura y caja solo en esa moneda, y cobra', async () => {
+    const e = crearEntorno('caj', undefined, { comercial: UN_MERCADO, redondeo: { BOB: { tipo: 'decimales', decimales: 2, modo: 'cercano' } } });
+    ver(e, 'terminal');
+    const u = userEvent.setup();
+    await screen.findByRole('heading', { name: 'Abrir turno' });
+    expect(screen.getAllByLabelText(/Efectivo inicial en/).length).toBe(1);
+    await u.type(campo(/Efectivo inicial en Bolivianos/), '100');
+    await u.click(screen.getByRole('button', { name: 'Abrir turno' }));
+    await screen.findByRole('heading', { name: 'Productos' });
+    expect(screen.queryByLabelText('Lista de precios')).toBeNull();
+    expect(screen.queryByLabelText('Moneda de la venta')).toBeNull();
+    expect(screen.queryByText(/Cotización:/)).toBeNull();
+    await u.click(await screen.findByRole('button', { name: 'Agregar Cable HDMI 2 m' }));
+    await waitFor(() => expect(document.querySelector('[data-prueba="total"]')?.textContent).toBe('Bs 8,00'));
+    await u.click(screen.getByRole('button', { name: 'Cobrar' }));
+    await screen.findByRole('heading', { name: 'Cobro' });
+    await u.clear(campo(/Monto a aplicar/));
+    await u.type(campo(/Monto a aplicar/), '8');
+    await u.click(screen.getByRole('button', { name: 'Confirmar cobro' }));
+    await screen.findByRole('heading', { name: 'Venta registrada' });
+    const venta = (await e.api.llamar('listarVentas', {}))[0];
+    expect(venta).toMatchObject({ mercado: 'BO', moneda: 'BOB', total: 800 });
+  });
+
+  it('la caja ofrece solo las monedas declaradas', async () => {
+    const e = crearEntorno('caj', undefined, { comercial: UN_MERCADO });
+    await e.api.llamar('abrirTurno', { turnoId: uuid(), apertura: { BOB: 10000 } });
+    ver(e, 'caja');
+    const sel = (await screen.findByLabelText('Moneda')) as HTMLSelectElement;
+    expect([...sel.options].map((o) => o.value)).toEqual(['BOB']);
+  });
+
+  it('sin regla de redondeo avisa y no muestra precio (D21)', async () => {
+    const e = crearEntorno('caj', undefined, { comercial: UN_MERCADO, redondeo: {} });
+    await e.api.llamar('abrirTurno', { turnoId: uuid(), apertura: { BOB: 10000 } });
+    ver(e, 'terminal');
+    expect(await screen.findByText(/Falta la regla de redondeo de BOB/)).toBeTruthy();
+    expect((await screen.findAllByText('Sin regla de redondeo')).length).toBeGreaterThan(0);
+    expect((screen.getByRole('button', { name: 'Agregar Cable HDMI 2 m' }) as HTMLButtonElement).disabled).toBe(true);
+  });
+
+  it('un mercado sin cotización avisa y no deja agregar en su moneda de venta', async () => {
+    const e = crearEntorno('caj');
+    e.api.estado.cotizaciones = { ...e.api.estado.cotizaciones, BO: null };
+    await abrirTurno(e);
+    expect(await screen.findByText(/No hay una cotización utilizable/)).toBeTruthy();
+    expect((screen.getByRole('button', { name: 'Agregar Cable HDMI 2 m' }) as HTMLButtonElement).disabled).toBe(true);
+  });
+  it('un mercado declarado sin tipo de cambio cobra en su moneda base con el monto redondeado que acepta el servidor', async () => {
+    const comercial = {
+      mercados: [{ id: 'BO', nombre: 'Bolivia', monedaVenta: 'BOB', monedaBase: 'USD', tieneTipoCambio: false }],
+      monedasCaja: ['BOB', 'USD'],
+    };
+    const e = crearEntorno('caj', undefined, { comercial, redondeo: { BOB: { tipo: 'multiplo', multiplo: 5, modo: 'cercano' } } });
+    await e.api.llamar('abrirTurno', { turnoId: uuid(), apertura: { BOB: 10000, USD: 10000 } });
+    ver(e, 'terminal');
+    const u = userEvent.setup();
+    await screen.findByRole('heading', { name: 'Productos' });
+    await u.selectOptions(screen.getByLabelText('Moneda de la venta'), 'USD');
+    await u.click(await screen.findByRole('button', { name: 'Agregar Cable HDMI 2 m' }));
+    // 8,00 redondeado al múltiplo de 5 de la moneda de venta: 10,00 (no 8,00).
+    await waitFor(() => expect(document.querySelector('[data-prueba="total"]')?.textContent).toMatch(/10,00/));
+    await u.click(screen.getByRole('button', { name: 'Cobrar' }));
+    await screen.findByRole('heading', { name: 'Cobro' });
+    await u.clear(campo(/Monto a aplicar/));
+    await u.type(campo(/Monto a aplicar/), '10');
+    await u.click(screen.getByRole('button', { name: 'Confirmar cobro' }));
+    await screen.findByRole('heading', { name: 'Venta registrada' });
+    const venta = (await e.api.llamar('listarVentas', {}))[0];
+    expect(venta).toMatchObject({ mercado: 'BO', moneda: 'USD', total: 1000 });
+  });
+
+  it('al cambiar de mercado con el carrito cargado, las líneas se conservan y se recalculan al precio del otro mercado', async () => {
+    const e = crearEntorno('caj');
+    await abrirTurno(e);
+    const u = userEvent.setup();
+    await u.click(await screen.findByRole('button', { name: 'Agregar Cable HDMI 2 m' }));
+    const total = (): string => document.querySelector('[data-prueba="total"]')?.textContent ?? '';
+    await waitFor(() => expect(total()).not.toBe(''));
+    const enBolivia = total();
+    await u.selectOptions(screen.getByLabelText('Lista de precios'), 'AR');
+    await waitFor(() => expect(total()).not.toBe(enBolivia));
+    expect(total()).toBe('ARS 9.000,00');
+    expect(screen.getByRole('button', { name: 'Cobrar' })).toBeTruthy();
+  });
+
+  it('sin monedas de caja declaradas, el turno no se abre y avisa', async () => {
+    const e = crearEntorno('caj', undefined, { comercial: { ...UN_MERCADO, monedasCaja: [] } });
+    ver(e, 'terminal');
+    expect(await screen.findByText(/no tiene monedas de caja declaradas/)).toBeTruthy();
+    expect(screen.queryByRole('button', { name: 'Abrir turno' })).toBeNull();
+  });
+});
+
+describe('cierre y supervisión: orden de monedas declarado por el comercio', () => {
+  const APERTURA = { ARS: 100000, USD: 2000, BOB: 10000 };
+  const leyendas = (): string[] => [...document.querySelectorAll('legend')].map((l) => l.textContent ?? '');
+  const filas = (tabla: HTMLElement): string[] => [...tabla.querySelectorAll('tbody th')].map((t) => t.textContent ?? '');
+
+  it('el cierre de turno del comercio de referencia lista bolivianos, dólares, pesos, aunque la apertura venga en otro orden', async () => {
+    const e = crearEntorno('caj');
+    await e.api.llamar('abrirTurno', { turnoId: uuid(), apertura: APERTURA });
+    ver(e, 'cierre');
+    await screen.findByRole('heading', { name: 'Cierre de turno' });
+    expect(leyendas()).toEqual(['BOB', 'USD', 'ARS']);
+    const u = userEvent.setup();
+    await u.type(campo(/Efectivo contado en BOB/), '100');
+    await u.type(campo(/Efectivo contado en USD/), '20');
+    await u.type(campo(/Efectivo contado en ARS/), '900');
+    expect(document.querySelector('[data-prueba="diferencia-ARS"]')?.textContent).toContain('(faltante)');
+    await u.click(screen.getByRole('button', { name: 'Cerrar turno' }));
+    await u.click(await screen.findByRole('button', { name: 'Sí, cerrar turno' }));
+    await screen.findByRole('heading', { name: 'Turno cerrado' });
+    expect(filas(screen.getByRole('table', { name: 'Arqueo del turno cerrado' }))).toEqual(['BOB', 'USD', 'ARS']);
+  });
+
+  it('la supervisión en vivo del comercio de referencia muestra el mismo orden y los mismos montos que el cierre', async () => {
+    const e = crearEntorno('caj');
+    await e.api.llamar('abrirTurno', { turnoId: uuid(), apertura: APERTURA });
+    e.como('adm');
+    render(e.envolver(h(PantallaSupervision, { sub: 'vivo' })));
+    const tabla = await screen.findByRole('table', { name: 'Totales en vivo del turno' });
+    expect(filas(tabla)).toEqual(['BOB', 'USD', 'ARS']);
+    const celdas = [...tabla.querySelectorAll('tbody tr')].map((f) => f.querySelector('td')?.textContent);
+    expect(celdas).toEqual(['Bs 100,00', 'USD 20,00', 'ARS 1.000,00']);
+    cleanup();
+    e.como('caj');
+    ver(e, 'cierre');
+    await screen.findByRole('heading', { name: 'Cierre de turno' });
+    const esperados = [...document.querySelectorAll('fieldset')].map((f) => f.querySelectorAll('dd')[1]?.textContent);
+    expect(esperados).toEqual(celdas);
+  });
+
+  it('un comercio con otro orden declarado lo ve igual en cierre y supervisión', async () => {
+    const comercial = { ...UN_MERCADO, monedasCaja: ['USD', 'BOB'] };
+    const e = crearEntorno('caj', undefined, { comercial });
+    await e.api.llamar('abrirTurno', { turnoId: uuid(), apertura: { BOB: 10000, USD: 2000 } });
+    ver(e, 'cierre');
+    await screen.findByRole('heading', { name: 'Cierre de turno' });
+    expect(leyendas()).toEqual(['USD', 'BOB']);
+    cleanup();
+    e.como('adm');
+    render(e.envolver(h(PantallaSupervision, { sub: 'vivo' })));
+    const tabla = await screen.findByRole('table', { name: 'Totales en vivo del turno' });
+    expect(filas(tabla)).toEqual(['USD', 'BOB']);
+  });
+
+  it('un comercio de una sola moneda ve solo esa moneda en cierre y supervisión', async () => {
+    const e = crearEntorno('caj', undefined, { comercial: UN_MERCADO });
+    await e.api.llamar('abrirTurno', { turnoId: uuid(), apertura: { BOB: 10000 } });
+    ver(e, 'cierre');
+    await screen.findByRole('heading', { name: 'Cierre de turno' });
+    expect(leyendas()).toEqual(['BOB']);
+    cleanup();
+    e.como('adm');
+    render(e.envolver(h(PantallaSupervision, { sub: 'vivo' })));
+    const tabla = await screen.findByRole('table', { name: 'Totales en vivo del turno' });
+    expect(filas(tabla)).toEqual(['BOB']);
+    expect(tabla.textContent).toContain('Bs 100,00');
   });
 });

@@ -5,7 +5,8 @@ import { userEvent } from '@testing-library/user-event';
 import { afterEach, describe, expect, it, vi } from 'vitest';
 import { ErrorApi } from '../../api/errores.js';
 import { crearEntorno, type Entorno } from '../../ayuda-pruebas.js';
-import type { Rol } from '../../api/tipos.js';
+import type { Rol, VistaComercial } from '../../api/tipos.js';
+import { reglasDeclaradasActuales, restablecerRedondeo } from '../../util/precio.js';
 import { ProveedorGuardia } from '../../ui/guardia.js';
 import { PantallaInventario } from './inventario.js';
 
@@ -46,17 +47,92 @@ describe('alta en el panel lateral', () => {
     expect(d.querySelectorAll('[style]').length).toBe(0);
   });
 
-  it('el identificador se sugiere desde el nombre y deja de seguirlo cuando la persona lo edita', async () => {
+  it('no hay campo de identificador: la clave interna es automática y no se ve', async () => {
     const e = crearEntorno('adm');
     ver(e);
     const u = userEvent.setup();
-    await nuevoProducto(u);
+    const d = await nuevoProducto(u);
+    expect(screen.queryByLabelText(/Identificador/)).toBeNull();
     await u.type(screen.getByLabelText(/^Nombre/), 'Teclado mecánico');
-    expect((screen.getByLabelText(/^Identificador/) as HTMLInputElement).value).toBe('teclado-mecanico');
-    await u.clear(screen.getByLabelText(/^Identificador/));
-    await u.type(screen.getByLabelText(/^Identificador/), 'mi-codigo');
-    await u.type(screen.getByLabelText(/^Nombre/), ' X');
-    expect((screen.getByLabelText(/^Identificador/) as HTMLInputElement).value).toBe('mi-codigo');
+    expect(within(d).queryByText(/teclado-mecanico/)).toBeNull();
+  });
+
+  it('crea con la clave generada desde el nombre, y desde el SKU si el nombre no alcanza ("!!" o "a")', async () => {
+    for (const [nombre, id] of [['!!', 'tec-1'], ['a', 'tec-1']] as const) {
+      const e = crearEntorno('adm');
+      ver(e);
+      const u = userEvent.setup();
+      await nuevoProducto(u);
+      await u.type(screen.getByLabelText(/^Nombre/), nombre);
+      await u.type(screen.getByLabelText(/^Categoría/), 'Accesorios');
+      await u.type(screen.getByLabelText(/^SKU/), 'TEC-1');
+      await u.type(screen.getByLabelText(/^Bolivia \(USD\)/), '15');
+      await u.type(screen.getByLabelText(/^Argentina \(USD\)/), '16');
+      await u.click(screen.getByRole('button', { name: 'Crear producto' }));
+      await waitFor(() => expect(llamadas(e, 'crearProducto').length).toBe(1));
+      expect(llamadas(e, 'crearProducto')[0]?.entrada['producto']).toMatchObject({ id, nombre });
+      cleanup();
+    }
+  });
+
+  it('si la clave ya la usa un producto que el panel no tenía cargado, reintenta solo con otra y otro operacionId', async () => {
+    const e = crearEntorno('adm');
+    const original = e.api.llamar.bind(e.api);
+    let choques = 2;
+    const intentos: { id: string; operacionId: unknown }[] = [];
+    vi.spyOn(e.api, 'llamar').mockImplementation(((n: string, en: unknown) => {
+      if (n === 'crearProducto') intentos.push({ id: (en as { producto: { id: string } }).producto.id, operacionId: (en as { operacionId: unknown }).operacionId });
+      if (n === 'crearProducto' && choques > 0) {
+        choques -= 1;
+        return Promise.reject(new ErrorApi('failed-precondition', `El producto ${((en as { producto: { id: string } }).producto.id)} ya existe`, { codigo: 'estado-invalido' }));
+      }
+      return original(n as never, en as never);
+    }) as never);
+    ver(e);
+    const u = userEvent.setup();
+    await nuevoProducto(u);
+    await completarAlta(u);
+    await u.click(screen.getByRole('button', { name: 'Crear producto' }));
+    await waitFor(() => expect(screen.queryByRole('dialog')).toBeNull());
+    expect(intentos.map((x) => x.id)).toEqual(['teclado-mecanico', 'teclado-mecanico-2', 'teclado-mecanico-3']);
+    expect(new Set(intentos.map((x) => x.operacionId)).size).toBe(3);
+    expect(screen.queryByText(/ya existe/)).toBeNull();
+  });
+
+  it('tras 5 choques seguidos dice «No se pudo crear el producto. Intente de nuevo.» sin jerga', async () => {
+    const e = crearEntorno('adm');
+    const original = e.api.llamar.bind(e.api);
+    let intentos = 0;
+    vi.spyOn(e.api, 'llamar').mockImplementation(((n: string, en: unknown) => (n === 'crearProducto'
+      ? (intentos += 1, Promise.reject(new ErrorApi('failed-precondition', `El producto ${((en as { producto: { id: string } }).producto.id)} ya existe`, { codigo: 'estado-invalido' })))
+      : original(n as never, en as never))) as never);
+    ver(e);
+    const u = userEvent.setup();
+    await nuevoProducto(u);
+    await completarAlta(u);
+    await u.click(screen.getByRole('button', { name: 'Crear producto' }));
+    expect(await screen.findByText(/No se pudo crear el producto\. Intente de nuevo\./)).toBeTruthy();
+    expect(intentos).toBe(5);
+    expect(screen.queryByText(/teclado-mecanico/)).toBeNull();
+    expect(screen.getByRole('dialog', { name: 'Nuevo producto' })).toBeTruthy();
+  });
+
+  it('el aviso de SKU repetido aparece al salir del campo, sin pulsar Guardar; el de mayúsculas no bloquea', async () => {
+    const e = crearEntorno('adm');
+    const existente = (await e.api.llamar('listarProductos', {}))[0]?.sku as string;
+    ver(e);
+    const u = userEvent.setup();
+    await nuevoProducto(u);
+    await u.type(screen.getByLabelText(/^SKU/), existente);
+    expect(screen.queryByText(/Ese SKU ya lo usa otro producto/)).toBeNull();
+    await u.tab();
+    expect(await screen.findByText(/Ese SKU ya lo usa otro producto/)).toBeTruthy();
+    await u.clear(screen.getByLabelText(/^SKU/));
+    await u.type(screen.getByLabelText(/^SKU/), existente.toLowerCase() === existente ? existente.toUpperCase() : existente.toLowerCase());
+    await u.tab();
+    expect(await screen.findByText('Se parece al SKU de otro producto (difiere solo en mayúsculas)')).toBeTruthy();
+    expect(screen.queryByText(/Ese SKU ya lo usa otro producto/)).toBeNull();
+    expect(screen.getByLabelText(/^SKU/).getAttribute('aria-invalid')).toBeNull();
   });
 
   it('«Crear producto» nunca se apaga: revisa, marca el error junto a cada campo y enfoca el primero', async () => {
@@ -325,5 +401,122 @@ describe('edición', () => {
     expect(within(d).queryByRole('button', { name: 'Guardar cambios' })).toBeNull();
     expect(within(d).queryByText(/Costo y margen/)).toBeNull();
     expect(within(d).getAllByRole('button', { name: 'Cerrar' }).length).toBe(2);
+  });
+});
+
+const UN_MERCADO: VistaComercial = {
+  mercados: [{ id: 'PE', nombre: 'Perú', monedaVenta: 'PEN', monedaBase: 'PEN', tieneTipoCambio: false }],
+  monedasCaja: ['PEN'],
+  monedaCosto: 'PEN',
+};
+const REDONDEO_PE = { PEN: { tipo: 'decimales', decimales: 2, modo: 'cercano' } } as const;
+
+describe('comercio de un solo mercado y una sola moneda', () => {
+  it('pide un solo precio sin nombre de mercado y rotula el costo con su moneda', async () => {
+    const e = crearEntorno('adm', undefined, { comercial: UN_MERCADO, redondeo: REDONDEO_PE });
+    ver(e);
+    const u = userEvent.setup();
+    const d = await nuevoProducto(u);
+    expect(within(d).getByLabelText(/^Precio base \(PEN\)/)).toBeTruthy();
+    expect(within(d).queryByLabelText(/Bolivia/)).toBeNull();
+    expect(within(d).getByText('Precio base en PEN')).toBeTruthy();
+    expect(within(d).getByLabelText(/^Costo \(PEN\)/)).toBeTruthy();
+    expect(within(d).getByText('Margen')).toBeTruthy();
+    expect(within(d).queryByText(/Margen Perú/)).toBeNull();
+    await u.type(within(d).getByLabelText(/^Precio base/), '12,5');
+    await waitFor(() => expect(d.querySelector('[data-prueba="precio-pe"]')?.textContent).toContain('PEN 12,50'));
+  });
+
+  it('crea el producto con la clave del mercado declarado y sin otras', async () => {
+    const e = crearEntorno('adm', undefined, { comercial: UN_MERCADO, redondeo: REDONDEO_PE });
+    ver(e);
+    const u = userEvent.setup();
+    const d = await nuevoProducto(u);
+    await u.type(screen.getByLabelText(/^Nombre/), 'Lápiz');
+    await u.type(screen.getByLabelText(/^Categoría/), 'Útiles');
+    await u.type(screen.getByLabelText(/^SKU/), 'LAP-1');
+    await u.type(screen.getByLabelText(/^Precio base/), '2,50');
+    await u.click(within(d).getByRole('button', { name: 'Crear producto' }));
+    await waitFor(() => expect(llamadas(e, 'crearProducto').length).toBe(1));
+    expect(llamadas(e, 'crearProducto')[0]?.entrada['producto']).toMatchObject({ id: 'lapiz', precioUSD: { pe: 250 } });
+  });
+
+  it('un no administrador no ve costo ni moneda de costo inventada', async () => {
+    const e = crearEntorno('sup', undefined, { comercial: { mercados: UN_MERCADO.mercados, monedasCaja: ['PEN'] }, redondeo: REDONDEO_PE });
+    ver(e);
+    const u = userEvent.setup();
+    const d = await editar(u);
+    expect(within(d).queryByText(/Costo y margen/)).toBeNull();
+    expect(within(d).queryByLabelText(/^Costo/)).toBeNull();
+  });
+});
+
+describe('D21: sin regla de redondeo no se muestra precio calculado', () => {
+  it('en vez del precio dice que falta la regla del comercio', async () => {
+    const e = crearEntorno('adm', undefined, { comercial: UN_MERCADO, redondeo: {} });
+    ver(e);
+    const u = userEvent.setup();
+    const d = await nuevoProducto(u);
+    await u.type(within(d).getByLabelText(/^Precio base/), '12,5');
+    await waitFor(() => expect(d.querySelector('[data-prueba="precio-pe"]')?.textContent).toContain('Sin regla de redondeo'));
+    expect(d.querySelector('[data-prueba="precio-pe"]')?.textContent).not.toMatch(/\d,\d\d/);
+    expect(reglasDeclaradasActuales()).toEqual({});
+    restablecerRedondeo();
+  });
+});
+
+describe('marca «sin precio»', () => {
+  it('se ve en la ficha del producto y deja editar sin exigir ese precio', async () => {
+    const e = crearEntorno('adm');
+    // Producto de referencia al que se le quitó el precio de un mercado declarado (clave ausente).
+    const productos = e.api.estado.productos as unknown as Map<string, { precioUSD: Record<string, number> }>;
+    delete (productos.get('cable-hdmi') as { precioUSD: Record<string, number> }).precioUSD['ar'];
+    ver(e);
+    const u = userEvent.setup();
+    const d = await editar(u);
+    expect(d.querySelector('[data-prueba="sin-precio-ar"]')?.textContent).toContain('Sin precio en Argentina');
+    expect(d.querySelector('[data-prueba="sin-precio-bo"]')).toBeNull();
+    await u.clear(within(d).getByLabelText(/^Categoría/));
+    await u.type(within(d).getByLabelText(/^Categoría/), 'Cables');
+    await u.click(within(d).getByRole('button', { name: 'Guardar cambios' }));
+    await waitFor(() => expect(llamadas(e, 'actualizarProducto').length).toBe(1));
+    expect(llamadas(e, 'actualizarProducto')[0]?.entrada['cambios']).toEqual({ categoria: 'Cables' });
+  });
+});
+
+describe('el doble exige los precios como el servidor', () => {
+  const alta = (precioUSD: Record<string, number>): Promise<unknown> =>
+    crearEntorno('adm').api.llamar('crearProducto', { operacionId: 'op-alta-1', producto: { id: 'lapiz-2', nombre: 'Lápiz', categoria: 'Papelería', sku: 'LAP-2', precioUSD } as never });
+  const editarPrecios = (precioUSD: Record<string, number>): Promise<unknown> =>
+    crearEntorno('adm').api.llamar('actualizarProducto', { operacionId: 'op-edi-1', productoId: 'cable-hdmi', cambios: { precioUSD } as never });
+
+  it('rechaza quitar u omitir un precio existente al editar', async () => {
+    await expect(editarPrecios({ bo: 1000 })).rejects.toThrow('No se puede quitar el precio de AR');
+  });
+
+  it('rechaza un mercado no declarado al editar', async () => {
+    await expect(editarPrecios({ bo: 1000, ar: 900, xx: 5 })).rejects.toThrow('Mercado desconocido en el precio: xx');
+  });
+
+  it('el alta exige precio en todos los mercados declarados', async () => {
+    await expect(alta({ bo: 1000 })).rejects.toThrow('Falta el precio del mercado AR');
+    await expect(alta({ bo: 1000, ar: 900 })).resolves.toBeTruthy();
+  });
+
+  it('acepta editar con todos los precios', async () => {
+    await expect(editarPrecios({ bo: 1000, ar: 900 })).resolves.toBeTruthy();
+  });
+});
+
+describe('configuración comercial con error', () => {
+  it('muestra el error de carga arriba de la tabla en vez de no abrir nada', async () => {
+    const e = crearEntorno('adm');
+    const original = e.api.llamar.bind(e.api);
+    vi.spyOn(e.api, 'llamar').mockImplementation(((n: string, en: unknown) => (n === 'configuracionComercial' ? Promise.reject(new ErrorApi('unavailable', 'sin conexión')) : original(n as never, en as never))) as never);
+    ver(e);
+    const u = userEvent.setup();
+    await u.click(await screen.findByRole('button', { name: `Datos del producto de ${CABLE}` }));
+    expect((await screen.findByText(/No se pudo leer la configuración comercial/)).textContent).toContain('configuración comercial');
+    expect(screen.queryByRole('dialog')).toBeNull();
   });
 });
