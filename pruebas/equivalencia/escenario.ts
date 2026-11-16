@@ -35,7 +35,7 @@ interface Fila {
 }
 
 type ProductoBase = EntradaProducto & { readonly precioUSD: { readonly bo: number; readonly ar: number } };
-const base = (id: string, nombre: string, precioUSD: { bo: number; ar: number }, extra: Partial<EntradaProducto> = {}): ProductoBase => ({
+const base = (id: string, nombre: string, precioUSD: { bo: number; ar: number }, extra: Partial<Omit<EntradaProducto, 'precioUSD'>> = {}): ProductoBase => ({
   id, nombre, categoria: 'general', sku: `SKU-${id}`, precioUSD, publicado: true, ...extra,
 });
 
