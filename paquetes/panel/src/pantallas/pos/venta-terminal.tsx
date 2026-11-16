@@ -2,7 +2,7 @@ import type { JSX } from 'preact';
 import { useEffect, useMemo, useRef, useState } from 'preact/hooks';
 import { nuevoId } from '../../api/cliente.js';
 import { marcaDe } from '../../api/marca.js';
-import type { AprobacionPos, CotizacionesVigentes, MercadoDeclarado, Moneda, ProductoPanel, Recibo, TurnoPos, UbicacionId } from '../../api/tipos.js';
+import type { AprobacionPos, Carrito, CotizacionesVigentes, MercadoDeclarado, ProductoPanel, Recibo, SolicitudAprobacion, TurnoPos, UbicacionId } from '../../api/tipos.js';
 import { Alerta, Boton, Campo, Cargando, Casilla, ErrorCarga, Selector, Seccion, Vacio } from '../../ui/comun.js';
 import { useConfiguracionComercial } from '../../ui/comercial.js';
 import { useAvisos } from '../../ui/avisos.js';
@@ -239,7 +239,7 @@ function TerminalLista({ turno, alCambiar, mercados }: { turno: TurnoPos; alCamb
   const pedirAprobacion = (): void => {
     void solicitud.ejecutar(async () => {
       const id = nuevoId();
-      await api.llamar('solicitarAprobacion', { aprobacionId: id, solicitud: { tipo: 'descuento', moneda: moneda as Moneda, monto, motivo: descMotivo.trim() } });
+      await api.llamar('solicitarAprobacion', { aprobacionId: id, solicitud: { tipo: 'descuento', moneda: moneda as SolicitudAprobacion['moneda'], monto, motivo: descMotivo.trim() } });
       setSolicitadaId(id);
     }, { exito: 'Solicitud enviada al supervisor.', error: 'ambos' });
   };
@@ -249,7 +249,7 @@ function TerminalLista({ turno, alCambiar, mercados }: { turno: TurnoPos; alCamb
       mercado: mercado.id, moneda, config, total,
       carrito: {
         // El mercado viaja como id declarado por el comercio; el contrato del carrito tipa la moneda con las conocidas y el servidor valida contra lo declarado.
-        mercado: mercado.id, moneda: moneda as Moneda,
+        mercado: mercado.id, moneda: moneda as Carrito['moneda'],
         lineas: lineas.map((l, i) => ({ productoId: l.productoId, cantidad: l.cantidad, almacenId: l.almacenId, ...(l.series.length > 0 ? { series: l.series } : {}), ...(precios[i]?.tipo === 'precio' ? { precioMostrado: (precios[i] as { centavos: number }).centavos } : {}) })),
         ...(monto > 0 ? { descuento: { monto, motivo: descMotivo.trim() } } : {}),
         ...(cliente.trim() !== '' ? { cliente: { nombre: cliente.trim(), ...(telefono.trim() !== '' ? { telefono: telefono.trim() } : {}) } } : {}),

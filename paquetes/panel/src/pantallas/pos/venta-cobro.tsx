@@ -2,7 +2,7 @@ import type { JSX } from 'preact';
 import { useEffect, useRef, useState } from 'preact/hooks';
 import { nuevoId } from '../../api/cliente.js';
 import { ErrorApi } from '../../api/errores.js';
-import type { AprobacionPos, Carrito, ConfigPos, MedioPago, Moneda } from '../../api/tipos.js';
+import type { AprobacionPos, Carrito, ConfigPos, MedioPago, SolicitudAprobacion } from '../../api/tipos.js';
 import { Alerta, Boton, Campo, Cargando, Selector, Seccion } from '../../ui/comun.js';
 import { useApp } from '../../ui/contexto.js';
 import { useAccion, useCarga } from '../../ui/hooks.js';
@@ -155,7 +155,7 @@ export function VentaCobro({ datos, volver, alVender }: { datos: DatosCobro; vol
   const pedirCredito = (): void => {
     void solicitud.ejecutar(async () => {
       const id = nuevoId();
-      await api.llamar('solicitarAprobacion', { aprobacionId: id, solicitud: { tipo: 'credito', moneda: moneda as Moneda, monto: montoCredito, motivo: `Crédito para ${deudor}`, deudor } });
+      await api.llamar('solicitarAprobacion', { aprobacionId: id, solicitud: { tipo: 'credito', moneda: moneda as SolicitudAprobacion['moneda'], monto: montoCredito, motivo: `Crédito para ${deudor}`, deudor } });
       setSolicitadaId(id);
     }, { exito: 'Solicitud de crédito enviada al supervisor.', error: 'ambos' });
   };

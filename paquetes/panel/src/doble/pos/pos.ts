@@ -1,6 +1,6 @@
 import type { Entrada, NombreCallable, Salida } from '../../api/contrato.js';
 import type {
-  AprobacionPos, LineaVenta, Moneda, MovimientoCaja, PagoVentaPos, Recibo, ResultadoCierre, TurnoPos, VentaPos,
+  AprobacionPos, LineaVenta, CodigoMoneda, MovimientoCaja, PagoVentaPos, Recibo, ResultadoCierre, TurnoPos, VentaPos,
 } from '../../api/tipos.js';
 import { MEDIOS_PAGO } from '../../api/tipos.js';
 import { cotizacionDeMercado, diferenciaPorMoneda, efectivoEsperado, monedasDeCobro, monedasDelTurno, precioDeCobro, sumarTotales, TOTALES_VACIOS } from '../../pantallas/pos/arqueo.js';
@@ -39,9 +39,9 @@ function mismoTurno(c: Contexto, t: TurnoPos): void {
   if (t.cajeroUid !== c.uid && c.rol === 'caj') throw fallo('turno-ajeno');
 }
 
-export function agregarMonedas(t: TurnoPos, delta: Partial<Record<Moneda, Partial<typeof TOTALES_VACIOS>>>): TurnoPos {
+export function agregarMonedas(t: TurnoPos, delta: Partial<Record<CodigoMoneda, Partial<typeof TOTALES_VACIOS>>>): TurnoPos {
   let totales = t.totales;
-  for (const [m, d] of Object.entries(delta) as [Moneda, Partial<typeof TOTALES_VACIOS>][]) totales = sumarTotales(totales, m, d);
+  for (const [m, d] of Object.entries(delta) as [CodigoMoneda, Partial<typeof TOTALES_VACIOS>][]) totales = sumarTotales(totales, m, d);
   return { ...t, totales };
 }
 
@@ -72,7 +72,7 @@ export function sumarMeses(fecha: string, meses: number): string {
   return `${anio}-${String(mes + 1).padStart(2, '0')}-${String(Math.min(d, ultimo)).padStart(2, '0')}`;
 }
 
-function usarAprobacion(c: Contexto, id: string, esperado: { tipo: 'descuento' | 'credito'; moneda: Moneda; monto: number; deudor?: string }): AprobacionPos {
+function usarAprobacion(c: Contexto, id: string, esperado: { tipo: 'descuento' | 'credito'; moneda: CodigoMoneda; monto: number; deudor?: string }): AprobacionPos {
   const a = c.e.aprobaciones.get(id);
   if (a === undefined) throw fallo('aprobacion-inexistente');
   if (a.estado === 'usada') throw fallo('aprobacion-usada');
@@ -85,7 +85,7 @@ function usarAprobacion(c: Contexto, id: string, esperado: { tipo: 'descuento' |
   return a;
 }
 
-function validarPagos(c: Contexto, pagos: readonly { medio: string; moneda: string; monto: number; cambio?: number; referencia?: string }[], moneda: Moneda, total: number): PagoVentaPos[] {
+function validarPagos(c: Contexto, pagos: readonly { medio: string; moneda: string; monto: number; cambio?: number; referencia?: string }[], moneda: CodigoMoneda, total: number): PagoVentaPos[] {
   if (!Array.isArray(pagos) || pagos.length === 0 || pagos.length > 10) throw fallo('pagos-invalidos', 'Indique entre 1 y 10 pagos');
   let neto = 0;
   const salida: PagoVentaPos[] = [];
@@ -117,10 +117,10 @@ export const handlersPos: {
     const previo = c.e.turnos.get(id);
     if (previo !== undefined) return previo;
     if (turnoAbierto(c) !== undefined) throw fallo('turno-ya-abierto');
-    const apertura: Partial<Record<Moneda, number>> = {};
+    const apertura: Partial<Record<CodigoMoneda, number>> = {};
     for (const [m, v] of Object.entries(e.apertura)) {
       if (!c.e.comercial.monedasCaja.includes(m)) throw fallo('entrada-invalida', 'moneda desconocida');
-      apertura[m as Moneda] = exigirMonto(v ?? Number.NaN, `apertura.${m}`);
+      apertura[m] = exigirMonto(v ?? Number.NaN, `apertura.${m}`);
     }
     if (Object.keys(apertura).length === 0) throw fallo('entrada-invalida', 'apertura necesita al menos una moneda');
     const t: TurnoPos = { turnoId: id, cajaId: 'caja-1', cajeroUid: c.uid, estado: 'abierto', apertura, totales: {}, abiertoEnMs: c.ahora };
