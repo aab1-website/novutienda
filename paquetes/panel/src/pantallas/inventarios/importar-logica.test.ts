@@ -62,7 +62,7 @@ describe('confirmación y resultado', () => {
     expect(encabezadosPlantilla(false, REF, 'USD')).toContain('sku');
   });
   it('el comercio de referencia ve las mismas columnas, textos y orden de siempre', () => {
-    expect(encabezadosPlantilla(false, REF, 'USD')).toEqual(['id', 'nombre', 'categoria', 'marca', 'sku', 'conSerie', 'garantiaMeses', 'minimo', 'precioBO', 'precioAR', 'costo', 'activo', 'publicado']);
+    expect(encabezadosPlantilla(false, REF, 'USD')).toEqual(['nombre', 'categoria', 'marca', 'sku', 'conSerie', 'garantiaMeses', 'minimo', 'precioBO', 'precioAR', 'costo', 'activo', 'publicado']);
     const c = columnasArchivo(REF, 'USD');
     expect(c.find((x) => x.nombre === 'precioBO')?.texto).toBe('precio del mercado de Bolivia, en dólares con hasta 2 decimales (por ejemplo 1234.50).');
     expect(c.find((x) => x.nombre === 'precioAR')?.texto).toBe('precio del mercado de Argentina, en dólares con hasta 2 decimales.');
@@ -70,7 +70,7 @@ describe('confirmación y resultado', () => {
     expect(notaPrecios(REF)).toBe('Los precios van en dólares, con decimales.');
   });
   it('un comercio de un mercado y una moneda: una sola columna de precio, en su moneda', () => {
-    expect(encabezadosPlantilla(false, UNO, 'PEN')).toEqual(['id', 'nombre', 'categoria', 'marca', 'sku', 'conSerie', 'garantiaMeses', 'minimo', 'precioPE', 'costo', 'activo', 'publicado']);
+    expect(encabezadosPlantilla(false, UNO, 'PEN')).toEqual(['nombre', 'categoria', 'marca', 'sku', 'conSerie', 'garantiaMeses', 'minimo', 'precioPE', 'costo', 'activo', 'publicado']);
     const c = columnasArchivo(UNO, 'PEN');
     expect(c.find((x) => x.nombre === 'precioPE')?.texto).toBe('precio del mercado de Perú, en PEN con hasta 2 decimales (por ejemplo 1234.50).');
     expect(c.find((x) => x.nombre === 'costo')?.texto).toBe('costo en PEN con hasta 2 decimales (opcional).');

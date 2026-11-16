@@ -21,8 +21,10 @@ beforeEach(async () => {
   db = await nuevoEntorno();
 });
 
-const sembrar = (id: string, precioUSD: Record<string, number>): void =>
+const sembrar = (id: string, precioUSD: Record<string, number>): void => {
+  db.poner(`tenants/${T}/skus/SKU-${id}`, { productoId: id });
   db.poner(`tenants/${T}/productos/${id}`, { nombre: `Producto ${id}`, categoria: 'c', sku: `SKU-${id}`, activo: true, publicado: false, conSerie: false, precioUSD, bajoMinimo: false, version: 1 });
+};
 
 describe('lectura', () => {
   it('un mercado declarado sin clave no lanza: precioEnMercado da null y mercadosSinPrecio lo nombra', () => {
@@ -77,7 +79,7 @@ describe('llamadas', () => {
     sembrar('prod-a', { bo: 100, ar: 200 });
     const r = (await accionesInventarios['exportarCsv']?.ejecutar(ctx(COMERCIAL_TRES_PE), {})) as { csv: string };
     const fila = r.csv.split('\r\n')[1]!.split(',');
-    expect(fila.slice(8, 11)).toEqual(['1.00', '2.00', '']);
+    expect(fila.slice(7, 10)).toEqual(['1.00', '2.00', '']);
   });
 });
 
@@ -107,7 +109,7 @@ describe('edición', () => {
 });
 
 describe('importación y exportación', () => {
-  const imp = (csv: string) => db.runTransaction((tx) => importarProductosCsv(tx, { tenantId: T, operacionId: op('imp'), por: ADM, csv, comercial: COMERCIAL_TRES_PE }));
+  const imp = (csv: string) => db.runTransaction((tx) => importarProductosCsv(tx, { catalogo: sinCatalogo, tenantId: T, operacionId: op('imp'), por: ADM, csv, comercial: COMERCIAL_TRES_PE }));
 
   it('cambiar solo un mercado de un producto existente deja el otro ausente, no en 0', async () => {
     sembrar('prod-a', { bo: 100, ar: 200 });
@@ -123,7 +125,10 @@ describe('importación y exportación', () => {
     const leido = await db.runTransaction((tx) => leerProducto(tx, T, 'prod-a', COMERCIAL_TRES_PE));
     const csv = exportarProductosCsv([{ id: 'prod-a', nombre: 'Producto prod-a', categoria: 'c', sku: 'SKU-prod-a', conSerie: false, precioUSD: { ...leido!.precioCentavos }, activo: true, publicado: false }], COMERCIAL_TRES_PE);
     expect(csv.split('\r\n')[1]).toContain(',1.00,2.00,,');
-    const sim = await db.runTransaction((tx) => simularImportacionCsv(tx, { tenantId: T, por: ADM, csv, comercial: COMERCIAL_TRES_PE }));
+    const sim = await db.runTransaction((tx) => simularImportacionCsv(tx, { catalogo: sinCatalogo, tenantId: T, por: ADM, csv, comercial: COMERCIAL_TRES_PE }));
     expect(sim.filas[0]?.accion).toBe('sin-cambios');
   });
 });
+
+/** Sin productos previos que reconocer: el catálogo es explícito, nunca se omite. */
+const sinCatalogo = (): Promise<never[]> => Promise.resolve([]);

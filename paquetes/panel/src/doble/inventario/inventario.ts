@@ -323,9 +323,9 @@ export const handlersInventario: {
     const verCosto = c.rol === 'adm';
     const claves = c.e.comercial.mercados.map((m) => claveDePrecio(m.id));
     const precios = (p: ProductoInterno): (number | string)[] => claves.map((k) => (p.precioUSD as unknown as Readonly<Record<string, number>>)[k] ?? '');
-    const cab = ['id', 'nombre', 'categoria', 'marca', 'sku', 'conSerie', 'garantiaMeses', 'minimo', ...claves.map((k) => `precioUSD${k}`), ...(verCosto ? ['costoUSD'] : []), 'activo', 'publicado'];
+    const cab = ['nombre', 'categoria', 'marca', 'sku', 'conSerie', 'garantiaMeses', 'minimo', ...claves.map((k) => `precioUSD${k}`), ...(verCosto ? ['costoUSD'] : []), 'activo', 'publicado'];
     const filas = [...c.e.productos.values()].map((p) => [
-      p.id, p.nombre, p.categoria, p.marca ?? '', p.sku, p.conSerie, p.garantiaMeses ?? '', p.minimo ?? '', ...precios(p),
+      p.nombre, p.categoria, p.marca ?? '', p.sku, p.conSerie, p.garantiaMeses ?? '', p.minimo ?? '', ...precios(p),
       ...(verCosto ? [p.costoUSD] : []), p.activo, p.publicado,
     ]);
     return { csv: aCsv(cab, filas) };

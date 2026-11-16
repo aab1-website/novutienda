@@ -3,7 +3,7 @@ import { ErrorApi } from '../../api/errores.js';
 import type { ProductoPanel } from '../../api/tipos.js';
 import type { MercadoDeclarado } from '../../api/tipos.js';
 import { mercadosDePrecio } from './nombres.js';
-import { aEntrada, cambiosDeEdicion, errorDeServidor, formInicial, identificadorSugerido, listaEnTexto, revisarProducto, type FormProducto } from './producto-revision.js';
+import { aEntrada, cambiosDeEdicion, errorDeServidor, avisoDeSku, errorDeSku, esProductoYaExiste, formInicial, leerBorrador, listaEnTexto, revisarProducto, type FormProducto } from './producto-revision.js';
 
 const EXISTENTES = [{ id: 'cable-hdmi', sku: 'CABLE-HDMI' }];
 const REF: readonly MercadoDeclarado[] = [
@@ -15,25 +15,10 @@ const M = mercadosDePrecio(REF);
 const M1 = mercadosDePrecio(UNO);
 const errSrv = (e: unknown): ReturnType<typeof errorDeServidor> => errorDeServidor(e, M);
 const CTX = { nuevo: true, existentes: EXISTENTES, mercados: M, monedaCosto: 'USD' };
-const valido = (): FormProducto => ({ ...formInicial(null, M), id: 'teclado-1', nombre: 'Teclado', categoria: 'Accesorios', sku: 'TEC-1', precios: { bo: '15', ar: '16' } });
+const valido = (): FormProducto => ({ ...formInicial(null, M), nombre: 'Teclado', categoria: 'Accesorios', sku: 'TEC-1', precios: { bo: '15', ar: '16' } });
 const producto = (extra: Partial<ProductoPanel> = {}): ProductoPanel => ({
   id: 'cable-hdmi', nombre: 'Cable HDMI 2 m', categoria: 'Accesorios', marca: 'Cabletec', sku: 'CABLE-HDMI', activo: true, publicado: true, conSerie: false, garantiaMeses: 6, minimo: 10,
   precioUSD: { bo: 800, ar: 900 }, costoUSD: 300, stockTotal: 35, existencias: { tienda: 25, 'deposito-1': 10, 'deposito-2': 0 }, bajoMinimo: false, disponible: true, ...extra,
-});
-
-describe('identificador sugerido', () => {
-  it('sale del nombre sin tildes, en minúsculas y con guiones', () => {
-    expect(identificadorSugerido('Cable HDMI 2 m')).toBe('cable-hdmi-2-m');
-    expect(identificadorSugerido('  Audífonos  inalámbricos! ')).toBe('audifonos-inalambricos');
-  });
-  it('queda vacío si no alcanza para un identificador válido y se acota a 56 caracteres', () => {
-    expect(identificadorSugerido('!')).toBe('');
-    expect(identificadorSugerido('a'.repeat(100)).length).toBe(56);
-  });
-  it('no repite uno existente: agrega -2, -3', () => {
-    expect(identificadorSugerido('Cable HDMI', new Set(['cable-hdmi']))).toBe('cable-hdmi-2');
-    expect(identificadorSugerido('Cable HDMI', new Set(['cable-hdmi', 'cable-hdmi-2']))).toBe('cable-hdmi-3');
-  });
 });
 
 describe('revisión del producto', () => {
@@ -42,7 +27,7 @@ describe('revisión del producto', () => {
   });
   it('marca un error por campo, con el mensaje de cada uno', () => {
     const e = revisarProducto({ ...formInicial(null, M) }, CTX);
-    expect(Object.keys(e).sort()).toEqual(['categoria', 'id', 'nombre', 'precio.ar', 'precio.bo', 'sku']);
+    expect(Object.keys(e).sort()).toEqual(['categoria', 'nombre', 'precio.ar', 'precio.bo', 'sku']);
     expect(e['precio.ar']).toMatch(/Falta el precio de Argentina/);
     expect(e['precio.bo']).toMatch(/Falta el precio de Bolivia/);
   });
@@ -50,14 +35,30 @@ describe('revisión del producto', () => {
     const e = revisarProducto({ ...formInicial(producto(), M), precios: { bo: '', ar: 'x' } }, { ...CTX, nuevo: false });
     expect(e['precio.bo']).toBeTruthy();
     expect(e['precio.ar']).toMatch(/monto en dólares/);
-    expect(e['id']).toBeUndefined();
     expect(e['sku']).toBeUndefined();
   });
-  it('rechaza identificador o SKU repetidos y con formato inválido', () => {
-    expect(revisarProducto({ ...valido(), id: 'cable-hdmi' }, CTX)['id']).toMatch(/Ya existe/);
-    expect(revisarProducto({ ...valido(), id: 'Mal Id' }, CTX)['id']).toMatch(/minúsculas/);
+  it('rechaza un SKU repetido o con formato inválido; no hay campo de identificador', () => {
+    expect(revisarProducto({ ...valido(), sku: 'x' }, CTX)).not.toHaveProperty('id');
     expect(revisarProducto({ ...valido(), sku: 'CABLE-HDMI' }, CTX)['sku']).toMatch(/ya lo usa/);
     expect(revisarProducto({ ...valido(), sku: 'a b' }, CTX)['sku']).toMatch(/letras, números/);
+  });
+  it('un SKU que solo difiere en mayúsculas no es error: es un aviso', () => {
+    expect(revisarProducto({ ...valido(), sku: 'cable-hdmi' }, CTX)['sku']).toBeUndefined();
+    expect(avisoDeSku('cable-hdmi', EXISTENTES)).toBe('Se parece al SKU de otro producto (difiere solo en mayúsculas)');
+    expect(avisoDeSku('CABLE-HDMI', EXISTENTES)).toBeNull();
+    expect(avisoDeSku('otro', EXISTENTES)).toBeNull();
+  });
+  it('el error de SKU repetido sale al salir del campo, sin esperar a Guardar, y no dice nada de un campo vacío', () => {
+    expect(errorDeSku('CABLE-HDMI', EXISTENTES)).toMatch(/ya lo usa/);
+    expect(errorDeSku('', EXISTENTES)).toBeNull();
+    expect(errorDeSku('a b', EXISTENTES)).toMatch(/letras, números/);
+  });
+  it('un borrador viejo con id e idEditado se lee sin marcarse como modificado', () => {
+    const inicial = formInicial(null, M);
+    const viejo = { ...inicial, id: 'algo', idEditado: true } as unknown as FormProducto;
+    expect(leerBorrador(viejo)).toEqual(inicial);
+    expect(JSON.stringify(leerBorrador(viejo))).toBe(JSON.stringify(inicial));
+    expect(leerBorrador(null)).toBeNull();
   });
   it('garantía, mínimo y costo son opcionales, pero si se escriben deben ser válidos', () => {
     expect(revisarProducto({ ...valido(), garantia: '', minimo: '', costo: '' }, CTX)).toEqual({});
@@ -74,7 +75,7 @@ describe('revisión del producto', () => {
 
 describe('alta y edición hacia el servidor', () => {
   it('arma la entrada de alta en centavos, sin los opcionales vacíos', () => {
-    expect(aEntrada(valido(), M)).toEqual({ id: 'teclado-1', nombre: 'Teclado', categoria: 'Accesorios', sku: 'TEC-1', activo: true, conSerie: false, precioUSD: { bo: 1500, ar: 1600 } });
+    expect(aEntrada(valido(), M, 'teclado-1')).toEqual({ id: 'teclado-1', nombre: 'Teclado', categoria: 'Accesorios', sku: 'TEC-1', activo: true, conSerie: false, precioUSD: { bo: 1500, ar: 1600 } });
   });
   it('en una edición sin tocar nada no hay cambios', () => {
     const r = cambiosDeEdicion(formInicial(producto(), M), producto(), true, M);
@@ -106,9 +107,13 @@ describe('alta y edición hacia el servidor', () => {
 });
 
 describe('errores del servidor a su campo', () => {
-  it('SKU en uso e identificador repetido', () => {
+  it('SKU en uso; «el producto ya existe» ya no es de un campo (se reintenta con otra clave)', () => {
     expect(errSrv(new ErrorApi('failed-precondition', 'El sku TEC-1 ya está en uso', { codigo: 'estado-invalido' }))?.campo).toBe('sku');
-    expect(errSrv(new ErrorApi('failed-precondition', 'El producto teclado-1 ya existe', { codigo: 'estado-invalido' }))?.campo).toBe('id');
+    const yaExiste = new ErrorApi('failed-precondition', 'El producto teclado-1 ya existe', { codigo: 'estado-invalido' });
+    expect(errSrv(yaExiste)).toBeNull();
+    expect(esProductoYaExiste(yaExiste)).toBe(true);
+    expect(esProductoYaExiste(new ErrorApi('failed-precondition', 'El producto sku-1 ya existe', { codigo: 'estado-invalido' }))).toBe(true);
+    expect(esProductoYaExiste(new ErrorApi('failed-precondition', 'El sku TEC-1 ya está en uso', { codigo: 'estado-invalido' }))).toBe(false);
   });
   it('el rechazo de conSerie por movimientos va a su casilla', () => {
     expect(errSrv(new ErrorApi('failed-precondition', 'No se puede cambiar si el producto se controla por número de serie: ya tiene movimientos de inventario.', { codigo: 'estado-invalido' }))?.campo).toBe('conSerie');
@@ -126,12 +131,12 @@ describe('errores del servidor a su campo', () => {
 
 describe('un comercio con un solo mercado y una sola moneda', () => {
   const ctx1 = { nuevo: true, existentes: EXISTENTES, mercados: M1, monedaCosto: 'PEN' };
-  const base1 = (): FormProducto => ({ ...formInicial(null, M1), id: 'lapiz', nombre: 'Lápiz', categoria: 'Útiles', sku: 'LAP-1', precios: { pe: '2,50' } });
+  const base1 = (): FormProducto => ({ ...formInicial(null, M1), nombre: 'Lápiz', categoria: 'Útiles', sku: 'LAP-1', precios: { pe: '2,50' } });
   it('solo pide y envía el precio de su mercado, con la clave derivada del id', () => {
     expect(Object.keys(formInicial(null, M1).precios)).toEqual(['pe']);
     expect(revisarProducto(base1(), ctx1)).toEqual({});
     expect(Object.keys(revisarProducto(formInicial(null, M1), ctx1))).toContain('precio.pe');
-    expect(aEntrada(base1(), M1)?.precioUSD).toEqual({ pe: 250 });
+    expect(aEntrada(base1(), M1, 'lapiz')?.precioUSD).toEqual({ pe: 250 });
   });
   it('nombra la moneda del comercio en el error de un monto, no dólares fijos', () => {
     expect(revisarProducto({ ...base1(), precios: { pe: 'x' } }, ctx1)['precio.pe']).toBe('Escriba un monto en PEN, por ejemplo 12,50.');

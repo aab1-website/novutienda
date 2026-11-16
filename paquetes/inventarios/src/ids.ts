@@ -24,6 +24,26 @@ export const esIdSegmento = (x: unknown): x is string => typeof x === 'string' &
 export const esCantidad = (x: unknown): x is number =>
   typeof x === 'number' && Number.isSafeInteger(x) && x >= 1 && x <= MAX_CANTIDAD;
 
+const LIMPIAR = (t: string): string =>
+  t.normalize('NFD').replace(/\p{M}/gu, '').toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/^-+|-+$/g, '').slice(0, 56).replace(/-+$/, '');
+
+/**
+ * Clave interna automática de un producto nuevo: el nombre sin tildes ni signos («Cable HDMI 2 m» → «cable-hdmi-2-m»); si queda
+ * con menos de 2 caracteres, el SKU en minúsculas; si tampoco alcanza, «producto». Si ya está en `ocupados` agrega -2…-999.
+ * Siempre cumple `esProductoId`. El panel tiene una copia idéntica (`identificadorParaAlta`): comparten vectores de prueba.
+ */
+export function identificadorParaAlta(nombre: string, sku: string, ocupados: ReadonlySet<string>): string {
+  let base = LIMPIAR(nombre);
+  if (base.length < 2) base = LIMPIAR(sku);
+  if (base.length < 2) base = 'producto';
+  if (!ocupados.has(base)) return base;
+  for (let n = 2; n <= 999; n += 1) {
+    const c = `${base}-${String(n)}`;
+    if (!ocupados.has(c)) return c;
+  }
+  throw new EntradaInvalida('No se pudo generar una clave libre para el producto');
+}
+
 export function exigirTenant(x: unknown): string {
   if (!esTenantIdValido(x)) throw new EntradaInvalida('tenantId inválido');
   return x;

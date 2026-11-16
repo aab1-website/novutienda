@@ -208,7 +208,12 @@ describe.skipIf(!hayEmulador)('panel contra las funciones reales (emulador)', ()
     await api.adm.llamar('actualizarProducto', { operacionId: uuid(), productoId: 'mouse-1', cambios: { nombre: 'Mouse óptico', minimo: 3, costoUSD: 800 } });
     mouse = (await api.adm.llamar('listarProductos', {})).find((p) => p.id === 'mouse-1');
     expect(mouse).toMatchObject({ nombre: 'Mouse óptico', precioUSD: { bo: 1300, ar: 2000 }, costoUSD: 800, minimo: 3 });
-    expect((await api.adm.llamar('exportarProductosCsv', {})).csv).toContain('mouse-1');
+    // La planilla de inventarios reconoce el producto por su SKU y no trae la clave interna.
+    const csvInventarios = (await api.adm.llamar('exportarProductosCsv', {})).csv;
+    expect(csvInventarios).toContain('MOUSE-1');
+    expect(csvInventarios).not.toContain('mouse-1');
+    expect(csvInventarios.replace(/^\ufeff/, '').split(/\r?\n/)[0]?.split(',')).not.toContain('id');
+    // La exportación para el sitio (módulo consola) conserva su columna id.
     expect((await api.adm.llamar('exportarProductosCsvSitio', {})).csv).toContain('mouse-1');
     const tablero = await api.sup.llamar('obtenerTablero', {});
     expect(tablero.cambiosSinPublicar).toBeGreaterThan(0);

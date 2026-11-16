@@ -18,11 +18,11 @@ describe('marca del producto', () => {
     await db.runTransaction((tx) => actualizarProducto(tx, { tenantId: T, operacionId: op(), por: ADM, productoId: 'taladro', cambios: { marca: 'Makita' } }));
     expect((await db.runTransaction((tx) => leerProducto(tx, T, 'taladro')))?.marca).toBe('Makita');
     await db.runTransaction((tx) =>
-      importarProductosCsv(tx, { tenantId: T, operacionId: op(), por: ADM, csv: 'id,nombre,categoria,marca,sku,precioUSDbo,precioUSDar\nsierra,Sierra,herr,=Dewalt,S-1,1,1\n' }),
+      importarProductosCsv(tx, { catalogo: sinCatalogo, tenantId: T, operacionId: op(), por: ADM, csv: 'id,nombre,categoria,marca,sku,precioUSDbo,precioUSDar\nsierra,Sierra,herr,=Dewalt,S-1,1,1\n' }),
     );
     expect(doc(db, 'productos', 'sierra')).toMatchObject({ marca: "'=Dewalt" });
     const csv = exportarProductosCsv([{ id: 'x1', nombre: 'X', categoria: 'c', marca: 'Bosch', sku: 'X-1', conSerie: false, precioUSD: { bo: 1, ar: 1 }, activo: true, publicado: false }], COMERCIAL_TRES);
-    expect(csv).toContain('x1,X,c,Bosch,X-1');
+    expect(csv).toContain('X,c,Bosch,X-1');
   });
 
   it('rechaza una marca vacía o demasiado larga', () => {
@@ -126,3 +126,6 @@ describe('lectores públicos y SKU por defecto', () => {
     expect(() => validarEntradaProducto({ ...producto('x1'), sku: skuDesdeId(largo) }, COMERCIAL_TRES)).not.toThrow();
   });
 });
+
+/** Sin productos previos que reconocer: el catálogo es explícito, nunca se omite. */
+const sinCatalogo = (): Promise<never[]> => Promise.resolve([]);

@@ -15,7 +15,7 @@ import { Tabla } from '../../ui/tabla.js';
 import { aBase64, formatoBytes } from '../../util/base64.js';
 import { aCsv, descargarTexto } from '../../util/csv.js';
 import {
-  ACCION_TEXTO, ACEPTA_ARCHIVO, aplicables, columnasArchivo, COLUMNAS_STOCK, encabezadosPlantilla, lineasConfirmacion, MAX_BYTES_ARCHIVO, MAX_FILAS, notaPrecios, ordenarFilas, resumenSimulacion,
+  ACCION_TEXTO, ACEPTA_ARCHIVO, aplicables, columnasArchivo, COLUMNAS_STOCK, datosDeFila, encabezadosPlantilla, lineasConfirmacion, MAX_BYTES_ARCHIVO, MAX_FILAS, notaPrecios, ordenarFilas, resumenSimulacion,
   avisoOmitidas, lineasConError, TEXTO_ARCHIVO_CAMBIO, TEXTO_DESACTUALIZADA, textoDetencion, textoError, textoResultado, textoTandas, validarArchivo,
 } from './importar-logica.js';
 import './inventario.css';
@@ -45,12 +45,13 @@ function TablaSimulacion({ sim }: { sim: Simulacion }): JSX.Element {
       filas={ordenarFilas(sim.filas)}
       clave={(f) => String(f.linea)}
       porPagina={25}
-      buscar={{ etiqueta: 'Buscar por producto', en: (f) => [f.id] }}
+      buscar={{ etiqueta: 'Buscar por nombre o SKU', en: (f) => [datosDeFila(f).nombre, datosDeFila(f).sku] }}
       filtros={[{ id: 'accion', etiqueta: 'Acción', opciones: (Object.keys(ACCION_TEXTO) as FilaSimulada['accion'][]).map((a) => ({ valor: a, texto: ACCION_TEXTO[a] })), aplica: (f, v) => f.accion === v }]}
       vacio={{ titulo: 'El archivo no trae filas de datos.' }}
       columnas={[
         { id: 'linea', titulo: 'Línea', valor: (f) => f.linea },
-        { id: 'id', titulo: 'Producto', valor: (f) => f.id, encabezadoFila: true },
+        { id: 'producto', titulo: 'Producto', valor: (f) => datosDeFila(f).nombre || '—', encabezadoFila: true },
+        { id: 'sku', titulo: 'SKU', valor: (f) => datosDeFila(f).sku || '—' },
         { id: 'accion', titulo: 'Acción', valor: (f) => ACCION_TEXTO[f.accion], celda: (f) => <span class={f.accion === 'error' ? 'texto-error' : undefined}>{ACCION_TEXTO[f.accion]}</span> },
         { id: 'detalle', titulo: 'Detalle', valor: (f) => f.errores.map((e) => e.motivo).join(' '), celda: (f) => <Detalle f={f} /> },
       ]}
@@ -211,7 +212,7 @@ export function ImportarExportar(): JSX.Element {
           </ul>
           {comercial.estado === 'cargando' && <p class="texto-suave">Cargando las columnas del comercio…</p>}
           {comercial.estado === 'error' && <Alerta>{`No se pudo leer la configuración comercial: ${comercial.mensaje}`}</Alerta>}
-          <p class="texto-suave">Si el producto ya existe, solo se cambian las columnas que el archivo trae. Una fila nueva sin SKU es un error.{comercial.estado === 'lista' ? ` ${notaPrecios(comercial.comercial.mercados)}` : ''}</p>
+          <p class="texto-suave">Cada producto se reconoce por su SKU: si ya existe, solo se cambian las columnas que el archivo trae; si no, se crea. Una fila sin SKU es un error.{comercial.estado === 'lista' ? ` ${notaPrecios(comercial.comercial.mercados)}` : ''}</p>
         </details>
         <div class="fila">
           <Boton variante="secundario" onClick={plantilla} deshabilitado={comercial.estado !== 'lista'}>Descargar plantilla</Boton>
@@ -246,7 +247,7 @@ export function ImportarExportar(): JSX.Element {
               <Alerta>
                 <span>{simulacion.error}</span>
                 <span class="texto-suave">
-                  {' '}Si el archivo trae columnas de existencias ({COLUMNAS_STOCK.map((c) => c.nombre).join(', ')}), marque «Es la carga inicial». Revise también que la primera fila sea el encabezado y que exista la columna id.
+                  {' '}Si el archivo trae columnas de existencias ({COLUMNAS_STOCK.map((c) => c.nombre).join(', ')}), marque «Es la carga inicial». Revise también que la primera fila sea el encabezado y que exista la columna sku.
                 </span>
               </Alerta>
             )}

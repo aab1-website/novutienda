@@ -27,7 +27,7 @@ export {
 } from './importacion.js';
 export { leerArchivoImportacion, MAX_BYTES_ARCHIVO, MAX_COLUMNAS_ARCHIVO, MAX_FILAS_ARCHIVO, validarMatriz } from './archivo.js';
 export type { LectorHojas } from './archivo.js';
-export type { LecturaSinBloqueo, BaseTransaccional, ErrorFila, FuenteTabla, FilaImportada, FilaSimulada, ProductoExportable, ResultadoImportacion, Simulacion } from './importacion.js';
+export type { LeerCatalogo, ProductoCatalogo, LecturaSinBloqueo, BaseTransaccional, ErrorFila, FuenteTabla, FilaImportada, FilaSimulada, ProductoExportable, ResultadoImportacion, Simulacion } from './importacion.js';
 export { PERMISOS } from './operacion.js';
 export type { ResultadoOperacion } from './operacion.js';
 
@@ -38,7 +38,7 @@ export {
 export type { ItemPedido, RespuestaHttp, ResultadoPedido, SolicitudConfirmarPedido, TransaccionInventario } from './pedido.js';
 
 // Utilidades de dominio.
-export { esIdSegmento, esProductoId, esSerie, esUbicacionId, UBICACIONES } from './ids.js';
+export { esIdSegmento, esProductoId, identificadorParaAlta, esSerie, esUbicacionId, UBICACIONES } from './ids.js';
 export type { UbicacionId } from './ids.js';
 export type { Autor } from './motor.js';
 /** Solo para pruebas: fija el reloj con el que se estampan los planes. */

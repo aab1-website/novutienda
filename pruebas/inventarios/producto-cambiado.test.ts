@@ -47,8 +47,11 @@ describe('evento producto.cambiado', () => {
   });
   it('la importación CSV publica "creado" por producto', async () => {
     const csv = 'id,nombre,categoria,sku,precioUSDbo,precioUSDar\nca,A,c,SKU-A,1,1\ncb,B,c,SKU-B,1,1';
-    await db.runTransaction((tx) => importarProductosCsv(tx, { tenantId: T, operacionId: op('csv'), por: ADM, csv }));
+    await db.runTransaction((tx) => importarProductosCsv(tx, { catalogo: sinCatalogo, tenantId: T, operacionId: op('csv'), por: ADM, csv }));
     expect(eventos().map((e) => (e.datos['datos'] as Record<string, unknown>)['productoId']).sort()).toEqual(['ca', 'cb']);
     expect(eventos().every((e) => (e.datos['datos'] as Record<string, unknown>)['cambio'] === 'creado')).toBe(true);
   });
 });
+
+/** Sin productos previos que reconocer: el catálogo es explícito, nunca se omite. */
+const sinCatalogo = (): Promise<never[]> => Promise.resolve([]);
