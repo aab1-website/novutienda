@@ -163,7 +163,7 @@ function AppInterna({ sesion, api, almacen }: { sesion: Sesion; api: ClienteApi;
   const tituloPantalla = usuario === null ? undefined : menuPara(usuario.rol, modulos).find((i) => i.id === ruta.seccion)?.titulo;
   useEffect(() => {
     document.title =
-      usuario === null ? `Ingreso · ${NOMBRE_APP}` : `${tituloPantalla === undefined ? '' : `${tituloPantalla} · `}${usuario.tenantId} · ${NOMBRE_APP}`;
+      usuario === null ? `Ingreso · ${NOMBRE_APP}` : `${tituloPantalla === undefined ? '' : `${tituloPantalla} · `}${NOMBRE_APP}`;
   }, [usuario, tituloPantalla]);
 
   const principalListo = usuario !== null && existe_(ruta.seccion) && !(carga.estado === 'cargando' && !puedeVer(usuario.rol, ruta.seccion, modulos));
@@ -194,7 +194,6 @@ function AppInterna({ sesion, api, almacen }: { sesion: Sesion; api: ClienteApi;
       </a>
       <Cabecera
         usuario={usuario}
-        tenant={usuario.tenantId}
         cargando={carga.estado === 'cargando'}
         menu={menu}
         seccion={ruta.seccion}
@@ -222,7 +221,6 @@ function AppInterna({ sesion, api, almacen }: { sesion: Sesion; api: ClienteApi;
 
 interface PropsCabecera {
   readonly usuario: UsuarioSesion;
-  readonly tenant: string;
   readonly cargando: boolean;
   readonly menu: readonly { id: string; titulo: string }[];
   readonly seccion: string;
@@ -277,7 +275,6 @@ function Cabecera(p: PropsCabecera): JSX.Element {
     <header class="cabecera">
       <div class="cabecera-interior">
         <span class="marca-nombre">{NOMBRE_APP}</span>
-        <span class="marca-tenant" title={`Comercio: ${p.tenant}`}>Comercio: {p.tenant}</span>
         <button
           ref={boton}
           type="button"

@@ -80,7 +80,7 @@ const POR_CODIGO_MODULO: Readonly<Record<string, string>> = {
   anonimo: 'Debe iniciar sesión con su correo.',
   proveedor: 'Esa cuenta no puede iniciar sesión así.',
   claim: 'No se pudo actualizar el rol. Intente de nuevo.',
-  'correo-no-verificado': 'Verifica tu correo para continuar.',
+  'correo-no-verificado': 'Verifique su correo para continuar.',
   jerarquia: 'Solo el propietario de la plataforma puede cambiar a un administrador.',
   'ultimo-adm': 'No se puede quitar al último administrador.',
   'no-miembro': 'Esa persona no pertenece al negocio.',
