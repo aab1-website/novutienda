@@ -93,7 +93,7 @@ function estadoDeSubida(c: Contexto, subidaId: string, tipo: 'logo' | 'producto'
 }
 
 export const handlersOtros: {
-  [N in 'buscarComprobantes' | 'enviarRecibo' | 'referenciarFacturaSuma' | 'guardarPlantilla' | 'leerPlantilla' | 'obtenerRecibo' | 'obtenerTablero' | 'publicarSitio' | 'cambiarPrecioUSD' | 'guardarFicha' | 'reservarSubida' | 'estadoSubida' | 'finalizarSubida' | 'borrarMedio' | 'guardarSeccion' | 'eliminarSeccion' | 'ordenarSecciones' | 'guardarCarrusel' | 'guardarConfigSitio' | 'exportarProductosCsvSitio' | 'asignarRol' | 'quitarRol' | 'invitarUsuario' | 'anularInvitacion' | 'reenviarInvitacion' | 'buscarUsuarioPorCorreo' | 'listarFichas' | 'listarMedios' | 'leerConfigSitio' | 'listarSecciones' | 'listarCarruseles' | 'listarUsuarios' | 'modulosActivos' | 'configuracionComercial' | 'reservarSubidaLogo' | 'estadoSubidaLogo' | 'finalizarSubidaLogo' | 'leerLogo' | 'quitarLogo']: H<N>;
+  [N in 'buscarComprobantes' | 'enviarRecibo' | 'referenciarFacturaSuma' | 'guardarPlantilla' | 'leerPlantilla' | 'obtenerRecibo' | 'obtenerTablero' | 'publicarSitio' | 'guardarFicha' | 'reservarSubida' | 'estadoSubida' | 'finalizarSubida' | 'borrarMedio' | 'guardarSeccion' | 'eliminarSeccion' | 'ordenarSecciones' | 'guardarCarrusel' | 'guardarConfigSitio' | 'exportarProductosCsvSitio' | 'asignarRol' | 'quitarRol' | 'invitarUsuario' | 'anularInvitacion' | 'reenviarInvitacion' | 'buscarUsuarioPorCorreo' | 'listarFichas' | 'listarMedios' | 'leerConfigSitio' | 'listarSecciones' | 'listarCarruseles' | 'listarUsuarios' | 'modulosActivos' | 'configuracionComercial' | 'reservarSubidaLogo' | 'estadoSubidaLogo' | 'finalizarSubidaLogo' | 'leerLogo' | 'quitarLogo']: H<N>;
 } = {
   buscarComprobantes(c, e) {
     const q = e.consulta;
@@ -151,7 +151,7 @@ export const handlersOtros: {
       return x === null ? { mercado: m, estado: 'sin_cotizacion' as const, motivo: 'No hay una cotización utilizable' } : { mercado: m, estado: x.estado, par: x.par, valor: x.valor, fecha: x.fecha, fuente: x.fuente };
     });
     return {
-      cambiosSinPublicar: c.e.cambiosSinPublicar, ultimoCambioEn: c.e.ultimoCambioEn, publicadoEn: c.e.publicadoEn, versionPublicada: c.e.versionPublicada, cotizaciones: cot,
+      cambiosSinPublicar: c.e.cambiosSinPublicar, ultimoCambioEn: c.e.ultimoCambioEn, publicadoEn: c.e.publicadoEn, versionPublicada: c.e.versionPublicada, avisoSitio: c.e.avisoSitio, cotizaciones: cot,
       uso: {
         productos: { usados: c.e.productos.size, tope: LIMITES_PANEL.productos }, usuarios: { usados: c.e.usuarios.length, tope: LIMITES_PANEL.usuarios },
         originalesBytes: { usados: c.e.bytesOriginales, tope: LIMITES_PANEL.cuotaOriginalesBytes },
@@ -162,20 +162,10 @@ export const handlersOtros: {
     if (c.e.configSitio === null) throw fallo('estado', 'Configure el sitio (plantilla y WhatsApp) antes de publicar');
     c.e.versionPublicada += 1;
     c.e.cambiosSinPublicar = 0;
+    c.e.avisoSitio = null;
     c.e.publicadoEn = iso(c.ahora);
     auditar(c, 'sitio.publicar', 'publicado/estado');
     return { version: c.e.versionPublicada, productos: [...c.e.productos.values()].filter((p) => p.activo).length, decision: { accion: 'programar', para: c.ahora + 600_000 }, advertencias: [] };
-  },
-  cambiarPrecioUSD(c, e) {
-    const p = c.e.productos.get(e.productoId);
-    if (p === undefined) throw fallo('no-encontrado', 'El producto no existe');
-    for (const v of [e.precioUSD.bo, e.precioUSD.ar]) {
-      if (!Number.isSafeInteger(v) || v < 0 || v > 999_999_900) throw fallo('entrada-invalida', 'Precio: centavos enteros de 0 a 9 999 999');
-    }
-    p.precioUSD = { bo: e.precioUSD.bo, ar: e.precioUSD.ar };
-    anotarCambio(c);
-    auditar(c, 'producto.precio', `productos/${p.id}`);
-    return { ok: true };
   },
   guardarFicha(c, e) {
     if (!c.e.productos.has(e.productoId)) throw fallo('no-encontrado', 'El producto no existe');
@@ -336,7 +326,7 @@ export const handlersOtros: {
     return { ok: true };
   },
   exportarProductosCsvSitio(c) {
-    const filas = [...c.e.productos.values()].map((p) => [p.id, p.nombre, p.categoria, p.marca ?? '', p.sku, p.activo ? 'si' : 'no', p.garantiaMeses ?? '', p.precioUSD.bo / 100, p.precioUSD.ar / 100]);
+    const filas = [...c.e.productos.values()].map((p) => [p.id, p.nombre, p.categoria, p.marca ?? '', p.sku, p.activo ? 'si' : 'no', p.garantiaMeses ?? '', p.precioUSD['bo'] === undefined ? '' : p.precioUSD['bo'] / 100, p.precioUSD['ar'] === undefined ? '' : p.precioUSD['ar'] / 100]);
     return { csv: aCsv(['id', 'nombre', 'categoria', 'marca', 'sku', 'activo', 'garantiaMeses', 'precioBO', 'precioAR'], filas) };
   },
   invitarUsuario(c, e) {

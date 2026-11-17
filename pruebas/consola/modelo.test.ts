@@ -169,7 +169,9 @@ describe('manifiesto y pantallas', () => {
   });
   it('cada llamada de cada pantalla existe como función exportada (de la consola o del núcleo)', () => {
     const exportadas = new Set([...Object.keys(consola), ...Object.keys(nucleo)]);
-    for (const p of PANTALLAS) for (const l of p.llamadas) expect(exportadas.has(l), `${p.id}: ${l}`).toBe(true);
+    // La acción `preciosDelDia` se atiende con la función `preciosDelDiaDe`.
+    const funcion = (l: string): string => (l === 'preciosDelDia' ? 'preciosDelDiaDe' : l);
+    for (const p of PANTALLAS) for (const l of p.llamadas) expect(exportadas.has(funcion(l)), `${p.id}: ${l}`).toBe(true);
     expect(PANTALLAS.map((p) => p.id)).toEqual(['tablero', 'productos', 'ficha', 'exportar', 'apariencia', 'secciones', 'usuarios']);
   });
 });

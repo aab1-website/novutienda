@@ -5,6 +5,7 @@ import type {
   AprobacionPos, Carrusel, ConteoAbierto, MarcaOcultamiento, CobroCredito, ConfigPos, ConfigSitio, ConteoVista, CotizacionesVigentes, CreditoVista, EntradaAuditoriaVista,
   FichaWeb, Medio, MedioLogo, MermaVista, MovimientoCaja, MovimientoVista, PlantillaRecibo, ProductoPanel, Recibo, Seccion, SubidaVista, TipoSubida, TurnoPos,
   UbicacionId, UnidadSerie, UsuarioVista, VentaPos, VistaComercial,
+  Tablero,
 } from '../api/tipos.js';
 
 /** Producto interno del doble: igual que ProductoPanel pero con el costo siempre presente. */
@@ -44,6 +45,8 @@ export interface EstadoDoble {
   ultimoCambioEn: string;
   publicadoEn: string | null;
   versionPublicada: number;
+  /** Aviso de sitio incompleto que devuelve el tablero; una publicación correcta lo deja en `null`. */
+  avisoSitio: Tablero['avisoSitio'];
   usuarios: Mutable<UsuarioVista>[];
   /** Módulos encendidos del negocio (el doble los enciende todos; una prueba puede apagar alguno). */
   modulos: string[];
@@ -136,7 +139,7 @@ export function crearEstado(ahora: number): EstadoDoble {
     plantilla: { negocio: { nombre: 'Negocio de ejemplo', direccion: 'Calle Ejemplo 123', telefono: '70000000' }, pie: 'Comprobante no fiscal.', politicaGarantia: 'Garantía según ficha del producto.', politicaCambios: 'Cambios dentro de 7 días con el comprobante.' },
     auditoria: [], fichas: new Map(), medios: new Map(), logo: null, subidas: new Map(), disparador: { demoraMs: 15 }, secciones: [], carruseles: new Map(),
     configSitio: { plantillaActiva: 'cielo', whatsappNovuchat: '59170000000', medicion: {} },
-    cambiosSinPublicar: 0, ultimoCambioEn: iso(ahora), publicadoEn: null, versionPublicada: 0,
+    cambiosSinPublicar: 0, ultimoCambioEn: iso(ahora), publicadoEn: null, versionPublicada: 0, avisoSitio: null,
     modulos: ['inventarios', 'pos', 'recibos', 'consola', 'website'],
     comercial: {
       mercados: [

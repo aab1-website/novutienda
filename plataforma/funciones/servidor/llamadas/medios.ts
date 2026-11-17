@@ -17,7 +17,7 @@ const limiteLogo = limiteMemoria(LIMITES_CONSOLA.logosPorHora, 60 * 60 * 1000);
 export const depsMedios = (c: Pick<Contexto, 'e'>): DepsMedios => ({
   limiteLogo,
   avisar: (mensaje, datos) => logger.warn(mensaje, datos),
-  db: c.e.db, almacen: c.e.almacenMedios, procesador: c.e.procesador, catalogo: c.e.catalogo, reloj: { ahora: c.e.ahora },
+  db: c.e.db, almacen: c.e.almacenMedios, procesador: c.e.procesador, catalogo: c.e.catalogo, reloj: { ahora: c.e.ahora }, disparador: c.e.disparadorSitio,
 });
 
 export const accionesMedios: TablaImplementaciones = {

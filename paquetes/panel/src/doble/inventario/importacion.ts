@@ -247,7 +247,7 @@ function planificar(c: Contexto, f: Fila, nuevos: number, asignados: Set<string>
     if (c.e.movimientos.some((m) => m.productoId === previo.id)) errores.push({ columna: 'conSerie', motivo: 'no se puede cambiar: el producto ya tiene movimientos de inventario' });
     else cambios.push('conSerie');
   }
-  const preciosPrevios = previo.precioUSD as unknown as Readonly<Record<string, number>>;
+  const preciosPrevios = previo.precioUSD;
   if (Object.entries(d.precios).some(([k, v]) => v !== preciosPrevios[k])) cambios.push('precioUSD');
   if (d.costoUSD !== undefined && d.costoUSD !== previo.costoUSD) cambios.push('costoUSD');
   if (errores.length > 0) return { accion: 'error', errores, advertencias, cambios: [], id, ...nombreSku };
@@ -324,7 +324,7 @@ export function importarProductosDoble(c: Contexto, e: Entrada<'importarProducto
           id: f.id, nombre: f.d.nombre as string, categoria: f.d.categoria as string, ...(f.d.marca !== undefined ? { marca: f.d.marca } : {}), sku: f.d.sku as string,
           activo: f.d.activo ?? true, publicado: f.d.publicado ?? false, conSerie: f.d.conSerie ?? false,
           ...(f.d.garantiaMeses !== undefined ? { garantiaMeses: f.d.garantiaMeses } : {}), ...(f.d.minimo !== undefined ? { minimo: f.d.minimo } : {}),
-          precioUSD: Object.fromEntries(c.e.comercial.mercados.map((m) => [claveDePrecio(m.id), f.d.precios[claveDePrecio(m.id)] ?? 0])) as unknown as ProductoInterno['precioUSD'], costoUSD: f.d.costoUSD ?? 0, stockTotal: 0, existencias: { tienda: 0, 'deposito-1': 0, 'deposito-2': 0 },
+          precioUSD: Object.fromEntries(c.e.comercial.mercados.map((m) => [claveDePrecio(m.id), f.d.precios[claveDePrecio(m.id)] ?? 0])), costoUSD: f.d.costoUSD ?? 0, stockTotal: 0, existencias: { tienda: 0, 'deposito-1': 0, 'deposito-2': 0 },
         });
         const p = c.e.productos.get(f.id);
         if (p !== undefined) {
@@ -338,7 +338,7 @@ export function importarProductosDoble(c: Contexto, e: Entrada<'importarProducto
         if (p === undefined) continue;
         const { precios, costoUSD, ...directos } = f.d;
         Object.assign(p, Object.fromEntries(Object.entries(directos).filter(([k, v]) => v !== undefined && k !== 'sku')));
-        if (Object.keys(precios).length > 0) p.precioUSD = { ...(p.precioUSD as unknown as Record<string, number>), ...precios } as unknown as ProductoInterno['precioUSD'];
+        if (Object.keys(precios).length > 0) p.precioUSD = { ...p.precioUSD, ...precios };
         if (costoUSD !== undefined) p.costoUSD = costoUSD;
         r.actualizados += 1;
         productos.push(f.id);

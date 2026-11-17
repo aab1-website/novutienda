@@ -19,7 +19,7 @@ export function tenantValido(tenantId: string): string {
 export const rutaFicha = (t: string, productoId: string): string => `tenants/${t}/fichasWeb/${productoId}`;
 export const rutaSeccion = (t: string, id: string): string => `tenants/${t}/secciones/${id}`;
 export const rutaCarrusel = (t: string, plantilla: string): string => `tenants/${t}/carruseles/${plantilla}`;
-export const rutaSitio = (t: string, doc: 'config' | 'indice' | 'slugs' | 'estado' | 'logo'): string => `tenants/${t}/sitio/${doc}`;
+export const rutaSitio = (t: string, doc: 'config' | 'indice' | 'slugs' | 'estado' | 'logo' | 'logoDiferidas' | 'logoEnSubida'): string => `tenants/${t}/sitio/${doc}`;
 export const rutaPublicado = (t: string, doc: string): string => `tenants/${t}/publicado/${doc}`;
 export const rutaSubida = (t: string, id: string): string => `tenants/${t}/subidas/${id}`;
 export const rutaMedio = (t: string, id: string): string => `tenants/${t}/medios/${id}`;

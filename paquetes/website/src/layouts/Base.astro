@@ -7,6 +7,7 @@ import { jsonLdSeguro, tituloPagina, urlAbsoluta } from '../lib/seo';
 import type { ConfigCliente } from '../lib/config-cliente';
 import { enlaceWhatsApp } from '../lib/whatsapp';
 import Icono from '../componentes/Icono.astro';
+import { iconoDelSitio, imagenAlCompartir } from '../contenido/logo-subido.js';
 import { debeNoIndexar } from '../lib/indexacion';
 
 interface Props {
@@ -36,6 +37,8 @@ const publico: ConfigCliente = {
   vistaPrevia: false,
 };
 const urlImagen = imagen === undefined ? undefined : imagen.startsWith('/') ? urlAbsoluta(config.origen, imagen) : imagen;
+const urlCompartir = imagenAlCompartir(urlImagen, config.imagenCompartir);
+const urlIcono = iconoDelSitio(config.iconoSitio, config.logo);
 const waGeneral = enlaceWhatsApp(config.whatsappTienda, 'Hola, tengo una consulta.');
 ---
 <!doctype html>
@@ -52,11 +55,11 @@ const waGeneral = enlaceWhatsApp(config.whatsappTienda, 'Hola, tengo una consult
     <meta property="og:title" content={completo} />
     <meta property="og:description" content={desc} />
     <meta property="og:url" content={urlAbsoluta(config.origen, ruta)} />
-    {urlImagen !== undefined && <meta property="og:image" content={urlImagen} />}
+    {urlCompartir !== undefined && <meta property="og:image" content={urlCompartir} />}
     <meta name="twitter:card" content={urlImagen === undefined ? 'summary' : 'summary_large_image'} />
     {config.medicion.searchConsole !== null && <meta name="google-site-verification" content={config.medicion.searchConsole} />}
     {/* El icono es el logo del negocio; sin logo no se enlaza ninguno (nunca el de ejemplo en un sitio real). */}
-    {config.logo !== null && <link rel="icon" href={config.logo.url} />}
+    {urlIcono !== undefined && <link rel="icon" href={urlIcono} />}
     <link rel="stylesheet" href="/plantillas.css" />
     <link rel="preload" href="/fuentes/ubuntu-latin-400.woff2" as="font" type="font/woff2" crossorigin />
     <script is:inline src="/tema-inicial.js"></script>

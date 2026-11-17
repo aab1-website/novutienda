@@ -712,6 +712,17 @@ describe('doble: catálogo y sitio', () => {
     expect(e.api.estado.bytesOriginales).toBe(cuota - 100);
     expect((await falla(e.api.llamar('estadoSubida', { subidaId: uuid() }))).detalle.codigo).toBe('no-encontrado');
   });
+  it('tablero: el aviso del sitio incompleto es configurable y una publicación correcta lo limpia', async () => {
+    const e = crearEntorno('adm');
+    expect((await e.api.llamar('obtenerTablero', {})).avisoSitio).toBeNull();
+    for (const motivo of ['sin_productos', 'sin_fotos'] as const) {
+      e.api.estado.avisoSitio = { motivo, en: '2026-11-16T10:00:00.000Z' };
+      expect((await e.api.llamar('obtenerTablero', {})).avisoSitio).toEqual({ motivo, en: '2026-11-16T10:00:00.000Z' });
+    }
+    await e.api.llamar('publicarSitio', {});
+    expect((await e.api.llamar('obtenerTablero', {})).avisoSitio).toBeNull();
+  });
+
   it('ficha: slug único, texto alternativo, medios del producto; publicar la deja en el tablero', async () => {
     const e = crearEntorno('sup');
     const r = await e.api.llamar('reservarSubida', { subidaId: uuid(), productoId: 'tv-55', tipo: 'foto', bytes: 10 });
@@ -875,5 +886,29 @@ describe('doble: configuracionComercial', () => {
       expect(v.monedasCaja).toEqual(['BOB', 'USD', 'ARS']);
       expect(v.mercados.map((m) => [m.id, m.monedaVenta, m.monedaBase, m.tieneTipoCambio])).toEqual([['BO', 'BOB', 'USD', true], ['AR', 'ARS', 'USD', true]]);
     }
+  });
+});
+
+describe('doble: precio por mercado abierto', () => {
+  it('un comercio con un solo mercado crea y edita su precio y rechaza uno de otro mercado', async () => {
+    const e = crearEntorno('adm', () => AHORA, {
+      comercial: { mercados: [{ id: 'PE', nombre: 'Perú', monedaVenta: 'PEN', monedaBase: 'USD', tieneTipoCambio: true }], monedasCaja: ['PEN', 'USD'], monedaCosto: 'USD' },
+      redondeo: { PEN: { tipo: 'decimales', decimales: 2, modo: 'cercano' } },
+    });
+    const producto = { id: 'solo-pe', nombre: 'Solo PE', categoria: 'Varios', sku: 'SP-1' };
+    await e.api.llamar('crearProducto', { operacionId: uuid(), producto: { ...producto, precioUSD: { pe: 1500 } } });
+    expect((await e.api.llamar('listarProductos', {})).find((p) => p.id === 'solo-pe')?.precioUSD).toEqual({ pe: 1500 });
+    await e.api.llamar('actualizarProducto', { operacionId: uuid(), productoId: 'solo-pe', cambios: { precioUSD: { pe: 1800 } } });
+    expect((await e.api.llamar('listarProductos', {})).find((p) => p.id === 'solo-pe')?.precioUSD).toEqual({ pe: 1800 });
+    expect((await falla(e.api.llamar('crearProducto', { operacionId: uuid(), producto: { ...producto, id: 'solo-bo', sku: 'SB-1', precioUSD: { bo: 1500 } } }))).detalle.codigo).toBe('entrada-invalida');
+    expect((await falla(e.api.llamar('actualizarProducto', { operacionId: uuid(), productoId: 'solo-pe', cambios: { precioUSD: { bo: 100 } } }))).detalle.codigo).toBe('entrada-invalida');
+  });
+  it('la exportación para el sitio deja vacía la celda del precio ausente', async () => {
+    const e = crearEntorno('adm', () => AHORA, {
+      comercial: { mercados: [{ id: 'BO', nombre: 'Bolivia', monedaVenta: 'BOB', monedaBase: 'USD', tieneTipoCambio: true }], monedasCaja: ['BOB', 'USD'], monedaCosto: 'USD' },
+    });
+    await e.api.llamar('crearProducto', { operacionId: uuid(), producto: { id: 'solo-bo', nombre: 'Solo BO', categoria: 'Varios', sku: 'SB-9', precioUSD: { bo: 1250 } } });
+    const fila = (await e.api.llamar('exportarProductosCsvSitio', {})).csv.split('\n').find((l) => l.startsWith('solo-bo'));
+    expect(fila?.trimEnd()).toMatch(/,12\.5,$/);
   });
 });

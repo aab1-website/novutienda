@@ -4,10 +4,10 @@
 // tiempo constante. Las respuestas llevan ETag y `Cache-Control: private, max-age=60`.
 import { createHash, timingSafeEqual } from 'node:crypto';
 import {
-  esDisponible, leerDocumentoProducto, UBICACION_DISPONIBILIDAD, UBICACIONES, confirmarPedidoFirmado,
+  esDisponible, leerDocumentoProducto, precioEnMercado, UBICACION_DISPONIBILIDAD, UBICACIONES, confirmarPedidoFirmado,
 } from '@novutienda/inventarios';
 import {
-  esMercadoDe, leerCotizacionDe, mercadoDe, precioFinal, SinCotizacionUtilizable, type ConfiguracionComercial, type CopiaCotizacion, type LimiteTasa,
+  esMercadoDe, leerCotizacionDe, mercadoDe, precioDeMercado, SinCotizacionUtilizable, type ConfiguracionComercial, type CopiaCotizacion, type LimiteTasa, type ReglaRedondeo,
 } from '@novutienda/nucleo';
 import { logger } from 'firebase-functions';
 import type { Entorno } from '../entorno.js';
@@ -88,7 +88,7 @@ async function existenciasPorProducto(e: Entorno, tenantId: string): Promise<Map
 const stockPorAlmacen = (por: Record<string, number> | undefined): Record<string, number> =>
   Object.fromEntries(UBICACIONES.map((u) => [u, por?.[u] ?? 0]));
 
-async function catalogo(e: Entorno, tenantId: string, comercial: ConfiguracionComercial, mercadoId: 'BO' | 'AR', cfg: ConfigNovuchat): Promise<{ estable: Record<string, unknown>; generadoEn: string } | RespuestaApi> {
+async function catalogo(e: Entorno, tenantId: string, comercial: ConfiguracionComercial, mercadoId: string, cfg: ConfigNovuchat): Promise<{ estable: Record<string, unknown>; generadoEn: string } | RespuestaApi> {
   // `mercadoId` ya se comprobó contra los mercados del tenant (`esMercadoDe`), por eso `mercadoDe` no devuelve `undefined`.
   const mercado = mercadoDe(comercial, mercadoId)!;
   let cot: CopiaCotizacion<string>;
@@ -99,7 +99,8 @@ async function catalogo(e: Entorno, tenantId: string, comercial: ConfiguracionCo
     throw error;
   }
   // Redondeo: la misma fuente y los mismos fallos que en main (`e.redondeo`, `config/redondeo`).
-  const redondeo = await e.redondeo(tenantId);
+  // Indexado por la moneda de venta del mercado declarado: sin regla para ella el producto se salta antes de llamar a `precioDeMercado`.
+  const redondeo: Readonly<Record<string, ReglaRedondeo | undefined>> = await e.redondeo(tenantId);
   // Una sola definición de «publicado» (DS-1): existe la copia `publicado/producto__<id>` que escribe la publicación de la consola.
   // La lista de ids sale de `publicado/estado.productos`; `producto.publicado` de Inventarios no se lee.
   const [estadoDoc, existencias] = await Promise.all([
@@ -133,23 +134,25 @@ async function catalogo(e: Entorno, tenantId: string, comercial: ConfiguracionCo
       const datosVivo = vivo?.exists === true ? vivo.data() : undefined;
       if (datosCopia === undefined || datosVivo === undefined || datosVivo['activo'] !== true) return; // sin copia o vivo, o desactivado: no se ofrece
       copiaDe.set(id, datosCopia);
-      productos.push(leerDocumentoProducto(id, datosVivo));
+      productos.push(leerDocumentoProducto(id, datosVivo, comercial));
     });
   });
   productos.sort((a, b) => a.nombre.localeCompare(b.nombre) || a.productoId.localeCompare(b.productoId));
   // Sin valor por defecto al bucket por defecto: `MEDIOS_BASE_URL` es obligatoria (config.ts) y apunta a un origen público APARTE.
-  const base = cfg.mediosBaseUrl;
-  if (base === '') throw new Error('MEDIOS_BASE_URL no configurada');
+  const urlMedios = cfg.mediosBaseUrl;
+  if (urlMedios === '') throw new Error('MEDIOS_BASE_URL no configurada');
   const moneda = mercado.monedaVenta;
-  // Los precios de Inventarios se guardan hoy por `bo`/`ar` (B2 los pasa a los mercados del tenant); por eso el mercado es BO o AR.
-  const clave = mercadoId === 'BO' ? 'bo' : 'ar';
   const items: Record<string, unknown>[] = [];
   for (const p of productos) {
     const pub = copiaDe.get(p.productoId);
     if (pub === undefined) continue; // sin copia publicada no hay ficha que mostrar
     // D7: una sola regla de redondeo (0 a 2 decimales o un múltiplo de centavos). Una configuración con otra regla ya falló antes,
     // en `e.redondeo` (`RedondeoInvalido`), y el catálogo no sale: falla cerrado, sin precios.
-    const precio = precioFinal(p.precioCentavos[clave] / 100, mercadoId, cot, redondeo);
+    const base = precioEnMercado(p, mercadoId);
+    if (base === null) continue; // sin precio declarado en este mercado
+    const regla = redondeo[mercado.monedaVenta];
+    if (regla === undefined) continue; // sin regla de redondeo para la moneda: el precio es inválido, no se ofrece
+    const precio = precioDeMercado(base / 100, { ...mercado, redondeo: regla }, cot);
     if (precio.tipo !== 'precio') continue; // sin precio en este mercado
     const por = stockPorAlmacen(existencias.get(p.productoId));
     // Un producto que NO controla stock (sin `stockTotal`) está disponible mientras esté activo: `stock` va en `null` (no 0, que
@@ -157,7 +160,7 @@ async function catalogo(e: Entorno, tenantId: string, comercial: ConfiguracionCo
     const stockTienda = p.stockTotal === undefined ? null : (por[UBICACION_DISPONIBILIDAD] ?? 0);
     const disponible = esDisponible({ activo: p.activo, ...(p.stockTotal !== undefined ? { stockTotal: p.stockTotal } : {}) }, por[UBICACION_DISPONIBILIDAD] ?? 0);
     const medios = (Array.isArray(pub['medios']) ? pub['medios'] : []) as MedioPub[];
-    const fotos = medios.filter((m) => m.tipo === 'foto').map((m) => urlFoto(m, base)).filter((u): u is string => u !== undefined).slice(0, 5);
+    const fotos = medios.filter((m) => m.tipo === 'foto').map((m) => urlFoto(m, urlMedios)).filter((u): u is string => u !== undefined).slice(0, 5);
     items.push({
       id: p.productoId, nombre: p.nombre, precio: precio.monto, precioCentavos: precio.centavos, moneda, stock: stockTienda, disponible, stockPorAlmacen: por,
       foto: fotos[0] ?? null, fotos, activo: true, area: p.categoria ?? '', descripcion: typeof pub['descripcion'] === 'string' ? pub['descripcion'] : '',
@@ -207,9 +210,11 @@ export async function manejarInventario(e: Entorno, req: PeticionHttp, cfg: Conf
   if (!(await puedeServir(a.tenantId))) return sinServicio();
   const limitado = await limitar(cfg, a.hash, e.ahora());
   if (limitado !== undefined) return limitado;
+  // Falla cerrado: sin configuración comercial válida `comercialDelTenant` lanza `ComercialInvalida` y no sale nada.
+  const comercial = await e.comercialDelTenant(a.tenantId);
   const [prods, existencias] = await Promise.all([e.firestore.collection(`tenants/${a.tenantId}/productos`).get(), existenciasPorProducto(e, a.tenantId)]);
   const items = prods.docs
-    .map((d) => ({ p: leerDocumentoProducto(d.id, d.data()), bajoMinimo: d.data()['bajoMinimo'] === true }))
+    .map((d) => ({ p: leerDocumentoProducto(d.id, d.data(), comercial), bajoMinimo: d.data()['bajoMinimo'] === true }))
     .sort((x, y) => x.p.productoId.localeCompare(y.p.productoId))
     .map(({ p, bajoMinimo }) => ({
       id: p.productoId, nombre: p.nombre, sku: p.sku ?? null, activo: p.activo, conSerie: p.conSerie, stockTotal: p.stockTotal ?? null,
