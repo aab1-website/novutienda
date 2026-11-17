@@ -1,9 +1,11 @@
 import { beforeEach, describe, expect, it } from 'vitest';
 import {
   abrirConteo,
+  cancelarConteo,
   cerrarConteo,
   EntradaInvalida,
   EstadoInvalido,
+  NoEncontrado,
   OperacionConflicto,
   registrarLineaConteo,
   resolverMerma,
@@ -129,8 +131,12 @@ const contar1 = (conteoId: string, productoId: string, contado?: number, series?
       ...(series !== undefined ? { series } : {}),
     }),
   );
-const cerrar = (conteoId: string, por: Autor = SUP2, productosConExistencia?: string[]) =>
-  db.runTransaction((tx) => cerrarConteo(tx, { tenantId: T, operacionId: op('cc'), por, conteoId, ...(productosConExistencia !== undefined ? { productosConExistencia } : {}) }));
+const cerrar = (conteoId: string, por: Autor = SUP2, productosConExistencia?: string[], sinContar?: 'igual' | 'cero') =>
+  db.runTransaction((tx) =>
+    cerrarConteo(tx, { tenantId: T, operacionId: op('cc'), por, conteoId, ...(productosConExistencia !== undefined ? { productosConExistencia } : {}), ...(sinContar !== undefined ? { sinContar } : {}) }),
+  );
+const cancelar = (conteoId: string, motivo = 'Se abrió por error', por: Autor = ADM, operacionId = op('cx')) =>
+  db.runTransaction((tx) => cancelarConteo(tx, { tenantId: T, operacionId, por, conteoId, motivo }));
 
 describe('conteo ciego', () => {
   it('abrir: uno por ubicación, solo sup/adm', async () => {
@@ -195,7 +201,7 @@ describe('conteo ciego', () => {
     await abrir('c1');
     await contar1('c1', 'lapiz', 10); // exacto
     // goma (5) y celular (S1..S3) tienen existencia en la tienda y nadie los contó; el producto 'lapiz' ya contado no se duplica.
-    const r = await cerrar('c1', SUP2, ['lapiz', 'goma', 'celular']);
+    const r = await cerrar('c1', SUP2, ['lapiz', 'goma', 'celular'], 'cero');
     expect(r.resultado).toMatchObject({ sinContar: ['goma', 'celular'], sobrantes: 0 });
     expect((r.resultado['avisos'] as string[]).join(' ')).toMatch(/nadie cont.*goma, celular/);
     expect(doc(db, 'mermas', 'c1-goma')).toMatchObject({ estado: 'solicitada', cantidad: 5, solicitadaPor: 'u-sup2', origen: 'conteo' });
@@ -206,6 +212,74 @@ describe('conteo ciego', () => {
     await resolver('rm', 'c1-goma', 'aprobada', SUP);
     expect(doc(db, 'existencias', 'goma__tienda')?.['cantidad']).toBe(0);
     verificarInvariantes(db);
+  });
+
+  it("por defecto ('igual') lo no contado no cambia: se ignora la lista de existencias y no hay mermas", async () => {
+    await abrir('c1');
+    await contar1('c1', 'lapiz', 10);
+    const r = await cerrar('c1', SUP2, ['lapiz', 'goma', 'celular']);
+    expect(r.resultado).toMatchObject({ sinContar: [], avisos: [] });
+    expect(doc(db, 'mermas', 'c1-goma')).toBeUndefined();
+    expect(doc(db, 'mermas', 'c1-celular')).toBeUndefined();
+    expect(doc(db, 'existencias', 'goma__tienda')?.['cantidad']).toBe(5);
+    verificarInvariantes(db);
+  });
+
+  it('sinContar inválido es EntradaInvalida', async () => {
+    await abrir('c1');
+    await contar1('c1', 'lapiz', 10);
+    await expect(cerrar('c1', SUP2, [], 'x' as never)).rejects.toBeInstanceOf(EntradaInvalida);
+  });
+
+  it("sin líneas: con 'igual' no cierra; con 'cero' cierra y toma lo no contado como 0", async () => {
+    await abrir('c1');
+    await expect(cerrar('c1')).rejects.toThrow(/No hay productos contados/);
+    expect(doc(db, 'conteos', 'c1')).toMatchObject({ estado: 'abierto' });
+    const r = await cerrar('c1', SUP2, ['goma'], 'cero');
+    expect(r.resultado).toMatchObject({ sinContar: ['goma'] });
+    expect(doc(db, 'mermas', 'c1-goma')).toMatchObject({ estado: 'solicitada', cantidad: 5 });
+  });
+
+  it("con 'cero', sin líneas y sin existencias el conteo se cierra sin mermas", async () => {
+    await abrir('c1', SUP, 'deposito-2');
+    const r = await cerrar('c1', SUP2, [], 'cero');
+    expect(r.resultado).toMatchObject({ sinContar: [], mermas: [], sobrantes: 0 });
+    expect(doc(db, 'conteos', 'c1')).toMatchObject({ estado: 'cerrado', mermas: [] });
+    expect(doc(db, 'ubicaciones', 'deposito-2')?.['conteoAbiertoId']).toBeUndefined();
+    expect(db.coleccion(`tenants/${T}/mermas`)).toHaveLength(0);
+  });
+
+  it('cancelar: solo adm, con motivo; no mueve stock ni crea mermas; libera la ubicación', async () => {
+    await abrir('c1');
+    await contar1('c1', 'lapiz', 3);
+    await expect(cancelar('c1', 'x', SUP)).rejects.toBeInstanceOf(SinPermiso);
+    await expect(cancelar('c1', 'x', CAJ)).rejects.toBeInstanceOf(SinPermiso);
+    await expect(cancelar('c1', '   ')).rejects.toBeInstanceOf(EntradaInvalida);
+    await expect(cancelar('c1', 'a'.repeat(501))).rejects.toBeInstanceOf(EntradaInvalida);
+    const antes = db.coleccion(`tenants/${T}/movimientos`).length;
+    const r = await cancelar('c1', '  Se abrió por error  ');
+    expect(r.resultado).toMatchObject({ conteoId: 'c1' });
+    expect(doc(db, 'conteos', 'c1')).toMatchObject({ estado: 'cancelado', canceladoPor: 'u-adm', motivo: 'Se abrió por error', productos: ['lapiz'] });
+    expect(doc(db, 'conteoLineas', 'c1__lapiz')).toBeDefined();
+    expect(doc(db, 'ubicaciones', 'tienda')?.['conteoAbiertoId']).toBeUndefined();
+    expect(db.coleccion(`tenants/${T}/movimientos`)).toHaveLength(antes);
+    expect(db.coleccion(`tenants/${T}/mermas`)).toHaveLength(0);
+    expect(doc(db, 'existencias', 'lapiz__tienda')?.['cantidad']).toBe(10);
+    verificarInvariantes(db);
+    await abrir('c2'); // la ubicación quedó libre
+  });
+
+  it('cancelar: conteo inexistente o ya cerrado/cancelado', async () => {
+    await expect(cancelar('nada')).rejects.toBeInstanceOf(NoEncontrado);
+    await abrir('c1');
+    await contar1('c1', 'lapiz', 10);
+    await cerrar('c1');
+    await expect(cancelar('c1', 'tarde', ADM, op('cy'))).rejects.toBeInstanceOf(EstadoInvalido);
+    await abrir('c2');
+    await cancelar('c2');
+    await expect(cancelar('c2', 'otra vez', ADM, op('cz'))).rejects.toBeInstanceOf(EstadoInvalido);
+    await expect(contar1('c2', 'lapiz', 1)).rejects.toBeInstanceOf(EstadoInvalido);
+    await expect(cerrar('c2', SUP2, [], 'cero')).rejects.toBeInstanceOf(EstadoInvalido);
   });
 
   it('un producto sin existencia en la lista no genera merma; sin lista el cierre se comporta como antes', async () => {

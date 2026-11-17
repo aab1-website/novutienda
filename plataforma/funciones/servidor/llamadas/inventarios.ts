@@ -5,7 +5,7 @@
 import { HttpsError } from 'firebase-functions/v2/https';
 import { z } from 'zod';
 import {
-  abrirConteo, actualizarProducto, claveDePrecio, ajustar, cerrarConteo, conteosAbiertosDe, crearProducto, crearUbicacion, esDisponible, exportarProductosCsv, importarCsvPorLotes, leerArchivoImportacion, MAX_BYTES_ARCHIVO, type FuenteTabla, type LectorHojas, type LecturaSinBloqueo, type LeerCatalogo,
+  abrirConteo, actualizarProducto, cancelarConteo, claveDePrecio, ajustar, cerrarConteo, conteosAbiertosDe, crearProducto, crearUbicacion, esDisponible, exportarProductosCsv, importarCsvPorLotes, leerArchivoImportacion, MAX_BYTES_ARCHIVO, type FuenteTabla, type LectorHojas, type LecturaSinBloqueo, type LeerCatalogo,
   filtrarUnidadesLista, ingresar, leerDocumentoProducto, marcaOcultamiento, mercadosSinPrecio, proyectarMovimiento, proyectarProducto, registrarLineaConteo, resolverMerma, simularImportacionCsv, solicitarMerma, traspasar, UBICACION_DISPONIBILIDAD,
   type Autor, type CambiosProducto, type Conteos, type EntradaProducto, type LineaAjuste, type LineaIngreso, type LineaTraspaso, type ProductoExportable,
 } from '@novutienda/inventarios';
@@ -155,13 +155,22 @@ export const accionesInventarios: TablaImplementaciones = {
     },
   }),
   cerrarConteo: accion({
-    esquema: objeto({ operacionId: ID, conteoId: ID }),
+    esquema: objeto({ operacionId: ID, conteoId: ID, sinContar: z.enum(['igual', 'cero']).optional() }),
     ejecutar: async (c, d) => {
-      // Productos con existencia en la ubicación del conteo: los que nadie contó se tratan como contados en 0.
-      const conteo = (await c.e.firestore.doc(ruta(c.tenantId, 'conteos', d.conteoId)).get()).data();
-      const productosConExistencia = conteo === undefined ? [] : await productosConExistenciaEn(c, conteo);
-      return c.e.db.runTransaction((tx) => cerrarConteo(tx, { tenantId: c.tenantId, operacionId: d.operacionId, por: autor(c), conteoId: d.conteoId, productosConExistencia }));
+      // Solo con 'cero' se consultan los productos con existencia en la ubicación: los que nadie contó se toman como 0.
+      const sinContar = d.sinContar ?? 'igual';
+      let productosConExistencia: string[] = [];
+      if (sinContar === 'cero') {
+        const conteo = (await c.e.firestore.doc(ruta(c.tenantId, 'conteos', d.conteoId)).get()).data();
+        productosConExistencia = conteo === undefined ? [] : await productosConExistenciaEn(c, conteo);
+      }
+      return c.e.db.runTransaction((tx) => cerrarConteo(tx, { tenantId: c.tenantId, operacionId: d.operacionId, por: autor(c), conteoId: d.conteoId, productosConExistencia, sinContar }));
     },
+  }),
+  cancelarConteo: accion({
+    esquema: objeto({ operacionId: ID, conteoId: ID, motivo: z.string().trim().min(1).max(500) }),
+    ejecutar: (c, d) =>
+      c.e.db.runTransaction((tx) => cancelarConteo(tx, { tenantId: c.tenantId, operacionId: d.operacionId, por: autor(c), conteoId: d.conteoId, motivo: d.motivo })),
   }),
   crearUbicacion: accion({
     esquema: objeto({ operacionId: ID, ubicacionId: UBICACION, nombre: TEXTO(60) }),
@@ -415,6 +424,7 @@ export const accionesInventarios: TablaImplementaciones = {
       if (conteo === undefined) throw new HttpsError('not-found', 'El conteo no existe.');
       const lineas = await c.e.firestore.collection(ruta(c.tenantId, 'conteoLineas')).where('conteoId', '==', d.conteoId).limit(500).get();
       const filas = lineas.docs.map(datosDe);
+      if (conteo['estado'] === 'cancelado') return { conteo, lineas: filas };
       if (conteo['estado'] !== 'cerrado') {
         // Conteo abierto, para TODOS los roles: lo que hay que contar (id, nombre, sku, serie) y nada que dependa de las
         // existencias: ni cantidades, ni «bajo el mínimo», ni cuántos faltan (su variación al contar delataría qué productos
@@ -440,7 +450,7 @@ export const accionesInventarios: TablaImplementaciones = {
     },
   }),
   conteos: accion({
-    esquema: objeto({ estado: z.enum(['abierto', 'cerrado']).optional(), limite: LIMITE.optional() }),
+    esquema: objeto({ estado: z.enum(['abierto', 'cerrado', 'cancelado']).optional(), limite: LIMITE.optional() }),
     ejecutar: async (c, d) => {
       let q = c.e.firestore.collection(ruta(c.tenantId, 'conteos')).limit(d.limite ?? 50);
       if (d.estado !== undefined) q = q.where('estado', '==', d.estado);

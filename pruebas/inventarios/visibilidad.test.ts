@@ -1,7 +1,7 @@
 // Visibilidad de las existencias durante un conteo abierto (`visibilidad.ts`): matriz rol × conteos abiertos × ubicación.
 import { beforeEach, describe, expect, it } from 'vitest';
 import {
-  abrirConteo, cerrarConteo, conteoQueBloqueaTraspaso, conteosAbiertosDe, registrarLineaConteo, filtrarUnidadesLista, hayOcultamiento, marcaOcultamiento, proyectarMovimiento, proyectarProducto, puedeVerExistencias,
+  abrirConteo, cancelarConteo, cerrarConteo, conteoQueBloqueaTraspaso, conteosAbiertosDe, registrarLineaConteo, filtrarUnidadesLista, hayOcultamiento, marcaOcultamiento, proyectarMovimiento, proyectarProducto, puedeVerExistencias,
   recortarFaltantes, StockInsuficiente, type Conteos, type Faltante,
 } from './api.js';
 import type { DobleDb } from './doble-db.js';
@@ -137,12 +137,21 @@ describe('conteos abiertos desde las ubicaciones reales (apertura y cierre)', ()
     expect(puedeVerExistencias('sup', 'tienda', abiertos)).toBe(false);
     expect(puedeVerExistencias('sup', 'deposito-2', abiertos)).toBe(true);
     expect(proyectarProducto('caj', abiertos, P, UBICS).existencias['tienda']).toBeNull();
-    await db.runTransaction((tx) => cerrarConteo(tx, { tenantId: T, operacionId: op('c1'), por: SUP, conteoId: 'ct1', productosConExistencia: ['lapiz'] }));
+    await db.runTransaction((tx) => cerrarConteo(tx, { tenantId: T, operacionId: op('c1'), por: SUP, conteoId: 'ct1', productosConExistencia: ['lapiz'], sinContar: 'cero' }));
     const resto = leer();
     expect(resto.map((x) => x.ubicacionId)).toEqual(['deposito-1']);
     expect(proyectarProducto('caj', resto, P, UBICS).existencias['tienda']).toBe(5);
-    await db.runTransaction((tx) => cerrarConteo(tx, { tenantId: T, operacionId: op('c2'), por: SUP, conteoId: 'ct2', productosConExistencia: [] }));
+    await db.runTransaction((tx) => cerrarConteo(tx, { tenantId: T, operacionId: op('c2'), por: SUP, conteoId: 'ct2', productosConExistencia: [], sinContar: 'cero' }));
     expect(leer()).toEqual([]);
+    expect(proyectarProducto('caj', leer(), P, UBICS)).toEqual(P);
+  });
+  it('cancelar libera la ubicación: no hay ocultamiento y el traspaso queda libre', async () => {
+    await db.runTransaction((tx) => abrirConteo(tx, { tenantId: T, operacionId: op('a1'), por: SUP, conteoId: 'ct1', ubicacionId: 'tienda' }));
+    expect(leer().map((x) => x.conteoId)).toEqual(['ct1']);
+    expect(conteoQueBloqueaTraspaso('sup', leer(), 'tienda', 'deposito-2')).toBeDefined();
+    await db.runTransaction((tx) => cancelarConteo(tx, { tenantId: T, operacionId: op('x1'), por: ADM, conteoId: 'ct1', motivo: 'Error al abrir' }));
+    expect(leer()).toEqual([]);
+    expect(conteoQueBloqueaTraspaso('sup', leer(), 'tienda', 'deposito-2')).toBeUndefined();
     expect(proyectarProducto('caj', leer(), P, UBICS)).toEqual(P);
   });
   it('falla cerrado: sin documento del conteo igual se oculta (abiertoEn nulo)', () => {

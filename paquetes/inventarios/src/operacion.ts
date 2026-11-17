@@ -20,6 +20,7 @@ export const PERMISOS = {
   conteoAbrir: SUPERVISION,
   conteoRegistrar: TODOS,
   conteoCerrar: SUPERVISION,
+  conteoCancelar: SOLO_ADM,
   producto: SOLO_ADM,
   ubicacion: SOLO_ADM,
   importacion: SOLO_ADM,
