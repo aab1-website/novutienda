@@ -7,6 +7,7 @@ import { getFirestore, type Firestore } from 'firebase-admin/firestore';
 import { logger } from 'firebase-functions';
 import { getStorage } from 'firebase-admin/storage';
 import type { CatalogoPuerto, DisparadorSitio, ProcesadorMedios } from '@novutienda/consola';
+import { crearDisparoGithub, repoValido, tokenValido, type DisparoGithub } from '../../conectores/github/index.js';
 import { crearLectorDominios, type LectorDominios } from '../../coordinador/dominios.js';
 import { crearLectoresModulos, type LectorEstadoModulos, type LectorModulos } from '../../coordinador/modulos-activos.js';
 import { crearLectorComercial, type LectorComercial } from '../../coordinador/comercial.js';
@@ -23,7 +24,7 @@ import type { LectorHojas } from '@novutienda/inventarios';
 import type { DepsPos } from '@novutienda/pos';
 import type { EjecutorRecibos, LecturaRecibos } from '@novutienda/recibos';
 import type { GuardarContacto, LectorDisponibilidad, VerificadorAppCheck, VerificadorRecaptcha } from '@novutienda/website';
-import { exigirBucketPublico, PARAMETROS } from './config.js';
+import { exigirBucketPublico, PARAMETROS, SECRETOS } from './config.js';
 import { crearDisparadorSitio } from './disparador-sitio.js';
 import { emisorEnlaceEmulador, emisorEnlaceFirmado, type EmisorEnlacePdf } from './enlace-pdf.js';
 import { MAXIMO_ACTIVACIONES_POR_HORA, MAXIMO_INVITACIONES_POR_HORA, VENTANA_INVITACIONES_MS } from './llamadas/usuarios.js';
@@ -43,6 +44,11 @@ export interface Entorno {
   readonly procesador: ProcesadorMedios;
   readonly consultaSubidas: ConsultaSubidas;
   readonly disparadorSitio: DisparadorSitio;
+  /**
+   * Aviso a GitHub para reconstruir el sitio sin esperar el sondeo (S7-3). Opcional: sin él (emulador, pruebas, parámetro o
+   * secreto sin cargar) no se avisa y el trabajo `pendiente` lo recoge el sondeo. Solo lo arma `disparoSitioDeConfiguracion`.
+   */
+  readonly disparoSitio?: DisparoGithub;
   readonly emisorEnlacePdf: EmisorEnlacePdf;
   /** Lector de .xlsx de la importación de Inventarios (adaptador del coordinador, con topes contra archivos no confiables). */
   readonly lectorHojas: LectorHojas;
@@ -88,6 +94,8 @@ export interface OpcionesEntorno {
   readonly procesador?: ProcesadorMedios;
   /** Origen público de los medios (`MEDIOS_BASE_URL`); vacío o ausente: el logo subido no se entrega a Recibos. */
   readonly mediosBaseUrl?: string;
+  /** Disparo de GitHub (doble en pruebas); ausente = sin aviso. */
+  readonly disparoSitio?: DisparoGithub;
 }
 
 export function crearEntorno(o: OpcionesEntorno): Entorno {
@@ -113,6 +121,7 @@ export function crearEntorno(o: OpcionesEntorno): Entorno {
     procesador: o.procesador ?? crearProcesadorMedios(o.bucket, env),
     consultaSubidas: crearConsultaSubidas(o.firestore),
     disparadorSitio: crearDisparadorSitio(o.firestore, ahora),
+    ...(o.disparoSitio === undefined ? {} : { disparoSitio: o.disparoSitio }),
     emisorEnlacePdf: o.emisorEnlacePdf ?? (emulador ? emisorEnlaceEmulador(o.bucket) : emisorEnlaceFirmado(o.bucket, ahora)),
     lectorHojas: crearLectorHojas(),
     // La clave es `invitar:{tenantId}` (sin IP ni datos personales): la sal solo separa el espacio de claves, no es secreta.
@@ -133,6 +142,40 @@ export function crearEntorno(o: OpcionesEntorno): Entorno {
     leerDisponibilidad: (tenantId) => crearLectorDisponibilidad(o.firestore, tenantId),
     guardarContacto: (tenantId) => crearGuardarContacto(o.firestore, tenantId),
   };
+}
+
+/**
+ * Disparo de GitHub según la configuración, o `undefined` si queda deshabilitado (parámetro o secreto vacíos o con forma
+ * inválida, emulador o pruebas: ahí nunca se llama a la red real). `avisar` recibe un texto fijo, nunca el valor del token.
+ */
+export function disparoSitioDeConfiguracion(
+  repo: string,
+  token: string,
+  env: Readonly<Record<string, string | undefined>>,
+  avisar: (mensaje: string) => void,
+): DisparoGithub | undefined {
+  if (esEntornoDePruebas(env)) return undefined;
+  const r = repo.trim();
+  const t = token.trim();
+  if (r === '' || t === '') {
+    avisar('disparo de reconstrucción deshabilitado: falta GITHUB_REPO_SITIO o GITHUB_DISPARO_SITIO');
+    return undefined;
+  }
+  if (!repoValido(r) || !tokenValido(t)) {
+    avisar('disparo de reconstrucción deshabilitado: GITHUB_REPO_SITIO o GITHUB_DISPARO_SITIO tienen una forma inválida');
+    return undefined;
+  }
+  return crearDisparoGithub({ repo: r, token: t });
+}
+
+let disparoUnico: { readonly valor: DisparoGithub | undefined } | undefined;
+
+/** Disparo de esta instancia (una sola construcción y un solo log informativo por instancia). Solo `temporizadorSitio` tiene el secreto. */
+export function disparoSitioDeLaInstancia(): DisparoGithub | undefined {
+  disparoUnico ??= {
+    valor: disparoSitioDeConfiguracion(PARAMETROS.githubRepoSitio.value(), SECRETOS.disparoSitio.value(), process.env, (m) => logger.info(m)),
+  };
+  return disparoUnico.valor;
 }
 
 let unico: Entorno | undefined;

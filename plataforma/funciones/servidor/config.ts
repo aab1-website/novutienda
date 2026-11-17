@@ -50,6 +50,11 @@ export const PARAMETROS = {
   disponibilidadMaximoPorMinuto: defineString('DISPONIBILIDAD_MAXIMO_POR_MINUTO', { default: '60' }),
   /** Peticiones por minuto a `/api/contacto`, por origen y por instancia (memoria), antes de verificar App Check. */
   contactoMaximoPorMinuto: defineString('CONTACTO_MAXIMO_POR_MINUTO', { default: '30' }),
+  /**
+   * Repositorio (`owner/nombre`) cuyo workflow `reconstruir-sitio.yml` se avisa tras pasar un trabajo a `reconstruir` (S7-3).
+   * Vacío = disparo deshabilitado: el trabajo queda `pendiente` y lo recoge el sondeo programado, como antes.
+   */
+  githubRepoSitio: defineString('GITHUB_REPO_SITIO', { default: '' }),
 } as const;
 
 export const SECRETOS = {
@@ -59,6 +64,11 @@ export const SECRETOS = {
   reconstruccion: defineSecret('SITIO_RECONSTRUCCION_SECRETO'),
   /** Sal del hash de las claves del límite de tasa (para que la colección no revele IP). Obligatoria fuera de las pruebas. */
   salLimite: defineSecret('LIMITE_TASA_SAL'),
+  /**
+   * Token de grano fino de GitHub (un solo repositorio, solo «Actions» de escritura, vence a los 90 días; DS-3) para avisar a
+   * Actions. Vinculado SOLO a `temporizadorSitio`. Vacío o con forma inválida = disparo deshabilitado.
+   */
+  disparoSitio: defineSecret('GITHUB_DISPARO_SITIO'),
 } as const;
 
 /** Entero positivo de un parámetro de texto; si no es válido, el valor por defecto. */
