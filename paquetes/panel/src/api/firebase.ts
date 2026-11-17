@@ -31,7 +31,7 @@ export class TransporteFirebase implements Transporte {
       const o = (typeof e === 'object' && e !== null ? e : {}) as { code?: unknown; message?: unknown; details?: unknown };
       const codigo = typeof o.code === 'string' ? o.code.replace(/^functions\//, '') : 'internal';
       const detalle = typeof o.details === 'object' && o.details !== null ? (o.details as DetalleError) : {};
-      throw new ErrorApi(codigo, typeof o.message === 'string' ? o.message : 'Error', detalle);
+      throw new ErrorApi(codigo, typeof o.message === 'string' ? o.message.replace(/\s\[\d{3}\]$/, '') : 'Error', detalle);
     }
   }
 

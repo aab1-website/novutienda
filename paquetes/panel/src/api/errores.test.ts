@@ -97,6 +97,13 @@ describe('mensajes sin datos técnicos (G-07, G-08)', () => {
     expect(espia).toHaveBeenCalledOnce();
     espia.mockRestore();
   });
+  it('un mensaje con « [400]» al final y un motivo legible muestra el motivo', () => {
+    const e = new ErrorApi('invalid-argument', 'El NIT admite hasta 30 caracteres [400]', { codigo: 'entrada-invalida' });
+    expect(mensajeDeError(e)).toBe('El NIT admite hasta 30 caracteres');
+  });
+  it('el sufijo « [NNN]» sin campos desconocidos ya no da el texto de datos no reconocidos', () => {
+    expect(mensajeDeError(new ErrorApi('invalid-argument', 'Falta el nombre del negocio', { codigo: 'entrada-invalida' }))).not.toBe(MENSAJE_DATOS_NO_RECONOCIDOS);
+  });
   it('un mensaje técnico del servidor no se muestra', () => {
     const espia = vi.spyOn(console, 'error').mockImplementation(() => undefined);
     const m = mensajeDeError(new ErrorApi('invalid-argument', 'subidaId inválido', { codigo: 'entrada-invalida' }));

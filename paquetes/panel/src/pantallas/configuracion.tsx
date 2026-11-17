@@ -27,6 +27,18 @@ const datosDe = (n: ConfigPos['negocio'], logo: string | undefined): DatosNegoci
 const normal = (d: DatosNegocio): string => JSON.stringify(CAMPOS_NEGOCIO.map((k) => d[k].trim()));
 const negocioDe = (d: DatosNegocio): ConfigPos['negocio'] => ({ nombre: d.nombre.trim(), ...(opc(d.direccion) ? { direccion: opc(d.direccion) as string } : {}), ...(opc(d.telefono) ? { telefono: opc(d.telefono) as string } : {}), ...(opc(d.nit) ? { nit: opc(d.nit) as string } : {}) });
 
+/** Topes más estrictos de los dos validadores del servidor (caja y recibos): el formulario avisa antes de enviar. */
+function validarNegocio(d: DatosNegocio): Partial<Record<keyof DatosNegocio, string>> {
+  const e: Partial<Record<keyof DatosNegocio, string>> = {};
+  if (d.nombre.trim().length > 100) e.nombre = 'El nombre admite hasta 100 caracteres';
+  if (d.direccion.trim().length > 200) e.direccion = 'La dirección admite hasta 200 caracteres';
+  if (d.telefono.trim().length > 30) e.telefono = 'El teléfono admite hasta 30 caracteres';
+  if (d.nit.trim().length > 30) e.nit = 'El NIT admite hasta 30 caracteres';
+  const logo = d.logoUrl.trim();
+  if (logo !== '' && !/^https:\/\/\S+$/i.test(logo)) e.logoUrl = 'La dirección del logo debe empezar con https://';
+  return e;
+}
+
 type EstadoLogo = { readonly estado: 'subido'; readonly logo: LogoNegocio } | { readonly estado: 'sin-logo' } | { readonly estado: 'no-disponible' };
 
 /**
@@ -98,7 +110,8 @@ function DatosDelNegocio(): JSX.Element {
     setEnviado(null);
     setD({ ...d, [k]: v });
   };
-  const motivo = d.nombre.trim() === '' ? 'Escriba el nombre del negocio' : undefined;
+  const errores = validarNegocio(d);
+  const motivo = d.nombre.trim() === '' ? 'Escriba el nombre del negocio' : Object.values(errores)[0];
 
   /** Una escritura con la renovación de sesión de siempre; devuelve el motivo del fallo o `null` si se guardó. */
   const intentar = async (fn: () => Promise<unknown>): Promise<string | null> => {
@@ -180,11 +193,11 @@ function DatosDelNegocio(): JSX.Element {
       )}
       <form class="formulario" onSubmit={guardar} noValidate>
         <div class="cuadricula">
-          <Campo etiqueta="Nombre del negocio" valor={d.nombre} onInput={(v) => poner('nombre', v)} requerido />
-          <Campo etiqueta="Dirección" valor={d.direccion} onInput={(v) => poner('direccion', v)} />
-          <Campo etiqueta="Teléfono" valor={d.telefono} onInput={(v) => poner('telefono', v)} />
-          <Campo etiqueta="NIT" valor={d.nit} onInput={(v) => poner('nit', v)} />
-          <Campo etiqueta="Dirección web del logo (https)" valor={d.logoUrl} onInput={(v) => poner('logoUrl', v)} />
+          <Campo etiqueta="Nombre del negocio" valor={d.nombre} onInput={(v) => poner('nombre', v)} requerido error={errores.nombre} />
+          <Campo etiqueta="Dirección" valor={d.direccion} onInput={(v) => poner('direccion', v)} error={errores.direccion} />
+          <Campo etiqueta="Teléfono" valor={d.telefono} onInput={(v) => poner('telefono', v)} error={errores.telefono} />
+          <Campo etiqueta="NIT" valor={d.nit} onInput={(v) => poner('nit', v)} error={errores.nit} />
+          <Campo etiqueta="Logo por dirección web (opcional; mejor súbalo en Catálogo y sitio)" valor={d.logoUrl} onInput={(v) => poner('logoUrl', v)} error={errores.logoUrl} />
         </div>
         {logo.datos !== undefined && <LogoSubido estado={logo.datos} conDireccion={d.logoUrl.trim() !== ''} />}
         {resultado !== '' && <Alerta>{resultado}</Alerta>}
