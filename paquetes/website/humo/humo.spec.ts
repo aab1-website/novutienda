@@ -64,8 +64,7 @@ test.describe('CSP y peticiones', () => {
     expect(hosts.some((u) => u.hostname === 'www.googletagmanager.com' && u.pathname === '/gtag/js' && u.searchParams.get('id') === 'G-EJEMPLO00')).toBe(true);
     expect(hosts.some((u) => u.hostname === 'connect.facebook.net')).toBe(true);
     expect(hosts.some((u) => u.hostname === 'analytics.tiktok.com')).toBe(true);
-    await page.evaluate(() => document.querySelector('a[href^="https://wa.me/"]')?.addEventListener('click', (e) => e.preventDefault()));
-    await page.getByRole('link', { name: 'COMPRAR', exact: true }).click();
+    await page.getByRole('button', { name: 'COMPRAR', exact: true }).click();
     const comandos = await page.evaluate(() => (window as unknown as { dataLayer: ArrayLike<unknown>[] }).dataLayer.map((a) => Array.from(a)[1]));
     expect(comandos).toContain('clic_comprar');
     expect(comandos).toContain('update');
@@ -128,17 +127,36 @@ test.describe('precio, país y compra', () => {
     await expect(abrir).toBeFocused();
   });
 
-  test('«Comprar» abre wa.me con el mensaje «Hola, quiero comprar: nombre (cód. id)» y el número de la configuración', async ({ page }) => {
+  test('«Comprar» agrega el producto, abre el carrito y el envío usa el número único de la configuración', async ({ page }) => {
     await simularApi(page);
     await decidirConsentimiento(page, false, false);
     await page.goto('/producto/televisor-ejemplo-55');
-    const enlace = page.getByRole('link', { name: 'COMPRAR', exact: true });
-    const href = (await enlace.getAttribute('href')) ?? '';
-    const url = new URL(href);
+    await islasListas(page);
+    await page.getByRole('button', { name: 'COMPRAR', exact: true }).click();
+    const dlg = page.getByRole('dialog', { name: 'Mi carrito de consulta' });
+    await expect(dlg).toBeVisible();
+    const wa = dlg.getByRole('link', { name: /CONSULTAR POR WHATSAPP/ });
+    const url = new URL((await wa.getAttribute('href')) ?? '');
     expect(url.origin + url.pathname).toBe('https://wa.me/59100000001');
-    expect(url.searchParams.get('text')).toBe('Hola, quiero comprar: Televisor de ejemplo 55" (cód. ejemplo-tv-55)');
-    await expect(enlace).toHaveAttribute('rel', 'noopener noreferrer');
-    await expect(enlace).toHaveAttribute('target', '_blank');
+    expect(url.searchParams.get('text')).toContain('1 x Televisor de ejemplo 55" (cód. ejemplo-tv-55)');
+  });
+
+  test('«Agregar» repetido avisa la cantidad y la barra del celular muestra solo la cantidad', async ({ page }) => {
+    await page.setViewportSize({ width: 390, height: 800 });
+    await simularApi(page);
+    await decidirConsentimiento(page, false, false);
+    await page.goto('/producto/televisor-ejemplo-55');
+    await islasListas(page);
+    await page.getByRole('button', { name: 'AGREGAR' }).click();
+    await page.getByRole('button', { name: 'AGREGAR' }).click();
+    await expect(page.getByText('Ya estaba en su consulta: ahora 2')).toBeVisible();
+    const barra = page.getByRole('region', { name: 'Su consulta' });
+    await expect(barra).toBeVisible();
+    await expect(barra).toContainText('2 productos');
+    await expect(barra).not.toContainText(/Bs|\$/);
+    await expect(barra).toBeInViewport();
+    await barra.getByRole('button', { name: 'VER CONSULTA' }).click();
+    await expect(page.getByRole('dialog', { name: 'Mi carrito de consulta' })).toBeVisible();
   });
 
   test('un producto agotado (según la API) no muestra botones', async ({ page }) => {

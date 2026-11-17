@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import { almacenMemoria, borrarSeguro, guardarSeguro, leerSeguro, type AlmacenClaveValor } from './almacen.js';
-import { agregar, cambiarCantidad, leerCarrito, MAX_CANTIDAD, MAX_LINEAS, quitar, serializarCarrito, totalUnidades } from './carrito.js';
+import { agregar, cambiarCantidad, cantidadDe, leerCarrito, MAX_CANTIDAD, MAX_LINEAS, quitar, serializarCarrito, totalUnidades } from './carrito.js';
 import { convertir, textoReferencia } from './convertidor.js';
 import { formatearMonto, parsearMonto } from './dinero.js';
 import { EVENTOS, emitir, escuchar } from './eventos.js';
@@ -52,7 +52,18 @@ describe('whatsapp', () => {
   });
   it('acota el largo del mensaje y arma la consulta del carrito', () => {
     expect(enlaceWhatsApp('59100000001', 'a'.repeat(5000))!.length).toBeLessThan(1700);
-    expect(mensajeConsulta([{ id: 'a-1', nombre: 'A', cantidad: 2 }])).toBe('Hola, quiero consultar por estos productos:\n- 2 x A (cód. a-1)');
+    expect(mensajeConsulta([{ id: 'a-1', nombre: 'A', cantidad: 2 }])).toBe('Hola, quiero consultar por estos productos:\n2 x A (cód. a-1)');
+    expect(mensajeConsulta([{ id: 'a-1', nombre: 'A', cantidad: 2 }, { id: 'b-2', nombre: 'B', cantidad: 1 }])).toBe('Hola, quiero consultar por estos productos:\n2 x A (cód. a-1)\n1 x B (cód. b-2)');
+  });
+});
+
+describe('carrito: cantidad de un producto', () => {
+  it('devuelve la cantidad resultante de agregar y cero si no está', () => {
+    const a = { id: 'tv-1', nombre: 'TV' };
+    expect(cantidadDe([], 'tv-1')).toBe(0);
+    const c = agregar(agregar([], a), a);
+    expect(cantidadDe(c, 'tv-1')).toBe(2);
+    expect(cantidadDe(c, 'otro-1')).toBe(0);
   });
 });
 

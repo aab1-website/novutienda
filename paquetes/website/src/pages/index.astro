@@ -13,7 +13,7 @@ import { enlaceWhatsApp } from '../lib/whatsapp';
 
 const { config, categorias, productos, marcas } = contenido;
 const destacados = productos.filter((p) => p.destacado).slice(0, 6);
-const wa = enlaceWhatsApp(config.whatsappTienda, 'Hola, tengo una consulta.');
+const wa = enlaceWhatsApp(config.whatsappNovuchat, 'Hola, tengo una consulta.');
 ---
 <Base titulo={config.nombre} descripcion={config.lema} ruta="/" datosEstructurados={[jsonLdOrganizacion(contenido)]}>
   <Heroe />

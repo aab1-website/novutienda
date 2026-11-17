@@ -1,7 +1,8 @@
 import { useEffect, useState } from 'preact/hooks';
-import { enlaceWhatsApp, mensajeComprar } from '../lib/whatsapp.js';
+import { cantidadDe } from '../lib/carrito.js';
+import { EVENTOS, emitir } from '../lib/eventos.js';
 import { Icono } from './Icono.js';
-import { agregarAlCarrito } from './carrito-store.js';
+import { agregarAlCarrito, cargarCarrito } from './carrito-store.js';
 import { medicionGlobal } from './navegador.js';
 
 interface Props {
@@ -9,8 +10,6 @@ interface Props {
   nombre: string;
   /** Disponibilidad al construir el sitio. */
   disponible: boolean;
-  /** Número del asistente de NovuChat; sin número no se muestra el botón «Comprar». */
-  whatsapp: string | null;
   /** Consulta `/api/disponibilidad` al cargar (ficha de producto). */
   verificar?: boolean;
   /** Muestra también «Agregar» al carrito de consulta. */
@@ -18,8 +17,8 @@ interface Props {
   apiBase?: string;
 }
 
-/** «Comprar» abre el chat de WhatsApp con el mensaje «Hola, quiero comprar: <nombre> (cód. <id>)». */
-export default function BotonComprar({ id, nombre, disponible, whatsapp, verificar = false, conAgregar = true, apiBase = '' }: Props) {
+/** «Agregar» suma el producto a la consulta; «Comprar» lo suma y abre el carrito, desde donde se envía por WhatsApp. */
+export default function BotonComprar({ id, nombre, disponible, verificar = false, conAgregar = true, apiBase = '' }: Props) {
   const [hay, setHay] = useState(disponible);
   const [aviso, setAviso] = useState('');
 
@@ -42,20 +41,25 @@ export default function BotonComprar({ id, nombre, disponible, whatsapp, verific
   if (!hay) {
     return <div>{estado}<p class="etiqueta-agotado"><Icono nombre="prohibido" tamano={15} /> TEMPORALMENTE AGOTADO</p></div>;
   }
-  const enlace = enlaceWhatsApp(whatsapp, mensajeComprar(nombre, id));
+  const sumar = (): number => {
+    const antes = cantidadDe(cargarCarrito(), id);
+    const ahora = cantidadDe(agregarAlCarrito({ id, nombre }), id);
+    if (antes > 0) setAviso(`Ya estaba en su consulta: ahora ${ahora}`);
+    else setAviso(`${nombre} agregado a su consulta`);
+    window.setTimeout(() => setAviso(''), 2500);
+    return ahora;
+  };
   return (
     <div class="acciones-producto">
       {estado}
       {conAgregar && (
-        <button type="button" class="boton boton-secundario" onClick={() => { agregarAlCarrito({ id, nombre }); setAviso(`${nombre} agregado a tu consulta`); window.setTimeout(() => setAviso(''), 2500); }}>
+        <button type="button" class="boton boton-secundario" onClick={sumar}>
           <Icono nombre="bolsa" tamano={15} /> AGREGAR
         </button>
       )}
-      {enlace !== null && (
-        <a class="boton boton-cta" href={enlace} target="_blank" rel="noopener noreferrer" onClick={() => medicionGlobal().evento('clic_comprar', { id, nombre })}>
-          <Icono nombre="telefono" tamano={15} /> COMPRAR
-        </a>
-      )}
+      <button type="button" class="boton boton-cta" onClick={() => { medicionGlobal().evento('clic_comprar', { id, nombre }); sumar(); emitir(EVENTOS.abrirCarrito); }}>
+        <Icono nombre="telefono" tamano={15} /> COMPRAR
+      </button>
       <p class="aviso-estado" role="status">{aviso}</p>
     </div>
   );
