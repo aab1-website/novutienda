@@ -90,7 +90,23 @@ describe('catálogo: apariencia', () => {
     await u.click(await screen.findByRole('option', { name: /Televisor/ }));
     await u.click(await screen.findByRole('button', { name: /^Agregar foto/ }));
   };
-  const whatsapp = (): HTMLElement => screen.getByLabelText(/WhatsApp del asistente/);
+  const whatsapp = (): HTMLElement => screen.getByLabelText(/WhatsApp de la tienda/);
+
+  it('un número con 0 después del código de país avisa que parece de prueba, sin bloquear el guardado', async () => {
+    const e = crearEntorno('adm');
+    ver(e);
+    const u = userEvent.setup();
+    await screen.findByRole('button', { name: 'Guardar apariencia' });
+    expect(screen.queryByText(/parece de prueba/)).toBeNull();
+    await u.clear(whatsapp());
+    await u.type(whatsapp(), '59100000001');
+    expect(screen.getByText(/Este número parece de prueba \(un 0 después del código de país\): WhatsApp no lo acepta\. Escriba el número real de la tienda\./)).toBeTruthy();
+    expect(whatsapp().getAttribute('aria-invalid')).not.toBe('true');
+    expect((await screen.findByRole('button', { name: 'Guardar apariencia' })).getAttribute('aria-disabled')).not.toBe('true');
+    await u.clear(whatsapp());
+    await u.type(whatsapp(), '59170000001');
+    expect(screen.queryByText(/parece de prueba/)).toBeNull();
+  });
 
   it('mientras falta el WhatsApp, «Guardar apariencia» dice por qué y no guarda; el error va junto al campo', async () => {
     const e = crearEntorno('adm');

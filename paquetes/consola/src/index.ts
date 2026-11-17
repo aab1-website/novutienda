@@ -11,7 +11,7 @@ export { ESTADOS_FICHA, validarFichaWeb } from './fichas.js';
 export type { EstadoFicha, FichaWeb, MedioFicha, SeoFicha } from './fichas.js';
 export { mediosDeSeccion, validarSeccion } from './secciones.js';
 export type { Bloque, ItemEnlace, ItemImagen, Seccion } from './secciones.js';
-export { validarCarrusel, validarConfigSitio } from './sitio.js';
+export { esWhatsappValido, pareceNumeroDeRelleno, validarCarrusel, validarConfigSitio } from './sitio.js';
 export type { Carrusel, ConfigSitio, ItemCarrusel } from './sitio.js';
 export type { Validacion } from './validar.js';
 export { exigirRol, ROLES } from './permisos.js';
