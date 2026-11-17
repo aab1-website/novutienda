@@ -290,7 +290,8 @@ describe.skipIf(!hayEmulador)('contrato consola → /publicado → contenido del
         'documentos.seccion__enlaces.bloques[0]: bloque omitido (sin enlaces válidos)',
         'documentos.seccion__enlaces: sección omitida (sin bloques válidos)',
       ]));
-      expect(adv.some((m) => m.includes('ajeno.example.org') || m.includes('https://'))).toBe(false);
+      // Las advertencias llevan solo rutas de campo: ni el host ajeno ni ningún esquema de URL.
+      expect(adv.join('\n')).not.toMatch(/ajeno|https?:/);
       // Con el host en la lista del negocio el mismo publicado conserva la sección: la lista es la única diferencia.
       expect(mapear(resp, negocio({ enlacesPermitidos: ['ejemplo.invalid', 'ajeno.example.org'] })).secciones).toHaveLength(1);
     });
