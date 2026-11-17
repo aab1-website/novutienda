@@ -153,7 +153,7 @@ export interface ConfigSitio {
   readonly plantilla: IdPlantilla;
   /** Número del asistente de NovuChat (solo dígitos, con código de país), o null si no está configurado. */
   readonly whatsappNovuchat: string | null;
-  /** Número de la tienda para el carrito de consulta y el pie, o null. */
+  /** Sin uso en el sitio: todas las piezas usan `whatsappNovuchat`. Se retira tras el humo (decisión P5). */
   readonly whatsappTienda: string | null;
   readonly telefono: string | null;
   readonly correo: string | null;

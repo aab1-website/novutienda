@@ -31,7 +31,7 @@ const Titulo = nivelTitulo === 2 ? 'h2' : 'h3';
     <p class="tarjeta-descripcion">{resumen}</p>
     <div class="tarjeta-pie">
       <Precio client:visible usd={p.precioUsd} inicial={config.mercadoInicial} mercados={config.mercados} redondeo={config.redondeo} />
-      <BotonComprar client:visible id={p.id} nombre={p.nombre} disponible={p.disponible} />
+      <BotonComprar client:visible id={p.id} nombre={p.nombre} disponible={p.disponible} whatsapp={config.whatsappNovuchat} />
       <noscript><p class="aviso-estado">Activa JavaScript para ver el precio o consúltalo por WhatsApp.</p></noscript>
     </div>
   </div>

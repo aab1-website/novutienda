@@ -268,10 +268,10 @@ h3.descripcion-titulo, h4.descripcion-titulo { font-size: 17px; }
 .linea-nombre { font-weight: 500; }
 .cantidad { display: inline-flex; align-items: center; gap: 6px; }
 .cantidad output { min-width: 24px; text-align: center; font-weight: 700; }
-.barra-carrito, .barra-carrito-espacio { display: none; }
+.barra-carrito { display: none; }
 @media (max-width: 768px) {
   .barra-carrito { position: fixed; left: 0; right: 0; bottom: 0; z-index: 50; display: flex; align-items: center; justify-content: space-between; gap: 12px; padding: 10px 16px calc(10px + env(safe-area-inset-bottom)); padding-left: max(16px, env(safe-area-inset-left)); padding-right: max(16px, env(safe-area-inset-right)); background: var(--cb-superficie); color: var(--cb-texto); border-top: 1px solid var(--cb-borde); font-weight: 700; }
-  .barra-carrito-espacio { display: block; height: calc(68px + env(safe-area-inset-bottom)); }
+  body:has(.barra-carrito) { padding-bottom: calc(68px + env(safe-area-inset-bottom)); }
   body:has(.barra-carrito) .whatsapp-flotante { bottom: calc(84px + env(safe-area-inset-bottom)); }
 }
 .carrito-vacio { display: flex; flex-direction: column; align-items: center; gap: 14px; padding: 24px 0; color: var(--cb-texto-suave); }

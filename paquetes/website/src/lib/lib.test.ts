@@ -6,7 +6,7 @@ import { formatearMonto, parsearMonto } from './dinero.js';
 import { EVENTOS, emitir, escuchar } from './eventos.js';
 import { guardarMercado, leerMercado, monedaDe } from './mercado.js';
 import { alternarTema, guardarTema, leerTema, temaEfectivo } from './tema.js';
-import { enlaceWhatsApp, mensajeComprar, mensajeConsulta } from './whatsapp.js';
+import { enlaceWhatsApp, mensajeConsulta } from './whatsapp.js';
 import { configCliente } from './config-cliente.js';
 
 const roto: AlmacenClaveValor = {
@@ -37,11 +37,10 @@ describe('dinero', () => {
 });
 
 describe('whatsapp', () => {
-  it('arma el enlace con el mensaje del botón Comprar', () => {
-    const m = mensajeComprar('Televisor X', 'tv-x');
-    expect(m).toBe('Hola, quiero comprar: Televisor X (cód. tv-x)');
-    const url = enlaceWhatsApp('59100000001', m);
-    expect(url).toBe(`https://wa.me/59100000001?text=${encodeURIComponent(m)}`);
+  it('arma el enlace de «Comprar»: una línea con el producto, sin guion', () => {
+    const m = mensajeConsulta([{ id: 'tv-x', nombre: 'Televisor X', cantidad: 1 }]);
+    expect(m).toBe('Hola, quiero consultar por estos productos:\n1 x Televisor X (cód. tv-x)');
+    expect(enlaceWhatsApp('59100000001', m)).toBe(`https://wa.me/59100000001?text=${encodeURIComponent(m)}`);
   });
   it('sin número válido no hay enlace (nunca uno roto)', () => {
     expect(enlaceWhatsApp(null, 'x')).toBeNull();

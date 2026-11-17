@@ -64,7 +64,7 @@ test.describe('CSP y peticiones', () => {
     expect(hosts.some((u) => u.hostname === 'www.googletagmanager.com' && u.pathname === '/gtag/js' && u.searchParams.get('id') === 'G-EJEMPLO00')).toBe(true);
     expect(hosts.some((u) => u.hostname === 'connect.facebook.net')).toBe(true);
     expect(hosts.some((u) => u.hostname === 'analytics.tiktok.com')).toBe(true);
-    await page.getByRole('button', { name: 'COMPRAR', exact: true }).click();
+    await page.getByRole('link', { name: 'COMPRAR', exact: true }).click();
     const comandos = await page.evaluate(() => (window as unknown as { dataLayer: ArrayLike<unknown>[] }).dataLayer.map((a) => Array.from(a)[1]));
     expect(comandos).toContain('clic_comprar');
     expect(comandos).toContain('update');
@@ -122,17 +122,23 @@ test.describe('precio, país y compra', () => {
     await page.keyboard.press('Enter');
     const dlg = page.getByRole('dialog', { name: 'Buscar productos' });
     await expect(dlg).toBeVisible();
+    // El foco inicial se pone en el mismo efecto que registra Escape: esperarlo evita una carrera.
+    await expect(dlg.locator(':focus')).toHaveCount(1);
     await page.keyboard.press('Escape');
     await expect(dlg).toHaveCount(0);
     await expect(abrir).toBeFocused();
   });
 
-  test('«Comprar» agrega el producto, abre el carrito y el envío usa el número único de la configuración', async ({ page }) => {
+  test('«Comprar» es un enlace a wa.me sin JavaScript y, ya hidratado, agrega el producto y abre el carrito', async ({ page }) => {
     await simularApi(page);
     await decidirConsentimiento(page, false, false);
     await page.goto('/producto/televisor-ejemplo-55');
+    const enlace = page.getByRole('link', { name: 'COMPRAR', exact: true });
+    const href = new URL((await enlace.getAttribute('href')) ?? '');
+    expect(href.origin + href.pathname).toBe('https://wa.me/59100000001');
+    expect(href.searchParams.get('text')).toContain('1 x Televisor de ejemplo 55" (cód. ejemplo-tv-55)');
     await islasListas(page);
-    await page.getByRole('button', { name: 'COMPRAR', exact: true }).click();
+    await enlace.click();
     const dlg = page.getByRole('dialog', { name: 'Mi carrito de consulta' });
     await expect(dlg).toBeVisible();
     const wa = dlg.getByRole('link', { name: /CONSULTAR POR WHATSAPP/ });
@@ -141,22 +147,52 @@ test.describe('precio, país y compra', () => {
     expect(url.searchParams.get('text')).toContain('1 x Televisor de ejemplo 55" (cód. ejemplo-tv-55)');
   });
 
-  test('«Agregar» repetido avisa la cantidad y la barra del celular muestra solo la cantidad', async ({ page }) => {
+  test('sin número configurado, «Comprar» es un botón que agrega y abre el carrito, como «Agregar»', async ({ page }) => {
+    await simularApi(page);
+    await decidirConsentimiento(page, false, false);
+    await page.route('**/producto/televisor-ejemplo-55*', async (r) => {
+      const resp = await r.fetch();
+      await r.fulfill({ response: resp, body: (await resp.text()).replaceAll('59100000001', '12') });
+    });
+    await page.goto('/producto/televisor-ejemplo-55');
+    await islasListas(page);
+    await expect(page.getByRole('link', { name: 'COMPRAR', exact: true })).toHaveCount(0);
+    await page.getByRole('button', { name: 'COMPRAR', exact: true }).click();
+    await expect(page.getByRole('dialog', { name: 'Mi carrito de consulta' })).toBeVisible();
+    await expect(page.getByRole('dialog').getByRole('link', { name: /CONSULTAR POR WHATSAPP/ })).toHaveCount(0);
+  });
+
+  test('barra del celular: siempre visible, solo cantidad, foco de vuelta al cerrar y pie visible', async ({ page }) => {
     await page.setViewportSize({ width: 390, height: 800 });
     await simularApi(page);
     await decidirConsentimiento(page, false, false);
     await page.goto('/producto/televisor-ejemplo-55');
     await islasListas(page);
+    const barra = page.getByRole('region', { name: 'Tu consulta' });
+    await expect(barra).toBeInViewport();
+    await expect(barra).toContainText('Tu consulta está vacía');
     await page.getByRole('button', { name: 'AGREGAR' }).click();
     await page.getByRole('button', { name: 'AGREGAR' }).click();
-    await expect(page.getByText('Ya estaba en su consulta: ahora 2')).toBeVisible();
-    const barra = page.getByRole('region', { name: 'Su consulta' });
-    await expect(barra).toBeVisible();
+    await expect(page.getByText('Ya estaba en tu consulta: ahora 2')).toBeVisible();
     await expect(barra).toContainText('2 productos');
     await expect(barra).not.toContainText(/Bs|\$/);
     await expect(barra).toBeInViewport();
-    await barra.getByRole('button', { name: 'VER CONSULTA' }).click();
-    await expect(page.getByRole('dialog', { name: 'Mi carrito de consulta' })).toBeVisible();
+    const abrir = barra.getByRole('button', { name: 'VER CONSULTA' });
+    await abrir.click();
+    const dlg = page.getByRole('dialog', { name: 'Mi carrito de consulta' });
+    await expect(dlg).toBeVisible();
+    // El foco inicial se pone en el mismo efecto que registra Escape: esperarlo evita una carrera.
+    await expect(dlg.locator(':focus')).toHaveCount(1);
+    await page.keyboard.press('Escape');
+    await expect(dlg).toHaveCount(0);
+    await expect(abrir).toBeFocused();
+    // El pie queda por encima de la barra al llegar al final de la página.
+    await page.evaluate(() => window.scrollTo(0, document.body.scrollHeight));
+    const pie = await page.locator('footer').last().boundingBox();
+    const caja = await barra.boundingBox();
+    expect(pie).not.toBeNull();
+    expect(caja).not.toBeNull();
+    expect((pie?.y ?? 0) + (pie?.height ?? 0)).toBeLessThanOrEqual((caja?.y ?? 0) + 1);
   });
 
   test('un producto agotado (según la API) no muestra botones', async ({ page }) => {
@@ -166,6 +202,7 @@ test.describe('precio, país y compra', () => {
     await page.goto('/producto/televisor-ejemplo-55');
     await expect(page.getByText('TEMPORALMENTE AGOTADO')).toBeVisible();
     await expect(page.getByRole('link', { name: 'COMPRAR', exact: true })).toHaveCount(0);
+    await expect(page.getByRole('button', { name: /COMPRAR|AGREGAR/ })).toHaveCount(0);
   });
 
   test('carrito de consulta: agregar, cambiar cantidad y enviar por WhatsApp', async ({ page }) => {
