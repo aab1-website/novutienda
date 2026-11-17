@@ -64,6 +64,28 @@ jobs:
     outputs:
       version: ${{ steps.version.outputs.version }}
     steps:
+      # Primer paso, antes de cualquier escritura (tag, Release, disparo de
+      # producción): quien lanza y quien reejecuta deben estar en
+      # vars.APROBADORES_PROD. Falla cerrado si la variable está vacía.
+      - name: Verificar que el actor es aprobador de producción
+        env:
+          ACTOR: ${{ github.actor }}
+          ACTOR_DISPARO: ${{ github.triggering_actor }}
+          APROBADORES: ${{ vars.APROBADORES_PROD }}
+        run: |
+          set -euo pipefail
+          lista_limpia=$(echo "${APROBADORES:-}" | tr -d ' ')
+          if [[ -z "${lista_limpia//,/}" ]]; then
+            echo "::error::vars.APROBADORES_PROD está vacía: no se puede crear una versión"; exit 1
+          fi
+          # Comparación exacta por elemento (lista separada por comas, sin subcadenas)
+          lista=",${lista_limpia},"
+          for quien in "$ACTOR" "$ACTOR_DISPARO"; do
+            [[ -n "$quien" && "$lista" == *",$quien,"* ]] \
+              || { echo "::error::'$quien' no está en vars.APROBADORES_PROD"; exit 1; }
+          done
+          echo "Aprobador verificado: actor=$ACTOR, triggering_actor=$ACTOR_DISPARO"
+
       - name: Checkout con historial y tags
         uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
@@ -188,6 +210,8 @@ jobs:
         run: |
           set -euo pipefail
           # tag + confirmar=DESPLEGAR son los inputs que exigen los ci-*.yml
-          # (D3); quien ejecuta release.yml debe estar en vars.APROBADORES_PROD.
+          # (D3). El primer paso del job ya comprobó que github.actor y
+          # github.triggering_actor están en vars.APROBADORES_PROD; el ci-*.yml
+          # vuelve a verificar el actor en «Verificar aprobación».
           gh workflow run "$WF" --ref "$VERSION" -f "tag=$VERSION" -f confirmar=DESPLEGAR
           echo "Despliegue de producción lanzado: $WF @ $VERSION" >> "$GITHUB_STEP_SUMMARY"

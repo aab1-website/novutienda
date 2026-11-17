@@ -14,7 +14,7 @@
 | **Módulos** | Lo que se enciende por tenant con manifiesto y límite por plan: inventarios, pos, recibos, consola, website | NovuTienda, un módulo a la vez, con versión |
 | **Tenants** | Datos y configuración **declarativa** de un cliente, validada por tipos del núcleo. Nunca lógica | El comercio desde el panel; NovuTienda desde Plataforma |
 
-Más tres piezas con nombre propio: el **registro** (`plataforma/registro.ts`, el único lugar que enumera los módulos), el **coordinador** (`plataforma/coordinador`: puertos módulo↔módulo y bandeja; `plataforma/funciones/servidor/{index,entorno,config,origen,serializar,bus}.ts`, `llamadas/marco.ts`: composición y borde de ejecución; ver `coordinador.md`) y los **conectores** (`conectores/firebase/*`, `http/novuchat.ts`, `http/sitio.ts`).
+Más tres piezas con nombre propio: el **registro** (`plataforma/registro.ts`, el único lugar que enumera los módulos), el **coordinador** (`plataforma/coordinador`: puertos módulo↔módulo y bandeja; `plataforma/funciones/servidor/{index,entorno,config,origen,serializar,bus}.ts`, `llamadas/marco.ts`: composición y borde de ejecución; ver `coordinador.md`) y los **conectores** (`conectores/firebase/*`, `conectores/github/*`, `http/novuchat.ts`, `http/sitio.ts`).
 
 **Prueba de ubicación** (en orden; la primera que dice «sí» decide; dos «sí» = pieza mal cortada, se parte):
 
@@ -36,7 +36,7 @@ Más tres piezas con nombre propio: el **registro** (`plataforma/registro.ts`, e
 | `plataforma` | `scripts/` (salvo `zonas.mjs`), `plataforma/funciones/scripts/`, `plataforma/operador/` (código del operador: manifiesto `plataforma`, dueño de `novuchatTokens`; futuros en L2-5: `plataforma/operador/alta.ts` y `scripts/alta-tenant.mjs`) |
 | `modulo:<m>` | `paquetes/<m>/`; su borde `plataforma/funciones/servidor/llamadas/<m>.ts` (consola incluye `llamadas/medios.ts`, `trigger-medios.ts`, `disparador-sitio.ts`, `programadas/consola.ts`; recibos incluye `enlace-pdf.ts`); su interfaz en el panel: `paquetes/panel/src/pantallas/<m>/` (T2), con las piezas que solo ese módulo usa: pos `venta*`, `supervision`, `aprobaciones`, `arqueo.ts`, `pagos.ts`; inventarios `inventario*`, `mermas`; consola `catalogo*`, `plantillas-vista.ts`, `esperar.ts` y su entrada `index.ts` (`@novutienda/panel/consola`); recibos `recibos.tsx`, `recibo-vista.tsx` |
 | `coordinador` | `plataforma/registro.ts`, `plataforma/coordinador/*.ts`, el resto de `plataforma/funciones/servidor/` (incluidos `programadas/{tenants,cotizacion}.ts`: la cotización recorre tenants y dispara la corrida diaria de consola, plano §6.5) |
-| `conector:<n>` | `conector:firebase` = `plataforma/conectores/firebase/`; `conector:novuchat` = `http/novuchat.ts`; `conector:sitio` = `http/sitio.ts` |
+| `conector:<n>` | `conector:firebase` = `plataforma/conectores/firebase/`; `conector:novuchat` = `http/novuchat.ts`; `conector:sitio` = `http/sitio.ts`; `conector:github` = `plataforma/conectores/github/` (disparo de la reconstrucción del sitio; lo compone el coordinador) |
 | `tenant` | `tenants/` |
 | `pruebas:<zona>` | `pruebas/{funciones,integracion,fotos}/` y `pruebas/registro.test.ts` → coordinador; `pruebas/panel/` → central; `pruebas/<m>/` → `modulo:<m>`; `pruebas/{identidad,limites,tipo-cambio,reglas,tenant}/` → núcleo; un `*.test.ts` dentro de un paquete → la zona del archivo que prueba (`pantallas/<m>/x.test.ts` → `pruebas:modulo:<m>`; `pantallas/gestion.test.ts` y `util/util.test.ts` → `pruebas:central`); los dobles del panel → `src/doble/` es `pruebas:central` y `src/doble/<m>/` es `pruebas:modulo:<m>` (no salen a `pruebas/`: el modo `humo` los monta desde `src/doble/arranque.tsx`, vía `vite.config.ts`; el cruce de `servicios.ts` quedó resuelto en L2-7), `ayuda-pruebas.ts` → `pruebas:central` |
 | `metodo` | `pruebas/fronteras/`, `scripts/zonas.mjs` |
@@ -60,7 +60,7 @@ Reglas de importación por zona declarada (plano §3), con las aproximaciones qu
 | `plataforma` | `nucleo`, `central`, `coordinador` | el coordinador entra por `plataforma/registro.ts`; `plataforma/operador/*.ts` importa solo `@novutienda/nucleo` |
 | `modulo:<m>` | `modulo:<m>`, `nucleo`, `central`, `coordinador`, `conector:firebase`, y `modulo:<d>` si `dependeDe` lo declara | el borde en `plataforma/` necesita el marco (coordinador) y el `Bucket` (firebase) |
 | `coordinador` | todo | un **paquete** de módulo (`@novutienda/<m>`) solo desde un compositor (`registro.ts`, `coordinador/*.ts`, `servidor/entorno.ts`); un **archivo** de borde de módulo que vive en `plataforma/` siempre, porque existe para que el coordinador lo monte |
-| `conector:<n>` | `nucleo`, `coordinador` y las zonas a las que sirve | `firebase` sirve a todas; `novuchat` a inventarios y consola; `sitio` a consola |
+| `conector:<n>` | `nucleo`, `coordinador` y las zonas a las que sirve | `firebase` sirve a todas; `novuchat` a inventarios y consola; `sitio` a consola; `github` a ninguna (solo la composición del coordinador lo importa; la consola lo recibe por un puerto inyectado) |
 | `pruebas:<z>` | lo que importa `z`, más cualquier `pruebas:*` (dobles), `plataforma`, `coordinador` y conectores | `pruebas:coordinador` y `pruebas:central` importan además módulos |
 | `tenant` | `@novutienda/nucleo/extension` | lo exige también `verificador.ts` |
 | `metodo` | todo | sus pruebas contienen árboles inventados |

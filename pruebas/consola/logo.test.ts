@@ -122,6 +122,18 @@ describe('logo del negocio por archivo', () => {
       await expect(finalizarSubida(deps, { tenantId: T, actor: adm, subidaId })).rejects.toMatchObject({ codigo: 'procesamiento' });
       expect(db.dato(`tenants/${T}/sitio/logo`)).toBeUndefined();
     });
+    it('un fallo del procesamiento guarda su causa, sin ruta y con 200 caracteres como máximo, fuera del mensaje del usuario', async () => {
+      proc.lanza = true;
+      proc.procesar = async () => { throw new Error(`no se pudo leer tenants/${T}/privado/originales/_negocio/x ${'z'.repeat(400)}`); };
+      const { subidaId, r } = await reservarLogo(png(4));
+      const error = await finalizarSubida(deps, { tenantId: T, actor: adm, subidaId }).catch((e: unknown) => e);
+      expect(error).toMatchObject({ codigo: 'procesamiento', message: 'No se pudo procesar el archivo' });
+      const causa = (error as { causa: string }).causa;
+      expect(causa.startsWith('Error: no se pudo leer [ruta]')).toBe(true);
+      expect(causa).not.toContain(r.rutaOriginal);
+      expect(causa).not.toContain('tenants/');
+      expect(causa.length).toBeLessThanOrEqual(200);
+    });
     it('subir otro logo reemplaza al anterior: borra sus objetos y libera su cuota, sin tocar fotos de productos', async () => {
       catalogo.agregar('cam-2');
       const foto = id();
