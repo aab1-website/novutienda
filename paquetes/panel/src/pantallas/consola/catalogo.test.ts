@@ -116,7 +116,7 @@ describe('catálogo: apariencia', () => {
     expect(guardar.getAttribute('aria-disabled')).toBe('true');
     expect(screen.getByText('No hay cambios por guardar.')).toBeTruthy();
     await u.clear(whatsapp());
-    expect(screen.getByText(/Escriba el WhatsApp del asistente/)).toBeTruthy();
+    expect(screen.getByText(/Escriba el WhatsApp de la tienda/)).toBeTruthy();
     await u.click(guardar);
     expect(e.api.llamadas.some((l) => l.nombre === 'guardarConfigSitio')).toBe(false);
     await u.type(whatsapp(), '123');
