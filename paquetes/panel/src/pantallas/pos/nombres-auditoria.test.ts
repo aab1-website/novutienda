@@ -38,6 +38,10 @@ describe('nombres de las acciones de auditoría (S-01, G-10)', () => {
     for (const n of nombres) expect(n).not.toMatch(/^[a-z]+\.[a-z]/);
   });
 
+  it('la cancelación de un conteo de inventario tiene su nombre', () => {
+    expect(nombreDeAccion('inventarios.conteo-cancelar')).toBe('Conteo de inventario cancelado');
+  });
+
   it('una acción desconocida se muestra con su código', () => {
     expect(nombreDeAccion('pos.algo.nuevo')).toBe('pos.algo.nuevo');
   });

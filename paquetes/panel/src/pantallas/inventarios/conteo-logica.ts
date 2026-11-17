@@ -57,12 +57,26 @@ export function sinContar(a: { contados: number; total: number }): number {
   return a.total - a.contados;
 }
 
+/** Qué se hace con los productos que nadie contó: dejarlos como están o tomarlos como 0 (generan merma si tienen existencias). */
+export type EleccionSinContar = 'igual' | 'cero';
+
 /** Lo que dice la confirmación al cerrar. El panel calcula «sin contar» con su propia lista; el servidor no lo informa. */
-export function lineasDeCierre(a: { contados: number; total: number }): string[] {
+export function lineasDeCierre(a: { contados: number; total: number }, eleccion: EleccionSinContar = 'igual'): string[] {
   const res = [`Contó ${String(a.contados)} de ${String(a.total)} productos.`];
   const n = sinContar(a);
-  if (n > 0) res.push(`Faltan ${String(n)} ${n === 1 ? 'producto' : 'productos'} por contar. Los que tengan existencias en el sistema se contarán en 0 y generarán mermas.`);
-  else if (a.total > 0) res.push('No falta ningún producto por contar.');
+  if (n > 0) {
+    res.push(`Faltan ${String(n)} ${n === 1 ? 'producto' : 'productos'} por contar.`);
+    res.push(eleccion === 'igual'
+      ? `${n === 1 ? 'Ese producto queda' : 'Esos productos quedan'} como ${n === 1 ? 'está' : 'están'} en el sistema.`
+      : 'Los que tengan existencias en el sistema se tomarán como 0 y generarán mermas.');
+  } else if (a.total > 0) res.push('No falta ningún producto por contar.');
   res.push('Los sobrantes se ingresan al stock. El cierre se firma con su usuario y no se deshace.');
   return res;
 }
+
+/** Con nada contado y los no contados «como están» no hay nada que cerrar: el servidor lo rechaza, y el panel lo dice antes. */
+export function puedeCerrar(a: { contados: number; total: number }, eleccion: EleccionSinContar): boolean {
+  return a.contados > 0 || eleccion === 'cero';
+}
+
+export const AVISO_NADA_CONTADO = 'No hay productos contados: no hay nada que cerrar. Cuente al menos uno, elija tomar los no contados como 0, o pida al administrador que cancele el conteo.';

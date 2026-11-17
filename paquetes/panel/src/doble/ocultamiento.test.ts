@@ -58,11 +58,11 @@ describe('doble: existencias ocultas durante un conteo abierto', () => {
   it('varios conteos abiertos: una marca con cada uno, y el cierre de uno solo lo restituye', async () => {
     const e = await conConteo('sup', ['tienda', 'deposito-1']);
     expect((await e.api.llamar('listarProductos', {})).conteosAbiertos?.map((c) => c.ubicacionId)).toEqual(['deposito-1', 'tienda']);
-    await e.api.llamar('cerrarConteo', { operacionId: uuid(), conteoId: 'conteo-tienda' });
+    await e.api.llamar('cerrarConteo', { operacionId: uuid(), conteoId: 'conteo-tienda', sinContar: 'cero' });
     const l = await e.api.llamar('listarProductos', {});
     expect(l.conteosAbiertos?.map((c) => c.ubicacionId)).toEqual(['deposito-1']);
     expect((await producto(e, 'cable-hdmi'))?.existencias.tienda).toBe(25);
-    await e.api.llamar('cerrarConteo', { operacionId: uuid(), conteoId: 'conteo-deposito-1' });
+    await e.api.llamar('cerrarConteo', { operacionId: uuid(), conteoId: 'conteo-deposito-1', sinContar: 'cero' });
     const fin = await e.api.llamar('listarProductos', {});
     expect(fin.existenciasOcultas).toBeUndefined();
     expect(fin.find((p) => p.id === 'cable-hdmi')).toMatchObject({ stockTotal: 35, bajoMinimo: false, disponible: true });
