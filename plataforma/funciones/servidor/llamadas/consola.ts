@@ -5,7 +5,7 @@
 import { z } from 'zod';
 import {
   eliminarSeccion, exportarProductosCsv, guardarCarrusel, guardarConfigSitio, guardarFicha, guardarSeccion, obtenerTablero,
-  leerLogo, ordenarSecciones, preciosDelDiaDe, publicarSitio, quitarLogo,
+  guardarNegocioSitio, leerLogo, leerNegocioSitio, ordenarSecciones, preciosDelDiaDe, publicarSitio, quitarLogo,
 } from '@novutienda/consola';
 import { claveDePrecio, leerCotizacionDe, MAX_MERCADOS, SinCotizacionUtilizable, type CopiaCotizacion } from '@novutienda/nucleo';
 import { HttpsError } from 'firebase-functions/v2/https';
@@ -129,6 +129,23 @@ export const accionesConsola: TablaImplementaciones = {
   configSitio: accion({
     esquema: VACIO,
     ejecutar: async (c) => ({ config: (await c.e.firestore.doc(ruta(c.tenantId, 'sitio', 'config')).get()).data() ?? null }),
+  }),
+
+  /**
+   * Datos generales del negocio que muestra el sitio (`sitio/negocio`): `{ negocio, version, enlacesPermitidos }` (negocio `null` y
+   * versión 0 si aún no se guardaron). Supervisor y administrador.
+   */
+  leerNegocioSitio: accion({
+    esquema: VACIO,
+    ejecutar: (c) => leerNegocioSitio({ db: c.e.db }, c.tenantId, c.actor),
+  }),
+  /**
+   * Guarda los datos del negocio (solo administrador). `versionEsperada` es la que leyó la pantalla (0 si no existía): con otra, `conflicto`.
+   * Responde `{ version, afectados }`. La validación fina es la del servicio; aquí solo se acota la forma.
+   */
+  guardarNegocioSitio: accion({
+    esquema: objeto({ negocio: OBJETO, versionEsperada: z.number().int().min(0).max(1_000_000_000) }),
+    ejecutar: (c, d) => guardarNegocioSitio({ db: c.e.db, reloj: reloj(c) }, c.tenantId, c.actor, { negocio: d.negocio, versionEsperada: d.versionEsperada }),
   }),
 
   /** Logo subido como archivo: el vigente (ruta pública de sus versiones PNG y WebP) o `null`. */
