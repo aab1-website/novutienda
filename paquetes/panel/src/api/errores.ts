@@ -148,14 +148,18 @@ export const mensajeConteoAbierto = (almacen: string): string =>
 /** Mensaje legible para cualquier error (nunca el texto técnico del servidor). */
 export function mensajeDeError(e: unknown): string {
   if (!(e instanceof ErrorApi)) return MENSAJE_GENERICO;
-  const delServidorDisponible = CON_MENSAJE_DEL_SERVIDOR.has(e.codigoHttps) && esLegible(e.message) ? e.message.trim() : undefined;
+  // El SDK agrega « [NNN]» al final del mensaje: no es parte del motivo.
+  const texto = e.message.replace(/\s\[\d{3}\]$/, '');
+  const delServidorDisponible = CON_MENSAJE_DEL_SERVIDOR.has(e.codigoHttps) && esLegible(texto) ? texto.trim() : undefined;
   const codigo = e.detalle.codigo;
   // Validación inesperada del servidor (campos que el panel no debió enviar): el detalle técnico va solo al registro.
   const invalido = e.codigoHttps === 'invalid-argument' || codigo === 'entrada-invalida';
-  if (invalido && ((e.detalle.campos?.length ?? 0) > 0 || [e.message, ...(e.detalle.detalles ?? [])].some((t) => /campo desconocido|\[\d{3}\]/.test(t)))) {
+  if (invalido && ((e.detalle.campos?.length ?? 0) > 0 || [e.message, ...(e.detalle.detalles ?? [])].some((t) => /campo desconocido/i.test(t)))) {
     console.error('Validación rechazada por el servidor', { codigo, campos: e.detalle.campos, detalles: e.detalle.detalles, mensaje: e.message });
     return MENSAJE_DATOS_NO_RECONOCIDOS;
   }
+  // Un `invalid-argument` con motivo legible (sin campos desconocidos) muestra ese motivo, no el texto genérico.
+  if (invalido && delServidorDisponible !== undefined && codigo === 'entrada-invalida' && (e.detalle.detalles ?? []).length === 0) return delServidorDisponible;
   if (codigo === 'stock-insuficiente' && e.detalle.faltantesOcultos === true) return MENSAJE_STOCK_OCULTO;
   if (codigo === 'conteo-abierto') {
     const u = e.detalle.ubicacionId;
