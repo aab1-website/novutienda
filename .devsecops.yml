@@ -59,3 +59,35 @@ seguridad:
       aprobado_por: AndresAlberdi
       creado: "2026-11-04"
       vence: "2027-02-02"
+    - id: GHSA-fc5q-39xc-vjpf
+      herramienta: npm-audit
+      componente: novutienda
+      justificacion: >-
+        ReDoS en picomatch (extglobs de una sola rama repetidos) sin version corregida publicada al 2026-11-17 (ultimas 2.3.2 y 4.0.7). Llega solo por la cadena de construccion del sitio estatico (astro, vite, rollup, unstorage, tinyglobby): se ejecuta en el build con patrones fijos del propio proyecto, nunca con entradas de usuarios, y no forma parte de lo que se sirve a los clientes ni de las Cloud Functions. Al publicarse la version corregida se actualiza la dependencia y se borra esta excepcion. Aprobada por el propietario en el chat de la sesion el 2026-11-17.
+      aprobado_por: AndresAlberdi
+      creado: "2026-11-17"
+      vence: "2026-12-17"
+    - id: CVE-2026-112366
+      herramienta: osv-scanner
+      componente: novutienda
+      justificacion: >-
+        ReDoS en picomatch (extglobs de una sola rama repetidos) sin version corregida publicada al 2026-11-17 (ultimas 2.3.2 y 4.0.7). Llega solo por la cadena de construccion del sitio estatico (astro, vite, rollup, unstorage, tinyglobby): se ejecuta en el build con patrones fijos del propio proyecto, nunca con entradas de usuarios, y no forma parte de lo que se sirve a los clientes ni de las Cloud Functions. Al publicarse la version corregida se actualiza la dependencia y se borra esta excepcion. Aprobada por el propietario en el chat de la sesion el 2026-11-17.
+      aprobado_por: AndresAlberdi
+      creado: "2026-11-17"
+      vence: "2026-12-17"
+    - id: CVE-2026-112366
+      herramienta: trivy
+      componente: novutienda
+      justificacion: >-
+        ReDoS en picomatch (extglobs de una sola rama repetidos) sin version corregida publicada al 2026-11-17 (ultimas 2.3.2 y 4.0.7). Llega solo por la cadena de construccion del sitio estatico (astro, vite, rollup, unstorage, tinyglobby): se ejecuta en el build con patrones fijos del propio proyecto, nunca con entradas de usuarios, y no forma parte de lo que se sirve a los clientes ni de las Cloud Functions. Al publicarse la version corregida se actualiza la dependencia y se borra esta excepcion. Aprobada por el propietario en el chat de la sesion el 2026-11-17.
+      aprobado_por: AndresAlberdi
+      creado: "2026-11-17"
+      vence: "2026-12-17"
+    - id: GHSA-fc5q-39xc-vjpf
+      herramienta: trivy
+      componente: novutienda
+      justificacion: >-
+        ReDoS en picomatch (extglobs de una sola rama repetidos) sin version corregida publicada al 2026-11-17 (ultimas 2.3.2 y 4.0.7). Llega solo por la cadena de construccion del sitio estatico (astro, vite, rollup, unstorage, tinyglobby): se ejecuta en el build con patrones fijos del propio proyecto, nunca con entradas de usuarios, y no forma parte de lo que se sirve a los clientes ni de las Cloud Functions. Al publicarse la version corregida se actualiza la dependencia y se borra esta excepcion. Aprobada por el propietario en el chat de la sesion el 2026-11-17.
+      aprobado_por: AndresAlberdi
+      creado: "2026-11-17"
+      vence: "2026-12-17"
