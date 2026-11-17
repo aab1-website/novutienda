@@ -586,6 +586,9 @@ jobs:
           P_MEDIOS_BUCKET_PUBLICO: ${{ vars.MEDIOS_BUCKET_PUBLICO }}
           P_FUNCIONES_SERVICE_ACCOUNT: ${{ vars.FUNCIONES_SERVICE_ACCOUNT }}
           P_PROXY_SALTOS: ${{ vars.PROXY_SALTOS }}
+          # S7-3 (DS-3): repositorio owner/nombre del disparo de reconstruir-sitio.yml (vacío = deshabilitado).
+          # GitHub no admite variables con prefijo GITHUB_: la variable se llama SITIO_REPO_GITHUB. Solo staging.
+          P_GITHUB_REPO_SITIO: ${{ vars.SITIO_REPO_GITHUB }}
         run: bash .github/scripts/preparar-despliegue-firebase.sh
 
       - name: Conservar copia de la versión actual del panel (canal "previa" para rollback)

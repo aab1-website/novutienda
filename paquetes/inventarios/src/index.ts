@@ -21,7 +21,7 @@ export type { CambiosProducto, EntradaCrearProducto, EntradaProducto, PrecioUSD 
 export { ajustar, ingresar, traspasar } from './stock.js';
 export type { LineaAjuste, LineaIngreso, LineaTraspaso } from './stock.js';
 export { resolverMerma, solicitarMerma } from './merma.js';
-export { abrirConteo, cerrarConteo, registrarLineaConteo } from './conteo.js';
+export { abrirConteo, cancelarConteo, cerrarConteo, registrarLineaConteo } from './conteo.js';
 export {
   aEnteroEscalado, analizarCsv, centavosAUsd, deshacerNeutralizacion, columnasDeExportacion, exportarProductosCsv, exportarProductosCsvLegado, importarCsvPorLotes, importarProductosCsv, leerCsvFilas, leerCsvProductos, MAX_FILAS_IMPORTACION, neutralizarCelda, simularImportacionCsv,
 } from './importacion.js';

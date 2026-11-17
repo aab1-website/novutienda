@@ -71,7 +71,7 @@ describe.skipIf(!hayEmulador)('inventarios: importación, conteo y lecturas (emu
       expect(vista['resultado']).toBeUndefined();
       expect(JSON.stringify(vista)).not.toMatch(/teorico|esperado|diferencia|existencia|stock|bajoMinimo|faltan|"cantidad"/i);
     }
-    const cierre = await accion('inventarios', 'cerrarConteo', { operacionId: unico('op'), conteoId }, sup.token, A);
+    const cierre = await accion('inventarios', 'cerrarConteo', { operacionId: unico('op'), conteoId, sinContar: 'cero' }, sup.token, A);
     expect(cierre.status, JSON.stringify(cierre.error)).toBe(200);
     expect(cuerpo(cuerpo(cierre))['sinContar']).toContain('goma');
     expect((await h.firestore.doc(`tenants/${A}/mermas/${conteoId}-goma`).get()).data()).toMatchObject({ estado: 'solicitada', cantidad: 4 });

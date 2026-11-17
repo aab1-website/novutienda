@@ -337,6 +337,7 @@ export const TRADUCCION: { readonly [N in NombreCallable]: Traduccion<N> } = {
   abrirConteo: directa('inventarios', 'abrirConteo'),
   registrarLineaConteo: directa('inventarios', 'registrarLineaConteo'),
   cerrarConteo: directa('inventarios', 'cerrarConteo'),
+  cancelarConteo: directa('inventarios', 'cancelarConteo'),
   simularImportacionProductos: {
     usa: ['inventarios.importarProductosCsv'],
     ejecutar: async (c, e) => campo(await c.llamar('inventarios', 'importarProductosCsv', { ...e, simular: true }), 'simulacion'),
@@ -406,9 +407,12 @@ export const TRADUCCION: { readonly [N in NombreCallable]: Traduccion<N> } = {
         conteos.map(async (k): Promise<ConteoVista> => {
           const detalle = await c.llamar('inventarios', 'conteo', { conteoId: String(k['id']) });
           const lineas = lista(detalle, 'lineas').map((l) => sinVacios({ productoId: String(l['productoId']), contado: Number(l['contado']), series: l['series'] as string[] | undefined }));
+          const cabecera = ((detalle as Obj)['conteo'] ?? {}) as Obj;
           return sinVacios({
             conteoId: String(k['id']), ubicacionId: k['ubicacionId'] as UbicacionId, estado: k['estado'] as ConteoVista['estado'], abiertoPor: String(k['abiertoPor']),
-            cerradoPor: k['cerradoPor'] as string | undefined, fecha: String(k['abiertoEn'] ?? ''), lineas,
+            cerradoPor: k['cerradoPor'] as string | undefined,
+            canceladoPor: (k['canceladoPor'] ?? cabecera['canceladoPor']) as string | undefined,
+            motivoCancelacion: (k['motivo'] ?? cabecera['motivo']) as string | undefined, fecha: String(k['abiertoEn'] ?? ''), lineas,
             // Con el conteo abierto, la lista a contar (sin existencias) llega a todo rol.
             productos: Array.isArray((detalle as Obj)['productos']) ? ((detalle as Obj)['productos'] as ProductoDeConteo[]) : undefined,
             // `resultado` (teórico, contado, diferencia) solo llega a sup/adm y con el conteo cerrado.

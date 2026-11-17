@@ -42,6 +42,7 @@ const env = {
   NOVUCHAT_PEDIDOS_SECRETO: randomBytes(24).toString('hex'),
   SITIO_RECONSTRUCCION_SECRETO: randomBytes(24).toString('hex'),
   LIMITE_TASA_SAL: randomBytes(16).toString('hex'),
+  GITHUB_DISPARO_SITIO: '', // vacío: el disparo a GitHub queda deshabilitado en el emulador
   CONTACTO_MAXIMO: '3',
   SITIO_URL: 'https://sitio.ejemplo.test',
   MEDIOS_BASE_URL: 'https://medios.ejemplo.test',
@@ -53,7 +54,7 @@ writeFileSync('dist/funciones/.env.demo-pruebas', PARAMETROS.map((k) => `${k}=${
 // El emulador lee los secretos de `.secret.local` junto al código (no de Secret Manager). `dist/` está ignorado.
 writeFileSync(
   'dist/funciones/.secret.local',
-  ['NOVUCHAT_PEDIDOS_SECRETO', 'SITIO_RECONSTRUCCION_SECRETO', 'LIMITE_TASA_SAL'].map((k) => `${k}=${env[k]}`).join('\n') + '\n',
+  ['NOVUCHAT_PEDIDOS_SECRETO', 'SITIO_RECONSTRUCCION_SECRETO', 'LIMITE_TASA_SAL', 'GITHUB_DISPARO_SITIO'].map((k) => `${k}=${env[k]}`).join('\n') + '\n',
   { mode: 0o600 },
 );
 // Además de pruebas/funciones, las dos suites del panel que necesitan el emulador: ninguna queda omitida en CI.

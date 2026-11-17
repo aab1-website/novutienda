@@ -126,8 +126,9 @@ describe('conteo ciego', () => {
     await waitFor(() => expect(screen.getByText(/Avance: 1 de/)).toBeTruthy());
     await u.click(screen.getByRole('button', { name: 'Cerrar y firmar el conteo' }));
     const d = await screen.findByRole('dialog', { name: '¿Cerrar y firmar el conteo?' });
-    expect(d.textContent).toMatch(/Faltan \d+ productos por contar\. Los que tengan existencias en el sistema se contarán en 0 y generarán mermas\./);
+    expect(d.textContent).toMatch(/Faltan \d+ productos por contar\.\s*Esos productos quedan como están en el sistema\./);
     expect(d.textContent).toContain('Contó 1 de');
+    expect((within(d).getByRole('radio', { name: 'Dejarlos como están' }) as HTMLInputElement).checked).toBe(true);
     await u.click(within(d).getByRole('button', { name: 'Sí, cerrar y firmar' }));
     expect(await screen.findByText(/Conteo cerrado y firmado/)).toBeTruthy();
     const tabla = await screen.findByRole('table', { name: 'Resultado del conteo' });
@@ -215,5 +216,70 @@ describe('conteo ciego', () => {
     await waitFor(() => expect(screen.queryByText(/Hay 1 cantidad sin guardar/)).toBeNull());
     await u.click(screen.getByRole('button', { name: 'Cerrar y firmar el conteo' }));
     expect(await screen.findByRole('dialog', { name: '¿Cerrar y firmar el conteo?' })).toBeTruthy();
+  });
+
+  const abrirCierre = async (u: ReturnType<typeof userEvent.setup>): Promise<HTMLElement> => {
+    await u.click(screen.getByRole('button', { name: 'Cerrar y firmar el conteo' }));
+    return screen.findByRole('dialog', { name: '¿Cerrar y firmar el conteo?' });
+  };
+
+  it('«Tomarlos como 0» envía sinContar «cero» y genera la merma; por defecto envía «igual»', async () => {
+    const e = crearEntorno('sup');
+    const u = await abrir(e);
+    await escribir(u, '20');
+    await waitFor(() => expect(screen.getByText(/Avance: 1 de/)).toBeTruthy());
+    const d = await abrirCierre(u);
+    await u.click(within(d).getByRole('radio', { name: 'Tomarlos como 0 (generan merma)' }));
+    expect(d.textContent).toContain('se tomarán como 0 y generarán mermas');
+    await u.click(within(d).getByRole('button', { name: 'Sí, cerrar y firmar' }));
+    await screen.findByText(/Conteo cerrado y firmado/);
+    expect(llamadas(e, 'cerrarConteo')[0]?.entrada).toMatchObject({ sinContar: 'cero' });
+    expect(e.api.estado.mermas.length).toBeGreaterThan(0);
+  });
+
+  it('con «como están» no se crean mermas y se envía «igual»', async () => {
+    const e = crearEntorno('sup');
+    const u = await abrir(e);
+    await escribir(u, '20');
+    await waitFor(() => expect(screen.getByText(/Avance: 1 de/)).toBeTruthy());
+    const d = await abrirCierre(u);
+    await u.click(within(d).getByRole('button', { name: 'Sí, cerrar y firmar' }));
+    await screen.findByText(/Conteo cerrado y firmado/);
+    expect(llamadas(e, 'cerrarConteo')[0]?.entrada).toMatchObject({ sinContar: 'igual' });
+    expect(e.api.estado.mermas.every((m) => m.productoId === 'cable-hdmi')).toBe(true);
+  });
+
+  it('con nada contado y «como están» no deja cerrar y lo dice; con «0» sí', async () => {
+    const e = crearEntorno('sup');
+    const u = await abrir(e);
+    const d = await abrirCierre(u);
+    expect(d.textContent).toContain('No hay productos contados: no hay nada que cerrar.');
+    expect((within(d).getByRole('button', { name: 'Sí, cerrar y firmar' }) as HTMLButtonElement).getAttribute('aria-disabled') === 'true' || (within(d).getByRole('button', { name: 'Sí, cerrar y firmar' }) as HTMLButtonElement).disabled).toBe(true);
+    await u.click(within(d).getByRole('radio', { name: 'Tomarlos como 0 (generan merma)' }));
+    expect(d.textContent).not.toContain('No hay productos contados');
+  });
+
+  it('«Cancelar conteo» solo lo ve el administrador', async () => {
+    const e = crearEntorno('sup');
+    await abrir(e);
+    expect(screen.queryByRole('button', { name: 'Cancelar conteo' })).toBeNull();
+  });
+
+  it('el administrador cancela con motivo obligatorio y el historial lo muestra como «Cancelado»', async () => {
+    const e = crearEntorno('adm');
+    const u = await abrir(e);
+    await u.click(screen.getByRole('button', { name: 'Cancelar conteo' }));
+    const d = await screen.findByRole('dialog', { name: '¿Cancelar el conteo?' });
+    await u.click(within(d).getByRole('button', { name: 'Sí, cancelar conteo' }));
+    expect(await within(d).findByText(/Escriba el motivo de la cancelación/)).toBeTruthy();
+    expect(llamadas(e, 'cancelarConteo')).toHaveLength(0);
+    await u.type(within(d).getByLabelText(/Motivo de la cancelación/), 'Se abrió en el almacén equivocado');
+    await u.click(within(d).getByRole('button', { name: 'Sí, cancelar conteo' }));
+    expect(await screen.findByText(/Conteo cancelado/)).toBeTruthy();
+    expect(llamadas(e, 'cancelarConteo')[0]?.entrada).toMatchObject({ motivo: 'Se abrió en el almacén equivocado' });
+    const h = await screen.findByText('Cancelado');
+    expect(h.closest('p')?.textContent).toContain('Se abrió en el almacén equivocado');
+    expect(h.closest('p')?.textContent).not.toContain('u-adm'); // sin identificadores técnicos (G-10)
+    expect(screen.getByRole('button', { name: 'Abrir conteo' })).toBeTruthy();
   });
 });

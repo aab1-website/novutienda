@@ -147,6 +147,8 @@ describe('reglas de zona con árboles inventados', () => {
     expect(zonaDe('plataforma/funciones/servidor/llamadas/recibos.ts')).toBe('modulo:recibos');
     expect(zonaDe('plataforma/funciones/servidor/http/sitio.ts')).toBe('conector:sitio');
     expect(zonaDe('plataforma/conectores/firebase/auth.ts')).toBe('conector:firebase');
+    expect(zonaDe('plataforma/conectores/github/disparo.ts')).toBe('conector:github');
+    expect(zonaDe('pruebas/funciones/disparo-github.test.ts')).toBe('pruebas:coordinador');
     expect(zonaDe('plataforma/funciones/servidor/redondeo.ts')).toBe('nucleo');
     expect(zonaDe('pruebas/inventarios/pedido.test.ts')).toBe('pruebas:modulo:inventarios');
     expect(zonaDe('pruebas/reglas/matriz.ts')).toBe('pruebas:nucleo');
@@ -196,6 +198,18 @@ describe('reglas de zona con árboles inventados', () => {
     expect(permitido('conector:novuchat', rel('coordinador'), nc, sinDeps)).toBe(true);
     expect(permitido('conector:firebase', pkg('modulo:website'), 'plataforma/conectores/firebase/x.ts', sinDeps)).toBe(true);
     expect(permitido('conector:firebase', rel('conector:sitio'), 'plataforma/conectores/firebase/x.ts', sinDeps)).toBe(false);
+  });
+
+  it('solo el coordinador importa el conector de GitHub; ni módulos ni la consola', () => {
+    const gh = 'plataforma/conectores/github/disparo.ts';
+    const entorno = 'plataforma/funciones/servidor/entorno.ts';
+    expect(permitido('coordinador', rel('conector:github'), entorno, sinDeps)).toBe(true);
+    expect(permitido('modulo:consola', rel('conector:github'), 'plataforma/funciones/servidor/programadas/consola.ts', sinDeps)).toBe(false);
+    expect(permitido('modulo:pos', rel('conector:github'), 'plataforma/funciones/servidor/llamadas/pos.ts', sinDeps)).toBe(false);
+    expect(permitido('central', rel('conector:github'), 'paquetes/panel/src/x.ts', sinDeps)).toBe(false);
+    expect(permitido('conector:github', pkg('modulo:consola'), gh, sinDeps)).toBe(false);
+    expect(permitido('conector:github', pkg('nucleo'), gh, sinDeps)).toBe(true);
+    expect(permitido('conector:github', rel('coordinador'), gh, sinDeps)).toBe(true);
   });
 
   it('las pruebas importan su zona, dobles, plataforma y coordinador; las del coordinador y central, módulos', () => {

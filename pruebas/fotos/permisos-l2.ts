@@ -42,6 +42,7 @@ export const FOTO_PERMISOS_L2: readonly AccionFoto[] = [
   f('inventarios', 'abrirConteo', ['sup', 'adm']),
   f('inventarios', 'registrarLineaConteo', ['caj', 'sup', 'adm']),
   f('inventarios', 'cerrarConteo', ['sup', 'adm']),
+  f('inventarios', 'cancelarConteo', ['adm']),
   f('inventarios', 'crearUbicacion', ['adm']),
   f('inventarios', 'crearProducto', ['adm']),
   f('inventarios', 'editarProducto', ['adm']),

@@ -67,7 +67,7 @@ const ACCIONES: Readonly<Record<string, WireHandler>> = {
   // inventarios
   'inventarios.ingresar': igual('ingresar'), 'inventarios.traspasar': igual('traspasar'), 'inventarios.ajustar': igual('ajustar'),
   'inventarios.solicitarMerma': igual('solicitarMerma'), 'inventarios.resolverMerma': igual('resolverMerma'), 'inventarios.abrirConteo': igual('abrirConteo'),
-  'inventarios.registrarLineaConteo': igual('registrarLineaConteo'), 'inventarios.cerrarConteo': igual('cerrarConteo'),
+  'inventarios.registrarLineaConteo': igual('registrarLineaConteo'), 'inventarios.cerrarConteo': igual('cerrarConteo'), 'inventarios.cancelarConteo': igual('cancelarConteo'),
   // Una sola acción real: con `simular: true` devuelve la simulación; sin ella, el resultado por tandas.
   'inventarios.importarProductosCsv': async (c, d) => {
     const { simular, ...resto } = d;
@@ -113,14 +113,14 @@ const ACCIONES: Readonly<Record<string, WireHandler>> = {
     };
   },
   'inventarios.conteos': async (c, d) => ({
-    conteos: lim((await legado(c, 'listarConteos', {})) as Obj[], d).map((k) => ({ id: k['conteoId'], ...sin(k, 'conteoId', 'lineas', 'resultado', 'fecha', 'productos'), abiertoEn: k['fecha'] })),
+    conteos: lim((await legado(c, 'listarConteos', {})) as Obj[], d).map((k) => ({ id: k['conteoId'], ...sin(k, 'conteoId', 'lineas', 'resultado', 'fecha', 'productos', 'motivoCancelacion'), ...(k['motivoCancelacion'] !== undefined ? { motivo: k['motivoCancelacion'] } : {}), abiertoEn: k['fecha'] })),
   }),
   'inventarios.conteo': async (c, d) => {
     const k = ((await legado(c, 'listarConteos', {})) as Obj[]).find((x) => x['conteoId'] === d['conteoId']);
     if (k === undefined) throw fallo('no-encontrado', 'El conteo no existe');
-    const { lineas, conteoId, resultado, productos, ...r } = k;
+    const { lineas, conteoId, resultado, productos, motivoCancelacion, ...r } = k;
     // `resultado` (teórico, contado, diferencia) solo llega a sup/adm y con el conteo cerrado (el doble ya lo filtra).
-    return { conteo: { id: conteoId, ...r }, lineas, ...(resultado !== undefined ? { resultado } : {}), ...(productos !== undefined ? { productos } : {}) };
+    return { conteo: { id: conteoId, ...r, ...(motivoCancelacion !== undefined ? { motivo: motivoCancelacion } : {}) }, lineas, ...(resultado !== undefined ? { resultado } : {}), ...(productos !== undefined ? { productos } : {}) };
   },
   'inventarios.exportarCsv': (c, d) => legado({ ...c, rol: d['conCostos'] === true ? 'adm' : 'sup' }, 'exportarProductosCsv', {}),
   // recibos

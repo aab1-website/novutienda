@@ -16,7 +16,7 @@ import { tablaDeCallable, horarioDe } from '../../coordinador/encendido.js';
 import { crearLimiteTasa, esEntornoDePruebas } from '../../conectores/firebase/index.js';
 import { entregarEvento } from './bus.js';
 import { enteroDe, exigirConfiguracionDeServicio, PARAMETROS, REGION, SECRETOS } from './config.js';
-import { entorno, verificadoresSitio } from './entorno.js';
+import { disparoSitioDeLaInstancia, entorno, verificadoresSitio } from './entorno.js';
 import { ipDelCliente } from './origen.js';
 import { enrutar, type ConfigRouter } from './http/router.js';
 import type { PeticionHttp } from './http/tipos.js';
@@ -172,6 +172,8 @@ export const limpiezaSubidas = onSchedule({ ...horarioDe('limpiezaSubidas'), mem
   logger.info('limpieza de subidas', { resultado: await ejecutarLimpiezaSubidas(entorno()) });
 });
 
-export const temporizadorSitio = onSchedule({ ...horarioDe('temporizadorSitio') }, async () => {
-  await ejecutarTemporizadorSitio(entorno());
+// El token de GitHub (DS-3) se vincula SOLO a esta función; sin él (o sin `GITHUB_REPO_SITIO`) el disparo queda deshabilitado.
+export const temporizadorSitio = onSchedule({ ...horarioDe('temporizadorSitio'), secrets: [SECRETOS.disparoSitio] }, async () => {
+  const disparoSitio = disparoSitioDeLaInstancia();
+  await ejecutarTemporizadorSitio(disparoSitio === undefined ? entorno() : { ...entorno(), disparoSitio });
 });
