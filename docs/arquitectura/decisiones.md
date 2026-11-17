@@ -118,3 +118,8 @@
   **Decisión:** el panel puede mostrar imágenes (miniaturas) únicamente desde el almacén público de medios. A `img-src` de la política de contenido del panel se agrega el prefijo exacto de la base pública de medios, con barra final, y nada más: ni `media-src` ni `connect-src`.
   **Origen del valor:** la variable `VITE_MEDIOS_BASE_URL` llega al build (variables de GitHub `VITE_MEDIOS_BASE_URL_STAGING` y `VITE_MEDIOS_BASE_URL_PROD`). Debe coincidir con la base de medios que usan las Functions (`MEDIOS_BASE_URL`); el despliegue se frena si no coinciden.
   **Se deshace:** revirtiendo el cambio y borrando las variables.
+- 17/11/2026 — **Disparo de la reconstrucción desde la plataforma (S7-3, DS-3).** Código en `plataforma/conectores/github/` (zona `conector:github`; lo compone el coordinador en `entorno.ts`; la consola lo recibe por un puerto inyectado y no lo importa).
+  **Decisión:** cuando el temporizador encola un trabajo, la plataforma lanza un `workflow_dispatch` de `reconstruir-sitio.yml` con la entrada `clave` existente y el valor reservado `cola:pendientes`; no se agregan entradas nuevas.
+  **Por qué `workflow_dispatch` y no `repository_dispatch`:** el primero exige solo el permiso «Actions: write»; el segundo, «Contents: write» (documentación de GitHub consultada el 12/11/2026).
+  **Token:** de grano fino, de un solo repositorio, 90 días, en Secret Manager y vinculado solo a la función del temporizador.
+  **Límites:** un disparo como máximo por corrida del temporizador. Si GitHub falla, el trabajo queda pendiente y lo recoge el sondeo.

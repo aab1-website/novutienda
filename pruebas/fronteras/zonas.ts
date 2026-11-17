@@ -62,6 +62,7 @@ export const ZONA_POR_ARCHIVO: readonly ReglaZona[] = [
   // ---- Registro y coordinador (plano §3, piezas con nombre propio) -------------------------------
   { patron: /^plataforma\/registro\.ts$/, zona: 'coordinador', nota: 'el registro: el único lugar que enumera los módulos' },
   { patron: /^plataforma\/conectores\/firebase\//, zona: 'conector:firebase' },
+  { patron: /^plataforma\/conectores\/github\//, zona: 'conector:github', nota: 'disparo de la reconstrucción del sitio; lo compone el coordinador' },
   { patron: /^plataforma\/coordinador\//, zona: 'coordinador', nota: 'puertos módulo↔módulo y bandeja' },
 
   // ---- Borde de ejecución (plataforma/funciones/servidor), por archivo (plano §3 y §5, H0) --------
@@ -121,6 +122,7 @@ export const SIRVE: Readonly<Record<string, readonly Zona[] | '*'>> = {
   firebase: '*',
   novuchat: ['modulo:inventarios', 'modulo:consola'],
   sitio: ['modulo:consola'],
+  github: [], // solo núcleo y coordinador; la consola lo recibe por un puerto inyectado y no lo importa
 };
 
 const ES_PRUEBA_EN_PAQUETE = /^paquetes\/.*\.test\.tsx?$/;
