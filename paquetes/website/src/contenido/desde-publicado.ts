@@ -56,6 +56,10 @@ function versionesDe(medio: Obj): VersionMedio[] {
 const masCercana = (vs: readonly VersionMedio[]): VersionMedio | undefined =>
   [...vs].sort((a, b) => Math.abs(a.lado - 960) - Math.abs(b.lado - 960))[0];
 
+/** Regla única de enlace admitido: corto y seguro según la lista blanca (la misma que exige `validarContenido`). */
+export const enlaceAdmitido = (url: string, permitidos: readonly string[]): boolean =>
+  url.length <= LARGO_MAXIMO_ENLACE && urlEnlaceSegura(url, permitidos);
+
 /** Cómo tratar el `enlace` de una foto (solo carruseles): lista blanca y recolector de advertencias (rutas, nunca valores). */
 interface ContextoEnlace {
   readonly permitidos: readonly string[];
@@ -74,7 +78,7 @@ function foto(medio: Obj, base: string, enlaceCtx?: ContextoEnlace, indice = 0):
   let enlace = enlaceCtx === undefined ? '' : cadena(medio['enlace']).trim();
   // La consola guarda cualquier https de hasta 2000 caracteres; el sitio solo acepta lo seguro y corto. Lo demás se descarta
   // (la foto queda sin enlace) y se advierte con la ruta del campo, nunca con el valor.
-  if (enlaceCtx !== undefined && enlace !== '' && (enlace.length > LARGO_MAXIMO_ENLACE || !urlEnlaceSegura(enlace, enlaceCtx.permitidos))) {
+  if (enlaceCtx !== undefined && enlace !== '' && !enlaceAdmitido(enlace, enlaceCtx.permitidos)) {
     enlaceCtx.advertencias?.push(`${enlaceCtx.ruta(indice)}: enlace descartado (fuera de la lista blanca o demasiado largo)`);
     enlace = '';
   }
@@ -122,26 +126,63 @@ export function nombreDeCategoria(id: string): string {
   return t.charAt(0).toUpperCase() + t.slice(1);
 }
 
+const TITULO_MAXIMO = 120;
+const PARRAFO_MAXIMO = 3000;
+const PARRAFOS_MAXIMO = 20;
+
+/** Título opcional de un bloque: ausente o '' = sin título; con solo espacios o demasiado largo se quita con aviso (el bloque se conserva). */
+function tituloDe(b: Obj, ruta: string, advertencias: string[] | undefined): { titulo?: string } {
+  const t = cadena(b['titulo']);
+  if (t === '') return {};
+  if (t.trim() === '' || t.length > TITULO_MAXIMO) { advertencias?.push(`${ruta}.titulo: título descartado (vacío o demasiado largo)`); return {}; }
+  return { titulo: t };
+}
+
 function bloque(b: Obj, base: string, rutaBloque: string, permitidos: readonly string[], advertencias: string[] | undefined): Bloque | undefined {
   switch (b['tipo']) {
-    case 'texto':
-      return { tipo: 'texto', ...(cadena(b['titulo']) === '' ? {} : { titulo: cadena(b['titulo']) }), parrafos: lista(b['parrafos']).map(cadena) };
+    case 'texto': {
+      const parrafos = lista(b['parrafos']).map(cadena);
+      // El sitio exige de 1 a 20 párrafos con texto y de hasta 3000 caracteres: si no, se omite el bloque (con aviso).
+      if (parrafos.length < 1 || parrafos.length > PARRAFOS_MAXIMO || parrafos.some((p) => p.trim() === '' || p.length > PARRAFO_MAXIMO)) {
+        advertencias?.push(`${rutaBloque}: bloque omitido (texto vacío o fuera de los límites)`);
+        return undefined;
+      }
+      return { tipo: 'texto', ...tituloDe(b, rutaBloque, advertencias), parrafos };
+    }
     case 'imagen': {
       const f = esObj(b['medio']) ? foto(b['medio'], base) : undefined;
-      return f === undefined ? undefined : { tipo: 'imagen', foto: f };
+      if (f === undefined) { advertencias?.push(`${rutaBloque}: bloque omitido (imagen sin versión válida)`); return undefined; }
+      return { tipo: 'imagen', foto: f };
     }
-    case 'carrusel':
-      return { tipo: 'carrusel', fotos: fotosDe(b['items'], base, LIMITES_SITIO.fotosPorCarrusel, { permitidos, advertencias, ruta: (i) => `${rutaBloque}.items[${i}].enlace` }) };
-    case 'enlaces':
-      return { tipo: 'enlaces', items: lista(b['items']).filter(esObj).map((i) => ({ texto: cadena(i['texto']), url: cadena(i['url']) })) };
+    case 'carrusel': {
+      const fotos = fotosDe(b['items'], base, LIMITES_SITIO.fotosPorCarrusel, { permitidos, advertencias, ruta: (i) => `${rutaBloque}.items[${i}].enlace` });
+      // El sitio exige al menos una foto por carrusel: sin fotos se omite el bloque (con aviso).
+      if (fotos.length === 0) { advertencias?.push(`${rutaBloque}: bloque omitido (carrusel sin fotos válidas)`); return undefined; }
+      return { tipo: 'carrusel', fotos };
+    }
+    case 'enlaces': {
+      // La consola guarda cualquier https; el sitio solo acepta lo seguro, corto y con texto. Lo demás se descarta con aviso (ruta, nunca valor).
+      const items: { texto: string; url: string }[] = [];
+      for (const [i, it] of lista(b['items']).entries()) {
+        const ruta = `${rutaBloque}.items[${i}]`;
+        if (!esObj(it)) { advertencias?.push(`${ruta}: ítem descartado (no es un objeto)`); continue; }
+        const texto = cadena(it['texto']);
+        const url = cadena(it['url']).trim();
+        if (texto.trim() === '' || texto.length > TITULO_MAXIMO) { advertencias?.push(`${ruta}.texto: ítem descartado (texto vacío o demasiado largo)`); continue; }
+        if (!enlaceAdmitido(url, permitidos)) { advertencias?.push(`${ruta}.url: enlace descartado (fuera de la lista blanca o demasiado largo)`); continue; }
+        items.push({ texto, url });
+      }
+      if (items.length === 0 && lista(b['items']).length > 0) advertencias?.push(`${rutaBloque}: bloque omitido (sin enlaces válidos)`);
+      return items.length === 0 ? undefined : { tipo: 'enlaces', ...tituloDe(b, rutaBloque, advertencias), items };
+    }
     default:
       return { tipo: 'desconocido' } as unknown as Bloque; // lo rechaza validarContenido (sin valores)
   }
 }
 
 /**
- * `advertencias` (opcional): si se pasa un arreglo, se le agregan avisos no fatales del mapeo (hoy: enlaces de fotos de carrusel
- * descartados). Cada aviso nombra solo la ruta del campo, nunca el valor. Quien llama decide si los imprime.
+ * `advertencias` (opcional): si se pasa un arreglo, se le agregan avisos no fatales del mapeo (enlaces de fotos de carrusel y de
+ * bloques de enlaces descartados; bloques y secciones que quedan vacíos se omiten). Cada aviso nombra solo la ruta del campo, nunca el valor. Quien llama decide si los imprime.
  *
  * @throws ErrorContenidoPublicado si la respuesta, el negocio o el resultado no son válidos.
  */
@@ -217,10 +258,16 @@ export function contenidoDesdePublicado(respuesta: unknown, negocio: unknown, en
     if (!RE_ID_SECCION.test(id)) { errores.push(`documentos.estado.secciones[${i}]: identificador inválido`); continue; }
     const d = docs?.[`seccion__${id}`];
     if (!esObj(d)) { errores.push(`documentos.seccion__${id}: falta o no es un objeto`); continue; }
-    secciones.push({
-      id, slug: id, titulo: cadena(d['titulo']), orden: secciones.length,
-      bloques: lista(d['bloques']).flatMap((b, k) => (esObj(b) ? (bloque(b, base, `documentos.seccion__${id}.bloques[${k}]`, permitidosEnlace, advertencias) ?? []) : [])),
+    const bloquesCrudos = lista(d['bloques']);
+    const bloques = bloquesCrudos.flatMap((b, k) => {
+      const rutaB = `documentos.seccion__${id}.bloques[${k}]`;
+      if (!esObj(b)) { advertencias?.push(`${rutaB}: bloque omitido (no es un objeto)`); return []; }
+      return bloque(b, base, rutaB, permitidosEnlace, advertencias) ?? [];
     });
+    // El sitio exige al menos un bloque por sección: la que viene sin bloques (ausentes, no lista, vacía) o se quedó sin ellos se omite con aviso.
+    // Un bloque de tipo desconocido no se traga: lo rechaza validarContenido (rotura de contrato).
+    if (bloques.length === 0) { advertencias?.push(`documentos.seccion__${id}: sección omitida (${bloquesCrudos.length === 0 ? 'sin bloques' : 'sin bloques válidos'})`); continue; }
+    secciones.push({ id, slug: id, titulo: cadena(d['titulo']), orden: secciones.length, bloques });
   }
 
   // Carruseles (D5): el cargado por el comercio o, si no hay, las primeras fotos de los destacados (o de los productos).
