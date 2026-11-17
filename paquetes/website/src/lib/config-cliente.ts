@@ -8,7 +8,6 @@ export interface ConfigCliente {
   readonly mercadoInicial: Mercado;
   readonly redondeo: Redondeo;
   readonly whatsappNovuchat: string | null;
-  readonly whatsappTienda: string | null;
   readonly medicion: ConfigMedicion;
   readonly recaptchaSiteKey: string | null;
   readonly apiBase: string;

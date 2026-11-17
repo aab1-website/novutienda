@@ -8,9 +8,6 @@ export function enlaceWhatsApp(numero: string | null, mensaje: string): string |
   return `https://wa.me/${numero}?text=${encodeURIComponent(mensaje.slice(0, MAX_MENSAJE))}`;
 }
 
-/** Mensaje prellenado del botón «Comprar»: nombre y código del producto. */
-export const mensajeComprar = (nombre: string, id: string): string => `Hola, quiero comprar: ${nombre} (cód. ${id})`;
-
 export interface LineaMensaje {
   readonly id: string;
   readonly nombre: string;
@@ -18,6 +15,6 @@ export interface LineaMensaje {
 }
 
 export function mensajeConsulta(lineas: readonly LineaMensaje[]): string {
-  const items = lineas.map((l) => `- ${l.cantidad} x ${l.nombre} (cód. ${l.id})`);
+  const items = lineas.map((l) => `${l.cantidad} x ${l.nombre} (cód. ${l.id})`);
   return ['Hola, quiero consultar por estos productos:', ...items].join('\n');
 }
