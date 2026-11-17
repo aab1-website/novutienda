@@ -35,7 +35,7 @@ export async function procesarObjetoSubido(e: Entorno, bucket: string, nombre: s
   } catch (error) {
     // finalizarSubida ya liberó la reserva y borró lo subido cuando el archivo no cumple; no se reintenta.
     // Un procesamiento caído no es culpa del archivo: es una falla del servicio y se registra como error para que alerte.
-    const registro = { tenantId, subidaId, error: error instanceof Error ? error.name : 'desconocido', mensaje: error instanceof Error ? error.message : '' };
+    const registro = { tenantId, subidaId, error: error instanceof Error ? error.name : 'desconocido', mensaje: error instanceof Error ? error.message : '', causa: error instanceof ErrorConsola ? error.causa : undefined };
     if (error instanceof ErrorConsola && error.codigo === 'no-disponible') logger.error('subida rechazada: procesamiento no disponible', registro);
     else logger.warn('subida rechazada', registro);
     return 'rechazada';
