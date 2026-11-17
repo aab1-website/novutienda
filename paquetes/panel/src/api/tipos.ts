@@ -380,9 +380,12 @@ export interface ProductoDeConteo {
 export interface ConteoVista {
   readonly conteoId: string;
   readonly ubicacionId: UbicacionId;
-  readonly estado: 'abierto' | 'cerrado';
+  readonly estado: 'abierto' | 'cerrado' | 'cancelado';
   readonly abiertoPor: string;
   readonly cerradoPor?: string;
+  /** Solo en un conteo cancelado. */
+  readonly canceladoPor?: string;
+  readonly motivoCancelacion?: string;
   readonly fecha: string;
   /** Lo que hay que contar, sin existencias ni nada derivado de ellas. Solo con el conteo abierto, para todo rol. */
   readonly productos?: readonly ProductoDeConteo[];

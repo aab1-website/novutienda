@@ -50,7 +50,7 @@ describe.each(['caj', 'sup'] as const)('productos como %s con un conteo abierto'
     const conteos = await e.api.llamar('listarConteos', {});
     const abierto = conteos.find((c) => c.estado === 'abierto');
     expect(abierto).toBeTruthy();
-    await e.api.llamar('cerrarConteo', { operacionId: uuid(), conteoId: abierto?.conteoId ?? '' });
+    await e.api.llamar('cerrarConteo', { operacionId: uuid(), conteoId: abierto?.conteoId ?? '', sinContar: 'cero' });
     e.como(rol);
     ver(e, 'productos');
     const t = await tabla();

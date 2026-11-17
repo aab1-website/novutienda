@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import type { ProductoDeConteo } from '../../api/tipos.js';
-import { avance, contarPendientes, lineasDeCierre, normalizarTexto, revisarTexto, textoGuardado } from './conteo-logica.js';
+import { avance, contarPendientes, lineasDeCierre, normalizarTexto, puedeCerrar, revisarTexto, textoGuardado } from './conteo-logica.js';
 
 const p = (id: string, conSerie = false): ProductoDeConteo => ({ productoId: id, nombre: id, categoria: 'c', sku: id, conSerie });
 
@@ -42,11 +42,23 @@ describe('avance y cierre', () => {
     const lineas = lista.slice(0, 18).map((x) => ({ productoId: x.productoId, contado: 1 }));
     expect(avance(lista, lineas).texto).toBe('18 de 41');
   });
-  it('el cierre calcula en el panel cuántos faltan y no afirma cuántas mermas habrá', () => {
+  it('el cierre calcula en el panel cuántos faltan y, por defecto, los deja como están', () => {
     const t = lineasDeCierre({ contados: 18, total: 41 }).join(' ');
-    expect(t).toContain('Faltan 23 productos por contar. Los que tengan existencias en el sistema se contarán en 0 y generarán mermas.');
+    expect(t).toContain('Faltan 23 productos por contar.');
+    expect(t).toContain('Esos productos quedan como están en el sistema.');
+    expect(t).not.toMatch(/mermas/);
     expect(lineasDeCierre({ contados: 1, total: 2 }).join(' ')).toContain('Faltan 1 producto por contar.');
-    expect(lineasDeCierre({ contados: 2, total: 2 }).join(' ')).not.toMatch(/Faltan|se contarán en 0/);
+    expect(lineasDeCierre({ contados: 2, total: 2 }).join(' ')).not.toMatch(/Faltan|se tomarán/);
     expect(lineasDeCierre({ contados: 2, total: 2 }).join(' ')).toContain('No falta ningún producto por contar.');
+  });
+  it('tomarlos como 0 avisa de las mermas sin afirmar cuántas habrá', () => {
+    const t = lineasDeCierre({ contados: 18, total: 41 }, 'cero').join(' ');
+    expect(t).toContain('Faltan 23 productos por contar.');
+    expect(t).toContain('Los que tengan existencias en el sistema se tomarán como 0 y generarán mermas.');
+  });
+  it('con nada contado solo se cierra tomando los no contados como 0', () => {
+    expect(puedeCerrar({ contados: 0, total: 3 }, 'igual')).toBe(false);
+    expect(puedeCerrar({ contados: 0, total: 3 }, 'cero')).toBe(true);
+    expect(puedeCerrar({ contados: 1, total: 3 }, 'igual')).toBe(true);
   });
 });

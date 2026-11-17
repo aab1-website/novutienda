@@ -54,7 +54,10 @@ export interface Contrato {
     entrada: { operacionId: string; conteoId: string; productoId: string; contado?: number; series?: readonly string[] };
     salida: ResultadoOperacion;
   };
-  cerrarConteo: { entrada: { operacionId: string; conteoId: string }; salida: ResultadoOperacion };
+  /** `sinContar` ausente = `'igual'`: lo no contado no cambia; `'cero'`: lo que tenga existencias se toma como 0 y genera mermas. */
+  cerrarConteo: { entrada: { operacionId: string; conteoId: string; sinContar?: 'igual' | 'cero' }; salida: ResultadoOperacion };
+  /** Solo adm; motivo obligatorio (1..500). No mueve stock ni crea mermas: libera el almacén. */
+  cancelarConteo: { entrada: { operacionId: string; conteoId: string; motivo: string }; salida: ResultadoOperacion };
   /** Simulación fila por fila (`inventarios.importarProductosCsv` con `simular: true`): no escribe ni usa `operacionId`. Solo adm. */
   simularImportacionProductos: { entrada: FuenteImportacion & { cargaInicial?: boolean }; salida: Simulacion };
   /**
