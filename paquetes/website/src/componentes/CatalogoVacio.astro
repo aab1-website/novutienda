@@ -6,7 +6,7 @@ import { enlaceWhatsApp } from '../lib/whatsapp';
 // `conBoton: false` cuando la página ya ofrece el botón de WhatsApp en otro bloque (la portada, en «Estamos para ayudarte»).
 interface Props { conBoton?: boolean }
 const { conBoton = true } = Astro.props;
-const wa = enlaceWhatsApp(contenido.config.whatsappTienda, 'Hola, quisiera saber cuándo tendrán catálogo.');
+const wa = enlaceWhatsApp(contenido.config.whatsappNovuchat, 'Hola, quisiera saber cuándo tendrán catálogo.');
 const mostrarBoton = conBoton && wa !== null;
 ---
 <div class="catalogo-vacio">

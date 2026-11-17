@@ -31,6 +31,9 @@ export function cambiarCantidad(c: Carrito, id: string, delta: number): Carrito 
   });
 }
 
+/** Unidades de un producto en el carrito (0 si no está). */
+export const cantidadDe = (c: Carrito, id: string): number => c.find((l) => l.id === id)?.cantidad ?? 0;
+
 export const totalUnidades = (c: Carrito): number => c.reduce((s, l) => s + l.cantidad, 0);
 
 /** Lee el carrito guardado sin confiar en él: descarta todo lo que no tenga la forma esperada. */
