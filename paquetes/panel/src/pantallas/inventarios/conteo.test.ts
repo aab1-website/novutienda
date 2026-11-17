@@ -279,7 +279,7 @@ describe('conteo ciego', () => {
     expect(llamadas(e, 'cancelarConteo')[0]?.entrada).toMatchObject({ motivo: 'Se abrió en el almacén equivocado' });
     const h = await screen.findByText('Cancelado');
     expect(h.closest('p')?.textContent).toContain('Se abrió en el almacén equivocado');
-    expect(h.closest('p')?.textContent).toContain('u-adm');
+    expect(h.closest('p')?.textContent).not.toContain('u-adm'); // sin identificadores técnicos (G-10)
     expect(screen.getByRole('button', { name: 'Abrir conteo' })).toBeTruthy();
   });
 });

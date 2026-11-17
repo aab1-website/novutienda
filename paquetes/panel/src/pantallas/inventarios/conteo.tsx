@@ -147,7 +147,7 @@ function CancelarConteo({ conteoId, alCerrar, alCancelar }: { conteoId: string; 
       }
     >
       <ul class="lista-simple inv-resumen">
-        <li>Las cantidades contadas se descartan: no se mueve stock ni se crean mermas.</li>
+        <li>Lo ya contado queda guardado en el conteo cancelado, sin efecto: no se mueve stock ni se crean mermas.</li>
         <li>El almacén queda libre y se podrá abrir un conteo nuevo. La cancelación queda registrada con su usuario y el motivo.</li>
       </ul>
       <Campo etiqueta="Motivo de la cancelación" requerido tope={MOTIVO_MAX} valor={motivo} onInput={(v) => { setMotivo(v); setErrorMotivo(null); }} error={intento && falta ? 'Escriba el motivo de la cancelación.' : (errorMotivo ?? undefined)} />
@@ -365,7 +365,6 @@ export function Conteo(): JSX.Element {
                   {c.estado === 'cancelado' && (
                     <p data-prueba="conteo-cancelado">
                       <strong>Cancelado</strong>
-                      {c.canceladoPor !== undefined && <> por {c.canceladoPor}</>}
                       {c.motivoCancelacion !== undefined && <>. Motivo: {c.motivoCancelacion}</>}
                       {`. Productos contados: ${String(c.lineas.length)}.`}
                     </p>

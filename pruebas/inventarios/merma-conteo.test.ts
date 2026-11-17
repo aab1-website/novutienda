@@ -269,6 +269,14 @@ describe('conteo ciego', () => {
     await abrir('c2'); // la ubicación quedó libre
   });
 
+  it('cancelar con la misma operacionId es idempotente; con otro motivo, conflicto', async () => {
+    await abrir('c1');
+    const id = op('ci');
+    await cancelar('c1', 'Se abrió por error', ADM, id);
+    expect((await cancelar('c1', 'Se abrió por error', ADM, id)).repetida).toBe(true);
+    await expect(cancelar('c1', 'Otro motivo', ADM, id)).rejects.toBeInstanceOf(OperacionConflicto);
+  });
+
   it('cancelar: conteo inexistente o ya cerrado/cancelado', async () => {
     await expect(cancelar('nada')).rejects.toBeInstanceOf(NoEncontrado);
     await abrir('c1');

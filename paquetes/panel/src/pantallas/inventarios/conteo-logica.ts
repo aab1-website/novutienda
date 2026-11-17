@@ -70,7 +70,8 @@ export function lineasDeCierre(a: { contados: number; total: number }, eleccion:
       ? `${n === 1 ? 'Ese producto queda' : 'Esos productos quedan'} como ${n === 1 ? 'está' : 'están'} en el sistema.`
       : 'Los que tengan existencias en el sistema se tomarán como 0 y generarán mermas.');
   } else if (a.total > 0) res.push('No falta ningún producto por contar.');
-  res.push('Los sobrantes se ingresan al stock. El cierre se firma con su usuario y no se deshace.');
+  if (a.contados > 0) res.push('Los sobrantes se ingresan al stock.');
+  res.push('El cierre se firma con su usuario y no se deshace.');
   return res;
 }
 

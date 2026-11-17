@@ -322,7 +322,7 @@ export const handlersInventario: {
       if (k.estado !== 'abierto') throw fallo('estado-invalido', 'El conteo no está abierto');
       c.e.conteos.set(k.conteoId, { ...k, estado: 'cancelado', canceladoPor: c.uid, motivoCancelacion: motivo });
       auditar(c, 'inventarios.conteo-cancelar', `conteos/${k.conteoId}`, motivo);
-      return { conteoId: k.conteoId };
+      return { conteoId: k.conteoId, ubicacionId: k.ubicacionId };
     });
   },
 
