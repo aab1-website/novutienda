@@ -25,6 +25,10 @@ describe('límites del plan', () => {
     expect(PLANES.base).toEqual({ productos: 200, usuarios: 3, cajas: 1, almacenes: 3, mercados: 1, monedas: 1 });
   });
 
+  it('el plan pruebas es base con 10 usuarios', () => {
+    expect(PLANES.pruebas).toEqual({ ...PLANES.base, usuarios: 10 });
+  });
+
   it('reserva y cuenta hasta el tope', async () => {
     const db = nuevaDb({ usuarios: 2 });
     expect(await db.runTransaction((tx) => verificarYReservar(tx, 't1', 'usuarios'))).toBe(3);

@@ -3,7 +3,7 @@ import {
   type Actor, type AlmacenCotizaciones, type ConfiguracionComercial, type CopiaCotizacion, type PrecioDeMercado, type ReglaRedondeo, type RedondeoPorMoneda,
 } from '@novutienda/nucleo';
 import { leerEstadoSitio, type AvisoSitio } from './cambios.js';
-import { LIMITES_CONSOLA } from './limites.js';
+import { LIMITES_CONSOLA, topesDelPlan } from './limites.js';
 import { leerUsoMedios } from './medios/uso.js';
 import { exigirRol, ROLES } from './permisos.js';
 import type { BaseDatosConsola, Reloj } from './puertos.js';
@@ -47,7 +47,9 @@ export async function obtenerTablero(deps: DepsTablero, e: { tenantId: string; a
     publicado: (await tx.get(rutaPublicado(t, 'estado'))).data(),
     contadores: (await tx.get(rutaContador(t))).data(),
     medios: await leerUsoMedios(tx, t),
+    plan: (await tx.get(`tenants/${t}`)).data()?.['plan'],
   }));
+  const topes = topesDelPlan(base.plan);
   const cotizaciones: CotizacionTablero[] = [];
   // D24: un mercado sin tipo de cambio no aparece (no tiene cotización que mostrar).
   for (const { id, tipoCambio } of deps.comercial.mercados) {
@@ -69,8 +71,8 @@ export async function obtenerTablero(deps: DepsTablero, e: { tenantId: string; a
     avisoSitio: base.estado.avisoSitio,
     cotizaciones,
     uso: {
-      productos: { usados: entero(base.contadores?.['productos']), tope: LIMITES_CONSOLA.productos },
-      usuarios: { usados: entero(base.contadores?.['usuarios']), tope: LIMITES_CONSOLA.usuarios },
+      productos: { usados: entero(base.contadores?.['productos']), tope: topes.productos },
+      usuarios: { usados: entero(base.contadores?.['usuarios']), tope: topes.usuarios },
       originalesBytes: { usados: base.medios.bytes, tope: LIMITES_CONSOLA.cuotaOriginalesBytes },
     },
   };
