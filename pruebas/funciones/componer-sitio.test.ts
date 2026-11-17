@@ -69,3 +69,21 @@ describe('componerSitioTenant', () => {
     expect(RE_SITIO.test('Sitio-aaaa')).toBe(false);
   });
 });
+
+describe('caché del sitio', () => {
+  const REVALIDAR = 'public, max-age=0, must-revalidate';
+  const LARGA = 'public, max-age=31536000, immutable';
+  const cache = (s: Sitio, source: string) => s.headers.find((h) => h.source === source)?.headers.find((x) => x.key === 'Cache-Control')?.value;
+  const sitio = (componerSitioTenant(firebase, cabeceras, SITIO_ID) as { hosting: Sitio[] }).hosting[0]!;
+
+  it('las rutas sin extensión y html|xml|json se revalidan siempre', () => {
+    for (const source of ['/', '**/!(*.*)', '**/*.@(html|xml|json)']) expect(cache(sitio, source)).toBe(REVALIDAR);
+  });
+
+  it('los recursos con hash siguen con caché larga y ninguna regla de revalidación los cubre', () => {
+    expect(cache(sitio, '/_astro/**')).toBe(LARGA);
+    expect(cache(sitio, '**/*.@(avif|webp|mp4|woff2)')).toBe(LARGA);
+    const fuentes = sitio.headers.filter((h) => h.headers.some((x) => x.key === 'Cache-Control' && x.value === REVALIDAR)).map((h) => h.source);
+    expect(fuentes.some((s) => s.includes('_astro'))).toBe(false);
+  });
+});
