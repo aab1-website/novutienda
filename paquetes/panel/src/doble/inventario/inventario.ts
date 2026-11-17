@@ -85,7 +85,7 @@ const motivoObligatorio = (m: string): string => {
 };
 
 export const handlersInventario: {
-  [N in 'crearProducto' | 'actualizarProducto' | 'ingresar' | 'traspasar' | 'ajustar' | 'solicitarMerma' | 'resolverMerma' | 'abrirConteo' | 'registrarLineaConteo' | 'cerrarConteo' | 'simularImportacionProductos' | 'importarProductosCsv' | 'exportarProductosCsv' | 'listarProductos' | 'listarSeries' | 'buscarSerie' | 'listarMovimientos' | 'listarMermas' | 'listarConteos' | 'cotizacionesVigentes']: H<N>;
+  [N in 'crearProducto' | 'actualizarProducto' | 'ingresar' | 'traspasar' | 'ajustar' | 'solicitarMerma' | 'resolverMerma' | 'abrirConteo' | 'registrarLineaConteo' | 'cerrarConteo' | 'cancelarConteo' | 'simularImportacionProductos' | 'importarProductosCsv' | 'exportarProductosCsv' | 'listarProductos' | 'listarSeries' | 'buscarSerie' | 'listarMovimientos' | 'listarMermas' | 'listarConteos' | 'cotizacionesVigentes']: H<N>;
 } = {
   crearProducto(c, e) {
     const p = e.producto;
@@ -273,10 +273,15 @@ export const handlersInventario: {
   },
 
   cerrarConteo(c, e) {
-    return operacion(c, 'conteo-cerrar', e.operacionId, [e.conteoId], () => {
+    const modo = e.sinContar ?? 'igual';
+    if (modo !== 'igual' && modo !== 'cero') throw fallo('entrada-invalida', 'sinContar inválido');
+    return operacion(c, 'conteo-cerrar', e.operacionId, [e.conteoId, modo], () => {
       const k = c.e.conteos.get(e.conteoId);
       if (k === undefined) throw fallo('no-encontrado', 'Conteo inexistente');
       if (k.estado !== 'abierto') throw fallo('estado-invalido', 'El conteo no está abierto');
+      if (k.lineas.length === 0 && modo === 'igual') {
+        throw fallo('estado-invalido', 'No hay productos contados: no hay nada que cerrar. Cuente al menos uno, elija tomar los no contados como 0, o pida al administrador que cancele el conteo.');
+      }
       const resultado = k.lineas.map((l) => {
         const teorico = k.teoricos.get(l.productoId) ?? 0;
         return { productoId: l.productoId, teorico, contado: l.contado, diferencia: l.contado - teorico };
@@ -294,7 +299,7 @@ export const handlersInventario: {
       // Conteo ciego completo: lo que tiene existencia y nadie contó se trata como contado en 0.
       const sinContar: string[] = [];
       for (const p of c.e.productos.values()) {
-        if (k.lineas.some((l) => l.productoId === p.id) || p.stockTotal === undefined || (p.existencias[k.ubicacionId] ?? 0) <= 0) continue;
+        if (modo === 'igual' || k.lineas.some((l) => l.productoId === p.id) || p.stockTotal === undefined || (p.existencias[k.ubicacionId] ?? 0) <= 0) continue;
         sinContar.push(p.id);
         c.e.mermas.push({
           mermaId: `merma-conteo-${k.conteoId}-${p.id}`, productoId: p.id, ubicacionId: k.ubicacionId, cantidad: p.existencias[k.ubicacionId], series: [],
@@ -305,6 +310,19 @@ export const handlersInventario: {
       c.e.conteos.set(k.conteoId, { ...k, estado: 'cerrado', cerradoPor: c.uid, resultado });
       auditar(c, 'inventarios.conteo-cerrar', `conteos/${k.conteoId}`);
       return { conteoId: k.conteoId, sinContar, avisos };
+    });
+  },
+
+  cancelarConteo(c, e) {
+    exigirRol(c, ['adm']);
+    const motivo = motivoObligatorio(e.motivo);
+    return operacion(c, 'conteo-cancelar', e.operacionId, [e.conteoId, motivo], () => {
+      const k = c.e.conteos.get(e.conteoId);
+      if (k === undefined) throw fallo('no-encontrado', 'Conteo inexistente');
+      if (k.estado !== 'abierto') throw fallo('estado-invalido', 'El conteo no está abierto');
+      c.e.conteos.set(k.conteoId, { ...k, estado: 'cancelado', canceladoPor: c.uid, motivoCancelacion: motivo });
+      auditar(c, 'inventarios.conteo-cancelar', `conteos/${k.conteoId}`, motivo);
+      return { conteoId: k.conteoId, ubicacionId: k.ubicacionId };
     });
   },
 
@@ -388,7 +406,8 @@ export const handlersInventario: {
 
   listarConteos: (c) =>
     [...c.e.conteos.values()].map((k) => ({
-      conteoId: k.conteoId, ubicacionId: k.ubicacionId, estado: k.estado, abiertoPor: k.abiertoPor, ...(k.cerradoPor !== undefined ? { cerradoPor: k.cerradoPor } : {}), fecha: k.fecha, lineas: k.lineas,
+      conteoId: k.conteoId, ubicacionId: k.ubicacionId, estado: k.estado, abiertoPor: k.abiertoPor, ...(k.cerradoPor !== undefined ? { cerradoPor: k.cerradoPor } : {}),
+      ...(k.canceladoPor !== undefined ? { canceladoPor: k.canceladoPor } : {}), ...(k.motivoCancelacion !== undefined ? { motivoCancelacion: k.motivoCancelacion } : {}), fecha: k.fecha, lineas: k.lineas,
       ...(c.rol !== 'caj' && k.estado === 'cerrado' && k.resultado !== undefined ? { resultado: k.resultado } : {}),
       // Con el conteo abierto, para todo rol: lo que hay que contar, sin existencias ni nada derivado de ellas.
       ...(k.estado === 'abierto'

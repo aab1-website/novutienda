@@ -20,6 +20,7 @@ export const ACCIONES_AUDITORIA: readonly AccionAuditoria[] = [
   { codigo: 'pos.caja.egreso', nombre: 'Egreso de caja' },
   { codigo: 'pos.credito.cobrar', nombre: 'Cobro de crédito' },
   { codigo: 'pos.config.guardar', nombre: 'Configuración de ventas guardada' },
+  { codigo: 'inventarios.conteo-cancelar', nombre: 'Conteo de inventario cancelado' },
   { codigo: 'recibos.emitir', nombre: 'Recibo emitido' },
   { codigo: 'recibos.anular', nombre: 'Recibo anulado' },
   { codigo: 'recibos.anulacion-pendiente', nombre: 'Anulación de recibo pendiente' },

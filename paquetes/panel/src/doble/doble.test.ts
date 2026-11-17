@@ -393,7 +393,7 @@ describe('doble: inventarios', () => {
     const abierto = (await e.api.llamar('listarConteos', {}))[0];
     expect(JSON.stringify(abierto)).not.toContain('teorico');
     expect(abierto?.resultado).toBeUndefined();
-    const cierre = await e.api.llamar('cerrarConteo', { operacionId: uuid(), conteoId });
+    const cierre = await e.api.llamar('cerrarConteo', { operacionId: uuid(), conteoId, sinContar: 'cero' });
     expect(cierre.resultado['sinContar']).toEqual(expect.arrayContaining(['tv-55']));
     expect(String(cierre.resultado['avisos'])).toContain('nadie contó');
     expect((await e.api.llamar('listarMermas', {})).mermas.some((m) => m.productoId === 'tv-55')).toBe(true);
@@ -404,6 +404,36 @@ describe('doble: inventarios', () => {
     expect((await falla(e.api.llamar('cerrarConteo', { operacionId: uuid(), conteoId }))).detalle.codigo).toBe('estado-invalido');
     e.como('caj');
     expect((await e.api.llamar('listarConteos', {}))[0]?.resultado).toBeUndefined();
+  });
+  it('conteo: por defecto lo no contado queda igual; sin líneas no cierra; \'cero\' lo toma como 0', async () => {
+    const e = crearEntorno('sup');
+    await e.api.llamar('abrirConteo', { operacionId: uuid(), conteoId: 'conteo-i', ubicacionId: 'tienda' });
+    expect((await falla(e.api.llamar('cerrarConteo', { operacionId: uuid(), conteoId: 'conteo-i' }))).detalle.codigo).toBe('estado-invalido');
+    expect((await falla(e.api.llamar('cerrarConteo', { operacionId: uuid(), conteoId: 'conteo-i', sinContar: 'x' as 'cero' }))).detalle.codigo).toBe('entrada-invalida');
+    await e.api.llamar('registrarLineaConteo', { operacionId: uuid(), conteoId: 'conteo-i', productoId: 'parlante', contado: 3 });
+    const cierre = await e.api.llamar('cerrarConteo', { operacionId: uuid(), conteoId: 'conteo-i' });
+    expect(cierre.resultado['sinContar']).toEqual([]);
+    expect((await e.api.llamar('listarMermas', {})).mermas.some((m) => m.productoId === 'tv-55')).toBe(false);
+  });
+  it('conteo: cancelar es solo de adm, pide motivo, no mueve stock y libera el almacén', async () => {
+    const e = crearEntorno('sup');
+    await e.api.llamar('abrirConteo', { operacionId: uuid(), conteoId: 'conteo-c', ubicacionId: 'tienda' });
+    await e.api.llamar('registrarLineaConteo', { operacionId: uuid(), conteoId: 'conteo-c', productoId: 'parlante', contado: 9 });
+    expect((await falla(e.api.llamar('cancelarConteo', { operacionId: uuid(), conteoId: 'conteo-c', motivo: 'x' }))).detalle.codigo).toBe('no-autorizado');
+    e.como('adm');
+    expect((await falla(e.api.llamar('cancelarConteo', { operacionId: uuid(), conteoId: 'conteo-c', motivo: '  ' }))).detalle.codigo).toBe('entrada-invalida');
+    const op = uuid();
+    await e.api.llamar('cancelarConteo', { operacionId: op, conteoId: 'conteo-c', motivo: ' Error de almacén ' });
+    expect((await e.api.llamar('cancelarConteo', { operacionId: op, conteoId: 'conteo-c', motivo: 'Error de almacén' })).repetida).toBe(true);
+    expect((await falla(e.api.llamar('cancelarConteo', { operacionId: uuid(), conteoId: 'conteo-c', motivo: 'otra vez' }))).detalle.codigo).toBe('estado-invalido');
+    const k = (await e.api.llamar('listarConteos', {}))[0];
+    expect(k).toMatchObject({ estado: 'cancelado', motivoCancelacion: 'Error de almacén' });
+    expect(k?.canceladoPor).toBeDefined();
+    expect(k?.resultado).toBeUndefined();
+    expect(k?.productos).toBeUndefined();
+    expect(k?.lineas).toHaveLength(1);
+    expect((await e.api.llamar('listarProductos', {})).find((p) => p.id === 'parlante')?.existencias.tienda).toBe(1);
+    await e.api.llamar('abrirConteo', { operacionId: uuid(), conteoId: 'conteo-d', ubicacionId: 'tienda' });
   });
   it('productos: alta con tope de 200, SKU único, conSerie inmutable tras un movimiento; CSV sin costo para sup', async () => {
     const e = crearEntorno('adm');
@@ -535,7 +565,7 @@ describe('doble: inventarios', () => {
       expect(k).not.toHaveProperty('faltan');
     }
     e.como('sup');
-    await e.api.llamar('cerrarConteo', { operacionId: uuid(), conteoId: 'conteo-f' });
+    await e.api.llamar('cerrarConteo', { operacionId: uuid(), conteoId: 'conteo-f', sinContar: 'cero' });
     expect((await e.api.llamar('listarConteos', {}))[0]?.productos).toBeUndefined();
   });
   it('movimientos y mermas avisan cuando la lista viene cortada', async () => {

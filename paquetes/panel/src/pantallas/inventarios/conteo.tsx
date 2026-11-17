@@ -1,6 +1,7 @@
 import type { JSX } from 'preact';
 import { useRef, useState } from 'preact/hooks';
 import { nuevoId } from '../../api/cliente.js';
+import { ErrorApi, mensajeDeError } from '../../api/errores.js';
 import type { ConteoVista, ProductoDeConteo, UbicacionId } from '../../api/tipos.js';
 import { useAvisos } from '../../ui/avisos.js';
 import { Alerta, Boton, Campo, ConCarga, Selector, Seccion, Vacio, fechaHora } from '../../ui/comun.js';
@@ -10,7 +11,8 @@ import { useBorrador, useCambiosSinGuardar } from '../../ui/guardia.js';
 import { useAccion, useCarga } from '../../ui/hooks.js';
 import { Tabla } from '../../ui/tabla.js';
 import { normalizar } from '../../util/buscar.js';
-import { avance, contarPendientes, lineasDeCierre, normalizarTexto, revisarTexto, textoGuardado } from './conteo-logica.js';
+import { AVISO_NADA_CONTADO, avance, contarPendientes, lineasDeCierre, normalizarTexto, puedeCerrar, revisarTexto, sinContar, textoGuardado, type EleccionSinContar } from './conteo-logica.js';
+import { MOTIVO_MAX } from './mermas-logica.js';
 import { separar } from './movimientos-resumen.js';
 import { nombreAlmacen, OPCIONES_ALMACEN } from './nombres.js';
 import { useProductos } from './usar-productos.js';
@@ -102,19 +104,73 @@ function FilaConteo({ conteoId, p, escrito, hecha, alEscribir, alGuardar, alOcup
   );
 }
 
-function ConteoAbierto({ abierto, productos, alCambiar }: { abierto: ConteoVista; productos: readonly ProductoDeConteo[]; alCambiar: () => void }): JSX.Element {
+/** Cancelar un conteo abierto (solo adm): no mueve stock ni crea mermas. El motivo es obligatorio, como al rechazar una merma. */
+function CancelarConteo({ conteoId, alCerrar, alCancelar }: { conteoId: string; alCerrar: () => void; alCancelar: () => void }): JSX.Element {
   const { api } = useApp();
+  const accion = useAccion();
+  const [motivo, setMotivo] = useState('');
+  const [intento, setIntento] = useState(false);
+  const [errorMotivo, setErrorMotivo] = useState<string | null>(null);
+  const operacion = useRef<{ firma: string; id: string } | null>(null);
+  const falta = motivo.trim() === '';
+  const confirmar = (): void => {
+    setIntento(true);
+    if (falta) return;
+    const firma = motivo.trim();
+    if (operacion.current?.firma !== firma) operacion.current = { firma, id: nuevoId() };
+    const operacionId = operacion.current.id;
+    setErrorMotivo(null);
+    void accion.ejecutar(async () => {
+      try {
+        await api.llamar('cancelarConteo', { operacionId, conteoId, motivo: firma });
+      } catch (e) {
+        if (!(e instanceof ErrorApi) || e.detalle.codigo !== 'entrada-invalida') throw e;
+        setErrorMotivo(mensajeDeError(e));
+        return;
+      }
+      alCancelar();
+    });
+  };
+  return (
+    <Dialogo
+      variante="centro"
+      titulo="¿Cancelar el conteo?"
+      descripcion="Revise antes de confirmar."
+      foco="campo"
+      sucio={!falta}
+      onCerrar={alCerrar}
+      pie={
+        <>
+          <button type="button" class="boton boton-secundario" data-seguro onClick={alCerrar}>Volver al conteo</button>
+          <Boton variante="peligro" onClick={confirmar} ocupado={accion.ocupado}>Sí, cancelar conteo</Boton>
+        </>
+      }
+    >
+      <ul class="lista-simple inv-resumen">
+        <li>Lo ya contado queda guardado en el conteo cancelado, sin efecto: no se mueve stock ni se crean mermas.</li>
+        <li>El almacén queda libre y se podrá abrir un conteo nuevo. La cancelación queda registrada con su usuario y el motivo.</li>
+      </ul>
+      <Campo etiqueta="Motivo de la cancelación" requerido tope={MOTIVO_MAX} valor={motivo} onInput={(v) => { setMotivo(v); setErrorMotivo(null); }} error={intento && falta ? 'Escriba el motivo de la cancelación.' : (errorMotivo ?? undefined)} />
+      {accion.error !== null && errorMotivo === null && <Alerta>{accion.error}</Alerta>}
+    </Dialogo>
+  );
+}
+
+function ConteoAbierto({ abierto, productos, alCambiar }: { abierto: ConteoVista; productos: readonly ProductoDeConteo[]; alCambiar: () => void }): JSX.Element {
+  const { api, usuario } = useApp();
   const avisos = useAvisos();
   const cierre = useAccion();
   const [q, setQ] = useState('');
   const [confirmando, setConfirmando] = useState(false);
+  const [eleccion, setEleccion] = useState<EleccionSinContar>('igual');
+  const [cancelando, setCancelando] = useState(false);
   const [enCurso, setEnCurso] = useState(0);
   const enCursoRef = useRef(0);
   const ocupar = (delta: number): void => {
     enCursoRef.current += delta;
     setEnCurso(enCursoRef.current);
   };
-  const operacionCierre = useRef<string | null>(null);
+  const operacionCierre = useRef<{ eleccion: EleccionSinContar; id: string } | null>(null);
   const clave = `inventarios.conteo.${abierto.conteoId}`;
   const b = useBorrador<Record<string, string>>(clave, {});
   const lista = productos;
@@ -126,16 +182,18 @@ function ConteoAbierto({ abierto, productos, alCambiar }: { abierto: ConteoVista
   const cerrar = (): void => {
     // Nunca se cierra con valores que la persona ve y el servidor todavía no tiene.
     if (enCursoRef.current > 0 || pendientes > 0) return;
-    operacionCierre.current ??= nuevoId();
-    const operacionId = operacionCierre.current;
+    if (!puedeCerrar(av, eleccion)) return;
+    // Otra elección es otra operación: el mismo identificador solo se reusa al reintentar lo mismo.
+    if (operacionCierre.current?.eleccion !== eleccion) operacionCierre.current = { eleccion, id: nuevoId() };
+    const operacionId = operacionCierre.current.id;
     void cierre.ejecutar(async () => {
-      const r = await api.llamar('cerrarConteo', { operacionId, conteoId: abierto.conteoId });
+      const r = await api.llamar('cerrarConteo', { operacionId, conteoId: abierto.conteoId, sinContar: eleccion });
       const lista2 = Array.isArray(r.resultado['avisos']) ? (r.resultado['avisos'] as unknown[]).filter((x): x is string => typeof x === 'string') : [];
       marcarGuardado();
       b.descartar();
       setConfirmando(false);
       operacionCierre.current = null;
-      avisos.ok(`Conteo cerrado y firmado. Los faltantes quedaron como mermas por resolver; los sobrantes se ingresaron.${lista2.length > 0 ? ` Atención: ${lista2.join(' ')}` : ''}`);
+      avisos.ok(`Conteo cerrado y firmado. Los faltantes contados quedaron como mermas por resolver; los sobrantes se ingresaron.${lista2.length > 0 ? ` Atención: ${lista2.join(' ')}` : ''}`);
       alCambiar();
     });
   };
@@ -183,7 +241,25 @@ function ConteoAbierto({ abierto, productos, alCambiar }: { abierto: ConteoVista
         >
           Cerrar y firmar el conteo
         </Boton>
+        {usuario.rol === 'adm' && (
+          <Boton variante="peligro" onClick={() => setCancelando(true)} motivo={enCurso > 0 ? 'Se están guardando cantidades: espere un momento.' : undefined}>
+            Cancelar conteo
+          </Boton>
+        )}
       </div>
+      {cancelando && usuario.rol === 'adm' && (
+        <CancelarConteo
+          conteoId={abierto.conteoId}
+          alCerrar={() => setCancelando(false)}
+          alCancelar={() => {
+            marcarGuardado();
+            b.descartar();
+            setCancelando(false);
+            avisos.ok('Conteo cancelado. No se movió stock ni se crearon mermas; el almacén quedó libre.');
+            alCambiar();
+          }}
+        />
+      )}
       {confirmando && (
         <Dialogo
           variante="centro"
@@ -194,13 +270,27 @@ function ConteoAbierto({ abierto, productos, alCambiar }: { abierto: ConteoVista
           pie={
             <>
               <button type="button" class="boton boton-secundario" data-seguro onClick={() => { setConfirmando(false); cierre.limpiar(); }}>Volver al conteo</button>
-              <Boton onClick={cerrar} ocupado={cierre.ocupado}>Sí, cerrar y firmar</Boton>
+              <Boton onClick={cerrar} ocupado={cierre.ocupado} motivo={puedeCerrar(av, eleccion) ? undefined : AVISO_NADA_CONTADO}>Sí, cerrar y firmar</Boton>
             </>
           }
         >
           <ul class="lista-simple inv-resumen" data-prueba="resumen-cierre">
-            {lineasDeCierre(av).map((l) => <li key={l}>{l}</li>)}
+            {lineasDeCierre(av, eleccion).map((l) => <li key={l}>{l}</li>)}
           </ul>
+          {sinContar(av) > 0 && (
+            <fieldset class="plantillas">
+              <legend>Qué hacer con los {String(sinContar(av))} {sinContar(av) === 1 ? 'producto' : 'productos'} sin contar</legend>
+              <label>
+                <input type="radio" name="sin-contar" value="igual" checked={eleccion === 'igual'} onChange={() => { setEleccion('igual'); cierre.limpiar(); }} />
+                {' '}Dejarlos como están
+              </label>
+              <label>
+                <input type="radio" name="sin-contar" value="cero" checked={eleccion === 'cero'} onChange={() => { setEleccion('cero'); cierre.limpiar(); }} />
+                {' '}Tomarlos como 0 (generan merma)
+              </label>
+            </fieldset>
+          )}
+          {!puedeCerrar(av, eleccion) && <Alerta>{AVISO_NADA_CONTADO}</Alerta>}
           {cierre.error !== null && <Alerta>{cierre.error}</Alerta>}
         </Dialogo>
       )}
@@ -252,7 +342,7 @@ export function Conteo(): JSX.Element {
     <ConCarga carga={conteos}>
       {(datos) => {
         const abierto = datos.find((c) => c.estado === 'abierto');
-        const cerrados = datos.filter((c) => c.estado === 'cerrado');
+        const anteriores = datos.filter((c) => c.estado !== 'abierto');
         return (
           <div>
             <Seccion titulo="Conteo ciego">
@@ -268,10 +358,17 @@ export function Conteo(): JSX.Element {
               {accion.error && <Alerta>{accion.error}</Alerta>}
             </Seccion>
             <Seccion titulo="Conteos anteriores">
-              {cerrados.length === 0 && <Vacio titulo="Todavía no hay conteos cerrados" />}
-              {cerrados.map((c) => (
+              {anteriores.length === 0 && <Vacio titulo="Todavía no hay conteos cerrados ni cancelados" />}
+              {anteriores.map((c) => (
                 <div key={c.conteoId} class="tarjeta-interna">
                   <strong>{nombreAlmacen(c.ubicacionId)}</strong> · {fechaHora(c.fecha)}
+                  {c.estado === 'cancelado' && (
+                    <p data-prueba="conteo-cancelado">
+                      <strong>Cancelado</strong>
+                      {c.motivoCancelacion !== undefined && <>. Motivo: {c.motivoCancelacion}</>}
+                      {`. Productos contados: ${String(c.lineas.length)}.`}
+                    </p>
+                  )}
                   {c.resultado !== undefined && (abierto === undefined ? <ResultadoConteo resultado={c.resultado} /> : <p class="texto-suave">El resultado se muestra cuando no haya un conteo abierto: así quien cuenta no ve las existencias del sistema.</p>)}
                 </div>
               ))}
