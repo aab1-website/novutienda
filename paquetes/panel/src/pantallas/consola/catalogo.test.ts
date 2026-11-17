@@ -503,4 +503,18 @@ describe('catálogo: aviso del sitio incompleto', () => {
     expect(await screen.findByText(/Publicado: versión 1/)).toBeTruthy();
     await waitFor(() => expect(screen.queryByText(/El sitio quedó sin fotos/)).toBeNull());
   });
+  it('sin cambios, Publicar está apagado y dice por qué; con cambios, la confirmación da un tiempo honesto', async () => {
+    const e = crearEntorno('adm');
+    const r1 = render(e.envolver(h(PantallaCatalogo, { sub: 'tablero' })));
+    await screen.findByText('Cambios sin publicar');
+    const u = userEvent.setup();
+    expect(screen.getByText('No hay cambios sin publicar.')).toBeTruthy();
+    expect((screen.getByRole('button', { name: 'Publicar el sitio' }) as HTMLButtonElement).disabled).toBe(true);
+    r1.unmount();
+    await e.api.llamar('actualizarProducto', { operacionId: uuid(), productoId: 'cable-hdmi', cambios: { nombre: 'Cable HDMI 3 m' } });
+    render(e.envolver(h(PantallaCatalogo, { sub: 'tablero' })));
+    await u.click(await screen.findByRole('button', { name: 'Publicar el sitio' }));
+    expect(await screen.findByText(/normalmente en pocos minutos; si no, en un rato/)).toBeTruthy();
+    expect(screen.queryByText('No hay cambios sin publicar.')).toBeNull();
+  });
 });
