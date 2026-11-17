@@ -7,7 +7,7 @@ import { RUTA_PUBLICA, tipoContenidoDe } from '../../plataforma/conectores/fireb
 
 const T = 'tienda-ejemplo';
 const HASH = 'a1b2c3d4e5f60718293a4b5c6d7e8f90'.padEnd(64, '0');
-// Misma forma que `rutaPublicaMedio` de la consola (no se exporta desde su índice).
+// La ruta pública se arma con `rutaPublicaMedio` de la consola.
 const publica = (productoId: string, nombre: string): string => rutaPublicaMedio(T, productoId, nombre);
 
 const DIMENSIONES: ReadonlyArray<readonly [number, number]> = [[1, 1], [100, 80], [512, 512], [513, 200], [700, 3000], [1280, 720], [2400, 1600], [4000, 3000], [30000, 99999]];
