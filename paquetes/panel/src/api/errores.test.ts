@@ -102,7 +102,9 @@ describe('mensajes sin datos técnicos (G-07, G-08)', () => {
     expect(mensajeDeError(e)).toBe('El NIT admite hasta 30 caracteres');
   });
   it('el sufijo « [NNN]» sin campos desconocidos ya no da el texto de datos no reconocidos', () => {
-    expect(mensajeDeError(new ErrorApi('invalid-argument', 'Falta el nombre del negocio', { codigo: 'entrada-invalida' }))).not.toBe(MENSAJE_DATOS_NO_RECONOCIDOS);
+    const m = mensajeDeError(new ErrorApi('invalid-argument', 'Falta el nombre del negocio', { codigo: 'entrada-invalida' }));
+    expect(m).not.toBe(MENSAJE_DATOS_NO_RECONOCIDOS);
+    expect(m).toBe('Falta el nombre del negocio');
   });
   it('un mensaje técnico del servidor no se muestra', () => {
     const espia = vi.spyOn(console, 'error').mockImplementation(() => undefined);

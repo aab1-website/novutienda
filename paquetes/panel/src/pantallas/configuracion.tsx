@@ -35,7 +35,8 @@ function validarNegocio(d: DatosNegocio): Partial<Record<keyof DatosNegocio, str
   if (d.telefono.trim().length > 30) e.telefono = 'El teléfono admite hasta 30 caracteres';
   if (d.nit.trim().length > 30) e.nit = 'El NIT admite hasta 30 caracteres';
   const logo = d.logoUrl.trim();
-  if (logo !== '' && !/^https:\/\/\S+$/i.test(logo)) e.logoUrl = 'La dirección del logo debe empezar con https://';
+  // Igual de estricto que caja y recibos: https en minúsculas, sin espacios ni comillas, hasta 490 caracteres tras https://.
+  if (logo !== '' && !/^https:\/\/[^\s"'<>`\\]{1,490}$/.test(logo)) e.logoUrl = 'La dirección del logo debe empezar con https://, sin espacios ni comillas';
   return e;
 }
 

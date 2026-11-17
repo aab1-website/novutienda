@@ -103,8 +103,8 @@ function conCodigo(error: HttpsError, codigoPorDefecto?: string): HttpsError {
 
 /**
  * Motivo del rechazo para el registro: el mensaje del validador, limpiado a letras, dígitos y puntuación simple y recortado a 120
- * caracteres. Los validadores nombran campos y reglas, pero el de recibos interpola la clave desconocida: por eso se limpia.
- * Nunca se registra el valor enviado.
+ * caracteres. Solo limpia caracteres y recorta: no quita valores. Algunos validadores interpolan lo que envió el propio usuario
+ * (una clave desconocida, una serie o un id inválidos), así que un validador NO debe interpolar datos personales en su mensaje.
  */
 export function motivoLimpio(mensaje: string): string {
   return mensaje.replace(/[^\w .:áéíóúñ-]/gi, '').slice(0, 120);

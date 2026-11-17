@@ -14,7 +14,7 @@ const avisos = vi.hoisted(() => {
 beforeEach(() => { avisos.length = 0; });
 
 describe('registro de «callable rechazado»', () => {
-  it('agrega codigoModulo y motivo, y no incluye el valor enviado', () => {
+  it('agrega codigoModulo y motivo, limpia símbolos y recorta', () => {
     const secreto = 'Juan-Perez-NIT-1234567<script>';
     comoHttpsError(new ErrorRecibo(`Campo desconocido: ${secreto}`), { modulo: 'recibos', accion: 'guardarDatos' });
     const linea = avisos.find((l) => l.includes('callable rechazado'));
