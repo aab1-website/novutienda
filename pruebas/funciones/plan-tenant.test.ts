@@ -45,6 +45,17 @@ describe('asignarPlan', () => {
     expect(m.doble.dato(RUTA)).toMatchObject({ plan: 'base' });
   });
 
+  it('al bajar de pruebas a base avisa si los usuarios superan el tope nuevo, sin identificadores', async () => {
+    const m = montaje('pruebas');
+    m.doble.poner(`${RUTA}/contadores/uso`, { usuarios: 7 });
+    const r = await m.correr('base');
+    expect(r.diferencias).toEqual(['plan: pruebas -> base', 'aviso: usuarios actuales 7 > tope 3']);
+    expect(r.diferencias.join(' ')).not.toContain(T);
+    const m2 = montaje('pruebas');
+    m2.doble.poner(`${RUTA}/contadores/uso`, { usuarios: 3 });
+    expect((await m2.correr('base')).diferencias).toEqual(['plan: pruebas -> base']);
+  });
+
   it('sin aplicar solo informa: no escribe ni audita', async () => {
     const m = montaje('base');
     expect(await m.correr('pruebas', { aplicar: false })).toMatchObject({ aplicado: false, diferencias: ['plan: base -> pruebas'] });

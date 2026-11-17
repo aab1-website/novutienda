@@ -182,6 +182,11 @@ export function disparoSitioDeLaInstancia(): DisparoGithub | undefined {
 
 let unico: Entorno | undefined;
 
+/** El plan `pruebas` solo se habilita con el valor exacto `si` (sin mayúsculas, espacios ni sinónimos). */
+export function planPruebasHabilitado(valor: string): boolean {
+  return valor === 'si';
+}
+
 /** Entorno de producción (o del emulador): una sola instancia por proceso. */
 export function entorno(): Entorno {
   if (unico === undefined) {
@@ -197,7 +202,7 @@ export function entorno(): Entorno {
     const nombrePublico = exigirBucketPublico(PARAMETROS.mediosBucketPublico.value(), bucket.name, esEntornoDePruebas(process.env));
     const bucketPublico = nombrePublico === '' ? bucket : almacenamiento.bucket(nombrePublico);
     const procesador = crearProcesadorMedios(bucket, env, esEntornoDePruebas(process.env) ? undefined : logger);
-    unico = crearEntorno({ firestore: getFirestore(), auth: getAuth(), bucket, bucketPublico, env, procesador, mediosBaseUrl: PARAMETROS.mediosBaseUrl.value(), planPruebasHabilitado: PARAMETROS.planPruebasHabilitado.value() === 'si' });
+    unico = crearEntorno({ firestore: getFirestore(), auth: getAuth(), bucket, bucketPublico, env, procesador, mediosBaseUrl: PARAMETROS.mediosBaseUrl.value(), planPruebasHabilitado: planPruebasHabilitado(PARAMETROS.planPruebasHabilitado.value()) });
   }
   return unico;
 }

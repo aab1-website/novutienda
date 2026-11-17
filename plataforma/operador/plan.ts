@@ -1,6 +1,6 @@
 // Asignación del plan de un tenant (`base` o `pruebas`). Lo ejecuta solo el operador.
 // Lógica pura: la base llega por inyección; aquí no hay red. Los mensajes no llevan identificadores ni datos personales.
-import { esPlanId, esTenantIdValido, registrarAuditoria } from '@novutienda/nucleo';
+import { PLANES, esPlanId, esTenantIdValido, registrarAuditoria } from '@novutienda/nucleo';
 import type { TransaccionAuditoria } from '@novutienda/nucleo';
 import { operadorDe } from './personal.js';
 
@@ -48,9 +48,18 @@ export async function asignarPlan(o: {
     if (typeof plan !== 'string' || !esPlanId(plan)) throw new Error('el tenant no tiene un plan válido: corra el alta antes');
     return plan;
   };
-  const de = await o.db.runTransaction(leer);
+  // Misma transacción: el plan y, al bajar de `pruebas` a `base`, el contador de usuarios (aviso sin identificadores).
+  const { de, usuarios } = await o.db.runTransaction(async (tx) => {
+    const plan = await leer(tx);
+    if (plan !== 'pruebas' || a !== 'base') return { de: plan, usuarios: undefined };
+    const n = (await tx.get(`${ruta}/contadores/uso`)).data()?.['usuarios'];
+    return { de: plan, usuarios: typeof n === 'number' ? n : undefined };
+  });
   if (de === a) return { de, a, aplicado: false, diferencias: [] };
   const diferencias = [`plan: ${de} -> ${a}`];
+  if (usuarios !== undefined && usuarios > PLANES[a].usuarios) {
+    diferencias.push(`aviso: usuarios actuales ${usuarios} > tope ${PLANES[a].usuarios}`);
+  }
   if (!o.aplicar) return { de, a, aplicado: false, diferencias };
   await o.db.runTransaction(async (tx) => {
     if ((await leer(tx)) !== de) throw new Error('el plan cambió durante la operación: reintente');
