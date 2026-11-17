@@ -217,6 +217,61 @@ describe.skipIf(!hayEmulador)('trabajos programados (Firestore del emulador)', (
     expect((await h.firestore.doc(`tenants/${t}/publicado/estado`).get()).data()?.['reconstruccion']).toMatchObject({ programadaPara: null });
   });
 
+  describe('disparo a GitHub desde el temporizador (S7-3)', () => {
+    const contar = (ok: boolean = true) => {
+      const llamadas = { n: 0 };
+      return { llamadas, disparoSitio: { disparar: () => { llamadas.n += 1; return Promise.resolve(ok ? { ok: true as const } : { ok: false as const, estado: 503 }); } } };
+    };
+    const vencido = async (t: string, version: number): Promise<void> => {
+      await h.firestore.doc(`tenants/${t}`).set(TENANT_TODO_ENCENDIDO);
+      await h.firestore.doc(`tenants/${t}/publicado/estado`).set({ version, reconstruccion: { programadaPara: AHORA - 1000, ultima: null } });
+    };
+    const pendientes = async (t: string) => (await h.firestore.collection(`tenants/${t}/reconstrucciones`).where('estado', '==', 'pendiente').get()).size;
+
+    it('dos tenants que reconstruyen: un solo disparo', async () => {
+      const a = unico('dsp-a').toLowerCase(); const b = unico('dsp-b').toLowerCase();
+      await vencido(a, 3); await vencido(b, 4);
+      const d = contar();
+      const r = await ejecutarTemporizadorSitio({ ...e, disparoSitio: d.disparoSitio });
+      expect([r[a], r[b]]).toEqual(['reconstruir', 'reconstruir']);
+      expect(d.llamadas.n).toBe(1);
+    });
+
+    it('ningún tenant reconstruye: cero disparos', async () => {
+      const t = unico('dsp-nada').toLowerCase();
+      await h.firestore.doc(`tenants/${t}`).set(TENANT_TODO_ENCENDIDO);
+      await h.firestore.doc(`tenants/${t}/publicado/estado`).set({ version: 2, reconstruccion: { programadaPara: AHORA + 60_000, ultima: null } });
+      const d = contar();
+      await ejecutarTemporizadorSitio({ ...e, disparoSitio: d.disparoSitio });
+      expect(d.llamadas.n).toBe(0);
+    });
+
+    it('el disparo falla: el temporizador termina bien y el trabajo pendiente existe', async () => {
+      const t = unico('dsp-falla').toLowerCase();
+      await vencido(t, 7);
+      const d = contar(false);
+      // El mensaje `disparo de reconstrucción no enviado (estado 503)` sale por el logger de Functions (escribe directo al descriptor, no se
+      // puede capturar con espías) y se ve en la salida del emulador; aquí se prueba la conducta.
+      expect((await ejecutarTemporizadorSitio({ ...e, disparoSitio: d.disparoSitio }))[t]).toBe('reconstruir');
+      expect(d.llamadas.n).toBe(1);
+      expect(await pendientes(t)).toBe(1);
+    });
+
+    it('el disparo lanza: tampoco rompe al temporizador', async () => {
+      const t = unico('dsp-lanza').toLowerCase();
+      await vencido(t, 8);
+      await expect(ejecutarTemporizadorSitio({ ...e, disparoSitio: { disparar: () => Promise.reject(new Error('x')) } })).resolves.toBeDefined();
+      expect(await pendientes(t)).toBe(1);
+    });
+
+    it('sin configuración (sin disparo): no dispara y no falla', async () => {
+      const t = unico('dsp-sin').toLowerCase();
+      await vencido(t, 9);
+      expect((await ejecutarTemporizadorSitio(e))[t]).toBe('reconstruir');
+      expect(await pendientes(t)).toBe(1);
+    });
+  });
+
   it('programadas del módulo consola: saltan al tenant con consola apagada (L2-6)', async () => {
     const t = unico('apag').toLowerCase();
     await h.firestore.doc(`tenants/${t}`).set({ ...TENANT_TODO_ENCENDIDO, modulos: {} });

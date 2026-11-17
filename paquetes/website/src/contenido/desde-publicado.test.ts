@@ -275,6 +275,113 @@ describe('validarNegocio', () => {
     expect(adv).toEqual([]);
   });
 
+  describe('enlaces de secciones', () => {
+    const ok = { texto: 'Ir', url: 'https://ejemplo.invalid/x' };
+    const sec = (bloques: unknown[], extra: Record<string, unknown> = {}) =>
+      respuesta({ seccion__a: { id: 'a', titulo: 'A', bloques }, seccion__b: { id: 'b', titulo: 'B', bloques: [{ tipo: 'texto', parrafos: ['hola'] }] }, ...extra }, { secciones: ['a', 'b'] });
+
+    it('conserva los enlaces permitidos y no advierte', () => {
+      const adv: string[] = [];
+      const c = contenidoDesdePublicado(sec([{ tipo: 'enlaces', titulo: 'T', items: [ok, { texto: 'Tel', url: '/productos' }] }]), negocioBase(), entorno, adv);
+      expect(c.secciones[0]!.bloques[0]).toEqual({ tipo: 'enlaces', titulo: 'T', items: [ok, { texto: 'Tel', url: '/productos' }] });
+      expect(adv).toEqual([]);
+    });
+
+    it('descarta host no permitido, http, javascript: y largos con advertencia por ruta, sin el valor', () => {
+      const malos = ['https://otro.invalid/secreto-x', 'http://ejemplo.invalid/secreto-x', 'javascript:secreto-x', `https://ejemplo.invalid/${'a'.repeat(600)}`];
+      const adv: string[] = [];
+      const items = [ok, ...malos.map((url) => ({ texto: 'Mal', url }))];
+      const c = contenidoDesdePublicado(sec([{ tipo: 'enlaces', items }]), negocioBase(), entorno, adv);
+      expect(c.secciones[0]!.bloques[0]).toMatchObject({ items: [ok] });
+      expect(adv).toEqual([1, 2, 3, 4].map((i) => `documentos.seccion__a.bloques[0].items[${i}].url: enlace descartado (fuera de la lista blanca o demasiado largo)`));
+      expect(adv.join('')).not.toContain('secreto-x');
+    });
+
+    it('descarta el ítem sin texto válido', () => {
+      const adv: string[] = [];
+      const c = contenidoDesdePublicado(sec([{ tipo: 'enlaces', items: [{ texto: '  ', url: ok.url }, ok] }]), negocioBase(), entorno, adv);
+      expect(c.secciones[0]!.bloques[0]).toMatchObject({ items: [ok] });
+      expect(adv).toEqual(['documentos.seccion__a.bloques[0].items[0].texto: ítem descartado (texto vacío o demasiado largo)']);
+    });
+
+    it('omite el bloque que queda vacío y conserva los demás', () => {
+      const adv: string[] = [];
+      const c = contenidoDesdePublicado(sec([{ tipo: 'enlaces', items: [{ texto: 'X', url: 'https://otro.invalid/' }] }, { tipo: 'texto', parrafos: ['p'] }]), negocioBase(), entorno, adv);
+      expect(c.secciones[0]!.bloques.map((b) => b.tipo)).toEqual(['texto']);
+      expect(adv).toContain('documentos.seccion__a.bloques[0]: bloque omitido (sin enlaces válidos)');
+    });
+
+    it('omite el carrusel de sección cuyas fotos se descartan... o no existen', () => {
+      const adv: string[] = [];
+      const c = contenidoDesdePublicado(sec([{ tipo: 'carrusel', items: [] }, { tipo: 'texto', parrafos: ['p'] }]), negocioBase(), entorno, adv);
+      expect(c.secciones[0]!.bloques.map((b) => b.tipo)).toEqual(['texto']);
+      expect(adv).toEqual(['documentos.seccion__a.bloques[0]: bloque omitido (carrusel sin fotos válidas)']);
+    });
+
+    it('omite la sección que queda sin bloques; no queda en el contenido y el orden se recompacta', () => {
+      const adv: string[] = [];
+      const c = contenidoDesdePublicado(sec([{ tipo: 'enlaces', items: [{ texto: 'X', url: 'https://otro.invalid/secreto-x' }] }]), negocioBase(), entorno, adv);
+      expect(c.secciones.map((s) => [s.slug, s.orden])).toEqual([['b', 0]]);
+      expect(adv).toContain('documentos.seccion__a: sección omitida (sin bloques válidos)');
+      expect(adv.join('')).not.toContain('secreto-x');
+    });
+
+    it('una sección que ya venía sin bloques (vacía, ausente o no lista) se omite con advertencia', () => {
+      for (const bloques of [[], undefined, 'x']) {
+        const adv: string[] = [];
+        const c = contenidoDesdePublicado(sec(bloques as unknown[]), negocioBase(), entorno, adv);
+        expect(c.secciones.map((s) => s.slug)).toEqual(['b']);
+        expect(adv).toEqual(['documentos.seccion__a: sección omitida (sin bloques)']);
+      }
+    });
+
+    it('un bloque de tipo desconocido sigue lanzando, aun junto a enlaces descartados', () => {
+      const adv: string[] = [];
+      const bloques = [{ tipo: 'enlaces', items: [{ texto: 'X', url: 'https://otro.invalid/' }, ok] }, { tipo: 'html', html: '<b>x</b>' }];
+      expect(() => contenidoDesdePublicado(sec(bloques), negocioBase(), entorno, adv)).toThrow(ErrorContenidoPublicado);
+    });
+
+    it('conserva tel: y mailto: válidos', () => {
+      const items = [{ texto: 'Llamar', url: 'tel:+59170000000' }, { texto: 'Correo', url: 'mailto:hola@ejemplo.invalid' }];
+      const adv: string[] = [];
+      const c = contenidoDesdePublicado(sec([{ tipo: 'enlaces', items }]), negocioBase(), entorno, adv);
+      expect(c.secciones[0]!.bloques[0]).toMatchObject({ items });
+      expect(adv).toEqual([]);
+    });
+
+    it('un ítem que no es objeto produce su advertencia y se descarta', () => {
+      const adv: string[] = [];
+      const c = contenidoDesdePublicado(sec([{ tipo: 'enlaces', items: ['x', 5, null, ok] }]), negocioBase(), entorno, adv);
+      expect(c.secciones[0]!.bloques[0]).toMatchObject({ items: [ok] });
+      expect(adv).toEqual([0, 1, 2].map((i) => `documentos.seccion__a.bloques[0].items[${i}]: ítem descartado (no es un objeto)`));
+    });
+
+    it('título de enlaces o de texto vacío o demasiado largo se quita con advertencia y el contenido es válido', () => {
+      for (const titulo of ['   ', 'T'.repeat(121)]) {
+        const adv: string[] = [];
+        const c = contenidoDesdePublicado(sec([{ tipo: 'enlaces', titulo, items: [ok] }, { tipo: 'texto', titulo, parrafos: ['p'] }]), negocioBase(), entorno, adv);
+        expect(c.secciones[0]!.bloques).toEqual([{ tipo: 'enlaces', items: [ok] }, { tipo: 'texto', parrafos: ['p'] }]);
+        expect(adv).toEqual([0, 1].map((k) => `documentos.seccion__a.bloques[${k}].titulo: título descartado (vacío o demasiado largo)`));
+      }
+    });
+
+    it('un bloque de texto sin párrafos válidos se omite con advertencia (no tumba el sitio)', () => {
+      const adv: string[] = [];
+      const c = contenidoDesdePublicado(
+        sec([{ tipo: 'texto', parrafos: [] }, { tipo: 'texto', parrafos: ['  '] }, { tipo: 'texto', parrafos: ['p'.repeat(3001)] }, { tipo: 'texto', parrafos: ['ok'] }]),
+        negocioBase(), entorno, adv);
+      expect(c.secciones[0]!.bloques).toEqual([{ tipo: 'texto', parrafos: ['ok'] }]);
+      expect(adv).toEqual([0, 1, 2].map((k) => `documentos.seccion__a.bloques[${k}]: bloque omitido (texto vacío o fuera de los límites)`));
+    });
+
+    it('imagen sin versión válida: se omite con advertencia', () => {
+      const adv: string[] = [];
+      const c = contenidoDesdePublicado(sec([{ tipo: 'imagen', medio: { versiones: [] } }, { tipo: 'texto', parrafos: ['p'] }]), negocioBase(), entorno, adv);
+      expect(c.secciones[0]!.bloques.map((b) => b.tipo)).toEqual(['texto']);
+      expect(adv).toEqual(['documentos.seccion__a.bloques[0]: bloque omitido (imagen sin versión válida)']);
+    });
+  });
+
   it('trae la versión y la fecha de publicación del estado (o del sitio, o nulas)', () => {
     const c = contenidoDesdePublicado(respuesta({}, { version: 7, publicadoEn: '2026-11-10T12:00:00.000Z' }), negocioBase(), entorno);
     expect(c.publicacion).toEqual({ version: 7, publicadoEn: '2026-11-10T12:00:00.000Z' });

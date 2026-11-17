@@ -632,6 +632,22 @@ describe('configuración: avisos, motivos y cambios sin guardar', () => {
     await u.click(screen.getByRole('button', { name: 'Guardar configuración' }));
     expect(e.api.llamadas.map((l) => l.nombre)).not.toContain('guardarConfigPos');
   });
+  it('el logo sin https y el NIT de 31 caracteres: el formulario avisa y no llama al servidor', async () => {
+    const e = crearEntorno('adm');
+    ver(e, h(PantallaConfiguracion, { sub: 'negocio' }));
+    const u = userEvent.setup();
+    await screen.findByRole('heading', { name: 'Punto de venta' });
+    await u.type(campo(/^Logo por dirección web/), 'http://sitio.test/logo.png');
+    expect(screen.getAllByText(/debe empezar con https:\/\//).length).toBeGreaterThan(0);
+    await u.click(screen.getByRole('button', { name: 'Guardar datos del negocio' }));
+    await u.clear(campo(/^Logo por dirección web/));
+    await u.clear(campo('NIT'));
+    await u.type(campo('NIT'), '1'.repeat(31));
+    expect(screen.getAllByText(/El NIT admite hasta 30 caracteres/).length).toBeGreaterThan(0);
+    await u.click(screen.getByRole('button', { name: 'Guardar datos del negocio' }));
+    expect(e.api.llamadas.map((l) => l.nombre)).not.toContain('guardarConfigPos');
+    expect(e.api.llamadas.map((l) => l.nombre)).not.toContain('guardarPlantilla');
+  });
   it('Enter con el nombre vacío no envía nada', async () => {
     const e = crearEntorno('adm');
     ver(e, h(PantallaConfiguracion, { sub: 'negocio' }));

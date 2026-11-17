@@ -39,6 +39,8 @@ export class ErrorConsola extends Error {
     readonly codigo: CodigoErrorConsola,
     mensaje: string,
     readonly detalles: readonly string[] = [],
+    /** Causa técnica para el registro del servidor; nunca se muestra al usuario ni lleva rutas. */
+    readonly causa?: string,
   ) {
     super(mensaje);
     this.name = 'ErrorConsola';

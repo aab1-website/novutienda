@@ -20,5 +20,8 @@ corrido contra un staging real. Requisitos antes de crearlo:
    uniforme y sin versionado; lectura de `allUsers` solo con `roles/storage.legacyObjectReader` (nunca `objectViewer`: permite listar); `roles/storage.objectUser`
    de la cuenta de las funciones sobre ese bucket; cargar `MEDIOS_BASE_URL` y `MEDIOS_BUCKET_PUBLICO` en el Environment `production`. Sin ellas el despliegue falla a propósito.
 
+6. **Quién puede crear la versión**: `.github/workflows/release.yml` falla en su primer paso, antes de crear tag o Release, si `github.actor` o
+   `github.triggering_actor` no están en `vars.APROBADORES_PROD` (comparación exacta, lista separada por comas) o si esa variable está vacía.
+
 No se relaja la exigencia vaciando la variable ni quitando el job: configurar
 staging es parte del pase a producción (ver `/pase-a-produccion`).
