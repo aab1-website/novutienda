@@ -36,6 +36,10 @@ export default function Carrito({ whatsapp }: { whatsapp: string | null }) {
         <Icono nombre="carrito" />
         {unidades > 0 && <span class="insignia" aria-hidden="true">{unidades}</span>}
       </button>
+      <div class="barra-carrito" role="region" aria-label="Tu consulta">
+        <span>{unidades === 0 ? 'Tu consulta está vacía' : `${unidades} ${unidades === 1 ? 'producto' : 'productos'}`}</span>
+        <button type="button" class="boton boton-cta" aria-haspopup="dialog" onClick={() => setAbierto(true)}>VER CONSULTA</button>
+      </div>
       {abierto && (
         <Dialogo titulo="Mi carrito de consulta" variante="lateral" onCerrar={() => setAbierto(false)}>
           {carrito.length === 0 ? (

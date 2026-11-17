@@ -73,7 +73,9 @@ function Tablero(): JSX.Element {
           </Alerta>
         )}
         {usuario.rol === 'adm' ? (
-          <BotonConfirmado texto="Publicar el sitio" pregunta="¿Publicar los cambios? El sitio se reconstruye en unos minutos." textoConfirmar="Sí, publicar" deshabilitado={accion.ocupado || d.cambiosSinPublicar === 0} onConfirmar={() => void accion.ejecutar(async () => { const r = await api.llamar('publicarSitio', {}); setMsg(`Publicado: versión ${r.version}, ${r.productos} productos.${r.advertencias.length ? ` Avisos: ${r.advertencias.join(' ')}` : ''}`); t.recargar(); })} />
+          <><BotonConfirmado texto="Publicar el sitio" pregunta="¿Publicar los cambios? El sitio se actualiza normalmente en pocos minutos; si no, en un rato (puede tardar hasta unas horas)." textoConfirmar="Sí, publicar" deshabilitado={accion.ocupado || d.cambiosSinPublicar === 0} onConfirmar={() => void accion.ejecutar(async () => { const r = await api.llamar('publicarSitio', {}); setMsg(`Publicado: versión ${r.version}, ${r.productos} productos.${r.advertencias.length ? ` Avisos: ${r.advertencias.join(' ')}` : ''}`); t.recargar(); })} />
+            {d.cambiosSinPublicar === 0 && <p class="texto-suave" data-prueba="motivo-publicar">No hay cambios sin publicar.</p>}
+          </>
         ) : (
           <p class="texto-suave">Solo el administrador publica.</p>
         )}

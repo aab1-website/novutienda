@@ -1,12 +1,12 @@
 import { describe, expect, it } from 'vitest';
 import { almacenMemoria, borrarSeguro, guardarSeguro, leerSeguro, type AlmacenClaveValor } from './almacen.js';
-import { agregar, cambiarCantidad, leerCarrito, MAX_CANTIDAD, MAX_LINEAS, quitar, serializarCarrito, totalUnidades } from './carrito.js';
+import { agregar, cambiarCantidad, cantidadDe, leerCarrito, MAX_CANTIDAD, MAX_LINEAS, quitar, serializarCarrito, totalUnidades } from './carrito.js';
 import { convertir, textoReferencia } from './convertidor.js';
 import { formatearMonto, parsearMonto } from './dinero.js';
 import { EVENTOS, emitir, escuchar } from './eventos.js';
 import { guardarMercado, leerMercado, monedaDe } from './mercado.js';
 import { alternarTema, guardarTema, leerTema, temaEfectivo } from './tema.js';
-import { enlaceWhatsApp, mensajeComprar, mensajeConsulta } from './whatsapp.js';
+import { enlaceWhatsApp, mensajeConsulta } from './whatsapp.js';
 import { configCliente } from './config-cliente.js';
 
 const roto: AlmacenClaveValor = {
@@ -37,11 +37,10 @@ describe('dinero', () => {
 });
 
 describe('whatsapp', () => {
-  it('arma el enlace con el mensaje del botón Comprar', () => {
-    const m = mensajeComprar('Televisor X', 'tv-x');
-    expect(m).toBe('Hola, quiero comprar: Televisor X (cód. tv-x)');
-    const url = enlaceWhatsApp('59100000001', m);
-    expect(url).toBe(`https://wa.me/59100000001?text=${encodeURIComponent(m)}`);
+  it('arma el enlace de «Comprar»: una línea con el producto, sin guion', () => {
+    const m = mensajeConsulta([{ id: 'tv-x', nombre: 'Televisor X', cantidad: 1 }]);
+    expect(m).toBe('Hola, quiero consultar por estos productos:\n1 x Televisor X (cód. tv-x)');
+    expect(enlaceWhatsApp('59100000001', m)).toBe(`https://wa.me/59100000001?text=${encodeURIComponent(m)}`);
   });
   it('sin número válido no hay enlace (nunca uno roto)', () => {
     expect(enlaceWhatsApp(null, 'x')).toBeNull();
@@ -52,7 +51,18 @@ describe('whatsapp', () => {
   });
   it('acota el largo del mensaje y arma la consulta del carrito', () => {
     expect(enlaceWhatsApp('59100000001', 'a'.repeat(5000))!.length).toBeLessThan(1700);
-    expect(mensajeConsulta([{ id: 'a-1', nombre: 'A', cantidad: 2 }])).toBe('Hola, quiero consultar por estos productos:\n- 2 x A (cód. a-1)');
+    expect(mensajeConsulta([{ id: 'a-1', nombre: 'A', cantidad: 2 }])).toBe('Hola, quiero consultar por estos productos:\n2 x A (cód. a-1)');
+    expect(mensajeConsulta([{ id: 'a-1', nombre: 'A', cantidad: 2 }, { id: 'b-2', nombre: 'B', cantidad: 1 }])).toBe('Hola, quiero consultar por estos productos:\n2 x A (cód. a-1)\n1 x B (cód. b-2)');
+  });
+});
+
+describe('carrito: cantidad de un producto', () => {
+  it('devuelve la cantidad resultante de agregar y cero si no está', () => {
+    const a = { id: 'tv-1', nombre: 'TV' };
+    expect(cantidadDe([], 'tv-1')).toBe(0);
+    const c = agregar(agregar([], a), a);
+    expect(cantidadDe(c, 'tv-1')).toBe(2);
+    expect(cantidadDe(c, 'otro-1')).toBe(0);
   });
 });
 
