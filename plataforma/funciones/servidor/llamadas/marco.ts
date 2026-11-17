@@ -102,6 +102,15 @@ function conCodigo(error: HttpsError, codigoPorDefecto?: string): HttpsError {
 }
 
 /**
+ * Motivo del rechazo para el registro: el mensaje del validador, limpiado a letras, dígitos y puntuación simple y recortado a 120
+ * caracteres. Los validadores nombran campos y reglas, pero el de recibos interpola la clave desconocida: por eso se limpia.
+ * Nunca se registra el valor enviado.
+ */
+export function motivoLimpio(mensaje: string): string {
+  return mensaje.replace(/[^\w .:áéíóúñ-]/gi, '').slice(0, 120);
+}
+
+/**
  * Convierte cualquier error en `HttpsError` y registra los internos (sin datos de la petición). Todo `HttpsError`
  * sale con `details.codigo` (código del módulo en kebab-case), para que el panel mapee el mensaje por código.
  */
@@ -123,7 +132,7 @@ export function comoHttpsError(error: unknown, contexto: Readonly<Record<string,
   }
   const t = traducirError(error);
   if (t.interno) logger.error('error interno en callable', { ...contexto, error: error instanceof Error ? { nombre: error.name, mensaje: error.message } : String(error) });
-  else logger.warn('callable rechazado', { ...contexto, codigo: t.code });
+  else logger.warn('callable rechazado', { ...contexto, codigo: t.code, codigoModulo: (t.details as { codigo?: unknown } | undefined)?.codigo, motivo: motivoLimpio(t.message) });
   return new HttpsError(t.code, t.message, t.details);
 }
 
