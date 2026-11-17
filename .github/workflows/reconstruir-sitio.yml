@@ -1,7 +1,8 @@
 # =============================================================================
 # reconstruir-sitio.yml — Reconstrucción y despliegue del sitio público de cada
 #                         tenant (un sitio de Hosting por tenant) en STAGING.
-# Versión: 1.1 | Fecha: 2026-11-12 | PR C-2 (DC1 a DC4) + S5 (certificación)
+# Versión: 1.2 | Fecha: 2026-11-17 | PR C-2 (DC1 a DC4) + S5 (certificación)
+#          + S7-3 (DS-3: la plataforma dispara con `clave` = `cola:pendientes`)
 # -----------------------------------------------------------------------------
 # Contrato con las funciones: docs/produccion/reconstruccion-sitio.md (cola
 # firmada `tenants/{t}/reconstrucciones`, estados pendiente → en_curso →
@@ -16,9 +17,17 @@
 #                        apaga tras 60 días sin actividad en el repositorio.
 #   workflow_dispatch .. todos los sitios, o solo `clave`; reconstruye aunque
 #                        no haya trabajo en la cola.
+#                        `clave` = `cola:pendientes` (exacto, en minúsculas)
+#                        → MISMO camino que el schedule: solo los sitios con
+#                        un trabajo `pendiente` en su cola firmada; sin
+#                        ninguno, el run termina en verde sin desplegar. Lo
+#                        lanza la función programada `temporizadorSitio`
+#                        (S7-3, DS-3) cuando pasa trabajos a `pendiente`; el
+#                        schedule queda de respaldo si el disparo falla.
 #                        `clave` = `certificar:` (todos) o `certificar:<clave>`
 #                        → SOLO certificación: no toma trabajo, no compila, no
-#                        despliega ni cierra trabajos. Se reutiliza la entrada
+#                        despliega ni cierra trabajos. Cualquier otro valor con
+#                        `:` falla cerrado en `sondear`. Se reutiliza la entrada
 #                        `clave` en vez de declarar otra: Checkov CKV_GHA_7
 #                        marca toda entrada de workflow_dispatch (ver
 #                        docs/produccion/reconstruccion-sitio.md, Certificación).
@@ -69,7 +78,7 @@ on:
   workflow_dispatch:
     inputs:
       clave:
-        description: "Clave del sitio (SITIOS_TENANT[].clave); vacío = todos los sitios. Con el prefijo certificar: (certificar:<clave>, o certificar: para todos) solo certifica, sin desplegar"
+        description: "Clave del sitio (SITIOS_TENANT[].clave); vacío = todos los sitios. cola:pendientes = solo los sitios con trabajo pendiente en su cola (como el sondeo programado; lo usa la plataforma). Con el prefijo certificar: (certificar:<clave>, o certificar: para todos) solo certifica, sin desplegar"
         type: string
         required: false
         default: ''
@@ -90,8 +99,12 @@ env:
 jobs:
   # ---------------------------------------------------------------------------
   # sondear: decide la matriz. Sin `pnpm install` (segundos): solo Node y los
-  # dos scripts sin dependencias npm. En schedule, consulta la cola firmada de
-  # cada sitio y deja solo los que tienen un trabajo pendiente.
+  # dos scripts sin dependencias npm. En modo pendientes (schedule o dispatch
+  # `cola:pendientes`), consulta la cola firmada de cada sitio y deja solo los
+  # que tienen un trabajo pendiente. Sin concurrencia propia: varios sondeos
+  # solapados (un disparo cada 5 min como máximo, más el schedule) solo leen la
+  # cola; el que llega tarde a un trabajo ya tomado termina sin desplegar en
+  # «Tomar el trabajo». El timeout de 5 min cubre un sondeo por sitio en serie.
   # ---------------------------------------------------------------------------
   sondear:
     name: sondear
@@ -117,6 +130,8 @@ jobs:
     outputs:
       matriz: ${{ steps.sondeo.outputs.matriz }}
       hay: ${{ steps.sondeo.outputs.hay }}
+      # pendientes | todos: `reconstruir` lo usa en «Tomar el trabajo».
+      modo: ${{ steps.sondeo.outputs.modo }}
     steps:
       - name: Checkout (scripts)
         uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
@@ -135,22 +150,39 @@ jobs:
         id: sondeo
         env:
           EVENTO: ${{ github.event_name }}
-          MODO: ${{ github.event_name == 'schedule' && 'pendientes' || 'todos' }}
           # El input llega por variable de entorno, nunca interpolado en el script.
+          # MODO se decide en bash y no con una expresión: las comparaciones de
+          # cadenas de las expresiones de Actions ignoran mayúsculas, y el valor
+          # reservado `cola:pendientes` se acepta solo exacto y en minúsculas.
           CLAVE: ${{ inputs.clave || '' }}
           SITIOS_TENANT: ${{ secrets.SITIOS_TENANT }}
           SITIO_RECONSTRUCCION_SECRETO: ${{ secrets.SITIO_RECONSTRUCCION_SECRETO }}
         run: |
           set -euo pipefail
           if [[ -n "$SITIO_RECONSTRUCCION_SECRETO" ]]; then echo "::add-mask::$SITIO_RECONSTRUCCION_SECRETO"; fi
+          # pendientes: schedule, o dispatch con el valor reservado `cola:pendientes`
+          # (S7-3: lo lanza la plataforma). Ambos siguen el MISMO camino aquí y en
+          # «Tomar el trabajo». `cola:pendientes` no es una clave válida
+          # (^[a-z0-9]{1,12}$): no choca con ninguna real; se vacía CLAVE para que
+          # se sondeen todos los sitios. Comparación de bash: exacta y sensible a
+          # mayúsculas; cualquier otro valor con `:` falla abajo.
+          MODO="todos"
+          if [[ "$EVENTO" == "schedule" ]]; then
+            MODO="pendientes"
+          elif [[ "$EVENTO" == "workflow_dispatch" && "$CLAVE" == "cola:pendientes" ]]; then
+            MODO="pendientes"
+            CLAVE=""
+          fi
           if [[ -z "$SITIOS_TENANT" ]]; then
-            if [[ "$EVENTO" == "workflow_dispatch" ]]; then
+            # Un dispatch manual sin sitios es un error de configuración; el modo
+            # pendientes (schedule o plataforma) termina en verde, como el sondeo.
+            if [[ "$EVENTO" == "workflow_dispatch" && "$MODO" != "pendientes" ]]; then
               echo "::error::Falta el secreto SITIOS_TENANT del Environment staging: no hay sitios que reconstruir."
               exit 1
             fi
             # Aún sin configurar (paso 3 del plan del PR C): no es un fallo del sondeo.
             echo "::notice::Secreto SITIOS_TENANT sin configurar en el Environment staging; nada que sondear."
-            { echo "hay=false"; echo "fallos=0"; } >> "$GITHUB_OUTPUT"
+            { echo "hay=false"; echo "fallos=0"; echo "modo=$MODO"; } >> "$GITHUB_OUTPUT"
             exit 0
           fi
           # Sin node_modules: `sitios-tenant.mjs matriz` y `contenido-sitio.mjs
@@ -169,7 +201,7 @@ jobs:
           args=(matriz)
           if [[ -n "$CLAVE" ]]; then
             [[ "$CLAVE" =~ ^[a-z0-9]{1,12}$ ]] \
-              || { echo "::error::sondear: la clave pedida no cumple ^(certificar:)?[a-z0-9]{1,12}\$."; exit 1; }
+              || { echo "::error::sondear: la clave pedida no cumple ^(certificar:)?[a-z0-9]{1,12}\$ ni es cola:pendientes."; exit 1; }
             args+=(--clave "$CLAVE")
           fi
           matriz="$(node scripts/sitios-tenant.mjs "${args[@]}")" \
@@ -223,10 +255,10 @@ jobs:
           # Ninguna salida puede contener un valor enmascarado (el runner la
           # descartaría y el run quedaría verde sin reconstruir, o fromJSON fallaría).
           for v in "${enmascarados[@]}"; do
-            [[ "$matriz$hay" != *"$v"* ]] \
-              || { echo "::error::sondear: un tenant, sitio o URL de SITIOS_TENANT aparece dentro de las salidas matriz/hay (p. ej. coincide con 'include' o 'clave'); cámbielo."; exit 1; }
+            [[ "$matriz$hay" != *"$v"* && "$MODO" != *"$v"* ]] \
+              || { echo "::error::sondear: un tenant, sitio o URL de SITIOS_TENANT aparece dentro de las salidas matriz/hay/modo (p. ej. coincide con 'include', 'clave' o 'pendientes'); cámbielo."; exit 1; }
           done
-          { echo "matriz=$matriz"; echo "hay=$hay"; echo "fallos=$fallos"; } >> "$GITHUB_OUTPUT"
+          { echo "matriz=$matriz"; echo "hay=$hay"; echo "fallos=$fallos"; echo "modo=$MODO"; } >> "$GITHUB_OUTPUT"
           {
             echo "### Sondeo ($MODO)"
             echo "Sitios a $accion: ${claves:-ninguno}"
@@ -249,6 +281,10 @@ jobs:
   # reconstruir: un job por sitio (matriz). Grupo de concurrencia POR SITIO y
   # sin cancelar: nunca dos despliegues del mismo sitio a la vez, y un sitio no
   # cancela a otro (un grupo compartido en una matriz cancela trabajos).
+  # Disparos solapados: GitHub deja UN job en espera por grupo; si llega otro,
+  # el que esperaba se cancela antes de empezar (no tomó trabajo: nada que
+  # cerrar) y el más nuevo toma lo pendiente al liberarse el grupo. Ese run
+  # aparece como cancelado; el trabajo no se pierde.
   # ---------------------------------------------------------------------------
   reconstruir:
     name: reconstruir (${{ matrix.clave }})
@@ -274,6 +310,8 @@ jobs:
     env:
       CLAVE: ${{ matrix.clave }}
       EVENTO: ${{ github.event_name }}
+      # pendientes (schedule o dispatch `cola:pendientes`) | todos; lo decidió sondear.
+      MODO_SONDEO: ${{ needs.sondear.outputs.modo }}
       # 'true' solo en un dispatch con `clave` = `certificar:` o `certificar:<clave>`
       # (sondear ya validó el formato). Entonces el job salta tomar el trabajo y,
       # con él, todo lo que depende de steps.trabajo (build, despliegue, cierres
@@ -361,10 +399,14 @@ jobs:
           [[ -n "$SITIO_RECONSTRUCCION_SECRETO" ]] \
             || { echo "::error::Falta el secreto SITIO_RECONSTRUCCION_SECRETO del Environment staging."; exit 1; }
           echo "::add-mask::$SITIO_RECONSTRUCCION_SECRETO"
+          # Falla cerrado: sin el modo de sondear no se sabe si reconstruir sin trabajo.
+          [[ "$MODO_SONDEO" == "pendientes" || "$MODO_SONDEO" == "todos" ]] \
+            || { echo "::error::$CLAVE: sondear no informó el modo (pendientes o todos)."; exit 1; }
           id="$(node scripts/contenido-sitio.mjs pendiente --tenant "$TENANT" --url "$URL_SITIO")"
           if [[ -z "$id" ]]; then
-            if [[ "$EVENTO" == "schedule" ]]; then
-              # Lo tomó otro corredor entre el sondeo y este job.
+            if [[ "$MODO_SONDEO" == "pendientes" ]]; then
+              # Lo tomó otro corredor entre el sondeo y este job (otro run del
+              # schedule o de un disparo `cola:pendientes` solapado).
               echo "::notice::$CLAVE: ya no hay trabajo pendiente; nada que hacer."
               { echo "continuar=false"; echo "trabajo="; } >> "$GITHUB_OUTPUT"
               exit 0

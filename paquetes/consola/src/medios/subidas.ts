@@ -274,9 +274,15 @@ export interface MedioLogo extends Omit<Medio, 'tipo' | 'versiones'> {
 
 export type MedioSubido = Medio | MedioLogo;
 
+/** Causa técnica de un fallo para el registro del servidor: `nombre: mensaje`, sin rutas y con 200 caracteres como máximo. */
+function causaDe(err: unknown): string {
+  const crudo = err instanceof Error ? `${err.name}: ${err.message}` : 'desconocido';
+  return crudo.replace(/\S*\/\S*/g, '[ruta]').slice(0, 200);
+}
+
 /** Libera la reserva y borra lo subido. Siempre termina lanzando el error que ve el usuario. */
 async function rechazar(
-  deps: DepsMedios, t: string, s: Subida, reclamo: string, codigo: CodigoErrorConsola, motivo: string, extras: readonly string[],
+  deps: DepsMedios, t: string, s: Subida, reclamo: string, codigo: CodigoErrorConsola, motivo: string, extras: readonly string[], causa?: string,
 ): Promise<never> {
   const rutas = [s.rutaOriginal, ...extras];
   const propia = await deps.db.runTransaction(async (tx) => {
@@ -295,7 +301,7 @@ async function rechazar(
     if (propios.length > 0) await deps.almacen.borrar(propios).catch(() => undefined);
     await deps.almacen.borrarPrefijo?.(`${dirTemporal(t, s.id, reclamo)}/`).catch(() => undefined); // lo que el procesador dejó sin informar
   }
-  throw new ErrorConsola(codigo, motivo);
+  throw new ErrorConsola(codigo, motivo, [], causa);
 }
 
 /**
@@ -544,7 +550,7 @@ async function procesarReclamada(
     if (err instanceof ArchivoNoAdmitido) {
       return rechazar(deps, t, s, reclamo, 'tipo-no-permitido', err.message, [...temporales, ...publicadas]);
     }
-    return rechazar(deps, t, s, reclamo, 'procesamiento', 'No se pudo procesar el archivo', [...temporales, ...publicadas]);
+    return rechazar(deps, t, s, reclamo, 'procesamiento', 'No se pudo procesar el archivo', [...temporales, ...publicadas], causaDe(err));
   }
 
   const ahoraIso = new Date(deps.reloj.ahora()).toISOString();
