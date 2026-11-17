@@ -12,6 +12,7 @@ export const ROLES_ACCION: Readonly<Record<string, readonly Rol[]>> = {
   'inventarios.abrirConteo': ['sup', 'adm'],
   'inventarios.registrarLineaConteo': ['caj', 'sup', 'adm'],
   'inventarios.cerrarConteo': ['sup', 'adm'],
+  'inventarios.cancelarConteo': ['adm'],
   'inventarios.crearUbicacion': ['adm'],
   'inventarios.crearProducto': ['adm'],
   'inventarios.editarProducto': ['adm'],

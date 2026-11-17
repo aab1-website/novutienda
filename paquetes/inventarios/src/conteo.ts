@@ -3,7 +3,7 @@ import { EntradaInvalida, EstadoInvalido, NoEncontrado } from './errores.js';
 import { hashCarga } from './hash.js';
 import { exigirProducto, exigirSegmento, exigirSeries, exigirUbicacion, MAX_LINEAS, ruta } from './ids.js';
 import { MARCA_SERVIDOR, type Autor, type Datos, type Trabajo } from './motor.js';
-import { ejecutarOperacion, exigirAutor, PERMISOS, type ResultadoOperacion } from './operacion.js';
+import { ejecutarOperacion, exigirAutor, exigirMotivo, PERMISOS, type ResultadoOperacion } from './operacion.js';
 import { exigirControl } from './stock.js';
 
 interface Base {
@@ -124,25 +124,68 @@ export async function registrarLineaConteo(
 }
 
 /**
+ * Cancela un conteo abierto (solo adm, con motivo). No mueve stock ni crea mermas: libera la ubicación y deja el conteo
+ * en estado `cancelado` con sus líneas y teóricos sin efecto.
+ */
+export async function cancelarConteo(tx: TransaccionIdentidad, e: Base & { motivo: string }): Promise<ResultadoOperacion<Datos>> {
+  const conteoId = exigirSegmento(e.conteoId, 'conteoId');
+  const motivo = exigirMotivo(e.motivo).trim();
+  const por = exigirAutor(e.por);
+  return ejecutarOperacion(tx, {
+    tenantId: e.tenantId,
+    operacionId: e.operacionId,
+    tipo: 'conteo-cancelar',
+    accion: 'inventarios.conteo-cancelar',
+    carga: { conteoId, motivo },
+    por,
+    roles: PERMISOS.conteoCancelar,
+    construir: async (t) => {
+      const conteo = await t.lector.leer('conteos', conteoId);
+      if (conteo === undefined) throw new NoEncontrado(`Conteo inexistente: ${conteoId}`);
+      if (conteo['estado'] !== 'abierto') throw new EstadoInvalido(`El conteo ${conteoId} no está abierto`);
+      const ubicacionId = conteo['ubicacionId'] as string;
+      const ubic = await t.lector.leer('ubicaciones', ubicacionId);
+      if (ubic !== undefined && ubic['conteoAbiertoId'] === conteoId) {
+        const { conteoAbiertoId: _libre, ...resto } = ubic;
+        void _libre;
+        t.escribir({ ruta: ruta(t.tenantId, 'ubicaciones', ubicacionId), modo: 'set', datos: resto });
+      }
+      t.escribir({
+        ruta: ruta(t.tenantId, 'conteos', conteoId),
+        modo: 'set',
+        datos: { ...conteo, estado: 'cancelado', canceladoPor: por.uid, canceladoEn: MARCA_SERVIDOR, motivo },
+      });
+      return { resultado: { conteoId, ubicacionId }, referencia: { tipo: 'conteo', id: conteoId }, tipoMovimiento: 'conteo', motivo };
+    },
+  });
+}
+
+/**
  * Cierra y firma el conteo (sup/adm). Faltantes → mermas solicitadas (a nombre de quien contó, para
  * que otro las resuelva); sobrantes → movimiento de conteo. Libera la ubicación.
  *
- * Conteo ciego completo: los productos con existencia en la ubicación que nadie contó (`productosConExistencia`,
+ * Con `sinContar: 'cero'` (conteo ciego completo): los productos con existencia en la ubicación que nadie contó (`productosConExistencia`,
  * que el llamador consulta en la ubicación) se tratan como contados en 0: generan una merma solicitada a nombre de
  * quien cierra y quedan listados en `sinContar` con un aviso. Las series halladas que no figuraban como disponibles
  * en la ubicación se reportan en `sobrantesConSerie`; el cierre NO las mueve (alguien debe revisarlas). Ambos datos
  * van solo en el resultado (que leen sup/adm), no en el documento del conteo, que también lee quien cuenta.
  */
-export async function cerrarConteo(tx: TransaccionIdentidad, e: Base & { productosConExistencia?: readonly string[] }): Promise<ResultadoOperacion<Datos>> {
+export async function cerrarConteo(
+  tx: TransaccionIdentidad,
+  e: Base & { productosConExistencia?: readonly string[]; sinContar?: 'igual' | 'cero' },
+): Promise<ResultadoOperacion<Datos>> {
   const conteoId = exigirSegmento(e.conteoId, 'conteoId');
   const por = exigirAutor(e.por);
-  const conExistencia = [...new Set((e.productosConExistencia ?? []).map((p) => exigirProducto(p)))];
+  const eleccion = e.sinContar ?? 'igual';
+  if (eleccion !== 'igual' && eleccion !== 'cero') throw new EntradaInvalida("sinContar debe ser 'igual' o 'cero'");
+  // Con 'igual' lo no contado no cambia: se ignoran los productos con existencia que el llamador haya consultado.
+  const conExistencia = eleccion === 'cero' ? [...new Set((e.productosConExistencia ?? []).map((p) => exigirProducto(p)))] : [];
   return ejecutarOperacion(tx, {
     tenantId: e.tenantId,
     operacionId: e.operacionId,
     tipo: 'conteo-cerrar',
     accion: 'inventarios.conteo-cerrar',
-    carga: { conteoId },
+    carga: { conteoId, sinContar: eleccion },
     por,
     roles: PERMISOS.conteoCerrar,
     construir: async (t) => {
@@ -151,7 +194,11 @@ export async function cerrarConteo(tx: TransaccionIdentidad, e: Base & { product
       if (conteo['estado'] !== 'abierto') throw new EstadoInvalido(`El conteo ${conteoId} no está abierto`);
       const ubicacionId = conteo['ubicacionId'] as string;
       const productos = conteo['productos'] as string[];
-      if (productos.length === 0) throw new EstadoInvalido('El conteo no tiene líneas');
+      if (productos.length === 0 && eleccion === 'igual') {
+        throw new EstadoInvalido(
+          'No hay productos contados: no hay nada que cerrar. Cuente al menos uno, elija tomar los no contados como 0, o pida al administrador que cancele el conteo.',
+        );
+      }
       const sinContarIds = conExistencia.filter((p) => !productos.includes(p));
       if (productos.length + sinContarIds.length > MAX_LINEAS) {
         throw new EntradaInvalida(`Con los productos sin contar el cierre supera ${MAX_LINEAS} productos: cuente o cierre por partes`);

@@ -213,7 +213,7 @@ gcloud projects add-iam-policy-binding "$P" --condition=None --quiet --member "s
 
 Tarda unos minutos en propagarse; la verificación es una subida de prueba (`reservarSubida` y `finalizarSubida`) con el panel.
 
-## 7. Secretos de las Functions (Secret Manager) [gratis hasta 6 versiones activas; son 3]
+## 7. Secretos de las Functions (Secret Manager) [gratis hasta 6 versiones activas; son 4]
 
 Los valores se generan en la máquina, van por tubería a Secret Manager y no se muestran ni se guardan. Réplica gestionada por el usuario en `us-east1`.
 
@@ -234,6 +234,37 @@ Los dos secretos compartidos se entregan a su destino sin mostrarlos, cuando ese
 `SITIO_RECONSTRUCCION_SECRETO` → secreto del repositorio en GitHub, para el flujo de reconstrucción (otra ola):
 `gcloud secrets versions access latest --secret SITIO_RECONSTRUCCION_SECRETO --project "$P" | gh secret set SITIO_RECONSTRUCCION_SECRETO --repo "$OWNER/$REPO"`;
 `NOVUCHAT_PEDIDOS_SECRETO` → credencial de n8n (NovuChat), por su propio procedimiento.
+
+7.1 **`GITHUB_DISPARO_SITIO`** (S7-3, decisión DS-3: la plataforma dispara la reconstrucción del sitio). No sale de `openssl`
+como los anteriores: es un **token de acceso de grano fino de GitHub** limitado a **un solo repositorio** (este), con **un
+solo permiso de repositorio, «Actions: lectura y escritura»** (ninguno más; «Metadata: lectura» lo agrega GitHub solo) y
+**vencimiento a 90 días**. La función programada `temporizadorSitio` lo usa para `POST …/actions/workflows/reconstruir-sitio.yml/dispatches`
+con `clave` = `cola:pendientes` (`reconstruccion-sitio.md`). Va acompañado del parámetro `GITHUB_REPO_SITIO`, que llega desde la
+variable `SITIO_REPO_GITHUB` del Environment `staging` (9.3).
+
+- **Debe existir ANTES de desplegar el cambio que lo declara**: firebase-tools rechaza el despliegue de Functions si un
+  `defineSecret` no está en Secret Manager. Vale para staging y, en su momento, para producción (el código es el mismo).
+  Si el token aún no está, se crea con el marcador `pendiente`: el código lo trata como forma inválida y deja el disparo
+  deshabilitado (queda el sondeo programado). En producción se crea siempre con el marcador: `reconstruir-sitio.yml`
+  despliega solo staging (DC3) y `preparar-despliegue-firebase.sh` rechaza `GITHUB_REPO_SITIO` en production.
+- **Acceso**: `roles/secretmanager.secretAccessor` **solo** para la cuenta de ejecución de las Functions (`SA_FN`), sobre
+  este secreto (no a nivel de proyecto), igual que los de arriba. El código lo vincula solo a `temporizadorSitio`.
+- **Carga sin mostrar el valor**: el token se genera en la interfaz de GitHub (*Settings → Developer settings →
+  Fine-grained tokens*) por la persona dueña de la cuenta, y se pasa por tubería a `gcloud secrets create` (primera vez) o
+  `gcloud secrets versions add` (rotación) con `--data-file=-`, réplica en `us-east1`; nunca en un archivo, en el
+  historial del shell ni en el chat. Functions fija la versión del secreto en el momento del despliegue (no lee `latest`
+  en ejecución): tras cargar una versión nueva hay que **redesplegar `temporizadorSitio`** para que la use.
+- **Dueño del token**: una cuenta que NO esté en `APROBADORES_PROD` ni sea la revisora del Environment `production`
+  (con un token de una cuenta aprobadora, quien lo robe pasaría el control de aprobadores de los despliegues manuales).
+- **Rotación cada 90 días** (antes del vencimiento), en este orden: token nuevo → versión nueva del secreto → **redesplegar
+  `temporizadorSitio`** → comprobar un disparo con éxito → revocar el token anterior en GitHub → destruir la versión
+  anterior (`gcloud secrets versions destroy`) para no pasar de 6 versiones activas. Nunca se destruye la versión anterior
+  antes de redesplegar: las instancias nuevas no arrancarían y los sitios dejarían de reconstruirse. Un token
+  vencido o revocado hace que GitHub responda 401: el disparo falla, se registra y el trabajo queda `pendiente` para el
+  sondeo.
+- **Cómo se deshace**: revocar el token en GitHub (efecto inmediato) o dejar vacía la variable `SITIO_REPO_GITHUB` y
+  redesplegar. El sondeo programado de `reconstruir-sitio.yml` (cada 15 minutos) sigue recogiendo los trabajos
+  pendientes; solo se pierde la rapidez.
 
 ## 8. App Check y reCAPTCHA Enterprise [gratis hasta el umbral mensual de evaluaciones; verificar]
 
@@ -320,6 +351,7 @@ gh api --method POST "repos/$OWNER/$REPO/environments/production/deployment-bran
 | `MEDIOS_BASE_URL` | Environment `staging` | **obligatoria** (https): ver 9.5; el despliegue falla si falta |
 | `MEDIOS_BUCKET_PUBLICO` | Environment `staging` | **obligatoria**: nombre (sin `gs://`) del bucket público de 9.5, `<proyecto>-medios`; distinto del bucket por defecto; la función falla cerrado sin él |
 | `FUNCIONES_SERVICE_ACCOUNT` | Environment `staging` | vacío (cuenta por defecto, si no tiene Editor) o la dedicada del paso 6.1 (obligatoria en la práctica en producción) |
+| `SITIO_REPO_GITHUB` | Environment `staging` (**solo** staging) | `<owner>/<repo>` de este repositorio. Llega a las Functions como parámetro `GITHUB_REPO_SITIO` (GitHub no admite variables con prefijo `GITHUB_`); vacía = disparo de reconstrucción deshabilitado. Forma inválida o cargada en `production`: el despliegue falla cerrado. Requiere el secreto 7.1 |
 | `FIREBASE_DEPLOY_ONLY` | Environment `staging` | `hosting:panel,functions,firestore,storage`. **Cargarla antes de fusionar el PR C-2**: tiene prioridad sobre la del repositorio y evita que el CI despliegue los sitios de tenant; `scripts/sitios-tenant.mjs validar-solo` falla cerrado si trae otra cosa |
 | `FIREBASE_DEPLOY_FORCE` | Environment `staging` (y `production`) | cualquier valor no vacío → `firebase deploy --force`. **Obligatoria**: la función `eventos` declara `retry: true` y firebase-tools exige `--force` para una política de fallo en modo no interactivo (3.er intento del primer despliegue, 05/11/2026). Aviso en el run: `--force` también borra Functions que ya no estén en el código |
 | `PROXY_SALTOS` | repositorio (opcional) | `2` por defecto: proxies que anteponen su IP en `X-Forwarded-For` (Hosting/Fastly + GFE). **Verificar en staging** con una petición real |

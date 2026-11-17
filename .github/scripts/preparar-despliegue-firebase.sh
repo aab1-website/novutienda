@@ -23,6 +23,9 @@
 # FFMPEG_PATH y FFPROBE_PATH valen /usr/bin/ffmpeg y /usr/bin/ffprobe salvo P_FFMPEG_PATH / P_FFPROBE_PATH; nunca vacíos.
 # Ningún parámetro de Functions puede ser PLATAFORMA_PRUEBAS ni FUNCTIONS_EMULATOR (la guardia no se apaga en la nube).
 # VITE_MEDIOS_BASE_URL (opcional): la variable del repositorio con la que se construyó el panel; ver paso 2a.
+# P_GITHUB_REPO_SITIO (opcional, S7-3/DS-3): repositorio `owner/nombre` al que temporizadorSitio dispara
+# reconstruir-sitio.yml; vacío = disparo deshabilitado (queda el sondeo). Solo staging: reconstruir-sitio.yml despliega
+# solo staging (DC3), así que en production debe quedar vacío. Forma inválida: falla cerrado.
 # Los errores nunca imprimen los valores.
 set -euo pipefail
 
@@ -69,6 +72,17 @@ case "$host" in
       || error "MEDIOS_BASE_URL apunta a Cloud Storage (<bucket>.storage.googleapis.com) pero el bucket no es exactamente MEDIOS_BUCKET_PUBLICO o lleva ruta."
     ;;
 esac
+# Repositorio del disparo de reconstrucción (S7-3). Mismo criterio que repoValido de plataforma/conectores/github/disparo.ts
+# (owner/nombre, caracteres [A-Za-z0-9_.-], sin segmentos . ni ..); mantener ambos iguales. Sin imprimir el valor.
+if [[ -n "${P_GITHUB_REPO_SITIO:-}" ]]; then
+  [[ "$AMBIENTE" == "staging" ]] \
+    || error "GITHUB_REPO_SITIO solo se admite en staging: reconstruir-sitio.yml despliega solo staging (DC3)."
+  repo_forma='^[A-Za-z0-9_.-]+/[A-Za-z0-9_.-]+$'
+  repo_segmento_relativo='(^|/)\.{1,2}(/|$)'
+  if [[ ! "$P_GITHUB_REPO_SITIO" =~ $repo_forma ]] || [[ "$P_GITHUB_REPO_SITIO" =~ $repo_segmento_relativo ]]; then
+    error "GITHUB_REPO_SITIO debe tener la forma owner/nombre (solo letras, dígitos, _ . -; sin URL, sin segmentos . o ..). Ver docs/produccion/reconstruccion-sitio.md."
+  fi
+fi
 
 # 2. Configuración compuesta en el build.
 [[ -f dist/firebase.json ]] || error "El artifact no trae dist/firebase.json (scripts/build.mjs lo genera)."
@@ -128,7 +142,7 @@ firebase target:apply hosting panel "$PANEL_ID" --project "$PROYECTO"
 # 4. Parámetros de Functions (no secretos; los secretos viven en Secret Manager).
 parametros="${RUNNER_TEMP:-/tmp}/funciones.env"
 : >"$parametros"
-for nombre in APP_CHECK_EXIGIDO RECAPTCHA_CLAVE_SITIO SITIO_URL MEDIOS_BASE_URL MEDIOS_BUCKET_PUBLICO FUNCIONES_SERVICE_ACCOUNT PROXY_SALTOS; do
+for nombre in APP_CHECK_EXIGIDO RECAPTCHA_CLAVE_SITIO SITIO_URL MEDIOS_BASE_URL MEDIOS_BUCKET_PUBLICO FUNCIONES_SERVICE_ACCOUNT PROXY_SALTOS GITHUB_REPO_SITIO; do
   var="P_${nombre}"
   valor="${!var:-}"
   [[ "$valor" != *$'\n'* ]] || error "El parámetro $nombre contiene un salto de línea."
@@ -142,7 +156,7 @@ declare -A POR_DEFECTO=(
   [PROXY_SALTOS]=2 [RECAPTCHA_MODO]=real [APP_CHECK_MODO]=real
   [CONTACTO_MAXIMO]=5 [CONTACTO_VENTANA_SEG]=600 [NOVUCHAT_MAXIMO_POR_MINUTO]=120
   [DISPONIBILIDAD_MAXIMO_POR_MINUTO]=60 [CONTACTO_MAXIMO_POR_MINUTO]=30
-  [RECAPTCHA_CLAVE_SITIO]="" [FUNCIONES_SERVICE_ACCOUNT]=""
+  [RECAPTCHA_CLAVE_SITIO]="" [FUNCIONES_SERVICE_ACCOUNT]="" [GITHUB_REPO_SITIO]=""
 )
 for nombre in "${!POR_DEFECTO[@]}"; do
   grep -q "^${nombre}=" "$parametros" || printf '%s=%s\n' "$nombre" "${POR_DEFECTO[$nombre]}" >>"$parametros"

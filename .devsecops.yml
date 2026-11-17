@@ -56,6 +56,12 @@ seguridad:
         escritura; y los identificadores del sitio se resuelven desde un
         secreto del Environment, no desde la entrada. Quitarla obligaria
         a reconstruir siempre todos los sitios.
+        Ampliada el 2026-11-17 por decision del propietario: la entrada
+        admite ademas el valor reservado exacto `cola:pendientes`
+        (comparado en bash, sensible a mayusculas), que equivale al
+        sondeo programado: solo reconstruye los sitios con trabajo
+        pendiente en su cola firmada. Lo envia la plataforma al encolar
+        una reconstruccion.
       aprobado_por: AndresAlberdi
       creado: "2026-11-04"
       vence: "2027-02-02"
