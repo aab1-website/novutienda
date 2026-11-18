@@ -19,21 +19,21 @@ const regionAvisos = (): HTMLElement => document.querySelector('[data-region="av
 
 async function invitar(correo: string, rol?: string): Promise<void> {
   const u = userEvent.setup();
-  await u.type(await screen.findByLabelText('Correo para invitar'), correo);
-  if (rol !== undefined) await u.selectOptions(screen.getByLabelText('Rol de la invitación'), rol);
-  await u.click(screen.getByRole('button', { name: 'Invitar' }));
+  await u.type(await screen.findByLabelText('Correo de la persona'), correo);
+  if (rol !== undefined) await u.selectOptions(screen.getByLabelText('Rol de la persona'), rol);
+  await u.click(screen.getByRole('button', { name: 'Agregar' }));
 }
 
 /** Libera un cupo (el doble trae 3 de 3). */
 const conCupo = async (e: Entorno): Promise<void> => void (await e.api.llamar('quitarRol', { uid: 'u-sup' }));
 
 describe('invitar a una persona', () => {
-  it('invita con correo y rol (también administrador): aviso «Invitación enviada», correo del enlace y fila pendiente', async () => {
+  it('invita con correo y rol (también administrador): aviso de éxito, correo del enlace y fila pendiente', async () => {
     const e = crearEntorno('adm');
     await conCupo(e);
     ver(e);
     await invitar(' Ana@Ejemplo.test ', 'adm');
-    await waitFor(() => expect(regionAvisos().textContent).toContain('Invitación enviada'));
+    await waitFor(() => expect(regionAvisos().textContent).toContain('Listo. Enviamos un correo a ana@ejemplo.test'));
     expect(e.correosDeAcceso).toEqual(['ana@ejemplo.test']);
     const pendientes = await screen.findByRole('table', { name: 'Invitaciones pendientes' });
     expect(within(pendientes).getByText('ana@ejemplo.test')).toBeTruthy();
@@ -43,26 +43,68 @@ describe('invitar a una persona', () => {
     expect(document.body.textContent).not.toMatch(/Firebase Console|Add user/);
   });
 
-  it('el aviso es el mismo para una cuenta nueva, una existente y un miembro (no revela nada)', async () => {
+  it('el aviso es el mismo para una cuenta nueva y una existente, y solo se llama a invitarUsuario (no revela nada)', async () => {
     const textos: string[] = [];
-    for (const correo of ['nadie@ejemplo.test', 'nueva@ejemplo.test', 'caj@ejemplo.test']) {
+    for (const correo of ['nadie@ejemplo.test', 'nueva@ejemplo.test', 'pendiente@ejemplo.test']) {
       const e = crearEntorno('adm');
       await conCupo(e);
       ver(e);
       await invitar(correo);
-      await waitFor(() => expect(regionAvisos().textContent).toContain('Invitación enviada'));
-      textos.push(regionAvisos().textContent ?? '');
+      await waitFor(() => expect(regionAvisos().textContent).toContain('Listo. Enviamos un correo'));
+      textos.push((regionAvisos().textContent ?? '').replaceAll(correo, '<correo>'));
       expect(e.correosDeAcceso).toEqual([correo]); // el correo se envía siempre, exista o no la cuenta
+      expect(e.api.llamadas.map((l) => l.nombre)).toContain('invitarUsuario');
+      expect(e.api.llamadas.map((l) => l.nombre)).not.toContain('buscarUsuarioPorCorreo');
       cleanup();
     }
     expect(new Set(textos).size).toBe(1);
+  });
+
+  it('el correo de un miembro avisa «ya tiene acceso» sin llamar al servidor', async () => {
+    const e = crearEntorno('adm');
+    await conCupo(e);
+    ver(e);
+    await invitar('caj@ejemplo.test');
+    expect(await screen.findByText(/caj@ejemplo.test ya tiene acceso/)).toBeTruthy();
+    expect(e.api.llamadas.map((l) => l.nombre)).not.toContain('invitarUsuario');
+    expect(e.correosDeAcceso).toEqual([]);
+  });
+
+  it('un correo con invitación pendiente y otro rol se envía y la fila muestra el rol nuevo sin otro cupo', async () => {
+    const e = crearEntorno('adm');
+    await conCupo(e);
+    await e.api.llamar('invitarUsuario', { correo: 'ana@ejemplo.test', rol: 'caj' });
+    ver(e);
+    await invitar('ana@ejemplo.test', 'sup');
+    await waitFor(() => expect(regionAvisos().textContent).toContain('Listo. Enviamos un correo'));
+    const pendientes = await screen.findByRole('table', { name: 'Invitaciones pendientes' });
+    expect(await within(pendientes).findByText('Supervisor')).toBeTruthy();
+    expect(await screen.findByText('Personas con acceso (2) e invitaciones pendientes (1), de 3 del plan')).toBeTruthy();
+  });
+
+  it('con el rol Administrador se avisa que solo el propietario de la plataforma puede quitarlo', async () => {
+    const e = crearEntorno('adm');
+    await conCupo(e);
+    ver(e);
+    const u = userEvent.setup();
+    expect(screen.queryByText(/solo lo puede quitar el propietario/)).toBeNull();
+    await u.selectOptions(await screen.findByLabelText('Rol de la persona'), 'adm');
+    expect(screen.getByText('Un administrador solo lo puede quitar el propietario de la plataforma.')).toBeTruthy();
+  });
+
+  it('la pantalla explica el correo que llegará y cuándo se activa el rol', async () => {
+    const e = crearEntorno('adm');
+    await conCupo(e);
+    ver(e);
+    expect(await screen.findByText(/correo de Firebase para elegir su contraseña o restablecerla/)).toBeTruthy();
+    expect(screen.getByText(/El rol se activa cuando inicia sesión/)).toBeTruthy();
   });
 
   it('con el plan lleno explica el motivo y no envía', async () => {
     const e = crearEntorno('adm');
     ver(e);
     await screen.findByText(/ya están todos ocupados/);
-    const boton = screen.getByRole('button', { name: 'Invitar' });
+    const boton = screen.getByRole('button', { name: 'Agregar' });
     expect(boton.getAttribute('aria-disabled')).toBe('true');
     expect(screen.getByText(/no tiene cupos libres/)).toBeTruthy();
     await userEvent.setup().click(boton);
