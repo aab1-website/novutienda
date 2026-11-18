@@ -76,11 +76,6 @@ async function productosConExistenciaEn(c: Contexto, conteo: Record<string, unkn
   return ex.docs.map(datosDe).filter((x) => Number(x['cantidad']) > 0 && typeof x['productoId'] === 'string').map((x) => String(x['productoId']));
 }
 
-/**
- * Conteos abiertos del tenant y las ubicaciones existentes, para decidir qué existencias ve quien llama (`visibilidad.ts`).
- * La fuente es `conteoAbiertoId` de cada ubicación (el bloqueo real); `abiertoEn` sale del documento del conteo. Se llama DESPUÉS
- * de leer los datos a entregar: si un conteo se abre entre las dos lecturas, solo se oculta de más.
- */
 const MIN_PREFIJO_SERIE = 4;
 const MAX_RESULTADOS_SERIE = 10;
 /** Unidades que se leen cuando hay que filtrar en memoria (ocultamiento o `productoId`) antes de quedarse con 10. */
@@ -107,6 +102,11 @@ async function limitarBusquedaSerie(c: Contexto): Promise<void> {
   }
 }
 
+/**
+ * Conteos abiertos del tenant y las ubicaciones existentes, para decidir qué existencias ve quien llama (`visibilidad.ts`).
+ * La fuente es `conteoAbiertoId` de cada ubicación (el bloqueo real); `abiertoEn` sale del documento del conteo. Se llama DESPUÉS
+ * de leer los datos a entregar: si un conteo se abre entre las dos lecturas, solo se oculta de más.
+ */
 async function conteosAbiertos(c: Contexto): Promise<{ conteos: Conteos; ubicaciones: string[] }> {
   const ubic = (await c.e.firestore.collection(ruta(c.tenantId, 'ubicaciones')).get()).docs.map((u) => ({ id: u.id, data: datosDe(u) }));
   const ids = ubic.map((u) => u.data['conteoAbiertoId']).filter((x): x is string => typeof x === 'string' && x !== '');

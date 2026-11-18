@@ -5,7 +5,8 @@ import { accion, crearUsuario, hayEmulador, herramientas, sembrarTenant, unico, 
 
 vi.setConfig({ testTimeout: 120_000, hookTimeout: 90_000 });
 
-const A = 'serie-a';
+// Tenant único por corrida: el tope por tenant (300 por hora) persiste en `limitesTasa` y no debe arrastrarse entre corridas.
+const A = unico('serie').toLowerCase().replace(/[^a-z0-9-]/g, '-').slice(0, 30);
 type Obj = Record<string, unknown>;
 const unidades = (r: { resultado?: unknown }): Obj[] => (r.resultado as Obj)['unidades'] as Obj[];
 
