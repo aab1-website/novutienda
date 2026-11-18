@@ -159,6 +159,11 @@ describe.skipIf(!hayEmuladorStorage)('reglas de Storage (emulador)', () => {
       await assertFails(subir(adm, original('port-0009'), 1024, 'image/jpeg'));
       await reservar('port-0010', { por: 'u-adm', tipo: 'portada', producto: '_negocio', bytes: MIB });
       await assertFails(subir(adm, original('port-0010', '_negocio'), 1024, 'image/jpeg'));
+      // Un `sup` con una reserva `portada` propia SÍ puede crear el original: la regla de Storage no distingue sup de adm (los roles del
+      // manifiesto son sup y adm). Que la portada sea solo del administrador lo garantiza el servidor: `reservarSubida`, `finalizarSubida` y
+      // `borrarMedio` exigen `adm`, así que un `sup` nunca consigue esa reserva (ver pruebas/consola/portada.test.ts).
+      await reservar('port-0012', { por: 'u-sup', tipo: 'portada', producto: '_portada', bytes: MIB });
+      await assertSucceeds(subir(env.authenticatedContext('u-sup', sesion('sup')), portada('port-0012'), 1024, 'image/jpeg'));
       // Sin reserva, de otro tenant, anónimo, caj y sin verificar el correo.
       await assertFails(subir(adm, portada('port-sin-reserva'), 1024, 'image/jpeg'));
       await reservar('port-0011', { por: 'u-caj', tipo: 'portada', producto: '_portada', bytes: MIB });

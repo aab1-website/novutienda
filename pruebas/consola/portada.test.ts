@@ -137,6 +137,22 @@ describe('fotos propias de la portada (_portada)', () => {
       await guardarCarrusel(ds(), { tenantId: T, actor: adm, carrusel: { plantilla: 'bosque', items: [{ medioId: id, alt: 'Local' }] } });
       expect(db.dato(`tenants/${T}/carruseles/bosque`)).toMatchObject({ items: [{ medioId: id }] });
     });
+    it('guardarCarrusel rechaza con `limite` más fotos propias que el cupo del plan del tenant', async () => {
+      const ids: string[] = [];
+      for (let i = 0; i < 3; i += 1) ids.push(await subir());
+      const topes = PLANES.base as { fotosPortada: number };
+      const original = topes.fotosPortada;
+      topes.fotosPortada = 2; // plan con cupo menor inyectado (p. ej. uno bajado tras haber subido fotos)
+      try {
+        await expect(guardarCarrusel(ds(), { tenantId: T, actor: adm, carrusel: { plantilla: 'bosque', items: ids.map((medioId) => ({ medioId, alt: 'x' })) } }))
+          .rejects.toMatchObject({ codigo: 'limite' });
+        expect(db.dato(`tenants/${T}/carruseles/bosque`)).toBeUndefined();
+        await expect(guardarCarrusel(ds(), { tenantId: T, actor: adm, carrusel: { plantilla: 'bosque', items: ids.slice(0, 2).map((medioId) => ({ medioId, alt: 'x' })) } }))
+          .resolves.toBeUndefined();
+      } finally {
+        topes.fotosPortada = original;
+      }
+    });
     it('un medio de portada en uso no se puede borrar', async () => {
       const id = await subir();
       await guardarCarrusel(ds(), { tenantId: T, actor: adm, carrusel: { plantilla: 'bosque', items: [{ medioId: id, alt: 'Local' }] } });
