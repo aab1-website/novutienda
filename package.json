@@ -33,7 +33,7 @@
     "firebase": "13.2.0",
     "globals": "17.14.0",
     "typescript": "6.0.3",
-    "typescript-eslint": "8.72.1",
+    "typescript-eslint": "8.72.2",
     "vitest": "5.1.0",
     "@novutienda/inventarios": "workspace:*",
     "@novutienda/pos": "workspace:*",
