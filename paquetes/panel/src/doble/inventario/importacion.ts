@@ -119,7 +119,10 @@ function leer(c: Contexto, entrada: { archivo?: string | undefined; csv?: string
     const sku = celda('sku');
     if (sku !== undefined) {
       if (!SKU.test(sku)) err('sku', 'sku inválido');
-      else if (skus.has(sku)) fila.errores.push({ columna: indice.get('sku')?.etiqueta ?? 'sku', motivo: 'sku repetido en el archivo', filaPrevia: skus.get(sku) as number });
+      else if (skus.has(sku)) {
+        const previa = skus.get(sku);
+        fila.errores.push({ columna: indice.get('sku')?.etiqueta ?? 'sku', motivo: 'sku repetido en el archivo', ...(previa !== undefined ? { filaPrevia: previa } : {}) });
+      }
       else {
         fila.d.sku = sku;
         skus.set(sku, fila.linea);

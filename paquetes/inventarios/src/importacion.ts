@@ -288,12 +288,9 @@ export function leerCsvFilas(fuente: FuenteTabla, cargaInicial: boolean, comerci
     if (sku !== undefined) {
       if (!esSku(sku)) err('sku', 'sku inválido');
       else if (skus.has(sku)) {
-        err('sku', 'sku repetido en el archivo');
         const previa = skus.get(sku);
-        const ult = errores[errores.length - 1];
-        if (previa !== undefined && ult !== undefined) errores[errores.length - 1] = { ...ult, filaPrevia: previa };
-      }
-      else {
+        errores.push({ columna: indice.get('sku')?.etiqueta ?? 'sku', motivo: 'sku repetido en el archivo', ...(previa !== undefined ? { filaPrevia: previa } : {}) });
+      } else {
         d.sku = sku;
         skus.set(sku, linea);
         const parecidos = porMinusculas.get(sku.toLowerCase()) ?? [];
