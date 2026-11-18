@@ -4,7 +4,8 @@
   "private": true,
   "type": "module",
   "exports": {
-    ".": "./src/index.ts"
+    ".": "./src/index.ts",
+    "./negocio": "./src/negocio.ts"
   },
   "dependencies": {
     "@novutienda/nucleo": "workspace:*"

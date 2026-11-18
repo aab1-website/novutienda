@@ -6,7 +6,9 @@ import { LIMITES_CONSOLA } from './limites.js';
 import { proyectarLogoPublico } from './logo-publico.js';
 import type { Medio } from './medios/subidas.js';
 import { exigirRol, ROLES } from './permisos.js';
+import { enlacePermitidoEnSitio, type FotoIdentidadHeredada, type IdentidadNegocio, type NegocioSitioDatos } from './negocio.js';
 import { PLANTILLAS } from './plantillas.js';
+import { leerDocumentoNegocio } from './servicio-negocio.js';
 import type {
   BaseDatosConsola, CatalogoPuerto, DisparadorSitio, PrecioUSD, ProductoCatalogo, Reloj,
 } from './puertos.js';
@@ -139,6 +141,14 @@ export interface FichaGuardada extends FichaWeb {
   readonly productoId: string;
 }
 
+/** Copia pública de `sitio/negocio`: la misma forma, con la foto de identidad resuelta a medio público; sin autor ni datos internos. */
+export interface NegocioPublicado extends Omit<NegocioSitioDatos, 'identidad'> {
+  /** La foto de un medio de la consola se publica como medio público; la heredada (dirección web), tal cual. */
+  readonly identidad: Omit<IdentidadNegocio, 'foto'> & { readonly foto: MedioPublico | FotoIdentidadHeredada | null };
+  readonly version: number;
+  readonly actualizadoEn: string;
+}
+
 export interface EntradaPublicado {
   readonly productos: readonly ProductoCatalogo[];
   readonly fichas: ReadonlyMap<string, FichaGuardada>;
@@ -147,6 +157,10 @@ export interface EntradaPublicado {
   /** En el orden del menú. */
   readonly secciones: readonly Seccion[];
   readonly carruseles: readonly Carrusel[];
+  /** Datos del negocio (`sitio/negocio`), si existen: con ellos se publica `publicado/negocio`, se quitan los enlaces fuera de la lista y se filtran los destacados. */
+  readonly negocio?: { readonly datos: NegocioSitioDatos; readonly version: number; readonly actualizadoEn: string };
+  /** `sitio/negocio` existe pero no cumple ni la regla heredada: se publica como si no existiera y se advierte. */
+  readonly negocioInvalido?: boolean;
 }
 
 export interface Publicado {
@@ -154,6 +168,8 @@ export interface Publicado {
   readonly productos: readonly ProductoPublicado[];
   readonly secciones: readonly SeccionPublicada[];
   readonly carruseles: readonly CarruselPublicado[];
+  /** Presente solo si existen los datos del negocio. */
+  readonly negocio?: NegocioPublicado;
   readonly advertencias: readonly string[];
 }
 
@@ -166,6 +182,7 @@ const tieneFoto = (m: MedioPublico): boolean => m.tipo === 'foto' && m.versiones
  */
 export function construirPublicado(e: EntradaPublicado): Publicado {
   const advertencias: string[] = [];
+  if (e.negocioInvalido === true) advertencias.push('Los datos del sitio guardados no son válidos y no se publicaron; corríjalos en Datos del sitio');
   const publico = (medioId: string, alt: string, donde: string): MedioPublico | undefined => {
     const m = e.medios.get(medioId);
     if (m === undefined) {
@@ -177,6 +194,7 @@ export function construirPublicado(e: EntradaPublicado): Publicado {
       versiones: m.versiones.map((v) => ({ clase: v.clase, lado: v.lado, formato: v.formato, ruta: v.ruta })),
     };
   };
+  const permitidos = e.negocio?.datos.enlacesPermitidos;
   const sinNulos = <T>(xs: readonly (T | undefined)[]): T[] => xs.filter((x): x is T => x !== undefined);
 
   const productos: ProductoPublicado[] = [];
@@ -200,7 +218,7 @@ export function construirPublicado(e: EntradaPublicado): Publicado {
 
   const secciones: SeccionPublicada[] = e.secciones.filter((s) => s.visible).map((s) => ({
     id: s.id, titulo: s.titulo,
-    bloques: sinNulos(s.bloques.map((b): BloquePublicado | undefined => {
+    bloques: sinNulos(s.bloques.map((b, bi): BloquePublicado | undefined => {
       if (b.tipo === 'imagen') {
         const m = publico(b.medioId, b.alt, `sección ${s.id}`);
         return m === undefined ? undefined : { tipo: 'imagen', medio: m };
@@ -212,6 +230,18 @@ export function construirPublicado(e: EntradaPublicado): Publicado {
           return undefined;
         }
         return { tipo: 'carrusel', items };
+      }
+      if (b.tipo === 'enlaces' && permitidos !== undefined) {
+        const items = b.items.filter((it, ii) => {
+          if (enlacePermitidoEnSitio(it.url, permitidos)) return true;
+          advertencias.push(`sección ${s.id}, bloque ${String(bi)}, enlace ${String(ii)}: enlace quitado (fuera de la lista de anfitriones permitidos o demasiado largo)`);
+          return false;
+        });
+        if (items.length === 0) {
+          advertencias.push(`La sección «${s.titulo}» tenía un bloque de enlaces sin enlaces permitidos y se omitió`);
+          return undefined;
+        }
+        return { tipo: 'enlaces', items };
       }
       return b;
     })),
@@ -227,11 +257,34 @@ export function construirPublicado(e: EntradaPublicado): Publicado {
     plantilla: c.plantilla,
     items: sinNulos(c.items.map((i) => {
       const m = publico(i.medioId, i.alt, `carrusel ${c.plantilla}`);
-      return m === undefined ? undefined : i.enlace === undefined ? m : { ...m, enlace: i.enlace };
+      if (m === undefined || i.enlace === undefined) return m;
+      if (permitidos !== undefined && !enlacePermitidoEnSitio(i.enlace, permitidos)) {
+        advertencias.push(`carrusel ${c.plantilla}, foto ${String(c.items.indexOf(i))}: enlace quitado (fuera de la lista de anfitriones permitidos o demasiado largo)`);
+        return m;
+      }
+      return { ...m, enlace: i.enlace };
     })),
   }));
 
-  return { config: e.config, productos, secciones, carruseles, advertencias };
+  if (e.negocio === undefined) return { config: e.config, productos, secciones, carruseles, advertencias };
+  const { datos, version, actualizadoEn } = e.negocio;
+  let foto: MedioPublico | FotoIdentidadHeredada | null = null;
+  if (datos.identidad.foto !== null) {
+    if ('url' in datos.identidad.foto) foto = datos.identidad.foto;
+    else {
+      const m = publico(datos.identidad.foto.medioId, datos.identidad.foto.alt, 'identidad');
+      if (m !== undefined && tieneFoto(m)) foto = m;
+      else if (m !== undefined) advertencias.push('identidad: el medio de la foto no es una foto utilizable y se omitió');
+    }
+  }
+  const publicados = new Set(productos.map((p) => p.id));
+  const destacados = datos.destacados.filter((id, i) => {
+    if (publicados.has(id)) return true;
+    advertencias.push(`destacados[${String(i)}]: el producto no está publicado y se quitó`);
+    return false;
+  });
+  const negocio: NegocioPublicado = { ...datos, identidad: { ...datos.identidad, foto }, destacados, version, actualizadoEn };
+  return { config: e.config, productos, secciones, carruseles, negocio, advertencias };
 }
 
 // ---------------------------------------------------------------------------------------------
@@ -344,7 +397,7 @@ export async function publicarSitio(deps: DepsPublicar, e: { tenantId: string; a
     // Relectura de cada producto a publicar DENTRO de la transacción: precio, activo, marca, nombre y categoría salen SOLO de aquí, no de
     // la lista previa (un cambio entre la lectura y el commit no se pisa; si ocurre durante la transacción, se reintenta). Una lectura
     // por producto con ficha publicada (hasta 200 por plan, más sus fichas y medios): lejos de cualquier tope de la transacción, y las
-    // escrituras (un documento por producto, sección o carrusel más 4 fijos) quedan por debajo de las 500 de Firestore.
+    // escrituras (un documento por producto, sección o carrusel más 5 fijos: `publicado/sitio`, `publicado/negocio`, `publicado/estado`, `sitio/estado` y la auditoría) quedan por debajo de las 500 de Firestore.
     // Contención con las ventas: Inventarios escribe el documento del producto en cada movimiento, así que una publicación concurrente
     // con ventas puede esperar o reintentar (la transacción lo hace sola); las ventas no se bloquean más allá de ese conflicto.
     const vivos: ProductoCatalogo[] = [];
@@ -377,8 +430,19 @@ export async function publicarSitio(deps: DepsPublicar, e: { tenantId: string; a
     // Logo subido del negocio: se lee aquí (antes de escribir) y se publica solo con rutas de su carpeta pública.
     const logo = proyectarLogoPublico(t, (await tx.get(rutaSitio(t, 'logo'))).data());
     await leerEstadoSitio(tx, t);
+    const negocio = leerDocumentoNegocio((await tx.get(rutaSitio(t, 'negocio'))).data());
+    const datosNegocio = negocio?.negocio ?? null;
+    const fotoNegocio = datosNegocio?.identidad.foto;
+    if (fotoNegocio !== undefined && fotoNegocio !== null && 'medioId' in fotoNegocio && !medios.has(fotoNegocio.medioId)) {
+      const d = (await tx.get(rutaMedio(t, fotoNegocio.medioId))).data();
+      if (d !== undefined) medios.set(fotoNegocio.medioId, d as unknown as Medio);
+    }
 
-    const pub = construirPublicado({ productos: vivos, fichas, medios, config: config.valor, secciones, carruseles });
+    const pub = construirPublicado({
+      productos: vivos, fichas, medios, config: config.valor, secciones, carruseles,
+      ...(negocio === undefined || datosNegocio === null ? {} : { negocio: { datos: datosNegocio, version: negocio.version, actualizadoEn: negocio.actualizadoEn } }),
+      ...(negocio !== undefined && datosNegocio === null ? { negocioInvalido: true } : {}),
+    });
     exigirPublicable(pub, candidatos.length, sinMarca);
     const version = previo.version + 1;
     const decision = decidirReconstruccion({ hayPublicacion: true, programadaPara: previo.programadaPara }, ahora, 'publicacion');
@@ -388,6 +452,8 @@ export async function publicarSitio(deps: DepsPublicar, e: { tenantId: string; a
     for (const c of pub.carruseles) tx.set(rutaPublicado(t, `carrusel__${c.plantilla}`), { ...c });
     // Sin logo subido el campo no se escribe; como `set` reemplaza el documento, un logo publicado antes desaparece.
     tx.set(rutaPublicado(t, 'sitio'), { ...pub.config, version, ...(logo === undefined ? {} : { logo }) });
+    // Sin datos del negocio, `publicado/negocio` no se toca (el sitio sigue con su respaldo).
+    if (pub.negocio !== undefined) tx.set(rutaPublicado(t, 'negocio'), { ...pub.negocio });
     const idsProd = pub.productos.map((p) => p.id);
     const idsSec = pub.secciones.map((s) => s.id);
     const idsCar = pub.carruseles.map((c) => c.plantilla);
