@@ -15,16 +15,20 @@ export interface HojaXlsx {
 /** Igual que la exportación del servidor: un apóstrofe delante si el texto empieza con = + - @, TAB o CR (la importación lo quita). */
 export const neutralizarCeldaXlsx = (v: string): string => (/^'*[=+\-@\t\r]/.test(v) ? `'${v}` : v);
 
+/** Caracteres que XML 1.0 no admite (controles salvo TAB, LF y CR; y U+FFFE, U+FFFF). */
+// eslint-disable-next-line no-control-regex
+const NO_XML = /[\u0000-\u0008\u000B\u000C\u000E-\u001F\uFFFE\uFFFF]/g;
+
+/** Se quitan los caracteres no admitidos ANTES de neutralizar: así una celda que empieza con uno de ellos y luego `=` también se neutraliza. */
 const TEXTO_CELDA = (v: CeldaXlsx): string => {
   if (v === null || v === undefined) return '';
   if (typeof v === 'boolean') return v ? 'sí' : 'no';
-  return neutralizarCeldaXlsx(String(v));
+  return neutralizarCeldaXlsx(String(v).replace(NO_XML, ''));
 };
 
-/** Escapa XML y descarta los caracteres de control que XML 1.0 no admite. */
+/** Escapa XML. El CR se escribe como referencia numérica: un CR literal se normalizaría a LF al leer el archivo. */
 const xml = (t: string): string =>
-  // eslint-disable-next-line no-control-regex
-  t.replace(/[\u0000-\u0008\u000B\u000C\u000E-\u001F]/g, '').replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;');
+  t.replace(NO_XML, '').replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;').replace(/\r/g, '&#13;');
 
 const letraColumna = (i: number): string => {
   let n = i + 1;
@@ -134,10 +138,11 @@ export function escribirXlsx(hojas: readonly HojaXlsx[]): Uint8Array {
   const enc = new TextEncoder();
   const idx = hojas.map((_, i) => String(i + 1));
   const entradas: EntradaZip[] = [
-    { nombre: '[Content_Types].xml', datos: enc.encode(`<?xml version="1.0" encoding="UTF-8" standalone="yes"?><Types xmlns="http://schemas.openxmlformats.org/package/2006/content-types"><Default Extension="rels" ContentType="application/vnd.openxmlformats-package.relationships+xml"/><Default Extension="xml" ContentType="application/xml"/><Override PartName="/xl/workbook.xml" ContentType="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet.main+xml"/>${idx.map((i) => `<Override PartName="/xl/worksheets/sheet${i}.xml" ContentType="application/vnd.openxmlformats-officedocument.spreadsheetml.worksheet+xml"/>`).join('')}</Types>`) },
+    { nombre: '[Content_Types].xml', datos: enc.encode(`<?xml version="1.0" encoding="UTF-8" standalone="yes"?><Types xmlns="http://schemas.openxmlformats.org/package/2006/content-types"><Default Extension="rels" ContentType="application/vnd.openxmlformats-package.relationships+xml"/><Default Extension="xml" ContentType="application/xml"/><Override PartName="/xl/styles.xml" ContentType="application/vnd.openxmlformats-officedocument.spreadsheetml.styles+xml"/><Override PartName="/xl/workbook.xml" ContentType="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet.main+xml"/>${idx.map((i) => `<Override PartName="/xl/worksheets/sheet${i}.xml" ContentType="application/vnd.openxmlformats-officedocument.spreadsheetml.worksheet+xml"/>`).join('')}</Types>`) },
     { nombre: '_rels/.rels', datos: enc.encode('<?xml version="1.0" encoding="UTF-8" standalone="yes"?><Relationships xmlns="http://schemas.openxmlformats.org/package/2006/relationships"><Relationship Id="rId1" Type="http://schemas.openxmlformats.org/officeDocument/2006/relationships/officeDocument" Target="xl/workbook.xml"/></Relationships>') },
     { nombre: 'xl/workbook.xml', datos: enc.encode(`<?xml version="1.0" encoding="UTF-8" standalone="yes"?><workbook xmlns="http://schemas.openxmlformats.org/spreadsheetml/2006/main" xmlns:r="http://schemas.openxmlformats.org/officeDocument/2006/relationships"><sheets>${hojas.map((h, i) => `<sheet name="${xml(nombreHoja(h.nombre))}" sheetId="${idx[i] as string}" r:id="rId${idx[i] as string}"/>`).join('')}</sheets></workbook>`) },
-    { nombre: 'xl/_rels/workbook.xml.rels', datos: enc.encode(`<?xml version="1.0" encoding="UTF-8" standalone="yes"?><Relationships xmlns="http://schemas.openxmlformats.org/package/2006/relationships">${idx.map((i) => `<Relationship Id="rId${i}" Type="http://schemas.openxmlformats.org/officeDocument/2006/relationships/worksheet" Target="worksheets/sheet${i}.xml"/>`).join('')}</Relationships>`) },
+    { nombre: 'xl/_rels/workbook.xml.rels', datos: enc.encode(`<?xml version="1.0" encoding="UTF-8" standalone="yes"?><Relationships xmlns="http://schemas.openxmlformats.org/package/2006/relationships">${idx.map((i) => `<Relationship Id="rId${i}" Type="http://schemas.openxmlformats.org/officeDocument/2006/relationships/worksheet" Target="worksheets/sheet${i}.xml"/>`).join('')}<Relationship Id="rIdEstilos" Type="http://schemas.openxmlformats.org/officeDocument/2006/relationships/styles" Target="styles.xml"/></Relationships>`) },
+    { nombre: 'xl/styles.xml', datos: enc.encode('<?xml version="1.0" encoding="UTF-8" standalone="yes"?><styleSheet xmlns="http://schemas.openxmlformats.org/spreadsheetml/2006/main"><fonts count="1"><font><sz val="11"/><name val="Calibri"/></font></fonts><fills count="2"><fill><patternFill patternType="none"/></fill><fill><patternFill patternType="gray125"/></fill></fills><borders count="1"><border><left/><right/><top/><bottom/><diagonal/></border></borders><cellStyleXfs count="1"><xf numFmtId="0" fontId="0" fillId="0" borderId="0"/></cellStyleXfs><cellXfs count="1"><xf numFmtId="0" fontId="0" fillId="0" borderId="0" xfId="0"/></cellXfs><cellStyles count="1"><cellStyle name="Normal" xfId="0" builtinId="0"/></cellStyles></styleSheet>') },
     ...hojas.map((h, i): EntradaZip => ({ nombre: `xl/worksheets/sheet${idx[i] as string}.xml`, datos: enc.encode(xmlHoja(h)) })),
   ];
   return zip(entradas);
