@@ -260,12 +260,14 @@ function CarruselEditor({ plantilla, items, setItems, productos }: { plantilla: 
     void borrando.ejecutar(async () => {
       try {
         await api.llamar('borrarMedio', { medioId });
+        // La foto ya no existe: sale también del carrusel que se está editando, o «Guardar apariencia» fallaría por un medio inexistente.
+        setItems(items.filter((i) => i.medioId !== medioId));
+        conocidos.current.delete(medioId);
         propias.recargar();
         avisos.ok('Foto borrada. Se liberó su lugar.');
       } catch (e) {
-        // El conflicto («se usa en el carrusel…») trae el motivo exacto del servidor; el texto fijo del panel lo ocultaría.
-        const motivo = e instanceof ErrorApi && e.detalle.codigo === 'conflicto' ? e.message.replace(/\s\[\d{3}\]$/, '') : mensajeDeError(e);
-        avisos.error(`No se pudo borrar la foto: ${motivo}`);
+        const conflicto = e instanceof ErrorApi && e.detalle.codigo === 'conflicto';
+        avisos.error(`No se pudo borrar la foto: ${mensajeDeError(e)}${conflicto ? ' Quítela del carrusel y guarde la apariencia antes de borrarla.' : ''}`);
       }
     });
   const subida = useSubidaPortada((m) => {
@@ -308,7 +310,7 @@ function CarruselEditor({ plantilla, items, setItems, productos }: { plantilla: 
         {items.map((it, i) => (
           <li key={it.medioId} class="fila fila-alinear">
             <span>{i + 1}.</span>
-            <Miniatura medio={conocidos.current.get(it.medioId)} alt={it.alt.trim() !== '' ? it.alt : `Foto ${String(i + 1)} del carrusel`} respaldo={`Foto ${it.medioId.slice(0, 6)}`} orden={i + 1} />
+            <Miniatura medio={conocidos.current.get(it.medioId)} alt={it.alt.trim() !== '' ? it.alt : `Foto ${String(i + 1)} del carrusel`} respaldo={`Foto ${String(i + 1)}`} orden={i + 1} />
             <Campo etiqueta={`Texto alternativo de la foto ${i + 1}`} valor={it.alt} error={it.alt.trim() === '' ? 'Escriba qué se ve en la foto.' : undefined} onInput={(v) => setItems(items.map((x, j) => (j === i ? { ...x, alt: v } : x)))} />
             <Boton chico variante="secundario" onClick={() => mover(i, -1)} deshabilitado={i === 0} etiqueta={`Subir foto ${i + 1}`}>Subir</Boton>
             <Boton chico variante="secundario" onClick={() => mover(i, 1)} deshabilitado={i === items.length - 1} etiqueta={`Bajar foto ${i + 1}`}>Bajar</Boton>
@@ -319,10 +321,10 @@ function CarruselEditor({ plantilla, items, setItems, productos }: { plantilla: 
       {items.length < 8 && (
         <div class="fila fila-alinear">
           <SelectorBuscable etiqueta="Producto de la foto" valor={productoId} onCambio={setProductoId} opciones={productos.map((p) => ({ valor: p.id, texto: p.nombre }))} ayuda="Escriba para buscar el producto y luego elija la foto." />
-          {(fotos.datos ?? []).filter((m) => m.tipo === 'foto' && !items.some((i) => i.medioId === m.id)).map((m) => (
-            <Boton key={m.id} chico variante="secundario" etiqueta={`Agregar foto ${m.id.slice(0, 6)}`} onClick={() => setItems([...items, { medioId: m.id, alt: nombreProducto }])}>
-              <Miniatura medio={m} alt={nombreProducto !== '' ? `Foto de ${nombreProducto}` : 'Foto del producto'} respaldo={`Foto ${m.id.slice(0, 6)}`} />
-              Agregar foto {m.id.slice(0, 6)}
+          {(fotos.datos ?? []).filter((m) => m.tipo === 'foto').map((m, n) => ({ m, n })).filter(({ m }) => !items.some((i) => i.medioId === m.id)).map(({ m, n }) => (
+            <Boton key={m.id} chico variante="secundario" etiqueta={`Agregar foto ${String(n + 1)}`} onClick={() => setItems([...items, { medioId: m.id, alt: nombreProducto }])}>
+              <Miniatura medio={m} alt={nombreProducto !== '' ? `Foto de ${nombreProducto}` : 'Foto del producto'} respaldo={`Foto ${String(n + 1)}`} />
+              Agregar foto {n + 1}
             </Boton>
           ))}
         </div>

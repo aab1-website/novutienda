@@ -592,7 +592,7 @@ describe('catálogo: fotos propias de la portada', () => {
     await userEvent.click(await screen.findByRole('button', { name: 'Borrar foto' }));
     await userEvent.click(await screen.findByRole('button', { name: 'Sí, borrar' }));
     await waitFor(() => expect(e.api.llamadas.map((l) => l.nombre)).toContain('borrarMedio'));
-    expect(await screen.findByText(/No se pudo borrar la foto: .*carrusel/)).toBeTruthy();
+    expect(await screen.findByText(/No se pudo borrar la foto: .*carrusel.*Quítela del carrusel y guarde la apariencia antes de borrarla/)).toBeTruthy();
     expect(portada()).toBe(1);
     await userEvent.click(screen.getByRole('button', { name: 'Quitar foto 1' }));
     await userEvent.click(screen.getByRole('button', { name: 'Guardar apariencia' }));
@@ -603,6 +603,22 @@ describe('catálogo: fotos propias de la portada', () => {
     await waitFor(() => expect(screen.queryByRole('button', { name: 'Borrar foto' })).toBeNull());
     await subir('otra.jpg');
     await waitFor(() => expect(portada()).toBe(1));
+  });
+  it('borrar una foto propia recién subida, sin guardar, la quita del carrusel y «Guardar apariencia» sigue funcionando', async () => {
+    const e = crearEntorno('adm');
+    ver(e);
+    await subir();
+    await screen.findByLabelText('Texto alternativo de la foto 1');
+    await userEvent.click(await screen.findByRole('button', { name: 'Borrar foto' }));
+    await userEvent.click(await screen.findByRole('button', { name: 'Sí, borrar' }));
+    await waitFor(() => expect(screen.queryByLabelText('Texto alternativo de la foto 1')).toBeNull());
+    expect([...e.api.estado.medios.values()].filter((m) => m.productoId === '_portada')).toHaveLength(0);
+    // Con otra foto y su texto, guardar funciona: el borrador no arrastra el medio borrado.
+    await subir('otra.jpg');
+    await userEvent.type(await screen.findByLabelText('Texto alternativo de la foto 1'), 'El local');
+    await userEvent.click(screen.getByRole('button', { name: 'Guardar apariencia' }));
+    await waitFor(() => expect(e.api.llamadas.some((l) => l.nombre === 'guardarCarrusel')).toBe(true));
+    expect(screen.queryByText(/No se guardó|no existe/)).toBeNull();
   });
   it('con el carrusel lleno, «Subir foto a la portada» queda apagado con su motivo', async () => {
     const e = crearEntorno('adm');
