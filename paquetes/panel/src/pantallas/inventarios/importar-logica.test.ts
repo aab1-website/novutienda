@@ -1,6 +1,8 @@
 import { describe, expect, it } from 'vitest';
 import type { FilaSimulada, MercadoDeclarado, ResultadoImportacion, Simulacion } from '../../api/tipos.js';
-import { aplicables, columnasArchivo, encabezadosPlantilla, lineasConfirmacion, MAX_BYTES_ARCHIVO, notaPrecios, ordenarFilas, resumenSimulacion, lineaPrevia, motivoSinAplicar, textoBotonImportar, textoError, textoResultado, textoTandas, validarArchivo } from './importar-logica.js';
+import { crearEntorno } from '../../ayuda-pruebas.js';
+import type { ErrorFilaImportacion } from '../../api/tipos.js';
+import { aplicables, columnasArchivo, encabezadosPlantilla, lineasConfirmacion, MAX_BYTES_ARCHIVO, notaPrecios, ordenarFilas, resumenSimulacion, motivoSinAplicar, textoBotonImportar, textoError, textoResultado, textoTandas, validarArchivo } from './importar-logica.js';
 
 const REF: readonly MercadoDeclarado[] = [
   { id: 'BO', nombre: 'Bolivia', monedaVenta: 'BOB', monedaBase: 'USD', tieneTipoCambio: true },
@@ -91,9 +93,11 @@ describe('mensajes de la simulación', () => {
     expect(motivoSinAplicar({ crear: 0, actualizar: 0, sinCambios: 4, errores: 0 })).toBe('Las 4 filas válidas ya están iguales en el inventario: no hay nada que cambiar.');
     expect(motivoSinAplicar({ crear: 0, actualizar: 0, sinCambios: 0, errores: 0 })).toBe('No hay filas para crear ni actualizar.');
   });
-  it('el SKU repetido nombra la fila previa', () => {
-    const f = (linea: number, accion: 'crear' | 'error') => ({ linea, accion, sku: 'A1', errores: [], advertencias: [], cambios: [] }) as never;
-    expect(lineaPrevia([f(2, 'crear'), f(5, 'error')], f(5, 'error'))).toBe(2);
-    expect(textoError({ columna: 'sku', motivo: 'sku repetido en el archivo' }, 2)).toBe('Este SKU ya aparece en la fila 2 del archivo; deje una sola fila por producto.');
+  it('el SKU repetido nombra la fila previa, con la salida real de la simulación', async () => {
+    const e = crearEntorno('adm');
+    const r = await e.api.llamar('simularImportacionProductos', { csv: 'sku,nombre\nA1,Uno\nB2,Dos\nA1,Tres' } as never);
+    const err = r.filas.flatMap((f) => f.errores).find((x) => /^sku repetido/.test(x.motivo));
+    expect(err).toBeDefined();
+    expect(textoError(err as ErrorFilaImportacion)).toBe('Este SKU ya aparece en la fila 2 del archivo; deje una sola fila por producto.');
   });
 });

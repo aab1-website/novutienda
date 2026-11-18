@@ -87,19 +87,12 @@ export function ordenarFilas(filas: readonly FilaSimulada[]): FilaSimulada[] {
   return [...filas].sort((a, b) => RANGO[a.accion] - RANGO[b.accion] || a.linea - b.linea);
 }
 
-/** `primera`: línea del archivo donde el SKU apareció antes (solo para el motivo «sku repetido»). */
-export function textoError(e: ErrorFilaImportacion, primera?: number): string {
-  if (e.columna === 'sku' && /repetido/i.test(e.motivo)) {
+export function textoError(e: ErrorFilaImportacion): string {
+  if (/^sku repetido/i.test(e.motivo)) {
+    const primera = e.filaPrevia;
     return primera === undefined ? 'Este SKU ya aparece en otra fila del archivo; deje una sola fila por producto.' : `Este SKU ya aparece en la fila ${String(primera)} del archivo; deje una sola fila por producto.`;
   }
   return e.columna === null ? e.motivo : `Columna «${e.columna}»: ${e.motivo}`;
-}
-
-/** Línea de la primera fila del archivo con el mismo SKU que `f` (la que quedó antes), si existe. */
-export function lineaPrevia(filas: readonly FilaSimulada[], f: FilaSimulada): number | undefined {
-  const sku = datosDeFila(f).sku;
-  if (sku === '') return undefined;
-  return filas.filter((x) => x.linea < f.linea && datosDeFila(x).sku === sku).map((x) => x.linea).sort((a, b) => a - b)[0];
 }
 
 /** Texto del botón principal y su motivo cuando no hay nada que aplicar. */

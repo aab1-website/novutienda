@@ -16,7 +16,7 @@ import { aBase64, formatoBytes } from '../../util/base64.js';
 import { aCsv, descargarTexto } from '../../util/csv.js';
 import {
   ACCION_TEXTO, ACEPTA_ARCHIVO, aplicables, columnasArchivo, COLUMNAS_STOCK, datosDeFila, encabezadosPlantilla, lineasConfirmacion, MAX_BYTES_ARCHIVO, MAX_FILAS, notaPrecios, ordenarFilas, resumenSimulacion,
-  avisoOmitidas, lineaPrevia, lineasConError, motivoSinAplicar, textoBotonImportar, TEXTO_ARCHIVO_CAMBIO, TEXTO_DESACTUALIZADA, textoDetencion, textoError, textoResultado, textoTandas, validarArchivo,
+  avisoOmitidas, lineasConError, motivoSinAplicar, textoBotonImportar, TEXTO_ARCHIVO_CAMBIO, TEXTO_DESACTUALIZADA, textoDetencion, textoError, textoResultado, textoTandas, validarArchivo,
 } from './importar-logica.js';
 import './inventario.css';
 
@@ -27,10 +27,10 @@ interface Fuente {
   readonly archivo: string;
 }
 
-function Detalle({ f, filas }: { f: FilaSimulada; filas: readonly FilaSimulada[] }): JSX.Element {
+function Detalle({ f }: { f: FilaSimulada }): JSX.Element {
   return (
     <>
-      {f.errores.length > 0 && <ul class="lista-simple">{f.errores.map((e) => { const t = textoError(e, lineaPrevia(filas, f)); return <li key={t} class="texto-error">{t}</li>; })}</ul>}
+      {f.errores.length > 0 && <ul class="lista-simple">{f.errores.map((e) => { const t = textoError(e); return <li key={t} class="texto-error">{t}</li>; })}</ul>}
       {f.advertencias.length > 0 && <ul class="lista-simple">{f.advertencias.map((a) => <li key={a} class="texto-suave">Aviso: {a}</li>)}</ul>}
       {f.accion === 'actualizar' && f.cambios.length > 0 && <span class="texto-suave">Cambia: {f.cambios.join(', ')}</span>}
       {f.errores.length === 0 && f.advertencias.length === 0 && (f.accion !== 'actualizar' || f.cambios.length === 0) ? '—' : null}
@@ -53,7 +53,7 @@ function TablaSimulacion({ sim }: { sim: Simulacion }): JSX.Element {
         { id: 'producto', titulo: 'Producto', valor: (f) => datosDeFila(f).nombre || '—', encabezadoFila: true },
         { id: 'sku', titulo: 'SKU', valor: (f) => datosDeFila(f).sku || '—' },
         { id: 'accion', titulo: 'Acción', valor: (f) => ACCION_TEXTO[f.accion], celda: (f) => <span class={f.accion === 'error' ? 'texto-error' : undefined}>{ACCION_TEXTO[f.accion]}</span> },
-        { id: 'detalle', titulo: 'Detalle', valor: (f) => f.errores.map((e) => e.motivo).join(' '), celda: (f) => <Detalle f={f} filas={sim.filas} /> },
+        { id: 'detalle', titulo: 'Detalle', valor: (f) => f.errores.map((e) => e.motivo).join(' '), celda: (f) => <Detalle f={f} /> },
       ]}
     />
   );
@@ -270,7 +270,7 @@ export function ImportarExportar(): JSX.Element {
           <div class="fila">
             <Boton
               onClick={() => setConfirmando({ omitir: false })}
-              motivo={nAplicar === 0 && r.sinCambios > 0 ? motivoSinAplicar(r) : hayErrores ? `El archivo tiene ${String(r.errores)} ${r.errores === 1 ? 'fila' : 'filas'} con error. Corríjalo y vuelva a elegirlo, o importe solo las válidas.` : nAplicar === 0 ? motivoSinAplicar(r) : undefined}
+              motivo={nAplicar === 0 ? motivoSinAplicar(r) : hayErrores ? `El archivo tiene ${String(r.errores)} ${r.errores === 1 ? 'fila' : 'filas'} con error. Corríjalo y vuelva a elegirlo, o importe solo las válidas.` : undefined}
             >
               {textoBotonImportar(nAplicar)}
             </Boton>

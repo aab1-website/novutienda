@@ -92,7 +92,7 @@ function leer(c: Contexto, entrada: { archivo?: string | undefined; csv?: string
   if (!cargaInicial && (Object.keys(STOCK) as Columna[]).some((k) => indice.has(k))) throw fallo('entrada-invalida', 'El CSV no toca el stock: las columnas de stock solo se admiten en la carga inicial');
   if (datos.length < 1 || datos.length > MAX_FILAS) throw fallo('entrada-invalida', `El CSV debe tener entre 1 y ${MAX_FILAS} filas`);
   const ids = new Set<string>();
-  const skus = new Set<string>();
+  const skus = new Map<string, number>();
   const porMinusculas = new Map<string, { sku: string; avisos: string[] }[]>();
   const filas: Fila[] = [];
   for (const [k, f] of datos.entries()) {
@@ -119,10 +119,10 @@ function leer(c: Contexto, entrada: { archivo?: string | undefined; csv?: string
     const sku = celda('sku');
     if (sku !== undefined) {
       if (!SKU.test(sku)) err('sku', 'sku inválido');
-      else if (skus.has(sku)) err('sku', 'sku repetido en el archivo');
+      else if (skus.has(sku)) fila.errores.push({ columna: indice.get('sku')?.etiqueta ?? 'sku', motivo: 'sku repetido en el archivo', filaPrevia: skus.get(sku) as number });
       else {
         fila.d.sku = sku;
-        skus.add(sku);
+        skus.set(sku, fila.linea);
         const parecidos = porMinusculas.get(sku.toLowerCase()) ?? [];
         if (parecidos.some((x) => x.sku !== sku)) {
           fila.advertencias.push(PARECIDO_SKU);

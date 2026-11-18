@@ -13,7 +13,7 @@ import { useBorrador, useCambiosSinGuardar } from '../../ui/guardia.js';
 import { useAccion, useCarga, type Accion } from '../../ui/hooks.js';
 import { SelectorBuscable } from '../../ui/selector-buscable.js';
 import {
-  claveLinea, haySeQuedan, lecturaDe, leerDiferencia, MAX_LINEAS, resumenAjuste, resumenIngreso, resumenTraspaso, revisarAjuste, revisarLineas, type FilaLinea, type LecturaExistencia, type Resumen,
+  claveLinea, haySeQuedan, lecturaDe, leerDiferencia, MAX_LINEAS, resumenAjuste, resumenIngreso, resumenTraspaso, revisarAjuste, revisarLineas, separar, type FilaLinea, type LecturaExistencia, type Resumen,
 } from './movimientos-resumen.js';
 import { nombreAlmacen, OPCIONES_ALMACEN } from './nombres.js';
 import { TablaMovimientos } from './registro.js';
@@ -21,8 +21,6 @@ import { useProductos } from './usar-productos.js';
 import './inventario.css';
 
 const filaVacia = (): FilaLinea => ({ id: nuevoId(), productoId: '', cantidad: '', series: '' });
-/** Series distintas escritas: separadas por espacio, coma, punto y coma o salto de línea. */
-const contarSeries = (t: string): number => new Set(t.split(/[\s,;]+/).filter((x) => x !== '')).size;
 const lineaSucia = (f: FilaLinea): boolean => f.productoId !== '' || f.cantidad.trim() !== '' || f.series.trim() !== '';
 
 /** Producto elegido de una lista con búsqueda, sin valor por omisión (nada queda elegido hasta que la persona elige). */
@@ -119,10 +117,17 @@ function LineasProducto({ filas, setFilas, productos, errores, origen }: {
             <div class="cuadricula">
               <SelectorProducto productos={productos} valor={f.productoId} onCambio={(v) => cambiar({ productoId: v })} error={errores[claveLinea(f, 'producto')]} />
               {p?.conSerie ? (
-                <>
+                <div
+                  onKeyDown={(ev) => {
+                    // Los lectores de código mandan Enter tras cada lectura: separa la serie en vez de enviar el formulario.
+                    if (ev.key !== 'Enter' || !(ev.target instanceof HTMLInputElement)) return;
+                    ev.preventDefault();
+                    if (f.series.trim() !== '' && !/[\s,;]$/.test(f.series)) cambiar({ series: `${f.series} ` });
+                  }}
+                >
                   <Campo etiqueta="Series" valor={f.series} requerido onInput={(v) => cambiar({ series: v })} ayuda="Escriba o escanee una serie por unidad, separadas por espacio, coma o Enter." error={errores[claveLinea(f, 'series')]} />
-                  <p class="texto-suave" role="status" data-prueba="cantidad-series">Cantidad: {String(contarSeries(f.series))} (según las series)</p>
-                </>
+                  <p class="texto-suave" data-prueba="cantidad-series">Cantidad: {String(new Set(separar(f.series)).size)} (según las series)</p>
+                </div>
               ) : (
                 <Campo
                   etiqueta="Cantidad" valor={f.cantidad} inputMode="numeric" requerido onInput={(v) => cambiar({ cantidad: v })} error={errores[claveLinea(f, 'cantidad')]}

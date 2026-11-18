@@ -113,6 +113,18 @@ describe('ingreso', () => {
     expect(ids[0]).toBe(ids[1]);
   });
 
+  it('Enter en «Series» separa la serie (lector de código) y no envía el formulario', async () => {
+    const e = crearEntorno('adm');
+    ver(e, 'ingreso');
+    const u = userEvent.setup();
+    await screen.findByRole('heading', { name: 'Ingreso de mercadería' });
+    await elegir(u, 'celular', /Celular A1/);
+    await u.type(screen.getByLabelText(/^Series/), 'N-100{Enter}N-101{Enter}');
+    expect(screen.queryByRole('dialog')).toBeNull();
+    expect(screen.getByText('Cantidad: 2 (según las series)')).toBeTruthy();
+    expect(screen.getByText(/Escriba o escanee una serie por unidad/)).toBeTruthy();
+  });
+
   it('un producto con serie pide una serie por unidad y el resumen las nombra', async () => {
     const e = crearEntorno('adm');
     ver(e, 'ingreso');

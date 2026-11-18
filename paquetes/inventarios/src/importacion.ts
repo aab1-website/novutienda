@@ -130,6 +130,8 @@ export interface ErrorFila {
   /** Encabezado de la columna tal como viene en el archivo; `null` si el error es de la fila entera. */
   readonly columna: string | null;
   readonly motivo: string;
+  /** En «sku repetido»: línea del archivo donde el SKU apareció primero. */
+  readonly filaPrevia?: number;
 }
 
 interface DatosFila {
@@ -242,7 +244,7 @@ export function leerCsvFilas(fuente: FuenteTabla, cargaInicial: boolean, comerci
 
   const salida: FilaLeida[] = [];
   const ids = new Set<string>();
-  const skus = new Set<string>();
+  const skus = new Map<string, number>();
   /** SKU en minúsculas → avisos de las filas que lo traen: dos SKU que solo difieren en mayúsculas se permiten, con aviso. */
   const porMinusculas = new Map<string, { sku: string; avisos: string[] }[]>();
   for (const [k, f] of datos.entries()) {
@@ -285,10 +287,15 @@ export function leerCsvFilas(fuente: FuenteTabla, cargaInicial: boolean, comerci
     const sku = celda('sku');
     if (sku !== undefined) {
       if (!esSku(sku)) err('sku', 'sku inválido');
-      else if (skus.has(sku)) err('sku', 'sku repetido en el archivo');
+      else if (skus.has(sku)) {
+        err('sku', 'sku repetido en el archivo');
+        const previa = skus.get(sku);
+        const ult = errores[errores.length - 1];
+        if (previa !== undefined && ult !== undefined) errores[errores.length - 1] = { ...ult, filaPrevia: previa };
+      }
       else {
         d.sku = sku;
-        skus.add(sku);
+        skus.set(sku, linea);
         const parecidos = porMinusculas.get(sku.toLowerCase()) ?? [];
         const aviso = PARECIDO;
         if (parecidos.some((x) => x.sku !== sku)) {
