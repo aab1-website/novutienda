@@ -452,8 +452,8 @@ describe('catálogo y sitio', () => {
     expect(within(grupo).getAllByRole('radio')).toHaveLength(5);
     expect(within(grupo).getAllByRole('img').length).toBe(10);
     await u.click(within(grupo).getByRole('radio', { name: /Ciruela/ }));
-    await u.clear(screen.getByLabelText(/WhatsApp del asistente/));
-    await u.type(screen.getByLabelText(/WhatsApp del asistente/), '59171112222');
+    await u.clear(screen.getByLabelText(/WhatsApp de la tienda/));
+    await u.type(screen.getByLabelText(/WhatsApp de la tienda/), '59171112222');
     await u.click(screen.getByRole('button', { name: 'Guardar apariencia' }));
     expect(await screen.findByText(/Apariencia guardada/)).toBeTruthy();
     const c = await e.api.llamar('leerConfigSitio', {});
