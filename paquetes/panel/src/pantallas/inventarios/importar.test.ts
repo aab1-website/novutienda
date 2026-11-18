@@ -7,7 +7,10 @@ import { ErrorApi } from '../../api/errores.js';
 import { crearEntorno, type Entorno } from '../../ayuda-pruebas.js';
 import { archivoExcelDoble } from '../../doble/inventario/importacion.js';
 import { ProveedorGuardia } from '../../ui/guardia.js';
+import * as escritor from './escritor-xlsx.js';
 import { ImportarExportar } from './importar.js';
+
+vi.mock('./escritor-xlsx.js', async (original) => ({ ...(await original<typeof import('./escritor-xlsx.js')>()), descargarBytes: vi.fn() }));
 
 afterEach(() => {
   cleanup();
@@ -31,15 +34,36 @@ describe('importar: qué es y cómo se arma el archivo', () => {
     expect(screen.getByText(/solo por Inventario/)).toBeTruthy();
     expect(screen.getByText('Qué columnas lleva el archivo')).toBeTruthy();
     expect(screen.getByText(/Cada producto se reconoce por su SKU/)).toBeTruthy();
-    expect(screen.getByRole('button', { name: 'Descargar plantilla' })).toBeTruthy();
-    expect(screen.getByRole('button', { name: 'Exportar productos' })).toBeTruthy();
+    expect(screen.getByRole('button', { name: 'Descargar plantilla (Excel)' })).toBeTruthy();
+    expect(screen.getByRole('button', { name: 'Exportar productos (Excel)' })).toBeTruthy();
+    expect(screen.getByRole('button', { name: 'Plantilla en CSV' })).toBeTruthy();
+    expect(screen.getByRole('button', { name: 'Exportar en CSV' })).toBeTruthy();
     expect(entradaArchivo().accept).toContain('.xlsx');
+  });
+
+  it('«Descargar plantilla (Excel)» y «Exportar productos (Excel)» bajan un .xlsx válido', async () => {
+    const e = crearEntorno('adm');
+    ver(e);
+    const u = userEvent.setup();
+    const bajar = vi.mocked(escritor.descargarBytes);
+    bajar.mockClear();
+    await u.click(await screen.findByRole('button', { name: 'Descargar plantilla (Excel)' }));
+    expect(bajar).toHaveBeenCalledTimes(1);
+    expect(bajar.mock.calls[0]?.[0]).toBe('plantilla-productos.xlsx');
+    const zip = (b: Uint8Array): boolean => b[0] === 0x50 && b[1] === 0x4b;
+    expect(zip(bajar.mock.calls[0]?.[1] as Uint8Array)).toBe(true);
+    await u.click(screen.getByRole('button', { name: 'Exportar productos (Excel)' }));
+    expect(await screen.findByText('Archivo exportado.')).toBeTruthy();
+    expect(bajar).toHaveBeenCalledTimes(2);
+    expect(bajar.mock.calls[1]?.[0]).toBe('productos.xlsx');
+    expect(zip(bajar.mock.calls[1]?.[1] as Uint8Array)).toBe(true);
+    expect(llamadas(e, 'exportarProductosCsv')).toHaveLength(1);
   });
 
   it('un supervisor puede exportar pero no importar', async () => {
     const e = crearEntorno('sup');
     ver(e);
-    expect(await screen.findByRole('button', { name: 'Exportar productos' })).toBeTruthy();
+    expect(await screen.findByRole('button', { name: 'Exportar productos (Excel)' })).toBeTruthy();
     expect(screen.queryByLabelText('Archivo de productos (CSV o Excel)')).toBeNull();
     expect(screen.getByText('La importación la hace un administrador.')).toBeTruthy();
   });

@@ -110,8 +110,6 @@ export interface Contrato {
   ordenarSecciones: { entrada: { orden: readonly string[] }; salida: Ok };
   guardarCarrusel: { entrada: { carrusel: Carrusel }; salida: Ok };
   guardarConfigSitio: { entrada: { config: ConfigSitio }; salida: Ok };
-  /** Se renombra (en la consola es `exportarProductosCsv`) para no chocar con la de Inventarios. */
-  exportarProductosCsvSitio: { entrada: Vacio; salida: { csv: string } };
   // ---- Identidad (núcleo) ----
   asignarRol: { entrada: { uid: string; rol: Rol }; salida: Ok };
   quitarRol: { entrada: { uid: string }; salida: Ok };

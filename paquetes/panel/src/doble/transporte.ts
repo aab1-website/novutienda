@@ -145,7 +145,6 @@ const ACCIONES: Readonly<Record<string, WireHandler>> = {
   },
   'consola.guardarSeccion': ok('guardarSeccion'), 'consola.eliminarSeccion': ok('eliminarSeccion'), 'consola.ordenarSecciones': ok('ordenarSecciones'),
   'consola.guardarCarrusel': ok('guardarCarrusel'), 'consola.guardarConfigSitio': ok('guardarConfigSitio'),
-  'consola.exportarProductosCsv': igual('exportarProductosCsvSitio'),
   'consola.listarUsuarios': async (c) => ({
     usuarios: ((await legado(c, 'listarUsuarios', {})) as Obj[]).map((u) =>
       u['estado'] === 'invitado'

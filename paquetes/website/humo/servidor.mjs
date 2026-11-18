@@ -5,7 +5,8 @@ import { existsSync, readFileSync, statSync } from 'node:fs';
 import { extname, join, normalize, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
 
-const RAIZ = resolve(fileURLToPath(new URL('../../../dist/website', import.meta.url)));
+// SITIO_OUT_DIR: otro dist (el del catálogo de varias páginas); por omisión, dist/website.
+const RAIZ = resolve(process.env.SITIO_OUT_DIR || fileURLToPath(new URL('../../../dist/website', import.meta.url)));
 const PUERTO = Number(process.env.PUERTO_HUMO ?? 4331);
 const TIPOS = {
   '.html': 'text/html; charset=utf-8', '.js': 'text/javascript; charset=utf-8', '.css': 'text/css; charset=utf-8',

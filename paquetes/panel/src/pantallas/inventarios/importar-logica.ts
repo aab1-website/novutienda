@@ -1,5 +1,6 @@
 import type { CodigoMoneda, ErrorFilaImportacion, FilaSimulada, MercadoDeclarado, ResultadoImportacion, Simulacion } from '../../api/tipos.js';
 import { formatoBytes } from '../../util/base64.js';
+import type { HojaXlsx } from './escritor-xlsx.js';
 import { nombreMoneda } from './nombres.js';
 
 /** Lógica pura de la importación de productos (la pantalla es `importar.tsx`). */
@@ -194,4 +195,49 @@ export function avisoOmitidas(r: ResultadoImportacion, aceptadas: readonly numbe
     ? null
     : `Atención: usted aceptó omitir ${plural(aceptadas.length, 'fila', 'filas')} (líneas: ${textoLineas(aceptadas)}) y el servidor omitió ${String(r.omitidas)} (líneas: ${textoLineas(omitidas)}). Revise ese resultado antes de seguir.`;
   return { texto, difiere };
+}
+
+interface DetalleColumna { readonly formato: string; readonly obligatoria: string; readonly ejemplo: string }
+
+const DETALLE_FIJO: Readonly<Record<string, DetalleColumna>> = {
+  nombre: { formato: 'Texto', obligatoria: 'Sí, al crear', ejemplo: 'Auricular inalámbrico' },
+  categoria: { formato: 'Texto', obligatoria: 'Sí, al crear', ejemplo: 'Audio' },
+  marca: { formato: 'Texto', obligatoria: 'No', ejemplo: 'Sonora' },
+  sku: { formato: 'Hasta 40 caracteres: letras, números, punto, guion y guion bajo; sin espacios', obligatoria: 'Sí, en cada fila', ejemplo: 'AUR-001' },
+  conSerie: { formato: 'sí o no', obligatoria: 'No (si falta, es «no»)', ejemplo: 'no' },
+  garantiaMeses: { formato: 'Número entero de meses', obligatoria: 'No', ejemplo: '12' },
+  minimo: { formato: 'Número entero', obligatoria: 'No', ejemplo: '5' },
+  costo: { formato: 'Número con hasta 2 decimales, con punto', obligatoria: 'No', ejemplo: '800.00' },
+  activo: { formato: 'sí o no', obligatoria: 'No (si falta, es «sí»)', ejemplo: 'sí' },
+  publicado: { formato: 'sí o no', obligatoria: 'No (si falta, es «no»)', ejemplo: 'no' },
+  stockTienda: { formato: 'Número entero', obligatoria: 'No', ejemplo: '10' },
+  stockDeposito1: { formato: 'Número entero', obligatoria: 'No', ejemplo: '0' },
+  stockDeposito2: { formato: 'Número entero', obligatoria: 'No', ejemplo: '0' },
+};
+
+const detalleDe = (nombre: string): DetalleColumna =>
+  DETALLE_FIJO[nombre] ?? { formato: 'Número con hasta 2 decimales, con punto', obligatoria: 'No', ejemplo: '1234.50' };
+
+/** Nombre del archivo de la plantilla en Excel. */
+export const nombrePlantillaXlsx = (cargaInicial: boolean): string => (cargaInicial ? 'plantilla-carga-inicial.xlsx' : 'plantilla-productos.xlsx');
+
+/**
+ * Plantilla de Excel: la hoja «Productos» (la que lee la importación) con los encabezados y una fila de ejemplo, y la hoja
+ * «Instrucciones» con el formato, si es obligatoria y un ejemplo de cada columna.
+ */
+export function hojasPlantilla(cargaInicial: boolean, mercados: readonly MercadoDeclarado[], monedaCosto?: CodigoMoneda): readonly HojaXlsx[] {
+  const columnas = [...columnasArchivo(mercados, monedaCosto), ...(cargaInicial ? COLUMNAS_STOCK : [])];
+  const instrucciones: (readonly string[])[] = [
+    ['Columna', 'Qué lleva', 'Formato', '¿Es obligatoria?', 'Ejemplo'],
+    ...columnas.map((c) => { const d = detalleDe(c.nombre); return [c.nombre, c.texto, d.formato, d.obligatoria, d.ejemplo]; }),
+    [],
+    ['Notas'],
+    ['Cada producto se reconoce por su SKU: si ya existe se actualiza y, si no, se crea.'],
+    [notaPrecios(mercados)],
+    ['Borre la fila de ejemplo antes de subir el archivo. No cambie los nombres de las columnas de la hoja «Productos».'],
+  ];
+  return [
+    { nombre: 'Productos', filas: [columnas.map((c) => c.nombre), columnas.map((c) => detalleDe(c.nombre).ejemplo)], anchos: columnas.map((c) => Math.max(14, c.nombre.length + 4)) },
+    { nombre: 'Instrucciones', filas: instrucciones, anchos: [20, 70, 50, 24, 24] },
+  ];
 }

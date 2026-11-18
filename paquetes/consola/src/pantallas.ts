@@ -21,17 +21,13 @@ export const PANTALLAS: readonly Pantalla[] = [
   },
   {
     id: 'productos', titulo: 'Productos', roles: ['sup', 'adm'], lecturas: ['fichasWeb'],
-    llamadas: ['exportarProductosCsv'],
+    llamadas: [],
     notas: 'Lista desde el puerto del catálogo (Inventarios) con el estado de la ficha; alta y edición son de Inventarios (la consola no crea productos). Ocultar = estado «oculto» de la ficha.',
   },
   {
     id: 'ficha', titulo: 'Editor de ficha', roles: ['sup', 'adm'], lecturas: ['fichasWeb', 'medios', 'subidas'],
     llamadas: ['guardarFicha', 'reservarSubida', 'finalizarSubida', 'borrarMedio', 'preciosDelDia'],
     notas: 'Precio base por mercado con el precio del día en la moneda de cada mercado al lado (preciosDelDia, redondeo vigente del comercio). La subida va a la ruta privada de la reserva; después se finaliza. Solo adm cambia precios.',
-  },
-  {
-    id: 'exportar', titulo: 'Exportar', roles: ['sup', 'adm'], lecturas: [], llamadas: ['exportarProductosCsv'],
-    notas: 'Solo exportación del catálogo. Los productos se importan por Inventarios; la consola no crea productos.',
   },
   {
     id: 'apariencia', titulo: 'Apariencia', roles: ['adm'], lecturas: ['sitio', 'carruseles', 'medios'],

@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import type { Rol } from '@novutienda/nucleo';
-import { exportarProductosCsv, proyectarDisponibilidad } from '@novutienda/consola';
+import { proyectarDisponibilidad } from '@novutienda/consola';
 import { accionesConsola } from '../../plataforma/funciones/servidor/llamadas/consola.js';
 import { CatalogoDoble } from './dobles.js';
 
@@ -44,8 +44,4 @@ describe('consola.catalogo y el conteo abierto', () => {
     expect(proyectarDisponibilidad(await c.listarProductos())).toEqual({ a: { disponible: true }, b: { disponible: true } });
   });
 
-  it('la exportación CSV no trae existencias ni disponibilidad', async () => {
-    const csv = exportarProductosCsv(await catalogo(true).listarProductos());
-    expect(csv).not.toMatch(/stock|existenc|disponible|agotado/i);
-  });
 });

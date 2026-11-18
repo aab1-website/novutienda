@@ -172,7 +172,7 @@ describe('manifiesto y pantallas', () => {
     // La acción `preciosDelDia` se atiende con la función `preciosDelDiaDe`.
     const funcion = (l: string): string => (l === 'preciosDelDia' ? 'preciosDelDiaDe' : l);
     for (const p of PANTALLAS) for (const l of p.llamadas) expect(exportadas.has(funcion(l)), `${p.id}: ${l}`).toBe(true);
-    expect(PANTALLAS.map((p) => p.id)).toEqual(['tablero', 'productos', 'ficha', 'exportar', 'apariencia', 'secciones', 'usuarios']);
+    expect(PANTALLAS.map((p) => p.id)).toEqual(['tablero', 'productos', 'ficha', 'apariencia', 'secciones', 'usuarios']);
   });
 });
 

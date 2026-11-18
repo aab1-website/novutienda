@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import * as consola from '@novutienda/consola';
-import { exportarProductosCsv, manifiestoConsola, PANTALLAS } from '@novutienda/consola';
+import { manifiestoConsola, PANTALLAS } from '@novutienda/consola';
 
 /**
  * Regla de negocio: no pueden existir ítems en el catálogo que no existan en Inventario. La consola no da de alta,
@@ -24,10 +24,7 @@ describe('la consola no crea productos', () => {
     expect(llamadas.filter((l) => /^(crearProducto|editarProducto|cambiarPrecio|importarProductos|simularImportacion)/.test(l))).toEqual([]);
   });
 
-  it('conserva la exportación del catálogo: neutraliza fórmulas y no incluye stock', () => {
-    const csv = exportarProductosCsv([{ id: 'cam-1', nombre: '=EVIL()', categoria: 'video', activo: true, disponible: true, precioUSD: { bo: 1.5, ar: 2 }, stockTotal: 99 }]);
-    expect(csv.startsWith('﻿id,nombre')).toBe(true);
-    expect(csv).toContain("'=EVIL()");
-    expect(csv).not.toContain('99');
+  it('no ofrece exportar el catálogo: eso es de Inventarios', () => {
+    expect((manifiestoConsola.acciones ?? []).some((a) => a.nombre === 'exportarProductosCsv')).toBe(false);
   });
 });
