@@ -1,5 +1,6 @@
 import type { JSX } from 'preact';
 import { useEffect, useRef, useState } from 'preact/hooks';
+import { esWhatsappValido, pareceNumeroDeRelleno } from './whatsapp.js';
 import { Miniatura } from './miniatura-vista.js';
 import { LIMITES_PANEL, PLANTILLAS_SITIO, type Carrusel, type Medio, type ConfigSitio, type PlantillaSitio } from '../../api/tipos.js';
 import { ErrorApi, mensajeDeError } from '../../api/errores.js';
@@ -112,7 +113,6 @@ function VistaPrevia({ id, tema }: { id: PlantillaSitio; tema: 'claro' | 'oscuro
 
 const CLAVE_CONFIG = 'consola.apariencia.config';
 const CLAVE_CARRUSELES = 'consola.apariencia.carruseles';
-const WHATSAPP = /^[1-9]\d{7,14}$/;
 const CONFIG_INICIAL: ConfigSitio = { plantillaActiva: 'cielo', whatsappNovuchat: '', medicion: {} };
 type Items = Carrusel['items'];
 type Borradores = Partial<Record<PlantillaSitio, Items>>;
@@ -172,10 +172,10 @@ function Apariencia(): JSX.Element {
   };
   const items = carrB.valor[c.plantillaActiva] ?? delServidor(c.plantillaActiva);
   const setItems = (i: Items): void => carrB.poner((prev) => ({ ...prev, [c.plantillaActiva]: i }));
-  const whatsappValido = WHATSAPP.test(c.whatsappNovuchat);
+  const whatsappValido = esWhatsappValido(c.whatsappNovuchat);
   const sinTexto = editadas.find((p) => (carrB.valor[p] ?? []).some((i) => i.alt.trim() === ''));
   const motivo = cfgSucia && !whatsappValido
-    ? 'Escriba el WhatsApp del asistente: solo dígitos, con código de país (de 8 a 15 dígitos).'
+    ? 'Escriba el WhatsApp de la tienda: solo dígitos, con código de país (de 8 a 15 dígitos).'
     : sinTexto !== undefined
       ? `Escriba el texto alternativo de cada foto del carrusel de ${PALETAS[sinTexto].nombre}.`
       : !sucio
@@ -229,7 +229,7 @@ function Apariencia(): JSX.Element {
           ))}
         </fieldset>
         <div class="cuadricula">
-          <Campo etiqueta="WhatsApp del asistente (solo dígitos, con código de país)" valor={c.whatsappNovuchat} onInput={(v) => cfgB.poner({ ...c, whatsappNovuchat: v })} inputMode="numeric" requerido ayuda="Ejemplo: 59171234567 (sin +, espacios ni guiones)." error={c.whatsappNovuchat !== '' && !whatsappValido ? 'Use solo dígitos, con código de país, de 8 a 15 dígitos.' : undefined} />
+          <Campo etiqueta="WhatsApp de la tienda (el número del asistente de NovuChat; solo dígitos, con código de país)" valor={c.whatsappNovuchat} onInput={(v) => cfgB.poner({ ...c, whatsappNovuchat: v })} inputMode="numeric" requerido ayuda={pareceNumeroDeRelleno(c.whatsappNovuchat) ? "Este número parece de prueba (un 0 después del código de país): WhatsApp no lo acepta. Escriba el número real de la tienda." : "Ejemplo: 59171234567 (sin +, espacios ni guiones)."} error={c.whatsappNovuchat !== '' && !whatsappValido ? 'Use solo dígitos, con código de país, de 8 a 15 dígitos.' : undefined} />
           <Campo etiqueta="Google Analytics (G-…)" valor={med.ga4 ?? ''} onInput={(v) => setMed('ga4', v)} ayuda="Opcional. Ejemplo: G-ABC123XYZ." />
           <Campo etiqueta="Search Console" valor={med.searchConsole ?? ''} onInput={(v) => setMed('searchConsole', v)} ayuda="Opcional. Código de verificación del sitio." />
           <Campo etiqueta="Píxel de Meta" valor={med.metaPixel ?? ''} onInput={(v) => setMed('metaPixel', v)} ayuda="Opcional. Solo dígitos, de 8 a 20." />
