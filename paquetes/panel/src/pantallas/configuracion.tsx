@@ -344,21 +344,21 @@ function MercadosYMonedas(): JSX.Element {
 }
 
 /** `plantillaRecibo` la aporta el compositor solo si el módulo de recibos está encendido; sin ella no hay pestaña. */
-export function PantallaConfiguracion({ sub, plantillaRecibo: PlantillaRecibo }: { sub: string; plantillaRecibo?: () => JSX.Element }): JSX.Element {
-  const actual = sub === 'recibo' && PlantillaRecibo !== undefined ? 'recibo' : 'negocio';
-  const items = PlantillaRecibo === undefined ? [{ id: 'negocio', titulo: 'Negocio y POS' }] : [{ id: 'negocio', titulo: 'Negocio y POS' }, { id: 'recibo', titulo: 'Plantilla del recibo' }];
+export function PantallaConfiguracion({ sub, plantillaRecibo: PestanaRecibo }: { sub: string; plantillaRecibo?: () => JSX.Element }): JSX.Element {
+  const actual = sub === 'recibo' && PestanaRecibo !== undefined ? 'recibo' : 'negocio';
+  const items = PestanaRecibo === undefined ? [{ id: 'negocio', titulo: 'Negocio y POS' }] : [{ id: 'negocio', titulo: 'Negocio y POS' }, { id: 'recibo', titulo: 'Plantilla del recibo' }];
   return (
     <div>
       <h1>Configuración</h1>
       <Pestanas etiqueta="Configuración" base="configuracion" actual={actual} items={items} />
-      {actual === 'negocio' || PlantillaRecibo === undefined ? (
+      {actual === 'negocio' || PestanaRecibo === undefined ? (
         <>
           <DatosDelNegocio />
           <ConfigPosForm />
           <MercadosYMonedas />
         </>
       ) : (
-        <PlantillaRecibo />
+        <PestanaRecibo />
       )}
     </div>
   );

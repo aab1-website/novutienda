@@ -20,5 +20,13 @@ describe('Plantilla del recibo: vista previa', () => {
     await u.clear(campo);
     await u.type(campo, 'Gracias por su compra, vuelva pronto');
     expect(await within(vista).findByText('Gracias por su compra, vuelva pronto')).toBeTruthy();
+    const garantia = screen.getByLabelText('Política de garantía');
+    await u.clear(garantia);
+    await u.type(garantia, 'Garantia de doce meses');
+    expect(await within(vista).findByText(/Garantia de doce meses/)).toBeTruthy();
+    const cambios = screen.getByLabelText('Política de cambios');
+    await u.clear(cambios);
+    await u.type(cambios, 'Cambios dentro de siete dias');
+    expect(await within(vista).findByText(/Cambios dentro de siete dias/)).toBeTruthy();
   });
 });
