@@ -1,0 +1,20 @@
+---
+import { rutaPagina } from '../lib/paginas';
+
+interface Props { base: string; pagina: number; total: number }
+const { base, pagina, total } = Astro.props;
+const numeros = Array.from({ length: total }, (_, i) => i + 1);
+---
+{total > 1 && (
+  <nav class="paginacion" aria-label="Páginas del catálogo">
+    <ul>
+      {pagina > 1 && <li><a href={rutaPagina(base, pagina - 1)} rel="prev">Anterior</a></li>}
+      {numeros.map((n) => (
+        <li>
+          <a href={rutaPagina(base, n)} aria-current={n === pagina ? 'page' : undefined} aria-label={`Página ${n}`}>{n}</a>
+        </li>
+      ))}
+      {pagina < total && <li><a href={rutaPagina(base, pagina + 1)} rel="next">Siguiente</a></li>}
+    </ul>
+  </nav>
+)}

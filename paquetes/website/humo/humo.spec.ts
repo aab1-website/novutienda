@@ -232,12 +232,56 @@ test.describe('precio, país y compra', () => {
     await page.keyboard.press('Escape');
     const todas = page.locator('[data-producto-id]');
     const total = await todas.count();
-    await page.getByRole('checkbox', { name: 'Aurora' }).check();
-    await expect(page.locator('[data-producto-id]:not([hidden])')).toHaveCount(3);
-    await page.getByRole('checkbox', { name: 'Aurora' }).uncheck();
+    // Cada marca lleva a su propia página estática.
+    await page.getByRole('navigation', { name: 'Marcas' }).getByRole('link', { name: 'Aurora' }).click();
+    await expect(page).toHaveURL(/\/marca\/aurora$/);
+    await islasListas(page);
+    await expect(page.locator('[data-producto-id]')).toHaveCount(3);
+    await expect(page.getByRole('navigation', { name: 'Marcas' }).getByRole('link', { name: 'Aurora' })).toHaveAttribute('aria-current', 'page');
+    await page.goto('/productos');
+    await islasListas(page);
     await page.getByLabel('Hasta').fill('3000');
     await expect(page.locator('[data-producto-id]:not([hidden])')).not.toHaveCount(total);
     await expect(page.locator('[data-producto-id="ejemplo-tv-65"]')).toBeHidden();
+  });
+
+  test('Compartir: sin navigator.share copia el enlace y avisa; con navigator.share lo usa', async ({ page, context }) => {
+    await context.grantPermissions(['clipboard-read', 'clipboard-write']);
+    await simularApi(page);
+    await decidirConsentimiento(page, false, false);
+    await page.addInitScript(() => Object.defineProperty(navigator, 'share', { value: undefined, configurable: true }));
+    await page.goto('/producto/televisor-ejemplo-55');
+    await islasListas(page);
+    await page.getByRole('button', { name: 'COMPARTIR' }).click();
+    await expect(page.getByRole('status').filter({ hasText: 'Enlace copiado' })).toBeVisible();
+    expect(await page.evaluate(() => navigator.clipboard.readText())).toMatch(/\/producto\/televisor-ejemplo-55$/);
+  });
+
+  test('Compartir con navigator.share envía el título y el enlace de la ficha', async ({ page }) => {
+    await simularApi(page);
+    await decidirConsentimiento(page, false, false);
+    await page.addInitScript(() => {
+      (window as unknown as { compartido?: unknown }).compartido = null;
+      Object.defineProperty(navigator, 'share', { value: (d: unknown) => { (window as unknown as { compartido?: unknown }).compartido = d; return Promise.resolve(); }, configurable: true });
+    });
+    await page.goto('/producto/televisor-ejemplo-55');
+    await islasListas(page);
+    await page.getByRole('button', { name: 'COMPARTIR' }).click();
+    const d = (await page.evaluate(() => (window as unknown as { compartido: { title: string; url: string } }).compartido));
+    expect(d.url).toMatch(/\/producto\/televisor-ejemplo-55$/);
+    expect(d.title).not.toBe('');
+  });
+
+  test('con pocos productos no hay paginación y las miniaturas se ven completas', async ({ page }) => {
+    await simularApi(page);
+    await decidirConsentimiento(page, false, false);
+    await page.goto('/productos');
+    await expect(page.getByRole('navigation', { name: 'Páginas del catálogo' })).toHaveCount(0);
+    await expect(page.locator('link[rel="prev"], link[rel="next"]')).toHaveCount(0);
+    expect((await page.request.get('/productos/pagina/2')).status()).toBe(404);
+    const imagen = page.locator('.tarjeta-imagen img').first();
+    await expect(imagen).toBeAttached();
+    expect(await imagen.evaluate((e) => getComputedStyle(e).objectFit)).toBe('contain');
   });
 
   test('convertidor: usa la cotización, sin tasas en el código', async ({ page }) => {

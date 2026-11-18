@@ -1,18 +1,13 @@
 ---
-import Base from '../layouts/Base.astro';
-import Catalogo from '../componentes/Catalogo.astro';
-import Migas from '../componentes/Migas.astro';
+import PaginaCatalogo from '../componentes/PaginaCatalogo.astro';
 import { contenido } from '../contenido/instancia';
-
-const { productos } = contenido;
 ---
-<Base titulo="Catálogo de productos" descripcion="Todos nuestros productos con precios actualizados en tu moneda." ruta="/productos">
-  <div class="contenedor pagina">
-    <Migas pasos={[{ texto: 'Inicio', href: '/' }, { texto: 'Productos' }]} />
-    <header class="encabezado-pagina">
-      <h1 class="titulo-seccion">Catálogo de productos</h1>
-      <p class="subtitulo">Filtra por marca y por precio. Los precios se calculan con la cotización oficial del día.</p>
-    </header>
-    <Catalogo productos={productos} />
-  </div>
-</Base>
+<PaginaCatalogo
+  titulo="Catálogo de productos"
+  descripcion="Todos nuestros productos con precios actualizados en tu moneda."
+  subtitulo="Elige una marca. El filtro de precio actúa solo sobre los productos de la página que ves. Los precios se calculan con la cotización oficial del día."
+  migas={[{ texto: 'Inicio', href: '/' }]}
+  productos={contenido.productos}
+  base="/productos"
+  pagina={1}
+/>

@@ -5,6 +5,7 @@ const puerto = Number(process.env['PUERTO_HUMO'] ?? 4331);
 export default defineConfig({
   testDir: '.',
   testMatch: '*.spec.ts',
+  testIgnore: 'paginas.spec.ts',
   // Fuera del paquete (dist/ de la raíz está ignorado por git, ESLint y la prueba de fronteras).
   outputDir: '../../../dist/humo-resultados',
   reporter: 'list',

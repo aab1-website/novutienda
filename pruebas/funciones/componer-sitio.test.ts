@@ -71,19 +71,20 @@ describe('componerSitioTenant', () => {
 });
 
 describe('caché del sitio', () => {
-  const REVALIDAR = 'public, max-age=0, must-revalidate';
+  // 5 minutos: con revalidación inmediata, Hosting respondía 304 sin HSTS y ZAP [10035] lo marcaba (decisión de Andres, 17/11).
+  const CORTA = 'public, max-age=300, s-maxage=300';
   const LARGA = 'public, max-age=31536000, immutable';
   const cache = (s: Sitio, source: string) => s.headers.find((h) => h.source === source)?.headers.find((x) => x.key === 'Cache-Control')?.value;
   const sitio = (componerSitioTenant(firebase, cabeceras, SITIO_ID) as { hosting: Sitio[] }).hosting[0]!;
 
-  it('las rutas sin extensión y html|xml|json se revalidan siempre', () => {
-    for (const source of ['/', '**/!(*.*)', '**/*.@(html|xml|json)']) expect(cache(sitio, source)).toBe(REVALIDAR);
+  it('las rutas sin extensión y html|xml|json quedan en caché 5 minutos', () => {
+    for (const source of ['/', '**/!(*.*)', '**/*.@(html|xml|json)']) expect(cache(sitio, source)).toBe(CORTA);
   });
 
-  it('los recursos con hash siguen con caché larga y ninguna regla de revalidación los cubre', () => {
+  it('los recursos con hash siguen con caché larga y ninguna regla de caché corta los cubre', () => {
     expect(cache(sitio, '/_astro/**')).toBe(LARGA);
     expect(cache(sitio, '**/*.@(avif|webp|mp4|woff2)')).toBe(LARGA);
-    const fuentes = sitio.headers.filter((h) => h.headers.some((x) => x.key === 'Cache-Control' && x.value === REVALIDAR)).map((h) => h.source);
+    const fuentes = sitio.headers.filter((h) => h.headers.some((x) => x.key === 'Cache-Control' && x.value === CORTA)).map((h) => h.source);
     expect(fuentes.some((s) => s.includes('_astro'))).toBe(false);
   });
 });
