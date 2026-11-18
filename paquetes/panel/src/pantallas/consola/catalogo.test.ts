@@ -554,6 +554,67 @@ describe('catálogo: fotos propias de la portada', () => {
     expect(await screen.findByText(/no es una foto permitido/)).toBeTruthy();
     expect(e.api.llamadas.some((l) => l.nombre === 'reservarSubida')).toBe(false);
   });
+  it('guardar con una foto propia sin texto alternativo queda bloqueado y dice por qué', async () => {
+    const e = crearEntorno('adm');
+    ver(e);
+    await subir();
+    await screen.findByLabelText('Texto alternativo de la foto 1');
+    expect(await screen.findByText(/Escriba el texto alternativo de cada foto del carrusel/)).toBeTruthy();
+    await userEvent.click(screen.getByRole('button', { name: 'Guardar apariencia' }));
+    expect(e.api.llamadas.some((l) => l.nombre === 'guardarCarrusel')).toBe(false);
+  });
+  it('Reintentar tras una falla de red reutiliza el mismo subidaId', async () => {
+    const e = crearEntorno('adm');
+    const original = e.almacen.subir.bind(e.almacen);
+    let intentos = 0;
+    vi.spyOn(e.almacen, 'subir').mockImplementation(((...a: Parameters<typeof original>) => {
+      intentos += 1;
+      return intentos === 1 ? Promise.reject(new Error('sin red')) : original(...a);
+    }) as never);
+    ver(e);
+    await subir();
+    await userEvent.click(await screen.findByRole('button', { name: 'Reintentar' }));
+    await screen.findByLabelText('Texto alternativo de la foto 1');
+    const ids = e.api.llamadas.filter((l) => l.nombre === 'reservarSubida').map((l) => (l.entrada as { subidaId: string }).subidaId);
+    expect(ids).toHaveLength(2);
+    expect(ids[1]).toBe(ids[0]);
+    expect([...e.api.estado.medios.values()].filter((m) => m.productoId === '_portada')).toHaveLength(1);
+  });
+  it('borrar una foto propia: si está en el carrusel muestra el conflicto; al quitarla se borra y se libera el lugar', async () => {
+    const e = crearEntorno('adm');
+    ver(e);
+    await subir();
+    await screen.findByLabelText('Texto alternativo de la foto 1');
+    const portada = (): number => [...e.api.estado.medios.values()].filter((m) => m.productoId === '_portada').length;
+    await userEvent.type(screen.getByLabelText('Texto alternativo de la foto 1'), 'El local');
+    await userEvent.click(screen.getByRole('button', { name: 'Guardar apariencia' }));
+    await waitFor(() => expect(e.api.llamadas.some((l) => l.nombre === 'guardarCarrusel')).toBe(true));
+    await userEvent.click(await screen.findByRole('button', { name: 'Borrar foto' }));
+    await userEvent.click(await screen.findByRole('button', { name: 'Sí, borrar' }));
+    await waitFor(() => expect(e.api.llamadas.map((l) => l.nombre)).toContain('borrarMedio'));
+    expect(await screen.findByText(/No se pudo borrar la foto: .*carrusel/)).toBeTruthy();
+    expect(portada()).toBe(1);
+    await userEvent.click(screen.getByRole('button', { name: 'Quitar foto 1' }));
+    await userEvent.click(screen.getByRole('button', { name: 'Guardar apariencia' }));
+    await waitFor(() => expect(screen.queryByLabelText('Texto alternativo de la foto 1')).toBeNull());
+    await userEvent.click(screen.getByRole('button', { name: 'Borrar foto' }));
+    await userEvent.click(await screen.findByRole('button', { name: 'Sí, borrar' }));
+    await waitFor(() => expect(portada()).toBe(0));
+    await waitFor(() => expect(screen.queryByRole('button', { name: 'Borrar foto' })).toBeNull());
+    await subir('otra.jpg');
+    await waitFor(() => expect(portada()).toBe(1));
+  });
+  it('con el carrusel lleno, «Subir foto a la portada» queda apagado con su motivo', async () => {
+    const e = crearEntorno('adm');
+    ver(e);
+    for (let i = 0; i < 8; i += 1) {
+      await subir(`f${String(i)}.jpg`);
+      await waitFor(() => expect(screen.queryByLabelText(`Texto alternativo de la foto ${String(i + 1)}`)).toBeTruthy());
+      await waitFor(() => expect(screen.queryByText(/Procesando la foto/)).toBeNull());
+    }
+    expect(await screen.findByText('El carrusel ya tiene 8 fotos: quite una para agregar otra')).toBeTruthy();
+    expect(screen.getByRole('button', { name: 'Subir foto a la portada' }).getAttribute('aria-disabled')).toBe('true');
+  });
   it('al superar el cupo del plan muestra el motivo del servidor', async () => {
     const e = crearEntorno('adm');
     ver(e);

@@ -100,6 +100,8 @@ export function useSubidaPortada(alListo: (medio: Medio) => void): SubidaPortada
   const elegir = useCallback(
     (a: File): void => {
       if (EN_CURSO.includes(estado.fase)) return;
+      // Se marca «revisando» de inmediato: la revisión es asíncrona y no debe poder elegirse otro archivo mientras tanto.
+      setEstado({ ...REPOSO, fase: 'revisando', nombre: a.name });
       void validarArchivo(a, 'foto').then((falla) => {
         if (abandonado.current) return;
         if (falla !== undefined) {

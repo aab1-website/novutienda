@@ -254,6 +254,20 @@ function CarruselEditor({ plantilla, items, setItems, productos }: { plantilla: 
   // Fotos propias de la portada (no son de ningún producto): se suben aquí y se agregan al carrusel igual que las de un producto.
   const propias = useCarga(() => api.llamar('listarMedios', { productoId: ID_PORTADA }), []);
   const entradaPortada = useRef<HTMLInputElement>(null);
+  const borrando = useAccion();
+  const avisos = useAvisos();
+  const borrarPropia = (medioId: string): void =>
+    void borrando.ejecutar(async () => {
+      try {
+        await api.llamar('borrarMedio', { medioId });
+        propias.recargar();
+        avisos.ok('Foto borrada. Se liberó su lugar.');
+      } catch (e) {
+        // El conflicto («se usa en el carrusel…») trae el motivo exacto del servidor; el texto fijo del panel lo ocultaría.
+        const motivo = e instanceof ErrorApi && e.detalle.codigo === 'conflicto' ? e.message.replace(/\s\[\d{3}\]$/, '') : mensajeDeError(e);
+        avisos.error(`No se pudo borrar la foto: ${motivo}`);
+      }
+    });
   const subida = useSubidaPortada((m) => {
     conocidos.current.set(m.id, m);
     propias.recargar();
@@ -316,15 +330,20 @@ function CarruselEditor({ plantilla, items, setItems, productos }: { plantilla: 
       <h3>Fotos propias de la portada</h3>
       <p class="texto-suave">Fotos que no son de un producto (el local, una campaña). JPG, PNG, WebP o HEIC, hasta 15 MB; la cantidad máxima depende de su plan. Se guardan al subirlas; el orden y el texto alternativo se guardan con «Guardar apariencia».</p>
       <div class="fila fila-alinear">
-        <Boton onClick={() => entradaPortada.current?.click()} motivo={subida.enCurso ? 'Hay una subida en curso' : undefined}>Subir foto a la portada</Boton>
+        <Boton onClick={() => entradaPortada.current?.click()} motivo={subida.enCurso ? 'Hay una subida en curso' : items.length >= 8 ? 'El carrusel ya tiene 8 fotos: quite una para agregar otra' : undefined}>Subir foto a la portada</Boton>
         <input ref={entradaPortada} type="file" hidden aria-label="Archivo de la foto de portada" accept="image/jpeg,image/png,image/webp,image/heic,image/heif,.jpg,.jpeg,.png,.webp,.heic,.heif" onChange={(e) => { const input = e.currentTarget; const f = input.files?.[0]; input.value = ''; if (f !== undefined) subida.elegir(f); }} />
-        {items.length < 8 && (propias.datos ?? []).filter((m) => m.tipo === 'foto' && !items.some((i) => i.medioId === m.id)).map((m) => (
-          <Boton key={m.id} chico variante="secundario" etiqueta={`Agregar foto propia ${m.id.slice(0, 6)}`} onClick={() => setItems([...items, { medioId: m.id, alt: '' }])}>
-            <Miniatura medio={m} alt="Foto propia de la portada" respaldo={`Foto ${m.id.slice(0, 6)}`} />
-            Agregar foto propia {m.id.slice(0, 6)}
-          </Boton>
-        ))}
       </div>
+      <ul class="lista-simple">
+        {(propias.datos ?? []).filter((m) => m.tipo === 'foto').map((m, n) => (
+          <li key={m.id} class="fila fila-alinear">
+            <Miniatura medio={m} alt={`Foto propia ${n + 1} de la portada`} respaldo={`Foto propia ${n + 1}`} />
+            {!items.some((i) => i.medioId === m.id) && items.length < 8 && (
+              <Boton chico variante="secundario" etiqueta={`Agregar foto propia ${n + 1}`} onClick={() => setItems([...items, { medioId: m.id, alt: '' }])}>Agregar foto propia {n + 1}</Boton>
+            )}
+            <BotonConfirmado chico peligro texto="Borrar foto" pregunta="¿Borrar la foto propia de la portada?" resumen="Se borra para siempre y se libera su lugar. Si está en el carrusel, quítela primero." textoConfirmar="Sí, borrar" deshabilitado={borrando.ocupado} onConfirmar={() => borrarPropia(m.id)} />
+          </li>
+        ))}
+      </ul>
       {subida.enCurso && (
         <p role="status">{subida.nombre}: {subida.fase === 'subiendo' ? `Subiendo ${String(Math.round(subida.progreso))} %` : subida.fase === 'procesando' ? 'Procesando la foto…' : 'Preparando la subida…'}</p>
       )}

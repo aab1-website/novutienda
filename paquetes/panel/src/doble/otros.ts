@@ -287,6 +287,8 @@ export const handlersOtros: {
     if (m === undefined) throw fallo('no-encontrado', 'El medio no existe');
     const enSeccion = c.e.secciones.find((s) => s.bloques.some((b) => (b.tipo === 'imagen' && b.medioId === e.medioId) || (b.tipo === 'carrusel' && b.items.some((i) => i.medioId === e.medioId))));
     if (enSeccion !== undefined) throw fallo('conflicto', `El medio se usa en la sección «${enSeccion.titulo}»; quítelo primero`);
+    const enCarrusel = [...c.e.carruseles.values()].find((k) => k.items.some((i) => i.medioId === e.medioId));
+    if (enCarrusel !== undefined) throw fallo('conflicto', `El medio se usa en el carrusel de la plantilla ${enCarrusel.plantilla}; quítelo primero`);
     c.e.medios.delete(e.medioId);
     c.e.bytesOriginales = Math.max(0, c.e.bytesOriginales - m.bytesOriginal);
     const f = c.e.fichas.get(m.productoId);
