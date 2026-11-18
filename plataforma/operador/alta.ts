@@ -16,6 +16,8 @@ export interface ConfigTenantV2 {
 const CLAVES = ['version', 'plan', 'zonaHoraria', 'monedas', 'modulos'];
 const esObjeto = (x: unknown): x is Record<string, unknown> =>
   typeof x === 'object' && x !== null && !Array.isArray(x);
+/** El plan `pruebas` solo lo asigna `plan-tenant.mjs` en staging; el alta lo rechaza en todos los ambientes. */
+export const MENSAJE_PLAN_PRUEBAS = 'el plan pruebas solo lo asigna plan-tenant.mjs en staging';
 const fallo = (error: string): Resultado<never> => ({ ok: false, error });
 
 /**
@@ -29,6 +31,7 @@ export function construirTenant(config: unknown, manifiestos: readonly Manifiest
   if (config['version'] !== 2) return fallo('config.json debe ser versión 2');
   const sobran = Object.keys(config).filter((k) => !CLAVES.includes(k));
   if (sobran.length > 0) return fallo(`Claves no admitidas en config.json: ${sobran.join(', ')}`);
+  if (config['plan'] === 'pruebas') return fallo(MENSAJE_PLAN_PRUEBAS);
   const ids = config['modulos'];
   if (!Array.isArray(ids) || !ids.every((i) => typeof i === 'string' && i !== '')) {
     return fallo('modulos debe ser una lista de ids');
@@ -129,13 +132,20 @@ export async function aplicarAlta(opciones: {
   const r = construirTenant(opciones.config, opciones.manifiestos);
   if (!r.ok) throw new Error(r.error);
   const actual = await opciones.almacen.leer(opciones.tenantId);
-  const deseado: Tenant = { ...r.valor, estado: await estadoResultante(opciones.tenantId, actual, opciones.almacen) };
-  const diferencias = diferenciasTenant(actual, deseado);
+  // Un documento que ya tiene `pruebas` (asignado por plan-tenant.mjs) lo conserva: el alta no lo revierte en silencio.
+  const conservaPruebas = esObjeto(actual) && actual['plan'] === 'pruebas';
+  const deseado: Tenant = {
+    ...r.valor,
+    ...(conservaPruebas ? { plan: 'pruebas' as const } : {}),
+    estado: await estadoResultante(opciones.tenantId, actual, opciones.almacen),
+  };
+  const reales = diferenciasTenant(actual, deseado);
+  const diferencias = conservaPruebas ? [...reales, 'plan: pruebas se conserva (lo asigna plan-tenant.mjs)'] : reales;
   // También sin `aplicar`: --verificar muestra el rechazo. `escribir` lo repite dentro de la transacción.
-  if (deseado.modulos['inventarios'] !== undefined && diferencias.length > 0 && (await opciones.almacen.inventariosCompartido(opciones.tenantId))) {
+  if (deseado.modulos['inventarios'] !== undefined && reales.length > 0 && (await opciones.almacen.inventariosCompartido(opciones.tenantId))) {
     throw new Error(MENSAJE_INVENTARIOS_COMPARTIDO);
   }
-  if (!opciones.aplicar || diferencias.length === 0) return { diferencias, aplicado: false };
+  if (!opciones.aplicar || reales.length === 0) return { diferencias, aplicado: false };
   await opciones.almacen.escribir(opciones.tenantId, deseado, actual ?? null);
   return { diferencias, aplicado: true };
 }

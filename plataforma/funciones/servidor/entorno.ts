@@ -96,6 +96,8 @@ export interface OpcionesEntorno {
   readonly mediosBaseUrl?: string;
   /** Disparo de GitHub (doble en pruebas); ausente = sin aviso. */
   readonly disparoSitio?: DisparoGithub;
+  /** Habilita el plan `pruebas` (`PLAN_PRUEBAS_HABILITADO=si`); ausente o `false`: un tenant con ese plan es inválido. */
+  readonly planPruebasHabilitado?: boolean;
 }
 
 export function crearEntorno(o: OpcionesEntorno): Entorno {
@@ -106,7 +108,7 @@ export function crearEntorno(o: OpcionesEntorno): Entorno {
   const redondeoDelTenant = lectorRedondeoDe(db, ahora, comercialDelTenant);
   const redondeo = lectorRedondeo(db, ahora); // LEGADO: como en main (misma fuente y mismos fallos), hasta B2 a B4
   const emulador = env['FUNCTIONS_EMULATOR'] === 'true';
-  const lectoresModulos = crearLectoresModulos(o.firestore, ahora);
+  const lectoresModulos = crearLectoresModulos(o.firestore, ahora, undefined, o.planPruebasHabilitado === true);
   return {
     firestore: o.firestore,
     auth: o.auth,
@@ -180,6 +182,11 @@ export function disparoSitioDeLaInstancia(): DisparoGithub | undefined {
 
 let unico: Entorno | undefined;
 
+/** El plan `pruebas` solo se habilita con el valor exacto `si` (sin mayúsculas, espacios ni sinónimos). */
+export function planPruebasHabilitado(valor: string): boolean {
+  return valor === 'si';
+}
+
 /** Entorno de producción (o del emulador): una sola instancia por proceso. */
 export function entorno(): Entorno {
   if (unico === undefined) {
@@ -195,7 +202,7 @@ export function entorno(): Entorno {
     const nombrePublico = exigirBucketPublico(PARAMETROS.mediosBucketPublico.value(), bucket.name, esEntornoDePruebas(process.env));
     const bucketPublico = nombrePublico === '' ? bucket : almacenamiento.bucket(nombrePublico);
     const procesador = crearProcesadorMedios(bucket, env, esEntornoDePruebas(process.env) ? undefined : logger);
-    unico = crearEntorno({ firestore: getFirestore(), auth: getAuth(), bucket, bucketPublico, env, procesador, mediosBaseUrl: PARAMETROS.mediosBaseUrl.value() });
+    unico = crearEntorno({ firestore: getFirestore(), auth: getAuth(), bucket, bucketPublico, env, procesador, mediosBaseUrl: PARAMETROS.mediosBaseUrl.value(), planPruebasHabilitado: planPruebasHabilitado(PARAMETROS.planPruebasHabilitado.value()) });
   }
   return unico;
 }

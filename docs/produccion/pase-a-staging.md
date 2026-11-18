@@ -434,6 +434,13 @@ Lección del primer despliegue (05/11/2026): firebase-tools 15.x en modo no inte
 parámetro `defineString/defineBoolean`, aunque tenga `default` en `config.ts`. `preparar-despliegue-firebase.sh` escribe los valores por
 defecto de los que no llegan por variable; si se agrega un parámetro en `config.ts`, hay que agregarlo también allí.
 
+**Plan `pruebas` (solo staging; B-D, barrera 3).** El parámetro `PLAN_PRUEBAS_HABILITADO` no es una variable de GitHub: lo fija
+`preparar-despliegue-firebase.sh` según el ambiente, `PLAN_PRUEBAS_HABILITADO=si` en staging y la línea vacía en production (el valor
+por defecto de `config.ts`, que firebase-tools exige y que deja el plan deshabilitado: un tenant con plan `pruebas` se trata como
+inválido). No hay que crear variables ni secretos. Falla cerrado si llega como variable (`PLAN_PRUEBAS_HABILITADO` o
+`P_PLAN_PRUEBAS_HABILITADO`, en cualquier ambiente) o si un `dist/funciones/.env*` distinto de `.env` lo nombra; tras empaquetar,
+comprueba que `dist/funciones/.env` lleve exactamente la línea del ambiente. Prueba: `pruebas/funciones/preparar-despliegue-plan-pruebas.test.ts`.
+
 Antes del primer despliegue: cargar las variables de 9.3 (incluidas las `VITE_*` nuevas y `MEDIOS_BASE_URL`); sin ellas `construir` o el paso de configuración
 del despliegue fallan a propósito. Verificar en staging el origen del límite de tasa (`PROXY_SALTOS`) con una petición real a `/api/contacto`.
 

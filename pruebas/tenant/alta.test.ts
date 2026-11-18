@@ -92,6 +92,25 @@ describe('aplicarAlta con almacén simulado (sin red)', () => {
     return { almacen, escrituras };
   };
 
+  it('un config con plan pruebas se rechaza y no escribe', async () => {
+    expect(construirTenant(cfg({ plan: 'pruebas' }), manifiestos)).toEqual({ ok: false, error: 'el plan pruebas solo lo asigna plan-tenant.mjs en staging' });
+    const { almacen, escrituras } = memoria();
+    await expect(aplicarAlta({ tenantId: 't', config: cfg({ plan: 'pruebas' }), manifiestos, almacen, aplicar: true })).rejects.toThrow(/solo lo asigna plan-tenant/);
+    expect(escrituras).toEqual([]);
+  });
+  it('un documento existente con pruebas lo conserva y lo informa', async () => {
+    const previo = { ...JSON.parse(JSON.stringify(tenantDe(cfg()))), plan: 'pruebas' } as Record<string, unknown>;
+    const { almacen, escrituras } = memoria(previo);
+    const r = await aplicarAlta({ tenantId: 't', config: cfg(), manifiestos, almacen, aplicar: true });
+    expect(r.aplicado).toBe(false);
+    expect(r.diferencias).toEqual([expect.stringContaining('pruebas se conserva')]);
+    expect(escrituras).toEqual([]);
+    const { almacen: a2, escrituras: e2 } = memoria(previo);
+    const r2 = await aplicarAlta({ tenantId: 't', config: cfg({ modulos: ['inventarios'] }), manifiestos, almacen: a2, aplicar: true });
+    expect(r2.aplicado).toBe(true);
+    expect(e2[0]?.plan).toBe('pruebas');
+    expect(r2.diferencias.some((d) => d.startsWith('plan: "pruebas" ->'))).toBe(false);
+  });
   it('verificar no escribe', async () => {
     const { almacen, escrituras } = memoria();
     const r = await aplicarAlta({ tenantId: 't', config: cfg(), manifiestos, almacen, aplicar: false });
