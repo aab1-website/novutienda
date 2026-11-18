@@ -1,6 +1,5 @@
 import type { JSX } from 'preact';
 import { useState } from 'preact/hooks';
-import { ErrorApi } from '../api/errores.js';
 import { LIMITES_PANEL, type Rol } from '../api/tipos.js';
 import { Alerta, Boton, BotonConfirmado, Campo, Cargando, ErrorCarga, Selector, Seccion } from '../ui/comun.js';
 import { useApp } from '../ui/contexto.js';
@@ -12,13 +11,6 @@ const ROL_TEXTO: Record<Rol, string> = { caj: 'Vendedor', sup: 'Supervisor', adm
 const SIN_CORREO = 'Sin correo registrado';
 /** El servidor puede devolver una cuenta sin correo: nunca se pinta «null» ni se rompe al comparar. */
 const correoDe = (u: { readonly correo?: unknown }): string => (typeof u.correo === 'string' && u.correo.trim() !== '' ? u.correo : SIN_CORREO);
-
-type Resultado =
-  | { readonly tipo: 'verificada'; readonly uid: string; readonly correo: string }
-  | { readonly tipo: 'sin-verificar'; readonly correo: string }
-  | { readonly tipo: 'sin-contrasena'; readonly correo: string }
-  | { readonly tipo: 'ya-miembro'; readonly correo: string }
-  | { readonly tipo: 'inexistente'; readonly correo: string };
 
 const ROLES_INVITABLES: readonly Rol[] = ['caj', 'sup', 'adm'];
 const DIA_MS = 24 * 60 * 60 * 1000;
@@ -36,7 +28,7 @@ export function PantallaUsuarios(): JSX.Element {
   const [cambios, setCambios] = useState<Record<string, Rol>>({});
   const [correo, setCorreo] = useState('');
   const [rolNuevo, setRolNuevo] = useState<Rol>('caj');
-  const [resultado, setResultado] = useState<Resultado | null>(null);
+  const [yaTiene, setYaTiene] = useState<string | null>(null);
   // Las invitaciones pendientes ocupan un cupo del plan, pero aún no son personas con acceso.
   const miembros = lista.datos?.filter((u) => u.estado !== 'invitado');
   const invitaciones = lista.datos?.filter((u) => u.estado === 'invitado');
@@ -46,52 +38,28 @@ export function PantallaUsuarios(): JSX.Element {
   const pendientesN = invitaciones?.length ?? 0;
   // Sin cifra engañosa: las personas con acceso y las invitaciones pendientes se cuentan por separado, ambas dentro del plan.
   const tituloAcceso = pendientesN === 0 ? `Personas con acceso (${conAcceso} de ${tope})` : `Personas con acceso (${conAcceso}) e invitaciones pendientes (${pendientesN}), de ${tope} del plan`;
-  const invitar = useAccion();
   const pendientes = useAccion();
-  const [correoInvitado, setCorreoInvitado] = useState('');
-  const [rolInvitado, setRolInvitado] = useState<Rol>('caj');
+  // Con el plan lleno solo se admite un correo que ya tiene invitación pendiente: cambiar su rol no ocupa otro cupo.
+  const correoLimpio = correo.trim().toLowerCase();
+  const sinCupo = lleno && invitaciones?.some((u) => correoDe(u).toLowerCase() === correoLimpio) !== true;
 
-  const buscar = (): void => {
-    const buscado = correo.trim().toLowerCase();
-    if (buscado === '') return;
-    setResultado(null);
+  // Un solo camino: siempre se invita. Solo se evita llamar al servidor si la persona ya figura con acceso en la lista que el administrador ya ve.
+  const agregar = (): void => {
+    const limpio = correo.trim().toLowerCase();
+    if (limpio === '') return;
+    if (miembros?.some((u) => correoDe(u).toLowerCase() === limpio) === true) {
+      setYaTiene(limpio);
+      return;
+    }
+    setYaTiene(null);
     void alta.ejecutar(async () => {
-      const miembro = miembros?.find((u) => correoDe(u).toLowerCase() === buscado);
-      if (miembro !== undefined) {
-        setResultado({ tipo: 'ya-miembro', correo: buscado });
-        return;
-      }
       try {
-        const r = await api.llamar('buscarUsuarioPorCorreo', { correo: buscado });
-        if (!r.conContrasena) setResultado({ tipo: 'sin-contrasena', correo: buscado });
-        else if (!r.correoVerificado) setResultado({ tipo: 'sin-verificar', correo: buscado });
-        else setResultado({ tipo: 'verificada', uid: r.uid, correo: buscado });
-      } catch (e) {
-        if (e instanceof ErrorApi && e.codigoHttps === 'not-found') setResultado({ tipo: 'inexistente', correo: buscado });
-        else throw e;
-      }
-    }, { error: 'ambos' });
-  };
-  const darAlta = (r: Extract<Resultado, { tipo: 'verificada' }>): void => {
-    void alta.ejecutar(async () => {
-      await api.llamar('asignarRol', { uid: r.uid, rol: rolNuevo });
-      setResultado(null);
-      setCorreo('');
-      lista.recargar();
-    }, { exito: `Listo: ${r.correo} ahora es ${ROL_TEXTO[rolNuevo].toLowerCase()}. La persona lo verá al volver a iniciar sesión.`, error: 'ambos' });
-  };
-
-  const enviarInvitacion = (): void => {
-    const correoLimpio = correoInvitado.trim().toLowerCase();
-    if (correoLimpio === '') return;
-    void invitar.ejecutar(async () => {
-      try {
-        await api.llamar('invitarUsuario', { correo: correoLimpio, rol: rolInvitado });
+        await api.llamar('invitarUsuario', { correo: limpio, rol: rolNuevo });
       } finally {
         lista.recargar(); // aunque falle el correo, la invitación ya quedó registrada
       }
-      setCorreoInvitado('');
-    }, { exito: 'Invitación enviada', error: 'ambos' });
+      setCorreo('');
+    }, { exito: `Listo. Enviamos un correo a ${limpio}. Tendrá el rol de ${ROL_TEXTO[rolNuevo].toLowerCase()} cuando inicie sesión.`, error: 'ambos' });
   };
   const reenviar = (uid: string, correoDeLaInvitacion: string): void => {
     void pendientes.ejecutar(async () => {
@@ -127,39 +95,21 @@ export function PantallaUsuarios(): JSX.Element {
   return (
     <div>
       <h1>Usuarios</h1>
-      <Seccion titulo="Agregar una persona">
-        {lleno ? (
-          <Alerta tipo="info">El plan incluye {tope} usuarios y ya están todos ocupados. Para agregar a otra persona, quite primero el acceso de alguien.</Alerta>
-        ) : (
-          <form class="formulario" onSubmit={(e) => { e.preventDefault(); buscar(); }} noValidate>
-            <Campo etiqueta="Correo de la persona" tipo="email" inputMode="email" autocompletar="off" valor={correo} onInput={(v) => { setCorreo(v); setResultado(null); }} ayuda="La cuenta debe existir con correo y contraseña, y el correo debe estar verificado." />
-            <div class="fila"><Boton tipo="submit" ocupado={alta.ocupado} motivo={correo.trim() === '' ? 'Escriba el correo de la persona' : undefined}>Buscar cuenta</Boton></div>
-          </form>
-        )}
-        {alta.error && <Alerta>{alta.error}</Alerta>}
-        {!lleno && resultado?.tipo === 'ya-miembro' && <Alerta tipo="info">{resultado.correo} ya tiene acceso. Cambie su rol en la tabla de abajo.</Alerta>}
-        {!lleno && resultado?.tipo === 'sin-verificar' && <Alerta tipo="info">La cuenta de {resultado.correo} existe, pero su correo todavía no está verificado. Pida a la persona que inicie sesión en este panel, pulse «Reenviar enlace» y abra el enlace que le llegue; luego busque de nuevo.</Alerta>}
-        {!lleno && resultado?.tipo === 'sin-contrasena' && <Alerta tipo="info">La cuenta de {resultado.correo} no tiene contraseña. El personal debe ingresar con correo y contraseña: pida al propietario de la plataforma que le asigne una.</Alerta>}
-        {!lleno && resultado?.tipo === 'inexistente' && <Alerta tipo="info">No existe una cuenta con el correo {resultado.correo}. Invítela en «Invitar a una persona»: recibirá un enlace para elegir su contraseña.</Alerta>}
-        {!lleno && resultado?.tipo === 'verificada' && (
-          <div class="formulario">
-            <Alerta tipo="ok">Cuenta encontrada y con el correo verificado: {resultado.correo}.</Alerta>
-            <Selector etiqueta="Rol que tendrá" valor={rolNuevo} onCambio={(v) => setRolNuevo(v as Rol)} opciones={(['caj', 'sup'] as const).map((r) => ({ valor: r, texto: ROL_TEXTO[r] }))} />
-            <Boton onClick={() => darAlta(resultado)} ocupado={alta.ocupado}>{`Asignar rol de ${ROL_TEXTO[rolNuevo].toLowerCase()}`}</Boton>
-          </div>
-        )}
-      </Seccion>
-      <Seccion titulo="Invitar a una persona">
-        <p class="texto-suave">La persona recibe un enlace por correo para elegir su contraseña y, al entrar, ya tiene el rol que usted elija. La invitación ocupa un cupo del plan y caduca a los 7 días.</p>
-        <form class="formulario" onSubmit={(e) => { e.preventDefault(); if (!lleno) enviarInvitacion(); }} noValidate>
-          <Campo etiqueta="Correo para invitar" tipo="email" inputMode="email" autocompletar="off" valor={correoInvitado} onInput={setCorreoInvitado} />
-          <Selector etiqueta="Rol de la invitación" valor={rolInvitado} onCambio={(v) => setRolInvitado(v as Rol)} opciones={ROLES_INVITABLES.map((r) => ({ valor: r, texto: ROL_TEXTO[r] }))} />
+      <Seccion titulo="Agregar a una persona">
+        <p class="texto-suave">A la persona le llega un correo de Firebase para elegir su contraseña o restablecerla, según tenga o no cuenta. El rol se activa cuando inicia sesión. La invitación ocupa un cupo del plan y vence a los 7 días.</p>
+        {lleno && <Alerta tipo="info">El plan incluye {tope} usuarios y ya están todos ocupados. Para agregar a otra persona, quite primero el acceso de alguien o anule una invitación.</Alerta>}
+        <form class="formulario" onSubmit={(e) => { e.preventDefault(); if (!sinCupo) agregar(); }} noValidate>
+          <Campo etiqueta="Correo de la persona" tipo="email" inputMode="email" autocompletar="off" valor={correo} onInput={(v) => { setCorreo(v); setYaTiene(null); }} />
+          <Selector etiqueta="Rol de la persona" valor={rolNuevo} onCambio={(v) => setRolNuevo(v as Rol)} opciones={ROLES_INVITABLES.map((r) => ({ valor: r, texto: ROL_TEXTO[r] }))} />
+          {rolNuevo === 'adm' && <Alerta tipo="info">Un administrador solo lo puede quitar el propietario de la plataforma.</Alerta>}
           <div class="fila">
-            <Boton tipo="submit" ocupado={invitar.ocupado} motivo={lleno ? 'El plan no tiene cupos libres: anule una invitación o quite un acceso' : correoInvitado.trim() === '' ? 'Escriba el correo para invitar' : undefined}>Invitar</Boton>
+            <Boton tipo="submit" ocupado={alta.ocupado} motivo={sinCupo ? 'El plan no tiene cupos libres: anule una invitación o quite un acceso' : correo.trim() === '' ? 'Escriba el correo de la persona' : undefined}>Agregar</Boton>
           </div>
         </form>
-        {invitar.error && <Alerta>{invitar.error}</Alerta>}
+        {alta.error && <Alerta>{alta.error}</Alerta>}
+        {yaTiene !== null && <Alerta tipo="info">{yaTiene} ya tiene acceso. Cambie su rol en la tabla de abajo.</Alerta>}
         {pendientes.error && <Alerta>{pendientes.error}</Alerta>}
+        {invitaciones !== undefined && invitaciones.length > 0 && <p class="texto-suave">Se activa cuando la persona inicia sesión.</p>}
         {invitaciones !== undefined && invitaciones.length > 0 && (
           <Tabla
             titulo="Invitaciones pendientes"

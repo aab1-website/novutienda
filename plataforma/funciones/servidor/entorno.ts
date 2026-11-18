@@ -27,6 +27,7 @@ import type { GuardarContacto, LectorDisponibilidad, VerificadorAppCheck, Verifi
 import { exigirBucketPublico, PARAMETROS, SECRETOS } from './config.js';
 import { crearDisparadorSitio } from './disparador-sitio.js';
 import { emisorEnlaceEmulador, emisorEnlaceFirmado, type EmisorEnlacePdf } from './enlace-pdf.js';
+import { MAXIMO_BUSQUEDAS_SERIE_POR_HORA, MAXIMO_BUSQUEDAS_SERIE_POR_MINUTO } from './llamadas/inventarios.js';
 import { MAXIMO_ACTIVACIONES_POR_HORA, MAXIMO_INVITACIONES_POR_HORA, VENTANA_INVITACIONES_MS } from './llamadas/usuarios.js';
 import { lectorRedondeo, lectorRedondeoDe, type LectorRedondeo } from './redondeo.js';
 
@@ -58,6 +59,10 @@ export interface Entorno {
   readonly limiteActivaciones: LimiteTasa;
   /** Tope de invitaciones y reenvíos por comercio y hora (5). */
   readonly limiteInvitaciones: LimiteTasa;
+  /** Tope de búsquedas de serie por el comienzo: 30 por minuto por usuario (clave `serie:{tenant}:{uid}`). */
+  readonly limiteBusquedaSerieUsuario: LimiteTasa;
+  /** Tope de búsquedas de serie por el comienzo: 300 por hora por tenant (clave `serie:{tenant}`). */
+  readonly limiteBusquedaSerieTenant: LimiteTasa;
   readonly ahora: () => number;
   /** Módulos efectivos del tenant (cache de 60 s por instancia); `undefined` si el tenant no existe o es inválido. */
   readonly modulosDelTenant: LectorModulos;
@@ -130,6 +135,8 @@ export function crearEntorno(o: OpcionesEntorno): Entorno {
     indiceInvitaciones: crearIndiceInvitaciones(o.firestore),
     limiteInvitaciones: crearLimiteTasa(o.firestore, { maximo: MAXIMO_INVITACIONES_POR_HORA, ventanaMs: VENTANA_INVITACIONES_MS, sal: 'invitaciones-v1' }),
     limiteActivaciones: crearLimiteTasa(o.firestore, { maximo: MAXIMO_ACTIVACIONES_POR_HORA, ventanaMs: VENTANA_INVITACIONES_MS, sal: 'invitaciones-v1' }),
+    limiteBusquedaSerieUsuario: crearLimiteTasa(o.firestore, { maximo: MAXIMO_BUSQUEDAS_SERIE_POR_MINUTO, ventanaMs: 60_000, sal: 'busqueda-serie-usuario-v1' }),
+    limiteBusquedaSerieTenant: crearLimiteTasa(o.firestore, { maximo: MAXIMO_BUSQUEDAS_SERIE_POR_HORA, ventanaMs: 3_600_000, sal: 'busqueda-serie-tenant-v1' }),
     ahora,
     modulosDelTenant: lectoresModulos.modulos,
     estadoModulosDelTenant: lectoresModulos.estado,
