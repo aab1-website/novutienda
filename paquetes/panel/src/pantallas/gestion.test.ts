@@ -112,7 +112,7 @@ describe('inventario', () => {
     expect(clic).toHaveBeenCalled();
     cleanup();
     ver(e, h(PantallaInventario, { sub: 'csv' }));
-    await u.click(await screen.findByRole('button', { name: 'Exportar productos' }));
+    await u.click(await screen.findByRole('button', { name: 'Exportar en CSV' }));
     expect(await screen.findByText('Archivo exportado.')).toBeTruthy();
     const archivo = new File(['id,nombre,categoria,sku,precioUSDbo,precioUSDar\r\ncsv-1,Del CSV,Cat,C-1,100,110\r\n'], 'p.csv', { type: 'text/csv' });
     await u.upload(screen.getByLabelText('Archivo de productos (CSV o Excel)'), archivo);

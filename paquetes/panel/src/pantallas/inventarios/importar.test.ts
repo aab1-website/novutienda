@@ -31,15 +31,17 @@ describe('importar: qué es y cómo se arma el archivo', () => {
     expect(screen.getByText(/solo por Inventario/)).toBeTruthy();
     expect(screen.getByText('Qué columnas lleva el archivo')).toBeTruthy();
     expect(screen.getByText(/Cada producto se reconoce por su SKU/)).toBeTruthy();
-    expect(screen.getByRole('button', { name: 'Descargar plantilla' })).toBeTruthy();
-    expect(screen.getByRole('button', { name: 'Exportar productos' })).toBeTruthy();
+    expect(screen.getByRole('button', { name: 'Descargar plantilla (Excel)' })).toBeTruthy();
+    expect(screen.getByRole('button', { name: 'Exportar productos (Excel)' })).toBeTruthy();
+    expect(screen.getByRole('button', { name: 'Plantilla en CSV' })).toBeTruthy();
+    expect(screen.getByRole('button', { name: 'Exportar en CSV' })).toBeTruthy();
     expect(entradaArchivo().accept).toContain('.xlsx');
   });
 
   it('un supervisor puede exportar pero no importar', async () => {
     const e = crearEntorno('sup');
     ver(e);
-    expect(await screen.findByRole('button', { name: 'Exportar productos' })).toBeTruthy();
+    expect(await screen.findByRole('button', { name: 'Exportar productos (Excel)' })).toBeTruthy();
     expect(screen.queryByLabelText('Archivo de productos (CSV o Excel)')).toBeNull();
     expect(screen.getByText('La importación la hace un administrador.')).toBeTruthy();
   });
