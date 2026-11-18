@@ -1,8 +1,9 @@
 import type { JSX } from 'preact';
-import { useId, useState } from 'preact/hooks';
+import { useEffect, useId, useRef, useState } from 'preact/hooks';
 import { LIMITES_PANEL, type Bloque, type Seccion as SeccionWeb } from '../../api/tipos.js';
 import { Alerta, Area, Boton, BotonConfirmado, Campo, Casilla, Cargando, ErrorCarga, Seccion, Vacio } from '../../ui/comun.js';
 import { useApp } from '../../ui/contexto.js';
+import { enfocarPrimerError } from '../../ui/formulario.js';
 import { useBorrador, useCambiosSinGuardar, useGuardia } from '../../ui/guardia.js';
 import { useAccion, useCarga } from '../../ui/hooks.js';
 import { Miniatura } from './miniatura-vista.js';
@@ -48,7 +49,7 @@ const NOMBRE_BLOQUE = { texto: 'Texto', imagen: 'Imagen', carrusel: 'Carrusel', 
 
 /** Primera razón por la que la sección aún no se puede guardar (con el siguiente paso), o `undefined`. */
 function motivoSinGuardar(s: SeccionLocal): string | undefined {
-  if (s.titulo.trim() === '') return 'Escriba el título de la sección.';
+  if (s.titulo.trim() === '') return 'Escriba el nombre de la sección.';
   if (s.bloques.length === 0) return 'Agregue al menos un bloque a la sección.';
   for (const [i, b] of s.bloques.entries()) {
     if (b.tipo === 'imagen' && b.medioId === '') return `Elija la foto del bloque ${String(i + 1)}.`;
@@ -104,7 +105,7 @@ function EditorBloque({ b, n, set, quitar }: { b: BloqueLocal; n: number; set: (
   if (b.tipo === 'texto') {
     cuerpo = (
       <>
-        <Campo etiqueta="Título del bloque" valor={b.titulo} onInput={(v) => set({ ...b, titulo: v })} />
+        <Campo etiqueta="Subtítulo del texto (opcional)" valor={b.titulo} onInput={(v) => set({ ...b, titulo: v })} />
         <AreaLibre etiqueta="Párrafos (separe con una línea en blanco)" inicial={b.parrafos.join('\n\n')} filas={4} alCambiar={(v) => set({ ...b, parrafos: v.split(/\n\s*\n/).map((x) => x.trim()).filter((x) => x !== '') })} />
       </>
     );
@@ -160,6 +161,13 @@ function EditorSeccion({ inicial, alTerminar }: { inicial: SeccionWeb; alTermina
   const { marcarGuardado } = useCambiosSinGuardar(sucio, [clave]);
   const setS = (n: SeccionLocal): void => borrador.poner(n);
   const motivo = motivoSinGuardar(s);
+  const formulario = useRef<HTMLFormElement>(null);
+  const [intento, setIntento] = useState(0);
+  const sinNombre = intento > 0 && s.titulo.trim() === '';
+  // El aviso de «Guardar sección» lleva el foco al campo que falta.
+  useEffect(() => {
+    if (intento > 0 && formulario.current !== null && !enfocarPrimerError(formulario.current)) formulario.current.querySelector<HTMLElement>('fieldset input, fieldset textarea, fieldset button')?.focus();
+  }, [intento]);
   const guardar = (e: Event): void => {
     e.preventDefault();
     if (motivo !== undefined) return;
@@ -177,8 +185,8 @@ function EditorSeccion({ inicial, alTerminar }: { inicial: SeccionWeb; alTermina
   };
   return (
     <Seccion titulo={nueva ? 'Nueva sección' : `Sección: ${inicial.titulo}`} acciones={<Boton chico variante="secundario" onClick={() => confirmarSalida(() => { borrador.descartar(); alTerminar(false); })}>Cancelar</Boton>}>
-      <form class="formulario" onSubmit={guardar} noValidate>
-        <Campo etiqueta="Título (texto del menú)" valor={s.titulo} onInput={(v) => setS({ ...s, titulo: v })} requerido />
+      <form ref={formulario} class="formulario" onSubmit={guardar} noValidate>
+        <Campo etiqueta="Nombre de la sección (aparece en el menú)" valor={s.titulo} onInput={(v) => setS({ ...s, titulo: v })} requerido error={sinNombre ? 'Falta el nombre.' : undefined} />
         <Casilla etiqueta="Visible en el menú" marcado={s.visible} onCambio={(v) => setS({ ...s, visible: v })} />
         {s.bloques.map((b, i) => (
           <EditorBloque key={b.uid} b={b} n={i + 1} set={(nb) => setS({ ...s, bloques: s.bloques.map((x) => (x.uid === b.uid ? nb : x)) })} quitar={() => setS({ ...s, bloques: s.bloques.filter((x) => x.uid !== b.uid) })} />
@@ -193,7 +201,7 @@ function EditorSeccion({ inicial, alTerminar }: { inicial: SeccionWeb; alTermina
           </div>
         )}
         {accion.error && <Alerta>{accion.error}</Alerta>}
-        <Boton tipo="submit" ocupado={accion.ocupado} motivo={motivo}>Guardar sección</Boton>
+        <Boton tipo="submit" ocupado={accion.ocupado} motivo={motivo} onIntento={() => setIntento((n) => n + 1)}>Guardar sección</Boton>
       </form>
     </Seccion>
   );

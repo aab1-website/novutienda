@@ -1,7 +1,7 @@
 import { describe, expect, it } from 'vitest';
 import { contenidoDesdePublicado, type EntornoSitio } from './desde-publicado.js';
 import { contenidoEjemplo } from './ejemplo.js';
-import { iconoDelSitio, imagenAlCompartir } from './logo-subido.js';
+import { iconoDelSitio, imagenAlCompartir, logoParaCompartir } from './logo-subido.js';
 
 // Todo inventado: dominios .invalid.
 const MEDIOS = 'https://medios.ejemplo.invalid';
@@ -88,5 +88,20 @@ describe('logo subido en el sitio', () => {
   it('un host de medios distinto no entra: la base se arma con el host admitido', () => {
     const { c } = armar(logoOk);
     expect(c.config.logo?.url.startsWith(`${MEDIOS}/`)).toBe(true);
+  });
+});
+
+describe('logo para la vista previa de la portada', () => {
+  const cabecera = { url: 'https://medios.ejemplo.invalid/l88.webp' };
+  it('acepta PNG, JPG y WebP que no sean el de la cabecera', () => {
+    expect(logoParaCompartir('https://medios.ejemplo.invalid/l512.png', cabecera)).toBe('https://medios.ejemplo.invalid/l512.png');
+    expect(logoParaCompartir('https://medios.ejemplo.invalid/l512.JPG', cabecera)).toBe('https://medios.ejemplo.invalid/l512.JPG');
+    expect(logoParaCompartir('https://medios.ejemplo.invalid/l512.webp', cabecera)).toBe('https://medios.ejemplo.invalid/l512.webp');
+  });
+  it('rechaza un SVG, la versión de la cabecera y la ausencia de imagen', () => {
+    expect(logoParaCompartir('/ejemplo/logo.svg', null)).toBeUndefined();
+    expect(logoParaCompartir(cabecera.url, cabecera)).toBeUndefined();
+    expect(logoParaCompartir(null, cabecera)).toBeUndefined();
+    expect(logoParaCompartir(undefined, null)).toBeUndefined();
   });
 });

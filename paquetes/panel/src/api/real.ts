@@ -491,7 +491,6 @@ export const TRADUCCION: { readonly [N in NombreCallable]: Traduccion<N> } = {
   ordenarSecciones: comoOk('consola', 'ordenarSecciones', (e) => e),
   guardarCarrusel: comoOk('consola', 'guardarCarrusel', (e) => e),
   guardarConfigSitio: comoOk('consola', 'guardarConfigSitio', (e) => e),
-  exportarProductosCsvSitio: directa('consola', 'exportarProductosCsv'),
   buscarUsuarioPorCorreo: {
     usa: ['consola.buscarUsuarioPorCorreo'],
     ejecutar: async (c, e) => {

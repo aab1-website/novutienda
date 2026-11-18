@@ -1,0 +1,24 @@
+---
+import PaginaCatalogo from '../../../../componentes/PaginaCatalogo.astro';
+import { contenido } from '../../../../contenido/instancia';
+import { marcasDe } from '../../../../contenido/consultas';
+import { marcasConRuta, paginasExtra, rutaMarca } from '../../../../lib/paginas';
+
+export function getStaticPaths() {
+  return marcasConRuta(marcasDe(contenido.productos)).flatMap((m) =>
+    paginasExtra(contenido.productos.filter((p) => p.marca === m.nombre).length).map((n) => ({ params: { marca: m.slug, n: String(n) }, props: { nombre: m.nombre, n } })),
+  );
+}
+const { marca } = Astro.params;
+const { nombre, n } = Astro.props;
+const productos = contenido.productos.filter((p) => p.marca === nombre);
+---
+<PaginaCatalogo
+  titulo={nombre}
+  descripcion={`Productos de la marca ${nombre}, con precios actualizados.`}
+  migas={[{ texto: 'Inicio', href: '/' }, { texto: 'Productos', href: '/productos' }]}
+  productos={productos}
+  base={rutaMarca(marca ?? '')}
+  pagina={n}
+  marcaActual={nombre}
+/>

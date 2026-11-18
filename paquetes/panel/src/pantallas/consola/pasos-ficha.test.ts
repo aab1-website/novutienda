@@ -7,8 +7,8 @@ const ficha = (c: Partial<FichaWeb> = {}): FichaWeb => ({ slug: 'tv', descripcio
 describe('pasos de la ficha', () => {
   it('sin página, falta todo y el siguiente paso es crearla', () => {
     expect(pasosDeFicha(undefined).every((p) => !p.hecho)).toBe(true);
-    expect(siguientePaso(undefined)).toMatchObject({ id: 'pagina', accion: 'Crear la página', modo: 'datos' });
-    expect(textoQueFalta(undefined)).toBe('Falta: página, descripción, foto, visible en el sitio');
+    expect(siguientePaso(undefined)).toMatchObject({ id: 'pagina', accion: 'Preparar para el sitio', modo: 'datos' });
+    expect(textoQueFalta(undefined)).toBe('Aún no está en el sitio');
   });
   it('con página vacía, el siguiente paso es la descripción', () => {
     expect(siguientePaso(ficha())).toMatchObject({ id: 'descripcion', modo: 'datos' });

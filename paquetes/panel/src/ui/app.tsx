@@ -6,7 +6,7 @@ import type { Sesion, UsuarioSesion } from '../sesion/sesion.js';
 import { ITEMS_MENU, menuPara, parsearRuta, puedeVer, rutaPorOmision, type ModulosActivos } from '../util/menu.js';
 import { ProveedorAvisos } from './avisos.js';
 import { Cargando, Vacio } from './comun.js';
-import { CtxApp } from './contexto.js';
+import { CtxApp, useApp } from './contexto.js';
 import { ProveedorGuardia, useGuardia } from './guardia.js';
 import { Login } from './login.js';
 import { PantallaAprobaciones } from '../pantallas/pos/aprobaciones.js';
@@ -15,6 +15,7 @@ import { PantallaConfiguracion } from '../pantallas/configuracion.js';
 import { PantallaInventario } from '../pantallas/inventarios/inventario.js';
 import { PantallaMermas } from '../pantallas/inventarios/mermas.js';
 import { PantallaRecibos } from '../pantallas/recibos/recibos.js';
+import { PestanaPlantillaRecibo } from '../pantallas/recibos/plantilla.js';
 import { PantallaSupervision } from '../pantallas/pos/supervision.js';
 import { PantallaUsuarios } from '../pantallas/usuarios.js';
 import { PantallaVenta } from '../pantallas/pos/venta.js';
@@ -78,6 +79,12 @@ function useTema(): [Tema, () => void] {
   return [tema, alternar];
 }
 
+/** La pestaña de la plantilla del recibo es del módulo recibos: se pasa solo si está encendido (mismo criterio que el menú). */
+function ConfiguracionConRecibos({ sub }: { sub: string }): JSX.Element {
+  const { puedeVer } = useApp();
+  return <PantallaConfiguracion sub={sub} {...(puedeVer('recibos') ? { plantillaRecibo: PestanaPlantillaRecibo } : {})} />;
+}
+
 /** Mapa id de pantalla del registro → componente (L2-4); una prueba exige que sus claves sean las del registro. */
 export const COMPONENTES_PANTALLA: Readonly<Record<string, (p: { sub: string }) => JSX.Element>> = {
   venta: ({ sub }) => <PantallaVenta sub={sub} />,
@@ -88,7 +95,7 @@ export const COMPONENTES_PANTALLA: Readonly<Record<string, (p: { sub: string }) 
   supervision: ({ sub }) => <PantallaSupervision sub={sub} />,
   catalogo: ({ sub }) => <PantallaCatalogo sub={sub} />,
   usuarios: () => <PantallaUsuarios />,
-  configuracion: ({ sub }) => <PantallaConfiguracion sub={sub} />,
+  configuracion: ({ sub }) => <ConfiguracionConRecibos sub={sub} />,
 };
 
 function Pantalla({ seccion, sub }: { seccion: string; sub: string }): JSX.Element {

@@ -18,9 +18,12 @@ interface Props {
   /** Imagen para vista previa al compartir. */
   imagen?: string;
   noindex?: boolean;
+  /** Rutas de la página anterior y la siguiente de un listado paginado. */
+  anterior?: string;
+  siguiente?: string;
   datosEstructurados?: readonly Record<string, unknown>[];
 }
-const { titulo, descripcion, ruta, imagen, noindex = false, datosEstructurados = [] } = Astro.props;
+const { titulo, descripcion, ruta, imagen, noindex = false, anterior, siguiente, datosEstructurados = [] } = Astro.props;
 const { config } = contenido;
 const completo = ruta === '/' ? config.nombre : tituloPagina(titulo, config.nombre);
 const desc = descripcion ?? config.lema;
@@ -48,6 +51,8 @@ const waGeneral = enlaceWhatsApp(config.whatsappNovuchat, 'Hola, tengo una consu
     <title>{completo}</title>
     <meta name="description" content={desc} />
     <link rel="canonical" href={urlAbsoluta(config.origen, ruta === '/' ? '/' : ruta)} />
+    {anterior !== undefined && <link rel="prev" href={urlAbsoluta(config.origen, anterior)} />}
+    {siguiente !== undefined && <link rel="next" href={urlAbsoluta(config.origen, siguiente)} />}
     {debeNoIndexar(process.env['APP_ENV'], config.esEjemplo, noindex) && <meta name="robots" content="noindex, nofollow" />}
     <meta property="og:type" content="website" />
     <meta property="og:site_name" content={config.nombre} />

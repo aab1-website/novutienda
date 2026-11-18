@@ -108,7 +108,6 @@ las aplica el módulo; el redondeo del precio sale de `tenants/{t}/config/redond
 | `preciosDelDia` | SUP | `{ precioUSD: { bo, ar } }` | `{ BO, AR }` (`precioFinal` con el redondeo del tenant) |
 | `guardarFicha` / `leerFicha` | SUP | `{ productoId, ficha }` / `{ productoId }` | `{ productoId }` / `{ ficha }` |
 | `guardarSeccion`, `eliminarSeccion`, `ordenarSecciones`, `guardarCarrusel`, `guardarConfigSitio` | ADM | `{ seccion }` / `{ seccionId }` / `{ orden[] }` / `{ carrusel }` / `{ config }` | `{ ok }` |
-| `exportarProductosCsv` | SUP | `{}` | `{ csv }` |
 | `publicarSitio` | ADM | `{}` | `{ version, productos, decision, advertencias[] }` |
 | `tablero` | SUP | `{}` | tablero (cotizaciones, cambios sin publicar, uso frente a topes) |
 | `alertas` | SUP | `{ limite? }` | `{ alertas[] }` (cotización: fuentes caídas o valor viejo) |
