@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import type { FilaSimulada, MercadoDeclarado, ResultadoImportacion, Simulacion } from '../../api/tipos.js';
-import { aplicables, columnasArchivo, encabezadosPlantilla, lineasConfirmacion, MAX_BYTES_ARCHIVO, notaPrecios, ordenarFilas, resumenSimulacion, textoError, textoResultado, textoTandas, validarArchivo } from './importar-logica.js';
+import { aplicables, columnasArchivo, encabezadosPlantilla, lineasConfirmacion, MAX_BYTES_ARCHIVO, notaPrecios, ordenarFilas, resumenSimulacion, lineaPrevia, motivoSinAplicar, textoBotonImportar, textoError, textoResultado, textoTandas, validarArchivo } from './importar-logica.js';
 
 const REF: readonly MercadoDeclarado[] = [
   { id: 'BO', nombre: 'Bolivia', monedaVenta: 'BOB', monedaBase: 'USD', tieneTipoCambio: true },
@@ -78,5 +78,22 @@ describe('confirmación y resultado', () => {
   });
   it('sin moneda de costo conocida no se nombra ninguna', () => {
     expect(columnasArchivo(UNO).find((x) => x.nombre === 'costo')?.texto).toBe('costo con hasta 2 decimales (opcional).');
+  });
+});
+
+describe('mensajes de la simulación', () => {
+  it('el botón dice «Nada que importar» sin filas aplicables', () => {
+    expect(textoBotonImportar(0)).toBe('Nada que importar');
+    expect(textoBotonImportar(1)).toBe('Importar 1 fila');
+    expect(textoBotonImportar(3)).toBe('Importar 3 filas');
+  });
+  it('sin aplicables y con filas sin cambios, lo dice', () => {
+    expect(motivoSinAplicar({ crear: 0, actualizar: 0, sinCambios: 4, errores: 0 })).toBe('Las 4 filas válidas ya están iguales en el inventario: no hay nada que cambiar.');
+    expect(motivoSinAplicar({ crear: 0, actualizar: 0, sinCambios: 0, errores: 0 })).toBe('No hay filas para crear ni actualizar.');
+  });
+  it('el SKU repetido nombra la fila previa', () => {
+    const f = (linea: number, accion: 'crear' | 'error') => ({ linea, accion, sku: 'A1', errores: [], advertencias: [], cambios: [] }) as never;
+    expect(lineaPrevia([f(2, 'crear'), f(5, 'error')], f(5, 'error'))).toBe(2);
+    expect(textoError({ columna: 'sku', motivo: 'sku repetido en el archivo' }, 2)).toBe('Este SKU ya aparece en la fila 2 del archivo; deje una sola fila por producto.');
   });
 });

@@ -21,6 +21,8 @@ import { useProductos } from './usar-productos.js';
 import './inventario.css';
 
 const filaVacia = (): FilaLinea => ({ id: nuevoId(), productoId: '', cantidad: '', series: '' });
+/** Series distintas escritas: separadas por espacio, coma, punto y coma o salto de línea. */
+const contarSeries = (t: string): number => new Set(t.split(/[\s,;]+/).filter((x) => x !== '')).size;
 const lineaSucia = (f: FilaLinea): boolean => f.productoId !== '' || f.cantidad.trim() !== '' || f.series.trim() !== '';
 
 /** Producto elegido de una lista con búsqueda, sin valor por omisión (nada queda elegido hasta que la persona elige). */
@@ -113,11 +115,14 @@ function LineasProducto({ filas, setFilas, productos, errores, origen }: {
         const cambiar = (c: Partial<FilaLinea>): void => setFilas(filas.map((x) => (x.id === f.id ? { ...x, ...c } : x)));
         return (
           <fieldset key={f.id} class="fila-pago inv-linea">
-            <legend>Línea {i + 1}</legend>
+            <legend>Producto {i + 1}</legend>
             <div class="cuadricula">
               <SelectorProducto productos={productos} valor={f.productoId} onCambio={(v) => cambiar({ productoId: v })} error={errores[claveLinea(f, 'producto')]} />
               {p?.conSerie ? (
-                <Campo etiqueta="Series" valor={f.series} requerido onInput={(v) => cambiar({ series: v })} ayuda="Una por unidad, separadas por coma o espacio." error={errores[claveLinea(f, 'series')]} />
+                <>
+                  <Campo etiqueta="Series" valor={f.series} requerido onInput={(v) => cambiar({ series: v })} ayuda="Escriba o escanee una serie por unidad, separadas por espacio, coma o Enter." error={errores[claveLinea(f, 'series')]} />
+                  <p class="texto-suave" role="status" data-prueba="cantidad-series">Cantidad: {String(contarSeries(f.series))} (según las series)</p>
+                </>
               ) : (
                 <Campo
                   etiqueta="Cantidad" valor={f.cantidad} inputMode="numeric" requerido onInput={(v) => cambiar({ cantidad: v })} error={errores[claveLinea(f, 'cantidad')]}
@@ -125,11 +130,11 @@ function LineasProducto({ filas, setFilas, productos, errores, origen }: {
                 />
               )}
             </div>
-            {filas.length > 1 && <Boton chico variante="secundario" onClick={() => setFilas(filas.filter((x) => x.id !== f.id))} etiqueta={`Quitar línea ${String(i + 1)}`}>Quitar línea</Boton>}
+            {filas.length > 1 && <Boton chico variante="secundario" onClick={() => setFilas(filas.filter((x) => x.id !== f.id))} etiqueta={`Quitar el producto ${String(i + 1)}`}>Quitar este producto</Boton>}
           </fieldset>
         );
       })}
-      {filas.length < MAX_LINEAS && <Boton chico variante="secundario" onClick={() => setFilas([...filas, filaVacia()])}>Agregar línea</Boton>}
+      {filas.length < MAX_LINEAS && <Boton chico variante="secundario" onClick={() => setFilas([...filas, filaVacia()])}>Agregar otro producto</Boton>}
     </div>
   );
 }
@@ -179,6 +184,7 @@ export function Ingreso(): JSX.Element {
       {prod.ocultas && <AvisoConteoAbierto conteos={prod.conteos} nombreAlmacen={nombreAlmacen} />}
       <form ref={s.formulario} class="formulario" onSubmit={revisar} noValidate>
         <Selector etiqueta="Almacén de destino" valor={e.almacen} onCambio={(v) => b.poner({ ...e, almacen: v })} opciones={OPCIONES_ALMACEN} />
+        <p class="texto-suave">Todo este ingreso entra al almacén elegido; para otro almacén, registre otro ingreso.</p>
         <LineasProducto filas={e.filas} setFilas={(filas) => b.poner({ ...e, filas })} productos={prod.lista} errores={errores} />
         <Boton tipo="submit" ocupado={s.accion.ocupado && s.resumen === null}>Registrar ingreso</Boton>
       </form>

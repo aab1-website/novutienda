@@ -16,7 +16,7 @@ import { aBase64, formatoBytes } from '../../util/base64.js';
 import { aCsv, descargarTexto } from '../../util/csv.js';
 import {
   ACCION_TEXTO, ACEPTA_ARCHIVO, aplicables, columnasArchivo, COLUMNAS_STOCK, datosDeFila, encabezadosPlantilla, lineasConfirmacion, MAX_BYTES_ARCHIVO, MAX_FILAS, notaPrecios, ordenarFilas, resumenSimulacion,
-  avisoOmitidas, lineasConError, TEXTO_ARCHIVO_CAMBIO, TEXTO_DESACTUALIZADA, textoDetencion, textoError, textoResultado, textoTandas, validarArchivo,
+  avisoOmitidas, lineaPrevia, lineasConError, motivoSinAplicar, textoBotonImportar, TEXTO_ARCHIVO_CAMBIO, TEXTO_DESACTUALIZADA, textoDetencion, textoError, textoResultado, textoTandas, validarArchivo,
 } from './importar-logica.js';
 import './inventario.css';
 
@@ -27,10 +27,10 @@ interface Fuente {
   readonly archivo: string;
 }
 
-function Detalle({ f }: { f: FilaSimulada }): JSX.Element {
+function Detalle({ f, filas }: { f: FilaSimulada; filas: readonly FilaSimulada[] }): JSX.Element {
   return (
     <>
-      {f.errores.length > 0 && <ul class="lista-simple">{f.errores.map((e) => <li key={textoError(e)} class="texto-error">{textoError(e)}</li>)}</ul>}
+      {f.errores.length > 0 && <ul class="lista-simple">{f.errores.map((e) => { const t = textoError(e, lineaPrevia(filas, f)); return <li key={t} class="texto-error">{t}</li>; })}</ul>}
       {f.advertencias.length > 0 && <ul class="lista-simple">{f.advertencias.map((a) => <li key={a} class="texto-suave">Aviso: {a}</li>)}</ul>}
       {f.accion === 'actualizar' && f.cambios.length > 0 && <span class="texto-suave">Cambia: {f.cambios.join(', ')}</span>}
       {f.errores.length === 0 && f.advertencias.length === 0 && (f.accion !== 'actualizar' || f.cambios.length === 0) ? '—' : null}
@@ -53,7 +53,7 @@ function TablaSimulacion({ sim }: { sim: Simulacion }): JSX.Element {
         { id: 'producto', titulo: 'Producto', valor: (f) => datosDeFila(f).nombre || '—', encabezadoFila: true },
         { id: 'sku', titulo: 'SKU', valor: (f) => datosDeFila(f).sku || '—' },
         { id: 'accion', titulo: 'Acción', valor: (f) => ACCION_TEXTO[f.accion], celda: (f) => <span class={f.accion === 'error' ? 'texto-error' : undefined}>{ACCION_TEXTO[f.accion]}</span> },
-        { id: 'detalle', titulo: 'Detalle', valor: (f) => f.errores.map((e) => e.motivo).join(' '), celda: (f) => <Detalle f={f} /> },
+        { id: 'detalle', titulo: 'Detalle', valor: (f) => f.errores.map((e) => e.motivo).join(' '), celda: (f) => <Detalle f={f} filas={sim.filas} /> },
       ]}
     />
   );
@@ -205,14 +205,14 @@ export function ImportarExportar(): JSX.Element {
           en el catálogo del sitio, y no puede haber en el catálogo un producto que no esté aquí.
         </p>
         <p class="texto-suave">Primero se muestra una simulación fila por fila; no se guarda nada hasta que usted confirma. Acepta archivos CSV o Excel (.xlsx) de hasta {formatoBytes(MAX_BYTES_ARCHIVO)} y {String(MAX_FILAS)} filas.</p>
-        <details>
+        <details open>
           <summary>Qué columnas lleva el archivo</summary>
           <ul class="lista-simple">
             {comercial.estado === 'lista' && columnasArchivo(comercial.comercial.mercados, comercial.comercial.monedaCosto).map((c) => <li key={c.nombre}><strong>{c.nombre}</strong>: {c.texto}</li>)}
           </ul>
           {comercial.estado === 'cargando' && <p class="texto-suave">Cargando las columnas del comercio…</p>}
           {comercial.estado === 'error' && <Alerta>{`No se pudo leer la configuración comercial: ${comercial.mensaje}`}</Alerta>}
-          <p class="texto-suave">Cada producto se reconoce por su SKU: si ya existe, solo se cambian las columnas que el archivo trae; si no, se crea. Una fila sin SKU es un error.{comercial.estado === 'lista' ? ` ${notaPrecios(comercial.comercial.mercados)}` : ''}</p>
+          <p class="texto-suave">Cada producto se reconoce por su SKU: si ya existe, solo se cambian las columnas que el archivo trae; si no, se crea. Una fila sin SKU es un error. El SKU admite hasta 40 caracteres: letras, números, punto, guion y guion bajo.{comercial.estado === 'lista' ? ` ${notaPrecios(comercial.comercial.mercados)}` : ''}</p>
         </details>
         <div class="fila">
           <Boton variante="secundario" onClick={plantilla} deshabilitado={comercial.estado !== 'lista'}>Descargar plantilla</Boton>
@@ -270,9 +270,9 @@ export function ImportarExportar(): JSX.Element {
           <div class="fila">
             <Boton
               onClick={() => setConfirmando({ omitir: false })}
-              motivo={hayErrores ? `El archivo tiene ${String(r.errores)} ${r.errores === 1 ? 'fila' : 'filas'} con error. Corríjalo y vuelva a elegirlo, o importe solo las válidas.` : nAplicar === 0 ? 'No hay filas para crear ni actualizar.' : undefined}
+              motivo={nAplicar === 0 && r.sinCambios > 0 ? motivoSinAplicar(r) : hayErrores ? `El archivo tiene ${String(r.errores)} ${r.errores === 1 ? 'fila' : 'filas'} con error. Corríjalo y vuelva a elegirlo, o importe solo las válidas.` : nAplicar === 0 ? motivoSinAplicar(r) : undefined}
             >
-              {`Importar ${String(nAplicar)} ${nAplicar === 1 ? 'fila' : 'filas'}`}
+              {textoBotonImportar(nAplicar)}
             </Boton>
             {hayErrores && (
               <Boton variante="secundario" onClick={() => setConfirmando({ omitir: true })} motivo={nAplicar === 0 ? 'Ninguna fila es válida: no hay nada que importar.' : undefined}>

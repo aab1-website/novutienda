@@ -120,6 +120,9 @@ describe('ingreso', () => {
     await screen.findByRole('heading', { name: 'Ingreso de mercadería' });
     await elegir(u, 'celular', /Celular A1/);
     await u.type(screen.getByLabelText(/^Series/), 'N-100, N-101');
+    expect(screen.getByText('Cantidad: 2 (según las series)')).toBeTruthy();
+    expect(screen.getByText('Producto 1')).toBeTruthy();
+    expect(screen.getByText('Todo este ingreso entra al almacén elegido; para otro almacén, registre otro ingreso.')).toBeTruthy();
     await u.click(screen.getByRole('button', { name: 'Registrar ingreso' }));
     const d = await screen.findByRole('dialog', { name: '¿Registrar este ingreso?' });
     expect(within(d).getByText('2 series de Celular A1 128 GB (N-100, N-101)')).toBeTruthy();
