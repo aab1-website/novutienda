@@ -30,6 +30,12 @@ const eventos = () => db.coleccion(`tenants/${T}/eventos`).filter((e) => e.datos
 const filasNuevas = (n: number, desde = 0): string => Array.from({ length: n }, (_, i) => `p${String(desde + i)}x,Nombre,c,K${String(desde + i)},100,200`).join('\n');
 
 describe('simulación', () => {
+  it('un SKU repetido lleva la línea donde apareció primero', async () => {
+    const r = await simular('sku,nombre\nA1,Uno\nB2,Dos\nA1,Tres');
+    const repetido = r.filas.find((f) => f.linea === 4)?.errores.find((x) => x.motivo === 'sku repetido en el archivo');
+    expect(repetido?.filaPrevia).toBe(2);
+  });
+
   it('no escribe nada ni consume el operacionId; informa crear, actualizar, sin cambios y error con columna y motivo', async () => {
     await altaProducto(db, producto('lapiz', { nombre: 'Lápiz', precioUSD: { bo: 1000, ar: 1100 } }));
     await altaProducto(db, producto('goma'));

@@ -627,6 +627,8 @@ export interface ResultadoPublicacion {
 export interface ErrorFilaImportacion {
   readonly columna: string | null;
   readonly motivo: string;
+  /** En «sku repetido»: línea del archivo donde el SKU apareció primero. */
+  readonly filaPrevia?: number;
 }
 
 export interface FilaSimulada {
