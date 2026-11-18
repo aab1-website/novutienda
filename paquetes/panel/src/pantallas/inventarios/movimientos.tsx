@@ -135,7 +135,7 @@ function LineasProducto({ filas, setFilas, productos, errores, origen }: {
                 />
               )}
             </div>
-            {filas.length > 1 && <Boton chico variante="secundario" onClick={() => setFilas(filas.filter((x) => x.id !== f.id))} etiqueta={`Quitar el producto ${String(i + 1)}`}>Quitar este producto</Boton>}
+            {filas.length > 1 && <Boton chico variante="secundario" onClick={() => setFilas(filas.filter((x) => x.id !== f.id))} etiqueta={`Quitar este producto (producto ${String(i + 1)})`}>Quitar este producto</Boton>}
           </fieldset>
         );
       })}
