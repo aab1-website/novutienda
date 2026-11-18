@@ -35,7 +35,7 @@ describe('lista de páginas de producto', () => {
     expect(within(tabla).getByRole('columnheader', { name: 'Fotos y video' })).toBeTruthy();
     expect(within(tabla).getAllByText('0 en la ficha').length).toBeGreaterThan(0);
     expect(within(tabla).getByRole('button', { name: `Editar página de ${TV}` })).toBeTruthy();
-    expect(within(tabla).getByRole('button', { name: `Editar página de ${TV}` })).toBeTruthy();
+    expect(within(tabla).queryByRole('button', { name: `Fotos y video de ${TV}` })).toBeNull();
     const u = userEvent.setup();
     await u.type(screen.getByLabelText('Buscar producto'), 'hdmi');
     expect(within(tabla).queryByText(TV)).toBeNull();
@@ -44,7 +44,7 @@ describe('lista de páginas de producto', () => {
 });
 
 describe('panel lateral de la ficha', () => {
-  it('«Editar página» abre el panel con las dos secciones y Cancelar devuelve el foco a la fila y Cancelar devuelve el foco a la fila', async () => {
+  it('«Editar página» abre el panel con las dos secciones y Cancelar devuelve el foco a la fila', async () => {
     const e = crearEntorno('sup');
     ver(e);
     const u = userEvent.setup();
