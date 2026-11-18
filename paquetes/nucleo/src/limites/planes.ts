@@ -4,9 +4,10 @@ import type { ConfiguracionComercial } from '../tenant/mercados.js';
 
 /**
  * Identificador de plan. `base` admite un mercado y una moneda; `multimercado` admite varios
- * (el tenant de tres monedas).
+ * (el tenant de tres monedas). `pruebas` es `base` con más usuarios, para ensayar en staging; solo se
+ * asigna en ese ambiente (lo garantiza el script de asignación y el coordinador, no este tipo).
  */
-export type PlanId = 'base' | 'multimercado';
+export type PlanId = 'base' | 'multimercado' | 'pruebas';
 
 /**
  * Claves con tope en el plan. `almacenes` aún no figura en `LimiteColeccion`
@@ -29,6 +30,7 @@ export type TopesPlan = { readonly [clave in ClaveLimite | ClaveComercial]: numb
 export const PLANES: { readonly [plan in PlanId]: TopesPlan } = {
   base: { productos: 200, usuarios: 3, cajas: 1, almacenes: 3, mercados: 1, monedas: 1 },
   multimercado: { productos: 200, usuarios: 3, cajas: 1, almacenes: 3, mercados: 5, monedas: 5 },
+  pruebas: { productos: 200, usuarios: 10, cajas: 1, almacenes: 3, mercados: 1, monedas: 1 },
 };
 
 /*

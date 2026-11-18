@@ -55,6 +55,11 @@ export const PARAMETROS = {
    * Vacío = disparo deshabilitado: el trabajo queda `pendiente` y lo recoge el sondeo programado, como antes.
    */
   githubRepoSitio: defineString('GITHUB_REPO_SITIO', { default: '' }),
+  /**
+   * `si` solo en staging: habilita el plan `pruebas`. Con cualquier otro valor, un tenant con ese plan se trata como inválido
+   * (falla cerrado). Producción NO debe fijarlo.
+   */
+  planPruebasHabilitado: defineString('PLAN_PRUEBAS_HABILITADO', { default: '' }),
 } as const;
 
 export const SECRETOS = {

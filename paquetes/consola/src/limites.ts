@@ -1,4 +1,4 @@
-import { PLANES } from '@novutienda/nucleo';
+import { PLANES, esPlanId, type PlanId } from '@novutienda/nucleo';
 
 const MIB = 1024 * 1024;
 
@@ -6,6 +6,8 @@ const MIB = 1024 * 1024;
  * Límites de la propuesta. Los megabytes y gigabytes se miden en potencias de 2
  * (1 MB = 1 MiB): es la lectura que menos rechaza fotos legítimas de 15 MB.
  * Los topes de productos y usuarios no se repiten: salen de los planes del núcleo.
+ * Los de esta constante son los del plan `base` (el predeterminado); el tope de un tenant
+ * concreto sale de su plan, con `topesDelPlan`.
  */
 export const LIMITES_CONSOLA = {
   productos: PLANES.base.productos,
@@ -38,3 +40,9 @@ export const LIMITES_CONSOLA = {
   /** Espera antes de borrar las versiones PÚBLICAS de un logo reemplazado o quitado: el sitio ya construido aún puede estar usándolas. */
   esperaBorradoLogoMs: 24 * 60 * 60 * 1000,
 } as const;
+
+/** Topes de productos y usuarios del plan indicado; un plan desconocido cae al predeterminado (`base`). */
+export function topesDelPlan(plan: unknown): { readonly productos: number; readonly usuarios: number } {
+  const p: PlanId = esPlanId(plan) ? plan : 'base';
+  return { productos: PLANES[p].productos, usuarios: PLANES[p].usuarios };
+}
