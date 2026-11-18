@@ -2,7 +2,7 @@ import type { JSX } from 'preact';
 import { useEffect, useRef, useState } from 'preact/hooks';
 import { esWhatsappValido, pareceNumeroDeRelleno } from './whatsapp.js';
 import { Miniatura } from './miniatura-vista.js';
-import { LIMITES_PANEL, PLANTILLAS_SITIO, type Carrusel, type Medio, type ConfigSitio, type PlantillaSitio } from '../../api/tipos.js';
+import { ID_PORTADA, LIMITES_PANEL, PLANTILLAS_SITIO, type Carrusel, type Medio, type ConfigSitio, type PlantillaSitio } from '../../api/tipos.js';
 import { ErrorApi, mensajeDeError } from '../../api/errores.js';
 import { Alerta, Boton, BotonConfirmado, Campo, Cargando, Dato, ErrorCarga, Pestanas, Seccion, Vacio, fechaHora } from '../../ui/comun.js';
 import { useAvisos } from '../../ui/avisos.js';
@@ -16,6 +16,7 @@ import { PALETAS } from './plantillas-vista.js';
 import { PantallaFichas } from './catalogo-ficha.js';
 import { PantallaSecciones } from './catalogo-secciones.js';
 import { BloqueLogo } from './logo-vista.js';
+import { useSubidaPortada } from './subidas-portada.js';
 
 const TODAS = [
   { id: 'tablero', titulo: 'Tablero' }, { id: 'fichas', titulo: 'Fichas, fotos y video' }, { id: 'secciones', titulo: 'Secciones' },
@@ -245,9 +246,19 @@ function Apariencia(): JSX.Element {
 
 function CarruselEditor({ plantilla, items, setItems, productos }: { plantilla: PlantillaSitio; items: Items; setItems: (i: Items) => void; productos: { id: string; nombre: string }[] }): JSX.Element {
   const { api } = useApp();
+  // Medios vistos en esta sesión: permiten mostrar la miniatura de las fotos que ya se agregaron.
+  const conocidos = useRef(new Map<string, Medio>());
   // Sin producto elegido de antemano: se busca y se elige.
   const [productoId, setProductoId] = useState<string | null>(null);
   const fotos = useCarga(() => (productoId === null ? Promise.resolve([]) : api.llamar('listarMedios', { productoId })), [productoId]);
+  // Fotos propias de la portada (no son de ningún producto): se suben aquí y se agregan al carrusel igual que las de un producto.
+  const propias = useCarga(() => api.llamar('listarMedios', { productoId: ID_PORTADA }), []);
+  const entradaPortada = useRef<HTMLInputElement>(null);
+  const subida = useSubidaPortada((m) => {
+    conocidos.current.set(m.id, m);
+    propias.recargar();
+    if (items.length < 8 && !items.some((i) => i.medioId === m.id)) setItems([...items, { medioId: m.id, alt: '' }]);
+  });
   const mover = (i: number, d: number): void => {
     const n = [...items];
     const x = n[i];
@@ -258,7 +269,6 @@ function CarruselEditor({ plantilla, items, setItems, productos }: { plantilla: 
     setItems(n);
   };
   // Medios vistos en esta sesión: permiten mostrar la miniatura de las fotos que ya se agregaron.
-  const conocidos = useRef(new Map<string, Medio>());
   // Tras recargar, solo se leen los medios de los productos que tienen fotos en este carrusel. El ítem no trae su producto:
   // se resuelve con las fichas (`listarFichas`), que ya relacionan cada foto con su producto. Un fallo de sesión se deja
   // propagar al manejo de sesión del panel; cualquier otro deja el respaldo.
@@ -275,10 +285,11 @@ function CarruselEditor({ plantilla, items, setItems, productos }: { plantilla: 
   }, [faltan.join(',')]);
   for (const m of guardados.datos ?? []) conocidos.current.set(m.id, m);
   for (const m of fotos.datos ?? []) conocidos.current.set(m.id, m);
+  for (const m of propias.datos ?? []) conocidos.current.set(m.id, m);
   const nombreProducto = productos.find((p) => p.id === productoId)?.nombre ?? '';
   return (
     <Seccion titulo={`Carrusel de portada (${PALETAS[plantilla].nombre})`}>
-      {items.length === 0 && <Vacio titulo="El carrusel no tiene fotos" detalle="Agregue hasta 8 fotos de los productos." />}
+      {items.length === 0 && <Vacio titulo="El carrusel no tiene fotos" detalle="Agregue hasta 8 fotos, de los productos o subidas aquí." />}
       <ol class="lista-simple">
         {items.map((it, i) => (
           <li key={it.medioId} class="fila fila-alinear">
@@ -301,6 +312,27 @@ function CarruselEditor({ plantilla, items, setItems, productos }: { plantilla: 
             </Boton>
           ))}
         </div>
+      )}
+      <h3>Fotos propias de la portada</h3>
+      <p class="texto-suave">Fotos que no son de un producto (el local, una campaña). JPG, PNG, WebP o HEIC, hasta 15 MB; la cantidad máxima depende de su plan. Se guardan al subirlas; el orden y el texto alternativo se guardan con «Guardar apariencia».</p>
+      <div class="fila fila-alinear">
+        <Boton onClick={() => entradaPortada.current?.click()} motivo={subida.enCurso ? 'Hay una subida en curso' : undefined}>Subir foto a la portada</Boton>
+        <input ref={entradaPortada} type="file" hidden aria-label="Archivo de la foto de portada" accept="image/jpeg,image/png,image/webp,image/heic,image/heif,.jpg,.jpeg,.png,.webp,.heic,.heif" onChange={(e) => { const input = e.currentTarget; const f = input.files?.[0]; input.value = ''; if (f !== undefined) subida.elegir(f); }} />
+        {items.length < 8 && (propias.datos ?? []).filter((m) => m.tipo === 'foto' && !items.some((i) => i.medioId === m.id)).map((m) => (
+          <Boton key={m.id} chico variante="secundario" etiqueta={`Agregar foto propia ${m.id.slice(0, 6)}`} onClick={() => setItems([...items, { medioId: m.id, alt: '' }])}>
+            <Miniatura medio={m} alt="Foto propia de la portada" respaldo={`Foto ${m.id.slice(0, 6)}`} />
+            Agregar foto propia {m.id.slice(0, 6)}
+          </Boton>
+        ))}
+      </div>
+      {subida.enCurso && (
+        <p role="status">{subida.nombre}: {subida.fase === 'subiendo' ? `Subiendo ${String(Math.round(subida.progreso))} %` : subida.fase === 'procesando' ? 'Procesando la foto…' : 'Preparando la subida…'}</p>
+      )}
+      {subida.fase === 'error' && (
+        <Alerta tipo="error">
+          {subida.nombre === '' ? '' : `${subida.nombre}: `}{subida.motivo}{' '}
+          {subida.reintentable ? <Boton chico variante="secundario" onClick={subida.reintentar}>Reintentar</Boton> : <Boton chico variante="secundario" onClick={subida.descartar}>Entendido</Boton>}
+        </Alerta>
       )}
     </Seccion>
   );

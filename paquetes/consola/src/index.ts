@@ -1,8 +1,8 @@
 export { manifiestoConsola } from './manifiesto.js';
 export { ArchivoNoAdmitido, ErrorConsola, ProcesamientoNoDisponible } from './errores.js';
 export type { CodigoErrorConsola } from './errores.js';
-export { LIMITES_CONSOLA } from './limites.js';
-export { ID_NEGOCIO, rutaPublicaMedio } from './rutas.js';
+export { cupoPortadaDelPlan, LIMITES_CONSOLA } from './limites.js';
+export { ID_NEGOCIO, ID_PORTADA, rutaPublicaMedio } from './rutas.js';
 export { PLANTILLAS, esPlantilla } from './plantillas.js';
 export type { PlantillaId } from './plantillas.js';
 export { validarEnlace } from './enlaces.js';

@@ -2,7 +2,7 @@
 // (`planificarProcesamiento` + `nombreVersion` + la forma de `rutaPublicaMedio`) debe pasar `RUTA_PUBLICA`.
 // Sin emulador: solo funciones puras. Tenant y datos sintéticos.
 import { describe, expect, it } from 'vitest';
-import { ID_NEGOCIO, nombreVersion, planificarProcesamiento, rutaPublicaMedio } from '@novutienda/consola';
+import { ID_NEGOCIO, ID_PORTADA, nombreVersion, planificarProcesamiento, rutaPublicaMedio } from '@novutienda/consola';
 import { RUTA_PUBLICA, tipoContenidoDe } from '../../plataforma/conectores/firebase/almacen-medios.js';
 
 const T = 'tienda-ejemplo';
@@ -13,7 +13,7 @@ const publica = (productoId: string, nombre: string): string => rutaPublicaMedio
 const DIMENSIONES: ReadonlyArray<readonly [number, number]> = [[1, 1], [100, 80], [512, 512], [513, 200], [700, 3000], [1280, 720], [2400, 1600], [4000, 3000], [30000, 99999]];
 
 describe('RUTA_PUBLICA frente a lo que genera la consola', () => {
-  for (const [tipo, id] of [['foto', 'camisa-azul'], ['video', 'camisa-azul'], ['logo', ID_NEGOCIO]] as const) {
+  for (const [tipo, id] of [['foto', 'camisa-azul'], ['video', 'camisa-azul'], ['logo', ID_NEGOCIO], ['portada', ID_PORTADA]] as const) {
     it(`acepta toda versión de ${tipo}`, () => {
       for (const [ancho, alto] of DIMENSIONES) {
         const plan = planificarProcesamiento(tipo, ancho, alto);
@@ -40,6 +40,14 @@ describe('RUTA_PUBLICA frente a lo que genera la consola', () => {
     'logo avif': publica(ID_NEGOCIO, `${h}-logo512.avif`),
     'logo con mayúsculas': publica(ID_NEGOCIO, `${h.toUpperCase()}-logo512.png`),
     'imagen en _negocio': publica(ID_NEGOCIO, `${h}-imagen480.webp`),
+    'video en _portada': publica(ID_PORTADA, `${h}-video720.mp4`),
+    'póster en _portada': publica(ID_PORTADA, `${h}-poster1280.webp`),
+    'logo en _portada': publica(ID_PORTADA, `${h}-logo512.png`),
+    'imagen png en _portada': publica(ID_PORTADA, `${h}-imagen480.png`),
+    'imagen de portada con hash corto': publica(ID_PORTADA, `${h.slice(1)}-imagen480.webp`),
+    'mayúsculas en _portada': publica('_PORTADA', `${h}-imagen480.webp`),
+    'subcarpeta en _portada': publica(`${ID_PORTADA}/x`, `${h}-imagen480.webp`),
+    'recorrido .. en _portada': `tenants/${T}/publico/medios/_portada/../${h}-imagen480.webp`,
     'logo en un producto': publica('camisa-azul', `${h}-logo512.png`),
     'png en una foto': publica('camisa-azul', `${h}-imagen480.png`),
     'recorrido ..': `tenants/${T}/publico/medios/_negocio/../${h}-logo512.png`,

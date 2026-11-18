@@ -290,7 +290,8 @@ describe('catálogo: miniaturas del carrusel', () => {
     ver(e);
     const item = (await screen.findByLabelText('Texto alternativo de la foto 1')).closest('li');
     await waitFor(() => expect(item?.querySelector('img')?.getAttribute('src')).toBe(`${BASE_MEDIOS}/t/${id}-480.webp`));
-    expect(lecturas).toEqual(['prod-35']);
+    // Aparte de la carpeta de la portada (fotos propias), solo se lee el producto de la foto del carrusel.
+    expect(lecturas.filter((x) => x !== '_portada')).toEqual(['prod-35']);
   });
 
   it('un fallo que no es de sesión deja el respaldo sin romper la pantalla', async () => {
@@ -522,5 +523,46 @@ describe('catálogo: aviso del sitio incompleto', () => {
     await u.click(await screen.findByRole('button', { name: 'Publicar el sitio' }));
     expect(await screen.findByText(/normalmente en pocos minutos; si no, en un rato/)).toBeTruthy();
     expect(screen.queryByText('No hay cambios sin publicar.')).toBeNull();
+  });
+});
+
+describe('catálogo: fotos propias de la portada', () => {
+  const ver = (e: Entorno): void => void render(e.envolver(h(ProveedorGuardia, null, h(PantallaCatalogo, { sub: 'apariencia' }))));
+  const archivo = (nombre: string, tipo: string, bytes = 10): File => new File([new Uint8Array(bytes)], nombre, { type: tipo });
+  const subir = async (nombre = 'local.jpg', tipo = 'image/jpeg'): Promise<void> => {
+    fireEvent.change(await screen.findByLabelText('Archivo de la foto de portada'), { target: { files: [archivo(nombre, tipo)] } });
+  };
+
+  it('subir una foto la agrega al carrusel con el texto alternativo por escribir, y se guarda con «Guardar apariencia»', async () => {
+    const e = crearEntorno('adm');
+    ver(e);
+    expect(await screen.findByRole('button', { name: 'Subir foto a la portada' })).toBeTruthy();
+    await subir();
+    const campo = await screen.findByLabelText('Texto alternativo de la foto 1');
+    expect((campo as HTMLInputElement).value).toBe('');
+    const reserva = e.api.llamadas.find((l) => l.nombre === 'reservarSubida');
+    expect(reserva?.entrada).toMatchObject({ productoId: '_portada', tipo: 'portada' });
+    expect([...e.api.estado.medios.values()].filter((m) => m.productoId === '_portada')).toHaveLength(1);
+    await userEvent.type(campo, 'El local');
+    await userEvent.click(screen.getByRole('button', { name: 'Guardar apariencia' }));
+    await waitFor(() => expect(e.api.llamadas.some((l) => l.nombre === 'guardarCarrusel')).toBe(true));
+  });
+  it('un archivo que no es foto se rechaza antes de subir, con su motivo', async () => {
+    const e = crearEntorno('adm');
+    ver(e);
+    await subir('video.mp4', 'video/mp4');
+    expect(await screen.findByText(/no es una foto permitido/)).toBeTruthy();
+    expect(e.api.llamadas.some((l) => l.nombre === 'reservarSubida')).toBe(false);
+  });
+  it('al superar el cupo del plan muestra el motivo del servidor', async () => {
+    const e = crearEntorno('adm');
+    ver(e);
+    for (let i = 0; i < 8; i += 1) {
+      await subir(`f${String(i)}.jpg`);
+      await waitFor(() => expect([...e.api.estado.medios.values()].filter((m) => m.productoId === '_portada')).toHaveLength(i + 1));
+      await waitFor(() => expect(screen.queryByText(/Procesando la foto/)).toBeNull());
+    }
+    await subir('novena.jpg');
+    expect(await screen.findByText(/admite hasta 8 fotos propias/)).toBeTruthy();
   });
 });

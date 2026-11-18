@@ -3,11 +3,11 @@ import { anotarCambio, leerEstadoSitio } from './cambios.js';
 import { ErrorConsola } from './errores.js';
 import { exigirRol, ROLES } from './permisos.js';
 import type { BaseDatosConsola, CatalogoPuerto, Reloj } from './puertos.js';
-import { ID_PRODUCTO, rutaCarrusel, rutaFicha, rutaMedio, rutaSeccion, rutaSitio, tenantValido } from './rutas.js';
+import { ID_PORTADA, ID_PRODUCTO, rutaCarrusel, rutaFicha, rutaMedio, rutaSeccion, rutaSitio, tenantValido } from './rutas.js';
 import { mediosDeSeccion, validarSeccion } from './secciones.js';
 import { validarFichaWeb } from './fichas.js';
 import { validarCarrusel, validarConfigSitio } from './sitio.js';
-import { LIMITES_CONSOLA as L } from './limites.js';
+import { cupoPortadaDelPlan, LIMITES_CONSOLA as L } from './limites.js';
 import { esObjeto, type Validacion } from './validar.js';
 
 export interface DepsSitio {
@@ -174,6 +174,13 @@ export async function guardarCarrusel(deps: DepsSitio, e: { tenantId: string; ac
   const ahora = ahoraIso(deps);
   await deps.db.runTransaction(async (tx) => {
     await leerMedios(tx, t, c.items.map((i) => i.medioId), { soloFotos: true });
+    // Las fotos subidas a la portada (`_portada`) caben en el cupo del plan; las de productos no cuentan.
+    let propias = 0;
+    for (const id of new Set(c.items.map((i) => i.medioId))) if ((await tx.get(rutaMedio(t, id))).data()?.['productoId'] === ID_PORTADA) propias += 1;
+    if (propias > 0) {
+      const cupo = cupoPortadaDelPlan((await tx.get(`tenants/${t}`)).data()?.['plan']);
+      if (propias > cupo) throw new ErrorConsola('limite', `El plan admite hasta ${String(cupo)} fotos propias en la portada`);
+    }
     const estado = await leerEstadoSitio(tx, t);
     tx.set(rutaCarrusel(t, c.plantilla), { ...c });
     anotarCambio(tx, t, estado, ahora);

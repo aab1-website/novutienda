@@ -25,7 +25,7 @@ const sesion = (rol: string, extra: Record<string, unknown> = {}): Record<string
 describe.skipIf(!hayEmuladorStorage)('reglas de Storage (emulador)', () => {
   let env: RulesTestEnvironment;
 
-  async function reservar(id: string, o: { tipo?: 'foto' | 'video' | 'logo'; bytes?: number; por?: string; estado?: string; producto?: string; venceEn?: number | null } = {}): Promise<void> {
+  async function reservar(id: string, o: { tipo?: 'foto' | 'video' | 'logo' | 'portada'; bytes?: number; por?: string; estado?: string; producto?: string; venceEn?: number | null } = {}): Promise<void> {
     await env.withSecurityRulesDisabled(async (ctx) => {
       await ctx.firestore().doc(`tenants/${T}/subidas/${id}`).set({
         id, productoId: o.producto ?? PRODUCTO, tipo: o.tipo ?? 'foto', bytes: o.bytes ?? 15 * MIB, estado: o.estado ?? 'reservada', por: o.por ?? 'u-sup',
@@ -129,6 +129,43 @@ describe.skipIf(!hayEmuladorStorage)('reglas de Storage (emulador)', () => {
       await assertFails(subir(adm, logo('logo-0007'), 1024, 'video/mp4'));
       await reservar('logo-0008', { por: 'u-adm', tipo: 'logo', producto: PRODUCTO, bytes: MIB });
       await assertFails(subir(adm, original('logo-0008'), 1024, 'image/png'));
+    });
+
+    it('portada: adm con reserva `portada` crea el original en `_portada`; niega más de 15 MiB, SVG, video, reserva ajena o vencida, otro destino y el update', async () => {
+      const adm = env.authenticatedContext('u-adm', sesion('adm'));
+      const portada = (sub: string): string => original(sub, '_portada');
+      await reservar('port-0001', { por: 'u-adm', tipo: 'portada', producto: '_portada', bytes: 15 * MIB });
+      await assertSucceeds(subir(adm, portada('port-0001'), 1024, 'image/webp'));
+      await assertFails(subir(adm, portada('port-0001'), 2048, 'image/webp')); // update de un original ya creado
+      await reservar('port-0002', { por: 'u-adm', tipo: 'portada', producto: '_portada', bytes: 20 * MIB });
+      await assertFails(subir(adm, portada('port-0002'), 15 * MIB + 1, 'image/jpeg'));
+      await reservar('port-0003', { por: 'u-adm', tipo: 'portada', producto: '_portada', bytes: MIB });
+      await assertFails(subir(adm, portada('port-0003'), 1024, 'image/svg+xml'));
+      await assertFails(subir(adm, portada('port-0003'), 1024, 'video/mp4'));
+      await assertFails(subir(adm, portada('port-0003'), 1024, 'application/pdf'));
+      await reservar('port-0004', { por: 'otra-persona', tipo: 'portada', producto: '_portada', bytes: MIB });
+      await assertFails(subir(adm, portada('port-0004'), 1024, 'image/jpeg'));
+      await reservar('port-0005', { por: 'u-adm', tipo: 'portada', producto: '_portada', bytes: MIB, venceEn: Date.now() - 1000 });
+      await assertFails(subir(adm, portada('port-0005'), 1024, 'image/jpeg'));
+      // Una reserva de foto o de video no sirve para el destino de la portada, ni una de logo.
+      await reservar('port-0006', { por: 'u-adm', tipo: 'foto', producto: '_portada', bytes: MIB });
+      await assertFails(subir(adm, portada('port-0006'), 1024, 'image/jpeg'));
+      await reservar('port-0007', { por: 'u-adm', tipo: 'video', producto: '_portada', bytes: MIB });
+      await assertFails(subir(adm, portada('port-0007'), 1024, 'video/mp4'));
+      await reservar('port-0008', { por: 'u-adm', tipo: 'logo', producto: '_portada', bytes: MIB });
+      await assertFails(subir(adm, portada('port-0008'), 1024, 'image/png'));
+      // Espejos: una reserva `portada` contra un producto real o contra `_negocio` falla, y una de `logo` contra `_negocio` no abre `_portada`.
+      await reservar('port-0009', { por: 'u-adm', tipo: 'portada', producto: PRODUCTO, bytes: MIB });
+      await assertFails(subir(adm, original('port-0009'), 1024, 'image/jpeg'));
+      await reservar('port-0010', { por: 'u-adm', tipo: 'portada', producto: '_negocio', bytes: MIB });
+      await assertFails(subir(adm, original('port-0010', '_negocio'), 1024, 'image/jpeg'));
+      // Sin reserva, de otro tenant, anónimo, caj y sin verificar el correo.
+      await assertFails(subir(adm, portada('port-sin-reserva'), 1024, 'image/jpeg'));
+      await reservar('port-0011', { por: 'u-caj', tipo: 'portada', producto: '_portada', bytes: MIB });
+      await assertFails(subir(env.authenticatedContext('u-caj', sesion('caj')), portada('port-0011'), 1024, 'image/jpeg'));
+      await assertFails(subir(env.unauthenticatedContext(), portada('port-0011'), 1024, 'image/jpeg'));
+      await assertFails(subir(env.authenticatedContext('u-adm', sesion('adm', { email_verified: false })), portada('port-0011'), 1024, 'image/jpeg'));
+      await assertFails(subir(adm, original('port-0001', '_portada', OTRO), 1024, 'image/jpeg')); // un adm no escribe en otro comercio
     });
 
     it('solo crea: no reemplaza ni borra ni lee un original desde el navegador', async () => {

@@ -471,6 +471,8 @@ export const LIMITES_PANEL = {
   bytesVideo: 200 * 1024 * 1024,
   duracionVideoSeg: 60,
   seccionesMax: 5,
+  /** Cupo de fotos de portada subidas del plan base (el servidor lo lee del plan de cada comercio). */
+  fotosPortada: 8,
   cuotaOriginalesBytes: 10 * 1024 * 1024 * 1024,
 } as const;
 
@@ -534,8 +536,10 @@ export interface Medio {
   readonly por: string;
 }
 
-/** Tipo de una subida: foto o video de un producto, o el logo del negocio. */
-export type TipoSubida = TipoMedio | 'logo';
+/** Tipo de una subida: foto o video de un producto, el logo del negocio o una foto de portada (no es de ningún producto). */
+export type TipoSubida = TipoMedio | 'logo' | 'portada';
+/** `productoId` con el que el servidor guarda las fotos de portada subidas. Son medios `foto` de esa carpeta. */
+export const ID_PORTADA = '_portada';
 /** `productoId` con el que el servidor guarda la subida de un logo (el logo no pertenece a ningún producto). */
 export const ID_NEGOCIO = '_negocio';
 /** Tope del archivo de logo, igual que el servidor (JPG, PNG o WebP). */

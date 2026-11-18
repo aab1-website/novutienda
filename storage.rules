@@ -36,16 +36,22 @@ service firebase.storage {
         && request.resource.size <= r.bytes
         && ((r.tipo == 'foto'
               && productoId != '_negocio'
+              && productoId != '_portada'
               && request.resource.size <= 15 * 1024 * 1024
               && request.resource.contentType.matches('image/(jpeg|png|webp|heic)'))
             || (r.tipo == 'video'
               && productoId != '_negocio'
+              && productoId != '_portada'
               && request.resource.size <= 200 * 1024 * 1024
               && request.resource.contentType.matches('video/(mp4|quicktime|webm)'))
             || (r.tipo == 'logo'
               && productoId == '_negocio'
               && request.resource.size <= 2 * 1024 * 1024
-              && request.resource.contentType.matches('image/(jpeg|png|webp)')));
+              && request.resource.contentType.matches('image/(jpeg|png|webp)'))
+            || (r.tipo == 'portada'
+              && productoId == '_portada'
+              && request.resource.size <= 15 * 1024 * 1024
+              && request.resource.contentType.matches('image/(jpeg|png|webp|heic)')));
     }
 
     // Módulo recibos

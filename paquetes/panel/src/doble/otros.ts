@@ -1,6 +1,6 @@
 import type { Entrada, NombreCallable, Salida } from '../api/contrato.js';
 import type { Medio, MedioLogo, Recibo, SubidaVista } from '../api/tipos.js';
-import { BYTES_LOGO, ID_NEGOCIO, LIMITES_PANEL, PLANTILLAS_SITIO } from '../api/tipos.js';
+import { BYTES_LOGO, ID_NEGOCIO, ID_PORTADA, LIMITES_PANEL, PLANTILLAS_SITIO } from '../api/tipos.js';
 import { normalizar } from '../util/buscar.js';
 import { auditar, exigirRol, fallo, iso, vistaProducto, type Contexto } from './estado.js';
 
@@ -39,7 +39,7 @@ function procesarSubidaLogo(c: Contexto, subidaId: string): MedioLogo {
 function procesarSubida(c: Contexto, subidaId: string): Medio {
   const s = c.e.subidas.get(subidaId);
   if (s === undefined || s.tipo === 'logo') throw fallo('no-encontrado', 'La subida no existe');
-  const m: Medio = { id: subidaId, productoId: s.productoId, tipo: s.tipo, bytesOriginal: s.bytes, ancho: 1200, alto: 800, ...(s.tipo === 'video' ? { duracionSeg: 30 } : {}), creadoEn: c.ahora, por: c.uid };
+  const m: Medio = { id: subidaId, productoId: s.productoId, tipo: s.tipo === 'portada' ? 'foto' : s.tipo, bytesOriginal: s.bytes, ancho: 1200, alto: 800, ...(s.tipo === 'video' ? { duracionSeg: 30 } : {}), creadoEn: c.ahora, por: c.uid };
   c.e.medios.set(m.id, m);
   c.e.subidas.set(subidaId, { ...s, estado: 'procesada' });
   anotarCambio(c);
@@ -183,6 +183,26 @@ export const handlersOtros: {
     return { ok: true };
   },
   reservarSubida(c, e) {
+    // Foto de portada: solo del administrador, destino fijo y cupo del plan (8); no se verifica contra el catálogo.
+    if (e.tipo === 'portada') {
+      exigirRol(c, ['adm']);
+      if (e.productoId !== ID_PORTADA) throw fallo('entrada-invalida', 'productoId inválido');
+      const previaP = c.e.subidas.get(e.subidaId);
+      const respuestaP = { subidaId: e.subidaId, rutaOriginal: `privado/${ID_PORTADA}/${e.subidaId}`, venceEn: c.ahora + 6 * 3600_000 };
+      if (previaP !== undefined) {
+        if (previaP.tipo === 'portada' && previaP.bytes === e.bytes && previaP.estado === 'reservada') return respuestaP;
+        throw fallo('conflicto', 'Ya existe una subida con ese identificador');
+      }
+      if (!Number.isSafeInteger(e.bytes) || e.bytes <= 0) throw fallo('entrada-invalida', 'Tamaño inválido');
+      if (e.bytes > LIMITES_PANEL.bytesFoto) throw fallo('limite', 'La foto supera 15 MB');
+      const ocupadas = [...c.e.medios.values()].filter((m) => m.productoId === ID_PORTADA).length
+        + [...c.e.subidas.values()].filter((s) => s.tipo === 'portada' && s.estado === 'reservada').length;
+      if (ocupadas >= LIMITES_PANEL.fotosPortada) throw fallo('limite', `La portada admite hasta ${String(LIMITES_PANEL.fotosPortada)} fotos propias según su plan`);
+      if (c.e.bytesOriginales + e.bytes > LIMITES_PANEL.cuotaOriginalesBytes) throw fallo('cuota-excedida');
+      c.e.subidas.set(e.subidaId, { subidaId: e.subidaId, productoId: ID_PORTADA, tipo: 'portada', estado: 'reservada', bytes: e.bytes });
+      c.e.bytesOriginales += e.bytes;
+      return respuestaP;
+    }
     if (!c.e.productos.has(e.productoId)) throw fallo('no-encontrado', 'El producto no existe');
     const previa = c.e.subidas.get(e.subidaId);
     if (previa !== undefined) {
