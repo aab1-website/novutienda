@@ -11,11 +11,13 @@ import { productosDeCategoria, textoModelos } from '../contenido/consultas';
 import { jsonLdOrganizacion, rutaCategoria } from '../lib/seo';
 import { enlaceWhatsApp } from '../lib/whatsapp';
 
-const { config, categorias, productos, marcas } = contenido;
+const { config, categorias, productos, marcas, carruseles } = contenido;
 const destacados = productos.filter((p) => p.destacado).slice(0, 6);
+// Vista previa al compartir la portada: el logo y, si no hay, la primera foto del carrusel o de un producto.
+const imagenPortada = config.imagenCompartir ?? config.logo?.url ?? carruseles[config.plantilla][0]?.url ?? productos.find((p) => p.fotos.length > 0)?.fotos[0]?.url;
 const wa = enlaceWhatsApp(config.whatsappNovuchat, 'Hola, tengo una consulta.');
 ---
-<Base titulo={config.nombre} descripcion={config.lema} ruta="/" datosEstructurados={[jsonLdOrganizacion(contenido)]}>
+<Base titulo={config.nombre} descripcion={config.lema} ruta="/" imagen={imagenPortada} datosEstructurados={[jsonLdOrganizacion(contenido)]}>
   <Heroe />
   <Beneficios />
   <section id="productos" class="seccion categorias" aria-labelledby="titulo-categorias">

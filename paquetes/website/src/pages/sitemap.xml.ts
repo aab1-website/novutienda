@@ -1,12 +1,18 @@
 import { contenido } from '../contenido/instancia.js';
+import { marcasDe, productosDeCategoria } from '../contenido/consultas.js';
+import { marcasConRuta, paginasExtra, rutaMarca, rutaPagina } from '../lib/paginas.js';
 import { rutaCategoria, rutaProducto, rutaSeccion, urlAbsoluta } from '../lib/seo.js';
 
 const escapar = (t: string): string => t.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;');
 
+const paginas = (base: string, cantidad: number): string[] => [base, ...paginasExtra(cantidad).map((n) => rutaPagina(base, n))];
+
 export function GET(): Response {
   const rutas = [
-    '/', '/productos', '/contacto', '/privacidad',
-    ...contenido.categorias.map((c) => rutaCategoria(c.id)),
+    '/', '/contacto', '/privacidad',
+    ...paginas('/productos', contenido.productos.length),
+    ...contenido.categorias.flatMap((c) => paginas(rutaCategoria(c.id), productosDeCategoria(contenido.productos, c.id).length)),
+    ...marcasConRuta(marcasDe(contenido.productos)).flatMap((m) => paginas(rutaMarca(m.slug), contenido.productos.filter((p) => p.marca === m.nombre).length)),
     ...contenido.productos.map((p) => rutaProducto(p)),
     ...contenido.secciones.map((s) => rutaSeccion(s.slug)),
   ];

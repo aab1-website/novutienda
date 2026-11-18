@@ -1,19 +1,32 @@
 ---
 import CatalogoVacio from './CatalogoVacio.astro';
+import Paginacion from './Paginacion.astro';
 import Filtros from '../islas/Filtros';
 import TarjetaProducto from './TarjetaProducto.astro';
 import { contenido } from '../contenido/instancia';
 import { marcasDe } from '../contenido/consultas';
 import type { Producto } from '../contenido/tipos';
+import { marcasConRuta, paginar, rutaMarca } from '../lib/paginas';
 import { rutaCategoria } from '../lib/seo';
 
-interface Props { productos: readonly Producto[]; categoriaActual?: string }
-const { productos, categoriaActual } = Astro.props;
+interface Props {
+  /** Todos los productos de la lista (la categoría, la marca o el catálogo entero): aquí se corta la página. */
+  productos: readonly Producto[];
+  categoriaActual?: string;
+  /** Nombre de la marca de la página, si es la página de una marca. */
+  marcaActual?: string;
+  /** Ruta de la página 1 de esta lista: de ella salen los enlaces de la paginación. */
+  base: string;
+  pagina?: number;
+}
+const { productos, categoriaActual, marcaActual, base, pagina = 1 } = Astro.props;
 const { config, categorias } = contenido;
-const filtrables = productos.map((p) => ({ id: p.id, marca: p.marca, usd: p.precioUsd }));
+const { items, total, pagina: actual } = paginar(productos, pagina);
+const filtrables = items.map((p) => ({ id: p.id, marca: p.marca, usd: p.precioUsd }));
+const marcas = marcasConRuta(marcasDe(contenido.productos)).map((m) => ({ nombre: m.nombre, href: rutaMarca(m.slug) }));
 ---
 <nav class="nav-categorias" aria-label="Categorías">
-  <a href="/productos" aria-current={categoriaActual === undefined ? 'page' : undefined}>Todos</a>
+  <a href="/productos" aria-current={categoriaActual === undefined && marcaActual === undefined ? 'page' : undefined}>Todos</a>
   {categorias.map((c) => <a href={rutaCategoria(c.id)} aria-current={categoriaActual === c.id ? 'page' : undefined}>{c.nombre}</a>)}
 </nav>
 {productos.length === 0 && contenido.productos.length === 0 ? (
@@ -21,12 +34,15 @@ const filtrables = productos.map((p) => ({ id: p.id, marca: p.marca, usd: p.prec
 ) : productos.length === 0 ? (
   <p class="subtitulo">Por ahora no hay productos en esta categoría.</p>
 ) : (
-  <div class="catalogo">
-    <aside aria-label="Filtros">
-      <Filtros client:load productos={filtrables} marcas={marcasDe(productos)} inicial={config.mercadoInicial} mercados={config.mercados} redondeo={config.redondeo} />
-    </aside>
-    <div class="grilla-productos">
-      {productos.map((p) => <TarjetaProducto producto={p} />)}
+  <>
+    <div class="catalogo">
+      <aside aria-label="Filtros">
+        <Filtros client:load productos={filtrables} marcas={marcas} marcaActual={marcaActual} inicial={config.mercadoInicial} mercados={config.mercados} redondeo={config.redondeo} />
+      </aside>
+      <div class="grilla-productos">
+        {items.map((p) => <TarjetaProducto producto={p} />)}
+      </div>
     </div>
-  </div>
+    <Paginacion base={base} pagina={actual} total={total} />
+  </>
 )}
