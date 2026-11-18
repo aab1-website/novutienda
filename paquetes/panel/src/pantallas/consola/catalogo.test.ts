@@ -640,6 +640,9 @@ describe('catálogo: fotos propias de la portada', () => {
     await userEvent.click(screen.getAllByRole('radio').find((r) => (r as HTMLInputElement).value === original) as HTMLElement);
     expect(screen.queryByLabelText('Texto alternativo de la foto 1')).toBeNull();
     await userEvent.click(screen.getByRole('button', { name: 'Guardar apariencia' }));
+    // Se espera a que termine el guardado antes de revisar lo enviado (aunque no haya nada que guardar, el botón vuelve a estar libre).
+    await waitFor(() => expect(screen.getByRole('button', { name: 'Guardar apariencia' }).hasAttribute('disabled') || screen.getByRole('button', { name: 'Guardar apariencia' }).getAttribute('aria-disabled') === 'true').toBe(true));
+    expect(screen.queryByText(/No quedó guardado/)).toBeNull();
     expect(e.api.llamadas.some((l) => l.nombre === 'guardarCarrusel' && JSON.stringify(l.entrada).includes(propia?.id ?? 'x'))).toBe(false);
   });
   it('con el carrusel lleno, «Subir foto a la portada» queda apagado con su motivo', async () => {

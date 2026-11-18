@@ -32,7 +32,7 @@ export async function leerMedios(
     const m = (await tx.get(rutaMedio(t, id))).data();
     if (m === undefined || (m['tipo'] !== 'foto' && m['tipo'] !== 'video')) throw new ErrorConsola('no-encontrado', `El medio ${id} no existe o aún no está procesado`);
     if (opciones.productoId !== undefined && m['productoId'] !== opciones.productoId) {
-      throw new ErrorConsola('conflicto', 'Esa foto pertenece a otro producto');
+      throw new ErrorConsola('conflicto', `${m['tipo'] === 'video' ? 'Ese video' : 'Esa foto'} pertenece a otro producto`);
     }
     if (opciones.soloFotos === true && m['tipo'] !== 'foto') throw new ErrorConsola('entrada-invalida', `El medio ${id} debe ser una foto`);
     tipos.set(id, m['tipo']);

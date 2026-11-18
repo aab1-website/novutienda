@@ -3,7 +3,7 @@ export { ArchivoNoAdmitido, ErrorConsola, ProcesamientoNoDisponible } from './er
 export type { CodigoErrorConsola } from './errores.js';
 export { cupoPortadaDelPlan, LIMITES_CONSOLA } from './limites.js';
 export { ID_NEGOCIO, ID_PORTADA, rutaPublicaMedio } from './rutas.js';
-export { PLANTILLAS, esPlantilla } from './plantillas.js';
+export { NOMBRE_PLANTILLA, PLANTILLAS, esPlantilla } from './plantillas.js';
 export type { PlantillaId } from './plantillas.js';
 export { validarEnlace } from './enlaces.js';
 export type { ResultadoEnlace } from './enlaces.js';

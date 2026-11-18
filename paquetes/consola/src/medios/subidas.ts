@@ -734,7 +734,7 @@ export async function borrarMedio(deps: DepsMedios, e: EntradaBorrarMedio): Prom
     const ficha = (await tx.get(rutaFicha(t, m.productoId))).data();
     const estado = await leerEstadoSitio(tx, t);
     const enUso = await medioEnUso(tx, t, e.medioId);
-    if (enUso !== undefined) throw new ErrorConsola('conflicto', `La foto se usa en ${enUso}; quítela de ahí y guarde antes de borrarla`);
+    if (enUso !== undefined) throw new ErrorConsola('conflicto', `${m.tipo === 'video' ? 'El video se usa' : 'La foto se usa'} en ${enUso}; ${m.tipo === 'video' ? 'quítelo' : 'quítela'} de ahí y guarde antes de borrarla`);
 
     const rutas = [m.rutaOriginal, ...(m.versiones ?? []).map((v) => v.ruta)].filter((r): r is string => typeof r === 'string');
     escribirUsoMedios(tx, t, liberarEnUso(uso, m.productoId, m.tipo, m.bytesOriginal ?? 0));
