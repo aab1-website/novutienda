@@ -12,6 +12,7 @@ import { PantallaMermas } from './inventarios/mermas.js';
 import { ProveedorGuardia } from '../ui/guardia.js';
 import { PantallaVenta } from './pos/venta.js';
 import { PantallaRecibos } from './recibos/recibos.js';
+import { PestanaPlantillaRecibo } from './recibos/plantilla.js';
 import { PantallaUsuarios } from './usuarios.js';
 
 afterEach(() => {
@@ -357,9 +358,15 @@ describe('usuarios y configuración', () => {
     abrir({ mercados: [], monedasCaja: ['BOB', 'USD'] });
     await waitFor(() => expect((campo('Moneda por defecto') as HTMLSelectElement).disabled).toBe(false));
   });
-  it('plantilla del recibo', async () => {
+  it('sin el módulo de recibos no hay pestaña de plantilla y «recibo» cae en Negocio y POS', async () => {
     const e = crearEntorno('adm');
     ver(e, h(PantallaConfiguracion, { sub: 'recibo' }));
+    await screen.findByRole('heading', { name: 'Punto de venta' });
+    expect(screen.queryByRole('link', { name: 'Plantilla del recibo' })).toBeNull();
+  });
+  it('plantilla del recibo', async () => {
+    const e = crearEntorno('adm');
+    ver(e, h(PantallaConfiguracion, { sub: 'recibo', plantillaRecibo: PestanaPlantillaRecibo }));
     const u = userEvent.setup();
     await u.type(await screen.findByLabelText('Pie de página'), ' Vuelva pronto.');
     await u.click(screen.getByRole('button', { name: 'Guardar plantilla' }));
@@ -571,7 +578,7 @@ describe('configuración: avisos, motivos y cambios sin guardar', () => {
     window.location.hash = '#/configuracion';
     // Deja correr los eventos de hash pendientes (de la prueba anterior y de esta) antes de montar.
     await new Promise((r) => setTimeout(r, 20));
-    render(e.envolver(h(ProveedorGuardia, null, h('div', null, h('a', { href: '#/otra' }, 'Otra pantalla'), h(PantallaConfiguracion, { sub })))));
+    render(e.envolver(h(ProveedorGuardia, null, h('div', null, h('a', { href: '#/otra' }, 'Otra pantalla'), h(PantallaConfiguracion, { sub, plantillaRecibo: PestanaPlantillaRecibo })))));
   };
   const irA = (): void => (document.querySelector('a[href="#/otra"]') as HTMLElement).click();
   afterEach(() => { window.location.hash = ''; });
@@ -656,7 +663,7 @@ describe('configuración: avisos, motivos y cambios sin guardar', () => {
   });
   it('la plantilla del recibo ya no pide el nombre ni el logo: se editan en «Datos del negocio»', async () => {
     const e = crearEntorno('adm');
-    ver(e, h(PantallaConfiguracion, { sub: 'recibo' }));
+    ver(e, h(PantallaConfiguracion, { sub: 'recibo', plantillaRecibo: PestanaPlantillaRecibo }));
     await screen.findByLabelText('Pie de página');
     expect(screen.queryByLabelText(/^Nombre del negocio/)).toBeNull();
     expect(screen.queryByLabelText(/logo/)).toBeNull();
@@ -711,7 +718,7 @@ describe('configuración: avisos, motivos y cambios sin guardar', () => {
       await screen.findByRole('heading', { name: 'Datos del negocio' });
       for (const etiqueta of [/^Nombre del negocio/, 'Dirección', 'Teléfono', 'NIT', /logo/]) expect(screen.getAllByLabelText(etiqueta)).toHaveLength(1);
       cleanup();
-      ver(e, h(PantallaConfiguracion, { sub: 'recibo' }));
+      ver(e, h(PantallaConfiguracion, { sub: 'recibo', plantillaRecibo: PestanaPlantillaRecibo }));
       await screen.findByLabelText('Pie de página');
       for (const etiqueta of [/^Nombre del negocio/, 'Dirección', 'Teléfono', 'NIT', /logo/]) expect(screen.queryByLabelText(etiqueta)).toBeNull();
     });
@@ -872,7 +879,7 @@ describe('configuración: avisos, motivos y cambios sin guardar', () => {
     });
     it('«Guardar plantilla» conserva los datos del negocio vigentes, no los cargados al abrir', async () => {
       const e = crearEntorno('adm');
-      ver(e, h(PantallaConfiguracion, { sub: 'recibo' }));
+      ver(e, h(PantallaConfiguracion, { sub: 'recibo', plantillaRecibo: PestanaPlantillaRecibo }));
       const u = userEvent.setup();
       await u.type(await screen.findByLabelText('Pie de página'), ' Fin.');
       const pl = await e.api.llamar('leerPlantilla', {});
@@ -887,7 +894,7 @@ describe('configuración: avisos, motivos y cambios sin guardar', () => {
       const e = crearEntorno('adm');
       const pl = await e.api.llamar('leerPlantilla', {});
       vi.spyOn(e.api, 'llamar').mockImplementation(((n: string) => n === 'leerPlantilla' ? Promise.resolve({ ...pl, negocio: { ...pl.negocio, nombre: '' } }) : Promise.resolve({})) as never);
-      ver(e, h(PantallaConfiguracion, { sub: 'recibo' }));
+      ver(e, h(PantallaConfiguracion, { sub: 'recibo', plantillaRecibo: PestanaPlantillaRecibo }));
       await screen.findByLabelText('Pie de página');
       expect(screen.getByText('Guarde primero los Datos del negocio')).toBeTruthy();
       const b = screen.getByRole('button', { name: 'Guardar plantilla' });

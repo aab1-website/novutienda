@@ -311,58 +311,6 @@ function ConfigPosForm(): JSX.Element {
   );
 }
 
-function PlantillaForm(): JSX.Element {
-  const { api } = useApp();
-  const pl = useCarga(() => api.llamar('leerPlantilla', {}), []);
-  const accion = useAccion();
-  const avisos = useAvisos();
-  const [p, setP] = useState<PlantillaRecibo | null>(null);
-  const [base, setBase] = useState<string | null>(null);
-  const avisoGuardado = useRef(0);
-  useEffect(() => { if (pl.datos !== undefined) { setP(pl.datos); setBase(JSON.stringify(pl.datos)); } }, [pl.datos]);
-  const sucio = p !== null && base !== null && JSON.stringify(p) !== base;
-  const { marcarGuardado } = useCambiosSinGuardar(sucio);
-  if (pl.cargando || p === null) return pl.error ? <ErrorCarga error={pl.error} reintentar={pl.recargar} /> : <Cargando />;
-  const n = p.negocio;
-  const poner = (nueva: PlantillaRecibo): void => {
-    if (avisoGuardado.current !== 0) avisos.cerrar(avisoGuardado.current);
-    avisoGuardado.current = 0;
-    setP(nueva);
-  };
-  const sinNombre = n.nombre.trim() === '';
-  const guardar = (e: Event): void => {
-    e.preventDefault();
-    if (sinNombre) return;
-    const enviado = JSON.stringify(p);
-    void accion.ejecutar(async () => {
-      // El negocio y el logo se editan en «Datos del negocio»: se toman de lo guardado ahora, no de lo cargado al abrir.
-      // Límite aceptado: entre releer y escribir puede colarse otro guardado, porque el servidor reemplaza el registro completo.
-      const vigente = await api.llamar('leerPlantilla', {});
-      const plantilla: PlantillaRecibo = {
-        negocio: vigente.negocio,
-        ...(vigente.logoUrl !== undefined ? { logoUrl: vigente.logoUrl } : {}), ...(opc(p.pie ?? '') ? { pie: opc(p.pie ?? '') as string } : {}),
-        ...(opc(p.politicaGarantia ?? '') ? { politicaGarantia: opc(p.politicaGarantia ?? '') as string } : {}), ...(opc(p.politicaCambios ?? '') ? { politicaCambios: opc(p.politicaCambios ?? '') as string } : {}),
-      };
-      await api.llamar('guardarPlantilla', { plantilla });
-      marcarGuardado();
-      setBase(enviado);
-      avisoGuardado.current = avisos.ok('Plantilla guardada.');
-    }, { error: 'ambos' });
-  };
-  return (
-    <Seccion titulo="Plantilla del recibo">
-      <p class="texto-suave">Los recibos ya emitidos conservan la plantilla que tenían al emitirse. La serie y la numeración se definen en la configuración del POS. El nombre, la dirección, el teléfono, el NIT y el logo se editan una sola vez en «Datos del negocio», en la pestaña «Negocio y POS».</p>
-      <form class="formulario" onSubmit={guardar} noValidate>
-        <Area etiqueta="Pie de página" valor={p.pie ?? ''} onInput={(v) => poner({ ...p, pie: v })} />
-        <Area etiqueta="Política de garantía" valor={p.politicaGarantia ?? ''} onInput={(v) => poner({ ...p, politicaGarantia: v })} />
-        <Area etiqueta="Política de cambios" valor={p.politicaCambios ?? ''} onInput={(v) => poner({ ...p, politicaCambios: v })} />
-        {accion.error && <Alerta>{accion.error}</Alerta>}
-        <Boton tipo="submit" ocupado={accion.ocupado} motivo={sinNombre ? 'Guarde primero los Datos del negocio' : undefined}>Guardar plantilla</Boton>
-      </form>
-    </Seccion>
-  );
-}
-
 const TEXTO_CAMBIO = (m: MercadoDeclarado): string => (m.tieneTipoCambio ? `Sí (${m.monedaVenta}/${m.monedaBase})` : 'No: el precio base es el precio');
 
 /** Mercados y monedas del comercio, solo lectura: los define el operador de la plataforma, no se editan aquí. */
@@ -395,20 +343,22 @@ function MercadosYMonedas(): JSX.Element {
   );
 }
 
-export function PantallaConfiguracion({ sub }: { sub: string }): JSX.Element {
-  const actual = sub === 'recibo' ? 'recibo' : 'negocio';
+/** `plantillaRecibo` la aporta el compositor solo si el módulo de recibos está encendido; sin ella no hay pestaña. */
+export function PantallaConfiguracion({ sub, plantillaRecibo: PestanaRecibo }: { sub: string; plantillaRecibo?: () => JSX.Element }): JSX.Element {
+  const actual = sub === 'recibo' && PestanaRecibo !== undefined ? 'recibo' : 'negocio';
+  const items = PestanaRecibo === undefined ? [{ id: 'negocio', titulo: 'Negocio y POS' }] : [{ id: 'negocio', titulo: 'Negocio y POS' }, { id: 'recibo', titulo: 'Plantilla del recibo' }];
   return (
     <div>
       <h1>Configuración</h1>
-      <Pestanas etiqueta="Configuración" base="configuracion" actual={actual} items={[{ id: 'negocio', titulo: 'Negocio y POS' }, { id: 'recibo', titulo: 'Plantilla del recibo' }]} />
-      {actual === 'negocio' ? (
+      <Pestanas etiqueta="Configuración" base="configuracion" actual={actual} items={items} />
+      {actual === 'negocio' || PestanaRecibo === undefined ? (
         <>
           <DatosDelNegocio />
           <ConfigPosForm />
           <MercadosYMonedas />
         </>
       ) : (
-        <PlantillaForm />
+        <PestanaRecibo />
       )}
     </div>
   );
