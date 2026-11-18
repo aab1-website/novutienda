@@ -290,7 +290,8 @@ describe('catálogo: miniaturas del carrusel', () => {
     ver(e);
     const item = (await screen.findByLabelText('Texto alternativo de la foto 1')).closest('li');
     await waitFor(() => expect(item?.querySelector('img')?.getAttribute('src')).toBe(`${BASE_MEDIOS}/t/${id}-480.webp`));
-    expect(lecturas).toEqual(['prod-35']);
+    // Aparte de la carpeta de la portada (fotos propias), solo se lee el producto de la foto del carrusel.
+    expect(lecturas.filter((x) => x !== '_portada')).toEqual(['prod-35']);
   });
 
   it('un fallo que no es de sesión deja el respaldo sin romper la pantalla', async () => {
@@ -522,5 +523,148 @@ describe('catálogo: aviso del sitio incompleto', () => {
     await u.click(await screen.findByRole('button', { name: 'Publicar el sitio' }));
     expect(await screen.findByText(/normalmente en pocos minutos; si no, en un rato/)).toBeTruthy();
     expect(screen.queryByText('No hay cambios sin publicar.')).toBeNull();
+  });
+});
+
+describe('catálogo: fotos propias de la portada', () => {
+  const ver = (e: Entorno): void => void render(e.envolver(h(ProveedorGuardia, null, h(PantallaCatalogo, { sub: 'apariencia' }))));
+  const archivo = (nombre: string, tipo: string, bytes = 10): File => new File([new Uint8Array(bytes)], nombre, { type: tipo });
+  const subir = async (nombre = 'local.jpg', tipo = 'image/jpeg'): Promise<void> => {
+    fireEvent.change(await screen.findByLabelText('Archivo de la foto de portada'), { target: { files: [archivo(nombre, tipo)] } });
+  };
+
+  it('subir una foto la agrega al carrusel con el texto alternativo por escribir, y se guarda con «Guardar apariencia»', async () => {
+    const e = crearEntorno('adm');
+    ver(e);
+    expect(await screen.findByRole('button', { name: 'Subir foto a la portada' })).toBeTruthy();
+    await subir();
+    const campo = await screen.findByLabelText('Texto alternativo de la foto 1');
+    expect((campo as HTMLInputElement).value).toBe('');
+    const reserva = e.api.llamadas.find((l) => l.nombre === 'reservarSubida');
+    expect(reserva?.entrada).toMatchObject({ productoId: '_portada', tipo: 'portada' });
+    expect([...e.api.estado.medios.values()].filter((m) => m.productoId === '_portada')).toHaveLength(1);
+    await userEvent.type(campo, 'El local');
+    await userEvent.click(screen.getByRole('button', { name: 'Guardar apariencia' }));
+    await waitFor(() => expect(e.api.llamadas.some((l) => l.nombre === 'guardarCarrusel')).toBe(true));
+  });
+  it('un archivo que no es foto se rechaza antes de subir, con su motivo', async () => {
+    const e = crearEntorno('adm');
+    ver(e);
+    await subir('video.mp4', 'video/mp4');
+    expect(await screen.findByText(/no es una foto permitido/)).toBeTruthy();
+    expect(e.api.llamadas.some((l) => l.nombre === 'reservarSubida')).toBe(false);
+  });
+  it('guardar con una foto propia sin texto alternativo queda bloqueado y dice por qué', async () => {
+    const e = crearEntorno('adm');
+    ver(e);
+    await subir();
+    await screen.findByLabelText('Texto alternativo de la foto 1');
+    expect(await screen.findByText(/Escriba el texto alternativo de cada foto del carrusel/)).toBeTruthy();
+    await userEvent.click(screen.getByRole('button', { name: 'Guardar apariencia' }));
+    expect(e.api.llamadas.some((l) => l.nombre === 'guardarCarrusel')).toBe(false);
+  });
+  it('Reintentar tras una falla de red reutiliza el mismo subidaId', async () => {
+    const e = crearEntorno('adm');
+    const original = e.almacen.subir.bind(e.almacen);
+    let intentos = 0;
+    vi.spyOn(e.almacen, 'subir').mockImplementation(((...a: Parameters<typeof original>) => {
+      intentos += 1;
+      return intentos === 1 ? Promise.reject(new Error('sin red')) : original(...a);
+    }) as never);
+    ver(e);
+    await subir();
+    await userEvent.click(await screen.findByRole('button', { name: 'Reintentar' }));
+    await screen.findByLabelText('Texto alternativo de la foto 1');
+    const ids = e.api.llamadas.filter((l) => l.nombre === 'reservarSubida').map((l) => (l.entrada as { subidaId: string }).subidaId);
+    expect(ids).toHaveLength(2);
+    expect(ids[1]).toBe(ids[0]);
+    expect([...e.api.estado.medios.values()].filter((m) => m.productoId === '_portada')).toHaveLength(1);
+  });
+  it('borrar una foto propia: si está en el carrusel muestra el conflicto; al quitarla se borra y se libera el lugar', async () => {
+    const e = crearEntorno('adm');
+    ver(e);
+    await subir();
+    await screen.findByLabelText('Texto alternativo de la foto 1');
+    const portada = (): number => [...e.api.estado.medios.values()].filter((m) => m.productoId === '_portada').length;
+    await userEvent.type(screen.getByLabelText('Texto alternativo de la foto 1'), 'El local');
+    await userEvent.click(screen.getByRole('button', { name: 'Guardar apariencia' }));
+    await waitFor(() => expect(e.api.llamadas.some((l) => l.nombre === 'guardarCarrusel')).toBe(true));
+    await userEvent.click(await screen.findByRole('button', { name: 'Borrar foto' }));
+    await userEvent.click(await screen.findByRole('button', { name: 'Sí, borrar' }));
+    await waitFor(() => expect(e.api.llamadas.map((l) => l.nombre)).toContain('borrarMedio'));
+    expect(await screen.findByText(/No se pudo borrar la foto: La foto se usa en el carrusel de la plantilla .*quítela de ahí y guarde antes de borrarla/)).toBeTruthy();
+    expect(portada()).toBe(1);
+    await userEvent.click(screen.getByRole('button', { name: 'Quitar foto 1' }));
+    await userEvent.click(screen.getByRole('button', { name: 'Guardar apariencia' }));
+    await waitFor(() => expect(screen.queryByLabelText('Texto alternativo de la foto 1')).toBeNull());
+    await userEvent.click(screen.getByRole('button', { name: 'Borrar foto' }));
+    await userEvent.click(await screen.findByRole('button', { name: 'Sí, borrar' }));
+    await waitFor(() => expect(portada()).toBe(0));
+    await waitFor(() => expect(screen.queryByRole('button', { name: 'Borrar foto' })).toBeNull());
+    await subir('otra.jpg');
+    await waitFor(() => expect(portada()).toBe(1));
+  });
+  it('borrar una foto propia recién subida, sin guardar, la quita del carrusel y «Guardar apariencia» sigue funcionando', async () => {
+    const e = crearEntorno('adm');
+    ver(e);
+    await subir();
+    await screen.findByLabelText('Texto alternativo de la foto 1');
+    await userEvent.click(await screen.findByRole('button', { name: 'Borrar foto' }));
+    await userEvent.click(await screen.findByRole('button', { name: 'Sí, borrar' }));
+    await waitFor(() => expect(screen.queryByLabelText('Texto alternativo de la foto 1')).toBeNull());
+    expect([...e.api.estado.medios.values()].filter((m) => m.productoId === '_portada')).toHaveLength(0);
+    // Con otra foto y su texto, guardar funciona: el borrador no arrastra el medio borrado.
+    await subir('otra.jpg');
+    await userEvent.type(await screen.findByLabelText('Texto alternativo de la foto 1'), 'El local');
+    await userEvent.click(screen.getByRole('button', { name: 'Guardar apariencia' }));
+    await waitFor(() => expect(e.api.llamadas.some((l) => l.nombre === 'guardarCarrusel')).toBe(true));
+    expect(screen.queryByText(/No se guardó|no existe/)).toBeNull();
+  });
+  it('borrar una foto propia la quita de los borradores de TODAS las plantillas y guardar no falla', async () => {
+    const e = crearEntorno('adm');
+    ver(e);
+    await subir();
+    await screen.findByLabelText('Texto alternativo de la foto 1');
+    // Otra plantilla con su propio borrador que incluye la misma foto.
+    const otra = (await e.api.llamar('leerConfigSitio', {}))?.plantillaActiva === 'bosque' ? 'ciruela' : 'bosque';
+    await userEvent.click(screen.getAllByRole('radio').find((r) => (r as HTMLInputElement).value === otra) as HTMLElement);
+    const propia = [...e.api.estado.medios.values()].find((m) => m.productoId === '_portada');
+    expect(propia).toBeDefined();
+    await userEvent.click(await screen.findByRole('button', { name: 'Agregar foto propia 1' }));
+    await userEvent.type(await screen.findByLabelText('Texto alternativo de la foto 1'), 'Otra');
+    await userEvent.click(screen.getByRole('button', { name: 'Borrar foto' }));
+    await userEvent.click(await screen.findByRole('button', { name: 'Sí, borrar' }));
+    await waitFor(() => expect(screen.queryByLabelText('Texto alternativo de la foto 1')).toBeNull());
+    // Se vuelve a la plantilla original: tampoco conserva la foto borrada.
+    const original = otra === 'bosque' ? 'ciruela' : 'bosque';
+    await userEvent.click(screen.getAllByRole('radio').find((r) => (r as HTMLInputElement).value === original) as HTMLElement);
+    expect(screen.queryByLabelText('Texto alternativo de la foto 1')).toBeNull();
+    await userEvent.click(screen.getByRole('button', { name: 'Guardar apariencia' }));
+    // Se espera a que termine el guardado antes de revisar lo enviado (aunque no haya nada que guardar, el botón vuelve a estar libre).
+    await waitFor(() => expect(screen.getByRole('button', { name: 'Guardar apariencia' }).hasAttribute('disabled') || screen.getByRole('button', { name: 'Guardar apariencia' }).getAttribute('aria-disabled') === 'true').toBe(true));
+    expect(screen.queryByText(/No quedó guardado/)).toBeNull();
+    expect(e.api.llamadas.some((l) => l.nombre === 'guardarCarrusel' && JSON.stringify(l.entrada).includes(propia?.id ?? 'x'))).toBe(false);
+  });
+  it('con el carrusel lleno, «Subir foto a la portada» queda apagado con su motivo', async () => {
+    const e = crearEntorno('adm');
+    ver(e);
+    for (let i = 0; i < 8; i += 1) {
+      await subir(`f${String(i)}.jpg`);
+      await waitFor(() => expect(screen.queryByLabelText(`Texto alternativo de la foto ${String(i + 1)}`)).toBeTruthy());
+      await waitFor(() => expect(screen.queryByText(/Procesando la foto/)).toBeNull());
+    }
+    expect(await screen.findByText('El carrusel ya tiene 8 fotos: quite una para agregar otra')).toBeTruthy();
+    expect(screen.getByRole('button', { name: 'Subir foto a la portada' }).getAttribute('aria-disabled')).toBe('true');
+  });
+  it('al superar el cupo del plan muestra el motivo del servidor', async () => {
+    const e = crearEntorno('adm');
+    ver(e);
+    for (let i = 0; i < 8; i += 1) {
+      await subir(`f${String(i)}.jpg`);
+      await waitFor(() => expect([...e.api.estado.medios.values()].filter((m) => m.productoId === '_portada')).toHaveLength(i + 1));
+      await waitFor(() => expect(screen.queryByText(/Procesando la foto/)).toBeNull());
+    }
+    await subir('novena.jpg');
+    expect(await screen.findByText(/admite hasta 8 fotos propias/)).toBeTruthy();
   });
 });

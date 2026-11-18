@@ -1,13 +1,13 @@
 import { registrarAuditoria, type Actor, type LimiteTasa, type TransaccionIdentidad } from '@novutienda/nucleo';
 import { anotarCambio, leerEstadoSitio } from '../cambios.js';
 import { ArchivoNoAdmitido, ErrorConsola, ProcesamientoNoDisponible, type CodigoErrorConsola } from '../errores.js';
-import { LIMITES_CONSOLA } from '../limites.js';
+import { cupoPortadaDelPlan, LIMITES_CONSOLA } from '../limites.js';
 import { agendarLogoVivo, escribirLogoVivo, leerPublicadoParaLogo, proyectarLogoPublico } from '../logo-publico.js';
 import { exigirRol, ROLES } from '../permisos.js';
-import { PLANTILLAS } from '../plantillas.js';
+import { NOMBRE_PLANTILLA, PLANTILLAS } from '../plantillas.js';
 import type { AlmacenMedios, BaseDatosConsola, CatalogoPuerto, ConsultaSubidas, DisparadorSitio, ProcesadorMedios, Reloj } from '../puertos.js';
 import {
-  dirTemporal, ID_NEGOCIO, ID_PRODUCTO, ID_SUBIDA, prefijoTemporal, rutaCarrusel, rutaFicha, rutaMedio, rutaOriginal, rutaPublicaMedio, rutaSeccion, rutaSitio,
+  dirTemporal, ID_NEGOCIO, ID_PORTADA, ID_PRODUCTO, ID_SUBIDA, prefijoTemporal, rutaCarrusel, rutaFicha, rutaMedio, rutaOriginal, rutaPublicaMedio, rutaSeccion, rutaSitio,
   rutaSubida, tenantValido,
 } from '../rutas.js';
 import { mediosDeSeccion, validarSeccion } from '../secciones.js';
@@ -73,7 +73,7 @@ function leerSubida(d: Readonly<Record<string, unknown>> | undefined): Subida | 
   if (d === undefined) return undefined;
   const { id, productoId, tipo, bytes, estado, creadaEn, venceEn, por } = d;
   if (
-    typeof id !== 'string' || typeof productoId !== 'string' || (tipo !== 'foto' && tipo !== 'video' && tipo !== 'logo') ||
+    typeof id !== 'string' || typeof productoId !== 'string' || (tipo !== 'foto' && tipo !== 'video' && tipo !== 'logo' && tipo !== 'portada') ||
     typeof bytes !== 'number' || typeof creadaEn !== 'number' || typeof venceEn !== 'number' || typeof por !== 'string' ||
     typeof d['rutaOriginal'] !== 'string' ||
     (estado !== 'reservada' && estado !== 'procesando' && estado !== 'procesada' && estado !== 'borrando' && estado !== 'rechazada')
@@ -123,7 +123,7 @@ export interface EntradaReserva {
   readonly actor: Actor;
   /** Identificador generado por el cliente (reintentar la misma reserva no duplica nada). */
   readonly subidaId: string;
-  /** Con `tipo: 'logo'` debe ser `_negocio` (destino fijo; no se verifica contra el catálogo). */
+  /** Con `tipo: 'logo'` debe ser `_negocio` y con `tipo: 'portada'`, `_portada` (destinos fijos; no se verifican contra el catálogo). */
   readonly productoId: string;
   readonly tipo: TipoSubida;
   readonly bytes: number;
@@ -142,13 +142,13 @@ export interface Reserva {
  */
 export async function reservarSubida(deps: DepsMedios, e: EntradaReserva): Promise<Reserva> {
   const t = tenantValido(e.tenantId);
-  // El logo es solo del administrador: el servidor lo exige antes de reservar (la regla de Storage no distingue sup de adm).
-  exigirRol(e.actor, t, e.tipo === 'logo' ? ROLES.administrar : ROLES.editarFichas);
+  // El logo y la portada son solo del administrador: el servidor lo exige antes de reservar (la regla de Storage no distingue sup de adm).
+  exigirRol(e.actor, t, e.tipo === 'logo' || e.tipo === 'portada' ? ROLES.administrar : ROLES.editarFichas);
   if (!ID_SUBIDA.test(e.subidaId)) throw new ErrorConsola('entrada-invalida', 'subidaId inválido');
-  if (e.tipo !== 'foto' && e.tipo !== 'video' && e.tipo !== 'logo') throw new ErrorConsola('entrada-invalida', 'tipo debe ser foto, video o logo');
-  if (e.tipo === 'logo' ? e.productoId !== ID_NEGOCIO : !ID_PRODUCTO.test(e.productoId)) throw new ErrorConsola('entrada-invalida', 'productoId inválido');
+  if (e.tipo !== 'foto' && e.tipo !== 'video' && e.tipo !== 'logo' && e.tipo !== 'portada') throw new ErrorConsola('entrada-invalida', 'tipo debe ser foto, video, logo o portada');
+  if (e.tipo === 'logo' ? e.productoId !== ID_NEGOCIO : e.tipo === 'portada' ? e.productoId !== ID_PORTADA : !ID_PRODUCTO.test(e.productoId)) throw new ErrorConsola('entrada-invalida', 'productoId inválido');
   if (!Number.isSafeInteger(e.bytes) || e.bytes <= 0) throw new ErrorConsola('entrada-invalida', 'tamaño inválido');
-  if (e.tipo === 'foto' && e.bytes > LIMITES_CONSOLA.bytesFoto) throw new ErrorConsola('limite', 'La foto supera 15 MB');
+  if ((e.tipo === 'foto' || e.tipo === 'portada') && e.bytes > LIMITES_CONSOLA.bytesFoto) throw new ErrorConsola('limite', 'La foto supera 15 MB');
   if (e.tipo === 'logo' && e.bytes > LIMITES_CONSOLA.bytesLogo) throw new ErrorConsola('limite', 'El logo supera 2 MB');
   if (e.tipo === 'video' && e.bytes > LIMITES_CONSOLA.bytesVideo) throw new ErrorConsola('limite', 'El video supera 200 MB');
   if (e.tipo === 'video' && (await deps.procesador.disponible?.('video')) === false) {
@@ -165,7 +165,7 @@ export async function reservarSubida(deps: DepsMedios, e: EntradaReserva): Promi
 
   return deps.db.runTransaction(async (tx) => {
     // El producto se lee con esta misma transacción, antes de toda escritura.
-    if (e.tipo !== 'logo' && !(await deps.catalogo.existeProductoEnTransaccion(tx, t, e.productoId))) throw new ErrorConsola('no-encontrado', 'El producto no existe');
+    if (e.tipo !== 'logo' && e.tipo !== 'portada' && !(await deps.catalogo.existeProductoEnTransaccion(tx, t, e.productoId))) throw new ErrorConsola('no-encontrado', 'El producto no existe');
     const previa = leerSubida((await tx.get(rutaSubida(t, e.subidaId))).data());
     const uso = await leerUsoMedios(tx, t);
     const enSubida = e.tipo === 'logo' ? (await tx.get(rutaSitio(t, 'logoEnSubida'))).data()?.['hasta'] : undefined;
@@ -173,9 +173,11 @@ export async function reservarSubida(deps: DepsMedios, e: EntradaReserva): Promi
       if (previa.productoId === e.productoId && previa.tipo === e.tipo && previa.bytes === e.bytes && previa.estado === 'reservada') {
         return { subidaId: previa.id, rutaOriginal: previa.rutaOriginal, venceEn: previa.venceEn };
       }
-      throw new ErrorConsola('conflicto', 'Ya existe una subida con ese identificador');
+      throw new ErrorConsola('conflicto', 'Esa subida ya se inició con otro archivo; vuelva a elegirlo');
     }
-    escribirUsoMedios(tx, t, reservarEnUso(uso, e.productoId, e.tipo, e.bytes));
+    // El cupo de fotos de portada sale del plan del comercio (se lee antes de toda escritura).
+    const cupoPortada = e.tipo === 'portada' ? cupoPortadaDelPlan((await tx.get(`tenants/${t}`)).data()?.['plan']) : 0;
+    escribirUsoMedios(tx, t, reservarEnUso(uso, e.productoId, e.tipo, e.bytes, cupoPortada));
     const venceEn = ahora + LIMITES_CONSOLA.vigenciaReservaMs;
     const campos: Pick<Subida, CampoReserva> = {
       estado: 'reservada', venceEn, productoId: e.productoId, por: e.actor.uid, bytes: e.bytes, tipo: e.tipo,
@@ -445,12 +447,13 @@ export async function finalizarSubida(deps: DepsMedios, e: EntradaFinalizar): Pr
   // quien pasa la subida de `reservada` a `procesando` en una transacción; el resto no procesa ni rechaza nada.
   const reclamo = (deps.nuevoId ?? idAleatorio)();
   // El rol del logo se exige ANTES de pasar la subida a `procesando`: un `sup` no la deja reclamada ni la altera.
-  if (rol !== 'adm' && leerSubida(await leerDoc(deps.db, rutaSubida(t, e.subidaId)))?.tipo === 'logo') {
+  const tipoPrevio = rol === 'adm' ? undefined : leerSubida(await leerDoc(deps.db, rutaSubida(t, e.subidaId)))?.tipo;
+  if (rol !== 'adm' && (tipoPrevio === 'logo' || tipoPrevio === 'portada')) {
     throw new ErrorConsola('no-autorizado', 'No tiene permiso para esta acción');
   }
   const r = await reclamar(deps, t, e.subidaId, reclamo);
   if ('medio' in r) {
-    if (r.medio.tipo === 'logo' && rol !== 'adm') throw new ErrorConsola('no-autorizado', 'No tiene permiso para esta acción');
+    if ((r.medio.tipo === 'logo' || r.medio.productoId === ID_PORTADA) && rol !== 'adm') throw new ErrorConsola('no-autorizado', 'No tiene permiso para esta acción');
     return r.medio;
   }
   try {
@@ -466,17 +469,17 @@ export async function finalizarSubida(deps: DepsMedios, e: EntradaFinalizar): Pr
 async function procesarReclamada(
   deps: DepsMedios, t: string, e: EntradaFinalizar, rol: ReturnType<typeof exigirRol>, reclamo: string, s: Subida,
 ): Promise<MedioSubido> {
-  const tope = s.tipo === 'logo' ? LIMITES_CONSOLA.bytesLogo : s.tipo === 'foto' ? LIMITES_CONSOLA.bytesFoto : LIMITES_CONSOLA.bytesVideo;
+  const tope = s.tipo === 'logo' ? LIMITES_CONSOLA.bytesLogo : s.tipo === 'foto' || s.tipo === 'portada' ? LIMITES_CONSOLA.bytesFoto : LIMITES_CONSOLA.bytesVideo;
   const real = await deps.almacen.tamano(s.rutaOriginal);
   if (real === undefined) throw new ErrorConsola('no-encontrado', 'El archivo todavía no llegó');
   if (real === 0) return rechazar(deps, t, s, reclamo, 'entrada-invalida', 'El archivo está vacío', []);
   if (real > s.bytes || real > tope) {
-    return rechazar(deps, t, s, reclamo, 'limite', s.tipo === 'logo' ? 'El logo supera 2 MB' : s.tipo === 'foto' ? 'La foto supera 15 MB' : 'El video supera 200 MB', []);
+    return rechazar(deps, t, s, reclamo, 'limite', s.tipo === 'logo' ? 'El logo supera 2 MB' : s.tipo === 'foto' || s.tipo === 'portada' ? 'La foto supera 15 MB' : 'El video supera 200 MB', []);
   }
 
   const detectado = detectarArchivo(await deps.almacen.leerInicio(s.rutaOriginal, BYTES_INICIALES));
   // El logo es una imagen (la misma detección que las fotos) pero solo JPG, PNG o WebP: SVG y HEIC no se admiten.
-  const tipoEsperado = s.tipo === 'logo' ? 'foto' : s.tipo;
+  const tipoEsperado = s.tipo === 'logo' || s.tipo === 'portada' ? 'foto' : s.tipo;
   if (detectado?.tipo !== tipoEsperado || (s.tipo === 'logo' && !FORMATOS_LOGO.includes(detectado.formato))) {
     return rechazar(deps, t, s, reclamo, 'tipo-no-permitido', 'El contenido del archivo no corresponde a un tipo permitido', []);
   }
@@ -486,7 +489,7 @@ async function procesarReclamada(
   const temporales: string[] = [];
   let medio: MedioSubido;
   try {
-    const tipoProcesador = s.tipo === 'logo' ? 'foto' : s.tipo;
+    const tipoProcesador = s.tipo === 'logo' || s.tipo === 'portada' ? 'foto' : s.tipo;
     const info = await deps.procesador.inspeccionar(s.rutaOriginal, tipoProcesador);
     if (!Number.isInteger(info.ancho) || !Number.isInteger(info.alto) || info.ancho < 1 || info.alto < 1) {
       return await rechazar(deps, t, s, reclamo, 'procesamiento', 'No se pudieron leer las dimensiones del archivo', []);
@@ -541,7 +544,7 @@ async function procesarReclamada(
     };
     medio = s.tipo === 'logo'
       ? { ...comun, tipo: 'logo', versiones: versiones.filter((v): v is VersionLogo => v.clase === 'logo' && (v.formato === 'png' || v.formato === 'webp')) }
-      : { ...comun, tipo: s.tipo, versiones: versiones.filter((v): v is VersionMedio => v.clase !== 'logo' && v.formato !== 'png') };
+      : { ...comun, tipo: s.tipo === 'portada' ? 'foto' : s.tipo, versiones: versiones.filter((v): v is VersionMedio => v.clase !== 'logo' && v.formato !== 'png') };
   } catch (err) {
     if (err instanceof ErrorConsola) throw err; // `rechazar` ya limpió
     if (err instanceof ProcesamientoNoDisponible) {
@@ -705,7 +708,7 @@ async function medioEnUso(tx: TransaccionIdentidad, t: string, medioId: string):
   }
   for (const p of PLANTILLAS) {
     const items = (await tx.get(rutaCarrusel(t, p))).data()?.['items'];
-    if (Array.isArray(items) && items.some((i) => esObjeto(i) && i['medioId'] === medioId)) return `el carrusel de la plantilla ${p}`;
+    if (Array.isArray(items) && items.some((i) => esObjeto(i) && i['medioId'] === medioId)) return `el carrusel de la plantilla ${NOMBRE_PLANTILLA[p]}`;
   }
   return undefined;
 }
@@ -724,12 +727,14 @@ export async function borrarMedio(deps: DepsMedios, e: EntradaBorrarMedio): Prom
     if (m === undefined || typeof m.productoId !== 'string' || (m.tipo !== 'foto' && m.tipo !== 'video')) {
       throw new ErrorConsola('no-encontrado', 'El medio no existe');
     }
+    // Las fotos de portada son del administrador, igual que su subida.
+    if (m.productoId === ID_PORTADA && rol !== 'adm') throw new ErrorConsola('no-autorizado', 'No tiene permiso para esta acción');
     const sub = leerSubida((await tx.get(rutaSubida(t, e.medioId))).data());
     const uso = await leerUsoMedios(tx, t);
     const ficha = (await tx.get(rutaFicha(t, m.productoId))).data();
     const estado = await leerEstadoSitio(tx, t);
     const enUso = await medioEnUso(tx, t, e.medioId);
-    if (enUso !== undefined) throw new ErrorConsola('conflicto', `El medio se usa en ${enUso}; quítelo primero`);
+    if (enUso !== undefined) throw new ErrorConsola('conflicto', `${m.tipo === 'video' ? 'El video se usa' : 'La foto se usa'} en ${enUso}; ${m.tipo === 'video' ? 'quítelo' : 'quítela'} de ahí y guarde antes de borrarla`);
 
     const rutas = [m.rutaOriginal, ...(m.versiones ?? []).map((v) => v.ruta)].filter((r): r is string => typeof r === 'string');
     escribirUsoMedios(tx, t, liberarEnUso(uso, m.productoId, m.tipo, m.bytesOriginal ?? 0));

@@ -46,3 +46,8 @@ export function topesDelPlan(plan: unknown): { readonly productos: number; reado
   const p: PlanId = esPlanId(plan) ? plan : 'base';
   return { productos: PLANES[p].productos, usuarios: PLANES[p].usuarios };
 }
+
+/** Cupo de fotos de portada subidas (`_portada`) del plan indicado; un plan desconocido cae al predeterminado (`base`). */
+export function cupoPortadaDelPlan(plan: unknown): number {
+  return PLANES[esPlanId(plan) ? plan : 'base'].fotosPortada;
+}

@@ -87,7 +87,8 @@ export interface Contrato {
   /** Un precio por cada mercado declarado por el comercio, en centavos de la moneda base: `inventarios.cambiarPrecioUSD` (idempotente por `operacionId`, que la pantalla manda siempre). */
   cambiarPrecioUSD: { entrada: { operacionId: string; productoId: string; precioUSD: PreciosPorMercado }; salida: Ok };
   guardarFicha: { entrada: { productoId: string; ficha: FichaWeb }; salida: Ok };
-  reservarSubida: { entrada: { subidaId: string; productoId: string; tipo: TipoMedio; bytes: number }; salida: Reserva };
+  /** `tipo: 'portada'` (solo `adm`) sube una foto al carrusel de portada: `productoId` debe ser `_portada` y el cupo sale del plan. */
+  reservarSubida: { entrada: { subidaId: string; productoId: string; tipo: TipoMedio | 'portada'; bytes: number }; salida: Reserva };
   /**
    * Logo del negocio, solo `adm`: misma subida reanudable que las fotos (reservar, subir a `rutaOriginal`, esperar/finalizar), con
    * destino fijo (el panel no manda `productoId`), tope `BYTES_LOGO` y solo JPG, PNG o WebP (el servidor lo valida por contenido).

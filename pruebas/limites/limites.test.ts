@@ -22,7 +22,11 @@ function nuevaDb(uso: Record<string, number> = {}): DobleDb {
 
 describe('límites del plan', () => {
   it('el plan base fija 200 productos, 3 usuarios, 1 caja activa, 3 almacenes, 1 mercado y 1 moneda', () => {
-    expect(PLANES.base).toEqual({ productos: 200, usuarios: 3, cajas: 1, almacenes: 3, mercados: 1, monedas: 1 });
+    expect(PLANES.base).toEqual({ productos: 200, usuarios: 3, cajas: 1, almacenes: 3, mercados: 1, monedas: 1, fotosPortada: 8 });
+  });
+
+  it('el cupo de fotos propias de la portada es 8 en base, multimercado y pruebas', () => {
+    for (const plan of ['base', 'multimercado', 'pruebas'] as const) expect(PLANES[plan].fotosPortada).toBe(8);
   });
 
   it('el plan pruebas es base con 10 usuarios', () => {

@@ -1,6 +1,6 @@
 import type { AccionManifiesto, ColeccionManifiesto, ManifiestoModulo, Rol, RutaAlmacenamiento } from '@novutienda/nucleo';
 import { LIMITES_CONSOLA } from './limites.js';
-import { ID_NEGOCIO } from './rutas.js';
+import { ID_NEGOCIO, ID_PORTADA } from './rutas.js';
 
 /** Ninguna colección se lee directo desde el navegador: el panel no usa Firestore y consulta por los callables (decisiones.md). */
 const SIN_LECTURA_DIRECTA: readonly Rol[] = [];
@@ -37,7 +37,7 @@ const colecciones: readonly ColeccionManifiesto[] = [
  * Rutas de Storage (relativas a `tenants/{t}/`). Quién escribe cada una:
  *  - `privado/originales/...`: el navegador SOLO crea (nunca actualiza ni borra), con rol sup/adm y una reserva vigente en
  *    `subidas` hecha antes por el servidor. Los campos de la reserva (`estado`, `venceEn`, `productoId`, `por`, `bytes`, `tipo`)
- *    son contrato con `src/medios/subidas.ts`; `tipo` es `'foto'`, `'video'` o `'logo'` (el logo va a `_negocio/{subidaId}` y el servidor lo reserva solo para `adm`). Lectura: solo el servidor.
+ *    son contrato con `src/medios/subidas.ts`; `tipo` es `'foto'`, `'video'`, `'logo'` o `'portada'` (el logo va a `_negocio/{subidaId}` y la portada a `_portada/{subidaId}`; el servidor reserva ambos solo para `adm`). Lectura: solo el servidor.
  *  - `privado/procesando/**`: temporales; lee y escribe solo el servidor.
  *  - `publico/medios/**`: el servidor procesa y publica; lo lee el sitio (lectura pública). Es la única ruta pública que usa
  *    el módulo (`rutaPublicaMedio`); nada más bajo `publico/` queda legible.
@@ -54,6 +54,7 @@ const almacenamiento: readonly RutaAlmacenamiento[] = [
         { tipo: 'foto', bytesMax: LIMITES_CONSOLA.bytesFoto, contentType: 'image/(jpeg|png|webp|heic)' },
         { tipo: 'video', bytesMax: LIMITES_CONSOLA.bytesVideo, contentType: 'video/(mp4|quicktime|webm)' },
         { tipo: 'logo', bytesMax: LIMITES_CONSOLA.bytesLogo, contentType: 'image/(jpeg|png|webp)', destino: ID_NEGOCIO },
+        { tipo: 'portada', bytesMax: LIMITES_CONSOLA.bytesFoto, contentType: 'image/(jpeg|png|webp|heic)', destino: ID_PORTADA },
       ],
     },
   },

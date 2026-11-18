@@ -130,6 +130,19 @@ describe('almacenamiento: entradas hostiles', () => {
     expect(() => registrar(manifiesto('m', [a]))).toThrow(`variable de ruta reservada "{${nombre}}"`);
   });
 
+  it('la portada es un tipo con destino fijo en el manifiesto real y las reglas generadas lo hacen valer', async () => {
+    const { manifiestosEnOrden } = await import('../../plataforma/registro.js');
+    const consola = (manifiestosEnOrden() as ManifiestoModulo[]).find((m) => m.id === 'consola');
+    const reglas = (await import('node:fs')).readFileSync('storage.rules', 'utf8');
+    const archivos = (consola?.almacenamiento ?? []).flatMap((r) => (typeof r.escritura === 'object' ? r.escritura.archivos : []));
+    expect(archivos.find((f) => f.tipo === 'portada')).toMatchObject({ destino: '_portada', contentType: 'image/(jpeg|png|webp|heic)' });
+    // Foto y video excluyen el destino; la portada solo vale en él y no admite video ni SVG.
+    expect(reglas).toMatch(/r\.tipo == 'foto'\s+&& productoId != '_negocio'\s+&& productoId != '_portada'/);
+    expect(reglas).toMatch(/r\.tipo == 'video'\s+&& productoId != '_negocio'\s+&& productoId != '_portada'/);
+    expect(reglas).toMatch(/r\.tipo == 'portada'\s+&& productoId == '_portada'\s+&& request\.resource\.size <= 15 \* 1024 \* 1024\s+&& request\.resource\.contentType\.matches\('image\/\(jpeg\|png\|webp\|heic\)'\)/);
+    expect(reglas).not.toMatch(/portada[^)]*svg/);
+  });
+
   it('los manifiestos reales siguen registrándose', async () => {
     const { manifiestosEnOrden } = await import('../../plataforma/registro.js');
     const r = crearRegistro<ManifiestoModulo>();

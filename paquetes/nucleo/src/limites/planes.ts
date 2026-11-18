@@ -19,18 +19,21 @@ export type ClaveLimite = LimiteColeccion | 'almacenes';
 /** Topes de configuración comercial: cuántos mercados y cuántas monedas de caja declara el tenant. */
 export type ClaveComercial = 'mercados' | 'monedas';
 
-export type TopesPlan = { readonly [clave in ClaveLimite | ClaveComercial]: number };
+/** Tope de contenido propio del sitio: fotos subidas para la portada que no son de ningún producto. */
+export type ClaveContenido = 'fotosPortada';
+
+export type TopesPlan = { readonly [clave in ClaveLimite | ClaveComercial | ClaveContenido]: number };
 
 /**
  * Topes por plan: lo contratado en la propuesta (200 productos, 3 usuarios,
  * 3 almacenes y 1 caja ACTIVA por turno; `cajas` cuenta cajas abiertas), más
  * un mercado y una moneda en el plan base. `multimercado` repite los topes de
- * uso y admite hasta 5 mercados y 5 monedas.
+ * uso y admite hasta 5 mercados y 5 monedas. `fotosPortada` (8 en todos) es el cupo de fotos subidas al carrusel de portada.
  */
 export const PLANES: { readonly [plan in PlanId]: TopesPlan } = {
-  base: { productos: 200, usuarios: 3, cajas: 1, almacenes: 3, mercados: 1, monedas: 1 },
-  multimercado: { productos: 200, usuarios: 3, cajas: 1, almacenes: 3, mercados: 5, monedas: 5 },
-  pruebas: { productos: 200, usuarios: 10, cajas: 1, almacenes: 3, mercados: 1, monedas: 1 },
+  base: { productos: 200, usuarios: 3, cajas: 1, almacenes: 3, mercados: 1, monedas: 1, fotosPortada: 8 },
+  multimercado: { productos: 200, usuarios: 3, cajas: 1, almacenes: 3, mercados: 5, monedas: 5, fotosPortada: 8 },
+  pruebas: { productos: 200, usuarios: 10, cajas: 1, almacenes: 3, mercados: 1, monedas: 1, fotosPortada: 8 },
 };
 
 /*

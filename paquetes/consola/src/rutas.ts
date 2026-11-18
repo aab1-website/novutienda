@@ -7,6 +7,11 @@ export const ID_PRODUCTO = /^[a-z0-9][a-z0-9-]{1,59}$/;
  * (y `_` no cumple), de modo que `_negocio` nunca choca con un producto real ni se verifica contra el catálogo.
  */
 export const ID_NEGOCIO = '_negocio';
+/**
+ * Destino fijo de las fotos de portada subidas por el administrador (no son de ningún producto). Igual que `_negocio`,
+ * `ID_PRODUCTO` no lo admite: nunca choca con un producto real ni se verifica contra el catálogo.
+ */
+export const ID_PORTADA = '_portada';
 export const ID_SUBIDA = /^[A-Za-z0-9_-]{8,40}$/;
 export const ID_SECCION = /^[a-z0-9][a-z0-9-]{0,29}$/;
 

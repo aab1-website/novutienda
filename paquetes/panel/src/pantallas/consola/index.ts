@@ -7,5 +7,7 @@ export { esperarSubida } from './esperar.js';
 export { leerDuracionVideo } from './validar-archivo.js';
 // Revisión de la página de un producto con los topes del servidor (la compara pruebas/consola/ficha-revision.test.ts).
 export { revisarFicha, TOPES_FICHA, type ErroresFicha } from './ficha-revision.js';
+// Nombres visibles de las plantillas (los compara pruebas/panel/contrato.test.ts con los de la consola).
+export { PALETAS } from './plantillas-vista.js';
 // Validación del WhatsApp de la tienda (la compara pruebas/consola/sitio.test.ts con la del servidor).
 export { esWhatsappValido, pareceNumeroDeRelleno } from './whatsapp.js';
