@@ -37,7 +37,7 @@ const marcas = marcasConRuta(marcasDe(contenido.productos)).map((m) => ({ nombre
   <>
     <div class="catalogo">
       <aside aria-label="Filtros">
-        <Filtros client:load productos={filtrables} marcas={marcas} marcaActual={marcaActual} inicial={config.mercadoInicial} mercados={config.mercados} redondeo={config.redondeo} />
+        <Filtros client:load productos={filtrables} marcas={marcas} marcaActual={marcaActual} pagina={actual} totalPaginas={total} inicial={config.mercadoInicial} mercados={config.mercados} redondeo={config.redondeo} />
       </aside>
       <div class="grilla-productos">
         {items.map((p) => <TarjetaProducto producto={p} />)}

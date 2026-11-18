@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { marcasConRuta, paginar, paginasExtra, POR_PAGINA, rutaMarca, rutaPagina, totalPaginas } from './paginas.js';
+import { avisoDeFiltro, marcasConRuta, paginar, paginasExtra, POR_PAGINA, rutaMarca, rutaPagina, totalPaginas } from './paginas.js';
 
 const lista = (n: number): number[] => Array.from({ length: n }, (_, i) => i + 1);
 
@@ -35,5 +35,10 @@ describe('paginación del catálogo', () => {
     expect(marcasConRuta(['Aurora', 'Nórdika & Co', 'LG', 'lg']).map((m) => m.slug)).toEqual(['aurora', 'nordika-co', 'lg', 'lg-2']);
     expect(marcasConRuta(['***'])[0]!.slug).toBe('marca');
     expect(rutaMarca('aurora')).toBe('/marca/aurora');
+  });
+  it('el aviso del filtro de precio dice que solo filtra la página visible cuando hay varias', () => {
+    expect(avisoDeFiltro(5, 12, 1, 1)).toBe('Mostrando 5 de 12 productos.');
+    expect(avisoDeFiltro(10, 24, 1, 2)).toBe('Mostrando 10 de 24 productos de esta página (página 1 de 2).');
+    expect(avisoDeFiltro(17, 17, 2, 2)).toBe('Mostrando 17 de 17 productos de esta página (página 2 de 2).');
   });
 });

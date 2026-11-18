@@ -9,12 +9,13 @@ import Icono from '../componentes/Icono.astro';
 import { contenido } from '../contenido/instancia';
 import { productosDeCategoria, textoModelos } from '../contenido/consultas';
 import { jsonLdOrganizacion, rutaCategoria } from '../lib/seo';
+import { logoParaCompartir } from '../contenido/logo-subido';
 import { enlaceWhatsApp } from '../lib/whatsapp';
 
 const { config, categorias, productos, marcas, carruseles } = contenido;
 const destacados = productos.filter((p) => p.destacado).slice(0, 6);
-// Vista previa al compartir la portada: el logo y, si no hay, la primera foto del carrusel o de un producto.
-const imagenPortada = config.imagenCompartir ?? config.logo?.url ?? carruseles[config.plantilla][0]?.url ?? productos.find((p) => p.fotos.length > 0)?.fotos[0]?.url;
+// Vista previa al compartir la portada: el logo subido (PNG, JPG o WebP; nunca el de la cabecera ni un SVG) y, si no hay, la primera foto del carrusel o de un producto.
+const imagenPortada = logoParaCompartir(config.imagenCompartir, config.logo) ?? carruseles[config.plantilla][0]?.url ?? productos.find((p) => p.fotos.length > 0)?.fotos[0]?.url;
 const wa = enlaceWhatsApp(config.whatsappNovuchat, 'Hola, tengo una consulta.');
 ---
 <Base titulo={config.nombre} descripcion={config.lema} ruta="/" imagen={imagenPortada} datosEstructurados={[jsonLdOrganizacion(contenido)]}>

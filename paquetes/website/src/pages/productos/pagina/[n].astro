@@ -11,7 +11,7 @@ const { n } = Astro.props;
 <PaginaCatalogo
   titulo="Catálogo de productos"
   descripcion="Todos nuestros productos con precios actualizados en tu moneda."
-  subtitulo="Elige una marca o filtra por precio. Los precios se calculan con la cotización oficial del día."
+  subtitulo="Elige una marca. El filtro de precio actúa solo sobre los productos de la página que ves. Los precios se calculan con la cotización oficial del día."
   migas={[{ texto: 'Inicio', href: '/' }]}
   productos={contenido.productos}
   base="/productos"

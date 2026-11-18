@@ -3,6 +3,7 @@ import type { Mercado, Redondeo } from '@novutienda/nucleo';
 import { filtrarProductos } from '../contenido/consultas.js';
 import { parsearMonto } from '../lib/dinero.js';
 import { monedaDe } from '../lib/mercado.js';
+import { avisoDeFiltro } from '../lib/paginas.js';
 import { precioLocal } from '../lib/precio-vista.js';
 import { useCotizacion, useMercado } from './estado.js';
 
@@ -18,6 +19,9 @@ interface Props {
   marcas: readonly { nombre: string; href: string }[];
   /** Marca de la página actual, si es la página de una marca. */
   marcaActual?: string;
+  /** Página mostrada y total de páginas de esta lista: el precio filtra solo los productos de la página visible. */
+  pagina?: number;
+  totalPaginas?: number;
   inicial: Mercado;
   mercados: readonly Mercado[];
   redondeo: Redondeo;
@@ -27,7 +31,7 @@ interface Props {
  * Marcas (enlaces a su página) y filtro por precio. Las tarjetas de la página ya vienen en el HTML (sin JavaScript se ven todas);
  * esta isla solo oculta las que no cumplen el precio. El precio se filtra en la moneda del país elegido.
  */
-export default function Filtros({ productos, marcas, marcaActual, inicial, mercados, redondeo }: Props) {
+export default function Filtros({ productos, marcas, marcaActual, pagina = 1, totalPaginas = 1, inicial, mercados, redondeo }: Props) {
   const [mercado] = useMercado(inicial, mercados);
   const cot = useCotizacion(mercado);
   const [minimo, setMinimo] = useState('');
@@ -68,7 +72,7 @@ export default function Filtros({ productos, marcas, marcaActual, inicial, merca
         <label class="campo-corto">Hasta <input inputMode="decimal" value={maximo} aria-invalid={max === null && maximo.trim() !== ''} onInput={(e) => setMaximo((e.target as HTMLInputElement).value)} /></label>
       </fieldset>
       <p class="aviso-estado" role="status">
-        {invalido ? 'Escribe solo números en el precio.' : `Mostrando ${visibles.size} de ${productos.length} productos.`}
+        {invalido ? 'Escribe solo números en el precio.' : avisoDeFiltro(visibles.size, productos.length, pagina, totalPaginas)}
         {(minimo.trim() !== '' || maximo.trim() !== '') && ' Los productos «a consultar» no tienen precio y se ocultan al filtrar por precio.'}
       </p>
       {hayFiltro && <button type="button" class="enlace-boton" onClick={() => { setMinimo(''); setMaximo(''); }}>Limpiar filtros</button>}

@@ -43,3 +43,9 @@ export function marcasConRuta(marcas: readonly string[]): readonly MarcaConRuta[
     return { nombre, slug };
   });
 }
+
+/** Aviso de los filtros de precio: con varias páginas aclara que el precio filtra solo la página que se está viendo. */
+export function avisoDeFiltro(visibles: number, enPagina: number, pagina: number, total: number): string {
+  if (total <= 1) return `Mostrando ${visibles} de ${enPagina} productos.`;
+  return `Mostrando ${visibles} de ${enPagina} productos de esta página (página ${pagina} de ${total}).`;
+}

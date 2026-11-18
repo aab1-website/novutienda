@@ -32,7 +32,7 @@ const descripcion = recortar(descripcionPlana(p.seo.descripcion ?? p.descripcion
         <Precio client:load usd={p.precioUsd} inicial={config.mercadoInicial} mercados={config.mercados} redondeo={config.redondeo} />
         <noscript><p class="aviso-estado">Activa JavaScript para ver el precio o consúltalo por WhatsApp.</p></noscript>
         <BotonComprar client:load id={p.id} nombre={p.nombre} disponible={p.disponible} whatsapp={config.whatsappNovuchat} verificar />
-        <BotonCompartir client:load titulo={p.nombre} />
+        <BotonCompartir client:only="preact" titulo={p.nombre} />
         <DescripcionProducto texto={p.descripcion} />
         {p.garantia !== null && <p class="ficha-garantia"><Icono nombre="escudo" tamano={20} />Garantía: {p.garantia}</p>}
       </div>

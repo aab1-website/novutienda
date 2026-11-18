@@ -11,7 +11,7 @@ const enlaceActual = (): string => window.location.href.split('#')[0] ?? window.
 
 /**
  * Comparte la ficha. Con `navigator.share` (celulares) abre el menú del sistema; si no existe, copia el enlace
- * y avisa «Enlace copiado». Sin JavaScript el botón no se muestra (no hay nada que compartir sin la isla).
+ * y avisa «Enlace copiado». La isla es `client:only`: sin JavaScript el botón no existe, en vez de verse sin hacer nada.
  */
 export default function BotonCompartir({ titulo }: Props) {
   const [aviso, setAviso] = useState('');
@@ -28,10 +28,11 @@ export default function BotonCompartir({ titulo }: Props) {
     if (typeof navigator.share === 'function') {
       try {
         await navigator.share({ title: titulo, url });
-      } catch {
-        // La persona cerró el menú de compartir: no es un error.
+        return;
+      } catch (e) {
+        // Cerrar el menú de compartir (AbortError) no es un error; cualquier otro falla a copiar el enlace.
+        if (e instanceof DOMException && e.name === 'AbortError') return;
       }
-      return;
     }
     try {
       await navigator.clipboard.writeText(url);

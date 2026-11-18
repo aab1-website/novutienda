@@ -279,8 +279,9 @@ test.describe('precio, país y compra', () => {
     await expect(page.getByRole('navigation', { name: 'Páginas del catálogo' })).toHaveCount(0);
     await expect(page.locator('link[rel="prev"], link[rel="next"]')).toHaveCount(0);
     expect((await page.request.get('/productos/pagina/2')).status()).toBe(404);
-    const fit = await page.locator('.tarjeta-imagen img').first().evaluate((e) => getComputedStyle(e).objectFit).catch(() => 'contain');
-    expect(fit).toBe('contain');
+    const imagen = page.locator('.tarjeta-imagen img').first();
+    await expect(imagen).toBeAttached();
+    expect(await imagen.evaluate((e) => getComputedStyle(e).objectFit)).toBe('contain');
   });
 
   test('convertidor: usa la cotización, sin tasas en el código', async ({ page }) => {
