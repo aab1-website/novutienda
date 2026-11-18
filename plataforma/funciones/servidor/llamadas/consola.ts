@@ -4,7 +4,7 @@
 // La consola no crea ni edita productos ni escribe stock: eso es de Inventarios (`inventarios.crearProducto`, etc.).
 import { z } from 'zod';
 import {
-  eliminarSeccion, exportarProductosCsv, guardarCarrusel, guardarConfigSitio, guardarFicha, guardarSeccion, obtenerTablero,
+  eliminarSeccion, guardarCarrusel, guardarConfigSitio, guardarFicha, guardarSeccion, obtenerTablero,
   guardarNegocioSitio, leerLogo, leerNegocioSitio, ordenarSecciones, preciosDelDiaDe, publicarSitio, quitarLogo,
 } from '@novutienda/consola';
 import { claveDePrecio, leerCotizacionDe, MAX_MERCADOS, SinCotizacionUtilizable, type CopiaCotizacion } from '@novutienda/nucleo';
@@ -157,12 +157,6 @@ export const accionesConsola: TablaImplementaciones = {
   quitarLogo: accion({
     esquema: VACIO,
     ejecutar: (c) => quitarLogo(depsMedios(c), { tenantId: c.tenantId, actor: c.actor }),
-  }),
-
-  // ---- Exportación (CSV) -----------------------------------------------------------------------------------
-  exportarProductosCsv: accion({
-    esquema: VACIO,
-    ejecutar: async (c) => ({ csv: exportarProductosCsv(await c.e.catalogo.listarProductos(c.tenantId)) }),
   }),
 
   // ---- Publicación y tablero ------------------------------------------------------------------------------

@@ -2,7 +2,6 @@ import type { Entrada, NombreCallable, Salida } from '../api/contrato.js';
 import type { Medio, MedioLogo, Recibo, SubidaVista } from '../api/tipos.js';
 import { BYTES_LOGO, ID_NEGOCIO, LIMITES_PANEL, PLANTILLAS_SITIO } from '../api/tipos.js';
 import { normalizar } from '../util/buscar.js';
-import { aCsv } from '../util/csv.js';
 import { auditar, exigirRol, fallo, iso, vistaProducto, type Contexto } from './estado.js';
 
 type H<N extends NombreCallable> = (c: Contexto, e: Entrada<N>) => Salida<N> | Promise<Salida<N>>;
@@ -93,7 +92,7 @@ function estadoDeSubida(c: Contexto, subidaId: string, tipo: 'logo' | 'producto'
 }
 
 export const handlersOtros: {
-  [N in 'buscarComprobantes' | 'enviarRecibo' | 'referenciarFacturaSuma' | 'guardarPlantilla' | 'leerPlantilla' | 'obtenerRecibo' | 'obtenerTablero' | 'publicarSitio' | 'guardarFicha' | 'reservarSubida' | 'estadoSubida' | 'finalizarSubida' | 'borrarMedio' | 'guardarSeccion' | 'eliminarSeccion' | 'ordenarSecciones' | 'guardarCarrusel' | 'guardarConfigSitio' | 'exportarProductosCsvSitio' | 'asignarRol' | 'quitarRol' | 'invitarUsuario' | 'anularInvitacion' | 'reenviarInvitacion' | 'buscarUsuarioPorCorreo' | 'listarFichas' | 'listarMedios' | 'leerConfigSitio' | 'listarSecciones' | 'listarCarruseles' | 'listarUsuarios' | 'modulosActivos' | 'configuracionComercial' | 'reservarSubidaLogo' | 'estadoSubidaLogo' | 'finalizarSubidaLogo' | 'leerLogo' | 'quitarLogo']: H<N>;
+  [N in 'buscarComprobantes' | 'enviarRecibo' | 'referenciarFacturaSuma' | 'guardarPlantilla' | 'leerPlantilla' | 'obtenerRecibo' | 'obtenerTablero' | 'publicarSitio' | 'guardarFicha' | 'reservarSubida' | 'estadoSubida' | 'finalizarSubida' | 'borrarMedio' | 'guardarSeccion' | 'eliminarSeccion' | 'ordenarSecciones' | 'guardarCarrusel' | 'guardarConfigSitio' | 'asignarRol' | 'quitarRol' | 'invitarUsuario' | 'anularInvitacion' | 'reenviarInvitacion' | 'buscarUsuarioPorCorreo' | 'listarFichas' | 'listarMedios' | 'leerConfigSitio' | 'listarSecciones' | 'listarCarruseles' | 'listarUsuarios' | 'modulosActivos' | 'configuracionComercial' | 'reservarSubidaLogo' | 'estadoSubidaLogo' | 'finalizarSubidaLogo' | 'leerLogo' | 'quitarLogo']: H<N>;
 } = {
   buscarComprobantes(c, e) {
     const q = e.consulta;
@@ -324,10 +323,6 @@ export const handlersOtros: {
     anotarCambio(c);
     auditar(c, 'sitio.config', 'sitio/config');
     return { ok: true };
-  },
-  exportarProductosCsvSitio(c) {
-    const filas = [...c.e.productos.values()].map((p) => [p.id, p.nombre, p.categoria, p.marca ?? '', p.sku, p.activo ? 'si' : 'no', p.garantiaMeses ?? '', p.precioUSD['bo'] === undefined ? '' : p.precioUSD['bo'] / 100, p.precioUSD['ar'] === undefined ? '' : p.precioUSD['ar'] / 100]);
-    return { csv: aCsv(['id', 'nombre', 'categoria', 'marca', 'sku', 'activo', 'garantiaMeses', 'precioBO', 'precioAR'], filas) };
   },
   invitarUsuario(c, e) {
     exigirRol(c, ['adm']);

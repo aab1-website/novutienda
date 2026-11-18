@@ -429,9 +429,9 @@ describe('catálogo y sitio', () => {
     ver(e, h(PantallaCatalogo, { sub: 'secciones' }));
     const u = userEvent.setup();
     await u.click(await screen.findByRole('button', { name: 'Nueva sección' }));
-    await u.type(await screen.findByLabelText(/Título \(texto del menú\)/), 'Cómo comprar');
+    await u.type(await screen.findByLabelText(/Nombre de la sección/), 'Cómo comprar');
     await u.click(screen.getByRole('button', { name: '+ Texto' }));
-    await u.type(screen.getByLabelText('Título del bloque'), 'Pasos');
+    await u.type(screen.getByLabelText('Subtítulo del texto (opcional)'), 'Pasos');
     await u.type(screen.getByLabelText(/Párrafos/), 'Elija el producto.\n\nEscriba por WhatsApp.');
     await u.click(screen.getByRole('button', { name: '+ Enlaces' }));
     await u.type(screen.getByLabelText(/Enlaces \(uno por línea/), 'Contacto | /contacto');
@@ -460,17 +460,13 @@ describe('catálogo y sitio', () => {
     expect(c?.plantillaActiva).toBe('ciruela');
     expect(c?.whatsappNovuchat).toBe('59171112222');
   });
-  it('exportar: el Catálogo ya no importa; exporta y enlaza a la importación de Inventario', async () => {
+  it('exportar: el Catálogo ya no exporta ni importa; deja un enlace a Inventario', async () => {
     const e = crearEntorno('adm');
-    vi.spyOn(URL, 'createObjectURL').mockReturnValue('blob:x');
-    vi.spyOn(URL, 'revokeObjectURL').mockReturnValue(undefined);
     ver(e, h(PantallaCatalogo, { sub: 'exportar' }));
-    const u = userEvent.setup();
-    expect(await screen.findByText(/Los productos se crean e importan en Inventario/)).toBeTruthy();
-    expect(screen.getByRole('link', { name: 'Ir a la importación de Inventario' }).getAttribute('href')).toBe('#/inventario/csv');
+    expect(await screen.findByRole('link', { name: 'Ir a Inventario' })).toBeTruthy();
+    expect(screen.getByRole('link', { name: 'Ir a Inventario' }).getAttribute('href')).toBe('#/inventario/csv');
     expect(screen.queryByLabelText('Archivo a importar')).toBeNull();
-    await u.click(screen.getByRole('button', { name: 'Exportar productos (CSV)' }));
-    expect(await screen.findByText(/productos-sitio\.csv generado/)).toBeTruthy();
+    expect(screen.queryByRole('button', { name: 'Exportar productos (CSV)' })).toBeNull();
   });
 });
 

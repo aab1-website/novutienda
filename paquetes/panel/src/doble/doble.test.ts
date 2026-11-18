@@ -837,12 +837,12 @@ describe('doble: catálogo y sitio', () => {
     await falla(e.api.llamar('actualizarProducto', { operacionId: uuid(), productoId: 'nada', cambios: { nombre: 'a' } }));
     await falla(e.api.llamar('cambiarPrecioUSD', { operacionId: uuid(), productoId: 'nada', precioUSD: { bo: 100, ar: 100 } }));
   });
-  it('la consola ya no importa ni crea productos; conserva la exportación del catálogo', async () => {
+  it('la consola ya no importa ni crea productos ni exporta el catálogo', async () => {
     const e = crearEntorno('adm');
     for (const accion of ['crearProducto', 'editarProducto', 'cambiarPrecioUSD', 'simularImportacion', 'importarProductos']) {
       await expect(e.api.transporte.invocar('consola', { accion, tenantId: 'demo', datos: {} })).rejects.toMatchObject({ codigoHttps: 'invalid-argument' });
     }
-    expect((await e.api.llamar('exportarProductosCsvSitio', {})).csv).toContain('precioBO');
+    await expect(e.api.transporte.invocar('consola', { accion: 'exportarProductosCsv', tenantId: 'demo', datos: {} })).rejects.toMatchObject({ codigoHttps: 'invalid-argument' });
   });
 });
 
@@ -932,13 +932,5 @@ describe('doble: precio por mercado abierto', () => {
     expect((await e.api.llamar('listarProductos', {})).find((p) => p.id === 'solo-pe')?.precioUSD).toEqual({ pe: 1800 });
     expect((await falla(e.api.llamar('crearProducto', { operacionId: uuid(), producto: { ...producto, id: 'solo-bo', sku: 'SB-1', precioUSD: { bo: 1500 } } }))).detalle.codigo).toBe('entrada-invalida');
     expect((await falla(e.api.llamar('actualizarProducto', { operacionId: uuid(), productoId: 'solo-pe', cambios: { precioUSD: { bo: 100 } } }))).detalle.codigo).toBe('entrada-invalida');
-  });
-  it('la exportación para el sitio deja vacía la celda del precio ausente', async () => {
-    const e = crearEntorno('adm', () => AHORA, {
-      comercial: { mercados: [{ id: 'BO', nombre: 'Bolivia', monedaVenta: 'BOB', monedaBase: 'USD', tieneTipoCambio: true }], monedasCaja: ['BOB', 'USD'], monedaCosto: 'USD' },
-    });
-    await e.api.llamar('crearProducto', { operacionId: uuid(), producto: { id: 'solo-bo', nombre: 'Solo BO', categoria: 'Varios', sku: 'SB-9', precioUSD: { bo: 1250 } } });
-    const fila = (await e.api.llamar('exportarProductosCsvSitio', {})).csv.split('\n').find((l) => l.startsWith('solo-bo'));
-    expect(fila?.trimEnd()).toMatch(/,12\.5,$/);
   });
 });
