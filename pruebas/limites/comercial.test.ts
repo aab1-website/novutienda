@@ -12,6 +12,7 @@ describe('topes comerciales por plan', () => {
     expect(PLANES.multimercado.mercados).toBeGreaterThanOrEqual(2);
     expect(PLANES.multimercado.monedas).toBeGreaterThanOrEqual(3);
     expect(esPlanId('multimercado')).toBe(true);
+    expect(esPlanId('pruebas')).toBe(true);
   });
   it('el plan base acepta un tenant de una moneda', () => {
     expect(validarComercialContraPlan('base', una)).toEqual({ ok: true, valor: una });

@@ -27,6 +27,8 @@ export function crearLectoresModulos(
   firestore: LectorDocumento,
   ahora: () => number,
   manifiestos: () => readonly ManifiestoModulo[] = () => registroPlataforma.listar(),
+  /** `PLAN_PRUEBAS_HABILITADO=si`. Sin él, un tenant con plan `pruebas` es inválido (falla cerrado: el plan es solo de staging). */
+  planPruebasHabilitado = false,
 ): { readonly modulos: LectorModulos; readonly estado: LectorEstadoModulos } {
   const cache = new Map<string, { readonly hasta: number; readonly r: ResultadoModulos }>();
   const estado: LectorEstadoModulos = async (tenantId) => {
@@ -35,7 +37,8 @@ export function crearLectoresModulos(
     const previo = cache.get(tenantId);
     if (previo !== undefined && previo.hasta > t) return previo.r;
     const snap = await firestore.doc(`tenants/${tenantId}`).get();
-    const v = snap.exists ? validarTenant(snap.data()) : undefined;
+    const validado = snap.exists ? validarTenant(snap.data()) : undefined;
+    const v = validado !== undefined && validado.ok && validado.valor.plan === 'pruebas' && !planPruebasHabilitado ? { ok: false as const, error: 'Plan pruebas no habilitado' } : validado;
     // Un tenant suspendido o dado de baja no opera: se trata como inexistente (falla cerrado, cache negativa).
     if (v === undefined || !v.ok || !tenantOperativo(v.valor)) {
       const motivo: MotivoSinModulos = v === undefined ? 'inexistente' : !v.ok ? 'invalido' : v.valor.estado === 'suspendido' ? 'suspendido' : 'baja';

@@ -26,6 +26,10 @@
 # P_GITHUB_REPO_SITIO (opcional, S7-3/DS-3): repositorio `owner/nombre` al que temporizadorSitio dispara
 # reconstruir-sitio.yml; vacío = disparo deshabilitado (queda el sondeo). Solo staging: reconstruir-sitio.yml despliega
 # solo staging (DC3), así que en production debe quedar vacío. Forma inválida: falla cerrado.
+# PLAN_PRUEBAS_HABILITADO (plan `pruebas`, solo staging) NO es una entrada: lo fija este script según AMBIENTE
+# (`si` en staging; vacío —el valor por defecto de config.ts, plan deshabilitado— en production, porque firebase-tools
+# exige una línea por parámetro). Si llega como P_PLAN_PRUEBAS_HABILITADO o PLAN_PRUEBAS_HABILITADO, falla cerrado; y
+# tras empaquetar se comprueba que ningún dist/funciones/.env* lo pisa (en production, ninguno puede darle valor).
 # Los errores nunca imprimen los valores.
 set -euo pipefail
 
@@ -82,6 +86,11 @@ if [[ -n "${P_GITHUB_REPO_SITIO:-}" ]]; then
   if [[ ! "$P_GITHUB_REPO_SITIO" =~ $repo_forma ]] || [[ "$P_GITHUB_REPO_SITIO" =~ $repo_segmento_relativo ]]; then
     error "GITHUB_REPO_SITIO debe tener la forma owner/nombre (solo letras, dígitos, _ . -; sin URL, sin segmentos . o ..). Ver docs/produccion/reconstruccion-sitio.md."
   fi
+fi
+# Plan `pruebas` (B-D, barrera 3): el valor depende solo del ambiente, nunca de una variable de GitHub ni del entorno
+# del job. Una variable cargada por error (p. ej. en el Environment production) detiene el despliegue. Sin imprimir el valor.
+if [[ -n "${P_PLAN_PRUEBAS_HABILITADO+x}" || -n "${PLAN_PRUEBAS_HABILITADO+x}" ]]; then
+  error "PLAN_PRUEBAS_HABILITADO no se admite como variable ($AMBIENTE): lo fija preparar-despliegue-firebase.sh según el ambiente (si en staging; nunca en production). Quite la variable. Ver docs/produccion/pase-a-staging.md."
 fi
 
 # 2. Configuración compuesta en el build.
@@ -161,6 +170,13 @@ declare -A POR_DEFECTO=(
 for nombre in "${!POR_DEFECTO[@]}"; do
   grep -q "^${nombre}=" "$parametros" || printf '%s=%s\n' "$nombre" "${POR_DEFECTO[$nombre]}" >>"$parametros"
 done
+# Plan `pruebas` (B-D, barrera 3): `si` solo en staging. En production se escribe la línea vacía (el valor por defecto de
+# config.ts, plan deshabilitado), que firebase-tools exige en modo no interactivo; nunca `si`.
+if [[ "$AMBIENTE" == "staging" ]]; then
+  printf 'PLAN_PRUEBAS_HABILITADO=si\n' >>"$parametros"
+else
+  printf 'PLAN_PRUEBAS_HABILITADO=\n' >>"$parametros"
+fi
 # Binarios de video (decisión D1 = A, 11/11/2026): se usa el ffmpeg/ffprobe que trae el runtime de Google para
 # Functions (Node 22, Ubuntu 22.04) en /usr/bin. Difiere A PROPÓSITO de config.ts, que deja ambos vacíos para el
 # emulador y las pruebas (sin binarios, el video se rechaza con motivo claro). Aquí nunca quedan vacíos: un valor
@@ -202,6 +218,20 @@ for archivo in dist/funciones/.env*; do
   [[ -f "$archivo" ]] || continue
   if grep -Eq "$prohibidos" "$archivo"; then
     error "$archivo incluye PLATAFORMA_PRUEBAS o FUNCTIONS_EMULATOR; prohibidos en staging y production."
+  fi
+done
+# Plan `pruebas` en el resultado empaquetado (falla cerrado, sin imprimir valores): dist/funciones/.env lleva exactamente
+# una línea, `PLAN_PRUEBAS_HABILITADO=si` en staging y `PLAN_PRUEBAS_HABILITADO=` en production; ningún otro .env* puede
+# nombrarlo (un .env.<proyecto|alias> previo pisaría el valor de .env).
+plan_linea='^[[:space:]]*(export[[:space:]]+)?PLAN_PRUEBAS_HABILITADO[[:space:]]*='
+if [[ "$AMBIENTE" == "staging" ]]; then plan_esperada='PLAN_PRUEBAS_HABILITADO=si'; else plan_esperada='PLAN_PRUEBAS_HABILITADO='; fi
+if [[ "$(grep -Ec "$plan_linea" dist/funciones/.env || true)" != "1" ]] || ! grep -qx "$plan_esperada" dist/funciones/.env; then
+  error "dist/funciones/.env no fija PLAN_PRUEBAS_HABILITADO como corresponde a $AMBIENTE (si solo en staging; vacío en production)."
+fi
+for archivo in dist/funciones/.env*; do
+  [[ -f "$archivo" && "$archivo" != "dist/funciones/.env" ]] || continue
+  if grep -Eq "$plan_linea" "$archivo"; then
+    error "$archivo define PLAN_PRUEBAS_HABILITADO; solo lo fija dist/funciones/.env, según el ambiente."
   fi
 done
 echo "Hosting: targets sitio y panel aplicados; parámetros de Functions: $(cut -d= -f1 "$parametros" | paste -sd, -)"
