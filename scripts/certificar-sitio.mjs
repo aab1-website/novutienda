@@ -20,6 +20,7 @@
 //
 // Salida: solo conteos y nombres de comprobación (el log de CI es público): nunca ids, nombres, URL, tenant ni valores; un producto se
 // nombra por su posición («producto #k»). Códigos de salida:
+//   (modo a pedido: la referencia incluye «fuente del negocio: consola|respaldo»; con --contenido no hay respuesta que mirar y la línea no se imprime)
 //   0  coincide (puede haber avisos)
 //   1  se compararon cosas y hay diferencias firmes (con diferencias firmes manda 1 aunque otra comprobación no se haya podido leer)
 //   2  uso inválido (argumentos, URL, archivo de --contenido, contenido de ejemplo)
@@ -379,7 +380,7 @@ export function armarResumen(comprobaciones, referencia = undefined) {
   });
   const cod = codigoDe(comprobaciones);
   const total = cod === 0 ? 'correcta' : cod === 3 ? 'NO CONCLUYENTE' : 'FALLÓ';
-  return `## Certificación del sitio: ${total}\n\n${referencia === undefined ? '' : `${referencia}\n\n`}| Comprobación | Resultado | Conteos |\n|---|---|---|\n${filas.join('\n')}\n`;
+  return `## Certificación del sitio: ${total}\n\n${referencia === undefined ? '' : `${referencia.replaceAll('\n', '\n\n')}\n\n`}| Comprobación | Resultado | Conteos |\n|---|---|---|\n${filas.join('\n')}\n`;
 }
 
 // ---------------------------------------------------------------------------------------------------------------------------------
@@ -574,8 +575,10 @@ export async function ejecutar(args, env = process.env, deps = undefined, fetchF
     } else {
       const secreto = env.SITIO_RECONSTRUCCION_SECRETO ?? '';
       if (secreto === '') throw new ErrorContenidoSitio('falta SITIO_RECONSTRUCCION_SECRETO');
-      ({ contenido } = await generarContenido({ tenant, url, secreto, env, calcularFirma: d.calcularFirma, mapear: d.mapear, fetchFn, esperar, avisar }));
-      referencia = REF_REGENERADO;
+      let fuente;
+      ({ contenido, fuente } = await generarContenido({ tenant, url, secreto, env, calcularFirma: d.calcularFirma, mapear: d.mapear, fetchFn, esperar, avisar }));
+      // Se une a la referencia: aparece en la primera línea de la salida y del resumen sin tocar la comparación.
+      referencia = `${REF_REGENERADO}\nfuente del negocio: ${fuente}`;
     }
     const comprobaciones = await certificar({ url, contenido, versionContenido: d.versionContenido, fetchFn, esperar, avisar });
     if (rutaResumen !== undefined) {

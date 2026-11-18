@@ -1,6 +1,7 @@
 import { describe, expect, it } from 'vitest';
-import { ErrorContenidoPublicado, contenidoDesdePublicado, iconoDeCategoria, nombreDeCategoria, type EntornoSitio } from './desde-publicado.js';
+import { ErrorContenidoPublicado, contenidoDesdePublicado, contenidoYFuenteDesdePublicado, iconoDeCategoria, nombreDeCategoria, type EntornoSitio } from './desde-publicado.js';
 import { contenidoEjemplo } from './ejemplo.js';
+import { huellaContenido, huellaSinDisponibilidad } from '../lib/huella.js';
 import { urlMedioSegura, validarNegocio } from './validar.js';
 
 // Todo inventado: dominios .invalid, nombres de ejemplo.
@@ -387,5 +388,172 @@ describe('validarNegocio', () => {
     expect(c.publicacion).toEqual({ version: 7, publicadoEn: '2026-11-10T12:00:00.000Z' });
     const sinFecha = contenidoDesdePublicado(respuesta(), negocioBase(), entorno);
     expect(sinFecha.publicacion).toEqual({ version: 3, publicadoEn: null });
+  });
+});
+
+describe('negocio desde la consola (publicado/negocio)', () => {
+  // Documento tal como lo publica la consola: sin mercados, logo ni número de WhatsApp; con version y actualizadoEn.
+  const docConsola = (extra: Record<string, unknown> = {}) => {
+    const resto: Record<string, unknown> = { ...negocioBase() };
+    for (const k of ['mercados', 'mercadoInicial', 'logo', 'whatsappTienda']) delete resto[k];
+    return { ...resto, version: 4, actualizadoEn: '2026-11-17T10:00:00.000Z', ...extra };
+  };
+  const con = (doc: unknown) => respuesta({ negocio: doc });
+  const logoSecreto = { url: `${MEDIOS}/bucket/logo.webp`, alt: 'Logo', versiones: [] };
+  const medioIdentidad = { tipo: 'foto', alt: 'Equipo', ancho: 1000, alto: 800, versiones: [{ clase: 'imagen', lado: 960, formato: 'webp', ruta: 'm/id/960.webp' }] };
+
+  it('sin documento: igual que hoy, sin avisos nuevos y fuente «respaldo»', () => {
+    const av: string[] = [];
+    const c = contenidoDesdePublicado(respuesta(), negocioBase(), entorno, av);
+    expect(c).toEqual(contenidoDesdePublicado(respuesta(), negocioBase(), entorno));
+    expect(av).toEqual([]);
+    expect(contenidoYFuenteDesdePublicado(respuesta(), negocioBase(), entorno)).toEqual({ contenido: c, fuenteNegocio: 'respaldo' });
+  });
+
+  it('con documento: cada campo sale del documento; mercados y logo del secreto', () => {
+    const secreto = { ...negocioBase(), nombre: 'Del secreto', mercados: ['BO'], mercadoInicial: 'BO', logo: logoSecreto };
+    const doc = docConsola({ nombre: 'De la consola', lema: 'Lema consola', telefono: '+59170000001', correo: 'a@ejemplo.invalid', direccion: 'Otra 1', horario: 'Lun 9-18' });
+    const av: string[] = [];
+    const c = contenidoDesdePublicado(con(doc), secreto, entorno, av);
+    expect(contenidoYFuenteDesdePublicado(con(doc), secreto, entorno).fuenteNegocio).toBe('consola');
+    expect(av).toEqual([]);
+    expect(c.config).toMatchObject({ nombre: 'De la consola', lema: 'Lema consola', telefono: '+59170000001', correo: 'a@ejemplo.invalid', direccion: 'Otra 1', horario: 'Lun 9-18', mercados: ['BO'], mercadoInicial: 'BO', logo: logoSecreto, whatsappNovuchat: '59170000000' });
+  });
+
+  it('documento con los mismos datos que el secreto: Contenido y huella idénticos', () => {
+    const a = contenidoDesdePublicado(respuesta(), negocioBase(), entorno);
+    const b = contenidoDesdePublicado(con(docConsola()), negocioBase(), entorno);
+    expect(b).toEqual(a);
+    expect(huellaContenido(b)).toBe(huellaContenido(a));
+  });
+
+  it('destacados y categorías salen del documento', () => {
+    const c = contenidoDesdePublicado(con(docConsola({ destacados: ['p-dos'], categorias: { 'parlantes-audio': { nombre: 'Sonido', icono: 'cuadricula' } } })), negocioBase(), entorno);
+    expect(c.productos.find((p) => p.id === 'p-dos')?.destacado).toBe(true);
+    expect(c.categorias.find((k) => k.id === 'parlantes-audio')?.nombre).toBe('Sonido');
+  });
+
+  it('foto de identidad como medio de la consola: se resuelve a la base de medios', () => {
+    const doc = docConsola({ identidad: { ...negocioBase().identidad, foto: medioIdentidad } });
+    const c = contenidoDesdePublicado(con(doc), negocioBase(), { ...entorno, baseMedios: `${MEDIOS}/bucket` });
+    expect(c.identidad.foto).toEqual({ url: `${MEDIOS}/bucket/m/id/960.webp`, alt: 'Equipo', versiones: [{ url: `${MEDIOS}/bucket/m/id/960.webp`, ancho: 960 }] });
+  });
+
+  it('foto de identidad heredada: pasa tal cual', () => {
+    const heredada = { url: `${MEDIOS}/x/foto.webp`, alt: 'Heredada' };
+    const c = contenidoDesdePublicado(con(docConsola({ identidad: { ...negocioBase().identidad, foto: heredada } })), negocioBase(), entorno);
+    expect(c.identidad.foto).toEqual(heredada);
+  });
+
+  it('foto de identidad de otro origen: el documento no pasa y se usa el respaldo', () => {
+    const mala = { url: 'https://otro.ejemplo.invalid/x.webp', alt: 'x' };
+    const av: string[] = [];
+    const c = contenidoDesdePublicado(con(docConsola({ nombre: 'Nombre Consola', identidad: { ...negocioBase().identidad, foto: mala } })), negocioBase(), entorno, av);
+    expect(c.config.nombre).toBe('Tienda de Ejemplo');
+    expect(av).toEqual([expect.stringMatching(/^documentos\.negocio\.identidad\.foto\.url: /), 'documentos.negocio: datos de la consola no válidos; se usó el respaldo']);
+    expect(av.join('\n')).not.toContain('otro.ejemplo.invalid');
+    expect(contenidoYFuenteDesdePublicado(con(docConsola({ identidad: { ...negocioBase().identidad, foto: mala } })), negocioBase(), entorno).fuenteNegocio).toBe('respaldo');
+  });
+
+  it('documento inválido: respaldo con aviso sin valores', () => {
+    const av: string[] = [];
+    const c = contenidoDesdePublicado(con(docConsola({ nombre: 'Valor Secreto', correo: 5 })), negocioBase(), entorno, av);
+    expect(c.config.nombre).toBe('Tienda de Ejemplo');
+    expect(av).toEqual([expect.stringMatching(/^documentos\.negocio\.correo: /), 'documentos.negocio: datos de la consola no válidos; se usó el respaldo']);
+    expect(av.join('\n')).not.toContain('Valor Secreto');
+  });
+
+  it('documento inválido y sin respaldo válido: error', () => {
+    expect(() => contenidoDesdePublicado(con(docConsola({ nombre: '' })), { ...negocioBase(), mercados: [] }, entorno)).toThrow(/negocio\.mercados/);
+  });
+
+  it('el fallo solo en campos del respaldo no se achaca a la consola: aviso del respaldo y error', () => {
+    const av: string[] = [];
+    expect(() => contenidoDesdePublicado(con(docConsola()), { ...negocioBase(), mercados: [] }, entorno, av)).toThrow(ErrorContenidoPublicado);
+    expect(av).toEqual(['negocio: el respaldo no es válido (negocio.mercados, negocio.mercadoInicial)']);
+    expect(av.join('\n')).not.toContain('datos de la consola');
+  });
+
+  it('un error del documento y otro del respaldo: se culpa a la consola', () => {
+    const av: string[] = [];
+    expect(() => contenidoDesdePublicado(con(docConsola({ correo: 5 })), { ...negocioBase(), mercados: [] }, entorno, av)).toThrow(/negocio\.mercados/);
+    expect(av).toContain('documentos.negocio.correo: debe ser texto de 5 a 120 caracteres');
+    expect(av).toContain('documentos.negocio: datos de la consola no válidos; se usó el respaldo');
+  });
+
+  it('foto de identidad de la consola sin versión válida: queda en null con aviso y el resto del documento se usa', () => {
+    const av: string[] = [];
+    const doc = docConsola({ nombre: 'Nombre Consola', identidad: { ...negocioBase().identidad, foto: { tipo: 'foto', alt: 'x', versiones: [] } } });
+    const r = contenidoYFuenteDesdePublicado(con(doc), negocioBase(), entorno, av);
+    expect(r.fuenteNegocio).toBe('consola');
+    expect(r.contenido.config.nombre).toBe('Nombre Consola');
+    expect(r.contenido.identidad.foto).toBeNull();
+    expect(av).toEqual(['documentos.negocio.identidad.foto: foto omitida (sin versión válida)']);
+  });
+
+  it('documento ausente o descartado: fuente efectiva «respaldo»', () => {
+    expect(contenidoYFuenteDesdePublicado(con('texto'), negocioBase(), entorno).fuenteNegocio).toBe('respaldo');
+    expect(contenidoYFuenteDesdePublicado(con(docConsola()), negocioBase(), entorno).fuenteNegocio).toBe('consola');
+  });
+
+  describe('invariante: el documento con los mismos datos no mueve el contenido ni las huellas', () => {
+    const host = (n: number) => `h${n}.ejemplo.invalid`;
+    const completo = () => {
+      const c = contenidoEjemplo;
+      return {
+        ...negocioBase(),
+        nombre: 'Tienda Completa', lema: 'Lema completo', telefono: '+59170000001', correo: 'hola@ejemplo.invalid', horario: 'Lun a Sáb 9:00-18:00',
+        direccion: 'Av. Ficticia 456',
+        logo: { url: `${MEDIOS}/bucket/logo.webp`, alt: 'Logo', versiones: [{ url: `${MEDIOS}/bucket/logo-480.webp`, ancho: 480 }] },
+        whatsappTienda: '59171111111',
+        enlacesPermitidos: [1, 2, 3, 4].map(host),
+        categorias: { 'aire-acondicionado': { nombre: 'Climas', icono: 'aire' }, 'parlantes-audio': { nombre: 'Sonido', icono: 'parlante' } },
+        destacados: ['p-dos', 'p-uno'],
+        beneficios: Array.from({ length: 8 }, (_, i) => ({ ...c.beneficios[0]!, descripcion: `Beneficio ${i}` })),
+        identidad: {
+          ...c.identidad,
+          foto: { url: `${MEDIOS}/x/foto.webp`, alt: 'Equipo', versiones: [{ url: `${MEDIOS}/x/foto-480.webp`, ancho: 480 }, { url: `${MEDIOS}/x/foto-960.webp`, ancho: 960 }] },
+          cifra: { valor: { texto: '15 años', confirmada: true }, detalle: 'De trayectoria' },
+          sello: { texto: 'Garantía propia', confirmada: false },
+          valores: Array.from({ length: 6 }, (_, i) => ({ icono: 'cuadricula', titulo: `Valor ${i}`, texto: `Texto del valor ${i}` })),
+        },
+        textoPrivacidad: ['Párrafo uno.', 'Párrafo dos.', 'Párrafo tres.'],
+      };
+    };
+    const comoConsola = (n: Record<string, unknown>) => {
+      const resto: Record<string, unknown> = { ...n };
+      for (const k of ['mercados', 'mercadoInicial', 'logo', 'whatsappTienda']) delete resto[k];
+      return { ...resto, version: 9, actualizadoEn: '2026-11-17T10:00:00.000Z' };
+    };
+    const vacio = () => ({ ...negocioBase(), identidad: { ...contenidoEjemplo.identidad, foto: null, cifra: null, valores: [], sello: { texto: 'Sello', confirmada: false } }, beneficios: [], textoPrivacidad: ['Uno.'], enlacesPermitidos: [], categorias: {}, destacados: [] });
+    const entornoMedios: EntornoSitio = { ...entorno, disponibilidad: { 'p-uno': true, 'p-dos': false } };
+
+    for (const [nombre, hacer] of [['todos los campos llenos', completo], ['todos los opcionales nulos o vacíos', vacio]] as const) {
+      it(nombre, () => {
+        const secreto = hacer();
+        const av: string[] = [];
+        const a = contenidoYFuenteDesdePublicado(respuesta(), secreto, entornoMedios);
+        const b = contenidoYFuenteDesdePublicado(con(comoConsola(secreto)), secreto, entornoMedios, av);
+        expect(av).toEqual([]);
+        expect(a.fuenteNegocio).toBe('respaldo');
+        expect(b.fuenteNegocio).toBe('consola');
+        if (nombre.startsWith('todos los campos')) {
+          expect(b.contenido.config).toMatchObject({ telefono: '+59170000001', correo: 'hola@ejemplo.invalid', horario: 'Lun a Sáb 9:00-18:00' });
+          expect(b.contenido.config.enlacesPermitidos).toHaveLength(4);
+          expect(b.contenido.beneficios).toHaveLength(8);
+          expect(b.contenido.identidad.foto?.versiones).toHaveLength(2);
+          expect(b.contenido.productos.filter((p) => p.destacado)).toHaveLength(2);
+        }
+        expect(b.contenido).toEqual(a.contenido);
+        expect(huellaContenido(b.contenido)).toBe(huellaContenido(a.contenido));
+        expect(huellaSinDisponibilidad(b.contenido)).toBe(huellaSinDisponibilidad(a.contenido));
+      });
+    }
+  });
+
+  it('documento no objeto: respaldo con aviso', () => {
+    const av: string[] = [];
+    contenidoDesdePublicado(con('texto'), negocioBase(), entorno, av);
+    expect(av).toContain('documentos.negocio: datos de la consola no válidos; se usó el respaldo');
   });
 });

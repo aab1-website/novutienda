@@ -13,7 +13,7 @@ const OTRO = 'o'.repeat(24);
 const TENANT = 'tienda-a';
 let servidor: Server;
 let url = '';
-let modo: { estado?: number; pendientes?: unknown; productos?: number; sinFirmaValida?: boolean; redirigir?: boolean; disponibilidadEstado?: number; repetido?: boolean } = {};
+let modo: { estado?: number; pendientes?: unknown; productos?: number; sinFirmaValida?: boolean; redirigir?: boolean; disponibilidadEstado?: number; repetido?: boolean; conNegocio?: boolean | undefined } = {};
 const peticiones: { metodo: string; ruta: string; cuerpo: string }[] = [];
 
 const leer = (req: IncomingMessage) => new Promise<string>((ok) => { let t = ''; req.on('data', (c) => (t += c)); req.on('end', () => ok(t)); });
@@ -41,6 +41,7 @@ beforeAll(async () => {
     if (ruta.endsWith('/estado')) return responder(200, { repetido: false });
     if (ruta.startsWith('/api/sitio/v1/publicado')) {
       const documentos: Record<string, unknown> = { 'config__sitio': {} };
+      if (modo.conNegocio === true) documentos.negocio = { nombre: 'Negocio-privado' };
       for (let i = 0; i < (modo.productos ?? 3); i++) documentos[`producto__p${i}`] = { nombre: `Producto-privado-${i}` };
       return responder(200, { documentos });
     }
@@ -61,7 +62,7 @@ const deps = { calcularFirma, mapear: (respuesta: unknown, _n: unknown, entorno:
   const e = entorno as { disponibilidad: Record<string, boolean> };
   const productos = Object.keys(publicado.documentos).filter((k) => k.startsWith('producto__')).map((k) => k.slice(10));
   if (productos.length > 200) throw new Error('productos: demasiados');
-  return { productos, disponibilidad: e.disponibilidad };
+  return { contenido: { productos, disponibilidad: e.disponibilidad }, fuenteNegocio: 'respaldo' as const };
 } };
 // Las esperas de reintento no duermen en las pruebas; se registran para comprobarlas.
 const esperas: number[] = [];
@@ -374,7 +375,7 @@ describe('generar', () => {
     modo.productos = 120;
     const salida = join(dir, 'sub', 'contenido.json');
     const r = await ejecutar(['generar', '--salida', salida, ...args], env, deps, fetchLocal);
-    expect(r).toEqual({ codigo: 0, salida: 'contenido generado: 120 productos\nadvertencias del mapeo: 0' }); // el lote exige código 0
+    expect(r).toEqual({ codigo: 0, salida: 'contenido generado: 120 productos\nadvertencias del mapeo: 0\nfuente del negocio: respaldo' }); // el lote exige código 0
     const leido = leerConModo(salida);
     expect(leido.modo).toBe(0o600);
     const escrito = JSON.parse(leido.texto) as { productos: string[]; disponibilidad: Record<string, boolean> };
@@ -389,7 +390,7 @@ describe('generar', () => {
     modo.productos = 0;
     const salida = join(dir, 'vacio.json');
     const r = await ejecutar(['generar', '--salida', salida, ...args], env, deps, fetchLocal);
-    expect(r).toEqual({ codigo: 0, salida: 'contenido generado: 0 productos\nadvertencias del mapeo: 0' });
+    expect(r).toEqual({ codigo: 0, salida: 'contenido generado: 0 productos\nadvertencias del mapeo: 0\nfuente del negocio: respaldo' });
     expect((JSON.parse(leerConModo(salida).texto) as { productos: string[] }).productos).toHaveLength(0);
     expect(peticiones.filter((p) => p.ruta.startsWith('/api/disponibilidad'))).toHaveLength(0);
   });
@@ -434,7 +435,7 @@ describe('generar', () => {
       ? Promise.resolve(new Response(JSON.stringify({ documentos: { 'producto__p0': {}, 'producto__MAL ID': {} } }), { status: 200 }))
       : fetchLocal(entrada, init)) as typeof fetch;
     const r = await ejecutar(['generar', '--salida', salida, ...args], env, deps, publicadoMalo);
-    expect(r).toEqual({ codigo: 0, salida: 'contenido generado: 1 productos (aviso: 1 ids de producto inválidos sin consultar)\nadvertencias del mapeo: 0' });
+    expect(r).toEqual({ codigo: 0, salida: 'contenido generado: 1 productos (aviso: 1 ids de producto inválidos sin consultar)\nadvertencias del mapeo: 0\nfuente del negocio: respaldo' });
     const releido = leerConModo(salida);
     expect(releido.modo).toBe(0o600);
     expect(releido.texto).not.toContain('viejo');
@@ -443,7 +444,7 @@ describe('generar', () => {
   });
   it('generarContenido devuelve el conteo de ids inválidos', async () => {
     const fetchMalo = ((entrada: string) => Promise.resolve(new Response(JSON.stringify(entrada.includes('/publicado') ? { documentos: { 'producto__p0': {}, 'producto__X': {}, 'producto__MAL ID': {} } } : { disponibilidad: {} }), { status: 200 }))) as typeof fetch;
-    const r = await generarContenido({ tenant: TENANT, url: ORIGEN, secreto: SECRETO, env, mapear: () => ({}), fetchFn: fetchMalo });
+    const r = await generarContenido({ tenant: TENANT, url: ORIGEN, secreto: SECRETO, env, mapear: () => ({ contenido: {}, fuenteNegocio: 'respaldo' as const }), fetchFn: fetchMalo });
     expect(r).toMatchObject({ productos: 1, invalidos: 2 });
   });
   it('falta --salida (2), MEDIOS_BASE_URL no https y SITIO_NEGOCIO inválido (1)', async () => {
@@ -461,7 +462,7 @@ describe('generar', () => {
   });
   it('generarContenido pasa el entorno al mapeo (App Check solo si están las cuatro variables)', async () => {
     let visto: { appCheck: unknown; origenMedios: string; baseMedios: string; origen: string } | undefined;
-    const mapear = (_p: unknown, _n: unknown, e: unknown) => { visto = e as typeof visto; return {}; };
+    const mapear = (_p: unknown, _n: unknown, e: unknown) => { visto = e as typeof visto; return { contenido: {}, fuenteNegocio: 'respaldo' as const }; };
     const llamar = (extra: Record<string, string>) => generarContenido({ tenant: TENANT, url: ORIGEN, secreto: SECRETO, env: { ...env, ...extra }, calcularFirma, mapear, fetchFn: fetchLocal });
     await llamar({});
     expect(visto?.appCheck).toBeNull();
@@ -477,14 +478,51 @@ describe('generar', () => {
     const privado = 'sec-privada';
     const mapear = (_p: unknown, _n: unknown, _e: unknown, adv?: string[]) => {
       adv?.push(`documentos.seccion__${privado}.bloques[0].items[2].enlace: enlace descartado (x)`, 'documentos.carrusel__cielo.items[0].enlace: enlace descartado (x)');
-      return { productos: [], disponibilidad: {} };
+      return { contenido: { productos: [], disponibilidad: {} }, fuenteNegocio: 'respaldo' as const };
     };
     const salida = join(dir, 'adv.json');
     const r = await ejecutar(['generar', '--salida', salida, ...args], env, { calcularFirma, mapear }, fetchLocal);
     expect(r.codigo).toBe(0);
-    expect(r.salida).toBe('contenido generado: 3 productos\nadvertencias del mapeo: 2\n  documentos.seccion__*.bloques[0].items[2].enlace\n  documentos.carrusel__cielo.items[0].enlace');
+    expect(r.salida).toBe('contenido generado: 3 productos\nadvertencias del mapeo: 2\n  documentos.seccion__*.bloques[0].items[2].enlace\n  documentos.carrusel__cielo.items[0].enlace\nfuente del negocio: respaldo');
     expect(JSON.stringify(r)).not.toContain(privado);
     const g = await generarContenido({ tenant: TENANT, url: ORIGEN, secreto: SECRETO, env, calcularFirma, mapear, fetchFn: fetchLocal });
     expect(g.advertencias).toHaveLength(2);
+  });
+
+  describe('fuente del negocio', () => {
+    // Mapeo sintético: entrega la fuente efectiva que decida el caso (como `contenidoYFuenteDesdePublicado`).
+    const mapeo = (fuenteNegocio: 'consola' | 'respaldo' = 'respaldo', adv?: string) => (_r: unknown, _n: unknown, _e: unknown, a?: string[]) => { if (adv !== undefined) a?.push(adv); return { contenido: { productos: [], disponibilidad: {} }, fuenteNegocio }; };
+    const generar = (mapear: ReturnType<typeof mapeo>) => ejecutar(['generar', '--salida', join(dir, 'fuente.json'), ...args], env, { calcularFirma, mapear }, fetchLocal);
+    it('con documento válido imprime consola; sin documento, respaldo; con documento no válido, respaldo', async () => {
+      const a = await generar(mapeo('consola'));
+      expect(a.codigo).toBe(0);
+      expect(a.salida?.split('\n').at(-1)).toBe('fuente del negocio: consola');
+      const b = await generar(mapeo('respaldo'));
+      expect(b.salida?.split('\n').at(-1)).toBe('fuente del negocio: respaldo');
+      const c = await generar(mapeo('respaldo', 'documentos.negocio: datos de la consola no válidos, se usa el respaldo'));
+      expect(c.codigo).toBe(0);
+      expect(c.salida).toContain('fuente del negocio: respaldo');
+      expect(c.salida).toContain('advertencias del mapeo: 1');
+      expect(JSON.stringify([a, b, c])).not.toContain('"nombre":"N"');
+    });
+    it('la fuente impresa es la que entrega el mapeo; SITIO_NEGOCIO sigue siendo obligatorio', async () => {
+      const g = await generarContenido({ tenant: TENANT, url: ORIGEN, secreto: SECRETO, env, calcularFirma, mapear: mapeo('consola'), fetchFn: fetchLocal });
+      expect(g.fuente).toBe('consola');
+      const sin = await ejecutar(['generar', '--salida', join(dir, 'x.json'), ...args], { ...env, SITIO_NEGOCIO: undefined }, { calcularFirma, mapear: mapeo() }, fetchLocal);
+      expect(sin.codigo).toBe(1);
+      expect(sin.error).toBe('SITIO_NEGOCIO ausente o no es JSON');
+    });
+  });
+
+  it('un aviso del mapeo con formato `documentos.negocio.<ruta>: <motivo>` conserva la ruta del campo y descarta el motivo (que puede traer valores)', async () => {
+    const valorPrivado = 'valor-privado-123';
+    const mapear = (_r: unknown, _n: unknown, _e: unknown, a?: string[]) => {
+      a?.push(`documentos.negocio.portada.titulo[0]: ${valorPrivado} no es válido`, `documentos.negocio.telefono: ${valorPrivado}`);
+      return { contenido: { productos: [], disponibilidad: {} }, fuenteNegocio: 'respaldo' as const };
+    };
+    const r = await ejecutar(['generar', '--salida', join(dir, 'neg.json'), ...args], env, { calcularFirma, mapear }, fetchLocal);
+    expect(r.codigo).toBe(0);
+    expect(r.salida).toContain('advertencias del mapeo: 2\n  documentos.negocio.portada.titulo[0]\n  documentos.negocio.telefono\n');
+    expect(JSON.stringify(r)).not.toContain(valorPrivado);
   });
 });

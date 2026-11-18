@@ -19,8 +19,10 @@
 //   Úsese solo DESPUÉS de un despliegue y humo correctos (el sitio ya contiene lo publicado).
 // - Reintentos: error de red, tiempo agotado o respuesta 502/503/504 se reintentan hasta 4 intentos en total (esperas de 2, 5 y 10 s; `pendiente` hace 1 solo, opción `intentos`),
 //   firmando de nuevo cada intento con la marca de tiempo del momento. Los 3xx y 4xx no se reintentan.
-// - `generar`: GET firmado de `publicado`, disponibilidad pública en lotes de 50, mapeo `contenidoDesdePublicado` (que `plataforma/registro.ts`
-//   debe reexportar) y escritura del JSON validado en --salida. Imprime solo conteos y, de las advertencias del mapeo (enlaces de carrusel descartados), su número y las rutas de campo con ids enmascarados.
+// - `generar`: GET firmado de `publicado`, disponibilidad pública en lotes de 50, mapeo `contenidoYFuenteDesdePublicado` (que `plataforma/registro.ts`
+//   debe reexportar) y escritura del JSON validado en --salida. Imprime solo conteos y, de las advertencias del mapeo (enlaces de carrusel descartados), su número y las rutas de campo con ids enmascarados,
+//   y al final «fuente del negocio: consola|respaldo» (`fuenteNegocio` efectiva del mapeo).
+//   SITIO_NEGOCIO sigue siendo obligatorio: aporta mercados, mercado inicial y logo, y es el respaldo.
 // - Seguridad: sin redirecciones (`redirect: 'manual'`; un 3xx falla sin reintentarse), tiempo máximo de 30 s por petición; http://localhost y 127.0.0.1 solo con
 //   NODE_ENV=test. --salida se borra antes de escribir y queda con modo 0600.
 // - Nunca imprime el secreto, la firma, las respuestas ni datos de productos; los errores dan el motivo, no valores.
@@ -272,7 +274,7 @@ export function negocioDesdeEntorno(env) {
   }
 }
 
-/** Genera el contenido: devuelve { contenido, productos }. `mapear` es `contenidoDesdePublicado` del módulo del sitio. */
+/** Genera el contenido: devuelve { contenido, productos }. `mapear` es `contenidoYFuenteDesdePublicado` del módulo del sitio. */
 export async function generarContenido({ tenant, url, secreto, env, calcularFirma = calcularFirmaLocal, mapear, ahoraMs, fetchFn = fetch, esperar = esperarReal, avisar = avisarReal }) {
   // La base lleva el bucket como ruta; el esquema del sitio valida el ORIGEN (CSP) y arma las url de fotos con la base completa.
   const baseMedios = normalizarUrl(env.MEDIOS_BASE_URL ?? '', env.NODE_ENV === 'test', 'MEDIOS_BASE_URL', true);
@@ -285,9 +287,11 @@ export async function generarContenido({ tenant, url, secreto, env, calcularFirm
   const disponibilidad = await leerDisponibilidad({ url, ids, fetchFn, esperar, avisar });
   const entorno = { origen: url, origenMedios, baseMedios, appCheck: appCheckDesdeEntorno(env), recaptchaSiteKey: env.VITE_RECAPTCHA_ENTERPRISE_SITE_KEY || null, disponibilidad };
   let contenido;
+  let fuente;
   const avisosMapeo = [];
   try {
-    contenido = mapear(r.json, negocio, entorno, avisosMapeo);
+    // `mapear` es `contenidoYFuenteDesdePublicado`: la fuente es la EFECTIVA ('consola' solo si el documento existía y se usó).
+    ({ contenido, fuenteNegocio: fuente } = mapear(r.json, negocio, entorno, avisosMapeo));
   } catch (e) {
     // Solo rutas de campos: los ids de productos, secciones y categorías se enmascaran (el log de CI es público).
     const errores = Array.isArray(e?.errores) ? e.errores.filter((m) => typeof m === 'string') : [];
@@ -296,7 +300,7 @@ export async function generarContenido({ tenant, url, secreto, env, calcularFirm
   }
   // Solo rutas de campo, enmascaradas; el conteo es el de avisos (no el de rutas distintas).
   const advertencias = avisosMapeo.filter((m) => typeof m === 'string').map(enmascararRuta);
-  return { contenido, productos: ids.length, invalidos: todos.length - ids.length, advertencias };
+  return { contenido, productos: ids.length, invalidos: todos.length - ids.length, advertencias, fuente: fuente === 'consola' ? 'consola' : 'respaldo' };
 }
 
 export function valor(args, nombre) {
@@ -312,10 +316,10 @@ export async function cargarDependencias() {
   await cargarManifiestos(); // registra los ganchos de TypeScript
   // Plataforma no importa un módulo directamente: el mapeo llega por el registro (`plataforma/registro.ts` lo reexporta).
   const registro = await import(pathToFileURL(resolve('plataforma/registro.ts')).href);
-  if (typeof registro.contenidoDesdePublicado !== 'function') {
-    throw new ErrorContenidoSitio('plataforma/registro.ts no exporta contenidoDesdePublicado');
+  if (typeof registro.contenidoYFuenteDesdePublicado !== 'function') {
+    throw new ErrorContenidoSitio('plataforma/registro.ts no exporta contenidoYFuenteDesdePublicado');
   }
-  return { mapear: registro.contenidoDesdePublicado, versionContenido: registro.versionContenido };
+  return { mapear: registro.contenidoYFuenteDesdePublicado, versionContenido: registro.versionContenido };
 }
 
 /** Punto de entrada: devuelve { codigo, salida?, error? }; las dependencias se pueden inyectar en pruebas. */
@@ -349,13 +353,13 @@ export async function ejecutar(args, env = process.env, deps = undefined, fetchF
     }
     const salida = valor(args, 'salida');
     if (salida === undefined || salida === '') throw new ErrorContenidoSitio('falta --salida', 2);
-    const { contenido, productos, invalidos, advertencias } = await generarContenido({ tenant, url, secreto, env, calcularFirma: d?.calcularFirma, mapear: d.mapear, fetchFn, esperar, avisar });
+    const { contenido, productos, invalidos, advertencias, fuente } = await generarContenido({ tenant, url, secreto, env, calcularFirma: d?.calcularFirma, mapear: d.mapear, fetchFn, esperar, avisar });
     const destino = resolve(salida);
     mkdirSync(dirname(destino), { recursive: true });
     rmSync(destino, { force: true }); // un archivo previo con otros permisos no se reutiliza
     writeFileSync(destino, `${JSON.stringify(contenido)}\n`, { mode: 0o600 });
     const aviso = invalidos > 0 ? ` (aviso: ${invalidos} ids de producto inválidos sin consultar)` : '';
-    const lineas = [`contenido generado: ${productos} productos${aviso}`, `advertencias del mapeo: ${advertencias.length}`, ...[...new Set(advertencias)].slice(0, 20).map((a) => `  ${a}`)];
+    const lineas = [`contenido generado: ${productos} productos${aviso}`, `advertencias del mapeo: ${advertencias.length}`, ...[...new Set(advertencias)].slice(0, 20).map((a) => `  ${a}`), `fuente del negocio: ${fuente}`];
     return { codigo: 0, salida: lineas.join('\n') };
   } catch (e) {
     if (e instanceof ErrorContenidoSitio) return { codigo: e.codigo, error: e.message };
