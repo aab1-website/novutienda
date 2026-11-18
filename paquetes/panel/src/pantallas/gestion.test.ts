@@ -83,7 +83,7 @@ describe('inventario', () => {
     await e.api.llamar('confirmarVenta', { requestId: uuid(), carrito: { mercado: 'BO', moneda: 'BOB', lineas: [{ productoId: 'tv-55', cantidad: 1, series: ['TV55-001'] }] }, pagos: [{ medio: 'efectivo', moneda: 'BOB', monto: 313200 }] });
     ver(e, h(PantallaInventario, { sub: 'series' }));
     const u = userEvent.setup();
-    await u.type(await screen.findByLabelText(/Número de serie/), 'tv55-001');
+    await u.type(await screen.findByLabelText(/Número de serie/), 'TV55-001');
     await u.click(screen.getByRole('button', { name: 'Buscar' }));
     const tabla = await screen.findByRole('table', { name: 'Resultado de la búsqueda por serie' });
     expect(tabla.textContent).toContain('Vendida');

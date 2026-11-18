@@ -128,6 +128,6 @@ describe('series con la lista oculta', () => {
     const e = await conConteo('sup');
     ver(e, 'series');
     expect(await screen.findByRole('button', { name: 'Buscar' })).toBeTruthy();
-    await userEvent.setup().type(screen.getByLabelText('Número de serie (o parte)'), 'ABC');
+    await userEvent.setup().type(screen.getByLabelText('Número de serie (completo, o sus primeros 4 caracteres o más)'), 'ABC');
   });
 });

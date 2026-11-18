@@ -1,6 +1,6 @@
 import type { JSX } from 'preact';
 import { useState } from 'preact/hooks';
-import { Alerta, Boton, Campo, ErrorCarga, Seccion, Vacio } from '../../ui/comun.js';
+import { Alerta, Boton, Campo, Casilla, ErrorCarga, Seccion, Vacio } from '../../ui/comun.js';
 import { useApp } from '../../ui/contexto.js';
 import { AvisoConteoAbierto } from '../../ui/existencia.js';
 import { useCarga } from '../../ui/hooks.js';
@@ -10,19 +10,23 @@ import { useProductos } from './usar-productos.js';
 const ESTADO_SERIE = { disponible: 'Disponible', vendida: 'Vendida', merma: 'Merma' } as const;
 
 export function Series(): JSX.Element {
-  const { api } = useApp();
+  const { api, usuario } = useApp();
+  const puedePorInicio = usuario.rol === 'sup' || usuario.rol === 'adm';
+  const [porInicio, setPorInicio] = useState(false);
+  const [conInicio, setConInicio] = useState(false);
   const [q, setQ] = useState('');
   const [buscar, setBuscar] = useState('');
-  const r = useCarga(() => (buscar === '' ? Promise.resolve([]) : api.llamar('buscarSerie', { serie: buscar })), [buscar]);
+  const r = useCarga(() => (buscar === '' ? Promise.resolve([]) : api.llamar('buscarSerie', conInicio ? { serie: buscar, porInicio: true } : { serie: buscar })), [buscar, conInicio]);
   const prod = useProductos();
   // La marca viene de la lista de productos (la de `buscarSerie` no la trae): con un conteo abierto las series disponibles se ocultan.
   return (
     <Seccion titulo="Buscar por número de serie">
       {prod.ocultas && <AvisoConteoAbierto conteos={prod.conteos} nombreAlmacen={nombreAlmacen} />}
       {prod.ocultas && <Alerta tipo="info">Las series disponibles están ocultas mientras hay un conteo abierto.</Alerta>}
-      <form class="formulario" role="search" onSubmit={(e) => { e.preventDefault(); setBuscar(q.trim()); }} noValidate>
-        <Campo etiqueta="Número de serie (o parte)" valor={q} onInput={setQ} />
-        <Boton tipo="submit" motivo={q.trim() === '' ? 'Escriba un número de serie o parte de él.' : undefined}>Buscar</Boton>
+      <form class="formulario" role="search" onSubmit={(e) => { e.preventDefault(); setBuscar(q.trim()); setConInicio(puedePorInicio && porInicio); }} noValidate>
+        <Campo etiqueta={puedePorInicio ? 'Número de serie (completo, o sus primeros 4 caracteres o más)' : 'Número de serie'} valor={q} onInput={setQ} />
+        {puedePorInicio && <Casilla etiqueta="Buscar por el comienzo" marcado={porInicio} onCambio={setPorInicio} />}
+        <Boton tipo="submit" motivo={q.trim() === '' ? 'Escriba un número de serie.' : porInicio && puedePorInicio && q.trim().length < 4 ? 'Escriba al menos 4 caracteres.' : undefined}>Buscar</Boton>
       </form>
       {r.error && <ErrorCarga error={r.error} reintentar={r.recargar} />}
       {buscar !== '' && r.datos && r.datos.length === 0 && <Vacio titulo="No se encontró esa serie" />}

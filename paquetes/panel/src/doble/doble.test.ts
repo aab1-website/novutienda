@@ -346,10 +346,21 @@ describe('doble: inventarios', () => {
   it('ingreso con series crea las unidades; repetir una serie falla; sin series en un producto con serie falla', async () => {
     const e = crearEntorno('sup');
     await e.api.llamar('ingresar', { operacionId: uuid(), ubicacionId: 'deposito-2', lineas: [{ productoId: 'cel-a1', cantidad: 2, series: ['N1', 'N2'] }] });
-    expect((await e.api.llamar('buscarSerie', { serie: 'n1' }))[0]?.ubicacionId).toBe('deposito-2');
+    expect((await e.api.llamar('buscarSerie', { serie: 'N1' }))[0]?.ubicacionId).toBe('deposito-2');
     expect((await falla(e.api.llamar('ingresar', { operacionId: uuid(), ubicacionId: 'tienda', lineas: [{ productoId: 'cel-a1', cantidad: 1, series: ['N1'] }] }))).detalle.codigo).toBe('estado-invalido');
     expect((await falla(e.api.llamar('ingresar', { operacionId: uuid(), ubicacionId: 'tienda', lineas: [{ productoId: 'cel-a1', cantidad: 1 }] }))).detalle.codigo).toBe('entrada-invalida');
     expect(await e.api.llamar('buscarSerie', { serie: '  ' })).toEqual([]);
+  });
+  it('buscarSerie: exacta por defecto; porInicio solo sup y adm, desde 4 caracteres y con 10 como máximo', async () => {
+    const e = crearEntorno('sup');
+    const series = Array.from({ length: 12 }, (_, i) => `ZZ-${String(i + 1).padStart(3, '0')}`);
+    await e.api.llamar('ingresar', { operacionId: uuid(), ubicacionId: 'tienda', lineas: [{ productoId: 'cel-a1', cantidad: 12, series }] });
+    expect(await e.api.llamar('buscarSerie', { serie: 'ZZ-00' })).toEqual([]);
+    expect(await e.api.llamar('buscarSerie', { serie: 'ZZ-001' })).toHaveLength(1);
+    expect(await e.api.llamar('buscarSerie', { serie: 'zz-001' })).toHaveLength(0);
+    expect(await e.api.llamar('buscarSerie', { serie: 'ZZ-0', porInicio: true })).toHaveLength(10);
+    expect((await falla(e.api.llamar('buscarSerie', { serie: 'ZZ-', porInicio: true }))).detalle.codigo).toBe('entrada-invalida');
+    expect((await falla(crearEntorno('caj').api.llamar('buscarSerie', { serie: 'ZZ-001', porInicio: true }))).detalle.codigo).toBe('no-autorizado');
   });
   it('traspaso mueve stock y series; origen igual a destino o sin stock falla', async () => {
     const e = crearEntorno('sup');
