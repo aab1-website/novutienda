@@ -23,13 +23,26 @@ const PATRONES_MEDICION = {
   tiktokPixel: /^[A-Z0-9]{10,30}$/,
 } as const;
 
+/** Número de WhatsApp de la tienda: solo dígitos, con código de país (8 a 15). */
+export function esWhatsappValido(valor: unknown): boolean {
+  return typeof valor === 'string' && /^[1-9]\d{7,14}$/.test(valor);
+}
+
+/**
+ * Aviso, no bloqueo: un `0` justo después de los códigos de país 591 y 54 es el relleno de la demo y WhatsApp no lo
+ * acepta. Lo espeja el panel (`pantallas/consola/whatsapp.ts`).
+ */
+export function pareceNumeroDeRelleno(valor: unknown): boolean {
+  return typeof valor === 'string' && /^(591|54)0/.test(valor);
+}
+
 export function validarConfigSitio(x: unknown): Validacion<ConfigSitio> {
   const errores: string[] = [];
   if (!esObjeto(x)) return { ok: false, errores: ['la configuración debe ser un objeto'] };
   soloClaves(x, ['plantillaActiva', 'whatsappNovuchat', 'medicion'], 'config', errores);
   if (!esPlantilla(x['plantillaActiva'])) errores.push(`plantillaActiva: debe ser una de ${PLANTILLAS.join(', ')}`);
   const wa = x['whatsappNovuchat'];
-  if (typeof wa !== 'string' || !/^[1-9]\d{7,14}$/.test(wa)) errores.push('whatsappNovuchat: solo dígitos, con código de país (8 a 15 dígitos)');
+  if (!esWhatsappValido(wa)) errores.push('whatsappNovuchat: solo dígitos, con código de país (8 a 15 dígitos)');
   const medicion: { -readonly [k in keyof ConfigSitio['medicion']]: string } = {};
   const m = x['medicion'];
   if (!esObjeto(m)) errores.push('medicion: debe ser un objeto');

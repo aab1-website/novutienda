@@ -4,7 +4,9 @@ import {
   finalizarSubida, guardarCarrusel, guardarConfigSitio, guardarFicha, guardarSeccion, LIMITES_CONSOLA, obtenerTablero, ordenarSecciones,
   proyectarDisponibilidad, publicarSitio, reservarSubida, calcularDisponibilidadPublica, construirPublicado,
   type DepsMedios,
+  esWhatsappValido, pareceNumeroDeRelleno, validarConfigSitio,
 } from '@novutienda/consola';
+import { esWhatsappValido as esWhatsappValidoPanel, pareceNumeroDeRelleno as pareceRellenoPanel } from '@novutienda/panel/consola';
 import { COMERCIAL_LEGADO_TRES_MONEDAS, rutaContador, type AlmacenCotizaciones } from '@novutienda/nucleo';
 import { actor, AlmacenDoble, CatalogoDoble, DisparadorDoble, JPG, MP4, nuevaDb, ProcesadorSimulado, RelojFijo, T } from './dobles.js';
 
@@ -152,7 +154,7 @@ describe('servicios de la consola', () => {
 
   describe('configuración y carruseles', () => {
     it('guarda la configuración (solo adm) y el carrusel con fotos existentes', async () => {
-      const cfg = { plantillaActiva: 'bosque', whatsappNovuchat: '59100000000', medicion: {} };
+      const cfg = { plantillaActiva: 'bosque', whatsappNovuchat: '59170000000', medicion: {} };
       await guardarConfigSitio(ds(), { tenantId: T, actor: adm, config: cfg });
       expect(db.dato(`tenants/${T}/sitio/config`)).toEqual(cfg);
       await expect(guardarConfigSitio(ds(), { tenantId: T, actor: sup, config: cfg })).rejects.toMatchObject({ codigo: 'no-autorizado' });
@@ -166,7 +168,7 @@ describe('servicios de la consola', () => {
 
   describe('publicar', () => {
     const dp = () => ({ db, catalogo, reloj, disparador });
-    const configurar = (): Promise<void> => guardarConfigSitio(ds(), { tenantId: T, actor: adm, config: { plantillaActiva: 'ambar', whatsappNovuchat: '59100000000', medicion: {} } });
+    const configurar = (): Promise<void> => guardarConfigSitio(ds(), { tenantId: T, actor: adm, config: { plantillaActiva: 'ambar', whatsappNovuchat: '59170000000', medicion: {} } });
 
     /** Deja publicable el producto `id`: ficha publicada con una foto real. */
     const publicable = async (id = 'cam-1'): Promise<string> => {
@@ -254,7 +256,7 @@ describe('servicios de la consola', () => {
       const p = construirPublicado({
         productos: [{ id: 'a-1', nombre: 'A', categoria: 'c', marca: 'M', activo: true, disponible: true, precioUSD: { bo: 0, ar: 0 } }],
         fichas: new Map([['a-1', { productoId: 'a-1', ...ficha('a-uno', [{ medioId: 'perdido-1', alt: 'x' }]) } as never]]),
-        medios: new Map(), config: { plantillaActiva: 'cielo', whatsappNovuchat: '59100000000', medicion: {} }, secciones: [], carruseles: [],
+        medios: new Map(), config: { plantillaActiva: 'cielo', whatsappNovuchat: '59170000000', medicion: {} }, secciones: [], carruseles: [],
       });
       expect(p.productos[0]?.medios).toEqual([]);
       expect(p.advertencias[0]).toContain('perdido-1');
@@ -304,7 +306,7 @@ describe('servicios de la consola', () => {
 
   describe('publicar valida lo que el sitio exige (S2)', () => {
     const dp = () => ({ db, catalogo, reloj, disparador });
-    const configurar = (): Promise<void> => guardarConfigSitio(ds(), { tenantId: T, actor: adm, config: { plantillaActiva: 'ambar', whatsappNovuchat: '59100000000', medicion: {} } });
+    const configurar = (): Promise<void> => guardarConfigSitio(ds(), { tenantId: T, actor: adm, config: { plantillaActiva: 'ambar', whatsappNovuchat: '59170000000', medicion: {} } });
     const publicable = async (id: string): Promise<string> => {
       const m = await medio(id);
       await guardarFicha(ds(), { tenantId: T, actor: adm, productoId: id, ficha: ficha(`slug-${id}`, [{ medioId: m, alt: 'Frente' }]) });
@@ -552,7 +554,41 @@ describe('servicios de la consola', () => {
     });
 
     async function configurar(): Promise<void> {
-      await guardarConfigSitio(ds(), { tenantId: T, actor: adm, config: { plantillaActiva: 'ambar', whatsappNovuchat: '59100000000', medicion: {} } });
+      await guardarConfigSitio(ds(), { tenantId: T, actor: adm, config: { plantillaActiva: 'ambar', whatsappNovuchat: '59170000000', medicion: {} } });
     }
+  });
+});
+
+describe('WhatsApp de la tienda', () => {
+  const casos: [string, unknown, boolean][] = [
+    ['número boliviano', '59170000000', true],
+    ['número argentino', '5491112345678', true],
+    ['591 con ceros de relleno', '59100000000', true],
+    ['591 y un solo 0 al inicio', '59101234567', true],
+    ['54 con 0 después del código', '540123456789', true],
+    ['otro país con 0 interno', '12025550100', true],
+    ['empieza con 0', '07123456', false],
+    ['con +', '+59170000000', false],
+    ['con espacios', '591 70000000', false],
+    ['7 dígitos', '5917000', false],
+    ['16 dígitos', '1234567890123456', false],
+    ['vacío', '', false],
+    ['no es texto', 59170000000, false],
+  ];
+  it.each(casos)('%s', (_n, v, ok) => {
+    expect(esWhatsappValido(v)).toBe(ok);
+    expect(esWhatsappValidoPanel(v)).toBe(ok);
+  });
+  const rellenos: [string, unknown, boolean][] = [
+    ['591 y ceros', '59100000000', true], ['591 y un 0', '59101234567', true], ['54 y un 0', '540123456789', true],
+    ['número real boliviano', '59170000000', false], ['otro país', '12025550100', false], ['0 más adelante', '59170000001', false],
+    ['no es texto', 5910000, false],
+  ];
+  it.each(rellenos)('pareceNumeroDeRelleno: %s', (_n, v, r) => {
+    expect(pareceNumeroDeRelleno(v)).toBe(r);
+    expect(pareceRellenoPanel(v)).toBe(r);
+  });
+  it('la configuración acepta el relleno de la demo (solo se avisa en el panel)', () => {
+    expect(validarConfigSitio({ plantillaActiva: 'ambar', whatsappNovuchat: '59100000000', medicion: {} }).ok).toBe(true);
   });
 });
