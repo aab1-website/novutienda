@@ -89,7 +89,7 @@ const ACCIONES: Readonly<Record<string, WireHandler>> = {
   'inventarios.costos': async (c) => ({
     costos: ((await legado({ ...c, rol: 'adm' }, 'listarProductos', {})) as ProductoPanel[]).map((p) => ({ productoId: p.id, costoUSD: p.costoUSD })),
   }),
-  'inventarios.buscarSerie': async (c, d) => ({ unidades: await legado(c, 'buscarSerie', { serie: d['serie'] }) }),
+  'inventarios.buscarSerie': async (c, d) => ({ unidades: await legado(c, 'buscarSerie', { serie: d['serie'], ...(d['porInicio'] === true ? { porInicio: true } : {}) }) }),
   'inventarios.series': async (c, d) => ({ unidades: [...((await legado(c, 'listarSeries', d)) as unknown[])], ...marcaDoble(c) }),
   'inventarios.movimientos': async (c, d) => {
     const lista = (await legado(c, 'listarMovimientos', {

@@ -2,6 +2,7 @@
 // ciego, costos, ubicaciones, importación CSV) y sus lecturas. Cada operación lleva un `operacionId` del
 // cliente: repetirla no duplica nada (lo garantiza el módulo). Las lecturas no devuelven costos salvo a `adm`
 // ni los teóricos de un conteo ciego a quien cuenta.
+import { logger } from 'firebase-functions';
 import { HttpsError } from 'firebase-functions/v2/https';
 import { z } from 'zod';
 import {
@@ -9,7 +10,7 @@ import {
   filtrarUnidadesLista, ingresar, leerDocumentoProducto, marcaOcultamiento, mercadosSinPrecio, proyectarMovimiento, proyectarProducto, registrarLineaConteo, resolverMerma, simularImportacionCsv, solicitarMerma, traspasar, UBICACION_DISPONIBILIDAD,
   type Autor, type CambiosProducto, type Conteos, type EntradaProducto, type LineaAjuste, type LineaIngreso, type LineaTraspaso, type ProductoExportable,
 } from '@novutienda/inventarios';
-import { mercadosDe } from '@novutienda/nucleo';
+import { mercadosDe, type LimiteTasa } from '@novutienda/nucleo';
 import { accion, actorPos, type Contexto, type TablaImplementaciones } from './marco.js';
 import { ID, ID_PRODUCTO, LIMITE, MS, TEXTO, UBICACION, VACIO, objeto, validarRango } from './comunes.js';
 
@@ -73,6 +74,32 @@ async function productosConExistenciaEn(c: Contexto, conteo: Record<string, unkn
   if (typeof conteo['ubicacionId'] !== 'string') return [];
   const ex = await c.e.firestore.collection(ruta(c.tenantId, 'existencias')).where('ubicacionId', '==', conteo['ubicacionId']).limit(1000).get();
   return ex.docs.map(datosDe).filter((x) => Number(x['cantidad']) > 0 && typeof x['productoId'] === 'string').map((x) => String(x['productoId']));
+}
+
+const MIN_PREFIJO_SERIE = 4;
+const MAX_RESULTADOS_SERIE = 10;
+/** Unidades que se leen cuando hay que filtrar en memoria (ocultamiento o `productoId`) antes de quedarse con 10. */
+const VENTANA_BUSQUEDA_SERIE = 200;
+export const MAXIMO_BUSQUEDAS_SERIE_POR_MINUTO = 30;
+export const MAXIMO_BUSQUEDAS_SERIE_POR_HORA = 300;
+
+/** Puertos que el coordinador suma al `Entorno`: dos `LimiteTasa` (uno por usuario por minuto, otro por tenant por hora). */
+export interface PuertosBusquedaSerie {
+  readonly limiteBusquedaSerieUsuario: LimiteTasa;
+  readonly limiteBusquedaSerieTenant: LimiteTasa;
+}
+
+async function limitarBusquedaSerie(c: Contexto): Promise<void> {
+  const p = c.e as Partial<PuertosBusquedaSerie>;
+  // Falla cerrado y sin detalles si el coordinador no conectó los puertos.
+  if (p.limiteBusquedaSerieUsuario === undefined || p.limiteBusquedaSerieTenant === undefined) throw new HttpsError('internal', 'Error interno.');
+  const ahora = c.e.ahora();
+  const u = await p.limiteBusquedaSerieUsuario.intentar(`serie:${c.tenantId}:${c.sesion.uid}`, ahora);
+  const t = u.permitido ? await p.limiteBusquedaSerieTenant.intentar(`serie:${c.tenantId}`, ahora) : u;
+  if (!u.permitido || !t.permitido) {
+    logger.warn('búsqueda de serie limitada', { alerta: 'busqueda-serie', tenantId: c.tenantId, alcance: u.permitido ? 'tenant' : 'usuario' });
+    throw new HttpsError('resource-exhausted', 'Hizo demasiadas búsquedas de serie. Intente de nuevo en unos minutos.', { codigo: 'limite-busqueda-serie', reintentarEnSeg: t.reintentarEnSeg });
+  }
 }
 
 /**
@@ -320,14 +347,32 @@ export const accionesInventarios: TablaImplementaciones = {
    * Búsqueda por serie: estado, almacén, venta y vencimiento de garantía. Una serie a la vez: confirma que existe y está disponible
    * en su ubicación, sin lista ni número de disponibles; es lo que permite vender un producto con serie escrita o escaneada
    * aunque su almacén esté en conteo (no se oculta a propósito). Límite conocido: no hay tope de intentos, así que series
-   * predecibles (consecutivas) pueden enumerarse una a una; hoy no existe un mecanismo de límite de tasa en los callables.
+   * predecibles (consecutivas) pueden enumerarse una a una.
+   * Con `porInicio` (solo `sup` y `adm`) busca por el comienzo de la serie, desde 4 caracteres, con 10 resultados como máximo.
+   * Es un oráculo de enumeración acotado: con un conteo abierto se aplica el mismo ocultamiento que en `series` (no se devuelven
+   * disponibles de la ubicación en conteo) y hay límite de tasa: 30 por minuto por usuario y 300 por hora por tenant.
    */
   buscarSerie: accion({
-    esquema: objeto({ serie: TEXTO(60), productoId: ID_PRODUCTO.optional() }),
+    esquema: objeto({ serie: TEXTO(60), productoId: ID_PRODUCTO.optional(), porInicio: z.literal(true).optional() }),
     ejecutar: async (c, d) => {
-      let q = c.e.firestore.collection(ruta(c.tenantId, 'unidades')).where('serie', '==', d.serie);
-      if (d.productoId !== undefined) q = q.where('productoId', '==', d.productoId);
-      return { unidades: (await q.limit(20).get()).docs.map(datosDe) };
+      if (d.porInicio !== true) {
+        let q = c.e.firestore.collection(ruta(c.tenantId, 'unidades')).where('serie', '==', d.serie);
+        if (d.productoId !== undefined) q = q.where('productoId', '==', d.productoId);
+        return { unidades: (await q.limit(20).get()).docs.map(datosDe) };
+      }
+      if (c.rol !== 'sup' && c.rol !== 'adm') throw new HttpsError('permission-denied', 'No tiene permiso para buscar por el comienzo de la serie.');
+      const prefijo = d.serie.trim();
+      if (prefijo.length < MIN_PREFIJO_SERIE) throw new HttpsError('invalid-argument', `Escriba al menos ${MIN_PREFIJO_SERIE} caracteres de la serie.`);
+      await limitarBusquedaSerie(c);
+      let q = c.e.firestore.collection(ruta(c.tenantId, 'unidades')).where('serie', '>=', prefijo).where('serie', '<', `${prefijo}\uf8ff`).orderBy('serie');
+      // Con `productoId` se filtra en memoria sobre una ventana acotada: igualdad más rango sobre otro campo pediría un índice compuesto.
+      const { conteos } = await conteosAbiertos(c);
+      const marca = marcaOcultamiento(c.rol, conteos);
+      q = q.limit(d.productoId === undefined && marca === undefined ? MAX_RESULTADOS_SERIE : VENTANA_BUSQUEDA_SERIE);
+      let unidades = (await q.get()).docs.map(datosDe);
+      if (d.productoId !== undefined) unidades = unidades.filter((u) => u['productoId'] === d.productoId);
+      if (marca !== undefined) unidades = filtrarUnidadesLista(c.rol, conteos, unidades as never) as unknown as typeof unidades;
+      return { unidades: unidades.slice(0, MAX_RESULTADOS_SERIE), ...(marca ?? {}) };
     },
   }),
   /**

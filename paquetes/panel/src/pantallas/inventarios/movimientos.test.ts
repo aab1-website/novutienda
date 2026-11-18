@@ -140,7 +140,7 @@ describe('ingreso', () => {
     expect(within(d).getByText('2 series de Celular A1 128 GB (N-100, N-101)')).toBeTruthy();
     await u.click(within(d).getByRole('button', { name: 'Sí, registrar el ingreso' }));
     await screen.findByText('Ingreso registrado.');
-    expect((await e.api.llamar('buscarSerie', { serie: 'N-10' })).length).toBe(2);
+    expect((await e.api.llamar('buscarSerie', { serie: 'N-10', porInicio: true })).length).toBe(2);
   });
 
   it('guardia y borrador: con líneas sin guardar, un enlace interno pregunta; el borrador sobrevive al cambio de pestaña', async () => {

@@ -370,18 +370,26 @@ export const handlersInventario: {
     return Object.assign(unidades, marcaDoble(c));
   },
 
+  // Igual que el servidor: sin `porInicio`, coincidencia EXACTA (distingue mayúsculas); con `porInicio` (solo `sup` y `adm`), el
+  // comienzo de la serie, desde 4 caracteres, 10 resultados como máximo y sin las disponibles de un almacén en conteo.
   buscarSerie: (c, e) => {
-    const q = e.serie.trim().toLowerCase();
-    if (q === '') return [];
+    let coincide: (serie: string) => boolean = (serie) => serie === e.serie;
+    if (e.porInicio === true) {
+      exigirRol(c, ['sup', 'adm']);
+      const p = e.serie.trim();
+      if (p.length < 4) throw fallo('entrada-invalida', 'Escriba al menos 4 caracteres de la serie.');
+      coincide = (serie) => serie.startsWith(p);
+    }
     return [...c.e.unidades.values()]
-      .filter((u) => u.serie.toLowerCase().includes(q))
+      .filter((u) => coincide(u.serie))
+      .filter((u) => e.porInicio !== true || u.estado !== 'disponible' || puedeVerExistencias(c, u.ubicacionId))
       .map((u) => {
         const meses = c.e.productos.get(u.productoId)?.garantiaMeses;
         if (u.estado !== 'vendida' || meses === undefined || u.ventaRef === undefined) return u;
         const v = c.e.ventas.get(u.ventaRef);
         return v === undefined ? u : { ...u, garantiaHasta: c.e.recibos.get(`recibo-${v.ventaId}`)?.lineas.find((l) => l.series.includes(u.serie))?.garantiaHasta ?? '' };
       })
-      .slice(0, 50);
+      .slice(0, e.porInicio === true ? 10 : 20);
   },
 
   listarMovimientos: (c, e) => {
