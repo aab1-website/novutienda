@@ -11,7 +11,7 @@
     "build": "astro build && node scripts/limpiar.mjs",
     "preview": "astro preview",
     "csp:verificar": "node scripts/verificar-csp.mjs",
-    "humo": "playwright test --config humo/playwright.config.ts"
+    "humo": "playwright test --config humo/playwright.config.ts && playwright test --config humo/playwright.paginas.config.ts"
   },
   "dependencies": {
     "@astrojs/preact": "6.1.2",

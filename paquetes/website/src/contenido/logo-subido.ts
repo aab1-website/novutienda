@@ -60,3 +60,14 @@ export const imagenAlCompartir = (fotoPagina: string | undefined, logoCompartir:
 /** Icono del sitio: el PNG del logo subido; si no hay, el logo de cabecera (comportamiento anterior); sin logo, ninguno. */
 export const iconoDelSitio = (iconoSitio: string | null | undefined, logo: { readonly url: string } | null): string | undefined =>
   iconoSitio ?? logo?.url ?? undefined;
+
+const RE_IMAGEN_COMPARTIBLE = /\.(png|jpe?g|webp)(\?.*)?$/i;
+
+/**
+ * Logo para la vista previa de la portada: solo la imagen de compartir del logo subido (PNG, JPG o WebP), nunca un SVG
+ * ni la versión pequeña de la cabecera. Si no hay una válida devuelve `undefined` y la portada usa una foto.
+ */
+export function logoParaCompartir(imagenCompartir: string | null | undefined, logo: { readonly url: string } | null): string | undefined {
+  if (imagenCompartir === null || imagenCompartir === undefined || !RE_IMAGEN_COMPARTIBLE.test(imagenCompartir)) return undefined;
+  return logo?.url === imagenCompartir ? undefined : imagenCompartir;
+}
