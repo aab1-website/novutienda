@@ -81,7 +81,6 @@ const ACCIONES_CONSOLA: readonly (readonly [string, readonly Rol[]])[] = [
   ['guardarNegocioSitio', ['adm']],
   ['leerLogo', ['sup', 'adm']],
   ['quitarLogo', ['adm']],
-  ['exportarProductosCsv', ['sup', 'adm']],
   ['publicarSitio', ['adm']],
   ['tablero', ['sup', 'adm']],
   ['alertas', ['sup', 'adm']],

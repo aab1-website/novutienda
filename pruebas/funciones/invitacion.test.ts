@@ -102,6 +102,69 @@ describe.skipIf(!hayEmulador)('invitaciones (emuladores)', () => {
     expect(claims.pl?.t?.[t]).toBeUndefined();
   });
 
+  const claimDe = async (uid: string): Promise<Record<string, string>> =>
+    ((await h.auth.getUser(uid)).customClaims as { pl?: { t?: Record<string, string> } } | undefined)?.pl?.t ?? {};
+
+  it('cuenta existente y libre: se invita, se activa al iniciar sesión, queda con el rol y su contraseña no cambia', async () => {
+    const t = await comercio();
+    const adm = await crearUsuario(h, { rol: 'adm', tenant: t });
+    const libre = await crearUsuario(h, {}); // cuenta con contraseña y correo verificado, sin rol en ningún comercio
+    const r = await invitar(adm.token, t, libre.correo, 'sup');
+    expect(r.status).toBe(200);
+    expect(r.resultado).toMatchObject({ ok: true, mensaje: 'Invitación enviada' });
+    expect((await miembro(t, libre.uid))?.['estado']).toBe('invitado');
+    expect(await claimDe(libre.uid)).toEqual({}); // el rol aún no se escribe
+    const a = await llamar('activarInvitaciones', {}, await iniciarSesion(libre.correo));
+    expect(a.status).toBe(200);
+    expect(a.resultado).toMatchObject({ activadas: 1 });
+    expect((await claimDe(libre.uid))[t]).toBe('sup');
+    expect((await miembro(t, libre.uid))?.['rol']).toBe('sup');
+    expect((await miembro(t, libre.uid))?.['estado']).toBe('activo');
+    // La contraseña sigue siendo la misma: iniciar sesión con ella todavía funciona.
+    await expect(iniciarSesion(libre.correo)).resolves.toEqual(expect.any(String));
+  });
+
+  it('cuenta de otro comercio: se activa y queda con los dos roles', async () => {
+    const t = await comercio();
+    const otro = await comercio();
+    const adm = await crearUsuario(h, { rol: 'adm', tenant: t });
+    const ajeno = await crearUsuario(h, { rol: 'caj', tenant: otro });
+    expect((await invitar(adm.token, t, ajeno.correo, 'sup')).status).toBe(200);
+    const a = await llamar('activarInvitaciones', {}, await iniciarSesion(ajeno.correo));
+    expect(a.status).toBe(200);
+    expect(a.resultado).toMatchObject({ activadas: 1 });
+    expect(await claimDe(ajeno.uid)).toEqual({ [otro]: 'caj', [t]: 'sup' });
+  });
+
+  it('miembro activo: la respuesta es idéntica a la de otros casos y nada cambia', async () => {
+    const t = await comercio();
+    const adm = await crearUsuario(h, { rol: 'adm', tenant: t });
+    const activo = await crearUsuario(h, { rol: 'caj', tenant: t });
+    await h.firestore.doc(`tenants/${t}/miembros/${activo.uid}`).set({ estado: 'activo', rol: 'caj', uid: activo.uid });
+    const antes = (await miembro(t, activo.uid)) ?? {};
+    const nuevo = await invitar(adm.token, t, correoNuevo(), 'sup');
+    const sobreActivo = await invitar(adm.token, t, activo.correo, 'sup');
+    expect(sobreActivo.status).toBe(nuevo.status);
+    expect(sobreActivo.resultado).toEqual(nuevo.resultado);
+    expect(await miembro(t, activo.uid)).toEqual(antes);
+    expect(await claimDe(activo.uid)).toEqual({ [t]: 'caj' });
+  });
+
+  it('la auditoría registra la invitación y la activación, sin datos personales', async () => {
+    const t = await comercio();
+    const adm = await crearUsuario(h, { rol: 'adm', tenant: t });
+    const libre = await crearUsuario(h, {});
+    await invitar(adm.token, t, libre.correo, 'sup');
+    await llamar('activarInvitaciones', {}, await iniciarSesion(libre.correo));
+    const docs = (await h.firestore.collection(`tenants/${t}/auditoria`).get()).docs.map((d) => d.data());
+    const acciones = docs.map((d) => d['accion']);
+    expect(acciones).toContain('miembro.invitar');
+    expect(acciones).toContain('miembro.activar');
+    const texto = JSON.stringify(docs).toLowerCase();
+    expect(texto).not.toContain(libre.correo.toLowerCase());
+    expect(texto).not.toContain('@');
+  });
+
   it('sin correo verificado no se activa: correo-no-verificado', async () => {
     const t = await comercio();
     const adm = await crearUsuario(h, { rol: 'adm', tenant: t });

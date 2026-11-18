@@ -104,7 +104,7 @@ describe('cobertura de las pantallas de la consola', () => {
   // Nombres con que el panel pide lo mismo (el alta y la edición de productos de la consola se piden como `crearProducto` y
   // `actualizarProducto`; `real.ts` los traduce a `consola.crearProducto` y `consola.editarProducto`).
   const RENOMBRADAS: Readonly<Record<string, string>> = {
-    exportarProductosCsv: 'exportarProductosCsvSitio', crearProductoConsola: 'crearProducto', editarProductoConsola: 'actualizarProducto',
+    crearProductoConsola: 'crearProducto', editarProductoConsola: 'actualizarProducto',
   };
   it('cada llamada declarada en PANTALLAS existe como callable del contrato', () => {
     const faltan: string[] = [];

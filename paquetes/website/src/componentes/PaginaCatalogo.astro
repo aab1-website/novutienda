@@ -1,0 +1,41 @@
+---
+// Una página del catálogo (todos, una categoría o una marca): la comparten todas las rutas paginadas.
+import Base from '../layouts/Base.astro';
+import Catalogo from './Catalogo.astro';
+import Migas from './Migas.astro';
+import type { Producto } from '../contenido/tipos';
+import { paginar, rutaPagina } from '../lib/paginas';
+
+interface Props {
+  titulo: string;
+  descripcion: string;
+  subtitulo?: string;
+  /** Migas hasta el padre; la página actual se agrega sola. */
+  migas: readonly { texto: string; href: string }[];
+  productos: readonly Producto[];
+  base: string;
+  pagina: number;
+  categoriaActual?: string;
+  marcaActual?: string;
+}
+const { titulo, descripcion, subtitulo, migas, productos, base, pagina, categoriaActual, marcaActual } = Astro.props;
+const { total, pagina: actual } = paginar(productos, pagina);
+const sufijo = actual > 1 ? ` (página ${actual})` : '';
+---
+<Base
+  titulo={`${titulo}${sufijo}`}
+  descripcion={descripcion}
+  ruta={rutaPagina(base, actual)}
+  anterior={actual > 1 ? rutaPagina(base, actual - 1) : undefined}
+  siguiente={actual < total ? rutaPagina(base, actual + 1) : undefined}
+>
+  <div class="contenedor pagina">
+    <Migas pasos={[...migas, { texto: titulo }]} />
+    <header class="encabezado-pagina">
+      <h1 class="titulo-seccion">{titulo}</h1>
+      {subtitulo !== undefined && <p class="subtitulo">{subtitulo}</p>}
+      {actual > 1 && <p class="aviso-estado">Página {actual} de {total}</p>}
+    </header>
+    <Catalogo productos={productos} base={base} pagina={actual} categoriaActual={categoriaActual} marcaActual={marcaActual} />
+  </div>
+</Base>

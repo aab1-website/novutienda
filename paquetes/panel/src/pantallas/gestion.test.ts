@@ -231,52 +231,49 @@ describe('usuarios y configuración', () => {
     expect(await screen.findByText('Personas con acceso (2 de 3)')).toBeTruthy();
     expect(screen.queryByRole('button', { name: 'Quitar acceso de adm' })).toBeNull();
   });
-  it('alta: con el plan lleno avisa el tope y no ofrece buscar; al quitar a alguien se habilita', async () => {
+  it('alta: con el plan lleno avisa el tope y deja «Agregar» apagado; al quitar a alguien se habilita', async () => {
     const e = crearEntorno('adm');
     ver(e, h(PantallaUsuarios, {}));
     const u = userEvent.setup();
     expect(await screen.findByText(/ya están todos ocupados/)).toBeTruthy();
-    expect(screen.queryByRole('button', { name: 'Buscar cuenta' })).toBeNull();
+    expect(screen.getByRole('button', { name: 'Agregar' }).getAttribute('aria-disabled')).toBe('true');
     await u.click(screen.getAllByRole('button', { name: 'Quitar acceso' })[0] as HTMLElement);
     await u.click(screen.getByRole('button', { name: 'Sí, quitar' }));
-    expect(await screen.findByRole('button', { name: 'Buscar cuenta' })).toBeTruthy();
+    await waitFor(() => expect(screen.queryByText(/ya están todos ocupados/)).toBeNull());
+    expect(screen.getByRole('button', { name: 'Agregar' })).toBeTruthy();
   });
-  it('alta: cuenta existente con correo verificado → asigna el rol elegido', async () => {
+  it('alta: cuenta existente con correo verificado → se invita con el rol elegido (se activa al iniciar sesión)', async () => {
     const e = crearEntorno('adm');
     await e.api.llamar('quitarRol', { uid: 'u-sup' });
     ver(e, h(PantallaUsuarios, {}));
     const u = userEvent.setup();
     await u.type(await screen.findByLabelText(/Correo de la persona/), ' Nueva@Ejemplo.test ');
-    expect(screen.queryByLabelText('Rol que tendrá')).toBeNull();
-    await u.click(screen.getByRole('button', { name: 'Buscar cuenta' }));
-    expect(await screen.findByText(/Cuenta encontrada y con el correo verificado/)).toBeTruthy();
-    await u.selectOptions(screen.getByLabelText('Rol que tendrá'), 'sup');
-    await u.click(screen.getByRole('button', { name: 'Asignar rol de supervisor' }));
-    expect(await screen.findByText(/nueva@ejemplo.test ahora es supervisor/)).toBeTruthy();
-    expect(await screen.findByText('Personas con acceso (3 de 3)')).toBeTruthy();
-    expect((await e.api.llamar('listarUsuarios', {})).find((x) => x.uid === 'u-nueva')?.rol).toBe('sup');
+    await u.selectOptions(screen.getByLabelText('Rol de la persona'), 'sup');
+    await u.click(screen.getByRole('button', { name: 'Agregar' }));
+    expect(await screen.findByText(/Enviamos un correo a nueva@ejemplo.test. Tendrá el rol de supervisor cuando inicie sesión/)).toBeTruthy();
+    expect(await screen.findByText('Personas con acceso (2) e invitaciones pendientes (1), de 3 del plan')).toBeTruthy();
+    expect((await e.api.llamar('listarUsuarios', {})).find((x) => x.uid === 'u-nueva')).toMatchObject({ rol: 'sup', estado: 'invitado' });
   });
-  it('alta: cuenta sin verificar pide verificar el correo y no ofrece asignar', async () => {
+  it('alta: cuenta sin verificar sigue el mismo camino, sin avisos propios ni búsqueda', async () => {
     const e = crearEntorno('adm');
     await e.api.llamar('quitarRol', { uid: 'u-sup' });
     ver(e, h(PantallaUsuarios, {}));
     const u = userEvent.setup();
     await u.type(await screen.findByLabelText(/Correo de la persona/), 'pendiente@ejemplo.test');
-    await u.click(screen.getByRole('button', { name: 'Buscar cuenta' }));
-    expect(await screen.findByText(/todavía no está verificado/)).toBeTruthy();
-    expect(screen.queryByRole('button', { name: /Asignar rol/ })).toBeNull();
+    await u.click(screen.getByRole('button', { name: 'Agregar' }));
+    expect(await screen.findByText(/Enviamos un correo a pendiente@ejemplo.test/)).toBeTruthy();
+    expect(screen.queryByText(/todavía no está verificado/)).toBeNull();
+    expect(e.api.llamadas.map((l) => l.nombre)).not.toContain('buscarUsuarioPorCorreo');
   });
-  it('alta: cuenta inexistente ofrece invitarla (ya no manda a la consola del proveedor); la búsqueda no asigna ni crea nada', async () => {
+  it('alta: cuenta inexistente se invita igual (ya no manda a la consola del proveedor) y no se asigna rol directo', async () => {
     const e = crearEntorno('adm');
     await e.api.llamar('quitarRol', { uid: 'u-sup' });
     ver(e, h(PantallaUsuarios, {}));
     const u = userEvent.setup();
     await u.type(await screen.findByLabelText(/Correo de la persona/), 'nadie@ejemplo.test');
-    await u.click(screen.getByRole('button', { name: 'Buscar cuenta' }));
-    const aviso = await screen.findByText(/No existe una cuenta con el correo nadie@ejemplo.test/);
-    expect(aviso.textContent).toContain('Invitar a una persona');
-    expect(document.body.textContent).not.toMatch(/Add user|Firebase Console/);
-    expect(screen.queryByRole('button', { name: /Asignar rol/ })).toBeNull();
+    await u.click(screen.getByRole('button', { name: 'Agregar' }));
+    expect(await screen.findByText(/Enviamos un correo a nadie@ejemplo.test/)).toBeTruthy();
+    expect(document.body.textContent).not.toMatch(/Add user|Firebase Console|No existe una cuenta/);
     expect(e.api.llamadas.map((l) => l.nombre)).not.toContain('asignarRol');
   });
   it('quitar acceso: el error de último administrador se muestra con su mensaje', async () => {
@@ -436,9 +433,9 @@ describe('catálogo y sitio', () => {
     ver(e, h(PantallaCatalogo, { sub: 'secciones' }));
     const u = userEvent.setup();
     await u.click(await screen.findByRole('button', { name: 'Nueva sección' }));
-    await u.type(await screen.findByLabelText(/Título \(texto del menú\)/), 'Cómo comprar');
+    await u.type(await screen.findByLabelText(/Nombre de la sección/), 'Cómo comprar');
     await u.click(screen.getByRole('button', { name: '+ Texto' }));
-    await u.type(screen.getByLabelText('Título del bloque'), 'Pasos');
+    await u.type(screen.getByLabelText('Subtítulo del texto (opcional)'), 'Pasos');
     await u.type(screen.getByLabelText(/Párrafos/), 'Elija el producto.\n\nEscriba por WhatsApp.');
     await u.click(screen.getByRole('button', { name: '+ Enlaces' }));
     await u.type(screen.getByLabelText(/Enlaces \(uno por línea/), 'Contacto | /contacto');
@@ -467,17 +464,13 @@ describe('catálogo y sitio', () => {
     expect(c?.plantillaActiva).toBe('ciruela');
     expect(c?.whatsappNovuchat).toBe('59171112222');
   });
-  it('exportar: el Catálogo ya no importa; exporta y enlaza a la importación de Inventario', async () => {
+  it('exportar: el Catálogo ya no exporta ni importa; deja un enlace a Inventario', async () => {
     const e = crearEntorno('adm');
-    vi.spyOn(URL, 'createObjectURL').mockReturnValue('blob:x');
-    vi.spyOn(URL, 'revokeObjectURL').mockReturnValue(undefined);
     ver(e, h(PantallaCatalogo, { sub: 'exportar' }));
-    const u = userEvent.setup();
-    expect(await screen.findByText(/Los productos se crean e importan en Inventario/)).toBeTruthy();
-    expect(screen.getByRole('link', { name: 'Ir a la importación de Inventario' }).getAttribute('href')).toBe('#/inventario/csv');
+    expect(await screen.findByRole('link', { name: 'Ir a Inventario' })).toBeTruthy();
+    expect(screen.getByRole('link', { name: 'Ir a Inventario' }).getAttribute('href')).toBe('#/inventario/csv');
     expect(screen.queryByLabelText('Archivo a importar')).toBeNull();
-    await u.click(screen.getByRole('button', { name: 'Exportar productos (CSV)' }));
-    expect(await screen.findByText(/productos-sitio\.csv generado/)).toBeTruthy();
+    expect(screen.queryByRole('button', { name: 'Exportar productos (CSV)' })).toBeNull();
   });
 });
 
@@ -506,29 +499,29 @@ describe('usuarios: avisos, motivos y datos ausentes', () => {
     expect(local.closest('section')?.querySelector('h2')?.textContent).toContain('Personas con acceso');
     expect(regionAvisos('error-visual').textContent).toContain('No se puede quitar al último administrador.');
   });
-  it('un error de la búsqueda aparece junto a «Buscar cuenta», no en la otra tarjeta', async () => {
+  it('un error al agregar aparece junto a «Agregar», no en la otra tarjeta', async () => {
     const e = crearEntorno('adm');
     await e.api.llamar('quitarRol', { uid: 'u-sup' });
     const llamar = e.api.llamar.bind(e.api) as (n: string, x: unknown) => Promise<unknown>;
     vi.spyOn(e.api, 'llamar').mockImplementation(((n: string, x: unknown) =>
-      n === 'buscarUsuarioPorCorreo' ? Promise.reject(new ErrorApi('unavailable', 'x')) : llamar(n, x)) as never);
+      n === 'invitarUsuario' ? Promise.reject(new ErrorApi('unavailable', 'x')) : llamar(n, x)) as never);
     ver(e, h(PantallaUsuarios, {}));
     const u = userEvent.setup();
     await u.type(await screen.findByLabelText(/Correo de la persona/), 'alguien@ejemplo.test');
-    await u.click(screen.getByRole('button', { name: 'Buscar cuenta' }));
+    await u.click(screen.getByRole('button', { name: 'Agregar' }));
     const local = await screen.findByRole('alert');
-    expect(local.closest('section')?.querySelector('h2')?.textContent).toBe('Agregar una persona');
+    expect(local.closest('section')?.querySelector('h2')?.textContent).toBe('Agregar a una persona');
     expect(regionAvisos('error-visual').textContent).not.toBe('');
   });
-  it('«Buscar cuenta» apagado dice por qué y no envía', async () => {
+  it('«Agregar» apagado dice por qué y no envía', async () => {
     const e = crearEntorno('adm');
     await e.api.llamar('quitarRol', { uid: 'u-sup' });
     ver(e, h(PantallaUsuarios, {}));
-    const boton = await screen.findByRole('button', { name: 'Buscar cuenta' });
+    const boton = await screen.findByRole('button', { name: 'Agregar' });
     expect(boton.getAttribute('aria-disabled')).toBe('true');
     expect(screen.getByText('Escriba el correo de la persona')).toBeTruthy();
     await userEvent.setup().click(boton);
-    expect(e.api.llamadas.map((l) => l.nombre)).not.toContain('buscarUsuarioPorCorreo');
+    expect(e.api.llamadas.map((l) => l.nombre)).not.toContain('invitarUsuario');
     await userEvent.setup().type(screen.getByLabelText(/Correo de la persona/), 'a@ejemplo.test');
     expect(screen.queryByText('Escriba el correo de la persona')).toBeNull();
   });
@@ -549,7 +542,7 @@ describe('usuarios: avisos, motivos y datos ausentes', () => {
     ver(e, h(PantallaUsuarios, {}));
     expect(await screen.findByText(/El plan incluye 5 usuarios\./)).toBeTruthy();
     expect(await screen.findByText('Personas con acceso (3 de 5)')).toBeTruthy();
-    expect(screen.getByRole('button', { name: 'Buscar cuenta' })).toBeTruthy();
+    expect(screen.getByRole('button', { name: 'Agregar' })).toBeTruthy();
   });
   it('el tope de usuarios sale del dato y no de un texto fijo', async () => {
     const e = crearEntorno('adm');
@@ -557,7 +550,7 @@ describe('usuarios: avisos, motivos y datos ausentes', () => {
     expect(await screen.findByText(/El plan incluye 3 usuarios\./)).toBeTruthy();
     expect(screen.queryByText(/incluye tres/)).toBeNull();
   });
-  it('una cuenta sin correo no se pinta como «null» y no rompe la búsqueda', async () => {
+  it('una cuenta sin correo no se pinta como «null» y no rompe el alta', async () => {
     const e = crearEntorno('adm');
     e.api.estado.usuarios = e.api.estado.usuarios.filter((x) => x.uid !== 'u-sup' && x.uid !== 'u-caj');
     e.api.estado.usuarios.unshift({ uid: 'u-sc', correo: null as never, rol: 'caj', verificado: true });
@@ -567,13 +560,13 @@ describe('usuarios: avisos, motivos y datos ausentes', () => {
     expect(screen.getByLabelText('Rol de Sin correo registrado')).toBeTruthy();
     const u = userEvent.setup();
     await u.type(await screen.findByLabelText(/Correo de la persona/), 'adm@ejemplo.test');
-    await u.click(screen.getByRole('button', { name: 'Buscar cuenta' }));
+    await u.click(screen.getByRole('button', { name: 'Agregar' }));
     expect(await screen.findByText(/ya tiene acceso/)).toBeTruthy();
-    // Y una cuenta que no existe, con una cuenta de correo nulo en la lista del servicio: responde «no encontrada», no se rompe.
+    // Y un correo nuevo, con una cuenta de correo nulo en la lista del servicio: se invita, no se rompe.
     await u.clear(screen.getByLabelText(/Correo de la persona/));
     await u.type(screen.getByLabelText(/Correo de la persona/), 'nadie@ejemplo.test');
-    await u.click(screen.getByRole('button', { name: 'Buscar cuenta' }));
-    expect(await screen.findByText(/No existe una cuenta con el correo nadie@ejemplo.test/)).toBeTruthy();
+    await u.click(screen.getByRole('button', { name: 'Agregar' }));
+    expect(await screen.findByText(/Enviamos un correo a nadie@ejemplo.test/)).toBeTruthy();
   });
 });
 

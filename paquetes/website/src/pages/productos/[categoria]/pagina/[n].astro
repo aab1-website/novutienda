@@ -1,0 +1,24 @@
+---
+import PaginaCatalogo from '../../../../componentes/PaginaCatalogo.astro';
+import { contenido } from '../../../../contenido/instancia';
+import { productosDeCategoria } from '../../../../contenido/consultas';
+import { paginasExtra } from '../../../../lib/paginas';
+import { rutaCategoria } from '../../../../lib/seo';
+
+export function getStaticPaths() {
+  return contenido.categorias.flatMap((c) =>
+    paginasExtra(productosDeCategoria(contenido.productos, c.id).length).map((n) => ({ params: { categoria: c.id, n: String(n) }, props: { categoria: c, n } })),
+  );
+}
+const { categoria, n } = Astro.props;
+const productos = productosDeCategoria(contenido.productos, categoria.id);
+---
+<PaginaCatalogo
+  titulo={categoria.nombre}
+  descripcion={`${categoria.nombre}: modelos y precios actualizados.`}
+  migas={[{ texto: 'Inicio', href: '/' }, { texto: 'Productos', href: '/productos' }]}
+  productos={productos}
+  base={rutaCategoria(categoria.id)}
+  pagina={n}
+  categoriaActual={categoria.id}
+/>
