@@ -14,10 +14,10 @@
     "humo": "playwright test --config humo/playwright.config.ts && playwright test --config humo/playwright.paginas.config.ts"
   },
   "dependencies": {
-    "@astrojs/preact": "6.1.2",
+    "@astrojs/preact": "6.1.6",
     "@novutienda/nucleo": "workspace:*",
-    "astro": "7.4.7",
-    "firebase": "13.1.0",
+    "astro": "7.4.12",
+    "firebase": "13.2.0",
     "preact": "10.29.8"
   },
   "devDependencies": {
