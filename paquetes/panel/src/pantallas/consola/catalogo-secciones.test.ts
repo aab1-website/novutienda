@@ -18,11 +18,11 @@ const ver = (e: Entorno): void => void render(e.envolver(h(ProveedorGuardia, nul
 type U = ReturnType<typeof userEvent.setup>;
 const nueva = async (u: U): Promise<void> => {
   await u.click(await screen.findByRole('button', { name: 'Nueva sección' }));
-  await u.type(await screen.findByLabelText(/Título \(texto del menú\)/), 'Cómo comprar');
+  await u.type(await screen.findByLabelText(/Nombre de la sección/), 'Cómo comprar');
 };
 const bloqueTexto = async (u: U, titulo: string, parrafo: string): Promise<void> => {
   await u.click(screen.getByRole('button', { name: '+ Texto' }));
-  const titulos = screen.getAllByLabelText('Título del bloque');
+  const titulos = screen.getAllByLabelText('Subtítulo del texto (opcional)');
   const areas = screen.getAllByLabelText(/Párrafos/);
   await u.type(titulos[titulos.length - 1] as HTMLElement, titulo);
   await u.type(areas[areas.length - 1] as HTMLElement, parrafo);
@@ -38,8 +38,8 @@ describe('secciones: bloques con identificador estable', () => {
     await bloqueTexto(u, 'Segundo', 'Texto del segundo');
     await u.click(screen.getAllByRole('button', { name: 'Quitar bloque' })[0] as HTMLElement);
     await u.click(await screen.findByRole('button', { name: 'Sí, quitar' }));
-    expect(screen.getAllByLabelText('Título del bloque')).toHaveLength(1);
-    expect((screen.getByLabelText('Título del bloque') as HTMLInputElement).value).toBe('Segundo');
+    expect(screen.getAllByLabelText('Subtítulo del texto (opcional)')).toHaveLength(1);
+    expect((screen.getByLabelText('Subtítulo del texto (opcional)') as HTMLInputElement).value).toBe('Segundo');
     expect((screen.getByLabelText(/Párrafos/) as HTMLTextAreaElement).value).toBe('Texto del segundo');
     await u.click(screen.getByRole('button', { name: 'Guardar sección' }));
     await waitFor(async () => expect((await e.api.llamar('listarSecciones', {}))[0]?.bloques).toEqual([{ tipo: 'texto', titulo: 'Segundo', parrafos: ['Texto del segundo'] }]));
@@ -54,7 +54,7 @@ describe('secciones: bloques con identificador estable', () => {
     await u.click(screen.getByRole('button', { name: 'Quitar bloque' }));
     const pregunta = await screen.findByRole('dialog', { name: /¿Quitar el bloque 1/ });
     await u.click(within(pregunta).getByRole('button', { name: 'Cancelar' }));
-    expect(screen.getByLabelText('Título del bloque')).toBeTruthy();
+    expect(screen.getByLabelText('Subtítulo del texto (opcional)')).toBeTruthy();
   });
 
   it('el identificador local no viaja al servidor', async () => {
@@ -80,13 +80,22 @@ describe('secciones: motivos, guardia y cancelar', () => {
     const u = userEvent.setup();
     await u.click(await screen.findByRole('button', { name: 'Nueva sección' }));
     const guardar = screen.getByRole('button', { name: 'Guardar sección' });
-    expect(screen.getByText('Escriba el título de la sección.')).toBeTruthy();
-    await u.type(screen.getByLabelText(/Título \(texto del menú\)/), 'Garantía');
+    expect(screen.getByText('Escriba el nombre de la sección.')).toBeTruthy();
+    await u.type(screen.getByLabelText(/Nombre de la sección/), 'Garantía');
     expect(screen.getByText('Agregue al menos un bloque a la sección.')).toBeTruthy();
     await u.click(screen.getByRole('button', { name: '+ Imagen' }));
     expect(screen.getByText('Elija la foto del bloque 1.')).toBeTruthy();
     await u.click(guardar);
     expect(e.api.llamadas.some((l) => l.nombre === 'guardarSeccion')).toBe(false);
+  });
+
+  it('al pulsar «Guardar sección» sin nombre, el foco va al campo del nombre', async () => {
+    const e = crearEntorno('adm');
+    ver(e);
+    const u = userEvent.setup();
+    await u.click(await screen.findByRole('button', { name: 'Nueva sección' }));
+    await u.click(screen.getByRole('button', { name: 'Guardar sección' }));
+    await waitFor(() => expect(document.activeElement).toBe(screen.getByLabelText(/Nombre de la sección/)));
   });
 
   it('con cambios, «Cancelar» pregunta; sin cambios, vuelve a la lista directo', async () => {
@@ -97,11 +106,11 @@ describe('secciones: motivos, guardia y cancelar', () => {
     await u.click(screen.getByRole('button', { name: 'Cancelar' }));
     expect(await screen.findByRole('button', { name: 'Nueva sección' })).toBeTruthy();
     await u.click(screen.getByRole('button', { name: 'Nueva sección' }));
-    await u.type(await screen.findByLabelText(/Título \(texto del menú\)/), 'Algo');
+    await u.type(await screen.findByLabelText(/Nombre de la sección/), 'Algo');
     await u.click(screen.getByRole('button', { name: 'Cancelar' }));
     expect(await screen.findByRole('dialog', { name: '¿Salir sin guardar?' })).toBeTruthy();
     await u.click(screen.getByRole('button', { name: 'Seguir editando' }));
-    expect((screen.getByLabelText(/Título \(texto del menú\)/) as HTMLInputElement).value).toBe('Algo');
+    expect((screen.getByLabelText(/Nombre de la sección/) as HTMLInputElement).value).toBe('Algo');
     await u.click(screen.getByRole('button', { name: 'Cancelar' }));
     await u.click(await screen.findByRole('button', { name: 'Salir sin guardar' }));
     expect(await screen.findByRole('button', { name: 'Nueva sección' })).toBeTruthy();
@@ -114,7 +123,7 @@ describe('secciones: motivos, guardia y cancelar', () => {
     await u.click(await screen.findByRole('button', { name: 'Nueva sección' }));
     const cierre = (): boolean => !window.dispatchEvent(new Event('beforeunload', { cancelable: true }));
     expect(cierre()).toBe(false);
-    await u.type(screen.getByLabelText(/Título \(texto del menú\)/), 'Algo');
+    await u.type(screen.getByLabelText(/Nombre de la sección/), 'Algo');
     await waitFor(() => expect(cierre()).toBe(true));
   });
 

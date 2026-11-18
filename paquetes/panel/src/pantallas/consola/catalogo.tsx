@@ -12,7 +12,6 @@ import { useConfiguracionComercial } from '../../ui/comercial.js';
 import { useApp } from '../../ui/contexto.js';
 import { useAccion, useCarga } from '../../ui/hooks.js';
 import { formatoBytes } from '../../util/base64.js';
-import { descargarTexto } from '../../util/csv.js';
 import { PALETAS } from './plantillas-vista.js';
 import { PantallaFichas } from './catalogo-ficha.js';
 import { PantallaSecciones } from './catalogo-secciones.js';
@@ -20,7 +19,7 @@ import { BloqueLogo } from './logo-vista.js';
 
 const TODAS = [
   { id: 'tablero', titulo: 'Tablero' }, { id: 'fichas', titulo: 'Fichas, fotos y video' }, { id: 'secciones', titulo: 'Secciones' },
-  { id: 'apariencia', titulo: 'Apariencia' }, { id: 'exportar', titulo: 'Exportar' },
+  { id: 'apariencia', titulo: 'Apariencia' },
 ];
 
 function Uso({ etiqueta, usados, tope, formato }: { etiqueta: string; usados: number; tope: number; formato?: (n: number) => string }): JSX.Element {
@@ -307,40 +306,20 @@ function CarruselEditor({ plantilla, items, setItems, productos }: { plantilla: 
   );
 }
 
-function Exportar(): JSX.Element {
-  const { api, puedeVer } = useApp();
-  const accion = useAccion();
-  const [ok, setOk] = useState<string | null>(null);
-  return (
-    <Seccion titulo="Exportar productos">
-      <p class="texto-suave">
-        Los productos se crean e importan en Inventario.
-        {puedeVer('inventario') && <> <a href="#/inventario/csv">Ir a la importación de Inventario</a></>}
-      </p>
-      <p class="texto-suave">El archivo trae los productos con sus precios en dólares, con decimales, y puede reimportarse en Inventario.</p>
-      <Boton variante="secundario" ocupado={accion.ocupado} onClick={() => { setOk(null); void accion.ejecutar(async () => { descargarTexto('productos-sitio.csv', (await api.llamar('exportarProductosCsvSitio', {})).csv); setOk('Archivo productos-sitio.csv generado.'); }); }}>
-        Exportar productos (CSV)
-      </Boton>
-      {accion.error && <Alerta>{accion.error}</Alerta>}
-      {ok && <Alerta tipo="ok">{ok}</Alerta>}
-    </Seccion>
-  );
-}
-
 export function PantallaCatalogo({ sub }: { sub: string }): JSX.Element {
-  const { usuario } = useApp();
+  const { usuario, puedeVer } = useApp();
   const items = usuario.rol === 'adm' ? TODAS : TODAS.filter((i) => i.id === 'tablero' || i.id === 'fichas');
   const actual = items.some((i) => i.id === sub) ? sub : 'tablero';
   return (
     <div>
       <h1>Catálogo y sitio</h1>
       <p class="texto-suave">Productos por mercado hasta {LIMITES_PANEL.productos}; fotos hasta {LIMITES_PANEL.fotosPorProducto} por producto y 1 video.</p>
+      {puedeVer('inventario') && <p class="texto-suave">Los productos se crean, importan y exportan en Inventario: <a href="#/inventario/csv">Ir a Inventario</a> (Importar y exportar).</p>}
       <Pestanas etiqueta="Secciones del catálogo" base="catalogo" actual={actual} items={items} />
       {actual === 'tablero' && <Tablero />}
       {actual === 'fichas' && <PantallaFichas />}
       {actual === 'secciones' && <PantallaSecciones />}
       {actual === 'apariencia' && <Apariencia />}
-      {actual === 'exportar' && <Exportar />}
     </div>
   );
 }

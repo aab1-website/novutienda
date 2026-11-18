@@ -12,7 +12,6 @@ const SUBS: Record<string, RegExp> = {
   tablero: /^Sitio$/,
   apariencia: /^Plantilla de color$/,
   fichas: /^Páginas de producto en el sitio$/,
-  exportar: /^Exportar productos$/,
   secciones: /^Secciones del menú/,
 };
 
