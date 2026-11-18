@@ -16,26 +16,16 @@ afterEach(() => {
   vi.restoreAllMocks();
 });
 
-describe('catálogo: exportar', () => {
-  it('exporta el CSV, avisa el éxito y enlaza a la importación de Inventario', async () => {
-    const e = crearEntorno('adm');
-    vi.stubGlobal('URL', Object.assign(URL, { createObjectURL: () => 'blob:x', revokeObjectURL: () => undefined }));
-    render(e.envolver(h(PantallaCatalogo, { sub: 'exportar' })));
-    const u = userEvent.setup();
-    expect(screen.getByText(/Los productos se crean e importan en Inventario/)).toBeTruthy();
-    expect(screen.getByText(/precios en dólares, con decimales, y puede reimportarse en Inventario/)).toBeTruthy();
-    expect(screen.getByRole('link', { name: 'Ir a la importación de Inventario' }).getAttribute('href')).toBe('#/inventario/csv');
-    await u.click(screen.getByRole('button', { name: 'Exportar productos (CSV)' }));
-    expect(await screen.findByText(/productos-sitio\.csv generado/)).toBeTruthy();
-    await waitFor(() => expect(e.api.llamadas.some((l) => l.nombre === 'exportarProductosCsvSitio')).toBe(true));
-  });
-  it('no tiene controles de importación', async () => {
+describe('catálogo: sin exportar', () => {
+  it('ya no tiene pestaña Exportar: deja un enlace a Inventario (Importar y exportar)', async () => {
     const e = crearEntorno('adm');
     render(e.envolver(h(PantallaCatalogo, { sub: 'exportar' })));
+    expect(screen.queryByRole('link', { name: 'Exportar' })).toBeNull();
+    expect(screen.queryByRole('button', { name: 'Exportar productos (CSV)' })).toBeNull();
     expect(screen.queryByLabelText('Archivo a importar')).toBeNull();
-    expect(screen.queryByRole('button', { name: 'Importar' })).toBeNull();
-    expect(screen.queryByText(/Simulación/)).toBeNull();
-    expect(screen.getByRole('link', { name: 'Exportar' })).toBeTruthy();
+    const enlace = screen.getByRole('link', { name: 'Ir a Inventario' });
+    expect(enlace.getAttribute('href')).toBe('#/inventario/csv');
+    expect(enlace.parentElement?.textContent).toMatch(/Importar y exportar/);
   });
 });
 
@@ -460,7 +450,7 @@ describe('catálogo: aviso del sitio incompleto', () => {
     render(e.envolver(h(PantallaCatalogo, { sub: 'tablero' })));
     const t = await screen.findByText(/El sitio quedó sin productos publicados \(desde el 16\/11\/2026 06:00\)\. Active o publique al menos un producto en Inventario y luego publique el sitio\./);
     expect(t.textContent).not.toContain('2026-11-16T');
-    expect(screen.getByRole('link', { name: 'Ir a Inventario' }).getAttribute('href')).toBe('#/inventario');
+    expect(screen.getAllByRole('link', { name: 'Ir a Inventario' }).map((l) => l.getAttribute('href'))).toContain('#/inventario');
   });
   it('sin_fotos: muestra el texto y los enlaces a fichas y carrusel', async () => {
     const e = crearEntorno('adm');
@@ -487,7 +477,7 @@ describe('catálogo: aviso del sitio incompleto', () => {
     e.api.estado.avisoSitio = { motivo: 'sin_productos', en: EN };
     render(e.envolver(h(PantallaCatalogo, { sub: 'tablero' })));
     expect(await screen.findByText(/El sitio quedó sin productos publicados/)).toBeTruthy();
-    expect(screen.getByRole('link', { name: 'Ir a Inventario' }).getAttribute('href')).toBe('#/inventario');
+    expect(screen.getAllByRole('link', { name: 'Ir a Inventario' }).map((l) => l.getAttribute('href'))).toContain('#/inventario');
     expect(screen.getByText('Solo el administrador publica.')).toBeTruthy();
   });
   it.each([['adm', 'El módulo de Inventario no está activo.'], ['sup', 'Pida al administrador que active o publique un producto.']] as const)('sin el módulo de Inventario (%s): sin enlace y con el texto alternativo', async (rol, texto) => {

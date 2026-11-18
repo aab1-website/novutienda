@@ -213,8 +213,6 @@ describe.skipIf(!hayEmulador)('panel contra las funciones reales (emulador)', ()
     expect(csvInventarios).toContain('MOUSE-1');
     expect(csvInventarios).not.toContain('mouse-1');
     expect(csvInventarios.replace(/^\ufeff/, '').split(/\r?\n/)[0]?.split(',')).not.toContain('id');
-    // La exportación para el sitio (módulo consola) conserva su columna id.
-    expect((await api.adm.llamar('exportarProductosCsvSitio', {})).csv).toContain('mouse-1');
     const tablero = await api.sup.llamar('obtenerTablero', {});
     expect(tablero.cambiosSinPublicar).toBeGreaterThan(0);
     expect(tablero.uso.productos.tope).toBe(200);

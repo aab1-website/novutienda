@@ -77,7 +77,6 @@ export const ROLES_ACCION: Readonly<Record<string, readonly Rol[]>> = {
   'consola.guardarNegocioSitio': ['adm'],
   'consola.leerLogo': ['sup', 'adm'],
   'consola.quitarLogo': ['adm'],
-  'consola.exportarProductosCsv': ['sup', 'adm'],
   'consola.publicarSitio': ['adm'],
   'consola.tablero': ['sup', 'adm'],
   'consola.alertas': ['sup', 'adm'],
