@@ -24,7 +24,7 @@ function exigirValido<T>(v: Validacion<T>): T {
 const ahoraIso = (d: DepsSitio): string => new Date(d.reloj.ahora()).toISOString();
 
 /** Lee los medios referenciados dentro de la transacción: deben existir y ser del tipo esperado. */
-async function leerMedios(
+export async function leerMedios(
   tx: TransaccionIdentidad, t: string, ids: readonly string[], opciones: { readonly productoId?: string; readonly soloFotos?: boolean },
 ): Promise<Map<string, 'foto' | 'video'>> {
   const tipos = new Map<string, 'foto' | 'video'>();
