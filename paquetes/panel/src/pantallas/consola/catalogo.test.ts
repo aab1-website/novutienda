@@ -592,7 +592,7 @@ describe('catálogo: fotos propias de la portada', () => {
     await userEvent.click(await screen.findByRole('button', { name: 'Borrar foto' }));
     await userEvent.click(await screen.findByRole('button', { name: 'Sí, borrar' }));
     await waitFor(() => expect(e.api.llamadas.map((l) => l.nombre)).toContain('borrarMedio'));
-    expect(await screen.findByText(/No se pudo borrar la foto: .*carrusel.*Quítela del carrusel y guarde la apariencia antes de borrarla/)).toBeTruthy();
+    expect(await screen.findByText(/No se pudo borrar la foto: La foto se usa en el carrusel de la plantilla .*quítela de ahí y guarde antes de borrarla/)).toBeTruthy();
     expect(portada()).toBe(1);
     await userEvent.click(screen.getByRole('button', { name: 'Quitar foto 1' }));
     await userEvent.click(screen.getByRole('button', { name: 'Guardar apariencia' }));
@@ -619,6 +619,28 @@ describe('catálogo: fotos propias de la portada', () => {
     await userEvent.click(screen.getByRole('button', { name: 'Guardar apariencia' }));
     await waitFor(() => expect(e.api.llamadas.some((l) => l.nombre === 'guardarCarrusel')).toBe(true));
     expect(screen.queryByText(/No se guardó|no existe/)).toBeNull();
+  });
+  it('borrar una foto propia la quita de los borradores de TODAS las plantillas y guardar no falla', async () => {
+    const e = crearEntorno('adm');
+    ver(e);
+    await subir();
+    await screen.findByLabelText('Texto alternativo de la foto 1');
+    // Otra plantilla con su propio borrador que incluye la misma foto.
+    const otra = (await e.api.llamar('leerConfigSitio', {}))?.plantillaActiva === 'bosque' ? 'ciruela' : 'bosque';
+    await userEvent.click(screen.getAllByRole('radio').find((r) => (r as HTMLInputElement).value === otra) as HTMLElement);
+    const propia = [...e.api.estado.medios.values()].find((m) => m.productoId === '_portada');
+    expect(propia).toBeDefined();
+    await userEvent.click(await screen.findByRole('button', { name: 'Agregar foto propia 1' }));
+    await userEvent.type(await screen.findByLabelText('Texto alternativo de la foto 1'), 'Otra');
+    await userEvent.click(screen.getByRole('button', { name: 'Borrar foto' }));
+    await userEvent.click(await screen.findByRole('button', { name: 'Sí, borrar' }));
+    await waitFor(() => expect(screen.queryByLabelText('Texto alternativo de la foto 1')).toBeNull());
+    // Se vuelve a la plantilla original: tampoco conserva la foto borrada.
+    const original = otra === 'bosque' ? 'ciruela' : 'bosque';
+    await userEvent.click(screen.getAllByRole('radio').find((r) => (r as HTMLInputElement).value === original) as HTMLElement);
+    expect(screen.queryByLabelText('Texto alternativo de la foto 1')).toBeNull();
+    await userEvent.click(screen.getByRole('button', { name: 'Guardar apariencia' }));
+    expect(e.api.llamadas.some((l) => l.nombre === 'guardarCarrusel' && JSON.stringify(l.entrada).includes(propia?.id ?? 'x'))).toBe(false);
   });
   it('con el carrusel lleno, «Subir foto a la portada» queda apagado con su motivo', async () => {
     const e = crearEntorno('adm');

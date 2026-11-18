@@ -4,6 +4,9 @@ import { BYTES_LOGO, ID_NEGOCIO, ID_PORTADA, LIMITES_PANEL, PLANTILLAS_SITIO } f
 import { normalizar } from '../util/buscar.js';
 import { auditar, exigirRol, fallo, iso, vistaProducto, type Contexto } from './estado.js';
 
+/** Nombre visible de cada plantilla, como lo dice el servidor en sus mensajes. */
+const NOMBRES_PLANTILLA: Readonly<Record<string, string>> = { cielo: 'Cielo', bosque: 'Bosque', ambar: 'Ámbar', grafito: 'Grafito', ciruela: 'Ciruela' };
+
 type H<N extends NombreCallable> = (c: Contexto, e: Entrada<N>) => Salida<N> | Promise<Salida<N>>;
 
 const FACTURA = /^[A-Za-z0-9][A-Za-z0-9 ._/-]{0,39}$/;
@@ -171,7 +174,7 @@ export const handlersOtros: {
     const f = e.ficha;
     if (!SLUG.test(f.slug) || f.slug.length < 2) throw fallo('entrada-invalida', 'slug: use minúsculas, números y guiones');
     if (f.estado === 'publicado' && f.descripcion.trim() === '') throw fallo('entrada-invalida', 'descripcion: es obligatoria para publicar');
-    for (const [otro, x] of c.e.fichas) if (otro !== e.productoId && x.slug === f.slug) throw fallo('conflicto', 'Ese slug ya lo usa otro producto');
+    for (const [otro, x] of c.e.fichas) if (otro !== e.productoId && x.slug === f.slug) throw fallo('conflicto', 'Esa dirección web ya la usa otro producto');
     const tipos = f.medios.map((m) => c.e.medios.get(m.medioId));
     if (tipos.some((m) => m === undefined || m.productoId !== e.productoId)) throw fallo('no-encontrado', 'Un medio de la ficha no existe');
     if (f.medios.some((m) => m.alt.trim() === '')) throw fallo('entrada-invalida', 'Todo medio lleva texto alternativo');
@@ -191,7 +194,7 @@ export const handlersOtros: {
       const respuestaP = { subidaId: e.subidaId, rutaOriginal: `privado/${ID_PORTADA}/${e.subidaId}`, venceEn: c.ahora + 6 * 3600_000 };
       if (previaP !== undefined) {
         if (previaP.tipo === 'portada' && previaP.bytes === e.bytes && previaP.estado === 'reservada') return respuestaP;
-        throw fallo('conflicto', 'Ya existe una subida con ese identificador');
+        throw fallo('conflicto', 'Esa subida ya se inició con otro archivo; vuelva a elegirlo');
       }
       if (!Number.isSafeInteger(e.bytes) || e.bytes <= 0) throw fallo('entrada-invalida', 'Tamaño inválido');
       if (e.bytes > LIMITES_PANEL.bytesFoto) throw fallo('limite', 'La foto supera 15 MB');
@@ -209,7 +212,7 @@ export const handlersOtros: {
       if (previa.productoId === e.productoId && previa.tipo === e.tipo && previa.bytes === e.bytes && previa.estado === 'reservada') {
         return { subidaId: e.subidaId, rutaOriginal: `privado/${e.productoId}/${e.subidaId}`, venceEn: c.ahora + 6 * 3600_000 };
       }
-      throw fallo('conflicto', 'Ya existe una subida con ese identificador');
+      throw fallo('conflicto', 'Esa subida ya se inició con otro archivo; vuelva a elegirlo');
     }
     if (!Number.isSafeInteger(e.bytes) || e.bytes <= 0) throw fallo('entrada-invalida', 'Tamaño inválido');
     if (e.tipo === 'foto' && e.bytes > LIMITES_PANEL.bytesFoto) throw fallo('limite', 'La foto supera 15 MB');
@@ -231,7 +234,7 @@ export const handlersOtros: {
     const respuesta = { subidaId: e.subidaId, rutaOriginal: `privado/${ID_NEGOCIO}/${e.subidaId}`, venceEn: c.ahora + 6 * 3600_000 };
     if (previa !== undefined) {
       if (previa.tipo === 'logo' && previa.bytes === e.bytes && previa.estado === 'reservada') return respuesta;
-      throw fallo('conflicto', 'Ya existe una subida con ese identificador');
+      throw fallo('conflicto', 'Esa subida ya se inició con otro archivo; vuelva a elegirlo');
     }
     if (!Number.isSafeInteger(e.bytes) || e.bytes <= 0) throw fallo('entrada-invalida', 'Tamaño inválido');
     if (e.bytes > BYTES_LOGO) throw fallo('limite', 'El logo supera 2 MB');
@@ -286,9 +289,9 @@ export const handlersOtros: {
     const m = c.e.medios.get(e.medioId);
     if (m === undefined) throw fallo('no-encontrado', 'El medio no existe');
     const enSeccion = c.e.secciones.find((s) => s.bloques.some((b) => (b.tipo === 'imagen' && b.medioId === e.medioId) || (b.tipo === 'carrusel' && b.items.some((i) => i.medioId === e.medioId))));
-    if (enSeccion !== undefined) throw fallo('conflicto', `El medio se usa en la sección «${enSeccion.titulo}»; quítelo primero`);
+    if (enSeccion !== undefined) throw fallo('conflicto', `La foto se usa en la sección «${enSeccion.titulo}»; quítela de ahí y guarde antes de borrarla`);
     const enCarrusel = [...c.e.carruseles.values()].find((k) => k.items.some((i) => i.medioId === e.medioId));
-    if (enCarrusel !== undefined) throw fallo('conflicto', `El medio se usa en el carrusel de la plantilla ${enCarrusel.plantilla}; quítelo primero`);
+    if (enCarrusel !== undefined) throw fallo('conflicto', `La foto se usa en el carrusel de la plantilla ${NOMBRES_PLANTILLA[enCarrusel.plantilla]}; quítela de ahí y guarde antes de borrarla`);
     c.e.medios.delete(e.medioId);
     c.e.bytesOriginales = Math.max(0, c.e.bytesOriginales - m.bytesOriginal);
     const f = c.e.fichas.get(m.productoId);

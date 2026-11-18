@@ -4,7 +4,7 @@ import { ArchivoNoAdmitido, ErrorConsola, ProcesamientoNoDisponible, type Codigo
 import { cupoPortadaDelPlan, LIMITES_CONSOLA } from '../limites.js';
 import { agendarLogoVivo, escribirLogoVivo, leerPublicadoParaLogo, proyectarLogoPublico } from '../logo-publico.js';
 import { exigirRol, ROLES } from '../permisos.js';
-import { PLANTILLAS } from '../plantillas.js';
+import { NOMBRE_PLANTILLA, PLANTILLAS } from '../plantillas.js';
 import type { AlmacenMedios, BaseDatosConsola, CatalogoPuerto, ConsultaSubidas, DisparadorSitio, ProcesadorMedios, Reloj } from '../puertos.js';
 import {
   dirTemporal, ID_NEGOCIO, ID_PORTADA, ID_PRODUCTO, ID_SUBIDA, prefijoTemporal, rutaCarrusel, rutaFicha, rutaMedio, rutaOriginal, rutaPublicaMedio, rutaSeccion, rutaSitio,
@@ -173,7 +173,7 @@ export async function reservarSubida(deps: DepsMedios, e: EntradaReserva): Promi
       if (previa.productoId === e.productoId && previa.tipo === e.tipo && previa.bytes === e.bytes && previa.estado === 'reservada') {
         return { subidaId: previa.id, rutaOriginal: previa.rutaOriginal, venceEn: previa.venceEn };
       }
-      throw new ErrorConsola('conflicto', 'Ya existe una subida con ese identificador');
+      throw new ErrorConsola('conflicto', 'Esa subida ya se inició con otro archivo; vuelva a elegirlo');
     }
     // El cupo de fotos de portada sale del plan del comercio (se lee antes de toda escritura).
     const cupoPortada = e.tipo === 'portada' ? cupoPortadaDelPlan((await tx.get(`tenants/${t}`)).data()?.['plan']) : 0;
@@ -708,7 +708,7 @@ async function medioEnUso(tx: TransaccionIdentidad, t: string, medioId: string):
   }
   for (const p of PLANTILLAS) {
     const items = (await tx.get(rutaCarrusel(t, p))).data()?.['items'];
-    if (Array.isArray(items) && items.some((i) => esObjeto(i) && i['medioId'] === medioId)) return `el carrusel de la plantilla ${p}`;
+    if (Array.isArray(items) && items.some((i) => esObjeto(i) && i['medioId'] === medioId)) return `el carrusel de la plantilla ${NOMBRE_PLANTILLA[p]}`;
   }
   return undefined;
 }
@@ -734,7 +734,7 @@ export async function borrarMedio(deps: DepsMedios, e: EntradaBorrarMedio): Prom
     const ficha = (await tx.get(rutaFicha(t, m.productoId))).data();
     const estado = await leerEstadoSitio(tx, t);
     const enUso = await medioEnUso(tx, t, e.medioId);
-    if (enUso !== undefined) throw new ErrorConsola('conflicto', `El medio se usa en ${enUso}; quítelo primero`);
+    if (enUso !== undefined) throw new ErrorConsola('conflicto', `La foto se usa en ${enUso}; quítela de ahí y guarde antes de borrarla`);
 
     const rutas = [m.rutaOriginal, ...(m.versiones ?? []).map((v) => v.ruta)].filter((r): r is string => typeof r === 'string');
     escribirUsoMedios(tx, t, liberarEnUso(uso, m.productoId, m.tipo, m.bytesOriginal ?? 0));

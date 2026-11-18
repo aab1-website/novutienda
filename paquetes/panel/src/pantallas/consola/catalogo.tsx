@@ -172,6 +172,9 @@ function Apariencia(): JSX.Element {
   };
   const items = carrB.valor[c.plantillaActiva] ?? delServidor(c.plantillaActiva);
   const setItems = (i: Items): void => carrB.poner((prev) => ({ ...prev, [c.plantillaActiva]: i }));
+  // Una foto borrada ya no existe para ninguna plantilla: sale de todos los borradores, no solo del de la plantilla activa.
+  const quitarDeTodos = (medioId: string): void =>
+    carrB.poner((prev) => Object.fromEntries(Object.entries(prev).map(([p, l]) => [p, (l ?? []).filter((i) => i.medioId !== medioId)])) as Borradores);
   const whatsappValido = esWhatsappValido(c.whatsappNovuchat);
   const sinTexto = editadas.find((p) => (carrB.valor[p] ?? []).some((i) => i.alt.trim() === ''));
   const motivo = cfgSucia && !whatsappValido
@@ -236,7 +239,7 @@ function Apariencia(): JSX.Element {
           <Campo etiqueta="Píxel de TikTok" valor={med.tiktokPixel ?? ''} onInput={(v) => setMed('tiktokPixel', v)} ayuda="Opcional. Letras mayúsculas y dígitos, de 10 a 30." />
         </div>
       </Seccion>
-      <CarruselEditor plantilla={c.plantillaActiva} items={items} setItems={setItems} productos={datos.datos.productos.map((p) => ({ id: p.id, nombre: p.nombre }))} />
+      <CarruselEditor plantilla={c.plantillaActiva} items={items} setItems={setItems} quitarDeTodos={quitarDeTodos} productos={datos.datos.productos.map((p) => ({ id: p.id, nombre: p.nombre }))} />
       <Boton ocupado={accion.ocupado} motivo={motivo} onClick={guardar}>
         Guardar apariencia
       </Boton>
@@ -244,7 +247,7 @@ function Apariencia(): JSX.Element {
   );
 }
 
-function CarruselEditor({ plantilla, items, setItems, productos }: { plantilla: PlantillaSitio; items: Items; setItems: (i: Items) => void; productos: { id: string; nombre: string }[] }): JSX.Element {
+function CarruselEditor({ plantilla, items, setItems, quitarDeTodos, productos }: { plantilla: PlantillaSitio; items: Items; setItems: (i: Items) => void; quitarDeTodos: (medioId: string) => void; productos: { id: string; nombre: string }[] }): JSX.Element {
   const { api } = useApp();
   // Medios vistos en esta sesión: permiten mostrar la miniatura de las fotos que ya se agregaron.
   const conocidos = useRef(new Map<string, Medio>());
@@ -260,14 +263,13 @@ function CarruselEditor({ plantilla, items, setItems, productos }: { plantilla: 
     void borrando.ejecutar(async () => {
       try {
         await api.llamar('borrarMedio', { medioId });
-        // La foto ya no existe: sale también del carrusel que se está editando, o «Guardar apariencia» fallaría por un medio inexistente.
-        setItems(items.filter((i) => i.medioId !== medioId));
+        // La foto ya no existe: sale de los borradores de todas las plantillas, o «Guardar apariencia» fallaría por un medio inexistente.
+        quitarDeTodos(medioId);
         conocidos.current.delete(medioId);
         propias.recargar();
         avisos.ok('Foto borrada. Se liberó su lugar.');
       } catch (e) {
-        const conflicto = e instanceof ErrorApi && e.detalle.codigo === 'conflicto';
-        avisos.error(`No se pudo borrar la foto: ${mensajeDeError(e)}${conflicto ? ' Quítela del carrusel y guarde la apariencia antes de borrarla.' : ''}`);
+        avisos.error(`No se pudo borrar la foto: ${mensajeDeError(e)}`);
       }
     });
   const subida = useSubidaPortada((m) => {

@@ -32,7 +32,7 @@ export async function leerMedios(
     const m = (await tx.get(rutaMedio(t, id))).data();
     if (m === undefined || (m['tipo'] !== 'foto' && m['tipo'] !== 'video')) throw new ErrorConsola('no-encontrado', `El medio ${id} no existe o aún no está procesado`);
     if (opciones.productoId !== undefined && m['productoId'] !== opciones.productoId) {
-      throw new ErrorConsola('conflicto', `El medio ${id} pertenece a otro producto`);
+      throw new ErrorConsola('conflicto', 'Esa foto pertenece a otro producto');
     }
     if (opciones.soloFotos === true && m['tipo'] !== 'foto') throw new ErrorConsola('entrada-invalida', `El medio ${id} debe ser una foto`);
     tipos.set(id, m['tipo']);
@@ -83,7 +83,7 @@ export async function guardarFicha(deps: DepsSitio, e: EntradaFicha): Promise<vo
     const estado = await leerEstadoSitio(tx, t);
 
     const dueno = slugs[ficha.slug];
-    if (dueno !== undefined && dueno !== e.productoId) throw new ErrorConsola('conflicto', 'Ese slug ya lo usa otro producto');
+    if (dueno !== undefined && dueno !== e.productoId) throw new ErrorConsola('conflicto', 'Esa dirección web ya la usa otro producto');
     const fotos = [...tipos.values()].filter((x) => x === 'foto').length;
     const videos = tipos.size - fotos;
     if (fotos > L.fotosPorProducto || videos > L.videosPorProducto) throw new ErrorConsola('limite', 'Máximo 5 fotos y 1 video por producto');
