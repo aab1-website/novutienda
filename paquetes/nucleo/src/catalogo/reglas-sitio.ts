@@ -24,15 +24,22 @@ export function esCategoriaValida(valor: string): boolean {
 
 /** Convierte un texto libre en un slug: sin tildes, minúsculas, guiones, hasta 60. */
 export function sugerirCategoria(texto: string): string {
-  const slug = String(texto)
+  // Entrada acotada y guiones de los bordes quitados sin expresiones regulares ancladas (evita ReDoS polinómico).
+  const base = String(texto)
+    .slice(0, 1000)
     .normalize('NFD')
     .replace(/[̀-ͯ]/g, '')
     .toLowerCase()
-    .replace(/[^a-z0-9]+/g, '-')
-    .replace(/^-+|-+$/g, '')
-    .slice(0, LARGO_MAXIMO_CATEGORIA)
-    .replace(/-+$/g, '');
-  return slug;
+    .replace(/[^a-z0-9]+/g, '-');
+  return sinGuionesEnBordes(sinGuionesEnBordes(base).slice(0, LARGO_MAXIMO_CATEGORIA));
+}
+
+function sinGuionesEnBordes(s: string): string {
+  let inicio = 0;
+  let fin = s.length;
+  while (inicio < fin && s[inicio] === '-') inicio++;
+  while (fin > inicio && s[fin - 1] === '-') fin--;
+  return s.slice(inicio, fin);
 }
 
 export function mensajeCategoriaInvalida(valor: string): string {
