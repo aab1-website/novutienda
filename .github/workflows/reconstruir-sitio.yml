@@ -1,13 +1,17 @@
 # =============================================================================
 # reconstruir-sitio.yml — Reconstrucción y despliegue del sitio público de cada
 #                         tenant (un sitio de Hosting por tenant) en STAGING.
-# Versión: 1.2 | Fecha: 2026-11-17 | PR C-2 (DC1 a DC4) + S5 (certificación)
+# Versión: 1.3 | Fecha: 2026-11-19 | PR C-2 (DC1 a DC4) + S5 (certificación)
 #          + S7-3 (DS-3: la plataforma dispara con `clave` = `cola:pendientes`)
+#          + 1.3: tras un despliegue correcto se cierran como `completada` los
+#            pendientes que el build ya incluye (versión <= la compilada y
+#            solicitados antes de «Generar»; incidente del 19/11/2026)
 # -----------------------------------------------------------------------------
 # Contrato con las funciones: docs/produccion/reconstruccion-sitio.md (cola
 # firmada `tenants/{t}/reconstrucciones`, estados pendiente → en_curso →
 # completada | fallida). Scripts: scripts/sitios-tenant.mjs (matriz),
-# scripts/contenido-sitio.mjs (pendiente, estado, rezagados, generar), scripts/build.mjs
+# scripts/contenido-sitio.mjs (pendiente, estado, rezagados, cubiertos, generar),
+# scripts/build.mjs
 # --solo sitio --sitio <id>, scripts/certificar-sitio.mjs (S5: el sitio
 # desplegado coincide con lo publicado; corre tras el humo y antes del cierre).
 #
@@ -456,6 +460,9 @@ jobs:
             exit 1
           fi
           salida="$RUNNER_TEMP/sitio/contenido.json"
+          # Hora de inicio (ms) ANTES de leer lo publicado: tope de
+          # «Cerrar los pendientes cubiertos por este despliegue».
+          echo "GENERAR_INICIO_MS=$(date +%s%3N)" >> "$GITHUB_ENV"
           node scripts/contenido-sitio.mjs generar --salida "$salida" --tenant "$TENANT" --url "$URL_SITIO"
           echo "SITIO_CONTENIDO=$salida" >> "$GITHUB_ENV"
 
@@ -698,6 +705,23 @@ jobs:
           node scripts/contenido-sitio.mjs estado "$ID_TRABAJO" fallida --tenant "$TENANT" --url "$URL_SITIO"
           echo "::error::$CLAVE: reconstrucción fallida; trabajo cerrado como fallida. Rollback: clonar previa → live del sitio."
 
+      - name: Cerrar los pendientes cubiertos por este despliegue
+        id: cubiertos
+        # El build compiló lo publicado vigente (versión publicacion.version de
+        # $SITIO_CONTENIDO): todo pendiente de versión menor o igual, solicitado
+        # antes de «Generar», ya está en el sitio. Sin esto, una publicación
+        # quedaba pendiente detrás de un trabajo más viejo (incidente del
+        # 19/11/2026). Solo conteos en el log; un fallo pone el run en rojo.
+        if: success() && steps.trabajo.outputs.continuar == 'true'
+        env:
+          SITIO_RECONSTRUCCION_SECRETO: ${{ secrets.SITIO_RECONSTRUCCION_SECRETO }}
+        run: |
+          set -euo pipefail
+          echo "::add-mask::$SITIO_RECONSTRUCCION_SECRETO"
+          [[ -n "${SITIO_CONTENIDO:-}" && -f "$SITIO_CONTENIDO" && "${GENERAR_INICIO_MS:-}" =~ ^[0-9]{13}$ ]] \
+            || { echo "::error::$CLAVE: falta el contenido del build o su hora de inicio; no se cierran pendientes."; exit 1; }
+          node scripts/contenido-sitio.mjs cubiertos --contenido "$SITIO_CONTENIDO" --hasta-ms "$GENERAR_INICIO_MS" --tenant "$TENANT" --url "$URL_SITIO"
+
       - name: Cerrar trabajos rezagados (en_curso de corridas anteriores)
         # Un cierre `completada` que falló en una corrida anterior (p. ej. un 502
         # agotado) deja su trabajo en_curso para siempre. Corre solo si el
@@ -709,7 +733,9 @@ jobs:
         # Va después de «fallida» para que su fallo no cierre como fallida un
         # trabajo propio ya completado. Un fallo pone el run en rojo (sin
         # continue-on-error): un rezagado sin cerrar debe verse, no ocultarse.
-        if: success() && steps.trabajo.outputs.continuar == 'true'
+        # Corre también si lo único que falló fue «cubiertos» (justo antes; solo corre si todo lo anterior salió bien):
+        # así este mismo run limpia lo que quedó en_curso.
+        if: ${{ (success() || (failure() && steps.cubiertos.outcome == 'failure')) && steps.trabajo.outputs.continuar == 'true' }}
         env:
           SITIO_RECONSTRUCCION_SECRETO: ${{ secrets.SITIO_RECONSTRUCCION_SECRETO }}
         run: |

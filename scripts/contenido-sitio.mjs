@@ -3,6 +3,7 @@
 //   node scripts/contenido-sitio.mjs pendiente --tenant <t> --url <https://origen>
 //   node scripts/contenido-sitio.mjs estado <id> <en_curso|completada|fallida> --tenant <t> --url <https://origen>
 //   node scripts/contenido-sitio.mjs rezagados --tenant <t> --url <https://origen> [--excepto <id>]
+//   node scripts/contenido-sitio.mjs cubiertos --contenido <ruta> --hasta-ms <ms> --tenant <t> --url <https://origen>
 //   node scripts/contenido-sitio.mjs generar --salida <ruta> --tenant <t> --url <https://origen>
 //
 // Contrato (docs/produccion/reconstruccion-sitio.md):
@@ -17,6 +18,10 @@
 //   («rezagados cerrados: n»). Un 409 o 404 en un trabajo no detiene a los demás ni es error; otro fallo da código 1 al final,
 //   también si tras 10 rondas aún quedan trabajos en_curso sin ver.
 //   Úsese solo DESPUÉS de un despliegue y humo correctos (el sitio ya contiene lo publicado).
+// - `cubiertos`: lee publicacion.version del contenido compilado (--contenido) y cierra como `completada` (pasando por `en_curso`) todo
+//   trabajo `pendiente` con version <= esa versión y solicitadaEnMs <= --hasta-ms (13 dígitos: hora de inicio de `generar`), porque el
+//   build ya incluye lo que pedían. Sin versión u hora numéricas no se cierra. Imprime solo el conteo («pendientes cubiertos: n»); un 409
+//   o 404 se omite sin fallo; otro fallo da código 1 al final. No carga el registro. Úsese solo DESPUÉS de despliegue, humo y cierre propio.
 // - Reintentos: error de red, tiempo agotado o respuesta 502/503/504 se reintentan hasta 4 intentos en total (esperas de 2, 5 y 10 s; `pendiente` hace 1 solo, opción `intentos`),
 //   firmando de nuevo cada intento con la marca de tiempo del momento. Los 3xx y 4xx no se reintentan.
 // - `generar`: GET firmado de `publicado`, disponibilidad pública en lotes de 50, mapeo `contenidoDesdePublicado` (que `plataforma/registro.ts`
@@ -25,7 +30,7 @@
 //   NODE_ENV=test. --salida se borra antes de escribir y queda con modo 0600.
 // - Nunca imprime el secreto, la firma, las respuestas ni datos de productos; los errores dan el motivo, no valores.
 import { createHmac } from 'node:crypto';
-import { mkdirSync, rmSync, writeFileSync } from 'node:fs';
+import { mkdirSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
 import { dirname, resolve } from 'node:path';
 import { pathToFileURL } from 'node:url';
 
@@ -149,6 +154,16 @@ export async function trabajoPendiente(opciones) {
   return id ?? null;
 }
 
+/** Trabajos `pendiente` del tenant ({ id, version, solicitadaEnMs }), con los 4 intentos habituales; descarta ids inválidos. */
+export async function trabajosPendientes(opciones) {
+  const r = await pedirFirmado({ ...opciones, metodo: 'GET', ruta: rutaPendientes(opciones.tenant) });
+  exigirOk(r, 'cubiertos');
+  const trabajos = Array.isArray(r.json?.trabajos) ? r.json.trabajos : [];
+  return trabajos
+    .filter((t) => t && typeof t.id === 'string' && RE_ID_TRABAJO.test(t.id))
+    .map((t) => ({ id: t.id, version: t.version, solicitadaEnMs: t.solicitadaEnMs }));
+}
+
 /** Cambia el estado de un trabajo. 409 => código 3; 404 => código 4. */
 export async function cambiarEstado(opciones, id, estado) {
   if (!RE_ID_TRABAJO.test(id ?? '')) throw new ErrorContenidoSitio('id de trabajo inválido');
@@ -193,6 +208,49 @@ export async function cerrarRezagados(opciones, excepto = undefined) {
   }
   // Tras las rondas, si aún hay trabajos en_curso sin ver no se corta en silencio: cuenta como fallo.
   if (agotadas && (await trabajosEnCurso(opciones)).some((id) => !vistos.has(id))) fallos++;
+  return { cerrados, fallos };
+}
+
+const esOmitible = (e) => e instanceof ErrorContenidoSitio && (e.codigo === CODIGO_TOMADO_POR_OTRO || e.codigo === CODIGO_INEXISTENTE);
+
+/**
+ * Cierra como `completada` los pendientes cubiertos por el build: version <= `version` y solicitadaEnMs <= `hastaMs`.
+ * Pasa por `en_curso`. Devuelve { cerrados, fallos }. Nunca expone ids.
+ */
+export async function cerrarCubiertos(opciones, { version, hastaMs }) {
+  const vistos = new Set();
+  let cerrados = 0;
+  let fallos = 0;
+  let terminado = false;
+  const buscar = async () => (await trabajosPendientes(opciones)).filter(
+    (t) => !vistos.has(t.id) && Number.isInteger(t.version) && t.version <= version && Number.isFinite(t.solicitadaEnMs) && t.solicitadaEnMs <= hastaMs,
+  );
+  for (let ronda = 0; ronda < RONDAS_REZAGADOS; ronda++) {
+    const elegibles = await buscar();
+    if (elegibles.length === 0) {
+      terminado = true;
+      break;
+    }
+    for (const { id } of elegibles) {
+      vistos.add(id);
+      try {
+        // `repetido`: otro corredor ya lo tomó; no se cierra un trabajo ajeno.
+        if ((await cambiarEstado(opciones, id, 'en_curso')) === 'repetido') continue;
+      } catch (e) {
+        if (!esOmitible(e)) fallos++;
+        continue;
+      }
+      try {
+        await cambiarEstado(opciones, id, 'completada');
+        cerrados++;
+      } catch (e) {
+        // Si falla, queda en_curso y lo cierra `rezagados`.
+        if (!esOmitible(e)) fallos++;
+      }
+    }
+  }
+  // Rondas agotadas: una consulta final; solo es fallo si aún queda algún elegible sin ver (no se corta en silencio).
+  if (!terminado && (await buscar()).length > 0) fallos++;
   return { cerrados, fallos };
 }
 
@@ -323,7 +381,16 @@ export async function ejecutar(args, env = process.env, deps = undefined, fetchF
   const { esperar = esperarReal, avisar = avisarReal } = red;
   try {
     const [sub] = args;
-    if (!['pendiente', 'estado', 'rezagados', 'generar'].includes(sub)) throw new ErrorContenidoSitio('uso: contenido-sitio.mjs pendiente | estado <id> <estado> | rezagados [--excepto <id>] | generar --salida <ruta>  (con --tenant y --url)', 2);
+    if (!['pendiente', 'estado', 'rezagados', 'cubiertos', 'generar'].includes(sub)) throw new ErrorContenidoSitio('uso: contenido-sitio.mjs pendiente | estado <id> <estado> | rezagados [--excepto <id>] | cubiertos --contenido <ruta> --hasta-ms <ms> | generar --salida <ruta>  (con --tenant y --url)', 2);
+    let rutaContenido;
+    let hastaMs;
+    if (sub === 'cubiertos') {
+      rutaContenido = valor(args, 'contenido');
+      const hasta = valor(args, 'hasta-ms');
+      if (rutaContenido === undefined || rutaContenido === '') throw new ErrorContenidoSitio('falta --contenido', 2);
+      if (typeof hasta !== 'string' || !/^\d{13}$/.test(hasta)) throw new ErrorContenidoSitio('--hasta-ms debe tener 13 dígitos', 2);
+      hastaMs = Number(hasta);
+    }
     const tenant = validarTenant(valor(args, 'tenant'));
     const url = normalizarUrl(valor(args, 'url'), env.NODE_ENV === 'test');
     const secreto = env.SITIO_RECONSTRUCCION_SECRETO ?? '';
@@ -346,6 +413,19 @@ export async function ejecutar(args, env = process.env, deps = undefined, fetchF
       const { cerrados, fallos } = await cerrarRezagados(base, excepto);
       if (fallos > 0) return { codigo: 1, salida: `rezagados cerrados: ${cerrados}`, error: `rezagados: ${fallos} trabajos no se pudieron cerrar` };
       return { codigo: 0, salida: `rezagados cerrados: ${cerrados}` };
+    }
+    if (sub === 'cubiertos') {
+      let contenido;
+      try {
+        contenido = JSON.parse(readFileSync(resolve(rutaContenido), 'utf8'));
+      } catch {
+        throw new ErrorContenidoSitio('cubiertos: no se pudo leer --contenido (inexistente o JSON inválido)');
+      }
+      const version = contenido?.publicacion?.version;
+      if (!Number.isInteger(version) || version < 0) return { codigo: 0, salida: 'pendientes cubiertos: 0 (el contenido no declara versión)' };
+      const { cerrados, fallos } = await cerrarCubiertos(base, { version, hastaMs });
+      if (fallos > 0) return { codigo: 1, salida: `pendientes cubiertos: ${cerrados}`, error: `cubiertos: ${fallos} trabajos no se pudieron cerrar` };
+      return { codigo: 0, salida: `pendientes cubiertos: ${cerrados}` };
     }
     const salida = valor(args, 'salida');
     if (salida === undefined || salida === '') throw new ErrorContenidoSitio('falta --salida', 2);

@@ -42,6 +42,8 @@ export function trabajoPendiente(opciones: OpcionesPeticion): Promise<string | n
 export function cambiarEstado(opciones: OpcionesPeticion, id: string, estado: string): Promise<'cambiado' | 'repetido'>;
 export function trabajosEnCurso(opciones: OpcionesPeticion): Promise<string[]>;
 export function cerrarRezagados(opciones: OpcionesPeticion, excepto?: string): Promise<{ cerrados: number; fallos: number }>;
+export function trabajosPendientes(opciones: OpcionesPeticion): Promise<{ id: string; version: unknown; solicitadaEnMs: unknown }[]>;
+export function cerrarCubiertos(opciones: OpcionesPeticion, limite: { version: number; hastaMs: number }): Promise<{ cerrados: number; fallos: number }>;
 export function idsDeProductos(publicado: unknown): string[];
 export function lotes<T>(ids: readonly T[], tamano?: number): T[][];
 export function leerDisponibilidad(p: { url: string; ids: readonly string[]; fetchFn?: typeof fetch; esperar?: Esperar; avisar?: (mensaje: string) => void }): Promise<Record<string, boolean>>;
