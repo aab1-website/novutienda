@@ -14,7 +14,7 @@ import { VentaTerminal } from './venta-terminal.js';
 
 const PESTANAS = [
   { id: 'terminal', titulo: 'Terminal' },
-  { id: 'caja', titulo: 'Ingresos y egresos' },
+  { id: 'caja', titulo: 'Ing. y Egr. Excepcionales' },
   { id: 'creditos', titulo: 'Créditos' },
   { id: 'historial', titulo: 'Ventas y anulaciones' },
   { id: 'cierre', titulo: 'Cierre de turno' },

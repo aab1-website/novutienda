@@ -49,7 +49,8 @@ function VentaCajaLista({ turno, alCambiar, monedas }: { turno: TurnoPos; alCamb
 
   return (
     <div>
-      <Seccion titulo="Ingresos y egresos de caja">
+      <Seccion titulo="Ingresos y egresos excepcionales">
+        <p class="texto-suave">Dinero que entra o sale de la caja sin ser una venta (por ejemplo, cambio que se trae o un gasto menor). Las ventas se ven en «Ventas y anulaciones» y en «Cierre de turno».</p>
         <form class="formulario" onSubmit={enviar} noValidate>
           <div class="cuadricula">
             <Selector etiqueta="Tipo" valor={tipo} onCambio={(v) => setTipo(v as 'ingreso' | 'egreso')} opciones={[{ valor: 'egreso', texto: 'Egreso (sale dinero)' }, { valor: 'ingreso', texto: 'Ingreso (entra dinero)' }]} />
@@ -70,10 +71,10 @@ function VentaCajaLista({ turno, alCambiar, monedas }: { turno: TurnoPos; alCamb
       <Seccion titulo="Movimientos del turno">
         {movs.cargando && <Cargando />}
         {movs.error && <ErrorCarga error={movs.error} reintentar={movs.recargar} />}
-        {movs.datos && movs.datos.length === 0 && <Vacio titulo="Todavía no hay ingresos ni egresos en este turno" />}
+        {movs.datos && movs.datos.length === 0 && <Vacio titulo="Todavía no hay ingresos ni egresos excepcionales en este turno" />}
         {movs.datos && movs.datos.length > 0 && (
           <table class="tabla">
-            <caption class="solo-lectores">Ingresos y egresos del turno</caption>
+            <caption class="solo-lectores">Ingresos y egresos excepcionales del turno</caption>
             <thead>
               <tr><th scope="col">Hora</th><th scope="col">Tipo</th><th scope="col">Motivo</th><th scope="col" class="num">Monto</th></tr>
             </thead>
