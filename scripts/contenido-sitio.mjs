@@ -35,7 +35,7 @@
 //   NODE_ENV=test. --salida se borra antes de escribir y queda con modo 0600.
 // - Nunca imprime el secreto, la firma, las respuestas ni datos de productos; los errores dan el motivo, no valores.
 import { createHmac } from 'node:crypto';
-import { mkdirSync, readFileSync, rmSync, statSync, writeFileSync } from 'node:fs';
+import { mkdirSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
 import { dirname, resolve } from 'node:path';
 import { pathToFileURL } from 'node:url';
 
@@ -195,9 +195,10 @@ export async function cambiarEstado(opciones, id, estado, extra = {}) {
  */
 export function leerArchivoCausas(ruta, avisar = avisarReal) {
   try {
-    const destino = resolve(ruta);
-    if (statSync(destino).size > MAX_BYTES_CAUSAS) throw new Error('tamaño');
-    const causas = JSON.parse(readFileSync(destino, 'utf8'));
+    // Una sola lectura (sin stat previo: evita la carrera entre comprobar y leer); el tope se aplica sobre lo leído.
+    const bytes = readFileSync(resolve(ruta));
+    if (bytes.length > MAX_BYTES_CAUSAS) throw new Error('tamaño');
+    const causas = JSON.parse(bytes.toString('utf8'));
     if (!Array.isArray(causas)) throw new Error('forma');
     return causas;
   } catch {
