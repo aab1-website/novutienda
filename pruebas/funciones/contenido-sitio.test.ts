@@ -649,3 +649,87 @@ describe('cubiertos', () => {
     expect(JSON.stringify(fallo)).not.toContain(SECRETO);
   });
 });
+
+describe('causas de la falla (generar --causas y estado fallida)', () => {
+  let dir = '';
+  const AVISO = 'estado: --causas inexistente, de más de 8 KB o no es una lista JSON; se envía la transición sin causas';
+  const PRIVADO = 'prod-privado-77';
+  const modoDe = (ruta: string): number => { const fd = openSync(ruta, 'r'); try { return fstatSync(fd).mode & 0o777; } finally { closeSync(fd); } };
+  const conErrorDeMapeo = (extra: Record<string, unknown>) => ({
+    calcularFirma,
+    mapear: () => { throw Object.assign(new Error('x'), { errores: [`documentos.producto__${PRIVADO}.nombre: requerido`], ...extra }); },
+  });
+  const cuerposEstado = () => peticiones.filter((p) => p.metodo === 'POST').map((p) => JSON.parse(p.cuerpo) as Record<string, unknown>);
+  beforeAll(() => { dir = mkdtempSync(join(tmpdir(), 'contenido-sitio-causas-')); });
+  afterAll(() => rmSync(dir, { recursive: true, force: true }));
+
+  it('generar --causas escribe solo codigo, productoId y mercado (máximo 20) en modo 0600 y no imprime ids ni causas', async () => {
+    const causas = Array.from({ length: 25 }, (_, i) => ({ codigo: `c${i}`, productoId: PRIVADO, mercado: 'bo', detalle: 'no-debe-ir', otro: 1 }));
+    const archivo = join(dir, 'causas-1.json');
+    const salida = join(dir, 'salida-1.json');
+    const r = await ejecutar(['generar', '--salida', salida, '--causas', archivo, ...args], env, conErrorDeMapeo({ causas }), fetchLocal, red);
+    expect(r.codigo).toBe(1);
+    const escritas = JSON.parse(readFileSync(archivo, 'utf8')) as unknown[];
+    expect(escritas).toEqual(causas.slice(0, 20).map(({ codigo, productoId, mercado }) => ({ codigo, productoId, mercado })));
+    expect(modoDe(archivo)).toBe(0o600);
+    expect(existsSync(salida)).toBe(false);
+    const visible = JSON.stringify(r) + avisos.join('\n');
+    expect(visible).not.toContain(PRIVADO);
+    expect(visible).not.toContain('c0"');
+    expect(visible).not.toContain('no-debe-ir');
+  });
+  it('sin causas en el error escribe la causa genérica', async () => {
+    const archivo = join(dir, 'causas-2.json');
+    const r = await ejecutar(['generar', '--salida', join(dir, 's2.json'), '--causas', archivo, ...args], env, conErrorDeMapeo({}), fetchLocal, red);
+    expect(r.codigo).toBe(1);
+    expect(JSON.parse(readFileSync(archivo, 'utf8'))).toEqual([{ codigo: 'contenido_invalido' }]);
+  });
+  it('ante otro fallo (red) no escribe nada y borra un archivo previo', async () => {
+    const archivo = join(dir, 'causas-3.json');
+    writeFileSync(archivo, '[{"codigo":"viejo"}]');
+    const sinRed = (async () => { throw new Error('red'); }) as unknown as typeof fetch;
+    const r = await ejecutar(['generar', '--salida', join(dir, 's3.json'), '--causas', archivo, ...args], env, deps, sinRed, red);
+    expect(r.codigo).toBe(1);
+    expect(existsSync(archivo)).toBe(false);
+  });
+  it('estado fallida --etapa --causas envía etapa y exactamente las causas del archivo', async () => {
+    const archivo = join(dir, 'causas-4.json');
+    const causas = [{ codigo: 'a', productoId: 'p1', mercado: 'bo' }, { codigo: 'b' }];
+    writeFileSync(archivo, JSON.stringify(causas));
+    const r = await ejecutar(['estado', 'job-1', 'fallida', '--etapa', 'generar', '--causas', archivo, ...args], env, undefined, fetchLocal, red);
+    expect(r.codigo).toBe(0);
+    expect(cuerposEstado()).toEqual([{ tenantId: TENANT, estado: 'fallida', etapa: 'generar', causas }]);
+  });
+  it('archivo inexistente, de más de 8 KB o que no es lista: envía sin causas y avisa sin el contenido', async () => {
+    const grande = join(dir, 'grande.json');
+    writeFileSync(grande, JSON.stringify([{ codigo: 'x'.repeat(9000) }]));
+    const objeto = join(dir, 'objeto.json');
+    writeFileSync(objeto, `{"codigo":"${PRIVADO}"}`);
+    for (const ruta of [join(dir, 'no-existe.json'), grande, objeto]) {
+      peticiones.length = 0; avisos.length = 0;
+      const r = await ejecutar(['estado', 'job-1', 'fallida', '--etapa', 'build', '--causas', ruta, ...args], env, undefined, fetchLocal, red);
+      expect(r.codigo).toBe(0);
+      expect(cuerposEstado()).toEqual([{ tenantId: TENANT, estado: 'fallida', etapa: 'build' }]);
+      expect(avisos).toEqual([AVISO]);
+      expect(avisos.join() + JSON.stringify(r)).not.toContain(PRIVADO);
+    }
+  });
+  it('código 2: etapa inválida, --etapa o --causas con otro estado, y --causas vacío', async () => {
+    const archivo = join(dir, 'causas-5.json');
+    writeFileSync(archivo, '[{"codigo":"a"}]');
+    const casos = [
+      ['estado', 'job-1', 'fallida', '--etapa', 'inventada'],
+      ['estado', 'job-1', 'completada', '--etapa', 'build'],
+      ['estado', 'job-1', 'en_curso', '--causas', archivo],
+      ['estado', 'job-1', 'fallida', '--etapa', 'build', '--causas', ''],
+      ['generar', '--salida', join(dir, 's5.json'), '--causas', ''],
+    ];
+    for (const c of casos) expect((await ejecutar([...c, ...args], env, deps, fetchLocal, red)).codigo, c.join(' ')).toBe(2);
+    expect(peticiones).toHaveLength(0);
+  });
+  it('estado fallida sin --etapa sigue funcionando', async () => {
+    const r = await ejecutar(['estado', 'job-1', 'fallida', ...args], env, undefined, fetchLocal, red);
+    expect(r.codigo).toBe(0);
+    expect(cuerposEstado()).toEqual([{ tenantId: TENANT, estado: 'fallida' }]);
+  });
+});

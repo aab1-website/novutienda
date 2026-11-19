@@ -6,6 +6,9 @@
 #          + 1.3: tras un despliegue correcto se cierran como `completada` los
 #            pendientes que el build ya incluye (versión <= la compilada y
 #            solicitados antes de «Generar»; incidente del 19/11/2026)
+#          + 1.4: el cierre `fallida` informa la etapa que falló y, si «Generar»
+#            rechazó el contenido, las causas saneadas (solo en el cuerpo
+#            firmado; nunca en el log, el repositorio es público)
 # -----------------------------------------------------------------------------
 # Contrato con las funciones: docs/produccion/reconstruccion-sitio.md (cola
 # firmada `tenants/{t}/reconstrucciones`, estados pendiente → en_curso →
@@ -440,6 +443,7 @@ jobs:
         run: pnpm install --frozen-lockfile
 
       - name: Generar el contenido publicado
+        id: generar
         if: steps.trabajo.outputs.continuar == 'true'
         env:
           SITIO_RECONSTRUCCION_SECRETO: ${{ secrets.SITIO_RECONSTRUCCION_SECRETO }}
@@ -460,13 +464,20 @@ jobs:
             exit 1
           fi
           salida="$RUNNER_TEMP/sitio/contenido.json"
+          # Causas saneadas si el contenido publicado no es válido (códigos,
+          # ids de producto y mercados). El script escribe el archivo SOLO si
+          # falla y nunca lo imprime; este workflow tampoco: lo lee únicamente
+          # «Cerrar el trabajo (fallida)», que lo envía en el cuerpo firmado.
+          mkdir -p "$RUNNER_TEMP/sitio"
           # Hora de inicio (ms) ANTES de leer lo publicado: tope de
           # «Cerrar los pendientes cubiertos por este despliegue».
           echo "GENERAR_INICIO_MS=$(date +%s%3N)" >> "$GITHUB_ENV"
-          node scripts/contenido-sitio.mjs generar --salida "$salida" --tenant "$TENANT" --url "$URL_SITIO"
+          node scripts/contenido-sitio.mjs generar --salida "$salida" --causas "$RUNNER_TEMP/sitio/causas.json" \
+            --tenant "$TENANT" --url "$URL_SITIO"
           echo "SITIO_CONTENIDO=$salida" >> "$GITHUB_ENV"
 
       - name: Build del sitio (solo sitio, staging)
+        id: build
         if: steps.trabajo.outputs.continuar == 'true'
         env:
           VITE_APP_VERSION: ${{ github.ref_name }}-${{ github.sha }}
@@ -476,6 +487,7 @@ jobs:
           node scripts/build.mjs --mode staging --solo sitio --sitio "$SITIO"
 
       - name: Pruebas del sitio compilado con contenido real (dist-real.test.ts)
+        id: pruebas
         # EXIGIR_DIST=1: si falta dist/website la prueba FALLA, no se omite.
         if: steps.trabajo.outputs.continuar == 'true'
         env:
@@ -512,6 +524,7 @@ jobs:
             || echo "::warning::$CLAVE: no se pudo guardar la copia para rollback (live → previa). ¿Primer despliegue o sitio sin crear?"
 
       - name: Desplegar el sitio (solo hosting de este sitio)
+        id: despliegue
         if: steps.trabajo.outputs.continuar == 'true'
         run: |
           set -euo pipefail
@@ -535,6 +548,7 @@ jobs:
           echo "### Sitio $CLAVE desplegado en staging" >> "$GITHUB_STEP_SUMMARY"
 
       - name: Humo del sitio (/, /productos y /api/cotizacion?mercado=BO en 200)
+        id: humo
         if: steps.trabajo.outputs.continuar == 'true'
         run: |
           set -uo pipefail
@@ -582,6 +596,7 @@ jobs:
       # no se reintenta. Un CDN que siguiera sirviendo la versión anterior más
       # allá de eso es un fallo que debe verse, no esperarse.
       - name: Certificar el sitio desplegado contra el contenido del build
+        id: certificar
         # Compara contra el MISMO contenido con el que se compiló el sitio
         # ($SITIO_CONTENIDO, escrito por «Generar»): una publicación hecha en la
         # consola entre el build y este paso no da una falsa alarma.
@@ -692,6 +707,13 @@ jobs:
         # certificación tras el despliegue: si falla, cierre_completada queda
         # 'skipped'. En la certificación a pedido `trabajo` está vacío y ningún
         # cierre corre.
+        #
+        # Etapa (1.4): cancelado si el job se canceló; si no, la PRIMERA de las
+        # etapas que no terminó en 'success'. Como cada paso posterior a un
+        # fallo se omite, un fallo intermedio cae en la etapa siguiente:
+        # dependencias → generar; firebase.json, WIF, firebase-tools o la copia
+        # previa → despliegue. Las causas solo se envían si «Generar» las
+        # escribió; el archivo nunca se imprime.
         if: >-
           (failure() || cancelled())
           && steps.trabajo.outputs.trabajo != ''
@@ -699,10 +721,35 @@ jobs:
         env:
           SITIO_RECONSTRUCCION_SECRETO: ${{ secrets.SITIO_RECONSTRUCCION_SECRETO }}
           ID_TRABAJO: ${{ steps.trabajo.outputs.trabajo }}
+          ESTADO_JOB: ${{ job.status }}
+          RESULTADO_GENERAR: ${{ steps.generar.outcome }}
+          RESULTADO_BUILD: ${{ steps.build.outcome }}
+          RESULTADO_PRUEBAS: ${{ steps.pruebas.outcome }}
+          RESULTADO_DESPLIEGUE: ${{ steps.despliegue.outcome }}
+          RESULTADO_HUMO: ${{ steps.humo.outcome }}
+          RESULTADO_CERTIFICAR: ${{ steps.certificar.outcome }}
         run: |
           set -euo pipefail
           echo "::add-mask::$SITIO_RECONSTRUCCION_SECRETO"
-          node scripts/contenido-sitio.mjs estado "$ID_TRABAJO" fallida --tenant "$TENANT" --url "$URL_SITIO"
+          etapa=''
+          if [[ "$ESTADO_JOB" == 'cancelled' ]]; then
+            etapa='cancelado'
+          else
+            for par in "generar:$RESULTADO_GENERAR" "build:$RESULTADO_BUILD" "pruebas:$RESULTADO_PRUEBAS" \
+                       "despliegue:$RESULTADO_DESPLIEGUE" "humo:$RESULTADO_HUMO" "certificacion:$RESULTADO_CERTIFICAR"; do
+              resultado="${par#*:}"
+              if [[ "$resultado" == 'cancelled' ]]; then etapa='cancelado'; break; fi
+              if [[ "$resultado" != 'success' ]]; then etapa="${par%%:*}"; break; fi
+            done
+            # Todas en 'success' y aun así un fallo: solo puede venir después
+            # de la certificación (el cierre `completada` fallido no llega aquí).
+            [[ -n "$etapa" ]] || etapa='certificacion'
+          fi
+          args=(estado "$ID_TRABAJO" fallida --etapa "$etapa")
+          causas="$RUNNER_TEMP/sitio/causas.json"
+          if [[ -f "$causas" ]]; then args+=(--causas "$causas"); fi
+          node scripts/contenido-sitio.mjs "${args[@]}" --tenant "$TENANT" --url "$URL_SITIO"
+          echo "::notice::$CLAVE: etapa fallida: $etapa."
           echo "::error::$CLAVE: reconstrucción fallida; trabajo cerrado como fallida. Rollback: clonar previa → live del sitio."
 
       - name: Cerrar los pendientes cubiertos por este despliegue

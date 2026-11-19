@@ -613,6 +613,53 @@ describe('servicios de la consola', () => {
       await expect(obtenerTablero({ db, reloj, comercial: COMERCIAL_LEGADO_TRES_MONEDAS, cotizaciones: almacenCot({}) }, { tenantId: T, actor: actor('caj') })).rejects.toMatchObject({ codigo: 'no-autorizado' });
     });
 
+    describe('ultimaReconstruccion en el tablero', () => {
+      const tablero = () => obtenerTablero(
+        { db, reloj, comercial: COMERCIAL_LEGADO_TRES_MONEDAS, cotizaciones: almacenCot({}) },
+        { tenantId: T, actor: sup },
+      );
+      const ruta = `tenants/${T}/sitio/ultimaReconstruccion`;
+
+      it('sin documento devuelve null', async () => {
+        expect((await tablero()).ultimaReconstruccion).toBeNull();
+      });
+
+      it('completada: sin etapa ni causas', async () => {
+        db.poner(ruta, { estado: 'completada', version: 3, enMs: 1_700_000_000_000 });
+        db.poner(`tenants/${T}/publicado/estado`, { version: 3 });
+        expect((await tablero()).ultimaReconstruccion).toEqual({
+          estado: 'completada', version: 3, en: '2023-11-14T22:13:20.000Z', etapa: null, enCurso: false, causas: [],
+        });
+      });
+
+      it('fallida: etapa, causas saneadas, nombres (máx. 5) y enCurso', async () => {
+        const ids = ['p1', 'p2', 'p3', 'p4', 'p5', 'p6'];
+        for (const id of ids) db.poner(`tenants/${T}/publicado/producto__${id}`, { id, nombre: `Nombre ${id}` });
+        db.poner(ruta, {
+          estado: 'fallida', version: 2, enMs: 1_700_000_000_000, etapa: 'build',
+          causas: [
+            ...ids.map((id) => ({ codigo: 'precio_fuera_de_tope', productoId: id, mercado: 'BO' })),
+            { codigo: 'inventado' }, { codigo: 'categoria_invalida', extra: 1 }, { codigo: 'demasiadas_categorias' },
+          ],
+        });
+        db.poner(`tenants/${T}/publicado/estado`, { version: 5 });
+        const u = (await tablero()).ultimaReconstruccion;
+        expect(u).toMatchObject({ estado: 'fallida', version: 2, etapa: 'build', enCurso: true });
+        expect(u?.causas).toHaveLength(7);
+        expect(u?.causas[0]).toEqual({ codigo: 'precio_fuera_de_tope', mercado: 'BO', producto: 'Nombre p1' });
+        expect(u?.causas[4]?.producto).toBe('Nombre p5');
+        expect(u?.causas[5]).toEqual({ codigo: 'precio_fuera_de_tope', mercado: 'BO' });
+        expect(u?.causas[6]).toEqual({ codigo: 'demasiadas_categorias' });
+      });
+
+      it('documento corrupto o etapa inválida no rompe el tablero', async () => {
+        db.poner(ruta, { estado: 'rara', version: 1, enMs: 1 });
+        expect((await tablero()).ultimaReconstruccion).toBeNull();
+        db.poner(ruta, { estado: 'fallida', version: 1, enMs: 1, etapa: 'nada', causas: 'x' });
+        expect((await tablero()).ultimaReconstruccion).toMatchObject({ etapa: null, causas: [] });
+      });
+    });
+
     async function configurar(): Promise<void> {
       await guardarConfigSitio(ds(), { tenantId: T, actor: adm, config: { plantillaActiva: 'ambar', whatsappNovuchat: '59170000000', medicion: {} } });
     }

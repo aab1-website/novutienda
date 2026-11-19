@@ -1,13 +1,15 @@
 // Endpoints firmados para la reconstrucción del sitio (los llamará GitHub Actions; la reconstrucción real en CI
 // es de otra ola). Contrato en docs/produccion/reconstruccion-sitio.md.
 //   GET  /api/sitio/v1/reconstrucciones?tenantId=T[&estado=pendiente]   → trabajos encolados
-//   POST /api/sitio/v1/reconstrucciones/{id}/estado  {tenantId, estado}  → en_curso | completada | fallida
+//   POST /api/sitio/v1/reconstrucciones/{id}/estado  {tenantId, estado[, etapa, causas]} → en_curso | completada | fallida
+//        `etapa` y `causas` son opcionales y se validan en el núcleo (lo inválido se descarta; la transición se hace igual).
+//        Al terminar (completada o fallida) el resultado se copia a `tenants/{t}/sitio/ultimaReconstruccion` para la consola.
 //   GET  /api/sitio/v1/publicado?tenantId=T                            → copia publicada (`publicado/`) y `redondeo`
 //        (política de `tenants/T/config/redondeo`; la reconstrucción la inyecta en `config.redondeo` del contenido del sitio)
 // Firma: `X-Marca-Tiempo` (ms Unix) y `X-Firma` = HMAC-SHA256 hex de `{marca}.{MÉTODO}\n{url con consulta}\n{cuerpo}`
 // con el secreto SITIO_RECONSTRUCCION_SECRETO; ventana de 5 minutos.
 import { verificarFirma } from '@novutienda/nucleo/servidor';
-import { esTenantIdValido } from '@novutienda/nucleo';
+import { esEtapaFallaSitio, esTenantIdValido, leerCausasFallaSitio } from '@novutienda/nucleo';
 import type { Entorno } from '../entorno.js';
 import { json, type PeticionHttp, type RespuestaApi } from './tipos.js';
 
@@ -50,16 +52,29 @@ export async function manejarSitio(
   const m = /^\/api\/sitio\/v1\/reconstrucciones\/([^/]+)\/estado$/.exec(req.ruta);
   if (m?.[1] !== undefined && req.metodo === 'POST') {
     const id = m[1];
-    const nuevo = (req.cuerpo as { estado?: unknown } | null)?.estado;
+    const cuerpo = req.cuerpo as { estado?: unknown; etapa?: unknown; causas?: unknown } | null;
+    const nuevo = cuerpo?.estado;
     if (!ID_TRABAJO.test(id) || typeof nuevo !== 'string' || !(ESTADOS as readonly string[]).includes(nuevo)) return json(400, { error: 'entrada_invalida' });
     const ref = e.firestore.doc(`${base}/reconstrucciones/${id}`);
+    const refUltima = e.firestore.doc(`${base}/sitio/ultimaReconstruccion`);
+    // Solo se conserva lo que el núcleo valida; el resto se descarta sin rechazar la transición. Una completada no lleva causas.
+    const terminal = nuevo === 'completada' || nuevo === 'fallida';
+    const etapa = nuevo === 'fallida' && esEtapaFallaSitio(cuerpo?.etapa) ? cuerpo.etapa : undefined;
+    const causas = nuevo === 'fallida' ? leerCausasFallaSitio(cuerpo?.causas) : [];
     return e.db.firestore.runTransaction(async (tx) => {
       const d = (await tx.get(ref)).data();
       if (d === undefined) return json(404, { error: 'no_encontrado' });
       const actual = d['estado'] as Estado;
       if (actual === nuevo) return json(200, { id, estado: actual, repetido: true });
       if (!(SIGUIENTE[actual] ?? []).includes(nuevo as Estado)) return json(409, { error: 'transicion_invalida', desde: actual, hacia: nuevo });
-      tx.update(ref, { estado: nuevo, [`${nuevo}EnMs`]: e.ahora() });
+      const ahora = e.ahora();
+      const version = typeof d['version'] === 'number' ? d['version'] : null;
+      // Lectura antes de escribir (transacción): la última reconstrucción solo avanza si esta versión no es menor que la guardada.
+      const guardada = terminal && version !== null ? (await tx.get(refUltima)).data()?.['version'] : undefined;
+      tx.update(ref, { estado: nuevo, [`${nuevo}EnMs`]: ahora, ...(terminal ? { causas, ...(etapa !== undefined ? { etapa } : {}) } : {}) });
+      if (terminal && version !== null && !(typeof guardada === 'number' && guardada > version)) {
+        tx.set(refUltima, { estado: nuevo, version, enMs: ahora, ...(etapa !== undefined ? { etapa } : {}), ...(causas.length > 0 ? { causas } : {}) });
+      }
       return json(200, { id, estado: nuevo });
     });
   }

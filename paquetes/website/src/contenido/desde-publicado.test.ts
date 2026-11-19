@@ -1,3 +1,4 @@
+import { MAX_CATEGORIAS_SITIO } from '@novutienda/nucleo';
 import { describe, expect, it } from 'vitest';
 import { ErrorContenidoPublicado, contenidoDesdePublicado, iconoDeCategoria, nombreDeCategoria, type EntornoSitio } from './desde-publicado.js';
 import { contenidoEjemplo } from './ejemplo.js';
@@ -387,5 +388,36 @@ describe('validarNegocio', () => {
     expect(c.publicacion).toEqual({ version: 7, publicadoEn: '2026-11-10T12:00:00.000Z' });
     const sinFecha = contenidoDesdePublicado(respuesta(), negocioBase(), entorno);
     expect(sinFecha.publicacion).toEqual({ version: 3, publicadoEn: null });
+  });
+});
+
+describe('causas saneadas del error', () => {
+  const capturar = (r: unknown, n: unknown = negocioBase()): ErrorContenidoPublicado => {
+    try { contenidoDesdePublicado(r, n, entorno); } catch (e) { return e as ErrorContenidoPublicado; }
+    throw new Error('debía fallar');
+  };
+  it('un precio fuera de tope señala producto y mercado', () => {
+    const r = respuesta({ producto__uno: prod('p-uno', { precioUSD: { bo: 2_000_000, ar: 120 } }) });
+    const e = capturar(r);
+    expect(e.causas).toEqual([{ codigo: 'precio_fuera_de_tope', productoId: 'p-uno', mercado: 'BO' }]);
+  });
+  it('una categoría inválida señala el primer producto que la usa', () => {
+    const r = respuesta({ producto__uno: prod('p-uno', { categoria: 'Categoría Mala!' }) });
+    const e = capturar(r);
+    expect(e.causas.some((c) => c.codigo === 'categoria_invalida' && c.productoId === 'p-uno')).toBe(true);
+  });
+  it('más categorías que el tope: demasiadas_categorias', () => {
+    const extra: Record<string, unknown> = {};
+    for (let i = 0; i <= MAX_CATEGORIAS_SITIO; i += 1) extra[`producto__c${i}`] = prod(`c${i}`, { categoria: `cat-${i}` });
+    const e = capturar(respuesta(extra));
+    expect(e.causas).toContainEqual({ codigo: 'demasiadas_categorias' });
+  });
+  it('otros errores: contenido_invalido sin datos, una sola vez', () => {
+    const e = capturar({}, negocioBase());
+    expect(e.causas).toEqual([{ codigo: 'contenido_invalido' }]);
+  });
+  it('las causas no llevan texto libre', () => {
+    const r = respuesta({ producto__uno: prod('p-uno', { precioUSD: { bo: 2_000_000, ar: 120 } }) });
+    expect(JSON.stringify(capturar(r).causas)).not.toContain('Producto p-uno');
   });
 });

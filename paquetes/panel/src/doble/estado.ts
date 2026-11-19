@@ -47,6 +47,8 @@ export interface EstadoDoble {
   versionPublicada: number;
   /** Aviso de sitio incompleto que devuelve el tablero; una publicación correcta lo deja en `null`. */
   avisoSitio: Tablero['avisoSitio'];
+  /** Resultado de la última reconstrucción que devuelve el tablero; publicar lo deja en «completada». Una prueba puede sembrar una falla. */
+  ultimaReconstruccion: Tablero['ultimaReconstruccion'];
   usuarios: Mutable<UsuarioVista>[];
   /** Módulos encendidos del negocio (el doble los enciende todos; una prueba puede apagar alguno). */
   modulos: string[];
@@ -139,7 +141,7 @@ export function crearEstado(ahora: number): EstadoDoble {
     plantilla: { negocio: { nombre: 'Negocio de ejemplo', direccion: 'Calle Ejemplo 123', telefono: '70000000' }, pie: 'Comprobante no fiscal.', politicaGarantia: 'Garantía según ficha del producto.', politicaCambios: 'Cambios dentro de 7 días con el comprobante.' },
     auditoria: [], fichas: new Map(), medios: new Map(), logo: null, subidas: new Map(), disparador: { demoraMs: 15 }, secciones: [], carruseles: new Map(),
     configSitio: { plantillaActiva: 'cielo', whatsappNovuchat: '59170000000', medicion: {} },
-    cambiosSinPublicar: 0, ultimoCambioEn: iso(ahora), publicadoEn: null, versionPublicada: 0, avisoSitio: null,
+    cambiosSinPublicar: 0, ultimoCambioEn: iso(ahora), publicadoEn: null, versionPublicada: 0, avisoSitio: null, ultimaReconstruccion: null,
     modulos: ['inventarios', 'pos', 'recibos', 'consola', 'website'],
     comercial: {
       mercados: [

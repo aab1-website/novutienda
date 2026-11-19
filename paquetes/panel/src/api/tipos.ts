@@ -1,9 +1,9 @@
 // Tipos del contrato del panel. Se re-declaran (no se importan de los módulos) para que el panel no dependa de su
 // código: cada tipo copia la forma serializable que devuelve la función pública del módulo indicado. Los montos son
 // centavos enteros, igual que en el POS. Las fechas viajan como milisegundos (`...Ms`) o texto ISO, como en el módulo.
-import type { CopiaCotizacion, Rol } from '@novutienda/nucleo';
+import type { CodigoCausaSitio, CopiaCotizacion, EtapaFallaSitio, Rol } from '@novutienda/nucleo';
 
-export type { CopiaCotizacion, Rol };
+export type { CodigoCausaSitio, CopiaCotizacion, EtapaFallaSitio, Rol };
 
 // ---------------------------------------------------------------------------------------------------------------------
 // POS (docs/modulos/pos.md; paquetes/pos/src/tipos.ts)
@@ -605,6 +605,24 @@ export type CotizacionTablero =
   | { readonly mercado: string; readonly estado: 'vigente' | 'ultimo_verificado'; readonly par: string; readonly valor: number; readonly fecha: string; readonly fuente: string }
   | { readonly mercado: string; readonly estado: 'sin_cotizacion'; readonly motivo: string };
 
+/** Causa de una reconstrucción fallida del sitio; `producto` es el nombre (nunca el id). */
+export interface CausaReconstruccion {
+  readonly codigo: CodigoCausaSitio;
+  readonly mercado?: string;
+  readonly producto?: string;
+}
+
+/** Resultado de la última reconstrucción del sitio (`null` si nunca hubo una). */
+export interface UltimaReconstruccion {
+  readonly estado: 'completada' | 'fallida';
+  readonly version: number;
+  /** Instante ISO. */
+  readonly en: string;
+  readonly etapa: EtapaFallaSitio | null;
+  readonly enCurso: boolean;
+  readonly causas: readonly CausaReconstruccion[];
+}
+
 export interface Tablero {
   readonly cambiosSinPublicar: number;
   readonly ultimoCambioEn: string;
@@ -612,6 +630,7 @@ export interface Tablero {
   readonly versionPublicada: number;
   /** Si un retiro automático dejó el sitio sin productos o sin fotos (`en`: instante ISO del retiro); `null` si no hay aviso. */
   readonly avisoSitio: { readonly motivo: 'sin_productos' | 'sin_fotos'; readonly en: string } | null;
+  readonly ultimaReconstruccion: UltimaReconstruccion | null;
   readonly cotizaciones: readonly CotizacionTablero[];
   readonly uso: {
     readonly productos: { readonly usados: number; readonly tope: number };
