@@ -1,10 +1,10 @@
 // Contenido del sitio de un tenant: cola de reconstrucción y generación del JSON que compila el sitio.
 //
 //   node scripts/contenido-sitio.mjs pendiente --tenant <t> --url <https://origen>
-//   node scripts/contenido-sitio.mjs estado <id> <en_curso|completada|fallida> --tenant <t> --url <https://origen>
+//   node scripts/contenido-sitio.mjs estado <id> <en_curso|completada|fallida> --tenant <t> --url <https://origen> [--etapa <e> --causas <ruta>]
 //   node scripts/contenido-sitio.mjs rezagados --tenant <t> --url <https://origen> [--excepto <id>]
 //   node scripts/contenido-sitio.mjs cubiertos --contenido <ruta> --hasta-ms <ms> --tenant <t> --url <https://origen>
-//   node scripts/contenido-sitio.mjs generar --salida <ruta> --tenant <t> --url <https://origen>
+//   node scripts/contenido-sitio.mjs generar --salida <ruta> [--causas <ruta>] --tenant <t> --url <https://origen>
 //
 // Contrato (docs/produccion/reconstruccion-sitio.md):
 // - Entorno: SITIO_RECONSTRUCCION_SECRETO (obligatorio; firma HMAC-SHA256 hex con `node:crypto`, idéntica a `calcularFirma` del
@@ -26,6 +26,11 @@
 //   firmando de nuevo cada intento con la marca de tiempo del momento. Los 3xx y 4xx no se reintentan.
 // - `generar`: GET firmado de `publicado`, disponibilidad pública en lotes de 50, mapeo `contenidoDesdePublicado` (que `plataforma/registro.ts`
 //   debe reexportar) y escritura del JSON validado en --salida. Imprime solo conteos y, de las advertencias del mapeo (enlaces de carrusel descartados), su número y las rutas de campo con ids enmascarados.
+// - `estado ... fallida`: acepta --etapa (una de: generar, build, pruebas, despliegue, humo, certificacion, cancelado; opcional para no romper llamadas previas) y --causas <ruta>: un
+//   archivo de 8 KB como máximo con una lista JSON de causas, que se envía tal cual en el cuerpo firmado (`causas`). Si el archivo no existe,
+//   pesa más o no es una lista JSON, la transición se envía sin causas y se avisa sin mostrar el contenido. --etapa y --causas solo valen con `fallida`.
+// - `generar --causas <ruta>`: solo si `generar` falla por contenido inválido, escribe allí la lista de causas (modo 0600) y NUNCA la imprime;
+//   un archivo previo se borra al empezar. El núcleo no se importa en `estado`.
 // - Seguridad: sin redirecciones (`redirect: 'manual'`; un 3xx falla sin reintentarse), tiempo máximo de 30 s por petición; http://localhost y 127.0.0.1 solo con
 //   NODE_ENV=test. --salida se borra antes de escribir y queda con modo 0600.
 // - Nunca imprime el secreto, la firma, las respuestas ni datos de productos; los errores dan el motivo, no valores.
@@ -37,6 +42,9 @@ import { pathToFileURL } from 'node:url';
 export const RE_TENANT = /^[a-z0-9][a-z0-9-]{0,62}$/;
 export const RE_ID_TRABAJO = /^[A-Za-z0-9][A-Za-z0-9_-]{0,100}$/;
 export const ESTADOS = ['en_curso', 'completada', 'fallida'];
+export const ETAPAS = ['generar', 'build', 'pruebas', 'despliegue', 'humo', 'certificacion', 'cancelado'];
+export const MAX_BYTES_CAUSAS = 8192;
+const MAX_CAUSAS = 20;
 export const LOTE_DISPONIBILIDAD = 50;
 export const CODIGO_TOMADO_POR_OTRO = 3;
 export const CODIGO_INEXISTENTE = 4;
@@ -165,14 +173,48 @@ export async function trabajosPendientes(opciones) {
 }
 
 /** Cambia el estado de un trabajo. 409 => código 3; 404 => código 4. */
-export async function cambiarEstado(opciones, id, estado) {
+export async function cambiarEstado(opciones, id, estado, extra = {}) {
   if (!RE_ID_TRABAJO.test(id ?? '')) throw new ErrorContenidoSitio('id de trabajo inválido');
   if (!ESTADOS.includes(estado)) throw new ErrorContenidoSitio('estado no válido');
-  const r = await pedirFirmado({ ...opciones, metodo: 'POST', ruta: rutaEstado(id), cuerpo: { tenantId: opciones.tenant, estado } });
+  const cuerpo = { tenantId: opciones.tenant, estado };
+  if (extra.etapa !== undefined) {
+    if (!ETAPAS.includes(extra.etapa)) throw new ErrorContenidoSitio('etapa no válida');
+    cuerpo.etapa = extra.etapa;
+  }
+  if (extra.causas !== undefined) cuerpo.causas = extra.causas;
+  const r = await pedirFirmado({ ...opciones, metodo: 'POST', ruta: rutaEstado(id), cuerpo });
   if (r.estado === 409) throw new ErrorContenidoSitio('estado: el trabajo lo tomó otro corredor o la transición no se permite (409)', CODIGO_TOMADO_POR_OTRO);
   if (r.estado === 404) throw new ErrorContenidoSitio('estado: el trabajo no existe (404)', CODIGO_INEXISTENTE);
   exigirOk(r, 'estado');
   return r.json?.repetido === true ? 'repetido' : 'cambiado';
+}
+
+/**
+ * Lee la lista de causas de un archivo (8 KB como máximo, JSON lista). Si no existe, pesa de más o no es una lista, avisa (sin mostrar
+ * el contenido) y devuelve undefined: la transición se envía sin causas.
+ */
+export function leerArchivoCausas(ruta, avisar = avisarReal) {
+  try {
+    // Una sola lectura (sin stat previo: evita la carrera entre comprobar y leer); el tope se aplica sobre lo leído.
+    const bytes = readFileSync(resolve(ruta));
+    if (bytes.length > MAX_BYTES_CAUSAS) throw new Error('tamaño');
+    const causas = JSON.parse(bytes.toString('utf8'));
+    if (!Array.isArray(causas)) throw new Error('forma');
+    return causas;
+  } catch {
+    avisar('estado: --causas inexistente, de más de 8 KB o no es una lista JSON; se envía la transición sin causas');
+    return undefined;
+  }
+}
+
+/** Causas saneadas del error del mapeo; si no las trae, una causa genérica. Solo codigo, productoId y mercado, texto, máximo 20. */
+export function causasDeError(e) {
+  const lista = Array.isArray(e?.causas) ? e.causas : [];
+  const causas = lista
+    .filter((c) => c !== null && typeof c === 'object' && typeof c.codigo === 'string')
+    .slice(0, MAX_CAUSAS)
+    .map((c) => ({ codigo: c.codigo, ...(typeof c.productoId === 'string' ? { productoId: c.productoId } : {}), ...(typeof c.mercado === 'string' ? { mercado: c.mercado } : {}) }));
+  return causas.length > 0 ? causas : [{ codigo: 'contenido_invalido' }];
 }
 
 /** Ids de los trabajos `en_curso` del tenant (el servidor entrega hasta 20 por consulta). */
@@ -332,6 +374,7 @@ export function negocioDesdeEntorno(env) {
 
 /** Genera el contenido: devuelve { contenido, productos }. `mapear` es `contenidoDesdePublicado` del módulo del sitio. */
 export async function generarContenido({ tenant, url, secreto, env, calcularFirma = calcularFirmaLocal, mapear, ahoraMs, fetchFn = fetch, esperar = esperarReal, avisar = avisarReal }) {
+  // Si el mapeo rechaza el contenido, el error lleva `causas` (propiedad, no parte del mensaje) para que `generar --causas` las escriba.
   // La base lleva el bucket como ruta; el esquema del sitio valida el ORIGEN (CSP) y arma las url de fotos con la base completa.
   const baseMedios = normalizarUrl(env.MEDIOS_BASE_URL ?? '', env.NODE_ENV === 'test', 'MEDIOS_BASE_URL', true);
   const origenMedios = new URL(baseMedios).origin;
@@ -350,7 +393,9 @@ export async function generarContenido({ tenant, url, secreto, env, calcularFirm
     // Solo rutas de campos: los ids de productos, secciones y categorías se enmascaran (el log de CI es público).
     const errores = Array.isArray(e?.errores) ? e.errores.filter((m) => typeof m === 'string') : [];
     const rutas = [...new Set(errores.map(enmascararRuta))];
-    throw new ErrorContenidoSitio(`generar: el contenido publicado no es válido (${errores.length} errores)${rutas.length > 0 ? `. Campos afectados: ${rutas.slice(0, 20).join(', ')}` : ''}`);
+    const error = new ErrorContenidoSitio(`generar: el contenido publicado no es válido (${errores.length} errores)${rutas.length > 0 ? `. Campos afectados: ${rutas.slice(0, 20).join(', ')}` : ''}`);
+    error.causas = causasDeError(e);
+    throw error;
   }
   // Solo rutas de campo, enmascaradas; el conteo es el de avisos (no el de rutas distintas).
   const advertencias = avisosMapeo.filter((m) => typeof m === 'string').map(enmascararRuta);
@@ -381,7 +426,7 @@ export async function ejecutar(args, env = process.env, deps = undefined, fetchF
   const { esperar = esperarReal, avisar = avisarReal } = red;
   try {
     const [sub] = args;
-    if (!['pendiente', 'estado', 'rezagados', 'cubiertos', 'generar'].includes(sub)) throw new ErrorContenidoSitio('uso: contenido-sitio.mjs pendiente | estado <id> <estado> | rezagados [--excepto <id>] | cubiertos --contenido <ruta> --hasta-ms <ms> | generar --salida <ruta>  (con --tenant y --url)', 2);
+    if (!['pendiente', 'estado', 'rezagados', 'cubiertos', 'generar'].includes(sub)) throw new ErrorContenidoSitio('uso: contenido-sitio.mjs pendiente | estado <id> <estado> [--etapa <e> --causas <ruta>] | rezagados [--excepto <id>] | cubiertos --contenido <ruta> --hasta-ms <ms> | generar --salida <ruta> [--causas <ruta>]  (con --tenant y --url)', 2);
     let rutaContenido;
     let hastaMs;
     if (sub === 'cubiertos') {
@@ -390,6 +435,23 @@ export async function ejecutar(args, env = process.env, deps = undefined, fetchF
       if (rutaContenido === undefined || rutaContenido === '') throw new ErrorContenidoSitio('falta --contenido', 2);
       if (typeof hasta !== 'string' || !/^\d{13}$/.test(hasta)) throw new ErrorContenidoSitio('--hasta-ms debe tener 13 dígitos', 2);
       hastaMs = Number(hasta);
+    }
+    let etapa;
+    let rutaCausasEstado;
+    let rutaCausasGenerar;
+    if (sub === 'estado') {
+      etapa = valor(args, 'etapa');
+      rutaCausasEstado = valor(args, 'causas');
+      if (args[2] === 'fallida') {
+        if (etapa !== undefined && !ETAPAS.includes(etapa)) throw new ErrorContenidoSitio(`--etapa debe ser una de: ${ETAPAS.join(', ')}`, 2);
+        if (rutaCausasEstado === '') throw new ErrorContenidoSitio('--causas requiere una ruta', 2);
+      } else if (etapa !== undefined || rutaCausasEstado !== undefined) {
+        throw new ErrorContenidoSitio('--etapa y --causas solo valen con el estado fallida', 2);
+      }
+    }
+    if (sub === 'generar') {
+      rutaCausasGenerar = valor(args, 'causas');
+      if (rutaCausasGenerar === '') throw new ErrorContenidoSitio('--causas requiere una ruta', 2);
     }
     const tenant = validarTenant(valor(args, 'tenant'));
     const url = normalizarUrl(valor(args, 'url'), env.NODE_ENV === 'test');
@@ -404,7 +466,13 @@ export async function ejecutar(args, env = process.env, deps = undefined, fetchF
     }
     if (sub === 'estado') {
       const [, id, estado] = args;
-      const r = await cambiarEstado(base, id, estado);
+      const extra = {};
+      if (etapa !== undefined) extra.etapa = etapa;
+      if (rutaCausasEstado !== undefined) {
+        const causas = leerArchivoCausas(rutaCausasEstado, avisar);
+        if (causas !== undefined) extra.causas = causas;
+      }
+      const r = await cambiarEstado(base, id, estado, extra);
       return { codigo: 0, salida: `estado ${r}` };
     }
     if (sub === 'rezagados') {
@@ -429,7 +497,20 @@ export async function ejecutar(args, env = process.env, deps = undefined, fetchF
     }
     const salida = valor(args, 'salida');
     if (salida === undefined || salida === '') throw new ErrorContenidoSitio('falta --salida', 2);
-    const { contenido, productos, invalidos, advertencias } = await generarContenido({ tenant, url, secreto, env, calcularFirma: d?.calcularFirma, mapear: d.mapear, fetchFn, esperar, avisar });
+    if (rutaCausasGenerar !== undefined) rmSync(resolve(rutaCausasGenerar), { force: true }); // sin restos de una corrida previa
+    let generado;
+    try {
+      generado = await generarContenido({ tenant, url, secreto, env, calcularFirma: d?.calcularFirma, mapear: d.mapear, fetchFn, esperar, avisar });
+    } catch (e) {
+      // Solo si falla por contenido inválido (el error trae `causas`): se escriben en el archivo y no se imprimen.
+      if (rutaCausasGenerar !== undefined && e instanceof ErrorContenidoSitio && Array.isArray(e.causas)) {
+        const archivo = resolve(rutaCausasGenerar);
+        mkdirSync(dirname(archivo), { recursive: true });
+        writeFileSync(archivo, `${JSON.stringify(e.causas)}\n`, { mode: 0o600 });
+      }
+      throw e;
+    }
+    const { contenido, productos, invalidos, advertencias } = generado;
     const destino = resolve(salida);
     mkdirSync(dirname(destino), { recursive: true });
     rmSync(destino, { force: true }); // un archivo previo con otros permisos no se reutiliza

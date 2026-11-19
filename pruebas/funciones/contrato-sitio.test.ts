@@ -715,4 +715,90 @@ describe.skipIf(!hayEmulador)('contrato consola → /publicado → contenido del
       expect((await catalogoDe(t)).map((i) => i.id)).toEqual(['bor-a']);
     });
   });
+
+  describe('resultado de la reconstrucción: etapa, causas y sitio/ultimaReconstruccion', () => {
+    const cambiarEstado = (t: string, id: string, cuerpo: Record<string, unknown>) => {
+      const ruta = `/api/sitio/v1/reconstrucciones/${id}/estado`;
+      const texto = JSON.stringify({ tenantId: t, ...cuerpo });
+      const marca = String(Date.now());
+      return http(ruta, { method: 'POST', headers: { 'content-type': 'application/json', 'x-marca-tiempo': marca, 'x-firma': firmar(secretoSitio, marca, `POST\n${ruta}\n${texto}`) }, body: texto });
+    };
+    const trabajo = async (t: string, version: number): Promise<string> => {
+      const id = unico('rec');
+      await h.firestore.doc(`tenants/${t}/reconstrucciones/${id}`).set({ estado: 'pendiente', version, motivo: 'publicacion', solicitadaEnMs: AHORA });
+      expect((await cambiarEstado(t, id, { estado: 'en_curso' })).status).toBe(200);
+      return id;
+    };
+    const ultima = async (t: string): Promise<Record<string, unknown> | undefined> => (await h.firestore.doc(`tenants/${t}/sitio/ultimaReconstruccion`).get()).data();
+    const datosTrabajo = async (t: string, id: string): Promise<Record<string, unknown>> => (await h.firestore.doc(`tenants/${t}/reconstrucciones/${id}`).get()).data()!;
+
+    it('fallida con etapa y causas válidas: quedan en el trabajo y en ultimaReconstruccion con su forma exacta', async () => {
+      const t = await nuevoTenant();
+      const id = await trabajo(t, 4);
+      const causas = [{ codigo: 'precio_fuera_de_tope', productoId: 'lavajilla-1', mercado: 'AR' }, { codigo: 'demasiadas_categorias' }];
+      const r = await cambiarEstado(t, id, { estado: 'fallida', etapa: 'generar', causas });
+      expect(r.status, r.texto).toBe(200);
+      expect(await ultima(t)).toEqual({ estado: 'fallida', version: 4, enMs: expect.any(Number), etapa: 'generar', causas });
+      expect(await datosTrabajo(t, id)).toMatchObject({ estado: 'fallida', etapa: 'generar', causas });
+    });
+
+    it('lo inválido se descarta y la transición se hace igual: nunca queda en_curso', async () => {
+      const t = await nuevoTenant();
+      const id = await trabajo(t, 2);
+      const r = await cambiarEstado(t, id, {
+        estado: 'fallida', etapa: 'inventada',
+        causas: [{ codigo: 'otro' }, { codigo: 'contenido_invalido', texto: 'libre' }, { codigo: 'categoria_invalida', productoId: 'Mayus' }, { codigo: 'categoria_invalida', productoId: 'ok-1' }, 'x'],
+      });
+      expect(r.status, r.texto).toBe(200);
+      expect((await datosTrabajo(t, id))['estado']).toBe('fallida');
+      expect(await ultima(t)).toEqual({ estado: 'fallida', version: 2, enMs: expect.any(Number), causas: [{ codigo: 'categoria_invalida', productoId: 'ok-1' }] });
+    });
+
+    it('fallida sin etapa ni causas (script viejo): ultimaReconstruccion lleva solo estado, version y enMs', async () => {
+      const t = await nuevoTenant();
+      const id = await trabajo(t, 7);
+      expect((await cambiarEstado(t, id, { estado: 'fallida' })).status).toBe(200);
+      expect(await ultima(t)).toEqual({ estado: 'fallida', version: 7, enMs: expect.any(Number) });
+    });
+
+    it('completada: se guarda sin causas ni etapa aunque vengan en el cuerpo', async () => {
+      const t = await nuevoTenant();
+      const id = await trabajo(t, 5);
+      expect((await cambiarEstado(t, id, { estado: 'completada', etapa: 'build', causas: [{ codigo: 'contenido_invalido' }] })).status).toBe(200);
+      expect(await ultima(t)).toEqual({ estado: 'completada', version: 5, enMs: expect.any(Number) });
+      expect(await datosTrabajo(t, id)).toMatchObject({ estado: 'completada', causas: [] });
+      expect((await datosTrabajo(t, id))['etapa']).toBeUndefined();
+    });
+
+    it('un trabajo de versión menor no pisa el resultado de uno más nuevo; uno igual o mayor sí', async () => {
+      const t = await nuevoTenant();
+      const nuevo = await trabajo(t, 10);
+      const viejo = await trabajo(t, 9);
+      expect((await cambiarEstado(t, nuevo, { estado: 'completada' })).status).toBe(200);
+      expect((await cambiarEstado(t, viejo, { estado: 'fallida', etapa: 'build' })).status).toBe(200);
+      expect((await datosTrabajo(t, viejo))['estado']).toBe('fallida'); // el trabajo sí cambia
+      expect(await ultima(t)).toEqual({ estado: 'completada', version: 10, enMs: expect.any(Number) });
+      const igual = await trabajo(t, 10);
+      expect((await cambiarEstado(t, igual, { estado: 'fallida', etapa: 'humo' })).status).toBe(200);
+      expect(await ultima(t)).toEqual({ estado: 'fallida', version: 10, enMs: expect.any(Number), etapa: 'humo' });
+    });
+
+    it('en_curso no escribe ultimaReconstruccion y las causas no se aceptan fuera de lista (más de 20 se recortan a 20)', async () => {
+      const t = await nuevoTenant();
+      const id = await trabajo(t, 3);
+      expect(await ultima(t)).toBeUndefined();
+      const muchas = Array.from({ length: 25 }, (_, i) => ({ codigo: 'precio_fuera_de_tope', productoId: `p-${String(i)}`, mercado: 'BO' }));
+      expect((await cambiarEstado(t, id, { estado: 'fallida', etapa: 'generar', causas: muchas })).status).toBe(200);
+      expect((await ultima(t))!['causas']).toHaveLength(20);
+    });
+
+    it('repetir el mismo estado es idempotente y no reescribe el resultado', async () => {
+      const t = await nuevoTenant();
+      const id = await trabajo(t, 6);
+      await cambiarEstado(t, id, { estado: 'fallida', etapa: 'build' });
+      const r = await cambiarEstado(t, id, { estado: 'fallida', etapa: 'humo' });
+      expect(r.cuerpo).toMatchObject({ repetido: true });
+      expect((await ultima(t))!['etapa']).toBe('build');
+    });
+  });
 });

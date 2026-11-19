@@ -30,10 +30,28 @@ Base: la URL del sitio (`/api/sitio/v1/…`, reescrita por Hosting a la función
 | Petición | Respuesta |
 |---|---|
 | `GET /api/sitio/v1/reconstrucciones?tenantId=T[&estado=pendiente]` | `200 { trabajos: [{ id, estado, version, motivo, solicitadaEnMs }] }` (hasta 20, el más antiguo primero) |
-| `POST /api/sitio/v1/reconstrucciones/{id}/estado` con `{ "tenantId": "T", "estado": "en_curso" \| "completada" \| "fallida" }` | `200 { id, estado }`; repetir el mismo estado → `200 { repetido: true }`; transición no permitida → `409`; trabajo inexistente → `404` |
+| `POST /api/sitio/v1/reconstrucciones/{id}/estado` con `{ "tenantId": "T", "estado": "en_curso" \| "completada" \| "fallida"[, "etapa", "causas"] }` (ver «Resultado de la última reconstrucción») | `200 { id, estado }`; repetir el mismo estado → `200 { repetido: true }`; transición no permitida → `409`; trabajo inexistente → `404` |
 | `GET /api/sitio/v1/publicado?tenantId=T` | `200 { documentos: { "producto__<id>": {…}, "sitio": {…}, "estado": {…}, … }, redondeo: { BOB: Regla, ARS: Regla } }`: la copia publicada que lee la compilación y la política de redondeo de `tenants/T/config/redondeo` (sin documento rige BOB 2 decimales y ARS múltiplo de 100; un documento inválido responde `500`: no se adivina) |
 
 Errores: `401 firma_invalida`, `400 tenant_invalido | estado_invalido | entrada_invalida`, `503 no_configurado` (falta el secreto).
+
+## Resultado de la última reconstrucción
+
+**Cuerpo del POST de estado.** Además de `estado`, acepta dos campos opcionales:
+
+- `etapa`: `generar | build | pruebas | despliegue | humo | certificacion | cancelado`.
+- `causas`: como máximo 20 entradas `{ codigo, productoId?, mercado? }`.
+
+Ambos se validan en el servidor (núcleo): lo inválido se descarta y la transición se hace igual, nunca se rechaza por ellos. Solo se guardan en `fallida`; con `completada` se ignoran.
+
+**Documento para la consola.** Al terminar un trabajo (`completada` o `fallida`) el servidor, en la misma transacción, escribe `tenants/{t}/sitio/ultimaReconstruccion` con `{ estado, version, enMs, etapa?, causas? }`, y solo si la versión del trabajo no es menor que la ya guardada (un trabajo viejo no pisa a uno más nuevo). La consola lo muestra en «Catálogo y sitio». El trabajo en `reconstrucciones/{id}` también conserva `etapa` y `causas`.
+
+**Cómo llegan desde el CI.**
+
+- `contenido-sitio.mjs generar --causas <ruta>`: si el contenido publicado no es válido, escribe allí las causas saneadas (códigos, ids de producto y mercados; modo 0600). **Nunca se imprimen**: los logs de Actions son públicos.
+- El cierre `fallida` del workflow calcula la etapa (`cancelado` si el job se canceló; si no, la primera etapa que no terminó en `success`, según el resultado de cada paso) y llama a `contenido-sitio.mjs estado <id> fallida --etapa <e> [--causas <ruta>]`. Las causas solo viajan en el cuerpo firmado, y solo si `generar` escribió el archivo (máximo 8 KB, lista JSON; si no cumple, la transición se envía sin causas con un aviso sin contenido). `--etapa` y `--causas` valen solo con `fallida`.
+
+**Límite declarado.** Las causas se guardan con la versión del **trabajo** y no con la del contenido compilado. Si falla un trabajo viejo, la consola muestra «Publicando…» hasta que falle el trabajo de la versión vigente.
 
 ## Flujo real del CI (`reconstruir-sitio.yml`)
 
@@ -54,7 +72,7 @@ Solo staging. El CI principal (`ci-node-firebase.yml`) ya no despliega el sitio 
 5. `preparar-sitio-tenant.sh`: exige que `dist/firebase.json` declare solo `hosting`, con una entrada, sin `target` y con el `site` esperado; rechaza el sitio del panel (`FIREBASE_SITE_PANEL`, variable del Environment, obligatoria).
 6. Autenticación por WIF, copia del sitio vivo al canal `previa`, `firebase deploy --only hosting` (se revisa el registro además del código de salida) y humo de `/`, `/productos` (comprueba `cleanUrls`) y `/api/cotizacion?mercado=BO`. La entrada del sitio en `firebase.json` lleva `cleanUrls` (#72).
 7. Certificación del sitio desplegado contra el contenido del build (`scripts/certificar-sitio.mjs --contenido`, sin secretos de la cola ni del negocio; ver «Certificación»). Si falla, el trabajo no se cierra `completada`.
-8. Cierre: `completada`, o `fallida` si algo falló (incluida la certificación) o el run se canceló (un trabajo no queda `en_curso` para siempre). `estado` reintenta ante `502`, `503`, `504` y errores de red (4 intentos, con esperas de 2, 5 y 10 s); si aun así falla el cierre `completada`, no se marca `fallida` (el sitio ya está desplegado y probado) y el run queda en rojo.
+8. Cierre: `completada`, o `fallida` si algo falló (incluida la certificación) o el run se canceló (un trabajo no queda `en_curso` para siempre). El cierre `fallida` informa la etapa y las causas (sección «Resultado de la última reconstrucción»). `estado` reintenta ante `502`, `503`, `504` y errores de red (4 intentos, con esperas de 2, 5 y 10 s); si aun así falla el cierre `completada`, no se marca `fallida` (el sitio ya está desplegado y probado) y el run queda en rojo.
 9. Rezagados: tras un despliegue, humo y certificación correctos, haya o no trabajo propio, `contenido-sitio.mjs rezagados` marca `completada` los trabajos que quedaron `en_curso` en corridas anteriores (el grupo de concurrencia por sitio garantiza que no hay otro corredor y el sitio ya contiene lo publicado). Solo imprime el conteo; un `409` o `404` no es error, cualquier otro fallo pone el run en rojo.
 10. Pendientes cubiertos: justo antes del cierre de rezagados del punto 9 (así, si un cierre queda a medias en `en_curso`, ese mismo run lo limpia), con las mismas condiciones (despliegue, humo y certificación correctos), `contenido-sitio.mjs cubiertos` cierra como `completada` (pasando por `en_curso`) todo trabajo pendiente que cumpla las dos condiciones: (a) su `version` es menor o igual que `publicacion.version` del contenido compilado, y (b) su `solicitadaEnMs` es menor o igual que la hora de inicio del paso `generar`, registrada por el workflow. El criterio de versión es el que cubre la diferencia de reloj entre el runner y el servidor: la versión solo sube y sale de un contador del servidor, así que no depende de la hora; la hora solo descarta lo solicitado después de que `generar` leyó lo publicado, y una diferencia de reloj a lo sumo deja un pendiente para la corrida siguiente, nunca cierra uno cuya publicación el build no incluya. La disponibilidad y el redondeo no llevan versión: quedan tal como se leyeron en `generar`, de modo que un trabajo diario pedido segundos después de esa lectura, con el reloj del runner adelantado, podría cerrarse con datos de unos segundos antes. Un trabajo sin versión u hora numéricas no se cierra. Solo imprime el conteo; un `409` o `404` no es error, cualquier otro fallo pone el run en rojo.
 

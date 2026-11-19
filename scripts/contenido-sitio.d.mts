@@ -18,6 +18,8 @@ export interface OpcionesPeticion {
 export const RE_TENANT: RegExp;
 export const RE_ID_TRABAJO: RegExp;
 export const ESTADOS: readonly string[];
+export const ETAPAS: readonly string[];
+export const MAX_BYTES_CAUSAS: number;
 export const LOTE_DISPONIBILIDAD: number;
 export const CODIGO_TOMADO_POR_OTRO: number;
 export const CODIGO_INEXISTENTE: number;
@@ -28,7 +30,8 @@ export const ESTADOS_REINTENTABLES: readonly number[];
 export function esperarReal(ms: number): Promise<void>;
 export function calcularFirmaLocal(secreto: string, marcaTiempo: string, cuerpo: string): string;
 export function idsValidos(ids: readonly string[]): string[];
-export class ErrorContenidoSitio extends Error { readonly codigo: number }
+export interface CausaFalla { readonly codigo: string; readonly productoId?: string; readonly mercado?: string }
+export class ErrorContenidoSitio extends Error { readonly codigo: number; causas?: readonly CausaFalla[] }
 export function normalizarUrl(url: unknown, permitirLocal?: boolean, nombre?: string, permitirRuta?: boolean): string;
 export function validarTenant(tenant: unknown): string;
 export function cabecerasFirmadas(p: { secreto: string; metodo: string; ruta: string; cuerpo?: string; ahoraMs: number; calcularFirma?: CalcularFirma }): Record<string, string>;
@@ -39,7 +42,9 @@ export function rutaPublicado(tenant: string): string;
 export function rutaDisponibilidad(ids: readonly string[]): string;
 export function pedirFirmado(p: OpcionesPeticion & { metodo: string; ruta: string; cuerpo?: unknown }): Promise<{ estado: number; json: Record<string, unknown> | null }>;
 export function trabajoPendiente(opciones: OpcionesPeticion): Promise<string | null>;
-export function cambiarEstado(opciones: OpcionesPeticion, id: string, estado: string): Promise<'cambiado' | 'repetido'>;
+export function cambiarEstado(opciones: OpcionesPeticion, id: string, estado: string, extra?: { etapa?: string; causas?: unknown }): Promise<'cambiado' | 'repetido'>;
+export function leerArchivoCausas(ruta: string, avisar?: (mensaje: string) => void): unknown[] | undefined;
+export function causasDeError(e: unknown): CausaFalla[];
 export function trabajosEnCurso(opciones: OpcionesPeticion): Promise<string[]>;
 export function cerrarRezagados(opciones: OpcionesPeticion, excepto?: string): Promise<{ cerrados: number; fallos: number }>;
 export function trabajosPendientes(opciones: OpcionesPeticion): Promise<{ id: string; version: unknown; solicitadaEnMs: unknown }[]>;

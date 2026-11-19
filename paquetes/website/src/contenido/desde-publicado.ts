@@ -3,7 +3,7 @@
  * No importa otros módulos: lee la respuesta como `unknown` y la valida. El resultado pasa por `validarContenido`; si algo
  * falla, el error lista campos y motivos, nunca valores (el contenido es del comercio y el log es público).
  */
-import { MAX_CATEGORIAS_SITIO } from '@novutienda/nucleo';
+import { MAX_CATEGORIAS_SITIO, esIdProductoSitio, leerCausasFallaSitio, type CausaFallaSitio } from '@novutienda/nucleo';
 import {
   IDS_PLANTILLA, LIMITES_SITIO,
   type Bloque, type Categoria, type ConfigAppCheck, type Contenido, type Foto, type IdIcono, type IdPlantilla,
@@ -26,10 +26,63 @@ export interface EntornoSitio {
 }
 
 export class ErrorContenidoPublicado extends Error {
-  constructor(readonly errores: readonly string[]) {
+  constructor(readonly errores: readonly string[], readonly causas: readonly CausaFallaSitio[] = []) {
     super(`Contenido publicado inválido:\n - ${errores.join('\n - ')}`);
     this.name = 'ErrorContenidoPublicado';
   }
+}
+
+/** Lee `prefijo[n]` al comienzo de la ruta (sin expresiones regulares); devuelve el índice y lo que sigue al corchete. */
+function indiceDe(ruta: string, prefijo: string): { readonly i: number; readonly resto: string } | null {
+  if (!ruta.startsWith(`${prefijo}[`)) return null;
+  const cierre = ruta.indexOf(']', prefijo.length + 1);
+  if (cierre < 0) return null;
+  const dig = ruta.slice(prefijo.length + 1, cierre);
+  if (dig.length === 0 || dig.length > 6) return null;
+  for (let k = 0; k < dig.length; k += 1) {
+    const c = dig.charCodeAt(k);
+    if (c < 48 || c > 57) return null;
+  }
+  return { i: Number(dig), resto: ruta.slice(cierre + 1) };
+}
+
+/**
+ * Causas saneadas (solo códigos, id de producto y mercado) a partir de los errores de `validarContenido`, cuyas rutas
+ * indexan el candidato: `productos[i].precioUsd.XX`, `categorias[i].id`, `categorias` (tope); lo demás es `contenido_invalido`.
+ */
+function causasDe(errores: readonly string[], productos: unknown, categorias: unknown): CausaFallaSitio[] {
+  const prods = Array.isArray(productos) ? productos : [];
+  const cats = Array.isArray(categorias) ? categorias : [];
+  const causas: CausaFallaSitio[] = [];
+  const vistas = new Set<string>();
+  const agregar = (c: CausaFallaSitio): void => {
+    const clave = `${c.codigo}|${c.productoId ?? ''}|${c.mercado ?? ''}`;
+    if (vistas.has(clave)) return;
+    vistas.add(clave);
+    causas.push(c);
+  };
+  for (const e of errores) {
+    const corte = e.indexOf(': ');
+    const ruta = corte < 0 ? e : e.slice(0, corte);
+    const p = indiceDe(ruta, 'productos');
+    if (p !== null && p.resto.startsWith('.precioUsd.') && p.resto.length === '.precioUsd.'.length + 2) {
+      const mercado = p.resto.slice(-2);
+      const id = esObj(prods[p.i]) ? (prods[p.i] as Obj)['id'] : undefined;
+      agregar({ codigo: 'precio_fuera_de_tope', ...(esIdProductoSitio(id) ? { productoId: id } : {}), mercado });
+      continue;
+    }
+    const c = indiceDe(ruta, 'categorias');
+    if (c !== null && c.resto === '.id') {
+      const cat = esObj(cats[c.i]) ? (cats[c.i] as Obj)['id'] : undefined;
+      const prod = prods.find((x) => esObj(x) && x['categoria'] === cat && cat !== undefined) as Obj | undefined;
+      agregar({ codigo: 'categoria_invalida', ...(esIdProductoSitio(prod?.['id']) ? { productoId: prod?.['id'] as string } : {}) });
+      continue;
+    }
+    if (ruta === 'categorias') { agregar({ codigo: 'demasiadas_categorias' }); continue; }
+    agregar({ codigo: 'contenido_invalido' });
+  }
+  // La validación del núcleo descarta lo mal formado y aplica el tope; el mercado se comprueba allí.
+  return leerCausasFallaSitio(causas);
 }
 
 type Obj = Readonly<Record<string, unknown>>;
@@ -324,7 +377,10 @@ export function contenidoDesdePublicado(respuesta: unknown, negocio: unknown, en
   const r = validarContenido(candidato);
   if (!r.ok) errores.push(...r.errores);
   // Se juntan los errores de entrada y de validarContenido, sin repetir mensajes idénticos.
-  if (errores.length > 0 || !r.ok) throw new ErrorContenidoPublicado([...new Set(errores)]);
+  if (errores.length > 0 || !r.ok) {
+    const unicos = [...new Set(errores)];
+    throw new ErrorContenidoPublicado(unicos, causasDe(unicos, candidato.productos, candidato.categorias));
+  }
   return r.contenido;
 }
 

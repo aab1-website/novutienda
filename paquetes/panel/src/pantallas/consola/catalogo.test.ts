@@ -668,3 +668,26 @@ describe('catálogo: fotos propias de la portada', () => {
     expect(await screen.findByText(/admite hasta 8 fotos propias/)).toBeTruthy();
   });
 });
+
+describe('catálogo: estado del sitio en el tablero', () => {
+  it('una falla se muestra como alerta, también al supervisor', async () => {
+    const e = crearEntorno('sup');
+    e.api.estado.ultimaReconstruccion = { estado: 'fallida', version: 3, en: '2026-11-16T10:00:00.000Z', etapa: 'generar', enCurso: false, causas: [{ codigo: 'precio_fuera_de_tope', producto: 'Mesa' }] };
+    render(e.envolver(h(PantallaCatalogo, { sub: 'tablero' })));
+    const p = await waitFor(() => {
+      const n = document.querySelector('[data-prueba="estado-sitio"]');
+      expect(n).not.toBeNull();
+      return n as Element;
+    });
+    expect(p.getAttribute('role')).toBe('alert');
+    expect(p.textContent).toContain('La última publicación no llegó al sitio');
+  });
+  it('tras publicar muestra que el sitio está al día', async () => {
+    const e = crearEntorno('adm');
+    await e.api.llamar('guardarConfigSitio', { plantilla: 'clasica', whatsapp: '+59170000000' } as never).catch(() => undefined);
+    await e.api.llamar('publicarSitio', {}).catch(() => undefined);
+    render(e.envolver(h(PantallaCatalogo, { sub: 'tablero' })));
+    await screen.findByText(/El sitio está al día/);
+    expect(document.querySelector('[data-prueba="estado-sitio"]')?.getAttribute('role')).toBe('status');
+  });
+});

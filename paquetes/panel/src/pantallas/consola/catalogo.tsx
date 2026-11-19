@@ -17,6 +17,7 @@ import { PantallaFichas } from './catalogo-ficha.js';
 import { PantallaSecciones } from './catalogo-secciones.js';
 import { BloqueLogo } from './logo-vista.js';
 import { useSubidaPortada } from './subidas-portada.js';
+import { textoUltimaReconstruccion } from './estado-sitio.js';
 
 const TODAS = [
   { id: 'tablero', titulo: 'Tablero' }, { id: 'fichas', titulo: 'Fichas, fotos y video' }, { id: 'secciones', titulo: 'Secciones' },
@@ -80,6 +81,7 @@ function Tablero(): JSX.Element {
         ) : (
           <p class="texto-suave">Solo el administrador publica.</p>
         )}
+        <p class="texto-suave" role={d.ultimaReconstruccion?.estado === 'fallida' && !d.ultimaReconstruccion.enCurso ? 'alert' : 'status'} data-prueba="estado-sitio">{textoUltimaReconstruccion(d.ultimaReconstruccion, d.versionPublicada)}</p>
         {accion.error && <Alerta>{accion.error}</Alerta>}
         {msg && <Alerta tipo="ok">{msg}</Alerta>}
       </Seccion>

@@ -764,6 +764,14 @@ describe('doble: catálogo y sitio', () => {
     await e.api.llamar('publicarSitio', {});
     expect((await e.api.llamar('obtenerTablero', {})).avisoSitio).toBeNull();
   });
+  it('tablero: la última reconstrucción empieza en null, es sembrable y publicar la deja completada', async () => {
+    const e = crearEntorno('adm');
+    expect((await e.api.llamar('obtenerTablero', {})).ultimaReconstruccion).toBeNull();
+    e.api.estado.ultimaReconstruccion = { estado: 'fallida', version: 3, en: '2026-11-16T10:00:00.000Z', etapa: 'generar', enCurso: false, causas: [{ codigo: 'precio_fuera_de_tope', producto: 'Mesa' }] };
+    expect((await e.api.llamar('obtenerTablero', {})).ultimaReconstruccion?.causas).toHaveLength(1);
+    await e.api.llamar('publicarSitio', {});
+    expect((await e.api.llamar('obtenerTablero', {})).ultimaReconstruccion).toMatchObject({ estado: 'completada', etapa: null, enCurso: false, causas: [] });
+  });
 
   it('ficha: slug único, texto alternativo, medios del producto; publicar la deja en el tablero', async () => {
     const e = crearEntorno('sup');

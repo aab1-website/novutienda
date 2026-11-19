@@ -9,7 +9,7 @@ const SIN_LECTURA_DIRECTA: readonly Rol[] = [];
  * Todas las colecciones de la consola: el navegador no lee ni escribe (`lectura: []`); solo el servidor, con las funciones de
  * este módulo, y el panel consulta por los callables. Cada una es de un segmento (`tenants/{t}/<ruta>/{id}`):
  *  - `fichasWeb/{productoId}`, `secciones/{id}`, `carruseles/{plantilla}`: contenido editable.
- *  - `sitio/{config|indice|slugs|estado|negocio|logo|logoDiferidas|logoEnSubida}`: configuración, orden de secciones, índice de slugs, cambios sin publicar, datos generales del negocio (con versión), referencia al logo subido y subidas de logo con versiones públicas esperando su borrado y la marca de logo en subida.
+ *  - `sitio/{config|indice|slugs|estado|negocio|logo|logoDiferidas|logoEnSubida|ultimaReconstruccion}`: configuración, orden de secciones, índice de slugs, cambios sin publicar, datos generales del negocio (con versión), referencia al logo subido y subidas de logo con versiones públicas esperando su borrado la marca de logo en subida y el resultado de la última reconstrucción del sitio.
  *  - `publicado/{...}`: copia que lee la reconstrucción del sitio (con el servidor); solo adm ve su estado por el callable.
  *  - `subidas/{id}`, `medios/{id}`: reservas y medios procesados.
  *  - `uso/medios`: cuota transaccional de originales y conteo de fotos/videos por producto.
