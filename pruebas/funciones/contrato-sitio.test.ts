@@ -5,7 +5,7 @@
 // publicado llegan a la copia por el evento `producto.cambiado`, entregado aquí por el bus real (`entregarEvento`).
 import { createHash, randomBytes } from 'node:crypto';
 import { beforeAll, describe, expect, it, vi } from 'vitest';
-import { publicarSitio } from '@novutienda/consola';
+import { motivosContenidoParaSitio, publicarSitio } from '@novutienda/consola';
 import { actualizarProducto, crearProducto, ingresar, type Autor } from '@novutienda/inventarios';
 import { entregarEvento } from '../../plataforma/funciones/servidor/bus.js';
 import { contenidoDesdePublicado } from '../../plataforma/registro.js';
@@ -513,6 +513,83 @@ describe.skipIf(!hayEmulador)('contrato consola → /publicado → contenido del
     expect(await trabajosProg(t)).toHaveLength(1);
     expect((await estadoPublicado(t)).version).toBe(antes.version + 3);
     expect((await h.firestore.doc(`tenants/${t}/publicado/producto__pre-uno`).get()).data()?.['precioUSD']).toMatchObject({ bo: 170 });
+  });
+
+  describe('tope de montos y categorías: lo que el sitio rechazaría se corrige en Inventarios y se frena en la consola', () => {
+    const MSJ_CATEGORIA = 'La categoría va en minúsculas, sin tildes ni espacios: use «audio».';
+    const crear = (t: string, id: string, extra: Record<string, unknown>) =>
+      h.db.runTransaction((tx) =>
+        crearProducto(tx, {
+          tenantId: t, operacionId: unico('prod'), por: ADM,
+          producto: { id, nombre: `Producto ${id}`, categoria: 'audio', sku: `SKU-${id}`, marca: 'M', precioUSD: { bo: 1000, ar: 1000 }, activo: true, publicado: true, ...extra },
+        }),
+      );
+
+    it('(a) crear con un precio sobre el tope, un costo sobre el tope o la categoría «Audio» falla en Inventarios y no escribe', async () => {
+      const t = await nuevoTenant();
+      // Tope justo (1.000.000 en la moneda base = 100.000.000 centavos): pasa.
+      await expect(crear(t, 'tope-ok', { precioUSD: { bo: 100_000_000, ar: 100_000_000 } })).resolves.toBeDefined();
+      await expect(crear(t, 'precio-alto', { precioUSD: { bo: 100_000_001, ar: 1000 } })).rejects.toThrow(/supera el tope de 1\.000\.000/);
+      await expect(crear(t, 'costo-alto', { costoUSD: 100_000_001 })).rejects.toThrow(/^El costo va en .+ y supera el tope de 1\.000\.000: revise que no tenga ceros de más ni esté en otra moneda\.$/);
+      await expect(crear(t, 'cat-mayus', { categoria: 'Audio' })).rejects.toThrow(MSJ_CATEGORIA);
+      await expect(crear(t, 'cat-tilde', { categoria: 'electrodomésticos' })).rejects.toThrow(/La categoría va en minúsculas, sin tildes ni espacios: use «electrodomesticos»\./);
+      for (const id of ['precio-alto', 'costo-alto', 'cat-mayus', 'cat-tilde']) expect((await h.firestore.doc(`tenants/${t}/productos/${id}`).get()).exists).toBe(false);
+    });
+
+    it('(a) editar con un precio o costo sobre el tope o con la categoría «Audio» falla; el producto queda como estaba', async () => {
+      const t = await nuevoTenant();
+      await sembrarProducto(t, { id: 'edi-uno', categoria: 'televisores', precio: { bo: 5000, ar: 5000 } });
+      const editar = (cambios: Record<string, unknown>) =>
+        h.db.runTransaction((tx) => actualizarProducto(tx, { tenantId: t, operacionId: unico('act'), por: ADM, productoId: 'edi-uno', cambios }));
+      await expect(editar({ precioUSD: { bo: 100_000_001, ar: 5000 } })).rejects.toThrow(/supera el tope de 1\.000\.000/);
+      await expect(editar({ costoUSD: 100_000_001 })).rejects.toThrow(/El costo va en .+ y supera el tope de 1\.000\.000/);
+      await expect(editar({ categoria: 'Audio' })).rejects.toThrow(MSJ_CATEGORIA);
+      const d = (await h.firestore.doc(`tenants/${t}/productos/edi-uno`).get()).data()!;
+      expect(d['categoria']).toBe('televisores');
+      expect(d['precioUSD']).toEqual({ bo: 5000, ar: 5000 });
+    });
+
+    it('(b) un dato heredado (categoría «Audio», precio sobre el tope) hace fallar publicar nombrando el producto y sin escribir nada', async () => {
+      const t = await nuevoTenant();
+      await sembrarProducto(t, { id: 'her-ok', nombre: 'Producto sano' });
+      await sembrarProducto(t, { id: 'her-cat', nombre: 'Parlante Heredado' });
+      await sembrarProducto(t, { id: 'her-precio', nombre: 'Cocina Heredada' });
+      // Se siembra por fuera de Inventarios (como un dato anterior a la regla).
+      await h.firestore.doc(`tenants/${t}/productos/her-cat`).update({ categoria: 'Audio' });
+      await h.firestore.doc(`tenants/${t}/productos/her-precio`).update({ precioUSD: { bo: 150_000_000_000, ar: 1000 } });
+      const falla = await publicar(t).then(() => null, (x: unknown) => x as Error);
+      expect(falla, 'publicar debía rechazarse').not.toBeNull();
+      expect(falla!.message).toMatch(/^El sitio rechazaría esta publicación: /);
+      expect(falla!.message).toContain('«Parlante Heredado»');
+      expect(falla!.message).toContain('«Cocina Heredada»');
+      expect(falla!.message).not.toContain('Producto sano');
+      expect((await h.firestore.doc(`tenants/${t}/publicado/estado`).get()).exists).toBe(false);
+      expect((await h.firestore.doc(`tenants/${t}/publicado/producto__her-ok`).get()).exists).toBe(false);
+      // Corregidos los datos, publica.
+      await h.firestore.doc(`tenants/${t}/productos/her-cat`).update({ categoria: 'audio' });
+      await h.firestore.doc(`tenants/${t}/productos/her-precio`).update({ precioUSD: { bo: 1000, ar: 1000 } });
+      await expect(publicar(t)).resolves.toMatchObject({ productos: 3 });
+    });
+
+    it('(c) paridad: lo que la consola rechaza coincide con lo que rechaza el mapeo del sitio, en una matriz de precios y categorías', async () => {
+      const t = await nuevoTenant();
+      await sembrarProducto(t, { id: 'par-uno', nombre: 'Paridad', categoria: 'audio' });
+      await publicar(t);
+      const base = await leerPublicado(t);
+      const matriz: { precio: number; categoria: string }[] = [
+        { precio: 0, categoria: 'audio' }, { precio: 1_000_000, categoria: 'audio' }, { precio: 1_000_000.01, categoria: 'audio' },
+        { precio: 99_999_999, categoria: 'audio' }, { precio: Number.NaN, categoria: 'audio' }, { precio: Number.POSITIVE_INFINITY, categoria: 'audio' },
+        { precio: 10, categoria: 'Audio' }, { precio: 10, categoria: 'electrodomésticos' }, { precio: 10, categoria: 'linea blanca' }, { precio: 10, categoria: '-audio' },
+        { precio: 10, categoria: 'linea-blanca' }, { precio: 10, categoria: 'a' }, { precio: 10, categoria: 'a'.repeat(60) }, { precio: 10, categoria: 'a'.repeat(61) },
+      ];
+      for (const { precio, categoria } of matriz) {
+        const doc = { ...base.documentos['producto__par-uno']!, precioUSD: { bo: precio, ar: 10 }, categoria };
+        const documentos = { ...base.documentos, 'producto__par-uno': doc };
+        const sitioRechaza = ((): boolean => { try { mapear({ ...base, documentos }); return false; } catch { return true; } })();
+        const consolaRechaza = motivosContenidoParaSitio({ productos: [{ id: 'par-uno', nombre: 'Paridad', categoria, precioUSD: { bo: precio, ar: 10 } }] }).length > 0;
+        expect(consolaRechaza, `precio=${String(precio)} categoria=${categoria}`).toBe(sitioRechaza);
+      }
+    });
   });
 
   /** Catálogo de NovuChat del tenant (mercado BO) con un token propio. */

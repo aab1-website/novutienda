@@ -1,3 +1,4 @@
+import { mensajeCategoriaInvalida, mensajeCostoSobreTope, mensajeGuardadoInvalido } from '@novutienda/nucleo';
 import { describe, expect, it } from 'vitest';
 import { AHORA, crearEntorno, uuid } from '../ayuda-pruebas.js';
 import { archivoExcelDoble } from './inventario/importacion.js';
@@ -448,7 +449,7 @@ describe('doble: inventarios', () => {
   });
   it('productos: alta con tope de 200, SKU único, conSerie inmutable tras un movimiento; CSV sin costo para sup', async () => {
     const e = crearEntorno('adm');
-    const nuevo = { id: 'mouse-1', nombre: 'Mouse', categoria: 'Accesorios', sku: 'MOUSE-1', precioUSD: { bo: 1000, ar: 1100 }, costoUSD: 500 };
+    const nuevo = { id: 'mouse-1', nombre: 'Mouse', categoria: 'accesorios', sku: 'MOUSE-1', precioUSD: { bo: 1000, ar: 1100 }, costoUSD: 500 };
     await e.api.llamar('crearProducto', { operacionId: uuid(), producto: nuevo });
     expect((await falla(e.api.llamar('crearProducto', { operacionId: uuid(), producto: nuevo }))).detalle.codigo).toBe('estado-invalido');
     expect((await falla(e.api.llamar('crearProducto', { operacionId: uuid(), producto: { ...nuevo, id: 'Malo' } }))).detalle.codigo).toBe('entrada-invalida');
@@ -463,14 +464,14 @@ describe('doble: inventarios', () => {
   });
   it('el CSV de exportación neutraliza celdas que empiezan con = + - @', async () => {
     const e = crearEntorno('adm');
-    await e.api.llamar('crearProducto', { operacionId: uuid(), producto: { id: 'formula-1', nombre: '=HYPERLINK("x")', categoria: '+cmd', sku: 'F-1', precioUSD: { bo: 100, ar: 100 } } });
+    await e.api.llamar('crearProducto', { operacionId: uuid(), producto: { id: 'formula-1', nombre: '=HYPERLINK("x")', categoria: 'cmd', marca: '+cmd', sku: 'F-1', precioUSD: { bo: 100, ar: 100 } } });
     const { csv } = await e.api.llamar('exportarProductosCsv', {});
     expect(csv).toContain(`"'=HYPERLINK(""x"")"`);
     expect(csv).toContain("'+cmd");
   });
   it('importación CSV: crea productos, rechaza ids repetidos y filas fuera de rango', async () => {
     const e = crearEntorno('adm');
-    const csv = 'id,nombre,categoria,sku,precioUSDbo,precioUSDar\r\nnuevo-1,Nuevo,Cat,N-1,1000,1100\r\n';
+    const csv = 'id,nombre,categoria,sku,precioUSDbo,precioUSDar\r\nnuevo-1,Nuevo,cat,N-1,1000,1100\r\n';
     const r = await e.api.llamar('importarProductosCsv', { operacionId: uuid(), csv });
     expect(r).toMatchObject({ completa: true, creados: 1, actualizados: 0, omitidas: 0, lotes: { total: 1, aplicados: 1 }, productos: ['nuevo-1'] });
     expect((await e.api.llamar('listarProductos', {})).find((p) => p.id === 'nuevo-1')?.precioUSD).toEqual({ bo: 1000, ar: 1100 });
@@ -481,7 +482,7 @@ describe('doble: inventarios', () => {
   });
   it('importación: la simulación marca errores por fila y columna; una fila nueva sin SKU es error; el stock se ignora', async () => {
     const e = crearEntorno('adm');
-    const csv = 'id,nombre,categoria,sku,precioBO,precioAR,stock\r\nok-1,Uno,Cat,S1,10.50,11,50\r\nMAL ID,Dos,Cat,S2,1,1,1\r\nsin-sku,Tres,Cat,,1,1,0\r\ntv-55,Televisor nuevo nombre,,,500,520,0\r\ncable-hdmi,Cable HDMI 2 m,,,,,\r\n';
+    const csv = 'id,nombre,categoria,sku,precioBO,precioAR,stock\r\nok-1,Uno,cat,S1,10.50,11,50\r\nMAL ID,Dos,cat,S2,1,1,1\r\nsin-sku,Tres,cat,,1,1,0\r\ntv-55,Televisor nuevo nombre,,,500,520,0\r\ncable-hdmi,Cable HDMI 2 m,,,,,\r\n';
     const sim = await e.api.llamar('simularImportacionProductos', { csv });
     expect(sim.resumen).toEqual({ crear: 1, actualizar: 1, sinCambios: 1, errores: 2 });
     expect(sim.columnasIgnoradas[0]).toContain('el CSV no modifica el stock');
@@ -505,7 +506,7 @@ describe('doble: inventarios', () => {
   });
   it('importación: omitirErrores exige lineasOmitidas y, si no coinciden con la simulación nueva, no escribe nada y devuelve desactualizada', async () => {
     const e = crearEntorno('adm');
-    const csv = 'id,nombre,categoria,sku\r\nok-1,Uno,Cat,S1\r\nMAL ID,Dos,Cat,S2\r\n';
+    const csv = 'id,nombre,categoria,sku\r\nok-1,Uno,cat,S1\r\nMAL ID,Dos,cat,S2\r\n';
     const sin = await falla(e.api.llamar('importarProductosCsv', { operacionId: uuid(), csv, omitirErrores: true } as never));
     expect(sin.detalle.codigo).toBe('entrada-invalida');
     expect(sin.codigoHttps).toBe('invalid-argument');
@@ -531,14 +532,14 @@ describe('doble: inventarios', () => {
   });
   it('importación: carga inicial admite stock; sin ella, las columnas de stock se rechazan', async () => {
     const e = crearEntorno('adm');
-    const csv = 'id,nombre,categoria,sku,stockTienda\r\ncarga-1,Uno,Cat,C1,7\r\n';
+    const csv = 'id,nombre,categoria,sku,stockTienda\r\ncarga-1,Uno,cat,C1,7\r\n';
     expect((await falla(e.api.llamar('simularImportacionProductos', { csv }))).detalle.codigo).toBe('entrada-invalida');
     await e.api.llamar('importarProductosCsv', { operacionId: uuid(), csv, cargaInicial: true });
     expect((await e.api.llamar('listarProductos', {})).find((p) => p.id === 'carga-1')?.existencias.tienda).toBe(7);
   });
   it('importación: acepta archivo Excel y CSV en base64; exige uno solo y solo el administrador importa', async () => {
     const e = crearEntorno('adm');
-    const hoja = 'id,nombre,categoria,sku\r\nxl-1,Desde Excel,Cat,XL1\r\n';
+    const hoja = 'id,nombre,categoria,sku\r\nxl-1,Desde Excel,cat,XL1\r\n';
     const sim = await e.api.llamar('simularImportacionProductos', { archivo: archivoExcelDoble(hoja) });
     expect(sim.resumen.crear).toBe(1);
     expect(sim.filas[0]?.advertencias[0]).toContain('a consultar');
@@ -553,7 +554,7 @@ describe('doble: inventarios', () => {
   it('importación por tandas: si una tanda falla el resultado es incompleto y se retoma con el mismo operacionId', async () => {
     const e = crearEntorno('adm');
     e.api.estado.importacion = { filasPorTanda: 1, fallaEnTanda: 2 };
-    const csv = 'id,nombre,categoria,sku\r\nlote-1,Uno,Cat,L1\r\nlote-2,Dos,Cat,L2\r\nlote-3,Tres,Cat,L3\r\n';
+    const csv = 'id,nombre,categoria,sku\r\nlote-1,Uno,cat,L1\r\nlote-2,Dos,cat,L2\r\nlote-3,Tres,cat,L3\r\n';
     const operacionId = uuid();
     const parcial = await e.api.llamar('importarProductosCsv', { operacionId, csv });
     expect(parcial).toMatchObject({ completa: false, creados: 1, lotes: { total: 3, aplicados: 1 }, productos: ['lote-1'] });
@@ -824,7 +825,7 @@ describe('doble: catálogo y sitio', () => {
   });
   it('productos de Inventarios: precios y costo en centavos, tope de 200 y edición', async () => {
     const e = crearEntorno('adm');
-    const nuevo = { id: 'nuevo-x', nombre: 'X', categoria: 'C', sku: 'NX', precioUSD: { bo: 1250, ar: 1300 }, costoUSD: 700 };
+    const nuevo = { id: 'nuevo-x', nombre: 'X', categoria: 'c', sku: 'NX', precioUSD: { bo: 1250, ar: 1300 }, costoUSD: 700 };
     await e.api.llamar('crearProducto', { operacionId: uuid(), producto: nuevo });
     const creado = (await e.api.llamar('listarProductos', {})).find((p) => p.id === 'nuevo-x');
     expect(creado?.precioUSD).toEqual({ bo: 1250, ar: 1300 });
@@ -847,6 +848,31 @@ describe('doble: catálogo y sitio', () => {
     expect(vaciado?.costoUSD).toBe(0);
     await falla(e.api.llamar('actualizarProducto', { operacionId: uuid(), productoId: 'nada', cambios: { nombre: 'a' } }));
     await falla(e.api.llamar('cambiarPrecioUSD', { operacionId: uuid(), productoId: 'nada', precioUSD: { bo: 100, ar: 100 } }));
+  });
+  it('lo guardado que no cumple obliga a corregirlo al editar y al importar, con los mensajes del núcleo', async () => {
+    const e = crearEntorno('adm');
+    const p = e.api.estado.productos.get('tv-55');
+    if (p === undefined) throw new Error('falta el producto de partida');
+    p.categoria = 'Audio';
+    p.costoUSD = 200_000_000;
+    p.precioUSD = { ...p.precioUSD, ar: 200_000_000 };
+    const editar = async (cambios: Record<string, unknown>): Promise<string> =>
+      mensajeDeError(await falla(e.api.llamar('actualizarProducto', { operacionId: uuid(), productoId: 'tv-55', cambios: cambios as never })));
+    expect(await editar({ nombre: 'Otro' })).toBe(mensajeGuardadoInvalido('La categoría guardada «Audio»', mensajeCategoriaInvalida('Audio')));
+    p.categoria = 'audio';
+    expect(await editar({ nombre: 'Otro' })).toContain('El precio guardado de');
+    expect(await editar({ nombre: 'Otro' })).toContain('pesos argentinos');
+    p.precioUSD = { ...p.precioUSD, ar: 1300 };
+    expect(await editar({ nombre: 'Otro' })).toBe(mensajeGuardadoInvalido('El costo guardado', mensajeCostoSobreTope('USD')));
+    await e.api.llamar('actualizarProducto', { operacionId: uuid(), productoId: 'tv-55', cambios: { nombre: 'Otro', costoUSD: 100 } });
+    // Importación: la fila no trae categoría ni costo, pero lo guardado no cumple.
+    p.categoria = 'Audio';
+    p.costoUSD = 200_000_000;
+    const sim = await e.api.llamar('simularImportacionProductos', { csv: `sku,nombre\n${p.sku},Otro nombre\n` });
+    const errores = sim.filas[0]?.errores ?? [];
+    expect(errores.map((x) => x.columna)).toEqual(['categoria', 'costo']);
+    expect(errores[0]?.motivo).toBe(mensajeGuardadoInvalido('La categoría guardada «Audio»', mensajeCategoriaInvalida('Audio')));
+    expect(errores[1]?.motivo).toBe(mensajeGuardadoInvalido('El costo guardado', mensajeCostoSobreTope('USD')));
   });
   it('la consola ya no importa ni crea productos ni exporta el catálogo', async () => {
     const e = crearEntorno('adm');
@@ -936,7 +962,7 @@ describe('doble: precio por mercado abierto', () => {
       comercial: { mercados: [{ id: 'PE', nombre: 'Perú', monedaVenta: 'PEN', monedaBase: 'USD', tieneTipoCambio: true }], monedasCaja: ['PEN', 'USD'], monedaCosto: 'USD' },
       redondeo: { PEN: { tipo: 'decimales', decimales: 2, modo: 'cercano' } },
     });
-    const producto = { id: 'solo-pe', nombre: 'Solo PE', categoria: 'Varios', sku: 'SP-1' };
+    const producto = { id: 'solo-pe', nombre: 'Solo PE', categoria: 'varios', sku: 'SP-1' };
     await e.api.llamar('crearProducto', { operacionId: uuid(), producto: { ...producto, precioUSD: { pe: 1500 } } });
     expect((await e.api.llamar('listarProductos', {})).find((p) => p.id === 'solo-pe')?.precioUSD).toEqual({ pe: 1500 });
     await e.api.llamar('actualizarProducto', { operacionId: uuid(), productoId: 'solo-pe', cambios: { precioUSD: { pe: 1800 } } });

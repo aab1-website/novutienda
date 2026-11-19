@@ -114,7 +114,7 @@ function Productos(): JSX.Element {
                   producto={abierto.producto}
                   cot={cot}
                   comercial={comercial.comercial}
-                  existentes={productos.map((p) => ({ id: p.id, sku: p.sku }))}
+                  existentes={productos.map((p) => ({ id: p.id, sku: p.sku, categoria: p.categoria }))}
                   alCerrarEnfocar={volverAlBoton}
                   alCerrar={(guardado) => {
                     setAbierto(null);

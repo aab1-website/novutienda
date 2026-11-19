@@ -3,6 +3,7 @@
  * No importa otros módulos: lee la respuesta como `unknown` y la valida. El resultado pasa por `validarContenido`; si algo
  * falla, el error lista campos y motivos, nunca valores (el contenido es del comercio y el log es público).
  */
+import { MAX_CATEGORIAS_SITIO } from '@novutienda/nucleo';
 import {
   IDS_PLANTILLA, LIMITES_SITIO,
   type Bloque, type Categoria, type ConfigAppCheck, type Contenido, type Foto, type IdIcono, type IdPlantilla,
@@ -34,7 +35,6 @@ export class ErrorContenidoPublicado extends Error {
 type Obj = Readonly<Record<string, unknown>>;
 const esObj = (x: unknown): x is Obj => typeof x === 'object' && x !== null && !Array.isArray(x);
 const lista = (x: unknown): readonly unknown[] => (Array.isArray(x) ? x : []);
-const LIMITE_CATEGORIAS = 40;
 const cadena = (x: unknown): string => (typeof x === 'string' ? x : '');
 
 interface VersionMedio { readonly clase: string; readonly lado: number; readonly formato: string; readonly ruta: string }
@@ -243,8 +243,8 @@ export function contenidoDesdePublicado(respuesta: unknown, negocio: unknown, en
   // Categorías (D4) y marcas
   const sobrescritas = neg?.categorias ?? {};
   const idsCategoria = [...new Set(productos.map((p) => p.categoria))].sort();
-  if (idsCategoria.length > LIMITE_CATEGORIAS) errores.push(`categorias: hay más de ${LIMITE_CATEGORIAS} categorías distintas (tope del sitio)`);
-  const categorias: Categoria[] = idsCategoria.slice(0, LIMITE_CATEGORIAS).map((id) => {
+  if (idsCategoria.length > MAX_CATEGORIAS_SITIO) errores.push(`categorias: hay más de ${MAX_CATEGORIAS_SITIO} categorías distintas (tope del sitio)`);
+  const categorias: Categoria[] = idsCategoria.slice(0, MAX_CATEGORIAS_SITIO).map((id) => {
     const o = Object.hasOwn(sobrescritas, id) ? sobrescritas[id] : undefined;
     return { id, nombre: o?.nombre ?? nombreDeCategoria(id), icono: o?.icono ?? iconoDeCategoria(id) };
   });

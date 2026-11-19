@@ -198,7 +198,7 @@ describe.skipIf(!hayEmulador)('panel contra las funciones reales (emulador)', ()
   it('catálogo: alta con precio en dólares y costo, cambio de precio, edición, tablero, usuarios y publicación', async () => {
     await api.adm.llamar('crearProducto', {
       operacionId: uuid(),
-      producto: { id: 'mouse-1', nombre: 'Mouse', categoria: 'Accesorios', sku: 'MOUSE-1', precioUSD: { bo: 1250, ar: 1999 }, costoUSD: 700, minimo: 2, publicado: false },
+      producto: { id: 'mouse-1', nombre: 'Mouse', categoria: 'accesorios', sku: 'MOUSE-1', precioUSD: { bo: 1250, ar: 1999 }, costoUSD: 700, minimo: 2, publicado: false },
     });
     let mouse = (await api.adm.llamar('listarProductos', {})).find((p) => p.id === 'mouse-1');
     expect(mouse).toMatchObject({ nombre: 'Mouse', precioUSD: { bo: 1250, ar: 1999 }, costoUSD: 700 });

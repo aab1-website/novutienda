@@ -6,7 +6,7 @@
 // contenido tras esa firma se toma como la hoja en texto CSV (`archivoExcelDoble` lo arma en las pruebas).
 import type { Entrada } from '../../api/contrato.js';
 import type { ErrorFilaImportacion, FilaSimulada, ResultadoImportacion, Simulacion } from '../../api/tipos.js';
-import { claveDePrecio } from '@novutienda/nucleo';
+import { avisoDesproporcion, claveDePrecio, esCategoriaValida, excedeTopeCentavos, mensajeCategoriaInvalida, mensajeCostoSobreTope, mensajeGuardadoInvalido, mensajePrecioSobreTope, MONEDA_COSTO_POR_DEFECTO } from '@novutienda/nucleo';
 import { auditar, fallo, type Contexto, type ProductoInterno } from '../estado.js';
 import { identificadorParaAlta, PARECIDO_SKU } from '../../pantallas/inventarios/identificador.js';
 import { parsearCsv } from './inventario.js';
@@ -61,8 +61,8 @@ function texto(e: { archivo?: string | undefined; csv?: string | undefined }): s
 }
 
 function importe(v: string, unidad: Unidad): number | undefined {
-  if (unidad === 'centavos') return /^\d{1,11}$/.test(v) && Number(v) <= 10_000_000_000 ? Number(v) : undefined;
-  const m = /^(\d{1,8})(?:[.,](\d{1,2}))?$/.exec(v);
+  if (unidad === 'centavos') return /^\d{1,15}$/.test(v) && Number.isSafeInteger(Number(v)) ? Number(v) : undefined;
+  const m = /^(\d{1,13})(?:[.,](\d{1,2}))?$/.exec(v);
   return m === null ? undefined : Number(m[1]) * 100 + Number((m[2] ?? '').padEnd(2, '0'));
 }
 
@@ -114,6 +114,7 @@ function leer(c: Contexto, entrada: { archivo?: string | undefined; csv?: string
       const v = celda(col);
       if (v === undefined) continue;
       if (/[<>]/.test(v) || v.length > (col === 'nombre' ? 120 : 60)) err(col, 'texto inválido (sin < ni >, longitud máxima)');
+      else if (col === 'categoria' && !esCategoriaValida(v)) err(col, mensajeCategoriaInvalida(v));
       else fila.d[col] = v;
     }
     const sku = celda('sku');
@@ -157,6 +158,10 @@ function leer(c: Contexto, entrada: { archivo?: string | undefined; csv?: string
       const unidad = indice.get(col)?.unidad ?? 'centavos';
       const n = importe(v, unidad);
       if (n === undefined) err(col, unidad === 'centavos' ? 'importe en centavos de USD: entero sin signos ni fórmulas' : 'importe en USD, hasta 2 decimales, sin signos ni fórmulas');
+      else if (excedeTopeCentavos(n)) {
+        const m = clave === null ? undefined : c.e.comercial.mercados.find((x) => claveDePrecio(x.id) === clave);
+        err(col, m !== undefined ? mensajePrecioSobreTope(m) : mensajeCostoSobreTope(c.e.comercial.monedaCosto ?? MONEDA_COSTO_POR_DEFECTO));
+      }
       else if (clave === null) fila.d.costoUSD = n;
       else fila.d.precios[clave] = n;
     }
@@ -169,6 +174,15 @@ function leer(c: Contexto, entrada: { archivo?: string | undefined; csv?: string
     filas.push(fila);
   }
   return { filas, ignoradas };
+}
+
+function avisosDesproporcion(c: Contexto, precioDe: (clave: string) => number | undefined): string[] {
+  const precios: Record<string, number> = {};
+  for (const m of c.e.comercial.mercados) {
+    const v = precioDe(claveDePrecio(m.id));
+    if (v !== undefined) precios[m.id] = v;
+  }
+  return avisoDesproporcion(precios, c.e.comercial.mercados.map((m) => ({ id: m.id, nombre: m.nombre, monedaBase: m.monedaBase })));
 }
 
 /** Qué haría una fila contra el estado actual (solo lectura). */
@@ -236,6 +250,7 @@ function planificar(c: Contexto, f: Fila, nuevos: number, asignados: Set<string>
     const comparable = (t: string): string => t.trim().replace(/\s+/g, ' ').toLowerCase();
     if (d.nombre !== undefined && [...c.e.productos.values()].some((p) => comparable(p.nombre) === comparable(d.nombre as string))) advertencias.push('Ya existe un producto con ese nombre');
     if (c.e.comercial.mercados.some((m) => d.precios[claveDePrecio(m.id)] === undefined)) advertencias.push('sin precio en algún mercado: quedará «a consultar» (0)');
+    advertencias.push(...avisosDesproporcion(c, (clave) => d.precios[clave]));
     return { accion: errores.length > 0 ? 'error' : 'crear', errores, advertencias, cambios, id, ...nombreSku };
   }
   if (f.stock.length > 0) advertencias.push('stock ignorado: el producto ya existe; su stock se mueve con ingreso, traspaso o ajuste');
@@ -251,8 +266,25 @@ function planificar(c: Contexto, f: Fila, nuevos: number, asignados: Set<string>
     else cambios.push('conSerie');
   }
   const preciosPrevios = previo.precioUSD;
-  if (Object.entries(d.precios).some(([k, v]) => v !== preciosPrevios[k])) cambios.push('precioUSD');
+  if (Object.entries(d.precios).some(([k, v]) => v !== preciosPrevios[k])) {
+    cambios.push('precioUSD');
+    advertencias.push(...avisosDesproporcion(c, (clave) => d.precios[clave] ?? preciosPrevios[clave]));
+  }
   if (d.costoUSD !== undefined && d.costoUSD !== previo.costoUSD) cambios.push('costoUSD');
+  // Lo guardado que no cumple obliga a corregirlo aunque la fila no lo traiga.
+  if (d.categoria === undefined && !esCategoriaValida(previo.categoria)) {
+    errores.push({ columna: 'categoria', motivo: mensajeGuardadoInvalido(`La categoría guardada «${previo.categoria}»`, mensajeCategoriaInvalida(previo.categoria)) });
+  }
+  for (const m of c.e.comercial.mercados) {
+    const k = claveDePrecio(m.id);
+    const v = previo.precioUSD[k];
+    if (d.precios[k] === undefined && v !== undefined && excedeTopeCentavos(v)) {
+      errores.push({ columna: `precio${m.id}`, motivo: mensajeGuardadoInvalido(`El precio guardado de ${m.nombre}`, mensajePrecioSobreTope(m)) });
+    }
+  }
+  if (d.costoUSD === undefined && excedeTopeCentavos(previo.costoUSD)) {
+    errores.push({ columna: 'costo', motivo: mensajeGuardadoInvalido('El costo guardado', mensajeCostoSobreTope(c.e.comercial.monedaCosto ?? MONEDA_COSTO_POR_DEFECTO)) });
+  }
   if (errores.length > 0) return { accion: 'error', errores, advertencias, cambios: [], id, ...nombreSku };
   return { accion: cambios.length > 0 ? 'actualizar' : 'sin-cambios', errores, advertencias, cambios, id, ...nombreSku };
 }

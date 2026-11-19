@@ -1,4 +1,6 @@
-import { registrarAuditoria, type Actor } from '@novutienda/nucleo';
+import {
+  conMiles, esCategoriaValida, MAX_CATEGORIAS_SITIO, mensajeCategoriaInvalida, registrarAuditoria, TOPE_PRECIO_BASE, type Actor,
+} from '@novutienda/nucleo';
 import { leerEstadoSitio } from './cambios.js';
 import { ErrorConsola } from './errores.js';
 import type { FichaWeb } from './fichas.js';
@@ -317,6 +319,63 @@ const leerReconstruccion = (d: Readonly<Record<string, unknown>> | undefined): {
   };
 };
 
+export interface MotivoContenido {
+  readonly productoId: string;
+  readonly nombre: string;
+  readonly motivo: string;
+}
+
+const MERCADOS_PRECIO: readonly (readonly ['bo' | 'ar', string])[] = [['bo', 'Bolivia'], ['ar', 'Argentina']];
+
+/**
+ * Función pura: lo que el sitio rechazaría del contenido de los productos (precio sobre el tope o no finito, categoría que no es
+ * un identificador válido, más categorías distintas que el máximo). Precios en unidades de la moneda base.
+ */
+export function motivosContenidoParaSitio(
+  pub: { readonly productos: readonly Pick<ProductoPublicado, 'id' | 'nombre' | 'categoria' | 'precioUSD'>[] },
+): MotivoContenido[] {
+  const motivos: MotivoContenido[] = [];
+  for (const p of pub.productos) {
+    for (const [clave, pais] of MERCADOS_PRECIO) {
+      const v = p.precioUSD[clave];
+      if (typeof v !== 'number' || !Number.isFinite(v)) {
+        motivos.push({ productoId: p.id, nombre: p.nombre, motivo: `falta el precio de ${pais}` });
+      } else if (v > TOPE_PRECIO_BASE) {
+        motivos.push({ productoId: p.id, nombre: p.nombre, motivo: `el precio de ${pais} supera el tope de ${conMiles(TOPE_PRECIO_BASE)}` });
+      }
+    }
+    if (!esCategoriaValida(p.categoria)) {
+      motivos.push({ productoId: p.id, nombre: p.nombre, motivo: mensajeCategoriaInvalida(p.categoria).replace(/^La categoría/, 'la categoría').replace(/\.$/, '') });
+    }
+  }
+  const distintas = new Set(pub.productos.map((p) => p.categoria));
+  if (distintas.size > MAX_CATEGORIAS_SITIO) {
+    motivos.push({ productoId: '', nombre: '', motivo: `hay ${String(distintas.size)} categorías y el sitio admite hasta ${String(MAX_CATEGORIAS_SITIO)}` });
+  }
+  return motivos;
+}
+
+const MAX_PRODUCTOS_EN_MENSAJE = 10;
+
+function exigirContenidoValido(pub: Publicado): void {
+  const motivos = motivosContenidoParaSitio(pub);
+  if (motivos.length === 0) return;
+  const porProducto = new Map<string, string[]>();
+  const generales: string[] = [];
+  for (const m of motivos) {
+    if (m.productoId === '') { generales.push(m.motivo); continue; }
+    const lista = porProducto.get(m.productoId) ?? [];
+    lista.push(m.motivo);
+    porProducto.set(m.productoId, lista);
+  }
+  const nombres = new Map(pub.productos.map((p) => [p.id, p.nombre]));
+  const entradas = [...porProducto].map(([id, ms]) => `«${nombres.get(id) ?? id}»: ${ms.join(' y ')}`);
+  const mostradas = entradas.slice(0, MAX_PRODUCTOS_EN_MENSAJE);
+  const resto = entradas.length - mostradas.length;
+  const partes = [...mostradas, ...(resto > 0 ? [`y ${String(resto)} producto${resto === 1 ? '' : 's'} más`] : []), ...generales];
+  throw new ErrorConsola('estado', `El sitio rechazaría esta publicación: ${partes.join('; ')}. Corríjalo en Inventario.`, entradas);
+}
+
 /**
  * Lo que haría fallar la reconstrucción del sitio se rechaza ANTES de escribir nada:
  *  - sin productos publicables, el sitio no se reconstruye;
@@ -328,6 +387,7 @@ const leerReconstruccion = (d: Readonly<Record<string, unknown>> | undefined): {
  *    Podría compartirse por el núcleo más adelante (hoy está duplicada a propósito: las fronteras impiden importar website).
  */
 function exigirPublicable(pub: Publicado, candidatos: number, sinMarca: number): void {
+  exigirContenidoValido(pub);
   const motivo = motivoNoPublicable(pub);
   if (motivo === 'sin_productos') {
     if (candidatos > 0 && sinMarca === candidatos) {

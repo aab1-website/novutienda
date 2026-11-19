@@ -1,3 +1,4 @@
+import { sugerirCategoria } from '@novutienda/nucleo';
 import type { JSX } from 'preact';
 import { useEffect, useRef, useState } from 'preact/hooks';
 import { nuevoId } from '../../api/cliente.js';
@@ -15,7 +16,7 @@ import { precioDeVentaMercado, reglasDeclaradasActuales } from '../../util/preci
 import { identificadorParaAlta } from './identificador.js';
 import { mercadosDePrecio, nombreMoneda, type MercadoPrecio } from './nombres.js';
 import {
-  aEntrada, avisoDeSku, cambiosDeEdicion, clavePrecio, errorDeServidor, errorDeSku, esProductoYaExiste, formInicial, leerBorrador, listaEnTexto, mismoForm, revisarProducto, TOPES_PRODUCTO,
+  aEntrada, avisoDeSku, avisosDeDesproporcion, cambiosDeEdicion, clavePrecio, errorDeServidor, errorDeSku, esProductoYaExiste, formInicial, leerBorrador, listaEnTexto, mismoForm, revisarProducto, TOPES_PRODUCTO,
   type ErroresProducto, type FormProducto,
 } from './producto-revision.js';
 import './inventario.css';
@@ -45,7 +46,7 @@ export interface PropsProductoPanel {
   /** Mercados y monedas declarados por el comercio (nombre, moneda de venta y base, moneda de costo si es administrador). */
   readonly comercial: VistaComercial;
   /** Claves y SKU que ya existen: las claves solo sirven para no repetir la automática; la persona no las ve. */
-  readonly existentes: readonly { readonly id: string; readonly sku: string }[];
+  readonly existentes: readonly { readonly id: string; readonly sku: string; readonly categoria?: string }[];
   /** Cierra el panel; `guardado` dice si se guardó algo (la lista se vuelve a leer). */
   readonly alCerrar: (guardado: boolean) => void;
   readonly alCerrarEnfocar: () => HTMLElement | null;
@@ -58,6 +59,7 @@ export function ProductoPanelLateral({ producto, cot, comercial, existentes, alC
   const { confirmarSalida } = useGuardia();
   const accion = useAccion();
   const esAdm = usuario.rol === 'adm';
+  const soloLectura = !esAdm;
   const nuevo = producto === null;
   const clave = `inventarios.producto.${producto?.id ?? 'nuevo'}`;
   const mercados = mercadosDePrecio(comercial.mercados);
@@ -94,6 +96,10 @@ export function ProductoPanelLateral({ producto, cot, comercial, existentes, alC
   const errorSkuAlSalir = nuevo && skuTocado ? errorDeSku(f.sku, existentes) : null;
   const errores: ErroresProducto = { ...(errorSkuAlSalir !== null ? { sku: errorSkuAlSalir } : {}), ...(intento ? revisarProducto(f, ctx) : {}), ...delServidor };
   const avisoSku = nuevo && (skuTocado || intento) ? avisoDeSku(f.sku, existentes) : null;
+  const avisosPrecio = avisosDeDesproporcion(f, mercados);
+  const categoriasExistentes = [...new Set(existentes.map((x) => sugerirCategoria(x.categoria ?? '')).filter((c) => c !== ''))].sort();
+  const sugerencia = sugerirCategoria(f.categoria);
+  const muestraSugerencia = sugerencia !== '' && sugerencia !== f.categoria && !soloLectura;
   const edicion = producto === null ? null : cambiosDeEdicion(f, producto, esAdm, mercados);
 
   useEffect(() => {
@@ -173,7 +179,6 @@ export function ProductoPanelLateral({ producto, cot, comercial, existentes, alC
     enviar();
   };
 
-  const soloLectura = !esAdm;
   const precios = mercados.map((m) => ({ m, centavos: textoACentavos(f.precios[m.clave] ?? '') }));
   const costo = f.costo.trim() === '' ? null : textoACentavos(f.costo);
   const unico = mercados.length === 1;
@@ -201,7 +206,25 @@ export function ProductoPanelLateral({ producto, cot, comercial, existentes, alC
         {soloLectura && <Alerta tipo="info">Solo el administrador edita productos y precios. Usted puede consultar los datos.</Alerta>}
         <form class="formulario inv-formulario" onSubmit={(e) => { e.preventDefault(); guardar(); }} noValidate>
           <Campo etiqueta="Nombre" valor={f.nombre} tope={TOPES_PRODUCTO.nombre} requerido deshabilitado={soloLectura} error={errores['nombre']} onInput={(v) => poner({ nombre: v })} />
-          <Campo etiqueta="Categoría" valor={f.categoria} tope={TOPES_PRODUCTO.categoria} requerido deshabilitado={soloLectura} error={errores['categoria']} onInput={(v) => poner({ categoria: v })} />
+          <div class="campo">
+            <label for="inv-categoria">
+              Categoría<span class="obligatorio"> (obligatorio)</span>
+            </label>
+            <input
+              id="inv-categoria" name="categoria" type="text" value={f.categoria} required list="inv-categorias" maxLength={TOPES_PRODUCTO.categoria} disabled={soloLectura}
+              autocomplete="off" aria-invalid={errores['categoria'] !== undefined ? 'true' : undefined}
+              aria-describedby={`inv-categoria-ayuda${errores['categoria'] !== undefined ? ' inv-categoria-error' : ''}`}
+              onInput={(ev) => poner({ categoria: (ev.currentTarget as HTMLInputElement).value })}
+            />
+            <datalist id="inv-categorias" data-prueba="categorias-existentes">
+              {categoriasExistentes.map((c) => <option key={c} value={c} />)}
+            </datalist>
+            <p id="inv-categoria-ayuda" class="ayuda">En minúsculas, sin tildes ni espacios (use guiones), por ejemplo «linea-blanca».</p>
+            {errores['categoria'] !== undefined && <p id="inv-categoria-error" class="campo-error">Error: {errores['categoria']}</p>}
+            {muestraSugerencia && (
+              <button type="button" class="boton boton-secundario" data-prueba="usar-categoria" onClick={() => poner({ categoria: sugerencia })}>{`Usar «${sugerencia}»`}</button>
+            )}
+          </div>
           <Campo
             etiqueta="Marca" valor={f.marca} tope={TOPES_PRODUCTO.marca} deshabilitado={soloLectura} error={errores['marca']}
             ayuda={nuevo ? 'Opcional.' : 'Opcional. Si la deja vacía, se quita la marca del producto.'} onInput={(v) => poner({ marca: v })}
@@ -241,6 +264,7 @@ export function ProductoPanelLateral({ producto, cot, comercial, existentes, alC
           <fieldset class="inv-bloque">
             <legend>{leyendaPrecios}</legend>
             <p class="ayuda">{ayudaPrecios}</p>
+            {avisosPrecio.map((a) => <p key={a} class="ayuda" role="status" data-prueba="aviso-desproporcion"><strong>Aviso:</strong> {a} Puede guardar igual.</p>)}
             <div class="cuadricula">
               {precios.map(({ m, centavos }) => (
                 <div key={m.clave}>

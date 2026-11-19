@@ -175,7 +175,7 @@ for (const esquema of ESQUEMAS) {
         await expect(alta.getByLabel(/^Nombre/)).toHaveAttribute('aria-invalid', 'true');
         await sinViolaciones(page, `alta con error a ${String(ancho)} px`);
         await alta.getByLabel(/^Nombre/).fill('Teclado mecánico');
-        await alta.getByLabel(/^Categoría/).fill('Accesorios');
+        await alta.getByLabel(/^Categoría/).fill('accesorios');
         await alta.getByLabel(/^SKU/).fill('TEC-1');
         await alta.getByLabel(/^Bolivia \(USD\)/).fill('15');
         await alta.getByLabel(/^Argentina \(USD\)/).fill('16');
@@ -534,7 +534,7 @@ for (const esquema of ESQUEMAS) {
       await page.getByRole('link', { name: 'Tablero' }).click();
       await page.getByRole('button', { name: 'Publicar el sitio' }).click();
       await page.getByRole('button', { name: 'Sí, publicar' }).click();
-      await expect(page.getByText(/Publicado: versión 1/)).toBeVisible();
+      await expect(page.getByText(/Publicación enviada \(versión 1/)).toBeVisible();
       await sinViolaciones(page, 'tablero publicado');
       await page.getByRole('link', { name: 'Usuarios' }).click();
       await expect(page.getByText(/Personas con acceso/)).toBeVisible();

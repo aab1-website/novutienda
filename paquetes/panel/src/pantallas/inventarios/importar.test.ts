@@ -23,7 +23,7 @@ const llamadas = (e: Entorno, nombre: string): { entrada: Record<string, unknown
 const CABECERA = 'id,nombre,categoria,sku,precioBO,precioAR\r\n';
 const csv = (...filas: string[]): File => new File([CABECERA + filas.join('\r\n') + '\r\n'], 'productos.csv', { type: 'text/csv' });
 /** 2 nuevos válidos, 1 sin SKU (error) y 1 existente sin cambios de precio. */
-const mixto = (): File => csv('nuevo-a,Nuevo A,Cat,NA-1,10.50,11', 'nuevo-b,Nuevo B,Cat,NB-1,20,22.25', 'nuevo-c,Nuevo C,Cat,,5,6');
+const mixto = (): File => csv('nuevo-a,Nuevo A,cat,NA-1,10.50,11', 'nuevo-b,Nuevo B,cat,NB-1,20,22.25', 'nuevo-c,Nuevo C,cat,,5,6');
 
 describe('importar: qué es y cómo se arma el archivo', () => {
   it('explica para qué sirve, el formato y ofrece plantilla y exportación', async () => {
@@ -113,7 +113,7 @@ describe('importar: siempre simulación primero', () => {
     const e = crearEntorno('adm');
     ver(e);
     const u = userEvent.setup();
-    await u.upload(entradaArchivo(), new File(['id,nombre,categoria,sku,precioBO,precioAR,color\r\nn-1,N,C,N-1,1,1,rojo\r\n'], 'p.csv'));
+    await u.upload(entradaArchivo(), new File(['id,nombre,categoria,sku,precioBO,precioAR,color\r\nn-1,N,c,N-1,1,1,rojo\r\n'], 'p.csv'));
     expect(await screen.findByText(/Estas columnas no se usan y se ignoran: color/)).toBeTruthy();
   });
 
@@ -142,7 +142,7 @@ describe('importar: siempre simulación primero', () => {
     const e = crearEntorno('adm');
     ver(e);
     const u = userEvent.setup();
-    await u.upload(entradaArchivo(), csv('nuevo-a,Nuevo A,Cat,NA-1,10.50,11'));
+    await u.upload(entradaArchivo(), csv('nuevo-a,Nuevo A,cat,NA-1,10.50,11'));
     await u.click(await screen.findByRole('button', { name: 'Importar 1 fila' }));
     const d = await screen.findByRole('dialog', { name: '¿Importar este archivo?' });
     expect(d.textContent).toContain('1 se creará');
@@ -157,7 +157,7 @@ describe('importar: siempre simulación primero', () => {
     const e = crearEntorno('adm');
     ver(e);
     const u = userEvent.setup();
-    const bytes = Uint8Array.from(atob(archivoExcelDoble(CABECERA + 'xl-1,Hoja,Cat,XL-1,3,3\r\n')), (c) => c.charCodeAt(0));
+    const bytes = Uint8Array.from(atob(archivoExcelDoble(CABECERA + 'xl-1,Hoja,cat,XL-1,3,3\r\n')), (c) => c.charCodeAt(0));
     await u.upload(entradaArchivo(), new File([bytes], 'productos.xlsx'));
     expect(await screen.findByText('1 se creará, 0 se actualizará, 0 sin cambios, 0 con error.'.replace('0 se actualizará', '0 se actualizarán'))).toBeTruthy();
   });
@@ -166,7 +166,7 @@ describe('importar: siempre simulación primero', () => {
     const e = crearEntorno('adm');
     ver(e);
     const u = userEvent.setup();
-    await u.upload(entradaArchivo(), new File(['id,nombre,categoria,sku,precioBO,precioAR,stockTienda\r\nini-1,Ini,C,I-1,1,1,7\r\n'], 'ini.csv'));
+    await u.upload(entradaArchivo(), new File(['id,nombre,categoria,sku,precioBO,precioAR,stockTienda\r\nini-1,Ini,c,I-1,1,1,7\r\n'], 'ini.csv'));
     // Sin marcar «carga inicial», el servidor rechaza las columnas de existencias y la pantalla dice cómo seguir.
     expect(await screen.findByText(/marque «Es la carga inicial»/)).toBeTruthy();
     expect(screen.queryByRole('table', { name: 'Simulación de la importación' })).toBeNull();
@@ -187,7 +187,7 @@ describe('importar: por tandas', () => {
     e.api.estado.importacion.fallaEnTanda = 2;
     ver(e);
     const u = userEvent.setup();
-    await u.upload(entradaArchivo(), csv('nuevo-a,Nuevo A,Cat,NA-1,10,11', 'nuevo-b,Nuevo B,Cat,NB-1,20,22', 'nuevo-d,Nuevo D,Cat,ND-1,5,6'));
+    await u.upload(entradaArchivo(), csv('nuevo-a,Nuevo A,cat,NA-1,10,11', 'nuevo-b,Nuevo B,cat,NB-1,20,22', 'nuevo-d,Nuevo D,cat,ND-1,5,6'));
     await u.click(await screen.findByRole('button', { name: 'Importar 3 filas' }));
     await u.click(within(await screen.findByRole('dialog')).getByRole('button', { name: 'Sí, importar' }));
     expect(await screen.findByText(/La importación quedó incompleta: 1 de 3 tandas aplicadas/)).toBeTruthy();
@@ -207,7 +207,7 @@ describe('importar: por tandas', () => {
     e.api.estado.importacion.fallaEnTanda = 2;
     ver(e);
     const u = userEvent.setup();
-    await u.upload(entradaArchivo(), csv('nuevo-a,Nuevo A,Cat,NA-1,10,11', 'nuevo-b,Nuevo B,Cat,NB-1,20,22'));
+    await u.upload(entradaArchivo(), csv('nuevo-a,Nuevo A,cat,NA-1,10,11', 'nuevo-b,Nuevo B,cat,NB-1,20,22'));
     await u.click(await screen.findByRole('button', { name: 'Importar 2 filas' }));
     await u.click(within(await screen.findByRole('dialog')).getByRole('button', { name: 'Sí, importar' }));
     const alerta = await screen.findByText(/La importación quedó incompleta/);
@@ -222,7 +222,7 @@ describe('importar: por tandas', () => {
     e.api.estado.importacion.fallaEnTanda = 2;
     ver(e);
     const u = userEvent.setup();
-    await u.upload(entradaArchivo(), csv('nuevo-a,Nuevo A,Cat,NA-1,10,11', 'nuevo-b,Nuevo B,Cat,NB-1,20,22'));
+    await u.upload(entradaArchivo(), csv('nuevo-a,Nuevo A,cat,NA-1,10,11', 'nuevo-b,Nuevo B,cat,NB-1,20,22'));
     await u.click(await screen.findByRole('button', { name: 'Importar 2 filas' }));
     await u.click(within(await screen.findByRole('dialog')).getByRole('button', { name: 'Sí, importar' }));
     await screen.findByRole('button', { name: 'Continuar la importación' });
@@ -313,7 +313,7 @@ describe('importar: columnas según los mercados declarados', () => {
   it('con un comercio de un solo mercado, la simulación y el resultado usan solo su columna de precio', async () => {
     const comercial = { mercados: [{ id: 'PE', nombre: 'Perú', monedaVenta: 'PEN', monedaBase: 'PEN', tieneTipoCambio: false }], monedasCaja: ['PEN'], monedaCosto: 'PEN' } as const;
     const e = crearEntorno('adm', undefined, { comercial: { ...comercial, mercados: [...comercial.mercados], monedasCaja: [...comercial.monedasCaja] } });
-    const texto = 'id,nombre,categoria,sku,precioPE\r\nnuevo-pe,Nuevo PE,Cat,PE-1,12.50\r\nnuevo-bo,Nuevo BO,Cat,PE-2,\r\n';
+    const texto = 'id,nombre,categoria,sku,precioPE\r\nnuevo-pe,Nuevo PE,cat,PE-1,12.50\r\nnuevo-bo,Nuevo BO,cat,PE-2,\r\n';
     const sim = await e.api.llamar('simularImportacionProductos', { csv: texto });
     expect(sim.resumen).toMatchObject({ crear: 2, errores: 0 });
     expect(sim.filas[1]?.advertencias.join(' ')).toMatch(/sin precio/);
@@ -322,7 +322,7 @@ describe('importar: columnas según los mercados declarados', () => {
     const lista = await e.api.llamar('listarProductos', {});
     expect(lista.find((p) => p.id === 'nuevo-pe')?.precioUSD).toEqual({ pe: 1250 });
     expect(lista.find((p) => p.id === 'nuevo-bo')?.precioUSD).toEqual({ pe: 0 });
-    const ajeno = await e.api.llamar('simularImportacionProductos', { csv: 'id,nombre,categoria,sku,precioBO\r\nx-1,X,Cat,X-1,5\r\n' });
+    const ajeno = await e.api.llamar('simularImportacionProductos', { csv: 'id,nombre,categoria,sku,precioBO\r\nx-1,X,cat,X-1,5\r\n' });
     expect(ajeno.columnasIgnoradas).toContain('precioBO');
   });
 });
@@ -333,7 +333,7 @@ describe('importar: el producto se reconoce por su SKU (el doble se comporta com
   it('sin columna id: crea con clave generada, actualiza por SKU y no repite al reintentar', async () => {
     const e = crearEntorno('adm');
     const base = (await e.api.llamar('listarProductos', {})).length;
-    const csv = `${CAB_SIN_ID}Taladro Bosch,Herr,TAL-1,10,11\r\nTaladro Bosch,Herr,TAL-2,12,13\r\n`;
+    const csv = `${CAB_SIN_ID}Taladro Bosch,herr,TAL-1,10,11\r\nTaladro Bosch,herr,TAL-2,12,13\r\n`;
     const sim = await e.api.llamar('simularImportacionProductos', { csv });
     expect(sim.resumen).toMatchObject({ crear: 2, errores: 0 });
     expect(sim.filas.map((f) => (f as { sku?: string }).sku)).toEqual(['TAL-1', 'TAL-2']);
@@ -349,11 +349,11 @@ describe('importar: el producto se reconoce por su SKU (el doble se comporta com
   it('id y SKU de productos distintos: error claro; `codigo` es el SKU; fila sin id ni SKU es error', async () => {
     const e = crearEntorno('adm');
     const [a, b] = await e.api.llamar('listarProductos', {});
-    const cruzado = await e.api.llamar('simularImportacionProductos', { csv: `id,nombre,categoria,sku\r\n${a?.id ?? ''},X,C,${b?.sku ?? ''}\r\n` });
+    const cruzado = await e.api.llamar('simularImportacionProductos', { csv: `id,nombre,categoria,sku\r\n${a?.id ?? ''},X,c,${b?.sku ?? ''}\r\n` });
     expect(cruzado.filas[0]?.errores[0]?.motivo).toBe(`el SKU pertenece a otro producto (${b?.nombre ?? ''})`);
     const porCodigo = await e.api.llamar('simularImportacionProductos', { csv: `codigo,nombre,categoria\r\n${a?.sku ?? ''},${a?.nombre ?? ''},${a?.categoria ?? ''}\r\n` });
     expect(porCodigo.filas[0]?.accion).toBe('sin-cambios');
-    const sinSku = await e.api.llamar('simularImportacionProductos', { csv: 'nombre,categoria,sku\r\nX,C,\r\n' });
+    const sinSku = await e.api.llamar('simularImportacionProductos', { csv: 'nombre,categoria,sku\r\nX,c,\r\n' });
     expect(sinSku.filas[0]?.errores[0]).toMatchObject({ columna: 'sku' });
   });
 
@@ -369,7 +369,7 @@ describe('importar: el producto se reconoce por su SKU (el doble se comporta com
     const e = crearEntorno('adm');
     const [a] = await e.api.llamar('listarProductos', {});
     const raro = (a?.sku ?? '').toLowerCase() === a?.sku ? (a?.sku ?? '').toUpperCase() : (a?.sku ?? '').toLowerCase();
-    const sim = await e.api.llamar('simularImportacionProductos', { csv: `${CAB_SIN_ID}Nuevo,C,${raro},1,1\r\n` });
+    const sim = await e.api.llamar('simularImportacionProductos', { csv: `${CAB_SIN_ID}Nuevo,c,${raro},1,1\r\n` });
     expect(sim.filas[0]).toMatchObject({ accion: 'crear' });
     expect(sim.filas[0]?.advertencias).toContain('Se parece al SKU de otro producto (difiere solo en mayúsculas)');
   });
@@ -377,30 +377,30 @@ describe('importar: el producto se reconoce por su SKU (el doble se comporta com
   it('Excel recortó los ceros del SKU: error, sin duplicar; nombre repetido avisa; planilla vieja con codigo falla claro', async () => {
     const e = crearEntorno('adm');
     const precioUSD = { bo: 100, ar: 100 } as never;
-    await e.api.llamar('crearProducto', { operacionId: 'op-cero', producto: { id: 'cero', nombre: 'Con ceros', categoria: 'C', sku: '00123', precioUSD } });
-    const ceros = await e.api.llamar('simularImportacionProductos', { csv: `${CAB_SIN_ID}Otro,C,123,1,1\r\n` });
+    await e.api.llamar('crearProducto', { operacionId: 'op-cero', producto: { id: 'cero', nombre: 'Con ceros', categoria: 'c', sku: '00123', precioUSD } });
+    const ceros = await e.api.llamar('simularImportacionProductos', { csv: `${CAB_SIN_ID}Otro,c,123,1,1\r\n` });
     expect(ceros.filas[0]?.accion).toBe('error');
     expect(ceros.filas[0]?.errores[0]?.motivo).toMatch(/Excel quitó ceros a la izquierda/);
-    const nombre = await e.api.llamar('simularImportacionProductos', { csv: `${CAB_SIN_ID}"  con   CEROS ",C,NUEVO-9,1,1\r\n` });
+    const nombre = await e.api.llamar('simularImportacionProductos', { csv: `${CAB_SIN_ID}"  con   CEROS ",c,NUEVO-9,1,1\r\n` });
     expect(nombre.filas[0]).toMatchObject({ accion: 'crear' });
     expect(nombre.filas[0]?.advertencias).toContain('Ya existe un producto con ese nombre');
-    const vieja = await e.api.llamar('simularImportacionProductos', { csv: 'codigo,nombre,categoria\r\ncero,X,C\r\n' });
+    const vieja = await e.api.llamar('simularImportacionProductos', { csv: 'codigo,nombre,categoria\r\ncero,X,c\r\n' });
     expect(vieja.filas[0]?.errores[0]?.motivo).toMatch(/La columna codigo ahora es el SKU/);
-    const sinSku = await e.api.llamar('simularImportacionProductos', { csv: 'nombre,categoria,sku\r\nX,C,\r\n' });
+    const sinSku = await e.api.llamar('simularImportacionProductos', { csv: 'nombre,categoria,sku\r\nX,c,\r\n' });
     expect(sinSku.filas[0]?.errores[0]?.motivo).toBe('Falta el SKU: cada producto se reconoce por su SKU');
   });
 
   it('«123» actualiza el SKU exacto y avisa de «0123»; `codigo` ambiguo (SKU de uno y clave de otro) es error', async () => {
     const e = crearEntorno('adm');
     const precioUSD = { bo: 100, ar: 100 } as never;
-    await e.api.llamar('crearProducto', { operacionId: 'o1', producto: { id: 'cero', nombre: 'Cero', categoria: 'C', sku: '0123', precioUSD } });
-    await e.api.llamar('crearProducto', { operacionId: 'o2', producto: { id: 'exacto', nombre: 'Exacto', categoria: 'C', sku: '123', precioUSD } });
-    const sim = await e.api.llamar('simularImportacionProductos', { csv: `${CAB_SIN_ID}Otro,C,123,1,1\r\n` });
+    await e.api.llamar('crearProducto', { operacionId: 'o1', producto: { id: 'cero', nombre: 'Cero', categoria: 'c', sku: '0123', precioUSD } });
+    await e.api.llamar('crearProducto', { operacionId: 'o2', producto: { id: 'exacto', nombre: 'Exacto', categoria: 'c', sku: '123', precioUSD } });
+    const sim = await e.api.llamar('simularImportacionProductos', { csv: `${CAB_SIN_ID}Otro,c,123,1,1\r\n` });
     expect(sim.filas[0]?.accion).toBe('actualizar');
     expect(sim.filas[0]?.advertencias).toContain('Existe otro producto con SKU 0123: verifique que Excel no haya quitado ceros a la izquierda');
-    await e.api.llamar('crearProducto', { operacionId: 'o3', producto: { id: 'lapiz', nombre: 'Lápiz', categoria: 'C', sku: 'LAP-1', precioUSD } });
-    await e.api.llamar('crearProducto', { operacionId: 'o4', producto: { id: 'goma', nombre: 'Goma', categoria: 'C', sku: 'lapiz', precioUSD } });
-    const amb = await e.api.llamar('simularImportacionProductos', { csv: 'codigo,nombre,categoria\r\nlapiz,X,C\r\n' });
+    await e.api.llamar('crearProducto', { operacionId: 'o3', producto: { id: 'lapiz', nombre: 'Lápiz', categoria: 'c', sku: 'LAP-1', precioUSD } });
+    await e.api.llamar('crearProducto', { operacionId: 'o4', producto: { id: 'goma', nombre: 'Goma', categoria: 'c', sku: 'lapiz', precioUSD } });
+    const amb = await e.api.llamar('simularImportacionProductos', { csv: 'codigo,nombre,categoria\r\nlapiz,X,c\r\n' });
     expect(amb.filas[0]?.errores[0]?.motivo).toMatch(/ambigua/);
   });
 });

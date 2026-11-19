@@ -114,7 +114,7 @@ describe('inventario', () => {
     ver(e, h(PantallaInventario, { sub: 'csv' }));
     await u.click(await screen.findByRole('button', { name: 'Exportar en CSV' }));
     expect(await screen.findByText('Archivo exportado.')).toBeTruthy();
-    const archivo = new File(['id,nombre,categoria,sku,precioUSDbo,precioUSDar\r\ncsv-1,Del CSV,Cat,C-1,100,110\r\n'], 'p.csv', { type: 'text/csv' });
+    const archivo = new File(['id,nombre,categoria,sku,precioUSDbo,precioUSDar\r\ncsv-1,Del CSV,cat,C-1,100,110\r\n'], 'p.csv', { type: 'text/csv' });
     await u.upload(screen.getByLabelText('Archivo de productos (CSV o Excel)'), archivo);
     await u.click(await screen.findByRole('button', { name: 'Importar 1 fila' }));
     const d = await screen.findByRole('dialog', { name: '¿Importar este archivo?' });
@@ -418,7 +418,7 @@ describe('catálogo y sitio', () => {
     expect(screen.getByText('0 B de 10,0 GB')).toBeTruthy();
     await u.click(screen.getByRole('button', { name: 'Publicar el sitio' }));
     await u.click(await screen.findByRole('button', { name: 'Sí, publicar' }));
-    expect(await screen.findByText(/Publicado: versión 1/)).toBeTruthy();
+    expect(await screen.findByText(/Publicación enviada \(versión 1/)).toBeTruthy();
     await waitFor(() => expect(document.querySelector('[data-prueba="cambios"]')?.textContent).toBe('0'));
   });
   it('el supervisor solo ve tablero y fichas, sin publicar', async () => {

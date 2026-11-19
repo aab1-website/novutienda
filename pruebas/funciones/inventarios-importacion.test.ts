@@ -125,4 +125,16 @@ describe.skipIf(!hayEmulador)('inventarios: importación, conteo y lecturas (emu
     const ok = await accion('inventarios', 'importarProductosCsv', { operacionId: unico('op'), csv, omitirErrores: true, lineasOmitidas: [3] }, adm.token, A);
     expect(cuerpo(ok)).toMatchObject({ completa: true, creados: 1, omitidas: 1 });
   });
+  it('la simulación marca por fila la categoría con mayúsculas o tildes y el precio sobre el tope (1.000.000 en la moneda base = 100.000.000 centavos), y la importación real las rechaza sin escribir', async () => {
+    const csv = `${CAB}\ntp-ok,Tope justo,audio,TP-1,100000000,100000000\ntp-cat,Cat mala,Audio,TP-2,1,1\ntp-alto,Precio alto,audio,TP-3,100000001,1\n`;
+    const r = await accion('inventarios', 'importarProductosCsv', { simular: true, csv }, adm.token, A);
+    expect(r.status, JSON.stringify(r.error)).toBe(200);
+    const filas = (cuerpo(r)['simulacion'] as { filas: { accion: string; errores: { motivo: string }[] }[] }).filas;
+    expect(filas[0]!.errores).toEqual([]);
+    expect(filas[1]!.errores.map((x) => x.motivo)).toContain('La categoría va en minúsculas, sin tildes ni espacios: use «audio».');
+    expect(filas[2]!.errores.map((x) => x.motivo).join(' ')).toMatch(/supera el tope de 1\.000\.000/);
+    const real = await accion('inventarios', 'importarProductosCsv', { operacionId: unico('op'), csv }, adm.token, A);
+    expect(real.status).toBe(400);
+    for (const id of ['tp-ok', 'tp-cat', 'tp-alto']) expect((await h.firestore.doc(`tenants/${A}/productos/${id}`).get()).exists).toBe(false);
+  });
 });
