@@ -1,3 +1,4 @@
+import { avisoDesproporcion, esCategoriaValida, excedeTopeCentavos, mensajeCategoriaInvalida, mensajeCostoSobreTope, mensajePrecioSobreTope } from '@novutienda/nucleo';
 import { ErrorApi } from '../../api/errores.js';
 import type { CambiosProducto, CodigoMoneda, EntradaProducto, PreciosPorMercado, ProductoPanel } from '../../api/tipos.js';
 import { centavosATexto, textoACentavos } from '../../util/dinero.js';
@@ -11,7 +12,6 @@ import { nombreMoneda, type MercadoPrecio } from './nombres.js';
  */
 
 export const TOPES_PRODUCTO = { nombre: 120, categoria: 60, marca: 60, sku: 40 } as const;
-const MAX_CENTAVOS = 10_000_000_000;
 const SKU = /^[A-Za-z0-9][A-Za-z0-9._-]{0,39}$/;
 /** «Escriba un monto en dólares, por ejemplo 12,50.»; sin moneda conocida no se nombra ninguna. */
 const montoEn = (moneda: CodigoMoneda | undefined): string => `Escriba un monto${moneda === undefined ? '' : ` en ${nombreMoneda(moneda)}`}, por ejemplo 12,50.`;
@@ -105,6 +105,7 @@ export function revisarProducto(f: FormProducto, ctx: ContextoRevision): Errores
   const categoria = f.categoria.trim();
   if (categoria === '') e['categoria'] = 'Escriba la categoría.';
   else if (categoria.length > TOPES_PRODUCTO.categoria) e['categoria'] = `Máximo ${String(TOPES_PRODUCTO.categoria)} caracteres.`;
+  else if (!esCategoriaValida(categoria)) e['categoria'] = mensajeCategoriaInvalida(categoria);
   if (f.marca.trim().length > TOPES_PRODUCTO.marca) e['marca'] = `Máximo ${String(TOPES_PRODUCTO.marca)} caracteres.`;
   if (ctx.nuevo) {
     if (f.sku.trim() === '') e['sku'] = 'Escriba el SKU, el código con que identifica el producto.';
@@ -121,7 +122,7 @@ export function revisarProducto(f: FormProducto, ctx: ContextoRevision): Errores
   if (f.costo.trim() !== '') {
     const c = textoACentavos(f.costo);
     if (c === null) e['costo'] = montoEn(ctx.monedaCosto);
-    else if (c > MAX_CENTAVOS) e['costo'] = 'El monto es demasiado alto.';
+    else if (excedeTopeCentavos(c)) e['costo'] = mensajeCostoSobreTope(ctx.monedaCosto ?? 'la moneda de costo');
   }
   for (const m of ctx.mercados) {
     const t = f.precios[m.clave] ?? '';
@@ -130,9 +131,19 @@ export function revisarProducto(f: FormProducto, ctx: ContextoRevision): Errores
     if (t.trim() === '') {
       if (ctx.nuevo || !(ctx.sinPrecio ?? []).includes(m.clave)) e[clavePrecio(m.clave)] = `Falta el precio de ${m.nombre}. Es obligatorio en cada mercado.`;
     } else if (c === null) e[clavePrecio(m.clave)] = montoEn(m.monedaBase);
-    else if (c > MAX_CENTAVOS) e[clavePrecio(m.clave)] = 'El monto es demasiado alto.';
+    else if (excedeTopeCentavos(c)) e[clavePrecio(m.clave)] = mensajePrecioSobreTope({ nombre: m.nombre, monedaBase: m.monedaBase, monedaVenta: m.monedaVenta });
   }
   return e;
+}
+
+/** Avisos (no bloquean) de precios muy desparejos entre mercados de la misma moneda base. */
+export function avisosDeDesproporcion(f: FormProducto, mercados: readonly MercadoPrecio[]): string[] {
+  const precios: Record<string, number> = {};
+  for (const m of mercados) {
+    const c = textoACentavos(f.precios[m.clave] ?? '');
+    if (c !== null && c > 0) precios[m.id] = c;
+  }
+  return avisoDesproporcion(precios, mercados.map((m) => ({ id: m.id, nombre: m.nombre, monedaBase: m.monedaBase })));
 }
 
 /** Precio en centavos por mercado declarado; un mercado vacío se omite (solo si ya estaba sin precio); `null` si alguno no es válido. */

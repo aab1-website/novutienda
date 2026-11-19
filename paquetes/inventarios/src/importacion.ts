@@ -1,4 +1,4 @@
-import { monedaCostoDe, type CambioProductoCambiado, type ConfiguracionComercial, type TransaccionIdentidad, type TransaccionMin } from '@novutienda/nucleo';
+import { avisoDesproporcion, esCategoriaValida, excedeTopeCentavos, mensajeCategoriaInvalida, mensajeCostoSobreTope, mensajeGuardadoInvalido, mensajePrecioSobreTope, monedaCostoDe, type CambioProductoCambiado, type ConfiguracionComercial, type TransaccionIdentidad, type TransaccionMin } from '@novutienda/nucleo';
 import { claveDePrecio, resolverComercial } from './comercial.js';
 import { EntradaInvalida, ErrorInventario, SinPermiso } from './errores.js';
 import { esProductoId, esSku, exigirSegmento, identificadorParaAlta, exigirTenant, UBICACIONES } from './ids.js';
@@ -201,7 +201,7 @@ export function aEnteroEscalado(v: string, escala: number): number | undefined {
 /** Convierte un importe a centavos enteros: `centavos` exige un entero (`1250` o `1250.0`); `usd` admite hasta 2 decimales reales (coma o punto). */
 function importe(v: string, unidad: Unidad): number | undefined {
   const c = aEnteroEscalado(v, unidad === 'centavos' ? 1 : 100);
-  return c !== undefined && c <= 100_000_000_00 ? c : undefined;
+  return c;
 }
 
 /**
@@ -280,6 +280,10 @@ export function leerCsvFilas(fuente: FuenteTabla, cargaInicial: boolean, comerci
         err(c, `texto inválido (máximo ${String(max)} caracteres, sin < ni >)`);
         continue;
       }
+      if (c === 'categoria' && !esCategoriaValida(v)) {
+        err(c, mensajeCategoriaInvalida(v));
+        continue;
+      }
       const n = v !== crudo ? v : neutralizarCelda(v);
       if (n !== v) advertencias.push(`${c}: empieza con un carácter de fórmula; se guardó con «'» delante`);
       d[c] = n;
@@ -338,7 +342,10 @@ export function leerCsvFilas(fuente: FuenteTabla, cargaInicial: boolean, comerci
       const unidad = indice.get(c)?.unidad ?? 'centavos';
       const n = importe(v, unidad);
       if (n === undefined) err(c, unidad === 'centavos' ? `importe en centavos de ${moneda}: entero sin signos ni fórmulas` : `importe en ${moneda}, hasta 2 decimales, sin signos ni fórmulas`);
-      else if (destino === 'costoUSD') d.costoUSD = n;
+      else if (excedeTopeCentavos(n)) {
+        const m = comercial.mercados.find((x) => claveDePrecio(x.id) === destino);
+        err(c, m !== undefined ? mensajePrecioSobreTope(m) : mensajeCostoSobreTope(moneda));
+      } else if (destino === 'costoUSD') d.costoUSD = n;
       else (d.precios ??= {})[destino] = n;
     }
     for (const [c, ubicacionId] of Object.entries(COLUMNAS_STOCK) as [Columna, string][]) {
@@ -445,6 +452,15 @@ interface PlanFila {
   cambios: string[];
   producto?: ProductoValido;
   edicion?: CambiosProducto;
+}
+
+function avisosDesproporcion(comercial: ConfiguracionComercial, precioDe: (idMercado: string) => number | undefined): string[] {
+  const precios: Record<string, number> = {};
+  for (const m of comercial.mercados) {
+    const v = precioDe(m.id);
+    if (v !== undefined) precios[m.id] = v;
+  }
+  return avisoDesproporcion(precios, comercial.mercados.map((m) => ({ id: m.id, nombre: m.nombre, monedaBase: m.monedaBase })));
 }
 
 const ERR = (columna: string | null, motivo: string): ErrorFila => ({ columna, motivo });
@@ -554,6 +570,7 @@ async function planificarFila(lector: Lector, fila: FilaLeida, comercial: Config
       return plan;
     }
     plan.accion = 'crear';
+    plan.advertencias.push(...avisosDesproporcion(comercial, (id) => d.precios?.[claveDePrecio(id)]));
     return plan;
   }
   // Producto existente: se actualiza solo lo que el archivo trae y difiere; una celda vacía no borra nada.
@@ -590,13 +607,28 @@ async function planificarFila(lector: Lector, fila: FilaLeida, comercial: Config
     const valor = traido ?? (antes[k] as number | undefined);
     if (valor !== undefined) nuevosPrecios[k] = valor;
   }
+  // D1: los precios resultantes (guardados fusionados con los del archivo) deben cumplir el tope.
+  for (const m of comercial.mercados) {
+    const v = nuevosPrecios[claveDePrecio(m.id)];
+    if (v !== undefined && d.precios?.[claveDePrecio(m.id)] === undefined && excedeTopeCentavos(v)) {
+      plan.errores.push(ERR(columnaDePrecio(m.id), mensajeGuardadoInvalido(`El precio guardado de ${m.nombre}`, mensajePrecioSobreTope(m))));
+    }
+  }
   if (cambiaPrecio) {
+    plan.advertencias.push(...avisosDesproporcion(comercial, (id) => nuevosPrecios[claveDePrecio(id)]));
     c.precioUSD = nuevosPrecios;
     plan.cambios.push('precioUSD');
   }
-  if (d.costoUSD !== undefined && d.costoUSD !== (await lector.leer('costos', plan.id))?.['costoUSD']) {
+  const costoGuardado = (await lector.leer('costos', plan.id))?.['costoUSD'];
+  if (d.costoUSD !== undefined && d.costoUSD !== costoGuardado) {
     c.costoUSD = d.costoUSD;
     plan.cambios.push('costoUSD');
+  } else if (d.costoUSD === undefined && typeof costoGuardado === 'number' && excedeTopeCentavos(costoGuardado)) {
+    plan.errores.push(ERR('costo', mensajeGuardadoInvalido('El costo guardado', mensajeCostoSobreTope(monedaCostoDe(comercial)))));
+  }
+  const catGuardada = previo['categoria'];
+  if (d.categoria === undefined && typeof catGuardada === 'string' && !esCategoriaValida(catGuardada)) {
+    plan.errores.push(ERR('categoria', mensajeGuardadoInvalido(`La categoría guardada «${catGuardada}»`, mensajeCategoriaInvalida(catGuardada))));
   }
   if (plan.errores.length > 0) return plan;
   plan.accion = plan.cambios.length > 0 ? 'actualizar' : 'sin-cambios';

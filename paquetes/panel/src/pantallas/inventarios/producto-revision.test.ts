@@ -3,7 +3,7 @@ import { ErrorApi } from '../../api/errores.js';
 import type { ProductoPanel } from '../../api/tipos.js';
 import type { MercadoDeclarado } from '../../api/tipos.js';
 import { mercadosDePrecio } from './nombres.js';
-import { aEntrada, cambiosDeEdicion, errorDeServidor, avisoDeSku, errorDeSku, esProductoYaExiste, formInicial, leerBorrador, listaEnTexto, revisarProducto, type FormProducto } from './producto-revision.js';
+import { aEntrada, avisosDeDesproporcion, cambiosDeEdicion, errorDeServidor, avisoDeSku, errorDeSku, esProductoYaExiste, formInicial, leerBorrador, listaEnTexto, revisarProducto, type FormProducto } from './producto-revision.js';
 
 const EXISTENTES = [{ id: 'cable-hdmi', sku: 'CABLE-HDMI' }];
 const REF: readonly MercadoDeclarado[] = [
@@ -15,9 +15,9 @@ const M = mercadosDePrecio(REF);
 const M1 = mercadosDePrecio(UNO);
 const errSrv = (e: unknown): ReturnType<typeof errorDeServidor> => errorDeServidor(e, M);
 const CTX = { nuevo: true, existentes: EXISTENTES, mercados: M, monedaCosto: 'USD' };
-const valido = (): FormProducto => ({ ...formInicial(null, M), nombre: 'Teclado', categoria: 'Accesorios', sku: 'TEC-1', precios: { bo: '15', ar: '16' } });
+const valido = (): FormProducto => ({ ...formInicial(null, M), nombre: 'Teclado', categoria: 'accesorios', sku: 'TEC-1', precios: { bo: '15', ar: '16' } });
 const producto = (extra: Partial<ProductoPanel> = {}): ProductoPanel => ({
-  id: 'cable-hdmi', nombre: 'Cable HDMI 2 m', categoria: 'Accesorios', marca: 'Cabletec', sku: 'CABLE-HDMI', activo: true, publicado: true, conSerie: false, garantiaMeses: 6, minimo: 10,
+  id: 'cable-hdmi', nombre: 'Cable HDMI 2 m', categoria: 'accesorios', marca: 'Cabletec', sku: 'CABLE-HDMI', activo: true, publicado: true, conSerie: false, garantiaMeses: 6, minimo: 10,
   precioUSD: { bo: 800, ar: 900 }, costoUSD: 300, stockTotal: 35, existencias: { tienda: 25, 'deposito-1': 10, 'deposito-2': 0 }, bajoMinimo: false, disponible: true, ...extra,
 });
 
@@ -69,13 +69,13 @@ describe('revisión del producto', () => {
   });
   it('cantidad y precio mal escritos no pasan', () => {
     expect(revisarProducto({ ...valido(), minimo: '-1' }, CTX)['minimo']).toBeTruthy();
-    expect(revisarProducto({ ...valido(), precios: { bo: '15', ar: '99999999999' } }, CTX)['precio.ar']).toMatch(/demasiado alto/);
+    expect(revisarProducto({ ...valido(), precios: { bo: '15', ar: '99999999999' } }, CTX)['precio.ar']).toMatch(/supera el tope de 1.000.000/);
   });
 });
 
 describe('alta y edición hacia el servidor', () => {
   it('arma la entrada de alta en centavos, sin los opcionales vacíos', () => {
-    expect(aEntrada(valido(), M, 'teclado-1')).toEqual({ id: 'teclado-1', nombre: 'Teclado', categoria: 'Accesorios', sku: 'TEC-1', activo: true, conSerie: false, precioUSD: { bo: 1500, ar: 1600 } });
+    expect(aEntrada(valido(), M, 'teclado-1')).toEqual({ id: 'teclado-1', nombre: 'Teclado', categoria: 'accesorios', sku: 'TEC-1', activo: true, conSerie: false, precioUSD: { bo: 1500, ar: 1600 } });
   });
   it('en una edición sin tocar nada no hay cambios', () => {
     const r = cambiosDeEdicion(formInicial(producto(), M), producto(), true, M);
@@ -131,7 +131,7 @@ describe('errores del servidor a su campo', () => {
 
 describe('un comercio con un solo mercado y una sola moneda', () => {
   const ctx1 = { nuevo: true, existentes: EXISTENTES, mercados: M1, monedaCosto: 'PEN' };
-  const base1 = (): FormProducto => ({ ...formInicial(null, M1), nombre: 'Lápiz', categoria: 'Útiles', sku: 'LAP-1', precios: { pe: '2,50' } });
+  const base1 = (): FormProducto => ({ ...formInicial(null, M1), nombre: 'Lápiz', categoria: 'utiles', sku: 'LAP-1', precios: { pe: '2,50' } });
   it('solo pide y envía el precio de su mercado, con la clave derivada del id', () => {
     expect(Object.keys(formInicial(null, M1).precios)).toEqual(['pe']);
     expect(revisarProducto(base1(), ctx1)).toEqual({});
@@ -162,7 +162,7 @@ describe('producto sin precio en un mercado', () => {
     const f = formInicial(sinAr, M);
     expect(f.precios).toEqual({ bo: '8,00', ar: '' });
     expect(revisarProducto(f, { ...CTX, nuevo: false, sinPrecio: ['ar'] })).toEqual({});
-    expect(cambiosDeEdicion({ ...f, categoria: 'Otra' }, sinAr, true, M).cambios).toEqual({ categoria: 'Otra' });
+    expect(cambiosDeEdicion({ ...f, categoria: 'otra' }, sinAr, true, M).cambios).toEqual({ categoria: 'otra' });
   });
   it('quitar un precio existente sigue siendo un error y el alta exige todos', () => {
     expect(revisarProducto({ ...formInicial(sinAr, M), precios: { bo: '', ar: '' } }, { ...CTX, nuevo: false, sinPrecio: ['ar'] })['precio.bo']).toBeTruthy();
@@ -170,5 +170,26 @@ describe('producto sin precio en un mercado', () => {
   });
   it('ponerle precio lo envía; el mercado vacío no se envía', () => {
     expect(cambiosDeEdicion({ ...formInicial(sinAr, M), precios: { bo: '8', ar: '12' } }, sinAr, true, M).cambios).toEqual({ precioUSD: { bo: 800, ar: 1200 } });
+  });
+});
+
+describe('categoría, tope y desproporción', () => {
+  it('una categoría que no es slug se rechaza con la sugerencia', () => {
+    expect(revisarProducto({ ...valido(), categoria: 'Audio' }, CTX)['categoria']).toBe('La categoría va en minúsculas, sin tildes ni espacios: use «audio».');
+    expect(revisarProducto({ ...valido(), categoria: 'linea-blanca' }, CTX)['categoria']).toBeUndefined();
+  });
+  it('un precio sobre el tope nombra el mercado y pregunta por la moneda de venta; el tope justo pasa', () => {
+    const e = revisarProducto({ ...valido(), precios: { bo: '1000000', ar: '1000000,01' } }, CTX);
+    expect(e['precio.bo']).toBeUndefined();
+    expect(e['precio.ar']).toMatch(/Argentina va en USD.*supera el tope de 1\.000\.000.*pesos argentinos/);
+  });
+  it('el costo sobre el tope usa su moneda', () => {
+    expect(revisarProducto({ ...valido(), costo: '1000000,01' }, CTX)['costo']).toMatch(/costo va en USD y supera el tope de 1\.000\.000: revise/);
+  });
+  it('avisa (sin error) cuando un mercado vale más de 10 veces otro de la misma moneda base', () => {
+    const f = { ...valido(), precios: { bo: '10', ar: '150' } };
+    expect(avisosDeDesproporcion(f, M)).toHaveLength(1);
+    expect(revisarProducto(f, CTX)).toEqual({});
+    expect(avisosDeDesproporcion({ ...valido(), precios: { bo: '10', ar: '50' } }, M)).toEqual([]);
   });
 });

@@ -2,7 +2,7 @@ import { beforeEach, describe, expect, it } from 'vitest';
 import {
   decidirReconstruccion, eliminarSeccion, ejecutarReconstruccion,
   finalizarSubida, guardarCarrusel, guardarConfigSitio, guardarFicha, guardarSeccion, LIMITES_CONSOLA, obtenerTablero, ordenarSecciones,
-  proyectarDisponibilidad, publicarSitio, reservarSubida, calcularDisponibilidadPublica, construirPublicado,
+  motivosContenidoParaSitio, proyectarDisponibilidad, publicarSitio, reservarSubida, calcularDisponibilidadPublica, construirPublicado,
   type DepsMedios,
   esWhatsappValido, pareceNumeroDeRelleno, validarConfigSitio,
 } from '@novutienda/consola';
@@ -182,6 +182,66 @@ describe('servicios de la consola', () => {
       await configurar();
       await expect(publicarSitio(dp(), { tenantId: T, actor: sup })).rejects.toMatchObject({ codigo: 'no-autorizado' });
       await expect(publicarSitio(dp(), { tenantId: T, actor: actor('adm', 'otro') })).rejects.toMatchObject({ codigo: 'no-autorizado' });
+    });
+
+    it('rechaza toda la publicación nombrando el producto y el dato a corregir, y no escribe nada', async () => {
+      await configurar();
+      await publicable('cam-1');
+      catalogo.agregar('cam-1', { nombre: 'Lavajilla', categoria: 'Audio', precioUSD: { bo: 10, ar: 2_000_000 } });
+      const antes = db.dato(`tenants/${T}/publicado/producto__cam-1`);
+      await expect(publicarSitio(dp(), { tenantId: T, actor: adm })).rejects.toMatchObject({
+        codigo: 'estado',
+        message: 'El sitio rechazaría esta publicación: «Lavajilla»: el precio de Argentina supera el tope de 1.000.000 y la categoría va en minúsculas, sin tildes ni espacios: use «audio». Corríjalo en Inventario.',
+      });
+      expect(db.dato(`tenants/${T}/publicado/producto__cam-1`)).toEqual(antes);
+      expect(disparador.eventos).toEqual([]);
+    });
+
+    describe('motivosContenidoParaSitio', () => {
+      const p = (id: string, categoria: string, bo: number, ar: number) => ({ id, nombre: `P ${id}`, categoria, precioUSD: { bo, ar } });
+      const motivos = (...ps: ReturnType<typeof p>[]) => motivosContenidoParaSitio({ productos: ps });
+
+      it('el tope justo pasa y el tope + 1 falla', () => {
+        expect(motivos(p('a', 'audio', 1_000_000, 1_000_000))).toEqual([]);
+        expect(motivos(p('a', 'audio', 1_000_001, 0))).toEqual([expect.objectContaining({ productoId: 'a', motivo: expect.stringContaining('Bolivia') })]);
+        expect(motivos(p('a', 'audio', 0, 1_000_001))).toEqual([expect.objectContaining({ motivo: expect.stringContaining('Argentina') })]);
+      });
+
+      it('NaN e Infinity se rechazan como precio ausente, no como tope', () => {
+        expect(motivos(p('a', 'audio', Number.NaN, 0))).toEqual([expect.objectContaining({ motivo: 'falta el precio de Bolivia' })]);
+        expect(motivos(p('a', 'audio', 0, Number.POSITIVE_INFINITY))).toEqual([expect.objectContaining({ motivo: 'falta el precio de Argentina' })]);
+      });
+
+      it('precio ausente o no numérico dice «falta el precio»', () => {
+        const sin = { id: 'a', nombre: 'P a', categoria: 'audio', precioUSD: { bo: 5 } as unknown as { bo: number; ar: number } };
+        expect(motivosContenidoParaSitio({ productos: [sin] })).toEqual([{ productoId: 'a', nombre: 'P a', motivo: 'falta el precio de Argentina' }]);
+        const texto = { ...sin, precioUSD: { bo: 'x', ar: 1 } as unknown as { bo: number; ar: number } };
+        expect(motivosContenidoParaSitio({ productos: [texto] })).toEqual([{ productoId: 'a', nombre: 'P a', motivo: 'falta el precio de Bolivia' }]);
+      });
+
+      it('categoría inválida con su sugerencia', () => {
+        expect(motivos(p('a', 'Línea Blanca', 1, 1))).toEqual([
+          { productoId: 'a', nombre: 'P a', motivo: 'la categoría va en minúsculas, sin tildes ni espacios: use «linea-blanca»' },
+        ]);
+      });
+
+      it('41 categorías distintas generan un motivo general', () => {
+        const muchas = Array.from({ length: 41 }, (_, i) => p(`p${String(i)}`, `c${String(i)}`, 1, 1));
+        expect(motivos(...muchas)).toEqual([{ productoId: '', nombre: '', motivo: expect.stringContaining('41 categorías') }]);
+        expect(motivos(...muchas.slice(0, 40))).toEqual([]);
+      });
+    });
+
+    it('con más de 10 productos malos, el mensaje dice «y N productos más»', async () => {
+      await configurar();
+      await publicable('cam-1');
+      for (let i = 0; i < 12; i += 1) {
+        catalogo.productos.set(`mal-${String(i)}`, { id: `mal-${String(i)}`, nombre: `Malo ${String(i)}`, categoria: 'Audio', marca: 'M', activo: true, disponible: true, precioUSD: { bo: 1, ar: 1 } });
+        await guardarFicha(ds(), { tenantId: T, actor: adm, productoId: `mal-${String(i)}`, ficha: ficha(`malo-${String(i)}`, []) });
+      }
+      const err = await publicarSitio(dp(), { tenantId: T, actor: adm }).then(() => new Error('no falló'), (e: unknown) => e as Error);
+      expect((err.message.match(/«Malo \d+»:/g) ?? [])).toHaveLength(10);
+      expect(err.message).toContain('y 2 productos más');
     });
 
     it('arma la copia publicada solo con datos públicos, pone en cero los cambios y agenda a 10 minutos', async () => {

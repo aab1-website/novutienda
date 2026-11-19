@@ -201,7 +201,7 @@ interface DetalleColumna { readonly formato: string; readonly obligatoria: strin
 
 const DETALLE_FIJO: Readonly<Record<string, DetalleColumna>> = {
   nombre: { formato: 'Texto', obligatoria: 'Sí, al crear', ejemplo: 'Auricular inalámbrico' },
-  categoria: { formato: 'Texto', obligatoria: 'Sí, al crear', ejemplo: 'Audio' },
+  categoria: { formato: 'Texto', obligatoria: 'Sí, al crear', ejemplo: 'audio' },
   marca: { formato: 'Texto', obligatoria: 'No', ejemplo: 'Sonora' },
   sku: { formato: 'Hasta 40 caracteres: letras, números, punto, guion y guion bajo; sin espacios', obligatoria: 'Sí, en cada fila', ejemplo: 'AUR-001' },
   conSerie: { formato: 'sí o no', obligatoria: 'No (si falta, es «no»)', ejemplo: 'no' },

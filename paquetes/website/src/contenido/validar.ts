@@ -3,7 +3,7 @@
  * archivo de ejemplo) se comprueba antes de generar una sola página. Un contenido
  * inválido detiene el build con la lista completa de errores, no solo el primero.
  */
-import { motivoReglaRedondeoInvalida } from '@novutienda/nucleo';
+import { LARGO_MAXIMO_CATEGORIA, MAX_CATEGORIAS_SITIO, RE_SLUG_SITIO, TOPE_PRECIO_BASE, motivoReglaRedondeoInvalida } from '@novutienda/nucleo';
 import type { Mercado } from '@novutienda/nucleo';
 import {
   IDS_ICONO, IDS_PLANTILLA, LIMITES_SITIO,
@@ -15,7 +15,6 @@ export type ResultadoValidacion =
   | { readonly ok: false; readonly errores: readonly string[] };
 
 const RE_ID = /^[a-z0-9][a-z0-9-]{1,59}$/;
-const RE_SLUG = /^[a-z0-9][a-z0-9-]{0,79}$/;
 const RE_WA = /^[1-9]\d{7,14}$/;
 const RE_HOST = /^[a-z0-9]([a-z0-9-]*[a-z0-9])?(\.[a-z0-9]([a-z0-9-]*[a-z0-9])?)+$/;
 
@@ -383,8 +382,8 @@ export function validarNegocio(entrada: unknown, origenes: readonly (string | nu
     const c = l.obj(o['categorias'], 'negocio.categorias');
     for (const [i, [id, x]] of Object.entries(c).entries()) {
       // Una clave inválida no se copia al error: se nombra por posición.
-      const r = RE_SLUG.test(id) ? `negocio.categorias.${id}` : `negocio.categorias[${i}]`;
-      if (!RE_SLUG.test(id)) l.falla(r, 'la clave no es un identificador válido');
+      const r = RE_SLUG_SITIO.test(id) ? `negocio.categorias.${id}` : `negocio.categorias[${i}]`;
+      if (!RE_SLUG_SITIO.test(id)) l.falla(r, 'la clave no es un identificador válido');
       const e = l.obj(x, r);
       categorias[id] = { nombre: l.texto(e['nombre'], `${r}.nombre`, 1, 80), icono: l.icono(e['icono'], `${r}.icono`) };
     }
@@ -445,10 +444,10 @@ export function validarContenido(entrada: unknown): ResultadoValidacion {
   const beneficios = leerBeneficios(l, raiz['beneficios']);
 
   const idsCat = new Set<string>();
-  const categorias = l.lista(raiz['categorias'], 'categorias', 40).map((c, i) => {
+  const categorias = l.lista(raiz['categorias'], 'categorias', MAX_CATEGORIAS_SITIO).map((c, i) => {
     const o = l.obj(c, `categorias[${i}]`);
-    const id = l.texto(o['id'], `categorias[${i}].id`, 1, 60);
-    if (!RE_SLUG.test(id)) l.falla(`categorias[${i}].id`, 'identificador inválido');
+    const id = l.texto(o['id'], `categorias[${i}].id`, 1, LARGO_MAXIMO_CATEGORIA);
+    if (!RE_SLUG_SITIO.test(id)) l.falla(`categorias[${i}].id`, 'identificador inválido');
     if (idsCat.has(id)) l.falla(`categorias[${i}].id`, `duplicado: ${id}`);
     idsCat.add(id);
     return { id, nombre: l.texto(o['nombre'], `categorias[${i}].nombre`, 1, 80), icono: l.icono(o['icono'], `categorias[${i}].icono`) };
@@ -468,10 +467,10 @@ export function validarContenido(entrada: unknown): ResultadoValidacion {
     if (ids.has(id)) l.falla(`${r}.id`, `duplicado: ${id}`);
     ids.add(id);
     const slug = l.texto(o['slug'], `${r}.slug`, 1, 80);
-    if (!RE_SLUG.test(slug)) l.falla(`${r}.slug`, 'slug inválido');
+    if (!RE_SLUG_SITIO.test(slug)) l.falla(`${r}.slug`, 'slug inválido');
     if (slugs.has(slug)) l.falla(`${r}.slug`, `duplicado: ${slug}`);
     slugs.add(slug);
-    const categoria = l.texto(o['categoria'], `${r}.categoria`, 1, 60);
+    const categoria = l.texto(o['categoria'], `${r}.categoria`, 1, LARGO_MAXIMO_CATEGORIA);
     if (!idsCat.has(categoria)) l.falla(`${r}.categoria`, `categoría inexistente: ${categoria}`);
     const pr = l.obj(o['precioUsd'], `${r}.precioUsd`);
     const seo = o['seo'] === undefined ? {} : l.obj(o['seo'], `${r}.seo`);
@@ -492,7 +491,7 @@ export function validarContenido(entrada: unknown): ResultadoValidacion {
       marca: l.texto(o['marca'], `${r}.marca`, 1, 40),
       descripcion: l.texto(o['descripcion'], `${r}.descripcion`, 1, 4000),
       garantia: l.textoONulo(o['garantia'], `${r}.garantia`, 120),
-      precioUsd: { BO: l.numero(pr['BO'], `${r}.precioUsd.BO`, 0, 1_000_000), AR: l.numero(pr['AR'], `${r}.precioUsd.AR`, 0, 1_000_000) },
+      precioUsd: { BO: l.numero(pr['BO'], `${r}.precioUsd.BO`, 0, TOPE_PRECIO_BASE), AR: l.numero(pr['AR'], `${r}.precioUsd.AR`, 0, TOPE_PRECIO_BASE) },
       disponible: l.bool(o['disponible'], `${r}.disponible`),
       fotos: l.lista(o['fotos'], `${r}.fotos`, LIMITES_SITIO.fotosPorProducto).map((f, j) => leerFoto(l, f, `${r}.fotos[${j}]`, origenes)),
       video,
@@ -509,7 +508,7 @@ export function validarContenido(entrada: unknown): ResultadoValidacion {
     const r = `secciones[${i}]`;
     const o = l.obj(s, r);
     const slug = l.texto(o['slug'], `${r}.slug`, 1, 80);
-    if (!RE_SLUG.test(slug)) l.falla(`${r}.slug`, 'slug inválido');
+    if (!RE_SLUG_SITIO.test(slug)) l.falla(`${r}.slug`, 'slug inválido');
     if (slugsSeccion.has(slug)) l.falla(`${r}.slug`, `duplicado: ${slug}`);
     slugsSeccion.add(slug);
     return {

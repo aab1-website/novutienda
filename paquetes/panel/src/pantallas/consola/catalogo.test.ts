@@ -507,7 +507,7 @@ describe('catálogo: aviso del sitio incompleto', () => {
     await screen.findByText(/El sitio quedó sin fotos/);
     await u.click(screen.getByRole('button', { name: 'Publicar el sitio' }));
     await u.click(await screen.findByRole('button', { name: 'Sí, publicar' }));
-    expect(await screen.findByText(/Publicado: versión 1/)).toBeTruthy();
+    expect(await screen.findByText(/Publicación enviada \(versión 1/)).toBeTruthy();
     await waitFor(() => expect(screen.queryByText(/El sitio quedó sin fotos/)).toBeNull());
   });
   it('sin cambios, Publicar está apagado y dice por qué; con cambios, la confirmación da un tiempo honesto', async () => {

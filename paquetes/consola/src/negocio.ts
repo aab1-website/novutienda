@@ -1,7 +1,7 @@
 /**
  * Datos generales del negocio que muestra el sitio público: regla compartida (límites, íconos, validación y enlaces).
  * Subruta del paquete (`@novutienda/consola/negocio`): solo depende de los dos archivos hoja `errores.ts` y `validar.ts`
- * (sin importar nada más de la consola ni del núcleo), para que el sitio pueda importarla sin arrastrar el resto.
+ * (sin importar nada más de la consola; del núcleo solo la expresión del identificador), para que el sitio pueda importarla sin arrastrar el resto.
  *
  * Los límites son los que aplica `paquetes/website/src/contenido/validar.ts` (`validarNegocio`); cada uno cita su línea. No
  * incluye `mercados`, `mercadoInicial` ni `logo` (salen del tenant y del logo por archivo) ni redes sociales.
@@ -12,6 +12,7 @@
  * - `estricto`: lo de `heredado` más reglas de seguridad (sin caracteres engañosos ni HTML, correo y teléfono con forma,
  *   anfitriones sin IP, topes de categorías y de tamaño). Lo usa el guardado para lo que escribe una persona.
  */
+import { RE_SLUG_SITIO } from '@novutienda/nucleo';
 import { ErrorConsola } from './errores.js';
 import { esObjeto } from './validar.js';
 
@@ -42,7 +43,7 @@ export const LIMITES_NEGOCIO = {
    * líneas 18 (RE_SLUG) y 380-390. El sitio NO acota la cantidad de categorías del negocio; el tope de 40 es el que impone al
    * contenido (línea 448, `l.lista(raiz['categorias'], 'categorias', 40)`) y aquí rige solo en `estricto`.
    */
-  categorias: { id: /^[a-z0-9][a-z0-9-]{0,79}$/, nombre: { min: 1, max: 80 }, max: 40 },
+  categorias: { id: RE_SLUG_SITIO, nombre: { min: 1, max: 80 }, max: 40 },
   /** Tope del documento completo (JSON canónico); el sitio no lo impone: rige solo en `estricto`. */
   documentoMax: 200_000,
   /** Correo y teléfono con forma (solo `estricto`; el sitio solo acota el largo). */

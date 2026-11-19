@@ -33,7 +33,7 @@ describe('Excel exportado e importado', () => {
   it('la fila de ejemplo de la plantilla se simula como producto nuevo y sin errores', async () => {
     const hoja = [
       ['nombre', 'categoria', 'marca', 'sku', 'conSerie', 'garantiaMeses', 'minimo', 'precioBO', 'precioAR', 'costo', 'activo', 'publicado'],
-      ['Auricular inalámbrico', 'Audio', 'Sonora', 'AUR-001', 'no', '12', '5', '1234.50', '1234.50', '800.00', 'sí', 'no'],
+      ['Auricular inalámbrico', 'audio', 'Sonora', 'AUR-001', 'no', '12', '5', '1234.50', '1234.50', '800.00', 'sí', 'no'],
     ];
     const sim = await simular(await leerArchivoImportacion(ZIP, lectorCon(hoja)));
     expect(sim.filas[0]).toMatchObject({ accion: 'crear', errores: [] });

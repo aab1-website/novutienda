@@ -33,8 +33,9 @@ export type { TransaccionConsola } from './consumidores.js';
 export { eliminarSeccion, guardarCarrusel, guardarConfigSitio, guardarFicha, guardarSeccion, ordenarSecciones } from './servicio-sitio.js';
 export {
   calcularDisponibilidadPublica, construirPublicado, decidirReconstruccion, ejecutarReconstruccion, proyectarDisponibilidad,
-  publicarSitio,
+  motivosContenidoParaSitio, publicarSitio,
 } from './publicar.js';
+export type { MotivoContenido } from './publicar.js';
 export type { DecisionReconstruccion, EventoReconstruccion, Publicado, ResultadoPublicacion } from './publicar.js';
 export { obtenerTablero, preciosDelDiaDe } from './tablero.js';
 export type { Tablero, PrecioDelDiaDeMercado } from './tablero.js';
