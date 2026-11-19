@@ -1,9 +1,9 @@
 # Módulo POS
 
-Dueño de: turnos, ventas, cobros por moneda, arqueo, descuentos, anulaciones, ingresos/egresos de caja, créditos, configuración del POS.
+Dueño de: turnos, ventas, cobros por moneda, arqueo, descuentos, anulaciones, ingresos y egresos excepcionales de caja, créditos, configuración del POS.
 
 ## Alcance (propuesta)
-Terminal con buscador en tiempo real, filtro por categoría y carrito. Apertura/cierre de turno. Arqueo separado por moneda (BOB, USD, ARS). Cobro: efectivo (con cambio), QR (registro manual con referencia, mostrado como «registrado por <usuario>», nunca «verificado»), transferencia, crédito/préstamo aprobado y pago mixto en una misma moneda. Descuentos controlados (tope por rol, motivo, aprobación de supervisor). Supervisión de caja en tiempo real. Ingresos/egresos justificados. Anulaciones inmutables. Personalización (logo, colores, datos del negocio, medios habilitados, moneda por defecto, texto del recibo). No entra: depósitos bancarios, multas al personal, utilidad, varios POS, verificación bancaria del QR, ventas en espera, apartados, proformas, comisiones, promociones, modo sin conexión.
+Terminal con buscador en tiempo real, filtro por categoría y carrito. Apertura/cierre de turno. Arqueo separado por moneda (BOB, USD, ARS). Cobro: efectivo (con cambio), QR (registro manual con referencia, mostrado como «registrado por <usuario>», nunca «verificado»), transferencia, crédito/préstamo aprobado y pago mixto en una misma moneda. Descuentos controlados (tope por rol, motivo, aprobación de supervisor). Supervisión de caja en tiempo real. Ing. y Egr. Excepcionales justificados. Anulaciones inmutables. Personalización (logo, colores, datos del negocio, medios habilitados, moneda por defecto, texto del recibo). No entra: depósitos bancarios, multas al personal, utilidad, varios POS, verificación bancaria del QR, ventas en espera, apartados, proformas, comisiones, promociones, modo sin conexión.
 
 ## Reglas decididas
 - Tope de descuento sin permiso del vendedor: 5 % (configurable); por encima, `discount_approvals` de un solo uso, aprobada por sup/adm (nunca autoaprobada), con motivo.
@@ -22,7 +22,10 @@ Arqueo por moneda m: `esperado[m] = apertura[m] + Σ efectivo neto de cambio[m] 
 Emite `venta.confirmada.v1`, `venta.anulada.v1`, `turno.cerrado.v1`. Consume cotización vigente (núcleo) y existencias (lectura).
 
 ## Pantallas
-Ingreso (correo y contraseña), apertura de turno (efectivo por moneda), terminal, cobro, solicitud/aprobación de descuento, recibo (vista, PDF, imprimir, WhatsApp, N.º de factura SUMA), ingresos y egresos, cobro de créditos, cierre con conteo por moneda, supervisión en vivo, anulaciones, auditoría y CSV, configuración del POS, usuarios (3).
+Ingreso (correo y contraseña), apertura de turno (efectivo por moneda), terminal, cobro, solicitud/aprobación de descuento, recibo (vista, PDF, imprimir, WhatsApp, N.º de factura SUMA), Ing. y Egr. Excepcionales, cobro de créditos, cierre con conteo por moneda, supervisión en vivo, anulaciones, auditoría y CSV, configuración del POS, usuarios (3).
+
+## Ingresos y egresos excepcionales
+La pestaña «Ing. y Egr. Excepcionales» es para dinero que entra o sale de la caja sin ser una venta.
 
 ## Pruebas obligatorias
 Venta sin turno o con turno ajeno; segundo turno con la caja ocupada; precio o total alterado por el cliente; descuento sobre el tope sin aprobación o con aprobación reutilizada/vencida/autoaprobada; pagos ≠ total o en otra moneda; stock insuficiente o serie vendida; reintento con el mismo requestId descuenta una vez; egreso mayor al efectivo; anular dos veces; vendedor que anula; CSV con celdas que empiezan con = + - @; el arqueo con diferencia negativa no se tapa.

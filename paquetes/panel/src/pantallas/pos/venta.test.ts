@@ -165,7 +165,7 @@ describe('venta: caja, créditos, historial y cierre', () => {
     await e.api.llamar('abrirTurno', { turnoId: uuid(), apertura: { BOB: 10000 } });
     ver(e, 'caja');
     const u = userEvent.setup();
-    await screen.findByRole('heading', { name: 'Ingresos y egresos de caja' });
+    await screen.findByRole('heading', { name: 'Ingresos y egresos excepcionales' });
     await u.type(campo(/^Monto/), '150');
     expect(await screen.findByText(/mayor que el efectivo disponible/)).toBeTruthy();
     await u.clear(campo(/^Monto/));
@@ -174,6 +174,16 @@ describe('venta: caja, créditos, historial y cierre', () => {
     await u.click(screen.getByRole('button', { name: 'Registrar' }));
     expect(await screen.findByText('Egreso registrado.')).toBeTruthy();
     expect(await screen.findByText('Compra de bolsas')).toBeTruthy();
+  });
+
+  it('la pestaña se llama «Ing. y Egr. Excepcionales», sin aria-label', async () => {
+    const e = crearEntorno('caj');
+    await e.api.llamar('abrirTurno', { turnoId: uuid(), apertura: { BOB: 0 } });
+    ver(e, 'caja');
+    await screen.findByRole('heading', { name: 'Ingresos y egresos excepcionales' });
+    const enlace = screen.getByRole('link', { name: 'Ing. y Egr. Excepcionales' });
+    expect(enlace.textContent).toBe('Ing. y Egr. Excepcionales');
+    expect(enlace.getAttribute('aria-label')).toBeNull();
   });
 
   it('cobra un crédito pendiente en efectivo', async () => {

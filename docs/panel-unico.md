@@ -5,7 +5,7 @@ Riesgo señalado: el cliente no querrá entrar a varias plataformas para inventa
 Decisión: **una plataforma separada para los procesos internos**, fuera de la consola de NovuChat, con un solo inicio de sesión y un menú por rol. NovuChat sigue siendo el asistente de WhatsApp; su consola podrá **leer** información de inventarios y productos de esta plataforma, pero no la reemplaza ni la hospeda.
 
 ## Alcance del panel (solo lo contratado)
-- Venta (POS): turno, terminal, cobro, descuentos, anulaciones, ingresos y egresos, créditos, cierre y supervisión.
+- Venta (POS): turno, terminal, cobro, descuentos, anulaciones, Ing. y Egr. Excepcionales (dinero que entra o sale de la caja sin ser una venta), créditos, cierre y supervisión.
 - Inventario: productos, existencias por almacén, series, traspasos, mermas, conteo ciego, alertas.
 - Catálogo y sitio: fichas, fotos y videos, plantillas, secciones, publicar.
 - Recibos: archivo de comprobantes, reimpresión, enlace de WhatsApp, factura SUMA.
