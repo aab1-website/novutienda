@@ -190,7 +190,7 @@ function DatosDelNegocio(): JSX.Element {
       <p class="texto-suave">Se escriben una sola vez y se guardan en la configuración de la caja y en la plantilla de los recibos.</p>
       {difieren && (
         <Alerta tipo="info">
-          La caja y la plantilla de recibos tenían datos distintos. Abajo se muestran los de la caja; al pulsar "Guardar datos del negocio" quedarán iguales en las dos.
+          La caja y la plantilla de recibos tenían datos distintos. Abajo se muestran los de la caja; al pulsar «Guardar datos del negocio» quedarán iguales en las dos.
         </Alerta>
       )}
       <form class="formulario" onSubmit={guardar} noValidate>

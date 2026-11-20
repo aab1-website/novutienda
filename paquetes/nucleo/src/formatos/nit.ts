@@ -2,7 +2,7 @@
 export const NIT_LARGO_MINIMO = 5;
 export const NIT_LARGO_MAXIMO = 20;
 
-export const MENSAJE_NIT = 'El NIT lleva solo números, con guiones opcionales, de 5 a 20 caracteres';
+export const MENSAJE_NIT = 'El NIT lleva solo números, con guiones opcionales, de 5 a 20 caracteres. Corríjalo en Datos del negocio.';
 
 /**
  * NIT válido para GUARDAR: dígitos separados por guiones simples (sin guion al principio,
