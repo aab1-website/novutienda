@@ -18,6 +18,7 @@ import { PantallaSecciones } from './catalogo-secciones.js';
 import { BloqueLogo } from './logo-vista.js';
 import { useSubidaPortada } from './subidas-portada.js';
 import { textoUltimaReconstruccion } from './estado-sitio.js';
+import './apariencia.css';
 
 const TODAS = [
   { id: 'tablero', titulo: 'Tablero' }, { id: 'fichas', titulo: 'Fichas, fotos y video' }, { id: 'secciones', titulo: 'Secciones' },
@@ -264,12 +265,23 @@ function CarruselEditor({ plantilla, items, setItems, quitarDeTodos, productos }
   const borrarPropia = (medioId: string): void =>
     void borrando.ejecutar(async () => {
       try {
+        // Carruseles guardados que la tienen: el servidor la quita de ellos al borrarla (se pregunta antes para avisarlo).
+        let enCarruseles: readonly Carrusel[] | null;
+        try {
+          enCarruseles = (await api.llamar('listarCarruseles', {})).filter((k) => k.items.some((i) => i.medioId === medioId));
+        } catch {
+          enCarruseles = null; // no se pudo comprobar: se dice en el aviso, no se oculta
+        }
         await api.llamar('borrarMedio', { medioId });
         // La foto ya no existe: sale de los borradores de todas las plantillas, o «Guardar apariencia» fallaría por un medio inexistente.
         quitarDeTodos(medioId);
         conocidos.current.delete(medioId);
         propias.recargar();
-        avisos.ok('Foto borrada. Se liberó su lugar.');
+        avisos.ok(enCarruseles === null
+          ? 'Foto borrada. No se pudo comprobar si estaba en un carrusel: revise el carrusel de la portada.'
+          : enCarruseles.length === 0
+          ? 'Foto borrada. Se liberó su lugar.'
+          : `Foto borrada. También se quitó del carrusel de ${enCarruseles.map((k) => PALETAS[k.plantilla].nombre).join(', ')}; el sitio la deja de mostrar con la próxima publicación.`);
       } catch (e) {
         avisos.error(`No se pudo borrar la foto: ${mensajeDeError(e)}`);
       }
@@ -346,7 +358,7 @@ function CarruselEditor({ plantilla, items, setItems, quitarDeTodos, productos }
             {!items.some((i) => i.medioId === m.id) && items.length < 8 && (
               <Boton chico variante="secundario" etiqueta={`Agregar foto propia ${n + 1}`} onClick={() => setItems([...items, { medioId: m.id, alt: '' }])}>Agregar foto propia {n + 1}</Boton>
             )}
-            <BotonConfirmado chico peligro texto="Borrar foto" pregunta="¿Borrar la foto propia de la portada?" resumen="Se borra para siempre y se libera su lugar. Si está en el carrusel, quítela primero." textoConfirmar="Sí, borrar" deshabilitado={borrando.ocupado} onConfirmar={() => borrarPropia(m.id)} />
+            <BotonConfirmado chico peligro texto="Borrar foto" pregunta="¿Borrar la foto propia de la portada?" resumen="Se borra para siempre y se libera su lugar. Si está en un carrusel guardado, también se quita de ahí; el sitio la deja de mostrar con la próxima publicación." textoConfirmar="Sí, borrar" deshabilitado={borrando.ocupado} onConfirmar={() => borrarPropia(m.id)} />
           </li>
         ))}
       </ul>
@@ -371,7 +383,7 @@ export function PantallaCatalogo({ sub }: { sub: string }): JSX.Element {
     <div>
       <h1>Catálogo y sitio</h1>
       <p class="texto-suave">Productos por mercado hasta {LIMITES_PANEL.productos}; fotos hasta {LIMITES_PANEL.fotosPorProducto} por producto y 1 video.</p>
-      {puedeVer('inventario') && <p class="texto-suave">Los productos se crean, importan y exportan en Inventario: <a href="#/inventario/csv">Ir a Inventario</a> (Importar y exportar).</p>}
+      {puedeVer('inventario') && <p class="texto-suave">Los productos se crean, importan y exportan en Inventario: <a href="#/inventario/csv">Importar o exportar productos (en Inventario)</a>.</p>}
       <Pestanas etiqueta="Secciones del catálogo" base="catalogo" actual={actual} items={items} />
       {actual === 'tablero' && <Tablero />}
       {actual === 'fichas' && <PantallaFichas />}

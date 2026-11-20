@@ -46,12 +46,28 @@ function aWeb(s: SeccionLocal): SeccionWeb {
 
 const huella = (s: SeccionLocal): string => JSON.stringify(aWeb(s));
 const NOMBRE_BLOQUE = { texto: 'Texto', imagen: 'Imagen', carrusel: 'Carrusel', enlaces: 'Enlaces' } as const;
+const NOMBRE_AGREGAR = { texto: 'Agregar un párrafo de texto', imagen: 'Agregar una imagen', carrusel: 'Agregar un carrusel de fotos', enlaces: 'Agregar una lista de enlaces' } as const;
+
+/** Mismos límites que `paquetes/consola/src/secciones.ts`: de 1 a 6 párrafos, de 1 a 1000 caracteres cada uno. */
+const PARRAFOS_MAX = 6;
+const PARRAFO_LARGO_MAX = 1000;
+
+/** Por qué el texto del bloque no se puede guardar, o `undefined` si está bien. */
+function errorDeTexto(b: BloqueLocal, n: number): string | undefined {
+  if (b.tipo !== 'texto') return undefined;
+  if (b.parrafos.length === 0) return `Escriba al menos un párrafo en el bloque ${String(n)}.`;
+  if (b.parrafos.length > PARRAFOS_MAX) return `El bloque ${String(n)} admite hasta ${String(PARRAFOS_MAX)} párrafos; quite algunos.`;
+  if (b.parrafos.some((x) => x.length > PARRAFO_LARGO_MAX)) return `Cada párrafo del bloque ${String(n)} admite hasta ${String(PARRAFO_LARGO_MAX)} caracteres; acorte el que se pasa.`;
+  return undefined;
+}
 
 /** Primera razón por la que la sección aún no se puede guardar (con el siguiente paso), o `undefined`. */
 function motivoSinGuardar(s: SeccionLocal): string | undefined {
   if (s.titulo.trim() === '') return 'Escriba el nombre de la sección.';
   if (s.bloques.length === 0) return 'Agregue al menos un bloque a la sección.';
   for (const [i, b] of s.bloques.entries()) {
+    const t = errorDeTexto(b, i + 1);
+    if (t !== undefined) return t;
     if (b.tipo === 'imagen' && b.medioId === '') return `Elija la foto del bloque ${String(i + 1)}.`;
     if (b.tipo === 'carrusel' && b.items.some((x) => x.medioId === '')) return `Elija la foto que falta en el carrusel del bloque ${String(i + 1)}.`;
   }
@@ -95,18 +111,18 @@ function SelectorFoto({ valor, alElegir, etiqueta }: { valor: string; alElegir: 
 }
 
 /** Área de texto con su propio valor: no se recorta mientras se escribe (los espacios finales son parte de la escritura). */
-function AreaLibre({ etiqueta, inicial, filas, alCambiar }: { etiqueta: string; inicial: string; filas: number; alCambiar: (v: string) => void }): JSX.Element {
+function AreaLibre({ etiqueta, inicial, filas, alCambiar, error }: { etiqueta: string; inicial: string; filas: number; alCambiar: (v: string) => void; error?: string | undefined }): JSX.Element {
   const [v, setV] = useState(inicial);
-  return <Area etiqueta={etiqueta} valor={v} filas={filas} onInput={(x) => { setV(x); alCambiar(x); }} />;
+  return <Area etiqueta={etiqueta} valor={v} filas={filas} error={error} onInput={(x) => { setV(x); alCambiar(x); }} />;
 }
 
-function EditorBloque({ b, n, set, quitar }: { b: BloqueLocal; n: number; set: (b: BloqueLocal) => void; quitar: () => void }): JSX.Element {
+function EditorBloque({ b, n, set, quitar, verErrores }: { b: BloqueLocal; n: number; set: (b: BloqueLocal) => void; quitar: () => void; verErrores: boolean }): JSX.Element {
   let cuerpo: JSX.Element;
   if (b.tipo === 'texto') {
     cuerpo = (
       <>
         <Campo etiqueta="Subtítulo del texto (opcional)" valor={b.titulo} onInput={(v) => set({ ...b, titulo: v })} />
-        <AreaLibre etiqueta="Párrafos (separe con una línea en blanco)" inicial={b.parrafos.join('\n\n')} filas={4} alCambiar={(v) => set({ ...b, parrafos: v.split(/\n\s*\n/).map((x) => x.trim()).filter((x) => x !== '') })} />
+        <AreaLibre etiqueta="Párrafos (separe con una línea en blanco)" inicial={b.parrafos.join('\n\n')} filas={4} error={verErrores ? errorDeTexto(b, n) : undefined} alCambiar={(v) => set({ ...b, parrafos: v.split(/\n\s*\n/).map((x) => x.trim()).filter((x) => x !== '') })} />
       </>
     );
   } else if (b.tipo === 'imagen') {
@@ -189,13 +205,13 @@ function EditorSeccion({ inicial, alTerminar }: { inicial: SeccionWeb; alTermina
         <Campo etiqueta="Nombre de la sección (aparece en el menú)" valor={s.titulo} onInput={(v) => setS({ ...s, titulo: v })} requerido error={sinNombre ? 'Falta el nombre.' : undefined} />
         <Casilla etiqueta="Visible en el menú" marcado={s.visible} onCambio={(v) => setS({ ...s, visible: v })} />
         {s.bloques.map((b, i) => (
-          <EditorBloque key={b.uid} b={b} n={i + 1} set={(nb) => setS({ ...s, bloques: s.bloques.map((x) => (x.uid === b.uid ? nb : x)) })} quitar={() => setS({ ...s, bloques: s.bloques.filter((x) => x.uid !== b.uid) })} />
+          <EditorBloque key={b.uid} b={b} n={i + 1} set={(nb) => setS({ ...s, bloques: s.bloques.map((x) => (x.uid === b.uid ? nb : x)) })} quitar={() => setS({ ...s, bloques: s.bloques.filter((x) => x.uid !== b.uid) })} verErrores={intento > 0} />
         ))}
         {s.bloques.length < 10 && (
           <div class="fila" role="group" aria-label="Agregar bloque">
             {(['texto', 'imagen', 'carrusel', 'enlaces'] as const).map((t) => (
               <Boton key={t} chico variante="secundario" onClick={() => setS({ ...s, bloques: [...s.bloques, nuevoBloque(t)] })}>
-                + {NOMBRE_BLOQUE[t]}
+                {NOMBRE_AGREGAR[t]}
               </Boton>
             ))}
           </div>
@@ -229,7 +245,7 @@ export function PantallaSecciones(): JSX.Element {
     });
   };
   return (
-    <Seccion titulo={`Secciones del menú (${secciones.length} de ${LIMITES_PANEL.seccionesMax})`} acciones={<Boton chico onClick={() => setEditando({ id: '', titulo: '', visible: true, bloques: [] })} motivo={secciones.length >= LIMITES_PANEL.seccionesMax ? `Ya hay ${String(LIMITES_PANEL.seccionesMax)} secciones: elimine una para crear otra.` : undefined}>Nueva sección</Boton>}>
+    <Seccion titulo={`Secciones del menú (${secciones.length} de ${LIMITES_PANEL.seccionesMax})`} acciones={<Boton chico onClick={() => setEditando({ id: '', titulo: '', visible: true, bloques: [{ tipo: 'texto', titulo: '', parrafos: [] }] })} motivo={secciones.length >= LIMITES_PANEL.seccionesMax ? `Ya hay ${String(LIMITES_PANEL.seccionesMax)} secciones: elimine una para crear otra.` : undefined}>Nueva sección</Boton>}>
       <p class="texto-suave">Cada sección se arma con bloques tipados (texto, imagen, carrusel y enlaces); nunca con HTML libre.</p>
       {secciones.length === 0 && <Vacio titulo="Todavía no hay secciones" />}
       {accion.error && <Alerta>{accion.error}</Alerta>}

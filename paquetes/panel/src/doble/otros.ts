@@ -1,7 +1,6 @@
 import type { Entrada, NombreCallable, Salida } from '../api/contrato.js';
 import type { Medio, MedioLogo, Recibo, SubidaVista } from '../api/tipos.js';
 import { BYTES_LOGO, ID_NEGOCIO, ID_PORTADA, LIMITES_PANEL, PLANTILLAS_SITIO } from '../api/tipos.js';
-import { PALETAS } from '../pantallas/consola/plantillas-vista.js';
 import { normalizar } from '../util/buscar.js';
 import { auditar, exigirRol, fallo, iso, vistaProducto, type Contexto } from './estado.js';
 
@@ -292,8 +291,16 @@ export const handlersOtros: {
     const esVideo = m.tipo === 'video';
     const uso = (donde: string): string => `${esVideo ? 'El video se usa' : 'La foto se usa'} en ${donde}; ${esVideo ? 'quítelo' : 'quítela'} de ahí y guarde antes de borrarla`;
     if (enSeccion !== undefined) throw fallo('conflicto', uso(`la sección «${enSeccion.titulo}»`));
-    const enCarrusel = [...c.e.carruseles.values()].find((k) => k.items.some((i) => i.medioId === e.medioId));
-    if (enCarrusel !== undefined) throw fallo('conflicto', uso(`el carrusel de la plantilla ${PALETAS[enCarrusel.plantilla].nombre}`));
+    if (c.rol !== 'adm' && [...c.e.carruseles.values()].some((k) => k.items.some((i) => i.medioId === e.medioId))) {
+      throw fallo('conflicto', 'Esta foto está en el carrusel de la portada; pídale al administrador que la quite');
+    }
+    // Un carrusel guardado ya no bloquea: el servidor quita la foto de él (la copia pública se borra tras la próxima publicación).
+    for (const [plantilla, k] of c.e.carruseles) {
+      if (k.items.some((i) => i.medioId === e.medioId)) {
+        c.e.carruseles.set(plantilla, { ...k, items: k.items.filter((i) => i.medioId !== e.medioId) });
+        auditar(c, 'carrusel.guardar', `carruseles/${plantilla}`);
+      }
+    }
     c.e.medios.delete(e.medioId);
     c.e.bytesOriginales = Math.max(0, c.e.bytesOriginales - m.bytesOriginal);
     const f = c.e.fichas.get(m.productoId);

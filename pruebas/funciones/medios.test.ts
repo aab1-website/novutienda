@@ -13,12 +13,14 @@ describe.skipIf(!hayEmulador)('medios (emulador)', () => {
   let h: Herramientas;
   let sup: Usuario;
   let caj: Usuario;
+  let adm: Usuario;
 
   beforeAll(async () => {
     h = herramientas();
     await sembrarTenant(h, M, { productos: [{ id: PRODUCTO, nombre: 'Cámara web', precioUSD: { bo: 5000, ar: 5000 }, tienda: 0 }] });
     sup = await crearUsuario(h, { rol: 'sup', tenant: M });
     caj = await crearUsuario(h, { rol: 'caj', tenant: M });
+    adm = await crearUsuario(h, { rol: 'adm', tenant: M });
   });
 
   const rutaOriginal = (sub: string): string => `tenants/${M}/privado/originales/${PRODUCTO}/${sub}`;
@@ -98,6 +100,32 @@ describe.skipIf(!hayEmulador)('medios (emulador)', () => {
     for (const v of versiones) expect((await h.bucketPublico.file(v.ruta).exists())[0], `${v.ruta} sigue en el público`).toBe(false);
     expect((await h.bucket.file(rutaLegado).exists())[0]).toBe(false);
     expect((await h.firestore.doc(`tenants/${M}/uso/medios`).get()).data()).toMatchObject({ bytes: 0 });
+  });
+
+  it('borrar una foto que está en un carrusel guardado: la quita del carrusel, libera el original y deja la copia pública hasta la próxima publicación', async () => {
+    const original = await fotoConGps(700, 500);
+    const id = idSubida();
+    await accion('medios', 'reservarSubida', { subidaId: id, productoId: PRODUCTO, tipo: 'foto', bytes: original.length }, sup.token, M);
+    await h.bucket.file(rutaOriginal(id)).save(original, { contentType: 'image/jpeg', resumable: false });
+    const medio = await esperar(async () => (await h.firestore.doc(`tenants/${M}/medios/${id}`).get()).data(), 90_000, 'medio para el carrusel');
+    const versiones = medio['versiones'] as { ruta: string }[];
+    await h.firestore.doc(`tenants/${M}/carruseles/bosque`).set({ plantilla: 'bosque', items: [{ medioId: id, alt: 'Local' }] });
+    await h.firestore.doc(`tenants/${M}/publicado/estado`).set({ version: 3, publicadoEn: new Date(Date.now() - 60_000).toISOString() });
+
+    // Un supervisor no puede: la foto está en el carrusel de la portada.
+    const rechazado = await accion('medios', 'borrarMedio', { medioId: id }, sup.token, M);
+    expect(rechazado.status).not.toBe(200);
+    expect((await h.firestore.doc(`tenants/${M}/medios/${id}`).get()).exists).toBe(true);
+    const borrado = await accion('medios', 'borrarMedio', { medioId: id }, adm.token, M);
+    expect(borrado.status, JSON.stringify(borrado.error)).toBe(200);
+    expect((await h.firestore.doc(`tenants/${M}/carruseles/bosque`).get()).data()).toMatchObject({ plantilla: 'bosque', items: [] });
+    expect((await h.firestore.doc(`tenants/${M}/medios/${id}`).get()).exists).toBe(false);
+    expect((await h.bucket.file(rutaOriginal(id)).exists())[0]).toBe(false);
+    // Sin publicación posterior, la copia pública sigue (el sitio publicado todavía la usa) y la subida espera en `borrando` con la versión publicada.
+    for (const v of versiones) expect((await h.bucketPublico.file(v.ruta).exists())[0], `${v.ruta} debe seguir hasta publicar`).toBe(true);
+    expect((await h.firestore.doc(`tenants/${M}/subidas/${id}`).get()).data()).toMatchObject({ estado: 'borrando', borrarTrasVersion: 3 });
+    const aud = await h.firestore.collection(`tenants/${M}/auditoria`).where('accion', '==', 'carrusel.guardar').get();
+    expect(aud.docs.some((d) => d.data()['motivo'] === 'medio.borrar')).toBe(true);
   });
 
   it('una foto más chica que el plan solo genera los anchos que caben', async () => {

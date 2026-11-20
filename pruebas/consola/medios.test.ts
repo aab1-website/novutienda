@@ -495,6 +495,139 @@ describe('pipeline de medios', () => {
       await expect(borrarMedio(deps, { tenantId: T, actor: actor('caj'), medioId: subidaId })).rejects.toMatchObject({ codigo: 'no-autorizado' });
       expect(uso().productos['cam-1']?.fotos).toBe(1);
     });
+    describe('foto en un carrusel guardado', () => {
+      const carrusel = (plantilla: string, ids: string[]): void =>
+        db.poner(`tenants/${T}/carruseles/${plantilla}`, { plantilla, items: ids.map((medioId) => ({ medioId, alt: 'x' })) });
+      const publicadas = (m: { versiones: readonly { ruta: string }[] }): string[] => m.versiones.map((v) => v.ruta).filter((r) => r.startsWith(`tenants/${T}/publico/`));
+      const auditoria = (): Record<string, unknown>[] => db.coleccion(`tenants/${T}/auditoria`).filter((a) => a['accion'] === 'carrusel.guardar');
+
+      it('se borra y el carrusel queda sin ella (los demás ítems y carruseles no cambian)', async () => {
+        const a = await subir('foto', JPG);
+        const b = await subir('foto', JPG);
+        await finalizarSubida(deps, { tenantId: T, actor: adm, subidaId: a.subidaId });
+        await finalizarSubida(deps, { tenantId: T, actor: adm, subidaId: b.subidaId });
+        carrusel('bosque', [a.subidaId, b.subidaId]);
+        carrusel('cielo', [b.subidaId]);
+        await borrarMedio(deps, { tenantId: T, actor: adm, medioId: a.subidaId });
+        expect(db.dato(`tenants/${T}/carruseles/bosque`)).toEqual({ plantilla: 'bosque', items: [{ medioId: b.subidaId, alt: 'x' }] });
+        expect(db.dato(`tenants/${T}/carruseles/cielo`)).toEqual({ plantilla: 'cielo', items: [{ medioId: b.subidaId, alt: 'x' }] });
+        expect(db.dato(`tenants/${T}/medios/${a.subidaId}`)).toBeUndefined();
+      });
+      it('puede dejar el carrusel con 0 ítems', async () => {
+        const { subidaId } = await subir('foto', JPG);
+        await finalizarSubida(deps, { tenantId: T, actor: adm, subidaId });
+        carrusel('bosque', [subidaId]);
+        await borrarMedio(deps, { tenantId: T, actor: adm, medioId: subidaId });
+        expect(db.dato(`tenants/${T}/carruseles/bosque`)).toEqual({ plantilla: 'bosque', items: [] });
+      });
+      it('una foto usada en una sección sigue con «conflicto» aunque también esté en un carrusel', async () => {
+        const { subidaId } = await subir('foto', JPG);
+        await finalizarSubida(deps, { tenantId: T, actor: adm, subidaId });
+        carrusel('bosque', [subidaId]);
+        db.poner(`tenants/${T}/sitio/indice`, { secciones: ['nosotros'] });
+        db.poner(`tenants/${T}/secciones/nosotros`, { id: 'nosotros', titulo: 'Nosotros', visible: true, bloques: [{ tipo: 'imagen', medioId: subidaId, alt: 'x' }] });
+        await expect(borrarMedio(deps, { tenantId: T, actor: adm, medioId: subidaId })).rejects.toMatchObject({ codigo: 'conflicto' });
+        expect(db.dato(`tenants/${T}/carruseles/bosque`)?.['items']).toHaveLength(1);
+        expect(db.dato(`tenants/${T}/medios/${subidaId}`)).toBeDefined();
+      });
+      it('un supervisor no puede borrar una foto de un carrusel guardado: «conflicto» y no cambia nada', async () => {
+        const { subidaId } = await subir('foto', JPG);
+        await finalizarSubida(deps, { tenantId: T, actor: adm, subidaId });
+        carrusel('bosque', [subidaId]);
+        await expect(borrarMedio(deps, { tenantId: T, actor: actor('sup'), medioId: subidaId })).rejects.toMatchObject({
+          codigo: 'conflicto', message: 'Esta foto está en el carrusel de la portada; pídale al administrador que la quite',
+        });
+        expect(db.dato(`tenants/${T}/carruseles/bosque`)?.['items']).toHaveLength(1);
+        expect(db.dato(`tenants/${T}/medios/${subidaId}`)).toBeDefined();
+        expect(uso().productos['cam-1']?.fotos).toBe(1);
+      });
+
+      /** Borra con el sitio publicado en la versión 3 y devuelve lo necesario para ver qué pasa con la copia pública. */
+      async function borrarPublicada(enCarrusel: boolean) {
+        const { subidaId, r } = await subir('foto', JPG);
+        const m = await finalizarSubida(deps, { tenantId: T, actor: adm, subidaId });
+        if (enCarrusel) carrusel('bosque', [subidaId]);
+        db.poner(`tenants/${T}/publicado/estado`, { version: 3, publicadoEn: new Date(reloj.ahora()).toISOString() });
+        await borrarMedio(deps, { tenantId: T, actor: adm, medioId: subidaId });
+        const publicas = publicadas(m as never);
+        const limpiar = async (): Promise<void> => {
+          reloj.ms += LIMITES_CONSOLA.esperaBorradoLogoMs;
+          await limpiarSubidas({ ...deps, consulta: new ConsultaDoble(db) }, T);
+        };
+        const siguen = (): boolean => publicas.every((x) => almacen.objetos.has(x));
+        return { subidaId, r, publicas, limpiar, siguen };
+      }
+
+      it('el original y la cuota se liberan en el acto; la copia pública espera a que el sitio se reconstruya', async () => {
+        const { subidaId, r, publicas, siguen } = await borrarPublicada(true);
+        expect(uso()).toEqual({ bytes: 0, productos: {} });
+        expect(almacen.objetos.has(r.rutaOriginal)).toBe(false);
+        expect(publicas.length).toBeGreaterThan(0);
+        expect(siguen()).toBe(true);
+        expect(db.dato(`tenants/${T}/subidas/${subidaId}`)).toMatchObject({ estado: 'borrando', rutas: [], rutasDiferidas: publicas, borrarTrasVersion: 3 });
+      });
+      it('publicado pero sin reconstruir: no borra la copia pública y reprograma', async () => {
+        const { subidaId, siguen, limpiar } = await borrarPublicada(true);
+        db.poner(`tenants/${T}/publicado/estado`, { version: 4 }); // se publicó otra vez, nadie reconstruyó
+        await limpiar();
+        expect(siguen()).toBe(true);
+        expect(db.dato(`tenants/${T}/subidas/${subidaId}`)?.['venceEn']).toBe(reloj.ahora() + LIMITES_CONSOLA.esperaBorradoLogoMs);
+      });
+      it('reconstrucción fallida, o completada de una versión que no es posterior: no borra', async () => {
+        const { siguen, limpiar } = await borrarPublicada(true);
+        db.poner(`tenants/${T}/sitio/ultimaReconstruccion`, { estado: 'fallida', version: 4 });
+        await limpiar();
+        expect(siguen()).toBe(true);
+        db.poner(`tenants/${T}/sitio/ultimaReconstruccion`, { estado: 'completada', version: 3 });
+        await limpiar();
+        expect(siguen()).toBe(true);
+      });
+      it('reconstruida con una versión posterior: borra la copia pública y cierra la subida', async () => {
+        const { subidaId, siguen, limpiar } = await borrarPublicada(true);
+        db.poner(`tenants/${T}/sitio/ultimaReconstruccion`, { estado: 'completada', version: 4 });
+        await limpiar();
+        expect(siguen()).toBe(false);
+        expect(db.dato(`tenants/${T}/subidas/${subidaId}`)).toBeUndefined();
+      });
+      it('tope: pasados 30 días sin reconstrucción posterior, se borra igual', async () => {
+        const { subidaId, siguen, limpiar } = await borrarPublicada(true);
+        reloj.ms += 27 * 24 * 3600_000;
+        await limpiar();
+        expect(siguen()).toBe(true);
+        reloj.ms += 2 * 24 * 3600_000;
+        await limpiar();
+        expect(siguen()).toBe(false);
+        expect(db.dato(`tenants/${T}/subidas/${subidaId}`)).toBeUndefined();
+      });
+      it('una foto de ficha ya publicada que no está en un carrusel también espera la reconstrucción', async () => {
+        const { siguen, limpiar, r } = await borrarPublicada(false);
+        expect(almacen.objetos.has(r.rutaOriginal)).toBe(false);
+        expect(siguen()).toBe(true);
+        db.poner(`tenants/${T}/sitio/ultimaReconstruccion`, { estado: 'completada', version: 5 });
+        await limpiar();
+        expect(siguen()).toBe(false);
+      });
+      it('sin nada publicado, la foto se borra entera en el acto, como antes', async () => {
+        const { subidaId } = await subir('foto', JPG);
+        const m = await finalizarSubida(deps, { tenantId: T, actor: adm, subidaId });
+        await borrarMedio(deps, { tenantId: T, actor: adm, medioId: subidaId });
+        for (const v of m.versiones) expect(almacen.objetos.has(v.ruta)).toBe(false);
+        expect(db.dato(`tenants/${T}/subidas/${subidaId}`)).toBeUndefined();
+      });
+      it('audita un «carrusel.guardar» por carrusel cambiado, con la cantidad de ítems y el motivo', async () => {
+        const a = await subir('foto', JPG);
+        const b = await subir('foto', JPG);
+        await finalizarSubida(deps, { tenantId: T, actor: adm, subidaId: a.subidaId });
+        await finalizarSubida(deps, { tenantId: T, actor: adm, subidaId: b.subidaId });
+        carrusel('bosque', [a.subidaId, b.subidaId]);
+        carrusel('ambar', [b.subidaId]);
+        await borrarMedio(deps, { tenantId: T, actor: adm, medioId: a.subidaId });
+        const aud = auditoria();
+        expect(aud).toHaveLength(1);
+        expect(aud[0]).toMatchObject({ motivo: 'medio.borrar', ruta: `tenants/${T}/carruseles/bosque`, resumenAntes: { items: 2 }, resumenDespues: { items: 1 } });
+        expect(db.coleccion(`tenants/${T}/auditoria`).some((x) => x['accion'] === 'medio.borrar')).toBe(true);
+      });
+    });
     it('si Storage falla al borrar, la cuota ya está libre y la limpieza reintenta', async () => {
       const { subidaId } = await subir('foto', JPG);
       const m = await finalizarSubida(deps, { tenantId: T, actor: adm, subidaId });

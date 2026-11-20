@@ -1131,3 +1131,35 @@ describe('doble: precio por mercado abierto', () => {
     expect((await falla(e.api.llamar('actualizarProducto', { operacionId: uuid(), productoId: 'solo-pe', cambios: { precioUSD: { bo: 100 } } }))).detalle.codigo).toBe('entrada-invalida');
   });
 });
+
+describe('borrarMedio y carruseles guardados (humo2, catálogo)', () => {
+  it('una foto en un carrusel ya no da «conflicto»: se borra y sale del carrusel; en una sección sigue dando «conflicto»', async () => {
+    const e = crearEntorno('adm');
+    const subir = async (): Promise<string> => {
+      const r = await e.api.llamar('reservarSubida', { subidaId: uuid(), productoId: 'tv-55', tipo: 'foto', bytes: 10 });
+      return (await e.api.llamar('finalizarSubida', { subidaId: r.subidaId })).id;
+    };
+    const a = await subir();
+    const b = await subir();
+    await e.api.llamar('guardarCarrusel', { carrusel: { plantilla: 'ambar', items: [{ medioId: a, alt: 'A' }, { medioId: b, alt: 'B' }] } });
+    await e.api.llamar('borrarMedio', { medioId: a });
+    const [k] = await e.api.llamar('listarCarruseles', {});
+    expect(k?.items.map((i) => i.medioId)).toEqual([b]);
+    expect(await e.api.llamar('listarMedios', { productoId: 'tv-55' })).toHaveLength(1);
+    await e.api.llamar('guardarSeccion', { seccion: { id: 's1', titulo: 'Uno', visible: true, bloques: [{ tipo: 'imagen', medioId: b, alt: 'B' }] } });
+    expect((await falla(e.api.llamar('borrarMedio', { medioId: b }))).detalle.codigo).toBe('conflicto');
+  });
+});
+
+describe('borrarMedio: solo el administrador quita una foto de un carrusel guardado', () => {
+  it('un supervisor recibe «conflicto» con el aviso y no cambia nada', async () => {
+    const e = crearEntorno('sup');
+    e.api.estado.medios.set('m-tv', { id: 'm-tv', productoId: 'tv-55', tipo: 'foto', bytesOriginal: 1000, ancho: 800, alto: 600, creadoEn: 1, por: 'u' });
+    e.api.estado.carruseles.set('ambar', { plantilla: 'ambar', items: [{ medioId: 'm-tv', alt: 'x' }] });
+    const err = await falla(e.api.llamar('borrarMedio', { medioId: 'm-tv' }));
+    expect(err.detalle.codigo).toBe('conflicto');
+    expect(mensajeDeError(err)).toContain('Esta foto está en el carrusel de la portada; pídale al administrador que la quite');
+    expect(e.api.estado.medios.has('m-tv')).toBe(true);
+    expect(e.api.estado.carruseles.get('ambar')?.items).toHaveLength(1);
+  });
+});

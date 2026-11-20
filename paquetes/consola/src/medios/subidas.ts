@@ -4,10 +4,10 @@ import { ArchivoNoAdmitido, ErrorConsola, ProcesamientoNoDisponible, type Codigo
 import { cupoPortadaDelPlan, LIMITES_CONSOLA } from '../limites.js';
 import { agendarLogoVivo, escribirLogoVivo, leerPublicadoParaLogo, proyectarLogoPublico } from '../logo-publico.js';
 import { exigirRol, ROLES } from '../permisos.js';
-import { NOMBRE_PLANTILLA, PLANTILLAS } from '../plantillas.js';
+import { PLANTILLAS } from '../plantillas.js';
 import type { AlmacenMedios, BaseDatosConsola, CatalogoPuerto, ConsultaSubidas, DisparadorSitio, ProcesadorMedios, Reloj } from '../puertos.js';
 import {
-  dirTemporal, ID_NEGOCIO, ID_PORTADA, ID_PRODUCTO, ID_SUBIDA, prefijoTemporal, rutaCarrusel, rutaFicha, rutaMedio, rutaOriginal, rutaPublicaMedio, rutaSeccion, rutaSitio,
+  dirTemporal, ID_NEGOCIO, ID_PORTADA, ID_PRODUCTO, ID_SUBIDA, prefijoTemporal, rutaCarrusel, rutaFicha, rutaPublicado, rutaMedio, rutaOriginal, rutaPublicaMedio, rutaSeccion, rutaSitio,
   rutaSubida, tenantValido,
 } from '../rutas.js';
 import { mediosDeSeccion, validarSeccion } from '../secciones.js';
@@ -40,6 +40,9 @@ export interface DepsMedios {
 }
 
 /** Tope de una versión procesada de imagen que se lee completa para buscar metadatos. */
+/** Tope para borrar la copia pública de un medio aunque el sitio no se haya reconstruido: 30 días. */
+const TOPE_BORRADO_PUBLICO_MS = 30 * 24 * 60 * 60 * 1000;
+
 const MAX_BYTES_VERSION_IMAGEN = 8 * 1024 * 1024;
 
 type EstadoSubida = 'reservada' | 'procesando' | 'procesada' | 'borrando' | 'rechazada';
@@ -64,6 +67,13 @@ interface Subida {
    */
   readonly rutasDiferidas?: readonly string[];
   readonly borrarDesde?: number;
+  /**
+   * Solo medios borrados con el sitio ya publicado: `version` de `publicado/estado` al borrar. Las versiones públicas
+   * (`rutasDiferidas`) se borran cuando `sitio/ultimaReconstruccion` es `completada` con una `version` MAYOR (el sitio ya
+   * reconstruido no las usa) o, como tope, al llegar `borrarTopeEn` (ms). Hasta entonces se reprograma.
+   */
+  readonly borrarTrasVersion?: number;
+  readonly borrarTopeEn?: number;
   /** Solo con `procesando`: identificador de la invocación que reclamó la subida y cuándo vence ese reclamo. */
   readonly procesandoPor?: string;
   readonly procesandoVenceEn?: number;
@@ -94,6 +104,8 @@ function leerSubida(d: Readonly<Record<string, unknown>> | undefined): Subida | 
     ...(Array.isArray(rutas) ? { rutas: rutas.filter((r): r is string => typeof r === 'string') } : {}),
     ...(Array.isArray(d['rutasDiferidas']) ? { rutasDiferidas: d['rutasDiferidas'].filter((r): r is string => typeof r === 'string') } : {}),
     ...(typeof d['borrarDesde'] === 'number' ? { borrarDesde: d['borrarDesde'] } : {}),
+    ...(typeof d['borrarTrasVersion'] === 'number' ? { borrarTrasVersion: d['borrarTrasVersion'] } : {}),
+    ...(typeof d['borrarTopeEn'] === 'number' ? { borrarTopeEn: d['borrarTopeEn'] } : {}),
   };
 }
 
@@ -336,8 +348,18 @@ async function borrarYCerrar(deps: DepsMedios, t: string, subidaId: string): Pro
       const actual = leerSubida((await tx.get(rutaSubida(t, subidaId))).data());
       const vigente = new Set(leerDocLogo((await tx.get(rutaSitio(t, 'logo'))).data())?.versiones.map((v) => v.ruta));
       const hasta = (await tx.get(rutaSitio(t, 'logoEnSubida'))).data()?.['hasta'];
+      const ultima = (await tx.get(rutaSitio(t, 'ultimaReconstruccion'))).data();
       if (actual?.estado !== 'borrando') return [];
       if (typeof hasta === 'number' && hasta > ahora) return undefined;
+      const marca = actual.borrarTrasVersion;
+      const reconstruido = ultima?.['estado'] === 'completada' && typeof ultima['version'] === 'number' && marca !== undefined && ultima['version'] > marca;
+      const vencioTope = actual.borrarTopeEn !== undefined && ahora >= actual.borrarTopeEn;
+      if (marca !== undefined && !reconstruido && !vencioTope) {
+        // Medio borrado con el sitio publicado: el sitio todavía puede usar su copia pública hasta que se reconstruya con una
+        // versión posterior (o venza el tope). Se reprograma sin tapar la cola.
+        tx.set(rutaSubida(t, subidaId), aDoc({ ...actual, rutas: [], venceEn: ahora + LIMITES_CONSOLA.esperaBorradoLogoMs }));
+        return undefined;
+      }
       return (actual.rutasDiferidas ?? []).filter((r) => !vigente.has(r));
     });
     if (aBorrar === undefined) return false;
@@ -699,18 +721,32 @@ export interface EntradaBorrarMedio {
   readonly medioId: string;
 }
 
-async function medioEnUso(tx: TransaccionIdentidad, t: string, medioId: string): Promise<string | undefined> {
+/** Uso en una sección guardada: bloquea el borrado (hay que quitarla de ahí a mano). */
+async function medioEnSecciones(tx: TransaccionIdentidad, t: string, medioId: string): Promise<string | undefined> {
   const indice = (await tx.get(rutaSitio(t, 'indice'))).data()?.['secciones'];
   const ids = Array.isArray(indice) ? indice.filter((x): x is string => typeof x === 'string') : [];
   for (const id of ids) {
     const v = validarSeccion((await tx.get(rutaSeccion(t, id))).data());
     if (v.ok && mediosDeSeccion(v.valor).includes(medioId)) return `la sección «${v.valor.titulo}»`;
   }
-  for (const p of PLANTILLAS) {
-    const items = (await tx.get(rutaCarrusel(t, p))).data()?.['items'];
-    if (Array.isArray(items) && items.some((i) => esObjeto(i) && i['medioId'] === medioId)) return `el carrusel de la plantilla ${NOMBRE_PLANTILLA[p]}`;
-  }
   return undefined;
+}
+
+interface CarruselConMedio {
+  readonly plantilla: (typeof PLANTILLAS)[number];
+  readonly doc: Readonly<Record<string, unknown>>;
+  readonly items: readonly unknown[];
+}
+
+/** Carruseles guardados que contienen el medio: ya no bloquean el borrado; el servidor lo quita de ellos. */
+async function carruselesConMedio(tx: TransaccionIdentidad, t: string, medioId: string): Promise<CarruselConMedio[]> {
+  const out: CarruselConMedio[] = [];
+  for (const plantilla of PLANTILLAS) {
+    const doc = (await tx.get(rutaCarrusel(t, plantilla))).data();
+    const items = doc?.['items'];
+    if (doc !== undefined && Array.isArray(items) && items.some((i) => esObjeto(i) && i['medioId'] === medioId)) out.push({ plantilla, doc, items });
+  }
+  return out;
 }
 
 /**
@@ -733,17 +769,39 @@ export async function borrarMedio(deps: DepsMedios, e: EntradaBorrarMedio): Prom
     const uso = await leerUsoMedios(tx, t);
     const ficha = (await tx.get(rutaFicha(t, m.productoId))).data();
     const estado = await leerEstadoSitio(tx, t);
-    const enUso = await medioEnUso(tx, t, e.medioId);
+    const enUso = await medioEnSecciones(tx, t, e.medioId);
+    const enCarruseles = await carruselesConMedio(tx, t, e.medioId);
+    const versionPublicada = (await tx.get(rutaPublicado(t, 'estado'))).data()?.['version'];
+    if (enCarruseles.length > 0 && rol !== 'adm') {
+      throw new ErrorConsola('conflicto', 'Esta foto está en el carrusel de la portada; pídale al administrador que la quite');
+    }
     if (enUso !== undefined) throw new ErrorConsola('conflicto', `${m.tipo === 'video' ? 'El video se usa' : 'La foto se usa'} en ${enUso}; ${m.tipo === 'video' ? 'quítelo' : 'quítela'} de ahí y guarde antes de borrarla`);
 
-    const rutas = [m.rutaOriginal, ...(m.versiones ?? []).map((v) => v.ruta)].filter((r): r is string => typeof r === 'string');
+    const todas = [m.rutaOriginal, ...(m.versiones ?? []).map((v) => v.ruta)].filter((r): r is string => typeof r === 'string');
+    // Con el sitio ya publicado, el sitio construido aún puede mostrar la copia pública: esa se borra cuando el sitio se
+    // reconstruya con una versión posterior. El original privado y la cuota se liberan en el acto.
+    const publico = `tenants/${t}/publico/`;
+    const diferirPublicas = typeof versionPublicada === 'number';
+    const rutas = diferirPublicas ? todas.filter((r) => !r.startsWith(publico)) : todas;
+    const diferidas = diferirPublicas ? todas.filter((r) => r.startsWith(publico)) : [];
     escribirUsoMedios(tx, t, liberarEnUso(uso, m.productoId, m.tipo, m.bytesOriginal ?? 0));
     tx.delete(rutaMedio(t, e.medioId));
     const base: Subida = sub ?? {
       id: e.medioId, productoId: m.productoId, tipo: m.tipo, bytes: m.bytesOriginal ?? 0, estado: 'procesada',
       rutaOriginal: m.rutaOriginal ?? '', creadaEn: m.creadoEn ?? 0, venceEn: 0, por: e.actor.uid,
     };
-    tx.set(rutaSubida(t, e.medioId), aDoc({ ...base, estado: 'borrando', destino: 'eliminar', rutas }));
+    tx.set(rutaSubida(t, e.medioId), aDoc({
+      ...base, estado: 'borrando', destino: 'eliminar', rutas,
+      ...(diferidas.length === 0 ? {} : { rutasDiferidas: diferidas, borrarTrasVersion: versionPublicada as number, borrarTopeEn: deps.reloj.ahora() + TOPE_BORRADO_PUBLICO_MS, venceEn: deps.reloj.ahora() + LIMITES_CONSOLA.esperaBorradoLogoMs }),
+    }));
+    for (const c of enCarruseles) {
+      const quedan = c.items.filter((i) => !(esObjeto(i) && i['medioId'] === e.medioId));
+      tx.set(rutaCarrusel(t, c.plantilla), { ...c.doc, items: quedan });
+      registrarAuditoria(tx, {
+        tenantId: t, uid: e.actor.uid, rol, accion: 'carrusel.guardar', ruta: rutaCarrusel(t, c.plantilla), motivo: 'medio.borrar',
+        resumenAntes: { items: c.items.length }, resumenDespues: { items: quedan.length },
+      });
+    }
     if (ficha && Array.isArray(ficha['medios'])) {
       const quedan = (ficha['medios'] as unknown[]).filter((x) => !(esObjeto(x) && x['medioId'] === e.medioId));
       if (quedan.length !== ficha['medios'].length) tx.set(rutaFicha(t, m.productoId), { ...ficha, medios: quedan });

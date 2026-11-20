@@ -23,9 +23,8 @@ describe('catálogo: sin exportar', () => {
     expect(screen.queryByRole('link', { name: 'Exportar' })).toBeNull();
     expect(screen.queryByRole('button', { name: 'Exportar productos (CSV)' })).toBeNull();
     expect(screen.queryByLabelText('Archivo a importar')).toBeNull();
-    const enlace = screen.getByRole('link', { name: 'Ir a Inventario' });
+    const enlace = screen.getByRole('link', { name: 'Importar o exportar productos (en Inventario)' });
     expect(enlace.getAttribute('href')).toBe('#/inventario/csv');
-    expect(enlace.parentElement?.textContent).toMatch(/Importar y exportar/);
   });
 });
 
@@ -580,7 +579,7 @@ describe('catálogo: fotos propias de la portada', () => {
     expect(ids[1]).toBe(ids[0]);
     expect([...e.api.estado.medios.values()].filter((m) => m.productoId === '_portada')).toHaveLength(1);
   });
-  it('borrar una foto propia: si está en el carrusel muestra el conflicto; al quitarla se borra y se libera el lugar', async () => {
+  it('borrar una foto propia que está en un carrusel guardado: el servidor la quita del carrusel y el aviso lo dice', async () => {
     const e = crearEntorno('adm');
     ver(e);
     await subir();
@@ -590,16 +589,12 @@ describe('catálogo: fotos propias de la portada', () => {
     await userEvent.click(screen.getByRole('button', { name: 'Guardar apariencia' }));
     await waitFor(() => expect(e.api.llamadas.some((l) => l.nombre === 'guardarCarrusel')).toBe(true));
     await userEvent.click(await screen.findByRole('button', { name: 'Borrar foto' }));
-    await userEvent.click(await screen.findByRole('button', { name: 'Sí, borrar' }));
-    await waitFor(() => expect(e.api.llamadas.map((l) => l.nombre)).toContain('borrarMedio'));
-    expect(await screen.findByText(/No se pudo borrar la foto: La foto se usa en el carrusel de la plantilla .*quítela de ahí y guarde antes de borrarla/)).toBeTruthy();
-    expect(portada()).toBe(1);
-    await userEvent.click(screen.getByRole('button', { name: 'Quitar foto 1' }));
-    await userEvent.click(screen.getByRole('button', { name: 'Guardar apariencia' }));
-    await waitFor(() => expect(screen.queryByLabelText('Texto alternativo de la foto 1')).toBeNull());
-    await userEvent.click(screen.getByRole('button', { name: 'Borrar foto' }));
+    // La confirmación avisa antes de borrar.
+    expect(await screen.findByText(/también se quita de ahí; el sitio la deja de mostrar con la próxima publicación/)).toBeTruthy();
     await userEvent.click(await screen.findByRole('button', { name: 'Sí, borrar' }));
     await waitFor(() => expect(portada()).toBe(0));
+    expect(await screen.findByText(/Foto borrada\. También se quitó del carrusel de .*; el sitio la deja de mostrar con la próxima publicación\./)).toBeTruthy();
+    expect([...e.api.estado.carruseles.values()].every((k) => k.items.length === 0)).toBe(true);
     await waitFor(() => expect(screen.queryByRole('button', { name: 'Borrar foto' })).toBeNull());
     await subir('otra.jpg');
     await waitFor(() => expect(portada()).toBe(1));
@@ -689,5 +684,19 @@ describe('catálogo: estado del sitio en el tablero', () => {
     render(e.envolver(h(PantallaCatalogo, { sub: 'tablero' })));
     await screen.findByText(/El sitio está al día/);
     expect(document.querySelector('[data-prueba="estado-sitio"]')?.getAttribute('role')).toBe('status');
+  });
+});
+
+describe('catálogo: vistas previas de las plantillas', () => {
+  it('cada plantilla vigente usa su clase vp-<id>-<tema> y no queda ninguna vp-marfil', async () => {
+    const e = crearEntorno('adm');
+    render(e.envolver(h(ProveedorGuardia, null, h(PantallaCatalogo, { sub: 'apariencia' }))));
+    await screen.findByText('Ciruela');
+    const clases = Array.from(document.querySelectorAll('.vp')).flatMap((x) => Array.from(x.classList)).filter((c) => c.startsWith('vp-') && c !== 'vp-barra');
+    for (const id of ['cielo', 'bosque', 'ambar', 'grafito', 'ciruela']) {
+      expect(clases).toContain(`vp-${id}-claro`);
+      expect(clases).toContain(`vp-${id}-oscuro`);
+    }
+    expect(document.querySelector('[class*="vp-marfil"]')).toBeNull();
   });
 });
