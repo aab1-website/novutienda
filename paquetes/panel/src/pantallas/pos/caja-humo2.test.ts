@@ -221,6 +221,7 @@ describe('7.2.5: el resultado de la solicitud se avisa', () => {
     expect(await screen.findByText(/ya no se consulta sola/)).toBeTruthy();
     await resolver(e, 'aprobar');
     document.dispatchEvent(new Event('visibilitychange'));
+    await vi.advanceTimersByTimeAsync(100);
     await vi.advanceTimersByTimeAsync(4000);
     expect(await screen.findByText('El supervisor aprobó su solicitud de descuento.')).toBeTruthy();
   });

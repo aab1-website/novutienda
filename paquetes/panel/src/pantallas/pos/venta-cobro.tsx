@@ -86,7 +86,7 @@ export function useEsperaAprobacion(solicitadaId: string | null, alResolverse: (
     const alVolver = (): void => {
       if (document.visibilityState !== 'visible' || resuelta) return;
       if (estadoRef.current === 'agotada') setRonda((n) => n + 1);
-      else consultar();
+      consultar();
     };
     document.addEventListener('visibilitychange', alVolver);
     return () => {
