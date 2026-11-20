@@ -343,6 +343,32 @@
           "order": "ASCENDING"
         }
       ]
+    },
+    {
+      "collectionGroup": "ventas",
+      "queryScope": "COLLECTION",
+      "fields": [
+        {
+          "fieldPath": "turnoId",
+          "order": "ASCENDING"
+        },
+        {
+          "fieldPath": "moneda",
+          "order": "ASCENDING"
+        },
+        {
+          "fieldPath": "estado",
+          "order": "ASCENDING"
+        },
+        {
+          "fieldPath": "subtotal",
+          "order": "ASCENDING"
+        },
+        {
+          "fieldPath": "total",
+          "order": "ASCENDING"
+        }
+      ]
     }
   ],
   "fieldOverrides": [
