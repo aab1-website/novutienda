@@ -28,7 +28,7 @@ describe('pedido de WhatsApp firmado', () => {
     expect(r).toMatchObject({ estado: 200, cuerpo: { ok: true, operacionId: 'nc-pd-1', repetida: false } });
     expect(doc(e, T, 'existencias/lapiz__tienda')?.['cantidad']).toBe(7);
     expect(doc(e, T, 'existencias/lapiz__deposito-1')?.['cantidad']).toBe(5);
-    expect(doc(e, T, 'unidades/celular__A')).toMatchObject({ estado: 'vendida', ventaRef: { tipo: 'pedido', id: 'pd-1' } });
+    expect(doc(e, T, 'unidades/celular__SN-A')).toMatchObject({ estado: 'vendida', ventaRef: { tipo: 'pedido', id: 'pd-1' } });
     expect(doc(e, T, 'movimientos/nc-pd-1__lapiz__tienda')).toMatchObject({ tipo: 'pedido', delta: -3 });
     verificarInvariantes(e, T);
     // Reintento firmado de nuevo: misma respuesta, sin nuevo movimiento.

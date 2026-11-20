@@ -407,7 +407,7 @@ export const TRADUCCION: { readonly [N in NombreCallable]: Traduccion<N> } = {
   },
   buscarSerie: {
     usa: ['inventarios.buscarSerie'],
-    ejecutar: async (c, e) => lista(await c.llamar('inventarios', 'buscarSerie', { serie: e.serie.trim(), ...(e.porInicio === true ? { porInicio: true } : {}) }), 'unidades') as unknown as UnidadSerie[],
+    ejecutar: async (c, e) => lista(await c.llamar('inventarios', 'buscarSerie', { serie: e.serie.trim(), ...(e.productoId !== undefined ? { productoId: e.productoId } : {}), ...(e.porInicio === true ? { porInicio: true } : {}) }), 'unidades') as unknown as UnidadSerie[],
   },
   listarMovimientos: {
     usa: ['inventarios.movimientos'],

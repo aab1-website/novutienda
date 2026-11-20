@@ -13,8 +13,8 @@
     "cantidad": 2,
     "productoId": "p-celular",
     "series": [
-      "B",
-      "C"
+      "SN-B",
+      "SN-C"
     ],
     "ubicacionId": "tienda"
   },

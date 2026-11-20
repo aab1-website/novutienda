@@ -19,7 +19,7 @@ const carrito: Carrito = {
   mercado: 'BO',
   moneda: 'BOB',
   lineas: [
-    { productoId: 'celular', cantidad: 2, series: ['A', 'B'] },
+    { productoId: 'celular', cantidad: 2, series: ['SN-A', 'SN-B'] },
     { productoId: 'lapiz', cantidad: 1 },
   ],
   descuento: { monto: 10000, motivo: 'cliente frecuente' },
@@ -55,16 +55,16 @@ describe('venta con serie, pago mixto y descuento aprobado', () => {
     expect(doc(e, T, 'existencias/lapiz__tienda')?.['cantidad']).toBe(9);
     expect(doc(e, T, 'existencias/lapiz__deposito-1')?.['cantidad']).toBe(5);
     expect(doc(e, T, 'productos/lapiz')?.['stockTotal']).toBe(14);
-    expect(doc(e, T, 'existencias/celular__tienda')).toMatchObject({ cantidad: 1, series: ['C'] });
+    expect(doc(e, T, 'existencias/celular__tienda')).toMatchObject({ cantidad: 1, series: ['SN-C'] });
     expect(doc(e, T, 'productos/celular')?.['stockTotal']).toBe(1);
     // Unidades vendidas con garantía y referencia a la venta.
-    for (const s of ['A', 'B']) {
+    for (const s of ['SN-A', 'SN-B']) {
       expect(doc(e, T, `unidades/celular__${s}`)).toMatchObject({ estado: 'vendida', ventaRef: { tipo: 'venta', id: VENTA }, garantiaHasta: '2027-11-04' });
     }
-    expect(doc(e, T, 'unidades/celular__C')?.['estado']).toBe('disponible');
+    expect(doc(e, T, 'unidades/celular__SN-C')?.['estado']).toBe('disponible');
     // Movimientos y operación de Inventarios con la misma referencia.
     expect(doc(e, T, `operaciones/venta-${VENTA}`)).toMatchObject({ tipo: 'salida' });
-    expect(doc(e, T, `movimientos/venta-${VENTA}__celular__tienda`)).toMatchObject({ tipo: 'venta', delta: -2, series: ['A', 'B'] });
+    expect(doc(e, T, `movimientos/venta-${VENTA}__celular__tienda`)).toMatchObject({ tipo: 'venta', delta: -2, series: ['SN-A', 'SN-B'] });
     // Evento.
     const ev = eventosDe(e, T, 'venta.confirmada');
     expect(ev).toHaveLength(1);
@@ -97,9 +97,9 @@ describe('venta con serie, pago mixto y descuento aprobado', () => {
       numero: 'A-000001', estado: 'EMITIDO', moneda: 'BOB', total: 137000, fecha: '2026-11-04',
       descuento: { monto: 10000, motivo: 'cliente frecuente' }, cliente: { nombre: 'Ana Pérez' },
     });
-    expect(rec.lineas.map((l) => [l.nombre, l.cantidad, l.series])).toEqual([['Celular X1', 2, ['A', 'B']], ['Lápiz HB', 1, []]]);
+    expect(rec.lineas.map((l) => [l.nombre, l.cantidad, l.series])).toEqual([['Celular X1', 2, ['SN-A', 'SN-B']], ['Lápiz HB', 1, []]]);
     // La garantía del recibo coincide con la de las unidades en Inventarios.
-    expect(rec.lineas[0]?.garantiaHasta).toBe(doc(e, T, 'unidades/celular__A')?.['garantiaHasta']);
+    expect(rec.lineas[0]?.garantiaHasta).toBe(doc(e, T, 'unidades/celular__SN-A')?.['garantiaHasta']);
     // Sin referencias de pago en el comprobante.
     expect(JSON.stringify(rec)).not.toContain('QR-0001');
     const emitidos = eventosDe(e, T, 'recibo.emitido');
@@ -107,7 +107,7 @@ describe('venta con serie, pago mixto y descuento aprobado', () => {
     expect(validarEvento(emitidos[0]).ok).toBe(true);
     expect(emitidos[0]?.['datos']).toMatchObject({
       reciboId: `recibo-${VENTA}`, ventaId: VENTA, numero: 'A-000001',
-      garantias: [{ serie: 'A', hasta: '2027-11-04' }, { serie: 'B', hasta: '2027-11-04' }],
+      garantias: [{ serie: 'SN-A', hasta: '2027-11-04' }, { serie: 'SN-B', hasta: '2027-11-04' }],
     });
     // Numeración: el número del POS (receiptNo) y el de Recibos coinciden mientras la entrega es ordenada.
     expect((doc(e, T, `ventas/${VENTA}`) as { receiptNo: number }).receiptNo).toBe(1);
@@ -168,8 +168,8 @@ describe('anulación aprobada por el supervisor', () => {
     // Stock y series de vuelta, ya dentro de la transacción del POS.
     expect(doc(e, T, 'existencias/lapiz__tienda')?.['cantidad']).toBe(10);
     expect(doc(e, T, 'existencias/celular__tienda')?.['cantidad']).toBe(3);
-    expect(doc(e, T, 'unidades/celular__A')).toMatchObject({ estado: 'disponible' });
-    expect(doc(e, T, 'unidades/celular__A')?.['ventaRef']).toBeUndefined();
+    expect(doc(e, T, 'unidades/celular__SN-A')).toMatchObject({ estado: 'disponible' });
+    expect(doc(e, T, 'unidades/celular__SN-A')?.['ventaRef']).toBeUndefined();
     expect(doc(e, T, `operaciones/venta-anula-${VENTA}`)).toMatchObject({ tipo: 'reversion' });
     verificarInvariantes(e, T);
     // Entrega duplicada y desordenada de venta.anulada: Inventarios no revierte dos veces; Recibos marca.
@@ -177,7 +177,7 @@ describe('anulación aprobada por el supervisor', () => {
     const entrega = await e.bandeja.entregar(T, { duplicados: 1, orden: 'inverso' });
     expect(entrega.fallidas).toEqual([]);
     expect(entrega.ignoradas).toBeGreaterThan(0);
-    expect(doc(e, T, 'existencias/celular__tienda')).toMatchObject({ cantidad: 3, series: ['C', 'A', 'B'] });
+    expect(doc(e, T, 'existencias/celular__tienda')).toMatchObject({ cantidad: 3, series: ['SN-C', 'SN-A', 'SN-B'] });
     expect(contar(e, T, 'movimientos')).toBe(movimientos);
     const rec = recibo(VENTA);
     expect(rec).toMatchObject({ estado: 'ANULADO', numero: 'A-000001', anulacion: { motivo: 'cliente se arrepintió', aprobadoPor: 'u-sup' } });

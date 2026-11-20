@@ -144,7 +144,7 @@ export interface Contrato {
   /** Con un conteo abierto y rol `caj`/`sup`, la lista lleva `existenciasOcultas` y `conteosAbiertos` (ver `ListaConMarca`). */
   listarProductos: { entrada: Vacio; salida: ListaConMarca<ProductoPanel> };
   listarSeries: { entrada: { productoId: string; ubicacionId?: UbicacionId; soloDisponibles?: boolean }; salida: ListaConMarca<UnidadSerie> };
-  buscarSerie: { entrada: { serie: string; porInicio?: true }; salida: readonly UnidadSerie[] };
+  buscarSerie: { entrada: { serie: string; productoId?: string; porInicio?: true }; salida: readonly UnidadSerie[] };
   listarMovimientos: {
     entrada: { desde?: string; hasta?: string; productoId?: string; tipo?: TipoMovimiento; usuario?: string; limite?: number };
     /** `cortada`: hay más movimientos que el límite; afine los filtros. */

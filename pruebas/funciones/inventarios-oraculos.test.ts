@@ -39,8 +39,8 @@ describe.skipIf(!hayEmulador)('oráculos de existencias sin efectos durante un c
     const h = herramientas();
     await sembrarTenant(h, A, {
       productos: [
-        { id: 'cel-rico', nombre: 'Celular rico', precioUSD: pu, tienda: 6, conSerie: true, series: ['R1', 'R2', 'R3', 'R4', 'R5', 'R6'] },
-        { id: 'cel-pobre', nombre: 'Celular pobre', precioUSD: pu, tienda: 1, conSerie: true, series: ['P1'] },
+        { id: 'cel-rico', nombre: 'Celular rico', precioUSD: pu, tienda: 6, conSerie: true, series: ['SN-R1', 'SN-R2', 'SN-R3', 'SN-R4', 'SN-R5', 'SN-R6'] },
+        { id: 'cel-pobre', nombre: 'Celular pobre', precioUSD: pu, tienda: 1, conSerie: true, series: ['SN-P1'] },
         { id: 'lap-rico', nombre: 'Lápiz rico', precioUSD: pu, tienda: 10 },
         { id: 'lap-pobre', nombre: 'Lápiz pobre', precioUSD: pu, tienda: 1 },
       ],
@@ -49,7 +49,7 @@ describe.skipIf(!hayEmulador)('oráculos de existencias sin efectos durante un c
     sup = await crearUsuario(h, { rol: 'sup', tenant: A });
     caj = await crearUsuario(h, { rol: 'caj', tenant: A });
     // Una unidad vendida (visible para todos) y un conteo abierto en la tienda.
-    const v = await venta(caj, [{ productoId: 'cel-rico', cantidad: 1, series: ['R6'] }]);
+    const v = await venta(caj, [{ productoId: 'cel-rico', cantidad: 1, series: ['SN-R6'] }]);
     expect(v.status, JSON.stringify(v.error)).toBe(200);
     const abrir = await inv(sup, 'abrirConteo', { operacionId: unico('op'), conteoId: unico('ct').slice(0, 30), ubicacionId: 'tienda' });
     expect(abrir.status, JSON.stringify(abrir.error)).toBe(200);
@@ -92,7 +92,7 @@ describe.skipIf(!hayEmulador)('oráculos de existencias sin efectos durante un c
         return res.unidades.map((x) => `${x.serie}:${x.estado}`);
       };
       // Solo la vendida es visible: con cualquier límite sale ella (antes, `limite: 1` devolvía una oculta y salía vacío).
-      for (const l of [1, 2, 5, 200, undefined]) expect(await filas(l), `${u.correo} limite=${String(l)}`).toEqual(['R6:vendida']);
+      for (const l of [1, 2, 5, 200, undefined]) expect(await filas(l), `${u.correo} limite=${String(l)}`).toEqual(['SN-R6:vendida']);
     }
     const r = await inv(adm, 'series', { productoId: 'cel-rico', limite: 2 });
     expect((r.resultado as { unidades: unknown[] }).unidades).toHaveLength(2);

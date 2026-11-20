@@ -132,7 +132,7 @@ export async function catalogoEstandar(e: Entorno, tenantId: string): Promise<vo
   await altaProducto(e, tenantId, producto('celular', { nombre: 'Celular X1', conSerie: true, garantiaMeses: 12, precioUSD: { bo: 10000, ar: 10000 }, minimo: 1 }));
   await cargarStock(e, tenantId, 'lapiz', 'tienda', 10);
   await cargarStock(e, tenantId, 'lapiz', 'deposito-1', 5);
-  await cargarStock(e, tenantId, 'celular', 'tienda', 3, ['A', 'B', 'C']);
+  await cargarStock(e, tenantId, 'celular', 'tienda', 3, ['SN-A', 'SN-B', 'SN-C']);
 }
 
 export async function entornoListo(tenantId = T): Promise<Entorno> {

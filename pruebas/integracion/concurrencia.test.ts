@@ -40,11 +40,11 @@ describe('concurrencia entre módulos sobre la misma base', () => {
 
   it('la misma serie vendida a la vez: una gana; la otra falla por serie no disponible', async () => {
     await altaProducto(e, T, producto('tv', { nombre: 'TV', conSerie: true }));
-    await cargarStock(e, T, 'tv', 'tienda', 2, ['S1', 'S2']);
-    const r = await Promise.allSettled([unidad(1, 'tv', ['S1']), unidad(2, 'tv', ['S1'])]);
+    await cargarStock(e, T, 'tv', 'tienda', 2, ['SN-S1', 'SN-S2']);
+    const r = await Promise.allSettled([unidad(1, 'tv', ['SN-S1']), unidad(2, 'tv', ['SN-S1'])]);
     expect(r.filter((x) => x.status === 'fulfilled')).toHaveLength(1);
     expect((r.find((x) => x.status === 'rejected') as PromiseRejectedResult).reason).toBeInstanceOf(SerieNoDisponible);
-    expect(doc(e, T, 'existencias/tv__tienda')).toMatchObject({ cantidad: 1, series: ['S2'] });
+    expect(doc(e, T, 'existencias/tv__tienda')).toMatchObject({ cantidad: 1, series: ['SN-S2'] });
     verificarInvariantes(e, T);
   });
 

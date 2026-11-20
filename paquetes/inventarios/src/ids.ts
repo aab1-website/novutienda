@@ -13,11 +13,17 @@ const PRODUCTO = /^[a-z0-9][a-z0-9-]{1,59}$/;
 /** Sin «__»: el separador de los ids compuestos no puede aparecer dentro de una parte. */
 const SEGMENTO = /^[A-Za-z0-9][A-Za-z0-9._-]{0,99}$/;
 const SERIE = /^[A-Za-z0-9][A-Za-z0-9._-]{0,63}$/;
+/** Serie de una unidad NUEVA (D1, D2): de 3 a 60 caracteres, sin «/» ni espacios. Las ya guardadas siguen valiéndose con `SERIE`. */
+const SERIE_NUEVA = /^[A-Za-z0-9][A-Za-z0-9._-]{2,59}$/;
+export const MENSAJE_SERIE_NUEVA = 'La serie debe tener de 3 a 60 caracteres: letras, números y - . _ (sin espacios)';
 const SKU = /^[A-Za-z0-9][A-Za-z0-9._-]{0,39}$/;
 
 export const esProductoId = (x: unknown): x is string => typeof x === 'string' && PRODUCTO.test(x);
 export const esUbicacionId = (x: unknown): x is UbicacionId => typeof x === 'string' && (UBICACIONES as readonly string[]).includes(x);
 export const esSerie = (x: unknown): x is string => typeof x === 'string' && SERIE.test(x) && !x.includes('__');
+export const esSerieNueva = (x: unknown): x is string => typeof x === 'string' && SERIE_NUEVA.test(x) && !x.includes('__');
+/** Campo auxiliar `serieBusqueda` de la unidad: la serie sin distinguir mayúsculas. Las series son ASCII por regla. */
+export const normalizarSerieBusqueda = (s: string): string => s.toLowerCase();
 export const esSku = (x: unknown): x is string => typeof x === 'string' && SKU.test(x);
 /** Identificador libre de operación, merma o conteo. */
 export const esIdSegmento = (x: unknown): x is string => typeof x === 'string' && SEGMENTO.test(x) && !x.includes('__');
@@ -68,6 +74,19 @@ export function exigirSeries(x: unknown): string[] {
   if (!Array.isArray(x)) throw new EntradaInvalida('series debe ser una lista');
   for (const s of x) if (!esSerie(s)) throw new EntradaInvalida(`serie inválida: ${String(s)}`);
   if (new Set(x).size !== x.length) throw new EntradaInvalida('series repetidas');
+  return x as string[];
+}
+/**
+ * Series de un ALTA (ingreso): formato nuevo y sin repetidas dentro de la operación, sin distinguir mayúsculas (D3).
+ * Frente a lo ya guardado solo rige el duplicado exacto (el documento de la unidad se crea con `create`).
+ */
+export function exigirSeriesNuevas(x: unknown): string[] {
+  if (!Array.isArray(x)) throw new EntradaInvalida('series debe ser una lista');
+  for (const s of x) if (!esSerieNueva(s)) throw new EntradaInvalida(`serie inválida: ${String(s)}. ${MENSAJE_SERIE_NUEVA}`);
+  if (new Set(x).size !== x.length) throw new EntradaInvalida('series repetidas');
+  if (new Set((x as string[]).map(normalizarSerieBusqueda)).size !== x.length) {
+    throw new EntradaInvalida('series repetidas (se distinguen solo por mayúsculas)');
+  }
   return x as string[];
 }
 export function exigirTexto(x: unknown, nombre: string, max = 500): string {
