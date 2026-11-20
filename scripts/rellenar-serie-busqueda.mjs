@@ -7,7 +7,7 @@
 //
 // Entorno (scripts/guardia-operador.mjs `validarEntornoAlta`). No imprime identificadores ni series: solo cifras.
 // La normalización repite `normalizarSerieBusqueda` de `paquetes/inventarios/src/ids.ts` (plataforma no importa módulos);
-// `pruebas/inventarios/serie-busqueda-relleno.test.ts` comprueba que coinciden.
+// `pruebas/funciones/serie-busqueda-relleno.test.ts` comprueba que coinciden.
 import { pathToFileURL } from 'node:url';
 import { validarEntornoAlta } from './guardia-operador.mjs';
 

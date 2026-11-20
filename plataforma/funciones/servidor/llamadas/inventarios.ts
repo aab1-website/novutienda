@@ -19,7 +19,6 @@ const autor = (c: Contexto): Autor => actorPos(c);
 
 const ruta = (t: string, col: string, id?: string): string => `tenants/${t}/${col}${id === undefined ? '' : `/${id}`}`;
 const datosDe = (d: { data(): unknown }): Record<string, unknown> => d.data() as Record<string, unknown>;
-/** Una unidad hacia el cliente: sin el campo auxiliar `serieBusqueda`, para que el contrato `UnidadSerie` no cambie. */
 /** Documento de un conteo para `caj` (D9): sin los productos tomados «como 0» ni `mermas`, que delatan qué tenía existencia. */
 const conteoParaCaj = (conteo: Record<string, unknown>, lineas: Record<string, unknown>[]): Record<string, unknown> => {
   const ocultos = new Set(lineas.filter((l) => l['origen'] === ORIGEN_COMO_CERO).map((l) => String(l['productoId'])));
@@ -36,6 +35,7 @@ const unirUnidades = (a: Record<string, unknown>[], b: Record<string, unknown>[]
     return true;
   });
 };
+/** Una unidad hacia el cliente: sin el campo auxiliar `serieBusqueda`, para que el contrato `UnidadSerie` no cambie. */
 const unidadDe = (d: { data(): unknown }): Record<string, unknown> => {
   const { serieBusqueda: _aux, ...resto } = datosDe(d);
   void _aux;
