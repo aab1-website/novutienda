@@ -1,9 +1,9 @@
 import { describe, expect, it } from 'vitest';
-import { validarEvento, type DatosVentaAnuladaV1, type DatosVentaConfirmadaV1, type SobreEvento } from '@novutienda/nucleo';
+import { MENSAJE_NIT, validarEvento, type DatosVentaAnuladaV1, type DatosVentaConfirmadaV1, type SobreEvento } from '@novutienda/nucleo';
 import {
-  EnviadorSimulado, EnviadorWaMe, ReciboNoEncontrado, AccionNoPermitida, buscarComprobantes, enviarRecibo, escaparHtml,
+  EnviadorSimulado, EnviadorWaMe, PlantillaInvalida, ReciboNoEncontrado, AccionNoPermitida, buscarComprobantes, enviarRecibo, escaparHtml,
   generarPdfRecibo, guardarPlantilla, manejarVentaAnulada, manejarVentaConfirmada, manifiestoRecibos, referenciarFacturaSuma,
-  renderizarReciboHtml, rutaAnulacionPendiente, rutaPlantilla, rutaRecibo, validarPlantilla, type Recibo,
+  renderizarReciboHtml, rutaAnulacionPendiente, rutaPlantilla, rutaRecibo, plantillaVigente, validarPlantilla, type Recibo,
 } from '@novutienda/recibos';
 import { DobleDb } from './doble-db.js';
 
@@ -315,6 +315,16 @@ describe('vista y PDF', () => {
       expect(salida).not.toContain('REF-SECRETA');
       expect(salida).not.toContain('70000000');
     }
+  });
+
+  it('el NIT se exige estricto al guardar la plantilla, pero una plantilla vieja con letras se lee igual', async () => {
+    const db = new DobleDb();
+    const guardar = (nit: string) => guardarPlantilla(db, { tenantId: 't1', actor: { uid: 'u', rol: 'sup' }, plantilla: { negocio: { nombre: 'x', nit } } });
+    await expect(guardar('12a45')).rejects.toThrow(PlantillaInvalida);
+    await expect(guardar('1234')).rejects.toThrow(MENSAJE_NIT);
+    await expect(guardar(' 20-12345678-9 ')).resolves.toBeUndefined();
+    await expect(guardar('20-12345678-9')).resolves.toBeUndefined();
+    expect(plantillaVigente({ negocio: { nombre: 'x', nit: 'NIT-VIEJO' } }).negocio.nit).toBe('NIT-VIEJO');
   });
 
   it('rechaza logo que no sea https y el PDF escapa paréntesis y barras', async () => {

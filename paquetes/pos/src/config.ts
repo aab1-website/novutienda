@@ -1,4 +1,4 @@
-import type { ConfiguracionComercial, Rol, TransaccionIdentidad } from '@novutienda/nucleo';
+import { esNitValido, MENSAJE_NIT, type ConfiguracionComercial, type Rol, type TransaccionIdentidad } from '@novutienda/nucleo';
 import {
   ahoraDe, auditar, exigirActor, exigirRol, exigirTenant, leerObligatorio, rutaConfig, type DepsPos,
 } from './contexto.js';
@@ -61,7 +61,7 @@ const HEX = /^#[0-9a-fA-F]{6}$/;
 const SERIE = /^[A-Z0-9]{1,6}$/;
 
 /** Valida una configuración completa; lanza `ErrorPos('entrada-invalida')`. Rechaza claves desconocidas. */
-export function validarConfigPos(x: unknown, monedasDeclaradas?: readonly string[]): ConfigPos {
+export function validarConfigPos(x: unknown, monedasDeclaradas?: readonly string[], modo: 'guardar' | 'leer' = 'guardar'): ConfigPos {
   if (!esObjeto(x)) throw invalida('debe ser un objeto');
   soloClaves(x, ['negocio', 'logoUrl', 'colores', 'mediosHabilitados', 'monedaPorDefecto', 'topesDescuentoBp', 'textoRecibo', 'serieRecibo'], 'la configuración');
   const n = x['negocio'];
@@ -72,6 +72,8 @@ export function validarConfigPos(x: unknown, monedasDeclaradas?: readonly string
   const direccion = textoOpcional(n['direccion'], 'negocio.direccion', 200);
   const telefono = textoOpcional(n['telefono'], 'negocio.telefono', 30);
   const nit = textoOpcional(n['nit'], 'negocio.nit', 30);
+  // El formato estricto rige solo al guardar: un NIT viejo con letras no debe frenar las ventas.
+  if (modo === 'guardar' && nit !== undefined && !esNitValido(nit)) throw invalida(MENSAJE_NIT);
   const logoUrl = textoOpcional(x['logoUrl'], 'logoUrl', 500);
   if (logoUrl !== undefined && !/^https:\/\/[^\s]+$/.test(logoUrl)) throw invalida('logoUrl debe ser una URL https');
   const c = x['colores'];
@@ -116,7 +118,7 @@ export async function leerConfigPos(tx: TransaccionIdentidad, tenantId: string, 
   if (d === undefined) return configPosPorDefecto(comercial);
   try {
     // Lectura tolerante: no se exige que la moneda guardada siga declarada (la configuración vieja se lee y se corrige al guardar).
-    return validarConfigPos(d['config']);
+    return validarConfigPos(d['config'], undefined, 'leer');
   } catch {
     throw new ErrorPos('dato-corrupto', 'La configuración guardada del POS es inválida');
   }

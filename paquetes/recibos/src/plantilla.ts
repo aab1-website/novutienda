@@ -1,4 +1,4 @@
-import { registrarAuditoria } from '@novutienda/nucleo';
+import { esNitValido, MENSAJE_NIT, registrarAuditoria } from '@novutienda/nucleo';
 import { AccionNoPermitida, PlantillaInvalida } from './errores.js';
 import { rutaPlantilla } from './rutas.js';
 import type { ActorAuditado, DatosNegocio, EjecutorRecibos, PlantillaRecibo } from './tipos.js';
@@ -18,7 +18,7 @@ function textoOpcional(v: unknown, campo: string, max: number): string | undefin
 }
 
 /** Valida y normaliza la plantilla; lanza `PlantillaInvalida`. Rechaza campos desconocidos. */
-export function validarPlantilla(x: unknown): PlantillaRecibo {
+export function validarPlantilla(x: unknown, modo: 'guardar' | 'leer' = 'guardar'): PlantillaRecibo {
   if (typeof x !== 'object' || x === null || Array.isArray(x)) throw new PlantillaInvalida('La plantilla debe ser un objeto');
   const o = x as Record<string, unknown>;
   const permitidos = ['logoUrl', 'negocio', 'pie', 'politicaGarantia', 'politicaCambios'];
@@ -30,7 +30,10 @@ export function validarPlantilla(x: unknown): PlantillaRecibo {
   if (typeof no['nombre'] !== 'string' || no['nombre'].trim() === '' || no['nombre'].length > 120) throw new PlantillaInvalida('negocio.nombre requerido');
   const direccion = textoOpcional(no['direccion'], 'negocio.direccion', 200);
   const telefono = textoOpcional(no['telefono'], 'negocio.telefono', 40);
-  const nit = textoOpcional(no['nit'], 'negocio.nit', 40);
+  const nitTexto = textoOpcional(no['nit'], 'negocio.nit', 40);
+  const nit = nitTexto?.trim();
+  // El formato estricto rige solo al guardar: los recibos emitidos y las plantillas viejas se leen igual.
+  if (modo === 'guardar' && nit !== undefined && !esNitValido(nit)) throw new PlantillaInvalida(MENSAJE_NIT);
   const negocio: DatosNegocio = {
     nombre: no['nombre'],
     ...(direccion !== undefined && { direccion }),
@@ -59,7 +62,7 @@ export function plantillaVigente(datos: Readonly<Record<string, unknown>> | unde
   // Plantillas guardadas antes de que la serie pasara a ser exclusiva del POS: el campo se ignora.
   delete contenido['serie'];
   try {
-    return validarPlantilla(contenido);
+    return validarPlantilla(contenido, 'leer');
   } catch {
     return PLANTILLA_POR_DEFECTO;
   }

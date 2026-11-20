@@ -1,3 +1,4 @@
+import { esNitValido, MENSAJE_NIT } from '@novutienda/nucleo';
 import type { JSX } from 'preact';
 import { useEffect, useRef, useState } from 'preact/hooks';
 import { MEDIOS_PAGO, type ConfigPos, type LogoNegocio, type MercadoDeclarado, type MedioPago, type PlantillaRecibo } from '../api/tipos.js';
@@ -33,7 +34,7 @@ function validarNegocio(d: DatosNegocio): Partial<Record<keyof DatosNegocio, str
   if (d.nombre.trim().length > 100) e.nombre = 'El nombre admite hasta 100 caracteres';
   if (d.direccion.trim().length > 200) e.direccion = 'La dirección admite hasta 200 caracteres';
   if (d.telefono.trim().length > 30) e.telefono = 'El teléfono admite hasta 30 caracteres';
-  if (d.nit.trim().length > 30) e.nit = 'El NIT admite hasta 30 caracteres';
+  if (d.nit.trim() !== '' && !esNitValido(d.nit.trim())) e.nit = MENSAJE_NIT;
   const logo = d.logoUrl.trim();
   // Igual de estricto que caja y recibos: https en minúsculas, sin espacios ni comillas, hasta 490 caracteres tras https://.
   if (logo !== '' && !/^https:\/\/[^\s"'<>`\\]{1,490}$/.test(logo)) e.logoUrl = 'La dirección del logo debe empezar con https://, sin espacios ni comillas';
@@ -163,7 +164,7 @@ function DatosDelNegocio(): JSX.Element {
         marcarGuardado();
         setBase(normal(x));
         setDifieren(false);
-        avisoGuardado.current = avisos.ok('Datos del negocio guardados en la configuración de la caja y en la plantilla de recibos.');
+        avisoGuardado.current = avisos.ok('Datos del negocio guardados. Se usan en la caja y en los recibos nuevos.');
       } else {
         const guardados = (['caja', 'recibos'] as const).filter((k) => todos[k] === undefined);
         const faltan = (['caja', 'recibos'] as const).filter((k) => todos[k] !== undefined);
@@ -189,7 +190,7 @@ function DatosDelNegocio(): JSX.Element {
       <p class="texto-suave">Se escriben una sola vez y se guardan en la configuración de la caja y en la plantilla de los recibos.</p>
       {difieren && (
         <Alerta tipo="info">
-          Los datos del negocio de la configuración de la caja y los de la plantilla de recibos son distintos. Se muestran los de la caja; no se cambia nada hasta que usted guarde, y al guardar quedarán iguales en los dos.
+          La caja y la plantilla de recibos tenían datos distintos. Abajo se muestran los de la caja; al pulsar «Guardar datos del negocio» quedarán iguales en las dos.
         </Alerta>
       )}
       <form class="formulario" onSubmit={guardar} noValidate>
@@ -197,7 +198,7 @@ function DatosDelNegocio(): JSX.Element {
           <Campo etiqueta="Nombre del negocio" valor={d.nombre} onInput={(v) => poner('nombre', v)} requerido error={errores.nombre} />
           <Campo etiqueta="Dirección" valor={d.direccion} onInput={(v) => poner('direccion', v)} error={errores.direccion} />
           <Campo etiqueta="Teléfono" valor={d.telefono} onInput={(v) => poner('telefono', v)} error={errores.telefono} />
-          <Campo etiqueta="NIT" valor={d.nit} onInput={(v) => poner('nit', v)} error={errores.nit} />
+          <Campo etiqueta="NIT" inputMode="numeric" valor={d.nit} onInput={(v) => poner('nit', v)} error={errores.nit} />
           <Campo etiqueta="Logo por dirección web (opcional; mejor súbalo en Catálogo y sitio)" valor={d.logoUrl} onInput={(v) => poner('logoUrl', v)} error={errores.logoUrl} />
         </div>
         {logo.datos !== undefined && <LogoSubido estado={logo.datos} conDireccion={d.logoUrl.trim() !== ''} />}

@@ -2,6 +2,7 @@
 import { h } from 'preact';
 import { cleanup, fireEvent, render, screen, waitFor, within } from '@testing-library/preact';
 import { userEvent } from '@testing-library/user-event';
+import { MENSAJE_NIT } from '@novutienda/nucleo';
 import { afterEach, describe, expect, it, vi } from 'vitest';
 import { ErrorApi } from '../api/errores.js';
 import { crearEntorno, uuid, type Entorno, type Nodo } from '../ayuda-pruebas.js';
@@ -633,7 +634,7 @@ describe('configuración: avisos, motivos y cambios sin guardar', () => {
     await u.click(screen.getByRole('button', { name: 'Guardar configuración' }));
     expect(e.api.llamadas.map((l) => l.nombre)).not.toContain('guardarConfigPos');
   });
-  it('el logo sin https y el NIT de 31 caracteres: el formulario avisa y no llama al servidor', async () => {
+  it('el logo sin https y el NIT de 21 dígitos: el formulario avisa y no llama al servidor', async () => {
     const e = crearEntorno('adm');
     ver(e, h(PantallaConfiguracion, { sub: 'negocio' }));
     const u = userEvent.setup();
@@ -643,8 +644,14 @@ describe('configuración: avisos, motivos y cambios sin guardar', () => {
     await u.click(screen.getByRole('button', { name: 'Guardar datos del negocio' }));
     await u.clear(campo(/^Logo por dirección web/));
     await u.clear(campo('NIT'));
-    await u.type(campo('NIT'), '1'.repeat(31));
-    expect(screen.getAllByText(/El NIT admite hasta 30 caracteres/).length).toBeGreaterThan(0);
+    await u.type(campo('NIT'), '1'.repeat(21));
+    expect(screen.getAllByText(MENSAJE_NIT).length).toBeGreaterThan(0);
+    await u.click(screen.getByRole('button', { name: 'Guardar datos del negocio' }));
+    expect(e.api.llamadas.map((l) => l.nombre)).not.toContain('guardarConfigPos');
+    expect(e.api.llamadas.map((l) => l.nombre)).not.toContain('guardarPlantilla');
+    await u.clear(campo('NIT'));
+    await u.type(campo('NIT'), '12a45');
+    expect(screen.getAllByText(MENSAJE_NIT).length).toBeGreaterThan(0);
     await u.click(screen.getByRole('button', { name: 'Guardar datos del negocio' }));
     expect(e.api.llamadas.map((l) => l.nombre)).not.toContain('guardarConfigPos');
     expect(e.api.llamadas.map((l) => l.nombre)).not.toContain('guardarPlantilla');
@@ -809,7 +816,7 @@ describe('configuración: avisos, motivos y cambios sin guardar', () => {
       await u.clear(campo('NIT'));
       await u.type(campo('NIT'), '12345');
       await u.click(screen.getByRole('button', { name: 'Guardar datos del negocio' }));
-      await waitFor(() => expect(regionAvisos('estado').textContent).toContain('Datos del negocio guardados en la configuración de la caja y en la plantilla de recibos.'));
+      await waitFor(() => expect(regionAvisos('estado').textContent).toContain('Datos del negocio guardados. Se usan en la caja y en los recibos nuevos.'));
       expect((await e.api.llamar('leerConfigPos', {})).negocio.nit).toBe('12345');
       const pl = await e.api.llamar('leerPlantilla', {});
       expect(pl.negocio.nit).toBe('12345');
@@ -830,7 +837,7 @@ describe('configuración: avisos, motivos y cambios sin guardar', () => {
       expect(screen.queryByRole('button', { name: 'Reintentar en la configuración de la caja' })).toBeNull();
       const cajaAntes = e.api.llamadas.filter((l) => l.nombre === 'guardarConfigPos').length;
       await u.click(screen.getByRole('button', { name: 'Reintentar en la plantilla de recibos' }));
-      await waitFor(() => expect(regionAvisos('estado').textContent).toContain('Datos del negocio guardados en la configuración de la caja y en la plantilla de recibos.'));
+      await waitFor(() => expect(regionAvisos('estado').textContent).toContain('Datos del negocio guardados. Se usan en la caja y en los recibos nuevos.'));
       expect((await e.api.llamar('leerPlantilla', {})).negocio.direccion).toBe('Calle Ejemplo 123 9');
       expect(e.api.llamadas.filter((l) => l.nombre === 'guardarConfigPos')).toHaveLength(cajaAntes);
       expect(screen.queryByRole('button', { name: /Reintentar/ })).toBeNull();
@@ -868,12 +875,12 @@ describe('configuración: avisos, motivos y cambios sin guardar', () => {
       ver(e, h(PantallaConfiguracion, { sub: 'negocio' }));
       await screen.findByRole('heading', { name: 'Datos del negocio' });
       expect((campo(/^Nombre del negocio/) as HTMLInputElement).value).toBe('Negocio de ejemplo');
-      expect(screen.getByText(/son distintos/)).toBeTruthy();
+      expect(screen.getByText(/tenían datos distintos/)).toBeTruthy();
       expect(e.api.llamadas.slice(antes).map((l) => l.nombre).filter((n) => n.startsWith('guardar'))).toEqual([]);
       await userEvent.setup().click(screen.getByRole('button', { name: 'Guardar datos del negocio' }));
       await waitFor(() => expect(regionAvisos('estado').textContent).toContain('Datos del negocio guardados'));
       expect((await e.api.llamar('leerPlantilla', {})).negocio.nombre).toBe('Negocio de ejemplo');
-      expect(screen.queryByText(/son distintos/)).toBeNull();
+      expect(screen.queryByText(/tenían datos distintos/)).toBeNull();
     });
     it('«Guardar plantilla» conserva los datos del negocio vigentes, no los cargados al abrir', async () => {
       const e = crearEntorno('adm');
@@ -904,7 +911,7 @@ describe('configuración: avisos, motivos y cambios sin guardar', () => {
       const e = crearEntorno('adm');
       ver(e, h(PantallaConfiguracion, { sub: 'negocio' }));
       await screen.findByRole('heading', { name: 'Datos del negocio' });
-      expect(screen.queryByText(/son distintos/)).toBeNull();
+      expect(screen.queryByText(/tenían datos distintos/)).toBeNull();
     });
   });
   it('no deja textos internos a la vista', async () => {
