@@ -56,3 +56,11 @@ Venta sin turno o con turno ajeno; segundo turno con la caja ocupada; precio o t
 ## Dependencia del módulo recibos (06/11/2026)
 
 `manifiestoPos.dependeDe` incluye `recibos`: el terminal de venta muestra el comprobante y usa sus acciones (`enviarRecibo`, `referenciarFacturaSuma`). Consecuencia para el encendido por tenant (fase L2): **un tenant no puede tener `pos` sin `recibos`**; el registro ordena recibos antes que pos y la frontera admite la importación.
+
+## Caja: correcciones del humo2 (20/11/2026)
+- **Cierre de turno:** lee `turnoActual` por su cuenta (al abrir y con «Actualizar», sin perder lo contado) y lo vuelve a leer al confirmar. Si el turno ya se cerró, avisa y sale; si cambió la apertura o los totales (por ejemplo, una anulación con reembolso), no cierra, muestra los valores nuevos y pide confirmar de nuevo. El servidor manda ante la carrera con `cerrarTurno`.
+- **Teléfono del cliente:** se valida solo en el panel (`telefono.ts`): dígitos, espacios, guiones, paréntesis y un «+» inicial, de 6 a 15 dígitos, como el envío del recibo. Exige el nombre del cliente: sin nombre no se guarda.
+- **Aprobaciones (descuento y crédito):** al resolverse la solicitud se avisa si fue aprobada, rechazada (con motivo) o ya no está pendiente; al volver a la pestaña se consulta en el acto y se reanuda una espera agotada. Alcance: Terminal y Cobro.
+- **Cobro:** la última fila de pago no escrita toma el restante; la etiqueta es «Monto que paga con este medio».
+- **Sin turno abierto:** se ve el catálogo en solo lectura (respeta el conteo ciego) y «Abra turno para vender.»; no hay carrito ni «Agregar».
+- **Búsqueda de recibos:** «A-000004», «A4», «A-4» y «4» (subcadena: «4» también trae 14 y 40).

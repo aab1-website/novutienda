@@ -389,8 +389,8 @@ describe('conteo abierto: lo que ven cajera y administrador', () => {
     await waitFor(() => expect(document.querySelector('[data-prueba="total"]')?.textContent).toBe('Bs 55,68'));
     await u.click(screen.getByRole('button', { name: 'Cobrar' }));
     await screen.findByRole('heading', { name: 'Cobro' });
-    await u.clear(campo(/Monto a aplicar/));
-    await u.type(campo(/Monto a aplicar/), '55,68');
+    await u.clear(campo(/Monto que paga con este medio/));
+    await u.type(campo(/Monto que paga con este medio/), '55,68');
     await u.type(campo(/Efectivo recibido/), '100000');
     await u.click(screen.getByRole('button', { name: 'Confirmar cobro' }));
     await screen.findByText('La venta se registró correctamente.');

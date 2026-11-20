@@ -7,6 +7,7 @@ import { useConfiguracionComercial } from '../../ui/comercial.js';
 import { useApp } from '../../ui/contexto.js';
 import { useAccion, useCarga } from '../../ui/hooks.js';
 import { textoACentavos } from '../../util/dinero.js';
+import { CatalogoSoloLectura } from './venta-catalogo.js';
 import { VentaCaja, VentaCreditos } from './venta-caja.js';
 import { VentaCierre } from './venta-cierre.js';
 import { VentaHistorial } from './venta-historial.js';
@@ -90,7 +91,17 @@ export function PantallaVenta({ sub }: { sub: string }): JSX.Element {
       <Pestanas etiqueta="Secciones de venta" base="venta" actual={actual} items={PESTANAS} />
       {turno.cargando && <Cargando />}
       {turno.error && <ErrorCarga error={turno.error} reintentar={turno.recargar} />}
-      {!turno.cargando && !turno.error && necesitaTurno && turno.datos === null && <Apertura alAbrir={turno.recargar} />}
+      {!turno.cargando && !turno.error && necesitaTurno && turno.datos === null && (
+        <>
+          <Apertura alAbrir={turno.recargar} />
+          {actual === 'terminal' && (
+            <>
+              <Alerta tipo="info">Abra turno para vender.</Alerta>
+              <CatalogoSoloLectura />
+            </>
+          )}
+        </>
+      )}
       {!turno.cargando && !turno.error && (!necesitaTurno || turno.datos !== null) && (
         <>
           {actual === 'terminal' && turno.datos && <VentaTerminal turno={turno.datos} alCambiar={turno.recargar} carritoPedido={carritoPedido} alUsarPedido={() => setCarritoPedido(undefined)} />}

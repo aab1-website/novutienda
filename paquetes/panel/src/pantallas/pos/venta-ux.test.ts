@@ -101,15 +101,17 @@ describe('V-02 y V-01: el carrito se conserva y la barra lleva al carrito', () =
     expect(document.activeElement).toBe(screen.getByRole('group', { name: 'Carrito' }));
   });
 
-  it('en pantalla angosta, agregar deja un aviso; en ancha no', async () => {
+  it('en pantalla angosta no hay aviso «Se agregó»: la barra, con aria-live, muestra el total nuevo', async () => {
+    vi.stubGlobal('matchMedia', (q: string) => ({ matches: q.includes('max-width'), media: q, addEventListener: () => undefined, removeEventListener: () => undefined }));
     const e = crearEntorno('caj');
     await conTurno(e);
     const u = userEvent.setup();
     await u.click(await screen.findByRole('button', { name: 'Agregar Cable HDMI 2 m' }));
-    expect(screen.queryByText('Se agregó Cable HDMI 2 m al carrito.')).toBeNull();
-    vi.stubGlobal('matchMedia', (q: string) => ({ matches: q.includes('max-width'), media: q, addEventListener: () => undefined, removeEventListener: () => undefined }));
+    await waitFor(() => expect(document.querySelector('[data-prueba="barra-resumen"]')?.textContent).toBe('1 producto · Bs 55,68'));
+    expect(screen.queryByText(/Se agregó/)).toBeNull();
+    expect(document.querySelector('[data-prueba="barra-resumen"]')?.getAttribute('aria-live')).toBe('polite');
     await u.click(screen.getByRole('button', { name: 'Agregar Cable HDMI 2 m' }));
-    expect(await screen.findByText('Se agregó Cable HDMI 2 m al carrito.')).toBeTruthy();
+    await waitFor(() => expect(document.querySelector('[data-prueba="barra-resumen"]')?.textContent).toBe('1 producto · Bs 111,36'));
   });
 });
 
@@ -182,7 +184,7 @@ describe('V-04 y G-06: monto prellenado y motivo de cada falta', () => {
     await u.click(await screen.findByRole('button', { name: 'Agregar Cable HDMI 2 m' }));
     await u.click(boton('Cobrar'));
     await screen.findByRole('heading', { name: 'Cobro' });
-    expect((campo(/Monto a aplicar/) as HTMLInputElement).value).toBe('55,68');
+    expect((campo(/Monto que paga con este medio/) as HTMLInputElement).value).toBe('55,68');
     expect(document.querySelector('[data-prueba="restante"]')?.textContent).toBe('Bs 0,00');
     expect(boton('Confirmar cobro').getAttribute('aria-disabled')).toBeNull();
   });
@@ -212,12 +214,12 @@ describe('V-04 y G-06: monto prellenado y motivo de cada falta', () => {
     await u.click(await screen.findByRole('button', { name: 'Agregar Cable HDMI 2 m' }));
     await u.click(boton('Cobrar'));
     await screen.findByRole('heading', { name: 'Cobro' });
-    await u.clear(campo(/Monto a aplicar/));
-    await u.type(campo(/Monto a aplicar/), '20');
+    await u.clear(campo(/Monto que paga con este medio/));
+    await u.type(campo(/Monto que paga con este medio/), '20');
     expect(await screen.findByText('Falta cobrar Bs 35,68.')).toBeTruthy();
     expect(boton('Confirmar cobro').getAttribute('aria-disabled')).toBe('true');
-    await u.clear(campo(/Monto a aplicar/));
-    await u.type(campo(/Monto a aplicar/), '70');
+    await u.clear(campo(/Monto que paga con este medio/));
+    await u.type(campo(/Monto que paga con este medio/), '70');
     expect(await screen.findByText('Los pagos superan el total: ajuste los montos.')).toBeTruthy();
   });
 });
@@ -469,14 +471,14 @@ describe('monto prellenado del cobro', () => {
     const base = { mercado: 'BO', moneda: 'BOB', config, carrito: { mercado: 'BO', moneda: 'BOB', lineas: [], totalMostrado: 1000 }, aprobacionId: undefined, requestId: uuid() } as unknown as Parameters<typeof VentaCobro>[0]['datos'];
     const montar = (total: number) => e.envolver(h(VentaCobro, { datos: { ...base, total }, volver: () => undefined, alVender: () => undefined }));
     const r = render(montar(1000));
-    expect((campo(/Monto a aplicar/) as HTMLInputElement).value).toBe('10,00');
+    expect((campo(/Monto que paga con este medio/) as HTMLInputElement).value).toBe('10,00');
     r.rerender(montar(2500));
-    await waitFor(() => expect((campo(/Monto a aplicar/) as HTMLInputElement).value).toBe('25,00'));
+    await waitFor(() => expect((campo(/Monto que paga con este medio/) as HTMLInputElement).value).toBe('25,00'));
     const u = userEvent.setup();
-    await u.clear(campo(/Monto a aplicar/));
-    await u.type(campo(/Monto a aplicar/), '7');
+    await u.clear(campo(/Monto que paga con este medio/));
+    await u.type(campo(/Monto que paga con este medio/), '7');
     r.rerender(montar(3000));
-    expect((campo(/Monto a aplicar/) as HTMLInputElement).value).toBe('7');
+    expect((campo(/Monto que paga con este medio/) as HTMLInputElement).value).toBe('7');
   });
 });
 
@@ -533,11 +535,11 @@ describe('revisión: venta repetida, sesión vencida y filas editadas', () => {
     const u = userEvent.setup();
     await u.click(screen.getByRole('button', { name: 'Agregar otro medio' }));
     const segundo = screen.getAllByRole('group', { name: /Pago/ })[1] as HTMLElement;
-    await u.clear(within(segundo).getByLabelText(/Monto a aplicar/));
-    await u.type(within(segundo).getByLabelText(/Monto a aplicar/), '3');
+    await u.clear(within(segundo).getByLabelText(/Monto que paga con este medio/));
+    await u.type(within(segundo).getByLabelText(/Monto que paga con este medio/), '3');
     await u.click(within(screen.getAllByRole('group', { name: /Pago/ })[0] as HTMLElement).getByRole('button', { name: 'Quitar este pago' }));
     r.rerender(montar(2500));
     await waitFor(() => expect(screen.getAllByRole('group', { name: /Pago/ })).toHaveLength(1));
-    expect((campo(/Monto a aplicar/) as HTMLInputElement).value).toBe('3');
+    expect((campo(/Monto que paga con este medio/) as HTMLInputElement).value).toBe('3');
   });
 });

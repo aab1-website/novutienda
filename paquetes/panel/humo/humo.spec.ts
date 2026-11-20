@@ -90,7 +90,7 @@ for (const esquema of ESQUEMAS) {
       // Cobro con cambio.
       await page.getByRole('button', { name: 'Cobrar' }).click();
       await expect(page.getByRole('heading', { name: 'Cobro' })).toBeVisible();
-      await page.getByLabel(/Monto a aplicar/).fill('53,68');
+      await page.getByLabel(/Monto que paga con este medio/).fill('53,68');
       await page.getByLabel(/Efectivo recibido/).fill('100');
       await expect(page.locator('[data-prueba="cambio"]')).toHaveText('Bs 46,32');
       await sinViolaciones(page, 'cobro');
@@ -314,7 +314,7 @@ for (const esquema of ESQUEMAS) {
         await page.getByRole('button', { name: 'Agregar Cable HDMI 2 m' }).click();
         await expect(page.locator('[data-prueba="total"]')).toHaveText('Bs 55,68');
         await page.getByRole('button', { name: 'Cobrar' }).click();
-        await page.getByLabel(/Monto a aplicar/).fill('55,68');
+        await page.getByLabel(/Monto que paga con este medio/).fill('55,68');
         await page.getByLabel(/Efectivo recibido/).fill('100');
         await page.getByRole('button', { name: 'Confirmar cobro' }).click();
         await expect(page.getByRole('heading', { name: 'Venta registrada' })).toBeVisible();
@@ -338,7 +338,7 @@ for (const esquema of ESQUEMAS) {
         await page.getByRole('button', { name: 'Agregar Parlante portátil' }).click();
         await page.getByLabel(/^Cantidad/).last().fill('500');
         await page.getByRole('button', { name: 'Cobrar' }).click();
-        await page.getByLabel(/Monto a aplicar/).fill('90132');
+        await page.getByLabel(/Monto que paga con este medio/).fill('90132');
         await page.getByLabel(/Efectivo recibido/).fill('100000');
         await page.getByRole('button', { name: 'Confirmar cobro' }).click();
         const rechazo = page.getByText(/No alcanza el stock/);
@@ -689,7 +689,7 @@ test('varios carritos: sobreviven a salir y volver a entrar, bloquean el cierre,
   await expect(barra.getByRole('button', { name: /Cliente 1 · 1 producto/ })).toHaveAttribute('aria-pressed', 'true');
   // Cobrarlo lo saca de la barra.
   await page.getByRole('button', { name: 'Cobrar' }).click();
-  await page.getByLabel(/Monto a aplicar/).fill('55,68');
+  await page.getByLabel(/Monto que paga con este medio/).fill('55,68');
   await page.getByLabel(/Efectivo recibido/).fill('60');
   await page.getByRole('button', { name: 'Confirmar cobro' }).click();
   await expect(page.getByRole('heading', { name: 'Venta registrada' })).toBeVisible();
