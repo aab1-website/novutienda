@@ -22,6 +22,7 @@ Sitio estático (Astro + Preact) con sus APIs dinámicas como funciones puras. E
 
 ## Reglas
 
+- Hay **un solo carrito por cliente, que se llama «Mi pedido»** (una única clave, `cb.carrito`). No guarda precios: el «Total referencial» se calcula en el navegador con `/precios-productos.json` (precios base, los mismos del HTML), la cotización oficial y `precioFinal`; suma los productos con precio y avisa «+ N con precio a consultar». El mensaje de WhatsApp no lleva montos.
 - Nada de tasas ni precios en el código: el precio sale de `precioFinal` (núcleo) con `/api/cotizacion`.
 - Las afirmaciones sin confirmar (`confirmada: false`) no se publican; el build las lista como `CONFIRMAR`.
 - Sin estilos ni scripts en línea (salvo los arranques de islas de Astro, autorizados por hash).

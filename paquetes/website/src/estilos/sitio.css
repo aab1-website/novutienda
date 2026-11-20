@@ -156,9 +156,11 @@ main:focus { outline: none; }
 .aviso-estado:empty { display: none; }
 
 /* Páginas interiores */
-.pagina { padding: 40px 0 72px; }
-.migas ol { display: flex; flex-wrap: wrap; gap: 6px; font-size: 14px; color: var(--cb-texto-suave); margin-bottom: 20px; }
-.migas li + li::before { content: '/'; margin-right: 6px; }
+.pagina { padding-block: 40px 72px; }
+@media (max-width: 640px) { .pagina { padding-inline: 16px; } }
+.migas ol { display: flex; flex-wrap: wrap; align-items: baseline; gap: 6px; margin: 0; padding: 0; list-style: none; font-size: 14px; line-height: 1.4; color: var(--cb-texto-suave); margin-bottom: 20px; min-width: 0; }
+.migas li { min-width: 0; overflow-wrap: anywhere; }
+.migas li + li::before { content: '/'; display: inline-block; margin-right: 6px; }
 .migas a { color: var(--cb-texto-suave); }
 .encabezado-pagina { display: flex; flex-direction: column; gap: 10px; margin-bottom: 28px; }
 .catalogo { display: grid; grid-template-columns: 260px 1fr; gap: 32px; align-items: start; }
@@ -286,6 +288,12 @@ h3.descripcion-titulo, h4.descripcion-titulo { font-size: 17px; }
   body:has(.barra-carrito) .whatsapp-flotante { bottom: calc(84px + env(safe-area-inset-bottom)); }
 }
 .carrito-vacio { display: flex; flex-direction: column; align-items: center; gap: 14px; padding: 24px 0; color: var(--cb-texto-suave); }
+.buscador-catalogo { display: flex; flex-direction: column; gap: 12px; margin-bottom: 24px; max-width: 560px; }
+.campo-etiqueta { display: block; margin-bottom: 6px; font-size: 14px; font-weight: 700; }
+.total-pedido { display: flex; flex-direction: column; gap: 8px; padding: 12px 0; }
+.total-linea { display: flex; flex-wrap: wrap; align-items: baseline; gap: 4px 8px; }
+.total-linea strong { font-size: 18px; }
+.total-aviso { font-size: 13px; color: var(--cb-texto-suave); }
 .resultados { display: flex; flex-direction: column; gap: 4px; }
 .resultados a { display: flex; flex-direction: column; gap: 2px; padding: 10px 12px; border-radius: 10px; text-decoration: none; }
 .resultados a:hover, .resultados a:focus-visible { background: var(--cb-superficie-2); }

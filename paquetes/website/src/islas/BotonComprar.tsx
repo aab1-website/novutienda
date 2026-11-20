@@ -15,7 +15,7 @@ interface Props {
   whatsapp: string | null;
   /** Consulta `/api/disponibilidad` al cargar (ficha de producto). */
   verificar?: boolean;
-  /** Muestra también «Agregar» al carrito de consulta. */
+  /** Muestra también «Agregar» al pedido. */
   conAgregar?: boolean;
   apiBase?: string;
 }
@@ -50,8 +50,8 @@ export default function BotonComprar({ id, nombre, disponible, whatsapp, verific
   const sumar = (): number => {
     const antes = cantidadDe(cargarCarrito(), id);
     const ahora = cantidadDe(agregarAlCarrito({ id, nombre }), id);
-    if (antes > 0) setAviso(`Ya estaba en tu consulta: ahora ${ahora}`);
-    else setAviso(`${nombre} agregado a tu consulta`);
+    if (antes > 0) setAviso(`Ya estaba en tu pedido: ahora ${ahora}`);
+    else setAviso(`${nombre} agregado a tu pedido`);
     window.setTimeout(() => setAviso(''), 2500);
     return ahora;
   };

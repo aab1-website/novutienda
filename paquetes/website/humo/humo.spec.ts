@@ -6,9 +6,9 @@ const PAGINAS = ['/', '/404', '/productos', '/productos/televisores', '/producto
 const PLANTILLAS = ['cielo', 'bosque', 'ambar', 'grafito', 'ciruela'] as const;
 /** Las islas `load` e `idle` ya están listas (las `visible` se hidratan al llegar a la pantalla). */
 const islasListas = (page: Page): Promise<unknown> => page.waitForFunction(() => document.querySelectorAll('astro-island[ssr][client="load"], astro-island[ssr][client="idle"]').length === 0);
-/** Lleva el elemento a la pantalla y espera a que sus islas se hidraten. */
+/** Lleva el elemento al centro de la pantalla (así todas sus islas quedan visibles) y espera a que se hidraten. */
 async function hidratar(el: Locator): Promise<void> {
-  await el.scrollIntoViewIfNeeded();
+  await el.evaluate((e) => e.scrollIntoView({ block: 'center', behavior: 'instant' }));
   await expect(el.locator('astro-island[ssr]')).toHaveCount(0);
 }
 const hostPropio = (u: string): boolean => /^(http:\/\/127\.0\.0\.1|data:|blob:)/.test(u);
@@ -139,9 +139,9 @@ test.describe('precio, país y compra', () => {
     expect(href.searchParams.get('text')).toContain('1 x Televisor de ejemplo 55" (cód. ejemplo-tv-55)');
     await islasListas(page);
     await enlace.click();
-    const dlg = page.getByRole('dialog', { name: 'Mi carrito de consulta' });
+    const dlg = page.getByRole('dialog', { name: 'Mi pedido' });
     await expect(dlg).toBeVisible();
-    const wa = dlg.getByRole('link', { name: /CONSULTAR POR WHATSAPP/ });
+    const wa = dlg.getByRole('link', { name: /ENVIAR PEDIDO POR WHATSAPP/ });
     const url = new URL((await wa.getAttribute('href')) ?? '');
     expect(url.origin + url.pathname).toBe('https://wa.me/59100000001');
     expect(url.searchParams.get('text')).toContain('1 x Televisor de ejemplo 55" (cód. ejemplo-tv-55)');
@@ -158,8 +158,8 @@ test.describe('precio, país y compra', () => {
     await islasListas(page);
     await expect(page.getByRole('link', { name: 'COMPRAR', exact: true })).toHaveCount(0);
     await page.getByRole('button', { name: 'COMPRAR', exact: true }).click();
-    await expect(page.getByRole('dialog', { name: 'Mi carrito de consulta' })).toBeVisible();
-    await expect(page.getByRole('dialog').getByRole('link', { name: /CONSULTAR POR WHATSAPP/ })).toHaveCount(0);
+    await expect(page.getByRole('dialog', { name: 'Mi pedido' })).toBeVisible();
+    await expect(page.getByRole('dialog').getByRole('link', { name: /ENVIAR PEDIDO POR WHATSAPP/ })).toHaveCount(0);
   });
 
   test('barra del celular: siempre visible, solo cantidad, foco de vuelta al cerrar y pie visible', async ({ page }) => {
@@ -168,18 +168,18 @@ test.describe('precio, país y compra', () => {
     await decidirConsentimiento(page, false, false);
     await page.goto('/producto/televisor-ejemplo-55');
     await islasListas(page);
-    const barra = page.getByRole('region', { name: 'Tu consulta' });
+    const barra = page.getByRole('region', { name: 'Tu pedido' });
     await expect(barra).toBeInViewport();
-    await expect(barra).toContainText('Tu consulta está vacía');
+    await expect(barra).toContainText('Tu pedido está vacío');
     await page.getByRole('button', { name: 'AGREGAR' }).click();
     await page.getByRole('button', { name: 'AGREGAR' }).click();
-    await expect(page.getByText('Ya estaba en tu consulta: ahora 2')).toBeVisible();
+    await expect(page.getByText('Ya estaba en tu pedido: ahora 2')).toBeVisible();
     await expect(barra).toContainText('2 productos');
     await expect(barra).not.toContainText(/Bs|\$/);
     await expect(barra).toBeInViewport();
-    const abrir = barra.getByRole('button', { name: 'VER CONSULTA' });
+    const abrir = barra.getByRole('button', { name: 'VER PEDIDO' });
     await abrir.click();
-    const dlg = page.getByRole('dialog', { name: 'Mi carrito de consulta' });
+    const dlg = page.getByRole('dialog', { name: 'Mi pedido' });
     await expect(dlg).toBeVisible();
     // El foco inicial se pone en el mismo efecto que registra Escape: esperarlo evita una carrera.
     await expect(dlg.locator(':focus')).toHaveCount(1);
@@ -205,7 +205,7 @@ test.describe('precio, país y compra', () => {
     await expect(page.getByRole('button', { name: /COMPRAR|AGREGAR/ })).toHaveCount(0);
   });
 
-  test('carrito de consulta: agregar, cambiar cantidad y enviar por WhatsApp', async ({ page }) => {
+  test('Mi pedido: agregar, cambiar cantidad y enviar por WhatsApp', async ({ page }) => {
     await simularApi(page);
     await decidirConsentimiento(page, false, false);
     await page.goto('/productos/lavadoras');
@@ -213,12 +213,77 @@ test.describe('precio, país y compra', () => {
     await hidratar(lavadora);
     await islasListas(page);
     await lavadora.getByRole('button', { name: 'AGREGAR' }).click();
-    await page.getByRole('button', { name: /Carrito de consulta, 1 producto/ }).click();
-    const dlg = page.getByRole('dialog', { name: 'Mi carrito de consulta' });
+    await page.getByRole('button', { name: /Mi pedido, 1 producto/ }).click();
+    const dlg = page.getByRole('dialog', { name: 'Mi pedido' });
     await dlg.getByRole('button', { name: /Agregar una unidad/ }).click();
-    const wa = dlg.getByRole('link', { name: /CONSULTAR POR WHATSAPP/ });
+    const wa = dlg.getByRole('link', { name: /ENVIAR PEDIDO POR WHATSAPP/ });
     const texto = new URL((await wa.getAttribute('href')) ?? '').searchParams.get('text');
     expect(texto).toContain('2 x Lavadora de ejemplo 9 kg (cód. ejemplo-lavadora-9)');
+  });
+
+  test('Mi pedido muestra el «Total referencial» con su leyenda y el mensaje de WhatsApp no lleva el total', async ({ page }) => {
+    await simularApi(page);
+    await decidirConsentimiento(page, false, false);
+    // Un producto con stock y precio 0 (el ejemplo no trae ninguno): se simula en el archivo de precios.
+    await page.route('**/precios-productos.json', async (r) => {
+      const precios = (await (await r.fetch()).json()) as Record<string, Record<string, number>>;
+      precios['ejemplo-tv-43'] = { BO: 0, AR: 0 };
+      await r.fulfill({ status: 200, contentType: 'application/json', body: JSON.stringify(precios) });
+    });
+    await page.goto('/productos/televisores');
+    const tv55 = page.locator('[data-producto-id="ejemplo-tv-55"]');
+    const tv43 = page.locator('[data-producto-id="ejemplo-tv-43"]');
+    await hidratar(tv55);
+    await hidratar(tv43);
+    await tv55.getByRole('button', { name: 'AGREGAR' }).click();
+    await tv43.getByRole('button', { name: 'AGREGAR' }).click();
+    await page.getByRole('button', { name: /Mi pedido, 2 productos/ }).click();
+    const dlg = page.getByRole('dialog', { name: 'Mi pedido' });
+    await expect(dlg.getByText('Total referencial')).toBeVisible();
+    await expect(dlg.getByText('Bs 4.500', { exact: true })).toBeVisible();
+    await expect(dlg.getByText('+ 1 con precio a consultar')).toBeVisible();
+    await expect(dlg.getByText('El precio final y el envío se confirman por WhatsApp')).toBeVisible();
+    const href = (await dlg.getByRole('link', { name: /ENVIAR PEDIDO POR WHATSAPP/ }).getAttribute('href')) ?? '';
+    expect(decodeURIComponent(href)).not.toMatch(/total|Bs|4\.500/i);
+  });
+
+  test('el botón flotante de WhatsApp lleva el pedido cuando hay productos y la consulta general cuando no', async ({ page }) => {
+    await simularApi(page);
+    await decidirConsentimiento(page, false, false);
+    await page.goto('/producto/televisor-ejemplo-55');
+    await islasListas(page);
+    const flotante = page.locator('a.whatsapp-flotante');
+    expect(new URL((await flotante.getAttribute('href')) ?? '').searchParams.get('text')).toBe('Hola, tengo una consulta.');
+    await page.getByRole('button', { name: 'AGREGAR' }).click();
+    await expect.poll(async () => new URL((await flotante.getAttribute('href')) ?? '').searchParams.get('text')).toContain('1 x Televisor de ejemplo 55" (cód. ejemplo-tv-55)');
+  });
+
+  test('«Buscar en el catálogo» encuentra un producto de otra página', async ({ page }) => {
+    await simularApi(page);
+    await decidirConsentimiento(page, false, false);
+    await page.goto('/productos/televisores');
+    await islasListas(page);
+    await page.getByRole('searchbox', { name: 'Buscar en el catálogo' }).fill('lavadora nordika');
+    await expect(page.getByRole('region', { name: 'Buscar en el catálogo' }).getByRole('link')).toHaveCount(1);
+  });
+
+  test('en el celular (375 px) las migas no se superponen y el título queda a 16 px o más del borde', async ({ page }) => {
+    await page.setViewportSize({ width: 375, height: 800 });
+    await simularApi(page);
+    await decidirConsentimiento(page, false, false);
+    await page.goto('/producto/televisor-ejemplo-55');
+    await islasListas(page);
+    const cajas = await page.locator('.migas li').evaluateAll((els) => els.map((e) => { const r = e.getBoundingClientRect(); return { x: r.x, y: r.y, w: r.width, h: r.height }; }));
+    expect(cajas.length).toBeGreaterThan(1);
+    for (let i = 0; i < cajas.length; i += 1) {
+      for (let j = i + 1; j < cajas.length; j += 1) {
+        const a = cajas[i]!;
+        const b = cajas[j]!;
+        const solapa = a.x < b.x + b.w - 0.5 && b.x < a.x + a.w - 0.5 && a.y < b.y + b.h - 0.5 && b.y < a.y + a.h - 0.5;
+        expect(solapa, `migas ${i} y ${j}`).toBe(false);
+      }
+    }
+    expect((await page.locator('.pagina h1').first().boundingBox())?.x ?? 0).toBeGreaterThanOrEqual(16);
   });
 
   test('buscador y filtros por marca y precio', async ({ page }) => {
@@ -227,7 +292,7 @@ test.describe('precio, país y compra', () => {
     await page.goto('/productos');
     await islasListas(page);
     await page.getByRole('button', { name: 'Buscar productos' }).click();
-    await page.getByRole('searchbox').fill('lavadora nordika');
+    await page.getByRole('dialog').getByRole('searchbox').fill('lavadora nordika');
     await expect(page.getByRole('dialog').getByRole('link')).toHaveCount(1);
     await page.keyboard.press('Escape');
     const todas = page.locator('[data-producto-id]');
@@ -508,7 +573,7 @@ test.describe('accesibilidad (axe) en claro y oscuro con las 5 plantillas', () =
     await decidirConsentimiento(page, false, false);
     await page.goto('/');
     await islasListas(page);
-    await page.getByRole('button', { name: /Carrito de consulta/ }).click();
+    await page.getByRole('button', { name: /Mi pedido/ }).click();
     await auditar(page, 'carrito-vacio');
     await page.keyboard.press('Escape');
     await page.getByRole('button', { name: 'Buscar productos' }).click();
