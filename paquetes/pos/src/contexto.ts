@@ -104,6 +104,7 @@ export function exigirCentavos(x: unknown, nombre: string, minimo = 0): number {
 export const rutaConfig = (t: string): string => `tenants/${t}/pos_config/main`;
 export const rutaTurnoActivo = (t: string): string => `tenants/${t}/pos_config/turno_activo`;
 export const rutaTurno = (t: string, id: string): string => `tenants/${t}/turnos/${id}`;
+export const rutaCarrito = (t: string, id: string): string => `tenants/${t}/carritos/${id}`;
 export const rutaVenta = (t: string, id: string): string => `tenants/${t}/ventas/${id}`;
 export const rutaAnulacion = (t: string, id: string): string => `tenants/${t}/anulaciones/${id}`;
 export const rutaAprobacion = (t: string, id: string): string => `tenants/${t}/aprobaciones_descuento/${id}`;

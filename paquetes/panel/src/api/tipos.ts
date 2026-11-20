@@ -41,6 +41,8 @@ export interface TurnoPos {
   readonly contado?: MontosPorMoneda;
   readonly esperado?: MontosPorMoneda;
   readonly diferencia?: MontosPorMoneda;
+  /** Solo si se usó algún carrito guardado en el turno: ids de los abiertos. */
+  readonly carritosAbiertos?: readonly string[];
 }
 
 export interface LineaVenta {
@@ -67,6 +69,7 @@ export interface VentaPos {
   readonly turnoId: string;
   readonly cajaId: string;
   readonly cajeroUid: string;
+  readonly carritoId?: string;
   readonly estado: 'confirmada' | 'anulada';
   readonly moneda: string;
   readonly mercado: string;
@@ -138,6 +141,52 @@ export interface SolicitudAprobacion {
   readonly monto: number;
   readonly motivo: string;
   readonly deudor?: string;
+  /** Carrito guardado al que sirve la aprobación (solo se puede usar al cobrar ese carrito). */
+  readonly carritoId?: string;
+}
+
+export type EstadoCarritoGuardado = 'abierto' | 'cerrado' | 'cancelado';
+
+/** Lo que el cajero armó en un carrito guardado. No guarda precios: se recalculan al cobrar. */
+export interface ContenidoCarritoGuardado {
+  readonly mercadoId: string;
+  readonly moneda: string;
+  readonly lineas: readonly { readonly productoId: string; readonly almacenId: string; readonly cantidad: number; readonly series: readonly string[] }[];
+  readonly descuento?: { readonly monto: number; readonly motivo: string };
+  readonly cliente?: { readonly nombre: string; readonly telefono?: string };
+  readonly aprobacionDescuentoId?: string;
+  readonly solicitudDescuentoId?: string;
+  readonly solicitudCreditoId?: string;
+}
+
+/** Carrito guardado en el servidor (venta en espera). `version` se envía al guardar y al cobrar; `requestId` será el id de la venta. */
+export interface CarritoGuardado {
+  readonly carritoId: string;
+  readonly turnoId: string;
+  readonly cajeroUid: string;
+  readonly estado: EstadoCarritoGuardado;
+  readonly etiqueta: string;
+  readonly version: number;
+  readonly requestId: string;
+  readonly contenido?: ContenidoCarritoGuardado;
+  readonly creadoEnMs: number;
+  readonly actualizadoEnMs: number;
+  readonly cerradoEnMs?: number;
+  readonly ventaId?: string;
+  readonly motivoCancelacion?: string;
+  readonly canceladoPor?: string;
+}
+
+/** Resumen de un carrito abierto para supervisión: sin cliente, teléfono ni series. */
+export interface ResumenCarritoSupervision {
+  readonly carritoId: string;
+  readonly etiqueta: string;
+  readonly cajeroUid: string;
+  readonly lineas: number;
+  readonly unidades: number;
+  readonly creadoEnMs: number;
+  readonly actualizadoEnMs: number;
+  readonly antiguedadMs: number;
 }
 
 export interface ReembolsoAnulacion {

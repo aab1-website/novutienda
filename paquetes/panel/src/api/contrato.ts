@@ -4,7 +4,7 @@
 // `real.ts` traduce cada operación del panel a una o varias acciones reales; el cliente real y el doble en memoria pasan
 // por esa misma traducción, de modo que las pruebas del panel ejercitan la forma real de la llamada.
 import type {
-  AprobacionPos, Carrito, Carrusel, CambiosProducto, CobroCredito, CobroCreditoEntrada, ConfigPos, ConfigSitio,
+  AprobacionPos, Carrito, CarritoGuardado, ContenidoCarritoGuardado, Carrusel, CambiosProducto, CobroCredito, CobroCreditoEntrada, ConfigPos, ConfigSitio,
   ConsultaArchivo, PreciosPorMercado, ConteoVista, CotizacionesVigentes, CreditoVista, EntradaAuditoriaVista, EntradaProducto, FichaWeb,
   LineaAjuste, LineaIngreso, LineaTraspaso, LogoNegocio, Medio, MedioLogo, ResultadoEstadoSubidaLogo, MermaVista, MontosPorMoneda, MovimientoCaja, MovimientoCajaEntrada, MovimientoVista,
   ConMarca, ListaConMarca, PagoEntrada, PlantillaRecibo, ProductoPanel, Recibo, Reserva, ResultadoAnulacion, ResultadoCierre, ResultadoEnvio,
@@ -22,9 +22,16 @@ export interface Contrato {
   cerrarTurno: { entrada: { turnoId: string; contado: MontosPorMoneda }; salida: ResultadoCierre };
   cerrarTurnoForzado: { entrada: { turnoId: string; contado: MontosPorMoneda; motivo: string }; salida: ResultadoCierre };
   confirmarVenta: {
-    entrada: { requestId: string; carrito: Carrito; pagos: readonly PagoEntrada[]; aprobacionId?: string; aprobacionCreditoId?: string };
+    entrada: { requestId: string; carrito: Carrito; pagos: readonly PagoEntrada[]; aprobacionId?: string; aprobacionCreditoId?: string; carritoId?: string; carritoVersion?: number };
     salida: ResultadoVenta;
   };
+  /** Abre un carrito guardado en el turno propio (idempotente por `carritoId`; tope por turno en el servidor). */
+  crearCarrito: { entrada: { carritoId: string; etiqueta?: string }; salida: CarritoGuardado };
+  /** Guarda el contenido o la etiqueta; `version` es la que el panel conoce (distinta: `carrito-conflicto` con el carrito vigente en `detalle.carrito`). */
+  guardarCarrito: { entrada: { carritoId: string; version: number; contenido?: ContenidoCarritoGuardado; etiqueta?: string }; salida: CarritoGuardado };
+  /** El dueño, o `sup`/`adm` con motivo (auditado). */
+  cancelarCarrito: { entrada: { carritoId: string; motivo: string }; salida: CarritoGuardado };
+  misCarritos: { entrada: Vacio; salida: readonly CarritoGuardado[] };
   solicitarAprobacion: { entrada: { aprobacionId: string; solicitud: SolicitudAprobacion }; salida: AprobacionPos };
   resolverAprobacion: { entrada: { aprobacionId: string; decision: 'aprobar' | 'rechazar'; motivo?: string | undefined }; salida: AprobacionPos };
   solicitarAnulacion: { entrada: { ventaId: string; motivo: string }; salida: VentaPos };

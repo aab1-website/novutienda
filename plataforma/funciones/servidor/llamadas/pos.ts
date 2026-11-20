@@ -3,7 +3,7 @@
 import { HttpsError } from 'firebase-functions/v2/https';
 import { z } from 'zod';
 import {
-  abrirTurno, aprobarAnulacion, cerrarTurno, cerrarTurnoForzado, cobrarCredito, confirmarVenta, csvMovimientosCaja, csvVentas, MAX_FILAS_CSV, recortarExportacion,
+  abrirTurno, aprobarAnulacion, cancelarCarrito, crearCarrito, guardarCarrito, leerCarrito, leerCarritosAbiertos, misCarritos, resumirCarrito, cerrarTurno, cerrarTurnoForzado, cobrarCredito, confirmarVenta, csvMovimientosCaja, csvVentas, MAX_FILAS_CSV, recortarExportacion,
   guardarConfigPos, leerConfigPos, leerTurno, proyectarTurno, registrarMovimientoCaja, resolverAprobacion, solicitarAnulacion, solicitarAprobacion,
   type Carrito, type CobroCreditoEntrada, type MovimientoCaja, type MovimientoCajaEntrada, type SolicitudAprobacion, type VentaPos,
 } from '@novutienda/pos';
@@ -33,9 +33,42 @@ export const accionesPos: TablaImplementaciones = {
   // ---- Venta ------------------------------------------------------------------------------------------------
   confirmarVenta: accion({
     maxCaracteres: 128_000,
-    esquema: objeto({ requestId: UUID, carrito: OBJETO, pagos: z.array(OBJETO).min(1).max(10), aprobacionId: UUID.optional(), aprobacionCreditoId: UUID.optional() }),
+    esquema: objeto({
+      requestId: UUID,
+      carrito: OBJETO,
+      pagos: z.array(OBJETO).min(1).max(10),
+      aprobacionId: UUID.optional(),
+      aprobacionCreditoId: UUID.optional(),
+      // Cobro de un carrito guardado: los dos campos van juntos.
+      carritoId: UUID.optional(),
+      carritoVersion: z.number().int().min(1).max(Number.MAX_SAFE_INTEGER).optional(),
+    }).refine((d) => (d.carritoId === undefined) === (d.carritoVersion === undefined), 'carritoId y carritoVersion van juntos'),
     ejecutar: async (c, d) =>
-      confirmarVenta(await c.e.depsPos(c.tenantId), c.tenantId, actorPos(c), d.requestId, d.carrito as unknown as Carrito, d.pagos, d.aprobacionId, d.aprobacionCreditoId),
+      confirmarVenta(
+        await c.e.depsPos(c.tenantId), c.tenantId, actorPos(c), d.requestId, d.carrito as unknown as Carrito, d.pagos, d.aprobacionId, d.aprobacionCreditoId,
+        d.carritoId !== undefined && d.carritoVersion !== undefined ? { carritoId: d.carritoId, carritoVersion: d.carritoVersion } : undefined,
+      ),
+  }),
+
+  // ---- Carritos guardados (en espera) --------------------------------------------------------------------------
+  crearCarrito: accion({
+    esquema: objeto({ carritoId: UUID, etiqueta: TEXTO(40).optional() }),
+    ejecutar: async (c, d) => ({ carrito: await crearCarrito(await c.e.depsPos(c.tenantId), c.tenantId, actorPos(c), d.carritoId, d.etiqueta) }),
+  }),
+  guardarCarrito: accion({
+    maxCaracteres: 64_000,
+    esquema: objeto({ carritoId: UUID, version: z.number().int().min(1).max(Number.MAX_SAFE_INTEGER), contenido: OBJETO.optional(), etiqueta: TEXTO(40).optional() }),
+    ejecutar: async (c, d) =>
+      ({ carrito: await guardarCarrito(await c.e.depsPos(c.tenantId), c.tenantId, actorPos(c), d.carritoId, d.version, { contenido: d.contenido, etiqueta: d.etiqueta }) }),
+  }),
+  cancelarCarrito: accion({
+    esquema: objeto({ carritoId: UUID, motivo: TEXTO(200) }),
+    ejecutar: async (c, d) => ({ carrito: await cancelarCarrito(await c.e.depsPos(c.tenantId), c.tenantId, actorPos(c), d.carritoId, d.motivo) }),
+  }),
+  /** Carritos abiertos del turno propio, con su contenido. */
+  misCarritos: accion({
+    esquema: VACIO,
+    ejecutar: async (c) => misCarritos(await c.e.depsPos(c.tenantId), c.tenantId, actorPos(c)),
   }),
 
   // ---- Aprobaciones y anulaciones --------------------------------------------------------------------------
@@ -200,10 +233,20 @@ export const accionesPos: TablaImplementaciones = {
       const ventas = await c.e.firestore.collection(ruta(c.tenantId, 'ventas')).where('turnoId', '==', turnoId).orderBy('creadoEnMs', 'desc').limit(20).get();
       const { monedas } = await c.e.comercialDelTenant(c.tenantId);
       const valido = leerTurno(turno, monedas);
+      // Carritos abiertos del turno (resumen sin cliente, teléfono ni series), por el índice del turno.
+      const ahora = c.e.ahora();
+      const carritos = [];
+      for (const id of leerCarritosAbiertos(turno) ?? []) {
+        const doc = (await c.e.firestore.doc(ruta(c.tenantId, 'carritos', id)).get()).data();
+        if (doc === undefined) continue;
+        const carrito = leerCarrito(doc);
+        if (carrito.estado === 'abierto') carritos.push(resumirCarrito(carrito, ahora));
+      }
       return {
         turno: { ...turno, apertura: valido.apertura, totales: valido.totales },
         proyeccion: proyectarTurno(valido, monedas),
         ultimasVentas: ventas.docs.map(datosDe),
+        carritos,
       };
     },
   }),

@@ -251,6 +251,146 @@ describe('doble: descuentos y aprobaciones', () => {
   });
 });
 
+describe('doble: carritos guardados', () => {
+  const contenidoTv = { mercadoId: 'BO', moneda: 'BOB', lineas: [{ productoId: 'tv-55', almacenId: 'tienda', cantidad: 1, series: ['TV55-001'] }] };
+  async function conCarrito() {
+    const ctx = await conTurno();
+    const carritoId = uuid();
+    const k = await ctx.e.api.llamar('crearCarrito', { carritoId });
+    return { ...ctx, carritoId, k };
+  }
+  it('crea idempotente, etiqueta por omisión, índice en el turno y lista los propios', async () => {
+    const { e, carritoId, k } = await conCarrito();
+    expect(k).toMatchObject({ estado: 'abierto', version: 1, etiqueta: 'Cliente 1', requestId: carritoId });
+    expect(await e.api.llamar('crearCarrito', { carritoId })).toEqual(k);
+    const dos = await e.api.llamar('crearCarrito', { carritoId: uuid() });
+    expect(dos.etiqueta).toBe('Cliente 2');
+    expect((await e.api.llamar('misCarritos', {})).map((x) => x.carritoId)).toContain(carritoId);
+    expect((await e.api.llamar('turnoActual', {}))?.carritosAbiertos).toHaveLength(2);
+  });
+  it('tope de 10 abiertos por turno y no hay carrito sin turno', async () => {
+    const { e } = await conTurno();
+    for (let i = 0; i < 10; i++) await e.api.llamar('crearCarrito', { carritoId: uuid() });
+    expect((await falla(e.api.llamar('crearCarrito', { carritoId: uuid() }))).detalle.codigo).toBe('limite-carritos');
+    expect((await falla(crearEntorno('caj').api.llamar('crearCarrito', { carritoId: uuid() }))).detalle.codigo).toBe('sin-turno');
+  });
+  it('guardar sube la versión; versión vieja da conflicto con el carrito vigente', async () => {
+    const { e, carritoId } = await conCarrito();
+    const g = await e.api.llamar('guardarCarrito', { carritoId, version: 1, contenido: contenidoTv });
+    expect(g.version).toBe(2);
+    expect(g.contenido?.lineas).toHaveLength(1);
+    const err = await falla(e.api.llamar('guardarCarrito', { carritoId, version: 1, etiqueta: 'Otro' }));
+    expect(err.detalle.codigo).toBe('carrito-conflicto');
+    expect(err.detalle.carrito?.version).toBe(2);
+  });
+  it('un carrito ajeno no se guarda; sup cancela con motivo y el cajero no cancela ajenos', async () => {
+    const { e, carritoId } = await conCarrito();
+    e.como('adm');
+    expect((await falla(e.api.llamar('guardarCarrito', { carritoId, version: 1, etiqueta: 'x' }))).detalle.codigo).toBe('carrito-ajeno');
+    expect((await falla(e.api.llamar('cancelarCarrito', { carritoId, motivo: '  ' }))).detalle.codigo).toBe('entrada-invalida');
+    const c = await e.api.llamar('cancelarCarrito', { carritoId, motivo: 'Abandonado' });
+    expect(c).toMatchObject({ estado: 'cancelado', motivoCancelacion: 'Abandonado', canceladoPor: 'u-adm' });
+    expect(c.contenido).toBeUndefined();
+    e.como('caj');
+    expect((await e.api.llamar('turnoActual', {}))?.carritosAbiertos).toEqual([]);
+    expect((await falla(e.api.llamar('guardarCarrito', { carritoId, version: 3, etiqueta: 'x' }))).detalle.codigo).toBe('carrito-cerrado');
+  });
+  it('el cierre normal se bloquea con carritos-abiertos; el forzado los cancela', async () => {
+    const { e, turnoId, carritoId } = await conCarrito();
+    await e.api.llamar('guardarCarrito', { carritoId, version: 1, contenido: contenidoTv });
+    const err = await falla(e.api.llamar('cerrarTurno', { turnoId, contado: { BOB: 10000 } }));
+    expect(err.detalle.codigo).toBe('carritos-abiertos');
+    expect(err.detalle.carritos).toEqual([{ carritoId, etiqueta: 'Cliente 1' }]);
+    e.como('adm');
+    await e.api.llamar('cerrarTurnoForzado', { turnoId, contado: { BOB: 10000 }, motivo: 'Fin de jornada' });
+    expect((await e.api.llamar('listarAuditoria', { accion: 'pos.carrito.cancelar_forzado' })).length).toBe(1);
+    e.como('caj');
+    expect(await e.api.llamar('misCarritos', {})).toEqual([]);
+  });
+  it('confirmarVenta con carrito lo cierra sin contenido; versión vieja da conflicto', async () => {
+    const { e, carritoId } = await conCarrito();
+    await e.api.llamar('guardarCarrito', { carritoId, version: 1, contenido: contenidoTv });
+    const base = { requestId: carritoId, carrito: carritoTv(), pagos: efectivo(313200) };
+    expect((await falla(e.api.llamar('confirmarVenta', { ...base, carritoId, carritoVersion: 1 }))).detalle.codigo).toBe('carrito-conflicto');
+    const r = await e.api.llamar('confirmarVenta', { ...base, carritoId, carritoVersion: 2 });
+    expect(r.venta.ventaId).toBe(carritoId);
+    expect(await e.api.llamar('misCarritos', {})).toEqual([]);
+    expect((await e.api.llamar('turnoActual', {}))?.carritosAbiertos).toEqual([]);
+    expect((await falla(e.api.llamar('guardarCarrito', { carritoId, version: 3, etiqueta: 'x' }))).detalle.codigo).toBe('carrito-cerrado');
+  });
+  it('una aprobación ligada a otro carrito se rechaza; una sin carrito no sirve con carrito', async () => {
+    const { e, carritoId } = await conCarrito();
+    const otro = uuid();
+    await e.api.llamar('crearCarrito', { carritoId: otro });
+    const aprobacionId = uuid();
+    await e.api.llamar('solicitarAprobacion', { aprobacionId, solicitud: { tipo: 'descuento', moneda: 'BOB', monto: 20000, motivo: 'Rebaja', carritoId: otro } });
+    e.como('sup');
+    await e.api.llamar('resolverAprobacion', { aprobacionId, decision: 'aprobar' });
+    e.como('caj');
+    const carrito = carritoTv({ descuento: { monto: 20000, motivo: 'Rebaja' } });
+    const err = await falla(e.api.llamar('confirmarVenta', { requestId: carritoId, carrito, pagos: efectivo(293200), aprobacionId, carritoId, carritoVersion: 1 }));
+    expect(err.detalle.codigo).toBe('aprobacion-no-coincide');
+    const ok = await e.api.llamar('confirmarVenta', { requestId: otro, carrito, pagos: efectivo(293200), aprobacionId, carritoId: otro, carritoVersion: 1 });
+    expect(ok.venta.descuento?.aprobacionId).toBe(aprobacionId);
+  });
+});
+
+describe('doble: carritos, mismas comprobaciones que el servidor', () => {
+  const base = { mercadoId: 'BO', moneda: 'BOB' };
+  const linea = (extra: Record<string, unknown> = {}) => ({ productoId: 'tv-55', almacenId: 'tienda', cantidad: 1, series: [], ...extra });
+  it('rechaza el contenido que el servidor rechaza', async () => {
+    const { e, carritoId } = await (async () => {
+      const ctx = await conTurno();
+      const carritoId = uuid();
+      await ctx.e.api.llamar('crearCarrito', { carritoId });
+      return { ...ctx, carritoId };
+    })();
+    const malos: [Record<string, unknown>, string][] = [
+      [{ ...base, lineas: [linea({ productoId: 'a/b' })] }, 'entrada-invalida'],
+      [{ ...base, lineas: [linea({ productoId: 'p'.repeat(129) })] }, 'entrada-invalida'],
+      [{ ...base, lineas: [linea({ almacenId: 'bodega-x' })] }, 'entrada-invalida'],
+      [{ ...base, lineas: [linea({ cantidad: 100_001 })] }, 'entrada-invalida'],
+      [{ ...base, lineas: [linea({ series: [''] })] }, 'series-invalidas'],
+      [{ ...base, lineas: [linea({ series: ['x'.repeat(101)] })] }, 'series-invalidas'],
+      [{ ...base, lineas: [linea({ series: 'S1' })] }, 'series-invalidas'],
+      [{ ...base, lineas: [linea()], cliente: { nombre: 'n'.repeat(101) } }, 'entrada-invalida'],
+      [{ ...base, lineas: [linea()], cliente: { nombre: 'Ana', telefono: '7'.repeat(31) } }, 'entrada-invalida'],
+      [{ ...base, lineas: [linea()], aprobacionDescuentoId: 'no-uuid' }, 'entrada-invalida'],
+      [{ ...base, lineas: [linea()], solicitudCreditoId: 'no-uuid' }, 'entrada-invalida'],
+    ];
+    for (const [contenido, codigo] of malos) {
+      const err = await falla(e.api.llamar('guardarCarrito', { carritoId, version: 1, contenido: contenido as never }));
+      expect(err.detalle.codigo).toBe(codigo);
+    }
+    const ok = await e.api.llamar('guardarCarrito', { carritoId, version: 1, contenido: { ...base, lineas: [linea()], cliente: { nombre: 'Ana', telefono: '70000000' } } as never });
+    expect(ok.version).toBe(2);
+  });
+  it('choques con una venta existente, como en el servidor', async () => {
+    const { e } = await conTurno();
+    const id = uuid();
+    await e.api.llamar('confirmarVenta', { requestId: id, carrito: carritoTv(), pagos: efectivo(313200) });
+    expect((await falla(e.api.llamar('crearCarrito', { carritoId: id }))).detalle.codigo).toBe('request-en-uso');
+    const err = await falla(e.api.llamar('confirmarVenta', { requestId: id, carrito: carritoTv(), pagos: efectivo(313200), carritoId: id, carritoVersion: 1 }));
+    expect(err.detalle.codigo).toBe('request-en-uso');
+    expect((await e.api.llamar('confirmarVenta', { requestId: id, carrito: carritoTv(), pagos: efectivo(313200) })).repetida).toBe(true);
+  });
+  it('la supervisión devuelve los carritos resumidos, sin cliente, teléfono ni series', async () => {
+    const { e, carritoId } = await (async () => {
+      const ctx = await conTurno();
+      const carritoId = uuid();
+      await ctx.e.api.llamar('crearCarrito', { carritoId });
+      return { ...ctx, carritoId };
+    })();
+    await e.api.llamar('guardarCarrito', { carritoId, version: 1, contenido: { ...base, lineas: [linea({ cantidad: 2, series: ['S1', 'S2'] })], cliente: { nombre: 'Ana', telefono: '70000000' } } as never });
+    e.como('sup');
+    const r = (await e.api.transporte.invocar('pos', { accion: 'supervision', tenantId: 'demo' })) as { carritos: Record<string, unknown>[] };
+    expect(r.carritos).toHaveLength(1);
+    expect(Object.keys(r.carritos[0] ?? {}).sort()).toEqual(['actualizadoEnMs', 'antiguedadMs', 'cajeroUid', 'carritoId', 'creadoEnMs', 'etiqueta', 'lineas', 'unidades'].sort());
+    expect(r.carritos[0]).toMatchObject({ carritoId, lineas: 1, unidades: 2 });
+    expect(JSON.stringify(r.carritos)).not.toMatch(/Ana|70000000|S1/);
+  });
+});
+
 describe('doble: crédito, caja y anulaciones', () => {
   it('el crédito exige deudor y, si vende un vendedor, la aprobación de crédito', async () => {
     const { e } = await conTurno();

@@ -1,10 +1,11 @@
 import type { TransaccionIdentidad } from '@novutienda/nucleo';
 import {
   VIGENCIA_APROBACION_POR_DEFECTO_MS, ahoraDe, auditar, exigirActor, exigirCentavos, exigirConfiguracionSoportada, exigirMonedaDeCaja, exigirRol, exigirTenant, exigirTexto, exigirUuid,
-  leerObligatorio, rutaAprobacion, type DepsPos,
+  leerObligatorio, rutaAprobacion, rutaCarrito, type DepsPos,
 } from './contexto.js';
+import { exigirCarritoAbiertoDe } from './carritos.js';
 import { ErrorPos } from './errores.js';
-import { enteroDe, textoDe } from './lectura.js';
+import { enteroDe, leerCarrito, textoDe } from './lectura.js';
 import type { ActorPos } from './tipos.js';
 
 export type TipoAprobacion = 'descuento' | 'credito';
@@ -20,6 +21,8 @@ export interface AprobacionPos {
   readonly monto: number;
   readonly motivo: string;
   readonly deudor?: string;
+  /** Si se pidió para un carrito guardado, solo sirve para cobrar ese carrito. */
+  readonly carritoId?: string;
   readonly solicitadoPor: string;
   readonly solicitadoEnMs: number;
   /** Motivo opcional que escribe quien rechaza (distinto del `motivo` de la solicitud). */
@@ -37,6 +40,7 @@ export interface SolicitudAprobacion {
   readonly monto: number;
   readonly motivo: string;
   readonly deudor?: string;
+  readonly carritoId?: string;
 }
 
 /** Cualquier usuario autenticado del tenant solicita; la solicitud queda pendiente. Idempotente por `aprobacionId`. */
@@ -57,12 +61,17 @@ export async function solicitarAprobacion(
   const monto = exigirCentavos(s.monto, 'monto', 1);
   const motivo = exigirTexto(s.motivo, 'motivo');
   const deudor = s.tipo === 'credito' ? exigirTexto(s.deudor, 'deudor', 100) : undefined;
+  const carritoId = s.carritoId === undefined ? undefined : exigirUuid(s.carritoId, 'carritoId');
   const ahora = ahoraDe(deps);
   return deps.db.runTransaction(async (tx) => {
     const previa = await leerObligatorio(tx, rutaAprobacion(tenantId, aprobacionId));
     if (previa !== undefined) {
       if (previa['solicitadoPor'] !== actor.uid) throw new ErrorPos('request-en-uso', 'Ese identificador ya se usó');
       return previa as unknown as AprobacionPos;
+    }
+    if (carritoId !== undefined) {
+      const rawCarrito = await leerObligatorio(tx, rutaCarrito(tenantId, carritoId));
+      exigirCarritoAbiertoDe(rawCarrito === undefined ? undefined : leerCarrito(rawCarrito), actor);
     }
     const doc: AprobacionPos = {
       aprobacionId,
@@ -72,6 +81,7 @@ export async function solicitarAprobacion(
       monto,
       motivo,
       ...(deudor !== undefined ? { deudor } : {}),
+      ...(carritoId !== undefined ? { carritoId } : {}),
       solicitadoPor: actor.uid,
       solicitadoEnMs: ahora,
     };
@@ -118,6 +128,10 @@ export async function resolverAprobacion(
     if (raw === undefined) throw new ErrorPos('aprobacion-inexistente', 'La solicitud no existe');
     if (textoDe(raw, 'solicitadoPor') === actor.uid) throw new ErrorPos('autoaprobacion', 'Nadie puede resolver su propia solicitud');
     if (raw['estado'] !== 'pendiente') throw new ErrorPos('aprobacion-usada', 'La solicitud ya fue resuelta');
+    if (typeof raw['carritoId'] === 'string') {
+      const rawCarrito = await leerObligatorio(tx, rutaCarrito(tenantId, raw['carritoId']));
+      if (rawCarrito === undefined || leerCarrito(rawCarrito).estado !== 'abierto') throw new ErrorPos('carrito-cerrado', 'El carrito de esta solicitud ya no está abierto');
+    }
     const nueva =
       decision === 'aprobar'
         ? { ...raw, estado: 'aprobada', aprobadoPor: actor.uid, aprobadoRol: actor.rol, resueltoEnMs: ahora, venceEnMs: ahora + vigencia }
@@ -139,6 +153,8 @@ export interface UsoEsperado {
   readonly moneda: string;
   readonly monto: number;
   readonly deudor?: string;
+  /** Carrito que se cobra; sin él, solo sirven aprobaciones que no se pidieron para un carrito. */
+  readonly carritoId?: string;
 }
 
 export interface AprobacionLeida {
@@ -171,6 +187,7 @@ export async function leerAprobacionParaUso(
   if (raw['tipo'] !== esperado.tipo || raw['moneda'] !== esperado.moneda || enteroDe(raw, 'monto') < esperado.monto) {
     throw new ErrorPos('aprobacion-no-coincide', 'La aprobación no cubre este descuento o crédito');
   }
+  if (raw['carritoId'] !== esperado.carritoId) throw new ErrorPos('aprobacion-no-coincide', 'La aprobación fue pedida para otro carrito');
   if (esperado.tipo === 'credito' && String(raw['deudor'] ?? '').trim().toLowerCase() !== (esperado.deudor ?? '').trim().toLowerCase()) {
     throw new ErrorPos('aprobacion-no-coincide', 'La aprobación es para otro deudor');
   }

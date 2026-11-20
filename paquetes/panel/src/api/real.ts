@@ -15,7 +15,7 @@ import { ROLES_ACCION } from './acciones.generado.js';
 import { ErrorApi } from './errores.js';
 import { ponerMarca } from './marca.js';
 import type {
-  AprobacionPos, ConteoAbierto, ConteoVista, ListaConMarca, MarcaOcultamiento, ProductoDeConteo, CotizacionesVigentes, CreditoVista, Medio, MedioLogo, MermaVista, MovimientoVista, ProductoPanel,
+  AprobacionPos, CarritoGuardado, ConteoAbierto, ConteoVista, ListaConMarca, MarcaOcultamiento, ProductoDeConteo, CotizacionesVigentes, CreditoVista, Medio, MedioLogo, MermaVista, MovimientoVista, ProductoPanel,
   Rol, TurnoPos, UbicacionId, UnidadSerie, UsuarioVista, VentaPos, VistaComercial,
 } from './tipos.js';
 import { ID_NEGOCIO } from './tipos.js';
@@ -250,6 +250,10 @@ export const TRADUCCION: { readonly [N in NombreCallable]: Traduccion<N> } = {
   cerrarTurno: directa('pos', 'cerrarTurno'),
   cerrarTurnoForzado: directa('pos', 'cerrarTurnoForzado'),
   confirmarVenta: directa('pos', 'confirmarVenta'),
+  crearCarrito: { usa: ['pos.crearCarrito'], ejecutar: async (c, e) => campo(await c.llamar('pos', 'crearCarrito', e), 'carrito') },
+  guardarCarrito: { usa: ['pos.guardarCarrito'], ejecutar: async (c, e) => campo(await c.llamar('pos', 'guardarCarrito', e), 'carrito') },
+  cancelarCarrito: { usa: ['pos.cancelarCarrito'], ejecutar: async (c, e) => campo(await c.llamar('pos', 'cancelarCarrito', e), 'carrito') },
+  misCarritos: { usa: ['pos.misCarritos'], ejecutar: async (c) => lista(await c.llamar('pos', 'misCarritos', {}), 'carritos') as unknown as CarritoGuardado[] },
   solicitarAprobacion: directa('pos', 'solicitarAprobacion'),
   resolverAprobacion: directa('pos', 'resolverAprobacion'),
   solicitarAnulacion: directa('pos', 'solicitarAnulacion'),

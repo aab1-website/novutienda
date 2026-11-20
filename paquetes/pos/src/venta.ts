@@ -2,16 +2,17 @@ import { esMercadoDe, mercadoDe, monedaBaseDe, monedaDe, type CopiaCotizacion, t
 import { leerAprobacionParaUso, marcarAprobacionUsada, type AprobacionLeida } from './aprobaciones.js';
 import { sumarTotales, deltaPorMedio } from './arqueo.js';
 import { TOTAL_MAXIMO, descuentoExcedeTope, validarPagos } from './calculo.js';
+import { conflictoDeVersion, escribirCerrado, exigirCarritoAbiertoDe } from './carritos.js';
 import { leerConfigPos } from './config.js';
 import {
   ahoraDe, auditar, formatearNumeroRecibo, cotizacionVigente, exigirActor, exigirCentavos, exigirTenant, exigirTexto, exigirUuid, exigirConfiguracionSoportada, leerObligatorio, publicar,
-  rutaContadorRecibo, rutaCredito, rutaTurno, rutaVenta, type DepsPos,
+  rutaCarrito, rutaContadorRecibo, rutaCredito, rutaTurno, rutaVenta, type DepsPos,
 } from './contexto.js';
 import { ErrorPos } from './errores.js';
-import { leerVenta } from './lectura.js';
+import { leerCarrito, leerCarritosAbiertos, leerVenta } from './lectura.js';
 import { centavosDeLinea } from './precio.js';
 import {
-  ALMACENES_POS, type ActorPos, type LineaVenta, type TotalesTurno, type VentaPos,
+  ALMACENES_POS, MAX_CANTIDAD_LINEA, MAX_LINEAS_CARRITO, MAX_SERIES_POR_VENTA, type ActorPos, type LineaVenta, type TotalesTurno, type VentaPos,
 } from './tipos.js';
 import { leerTurnoAbierto } from './turno.js';
 
@@ -37,16 +38,20 @@ export interface Carrito {
   readonly totalMostrado?: number;
 }
 
+/** Cobro de un carrito guardado: la versión que el cliente vio. Sin esto, la venta sale como siempre. */
+export interface VinculoCarrito {
+  readonly carritoId: string;
+  readonly carritoVersion: number;
+}
+
 export interface ResultadoVenta {
   readonly venta: VentaPos;
   /** `true` si el requestId ya estaba confirmado: se devuelve la venta original sin repetir nada. */
   readonly repetida: boolean;
 }
 
-const MAX_LINEAS = 100;
-const MAX_CANTIDAD = 100_000;
-/** Unidades con número de serie que admite una venta, sumando todas las líneas. */
-export const MAX_SERIES_POR_VENTA = 100;
+const MAX_LINEAS = MAX_LINEAS_CARRITO;
+const MAX_CANTIDAD = MAX_CANTIDAD_LINEA;
 
 function validarCarrito(deps: DepsPos, c: Carrito): void {
   if (typeof c !== 'object' || c === null) throw new ErrorPos('entrada-invalida', 'Carrito inválido');
@@ -146,12 +151,17 @@ export async function confirmarVenta(
   pagosEntrada: unknown,
   aprobacionId?: string,
   aprobacionCreditoId?: string,
+  vinculo?: VinculoCarrito,
 ): Promise<ResultadoVenta> {
   exigirTenant(tenantId);
   exigirActor(actor);
   const ventaId = exigirUuid(requestId, 'requestId');
   exigirConfiguracionSoportada(deps);
   validarCarrito(deps, carrito);
+  const carritoId = vinculo === undefined ? undefined : exigirUuid(vinculo.carritoId, 'carritoId');
+  if (vinculo !== undefined && (typeof vinculo.carritoVersion !== 'number' || !Number.isSafeInteger(vinculo.carritoVersion) || vinculo.carritoVersion < 1)) {
+    throw new ErrorPos('entrada-invalida', 'carritoVersion inválida');
+  }
   const ahora = ahoraDe(deps);
   return deps.db.runTransaction(async (tx) => {
     // 1) Idempotencia.
@@ -159,6 +169,7 @@ export async function confirmarVenta(
     if (previa !== undefined) {
       const v = leerVenta(previa);
       if (v.cajeroUid !== actor.uid) throw new ErrorPos('request-en-uso', 'Ese identificador de venta ya se usó');
+      if (vinculo !== undefined && v.carritoId !== carritoId) throw new ErrorPos('request-en-uso', 'Ese identificador de venta ya se usó en otra venta');
       return { venta: v, repetida: true };
     }
     // 2) Turno abierto del usuario y caja activa.
@@ -166,6 +177,15 @@ export async function confirmarVenta(
     if (abierto === undefined) throw new ErrorPos('sin-turno', 'No hay un turno abierto: abra el turno antes de vender');
     const { turno } = abierto;
     if (turno.cajeroUid !== actor.uid) throw new ErrorPos('turno-ajeno', 'El turno abierto es de otro usuario');
+    // Carrito guardado (si se cobra uno): abierto, del actor y de este turno, con el requestId fijo y la versión que el cliente vio.
+    let carritoGuardado: ReturnType<typeof leerCarrito> | undefined;
+    if (carritoId !== undefined && vinculo !== undefined) {
+      const rawCarrito = await leerObligatorio(tx, rutaCarrito(tenantId, carritoId));
+      carritoGuardado = exigirCarritoAbiertoDe(rawCarrito === undefined ? undefined : leerCarrito(rawCarrito), actor);
+      if (carritoGuardado.turnoId !== turno.turnoId) throw new ErrorPos('carrito-ajeno', 'El carrito pertenece a otro turno');
+      if (carritoGuardado.requestId !== ventaId) throw new ErrorPos('entrada-invalida', 'El requestId no es el del carrito');
+      if (carritoGuardado.version !== vinculo.carritoVersion) throw conflictoDeVersion(carritoGuardado);
+    }
     const config = await leerConfigPos(tx, tenantId, deps.comercial);
     // 3) Precios y total recalculados en el servidor.
     const mercadoVenta = mercadoDe(deps.comercial, carrito.mercado);
@@ -184,7 +204,7 @@ export async function confirmarVenta(
       if (monto >= subtotal) throw new ErrorPos('entrada-invalida', 'El descuento debe ser menor que el subtotal');
       if (descuentoExcedeTope(subtotal, monto, config.topesDescuentoBp[actor.rol])) {
         if (aprobacionId === undefined) throw new ErrorPos('descuento-sin-aprobacion', 'El descuento supera su tope: pida la aprobación de un supervisor');
-        aprobacionDescuento = await leerAprobacionParaUso(tx, tenantId, aprobacionId, actor, ahora, { tipo: 'descuento', moneda: carrito.moneda, monto });
+        aprobacionDescuento = await leerAprobacionParaUso(tx, tenantId, aprobacionId, actor, ahora, { tipo: 'descuento', moneda: carrito.moneda, monto, ...(carritoId !== undefined ? { carritoId } : {}) });
         descuento = { monto, motivo: motivo.trim(), aprobadoPor: aprobacionDescuento.aprobadoPor, aprobacionId };
       } else {
         descuento = { monto, motivo: motivo.trim() };
@@ -205,7 +225,7 @@ export async function confirmarVenta(
       if (deudor === undefined) throw new ErrorPos('pagos-invalidos', 'El crédito exige el nombre del deudor');
       if (actor.rol === 'caj') {
         if (aprobacionCreditoId === undefined) throw new ErrorPos('aprobacion-inexistente', 'El crédito necesita la aprobación de un supervisor o administrador');
-        aprobacionCredito = await leerAprobacionParaUso(tx, tenantId, aprobacionCreditoId, actor, ahora, { tipo: 'credito', moneda: carrito.moneda, monto: pagoCredito.monto, deudor });
+        aprobacionCredito = await leerAprobacionParaUso(tx, tenantId, aprobacionCreditoId, actor, ahora, { tipo: 'credito', moneda: carrito.moneda, monto: pagoCredito.monto, deudor, ...(carritoId !== undefined ? { carritoId } : {}) });
         creditoAprobadoPor = aprobacionCredito.aprobadoPor;
       } else {
         creditoAprobadoPor = actor.uid;
@@ -249,6 +269,7 @@ export async function confirmarVenta(
       ...(carrito.cliente !== undefined
         ? { cliente: { nombre: carrito.cliente.nombre.trim(), ...(carrito.cliente.telefono !== undefined ? { telefono: carrito.cliente.telefono.trim() } : {}) } }
         : {}),
+      ...(carritoId !== undefined ? { carritoId } : {}),
       serie: config.serieRecibo,
       receiptNo,
       creadoEnMs: ahora,
@@ -256,7 +277,9 @@ export async function confirmarVenta(
     tx.set(rutaVenta(tenantId, ventaId), { ...venta, creadoEn: tx.marcaTiempoServidor() });
     let totales: TotalesTurno = turno.totales;
     for (const p of pagos) totales = sumarTotales(totales, venta.moneda, deltaPorMedio(p.medio, p.monto - (p.cambio ?? 0)));
-    tx.set(rutaTurno(tenantId, turno.turnoId), { ...abierto.raw, totales });
+    const indice = carritoGuardado === undefined ? undefined : (leerCarritosAbiertos(abierto.raw) ?? []);
+    tx.set(rutaTurno(tenantId, turno.turnoId), { ...abierto.raw, totales, ...(indice !== undefined ? { carritosAbiertos: indice.filter((i) => i !== carritoId) } : {}) });
+    if (carritoGuardado !== undefined) escribirCerrado(tx, tenantId, carritoGuardado, ventaId, ahora);
     if (pagoCredito !== undefined && carrito.cliente !== undefined && creditoAprobadoPor !== undefined) {
       tx.set(rutaCredito(tenantId, ventaId), {
         ventaId,
@@ -305,7 +328,7 @@ export async function confirmarVenta(
     auditar(tx, tenantId, actor, {
       accion: 'pos.venta.confirmar',
       ruta: rutaVenta(tenantId, ventaId),
-      despues: { ventaId, turnoId: turno.turnoId, moneda: venta.moneda, total, receiptNo: numeroRecibo, lineas: lineas.length },
+      despues: { ventaId, turnoId: turno.turnoId, moneda: venta.moneda, total, receiptNo: numeroRecibo, lineas: lineas.length, ...(carritoId !== undefined ? { carritoId } : {}) },
       ...(descuento !== undefined ? { motivo: descuento.motivo } : {}),
     });
     return { venta, repetida: false };

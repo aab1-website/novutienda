@@ -13,6 +13,12 @@ export const ORDEN_MONEDAS_POR_OMISION: readonly string[] = MONEDAS_POS;
 /** Código de moneda ISO de tres letras mayúsculas: única definición del módulo. */
 export const MONEDA_ISO = /^[A-Z]{3}$/;
 export const ALMACENES_POS: readonly string[] = ['tienda', 'deposito-1', 'deposito-2'];
+/** Carritos abiertos a la vez por turno (decisión D1, 19/11/2026). */
+export const MAX_CARRITOS_ABIERTOS = 10;
+export const MAX_LINEAS_CARRITO = 100;
+export const MAX_CANTIDAD_LINEA = 100_000;
+/** Unidades con número de serie que admite una venta, sumando todas las líneas. */
+export const MAX_SERIES_POR_VENTA = 100;
 /** El plan contrata una sola caja activa por turno. */
 export const CAJA_UNICA = 'caja-1';
 
@@ -95,10 +101,52 @@ export interface VentaPos {
   readonly total: number;
   readonly pagos: readonly PagoVentaPos[];
   readonly cliente?: { readonly nombre: string; readonly telefono?: string };
+  /** Solo si la venta salió de un carrito guardado. */
+  readonly carritoId?: string;
   readonly serie: string;
   readonly receiptNo: number;
   readonly creadoEnMs: number;
   readonly solicitudAnulacion?: { readonly por: string; readonly motivo: string; readonly enMs: number };
+}
+
+export type EstadoCarrito = 'abierto' | 'cerrado' | 'cancelado';
+
+export interface LineaCarritoGuardada {
+  readonly productoId: string;
+  readonly almacenId: string;
+  readonly cantidad: number;
+  readonly series: readonly string[];
+}
+
+/** Lo que el cajero armó. No guarda precios: se recalculan al cobrar. Se borra al cerrar o cancelar (lleva datos personales). */
+export interface ContenidoCarrito {
+  readonly mercadoId: string;
+  readonly moneda: string;
+  readonly lineas: readonly LineaCarritoGuardada[];
+  readonly descuento?: { readonly monto: number; readonly motivo: string };
+  readonly cliente?: { readonly nombre: string; readonly telefono?: string };
+  readonly aprobacionDescuentoId?: string;
+  readonly solicitudDescuentoId?: string;
+  readonly solicitudCreditoId?: string;
+}
+
+/** `tenants/{t}/carritos/{carritoId}`. */
+export interface CarritoPos {
+  readonly carritoId: string;
+  readonly turnoId: string;
+  readonly cajeroUid: string;
+  readonly estado: EstadoCarrito;
+  readonly etiqueta: string;
+  readonly version: number;
+  /** Será el `ventaId`: fijo por carrito, para que el cobro sea idempotente. */
+  readonly requestId: string;
+  readonly contenido?: ContenidoCarrito;
+  readonly creadoEnMs: number;
+  readonly actualizadoEnMs: number;
+  readonly cerradoEnMs?: number;
+  readonly ventaId?: string;
+  readonly motivoCancelacion?: string;
+  readonly canceladoPor?: string;
 }
 
 /** Texto para mostrar un pago: el QR manual dice «registrado por», nunca «verificado». */

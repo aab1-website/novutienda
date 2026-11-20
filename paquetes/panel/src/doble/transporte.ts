@@ -5,7 +5,7 @@ import { ID_NEGOCIO, type ProductoPanel, type Rol } from '../api/tipos.js';
 import { fechaLaPaz, fallo, marcaDoble, type Contexto } from './estado.js';
 import { handlersInventario } from './inventario/inventario.js';
 import { handlersOtros } from './otros.js';
-import { handlersPos } from './pos/pos.js';
+import { carritosDeSupervision, handlersPos } from './pos/pos.js';
 
 type Obj = Record<string, unknown>;
 type Legado = (c: Contexto, e: never) => unknown;
@@ -40,6 +40,15 @@ const ACCIONES: Readonly<Record<string, WireHandler>> = {
   // pos
   'pos.abrirTurno': igual('abrirTurno'), 'pos.cerrarTurno': igual('cerrarTurno'), 'pos.cerrarTurnoForzado': igual('cerrarTurnoForzado'),
   'pos.confirmarVenta': igual('confirmarVenta'), 'pos.solicitarAprobacion': igual('solicitarAprobacion'), 'pos.resolverAprobacion': igual('resolverAprobacion'),
+  'pos.crearCarrito': async (c, d) => ({ carrito: await legado(c, 'crearCarrito', d) }),
+  'pos.guardarCarrito': async (c, d) => ({ carrito: await legado(c, 'guardarCarrito', d) }),
+  'pos.cancelarCarrito': async (c, d) => ({ carrito: await legado(c, 'cancelarCarrito', d) }),
+  // Misma forma que el servidor (turno abierto, o `turno: null`); aquí solo los carritos, que es lo que cambió.
+  'pos.supervision': (c) => {
+    const abierto = [...c.e.turnos.values()].find((t) => t.estado === 'abierto');
+    return abierto === undefined ? { turno: null } : { turno: abierto, carritos: carritosDeSupervision(c) };
+  },
+  'pos.misCarritos': async (c) => ({ carritos: await legado(c, 'misCarritos', {}) }),
   'pos.solicitarAnulacion': igual('solicitarAnulacion'), 'pos.aprobarAnulacion': igual('aprobarAnulacion'),
   'pos.registrarMovimientoCaja': igual('registrarMovimientoCaja'), 'pos.cobrarCredito': igual('cobrarCredito'),
   'pos.leerConfig': async (c) => ({ config: await legado(c, 'leerConfigPos', {}) }),

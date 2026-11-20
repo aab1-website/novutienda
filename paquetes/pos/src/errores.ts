@@ -28,12 +28,20 @@ export type CodigoErrorPos =
   | 'venta-ya-anulada'
   | 'anulacion-sin-solicitud'
   | 'credito-inexistente'
-  | 'credito-saldo-insuficiente';
+  | 'credito-saldo-insuficiente'
+  | 'carritos-abiertos'
+  | 'carrito-inexistente'
+  | 'carrito-cerrado'
+  | 'carrito-ajeno'
+  | 'carrito-conflicto'
+  | 'limite-carritos';
 
 export class ErrorPos extends Error {
   constructor(
     readonly codigo: CodigoErrorPos,
     mensaje: string,
+    /** Datos para quien llama (p. ej. el carrito vigente en un conflicto). El borde los puede reenviar en `details`. */
+    readonly detalle?: Readonly<Record<string, unknown>>,
   ) {
     super(mensaje);
     this.name = 'ErrorPos';
