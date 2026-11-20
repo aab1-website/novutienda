@@ -139,3 +139,15 @@ describe('marca «sin precio» en la tabla', () => {
     expect(t.querySelectorAll('[data-prueba="sin-precio"]').length).toBe(0);
   });
 });
+
+describe('pestaña «Existencias por almacén» y ayuda', () => {
+  it.each(['caj', 'sup', 'adm'] as const)('%s ve la pestaña después de «Productos y existencias» y abre la ayuda desde ella', async (rol) => {
+    const e = crearEntorno(rol);
+    render(e.envolver(h(PantallaInventario, { sub: 'existencias' })));
+    const nav = screen.getByRole('navigation', { name: 'Secciones de inventario' });
+    const nombres = within(nav).getAllByRole('link').map((a) => a.textContent);
+    expect(nombres.indexOf('Existencias por almacén')).toBe(nombres.indexOf('Productos y existencias') + 1);
+    await userEvent.setup().click(screen.getByRole('button', { name: 'Cómo funciona el inventario' }));
+    expect(await screen.findByRole('dialog', { name: 'Cómo funciona el inventario' })).toBeTruthy();
+  });
+});

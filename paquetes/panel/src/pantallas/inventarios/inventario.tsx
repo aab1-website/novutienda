@@ -8,7 +8,9 @@ import { useApp } from '../../ui/contexto.js';
 import { useCarga } from '../../ui/hooks.js';
 import { AvisoConteoAbierto, ExistenciaOculta } from '../../ui/existencia.js';
 import { Tabla } from '../../ui/tabla.js';
+import { AyudaInventario } from './ayuda-inventario.js';
 import { Conteo } from './conteo.js';
+import { ExistenciasPorAlmacen } from './existencias.js';
 import { ImportarExportar } from './importar.js';
 import { Ajuste, Ingreso, Traspaso } from './movimientos.js';
 import { Registro } from './registro.js';
@@ -20,6 +22,7 @@ import './inventario.css';
 
 const PESTANAS = [
   { id: 'productos', titulo: 'Productos y existencias' },
+  { id: 'existencias', titulo: 'Existencias por almacén' },
   { id: 'ingreso', titulo: 'Ingreso' },
   { id: 'traspasos', titulo: 'Traspasos' },
   { id: 'ajuste', titulo: 'Ajuste' },
@@ -153,10 +156,14 @@ export function PantallaInventario({ sub: subCrudo }: { sub: string }): JSX.Elem
   const actual = items.some((i) => i.id === sub) ? sub : 'productos';
   return (
     <div>
-      <h1>Inventario</h1>
+      <div class="inv-encabezado">
+        <h1>Inventario</h1>
+        <AyudaInventario />
+      </div>
       <Pestanas etiqueta="Secciones de inventario" base="inventario" actual={actual} items={items} />
       {usuario.rol === 'adm' && actual !== 'conteo' && <AvisoParaAdm />}
       {actual === 'productos' && <Productos />}
+      {actual === 'existencias' && <ExistenciasPorAlmacen />}
       {actual === 'ingreso' && <Ingreso />}
       {actual === 'traspasos' && <Traspaso />}
       {actual === 'ajuste' && <Ajuste />}
