@@ -39,7 +39,7 @@ export function Series(): JSX.Element {
         <Boton tipo="submit" motivo={q.trim() === '' ? 'Escriba un número de serie.' : porInicio && puedePorInicio && q.trim().length < 4 ? 'Escriba al menos 4 caracteres.' : undefined}>Buscar</Boton>
       </form>
       {r.error && <ErrorCarga error={r.error} reintentar={r.recargar} />}
-      {buscar !== '' && r.datos && r.datos.length === 0 && <Vacio titulo="No se encontró esa serie" {...(textoSerieOculta(conteos) === undefined ? {} : { detalle: textoSerieOculta(conteos) as string })} />}
+      {buscar !== '' && r.datos && r.datos.length === 0 && <Vacio titulo={textoSerieOculta(conteos) ?? 'No se encontró esa serie'} />}
       {r.datos && r.datos.length > 0 && (
         <div class="tabla-contenedor" role="region" aria-label="Resultado de la búsqueda por serie" tabIndex={0}>
           <table class="tabla">

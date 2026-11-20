@@ -59,6 +59,7 @@ describe('4.3.5 serie oculta', () => {
     await u.type(await screen.findByLabelText('Número de serie (completo, o sus primeros 4 caracteres o más)'), 'NOEXISTE-1');
     await u.click(screen.getByRole('button', { name: 'Buscar' }));
     expect(await screen.findByText(/No se encontró, o está oculta: el almacén Tienda tiene un conteo abierto/)).toBeTruthy();
+    expect(screen.queryByText('No se encontró esa serie')).toBeNull();
   });
 });
 
