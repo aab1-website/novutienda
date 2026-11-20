@@ -73,7 +73,7 @@ test('venta de punta a punta: turno, terminal, cobro con cambio, recibo, Mis rec
   await expect(page.locator('[data-prueba="total"]')).toHaveText('Bs 56,00');
   await page.getByRole('button', { name: 'Cobrar' }).click();
   await expect(page.getByRole('heading', { name: 'Cobro' })).toBeVisible();
-  await page.getByLabel(/Monto a aplicar/).fill('56');
+  await page.getByLabel(/Monto que paga con este medio/).fill('56');
   await page.getByLabel(/Efectivo recibido/).fill('100');
   await expect(page.locator('[data-prueba="cambio"]')).toHaveText('Bs 44,00');
   await page.getByRole('button', { name: 'Confirmar cobro' }).click();

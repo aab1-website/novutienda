@@ -5,15 +5,16 @@ import { marcaDe } from '../../api/marca.js';
 import type { AprobacionPos, ConfigPos, CotizacionesVigentes, MercadoDeclarado, ProductoPanel, TurnoPos, UbicacionId, VentaPos } from '../../api/tipos.js';
 import { Alerta, Boton, Campo, Cargando, Casilla, ErrorCarga, Selector, Seccion, Vacio } from '../../ui/comun.js';
 import { useConfiguracionComercial } from '../../ui/comercial.js';
-import { useAvisos } from '../../ui/avisos.js';
 import { useApp } from '../../ui/contexto.js';
-import { AvisoConteoAbierto, ExistenciaOculta, TEXTO_OCULTO } from '../../ui/existencia.js';
+import { AvisoConteoAbierto, TEXTO_OCULTO } from '../../ui/existencia.js';
 import { useAccion, useCarga } from '../../ui/hooks.js';
 import { AccionesRecibo, ReciboVista } from '../recibos/recibo-vista.js';
 import { formatearMonto, textoACentavos } from '../../util/dinero.js';
-import { cotizacionDeMercado, hayReglaDeRedondeo, monedasDeCobro, precioDeCobro } from './arqueo.js';
+import { precioDeCobro } from './arqueo.js';
 import { type BorradorCarrito, type CarritoServidor, type LineaUI, AVISO_NO_GUARDADO, errorDeCarrito, textoProductos, useCarritoServidor } from './carritos.js';
+import { CatalogoVenta } from './venta-catalogo.js';
 import { SerieEscrita } from './serie-escrita.js';
+import { MENSAJE_TELEFONO, MENSAJE_TELEFONO_SIN_NOMBRE, telefonoValido } from './telefono.js';
 import { BarraCarritos } from './venta-carritos.js';
 import { useEsperaAprobacion, VentaCobro, type DatosCobro } from './venta-cobro.js';
 import './venta.css';
@@ -21,11 +22,6 @@ import './venta.css';
 /** El recibo se consulta cada 3 s, hasta 30 s, antes de ofrecer «Reintentar». */
 export const MS_ENTRE_CONSULTAS_RECIBO = 3000;
 export const CONSULTAS_RECIBO = 10;
-/** Por debajo de este ancho el carrito queda debajo de la lista (misma cifra que `venta.css`). */
-const ANCHO_DOS_COLUMNAS = 960;
-
-const esPantallaAngosta = (): boolean => typeof window.matchMedia === 'function' && window.matchMedia(`(max-width: ${ANCHO_DOS_COLUMNAS - 0.02}px)`).matches;
-
 export type { LineaUI } from './carritos.js';
 
 const ALMACENES: { valor: UbicacionId; texto: string }[] = [
@@ -34,15 +30,28 @@ const ALMACENES: { valor: UbicacionId; texto: string }[] = [
   { valor: 'deposito-2', texto: 'Depósito 2' },
 ];
 
-function SelectorSeries({ producto, almacenId, enConteo, elegidas, alCambiar }: { producto: ProductoPanel; almacenId: UbicacionId; enConteo: boolean; elegidas: string[]; alCambiar: (s: string[]) => void }): JSX.Element {
-  // Almacén en conteo para quien no es administrador: no se lista lo disponible (su cantidad sería el stock); se escribe o escanea.
-  if (enConteo) return <SerieEscrita productoId={producto.id} almacenId={almacenId} elegidas={elegidas} alCambiar={alCambiar} />;
-  return <SelectorSeriesLista producto={producto} almacenId={almacenId} elegidas={elegidas} alCambiar={alCambiar} />;
+/** Lleva la vista y el foco al selector de series de un producto: a su primer control, o a la zona si no hay ninguno (sin series). */
+export function enfocarSeries(productoId: string): void {
+  const zona = Array.from(document.querySelectorAll<HTMLElement>('[data-series-de]')).find((e) => e.dataset.seriesDe === productoId);
+  if (zona === undefined) return;
+  zona.scrollIntoView?.({ block: 'center' });
+  const control = zona.querySelector<HTMLElement>('input:not([disabled]), button:not([disabled]), select:not([disabled])');
+  (control ?? zona).focus();
 }
 
-function SelectorSeriesLista({ producto, almacenId, elegidas, alCambiar }: { producto: ProductoPanel; almacenId: UbicacionId; elegidas: string[]; alCambiar: (s: string[]) => void }): JSX.Element {
+function SelectorSeries({ producto, almacenId, enConteo, elegidas, alCambiar, alListo }: { producto: ProductoPanel; almacenId: UbicacionId; enConteo: boolean; elegidas: string[]; alCambiar: (s: string[]) => void; alListo: () => void }): JSX.Element {
+  // Almacén en conteo para quien no es administrador: no se lista lo disponible (su cantidad sería el stock); se escribe o escanea.
+  if (enConteo) return <SerieEscrita productoId={producto.id} almacenId={almacenId} elegidas={elegidas} alCambiar={alCambiar} />;
+  return <SelectorSeriesLista producto={producto} almacenId={almacenId} elegidas={elegidas} alCambiar={alCambiar} alListo={alListo} />;
+}
+
+function SelectorSeriesLista({ producto, almacenId, elegidas, alCambiar, alListo }: { producto: ProductoPanel; almacenId: UbicacionId; elegidas: string[]; alCambiar: (s: string[]) => void; alListo: () => void }): JSX.Element {
   const { api } = useApp();
   const s = useCarga(() => api.llamar('listarSeries', { productoId: producto.id, ubicacionId: almacenId, soloDisponibles: true }), [producto.id, almacenId]);
+  // La lista llega después de abrir el selector: cuando está lista, el foco pasa a su primera casilla.
+  useEffect(() => {
+    if (!s.cargando) alListo();
+  }, [s.cargando]);
   if (s.cargando) return <Cargando texto="Cargando series…" />;
   if (s.error) return <ErrorCarga error={s.error} reintentar={s.recargar} />;
   if (!s.datos || s.datos.length === 0) return <p class="texto-suave">No hay series disponibles en este almacén.</p>;
@@ -53,25 +62,6 @@ function SelectorSeriesLista({ producto, almacenId, elegidas, alCambiar }: { pro
         <Casilla key={u.serie} etiqueta={u.serie} marcado={elegidas.includes(u.serie)} onCambio={(v) => alCambiar(v ? [...elegidas, u.serie] : elegidas.filter((x) => x !== u.serie))} />
       ))}
     </fieldset>
-  );
-}
-
-const NOMBRE_EN_TEXTO: Readonly<Record<string, string>> = { USD: 'dólares', BOB: 'bolivianos', ARS: 'pesos argentinos' };
-const enTexto = (m: string): string => NOMBRE_EN_TEXTO[m] ?? m;
-
-function Cotizacion({ cot, mercado, moneda }: { cot: CotizacionesVigentes; mercado: MercadoDeclarado; moneda: string }): JSX.Element | null {
-  if (!hayReglaDeRedondeo(mercado) && moneda === mercado.monedaVenta) {
-    return <Alerta>Falta la regla de redondeo de {mercado.monedaVenta} para este comercio: no se muestran precios en esa moneda. Avise al administrador.</Alerta>;
-  }
-  if (!mercado.tieneTipoCambio) return null;
-  if (moneda === mercado.monedaBase) return <p class="texto-suave">Precios en {enTexto(moneda)}: sin conversión.</p>;
-  const c = cotizacionDeMercado(cot, mercado.id);
-  if (c === null) return <Alerta>No hay una cotización utilizable para este mercado. Venda en {enTexto(mercado.monedaBase)} o avise al administrador.</Alerta>;
-  return (
-    <p class="texto-suave" data-prueba="cotizacion">
-      Cotización: 1 {mercado.monedaBase} = {String(c.valor).replace('.', ',')} {mercado.monedaVenta} · {c.fuente} · {c.fecha}
-      {c.estado === 'ultimo_verificado' ? ' · último valor verificado (la fuente no lo renueva)' : ' · vigente'}
-    </p>
   );
 }
 
@@ -167,8 +157,6 @@ export async function avisosAlRetomar(b: BorradorCarrito, porId: ReadonlyMap<str
 function CarritoActivo({ carritoId, version, borrador, c, mercados, datos, vistos, alVender }: { carritoId: string; version: number; borrador: BorradorCarrito; c: CarritoServidor; mercados: readonly MercadoDeclarado[]; datos: DatosTerminal; vistos: Map<string, Record<string, number>>; alVender: (ventaId: string, repetida: boolean) => void }): JSX.Element {
   const { api, usuario } = useApp();
   const { cot, config, ventas } = datos;
-  const [busqueda, setBusqueda] = useState('');
-  const [categoria, setCategoria] = useState('');
   const { mercadoId, moneda, lineas, descTexto, descMotivo, aprobacionId, cliente, telefono } = borrador;
   const cambiar = (x: Partial<BorradorCarrito>): void => c.cambiar((p) => ({ ...p, ...x }));
   const setMercadoId = (v: string): void => cambiar({ mercadoId: v });
@@ -180,16 +168,19 @@ function CarritoActivo({ carritoId, version, borrador, c, mercados, datos, visto
   const setCliente = (v: string): void => cambiar({ cliente: v });
   const setTelefono = (v: string): void => cambiar({ telefono: v });
   const [verSeries, setVerSeries] = useState<string | null>(null);
+  // Al abrir el selector de series, la vista y el foco van a él (en pantalla angosta queda debajo de la lista).
+  useEffect(() => {
+    if (verSeries !== null) enfocarSeries(verSeries);
+  }, [verSeries]);
   const [paso, setPaso] = useState<'carrito' | 'cobro'>('carrito');
   const solicitud = useAccion();
   const cobrando = useAccion();
-  const avisos = useAvisos();
   const solicitadaId = borrador.solicitadaId;
   const setSolicitadaId = (v: string | null): void => cambiar({ solicitadaId: v });
   const aprobs = useCarga(async () => (await api.llamar('listarAprobaciones', {})).filter((a) => a.aprobacionId === solicitadaId || (aprobacionId !== '' && a.aprobacionId === aprobacionId)), [solicitadaId, aprobacionId, paso]);
   // Una aprobación sirve solo al carrito para el que se pidió: aquí solo se ven las de este carrito.
   // Solo se espera la solicitud que esta pantalla acaba de pedir; vive en el carrito y se va con él.
-  const espera = useEsperaAprobacion(solicitadaId, aprobs.recargar);
+  const espera = useEsperaAprobacion(solicitadaId, aprobs.recargar, 'descuento');
   const refCarrito = useRef<HTMLDivElement>(null);
   const [alRetomar, setAlRetomar] = useState<string[]>([]);
 
@@ -228,21 +219,10 @@ function CarritoActivo({ carritoId, version, borrador, c, mercados, datos, visto
   }, [lineas, moneda, mercadoId]);
 
   if (mercado === undefined) return <Alerta>El comercio no tiene mercados declarados.</Alerta>;
-  const monedas = monedasDeCobro(mercado);
   const cambiarMercado = (id: string): void => {
     setMercadoId(id);
     setMoneda(mercados.find((m) => m.id === id)?.monedaVenta ?? '');
   };
-  const categorias = [...new Set(productos.map((p) => p.categoria))].sort();
-  const q = busqueda.trim().toLowerCase();
-  const visibles = productos
-    .filter((p) => p.activo)
-    .filter((p) => categoria === '' || p.categoria === categoria)
-    .filter((p) => q === '' || p.nombre.toLowerCase().includes(q) || p.sku.toLowerCase().includes(q) || (p.marca ?? '').toLowerCase().includes(q));
-  const vendidos = new Map<string, number>();
-  for (const v of ventas) for (const l of v.lineas) vendidos.set(l.productoId, (vendidos.get(l.productoId) ?? 0) + l.cantidad);
-  const rapidos = [...productos.filter((p) => p.activo && p.disponible !== false)].sort((a, b) => (vendidos.get(b.id) ?? 0) - (vendidos.get(a.id) ?? 0) || a.nombre.localeCompare(b.nombre)).slice(0, 6);
-
   const precioDe = (p: ProductoPanel): ReturnType<typeof precioDeCobro> => precioDeCobro(p, mercado, moneda, cot);
 
   const agregar = (p: ProductoPanel): void => {
@@ -253,8 +233,6 @@ function CarritoActivo({ carritoId, version, borrador, c, mercados, datos, visto
       return [...ls, { productoId: p.id, almacenId: 'tienda', cantidad: p.conSerie ? 0 : 1, series: [] }];
     });
     if (p.conSerie) setVerSeries(p.id);
-    // En pantalla angosta el carrito queda debajo de la lista: sin esto «Agregar» no cambiaría nada a la vista.
-    if (esPantallaAngosta()) avisos.info(`Se agregó ${p.nombre} al carrito.`);
   };
   const irAlCarrito = (): void => {
     const el = refCarrito.current;
@@ -287,6 +265,8 @@ function CarritoActivo({ carritoId, version, borrador, c, mercados, datos, visto
   const pendiente = (aprobs.datos ?? []).find((a) => a.tipo === 'descuento' && a.estado === 'pendiente' && a.moneda === moneda && a.monto >= monto);
   const rechazada = solicitadaId === null ? undefined : (aprobs.datos ?? []).find((a) => a.aprobacionId === solicitadaId && a.estado === 'rechazada');
   const falta = excede && aprobacionId === '';
+  const errorCliente = telefono.trim() !== '' && cliente.trim() === '' ? MENSAJE_TELEFONO_SIN_NOMBRE : undefined;
+  const errorTelefono = telefonoValido(telefono) ? undefined : MENSAJE_TELEFONO;
   const motivoNoCobrar = ((): string | undefined => {
     if (lineas.length === 0) return 'Agregue al menos un producto al carrito.';
     const sinSerie = lineas.find((l) => porId.get(l.productoId)?.conSerie === true && (l.series.length === 0 || l.series.length !== l.cantidad));
@@ -294,6 +274,8 @@ function CarritoActivo({ carritoId, version, borrador, c, mercados, datos, visto
     if (!lineas.every(lineaValida)) return 'Indique una cantidad de al menos 1 en cada producto.';
     if (!todosConPrecio) return 'Hay productos sin precio en esta moneda: quítelos o cambie la moneda.';
     if (descInvalido) return 'Corrija el descuento: debe ser menor al subtotal y llevar un motivo.';
+    if (errorCliente !== undefined) return errorCliente;
+    if (errorTelefono !== undefined) return errorTelefono;
     if (falta) return 'El descuento necesita la aprobación de un supervisor: solicítela abajo.';
     if (config.mediosHabilitados.length === 0) return 'No hay medios de pago habilitados: avise al administrador.';
     return undefined;
@@ -352,51 +334,7 @@ function CarritoActivo({ carritoId, version, borrador, c, mercados, datos, visto
       )}
       <div class="terminal">
       <AvisoConteoAbierto conteos={conteos} />
-      <Seccion titulo="Productos">
-        <div class="cuadricula">
-          <Campo etiqueta="Buscar por nombre, SKU o marca" valor={busqueda} onInput={setBusqueda} nombre="buscar" />
-          <Selector etiqueta="Categoría" valor={categoria} onCambio={setCategoria} opciones={[{ valor: '', texto: 'Todas' }, ...categorias.map((c) => ({ valor: c, texto: c }))]} />
-          {mercados.length > 1 && <Selector etiqueta="Lista de precios" valor={mercado.id} onCambio={cambiarMercado} opciones={mercados.map((m) => ({ valor: m.id, texto: m.nombre }))} />}
-          {monedas.length > 1 && <Selector etiqueta="Moneda de la venta" valor={moneda} onCambio={setMoneda} opciones={monedas.map((m) => ({ valor: m, texto: m }))} />}
-        </div>
-        <Cotizacion cot={cot} mercado={mercado} moneda={moneda} />
-        {rapidos.length > 0 && (
-          <div role="group" aria-label="Accesos rápidos" class="fila rapidos">
-            {rapidos.map((p) => (
-              <button key={p.id} type="button" class="boton boton-secundario boton-chico" onClick={() => agregar(p)}>
-                {p.nombre}
-              </button>
-            ))}
-          </div>
-        )}
-        {visibles.length === 0 ? (
-          <Vacio titulo="No hay productos que coincidan" detalle="Pruebe con otra búsqueda o categoría." />
-        ) : (
-          <ul class="lista-productos">
-            {visibles.map((p) => {
-              const pr = precioDe(p);
-              return (
-                <li key={p.id} class="producto-tarjeta">
-                  <div>
-                    <strong>{p.nombre}</strong>
-                    <div class="texto-suave">
-                      {p.categoria}
-                      {p.marca ? ` · ${p.marca}` : ''} · Tienda: {p.existencias.tienda === null ? <ExistenciaOculta /> : p.existencias.tienda}
-                      {p.conSerie ? ' · con serie' : ''}
-                    </div>
-                    <div class="precio" data-prueba="precio">
-                      {pr.tipo === 'precio' ? formatearMonto(pr.centavos, pr.moneda) : pr.tipo === 'sin_precio' ? 'A consultar' : pr.tipo === 'sin_redondeo' ? 'Sin regla de redondeo' : 'Sin cotización'}
-                    </div>
-                  </div>
-                  <Boton chico variante="secundario" onClick={() => agregar(p)} deshabilitado={pr.tipo !== 'precio'} etiqueta={`Agregar ${p.nombre}`}>
-                    Agregar
-                  </Boton>
-                </li>
-              );
-            })}
-          </ul>
-        )}
-      </Seccion>
+      <CatalogoVenta productos={productos} ventas={ventas} cot={cot} mercados={mercados} mercado={mercado} moneda={moneda} cambiarMercado={cambiarMercado} cambiarMoneda={setMoneda} alAgregar={agregar} />
 
       <div ref={refCarrito} tabIndex={-1} class="venta-carrito" role="group" aria-label="Carrito">
       <Seccion titulo="Carrito">
@@ -436,7 +374,9 @@ function CarritoActivo({ carritoId, version, borrador, c, mercados, datos, visto
                     </Boton>
                   </div>
                   {p.conSerie && verSeries === p.id && (
-                    <SelectorSeries producto={p} almacenId={l.almacenId} enConteo={conteos.some((c) => c.ubicacionId === l.almacenId)} elegidas={l.series} alCambiar={(s) => setLineas(lineas.map((x, j) => (j === i ? { ...x, series: s, cantidad: s.length } : x)))} />
+                    <div data-series-de={p.id} tabIndex={-1}>
+                      <SelectorSeries producto={p} almacenId={l.almacenId} enConteo={conteos.some((c) => c.ubicacionId === l.almacenId)} elegidas={l.series} alCambiar={(s) => setLineas(lineas.map((x, j) => (j === i ? { ...x, series: s, cantidad: s.length } : x)))} alListo={() => enfocarSeries(p.id)} />
+                    </div>
                   )}
                   {p.conSerie && l.series.length === 0 && <p class="texto-suave">{conteos.some((c) => c.ubicacionId === l.almacenId) ? 'Escriba o escanee al menos una serie.' : 'Elija al menos una serie.'}</p>}
                 </li>
@@ -486,8 +426,8 @@ function CarritoActivo({ carritoId, version, borrador, c, mercados, datos, visto
             </div>
           )}
           <div class="cuadricula">
-            <Campo etiqueta="Cliente (opcional)" valor={cliente} onInput={setCliente} />
-            <Campo etiqueta="Teléfono del cliente (opcional)" valor={telefono} onInput={setTelefono} inputMode="numeric" />
+            <Campo etiqueta="Cliente (opcional)" valor={cliente} onInput={setCliente} error={errorCliente} />
+            <Campo etiqueta="Teléfono del cliente (opcional, exige el nombre)" valor={telefono} onInput={setTelefono} inputMode="numeric" error={errorTelefono} />
           </div>
         </div>
 
@@ -515,7 +455,7 @@ function CarritoActivo({ carritoId, version, borrador, c, mercados, datos, visto
       </div>
       {lineas.length > 0 && (
         <div class="venta-barra" role="region" aria-label="Resumen del carrito">
-          <span data-prueba="barra-resumen">
+          <span data-prueba="barra-resumen" aria-live="polite">
             {textoProductos(lineas.length)} · {formatearMonto(total, moneda)}
           </span>
           <Boton chico onClick={irAlCarrito}>Ver carrito</Boton>

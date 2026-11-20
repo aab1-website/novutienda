@@ -4,10 +4,11 @@ import { nuevoId } from '../../api/cliente.js';
 import { ErrorApi } from '../../api/errores.js';
 import type { AprobacionPos, Carrito, ConfigPos, MedioPago } from '../../api/tipos.js';
 import { Alerta, Boton, Campo, Cargando, Selector, Seccion } from '../../ui/comun.js';
+import { useAvisos } from '../../ui/avisos.js';
 import { useApp } from '../../ui/contexto.js';
 import { useAccion, useCarga } from '../../ui/hooks.js';
 import { centavosATexto, formatearMonto, textoACentavos } from '../../util/dinero.js';
-import { calcularPagos, NOMBRE_MEDIO, type FilaPago } from './pagos.js';
+import { calcularPagos, montosQueSiguenAlRestante, NOMBRE_MEDIO, type FilaPago } from './pagos.js';
 
 /** Cada cuántos milisegundos se consulta una aprobación solicitada mientras sigue pendiente. */
 export const MS_SONDEO_APROBACION = 4000;
@@ -17,31 +18,46 @@ export const CONSULTAS_MAXIMAS_APROBACION = 150;
 /**
  * Espera una solicitud que ESTA pantalla acaba de pedir (`solicitadaId`): cada 4 s mira solo la lista de pendientes para
  * saber si sigue ahí. Se detiene al resolverse, al desmontar, al quedar sin id (carrito descartado) o a los 10 minutos.
- * Una solicitud vieja o ajena nunca la activa.
+ * Una solicitud vieja o ajena nunca la activa. Al resolverse se lee la lista una vez y se avisa el resultado (aprobada, rechazada con su
+ * motivo, o ya no pendiente). Al volver a la pestaña se consulta en el acto y, si la espera estaba agotada, se reanuda.
  */
-export function useEsperaAprobacion(solicitadaId: string | null, alResolverse: () => void): { consultando: boolean; agotada: boolean; reanudar: () => void } {
+export function useEsperaAprobacion(solicitadaId: string | null, alResolverse: () => void, tipo: 'descuento' | 'crédito' = 'descuento'): { consultando: boolean; agotada: boolean; reanudar: () => void } {
   const { api, sesionVencida, renovarSesion } = useApp();
+  const avisos = useAvisos();
+  const avisosRef = useRef(avisos);
+  avisosRef.current = avisos;
   const [estado, setEstado] = useState<'consultando' | 'resuelta' | 'agotada'>('consultando');
   const [ronda, setRonda] = useState(0);
   const alRef = useRef(alResolverse);
   alRef.current = alResolverse;
+  const estadoRef = useRef(estado);
+  estadoRef.current = estado;
   useEffect(() => {
     if (solicitadaId === null) return undefined;
     setEstado('consultando');
     let vivo = true;
     let consultas = 0;
-    const t = setInterval(() => {
-      consultas += 1;
-      if (consultas > CONSULTAS_MAXIMAS_APROBACION) {
-        clearInterval(t);
-        setEstado('agotada');
-        return;
-      }
+    let resuelta = false;
+    const avisarResultado = (): void => {
+      void api.llamar('listarAprobaciones', {}).then(
+        (todas) => {
+          if (!vivo) return;
+          const a = todas.find((x) => x.aprobacionId === solicitadaId);
+          if (a?.estado === 'aprobada') avisosRef.current.ok(`El supervisor aprobó su solicitud de ${tipo}.`);
+          else if (a?.estado === 'rechazada') avisosRef.current.error(`El supervisor rechazó su solicitud de ${tipo}.${a.motivoRechazo !== undefined && a.motivoRechazo !== '' ? ` Motivo: ${a.motivoRechazo}` : ''}`);
+          else avisosRef.current.info('La solicitud ya no está pendiente.');
+        },
+        () => undefined,
+      );
+    };
+    const consultar = (): void => {
       api.llamar('listarAprobaciones', { estado: 'pendiente' }).then(
         (p) => {
-          if (!vivo || p.some((a) => a.aprobacionId === solicitadaId)) return;
+          if (!vivo || resuelta || p.some((a) => a.aprobacionId === solicitadaId)) return;
+          resuelta = true;
           clearInterval(t);
           setEstado('resuelta');
+          avisarResultado();
           alRef.current();
         },
         (e: unknown) => {
@@ -56,10 +72,27 @@ export function useEsperaAprobacion(solicitadaId: string | null, alResolverse: (
           }
         },
       );
+    };
+    const t = setInterval(() => {
+      consultas += 1;
+      if (consultas > CONSULTAS_MAXIMAS_APROBACION) {
+        clearInterval(t);
+        setEstado('agotada');
+        return;
+      }
+      consultar();
     }, MS_SONDEO_APROBACION);
+    // Una pestaña en segundo plano frena sus temporizadores: al volver se consulta de inmediato o se reanuda la espera.
+    const alVolver = (): void => {
+      if (document.visibilityState !== 'visible' || resuelta) return;
+      if (estadoRef.current === 'agotada') setRonda((n) => n + 1);
+      else consultar();
+    };
+    document.addEventListener('visibilitychange', alVolver);
     return () => {
       vivo = false;
       clearInterval(t);
+      document.removeEventListener('visibilitychange', alVolver);
     };
   }, [solicitadaId, ronda]);
   return { consultando: solicitadaId !== null && estado === 'consultando', agotada: solicitadaId !== null && estado === 'agotada', reanudar: () => setRonda((n) => n + 1) };
@@ -112,12 +145,13 @@ export function VentaCobro({ datos, volver, alVender }: { datos: DatosCobro; vol
   const [recienPedida, setRecienPedida] = useState<string | null>(null);
   const solicitadaId = recienPedida ?? datos.solicitudCreditoId ?? null;
   const aprobs = useCarga(async () => (await api.llamar('listarAprobaciones', {})).filter((a) => solicitadaId !== null && a.aprobacionId === solicitadaId), [solicitadaId]);
-  const espera = useEsperaAprobacion(solicitadaId, aprobs.recargar);
+  const espera = useEsperaAprobacion(solicitadaId, aprobs.recargar, 'crédito');
 
-  // El monto de la primera fila sigue al total mientras la persona no lo haya escrito.
+  // La última fila que la persona no escribió sigue al restante: lo que escribió no se pisa.
+  const claves = filas.map((f) => f.id).join();
   useEffect(() => {
-    setFilas((fs) => (fs.length === 1 && fs[0] !== undefined && !editadas.has(fs[0].id) ? [{ ...fs[0], monto: total > 0 ? centavosATexto(total) : '' }] : fs));
-  }, [total, editadas]);
+    setFilas((fs) => montosQueSiguenAlRestante(fs, editadas, total));
+  }, [total, editadas, claves]);
 
   const { pagos, restante, cambioTotal, errores } = calcularPagos(filas, total, moneda);
   const credito = filas.find((f) => f.medio === 'credito');
@@ -146,7 +180,7 @@ export function VentaCobro({ datos, volver, alVender }: { datos: DatosCobro; vol
     if (cambio.monto !== undefined) setEditadas((s) => new Set(s).add(id));
     setFilas(filas.map((f) => (f.id === id ? { ...f, ...cambio } : f)));
   };
-  const agregar = (): void => setFilas([...filas, { id: nuevoId(), medio: config.mediosHabilitados.find((m) => !filas.some((f) => f.medio === m)) ?? 'efectivo', monto: restante > 0 ? String(restante / 100).replace('.', ',') : '', recibido: '', referencia: '' }]);
+  const agregar = (): void => setFilas([...filas, { id: nuevoId(), medio: config.mediosHabilitados.find((m) => !filas.some((f) => f.medio === m)) ?? 'efectivo', monto: restante > 0 ? centavosATexto(restante) : '', recibido: '', referencia: '' }]);
 
   const cobrar = (): void => {
     void accion.ejecutar(async () => {
@@ -186,10 +220,10 @@ export function VentaCobro({ datos, volver, alVender }: { datos: DatosCobro; vol
           <legend>Pago {i + 1}</legend>
           <div class="cuadricula">
             <Selector etiqueta="Medio" valor={f.medio} onCambio={(v) => actualizar(f.id, { medio: v as MedioPago })} opciones={config.mediosHabilitados.map((m) => ({ valor: m, texto: NOMBRE_MEDIO[m] }))} />
-            <Campo etiqueta={`Monto a aplicar (${moneda})`} valor={f.monto} onInput={(v) => actualizar(f.id, { monto: v })} inputMode="decimal" />
+            <Campo etiqueta={`Monto que paga con este medio (${moneda})`} valor={f.monto} onInput={(v) => actualizar(f.id, { monto: v })} inputMode="decimal" />
             {f.medio === 'efectivo' && <Campo etiqueta="Efectivo recibido (para calcular el cambio)" valor={f.recibido} onInput={(v) => actualizar(f.id, { recibido: v })} inputMode="decimal" />}
             {(f.medio === 'qr' || f.medio === 'transferencia') && (
-              <Campo etiqueta={f.medio === 'qr' ? 'Referencia del QR' : 'Referencia de la transferencia (opcional)'} valor={f.referencia} onInput={(v) => actualizar(f.id, { referencia: v })} />
+              <Campo etiqueta={f.medio === 'qr' ? 'Referencia del QR' : 'Referencia de la transferencia (opcional)'} valor={f.referencia} onInput={(v) => actualizar(f.id, { referencia: v })} {...(f.medio === 'qr' ? { ayuda: 'Código que muestra el banco, no el monto' } : {})} />
             )}
           </div>
           {f.medio === 'qr' && (

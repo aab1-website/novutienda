@@ -1,9 +1,10 @@
 import type { JSX } from 'preact';
-import { useState } from 'preact/hooks';
+import { useEffect, useState } from 'preact/hooks';
 import { ErrorApi } from '../../api/errores.js';
 import { type MontosPorMoneda, type ResultadoCierre, type TurnoPos } from '../../api/tipos.js';
 import { Alerta, Boton, BotonConfirmado, Cargando, Campo, Dato, ErrorCarga, Seccion } from '../../ui/comun.js';
 import { useConfiguracionComercial } from '../../ui/comercial.js';
+import { useAvisos } from '../../ui/avisos.js';
 import { useApp } from '../../ui/contexto.js';
 import { useAccion, useCarga } from '../../ui/hooks.js';
 import { diferenciaPorMoneda, monedasDelTurno, ordenarMonedas, proyectarTurno } from './arqueo.js';
@@ -37,6 +38,12 @@ export function ResumenArqueo({ cierre, orden }: { cierre: ResultadoCierre; orde
 }
 
 /** El orden de las monedas sale de lo que declaró el comercio (`monedasCaja`), igual que en la supervisión. */
+/** Lo que mueve el efectivo esperado: apertura y totales por moneda. */
+export function mismoEfectivo(a: TurnoPos, b: TurnoPos): boolean {
+  const huella = (t: TurnoPos): string => JSON.stringify([Object.entries(t.apertura).sort(([x], [y]) => x.localeCompare(y)), Object.entries(t.totales).sort(([x], [y]) => x.localeCompare(y)).map(([m, v]) => [m, v && Object.entries(v).sort(([x], [y]) => x.localeCompare(y))])]);
+  return huella(a) === huella(b);
+}
+
 export function VentaCierre({ turno, alCerrar, alRetomar }: { turno: TurnoPos; alCerrar: () => void; alRetomar?: ((carritoId: string) => void) | undefined }): JSX.Element {
   const comercial = useConfiguracionComercial();
   if (comercial.estado === 'cargando') return <Cargando />;
@@ -70,7 +77,34 @@ function CierreListo({ turno, orden, alCerrar, alRetomar }: { turno: TurnoPos; o
   const abiertos = useCarga(() => api.llamar('misCarritos', {}), [turno.turnoId]);
   // Si el servidor rechaza el cierre por carritos abiertos, se muestra su lista (puede incluir carritos que esta pantalla no vio).
   const [segunServidor, setSegunServidor] = useState<readonly { carritoId: string; etiqueta: string }[] | null>(null);
-  const monedas = monedasDelTurno(turno, orden);
+  const avisos = useAvisos();
+  // El cierre lee el turno por su cuenta: una anulación con reembolso hecha después de abrir esta pantalla cambia el efectivo esperado.
+  const [vigente, setVigente] = useState<TurnoPos>(turno);
+  const [actualizando, setActualizando] = useState(false);
+  const [cambio, setCambio] = useState<string | null>(null);
+  const leer = async (): Promise<TurnoPos | null> => {
+    setActualizando(true);
+    try {
+      const t = await api.llamar('turnoActual', {});
+      if (t !== null) setVigente(t);
+      return t;
+    } finally {
+      setActualizando(false);
+    }
+  };
+  useEffect(() => {
+    void leer().catch(() => undefined);
+  }, [turno.turnoId]);
+  const actualizar = (): void => {
+    setCambio(null);
+    void accion.ejecutar(async () => {
+      if ((await leer()) === null) {
+        avisos.info('El turno ya se cerró en otra ventana.');
+        alCerrar();
+      }
+    });
+  };
+  const monedas = monedasDelTurno(vigente, orden);
   const [textos, setTextos] = useState<Record<string, string>>({});
   const [cierre, setCierre] = useState<ResultadoCierre | null>(null);
 
@@ -84,7 +118,7 @@ function CierreListo({ turno, orden, alCerrar, alRetomar }: { turno: TurnoPos; o
     );
   }
 
-  const proy = proyectarTurno(turno, orden);
+  const proy = proyectarTurno(vigente, orden);
   const contado: Partial<Record<string, number>> = {};
   let falta = false;
   for (const m of monedas) {
@@ -92,7 +126,7 @@ function CierreListo({ turno, orden, alCerrar, alRetomar }: { turno: TurnoPos; o
     if (c === null) falta = true;
     else contado[m] = c;
   }
-  const dif = diferenciaPorMoneda(turno, contado as MontosPorMoneda, orden);
+  const dif = diferenciaPorMoneda(vigente, contado as MontosPorMoneda, orden);
 
   const propios = (abiertos.datos ?? []).filter((k) => k.estado === 'abierto').map((k) => ({ carritoId: k.carritoId, etiqueta: k.etiqueta, lineas: lineasGuardadas(k) }));
   const lista = segunServidor !== null && segunServidor.length > propios.length ? segunServidor : propios;
@@ -127,13 +161,28 @@ function CierreListo({ turno, orden, alCerrar, alRetomar }: { turno: TurnoPos; o
           </fieldset>
         );
       })}
+      {actualizando && <p class="texto-suave" aria-live="polite">Actualizando…</p>}
+      {cambio !== null && <Alerta tipo="info">{cambio}</Alerta>}
       {accion.error && <Alerta>{accion.error}</Alerta>}
+      <Boton variante="secundario" chico onClick={actualizar} ocupado={actualizando}>Actualizar</Boton>
       <BotonConfirmado
         texto="Cerrar turno"
         pregunta="¿Cerrar el turno con estos conteos? No se puede deshacer."
         textoConfirmar="Sí, cerrar turno"
-        deshabilitado={falta || accion.ocupado || abiertos.cargando || lista.length > 0}
+        deshabilitado={falta || accion.ocupado || actualizando || abiertos.cargando || lista.length > 0}
         onConfirmar={() => void accion.ejecutar(async () => {
+          setCambio(null);
+          const ahora = await api.llamar('turnoActual', {});
+          if (ahora === null) {
+            avisos.info('El turno ya se cerró en otra ventana.');
+            alCerrar();
+            return;
+          }
+          if (!mismoEfectivo(ahora, vigente)) {
+            setVigente(ahora);
+            setCambio('El efectivo esperado cambió (por ejemplo, por una anulación). Revíselo y vuelva a confirmar.');
+            return;
+          }
           try {
             setCierre(await api.llamar('cerrarTurno', { turnoId: turno.turnoId, contado: contado as MontosPorMoneda }));
           } catch (e) {

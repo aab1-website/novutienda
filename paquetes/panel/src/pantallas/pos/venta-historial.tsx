@@ -10,8 +10,9 @@ import { useAccion, useCarga } from '../../ui/hooks.js';
 import { Tabla } from '../../ui/tabla.js';
 import { formatearMonto } from '../../util/dinero.js';
 import { ReciboVista } from '../recibos/recibo-vista.js';
+import { aliasRecibo, numeroDeRecibo } from './recibo-busqueda.js';
 
-const numeroDe = (v: VentaPos): string => `${v.serie}-${String(v.receiptNo).padStart(6, '0')}`;
+const numeroDe = (v: VentaPos): string => numeroDeRecibo(v.serie, v.receiptNo);
 const estadoDe = (v: VentaPos): string => (v.estado === 'anulada' ? 'Anulada' : v.solicitudAnulacion ? 'Anulación solicitada' : 'Confirmada');
 
 function DialogoRecibo({ v, alCerrar }: { v: VentaPos; alCerrar: () => void }): JSX.Element {
@@ -96,7 +97,7 @@ export function VentaHistorial(): JSX.Element {
           filas={filas}
           clave={(v) => v.ventaId}
           vacio={{ titulo: desde !== '' || hasta !== '' ? 'No hay ventas en esas fechas' : 'Todavía no hay ventas' }}
-          buscar={{ etiqueta: 'Buscar por número de recibo', en: (v) => [numeroDe(v)] }}
+          buscar={{ etiqueta: 'Buscar por número de recibo', en: (v) => aliasRecibo(v.serie, v.receiptNo) }}
           columnas={[
             { id: 'recibo', titulo: 'Recibo', valor: numeroDe, encabezadoFila: true },
             { id: 'fecha', titulo: 'Fecha', valor: (v) => v.creadoEnMs, celda: (v) => fechaHora(v.creadoEnMs), ordenable: true },
