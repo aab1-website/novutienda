@@ -14,7 +14,7 @@ import { Tabla } from '../../ui/tabla.js';
 import { formatoBytes } from '../../util/base64.js';
 import './ficha.css';
 import { claveAlt, revisarFicha, TOPES_FICHA } from './ficha-revision.js';
-import { cumpleFiltro, siguientePaso, textoCambiosSinPublicar, textoQueFalta } from './pasos-ficha.js';
+import { cumpleFiltro, pasosPendientes, siguientePaso, textoCambiosSinPublicar, textoQueFalta } from './pasos-ficha.js';
 import { useSubidas, type Subida } from './subidas-ficha.js';
 
 const ESTADOS: { valor: EstadoFicha; texto: string }[] = [{ valor: 'borrador', texto: 'Borrador' }, { valor: 'publicado', texto: 'Visible en el sitio' }, { valor: 'oculto', texto: 'Oculto' }];
@@ -453,23 +453,24 @@ export function PantallaFichas(): JSX.Element {
                   {
                     id: 'falta', titulo: 'Qué falta', ordenable: true,
                     valor: (x) => textoQueFalta(fichaDe(x.id)),
-                    celda: (x) => {
-                      const paso = siguientePaso(fichaDe(x.id));
-                      const etiqueta = paso === null ? '' : `${paso.accion} de ${x.nombre}`;
-                      return (
-                        <div class="ficha-falta">
-                          <span>{textoQueFalta(fichaDe(x.id))}</span>
-                          {paso !== null && <Boton chico etiqueta={etiqueta} onClick={() => setAbierta({ productoId: x.id, modo: paso.modo, etiqueta, marcarVisible: paso.id === 'visible' })}>{paso.accion}</Boton>}
-                        </div>
-                      );
-                    },
+                    celda: (x) => <span>{textoQueFalta(fichaDe(x.id))}</span>,
                   },
                 ]}
-                acciones={(x) => (
-                  <div class="fila">
-                    <Boton chico variante="secundario" etiqueta={`Editar página de ${x.nombre}`} onClick={() => setAbierta({ productoId: x.id, modo: 'datos', etiqueta: `Editar página de ${x.nombre}` })}>Editar página</Boton>
-                  </div>
-                )}
+                acciones={(x) => {
+                  // Un solo botón por fila: «Mostrar en el sitio» si solo falta la visibilidad y «Editar página» en todos los demás casos. Abre en el
+                  // primer paso que falta (fotos o visibilidad), pero nunca hay dos botones que abran lo mismo.
+                  const ficha = fichaDe(x.id);
+                  const paso = siguientePaso(ficha);
+                  // Solo falta la visibilidad: «Mostrar en el sitio» abre la ficha con «Visible en el sitio» marcado.
+                  const soloVisibilidad = ficha !== undefined && paso?.id === 'visible' && pasosPendientes(ficha).length === 1;
+                  const texto = soloVisibilidad ? 'Mostrar en el sitio' : 'Editar página';
+                  const etiqueta = `${texto} de ${x.nombre}`;
+                  return (
+                    <div class="fila">
+                      <Boton chico variante={ficha === undefined ? 'cta' : 'secundario'} etiqueta={etiqueta} onClick={() => setAbierta({ productoId: x.id, modo: paso?.modo ?? 'datos', etiqueta, marcarVisible: paso?.id === 'visible' })}>{texto}</Boton>
+                    </div>
+                  );
+                }}
               />
               </>
             );

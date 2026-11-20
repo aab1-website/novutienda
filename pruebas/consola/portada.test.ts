@@ -153,10 +153,12 @@ describe('fotos propias de la portada (_portada)', () => {
         topes.fotosPortada = original;
       }
     });
-    it('un medio de portada en uso no se puede borrar', async () => {
+    it('un medio de portada en un carrusel guardado se borra y el servidor lo quita del carrusel', async () => {
       const id = await subir();
       await guardarCarrusel(ds(), { tenantId: T, actor: adm, carrusel: { plantilla: 'bosque', items: [{ medioId: id, alt: 'Local' }] } });
-      await expect(borrarMedio(deps, { tenantId: T, actor: adm, medioId: id })).rejects.toMatchObject({ codigo: 'conflicto' });
+      await borrarMedio(deps, { tenantId: T, actor: adm, medioId: id });
+      expect(db.dato(`tenants/${T}/medios/${id}`)).toBeUndefined();
+      expect(db.dato(`tenants/${T}/carruseles/bosque`)).toMatchObject({ plantilla: 'bosque', items: [] });
     });
   });
 });

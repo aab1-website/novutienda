@@ -138,21 +138,6 @@ legend { padding: 0 6px; font-weight: 700; }
 .plantilla-opcion { display: flex; flex-direction: column; gap: 8px; padding: 12px; border: 1px solid var(--borde-control); border-radius: 12px; cursor: pointer; background: var(--superficie); }
 .plantilla-opcion.activa { border-color: var(--acento); border-width: 2px; }
 .plantilla-nombre { font-weight: 700; }
-.vp { width: 100px; border-radius: 8px; overflow: hidden; border: 1px solid var(--borde-control); background: var(--vp-fondo); }
-.vp-barra { height: 10px; background: var(--vp-sup); border-bottom: 1px solid var(--vp-acento); }
-.vp-cuerpo { display: flex; align-items: center; justify-content: space-between; gap: 6px; padding: 10px 8px; }
-.vp-titulo { color: var(--vp-texto); font-weight: 700; }
-.vp-boton { background: var(--vp-cta); color: var(--vp-cta-texto); font-size: 10px; font-weight: 700; padding: 2px 6px; border-radius: 6px; }
-.vp-marfil-claro{--vp-fondo:#f4f6f9;--vp-sup:#ffffff;--vp-texto:#0f172a;--vp-acento:#0077b3;--vp-cta:#0077b3;--vp-cta-texto:#ffffff;}
-.vp-marfil-oscuro{--vp-fondo:#000000;--vp-sup:#0a0a0a;--vp-texto:#ffffff;--vp-acento:#00d9ff;--vp-cta:#00d9ff;--vp-cta-texto:#000000;}
-.vp-oceano-claro{--vp-fondo:#f3f7f4;--vp-sup:#ffffff;--vp-texto:#10231a;--vp-acento:#1b7a49;--vp-cta:#1b7a49;--vp-cta-texto:#ffffff;}
-.vp-oceano-oscuro{--vp-fondo:#050a07;--vp-sup:#0b1510;--vp-texto:#f3faf5;--vp-acento:#4ade80;--vp-cta:#4ade80;--vp-cta-texto:#04210f;}
-.vp-bosque-claro{--vp-fondo:#faf6f0;--vp-sup:#ffffff;--vp-texto:#261a0c;--vp-acento:#a84f00;--vp-cta:#a84f00;--vp-cta-texto:#ffffff;}
-.vp-bosque-oscuro{--vp-fondo:#0a0703;--vp-sup:#120c05;--vp-texto:#fff8ee;--vp-acento:#ffb347;--vp-cta:#ffb347;--vp-cta-texto:#1f1200;}
-.vp-terracota-claro{--vp-fondo:#f3f4f6;--vp-sup:#ffffff;--vp-texto:#111827;--vp-acento:#374151;--vp-cta:#1f2937;--vp-cta-texto:#ffffff;}
-.vp-terracota-oscuro{--vp-fondo:#0b0c0e;--vp-sup:#14161a;--vp-texto:#f9fafb;--vp-acento:#d1d5db;--vp-cta:#e5e7eb;--vp-cta-texto:#111827;}
-.vp-grafito-claro{--vp-fondo:#f8f4f9;--vp-sup:#ffffff;--vp-texto:#2a1230;--vp-acento:#8f2a8a;--vp-cta:#8f2a8a;--vp-cta-texto:#ffffff;}
-.vp-grafito-oscuro{--vp-fondo:#09040b;--vp-sup:#10061a;--vp-texto:#fbf3fd;--vp-acento:#e879f9;--vp-cta:#e879f9;--vp-cta-texto:#2a0630;}
 
 .recibo { max-width: 560px; padding: 16px; border: 1px solid var(--borde); border-radius: 12px; background: var(--superficie); position: relative; }
 .recibo header { text-align: center; margin-bottom: 8px; }

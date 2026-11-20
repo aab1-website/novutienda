@@ -7,12 +7,12 @@ const ficha = (c: Partial<FichaWeb> = {}): FichaWeb => ({ slug: 'tv', descripcio
 describe('pasos de la ficha', () => {
   it('sin página, falta todo y el siguiente paso es crearla', () => {
     expect(pasosDeFicha(undefined).every((p) => !p.hecho)).toBe(true);
-    expect(siguientePaso(undefined)).toMatchObject({ id: 'pagina', accion: 'Preparar para el sitio', modo: 'datos' });
+    expect(siguientePaso(undefined)).toMatchObject({ id: 'pagina', accion: 'Editar página', modo: 'datos' });
     expect(textoQueFalta(undefined)).toBe('Aún no está en el sitio');
   });
   it('con página vacía, el siguiente paso es la descripción', () => {
     expect(siguientePaso(ficha())).toMatchObject({ id: 'descripcion', modo: 'datos' });
-    expect(textoQueFalta(ficha())).toBe('Falta: descripción, foto, visible en el sitio');
+    expect(textoQueFalta(ficha())).toBe('Falta: descripción, foto, elegir «Visible en el sitio»');
   });
   it('con descripción y sin fotos, el siguiente paso abre las fotos', () => {
     expect(siguientePaso(ficha({ descripcion: 'Texto' }))).toMatchObject({ id: 'fotos', accion: 'Subir fotos', modo: 'medios' });
@@ -20,7 +20,7 @@ describe('pasos de la ficha', () => {
   it('una descripción de solo espacios no cuenta', () => {
     expect(siguientePaso(ficha({ descripcion: '   ' }))?.id).toBe('descripcion');
   });
-  it('con fotos y en borrador u oculta, falta mostrarla en el sitio', () => {
+  it('con fotos y en borrador u oculta, falta elegir «Visible en el sitio»', () => {
     const f = ficha({ descripcion: 'Texto', medios: [{ medioId: 'm1', alt: 'x' }] });
     expect(siguientePaso(f)).toMatchObject({ id: 'visible', accion: 'Mostrar en el sitio' });
     expect(siguientePaso({ ...f, estado: 'oculto' })?.id).toBe('visible');

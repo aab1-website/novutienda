@@ -22,10 +22,10 @@ export interface PasoFicha {
 
 export function pasosDeFicha(ficha: FichaWeb | undefined): readonly PasoFicha[] {
   return [
-    { id: 'pagina', falta: 'página', hecho: ficha !== undefined, accion: 'Preparar para el sitio', modo: 'datos' },
+    { id: 'pagina', falta: 'página', hecho: ficha !== undefined, accion: 'Editar página', modo: 'datos' },
     { id: 'descripcion', falta: 'descripción', hecho: ficha !== undefined && ficha.descripcion.trim() !== '', accion: 'Escribir la descripción', modo: 'datos' },
     { id: 'fotos', falta: 'foto', hecho: ficha !== undefined && ficha.medios.length > 0, accion: 'Subir fotos', modo: 'medios' },
-    { id: 'visible', falta: 'visible en el sitio', hecho: ficha?.estado === 'publicado', accion: 'Mostrar en el sitio', modo: 'datos' },
+    { id: 'visible', falta: 'elegir «Visible en el sitio»', hecho: ficha?.estado === 'publicado', accion: 'Mostrar en el sitio', modo: 'datos' },
   ];
 }
 

@@ -21,25 +21,35 @@ const ver = (e: Entorno): void => void render(e.envolver(h(ProveedorGuardia, nul
 const jpg = (nombre: string, bytes = 2048): File => new File(['x'.repeat(bytes)], nombre, { type: 'image/jpeg' });
 const fotos = (): HTMLElement => screen.getByLabelText('Archivos de fotos');
 const video = (): HTMLElement => screen.getByLabelText('Archivo de video');
-const abrir = async (u: ReturnType<typeof userEvent.setup>, boton: string, producto: string): Promise<HTMLElement> => {
-  await u.click(await screen.findByRole('button', { name: `${boton} de ${producto}` }));
+/** El botón único de la fila: «Editar página» (o «Mostrar en el sitio» si solo falta la visibilidad). */
+const botonFilaYa = (producto: string): HTMLElement => screen.getByRole('button', { name: new RegExp(`^(Editar página|Mostrar en el sitio) de ${producto}$`) });
+const botonFila = (producto: string): Promise<HTMLElement> => screen.findByRole('button', { name: new RegExp(`^(Editar página|Mostrar en el sitio) de ${producto}$`) });
+const abrir = async (u: ReturnType<typeof userEvent.setup>, _boton: string, producto: string): Promise<HTMLElement> => {
+  await u.click(await botonFila(producto));
   return screen.findByRole('dialog', { name: `Página en el sitio: ${producto}` });
 };
 const guardados = (e: Entorno): number => e.api.llamadas.filter((l) => l.nombre === 'guardarFicha').length;
 
 describe('lista de páginas de producto', () => {
-  it('es una tabla con búsqueda, la cantidad en la ficha y dos botones por fila', async () => {
+  it('es una tabla con búsqueda, la cantidad en la ficha y un solo botón por fila', async () => {
     const e = crearEntorno('sup');
     ver(e);
     const tabla = await screen.findByRole('table', { name: 'Productos y su página en el sitio' });
     expect(within(tabla).getByRole('columnheader', { name: 'Fotos y video' })).toBeTruthy();
     expect(within(tabla).getAllByText('0 en la ficha').length).toBeGreaterThan(0);
-    expect(within(tabla).getByRole('button', { name: `Editar página de ${TV}` })).toBeTruthy();
-    expect(within(tabla).queryByRole('button', { name: `Fotos y video de ${TV}` })).toBeNull();
+    // Sin página y con ella, la fila ofrece solo «Editar página»: nunca dos botones.
+    const sinPagina = within(tabla).getByRole('row', { name: new RegExp(TV) });
+    expect(within(sinPagina).getAllByRole('button').map((b) => b.textContent)).toEqual(['Editar página']);
     const u = userEvent.setup();
     await u.type(screen.getByLabelText('Buscar producto'), 'hdmi');
     expect(within(tabla).queryByText(TV)).toBeNull();
     expect(within(tabla).getByText(CABLE)).toBeTruthy();
+    await e.api.llamar('guardarFicha', { productoId: 'tv-55', ficha: { slug: 'tv-55', descripcion: 'x', garantia: '', medios: [], seo: { titulo: '', descripcion: '' }, estado: 'borrador' } });
+    cleanup();
+    ver(e);
+    const tabla2 = await screen.findByRole('table', { name: 'Productos y su página en el sitio' });
+    const conPagina = await within(tabla2).findByRole('row', { name: new RegExp(`${TV}.*Falta`) });
+    expect(within(conPagina).getAllByRole('button').map((b) => b.textContent)).toEqual(['Editar página']);
   });
 });
 
@@ -56,7 +66,7 @@ describe('panel lateral de la ficha', () => {
     expect(orden).toEqual(['Fotos y video', 'Textos de la página']);
     await u.click(within(dialogo).getByRole('button', { name: 'Cancelar' }));
     await waitFor(() => expect(screen.queryByRole('dialog')).toBeNull(), { timeout: 3000 });
-    await waitFor(() => expect(document.activeElement).toBe(screen.getByRole('button', { name: `Editar página de ${TV}` })), { timeout: 3000 });
+    await waitFor(() => expect(document.activeElement).toBe(botonFilaYa(TV)), { timeout: 3000 });
   });
   it('«Editar página» deja el foco en la dirección', async () => {
     const e = crearEntorno('sup');
@@ -92,7 +102,7 @@ describe('panel lateral de la ficha', () => {
     expect(await screen.findByText(/Página guardada/)).toBeTruthy();
     await waitFor(() => expect(screen.queryByRole('dialog')).toBeNull(), { timeout: 3000 });
     expect((await e.api.llamar('listarFichas', {}))[0]?.ficha.medios[0]?.alt).toBe('frente');
-    await waitFor(() => expect(document.activeElement).toBe(screen.getByRole('button', { name: `Editar página de ${TV}` })), { timeout: 3000 });
+    await waitFor(() => expect(document.activeElement).toBe(botonFilaYa(TV)), { timeout: 3000 });
   });
   it('existente: al guardar envía solo los campos editables, sin los de almacenamiento', async () => {
     const e = crearEntorno('sup');
@@ -447,7 +457,7 @@ describe('«Qué falta» por producto', () => {
     const u = userEvent.setup();
     const tabla = await screen.findByRole('table', { name: 'Productos y su página en el sitio' });
     expect(within(tabla).getAllByText('Aún no está en el sitio').length).toBeGreaterThan(0);
-    await abrir(u, 'Preparar para el sitio', TV);
+    await abrir(u, 'Editar página', TV);
     expect(await screen.findByLabelText(/Dirección de la página/)).toBeTruthy();
   });
 
@@ -456,8 +466,9 @@ describe('«Qué falta» por producto', () => {
     await e.api.llamar('guardarFicha', { productoId: 'tv-55', ficha: { ...fichaBase, descripcion: 'Pantalla grande' } });
     ver(e);
     const u = userEvent.setup();
-    const boton = await screen.findByRole('button', { name: `Subir fotos de ${TV}` });
-    expect(boton.textContent).toBe('Subir fotos');
+    // Un solo botón por fila: abre la página en el primer paso que falta (aquí, las fotos).
+    const boton = await botonFila(TV);
+    expect(boton.textContent).toBe('Editar página');
     await u.click(boton);
     await screen.findByRole('dialog', { name: `Página en el sitio: ${TV}` });
     await waitFor(() => expect(document.activeElement?.closest('.ficha-zona')).not.toBeNull());
@@ -535,13 +546,13 @@ describe('estado de la página en el sitio', () => {
     expect((await e.api.llamar('listarFichas', {}))[0]?.ficha.estado).toBe('publicado');
   });
 
-  it('el atajo «Mostrar en el sitio» abre la página con «Visible en el sitio» marcado', async () => {
+  it('con solo la visibilidad pendiente, el botón único dice «Mostrar en el sitio» y abre la página con «Visible en el sitio» marcado', async () => {
     const e = crearEntorno('sup');
     e.api.estado.medios.set('m-tv', { id: 'm-tv', productoId: 'tv-55', tipo: 'foto', bytesOriginal: 1000, ancho: 800, alto: 600, creadoEn: 1, por: 'u' });
     await e.api.llamar('guardarFicha', { productoId: 'tv-55', ficha: { slug: 'tv-55', descripcion: 'Pantalla', garantia: '', medios: [{ medioId: 'm-tv', alt: 'Frente' }], seo: { titulo: '', descripcion: '' }, estado: 'borrador' } });
     ver(e);
     const u = userEvent.setup();
-    const boton = await screen.findByRole('button', { name: `Mostrar en el sitio de ${TV}` });
+    const boton = await botonFila(TV);
     expect(boton.textContent).toBe('Mostrar en el sitio');
     await u.click(boton);
     await screen.findByRole('dialog', { name: `Página en el sitio: ${TV}` });

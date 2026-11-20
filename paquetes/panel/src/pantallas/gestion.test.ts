@@ -435,10 +435,10 @@ describe('catálogo y sitio', () => {
     const u = userEvent.setup();
     await u.click(await screen.findByRole('button', { name: 'Nueva sección' }));
     await u.type(await screen.findByLabelText(/Nombre de la sección/), 'Cómo comprar');
-    await u.click(screen.getByRole('button', { name: '+ Texto' }));
+    // La sección nueva ya trae un bloque de texto.
     await u.type(screen.getByLabelText('Subtítulo del texto (opcional)'), 'Pasos');
     await u.type(screen.getByLabelText(/Párrafos/), 'Elija el producto.\n\nEscriba por WhatsApp.');
-    await u.click(screen.getByRole('button', { name: '+ Enlaces' }));
+    await u.click(screen.getByRole('button', { name: 'Agregar una lista de enlaces' }));
     await u.type(screen.getByLabelText(/Enlaces \(uno por línea/), 'Contacto | /contacto');
     await u.click(screen.getByRole('button', { name: 'Guardar sección' }));
     expect(await screen.findByText('Cómo comprar')).toBeTruthy();
@@ -468,8 +468,8 @@ describe('catálogo y sitio', () => {
   it('exportar: el Catálogo ya no exporta ni importa; deja un enlace a Inventario', async () => {
     const e = crearEntorno('adm');
     ver(e, h(PantallaCatalogo, { sub: 'exportar' }));
-    expect(await screen.findByRole('link', { name: 'Ir a Inventario' })).toBeTruthy();
-    expect(screen.getByRole('link', { name: 'Ir a Inventario' }).getAttribute('href')).toBe('#/inventario/csv');
+    expect(await screen.findByRole('link', { name: 'Importar o exportar productos (en Inventario)' })).toBeTruthy();
+    expect(screen.getByRole('link', { name: 'Importar o exportar productos (en Inventario)' }).getAttribute('href')).toBe('#/inventario/csv');
     expect(screen.queryByLabelText('Archivo a importar')).toBeNull();
     expect(screen.queryByRole('button', { name: 'Exportar productos (CSV)' })).toBeNull();
   });
