@@ -39,10 +39,10 @@ export interface DepsMedios {
   readonly nuevoId?: () => string;
 }
 
-/** Tope de una versión procesada de imagen que se lee completa para buscar metadatos. */
 /** Tope para borrar la copia pública de un medio aunque el sitio no se haya reconstruido: 30 días. */
 const TOPE_BORRADO_PUBLICO_MS = 30 * 24 * 60 * 60 * 1000;
 
+/** Tope de una versión procesada de imagen que se lee completa para buscar metadatos. */
 const MAX_BYTES_VERSION_IMAGEN = 8 * 1024 * 1024;
 
 type EstadoSubida = 'reservada' | 'procesando' | 'procesada' | 'borrando' | 'rechazada';
@@ -349,12 +349,25 @@ async function borrarYCerrar(deps: DepsMedios, t: string, subidaId: string): Pro
       const vigente = new Set(leerDocLogo((await tx.get(rutaSitio(t, 'logo'))).data())?.versiones.map((v) => v.ruta));
       const hasta = (await tx.get(rutaSitio(t, 'logoEnSubida'))).data()?.['hasta'];
       const ultima = (await tx.get(rutaSitio(t, 'ultimaReconstruccion'))).data();
+      const estadoPub = (await tx.get(rutaPublicado(t, 'estado'))).data();
+      // La versión de `publicado/estado` también sube con el precio vivo y el logo vivo, sin volver a publicar las fotos: por eso,
+      // además de la reconstrucción posterior, se exige que ninguna copia `publicado/*` siga nombrando las rutas del medio.
+      const nombresPublicos = (actual?.rutasDiferidas ?? []).map((r) => r.slice(r.lastIndexOf('/') + 1));
+      let enUsoPublicado = false;
+      if (actual?.borrarTrasVersion !== undefined && estadoPub !== undefined) {
+        const ids = (clave: string, prefijo: string): string[] => (Array.isArray(estadoPub[clave]) ? (estadoPub[clave] as unknown[]) : []).filter((x): x is string => typeof x === 'string').map((x) => `${prefijo}${x}`);
+        const docs = [...ids('productos', 'producto__'), ...ids('secciones', 'seccion__'), ...ids('carruseles', 'carrusel__'), 'sitio', 'negocio'];
+        for (const d of docs) {
+          const texto = JSON.stringify((await tx.get(rutaPublicado(t, d))).data() ?? {});
+          if (nombresPublicos.some((n) => n !== '' && texto.includes(n))) enUsoPublicado = true;
+        }
+      }
       if (actual?.estado !== 'borrando') return [];
       if (typeof hasta === 'number' && hasta > ahora) return undefined;
       const marca = actual.borrarTrasVersion;
       const reconstruido = ultima?.['estado'] === 'completada' && typeof ultima['version'] === 'number' && marca !== undefined && ultima['version'] > marca;
       const vencioTope = actual.borrarTopeEn !== undefined && ahora >= actual.borrarTopeEn;
-      if (marca !== undefined && !reconstruido && !vencioTope) {
+      if (marca !== undefined && (!reconstruido || enUsoPublicado) && !vencioTope) {
         // Medio borrado con el sitio publicado: el sitio todavía puede usar su copia pública hasta que se reconstruya con una
         // versión posterior (o venza el tope). Se reprograma sin tapar la cola.
         tx.set(rutaSubida(t, subidaId), aDoc({ ...actual, rutas: [], venceEn: ahora + LIMITES_CONSOLA.esperaBorradoLogoMs }));

@@ -589,6 +589,22 @@ describe('pipeline de medios', () => {
         expect(siguen()).toBe(false);
         expect(db.dato(`tenants/${T}/subidas/${subidaId}`)).toBeUndefined();
       });
+      it('un cambio de precio (sube la versión y reconstruye) no borra una foto que el sitio sigue mostrando; publicar de verdad sí', async () => {
+        const { siguen, limpiar, publicas } = await borrarPublicada(true);
+        const nombre = (publicas[0] as string).split('/').pop();
+        // Precio vivo: versión 4 y reconstrucción completada, pero la copia publicada del producto sigue nombrando la foto.
+        db.poner(`tenants/${T}/publicado/estado`, { version: 4, productos: ['cam-1'], secciones: [], carruseles: [] });
+        db.poner(`tenants/${T}/publicado/producto__cam-1`, { id: 'cam-1', medios: [{ versiones: [{ ruta: `tenants/${T}/publico/medios/cam-1/${nombre}` }] }] });
+        db.poner(`tenants/${T}/sitio/ultimaReconstruccion`, { estado: 'completada', version: 4 });
+        await limpiar();
+        expect(siguen()).toBe(true);
+        // Publicación real: el producto ya no nombra la foto y el sitio se reconstruye.
+        db.poner(`tenants/${T}/publicado/estado`, { version: 5, productos: ['cam-1'], secciones: [], carruseles: [] });
+        db.poner(`tenants/${T}/publicado/producto__cam-1`, { id: 'cam-1', medios: [] });
+        db.poner(`tenants/${T}/sitio/ultimaReconstruccion`, { estado: 'completada', version: 5 });
+        await limpiar();
+        expect(siguen()).toBe(false);
+      });
       it('tope: pasados 30 días sin reconstrucción posterior, se borra igual', async () => {
         const { subidaId, siguen, limpiar } = await borrarPublicada(true);
         reloj.ms += 27 * 24 * 3600_000;
