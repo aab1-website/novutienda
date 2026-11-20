@@ -1,7 +1,7 @@
 // @vitest-environment jsdom
 // Invitar a una persona desde el panel (U-01): flujo de invitar, reenviar y anular, y el envío del correo con el enlace.
 import { h } from 'preact';
-import { cleanup, render, screen, waitFor, within } from '@testing-library/preact';
+import { act, cleanup, render, screen, waitFor, within } from '@testing-library/preact';
 import { userEvent } from '@testing-library/user-event';
 import { afterEach, describe, expect, it, vi } from 'vitest';
 import { ErrorApi } from '../api/errores.js';
@@ -21,7 +21,7 @@ async function invitar(correo: string, rol?: string): Promise<void> {
   const u = userEvent.setup();
   await u.type(await screen.findByLabelText('Correo de la persona'), correo);
   if (rol !== undefined) await u.selectOptions(screen.getByLabelText('Rol de la persona'), rol);
-  await u.click(screen.getByRole('button', { name: 'Agregar' }));
+  await u.click(screen.getByRole('button', { name: /^Agregar como/ }));
 }
 
 /** Libera un cupo (el doble trae 3 de 3). */
@@ -104,7 +104,7 @@ describe('invitar a una persona', () => {
     const e = crearEntorno('adm');
     ver(e);
     await screen.findByText(/ya están todos ocupados/);
-    const boton = screen.getByRole('button', { name: 'Agregar' });
+    const boton = screen.getByRole('button', { name: /^Agregar como/ });
     expect(boton.getAttribute('aria-disabled')).toBe('true');
     expect(screen.getByText(/no tiene cupos libres/)).toBeTruthy();
     await userEvent.setup().click(boton);
@@ -191,5 +191,80 @@ describe('invitar a una persona', () => {
     const ana = (await e.api.llamar('listarUsuarios', {})).find((u) => u.uid === 'u-invitado-1');
     expect(ana).toMatchObject({ rol: 'sup' });
     expect(ana?.estado).toBeUndefined();
+  });
+});
+
+describe('alta: selector, botón y estados', () => {
+  it('el botón dice el rol elegido, y tras invitar el selector vuelve a Vendedor y el correo queda vacío', async () => {
+    const e = crearEntorno('adm');
+    await conCupo(e);
+    ver(e);
+    const u = userEvent.setup();
+    expect(await screen.findByRole('button', { name: 'Agregar como vendedor' })).toBeTruthy();
+    await u.selectOptions(screen.getByLabelText('Rol de la persona'), 'sup');
+    expect(screen.getByRole('button', { name: 'Agregar como supervisor' })).toBeTruthy();
+    await u.selectOptions(screen.getByLabelText('Rol de la persona'), 'adm');
+    expect(screen.getByRole('button', { name: 'Agregar como administrador' })).toBeTruthy();
+    await u.type(screen.getByLabelText('Correo de la persona'), 'ana@ejemplo.test');
+    await u.click(screen.getByRole('button', { name: 'Agregar como administrador' }));
+    await waitFor(() => expect(regionAvisos().textContent).toContain('Listo. Enviamos un correo'));
+    expect((screen.getByLabelText('Rol de la persona') as HTMLSelectElement).value).toBe('caj');
+    expect((screen.getByLabelText('Correo de la persona') as HTMLInputElement).value).toBe('');
+    expect(screen.getByRole('button', { name: 'Agregar como vendedor' })).toBeTruthy();
+  });
+
+  it('«Cambiar rol» cambia el rol en el doble, no envía correo, no ocupa otro cupo y avisa', async () => {
+    const e = crearEntorno('adm');
+    await conCupo(e);
+    await e.api.llamar('invitarUsuario', { correo: 'ana@ejemplo.test', rol: 'caj' });
+    e.correosDeAcceso.length = 0;
+    ver(e);
+    const u = userEvent.setup();
+    const boton = await screen.findByRole('button', { name: 'Cambiar rol' });
+    expect(boton.getAttribute('aria-disabled')).toBe('true'); // aún no hay otro rol elegido
+    await u.selectOptions(screen.getByLabelText('Rol de la invitación de ana@ejemplo.test'), 'adm');
+    expect(screen.getByText('Un administrador solo lo puede quitar el propietario de la plataforma.')).toBeTruthy();
+    await u.click(screen.getByRole('button', { name: 'Cambiar rol' }));
+    await waitFor(() => expect(regionAvisos().textContent).toContain('Rol de la invitación cambiado a administrador. No se envió otro correo.'));
+    expect(e.correosDeAcceso).toEqual([]);
+    const lista = await e.api.llamar('listarUsuarios', {});
+    expect(lista.filter((x) => x.estado === 'invitado')).toMatchObject([{ rol: 'adm' }]);
+    expect(lista).toHaveLength(3);
+    expect(await screen.findByText('Personas con acceso (2) e invitaciones pendientes (1), de 3 del plan')).toBeTruthy();
+  });
+
+  describe('con temporizadores falsos', () => {
+    afterEach(() => vi.useRealTimers());
+
+    it('muestra «Registrando…», luego «Enviando el correo…», y a los 15 s de una fase avisa que tarda', async () => {
+      const e = crearEntorno('adm');
+      await conCupo(e);
+      let liberarRegistro: () => void = () => undefined;
+      const llamar = e.api.llamar.bind(e.api) as (n: string, x: unknown) => Promise<unknown>;
+      // Emula las fases del envoltorio de correo: registra, espera, envía y espera.
+      vi.spyOn(e.api, 'llamar').mockImplementation(((n: string, x: unknown, o?: { alFase?: (f: string) => void }) => {
+        if (n !== 'invitarUsuario') return llamar(n, x);
+        o?.alFase?.('registrando');
+        return new Promise(() => {
+          liberarRegistro = () => o?.alFase?.('enviando');
+        });
+      }) as never);
+      ver(e);
+      vi.useFakeTimers({ toFake: ['setTimeout', 'clearTimeout'] });
+      const u = userEvent.setup({ delay: null });
+      await u.type(await screen.findByLabelText('Correo de la persona'), 'ana@ejemplo.test');
+      await u.click(screen.getByRole('button', { name: /^Agregar como/ }));
+      expect(document.body.textContent).toContain('Registrando…');
+      expect(document.body.textContent).not.toContain('Está tardando');
+      await act(async () => void (await vi.advanceTimersByTimeAsync(14_000)));
+      expect(document.body.textContent).not.toContain('Está tardando');
+      await act(async () => void (await vi.advanceTimersByTimeAsync(1_500)));
+      expect(document.body.textContent).toContain('Está tardando más de lo normal. No cierre esta página');
+      await act(async () => liberarRegistro());
+      expect(document.body.textContent).toContain('Enviando el correo…');
+      expect(document.body.textContent).not.toContain('Está tardando'); // la fase nueva reinicia la cuenta
+      await act(async () => void (await vi.advanceTimersByTimeAsync(15_500)));
+      expect(document.body.textContent).toContain('Está tardando más de lo normal');
+    });
   });
 });

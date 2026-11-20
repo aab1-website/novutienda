@@ -1,5 +1,6 @@
 import type { JSX } from 'preact';
-import { useState } from 'preact/hooks';
+import { useEffect, useState } from 'preact/hooks';
+import { llamarInvitacion, type FaseInvitacion } from '../api/invitaciones.js';
 import { LIMITES_PANEL, type Rol } from '../api/tipos.js';
 import { Alerta, Boton, BotonConfirmado, Campo, Cargando, ErrorCarga, Selector, Seccion } from '../ui/comun.js';
 import { useApp } from '../ui/contexto.js';
@@ -16,6 +17,10 @@ const ROLES_INVITABLES: readonly Rol[] = ['caj', 'sup', 'adm'];
 const DIA_MS = 24 * 60 * 60 * 1000;
 const fechaDe = (ms: number): string => new Date(ms).toLocaleDateString('es-BO', { day: 'numeric', month: 'long', year: 'numeric', timeZone: 'America/La_Paz' });
 
+/** Pasado este tiempo en una misma fase del alta, se avisa al administrador sin reintentar solo. */
+const LENTO_MS = 15_000;
+const TEXTO_FASE: Record<FaseInvitacion, string> = { registrando: 'Registrando…', enviando: 'Enviando el correo…' };
+
 export function PantallaUsuarios(): JSX.Element {
   const { api, usuario } = useApp();
   const lista = useCarga(() => api.llamar('listarUsuarios', {}), []);
@@ -29,6 +34,16 @@ export function PantallaUsuarios(): JSX.Element {
   const [correo, setCorreo] = useState('');
   const [rolNuevo, setRolNuevo] = useState<Rol>('caj');
   const [yaTiene, setYaTiene] = useState<string | null>(null);
+  const [rolesInv, setRolesInv] = useState<Record<string, Rol>>({});
+  const [fase, setFase] = useState<FaseInvitacion | null>(null);
+  const [lento, setLento] = useState(false);
+  // Un temporizador por fase: se limpia al cambiar de fase o terminar, y nunca reintenta.
+  useEffect(() => {
+    setLento(false);
+    if (fase === null) return undefined;
+    const id = setTimeout(() => setLento(true), LENTO_MS);
+    return () => clearTimeout(id);
+  }, [fase]);
   // Las invitaciones pendientes ocupan un cupo del plan, pero aún no son personas con acceso.
   const miembros = lista.datos?.filter((u) => u.estado !== 'invitado');
   const invitaciones = lista.datos?.filter((u) => u.estado === 'invitado');
@@ -54,21 +69,36 @@ export function PantallaUsuarios(): JSX.Element {
     setYaTiene(null);
     void alta.ejecutar(async () => {
       try {
-        await api.llamar('invitarUsuario', { correo: limpio, rol: rolNuevo });
+        await llamarInvitacion(api, 'invitarUsuario', { correo: limpio, rol: rolNuevo }, { alFase: setFase });
       } finally {
+        setFase(null);
         lista.recargar(); // aunque falle el correo, la invitación ya quedó registrada
       }
       setCorreo('');
+      setRolNuevo('caj'); // cada invitación empieza de nuevo con el rol más bajo
     }, { exito: `Listo. Enviamos un correo a ${limpio}. Tendrá el rol de ${ROL_TEXTO[rolNuevo].toLowerCase()} cuando inicie sesión.`, error: 'ambos' });
   };
   const reenviar = (uid: string, correoDeLaInvitacion: string): void => {
     void pendientes.ejecutar(async () => {
       try {
-        await api.llamar('reenviarInvitacion', { uid, correo: correoDeLaInvitacion });
+        await llamarInvitacion(api, 'reenviarInvitacion', { uid, correo: correoDeLaInvitacion });
       } finally {
         lista.recargar();
       }
     }, { exito: 'Invitación enviada', error: 'ambos' });
+  };
+  // Cambiar el rol de una invitación no envía otro correo: el enlace que ya recibió la persona sigue valiendo.
+  const cambiarRolInvitacion = (uid: string, correoInv: string): void => {
+    const rol = rolesInv[uid];
+    if (rol === undefined) return;
+    void pendientes.ejecutar(async () => {
+      try {
+        await llamarInvitacion(api, 'invitarUsuario', { correo: correoInv, rol }, { sinCorreo: true });
+      } finally {
+        lista.recargar();
+      }
+      setRolesInv((previo) => Object.fromEntries(Object.entries(previo).filter(([k]) => k !== uid)));
+    }, { exito: `Rol de la invitación cambiado a ${ROL_TEXTO[rol].toLowerCase()}. No se envió otro correo.`, error: 'ambos' });
   };
   const anular = (uid: string): void => {
     void pendientes.ejecutar(async () => {
@@ -103,9 +133,11 @@ export function PantallaUsuarios(): JSX.Element {
           <Selector etiqueta="Rol de la persona" valor={rolNuevo} onCambio={(v) => setRolNuevo(v as Rol)} opciones={ROLES_INVITABLES.map((r) => ({ valor: r, texto: ROL_TEXTO[r] }))} />
           {rolNuevo === 'adm' && <Alerta tipo="info">Un administrador solo lo puede quitar el propietario de la plataforma.</Alerta>}
           <div class="fila">
-            <Boton tipo="submit" ocupado={alta.ocupado} motivo={sinCupo ? 'El plan no tiene cupos libres: anule una invitación o quite un acceso' : correo.trim() === '' ? 'Escriba el correo de la persona' : undefined}>Agregar</Boton>
+            <Boton tipo="submit" ocupado={alta.ocupado} motivo={sinCupo ? 'El plan no tiene cupos libres: anule una invitación o quite un acceso' : correo.trim() === '' ? 'Escriba el correo de la persona' : undefined}>{`Agregar como ${ROL_TEXTO[rolNuevo].toLowerCase()}`}</Boton>
           </div>
         </form>
+        {fase !== null && <p class="texto-suave" role="status">{TEXTO_FASE[fase]}</p>}
+        {fase !== null && lento && <Alerta tipo="info">Está tardando más de lo normal. No cierre esta página; si en un minuto no termina, revise su conexión y vuelva a intentarlo.</Alerta>}
         {alta.error && <Alerta>{alta.error}</Alerta>}
         {yaTiene !== null && <Alerta tipo="info">{yaTiene} ya tiene acceso. Cambie su rol en la tabla de abajo.</Alerta>}
         {pendientes.error && <Alerta>{pendientes.error}</Alerta>}
@@ -118,12 +150,23 @@ export function PantallaUsuarios(): JSX.Element {
             vacio={{ titulo: 'No hay invitaciones pendientes' }}
             columnas={[
               { id: 'correo', titulo: 'Correo', valor: (u) => correoDe(u), encabezadoFila: true, ordenable: true, celda: (u) => correoDe(u) },
-              { id: 'rol', titulo: 'Rol reservado', valor: (u) => ROL_TEXTO[u.rol], celda: (u) => ROL_TEXTO[u.rol] },
+              {
+                id: 'rol',
+                titulo: 'Rol reservado',
+                valor: (u) => ROL_TEXTO[u.rol],
+                celda: (u) => (
+                  <div>
+                    <Selector etiqueta={`Rol de la invitación de ${correoDe(u)}`} valor={rolesInv[u.uid] ?? u.rol} onCambio={(v) => setRolesInv((p) => ({ ...p, [u.uid]: v as Rol }))} opciones={ROLES_INVITABLES.map((r) => ({ valor: r, texto: ROL_TEXTO[r] }))} />
+                    {rolesInv[u.uid] === 'adm' && <Alerta tipo="info">Un administrador solo lo puede quitar el propietario de la plataforma.</Alerta>}
+                  </div>
+                ),
+              },
               { id: 'vence', titulo: 'Vence', valor: (u) => String(u.venceEnMs ?? 0), celda: (u) => `Vence el ${fechaDe(u.venceEnMs ?? 0)}${(u.venceEnMs ?? 0) - Date.now() < DIA_MS ? ' (queda menos de un día)' : ''}` },
             ]}
             acciones={(u) => (
               <div class="fila">
                 <Boton variante="secundario" chico ocupado={pendientes.ocupado} onClick={() => reenviar(u.uid, correoDe(u))}>Reenviar</Boton>
+                <Boton variante="secundario" chico deshabilitado={pendientes.ocupado} motivoVisible={false} motivo={rolesInv[u.uid] === undefined || rolesInv[u.uid] === u.rol ? 'Elija otro rol para cambiarlo' : undefined} onClick={() => cambiarRolInvitacion(u.uid, correoDe(u))}>Cambiar rol</Boton>
                 <BotonConfirmado texto="Anular" pregunta={`¿Anular la invitación de ${correoDe(u)}?`} textoConfirmar="Sí, anular" peligro chico onConfirmar={() => anular(u.uid)} />
               </div>
             )}
