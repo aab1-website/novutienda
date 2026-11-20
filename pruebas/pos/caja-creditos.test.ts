@@ -167,4 +167,14 @@ describe('configuración del POS', () => {
     expect(mal({ extra: 1 })).toThrow(ErrorPos);
     expect(() => validarConfigPos(null)).toThrow(ErrorPos);
   });
+
+  it('el NIT se exige estricto al guardar pero no al leer: un NIT viejo con letras sigue vendiendo', async () => {
+    for (const nit of ['12a45', '-12345', '1234', '1'.repeat(21)]) {
+      expect(() => validarConfigPos({ ...valida, negocio: { nombre: 'x', nit } }, ['BOB', 'USD', 'ARS'])).toThrow(ErrorPos);
+    }
+    expect(validarConfigPos({ ...valida, negocio: { nombre: 'x', nit: '20-12345678-9' } }, ['BOB', 'USD', 'ARS']).negocio.nit).toBe('20-12345678-9');
+    const e = crearEntorno();
+    e.db.poner(`tenants/${T}/pos_config/main`, { config: { ...valida, negocio: { nombre: 'x', nit: 'NIT-VIEJO' } } });
+    expect((await e.db.runTransaction((tx) => leerConfigPos(tx, T, COMERCIAL_REFERENCIA))).negocio.nit).toBe('NIT-VIEJO');
+  });
 });

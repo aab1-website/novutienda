@@ -1,4 +1,4 @@
-import { registrarAuditoria } from '@novutienda/nucleo';
+import { esNitValido, MENSAJE_NIT, registrarAuditoria } from '@novutienda/nucleo';
 import { AccionNoPermitida, PlantillaInvalida } from './errores.js';
 import { rutaPlantilla } from './rutas.js';
 import type { ActorAuditado, DatosNegocio, EjecutorRecibos, PlantillaRecibo } from './tipos.js';
@@ -18,7 +18,7 @@ function textoOpcional(v: unknown, campo: string, max: number): string | undefin
 }
 
 /** Valida y normaliza la plantilla; lanza `PlantillaInvalida`. Rechaza campos desconocidos. */
-export function validarPlantilla(x: unknown): PlantillaRecibo {
+export function validarPlantilla(x: unknown, modo: 'guardar' | 'leer' = 'leer'): PlantillaRecibo {
   if (typeof x !== 'object' || x === null || Array.isArray(x)) throw new PlantillaInvalida('La plantilla debe ser un objeto');
   const o = x as Record<string, unknown>;
   const permitidos = ['logoUrl', 'negocio', 'pie', 'politicaGarantia', 'politicaCambios'];
@@ -31,6 +31,8 @@ export function validarPlantilla(x: unknown): PlantillaRecibo {
   const direccion = textoOpcional(no['direccion'], 'negocio.direccion', 200);
   const telefono = textoOpcional(no['telefono'], 'negocio.telefono', 40);
   const nit = textoOpcional(no['nit'], 'negocio.nit', 40);
+  // El formato estricto rige solo al guardar: los recibos emitidos y las plantillas viejas se leen igual.
+  if (modo === 'guardar' && nit !== undefined && !esNitValido(nit)) throw new PlantillaInvalida(MENSAJE_NIT);
   const negocio: DatosNegocio = {
     nombre: no['nombre'],
     ...(direccion !== undefined && { direccion }),
@@ -74,7 +76,7 @@ export async function guardarPlantilla(
   p: { tenantId: string; actor: ActorAuditado; plantilla: unknown },
 ): Promise<void> {
   if (p.actor.rol === 'caj') throw new AccionNoPermitida('Solo supervisión o administración editan la plantilla');
-  const nueva = validarPlantilla(p.plantilla);
+  const nueva = validarPlantilla(p.plantilla, 'guardar');
   const ruta = rutaPlantilla(p.tenantId);
   await ejecutor.transaccion(async (tx) => {
     const previa = await tx.leer(ruta);
