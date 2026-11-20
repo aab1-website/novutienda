@@ -349,24 +349,28 @@ async function borrarYCerrar(deps: DepsMedios, t: string, subidaId: string): Pro
       const vigente = new Set(leerDocLogo((await tx.get(rutaSitio(t, 'logo'))).data())?.versiones.map((v) => v.ruta));
       const hasta = (await tx.get(rutaSitio(t, 'logoEnSubida'))).data()?.['hasta'];
       const ultima = (await tx.get(rutaSitio(t, 'ultimaReconstruccion'))).data();
-      const estadoPub = (await tx.get(rutaPublicado(t, 'estado'))).data();
-      // La versión de `publicado/estado` también sube con el precio vivo y el logo vivo, sin volver a publicar las fotos: por eso,
-      // además de la reconstrucción posterior, se exige que ninguna copia `publicado/*` siga nombrando las rutas del medio.
-      const nombresPublicos = (actual?.rutasDiferidas ?? []).map((r) => r.slice(r.lastIndexOf('/') + 1));
-      let enUsoPublicado = false;
-      if (actual?.borrarTrasVersion !== undefined && estadoPub !== undefined) {
-        const ids = (clave: string, prefijo: string): string[] => (Array.isArray(estadoPub[clave]) ? (estadoPub[clave] as unknown[]) : []).filter((x): x is string => typeof x === 'string').map((x) => `${prefijo}${x}`);
-        const docs = [...ids('productos', 'producto__'), ...ids('secciones', 'seccion__'), ...ids('carruseles', 'carrusel__'), 'sitio', 'negocio'];
-        for (const d of docs) {
-          const texto = JSON.stringify((await tx.get(rutaPublicado(t, d))).data() ?? {});
-          if (nombresPublicos.some((n) => n !== '' && texto.includes(n))) enUsoPublicado = true;
-        }
-      }
       if (actual?.estado !== 'borrando') return [];
       if (typeof hasta === 'number' && hasta > ahora) return undefined;
       const marca = actual.borrarTrasVersion;
       const reconstruido = ultima?.['estado'] === 'completada' && typeof ultima['version'] === 'number' && marca !== undefined && ultima['version'] > marca;
       const vencioTope = actual.borrarTopeEn !== undefined && ahora >= actual.borrarTopeEn;
+      // La versión de `publicado/estado` también sube con el precio vivo y el logo vivo, sin volver a publicar las fotos: por eso,
+      // con la reconstrucción posterior ya hecha, se exige que ninguna copia `publicado/*` siga nombrando las rutas del medio.
+      // Se comprueba solo si hace falta (estado `borrando`, reconstruido y sin tope vencido) y se corta en la primera coincidencia.
+      let enUsoPublicado = false;
+      if (marca !== undefined && reconstruido && !vencioTope) {
+        const estadoPub = (await tx.get(rutaPublicado(t, 'estado'))).data();
+        const nombresPublicos = (actual.rutasDiferidas ?? []).map((r) => r.slice(r.lastIndexOf('/') + 1)).filter((n) => n !== '');
+        const ids = (clave: string, prefijo: string): string[] => (Array.isArray(estadoPub?.[clave]) ? (estadoPub?.[clave] as unknown[]) : []).filter((x): x is string => typeof x === 'string').map((x) => `${prefijo}${x}`);
+        const docs = estadoPub === undefined ? [] : [...ids('productos', 'producto__'), ...ids('secciones', 'seccion__'), ...ids('carruseles', 'carrusel__'), 'sitio', 'negocio'];
+        for (const d of docs) {
+          const texto = JSON.stringify((await tx.get(rutaPublicado(t, d))).data() ?? {});
+          if (nombresPublicos.some((n) => texto.includes(n))) {
+            enUsoPublicado = true;
+            break;
+          }
+        }
+      }
       if (marca !== undefined && (!reconstruido || enUsoPublicado) && !vencioTope) {
         // Medio borrado con el sitio publicado: el sitio todavía puede usar su copia pública hasta que se reconstruya con una
         // versión posterior (o venza el tope). Se reprograma sin tapar la cola.
