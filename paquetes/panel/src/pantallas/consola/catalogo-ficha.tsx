@@ -3,7 +3,7 @@ import { useEffect, useRef, useState } from 'preact/hooks';
 import { ErrorApi, mensajeDeError } from '../../api/errores.js';
 import { Miniatura } from './miniatura-vista.js';
 import { LIMITES_PANEL, type EstadoFicha, type FichaWeb, type Medio, type ProductoPanel } from '../../api/tipos.js';
-import { Alerta, Area, Boton, BotonConfirmado, Campo, ConCarga, Selector, Seccion, Vacio } from '../../ui/comun.js';
+import { Alerta, Area, Boton, BotonConfirmado, Campo, ConCarga, Seccion, Vacio } from '../../ui/comun.js';
 import { useApp } from '../../ui/contexto.js';
 import { Dialogo } from '../../ui/dialogo.js';
 import { useAvisos } from '../../ui/avisos.js';
@@ -14,7 +14,7 @@ import { Tabla } from '../../ui/tabla.js';
 import { formatoBytes } from '../../util/base64.js';
 import './ficha.css';
 import { claveAlt, revisarFicha, TOPES_FICHA } from './ficha-revision.js';
-import { cumpleFiltro, siguientePaso, textoCambiosSinPublicar, textoQueFalta } from './pasos-ficha.js';
+import { cumpleFiltro, pasosPendientes, siguientePaso, textoCambiosSinPublicar, textoQueFalta } from './pasos-ficha.js';
 import { useSubidas, type Subida } from './subidas-ficha.js';
 
 const ESTADOS: { valor: EstadoFicha; texto: string }[] = [{ valor: 'borrador', texto: 'Borrador' }, { valor: 'publicado', texto: 'Visible en el sitio' }, { valor: 'oculto', texto: 'Oculto' }];
@@ -74,11 +74,13 @@ function FilaSubida({ s, reintentar, otroArchivo }: { s: Subida; reintentar: () 
 interface PropsPanel {
   producto: ProductoPanel;
   modo: ModoPanel;
+  /** El atajo «Mostrar en el sitio» abre la ficha con la opción «Visible en el sitio» ya marcada. */
+  marcarVisible?: boolean;
   alCerrar: () => void;
   alCerrarEnfocar: () => HTMLElement | null;
 }
 
-function PanelFicha({ producto, modo, alCerrar, alCerrarEnfocar }: PropsPanel): JSX.Element {
+function PanelFicha({ producto, modo, marcarVisible = false, alCerrar, alCerrarEnfocar }: PropsPanel): JSX.Element {
   const { api } = useApp();
   const avisos = useAvisos();
   const { confirmarSalida } = useGuardia();
@@ -187,6 +189,12 @@ function PanelFicha({ producto, modo, alCerrar, alCerrarEnfocar }: PropsPanel): 
   const { marcarGuardado } = useCambiosSinGuardar(sucio, [clave]);
   const errores: Readonly<Record<string, string>> = { ...(intento && ficha !== null ? revisarFicha(ficha) : {}), ...(errorSlug === null ? {} : { slug: errorSlug }) };
 
+  const marcada = useRef(false);
+  useEffect(() => {
+    if (!marcarVisible || marcada.current || ficha === null) return;
+    marcada.current = true;
+    if (ficha.estado !== 'publicado') poner({ ...ficha, estado: 'publicado' });
+  });
   useEffect(() => {
     if (pideFoco > 0 && cuerpo.current !== null) enfocarPrimerError(cuerpo.current);
   }, [pideFoco]);
@@ -289,6 +297,17 @@ function PanelFicha({ producto, modo, alCerrar, alCerrarEnfocar }: PropsPanel): 
     const sinAdjuntar = medios.filter((m) => !f.medios.some((x) => x.medioId === m.id));
     return (
       <form class="formulario ficha-formulario" onSubmit={(e) => { e.preventDefault(); guardar(); }} noValidate>
+        <fieldset class="ficha-estado">
+          <legend>En el sitio</legend>
+          <div class="fila">
+            {ESTADOS.map((o) => (
+              <label key={o.valor} class="fila fila-alinear">
+                <input type="radio" name={`estado-${producto.id}`} value={o.valor} checked={f.estado === o.valor} onChange={() => cambiar({ estado: o.valor })} />
+                <span>{o.texto}</span>
+              </label>
+            ))}
+          </div>
+        </fieldset>
         <section class="ficha-bloque" aria-labelledby="ficha-medios-titulo">
           <h3 id="ficha-medios-titulo">Fotos y video</h3>
           <p class="texto-suave">Hasta {LIMITES_PANEL.fotosPorProducto} fotos de 15 MB y {LIMITES_PANEL.videosPorProducto} video de hasta {LIMITES_PANEL.duracionVideoSeg} segundos y 200 MB. La primera foto es la portada. Hay {fotosSubidas} de {LIMITES_PANEL.fotosPorProducto} fotos y {videosSubidos} de {LIMITES_PANEL.videosPorProducto} video.</p>
@@ -358,7 +377,6 @@ function PanelFicha({ producto, modo, alCerrar, alCerrarEnfocar }: PropsPanel): 
         <section class="ficha-bloque ficha-textos" aria-labelledby="ficha-textos-titulo">
           <h3 id="ficha-textos-titulo">Textos de la página</h3>
           <Campo etiqueta="Dirección de la página" valor={f.slug} tope={TOPES_FICHA.slugMax} requerido error={errores['slug']} ayuda="Minúsculas, números y guiones. Ejemplo: televisor-55." onInput={(v) => { setErrorSlug(null); cambiar({ slug: v }); }} />
-          <Selector etiqueta="En el sitio" valor={f.estado} onCambio={(v) => cambiar({ estado: v as EstadoFicha })} opciones={ESTADOS} />
           <Campo etiqueta="Garantía (texto)" valor={f.garantia} tope={TOPES_FICHA.garantia} error={errores['garantia']} onInput={(v) => cambiar({ garantia: v })} />
           <Area etiqueta="Descripción del producto" valor={f.descripcion} filas={5} tope={TOPES_FICHA.descripcion} error={errores['descripcion']} onInput={(v) => cambiar({ descripcion: v })} />
           <Campo etiqueta="Título para buscadores" valor={f.seo.titulo} tope={TOPES_FICHA.seoTitulo} error={errores['seo.titulo']} onInput={(v) => cambiar({ seo: { ...f.seo, titulo: v } })} />
@@ -393,6 +411,7 @@ interface Abierta {
   readonly productoId: string;
   readonly modo: ModoPanel;
   readonly etiqueta: string;
+  readonly marcarVisible?: boolean;
 }
 
 export function PantallaFichas(): JSX.Element {
@@ -434,24 +453,24 @@ export function PantallaFichas(): JSX.Element {
                   {
                     id: 'falta', titulo: 'Qué falta', ordenable: true,
                     valor: (x) => textoQueFalta(fichaDe(x.id)),
-                    celda: (x) => {
-                      const paso = siguientePaso(fichaDe(x.id));
-                      const etiqueta = paso === null ? '' : `${paso.accion} de ${x.nombre}`;
-                      return (
-                        <div class="ficha-falta">
-                          <span>{textoQueFalta(fichaDe(x.id))}</span>
-                          {paso !== null && <Boton chico etiqueta={etiqueta} onClick={() => setAbierta({ productoId: x.id, modo: paso.modo, etiqueta })}>{paso.accion}</Boton>}
-                        </div>
-                      );
-                    },
+                    celda: (x) => <span>{textoQueFalta(fichaDe(x.id))}</span>,
                   },
                 ]}
-                acciones={(x) => (
-                  <div class="fila">
-                    <Boton chico variante="secundario" etiqueta={`Fotos y video de ${x.nombre}`} onClick={() => setAbierta({ productoId: x.id, modo: 'medios', etiqueta: `Fotos y video de ${x.nombre}` })}>Fotos y video</Boton>
-                    <Boton chico variante="secundario" etiqueta={`Editar página de ${x.nombre}`} onClick={() => setAbierta({ productoId: x.id, modo: 'datos', etiqueta: `Editar página de ${x.nombre}` })}>Editar página</Boton>
-                  </div>
-                )}
+                acciones={(x) => {
+                  // Un solo botón por fila: «Mostrar en el sitio» si solo falta la visibilidad y «Editar página» en todos los demás casos. Abre en el
+                  // primer paso que falta (fotos o visibilidad), pero nunca hay dos botones que abran lo mismo.
+                  const ficha = fichaDe(x.id);
+                  const paso = siguientePaso(ficha);
+                  // Solo falta la visibilidad: «Mostrar en el sitio» abre la ficha con «Visible en el sitio» marcado.
+                  const soloVisibilidad = ficha !== undefined && paso?.id === 'visible' && pasosPendientes(ficha).length === 1;
+                  const texto = soloVisibilidad ? 'Mostrar en el sitio' : 'Editar página';
+                  const etiqueta = `${texto} de ${x.nombre}`;
+                  return (
+                    <div class="fila">
+                      <Boton chico variante={ficha === undefined ? 'cta' : 'secundario'} etiqueta={etiqueta} onClick={() => setAbierta({ productoId: x.id, modo: paso?.modo ?? 'datos', etiqueta, marcarVisible: paso?.id === 'visible' })}>{texto}</Boton>
+                    </div>
+                  );
+                }}
               />
               </>
             );
@@ -459,7 +478,7 @@ export function PantallaFichas(): JSX.Element {
         </ConCarga>
       </Seccion>
       {abierta !== null && producto !== undefined && (
-        <PanelFicha key={`${abierta.productoId}-${abierta.modo}`} producto={producto} modo={abierta.modo} alCerrar={() => { setAbierta(null); carga.recargar(); }} alCerrarEnfocar={volverAlBoton} />
+        <PanelFicha key={`${abierta.productoId}-${abierta.modo}`} producto={producto} modo={abierta.modo} marcarVisible={abierta.marcarVisible === true} alCerrar={() => { setAbierta(null); carga.recargar(); }} alCerrarEnfocar={volverAlBoton} />
       )}
     </div>
   );

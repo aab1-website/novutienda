@@ -6,3 +6,10 @@
   .venta-barra { display: flex; align-items: center; justify-content: space-between; gap: 12px; position: fixed; left: 0; right: 0; bottom: 0; z-index: 30; padding: 10px 16px; background: var(--superficie); border-top: 1px solid var(--borde); box-shadow: var(--sombra); font-weight: 600; }
   .terminal { padding-bottom: 72px; }
 }
+
+/* Barra de carritos abiertos (varias ventas a la vez). */
+.barra-carritos { margin-bottom: 12px; }
+.carritos-pestanas { flex-wrap: wrap; gap: 8px; padding: 0; margin: 0 0 8px; list-style: none; }
+.carrito-activo { flex-wrap: wrap; gap: 8px; }
+.estado-guardado { font-size: 0.875rem; }
+.estado-sin-guardar { color: var(--error, #b00020); font-weight: 600; }

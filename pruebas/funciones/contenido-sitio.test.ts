@@ -5,15 +5,16 @@ import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { afterAll, beforeAll, beforeEach, describe, expect, it } from 'vitest';
 import { calcularFirma, verificarFirma } from '@novutienda/nucleo/servidor';
-import { calcularFirmaLocal, cambiarEstado, cerrarRezagados, ejecutar, generarContenido, idsValidos, leerDisponibilidad, normalizarUrl, pedirFirmado, trabajoPendiente } from '../../scripts/contenido-sitio.mjs';
+import { calcularFirmaLocal, cambiarEstado, cerrarCubiertos, cerrarRezagados, ejecutar, generarContenido, idsValidos, leerDisponibilidad, normalizarUrl, pedirFirmado, trabajoPendiente, trabajosPendientes } from '../../scripts/contenido-sitio.mjs';
 
 // Valores de prueba sin aspecto de clave (gitleaks): armados en ejecución.
 const SECRETO = 's'.repeat(24);
 const OTRO = 'o'.repeat(24);
 const TENANT = 'tienda-a';
+type TrabajoCola = { id: string; estado: string; version?: unknown; solicitadaEnMs?: unknown };
 let servidor: Server;
 let url = '';
-let modo: { estado?: number; pendientes?: unknown; productos?: number; sinFirmaValida?: boolean; redirigir?: boolean; disponibilidadEstado?: number; repetido?: boolean; conNegocio?: boolean | undefined } = {};
+let modo: { estado?: number; pendientes?: unknown; productos?: number; sinFirmaValida?: boolean; redirigir?: boolean; disponibilidadEstado?: number; repetido?: boolean; cola?: TrabajoCola[]; conNegocio?: boolean | undefined } = {};
 const peticiones: { metodo: string; ruta: string; cuerpo: string }[] = [];
 
 const leer = (req: IncomingMessage) => new Promise<string>((ok) => { let t = ''; req.on('data', (c) => (t += c)); req.on('end', () => ok(t)); });
@@ -36,6 +37,23 @@ beforeAll(async () => {
       cuerpo: `${req.method}\n${ruta}\n${cuerpo}`, ahoraMs: Date.now(),
     });
     if (!v.ok || modo.sinFirmaValida) return responder(401, { error: 'firma' });
+    if (modo.cola) {
+      const lista = ruta.match(/^\/api\/sitio\/v1\/reconstrucciones\?estado=([a-z_]+)&/);
+      if (lista) {
+        const antiguos = modo.cola.filter((t) => t.estado === lista[1]).sort((a, b) => Number(a.solicitadaEnMs ?? 0) - Number(b.solicitadaEnMs ?? 0)).slice(0, 20);
+        return responder(200, { trabajos: antiguos.map(({ id, version, solicitadaEnMs }) => ({ id, version, solicitadaEnMs })) });
+      }
+      const cambio = ruta.match(/^\/api\/sitio\/v1\/reconstrucciones\/([^/]+)\/estado$/);
+      if (cambio && req.method === 'POST') {
+        const trabajo = modo.cola.find((t) => t.id === cambio[1]);
+        if (!trabajo) return responder(404, {});
+        const nuevo = (JSON.parse(cuerpo) as { estado: string }).estado;
+        const permitido = (trabajo.estado === 'pendiente' && nuevo === 'en_curso') || (trabajo.estado === 'en_curso' && (nuevo === 'completada' || nuevo === 'fallida'));
+        if (!permitido) return responder(409, {});
+        trabajo.estado = nuevo;
+        return responder(200, { repetido: false });
+      }
+    }
     if (modo.estado !== undefined) return responder(modo.estado, { repetido: modo.repetido === true });
     if (ruta.startsWith('/api/sitio/v1/reconstrucciones?')) return responder(200, modo.pendientes ?? { trabajos: [{ id: 'job-1' }, { id: 'job-2' }] });
     if (ruta.endsWith('/estado')) return responder(200, { repetido: false });
@@ -93,6 +111,14 @@ describe('firma local y petición segura', () => {
     expect((await ejecutar(['estado', 'job-1', 'completada', ...args], env, conMapeo, fetchLocal)).codigo).toBe(0);
     // Sin deps tampoco se carga nada: pendiente solo usa la red y la firma local.
     expect((await ejecutar(['pendiente', ...args], env, undefined, fetchLocal)).codigo).toBe(0);
+    const dirContenido = mkdtempSync(join(tmpdir(), 'contenido-sitio-reg-'));
+    try {
+      const archivo = join(dirContenido, 'c.json');
+      writeFileSync(archivo, JSON.stringify({ publicacion: { version: 4 } }));
+      modo.cola = [{ id: 'a-1', estado: 'pendiente', version: 4, solicitadaEnMs: 1 }];
+      expect((await ejecutar(['cubiertos', '--contenido', archivo, '--hasta-ms', '1700000000000', ...args], env, conMapeo, fetchLocal)).codigo).toBe(0);
+      expect((await ejecutar(['cubiertos', '--contenido', archivo, '--hasta-ms', '1700000000000', ...args], env, undefined, fetchLocal)).codigo).toBe(0);
+    } finally { rmSync(dirContenido, { recursive: true, force: true }); }
   });
   it('una respuesta 3xx falla y no se sigue la redirección', async () => {
     modo.redirigir = true;
@@ -524,5 +550,224 @@ describe('generar', () => {
     expect(r.codigo).toBe(0);
     expect(r.salida).toContain('advertencias del mapeo: 2\n  documentos.negocio.portada.titulo[0]\n  documentos.negocio.telefono\n');
     expect(JSON.stringify(r)).not.toContain(valorPrivado);
+  });
+});
+
+describe('cubiertos', () => {
+  let dir = '';
+  const HASTA = 1_700_000_000_000;
+  const HASTA_ARG = String(HASTA);
+  const contenido = (publicacion: unknown, nombre = 'c.json') => { const ruta = join(dir, nombre); writeFileSync(ruta, JSON.stringify({ productos: [], publicacion })); return ruta; };
+  const cli = (ruta: string, extra: string[] = ['--hasta-ms', HASTA_ARG]) => ejecutar(['cubiertos', '--contenido', ruta, ...extra, ...args], env, undefined, fetchLocal, red);
+  const posts = () => peticiones.filter((p) => p.metodo === 'POST').map((p) => ({ id: /reconstrucciones\/([^/]+)\/estado/.exec(p.ruta)![1]!, estado: (JSON.parse(p.cuerpo) as { estado: string }).estado }));
+  const conErrores = (respuestas: Record<string, number>) => ((entrada: string, init?: RequestInit) => {
+    const m = /reconstrucciones\/([^/]+)\/estado/.exec(entrada);
+    const status = m ? respuestas[m[1]!] : undefined;
+    return status !== undefined ? Promise.resolve(new Response('{}', { status })) : fetchLocal(entrada, init);
+  }) as typeof fetch;
+  beforeAll(() => { dir = mkdtempSync(join(tmpdir(), 'contenido-sitio-cub-')); });
+  afterAll(() => rmSync(dir, { recursive: true, force: true }));
+
+  it('incidente del 19/11: diaria-v3 en_curso y publicacion-v4 pendiente; el build v4 cierra la v4 pasando por en_curso', async () => {
+    modo.cola = [
+      { id: 'rec-diaria-v3', estado: 'en_curso', version: 3, solicitadaEnMs: HASTA - 5000 },
+      { id: 'rec-publicacion-v4', estado: 'pendiente', version: 4, solicitadaEnMs: HASTA - 1000 },
+    ];
+    const r = await cli(contenido({ version: 4 }));
+    expect(r).toEqual({ codigo: 0, salida: 'pendientes cubiertos: 1' });
+    expect(posts()).toEqual([{ id: 'rec-publicacion-v4', estado: 'en_curso' }, { id: 'rec-publicacion-v4', estado: 'completada' }]);
+    expect(modo.cola.find((t) => t.id === 'rec-publicacion-v4')!.estado).toBe('completada');
+    expect(modo.cola.find((t) => t.id === 'rec-diaria-v3')!.estado).toBe('en_curso');
+  });
+  it('trabajosPendientes devuelve id, versión y hora, descarta ids inválidos y reintenta ante 502', async () => {
+    modo.cola = [{ id: 'ok-1', estado: 'pendiente', version: 2, solicitadaEnMs: 10 }, { id: '../mal', estado: 'pendiente', version: 2, solicitadaEnMs: 11 }];
+    expect(await trabajosPendientes(base)).toEqual([{ id: 'ok-1', version: 2, solicitadaEnMs: 10 }]);
+    modo = { estado: 502 };
+    await expect(trabajosPendientes({ ...base, fetchFn: fetchLocal })).rejects.toThrow('502');
+    expect(peticiones.filter((p) => p.metodo === 'GET').length).toBeGreaterThanOrEqual(4);
+  });
+  it('no cierra versión mayor, solicitada después de --hasta-ms ni sin version u hora numéricas', async () => {
+    modo.cola = [
+      { id: 'mayor', estado: 'pendiente', version: 5, solicitadaEnMs: HASTA - 1 },
+      { id: 'tarde', estado: 'pendiente', version: 4, solicitadaEnMs: HASTA + 1 },
+      { id: 'sin-version', estado: 'pendiente', solicitadaEnMs: HASTA - 1 },
+      { id: 'sin-hora', estado: 'pendiente', version: 4 },
+      { id: 'texto', estado: 'pendiente', version: '4', solicitadaEnMs: String(HASTA - 1) },
+      { id: 'borde', estado: 'pendiente', version: 4, solicitadaEnMs: HASTA },
+    ];
+    const r = await cli(contenido({ version: 4 }));
+    expect(r).toEqual({ codigo: 0, salida: 'pendientes cubiertos: 1' });
+    expect(posts().map((p) => p.id)).toEqual(['borde', 'borde']);
+    expect(modo.cola.filter((t) => t.estado === 'pendiente').map((t) => t.id).sort()).toEqual(['mayor', 'sin-hora', 'sin-version', 'tarde', 'texto']);
+  });
+  it('409 en en_curso o 404 se omiten sin fallo', async () => {
+    modo.cola = [
+      { id: 'c-1', estado: 'pendiente', version: 1, solicitadaEnMs: 1 },
+      { id: 'c-2', estado: 'pendiente', version: 1, solicitadaEnMs: 2 },
+      { id: 'c-3', estado: 'pendiente', version: 1, solicitadaEnMs: 3 },
+    ];
+    const r = await ejecutar(['cubiertos', '--contenido', contenido({ version: 1 }), '--hasta-ms', HASTA_ARG, ...args], env, undefined, conErrores({ 'c-1': 409, 'c-2': 404 }), red);
+    expect(r).toEqual({ codigo: 0, salida: 'pendientes cubiertos: 1' });
+    expect(modo.cola.find((t) => t.id === 'c-3')!.estado).toBe('completada');
+  });
+  it('500 es fallo, los demás se cierran y el código es 1', async () => {
+    modo.cola = [
+      { id: 'd-1', estado: 'pendiente', version: 1, solicitadaEnMs: 1 },
+      { id: 'd-2', estado: 'pendiente', version: 1, solicitadaEnMs: 2 },
+      { id: 'd-3', estado: 'pendiente', version: 1, solicitadaEnMs: 3 },
+    ];
+    const r = await ejecutar(['cubiertos', '--contenido', contenido({ version: 1 }), '--hasta-ms', HASTA_ARG, ...args], env, undefined, conErrores({ 'd-2': 500 }), red);
+    expect(r.codigo).toBe(1);
+    expect(r.salida).toContain('pendientes cubiertos: 2');
+    expect(r.error).toBe('cubiertos: 1 trabajos no se pudieron cerrar');
+    expect(modo.cola.filter((t) => t.estado === 'completada').map((t) => t.id)).toEqual(['d-1', 'd-3']);
+    expect(JSON.stringify(r)).not.toMatch(/d-\d/);
+  });
+  it('si completada falla con 500, el trabajo queda en_curso y cuenta como fallo', async () => {
+    modo.cola = [{ id: 'e-1', estado: 'pendiente', version: 1, solicitadaEnMs: 1 }];
+    const soloCompletada = ((entrada: string, init?: RequestInit) => (entrada.includes('/estado') && String(init?.body).includes('completada') ? Promise.resolve(new Response('{}', { status: 500 })) : fetchLocal(entrada, init))) as typeof fetch;
+    const r = await cerrarCubiertos({ ...base, fetchFn: soloCompletada }, { version: 1, hastaMs: HASTA });
+    expect(r.fallos).toBe(1);
+    expect(modo.cola[0]!.estado).toBe('en_curso');
+  });
+  it('pagina: más de 20 elegibles se cierran todos en varias rondas', async () => {
+    modo.cola = Array.from({ length: 45 }, (_, i) => ({ id: `p-${i}`, estado: 'pendiente', version: 1, solicitadaEnMs: i + 1 }));
+    const r = await cerrarCubiertos(base, { version: 1, hastaMs: HASTA });
+    expect(r).toEqual({ cerrados: 45, fallos: 0 });
+    expect(modo.cola.every((t) => t.estado === 'completada')).toBe(true);
+  });
+  it('10 rondas agotadas con elegibles todavía presentes cuentan como un fallo', async () => {
+    let k = 0;
+    const siempreNuevos = ((entrada: string) => (entrada.includes('estado=pendiente')
+      ? Promise.resolve(new Response(JSON.stringify({ trabajos: [{ id: `n-${k++}`, version: 1, solicitadaEnMs: 1 }] }), { status: 200 }))
+      : Promise.resolve(new Response('{}', { status: 200 }))) ) as typeof fetch;
+    const r = await cerrarCubiertos({ ...base, fetchFn: siempreNuevos }, { version: 1, hastaMs: HASTA });
+    expect(r.cerrados).toBe(10);
+    expect(r.fallos).toBe(1);
+  });
+  it('contenido sin publicacion.version entero: código 0, 0 cerrados y ninguna petición', async () => {
+    modo.cola = [{ id: 'f-1', estado: 'pendiente', version: 1, solicitadaEnMs: 1 }];
+    for (const publicacion of [undefined, {}, { version: '4' }, { version: -1 }, { version: 1.5 }]) {
+      const r = await cli(contenido(publicacion));
+      expect(r).toEqual({ codigo: 0, salida: 'pendientes cubiertos: 0 (el contenido no declara versión)' });
+    }
+    expect(peticiones).toHaveLength(0);
+    expect(modo.cola[0]!.estado).toBe('pendiente');
+  });
+  it('versión 0 es válida', async () => {
+    modo.cola = [{ id: 'g-1', estado: 'pendiente', version: 0, solicitadaEnMs: 1 }];
+    expect((await cli(contenido({ version: 0 }))).salida).toBe('pendientes cubiertos: 1');
+  });
+  it('archivo inexistente o JSON inválido: código 1 sin valores; argumentos faltantes o mal formados: código 2', async () => {
+    const malo = join(dir, 'malo.json');
+    writeFileSync(malo, `{ no es json ${SECRETO}`);
+    for (const ruta of [join(dir, 'no-existe.json'), malo]) {
+      const r = await cli(ruta);
+      expect(r.codigo).toBe(1);
+      expect(r.error).toBe('cubiertos: no se pudo leer --contenido (inexistente o JSON inválido)');
+      expect(JSON.stringify(r)).not.toContain(SECRETO);
+    }
+    const ok = contenido({ version: 4 });
+    expect((await ejecutar(['cubiertos', '--hasta-ms', HASTA_ARG, ...args], env, undefined, fetchLocal, red)).codigo).toBe(2);
+    expect((await ejecutar(['cubiertos', '--contenido', ok, ...args], env, undefined, fetchLocal, red)).codigo).toBe(2);
+    for (const mal of ['123', '17000000000000', 'abc', '1700000000000x', '-170000000000']) {
+      expect((await cli(ok, ['--hasta-ms', mal])).codigo).toBe(2);
+    }
+    expect(peticiones).toHaveLength(0);
+  });
+  it('la salida y el error no traen ids ni versiones', async () => {
+    modo.cola = [{ id: 'secreto-id-77', estado: 'pendiente', version: 4, solicitadaEnMs: 1 }, { id: 'otro-id-88', estado: 'pendiente', version: 4, solicitadaEnMs: 2 }];
+    const ok = await cli(contenido({ version: 4 }));
+    expect(ok.codigo).toBe(0);
+    expect(JSON.stringify(ok)).not.toMatch(/id-\d|rec-|-v4/);
+    modo.cola = [{ id: 'secreto-id-99', estado: 'pendiente', version: 4, solicitadaEnMs: 1 }];
+    const fallo = await ejecutar(['cubiertos', '--contenido', contenido({ version: 4 }), '--hasta-ms', HASTA_ARG, ...args], env, undefined, conErrores({ 'secreto-id-99': 500 }), red);
+    expect(fallo.codigo).toBe(1);
+    expect(JSON.stringify(fallo)).not.toMatch(/id-\d/);
+    expect(JSON.stringify(fallo)).not.toContain(SECRETO);
+  });
+});
+
+describe('causas de la falla (generar --causas y estado fallida)', () => {
+  let dir = '';
+  const AVISO = 'estado: --causas inexistente, de más de 8 KB o no es una lista JSON; se envía la transición sin causas';
+  const PRIVADO = 'prod-privado-77';
+  const modoDe = (ruta: string): number => { const fd = openSync(ruta, 'r'); try { return fstatSync(fd).mode & 0o777; } finally { closeSync(fd); } };
+  const conErrorDeMapeo = (extra: Record<string, unknown>) => ({
+    calcularFirma,
+    mapear: () => { throw Object.assign(new Error('x'), { errores: [`documentos.producto__${PRIVADO}.nombre: requerido`], ...extra }); },
+  });
+  const cuerposEstado = () => peticiones.filter((p) => p.metodo === 'POST').map((p) => JSON.parse(p.cuerpo) as Record<string, unknown>);
+  beforeAll(() => { dir = mkdtempSync(join(tmpdir(), 'contenido-sitio-causas-')); });
+  afterAll(() => rmSync(dir, { recursive: true, force: true }));
+
+  it('generar --causas escribe solo codigo, productoId y mercado (máximo 20) en modo 0600 y no imprime ids ni causas', async () => {
+    const causas = Array.from({ length: 25 }, (_, i) => ({ codigo: `c${i}`, productoId: PRIVADO, mercado: 'bo', detalle: 'no-debe-ir', otro: 1 }));
+    const archivo = join(dir, 'causas-1.json');
+    const salida = join(dir, 'salida-1.json');
+    const r = await ejecutar(['generar', '--salida', salida, '--causas', archivo, ...args], env, conErrorDeMapeo({ causas }), fetchLocal, red);
+    expect(r.codigo).toBe(1);
+    const escritas = JSON.parse(readFileSync(archivo, 'utf8')) as unknown[];
+    expect(escritas).toEqual(causas.slice(0, 20).map(({ codigo, productoId, mercado }) => ({ codigo, productoId, mercado })));
+    expect(modoDe(archivo)).toBe(0o600);
+    expect(existsSync(salida)).toBe(false);
+    const visible = JSON.stringify(r) + avisos.join('\n');
+    expect(visible).not.toContain(PRIVADO);
+    expect(visible).not.toContain('c0"');
+    expect(visible).not.toContain('no-debe-ir');
+  });
+  it('sin causas en el error escribe la causa genérica', async () => {
+    const archivo = join(dir, 'causas-2.json');
+    const r = await ejecutar(['generar', '--salida', join(dir, 's2.json'), '--causas', archivo, ...args], env, conErrorDeMapeo({}), fetchLocal, red);
+    expect(r.codigo).toBe(1);
+    expect(JSON.parse(readFileSync(archivo, 'utf8'))).toEqual([{ codigo: 'contenido_invalido' }]);
+  });
+  it('ante otro fallo (red) no escribe nada y borra un archivo previo', async () => {
+    const archivo = join(dir, 'causas-3.json');
+    writeFileSync(archivo, '[{"codigo":"viejo"}]');
+    const sinRed = (async () => { throw new Error('red'); }) as unknown as typeof fetch;
+    const r = await ejecutar(['generar', '--salida', join(dir, 's3.json'), '--causas', archivo, ...args], env, deps, sinRed, red);
+    expect(r.codigo).toBe(1);
+    expect(existsSync(archivo)).toBe(false);
+  });
+  it('estado fallida --etapa --causas envía etapa y exactamente las causas del archivo', async () => {
+    const archivo = join(dir, 'causas-4.json');
+    const causas = [{ codigo: 'a', productoId: 'p1', mercado: 'bo' }, { codigo: 'b' }];
+    writeFileSync(archivo, JSON.stringify(causas));
+    const r = await ejecutar(['estado', 'job-1', 'fallida', '--etapa', 'generar', '--causas', archivo, ...args], env, undefined, fetchLocal, red);
+    expect(r.codigo).toBe(0);
+    expect(cuerposEstado()).toEqual([{ tenantId: TENANT, estado: 'fallida', etapa: 'generar', causas }]);
+  });
+  it('archivo inexistente, de más de 8 KB o que no es lista: envía sin causas y avisa sin el contenido', async () => {
+    const grande = join(dir, 'grande.json');
+    writeFileSync(grande, JSON.stringify([{ codigo: 'x'.repeat(9000) }]));
+    const objeto = join(dir, 'objeto.json');
+    writeFileSync(objeto, `{"codigo":"${PRIVADO}"}`);
+    for (const ruta of [join(dir, 'no-existe.json'), grande, objeto]) {
+      peticiones.length = 0; avisos.length = 0;
+      const r = await ejecutar(['estado', 'job-1', 'fallida', '--etapa', 'build', '--causas', ruta, ...args], env, undefined, fetchLocal, red);
+      expect(r.codigo).toBe(0);
+      expect(cuerposEstado()).toEqual([{ tenantId: TENANT, estado: 'fallida', etapa: 'build' }]);
+      expect(avisos).toEqual([AVISO]);
+      expect(avisos.join() + JSON.stringify(r)).not.toContain(PRIVADO);
+    }
+  });
+  it('código 2: etapa inválida, --etapa o --causas con otro estado, y --causas vacío', async () => {
+    const archivo = join(dir, 'causas-5.json');
+    writeFileSync(archivo, '[{"codigo":"a"}]');
+    const casos = [
+      ['estado', 'job-1', 'fallida', '--etapa', 'inventada'],
+      ['estado', 'job-1', 'completada', '--etapa', 'build'],
+      ['estado', 'job-1', 'en_curso', '--causas', archivo],
+      ['estado', 'job-1', 'fallida', '--etapa', 'build', '--causas', ''],
+      ['generar', '--salida', join(dir, 's5.json'), '--causas', ''],
+    ];
+    for (const c of casos) expect((await ejecutar([...c, ...args], env, deps, fetchLocal, red)).codigo, c.join(' ')).toBe(2);
+    expect(peticiones).toHaveLength(0);
+  });
+  it('estado fallida sin --etapa sigue funcionando', async () => {
+    const r = await ejecutar(['estado', 'job-1', 'fallida', ...args], env, undefined, fetchLocal, red);
+    expect(r.codigo).toBe(0);
+    expect(cuerposEstado()).toEqual([{ tenantId: TENANT, estado: 'fallida' }]);
   });
 });

@@ -7,7 +7,7 @@ import { esTenantIdValido } from '@novutienda/nucleo';
 import type { Entorno } from './entorno.js';
 import { depsMedios } from './llamadas/medios.js';
 
-const RUTA_ORIGINAL = /^tenants\/([a-z0-9][a-z0-9-]{0,62})\/privado\/originales\/(_negocio|[a-z0-9][a-z0-9-]{1,59})\/([A-Za-z0-9_-]{8,40})$/;
+const RUTA_ORIGINAL = /^tenants\/([a-z0-9][a-z0-9-]{0,62})\/privado\/originales\/(_negocio|_portada|[a-z0-9][a-z0-9-]{1,59})\/([A-Za-z0-9_-]{8,40})$/;
 
 export type ResultadoSubida = 'ignorada' | 'sin-reserva' | 'sin-usuario' | 'finalizada' | 'rechazada' | 'modulo-apagado';
 

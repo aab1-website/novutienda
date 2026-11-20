@@ -28,8 +28,8 @@ const montar = async (rol: Rol, conConteo: boolean): Promise<Entorno> => {
 async function cobrarEfectivo(u: ReturnType<typeof userEvent.setup>, monto: string): Promise<void> {
   await u.click(screen.getByRole('button', { name: 'Cobrar' }));
   await screen.findByRole('heading', { name: 'Cobro' });
-  await u.clear(campo(/Monto a aplicar/));
-  await u.type(campo(/Monto a aplicar/), monto);
+  await u.clear(campo(/Monto que paga con este medio/));
+  await u.type(campo(/Monto que paga con este medio/), monto);
   await u.type(campo(/Efectivo recibido/), '100000');
 }
 

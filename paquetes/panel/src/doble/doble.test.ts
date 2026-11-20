@@ -1,3 +1,4 @@
+import { mensajeCategoriaInvalida, mensajeCostoSobreTope, mensajeGuardadoInvalido } from '@novutienda/nucleo';
 import { describe, expect, it } from 'vitest';
 import { AHORA, crearEntorno, uuid } from '../ayuda-pruebas.js';
 import { archivoExcelDoble } from './inventario/importacion.js';
@@ -250,6 +251,158 @@ describe('doble: descuentos y aprobaciones', () => {
   });
 });
 
+describe('doble: carritos guardados', () => {
+  const contenidoTv = { mercadoId: 'BO', moneda: 'BOB', lineas: [{ productoId: 'tv-55', almacenId: 'tienda', cantidad: 1, series: ['TV55-001'] }] };
+  async function conCarrito() {
+    const ctx = await conTurno();
+    const carritoId = uuid();
+    const k = await ctx.e.api.llamar('crearCarrito', { carritoId });
+    return { ...ctx, carritoId, k };
+  }
+  it('crea idempotente, etiqueta por omisión, índice en el turno y lista los propios', async () => {
+    const { e, carritoId, k } = await conCarrito();
+    expect(k).toMatchObject({ estado: 'abierto', version: 1, etiqueta: 'Cliente 1', requestId: carritoId });
+    expect(await e.api.llamar('crearCarrito', { carritoId })).toEqual(k);
+    const dos = await e.api.llamar('crearCarrito', { carritoId: uuid() });
+    expect(dos.etiqueta).toBe('Cliente 2');
+    expect((await e.api.llamar('misCarritos', {})).map((x) => x.carritoId)).toContain(carritoId);
+    expect((await e.api.llamar('turnoActual', {}))?.carritosAbiertos).toHaveLength(2);
+  });
+  it('tope de 10 abiertos por turno y no hay carrito sin turno', async () => {
+    const { e } = await conTurno();
+    for (let i = 0; i < 10; i++) await e.api.llamar('crearCarrito', { carritoId: uuid() });
+    expect((await falla(e.api.llamar('crearCarrito', { carritoId: uuid() }))).detalle.codigo).toBe('limite-carritos');
+    expect((await falla(crearEntorno('caj').api.llamar('crearCarrito', { carritoId: uuid() }))).detalle.codigo).toBe('sin-turno');
+  });
+  it('guardar sube la versión; versión vieja da conflicto con el carrito vigente', async () => {
+    const { e, carritoId } = await conCarrito();
+    const g = await e.api.llamar('guardarCarrito', { carritoId, version: 1, contenido: contenidoTv });
+    expect(g.version).toBe(2);
+    expect(g.contenido?.lineas).toHaveLength(1);
+    const err = await falla(e.api.llamar('guardarCarrito', { carritoId, version: 1, etiqueta: 'Otro' }));
+    expect(err.detalle.codigo).toBe('carrito-conflicto');
+    expect(err.detalle.carrito?.version).toBe(2);
+  });
+  it('un carrito ajeno no se guarda; sup cancela con motivo y el cajero no cancela ajenos', async () => {
+    const { e, carritoId } = await conCarrito();
+    e.como('adm');
+    expect((await falla(e.api.llamar('guardarCarrito', { carritoId, version: 1, etiqueta: 'x' }))).detalle.codigo).toBe('carrito-ajeno');
+    expect((await falla(e.api.llamar('cancelarCarrito', { carritoId, motivo: '  ' }))).detalle.codigo).toBe('entrada-invalida');
+    const c = await e.api.llamar('cancelarCarrito', { carritoId, motivo: 'Abandonado' });
+    expect(c).toMatchObject({ estado: 'cancelado', motivoCancelacion: 'Abandonado', canceladoPor: 'u-adm' });
+    expect(c.contenido).toBeUndefined();
+    e.como('caj');
+    expect((await e.api.llamar('turnoActual', {}))?.carritosAbiertos).toEqual([]);
+    expect((await falla(e.api.llamar('guardarCarrito', { carritoId, version: 3, etiqueta: 'x' }))).detalle.codigo).toBe('carrito-cerrado');
+  });
+  it('el cierre normal se bloquea con carritos-abiertos; el forzado los cancela', async () => {
+    const { e, turnoId, carritoId } = await conCarrito();
+    await e.api.llamar('guardarCarrito', { carritoId, version: 1, contenido: contenidoTv });
+    const err = await falla(e.api.llamar('cerrarTurno', { turnoId, contado: { BOB: 10000 } }));
+    expect(err.detalle.codigo).toBe('carritos-abiertos');
+    expect(err.detalle.carritos).toEqual([{ carritoId, etiqueta: 'Cliente 1' }]);
+    e.como('adm');
+    await e.api.llamar('cerrarTurnoForzado', { turnoId, contado: { BOB: 10000 }, motivo: 'Fin de jornada' });
+    expect((await e.api.llamar('listarAuditoria', { accion: 'pos.carrito.cancelar_forzado' })).length).toBe(1);
+    e.como('caj');
+    expect(await e.api.llamar('misCarritos', {})).toEqual([]);
+  });
+  it('confirmarVenta con carrito lo cierra sin contenido; versión vieja da conflicto', async () => {
+    const { e, carritoId } = await conCarrito();
+    await e.api.llamar('guardarCarrito', { carritoId, version: 1, contenido: contenidoTv });
+    const base = { requestId: carritoId, carrito: carritoTv(), pagos: efectivo(313200) };
+    expect((await falla(e.api.llamar('confirmarVenta', { ...base, carritoId, carritoVersion: 1 }))).detalle.codigo).toBe('carrito-conflicto');
+    const r = await e.api.llamar('confirmarVenta', { ...base, carritoId, carritoVersion: 2 });
+    expect(r.venta.ventaId).toBe(carritoId);
+    expect(await e.api.llamar('misCarritos', {})).toEqual([]);
+    expect((await e.api.llamar('turnoActual', {}))?.carritosAbiertos).toEqual([]);
+    expect((await falla(e.api.llamar('guardarCarrito', { carritoId, version: 3, etiqueta: 'x' }))).detalle.codigo).toBe('carrito-cerrado');
+  });
+  it('una aprobación ligada a otro carrito se rechaza; una sin carrito no sirve con carrito', async () => {
+    const { e, carritoId } = await conCarrito();
+    const otro = uuid();
+    await e.api.llamar('crearCarrito', { carritoId: otro });
+    const aprobacionId = uuid();
+    await e.api.llamar('solicitarAprobacion', { aprobacionId, solicitud: { tipo: 'descuento', moneda: 'BOB', monto: 20000, motivo: 'Rebaja', carritoId: otro } });
+    e.como('sup');
+    await e.api.llamar('resolverAprobacion', { aprobacionId, decision: 'aprobar' });
+    e.como('caj');
+    const carrito = carritoTv({ descuento: { monto: 20000, motivo: 'Rebaja' } });
+    const err = await falla(e.api.llamar('confirmarVenta', { requestId: carritoId, carrito, pagos: efectivo(293200), aprobacionId, carritoId, carritoVersion: 1 }));
+    expect(err.detalle.codigo).toBe('aprobacion-no-coincide');
+    const ok = await e.api.llamar('confirmarVenta', { requestId: otro, carrito, pagos: efectivo(293200), aprobacionId, carritoId: otro, carritoVersion: 1 });
+    expect(ok.venta.descuento?.aprobacionId).toBe(aprobacionId);
+  });
+});
+
+describe('doble: carritos, mismas comprobaciones que el servidor', () => {
+  const base = { mercadoId: 'BO', moneda: 'BOB' };
+  const linea = (extra: Record<string, unknown> = {}) => ({ productoId: 'tv-55', almacenId: 'tienda', cantidad: 1, series: [], ...extra });
+  it('rechaza el contenido que el servidor rechaza', async () => {
+    const { e, carritoId } = await (async () => {
+      const ctx = await conTurno();
+      const carritoId = uuid();
+      await ctx.e.api.llamar('crearCarrito', { carritoId });
+      return { ...ctx, carritoId };
+    })();
+    const malos: [Record<string, unknown>, string][] = [
+      [{ ...base, lineas: [linea({ productoId: 'a/b' })] }, 'entrada-invalida'],
+      [{ ...base, lineas: [linea({ productoId: 'p'.repeat(129) })] }, 'entrada-invalida'],
+      [{ ...base, lineas: [linea({ almacenId: 'bodega-x' })] }, 'entrada-invalida'],
+      [{ ...base, lineas: [linea({ cantidad: 100_001 })] }, 'entrada-invalida'],
+      [{ ...base, lineas: [linea({ series: [''] })] }, 'series-invalidas'],
+      [{ ...base, lineas: [linea({ series: ['x'.repeat(101)] })] }, 'series-invalidas'],
+      [{ ...base, lineas: [linea({ series: 'S1' })] }, 'series-invalidas'],
+      [{ ...base, lineas: [linea()], cliente: { nombre: 'n'.repeat(101) } }, 'entrada-invalida'],
+      [{ ...base, lineas: [linea()], cliente: { nombre: 'Ana', telefono: '7'.repeat(31) } }, 'entrada-invalida'],
+      [{ ...base, lineas: [linea()], aprobacionDescuentoId: 'no-uuid' }, 'entrada-invalida'],
+      [{ ...base, lineas: [linea()], solicitudCreditoId: 'no-uuid' }, 'entrada-invalida'],
+    ];
+    for (const [contenido, codigo] of malos) {
+      const err = await falla(e.api.llamar('guardarCarrito', { carritoId, version: 1, contenido: contenido as never }));
+      expect(err.detalle.codigo).toBe(codigo);
+    }
+    const ok = await e.api.llamar('guardarCarrito', { carritoId, version: 1, contenido: { ...base, lineas: [linea()], cliente: { nombre: 'Ana', telefono: '70000000' } } as never });
+    expect(ok.version).toBe(2);
+  });
+  it('choques con una venta existente, como en el servidor', async () => {
+    const { e } = await conTurno();
+    const id = uuid();
+    await e.api.llamar('confirmarVenta', { requestId: id, carrito: carritoTv(), pagos: efectivo(313200) });
+    expect((await falla(e.api.llamar('crearCarrito', { carritoId: id }))).detalle.codigo).toBe('request-en-uso');
+    const err = await falla(e.api.llamar('confirmarVenta', { requestId: id, carrito: carritoTv(), pagos: efectivo(313200), carritoId: id, carritoVersion: 1 }));
+    expect(err.detalle.codigo).toBe('request-en-uso');
+    expect((await e.api.llamar('confirmarVenta', { requestId: id, carrito: carritoTv(), pagos: efectivo(313200) })).repetida).toBe(true);
+  });
+  it('la supervisión devuelve los carritos resumidos, sin cliente, teléfono ni series', async () => {
+    const { e, carritoId } = await (async () => {
+      const ctx = await conTurno();
+      const carritoId = uuid();
+      await ctx.e.api.llamar('crearCarrito', { carritoId });
+      return { ...ctx, carritoId };
+    })();
+    await e.api.llamar('guardarCarrito', { carritoId, version: 1, contenido: { ...base, lineas: [linea({ cantidad: 2, series: ['S1', 'S2'] })], cliente: { nombre: 'Ana', telefono: '70000000' } } as never });
+    e.como('sup');
+    const r = (await e.api.transporte.invocar('pos', { accion: 'supervision', tenantId: 'demo' })) as { carritos: Record<string, unknown>[] };
+    expect(r.carritos).toHaveLength(1);
+    expect(Object.keys(r.carritos[0] ?? {}).sort()).toEqual(['actualizadoEnMs', 'antiguedadMs', 'cajeroUid', 'carritoId', 'creadoEnMs', 'etiqueta', 'lineas', 'unidades'].sort());
+    expect(r.carritos[0]).toMatchObject({ carritoId, lineas: 1, unidades: 2 });
+    expect(JSON.stringify(r.carritos)).not.toMatch(/Ana|70000000|S1/);
+  });
+  it('carritosSupervision traduce pos.supervision: los carritos del turno, o vacío si no hay turno', async () => {
+    const { e, carritoId } = await (async () => {
+      const ctx = await conTurno();
+      const carritoId = uuid();
+      await ctx.e.api.llamar('crearCarrito', { carritoId });
+      return { ...ctx, carritoId };
+    })();
+    e.como('sup');
+    const r = await e.api.llamar('carritosSupervision', {});
+    expect(r.map((k) => k.carritoId)).toEqual([carritoId]);
+    expect(await crearEntorno('sup').api.llamar('carritosSupervision', {})).toEqual([]);
+  });
+});
+
 describe('doble: crédito, caja y anulaciones', () => {
   it('el crédito exige deudor y, si vende un vendedor, la aprobación de crédito', async () => {
     const { e } = await conTurno();
@@ -346,10 +499,21 @@ describe('doble: inventarios', () => {
   it('ingreso con series crea las unidades; repetir una serie falla; sin series en un producto con serie falla', async () => {
     const e = crearEntorno('sup');
     await e.api.llamar('ingresar', { operacionId: uuid(), ubicacionId: 'deposito-2', lineas: [{ productoId: 'cel-a1', cantidad: 2, series: ['N1', 'N2'] }] });
-    expect((await e.api.llamar('buscarSerie', { serie: 'n1' }))[0]?.ubicacionId).toBe('deposito-2');
+    expect((await e.api.llamar('buscarSerie', { serie: 'N1' }))[0]?.ubicacionId).toBe('deposito-2');
     expect((await falla(e.api.llamar('ingresar', { operacionId: uuid(), ubicacionId: 'tienda', lineas: [{ productoId: 'cel-a1', cantidad: 1, series: ['N1'] }] }))).detalle.codigo).toBe('estado-invalido');
     expect((await falla(e.api.llamar('ingresar', { operacionId: uuid(), ubicacionId: 'tienda', lineas: [{ productoId: 'cel-a1', cantidad: 1 }] }))).detalle.codigo).toBe('entrada-invalida');
     expect(await e.api.llamar('buscarSerie', { serie: '  ' })).toEqual([]);
+  });
+  it('buscarSerie: exacta por defecto; porInicio solo sup y adm, desde 4 caracteres y con 10 como máximo', async () => {
+    const e = crearEntorno('sup');
+    const series = Array.from({ length: 12 }, (_, i) => `ZZ-${String(i + 1).padStart(3, '0')}`);
+    await e.api.llamar('ingresar', { operacionId: uuid(), ubicacionId: 'tienda', lineas: [{ productoId: 'cel-a1', cantidad: 12, series }] });
+    expect(await e.api.llamar('buscarSerie', { serie: 'ZZ-00' })).toEqual([]);
+    expect(await e.api.llamar('buscarSerie', { serie: 'ZZ-001' })).toHaveLength(1);
+    expect(await e.api.llamar('buscarSerie', { serie: 'zz-001' })).toHaveLength(0);
+    expect(await e.api.llamar('buscarSerie', { serie: 'ZZ-0', porInicio: true })).toHaveLength(10);
+    expect((await falla(e.api.llamar('buscarSerie', { serie: 'ZZ-', porInicio: true }))).detalle.codigo).toBe('entrada-invalida');
+    expect((await falla(crearEntorno('caj').api.llamar('buscarSerie', { serie: 'ZZ-001', porInicio: true }))).detalle.codigo).toBe('no-autorizado');
   });
   it('traspaso mueve stock y series; origen igual a destino o sin stock falla', async () => {
     const e = crearEntorno('sup');
@@ -437,7 +601,7 @@ describe('doble: inventarios', () => {
   });
   it('productos: alta con tope de 200, SKU único, conSerie inmutable tras un movimiento; CSV sin costo para sup', async () => {
     const e = crearEntorno('adm');
-    const nuevo = { id: 'mouse-1', nombre: 'Mouse', categoria: 'Accesorios', sku: 'MOUSE-1', precioUSD: { bo: 1000, ar: 1100 }, costoUSD: 500 };
+    const nuevo = { id: 'mouse-1', nombre: 'Mouse', categoria: 'accesorios', sku: 'MOUSE-1', precioUSD: { bo: 1000, ar: 1100 }, costoUSD: 500 };
     await e.api.llamar('crearProducto', { operacionId: uuid(), producto: nuevo });
     expect((await falla(e.api.llamar('crearProducto', { operacionId: uuid(), producto: nuevo }))).detalle.codigo).toBe('estado-invalido');
     expect((await falla(e.api.llamar('crearProducto', { operacionId: uuid(), producto: { ...nuevo, id: 'Malo' } }))).detalle.codigo).toBe('entrada-invalida');
@@ -452,14 +616,14 @@ describe('doble: inventarios', () => {
   });
   it('el CSV de exportación neutraliza celdas que empiezan con = + - @', async () => {
     const e = crearEntorno('adm');
-    await e.api.llamar('crearProducto', { operacionId: uuid(), producto: { id: 'formula-1', nombre: '=HYPERLINK("x")', categoria: '+cmd', sku: 'F-1', precioUSD: { bo: 100, ar: 100 } } });
+    await e.api.llamar('crearProducto', { operacionId: uuid(), producto: { id: 'formula-1', nombre: '=HYPERLINK("x")', categoria: 'cmd', marca: '+cmd', sku: 'F-1', precioUSD: { bo: 100, ar: 100 } } });
     const { csv } = await e.api.llamar('exportarProductosCsv', {});
     expect(csv).toContain(`"'=HYPERLINK(""x"")"`);
     expect(csv).toContain("'+cmd");
   });
   it('importación CSV: crea productos, rechaza ids repetidos y filas fuera de rango', async () => {
     const e = crearEntorno('adm');
-    const csv = 'id,nombre,categoria,sku,precioUSDbo,precioUSDar\r\nnuevo-1,Nuevo,Cat,N-1,1000,1100\r\n';
+    const csv = 'id,nombre,categoria,sku,precioUSDbo,precioUSDar\r\nnuevo-1,Nuevo,cat,N-1,1000,1100\r\n';
     const r = await e.api.llamar('importarProductosCsv', { operacionId: uuid(), csv });
     expect(r).toMatchObject({ completa: true, creados: 1, actualizados: 0, omitidas: 0, lotes: { total: 1, aplicados: 1 }, productos: ['nuevo-1'] });
     expect((await e.api.llamar('listarProductos', {})).find((p) => p.id === 'nuevo-1')?.precioUSD).toEqual({ bo: 1000, ar: 1100 });
@@ -470,7 +634,7 @@ describe('doble: inventarios', () => {
   });
   it('importación: la simulación marca errores por fila y columna; una fila nueva sin SKU es error; el stock se ignora', async () => {
     const e = crearEntorno('adm');
-    const csv = 'id,nombre,categoria,sku,precioBO,precioAR,stock\r\nok-1,Uno,Cat,S1,10.50,11,50\r\nMAL ID,Dos,Cat,S2,1,1,1\r\nsin-sku,Tres,Cat,,1,1,0\r\ntv-55,Televisor nuevo nombre,,,500,520,0\r\ncable-hdmi,Cable HDMI 2 m,,,,,\r\n';
+    const csv = 'id,nombre,categoria,sku,precioBO,precioAR,stock\r\nok-1,Uno,cat,S1,10.50,11,50\r\nMAL ID,Dos,cat,S2,1,1,1\r\nsin-sku,Tres,cat,,1,1,0\r\ntv-55,Televisor nuevo nombre,,,500,520,0\r\ncable-hdmi,Cable HDMI 2 m,,,,,\r\n';
     const sim = await e.api.llamar('simularImportacionProductos', { csv });
     expect(sim.resumen).toEqual({ crear: 1, actualizar: 1, sinCambios: 1, errores: 2 });
     expect(sim.columnasIgnoradas[0]).toContain('el CSV no modifica el stock');
@@ -494,7 +658,7 @@ describe('doble: inventarios', () => {
   });
   it('importación: omitirErrores exige lineasOmitidas y, si no coinciden con la simulación nueva, no escribe nada y devuelve desactualizada', async () => {
     const e = crearEntorno('adm');
-    const csv = 'id,nombre,categoria,sku\r\nok-1,Uno,Cat,S1\r\nMAL ID,Dos,Cat,S2\r\n';
+    const csv = 'id,nombre,categoria,sku\r\nok-1,Uno,cat,S1\r\nMAL ID,Dos,cat,S2\r\n';
     const sin = await falla(e.api.llamar('importarProductosCsv', { operacionId: uuid(), csv, omitirErrores: true } as never));
     expect(sin.detalle.codigo).toBe('entrada-invalida');
     expect(sin.codigoHttps).toBe('invalid-argument');
@@ -520,14 +684,14 @@ describe('doble: inventarios', () => {
   });
   it('importación: carga inicial admite stock; sin ella, las columnas de stock se rechazan', async () => {
     const e = crearEntorno('adm');
-    const csv = 'id,nombre,categoria,sku,stockTienda\r\ncarga-1,Uno,Cat,C1,7\r\n';
+    const csv = 'id,nombre,categoria,sku,stockTienda\r\ncarga-1,Uno,cat,C1,7\r\n';
     expect((await falla(e.api.llamar('simularImportacionProductos', { csv }))).detalle.codigo).toBe('entrada-invalida');
     await e.api.llamar('importarProductosCsv', { operacionId: uuid(), csv, cargaInicial: true });
     expect((await e.api.llamar('listarProductos', {})).find((p) => p.id === 'carga-1')?.existencias.tienda).toBe(7);
   });
   it('importación: acepta archivo Excel y CSV en base64; exige uno solo y solo el administrador importa', async () => {
     const e = crearEntorno('adm');
-    const hoja = 'id,nombre,categoria,sku\r\nxl-1,Desde Excel,Cat,XL1\r\n';
+    const hoja = 'id,nombre,categoria,sku\r\nxl-1,Desde Excel,cat,XL1\r\n';
     const sim = await e.api.llamar('simularImportacionProductos', { archivo: archivoExcelDoble(hoja) });
     expect(sim.resumen.crear).toBe(1);
     expect(sim.filas[0]?.advertencias[0]).toContain('a consultar');
@@ -542,7 +706,7 @@ describe('doble: inventarios', () => {
   it('importación por tandas: si una tanda falla el resultado es incompleto y se retoma con el mismo operacionId', async () => {
     const e = crearEntorno('adm');
     e.api.estado.importacion = { filasPorTanda: 1, fallaEnTanda: 2 };
-    const csv = 'id,nombre,categoria,sku\r\nlote-1,Uno,Cat,L1\r\nlote-2,Dos,Cat,L2\r\nlote-3,Tres,Cat,L3\r\n';
+    const csv = 'id,nombre,categoria,sku\r\nlote-1,Uno,cat,L1\r\nlote-2,Dos,cat,L2\r\nlote-3,Tres,cat,L3\r\n';
     const operacionId = uuid();
     const parcial = await e.api.llamar('importarProductosCsv', { operacionId, csv });
     expect(parcial).toMatchObject({ completa: false, creados: 1, lotes: { total: 3, aplicados: 1 }, productos: ['lote-1'] });
@@ -752,6 +916,14 @@ describe('doble: catálogo y sitio', () => {
     await e.api.llamar('publicarSitio', {});
     expect((await e.api.llamar('obtenerTablero', {})).avisoSitio).toBeNull();
   });
+  it('tablero: la última reconstrucción empieza en null, es sembrable y publicar la deja completada', async () => {
+    const e = crearEntorno('adm');
+    expect((await e.api.llamar('obtenerTablero', {})).ultimaReconstruccion).toBeNull();
+    e.api.estado.ultimaReconstruccion = { estado: 'fallida', version: 3, en: '2026-11-16T10:00:00.000Z', etapa: 'generar', enCurso: false, causas: [{ codigo: 'precio_fuera_de_tope', producto: 'Mesa' }] };
+    expect((await e.api.llamar('obtenerTablero', {})).ultimaReconstruccion?.causas).toHaveLength(1);
+    await e.api.llamar('publicarSitio', {});
+    expect((await e.api.llamar('obtenerTablero', {})).ultimaReconstruccion).toMatchObject({ estado: 'completada', etapa: null, enCurso: false, causas: [] });
+  });
 
   it('ficha: slug único, texto alternativo, medios del producto; publicar la deja en el tablero', async () => {
     const e = crearEntorno('sup');
@@ -813,7 +985,7 @@ describe('doble: catálogo y sitio', () => {
   });
   it('productos de Inventarios: precios y costo en centavos, tope de 200 y edición', async () => {
     const e = crearEntorno('adm');
-    const nuevo = { id: 'nuevo-x', nombre: 'X', categoria: 'C', sku: 'NX', precioUSD: { bo: 1250, ar: 1300 }, costoUSD: 700 };
+    const nuevo = { id: 'nuevo-x', nombre: 'X', categoria: 'c', sku: 'NX', precioUSD: { bo: 1250, ar: 1300 }, costoUSD: 700 };
     await e.api.llamar('crearProducto', { operacionId: uuid(), producto: nuevo });
     const creado = (await e.api.llamar('listarProductos', {})).find((p) => p.id === 'nuevo-x');
     expect(creado?.precioUSD).toEqual({ bo: 1250, ar: 1300 });
@@ -837,12 +1009,37 @@ describe('doble: catálogo y sitio', () => {
     await falla(e.api.llamar('actualizarProducto', { operacionId: uuid(), productoId: 'nada', cambios: { nombre: 'a' } }));
     await falla(e.api.llamar('cambiarPrecioUSD', { operacionId: uuid(), productoId: 'nada', precioUSD: { bo: 100, ar: 100 } }));
   });
-  it('la consola ya no importa ni crea productos; conserva la exportación del catálogo', async () => {
+  it('lo guardado que no cumple obliga a corregirlo al editar y al importar, con los mensajes del núcleo', async () => {
+    const e = crearEntorno('adm');
+    const p = e.api.estado.productos.get('tv-55');
+    if (p === undefined) throw new Error('falta el producto de partida');
+    p.categoria = 'Audio';
+    p.costoUSD = 200_000_000;
+    p.precioUSD = { ...p.precioUSD, ar: 200_000_000 };
+    const editar = async (cambios: Record<string, unknown>): Promise<string> =>
+      mensajeDeError(await falla(e.api.llamar('actualizarProducto', { operacionId: uuid(), productoId: 'tv-55', cambios: cambios as never })));
+    expect(await editar({ nombre: 'Otro' })).toBe(mensajeGuardadoInvalido('La categoría guardada «Audio»', mensajeCategoriaInvalida('Audio')));
+    p.categoria = 'audio';
+    expect(await editar({ nombre: 'Otro' })).toContain('El precio guardado de');
+    expect(await editar({ nombre: 'Otro' })).toContain('pesos argentinos');
+    p.precioUSD = { ...p.precioUSD, ar: 1300 };
+    expect(await editar({ nombre: 'Otro' })).toBe(mensajeGuardadoInvalido('El costo guardado', mensajeCostoSobreTope('USD')));
+    await e.api.llamar('actualizarProducto', { operacionId: uuid(), productoId: 'tv-55', cambios: { nombre: 'Otro', costoUSD: 100 } });
+    // Importación: la fila no trae categoría ni costo, pero lo guardado no cumple.
+    p.categoria = 'Audio';
+    p.costoUSD = 200_000_000;
+    const sim = await e.api.llamar('simularImportacionProductos', { csv: `sku,nombre\n${p.sku},Otro nombre\n` });
+    const errores = sim.filas[0]?.errores ?? [];
+    expect(errores.map((x) => x.columna)).toEqual(['categoria', 'costo']);
+    expect(errores[0]?.motivo).toBe(mensajeGuardadoInvalido('La categoría guardada «Audio»', mensajeCategoriaInvalida('Audio')));
+    expect(errores[1]?.motivo).toBe(mensajeGuardadoInvalido('El costo guardado', mensajeCostoSobreTope('USD')));
+  });
+  it('la consola ya no importa ni crea productos ni exporta el catálogo', async () => {
     const e = crearEntorno('adm');
     for (const accion of ['crearProducto', 'editarProducto', 'cambiarPrecioUSD', 'simularImportacion', 'importarProductos']) {
       await expect(e.api.transporte.invocar('consola', { accion, tenantId: 'demo', datos: {} })).rejects.toMatchObject({ codigoHttps: 'invalid-argument' });
     }
-    expect((await e.api.llamar('exportarProductosCsvSitio', {})).csv).toContain('precioBO');
+    await expect(e.api.transporte.invocar('consola', { accion: 'exportarProductosCsv', tenantId: 'demo', datos: {} })).rejects.toMatchObject({ codigoHttps: 'invalid-argument' });
   });
 });
 
@@ -925,7 +1122,7 @@ describe('doble: precio por mercado abierto', () => {
       comercial: { mercados: [{ id: 'PE', nombre: 'Perú', monedaVenta: 'PEN', monedaBase: 'USD', tieneTipoCambio: true }], monedasCaja: ['PEN', 'USD'], monedaCosto: 'USD' },
       redondeo: { PEN: { tipo: 'decimales', decimales: 2, modo: 'cercano' } },
     });
-    const producto = { id: 'solo-pe', nombre: 'Solo PE', categoria: 'Varios', sku: 'SP-1' };
+    const producto = { id: 'solo-pe', nombre: 'Solo PE', categoria: 'varios', sku: 'SP-1' };
     await e.api.llamar('crearProducto', { operacionId: uuid(), producto: { ...producto, precioUSD: { pe: 1500 } } });
     expect((await e.api.llamar('listarProductos', {})).find((p) => p.id === 'solo-pe')?.precioUSD).toEqual({ pe: 1500 });
     await e.api.llamar('actualizarProducto', { operacionId: uuid(), productoId: 'solo-pe', cambios: { precioUSD: { pe: 1800 } } });
@@ -933,12 +1130,36 @@ describe('doble: precio por mercado abierto', () => {
     expect((await falla(e.api.llamar('crearProducto', { operacionId: uuid(), producto: { ...producto, id: 'solo-bo', sku: 'SB-1', precioUSD: { bo: 1500 } } }))).detalle.codigo).toBe('entrada-invalida');
     expect((await falla(e.api.llamar('actualizarProducto', { operacionId: uuid(), productoId: 'solo-pe', cambios: { precioUSD: { bo: 100 } } }))).detalle.codigo).toBe('entrada-invalida');
   });
-  it('la exportación para el sitio deja vacía la celda del precio ausente', async () => {
-    const e = crearEntorno('adm', () => AHORA, {
-      comercial: { mercados: [{ id: 'BO', nombre: 'Bolivia', monedaVenta: 'BOB', monedaBase: 'USD', tieneTipoCambio: true }], monedasCaja: ['BOB', 'USD'], monedaCosto: 'USD' },
-    });
-    await e.api.llamar('crearProducto', { operacionId: uuid(), producto: { id: 'solo-bo', nombre: 'Solo BO', categoria: 'Varios', sku: 'SB-9', precioUSD: { bo: 1250 } } });
-    const fila = (await e.api.llamar('exportarProductosCsvSitio', {})).csv.split('\n').find((l) => l.startsWith('solo-bo'));
-    expect(fila?.trimEnd()).toMatch(/,12\.5,$/);
+});
+
+describe('borrarMedio y carruseles guardados (humo2, catálogo)', () => {
+  it('una foto en un carrusel ya no da «conflicto»: se borra y sale del carrusel; en una sección sigue dando «conflicto»', async () => {
+    const e = crearEntorno('adm');
+    const subir = async (): Promise<string> => {
+      const r = await e.api.llamar('reservarSubida', { subidaId: uuid(), productoId: 'tv-55', tipo: 'foto', bytes: 10 });
+      return (await e.api.llamar('finalizarSubida', { subidaId: r.subidaId })).id;
+    };
+    const a = await subir();
+    const b = await subir();
+    await e.api.llamar('guardarCarrusel', { carrusel: { plantilla: 'ambar', items: [{ medioId: a, alt: 'A' }, { medioId: b, alt: 'B' }] } });
+    await e.api.llamar('borrarMedio', { medioId: a });
+    const [k] = await e.api.llamar('listarCarruseles', {});
+    expect(k?.items.map((i) => i.medioId)).toEqual([b]);
+    expect(await e.api.llamar('listarMedios', { productoId: 'tv-55' })).toHaveLength(1);
+    await e.api.llamar('guardarSeccion', { seccion: { id: 's1', titulo: 'Uno', visible: true, bloques: [{ tipo: 'imagen', medioId: b, alt: 'B' }] } });
+    expect((await falla(e.api.llamar('borrarMedio', { medioId: b }))).detalle.codigo).toBe('conflicto');
+  });
+});
+
+describe('borrarMedio: solo el administrador quita una foto de un carrusel guardado', () => {
+  it('un supervisor recibe «conflicto» con el aviso y no cambia nada', async () => {
+    const e = crearEntorno('sup');
+    e.api.estado.medios.set('m-tv', { id: 'm-tv', productoId: 'tv-55', tipo: 'foto', bytesOriginal: 1000, ancho: 800, alto: 600, creadoEn: 1, por: 'u' });
+    e.api.estado.carruseles.set('ambar', { plantilla: 'ambar', items: [{ medioId: 'm-tv', alt: 'x' }] });
+    const err = await falla(e.api.llamar('borrarMedio', { medioId: 'm-tv' }));
+    expect(err.detalle.codigo).toBe('conflicto');
+    expect(mensajeDeError(err)).toContain('Esta foto está en el carrusel de la portada; pídale al administrador que la quite');
+    expect(e.api.estado.medios.has('m-tv')).toBe(true);
+    expect(e.api.estado.carruseles.get('ambar')?.items).toHaveLength(1);
   });
 });

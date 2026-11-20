@@ -5,7 +5,7 @@
 // publicado llegan a la copia por el evento `producto.cambiado`, entregado aquí por el bus real (`entregarEvento`).
 import { createHash, randomBytes } from 'node:crypto';
 import { beforeAll, describe, expect, it, vi } from 'vitest';
-import { publicarSitio } from '@novutienda/consola';
+import { motivosContenidoParaSitio, publicarSitio } from '@novutienda/consola';
 import { actualizarProducto, crearProducto, ingresar, type Autor } from '@novutienda/inventarios';
 import { entregarEvento } from '../../plataforma/funciones/servidor/bus.js';
 import { contenidoDesdePublicado, contenidoYFuenteDesdePublicado, versionContenido } from '../../plataforma/registro.js';
@@ -515,6 +515,83 @@ describe.skipIf(!hayEmulador)('contrato consola → /publicado → contenido del
     expect((await h.firestore.doc(`tenants/${t}/publicado/producto__pre-uno`).get()).data()?.['precioUSD']).toMatchObject({ bo: 170 });
   });
 
+  describe('tope de montos y categorías: lo que el sitio rechazaría se corrige en Inventarios y se frena en la consola', () => {
+    const MSJ_CATEGORIA = 'La categoría va en minúsculas, sin tildes ni espacios: use «audio».';
+    const crear = (t: string, id: string, extra: Record<string, unknown>) =>
+      h.db.runTransaction((tx) =>
+        crearProducto(tx, {
+          tenantId: t, operacionId: unico('prod'), por: ADM,
+          producto: { id, nombre: `Producto ${id}`, categoria: 'audio', sku: `SKU-${id}`, marca: 'M', precioUSD: { bo: 1000, ar: 1000 }, activo: true, publicado: true, ...extra },
+        }),
+      );
+
+    it('(a) crear con un precio sobre el tope, un costo sobre el tope o la categoría «Audio» falla en Inventarios y no escribe', async () => {
+      const t = await nuevoTenant();
+      // Tope justo (1.000.000 en la moneda base = 100.000.000 centavos): pasa.
+      await expect(crear(t, 'tope-ok', { precioUSD: { bo: 100_000_000, ar: 100_000_000 } })).resolves.toBeDefined();
+      await expect(crear(t, 'precio-alto', { precioUSD: { bo: 100_000_001, ar: 1000 } })).rejects.toThrow(/supera el tope de 1\.000\.000/);
+      await expect(crear(t, 'costo-alto', { costoUSD: 100_000_001 })).rejects.toThrow(/^El costo va en .+ y supera el tope de 1\.000\.000: revise que no tenga ceros de más ni esté en otra moneda\.$/);
+      await expect(crear(t, 'cat-mayus', { categoria: 'Audio' })).rejects.toThrow(MSJ_CATEGORIA);
+      await expect(crear(t, 'cat-tilde', { categoria: 'electrodomésticos' })).rejects.toThrow(/La categoría va en minúsculas, sin tildes ni espacios: use «electrodomesticos»\./);
+      for (const id of ['precio-alto', 'costo-alto', 'cat-mayus', 'cat-tilde']) expect((await h.firestore.doc(`tenants/${t}/productos/${id}`).get()).exists).toBe(false);
+    });
+
+    it('(a) editar con un precio o costo sobre el tope o con la categoría «Audio» falla; el producto queda como estaba', async () => {
+      const t = await nuevoTenant();
+      await sembrarProducto(t, { id: 'edi-uno', categoria: 'televisores', precio: { bo: 5000, ar: 5000 } });
+      const editar = (cambios: Record<string, unknown>) =>
+        h.db.runTransaction((tx) => actualizarProducto(tx, { tenantId: t, operacionId: unico('act'), por: ADM, productoId: 'edi-uno', cambios }));
+      await expect(editar({ precioUSD: { bo: 100_000_001, ar: 5000 } })).rejects.toThrow(/supera el tope de 1\.000\.000/);
+      await expect(editar({ costoUSD: 100_000_001 })).rejects.toThrow(/El costo va en .+ y supera el tope de 1\.000\.000/);
+      await expect(editar({ categoria: 'Audio' })).rejects.toThrow(MSJ_CATEGORIA);
+      const d = (await h.firestore.doc(`tenants/${t}/productos/edi-uno`).get()).data()!;
+      expect(d['categoria']).toBe('televisores');
+      expect(d['precioUSD']).toEqual({ bo: 5000, ar: 5000 });
+    });
+
+    it('(b) un dato heredado (categoría «Audio», precio sobre el tope) hace fallar publicar nombrando el producto y sin escribir nada', async () => {
+      const t = await nuevoTenant();
+      await sembrarProducto(t, { id: 'her-ok', nombre: 'Producto sano' });
+      await sembrarProducto(t, { id: 'her-cat', nombre: 'Parlante Heredado' });
+      await sembrarProducto(t, { id: 'her-precio', nombre: 'Cocina Heredada' });
+      // Se siembra por fuera de Inventarios (como un dato anterior a la regla).
+      await h.firestore.doc(`tenants/${t}/productos/her-cat`).update({ categoria: 'Audio' });
+      await h.firestore.doc(`tenants/${t}/productos/her-precio`).update({ precioUSD: { bo: 150_000_000_000, ar: 1000 } });
+      const falla = await publicar(t).then(() => null, (x: unknown) => x as Error);
+      expect(falla, 'publicar debía rechazarse').not.toBeNull();
+      expect(falla!.message).toMatch(/^El sitio rechazaría esta publicación: /);
+      expect(falla!.message).toContain('«Parlante Heredado»');
+      expect(falla!.message).toContain('«Cocina Heredada»');
+      expect(falla!.message).not.toContain('Producto sano');
+      expect((await h.firestore.doc(`tenants/${t}/publicado/estado`).get()).exists).toBe(false);
+      expect((await h.firestore.doc(`tenants/${t}/publicado/producto__her-ok`).get()).exists).toBe(false);
+      // Corregidos los datos, publica.
+      await h.firestore.doc(`tenants/${t}/productos/her-cat`).update({ categoria: 'audio' });
+      await h.firestore.doc(`tenants/${t}/productos/her-precio`).update({ precioUSD: { bo: 1000, ar: 1000 } });
+      await expect(publicar(t)).resolves.toMatchObject({ productos: 3 });
+    });
+
+    it('(c) paridad: lo que la consola rechaza coincide con lo que rechaza el mapeo del sitio, en una matriz de precios y categorías', async () => {
+      const t = await nuevoTenant();
+      await sembrarProducto(t, { id: 'par-uno', nombre: 'Paridad', categoria: 'audio' });
+      await publicar(t);
+      const base = await leerPublicado(t);
+      const matriz: { precio: number; categoria: string }[] = [
+        { precio: 0, categoria: 'audio' }, { precio: 1_000_000, categoria: 'audio' }, { precio: 1_000_000.01, categoria: 'audio' },
+        { precio: 99_999_999, categoria: 'audio' }, { precio: Number.NaN, categoria: 'audio' }, { precio: Number.POSITIVE_INFINITY, categoria: 'audio' },
+        { precio: 10, categoria: 'Audio' }, { precio: 10, categoria: 'electrodomésticos' }, { precio: 10, categoria: 'linea blanca' }, { precio: 10, categoria: '-audio' },
+        { precio: 10, categoria: 'linea-blanca' }, { precio: 10, categoria: 'a' }, { precio: 10, categoria: 'a'.repeat(60) }, { precio: 10, categoria: 'a'.repeat(61) },
+      ];
+      for (const { precio, categoria } of matriz) {
+        const doc = { ...base.documentos['producto__par-uno']!, precioUSD: { bo: precio, ar: 10 }, categoria };
+        const documentos = { ...base.documentos, 'producto__par-uno': doc };
+        const sitioRechaza = ((): boolean => { try { mapear({ ...base, documentos }); return false; } catch { return true; } })();
+        const consolaRechaza = motivosContenidoParaSitio({ productos: [{ id: 'par-uno', nombre: 'Paridad', categoria, precioUSD: { bo: precio, ar: 10 } }] }).length > 0;
+        expect(consolaRechaza, `precio=${String(precio)} categoria=${categoria}`).toBe(sitioRechaza);
+      }
+    });
+  });
+
   /** Catálogo de NovuChat del tenant (mercado BO) con un token propio. */
   const catalogoDe = async (t: string): Promise<{ id: string; precioCentavos: number; activo: boolean; disponible: boolean }[]> => {
     const hash = createHash('sha256').update(token).digest('hex');
@@ -795,6 +872,92 @@ describe.skipIf(!hayEmulador)('contrato consola → /publicado → contenido del
       const { contenido: c, fuenteNegocio } = contenidoYFuenteDesdePublicado(resp, negocio(), { ...ENTORNO_BASE, disponibilidad: {} }, []);
       expect(c.config.nombre).toBe('Tienda de Prueba');
       expect(fuenteNegocio).toBe('respaldo');
+    });
+  });
+
+  describe('resultado de la reconstrucción: etapa, causas y sitio/ultimaReconstruccion', () => {
+    const cambiarEstado = (t: string, id: string, cuerpo: Record<string, unknown>) => {
+      const ruta = `/api/sitio/v1/reconstrucciones/${id}/estado`;
+      const texto = JSON.stringify({ tenantId: t, ...cuerpo });
+      const marca = String(Date.now());
+      return http(ruta, { method: 'POST', headers: { 'content-type': 'application/json', 'x-marca-tiempo': marca, 'x-firma': firmar(secretoSitio, marca, `POST\n${ruta}\n${texto}`) }, body: texto });
+    };
+    const trabajo = async (t: string, version: number): Promise<string> => {
+      const id = unico('rec');
+      await h.firestore.doc(`tenants/${t}/reconstrucciones/${id}`).set({ estado: 'pendiente', version, motivo: 'publicacion', solicitadaEnMs: AHORA });
+      expect((await cambiarEstado(t, id, { estado: 'en_curso' })).status).toBe(200);
+      return id;
+    };
+    const ultima = async (t: string): Promise<Record<string, unknown> | undefined> => (await h.firestore.doc(`tenants/${t}/sitio/ultimaReconstruccion`).get()).data();
+    const datosTrabajo = async (t: string, id: string): Promise<Record<string, unknown>> => (await h.firestore.doc(`tenants/${t}/reconstrucciones/${id}`).get()).data()!;
+
+    it('fallida con etapa y causas válidas: quedan en el trabajo y en ultimaReconstruccion con su forma exacta', async () => {
+      const t = await nuevoTenant();
+      const id = await trabajo(t, 4);
+      const causas = [{ codigo: 'precio_fuera_de_tope', productoId: 'lavajilla-1', mercado: 'AR' }, { codigo: 'demasiadas_categorias' }];
+      const r = await cambiarEstado(t, id, { estado: 'fallida', etapa: 'generar', causas });
+      expect(r.status, r.texto).toBe(200);
+      expect(await ultima(t)).toEqual({ estado: 'fallida', version: 4, enMs: expect.any(Number), etapa: 'generar', causas });
+      expect(await datosTrabajo(t, id)).toMatchObject({ estado: 'fallida', etapa: 'generar', causas });
+    });
+
+    it('lo inválido se descarta y la transición se hace igual: nunca queda en_curso', async () => {
+      const t = await nuevoTenant();
+      const id = await trabajo(t, 2);
+      const r = await cambiarEstado(t, id, {
+        estado: 'fallida', etapa: 'inventada',
+        causas: [{ codigo: 'otro' }, { codigo: 'contenido_invalido', texto: 'libre' }, { codigo: 'categoria_invalida', productoId: 'Mayus' }, { codigo: 'categoria_invalida', productoId: 'ok-1' }, 'x'],
+      });
+      expect(r.status, r.texto).toBe(200);
+      expect((await datosTrabajo(t, id))['estado']).toBe('fallida');
+      expect(await ultima(t)).toEqual({ estado: 'fallida', version: 2, enMs: expect.any(Number), causas: [{ codigo: 'categoria_invalida', productoId: 'ok-1' }] });
+    });
+
+    it('fallida sin etapa ni causas (script viejo): ultimaReconstruccion lleva solo estado, version y enMs', async () => {
+      const t = await nuevoTenant();
+      const id = await trabajo(t, 7);
+      expect((await cambiarEstado(t, id, { estado: 'fallida' })).status).toBe(200);
+      expect(await ultima(t)).toEqual({ estado: 'fallida', version: 7, enMs: expect.any(Number) });
+    });
+
+    it('completada: se guarda sin causas ni etapa aunque vengan en el cuerpo', async () => {
+      const t = await nuevoTenant();
+      const id = await trabajo(t, 5);
+      expect((await cambiarEstado(t, id, { estado: 'completada', etapa: 'build', causas: [{ codigo: 'contenido_invalido' }] })).status).toBe(200);
+      expect(await ultima(t)).toEqual({ estado: 'completada', version: 5, enMs: expect.any(Number) });
+      expect(await datosTrabajo(t, id)).toMatchObject({ estado: 'completada', causas: [] });
+      expect((await datosTrabajo(t, id))['etapa']).toBeUndefined();
+    });
+
+    it('un trabajo de versión menor no pisa el resultado de uno más nuevo; uno igual o mayor sí', async () => {
+      const t = await nuevoTenant();
+      const nuevo = await trabajo(t, 10);
+      const viejo = await trabajo(t, 9);
+      expect((await cambiarEstado(t, nuevo, { estado: 'completada' })).status).toBe(200);
+      expect((await cambiarEstado(t, viejo, { estado: 'fallida', etapa: 'build' })).status).toBe(200);
+      expect((await datosTrabajo(t, viejo))['estado']).toBe('fallida'); // el trabajo sí cambia
+      expect(await ultima(t)).toEqual({ estado: 'completada', version: 10, enMs: expect.any(Number) });
+      const igual = await trabajo(t, 10);
+      expect((await cambiarEstado(t, igual, { estado: 'fallida', etapa: 'humo' })).status).toBe(200);
+      expect(await ultima(t)).toEqual({ estado: 'fallida', version: 10, enMs: expect.any(Number), etapa: 'humo' });
+    });
+
+    it('en_curso no escribe ultimaReconstruccion y las causas no se aceptan fuera de lista (más de 20 se recortan a 20)', async () => {
+      const t = await nuevoTenant();
+      const id = await trabajo(t, 3);
+      expect(await ultima(t)).toBeUndefined();
+      const muchas = Array.from({ length: 25 }, (_, i) => ({ codigo: 'precio_fuera_de_tope', productoId: `p-${String(i)}`, mercado: 'BO' }));
+      expect((await cambiarEstado(t, id, { estado: 'fallida', etapa: 'generar', causas: muchas })).status).toBe(200);
+      expect((await ultima(t))!['causas']).toHaveLength(20);
+    });
+
+    it('repetir el mismo estado es idempotente y no reescribe el resultado', async () => {
+      const t = await nuevoTenant();
+      const id = await trabajo(t, 6);
+      await cambiarEstado(t, id, { estado: 'fallida', etapa: 'build' });
+      const r = await cambiarEstado(t, id, { estado: 'fallida', etapa: 'humo' });
+      expect(r.cuerpo).toMatchObject({ repetido: true });
+      expect((await ultima(t))!['etapa']).toBe('build');
     });
   });
 });

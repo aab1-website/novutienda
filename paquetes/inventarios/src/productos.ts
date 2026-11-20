@@ -1,4 +1,7 @@
-import { LimiteDelPlan, ContadorCorrupto, PLANES, type ConfiguracionComercial, type Resumen, rutaContador, validarTenant, type TransaccionIdentidad } from '@novutienda/nucleo';
+import {
+  LimiteDelPlan, ContadorCorrupto, PLANES, esCategoriaValida, excedeTopeCentavos, mensajeCategoriaInvalida, mensajeCostoSobreTope, mensajeGuardadoInvalido, mensajePrecioSobreTope, monedaCostoDe,
+  type ConfiguracionComercial, type Resumen, rutaContador, validarTenant, type TransaccionIdentidad,
+} from '@novutienda/nucleo';
 import { claveDePrecio, resolverComercial, sufijoDeAuditoria } from './comercial.js';
 import { EntradaInvalida, EstadoInvalido, NoEncontrado } from './errores.js';
 import { esDisponible, UBICACION_DISPONIBILIDAD } from './disponibilidad.js';
@@ -38,7 +41,21 @@ const CLAVES_PRODUCTO = new Set([
   'id', 'nombre', 'categoria', 'marca', 'sku', 'activo', 'publicado', 'conSerie', 'garantiaMeses', 'minimo', 'precioUSD', 'costoUSD', 'controlaStock',
 ]);
 
-const centavos = (x: unknown): x is number => typeof x === 'number' && Number.isSafeInteger(x) && x >= 0 && x <= 100_000_000_00;
+const centavos = (x: unknown): x is number => typeof x === 'number' && Number.isSafeInteger(x) && x >= 0;
+
+/** El costo comparte el tope del precio (en unidades de su moneda). */
+function exigirCostoBajoTope(x: number, comercial: ConfiguracionComercial): void {
+  if (excedeTopeCentavos(x)) {
+    throw new EntradaInvalida(mensajeCostoSobreTope(monedaCostoDe(comercial)));
+  }
+}
+
+/** La categoría es un slug (minúsculas, sin tildes ni espacios): el sitio la exige así. */
+function categoria(x: unknown): string {
+  const v = texto(x, 'categoria', 60);
+  if (!esCategoriaValida(v)) throw new EntradaInvalida(mensajeCategoriaInvalida(v));
+  return v;
+}
 const texto = (x: unknown, nombre: string, max: number): string => {
   if (typeof x !== 'string' || x.trim() === '' || x.length > max) throw new EntradaInvalida(`${nombre} inválido`);
   return x;
@@ -57,6 +74,7 @@ function exigirPrecio(x: unknown, comercial: ConfiguracionComercial, previos?: R
       if (Object.hasOwn(previos, clave)) throw new EntradaInvalida(`No se puede quitar el precio de ${m.id}`);
       continue;
     }
+    if (centavos(v) && excedeTopeCentavos(v)) throw new EntradaInvalida(mensajePrecioSobreTope(m));
     if (!centavos(v)) throw new EntradaInvalida(`Falta el precio del mercado ${m.id} o no es válido (centavos enteros de ${m.monedaBase})`);
     salida[clave] = v;
   }
@@ -81,13 +99,14 @@ export function validarEntradaProducto(x: EntradaProducto, comercial: Configurac
   }
   if (x.minimo !== undefined && !(Number.isSafeInteger(x.minimo) && x.minimo >= 0)) throw new EntradaInvalida('minimo inválido');
   if (x.costoUSD !== undefined && !centavos(x.costoUSD)) throw new EntradaInvalida('costoUSD inválido');
+  if (x.costoUSD !== undefined) exigirCostoBajoTope(x.costoUSD, comercial);
   const controlaStock = x.controlaStock ?? true;
   const conSerie = x.conSerie ?? false;
   if (conSerie && !controlaStock) throw new EntradaInvalida('un producto con serie debe controlar stock');
   return {
     id: x.id,
     nombre: texto(x.nombre, 'nombre', 120),
-    categoria: texto(x.categoria, 'categoria', 60),
+    categoria: categoria(x.categoria),
     sku: x.sku,
     activo: x.activo ?? true,
     publicado: x.publicado ?? false,
@@ -211,7 +230,7 @@ export async function prepararEdicion(t: Trabajo, productoId: string, c: Cambios
   const tienda = await t.lector.leer('existencias', idExistencia(productoId, UBICACION_DISPONIBILIDAD));
   const nuevo: Datos = { ...prod };
   if (c.nombre !== undefined) nuevo['nombre'] = texto(c.nombre, 'nombre', 120);
-  if (c.categoria !== undefined) nuevo['categoria'] = texto(c.categoria, 'categoria', 60);
+  if (c.categoria !== undefined) nuevo['categoria'] = categoria(c.categoria);
   if (c.marca === null) delete nuevo['marca'];
   else if (c.marca !== undefined) nuevo['marca'] = texto(c.marca, 'marca', 60);
   for (const k of ['activo', 'publicado'] as const) {
@@ -239,8 +258,26 @@ export async function prepararEdicion(t: Trabajo, productoId: string, c: Cambios
     nuevo['minimo'] = c.minimo;
   }
   const resumen: Record<string, number | string> = { campos: Object.keys(c).join(',') };
+  const comercial = await resolverComercial(t.lector, t.tenantId, inyectada);
+  // D1: lo guardado que no cumple obliga a corregirlo, aunque la edición no toque ese campo.
+  const guardada = nuevo['categoria'];
+  if (c.categoria === undefined && typeof guardada === 'string' && !esCategoriaValida(guardada)) {
+    throw new EntradaInvalida(mensajeGuardadoInvalido(`La categoría guardada «${guardada}»`, mensajeCategoriaInvalida(guardada)));
+  }
+  if (c.precioUSD === undefined) {
+    const guardados = (prod['precioUSD'] ?? {}) as Record<string, unknown>;
+    for (const m of comercial.mercados) {
+      const v = guardados[claveDePrecio(m.id)];
+      if (typeof v === 'number' && excedeTopeCentavos(v)) throw new EntradaInvalida(mensajeGuardadoInvalido(`El precio guardado de ${m.nombre}`, mensajePrecioSobreTope(m)));
+    }
+  }
+  if (c.costoUSD === undefined) {
+    const guardado = (await t.lector.leer('costos', productoId))?.['costoUSD'];
+    if (typeof guardado === 'number' && excedeTopeCentavos(guardado)) {
+      throw new EntradaInvalida(mensajeGuardadoInvalido('El costo guardado', mensajeCostoSobreTope(monedaCostoDe(comercial))));
+    }
+  }
   if (c.precioUSD !== undefined) {
-    const comercial = await resolverComercial(t.lector, t.tenantId, inyectada);
     const antes = (prod['precioUSD'] ?? {}) as Record<string, unknown>;
     const precio = exigirPrecio(c.precioUSD, comercial, antes);
     for (const m of comercial.mercados) {
@@ -272,6 +309,7 @@ export async function prepararEdicion(t: Trabajo, productoId: string, c: Cambios
     t.escribir({ ruta: ruta(t.tenantId, 'costos', productoId), modo: 'set', datos: {} });
   } else if (c.costoUSD !== undefined) {
     if (!centavos(c.costoUSD)) throw new EntradaInvalida('costoUSD inválido');
+    exigirCostoBajoTope(c.costoUSD, comercial);
     t.escribir({ ruta: ruta(t.tenantId, 'costos', productoId), modo: 'set', datos: { costoUSD: c.costoUSD } });
   }
   return resumen;

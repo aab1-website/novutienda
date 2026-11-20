@@ -5,6 +5,8 @@
 // kebab-case): el panel mapea el mensaje por ese código. Si el código no tiene mensaje propio (los del borde, como
 // `solicitud-invalida`, o uno nuevo), se usa el mensaje que el servidor controla.
 
+import type { CarritoGuardado } from './tipos.js';
+
 export interface DetalleError {
   readonly codigo?: string;
   /** Stock insuficiente con faltantes ocultos por un conteo abierto: no hay lista, ids ni cantidades. */
@@ -22,6 +24,10 @@ export interface DetalleError {
   /** Límite del plan alcanzado (`resource-exhausted`). */
   readonly clave?: string;
   readonly tope?: number;
+  /** `carrito-conflicto`: el carrito vigente en el servidor (versión y contenido actuales). */
+  readonly carrito?: CarritoGuardado;
+  /** `carritos-abiertos`: carritos que bloquean el cierre del turno. */
+  readonly carritos?: readonly { readonly carritoId: string; readonly etiqueta: string }[];
 }
 
 export class ErrorApi extends Error {
@@ -66,6 +72,12 @@ const POR_CODIGO_MODULO: Readonly<Record<string, string>> = {
   'anulacion-sin-solicitud': 'La venta no tiene una solicitud de anulación.',
   'credito-inexistente': 'El crédito no existe.',
   'credito-saldo-insuficiente': 'El cobro es mayor que el saldo del crédito.',
+  'carritos-abiertos': 'Hay ventas en espera sin cobrar ni cancelar. Cóbrelas o cancélelas antes de cerrar el turno.',
+  'carrito-inexistente': 'El carrito no existe.',
+  'carrito-cerrado': 'Ese carrito ya no está abierto.',
+  'carrito-ajeno': 'Ese carrito es de otra persona.',
+  'carrito-conflicto': 'El carrito cambió desde otra pantalla. Se muestra la versión vigente.',
+  'limite-carritos': 'Hay demasiadas ventas en espera en este turno. Cobre o cancele alguna.',
   // Consola
   'no-encontrado': 'No se encontró lo que buscaba.',
   conflicto: 'Eso ya existe o está en uso. Revise los datos.',
@@ -127,7 +139,7 @@ const CON_MENSAJE_DEL_SERVIDOR: ReadonlySet<string> = new Set(['failed-precondit
  * Códigos del módulo cuyo texto fijo del panel es demasiado vago: se prefiere el mensaje preciso del servidor
  * («Falta el motivo», «El conteo c1 no está abierto»…) cuando existe y es de los que el servidor controla.
  */
-const PREFIERE_MENSAJE_DEL_SERVIDOR: ReadonlySet<string> = new Set(['entrada-invalida', 'estado', 'estado-invalido', 'no-encontrado', 'limite', 'cuota-excedida', 'procesamiento', 'tipo-no-permitido', 'no-disponible', 'series-invalidas']);
+const PREFIERE_MENSAJE_DEL_SERVIDOR: ReadonlySet<string> = new Set(['entrada-invalida', 'conflicto', 'estado', 'estado-invalido', 'no-encontrado', 'limite', 'cuota-excedida', 'procesamiento', 'tipo-no-permitido', 'no-disponible', 'series-invalidas']);
 
 /** Texto que el usuario nunca debe ver: código HTTP entre corchetes, «campo desconocido», nombres internos (camelCase), una ruta de campo al inicio («ficha.titulo: …»; los dos puntos en medio de una frase son prosa) o valores vacíos. */
 const TECNICO = /\[\d{3}\]|campo desconocido|\b[a-z]+[A-Z][A-Za-z]*\b|\bundefined\b|\bnull\b|^\s*[a-z][\w.[\]]*:\s/;

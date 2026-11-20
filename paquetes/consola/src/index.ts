@@ -1,9 +1,9 @@
 export { manifiestoConsola } from './manifiesto.js';
 export { ArchivoNoAdmitido, ErrorConsola, ProcesamientoNoDisponible } from './errores.js';
 export type { CodigoErrorConsola } from './errores.js';
-export { LIMITES_CONSOLA } from './limites.js';
-export { ID_NEGOCIO, rutaPublicaMedio } from './rutas.js';
-export { PLANTILLAS, esPlantilla } from './plantillas.js';
+export { cupoPortadaDelPlan, LIMITES_CONSOLA } from './limites.js';
+export { ID_NEGOCIO, ID_PORTADA, rutaPublicaMedio } from './rutas.js';
+export { NOMBRE_PLANTILLA, PLANTILLAS, esPlantilla } from './plantillas.js';
 export type { PlantillaId } from './plantillas.js';
 export { validarEnlace } from './enlaces.js';
 export type { ResultadoEnlace } from './enlaces.js';
@@ -28,17 +28,17 @@ export { liberarEnUso, reservarEnUso } from './medios/uso.js';
 export type { UsoMedios } from './medios/uso.js';
 export { MENSAJE_VIDEO_NO_DISPONIBLE, borrarMedio, CAMPOS_RESERVA, estadoSubida, finalizarSubida, leerLogo, limpiarSubidas, quitarLogo, reservarSubida } from './medios/subidas.js';
 export type { DepsMedios, EntradaLogo, LogoNegocio, Medio, MedioLogo, MedioSubido, Reserva, ResultadoLimpieza, VersionLogo, VersionMedio } from './medios/subidas.js';
-export { COLUMNAS_EXPORTACION, exportarProductosCsv } from './exportacion.js';
 export { CONSUMIDOR_CONSOLA, consumirProductoCambiado, ejecutorConsola, type DepsConsumidorProducto } from './consumidores.js';
 export type { TransaccionConsola } from './consumidores.js';
 export { eliminarSeccion, guardarCarrusel, guardarConfigSitio, guardarFicha, guardarSeccion, ordenarSecciones } from './servicio-sitio.js';
 export {
   calcularDisponibilidadPublica, construirPublicado, decidirReconstruccion, ejecutarReconstruccion, proyectarDisponibilidad,
-  publicarSitio,
+  motivosContenidoParaSitio, publicarSitio,
 } from './publicar.js';
+export type { MotivoContenido } from './publicar.js';
 export type { DecisionReconstruccion, EventoReconstruccion, Publicado, ResultadoPublicacion } from './publicar.js';
 export { obtenerTablero, preciosDelDiaDe } from './tablero.js';
-export type { Tablero, PrecioDelDiaDeMercado } from './tablero.js';
+export type { Tablero, PrecioDelDiaDeMercado, UltimaReconstruccionTablero } from './tablero.js';
 export type { AvisoSitio } from './cambios.js';
 export type { MotivoSitioIncompleto } from './publicar.js';
 export type { LogoPublicado } from './logo-publico.js';

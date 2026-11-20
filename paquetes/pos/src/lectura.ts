@@ -1,5 +1,5 @@
 import { ErrorPos } from './errores.js';
-import { MONEDA_ISO, ORDEN_MONEDAS_POR_OMISION, type MontosPorMoneda, type TotalesMoneda, type TotalesTurno, type TurnoPos, type VentaPos } from './tipos.js';
+import { MAX_CARRITOS_ABIERTOS, MONEDA_ISO, type CarritoPos, ORDEN_MONEDAS_POR_OMISION, type MontosPorMoneda, type TotalesMoneda, type TotalesTurno, type TurnoPos, type VentaPos } from './tipos.js';
 
 type Datos = Readonly<Record<string, unknown>>;
 
@@ -90,4 +90,38 @@ export function enteroDe(d: Datos, campo: string): number {
 }
 export function textoDe(d: Datos, campo: string): string {
   return texto(d[campo], campo);
+}
+
+/** Índice de carritos abiertos del turno: no existe hasta que se usa un carrito. */
+export function leerCarritosAbiertos(d: Datos): readonly string[] | undefined {
+  const x = d['carritosAbiertos'];
+  if (x === undefined) return undefined;
+  if (!Array.isArray(x) || x.length > MAX_CARRITOS_ABIERTOS || x.some((i) => typeof i !== 'string' || i === '' || i.includes('/'))) {
+    throw corrupto('carritosAbiertos');
+  }
+  return x as string[];
+}
+
+/** El carrito se guarda con la forma de `CarritoPos`; aquí se comprueba lo que usan los cambios de estado y el cobro. */
+export function leerCarrito(d: Datos | undefined): CarritoPos {
+  if (!esObjeto(d)) throw corrupto('carrito');
+  const estado = d['estado'];
+  if (estado !== 'abierto' && estado !== 'cerrado' && estado !== 'cancelado') throw corrupto('estado del carrito');
+  texto(d['carritoId'], 'carritoId');
+  texto(d['turnoId'], 'turnoId');
+  texto(d['cajeroUid'], 'cajeroUid');
+  texto(d['etiqueta'], 'etiqueta');
+  texto(d['requestId'], 'requestId');
+  entero(d['version'], 'version');
+  entero(d['creadoEnMs'], 'creadoEnMs');
+  entero(d['actualizadoEnMs'], 'actualizadoEnMs');
+  const contenido = d['contenido'];
+  if (contenido !== undefined) {
+    if (!esObjeto(contenido)) throw corrupto('contenido del carrito');
+    const lineas = contenido['lineas'];
+    if (!Array.isArray(lineas) || lineas.some((l: unknown) => !esObjeto(l) || typeof l['cantidad'] !== 'number' || !Number.isSafeInteger(l['cantidad']) || l['cantidad'] < 1)) {
+      throw corrupto('líneas del carrito');
+    }
+  }
+  return d as unknown as CarritoPos;
 }

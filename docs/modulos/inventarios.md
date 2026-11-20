@@ -36,5 +36,8 @@ Emite `stock.cambiado.v1`, `stock.bajo.v1`. Consume `venta.confirmada.v1`, `vent
 ## Consola de inventario (pantallas)
 Productos y existencias por almacén, ficha, alertas de mínimo, ingreso con series, traspasos, ajuste (adm), mermas, conteo ciego, búsqueda por serie (estado, venta, vencimiento de garantía), registro de acciones con filtros y CSV, importar/exportar CSV (el CSV no toca stock salvo carga inicial; neutralizar celdas que empiezan con = + - @), márgenes por mercado.
 
+## Existencias por almacén y ayuda (panel)
+Pestaña «Existencias por almacén», después de «Productos y existencias», para todo rol que ve Inventario: un almacén por vez, con Producto, SKU, Categoría y Existencia, búsqueda, encabezado «En <almacén>: N unidades de M productos» y la casilla «Mostrar también los que están en 0» (desmarcada). Solo cantidades por producto, sin series. Solo usa `listarProductos`. Un almacén en conteo (la marca lo nombra o algún producto trae `null` en él) se muestra sin filas, sumas, encabezado ni tabla: solo el aviso y «Las existencias de <almacén> no se muestran mientras dure el conteo.»; `adm` lo ve todo. El botón «Cómo funciona el inventario» del encabezado abre un panel lateral con la ayuda y está disponible desde cualquier pestaña.
+
 ## Pruebas obligatorias
 Misma operacionId dos veces = un movimiento; misma id con otro contenido = error; dos ventas de la misma serie: una gana; quien solicitó una merma no la aprueba; no se resuelve dos veces; producto 201 rechazado; ajuste en producto con serie rechazado; aislamiento entre tenants y roles en el emulador (matriz del núcleo).

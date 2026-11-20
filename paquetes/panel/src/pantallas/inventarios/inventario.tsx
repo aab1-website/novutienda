@@ -8,17 +8,21 @@ import { useApp } from '../../ui/contexto.js';
 import { useCarga } from '../../ui/hooks.js';
 import { AvisoConteoAbierto, ExistenciaOculta } from '../../ui/existencia.js';
 import { Tabla } from '../../ui/tabla.js';
+import { AyudaInventario } from './ayuda-inventario.js';
 import { Conteo } from './conteo.js';
+import { ExistenciasPorAlmacen } from './existencias.js';
 import { ImportarExportar } from './importar.js';
 import { Ajuste, Ingreso, Traspaso } from './movimientos.js';
 import { Registro } from './registro.js';
 import { Series } from './series.js';
+import { useConteosAbiertos } from './usar-conteos-abiertos.js';
 import { NOMBRE_ALMACEN, nombreAlmacen } from './nombres.js';
 import { ProductoPanelLateral } from './producto-panel.js';
 import './inventario.css';
 
 const PESTANAS = [
   { id: 'productos', titulo: 'Productos y existencias' },
+  { id: 'existencias', titulo: 'Existencias por almacén' },
   { id: 'ingreso', titulo: 'Ingreso' },
   { id: 'traspasos', titulo: 'Traspasos' },
   { id: 'ajuste', titulo: 'Ajuste' },
@@ -114,7 +118,7 @@ function Productos(): JSX.Element {
                   producto={abierto.producto}
                   cot={cot}
                   comercial={comercial.comercial}
-                  existentes={productos.map((p) => ({ id: p.id, sku: p.sku }))}
+                  existentes={productos.map((p) => ({ id: p.id, sku: p.sku, categoria: p.categoria }))}
                   alCerrarEnfocar={volverAlBoton}
                   alCerrar={(guardado) => {
                     setAbierto(null);
@@ -130,21 +134,42 @@ function Productos(): JSX.Element {
   );
 }
 
-export function PantallaInventario({ sub }: { sub: string }): JSX.Element {
+/**
+ * El enlace «Ver movimientos» de Mermas lleva el producto en la ruta: `#/inventario/registro?producto=<id>`. El enrutador del
+ * panel parte la ruta solo por «/», así que el parámetro llega pegado a la pestaña y se separa aquí.
+ */
+export function separarSub(sub: string): { pestana: string; producto: string } {
+  const [pestana = '', consulta = ''] = sub.split('?');
+  return { pestana, producto: new URLSearchParams(consulta).get('producto') ?? '' };
+}
+
+/** Aviso de conteo para quien no recibe la marca en las listas (el administrador); cajeros y supervisores lo ven en cada pestaña. */
+function AvisoParaAdm(): JSX.Element | null {
+  const conteos = useConteosAbiertos();
+  return <AvisoConteoAbierto conteos={conteos} nombreAlmacen={nombreAlmacen} />;
+}
+
+export function PantallaInventario({ sub: subCrudo }: { sub: string }): JSX.Element {
   const { usuario } = useApp();
+  const { pestana: sub, producto } = separarSub(subCrudo);
   const items = PESTANAS.filter((p) => (p.id === 'ajuste' || p.id === 'csv' ? usuario.rol === 'adm' || p.id === 'csv' : true));
   const actual = items.some((i) => i.id === sub) ? sub : 'productos';
   return (
     <div>
-      <h1>Inventario</h1>
+      <div class="inv-encabezado">
+        <h1>Inventario</h1>
+        <AyudaInventario />
+      </div>
       <Pestanas etiqueta="Secciones de inventario" base="inventario" actual={actual} items={items} />
+      {usuario.rol === 'adm' && actual !== 'conteo' && <AvisoParaAdm />}
       {actual === 'productos' && <Productos />}
+      {actual === 'existencias' && <ExistenciasPorAlmacen />}
       {actual === 'ingreso' && <Ingreso />}
       {actual === 'traspasos' && <Traspaso />}
       {actual === 'ajuste' && <Ajuste />}
       {actual === 'conteo' && <Conteo />}
       {actual === 'series' && <Series />}
-      {actual === 'registro' && <Registro />}
+      {actual === 'registro' && <Registro key={producto} productoInicial={producto} />}
       {actual === 'csv' && <ImportarExportar />}
     </div>
   );

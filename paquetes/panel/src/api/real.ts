@@ -15,7 +15,7 @@ import { ROLES_ACCION } from './acciones.generado.js';
 import { ErrorApi } from './errores.js';
 import { ponerMarca } from './marca.js';
 import type {
-  AprobacionPos, ConteoAbierto, ConteoVista, ListaConMarca, MarcaOcultamiento, ProductoDeConteo, CotizacionesVigentes, CreditoVista, Medio, MedioLogo, MermaVista, MovimientoVista, ProductoPanel,
+  AprobacionPos, CarritoGuardado, ResumenCarritoSupervision, ConteoAbierto, ConteoVista, ListaConMarca, MarcaOcultamiento, ProductoDeConteo, CotizacionesVigentes, CreditoVista, Medio, MedioLogo, MermaVista, MovimientoVista, ProductoPanel,
   Rol, TurnoPos, UbicacionId, UnidadSerie, UsuarioVista, VentaPos, VistaComercial,
 } from './tipos.js';
 import { ID_NEGOCIO } from './tipos.js';
@@ -250,6 +250,12 @@ export const TRADUCCION: { readonly [N in NombreCallable]: Traduccion<N> } = {
   cerrarTurno: directa('pos', 'cerrarTurno'),
   cerrarTurnoForzado: directa('pos', 'cerrarTurnoForzado'),
   confirmarVenta: directa('pos', 'confirmarVenta'),
+  crearCarrito: { usa: ['pos.crearCarrito'], ejecutar: async (c, e) => campo(await c.llamar('pos', 'crearCarrito', e), 'carrito') },
+  guardarCarrito: { usa: ['pos.guardarCarrito'], ejecutar: async (c, e) => campo(await c.llamar('pos', 'guardarCarrito', e), 'carrito') },
+  cancelarCarrito: { usa: ['pos.cancelarCarrito'], ejecutar: async (c, e) => campo(await c.llamar('pos', 'cancelarCarrito', e), 'carrito') },
+  misCarritos: { usa: ['pos.misCarritos'], ejecutar: async (c) => lista(await c.llamar('pos', 'misCarritos', {}), 'carritos') as unknown as CarritoGuardado[] },
+  // Solo los carritos de la supervisión; si no hay turno abierto el servidor responde `{ turno: null }` y no hay carritos.
+  carritosSupervision: { usa: ['pos.supervision'], ejecutar: async (c) => lista(await c.llamar('pos', 'supervision', {}), 'carritos') as unknown as ResumenCarritoSupervision[] },
   solicitarAprobacion: directa('pos', 'solicitarAprobacion'),
   resolverAprobacion: directa('pos', 'resolverAprobacion'),
   solicitarAnulacion: directa('pos', 'solicitarAnulacion'),
@@ -278,6 +284,34 @@ export const TRADUCCION: { readonly [N in NombreCallable]: Traduccion<N> } = {
       const ventas = lista(await c.llamar('pos', 'misVentas', datos), 'ventas') as unknown as VentaPos[];
       return e.conSolicitudAnulacion === true ? ventas.filter((v) => v.solicitudAnulacion !== undefined && v.estado === 'confirmada') : ventas;
     },
+  },
+  resumenTurno: {
+    usa: ['pos.resumenTurno'],
+    ejecutar: async (c, e) => {
+      const r = await c.llamar('pos', 'resumenTurno', sinVacios({ turnoId: e.turnoId, cajeroUid: e.cajeroUid }));
+      return ((r as { resumen?: unknown }).resumen ?? null) as never;
+    },
+  },
+  misTurnos: {
+    usa: ['pos.misTurnos'],
+    ejecutar: async (c, e) =>
+      (await c.llamar('pos', 'misTurnos', sinVacios({
+        desde: e.desde === undefined ? undefined : msDeFecha(e.desde, false),
+        hasta: e.hasta === undefined ? undefined : msDeFecha(e.hasta, true),
+        cajeroUid: e.cajeroUid,
+        despuesDe: e.despuesDe,
+      }))) as never,
+  },
+  misVentas: {
+    usa: ['pos.misVentas'],
+    ejecutar: async (c, e) =>
+      (await c.llamar('pos', 'misVentas', sinVacios({
+        turnoId: e.turnoId,
+        desde: e.desde === undefined ? undefined : msDeFecha(e.desde, false),
+        hasta: e.hasta === undefined ? undefined : msDeFecha(e.hasta, true),
+        despuesDe: e.despuesDe,
+        limite: 50,
+      }))) as never,
   },
   listarAprobaciones: {
     usa: ['pos.aprobaciones'],
@@ -373,7 +407,7 @@ export const TRADUCCION: { readonly [N in NombreCallable]: Traduccion<N> } = {
   },
   buscarSerie: {
     usa: ['inventarios.buscarSerie'],
-    ejecutar: async (c, e) => lista(await c.llamar('inventarios', 'buscarSerie', { serie: e.serie.trim() }), 'unidades') as unknown as UnidadSerie[],
+    ejecutar: async (c, e) => lista(await c.llamar('inventarios', 'buscarSerie', { serie: e.serie.trim(), ...(e.porInicio === true ? { porInicio: true } : {}) }), 'unidades') as unknown as UnidadSerie[],
   },
   listarMovimientos: {
     usa: ['inventarios.movimientos'],
@@ -491,7 +525,6 @@ export const TRADUCCION: { readonly [N in NombreCallable]: Traduccion<N> } = {
   ordenarSecciones: comoOk('consola', 'ordenarSecciones', (e) => e),
   guardarCarrusel: comoOk('consola', 'guardarCarrusel', (e) => e),
   guardarConfigSitio: comoOk('consola', 'guardarConfigSitio', (e) => e),
-  exportarProductosCsvSitio: directa('consola', 'exportarProductosCsv'),
   buscarUsuarioPorCorreo: {
     usa: ['consola.buscarUsuarioPorCorreo'],
     ejecutar: async (c, e) => {

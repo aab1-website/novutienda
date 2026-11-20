@@ -30,11 +30,13 @@ function VentaCajaLista({ turno, alCambiar, monedas }: { turno: TurnoPos; alCamb
   const [requestId, setRequestId] = useState(nuevoId);
   const movs = useCarga(() => api.llamar('listarMovimientosCaja', { turnoId: turno.turnoId }), [turno.turnoId]);
   const c = textoACentavos(monto);
+  const errorMonto = monto.trim() === '' ? undefined : c === null ? `El monto «${monto.trim()}» no es válido: escriba solo el número, por ejemplo 20 o 20,50.` : c <= 0 ? 'El monto debe ser mayor a cero.' : undefined;
+  const motivoNoRegistrar = monto.trim() === '' ? 'Escriba el monto.' : errorMonto ?? (motivo.trim() === '' ? 'Escriba el motivo.' : undefined);
   const disponible = efectivoEsperado(turno.apertura[moneda] ?? 0, turno.totales[moneda] ?? TOTALES_VACIOS);
 
   const enviar = (e: Event): void => {
     e.preventDefault();
-    if (c === null || c <= 0) return;
+    if (c === null || c <= 0 || motivoNoRegistrar !== undefined) return;
     void accion.ejecutar(async () => {
       await api.llamar('registrarMovimientoCaja', { requestId, movimiento: { tipo, moneda, monto: c, motivo: motivo.trim(), ...(comprobante.trim() !== '' ? { comprobante: comprobante.trim() } : {}) } });
       setOk(`${tipo === 'ingreso' ? 'Ingreso' : 'Egreso'} registrado.`);
@@ -49,12 +51,13 @@ function VentaCajaLista({ turno, alCambiar, monedas }: { turno: TurnoPos; alCamb
 
   return (
     <div>
-      <Seccion titulo="Ingresos y egresos de caja">
+      <Seccion titulo="Ingresos y egresos excepcionales">
+        <p class="texto-suave">Dinero que entra o sale de la caja sin ser una venta (por ejemplo, cambio que se trae o un gasto menor). Las ventas se ven en «Ventas y anulaciones» y en «Cierre de turno».</p>
         <form class="formulario" onSubmit={enviar} noValidate>
           <div class="cuadricula">
             <Selector etiqueta="Tipo" valor={tipo} onCambio={(v) => setTipo(v as 'ingreso' | 'egreso')} opciones={[{ valor: 'egreso', texto: 'Egreso (sale dinero)' }, { valor: 'ingreso', texto: 'Ingreso (entra dinero)' }]} />
             <Selector etiqueta="Moneda" valor={moneda} onCambio={(v) => setMoneda(v)} opciones={monedas.map((m) => ({ valor: m, texto: m }))} />
-            <Campo etiqueta="Monto" valor={monto} onInput={setMonto} inputMode="decimal" requerido />
+            <Campo etiqueta="Monto" valor={monto} onInput={setMonto} inputMode="decimal" requerido error={errorMonto} />
             <Campo etiqueta="Motivo" valor={motivo} onInput={setMotivo} requerido />
             <Campo etiqueta="Comprobante (opcional)" valor={comprobante} onInput={setComprobante} />
           </div>
@@ -62,7 +65,7 @@ function VentaCajaLista({ turno, alCambiar, monedas }: { turno: TurnoPos; alCamb
           {tipo === 'egreso' && c !== null && c > disponible && <Alerta>El egreso es mayor que el efectivo disponible en esa moneda.</Alerta>}
           {accion.error && <Alerta>{accion.error}</Alerta>}
           {ok && <Alerta tipo="ok">{ok}</Alerta>}
-          <Boton tipo="submit" ocupado={accion.ocupado} deshabilitado={c === null || c <= 0 || motivo.trim() === ''}>
+          <Boton tipo="submit" ocupado={accion.ocupado} motivo={motivoNoRegistrar}>
             Registrar
           </Boton>
         </form>
@@ -70,10 +73,10 @@ function VentaCajaLista({ turno, alCambiar, monedas }: { turno: TurnoPos; alCamb
       <Seccion titulo="Movimientos del turno">
         {movs.cargando && <Cargando />}
         {movs.error && <ErrorCarga error={movs.error} reintentar={movs.recargar} />}
-        {movs.datos && movs.datos.length === 0 && <Vacio titulo="Todavía no hay ingresos ni egresos en este turno" />}
+        {movs.datos && movs.datos.length === 0 && <Vacio titulo="Todavía no hay ingresos ni egresos excepcionales en este turno" />}
         {movs.datos && movs.datos.length > 0 && (
           <table class="tabla">
-            <caption class="solo-lectores">Ingresos y egresos del turno</caption>
+            <caption class="solo-lectores">Ingresos y egresos excepcionales del turno</caption>
             <thead>
               <tr><th scope="col">Hora</th><th scope="col">Tipo</th><th scope="col">Motivo</th><th scope="col" class="num">Monto</th></tr>
             </thead>

@@ -71,7 +71,7 @@ describe('doble: existencias ocultas durante un conteo abierto', () => {
   it('un producto que no controla stock sigue sin `stockTotal` (no se confunde con oculto)', async () => {
     const e = await conConteo('sup');
     e.como('adm');
-    await e.api.llamar('crearProducto', { operacionId: uuid(), producto: { id: 'servicio-1', nombre: 'Servicio', categoria: 'Servicios', sku: 'SRV', precioUSD: { bo: 100, ar: 100 }, controlaStock: false } });
+    await e.api.llamar('crearProducto', { operacionId: uuid(), producto: { id: 'servicio-1', nombre: 'Servicio', categoria: 'servicios', sku: 'SRV', precioUSD: { bo: 100, ar: 100 }, controlaStock: false } });
     e.como('caj');
     const p = await producto(e, 'servicio-1');
     expect(p?.stockTotal).toBeUndefined();

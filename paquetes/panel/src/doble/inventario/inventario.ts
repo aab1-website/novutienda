@@ -1,7 +1,7 @@
 import type { Entrada, NombreCallable, Salida } from '../../api/contrato.js';
 import type { ResultadoOperacion, TipoMovimiento, UbicacionId } from '../../api/tipos.js';
 import { UBICACIONES } from '../../api/tipos.js';
-import { claveDePrecio } from '@novutienda/nucleo';
+import { claveDePrecio, esCategoriaValida, excedeTopeCentavos, mensajeCategoriaInvalida, mensajeCostoSobreTope, mensajeGuardadoInvalido, mensajePrecioSobreTope, MONEDA_COSTO_POR_DEFECTO } from '@novutienda/nucleo';
 import { aCsv } from '../../util/csv.js';
 import { importarProductosDoble, simularImportacionDoble } from './importacion.js';
 import { auditar, conteosAbiertosDoble, exigirRol, detalleDeFaltantes, fallo, iso, marcaDoble, proyectarProductoDoble, puedeVerExistencias, recalcular, vistaProducto, type Contexto, type ProductoInterno } from '../estado.js';
@@ -25,7 +25,38 @@ function operacion(c: Contexto, tipo: string, operacionId: string, carga: unknow
   return { resultado, repetida: false };
 }
 
-const centavosValidos = (x: unknown): x is number => typeof x === 'number' && Number.isSafeInteger(x) && x >= 0 && x <= 100_000_000_00;
+const centavosValidos = (x: unknown): x is number => typeof x === 'number' && Number.isSafeInteger(x) && x >= 0;
+
+/** Como el servidor: el costo comparte el tope del precio. */
+function exigirCostoBajoTope(c: Contexto, x: number): void {
+  if (excedeTopeCentavos(x)) throw fallo('entrada-invalida', mensajeCostoSobreTope(c.e.comercial.monedaCosto ?? MONEDA_COSTO_POR_DEFECTO));
+}
+
+/** Como el servidor: la categoría es un slug. */
+function exigirCategoria(x: unknown): void {
+  if (typeof x === 'string' && !esCategoriaValida(x)) throw fallo('entrada-invalida', mensajeCategoriaInvalida(x));
+}
+
+/**
+ * Como el servidor: al editar, lo GUARDADO que no cumple (categoría, precios, costo) obliga a corregirlo,
+ * aunque el campo no venga en la edición. `cambios` trae lo que llega; el resto se toma de `p`.
+ */
+function exigirGuardadoValido(c: Contexto, p: ProductoInterno, cambios: { categoria?: unknown; costoUSD?: unknown; precioUSD?: unknown }): void {
+  if (cambios.categoria === undefined && !esCategoriaValida(p.categoria)) {
+    throw fallo('entrada-invalida', mensajeGuardadoInvalido(`La categoría guardada «${p.categoria}»`, mensajeCategoriaInvalida(p.categoria)));
+  }
+  const llegan = typeof cambios.precioUSD === 'object' && cambios.precioUSD !== null ? (cambios.precioUSD as Record<string, unknown>) : {};
+  for (const m of c.e.comercial.mercados) {
+    const k = claveDePrecio(m.id);
+    const v = p.precioUSD[k];
+    if (!Object.hasOwn(llegan, k) && typeof v === 'number' && excedeTopeCentavos(v)) {
+      throw fallo('entrada-invalida', mensajeGuardadoInvalido(`El precio guardado de ${m.nombre}`, mensajePrecioSobreTope(m)));
+    }
+  }
+  if (cambios.costoUSD === undefined && excedeTopeCentavos(p.costoUSD)) {
+    throw fallo('entrada-invalida', mensajeGuardadoInvalido('El costo guardado', mensajeCostoSobreTope(c.e.comercial.monedaCosto ?? MONEDA_COSTO_POR_DEFECTO)));
+  }
+}
 
 /** Como `exigirPrecio` del servidor: un valor por cada mercado declarado; al editar, un precio existente no se puede quitar ni omitir. */
 function exigirPrecioDoble(c: Contexto, x: unknown, previos?: Readonly<Record<string, unknown>>): Record<string, number> {
@@ -39,6 +70,7 @@ function exigirPrecioDoble(c: Contexto, x: unknown, previos?: Readonly<Record<st
       continue;
     }
     const v = p[clave];
+    if (centavosValidos(v) && excedeTopeCentavos(v)) throw fallo('entrada-invalida', mensajePrecioSobreTope(m));
     if (!centavosValidos(v)) throw fallo('entrada-invalida', `Falta el precio del mercado ${m.id} o no es válido (centavos enteros de ${m.monedaBase})`);
     salida[clave] = v;
   }
@@ -91,6 +123,8 @@ export const handlersInventario: {
     const p = e.producto;
     if (!ID_PRODUCTO.test(p.id)) throw fallo('entrada-invalida', 'Identificador de producto inválido');
     return operacion(c, 'producto-crear', e.operacionId, p, () => {
+      exigirCategoria(p.categoria);
+      if (p.costoUSD !== undefined && centavosValidos(p.costoUSD)) exigirCostoBajoTope(c, p.costoUSD);
       const precios = exigirPrecioDoble(c, p.precioUSD);
       if (c.e.productos.has(p.id)) throw fallo('estado-invalido', `El producto ${p.id} ya existe`);
       if ([...c.e.productos.values()].some((x) => x.sku === p.sku)) throw fallo('estado-invalido', 'El SKU ya está en uso');
@@ -116,7 +150,10 @@ export const handlersInventario: {
         throw fallo('estado-invalido', 'conSerie no cambia tras el primer movimiento');
       }
       const { marca, garantiaMeses, minimo, costoUSD, precioUSD, ...directos } = e.cambios;
+      exigirCategoria(directos.categoria);
+      if (typeof costoUSD === 'number' && centavosValidos(costoUSD)) exigirCostoBajoTope(c, costoUSD);
       const precios = precioUSD !== undefined ? exigirPrecioDoble(c, precioUSD, p.precioUSD) : undefined;
+      exigirGuardadoValido(c, p, { categoria: directos.categoria, costoUSD, precioUSD });
       if (garantiaMeses != null && (!Number.isInteger(garantiaMeses) || garantiaMeses < 1 || garantiaMeses > 120)) throw fallo('entrada-invalida', 'Garantía: de 1 a 120 meses');
       if (minimo != null && (!Number.isInteger(minimo) || minimo < 0)) throw fallo('entrada-invalida', 'Mínimo inválido');
       Object.assign(p, directos);
@@ -370,18 +407,26 @@ export const handlersInventario: {
     return Object.assign(unidades, marcaDoble(c));
   },
 
+  // Igual que el servidor: sin `porInicio`, coincidencia EXACTA (distingue mayúsculas); con `porInicio` (solo `sup` y `adm`), el
+  // comienzo de la serie, desde 4 caracteres, 10 resultados como máximo y sin las disponibles de un almacén en conteo.
   buscarSerie: (c, e) => {
-    const q = e.serie.trim().toLowerCase();
-    if (q === '') return [];
+    let coincide: (serie: string) => boolean = (serie) => serie === e.serie;
+    if (e.porInicio === true) {
+      exigirRol(c, ['sup', 'adm']);
+      const p = e.serie.trim();
+      if (p.length < 4) throw fallo('entrada-invalida', 'Escriba al menos 4 caracteres de la serie.');
+      coincide = (serie) => serie.startsWith(p);
+    }
     return [...c.e.unidades.values()]
-      .filter((u) => u.serie.toLowerCase().includes(q))
+      .filter((u) => coincide(u.serie))
+      .filter((u) => e.porInicio !== true || u.estado !== 'disponible' || puedeVerExistencias(c, u.ubicacionId))
       .map((u) => {
         const meses = c.e.productos.get(u.productoId)?.garantiaMeses;
         if (u.estado !== 'vendida' || meses === undefined || u.ventaRef === undefined) return u;
         const v = c.e.ventas.get(u.ventaRef);
         return v === undefined ? u : { ...u, garantiaHasta: c.e.recibos.get(`recibo-${v.ventaId}`)?.lineas.find((l) => l.series.includes(u.serie))?.garantiaHasta ?? '' };
       })
-      .slice(0, 50);
+      .slice(0, e.porInicio === true ? 10 : 20);
   },
 
   listarMovimientos: (c, e) => {

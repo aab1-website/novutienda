@@ -47,6 +47,8 @@ export interface EstadoDoble {
   versionPublicada: number;
   /** Aviso de sitio incompleto que devuelve el tablero; una publicación correcta lo deja en `null`. */
   avisoSitio: Tablero['avisoSitio'];
+  /** Resultado de la última reconstrucción que devuelve el tablero; publicar lo deja en «completada». Una prueba puede sembrar una falla. */
+  ultimaReconstruccion: Tablero['ultimaReconstruccion'];
   usuarios: Mutable<UsuarioVista>[];
   /** Módulos encendidos del negocio (el doble los enciende todos; una prueba puede apagar alguno). */
   modulos: string[];
@@ -109,11 +111,11 @@ export function crearEstado(ahora: number): EstadoDoble {
   });
   const productos = new Map<string, ProductoInterno>();
   for (const p of [
-    mk('tv-55', 'Televisor 55 pulgadas', 'Televisores', 'Aurora', true, 12, 45000, 48000, 30000, 2, [3, 2, 0]),
-    mk('cel-a1', 'Celular A1 128 GB', 'Celulares', 'Nova', true, 6, 18000, 19000, 12000, 2, [2, 0, 0]),
-    mk('cable-hdmi', 'Cable HDMI 2 m', 'Accesorios', 'Cabletec', false, undefined, 800, 900, 300, 10, [25, 10, 0]),
-    mk('parlante', 'Parlante portátil', 'Audio', 'Sonar', false, 3, 2500, 2700, 1500, 3, [1, 0, 0]),
-    mk('audifonos', 'Audífonos inalámbricos', 'Audio', 'Sonar', false, undefined, 1500, 1600, 800, 2, [0, 0, 5]),
+    mk('tv-55', 'Televisor 55 pulgadas', 'televisores', 'Aurora', true, 12, 45000, 48000, 30000, 2, [3, 2, 0]),
+    mk('cel-a1', 'Celular A1 128 GB', 'celulares', 'Nova', true, 6, 18000, 19000, 12000, 2, [2, 0, 0]),
+    mk('cable-hdmi', 'Cable HDMI 2 m', 'accesorios', 'Cabletec', false, undefined, 800, 900, 300, 10, [25, 10, 0]),
+    mk('parlante', 'Parlante portátil', 'audio', 'Sonar', false, 3, 2500, 2700, 1500, 3, [1, 0, 0]),
+    mk('audifonos', 'Audífonos inalámbricos', 'audio', 'Sonar', false, undefined, 1500, 1600, 800, 2, [0, 0, 5]),
   ]) productos.set(p.id, p);
 
   const unidades = new Map<string, UnidadSerie>();
@@ -139,7 +141,7 @@ export function crearEstado(ahora: number): EstadoDoble {
     plantilla: { negocio: { nombre: 'Negocio de ejemplo', direccion: 'Calle Ejemplo 123', telefono: '70000000' }, pie: 'Comprobante no fiscal.', politicaGarantia: 'Garantía según ficha del producto.', politicaCambios: 'Cambios dentro de 7 días con el comprobante.' },
     auditoria: [], fichas: new Map(), medios: new Map(), logo: null, subidas: new Map(), disparador: { demoraMs: 15 }, secciones: [], carruseles: new Map(),
     configSitio: { plantillaActiva: 'cielo', whatsappNovuchat: '59170000000', medicion: {} },
-    cambiosSinPublicar: 0, ultimoCambioEn: iso(ahora), publicadoEn: null, versionPublicada: 0, avisoSitio: null,
+    cambiosSinPublicar: 0, ultimoCambioEn: iso(ahora), publicadoEn: null, versionPublicada: 0, avisoSitio: null, ultimaReconstruccion: null,
     modulos: ['inventarios', 'pos', 'recibos', 'consola', 'website'],
     comercial: {
       mercados: [

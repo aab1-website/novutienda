@@ -1,9 +1,9 @@
 // Tipos del contrato del panel. Se re-declaran (no se importan de los módulos) para que el panel no dependa de su
 // código: cada tipo copia la forma serializable que devuelve la función pública del módulo indicado. Los montos son
 // centavos enteros, igual que en el POS. Las fechas viajan como milisegundos (`...Ms`) o texto ISO, como en el módulo.
-import type { CopiaCotizacion, Rol } from '@novutienda/nucleo';
+import type { CodigoCausaSitio, CopiaCotizacion, EtapaFallaSitio, Rol } from '@novutienda/nucleo';
 
-export type { CopiaCotizacion, Rol };
+export type { CodigoCausaSitio, CopiaCotizacion, EtapaFallaSitio, Rol };
 
 // ---------------------------------------------------------------------------------------------------------------------
 // POS (docs/modulos/pos.md; paquetes/pos/src/tipos.ts)
@@ -41,6 +41,8 @@ export interface TurnoPos {
   readonly contado?: MontosPorMoneda;
   readonly esperado?: MontosPorMoneda;
   readonly diferencia?: MontosPorMoneda;
+  /** Solo si se usó algún carrito guardado en el turno: ids de los abiertos. */
+  readonly carritosAbiertos?: readonly string[];
 }
 
 export interface LineaVenta {
@@ -67,6 +69,7 @@ export interface VentaPos {
   readonly turnoId: string;
   readonly cajaId: string;
   readonly cajeroUid: string;
+  readonly carritoId?: string;
   readonly estado: 'confirmada' | 'anulada';
   readonly moneda: string;
   readonly mercado: string;
@@ -138,6 +141,52 @@ export interface SolicitudAprobacion {
   readonly monto: number;
   readonly motivo: string;
   readonly deudor?: string;
+  /** Carrito guardado al que sirve la aprobación (solo se puede usar al cobrar ese carrito). */
+  readonly carritoId?: string;
+}
+
+export type EstadoCarritoGuardado = 'abierto' | 'cerrado' | 'cancelado';
+
+/** Lo que el cajero armó en un carrito guardado. No guarda precios: se recalculan al cobrar. */
+export interface ContenidoCarritoGuardado {
+  readonly mercadoId: string;
+  readonly moneda: string;
+  readonly lineas: readonly { readonly productoId: string; readonly almacenId: string; readonly cantidad: number; readonly series: readonly string[] }[];
+  readonly descuento?: { readonly monto: number; readonly motivo: string };
+  readonly cliente?: { readonly nombre: string; readonly telefono?: string };
+  readonly aprobacionDescuentoId?: string;
+  readonly solicitudDescuentoId?: string;
+  readonly solicitudCreditoId?: string;
+}
+
+/** Carrito guardado en el servidor (venta en espera). `version` se envía al guardar y al cobrar; `requestId` será el id de la venta. */
+export interface CarritoGuardado {
+  readonly carritoId: string;
+  readonly turnoId: string;
+  readonly cajeroUid: string;
+  readonly estado: EstadoCarritoGuardado;
+  readonly etiqueta: string;
+  readonly version: number;
+  readonly requestId: string;
+  readonly contenido?: ContenidoCarritoGuardado;
+  readonly creadoEnMs: number;
+  readonly actualizadoEnMs: number;
+  readonly cerradoEnMs?: number;
+  readonly ventaId?: string;
+  readonly motivoCancelacion?: string;
+  readonly canceladoPor?: string;
+}
+
+/** Resumen de un carrito abierto para supervisión: sin cliente, teléfono ni series. */
+export interface ResumenCarritoSupervision {
+  readonly carritoId: string;
+  readonly etiqueta: string;
+  readonly cajeroUid: string;
+  readonly lineas: number;
+  readonly unidades: number;
+  readonly creadoEnMs: number;
+  readonly actualizadoEnMs: number;
+  readonly antiguedadMs: number;
 }
 
 export interface ReembolsoAnulacion {
@@ -471,6 +520,8 @@ export const LIMITES_PANEL = {
   bytesVideo: 200 * 1024 * 1024,
   duracionVideoSeg: 60,
   seccionesMax: 5,
+  /** Cupo de fotos de portada subidas del plan base (el servidor lo lee del plan de cada comercio). */
+  fotosPortada: 8,
   cuotaOriginalesBytes: 10 * 1024 * 1024 * 1024,
 } as const;
 
@@ -534,8 +585,10 @@ export interface Medio {
   readonly por: string;
 }
 
-/** Tipo de una subida: foto o video de un producto, o el logo del negocio. */
-export type TipoSubida = TipoMedio | 'logo';
+/** Tipo de una subida: foto o video de un producto, el logo del negocio o una foto de portada (no es de ningún producto). */
+export type TipoSubida = TipoMedio | 'logo' | 'portada';
+/** `productoId` con el que el servidor guarda las fotos de portada subidas. Son medios `foto` de esa carpeta. */
+export const ID_PORTADA = '_portada';
 /** `productoId` con el que el servidor guarda la subida de un logo (el logo no pertenece a ningún producto). */
 export const ID_NEGOCIO = '_negocio';
 /** Tope del archivo de logo, igual que el servidor (JPG, PNG o WebP). */
@@ -601,6 +654,24 @@ export type CotizacionTablero =
   | { readonly mercado: string; readonly estado: 'vigente' | 'ultimo_verificado'; readonly par: string; readonly valor: number; readonly fecha: string; readonly fuente: string }
   | { readonly mercado: string; readonly estado: 'sin_cotizacion'; readonly motivo: string };
 
+/** Causa de una reconstrucción fallida del sitio; `producto` es el nombre (nunca el id). */
+export interface CausaReconstruccion {
+  readonly codigo: CodigoCausaSitio;
+  readonly mercado?: string;
+  readonly producto?: string;
+}
+
+/** Resultado de la última reconstrucción del sitio (`null` si nunca hubo una). */
+export interface UltimaReconstruccion {
+  readonly estado: 'completada' | 'fallida';
+  readonly version: number;
+  /** Instante ISO. */
+  readonly en: string;
+  readonly etapa: EtapaFallaSitio | null;
+  readonly enCurso: boolean;
+  readonly causas: readonly CausaReconstruccion[];
+}
+
 export interface Tablero {
   readonly cambiosSinPublicar: number;
   readonly ultimoCambioEn: string;
@@ -608,6 +679,7 @@ export interface Tablero {
   readonly versionPublicada: number;
   /** Si un retiro automático dejó el sitio sin productos o sin fotos (`en`: instante ISO del retiro); `null` si no hay aviso. */
   readonly avisoSitio: { readonly motivo: 'sin_productos' | 'sin_fotos'; readonly en: string } | null;
+  readonly ultimaReconstruccion: UltimaReconstruccion | null;
   readonly cotizaciones: readonly CotizacionTablero[];
   readonly uso: {
     readonly productos: { readonly usados: number; readonly tope: number };
@@ -627,6 +699,8 @@ export interface ResultadoPublicacion {
 export interface ErrorFilaImportacion {
   readonly columna: string | null;
   readonly motivo: string;
+  /** En «sku repetido»: línea del archivo donde el SKU apareció primero. */
+  readonly filaPrevia?: number;
 }
 
 export interface FilaSimulada {
@@ -733,3 +807,51 @@ export interface CotizacionVista {
   readonly estado: 'vigente' | 'ultimo_verificado';
 }
 export type CotizacionesVigentes = Readonly<Record<string, CotizacionVista | null>>;
+
+// «Mi reporte»: formas de `pos.resumenTurno`, `pos.misTurnos` y `pos.misVentas` (paquetes/pos/src/reporte.ts).
+
+export interface CursorVenta {
+  readonly creadoEnMs: number;
+  readonly ventaId: string;
+}
+export interface CursorTurno {
+  readonly abiertoEnMs: number;
+  readonly turnoId: string;
+}
+
+export interface MontosPorMedioVista {
+  readonly efectivo: number;
+  readonly qr: number;
+  readonly transferencia: number;
+  readonly credito: number;
+}
+
+export interface ResumenMonedaVista {
+  readonly ventas: number;
+  readonly bruto: number;
+  readonly descuentos: { readonly cantidad: number; readonly monto: number };
+  readonly neto: number;
+  readonly porMedio: MontosPorMedioVista;
+  readonly anuladas: { readonly cantidad: number; readonly monto: number };
+  readonly reembolsos: MontosPorMedioVista;
+  readonly ingresos: number;
+  readonly egresos: number;
+}
+
+export interface FilaTurnoVista {
+  readonly turnoId: string;
+  readonly cajaId: string;
+  readonly cajeroUid: string;
+  readonly estado: 'abierto' | 'cerrado' | 'cerrado_forzado';
+  readonly abiertoEnMs: number;
+  readonly cerradoEnMs?: number;
+  readonly apertura: MontosPorMoneda;
+  readonly totales: TotalesTurno;
+}
+
+export interface ResumenTurnoVista {
+  readonly turno: FilaTurnoVista;
+  readonly monedas: readonly string[];
+  readonly porMoneda: Readonly<Record<string, ResumenMonedaVista>>;
+  readonly truncado: boolean;
+}

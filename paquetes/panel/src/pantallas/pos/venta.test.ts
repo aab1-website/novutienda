@@ -6,7 +6,7 @@ import { afterEach, describe, expect, it, vi } from 'vitest';
 import { crearEntorno, uuid, type Entorno } from '../../ayuda-pruebas.js';
 import { PantallaVenta } from './venta.js';
 import { PantallaAprobaciones } from './aprobaciones.js';
-import { PantallaSupervision } from './supervision.js';
+import { PantallaSupervision, textoAntiguedad } from './supervision.js';
 
 afterEach(() => {
   cleanup();
@@ -56,8 +56,8 @@ describe('venta: terminal y cobro de punta a punta', () => {
     await waitFor(() => expect(document.querySelector('[data-prueba="total"]')?.textContent).toBe('Bs 55,68'));
     await u.click(screen.getByRole('button', { name: 'Cobrar' }));
     await screen.findByRole('heading', { name: 'Cobro' });
-    await u.clear(campo(/Monto a aplicar/));
-    await u.type(campo(/Monto a aplicar/), '55,68');
+    await u.clear(campo(/Monto que paga con este medio/));
+    await u.type(campo(/Monto que paga con este medio/), '55,68');
     await u.type(campo(/Efectivo recibido/), '100');
     expect(document.querySelector('[data-prueba="cambio"]')?.textContent).toBe('Bs 44,32');
     await u.click(screen.getByRole('button', { name: 'Confirmar cobro' }));
@@ -112,14 +112,14 @@ describe('venta: terminal y cobro de punta a punta', () => {
     await u.type(campo(/Cliente \(opcional\)/), 'Ana Pérez');
     await u.click(screen.getByRole('button', { name: 'Cobrar' }));
     await screen.findByRole('heading', { name: 'Cobro' });
-    await u.clear(campo(/Monto a aplicar/));
-    await u.type(campo(/Monto a aplicar/), '20');
+    await u.clear(campo(/Monto que paga con este medio/));
+    await u.type(campo(/Monto que paga con este medio/), '20');
     await u.click(screen.getByRole('button', { name: 'Agregar otro medio' }));
     const pagos = screen.getAllByRole('group', { name: /Pago/ });
     const segundo = pagos[1] as HTMLElement;
     await u.selectOptions(within(segundo).getByLabelText('Medio'), 'qr');
-    await u.clear(within(segundo).getByLabelText(/Monto a aplicar/));
-    await u.type(within(segundo).getByLabelText(/Monto a aplicar/), '20');
+    await u.clear(within(segundo).getByLabelText(/Monto que paga con este medio/));
+    await u.type(within(segundo).getByLabelText(/Monto que paga con este medio/), '20');
     await u.type(within(segundo).getByLabelText(/Referencia del QR/), 'REF-77');
     expect(within(segundo).getByText(/QR registrado por sup@ejemplo.test/)).toBeTruthy();
     expect(document.querySelector('[data-prueba="restante"]')?.textContent).toBe('Bs 15,68');
@@ -127,8 +127,8 @@ describe('venta: terminal y cobro de punta a punta', () => {
     await u.click(screen.getByRole('button', { name: 'Agregar otro medio' }));
     const tercero = screen.getAllByRole('group', { name: /Pago/ })[2] as HTMLElement;
     await u.selectOptions(within(tercero).getByLabelText('Medio'), 'credito');
-    await u.clear(within(tercero).getByLabelText(/Monto a aplicar/));
-    await u.type(within(tercero).getByLabelText(/Monto a aplicar/), '15,68');
+    await u.clear(within(tercero).getByLabelText(/Monto que paga con este medio/));
+    await u.type(within(tercero).getByLabelText(/Monto que paga con este medio/), '15,68');
     await u.click(screen.getByRole('button', { name: 'Confirmar cobro' }));
     await screen.findByRole('heading', { name: 'Venta registrada' });
     const v = (await e.api.llamar('listarVentas', {}))[0];
@@ -144,8 +144,8 @@ describe('venta: terminal y cobro de punta a punta', () => {
     await u.click(await screen.findByRole('button', { name: 'Agregar Parlante portátil' }));
     await u.click(screen.getByRole('button', { name: 'Cobrar' }));
     await screen.findByRole('heading', { name: 'Cobro' });
-    await u.clear(campo(/Monto a aplicar/));
-    await u.type(campo(/Monto a aplicar/), '174');
+    await u.clear(campo(/Monto que paga con este medio/));
+    await u.type(campo(/Monto que paga con este medio/), '174');
     // Otro usuario vende la última unidad: el servidor responde stock insuficiente.
     const antes = e.api.estado.productos.get('parlante');
     if (antes) antes.existencias.tienda = 0;
@@ -165,7 +165,7 @@ describe('venta: caja, créditos, historial y cierre', () => {
     await e.api.llamar('abrirTurno', { turnoId: uuid(), apertura: { BOB: 10000 } });
     ver(e, 'caja');
     const u = userEvent.setup();
-    await screen.findByRole('heading', { name: 'Ingresos y egresos de caja' });
+    await screen.findByRole('heading', { name: 'Ingresos y egresos excepcionales' });
     await u.type(campo(/^Monto/), '150');
     expect(await screen.findByText(/mayor que el efectivo disponible/)).toBeTruthy();
     await u.clear(campo(/^Monto/));
@@ -174,6 +174,16 @@ describe('venta: caja, créditos, historial y cierre', () => {
     await u.click(screen.getByRole('button', { name: 'Registrar' }));
     expect(await screen.findByText('Egreso registrado.')).toBeTruthy();
     expect(await screen.findByText('Compra de bolsas')).toBeTruthy();
+  });
+
+  it('la pestaña se llama «Ing. y Egr. Excepcionales», sin aria-label', async () => {
+    const e = crearEntorno('caj');
+    await e.api.llamar('abrirTurno', { turnoId: uuid(), apertura: { BOB: 0 } });
+    ver(e, 'caja');
+    await screen.findByRole('heading', { name: 'Ingresos y egresos excepcionales' });
+    const enlace = screen.getByRole('link', { name: 'Ing. y Egr. Excepcionales' });
+    expect(enlace.textContent).toBe('Ing. y Egr. Excepcionales');
+    expect(enlace.getAttribute('aria-label')).toBeNull();
   });
 
   it('cobra un crédito pendiente en efectivo', async () => {
@@ -308,6 +318,51 @@ const UN_MERCADO = {
   monedasCaja: ['BOB'],
 };
 
+describe('supervisión: carritos abiertos', () => {
+  it('sin carritos dice que no hay; con carritos los lista sin datos del cliente y el supervisor cancela con motivo', async () => {
+    const e = crearEntorno('caj');
+    await e.api.llamar('abrirTurno', { turnoId: uuid(), apertura: { BOB: 10000 } });
+    e.como('sup');
+    render(e.envolver(h(PantallaSupervision, { sub: 'vivo' })));
+    expect(await screen.findByText('No hay carritos abiertos.')).toBeTruthy();
+    cleanup();
+    e.como('caj');
+    const carritoId = uuid();
+    await e.api.llamar('crearCarrito', { carritoId, etiqueta: 'Mostrador 1' });
+    e.como('sup');
+    render(e.envolver(h(PantallaSupervision, { sub: 'vivo' })));
+    const tabla = await screen.findByRole('table', { name: 'Carritos abiertos' });
+    expect(tabla.textContent).toMatch(/Mostrador 1/);
+    for (const t of ['Carrito', 'Cajero', 'Productos', 'Unidades', 'Antigüedad']) expect(within(tabla).getByRole('columnheader', { name: new RegExp(t) })).toBeTruthy();
+    expect(screen.queryByText('No hay carritos abiertos.')).toBeNull();
+    expect(within(tabla).getByText('Cajero de la caja abierta')).toBeTruthy();
+    const u = userEvent.setup();
+    await u.click(screen.getByRole('button', { name: 'Cancelar con motivo Mostrador 1' }));
+    await u.type(screen.getByLabelText(/Motivo de la cancelación de Mostrador 1/), 'Cliente ausente');
+    await u.click(screen.getByRole('button', { name: 'Confirmar cancelación de Mostrador 1' }));
+    expect(await screen.findByText('No hay carritos abiertos.')).toBeTruthy();
+    expect(e.api.llamadas.find((l) => l.nombre === 'cancelarCarrito')?.entrada).toEqual({ carritoId, motivo: 'Cliente ausente' });
+  });
+  it('el administrador también los ve', async () => {
+    const e = crearEntorno('caj');
+    await e.api.llamar('abrirTurno', { turnoId: uuid(), apertura: { BOB: 0 } });
+    await e.api.llamar('crearCarrito', { carritoId: uuid(), etiqueta: 'Cliente 7' });
+    e.como('adm');
+    render(e.envolver(h(PantallaSupervision, { sub: 'vivo' })));
+    expect((await screen.findByRole('table', { name: 'Carritos abiertos' })).textContent).toMatch(/Cliente 7/);
+  });
+  it('el vendedor no ve la sección', async () => {
+    const e = crearEntorno('caj');
+    render(e.envolver(h(PantallaSupervision, { sub: 'vivo' })));
+    await screen.findByText(/Cajas abiertas/);
+    expect(screen.queryByText('No hay carritos abiertos.')).toBeNull();
+    expect(e.api.llamadas.some((l) => l.nombre === 'carritosSupervision')).toBe(false);
+  });
+  it('textoAntiguedad', () => {
+    expect([0, 90_000, 3_600_000 + 600_000, 90_000_000].map(textoAntiguedad)).toEqual(['menos de 1 min', '1 min', '1 h 10 min', '1 d 1 h']);
+  });
+});
+
 describe('venta: mercados y monedas declarados', () => {
   it('el comercio de referencia abre turno en el orden declarado: bolivianos, dólares, pesos', async () => {
     const e = crearEntorno('caj');
@@ -342,8 +397,8 @@ describe('venta: mercados y monedas declarados', () => {
     await waitFor(() => expect(document.querySelector('[data-prueba="total"]')?.textContent).toBe('Bs 8,00'));
     await u.click(screen.getByRole('button', { name: 'Cobrar' }));
     await screen.findByRole('heading', { name: 'Cobro' });
-    await u.clear(campo(/Monto a aplicar/));
-    await u.type(campo(/Monto a aplicar/), '8');
+    await u.clear(campo(/Monto que paga con este medio/));
+    await u.type(campo(/Monto que paga con este medio/), '8');
     await u.click(screen.getByRole('button', { name: 'Confirmar cobro' }));
     await screen.findByRole('heading', { name: 'Venta registrada' });
     const venta = (await e.api.llamar('listarVentas', {}))[0];
@@ -390,8 +445,8 @@ describe('venta: mercados y monedas declarados', () => {
     await waitFor(() => expect(document.querySelector('[data-prueba="total"]')?.textContent).toMatch(/10,00/));
     await u.click(screen.getByRole('button', { name: 'Cobrar' }));
     await screen.findByRole('heading', { name: 'Cobro' });
-    await u.clear(campo(/Monto a aplicar/));
-    await u.type(campo(/Monto a aplicar/), '10');
+    await u.clear(campo(/Monto que paga con este medio/));
+    await u.type(campo(/Monto que paga con este medio/), '10');
     await u.click(screen.getByRole('button', { name: 'Confirmar cobro' }));
     await screen.findByRole('heading', { name: 'Venta registrada' });
     const venta = (await e.api.llamar('listarVentas', {}))[0];

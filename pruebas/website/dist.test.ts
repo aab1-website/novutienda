@@ -61,11 +61,11 @@ describe.skipIf(!compilado)('CSP del sitio compilado', () => {
     expect(verificarDist(DIST, permitidos)).toEqual([]);
   });
 
-  it('las 22 páginas esperadas existen: portada, catálogo, categorías, fichas, contacto, privacidad, 404 y secciones', () => {
-    for (const f of ['index', 'productos', 'contacto', 'privacidad', '404', 'productos/televisores', 'producto/televisor-ejemplo-55', 'seccion/como-comprar']) {
+  it('las 26 páginas esperadas existen: portada, catálogo, categorías, fichas, contacto, privacidad, 404 y secciones', () => {
+    for (const f of ['index', 'productos', 'contacto', 'privacidad', '404', 'productos/televisores', 'producto/televisor-ejemplo-55', 'seccion/como-comprar', 'marca/aurora']) {
       expect(existsSync(join(DIST, `${f}.html`)), f).toBe(true);
     }
-    expect(html(DIST)).toHaveLength(22);
+    expect(html(DIST)).toHaveLength(26);
   });
 
   it('la portada tiene un solo h1 y título real; ninguna página trae marcadores de pendiente publicados', () => {

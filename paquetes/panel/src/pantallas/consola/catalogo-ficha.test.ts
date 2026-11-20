@@ -21,42 +21,52 @@ const ver = (e: Entorno): void => void render(e.envolver(h(ProveedorGuardia, nul
 const jpg = (nombre: string, bytes = 2048): File => new File(['x'.repeat(bytes)], nombre, { type: 'image/jpeg' });
 const fotos = (): HTMLElement => screen.getByLabelText('Archivos de fotos');
 const video = (): HTMLElement => screen.getByLabelText('Archivo de video');
-const abrir = async (u: ReturnType<typeof userEvent.setup>, boton: string, producto: string): Promise<HTMLElement> => {
-  await u.click(await screen.findByRole('button', { name: `${boton} de ${producto}` }));
+/** El botón único de la fila: «Editar página» (o «Mostrar en el sitio» si solo falta la visibilidad). */
+const botonFilaYa = (producto: string): HTMLElement => screen.getByRole('button', { name: new RegExp(`^(Editar página|Mostrar en el sitio) de ${producto}$`) });
+const botonFila = (producto: string): Promise<HTMLElement> => screen.findByRole('button', { name: new RegExp(`^(Editar página|Mostrar en el sitio) de ${producto}$`) });
+const abrir = async (u: ReturnType<typeof userEvent.setup>, _boton: string, producto: string): Promise<HTMLElement> => {
+  await u.click(await botonFila(producto));
   return screen.findByRole('dialog', { name: `Página en el sitio: ${producto}` });
 };
 const guardados = (e: Entorno): number => e.api.llamadas.filter((l) => l.nombre === 'guardarFicha').length;
 
 describe('lista de páginas de producto', () => {
-  it('es una tabla con búsqueda, la cantidad en la ficha y dos botones por fila', async () => {
+  it('es una tabla con búsqueda, la cantidad en la ficha y un solo botón por fila', async () => {
     const e = crearEntorno('sup');
     ver(e);
     const tabla = await screen.findByRole('table', { name: 'Productos y su página en el sitio' });
     expect(within(tabla).getByRole('columnheader', { name: 'Fotos y video' })).toBeTruthy();
     expect(within(tabla).getAllByText('0 en la ficha').length).toBeGreaterThan(0);
-    expect(within(tabla).getByRole('button', { name: `Fotos y video de ${TV}` })).toBeTruthy();
-    expect(within(tabla).getByRole('button', { name: `Editar página de ${TV}` })).toBeTruthy();
+    // Sin página y con ella, la fila ofrece solo «Editar página»: nunca dos botones.
+    const sinPagina = within(tabla).getByRole('row', { name: new RegExp(TV) });
+    expect(within(sinPagina).getAllByRole('button').map((b) => b.textContent)).toEqual(['Editar página']);
     const u = userEvent.setup();
     await u.type(screen.getByLabelText('Buscar producto'), 'hdmi');
     expect(within(tabla).queryByText(TV)).toBeNull();
     expect(within(tabla).getByText(CABLE)).toBeTruthy();
+    await e.api.llamar('guardarFicha', { productoId: 'tv-55', ficha: { slug: 'tv-55', descripcion: 'x', garantia: '', medios: [], seo: { titulo: '', descripcion: '' }, estado: 'borrador' } });
+    cleanup();
+    ver(e);
+    const tabla2 = await screen.findByRole('table', { name: 'Productos y su página en el sitio' });
+    const conPagina = await within(tabla2).findByRole('row', { name: new RegExp(`${TV}.*Falta`) });
+    expect(within(conPagina).getAllByRole('button').map((b) => b.textContent)).toEqual(['Editar página']);
   });
 });
 
 describe('panel lateral de la ficha', () => {
-  it('«Fotos y video» abre el panel con el foco en la zona de carga y Cancelar devuelve el foco a la fila', async () => {
+  it('«Editar página» abre el panel con las dos secciones y Cancelar devuelve el foco a la fila', async () => {
     const e = crearEntorno('sup');
     ver(e);
     const u = userEvent.setup();
-    const dialogo = await abrir(u, 'Fotos y video', TV);
+    const dialogo = await abrir(u, 'Editar página', TV);
     expect(within(dialogo).getByRole('heading', { name: `Página en el sitio: ${TV}` })).toBeTruthy();
-    await waitFor(() => expect(document.activeElement).toBe(within(dialogo).getByRole('button', { name: 'Elegir fotos' })), { timeout: 3000 });
+    await waitFor(() => expect(document.activeElement).toBe(within(dialogo).getByLabelText(/Dirección de la página/)), { timeout: 3000 });
     // La zona de carga y los medios van antes que los textos.
     const orden = Array.from(dialogo.querySelectorAll('h3')).map((x) => x.textContent);
     expect(orden).toEqual(['Fotos y video', 'Textos de la página']);
     await u.click(within(dialogo).getByRole('button', { name: 'Cancelar' }));
     await waitFor(() => expect(screen.queryByRole('dialog')).toBeNull(), { timeout: 3000 });
-    await waitFor(() => expect(document.activeElement).toBe(screen.getByRole('button', { name: `Fotos y video de ${TV}` })), { timeout: 3000 });
+    await waitFor(() => expect(document.activeElement).toBe(botonFilaYa(TV)), { timeout: 3000 });
   });
   it('«Editar página» deja el foco en la dirección', async () => {
     const e = crearEntorno('sup');
@@ -70,7 +80,7 @@ describe('panel lateral de la ficha', () => {
     const e = crearEntorno('sup');
     ver(e);
     const u = userEvent.setup();
-    await abrir(u, 'Fotos y video', TV);
+    await abrir(u, 'Editar página', TV);
     fireEvent.change(await screen.findByLabelText('Archivos de fotos'), { target: { files: [jpg('frente.jpg')] } });
     expect(await screen.findByText('frente.jpg: Listo')).toBeTruthy();
     expect(e.almacen.subidos).toHaveLength(1);
@@ -92,7 +102,7 @@ describe('panel lateral de la ficha', () => {
     expect(await screen.findByText(/Página guardada/)).toBeTruthy();
     await waitFor(() => expect(screen.queryByRole('dialog')).toBeNull(), { timeout: 3000 });
     expect((await e.api.llamar('listarFichas', {}))[0]?.ficha.medios[0]?.alt).toBe('frente');
-    await waitFor(() => expect(document.activeElement).toBe(screen.getByRole('button', { name: `Fotos y video de ${TV}` })), { timeout: 3000 });
+    await waitFor(() => expect(document.activeElement).toBe(botonFilaYa(TV)), { timeout: 3000 });
   });
   it('existente: al guardar envía solo los campos editables, sin los de almacenamiento', async () => {
     const e = crearEntorno('sup');
@@ -113,7 +123,7 @@ describe('panel lateral de la ficha', () => {
     e.api.estado.disparador.rechazo = 'El archivo no es una imagen válida';
     ver(e);
     const u = userEvent.setup();
-    await abrir(u, 'Fotos y video', TV);
+    await abrir(u, 'Editar página', TV);
     fireEvent.change(await screen.findByLabelText('Archivos de fotos'), { target: { files: [jpg('roto.jpg', 1)] } });
     expect(await screen.findByText('roto.jpg: El archivo no es una imagen válida')).toBeTruthy();
     expect(screen.getByRole('button', { name: 'Elegir otro archivo en lugar de roto.jpg' })).toBeTruthy();
@@ -126,7 +136,7 @@ describe('panel lateral de la ficha', () => {
     const e = crearEntorno('sup');
     ver(e);
     const u = userEvent.setup();
-    await abrir(u, 'Fotos y video', CABLE);
+    await abrir(u, 'Editar página', CABLE);
     fireEvent.change(await screen.findByLabelText('Archivos de fotos'), { target: { files: [jpg('uno.jpg', 1), jpg('dos.jpg', 1)] } });
     await screen.findByText('uno.jpg: Listo');
     await screen.findByText('dos.jpg: Listo');
@@ -146,7 +156,7 @@ describe('panel lateral de la ficha', () => {
     const e = crearEntorno('sup');
     ver(e);
     const u = userEvent.setup();
-    await abrir(u, 'Fotos y video', CABLE);
+    await abrir(u, 'Editar página', CABLE);
     const enorme = jpg('gigante.jpg', 1);
     Object.defineProperty(enorme, 'size', { value: 16 * 1024 * 1024 });
     fireEvent.change(await screen.findByLabelText('Archivos de fotos'), { target: { files: [enorme] } });
@@ -158,7 +168,7 @@ describe('panel lateral de la ficha', () => {
     for (const id of ['medio-previo-1', 'medio-previo-2']) e.api.estado.medios.set(id, { id, productoId: 'tv-55', tipo: 'foto', bytesOriginal: 1000, ancho: 800, alto: 600, creadoEn: 1, por: 'u' });
     ver(e);
     const u = userEvent.setup();
-    await abrir(u, 'Fotos y video', TV);
+    await abrir(u, 'Editar página', TV);
     // Archivos que ya estaban subidos y no están en la página.
     expect(await screen.findByText(/Archivos subidos que no están en la página/)).toBeTruthy();
     fireEvent.change(await screen.findByLabelText('Archivos de fotos'), { target: { files: [jpg('a.jpg', 1), jpg('b.jpg', 1), jpg('c.jpg', 1), jpg('d.jpg', 1), jpg('e.jpg', 1)] } });
@@ -181,7 +191,7 @@ describe('panel lateral de la ficha', () => {
     };
     ver(e);
     const u = userEvent.setup();
-    await abrir(u, 'Fotos y video', TV);
+    await abrir(u, 'Editar página', TV);
     fireEvent.change(await screen.findByLabelText('Archivos de fotos'), { target: { files: [jpg('red.jpg')] } });
     const boton = await screen.findByRole('button', { name: 'Reintentar la subida de red.jpg' });
     expect(screen.queryByRole('button', { name: /Elegir otro archivo en lugar/ })).toBeNull();
@@ -204,7 +214,7 @@ describe('panel lateral de la ficha', () => {
     }) as never);
     ver(e);
     const u = userEvent.setup();
-    await abrir(u, 'Fotos y video', TV);
+    await abrir(u, 'Editar página', TV);
     fireEvent.change(await screen.findByLabelText('Archivos de fotos'), { target: { files: [jpg('a.jpg')] } });
     await u.click(await screen.findByRole('button', { name: 'Reintentar la subida de a.jpg' }));
     await screen.findByText('a.jpg: Listo');
@@ -214,7 +224,7 @@ describe('panel lateral de la ficha', () => {
     e.api.estado.disparador.demoraMs = 1500;
     ver(e);
     const u = userEvent.setup();
-    await abrir(u, 'Fotos y video', TV);
+    await abrir(u, 'Editar página', TV);
     fireEvent.change(await screen.findByLabelText('Archivos de fotos'), { target: { files: [jpg('lenta.jpg')] } });
     expect(await screen.findByText(/Procesando en el servidor… [1-9] s/, undefined, { timeout: 3000 })).toBeTruthy();
     await screen.findByText('lenta.jpg: Listo', undefined, { timeout: 5000 });
@@ -223,7 +233,7 @@ describe('panel lateral de la ficha', () => {
     const e = crearEntorno('sup');
     ver(e);
     const u = userEvent.setup();
-    await abrir(u, 'Fotos y video', TV);
+    await abrir(u, 'Editar página', TV);
     fireEvent.change(await screen.findByLabelText('Archivos de fotos'), { target: { files: [jpg('uno.jpg', 1), jpg('dos.jpg', 1)] } });
     await screen.findByText('uno.jpg: Listo');
     await screen.findByText('dos.jpg: Listo');
@@ -234,7 +244,7 @@ describe('panel lateral de la ficha', () => {
     const e = crearEntorno('sup');
     ver(e);
     const u = userEvent.setup();
-    await abrir(u, 'Fotos y video', TV);
+    await abrir(u, 'Editar página', TV);
     await u.type(await screen.findByLabelText('Descripción del producto'), 'Texto sin guardar');
     fireEvent.change(fotos(), { target: { files: [jpg('uno.jpg', 1)] } });
     await screen.findByText('uno.jpg: Listo');
@@ -246,7 +256,7 @@ describe('panel lateral de la ficha', () => {
     const e = crearEntorno('sup');
     ver(e);
     const u = userEvent.setup();
-    await abrir(u, 'Fotos y video', TV);
+    await abrir(u, 'Editar página', TV);
     fireEvent.change(await screen.findByLabelText('Archivos de fotos'), { target: { files: [jpg('uno.jpg', 1)] } });
     await screen.findByText('uno.jpg: Listo');
     await waitFor(() => expect(guardados(e)).toBe(1));
@@ -265,7 +275,7 @@ describe('panel lateral de la ficha', () => {
     await u.click(screen.getByRole('button', { name: 'Cancelar' }));
     await u.click(await screen.findByRole('button', { name: 'Salir sin guardar' }));
     await waitFor(() => expect(screen.queryByRole('dialog')).toBeNull());
-    await abrir(u, 'Fotos y video', TV);
+    await abrir(u, 'Editar página', TV);
     expect((await screen.findByLabelText('Descripción de la foto 1') as HTMLInputElement).value).toBe(`${TV}, foto 1`);
   });
   it('una subida que termina entre «Guardar» y la recarga no pisa lo recién guardado', async () => {
@@ -273,7 +283,7 @@ describe('panel lateral de la ficha', () => {
     e.api.estado.disparador.demoraMs = 900;
     ver(e);
     const u = userEvent.setup();
-    await abrir(u, 'Fotos y video', TV);
+    await abrir(u, 'Editar página', TV);
     fireEvent.change(await screen.findByLabelText('Archivos de fotos'), { target: { files: [jpg('lenta.jpg', 1)] } });
     await screen.findAllByText(/Procesando en el servidor/);
     await u.type(screen.getByLabelText('Descripción del producto'), 'Texto nuevo.');
@@ -296,7 +306,7 @@ describe('panel lateral de la ficha', () => {
     const e = crearEntorno('sup');
     ver(e);
     const u = userEvent.setup();
-    await abrir(u, 'Fotos y video', TV);
+    await abrir(u, 'Editar página', TV);
     const llamar = e.api.llamar.bind(e.api);
     vi.spyOn(e.api, 'llamar').mockImplementation((async (nombre: string, entrada: never) => {
       if (nombre === 'guardarFicha') await new Promise((ok) => setTimeout(ok, 600));
@@ -314,7 +324,7 @@ describe('panel lateral de la ficha', () => {
     e.api.estado.disparador.demoraMs = 900;
     ver(e);
     const u = userEvent.setup();
-    await abrir(u, 'Fotos y video', TV);
+    await abrir(u, 'Editar página', TV);
     fireEvent.change(await screen.findByLabelText('Archivos de fotos'), { target: { files: [jpg('lenta.jpg', 1)] } });
     await screen.findAllByText(/Procesando en el servidor/);
     await u.click(screen.getByRole('button', { name: 'Guardar' }));
@@ -341,7 +351,7 @@ describe('panel lateral de la ficha', () => {
     e.api.estado.disparador.demoraMs = 700;
     ver(e);
     const u = userEvent.setup();
-    await abrir(u, 'Fotos y video', TV);
+    await abrir(u, 'Editar página', TV);
     fireEvent.change(await screen.findByLabelText('Archivos de fotos'), { target: { files: [jpg('uno.jpg', 1)] } });
     await screen.findAllByText(/Procesando en el servidor/);
     await u.click(screen.getByRole('button', { name: 'Cancelar' }));
@@ -355,7 +365,7 @@ describe('panel lateral de la ficha', () => {
     const e = crearEntorno('sup');
     ver(e);
     const u = userEvent.setup();
-    await abrir(u, 'Fotos y video', TV);
+    await abrir(u, 'Editar página', TV);
     await screen.findByRole('button', { name: 'Elegir fotos' });
     const llamar = e.api.llamar.bind(e.api);
     vi.spyOn(e.api, 'llamar').mockImplementation(((nombre: string, entrada: never) =>
@@ -384,7 +394,7 @@ describe('panel lateral de la ficha', () => {
     // Publicar sin descripción también se marca, en su campo.
     await u.clear(slug);
     await u.type(slug, 'tv-55');
-    await u.selectOptions(screen.getByLabelText('En el sitio'), 'publicado');
+    await u.click(screen.getByRole('radio', { name: 'Visible en el sitio' }));
     await u.click(screen.getByRole('button', { name: 'Guardar' }));
     expect(await screen.findByText(/Para publicar la página, escriba la descripción/)).toBeTruthy();
     await waitFor(() => expect(document.activeElement).toBe(screen.getByLabelText(/Descripción del producto/)));
@@ -446,8 +456,8 @@ describe('«Qué falta» por producto', () => {
     ver(e);
     const u = userEvent.setup();
     const tabla = await screen.findByRole('table', { name: 'Productos y su página en el sitio' });
-    expect(within(tabla).getAllByText('Falta: página, descripción, foto, visible en el sitio').length).toBeGreaterThan(0);
-    await abrir(u, 'Crear la página', TV);
+    expect(within(tabla).getAllByText('Aún no está en el sitio').length).toBeGreaterThan(0);
+    await abrir(u, 'Editar página', TV);
     expect(await screen.findByLabelText(/Dirección de la página/)).toBeTruthy();
   });
 
@@ -456,8 +466,9 @@ describe('«Qué falta» por producto', () => {
     await e.api.llamar('guardarFicha', { productoId: 'tv-55', ficha: { ...fichaBase, descripcion: 'Pantalla grande' } });
     ver(e);
     const u = userEvent.setup();
-    const boton = await screen.findByRole('button', { name: `Subir fotos de ${TV}` });
-    expect(boton.textContent).toBe('Subir fotos');
+    // Un solo botón por fila: abre la página en el primer paso que falta (aquí, las fotos).
+    const boton = await botonFila(TV);
+    expect(boton.textContent).toBe('Editar página');
     await u.click(boton);
     await screen.findByRole('dialog', { name: `Página en el sitio: ${TV}` });
     await waitFor(() => expect(document.activeElement?.closest('.ficha-zona')).not.toBeNull());
@@ -517,18 +528,37 @@ describe('«Qué falta» por producto', () => {
 });
 
 describe('estado de la página en el sitio', () => {
-  it('el campo se llama «En el sitio» y sus textos no usan el verbo de publicar el sitio; el valor guardado no cambia', async () => {
+  it('«En el sitio» va arriba como opciones visibles; sus textos no usan el verbo de publicar el sitio; el valor guardado no cambia', async () => {
     const e = crearEntorno('sup');
     ver(e);
     const u = userEvent.setup();
-    await abrir(u, 'Editar página', TV);
-    const campo = (await screen.findByLabelText('En el sitio')) as HTMLSelectElement;
-    expect(screen.queryByLabelText('Estado')).toBeNull();
-    expect(Array.from(campo.options).map((o) => [o.value, o.textContent])).toEqual([['borrador', 'Borrador'], ['publicado', 'Visible en el sitio'], ['oculto', 'Oculto']]);
+    const dialogo = await abrir(u, 'Editar página', TV);
+    const grupo = await within(dialogo).findByRole('group', { name: 'En el sitio' });
+    expect(within(grupo).getAllByRole('radio').map((r) => (r as HTMLInputElement).value)).toEqual(['borrador', 'publicado', 'oculto']);
+    expect(within(grupo).getAllByRole('radio').map((r) => r.closest('label')?.textContent)).toEqual(['Borrador', 'Visible en el sitio', 'Oculto']);
+    expect((within(grupo).getByRole('radio', { name: 'Borrador' }) as HTMLInputElement).checked).toBe(true);
+    // Va antes que las fotos.
+    expect(grupo.compareDocumentPosition(dialogo.querySelector('#ficha-medios-titulo') as Element) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
     await u.type(screen.getByLabelText('Descripción del producto'), 'Pantalla grande');
-    await u.selectOptions(campo, 'publicado');
+    await u.click(within(grupo).getByRole('radio', { name: 'Visible en el sitio' }));
     await u.click(screen.getByRole('button', { name: 'Guardar' }));
     await waitFor(() => expect(guardados(e)).toBe(1));
+    expect((await e.api.llamar('listarFichas', {}))[0]?.ficha.estado).toBe('publicado');
+  });
+
+  it('con solo la visibilidad pendiente, el botón único dice «Mostrar en el sitio» y abre la página con «Visible en el sitio» marcado', async () => {
+    const e = crearEntorno('sup');
+    e.api.estado.medios.set('m-tv', { id: 'm-tv', productoId: 'tv-55', tipo: 'foto', bytesOriginal: 1000, ancho: 800, alto: 600, creadoEn: 1, por: 'u' });
+    await e.api.llamar('guardarFicha', { productoId: 'tv-55', ficha: { slug: 'tv-55', descripcion: 'Pantalla', garantia: '', medios: [{ medioId: 'm-tv', alt: 'Frente' }], seo: { titulo: '', descripcion: '' }, estado: 'borrador' } });
+    ver(e);
+    const u = userEvent.setup();
+    const boton = await botonFila(TV);
+    expect(boton.textContent).toBe('Mostrar en el sitio');
+    await u.click(boton);
+    await screen.findByRole('dialog', { name: `Página en el sitio: ${TV}` });
+    await waitFor(() => expect((screen.getByRole('radio', { name: 'Visible en el sitio' }) as HTMLInputElement).checked).toBe(true));
+    await u.click(screen.getByRole('button', { name: 'Guardar' }));
+    await waitFor(() => expect(guardados(e)).toBe(2));
     expect((await e.api.llamar('listarFichas', {}))[0]?.ficha.estado).toBe('publicado');
   });
 });
@@ -559,7 +589,7 @@ describe('miniaturas de la ficha', () => {
     conVersiones(e);
     ver(e);
     const u = userEvent.setup();
-    const dialogo = await abrir(u, 'Fotos y video', TV);
+    const dialogo = await abrir(u, 'Editar página', TV);
     const img = (await within(dialogo).findByAltText('Frente del televisor')) as HTMLImageElement;
     expect(img.getAttribute('src')).toBe(`${BASE_MEDIOS}/t/${id}-480.webp`);
     expect(img.getAttribute('loading')).toBe('lazy');
@@ -573,7 +603,7 @@ describe('miniaturas de la ficha', () => {
     conVersiones(e);
     ver(e);
     const u = userEvent.setup();
-    const dialogo = await abrir(u, 'Fotos y video', TV);
+    const dialogo = await abrir(u, 'Editar página', TV);
     await within(dialogo).findByText('Foto 1 (portada)');
     expect(dialogo.querySelector('img')).toBeNull();
     expect(dialogo.querySelector('[data-respaldo]')?.textContent).toBe('Foto · n.º 1 · 1200 × 800');
@@ -586,7 +616,7 @@ describe('miniaturas de la ficha', () => {
     conVersiones(e);
     ver(e);
     const u = userEvent.setup();
-    const dialogo = await abrir(u, 'Fotos y video', TV);
+    const dialogo = await abrir(u, 'Editar página', TV);
     await within(dialogo).findByText('Archivos subidos que no están en la página:');
     expect(dialogo.querySelector('img')?.getAttribute('src')).toBe(`${BASE_MEDIOS}/t/${id}-480.webp`);
   });

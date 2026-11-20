@@ -18,11 +18,13 @@ const ver = (e: Entorno): void => void render(e.envolver(h(ProveedorGuardia, nul
 type U = ReturnType<typeof userEvent.setup>;
 const nueva = async (u: U): Promise<void> => {
   await u.click(await screen.findByRole('button', { name: 'Nueva sección' }));
-  await u.type(await screen.findByLabelText(/Título \(texto del menú\)/), 'Cómo comprar');
+  await u.type(await screen.findByLabelText(/Nombre de la sección/), 'Cómo comprar');
 };
+/** Escribe un bloque de texto: usa el que trae la sección nueva si sigue vacío; si no, agrega otro. */
 const bloqueTexto = async (u: U, titulo: string, parrafo: string): Promise<void> => {
-  await u.click(screen.getByRole('button', { name: '+ Texto' }));
-  const titulos = screen.getAllByLabelText('Título del bloque');
+  const vacio = screen.queryAllByLabelText(/Párrafos/).length === 1 && (screen.getByLabelText(/Párrafos/) as HTMLTextAreaElement).value === '';
+  if (!vacio) await u.click(screen.getByRole('button', { name: 'Agregar un párrafo de texto' }));
+  const titulos = screen.getAllByLabelText('Subtítulo del texto (opcional)');
   const areas = screen.getAllByLabelText(/Párrafos/);
   await u.type(titulos[titulos.length - 1] as HTMLElement, titulo);
   await u.type(areas[areas.length - 1] as HTMLElement, parrafo);
@@ -38,8 +40,8 @@ describe('secciones: bloques con identificador estable', () => {
     await bloqueTexto(u, 'Segundo', 'Texto del segundo');
     await u.click(screen.getAllByRole('button', { name: 'Quitar bloque' })[0] as HTMLElement);
     await u.click(await screen.findByRole('button', { name: 'Sí, quitar' }));
-    expect(screen.getAllByLabelText('Título del bloque')).toHaveLength(1);
-    expect((screen.getByLabelText('Título del bloque') as HTMLInputElement).value).toBe('Segundo');
+    expect(screen.getAllByLabelText('Subtítulo del texto (opcional)')).toHaveLength(1);
+    expect((screen.getByLabelText('Subtítulo del texto (opcional)') as HTMLInputElement).value).toBe('Segundo');
     expect((screen.getByLabelText(/Párrafos/) as HTMLTextAreaElement).value).toBe('Texto del segundo');
     await u.click(screen.getByRole('button', { name: 'Guardar sección' }));
     await waitFor(async () => expect((await e.api.llamar('listarSecciones', {}))[0]?.bloques).toEqual([{ tipo: 'texto', titulo: 'Segundo', parrafos: ['Texto del segundo'] }]));
@@ -54,7 +56,7 @@ describe('secciones: bloques con identificador estable', () => {
     await u.click(screen.getByRole('button', { name: 'Quitar bloque' }));
     const pregunta = await screen.findByRole('dialog', { name: /¿Quitar el bloque 1/ });
     await u.click(within(pregunta).getByRole('button', { name: 'Cancelar' }));
-    expect(screen.getByLabelText('Título del bloque')).toBeTruthy();
+    expect(screen.getByLabelText('Subtítulo del texto (opcional)')).toBeTruthy();
   });
 
   it('el identificador local no viaja al servidor', async () => {
@@ -63,13 +65,49 @@ describe('secciones: bloques con identificador estable', () => {
     const u = userEvent.setup();
     await nueva(u);
     await bloqueTexto(u, 'Pasos', 'Uno');
-    await u.click(screen.getByRole('button', { name: '+ Enlaces' }));
+    await u.click(screen.getByRole('button', { name: 'Agregar una lista de enlaces' }));
     await u.type(screen.getByLabelText(/Enlaces \(uno por línea/), 'Contacto | /contacto');
     await u.click(screen.getByRole('button', { name: 'Guardar sección' }));
     await waitFor(async () => expect((await e.api.llamar('listarSecciones', {})).length).toBe(1));
     const s = (await e.api.llamar('listarSecciones', {}))[0];
     expect(JSON.stringify(s)).not.toMatch(/"uid"/);
     expect(s?.bloques[1]).toEqual({ tipo: 'enlaces', items: [{ texto: 'Contacto', url: '/contacto' }] });
+  });
+});
+
+describe('secciones: bloque inicial y validación de párrafos', () => {
+  it('la sección nueva empieza con un bloque de texto y los botones dicen qué agregan', async () => {
+    const e = crearEntorno('adm');
+    ver(e);
+    const u = userEvent.setup();
+    await u.click(await screen.findByRole('button', { name: 'Nueva sección' }));
+    expect(screen.getAllByLabelText(/Párrafos/)).toHaveLength(1);
+    for (const n of ['Agregar un párrafo de texto', 'Agregar una imagen', 'Agregar un carrusel de fotos', 'Agregar una lista de enlaces']) expect(screen.getByRole('button', { name: n })).toBeTruthy();
+    expect(screen.queryByRole('button', { name: /^\+ / })).toBeNull();
+  });
+
+  it('un párrafo vacío no guarda: el error va junto al campo y el foco llega a él', async () => {
+    const e = crearEntorno('adm');
+    ver(e);
+    const u = userEvent.setup();
+    await nueva(u);
+    await u.click(screen.getByRole('button', { name: 'Guardar sección' }));
+    expect(await screen.findByText('Escriba al menos un párrafo en el bloque 1.', { selector: '.error, [id], p, span' })).toBeTruthy();
+    await waitFor(() => expect(document.activeElement).toBe(screen.getByLabelText(/Párrafos/)));
+    expect(e.api.llamadas.some((l) => l.nombre === 'guardarSeccion')).toBe(false);
+  });
+
+  it('un párrafo de más de 1000 caracteres o más de 6 párrafos no guardan', async () => {
+    const e = crearEntorno('adm');
+    ver(e);
+    const u = userEvent.setup();
+    await nueva(u);
+    fireEvent.input(screen.getByLabelText(/Párrafos/), { target: { value: 'a'.repeat(1001) } });
+    expect(screen.getByText('Cada párrafo del bloque 1 admite hasta 1000 caracteres; acorte el que se pasa.')).toBeTruthy();
+    fireEvent.input(screen.getByLabelText(/Párrafos/), { target: { value: Array.from({ length: 7 }, (_, i) => `p${String(i)}`).join('\n\n') } });
+    expect(screen.getByText(/admite hasta 6 párrafos/)).toBeTruthy();
+    await u.click(screen.getByRole('button', { name: 'Guardar sección' }));
+    expect(e.api.llamadas.some((l) => l.nombre === 'guardarSeccion')).toBe(false);
   });
 });
 
@@ -80,13 +118,26 @@ describe('secciones: motivos, guardia y cancelar', () => {
     const u = userEvent.setup();
     await u.click(await screen.findByRole('button', { name: 'Nueva sección' }));
     const guardar = screen.getByRole('button', { name: 'Guardar sección' });
-    expect(screen.getByText('Escriba el título de la sección.')).toBeTruthy();
-    await u.type(screen.getByLabelText(/Título \(texto del menú\)/), 'Garantía');
+    expect(screen.getByText('Escriba el nombre de la sección.')).toBeTruthy();
+    await u.type(screen.getByLabelText(/Nombre de la sección/), 'Garantía');
+    // La sección nueva empieza con un bloque de texto vacío: el primer motivo es el párrafo.
+    expect(screen.getByText('Escriba al menos un párrafo en el bloque 1.')).toBeTruthy();
+    await u.click(screen.getByRole('button', { name: 'Quitar bloque' }));
+    await u.click(await screen.findByRole('button', { name: 'Sí, quitar' }));
     expect(screen.getByText('Agregue al menos un bloque a la sección.')).toBeTruthy();
-    await u.click(screen.getByRole('button', { name: '+ Imagen' }));
+    await u.click(screen.getByRole('button', { name: 'Agregar una imagen' }));
     expect(screen.getByText('Elija la foto del bloque 1.')).toBeTruthy();
     await u.click(guardar);
     expect(e.api.llamadas.some((l) => l.nombre === 'guardarSeccion')).toBe(false);
+  });
+
+  it('al pulsar «Guardar sección» sin nombre, el foco va al campo del nombre', async () => {
+    const e = crearEntorno('adm');
+    ver(e);
+    const u = userEvent.setup();
+    await u.click(await screen.findByRole('button', { name: 'Nueva sección' }));
+    await u.click(screen.getByRole('button', { name: 'Guardar sección' }));
+    await waitFor(() => expect(document.activeElement).toBe(screen.getByLabelText(/Nombre de la sección/)));
   });
 
   it('con cambios, «Cancelar» pregunta; sin cambios, vuelve a la lista directo', async () => {
@@ -97,11 +148,11 @@ describe('secciones: motivos, guardia y cancelar', () => {
     await u.click(screen.getByRole('button', { name: 'Cancelar' }));
     expect(await screen.findByRole('button', { name: 'Nueva sección' })).toBeTruthy();
     await u.click(screen.getByRole('button', { name: 'Nueva sección' }));
-    await u.type(await screen.findByLabelText(/Título \(texto del menú\)/), 'Algo');
+    await u.type(await screen.findByLabelText(/Nombre de la sección/), 'Algo');
     await u.click(screen.getByRole('button', { name: 'Cancelar' }));
     expect(await screen.findByRole('dialog', { name: '¿Salir sin guardar?' })).toBeTruthy();
     await u.click(screen.getByRole('button', { name: 'Seguir editando' }));
-    expect((screen.getByLabelText(/Título \(texto del menú\)/) as HTMLInputElement).value).toBe('Algo');
+    expect((screen.getByLabelText(/Nombre de la sección/) as HTMLInputElement).value).toBe('Algo');
     await u.click(screen.getByRole('button', { name: 'Cancelar' }));
     await u.click(await screen.findByRole('button', { name: 'Salir sin guardar' }));
     expect(await screen.findByRole('button', { name: 'Nueva sección' })).toBeTruthy();
@@ -114,7 +165,7 @@ describe('secciones: motivos, guardia y cancelar', () => {
     await u.click(await screen.findByRole('button', { name: 'Nueva sección' }));
     const cierre = (): boolean => !window.dispatchEvent(new Event('beforeunload', { cancelable: true }));
     expect(cierre()).toBe(false);
-    await u.type(screen.getByLabelText(/Título \(texto del menú\)/), 'Algo');
+    await u.type(screen.getByLabelText(/Nombre de la sección/), 'Algo');
     await waitFor(() => expect(cierre()).toBe(true));
   });
 
@@ -148,7 +199,10 @@ describe('secciones: miniaturas en el selector de foto', () => {
   };
   const elegirProducto = async (u: U): Promise<void> => {
     await u.click(await screen.findByRole('button', { name: 'Nueva sección' }));
-    await u.click(screen.getByRole('button', { name: '+ Imagen' }));
+    // Se quita el bloque de texto inicial para que la foto sea el bloque 1.
+    await u.click(screen.getByRole('button', { name: 'Quitar bloque' }));
+    await u.click(await screen.findByRole('button', { name: 'Sí, quitar' }));
+    await u.click(screen.getByRole('button', { name: 'Agregar una imagen' }));
     await u.type(await screen.findByRole('combobox', { name: /producto/ }), 'Televisor');
     await u.click(await screen.findByRole('option', { name: /Televisor/ }));
   };

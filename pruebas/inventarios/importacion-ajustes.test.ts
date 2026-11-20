@@ -78,10 +78,10 @@ describe('ida y vuelta de la neutralización', () => {
     for (const v of ['-x', '+5', '=a', '@b', "'-x", "''=a", "'normal", 'normal', "a'-b"]) expect(deshacerNeutralizacion(neutralizarCelda(v))).toBe(v);
   });
 
-  it('exportar y reimportar sin tocar no cambia nombres, categorías ni marcas que empiezan con - + = @', async () => {
+  it('exportar y reimportar sin tocar no cambia nombres ni marcas que empiezan con - + = @', async () => {
     const nombres = ['-Cable', '+Extra', '=Suma', '@Casa', "'-ya con apóstrofe"];
     for (const [i, n] of nombres.entries()) {
-      await altaProducto(db, producto(`pr${String(i)}`, { nombre: n, categoria: `-cat${String(i)}`, marca: `@m${String(i)}` }));
+      await altaProducto(db, producto(`pr${String(i)}`, { nombre: n, categoria: `cat${String(i)}`, marca: `@m${String(i)}` }));
     }
     const filas: ProductoExportable[] = [];
     for (const [i] of nombres.entries()) {

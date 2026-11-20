@@ -34,7 +34,7 @@ export function planificarProcesamiento(tipo: TipoSubida, ancho: number, alto: n
   if (tipo === 'logo') {
     const lado = Math.min(LIMITES_CONSOLA.ladoLogo, Math.max(ancho, alto));
     items.push({ clase: 'logo', lado, formato: 'png' }, { clase: 'logo', lado, formato: 'webp' });
-  } else if (tipo === 'foto') {
+  } else if (tipo === 'foto' || tipo === 'portada') {
     const anchos = ANCHOS_FOTO.filter((a) => a <= ancho);
     const usados: number[] = anchos.length > 0 ? anchos : [ancho];
     for (const lado of usados) for (const formato of FORMATOS_FOTO) items.push({ clase: 'imagen', lado, formato });

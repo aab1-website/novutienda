@@ -1,9 +1,9 @@
 import type { Entrada, NombreCallable, Salida } from '../api/contrato.js';
 import type { Medio, MedioLogo, Recibo, SubidaVista } from '../api/tipos.js';
-import { BYTES_LOGO, ID_NEGOCIO, LIMITES_PANEL, PLANTILLAS_SITIO } from '../api/tipos.js';
+import { BYTES_LOGO, ID_NEGOCIO, ID_PORTADA, LIMITES_PANEL, PLANTILLAS_SITIO } from '../api/tipos.js';
 import { normalizar } from '../util/buscar.js';
-import { aCsv } from '../util/csv.js';
 import { auditar, exigirRol, fallo, iso, vistaProducto, type Contexto } from './estado.js';
+
 
 type H<N extends NombreCallable> = (c: Contexto, e: Entrada<N>) => Salida<N> | Promise<Salida<N>>;
 
@@ -40,7 +40,7 @@ function procesarSubidaLogo(c: Contexto, subidaId: string): MedioLogo {
 function procesarSubida(c: Contexto, subidaId: string): Medio {
   const s = c.e.subidas.get(subidaId);
   if (s === undefined || s.tipo === 'logo') throw fallo('no-encontrado', 'La subida no existe');
-  const m: Medio = { id: subidaId, productoId: s.productoId, tipo: s.tipo, bytesOriginal: s.bytes, ancho: 1200, alto: 800, ...(s.tipo === 'video' ? { duracionSeg: 30 } : {}), creadoEn: c.ahora, por: c.uid };
+  const m: Medio = { id: subidaId, productoId: s.productoId, tipo: s.tipo === 'portada' ? 'foto' : s.tipo, bytesOriginal: s.bytes, ancho: 1200, alto: 800, ...(s.tipo === 'video' ? { duracionSeg: 30 } : {}), creadoEn: c.ahora, por: c.uid };
   c.e.medios.set(m.id, m);
   c.e.subidas.set(subidaId, { ...s, estado: 'procesada' });
   anotarCambio(c);
@@ -93,7 +93,7 @@ function estadoDeSubida(c: Contexto, subidaId: string, tipo: 'logo' | 'producto'
 }
 
 export const handlersOtros: {
-  [N in 'buscarComprobantes' | 'enviarRecibo' | 'referenciarFacturaSuma' | 'guardarPlantilla' | 'leerPlantilla' | 'obtenerRecibo' | 'obtenerTablero' | 'publicarSitio' | 'guardarFicha' | 'reservarSubida' | 'estadoSubida' | 'finalizarSubida' | 'borrarMedio' | 'guardarSeccion' | 'eliminarSeccion' | 'ordenarSecciones' | 'guardarCarrusel' | 'guardarConfigSitio' | 'exportarProductosCsvSitio' | 'asignarRol' | 'quitarRol' | 'invitarUsuario' | 'anularInvitacion' | 'reenviarInvitacion' | 'buscarUsuarioPorCorreo' | 'listarFichas' | 'listarMedios' | 'leerConfigSitio' | 'listarSecciones' | 'listarCarruseles' | 'listarUsuarios' | 'modulosActivos' | 'configuracionComercial' | 'reservarSubidaLogo' | 'estadoSubidaLogo' | 'finalizarSubidaLogo' | 'leerLogo' | 'quitarLogo']: H<N>;
+  [N in 'buscarComprobantes' | 'enviarRecibo' | 'referenciarFacturaSuma' | 'guardarPlantilla' | 'leerPlantilla' | 'obtenerRecibo' | 'obtenerTablero' | 'publicarSitio' | 'guardarFicha' | 'reservarSubida' | 'estadoSubida' | 'finalizarSubida' | 'borrarMedio' | 'guardarSeccion' | 'eliminarSeccion' | 'ordenarSecciones' | 'guardarCarrusel' | 'guardarConfigSitio' | 'asignarRol' | 'quitarRol' | 'invitarUsuario' | 'anularInvitacion' | 'reenviarInvitacion' | 'buscarUsuarioPorCorreo' | 'listarFichas' | 'listarMedios' | 'leerConfigSitio' | 'listarSecciones' | 'listarCarruseles' | 'listarUsuarios' | 'modulosActivos' | 'configuracionComercial' | 'reservarSubidaLogo' | 'estadoSubidaLogo' | 'finalizarSubidaLogo' | 'leerLogo' | 'quitarLogo']: H<N>;
 } = {
   buscarComprobantes(c, e) {
     const q = e.consulta;
@@ -151,7 +151,7 @@ export const handlersOtros: {
       return x === null ? { mercado: m, estado: 'sin_cotizacion' as const, motivo: 'No hay una cotización utilizable' } : { mercado: m, estado: x.estado, par: x.par, valor: x.valor, fecha: x.fecha, fuente: x.fuente };
     });
     return {
-      cambiosSinPublicar: c.e.cambiosSinPublicar, ultimoCambioEn: c.e.ultimoCambioEn, publicadoEn: c.e.publicadoEn, versionPublicada: c.e.versionPublicada, avisoSitio: c.e.avisoSitio, cotizaciones: cot,
+      cambiosSinPublicar: c.e.cambiosSinPublicar, ultimoCambioEn: c.e.ultimoCambioEn, publicadoEn: c.e.publicadoEn, versionPublicada: c.e.versionPublicada, avisoSitio: c.e.avisoSitio, ultimaReconstruccion: c.e.ultimaReconstruccion, cotizaciones: cot,
       uso: {
         productos: { usados: c.e.productos.size, tope: LIMITES_PANEL.productos }, usuarios: { usados: c.e.usuarios.length, tope: LIMITES_PANEL.usuarios },
         originalesBytes: { usados: c.e.bytesOriginales, tope: LIMITES_PANEL.cuotaOriginalesBytes },
@@ -164,6 +164,7 @@ export const handlersOtros: {
     c.e.cambiosSinPublicar = 0;
     c.e.avisoSitio = null;
     c.e.publicadoEn = iso(c.ahora);
+    c.e.ultimaReconstruccion = { estado: 'completada', version: c.e.versionPublicada, en: iso(c.ahora), etapa: null, enCurso: false, causas: [] };
     auditar(c, 'sitio.publicar', 'publicado/estado');
     return { version: c.e.versionPublicada, productos: [...c.e.productos.values()].filter((p) => p.activo).length, decision: { accion: 'programar', para: c.ahora + 600_000 }, advertencias: [] };
   },
@@ -172,7 +173,7 @@ export const handlersOtros: {
     const f = e.ficha;
     if (!SLUG.test(f.slug) || f.slug.length < 2) throw fallo('entrada-invalida', 'slug: use minúsculas, números y guiones');
     if (f.estado === 'publicado' && f.descripcion.trim() === '') throw fallo('entrada-invalida', 'descripcion: es obligatoria para publicar');
-    for (const [otro, x] of c.e.fichas) if (otro !== e.productoId && x.slug === f.slug) throw fallo('conflicto', 'Ese slug ya lo usa otro producto');
+    for (const [otro, x] of c.e.fichas) if (otro !== e.productoId && x.slug === f.slug) throw fallo('conflicto', 'Esa dirección web ya la usa otro producto');
     const tipos = f.medios.map((m) => c.e.medios.get(m.medioId));
     if (tipos.some((m) => m === undefined || m.productoId !== e.productoId)) throw fallo('no-encontrado', 'Un medio de la ficha no existe');
     if (f.medios.some((m) => m.alt.trim() === '')) throw fallo('entrada-invalida', 'Todo medio lleva texto alternativo');
@@ -184,13 +185,33 @@ export const handlersOtros: {
     return { ok: true };
   },
   reservarSubida(c, e) {
+    // Foto de portada: solo del administrador, destino fijo y cupo del plan (8); no se verifica contra el catálogo.
+    if (e.tipo === 'portada') {
+      exigirRol(c, ['adm']);
+      if (e.productoId !== ID_PORTADA) throw fallo('entrada-invalida', 'productoId inválido');
+      const previaP = c.e.subidas.get(e.subidaId);
+      const respuestaP = { subidaId: e.subidaId, rutaOriginal: `privado/${ID_PORTADA}/${e.subidaId}`, venceEn: c.ahora + 6 * 3600_000 };
+      if (previaP !== undefined) {
+        if (previaP.tipo === 'portada' && previaP.bytes === e.bytes && previaP.estado === 'reservada') return respuestaP;
+        throw fallo('conflicto', 'Esa subida ya se inició con otro archivo; vuelva a elegirlo');
+      }
+      if (!Number.isSafeInteger(e.bytes) || e.bytes <= 0) throw fallo('entrada-invalida', 'Tamaño inválido');
+      if (e.bytes > LIMITES_PANEL.bytesFoto) throw fallo('limite', 'La foto supera 15 MB');
+      const ocupadas = [...c.e.medios.values()].filter((m) => m.productoId === ID_PORTADA).length
+        + [...c.e.subidas.values()].filter((s) => s.tipo === 'portada' && s.estado === 'reservada').length;
+      if (ocupadas >= LIMITES_PANEL.fotosPortada) throw fallo('limite', `La portada admite hasta ${String(LIMITES_PANEL.fotosPortada)} fotos propias según su plan`);
+      if (c.e.bytesOriginales + e.bytes > LIMITES_PANEL.cuotaOriginalesBytes) throw fallo('cuota-excedida');
+      c.e.subidas.set(e.subidaId, { subidaId: e.subidaId, productoId: ID_PORTADA, tipo: 'portada', estado: 'reservada', bytes: e.bytes });
+      c.e.bytesOriginales += e.bytes;
+      return respuestaP;
+    }
     if (!c.e.productos.has(e.productoId)) throw fallo('no-encontrado', 'El producto no existe');
     const previa = c.e.subidas.get(e.subidaId);
     if (previa !== undefined) {
       if (previa.productoId === e.productoId && previa.tipo === e.tipo && previa.bytes === e.bytes && previa.estado === 'reservada') {
         return { subidaId: e.subidaId, rutaOriginal: `privado/${e.productoId}/${e.subidaId}`, venceEn: c.ahora + 6 * 3600_000 };
       }
-      throw fallo('conflicto', 'Ya existe una subida con ese identificador');
+      throw fallo('conflicto', 'Esa subida ya se inició con otro archivo; vuelva a elegirlo');
     }
     if (!Number.isSafeInteger(e.bytes) || e.bytes <= 0) throw fallo('entrada-invalida', 'Tamaño inválido');
     if (e.tipo === 'foto' && e.bytes > LIMITES_PANEL.bytesFoto) throw fallo('limite', 'La foto supera 15 MB');
@@ -212,7 +233,7 @@ export const handlersOtros: {
     const respuesta = { subidaId: e.subidaId, rutaOriginal: `privado/${ID_NEGOCIO}/${e.subidaId}`, venceEn: c.ahora + 6 * 3600_000 };
     if (previa !== undefined) {
       if (previa.tipo === 'logo' && previa.bytes === e.bytes && previa.estado === 'reservada') return respuesta;
-      throw fallo('conflicto', 'Ya existe una subida con ese identificador');
+      throw fallo('conflicto', 'Esa subida ya se inició con otro archivo; vuelva a elegirlo');
     }
     if (!Number.isSafeInteger(e.bytes) || e.bytes <= 0) throw fallo('entrada-invalida', 'Tamaño inválido');
     if (e.bytes > BYTES_LOGO) throw fallo('limite', 'El logo supera 2 MB');
@@ -267,7 +288,19 @@ export const handlersOtros: {
     const m = c.e.medios.get(e.medioId);
     if (m === undefined) throw fallo('no-encontrado', 'El medio no existe');
     const enSeccion = c.e.secciones.find((s) => s.bloques.some((b) => (b.tipo === 'imagen' && b.medioId === e.medioId) || (b.tipo === 'carrusel' && b.items.some((i) => i.medioId === e.medioId))));
-    if (enSeccion !== undefined) throw fallo('conflicto', `El medio se usa en la sección «${enSeccion.titulo}»; quítelo primero`);
+    const esVideo = m.tipo === 'video';
+    const uso = (donde: string): string => `${esVideo ? 'El video se usa' : 'La foto se usa'} en ${donde}; ${esVideo ? 'quítelo' : 'quítela'} de ahí y guarde antes de borrarla`;
+    if (enSeccion !== undefined) throw fallo('conflicto', uso(`la sección «${enSeccion.titulo}»`));
+    if (c.rol !== 'adm' && [...c.e.carruseles.values()].some((k) => k.items.some((i) => i.medioId === e.medioId))) {
+      throw fallo('conflicto', 'Esta foto está en el carrusel de la portada; pídale al administrador que la quite');
+    }
+    // Un carrusel guardado ya no bloquea: el servidor quita la foto de él (la copia pública se borra tras la próxima publicación).
+    for (const [plantilla, k] of c.e.carruseles) {
+      if (k.items.some((i) => i.medioId === e.medioId)) {
+        c.e.carruseles.set(plantilla, { ...k, items: k.items.filter((i) => i.medioId !== e.medioId) });
+        auditar(c, 'carrusel.guardar', `carruseles/${plantilla}`);
+      }
+    }
     c.e.medios.delete(e.medioId);
     c.e.bytesOriginales = Math.max(0, c.e.bytesOriginales - m.bytesOriginal);
     const f = c.e.fichas.get(m.productoId);
@@ -324,10 +357,6 @@ export const handlersOtros: {
     anotarCambio(c);
     auditar(c, 'sitio.config', 'sitio/config');
     return { ok: true };
-  },
-  exportarProductosCsvSitio(c) {
-    const filas = [...c.e.productos.values()].map((p) => [p.id, p.nombre, p.categoria, p.marca ?? '', p.sku, p.activo ? 'si' : 'no', p.garantiaMeses ?? '', p.precioUSD['bo'] === undefined ? '' : p.precioUSD['bo'] / 100, p.precioUSD['ar'] === undefined ? '' : p.precioUSD['ar'] / 100]);
-    return { csv: aCsv(['id', 'nombre', 'categoria', 'marca', 'sku', 'activo', 'garantiaMeses', 'precioBO', 'precioAR'], filas) };
   },
   invitarUsuario(c, e) {
     exigirRol(c, ['adm']);

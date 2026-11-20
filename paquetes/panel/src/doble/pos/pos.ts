@@ -1,11 +1,37 @@
 import type { Entrada, NombreCallable, Salida } from '../../api/contrato.js';
 import type {
-  AprobacionPos, LineaVenta, CodigoMoneda, MovimientoCaja, PagoVentaPos, Recibo, ResultadoCierre, TurnoPos, VentaPos,
+  AprobacionPos, CarritoGuardado, ContenidoCarritoGuardado, LineaVenta, CodigoMoneda, MovimientoCaja, PagoVentaPos, Recibo, ResultadoCierre, ResumenCarritoSupervision, TurnoPos, VentaPos,
 } from '../../api/tipos.js';
 import { MEDIOS_PAGO } from '../../api/tipos.js';
 import { cotizacionDeMercado, diferenciaPorMoneda, efectivoEsperado, monedasDeCobro, monedasDelTurno, precioDeCobro, sumarTotales, TOTALES_VACIOS } from '../../pantallas/pos/arqueo.js';
+import { filaTurnoDe, resumirTurnoDoble } from '../../pantallas/pos/resumen-turno.js';
 import { aCsv } from '../../util/csv.js';
-import { auditar, detalleDeFaltantes, fallo, fechaLaPaz, iso, recalcular, type Contexto } from '../estado.js';
+import type { CursorTurno, CursorVenta, ResumenTurnoVista } from '../../api/tipos.js';
+import { auditar, detalleDeFaltantes, fallo, fechaLaPaz, iso, recalcular, type Contexto, type EstadoDoble } from '../estado.js';
+
+/** Debe coincidir con `MAX_CARRITOS_ABIERTOS` de `@novutienda/pos`. */
+const TOPE_CARRITOS_ABIERTOS = 10;
+const MAX_ETIQUETA = 40;
+const MAX_LINEAS_CARRITO = 100;
+
+/**
+ * Estado de los carritos guardados. Vive aparte de `EstadoDoble` (cuyo archivo es de Central) y se ata a él por referencia,
+ * de modo que cada entorno del doble tiene el suyo y se reinicia con él.
+ */
+interface EstadoCarritos {
+  readonly carritos: Map<string, CarritoGuardado>;
+  /** aprobacionId -> carritoId al que sirve (la solicitud lo trae; `AprobacionPos` no lo expone). */
+  readonly aprobacionCarrito: Map<string, string>;
+}
+const ESTADOS_CARRITOS = new WeakMap<EstadoDoble, EstadoCarritos>();
+function estadoCarritos(c: Contexto): EstadoCarritos {
+  let x = ESTADOS_CARRITOS.get(c.e);
+  if (x === undefined) {
+    x = { carritos: new Map(), aprobacionCarrito: new Map() };
+    ESTADOS_CARRITOS.set(c.e, x);
+  }
+  return x;
+}
 
 /**
  * Debe coincidir con `MAX_SERIES_POR_VENTA` de `@novutienda/pos` (el panel no importa el módulo).
@@ -14,6 +40,33 @@ import { auditar, detalleDeFaltantes, fallo, fechaLaPaz, iso, recalcular, type C
  * que fija `MAX_SERIES_POR_VENTA` en 100.
  */
 const TOPE_SERIES_POR_VENTA = 100;
+/** Deben coincidir con `ALMACENES_POS` y `MAX_CANTIDAD_LINEA` de `@novutienda/pos`. */
+const ALMACENES_POS: readonly string[] = ['tienda', 'deposito-1', 'deposito-2'];
+const MAX_CANTIDAD_LINEA = 100_000;
+
+/** Debe coincidir con `FILAS_POR_PAGINA` de `@novutienda/pos`. */
+const FILAS_POR_PAGINA = 50;
+
+/** Anulaciones (`anulaciones/{ventaId}` en el servidor): el reporte necesita en qué turno se reembolsó. Aparte de `EstadoDoble`, igual que los carritos. */
+interface AnulacionDoble {
+  readonly turnoIdReembolso: string;
+  readonly moneda: string;
+  readonly reembolsos: readonly { medio: 'efectivo' | 'qr' | 'transferencia'; monto: number }[];
+  readonly creditoCancelado: number;
+}
+const ANULACIONES = new WeakMap<EstadoDoble, AnulacionDoble[]>();
+function anulacionesDe(c: Contexto): AnulacionDoble[] {
+  let x = ANULACIONES.get(c.e);
+  if (x === undefined) {
+    x = [];
+    ANULACIONES.set(c.e, x);
+  }
+  return x;
+}
+
+function resumenDe(c: Contexto, t: TurnoPos): ResumenTurnoVista {
+  return resumirTurnoDoble(t, c.e.ventas.values(), anulacionesDe(c), c.e.comercial.monedasCaja);
+}
 
 type H<N extends NombreCallable> = (c: Contexto, e: Entrada<N>) => Salida<N> | Promise<Salida<N>>;
 
@@ -26,8 +79,9 @@ const exigirMonto = (x: number, que: string, min = 0): number => {
   if (!Number.isSafeInteger(x) || x < min) throw fallo('entrada-invalida', `${que} inválido`);
   return x;
 };
-const exigirTexto = (x: string, que: string): string => {
+const exigirTexto = (x: string, que: string, max?: number): string => {
   if (typeof x !== 'string' || x.trim() === '') throw fallo('entrada-invalida', `${que} es obligatorio`);
+  if (max !== undefined && x.trim().length > max) throw fallo('entrada-invalida', `${que} admite hasta ${max} caracteres`);
   return x.trim();
 };
 
@@ -62,6 +116,69 @@ function emitirRecibo(c: Contexto, v: VentaPos): Recibo {
   return r;
 }
 
+function sinContenido(k: CarritoGuardado): CarritoGuardado {
+  const { contenido: _borrado, ...resto } = k;
+  void _borrado;
+  return resto;
+}
+
+function exigirCarritoAbiertoDe(k: CarritoGuardado | undefined, c: Contexto): CarritoGuardado {
+  if (k === undefined) throw fallo('carrito-inexistente', 'El carrito no existe');
+  if (k.cajeroUid !== c.uid) throw fallo('carrito-ajeno', 'El carrito es de otro usuario');
+  if (k.estado !== 'abierto') throw fallo('carrito-cerrado', 'El carrito ya no está abierto');
+  return k;
+}
+const conflicto = (k: CarritoGuardado): ReturnType<typeof fallo> => fallo('carrito-conflicto', 'El carrito cambió desde otra pantalla: se muestra la versión vigente', { carrito: k });
+
+function validarContenido(c: Contexto, x: ContenidoCarritoGuardado): ContenidoCarritoGuardado {
+  const mercado = c.e.comercial.mercados.find((m) => m.id === x?.mercadoId);
+  if (mercado === undefined) throw fallo('entrada-invalida', 'El mercado no es uno de los que declara el comercio');
+  if (!monedasDeCobro(mercado).includes(x.moneda as CodigoMoneda)) throw fallo('entrada-invalida', 'La moneda no corresponde a la lista de precios del mercado');
+  if (!Array.isArray(x.lineas) || x.lineas.length > MAX_LINEAS_CARRITO) throw fallo('entrada-invalida', `El carrito admite hasta ${MAX_LINEAS_CARRITO} líneas`);
+  const vistas = new Set<string>();
+  let series = 0;
+  for (const l of x.lineas) {
+    if (typeof l.productoId !== 'string' || l.productoId === '' || l.productoId.length > 128 || l.productoId.includes('/')) throw fallo('entrada-invalida', 'productoId inválido');
+    if (!Number.isSafeInteger(l.cantidad) || l.cantidad < 1 || l.cantidad > MAX_CANTIDAD_LINEA) throw fallo('entrada-invalida', 'La cantidad debe ser un entero positivo');
+    if (!ALMACENES_POS.includes(l.almacenId ?? 'tienda')) throw fallo('entrada-invalida', 'Almacén desconocido');
+    const clave = `${l.almacenId ?? 'tienda'}/${l.productoId}`;
+    if (vistas.has(clave)) throw fallo('entrada-invalida', 'Un producto no puede repetirse en el mismo almacén; sume las cantidades');
+    vistas.add(clave);
+    const lista: unknown = l.series ?? [];
+    if (!Array.isArray(lista) || lista.some((s: unknown) => typeof s !== 'string' || s.trim() === '' || s.length > 100)) {
+      throw fallo('series-invalidas', 'Las series deben ser una lista de textos no vacíos de hasta 100 caracteres');
+    }
+    series += lista.length;
+  }
+  if (series > TOPE_SERIES_POR_VENTA) throw fallo('series-invalidas', `Una venta admite hasta ${TOPE_SERIES_POR_VENTA} unidades con serie`);
+  if (x.descuento !== undefined) {
+    exigirMonto(x.descuento.monto, 'descuento.monto', 1);
+    exigirTexto(x.descuento.motivo, 'El motivo del descuento');
+  }
+  if (x.cliente !== undefined) {
+    exigirTexto(x.cliente.nombre, 'cliente.nombre', 100);
+    if (x.cliente.telefono !== undefined) exigirTexto(x.cliente.telefono, 'cliente.telefono', 30);
+  }
+  for (const k of ['aprobacionDescuentoId', 'solicitudDescuentoId', 'solicitudCreditoId'] as const) {
+    const v = x[k];
+    if (v !== undefined) exigirUuid(v, k);
+  }
+  return x;
+}
+
+/** Quita el carrito del índice de abiertos de su turno (solo si el índice existe). */
+function quitarDelIndice(c: Contexto, turnoId: string, carritoId: string): void {
+  const t = c.e.turnos.get(turnoId);
+  if (t?.carritosAbiertos !== undefined) c.e.turnos.set(turnoId, { ...t, carritosAbiertos: t.carritosAbiertos.filter((i) => i !== carritoId) });
+}
+
+function cancelarEn(c: Contexto, k: CarritoGuardado, motivo: string, accion: string): CarritoGuardado {
+  const n: CarritoGuardado = { ...sinContenido(k), estado: 'cancelado', version: k.version + 1, actualizadoEnMs: c.ahora, cerradoEnMs: c.ahora, motivoCancelacion: motivo, canceladoPor: c.uid };
+  estadoCarritos(c).carritos.set(k.carritoId, n);
+  auditar(c, accion, `carritos/${k.carritoId}`, motivo);
+  return n;
+}
+
 /** Suma meses de calendario; si el día no existe en el mes destino, el último día de ese mes. */
 export function sumarMeses(fecha: string, meses: number): string {
   const [a = 0, m = 1, d = 1] = fecha.split('-').map(Number);
@@ -72,7 +189,7 @@ export function sumarMeses(fecha: string, meses: number): string {
   return `${anio}-${String(mes + 1).padStart(2, '0')}-${String(Math.min(d, ultimo)).padStart(2, '0')}`;
 }
 
-function usarAprobacion(c: Contexto, id: string, esperado: { tipo: 'descuento' | 'credito'; moneda: CodigoMoneda; monto: number; deudor?: string }): AprobacionPos {
+function usarAprobacion(c: Contexto, id: string, esperado: { tipo: 'descuento' | 'credito'; moneda: CodigoMoneda; monto: number; deudor?: string; carritoId?: string }): AprobacionPos {
   const a = c.e.aprobaciones.get(id);
   if (a === undefined) throw fallo('aprobacion-inexistente');
   if (a.estado === 'usada') throw fallo('aprobacion-usada');
@@ -80,6 +197,7 @@ function usarAprobacion(c: Contexto, id: string, esperado: { tipo: 'descuento' |
   if (a.solicitadoPor !== c.uid || a.tipo !== esperado.tipo || a.moneda !== esperado.moneda || a.monto < esperado.monto || (esperado.deudor !== undefined && a.deudor !== esperado.deudor)) {
     throw fallo('aprobacion-no-coincide');
   }
+  if (estadoCarritos(c).aprobacionCarrito.get(id) !== esperado.carritoId) throw fallo('aprobacion-no-coincide', 'La aprobación fue pedida para otro carrito');
   if (a.aprobadoPor === c.uid) throw fallo('autoaprobacion');
   if (c.ahora - a.solicitadoEnMs > 24 * 3600_000) throw fallo('aprobacion-vencida');
   return a;
@@ -110,7 +228,7 @@ function validarPagos(c: Contexto, pagos: readonly { medio: string; moneda: stri
 }
 
 export const handlersPos: {
-  [N in 'abrirTurno' | 'cerrarTurno' | 'cerrarTurnoForzado' | 'confirmarVenta' | 'solicitarAprobacion' | 'resolverAprobacion' | 'solicitarAnulacion' | 'aprobarAnulacion' | 'registrarMovimientoCaja' | 'cobrarCredito' | 'guardarConfigPos' | 'leerConfigPos' | 'turnoActual' | 'listarTurnos' | 'listarVentas' | 'listarAprobaciones' | 'listarMovimientosCaja' | 'listarCreditos' | 'listarAuditoria' | 'exportarVentasCsv']: H<N>;
+  [N in 'abrirTurno' | 'cerrarTurno' | 'cerrarTurnoForzado' | 'confirmarVenta' | 'crearCarrito' | 'guardarCarrito' | 'cancelarCarrito' | 'misCarritos' | 'solicitarAprobacion' | 'resolverAprobacion' | 'solicitarAnulacion' | 'aprobarAnulacion' | 'registrarMovimientoCaja' | 'cobrarCredito' | 'guardarConfigPos' | 'leerConfigPos' | 'turnoActual' | 'resumenTurno' | 'misTurnos' | 'misVentas' | 'listarTurnos' | 'listarVentas' | 'listarAprobaciones' | 'listarMovimientosCaja' | 'listarCreditos' | 'listarAuditoria' | 'exportarVentasCsv']: H<N>;
 } = {
   abrirTurno(c, e) {
     const id = exigirUuid(e.turnoId, 'turnoId');
@@ -142,12 +260,23 @@ export const handlersPos: {
     const previa = c.e.ventas.get(ventaId);
     if (previa !== undefined) {
       if (previa.cajeroUid !== c.uid) throw fallo('request-en-uso');
+      if (e.carritoId !== undefined && previa.carritoId !== e.carritoId) throw fallo('request-en-uso', 'Ese identificador de venta ya se usó en otra venta');
       return { venta: previa, repetida: true };
     }
     const turno = turnoAbierto(c);
     if (turno === undefined) throw fallo('sin-turno');
     if (turno.cajeroUid !== c.uid) throw fallo('turno-ajeno');
     const k = e.carrito;
+    // Carrito guardado (si se cobra uno): abierto, del actor y de este turno, con el requestId fijo y la versión que el cliente vio.
+    let guardado: CarritoGuardado | undefined;
+    if (e.carritoId !== undefined) {
+      exigirUuid(e.carritoId, 'carritoId');
+      if (!Number.isSafeInteger(e.carritoVersion) || (e.carritoVersion ?? 0) < 1) throw fallo('entrada-invalida', 'carritoVersion inválida');
+      guardado = exigirCarritoAbiertoDe(estadoCarritos(c).carritos.get(e.carritoId), c);
+      if (guardado.turnoId !== turno.turnoId) throw fallo('carrito-ajeno', 'El carrito pertenece a otro turno');
+      if (guardado.requestId !== ventaId) throw fallo('entrada-invalida', 'El requestId no es el del carrito');
+      if (guardado.version !== e.carritoVersion) throw conflicto(guardado);
+    }
     // D19: en cada mercado declarado se cobra solo en su moneda de venta o su moneda base.
     const mercado = c.e.comercial.mercados.find((m) => m.id === k.mercado);
     if (mercado === undefined) throw fallo('entrada-invalida', 'El mercado no está declarado');
@@ -186,7 +315,7 @@ export const handlersPos: {
       if (monto >= subtotal) throw fallo('entrada-invalida', 'El descuento debe ser menor que el subtotal');
       if (monto * 10000 > c.e.configPos.topesDescuentoBp[c.rol] * subtotal) {
         if (e.aprobacionId === undefined) throw fallo('descuento-sin-aprobacion');
-        aprobDesc = usarAprobacion(c, e.aprobacionId, { tipo: 'descuento', moneda: k.moneda, monto });
+        aprobDesc = usarAprobacion(c, e.aprobacionId, { tipo: 'descuento', moneda: k.moneda, monto, ...(e.carritoId !== undefined ? { carritoId: e.carritoId } : {}) });
         descuento = { monto, motivo: motivo.trim(), aprobadoPor: aprobDesc.aprobadoPor ?? '', aprobacionId: e.aprobacionId };
       } else descuento = { monto, motivo: motivo.trim() };
     }
@@ -200,7 +329,7 @@ export const handlersPos: {
       if (k.cliente === undefined) throw fallo('pagos-invalidos', 'El crédito exige el nombre del deudor');
       if (c.rol === 'caj') {
         if (e.aprobacionCreditoId === undefined) throw fallo('aprobacion-inexistente', 'El crédito necesita aprobación');
-        aprobCred = usarAprobacion(c, e.aprobacionCreditoId, { tipo: 'credito', moneda: k.moneda, monto: pagoCredito.monto, deudor: k.cliente.nombre });
+        aprobCred = usarAprobacion(c, e.aprobacionCreditoId, { tipo: 'credito', moneda: k.moneda, monto: pagoCredito.monto, deudor: k.cliente.nombre, ...(e.carritoId !== undefined ? { carritoId: e.carritoId } : {}) });
         creditoAprobadoPor = aprobCred.aprobadoPor ?? '';
       }
     }
@@ -240,13 +369,18 @@ export const handlersPos: {
     const venta: VentaPos = {
       ventaId, turnoId: turno.turnoId, cajaId: turno.cajaId, cajeroUid: c.uid, estado: 'confirmada', moneda: k.moneda, mercado: k.mercado,
       cotizacion: cot === null ? null : { cotizacionId: cot.cotizacionId, par: cot.par, valor: cot.valor, fecha: cot.fecha, fuente: cot.fuente as never, estado: cot.estado },
-      lineas, subtotal, ...(descuento ? { descuento } : {}), total, pagos, ...(k.cliente ? { cliente: k.cliente } : {}), serie, receiptNo, creadoEnMs: c.ahora,
+      lineas, subtotal, ...(descuento ? { descuento } : {}), total, pagos, ...(k.cliente ? { cliente: k.cliente } : {}), serie, receiptNo, creadoEnMs: c.ahora, ...(e.carritoId !== undefined ? { carritoId: e.carritoId } : {}),
     };
     c.e.ventas.set(ventaId, venta);
     let t = turno;
     for (const p of pagos) {
       const neto = p.monto - (p.cambio ?? 0);
       t = agregarMonedas(t, { [venta.moneda]: p.medio === 'efectivo' ? { efectivo: neto } : p.medio === 'qr' ? { qr: neto } : p.medio === 'transferencia' ? { transferencia: neto } : { credito: neto } });
+    }
+    if (guardado !== undefined) {
+      const k2 = guardado;
+      if (t.carritosAbiertos !== undefined) t = { ...t, carritosAbiertos: t.carritosAbiertos.filter((i) => i !== k2.carritoId) };
+      estadoCarritos(c).carritos.set(k2.carritoId, { ...sinContenido(k2), estado: 'cerrado', version: k2.version + 1, actualizadoEnMs: c.ahora, cerradoEnMs: c.ahora, ventaId });
     }
     c.e.turnos.set(t.turnoId, t);
     if (pagoCredito !== undefined && k.cliente !== undefined) {
@@ -260,6 +394,72 @@ export const handlersPos: {
     return { venta, repetida: false };
   },
 
+  crearCarrito(c, e) {
+    const carritoId = exigirUuid(e.carritoId, 'carritoId');
+    const { carritos } = estadoCarritos(c);
+    const etiqueta = e.etiqueta === undefined ? undefined : exigirTexto(e.etiqueta, 'etiqueta');
+    if (etiqueta !== undefined && etiqueta.length > MAX_ETIQUETA) throw fallo('entrada-invalida', `etiqueta admite hasta ${MAX_ETIQUETA} caracteres`);
+    const previo = carritos.get(carritoId);
+    if (previo !== undefined) {
+      if (previo.cajeroUid !== c.uid) throw fallo('request-en-uso', 'Ese identificador de carrito ya se usó');
+      return previo;
+    }
+    if (c.e.ventas.has(carritoId)) throw fallo('request-en-uso', 'Ese identificador ya se usó en una venta');
+    const turno = turnoAbierto(c);
+    if (turno === undefined) throw fallo('sin-turno', 'No hay un turno abierto: abra el turno antes de usar carritos');
+    if (turno.cajeroUid !== c.uid) throw fallo('turno-ajeno', 'El turno abierto es de otro usuario');
+    const ids = turno.carritosAbiertos ?? [];
+    if (ids.length >= TOPE_CARRITOS_ABIERTOS) throw fallo('limite-carritos', `Hay ${TOPE_CARRITOS_ABIERTOS} carritos abiertos: cobre o cancele alguno antes de abrir otro`);
+    let nombre = etiqueta;
+    if (nombre === undefined) {
+      const usadas = new Set(ids.map((i) => carritos.get(i)?.etiqueta));
+      let n = 1;
+      while (usadas.has(`Cliente ${n}`)) n += 1;
+      nombre = `Cliente ${n}`;
+    }
+    const k: CarritoGuardado = {
+      carritoId, turnoId: turno.turnoId, cajeroUid: c.uid, estado: 'abierto', etiqueta: nombre, version: 1, requestId: carritoId, creadoEnMs: c.ahora, actualizadoEnMs: c.ahora,
+    };
+    carritos.set(carritoId, k);
+    c.e.turnos.set(turno.turnoId, { ...turno, carritosAbiertos: [...ids, carritoId] });
+    auditar(c, 'pos.carrito.crear', `carritos/${carritoId}`);
+    return k;
+  },
+
+  guardarCarrito(c, e) {
+    const carritoId = exigirUuid(e.carritoId, 'carritoId');
+    if (!Number.isSafeInteger(e.version) || e.version < 1) throw fallo('entrada-invalida', 'version inválida');
+    if (e.contenido === undefined && e.etiqueta === undefined) throw fallo('entrada-invalida', 'No hay nada que guardar');
+    const contenido = e.contenido === undefined ? undefined : validarContenido(c, e.contenido);
+    const etiqueta = e.etiqueta === undefined ? undefined : exigirTexto(e.etiqueta, 'etiqueta');
+    if (etiqueta !== undefined && etiqueta.length > MAX_ETIQUETA) throw fallo('entrada-invalida', `etiqueta admite hasta ${MAX_ETIQUETA} caracteres`);
+    const k = exigirCarritoAbiertoDe(estadoCarritos(c).carritos.get(carritoId), c);
+    if (k.version !== e.version) throw conflicto(k);
+    const n: CarritoGuardado = { ...k, version: k.version + 1, actualizadoEnMs: c.ahora, ...(etiqueta !== undefined ? { etiqueta } : {}), ...(contenido !== undefined ? { contenido } : {}) };
+    estadoCarritos(c).carritos.set(carritoId, n);
+    return n;
+  },
+
+  cancelarCarrito(c, e) {
+    const carritoId = exigirUuid(e.carritoId, 'carritoId');
+    const motivo = exigirTexto(e.motivo, 'motivo');
+    const k = estadoCarritos(c).carritos.get(carritoId);
+    if (k === undefined) throw fallo('carrito-inexistente', 'El carrito no existe');
+    if (k.cajeroUid !== c.uid && c.rol === 'caj') throw fallo('carrito-ajeno', 'El carrito es de otro usuario');
+    if (k.estado === 'cancelado') return k;
+    if (k.estado !== 'abierto') throw fallo('carrito-cerrado', 'El carrito ya se cobró');
+    const n = cancelarEn(c, k, motivo, 'pos.carrito.cancelar');
+    quitarDelIndice(c, k.turnoId, carritoId);
+    return n;
+  },
+
+  misCarritos(c) {
+    const turno = turnoAbierto(c);
+    if (turno === undefined || turno.cajeroUid !== c.uid) return [];
+    const { carritos } = estadoCarritos(c);
+    return (turno.carritosAbiertos ?? []).flatMap((i) => carritos.get(i) ?? []).filter((k) => k.estado === 'abierto').sort((a, b) => a.creadoEnMs - b.creadoEnMs);
+  },
+
   solicitarAprobacion(c, e) {
     const id = exigirUuid(e.aprobacionId, 'aprobacionId');
     const previa = c.e.aprobaciones.get(id);
@@ -269,11 +469,13 @@ export const handlersPos: {
     exigirMonto(s.monto, 'monto', 1);
     exigirTexto(s.motivo, 'motivo');
     if (s.tipo === 'credito') exigirTexto(s.deudor ?? '', 'deudor');
+    if (s.carritoId !== undefined) exigirCarritoAbiertoDe(estadoCarritos(c).carritos.get(exigirUuid(s.carritoId, 'carritoId')), c);
     const a: AprobacionPos = {
       aprobacionId: id, tipo: s.tipo, estado: 'pendiente', moneda: s.moneda, monto: s.monto, motivo: s.motivo.trim(),
       ...(s.deudor !== undefined ? { deudor: s.deudor.trim() } : {}), solicitadoPor: c.uid, solicitadoEnMs: c.ahora,
     };
     c.e.aprobaciones.set(id, a);
+    if (s.carritoId !== undefined) estadoCarritos(c).aprobacionCarrito.set(id, s.carritoId);
     auditar(c, 'pos.aprobacion.solicitar', `aprobaciones/${id}`, a.motivo);
     return a;
   },
@@ -283,6 +485,8 @@ export const handlersPos: {
     if (a === undefined) throw fallo('aprobacion-inexistente');
     if (a.estado !== 'pendiente') throw fallo('estado', 'La aprobación ya fue resuelta');
     if (a.solicitadoPor === c.uid) throw fallo('autoaprobacion');
+    const ligado = estadoCarritos(c).aprobacionCarrito.get(a.aprobacionId);
+    if (ligado !== undefined && estadoCarritos(c).carritos.get(ligado)?.estado !== 'abierto') throw fallo('carrito-cerrado', 'El carrito de esta solicitud ya no está abierto');
     if (e.motivo !== undefined && e.decision !== 'rechazar') throw fallo('entrada-invalida', 'El motivo solo se admite al rechazar');
     // Mismo criterio del servidor: sin caracteres de control; vacío o solo espacios = ausente; tope de 200.
     // eslint-disable-next-line no-control-regex
@@ -332,6 +536,7 @@ export const handlersPos: {
       c.e.creditos.set(v.ventaId, { ...cred, estado: 'anulado' });
     }
     c.e.turnos.set(nt.turnoId, nt);
+    anulacionesDe(c).push({ turnoIdReembolso: turno.turnoId, moneda: v.moneda, reembolsos, creditoCancelado: cred?.monto ?? 0 });
     c.e.ventas.set(v.ventaId, { ...v, estado: 'anulada' });
     // Revierte stock y series.
     for (const l of v.lineas) {
@@ -417,6 +622,44 @@ export const handlersPos: {
     const t = turnoAbierto(c);
     return t !== undefined && (c.rol !== 'caj' || t.cajeroUid === c.uid) ? t : null;
   },
+  resumenTurno: (c, e) => {
+    const t = e.turnoId === undefined ? turnoAbierto(c) : c.e.turnos.get(e.turnoId);
+    if (t === undefined) {
+      if (e.turnoId !== undefined) throw fallo('sin-turno', 'El turno no existe');
+      return null;
+    }
+    if ((t.cajeroUid !== c.uid && c.rol === 'caj') || (e.cajeroUid !== undefined && t.cajeroUid !== e.cajeroUid)) {
+      if (e.turnoId === undefined) return null;
+      throw fallo('turno-ajeno');
+    }
+    return resumenDe(c, t);
+  },
+  misTurnos: (c, e) => {
+    const lista = [...c.e.turnos.values()]
+      .filter((t) => (c.rol === 'caj' ? t.cajeroUid === c.uid : true))
+      .filter((t) => (e.cajeroUid === undefined ? true : t.cajeroUid === e.cajeroUid))
+      .filter((t) => (e.desde === undefined ? true : fechaLaPaz(t.abiertoEnMs) >= e.desde))
+      .filter((t) => (e.hasta === undefined ? true : fechaLaPaz(t.abiertoEnMs) <= e.hasta))
+      .sort((a, b) => b.abiertoEnMs - a.abiertoEnMs || (a.turnoId < b.turnoId ? 1 : -1))
+      .filter((t) => (e.despuesDe === undefined ? true : t.abiertoEnMs < e.despuesDe.abiertoEnMs || (t.abiertoEnMs === e.despuesDe.abiertoEnMs && t.turnoId < e.despuesDe.turnoId)));
+    const pagina = lista.slice(0, FILAS_POR_PAGINA);
+    const ultima = pagina[pagina.length - 1];
+    const siguiente: CursorTurno | null = lista.length > FILAS_POR_PAGINA && ultima !== undefined ? { abiertoEnMs: ultima.abiertoEnMs, turnoId: ultima.turnoId } : null;
+    return { turnos: pagina.map(filaTurnoDe), siguiente };
+  },
+  misVentas: (c, e) => {
+    const lista = [...c.e.ventas.values()]
+      .filter((v) => (c.rol === 'caj' ? v.cajeroUid === c.uid : true))
+      .filter((v) => (e.turnoId === undefined ? true : v.turnoId === e.turnoId))
+      .filter((v) => (e.desde === undefined ? true : fechaLaPaz(v.creadoEnMs) >= e.desde))
+      .filter((v) => (e.hasta === undefined ? true : fechaLaPaz(v.creadoEnMs) <= e.hasta))
+      .sort((a, b) => b.creadoEnMs - a.creadoEnMs || (a.ventaId < b.ventaId ? 1 : -1))
+      .filter((v) => (e.despuesDe === undefined ? true : v.creadoEnMs < e.despuesDe.creadoEnMs || (v.creadoEnMs === e.despuesDe.creadoEnMs && v.ventaId < e.despuesDe.ventaId)));
+    const pagina = lista.slice(0, FILAS_POR_PAGINA);
+    const ultima = pagina[pagina.length - 1];
+    const siguiente: CursorVenta | null = lista.length > FILAS_POR_PAGINA && ultima !== undefined ? { creadoEnMs: ultima.creadoEnMs, ventaId: ultima.ventaId } : null;
+    return { ventas: pagina, siguiente };
+  },
   listarTurnos: (c, e) =>
     [...c.e.turnos.values()]
       .filter((t) => (c.rol === 'caj' ? t.cajeroUid === c.uid : true))
@@ -459,11 +702,30 @@ export const handlersPos: {
       .reverse(),
 };
 
+/** Carritos abiertos del turno abierto, resumidos como en el servidor: sin cliente, teléfono ni series. */
+export function carritosDeSupervision(c: Contexto): ResumenCarritoSupervision[] {
+  const t = turnoAbierto(c);
+  if (t === undefined) return [];
+  const { carritos } = estadoCarritos(c);
+  return (t.carritosAbiertos ?? []).flatMap((i) => carritos.get(i) ?? []).filter((k) => k.estado === 'abierto').map((k) => {
+    const lineas = k.contenido?.lineas ?? [];
+    return {
+      carritoId: k.carritoId, etiqueta: k.etiqueta, cajeroUid: k.cajeroUid, lineas: lineas.length, unidades: lineas.reduce((n, l) => n + l.cantidad, 0),
+      creadoEnMs: k.creadoEnMs, actualizadoEnMs: k.actualizadoEnMs, antiguedadMs: Math.max(0, c.ahora - k.creadoEnMs),
+    };
+  });
+}
+
 function cerrar(c: Contexto, turnoId: string, contado: Partial<Record<string, number>>, forzado: boolean, motivo?: string): ResultadoCierre {
   const t = c.e.turnos.get(exigirUuid(turnoId, 'turnoId'));
   if (t === undefined) throw fallo('sin-turno', 'El turno no existe');
   if (t.estado !== 'abierto') throw fallo('turno-no-abierto');
   if (!forzado && t.cajeroUid !== c.uid) throw fallo('turno-ajeno');
+  const { carritos } = estadoCarritos(c);
+  const abiertos = (t.carritosAbiertos ?? []).flatMap((i) => carritos.get(i) ?? []).filter((k) => k.estado === 'abierto');
+  if (!forzado && abiertos.length > 0) {
+    throw fallo('carritos-abiertos', 'Hay carritos abiertos: cóbrelos o cancélelos antes de cerrar el turno', { carritos: abiertos.map((k) => ({ carritoId: k.carritoId, etiqueta: k.etiqueta })) });
+  }
   const monedas = new Set<string>([...monedasDelTurno(t, c.e.comercial.monedasCaja), ...Object.keys(contado).filter((m) => contado[m] !== undefined)]);
   for (const m of monedas) {
     const v = contado[m];
@@ -481,8 +743,10 @@ function cerrar(c: Contexto, turnoId: string, contado: Partial<Record<string, nu
   const cerrado: TurnoPos = {
     ...t, estado: forzado ? 'cerrado_forzado' : 'cerrado', cerradoEnMs: c.ahora, cerradoPor: c.uid, ...(motivo !== undefined ? { motivoCierre: motivo } : {}),
     contado, esperado, diferencia: dif,
+    ...(t.carritosAbiertos !== undefined ? { carritosAbiertos: [] } : {}),
   };
   c.e.turnos.set(t.turnoId, cerrado);
+  for (const k of abiertos) cancelarEn(c, k, motivo ?? 'Cierre forzado del turno', 'pos.carrito.cancelar_forzado');
   auditar(c, forzado ? 'pos.turno.cerrar-forzado' : 'pos.turno.cerrar', `turnos/${t.turnoId}`, motivo);
   return { turno: cerrado, arqueo };
 }

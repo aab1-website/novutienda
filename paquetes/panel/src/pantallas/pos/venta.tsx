@@ -7,15 +7,18 @@ import { useConfiguracionComercial } from '../../ui/comercial.js';
 import { useApp } from '../../ui/contexto.js';
 import { useAccion, useCarga } from '../../ui/hooks.js';
 import { textoACentavos } from '../../util/dinero.js';
+import { CatalogoSoloLectura } from './venta-catalogo.js';
 import { VentaCaja, VentaCreditos } from './venta-caja.js';
 import { VentaCierre } from './venta-cierre.js';
 import { VentaHistorial } from './venta-historial.js';
+import { VentaReporte } from './venta-reporte.js';
 import { VentaTerminal } from './venta-terminal.js';
 
 const PESTANAS = [
   { id: 'terminal', titulo: 'Terminal' },
-  { id: 'caja', titulo: 'Ingresos y egresos' },
+  { id: 'caja', titulo: 'Ing. y Egr. Excepcionales' },
   { id: 'creditos', titulo: 'Créditos' },
+  { id: 'reporte', titulo: 'Mi reporte' },
   { id: 'historial', titulo: 'Ventas y anulaciones' },
   { id: 'cierre', titulo: 'Cierre de turno' },
 ];
@@ -74,6 +77,12 @@ export function PantallaVenta({ sub }: { sub: string }): JSX.Element {
   const { api } = useApp();
   const actual = PESTANAS.some((p) => p.id === sub) ? sub : 'terminal';
   const turno = useCarga(() => api.llamar('turnoActual', {}), []);
+  // Carrito que se pidió retomar desde el cierre de turno: el terminal lo abre y lo suelta.
+  const [carritoPedido, setCarritoPedido] = useState<string | undefined>(undefined);
+  const retomar = (id: string): void => {
+    setCarritoPedido(id);
+    window.location.hash = '#/venta/terminal';
+  };
   const necesitaTurno = actual === 'terminal' || actual === 'caja' || actual === 'cierre';
 
   return (
@@ -82,13 +91,24 @@ export function PantallaVenta({ sub }: { sub: string }): JSX.Element {
       <Pestanas etiqueta="Secciones de venta" base="venta" actual={actual} items={PESTANAS} />
       {turno.cargando && <Cargando />}
       {turno.error && <ErrorCarga error={turno.error} reintentar={turno.recargar} />}
-      {!turno.cargando && !turno.error && necesitaTurno && turno.datos === null && <Apertura alAbrir={turno.recargar} />}
+      {!turno.cargando && !turno.error && necesitaTurno && turno.datos === null && (
+        <>
+          <Apertura alAbrir={turno.recargar} />
+          {actual === 'terminal' && (
+            <>
+              <Alerta tipo="info">Abra turno para vender.</Alerta>
+              <CatalogoSoloLectura />
+            </>
+          )}
+        </>
+      )}
       {!turno.cargando && !turno.error && (!necesitaTurno || turno.datos !== null) && (
         <>
-          {actual === 'terminal' && turno.datos && <VentaTerminal turno={turno.datos} alCambiar={turno.recargar} />}
+          {actual === 'terminal' && turno.datos && <VentaTerminal turno={turno.datos} alCambiar={turno.recargar} carritoPedido={carritoPedido} alUsarPedido={() => setCarritoPedido(undefined)} />}
           {actual === 'caja' && turno.datos && <VentaCaja turno={turno.datos} alCambiar={turno.recargar} />}
-          {actual === 'cierre' && turno.datos && <VentaCierre turno={turno.datos} alCerrar={turno.recargar} />}
+          {actual === 'cierre' && turno.datos && <VentaCierre turno={turno.datos} alCerrar={turno.recargar} alRetomar={retomar} />}
           {actual === 'creditos' && <VentaCreditos alCambiar={turno.recargar} />}
+          {actual === 'reporte' && <VentaReporte />}
           {actual === 'historial' && <VentaHistorial />}
         </>
       )}

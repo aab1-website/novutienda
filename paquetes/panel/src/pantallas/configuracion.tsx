@@ -1,3 +1,4 @@
+import { esNitValido, MENSAJE_NIT } from '@novutienda/nucleo';
 import type { JSX } from 'preact';
 import { useEffect, useRef, useState } from 'preact/hooks';
 import { MEDIOS_PAGO, type ConfigPos, type LogoNegocio, type MercadoDeclarado, type MedioPago, type PlantillaRecibo } from '../api/tipos.js';
@@ -33,7 +34,7 @@ function validarNegocio(d: DatosNegocio): Partial<Record<keyof DatosNegocio, str
   if (d.nombre.trim().length > 100) e.nombre = 'El nombre admite hasta 100 caracteres';
   if (d.direccion.trim().length > 200) e.direccion = 'La dirección admite hasta 200 caracteres';
   if (d.telefono.trim().length > 30) e.telefono = 'El teléfono admite hasta 30 caracteres';
-  if (d.nit.trim().length > 30) e.nit = 'El NIT admite hasta 30 caracteres';
+  if (d.nit.trim() !== '' && !esNitValido(d.nit.trim())) e.nit = MENSAJE_NIT;
   const logo = d.logoUrl.trim();
   // Igual de estricto que caja y recibos: https en minúsculas, sin espacios ni comillas, hasta 490 caracteres tras https://.
   if (logo !== '' && !/^https:\/\/[^\s"'<>`\\]{1,490}$/.test(logo)) e.logoUrl = 'La dirección del logo debe empezar con https://, sin espacios ni comillas';
@@ -163,7 +164,7 @@ function DatosDelNegocio(): JSX.Element {
         marcarGuardado();
         setBase(normal(x));
         setDifieren(false);
-        avisoGuardado.current = avisos.ok('Datos del negocio guardados en la configuración de la caja y en la plantilla de recibos.');
+        avisoGuardado.current = avisos.ok('Datos del negocio guardados. Se usan en la caja y en los recibos nuevos.');
       } else {
         const guardados = (['caja', 'recibos'] as const).filter((k) => todos[k] === undefined);
         const faltan = (['caja', 'recibos'] as const).filter((k) => todos[k] !== undefined);
@@ -189,7 +190,7 @@ function DatosDelNegocio(): JSX.Element {
       <p class="texto-suave">Se escriben una sola vez y se guardan en la configuración de la caja y en la plantilla de los recibos.</p>
       {difieren && (
         <Alerta tipo="info">
-          Los datos del negocio de la configuración de la caja y los de la plantilla de recibos son distintos. Se muestran los de la caja; no se cambia nada hasta que usted guarde, y al guardar quedarán iguales en los dos.
+          La caja y la plantilla de recibos tenían datos distintos. Abajo se muestran los de la caja; al pulsar «Guardar datos del negocio» quedarán iguales en las dos.
         </Alerta>
       )}
       <form class="formulario" onSubmit={guardar} noValidate>
@@ -197,7 +198,7 @@ function DatosDelNegocio(): JSX.Element {
           <Campo etiqueta="Nombre del negocio" valor={d.nombre} onInput={(v) => poner('nombre', v)} requerido error={errores.nombre} />
           <Campo etiqueta="Dirección" valor={d.direccion} onInput={(v) => poner('direccion', v)} error={errores.direccion} />
           <Campo etiqueta="Teléfono" valor={d.telefono} onInput={(v) => poner('telefono', v)} error={errores.telefono} />
-          <Campo etiqueta="NIT" valor={d.nit} onInput={(v) => poner('nit', v)} error={errores.nit} />
+          <Campo etiqueta="NIT" inputMode="numeric" valor={d.nit} onInput={(v) => poner('nit', v)} error={errores.nit} />
           <Campo etiqueta="Logo por dirección web (opcional; mejor súbalo en Catálogo y sitio)" valor={d.logoUrl} onInput={(v) => poner('logoUrl', v)} error={errores.logoUrl} />
         </div>
         {logo.datos !== undefined && <LogoSubido estado={logo.datos} conDireccion={d.logoUrl.trim() !== ''} />}
@@ -311,58 +312,6 @@ function ConfigPosForm(): JSX.Element {
   );
 }
 
-function PlantillaForm(): JSX.Element {
-  const { api } = useApp();
-  const pl = useCarga(() => api.llamar('leerPlantilla', {}), []);
-  const accion = useAccion();
-  const avisos = useAvisos();
-  const [p, setP] = useState<PlantillaRecibo | null>(null);
-  const [base, setBase] = useState<string | null>(null);
-  const avisoGuardado = useRef(0);
-  useEffect(() => { if (pl.datos !== undefined) { setP(pl.datos); setBase(JSON.stringify(pl.datos)); } }, [pl.datos]);
-  const sucio = p !== null && base !== null && JSON.stringify(p) !== base;
-  const { marcarGuardado } = useCambiosSinGuardar(sucio);
-  if (pl.cargando || p === null) return pl.error ? <ErrorCarga error={pl.error} reintentar={pl.recargar} /> : <Cargando />;
-  const n = p.negocio;
-  const poner = (nueva: PlantillaRecibo): void => {
-    if (avisoGuardado.current !== 0) avisos.cerrar(avisoGuardado.current);
-    avisoGuardado.current = 0;
-    setP(nueva);
-  };
-  const sinNombre = n.nombre.trim() === '';
-  const guardar = (e: Event): void => {
-    e.preventDefault();
-    if (sinNombre) return;
-    const enviado = JSON.stringify(p);
-    void accion.ejecutar(async () => {
-      // El negocio y el logo se editan en «Datos del negocio»: se toman de lo guardado ahora, no de lo cargado al abrir.
-      // Límite aceptado: entre releer y escribir puede colarse otro guardado, porque el servidor reemplaza el registro completo.
-      const vigente = await api.llamar('leerPlantilla', {});
-      const plantilla: PlantillaRecibo = {
-        negocio: vigente.negocio,
-        ...(vigente.logoUrl !== undefined ? { logoUrl: vigente.logoUrl } : {}), ...(opc(p.pie ?? '') ? { pie: opc(p.pie ?? '') as string } : {}),
-        ...(opc(p.politicaGarantia ?? '') ? { politicaGarantia: opc(p.politicaGarantia ?? '') as string } : {}), ...(opc(p.politicaCambios ?? '') ? { politicaCambios: opc(p.politicaCambios ?? '') as string } : {}),
-      };
-      await api.llamar('guardarPlantilla', { plantilla });
-      marcarGuardado();
-      setBase(enviado);
-      avisoGuardado.current = avisos.ok('Plantilla guardada.');
-    }, { error: 'ambos' });
-  };
-  return (
-    <Seccion titulo="Plantilla del recibo">
-      <p class="texto-suave">Los recibos ya emitidos conservan la plantilla que tenían al emitirse. La serie y la numeración se definen en la configuración del POS. El nombre, la dirección, el teléfono, el NIT y el logo se editan una sola vez en «Datos del negocio», en la pestaña «Negocio y POS».</p>
-      <form class="formulario" onSubmit={guardar} noValidate>
-        <Area etiqueta="Pie de página" valor={p.pie ?? ''} onInput={(v) => poner({ ...p, pie: v })} />
-        <Area etiqueta="Política de garantía" valor={p.politicaGarantia ?? ''} onInput={(v) => poner({ ...p, politicaGarantia: v })} />
-        <Area etiqueta="Política de cambios" valor={p.politicaCambios ?? ''} onInput={(v) => poner({ ...p, politicaCambios: v })} />
-        {accion.error && <Alerta>{accion.error}</Alerta>}
-        <Boton tipo="submit" ocupado={accion.ocupado} motivo={sinNombre ? 'Guarde primero los Datos del negocio' : undefined}>Guardar plantilla</Boton>
-      </form>
-    </Seccion>
-  );
-}
-
 const TEXTO_CAMBIO = (m: MercadoDeclarado): string => (m.tieneTipoCambio ? `Sí (${m.monedaVenta}/${m.monedaBase})` : 'No: el precio base es el precio');
 
 /** Mercados y monedas del comercio, solo lectura: los define el operador de la plataforma, no se editan aquí. */
@@ -395,20 +344,22 @@ function MercadosYMonedas(): JSX.Element {
   );
 }
 
-export function PantallaConfiguracion({ sub }: { sub: string }): JSX.Element {
-  const actual = sub === 'recibo' ? 'recibo' : 'negocio';
+/** `plantillaRecibo` la aporta el compositor solo si el módulo de recibos está encendido; sin ella no hay pestaña. */
+export function PantallaConfiguracion({ sub, plantillaRecibo: PestanaRecibo }: { sub: string; plantillaRecibo?: () => JSX.Element }): JSX.Element {
+  const actual = sub === 'recibo' && PestanaRecibo !== undefined ? 'recibo' : 'negocio';
+  const items = PestanaRecibo === undefined ? [{ id: 'negocio', titulo: 'Negocio y POS' }] : [{ id: 'negocio', titulo: 'Negocio y POS' }, { id: 'recibo', titulo: 'Plantilla del recibo' }];
   return (
     <div>
       <h1>Configuración</h1>
-      <Pestanas etiqueta="Configuración" base="configuracion" actual={actual} items={[{ id: 'negocio', titulo: 'Negocio y POS' }, { id: 'recibo', titulo: 'Plantilla del recibo' }]} />
-      {actual === 'negocio' ? (
+      <Pestanas etiqueta="Configuración" base="configuracion" actual={actual} items={items} />
+      {actual === 'negocio' || PestanaRecibo === undefined ? (
         <>
           <DatosDelNegocio />
           <ConfigPosForm />
           <MercadosYMonedas />
         </>
       ) : (
-        <PlantillaForm />
+        <PestanaRecibo />
       )}
     </div>
   );

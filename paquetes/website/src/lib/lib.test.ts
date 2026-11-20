@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import { almacenMemoria, borrarSeguro, guardarSeguro, leerSeguro, type AlmacenClaveValor } from './almacen.js';
-import { agregar, cambiarCantidad, cantidadDe, leerCarrito, MAX_CANTIDAD, MAX_LINEAS, quitar, serializarCarrito, totalUnidades } from './carrito.js';
+import { agregar, cambiarCantidad, cantidadDe, CLAVE_CARRITO, leerCarrito, MAX_CANTIDAD, MAX_LINEAS, quitar, serializarCarrito, totalUnidades } from './carrito.js';
 import { convertir, textoReferencia } from './convertidor.js';
 import { formatearMonto, parsearMonto } from './dinero.js';
 import { EVENTOS, emitir, escuchar } from './eventos.js';
@@ -170,5 +170,13 @@ describe('eventos entre islas y configuración', () => {
     expect(configCliente({ getElementById: () => el }).nombre).toBe('X');
     // Queda en memoria: una segunda lectura no vuelve a tocar el documento.
     expect(configCliente({ getElementById: () => null }).nombre).toBe('X');
+  });
+});
+
+describe('un solo carrito, «Mi pedido»', () => {
+  it('hay una única clave de carrito y el mensaje no lleva montos ni «Total»', () => {
+    expect(CLAVE_CARRITO).toBe('cb.carrito');
+    const m = mensajeConsulta([{ id: 'a-1', nombre: 'A', cantidad: 2 }, { id: 'b-2', nombre: 'B', cantidad: 1 }]);
+    expect(m).not.toMatch(/total|Bs|\$|US\$|\d+[.,]\d{2}/i);
   });
 });

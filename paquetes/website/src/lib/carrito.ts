@@ -1,4 +1,7 @@
-/** Carrito de consulta: lista de productos y cantidades, sin precios (el precio se confirma por WhatsApp). */
+/**
+ * Mi pedido, el único carrito del cliente (una sola clave): productos y cantidades, sin precios.
+ * El «Total referencial» se calcula aparte con los precios base del sitio; el precio final se confirma por WhatsApp.
+ */
 
 export interface LineaCarrito {
   readonly id: string;

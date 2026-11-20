@@ -24,13 +24,14 @@ export const tipoContenidoDe = (ruta: string): string => TIPOS[ruta.slice(ruta.l
  * consola (`rutaPublicaMedio` + `nombreVersion`): `tenants/<t>/publico/medios/<producto>/<hash32>-<clase><lado>.<formato>`.
  * Todo lo demás (originales, temporales, PDF de recibos) vive solo en el bucket por defecto. La ruta se ancla completa:
  * sin `..`, `//`, `%`, mayúsculas ni segmentos extra. El tenant se valida con `esTenantIdValido` del núcleo (una sola definición);
- * el producto replica `ID_PRODUCTO` (o la carpeta fija `_negocio` del logo, con lado de 1 a 512 y png o webp) y la versión replica `nombreVersion`/`planificarProcesamiento` de `@novutienda/consola`,
+ * el producto replica `ID_PRODUCTO` (o la carpeta fija `_portada` de las fotos de portada, con la forma de las imágenes: `imagen<lado>.avif|webp`; o la carpeta fija `_negocio` del logo, con lado de 1 a 512 y png o webp) y la versión replica `nombreVersion`/`planificarProcesamiento` de `@novutienda/consola`,
  * que este conector no puede importar sin crear un cruce.
  */
 const LADO_LOGO = '(?:[1-9]|[1-9][0-9]|[1-4][0-9]{2}|50[0-9]|51[0-2])';
 const RUTA_PUBLICA_COMPLETA = new RegExp(
   '^tenants/([^/]+)/publico/medios/(?:' +
     '[a-z0-9][a-z0-9-]{1,59}/[a-f0-9]{32}-(?:imagen[1-9][0-9]{0,4}\\.(?:avif|webp)|video[1-9][0-9]{0,4}\\.mp4|poster[1-9][0-9]{0,4}\\.webp)' +
+    '|_portada/[a-f0-9]{32}-imagen[1-9][0-9]{0,4}\\.(?:avif|webp)' +
     `|_negocio/[a-f0-9]{32}-logo${LADO_LOGO}\\.(?:png|webp)` +
     ')$',
 );

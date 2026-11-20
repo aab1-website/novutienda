@@ -9,7 +9,7 @@ const firma = (i: Indice): string => `${i.collectionGroup}(${i.fields.map((f) =>
 
 describe('índices compuestos de Firestore', () => {
   const firmas = indexes.map(firma);
-  it.each(['movimientos(tipo asc, fecha desc)', 'movimientos(por asc, fecha desc)', 'auditoria(accion asc, en desc)', 'auditoria(uid asc, en desc)'])('declara %s', (esperado) => {
+  it.each(['movimientos(tipo asc, fecha desc)', 'movimientos(por asc, fecha desc)', 'auditoria(accion asc, en desc)', 'auditoria(uid asc, en desc)', 'turnos(cajeroUid asc, abiertoEnMs desc)'])('declara %s', (esperado) => {
     expect(firmas).toContain(esperado);
   });
   it('no hay índices repetidos y todos son de colección, salvo el de grupo de las invitaciones (`miembros`)', () => {

@@ -18,7 +18,7 @@ const abrir = async (e: Entorno): Promise<ReturnType<typeof userEvent.setup>> =>
   ver(e);
   const u = userEvent.setup();
   await u.click(await screen.findByRole('button', { name: 'Abrir conteo' }));
-  await screen.findByText(/Conteo abierto en/);
+  await screen.findByText(/Escriba lo que cuenta de cada producto/);
   return u;
 };
 const llamadas = (e: Entorno, nombre: string): { entrada: Record<string, unknown> }[] => e.api.llamadas.filter((l) => l.nombre === nombre) as never;

@@ -5,8 +5,7 @@ import Pie from '../componentes/Pie.astro';
 import { contenido } from '../contenido/instancia';
 import { jsonLdSeguro, tituloPagina, urlAbsoluta } from '../lib/seo';
 import type { ConfigCliente } from '../lib/config-cliente';
-import { enlaceWhatsApp } from '../lib/whatsapp';
-import Icono from '../componentes/Icono.astro';
+import WhatsAppFlotante from '../islas/WhatsAppFlotante';
 import { iconoDelSitio, imagenAlCompartir } from '../contenido/logo-subido.js';
 import { debeNoIndexar } from '../lib/indexacion';
 
@@ -18,9 +17,12 @@ interface Props {
   /** Imagen para vista previa al compartir. */
   imagen?: string;
   noindex?: boolean;
+  /** Rutas de la página anterior y la siguiente de un listado paginado. */
+  anterior?: string;
+  siguiente?: string;
   datosEstructurados?: readonly Record<string, unknown>[];
 }
-const { titulo, descripcion, ruta, imagen, noindex = false, datosEstructurados = [] } = Astro.props;
+const { titulo, descripcion, ruta, imagen, noindex = false, anterior, siguiente, datosEstructurados = [] } = Astro.props;
 const { config } = contenido;
 const completo = ruta === '/' ? config.nombre : tituloPagina(titulo, config.nombre);
 const desc = descripcion ?? config.lema;
@@ -38,7 +40,6 @@ const publico: ConfigCliente = {
 const urlImagen = imagen === undefined ? undefined : imagen.startsWith('/') ? urlAbsoluta(config.origen, imagen) : imagen;
 const urlCompartir = imagenAlCompartir(urlImagen, config.imagenCompartir);
 const urlIcono = iconoDelSitio(config.iconoSitio, config.logo);
-const waGeneral = enlaceWhatsApp(config.whatsappNovuchat, 'Hola, tengo una consulta.');
 ---
 <!doctype html>
 <html lang="es" data-plantilla={config.plantilla}>
@@ -48,6 +49,8 @@ const waGeneral = enlaceWhatsApp(config.whatsappNovuchat, 'Hola, tengo una consu
     <title>{completo}</title>
     <meta name="description" content={desc} />
     <link rel="canonical" href={urlAbsoluta(config.origen, ruta === '/' ? '/' : ruta)} />
+    {anterior !== undefined && <link rel="prev" href={urlAbsoluta(config.origen, anterior)} />}
+    {siguiente !== undefined && <link rel="next" href={urlAbsoluta(config.origen, siguiente)} />}
     {debeNoIndexar(process.env['APP_ENV'], config.esEjemplo, noindex) && <meta name="robots" content="noindex, nofollow" />}
     <meta property="og:type" content="website" />
     <meta property="og:site_name" content={config.nombre} />
@@ -75,10 +78,6 @@ const waGeneral = enlaceWhatsApp(config.whatsappNovuchat, 'Hola, tengo una consu
       <slot />
     </main>
     <Pie />
-    {waGeneral !== null && (
-      <a class="whatsapp-flotante" href={waGeneral} target="_blank" rel="noopener noreferrer" aria-label="Escribir por WhatsApp">
-        <Icono nombre="chat" tamano={28} />
-      </a>
-    )}
+    <WhatsAppFlotante client:idle whatsapp={config.whatsappNovuchat} />
   </body>
 </html>

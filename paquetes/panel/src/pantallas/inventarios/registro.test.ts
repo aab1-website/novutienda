@@ -13,7 +13,7 @@ afterEach(() => {
 });
 
 const mov = (i: number): MovimientoVista => ({ id: `m${String(i)}`, operacionId: 'o', series: [], tipo: 'ingreso', productoId: 'cable-hdmi', ubicacionId: i % 2 === 0 ? 'tienda' : 'deposito-1', delta: i + 1, saldoUbicacion: i + 1, por: 'u-adm', rol: 'adm', fecha: `2026-11-04T10:${String(i % 60).padStart(2, '0')}:00Z` });
-const ver = (e: Entorno): void => void render(e.envolver(h(Registro, {})));
+const ver = (e: Entorno): void => void render(e.envolver(h(Registro, { productoInicial: '' })));
 /** El servidor dice que la lista está cortada. */
 const cortada = (e: Entorno, n: number): void => {
   const original = e.api.llamar.bind(e.api);
@@ -32,7 +32,7 @@ describe('registro de acciones', () => {
     expect(screen.getByRole('navigation', { name: /Páginas/ })).toBeTruthy();
     await u.selectOptions(screen.getByLabelText('Almacén'), 'deposito-1');
     expect(within(screen.getByRole('table', { name: 'Movimientos de inventario' })).getAllByText('Depósito 1').length).toBeGreaterThan(0);
-    expect(screen.getByLabelText('Buscar por producto, usuario o motivo')).toBeTruthy();
+    expect(screen.getByLabelText('Buscar por producto, SKU, serie, usuario o motivo')).toBeTruthy();
   });
 
   it('avisa que la lista está cortada con el número', async () => {

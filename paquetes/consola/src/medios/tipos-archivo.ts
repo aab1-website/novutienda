@@ -1,6 +1,9 @@
 export type TipoMedio = 'foto' | 'video';
-/** Tipo de una subida: los medios de un producto más el logo del negocio (un archivo, destino fijo `_negocio`). */
-export type TipoSubida = TipoMedio | 'logo';
+/**
+ * Tipo de una subida: los medios de un producto, el logo del negocio (un archivo, destino fijo `_negocio`) y la foto de portada
+ * (destino fijo `_portada`; se procesa como una foto y el medio resultante es una `foto` de `_portada`).
+ */
+export type TipoSubida = TipoMedio | 'logo' | 'portada';
 export type FormatoArchivo = 'jpg' | 'png' | 'webp' | 'heic' | 'mp4' | 'mov' | 'webm';
 
 export interface ArchivoDetectado {

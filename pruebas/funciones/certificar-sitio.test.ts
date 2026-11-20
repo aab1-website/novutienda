@@ -112,7 +112,7 @@ beforeAll(async () => {
     }
     if (ruta === '/indice-productos.json') {
       peticionesIndice++;
-      return json(200, modo.html.productos.filter((p) => p.id !== modo.sinIndiceId).map((p) => ({ i: p.id, nombre: p.nombre, marca: 'M', categoria: 'C', ruta: `/producto/${p.slug}` })));
+      return json(200, modo.html.productos.filter((p) => p.id !== modo.sinIndiceId).map((p) => ({ i: p.id, nombre: p.nombre, marca: 'M', categoria: 'c', ruta: `/producto/${p.slug}` })));
     }
     if (ruta === '/') return enviar(200, 'text/html', paginaPortada(modo.html));
     const m = /^\/producto\/(.+)$/.exec(ruta);

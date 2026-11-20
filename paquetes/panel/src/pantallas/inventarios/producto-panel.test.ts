@@ -29,11 +29,48 @@ const editar = async (u: ReturnType<typeof userEvent.setup>, nombre = CABLE): Pr
 const llamadas = (e: Entorno, nombre: string): { entrada: Record<string, unknown> }[] => e.api.llamadas.filter((l) => l.nombre === nombre) as never;
 const completarAlta = async (u: ReturnType<typeof userEvent.setup>): Promise<void> => {
   await u.type(screen.getByLabelText(/^Nombre/), 'Teclado mecánico');
-  await u.type(screen.getByLabelText(/^Categoría/), 'Accesorios');
+  await u.type(screen.getByLabelText(/^Categoría/), 'accesorios');
   await u.type(screen.getByLabelText(/^SKU/), 'TEC-1');
   await u.type(screen.getByLabelText(/^Bolivia \(USD\)/), '15');
   await u.type(screen.getByLabelText(/^Argentina \(USD\)/), '16');
 };
+
+describe('categoría y aviso de precios en el alta', () => {
+  it('ofrece «Usar «audio»» para una categoría con mayúsculas y la aplica', async () => {
+    const e = crearEntorno('adm');
+    ver(e);
+    const u = userEvent.setup();
+    const d = await nuevoProducto(u);
+    expect(within(d).queryByRole('button', { name: /^Usar «/ })).toBeNull();
+    await u.type(screen.getByLabelText(/^Categoría/), 'Audio');
+    await u.click(within(d).getByRole('button', { name: 'Usar «audio»' }));
+    expect((screen.getByLabelText(/^Categoría/) as HTMLInputElement).value).toBe('audio');
+    expect(within(d).queryByRole('button', { name: /^Usar «/ })).toBeNull();
+  });
+  it('la categoría tiene una lista de sugerencias enlazada', async () => {
+    const e = crearEntorno('adm');
+    ver(e);
+    const u = userEvent.setup();
+    await nuevoProducto(u);
+    const campo = screen.getByLabelText(/^Categoría/);
+    expect(document.getElementById(campo.getAttribute('list') ?? 'x')?.tagName).toBe('DATALIST');
+    const valores = [...document.querySelectorAll('[data-prueba="categorias-existentes"] option')].map((o) => o.getAttribute('value') ?? '');
+    expect(valores.every((v) => v !== '' && v === v.toLowerCase())).toBe(true);
+    expect(new Set(valores).size).toBe(valores.length);
+  });
+  it('un precio 10 veces mayor que el de otro mercado avisa, pero no bloquea el guardado', async () => {
+    const e = crearEntorno('adm');
+    ver(e);
+    const u = userEvent.setup();
+    const d = await nuevoProducto(u);
+    await completarAlta(u);
+    await u.clear(screen.getByLabelText(/^Argentina \(USD\)/));
+    await u.type(screen.getByLabelText(/^Argentina \(USD\)/), '500');
+    expect(within(d).getByText(/más de 10 veces/)).toBeTruthy();
+    await u.click(within(d).getByRole('button', { name: 'Crear producto' }));
+    await waitFor(() => expect(llamadas(e, 'crearProducto')).toHaveLength(1));
+  });
+});
 
 describe('alta en el panel lateral', () => {
   it('abre a la derecha con el foco en el primer campo, sin estilos en línea', async () => {
@@ -64,7 +101,7 @@ describe('alta en el panel lateral', () => {
       const u = userEvent.setup();
       await nuevoProducto(u);
       await u.type(screen.getByLabelText(/^Nombre/), nombre);
-      await u.type(screen.getByLabelText(/^Categoría/), 'Accesorios');
+      await u.type(screen.getByLabelText(/^Categoría/), 'accesorios');
       await u.type(screen.getByLabelText(/^SKU/), 'TEC-1');
       await u.type(screen.getByLabelText(/^Bolivia \(USD\)/), '15');
       await u.type(screen.getByLabelText(/^Argentina \(USD\)/), '16');
@@ -293,7 +330,7 @@ describe('edición', () => {
     const u = userEvent.setup();
     const d = await editar(u);
     await u.clear(within(d).getByLabelText(/^Categoría/));
-    await u.type(within(d).getByLabelText(/^Categoría/), 'Cables');
+    await u.type(within(d).getByLabelText(/^Categoría/), 'cables');
     await u.clear(within(d).getByLabelText(/^Bolivia \(USD\)/));
     await u.type(within(d).getByLabelText(/^Bolivia \(USD\)/), '10,50');
     await u.click(within(d).getByRole('button', { name: 'Guardar cambios' }));
@@ -301,7 +338,7 @@ describe('edición', () => {
     expect(llamadas(e, 'cambiarPrecioUSD').length).toBe(0);
     const todas = llamadas(e, 'actualizarProducto');
     expect(todas.length).toBe(1);
-    expect(todas[0]?.entrada).toMatchObject({ cambios: { categoria: 'Cables', precioUSD: { bo: 1050, ar: 900 } } });
+    expect(todas[0]?.entrada).toMatchObject({ cambios: { categoria: 'cables', precioUSD: { bo: 1050, ar: 900 } } });
     expect(typeof todas[0]?.entrada['operacionId']).toBe('string');
   });
 
@@ -354,7 +391,7 @@ describe('edición', () => {
     ver(e);
     const u = userEvent.setup();
     const d = await editar(u);
-    await u.type(within(d).getByLabelText(/^Categoría/), ' y más');
+    await u.type(within(d).getByLabelText(/^Categoría/), '-y-mas');
     await u.click(within(d).getByRole('button', { name: 'Cancelar' }));
     const pregunta = await screen.findByRole('dialog', { name: '¿Salir sin guardar?' });
     await u.click(within(pregunta).getByRole('button', { name: 'Seguir editando' }));
@@ -365,7 +402,7 @@ describe('edición', () => {
     await waitFor(() => expect(document.activeElement).toBe(screen.getByRole('button', { name: `Datos del producto de ${CABLE}` })));
     // El borrador se descartó: al abrir otra vez, el campo vuelve a su valor.
     const otra = await editar(u);
-    expect((within(otra).getByLabelText(/^Categoría/) as HTMLInputElement).value).toBe('Accesorios');
+    expect((within(otra).getByLabelText(/^Categoría/) as HTMLInputElement).value).toBe('accesorios');
   });
 
   it('Escape con cambios pregunta antes de descartar', async () => {
@@ -384,12 +421,12 @@ describe('edición', () => {
     const { rerender } = render(pantalla('productos'));
     const u = userEvent.setup();
     const d = await editar(u);
-    await u.type(within(d).getByLabelText(/^Categoría/), ' nueva');
+    await u.type(within(d).getByLabelText(/^Categoría/), '-nueva');
     rerender(pantalla('ingreso'));
     await screen.findByRole('heading', { name: 'Ingreso de mercadería' });
     rerender(pantalla('productos'));
     const otra = await editar(u);
-    expect((within(otra).getByLabelText(/^Categoría/) as HTMLInputElement).value).toBe('Accesorios nueva');
+    expect((within(otra).getByLabelText(/^Categoría/) as HTMLInputElement).value).toBe('accesorios-nueva');
   });
 
   it('el supervisor consulta los datos pero no ve «Guardar» ni el costo', async () => {
@@ -433,7 +470,7 @@ describe('comercio de un solo mercado y una sola moneda', () => {
     const u = userEvent.setup();
     const d = await nuevoProducto(u);
     await u.type(screen.getByLabelText(/^Nombre/), 'Lápiz');
-    await u.type(screen.getByLabelText(/^Categoría/), 'Útiles');
+    await u.type(screen.getByLabelText(/^Categoría/), 'utiles');
     await u.type(screen.getByLabelText(/^SKU/), 'LAP-1');
     await u.type(screen.getByLabelText(/^Precio base/), '2,50');
     await u.click(within(d).getByRole('button', { name: 'Crear producto' }));
@@ -477,16 +514,16 @@ describe('marca «sin precio»', () => {
     expect(d.querySelector('[data-prueba="sin-precio-ar"]')?.textContent).toContain('Sin precio en Argentina');
     expect(d.querySelector('[data-prueba="sin-precio-bo"]')).toBeNull();
     await u.clear(within(d).getByLabelText(/^Categoría/));
-    await u.type(within(d).getByLabelText(/^Categoría/), 'Cables');
+    await u.type(within(d).getByLabelText(/^Categoría/), 'cables');
     await u.click(within(d).getByRole('button', { name: 'Guardar cambios' }));
     await waitFor(() => expect(llamadas(e, 'actualizarProducto').length).toBe(1));
-    expect(llamadas(e, 'actualizarProducto')[0]?.entrada['cambios']).toEqual({ categoria: 'Cables' });
+    expect(llamadas(e, 'actualizarProducto')[0]?.entrada['cambios']).toEqual({ categoria: 'cables' });
   });
 });
 
 describe('el doble exige los precios como el servidor', () => {
   const alta = (precioUSD: Record<string, number>): Promise<unknown> =>
-    crearEntorno('adm').api.llamar('crearProducto', { operacionId: 'op-alta-1', producto: { id: 'lapiz-2', nombre: 'Lápiz', categoria: 'Papelería', sku: 'LAP-2', precioUSD } as never });
+    crearEntorno('adm').api.llamar('crearProducto', { operacionId: 'op-alta-1', producto: { id: 'lapiz-2', nombre: 'Lápiz', categoria: 'papeleria', sku: 'LAP-2', precioUSD } as never });
   const editarPrecios = (precioUSD: Record<string, number>): Promise<unknown> =>
     crearEntorno('adm').api.llamar('actualizarProducto', { operacionId: 'op-edi-1', productoId: 'cable-hdmi', cambios: { precioUSD } as never });
 

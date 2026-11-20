@@ -4,12 +4,12 @@
 // `real.ts` traduce cada operación del panel a una o varias acciones reales; el cliente real y el doble en memoria pasan
 // por esa misma traducción, de modo que las pruebas del panel ejercitan la forma real de la llamada.
 import type {
-  AprobacionPos, Carrito, Carrusel, CambiosProducto, CobroCredito, CobroCreditoEntrada, ConfigPos, ConfigSitio,
+  AprobacionPos, Carrito, CarritoGuardado, ContenidoCarritoGuardado, Carrusel, CambiosProducto, CobroCredito, CobroCreditoEntrada, ConfigPos, ConfigSitio,
   ConsultaArchivo, PreciosPorMercado, ConteoVista, CotizacionesVigentes, CreditoVista, EntradaAuditoriaVista, EntradaProducto, FichaWeb,
   LineaAjuste, LineaIngreso, LineaTraspaso, LogoNegocio, Medio, MedioLogo, ResultadoEstadoSubidaLogo, MermaVista, MontosPorMoneda, MovimientoCaja, MovimientoCajaEntrada, MovimientoVista,
   ConMarca, ListaConMarca, PagoEntrada, PlantillaRecibo, ProductoPanel, Recibo, Reserva, ResultadoAnulacion, ResultadoCierre, ResultadoEnvio,
   FuenteImportacion, ResultadoImportacion, ResultadoOperacion, ResultadoEstadoSubida, ResultadoPublicacion, ResultadoVenta, Rol, Seccion, Simulacion, SolicitudAprobacion,
-  Tablero, TipoMedio, TurnoPos, UbicacionId, UnidadSerie, UsuarioVista, VentaPos, EstadoMerma,
+  ResumenCarritoSupervision, CursorTurno, CursorVenta, FilaTurnoVista, ResumenTurnoVista, Tablero, TipoMedio, TurnoPos, UbicacionId, UnidadSerie, UsuarioVista, VentaPos, EstadoMerma,
   TipoMovimiento, VistaComercial,
 } from './tipos.js';
 
@@ -22,9 +22,17 @@ export interface Contrato {
   cerrarTurno: { entrada: { turnoId: string; contado: MontosPorMoneda }; salida: ResultadoCierre };
   cerrarTurnoForzado: { entrada: { turnoId: string; contado: MontosPorMoneda; motivo: string }; salida: ResultadoCierre };
   confirmarVenta: {
-    entrada: { requestId: string; carrito: Carrito; pagos: readonly PagoEntrada[]; aprobacionId?: string; aprobacionCreditoId?: string };
+    entrada: { requestId: string; carrito: Carrito; pagos: readonly PagoEntrada[]; aprobacionId?: string; aprobacionCreditoId?: string; carritoId?: string; carritoVersion?: number };
     salida: ResultadoVenta;
   };
+  /** Abre un carrito guardado en el turno propio (idempotente por `carritoId`; tope por turno en el servidor). */
+  crearCarrito: { entrada: { carritoId: string; etiqueta?: string }; salida: CarritoGuardado };
+  /** Guarda el contenido o la etiqueta; `version` es la que el panel conoce (distinta: `carrito-conflicto` con el carrito vigente en `detalle.carrito`). */
+  guardarCarrito: { entrada: { carritoId: string; version: number; contenido?: ContenidoCarritoGuardado; etiqueta?: string }; salida: CarritoGuardado };
+  /** El dueño, o `sup`/`adm` con motivo (auditado). */
+  cancelarCarrito: { entrada: { carritoId: string; motivo: string }; salida: CarritoGuardado };
+  misCarritos: { entrada: Vacio; salida: readonly CarritoGuardado[] };
+  carritosSupervision: { entrada: Vacio; salida: readonly ResumenCarritoSupervision[] };
   solicitarAprobacion: { entrada: { aprobacionId: string; solicitud: SolicitudAprobacion }; salida: AprobacionPos };
   resolverAprobacion: { entrada: { aprobacionId: string; decision: 'aprobar' | 'rechazar'; motivo?: string | undefined }; salida: AprobacionPos };
   solicitarAnulacion: { entrada: { ventaId: string; motivo: string }; salida: VentaPos };
@@ -87,7 +95,8 @@ export interface Contrato {
   /** Un precio por cada mercado declarado por el comercio, en centavos de la moneda base: `inventarios.cambiarPrecioUSD` (idempotente por `operacionId`, que la pantalla manda siempre). */
   cambiarPrecioUSD: { entrada: { operacionId: string; productoId: string; precioUSD: PreciosPorMercado }; salida: Ok };
   guardarFicha: { entrada: { productoId: string; ficha: FichaWeb }; salida: Ok };
-  reservarSubida: { entrada: { subidaId: string; productoId: string; tipo: TipoMedio; bytes: number }; salida: Reserva };
+  /** `tipo: 'portada'` (solo `adm`) sube una foto al carrusel de portada: `productoId` debe ser `_portada` y el cupo sale del plan. */
+  reservarSubida: { entrada: { subidaId: string; productoId: string; tipo: TipoMedio | 'portada'; bytes: number }; salida: Reserva };
   /**
    * Logo del negocio, solo `adm`: misma subida reanudable que las fotos (reservar, subir a `rutaOriginal`, esperar/finalizar), con
    * destino fijo (el panel no manda `productoId`), tope `BYTES_LOGO` y solo JPG, PNG o WebP (el servidor lo valida por contenido).
@@ -110,8 +119,6 @@ export interface Contrato {
   ordenarSecciones: { entrada: { orden: readonly string[] }; salida: Ok };
   guardarCarrusel: { entrada: { carrusel: Carrusel }; salida: Ok };
   guardarConfigSitio: { entrada: { config: ConfigSitio }; salida: Ok };
-  /** Se renombra (en la consola es `exportarProductosCsv`) para no chocar con la de Inventarios. */
-  exportarProductosCsvSitio: { entrada: Vacio; salida: { csv: string } };
   // ---- Identidad (núcleo) ----
   asignarRol: { entrada: { uid: string; rol: Rol }; salida: Ok };
   quitarRol: { entrada: { uid: string }; salida: Ok };
@@ -137,7 +144,7 @@ export interface Contrato {
   /** Con un conteo abierto y rol `caj`/`sup`, la lista lleva `existenciasOcultas` y `conteosAbiertos` (ver `ListaConMarca`). */
   listarProductos: { entrada: Vacio; salida: ListaConMarca<ProductoPanel> };
   listarSeries: { entrada: { productoId: string; ubicacionId?: UbicacionId; soloDisponibles?: boolean }; salida: ListaConMarca<UnidadSerie> };
-  buscarSerie: { entrada: { serie: string }; salida: readonly UnidadSerie[] };
+  buscarSerie: { entrada: { serie: string; porInicio?: true }; salida: readonly UnidadSerie[] };
   listarMovimientos: {
     entrada: { desde?: string; hasta?: string; productoId?: string; tipo?: TipoMovimiento; usuario?: string; limite?: number };
     /** `cortada`: hay más movimientos que el límite; afine los filtros. */
@@ -152,6 +159,12 @@ export interface Contrato {
   listarTurnos: { entrada: { estado?: 'abierto' | 'cerrado' }; salida: readonly TurnoPos[] };
   /** caj: solo sus ventas; sup/adm: todas. */
   listarVentas: { entrada: { turnoId?: string; desde?: string; hasta?: string; conSolicitudAnulacion?: boolean }; salida: readonly VentaPos[] };
+  /** Resumen por moneda del turno indicado (o del abierto); `null` si no hay turno. */
+  resumenTurno: { entrada: { turnoId?: string; cajeroUid?: string }; salida: ResumenTurnoVista | null };
+  /** Mis turnos, el más reciente primero, por páginas (`siguiente` es el cursor de la próxima). Fechas aaaa-mm-dd. */
+  misTurnos: { entrada: { desde?: string; hasta?: string; cajeroUid?: string; despuesDe?: CursorTurno }; salida: { readonly turnos: readonly FilaTurnoVista[]; readonly siguiente: CursorTurno | null } };
+  /** Mis ventas, la más reciente primero, por páginas. Fechas aaaa-mm-dd. */
+  misVentas: { entrada: { turnoId?: string; desde?: string; hasta?: string; despuesDe?: CursorVenta }; salida: { readonly ventas: readonly VentaPos[]; readonly siguiente: CursorVenta | null } };
   listarAprobaciones: { entrada: { estado?: 'pendiente' | 'aprobada' | 'rechazada' | 'usada' }; salida: readonly AprobacionPos[] };
   listarMovimientosCaja: { entrada: { turnoId?: string }; salida: readonly MovimientoCaja[] };
   /** Ventas del rango (aaaa-mm-dd) en CSV, con celdas neutralizadas por el servidor (`sup`/`adm`). */

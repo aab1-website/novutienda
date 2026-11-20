@@ -4,7 +4,8 @@
 import { describe, expect, it } from 'vitest';
 import { PERMISOS } from '@novutienda/inventarios';
 import { ALMACENES_POS, MEDIOS_PAGO as MEDIOS_POS, MONEDAS_POS } from '@novutienda/pos';
-import { LIMITES_CONSOLA, PANTALLAS, PLANTILLAS } from '@novutienda/consola';
+import { LIMITES_CONSOLA, NOMBRE_PLANTILLA, PANTALLAS, PLANTILLAS } from '@novutienda/consola';
+import { PALETAS } from '@novutienda/panel/consola';
 import { UBICACIONES } from '@novutienda/inventarios';
 import { manifiestoPanel, MEDIOS_PAGO, NOMBRES_CALLABLE, PLANTILLAS_SITIO, LIMITES_PANEL, ROLES_CALLABLE, UBICACIONES as UBIC_PANEL } from '@novutienda/panel';
 import type * as Panel from '@novutienda/panel';
@@ -72,6 +73,8 @@ describe('listas cerradas y límites', () => {
   });
   it('plantillas y límites de la consola', () => {
     expect([...PLANTILLAS_SITIO]).toEqual([...PLANTILLAS]);
+    // Los mensajes del servidor nombran la plantilla como la ve la persona en el panel.
+    for (const p of PLANTILLAS) expect(NOMBRE_PLANTILLA[p]).toBe(PALETAS[p].nombre);
     expect(LIMITES_PANEL.productos).toBe(LIMITES_CONSOLA.productos);
     expect(LIMITES_PANEL.usuarios).toBe(LIMITES_CONSOLA.usuarios);
     expect(LIMITES_PANEL.fotosPorProducto).toBe(LIMITES_CONSOLA.fotosPorProducto);
@@ -104,7 +107,7 @@ describe('cobertura de las pantallas de la consola', () => {
   // Nombres con que el panel pide lo mismo (el alta y la edición de productos de la consola se piden como `crearProducto` y
   // `actualizarProducto`; `real.ts` los traduce a `consola.crearProducto` y `consola.editarProducto`).
   const RENOMBRADAS: Readonly<Record<string, string>> = {
-    exportarProductosCsv: 'exportarProductosCsvSitio', crearProductoConsola: 'crearProducto', editarProductoConsola: 'actualizarProducto',
+    crearProductoConsola: 'crearProducto', editarProductoConsola: 'actualizarProducto',
   };
   it('cada llamada declarada en PANTALLAS existe como callable del contrato', () => {
     const faltan: string[] = [];

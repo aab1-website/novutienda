@@ -22,7 +22,7 @@ export const depsMedios = (c: Pick<Contexto, 'e'>): DepsMedios => ({
 
 export const accionesMedios: TablaImplementaciones = {
   reservarSubida: accion({
-    esquema: objeto({ subidaId: SUBIDA_ID, productoId: z.union([ID_PRODUCTO, z.literal('_negocio')]), tipo: z.enum(['foto', 'video', 'logo']), bytes: z.number().int().positive().max(200 * 1024 * 1024) }),
+    esquema: objeto({ subidaId: SUBIDA_ID, productoId: z.union([ID_PRODUCTO, z.literal('_negocio'), z.literal('_portada')]), tipo: z.enum(['foto', 'video', 'logo', 'portada']), bytes: z.number().int().positive().max(200 * 1024 * 1024) }),
     ejecutar: (c, d) => reservarSubida(depsMedios(c), { tenantId: c.tenantId, actor: c.actor, subidaId: d.subidaId, productoId: d.productoId, tipo: d.tipo, bytes: d.bytes }),
   }),
   finalizarSubida: accion({
@@ -54,7 +54,7 @@ export const accionesMedios: TablaImplementaciones = {
     },
   }),
   listarMedios: accion({
-    esquema: objeto({ productoId: ID_PRODUCTO, limite: LIMITE.optional() }),
+    esquema: objeto({ productoId: z.union([ID_PRODUCTO, z.literal('_portada')]), limite: LIMITE.optional() }),
     ejecutar: async (c, d) => ({
       medios: (await c.e.firestore.collection(`tenants/${c.tenantId}/medios`).where('productoId', '==', d.productoId).limit(d.limite ?? 20).get()).docs.map((m) => ({ id: m.id, ...m.data() })),
     }),

@@ -2,7 +2,7 @@ import type { JSX } from 'preact';
 import { useEffect, useRef, useState } from 'preact/hooks';
 import { esWhatsappValido, pareceNumeroDeRelleno } from './whatsapp.js';
 import { Miniatura } from './miniatura-vista.js';
-import { LIMITES_PANEL, PLANTILLAS_SITIO, type Carrusel, type Medio, type ConfigSitio, type PlantillaSitio } from '../../api/tipos.js';
+import { ID_PORTADA, LIMITES_PANEL, PLANTILLAS_SITIO, type Carrusel, type Medio, type ConfigSitio, type PlantillaSitio } from '../../api/tipos.js';
 import { ErrorApi, mensajeDeError } from '../../api/errores.js';
 import { Alerta, Boton, BotonConfirmado, Campo, Cargando, Dato, ErrorCarga, Pestanas, Seccion, Vacio, fechaHora } from '../../ui/comun.js';
 import { useAvisos } from '../../ui/avisos.js';
@@ -12,15 +12,17 @@ import { useConfiguracionComercial } from '../../ui/comercial.js';
 import { useApp } from '../../ui/contexto.js';
 import { useAccion, useCarga } from '../../ui/hooks.js';
 import { formatoBytes } from '../../util/base64.js';
-import { descargarTexto } from '../../util/csv.js';
 import { PALETAS } from './plantillas-vista.js';
 import { PantallaFichas } from './catalogo-ficha.js';
 import { PantallaSecciones } from './catalogo-secciones.js';
 import { BloqueLogo } from './logo-vista.js';
+import { useSubidaPortada } from './subidas-portada.js';
+import { textoUltimaReconstruccion } from './estado-sitio.js';
+import './apariencia.css';
 
 const TODAS = [
   { id: 'tablero', titulo: 'Tablero' }, { id: 'fichas', titulo: 'Fichas, fotos y video' }, { id: 'secciones', titulo: 'Secciones' },
-  { id: 'apariencia', titulo: 'Apariencia' }, { id: 'exportar', titulo: 'Exportar' },
+  { id: 'apariencia', titulo: 'Apariencia' },
 ];
 
 function Uso({ etiqueta, usados, tope, formato }: { etiqueta: string; usados: number; tope: number; formato?: (n: number) => string }): JSX.Element {
@@ -74,12 +76,13 @@ function Tablero(): JSX.Element {
           </Alerta>
         )}
         {usuario.rol === 'adm' ? (
-          <><BotonConfirmado texto="Publicar el sitio" pregunta="¿Publicar los cambios? El sitio se actualiza normalmente en pocos minutos; si no, en un rato (puede tardar hasta unas horas)." textoConfirmar="Sí, publicar" deshabilitado={accion.ocupado || d.cambiosSinPublicar === 0} onConfirmar={() => void accion.ejecutar(async () => { const r = await api.llamar('publicarSitio', {}); setMsg(`Publicado: versión ${r.version}, ${r.productos} productos.${r.advertencias.length ? ` Avisos: ${r.advertencias.join(' ')}` : ''}`); t.recargar(); })} />
+          <><BotonConfirmado texto="Publicar el sitio" pregunta="¿Publicar los cambios? El sitio se actualiza normalmente en pocos minutos; si no, en un rato (puede tardar hasta unas horas)." textoConfirmar="Sí, publicar" deshabilitado={accion.ocupado || d.cambiosSinPublicar === 0} onConfirmar={() => void accion.ejecutar(async () => { const r = await api.llamar('publicarSitio', {}); setMsg(`Publicación enviada (versión ${r.version}, ${r.productos} productos): el sitio se actualiza en unos minutos.${r.advertencias.length ? ` Avisos: ${r.advertencias.join(' ')}` : ''}`); t.recargar(); })} />
             {d.cambiosSinPublicar === 0 && <p class="texto-suave" data-prueba="motivo-publicar">No hay cambios sin publicar.</p>}
           </>
         ) : (
           <p class="texto-suave">Solo el administrador publica.</p>
         )}
+        <p class="texto-suave" role={d.ultimaReconstruccion?.estado === 'fallida' && !d.ultimaReconstruccion.enCurso ? 'alert' : 'status'} data-prueba="estado-sitio">{textoUltimaReconstruccion(d.ultimaReconstruccion, d.versionPublicada)}</p>
         {accion.error && <Alerta>{accion.error}</Alerta>}
         {msg && <Alerta tipo="ok">{msg}</Alerta>}
       </Seccion>
@@ -172,6 +175,9 @@ function Apariencia(): JSX.Element {
   };
   const items = carrB.valor[c.plantillaActiva] ?? delServidor(c.plantillaActiva);
   const setItems = (i: Items): void => carrB.poner((prev) => ({ ...prev, [c.plantillaActiva]: i }));
+  // Una foto borrada ya no existe para ninguna plantilla: sale de todos los borradores, no solo del de la plantilla activa.
+  const quitarDeTodos = (medioId: string): void =>
+    carrB.poner((prev) => Object.fromEntries(Object.entries(prev).map(([p, l]) => [p, (l ?? []).filter((i) => i.medioId !== medioId)])) as Borradores);
   const whatsappValido = esWhatsappValido(c.whatsappNovuchat);
   const sinTexto = editadas.find((p) => (carrB.valor[p] ?? []).some((i) => i.alt.trim() === ''));
   const motivo = cfgSucia && !whatsappValido
@@ -236,7 +242,7 @@ function Apariencia(): JSX.Element {
           <Campo etiqueta="Píxel de TikTok" valor={med.tiktokPixel ?? ''} onInput={(v) => setMed('tiktokPixel', v)} ayuda="Opcional. Letras mayúsculas y dígitos, de 10 a 30." />
         </div>
       </Seccion>
-      <CarruselEditor plantilla={c.plantillaActiva} items={items} setItems={setItems} productos={datos.datos.productos.map((p) => ({ id: p.id, nombre: p.nombre }))} />
+      <CarruselEditor plantilla={c.plantillaActiva} items={items} setItems={setItems} quitarDeTodos={quitarDeTodos} productos={datos.datos.productos.map((p) => ({ id: p.id, nombre: p.nombre }))} />
       <Boton ocupado={accion.ocupado} motivo={motivo} onClick={guardar}>
         Guardar apariencia
       </Boton>
@@ -244,11 +250,47 @@ function Apariencia(): JSX.Element {
   );
 }
 
-function CarruselEditor({ plantilla, items, setItems, productos }: { plantilla: PlantillaSitio; items: Items; setItems: (i: Items) => void; productos: { id: string; nombre: string }[] }): JSX.Element {
+function CarruselEditor({ plantilla, items, setItems, quitarDeTodos, productos }: { plantilla: PlantillaSitio; items: Items; setItems: (i: Items) => void; quitarDeTodos: (medioId: string) => void; productos: { id: string; nombre: string }[] }): JSX.Element {
   const { api } = useApp();
+  // Medios vistos en esta sesión: permiten mostrar la miniatura de las fotos que ya se agregaron.
+  const conocidos = useRef(new Map<string, Medio>());
   // Sin producto elegido de antemano: se busca y se elige.
   const [productoId, setProductoId] = useState<string | null>(null);
   const fotos = useCarga(() => (productoId === null ? Promise.resolve([]) : api.llamar('listarMedios', { productoId })), [productoId]);
+  // Fotos propias de la portada (no son de ningún producto): se suben aquí y se agregan al carrusel igual que las de un producto.
+  const propias = useCarga(() => api.llamar('listarMedios', { productoId: ID_PORTADA }), []);
+  const entradaPortada = useRef<HTMLInputElement>(null);
+  const borrando = useAccion();
+  const avisos = useAvisos();
+  const borrarPropia = (medioId: string): void =>
+    void borrando.ejecutar(async () => {
+      try {
+        // Carruseles guardados que la tienen: el servidor la quita de ellos al borrarla (se pregunta antes para avisarlo).
+        let enCarruseles: readonly Carrusel[] | null;
+        try {
+          enCarruseles = (await api.llamar('listarCarruseles', {})).filter((k) => k.items.some((i) => i.medioId === medioId));
+        } catch {
+          enCarruseles = null; // no se pudo comprobar: se dice en el aviso, no se oculta
+        }
+        await api.llamar('borrarMedio', { medioId });
+        // La foto ya no existe: sale de los borradores de todas las plantillas, o «Guardar apariencia» fallaría por un medio inexistente.
+        quitarDeTodos(medioId);
+        conocidos.current.delete(medioId);
+        propias.recargar();
+        avisos.ok(enCarruseles === null
+          ? 'Foto borrada. No se pudo comprobar si estaba en un carrusel: revise el carrusel de la portada.'
+          : enCarruseles.length === 0
+          ? 'Foto borrada. Se liberó su lugar.'
+          : `Foto borrada. También se quitó del carrusel de ${enCarruseles.map((k) => PALETAS[k.plantilla].nombre).join(', ')}; el sitio la deja de mostrar con la próxima publicación.`);
+      } catch (e) {
+        avisos.error(`No se pudo borrar la foto: ${mensajeDeError(e)}`);
+      }
+    });
+  const subida = useSubidaPortada((m) => {
+    conocidos.current.set(m.id, m);
+    propias.recargar();
+    if (items.length < 8 && !items.some((i) => i.medioId === m.id)) setItems([...items, { medioId: m.id, alt: '' }]);
+  });
   const mover = (i: number, d: number): void => {
     const n = [...items];
     const x = n[i];
@@ -259,7 +301,6 @@ function CarruselEditor({ plantilla, items, setItems, productos }: { plantilla: 
     setItems(n);
   };
   // Medios vistos en esta sesión: permiten mostrar la miniatura de las fotos que ya se agregaron.
-  const conocidos = useRef(new Map<string, Medio>());
   // Tras recargar, solo se leen los medios de los productos que tienen fotos en este carrusel. El ítem no trae su producto:
   // se resuelve con las fichas (`listarFichas`), que ya relacionan cada foto con su producto. Un fallo de sesión se deja
   // propagar al manejo de sesión del panel; cualquier otro deja el respaldo.
@@ -276,15 +317,16 @@ function CarruselEditor({ plantilla, items, setItems, productos }: { plantilla: 
   }, [faltan.join(',')]);
   for (const m of guardados.datos ?? []) conocidos.current.set(m.id, m);
   for (const m of fotos.datos ?? []) conocidos.current.set(m.id, m);
+  for (const m of propias.datos ?? []) conocidos.current.set(m.id, m);
   const nombreProducto = productos.find((p) => p.id === productoId)?.nombre ?? '';
   return (
     <Seccion titulo={`Carrusel de portada (${PALETAS[plantilla].nombre})`}>
-      {items.length === 0 && <Vacio titulo="El carrusel no tiene fotos" detalle="Agregue hasta 8 fotos de los productos." />}
+      {items.length === 0 && <Vacio titulo="El carrusel no tiene fotos" detalle="Agregue hasta 8 fotos, de los productos o subidas aquí." />}
       <ol class="lista-simple">
         {items.map((it, i) => (
           <li key={it.medioId} class="fila fila-alinear">
             <span>{i + 1}.</span>
-            <Miniatura medio={conocidos.current.get(it.medioId)} alt={it.alt.trim() !== '' ? it.alt : `Foto ${String(i + 1)} del carrusel`} respaldo={`Foto ${it.medioId.slice(0, 6)}`} orden={i + 1} />
+            <Miniatura medio={conocidos.current.get(it.medioId)} alt={it.alt.trim() !== '' ? it.alt : `Foto ${String(i + 1)} del carrusel`} respaldo={`Foto ${String(i + 1)}`} orden={i + 1} />
             <Campo etiqueta={`Texto alternativo de la foto ${i + 1}`} valor={it.alt} error={it.alt.trim() === '' ? 'Escriba qué se ve en la foto.' : undefined} onInput={(v) => setItems(items.map((x, j) => (j === i ? { ...x, alt: v } : x)))} />
             <Boton chico variante="secundario" onClick={() => mover(i, -1)} deshabilitado={i === 0} etiqueta={`Subir foto ${i + 1}`}>Subir</Boton>
             <Boton chico variante="secundario" onClick={() => mover(i, 1)} deshabilitado={i === items.length - 1} etiqueta={`Bajar foto ${i + 1}`}>Bajar</Boton>
@@ -295,52 +337,58 @@ function CarruselEditor({ plantilla, items, setItems, productos }: { plantilla: 
       {items.length < 8 && (
         <div class="fila fila-alinear">
           <SelectorBuscable etiqueta="Producto de la foto" valor={productoId} onCambio={setProductoId} opciones={productos.map((p) => ({ valor: p.id, texto: p.nombre }))} ayuda="Escriba para buscar el producto y luego elija la foto." />
-          {(fotos.datos ?? []).filter((m) => m.tipo === 'foto' && !items.some((i) => i.medioId === m.id)).map((m) => (
-            <Boton key={m.id} chico variante="secundario" etiqueta={`Agregar foto ${m.id.slice(0, 6)}`} onClick={() => setItems([...items, { medioId: m.id, alt: nombreProducto }])}>
-              <Miniatura medio={m} alt={nombreProducto !== '' ? `Foto de ${nombreProducto}` : 'Foto del producto'} respaldo={`Foto ${m.id.slice(0, 6)}`} />
-              Agregar foto {m.id.slice(0, 6)}
+          {(fotos.datos ?? []).filter((m) => m.tipo === 'foto').map((m, n) => ({ m, n })).filter(({ m }) => !items.some((i) => i.medioId === m.id)).map(({ m, n }) => (
+            <Boton key={m.id} chico variante="secundario" etiqueta={`Agregar foto ${String(n + 1)}`} onClick={() => setItems([...items, { medioId: m.id, alt: nombreProducto }])}>
+              <Miniatura medio={m} alt={nombreProducto !== '' ? `Foto de ${nombreProducto}` : 'Foto del producto'} respaldo={`Foto ${String(n + 1)}`} />
+              Agregar foto {n + 1}
             </Boton>
           ))}
         </div>
+      )}
+      <h3>Fotos propias de la portada</h3>
+      <p class="texto-suave">Fotos que no son de un producto (el local, una campaña). JPG, PNG, WebP o HEIC, hasta 15 MB; la cantidad máxima depende de su plan. Se guardan al subirlas; el orden y el texto alternativo se guardan con «Guardar apariencia».</p>
+      <div class="fila fila-alinear">
+        <Boton onClick={() => entradaPortada.current?.click()} motivo={subida.enCurso ? 'Hay una subida en curso' : items.length >= 8 ? 'El carrusel ya tiene 8 fotos: quite una para agregar otra' : undefined}>Subir foto a la portada</Boton>
+        <input ref={entradaPortada} type="file" hidden aria-label="Archivo de la foto de portada" accept="image/jpeg,image/png,image/webp,image/heic,image/heif,.jpg,.jpeg,.png,.webp,.heic,.heif" onChange={(e) => { const input = e.currentTarget; const f = input.files?.[0]; input.value = ''; if (f !== undefined) subida.elegir(f); }} />
+      </div>
+      <ul class="lista-simple">
+        {(propias.datos ?? []).filter((m) => m.tipo === 'foto').map((m, n) => (
+          <li key={m.id} class="fila fila-alinear">
+            <Miniatura medio={m} alt={`Foto propia ${n + 1} de la portada`} respaldo={`Foto propia ${n + 1}`} />
+            {!items.some((i) => i.medioId === m.id) && items.length < 8 && (
+              <Boton chico variante="secundario" etiqueta={`Agregar foto propia ${n + 1}`} onClick={() => setItems([...items, { medioId: m.id, alt: '' }])}>Agregar foto propia {n + 1}</Boton>
+            )}
+            <BotonConfirmado chico peligro texto="Borrar foto" pregunta="¿Borrar la foto propia de la portada?" resumen="Se borra para siempre y se libera su lugar. Si está en un carrusel guardado, también se quita de ahí; el sitio la deja de mostrar con la próxima publicación." textoConfirmar="Sí, borrar" deshabilitado={borrando.ocupado} onConfirmar={() => borrarPropia(m.id)} />
+          </li>
+        ))}
+      </ul>
+      {subida.enCurso && (
+        <p role="status">{subida.nombre}: {subida.fase === 'subiendo' ? `Subiendo ${String(Math.round(subida.progreso))} %` : subida.fase === 'procesando' ? 'Procesando la foto…' : 'Preparando la subida…'}</p>
+      )}
+      {subida.fase === 'error' && (
+        <Alerta tipo="error">
+          {subida.nombre === '' ? '' : `${subida.nombre}: `}{subida.motivo}{' '}
+          {subida.reintentable ? <Boton chico variante="secundario" onClick={subida.reintentar}>Reintentar</Boton> : <Boton chico variante="secundario" onClick={subida.descartar}>Entendido</Boton>}
+        </Alerta>
       )}
     </Seccion>
   );
 }
 
-function Exportar(): JSX.Element {
-  const { api, puedeVer } = useApp();
-  const accion = useAccion();
-  const [ok, setOk] = useState<string | null>(null);
-  return (
-    <Seccion titulo="Exportar productos">
-      <p class="texto-suave">
-        Los productos se crean e importan en Inventario.
-        {puedeVer('inventario') && <> <a href="#/inventario/csv">Ir a la importación de Inventario</a></>}
-      </p>
-      <p class="texto-suave">El archivo trae los productos con sus precios en dólares, con decimales, y puede reimportarse en Inventario.</p>
-      <Boton variante="secundario" ocupado={accion.ocupado} onClick={() => { setOk(null); void accion.ejecutar(async () => { descargarTexto('productos-sitio.csv', (await api.llamar('exportarProductosCsvSitio', {})).csv); setOk('Archivo productos-sitio.csv generado.'); }); }}>
-        Exportar productos (CSV)
-      </Boton>
-      {accion.error && <Alerta>{accion.error}</Alerta>}
-      {ok && <Alerta tipo="ok">{ok}</Alerta>}
-    </Seccion>
-  );
-}
-
 export function PantallaCatalogo({ sub }: { sub: string }): JSX.Element {
-  const { usuario } = useApp();
+  const { usuario, puedeVer } = useApp();
   const items = usuario.rol === 'adm' ? TODAS : TODAS.filter((i) => i.id === 'tablero' || i.id === 'fichas');
   const actual = items.some((i) => i.id === sub) ? sub : 'tablero';
   return (
     <div>
       <h1>Catálogo y sitio</h1>
       <p class="texto-suave">Productos por mercado hasta {LIMITES_PANEL.productos}; fotos hasta {LIMITES_PANEL.fotosPorProducto} por producto y 1 video.</p>
+      {puedeVer('inventario') && <p class="texto-suave">Los productos se crean, importan y exportan en Inventario: <a href="#/inventario/csv">Importar o exportar productos (en Inventario)</a>.</p>}
       <Pestanas etiqueta="Secciones del catálogo" base="catalogo" actual={actual} items={items} />
       {actual === 'tablero' && <Tablero />}
       {actual === 'fichas' && <PantallaFichas />}
       {actual === 'secciones' && <PantallaSecciones />}
       {actual === 'apariencia' && <Apariencia />}
-      {actual === 'exportar' && <Exportar />}
     </div>
   );
 }

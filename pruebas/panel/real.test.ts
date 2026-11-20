@@ -75,7 +75,7 @@ describe('unidades', () => {
   it('el panel trabaja en centavos: alta, edición y cambio de precio de Inventarios reciben centavos sin convertir', async () => {
     expect(usd(1250)).toBe(12.5);
     expect(usd(1999)).toBe(19.99);
-    const producto = { id: 'p-1', nombre: 'P', categoria: 'C', sku: 'S', precioUSD: { bo: 1250, ar: 1999 }, costoUSD: 700 };
+    const producto = { id: 'p-1', nombre: 'P', categoria: 'c', sku: 'S', precioUSD: { bo: 1250, ar: 1999 }, costoUSD: 700 };
     const alta = await enviado('crearProducto', { operacionId: 'o', producto });
     expect(alta).toEqual([{ accion: 'crearProducto', datos: { operacionId: 'o', producto } }]);
     const precio = await enviado('cambiarPrecioUSD', { operacionId: 'o2', productoId: 'p-1', precioUSD: { bo: 1999, ar: 2000 } });
@@ -224,7 +224,7 @@ describe('existencias ocultas: el panel distingue «oculto» (null) de «no cont
     return (TRADUCCION[nombre] as unknown as { ejecutar(c: unknown, e: unknown): Promise<unknown> }).ejecutar(c, {});
   };
   const conteos = [{ ubicacionId: 'tienda', conteoId: 'c1', abiertoEn: '2026-11-13T10:00:00.000Z' }, { ubicacionId: 'deposito-1', conteoId: 'c2', abiertoEn: null }];
-  const base = { nombre: 'P', categoria: 'C', sku: 'S', activo: true, publicado: true, conSerie: false };
+  const base = { nombre: 'P', categoria: 'c', sku: 'S', activo: true, publicado: true, conSerie: false };
 
   it('listarProductos: null se conserva, 0 real es 0, ausente es «no controla stock», y la marca viaja con la lista', async () => {
     const r = (await ejecutar('listarProductos', {

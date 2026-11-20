@@ -2,6 +2,7 @@
 import { h } from 'preact';
 import { cleanup, fireEvent, render, screen, waitFor, within } from '@testing-library/preact';
 import { userEvent } from '@testing-library/user-event';
+import { MENSAJE_NIT } from '@novutienda/nucleo';
 import { afterEach, describe, expect, it, vi } from 'vitest';
 import { ErrorApi } from '../api/errores.js';
 import { crearEntorno, uuid, type Entorno, type Nodo } from '../ayuda-pruebas.js';
@@ -12,6 +13,7 @@ import { PantallaMermas } from './inventarios/mermas.js';
 import { ProveedorGuardia } from '../ui/guardia.js';
 import { PantallaVenta } from './pos/venta.js';
 import { PantallaRecibos } from './recibos/recibos.js';
+import { PestanaPlantillaRecibo } from './recibos/plantilla.js';
 import { PantallaUsuarios } from './usuarios.js';
 
 afterEach(() => {
@@ -82,7 +84,7 @@ describe('inventario', () => {
     await e.api.llamar('confirmarVenta', { requestId: uuid(), carrito: { mercado: 'BO', moneda: 'BOB', lineas: [{ productoId: 'tv-55', cantidad: 1, series: ['TV55-001'] }] }, pagos: [{ medio: 'efectivo', moneda: 'BOB', monto: 313200 }] });
     ver(e, h(PantallaInventario, { sub: 'series' }));
     const u = userEvent.setup();
-    await u.type(await screen.findByLabelText(/Número de serie/), 'tv55-001');
+    await u.type(await screen.findByLabelText(/Número de serie/), 'TV55-001');
     await u.click(screen.getByRole('button', { name: 'Buscar' }));
     const tabla = await screen.findByRole('table', { name: 'Resultado de la búsqueda por serie' });
     expect(tabla.textContent).toContain('Vendida');
@@ -111,9 +113,9 @@ describe('inventario', () => {
     expect(clic).toHaveBeenCalled();
     cleanup();
     ver(e, h(PantallaInventario, { sub: 'csv' }));
-    await u.click(await screen.findByRole('button', { name: 'Exportar productos' }));
+    await u.click(await screen.findByRole('button', { name: 'Exportar en CSV' }));
     expect(await screen.findByText('Archivo exportado.')).toBeTruthy();
-    const archivo = new File(['id,nombre,categoria,sku,precioUSDbo,precioUSDar\r\ncsv-1,Del CSV,Cat,C-1,100,110\r\n'], 'p.csv', { type: 'text/csv' });
+    const archivo = new File(['id,nombre,categoria,sku,precioUSDbo,precioUSDar\r\ncsv-1,Del CSV,cat,C-1,100,110\r\n'], 'p.csv', { type: 'text/csv' });
     await u.upload(screen.getByLabelText('Archivo de productos (CSV o Excel)'), archivo);
     await u.click(await screen.findByRole('button', { name: 'Importar 1 fila' }));
     const d = await screen.findByRole('dialog', { name: '¿Importar este archivo?' });
@@ -230,52 +232,49 @@ describe('usuarios y configuración', () => {
     expect(await screen.findByText('Personas con acceso (2 de 3)')).toBeTruthy();
     expect(screen.queryByRole('button', { name: 'Quitar acceso de adm' })).toBeNull();
   });
-  it('alta: con el plan lleno avisa el tope y no ofrece buscar; al quitar a alguien se habilita', async () => {
+  it('alta: con el plan lleno avisa el tope y deja «Agregar» apagado; al quitar a alguien se habilita', async () => {
     const e = crearEntorno('adm');
     ver(e, h(PantallaUsuarios, {}));
     const u = userEvent.setup();
     expect(await screen.findByText(/ya están todos ocupados/)).toBeTruthy();
-    expect(screen.queryByRole('button', { name: 'Buscar cuenta' })).toBeNull();
+    expect(screen.getByRole('button', { name: /^Agregar como/ }).getAttribute('aria-disabled')).toBe('true');
     await u.click(screen.getAllByRole('button', { name: 'Quitar acceso' })[0] as HTMLElement);
     await u.click(screen.getByRole('button', { name: 'Sí, quitar' }));
-    expect(await screen.findByRole('button', { name: 'Buscar cuenta' })).toBeTruthy();
+    await waitFor(() => expect(screen.queryByText(/ya están todos ocupados/)).toBeNull());
+    expect(screen.getByRole('button', { name: /^Agregar como/ })).toBeTruthy();
   });
-  it('alta: cuenta existente con correo verificado → asigna el rol elegido', async () => {
+  it('alta: cuenta existente con correo verificado → se invita con el rol elegido (se activa al iniciar sesión)', async () => {
     const e = crearEntorno('adm');
     await e.api.llamar('quitarRol', { uid: 'u-sup' });
     ver(e, h(PantallaUsuarios, {}));
     const u = userEvent.setup();
     await u.type(await screen.findByLabelText(/Correo de la persona/), ' Nueva@Ejemplo.test ');
-    expect(screen.queryByLabelText('Rol que tendrá')).toBeNull();
-    await u.click(screen.getByRole('button', { name: 'Buscar cuenta' }));
-    expect(await screen.findByText(/Cuenta encontrada y con el correo verificado/)).toBeTruthy();
-    await u.selectOptions(screen.getByLabelText('Rol que tendrá'), 'sup');
-    await u.click(screen.getByRole('button', { name: 'Asignar rol de supervisor' }));
-    expect(await screen.findByText(/nueva@ejemplo.test ahora es supervisor/)).toBeTruthy();
-    expect(await screen.findByText('Personas con acceso (3 de 3)')).toBeTruthy();
-    expect((await e.api.llamar('listarUsuarios', {})).find((x) => x.uid === 'u-nueva')?.rol).toBe('sup');
+    await u.selectOptions(screen.getByLabelText('Rol de la persona'), 'sup');
+    await u.click(screen.getByRole('button', { name: /^Agregar como/ }));
+    expect(await screen.findByText(/Enviamos un correo a nueva@ejemplo.test. Tendrá el rol de supervisor cuando inicie sesión/)).toBeTruthy();
+    expect(await screen.findByText('Personas con acceso (2) e invitaciones pendientes (1), de 3 del plan')).toBeTruthy();
+    expect((await e.api.llamar('listarUsuarios', {})).find((x) => x.uid === 'u-nueva')).toMatchObject({ rol: 'sup', estado: 'invitado' });
   });
-  it('alta: cuenta sin verificar pide verificar el correo y no ofrece asignar', async () => {
+  it('alta: cuenta sin verificar sigue el mismo camino, sin avisos propios ni búsqueda', async () => {
     const e = crearEntorno('adm');
     await e.api.llamar('quitarRol', { uid: 'u-sup' });
     ver(e, h(PantallaUsuarios, {}));
     const u = userEvent.setup();
     await u.type(await screen.findByLabelText(/Correo de la persona/), 'pendiente@ejemplo.test');
-    await u.click(screen.getByRole('button', { name: 'Buscar cuenta' }));
-    expect(await screen.findByText(/todavía no está verificado/)).toBeTruthy();
-    expect(screen.queryByRole('button', { name: /Asignar rol/ })).toBeNull();
+    await u.click(screen.getByRole('button', { name: /^Agregar como/ }));
+    expect(await screen.findByText(/Enviamos un correo a pendiente@ejemplo.test/)).toBeTruthy();
+    expect(screen.queryByText(/todavía no está verificado/)).toBeNull();
+    expect(e.api.llamadas.map((l) => l.nombre)).not.toContain('buscarUsuarioPorCorreo');
   });
-  it('alta: cuenta inexistente ofrece invitarla (ya no manda a la consola del proveedor); la búsqueda no asigna ni crea nada', async () => {
+  it('alta: cuenta inexistente se invita igual (ya no manda a la consola del proveedor) y no se asigna rol directo', async () => {
     const e = crearEntorno('adm');
     await e.api.llamar('quitarRol', { uid: 'u-sup' });
     ver(e, h(PantallaUsuarios, {}));
     const u = userEvent.setup();
     await u.type(await screen.findByLabelText(/Correo de la persona/), 'nadie@ejemplo.test');
-    await u.click(screen.getByRole('button', { name: 'Buscar cuenta' }));
-    const aviso = await screen.findByText(/No existe una cuenta con el correo nadie@ejemplo.test/);
-    expect(aviso.textContent).toContain('Invitar a una persona');
-    expect(document.body.textContent).not.toMatch(/Add user|Firebase Console/);
-    expect(screen.queryByRole('button', { name: /Asignar rol/ })).toBeNull();
+    await u.click(screen.getByRole('button', { name: /^Agregar como/ }));
+    expect(await screen.findByText(/Enviamos un correo a nadie@ejemplo.test/)).toBeTruthy();
+    expect(document.body.textContent).not.toMatch(/Add user|Firebase Console|No existe una cuenta/);
     expect(e.api.llamadas.map((l) => l.nombre)).not.toContain('asignarRol');
   });
   it('quitar acceso: el error de último administrador se muestra con su mensaje', async () => {
@@ -357,9 +356,15 @@ describe('usuarios y configuración', () => {
     abrir({ mercados: [], monedasCaja: ['BOB', 'USD'] });
     await waitFor(() => expect((campo('Moneda por defecto') as HTMLSelectElement).disabled).toBe(false));
   });
-  it('plantilla del recibo', async () => {
+  it('sin el módulo de recibos no hay pestaña de plantilla y «recibo» cae en Negocio y POS', async () => {
     const e = crearEntorno('adm');
     ver(e, h(PantallaConfiguracion, { sub: 'recibo' }));
+    await screen.findByRole('heading', { name: 'Punto de venta' });
+    expect(screen.queryByRole('link', { name: 'Plantilla del recibo' })).toBeNull();
+  });
+  it('plantilla del recibo', async () => {
+    const e = crearEntorno('adm');
+    ver(e, h(PantallaConfiguracion, { sub: 'recibo', plantillaRecibo: PestanaPlantillaRecibo }));
     const u = userEvent.setup();
     await u.type(await screen.findByLabelText('Pie de página'), ' Vuelva pronto.');
     await u.click(screen.getByRole('button', { name: 'Guardar plantilla' }));
@@ -385,8 +390,8 @@ describe('conteo abierto: lo que ven cajera y administrador', () => {
     await waitFor(() => expect(document.querySelector('[data-prueba="total"]')?.textContent).toBe('Bs 55,68'));
     await u.click(screen.getByRole('button', { name: 'Cobrar' }));
     await screen.findByRole('heading', { name: 'Cobro' });
-    await u.clear(campo(/Monto a aplicar/));
-    await u.type(campo(/Monto a aplicar/), '55,68');
+    await u.clear(campo(/Monto que paga con este medio/));
+    await u.type(campo(/Monto que paga con este medio/), '55,68');
     await u.type(campo(/Efectivo recibido/), '100000');
     await u.click(screen.getByRole('button', { name: 'Confirmar cobro' }));
     await screen.findByText('La venta se registró correctamente.');
@@ -395,7 +400,8 @@ describe('conteo abierto: lo que ven cajera y administrador', () => {
     e.como('adm');
     ver(e, h(PantallaInventario, { sub: 'productos' }));
     await screen.findByRole('button', { name: 'Datos del producto de Cable HDMI 2 m' });
-    expect(screen.queryByText(/Hay un conteo abierto/)).toBeNull();
+    // D6: el administrador ve el aviso del conteo aunque sus cifras no se oculten.
+    expect(screen.getByText(/Hay un conteo abierto en Tienda/)).toBeTruthy();
     expect(screen.queryByText('Oculto')).toBeNull();
   });
 });
@@ -414,7 +420,7 @@ describe('catálogo y sitio', () => {
     expect(screen.getByText('0 B de 10,0 GB')).toBeTruthy();
     await u.click(screen.getByRole('button', { name: 'Publicar el sitio' }));
     await u.click(await screen.findByRole('button', { name: 'Sí, publicar' }));
-    expect(await screen.findByText(/Publicado: versión 1/)).toBeTruthy();
+    expect(await screen.findByText(/Publicación enviada \(versión 1/)).toBeTruthy();
     await waitFor(() => expect(document.querySelector('[data-prueba="cambios"]')?.textContent).toBe('0'));
   });
   it('el supervisor solo ve tablero y fichas, sin publicar', async () => {
@@ -429,11 +435,11 @@ describe('catálogo y sitio', () => {
     ver(e, h(PantallaCatalogo, { sub: 'secciones' }));
     const u = userEvent.setup();
     await u.click(await screen.findByRole('button', { name: 'Nueva sección' }));
-    await u.type(await screen.findByLabelText(/Título \(texto del menú\)/), 'Cómo comprar');
-    await u.click(screen.getByRole('button', { name: '+ Texto' }));
-    await u.type(screen.getByLabelText('Título del bloque'), 'Pasos');
+    await u.type(await screen.findByLabelText(/Nombre de la sección/), 'Cómo comprar');
+    // La sección nueva ya trae un bloque de texto.
+    await u.type(screen.getByLabelText('Subtítulo del texto (opcional)'), 'Pasos');
     await u.type(screen.getByLabelText(/Párrafos/), 'Elija el producto.\n\nEscriba por WhatsApp.');
-    await u.click(screen.getByRole('button', { name: '+ Enlaces' }));
+    await u.click(screen.getByRole('button', { name: 'Agregar una lista de enlaces' }));
     await u.type(screen.getByLabelText(/Enlaces \(uno por línea/), 'Contacto | /contacto');
     await u.click(screen.getByRole('button', { name: 'Guardar sección' }));
     expect(await screen.findByText('Cómo comprar')).toBeTruthy();
@@ -460,17 +466,13 @@ describe('catálogo y sitio', () => {
     expect(c?.plantillaActiva).toBe('ciruela');
     expect(c?.whatsappNovuchat).toBe('59171112222');
   });
-  it('exportar: el Catálogo ya no importa; exporta y enlaza a la importación de Inventario', async () => {
+  it('exportar: el Catálogo ya no exporta ni importa; deja un enlace a Inventario', async () => {
     const e = crearEntorno('adm');
-    vi.spyOn(URL, 'createObjectURL').mockReturnValue('blob:x');
-    vi.spyOn(URL, 'revokeObjectURL').mockReturnValue(undefined);
     ver(e, h(PantallaCatalogo, { sub: 'exportar' }));
-    const u = userEvent.setup();
-    expect(await screen.findByText(/Los productos se crean e importan en Inventario/)).toBeTruthy();
-    expect(screen.getByRole('link', { name: 'Ir a la importación de Inventario' }).getAttribute('href')).toBe('#/inventario/csv');
+    expect(await screen.findByRole('link', { name: 'Importar o exportar productos (en Inventario)' })).toBeTruthy();
+    expect(screen.getByRole('link', { name: 'Importar o exportar productos (en Inventario)' }).getAttribute('href')).toBe('#/inventario/csv');
     expect(screen.queryByLabelText('Archivo a importar')).toBeNull();
-    await u.click(screen.getByRole('button', { name: 'Exportar productos (CSV)' }));
-    expect(await screen.findByText(/productos-sitio\.csv generado/)).toBeTruthy();
+    expect(screen.queryByRole('button', { name: 'Exportar productos (CSV)' })).toBeNull();
   });
 });
 
@@ -499,29 +501,29 @@ describe('usuarios: avisos, motivos y datos ausentes', () => {
     expect(local.closest('section')?.querySelector('h2')?.textContent).toContain('Personas con acceso');
     expect(regionAvisos('error-visual').textContent).toContain('No se puede quitar al último administrador.');
   });
-  it('un error de la búsqueda aparece junto a «Buscar cuenta», no en la otra tarjeta', async () => {
+  it('un error al agregar aparece junto a «Agregar», no en la otra tarjeta', async () => {
     const e = crearEntorno('adm');
     await e.api.llamar('quitarRol', { uid: 'u-sup' });
     const llamar = e.api.llamar.bind(e.api) as (n: string, x: unknown) => Promise<unknown>;
     vi.spyOn(e.api, 'llamar').mockImplementation(((n: string, x: unknown) =>
-      n === 'buscarUsuarioPorCorreo' ? Promise.reject(new ErrorApi('unavailable', 'x')) : llamar(n, x)) as never);
+      n === 'invitarUsuario' ? Promise.reject(new ErrorApi('unavailable', 'x')) : llamar(n, x)) as never);
     ver(e, h(PantallaUsuarios, {}));
     const u = userEvent.setup();
     await u.type(await screen.findByLabelText(/Correo de la persona/), 'alguien@ejemplo.test');
-    await u.click(screen.getByRole('button', { name: 'Buscar cuenta' }));
+    await u.click(screen.getByRole('button', { name: /^Agregar como/ }));
     const local = await screen.findByRole('alert');
-    expect(local.closest('section')?.querySelector('h2')?.textContent).toBe('Agregar una persona');
+    expect(local.closest('section')?.querySelector('h2')?.textContent).toBe('Agregar a una persona');
     expect(regionAvisos('error-visual').textContent).not.toBe('');
   });
-  it('«Buscar cuenta» apagado dice por qué y no envía', async () => {
+  it('«Agregar» apagado dice por qué y no envía', async () => {
     const e = crearEntorno('adm');
     await e.api.llamar('quitarRol', { uid: 'u-sup' });
     ver(e, h(PantallaUsuarios, {}));
-    const boton = await screen.findByRole('button', { name: 'Buscar cuenta' });
+    const boton = await screen.findByRole('button', { name: /^Agregar como/ });
     expect(boton.getAttribute('aria-disabled')).toBe('true');
     expect(screen.getByText('Escriba el correo de la persona')).toBeTruthy();
     await userEvent.setup().click(boton);
-    expect(e.api.llamadas.map((l) => l.nombre)).not.toContain('buscarUsuarioPorCorreo');
+    expect(e.api.llamadas.map((l) => l.nombre)).not.toContain('invitarUsuario');
     await userEvent.setup().type(screen.getByLabelText(/Correo de la persona/), 'a@ejemplo.test');
     expect(screen.queryByText('Escriba el correo de la persona')).toBeNull();
   });
@@ -542,7 +544,7 @@ describe('usuarios: avisos, motivos y datos ausentes', () => {
     ver(e, h(PantallaUsuarios, {}));
     expect(await screen.findByText(/El plan incluye 5 usuarios\./)).toBeTruthy();
     expect(await screen.findByText('Personas con acceso (3 de 5)')).toBeTruthy();
-    expect(screen.getByRole('button', { name: 'Buscar cuenta' })).toBeTruthy();
+    expect(screen.getByRole('button', { name: /^Agregar como/ })).toBeTruthy();
   });
   it('el tope de usuarios sale del dato y no de un texto fijo', async () => {
     const e = crearEntorno('adm');
@@ -550,7 +552,7 @@ describe('usuarios: avisos, motivos y datos ausentes', () => {
     expect(await screen.findByText(/El plan incluye 3 usuarios\./)).toBeTruthy();
     expect(screen.queryByText(/incluye tres/)).toBeNull();
   });
-  it('una cuenta sin correo no se pinta como «null» y no rompe la búsqueda', async () => {
+  it('una cuenta sin correo no se pinta como «null» y no rompe el alta', async () => {
     const e = crearEntorno('adm');
     e.api.estado.usuarios = e.api.estado.usuarios.filter((x) => x.uid !== 'u-sup' && x.uid !== 'u-caj');
     e.api.estado.usuarios.unshift({ uid: 'u-sc', correo: null as never, rol: 'caj', verificado: true });
@@ -560,13 +562,13 @@ describe('usuarios: avisos, motivos y datos ausentes', () => {
     expect(screen.getByLabelText('Rol de Sin correo registrado')).toBeTruthy();
     const u = userEvent.setup();
     await u.type(await screen.findByLabelText(/Correo de la persona/), 'adm@ejemplo.test');
-    await u.click(screen.getByRole('button', { name: 'Buscar cuenta' }));
+    await u.click(screen.getByRole('button', { name: /^Agregar como/ }));
     expect(await screen.findByText(/ya tiene acceso/)).toBeTruthy();
-    // Y una cuenta que no existe, con una cuenta de correo nulo en la lista del servicio: responde «no encontrada», no se rompe.
+    // Y un correo nuevo, con una cuenta de correo nulo en la lista del servicio: se invita, no se rompe.
     await u.clear(screen.getByLabelText(/Correo de la persona/));
     await u.type(screen.getByLabelText(/Correo de la persona/), 'nadie@ejemplo.test');
-    await u.click(screen.getByRole('button', { name: 'Buscar cuenta' }));
-    expect(await screen.findByText(/No existe una cuenta con el correo nadie@ejemplo.test/)).toBeTruthy();
+    await u.click(screen.getByRole('button', { name: /^Agregar como/ }));
+    expect(await screen.findByText(/Enviamos un correo a nadie@ejemplo.test/)).toBeTruthy();
   });
 });
 
@@ -575,7 +577,7 @@ describe('configuración: avisos, motivos y cambios sin guardar', () => {
     window.location.hash = '#/configuracion';
     // Deja correr los eventos de hash pendientes (de la prueba anterior y de esta) antes de montar.
     await new Promise((r) => setTimeout(r, 20));
-    render(e.envolver(h(ProveedorGuardia, null, h('div', null, h('a', { href: '#/otra' }, 'Otra pantalla'), h(PantallaConfiguracion, { sub })))));
+    render(e.envolver(h(ProveedorGuardia, null, h('div', null, h('a', { href: '#/otra' }, 'Otra pantalla'), h(PantallaConfiguracion, { sub, plantillaRecibo: PestanaPlantillaRecibo })))));
   };
   const irA = (): void => (document.querySelector('a[href="#/otra"]') as HTMLElement).click();
   afterEach(() => { window.location.hash = ''; });
@@ -632,7 +634,7 @@ describe('configuración: avisos, motivos y cambios sin guardar', () => {
     await u.click(screen.getByRole('button', { name: 'Guardar configuración' }));
     expect(e.api.llamadas.map((l) => l.nombre)).not.toContain('guardarConfigPos');
   });
-  it('el logo sin https y el NIT de 31 caracteres: el formulario avisa y no llama al servidor', async () => {
+  it('el logo sin https y el NIT de 21 dígitos: el formulario avisa y no llama al servidor', async () => {
     const e = crearEntorno('adm');
     ver(e, h(PantallaConfiguracion, { sub: 'negocio' }));
     const u = userEvent.setup();
@@ -642,8 +644,14 @@ describe('configuración: avisos, motivos y cambios sin guardar', () => {
     await u.click(screen.getByRole('button', { name: 'Guardar datos del negocio' }));
     await u.clear(campo(/^Logo por dirección web/));
     await u.clear(campo('NIT'));
-    await u.type(campo('NIT'), '1'.repeat(31));
-    expect(screen.getAllByText(/El NIT admite hasta 30 caracteres/).length).toBeGreaterThan(0);
+    await u.type(campo('NIT'), '1'.repeat(21));
+    expect(screen.getAllByText(MENSAJE_NIT).length).toBeGreaterThan(0);
+    await u.click(screen.getByRole('button', { name: 'Guardar datos del negocio' }));
+    expect(e.api.llamadas.map((l) => l.nombre)).not.toContain('guardarConfigPos');
+    expect(e.api.llamadas.map((l) => l.nombre)).not.toContain('guardarPlantilla');
+    await u.clear(campo('NIT'));
+    await u.type(campo('NIT'), '12a45');
+    expect(screen.getAllByText(MENSAJE_NIT).length).toBeGreaterThan(0);
     await u.click(screen.getByRole('button', { name: 'Guardar datos del negocio' }));
     expect(e.api.llamadas.map((l) => l.nombre)).not.toContain('guardarConfigPos');
     expect(e.api.llamadas.map((l) => l.nombre)).not.toContain('guardarPlantilla');
@@ -660,7 +668,7 @@ describe('configuración: avisos, motivos y cambios sin guardar', () => {
   });
   it('la plantilla del recibo ya no pide el nombre ni el logo: se editan en «Datos del negocio»', async () => {
     const e = crearEntorno('adm');
-    ver(e, h(PantallaConfiguracion, { sub: 'recibo' }));
+    ver(e, h(PantallaConfiguracion, { sub: 'recibo', plantillaRecibo: PestanaPlantillaRecibo }));
     await screen.findByLabelText('Pie de página');
     expect(screen.queryByLabelText(/^Nombre del negocio/)).toBeNull();
     expect(screen.queryByLabelText(/logo/)).toBeNull();
@@ -715,7 +723,7 @@ describe('configuración: avisos, motivos y cambios sin guardar', () => {
       await screen.findByRole('heading', { name: 'Datos del negocio' });
       for (const etiqueta of [/^Nombre del negocio/, 'Dirección', 'Teléfono', 'NIT', /logo/]) expect(screen.getAllByLabelText(etiqueta)).toHaveLength(1);
       cleanup();
-      ver(e, h(PantallaConfiguracion, { sub: 'recibo' }));
+      ver(e, h(PantallaConfiguracion, { sub: 'recibo', plantillaRecibo: PestanaPlantillaRecibo }));
       await screen.findByLabelText('Pie de página');
       for (const etiqueta of [/^Nombre del negocio/, 'Dirección', 'Teléfono', 'NIT', /logo/]) expect(screen.queryByLabelText(etiqueta)).toBeNull();
     });
@@ -808,7 +816,7 @@ describe('configuración: avisos, motivos y cambios sin guardar', () => {
       await u.clear(campo('NIT'));
       await u.type(campo('NIT'), '12345');
       await u.click(screen.getByRole('button', { name: 'Guardar datos del negocio' }));
-      await waitFor(() => expect(regionAvisos('estado').textContent).toContain('Datos del negocio guardados en la configuración de la caja y en la plantilla de recibos.'));
+      await waitFor(() => expect(regionAvisos('estado').textContent).toContain('Datos del negocio guardados. Se usan en la caja y en los recibos nuevos.'));
       expect((await e.api.llamar('leerConfigPos', {})).negocio.nit).toBe('12345');
       const pl = await e.api.llamar('leerPlantilla', {});
       expect(pl.negocio.nit).toBe('12345');
@@ -829,7 +837,7 @@ describe('configuración: avisos, motivos y cambios sin guardar', () => {
       expect(screen.queryByRole('button', { name: 'Reintentar en la configuración de la caja' })).toBeNull();
       const cajaAntes = e.api.llamadas.filter((l) => l.nombre === 'guardarConfigPos').length;
       await u.click(screen.getByRole('button', { name: 'Reintentar en la plantilla de recibos' }));
-      await waitFor(() => expect(regionAvisos('estado').textContent).toContain('Datos del negocio guardados en la configuración de la caja y en la plantilla de recibos.'));
+      await waitFor(() => expect(regionAvisos('estado').textContent).toContain('Datos del negocio guardados. Se usan en la caja y en los recibos nuevos.'));
       expect((await e.api.llamar('leerPlantilla', {})).negocio.direccion).toBe('Calle Ejemplo 123 9');
       expect(e.api.llamadas.filter((l) => l.nombre === 'guardarConfigPos')).toHaveLength(cajaAntes);
       expect(screen.queryByRole('button', { name: /Reintentar/ })).toBeNull();
@@ -867,16 +875,16 @@ describe('configuración: avisos, motivos y cambios sin guardar', () => {
       ver(e, h(PantallaConfiguracion, { sub: 'negocio' }));
       await screen.findByRole('heading', { name: 'Datos del negocio' });
       expect((campo(/^Nombre del negocio/) as HTMLInputElement).value).toBe('Negocio de ejemplo');
-      expect(screen.getByText(/son distintos/)).toBeTruthy();
+      expect(screen.getByText(/tenían datos distintos/)).toBeTruthy();
       expect(e.api.llamadas.slice(antes).map((l) => l.nombre).filter((n) => n.startsWith('guardar'))).toEqual([]);
       await userEvent.setup().click(screen.getByRole('button', { name: 'Guardar datos del negocio' }));
       await waitFor(() => expect(regionAvisos('estado').textContent).toContain('Datos del negocio guardados'));
       expect((await e.api.llamar('leerPlantilla', {})).negocio.nombre).toBe('Negocio de ejemplo');
-      expect(screen.queryByText(/son distintos/)).toBeNull();
+      expect(screen.queryByText(/tenían datos distintos/)).toBeNull();
     });
     it('«Guardar plantilla» conserva los datos del negocio vigentes, no los cargados al abrir', async () => {
       const e = crearEntorno('adm');
-      ver(e, h(PantallaConfiguracion, { sub: 'recibo' }));
+      ver(e, h(PantallaConfiguracion, { sub: 'recibo', plantillaRecibo: PestanaPlantillaRecibo }));
       const u = userEvent.setup();
       await u.type(await screen.findByLabelText('Pie de página'), ' Fin.');
       const pl = await e.api.llamar('leerPlantilla', {});
@@ -891,7 +899,7 @@ describe('configuración: avisos, motivos y cambios sin guardar', () => {
       const e = crearEntorno('adm');
       const pl = await e.api.llamar('leerPlantilla', {});
       vi.spyOn(e.api, 'llamar').mockImplementation(((n: string) => n === 'leerPlantilla' ? Promise.resolve({ ...pl, negocio: { ...pl.negocio, nombre: '' } }) : Promise.resolve({})) as never);
-      ver(e, h(PantallaConfiguracion, { sub: 'recibo' }));
+      ver(e, h(PantallaConfiguracion, { sub: 'recibo', plantillaRecibo: PestanaPlantillaRecibo }));
       await screen.findByLabelText('Pie de página');
       expect(screen.getByText('Guarde primero los Datos del negocio')).toBeTruthy();
       const b = screen.getByRole('button', { name: 'Guardar plantilla' });
@@ -903,7 +911,7 @@ describe('configuración: avisos, motivos y cambios sin guardar', () => {
       const e = crearEntorno('adm');
       ver(e, h(PantallaConfiguracion, { sub: 'negocio' }));
       await screen.findByRole('heading', { name: 'Datos del negocio' });
-      expect(screen.queryByText(/son distintos/)).toBeNull();
+      expect(screen.queryByText(/tenían datos distintos/)).toBeNull();
     });
   });
   it('no deja textos internos a la vista', async () => {

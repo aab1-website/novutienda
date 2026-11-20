@@ -5,7 +5,7 @@ import { ID_NEGOCIO, type ProductoPanel, type Rol } from '../api/tipos.js';
 import { fechaLaPaz, fallo, marcaDoble, type Contexto } from './estado.js';
 import { handlersInventario } from './inventario/inventario.js';
 import { handlersOtros } from './otros.js';
-import { handlersPos } from './pos/pos.js';
+import { carritosDeSupervision, handlersPos } from './pos/pos.js';
 
 type Obj = Record<string, unknown>;
 type Legado = (c: Contexto, e: never) => unknown;
@@ -40,6 +40,15 @@ const ACCIONES: Readonly<Record<string, WireHandler>> = {
   // pos
   'pos.abrirTurno': igual('abrirTurno'), 'pos.cerrarTurno': igual('cerrarTurno'), 'pos.cerrarTurnoForzado': igual('cerrarTurnoForzado'),
   'pos.confirmarVenta': igual('confirmarVenta'), 'pos.solicitarAprobacion': igual('solicitarAprobacion'), 'pos.resolverAprobacion': igual('resolverAprobacion'),
+  'pos.crearCarrito': async (c, d) => ({ carrito: await legado(c, 'crearCarrito', d) }),
+  'pos.guardarCarrito': async (c, d) => ({ carrito: await legado(c, 'guardarCarrito', d) }),
+  'pos.cancelarCarrito': async (c, d) => ({ carrito: await legado(c, 'cancelarCarrito', d) }),
+  // Misma forma que el servidor (turno abierto, o `turno: null`); aquí solo los carritos, que es lo que cambió.
+  'pos.supervision': (c) => {
+    const abierto = [...c.e.turnos.values()].find((t) => t.estado === 'abierto');
+    return abierto === undefined ? { turno: null } : { turno: abierto, carritos: carritosDeSupervision(c) };
+  },
+  'pos.misCarritos': async (c) => ({ carritos: await legado(c, 'misCarritos', {}) }),
   'pos.solicitarAnulacion': igual('solicitarAnulacion'), 'pos.aprobarAnulacion': igual('aprobarAnulacion'),
   'pos.registrarMovimientoCaja': igual('registrarMovimientoCaja'), 'pos.cobrarCredito': igual('cobrarCredito'),
   'pos.leerConfig': async (c) => ({ config: await legado(c, 'leerConfigPos', {}) }),
@@ -50,14 +59,21 @@ const ACCIONES: Readonly<Record<string, WireHandler>> = {
     const turno = await legado(c, 'turnoActual', {});
     return { turno: turno ?? null, cajaOcupada: turno === null && abierto !== undefined };
   },
-  'pos.misVentas': async (c, d) => {
-    const ventas = (await legado(c, 'listarVentas', {
+  'pos.misVentas': (c, d) =>
+    legado(c, 'misVentas', {
       ...(d['turnoId'] !== undefined ? { turnoId: d['turnoId'] } : {}),
       ...(d['desde'] !== undefined ? { desde: msAFecha(d['desde']) } : {}),
       ...(d['hasta'] !== undefined ? { hasta: msAFecha(d['hasta']) } : {}),
-    })) as Obj[];
-    return { ventas: lim(ventas, d) };
-  },
+      ...(d['despuesDe'] !== undefined ? { despuesDe: d['despuesDe'] } : {}),
+    }),
+  'pos.resumenTurno': async (c, d) => ({ resumen: await legado(c, 'resumenTurno', { ...(d['turnoId'] !== undefined ? { turnoId: d['turnoId'] } : {}), ...(d['cajeroUid'] !== undefined ? { cajeroUid: d['cajeroUid'] } : {}) }) }),
+  'pos.misTurnos': (c, d) =>
+    legado(c, 'misTurnos', {
+      ...(d['cajeroUid'] !== undefined ? { cajeroUid: d['cajeroUid'] } : {}),
+      ...(d['desde'] !== undefined ? { desde: msAFecha(d['desde']) } : {}),
+      ...(d['hasta'] !== undefined ? { hasta: msAFecha(d['hasta']) } : {}),
+      ...(d['despuesDe'] !== undefined ? { despuesDe: d['despuesDe'] } : {}),
+    }),
   // Sin `estado`, el servidor devuelve solo las pendientes.
   'pos.aprobaciones': async (c, d) => ({ aprobaciones: lim((await legado(c, 'listarAprobaciones', { estado: d['estado'] ?? 'pendiente' })) as Obj[], d) }),
   'pos.movimientosCaja': async (c, d) => ({ movimientos: lim((await legado(c, 'listarMovimientosCaja', { turnoId: d['turnoId'] })) as Obj[], d, 100) }),
@@ -89,7 +105,7 @@ const ACCIONES: Readonly<Record<string, WireHandler>> = {
   'inventarios.costos': async (c) => ({
     costos: ((await legado({ ...c, rol: 'adm' }, 'listarProductos', {})) as ProductoPanel[]).map((p) => ({ productoId: p.id, costoUSD: p.costoUSD })),
   }),
-  'inventarios.buscarSerie': async (c, d) => ({ unidades: await legado(c, 'buscarSerie', { serie: d['serie'] }) }),
+  'inventarios.buscarSerie': async (c, d) => ({ unidades: await legado(c, 'buscarSerie', { serie: d['serie'], ...(d['porInicio'] === true ? { porInicio: true } : {}) }) }),
   'inventarios.series': async (c, d) => ({ unidades: [...((await legado(c, 'listarSeries', d)) as unknown[])], ...marcaDoble(c) }),
   'inventarios.movimientos': async (c, d) => {
     const lista = (await legado(c, 'listarMovimientos', {
@@ -145,7 +161,6 @@ const ACCIONES: Readonly<Record<string, WireHandler>> = {
   },
   'consola.guardarSeccion': ok('guardarSeccion'), 'consola.eliminarSeccion': ok('eliminarSeccion'), 'consola.ordenarSecciones': ok('ordenarSecciones'),
   'consola.guardarCarrusel': ok('guardarCarrusel'), 'consola.guardarConfigSitio': ok('guardarConfigSitio'),
-  'consola.exportarProductosCsv': igual('exportarProductosCsvSitio'),
   'consola.listarUsuarios': async (c) => ({
     usuarios: ((await legado(c, 'listarUsuarios', {})) as Obj[]).map((u) =>
       u['estado'] === 'invitado'

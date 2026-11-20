@@ -11,6 +11,8 @@ const f = (callable: string, nombre: string, roles: readonly string[], propietar
 
 export const FOTO_PERMISOS_L2: readonly AccionFoto[] = [
   f('pos', 'abrirTurno', ['caj', 'sup', 'adm']),
+  f('pos', 'resumenTurno', ['caj', 'sup', 'adm']),
+  f('pos', 'misTurnos', ['caj', 'sup', 'adm']),
   f('pos', 'cerrarTurno', ['caj', 'sup', 'adm']),
   f('pos', 'cerrarTurnoForzado', ['adm']),
   f('pos', 'confirmarVenta', ['caj', 'sup', 'adm']),
@@ -30,6 +32,10 @@ export const FOTO_PERMISOS_L2: readonly AccionFoto[] = [
   f('pos', 'movimientosCaja', ['caj', 'sup', 'adm']),
   f('pos', 'creditos', ['caj', 'sup', 'adm']),
   f('pos', 'cotizaciones', ['caj', 'sup', 'adm']),
+  f('pos', 'crearCarrito', ['caj', 'sup', 'adm']),
+  f('pos', 'guardarCarrito', ['caj', 'sup', 'adm']),
+  f('pos', 'cancelarCarrito', ['caj', 'sup', 'adm']),
+  f('pos', 'misCarritos', ['caj', 'sup', 'adm']),
   f('pos', 'supervision', ['sup', 'adm']),
   f('pos', 'turnos', ['sup', 'adm']),
   f('pos', 'exportarVentasCsv', ['sup', 'adm']),
@@ -88,7 +94,6 @@ export const FOTO_PERMISOS_L2: readonly AccionFoto[] = [
   f('consola', 'guardarNegocioSitio', ['adm']),
   f('consola', 'leerLogo', ['sup', 'adm']),
   f('consola', 'quitarLogo', ['adm']),
-  f('consola', 'exportarProductosCsv', ['sup', 'adm']),
   f('consola', 'publicarSitio', ['adm']),
   f('consola', 'tablero', ['sup', 'adm']),
   f('consola', 'alertas', ['sup', 'adm']),

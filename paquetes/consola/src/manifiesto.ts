@@ -1,6 +1,6 @@
 import type { AccionManifiesto, ColeccionManifiesto, ManifiestoModulo, Rol, RutaAlmacenamiento } from '@novutienda/nucleo';
 import { LIMITES_CONSOLA } from './limites.js';
-import { ID_NEGOCIO } from './rutas.js';
+import { ID_NEGOCIO, ID_PORTADA } from './rutas.js';
 
 /** Ninguna colección se lee directo desde el navegador: el panel no usa Firestore y consulta por los callables (decisiones.md). */
 const SIN_LECTURA_DIRECTA: readonly Rol[] = [];
@@ -9,7 +9,7 @@ const SIN_LECTURA_DIRECTA: readonly Rol[] = [];
  * Todas las colecciones de la consola: el navegador no lee ni escribe (`lectura: []`); solo el servidor, con las funciones de
  * este módulo, y el panel consulta por los callables. Cada una es de un segmento (`tenants/{t}/<ruta>/{id}`):
  *  - `fichasWeb/{productoId}`, `secciones/{id}`, `carruseles/{plantilla}`: contenido editable.
- *  - `sitio/{config|indice|slugs|estado|negocio|logo|logoDiferidas|logoEnSubida}`: configuración, orden de secciones, índice de slugs, cambios sin publicar, datos generales del negocio (con versión), referencia al logo subido y subidas de logo con versiones públicas esperando su borrado y la marca de logo en subida.
+ *  - `sitio/{config|indice|slugs|estado|negocio|logo|logoDiferidas|logoEnSubida|ultimaReconstruccion}`: configuración, orden de secciones, índice de slugs, cambios sin publicar, datos generales del negocio (con versión), referencia al logo subido y subidas de logo con versiones públicas esperando su borrado la marca de logo en subida y el resultado de la última reconstrucción del sitio.
  *  - `publicado/{...}`: copia que lee la reconstrucción del sitio (con el servidor); solo adm ve su estado por el callable.
  *  - `subidas/{id}`, `medios/{id}`: reservas y medios procesados.
  *  - `uso/medios`: cuota transaccional de originales y conteo de fotos/videos por producto.
@@ -37,7 +37,7 @@ const colecciones: readonly ColeccionManifiesto[] = [
  * Rutas de Storage (relativas a `tenants/{t}/`). Quién escribe cada una:
  *  - `privado/originales/...`: el navegador SOLO crea (nunca actualiza ni borra), con rol sup/adm y una reserva vigente en
  *    `subidas` hecha antes por el servidor. Los campos de la reserva (`estado`, `venceEn`, `productoId`, `por`, `bytes`, `tipo`)
- *    son contrato con `src/medios/subidas.ts`; `tipo` es `'foto'`, `'video'` o `'logo'` (el logo va a `_negocio/{subidaId}` y el servidor lo reserva solo para `adm`). Lectura: solo el servidor.
+ *    son contrato con `src/medios/subidas.ts`; `tipo` es `'foto'`, `'video'`, `'logo'` o `'portada'` (el logo va a `_negocio/{subidaId}` y la portada a `_portada/{subidaId}`; el servidor reserva ambos solo para `adm`). Lectura: solo el servidor.
  *  - `privado/procesando/**`: temporales; lee y escribe solo el servidor.
  *  - `publico/medios/**`: el servidor procesa y publica; lo lee el sitio (lectura pública). Es la única ruta pública que usa
  *    el módulo (`rutaPublicaMedio`); nada más bajo `publico/` queda legible.
@@ -54,6 +54,7 @@ const almacenamiento: readonly RutaAlmacenamiento[] = [
         { tipo: 'foto', bytesMax: LIMITES_CONSOLA.bytesFoto, contentType: 'image/(jpeg|png|webp|heic)' },
         { tipo: 'video', bytesMax: LIMITES_CONSOLA.bytesVideo, contentType: 'video/(mp4|quicktime|webm)' },
         { tipo: 'logo', bytesMax: LIMITES_CONSOLA.bytesLogo, contentType: 'image/(jpeg|png|webp)', destino: ID_NEGOCIO },
+        { tipo: 'portada', bytesMax: LIMITES_CONSOLA.bytesFoto, contentType: 'image/(jpeg|png|webp|heic)', destino: ID_PORTADA },
       ],
     },
   },
@@ -81,7 +82,6 @@ const ACCIONES_CONSOLA: readonly (readonly [string, readonly Rol[]])[] = [
   ['guardarNegocioSitio', ['adm']],
   ['leerLogo', ['sup', 'adm']],
   ['quitarLogo', ['adm']],
-  ['exportarProductosCsv', ['sup', 'adm']],
   ['publicarSitio', ['adm']],
   ['tablero', ['sup', 'adm']],
   ['alertas', ['sup', 'adm']],

@@ -113,6 +113,18 @@ describe('ingreso', () => {
     expect(ids[0]).toBe(ids[1]);
   });
 
+  it('Enter en «Series» separa la serie (lector de código) y no envía el formulario', async () => {
+    const e = crearEntorno('adm');
+    ver(e, 'ingreso');
+    const u = userEvent.setup();
+    await screen.findByRole('heading', { name: 'Ingreso de mercadería' });
+    await elegir(u, 'celular', /Celular A1/);
+    await u.type(screen.getByLabelText(/^Series/), 'N-100{Enter}N-101{Enter}');
+    expect(screen.queryByRole('dialog')).toBeNull();
+    expect(screen.getByText('Cantidad: 2 (según las series)')).toBeTruthy();
+    expect(screen.getByText(/Escriba o escanee una serie por unidad/)).toBeTruthy();
+  });
+
   it('un producto con serie pide una serie por unidad y el resumen las nombra', async () => {
     const e = crearEntorno('adm');
     ver(e, 'ingreso');
@@ -120,12 +132,15 @@ describe('ingreso', () => {
     await screen.findByRole('heading', { name: 'Ingreso de mercadería' });
     await elegir(u, 'celular', /Celular A1/);
     await u.type(screen.getByLabelText(/^Series/), 'N-100, N-101');
+    expect(screen.getByText('Cantidad: 2 (según las series)')).toBeTruthy();
+    expect(screen.getByText('Producto 1')).toBeTruthy();
+    expect(screen.getByText('Todo este ingreso entra al almacén elegido; para otro almacén, registre otro ingreso.')).toBeTruthy();
     await u.click(screen.getByRole('button', { name: 'Registrar ingreso' }));
     const d = await screen.findByRole('dialog', { name: '¿Registrar este ingreso?' });
     expect(within(d).getByText('2 series de Celular A1 128 GB (N-100, N-101)')).toBeTruthy();
     await u.click(within(d).getByRole('button', { name: 'Sí, registrar el ingreso' }));
     await screen.findByText('Ingreso registrado.');
-    expect((await e.api.llamar('buscarSerie', { serie: 'N-10' })).length).toBe(2);
+    expect((await e.api.llamar('buscarSerie', { serie: 'N-10', porInicio: true })).length).toBe(2);
   });
 
   it('guardia y borrador: con líneas sin guardar, un enlace interno pregunta; el borrador sobrevive al cambio de pestaña', async () => {

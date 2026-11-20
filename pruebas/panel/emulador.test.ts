@@ -198,7 +198,7 @@ describe.skipIf(!hayEmulador)('panel contra las funciones reales (emulador)', ()
   it('catálogo: alta con precio en dólares y costo, cambio de precio, edición, tablero, usuarios y publicación', async () => {
     await api.adm.llamar('crearProducto', {
       operacionId: uuid(),
-      producto: { id: 'mouse-1', nombre: 'Mouse', categoria: 'Accesorios', sku: 'MOUSE-1', precioUSD: { bo: 1250, ar: 1999 }, costoUSD: 700, minimo: 2, publicado: false },
+      producto: { id: 'mouse-1', nombre: 'Mouse', categoria: 'accesorios', sku: 'MOUSE-1', precioUSD: { bo: 1250, ar: 1999 }, costoUSD: 700, minimo: 2, publicado: false },
     });
     let mouse = (await api.adm.llamar('listarProductos', {})).find((p) => p.id === 'mouse-1');
     expect(mouse).toMatchObject({ nombre: 'Mouse', precioUSD: { bo: 1250, ar: 1999 }, costoUSD: 700 });
@@ -213,8 +213,6 @@ describe.skipIf(!hayEmulador)('panel contra las funciones reales (emulador)', ()
     expect(csvInventarios).toContain('MOUSE-1');
     expect(csvInventarios).not.toContain('mouse-1');
     expect(csvInventarios.replace(/^\ufeff/, '').split(/\r?\n/)[0]?.split(',')).not.toContain('id');
-    // La exportación para el sitio (módulo consola) conserva su columna id.
-    expect((await api.adm.llamar('exportarProductosCsvSitio', {})).csv).toContain('mouse-1');
     const tablero = await api.sup.llamar('obtenerTablero', {});
     expect(tablero.cambiosSinPublicar).toBeGreaterThan(0);
     expect(tablero.uso.productos.tope).toBe(200);

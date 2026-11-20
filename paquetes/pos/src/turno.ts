@@ -4,8 +4,9 @@ import {
   ahoraDe, auditar, exigirActor, exigirConfiguracionSoportada, exigirCentavos, exigirRol, exigirTenant, exigirTexto, exigirUuid, leerObligatorio, publicar,
   rutaTurno, rutaTurnoActivo, type DepsPos,
 } from './contexto.js';
+import { escribirCancelado, leerCarritosDeIndice } from './carritos.js';
 import { ErrorPos } from './errores.js';
-import { leerTurno, textoDe } from './lectura.js';
+import { leerCarritosAbiertos, leerTurno, textoDe } from './lectura.js';
 import { CAJA_UNICA, MONEDA_ISO, type ActorPos, type MontosPorMoneda, type TurnoPos } from './tipos.js';
 
 /**
@@ -98,6 +99,15 @@ async function cerrar(
     // Solo se cierra un turno abierto: un doble cierre liberaría el cupo de la caja de otro turno.
     if (turno.estado !== 'abierto') throw new ErrorPos('turno-no-abierto', 'El turno ya está cerrado');
     if (!opc.forzado && turno.cajeroUid !== actor.uid) throw new ErrorPos('turno-ajeno', 'Solo quien abrió el turno puede cerrarlo');
+    // Carritos abiertos (el índice solo existe si alguna vez se usó un carrito): el cierre normal se bloquea; el forzado los cancela.
+    const indice = leerCarritosAbiertos(raw);
+    const carritos = indice !== undefined && indice.length > 0 ? await leerCarritosDeIndice(tx, tenantId, indice) : [];
+    const abiertos = carritos.filter((c) => c.estado === 'abierto');
+    if (!opc.forzado && abiertos.length > 0) {
+      throw new ErrorPos('carritos-abiertos', 'Hay carritos abiertos: cóbrelos o cancélelos antes de cerrar el turno', {
+        carritos: abiertos.map((c) => ({ carritoId: c.carritoId, etiqueta: c.etiqueta })),
+      });
+    }
     const activo = await leerObligatorio(tx, rutaTurnoActivo(tenantId));
     // El conteo admite las monedas declaradas y las que el turno ya movió (un turno viejo se puede cerrar).
     validarMontosPorMoneda(contado, 'contado', false, [...deps.comercial.monedas, ...monedasDelTurno(turno)]);
@@ -122,7 +132,8 @@ async function cerrar(
       esperado,
       diferencia,
     };
-    tx.set(rutaTurno(tenantId, turnoId), { ...raw, ...cerrado });
+    tx.set(rutaTurno(tenantId, turnoId), { ...raw, ...cerrado, ...(indice !== undefined ? { carritosAbiertos: [] } : {}) });
+    for (const c of abiertos) escribirCancelado(tx, tenantId, actor, c, opc.motivo ?? 'Cierre forzado del turno', ahora, 'pos.carrito.cancelar_forzado');
     if (activo !== undefined && activo['turnoId'] === turnoId) tx.delete(rutaTurnoActivo(tenantId));
     publicar(tx, {
       tenantId,
@@ -169,13 +180,4 @@ export async function cerrarTurnoForzado(
   return cerrar(deps, tenantId, actor, exigirUuid(turnoId, 'turnoId'), contado, { forzado: true, motivo: exigirTexto(motivo, 'motivo') });
 }
 
-/** Turno abierto vigente (puntero `pos_config/turno_activo`), leído dentro de la transacción. */
-export async function leerTurnoAbierto(tx: TransaccionIdentidad, tenantId: string, declaradas?: readonly string[]): Promise<{ turno: TurnoPos; raw: Readonly<Record<string, unknown>> } | undefined> {
-  const activo = await leerObligatorio(tx, rutaTurnoActivo(tenantId));
-  if (activo === undefined) return undefined;
-  const raw = await leerObligatorio(tx, rutaTurno(tenantId, textoDe(activo, 'turnoId')));
-  if (raw === undefined) throw new ErrorPos('dato-corrupto', 'El turno activo no existe');
-  const turno = leerTurno(raw, declaradas);
-  if (turno.estado !== 'abierto') throw new ErrorPos('dato-corrupto', 'El turno activo no está abierto');
-  return { turno, raw };
-}
+export { leerTurnoAbierto } from './turno-activo.js';
