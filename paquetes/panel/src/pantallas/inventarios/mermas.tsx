@@ -10,11 +10,13 @@ import { Dialogo } from '../../ui/dialogo.js';
 import { enfocarPrimerError } from '../../ui/formulario.js';
 import { useBorrador, useCambiosSinGuardar } from '../../ui/guardia.js';
 import { useAccion, useCarga } from '../../ui/hooks.js';
+import { AvisoConteoAbierto } from '../../ui/existencia.js';
 import { Tabla } from '../../ui/tabla.js';
 import { SelectorProducto } from './movimientos.js';
-import { MERMA_INICIAL, MOTIVO_MAX, MOTIVO_RECHAZO_FALTA, ESTADO_TEXTO, OPCIONES_ESTADO, ordenarMermas, resumenResolucion, revisarSolicitud, type BorradorMerma, type FiltroEstado } from './mermas-logica.js';
+import { MERMA_INICIAL, MOTIVO_MAX, MOTIVO_RECHAZO_FALTA, ESTADO_TEXTO, enlaceMovimientos, textoExistenciaActual, OPCIONES_ESTADO, ordenarMermas, resumenResolucion, revisarSolicitud, type BorradorMerma, type FiltroEstado } from './mermas-logica.js';
 import { separar } from './movimientos-resumen.js';
 import { nombreAlmacen, OPCIONES_ALMACEN } from './nombres.js';
+import { useConteosAbiertos } from './usar-conteos-abiertos.js';
 import './inventario.css';
 
 /** Diálogo de aprobar o rechazar una merma. Rechazar exige motivo, junto al campo. */
@@ -153,6 +155,7 @@ function Solicitar({ productos, alSolicitar }: { productos: readonly ProductoPan
 export function PantallaMermas(): JSX.Element {
   const { api, usuario } = useApp();
   const productos = useCarga(() => api.llamar('listarProductos', {}), []);
+  const conteosAbiertos = useConteosAbiertos();
   const [estado, setEstado] = useState<FiltroEstado>('solicitada');
   const mermas = useCarga(() => api.llamar('listarMermas', estado === '' ? {} : { estado }), [estado]);
   const [resolviendo, setResolviendo] = useState<{ merma: MermaVista; decision: 'aprobada' | 'rechazada'; etiqueta: string } | null>(null);
@@ -166,6 +169,7 @@ export function PantallaMermas(): JSX.Element {
   return (
     <div ref={raiz}>
       <h1>Mermas</h1>
+      <AvisoConteoAbierto conteos={conteosAbiertos} nombreAlmacen={nombreAlmacen} />
       <ConCarga carga={productos}>{(ps) => <Solicitar productos={ps} alSolicitar={mermas.recargar} />}</ConCarga>
       <Seccion titulo="Mermas registradas">
         <div class="inv-filtro">
@@ -185,20 +189,23 @@ export function PantallaMermas(): JSX.Element {
                 { id: 'fecha', titulo: 'Fecha', valor: (m) => m.fecha, celda: (m) => fechaHora(m.fecha) },
                 { id: 'producto', titulo: 'Producto', valor: (m) => nombre(m.productoId), celda: (m) => `${nombre(m.productoId)}${m.series.length > 0 ? ` (${m.series.join(', ')})` : ''} · ${nombreAlmacen(m.ubicacionId)}` },
                 { id: 'cantidad', titulo: 'Cantidad', valor: (m) => m.cantidad },
+                { id: 'existencia', titulo: 'Existencia actual', valor: (m) => textoExistenciaActual(lista.find((x) => x.id === m.productoId), m.ubicacionId) },
                 { id: 'motivo', titulo: 'Motivo', valor: (m) => m.motivo },
                 { id: 'estado', titulo: 'Estado', valor: (m) => ESTADO_TEXTO[m.estado], celda: (m) => (procesando === m.mermaId ? 'Procesando…' : ESTADO_TEXTO[m.estado]) },
                 { id: 'resolucion', titulo: 'Motivo de la resolución', valor: (m) => m.motivoResolucion ?? '', celda: (m) => m.motivoResolucion ?? '—' },
               ]}
-              acciones={(m) =>
-                m.estado !== 'solicitada' ? null : m.solicitadaPor === usuario.uid ? (
-                  <span class="texto-suave">La resuelve otra persona</span>
+              acciones={(m) => {
+                const ver = <a href={enlaceMovimientos(m.productoId)} aria-label={`Ver movimientos de ${nombre(m.productoId)}`}>Ver movimientos</a>;
+                return m.estado !== 'solicitada' ? ver : m.solicitadaPor === usuario.uid ? (
+                  <div class="fila"><span class="texto-suave">La resuelve otra persona</span>{ver}</div>
                 ) : (
                   <div class="fila">
                     <Boton chico ocupado={procesando === m.mermaId} etiqueta={`Aprobar la merma de ${nombre(m.productoId)}`} onClick={() => { setResolviendo({ merma: m, decision: 'aprobada', etiqueta: `Aprobar la merma de ${nombre(m.productoId)}` }); }}>Aprobar</Boton>
                     <Boton chico variante="secundario" deshabilitado={procesando === m.mermaId} etiqueta={`Rechazar la merma de ${nombre(m.productoId)}`} onClick={() => { setResolviendo({ merma: m, decision: 'rechazada', etiqueta: `Rechazar la merma de ${nombre(m.productoId)}` }); }}>Rechazar</Boton>
+                    {ver}
                   </div>
-                )
-              }
+                );
+              }}
             />
           )}
         </ConCarga>

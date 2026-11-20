@@ -62,12 +62,12 @@ describe.each(['caj', 'sup'] as const)('productos como %s con un conteo abierto'
 });
 
 describe('productos como adm con un conteo abierto', () => {
-  it('ve todo y no hay aviso ni «Oculto»', async () => {
+  it('ve todas las cifras sin «Oculto» y, desde D6, también el aviso del conteo', async () => {
     const e = await conConteo('adm');
     ver(e, 'productos');
     const t = await tabla();
     expect(within(t).queryByText('Oculto')).toBeNull();
-    expect(screen.queryByText(/Hay un conteo abierto/)).toBeNull();
+    expect(screen.getByText(/Hay un conteo abierto en Tienda/)).toBeTruthy();
     expect(screen.getByText(/2 productos bajo el mínimo/)).toBeTruthy();
     expect(within(screen.getByLabelText('Mostrar')).getByRole('option', { name: 'Bajo el mínimo' })).toBeTruthy();
   });

@@ -399,7 +399,8 @@ describe('conteo abierto: lo que ven cajera y administrador', () => {
     e.como('adm');
     ver(e, h(PantallaInventario, { sub: 'productos' }));
     await screen.findByRole('button', { name: 'Datos del producto de Cable HDMI 2 m' });
-    expect(screen.queryByText(/Hay un conteo abierto/)).toBeNull();
+    // D6: el administrador ve el aviso del conteo aunque sus cifras no se oculten.
+    expect(screen.getByText(/Hay un conteo abierto en Tienda/)).toBeTruthy();
     expect(screen.queryByText('Oculto')).toBeNull();
   });
 });

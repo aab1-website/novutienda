@@ -8,3 +8,7 @@
 .inv-linea { display: flex; flex-direction: column; gap: 8px; }
 .inv-resumen { display: flex; flex-direction: column; gap: 8px; margin: 0; padding: 0; list-style: none; }
 .inv-resumen p { margin: 0; }
+
+/* Conteo: el avance queda a la vista al recorrer una lista larga; el estado de cada campo se lee con texto e ícono, no solo con color. */
+.inv-avance { position: sticky; top: 0; z-index: 2; margin: 0 0 8px; padding: 8px 12px; background: var(--superficie); border-bottom: 1px solid var(--borde); }
+.inv-estado-guardado { min-height: 1.4em; margin: 4px 0 0; font-weight: 600; color: var(--texto); }

@@ -59,3 +59,15 @@ export function resumenResolucion(m: MermaVista, p: ProductoPanel | undefined, d
   const hay = p?.existencias[m.ubicacionId];
   return [...base, ...(hay === undefined ? [] : hay === null ? [TEXTO_EXISTENCIAS_OCULTAS] : [`Hay ${String(hay)}, quedarán ${String(hay - m.cantidad)}.`]), 'Se descuenta del stock y no se deshace desde aquí.'];
 }
+
+export const TEXTO_EXISTENCIA_OCULTA = 'Oculta (conteo abierto)';
+
+/** Existencia actual del producto en el almacén de la merma: número, «Oculta (conteo abierto)» si llegó `null`, o «—» si no se conoce. */
+export function textoExistenciaActual(p: ProductoPanel | undefined, ubicacionId: string): string {
+  if (p === undefined || !(ubicacionId in p.existencias)) return '—';
+  const hay = p.existencias[ubicacionId as keyof ProductoPanel['existencias']];
+  return hay === null ? TEXTO_EXISTENCIA_OCULTA : String(hay);
+}
+
+/** Enlace a los movimientos del producto (pestaña «Registro de acciones» de Inventario). */
+export const enlaceMovimientos = (productoId: string): string => `#/inventario/registro?producto=${encodeURIComponent(productoId)}`;

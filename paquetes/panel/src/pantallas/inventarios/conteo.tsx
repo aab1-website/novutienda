@@ -88,7 +88,13 @@ function FilaConteo({ conteoId, p, escrito, hecha, alEscribir, alGuardar, alOcup
   };
 
   const error = errorCampo ?? accion.error;
-  const estado = accion.ocupado ? 'Guardando…' : cambio && error === null ? 'Sin guardar: salga del campo para guardarlo.' : hecha !== undefined && !cambio ? 'Guardado' : '';
+  const estado: { texto: string; clase: string; icono: string } | null = accion.ocupado
+    ? { texto: 'Guardando…', clase: 'estado-guardando', icono: '⟳' }
+    : cambio && error === null
+      ? { texto: 'Sin guardar: salga del campo para guardarlo.', clase: 'estado-pendiente', icono: '●' }
+      : hecha !== undefined && !cambio
+        ? { texto: 'Guardado', clase: 'estado-guardado', icono: '✓' }
+        : null;
   return (
     <div onFocusOut={guardar}>
       <Campo
@@ -98,7 +104,9 @@ function FilaConteo({ conteoId, p, escrito, hecha, alEscribir, alGuardar, alOcup
         inputMode={p.conSerie ? 'text' : 'numeric'}
         error={error !== null ? (accion.error !== null && errorCampo === null ? `No se pudo guardar ${p.nombre}. ${accion.error}` : error) : undefined}
       />
-      <p class="texto-suave" role="status" aria-live="polite">{estado}</p>
+      <p class={`inv-estado-guardado${estado === null ? '' : ` ${estado.clase}`}`} role="status" aria-live="polite" data-prueba="estado-guardado">
+        {estado !== null && <><span aria-hidden="true">{estado.icono}</span> {estado.texto}</>}
+      </p>
       {accion.error !== null && errorCampo === null && <Boton chico variante="secundario" onClick={guardar} etiqueta={`Reintentar guardar ${p.nombre}`}>Reintentar</Boton>}
     </div>
   );
@@ -201,7 +209,7 @@ function ConteoAbierto({ abierto, productos, alCambiar }: { abierto: ConteoVista
   return (
     <div>
       <p>Conteo abierto en <strong>{nombreAlmacen(abierto.ubicacionId)}</strong>. Escriba lo que cuenta de cada producto y salga del campo: se guarda solo (para productos con serie, escriba las series).</p>
-      <p role="status" aria-live="polite" data-prueba="avance-conteo"><strong>Avance: {av.texto}</strong> productos contados.</p>
+      <p class="inv-avance" role="status" aria-live="polite" data-prueba="avance-conteo"><strong>Avance: {av.texto}</strong> productos contados.</p>
       <div class="inv-filtro">
         <Campo etiqueta="Buscar producto a contar" valor={q} onInput={setQ} />
       </div>
@@ -322,6 +330,7 @@ export function Conteo(): JSX.Element {
   const { api } = useApp();
   const conteos = useCarga(() => api.llamar('listarConteos', {}), []);
   const accion = useAccion();
+  const avisos = useAvisos();
   const [ubicacion, setUbicacion] = useState<UbicacionId>('tienda');
   const operacionApertura = useRef<{ ubicacion: string; conteoId: string; operacionId: string } | null>(null);
 
@@ -331,6 +340,7 @@ export function Conteo(): JSX.Element {
     void accion.ejecutar(async () => {
       await api.llamar('abrirConteo', { operacionId, conteoId, ubicacionId: ubicacion });
       operacionApertura.current = null;
+      avisos.ok(`Conteo abierto en ${nombreAlmacen(ubicacion)}. Mientras dure, cajeros y supervisores no ven sus existencias.`);
       conteos.recargar();
     });
   };

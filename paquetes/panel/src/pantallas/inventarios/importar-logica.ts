@@ -30,8 +30,8 @@ const ANTES_DE_PRECIOS: readonly ColumnaDoc[] = [
   { nombre: 'categoria', texto: 'categoría.' },
   { nombre: 'marca', texto: 'marca (opcional).' },
   { nombre: 'sku', texto: 'código del producto. Cada producto se reconoce por su SKU: si ya existe se actualiza y, si no, se crea. Obligatorio en cada fila.' },
-  { nombre: 'conSerie', texto: 'si, no (si cada unidad lleva número de serie).' },
-  { nombre: 'garantiaMeses', texto: 'meses de garantía (opcional).' },
+  { nombre: 'conSerie', texto: 'si, no. Escriba «si» solo si cada unidad lleva su propio número de serie (por ejemplo, un celular); sus unidades se ingresan después con sus series, no con una cantidad. Si falta, es «no».' },
+  { nombre: 'garantiaMeses', texto: 'meses de garantía del producto, de 1 a 120 (opcional). Déjela vacía si no ofrece garantía.' },
   { nombre: 'minimo', texto: 'existencia mínima antes de avisar (opcional).' },
 ];
 const DESPUES_DE_PRECIOS: readonly ColumnaDoc[] = [
