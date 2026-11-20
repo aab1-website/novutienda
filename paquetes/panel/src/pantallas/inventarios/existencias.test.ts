@@ -1,5 +1,5 @@
 // @vitest-environment jsdom
-import { h, type ComponentChildren } from 'preact';
+import { h } from 'preact';
 import { cleanup, render, screen, waitFor, within } from '@testing-library/preact';
 import { userEvent } from '@testing-library/user-event';
 import { afterEach, describe, expect, it } from 'vitest';
@@ -11,7 +11,7 @@ import { ExistenciasPorAlmacen } from './existencias.js';
 afterEach(cleanup);
 
 // Audífonos inalámbricos tiene 5 unidades en Depósito 2 (el caso HUMO-003 del plan).
-const ver = (e: Entorno, avisoAdm?: ComponentChildren): void => void render(e.envolver(h(ExistenciasPorAlmacen, avisoAdm === undefined ? {} : { avisoAdm })));
+const ver = (e: Entorno): void => void render(e.envolver(h(ExistenciasPorAlmacen, {})));
 const elegir = async (nombre: string): Promise<void> => void (await userEvent.setup().selectOptions(screen.getByLabelText('Almacén'), nombre));
 async function conConteo(rol: Rol): Promise<Entorno> {
   const e = crearEntorno('sup');
@@ -56,11 +56,10 @@ describe('existencias por almacén', () => {
     expect(screen.queryByText(/Hay un conteo abierto/)).toBeNull();
   });
 
-  it('adm con un conteo ve la tienda y recibe el aviso por el punto de enganche', async () => {
+  it('adm con un conteo ve la tienda, sin el aviso de ocultamiento', async () => {
     const e = await conConteo('adm');
-    ver(e, h('p', null, 'AVISO-ADM'));
+    ver(e);
     expect(await screen.findByText(/^En Tienda:/)).toBeTruthy();
-    expect(screen.getByText('AVISO-ADM')).toBeTruthy();
     expect(screen.queryByText(/no se muestran/)).toBeNull();
   });
 

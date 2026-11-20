@@ -1,4 +1,4 @@
-import type { ComponentChildren, JSX } from 'preact';
+import type { JSX } from 'preact';
 import { useState } from 'preact/hooks';
 import { UBICACIONES, type UbicacionId } from '../../api/tipos.js';
 import { Alerta, Casilla, Cargando, ErrorCarga, Selector, Seccion } from '../../ui/comun.js';
@@ -9,16 +9,9 @@ import { nombreAlmacen, NOMBRE_ALMACEN, OPCIONES_ALMACEN } from './nombres.js';
 import { useProductos } from './usar-productos.js';
 import './inventario.css';
 
-interface Props {
-  /**
-   * Punto de enganche del aviso que solo ve `adm` (conteos abiertos, del hook `usar-conteos-abiertos.ts` de Inventario A).
-   * La pestaña lo recibe ya armado; este componente no decide quién lo ve.
-   */
-  readonly avisoAdm?: ComponentChildren;
-}
-
-/** Pestaña «Existencias por almacén»: una tabla de un almacén por vez, sin cifras si ese almacén está en conteo. */
-export function ExistenciasPorAlmacen({ avisoAdm }: Props): JSX.Element {
+/**
+ * Pestaña «Existencias por almacén»: una tabla de un almacén por vez, sin cifras si ese almacén está en conteo. */
+export function ExistenciasPorAlmacen(): JSX.Element {
   const prod = useProductos();
   const [almacen, setAlmacen] = useState<UbicacionId>(UBICACIONES[0] ?? 'tienda');
   const [incluirCero, setIncluirCero] = useState(false);
@@ -32,7 +25,6 @@ export function ExistenciasPorAlmacen({ avisoAdm }: Props): JSX.Element {
 
   return (
     <Seccion titulo="Existencias por almacén">
-      {avisoAdm}
       <div class="cuadricula">
         <Selector etiqueta="Almacén" valor={almacen} onCambio={(v) => setAlmacen(v as UbicacionId)} opciones={OPCIONES_ALMACEN} />
         <Casilla etiqueta="Mostrar también los que están en 0" marcado={incluirCero} onCambio={setIncluirCero} deshabilitado={r.oculto} />

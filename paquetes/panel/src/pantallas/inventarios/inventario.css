@@ -12,3 +12,9 @@
 /* Conteo: el avance queda a la vista al recorrer una lista larga; el estado de cada campo se lee con texto e ícono, no solo con color. */
 .inv-avance { position: sticky; top: 0; z-index: 2; margin: 0 0 8px; padding: 8px 12px; background: var(--superficie); border-bottom: 1px solid var(--borde); }
 .inv-estado-guardado { min-height: 1.4em; margin: 4px 0 0; font-weight: 600; color: var(--texto); }
+
+/* Encabezado con el botón de ayuda, y panel lateral «Cómo funciona el inventario». */
+.inv-encabezado { display: flex; flex-wrap: wrap; align-items: center; justify-content: space-between; gap: 8px; }
+.ayuda-inventario { display: flex; flex-direction: column; gap: 12px; }
+.ayuda-inventario h3 { margin: 0 0 4px; }
+.ayuda-inventario p { margin: 0; }
