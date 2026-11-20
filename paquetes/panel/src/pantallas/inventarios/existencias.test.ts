@@ -82,6 +82,7 @@ describe('ayuda «Cómo funciona el inventario»', () => {
     await u.click(boton);
     const d = await screen.findByRole('dialog', { name: 'Cómo funciona el inventario' });
     for (const tema of ['Almacenes', 'Ingreso', 'Traspaso', 'Ajuste', 'Conteo ciego', 'Series', 'Dónde se ve cada cosa']) expect(within(d).getByText(tema)).toBeTruthy();
+    for (const texto of [/Tienda, Depósito 1, Depósito 2/, /bloqueado, salvo para el administrador/, /no se ajustan: use ingreso o merma/, /«Registro de acciones»/, /«Conteo ciego»/, /no ven el total/]) expect(within(d).getByText(texto)).toBeTruthy();
     await u.keyboard('{Escape}');
     await waitFor(() => expect(screen.queryByRole('dialog')).toBeNull());
     await waitFor(() => expect(document.activeElement).toBe(boton));
