@@ -96,15 +96,15 @@ describe('comercio de UN mercado (PE, sin tipo de cambio)', () => {
 
   it('la fecha de la garantía usa la zona del tenant (Lima), no La Paz', async () => {
     await altaProducto(db, pe('celular', { conSerie: true, garantiaMeses: 12 }));
-    await cargar(db, 'celular', 'tienda', 1, ['A']);
+    await cargar(db, 'celular', 'tienda', 1, ['SN-A']);
     // 04:30 UTC: en Lima (UTC-5) aún es el 4 de noviembre; en La Paz (UTC-4) ya sería el 5.
     fijarReloj(() => Date.UTC(2026, 10, 5, 4, 30, 0));
     expect(zonaPrincipalDe(COMERCIAL_UN_MERCADO)).toBe('America/Lima');
     await db.runTransaction(async (tx) => {
-      const plan = await prepararSalida(tx, T, [{ productoId: 'celular', almacenId: 'tienda', cantidad: 1, series: ['A'] }]);
+      const plan = await prepararSalida(tx, T, [{ productoId: 'celular', almacenId: 'tienda', cantidad: 1, series: ['SN-A'] }]);
       aplicarSalida(tx, plan, { tipo: 'venta', id: 'v-1' }, CAJ);
     });
-    expect(doc(db, 'unidades', 'celular__A')?.['garantiaHasta']).toBe('2027-11-04');
+    expect(doc(db, 'unidades', 'celular__SN-A')?.['garantiaHasta']).toBe('2027-11-04');
   });
 
   it('el callable valida la forma y deja la regla de mercados a Inventarios, con la configuración inyectada', async () => {
@@ -132,13 +132,13 @@ describe('falla cerrado: sin configuración comercial válida no hay operación'
   });
   it('el callable propaga el error de configuración del lector (nunca asume el tenant de tres monedas)', async () => {
     const ctx = { tenantId: T, rol: 'adm', sesion: { uid: 'u' }, e: { db, comercialDelTenant: () => Promise.reject(new Error('sin comercial')) } } as never;
-    await expect((async () => accionesInventarios['crearProducto']?.ejecutar(ctx, { operacionId: 'c1', producto: { id: 'a1', nombre: 'A', categoria: 'c', sku: 'A1', precioUSD: { bo: 1, ar: 1 } } }))()).rejects.toThrow('sin comercial');
+    await expect((async () => accionesInventarios['crearProducto']?.ejecutar(ctx, { operacionId: 'c1', producto: { id: 'a1', nombre: 'SN-A', categoria: 'c', sku: 'A1', precioUSD: { bo: 1, ar: 1 } } }))()).rejects.toThrow('sin comercial');
   });
   it('prepararSalida con garantía y sin configuración falla, no asume La Paz', async () => {
     await altaProducto(db, producto('celular', { conSerie: true, garantiaMeses: 12 }));
-    await cargar(db, 'celular', 'tienda', 1, ['A']);
+    await cargar(db, 'celular', 'tienda', 1, ['SN-A']);
     db.poner(`tenants/${T}`, { estado: 'activo', plan: 'base', modulos: {} });
-    await expect(db.runTransaction((tx) => prepararSalida(tx, T, [{ productoId: 'celular', almacenId: 'tienda', cantidad: 1, series: ['A'] }]))).rejects.toBeInstanceOf(EstadoInvalido);
+    await expect(db.runTransaction((tx) => prepararSalida(tx, T, [{ productoId: 'celular', almacenId: 'tienda', cantidad: 1, series: ['SN-A'] }]))).rejects.toBeInstanceOf(EstadoInvalido);
   });
 });
 
@@ -178,7 +178,7 @@ describe('claves heredadas del prototipo', () => {
 
 describe('exportarProductosCsvLegado (@deprecated)', () => {
   it('emite precioBO y precioAR igual que exportarProductosCsv con la configuración de tres monedas', () => {
-    const fila = { id: 'a1', nombre: 'A', categoria: 'c', sku: 'S-1', conSerie: false, precioUSD: { bo: 1250, ar: 10 }, activo: true, publicado: true };
+    const fila = { id: 'a1', nombre: 'SN-A', categoria: 'c', sku: 'S-1', conSerie: false, precioUSD: { bo: 1250, ar: 10 }, activo: true, publicado: true };
     expect(exportarProductosCsvLegado([fila])).toBe(exportarProductosCsv([fila], COMERCIAL_TRES));
   });
 });

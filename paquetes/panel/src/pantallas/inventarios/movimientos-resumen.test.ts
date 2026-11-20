@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import type { ProductoPanel } from '../../api/tipos.js';
-import { haySeQuedan, leerDiferencia, resumenAjuste, resumenIngreso, resumenTraspaso, revisarAjuste, revisarLineas, separar, type FilaLinea } from './movimientos-resumen.js';
+import { avisosMayusculas, enLotes, haySeQuedan, leerDiferencia, resumenAjuste, resumenIngreso, resumenTraspaso, revisarAjuste, revisarLineas, separar, seriesNuevasDe, type FilaLinea } from './movimientos-resumen.js';
 
 const prod = (id: string, nombre: string, conSerie: boolean, tienda: number, dep1 = 0): ProductoPanel => ({
   id, nombre, categoria: 'c', sku: id.toUpperCase(), activo: true, publicado: true, conSerie, precioUSD: { bo: 1, ar: 1 }, existencias: { tienda, 'deposito-1': dep1, 'deposito-2': 0 }, bajoMinimo: false, disponible: true,
@@ -32,6 +32,16 @@ describe('revisión de líneas', () => {
   it('líneas válidas devuelven las líneas del servidor', () => {
     expect(revisarLineas([fila('1', 'cable', '3')], PRODUCTOS).lineas).toEqual([{ productoId: 'cable', cantidad: 3 }]);
   });
+  it('el ingreso exige serie de 3 a 60 sin «/» y sin repetidas por mayúsculas; el traspaso admite las ya guardadas', () => {
+    const ingreso = (series: string) => revisarLineas([fila('1', 'tv', '', series)], PRODUCTOS, undefined, true);
+    expect(ingreso('AB').errores['1.series']).toBe('La serie debe tener de 3 a 60 caracteres: letras, números y - . _ (sin espacios)');
+    expect(ingreso('x'.repeat(61)).errores['1.series']).toMatch(/de 3 a 60/);
+    expect(ingreso('AB/123').errores['1.series']).toMatch(/de 3 a 60/);
+    expect(ingreso('ABC123 abc123').errores['1.series']).toMatch(/mayúsculas/);
+    expect(ingreso('ABC ' + 'y'.repeat(60)).lineas).toEqual([{ productoId: 'tv', cantidad: 2, series: ['ABC', 'y'.repeat(60)] }]);
+    expect(revisarLineas([fila('1', 'tv', '', 'A1 B')], PRODUCTOS, 'tienda').lineas).toEqual([{ productoId: 'tv', cantidad: 2, series: ['A1', 'B'] }]);
+  });
+
   it('separa series por coma, punto y coma o espacio', () => {
     expect(separar('a, b;c  d')).toEqual(['a', 'b', 'c', 'd']);
   });
@@ -63,5 +73,38 @@ describe('revisión del ajuste', () => {
     expect(revisarAjuste(cable, 'tienda', '1,5', 'x').diferencia).toMatch(/entero/);
     expect(revisarAjuste(cable, 'tienda', '-13', 'x').diferencia).toMatch(/Hay 12, quedarán -1: no puede quedar en negativo/);
     expect(revisarAjuste(cable, 'tienda', '-2', 'x')).toEqual({});
+  });
+});
+
+describe('aviso de mayúsculas antes de ingresar (D3)', () => {
+  const u = (productoId: string, serie: string) => ({ productoId, serie, estado: 'disponible', ubicacionId: 'tienda' }) as const;
+  it('avisa si el mismo producto ya tiene la serie con otras mayúsculas, y no si es otro producto o la misma', () => {
+    const consultadas = seriesNuevasDe([{ productoId: 'tv', cantidad: 3, series: ['abc123', 'XYZ789', 'QQQ111'] }]);
+    const avisos = avisosMayusculas(consultadas, [[u('tv', 'ABC123')], [u('otro', 'xyz789')], [u('tv', 'QQQ111')]]);
+    expect(avisos).toEqual(['Aviso: la serie abc123 ya existe como ABC123 (con otras mayúsculas).']);
+  });
+  it('una consulta fallida no da aviso, y se consultan a lo sumo 50 series', () => {
+    expect(avisosMayusculas([{ productoId: 'tv', serie: 'abc' }], [null])).toEqual([]);
+    const muchas = Array.from({ length: 80 }, (_, i) => `SER-${String(i)}`);
+    expect(seriesNuevasDe([{ productoId: 'tv', cantidad: 80, series: muchas }])).toHaveLength(50);
+  });
+  it('el resumen del ingreso lleva los avisos al final', () => {
+    expect(resumenIngreso([{ productoId: 'cable', cantidad: 3 }], 'tienda', PRODUCTOS, ['Aviso: x']).lineas.at(-1)).toBe('Aviso: x');
+  });
+});
+
+describe('enLotes', () => {
+  it('limita la concurrencia y conserva el orden', async () => {
+    let activas = 0;
+    let maximo = 0;
+    const r = await enLotes([1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11], 5, async (x) => {
+      activas += 1;
+      maximo = Math.max(maximo, activas);
+      await Promise.resolve();
+      activas -= 1;
+      return x * 2;
+    });
+    expect(maximo).toBe(5);
+    expect(r).toEqual([2, 4, 6, 8, 10, 12, 14, 16, 18, 20, 22]);
   });
 });

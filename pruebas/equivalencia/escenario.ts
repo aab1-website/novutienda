@@ -42,7 +42,7 @@ const base = (id: string, nombre: string, precioUSD: { bo: number; ar: number },
 /** Productos representativos (precios en centavos de USD). */
 export const PRODUCTOS: readonly Fila[] = [
   { producto: base('p-lapiz', 'Lápiz HB', { bo: 125, ar: 133 }), tienda: 10, deposito: 5, publicado: { slug: 'lapiz-hb', descripcion: 'Lápiz de grafito.', categoria: 'papeleria', marca: 'Marca Ejemplo' } },
-  { producto: base('p-celular', 'Celular X1', { bo: 19999, ar: 20999 }, { conSerie: true, garantiaMeses: 12, minimo: 1, marca: 'Marca Ejemplo' }), tienda: 3, series: ['A', 'B', 'C'], publicado: { slug: 'celular-x1', descripcion: 'Celular de ejemplo.', categoria: 'celulares', marca: 'Marca Ejemplo' } },
+  { producto: base('p-celular', 'Celular X1', { bo: 19999, ar: 20999 }, { conSerie: true, garantiaMeses: 12, minimo: 1, marca: 'Marca Ejemplo' }), tienda: 3, series: ['SN-A', 'SN-B', 'SN-C'], publicado: { slug: 'celular-x1', descripcion: 'Celular de ejemplo.', categoria: 'celulares', marca: 'Marca Ejemplo' } },
   { producto: base('p-cable', 'Cable USB', { bo: 333, ar: 0 }), tienda: 7, publicado: { slug: 'cable-usb', descripcion: 'Solo con precio en Bolivia.', categoria: 'accesorios', marca: 'Marca Ejemplo' } },
   { producto: base('p-adaptador', 'Adaptador', { bo: 0, ar: 450 }), tienda: 4, publicado: { slug: 'adaptador', descripcion: 'Solo con precio en Argentina.', categoria: 'accesorios', marca: 'Marca Ejemplo' } },
   { producto: base('p-parlante', 'Parlante portátil', { bo: 1999, ar: 1033 }), tienda: 2, deposito: 6, publicado: { slug: 'parlante-portatil', descripcion: 'Decimales incómodos.', categoria: 'audio', marca: 'Marca Ejemplo' } },

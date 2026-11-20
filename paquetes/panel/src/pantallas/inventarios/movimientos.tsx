@@ -1,7 +1,7 @@
 import type { JSX } from 'preact';
 import { useEffect, useRef, useState } from 'preact/hooks';
 import { nuevoId } from '../../api/cliente.js';
-import type { ProductoPanel, UbicacionId } from '../../api/tipos.js';
+import type { LineaIngreso, ProductoPanel, UbicacionId } from '../../api/tipos.js';
 import { mensajeConteoAbierto } from '../../api/errores.js';
 import { useAvisos } from '../../ui/avisos.js';
 import { AvisoConteoAbierto } from '../../ui/existencia.js';
@@ -13,7 +13,7 @@ import { useBorrador, useCambiosSinGuardar } from '../../ui/guardia.js';
 import { useAccion, useCarga, type Accion } from '../../ui/hooks.js';
 import { SelectorBuscable } from '../../ui/selector-buscable.js';
 import {
-  claveLinea, haySeQuedan, lecturaDe, leerDiferencia, MAX_LINEAS, resumenAjuste, resumenIngreso, resumenTraspaso, revisarAjuste, revisarLineas, separar, type FilaLinea, type LecturaExistencia, type Resumen,
+  avisosMayusculas, CONCURRENCIA_SERIES, claveLinea, enLotes, haySeQuedan, lecturaDe, leerDiferencia, MAX_LINEAS, resumenAjuste, resumenIngreso, resumenTraspaso, revisarAjuste, revisarLineas, separar, seriesNuevasDe, type FilaLinea, type LecturaExistencia, type Resumen,
 } from './movimientos-resumen.js';
 import { nombreAlmacen, OPCIONES_ALMACEN } from './nombres.js';
 import { TablaMovimientos } from './registro.js';
@@ -159,22 +159,37 @@ export function Ingreso(): JSX.Element {
   const e = b.valor;
   const sucio = b.hayBorrador && (e.almacen !== 'tienda' || e.filas.some(lineaSucia));
   const s = useEnvio(clave, sucio);
+  const [comprobando, setComprobando] = useState(false);
+  const [confirmadas, setConfirmadas] = useState<{ almacen: UbicacionId; lineas: readonly LineaIngreso[] } | null>(null);
   if (prod.cargando) return <Cargando />;
   if (prod.error) return <ErrorCarga error={prod.error} reintentar={prod.recargar} />;
-  const rev = revisarLineas(e.filas, prod.lista);
+  const rev = revisarLineas(e.filas, prod.lista, undefined, true);
   const errores = s.intento ? rev.errores : {};
   const almacen = e.almacen as UbicacionId;
   const revisar = (ev: Event): void => {
     ev.preventDefault();
     s.setIntento(true);
-    if (rev.lineas === null) s.pedirFoco();
-    else s.setResumen(resumenIngreso(rev.lineas, almacen, prod.lista));
+    const lineas = rev.lineas;
+    if (lineas === null) {
+      s.pedirFoco();
+      return;
+    }
+    // D3: antes de confirmar se avisa si una serie ya existe con otras mayúsculas. No bloquea; si la consulta falla, se sigue sin aviso.
+    const consultadas = seriesNuevasDe(lineas);
+    setComprobando(true);
+    void enLotes(consultadas, CONCURRENCIA_SERIES, (c) => api.llamar('buscarSerie', { serie: c.serie, productoId: c.productoId }).catch(() => null))
+      .then((encontradas) => {
+        // Lo que se muestra es lo que se envía: las líneas quedan congeladas al abrir la confirmación.
+        setConfirmadas({ almacen, lineas });
+        s.setResumen(resumenIngreso(lineas, almacen, prod.lista, avisosMayusculas(consultadas, encontradas)));
+      })
+      .finally(() => setComprobando(false));
   };
   const confirmar = (): void => {
-    if (rev.lineas === null) return;
-    const lineas = rev.lineas;
+    if (confirmadas === null) return;
+    const { lineas, almacen: destino } = confirmadas;
     void s.accion.ejecutar(async () => {
-      await api.llamar('ingresar', { operacionId: s.ids.idPara(JSON.stringify([almacen, lineas])), ubicacionId: almacen, lineas });
+      await api.llamar('ingresar', { operacionId: s.ids.idPara(JSON.stringify([destino, lineas])), ubicacionId: destino, lineas });
       s.avisos.ok('Ingreso registrado.');
       s.ids.liberar();
       s.marcarGuardado();
@@ -191,7 +206,8 @@ export function Ingreso(): JSX.Element {
         <Selector etiqueta="Almacén de destino" valor={e.almacen} onCambio={(v) => b.poner({ ...e, almacen: v })} opciones={OPCIONES_ALMACEN} />
         <p class="texto-suave">Todo este ingreso entra al almacén elegido; para otro almacén, registre otro ingreso.</p>
         <LineasProducto filas={e.filas} setFilas={(filas) => b.poner({ ...e, filas })} productos={prod.lista} errores={errores} />
-        <Boton tipo="submit" ocupado={s.accion.ocupado && s.resumen === null}>Registrar ingreso</Boton>
+        <Boton tipo="submit" ocupado={(s.accion.ocupado && s.resumen === null) || comprobando}>Registrar ingreso</Boton>
+        {comprobando && <p class="texto-suave" role="status">Comprobando series…</p>}
       </form>
       {s.resumen !== null && <Confirmacion resumen={s.resumen} accion={s.accion} alConfirmar={confirmar} alVolver={() => { s.setResumen(null); s.accion.limpiar(); }} />}
     </Seccion>

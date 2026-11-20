@@ -10,7 +10,7 @@ describe('rutas que escriben los módulos frente a los manifiestos registrados',
   it('todo documento escrito en un flujo completo pertenece a una colección declarada, y cada colección tiene un solo dueño', async () => {
     const e = await entornoListo();
     await abrirTurno(e.deps, T, caj, UUID(900), { BOB: 0 });
-    await confirmarVenta(e.deps, T, caj, UUID(1), { mercado: 'BO', moneda: 'BOB', lineas: [{ productoId: 'celular', cantidad: 1, series: ['A'] }] }, [
+    await confirmarVenta(e.deps, T, caj, UUID(1), { mercado: 'BO', moneda: 'BOB', lineas: [{ productoId: 'celular', cantidad: 1, series: ['SN-A'] }] }, [
       { medio: 'efectivo', moneda: 'BOB', monto: 70000 },
     ]);
     await registrarMovimientoCaja(e.deps, T, caj, UUID(60), { tipo: 'ingreso', moneda: 'BOB', monto: 100, motivo: 'm' });

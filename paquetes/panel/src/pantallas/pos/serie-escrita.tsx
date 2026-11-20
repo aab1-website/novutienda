@@ -42,7 +42,7 @@ export function SerieEscrita({ productoId, almacenId, elegidas, alCambiar }: Pro
   const validar = async (serie: string): Promise<void> => {
     try {
       const halladas = await api.llamar('buscarSerie', { serie });
-      // El servidor compara la serie exacta: sin normalizar mayúsculas; el producto se filtra aquí porque la búsqueda no lo admite.
+      // El servidor ya no distingue mayúsculas; aquí se exige la serie exacta (la caja sigue filtrando así) y el producto se filtra aquí.
       const exacta = halladas.find((u) => u.serie === serie && u.productoId === productoId) ?? halladas.find((u) => u.serie === serie);
       const motivo = motivoSerieNoVendible(exacta, productoId, almacenId, acumuladas.current);
       if (motivo !== null || exacta === undefined) {

@@ -1,4 +1,4 @@
-import type { LineaIngreso, ProductoPanel, UbicacionId } from '../../api/tipos.js';
+import type { LineaIngreso, ProductoPanel, UbicacionId, UnidadSerie } from '../../api/tipos.js';
 import { nombreAlmacen } from './nombres.js';
 
 /** Revisión y resumen de ingreso, traspaso y ajuste. Vistas previas: el stock lo escribe y valida solo el servidor. */
@@ -15,6 +15,9 @@ export const TEXTO_EXISTENCIAS_OCULTAS = 'Las existencias están ocultas mientra
 export const MAX_CANTIDAD = 1_000_000;
 export const MAX_LINEAS = 50;
 const SERIE = /^[A-Za-z0-9][A-Za-z0-9._-]{0,63}$/;
+/** Serie de un ingreso (unidad nueva): de 3 a 60, sin «/». Copia de `esSerieNueva` del módulo; el servidor valida igual. */
+const SERIE_NUEVA = /^[A-Za-z0-9][A-Za-z0-9._-]{2,59}$/;
+export const MENSAJE_SERIE_NUEVA = 'La serie debe tener de 3 a 60 caracteres: letras, números y - . _ (sin espacios)';
 
 export const separar = (t: string): string[] => t.split(/[\s,;]+/).filter((s) => s !== '');
 
@@ -27,8 +30,11 @@ export interface RevisionLineas {
   readonly lineas: readonly LineaIngreso[] | null;
 }
 
-/** `origen`: en un traspaso, el almacén del que sale (se avisa si pide más de lo que hay). */
-export function revisarLineas(filas: readonly FilaLinea[], productos: readonly ProductoPanel[], origen?: UbicacionId | null): RevisionLineas {
+/**
+ * `origen`: en un traspaso, el almacén del que sale (se avisa si pide más de lo que hay). `altaDeSeries`: el ingreso da de alta
+ * unidades y exige el formato nuevo (de 3 a 60); el traspaso opera sobre series ya guardadas.
+ */
+export function revisarLineas(filas: readonly FilaLinea[], productos: readonly ProductoPanel[], origen?: UbicacionId | null, altaDeSeries = false): RevisionLineas {
   const errores: Record<string, string> = {};
   const lineas: LineaIngreso[] = [];
   const pedido = new Map<string, number>();
@@ -42,7 +48,8 @@ export function revisarLineas(filas: readonly FilaLinea[], productos: readonly P
       const s = separar(f.series);
       if (s.length === 0) errores[claveLinea(f, 'series')] = 'Escriba al menos una serie, una por unidad.';
       else if (new Set(s).size !== s.length) errores[claveLinea(f, 'series')] = 'Hay series repetidas. Cada unidad lleva una serie distinta.';
-      else if (s.some((x) => !SERIE.test(x) || x.includes('__'))) errores[claveLinea(f, 'series')] = 'Una serie tiene caracteres no válidos. Use letras, números, punto, guion o guion bajo.';
+      else if (s.some((x) => !(altaDeSeries ? SERIE_NUEVA : SERIE).test(x) || x.includes('__'))) errores[claveLinea(f, 'series')] = altaDeSeries ? MENSAJE_SERIE_NUEVA : 'Una serie tiene caracteres no válidos. Use letras, números, punto, guion o guion bajo.';
+      else if (altaDeSeries && new Set(s.map((x) => x.toLowerCase())).size !== s.length) errores[claveLinea(f, 'series')] = 'Hay series que solo se distinguen por mayúsculas. Cada unidad lleva una serie distinta.';
       else lineas.push({ productoId: p.id, cantidad: s.length, series: s });
       continue;
     }
@@ -86,8 +93,40 @@ export interface Resumen {
   readonly confirmar: string;
 }
 
-export function resumenIngreso(lineas: readonly LineaIngreso[], destino: UbicacionId, productos: readonly ProductoPanel[]): Resumen {
-  return { titulo: '¿Registrar este ingreso?', lineas: [`Entra a ${nombreAlmacen(destino)}:`, ...lineas.map((l) => textoLinea(l, productos))], confirmar: 'Sí, registrar el ingreso' };
+export function resumenIngreso(lineas: readonly LineaIngreso[], destino: UbicacionId, productos: readonly ProductoPanel[], avisos: readonly string[] = []): Resumen {
+  return { titulo: '¿Registrar este ingreso?', lineas: [`Entra a ${nombreAlmacen(destino)}:`, ...lineas.map((l) => textoLinea(l, productos)), ...avisos], confirmar: 'Sí, registrar el ingreso' };
+}
+
+/** Tope de series que se consultan antes de ingresar (una consulta acotada por serie; el servidor sigue siendo quien decide). */
+export const MAX_CONSULTAS_SERIE = 50;
+
+/** Consultas simultáneas como máximo al comprobar series. */
+export const CONCURRENCIA_SERIES = 5;
+
+/** Aplica `fn` a cada elemento de a `n` a la vez; conserva el orden de los resultados. */
+export async function enLotes<T, R>(items: readonly T[], n: number, fn: (x: T) => Promise<R>): Promise<R[]> {
+  const salida: R[] = [];
+  for (let i = 0; i < items.length; i += n) salida.push(...(await Promise.all(items.slice(i, i + n).map(fn))));
+  return salida;
+}
+
+export interface SerieNueva { readonly productoId: string; readonly serie: string }
+
+/** Las series de un ingreso, hasta `MAX_CONSULTAS_SERIE`, para consultar si ya existen con otras mayúsculas. */
+export const seriesNuevasDe = (lineas: readonly LineaIngreso[]): SerieNueva[] =>
+  lineas.flatMap((l) => (l.series ?? []).map((serie) => ({ productoId: l.productoId, serie }))).slice(0, MAX_CONSULTAS_SERIE);
+
+/**
+ * D3: avisos «La serie X ya existe como Y (con otras mayúsculas)». `encontradas[i]` es la respuesta de `buscarSerie` para
+ * `consultadas[i]`. Solo cuenta el mismo producto; no bloquea nada: el servidor admite la serie si el id exacto está libre.
+ */
+export function avisosMayusculas(consultadas: readonly SerieNueva[], encontradas: readonly (readonly UnidadSerie[] | null)[]): string[] {
+  const avisos: string[] = [];
+  consultadas.forEach((c, i) => {
+    const otra = (encontradas[i] ?? []).find((u) => u.productoId === c.productoId && u.serie !== c.serie && u.serie.toLowerCase() === c.serie.toLowerCase());
+    if (otra !== undefined) avisos.push(`Aviso: la serie ${c.serie} ya existe como ${otra.serie} (con otras mayúsculas).`);
+  });
+  return avisos;
 }
 
 export function resumenTraspaso(lineas: readonly LineaIngreso[], origen: UbicacionId, destino: UbicacionId, productos: readonly ProductoPanel[]): Resumen {

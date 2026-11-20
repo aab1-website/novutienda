@@ -21,7 +21,7 @@ export type { CambiosProducto, EntradaCrearProducto, EntradaProducto, PrecioUSD 
 export { ajustar, ingresar, traspasar } from './stock.js';
 export type { LineaAjuste, LineaIngreso, LineaTraspaso } from './stock.js';
 export { resolverMerma, solicitarMerma } from './merma.js';
-export { abrirConteo, cancelarConteo, cerrarConteo, registrarLineaConteo } from './conteo.js';
+export { abrirConteo, cancelarConteo, cerrarConteo, ORIGEN_COMO_CERO, registrarLineaConteo } from './conteo.js';
 export {
   aEnteroEscalado, analizarCsv, centavosAUsd, deshacerNeutralizacion, columnasDeExportacion, exportarProductosCsv, exportarProductosCsvLegado, importarCsvPorLotes, importarProductosCsv, leerCsvFilas, leerCsvProductos, MAX_FILAS_IMPORTACION, neutralizarCelda, simularImportacionCsv,
 } from './importacion.js';
@@ -38,7 +38,7 @@ export {
 export type { ItemPedido, RespuestaHttp, ResultadoPedido, SolicitudConfirmarPedido, TransaccionInventario } from './pedido.js';
 
 // Utilidades de dominio.
-export { esIdSegmento, esProductoId, identificadorParaAlta, esSerie, esUbicacionId, UBICACIONES } from './ids.js';
+export { esIdSegmento, esProductoId, identificadorParaAlta, esSerie, esSerieNueva, exigirSeriesNuevas, MENSAJE_SERIE_NUEVA, normalizarSerieBusqueda, esUbicacionId, UBICACIONES } from './ids.js';
 export type { UbicacionId } from './ids.js';
 export type { Autor } from './motor.js';
 /** Solo para pruebas: fija el reloj con el que se estampan los planes. */

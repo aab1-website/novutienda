@@ -9,7 +9,7 @@ import {
   type TransaccionBandeja,
   type TransaccionIdentidad,
 } from '@novutienda/nucleo';
-import { idMovimiento, idUnidad, ruta } from './ids.js';
+import { idMovimiento, idUnidad, normalizarSerieBusqueda, ruta } from './ids.js';
 import { MARCA_SERVIDOR, type Autor, type Datos, type PlanStock, type Referencia } from './motor.js';
 
 export const ORIGEN = 'inventarios';
@@ -65,6 +65,7 @@ export function aplicarPlan(tx: TransaccionIdentidad, plan: PlanStock, ctx: Cont
     delete doc['garantiaHasta'];
     doc['productoId'] = u.productoId;
     doc['serie'] = u.serie;
+    doc['serieBusqueda'] = normalizarSerieBusqueda(u.serie);
     doc['estado'] = u.estado;
     doc['ubicacionId'] = u.ubicacionId;
     if (u.modo === 'create') {

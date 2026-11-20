@@ -35,3 +35,8 @@ Motivo: Misma decisión del dueño del producto del 16/11/2026 (clave interna oc
 
 Sello: 98661c34c65a42d407563c2d48c7f492ff750eab5d03ffba5d66d05df9c272b2
 Motivo: Cambio de comportamiento deliberado, bloque S7-1 «precio vivo» (decisiones del dueño D-5 y DS-4: al desactivar un producto, sale del sitio en minutos). El escenario entrega a la consola el evento `producto.cambiado` de la desactivación de `p-inactivo`, como hace producción, y la consola retira la copia publicada de ese producto. Cambian solo dos referencias: sitio-contenido.json y sitio-seo.json dejan de incluir «Producto retirado». No cambia nada de precios, cotizaciones, inventario, caja, recibos ni del catálogo del asistente. Regenerado sobre las referencias vigentes de main (sello b48b7a52b4fa), sin pisarlas.
+
+## Series de prueba con formato válido (SN-A, SN-B, SN-C) a9c43b72e55c
+
+Sello: a9c43b72e55cdba6858fb466dd77e185cbe6487d0e14f22aa7a24a4f7d13cea0
+Motivo: 20/11/2026. Regla nueva de formato de series (3 a 60 caracteres, solo al ingresar; decisión D2 de Andres del 20/11/2026): las series de prueba «A», «B» y «C» del celular del escenario pasan a «SN-A», «SN-B» y «SN-C» (la serie «A» de los recibos no cambia). Regeneración autorizada por Andres el 20/11/2026 (botón «Sí, regenerar»). Cambia solo el texto de esas series en caja-eventos-venta.json, caja-existencias-tras-ventas.json, caja-ventas.json, recibos-documentos.json y recibo-A-000001-BOB.html; ningún monto, id, orden, cantidad ni evento.

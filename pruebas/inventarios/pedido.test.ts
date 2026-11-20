@@ -24,7 +24,7 @@ beforeEach(async () => {
   await altaProducto(db, producto('celular', { conSerie: true, garantiaMeses: 6 }));
   await cargar(db, 'lapiz', 'tienda', 5);
   await cargar(db, 'lapiz', 'deposito-1', 50); // el pedido NO descuenta del depósito
-  await cargar(db, 'celular', 'tienda', 3, ['A', 'B', 'C']);
+  await cargar(db, 'celular', 'tienda', 3, ['SN-A', 'SN-B', 'SN-C']);
 });
 
 describe('confirmarPedido', () => {
@@ -33,9 +33,9 @@ describe('confirmarPedido', () => {
     expect(r).toMatchObject({ ok: true, operacionId: 'nc-p1', repetida: false });
     expect(doc(db, 'existencias', 'lapiz__tienda')?.['cantidad']).toBe(3);
     expect(doc(db, 'existencias', 'lapiz__deposito-1')?.['cantidad']).toBe(50);
-    expect(doc(db, 'unidades', 'celular__A')).toMatchObject({ estado: 'vendida', ventaRef: { tipo: 'pedido', id: 'p1' } });
-    expect(doc(db, 'unidades', 'celular__B')?.['estado']).toBe('vendida');
-    expect(doc(db, 'unidades', 'celular__C')?.['estado']).toBe('disponible');
+    expect(doc(db, 'unidades', 'celular__SN-A')).toMatchObject({ estado: 'vendida', ventaRef: { tipo: 'pedido', id: 'p1' } });
+    expect(doc(db, 'unidades', 'celular__SN-B')?.['estado']).toBe('vendida');
+    expect(doc(db, 'unidades', 'celular__SN-C')?.['estado']).toBe('disponible');
     expect(doc(db, 'movimientos', 'nc-p1__lapiz__tienda')).toMatchObject({ tipo: 'pedido', delta: -2 });
     verificarInvariantes(db);
   });
@@ -55,7 +55,7 @@ describe('confirmarPedido', () => {
     verificarInvariantes(db);
     // tras reponer, el mismo pedido puede confirmarse
     await cargar(db, 'lapiz', 'tienda', 1);
-    await cargar(db, 'celular', 'tienda', 1, ['D']);
+    await cargar(db, 'celular', 'tienda', 1, ['SN-D']);
     expect((await pedir('p1', [{ productoId: 'lapiz', cantidad: 6 }, { productoId: 'celular', cantidad: 4 }])).ok).toBe(true);
     verificarInvariantes(db);
   });
@@ -179,7 +179,7 @@ describe('eventos consumidos', () => {
     await db.runTransaction(async (tx) => {
       const plan = await prepararSalida(tx, T, [
         { productoId: 'lapiz', cantidad: 2, almacenId: 'tienda' },
-        { productoId: 'celular', cantidad: 1, almacenId: 'tienda', series: ['B'] },
+        { productoId: 'celular', cantidad: 1, almacenId: 'tienda', series: ['SN-B'] },
       ]);
       aplicarSalida(tx, plan, { tipo: 'venta', id: 'v1' }, CAJ);
     });
@@ -191,7 +191,7 @@ describe('eventos consumidos', () => {
       aprobadoPor: 'u-sup',
       lineas: [
         { productoId: 'lapiz', cantidad: 2, almacenId: 'tienda', series: [] },
-        { productoId: 'celular', cantidad: 1, almacenId: 'tienda', series: ['B'] },
+        { productoId: 'celular', cantidad: 1, almacenId: 'tienda', series: ['SN-B'] },
       ],
       reembolsos: [{ medio: 'efectivo', moneda: 'BOB', monto: 100 }],
       turnoIdReembolso: 't1',
@@ -200,7 +200,7 @@ describe('eventos consumidos', () => {
     expect(await consumirVentaAnulada(ejecutorDesde(db), ev)).toBe(true);
     expect(await consumirVentaAnulada(ejecutorDesde(db), ev)).toBe(false);
     expect(doc(db, 'existencias', 'lapiz__tienda')?.['cantidad']).toBe(5);
-    expect(doc(db, 'unidades', 'celular__B')?.['estado']).toBe('disponible');
+    expect(doc(db, 'unidades', 'celular__SN-B')?.['estado']).toBe('disponible');
     expect(doc(db, 'movimientos', 'venta-anula-v1__lapiz__tienda')).toMatchObject({ por: 'u-sup', tipo: 'anulacion' });
     verificarInvariantes(db);
   });
@@ -209,7 +209,7 @@ describe('eventos consumidos', () => {
     await db.runTransaction(async (tx) => {
       const plan = await prepararSalida(tx, T, [
         { productoId: 'lapiz', cantidad: 2, almacenId: 'tienda' },
-        { productoId: 'celular', cantidad: 1, almacenId: 'tienda', series: ['B'] },
+        { productoId: 'celular', cantidad: 1, almacenId: 'tienda', series: ['SN-B'] },
       ]);
       aplicarSalida(tx, plan, { tipo: 'venta', id: 'v1' }, CAJ);
     });
@@ -218,7 +218,7 @@ describe('eventos consumidos', () => {
         ventaId: 'v1', turnoId: 't1', motivo: 'error', anuladaPor: 'u-caj', aprobadoPor: 'u-sup',
         lineas: [
           { productoId: 'lapiz', cantidad: 2, almacenId: 'tienda', series: [] },
-          { productoId: 'celular', cantidad: 1, almacenId: 'tienda', series: ['B'] },
+          { productoId: 'celular', cantidad: 1, almacenId: 'tienda', series: ['SN-B'] },
         ],
         reembolsos: [{ medio: 'efectivo', moneda: 'CLP', monto: 100 }],
         turnoIdReembolso: 't1',
@@ -228,7 +228,7 @@ describe('eventos consumidos', () => {
     expect(await consumirVentaAnulada(ejecutorDesde(db), ev)).toBe(true);
     expect(await consumirVentaAnulada(ejecutorDesde(db), ev)).toBe(false);
     expect(doc(db, 'existencias', 'lapiz__tienda')?.['cantidad']).toBe(5);
-    expect(doc(db, 'unidades', 'celular__B')?.['estado']).toBe('disponible');
+    expect(doc(db, 'unidades', 'celular__SN-B')?.['estado']).toBe('disponible');
     expect(doc(db, 'movimientos', 'venta-anula-v1__lapiz__tienda')).toMatchObject({ por: 'u-sup', tipo: 'anulacion' });
     verificarInvariantes(db);
   });

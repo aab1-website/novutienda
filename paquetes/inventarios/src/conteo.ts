@@ -239,14 +239,32 @@ export async function cerrarConteo(
       for (const p of sinContarIds) {
         const ex = t.existencia(p, ubicacionId);
         if (ex.cantidad <= 0) continue;
-        const faltan = prodSerie(t.producto(p)) ? [...ex.series] : [];
+        const conSerie = prodSerie(t.producto(p));
+        const faltan = conSerie ? [...ex.series] : [];
         firmaLineas.push({ productoId: p, contado: 0 });
+        // Deja constancia: la línea en 0 y su teórico, igual que si alguien hubiera contado ese producto. `origen` la distingue
+        // de las que cargó una persona: `conteo` (llamada) no se la entrega a `caj`.
+        const id = idLinea(conteoId, p);
+        t.escribir({
+          ruta: ruta(t.tenantId, 'conteoLineas', id),
+          modo: 'set',
+          datos: { conteoId, productoId: p, contado: 0, series: [], registradaPor: por.uid, registradaRol: por.rol, registradaEn: MARCA_SERVIDOR, origen: ORIGEN_COMO_CERO },
+        });
+        t.escribir({
+          ruta: ruta(t.tenantId, 'conteoTeoricos', id),
+          modo: 'set',
+          datos: { conteoId, productoId: p, cantidad: ex.cantidad, ...(conSerie ? { series: [...ex.series] } : {}) },
+        });
         mermas.push(pedirMerma(t, conteoId, p, ubicacionId, ex.cantidad, faltan, por.uid, por.rol));
         sinContar.push(p);
       }
       const avisos: string[] = [];
-      if (sinContar.length > 0) avisos.push(`Productos con existencia que nadie contó, tratados como contados en 0 (merma solicitada): ${sinContar.join(', ')}`);
-      for (const s of sobrantesConSerie) avisos.push(`Series halladas que no figuraban como disponibles en la ubicación (no se movieron): ${s.productoId}: ${s.series.join(', ')}`);
+      const nombrar = (p: string): string => {
+        const prod = t.producto(p);
+        return `${String(prod['nombre'] ?? p)} (SKU ${String(prod['sku'] ?? p)})`;
+      };
+      if (sinContar.length > 0) avisos.push(`Productos con existencia que nadie contó, tratados como contados en 0 (merma solicitada): ${sinContar.map(nombrar).join(', ')}`);
+      for (const s of sobrantesConSerie) avisos.push(`Series halladas que no figuraban como disponibles en la ubicación (no se movieron): ${nombrar(s.productoId)}: ${s.series.join(', ')}`);
       const { conteoAbiertoId: _libre, ...resto } = ubic ?? {};
       void _libre;
       t.escribir({ ruta: ruta(t.tenantId, 'ubicaciones', ubicacionId), modo: 'set', datos: resto });
@@ -255,6 +273,7 @@ export async function cerrarConteo(
         modo: 'set',
         datos: {
           ...conteo,
+          productos: [...productos, ...sinContar],
           estado: 'cerrado',
           cerradoPor: por.uid,
           cerradoEn: MARCA_SERVIDOR,
@@ -270,6 +289,9 @@ export async function cerrarConteo(
     },
   });
 }
+
+/** Marca de las líneas que el cierre genera para lo no contado (D9: `caj` no las recibe). */
+export const ORIGEN_COMO_CERO = 'cierre-como-cero';
 
 const prodSerie = (p: Datos): boolean => p['conSerie'] === true;
 
