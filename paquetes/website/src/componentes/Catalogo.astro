@@ -1,6 +1,7 @@
 ---
 import CatalogoVacio from './CatalogoVacio.astro';
 import Paginacion from './Paginacion.astro';
+import BuscadorCatalogo from '../islas/BuscadorCatalogo';
 import Filtros from '../islas/Filtros';
 import TarjetaProducto from './TarjetaProducto.astro';
 import { contenido } from '../contenido/instancia';
@@ -35,6 +36,7 @@ const marcas = marcasConRuta(marcasDe(contenido.productos)).map((m) => ({ nombre
   <p class="subtitulo">Por ahora no hay productos en esta categoría.</p>
 ) : (
   <>
+    <BuscadorCatalogo client:idle />
     <div class="catalogo">
       <aside aria-label="Filtros">
         <Filtros client:load productos={filtrables} marcas={marcas} marcaActual={marcaActual} pagina={actual} totalPaginas={total} inicial={config.mercadoInicial} mercados={config.mercados} redondeo={config.redondeo} />

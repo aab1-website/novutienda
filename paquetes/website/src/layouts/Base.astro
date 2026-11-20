@@ -5,8 +5,7 @@ import Pie from '../componentes/Pie.astro';
 import { contenido } from '../contenido/instancia';
 import { jsonLdSeguro, tituloPagina, urlAbsoluta } from '../lib/seo';
 import type { ConfigCliente } from '../lib/config-cliente';
-import { enlaceWhatsApp } from '../lib/whatsapp';
-import Icono from '../componentes/Icono.astro';
+import WhatsAppFlotante from '../islas/WhatsAppFlotante';
 import { iconoDelSitio, imagenAlCompartir } from '../contenido/logo-subido.js';
 import { debeNoIndexar } from '../lib/indexacion';
 
@@ -41,7 +40,6 @@ const publico: ConfigCliente = {
 const urlImagen = imagen === undefined ? undefined : imagen.startsWith('/') ? urlAbsoluta(config.origen, imagen) : imagen;
 const urlCompartir = imagenAlCompartir(urlImagen, config.imagenCompartir);
 const urlIcono = iconoDelSitio(config.iconoSitio, config.logo);
-const waGeneral = enlaceWhatsApp(config.whatsappNovuchat, 'Hola, tengo una consulta.');
 ---
 <!doctype html>
 <html lang="es" data-plantilla={config.plantilla}>
@@ -80,10 +78,6 @@ const waGeneral = enlaceWhatsApp(config.whatsappNovuchat, 'Hola, tengo una consu
       <slot />
     </main>
     <Pie />
-    {waGeneral !== null && (
-      <a class="whatsapp-flotante" href={waGeneral} target="_blank" rel="noopener noreferrer" aria-label="Escribir por WhatsApp">
-        <Icono nombre="chat" tamano={28} />
-      </a>
-    )}
+    <WhatsAppFlotante client:idle whatsapp={config.whatsappNovuchat} />
   </body>
 </html>
