@@ -272,10 +272,21 @@ describe('V-06: el recibo se consulta cada 3 s y se puede reintentar', () => {
     await u.click(boton('Cobrar'));
     await screen.findByRole('heading', { name: 'Cobro' });
     // Las esperas entre consultas son falsas desde aquí; el resto de la prueba sigue con eventos directos.
+    const esperaReal = globalThis.setTimeout;
     vi.useFakeTimers({ toFake: ['setTimeout'] });
     fireEvent.click(boton('Confirmar cobro'));
     await screen.findByText('Preparando el recibo…');
-    for (let i = 0; i < 10; i++) await vi.advanceTimersByTimeAsync(3000);
+    // Cada avance de 3 s espera a que la consulta anterior haya terminado y programado la siguiente (se usa el setTimeout real, guardado antes de falsearlo):
+    // sin esto, con la máquina cargada el avance llegaba antes de que existiera el temporizador y faltaban consultas.
+    const hasta = async (n: number): Promise<void> => {
+      for (let i = 0; i < 2000 && consultas < n; i++) await new Promise<void>((r) => esperaReal(r, 0));
+      expect(consultas).toBe(n);
+    };
+    await hasta(1);
+    for (let i = 0; i < 10; i++) {
+      await vi.advanceTimersByTimeAsync(3000);
+      await hasta(i + 2);
+    }
     expect(await screen.findByText(/El recibo todavía no está listo/)).toBeTruthy();
     expect(consultas).toBe(11);
     bloqueado = false;
@@ -321,17 +332,30 @@ describe('V-07 y V-08: historial con fechas, búsqueda, corte, recibo y anulaci�
     await u.type(campo(/Ventas hasta/), '2026-11-01');
     expect(await screen.findByText('La fecha Desde no puede ser posterior a Hasta.')).toBeTruthy();
     // Con el rango invertido nunca se consulta con las dos fechas.
-    expect(e.api.llamadas.filter((l) => l.nombre === 'listarVentas').some((l) => (l.entrada as { desde?: string; hasta?: string }).desde !== undefined && (l.entrada as { hasta?: string }).hasta !== undefined)).toBe(false);
+    const consultas = e.api.llamadas.filter((l) => l.nombre === 'misVentas');
+    expect(consultas.length).toBeGreaterThan(0);
+    expect(consultas.some((l) => (l.entrada as { desde?: string; hasta?: string }).desde !== undefined && (l.entrada as { hasta?: string }).hasta !== undefined)).toBe(false);
   });
 
-  it('avisa que la lista está cortada al llegar al tope de 200', async () => {
+  it('con más de 50 ventas ofrece «Cargar más» y suma la página siguiente', async () => {
     const { e } = await montar();
     cleanup();
     const base = (await e.api.llamar('listarVentas', {}))[0] as VentaPos;
-    const muchas = Array.from({ length: 200 }, (_, i): VentaPos => ({ ...base, ventaId: `v-${i}`, receiptNo: i + 1 }));
-    (e.api as { llamar: unknown }).llamar = async (n: string) => (n === 'listarVentas' ? muchas : []);
+    const venta = (i: number): VentaPos => ({ ...base, ventaId: `v-${i}`, receiptNo: i + 1, creadoEnMs: 1_000_000 - i });
+    const cursor = { creadoEnMs: 1_000_000 - 49, ventaId: 'v-49' };
+    const pedidos: unknown[] = [];
+    (e.api as { llamar: unknown }).llamar = async (n: string, entrada?: { despuesDe?: unknown }) => {
+      if (n !== 'misVentas') return [];
+      pedidos.push(entrada?.despuesDe);
+      return entrada?.despuesDe === undefined
+        ? { ventas: Array.from({ length: 50 }, (_, i) => venta(i)), siguiente: cursor }
+        : { ventas: [venta(50)], siguiente: null };
+    };
     render(pantalla(e, 'historial'));
-    expect(await screen.findByText(/Se muestran las 200 ventas más recientes y puede haber más/)).toBeTruthy();
+    const u = userEvent.setup();
+    await u.click(await screen.findByRole('button', { name: 'Cargar más' }));
+    await waitFor(() => expect(screen.queryByRole('button', { name: 'Cargar más' })).toBeNull());
+    expect(pedidos).toEqual([undefined, cursor]);
   });
 
   it('«Ver recibo» abre el comprobante en un diálogo', async () => {

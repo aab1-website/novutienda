@@ -45,6 +45,8 @@ export const ROLES_ACCION: Readonly<Record<string, readonly Rol[]>> = {
   'pos.cancelarCarrito': ['caj', 'sup', 'adm'],
   'pos.misCarritos': ['caj', 'sup', 'adm'],
   'pos.miTurno': ['caj', 'sup', 'adm'],
+  'pos.resumenTurno': ['caj', 'sup', 'adm'],
+  'pos.misTurnos': ['caj', 'sup', 'adm'],
   'pos.misVentas': ['caj', 'sup', 'adm'],
   'pos.venta': ['caj', 'sup', 'adm'],
   'pos.aprobaciones': ['caj', 'sup', 'adm'],

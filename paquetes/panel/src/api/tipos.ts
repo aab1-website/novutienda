@@ -807,3 +807,51 @@ export interface CotizacionVista {
   readonly estado: 'vigente' | 'ultimo_verificado';
 }
 export type CotizacionesVigentes = Readonly<Record<string, CotizacionVista | null>>;
+
+// «Mi reporte»: formas de `pos.resumenTurno`, `pos.misTurnos` y `pos.misVentas` (paquetes/pos/src/reporte.ts).
+
+export interface CursorVenta {
+  readonly creadoEnMs: number;
+  readonly ventaId: string;
+}
+export interface CursorTurno {
+  readonly abiertoEnMs: number;
+  readonly turnoId: string;
+}
+
+export interface MontosPorMedioVista {
+  readonly efectivo: number;
+  readonly qr: number;
+  readonly transferencia: number;
+  readonly credito: number;
+}
+
+export interface ResumenMonedaVista {
+  readonly ventas: number;
+  readonly bruto: number;
+  readonly descuentos: { readonly cantidad: number; readonly monto: number };
+  readonly neto: number;
+  readonly porMedio: MontosPorMedioVista;
+  readonly anuladas: { readonly cantidad: number; readonly monto: number };
+  readonly reembolsos: MontosPorMedioVista;
+  readonly ingresos: number;
+  readonly egresos: number;
+}
+
+export interface FilaTurnoVista {
+  readonly turnoId: string;
+  readonly cajaId: string;
+  readonly cajeroUid: string;
+  readonly estado: 'abierto' | 'cerrado' | 'cerrado_forzado';
+  readonly abiertoEnMs: number;
+  readonly cerradoEnMs?: number;
+  readonly apertura: MontosPorMoneda;
+  readonly totales: TotalesTurno;
+}
+
+export interface ResumenTurnoVista {
+  readonly turno: FilaTurnoVista;
+  readonly monedas: readonly string[];
+  readonly porMoneda: Readonly<Record<string, ResumenMonedaVista>>;
+  readonly truncado: boolean;
+}

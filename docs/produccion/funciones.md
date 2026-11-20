@@ -67,7 +67,9 @@ const { data } = await llamar({ accion: 'abrirTurno', tenantId: '<tenant>', dato
 | `cobrarCredito` | TODOS | `{ requestId, ventaId, cobro: { medio, monto, referencia? } }` | `{ cobro, repetido }` |
 | `leerConfig` / `guardarConfig` | TODOS / ADM | `{}` / `{ config }` | `{ config }` |
 | `miTurno` | TODOS | `{}` | `{ turno \| null, cajaOcupada, proyeccion? }` (el vendedor ve solo el suyo) |
-| `misVentas` | TODOS | `{ turnoId?, desde?, hasta?, limite?, soloMias? }` (ms Unix) | `{ ventas[] }` (el vendedor, solo las suyas) |
+| `misVentas` | TODOS | `{ turnoId?, desde?, hasta?, limite?, soloMias?, despuesDe?: { creadoEnMs, ventaId } }` (ms Unix) | `{ ventas[], siguiente }` (el vendedor, solo las suyas, todo su histórico; de a 50 por página; `siguiente` es el cursor para la página que sigue o `null`) |
+| `resumenTurno` | TODOS (el vendedor, solo sus turnos) | `{ turnoId?, cajeroUid? }` (sin `turnoId`, el turno abierto de la caja; con `cajeroUid`, solo si es de ese cajero, y si no, `{ resumen: null }`; «Mi reporte» de SUP/ADM envía su propio uid) | `{ resumen \| null }`; por moneda: ventas confirmadas, bruto, descuentos (cantidad y monto), neto, cobros por medio, anuladas, reembolsos, ingresos y egresos excepcionales; las ventas se cuentan y suman con agregaciones de Firestore por moneda y estado (`count`, `sum` de `subtotal` y `total`; descuento = bruto − neto; cantidad con descuento = `count` de `descuento.monto > 0`), sin leer documentos; las anulaciones se leen (hasta 2000) y `truncado` avisa si hay más (solo afecta a los reembolsos). Índices de `ventas` requeridos en producción: ver «Índices de las agregaciones» en este documento. Sin turno abierto: `{ resumen: null }`. Turno ajeno pedido por un vendedor: `permission-denied`. |
+| `misTurnos` | TODOS (el vendedor, solo los suyos; SUP/ADM pueden filtrar con `cajeroUid`) | `{ desde?, hasta?, limite? (máx. 50), cajeroUid?, despuesDe?: { abiertoEnMs, turnoId } }` | `{ turnos[], siguiente }`: del más reciente al más antiguo, con sus totales, sin datos internos (carritos, motivos de cierre) |
 | `venta` | TODOS (el vendedor, solo las suyas) | `{ ventaId }` | `{ venta }` |
 | `aprobaciones` / `aprobacion` | TODOS (el vendedor, solo las que él solicitó) | `{ estado?, limite? }` / `{ aprobacionId }` | `{ aprobaciones[] }` / `{ aprobacion }` |
 | `movimientosCaja` | TODOS (el vendedor, solo su turno) | `{ turnoId, limite? }` | `{ movimientos[] }` |
@@ -317,3 +319,8 @@ Guion paso a paso con los comandos exactos: `pase-a-staging.md`.
 6. Crear la alerta de Cloud Monitoring y su canal de correo (`alertas.md`).
 7. Activar la política TTL de `limitesTasa.expiraEn` (viene en `firestore.indexes.json`).
 8. Confirmar en staging que el runtime trae ffmpeg con `libx264` (humo con un `.mp4` y un `.webm` reales) y decidir D2 y D3 del video (`decisiones.md`, 11/11/2026).
+
+
+## Índices de las agregaciones de `resumenTurno`
+
+`resumenTurno` consulta `ventas` con igualdades sobre `turnoId`, `moneda` y `estado` y agrega con `count()`, `sum('subtotal')` y `sum('total')`; la cantidad de ventas con descuento usa además `descuento.monto > 0`. El emulador no exige índices compuestos, así que esto se confirma en staging (un `FAILED_PRECONDITION` trae el enlace del índice exacto). Índices esperados en `ventas` (alcance COLLECTION): `(turnoId, moneda, estado, total)`, `(turnoId, moneda, estado, subtotal)` y `(turnoId, moneda, estado, descuento.monto)`. La lectura de `anulaciones` por `turnoIdReembolso ==` usa solo el índice de campo único.

@@ -285,6 +285,34 @@ export const TRADUCCION: { readonly [N in NombreCallable]: Traduccion<N> } = {
       return e.conSolicitudAnulacion === true ? ventas.filter((v) => v.solicitudAnulacion !== undefined && v.estado === 'confirmada') : ventas;
     },
   },
+  resumenTurno: {
+    usa: ['pos.resumenTurno'],
+    ejecutar: async (c, e) => {
+      const r = await c.llamar('pos', 'resumenTurno', sinVacios({ turnoId: e.turnoId, cajeroUid: e.cajeroUid }));
+      return ((r as { resumen?: unknown }).resumen ?? null) as never;
+    },
+  },
+  misTurnos: {
+    usa: ['pos.misTurnos'],
+    ejecutar: async (c, e) =>
+      (await c.llamar('pos', 'misTurnos', sinVacios({
+        desde: e.desde === undefined ? undefined : msDeFecha(e.desde, false),
+        hasta: e.hasta === undefined ? undefined : msDeFecha(e.hasta, true),
+        cajeroUid: e.cajeroUid,
+        despuesDe: e.despuesDe,
+      }))) as never,
+  },
+  misVentas: {
+    usa: ['pos.misVentas'],
+    ejecutar: async (c, e) =>
+      (await c.llamar('pos', 'misVentas', sinVacios({
+        turnoId: e.turnoId,
+        desde: e.desde === undefined ? undefined : msDeFecha(e.desde, false),
+        hasta: e.hasta === undefined ? undefined : msDeFecha(e.hasta, true),
+        despuesDe: e.despuesDe,
+        limite: 50,
+      }))) as never,
+  },
   listarAprobaciones: {
     usa: ['pos.aprobaciones'],
     ejecutar: async (c, e) => {

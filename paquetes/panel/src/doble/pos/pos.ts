@@ -4,7 +4,9 @@ import type {
 } from '../../api/tipos.js';
 import { MEDIOS_PAGO } from '../../api/tipos.js';
 import { cotizacionDeMercado, diferenciaPorMoneda, efectivoEsperado, monedasDeCobro, monedasDelTurno, precioDeCobro, sumarTotales, TOTALES_VACIOS } from '../../pantallas/pos/arqueo.js';
+import { filaTurnoDe, resumirTurnoDoble } from '../../pantallas/pos/resumen-turno.js';
 import { aCsv } from '../../util/csv.js';
+import type { CursorTurno, CursorVenta, ResumenTurnoVista } from '../../api/tipos.js';
 import { auditar, detalleDeFaltantes, fallo, fechaLaPaz, iso, recalcular, type Contexto, type EstadoDoble } from '../estado.js';
 
 /** Debe coincidir con `MAX_CARRITOS_ABIERTOS` de `@novutienda/pos`. */
@@ -41,6 +43,30 @@ const TOPE_SERIES_POR_VENTA = 100;
 /** Deben coincidir con `ALMACENES_POS` y `MAX_CANTIDAD_LINEA` de `@novutienda/pos`. */
 const ALMACENES_POS: readonly string[] = ['tienda', 'deposito-1', 'deposito-2'];
 const MAX_CANTIDAD_LINEA = 100_000;
+
+/** Debe coincidir con `FILAS_POR_PAGINA` de `@novutienda/pos`. */
+const FILAS_POR_PAGINA = 50;
+
+/** Anulaciones (`anulaciones/{ventaId}` en el servidor): el reporte necesita en qué turno se reembolsó. Aparte de `EstadoDoble`, igual que los carritos. */
+interface AnulacionDoble {
+  readonly turnoIdReembolso: string;
+  readonly moneda: string;
+  readonly reembolsos: readonly { medio: 'efectivo' | 'qr' | 'transferencia'; monto: number }[];
+  readonly creditoCancelado: number;
+}
+const ANULACIONES = new WeakMap<EstadoDoble, AnulacionDoble[]>();
+function anulacionesDe(c: Contexto): AnulacionDoble[] {
+  let x = ANULACIONES.get(c.e);
+  if (x === undefined) {
+    x = [];
+    ANULACIONES.set(c.e, x);
+  }
+  return x;
+}
+
+function resumenDe(c: Contexto, t: TurnoPos): ResumenTurnoVista {
+  return resumirTurnoDoble(t, c.e.ventas.values(), anulacionesDe(c), c.e.comercial.monedasCaja);
+}
 
 type H<N extends NombreCallable> = (c: Contexto, e: Entrada<N>) => Salida<N> | Promise<Salida<N>>;
 
@@ -202,7 +228,7 @@ function validarPagos(c: Contexto, pagos: readonly { medio: string; moneda: stri
 }
 
 export const handlersPos: {
-  [N in 'abrirTurno' | 'cerrarTurno' | 'cerrarTurnoForzado' | 'confirmarVenta' | 'crearCarrito' | 'guardarCarrito' | 'cancelarCarrito' | 'misCarritos' | 'solicitarAprobacion' | 'resolverAprobacion' | 'solicitarAnulacion' | 'aprobarAnulacion' | 'registrarMovimientoCaja' | 'cobrarCredito' | 'guardarConfigPos' | 'leerConfigPos' | 'turnoActual' | 'listarTurnos' | 'listarVentas' | 'listarAprobaciones' | 'listarMovimientosCaja' | 'listarCreditos' | 'listarAuditoria' | 'exportarVentasCsv']: H<N>;
+  [N in 'abrirTurno' | 'cerrarTurno' | 'cerrarTurnoForzado' | 'confirmarVenta' | 'crearCarrito' | 'guardarCarrito' | 'cancelarCarrito' | 'misCarritos' | 'solicitarAprobacion' | 'resolverAprobacion' | 'solicitarAnulacion' | 'aprobarAnulacion' | 'registrarMovimientoCaja' | 'cobrarCredito' | 'guardarConfigPos' | 'leerConfigPos' | 'turnoActual' | 'resumenTurno' | 'misTurnos' | 'misVentas' | 'listarTurnos' | 'listarVentas' | 'listarAprobaciones' | 'listarMovimientosCaja' | 'listarCreditos' | 'listarAuditoria' | 'exportarVentasCsv']: H<N>;
 } = {
   abrirTurno(c, e) {
     const id = exigirUuid(e.turnoId, 'turnoId');
@@ -510,6 +536,7 @@ export const handlersPos: {
       c.e.creditos.set(v.ventaId, { ...cred, estado: 'anulado' });
     }
     c.e.turnos.set(nt.turnoId, nt);
+    anulacionesDe(c).push({ turnoIdReembolso: turno.turnoId, moneda: v.moneda, reembolsos, creditoCancelado: cred?.monto ?? 0 });
     c.e.ventas.set(v.ventaId, { ...v, estado: 'anulada' });
     // Revierte stock y series.
     for (const l of v.lineas) {
@@ -594,6 +621,44 @@ export const handlersPos: {
   turnoActual: (c) => {
     const t = turnoAbierto(c);
     return t !== undefined && (c.rol !== 'caj' || t.cajeroUid === c.uid) ? t : null;
+  },
+  resumenTurno: (c, e) => {
+    const t = e.turnoId === undefined ? turnoAbierto(c) : c.e.turnos.get(e.turnoId);
+    if (t === undefined) {
+      if (e.turnoId !== undefined) throw fallo('sin-turno', 'El turno no existe');
+      return null;
+    }
+    if ((t.cajeroUid !== c.uid && c.rol === 'caj') || (e.cajeroUid !== undefined && t.cajeroUid !== e.cajeroUid)) {
+      if (e.turnoId === undefined) return null;
+      throw fallo('turno-ajeno');
+    }
+    return resumenDe(c, t);
+  },
+  misTurnos: (c, e) => {
+    const lista = [...c.e.turnos.values()]
+      .filter((t) => (c.rol === 'caj' ? t.cajeroUid === c.uid : true))
+      .filter((t) => (e.cajeroUid === undefined ? true : t.cajeroUid === e.cajeroUid))
+      .filter((t) => (e.desde === undefined ? true : fechaLaPaz(t.abiertoEnMs) >= e.desde))
+      .filter((t) => (e.hasta === undefined ? true : fechaLaPaz(t.abiertoEnMs) <= e.hasta))
+      .sort((a, b) => b.abiertoEnMs - a.abiertoEnMs || (a.turnoId < b.turnoId ? 1 : -1))
+      .filter((t) => (e.despuesDe === undefined ? true : t.abiertoEnMs < e.despuesDe.abiertoEnMs || (t.abiertoEnMs === e.despuesDe.abiertoEnMs && t.turnoId < e.despuesDe.turnoId)));
+    const pagina = lista.slice(0, FILAS_POR_PAGINA);
+    const ultima = pagina[pagina.length - 1];
+    const siguiente: CursorTurno | null = lista.length > FILAS_POR_PAGINA && ultima !== undefined ? { abiertoEnMs: ultima.abiertoEnMs, turnoId: ultima.turnoId } : null;
+    return { turnos: pagina.map(filaTurnoDe), siguiente };
+  },
+  misVentas: (c, e) => {
+    const lista = [...c.e.ventas.values()]
+      .filter((v) => (c.rol === 'caj' ? v.cajeroUid === c.uid : true))
+      .filter((v) => (e.turnoId === undefined ? true : v.turnoId === e.turnoId))
+      .filter((v) => (e.desde === undefined ? true : fechaLaPaz(v.creadoEnMs) >= e.desde))
+      .filter((v) => (e.hasta === undefined ? true : fechaLaPaz(v.creadoEnMs) <= e.hasta))
+      .sort((a, b) => b.creadoEnMs - a.creadoEnMs || (a.ventaId < b.ventaId ? 1 : -1))
+      .filter((v) => (e.despuesDe === undefined ? true : v.creadoEnMs < e.despuesDe.creadoEnMs || (v.creadoEnMs === e.despuesDe.creadoEnMs && v.ventaId < e.despuesDe.ventaId)));
+    const pagina = lista.slice(0, FILAS_POR_PAGINA);
+    const ultima = pagina[pagina.length - 1];
+    const siguiente: CursorVenta | null = lista.length > FILAS_POR_PAGINA && ultima !== undefined ? { creadoEnMs: ultima.creadoEnMs, ventaId: ultima.ventaId } : null;
+    return { ventas: pagina, siguiente };
   },
   listarTurnos: (c, e) =>
     [...c.e.turnos.values()]
