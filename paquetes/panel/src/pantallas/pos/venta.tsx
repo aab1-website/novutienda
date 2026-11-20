@@ -10,12 +10,14 @@ import { textoACentavos } from '../../util/dinero.js';
 import { VentaCaja, VentaCreditos } from './venta-caja.js';
 import { VentaCierre } from './venta-cierre.js';
 import { VentaHistorial } from './venta-historial.js';
+import { VentaReporte } from './venta-reporte.js';
 import { VentaTerminal } from './venta-terminal.js';
 
 const PESTANAS = [
   { id: 'terminal', titulo: 'Terminal' },
   { id: 'caja', titulo: 'Ing. y Egr. Excepcionales' },
   { id: 'creditos', titulo: 'Créditos' },
+  { id: 'reporte', titulo: 'Mi reporte' },
   { id: 'historial', titulo: 'Ventas y anulaciones' },
   { id: 'cierre', titulo: 'Cierre de turno' },
 ];
@@ -95,6 +97,7 @@ export function PantallaVenta({ sub }: { sub: string }): JSX.Element {
           {actual === 'caja' && turno.datos && <VentaCaja turno={turno.datos} alCambiar={turno.recargar} />}
           {actual === 'cierre' && turno.datos && <VentaCierre turno={turno.datos} alCerrar={turno.recargar} alRetomar={retomar} />}
           {actual === 'creditos' && <VentaCreditos alCambiar={turno.recargar} />}
+          {actual === 'reporte' && <VentaReporte />}
           {actual === 'historial' && <VentaHistorial />}
         </>
       )}

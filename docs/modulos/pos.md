@@ -36,7 +36,16 @@ Un cajero puede dejar un carrito en espera y retomarlo, aunque recargue, salga o
 Emite `venta.confirmada.v1`, `venta.anulada.v1`, `turno.cerrado.v1`. Consume cotización vigente (núcleo) y existencias (lectura).
 
 ## Pantallas
-Ingreso (correo y contraseña), apertura de turno (efectivo por moneda), terminal, cobro, solicitud/aprobación de descuento, recibo (vista, PDF, imprimir, WhatsApp, N.º de factura SUMA), Ing. y Egr. Excepcionales, cobro de créditos, cierre con conteo por moneda, supervisión en vivo, anulaciones, auditoría y CSV, configuración del POS, usuarios (3).
+Ingreso (correo y contraseña), apertura de turno (efectivo por moneda), terminal, cobro, solicitud/aprobación de descuento, recibo (vista, PDF, imprimir, WhatsApp, N.º de factura SUMA), Ing. y Egr. Excepcionales, cobro de créditos, cierre con conteo por moneda, «Mi reporte», supervisión en vivo, anulaciones, auditoría y CSV, configuración del POS, usuarios (3).
+
+## «Mi reporte» (reporte del cajero, 19/11/2026)
+Pestaña nueva de Venta, para que el cajero vea en línea sus propias ventas y las de días pasados. «Ventas y anulaciones» queda para el detalle.
+- **Turno actual**, en vivo: ventas, bruto, descuentos, neto, cobros por medio y moneda, anulaciones, ingresos y egresos excepcionales. Se actualiza cada 30 s solo mientras la pestaña está visible, tras cada venta y con «Actualizar». Acción `resumenTurno`.
+- **Días anteriores**: lista de sus turnos (acción `misTurnos`) con fecha, horas y totales, de a 50 con «Cargar más»; al abrir uno se ve su resumen y sus ventas.
+- **«Ventas y anulaciones»** (`misVentas`) pagina con cursor `despuesDe {creadoEnMs, ventaId}`, de a 50, y reemplaza el tope fijo de 200.
+- **Quién ve qué:** el cajero, solo lo suyo y todo su histórico (el servidor filtra por `cajeroUid`; pedir un turno ajeno da `permission-denied`). Supervisor y administrador pueden pedir cualquier turno.
+- **Datos e índice:** nuevo índice `turnos(cajeroUid, abiertoEnMs desc)`. Funciones puras en `paquetes/pos/src/reporte.ts`.
+- **Costo de lecturas:** el resumen lee las ventas y anulaciones del turno (hasta 2000 de cada una) en cada actualización, y solo mientras la pestaña está abierta; si se pasa del tope, avisa con `truncado`. Detalle: `docs/produccion/funciones.md`.
 
 ## Ingresos y egresos excepcionales
 La pestaña «Ing. y Egr. Excepcionales» es para dinero que entra o sale de la caja sin ser una venta.

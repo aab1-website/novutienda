@@ -5,3 +5,5 @@
 export { precioDeCobro } from './arqueo.js';
 export type { PrecioMercadoVista } from '../../util/precio.js';
 export type { CotizacionesVigentes, MercadoDeclarado, ProductoPanel } from '../../api/tipos.js';
+// Resumen del turno del doble (la prueba de pruebas/pos lo compara con `resumirTurno` del módulo).
+export { resumirTurnoDoble } from './resumen-turno.js';

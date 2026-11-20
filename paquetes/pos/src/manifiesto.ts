@@ -20,6 +20,8 @@ const ACCIONES_POS: readonly (readonly [string, readonly Rol[]])[] = [
   ['cancelarCarrito', ['caj', 'sup', 'adm']],
   ['misCarritos', ['caj', 'sup', 'adm']],
   ['miTurno', ['caj', 'sup', 'adm']],
+  ['resumenTurno', ['caj', 'sup', 'adm']],
+  ['misTurnos', ['caj', 'sup', 'adm']],
   ['misVentas', ['caj', 'sup', 'adm']],
   ['venta', ['caj', 'sup', 'adm']],
   ['aprobaciones', ['caj', 'sup', 'adm']],

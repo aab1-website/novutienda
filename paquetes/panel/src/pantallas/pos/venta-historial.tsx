@@ -1,6 +1,8 @@
 import type { JSX } from 'preact';
 import { useState } from 'preact/hooks';
 import type { VentaPos } from '../../api/tipos.js';
+import { usePaginado } from './paginado.js';
+import type { CursorVenta } from '../../api/tipos.js';
 import { Alerta, Boton, Campo, Cargando, ErrorCarga, Seccion, fechaHora } from '../../ui/comun.js';
 import { useApp } from '../../ui/contexto.js';
 import { Dialogo } from '../../ui/dialogo.js';
@@ -8,9 +10,6 @@ import { useAccion, useCarga } from '../../ui/hooks.js';
 import { Tabla } from '../../ui/tabla.js';
 import { formatearMonto } from '../../util/dinero.js';
 import { ReciboVista } from '../recibos/recibo-vista.js';
-
-/** Tope de ventas que el servidor devuelve por consulta (`listarVentas` pide 200). */
-export const TOPE_VENTAS = 200;
 
 const numeroDe = (v: VentaPos): string => `${v.serie}-${String(v.receiptNo).padStart(6, '0')}`;
 const estadoDe = (v: VentaPos): string => (v.estado === 'anulada' ? 'Anulada' : v.solicitudAnulacion ? 'Anulación solicitada' : 'Confirmada');
@@ -71,10 +70,17 @@ export function VentaHistorial(): JSX.Element {
   const [desde, setDesde] = useState('');
   const [hasta, setHasta] = useState('');
   const rangoMalo = desde !== '' && hasta !== '' && desde > hasta;
-  const ventas = useCarga(() => api.llamar('listarVentas', rangoMalo ? {} : { ...(desde !== '' ? { desde } : {}), ...(hasta !== '' ? { hasta } : {}) }), [desde, hasta, rangoMalo]);
+  // De a 50 ventas, la más reciente primero; «Cargar más» pide las siguientes con el cursor del servidor.
+  const ventas = usePaginado<VentaPos, CursorVenta>(async (cursor) => {
+    const r = await api.llamar('misVentas', {
+      ...(rangoMalo ? {} : { ...(desde !== '' ? { desde } : {}), ...(hasta !== '' ? { hasta } : {}) }),
+      ...(cursor !== undefined ? { despuesDe: cursor } : {}),
+    });
+    return { filas: r.ventas, siguiente: r.siguiente };
+  }, [desde, hasta, rangoMalo]);
   const [verRecibo, setVerRecibo] = useState<VentaPos | null>(null);
   const [anular, setAnular] = useState<VentaPos | null>(null);
-  const filas = ventas.datos ?? [];
+  const filas = ventas.filas;
   return (
     <Seccion titulo={usuario.rol === 'caj' ? 'Mis ventas' : 'Ventas'}>
       <div class="cuadricula">
@@ -84,14 +90,13 @@ export function VentaHistorial(): JSX.Element {
       {rangoMalo && <Alerta>La fecha Desde no puede ser posterior a Hasta.</Alerta>}
       {ventas.cargando && <Cargando />}
       {ventas.error && <ErrorCarga error={ventas.error} reintentar={ventas.recargar} />}
-      {ventas.datos && (
+      {!ventas.cargando && !ventas.error && (
         <Tabla
           titulo="Ventas registradas"
           filas={filas}
           clave={(v) => v.ventaId}
           vacio={{ titulo: desde !== '' || hasta !== '' ? 'No hay ventas en esas fechas' : 'Todavía no hay ventas' }}
           buscar={{ etiqueta: 'Buscar por número de recibo', en: (v) => [numeroDe(v)] }}
-          cortada={filas.length >= TOPE_VENTAS ? { mostradas: filas.length, mensaje: `Se muestran las ${filas.length} ventas más recientes y puede haber más. Acote las fechas para ver las demás.` } : undefined}
           columnas={[
             { id: 'recibo', titulo: 'Recibo', valor: numeroDe, encabezadoFila: true },
             { id: 'fecha', titulo: 'Fecha', valor: (v) => v.creadoEnMs, celda: (v) => fechaHora(v.creadoEnMs), ordenable: true },
@@ -109,6 +114,9 @@ export function VentaHistorial(): JSX.Element {
           )}
         />
       )}
+      {ventas.hayMas && <Alerta tipo="info">Busca solo entre las ventas cargadas; use «Cargar más» o acote las fechas.</Alerta>}
+      {ventas.errorMas && <Alerta>{ventas.errorMas}</Alerta>}
+      {ventas.hayMas && <Boton variante="secundario" onClick={ventas.cargarMas} ocupado={ventas.cargandoMas}>Cargar más</Boton>}
       {verRecibo && <DialogoRecibo v={verRecibo} alCerrar={() => setVerRecibo(null)} />}
       {anular && <DialogoAnulacion v={anular} alCerrar={() => setAnular(null)} alSolicitar={() => { setAnular(null); ventas.recargar(); }} />}
     </Seccion>

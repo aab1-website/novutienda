@@ -59,14 +59,21 @@ const ACCIONES: Readonly<Record<string, WireHandler>> = {
     const turno = await legado(c, 'turnoActual', {});
     return { turno: turno ?? null, cajaOcupada: turno === null && abierto !== undefined };
   },
-  'pos.misVentas': async (c, d) => {
-    const ventas = (await legado(c, 'listarVentas', {
+  'pos.misVentas': (c, d) =>
+    legado(c, 'misVentas', {
       ...(d['turnoId'] !== undefined ? { turnoId: d['turnoId'] } : {}),
       ...(d['desde'] !== undefined ? { desde: msAFecha(d['desde']) } : {}),
       ...(d['hasta'] !== undefined ? { hasta: msAFecha(d['hasta']) } : {}),
-    })) as Obj[];
-    return { ventas: lim(ventas, d) };
-  },
+      ...(d['despuesDe'] !== undefined ? { despuesDe: d['despuesDe'] } : {}),
+    }),
+  'pos.resumenTurno': async (c, d) => ({ resumen: await legado(c, 'resumenTurno', { ...(d['turnoId'] !== undefined ? { turnoId: d['turnoId'] } : {}), ...(d['cajeroUid'] !== undefined ? { cajeroUid: d['cajeroUid'] } : {}) }) }),
+  'pos.misTurnos': (c, d) =>
+    legado(c, 'misTurnos', {
+      ...(d['cajeroUid'] !== undefined ? { cajeroUid: d['cajeroUid'] } : {}),
+      ...(d['desde'] !== undefined ? { desde: msAFecha(d['desde']) } : {}),
+      ...(d['hasta'] !== undefined ? { hasta: msAFecha(d['hasta']) } : {}),
+      ...(d['despuesDe'] !== undefined ? { despuesDe: d['despuesDe'] } : {}),
+    }),
   // Sin `estado`, el servidor devuelve solo las pendientes.
   'pos.aprobaciones': async (c, d) => ({ aprobaciones: lim((await legado(c, 'listarAprobaciones', { estado: d['estado'] ?? 'pendiente' })) as Obj[], d) }),
   'pos.movimientosCaja': async (c, d) => ({ movimientos: lim((await legado(c, 'listarMovimientosCaja', { turnoId: d['turnoId'] })) as Obj[], d, 100) }),

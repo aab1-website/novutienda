@@ -9,7 +9,7 @@ import type {
   LineaAjuste, LineaIngreso, LineaTraspaso, LogoNegocio, Medio, MedioLogo, ResultadoEstadoSubidaLogo, MermaVista, MontosPorMoneda, MovimientoCaja, MovimientoCajaEntrada, MovimientoVista,
   ConMarca, ListaConMarca, PagoEntrada, PlantillaRecibo, ProductoPanel, Recibo, Reserva, ResultadoAnulacion, ResultadoCierre, ResultadoEnvio,
   FuenteImportacion, ResultadoImportacion, ResultadoOperacion, ResultadoEstadoSubida, ResultadoPublicacion, ResultadoVenta, Rol, Seccion, Simulacion, SolicitudAprobacion,
-  ResumenCarritoSupervision, Tablero, TipoMedio, TurnoPos, UbicacionId, UnidadSerie, UsuarioVista, VentaPos, EstadoMerma,
+  ResumenCarritoSupervision, CursorTurno, CursorVenta, FilaTurnoVista, ResumenTurnoVista, Tablero, TipoMedio, TurnoPos, UbicacionId, UnidadSerie, UsuarioVista, VentaPos, EstadoMerma,
   TipoMovimiento, VistaComercial,
 } from './tipos.js';
 
@@ -159,6 +159,12 @@ export interface Contrato {
   listarTurnos: { entrada: { estado?: 'abierto' | 'cerrado' }; salida: readonly TurnoPos[] };
   /** caj: solo sus ventas; sup/adm: todas. */
   listarVentas: { entrada: { turnoId?: string; desde?: string; hasta?: string; conSolicitudAnulacion?: boolean }; salida: readonly VentaPos[] };
+  /** Resumen por moneda del turno indicado (o del abierto); `null` si no hay turno. */
+  resumenTurno: { entrada: { turnoId?: string; cajeroUid?: string }; salida: ResumenTurnoVista | null };
+  /** Mis turnos, el más reciente primero, por páginas (`siguiente` es el cursor de la próxima). Fechas aaaa-mm-dd. */
+  misTurnos: { entrada: { desde?: string; hasta?: string; cajeroUid?: string; despuesDe?: CursorTurno }; salida: { readonly turnos: readonly FilaTurnoVista[]; readonly siguiente: CursorTurno | null } };
+  /** Mis ventas, la más reciente primero, por páginas. Fechas aaaa-mm-dd. */
+  misVentas: { entrada: { turnoId?: string; desde?: string; hasta?: string; despuesDe?: CursorVenta }; salida: { readonly ventas: readonly VentaPos[]; readonly siguiente: CursorVenta | null } };
   listarAprobaciones: { entrada: { estado?: 'pendiente' | 'aprobada' | 'rechazada' | 'usada' }; salida: readonly AprobacionPos[] };
   listarMovimientosCaja: { entrada: { turnoId?: string }; salida: readonly MovimientoCaja[] };
   /** Ventas del rango (aaaa-mm-dd) en CSV, con celdas neutralizadas por el servidor (`sup`/`adm`). */

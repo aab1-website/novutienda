@@ -1,15 +1,16 @@
 // Callable `pos`: turno, venta, aprobaciones, anulaciones, caja, créditos, cierre y configuración, más las
 // lecturas del vendedor «solo lo mío» y la supervisión en vivo de `sup`/`adm`.
 import { HttpsError } from 'firebase-functions/v2/https';
+import { AggregateField, FieldPath } from 'firebase-admin/firestore';
 import { z } from 'zod';
 import {
-  abrirTurno, aprobarAnulacion, cancelarCarrito, crearCarrito, guardarCarrito, leerCarrito, leerCarritosAbiertos, misCarritos, resumirCarrito, cerrarTurno, cerrarTurnoForzado, cobrarCredito, confirmarVenta, csvMovimientosCaja, csvVentas, MAX_FILAS_CSV, recortarExportacion,
+  abrirTurno, aprobarAnulacion, cancelarCarrito, crearCarrito, guardarCarrito, FILAS_POR_PAGINA, filaTurno, leerAnulacion, leerCarrito, leerCarritosAbiertos, MAX_DOCS_RESUMEN, misCarritos, paginar, resumirTurnoAgregado, resumirCarrito, cerrarTurno, cerrarTurnoForzado, cobrarCredito, confirmarVenta, csvMovimientosCaja, csvVentas, MAX_FILAS_CSV, recortarExportacion,
   guardarConfigPos, leerConfigPos, leerTurno, proyectarTurno, registrarMovimientoCaja, resolverAprobacion, solicitarAnulacion, solicitarAprobacion,
-  type Carrito, type CobroCreditoEntrada, type MovimientoCaja, type MovimientoCajaEntrada, type SolicitudAprobacion, type VentaPos,
+  type AgregadoVentasMoneda, type Carrito, type CobroCreditoEntrada, type MovimientoCaja, type MovimientoCajaEntrada, type SolicitudAprobacion, type VentaPos,
 } from '@novutienda/pos';
 import { leerCotizacionDe, mercadosDe, SinCotizacionUtilizable, tieneTipoCambio, type CopiaCotizacion } from '@novutienda/nucleo';
 import { accion, actorPos, type TablaImplementaciones } from './marco.js';
-import { LIMITE, MS, OBJETO, UUID, VACIO, objeto, validarRango, TEXTO } from './comunes.js';
+import { LIMITE, MS, OBJETO, UID, UUID, VACIO, objeto, validarRango, TEXTO } from './comunes.js';
 
 
 const ruta = (t: string, col: string, id?: string): string => `tenants/${t}/${col}${id === undefined ? '' : `/${id}`}`;
@@ -129,18 +130,102 @@ export const accionesPos: TablaImplementaciones = {
       return { turno: { ...turno, apertura: valido.apertura, totales: valido.totales }, cajaOcupada: false, proyeccion: proyectarTurno(valido, monedas) };
     },
   }),
-  /** Ventas: el vendedor solo las suyas; `sup`/`adm` todas (o solo las suyas con `soloMias`). */
+  /**
+   * Ventas: el vendedor solo las suyas; `sup`/`adm` todas (o solo las suyas con `soloMias`). Paginadas por cursor
+   * `despuesDe {creadoEnMs, ventaId}`: la respuesta trae `siguiente` (o `null` si no hay más).
+   * Índices: los de `ventas` ya existentes (cajeroUid/turnoId + creadoEnMs desc); el cursor usa el orden implícito por id.
+   */
   misVentas: accion({
-    esquema: objeto({ turnoId: UUID.optional(), desde: MS.optional(), hasta: MS.optional(), limite: LIMITE.optional(), soloMias: z.boolean().optional() }),
+    esquema: objeto({
+      turnoId: UUID.optional(), desde: MS.optional(), hasta: MS.optional(), limite: LIMITE.optional(), soloMias: z.boolean().optional(),
+      despuesDe: objeto({ creadoEnMs: MS, ventaId: UUID }).optional(),
+    }),
     ejecutar: async (c, d) => {
       validarRango(d.desde, d.hasta);
-      let q = c.e.firestore.collection(ruta(c.tenantId, 'ventas')).orderBy('creadoEnMs', 'desc');
+      const limite = d.limite ?? FILAS_POR_PAGINA;
+      let q = c.e.firestore.collection(ruta(c.tenantId, 'ventas')).orderBy('creadoEnMs', 'desc').orderBy(FieldPath.documentId(), 'desc');
       if (c.rol === 'caj' || d.soloMias === true) q = q.where('cajeroUid', '==', c.sesion.uid);
       if (d.turnoId !== undefined) q = q.where('turnoId', '==', d.turnoId);
       if (d.desde !== undefined) q = q.where('creadoEnMs', '>=', d.desde);
       if (d.hasta !== undefined) q = q.where('creadoEnMs', '<=', d.hasta);
-      const snap = await q.limit(d.limite ?? 50).get();
-      return { ventas: snap.docs.map(datosDe) };
+      if (d.despuesDe !== undefined) q = q.startAfter(d.despuesDe.creadoEnMs, d.despuesDe.ventaId);
+      const snap = await q.limit(limite + 1).get();
+      const { filas, siguiente } = paginar(snap.docs.map(datosDe), limite, (v) => ({ creadoEnMs: Number(v['creadoEnMs']), ventaId: String(v['ventaId']) }));
+      return { ventas: filas, siguiente };
+    },
+  }),
+  /**
+   * Resumen de un turno (en vivo si está abierto). Sin `turnoId`, el turno abierto; si no hay, `{ resumen: null }`.
+   * El vendedor solo pide los suyos; con `cajeroUid` (sup/adm), solo si el turno es de ese cajero. Las ventas se cuentan y suman con agregaciones de Firestore (no se leen documentos), por moneda;
+   * las anulaciones (`turnoIdReembolso ==`) se leen, hasta `MAX_DOCS_RESUMEN`, con `truncado`.
+   * Índices (ventas): ver docs/produccion/funciones.md.
+   */
+  resumenTurno: accion({
+    esquema: objeto({ turnoId: UUID.optional(), cajeroUid: UID.optional() }),
+    ejecutar: async (c, d) => {
+      let turnoId = d.turnoId;
+      if (turnoId === undefined) {
+        const activo = (await c.e.firestore.doc(ruta(c.tenantId, 'pos_config', 'turno_activo')).get()).data();
+        if (activo === undefined) return { resumen: null };
+        turnoId = String(activo['turnoId']);
+      }
+      const doc = (await c.e.firestore.doc(ruta(c.tenantId, 'turnos', turnoId)).get()).data();
+      if (doc === undefined) {
+        if (d.turnoId === undefined) return { resumen: null };
+        throw new HttpsError('not-found', 'El turno no existe.');
+      }
+      // `cajeroUid`: «Mi reporte» de sup/adm pide solo lo propio; un turno de otro cajero se trata como el ajeno del vendedor.
+      if ((c.rol === 'caj' && doc['cajeroUid'] !== c.sesion.uid) || (d.cajeroUid !== undefined && doc['cajeroUid'] !== d.cajeroUid)) {
+        if (d.turnoId === undefined) return { resumen: null };
+        throw new HttpsError('permission-denied', 'Solo puede ver sus propios turnos.');
+      }
+      const { monedas } = await c.e.comercialDelTenant(c.tenantId);
+      const turno = leerTurno(doc, monedas);
+      const ventasDe = c.e.firestore.collection(ruta(c.tenantId, 'ventas')).where('turnoId', '==', turnoId);
+      // Ventas por agregación (sin leer documentos): una consulta por moneda y estado. Las monedas posibles son las del comercio y las del turno.
+      const monedasTurno = [...new Set([...monedas, ...Object.keys(turno.totales)])];
+      const [agregados, an] = await Promise.all([
+        Promise.all(monedasTurno.map(async (m): Promise<[string, AgregadoVentasMoneda]> => {
+          const deMoneda = ventasDe.where('moneda', '==', m);
+          const [conf, desc, anul] = await Promise.all([
+            deMoneda.where('estado', '==', 'confirmada').aggregate({ n: AggregateField.count(), subtotal: AggregateField.sum('subtotal'), total: AggregateField.sum('total') }).get(),
+            deMoneda.where('estado', '==', 'confirmada').where('descuento.monto', '>', 0).aggregate({ n: AggregateField.count() }).get(),
+            deMoneda.where('estado', '==', 'anulada').aggregate({ n: AggregateField.count(), total: AggregateField.sum('total') }).get(),
+          ]);
+          const k = conf.data();
+          const x = anul.data();
+          return [m, { confirmadas: { cantidad: k.n, subtotal: k.subtotal, total: k.total }, conDescuento: desc.data().n, anuladas: { cantidad: x.n, total: x.total } }];
+        })),
+        c.e.firestore.collection(ruta(c.tenantId, 'anulaciones')).where('turnoIdReembolso', '==', turnoId).limit(MAX_DOCS_RESUMEN + 1).get(),
+      ]);
+      const truncado = an.size > MAX_DOCS_RESUMEN;
+      const anulaciones = an.docs.slice(0, MAX_DOCS_RESUMEN).map((x) => leerAnulacion(datosDe(x)));
+      return { resumen: resumirTurnoAgregado(turno, Object.fromEntries(agregados), anulaciones, truncado, monedas) };
+    },
+  }),
+  /**
+   * Turnos del vendedor con sus totales (`sup`/`adm`: todos, o los de `cajeroUid`), del más reciente al más antiguo, paginados por cursor
+   * `despuesDe {abiertoEnMs, turnoId}`; la respuesta trae `siguiente` (o `null`). Índice nuevo: `turnos(cajeroUid ASC, abiertoEnMs DESC)`.
+   */
+  misTurnos: accion({
+    esquema: objeto({
+      desde: MS.optional(), hasta: MS.optional(), limite: z.number().int().min(1).max(FILAS_POR_PAGINA).optional(), cajeroUid: UID.optional(),
+      despuesDe: objeto({ abiertoEnMs: MS, turnoId: UUID }).optional(),
+    }),
+    ejecutar: async (c, d) => {
+      validarRango(d.desde, d.hasta);
+      if (c.rol === 'caj' && d.cajeroUid !== undefined && d.cajeroUid !== c.sesion.uid) throw new HttpsError('permission-denied', 'Solo puede ver sus propios turnos.');
+      const limite = d.limite ?? FILAS_POR_PAGINA;
+      const cajero = c.rol === 'caj' ? c.sesion.uid : d.cajeroUid;
+      let q = c.e.firestore.collection(ruta(c.tenantId, 'turnos')).orderBy('abiertoEnMs', 'desc').orderBy(FieldPath.documentId(), 'desc');
+      if (cajero !== undefined) q = q.where('cajeroUid', '==', cajero);
+      if (d.desde !== undefined) q = q.where('abiertoEnMs', '>=', d.desde);
+      if (d.hasta !== undefined) q = q.where('abiertoEnMs', '<=', d.hasta);
+      if (d.despuesDe !== undefined) q = q.startAfter(d.despuesDe.abiertoEnMs, d.despuesDe.turnoId);
+      const snap = await q.limit(limite + 1).get();
+      const { monedas } = await c.e.comercialDelTenant(c.tenantId);
+      const { filas, siguiente } = paginar(snap.docs.map((x) => leerTurno(datosDe(x), monedas)), limite, (t) => ({ abiertoEnMs: t.abiertoEnMs, turnoId: t.turnoId }));
+      return { turnos: filas.map(filaTurno), siguiente };
     },
   }),
   venta: accion({
