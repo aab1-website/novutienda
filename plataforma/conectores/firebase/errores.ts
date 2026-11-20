@@ -54,7 +54,16 @@ const POS: Readonly<Record<CodigoErrorPos, CodigoHttps>> = {
   'venta-ya-anulada': 'failed-precondition',
   'anulacion-sin-solicitud': 'failed-precondition',
   'credito-saldo-insuficiente': 'failed-precondition',
+  'carritos-abiertos': 'failed-precondition',
+  'carrito-cerrado': 'failed-precondition',
+  'carrito-conflicto': 'failed-precondition',
+  'limite-carritos': 'resource-exhausted',
+  'carrito-inexistente': 'not-found',
+  'carrito-ajeno': 'permission-denied',
 };
+
+/** Únicos códigos de `ErrorPos` cuyo `detalle` se reenvía en `details`; el resto no deja salir datos del servidor. */
+const POS_CON_DETALLE: ReadonlySet<CodigoErrorPos> = new Set<CodigoErrorPos>(['carrito-conflicto', 'carritos-abiertos']);
 
 const CONSOLA: Readonly<Record<ErrorConsola['codigo'], CodigoHttps>> = {
   'no-autorizado': 'permission-denied',
@@ -120,7 +129,7 @@ export function traducirError(e: unknown): ErrorTraducido {
     // El código de módulo de Inventarios es el nombre de su error tipado (`SerieNoDisponible` → `serie-no-disponible`).
     return ok(e.codigo, aKebab(e.name === 'ErrorInventario' ? e.codigo : e.name), e.message, detalles !== undefined && detalles.length > 0 ? { detalles } : undefined);
   }
-  if (e instanceof ErrorPos) return ok(POS[e.codigo], e.codigo, e.message);
+  if (e instanceof ErrorPos) return ok(POS[e.codigo], e.codigo, e.message, POS_CON_DETALLE.has(e.codigo) ? e.detalle : undefined);
   if (e instanceof LimiteDelPlan) return ok('resource-exhausted', 'limite-del-plan', e.message, { clave: e.clave, tope: e.tope });
   if (e instanceof ErrorIdentidad) return ok(IDENTIDAD[e.codigo], e.codigo, e.codigo === 'estado' ? GENERICO : e.message);
   if (e instanceof ErrorConsola) {

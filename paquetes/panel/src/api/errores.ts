@@ -5,6 +5,8 @@
 // kebab-case): el panel mapea el mensaje por ese código. Si el código no tiene mensaje propio (los del borde, como
 // `solicitud-invalida`, o uno nuevo), se usa el mensaje que el servidor controla.
 
+import type { CarritoGuardado } from './tipos.js';
+
 export interface DetalleError {
   readonly codigo?: string;
   /** Stock insuficiente con faltantes ocultos por un conteo abierto: no hay lista, ids ni cantidades. */
@@ -22,6 +24,10 @@ export interface DetalleError {
   /** Límite del plan alcanzado (`resource-exhausted`). */
   readonly clave?: string;
   readonly tope?: number;
+  /** `carrito-conflicto`: el carrito vigente en el servidor (versión y contenido actuales). */
+  readonly carrito?: CarritoGuardado;
+  /** `carritos-abiertos`: carritos que bloquean el cierre del turno. */
+  readonly carritos?: readonly { readonly carritoId: string; readonly etiqueta: string }[];
 }
 
 export class ErrorApi extends Error {
@@ -66,6 +72,12 @@ const POR_CODIGO_MODULO: Readonly<Record<string, string>> = {
   'anulacion-sin-solicitud': 'La venta no tiene una solicitud de anulación.',
   'credito-inexistente': 'El crédito no existe.',
   'credito-saldo-insuficiente': 'El cobro es mayor que el saldo del crédito.',
+  'carritos-abiertos': 'Hay ventas en espera sin cobrar ni cancelar. Cóbrelas o cancélelas antes de cerrar el turno.',
+  'carrito-inexistente': 'El carrito no existe.',
+  'carrito-cerrado': 'Ese carrito ya no está abierto.',
+  'carrito-ajeno': 'Ese carrito es de otra persona.',
+  'carrito-conflicto': 'El carrito cambió desde otra pantalla. Se muestra la versión vigente.',
+  'limite-carritos': 'Hay demasiadas ventas en espera en este turno. Cobre o cancele alguna.',
   // Consola
   'no-encontrado': 'No se encontró lo que buscaba.',
   conflicto: 'Eso ya existe o está en uso. Revise los datos.',

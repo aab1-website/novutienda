@@ -56,9 +56,9 @@ const { data } = await llamar({ accion: 'abrirTurno', tenantId: '<tenant>', dato
 | Acción | Roles | `datos` | Devuelve |
 |---|---|---|---|
 | `abrirTurno` | TODOS | `{ turnoId (UUID), apertura: { BOB?, USD?, ARS? } }` | turno |
-| `cerrarTurno` | TODOS (el dueño del turno) | `{ turnoId, contado: {…} }` | `{ turno, arqueo }` |
-| `cerrarTurnoForzado` | ADM | `{ turnoId, contado, motivo }` | `{ turno, arqueo }` |
-| `confirmarVenta` | TODOS | `{ requestId (UUID), carrito, pagos[], aprobacionId?, aprobacionCreditoId? }` | `{ venta, repetida }` |
+| `cerrarTurno` | TODOS (el dueño del turno) | `{ turnoId, contado: {…} }` | `{ turno, arqueo }`; con carritos abiertos falla con `carritos-abiertos` |
+| `cerrarTurnoForzado` | ADM | `{ turnoId, contado, motivo }` | `{ turno, arqueo }`; cancela los carritos abiertos con ese motivo |
+| `confirmarVenta` | TODOS | `{ requestId (UUID), carrito, pagos[], aprobacionId?, aprobacionCreditoId?, carritoId?, carritoVersion? }` (los dos últimos van juntos; con carrito, `requestId` = `carritoId`) | `{ venta, repetida }` |
 | `solicitarAprobacion` | TODOS | `{ aprobacionId (UUID), solicitud: { tipo: 'descuento'\|'credito', moneda, monto, motivo, deudor? } }` | aprobación |
 | `resolverAprobacion` | SUP | `{ aprobacionId, decision: 'aprobar'\|'rechazar' }` | aprobación |
 | `solicitarAnulacion` | TODOS (el vendedor, solo sus ventas) | `{ ventaId, motivo }` | venta |
@@ -72,8 +72,12 @@ const { data } = await llamar({ accion: 'abrirTurno', tenantId: '<tenant>', dato
 | `aprobaciones` / `aprobacion` | TODOS (el vendedor, solo las que él solicitó) | `{ estado?, limite? }` / `{ aprobacionId }` | `{ aprobaciones[] }` / `{ aprobacion }` |
 | `movimientosCaja` | TODOS (el vendedor, solo su turno) | `{ turnoId, limite? }` | `{ movimientos[] }` |
 | `creditos` | TODOS (el vendedor, solo los créditos de SUS ventas: el crédito guarda `cajeroUid` y se consulta por él, sin tope de ventas; los créditos creados antes de este campo no aparecen para el vendedor) | `{ estado?: pendiente\|cobrado\|anulado, limite? }` | `{ creditos[] }` |
+| `crearCarrito` | TODOS | `{ carritoId (UUID), etiqueta? (1-40) }` | `{ carrito }` (idempotente; turno abierto propio; máximo 10 abiertos: `limite-carritos`) |
+| `guardarCarrito` | TODOS (el dueño) | `{ carritoId, version, contenido?, etiqueta? }` (hasta 64 000 caracteres; sin precios) | `{ carrito }`; versión distinta: `carrito-conflicto` con el carrito vigente en `details`; ajeno: `carrito-ajeno`; terminado: `carrito-cerrado` |
+| `cancelarCarrito` | TODOS (el dueño; SUP cancela también el ajeno) | `{ carritoId, motivo }` | `{ carrito }` (sin contenido; audita `pos.carrito.cancelar`) |
+| `misCarritos` | TODOS | `{}` | `{ carritos[] }`: los abiertos de su turno abierto, con contenido |
 | `cotizaciones` | TODOS | `{}` | `{ cotizaciones: { BO, AR }, redondeo }`: cada mercado es `{ cotizacionId, par, valor, fecha, fuente, estado }` o `null` si no hay una utilizable; `redondeo` es la política de `tenants/{t}/config/redondeo` (por defecto BOB dos decimales, ARS múltiplo de 100 más cercano). El panel calcula con ese redondeo. |
-| `turnos`, `supervision` | SUP | `{ limite? }` / `{}` | listas; `supervision`: `{ turno, proyeccion, ultimasVentas[] }` |
+| `turnos`, `supervision` | SUP | `{ limite? }` / `{}` | listas; `supervision`: `{ turno, proyeccion, ultimasVentas[], carritos[] }` (resumen de carritos abiertos sin cliente, teléfono ni series) |
 | `exportarVentasCsv` / `exportarMovimientosCajaCsv` | SUP | `{ desde, hasta }` / `{ turnoId }` | `{ csv, truncado }` (celdas con `= + - @` neutralizadas; máximo 5000 filas: si hay más, `truncado: true` y el panel avisa) |
 
 Reglas del POS (descuento de 5 % sin permiso, aprobaciones de un solo uso, anulación con reembolso por los medios originales, arqueo sin tope en cero)

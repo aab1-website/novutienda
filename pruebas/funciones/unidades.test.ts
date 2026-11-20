@@ -36,9 +36,17 @@ describe('traducción de errores a HttpsError', () => {
       'aprobacion-inexistente', 'aprobacion-no-aprobada', 'aprobacion-usada', 'aprobacion-vencida', 'aprobacion-no-coincide', 'autoaprobacion',
       'pagos-invalidos', 'medio-no-habilitado', 'conteo-faltante', 'egreso-excede-efectivo', 'venta-inexistente', 'venta-ya-anulada',
       'anulacion-sin-solicitud', 'credito-inexistente', 'credito-saldo-insuficiente',
+      'carritos-abiertos', 'carrito-cerrado', 'carrito-conflicto', 'limite-carritos', 'carrito-inexistente', 'carrito-ajeno',
     ];
     for (const c of codigos) expect(traducirError(new ErrorPos(c, 'm')).code, c).toMatch(/^[a-z-]+$/);
     expect(traducirError(new ErrorPos('autoaprobacion', 'm')).code).toBe('permission-denied');
+    // Solo `carrito-conflicto` y `carritos-abiertos` reenvían `detalle` en `details`; ningún otro código lo deja salir.
+    const CON_DETALLE = new Set<CodigoErrorPos>(['carrito-conflicto', 'carritos-abiertos']);
+    for (const c of codigos) {
+      const t = traducirError(new ErrorPos(c, 'm', { secreto: 'x' }));
+      if (CON_DETALLE.has(c)) expect(t.details, c).toMatchObject({ secreto: 'x', codigo: c });
+      else expect(t.details, c).toEqual({ codigo: c });
+    }
     expect(traducirError(new ErrorPos('request-en-uso', 'm')).code).toBe('already-exists');
     expect(traducirError(new ErrorPos('venta-inexistente', 'm')).code).toBe('not-found');
     expect(traducirError(new ErrorPos('pagos-invalidos', 'm')).code).toBe('invalid-argument');
