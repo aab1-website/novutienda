@@ -91,6 +91,22 @@ describe('ingreso', () => {
     await waitFor(() => expect(producto().value).toBe(''));
   });
 
+  it('D3: avisa en la confirmación si la serie ya existe con otras mayúsculas, sin impedir el ingreso', async () => {
+    const e = crearEntorno('adm');
+    ver(e, 'ingreso');
+    const u = userEvent.setup();
+    await screen.findByRole('heading', { name: 'Ingreso de mercadería' });
+    await elegir(u, 'celular', /Celular A1/);
+    await u.type(screen.getByLabelText(/^Series/), 'cela1-001 NUEVA-777');
+    await u.click(screen.getByRole('button', { name: 'Registrar ingreso' }));
+    const d = await screen.findByRole('dialog', { name: '¿Registrar este ingreso?' });
+    expect(within(d).getByText('Aviso: la serie cela1-001 ya existe como CELA1-001 (con otras mayúsculas).')).toBeTruthy();
+    expect(within(d).queryByText(/NUEVA-777 ya existe/)).toBeNull();
+    // La consulta lleva el producto.
+    expect(llamadas(e, 'buscarSerie').every((l) => l.entrada['productoId'] === 'cel-a1')).toBe(true);
+    expect((within(d).getByRole('button', { name: 'Sí, registrar el ingreso' }) as HTMLButtonElement).disabled).toBe(false);
+  });
+
   it('si el envío falla, el error se ve dentro de la confirmación y el reintento usa el MISMO operacionId', async () => {
     const e = crearEntorno('adm');
     const ids = fallarUnaVez(e, 'ingresar');

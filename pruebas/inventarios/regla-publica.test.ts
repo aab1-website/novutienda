@@ -78,27 +78,27 @@ describe('garantía con fecha de calendario en La Paz', () => {
 
   beforeEach(async () => {
     await altaProducto(db, producto('celular', { conSerie: true, garantiaMeses: 12 }));
-    await cargar(db, 'celular', 'tienda', 2, ['A', 'B']);
+    await cargar(db, 'celular', 'tienda', 2, ['SN-A', 'SN-B']);
   });
 
   it('a las 22:00 en La Paz (02:00 UTC del día siguiente) cuenta el día de La Paz', async () => {
     fijarReloj(() => Date.UTC(2026, 10, 5, 2, 0, 0));
     expect(fechaLocal('2026-11-05T02:00:00.000Z', 'America/La_Paz')).toBe('2026-11-04');
-    await vender('A');
-    expect(doc(db, 'unidades', 'celular__A')?.['garantiaHasta']).toBe('2027-11-04');
+    await vender('SN-A');
+    expect(doc(db, 'unidades', 'celular__SN-A')?.['garantiaHasta']).toBe('2027-11-04');
   });
 
   it('la zona es inyectable', async () => {
     fijarReloj(() => Date.UTC(2026, 10, 5, 2, 0, 0));
-    await vender('B', 'UTC');
-    expect(doc(db, 'unidades', 'celular__B')?.['garantiaHasta']).toBe('2027-11-05');
+    await vender('SN-B', 'UTC');
+    expect(doc(db, 'unidades', 'celular__SN-B')?.['garantiaHasta']).toBe('2027-11-05');
   });
 
   it('acota al último día del mes (29/02 -> 28/02)', async () => {
     fijarReloj(() => Date.UTC(2028, 1, 29, 15, 0, 0));
     await db.runTransaction((tx) => actualizarProducto(tx, { tenantId: T, operacionId: op(), por: ADM, productoId: 'celular', cambios: { garantiaMeses: 12 } }));
-    await vender('A');
-    expect(doc(db, 'unidades', 'celular__A')?.['garantiaHasta']).toBe('2029-02-28');
+    await vender('SN-A');
+    expect(doc(db, 'unidades', 'celular__SN-A')?.['garantiaHasta']).toBe('2029-02-28');
   });
 });
 

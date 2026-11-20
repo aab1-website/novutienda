@@ -38,7 +38,7 @@ beforeEach(async () => {
   await altaProducto(db, producto('celular', { conSerie: true, garantiaMeses: 12 }));
   await cargar(db, 'lapiz', 'tienda', 10);
   await cargar(db, 'lapiz', 'deposito-1', 4);
-  await cargar(db, 'celular', 'tienda', 3, ['S1', 'S2', 'S3']);
+  await cargar(db, 'celular', 'tienda', 3, ['SN-S1', 'SN-S2', 'SN-S3']);
   verificarInvariantes(db);
 });
 
@@ -86,22 +86,22 @@ describe('puerto: salida', () => {
   });
 
   it('con serie: la unidad pasa a vendida con ventaRef y garantiaHasta', async () => {
-    await vender('v1', [{ productoId: 'celular', cantidad: 1, almacenId: 'tienda', series: ['S2'] }]);
-    expect(doc(db, 'unidades', 'celular__S2')).toMatchObject({ estado: 'vendida', ventaRef: { tipo: 'venta', id: 'v1' }, garantiaHasta: '2027-11-04' });
-    expect(doc(db, 'existencias', 'celular__tienda')?.['series']).toEqual(['S1', 'S3']);
+    await vender('v1', [{ productoId: 'celular', cantidad: 1, almacenId: 'tienda', series: ['SN-S2'] }]);
+    expect(doc(db, 'unidades', 'celular__SN-S2')).toMatchObject({ estado: 'vendida', ventaRef: { tipo: 'venta', id: 'v1' }, garantiaHasta: '2027-11-04' });
+    expect(doc(db, 'existencias', 'celular__tienda')?.['series']).toEqual(['SN-S1', 'SN-S3']);
     verificarInvariantes(db);
   });
 
   it('la misma serie dos veces: la segunda falla', async () => {
-    await vender('v1', [{ productoId: 'celular', cantidad: 1, almacenId: 'tienda', series: ['S1'] }]);
-    await expect(vender('v2', [{ productoId: 'celular', cantidad: 1, almacenId: 'tienda', series: ['S1'] }])).rejects.toBeInstanceOf(SerieNoDisponible);
+    await vender('v1', [{ productoId: 'celular', cantidad: 1, almacenId: 'tienda', series: ['SN-S1'] }]);
+    await expect(vender('v2', [{ productoId: 'celular', cantidad: 1, almacenId: 'tienda', series: ['SN-S1'] }])).rejects.toBeInstanceOf(SerieNoDisponible);
     verificarInvariantes(db);
   });
 
   it('dos ventas concurrentes de la misma serie: una gana', async () => {
     const r = await Promise.allSettled([
-      vender('va', [{ productoId: 'celular', cantidad: 1, almacenId: 'tienda', series: ['S3'] }]),
-      vender('vb', [{ productoId: 'celular', cantidad: 1, almacenId: 'tienda', series: ['S3'] }]),
+      vender('va', [{ productoId: 'celular', cantidad: 1, almacenId: 'tienda', series: ['SN-S3'] }]),
+      vender('vb', [{ productoId: 'celular', cantidad: 1, almacenId: 'tienda', series: ['SN-S3'] }]),
     ]);
     expect(r.filter((x) => x.status === 'fulfilled')).toHaveLength(1);
     const perdedora = r.find((x) => x.status === 'rejected') as PromiseRejectedResult;
@@ -111,9 +111,9 @@ describe('puerto: salida', () => {
   });
 
   it('serie de otro almacén (SerieNoDisponible, no StockInsuficiente: no revela el stock), inexistente o con cantidad distinta se rechaza', async () => {
-    await expect(vender('v1', [{ productoId: 'celular', cantidad: 1, almacenId: 'deposito-1', series: ['S1'] }])).rejects.toBeInstanceOf(SerieNoDisponible);
+    await expect(vender('v1', [{ productoId: 'celular', cantidad: 1, almacenId: 'deposito-1', series: ['SN-S1'] }])).rejects.toBeInstanceOf(SerieNoDisponible);
     await expect(vender('v2', [{ productoId: 'celular', cantidad: 1, almacenId: 'tienda', series: ['NOEXISTE'] }])).rejects.toBeInstanceOf(SerieNoDisponible);
-    await expect(vender('v3', [{ productoId: 'celular', cantidad: 2, almacenId: 'tienda', series: ['S1'] }])).rejects.toBeInstanceOf(EntradaInvalida);
+    await expect(vender('v3', [{ productoId: 'celular', cantidad: 2, almacenId: 'tienda', series: ['SN-S1'] }])).rejects.toBeInstanceOf(EntradaInvalida);
     await expect(vender('v4', [{ productoId: 'celular', cantidad: 1, almacenId: 'tienda', series: [] }])).rejects.toBeInstanceOf(EntradaInvalida);
     await expect(vender('v5', [{ productoId: 'lapiz', cantidad: 1, almacenId: 'tienda', series: ['X'] }])).rejects.toBeInstanceOf(EntradaInvalida);
   });
@@ -179,13 +179,13 @@ describe('puerto: reversión', () => {
   it('devuelve stock y series, y es idempotente', async () => {
     await vender('v1', [
       { productoId: 'lapiz', cantidad: 2, almacenId: 'tienda' },
-      { productoId: 'celular', cantidad: 2, almacenId: 'tienda', series: ['S1', 'S3'] },
+      { productoId: 'celular', cantidad: 2, almacenId: 'tienda', series: ['SN-S1', 'SN-S3'] },
     ]);
     await revertir('v1');
     expect(doc(db, 'existencias', 'lapiz__tienda')?.['cantidad']).toBe(10);
-    expect(doc(db, 'unidades', 'celular__S1')).toMatchObject({ estado: 'disponible' });
-    expect(doc(db, 'unidades', 'celular__S1')?.['ventaRef']).toBeUndefined();
-    expect(doc(db, 'unidades', 'celular__S1')?.['garantiaHasta']).toBeUndefined();
+    expect(doc(db, 'unidades', 'celular__SN-S1')).toMatchObject({ estado: 'disponible' });
+    expect(doc(db, 'unidades', 'celular__SN-S1')?.['ventaRef']).toBeUndefined();
+    expect(doc(db, 'unidades', 'celular__SN-S1')?.['garantiaHasta']).toBeUndefined();
     expect(doc(db, 'movimientos', 'venta-anula-v1__lapiz__tienda')).toMatchObject({ tipo: 'anulacion', delta: 2 });
     verificarInvariantes(db);
     const antes = db.docs.size;
@@ -199,10 +199,10 @@ describe('puerto: reversión', () => {
   });
 
   it('una serie vuelve a venderse tras la reversión', async () => {
-    await vender('v1', [{ productoId: 'celular', cantidad: 1, almacenId: 'tienda', series: ['S1'] }]);
+    await vender('v1', [{ productoId: 'celular', cantidad: 1, almacenId: 'tienda', series: ['SN-S1'] }]);
     await revertir('v1');
-    await vender('v2', [{ productoId: 'celular', cantidad: 1, almacenId: 'tienda', series: ['S1'] }]);
-    expect(doc(db, 'unidades', 'celular__S1')).toMatchObject({ estado: 'vendida', ventaRef: { id: 'v2' } });
+    await vender('v2', [{ productoId: 'celular', cantidad: 1, almacenId: 'tienda', series: ['SN-S1'] }]);
+    expect(doc(db, 'unidades', 'celular__SN-S1')).toMatchObject({ estado: 'vendida', ventaRef: { id: 'v2' } });
     verificarInvariantes(db);
   });
 });

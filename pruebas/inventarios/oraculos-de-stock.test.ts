@@ -34,7 +34,7 @@ async function mundo(n: number): Promise<DobleDb> {
   await altaProducto(db, producto('celular', { conSerie: true }));
   await altaProducto(db, producto('sinctl', { controlaStock: false }));
   await cargar(db, 'lapiz', 'tienda', n);
-  await cargar(db, 'celular', 'tienda', n, Array.from({ length: n }, (_, i) => `S${i + 1}`));
+  await cargar(db, 'celular', 'tienda', n, Array.from({ length: n }, (_, i) => `SN-S${i + 1}`));
   return db;
 }
 
@@ -55,13 +55,13 @@ const tras = (db: DobleDb, lineas: { productoId: string; cantidad: number; serie
 
 describe('oráculo de venta con series (puerto.prepararSalida)', () => {
   it('N series inventadas fallan igual haya o no stock', () =>
-    identicaConYSinStock((db) => salida(db, [{ productoId: 'celular', almacenId: 'tienda', cantidad: 5, series: ['X1', 'X2', 'X3', 'X4', 'X5'] }])));
+    identicaConYSinStock((db) => salida(db, [{ productoId: 'celular', almacenId: 'tienda', cantidad: 5, series: ['SN-X1', 'SN-X2', 'SN-X3', 'SN-X4', 'SN-X5'] }])));
   it('series de otra ubicación o mezcladas con una válida fallan igual', () =>
-    identicaConYSinStock((db) => salida(db, [{ productoId: 'celular', almacenId: 'tienda', cantidad: 5, series: ['S1', 'X2', 'X3', 'X4', 'X5'] }])));
+    identicaConYSinStock((db) => salida(db, [{ productoId: 'celular', almacenId: 'tienda', cantidad: 5, series: ['SN-S1', 'SN-X2', 'SN-X3', 'SN-X4', 'SN-X5'] }])));
   it('series que no son tantas como la cantidad fallan igual', () =>
-    identicaConYSinStock((db) => salida(db, [{ productoId: 'celular', almacenId: 'tienda', cantidad: 5, series: ['S1'] }])));
+    identicaConYSinStock((db) => salida(db, [{ productoId: 'celular', almacenId: 'tienda', cantidad: 5, series: ['SN-S1'] }])));
   it('series en un producto sin serie fallan igual', () =>
-    identicaConYSinStock((db) => salida(db, [{ productoId: 'lapiz', almacenId: 'tienda', cantidad: 5, series: ['A'] }])));
+    identicaConYSinStock((db) => salida(db, [{ productoId: 'lapiz', almacenId: 'tienda', cantidad: 5, series: ['SN-A'] }])));
   it('una línea sin stock no oculta ni cambia el error de otra línea inválida (en cualquier orden)', async () => {
     await identicaConYSinStock((db) =>
       salida(db, [{ productoId: 'lapiz', almacenId: 'tienda', cantidad: 5 }, { productoId: 'celular', almacenId: 'tienda', cantidad: 1, series: ['X'] }]),
@@ -75,10 +75,10 @@ describe('oráculo de venta con series (puerto.prepararSalida)', () => {
 
   it('regresión: venta con series elegidas y con asignación automática', async () => {
     const db = await mundo(10);
-    await salida(db, [{ productoId: 'celular', almacenId: 'tienda', cantidad: 2, series: ['S3', 'S4'] }]);
-    expect(doc(db, 'unidades', 'celular__S3')?.['estado']).toBe('vendida');
+    await salida(db, [{ productoId: 'celular', almacenId: 'tienda', cantidad: 2, series: ['SN-S3', 'SN-S4'] }]);
+    expect(doc(db, 'unidades', 'celular__SN-S3')?.['estado']).toBe('vendida');
     await salida(db, [{ productoId: 'celular', almacenId: 'tienda', cantidad: 2 }]);
-    expect(doc(db, 'unidades', 'celular__S1')?.['estado']).toBe('vendida');
+    expect(doc(db, 'unidades', 'celular__SN-S1')?.['estado']).toBe('vendida');
     expect(doc(db, 'existencias', 'celular__tienda')?.['cantidad']).toBe(6);
     verificarInvariantes(db);
   });
@@ -99,22 +99,22 @@ describe('oráculo de traspaso (stock.traspasar)', () => {
     identicaConYSinStock((db) => tras(db, [{ productoId: 'lapiz', cantidad: 5 }, { productoId: 'sinctl', cantidad: 1 }])));
   it('línea 2 de un producto inexistente o con series en uno sin serie falla igual', async () => {
     await identicaConYSinStock((db) => tras(db, [{ productoId: 'lapiz', cantidad: 5 }, { productoId: 'nada', cantidad: 1 }]));
-    await identicaConYSinStock((db) => tras(db, [{ productoId: 'celular', cantidad: 1, series: ['X'] }, { productoId: 'lapiz', cantidad: 5, series: ['A'] }]));
+    await identicaConYSinStock((db) => tras(db, [{ productoId: 'celular', cantidad: 1, series: ['X'] }, { productoId: 'lapiz', cantidad: 5, series: ['SN-A'] }]));
   });
   it('series inventadas con cantidad N fallan igual', () =>
-    identicaConYSinStock((db) => tras(db, [{ productoId: 'celular', cantidad: 5, series: ['X1', 'X2', 'X3', 'X4', 'X5'] }])));
+    identicaConYSinStock((db) => tras(db, [{ productoId: 'celular', cantidad: 5, series: ['SN-X1', 'SN-X2', 'SN-X3', 'SN-X4', 'SN-X5'] }])));
 
   it('regresión: traspaso de varias líneas con series mueve todo', async () => {
     const db = await mundo(10);
-    await tras(db, [{ productoId: 'lapiz', cantidad: 4 }, { productoId: 'celular', cantidad: 2, series: ['S2', 'S5'] }]);
+    await tras(db, [{ productoId: 'lapiz', cantidad: 4 }, { productoId: 'celular', cantidad: 2, series: ['SN-S2', 'SN-S5'] }]);
     expect(doc(db, 'existencias', 'lapiz__deposito-1')?.['cantidad']).toBe(4);
     expect(doc(db, 'existencias', 'celular__tienda')?.['cantidad']).toBe(8);
-    expect(doc(db, 'unidades', 'celular__S5')?.['ubicacionId']).toBe('deposito-1');
+    expect(doc(db, 'unidades', 'celular__SN-S5')?.['ubicacionId']).toBe('deposito-1');
     verificarInvariantes(db);
   });
   it('regresión: dos líneas sin stock se informan juntas y no se mueve nada', async () => {
     const db = await mundo(1);
-    const e = await tras(db, [{ productoId: 'lapiz', cantidad: 5 }, { productoId: 'celular', cantidad: 3, series: ['S1', 'S2', 'S3'] }]).catch((x: unknown) => x);
+    const e = await tras(db, [{ productoId: 'lapiz', cantidad: 5 }, { productoId: 'celular', cantidad: 3, series: ['SN-S1', 'SN-S2', 'SN-S3'] }]).catch((x: unknown) => x);
     expect((e as Error).name).toBe('SerieNoDisponible');
     const e2 = await tras(db, [{ productoId: 'lapiz', cantidad: 5 }]).catch((x: unknown) => x);
     expect(e2).toBeInstanceOf(StockInsuficiente);
@@ -132,13 +132,13 @@ describe('otras operaciones de varias líneas y de solicitud', () => {
   it('ingreso: una serie repetida en la línea 2 falla igual (el ingreso no depende del stock)', async () => {
     const f = (db: DobleDb) =>
       db.runTransaction((tx) =>
-        ingresar(tx, { tenantId: T, operacionId: op('i'), por: SUP, ubicacionId: 'tienda', lineas: [{ productoId: 'lapiz', cantidad: 5 }, { productoId: 'celular', cantidad: 1, series: ['S1'] }] }),
+        ingresar(tx, { tenantId: T, operacionId: op('i'), por: SUP, ubicacionId: 'tienda', lineas: [{ productoId: 'lapiz', cantidad: 5 }, { productoId: 'celular', cantidad: 1, series: ['SN-S1'] }] }),
       );
     await identicaConYSinStock(f);
   });
   it('merma: series inventadas fallan igual haya o no stock; sin otra razón, rechaza por cantidad antes de crear nada', async () => {
     await identicaConYSinStock((db) =>
-      db.runTransaction((tx) => solicitarMerma(tx, { tenantId: T, operacionId: op('m'), por: CAJ, productoId: 'celular', ubicacionId: 'tienda', cantidad: 5, series: ['X1', 'X2', 'X3', 'X4', 'X5'], motivo: 'm' })),
+      db.runTransaction((tx) => solicitarMerma(tx, { tenantId: T, operacionId: op('m'), por: CAJ, productoId: 'celular', ubicacionId: 'tienda', cantidad: 5, series: ['SN-X1', 'SN-X2', 'SN-X3', 'SN-X4', 'SN-X5'], motivo: 'm' })),
     );
     const db = await mundo(1);
     await expect(

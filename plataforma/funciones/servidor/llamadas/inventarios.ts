@@ -7,7 +7,7 @@ import { HttpsError } from 'firebase-functions/v2/https';
 import { z } from 'zod';
 import {
   abrirConteo, actualizarProducto, cancelarConteo, claveDePrecio, ajustar, cerrarConteo, conteosAbiertosDe, crearProducto, crearUbicacion, esDisponible, exportarProductosCsv, importarCsvPorLotes, leerArchivoImportacion, MAX_BYTES_ARCHIVO, type FuenteTabla, type LectorHojas, type LecturaSinBloqueo, type LeerCatalogo,
-  filtrarUnidadesLista, ingresar, leerDocumentoProducto, marcaOcultamiento, mercadosSinPrecio, proyectarMovimiento, proyectarProducto, registrarLineaConteo, resolverMerma, simularImportacionCsv, solicitarMerma, traspasar, UBICACION_DISPONIBILIDAD,
+  filtrarUnidadesLista, ingresar, normalizarSerieBusqueda, ORIGEN_COMO_CERO, leerDocumentoProducto, marcaOcultamiento, mercadosSinPrecio, proyectarMovimiento, proyectarProducto, registrarLineaConteo, resolverMerma, simularImportacionCsv, solicitarMerma, traspasar, UBICACION_DISPONIBILIDAD,
   type Autor, type CambiosProducto, type Conteos, type EntradaProducto, type LineaAjuste, type LineaIngreso, type LineaTraspaso, type ProductoExportable,
 } from '@novutienda/inventarios';
 import { mercadosDe, type LimiteTasa } from '@novutienda/nucleo';
@@ -19,6 +19,28 @@ const autor = (c: Contexto): Autor => actorPos(c);
 
 const ruta = (t: string, col: string, id?: string): string => `tenants/${t}/${col}${id === undefined ? '' : `/${id}`}`;
 const datosDe = (d: { data(): unknown }): Record<string, unknown> => d.data() as Record<string, unknown>;
+/** Una unidad hacia el cliente: sin el campo auxiliar `serieBusqueda`, para que el contrato `UnidadSerie` no cambie. */
+/** Documento de un conteo para `caj` (D9): sin los productos tomados «como 0» ni `mermas`, que delatan qué tenía existencia. */
+const conteoParaCaj = (conteo: Record<string, unknown>, lineas: Record<string, unknown>[]): Record<string, unknown> => {
+  const ocultos = new Set(lineas.filter((l) => l['origen'] === ORIGEN_COMO_CERO).map((l) => String(l['productoId'])));
+  const { mermas: _m, ...resto } = conteo;
+  void _m;
+  return { ...resto, ...(Array.isArray(conteo['productos']) ? { productos: (conteo['productos'] as unknown[]).filter((p) => !ocultos.has(String(p))) } : {}) };
+};
+const unirUnidades = (a: Record<string, unknown>[], b: Record<string, unknown>[]): Record<string, unknown>[] => {
+  const vistas = new Set<string>();
+  return [...a, ...b].filter((u) => {
+    const k = `${String(u['productoId'])}__${String(u['serie'])}`;
+    if (vistas.has(k)) return false;
+    vistas.add(k);
+    return true;
+  });
+};
+const unidadDe = (d: { data(): unknown }): Record<string, unknown> => {
+  const { serieBusqueda: _aux, ...resto } = datosDe(d);
+  void _aux;
+  return resto;
+};
 /**
  * Tiempo que la importación se da antes de detenerse limpiamente, contado desde que entra (simulación incluida); se retoma
  * con el mismo `operacionId`. El callable vive 120 s (`index.ts`) y el cliente de Firebase corta a los 70 s por defecto: con
@@ -356,20 +378,28 @@ export const accionesInventarios: TablaImplementaciones = {
     esquema: objeto({ serie: TEXTO(60), productoId: ID_PRODUCTO.optional(), porInicio: z.literal(true).optional() }),
     ejecutar: async (c, d) => {
       if (d.porInicio !== true) {
-        let q = c.e.firestore.collection(ruta(c.tenantId, 'unidades')).where('serie', '==', d.serie);
-        if (d.productoId !== undefined) q = q.where('productoId', '==', d.productoId);
-        return { unidades: (await q.limit(20).get()).docs.map(datosDe) };
+        // No distingue mayúsculas (`serieBusqueda`) y suma la serie exacta, para las unidades que el relleno aún no tocó.
+        const consultar = async (campo: 'serie' | 'serieBusqueda', valor: string): Promise<Record<string, unknown>[]> => {
+          let q = c.e.firestore.collection(ruta(c.tenantId, 'unidades')).where(campo, '==', valor);
+          if (d.productoId !== undefined) q = q.where('productoId', '==', d.productoId);
+          return (await q.limit(20).get()).docs.map(unidadDe);
+        };
+        const [porNorma, exactas] = await Promise.all([consultar('serieBusqueda', normalizarSerieBusqueda(d.serie)), consultar('serie', d.serie)]);
+        return { unidades: unirUnidades(porNorma, exactas).slice(0, 20) };
       }
       if (c.rol !== 'sup' && c.rol !== 'adm') throw new HttpsError('permission-denied', 'No tiene permiso para buscar por el comienzo de la serie.');
       const prefijo = d.serie.trim();
       if (prefijo.length < MIN_PREFIJO_SERIE) throw new HttpsError('invalid-argument', `Escriba al menos ${MIN_PREFIJO_SERIE} caracteres de la serie.`);
       await limitarBusquedaSerie(c);
-      let q = c.e.firestore.collection(ruta(c.tenantId, 'unidades')).where('serie', '>=', prefijo).where('serie', '<', `${prefijo}\uf8ff`).orderBy('serie');
       // Con `productoId` se filtra en memoria sobre una ventana acotada: igualdad más rango sobre otro campo pediría un índice compuesto.
       const { conteos } = await conteosAbiertos(c);
       const marca = marcaOcultamiento(c.rol, conteos);
-      q = q.limit(d.productoId === undefined && marca === undefined ? MAX_RESULTADOS_SERIE : VENTANA_BUSQUEDA_SERIE);
-      let unidades = (await q.get()).docs.map(datosDe);
+      const tope = d.productoId === undefined && marca === undefined ? MAX_RESULTADOS_SERIE : VENTANA_BUSQUEDA_SERIE;
+      // Sin distinguir mayúsculas (rango sobre `serieBusqueda`), unido al rango sobre la serie (unidades aún sin relleno).
+      const porRango = async (campo: 'serie' | 'serieBusqueda', desde: string): Promise<Record<string, unknown>[]> =>
+        (await c.e.firestore.collection(ruta(c.tenantId, 'unidades')).where(campo, '>=', desde).where(campo, '<', `${desde}\uf8ff`).orderBy(campo).limit(tope).get()).docs.map(unidadDe);
+      const [porNorma, porSerie] = await Promise.all([porRango('serieBusqueda', normalizarSerieBusqueda(prefijo)), porRango('serie', prefijo)]);
+      let unidades = unirUnidades(porNorma, porSerie).sort((a, b) => String(a['serie']).toLowerCase().localeCompare(String(b['serie']).toLowerCase())).slice(0, tope);
       if (d.productoId !== undefined) unidades = unidades.filter((u) => u['productoId'] === d.productoId);
       if (marca !== undefined) unidades = filtrarUnidadesLista(c.rol, conteos, unidades as never) as unknown as typeof unidades;
       return { unidades: unidades.slice(0, MAX_RESULTADOS_SERIE), ...(marca ?? {}) };
@@ -483,7 +513,12 @@ export const accionesInventarios: TablaImplementaciones = {
           .sort((x, y) => x.nombre.localeCompare(y.nombre));
         return { conteo, lineas: filas, productos };
       }
-      if (c.rol === 'caj') return { conteo, lineas: filas };
+      // D9: `caj` no recibe las líneas que el cierre generó para lo no contado (`origen` «cierre-como-cero»): revelarían qué
+      // productos tenían existencia. Tampoco esos productos en la lista del conteo.
+      if (c.rol === 'caj') {
+        const propias = filas.filter((l) => l['origen'] !== ORIGEN_COMO_CERO);
+        return { conteo: conteoParaCaj(conteo, filas), lineas: propias };
+      }
       const teoricos = await c.e.firestore.collection(ruta(c.tenantId, 'conteoTeoricos')).where('conteoId', '==', d.conteoId).limit(500).get();
       const porProducto = new Map(teoricos.docs.map((t) => [String(t.data()['productoId']), Number(t.data()['cantidad'])]));
       const resultado = filas.map((l) => {
@@ -499,7 +534,20 @@ export const accionesInventarios: TablaImplementaciones = {
     ejecutar: async (c, d) => {
       let q = c.e.firestore.collection(ruta(c.tenantId, 'conteos')).limit(d.limite ?? 50);
       if (d.estado !== undefined) q = q.where('estado', '==', d.estado);
-      return { conteos: (await q.get()).docs.map((x) => ({ id: x.id, ...x.data() })) };
+      const docs = (await q.get()).docs;
+      if (c.rol !== 'caj') return { conteos: docs.map((x) => ({ id: x.id, ...x.data() })) };
+      // D9: a `caj` se le quitan los productos tomados «como 0» (hay que leer sus líneas) y `mermas`, como en `conteo`.
+      const conteos = await Promise.all(
+        docs.map(async (x) => {
+          const datos = x.data() as Record<string, unknown>;
+          if (datos['estado'] !== 'cerrado') return { id: x.id, ...conteoParaCaj(datos, []) };
+          const lineas = (await c.e.firestore.collection(ruta(c.tenantId, 'conteoLineas')).where('conteoId', '==', x.id).limit(500).get()).docs.map(datosDe);
+          const { mermas: _m, ...resto } = conteoParaCaj(datos, lineas);
+          void _m;
+          return { id: x.id, ...resto };
+        }),
+      );
+      return { conteos };
     },
   }),
   exportarCsv: accion({

@@ -66,14 +66,14 @@ describe('ingreso', () => {
   });
 
   it('crea unidades con serie y rechaza series repetidas o ya registradas', async () => {
-    await cargar(db, 'celular', 'tienda', 2, ['A1', 'A2']);
-    expect(doc(db, 'unidades', 'celular__A1')).toMatchObject({ estado: 'disponible', ubicacionId: 'tienda' });
+    await cargar(db, 'celular', 'tienda', 2, ['SN-A1', 'SN-A2']);
+    expect(doc(db, 'unidades', 'celular__SN-A1')).toMatchObject({ estado: 'disponible', ubicacionId: 'tienda' });
     verificarInvariantes(db);
-    await expect(cargar(db, 'celular', 'deposito-1', 1, ['A1'])).rejects.toThrow(/ya está registrada/);
-    await expect(cargar(db, 'celular', 'tienda', 2, ['B1', 'B1'])).rejects.toBeInstanceOf(EntradaInvalida);
-    await expect(cargar(db, 'celular', 'tienda', 2, ['B1'])).rejects.toBeInstanceOf(EntradaInvalida);
+    await expect(cargar(db, 'celular', 'deposito-1', 1, ['SN-A1'])).rejects.toThrow(/ya está registrada/);
+    await expect(cargar(db, 'celular', 'tienda', 2, ['SN-B1', 'SN-B1'])).rejects.toBeInstanceOf(EntradaInvalida);
+    await expect(cargar(db, 'celular', 'tienda', 2, ['SN-B1'])).rejects.toBeInstanceOf(EntradaInvalida);
     await expect(cargar(db, 'celular', 'tienda', 1)).rejects.toBeInstanceOf(EntradaInvalida);
-    await expect(cargar(db, 'lapiz', 'tienda', 1, ['Z1'])).rejects.toBeInstanceOf(EntradaInvalida);
+    await expect(cargar(db, 'lapiz', 'tienda', 1, ['SN-Z1'])).rejects.toBeInstanceOf(EntradaInvalida);
     await expect(cargar(db, 'celular', 'tienda', 1, ['mala serie'])).rejects.toBeInstanceOf(EntradaInvalida);
     verificarInvariantes(db);
   });
@@ -98,7 +98,7 @@ describe('traspaso', () => {
 
   beforeEach(async () => {
     await cargar(db, 'lapiz', 'tienda', 10);
-    await cargar(db, 'celular', 'tienda', 3, ['S1', 'S2', 'S3']);
+    await cargar(db, 'celular', 'tienda', 3, ['SN-S1', 'SN-S2', 'SN-S3']);
   });
 
   it('mueve entre almacenes sin cambiar el total y registra usuario y fecha', async () => {
@@ -113,10 +113,10 @@ describe('traspaso', () => {
   });
 
   it('con serie mueve las unidades', async () => {
-    await tr('t1', [{ productoId: 'celular', cantidad: 2, series: ['S1', 'S2'] }], 'tienda', 'deposito-2');
-    expect(doc(db, 'unidades', 'celular__S1')).toMatchObject({ estado: 'disponible', ubicacionId: 'deposito-2' });
+    await tr('t1', [{ productoId: 'celular', cantidad: 2, series: ['SN-S1', 'SN-S2'] }], 'tienda', 'deposito-2');
+    expect(doc(db, 'unidades', 'celular__SN-S1')).toMatchObject({ estado: 'disponible', ubicacionId: 'deposito-2' });
     verificarInvariantes(db);
-    await expect(tr('t2', [{ productoId: 'celular', cantidad: 1, series: ['S1'] }])).rejects.toBeInstanceOf(SerieNoDisponible);
+    await expect(tr('t2', [{ productoId: 'celular', cantidad: 1, series: ['SN-S1'] }])).rejects.toBeInstanceOf(SerieNoDisponible);
   });
 
   it('origen igual a destino, sin stock y sin permiso se rechazan; idempotencia', async () => {
@@ -134,7 +134,7 @@ describe('traspaso', () => {
 describe('ajuste', () => {
   beforeEach(async () => {
     await cargar(db, 'lapiz', 'tienda', 10);
-    await cargar(db, 'celular', 'tienda', 1, ['S1']);
+    await cargar(db, 'celular', 'tienda', 1, ['SN-S1']);
   });
   const aj = (operacionId: string, delta: number, o: { motivo?: string; por?: typeof ADM; productoId?: string } = {}) =>
     db.runTransaction((tx) =>

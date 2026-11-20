@@ -17,7 +17,7 @@ export async function jornada() {
   // BOB: celular con serie (1 392,93) + 2 lápices (8,71 c/u) = 1 410,35; efectivo con vuelto + QR.
   const bob: Carrito = {
     mercado: 'BO', moneda: 'BOB', cliente: { nombre: 'Ana Pérez', telefono: '70000000' }, totalMostrado: 141035,
-    lineas: [{ productoId: 'p-celular', cantidad: 1, series: ['A'] }, { productoId: 'p-lapiz', cantidad: 2 }],
+    lineas: [{ productoId: 'p-celular', cantidad: 1, series: ['SN-A'] }, { productoId: 'p-lapiz', cantidad: 2 }],
   };
   await confirmarVenta(d, T, caj, UUID(1), bob, [
     { medio: 'efectivo', moneda: 'BOB', monto: 110000, cambio: 10000 },

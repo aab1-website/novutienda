@@ -407,18 +407,19 @@ export const handlersInventario: {
     return Object.assign(unidades, marcaDoble(c));
   },
 
-  // Igual que el servidor: sin `porInicio`, coincidencia EXACTA (distingue mayúsculas); con `porInicio` (solo `sup` y `adm`), el
+  // Igual que el servidor: sin `porInicio`, coincidencia exacta SIN distinguir mayúsculas; con `porInicio` (solo `sup` y `adm`), el
   // comienzo de la serie, desde 4 caracteres, 10 resultados como máximo y sin las disponibles de un almacén en conteo.
   buscarSerie: (c, e) => {
-    let coincide: (serie: string) => boolean = (serie) => serie === e.serie;
+    let coincide: (serie: string) => boolean = (serie) => serie.toLowerCase() === e.serie.toLowerCase();
     if (e.porInicio === true) {
       exigirRol(c, ['sup', 'adm']);
       const p = e.serie.trim();
       if (p.length < 4) throw fallo('entrada-invalida', 'Escriba al menos 4 caracteres de la serie.');
-      coincide = (serie) => serie.startsWith(p);
+      coincide = (serie) => serie.toLowerCase().startsWith(p.toLowerCase());
     }
     return [...c.e.unidades.values()]
       .filter((u) => coincide(u.serie))
+      .filter((u) => e.productoId === undefined || u.productoId === e.productoId)
       .filter((u) => e.porInicio !== true || u.estado !== 'disponible' || puedeVerExistencias(c, u.ubicacionId))
       .map((u) => {
         const meses = c.e.productos.get(u.productoId)?.garantiaMeses;

@@ -1,7 +1,7 @@
 import type { TransaccionIdentidad } from '@novutienda/nucleo';
 import { EntradaInvalida, ErrorInventario, EstadoInvalido, SerieNoDisponible, StockInsuficiente, TraspasoBloqueadoPorConteo, type Faltante } from './errores.js';
 import { conteoQueBloqueaTraspaso, conteosAbiertosDe } from './visibilidad.js';
-import { exigirCantidad, exigirProducto, exigirSeries, exigirUbicacion, MAX_CANTIDAD, MAX_LINEAS, ruta } from './ids.js';
+import { exigirCantidad, exigirProducto, exigirSeries, exigirSeriesNuevas, exigirUbicacion, MAX_CANTIDAD, MAX_LINEAS, ruta } from './ids.js';
 import { MARCA_SERVIDOR, type Autor, type Datos, type Trabajo } from './motor.js';
 import { ejecutarOperacion, exigirAutor, exigirListaLineas, exigirMotivo, PERMISOS, type ResultadoOperacion } from './operacion.js';
 
@@ -46,13 +46,14 @@ export interface LineaValida {
   series: string[] | undefined;
 }
 
-function validarLineas(x: readonly (LineaIngreso | LineaTraspaso)[]): LineaValida[] {
+/** `altaDeSeries`: el ingreso da de alta unidades y exige el formato nuevo; el traspaso opera sobre series ya guardadas. */
+function validarLineas(x: readonly (LineaIngreso | LineaTraspaso)[], altaDeSeries = false): LineaValida[] {
   exigirListaLineas(x, MAX_LINEAS);
   return lineasUnicas(
     x.map((l) => ({
       productoId: exigirProducto(l.productoId),
       cantidad: exigirCantidad(l.cantidad),
-      series: l.series === undefined ? undefined : exigirSeries(l.series),
+      series: l.series === undefined ? undefined : altaDeSeries ? exigirSeriesNuevas(l.series) : exigirSeries(l.series),
     })),
   );
 }
@@ -82,7 +83,7 @@ export async function ingresar(
   e: Base & { ubicacionId: string; lineas: readonly LineaIngreso[] },
 ): Promise<ResultadoOperacion<Datos>> {
   const ubicacionId = exigirUbicacion(e.ubicacionId);
-  const lineas = validarLineas(e.lineas);
+  const lineas = validarLineas(e.lineas, true);
   return ejecutarOperacion(tx, {
     tenantId: e.tenantId,
     operacionId: e.operacionId,
