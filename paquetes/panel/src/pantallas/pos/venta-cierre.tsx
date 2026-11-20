@@ -37,13 +37,13 @@ export function ResumenArqueo({ cierre, orden }: { cierre: ResultadoCierre; orde
   );
 }
 
-/** El orden de las monedas sale de lo que declaró el comercio (`monedasCaja`), igual que en la supervisión. */
 /** Lo que mueve el efectivo esperado: apertura y totales por moneda. */
 export function mismoEfectivo(a: TurnoPos, b: TurnoPos): boolean {
   const huella = (t: TurnoPos): string => JSON.stringify([Object.entries(t.apertura).sort(([x], [y]) => x.localeCompare(y)), Object.entries(t.totales).sort(([x], [y]) => x.localeCompare(y)).map(([m, v]) => [m, v && Object.entries(v).sort(([x], [y]) => x.localeCompare(y))])]);
   return huella(a) === huella(b);
 }
 
+/** El orden de las monedas sale de lo que declaró el comercio (`monedasCaja`), igual que en la supervisión. */
 export function VentaCierre({ turno, alCerrar, alRetomar }: { turno: TurnoPos; alCerrar: () => void; alRetomar?: ((carritoId: string) => void) | undefined }): JSX.Element {
   const comercial = useConfiguracionComercial();
   if (comercial.estado === 'cargando') return <Cargando />;
@@ -93,7 +93,7 @@ function CierreListo({ turno, orden, alCerrar, alRetomar }: { turno: TurnoPos; o
     }
   };
   useEffect(() => {
-    void leer().catch(() => undefined);
+    leer().catch(() => setCambio('No se pudo actualizar el turno; los montos pueden estar desactualizados. Use «Actualizar».'));
   }, [turno.turnoId]);
   const actualizar = (): void => {
     setCambio(null);

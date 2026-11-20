@@ -200,6 +200,31 @@ describe('7.2.5: el resultado de la solicitud se avisa', () => {
     expect(await screen.findByText('El supervisor rechazó su solicitud de descuento. Motivo: Supera el tope')).toBeTruthy();
   });
 
+  it('no encontrada: avisa que la solicitud ya no está pendiente', async () => {
+    vi.useFakeTimers({ toFake: ['setInterval', 'clearInterval'] });
+    const e = crearEntorno('caj');
+    await pedir(e);
+    const original = e.api.llamar.bind(e.api);
+    (e.api as { llamar: unknown }).llamar = async (n: string, entrada: unknown) => {
+      if (n === 'listarAprobaciones') return [];
+      return (original as (n: string, x: unknown) => Promise<unknown>)(n, entrada);
+    };
+    await vi.advanceTimersByTimeAsync(4000);
+    expect(await screen.findByText('La solicitud ya no está pendiente.')).toBeTruthy();
+  });
+
+  it('una espera agotada se reanuda al volver a la pestaña', async () => {
+    vi.useFakeTimers({ toFake: ['setInterval', 'clearInterval'] });
+    const e = crearEntorno('caj');
+    await pedir(e);
+    await vi.advanceTimersByTimeAsync(4000 * 151);
+    expect(await screen.findByText(/ya no se consulta sola/)).toBeTruthy();
+    await resolver(e, 'aprobar');
+    document.dispatchEvent(new Event('visibilitychange'));
+    await vi.advanceTimersByTimeAsync(4000);
+    expect(await screen.findByText('El supervisor aprobó su solicitud de descuento.')).toBeTruthy();
+  });
+
   it('al volver a la pestaña consulta en el acto, sin esperar los 4 s', async () => {
     vi.useFakeTimers({ toFake: ['setInterval', 'clearInterval'] });
     const e = crearEntorno('caj');
