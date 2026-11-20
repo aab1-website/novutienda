@@ -74,6 +74,12 @@ export function PantallaVenta({ sub }: { sub: string }): JSX.Element {
   const { api } = useApp();
   const actual = PESTANAS.some((p) => p.id === sub) ? sub : 'terminal';
   const turno = useCarga(() => api.llamar('turnoActual', {}), []);
+  // Carrito que se pidió retomar desde el cierre de turno: el terminal lo abre y lo suelta.
+  const [carritoPedido, setCarritoPedido] = useState<string | undefined>(undefined);
+  const retomar = (id: string): void => {
+    setCarritoPedido(id);
+    window.location.hash = '#/venta/terminal';
+  };
   const necesitaTurno = actual === 'terminal' || actual === 'caja' || actual === 'cierre';
 
   return (
@@ -85,9 +91,9 @@ export function PantallaVenta({ sub }: { sub: string }): JSX.Element {
       {!turno.cargando && !turno.error && necesitaTurno && turno.datos === null && <Apertura alAbrir={turno.recargar} />}
       {!turno.cargando && !turno.error && (!necesitaTurno || turno.datos !== null) && (
         <>
-          {actual === 'terminal' && turno.datos && <VentaTerminal turno={turno.datos} alCambiar={turno.recargar} />}
+          {actual === 'terminal' && turno.datos && <VentaTerminal turno={turno.datos} alCambiar={turno.recargar} carritoPedido={carritoPedido} alUsarPedido={() => setCarritoPedido(undefined)} />}
           {actual === 'caja' && turno.datos && <VentaCaja turno={turno.datos} alCambiar={turno.recargar} />}
-          {actual === 'cierre' && turno.datos && <VentaCierre turno={turno.datos} alCerrar={turno.recargar} />}
+          {actual === 'cierre' && turno.datos && <VentaCierre turno={turno.datos} alCerrar={turno.recargar} alRetomar={retomar} />}
           {actual === 'creditos' && <VentaCreditos alCambiar={turno.recargar} />}
           {actual === 'historial' && <VentaHistorial />}
         </>
