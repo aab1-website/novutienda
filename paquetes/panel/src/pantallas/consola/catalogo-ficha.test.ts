@@ -21,9 +21,9 @@ const ver = (e: Entorno): void => void render(e.envolver(h(ProveedorGuardia, nul
 const jpg = (nombre: string, bytes = 2048): File => new File(['x'.repeat(bytes)], nombre, { type: 'image/jpeg' });
 const fotos = (): HTMLElement => screen.getByLabelText('Archivos de fotos');
 const video = (): HTMLElement => screen.getByLabelText('Archivo de video');
-/** El botón único de la fila: «Preparar para el sitio» sin página y «Editar página» con ella. */
-const botonFilaYa = (producto: string): HTMLElement => screen.getByRole('button', { name: new RegExp(`^(Editar página|Preparar para el sitio|Mostrar en el sitio) de ${producto}$`) });
-const botonFila = (producto: string): Promise<HTMLElement> => screen.findByRole('button', { name: new RegExp(`^(Editar página|Preparar para el sitio|Mostrar en el sitio) de ${producto}$`) });
+/** El botón único de la fila: «Editar página» (o «Mostrar en el sitio» si solo falta la visibilidad). */
+const botonFilaYa = (producto: string): HTMLElement => screen.getByRole('button', { name: new RegExp(`^(Editar página|Mostrar en el sitio) de ${producto}$`) });
+const botonFila = (producto: string): Promise<HTMLElement> => screen.findByRole('button', { name: new RegExp(`^(Editar página|Mostrar en el sitio) de ${producto}$`) });
 const abrir = async (u: ReturnType<typeof userEvent.setup>, _boton: string, producto: string): Promise<HTMLElement> => {
   await u.click(await botonFila(producto));
   return screen.findByRole('dialog', { name: `Página en el sitio: ${producto}` });
@@ -37,9 +37,9 @@ describe('lista de páginas de producto', () => {
     const tabla = await screen.findByRole('table', { name: 'Productos y su página en el sitio' });
     expect(within(tabla).getByRole('columnheader', { name: 'Fotos y video' })).toBeTruthy();
     expect(within(tabla).getAllByText('0 en la ficha').length).toBeGreaterThan(0);
-    // Sin página, la fila ofrece solo «Preparar para el sitio»; con ella, solo «Editar página»: nunca los dos.
+    // Sin página y con ella, la fila ofrece solo «Editar página»: nunca dos botones.
     const sinPagina = within(tabla).getByRole('row', { name: new RegExp(TV) });
-    expect(within(sinPagina).getAllByRole('button').map((b) => b.textContent)).toEqual(['Preparar para el sitio']);
+    expect(within(sinPagina).getAllByRole('button').map((b) => b.textContent)).toEqual(['Editar página']);
     const u = userEvent.setup();
     await u.type(screen.getByLabelText('Buscar producto'), 'hdmi');
     expect(within(tabla).queryByText(TV)).toBeNull();
@@ -457,7 +457,7 @@ describe('«Qué falta» por producto', () => {
     const u = userEvent.setup();
     const tabla = await screen.findByRole('table', { name: 'Productos y su página en el sitio' });
     expect(within(tabla).getAllByText('Aún no está en el sitio').length).toBeGreaterThan(0);
-    await abrir(u, 'Preparar para el sitio', TV);
+    await abrir(u, 'Editar página', TV);
     expect(await screen.findByLabelText(/Dirección de la página/)).toBeTruthy();
   });
 

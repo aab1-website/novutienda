@@ -457,13 +457,13 @@ export function PantallaFichas(): JSX.Element {
                   },
                 ]}
                 acciones={(x) => {
-                  // Un solo botón por fila: «Preparar para el sitio» si no hay página y «Editar página» si la hay. Abre en el
+                  // Un solo botón por fila: «Mostrar en el sitio» si solo falta la visibilidad y «Editar página» en todos los demás casos. Abre en el
                   // primer paso que falta (fotos o visibilidad), pero nunca hay dos botones que abran lo mismo.
                   const ficha = fichaDe(x.id);
                   const paso = siguientePaso(ficha);
                   // Solo falta la visibilidad: «Mostrar en el sitio» abre la ficha con «Visible en el sitio» marcado.
-                  const soloVisibilidad = paso?.id === 'visible' && pasosPendientes(ficha).length === 1;
-                  const texto = ficha === undefined ? 'Preparar para el sitio' : soloVisibilidad ? 'Mostrar en el sitio' : 'Editar página';
+                  const soloVisibilidad = ficha !== undefined && paso?.id === 'visible' && pasosPendientes(ficha).length === 1;
+                  const texto = soloVisibilidad ? 'Mostrar en el sitio' : 'Editar página';
                   const etiqueta = `${texto} de ${x.nombre}`;
                   return (
                     <div class="fila">
