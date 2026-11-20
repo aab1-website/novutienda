@@ -1,12 +1,15 @@
 import type { JSX } from 'preact';
 import { useState } from 'preact/hooks';
+import { ErrorApi } from '../../api/errores.js';
 import { type MontosPorMoneda, type ResultadoCierre, type TurnoPos } from '../../api/tipos.js';
-import { Alerta, BotonConfirmado, Cargando, Campo, Dato, Seccion } from '../../ui/comun.js';
+import { Alerta, Boton, BotonConfirmado, Cargando, Campo, Dato, ErrorCarga, Seccion } from '../../ui/comun.js';
 import { useConfiguracionComercial } from '../../ui/comercial.js';
 import { useApp } from '../../ui/contexto.js';
-import { useAccion } from '../../ui/hooks.js';
+import { useAccion, useCarga } from '../../ui/hooks.js';
 import { diferenciaPorMoneda, monedasDelTurno, ordenarMonedas, proyectarTurno } from './arqueo.js';
 import { formatearMonto, textoACentavos } from '../../util/dinero.js';
+import { lineasGuardadas, textoProductos } from './carritos.js';
+import { CancelarConMotivo } from './venta-carritos.js';
 
 export function ResumenArqueo({ cierre, orden }: { cierre: ResultadoCierre; orden: readonly string[] }): JSX.Element {
   return (
@@ -34,16 +37,39 @@ export function ResumenArqueo({ cierre, orden }: { cierre: ResultadoCierre; orde
 }
 
 /** El orden de las monedas sale de lo que declaró el comercio (`monedasCaja`), igual que en la supervisión. */
-export function VentaCierre({ turno, alCerrar }: { turno: TurnoPos; alCerrar: () => void }): JSX.Element {
+export function VentaCierre({ turno, alCerrar, alRetomar }: { turno: TurnoPos; alCerrar: () => void; alRetomar?: ((carritoId: string) => void) | undefined }): JSX.Element {
   const comercial = useConfiguracionComercial();
   if (comercial.estado === 'cargando') return <Cargando />;
   if (comercial.estado === 'error') return <Alerta>{comercial.mensaje}</Alerta>;
-  return <CierreListo turno={turno} orden={comercial.comercial.monedasCaja} alCerrar={alCerrar} />;
+  return <CierreListo turno={turno} orden={comercial.comercial.monedasCaja} alCerrar={alCerrar} alRetomar={alRetomar} />;
 }
 
-function CierreListo({ turno, orden, alCerrar }: { turno: TurnoPos; orden: readonly string[]; alCerrar: () => void }): JSX.Element {
+/** Carritos abiertos del turno: bloquean el cierre hasta que se cobren o se cancelen. */
+function CarritosAbiertos({ lista, alRetomar, alCambiar }: { lista: readonly { carritoId: string; etiqueta: string; lineas?: number }[]; alRetomar?: ((carritoId: string) => void) | undefined; alCambiar: () => void }): JSX.Element {
+  const { api } = useApp();
+  return (
+    <section aria-label="Carritos abiertos" class="caja-aviso">
+      <p>Hay {lista.length} {lista.length === 1 ? 'carrito abierto' : 'carritos abiertos'}: cóbrelos o cancélelos antes de cerrar la caja.</p>
+      <ul class="lista-simple">
+        {lista.map((k) => (
+          <li key={k.carritoId} class="fila fila-alinear">
+            <strong>{k.etiqueta}</strong>
+            {k.lineas !== undefined && <span class="texto-suave">{textoProductos(k.lineas)}</span>}
+            {alRetomar !== undefined && <Boton chico variante="secundario" etiqueta={`Retomar ${k.etiqueta}`} onClick={() => alRetomar(k.carritoId)}>Retomar</Boton>}
+            <CancelarConMotivo nombre={k.etiqueta} textoBoton="Cancelar con motivo" alCancelar={async (motivo) => { await api.llamar('cancelarCarrito', { carritoId: k.carritoId, motivo }); alCambiar(); }} />
+          </li>
+        ))}
+      </ul>
+    </section>
+  );
+}
+
+function CierreListo({ turno, orden, alCerrar, alRetomar }: { turno: TurnoPos; orden: readonly string[]; alCerrar: () => void; alRetomar?: ((carritoId: string) => void) | undefined }): JSX.Element {
   const { api } = useApp();
   const accion = useAccion();
+  const abiertos = useCarga(() => api.llamar('misCarritos', {}), [turno.turnoId]);
+  // Si el servidor rechaza el cierre por carritos abiertos, se muestra su lista (puede incluir carritos que esta pantalla no vio).
+  const [segunServidor, setSegunServidor] = useState<readonly { carritoId: string; etiqueta: string }[] | null>(null);
   const monedas = monedasDelTurno(turno, orden);
   const [textos, setTextos] = useState<Record<string, string>>({});
   const [cierre, setCierre] = useState<ResultadoCierre | null>(null);
@@ -68,8 +94,15 @@ function CierreListo({ turno, orden, alCerrar }: { turno: TurnoPos; orden: reado
   }
   const dif = diferenciaPorMoneda(turno, contado as MontosPorMoneda, orden);
 
+  const propios = (abiertos.datos ?? []).filter((k) => k.estado === 'abierto').map((k) => ({ carritoId: k.carritoId, etiqueta: k.etiqueta, lineas: lineasGuardadas(k) }));
+  const lista = segunServidor !== null && segunServidor.length > propios.length ? segunServidor : propios;
+  const motivoBloqueo = lista.length > 0 ? `Hay ${lista.length} ${lista.length === 1 ? 'carrito abierto' : 'carritos abiertos'}: cóbrelos o cancélelos antes de cerrar la caja.` : undefined;
+
   return (
     <Seccion titulo="Cierre de turno">
+      {abiertos.cargando && <Cargando texto="Revisando carritos abiertos…" />}
+      {abiertos.error && <ErrorCarga error={abiertos.error} reintentar={abiertos.recargar} />}
+      {lista.length > 0 && <CarritosAbiertos lista={lista} alRetomar={alRetomar} alCambiar={() => { setSegunServidor(null); abiertos.recargar(); }} />}
       <p class="texto-suave">Cuente el efectivo de la caja en cada moneda. QR, transferencias y créditos se informan aparte y no suman al efectivo.</p>
       {monedas.map((m) => {
         const p = proy[m];
@@ -99,9 +132,20 @@ function CierreListo({ turno, orden, alCerrar }: { turno: TurnoPos; orden: reado
         texto="Cerrar turno"
         pregunta="¿Cerrar el turno con estos conteos? No se puede deshacer."
         textoConfirmar="Sí, cerrar turno"
-        deshabilitado={falta || accion.ocupado}
-        onConfirmar={() => void accion.ejecutar(async () => setCierre(await api.llamar('cerrarTurno', { turnoId: turno.turnoId, contado: contado as MontosPorMoneda })))}
+        deshabilitado={falta || accion.ocupado || abiertos.cargando || lista.length > 0}
+        onConfirmar={() => void accion.ejecutar(async () => {
+          try {
+            setCierre(await api.llamar('cerrarTurno', { turnoId: turno.turnoId, contado: contado as MontosPorMoneda }));
+          } catch (e) {
+            if (e instanceof ErrorApi && e.detalle.carritos !== undefined) {
+              setSegunServidor(e.detalle.carritos);
+              abiertos.recargar();
+            }
+            throw e;
+          }
+        })}
       />
+      {motivoBloqueo !== undefined && <p class="texto-suave" data-prueba="motivo-cierre">{motivoBloqueo}</p>}
     </Seccion>
   );
 }

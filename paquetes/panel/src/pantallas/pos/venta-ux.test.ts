@@ -37,7 +37,7 @@ async function vender(e: Entorno, ahora: { valor: number }, cuando: number): Pro
 }
 
 describe('V-02 y V-01: el carrito se conserva y la barra lleva al carrito', () => {
-  it('el carrito, el descuento y el cliente sobreviven a ir a Créditos y volver; «Nueva venta» los descarta', async () => {
+  it('el carrito sobrevive a desmontar el proveedor (recargar la página o salir); «Nueva venta» pasa a un carrito nuevo', async () => {
     const e = crearEntorno('caj');
     const r = await conTurno(e);
     const u = userEvent.setup();
@@ -45,16 +45,16 @@ describe('V-02 y V-01: el carrito se conserva y la barra lleva al carrito', () =
     await u.type(campo(/Cliente \(opcional\)/), 'Ana Pérez');
     await u.type(campo(/Descuento \(monto\)/), '1');
     await u.type(campo(/Motivo del descuento/), 'Por la compra');
-    r.rerender(pantalla(e, 'creditos'));
-    await screen.findByRole('heading', { name: 'Cobro de créditos' });
-    expect(screen.queryByRole('heading', { name: 'Carrito' })).toBeNull();
-    r.rerender(pantalla(e, 'terminal'));
+    // Se desmonta todo, como al recargar la página: lo pendiente se guarda al salir y nada queda en el navegador.
+    r.unmount();
+    render(pantalla(e, 'terminal'));
     await screen.findByRole('heading', { name: 'Carrito' });
-    expect(within(screen.getByRole('group', { name: 'Carrito' })).getByText('Cable HDMI 2 m')).toBeTruthy();
+    expect(await within(screen.getByRole('group', { name: 'Carrito' })).findByText('Cable HDMI 2 m')).toBeTruthy();
     expect((campo(/Cliente \(opcional\)/) as HTMLInputElement).value).toBe('Ana Pérez');
-    expect((campo(/Descuento \(monto\)/) as HTMLInputElement).value).toBe('1');
+    expect((campo(/Descuento \(monto\)/) as HTMLInputElement).value).toBe('1,00');
     expect((campo(/Motivo del descuento/) as HTMLInputElement).value).toBe('Por la compra');
-    // Vender y pedir una venta nueva la deja vacía.
+    expect(await e.api.llamar('misCarritos', {})).toHaveLength(1);
+    // Vender y pedir una venta nueva deja un carrito vacío; el cobrado ya no está abierto.
     await u.click(boton('Cobrar'));
     await screen.findByRole('heading', { name: 'Cobro' });
     await u.click(boton('Confirmar cobro'));
@@ -62,6 +62,18 @@ describe('V-02 y V-01: el carrito se conserva y la barra lleva al carrito', () =
     await u.click(boton('Nueva venta'));
     await screen.findByText('El carrito está vacío');
     expect((campo(/Cliente \(opcional\)/) as HTMLInputElement).value).toBe('');
+    expect(await e.api.llamar('misCarritos', {})).toHaveLength(1);
+  });
+
+  it('el carrito también se conserva al ir a Créditos y volver', async () => {
+    const e = crearEntorno('caj');
+    const r = await conTurno(e);
+    const u = userEvent.setup();
+    await u.click(await screen.findByRole('button', { name: 'Agregar Cable HDMI 2 m' }));
+    r.rerender(pantalla(e, 'creditos'));
+    await screen.findByRole('heading', { name: 'Cobro de créditos' });
+    r.rerender(pantalla(e, 'terminal'));
+    expect(await within(await screen.findByRole('group', { name: 'Carrito' })).findByText('Cable HDMI 2 m')).toBeTruthy();
   });
 
   it('una venta ya cobrada no reaparece en el carrito al volver a la pestaña', async () => {
@@ -77,14 +89,14 @@ describe('V-02 y V-01: el carrito se conserva y la barra lleva al carrito', () =
     await screen.findByText('El carrito está vacío');
   });
 
-  it('la barra fija resume los productos y el total, y «Ver carrito» lleva el foco al carrito', async () => {
+  it('la barra fija resume los productos (líneas) y el total, y «Ver carrito» lleva el foco al carrito', async () => {
     const e = crearEntorno('caj');
     await conTurno(e);
     expect(document.querySelector('.venta-barra')).toBeNull();
     const u = userEvent.setup();
     await u.click(await screen.findByRole('button', { name: 'Agregar Cable HDMI 2 m' }));
     await u.click(await screen.findByRole('button', { name: 'Agregar Cable HDMI 2 m' }));
-    await waitFor(() => expect(document.querySelector('[data-prueba="barra-resumen"]')?.textContent).toBe('2 productos · Bs 111,36'));
+    await waitFor(() => expect(document.querySelector('[data-prueba="barra-resumen"]')?.textContent).toBe('1 producto · Bs 111,36'));
     await u.click(within(screen.getByRole('region', { name: 'Resumen del carrito' })).getByRole('button', { name: 'Ver carrito' }));
     expect(document.activeElement).toBe(screen.getByRole('group', { name: 'Carrito' }));
   });
@@ -392,7 +404,7 @@ describe('cobro sin duplicar y espera acotada de la aprobación', () => {
   };
   const consultas = (e: Entorno): number => e.api.llamadas.filter((l) => l.nombre === 'listarAprobaciones').length;
 
-  it('una solicitud ajena o vieja no activa la consulta periódica y se ofrece «Volver a consultar»', async () => {
+  it('una solicitud sin carrito (ajena o vieja) no se ofrece ni activa la consulta periódica', async () => {
     vi.useFakeTimers({ toFake: ['setInterval', 'clearInterval'] });
     const e = crearEntorno('caj');
     await e.api.llamar('abrirTurno', { turnoId: uuid(), apertura: { BOB: 10000 } });
@@ -400,12 +412,12 @@ describe('cobro sin duplicar y espera acotada de la aprobación', () => {
     render(pantalla(e, 'terminal'));
     await screen.findByRole('heading', { name: 'Productos' });
     await pedirDescuento(userEvent.setup());
-    expect(await screen.findByText(/ya no se consulta sola/)).toBeTruthy();
+    // La aprobación pedida para otro carrito no sirve a este: se ofrece pedir una propia.
+    expect(await screen.findByRole('button', { name: 'Solicitar aprobación' })).toBeTruthy();
+    expect(screen.queryByText(/ya no se consulta sola/)).toBeNull();
     const antes = consultas(e);
     await vi.advanceTimersByTimeAsync(30_000);
     expect(consultas(e)).toBe(antes);
-    await userEvent.setup().click(boton('Volver a consultar'));
-    await waitFor(() => expect(consultas(e)).toBe(antes + 1));
   });
 
   it('a los 10 minutos sin respuesta deja de consultar y ofrece «Volver a consultar», que reanuda', async () => {

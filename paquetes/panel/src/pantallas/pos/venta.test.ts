@@ -6,7 +6,7 @@ import { afterEach, describe, expect, it, vi } from 'vitest';
 import { crearEntorno, uuid, type Entorno } from '../../ayuda-pruebas.js';
 import { PantallaVenta } from './venta.js';
 import { PantallaAprobaciones } from './aprobaciones.js';
-import { PantallaSupervision } from './supervision.js';
+import { PantallaSupervision, textoAntiguedad } from './supervision.js';
 
 afterEach(() => {
   cleanup();
@@ -317,6 +317,51 @@ const UN_MERCADO = {
   mercados: [{ id: 'BO', nombre: 'Bolivia', monedaVenta: 'BOB', monedaBase: 'BOB', tieneTipoCambio: false }],
   monedasCaja: ['BOB'],
 };
+
+describe('supervisión: carritos abiertos', () => {
+  it('sin carritos dice que no hay; con carritos los lista sin datos del cliente y el supervisor cancela con motivo', async () => {
+    const e = crearEntorno('caj');
+    await e.api.llamar('abrirTurno', { turnoId: uuid(), apertura: { BOB: 10000 } });
+    e.como('sup');
+    render(e.envolver(h(PantallaSupervision, { sub: 'vivo' })));
+    expect(await screen.findByText('No hay carritos abiertos.')).toBeTruthy();
+    cleanup();
+    e.como('caj');
+    const carritoId = uuid();
+    await e.api.llamar('crearCarrito', { carritoId, etiqueta: 'Mostrador 1' });
+    e.como('sup');
+    render(e.envolver(h(PantallaSupervision, { sub: 'vivo' })));
+    const tabla = await screen.findByRole('table', { name: 'Carritos abiertos' });
+    expect(tabla.textContent).toMatch(/Mostrador 1/);
+    for (const t of ['Carrito', 'Cajero', 'Productos', 'Unidades', 'Antigüedad']) expect(within(tabla).getByRole('columnheader', { name: new RegExp(t) })).toBeTruthy();
+    expect(screen.queryByText('No hay carritos abiertos.')).toBeNull();
+    expect(within(tabla).getByText('Cajero de la caja abierta')).toBeTruthy();
+    const u = userEvent.setup();
+    await u.click(screen.getByRole('button', { name: 'Cancelar con motivo Mostrador 1' }));
+    await u.type(screen.getByLabelText(/Motivo de la cancelación de Mostrador 1/), 'Cliente ausente');
+    await u.click(screen.getByRole('button', { name: 'Confirmar cancelación de Mostrador 1' }));
+    expect(await screen.findByText('No hay carritos abiertos.')).toBeTruthy();
+    expect(e.api.llamadas.find((l) => l.nombre === 'cancelarCarrito')?.entrada).toEqual({ carritoId, motivo: 'Cliente ausente' });
+  });
+  it('el administrador también los ve', async () => {
+    const e = crearEntorno('caj');
+    await e.api.llamar('abrirTurno', { turnoId: uuid(), apertura: { BOB: 0 } });
+    await e.api.llamar('crearCarrito', { carritoId: uuid(), etiqueta: 'Cliente 7' });
+    e.como('adm');
+    render(e.envolver(h(PantallaSupervision, { sub: 'vivo' })));
+    expect((await screen.findByRole('table', { name: 'Carritos abiertos' })).textContent).toMatch(/Cliente 7/);
+  });
+  it('el vendedor no ve la sección', async () => {
+    const e = crearEntorno('caj');
+    render(e.envolver(h(PantallaSupervision, { sub: 'vivo' })));
+    await screen.findByText(/Cajas abiertas/);
+    expect(screen.queryByText('No hay carritos abiertos.')).toBeNull();
+    expect(e.api.llamadas.some((l) => l.nombre === 'carritosSupervision')).toBe(false);
+  });
+  it('textoAntiguedad', () => {
+    expect([0, 90_000, 3_600_000 + 600_000, 90_000_000].map(textoAntiguedad)).toEqual(['menos de 1 min', '1 min', '1 h 10 min', '1 d 1 h']);
+  });
+});
 
 describe('venta: mercados y monedas declarados', () => {
   it('el comercio de referencia abre turno en el orden declarado: bolivianos, dólares, pesos', async () => {

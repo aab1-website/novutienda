@@ -1,19 +1,20 @@
 import type { JSX } from 'preact';
 import { useEffect, useMemo, useRef, useState } from 'preact/hooks';
-import { nuevoId } from '../../api/cliente.js';
+import { nuevoId, type ClienteApi } from '../../api/cliente.js';
 import { marcaDe } from '../../api/marca.js';
-import type { AprobacionPos, CotizacionesVigentes, MercadoDeclarado, ProductoPanel, Recibo, TurnoPos, UbicacionId } from '../../api/tipos.js';
+import type { AprobacionPos, ConfigPos, CotizacionesVigentes, MercadoDeclarado, ProductoPanel, TurnoPos, UbicacionId, VentaPos } from '../../api/tipos.js';
 import { Alerta, Boton, Campo, Cargando, Casilla, ErrorCarga, Selector, Seccion, Vacio } from '../../ui/comun.js';
 import { useConfiguracionComercial } from '../../ui/comercial.js';
 import { useAvisos } from '../../ui/avisos.js';
 import { useApp } from '../../ui/contexto.js';
-import { useBorrador } from '../../ui/guardia.js';
 import { AvisoConteoAbierto, ExistenciaOculta, TEXTO_OCULTO } from '../../ui/existencia.js';
 import { useAccion, useCarga } from '../../ui/hooks.js';
 import { AccionesRecibo, ReciboVista } from '../recibos/recibo-vista.js';
 import { formatearMonto, textoACentavos } from '../../util/dinero.js';
 import { cotizacionDeMercado, hayReglaDeRedondeo, monedasDeCobro, precioDeCobro } from './arqueo.js';
+import { type BorradorCarrito, type CarritoServidor, type LineaUI, AVISO_NO_GUARDADO, errorDeCarrito, textoProductos, useCarritoServidor } from './carritos.js';
 import { SerieEscrita } from './serie-escrita.js';
+import { BarraCarritos } from './venta-carritos.js';
 import { useEsperaAprobacion, VentaCobro, type DatosCobro } from './venta-cobro.js';
 import './venta.css';
 
@@ -25,12 +26,7 @@ const ANCHO_DOS_COLUMNAS = 960;
 
 const esPantallaAngosta = (): boolean => typeof window.matchMedia === 'function' && window.matchMedia(`(max-width: ${ANCHO_DOS_COLUMNAS - 0.02}px)`).matches;
 
-export interface LineaUI {
-  productoId: string;
-  almacenId: UbicacionId;
-  cantidad: number;
-  series: string[];
-}
+export type { LineaUI } from './carritos.js';
 
 const ALMACENES: { valor: UbicacionId; texto: string }[] = [
   { valor: 'tienda', texto: 'Tienda' },
@@ -79,30 +75,16 @@ function Cotizacion({ cot, mercado, moneda }: { cot: CotizacionesVigentes; merca
   );
 }
 
-interface BorradorVenta {
-  mercadoId: string;
-  moneda: string;
-  lineas: LineaUI[];
-  descTexto: string;
-  descMotivo: string;
-  aprobacionId: string;
-  cliente: string;
-  telefono: string;
-  /** Identificador del cobro: se renueva solo al descartar el borrador (venta confirmada o «Nueva venta»). */
-  requestId: string;
-  solicitadaId: string | null;
-}
-
-export function VentaTerminal({ turno, alCambiar }: { turno: TurnoPos; alCambiar: () => void }): JSX.Element {
+export function VentaTerminal({ turno, alCambiar, carritoPedido, alUsarPedido }: { turno: TurnoPos; alCambiar: () => void; carritoPedido?: string | undefined; alUsarPedido?: (() => void) | undefined }): JSX.Element {
   const comercial = useConfiguracionComercial();
   if (comercial.estado === 'cargando') return <Cargando />;
   if (comercial.estado === 'error') return <Alerta>{comercial.mensaje}</Alerta>;
   if (comercial.comercial.mercados.length === 0) return <Alerta>El comercio no tiene mercados declarados.</Alerta>;
-  return <TerminalLista turno={turno} alCambiar={alCambiar} mercados={comercial.comercial.mercados} />;
+  return <TerminalLista turno={turno} alCambiar={alCambiar} mercados={comercial.comercial.mercados} carritoPedido={carritoPedido} alUsarPedido={alUsarPedido} />;
 }
 
-function TerminalLista({ turno, alCambiar, mercados }: { turno: TurnoPos; alCambiar: () => void; mercados: readonly MercadoDeclarado[] }): JSX.Element {
-  const { api, usuario } = useApp();
+function TerminalLista({ turno, alCambiar, mercados, carritoPedido, alUsarPedido }: { turno: TurnoPos; alCambiar: () => void; mercados: readonly MercadoDeclarado[]; carritoPedido?: string | undefined; alUsarPedido?: (() => void) | undefined }): JSX.Element {
+  const { api } = useApp();
   const datos = useCarga(
     async () => ({
       productos: await api.llamar('listarProductos', {}),
@@ -112,27 +94,86 @@ function TerminalLista({ turno, alCambiar, mercados }: { turno: TurnoPos; alCamb
     }),
     [turno.turnoId],
   );
+  // Los carritos viven en el servidor: sobreviven a recargar la página, a cambiar de usuario y a cerrar la computadora.
+  const c = useCarritoServidor(turno.turnoId, mercados, carritoPedido);
+  const [recibo, setRecibo] = useState<{ ventaId: string; carritoId: string; repetida: boolean } | null>(null);
+  // Precios que se vieron en esta sesión por carrito, para avisar al retomarlo si cambiaron (el servidor no guarda precios).
+  const preciosVistos = useRef(new Map<string, Record<string, number>>());
+  useEffect(() => {
+    if (carritoPedido !== undefined && c.activo?.carritoId === carritoPedido) alUsarPedido?.();
+  }, [carritoPedido, c.activo?.carritoId]);
+
+  if (recibo !== null) {
+    return <ReciboFinal ventaId={recibo.ventaId} repetida={recibo.repetida} nuevaVenta={() => { const id = recibo.carritoId; setRecibo(null); void c.retirarCobrado(id); alCambiar(); datos.recargar(); }} />;
+  }
+  if (datos.cargando || c.cargando) return <Cargando />;
+  if (datos.error || !datos.datos) return <ErrorCarga error={datos.error ?? 'Sin datos'} reintentar={datos.recargar} />;
+  if (c.error !== null) return <ErrorCarga error={c.error} reintentar={c.recargar} />;
+  if (c.activo === undefined || c.borrador === null) return <Cargando />;
+  const carritoActivoId = c.activo.carritoId;
+  return (
+    <div>
+      <BarraCarritos c={c} lineasActivo={c.borrador.lineas.length} />
+      <CarritoActivo
+        key={carritoActivoId}
+        carritoId={carritoActivoId}
+        version={c.activo.version}
+        borrador={c.borrador}
+        c={c}
+        mercados={mercados}
+        datos={datos.datos}
+        vistos={preciosVistos.current}
+        alVender={(ventaId, repetida) => setRecibo({ ventaId, carritoId: carritoActivoId, repetida })}
+      />
+    </div>
+  );
+}
+
+interface DatosTerminal {
+  productos: readonly ProductoPanel[];
+  cot: CotizacionesVigentes;
+  config: ConfigPos;
+  ventas: readonly VentaPos[];
+}
+
+/**
+ * Avisos al retomar un carrito: lo que pudo cambiar mientras estaba guardado. El aviso de precio solo compara con lo que esta
+ * pantalla vio en la misma sesión (el servidor no guarda precios): tras recargar o entrar desde otro equipo no hay con qué
+ * comparar y no se avisa. El servidor igual valida el total al cobrar.
+ */
+export async function avisosAlRetomar(b: BorradorCarrito, porId: ReadonlyMap<string, ProductoPanel>, conteos: readonly { ubicacionId: string }[], api: ClienteApi, vistos: Record<string, number> | undefined, precioDe: (p: ProductoPanel) => number | null): Promise<string[]> {
+  const avisos: string[] = [];
+  for (const l of b.lineas) {
+    const p = porId.get(l.productoId);
+    if (p === undefined || !p.activo) {
+      avisos.push(`El producto ${p?.nombre ?? 'de una línea'} ya no está activo: quítelo del carrito.`);
+      continue;
+    }
+    const precio = precioDe(p);
+    const antes = vistos?.[p.id];
+    if (antes !== undefined && precio !== null && antes !== precio) avisos.push(`El precio de ${p.nombre} cambió desde que lo vio en esta sesión: antes ${formatearMonto(antes, b.moneda)}, ahora ${formatearMonto(precio, b.moneda)}. El total se vuelve a validar al cobrar.`);
+    // En un almacén en conteo no se lista lo disponible (sería mostrar el stock): no se puede comprobar la serie.
+    if (l.series.length === 0 || conteos.some((x) => x.ubicacionId === l.almacenId)) continue;
+    try {
+      const libres = new Set((await api.llamar('listarSeries', { productoId: p.id, ubicacionId: l.almacenId, soloDisponibles: true })).map((u) => u.serie));
+      for (const s of l.series) if (!libres.has(s)) avisos.push(`La serie ${s} de ${p.nombre} ya no está disponible: quítela o elija otra.`);
+    } catch {
+      // Sin la lista no se avisa; el servidor vuelve a comprobar al cobrar.
+    }
+  }
+  return avisos;
+}
+
+function CarritoActivo({ carritoId, version, borrador, c, mercados, datos, vistos, alVender }: { carritoId: string; version: number; borrador: BorradorCarrito; c: CarritoServidor; mercados: readonly MercadoDeclarado[]; datos: DatosTerminal; vistos: Map<string, Record<string, number>>; alVender: (ventaId: string, repetida: boolean) => void }): JSX.Element {
+  const { api, usuario } = useApp();
+  const { cot, config, ventas } = datos;
   const [busqueda, setBusqueda] = useState('');
   const [categoria, setCategoria] = useState('');
-  // Mercado y moneda iniciales: el primer mercado declarado y su moneda de venta.
-  // La venta en curso sobrevive a ir a otra pestaña y volver (sin guardia: se conserva sola). «Nueva venta» la descarta.
-  const borrador = useBorrador<BorradorVenta>(`venta:carrito:${turno.turnoId}`, {
-    mercadoId: mercados[0]?.id ?? '',
-    moneda: mercados[0]?.monedaVenta ?? '',
-    lineas: [],
-    descTexto: '',
-    descMotivo: '',
-    aprobacionId: '',
-    cliente: '',
-    telefono: '',
-    requestId: nuevoId(),
-    solicitadaId: null,
-  });
-  const { mercadoId, moneda, lineas, descTexto, descMotivo, aprobacionId, cliente, telefono } = borrador.valor;
-  const cambiar = (c: Partial<BorradorVenta>): void => borrador.poner((p) => ({ ...p, ...c }));
+  const { mercadoId, moneda, lineas, descTexto, descMotivo, aprobacionId, cliente, telefono } = borrador;
+  const cambiar = (x: Partial<BorradorCarrito>): void => c.cambiar((p) => ({ ...p, ...x }));
   const setMercadoId = (v: string): void => cambiar({ mercadoId: v });
   const setMoneda = (v: string): void => cambiar({ moneda: v });
-  const setLineas = (v: LineaUI[] | ((p: LineaUI[]) => LineaUI[])): void => borrador.poner((p) => ({ ...p, lineas: typeof v === 'function' ? v(p.lineas) : v }));
+  const setLineas = (v: LineaUI[] | ((p: LineaUI[]) => LineaUI[])): void => c.cambiar((p) => ({ ...p, lineas: typeof v === 'function' ? v(p.lineas) : v }));
   const setDescTexto = (v: string): void => cambiar({ descTexto: v });
   const setDescMotivo = (v: string): void => cambiar({ descMotivo: v });
   const setAprobacionId = (v: string): void => cambiar({ aprobacionId: v });
@@ -140,29 +181,52 @@ function TerminalLista({ turno, alCambiar, mercados }: { turno: TurnoPos; alCamb
   const setTelefono = (v: string): void => cambiar({ telefono: v });
   const [verSeries, setVerSeries] = useState<string | null>(null);
   const [paso, setPaso] = useState<'carrito' | 'cobro'>('carrito');
-  const [recibo, setRecibo] = useState<{ recibo: Recibo | null; ventaId: string; repetida: boolean } | null>(null);
   const solicitud = useAccion();
+  const cobrando = useAccion();
   const avisos = useAvisos();
-  const solicitadaId = borrador.valor.solicitadaId;
+  const solicitadaId = borrador.solicitadaId;
   const setSolicitadaId = (v: string | null): void => cambiar({ solicitadaId: v });
-  const aprobs = useCarga(() => api.llamar('listarAprobaciones', {}), [solicitadaId, paso]);
-  // Solo se espera la solicitud que esta pantalla acaba de pedir; vive en el borrador y se va con él.
+  const aprobs = useCarga(async () => (await api.llamar('listarAprobaciones', {})).filter((a) => a.aprobacionId === solicitadaId || (aprobacionId !== '' && a.aprobacionId === aprobacionId)), [solicitadaId, aprobacionId, paso]);
+  // Una aprobación sirve solo al carrito para el que se pidió: aquí solo se ven las de este carrito.
+  // Solo se espera la solicitud que esta pantalla acaba de pedir; vive en el carrito y se va con él.
   const espera = useEsperaAprobacion(solicitadaId, aprobs.recargar);
   const refCarrito = useRef<HTMLDivElement>(null);
+  const [alRetomar, setAlRetomar] = useState<string[]>([]);
 
   // La marca viaja como propiedad de la lista: se lee antes de filtrar o mapear.
-  const conteos = marcaDe(datos.datos?.productos)?.conteosAbiertos ?? [];
-  const productos = datos.datos?.productos ?? [];
+  const conteos = marcaDe(datos.productos)?.conteosAbiertos ?? [];
+  const productos = datos.productos;
   const porId = useMemo(() => new Map(productos.map((p) => [p.id, p])), [productos]);
 
-  if (recibo !== null) {
-    return <ReciboFinal ventaId={recibo.ventaId} repetida={recibo.repetida} nuevaVenta={() => { setRecibo(null); borrador.descartar(); setPaso('carrito'); alCambiar(); datos.recargar(); }} />;
-  }
-  if (datos.cargando) return <Cargando />;
-  if (datos.error || !datos.datos) return <ErrorCarga error={datos.error ?? 'Sin datos'} reintentar={datos.recargar} />;
-  const { cot, config, ventas } = datos.datos;
-
   const mercado = mercados.find((m) => m.id === mercadoId) ?? mercados[0];
+
+  // Al retomar (abrir) este carrito: lo que cambió mientras estaba guardado.
+  useEffect(() => {
+    if (mercado === undefined || lineas.length === 0) return undefined;
+    let activo = true;
+    const precioDe = (p: ProductoPanel): number | null => {
+      const r = precioDeCobro(p, mercado, moneda, cot);
+      return r.tipo === 'precio' ? r.centavos : null;
+    };
+    void avisosAlRetomar(borrador, porId, conteos, api, vistos.get(`${carritoId}:${moneda}`), precioDe).then((a) => {
+      if (activo) setAlRetomar(a);
+    });
+    return () => {
+      activo = false;
+    };
+  }, []);
+  // Los precios que se ven ahora quedan anotados (solo en memoria) para compararlos si el carrito se retoma luego.
+  useEffect(() => {
+    if (mercado === undefined) return;
+    const m: Record<string, number> = {};
+    for (const l of lineas) {
+      const p = porId.get(l.productoId);
+      const r = p === undefined ? null : precioDeCobro(p, mercado, moneda, cot);
+      if (r?.tipo === 'precio') m[l.productoId] = r.centavos;
+    }
+    vistos.set(`${carritoId}:${moneda}`, m);
+  }, [lineas, moneda, mercadoId]);
+
   if (mercado === undefined) return <Alerta>El comercio no tiene mercados declarados.</Alerta>;
   const monedas = monedasDeCobro(mercado);
   const cambiarMercado = (id: string): void => {
@@ -234,12 +298,11 @@ function TerminalLista({ turno, alCambiar, mercados }: { turno: TurnoPos; alCamb
     if (config.mediosHabilitados.length === 0) return 'No hay medios de pago habilitados: avise al administrador.';
     return undefined;
   })();
-  const unidades = lineas.reduce((n, l) => n + l.cantidad, 0);
 
   const pedirAprobacion = (): void => {
     void solicitud.ejecutar(async () => {
       const id = nuevoId();
-      await api.llamar('solicitarAprobacion', { aprobacionId: id, solicitud: { tipo: 'descuento', moneda, monto, motivo: descMotivo.trim() } });
+      await api.llamar('solicitarAprobacion', { aprobacionId: id, solicitud: { tipo: 'descuento', moneda, monto, motivo: descMotivo.trim(), carritoId } });
       setSolicitadaId(id);
     }, { exito: 'Solicitud enviada al supervisor.', error: 'ambos' });
   };
@@ -256,16 +319,37 @@ function TerminalLista({ turno, alCambiar, mercados }: { turno: TurnoPos; alCamb
         totalMostrado: total,
       },
       aprobacionId: excede ? aprobacionId : undefined,
-      requestId: borrador.valor.requestId,
+      requestId: carritoId, carritoId, carritoVersion: version,
+      solicitudCreditoId: borrador.creditoSolicitadoId,
+      guardarSolicitudCredito: async (id) => {
+        c.cambiar((p) => ({ ...p, creditoSolicitadoId: id }));
+        if (!(await c.vaciar())) {
+          // Si otra ventana cambió o cerró el carrito, se vuelve a él para ver el aviso y la versión vigente.
+          if (c.motivoNoGuardado() !== AVISO_NO_GUARDADO) setPaso('carrito');
+          throw errorDeCarrito(`La solicitud se envió, pero no quedó guardada en el carrito. ${c.motivoNoGuardado()}`);
+        }
+      },
+      alConflicto: (e) => {
+        if (!c.tomarConflicto(e)) return false;
+        setPaso('carrito');
+        return true;
+      },
       nombreProducto: (id) => porId.get(id)?.nombre,
       nombreAlmacen: (id) => ALMACENES.find((a) => a.valor === id)?.texto,
     };
-    // La venta ya está registrada: el borrador se descarta aquí para que no reaparezca al volver a la pestaña.
-    return <VentaCobro datos={cobro} volver={() => setPaso('carrito')} alVender={(ventaId, repetida) => { borrador.descartar(); setRecibo({ ventaId, recibo: null, repetida }); }} />;
+    // La venta ya está registrada: el servidor cerró el carrito; «Nueva venta» lo retira de la lista.
+    return <VentaCobro datos={cobro} volver={() => setPaso('carrito')} alVender={alVender} />;
   }
 
   return (
     <div>
+      {alRetomar.length > 0 && (
+        <Alerta tipo="info">
+          <span>Al retomar este carrito:</span>
+          <ul>{alRetomar.map((t) => <li key={t}>{t}</li>)}</ul>
+          <Boton chico variante="secundario" onClick={() => setAlRetomar([])}>Entendido</Boton>
+        </Alerta>
+      )}
       <div class="terminal">
       <AvisoConteoAbierto conteos={conteos} />
       <Seccion titulo="Productos">
@@ -412,16 +496,27 @@ function TerminalLista({ turno, alCambiar, mercados }: { turno: TurnoPos; alCamb
           {monto > 0 && !descInvalido && <div><dt>Descuento</dt><dd>-{formatearMonto(monto, moneda)}</dd></div>}
           <div class="total"><dt>Total</dt><dd data-prueba="total">{formatearMonto(total, moneda)}</dd></div>
         </dl>
-        <Boton onClick={() => setPaso('cobro')} motivo={motivoNoCobrar}>
+        {cobrando.error && <Alerta>{cobrando.error}</Alerta>}
+        <Boton
+          ocupado={cobrando.ocupado}
+          onClick={() =>
+            void cobrando.ejecutar(async () => {
+              // Lo pendiente se guarda antes de cobrar: el cobro usa la versión que el servidor ya tiene.
+              if (!(await c.vaciar())) throw errorDeCarrito(c.motivoNoGuardado());
+              setPaso('cobro');
+            })
+          }
+          motivo={motivoNoCobrar}
+        >
           Cobrar
         </Boton>
       </Seccion>
       </div>
       </div>
-      {unidades > 0 && (
+      {lineas.length > 0 && (
         <div class="venta-barra" role="region" aria-label="Resumen del carrito">
           <span data-prueba="barra-resumen">
-            {unidades} {unidades === 1 ? 'producto' : 'productos'} · {formatearMonto(total, moneda)}
+            {textoProductos(lineas.length)} · {formatearMonto(total, moneda)}
           </span>
           <Boton chico onClick={irAlCarrito}>Ver carrito</Boton>
         </div>

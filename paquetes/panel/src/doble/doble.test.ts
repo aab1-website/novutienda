@@ -389,6 +389,18 @@ describe('doble: carritos, mismas comprobaciones que el servidor', () => {
     expect(r.carritos[0]).toMatchObject({ carritoId, lineas: 1, unidades: 2 });
     expect(JSON.stringify(r.carritos)).not.toMatch(/Ana|70000000|S1/);
   });
+  it('carritosSupervision traduce pos.supervision: los carritos del turno, o vacío si no hay turno', async () => {
+    const { e, carritoId } = await (async () => {
+      const ctx = await conTurno();
+      const carritoId = uuid();
+      await ctx.e.api.llamar('crearCarrito', { carritoId });
+      return { ...ctx, carritoId };
+    })();
+    e.como('sup');
+    const r = await e.api.llamar('carritosSupervision', {});
+    expect(r.map((k) => k.carritoId)).toEqual([carritoId]);
+    expect(await crearEntorno('sup').api.llamar('carritosSupervision', {})).toEqual([]);
+  });
 });
 
 describe('doble: crédito, caja y anulaciones', () => {

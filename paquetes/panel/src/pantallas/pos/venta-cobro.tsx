@@ -74,9 +74,18 @@ export interface DatosCobro {
   aprobacionId: string | undefined;
   /** Identificador del cobro: vive en el borrador del carrito; el mismo reintento no puede duplicar la venta. */
   requestId: string;
+  /** Carrito guardado que se cobra y la versión que el servidor tiene (el `requestId` es su id). */
+  carritoId?: string | undefined;
+  carritoVersion?: number | undefined;
   /** Nombres de lo ya cargado en el terminal, para completar un faltante de stock que el servidor trae sin nombre. */
   nombreProducto?: ((productoId: string) => string | undefined) | undefined;
   nombreAlmacen?: ((almacenId: string) => string | undefined) | undefined;
+  /** Solicitud de crédito guardada en el carrito: la aprobación se busca por este id, así sigue disponible tras «Volver» o recargar. */
+  solicitudCreditoId?: string | null | undefined;
+  /** Guarda en el carrito el id de la solicitud de crédito recién pedida; falla si no quedó guardado. */
+  guardarSolicitudCredito?: ((id: string) => Promise<void>) | undefined;
+  /** Ante un conflicto de versión del carrito: lo toma, vuelve al carrito y devuelve `true`. */
+  alConflicto?: ((e: unknown) => boolean) | undefined;
 }
 
 /** Si el servidor devolvió faltantes sin nombre de producto o de almacén, los completa con lo que el panel ya tiene. */
@@ -99,8 +108,10 @@ export function VentaCobro({ datos, volver, alVender }: { datos: DatosCobro; vol
   const accion = useAccion();
   const solicitud = useAccion();
   const [aprobCredito, setAprobCredito] = useState('');
-  const [solicitadaId, setSolicitadaId] = useState<string | null>(null);
-  const aprobs = useCarga(() => api.llamar('listarAprobaciones', {}), [solicitadaId]);
+  // La solicitud de crédito vive en el carrito (`datos.solicitudCreditoId`); `recienPedida` cubre el instante hasta que se guarde.
+  const [recienPedida, setRecienPedida] = useState<string | null>(null);
+  const solicitadaId = recienPedida ?? datos.solicitudCreditoId ?? null;
+  const aprobs = useCarga(async () => (await api.llamar('listarAprobaciones', {})).filter((a) => solicitadaId !== null && a.aprobacionId === solicitadaId), [solicitadaId]);
   const espera = useEsperaAprobacion(solicitadaId, aprobs.recargar);
 
   // El monto de la primera fila sigue al total mientras la persona no lo haya escrito.
@@ -142,11 +153,14 @@ export function VentaCobro({ datos, volver, alVender }: { datos: DatosCobro; vol
       try {
         const r = await api.llamar('confirmarVenta', {
           requestId: datos.requestId, carrito, pagos,
+          ...(datos.carritoId !== undefined && datos.carritoVersion !== undefined ? { carritoId: datos.carritoId, carritoVersion: datos.carritoVersion } : {}),
           ...(datos.aprobacionId !== undefined ? { aprobacionId: datos.aprobacionId } : {}),
           ...(necesitaAprobCredito ? { aprobacionCreditoId: aprobCredito } : {}),
         });
         alVender(r.venta.ventaId, r.repetida === true);
       } catch (e) {
+        // Otra ventana cambió el carrito: se vuelve a él con la versión vigente y el aviso.
+        if (datos.alConflicto?.(e) === true) return;
         throw conNombresDeFaltantes(e, datos);
       }
     }, { error: 'ambos' });
@@ -155,8 +169,9 @@ export function VentaCobro({ datos, volver, alVender }: { datos: DatosCobro; vol
   const pedirCredito = (): void => {
     void solicitud.ejecutar(async () => {
       const id = nuevoId();
-      await api.llamar('solicitarAprobacion', { aprobacionId: id, solicitud: { tipo: 'credito', moneda, monto: montoCredito, motivo: `Crédito para ${deudor}`, deudor } });
-      setSolicitadaId(id);
+      await api.llamar('solicitarAprobacion', { aprobacionId: id, solicitud: { tipo: 'credito', moneda, monto: montoCredito, motivo: `Crédito para ${deudor}`, deudor, ...(datos.carritoId !== undefined ? { carritoId: datos.carritoId } : {}) } });
+      setRecienPedida(id);
+      await datos.guardarSolicitudCredito?.(id);
     }, { exito: 'Solicitud de crédito enviada al supervisor.', error: 'ambos' });
   };
 

@@ -9,7 +9,7 @@ import type {
   LineaAjuste, LineaIngreso, LineaTraspaso, LogoNegocio, Medio, MedioLogo, ResultadoEstadoSubidaLogo, MermaVista, MontosPorMoneda, MovimientoCaja, MovimientoCajaEntrada, MovimientoVista,
   ConMarca, ListaConMarca, PagoEntrada, PlantillaRecibo, ProductoPanel, Recibo, Reserva, ResultadoAnulacion, ResultadoCierre, ResultadoEnvio,
   FuenteImportacion, ResultadoImportacion, ResultadoOperacion, ResultadoEstadoSubida, ResultadoPublicacion, ResultadoVenta, Rol, Seccion, Simulacion, SolicitudAprobacion,
-  Tablero, TipoMedio, TurnoPos, UbicacionId, UnidadSerie, UsuarioVista, VentaPos, EstadoMerma,
+  ResumenCarritoSupervision, Tablero, TipoMedio, TurnoPos, UbicacionId, UnidadSerie, UsuarioVista, VentaPos, EstadoMerma,
   TipoMovimiento, VistaComercial,
 } from './tipos.js';
 
@@ -32,6 +32,7 @@ export interface Contrato {
   /** El dueño, o `sup`/`adm` con motivo (auditado). */
   cancelarCarrito: { entrada: { carritoId: string; motivo: string }; salida: CarritoGuardado };
   misCarritos: { entrada: Vacio; salida: readonly CarritoGuardado[] };
+  carritosSupervision: { entrada: Vacio; salida: readonly ResumenCarritoSupervision[] };
   solicitarAprobacion: { entrada: { aprobacionId: string; solicitud: SolicitudAprobacion }; salida: AprobacionPos };
   resolverAprobacion: { entrada: { aprobacionId: string; decision: 'aprobar' | 'rechazar'; motivo?: string | undefined }; salida: AprobacionPos };
   solicitarAnulacion: { entrada: { ventaId: string; motivo: string }; salida: VentaPos };

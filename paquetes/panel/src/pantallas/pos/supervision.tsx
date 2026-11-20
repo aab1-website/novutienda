@@ -8,6 +8,7 @@ import { useAccion, useCarga } from '../../ui/hooks.js';
 import { Tabla } from '../../ui/tabla.js';
 import { monedasDelTurno, proyectarTurno } from './arqueo.js';
 import { nombreDeAccion, ACCIONES_AUDITORIA } from './nombres-auditoria.js';
+import { CancelarConMotivo } from './venta-carritos.js';
 import { aCsv, descargarTexto } from '../../util/csv.js';
 import { formatearMonto, textoACentavos } from '../../util/dinero.js';
 import { rangoUltimoMes, validarRango } from '../../util/rango.js';
@@ -90,6 +91,56 @@ function EnVivo(): JSX.Element {
       {turnos.error && <ErrorCarga error={turnos.error} reintentar={turnos.recargar} />}
       {turnos.datos && turnos.datos.length === 0 && <Vacio titulo="No hay turnos abiertos" />}
       <ul class="lista-simple">{(turnos.datos ?? []).map((t) => <TurnoVivo key={t.turnoId} t={t} orden={orden} alCambiar={turnos.recargar} />)}</ul>
+    </Seccion>
+  );
+}
+
+/** «5 min», «2 h 10 min», «1 d 3 h»: cuánto lleva abierto un carrito. */
+export function textoAntiguedad(ms: number): string {
+  const min = Math.max(0, Math.floor(ms / 60_000));
+  if (min < 1) return 'menos de 1 min';
+  if (min < 60) return `${min} min`;
+  const h = Math.floor(min / 60);
+  if (h < 24) return `${h} h ${min % 60} min`;
+  return `${Math.floor(h / 24)} d ${h % 24} h`;
+}
+
+/**
+ * La supervisión de carritos trae solo el uid del cajero (sin nombre ni correo) y esta pantalla no lo inventa: cada carrito
+ * es de la caja abierta cuyo turno se ve arriba, en «Cajas abiertas».
+ */
+export const TEXTO_CAJERO_CARRITO = 'Cajero de la caja abierta';
+
+/** Carritos abiertos de los turnos en curso: sin cliente ni series. Supervisor y administrador pueden cancelarlos con motivo. */
+function CarritosAbiertos(): JSX.Element | null {
+  const { usuario } = useApp();
+  return usuario.rol === 'sup' || usuario.rol === 'adm' ? <CarritosAbiertosLista /> : null;
+}
+
+function CarritosAbiertosLista(): JSX.Element {
+  const { api } = useApp();
+  const lista = useCarga(() => api.llamar('carritosSupervision', {}), [], 10_000);
+  const carritos = lista.datos ?? [];
+  return (
+    <Seccion titulo="Carritos abiertos" acciones={<Boton chico variante="secundario" onClick={lista.recargar}>Actualizar</Boton>}>
+      {lista.cargando && !lista.datos && <Cargando />}
+      {lista.error && <ErrorCarga error={lista.error} reintentar={lista.recargar} />}
+      {lista.datos && carritos.length === 0 && <p>No hay carritos abiertos.</p>}
+      {carritos.length > 0 && (
+        <Tabla
+          titulo="Carritos abiertos"
+          filas={carritos}
+          clave={(k) => k.carritoId}
+          columnas={[
+            { id: 'etiqueta', titulo: 'Carrito', valor: (k) => k.etiqueta },
+            { id: 'cajero', titulo: 'Cajero', valor: () => TEXTO_CAJERO_CARRITO },
+            { id: 'productos', titulo: 'Productos', valor: (k) => k.lineas },
+            { id: 'unidades', titulo: 'Unidades', valor: (k) => k.unidades },
+            { id: 'antiguedad', titulo: 'Antigüedad', valor: (k) => k.antiguedadMs, celda: (k) => textoAntiguedad(k.antiguedadMs), ordenable: true },
+          ]}
+          acciones={(k) => <CancelarConMotivo nombre={k.etiqueta} textoBoton="Cancelar con motivo" alCancelar={async (motivo) => { await api.llamar('cancelarCarrito', { carritoId: k.carritoId, motivo }); lista.recargar(); }} />}
+        />
+      )}
     </Seccion>
   );
 }
@@ -187,7 +238,7 @@ export function PantallaSupervision({ sub }: { sub: string }): JSX.Element {
     <div>
       <h1>Supervisión</h1>
       <Pestanas etiqueta="Supervisión" base="supervision" actual={actual} items={[{ id: 'vivo', titulo: 'En vivo' }, { id: 'auditoria', titulo: 'Auditoría y CSV' }]} />
-      {actual === 'vivo' ? <EnVivo /> : <><ExportarVentas /><Auditoria /></>}
+      {actual === 'vivo' ? <><EnVivo /><CarritosAbiertos /></> : <><ExportarVentas /><Auditoria /></>}
     </div>
   );
 }

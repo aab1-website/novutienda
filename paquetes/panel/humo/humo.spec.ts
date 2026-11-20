@@ -644,6 +644,60 @@ for (const esquema of ESQUEMAS) {
   });
 }
 
+test('varios carritos: sobreviven a salir y volver a entrar, bloquean el cierre, se cancelan con motivo, se retoman y se cobran', async ({ page }) => {
+  // Los dobles del humo viven en memoria de la página: una recarga real borraría también la sesión y la caja. Por eso
+  // el «recargar» se ensaya con salir y volver a entrar (misma persona, el servidor guarda el carrito); la recarga real
+  // se prueba contra el emulador (`humo:emulador`).
+  const v = vigilar(page);
+  await entrar(page, 'caj');
+  await page.getByLabel(/Efectivo inicial en Bolivianos/).fill('100');
+  await page.getByRole('button', { name: 'Abrir turno' }).click();
+  await expect(page.getByRole('heading', { name: 'Productos' })).toBeVisible();
+  const barra = page.getByRole('region', { name: 'Carritos abiertos' });
+  const estado = page.locator('[data-prueba="estado-guardado"]');
+  // Carrito 1 con un producto; carrito 2 con otro.
+  await page.getByLabel(/Buscar por nombre/).fill('hdmi');
+  await page.getByRole('button', { name: 'Agregar Cable HDMI 2 m' }).click();
+  await expect(estado).toHaveText('Guardado');
+  await barra.getByRole('button', { name: 'Nuevo carrito' }).click();
+  await expect(barra.getByRole('button', { name: /^Cliente 2 · / })).toBeVisible();
+  await page.getByLabel(/Buscar por nombre/).fill('parlante');
+  await page.getByRole('button', { name: 'Agregar Parlante portátil' }).click();
+  await expect(estado).toHaveText('Guardado');
+  await sinViolaciones(page, 'terminal con dos carritos');
+  // Salir y volver a entrar: siguen los dos, con su nombre y su cantidad de productos.
+  await page.getByRole('button', { name: 'Salir' }).click();
+  // Sin `entrar`: su `goto('/')` recargaría la página y borraría los dobles en memoria.
+  await page.getByLabel('Correo').fill(CUENTAS.caj[0]);
+  await page.getByLabel('Contraseña').fill(CUENTAS.caj[1]);
+  await page.getByRole('button', { name: 'Entrar' }).click();
+  await expect(barra.getByRole('button', { name: /Cliente 1 · 1 producto/ })).toBeVisible();
+  await expect(barra.getByRole('button', { name: /Cliente 2 · 1 producto/ })).toBeVisible();
+  // El cierre queda bloqueado mientras haya carritos abiertos.
+  await page.goto('/#/venta/cierre');
+  await expect(page.getByText(/Hay 2 carritos abiertos/).first()).toBeVisible();
+  await expect(page.getByRole('button', { name: 'Cerrar turno' })).toBeDisabled();
+  await sinViolaciones(page, 'cierre bloqueado por carritos');
+  // Cancelar con motivo el carrito 2.
+  await page.getByRole('button', { name: 'Cancelar con motivo Cliente 2' }).click();
+  await page.getByLabel(/Motivo de la cancelación de Cliente 2/).fill('El cliente se fue');
+  await page.getByRole('button', { name: 'Confirmar cancelación de Cliente 2' }).click();
+  await expect(page.getByText(/Hay 1 carrito abierto/).first()).toBeVisible();
+  // Retomar lleva al terminal con ese carrito.
+  await page.getByRole('button', { name: 'Retomar Cliente 1' }).click();
+  await expect(page.getByRole('heading', { name: 'Productos' })).toBeVisible();
+  await expect(barra.getByRole('button', { name: /Cliente 1 · 1 producto/ })).toHaveAttribute('aria-pressed', 'true');
+  // Cobrarlo lo saca de la barra.
+  await page.getByRole('button', { name: 'Cobrar' }).click();
+  await page.getByLabel(/Monto a aplicar/).fill('55,68');
+  await page.getByLabel(/Efectivo recibido/).fill('60');
+  await page.getByRole('button', { name: 'Confirmar cobro' }).click();
+  await expect(page.getByRole('heading', { name: 'Venta registrada' })).toBeVisible();
+  await page.getByRole('button', { name: 'Nueva venta' }).click();
+  await expect(barra.getByRole('button', { name: /Cliente 1 · 1 producto/ })).toHaveCount(0);
+  expect(v.errores).toEqual([]);
+});
+
 test('el botón de tema fuerza claro u oscuro y se conserva al recargar', async ({ page }) => {
   await entrar(page, 'caj');
   await page.getByRole('button', { name: 'Tema: automático' }).click();
