@@ -1,6 +1,6 @@
 // scripts/reconstruir-sitio.sh: los pasos 2 a 9 del job `reconstruir` fuera de GitHub. Se prueba con un PATH de
 // sustitutos (node, pnpm, firebase, curl, npm, sleep) que registran cada llamada: no toca la red.
-import { spawnSync } from 'node:child_process';
+import { spawn, spawnSync } from 'node:child_process';
 import { chmodSync, existsSync, mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join, resolve } from 'node:path';
@@ -16,6 +16,7 @@ const PROYECTO = 'proyecto-prueba';
 const COMUN = `#!/usr/bin/env bash
 n="$1"; shift
 echo "$n $*" >> "$LOG"
+echo "ENV $n $1 CONTENIDO=\${SITIO_CONTENIDO:-} SECRETO=\${SITIO_RECONSTRUCCION_SECRETO:+si} NEGOCIO=\${SITIO_NEGOCIO:+si} CRED=\${GOOGLE_APPLICATION_CREDENTIALS:+si} EXIGIR=\${EXIGIR_DIST:-}" >> "$LOG"
 case "$n" in
   node)
     case "$1" in
@@ -23,30 +24,40 @@ case "$n" in
         sub="$2"
         case "$sub" in
           pendiente) echo "\${ID_PENDIENTE:-}" ;;
-          estado) v="RC_ESTADO_$4"; exit "\${!v:-0}" ;;
+          estado)
+            v="RC_ESTADO_$4"
+            if [[ "$4" == en_curso && -n "\${REPETIDO:-}" ]]; then echo "estado repetido"; else echo "estado cambiado"; fi
+            exit "\${!v:-0}" ;;
           generar)
             while (( $# > 0 )); do [[ "$1" == --salida ]] && echo '{}' > "$2"; shift; done
             [[ "\${FALLA:-}" == generar ]] && exit 1
             exit 0 ;;
           *) v="RC_SUB_$sub"; exit "\${!v:-0}" ;;
         esac ;;
-      scripts/build.mjs) [[ "\${FALLA:-}" == build ]] && exit 1; echo "build de ${SITIO} en ${PROYECTO}"; exit 0 ;;
+      scripts/build.mjs) [[ "\${DORMIR:-}" == build ]] && { echo "dormido" >> "$LOG"; /bin/sleep 30; }; [[ "\${FALLA:-}" == build ]] && exit 1; echo "build de ${SITIO} en ${PROYECTO}"; exit 0 ;;
       scripts/certificar-sitio.mjs)
         c="$LOG.cert"; k=$(( $(cat "$c" 2>/dev/null || echo 0) + 1 )); echo "$k" > "$c"
         IFS=, read -r -a rcs <<<"\${CERT_RCS:-0}"
         exit "\${rcs[$((k - 1))]:-\${rcs[-1]}}" ;;
     esac ;;
-  pnpm) [[ "\${FALLA:-}" == pruebas && "$1" == vitest ]] && exit 1; exit 0 ;;
+  pnpm)
+    [[ "\${FALLA:-}" == pruebas && "$1" == vitest ]] && exit 1
+    [[ "\${FALLA:-}" == instalar && "$1" == install ]] && exit 1
+    exit 0 ;;
   firebase)
     case "$1" in
       --version) echo 15.37.0 ;;
-      deploy) echo "Hosting URL: ${URL_SITIO} tenant ${TENANT} sitio ${SITIO}"; [[ "\${FALLA:-}" == registro ]] && echo "Deploy failed"; exit 0 ;;
+      deploy)
+        echo "Hosting URL: ${URL_SITIO} tenant ${TENANT} sitio ${SITIO}"
+        [[ "\${FALLA:-}" == registro ]] && echo "Deploy failed"
+        [[ "\${FALLA:-}" == nositio ]] && { echo "Error: site not found"; exit 1; }
+        exit "\${RC_DEPLOY:-0}" ;;
       hosting:clone) echo "clon de ${SITIO}"; exit "\${RC_CLON:-0}" ;;
       *) exit 0 ;;
     esac ;;
   curl)
     while (( $# > 0 )); do [[ "$1" == -D ]] && echo "content-security-policy: x" > "$2"; shift; done
-    echo -n 200 ;;
+    echo -n "\${CURL_CODIGO:-200}" ;;
 esac
 exit 0
 `;
@@ -182,9 +193,15 @@ describe('reconstruir-sitio.sh: flujo con sustitutos', () => {
     expect(r.codigo).toBe(0);
     expect(r.llamadas.some((l) => l.startsWith('pnpm install'))).toBe(false);
   });
-  it('un 409 al tomar el trabajo termina sin desplegar y en verde', () => {
+  it('un 409 al tomar el trabajo termina con 10 (no desplegó, no es un fallo) sin tocar nada más', () => {
     const r = correr([], { TRABAJO: 'rec-1', RC_ESTADO_en_curso: '3' });
-    expect(r.codigo).toBe(0);
+    expect(r.codigo).toBe(10);
+    expect(r.llamadas.some((l) => l.includes('build.mjs') || l.startsWith('firebase'))).toBe(false);
+    expect(estados(r.llamadas)).toEqual(['rec-1 en_curso']);
+  });
+  it('la respuesta «repetido» al tomar el trabajo significa que otro ya lo tomó: 10 y sin desplegar ni cerrar', () => {
+    const r = correr([], { TRABAJO: 'rec-1', REPETIDO: '1' });
+    expect(r.codigo).toBe(10);
     expect(r.llamadas.some((l) => l.includes('build.mjs') || l.startsWith('firebase'))).toBe(false);
     expect(estados(r.llamadas)).toEqual(['rec-1 en_curso']);
   });
@@ -196,7 +213,7 @@ describe('reconstruir-sitio.sh: flujo con sustitutos', () => {
     expect(con.codigo).toBe(0);
     expect(estados(con.llamadas)).toEqual(['rec-9 en_curso', 'rec-9 completada']);
     const sin = correr([], { MODO_SONDEO: 'pendientes', ID_PENDIENTE: '' });
-    expect(sin.codigo).toBe(0);
+    expect(sin.codigo).toBe(10);
     expect(sin.llamadas.some((l) => l.includes('build.mjs'))).toBe(false);
   });
   it('sin TRABAJO ni cola en modo todos: reconstruye igual, sin cerrar nada, y limpia cubiertos y rezagados', () => {
@@ -286,4 +303,167 @@ describe('reconstruir-sitio.sh certificar', () => {
     expect(correr(['certificar'], { CERT_RCS: '1,0' }).codigo).toBe(0);
     expect(correr(['certificar'], { CERT_RCS: '1,1' }).codigo).toBe(1);
   });
+});
+
+describe('reconstruir-sitio.sh: contenido de la compilación, secretos y entradas nuevas', () => {
+  const linea = (ll: string[], prefijo: string) => ll.find((l) => l.startsWith(prefijo)) ?? '';
+  it('build y dist-real reciben la ruta del contenido GENERADO (no el de ejemplo), con EXIGIR_DIST=1', () => {
+    const r = correr([], { TRABAJO: 'rec-1' });
+    expect(r.codigo).toBe(0);
+    const generar = r.llamadas.find((l) => l.startsWith('node scripts/contenido-sitio.mjs generar')) ?? '';
+    const ruta = /--salida (\S+)/.exec(generar)?.[1];
+    expect(ruta).toBeDefined();
+    expect(linea(r.llamadas, 'ENV node scripts/build.mjs')).toContain(`CONTENIDO=${ruta ?? ''}`);
+    const vitest = linea(r.llamadas, 'ENV pnpm vitest');
+    expect(vitest).toContain(`CONTENIDO=${ruta ?? ''}`);
+    expect(vitest).toContain('EXIGIR=1');
+    expect(ruta).toContain(r.temp);
+  });
+  it('los secretos llegan solo a contenido-sitio.mjs (el negocio solo a «generar»), nunca a pnpm, build, vitest ni firebase', () => {
+    const r = correr([], { TRABAJO: 'rec-1' });
+    const env = r.llamadas.filter((l) => l.startsWith('ENV '));
+    for (const l of env) {
+      if (!l.startsWith('ENV node scripts/contenido-sitio.mjs')) expect(l, l).toContain('SECRETO= NEGOCIO=');
+    }
+    const contenido = env.filter((l) => l.startsWith('ENV node scripts/contenido-sitio.mjs'));
+    expect(contenido.length).toBeGreaterThan(3);
+    for (const l of contenido) expect(l).toContain('SECRETO=si');
+    // El negocio solo en «generar» (una única llamada).
+    expect(contenido.filter((l) => l.includes('NEGOCIO=si'))).toHaveLength(1);
+    expect(env.find((l) => l.startsWith('ENV node scripts/certificar-sitio.mjs'))).toContain('SECRETO= NEGOCIO=');
+  });
+  it('la certificación a pedido sí recibe el secreto y el negocio; pnpm install, no', () => {
+    const r = correr(['certificar']);
+    expect(linea(r.llamadas, 'ENV node scripts/certificar-sitio.mjs')).toContain('SECRETO=si NEGOCIO=si');
+    expect(linea(r.llamadas, 'ENV pnpm install')).toContain('SECRETO= NEGOCIO=');
+  });
+  it('pnpm, build y vitest corren sin las credenciales de nube del entorno', () => {
+    const r = correr([], { TRABAJO: 'rec-1', GOOGLE_APPLICATION_CREDENTIALS: '/ruta/cred.json' });
+    for (const p of ['ENV pnpm install', 'ENV node scripts/build.mjs', 'ENV pnpm vitest']) expect(linea(r.llamadas, p), p).toContain('CRED= ');
+    expect(linea(r.llamadas, 'ENV firebase deploy')).toContain('CRED=si');
+  });
+  it('un SITIO igual al PROYECTO o a VITE_FIREBASE_PROJECT_ID, o sin PROYECTO, falla cerrado', () => {
+    expect(correr([], { SIMULAR: '1', TRABAJO: 'rec-1', SITIO: 'proyecto-prueba' }).codigo).toBe(1);
+    expect(correr([], { SIMULAR: '1', TRABAJO: 'rec-1', VITE_FIREBASE_PROJECT_ID: SITIO }).codigo).toBe(1);
+    expect(correr([], { SIMULAR: '1', TRABAJO: 'rec-1', PROYECTO: '' }).codigo).toBe(1);
+    expect(correr([], { SIMULAR: '1', TRABAJO: 'rec-1', SITIOS_PROHIBIDOS: `otro-sitio, ${SITIO}` }).codigo).toBe(1);
+  });
+});
+
+describe('reconstruir-sitio.sh: más fallos con su etapa', () => {
+  const fallida = (ll: string[]) => ll.find((l) => l.includes(' fallida ')) ?? '';
+  it('si falla la instalación de dependencias, la etapa es «generar»', () => {
+    const r = correr([], { TRABAJO: 'rec-1', FALLA: 'instalar' });
+    expect(r.codigo).not.toBe(0);
+    expect(fallida(r.llamadas)).toContain('--etapa generar');
+  });
+  it('si falla el humo, la etapa es «humo» y no se certifica ni se completa', () => {
+    const r = correr([], { TRABAJO: 'rec-1', CURL_CODIGO: '500' });
+    expect(r.codigo).not.toBe(0);
+    expect(fallida(r.llamadas)).toContain('--etapa humo');
+    expect(r.llamadas.some((l) => l.startsWith('node scripts/certificar-sitio.mjs'))).toBe(false);
+    expect(r.llamadas.some((l) => l.includes(' completada'))).toBe(false);
+  });
+  it('«site not found» en el despliegue: etapa «despliegue», sin humo', () => {
+    const r = correr([], { TRABAJO: 'rec-1', FALLA: 'nositio' });
+    expect(r.codigo).not.toBe(0);
+    expect(r.salida).toContain('no existe en el proyecto');
+    expect(fallida(r.llamadas)).toContain('--etapa despliegue');
+    expect(r.llamadas.some((l) => l.startsWith('curl'))).toBe(false);
+  });
+  it('firebase deploy con código distinto de 0: sale con ese código y etapa «despliegue»', () => {
+    const r = correr([], { TRABAJO: 'rec-1', RC_DEPLOY: '7' });
+    expect(r.codigo).toBe(7);
+    expect(fallida(r.llamadas)).toContain('--etapa despliegue');
+  });
+  it('una hora de inicio inválida no impide cerrar los rezagados', () => {
+    const temp = mkdtempSync(join(raiz, 'fases-'));
+    expect(correr(['preparar'], { TRABAJO: 'rec-1', RUNNER_TEMP: temp }).codigo).toBe(0);
+    writeFileSync(join(temp, 'reconstruir-sitio-a1', 'GENERAR_INICIO_MS'), 'x');
+    const r = correr(['desplegar'], { RUNNER_TEMP: temp });
+    expect(r.codigo).toBe(1);
+    expect(r.llamadas.some((l) => l.includes(' rezagados'))).toBe(true);
+    expect(r.llamadas.some((l) => l.includes(' cubiertos'))).toBe(false);
+  });
+  it('sin el contenido generado, la certificación termina con 3 y cierra fallida en «certificacion»', () => {
+    const temp = mkdtempSync(join(raiz, 'fases-'));
+    expect(correr(['preparar'], { TRABAJO: 'rec-1', RUNNER_TEMP: temp }).codigo).toBe(0);
+    rmSync(join(temp, 'reconstruir-sitio-a1', 'sitio', 'contenido.json'));
+    const r = correr(['desplegar'], { RUNNER_TEMP: temp });
+    expect(r.codigo).toBe(3);
+    expect(fallida(r.llamadas)).toContain('--etapa certificacion');
+  });
+});
+
+describe('reconstruir-sitio.sh: fases preparar y desplegar', () => {
+  it('preparar no despliega ni usa firebase; desplegar completa el trabajo con lo que dejó preparar', () => {
+    const temp = mkdtempSync(join(raiz, 'fases-'));
+    const a = correr(['preparar'], { TRABAJO: 'rec-1', RUNNER_TEMP: temp });
+    expect(a.codigo).toBe(0);
+    expect(a.llamadas.some((l) => l.includes('build.mjs'))).toBe(true);
+    expect(a.llamadas.some((l) => l.startsWith('firebase') || l.startsWith('curl'))).toBe(false);
+    expect(estados(a.llamadas)).toEqual(['rec-1 en_curso']);
+    const b = correr(['desplegar'], { RUNNER_TEMP: temp });
+    expect(b.codigo).toBe(0);
+    expect(b.llamadas.some((l) => l.includes('build.mjs'))).toBe(false);
+    expect(b.llamadas.some((l) => l.startsWith('firebase deploy'))).toBe(true);
+    expect(estados(b.llamadas)).toEqual(['rec-1 completada']);
+    // La certificación posterior compara contra el MISMO contenido que preparar generó.
+    expect(b.llamadas.find((l) => l.startsWith('node scripts/certificar-sitio.mjs'))).toContain('--contenido');
+  });
+  it('desplegar tras un preparar que terminó con 10 también sale con 10 y no hace nada', () => {
+    const temp = mkdtempSync(join(raiz, 'fases-'));
+    expect(correr(['preparar'], { TRABAJO: 'rec-1', RUNNER_TEMP: temp, RC_ESTADO_en_curso: '3' }).codigo).toBe(10);
+    const b = correr(['desplegar'], { RUNNER_TEMP: temp });
+    expect(b.codigo).toBe(10);
+    expect(b.llamadas).toEqual([]);
+  });
+  it('desplegar sin preparar falla', () => {
+    const temp = mkdtempSync(join(raiz, 'fases-'));
+    expect(correr(['desplegar'], { RUNNER_TEMP: temp }).codigo).not.toBe(0);
+  });
+  it('una falla en preparar cierra fallida; cancelar después no repite el cierre', () => {
+    const temp = mkdtempSync(join(raiz, 'fases-'));
+    const a = correr(['preparar'], { TRABAJO: 'rec-1', RUNNER_TEMP: temp, FALLA: 'build' });
+    expect(a.codigo).not.toBe(0);
+    const c = correr(['cancelar'], { RUNNER_TEMP: temp });
+    expect(c.codigo).toBe(0);
+    expect(c.llamadas).toEqual([]);
+  });
+  it('cancelar cierra fallida con etapa «cancelado» el trabajo que quedó en_curso', () => {
+    const temp = mkdtempSync(join(raiz, 'fases-'));
+    expect(correr(['preparar'], { TRABAJO: 'rec-1', RUNNER_TEMP: temp }).codigo).toBe(0);
+    const c = correr(['cancelar'], { RUNNER_TEMP: temp });
+    expect(c.codigo).toBe(0);
+    expect(c.llamadas.find((l) => l.includes(' fallida '))).toContain('--etapa cancelado');
+  });
+  it('cancelar sin trabajo propio no hace nada', () => {
+    const c = correr(['cancelar']);
+    expect(c.codigo).toBe(0);
+    expect(c.llamadas).toEqual([]);
+  });
+});
+
+describe('reconstruir-sitio.sh: cancelación real', () => {
+  it('una señal durante un hijo largo cierra el trabajo fallida con etapa «cancelado» de inmediato', async () => {
+    n += 1;
+    const log = join(raiz, `log-${String(n)}.txt`);
+    writeFileSync(log, '');
+    const env = { PATH: `${bin}:/usr/bin:/bin`, HOME: raiz, RAIZ_REPO: join(raiz, 'repo'), RUNNER_TEMP: mkdtempSync(join(raiz, 't-')), LOG: log, ...BASE, TRABAJO: 'rec-1', DORMIR: 'build' };
+    const hijo = spawn('bash', [SCRIPT], { env, stdio: 'ignore' });
+    const termino = new Promise<number | null>((ok) => hijo.on('exit', (c) => ok(c)));
+    const t0 = Date.now();
+    while (!readFileSync(log, 'utf8').includes('dormido')) {
+      if (Date.now() - t0 > 15_000) throw new Error('el build no arrancó');
+      await new Promise((r) => setTimeout(r, 50));
+    }
+    const senal = Date.now();
+    hijo.kill('SIGTERM');
+    const codigo = await termino;
+    expect(Date.now() - senal).toBeLessThan(5_000); // el build dormía 30 s: la trampa actuó sin esperarlo
+    expect(codigo).toBe(143);
+    const ll = readFileSync(log, 'utf8').split('\n');
+    expect(ll.find((l) => l.includes(' fallida '))).toContain('--etapa cancelado');
+    expect(ll.some((l) => l.includes(' completada'))).toBe(false);
+  }, 30_000);
 });
