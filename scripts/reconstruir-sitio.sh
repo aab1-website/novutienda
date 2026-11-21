@@ -13,8 +13,11 @@
 #                `fallida` (con etapa y causas), pendientes cubiertos y rezagados.
 #   reconstruir  preparar + desplegar en un solo proceso (Cloud Build, que ya corre con su cuenta de servicio).
 #   certificar   solo certifica contra lo publicado: no toma trabajo, no compila, no despliega, no cierra nada.
-#   cancelar     (paso `if: cancelled()` del workflow) cierra `fallida` con etapa `cancelado` el trabajo que quedó
-#                `en_curso` según el estado guardado; no hace nada si no hay trabajo propio o ya se cerró.
+#   cancelar [--etapa cancelado|despliegue]
+#                (pasos `if: cancelled()` y `if: failure()` del workflow, p. ej. si falla la autenticación entre fases)
+#                cierra `fallida` con esa etapa (por defecto `cancelado`) el trabajo que quedó `en_curso` según el estado
+#                guardado. No hace nada si no hay trabajo propio, si ya se cerró (CERRADO) o si ya se intentó el cierre
+#                `completada` (DESPLEGADO: el sitio está desplegado y probado; no se marca fallida).
 #
 # Salida: 0 correcto; 10 NO desplegó sin ser un fallo (otro corredor tomó el trabajo -409 o respuesta `repetido`-, o no
 # hay trabajo pendiente en modo `pendientes`); 3 certificación a pedido no se pudo hacer (error de operación); 143 por
@@ -45,9 +48,15 @@ set -Eeuo pipefail
 set -m # cada hijo largo en su propio grupo de procesos: la cancelación puede terminarlo
 
 MODO="${1:-reconstruir}"
+ETAPA_CANCELAR="cancelado"
+if [[ "$MODO" == "cancelar" && $# -gt 1 ]]; then
+  [[ $# -eq 3 && "$2" == "--etapa" && ( "$3" == "cancelado" || "$3" == "despliegue" ) ]] \
+    || { echo "uso: reconstruir-sitio.sh cancelar [--etapa cancelado|despliegue]" >&2; exit 2; }
+  ETAPA_CANCELAR="$3"
+fi
 case "$MODO" in
   reconstruir | preparar | desplegar | certificar | cancelar) ;;
-  *) echo "uso: reconstruir-sitio.sh [reconstruir|preparar|desplegar|certificar|cancelar]" >&2; exit 2 ;;
+  *) echo "uso: reconstruir-sitio.sh [reconstruir|preparar|desplegar|certificar|cancelar [--etapa cancelado|despliegue]]" >&2; exit 2 ;;
 esac
 
 RAIZ="${RAIZ_REPO:-$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)}"
@@ -193,7 +202,8 @@ leer_estado() { [[ -f "$DIR/$1" ]] && cat "$DIR/$1" || true; }
 # Los hijos largos corren en segundo plano y se espera con `wait`: así una señal de cancelación interrumpe la espera de
 # inmediato y la trampa puede cerrar el trabajo (un hijo en primer plano la retrasaría hasta que terminara).
 correr() { # comando args...
-  "$@" &
+  # El hijo no hereda la trampa ERR: el cierre `fallida` lo hace solo el proceso padre, una vez.
+  ( trap - ERR; "$@" ) &
   HIJO=$!
   local rc=0
   wait "$HIJO" || rc=$?
@@ -224,7 +234,7 @@ contenido() {
 }
 
 cerrar_fallida() { # etapa
-  [[ -n "$TRABAJO_ID" && ! -f "$DIR/CERRADO" ]] || return 0
+  [[ -n "$TRABAJO_ID" && ! -f "$DIR/CERRADO" && ! -f "$DIR/DESPLEGADO" ]] || return 0
   guardar CERRADO 1
   local args=(estado "$TRABAJO_ID" fallida --etapa "$1")
   [[ ! -f "$DIR/sitio/causas.json" ]] || args+=(--causas "$DIR/sitio/causas.json")
@@ -376,11 +386,12 @@ fase_desplegar() {
     NO_DESPLEGO=1
     return 0
   fi
-  [[ -f "$DIR/PREPARADO" ]] || falla "falta ejecutar la fase preparar antes de desplegar."
-  [[ -n "$SECRETO" ]] || falla "falta SITIO_RECONSTRUCCION_SECRETO."
   local rc log
 
   ETAPA="despliegue"
+  # Un fallo aquí cierra el trabajo (si hay uno propio abierto) como fallida/despliegue.
+  [[ -f "$DIR/PREPARADO" ]] || { falla_msg "reconstruir $CLAVE: falta ejecutar la fase preparar antes de desplegar."; al_fallar 1; }
+  [[ -n "$SECRETO" ]] || { falla_msg "reconstruir $CLAVE: falta SITIO_RECONSTRUCCION_SECRETO."; al_fallar 1; }
   filtrado bash .github/scripts/preparar-sitio-tenant.sh "$SITIO"
   local actual
   actual="$(firebase --version 2>/dev/null || true)"
@@ -445,6 +456,7 @@ fase_desplegar() {
   # --- Cierre: completada. Si falla este cierre, el sitio ya está desplegado y probado: no se marca fallida. ---
   ETAPA="cierre"
   if [[ -n "$TRABAJO_ID" ]]; then
+    guardar DESPLEGADO 1 # desde aquí un fallo del cierre no marca fallida un sitio ya desplegado y probado
     contenido estado "$TRABAJO_ID" completada >/dev/null
   fi
   guardar CERRADO 1
@@ -484,7 +496,7 @@ case "$MODO" in
   cancelar)
     ETAPA="cancelar"
     cargar_estado
-    cerrar_fallida cancelado
+    cerrar_fallida "$ETAPA_CANCELAR"
     exit 0 ;;
   preparar)
     fase_preparar
