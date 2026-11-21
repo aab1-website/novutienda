@@ -232,6 +232,19 @@ describe('usuarios y configuración', () => {
     expect(await screen.findByText('Personas con acceso (2 de 3)')).toBeTruthy();
     expect(screen.queryByRole('button', { name: 'Quitar acceso de adm' })).toBeNull();
   });
+  it('las tablas de usuarios e invitaciones usan tarjetas en celular', async () => {
+    const e = crearEntorno('adm');
+    await e.api.llamar('quitarRol', { uid: 'u-sup' });
+    ver(e, h(PantallaUsuarios, {}));
+    const u = userEvent.setup();
+    await u.type(await screen.findByLabelText(/Correo de la persona/), 'nueva@ejemplo.test');
+    await u.selectOptions(screen.getByLabelText('Rol de la persona'), 'sup');
+    await u.click(screen.getByRole('button', { name: /^Agregar como/ }));
+    await screen.findByText(/Enviamos un correo/);
+    const tablas = await screen.findAllByRole('table');
+    expect(tablas.length).toBe(2);
+    for (const t of tablas) expect(t.className).toContain('tabla-tarjetas');
+  });
   it('alta: con el plan lleno avisa el tope y deja «Agregar» apagado; al quitar a alguien se habilita', async () => {
     const e = crearEntorno('adm');
     ver(e, h(PantallaUsuarios, {}));
