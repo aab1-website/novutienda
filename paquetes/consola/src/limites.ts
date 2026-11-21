@@ -41,6 +41,8 @@ export const LIMITES_CONSOLA = {
   toleranciaTareaMs: 5 * 1000,
   /** Un bloqueo de construcción con más antigüedad se da por muerto y se relanza (el tiempo máximo de Cloud Build es 5 min). */
   bloqueoVencidoMs: 12 * 60 * 1000,
+  /** Tope duro de construcciones del sitio por día de La Paz: desde la 61 no se lanza (el trabajo espera al día siguiente). */
+  construccionesPorDia: 60,
   /** Un trabajo de reconstrucción sin completar más allá de esto dispara la alerta `sitio` (D7). */
   alertaTrabajoMs: 10 * 60 * 1000,
   /** Espera antes de borrar las versiones PÚBLICAS de un logo reemplazado o quitado: el sitio ya construido aún puede estar usándolas. */
@@ -57,3 +59,6 @@ export function topesDelPlan(plan: unknown): { readonly productos: number; reado
 export function cupoPortadaDelPlan(plan: unknown): number {
   return PLANES[esPlanId(plan) ? plan : 'base'].fotosPortada;
 }
+
+/** Día calendario de La Paz (UTC-4, sin horario de verano) de un instante, `AAAA-MM-DD`. */
+export const diaLaPaz = (ms: number): string => new Date(ms - 4 * 3_600_000).toISOString().slice(0, 10);

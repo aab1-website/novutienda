@@ -17,7 +17,7 @@ class AlmacenDoble implements AlmacenConstruccion {
   ultimaImagen: string | undefined;
   version: number | undefined = 5;
   readonly causas = new Map<string, string>();
-  contador: { dia: string; n: number } | undefined;
+  contador: { dia: string; n: number; alertado?: boolean } | undefined;
   /** Número de transacción (1 = la primera) que falla, para simular un error al guardar el `buildId`. */
   fallarTransaccionN: number | undefined;
   private transacciones = 0;
@@ -426,23 +426,58 @@ describe('D7: alerta ante cualquier estado terminal distinto de SUCCESS', () => 
   });
 });
 
-describe('contador diario de construcciones', () => {
-  it('alerta al pasar de 60 en el día, sin bloquear; el día siguiente reinicia', async () => {
-    const alertar = vi.fn();
-    const { almacen, reloj, constructor, deps } = montar({ alertar });
-    for (let i = 1; i <= 61; i += 1) {
-      almacen.poner(`rec-${String(i)}`, 'pendiente', reloj.ms);
-      await lanzarSiguiente(deps, T);
-      await manejarAvisoConstruccion(deps, { tenantId: T, buildId: `b${String(i)}`, estado: 'FAILURE' });
-      almacen.trabajos.clear();
+describe('tope duro de 60 construcciones por sitio y día de La Paz', () => {
+  /** Hace `n` construcciones fallidas (cada una libera el bloqueo) con trabajos nuevos. */
+  const construir = async (m: ReturnType<typeof montar>, desde: number, hasta: number): Promise<void> => {
+    for (let i = desde; i <= hasta; i += 1) {
+      m.almacen.poner(`rec-${String(i)}`, 'pendiente', m.reloj.ms);
+      await lanzarSiguiente(m.deps, T);
+      await manejarAvisoConstruccion(m.deps, { tenantId: T, buildId: `b${String(i)}`, estado: 'CANCELLED' });
+      m.almacen.trabajos.clear();
     }
-    expect(constructor.lanzados).toHaveLength(61); // no bloquea
-    const conExceso = alertar.mock.calls.map((c) => c[0] as { construccionesDia?: number }).filter((a) => a.construccionesDia !== undefined);
-    expect(conExceso).toEqual([{ tenantId: T, trabajoId: 'rec-61', construccionesDia: 61 }]);
-    reloj.ms += 24 * 60 * MIN;
-    almacen.poner('rec-x', 'pendiente', reloj.ms);
-    await lanzarSiguiente(deps, T);
-    expect(almacen.contador?.n).toBe(1);
+  };
+  it('la 60 se lanza, la 61 no (queda pendiente, una sola alerta con construccionesDia) y la primera del día siguiente sí', async () => {
+    const alertar = vi.fn();
+    const m = montar({ alertar });
+    await construir(m, 1, 59);
+    m.almacen.poner('rec-60', 'pendiente', m.reloj.ms);
+    expect(await lanzarSiguiente(m.deps, T)).toBe('lanzado'); // la 60
+    await manejarAvisoConstruccion(m.deps, { tenantId: T, buildId: 'b60', estado: 'CANCELLED' });
+    m.almacen.trabajos.clear();
+    expect(m.constructor.lanzados).toHaveLength(60);
+    alertar.mockClear();
+    m.almacen.poner('rec-61', 'pendiente', m.reloj.ms);
+    expect(await lanzarSiguiente(m.deps, T)).toBe('tope-diario');
+    expect(await lanzarSiguiente(m.deps, T)).toBe('tope-diario');
+    expect(m.constructor.lanzados).toHaveLength(60); // no se lanza
+    expect(m.almacen.estadoDe('rec-61')).toBe('pendiente'); // no se pierde
+    expect(m.almacen.bloqueo).toBeNull();
+    const exceso = alertar.mock.calls.map((c) => c[0] as { construccionesDia?: number }).filter((x) => x.construccionesDia !== undefined);
+    expect(exceso).toEqual([{ tenantId: T, trabajoId: 'rec-61', construccionesDia: 60 }]); // una sola vez por día
+    m.reloj.ms += 24 * 60 * MIN; // el día siguiente
+    expect(await lanzarSiguiente(m.deps, T)).toBe('lanzado');
+    expect(m.constructor.lanzados.at(-1)).toBe('rec-61');
+    expect(m.almacen.contador).toMatchObject({ n: 1 });
+  });
+  it('el tope también rige en modo delegar: no encola', async () => {
+    const encolar = vi.fn(() => Promise.resolve());
+    const almacen = new AlmacenDoble();
+    const reloj = new RelojFijo();
+    almacen.contador = { dia: '2026-11-04', n: 60 }; // RelojFijo: 4/11/2026 12:00 UTC = 08:00 en La Paz
+    almacen.poner('rec-1', 'pendiente', reloj.ms);
+    const deps: DepsConstruccion = { almacen, reloj, encolarLanzamiento: encolar, alertar: vi.fn() };
+    expect(await redConstruccion(deps, T)).toBe('tope-diario');
+    expect(encolar).not.toHaveBeenCalled();
+    expect(almacen.estadoDe('rec-1')).toBe('pendiente');
+  });
+  it('el tope libera un bloqueo cerrado, sin lanzar', async () => {
+    const m = montar();
+    m.almacen.contador = { dia: '2026-11-04', n: 60, alertado: true };
+    m.almacen.poner('rec-0', 'completada', 0);
+    m.almacen.bloqueo = { buildId: 'b0', trabajoId: 'rec-0', desdeMs: m.reloj.ms - 1_000, imagen: 'img@sha256:aaa' };
+    m.almacen.poner('rec-1', 'pendiente', m.reloj.ms);
+    expect(await lanzarSiguiente(m.deps, T)).toBe('tope-diario');
+    expect(m.almacen.bloqueo).toBeNull();
   });
 });
 

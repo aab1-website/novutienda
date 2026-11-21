@@ -6,7 +6,7 @@
 import { logger } from 'firebase-functions';
 import type { Firestore, Transaction } from 'firebase-admin/firestore';
 import {
-  decidirBloqueo, ejecutarReconstruccion, LIMITES_CONSOLA, type BaseDatosConsola, type ConstructorSitio, type DisparadorSitio,
+  decidirBloqueo, diaLaPaz, ejecutarReconstruccion, LIMITES_CONSOLA, type BaseDatosConsola, type ConstructorSitio, type DisparadorSitio,
   type MotivoReconstruccion, type Reloj,
 } from '@novutienda/consola';
 
@@ -30,7 +30,7 @@ export interface EstadoConstruccion {
   readonly bloqueo: BloqueoSitio | null;
   readonly ultimaImagen?: string;
   /** Construcciones lanzadas en el día (La Paz) del sitio, para la alerta de más de 60 (no bloquea nada). */
-  readonly contador?: { readonly dia: string; readonly n: number };
+  readonly contador?: { readonly dia: string; readonly n: number; readonly alertado?: boolean };
 }
 
 /** Operaciones dentro de una transacción por sitio: todas las lecturas van antes de las escrituras. */
@@ -42,7 +42,7 @@ export interface TxConstruccion {
   fijarBloqueo(bloqueo: BloqueoSitio, ultimaImagen: string | undefined): void;
   /** Libera el bloqueo y deja `ultimaImagen`. */
   liberar(ultimaImagen: string | undefined): void;
-  fijarContador(contador: { dia: string; n: number }): void;
+  fijarContador(contador: { dia: string; n: number; alertado?: boolean }): void;
   /** `causa` solo con `fallida` (p. ej. `bloqueo_vencido`). */
   marcar(id: string, estado: 'completada' | 'fallida', ahora: number, causa?: string): void;
 }
@@ -83,13 +83,10 @@ export interface AlertaSitio {
   readonly construccionesDia?: number;
 }
 
-/** Más construcciones que esto en un día en un sitio dispara la alerta (no bloquea publicaciones). */
-export const TOPE_CONSTRUCCIONES_DIA = 60;
+/** Tope duro de construcciones por sitio y por día de La Paz (desde la 61 el trabajo queda `pendiente` hasta el día siguiente). */
+export const TOPE_CONSTRUCCIONES_DIA = LIMITES_CONSOLA.construccionesPorDia;
 
-export type ResultadoLanzamiento = 'sin-constructor' | 'nada' | 'lanzado' | 'esperar' | 'relanzado' | 'encolado';
-
-/** Día calendario de La Paz (UTC-4, sin horario de verano) de un instante. */
-const diaLaPaz = (ms: number): string => new Date(ms - 4 * 3_600_000).toISOString().slice(0, 10);
+export type ResultadoLanzamiento = 'sin-constructor' | 'nada' | 'lanzado' | 'esperar' | 'relanzado' | 'encolado' | 'tope-diario';
 
 const RUTA_CONSTRUCCION = (t: string): string => `tenants/${t}/sitio/construccion`;
 const RUTA_CONTADOR = (t: string): string => `tenants/${t}/sitio/construcciones`;
@@ -130,6 +127,15 @@ export async function lanzarSiguiente(deps: DepsConstruccion, tenantId: string):
     if (atascado !== undefined) tx.marcar(atascado.id, 'fallida', ahora, 'bloqueo_vencido');
     const siguiente = candidatos.find((p) => p.id !== atascado?.id);
     const reintento = atascado !== undefined && atascado.motivo !== 'reintento' ? atascado : undefined;
+    // Tope duro diario (también en modo delegar): sin lanzar ni encolar, el trabajo queda `pendiente` para el día siguiente. La alerta
+    // sale una sola vez por día (la marca `alertado` viaja en el contador).
+    const hechas = contador?.dia === dia ? contador.n : 0;
+    if (siguiente !== undefined && hechas >= TOPE_CONSTRUCCIONES_DIA) {
+      if (decision === 'relanzar' || cubierto) tx.liberar(imagenFinal);
+      const avisar = contador?.dia !== dia || contador.alertado !== true;
+      if (avisar) tx.fijarContador({ dia, n: hechas, alertado: true });
+      return { resultado: 'tope' as const, trabajoId: siguiente.id, atascado, reintento, hechas, avisar };
+    }
     if (siguiente === undefined || delegar !== undefined) {
       if (decision === 'relanzar' || cubierto) tx.liberar(imagenFinal);
       return siguiente === undefined
@@ -149,12 +155,15 @@ export async function lanzarSiguiente(deps: DepsConstruccion, tenantId: string):
     await deps.almacen.crearPendiente(tenantId, `rec-reintento-${r.reintento.id}`, { version: r.reintento.version ?? 0, motivo: 'reintento', solicitadaEnMs: ahora });
   }
   // Sin otro pendiente, el reintento recién creado sale ahora (el bloqueo ya quedó libre).
+  if (r.resultado === 'tope') {
+    if (r.avisar) (deps.alertar ?? alertaPorDefecto)({ tenantId, trabajoId: r.trabajoId, construccionesDia: r.hechas });
+    return 'tope-diario';
+  }
   if (r.resultado === 'nada') return r.reintento !== undefined ? lanzarSiguiente(deps, tenantId) : 'nada';
   if (r.resultado === 'encolar') {
     await delegar?.(tenantId, r.trabajoId);
     return 'encolado';
   }
-  if (r.n > TOPE_CONSTRUCCIONES_DIA) (deps.alertar ?? alertaPorDefecto)({ tenantId, trabajoId: r.trabajoId, construccionesDia: r.n });
   let lanzada: { buildId: string; imagen: string };
   try {
     lanzada = await (constructor as ConstructorSitio).lanzar(tenantId, r.trabajoId);
@@ -323,7 +332,7 @@ function aEstado(d: Readonly<Record<string, unknown>> | undefined): EstadoConstr
 
 function aContador(d: Readonly<Record<string, unknown>> | undefined): Pick<EstadoConstruccion, 'contador'> {
   const n = num(d?.['n']);
-  return typeof d?.['dia'] === 'string' && n !== undefined ? { contador: { dia: d['dia'], n } } : {};
+  return typeof d?.['dia'] === 'string' && n !== undefined ? { contador: { dia: d['dia'], n, ...(d['alertado'] === true ? { alertado: true } : {}) } } : {};
 }
 
 const YA_EXISTE = 6;
@@ -353,7 +362,7 @@ export function almacenConstruccionFirestore(firestore: Firestore): AlmacenConst
         tx.set(rutaB, ultimaImagen === undefined ? {} : { ultimaImagen });
       },
       fijarContador: (c) => {
-        tx.set(rutaC, { dia: c.dia, n: c.n });
+        tx.set(rutaC, { dia: c.dia, n: c.n, ...(c.alertado === true ? { alertado: true } : {}) });
       },
       marcar: (id, estado, ahora, causa) => {
         tx.update(firestore.doc(`${COL_TRABAJOS(t)}/${id}`), { estado, cerradaEnMs: ahora, ...(causa === undefined ? {} : { causa }) });

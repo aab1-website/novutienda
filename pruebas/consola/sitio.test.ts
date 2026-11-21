@@ -2,7 +2,7 @@ import { beforeEach, describe, expect, it } from 'vitest';
 import {
   decidirReconstruccion, eliminarSeccion, ejecutarReconstruccion,
   finalizarSubida, guardarCarrusel, guardarConfigSitio, guardarFicha, guardarSeccion, LIMITES_CONSOLA, obtenerTablero, ordenarSecciones,
-  motivosContenidoParaSitio, proyectarDisponibilidad, publicarSitio, reservarSubida, calcularDisponibilidadPublica, construirPublicado,
+  AVISO_TOPE_DIARIO, motivosContenidoParaSitio, proyectarDisponibilidad, publicarSitio, reservarSubida, calcularDisponibilidadPublica, construirPublicado,
   type DepsMedios,
   esWhatsappValido, pareceNumeroDeRelleno, validarConfigSitio,
 } from '@novutienda/consola';
@@ -242,6 +242,21 @@ describe('servicios de la consola', () => {
       const err = await publicarSitio(dp(), { tenantId: T, actor: adm }).then(() => new Error('no falló'), (e: unknown) => e as Error);
       expect((err.message.match(/«Malo \d+»:/g) ?? [])).toHaveLength(10);
       expect(err.message).toContain('y 2 productos más');
+    });
+
+    it('con el sitio en el tope de construcciones del día, se guarda igual y devuelve el aviso para el panel', async () => {
+      const m = await medio('cam-1');
+      await configurar();
+      await guardarFicha(ds(), { tenantId: T, actor: adm, productoId: 'cam-1', ficha: ficha('camara-uno', [{ medioId: m, alt: 'Frente' }]) });
+      const sin = await publicarSitio(dp(), { tenantId: T, actor: adm });
+      expect(sin.advertencias).not.toContain(AVISO_TOPE_DIARIO);
+      const dia = new Date(reloj.ms - 4 * 3_600_000).toISOString().slice(0, 10);
+      db.poner(`tenants/${T}/sitio/construcciones`, { dia, n: 60 });
+      const r = await publicarSitio(dp(), { tenantId: T, actor: adm });
+      expect(r.advertencias).toContain(AVISO_TOPE_DIARIO);
+      expect(r.version).toBe(sin.version + 1); // lo publicado se guarda igual
+      db.poner(`tenants/${T}/sitio/construcciones`, { dia: '2020-01-01', n: 60 }); // de otro día: no aplica
+      expect((await publicarSitio(dp(), { tenantId: T, actor: adm })).advertencias).not.toContain(AVISO_TOPE_DIARIO);
     });
 
     it('arma la copia publicada solo con datos públicos, pone en cero los cambios y agenda a 60 s', async () => {

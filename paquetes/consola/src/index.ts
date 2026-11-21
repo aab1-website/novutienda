@@ -1,7 +1,7 @@
 export { manifiestoConsola } from './manifiesto.js';
 export { ArchivoNoAdmitido, ErrorConsola, ProcesamientoNoDisponible } from './errores.js';
 export type { CodigoErrorConsola } from './errores.js';
-export { cupoPortadaDelPlan, LIMITES_CONSOLA } from './limites.js';
+export { cupoPortadaDelPlan, diaLaPaz, LIMITES_CONSOLA } from './limites.js';
 export { ID_NEGOCIO, ID_PORTADA, rutaPublicaMedio } from './rutas.js';
 export { NOMBRE_PLANTILLA, PLANTILLAS, esPlantilla } from './plantillas.js';
 export type { PlantillaId } from './plantillas.js';
@@ -32,7 +32,7 @@ export { CONSUMIDOR_CONSOLA, consumirProductoCambiado, ejecutorConsola, type Dep
 export type { TransaccionConsola } from './consumidores.js';
 export { eliminarSeccion, guardarCarrusel, guardarConfigSitio, guardarFicha, guardarSeccion, ordenarSecciones } from './servicio-sitio.js';
 export {
-  calcularDisponibilidadPublica, construirPublicado, decidirBloqueo, decidirReconstruccion, ejecutarReconstruccion, proyectarDisponibilidad,
+  AVISO_TOPE_DIARIO, calcularDisponibilidadPublica, construirPublicado, decidirBloqueo, decidirReconstruccion, ejecutarReconstruccion, proyectarDisponibilidad,
   motivosContenidoParaSitio, publicarSitio,
 } from './publicar.js';
 export type { MotivoContenido } from './publicar.js';

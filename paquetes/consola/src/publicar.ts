@@ -4,7 +4,7 @@ import {
 import { leerEstadoSitio } from './cambios.js';
 import { ErrorConsola } from './errores.js';
 import type { FichaWeb } from './fichas.js';
-import { LIMITES_CONSOLA } from './limites.js';
+import { diaLaPaz, LIMITES_CONSOLA } from './limites.js';
 import { proyectarLogoPublico } from './logo-publico.js';
 import type { Medio } from './medios/subidas.js';
 import { exigirRol, ROLES } from './permisos.js';
@@ -320,6 +320,9 @@ export interface DepsPublicar {
   readonly disparador: DisparadorSitio;
 }
 
+/** Aviso al panel cuando el sitio ya llegó al tope de construcciones del día. */
+export const AVISO_TOPE_DIARIO = 'El sitio llegó al límite de actualizaciones de hoy; se actualizará mañana.';
+
 export interface ResultadoPublicacion {
   readonly version: number;
   readonly productos: number;
@@ -513,6 +516,9 @@ export async function publicarSitio(deps: DepsPublicar, e: { tenantId: string; a
     // Logo subido del negocio: se lee aquí (antes de escribir) y se publica solo con rutas de su carpeta pública.
     const logo = proyectarLogoPublico(t, (await tx.get(rutaSitio(t, 'logo'))).data());
     await leerEstadoSitio(tx, t);
+    // Tope duro de construcciones del día (lo escribe el borde de construcción): lo publicado se guarda igual, pero se avisa.
+    const cont = (await tx.get(rutaSitio(t, 'construcciones'))).data();
+    const topeHoy = cont?.['dia'] === diaLaPaz(ahora) && typeof cont['n'] === 'number' && cont['n'] >= LIMITES_CONSOLA.construccionesPorDia;
     const negocio = leerDocumentoNegocio((await tx.get(rutaSitio(t, 'negocio'))).data());
     const datosNegocio = negocio?.negocio ?? null;
     const fotoNegocio = datosNegocio?.identidad.foto;
@@ -555,7 +561,10 @@ export async function publicarSitio(deps: DepsPublicar, e: { tenantId: string; a
       tenantId: t, uid: e.actor.uid, rol, accion: 'sitio.publicar', ruta: rutaPublicado(t, 'estado'),
       resumenDespues: { version, productos: idsProd.length, secciones: idsSec.length },
     });
-    return { version, productos: idsProd.length, decision, advertencias: pub.advertencias };
+    return {
+      version, productos: idsProd.length, decision,
+      advertencias: topeHoy ? [...pub.advertencias, AVISO_TOPE_DIARIO] : pub.advertencias,
+    };
   });
 
   // Con el evento `publicacion` la decisión es solo `programar` o `esperar`: reconstruir es siempre cosa del temporizador.
