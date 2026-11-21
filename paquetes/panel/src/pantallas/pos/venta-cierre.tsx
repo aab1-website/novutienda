@@ -5,6 +5,7 @@ import { type MontosPorMoneda, type ResultadoCierre, type TurnoPos } from '../..
 import { Alerta, Boton, BotonConfirmado, Cargando, Campo, Dato, ErrorCarga, Seccion } from '../../ui/comun.js';
 import { useConfiguracionComercial } from '../../ui/comercial.js';
 import { useAvisos } from '../../ui/avisos.js';
+import { Tabla } from '../../ui/tabla.js';
 import { useApp } from '../../ui/contexto.js';
 import { useAccion, useCarga } from '../../ui/hooks.js';
 import { diferenciaPorMoneda, monedasDelTurno, ordenarMonedas, proyectarTurno } from './arqueo.js';
@@ -14,26 +15,21 @@ import { CancelarConMotivo } from './venta-carritos.js';
 
 export function ResumenArqueo({ cierre, orden }: { cierre: ResultadoCierre; orden: readonly string[] }): JSX.Element {
   return (
-    <table class="tabla">
-      <caption>Arqueo del turno cerrado</caption>
-      <thead>
-        <tr><th scope="col">Moneda</th><th scope="col" class="num">Esperado</th><th scope="col" class="num">Contado</th><th scope="col" class="num">Diferencia</th></tr>
-      </thead>
-      <tbody>
-        {ordenarMonedas(Object.keys(cierre.arqueo), orden).filter((m) => cierre.arqueo[m] !== undefined).map((m) => {
-          const a = cierre.arqueo[m];
-          if (a === undefined) return null;
-          return (
-            <tr key={m}>
-              <th scope="row">{m}</th>
-              <td class="num">{formatearMonto(a.esperado, m)}</td>
-              <td class="num">{formatearMonto(a.contado, m)}</td>
-              <td class={`num ${a.diferencia < 0 ? 'texto-error' : ''}`}>{formatearMonto(a.diferencia, m)}</td>
-            </tr>
-          );
-        })}
-      </tbody>
-    </table>
+    <>
+    <h3>Arqueo del turno cerrado</h3>
+    <Tabla
+      titulo="Arqueo del turno cerrado"
+      vistaCelular="tarjetas"
+      filas={ordenarMonedas(Object.keys(cierre.arqueo), orden).filter((m) => cierre.arqueo[m] !== undefined)}
+      clave={(m) => m}
+      columnas={[
+        { id: 'moneda', titulo: 'Moneda', valor: (m) => m, encabezadoFila: true },
+        { id: 'esperado', titulo: 'Esperado', valor: (m) => cierre.arqueo[m]?.esperado ?? 0, celda: (m) => formatearMonto(cierre.arqueo[m]?.esperado ?? 0, m), numerica: true },
+        { id: 'contado', titulo: 'Contado', valor: (m) => cierre.arqueo[m]?.contado ?? 0, celda: (m) => formatearMonto(cierre.arqueo[m]?.contado ?? 0, m), numerica: true },
+        { id: 'diferencia', titulo: 'Diferencia', valor: (m) => cierre.arqueo[m]?.diferencia ?? 0, celda: (m) => { const d = cierre.arqueo[m]?.diferencia ?? 0; return <span class={d < 0 ? 'texto-error' : ''}>{formatearMonto(d, m)}</span>; }, numerica: true },
+      ]}
+    />
+    </>
   );
 }
 

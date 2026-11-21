@@ -2,6 +2,7 @@ import type { JSX } from 'preact';
 import { useRef, useState } from 'preact/hooks';
 import type { VentaPos } from '../../api/tipos.js';
 import { Alerta, Boton, Cargando, Dato, ErrorCarga, Seccion, fechaHora } from '../../ui/comun.js';
+import { Tabla } from '../../ui/tabla.js';
 import { useApp } from '../../ui/contexto.js';
 import { useCarga } from '../../ui/hooks.js';
 import { formatearMonto } from '../../util/dinero.js';
@@ -106,20 +107,17 @@ function VentasDelTurno({ turnoId }: { turnoId: string }): JSX.Element {
       {p.error && <ErrorCarga error={p.error} reintentar={p.recargar} />}
       {!p.cargando && !p.error && p.filas.length === 0 && <p class="texto-suave">Este turno no tuvo ventas.</p>}
       {p.filas.length > 0 && (
-        <table class="tabla">
-          <caption>Ventas del turno</caption>
-          <thead><tr><th scope="col">Recibo</th><th scope="col">Hora</th><th scope="col" class="num">Total</th><th scope="col">Estado</th></tr></thead>
-          <tbody>
-            {p.filas.map((v) => (
-              <tr key={v.ventaId}>
-                <th scope="row">{numeroDe(v)}</th>
-                <td>{fechaHora(v.creadoEnMs)}</td>
-                <td class="num">{formatearMonto(v.total, v.moneda)}</td>
-                <td>{v.estado === 'anulada' ? 'Anulada' : 'Confirmada'}</td>
-              </tr>
-            ))}
-          </tbody>
-        </table>
+        <Tabla
+          titulo="Ventas del turno"
+          filas={p.filas}
+          clave={(v) => v.ventaId}
+          columnas={[
+            { id: 'recibo', titulo: 'Recibo', valor: (v) => numeroDe(v), encabezadoFila: true },
+            { id: 'hora', titulo: 'Hora', valor: (v) => v.creadoEnMs, celda: (v) => fechaHora(v.creadoEnMs) },
+            { id: 'total', titulo: 'Total', valor: (v) => v.total, celda: (v) => formatearMonto(v.total, v.moneda), numerica: true },
+            { id: 'estado', titulo: 'Estado', valor: (v) => (v.estado === 'anulada' ? 'Anulada' : 'Confirmada') },
+          ]}
+        />
       )}
       {p.errorMas && <Alerta>{p.errorMas}</Alerta>}
       {p.hayMas && <Boton variante="secundario" onClick={p.cargarMas} ocupado={p.cargandoMas}>Cargar más</Boton>}
@@ -156,25 +154,21 @@ function DiasAnteriores(): JSX.Element {
         {p.error && <ErrorCarga error={p.error} reintentar={p.recargar} />}
         {!p.cargando && !p.error && filas.length === 0 && !p.hayMas && <p class="texto-suave">Todavía no tiene turnos cerrados.</p>}
         {filas.length > 0 && (
-          <table class="tabla">
-            <caption>Turnos anteriores</caption>
-            <thead>
-              <tr><th scope="col">Apertura</th><th scope="col">Cierre</th><th scope="col">Estado</th><th scope="col">Cobrado</th><th scope="col"><span class="solo-lectores">Detalle</span></th></tr>
-            </thead>
-            <tbody>
-              {filas.map((t) => (
-                <tr key={t.turnoId}>
-                  <th scope="row">{fechaHora(t.abiertoEnMs)}</th>
-                  <td>{t.cerradoEnMs === undefined ? '' : fechaHora(t.cerradoEnMs)}</td>
-                  <td>{ESTADO_TURNO[t.estado]}</td>
-                  <td>{cobradoTexto(t)}</td>
-                  <td>
-                    <Boton chico variante="secundario" onClick={() => setAbierto(t)} etiqueta={`Ver turno del ${fechaHora(t.abiertoEnMs)}`}>Ver turno</Boton>
-                  </td>
-                </tr>
-              ))}
-            </tbody>
-          </table>
+          <>
+          <h3>Turnos anteriores</h3>
+          <Tabla
+            titulo="Turnos anteriores"
+            filas={filas}
+            clave={(t) => t.turnoId}
+            columnas={[
+              { id: 'apertura', titulo: 'Apertura', valor: (t) => t.abiertoEnMs, celda: (t) => fechaHora(t.abiertoEnMs), encabezadoFila: true },
+              { id: 'cierre', titulo: 'Cierre', valor: (t) => t.cerradoEnMs ?? 0, celda: (t) => (t.cerradoEnMs === undefined ? '' : fechaHora(t.cerradoEnMs)) },
+              { id: 'estado', titulo: 'Estado', valor: (t) => ESTADO_TURNO[t.estado] },
+              { id: 'cobrado', titulo: 'Cobrado', valor: (t) => cobradoTexto(t) },
+            ]}
+            acciones={(t) => <Boton chico variante="secundario" onClick={() => setAbierto(t)} etiqueta={`Ver turno del ${fechaHora(t.abiertoEnMs)}`}>Ver turno</Boton>}
+          />
+          </>
         )}
         {p.errorMas && <Alerta>{p.errorMas}</Alerta>}
         {p.hayMas && <Boton variante="secundario" onClick={p.cargarMas} ocupado={p.cargandoMas}>Cargar más</Boton>}

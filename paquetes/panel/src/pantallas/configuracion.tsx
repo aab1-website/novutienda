@@ -329,6 +329,7 @@ function MercadosYMonedas(): JSX.Element {
             filas={c.comercial.mercados}
             clave={(m) => m.id}
             vacio={{ titulo: 'No hay mercados declarados' }}
+            vistaCelular="tarjetas"
             columnas={[
               { id: 'mercado', titulo: 'Mercado', valor: (m) => m.nombre, encabezadoFila: true },
               { id: 'venta', titulo: 'Moneda de venta', valor: (m) => m.monedaVenta },

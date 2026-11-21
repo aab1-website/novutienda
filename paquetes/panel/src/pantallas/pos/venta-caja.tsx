@@ -4,6 +4,7 @@ import { nuevoId } from '../../api/cliente.js';
 import type { TurnoPos } from '../../api/tipos.js';
 import { Alerta, Boton, Campo, Cargando, ErrorCarga, Selector, Seccion, Vacio, fechaHora } from '../../ui/comun.js';
 import { useConfiguracionComercial } from '../../ui/comercial.js';
+import { Tabla } from '../../ui/tabla.js';
 import { useApp } from '../../ui/contexto.js';
 import { useAccion, useCarga } from '../../ui/hooks.js';
 import { efectivoEsperado, TOTALES_VACIOS } from './arqueo.js';
@@ -75,22 +76,18 @@ function VentaCajaLista({ turno, alCambiar, monedas }: { turno: TurnoPos; alCamb
         {movs.error && <ErrorCarga error={movs.error} reintentar={movs.recargar} />}
         {movs.datos && movs.datos.length === 0 && <Vacio titulo="Todavía no hay ingresos ni egresos excepcionales en este turno" />}
         {movs.datos && movs.datos.length > 0 && (
-          <table class="tabla">
-            <caption class="solo-lectores">Ingresos y egresos excepcionales del turno</caption>
-            <thead>
-              <tr><th scope="col">Hora</th><th scope="col">Tipo</th><th scope="col">Motivo</th><th scope="col" class="num">Monto</th></tr>
-            </thead>
-            <tbody>
-              {movs.datos.map((m) => (
-                <tr key={m.requestId}>
-                  <td>{fechaHora(m.creadoEnMs)}</td>
-                  <td>{m.tipo === 'ingreso' ? 'Ingreso' : 'Egreso'}</td>
-                  <td>{m.motivo}</td>
-                  <td class="num">{formatearMonto(m.monto, m.moneda)}</td>
-                </tr>
-              ))}
-            </tbody>
-          </table>
+          <Tabla
+            titulo="Ingresos y egresos excepcionales del turno"
+            vistaCelular="tarjetas"
+            filas={movs.datos}
+            clave={(m) => m.requestId}
+            columnas={[
+              { id: 'hora', titulo: 'Hora', valor: (m) => m.creadoEnMs, celda: (m) => fechaHora(m.creadoEnMs) },
+              { id: 'tipo', titulo: 'Tipo', valor: (m) => (m.tipo === 'ingreso' ? 'Ingreso' : 'Egreso') },
+              { id: 'motivo', titulo: 'Motivo', valor: (m) => m.motivo },
+              { id: 'monto', titulo: 'Monto', valor: (m) => m.monto, celda: (m) => formatearMonto(m.monto, m.moneda), numerica: true },
+            ]}
+          />
         )}
       </Seccion>
     </div>

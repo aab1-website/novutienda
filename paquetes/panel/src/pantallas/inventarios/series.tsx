@@ -1,9 +1,11 @@
 import type { JSX } from 'preact';
 import { useState } from 'preact/hooks';
+import type { UnidadSerie } from '../../api/tipos.js';
 import { Alerta, Boton, Campo, Casilla, ErrorCarga, Seccion, Vacio } from '../../ui/comun.js';
 import { useApp } from '../../ui/contexto.js';
 import { AvisoConteoAbierto } from '../../ui/existencia.js';
 import { useCarga } from '../../ui/hooks.js';
+import { Tabla } from '../../ui/tabla.js';
 import { useConteosAbiertos } from './usar-conteos-abiertos.js';
 import { nombreAlmacen } from './nombres.js';
 import { useProductos } from './usar-productos.js';
@@ -41,24 +43,20 @@ export function Series(): JSX.Element {
       {r.error && <ErrorCarga error={r.error} reintentar={r.recargar} />}
       {buscar !== '' && r.datos && r.datos.length === 0 && <Vacio titulo={textoSerieOculta(conteos) ?? 'No se encontró esa serie'} />}
       {r.datos && r.datos.length > 0 && (
-        <div class="tabla-contenedor" role="region" aria-label="Resultado de la búsqueda por serie" tabIndex={0}>
-          <table class="tabla">
-            <caption class="solo-lectores">Resultado de la búsqueda por serie</caption>
-            <thead><tr><th scope="col">Serie</th><th scope="col">Producto</th><th scope="col">Estado</th><th scope="col">Almacén</th><th scope="col">Venta</th><th scope="col">Garantía hasta</th></tr></thead>
-            <tbody>
-              {r.datos.map((u) => (
-                <tr key={`${u.productoId}-${u.serie}`}>
-                  <th scope="row">{u.serie}</th>
-                  <td>{prod.lista.find((p) => p.id === u.productoId)?.nombre ?? u.productoId}</td>
-                  <td>{ESTADO_SERIE[u.estado]}</td>
-                  <td>{nombreAlmacen(u.ubicacionId)}</td>
-                  <td>{u.ventaRef ?? '—'}</td>
-                  <td>{u.garantiaHasta ?? '—'}</td>
-                </tr>
-              ))}
-            </tbody>
-          </table>
-        </div>
+        <Tabla<UnidadSerie>
+          titulo="Resultado de la búsqueda por serie"
+          filas={r.datos}
+          clave={(u) => `${u.productoId}-${u.serie}`}
+          vistaCelular="tarjetas"
+          columnas={[
+            { id: 'serie', titulo: 'Serie', valor: (u) => u.serie, encabezadoFila: true },
+            { id: 'producto', titulo: 'Producto', valor: (u) => prod.lista.find((p) => p.id === u.productoId)?.nombre ?? u.productoId },
+            { id: 'estado', titulo: 'Estado', valor: (u) => ESTADO_SERIE[u.estado] },
+            { id: 'almacen', titulo: 'Almacén', valor: (u) => nombreAlmacen(u.ubicacionId) },
+            { id: 'venta', titulo: 'Venta', valor: (u) => u.ventaRef ?? '—' },
+            { id: 'garantia', titulo: 'Garantía hasta', valor: (u) => u.garantiaHasta ?? '—' },
+          ]}
+        />
       )}
     </Seccion>
   );
