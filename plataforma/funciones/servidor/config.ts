@@ -60,6 +60,23 @@ export const PARAMETROS = {
    * (falla cerrado). Producción NO debe fijarlo.
    */
   planPruebasHabilitado: defineString('PLAN_PRUEBAS_HABILITADO', { default: '' }),
+  /**
+   * `github` (por defecto: el sitio lo reconstruye el workflow de GitHub, como siempre) o `google` (Cloud Build, DR-CB). Cualquier
+   * otro valor se trata como `github`: el interruptor falla hacia lo que ya funciona. Volver atrás es cambiar este parámetro.
+   */
+  constructorSitioModo: defineString('CONSTRUCTOR_SITIO_MODO', { default: 'github' }),
+  /** Imagen del constructor fijada por digest (`…@sha256:…`); la escribe el CI. Obligatoria solo en modo `google`. */
+  constructorSitioImagen: defineString('CONSTRUCTOR_SITIO_IMAGEN', { default: '' }),
+  /** Cuenta de servicio del build (nombre corto o correo). Obligatoria solo en modo `google`. */
+  constructorSitioCuenta: defineString('CONSTRUCTOR_SITIO_CUENTA', { default: '' }),
+  /** Máquina de Cloud Build (`options.machineType`); vacío = la del grupo regional por defecto. */
+  constructorSitioMaquina: defineString('CONSTRUCTOR_SITIO_MAQUINA', { default: '' }),
+  /** Configuración web pública del sitio que compila el build (valores públicos, como en el workflow). Obligatorias solo en modo `google`. */
+  viteFirebaseApiKey: defineString('VITE_FIREBASE_API_KEY', { default: '' }),
+  viteFirebaseAppId: defineString('VITE_FIREBASE_APP_ID', { default: '' }),
+  viteRecaptchaSitio: defineString('VITE_RECAPTCHA_ENTERPRISE_SITE_KEY', { default: '' }),
+  /** Sitio de Hosting del panel: el script del constructor nunca despliega sobre él. (No puede llamarse `FIREBASE_*`: prefijo reservado.) */
+  sitioPanelId: defineString('SITIO_PANEL_ID', { default: '' }),
 } as const;
 
 export const SECRETOS = {
@@ -74,6 +91,8 @@ export const SECRETOS = {
    * Actions. Vinculado SOLO a `temporizadorSitio`. Vacío o con forma inválida = disparo deshabilitado.
    */
   disparoSitio: defineSecret('GITHUB_DISPARO_SITIO'),
+  /** JSON `[{clave, tenant, sitio, url}]` de los sitios por tenant (identificadores del cliente: por eso es secreto). Solo en modo `google`. */
+  sitiosTenant: defineSecret('SITIOS_TENANT'),
 } as const;
 
 /** Entero positivo de un parámetro de texto; si no es válido, el valor por defecto. */
@@ -121,4 +140,45 @@ export function exigirBucketPublico(valor: string, bucketPorDefecto: string, esP
   if (!NOMBRE_BUCKET.test(nombre)) throw new ConfiguracionIncompleta(['MEDIOS_BUCKET_PUBLICO (nombre de bucket válido)']);
   if (nombre === bucketPorDefecto) throw new ConfiguracionIncompleta(['MEDIOS_BUCKET_PUBLICO (distinto del bucket por defecto)']);
   return nombre;
+}
+
+export type ModoConstructorSitio = 'github' | 'google';
+
+/** Solo el valor exacto `google` activa Cloud Build; cualquier otro (vacío, mayúsculas, errata) deja el modo `github`. */
+export function modoConstructorSitio(valor: string): ModoConstructorSitio {
+  return valor.trim() === 'google' ? 'google' : 'github';
+}
+
+export interface ConfiguracionConstructorSitio {
+  readonly proyecto: string;
+  readonly imagen: string;
+  readonly cuentaServicio: string;
+  readonly maquina: string | undefined;
+  /** Variables públicas del build; solo las que `reconstruir-sitio.sh` lee. */
+  readonly entorno: Readonly<Record<string, string>>;
+}
+
+/** Valida lo que exige el modo `google` y arma lo del conector. Falla cerrado listando los nombres que faltan (nunca valores). */
+export function exigirConfiguracionConstructor(v: {
+  readonly proyecto: string; readonly imagen: string; readonly cuenta: string; readonly maquina: string;
+  readonly apiKey: string; readonly appId: string; readonly recaptcha: string; readonly panel: string; readonly mediosBaseUrl: string;
+}): ConfiguracionConstructorSitio {
+  const t = (x: string): string => x.trim();
+  const faltan: string[] = [];
+  if (t(v.proyecto) === '') faltan.push('proyecto (GCLOUD_PROJECT)');
+  if (t(v.imagen) === '') faltan.push('CONSTRUCTOR_SITIO_IMAGEN');
+  if (t(v.cuenta) === '') faltan.push('CONSTRUCTOR_SITIO_CUENTA');
+  if (t(v.apiKey) === '') faltan.push('VITE_FIREBASE_API_KEY');
+  if (t(v.appId) === '') faltan.push('VITE_FIREBASE_APP_ID');
+  if (t(v.recaptcha) === '') faltan.push('VITE_RECAPTCHA_ENTERPRISE_SITE_KEY');
+  if (t(v.panel) === '') faltan.push('SITIO_PANEL_ID');
+  if (t(v.mediosBaseUrl) === '') faltan.push('MEDIOS_BASE_URL');
+  if (faltan.length > 0) throw new ConfiguracionIncompleta(faltan);
+  return {
+    proyecto: t(v.proyecto), imagen: t(v.imagen), cuentaServicio: t(v.cuenta), maquina: t(v.maquina) === '' ? undefined : t(v.maquina),
+    entorno: {
+      VITE_FIREBASE_PROJECT_ID: t(v.proyecto), VITE_FIREBASE_API_KEY: t(v.apiKey), VITE_FIREBASE_APP_ID: t(v.appId),
+      VITE_RECAPTCHA_ENTERPRISE_SITE_KEY: t(v.recaptcha), MEDIOS_BASE_URL: t(v.mediosBaseUrl), FIREBASE_SITE_PANEL: t(v.panel),
+    },
+  };
 }

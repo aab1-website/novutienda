@@ -10,6 +10,7 @@ import { registroPlataforma } from '../../plataforma/registro.js';
 import { IMPLEMENTACIONES, tablasCompuestas } from './tablas.js';
 
 const codigo = readFileSync(fileURLToPath(new URL('../../plataforma/funciones/servidor/index.ts', import.meta.url)), 'utf8');
+const entornoFuente = readFileSync(fileURLToPath(new URL('../../plataforma/funciones/servidor/entorno.ts', import.meta.url)), 'utf8');
 const exportadas = (disparador: string): string[] => [...codigo.matchAll(new RegExp(`export const (\\w+) = ${disparador}\\(`, 'g'))].map((x) => x[1] as string).sort();
 const ordenados = (l: readonly string[]): string[] => [...new Set(l)].sort();
 
@@ -32,9 +33,16 @@ describe('exportaciones de las Functions frente al registro', () => {
     expect(exportadas('onObjectFinalized')).toEqual(['subidaFinalizada']);
   });
 
+  it('la construcción del sitio en Cloud Build (DR-CB) expone una tarea y un aviso del tema cloud-builds', () => {
+    expect(exportadas('onTaskDispatched')).toEqual(['construirSitio']);
+    expect(exportadas('onMessagePublished')).toEqual(['avisoConstruccionSitio']);
+    expect(codigo).toContain("topic: 'cloud-builds'");
+    expect(entornoFuente).toContain("export const FUNCION_TAREA_SITIO = 'construirSitio'");
+  });
+
   it('no hay otras exportaciones de disparadores', () => {
     const todas = [...codigo.matchAll(/^export const (\w+) = (on\w+)\(/gm)].map((x) => x[1] as string).sort();
-    expect(todas).toEqual(ordenados([...exportadas('onCall'), ...exportadas('onSchedule'), 'api', 'eventos', 'subidaFinalizada']));
+    expect(todas).toEqual(ordenados([...exportadas('onCall'), ...exportadas('onSchedule'), 'api', 'eventos', 'subidaFinalizada', 'construirSitio', 'avisoConstruccionSitio']));
   });
 
   it('los bordes reales y el registro coinciden: cada callable compone sin sobrar ni faltar acciones', () => {
