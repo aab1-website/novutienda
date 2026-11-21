@@ -16,6 +16,7 @@ class AlmacenDoble implements AlmacenConstruccion {
   bloqueo: BloqueoSitio | null = null;
   ultimaImagen: string | undefined;
   version: number | undefined = 5;
+  readonly causas = new Map<string, string>();
 
   poner(id: string, estado: string, solicitadaEnMs: number, extra: Partial<TrabajoSitio> = {}): void {
     this.trabajos.set(id, { id, estado, solicitadaEnMs, version: 1, ...extra });
@@ -31,7 +32,7 @@ class AlmacenDoble implements AlmacenConstruccion {
       trabajo: (id) => Promise.resolve(this.trabajos.get(id)),
       fijarBloqueo: (b, u) => escrituras.push(() => { this.bloqueo = b; this.ultimaImagen = u; }),
       liberar: (u) => escrituras.push(() => { this.bloqueo = null; this.ultimaImagen = u; }),
-      marcar: (id, estado) => escrituras.push(() => { const j = this.trabajos.get(id); if (j) this.trabajos.set(id, { ...j, estado }); }),
+      marcar: (id, estado, _a, causa) => escrituras.push(() => { const j = this.trabajos.get(id); if (j) this.trabajos.set(id, { ...j, estado }); if (causa !== undefined) this.causas.set(id, causa); }),
     };
     const r = await fn(tx);
     for (const e of escrituras) e();
@@ -174,6 +175,7 @@ describe('publicación durante una construcción', () => {
     expect(almacen.estadoDe('rec-2')).toBe('pendiente');
 
     reloj.ms += 60_000;
+    almacen.poner('rec-1', 'completada', 0); // el script cerró su trabajo
     expect(await manejarAvisoConstruccion(deps, { tenantId: T, buildId: 'b1', estado: 'SUCCESS' })).toBe('completado');
     expect(almacen.estadoDe('rec-1')).toBe('completada');
     // rec-2 se pidió después del inicio de la construcción: no se completa, se lanza.
@@ -201,6 +203,7 @@ describe('éxito: completa los pendientes anteriores al inicio', () => {
     almacen.poner('rec-a', 'en_curso', reloj.ms - 20_000);
     reloj.ms += 30_000;
     almacen.poner('rec-c', 'pendiente', reloj.ms - 5_000); // posterior al inicio
+    almacen.poner('rec-a', 'completada', 0); // el script cerró su trabajo
     await manejarAvisoConstruccion(deps, { tenantId: T, buildId: 'b1', estado: 'SUCCESS' });
     expect(almacen.estadoDe('rec-a')).toBe('completada');
     expect(almacen.estadoDe('rec-b')).toBe('completada');
@@ -267,30 +270,70 @@ describe('falla y reintento único', () => {
   });
 });
 
+describe('SUCCESS sin despliegue (el script salió con código 10)', () => {
+  it('con el trabajo propio aún en_curso o pendiente: no completa pendientes, no reintenta, libera y lanza el siguiente', async () => {
+    for (const estadoPropio of ['en_curso', 'pendiente']) {
+      const { almacen, reloj, constructor, deps } = montar();
+      almacen.poner('rec-1', 'pendiente', reloj.ms - 20_000);
+      almacen.poner('rec-0', 'pendiente', reloj.ms - 30_000);
+      await lanzarSiguiente(deps, T); // lanza rec-0, el más antiguo
+      almacen.poner('rec-0', estadoPropio, reloj.ms - 30_000);
+      reloj.ms += 1_000;
+      expect(await manejarAvisoConstruccion(deps, { tenantId: T, buildId: 'b1', estado: 'SUCCESS' })).toBe('sin-desplegar');
+      expect(almacen.estadoDe('rec-0')).toBe(estadoPropio === 'en_curso' ? 'en_curso' : 'pendiente');
+      expect(almacen.estadoDe('rec-1')).not.toBe('completada');
+      expect([...almacen.trabajos.keys()].some((k) => k.startsWith('rec-reintento'))).toBe(false);
+      expect(almacen.ultimaImagen).toBeUndefined();
+      expect(constructor.lanzados).toHaveLength(2); // el siguiente pendiente sale
+      expect(almacen.bloqueo).not.toBeNull();
+    }
+  });
+});
+
 describe('bloqueo vencido', () => {
-  it('con más de 12 min se da por muerto: su trabajo pasa a fallida y se relanza el pendiente', async () => {
-    const { almacen, reloj, constructor, deps } = montar();
-    almacen.poner('rec-1', 'pendiente', reloj.ms);
+  it('con más de 12 min el trabajo atascado se cierra fallida (bloqueo_vencido), se alerta y se encola un reintento; el pendiente sale primero', async () => {
+    const alertar = vi.fn();
+    const { almacen, reloj, constructor, deps } = montar({ alertar });
+    almacen.poner('rec-1', 'pendiente', reloj.ms, { version: 4 });
     await lanzarSiguiente(deps, T);
-    almacen.poner('rec-1', 'en_curso', reloj.ms);
+    almacen.poner('rec-1', 'en_curso', reloj.ms, { version: 4 });
     reloj.ms += 12 * MIN;
     almacen.poner('rec-2', 'pendiente', reloj.ms);
     expect(await lanzarSiguiente(deps, T)).toBe('esperar'); // justo en el límite todavía espera
     reloj.ms += 1;
     expect(await lanzarSiguiente(deps, T)).toBe('relanzado');
     expect(almacen.estadoDe('rec-1')).toBe('fallida');
-    expect(constructor.lanzados).toEqual(['rec-1', 'rec-2']);
+    expect(almacen.causas.get('rec-1')).toBe('bloqueo_vencido');
+    expect(alertar).toHaveBeenCalledWith({ tenantId: T, trabajoId: 'rec-1', minutos: 12 });
+    expect(almacen.trabajos.get('rec-reintento-rec-1')).toMatchObject({ estado: 'pendiente', motivo: 'reintento', version: 4 });
+    expect(constructor.lanzados).toEqual(['rec-1', 'rec-2']); // nunca se relanza el mismo trabajo
     expect(almacen.bloqueo).toMatchObject({ trabajoId: 'rec-2', buildId: 'b2' });
   });
-  it('vencido y sin pendientes: libera el bloqueo', async () => {
-    const { almacen, reloj, deps } = montar();
+  it('vencido y sin otros pendientes: lanza el reintento nuevo, no el mismo trabajo', async () => {
+    const { almacen, reloj, constructor, deps } = montar();
     almacen.poner('rec-1', 'pendiente', reloj.ms);
     await lanzarSiguiente(deps, T);
     almacen.poner('rec-1', 'en_curso', reloj.ms);
     reloj.ms += 13 * MIN;
-    expect(await lanzarSiguiente(deps, T)).toBe('nada');
-    expect(almacen.bloqueo).toBeNull();
+    expect(await lanzarSiguiente(deps, T)).toBe('lanzado');
     expect(almacen.estadoDe('rec-1')).toBe('fallida');
+    expect(constructor.lanzados).toEqual(['rec-1', 'rec-reintento-rec-1']);
+    expect(almacen.bloqueo).toMatchObject({ trabajoId: 'rec-reintento-rec-1' });
+  });
+  it('un reintento que también queda atascado no genera otro (una sola vez por trabajo original)', async () => {
+    const { almacen, reloj, constructor, deps } = montar();
+    almacen.poner('rec-1', 'pendiente', reloj.ms);
+    await lanzarSiguiente(deps, T);
+    almacen.poner('rec-1', 'en_curso', reloj.ms);
+    reloj.ms += 13 * MIN;
+    await lanzarSiguiente(deps, T); // lanza rec-reintento-rec-1
+    almacen.poner('rec-reintento-rec-1', 'en_curso', reloj.ms, { motivo: 'reintento' });
+    reloj.ms += 13 * MIN;
+    expect(await lanzarSiguiente(deps, T)).toBe('nada');
+    expect(almacen.estadoDe('rec-reintento-rec-1')).toBe('fallida');
+    expect([...almacen.trabajos.keys()]).toEqual(['rec-1', 'rec-reintento-rec-1']);
+    expect(almacen.bloqueo).toBeNull();
+    expect(constructor.lanzados).toHaveLength(2);
   });
 });
 
