@@ -165,7 +165,7 @@ export interface ConfiguracionConstructorSitio {
 
 /** Valida lo que exige el modo `google` y arma lo del conector. Falla cerrado listando los nombres que faltan (nunca valores). */
 export function exigirConfiguracionConstructor(v: {
-  readonly proyecto: string; readonly imagen: string; readonly cuenta: string; readonly maquina: string; readonly appEnv: string;
+  readonly proyecto: string; readonly imagen: string; readonly cuenta: string; readonly cuentaFn: string; readonly maquina: string; readonly appEnv: string;
   readonly apiKey: string; readonly appId: string; readonly recaptcha: string; readonly panel: string; readonly mediosBaseUrl: string;
 }): ConfiguracionConstructorSitio {
   const t = (x: string): string => x.trim();
@@ -173,6 +173,8 @@ export function exigirConfiguracionConstructor(v: {
   if (t(v.proyecto) === '') faltan.push('proyecto (GCLOUD_PROJECT)');
   if (t(v.imagen) === '') faltan.push('CONSTRUCTOR_SITIO_IMAGEN');
   if (t(v.cuenta) === '') faltan.push('CONSTRUCTOR_SITIO_CUENTA');
+  // Las funciones del constructor nunca deben correr con la cuenta general (es la única con permiso de crear builds y leer SITIOS_TENANT).
+  if (t(v.cuentaFn) === '') faltan.push('CUENTA_FN_CONSTRUCTOR_SITIO');
   if (t(v.apiKey) === '') faltan.push('VITE_FIREBASE_API_KEY');
   if (t(v.appId) === '') faltan.push('VITE_FIREBASE_APP_ID');
   if (t(v.recaptcha) === '') faltan.push('VITE_RECAPTCHA_ENTERPRISE_SITE_KEY');

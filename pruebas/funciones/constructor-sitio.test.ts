@@ -5,6 +5,7 @@ import {
   crearColaSitio, crearConstructorSitio, crearConsultaBuild, crearLectorSitios, idDeMensajeBuild, ErrorConstructorSitio, interpretarAvisoBuild, leerSitios,
   type ColaDeTareas, type FetchConstructor, type SitioDeConstruccion,
 } from '../../plataforma/conectores/firebase/index.js';
+import { nombreTareaRed } from '../../plataforma/funciones/servidor/entorno.js';
 import { exigirConfiguracionConstructor, modoConstructorSitio, ConfiguracionIncompleta } from '../../plataforma/funciones/servidor/config.js';
 
 const DIGEST = 'a'.repeat(64);
@@ -296,7 +297,7 @@ describe('modo y configuración del constructor', () => {
   });
 
   const completa = {
-    proyecto: 'proy-prueba', imagen: IMAGEN, cuenta: 'sitio-constructor', maquina: '', appEnv: 'staging', apiKey: 'k', appId: 'a', recaptcha: 'r',
+    proyecto: 'proy-prueba', imagen: IMAGEN, cuenta: 'sitio-constructor', cuentaFn: 'fn-constructor', maquina: '', appEnv: 'staging', apiKey: 'k', appId: 'a', recaptcha: 'r',
     panel: 'panel-prueba', mediosBaseUrl: 'https://medios.example.com/',
   };
 
@@ -307,6 +308,20 @@ describe('modo y configuración del constructor', () => {
       VITE_FIREBASE_PROJECT_ID: 'proy-prueba', VITE_FIREBASE_API_KEY: 'k', VITE_FIREBASE_APP_ID: 'a', VITE_RECAPTCHA_ENTERPRISE_SITE_KEY: 'r',
       MEDIOS_BASE_URL: 'https://medios.example.com/', SITIOS_PROHIBIDOS: 'panel-prueba', APP_ENV: 'staging',
     });
+  });
+
+  it('exige la cuenta propia de las funciones del constructor (nunca la cuenta general)', () => {
+    for (const cuentaFn of ['', '  ']) {
+      expect(() => exigirConfiguracionConstructor({ ...completa, cuentaFn })).toThrow(/CUENTA_FN_CONSTRUCTOR_SITIO/);
+    }
+  });
+
+  it('el nombre de la tarea de la red cambia cada 5 minutos y es idempotente dentro del tramo', () => {
+    const a = nombreTareaRed('tienda-uno', 'rec-1', 1_000_000);
+    expect(nombreTareaRed('tienda-uno', 'rec-1', 1_000_000 + 60_000)).toBe(a);
+    expect(nombreTareaRed('tienda-uno', 'rec-1', 1_000_000 + 300_000)).not.toBe(a);
+    expect(a).toMatch(/^[A-Za-z0-9_-]+$/);
+    expect(nombreTareaRed('tienda-uno', 'rec.1', 0)).toMatch(/^[A-Za-z0-9_-]+$/);
   });
 
   it('APP_ENV solo admite staging o production', () => {

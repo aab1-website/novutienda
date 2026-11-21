@@ -109,22 +109,34 @@ export async function lanzarSiguiente(deps: DepsConstruccion, tenantId: string):
   const r = await deps.almacen.transaccion(tenantId, async (tx) => {
     const { bloqueo, ultimaImagen, contador } = await tx.estado();
     const pendientes = await tx.pendientes();
-    const decision = decidirBloqueo(bloqueo, ahora);
+    const base = decidirBloqueo(bloqueo, ahora);
+    const propio = bloqueo !== null && base !== 'lanzar' ? await tx.trabajo(bloqueo.trabajoId) : undefined;
+    // Si el trabajo del bloqueo ya quedó `completada` el script desplegó y certificó: aunque el aviso de Cloud Build no haya llegado (o el
+    // bloqueo haya vencido), la construcción terminó. Se cubren los pendientes anteriores a su inicio (como con SUCCESS), se guarda su
+    // imagen y el bloqueo se da por libre. No se hace con `fallida`: la falla del build trae su alerta y su reintento.
+    const cubierto = bloqueo !== null && propio?.estado === 'completada';
+    let candidatos = pendientes;
+    let imagenFinal = ultimaImagen;
+    if (cubierto) {
+      for (const p of pendientes) if (p.solicitadaEnMs < bloqueo.desdeMs) tx.marcar(p.id, 'completada', ahora);
+      candidatos = pendientes.filter((p) => p.solicitadaEnMs >= bloqueo.desdeMs);
+      imagenFinal = bloqueo.imagen === '' ? ultimaImagen : bloqueo.imagen;
+    }
+    const decision = cubierto ? 'lanzar' : base;
     if (decision === 'esperar') return { resultado: 'esperar' as const };
     // Un bloqueo vencido se cierra: el trabajo atascado pasa a `fallida` (causa `bloqueo_vencido`). Relanzarlo con el mismo trabajo no
     // avanza nunca (el script responde `repetido` a un trabajo `en_curso`); en su lugar se encola uno nuevo, motivo `reintento`.
-    const muerto = decision === 'relanzar' && bloqueo !== null ? await tx.trabajo(bloqueo.trabajoId) : undefined;
-    const atascado = muerto !== undefined && (muerto.estado === 'en_curso' || muerto.estado === 'pendiente') ? muerto : undefined;
+    const atascado = decision === 'relanzar' && propio !== undefined && (propio.estado === 'en_curso' || propio.estado === 'pendiente') ? propio : undefined;
     if (atascado !== undefined) tx.marcar(atascado.id, 'fallida', ahora, 'bloqueo_vencido');
-    const siguiente = pendientes.find((p) => p.id !== atascado?.id);
+    const siguiente = candidatos.find((p) => p.id !== atascado?.id);
     const reintento = atascado !== undefined && atascado.motivo !== 'reintento' ? atascado : undefined;
     if (siguiente === undefined || delegar !== undefined) {
-      if (decision === 'relanzar') tx.liberar(ultimaImagen);
+      if (decision === 'relanzar' || cubierto) tx.liberar(imagenFinal);
       return siguiente === undefined
         ? { resultado: 'nada' as const, atascado, reintento }
         : { resultado: 'encolar' as const, trabajoId: siguiente.id, atascado, reintento };
     }
-    tx.fijarBloqueo({ buildId: '', trabajoId: siguiente.id, desdeMs: ahora, imagen: deps.imagenActual ?? '' }, ultimaImagen);
+    tx.fijarBloqueo({ buildId: '', trabajoId: siguiente.id, desdeMs: ahora, imagen: deps.imagenActual ?? '' }, imagenFinal);
     const n = (contador?.dia === dia ? contador.n : 0) + 1;
     tx.fijarContador({ dia, n });
     return { resultado: decision === 'relanzar' ? ('relanzado' as const) : ('lanzado' as const), trabajoId: siguiente.id, atascado, reintento, n };
@@ -143,12 +155,9 @@ export async function lanzarSiguiente(deps: DepsConstruccion, tenantId: string):
     return 'encolado';
   }
   if (r.n > TOPE_CONSTRUCCIONES_DIA) (deps.alertar ?? alertaPorDefecto)({ tenantId, trabajoId: r.trabajoId, construccionesDia: r.n });
+  let lanzada: { buildId: string; imagen: string };
   try {
-    const { buildId, imagen } = await (constructor as ConstructorSitio).lanzar(tenantId, r.trabajoId);
-    await deps.almacen.transaccion(tenantId, async (tx) => {
-      const { bloqueo, ultimaImagen } = await tx.estado();
-      if (bloqueo?.trabajoId === r.trabajoId && bloqueo.desdeMs === ahora) tx.fijarBloqueo({ ...bloqueo, buildId, imagen }, ultimaImagen);
-    });
+    lanzada = await (constructor as ConstructorSitio).lanzar(tenantId, r.trabajoId);
   } catch (error) {
     // No quedó construcción: se libera el bloqueo (el trabajo sigue `pendiente`) y el error sube para que la cola reintente.
     await deps.almacen.transaccion(tenantId, async (tx) => {
@@ -156,6 +165,16 @@ export async function lanzarSiguiente(deps: DepsConstruccion, tenantId: string):
       if (bloqueo?.trabajoId === r.trabajoId && bloqueo.desdeMs === ahora) tx.liberar(ultimaImagen);
     });
     throw error;
+  }
+  try {
+    await deps.almacen.transaccion(tenantId, async (tx) => {
+      const { bloqueo, ultimaImagen } = await tx.estado();
+      if (bloqueo?.trabajoId === r.trabajoId && bloqueo.desdeMs === ahora) tx.fijarBloqueo({ ...bloqueo, buildId: lanzada.buildId, imagen: lanzada.imagen }, ultimaImagen);
+    });
+  } catch {
+    // El build SÍ existe: liberar el bloqueo (o reintentar la tarea) daría dos builds a la vez. Se conserva el bloqueo sin `buildId`: no
+    // lo libera ningún aviso (no coincide), pero sí el cierre del trabajo (`completada`) o su vencimiento a los 12 min. Solo se alerta.
+    (deps.alertar ?? alertaPorDefecto)({ tenantId, trabajoId: r.trabajoId, estado: 'build_id_no_guardado' });
   }
   return r.resultado;
 }

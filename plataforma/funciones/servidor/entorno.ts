@@ -216,6 +216,14 @@ export function sitiosDeLaInstancia(): ReturnType<ReturnType<typeof crearLectorS
   return lectorSitios();
 }
 
+/**
+ * Nombre de la tarea que encola la red de seguridad. Lleva un tramo de 5 minutos: Cloud Tasks no deja reusar un nombre durante ~60 minutos y
+ * `crearColaSitio` ignora «ya existe», así que sin el tramo un reintento de la red dentro de esa hora quedaría mudo. Dentro del mismo tramo
+ * sigue siendo idempotente.
+ */
+export const nombreTareaRed = (tenantId: string, trabajoId: string, ahora: number): string =>
+  `sitio-${tenantId}-red-${trabajoId}-${String(Math.floor(ahora / 300_000))}`.replace(/[^A-Za-z0-9_-]/g, '_');
+
 /** Consulta `builds.get` con el token de esta instancia (la de `avisoConstruccionSitio`, con cuenta propia). */
 export const consultaBuildDeLaInstancia = (): ReturnType<typeof crearConsultaBuild> =>
   crearConsultaBuild({ proyecto: proyectoDeLaInstancia(), tokenAcceso: tokenDeLaInstancia });
@@ -230,7 +238,7 @@ export function construccionDeLaInstancia(e: Entorno, delegar = false): DepsTare
   if (!constructorSitioEsGoogle()) return undefined;
   const c = exigirConfiguracionConstructor({
     proyecto: proyectoDeLaInstancia(),
-    imagen: PARAMETROS.constructorSitioImagen.value(), cuenta: PARAMETROS.constructorSitioCuenta.value(),
+    imagen: PARAMETROS.constructorSitioImagen.value(), cuenta: PARAMETROS.constructorSitioCuenta.value(), cuentaFn: PARAMETROS.cuentaFnConstructor.value(),
     maquina: PARAMETROS.constructorSitioMaquina.value(), appEnv: PARAMETROS.constructorSitioAppEnv.value(), apiKey: PARAMETROS.viteFirebaseApiKey.value(),
     appId: PARAMETROS.viteFirebaseAppId.value(), recaptcha: PARAMETROS.viteRecaptchaSitio.value(),
     panel: PARAMETROS.sitioPanelId.value(), mediosBaseUrl: PARAMETROS.mediosBaseUrl.value(),
@@ -249,7 +257,7 @@ export function construccionDeLaInstancia(e: Entorno, delegar = false): DepsTare
     // Modo «delegar» (temporizador, cuenta general): no se lanza ningún build; se encola la tarea de `construirSitio`, que lanza con la cuenta
     // propia del constructor. Sin `constructorSitio`, `lanzarSiguiente` no toma el bloqueo.
     ...(delegar
-      ? { encolarLanzamiento: (t: string, trabajoId: string) => colaSitioReal().encolar({ nombre: `sitio-${t}-red-${trabajoId}`.replace(/[^A-Za-z0-9_-]/g, '_'), tenantId: t, para: e.ahora() }) }
+      ? { encolarLanzamiento: (t: string, trabajoId: string) => colaSitioReal().encolar({ nombre: nombreTareaRed(t, trabajoId, e.ahora()), tenantId: t, para: e.ahora() }) }
       : { constructorSitio: real }),
   };
 }

@@ -18,6 +18,9 @@ class AlmacenDoble implements AlmacenConstruccion {
   version: number | undefined = 5;
   readonly causas = new Map<string, string>();
   contador: { dia: string; n: number } | undefined;
+  /** Número de transacción (1 = la primera) que falla, para simular un error al guardar el `buildId`. */
+  fallarTransaccionN: number | undefined;
+  private transacciones = 0;
 
   poner(id: string, estado: string, solicitadaEnMs: number, extra: Partial<TrabajoSitio> = {}): void {
     this.trabajos.set(id, { id, estado, solicitadaEnMs, version: 1, ...extra });
@@ -26,6 +29,8 @@ class AlmacenDoble implements AlmacenConstruccion {
     return this.trabajos.get(id)?.estado;
   }
   async transaccion<R>(_t: string, fn: (tx: TxConstruccion) => Promise<R>): Promise<R> {
+    this.transacciones += 1;
+    if (this.transacciones === this.fallarTransaccionN) throw new Error('escritura fallida');
     const escrituras: (() => void)[] = [];
     const tx: TxConstruccion = {
       estado: () => Promise.resolve({ bloqueo: this.bloqueo, ...(this.contador === undefined ? {} : { contador: this.contador }), ...(this.ultimaImagen === undefined ? {} : { ultimaImagen: this.ultimaImagen }) }),
@@ -525,5 +530,78 @@ describe('almacenConstruccionFirestore.pendientes', () => {
     expect(e.bloqueo?.trabajoId).toBe('rec-1');
     expect(e.contador).toEqual({ dia: '2026-11-21', n: 3 });
     expect(docs.has(`tenants/${T}/sitio/construcciones`)).toBe(true);
+  });
+});
+
+describe('buildId que no se pudo guardar', () => {
+  it('el build ya existe: se conserva el bloqueo, se alerta y no sale un segundo build', async () => {
+    const alertar = vi.fn();
+    const { almacen, reloj, constructor, deps } = montar({ alertar });
+    almacen.poner('rec-1', 'pendiente', reloj.ms);
+    almacen.fallarTransaccionN = 2; // la 1.ª toma el bloqueo; la 2.ª guarda el buildId
+    expect(await lanzarSiguiente(deps, T)).toBe('lanzado');
+    expect(constructor.lanzados).toEqual(['rec-1']);
+    expect(almacen.bloqueo).toMatchObject({ trabajoId: 'rec-1', buildId: '' });
+    expect(alertar).toHaveBeenCalledWith({ tenantId: T, trabajoId: 'rec-1', estado: 'build_id_no_guardado' });
+    almacen.poner('rec-2', 'pendiente', reloj.ms);
+    expect(await lanzarSiguiente(deps, T)).toBe('esperar'); // el reintento de la tarea no lanza otro build
+    expect(constructor.lanzados).toEqual(['rec-1']);
+  });
+  it('si falla `lanzar()` sí se libera el bloqueo', async () => {
+    const { almacen, reloj, constructor, deps } = montar();
+    almacen.poner('rec-1', 'pendiente', reloj.ms);
+    constructor.falla = true;
+    await expect(lanzarSiguiente(deps, T)).rejects.toThrow();
+    expect(almacen.bloqueo).toBeNull();
+  });
+});
+
+describe('trabajo cerrado `completada` con el bloqueo aún puesto', () => {
+  it('sin aviso de Cloud Build: se libera en cuanto se detecta, cubre los pendientes anteriores y lanza el posterior', async () => {
+    const { almacen, reloj, constructor, deps } = montar();
+    almacen.poner('rec-0', 'pendiente', reloj.ms - 20_000);
+    almacen.poner('rec-a', 'pendiente', reloj.ms - 10_000);
+    await lanzarSiguiente(deps, T); // build b1 para rec-0, desdeMs = ahora
+    reloj.ms += 30_000;
+    almacen.poner('rec-0', 'completada', 0);
+    almacen.poner('rec-b', 'pendiente', reloj.ms); // pedido después del inicio del build
+    expect(await lanzarSiguiente(deps, T)).toBe('lanzado'); // el bloqueo (30 s) no vencía: lo libera el cierre del trabajo
+    expect(almacen.estadoDe('rec-a')).toBe('completada');
+    expect(almacen.estadoDe('rec-b')).toBe('pendiente');
+    expect(constructor.lanzados).toEqual(['rec-0', 'rec-b']);
+    expect(almacen.ultimaImagen).toBe('img@sha256:aaa');
+  });
+  it('sin pendientes posteriores: solo libera y fija ultimaImagen', async () => {
+    const { almacen, reloj, constructor, deps } = montar();
+    almacen.poner('rec-0', 'pendiente', reloj.ms - 20_000);
+    almacen.poner('rec-a', 'pendiente', reloj.ms - 10_000);
+    await lanzarSiguiente(deps, T);
+    almacen.poner('rec-0', 'completada', 0);
+    expect(await lanzarSiguiente(deps, T)).toBe('nada');
+    expect(almacen.estadoDe('rec-a')).toBe('completada');
+    expect(almacen.bloqueo).toBeNull();
+    expect(almacen.ultimaImagen).toBe('img@sha256:aaa');
+    expect(constructor.lanzados).toEqual(['rec-0']);
+  });
+  it('con el bloqueo vencido y el trabajo completada: cubre los pendientes anteriores en vez de reconstruir, y no reintenta', async () => {
+    const { almacen, reloj, constructor, deps } = montar();
+    almacen.poner('rec-0', 'pendiente', reloj.ms - 20_000);
+    almacen.poner('rec-a', 'pendiente', reloj.ms - 10_000);
+    await lanzarSiguiente(deps, T);
+    reloj.ms += 13 * MIN;
+    almacen.poner('rec-0', 'completada', 0);
+    expect(await lanzarSiguiente(deps, T)).toBe('nada');
+    expect(almacen.estadoDe('rec-a')).toBe('completada');
+    expect([...almacen.trabajos.keys()].some((k) => k.startsWith('rec-reintento'))).toBe(false);
+    expect(constructor.lanzados).toEqual(['rec-0']);
+  });
+  it('un trabajo en_curso sigue bloqueando', async () => {
+    const { almacen, reloj, constructor, deps } = montar();
+    almacen.poner('rec-0', 'pendiente', reloj.ms);
+    await lanzarSiguiente(deps, T);
+    almacen.poner('rec-0', 'en_curso', reloj.ms);
+    almacen.poner('rec-1', 'pendiente', reloj.ms);
+    expect(await lanzarSiguiente(deps, T)).toBe('esperar');
+    expect(constructor.lanzados).toEqual(['rec-0']);
   });
 });

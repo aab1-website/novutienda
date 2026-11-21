@@ -53,12 +53,6 @@ describe('exportaciones de las Functions frente al registro', () => {
     expect(codigo).not.toContain('ConstruccionEncolada');
   });
 
-  // Cuando P5 las exporte desde index.ts (`export { avisoConstruccionSitio, construirSitio } from './funciones-sitio.js'`), reemplazar el caso
-  // anterior por este: las exportaciones directas siguen sin pasar por `export const`, así que se comprueba la línea de reexportación.
-  it.skip('P5: index.ts reexporta construirSitio y avisoConstruccionSitio desde funciones-sitio.js', () => {
-    expect(codigo).toMatch(/export \{ avisoConstruccionSitio, construirSitio \} from '\.\/funciones-sitio\.js'/);
-  });
-
   it('no hay otras exportaciones de disparadores', () => {
     const todas = [...codigo.matchAll(/^export const (\w+) = (on\w+)\(/gm)].map((x) => x[1] as string).sort();
     expect(todas).toEqual(ordenados([...exportadas('onCall'), ...exportadas('onSchedule'), 'api', 'eventos', 'subidaFinalizada']));
