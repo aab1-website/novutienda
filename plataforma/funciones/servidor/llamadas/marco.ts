@@ -61,6 +61,17 @@ export function moduloApagado(mensaje = 'Este módulo no está habilitado para s
   return new HttpsError('permission-denied', mensaje, { codigo: CODIGO_MODULO_APAGADO });
 }
 
+/** Rechazo de esquema: lleva aparte `camposLog` (ruta y code de zod, sin mensaje ni valor) solo para el registro del servidor. */
+class RechazoDeEsquema extends HttpsError {
+  constructor(
+    mensaje: string,
+    details: unknown,
+    readonly camposLog: readonly { readonly path: string; readonly code: string }[],
+  ) {
+    super('invalid-argument', mensaje, details);
+  }
+}
+
 export const MAX_CARACTERES_POR_DEFECTO = 64_000;
 
 export function accion<E extends z.ZodType>(def: DefAccion<E>): Implementacion {
@@ -71,7 +82,9 @@ export function accion<E extends z.ZodType>(def: DefAccion<E>): Implementacion {
       if (!r.success) {
         // Solo rutas y tipos esperados: nunca se devuelve el valor recibido.
         const campos = r.error.issues.slice(0, 10).map((i) => `${i.path.join('.') || 'datos'}: ${i.message}`);
-        throw new HttpsError('invalid-argument', 'Los datos enviados no son válidos.', { campos });
+        // Para el registro: solo ruta y code (el mensaje de un enum incluye el valor recibido).
+        const camposLog = r.error.issues.slice(0, 10).map((i) => ({ path: i.path.join('.') || 'datos', code: i.code }));
+        throw new RechazoDeEsquema('Los datos enviados no son válidos.', { campos }, camposLog);
       }
       return def.ejecutar(c, r.data);
     },
@@ -115,7 +128,14 @@ export function motivoLimpio(mensaje: string): string {
  * sale con `details.codigo` (código del módulo en kebab-case), para que el panel mapee el mensaje por código.
  */
 export function comoHttpsError(error: unknown, contexto: Readonly<Record<string, unknown>>): HttpsError {
-  if (error instanceof HttpsError) return conCodigo(error);
+  if (error instanceof HttpsError) {
+    const h = conCodigo(error);
+    // Los HttpsError nacidos en el borde también dejan rastro: solo el código, nunca el mensaje ni datos de la petición.
+    const codigo = (h.details as { codigo?: unknown }).codigo;
+    const campos = error instanceof RechazoDeEsquema ? error.camposLog : undefined;
+    logger.warn('callable rechazado', { ...contexto, codigo: typeof codigo === 'string' ? codigo : h.code, ...(campos === undefined ? {} : { campos }) });
+    return h;
+  }
   if (error instanceof RedondeoInvalido) {
     logger.error('callable rechazado', { ...contexto, alerta: 'redondeo', motivo: 'redondeo-invalido' });
     return conCodigo(new HttpsError('failed-precondition', error.message), 'redondeo-invalido');
