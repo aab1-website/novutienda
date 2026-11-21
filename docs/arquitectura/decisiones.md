@@ -141,3 +141,6 @@
   **Motivo:** 12 pruebas llevaban tiempo desactualizadas sin que nadie lo notara, y una escondía un defecto real de accesibilidad en la caja «solo consulta».
   **Regla:** una falla del humo se clasifica como prueba desactualizada o como defecto real; un defecto real no se tapa cambiando la prueba.
   **Fuera de este PR:** el humo del sitio (`paquetes/website/humo`) queda para un PR posterior.
+- 21/11/2026 — **El humo de Playwright del sitio público pasa al CI como job propio `humo-sitio`**, decisión de Andres. Cierra el pendiente «humo del sitio» de la entrada del 20/11. Corre `paquetes/website/humo` (66 pruebas) y bloquea `compuerta-pr` y `desplegar-staging`.
+  **Cómo corre:** compila el sitio dentro del mismo job (tarda unos 5 s) en vez de usar el artifact de `construir`, para no alargar el camino crítico. Comparte con `humo-panel` la caché de Chromium.
+  **Medición:** en local pasó entero, sin fallas.
