@@ -35,8 +35,9 @@ RUN pnpm install --frozen-lockfile
 FROM node:22-slim@sha256:e9f565d32859f0cbfb52125eafe8be39390f24dac302dc3cdf566e8ba3ab21ee AS constructor
 ARG FIREBASE_TOOLS_VERSION
 ARG PNPM_VERSION
-ENV NODE_ENV=production \
-    OMITIR_INSTALAR=1 \
+# Sin NODE_ENV=production: vitest y el build de Astro se comportan distinto con ese valor y esta imagen corre las
+# mismas pruebas que el CI (dist-real) con el mismo entorno que el job de GitHub.
+ENV OMITIR_INSTALAR=1 \
     FIREBASE_TOOLS_VERSION=${FIREBASE_TOOLS_VERSION}
 # bash, curl y jq: los usa reconstruir-sitio.sh (humo y preparar-sitio-tenant.sh).
 # Sin npm ni corepack al final: el script no los usa y su árbol de dependencias (brace-expansion, pacote, sigstore…)
