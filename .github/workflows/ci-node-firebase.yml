@@ -347,6 +347,89 @@ jobs:
           if-no-files-found: warn
 
   # ---------------------------------------------------------------------------
+  # Fase 1 — humo-sitio: pruebas de navegador (Playwright) del sitio público
+  # compilado para staging (sin Firebase ni secretos). Mismo Chromium y misma
+  # caché que humo-panel (ambos paquetes fijan la misma versión de Playwright).
+  # Bloquea compuerta-pr y desplegar-staging.
+  # ---------------------------------------------------------------------------
+  humo-sitio:
+    name: humo-sitio
+    needs: preparar
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    permissions:
+      contents: read
+    env:
+      # El config usa `chrome` del sistema por defecto; aquí, el Chromium de Playwright.
+      PLAYWRIGHT_CHANNEL: chromium
+    steps:
+      - name: Checkout
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          # En workflow_dispatch se analiza/despliega el tag aprobado (D3)
+          ref: ${{ inputs.tag || github.ref }}
+          persist-credentials: false
+
+      - name: Habilitar corepack
+        if: needs.preparar.outputs.pm != 'npm'
+        run: corepack enable
+
+      - name: Node.js
+        uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7
+        with:
+          node-version: ${{ env.NODE_VERSION }}
+          cache: ${{ needs.preparar.outputs.pm }}
+
+      - name: Instalar dependencias
+        run: ${{ needs.preparar.outputs.instalar }}
+
+      - name: Versión de Playwright instalada (lockfile)
+        id: pw
+        run: |
+          set -euo pipefail
+          version=$(pnpm --filter @novutienda/website exec playwright --version | awk '{print $2}')
+          if [[ ! "$version" =~ ^[0-9]+\.[0-9]+\.[0-9]+ ]]; then
+            echo "::error::No se pudo leer la versión de Playwright (salida: '$version')."
+            exit 1
+          fi
+          echo "version=$version" >> "$GITHUB_OUTPUT"
+          echo "Playwright $version"
+
+      - name: Caché de navegadores de Playwright
+        id: cache-pw
+        uses: actions/cache@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
+        with:
+          path: ~/.cache/ms-playwright
+          key: playwright-${{ runner.os }}-${{ steps.pw.outputs.version }}
+
+      - name: Instalar Chromium de Playwright y dependencias del sistema
+        if: steps.cache-pw.outputs.cache-hit != 'true'
+        run: pnpm --filter @novutienda/website exec playwright install --with-deps chromium
+
+      - name: Dependencias del sistema para Chromium (caché acertada)
+        if: steps.cache-pw.outputs.cache-hit == 'true'
+        run: pnpm --filter @novutienda/website exec playwright install-deps chromium
+
+      - name: Compilar el sitio (staging)
+        env:
+          APP_ENV: staging
+        run: pnpm --filter @novutienda/website run build
+
+      - name: Humo del sitio (Playwright, Chromium)
+        run: pnpm --filter @novutienda/website humo
+
+      - name: Guardar resultados del humo (solo si falla)
+        if: failure()
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7
+        with:
+          name: sitio-humo-resultados
+          path: |
+            dist/humo-resultados
+            dist/humo-resultados-paginas
+          retention-days: 7
+          if-no-files-found: warn
+
+  # ---------------------------------------------------------------------------
   # Fase 2 — seguridad-estatica: reusable OSS (todos los modos).
   # NOTA: en el repositorio del proyecto la ruta es local
   # (./.github/workflows/_reusable-security.yml); bootstrap-repo.sh copia el
@@ -591,7 +674,7 @@ jobs:
   # ---------------------------------------------------------------------------
   desplegar-staging:
     name: desplegar-staging
-    needs: [calidad, humo-panel, seguridad-estatica, construir]
+    needs: [calidad, humo-panel, humo-sitio, seguridad-estatica, construir]
     # Desviación local (docs/arquitectura/decisiones.md): sin proyecto de staging federado no se despliega.
     if: github.event_name == 'push' && github.ref == 'refs/heads/main' && vars.GCP_PROJECT_ID_STAGING != ''
     runs-on: ubuntu-latest
@@ -1054,26 +1137,27 @@ jobs:
 
   # ---------------------------------------------------------------------------
   # compuerta-pr (D1): ÚNICO status check que exigen los rulesets de main.
-  # Agrega calidad, humo-panel, seguridad-estatica y construir (con o sin matriz) en un solo
+  # Agrega calidad, humo-panel, humo-sitio, seguridad-estatica y construir (con o sin matriz) en un solo
   # contexto estable; falla si cualquiera de sus needs no terminó en success.
   # ---------------------------------------------------------------------------
   compuerta-pr:
     name: compuerta-pr
-    needs: [calidad, humo-panel, seguridad-estatica, construir]
+    needs: [calidad, humo-panel, humo-sitio, seguridad-estatica, construir]
     if: always()
     runs-on: ubuntu-latest
     timeout-minutes: 5
     steps:
-      - name: Verificar resultados de calidad, humo-panel, seguridad-estatica y construir
+      - name: Verificar resultados de calidad, humo-panel, humo-sitio, seguridad-estatica y construir
         env:
           R_CALIDAD: ${{ needs.calidad.result }}
           R_HUMO_PANEL: ${{ needs.humo-panel.result }}
+          R_HUMO_SITIO: ${{ needs.humo-sitio.result }}
           R_SEGURIDAD: ${{ needs.seguridad-estatica.result }}
           R_CONSTRUIR: ${{ needs.construir.result }}
         run: |
           set -euo pipefail
-          echo "calidad=$R_CALIDAD | humo-panel=$R_HUMO_PANEL | seguridad-estatica=$R_SEGURIDAD | construir=$R_CONSTRUIR"
-          for r in "$R_CALIDAD" "$R_HUMO_PANEL" "$R_SEGURIDAD" "$R_CONSTRUIR"; do
+          echo "calidad=$R_CALIDAD | humo-panel=$R_HUMO_PANEL | humo-sitio=$R_HUMO_SITIO | seguridad-estatica=$R_SEGURIDAD | construir=$R_CONSTRUIR"
+          for r in "$R_CALIDAD" "$R_HUMO_PANEL" "$R_HUMO_SITIO" "$R_SEGURIDAD" "$R_CONSTRUIR"; do
             if [[ "$r" != "success" ]]; then
               echo "::error::compuerta-pr bloqueada: algún job requerido no terminó en success"
               exit 1
