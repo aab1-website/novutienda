@@ -124,7 +124,7 @@ export function conflictosMayusculas(consultadas: readonly SerieNueva[], encontr
   const errores: string[] = [];
   consultadas.forEach((c, i) => {
     const otra = (encontradas[i] ?? []).find((u) => u.productoId === c.productoId && u.serie !== c.serie && u.serie.toLowerCase() === c.serie.toLowerCase());
-    if (otra !== undefined) errores.push(`La serie ${c.serie}: Ya existe como ${otra.serie}.`);
+    if (otra !== undefined) errores.push(`La serie ${c.serie}: ya existe como ${otra.serie}.`);
   });
   return errores;
 }

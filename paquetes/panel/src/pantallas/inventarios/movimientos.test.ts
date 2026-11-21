@@ -99,7 +99,7 @@ describe('ingreso', () => {
     await elegir(u, 'celular', /Celular A1/);
     await u.type(screen.getByLabelText(/^Series/), 'cela1-001 NUEVA-777');
     await u.click(screen.getByRole('button', { name: 'Registrar ingreso' }));
-    expect(await screen.findByText('La serie cela1-001: Ya existe como CELA1-001.')).toBeTruthy();
+    expect(await screen.findByText('La serie cela1-001: ya existe como CELA1-001.')).toBeTruthy();
     expect(screen.queryByRole('dialog', { name: '¿Registrar este ingreso?' })).toBeNull();
     expect(llamadas(e, 'ingresar')).toHaveLength(0);
     expect(llamadas(e, 'buscarSerie').every((l) => l.entrada['productoId'] === 'cel-a1')).toBe(true);

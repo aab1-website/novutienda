@@ -77,6 +77,9 @@ export function exigirControl(t: Trabajo, productoId: string): void {
   if (typeof t.producto(productoId)['stockTotal'] !== 'number') throw new EstadoInvalido(`El producto ${productoId} no controla stock`);
 }
 
+/** Id de la reserva de una serie: producto y serie en minúsculas (largo máximo 60 + 2 + 60, sin necesidad de hash). */
+const claveSerie = (productoId: string, serie: string): string => `${productoId}__${serie.toLowerCase()}`;
+
 /** Ingreso de mercadería a una ubicación. Las unidades con serie se crean con `create`. Sup/adm. */
 export async function ingresar(
   tx: TransaccionIdentidad,
@@ -103,11 +106,22 @@ export async function ingresar(
         for (const s of series) {
           if (t.unidadLeida(l.productoId, s) !== undefined) throw new ErrorInventario('already-exists', `La serie ya está registrada: ${l.productoId}/${s}`);
         }
+        // Paso 25: reserva por producto y serie sin distinguir mayúsculas, creada en esta misma transacción. Dos ingresos
+        // simultáneos de variantes de una misma serie leen la reserva ausente y compiten por crearla: el segundo se reintenta, la
+        // lee y falla. Las unidades anteriores a las reservas las cubre la consulta previa del borde (`exigirSinVariantes`).
+        const reservas = await Promise.all(series.map((s) => t.lector.leer('seriesClaves', claveSerie(l.productoId, s))));
+        series.forEach((s, i) => {
+          const otra = reservas[i]?.['serie'];
+          if (typeof otra === 'string' && otra !== s) throw new ErrorInventario('already-exists', `Ya existe como ${otra}`);
+        });
         validadas.push({ l, series });
       }
       const salida: Datos[] = [];
       for (const { l, series } of validadas) {
-        for (const s of series) t.marcarUnidad({ productoId: l.productoId, serie: s, estado: 'disponible', ubicacionId, modo: 'create' });
+        for (const s of series) {
+          t.marcarUnidad({ productoId: l.productoId, serie: s, estado: 'disponible', ubicacionId, modo: 'create' });
+          t.escribir({ ruta: ruta(e.tenantId, 'seriesClaves', claveSerie(l.productoId, s)), modo: 'create', datos: { productoId: l.productoId, serie: s } });
+        }
         t.mover(l.productoId, ubicacionId, l.cantidad, { agregar: series });
         salida.push({ productoId: l.productoId, cantidad: l.cantidad, series: [...series] });
       }

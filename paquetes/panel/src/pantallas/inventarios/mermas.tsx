@@ -157,7 +157,8 @@ export function PantallaMermas(): JSX.Element {
   const productos = useCarga(() => api.llamar('listarProductos', {}), []);
   const conteosAbiertos = useConteosAbiertos();
   // Los nombres vienen de `listarUsuarios` (sup y adm); si no se puede leer, se muestra el uid.
-  const usuarios = useCarga(() => api.llamar('listarUsuarios', {}).catch((): readonly UsuarioVista[] => []), []);
+  const veUsuarios = usuario.rol === 'sup' || usuario.rol === 'adm';
+  const usuarios = useCarga(() => (veUsuarios ? api.llamar('listarUsuarios', {}).catch((): readonly UsuarioVista[] => []) : Promise.resolve<readonly UsuarioVista[]>([])), [veUsuarios]);
   const [estado, setEstado] = useState<FiltroEstado>('solicitada');
   const mermas = useCarga(() => api.llamar('listarMermas', estado === '' ? {} : { estado }), [estado]);
   const [resolviendo, setResolviendo] = useState<{ merma: MermaVista; decision: 'aprobada' | 'rechazada'; etiqueta: string } | null>(null);

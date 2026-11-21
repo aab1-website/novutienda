@@ -31,11 +31,12 @@ describe('formato de la serie nueva', () => {
     expect(doc(db, 'unidades', 'celular__ABC123')).toBeUndefined();
   });
 
-  it('frente a lo guardado solo rige el duplicado exacto (las mayúsculas distintas se admiten)', async () => {
+  it('frente a lo guardado rige el duplicado exacto y, por la reserva, la variante de mayúsculas (paso 25)', async () => {
     await cargar(db, 'celular', 'tienda', 1, ['ABC123']);
     await expect(cargar(db, 'celular', 'deposito-1', 1, ['ABC123'])).rejects.toThrow(/ya está registrada/);
-    await cargar(db, 'celular', 'deposito-1', 1, ['abc123']);
-    expect(doc(db, 'unidades', 'celular__abc123')).toMatchObject({ serie: 'abc123' });
+    await expect(cargar(db, 'celular', 'deposito-1', 1, ['abc123'])).rejects.toThrow('Ya existe como ABC123');
+    expect(doc(db, 'unidades', 'celular__abc123')).toBeUndefined();
+    expect(doc(db, 'seriesClaves', 'celular__abc123')).toMatchObject({ serie: 'ABC123' });
   });
 
   it('exigirSeriesNuevas rechaza lo que no es lista', () => {

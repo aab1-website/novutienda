@@ -35,4 +35,32 @@ describe.skipIf(!hayEmulador)('inventarios: ingreso de una variante de mayúscul
     expect((await ingresar('tv', ['humo2-s001'])).status).toBe(200);
     expect((await ingresar('cam', ['OTRA-0002'])).status).toBe(200);
   });
+
+  it('dos ingresos simultáneos de variantes de una misma serie: solo uno entra (reserva dentro de la transacción)', async () => {
+    const [x, y] = await Promise.all([ingresar('tv', ['Carrera-001']), ingresar('tv', ['CARRERA-001'])]);
+    expect([x.status, y.status].sort()).toEqual([200, 409]);
+    const guardadas = (await h.firestore.collection(`tenants/${A}/unidades`).where('productoId', '==', 'tv').where('serieBusqueda', '==', 'carrera-001').get()).size;
+    expect(guardadas).toBe(1);
+  });
+
+  it('un reintento idempotente del mismo ingreso no choca con su propia reserva', async () => {
+    const datos = { operacionId: unico('op'), ubicacionId: 'tienda', lineas: [{ productoId: 'tv', cantidad: 1, series: ['Reintento-01'] }] };
+    expect((await accion('inventarios', 'ingresar', datos, adm.token, A)).status).toBe(200);
+    expect((await accion('inventarios', 'ingresar', datos, adm.token, A)).status).toBe(200);
+  });
+
+  it('con un conteo abierto, quien no es adm recibe un mensaje genérico', async () => {
+    const sup = await crearUsuario(h, { rol: 'sup', tenant: A });
+    const r1 = await accion('inventarios', 'abrirConteo', { operacionId: unico('op'), conteoId: unico('c'), ubicacionId: 'tienda' }, adm.token, A);
+    expect(r1.status).toBe(200);
+    const r = await accion('inventarios', 'ingresar', { operacionId: unico('op'), ubicacionId: 'tienda', lineas: [{ productoId: 'cam', cantidad: 1, series: ['humo2-s001'] }] }, sup.token, A);
+    expect(r.status).toBe(409);
+    expect(JSON.stringify(r)).toContain('Esa serie ya existe con otras mayúsculas');
+    expect(JSON.stringify(r)).not.toContain('HUMO2-S001');
+  });
+
+  it('un ingreso con más de 600 series se rechaza antes de consultar nada', async () => {
+    const series = Array.from({ length: 601 }, (_, i) => `TOPE-${String(i).padStart(4, '0')}`);
+    expect((await ingresar('tv', series)).status).toBe(400);
+  });
 });
