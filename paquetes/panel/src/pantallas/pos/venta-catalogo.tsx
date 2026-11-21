@@ -79,7 +79,7 @@ export function CatalogoVenta({ productos, ventas, cot, mercados, mercado, moned
       {visibles.length === 0 ? (
         <Vacio titulo="No hay productos que coincidan" detalle="Pruebe con otra búsqueda o categoría." />
       ) : (
-        <ul class="lista-productos">
+        <ul class="lista-productos" {...(alAgregar === undefined ? { tabIndex: 0, 'aria-label': 'Productos' } : {})}>
           {visibles.map((p) => {
             const pr = precioDeCobro(p, mercado, moneda, cot);
             return (
