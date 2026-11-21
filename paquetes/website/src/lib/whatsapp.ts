@@ -16,5 +16,5 @@ export interface LineaMensaje {
 
 export function mensajeConsulta(lineas: readonly LineaMensaje[]): string {
   const items = lineas.map((l) => `${l.cantidad} x ${l.nombre} (cód. ${l.id})`);
-  return ['Hola, quiero consultar por estos productos:', ...items].join('\n');
+  return ['Hola, quiero comprar estos productos:', ...items].join('\n');
 }
