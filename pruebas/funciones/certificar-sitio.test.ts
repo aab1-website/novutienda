@@ -141,7 +141,7 @@ const env = { SITIO_RECONSTRUCCION_SECRETO: SECRETO, MEDIOS_BASE_URL: 'https://m
 const deps = {
   calcularFirma,
   // El mapeo sintético arma el contenido con la disponibilidad que entrega el entorno (como el real).
-  mapear: (_r: unknown, _n: unknown, e: unknown) => armar((e as { disponibilidad: Record<string, boolean> }).disponibilidad),
+  mapear: (_r: unknown, _n: unknown, e: unknown) => ({ contenido: armar((e as { disponibilidad: Record<string, boolean> }).disponibilidad), fuenteNegocio: 'respaldo' as 'consola' | 'respaldo' }),
   versionContenido: versionContenido as unknown as (c: unknown) => unknown,
 };
 const args = ['--tenant', TENANT, '--url', ORIGEN];
@@ -464,6 +464,23 @@ describe('certificar-sitio con --contenido (referencia: el build)', () => {
     expect(r.codigo).toBe(0);
     expect(peticionesPublicado).toBeGreaterThan(0);
     expect(r.salida).toContain('referencia: contenido regenerado desde lo publicado');
+  });
+  it('a pedido incluye la fuente del negocio en la salida y en el resumen; con --contenido no la imprime; sin valores', async () => {
+    const d = mkdtempSync(join(tmpdir(), 'cert-fuente-'));
+    const resumen = join(d, 'resumen.md');
+    for (const fuente of ['consola', 'respaldo'] as const) {
+      const r = await ejecutar([...args, '--resumen', resumen], env, { ...deps, mapear: (_r: unknown, _n: unknown, e: unknown) => ({ contenido: armar((e as { disponibilidad: Record<string, boolean> }).disponibilidad), fuenteNegocio: fuente }) }, fetchLocal, red);
+      expect(r.codigo).toBe(0);
+      expect(r.salida).toContain(`fuente del negocio: ${fuente}`);
+      const md = readFileSync(resumen, 'utf8');
+      expect(md).toContain(`referencia: contenido regenerado desde lo publicado\n\nfuente del negocio: ${fuente}\n\n`);
+      sinPrivados(JSON.stringify(r) + md);
+    }
+    const ruta = join(d, 'c.json');
+    writeFileSync(ruta, JSON.stringify(armar(VIVA_INICIAL)));
+    const b = await ejecutar([...args, '--contenido', ruta], { NODE_ENV: 'test' }, { ...deps, mapear: () => ({ contenido: armar(VIVA_INICIAL), fuenteNegocio: 'consola' as const }) }, fetchLocal, red);
+    expect(b.salida).not.toContain('fuente del negocio');
+    rmSync(d, { recursive: true, force: true });
   });
 });
 

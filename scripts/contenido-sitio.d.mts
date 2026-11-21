@@ -1,6 +1,7 @@
 export type CalcularFirma = (secreto: string, marcaTiempo: string, cuerpo: string) => string;
-export type Mapear = (respuesta: unknown, negocio: unknown, entorno: unknown, advertencias?: string[]) => unknown;
+export type Mapear = (respuesta: unknown, negocio: unknown, entorno: unknown, advertencias?: string[]) => { contenido: unknown; fuenteNegocio: FuenteNegocio };
 export interface Dependencias { readonly calcularFirma?: CalcularFirma; readonly mapear: Mapear; readonly versionContenido?: (contenido: unknown) => unknown }
+export type FuenteNegocio = 'consola' | 'respaldo';
 export type VersionDeContenido = (contenido: unknown) => unknown;
 export type Esperar = (ms: number) => Promise<unknown>;
 export interface OpcionesPeticion {
@@ -54,7 +55,7 @@ export function lotes<T>(ids: readonly T[], tamano?: number): T[][];
 export function leerDisponibilidad(p: { url: string; ids: readonly string[]; fetchFn?: typeof fetch; esperar?: Esperar; avisar?: (mensaje: string) => void }): Promise<Record<string, boolean>>;
 export function appCheckDesdeEntorno(env: Record<string, string | undefined>): { claveSitio: string; apiKey: string; appId: string; projectId: string } | null;
 export function negocioDesdeEntorno(env: Record<string, string | undefined>): unknown;
-export function generarContenido(p: { tenant: string; url: string; secreto: string; env: Record<string, string | undefined>; calcularFirma?: CalcularFirma; mapear: Mapear; ahoraMs?: number; fetchFn?: typeof fetch; esperar?: Esperar; avisar?: (mensaje: string) => void }): Promise<{ contenido: unknown; productos: number; invalidos: number; advertencias: string[] }>;
+export function generarContenido(p: { tenant: string; url: string; secreto: string; env: Record<string, string | undefined>; calcularFirma?: CalcularFirma; mapear: Mapear; ahoraMs?: number; fetchFn?: typeof fetch; esperar?: Esperar; avisar?: (mensaje: string) => void }): Promise<{ contenido: unknown; productos: number; invalidos: number; advertencias: string[]; fuente: FuenteNegocio }>;
 export function ejecutar(args: readonly string[], env?: Record<string, string | undefined>, deps?: Dependencias, fetchFn?: typeof fetch, red?: { esperar?: Esperar; avisar?: (mensaje: string) => void }): Promise<{ codigo: number; salida?: string; error?: string }>;
 export function enmascararRuta(mensaje: string): string;
 export function pedirTexto(p: { url: string; ruta: string; fetchFn?: typeof fetch; esperar?: Esperar; avisar?: (mensaje: string) => void; maxBytes?: number }): Promise<{ estado: number; texto: string; redireccion?: boolean; demasiado?: boolean }>;

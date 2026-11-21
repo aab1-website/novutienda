@@ -7,7 +7,7 @@ import { MAX_CATEGORIAS_SITIO, esIdProductoSitio, leerCausasFallaSitio, type Cau
 import {
   IDS_PLANTILLA, LIMITES_SITIO,
   type Bloque, type Categoria, type ConfigAppCheck, type Contenido, type Foto, type IdIcono, type IdPlantilla,
-  type Producto, type Seccion,
+  type NegocioSitio, type Producto, type Seccion,
 } from './tipos.js';
 import { logoDesdePublicado } from './logo-subido.js';
 import { LARGO_MAXIMO_ENLACE, urlEnlaceSegura, validarContenido, validarNegocio } from './validar.js';
@@ -88,6 +88,9 @@ function causasDe(errores: readonly string[], productos: unknown, categorias: un
 type Obj = Readonly<Record<string, unknown>>;
 const esObj = (x: unknown): x is Obj => typeof x === 'object' && x !== null && !Array.isArray(x);
 const lista = (x: unknown): readonly unknown[] => (Array.isArray(x) ? x : []);
+const rutaDeError = (e: string): string => e.split(':')[0]!;
+/** Campos del negocio que el documento de la consola no trae y salen del respaldo. */
+const esRutaDelRespaldo = (r: string): boolean => /^negocio\.(mercados|mercadoInicial|logo|whatsappTienda)(\.|\[|$)/.test(r);
 const cadena = (x: unknown): string => (typeof x === 'string' ? x : '');
 
 interface VersionMedio { readonly clase: string; readonly lado: number; readonly formato: string; readonly ruta: string }
@@ -155,6 +158,31 @@ function fotosDe(medios: unknown, base: string, tope: number, enlaceCtx?: Contex
     if (f !== undefined) fotos.push(f);
   }
   return fotos;
+}
+
+/**
+ * Arma el objeto que valida `validarNegocio` a partir del documento de la consola: sus campos, más `mercados`, `mercadoInicial`, `logo` y
+ * `whatsappTienda` del secreto (el documento no los trae). La foto de identidad como medio de la consola pasa por `foto(...)` con la base de medios.
+ */
+function componerNegocioConsola(doc: unknown, secreto: unknown, base: string): { candidato: unknown; avisos: string[] } {
+  const avisos: string[] = [];
+  if (!esObj(doc)) return { candidato: doc, avisos };
+  const sec = esObj(secreto) ? secreto : {};
+  const campos: Record<string, unknown> = { ...doc };
+  delete campos['version'];
+  delete campos['actualizadoEn'];
+  // Foto de identidad como medio de la consola sin versión válida: decisión deliberada, queda en `null` con aviso y el resto del documento
+  // se usa (es mejor que descartar todo el documento y volver al respaldo por una foto).
+  let identidad: unknown = campos['identidad'];
+  if (esObj(identidad) && esObj(identidad['foto']) && identidad['foto']['url'] === undefined) {
+    const f = foto(identidad['foto'], base);
+    if (f === undefined) avisos.push('documentos.negocio.identidad.foto: foto omitida (sin versión válida)');
+    identidad = { ...identidad, foto: f ?? null };
+  }
+  return {
+    candidato: { ...campos, identidad, mercados: sec['mercados'], mercadoInicial: sec['mercadoInicial'], logo: sec['logo'], whatsappTienda: sec['whatsappTienda'] },
+    avisos,
+  };
 }
 
 /** Tabla genérica palabra clave → ícono (D4). Sin coincidencia: `cuadricula`. */
@@ -239,17 +267,45 @@ function bloque(b: Obj, base: string, rutaBloque: string, permitidos: readonly s
  *
  * @throws ErrorContenidoPublicado si la respuesta, el negocio o el resultado no son válidos.
  */
-export function contenidoDesdePublicado(respuesta: unknown, negocio: unknown, entorno: EntornoSitio, advertencias?: string[]): Contenido {
+export function contenidoYFuenteDesdePublicado(respuesta: unknown, negocio: unknown, entorno: EntornoSitio, advertencias?: string[]): { contenido: Contenido; fuenteNegocio: 'consola' | 'respaldo' } {
   const errores: string[] = [];
   const sinBarras = (t: string): string => { let r = t; while (r.endsWith('/')) r = r.slice(0, -1); return r; };
   const origenMedios = sinBarras(entorno.origenMedios);
   const base = sinBarras(entorno.baseMedios ?? entorno.origenMedios);
 
-  const n = validarNegocio(negocio, [entorno.origen, origenMedios]);
-  if (!n.ok) errores.push(...n.errores);
-  const neg = n.ok ? n.negocio : undefined;
-
   const docs = esObj(respuesta) && esObj(respuesta['documentos']) ? respuesta['documentos'] : undefined;
+  const origenesNegocio = [entorno.origen, origenMedios];
+
+  // Fuente del negocio: el documento de la consola si existe y es válido; si no, el secreto completo (respaldo).
+  // `fuenteNegocio` es la fuente EFECTIVA: 'consola' solo si el documento existe y pasó la validación.
+  const docNegocio = docs?.['negocio'];
+  let neg: NegocioSitio | undefined;
+  let fuenteNegocio: 'consola' | 'respaldo' = 'respaldo';
+  const respaldoValidado = validarNegocio(negocio, origenesNegocio);
+  if (docNegocio !== undefined) {
+    const compuesto = componerNegocioConsola(docNegocio, negocio, base);
+    advertencias?.push(...compuesto.avisos);
+    const c = validarNegocio(compuesto.candidato, origenesNegocio);
+    if (c.ok) { neg = c.negocio; fuenteNegocio = 'consola'; }
+    else {
+      const rutas = c.errores.map(rutaDeError);
+      // Si todos los fallos están en campos que vienen del respaldo (no del documento) y el respaldo tampoco es válido, la culpa es del
+      // respaldo: no se acusa a la consola y sigue el camino de siempre para un respaldo inválido (error).
+      if (!respaldoValidado.ok && rutas.every(esRutaDelRespaldo)) {
+        advertencias?.push(`negocio: el respaldo no es válido (${[...new Set(rutas)].join(', ')})`);
+      } else {
+        // Defensa en profundidad intacta: lo que no pasa la validación del sitio no se publica; se usa el respaldo.
+        // Un aviso por error con la ruta completa ANTES del primer «:» (el script de despliegue corta ahí al enmascarar); sin valores.
+        for (const e of c.errores) advertencias?.push(`documentos.${e}`);
+        advertencias?.push('documentos.negocio: datos de la consola no válidos; se usó el respaldo');
+      }
+    }
+  }
+  if (neg === undefined) {
+    if (!respaldoValidado.ok) errores.push(...respaldoValidado.errores);
+    neg = respaldoValidado.ok ? respaldoValidado.negocio : undefined;
+  }
+
   if (docs === undefined) errores.push('respuesta.documentos: debe ser un objeto');
   const redondeo = esObj(respuesta) ? respuesta['redondeo'] : undefined;
   if (!esObj(redondeo)) errores.push('respuesta.redondeo: debe ser un objeto');
@@ -381,6 +437,11 @@ export function contenidoDesdePublicado(respuesta: unknown, negocio: unknown, en
     const unicos = [...new Set(errores)];
     throw new ErrorContenidoPublicado(unicos, causasDe(unicos, candidato.productos, candidato.categorias));
   }
-  return r.contenido;
+  return { contenido: r.contenido, fuenteNegocio };
+}
+
+/** Igual que `contenidoYFuenteDesdePublicado`, pero devuelve solo el `Contenido` (la fuente no entra en él: la huella no cambia). */
+export function contenidoDesdePublicado(respuesta: unknown, negocio: unknown, entorno: EntornoSitio, advertencias?: string[]): Contenido {
+  return contenidoYFuenteDesdePublicado(respuesta, negocio, entorno, advertencias).contenido;
 }
 

@@ -8,7 +8,7 @@ import { beforeAll, describe, expect, it, vi } from 'vitest';
 import { motivosContenidoParaSitio, publicarSitio } from '@novutienda/consola';
 import { actualizarProducto, crearProducto, ingresar, type Autor } from '@novutienda/inventarios';
 import { entregarEvento } from '../../plataforma/funciones/servidor/bus.js';
-import { contenidoDesdePublicado } from '../../plataforma/registro.js';
+import { contenidoDesdePublicado, contenidoYFuenteDesdePublicado, versionContenido } from '../../plataforma/registro.js';
 import { crearEntorno, type Entorno } from '../../plataforma/funciones/servidor/entorno.js';
 import { accion, crearUsuario, firmar, hayEmulador, herramientas, http, sembrarTenant, unico, type Herramientas } from './ayudas.js';
 
@@ -713,6 +713,165 @@ describe.skipIf(!hayEmulador)('contrato consola → /publicado → contenido del
       await h.firestore.doc(`tenants/${t}/productos/bor-b`).delete();
       expect((await h.firestore.doc(`tenants/${t}/publicado/producto__bor-b`).get()).exists).toBe(true);
       expect((await catalogoDe(t)).map((i) => i.id)).toEqual(['bor-a']);
+    });
+  });
+
+  describe('S6: datos del negocio desde la consola', () => {
+    /** Lo que el callable de la consola acepta: el negocio sin lo que sigue viniendo del respaldo (mercados, logo, WhatsApp). */
+    const datosConsola = (extra: Record<string, unknown> = {}): Record<string, unknown> => {
+      const resto = negocio(extra);
+      for (const k of ['mercados', 'mercadoInicial', 'logo', 'whatsappTienda']) delete resto[k];
+      return resto;
+    };
+    const distinto = (extra: Record<string, unknown> = {}): Record<string, unknown> => datosConsola({
+      nombre: 'Tienda de la Consola', lema: 'Lema de la consola', telefono: '+59170000001', correo: 'hola@ejemplo.invalid',
+      direccion: 'Avenida Inventada 456', horario: 'Lunes a viernes de 9 a 18',
+      portada: { insignia: 'CONSOLA', titulo: ['UNO', 'DOS', 'CONSOLA'], texto: 'Portada desde la consola.', textoBotonCatalogo: 'VER TODO', textoBotonConsulta: 'ESCRIBIR' },
+      beneficios: [{ icono: 'check', titulo: { texto: 'BENEFICIO CONSOLA', confirmada: true }, descripcion: 'Descripción desde la consola.' }],
+      identidad: {
+        etiqueta: 'NOSOTROS', titulo: 'HISTORIA DE LA CONSOLA', texto: 'Identidad desde la consola.', foto: null,
+        cifra: { valor: { texto: 'Más de 20', confirmada: true }, detalle: 'PEDIDOS' },
+        valores: [{ icono: 'escudo', titulo: 'Valor consola', texto: 'Texto consola.' }],
+        sello: { texto: 'SELLO CONSOLA.', confirmada: true },
+      },
+      textoPrivacidad: ['Privacidad desde la consola.'],
+      categorias: { televisores: { nombre: 'Pantallas', icono: 'cuadricula' } }, destacados: ['s6-uno'],
+      ...extra,
+    });
+    const admDe = async (t: string): Promise<{ token: string }> => crearUsuario(h, { rol: 'adm', tenant: t });
+    const guardar = async (t: string, token: string, datos: Record<string, unknown>, versionEsperada: number) => {
+      const g = await accion('consola', 'guardarNegocioSitio', { negocio: datos, versionEsperada }, token, t);
+      expect(g.status, JSON.stringify(g.error)).toBe(200);
+      return g.resultado as { version: number };
+    };
+    const tenantConProducto = async (): Promise<string> => {
+      const t = await nuevoTenant();
+      await sembrarProducto(t, { id: 's6-uno', categoria: 'televisores' });
+      return t;
+    };
+    const quitar = (resp: { documentos: Record<string, unknown>; redondeo: unknown }) => {
+      const { negocio: _omitido, ...resto } = resp.documentos;
+      void _omitido;
+      return { ...resp, documentos: resto };
+    };
+
+    it('(a) sin sitio/negocio: el sitio sale del respaldo y la fuente es «respaldo»', async () => {
+      const t = await tenantConProducto();
+      const r = await publicar(t);
+      expect(r.advertencias).toEqual([]);
+      const resp = await leerPublicado(t);
+      expect(resp.documentos['negocio']).toBeUndefined();
+      const adv: string[] = [];
+      const { contenido: c, fuenteNegocio } = contenidoYFuenteDesdePublicado(resp, negocio(), { ...ENTORNO_BASE, disponibilidad: {} }, adv);
+      expect(fuenteNegocio).toBe('respaldo');
+      expect(adv).toEqual([]);
+      expect(c.config).toMatchObject({ nombre: 'Tienda de Prueba', lema: 'Lema de prueba', telefono: null, direccion: 'Calle Ficticia 123', mercados: ['BO', 'AR'], mercadoInicial: 'BO' });
+    });
+
+    it('(b) el administrador guarda un negocio distinto y publica: el sitio trae los datos de la consola y de los mercados del respaldo', async () => {
+      const t = await tenantConProducto();
+      const adm = await admDe(t);
+      await guardar(t, adm.token, distinto(), 0);
+      const r = await publicar(t);
+      expect(r.advertencias).toEqual([]);
+      const resp = await leerPublicado(t);
+      const adv: string[] = [];
+      const respaldo = negocio({ nombre: 'Del respaldo', lema: 'Del respaldo', mercados: ['AR'], mercadoInicial: 'AR' });
+      const { contenido: c, fuenteNegocio } = contenidoYFuenteDesdePublicado(resp, respaldo, { ...ENTORNO_BASE, disponibilidad: {} }, adv);
+      expect(fuenteNegocio).toBe('consola');
+      expect(adv).toEqual([]);
+      expect(c.config).toMatchObject({
+        nombre: 'Tienda de la Consola', lema: 'Lema de la consola', telefono: '+59170000001', correo: 'hola@ejemplo.invalid',
+        direccion: 'Avenida Inventada 456', horario: 'Lunes a viernes de 9 a 18', mercados: ['AR'], mercadoInicial: 'AR',
+      });
+      expect(c.portada).toMatchObject({ insignia: 'CONSOLA', titulo: ['UNO', 'DOS', 'CONSOLA'], texto: 'Portada desde la consola.' });
+      expect(c.beneficios.map((b) => b.titulo.texto)).toEqual(['BENEFICIO CONSOLA']);
+      expect(c.identidad).toMatchObject({ titulo: 'HISTORIA DE LA CONSOLA', texto: 'Identidad desde la consola.' });
+      expect(c.config.textoPrivacidad).toEqual(['Privacidad desde la consola.']);
+      expect(c.categorias.find((k) => k.id === 'televisores')?.nombre).toBe('Pantallas');
+      expect(c.productos.find((p) => p.id === 's6-uno')?.destacado).toBe(true);
+    });
+
+    it('(c) migración sin cambio de huella: guardar en la consola los MISMOS datos del respaldo no cambia el contenido ni la huella', async () => {
+      const t = await tenantConProducto();
+      const adm = await admDe(t);
+      const entorno = { ...ENTORNO_BASE, disponibilidad: {} };
+      // Antes: publicado sin documento de negocio.
+      await publicar(t);
+      const antes = contenidoDesdePublicado(await leerPublicado(t), negocio(), entorno, []);
+      // Después: los mismos datos guardados en la consola y publicados otra vez.
+      await guardar(t, adm.token, datosConsola(), 0);
+      await publicar(t);
+      const resp = await leerPublicado(t);
+      const { contenido: despues, fuenteNegocio } = contenidoYFuenteDesdePublicado(resp, negocio(), entorno, []);
+      expect(fuenteNegocio).toBe('consola');
+      // Publicar otra vez cambia solo versión y fecha de publicación; todo lo demás es igual.
+      const { publicacion: pubAntes, ...restoAntes } = antes;
+      const { publicacion: pubDespues, ...restoDespues } = despues;
+      expect(restoDespues).toEqual(restoAntes);
+      expect(pubDespues?.version).toBeGreaterThan(pubAntes?.version ?? 0);
+      // Misma respuesta, con y sin el documento del negocio: el contenido y las huellas coinciden.
+      const { contenido: sinDoc, fuenteNegocio: fuenteSinDoc } = contenidoYFuenteDesdePublicado(quitar(resp), negocio(), entorno, []);
+      expect(fuenteSinDoc).toBe('respaldo');
+      expect(despues).toEqual(sinDoc);
+      const vCon = versionContenido(despues);
+      const vSin = versionContenido(sinDoc);
+      expect(vCon.huellaSinDisponibilidad).toBe(vSin.huellaSinDisponibilidad);
+      expect(vCon.huella).toBe(vSin.huella);
+    });
+
+    it('(d) guardar no llega al sitio hasta publicar, y cuenta como cambio sin publicar', async () => {
+      const t = await tenantConProducto();
+      const adm = await admDe(t);
+      const g1 = await guardar(t, adm.token, distinto(), 0);
+      await publicar(t);
+      const antes = await cambiosSinPublicar(t);
+      await guardar(t, adm.token, distinto({ nombre: 'Nombre Nuevo Sin Publicar' }), g1.version);
+      const resp = await leerPublicado(t);
+      expect(contenidoDesdePublicado(resp, negocio(), { ...ENTORNO_BASE, disponibilidad: {} }, []).config.nombre).toBe('Tienda de la Consola');
+      expect(await cambiosSinPublicar(t)).toBeGreaterThan(antes);
+      expect((await tableroPorCallable(t)).cambiosSinPublicar).toBeGreaterThan(0);
+      await publicar(t);
+      expect(contenidoDesdePublicado(await leerPublicado(t), negocio(), { ...ENTORNO_BASE, disponibilidad: {} }, []).config.nombre).toBe('Nombre Nuevo Sin Publicar');
+    });
+
+    it('(e) lista blanca de la consola: un host de la lista se conserva en el sitio aunque el respaldo no lo tenga; fuera de la lista se quita al publicar con advertencia', async () => {
+      const t = await tenantConProducto();
+      const adm = await admDe(t);
+      await h.firestore.doc(`tenants/${t}/secciones/enlaces`).set({ id: 'enlaces', titulo: 'Enlaces', visible: true, bloques: [
+        { tipo: 'enlaces', items: [{ texto: 'Ajeno', url: 'https://ajeno.example.org/x' }, { texto: 'Propio', url: 'https://ejemplo.invalid/ok' }] },
+      ] });
+      await h.firestore.doc(`tenants/${t}/sitio/indice`).set({ secciones: ['enlaces'] });
+      const entorno = { ...ENTORNO_BASE, disponibilidad: {} };
+      // El respaldo NO tiene el host ajeno; el documento de la consola sí.
+      const g1 = await guardar(t, adm.token, datosConsola({ enlacesPermitidos: ['ejemplo.invalid', 'ajeno.example.org'] }), 0);
+      const r1 = await publicar(t);
+      expect(r1.advertencias.filter((a) => a.includes('enlace'))).toEqual([]);
+      const c1 = contenidoDesdePublicado(await leerPublicado(t), negocio(), entorno, []);
+      expect(JSON.stringify(c1.secciones)).toContain('ajeno.example.org');
+      expect(c1.secciones[0]!.bloques).toEqual([{ tipo: 'enlaces', items: [{ texto: 'Ajeno', url: 'https://ajeno.example.org/x' }, { texto: 'Propio', url: 'https://ejemplo.invalid/ok' }] }]);
+      // Se quita el host de la lista y se publica: el enlace ya no llega al sitio y la consola avisa.
+      await guardar(t, adm.token, datosConsola({ enlacesPermitidos: ['ejemplo.invalid'] }), g1.version);
+      const r2 = await publicar(t);
+      expect(r2.advertencias).toEqual(expect.arrayContaining([expect.stringContaining('enlace quitado')]));
+      const resp2 = await leerPublicado(t);
+      expect(JSON.stringify(resp2.documentos['seccion__enlaces'])).not.toContain('ajeno.example.org');
+      const adv: string[] = [];
+      const c2 = contenidoDesdePublicado(resp2, negocio(), entorno, adv);
+      expect(JSON.stringify(c2)).not.toContain('ajeno.example.org');
+      expect(c2.secciones[0]!.bloques).toEqual([{ tipo: 'enlaces', items: [{ texto: 'Propio', url: 'https://ejemplo.invalid/ok' }] }]);
+      expect(adv).toEqual([]);
+    });
+
+    it('(f) documento de la consola inválido escrito directo en Firestore: publicar no aborta y el sitio usa el respaldo', async () => {
+      const t = await tenantConProducto();
+      await h.firestore.doc(`tenants/${t}/sitio/negocio`).set({ nombre: 12345, version: 1, actualizadoEn: '2026-11-04T00:00:00.000Z' });
+      const r = await publicar(t);
+      expect(r.productos).toBe(1);
+      const resp = await leerPublicado(t);
+      const { contenido: c, fuenteNegocio } = contenidoYFuenteDesdePublicado(resp, negocio(), { ...ENTORNO_BASE, disponibilidad: {} }, []);
+      expect(c.config.nombre).toBe('Tienda de Prueba');
+      expect(fuenteNegocio).toBe('respaldo');
     });
   });
 

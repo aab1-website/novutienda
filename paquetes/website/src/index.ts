@@ -3,7 +3,7 @@ export { manifiestoWebsite } from './manifiesto.js';
 // Contenido
 export * from './contenido/tipos.js';
 export * from './contenido/validar.js';
-export { contenidoDesdePublicado, ErrorContenidoPublicado, type EntornoSitio } from './contenido/desde-publicado.js';
+export { contenidoDesdePublicado, contenidoYFuenteDesdePublicado, ErrorContenidoPublicado, type EntornoSitio } from './contenido/desde-publicado.js';
 export * from './contenido/consultas.js';
 export { contenidoEjemplo } from './contenido/ejemplo.js';
 
