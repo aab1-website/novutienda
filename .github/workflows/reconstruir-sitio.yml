@@ -419,8 +419,8 @@ jobs:
       #               deploy (revisa también el registro), humo, certificación
       #               contra el contenido del build, cierre `completada`/`fallida`
       #               con etapa y causas, pendientes cubiertos y rezagados.
-      #   cancelar  → solo si el job se cancela: cierra `fallida` (etapa
-      #               `cancelado`) el trabajo que quedó en_curso.
+      #   cancelar  → si el job falla o se cancela: cierra `fallida` (etapa
+      #               `cancelado` o `despliegue`) el trabajo que quedó en_curso.
       # El estado entre fases vive en $RUNNER_TEMP/reconstruir-sitio-<CLAVE>.
       # Códigos del script: 0 ok; 10 = no desplegó sin ser un fallo (409 de otro
       # corredor, `repetido`, o sin pendiente en modo pendientes) → verde sin
@@ -477,10 +477,19 @@ jobs:
           SITIO_NEGOCIO: ${{ secrets[format('SITIO_NEGOCIO_{0}', matrix.clave)] }}
         run: bash scripts/reconstruir-sitio.sh certificar
 
-      - name: Cerrar el trabajo como cancelado
-        # Un trabajo no queda en_curso para siempre si el run se cancela o vence
-        # el timeout. Sin trabajo propio, o ya cerrado, no hace nada.
-        if: cancelled() && env.SOLO_CERTIFICAR != 'true'
+      - name: Cerrar el trabajo si quedó en_curso (cancelación o fallo)
+        # Red de seguridad: un trabajo no queda en_curso para siempre si el run se
+        # cancela, vence el timeout o un paso falla sin que el script alcance a
+        # cerrarlo (p. ej. WIF falla entre preparar y desplegar). Etapa:
+        # `cancelado` si el job se canceló; si no, `despliegue`. El script se
+        # abstiene sin trabajo propio o si ya está CERRADO o DESPLEGADO, y es
+        # idempotente. Solo el secreto de la cola; identidad desde el env.
+        if: (failure() || cancelled()) && env.SOLO_CERTIFICAR != 'true'
         env:
           SITIO_RECONSTRUCCION_SECRETO: ${{ secrets.SITIO_RECONSTRUCCION_SECRETO }}
-        run: bash scripts/reconstruir-sitio.sh cancelar
+          ESTADO_JOB: ${{ job.status }}
+        run: |
+          set -euo pipefail
+          etapa=despliegue
+          if [[ "$ESTADO_JOB" == "cancelled" ]]; then etapa=cancelado; fi
+          bash scripts/reconstruir-sitio.sh cancelar --etapa "$etapa"
