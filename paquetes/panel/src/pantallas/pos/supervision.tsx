@@ -35,29 +35,21 @@ function TurnoVivo({ t, orden, alCambiar }: { t: TurnoPos; orden: readonly strin
         <strong>Turno de {t.cajeroUid}</strong>
         <span class="texto-suave">Abierto {fechaHora(t.abiertoEnMs)}</span>
       </div>
-      <table class="tabla">
-        <caption class="solo-lectores">Totales en vivo del turno</caption>
-        <thead>
-          <tr><th scope="col">Moneda</th><th scope="col" class="num">Efectivo esperado</th><th scope="col" class="num">QR</th><th scope="col" class="num">Transferencia</th><th scope="col" class="num">Crédito</th><th scope="col" class="num">Ingresos</th><th scope="col" class="num">Egresos</th></tr>
-        </thead>
-        <tbody>
-          {monedas.filter((m) => proy[m] !== undefined).map((m) => {
-            const p = proy[m];
-            if (p === undefined) return null;
-            return (
-              <tr key={m}>
-                <th scope="row">{m}</th>
-                <td class="num">{formatearMonto(p.efectivoEsperado, m)}</td>
-                <td class="num">{formatearMonto(p.qr, m)}</td>
-                <td class="num">{formatearMonto(p.transferencia, m)}</td>
-                <td class="num">{formatearMonto(p.credito, m)}</td>
-                <td class="num">{formatearMonto(p.ingresos, m)}</td>
-                <td class="num">{formatearMonto(p.egresos, m)}</td>
-              </tr>
-            );
-          })}
-        </tbody>
-      </table>
+      <Tabla
+        titulo="Totales en vivo del turno"
+        filas={monedas.filter((m) => proy[m] !== undefined)}
+        clave={(m) => m}
+        columnas={[
+          { id: 'moneda', titulo: 'Moneda', valor: (m) => m, encabezadoFila: true },
+          ...([['efectivo', 'Efectivo esperado', 'efectivoEsperado'], ['qr', 'QR', 'qr'], ['transferencia', 'Transferencia', 'transferencia'], ['credito', 'Crédito', 'credito'], ['ingresos', 'Ingresos', 'ingresos'], ['egresos', 'Egresos', 'egresos']] as const).map(([id, titulo, campo]) => ({
+            id,
+            titulo,
+            valor: (m: string) => proy[m]?.[campo] ?? 0,
+            celda: (m: string) => formatearMonto(proy[m]?.[campo] ?? 0, m),
+            numerica: true,
+          })),
+        ]}
+      />
       {usuario.rol === 'adm' &&
         (abierto ? (
           <form class="formulario" onSubmit={(e) => e.preventDefault()} noValidate>
@@ -216,6 +208,7 @@ function Auditoria(): JSX.Element {
       {lista.datos && (
         <Tabla
           titulo="Registro de auditoría"
+          vistaCelular="tarjetas"
           filas={registros}
           clave={(a) => a.id}
           vacio={{ titulo: 'No hay registros con esos filtros' }}

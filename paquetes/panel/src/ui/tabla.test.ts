@@ -53,6 +53,18 @@ describe('Tabla', () => {
     }
   });
 
+  it('con acciones sale en tarjetas por defecto, y vistaCelular explícito manda', () => {
+    const acciones = (f: Fila) => h('button', { type: 'button' }, `Editar ${f.nombre}`);
+    montar(props(filas(2), { acciones }));
+    expect(screen.getByRole('table').className).toContain('tabla-tarjetas');
+    cleanup();
+    montar(props(filas(2), { acciones, vistaCelular: 'desplazar' }));
+    expect(screen.getByRole('table').className).toContain('tabla-desplazar');
+    cleanup();
+    montar(props(filas(2)));
+    expect(screen.getByRole('table').className).toContain('tabla-desplazar');
+  });
+
   it('vista de tarjetas: cada celda lleva su etiqueta y las acciones quedan en la fila', () => {
     montar(props(filas(2), { vistaCelular: 'tarjetas', acciones: (f) => h('button', { type: 'button' }, `Editar ${f.nombre}`) }));
     expect(screen.getByRole('table').className).toContain('tabla-tarjetas');
@@ -165,5 +177,19 @@ describe('Tabla', () => {
     montar(props(filas(2), { acciones: (x) => h('button', { type: 'button' }, `Quitar ${x.id}`) }));
     expect(screen.getByRole('columnheader', { name: 'Acciones' })).toBeTruthy();
     expect(screen.getByRole('button', { name: 'Quitar f1' })).toBeTruthy();
+  });
+
+  it('numerica: pone class="num" en el encabezado y en las celdas de esa columna', () => {
+    montar(props(filas(2), { columnas: [
+      { id: 'nombre', titulo: 'Nombre', valor: (x) => x.nombre, encabezadoFila: true },
+      { id: 'n', titulo: 'Número', valor: (x) => x.n, numerica: true },
+      { id: 'rol', titulo: 'Rol', valor: (x) => x.rol },
+    ] }));
+    expect(screen.getByRole('columnheader', { name: 'Número' }).classList.contains('num')).toBe(true);
+    expect(screen.getByRole('columnheader', { name: 'Rol' }).classList.contains('num')).toBe(false);
+    const celdas = screen.getAllByRole('cell').filter((c) => c.getAttribute('data-etiqueta') === 'Número');
+    expect(celdas).toHaveLength(2);
+    expect(celdas.every((c) => c.classList.contains('num'))).toBe(true);
+    expect(screen.getAllByRole('cell').filter((c) => c.getAttribute('data-etiqueta') === 'Rol').some((c) => c.classList.contains('num'))).toBe(false);
   });
 });

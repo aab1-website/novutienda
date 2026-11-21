@@ -61,6 +61,14 @@ describe('4.3.5 serie oculta', () => {
     expect(await screen.findByText(/No se encontró, o está oculta: el almacén Tienda tiene un conteo abierto/)).toBeTruthy();
     expect(screen.queryByText('No se encontró esa serie')).toBeNull();
   });
+  it('la tabla del resultado de la búsqueda por serie sale en tarjetas en el celular', async () => {
+    render(crearEntorno('sup').envolver(h(ProveedorGuardia, null, h(PantallaInventario, { sub: 'series' }))));
+    const u = userEvent.setup();
+    await u.type(await screen.findByLabelText('Número de serie (completo, o sus primeros 4 caracteres o más)'), 'TV55-001');
+    await u.click(screen.getByRole('button', { name: 'Buscar' }));
+    const t = await screen.findByRole('table', { name: 'Resultado de la búsqueda por serie' });
+    expect(t.classList.contains('tabla-tarjetas')).toBe(true);
+  });
 });
 
 describe('9.1.1 aviso de conteo (D6)', () => {

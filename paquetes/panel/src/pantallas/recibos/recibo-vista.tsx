@@ -27,6 +27,7 @@ export function ReciboVista({ recibo, registradoPor }: { recibo: Recibo; registr
       </p>
       <p class="texto-suave">Comprobante no fiscal.{recibo.facturaSuma ? ` Factura SUMA N.º ${recibo.facturaSuma}.` : ''}</p>
       {recibo.cliente && <p>Cliente: {recibo.cliente.nombre}</p>}
+      <div class="tabla-contenedor" role="region" aria-label="Detalle del recibo" tabIndex={0}>
       <table class="tabla">
         <caption class="solo-lectores">Detalle del recibo</caption>
         <thead>
@@ -52,6 +53,7 @@ export function ReciboVista({ recibo, registradoPor }: { recibo: Recibo; registr
           ))}
         </tbody>
       </table>
+      </div>
       {recibo.descuento && <p>Descuento: {formatearMonto(recibo.descuento.monto, m)} ({recibo.descuento.motivo})</p>}
       <p class="recibo-total">Total: {formatearMonto(recibo.total, m)}</p>
       <ul class="lista-simple">

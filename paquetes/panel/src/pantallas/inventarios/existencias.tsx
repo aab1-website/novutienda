@@ -43,6 +43,7 @@ export function ExistenciasPorAlmacen(): JSX.Element {
             clave={(f) => f.producto.id}
             buscar={{ etiqueta: 'Buscar por nombre, SKU o categoría', en: (f) => [f.producto.nombre, f.producto.sku, f.producto.categoria] }}
             porPagina={25}
+            vistaCelular="tarjetas"
             vacio={{ titulo: incluirCero ? `No hay productos en ${nombre}.` : `No hay productos con existencia en ${nombre}.` }}
             columnas={[
               { id: 'producto', titulo: 'Producto', valor: (f) => f.producto.nombre, encabezadoFila: true, ordenable: true },

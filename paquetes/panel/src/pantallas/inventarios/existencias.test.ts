@@ -33,6 +33,12 @@ describe('existencias por almacén', () => {
     expect(within(t).queryByText('Cable HDMI 2 m')).toBeNull();
   });
 
+  it('en celular la tabla sale en tarjetas', async () => {
+    ver(crearEntorno('adm'));
+    await screen.findByText(/^En Tienda:/);
+    expect(screen.getByRole('table', { name: 'Existencias en Tienda' }).classList.contains('tabla-tarjetas')).toBe(true);
+  });
+
   it('la casilla agrega los que están en 0', async () => {
     const e = crearEntorno('adm');
     ver(e);

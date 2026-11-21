@@ -46,6 +46,13 @@ describe('textoEnvio', () => {
 });
 
 describe('Archivo de recibos', () => {
+  it('«Recibos emitidos» usa tarjetas en el celular, para que «Ver» no quede fuera de la vista', async () => {
+    const { e, base } = await conRecibo();
+    lista(e, [base]);
+    render(e.envolver(h(PantallaRecibos, {})));
+    await screen.findByRole('button', { name: `Ver recibo ${base.numero}` });
+    expect(document.querySelector('table.tabla-tarjetas')).not.toBeNull();
+  });
   it('«Ver» abre el recibo en un diálogo con el foco dentro y lo devuelve al botón al cerrar', async () => {
     const { e, base } = await conRecibo();
     lista(e, [base]);

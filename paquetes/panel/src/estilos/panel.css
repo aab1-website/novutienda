@@ -145,11 +145,14 @@ legend { padding: 0 6px; font-weight: 700; }
 .recibo-total { font-size: 20px; font-weight: 700; }
 .recibo-anulado { color: var(--peligro); font-size: 26px; font-weight: 700; border: 3px solid var(--peligro); display: inline-block; padding: 2px 12px; transform: rotate(-6deg); }
 .acciones-recibo { margin-bottom: 12px; display: flex; flex-direction: column; gap: 8px; }
+.recibo { overflow-wrap: break-word; min-width: 0; }
+.recibo .num { white-space: nowrap; }
 
 @media print {
   body * { visibility: hidden; }
   .recibo, .recibo * { visibility: visible; }
   .recibo { position: absolute; left: 0; top: 0; width: 100%; max-width: none; border: 0; }
+  .recibo .tabla-contenedor { overflow: visible; }
   body { background: #fff; color: #000; }
 }
 @media (prefers-reduced-motion: reduce) { * { transition: none !important; scroll-behavior: auto !important; } }

@@ -12,6 +12,8 @@ export interface ColumnaTabla<F> {
   /** La celda de esta columna es el encabezado de la fila (una sola por tabla, normalmente la primera). */
   readonly encabezadoFila?: boolean | undefined;
   readonly ordenable?: boolean | undefined;
+  /** Columna de cifras: `class="num"` en el `th` y el `td` (derecha, cifras de ancho fijo; en tarjetas, a la izquierda). */
+  readonly numerica?: boolean | undefined;
 }
 
 export interface FiltroTabla<F> {
@@ -73,7 +75,8 @@ export function Tabla<F>(p: PropsTabla<F>): JSX.Element {
   const colOrden = orden === null ? undefined : p.columnas.find((c) => c.id === orden.columna);
   const ordenadas = ordenar(visibles, colOrden?.valor, orden);
   const pag = paginar(ordenadas, pagina, porPagina);
-  const modo = p.vistaCelular ?? (p.columnas.length > 4 ? 'tarjetas' : 'desplazar');
+  // Con botones o controles en las filas, o con más de 4 columnas, el celular las muestra como tarjetas.
+  const modo = p.vistaCelular ?? (p.acciones !== undefined || p.columnas.length > 4 ? 'tarjetas' : 'desplazar');
 
   const alternar = (col: string): void => {
     setOrden((o) => (o === null || o.columna !== col ? { columna: col, sentido: 'asc' } : o.sentido === 'asc' ? { columna: col, sentido: 'desc' } : null));
@@ -115,7 +118,7 @@ export function Tabla<F>(p: PropsTabla<F>): JSX.Element {
             <thead role="rowgroup">
               <tr role="row">
                 {p.columnas.map((c) => (
-                  <th key={c.id} scope="col" role="columnheader" aria-sort={c.ordenable ? (orden?.columna === c.id ? AJUSTE_ARIA[orden.sentido] : 'none') : undefined}>
+                  <th key={c.id} scope="col" role="columnheader" class={c.numerica ? 'num' : undefined} aria-sort={c.ordenable ? (orden?.columna === c.id ? AJUSTE_ARIA[orden.sentido] : 'none') : undefined}>
                     {c.ordenable ? (
                       <button type="button" class="tabla-orden" onClick={() => alternar(c.id)}>
                         {c.titulo}
@@ -134,9 +137,9 @@ export function Tabla<F>(p: PropsTabla<F>): JSX.Element {
                 <tr key={p.clave(fila)} role="row">
                   {p.columnas.map((c) =>
                     c.encabezadoFila ? (
-                      <th key={c.id} scope="row" role="rowheader" data-etiqueta={c.titulo}>{c.celda ? c.celda(fila) : c.valor(fila)}</th>
+                      <th key={c.id} scope="row" role="rowheader" class={c.numerica ? 'num' : undefined} data-etiqueta={c.titulo}>{c.celda ? c.celda(fila) : c.valor(fila)}</th>
                     ) : (
-                      <td key={c.id} role="cell" data-etiqueta={c.titulo}>{c.celda ? c.celda(fila) : c.valor(fila)}</td>
+                      <td key={c.id} role="cell" class={c.numerica ? 'num' : undefined} data-etiqueta={c.titulo}>{c.celda ? c.celda(fila) : c.valor(fila)}</td>
                     ),
                   )}
                   {p.acciones && <td role="cell">{p.acciones(fila)}</td>}
