@@ -227,6 +227,24 @@ describe('falla y reintento único', () => {
     expect([...almacen.trabajos.keys()]).toEqual(['rec-1', 'rec-reintento-rec-1']); // sin un segundo reintento
     expect(almacen.bloqueo).toBeNull();
   });
+  it('EXPIRED (no arrancó en queueTtl) alerta y reintenta una sola vez, como TIMEOUT; CANCELLED no reintenta', async () => {
+    const alertar = vi.fn();
+    const { almacen, reloj, constructor, deps } = montar({ alertar });
+    almacen.poner('rec-1', 'pendiente', reloj.ms, { version: 3 });
+    await lanzarSiguiente(deps, T);
+    reloj.ms += 2 * MIN;
+    await manejarAvisoConstruccion(deps, { tenantId: T, buildId: 'b1', estado: 'EXPIRED' });
+    expect(almacen.estadoDe('rec-1')).toBe('fallida');
+    expect(alertar).toHaveBeenCalledWith({ tenantId: T, trabajoId: 'rec-1', minutos: 2 });
+    expect(constructor.lanzados).toEqual(['rec-1', 'rec-reintento-rec-1']);
+    await manejarAvisoConstruccion(deps, { tenantId: T, buildId: 'b2', estado: 'EXPIRED' });
+    expect([...almacen.trabajos.keys()]).toEqual(['rec-1', 'rec-reintento-rec-1']);
+    const c = montar();
+    c.almacen.poner('rec-9', 'pendiente', c.reloj.ms);
+    await lanzarSiguiente(c.deps, T);
+    await manejarAvisoConstruccion(c.deps, { tenantId: T, buildId: 'b1', estado: 'CANCELLED' });
+    expect(c.almacen.trabajos.size).toBe(1);
+  });
   it('FAILURE (p. ej. certificación fallida) no se reintenta, y libera el bloqueo', async () => {
     const { almacen, reloj, constructor, deps } = montar();
     almacen.poner('rec-1', 'pendiente', reloj.ms);

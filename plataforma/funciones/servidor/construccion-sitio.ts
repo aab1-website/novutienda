@@ -130,15 +130,15 @@ export async function manejarTareaConstruccion(
 export type EstadoBuild = 'SUCCESS' | 'FAILURE' | 'TIMEOUT' | 'INTERNAL_ERROR' | 'CANCELLED' | 'EXPIRED' | (string & {});
 
 const TERMINALES: ReadonlySet<string> = new Set(['SUCCESS', 'FAILURE', 'TIMEOUT', 'INTERNAL_ERROR', 'CANCELLED', 'EXPIRED']);
-const REINTENTABLES: ReadonlySet<string> = new Set(['TIMEOUT', 'INTERNAL_ERROR']);
+const REINTENTABLES: ReadonlySet<string> = new Set(['TIMEOUT', 'INTERNAL_ERROR', 'EXPIRED']);
 
 /**
  * Manejador del aviso `cloud-builds`. El coordinador resuelve el `tenantId` (etiqueta `sitio-<clave>`) y entrega el estado
  * del build. Estados no terminales y avisos de un build que ya no es el bloqueado (duplicados, viejos) se ignoran.
  *  - SUCCESS: completa los pendientes con `solicitadaEnMs` anterior al inicio de la construcción (el build compiló lo publicado
  *    vigente); libera el bloqueo y guarda `ultimaImagen`.
- *  - Falla: el trabajo de la construcción pasa a `fallida` (si seguía `pendiente` o `en_curso`); ante TIMEOUT o INTERNAL_ERROR se
- *    encola UN reintento (`rec-reintento-<trabajo>`, motivo `reintento`; un reintento que falla no se repite). Libera el bloqueo.
+ *  - Falla: el trabajo de la construcción pasa a `fallida` (si seguía `pendiente` o `en_curso`); ante TIMEOUT, INTERNAL_ERROR o EXPIRED (D7: no arrancó dentro de queueTtl) se
+ *    registra la alerta `sitio` y se encola UN reintento (`rec-reintento-<trabajo>`, motivo `reintento`; un reintento que falla no se repite). Libera el bloqueo.
  *  - Después lanza el siguiente pendiente.
  */
 export async function manejarAvisoConstruccion(
@@ -164,6 +164,9 @@ export async function manejarAvisoConstruccion(
     const reintentar = REINTENTABLES.has(aviso.estado) && propio !== undefined && propio.motivo !== 'reintento';
     return { resultado: 'fallido' as const, reintentar, propio };
   });
+  if (r.resultado === 'fallido' && aviso.estado === 'EXPIRED' && r.propio !== undefined) {
+    (deps.alertar ?? alertaPorDefecto)({ tenantId: t, trabajoId: r.propio.id, minutos: Math.floor((ahora - r.propio.solicitadaEnMs) / 60_000) });
+  }
   if (r.resultado === 'ignorado') return 'ignorado';
   if (r.resultado === 'fallido' && r.reintentar && r.propio !== undefined) {
     await deps.almacen.crearPendiente(t, `rec-reintento-${r.propio.id}`, {
