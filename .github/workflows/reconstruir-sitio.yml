@@ -13,6 +13,10 @@
 #            `reconstruir` pasan a scripts/reconstruir-sitio.sh (el mismo que
 #            corre Cloud Build); el job conserva la resolución enmascarada del
 #            sitio y la autenticación WIF. Mismo comportamiento.
+#          + 1.6 (2026-11-21): fases preparar (sin credenciales de nube) →
+#            WIF solo si hay algo que desplegar → desplegar; paso final
+#            `cancelar` si el run se cancela; secretos solo en las fases que
+#            los usan.
 # -----------------------------------------------------------------------------
 # Contrato con las funciones: docs/produccion/reconstruccion-sitio.md (cola
 # firmada `tenants/{t}/reconstrucciones`, estados pendiente → en_curso →
@@ -338,6 +342,9 @@ jobs:
       VITE_FIREBASE_API_KEY: ${{ vars.VITE_FIREBASE_API_KEY_STAGING }}
       VITE_RECAPTCHA_ENTERPRISE_SITE_KEY: ${{ vars.VITE_RECAPTCHA_ENTERPRISE_SITE_KEY_STAGING }}
       VITE_FIREBASE_APP_ID: ${{ vars.VITE_FIREBASE_APP_ID_STAGING }}
+      # Sitio reservado (el panel): ninguna fase despliega sobre él; el script y
+      # preparar-sitio-tenant.sh fallan si queda vacía. Todas las fases la exigen.
+      FIREBASE_SITE_PANEL: ${{ vars.FIREBASE_SITE_PANEL }}
     steps:
       - name: Resolver y enmascarar el sitio de la clave
         # Falla cerrado: clave inválida, SITIOS_TENANT ausente o no JSON, clave
@@ -400,50 +407,80 @@ jobs:
           node-version: ${{ env.NODE_VERSION }}
           cache: pnpm
 
-      # Autenticación ANTES del script: reconstruir-sitio.sh no autentica; usa
-      # las credenciales por defecto que deja este paso (firebase-tools y
-      # contenido-sitio.mjs). En el modo de solo certificación no se toca la
-      # nube con la SA de deploy: no se autentica.
-      - name: Autenticar en GCP (WIF + impersonación de la SA de deploy)
+      # Pasos 2 a 9 (1.6): scripts/reconstruir-sitio.sh, el MISMO script que corre
+      # en Cloud Build (imagen scripts/constructor-sitio/Dockerfile), partido en
+      # fases para que las credenciales de nube existan solo cuando hacen falta:
+      #   preparar  → tomar el trabajo (en_curso), instalar, generar, build y
+      #               dist-real.test.ts con EXIGIR_DIST=1. SIN autenticación de
+      #               nube: pnpm, el build y vitest nunca ven credenciales.
+      #   WIF       → solo si `preparar` dejó continuar=true.
+      #   desplegar → firebase.json solo de este sitio (guardia del panel por
+      #               SITIOS_PROHIBIDOS = FIREBASE_SITE_PANEL), copia `previa`,
+      #               deploy (revisa también el registro), humo, certificación
+      #               contra el contenido del build, cierre `completada`/`fallida`
+      #               con etapa y causas, pendientes cubiertos y rezagados.
+      #   cancelar  → solo si el job se cancela: cierra `fallida` (etapa
+      #               `cancelado`) el trabajo que quedó en_curso.
+      # El estado entre fases vive en $RUNNER_TEMP/reconstruir-sitio-<CLAVE>.
+      # Códigos del script: 0 ok; 10 = no desplegó sin ser un fallo (409 de otro
+      # corredor, `repetido`, o sin pendiente en modo pendientes) → verde sin
+      # desplegar; 3 = no se pudo certificar; 143 = cancelado; otro = fallo (el
+      # trabajo ya quedó `fallida` con su etapa).
+      # Secretos: cada paso recibe solo los que su fase usa; el script los retira
+      # de su entorno y los pasa únicamente a contenido-sitio.mjs y
+      # certificar-sitio.mjs. Contrato: docs/produccion/reconstruccion-sitio.md.
+      - name: Preparar el sitio (tomar trabajo, generar, build y pruebas; sin nube)
+        id: preparar
         if: env.SOLO_CERTIFICAR != 'true'
+        env:
+          SITIO_RECONSTRUCCION_SECRETO: ${{ secrets.SITIO_RECONSTRUCCION_SECRETO }}
+          # Textos del negocio de ESTE sitio (secreto del Environment por clave).
+          SITIO_NEGOCIO: ${{ secrets[format('SITIO_NEGOCIO_{0}', matrix.clave)] }}
+          VITE_APP_VERSION: ${{ github.ref_name }}-${{ github.sha }}
+        run: |
+          set -uo pipefail
+          rc=0
+          bash scripts/reconstruir-sitio.sh preparar || rc=$?
+          case "$rc" in
+            0) echo "continuar=true" >> "$GITHUB_OUTPUT" ;;
+            10) echo "continuar=false" >> "$GITHUB_OUTPUT"
+                echo "$CLAVE: no hay nada que desplegar en esta ejecución (código 10)." ;;
+            *) exit "$rc" ;;
+          esac
+
+      - name: Autenticar en GCP (WIF + impersonación de la SA de deploy)
+        if: steps.preparar.outputs.continuar == 'true'
         uses: google-github-actions/auth@7c6bc770dae815cd3e89ee6cdf493a5fab2cc093 # v3
         with:
           workload_identity_provider: ${{ secrets.GCP_WIF_PROVIDER }}
           service_account: ${{ secrets.GCP_SA_DEPLOY_STAGING }}
 
-      # Pasos 2 a 9 (1.5): scripts/reconstruir-sitio.sh, el MISMO script que corre
-      # en Cloud Build (imagen scripts/constructor-sitio/Dockerfile). Hace, en
-      # este orden: tomar el trabajo (en_curso; 409 = otro corredor, termina en
-      # verde sin desplegar; sin trabajo en modo pendientes, termina en verde),
-      # instalar dependencias, generar el contenido publicado, build del sitio,
-      # dist-real.test.ts con EXIGIR_DIST=1, firebase.json solo de este sitio
-      # (preparar-sitio-tenant.sh, guardia del panel por SITIOS_PROHIBIDOS =
-      # FIREBASE_SITE_PANEL), firebase-tools fijado, copia `previa`, despliegue
-      # (revisa también el registro: deploy puede salir 0 habiendo fallado), humo
-      # de /, /productos y /api/cotizacion, certificación contra el contenido del
-      # build (un reintento a los 20 s solo con código 1), cierre `completada` o
-      # `fallida` con su etapa y causas (también al cancelarse: trap de TERM/INT),
-      # y cierre de pendientes cubiertos y rezagados. Con `certificar` solo
-      # instala y certifica contra lo publicado: no toma trabajo, no compila, no
-      # despliega, no cierra nada. Contrato: docs/produccion/reconstruccion-sitio.md.
-      #
-      # Entradas: CLAVE, MODO_SONDEO, APP_ENV, PROYECTO, MEDIOS_BASE_URL y VITE_*
-      # (env del job); TENANT, SITIO y URL_SITIO (GITHUB_ENV, enmascarados por el
-      # primer paso); FIREBASE_TOOLS_VERSION (env del workflow); los secretos de
-      # la cola y del negocio y la lista de sitios prohibidos, solo en este paso.
-      # El script enmascara el secreto (::add-mask::) y oculta tenant, sitio, URL
-      # y proyecto en las salidas de build, clon y despliegue.
-      - name: Reconstruir, desplegar y certificar el sitio (scripts/reconstruir-sitio.sh)
+      - name: Desplegar, probar, certificar y cerrar el trabajo
+        if: steps.preparar.outputs.continuar == 'true'
         env:
           SITIO_RECONSTRUCCION_SECRETO: ${{ secrets.SITIO_RECONSTRUCCION_SECRETO }}
-          # Textos del negocio de ESTE sitio (secreto del Environment por clave).
-          SITIO_NEGOCIO: ${{ secrets[format('SITIO_NEGOCIO_{0}', matrix.clave)] }}
-          # El panel nunca se despliega desde aquí, aunque SITIOS_TENANT lo nombre
-          # (el script y preparar-sitio-tenant.sh fallan si queda vacía).
-          FIREBASE_SITE_PANEL: ${{ vars.FIREBASE_SITE_PANEL }}
-          VITE_APP_VERSION: ${{ github.ref_name }}-${{ github.sha }}
         run: |
-          set -euo pipefail
-          modo=reconstruir
-          if [[ "$SOLO_CERTIFICAR" == "true" ]]; then modo=certificar; fi
-          bash scripts/reconstruir-sitio.sh "$modo"
+          set -uo pipefail
+          rc=0
+          bash scripts/reconstruir-sitio.sh desplegar || rc=$?
+          # 10 tras un preparar correcto no debería ocurrir; si ocurre, no hubo
+          # fallo ni despliegue: verde, como en preparar.
+          [[ "$rc" == 0 || "$rc" == 10 ]] || exit "$rc"
+
+      - name: Certificar a pedido (sin desplegar)
+        # Solo en el modo `certificar:`. No toma trabajo, no compila, no despliega,
+        # no cierra nada; regenera el contenido desde lo publicado para comparar.
+        # Sin autenticación de nube.
+        if: env.SOLO_CERTIFICAR == 'true'
+        env:
+          SITIO_RECONSTRUCCION_SECRETO: ${{ secrets.SITIO_RECONSTRUCCION_SECRETO }}
+          SITIO_NEGOCIO: ${{ secrets[format('SITIO_NEGOCIO_{0}', matrix.clave)] }}
+        run: bash scripts/reconstruir-sitio.sh certificar
+
+      - name: Cerrar el trabajo como cancelado
+        # Un trabajo no queda en_curso para siempre si el run se cancela o vence
+        # el timeout. Sin trabajo propio, o ya cerrado, no hace nada.
+        if: cancelled() && env.SOLO_CERTIFICAR != 'true'
+        env:
+          SITIO_RECONSTRUCCION_SECRETO: ${{ secrets.SITIO_RECONSTRUCCION_SECRETO }}
+        run: bash scripts/reconstruir-sitio.sh cancelar
