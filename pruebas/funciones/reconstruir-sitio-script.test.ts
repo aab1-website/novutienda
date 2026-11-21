@@ -467,3 +467,61 @@ describe('reconstruir-sitio.sh: cancelación real', () => {
     expect(ll.some((l) => l.includes(' completada'))).toBe(false);
   }, 30_000);
 });
+
+describe('reconstruir-sitio.sh cancelar --etapa y cierres únicos', () => {
+  const fallidas = (ll: string[]) => ll.filter((l) => l.startsWith('node scripts/contenido-sitio.mjs estado') && l.includes(' fallida '));
+  const estado = (temp: string) => join(temp, 'reconstruir-sitio-a1');
+  it('si falla la autenticación entre fases, `cancelar --etapa despliegue` cierra fallida/despliegue una sola vez', () => {
+    const temp = mkdtempSync(join(raiz, 'fases-'));
+    expect(correr(['preparar'], { TRABAJO: 'rec-1', RUNNER_TEMP: temp }).codigo).toBe(0);
+    // (aquí el workflow autentica con WIF y falla: no se llama a `desplegar`)
+    const c = correr(['cancelar', '--etapa', 'despliegue'], { RUNNER_TEMP: temp });
+    expect(c.codigo).toBe(0);
+    expect(fallidas(c.llamadas)).toHaveLength(1);
+    expect(fallidas(c.llamadas)[0]).toContain('--etapa despliegue');
+    // Un segundo `cancelar` (cancelled() tras failure()) no repite el cierre.
+    expect(fallidas(correr(['cancelar'], { RUNNER_TEMP: temp }).llamadas)).toHaveLength(0);
+  });
+  it('con DESPLEGADO (se intentó el cierre completada) `cancelar` no cierra fallida', () => {
+    const temp = mkdtempSync(join(raiz, 'fases-'));
+    expect(correr(['preparar'], { TRABAJO: 'rec-1', RUNNER_TEMP: temp }).codigo).toBe(0);
+    writeFileSync(join(estado(temp), 'DESPLEGADO'), '1');
+    const c = correr(['cancelar', '--etapa', 'despliegue'], { RUNNER_TEMP: temp });
+    expect(c.codigo).toBe(0);
+    expect(c.llamadas).toEqual([]);
+  });
+  it('si falla el cierre completada deja la marca DESPLEGADO y un cancelar posterior se abstiene', () => {
+    const temp = mkdtempSync(join(raiz, 'fases-'));
+    expect(correr(['preparar'], { TRABAJO: 'rec-1', RUNNER_TEMP: temp }).codigo).toBe(0);
+    expect(correr(['desplegar'], { RUNNER_TEMP: temp, RC_ESTADO_completada: '1' }).codigo).not.toBe(0);
+    expect(existsSync(join(estado(temp), 'DESPLEGADO'))).toBe(true);
+    expect(correr(['cancelar'], { RUNNER_TEMP: temp }).llamadas).toEqual([]);
+  });
+  it('`desplegar` sin PREPARADO, con trabajo propio abierto, cierra fallida/despliegue', () => {
+    const temp = mkdtempSync(join(raiz, 'fases-'));
+    expect(correr(['preparar'], { TRABAJO: 'rec-1', RUNNER_TEMP: temp }).codigo).toBe(0);
+    rmSync(join(estado(temp), 'PREPARADO'));
+    const r = correr(['desplegar'], { RUNNER_TEMP: temp });
+    expect(r.codigo).toBe(1);
+    expect(fallidas(r.llamadas)).toHaveLength(1);
+    expect(fallidas(r.llamadas)[0]).toContain('--etapa despliegue');
+  });
+  it('`desplegar` sin el secreto, con trabajo propio abierto, cierra fallida/despliegue', () => {
+    const temp = mkdtempSync(join(raiz, 'fases-'));
+    expect(correr(['preparar'], { TRABAJO: 'rec-1', RUNNER_TEMP: temp }).codigo).toBe(0);
+    const r = correr(['desplegar'], { RUNNER_TEMP: temp, SITIO_RECONSTRUCCION_SECRETO: '' });
+    expect(r.codigo).toBe(1);
+    // Sin secreto el cierre tampoco puede firmarse: se intenta una vez y el fallo se avisa.
+    expect(fallidas(r.llamadas)).toHaveLength(1);
+  });
+  it('un uso inválido de `cancelar` da 2', () => {
+    expect(correr(['cancelar', '--etapa', 'build']).codigo).toBe(2);
+    expect(correr(['cancelar', '--otra']).codigo).toBe(2);
+  });
+  it('una falla en una etapa larga cierra fallida UNA sola vez (el hijo no repite la trampa)', () => {
+    for (const falla of ['build', 'pruebas', 'registro']) {
+      const r = correr([], { TRABAJO: 'rec-1', FALLA: falla });
+      expect(fallidas(r.llamadas), falla).toHaveLength(1);
+    }
+  });
+});

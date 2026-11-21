@@ -65,13 +65,21 @@ describe('scripts/preparar-constructor-sitio.sh', () => {
     expect(s).toContain('--member=serviceAccount:<cuenta-de-despliegue> --role=roles/artifactregistry.writer');
     expect(s).toContain('O5bis.');
     expect(s).toContain('gcloud builds get-default-service-account');
-    expect(s).toContain('gcloud builds set-default-service-account --service-account=projects/<proyecto>/serviceAccounts/build-sin-permisos@<proyecto>');
+    expect(s).toContain('gcloud functions list --v2');
+    // El cambio de la cuenta por defecto de Cloud Build solo con la opción explícita.
+    expect(s).not.toContain('set-default-service-account');
     // cloudtasks.enqueuer sobre la cola, no sobre el proyecto.
     expect(s).toContain('gcloud tasks queues add-iam-policy-binding <cola>');
     expect(s).not.toMatch(/projects add-iam-policy-binding[^\n]*cloudtasks\.enqueuer/);
     expect(s).not.toContain('proyecto-prueba-1');
     expect(s).not.toContain('valor-secreto-xyz');
     expect(s).not.toContain('modo APLICAR');
+  });
+  it('--neutralizar-cuenta-por-defecto agrega la creación y el cambio de la cuenta por defecto', () => {
+    const r = correr(['proyecto-prueba-1', '--neutralizar-cuenta-por-defecto'], { PATH: '/usr/bin:/bin' });
+    expect(r.status).toBe(0);
+    expect(r.stdout).toContain('gcloud builds set-default-service-account --service-account=projects/<proyecto>/serviceAccounts/build-sin-permisos@<proyecto>');
+    expect(r.stdout).toContain('gcloud iam service-accounts create build-sin-permisos');
   });
   it('--aplicar exige la cuenta de las Functions', () => {
     expect(correr(['proyecto-prueba-1', '--aplicar'], { PATH: '/usr/bin:/bin' }).status).toBe(2);
@@ -109,7 +117,9 @@ exit 0
       const llamadas = readFileSync(join(dir, 'llamadas.txt'), 'utf8');
       expect(llamadas).not.toContain('valor-secreto-xyz');
       expect(llamadas).toContain('tasks queues add-iam-policy-binding cola-prueba');
-      expect(llamadas).toContain('builds set-default-service-account');
+      expect(llamadas).toContain('builds get-default-service-account');
+      expect(llamadas).toContain('functions list --v2');
+      expect(llamadas).not.toContain('set-default-service-account');
       expect(readFileSync(join(dir, 'stdin.txt'), 'utf8')).toBe('valor-secreto-xyz');
     } finally {
       rmSync(dir, { recursive: true, force: true });
