@@ -9,7 +9,12 @@ import type { ConstruccionLanzada, ConstructorSitio } from '@novutienda/consola'
 
 export const REGION_CONSTRUCTOR = 'us-east1';
 export const SECRETO_RECONSTRUCCION = 'SITIO_RECONSTRUCCION_SECRETO';
-const GUION_DEL_CONSTRUCTOR = '/app/scripts/reconstruir-sitio.sh';
+/**
+ * El script termina con código 10 cuando no desplegó sin ser un fallo (409, respuesta `repetido`, sin pendiente). En Cloud Build un
+ * paso con código distinto de 0 es FAILURE (y reintentaría); por eso el paso convierte 10 en 0. Así SUCCESS ya no prueba que se
+ * desplegó: el manejador del aviso debe comprobar en Firestore que el trabajo propio quedó `completada`.
+ */
+const ORDEN_DEL_CONSTRUCTOR = 'bash /app/scripts/reconstruir-sitio.sh reconstruir; rc=$$?; [ "$$rc" = 10 ] && exit 0; exit "$$rc"';
 const TIEMPO_MAXIMO_PETICION_MS = 15_000;
 
 const RE_CLAVE = /^[a-z0-9]{1,12}$/;
@@ -113,7 +118,7 @@ export function crearConstructorSitio(o: OpcionesConstructorSitio): ConstructorS
         steps: [{
           name: o.imagen,
           entrypoint: 'bash',
-          args: [GUION_DEL_CONSTRUCTOR],
+          args: ['-c', ORDEN_DEL_CONSTRUCTOR],
           env: Object.entries(env).map(([k, v]) => `${k}=${v}`),
           secretEnv: secretos,
         }],
