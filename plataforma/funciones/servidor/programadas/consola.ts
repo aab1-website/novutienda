@@ -27,7 +27,7 @@ export function ejecutarLimpiezaSubidas(e: Entorno): Promise<Record<string, { ve
  * reintenta más: el trabajo queda `pendiente` y lo recoge el sondeo. La corrida diaria no avisa (queda con el sondeo).
  *
  * Con `construccion` (modo `google`, lo pasa el coordinador) no se avisa a GitHub: tras la decisión corre la red de seguridad
- * (`redConstruccion`: relanza pendientes sin construcción o con bloqueo vencido, motivo `codigo`, alerta de más de 10 minutos).
+ * (`redConstruccion`: relanza pendientes sin construcción o con bloqueo vencido, motivo `codigo`, alerta de más de 10 minutos, contador diario).
  * Sin él, todo igual que antes.
  */
 export async function ejecutarTemporizadorSitio(e: Entorno, construccion?: DepsConstruccion): Promise<Record<string, string>> {

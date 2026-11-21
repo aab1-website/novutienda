@@ -443,7 +443,7 @@ export function motivoNoPublicable(
 
 /**
  * Publica: escribe la copia `publicado/` (una sola transacción), pone a cero los cambios sin publicar, registra la
- * auditoría y agenda la reconstrucción (agrupa 10 minutos). Solo adm.
+ * auditoría y agenda la reconstrucción (agrupa los cambios en una ventana de 60 s). Solo adm.
  */
 export async function publicarSitio(deps: DepsPublicar, e: { tenantId: string; actor: Actor }): Promise<ResultadoPublicacion> {
   const t = tenantValido(e.tenantId);

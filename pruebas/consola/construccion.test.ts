@@ -3,7 +3,7 @@
 import { describe, expect, it, vi } from 'vitest';
 import { decidirBloqueo, decidirReconstruccion, ejecutarReconstruccion, LIMITES_CONSOLA, type ConstructorSitio } from '@novutienda/consola';
 import {
-  lanzarSiguiente, manejarAvisoConstruccion, manejarTareaConstruccion, redConstruccion, type AlmacenConstruccion, type BloqueoSitio,
+  almacenConstruccionFirestore, lanzarSiguiente, manejarAvisoConstruccion, manejarTareaConstruccion, redConstruccion, type AlmacenConstruccion, type BloqueoSitio,
   type DepsConstruccion, type TrabajoSitio, type TxConstruccion,
 } from '../../plataforma/funciones/servidor/construccion-sitio.js';
 import { crearDisparadorSitio, nombreTareaSitio } from '../../plataforma/funciones/servidor/disparador-sitio.js';
@@ -17,6 +17,7 @@ class AlmacenDoble implements AlmacenConstruccion {
   ultimaImagen: string | undefined;
   version: number | undefined = 5;
   readonly causas = new Map<string, string>();
+  contador: { dia: string; n: number } | undefined;
 
   poner(id: string, estado: string, solicitadaEnMs: number, extra: Partial<TrabajoSitio> = {}): void {
     this.trabajos.set(id, { id, estado, solicitadaEnMs, version: 1, ...extra });
@@ -27,11 +28,12 @@ class AlmacenDoble implements AlmacenConstruccion {
   async transaccion<R>(_t: string, fn: (tx: TxConstruccion) => Promise<R>): Promise<R> {
     const escrituras: (() => void)[] = [];
     const tx: TxConstruccion = {
-      estado: () => Promise.resolve({ bloqueo: this.bloqueo, ...(this.ultimaImagen === undefined ? {} : { ultimaImagen: this.ultimaImagen }) }),
+      estado: () => Promise.resolve({ bloqueo: this.bloqueo, ...(this.contador === undefined ? {} : { contador: this.contador }), ...(this.ultimaImagen === undefined ? {} : { ultimaImagen: this.ultimaImagen }) }),
       pendientes: () => Promise.resolve([...this.trabajos.values()].filter((j) => j.estado === 'pendiente').sort((a, b) => a.solicitadaEnMs - b.solicitadaEnMs)),
       trabajo: (id) => Promise.resolve(this.trabajos.get(id)),
       fijarBloqueo: (b, u) => escrituras.push(() => { this.bloqueo = b; this.ultimaImagen = u; }),
       liberar: (u) => escrituras.push(() => { this.bloqueo = null; this.ultimaImagen = u; }),
+      fijarContador: (c) => escrituras.push(() => { this.contador = c; }),
       marcar: (id, estado, _a, causa) => escrituras.push(() => { const j = this.trabajos.get(id); if (j) this.trabajos.set(id, { ...j, estado }); if (causa !== undefined) this.causas.set(id, causa); }),
     };
     const r = await fn(tx);
@@ -238,7 +240,7 @@ describe('falla y reintento único', () => {
     reloj.ms += 2 * MIN;
     await manejarAvisoConstruccion(deps, { tenantId: T, buildId: 'b1', estado: 'EXPIRED' });
     expect(almacen.estadoDe('rec-1')).toBe('fallida');
-    expect(alertar).toHaveBeenCalledWith({ tenantId: T, trabajoId: 'rec-1', minutos: 2 });
+    expect(alertar).toHaveBeenCalledWith({ tenantId: T, trabajoId: 'rec-1', estado: 'EXPIRED', minutos: 2 });
     expect(constructor.lanzados).toEqual(['rec-1', 'rec-reintento-rec-1']);
     await manejarAvisoConstruccion(deps, { tenantId: T, buildId: 'b2', estado: 'EXPIRED' });
     expect([...almacen.trabajos.keys()]).toEqual(['rec-1', 'rec-reintento-rec-1']);
@@ -271,8 +273,8 @@ describe('falla y reintento único', () => {
 });
 
 describe('SUCCESS sin despliegue (el script salió con código 10)', () => {
-  it('con el trabajo propio aún en_curso o pendiente: no completa pendientes, no reintenta, libera y lanza el siguiente', async () => {
-    for (const estadoPropio of ['en_curso', 'pendiente']) {
+  it('con el trabajo propio aún pendiente (o fallida): no completa pendientes, no reintenta, libera y lanza el siguiente', async () => {
+    for (const estadoPropio of ['pendiente', 'fallida']) {
       const { almacen, reloj, constructor, deps } = montar();
       almacen.poner('rec-1', 'pendiente', reloj.ms - 20_000);
       almacen.poner('rec-0', 'pendiente', reloj.ms - 30_000);
@@ -280,7 +282,7 @@ describe('SUCCESS sin despliegue (el script salió con código 10)', () => {
       almacen.poner('rec-0', estadoPropio, reloj.ms - 30_000);
       reloj.ms += 1_000;
       expect(await manejarAvisoConstruccion(deps, { tenantId: T, buildId: 'b1', estado: 'SUCCESS' })).toBe('sin-desplegar');
-      expect(almacen.estadoDe('rec-0')).toBe(estadoPropio === 'en_curso' ? 'en_curso' : 'pendiente');
+      expect(almacen.estadoDe('rec-0')).toBe(estadoPropio);
       expect(almacen.estadoDe('rec-1')).not.toBe('completada');
       expect([...almacen.trabajos.keys()].some((k) => k.startsWith('rec-reintento'))).toBe(false);
       expect(almacen.ultimaImagen).toBeUndefined();
@@ -304,7 +306,7 @@ describe('bloqueo vencido', () => {
     expect(await lanzarSiguiente(deps, T)).toBe('relanzado');
     expect(almacen.estadoDe('rec-1')).toBe('fallida');
     expect(almacen.causas.get('rec-1')).toBe('bloqueo_vencido');
-    expect(alertar).toHaveBeenCalledWith({ tenantId: T, trabajoId: 'rec-1', minutos: 12 });
+    expect(alertar).toHaveBeenCalledWith({ tenantId: T, trabajoId: 'rec-1', estado: 'bloqueo_vencido', minutos: 12 });
     expect(almacen.trabajos.get('rec-reintento-rec-1')).toMatchObject({ estado: 'pendiente', motivo: 'reintento', version: 4 });
     expect(constructor.lanzados).toEqual(['rec-1', 'rec-2']); // nunca se relanza el mismo trabajo
     expect(almacen.bloqueo).toMatchObject({ trabajoId: 'rec-2', buildId: 'b2' });
@@ -374,5 +376,154 @@ describe('temporizador de red', () => {
     reloj.ms += 1;
     await redConstruccion(deps, T);
     expect(alertar).toHaveBeenCalledWith({ tenantId: T, trabajoId: 'rec-1', minutos: 10 });
+  });
+});
+
+describe('SUCCESS con el trabajo propio aún en_curso (lo tiene otro corredor)', () => {
+  it('mantiene el bloqueo y no lanza la siguiente: sin doble construcción ni vuelta atrás del sitio', async () => {
+    const { almacen, reloj, constructor, deps } = montar();
+    almacen.poner('rec-0', 'pendiente', reloj.ms - 30_000);
+    almacen.poner('rec-1', 'pendiente', reloj.ms - 20_000);
+    await lanzarSiguiente(deps, T); // build b1 para rec-0
+    almacen.poner('rec-0', 'en_curso', reloj.ms - 30_000); // el script respondió `repetido`: otro corredor lo tiene
+    reloj.ms += 1_000;
+    expect(await manejarAvisoConstruccion(deps, { tenantId: T, buildId: 'b1', estado: 'SUCCESS' })).toBe('en-curso');
+    // Sin el arreglo se liberaba y salía rec-1 mientras el corredor viejo seguía desplegando: dos construcciones a la vez, y la
+    // más vieja, al terminar última, deshacía lo publicado.
+    expect(constructor.lanzados).toEqual(['rec-0']);
+    expect(almacen.bloqueo).toMatchObject({ trabajoId: 'rec-0', buildId: 'b1' });
+    expect(almacen.estadoDe('rec-1')).toBe('pendiente');
+    expect(await lanzarSiguiente(deps, T)).toBe('esperar');
+    // Si el trabajo nunca se cierra, el bloqueo vence a los 12 min: se cierra fallida y sale el reintento y el pendiente.
+    reloj.ms += 12 * MIN;
+    expect(await lanzarSiguiente(deps, T)).toBe('relanzado');
+    expect(almacen.estadoDe('rec-0')).toBe('fallida');
+  });
+});
+
+describe('D7: alerta ante cualquier estado terminal distinto de SUCCESS', () => {
+  it.each(['FAILURE', 'INTERNAL_ERROR', 'TIMEOUT', 'CANCELLED', 'EXPIRED'])('%s alerta `sitio`', async (estado) => {
+    const alertar = vi.fn();
+    const { almacen, reloj, deps } = montar({ alertar });
+    almacen.poner('rec-1', 'pendiente', reloj.ms);
+    await lanzarSiguiente(deps, T);
+    await manejarAvisoConstruccion(deps, { tenantId: T, buildId: 'b1', estado });
+    expect(alertar).toHaveBeenCalledWith({ tenantId: T, trabajoId: 'rec-1', estado, minutos: 0 });
+  });
+  it('SUCCESS no alerta', async () => {
+    const alertar = vi.fn();
+    const { almacen, reloj, deps } = montar({ alertar });
+    almacen.poner('rec-1', 'pendiente', reloj.ms);
+    await lanzarSiguiente(deps, T);
+    almacen.poner('rec-1', 'completada', reloj.ms);
+    await manejarAvisoConstruccion(deps, { tenantId: T, buildId: 'b1', estado: 'SUCCESS' });
+    expect(alertar).not.toHaveBeenCalled();
+  });
+});
+
+describe('contador diario de construcciones', () => {
+  it('alerta al pasar de 60 en el día, sin bloquear; el día siguiente reinicia', async () => {
+    const alertar = vi.fn();
+    const { almacen, reloj, constructor, deps } = montar({ alertar });
+    for (let i = 1; i <= 61; i += 1) {
+      almacen.poner(`rec-${String(i)}`, 'pendiente', reloj.ms);
+      await lanzarSiguiente(deps, T);
+      await manejarAvisoConstruccion(deps, { tenantId: T, buildId: `b${String(i)}`, estado: 'FAILURE' });
+      almacen.trabajos.clear();
+    }
+    expect(constructor.lanzados).toHaveLength(61); // no bloquea
+    const conExceso = alertar.mock.calls.map((c) => c[0] as { construccionesDia?: number }).filter((a) => a.construccionesDia !== undefined);
+    expect(conExceso).toEqual([{ tenantId: T, trabajoId: 'rec-61', construccionesDia: 61 }]);
+    reloj.ms += 24 * 60 * MIN;
+    almacen.poner('rec-x', 'pendiente', reloj.ms);
+    await lanzarSiguiente(deps, T);
+    expect(almacen.contador?.n).toBe(1);
+  });
+});
+
+describe('modo delegar (el temporizador no crea builds)', () => {
+  it('encola el trabajo sin tomar el bloqueo ni llamar al constructor; los errores de encolar suben', async () => {
+    const encolar = vi.fn(() => Promise.resolve());
+    const almacen = new AlmacenDoble();
+    const reloj = new RelojFijo();
+    const deps: DepsConstruccion = { almacen, reloj, encolarLanzamiento: encolar };
+    almacen.poner('rec-1', 'pendiente', reloj.ms);
+    expect(await redConstruccion(deps, T)).toBe('encolado');
+    expect(encolar).toHaveBeenCalledWith(T, 'rec-1');
+    expect(almacen.bloqueo).toBeNull();
+    expect(almacen.contador).toBeUndefined();
+    await expect(lanzarSiguiente({ ...deps, encolarLanzamiento: () => Promise.reject(new Error('cola caída')) }, T)).rejects.toThrow('cola caída');
+  });
+  it('con un bloqueo vivo espera; con uno vencido cierra el atascado, crea el reintento y lo encola', async () => {
+    const encolar = vi.fn(() => Promise.resolve());
+    const almacen = new AlmacenDoble();
+    const reloj = new RelojFijo();
+    const deps: DepsConstruccion = { almacen, reloj, encolarLanzamiento: encolar, alertar: vi.fn() };
+    almacen.poner('rec-1', 'en_curso', reloj.ms);
+    almacen.bloqueo = { buildId: 'b1', trabajoId: 'rec-1', desdeMs: reloj.ms, imagen: '' };
+    expect(await lanzarSiguiente(deps, T)).toBe('esperar');
+    reloj.ms += 13 * MIN;
+    expect(await lanzarSiguiente(deps, T)).toBe('encolado');
+    expect(encolar).toHaveBeenCalledWith(T, 'rec-reintento-rec-1');
+    expect(almacen.bloqueo).toBeNull();
+    expect(almacen.estadoDe('rec-1')).toBe('fallida');
+  });
+});
+
+/** Firestore mínimo en memoria: lo justo para `almacenConstruccionFirestore` (doc, colección con where/limit, transacción). */
+function firestoreEnMemoria() {
+  const docs = new Map<string, Record<string, unknown>>();
+  const ref = (ruta: string) => ({ ruta });
+  const consulta = (col: string, campo?: string, valor?: unknown, tope?: number) => ({
+    col, campo, valor, tope,
+    where: (c: string, _o: string, v: unknown) => consulta(col, c, v, tope),
+    limit: (n: number) => consulta(col, campo, valor, n),
+    get: () => Promise.resolve(resolverConsulta(consulta(col, campo, valor, tope))),
+  });
+  function resolverConsulta(q: { col: string; campo?: string | undefined; valor?: unknown; tope?: number | undefined }) {
+    const todos = [...docs].filter(([r, d]) => r.startsWith(`${q.col}/`) && !r.slice(q.col.length + 1).includes('/') && (q.campo === undefined || d[q.campo] === q.valor));
+    const lista = q.tope === undefined ? todos : todos.slice(0, q.tope);
+    return { docs: lista.map(([r, d]) => ({ id: r.split('/').pop() as string, data: () => d })) };
+  }
+  const leer = (x: { ruta?: string; get?: unknown }) => {
+    if ('ruta' in x && x.ruta !== undefined) { const d = docs.get(x.ruta); return { exists: d !== undefined, data: () => d }; }
+    return resolverConsulta(x as never);
+  };
+  const firestore = {
+    doc: (ruta: string) => ({ ...ref(ruta), get: () => Promise.resolve(leer(ref(ruta))), create: (d: Record<string, unknown>) => { docs.set(ruta, d); return Promise.resolve(); } }),
+    collection: (col: string) => consulta(col),
+    runTransaction: <R>(fn: (tx: unknown) => Promise<R>) => fn({
+      get: (x: never) => Promise.resolve(leer(x)),
+      set: (r: { ruta: string }, d: Record<string, unknown>) => { docs.set(r.ruta, d); },
+      update: (r: { ruta: string }, d: Record<string, unknown>) => { docs.set(r.ruta, { ...docs.get(r.ruta), ...d }); },
+    }),
+  };
+  return { docs, firestore };
+}
+
+describe('almacenConstruccionFirestore.pendientes', () => {
+  it('no pierde el trabajo más antiguo aunque haya más de 50 pendientes, y los devuelve ordenados', async () => {
+    const { docs, firestore } = firestoreEnMemoria();
+    // El más antiguo se inserta el último: con un `limit(50)` quedaba fuera.
+    for (let i = 1; i <= 60; i += 1) docs.set(`tenants/${T}/reconstrucciones/rec-${String(i)}`, { estado: 'pendiente', solicitadaEnMs: 1_000 + i });
+    docs.set(`tenants/${T}/reconstrucciones/rec-viejo`, { estado: 'pendiente', solicitadaEnMs: 5 });
+    const almacen = almacenConstruccionFirestore(firestore as never);
+    const p = await almacen.transaccion(T, (tx) => tx.pendientes());
+    expect(p).toHaveLength(61);
+    expect(p[0]?.id).toBe('rec-viejo');
+    expect(p.map((x) => x.solicitadaEnMs)).toEqual([...p.map((x) => x.solicitadaEnMs)].sort((a, b) => a - b));
+  });
+  it('el contador diario se guarda aparte y no pisa el bloqueo', async () => {
+    const { docs, firestore } = firestoreEnMemoria();
+    const almacen = almacenConstruccionFirestore(firestore as never);
+    await almacen.transaccion(T, async (tx) => {
+      await tx.estado();
+      tx.fijarBloqueo({ buildId: '', trabajoId: 'rec-1', desdeMs: 1, imagen: 'i' }, undefined);
+      tx.fijarContador({ dia: '2026-11-21', n: 3 });
+    });
+    const e = await almacen.transaccion(T, (tx) => tx.estado());
+    expect(e.bloqueo?.trabajoId).toBe('rec-1');
+    expect(e.contador).toEqual({ dia: '2026-11-21', n: 3 });
+    expect(docs.has(`tenants/${T}/sitio/construcciones`)).toBe(true);
   });
 });
