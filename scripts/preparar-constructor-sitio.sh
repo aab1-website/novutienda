@@ -9,6 +9,8 @@
 #
 # Entorno:
 #   CUENTA_FUNCIONES  correo de la cuenta de servicio con la que corren las Functions (obligatorio con --aplicar).
+#   CUENTA_DESPLIEGUE correo de la cuenta de despliegue de staging (la del CI); recibe artifactregistry.writer sobre
+#                     el repositorio para publicar la imagen (obligatorio con --aplicar).
 #   CLAVES_SITIO      claves de sitio separadas por comas (o --claves); define los secretos SITIO_NEGOCIO_<CLAVE>.
 #   REGION            us-east1 (por defecto; los recursos de nube van siempre allí).
 #   REPO_IMAGENES     repositorio de Artifact Registry (sitio-constructor por defecto).
@@ -27,6 +29,7 @@
 #       cloudbuild.builds.get; iam.serviceAccountUser únicamente sobre `sitio-constructor`; cloudtasks.enqueuer.
 #   O6  Secretos en Secret Manager (SITIO_RECONSTRUCCION_SECRETO y SITIO_NEGOCIO_<CLAVE>) con acceso solo para
 #       `sitio-constructor`.
+#   (O2 incluye además roles/artifactregistry.writer sobre el repositorio para CUENTA_DESPLIEGUE.)
 # Los roles de O4 y los permisos de Hosting están por verificar en staging (el plan los marca sin verificar).
 # La salida muestra <proyecto> en vez del id real.
 set -Eeuo pipefail
@@ -63,6 +66,14 @@ elif ! [[ "$FUNCIONES" =~ ^[a-z0-9._-]+@[a-z0-9-]+\.iam\.gserviceaccount\.com$ ]
   echo "CUENTA_FUNCIONES no es un correo de cuenta de servicio" >&2; exit 2
 fi
 
+DESPLIEGUE="${CUENTA_DESPLIEGUE:-}"
+if [[ -z "$DESPLIEGUE" ]]; then
+  (( APLICAR == 0 )) || { echo "con --aplicar hace falta CUENTA_DESPLIEGUE (correo de la cuenta de despliegue de staging)" >&2; exit 2; }
+  DESPLIEGUE="<cuenta-de-despliegue>"
+elif ! [[ "$DESPLIEGUE" =~ ^[a-z0-9._-]+@[a-z0-9-]+\.iam\.gserviceaccount\.com$ ]]; then
+  echo "CUENTA_DESPLIEGUE no es un correo de cuenta de servicio" >&2; exit 2
+fi
+
 SECRETOS=(SITIO_RECONSTRUCCION_SECRETO)
 if [[ -n "$CLAVES" ]]; then
   IFS=',' read -r -a lista <<<"$CLAVES"
@@ -79,6 +90,7 @@ mostrar() { # prefijo, comando...
   t="$*"
   t="${t//"$PROYECTO"/<proyecto>}"
   if [[ "$FUNCIONES" != "<cuenta-de-las-functions>" ]]; then t="${t//"$FUNCIONES"/<cuenta-de-las-functions>}"; fi
+  if [[ "$DESPLIEGUE" != "<cuenta-de-despliegue>" ]]; then t="${t//"$DESPLIEGUE"/<cuenta-de-despliegue>}"; fi
   echo "  $pre $t"
 }
 # Ejecuta (con --aplicar) o solo muestra (simulación). La salida de gcloud se descarta cuando es de política IAM.
@@ -114,6 +126,9 @@ cat >"$politica" <<'JSON'
 JSON
 ejecutar gcloud artifacts repositories set-cleanup-policies "$REPO" --location="$REGION" --project="$PROYECTO" \
   --policy="$politica" --no-dry-run
+# La cuenta de despliegue del CI publica la imagen por digest.
+ejecutar gcloud artifacts repositories add-iam-policy-binding "$REPO" --location="$REGION" --project="$PROYECTO" \
+  --member="serviceAccount:$DESPLIEGUE" --role=roles/artifactregistry.writer --quiet --format=none
 
 paso "O3. Cuenta de servicio $CUENTA"
 if existe gcloud iam service-accounts describe "$CUENTA_EMAIL" --project="$PROYECTO"; then

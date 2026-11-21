@@ -39,7 +39,7 @@ case "$n" in
   pnpm) [[ "\${FALLA:-}" == pruebas && "$1" == vitest ]] && exit 1; exit 0 ;;
   firebase)
     case "$1" in
-      --version) echo 15.28.1 ;;
+      --version) echo 15.37.0 ;;
       deploy) echo "Hosting URL: ${URL_SITIO} tenant ${TENANT} sitio ${SITIO}"; [[ "\${FALLA:-}" == registro ]] && echo "Deploy failed"; exit 0 ;;
       hosting:clone) echo "clon de ${SITIO}"; exit "\${RC_CLON:-0}" ;;
       *) exit 0 ;;

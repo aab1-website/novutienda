@@ -10,19 +10,22 @@ const dockerfile = leer('scripts/constructor-sitio/Dockerfile');
 
 describe('scripts/constructor-sitio/Dockerfile', () => {
   it('base node fijada por digest, multi-stage, usuario no root y lockfile congelado', () => {
-    expect(dockerfile).toMatch(/^ARG NODE_IMAGEN=node:[\w.-]+@sha256:[0-9a-f]{64}$/m);
-    expect(dockerfile).toMatch(/^FROM \$\{NODE_IMAGEN\} AS dependencias$/m);
-    expect(dockerfile).toMatch(/^FROM \$\{NODE_IMAGEN\} AS constructor$/m);
+    // Digest literal en cada FROM (Checkov CKV_DOCKER_7 no acepta ARG).
+    expect(dockerfile).toMatch(/^FROM node:[\w.-]+@sha256:[0-9a-f]{64} AS dependencias$/m);
+    expect(dockerfile).toMatch(/^FROM node:[\w.-]+@sha256:[0-9a-f]{64} AS constructor$/m);
+    expect(dockerfile).toMatch(/^HEALTHCHECK /m);
+    // La imagen final no conserva npm ni corepack (su árbol de dependencias lo marca Trivy).
+    expect(dockerfile).toContain('rm -rf /usr/local/lib/node_modules/npm /usr/local/lib/node_modules/corepack');
     expect(dockerfile).toMatch(/^USER node$/m);
     expect(dockerfile).toContain('pnpm install --frozen-lockfile');
     expect(dockerfile).toContain('reconstruir-sitio.sh');
   });
-  it('firebase-tools y pnpm coinciden con el workflow, el script y package.json', () => {
-    const wf = /FIREBASE_TOOLS_VERSION: '([\d.]+)'/.exec(leer('.github/workflows/reconstruir-sitio.yml'))?.[1];
+  it('firebase-tools y pnpm coinciden con el script, deploy.sh y package.json', () => {
+    const dep = /FIREBASE_TOOLS_VERSION:-([\d.]+)\}/.exec(leer('deploy.sh'))?.[1];
     const df = /^ARG FIREBASE_TOOLS_VERSION=([\d.]+)$/m.exec(dockerfile)?.[1];
     const sh = /FIREBASE_TOOLS_VERSION:-([\d.]+)\}/.exec(leer('scripts/reconstruir-sitio.sh'))?.[1];
     expect(df).toBeDefined();
-    expect(df).toBe(wf);
+    expect(df).toBe(dep);
     expect(df).toBe(sh);
     const pnpm = /"packageManager": "pnpm@([\d.]+)"/.exec(leer('package.json'))?.[1];
     expect(/^ARG PNPM_VERSION=([\d.]+)$/m.exec(dockerfile)?.[1]).toBe(pnpm);
@@ -52,6 +55,7 @@ describe('scripts/preparar-constructor-sitio.sh', () => {
     expect(s).toContain('sitio-constructor@<proyecto>.iam.gserviceaccount.com');
     expect(s).toContain('SITIO_NEGOCIO_B2');
     expect(s).toContain('--locations=us-east1');
+    expect(s).toContain('--member=serviceAccount:<cuenta-de-despliegue> --role=roles/artifactregistry.writer');
     expect(s).not.toContain('proyecto-prueba-1');
     expect(s).not.toContain('valor-secreto-xyz');
     expect(s).not.toContain('modo APLICAR');

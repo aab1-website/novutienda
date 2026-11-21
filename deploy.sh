@@ -66,7 +66,7 @@ readonly TOTAL_FASES=7
 # Versión exacta de firebase-tools a usar con npx cuando no hay una instalación
 # global (fijada para evitar regresiones, p. ej. la de 15.22.2, jun-2026);
 # ajuste FIREBASE_TOOLS_VERSION en el entorno si necesita otra.
-FIREBASE_TOOLS_VERSION="${FIREBASE_TOOLS_VERSION:-15.28.1}"
+FIREBASE_TOOLS_VERSION="${FIREBASE_TOOLS_VERSION:-15.37.0}"
 # Health check unificado del estándar: HEALTH_PATH (/healthz), 10 intentos,
 # 15 segundos entre intentos (mismos valores que post-despliegue en CI).
 HEALTH_PATH="${HEALTH_PATH:-/healthz}"
