@@ -28,8 +28,8 @@ async function sinViolaciones(page: Page, donde: string): Promise<void> {
   expect(resumen, `axe en ${donde}`).toEqual([]);
 }
 
-async function entrar(page: Page, rol: keyof typeof CUENTAS): Promise<void> {
-  await page.goto('/');
+async function entrar(page: Page, rol: keyof typeof CUENTAS, ruta = '/'): Promise<void> {
+  await page.goto(ruta);
   await page.getByLabel('Correo').fill(CUENTAS[rol][0]);
   await page.getByLabel('Contraseña').fill(CUENTAS[rol][1]);
   await page.getByRole('button', { name: 'Entrar' }).click();
@@ -112,7 +112,7 @@ for (const esquema of ESQUEMAS) {
       await sinViolaciones(page, 'cierre de turno');
       await page.getByRole('button', { name: 'Cerrar turno' }).click();
       await page.getByRole('button', { name: 'Sí, cerrar turno' }).click();
-      await expect(page.getByRole('heading', { name: 'Turno cerrado' })).toBeVisible();
+      await expect(page.getByRole('heading', { name: 'Turno cerrado', exact: true })).toBeVisible();
       await sinViolaciones(page, 'turno cerrado');
       expect(v.errores).toEqual([]);
       expect(v.peticiones.filter((u) => !hostPropio(u))).toEqual([]);
@@ -717,4 +717,128 @@ test('la respuesta lleva la CSP sellada, sin estilos ni scripts en línea', asyn
   const html = await page.content();
   expect(html).not.toMatch(/<style[\s>]/);
   expect(html).not.toMatch(/\sstyle=/);
+});
+
+/**
+ * Celular 390×844: ninguna tabla del panel se corta. Se mide el documento y, además, cada `.tabla-contenedor` y cada `table`,
+ * porque `overflow-x: auto` esconde el corte. Todas las rutas se miden y las fallas se reportan juntas.
+ */
+test('celular 390×844: ninguna tabla se corta ni desborda el documento', async ({ page }) => {
+  await page.setViewportSize({ width: 390, height: 844 });
+  const v = vigilar(page);
+  // `?semilla` carga datos de ejemplo en el doble (turno cerrado con ventas, aprobación, crédito, merma, movimientos).
+  await entrar(page, 'adm', '/?semilla=1');
+  const fallas: string[] = [];
+  const informe: string[] = [];
+
+  interface Medida { doc: number; ancho: number; tablas: { que: string; titulo: string; sc: number; cl: number; derecha: number }[] }
+  const medir = async (): Promise<Medida> =>
+    page.evaluate(() => {
+      const el = document.documentElement;
+      const tablas = [...document.querySelectorAll('.tabla-contenedor, table')].map((t) => ({
+        que: t.matches('table') ? 'table' : '.tabla-contenedor',
+        titulo: t.getAttribute('aria-label') ?? t.querySelector('caption')?.textContent ?? '(sin título)',
+        sc: t.scrollWidth,
+        cl: t.clientWidth,
+        derecha: Math.round(t.getBoundingClientRect().right),
+      }));
+      return { doc: el.scrollWidth, ancho: el.clientWidth, tablas };
+    });
+  const revisar = async (ruta: string): Promise<void> => {
+    // Espera determinista: red quieta y dos cuadros de pintura (el CSS y la medición ya se asentaron).
+    await page.waitForLoadState('networkidle');
+    await page.evaluate(() => new Promise<void>((ok) => requestAnimationFrame(() => requestAnimationFrame(() => ok()))));
+    const m = await medir();
+    const malas: string[] = [];
+    if (m.doc > m.ancho) malas.push(`documento ${String(m.doc)} > ${String(m.ancho)}`);
+    for (const t of m.tablas) {
+      if (t.sc > t.cl + 1 || t.derecha > m.ancho + 1) malas.push(`${t.que} «${t.titulo}»: scrollWidth ${String(t.sc)} > clientWidth ${String(t.cl)} (borde derecho ${String(t.derecha)})`);
+    }
+    const resumen = `${ruta}: ${String(m.tablas.length)} tabla(s) medida(s)`;
+    informe.push(malas.length === 0 ? `OK ${resumen}` : `FALLA ${resumen}`);
+    for (const x of malas) fallas.push(`${ruta} -> ${x}`);
+  };
+  const ir = async (ruta: string): Promise<void> => {
+    // Solo cambia el hash: una navegación completa recargaría el doble y perdería la sesión y la semilla.
+    await page.evaluate((r) => { window.location.hash = `#/${r}`; }, ruta);
+    await page.waitForLoadState('networkidle');
+  };
+
+  await ir('configuracion');
+  await expect(page.getByRole('table', { name: 'Mercados del comercio' })).toBeVisible();
+  await revisar('configuracion');
+  await ir('usuarios');
+  await expect(page.getByRole('table', { name: 'Usuarios del negocio' })).toBeVisible();
+  await revisar('usuarios');
+
+  for (const sub of ['productos', 'existencias', 'conteo', 'registro']) {
+    await ir(`inventario/${sub}`);
+    await revisar(`inventario/${sub}`);
+  }
+  await ir('inventario/series');
+  await page.getByLabel(/Número de serie/).fill('TV55-001');
+  await page.getByRole('button', { name: 'Buscar', exact: true }).click();
+  await page.waitForLoadState('networkidle');
+  await revisar('inventario/series (con resultado)');
+  await ir('inventario/conteo');
+  await page.getByRole('button', { name: 'Abrir conteo' }).click();
+  await expect(page.getByText(/Conteo abierto en/).first()).toBeVisible();
+  await revisar('inventario/conteo (abierto)');
+  await ir('mermas');
+  await revisar('mermas');
+  await ir('catalogo/fichas');
+  await revisar('catalogo/fichas');
+
+  // Turno abierto: caja, reporte, historial y cierre de venta; luego una venta para que haya recibo.
+  await ir('venta/terminal');
+  await page.getByLabel(/Efectivo inicial en Bolivianos/).fill('100');
+  await page.getByRole('button', { name: 'Abrir turno' }).click();
+  await expect(page.getByRole('heading', { name: 'Productos' })).toBeVisible();
+  await page.getByLabel(/Buscar por nombre/).fill('hdmi');
+  await page.getByRole('button', { name: 'Agregar Cable HDMI 2 m' }).click();
+  await page.getByRole('button', { name: 'Cobrar' }).click();
+  await page.getByLabel(/Monto que paga con este medio/).fill('55,68');
+  await page.getByLabel(/Efectivo recibido/).fill('100');
+  await page.getByRole('button', { name: 'Confirmar cobro' }).click();
+  await expect(page.getByRole('heading', { name: 'Venta registrada' })).toBeVisible();
+  await ir('venta/caja');
+  await page.getByLabel('Monto').fill('50');
+  await page.getByLabel('Motivo').fill('Compra de insumos');
+  await page.getByRole('button', { name: /Registrar/ }).click();
+  await expect(page.getByRole('table', { name: 'Ingresos y egresos excepcionales del turno' })).toBeVisible();
+  for (const sub of ['caja', 'creditos', 'reporte', 'historial', 'cierre']) {
+    await ir(`venta/${sub}`);
+    await revisar(`venta/${sub}`);
+  }
+  for (const ruta of ['supervision', 'supervision/auditoria', 'aprobaciones', 'aprobaciones/anulaciones']) {
+    await ir(ruta);
+    await revisar(ruta);
+  }
+  await ir('recibos');
+  await expect(page.getByRole('table', { name: 'Recibos emitidos' })).toBeVisible();
+  await revisar('recibos');
+  await page.getByRole('button', { name: 'Ver recibo A-000001' }).click();
+  await expect(page.getByRole('dialog')).toBeVisible();
+  await revisar('recibos (vista de recibo)');
+
+  // Cierre con arqueo: la tabla del arqueo y el reporte con el turno cerrado.
+  await ir('venta/cierre');
+  await page.getByLabel(/Efectivo contado en BOB/).fill('100');
+  await page.getByRole('button', { name: 'Cerrar turno' }).click();
+  await page.getByRole('button', { name: 'Sí, cerrar turno' }).click();
+  await expect(page.getByRole('heading', { name: 'Turno cerrado', exact: true })).toBeVisible();
+  await revisar('venta/cierre (turno cerrado, arqueo)');
+  await ir('venta/reporte');
+  await revisar('venta/reporte (con turnos cerrados)');
+
+  // La importación va al final: con una simulación sin confirmar la pantalla no deja salir con el cambio de ruta.
+  await ir('inventario/csv');
+  const csv = 'id,nombre,categoria,sku,precioBO,precioAR\r\nnuevo-a,Nuevo A,Cat,NA-1,10.50,11\r\nnuevo-b,Nuevo B,Cat,NB-1,20,22.25\r\nnuevo-c,Nuevo C,Cat,,5,6\r\n';
+  await page.getByLabel('Archivo de productos (CSV o Excel)').setInputFiles({ name: 'productos.csv', mimeType: 'text/csv', buffer: Buffer.from(csv) });
+  await expect(page.getByRole('table', { name: 'Simulación de la importación' })).toBeVisible();
+  await revisar('inventario/csv (simulación)');
+
+  console.log(`Humo a 390 px:\n${informe.join('\n')}`);
+  expect(fallas, `tablas cortadas a 390 px:\n${fallas.join('\n')}`).toEqual([]);
+  expect(v.errores).toEqual([]);
 });

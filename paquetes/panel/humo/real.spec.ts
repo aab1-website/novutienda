@@ -87,7 +87,7 @@ test('venta de punta a punta: turno, terminal, cobro con cambio, recibo, Mis rec
   await page.getByLabel(/Efectivo contado en BOB/).fill('156');
   await page.getByRole('button', { name: 'Cerrar turno' }).click();
   await page.getByRole('button', { name: 'Sí, cerrar turno' }).click();
-  await expect(page.getByRole('heading', { name: 'Turno cerrado' })).toBeVisible();
+  await expect(page.getByRole('heading', { name: 'Turno cerrado', exact: true })).toBeVisible();
   expect(v.errores).toEqual([]);
 });
 

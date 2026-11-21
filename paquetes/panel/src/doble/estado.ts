@@ -2,7 +2,7 @@ import type { RedondeoPorMoneda, Rol } from '@novutienda/nucleo';
 import { ErrorApi } from '../api/errores.js';
 import { UBICACIONES } from '../api/tipos.js';
 import type {
-  AprobacionPos, Carrusel, ConteoAbierto, MarcaOcultamiento, CobroCredito, ConfigPos, ConfigSitio, ConteoVista, CotizacionesVigentes, CreditoVista, EntradaAuditoriaVista,
+  AprobacionPos, Carrusel, ConteoAbierto, MarcaOcultamiento, CobroCredito, ConfigPos, TotalesMoneda, ConfigSitio, ConteoVista, CotizacionesVigentes, CreditoVista, EntradaAuditoriaVista,
   FichaWeb, Medio, MedioLogo, MermaVista, MovimientoCaja, MovimientoVista, PlantillaRecibo, ProductoPanel, Recibo, Seccion, SubidaVista, TipoSubida, TurnoPos,
   UbicacionId, UnidadSerie, UsuarioVista, VentaPos, VistaComercial,
   Tablero,
@@ -165,6 +165,45 @@ export function crearEstado(ahora: number): EstadoDoble {
     bytesOriginales: 0,
     importacion: { filasPorTanda: 40 },
   };
+}
+
+/**
+ * Datos ficticios mínimos para recorrer las listas sin hacer antes todo el flujo: un turno cerrado de ayer con dos ventas (una con
+ * anulación solicitada y otra a crédito), una aprobación pendiente, un crédito, dos movimientos de inventario y una merma. Es
+ * opcional (el humo la pide con `?semilla` en la dirección): las suites de los módulos parten del estado vacío.
+ */
+export function sembrarEjemplos(e: EstadoDoble, ahora: number): void {
+  // Un turno cerrado de ayer con dos ventas (una con anulación solicitada y otra a crédito), una
+  // aprobación pendiente, un crédito, movimientos de inventario y mermas. Con ellos las pantallas de listas tienen filas.
+  const ayer = ahora - 24 * 3600_000;
+  const cobro = (monto: number): TotalesMoneda => ({ efectivo: monto, qr: 0, transferencia: 0, credito: 0, ingresos: 0, egresos: 0 });
+  for (const [k, v] of [
+    ['t-semilla', { turnoId: 't-semilla', cajaId: 'caja-1', cajeroUid: 'u-caj', estado: 'cerrado', apertura: { BOB: 10000 }, totales: { BOB: { ...cobro(80000), credito: 20000 } }, abiertoEnMs: ayer, cerradoEnMs: ayer + 8 * 3600_000, cerradoPor: 'u-caj', contado: { BOB: 90000 }, esperado: { BOB: 90000 }, diferencia: { BOB: 0 } }],
+  ] as const) e.turnos.set(k, v);
+  const venta = (id: string, n: number, total: number, extra: Partial<VentaPos> = {}): VentaPos => ({
+    ventaId: id, turnoId: 't-semilla', cajaId: 'caja-1', cajeroUid: 'u-caj', estado: 'confirmada', moneda: 'BOB', mercado: 'BO', cotizacion: null,
+    lineas: [{ productoId: 'cable-hdmi', nombre: 'Cable HDMI 2 m', cantidad: 1, precioUnitario: total, almacenId: 'tienda', series: [] }],
+    subtotal: total, total, pagos: [{ medio: 'efectivo', moneda: 'BOB', monto: total }], serie: 'S', receiptNo: n, creadoEnMs: ayer + n * 3600_000, ...extra,
+  });
+  for (const [k, v] of [
+    ['v-semilla-1', venta('v-semilla-1', 1, 80000, { solicitudAnulacion: { por: 'u-caj', motivo: 'Producto equivocado', enMs: ayer + 5 * 3600_000 } })],
+    ['v-semilla-2', venta('v-semilla-2', 2, 20000, { pagos: [{ medio: 'credito', moneda: 'BOB', monto: 20000 }], cliente: { nombre: 'Cliente de ejemplo' } })],
+  ] as const) e.ventas.set(k, v);
+  const aprobaciones: [string, AprobacionPos][] = [
+    ['ap-semilla', { aprobacionId: 'ap-semilla', tipo: 'descuento', estado: 'pendiente', moneda: 'BOB', monto: 1000, motivo: 'Cliente frecuente', solicitadoPor: 'u-caj', solicitadoEnMs: ayer + 2 * 3600_000 }],
+  ];
+  for (const [k, v] of aprobaciones) e.aprobaciones.set(k, v);
+  const creditos: [string, CreditoVista & { cobrosPorMedio: Record<string, number> }][] = [
+    ['v-semilla-2', { ventaId: 'v-semilla-2', deudor: 'Cliente de ejemplo', moneda: 'BOB', monto: 20000, saldo: 20000, cobrado: 0, estado: 'pendiente', aprobadoPor: 'u-sup', turnoId: 't-semilla', creadoEnMs: ayer + 2 * 3600_000, cobrosPorMedio: {} }],
+  ];
+  for (const [k, v] of creditos) e.creditos.set(k, v);
+  e.movimientos.push(
+    { id: 'm-semilla-1', operacionId: 'op-semilla-1', productoId: 'cable-hdmi', ubicacionId: 'tienda', tipo: 'ingreso', delta: 10, saldoUbicacion: 25, series: [], por: 'u-adm', rol: 'adm', fecha: iso(ayer), motivo: 'Compra a proveedor' },
+    { id: 'm-semilla-2', operacionId: 'op-semilla-2', productoId: 'cable-hdmi', ubicacionId: 'tienda', tipo: 'merma', delta: -1, saldoUbicacion: 24, series: [], por: 'u-sup', rol: 'sup', fecha: iso(ayer + 3600_000), motivo: 'Cable dañado' },
+  );
+  e.mermas.push(
+    { mermaId: 'mm-semilla-1', productoId: 'cable-hdmi', ubicacionId: 'tienda', cantidad: 1, series: [], motivo: 'Cable dañado en el almacén', estado: 'solicitada', solicitadaPor: 'u-sup', fecha: iso(ayer + 3600_000) },
+  );
 }
 
 export function vistaProducto(p: ProductoInterno, verCosto: boolean): ProductoPanel {
