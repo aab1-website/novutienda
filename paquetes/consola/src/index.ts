@@ -16,7 +16,7 @@ export type { Carrusel, ConfigSitio, ItemCarrusel } from './sitio.js';
 export type { Validacion } from './validar.js';
 export { exigirRol, ROLES } from './permisos.js';
 export type {
-  AlmacenMedios, BaseDatosConsola, CatalogoPuerto, ConsultaSubidas, ConteoAbiertoCatalogo, ListadoCatalogoVisible, ProductoCatalogoVisible, DatosProducto, DisparadorSitio, Existencia, InfoMedio,
+  AlmacenMedios, BaseDatosConsola, CatalogoPuerto, ConsultaSubidas, ConteoAbiertoCatalogo, ListadoCatalogoVisible, ProductoCatalogoVisible, DatosProducto, ColaSitio, ConstruccionLanzada, ConstructorSitio, DisparadorSitio, Existencia, InfoMedio, TareaSitio,
   PrecioUSD, ProcesadorMedios, ProductoCatalogo, ProductoEnTransaccion, Reloj, SolicitudProcesado, UbicacionId, VersionProcesada,
 } from './puertos.js';
 export { BYTES_INICIALES, detectarArchivo, FORMATOS_LOGO } from './medios/tipos-archivo.js';
@@ -32,11 +32,11 @@ export { CONSUMIDOR_CONSOLA, consumirProductoCambiado, ejecutorConsola, type Dep
 export type { TransaccionConsola } from './consumidores.js';
 export { eliminarSeccion, guardarCarrusel, guardarConfigSitio, guardarFicha, guardarSeccion, ordenarSecciones } from './servicio-sitio.js';
 export {
-  calcularDisponibilidadPublica, construirPublicado, decidirReconstruccion, ejecutarReconstruccion, proyectarDisponibilidad,
+  calcularDisponibilidadPublica, construirPublicado, decidirBloqueo, decidirReconstruccion, ejecutarReconstruccion, proyectarDisponibilidad,
   motivosContenidoParaSitio, publicarSitio,
 } from './publicar.js';
 export type { MotivoContenido } from './publicar.js';
-export type { DecisionReconstruccion, EventoReconstruccion, Publicado, ResultadoPublicacion } from './publicar.js';
+export type { DecisionBloqueo, DecisionReconstruccion, EventoReconstruccion, MotivoReconstruccion, Publicado, ResultadoPublicacion } from './publicar.js';
 export { obtenerTablero, preciosDelDiaDe } from './tablero.js';
 export type { Tablero, PrecioDelDiaDeMercado, UltimaReconstruccionTablero } from './tablero.js';
 export type { AvisoSitio } from './cambios.js';

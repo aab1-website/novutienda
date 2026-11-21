@@ -6,6 +6,7 @@ import { logger } from 'firebase-functions';
 import { ejecutarReconstruccion, limpiarSubidas } from '@novutienda/consola';
 import type { Entorno } from '../entorno.js';
 import { depsMedios } from '../llamadas/medios.js';
+import { redConstruccion, type DepsConstruccion } from '../construccion-sitio.js';
 import { porTenant } from './tenants.js';
 
 // La corrida diaria del sitio (a las 07:00, tras la cotización) la dispara `cotizacion.ts`; este borde expone la función
@@ -21,15 +22,20 @@ export function ejecutarLimpiezaSubidas(e: Entorno): Promise<Record<string, { ve
 }
 
 /**
- * Temporizador de la reconstrucción del sitio: encola la agendada para esta hora (agrupa 10 minutos de cambios). Si al menos un
+ * Temporizador de la reconstrucción del sitio: encola la agendada para esta hora (agrupa 60 s de cambios). Si al menos un
  * tenant pasó a `reconstruir` en esta corrida, avisa UNA vez a GitHub (S7-3); si el aviso falla, el temporizador no falla ni
  * reintenta más: el trabajo queda `pendiente` y lo recoge el sondeo. La corrida diaria no avisa (queda con el sondeo).
+ *
+ * Con `construccion` (modo `google`, lo pasa el coordinador) no se avisa a GitHub: tras la decisión corre la red de seguridad
+ * (`redConstruccion`: relanza pendientes sin construcción o con bloqueo vencido, motivo `codigo`, alerta de más de 10 minutos).
+ * Sin él, todo igual que antes.
  */
-export async function ejecutarTemporizadorSitio(e: Entorno): Promise<Record<string, string>> {
+export async function ejecutarTemporizadorSitio(e: Entorno, construccion?: DepsConstruccion): Promise<Record<string, string>> {
   let hayReconstruccion = false;
   try {
     return await porTenant(e, 'temporizador del sitio', async (tenantId) => {
       const { accion } = await ejecutarReconstruccion({ db: e.db, reloj: { ahora: e.ahora }, disparador: e.disparadorSitio }, { tenantId, evento: 'temporizador' });
+      if (construccion !== undefined) return `${accion}/${await redConstruccion(construccion, tenantId)}`;
       if (accion === 'reconstruir') hayReconstruccion = true;
       return accion;
     }, { modulo: 'consola' });

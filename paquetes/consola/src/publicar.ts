@@ -44,10 +44,14 @@ export async function calcularDisponibilidadPublica(catalogo: CatalogoPuerto, te
 }
 
 // ---------------------------------------------------------------------------------------------
-// Decisión de reconstrucción (agrupa cambios 10 minutos)
+// Decisión de reconstrucción (agrupa cambios en una ventana de 60 s)
 // ---------------------------------------------------------------------------------------------
 
-export type EventoReconstruccion = 'publicacion' | 'temporizador' | 'diaria';
+/** `tarea`: la tarea de Cloud Tasks agendada para `programadaPara`; admite llegar `toleranciaTareaMs` antes. */
+export type EventoReconstruccion = 'publicacion' | 'temporizador' | 'diaria' | 'tarea';
+
+/** Por qué se pide una reconstrucción: `codigo` (cambió la imagen del constructor) y `reintento` (única repetición tras TIMEOUT/INTERNAL_ERROR). */
+export type MotivoReconstruccion = 'publicacion' | 'diaria' | 'codigo' | 'reintento';
 
 export type DecisionReconstruccion =
   | { readonly accion: 'nada' }
@@ -58,7 +62,7 @@ export type DecisionReconstruccion =
   | { readonly accion: 'reconstruir' };
 
 /**
- * Función pura. `programadaPara` es la reconstrucción ya agendada (ms) o null. Una publicación agenda a +10 min si no
+ * Función pura. `programadaPara` es la reconstrucción ya agendada (ms) o null. Una publicación agenda a +60 s si no
  * hay nada agendado y, si ya hay (vencida o no), se agrupa y espera al temporizador. El temporizador reconstruye solo cuando llegó la hora. La corrida diaria
  * (tras la publicación del BCB) reconstruye siempre que haya algo publicado.
  */
@@ -74,12 +78,27 @@ export function decidirReconstruccion(
   // Una publicación o un cambio que llega con la hora ya vencida NO reconstruye: espera al temporizador, que es el único punto
   // que pasa a `reconstruir` (así un solo lugar avisa a quien reconstruye el sitio).
   if (evento === 'publicacion') return { accion: 'esperar', para: p };
-  return p > ahora ? { accion: 'esperar', para: p } : { accion: 'reconstruir' };
+  const tolerancia = evento === 'tarea' ? LIMITES_CONSOLA.toleranciaTareaMs : 0;
+  return p - tolerancia > ahora ? { accion: 'esperar', para: p } : { accion: 'reconstruir' };
+}
+
+export type DecisionBloqueo =
+  /** Sitio libre: lanzar la construcción del trabajo pendiente más antiguo. */
+  | 'lanzar'
+  /** Hay una construcción en curso: el pendiente espera (no se pierde; sale al terminar la anterior). */
+  | 'esperar'
+  /** El bloqueo supera `bloqueoVencidoMs`: la construcción se da por muerta; se libera y se relanza. */
+  | 'relanzar';
+
+/** Función pura: una sola construcción a la vez por sitio. `desdeMs` es el instante en que se tomó el bloqueo (null: libre). */
+export function decidirBloqueo(bloqueo: { readonly desdeMs: number } | null, ahora: number): DecisionBloqueo {
+  if (bloqueo === null) return 'lanzar';
+  return ahora - bloqueo.desdeMs > LIMITES_CONSOLA.bloqueoVencidoMs ? 'relanzar' : 'esperar';
 }
 
 /**
  * Cambio «vivo» de lo publicado (precio, logo): calcula la versión siguiente (+1) y agenda la reconstrucción como una publicación
- * (ventana de 10 minutos; con una hora ya vencida la decisión es «esperar»: reconstruir es siempre cosa del temporizador).
+ * (ventana de 60 s; con una hora ya vencida la decisión es «esperar»: reconstruir es siempre cosa del temporizador).
  * Compartida por el precio vivo y el logo vivo. `programar` es la hora a pasar a `disparador.programar` tras el commit, solo si
  * esta transacción fue la primera del grupo.
  */
@@ -90,9 +109,10 @@ export function avanzarPublicadoVivo(
   const previaPara = typeof rec['programadaPara'] === 'number' ? rec['programadaPara'] : null;
   const decision = decidirReconstruccion({ hayPublicacion: true, programadaPara: previaPara }, ahora, 'publicacion');
   const programadaPara = decision.accion === 'programar' || decision.accion === 'esperar' ? decision.para : previaPara;
+  const primerCambioEnMs = decision.accion === 'programar' ? ahora : (typeof rec['primerCambioEnMs'] === 'number' ? rec['primerCambioEnMs'] : null);
   return {
     version: (typeof estadoPublicado['version'] === 'number' ? estadoPublicado['version'] : 0) + 1,
-    reconstruccion: { ...rec, programadaPara }, decision, programar: decision.accion === 'programar' ? decision.para : null,
+    reconstruccion: { ...rec, programadaPara, primerCambioEnMs }, decision, programar: decision.accion === 'programar' ? decision.para : null,
   };
 }
 
@@ -309,12 +329,15 @@ export interface ResultadoPublicacion {
 
 const texto = (x: unknown): string[] => (Array.isArray(x) ? x.filter((v): v is string => typeof v === 'string') : []);
 
-const leerReconstruccion = (d: Readonly<Record<string, unknown>> | undefined): { version: number; programadaPara: number | null; productos: string[]; secciones: string[]; carruseles: string[] } => {
+const leerReconstruccion = (d: Readonly<Record<string, unknown>> | undefined): { version: number; programadaPara: number | null; primerCambioEnMs: number | null; productos: string[]; secciones: string[]; carruseles: string[] } => {
   const r = d?.['reconstruccion'];
   const p = esObjeto(r) ? r['programadaPara'] : null;
+  const pc = esObjeto(r) ? r['primerCambioEnMs'] : null;
   return {
     version: typeof d?.['version'] === 'number' ? d['version'] : 0,
     programadaPara: typeof p === 'number' ? p : null,
+    /** Instante del primer cambio del grupo agendado (null: no hay grupo); lo escribe la decisión `programar`. */
+    primerCambioEnMs: typeof pc === 'number' ? pc : null,
     productos: texto(d?.['productos']), secciones: texto(d?.['secciones']), carruseles: texto(d?.['carruseles']),
   };
 };
@@ -524,7 +547,7 @@ export async function publicarSitio(deps: DepsPublicar, e: { tenantId: string; a
     const programadaPara = decision.accion === 'programar' ? decision.para : decision.accion === 'esperar' ? decision.para : null;
     tx.set(rutaPublicado(t, 'estado'), {
       version, publicadoEn: ahoraIso, productos: idsProd, secciones: idsSec, carruseles: idsCar,
-      reconstruccion: { programadaPara, ultima: null },
+      reconstruccion: { programadaPara, primerCambioEnMs: decision.accion === 'programar' ? ahora : previo.primerCambioEnMs, ultima: null },
     });
     // Poner `sitio/estado` de nuevo limpia también `avisoSitio`: una publicación correcta deja el conjunto publicable.
     tx.set(rutaSitio(t, 'estado'), { cambios: 0, ultimoCambioEn: ahoraIso, corteCatalogoEn: corteIso });
@@ -545,7 +568,7 @@ export async function publicarSitio(deps: DepsPublicar, e: { tenantId: string; a
  * Corre en el servidor; no depende de ninguna máquina de usuario.
  */
 export async function ejecutarReconstruccion(
-  deps: Pick<DepsPublicar, 'db' | 'reloj' | 'disparador'>, e: { tenantId: string; evento: 'temporizador' | 'diaria' },
+  deps: Pick<DepsPublicar, 'db' | 'reloj' | 'disparador'>, e: { tenantId: string; evento: 'temporizador' | 'diaria' | 'tarea' },
 ): Promise<DecisionReconstruccion> {
   const t = tenantValido(e.tenantId);
   const ahora = deps.reloj.ahora();
@@ -565,7 +588,10 @@ export async function ejecutarReconstruccion(
     const actual = leerReconstruccion(d);
     // Si entretanto se agendó otra hora distinta (otro grupo de cambios), se respeta.
     tx.set(rutaPublicado(t, 'estado'), {
-      ...d, reconstruccion: { programadaPara: actual.programadaPara === programadaPara ? null : actual.programadaPara, ultima: ahora },
+      ...d, reconstruccion: {
+        programadaPara: actual.programadaPara === programadaPara ? null : actual.programadaPara,
+        primerCambioEnMs: actual.programadaPara === programadaPara ? null : actual.primerCambioEnMs, ultima: ahora,
+      },
     });
   });
   return decision;

@@ -64,7 +64,7 @@ const mismoPrecio = (a: { readonly bo: number; readonly ar: number }, b: { reado
  *  - Producto inexistente o inactivo: retira la copia y el id de `estado.productos`.
  *  - `precioUSD` distinto: actualiza SOLO el precio de la copia.
  *  En ambos casos sube `version` de `publicado/estado` y de `publicado/sitio` en +1 (siguen iguales entre sí), guarda `precioVivoEn`
- *  (`publicadoEn` no cambia) y agenda la reconstrucción con la ventana de 10 minutos (`decidirReconstruccion`, como una
+ *  (`publicadoEn` no cambia) y agenda la reconstrucción con la ventana de 60 s (`decidirReconstruccion`, como una
  *  publicación). `disparador.programar` se llama tras el commit, solo si esta transacción fue la primera del grupo.
  *  - Si nombre, marca o categoría vivos difieren de la copia, esperan «Publicar» y SÍ cuentan como cambio sin publicar. Un cambio
  *    solo de precio ya aplicado no cuenta; si nada difiere, el evento no hace nada.

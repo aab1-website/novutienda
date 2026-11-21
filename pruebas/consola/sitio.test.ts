@@ -244,7 +244,7 @@ describe('servicios de la consola', () => {
       expect(err.message).toContain('y 2 productos más');
     });
 
-    it('arma la copia publicada solo con datos públicos, pone en cero los cambios y agenda a 10 minutos', async () => {
+    it('arma la copia publicada solo con datos públicos, pone en cero los cambios y agenda a 60 s', async () => {
       const m = await medio('cam-1');
       await configurar();
       await guardarFicha(ds(), { tenantId: T, actor: adm, productoId: 'cam-1', ficha: ficha('camara-uno', [{ medioId: m, alt: 'Frente' }]) });
@@ -252,8 +252,8 @@ describe('servicios de la consola', () => {
       expect(db.dato(`tenants/${T}/sitio/estado`)?.['cambios']).toBeGreaterThan(0);
 
       const r = await publicarSitio(dp(), { tenantId: T, actor: adm });
-      expect(r).toMatchObject({ version: 1, productos: 1, decision: { accion: 'programar', para: reloj.ms + 600_000 } });
-      expect(disparador.eventos).toEqual([`programar:${String(reloj.ms + 600_000)}`]);
+      expect(r).toMatchObject({ version: 1, productos: 1, decision: { accion: 'programar', para: reloj.ms + 60_000 } });
+      expect(disparador.eventos).toEqual([`programar:${String(reloj.ms + 60_000)}`]);
       const pub = db.dato(`tenants/${T}/publicado/producto__cam-1`) as Record<string, unknown>;
       expect(pub).toMatchObject({ id: 'cam-1', slug: 'camara-uno', nombre: 'Producto cam-1', marca: 'Acme', precioUSD: { bo: 10, ar: 12 } });
       expect(db.dato(`tenants/${T}/publicado/producto__cam-2`)).toBeUndefined(); // borrador
@@ -558,7 +558,7 @@ describe('servicios de la consola', () => {
   describe('decidirReconstruccion (función pura)', () => {
     const ahora = 1_000_000;
     it.each([
-      [{ hayPublicacion: true, programadaPara: null }, 'publicacion', { accion: 'programar', para: ahora + 600_000 }],
+      [{ hayPublicacion: true, programadaPara: null }, 'publicacion', { accion: 'programar', para: ahora + 60_000 }],
       [{ hayPublicacion: true, programadaPara: ahora + 1 }, 'publicacion', { accion: 'esperar', para: ahora + 1 }],
       [{ hayPublicacion: true, programadaPara: ahora }, 'publicacion', { accion: 'esperar', para: ahora }], // vencida: solo el temporizador reconstruye
       [{ hayPublicacion: true, programadaPara: null }, 'temporizador', { accion: 'nada' }],
@@ -569,8 +569,8 @@ describe('servicios de la consola', () => {
     ] as const)('%j + %s', (estado, evento, esperado) => {
       expect(decidirReconstruccion(estado, ahora, evento)).toEqual(esperado);
     });
-    it('usa una ventana de 10 minutos', () => {
-      expect(LIMITES_CONSOLA.ventanaReconstruccionMs).toBe(600_000);
+    it('usa una ventana de 60 segundos', () => {
+      expect(LIMITES_CONSOLA.ventanaReconstruccionMs).toBe(60_000);
     });
   });
 
