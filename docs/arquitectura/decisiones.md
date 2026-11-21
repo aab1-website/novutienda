@@ -135,3 +135,9 @@
 - 20/11/2026 — **Inventario C del humo2 (series y conteo), decisiones de Andres D1, D2, D3, D7 y D9.** Regla y datos: `docs/modulos/inventarios.md`.
   **D1:** la serie no admite «/»; quedan letras, números y `- . _`, de 3 a 60. **D2:** el formato rige solo al dar de alta series nuevas; las existentes de 1 o 2 caracteres siguen válidas. **D3:** el servidor bloquea duplicados exactos y, sin distinguir mayúsculas, solo dentro de la misma operación; el panel avisa antes de ingresar. **D7:** el relleno de `serieBusqueda` en producción va con su botón antes del pase. **D9:** la cajera no ve las filas del conteo «como 0» ni `mermas`.
   **Equivalencia:** Andres autorizó regenerar la batería (las series del escenario pasan de «A», «B», «C» a «SN-A», «SN-B», «SN-C»); la entrada está en `pruebas/equivalencia/CAMBIOS.md`.
+- 20/11/2026 — **El humo de Playwright del panel pasa al CI como job propio `humo-panel`**, decisión de Andres. Vive en `ci-node-firebase.yml` y bloquea `compuerta-pr` y `desplegar-staging`.
+  **Cómo corre:** con el Chromium de Playwright fijo (`PLAYWRIGHT_CHANNEL=chromium`) y caché de `~/.cache/ms-playwright`.
+  **Por qué un job aparte y no dentro de `calidad`:** corre en paralelo, así que no alarga el PR, y su falla se ve por separado.
+  **Motivo:** 12 pruebas llevaban tiempo desactualizadas sin que nadie lo notara, y una escondía un defecto real de accesibilidad en la caja «solo consulta».
+  **Regla:** una falla del humo se clasifica como prueba desactualizada o como defecto real; un defecto real no se tapa cambiando la prueba.
+  **Fuera de este PR:** el humo del sitio (`paquetes/website/humo`) queda para un PR posterior.
