@@ -132,7 +132,8 @@ for (const esquema of ESQUEMAS) {
       await expect(page.getByRole('dialog')).toHaveCount(0);
       await page.getByRole('link', { name: 'Conteo ciego' }).click();
       await page.getByRole('button', { name: 'Abrir conteo' }).click();
-      await expect(page.getByText(/Conteo abierto en/)).toBeVisible();
+      await expect(page.getByText(/Conteo abierto en .*Escriba lo que cuenta/)).toBeVisible();
+      await expect(page.locator('.aviso-texto', { hasText: 'Mientras dure, cajeros y supervisores no ven sus existencias.' })).toBeVisible();
       await sinViolaciones(page, 'conteo ciego');
       await page.getByRole('link', { name: 'Registro de acciones' }).click();
       await expect(page.getByRole('heading', { name: 'Registro de acciones' })).toBeVisible();
@@ -288,7 +289,8 @@ for (const esquema of ESQUEMAS) {
         await irA('Inventario');
         await page.getByRole('link', { name: 'Conteo ciego' }).click();
         await page.getByRole('button', { name: 'Abrir conteo' }).click();
-        await expect(page.getByText(/Conteo abierto en/)).toBeVisible();
+        await expect(page.getByText(/Conteo abierto en .*Escriba lo que cuenta/)).toBeVisible();
+        await expect(page.locator('.aviso-texto', { hasText: 'Mientras dure, cajeros y supervisores no ven sus existencias.' })).toBeVisible();
 
         // Inventario sin cantidades: aviso, «Oculto» y sin el filtro «Bajo el mínimo».
         await page.getByRole('link', { name: 'Productos y existencias' }).click();
@@ -341,14 +343,37 @@ for (const esquema of ESQUEMAS) {
         await page.getByLabel(/Monto que paga con este medio/).fill('90132');
         await page.getByLabel(/Efectivo recibido/).fill('100000');
         await page.getByRole('button', { name: 'Confirmar cobro' }).click();
-        const rechazo = page.getByText(/No alcanza el stock/);
+        const rechazo = page.getByRole('alert').filter({ hasText: /No alcanza el stock/ });
+        await expect(page.locator('.aviso-texto', { hasText: /No alcanza el stock/ })).toBeVisible();
         await expect(rechazo).toBeVisible();
         expect(await rechazo.innerText()).not.toMatch(/hay \d/);
+        // Con un diálogo abierto y el error visible, el aviso no tapa el botón principal: se puede pulsar sin cerrar el aviso.
+        await page.goto('/#/venta/historial');
+        // Con el aviso encima de la lista, el diálogo se abre con el teclado.
+        await page.getByRole('button', { name: /^Solicitar anulación de / }).first().focus();
+        await page.keyboard.press('Enter');
+        const anulacion = page.getByRole('dialog');
+        await expect(anulacion).toBeVisible();
+        await expect(page.locator('.aviso-error')).toBeVisible();
+        await anulacion.getByLabel('Motivo de la anulación').fill('Prueba');
+        await anulacion.getByRole('button', { name: 'Cerrar' }).click({ trial: true });
+        await anulacion.getByRole('button', { name: 'Cancelar' }).click({ trial: true });
+        await anulacion.getByRole('button', { name: 'Enviar solicitud' }).click({ trial: true });
+        await anulacion.getByLabel('Motivo de la anulación').fill('');
+        await expect(page.locator('.aviso-error')).toBeVisible();
+        await anulacion.getByRole('button', { name: 'Cancelar' }).click();
+        await expect(page.getByRole('dialog')).toHaveCount(0);
 
         // Al cerrar el conteo, la cajera vuelve a ver las cantidades.
         await cambiarA('sup');
+        // El error de la cajera no pasa al supervisor.
+        await expect(page.locator('.aviso-error')).toHaveCount(0);
         await irA('Inventario');
         await page.getByRole('link', { name: 'Conteo ciego' }).click();
+        const cableHdmi = page.getByLabel('Cantidad de Cable HDMI 2 m');
+        await cableHdmi.fill('20');
+        await cableHdmi.blur();
+        await expect(page.locator('[data-prueba="estado-guardado"]', { hasText: 'Guardado' }).first()).toBeVisible();
         await page.getByRole('button', { name: 'Cerrar y firmar el conteo' }).click();
         await page.getByRole('button', { name: 'Sí, cerrar y firmar' }).click();
         await expect(page.getByText(/Conteo cerrado|Conteos anteriores/).first()).toBeVisible();
@@ -372,7 +397,7 @@ for (const esquema of ESQUEMAS) {
         await expect(catalogo).toBeVisible();
         await page.getByRole('link', { name: 'Catálogo y sitio' }).click();
         await page.getByRole('link', { name: 'Fichas, fotos y video' }).click();
-        const abrir = page.getByRole('button', { name: 'Fotos y video de Televisor 55 pulgadas' });
+        const abrir = page.getByRole('button', { name: 'Editar página de Televisor 55 pulgadas' });
         await expect(abrir).toBeVisible();
         await abrir.click();
         const dialogo = page.getByRole('dialog', { name: 'Página en el sitio: Televisor 55 pulgadas' });
@@ -422,18 +447,22 @@ for (const esquema of ESQUEMAS) {
         await irA('Inventario');
         await page.getByRole('link', { name: 'Conteo ciego' }).click();
         await page.getByRole('button', { name: 'Abrir conteo' }).click();
-        await expect(page.getByText(/Conteo abierto en/)).toBeVisible();
+        await expect(page.getByText(/Conteo abierto en .*Escriba lo que cuenta/)).toBeVisible();
+        await expect(page.locator('.aviso-texto', { hasText: 'Mientras dure, cajeros y supervisores no ven sus existencias.' })).toBeVisible();
         const cantidad = page.getByLabel('Cantidad de Cable HDMI 2 m');
         await cantidad.fill('20');
         await expect(page.getByText(/Hay 1 cantidad sin guardar/)).toBeVisible();
         await cantidad.blur();
         await expect(page.locator('[data-prueba="avance-conteo"]')).toContainText(/Avance: 1 de \d+/);
-        await expect(page.getByText('Guardado', { exact: true }).first()).toBeVisible();
+        await expect(page.locator('[data-prueba="estado-guardado"]', { hasText: 'Guardado' }).first()).toBeVisible();
         await sinViolaciones(page, `conteo con avance a ${String(ancho)} px`);
         await sinDesborde('conteo');
         await page.getByRole('button', { name: 'Cerrar y firmar el conteo' }).click();
         const cierre = page.getByRole('dialog', { name: '¿Cerrar y firmar el conteo?' });
-        await expect(cierre.getByText(/Faltan \d+ productos? por contar\. Los que tengan existencias en el sistema se contarán en 0 y generarán mermas\./)).toBeVisible();
+        await expect(cierre.getByText(/Faltan \d+ productos? por contar\./)).toBeVisible();
+        await expect(cierre.getByText(/quedan como están en el sistema/)).toBeVisible();
+        await cierre.getByRole('radio', { name: 'Tomarlos como 0 (generan merma)' }).check();
+        await expect(cierre.getByText(/se tomarán como 0 y generarán mermas/)).toBeVisible();
         await sinViolaciones(page, `cierre del conteo a ${String(ancho)} px`);
         await cierre.getByRole('button', { name: 'Sí, cerrar y firmar' }).click();
         await expect(page.getByText(/Conteo cerrado y firmado/).first()).toBeVisible();
@@ -481,7 +510,11 @@ for (const esquema of ESQUEMAS) {
         await irA('Inventario');
         await page.getByRole('link', { name: 'Importar y exportar' }).click();
         await expect(page.getByRole('heading', { name: 'Importar productos' })).toBeVisible();
-        const csv = 'id,nombre,categoria,sku,precioBO,precioAR\r\nnuevo-a,Nuevo A,Cat,NA-1,10.50,11\r\nnuevo-b,Nuevo B,Cat,NB-1,20,22.25\r\nnuevo-c,Nuevo C,Cat,,5,6\r\n';
+        // Una categoría con mayúscula se rechaza y sugiere la forma válida.
+        const csvMal = 'id,nombre,categoria,sku,precioBO,precioAR\r\nnuevo-a,Nuevo A,Cat,NA-1,10.50,11\r\n';
+        await page.getByLabel('Archivo de productos (CSV o Excel)').setInputFiles({ name: 'mal.csv', mimeType: 'text/csv', buffer: Buffer.from(csvMal) });
+        await expect(page.getByRole('table', { name: 'Simulación de la importación' }).getByText(/use «cat»/)).toBeVisible();
+        const csv = 'id,nombre,categoria,sku,precioBO,precioAR\r\nnuevo-a,Nuevo A,cat,NA-1,10.50,11\r\nnuevo-b,Nuevo B,cat,NB-1,20,22.25\r\nnuevo-c,Nuevo C,cat,,5,6\r\n';
         await page.getByLabel('Archivo de productos (CSV o Excel)').setInputFiles({ name: 'productos.csv', mimeType: 'text/csv', buffer: Buffer.from(csv) });
         await expect(page.getByText('2 se crearán, 0 se actualizarán, 0 sin cambios, 1 con error.').first()).toBeVisible();
         const simulacion = page.getByRole('table', { name: 'Simulación de la importación' });
@@ -500,15 +533,15 @@ for (const esquema of ESQUEMAS) {
 
         // Catálogo: ya no importa; exporta y enlaza a Inventario.
         await irA('Catálogo y sitio');
-        await page.getByRole('link', { name: 'Exportar', exact: true }).click();
-        await expect(page.getByText(/Los productos se crean e importan en Inventario/)).toBeVisible();
-        await expect(page.getByRole('button', { name: 'Exportar productos (CSV)' })).toBeVisible();
+        await expect(page.getByRole('link', { name: 'Exportar', exact: true })).toHaveCount(0);
+        await expect(page.getByRole('button', { name: 'Exportar productos (CSV)' })).toHaveCount(0);
         await expect(page.getByLabel('Archivo a importar')).toHaveCount(0);
-        await sinViolaciones(page, `exportar del catálogo a ${String(ancho)} px`);
-        await sinDesborde('exportar del catálogo');
-        await page.getByRole('link', { name: 'Ir a la importación de Inventario' }).click();
+        await sinViolaciones(page, `catálogo sin exportar a ${String(ancho)} px`);
+        await sinDesborde('catálogo sin exportar');
+        await page.getByRole('link', { name: 'Importar o exportar productos (en Inventario)' }).click();
         await expect(page).toHaveURL(/#\/inventario\/csv$/);
         await expect(page.getByRole('heading', { name: 'Importar productos' })).toBeVisible();
+        await expect(page.getByRole('button', { name: 'Exportar productos (Excel)' })).toBeVisible();
         expect(v.errores).toEqual([]);
       });
     }
@@ -521,7 +554,7 @@ for (const esquema of ESQUEMAS) {
       await expect(page.getByText(/de 200/).first()).toBeVisible();
       await sinViolaciones(page, 'tablero');
       await page.getByRole('link', { name: 'Fichas, fotos y video' }).click();
-      await page.getByRole('button', { name: 'Fotos y video de Televisor 55 pulgadas' }).click();
+      await page.getByRole('button', { name: 'Editar página de Televisor 55 pulgadas' }).click();
       await expect(page.getByRole('dialog', { name: 'Página en el sitio: Televisor 55 pulgadas' })).toBeVisible();
       await page.getByLabel('Archivos de fotos').setInputFiles({ name: 'frente.jpg', mimeType: 'image/jpeg', buffer: Buffer.from('imagen de prueba') });
       await expect(page.getByText('frente.jpg: Listo')).toBeVisible();
@@ -540,7 +573,8 @@ for (const esquema of ESQUEMAS) {
       await expect(page.getByText(/Personas con acceso/)).toBeVisible();
       await sinViolaciones(page, 'usuarios');
       await page.getByRole('link', { name: 'Configuración' }).click();
-      await expect(page.getByRole('heading', { name: 'Datos del negocio y del POS' })).toBeVisible();
+      await expect(page.getByRole('heading', { level: 1, name: 'Configuración' })).toBeVisible();
+      await expect(page.getByText('Datos del negocio').first()).toBeVisible();
       await sinViolaciones(page, 'configuración');
       expect(v.errores).toEqual([]);
     });
@@ -568,6 +602,7 @@ for (const esquema of ESQUEMAS) {
         const v = vigilar(page);
         await page.setViewportSize({ width: ancho, height: alto });
         await entrar(page, 'adm');
+        await expect(page.getByRole('heading', { name: 'Productos (solo consulta)' })).toBeVisible();
         const boton = page.getByRole('button', { name: 'Menú', exact: true });
         const nav = page.getByRole('navigation', { name: 'Menú principal' });
         const sinDesborde = async (): Promise<void> => {
@@ -833,7 +868,7 @@ test('celular 390×844: ninguna tabla se corta ni desborda el documento', async 
 
   // La importación va al final: con una simulación sin confirmar la pantalla no deja salir con el cambio de ruta.
   await ir('inventario/csv');
-  const csv = 'id,nombre,categoria,sku,precioBO,precioAR\r\nnuevo-a,Nuevo A,Cat,NA-1,10.50,11\r\nnuevo-b,Nuevo B,Cat,NB-1,20,22.25\r\nnuevo-c,Nuevo C,Cat,,5,6\r\n';
+  const csv = 'id,nombre,categoria,sku,precioBO,precioAR\r\nnuevo-a,Nuevo A,cat,NA-1,10.50,11\r\nnuevo-b,Nuevo B,cat,NB-1,20,22.25\r\nnuevo-c,Nuevo C,cat,,5,6\r\n';
   await page.getByLabel('Archivo de productos (CSV o Excel)').setInputFiles({ name: 'productos.csv', mimeType: 'text/csv', buffer: Buffer.from(csv) });
   await expect(page.getByRole('table', { name: 'Simulación de la importación' })).toBeVisible();
   await revisar('inventario/csv (simulación)');
