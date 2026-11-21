@@ -88,17 +88,24 @@ export function useCarga<T>(fn: () => Promise<T>, deps: readonly unknown[], cada
     const previas = depsPrevias.current;
     const mismas = previas !== null && previas.length === deps.length && previas.every((d, i) => Object.is(d, deps[i]));
     depsPrevias.current = deps;
+    // Solo la carga más reciente aplica su resultado: una respuesta vieja no pisa a una nueva.
+    let ultima = 0;
+    let enCurso = 0;
+    let inicioMs = 0;
     const cargar = (inicial: boolean): void => {
       if (inicial) setCargando(true);
-      conRenovacion(() => fnRef.current(), renovarRef.current).then(
+      const mia = ++ultima;
+      enCurso++;
+      inicioMs = Date.now();
+      conRenovacion(() => fnRef.current(), renovarRef.current).finally(() => { enCurso--; }).then(
         (d) => {
-          if (!vivo) return;
+          if (!vivo || mia !== ultima) return;
           setDatos(d);
           setError(null);
           setCargando(false);
         },
         (e: unknown) => {
-          if (!vivo) return;
+          if (!vivo || mia !== ultima) return;
           if (e instanceof SesionPerdida) vencidaRef.current?.();
           setError(textoDe(e));
           setCargando(false);
@@ -109,6 +116,8 @@ export function useCarga<T>(fn: () => Promise<T>, deps: readonly unknown[], cada
     const t = cadaMs === undefined ? undefined : setInterval(() => cargar(false), cadaMs);
     const volver = (): void => {
       if (document.visibilityState === 'hidden') return;
+      // `visibilitychange` y `focus` llegan juntos: se ignora el segundo si hay una carga en curso o es muy reciente.
+      if (enCurso > 0 || Date.now() - inicioMs < 500) return;
       cargar(false);
     };
     if (alVolver) {
