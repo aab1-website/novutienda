@@ -28,8 +28,10 @@ const veces = (n: number, uno: string, varias: string): string => `${n} ${n === 
  * Imprimir un bloque: solo el que se manda a imprimir lleva `.imprimible` (en `@media print` es el único visible),
  * con una cabecera del negocio, el cajero y la fecha. El botón no se imprime.
  */
-function useImprimir(): { imprimiendo: boolean; imprimir: () => void } {
+function useImprimir(): { imprimiendo: boolean; negocio: string; imprimir: () => void } {
+  const { api } = useApp();
   const [imprimiendo, setImprimiendo] = useState(false);
+  const [negocio, setNegocio] = useState('');
   useEffect(() => {
     if (!imprimiendo) return undefined;
     const fin = (): void => setImprimiendo(false);
@@ -37,15 +39,21 @@ function useImprimir(): { imprimiendo: boolean; imprimir: () => void } {
     window.print();
     return () => window.removeEventListener('afterprint', fin);
   }, [imprimiendo]);
-  return { imprimiendo, imprimir: () => setImprimiendo(true) };
+  // La configuración se trae ANTES de imprimir: así el nombre del negocio ya está en la cabecera cuando se abre el diálogo.
+  const imprimir = (): void => {
+    void api.llamar('leerConfigPos', {}).then((c) => c.negocio.nombre, () => '').then((n) => {
+      setNegocio(n);
+      setImprimiendo(true);
+    });
+  };
+  return { imprimiendo, negocio, imprimir };
 }
 
-function CabeceraImpresion({ titulo }: { titulo: string }): JSX.Element {
-  const { api, usuario } = useApp();
-  const config = useCarga(() => api.llamar('leerConfigPos', {}), []);
+function CabeceraImpresion({ titulo, negocio }: { titulo: string; negocio: string }): JSX.Element {
+  const { usuario } = useApp();
   return (
     <header class="cabecera-impresion">
-      <h2>{config.datos?.negocio.nombre ?? ''}</h2>
+      <h2>{negocio}</h2>
       <p>{titulo}</p>
       <p>Cajero: {usuario.correo}</p>
       <p>Impreso el {fechaHora(Date.now())}</p>
@@ -107,7 +115,7 @@ function TurnoActual(): JSX.Element {
   const imp = useImprimir();
   return (
     <div class={imp.imprimiendo ? 'imprimible' : undefined}>
-    {imp.imprimiendo && <CabeceraImpresion titulo="Turno actual" />}
+    {imp.imprimiendo && <CabeceraImpresion titulo="Turno actual" negocio={imp.negocio} />}
     <Seccion titulo="Turno actual" acciones={<span class="no-imprimir"><Boton chico variante="secundario" onClick={r.recargar}>Actualizar</Boton> {r.datos && <BotonImprimir alImprimir={imp.imprimir} />}</span>}>
       {r.cargando && <Cargando />}
       {r.error && <ErrorCarga error={r.error} reintentar={r.recargar} />}
@@ -169,7 +177,7 @@ function DetalleTurno({ turno, alCerrar }: { turno: FilaTurnoVista; alCerrar: ()
   const titulo = `Turno del ${fechaHora(turno.abiertoEnMs)}`;
   return (
     <div class={imp.imprimiendo ? 'imprimible' : undefined}>
-    {imp.imprimiendo && <CabeceraImpresion titulo={titulo} />}
+    {imp.imprimiendo && <CabeceraImpresion titulo={titulo} negocio={imp.negocio} />}
     <Seccion titulo={titulo} acciones={<span class="no-imprimir"><Boton chico variante="secundario" onClick={alCerrar}>Cerrar el detalle</Boton> <BotonImprimir alImprimir={imp.imprimir} /></span>}>
       {r.cargando && <Cargando />}
       {r.error && <ErrorCarga error={r.error} reintentar={r.recargar} />}

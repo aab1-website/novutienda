@@ -74,7 +74,7 @@ function DesgloseDeEfectivo({ moneda, apertura, turno, devuelto }: { moneda: str
   return (
     <>
       <Dato etiqueta="Apertura">{m(d.apertura)}</Dato>
-      <Dato etiqueta="Efectivo cobrado">{m(d.cobrado)}</Dato>
+      <Dato etiqueta={devuelto === undefined ? 'Efectivo neto (sin el detalle de devoluciones)' : 'Efectivo cobrado'}>{m(d.cobrado)}</Dato>
       <Dato etiqueta="Devuelto por anulaciones (se resta)">{devuelto === undefined ? 'No disponible' : m(d.devuelto)}</Dato>
       <Dato etiqueta="Ingresos excepcionales (se suman)">{m(d.ingresos)}</Dato>
       <Dato etiqueta="Egresos excepcionales (se restan)">{m(d.egresos)}</Dato>
@@ -116,7 +116,7 @@ function CierreListo({ turno, orden, alCerrar, alRetomar }: { turno: TurnoPos; o
     });
   };
   // Lo devuelto por anulaciones sale del resumen del turno; si falla, se avisa que no está disponible.
-  const resumen = useCarga(() => api.llamar('resumenTurno', { turnoId: turno.turnoId }), [turno.turnoId, vigente]);
+  const resumen = useCarga(() => api.llamar('resumenTurno', { turnoId: turno.turnoId }), [turno.turnoId, JSON.stringify(vigente.totales)]);
   const monedas = monedasDelTurno(vigente, orden);
   const [textos, setTextos] = useState<Record<string, string>>({});
   const [cierre, setCierre] = useState<ResultadoCierre | null>(null);

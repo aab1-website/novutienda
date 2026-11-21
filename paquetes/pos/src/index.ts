@@ -12,7 +12,7 @@ export type { ConfigPos } from './config.js';
 export { leerCarrito, leerCarritosAbiertos, leerTurno, leerVenta } from './lectura.js';
 export { abrirTurno, cerrarTurno, cerrarTurnoForzado, leerTurnoAbierto } from './turno.js';
 export {
-  calcularArqueo, desgloseEfectivo, efectivoDisponible, efectivoEsperado, proyectarTurno, reconstruirTotales,
+  calcularArqueo, efectivoDisponible, efectivoEsperado, proyectarTurno, reconstruirTotales,
 } from './arqueo.js';
 export type { OperacionesTurno, ProyeccionMoneda } from './arqueo.js';
 export { centavosDeLinea } from './precio.js';

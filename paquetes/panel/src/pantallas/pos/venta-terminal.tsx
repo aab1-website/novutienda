@@ -183,13 +183,16 @@ function CarritoActivo({ carritoId, version, borrador, c, mercados, datos, visto
   const elegidaRef = useRef(aprobacionId);
   elegidaRef.current = aprobacionId;
   const aprobs = useCarga(async () => (await api.llamar('listarAprobaciones', {})).filter((a) => a.aprobacionId === solicitadaId || (elegidaRef.current !== '' && a.aprobacionId === elegidaRef.current)), [solicitadaId, paso], undefined, { alVolver: true });
-  // Con una sola aprobación válida se elige sola; con varias, la más reciente. Lo que ya eligió la persona y sigue válido se respeta.
+  // Con UNA sola aprobación válida se elige sola (una vez: si la persona vuelve a «Elija una aprobación», se respeta).
+  // Con varias, el selector queda en «Elija una aprobación».
   const aprobadasVigentes = useRef<readonly AprobacionPos[]>([]);
+  const autoElegidas = useRef(new Set<string>());
   useEffect(() => {
     const l = aprobadasVigentes.current;
-    if (l.length === 0 || l.some((a) => a.aprobacionId === aprobacionId)) return;
-    const masReciente = l.reduce((x, y) => (y.solicitadoEnMs > x.solicitadoEnMs ? y : x));
-    setAprobacionId(masReciente.aprobacionId);
+    const unica = l.length === 1 ? l[0] : undefined;
+    if (unica === undefined || aprobacionId !== '' || autoElegidas.current.has(unica.aprobacionId)) return;
+    autoElegidas.current.add(unica.aprobacionId);
+    setAprobacionId(unica.aprobacionId);
   });
   // Una aprobación sirve solo al carrito para el que se pidió: aquí solo se ven las de este carrito.
   // Solo se espera la solicitud que esta pantalla acaba de pedir; vive en el carrito y se va con él.
