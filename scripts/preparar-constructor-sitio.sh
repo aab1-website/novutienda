@@ -174,6 +174,41 @@ done
 ejecutar gcloud artifacts repositories add-iam-policy-binding "$REPO" --location="$REGION" --project="$PROYECTO" \
   --member="serviceAccount:$CUENTA_EMAIL" --role=roles/artifactregistry.reader --quiet --format=none
 
+paso "O5bis. Cuenta por defecto de Cloud Build (consulta; cambio solo con --neutralizar-cuenta-por-defecto)"
+# Va ANTES de O5: sin una cuenta por defecto acotada, el rol lanzador de las Functions permitiría lanzar builds con la
+# cuenta heredada de Cloud Build o la de Compute, que tienen permisos amplios (escalada de privilegios).
+if (( NEUTRALIZAR == 1 )); then
+  CUENTA_BUILD="build-sin-permisos"
+  CUENTA_BUILD_EMAIL="${CUENTA_BUILD}@${PROYECTO}.iam.gserviceaccount.com"
+  if existe gcloud iam service-accounts describe "$CUENTA_BUILD_EMAIL" --project="$PROYECTO"; then
+    echo "  $CUENTA_BUILD: ya existe"
+  else
+    ejecutar gcloud iam service-accounts create "$CUENTA_BUILD" --display-name="Cuenta por defecto de Cloud Build (sin permisos)" \
+      --project="$PROYECTO"
+  fi
+  ejecutar gcloud builds set-default-service-account --service-account="projects/$PROYECTO/serviceAccounts/$CUENTA_BUILD_EMAIL" \
+    --project="$PROYECTO"
+fi
+# Consulta (solo lectura): cuenta por defecto de Cloud Build.
+ejecutar gcloud builds get-default-service-account --project="$PROYECTO"
+if (( APLICAR == 1 )); then
+  defecto="$(gcloud builds get-default-service-account --project="$PROYECTO" --format='value(serviceAccountEmail)' 2>/dev/null || true)"
+  case "$defecto" in
+    *@cloudbuild.gserviceaccount.com | *-compute@developer.gserviceaccount.com)
+      echo "  La cuenta por defecto de Cloud Build es la heredada o la de Compute (permisos amplios)." >&2
+      echo "  No se otorga el rol lanzador a las Functions. Use --neutralizar-cuenta-por-defecto (tras verificar las Functions 2.ª gen) y repita." >&2
+      exit 3 ;;
+    "")
+      echo "  No se pudo determinar la cuenta por defecto de Cloud Build: no se otorga el rol lanzador (falla cerrado)." >&2
+      exit 3 ;;
+    *) echo "  La cuenta por defecto de Cloud Build es una cuenta acotada: sigue O5." ;;
+  esac
+fi
+# Cuentas con las que construyen las Functions 2.ª gen: la consulta puede fallar (p. ej. API inactiva) y no detiene el paso.
+if ! ejecutar gcloud functions list --v2 --project="$PROYECTO" --format="value(buildConfig.serviceAccount)"; then
+  echo "  AVISO: no se pudo consultar las Functions 2.ª gen (¿API inactiva o sin Functions?); verifique a mano antes de neutralizar." >&2
+fi
+
 paso "O5. Permisos de la cuenta de las Functions (rol mínimo, uso solo de $CUENTA, cola de tareas)"
 if existe gcloud iam roles describe "$ROL_LANZADOR" --project="$PROYECTO"; then
   ejecutar gcloud iam roles update "$ROL_LANZADOR" --project="$PROYECTO" \
@@ -192,25 +227,6 @@ if existe gcloud tasks queues describe "$COLA" --location="$REGION" --project="$
 else
   echo "  la cola de tareas indicada no existe aún (la crea el despliegue de las Functions): despliegue y repita este paso" >&2
   exit 1
-fi
-
-paso "O5bis. Cuenta por defecto de Cloud Build (consulta; cambio solo con --neutralizar-cuenta-por-defecto)"
-# Solo lectura: qué cuenta usa hoy Cloud Build por defecto y con qué cuenta construyen las Functions de 2.ª generación.
-ejecutar gcloud builds get-default-service-account --project="$PROYECTO"
-ejecutar gcloud functions list --v2 --project="$PROYECTO" --format="value(buildConfig.serviceAccount)"
-if (( NEUTRALIZAR == 1 )); then
-  CUENTA_BUILD="build-sin-permisos"
-  CUENTA_BUILD_EMAIL="${CUENTA_BUILD}@${PROYECTO}.iam.gserviceaccount.com"
-  if existe gcloud iam service-accounts describe "$CUENTA_BUILD_EMAIL" --project="$PROYECTO"; then
-    echo "  $CUENTA_BUILD: ya existe"
-  else
-    ejecutar gcloud iam service-accounts create "$CUENTA_BUILD" --display-name="Cuenta por defecto de Cloud Build (sin permisos)" \
-      --project="$PROYECTO"
-  fi
-  ejecutar gcloud builds set-default-service-account --service-account="projects/$PROYECTO/serviceAccounts/$CUENTA_BUILD_EMAIL" \
-    --project="$PROYECTO"
-else
-  echo "  (no se cambia la cuenta por defecto: use --neutralizar-cuenta-por-defecto en P5, tras verificar lo de arriba)"
 fi
 
 paso "O6. Secretos (los valores pasan por stdin; nunca se imprimen)"

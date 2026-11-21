@@ -137,3 +137,66 @@ exit 0
     expect(r.status).toBe(2);
   });
 });
+
+describe('scripts/preparar-constructor-sitio.sh: O5bis antes de O5', () => {
+  const correrConStub = (extraEnv: Record<string, string>, args: string[] = []) => {
+    const dir = mkdtempSync(join(tmpdir(), 'prep-o5bis-'));
+    try {
+      writeFileSync(join(dir, 'gcloud'), `#!/usr/bin/env bash
+echo "gcloud $*" >> "${dir}/llamadas.txt"
+[[ "$*" == *"versions list"* ]] && exit 0
+if [[ "$*" == *"get-default-service-account"* && "$*" == *"--format"* ]]; then echo "\${SA_DEFECTO:-}"; exit 0; fi
+if [[ "$*" == *"functions list"* && -n "\${FALLA_FUNCTIONS:-}" ]]; then echo "API not enabled" >&2; exit 1; fi
+exit 0
+`);
+      chmodSync(join(dir, 'gcloud'), 0o755);
+      const r = spawnSync('bash', [resolve(raiz, 'scripts/preparar-constructor-sitio.sh'), 'proyecto-prueba-1', '--aplicar', ...args], {
+        env: {
+          PATH: `${dir}:/usr/bin:/bin`,
+          CUENTA_FUNCIONES: 'f@proyecto-prueba-1.iam.gserviceaccount.com',
+          CUENTA_DESPLIEGUE: 'd@proyecto-prueba-1.iam.gserviceaccount.com',
+          COLA_TAREAS: 'cola-prueba',
+          ...extraEnv,
+        },
+        encoding: 'utf8',
+      });
+      return { r, llamadas: readFileSync(join(dir, 'llamadas.txt'), 'utf8') };
+    } finally {
+      rmSync(dir, { recursive: true, force: true });
+    }
+  };
+  it('en la simulación O5bis aparece antes que O5', () => {
+    const r = spawnSync('bash', [resolve(raiz, 'scripts/preparar-constructor-sitio.sh'), 'proyecto-prueba-1'], { env: { PATH: '/usr/bin:/bin' }, encoding: 'utf8' });
+    expect(r.stdout.indexOf('O5bis.')).toBeGreaterThan(0);
+    expect(r.stdout.indexOf('O5bis.')).toBeLessThan(r.stdout.indexOf('O5. Permisos'));
+  });
+  it.each([
+    ['la heredada de Cloud Build', '123456@cloudbuild.gserviceaccount.com'],
+    ['la de Compute', '123456-compute@developer.gserviceaccount.com'],
+    ['desconocida (falla cerrado)', ''],
+  ])('con la cuenta por defecto %s no otorga el rol lanzador y sale con 3', (_n, sa) => {
+    const { r, llamadas } = correrConStub({ SA_DEFECTO: sa });
+    expect(r.status).toBe(3);
+    expect(llamadas).not.toContain('iam roles');
+    expect(llamadas).not.toContain('tasks queues add-iam-policy-binding');
+    expect(llamadas).not.toContain('roles/cloudtasks.enqueuer');
+    expect(r.stderr).not.toContain('proyecto-prueba-1');
+  });
+  it('con una cuenta por defecto acotada sigue y otorga el rol lanzador', () => {
+    const { r, llamadas } = correrConStub({ SA_DEFECTO: 'build-sin-permisos@proyecto-prueba-1.iam.gserviceaccount.com' });
+    expect(r.status).toBe(0);
+    expect(llamadas).toContain('iam roles');
+  });
+  it('con --neutralizar-cuenta-por-defecto la fija antes de consultar y sigue', () => {
+    const { r, llamadas } = correrConStub({ SA_DEFECTO: 'build-sin-permisos@proyecto-prueba-1.iam.gserviceaccount.com' }, ['--neutralizar-cuenta-por-defecto']);
+    expect(r.status).toBe(0);
+    expect(llamadas.indexOf('set-default-service-account')).toBeGreaterThan(0);
+    expect(llamadas.indexOf('set-default-service-account')).toBeLessThan(llamadas.indexOf('iam roles'));
+  });
+  it('si `functions list --v2` falla (API inactiva) avisa y el script sigue', () => {
+    const { r, llamadas } = correrConStub({ SA_DEFECTO: 'a@proyecto-prueba-1.iam.gserviceaccount.com', FALLA_FUNCTIONS: '1' });
+    expect(r.status).toBe(0);
+    expect(r.stderr).toContain('no se pudo consultar las Functions');
+    expect(llamadas).toContain('secrets');
+  });
+});
