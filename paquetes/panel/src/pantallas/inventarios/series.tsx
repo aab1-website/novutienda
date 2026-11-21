@@ -19,6 +19,9 @@ export function textoSerieOculta(conteos: readonly { readonly ubicacionId: strin
   return `No se encontró, o está oculta: ${donde} un conteo abierto y sus series disponibles no se muestran hasta cerrarlo.`;
 }
 
+/** Paso 26: la búsqueda exacta no halló nada y existe la casilla del comienzo. */
+export const PISTA_SERIE_COMPLETA = 'Escriba la serie completa o marque Buscar por el comienzo';
+
 export function Series(): JSX.Element {
   const { api, usuario } = useApp();
   const puedePorInicio = usuario.rol === 'sup' || usuario.rol === 'adm';
@@ -26,7 +29,7 @@ export function Series(): JSX.Element {
   const [conInicio, setConInicio] = useState(false);
   const [q, setQ] = useState('');
   const [buscar, setBuscar] = useState('');
-  const r = useCarga(() => (buscar === '' ? Promise.resolve([]) : api.llamar('buscarSerie', conInicio ? { serie: buscar, porInicio: true } : { serie: buscar })), [buscar, conInicio]);
+  const r = useCarga(() => (buscar === '' ? Promise.resolve([]) : api.llamar('buscarSerie', conInicio ? { serie: buscar, porInicio: true } : { serie: buscar })), [buscar, conInicio], undefined, { alVolver: true });
   const prod = useProductos();
   const abiertos = useConteosAbiertos();
   const conteos = prod.conteos.length > 0 ? prod.conteos : abiertos;
@@ -41,7 +44,7 @@ export function Series(): JSX.Element {
         <Boton tipo="submit" motivo={q.trim() === '' ? 'Escriba un número de serie.' : porInicio && puedePorInicio && q.trim().length < 4 ? 'Escriba al menos 4 caracteres.' : undefined}>Buscar</Boton>
       </form>
       {r.error && <ErrorCarga error={r.error} reintentar={r.recargar} />}
-      {buscar !== '' && r.datos && r.datos.length === 0 && <Vacio titulo={textoSerieOculta(conteos) ?? 'No se encontró esa serie'} />}
+      {buscar !== '' && r.datos && r.datos.length === 0 && <Vacio titulo={textoSerieOculta(conteos) ?? 'No se encontró esa serie'} {...(puedePorInicio && !conInicio ? { detalle: PISTA_SERIE_COMPLETA } : {})} />}
       {r.datos && r.datos.length > 0 && (
         <Tabla<UnidadSerie>
           titulo="Resultado de la búsqueda por serie"

@@ -50,7 +50,7 @@ function Productos(): JSX.Element {
   const { api, usuario, puedeVer } = useApp();
   const comercial = useConfiguracionComercial();
   const mercados = comercial.estado === 'lista' ? comercial.comercial.mercados : [];
-  const carga = useCarga(async () => ({ productos: await api.llamar('listarProductos', {}), cot: await api.llamar('cotizacionesVigentes', {}) }), []);
+  const carga = useCarga(async () => ({ productos: await api.llamar('listarProductos', {}), cot: await api.llamar('cotizacionesVigentes', {}) }), [], undefined, { alVolver: true });
   const [mostrar, setMostrar] = useState<Mostrar>('');
   const [abierto, setAbierto] = useState<{ producto: ProductoPanel | null; etiqueta: string } | null>(null);
   const raiz = useRef<HTMLDivElement>(null);

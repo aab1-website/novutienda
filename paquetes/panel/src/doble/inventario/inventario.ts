@@ -178,7 +178,12 @@ export const handlersInventario: {
         return { p, l, series: validarSeries(p, l.cantidad, l.series) };
       });
       for (const { p, series } of trabajos) {
-        for (const s of series) if (c.e.unidades.has(`${p.id}__${s}`)) throw fallo('estado-invalido', `La serie ${s} ya existe`);
+        for (const s of series) {
+          if (c.e.unidades.has(`${p.id}__${s}`)) throw fallo('estado-invalido', `La serie ${s} ya existe`);
+          // Paso 25: igual que el servidor, una variante de mayúsculas del mismo producto se rechaza.
+          const variante = [...c.e.unidades.values()].find((u) => u.productoId === p.id && u.serie.toLowerCase() === s.toLowerCase());
+          if (variante !== undefined) throw fallo('conflicto', `Ya existe como ${variante.serie}`);
+        }
       }
       for (const { p, l, series } of trabajos) {
         for (const s of series) c.e.unidades.set(`${p.id}__${s}`, { productoId: p.id, serie: s, estado: 'disponible', ubicacionId: u });

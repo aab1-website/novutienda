@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import type { ProductoPanel } from '../../api/tipos.js';
-import { avisosMayusculas, enLotes, haySeQuedan, leerDiferencia, resumenAjuste, resumenIngreso, resumenTraspaso, revisarAjuste, revisarLineas, separar, seriesNuevasDe, type FilaLinea } from './movimientos-resumen.js';
+import { conflictosMayusculas, enLotes, haySeQuedan, leerDiferencia, resumenAjuste, resumenIngreso, resumenTraspaso, revisarAjuste, revisarLineas, separar, seriesNuevasDe, type FilaLinea } from './movimientos-resumen.js';
 
 const prod = (id: string, nombre: string, conSerie: boolean, tienda: number, dep1 = 0): ProductoPanel => ({
   id, nombre, categoria: 'c', sku: id.toUpperCase(), activo: true, publicado: true, conSerie, precioUSD: { bo: 1, ar: 1 }, existencias: { tienda, 'deposito-1': dep1, 'deposito-2': 0 }, bajoMinimo: false, disponible: true,
@@ -76,20 +76,17 @@ describe('revisión del ajuste', () => {
   });
 });
 
-describe('aviso de mayúsculas antes de ingresar (D3)', () => {
+describe('serie con otras mayúsculas antes de ingresar (paso 25: bloquea)', () => {
   const u = (productoId: string, serie: string) => ({ productoId, serie, estado: 'disponible', ubicacionId: 'tienda' }) as const;
-  it('avisa si el mismo producto ya tiene la serie con otras mayúsculas, y no si es otro producto o la misma', () => {
+  it('marca error si el mismo producto ya tiene la serie con otras mayúsculas, y no si es otro producto o la misma', () => {
     const consultadas = seriesNuevasDe([{ productoId: 'tv', cantidad: 3, series: ['abc123', 'XYZ789', 'QQQ111'] }]);
-    const avisos = avisosMayusculas(consultadas, [[u('tv', 'ABC123')], [u('otro', 'xyz789')], [u('tv', 'QQQ111')]]);
-    expect(avisos).toEqual(['Aviso: la serie abc123 ya existe como ABC123 (con otras mayúsculas).']);
+    const errores = conflictosMayusculas(consultadas, [[u('tv', 'ABC123')], [u('otro', 'xyz789')], [u('tv', 'QQQ111')]]);
+    expect(errores).toEqual(['La serie abc123: Ya existe como ABC123.']);
   });
-  it('una consulta fallida no da aviso, y se consultan a lo sumo 50 series', () => {
-    expect(avisosMayusculas([{ productoId: 'tv', serie: 'abc' }], [null])).toEqual([]);
+  it('una consulta fallida no da error (decide el servidor), y se consultan a lo sumo 50 series', () => {
+    expect(conflictosMayusculas([{ productoId: 'tv', serie: 'abc' }], [null])).toEqual([]);
     const muchas = Array.from({ length: 80 }, (_, i) => `SER-${String(i)}`);
     expect(seriesNuevasDe([{ productoId: 'tv', cantidad: 80, series: muchas }])).toHaveLength(50);
-  });
-  it('el resumen del ingreso lleva los avisos al final', () => {
-    expect(resumenIngreso([{ productoId: 'cable', cantidad: 3 }], 'tienda', PRODUCTOS, ['Aviso: x']).lineas.at(-1)).toBe('Aviso: x');
   });
 });
 

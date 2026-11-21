@@ -137,15 +137,42 @@ async function conteosAbiertos(c: Contexto): Promise<{ conteos: Conteos; ubicaci
   return { conteos: conteosAbiertosDe(ubic, porId), ubicaciones: ubic.map((u) => u.id) };
 }
 
+/**
+ * Paso 25 (tercera ronda): una serie que ya existe en el mismo producto con otras mayúsculas se rechaza con `already-exists` y
+ * «Ya existe como X». Consulta por `serieBusqueda` (como `cerrarConteo`), de a 30 series por consulta. La consulta no corre dentro
+ * de la transacción (el puerto de transacción del módulo no admite consultas), así que dos ingresos simultáneos de variantes
+ * distintas de una misma serie podrían pasar ambos: el id exacto de la unidad sigue protegiendo el duplicado exacto, y la
+ * variante concurrente queda como límite conocido (ventana de milisegundos entre la consulta y la transacción).
+ */
+async function exigirSinVariantes(c: Contexto, lineas: readonly LineaIngreso[]): Promise<void> {
+  for (const l of lineas) {
+    const series = l.series ?? [];
+    for (let i = 0; i < series.length; i += 30) {
+      const lote = series.slice(i, i + 30);
+      const docs = (
+        await c.e.firestore.collection(ruta(c.tenantId, 'unidades')).where('productoId', '==', l.productoId).where('serieBusqueda', 'in', lote.map(normalizarSerieBusqueda)).get()
+      ).docs;
+      for (const u of docs) {
+        const existente = String(datosDe(u)['serie'] ?? '');
+        if (existente !== '' && !lote.includes(existente) && lote.some((s) => normalizarSerieBusqueda(s) === normalizarSerieBusqueda(existente))) {
+          throw new HttpsError('already-exists', `Ya existe como ${existente}`);
+        }
+      }
+    }
+  }
+}
+
 export const accionesInventarios: TablaImplementaciones = {
   // ---- Operaciones ------------------------------------------------------------------------------------------
   ingresar: accion({
     maxCaracteres: 256_000,
     esquema: objeto({ operacionId: ID, ubicacionId: UBICACION, lineas: z.array(LINEA_INGRESO).min(1).max(50) }),
-    ejecutar: (c, d) =>
-      c.e.db.runTransaction((tx) =>
+    ejecutar: async (c, d) => {
+      await exigirSinVariantes(c, d.lineas as unknown as LineaIngreso[]);
+      return c.e.db.runTransaction((tx) =>
         ingresar(tx, { tenantId: c.tenantId, operacionId: d.operacionId, por: autor(c), ubicacionId: d.ubicacionId, lineas: d.lineas as unknown as LineaIngreso[] }),
-      ),
+      );
+    },
   }),
   traspasar: accion({
     maxCaracteres: 256_000,

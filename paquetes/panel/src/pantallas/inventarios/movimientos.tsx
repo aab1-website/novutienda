@@ -13,7 +13,7 @@ import { useBorrador, useCambiosSinGuardar } from '../../ui/guardia.js';
 import { useAccion, useCarga, type Accion } from '../../ui/hooks.js';
 import { SelectorBuscable } from '../../ui/selector-buscable.js';
 import {
-  avisosMayusculas, CONCURRENCIA_SERIES, claveLinea, enLotes, haySeQuedan, lecturaDe, leerDiferencia, MAX_LINEAS, resumenAjuste, resumenIngreso, resumenTraspaso, revisarAjuste, revisarLineas, separar, seriesNuevasDe, type FilaLinea, type LecturaExistencia, type Resumen,
+  CONCURRENCIA_SERIES, claveLinea, conflictosMayusculas, enLotes, haySeQuedan, lecturaDe, leerDiferencia, MAX_LINEAS, resumenAjuste, resumenIngreso, resumenTraspaso, revisarAjuste, revisarLineas, separar, seriesNuevasDe, type FilaLinea, type LecturaExistencia, type Resumen,
 } from './movimientos-resumen.js';
 import { nombreAlmacen, OPCIONES_ALMACEN } from './nombres.js';
 import { TablaMovimientos } from './registro.js';
@@ -160,6 +160,7 @@ export function Ingreso(): JSX.Element {
   const sucio = b.hayBorrador && (e.almacen !== 'tienda' || e.filas.some(lineaSucia));
   const s = useEnvio(clave, sucio);
   const [comprobando, setComprobando] = useState(false);
+  const [variantes, setVariantes] = useState<string[]>([]);
   const [confirmadas, setConfirmadas] = useState<{ almacen: UbicacionId; lineas: readonly LineaIngreso[] } | null>(null);
   if (prod.cargando) return <Cargando />;
   if (prod.error) return <ErrorCarga error={prod.error} reintentar={prod.recargar} />;
@@ -174,14 +175,17 @@ export function Ingreso(): JSX.Element {
       s.pedirFoco();
       return;
     }
-    // D3: antes de confirmar se avisa si una serie ya existe con otras mayúsculas. No bloquea; si la consulta falla, se sigue sin aviso.
+    // Paso 25: si una serie ya existe con otras mayúsculas, el ingreso se bloquea (el servidor también lo rechaza). Si la consulta falla, se sigue: decide el servidor.
     const consultadas = seriesNuevasDe(lineas);
     setComprobando(true);
     void enLotes(consultadas, CONCURRENCIA_SERIES, (c) => api.llamar('buscarSerie', { serie: c.serie, productoId: c.productoId }).catch(() => null))
       .then((encontradas) => {
+        const conflictos = conflictosMayusculas(consultadas, encontradas);
+        setVariantes(conflictos);
+        if (conflictos.length > 0) return;
         // Lo que se muestra es lo que se envía: las líneas quedan congeladas al abrir la confirmación.
         setConfirmadas({ almacen, lineas });
-        s.setResumen(resumenIngreso(lineas, almacen, prod.lista, avisosMayusculas(consultadas, encontradas)));
+        s.setResumen(resumenIngreso(lineas, almacen, prod.lista));
       })
       .finally(() => setComprobando(false));
   };
@@ -208,6 +212,7 @@ export function Ingreso(): JSX.Element {
         <LineasProducto filas={e.filas} setFilas={(filas) => b.poner({ ...e, filas })} productos={prod.lista} errores={errores} />
         <Boton tipo="submit" ocupado={(s.accion.ocupado && s.resumen === null) || comprobando}>Registrar ingreso</Boton>
         {comprobando && <p class="texto-suave" role="status">Comprobando series…</p>}
+        {variantes.length > 0 && <Alerta>{variantes.map((v) => <p key={v}>{v}</p>)}</Alerta>}
       </form>
       {s.resumen !== null && <Confirmacion resumen={s.resumen} accion={s.accion} alConfirmar={confirmar} alVolver={() => { s.setResumen(null); s.accion.limpiar(); }} />}
     </Seccion>

@@ -93,8 +93,8 @@ export interface Resumen {
   readonly confirmar: string;
 }
 
-export function resumenIngreso(lineas: readonly LineaIngreso[], destino: UbicacionId, productos: readonly ProductoPanel[], avisos: readonly string[] = []): Resumen {
-  return { titulo: '¿Registrar este ingreso?', lineas: [`Entra a ${nombreAlmacen(destino)}:`, ...lineas.map((l) => textoLinea(l, productos)), ...avisos], confirmar: 'Sí, registrar el ingreso' };
+export function resumenIngreso(lineas: readonly LineaIngreso[], destino: UbicacionId, productos: readonly ProductoPanel[]): Resumen {
+  return { titulo: '¿Registrar este ingreso?', lineas: [`Entra a ${nombreAlmacen(destino)}:`, ...lineas.map((l) => textoLinea(l, productos))], confirmar: 'Sí, registrar el ingreso' };
 }
 
 /** Tope de series que se consultan antes de ingresar (una consulta acotada por serie; el servidor sigue siendo quien decide). */
@@ -117,16 +117,16 @@ export const seriesNuevasDe = (lineas: readonly LineaIngreso[]): SerieNueva[] =>
   lineas.flatMap((l) => (l.series ?? []).map((serie) => ({ productoId: l.productoId, serie }))).slice(0, MAX_CONSULTAS_SERIE);
 
 /**
- * D3: avisos «La serie X ya existe como Y (con otras mayúsculas)». `encontradas[i]` es la respuesta de `buscarSerie` para
- * `consultadas[i]`. Solo cuenta el mismo producto; no bloquea nada: el servidor admite la serie si el id exacto está libre.
+ * Paso 25: errores «Ya existe como Y» cuando el mismo producto ya tiene la serie con otras mayúsculas. `encontradas[i]` es la
+ * respuesta de `buscarSerie` para `consultadas[i]`. Bloquea el ingreso: el servidor también lo rechaza (`already-exists`).
  */
-export function avisosMayusculas(consultadas: readonly SerieNueva[], encontradas: readonly (readonly UnidadSerie[] | null)[]): string[] {
-  const avisos: string[] = [];
+export function conflictosMayusculas(consultadas: readonly SerieNueva[], encontradas: readonly (readonly UnidadSerie[] | null)[]): string[] {
+  const errores: string[] = [];
   consultadas.forEach((c, i) => {
     const otra = (encontradas[i] ?? []).find((u) => u.productoId === c.productoId && u.serie !== c.serie && u.serie.toLowerCase() === c.serie.toLowerCase());
-    if (otra !== undefined) avisos.push(`Aviso: la serie ${c.serie} ya existe como ${otra.serie} (con otras mayúsculas).`);
+    if (otra !== undefined) errores.push(`La serie ${c.serie}: Ya existe como ${otra.serie}.`);
   });
-  return avisos;
+  return errores;
 }
 
 export function resumenTraspaso(lineas: readonly LineaIngreso[], origen: UbicacionId, destino: UbicacionId, productos: readonly ProductoPanel[]): Resumen {

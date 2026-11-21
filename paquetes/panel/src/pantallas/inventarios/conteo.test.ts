@@ -126,7 +126,7 @@ describe('conteo ciego', () => {
     await waitFor(() => expect(screen.getByText(/Avance: 1 de/)).toBeTruthy());
     await u.click(screen.getByRole('button', { name: 'Cerrar y firmar el conteo' }));
     const d = await screen.findByRole('dialog', { name: '¿Cerrar y firmar el conteo?' });
-    expect(d.textContent).toMatch(/Faltan \d+ productos por contar\.\s*Esos productos quedan como están en el sistema\./);
+    expect(d.textContent).toMatch(/Faltan \d+ productos por contar\.\s*Sin contar: .+\(CEL-A1\).*\.\s*Esos productos quedan como están en el sistema\./);
     expect(d.textContent).toContain('Contó 1 de');
     expect((within(d).getByRole('radio', { name: 'Dejarlos como están' }) as HTMLInputElement).checked).toBe(true);
     await u.click(within(d).getByRole('button', { name: 'Sí, cerrar y firmar' }));

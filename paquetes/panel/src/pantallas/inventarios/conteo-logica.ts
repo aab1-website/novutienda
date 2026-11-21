@@ -61,11 +61,25 @@ export function sinContar(a: { contados: number; total: number }): number {
 export type EleccionSinContar = 'igual' | 'cero';
 
 /** Lo que dice la confirmación al cerrar. El panel calcula «sin contar» con su propia lista; el servidor no lo informa. */
-export function lineasDeCierre(a: { contados: number; total: number }, eleccion: EleccionSinContar = 'igual'): string[] {
+export function productosSinContar(productos: readonly ProductoDeConteo[], lineas: readonly Linea[]): ProductoDeConteo[] {
+  return productos.filter((p) => !lineas.some((l) => l.productoId === p.productoId));
+}
+
+const MAX_NOMBRES_SIN_CONTAR = 10;
+
+/** Paso 28: «Sin contar: Cable (CAB-1), …» con los primeros nombres y su SKU. */
+export function textoSinContar(faltan: readonly ProductoDeConteo[]): string {
+  const vistos = faltan.slice(0, MAX_NOMBRES_SIN_CONTAR).map((p) => `${p.nombre} (${p.sku})`).join(', ');
+  const mas = faltan.length - MAX_NOMBRES_SIN_CONTAR;
+  return `Sin contar: ${vistos}${mas > 0 ? ` y ${String(mas)} más` : ''}.`;
+}
+
+export function lineasDeCierre(a: { contados: number; total: number }, eleccion: EleccionSinContar = 'igual', faltan: readonly ProductoDeConteo[] = []): string[] {
   const res = [`Contó ${String(a.contados)} de ${String(a.total)} productos.`];
   const n = sinContar(a);
   if (n > 0) {
     res.push(`Faltan ${String(n)} ${n === 1 ? 'producto' : 'productos'} por contar.`);
+    if (faltan.length > 0) res.push(textoSinContar(faltan));
     res.push(eleccion === 'igual'
       ? `${n === 1 ? 'Ese producto queda' : 'Esos productos quedan'} como ${n === 1 ? 'está' : 'están'} en el sistema.`
       : 'Los que tengan existencias en el sistema se tomarán como 0 y generarán mermas.');

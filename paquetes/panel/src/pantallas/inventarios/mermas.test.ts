@@ -53,7 +53,7 @@ describe('resolver', () => {
     const e = crearEntorno('sup');
     await e.api.llamar('solicitarMerma', { operacionId: 'op-merma-1', productoId: 'cable-hdmi', ubicacionId: 'tienda', cantidad: 1, motivo: 'Roto' });
     ver(e);
-    expect(await screen.findByText('La resuelve otra persona')).toBeTruthy();
+    expect(await screen.findByText('La generó usted: la resuelve un supervisor u otro administrador')).toBeTruthy();
     expect((screen.getByLabelText('Estado') as HTMLSelectElement).value).toBe('solicitada');
   });
 
