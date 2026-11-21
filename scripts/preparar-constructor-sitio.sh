@@ -11,6 +11,8 @@
 #   CUENTA_FUNCIONES  correo de la cuenta de servicio con la que corren las Functions (obligatorio con --aplicar).
 #   CUENTA_DESPLIEGUE correo de la cuenta de despliegue de staging (la del CI); recibe artifactregistry.writer sobre
 #                     el repositorio para publicar la imagen (obligatorio con --aplicar).
+#   COLA_TAREAS       nombre de la cola de Cloud Tasks (obligatorio con --aplicar; debe existir: la crea el despliegue de
+#                     las Functions). cloudtasks.enqueuer se da SOLO sobre esa cola, no sobre el proyecto.
 #   CLAVES_SITIO      claves de sitio separadas por comas (o --claves); define los secretos SITIO_NEGOCIO_<CLAVE>.
 #   REGION            us-east1 (por defecto; los recursos de nube van siempre allí).
 #   REPO_IMAGENES     repositorio de Artifact Registry (sitio-constructor por defecto).
@@ -26,7 +28,12 @@
 #       preparar-sitio-tenant.sh), logging.logWriter, serviceusage.serviceUsageConsumer y artifactregistry.reader
 #       sobre el repositorio.
 #   O5  Permisos de la cuenta de las Functions: rol personalizado con SOLO cloudbuild.builds.create y
-#       cloudbuild.builds.get; iam.serviceAccountUser únicamente sobre `sitio-constructor`; cloudtasks.enqueuer.
+#       cloudbuild.builds.get; iam.serviceAccountUser únicamente sobre `sitio-constructor`; cloudtasks.enqueuer
+#       sobre la cola COLA_TAREAS.
+#   O5bis  Cuenta de servicio POR DEFECTO de Cloud Build: consulta cuál es y, con --aplicar, fija `build-sin-permisos`
+#       (cuenta nueva sin roles) para que ningún build sin cuenta propia herede permisos amplios. Los builds del
+#       constructor siempre indican `sitio-constructor`. Comando por verificar en staging (`gcloud builds
+#       set-default-service-account`).
 #   O6  Secretos en Secret Manager (SITIO_RECONSTRUCCION_SECRETO y SITIO_NEGOCIO_<CLAVE>) con acceso solo para
 #       `sitio-constructor`.
 #   (O2 incluye además roles/artifactregistry.writer sobre el repositorio para CUENTA_DESPLIEGUE.)
@@ -74,6 +81,14 @@ elif ! [[ "$DESPLIEGUE" =~ ^[a-z0-9._-]+@[a-z0-9-]+\.iam\.gserviceaccount\.com$ 
   echo "CUENTA_DESPLIEGUE no es un correo de cuenta de servicio" >&2; exit 2
 fi
 
+COLA="${COLA_TAREAS:-}"
+if [[ -z "$COLA" ]]; then
+  (( APLICAR == 0 )) || { echo "con --aplicar hace falta COLA_TAREAS (nombre de la cola de Cloud Tasks)" >&2; exit 2; }
+  COLA="<cola>"
+elif ! [[ "$COLA" =~ ^[A-Za-z0-9_-]{1,100}$ ]]; then
+  echo "COLA_TAREAS inválida" >&2; exit 2
+fi
+
 SECRETOS=(SITIO_RECONSTRUCCION_SECRETO)
 if [[ -n "$CLAVES" ]]; then
   IFS=',' read -r -a lista <<<"$CLAVES"
@@ -93,9 +108,19 @@ mostrar() { # prefijo, comando...
   if [[ "$DESPLIEGUE" != "<cuenta-de-despliegue>" ]]; then t="${t//"$DESPLIEGUE"/<cuenta-de-despliegue>}"; fi
   echo "  $pre $t"
 }
-# Ejecuta (con --aplicar) o solo muestra (simulación). La salida de gcloud se descarta cuando es de política IAM.
+# Reemplaza el id del proyecto y los correos de las cuentas en lo que imprime gcloud (stdin → stdout).
+quitar_ids() {
+  local l
+  while IFS= read -r l || [[ -n "$l" ]]; do
+    l="${l//"$PROYECTO"/<proyecto>}"
+    if [[ "$FUNCIONES" != "<cuenta-de-las-functions>" ]]; then l="${l//"$FUNCIONES"/<cuenta-de-las-functions>}"; fi
+    if [[ "$DESPLIEGUE" != "<cuenta-de-despliegue>" ]]; then l="${l//"$DESPLIEGUE"/<cuenta-de-despliegue>}"; fi
+    printf '%s\n' "$l"
+  done
+}
+# Ejecuta (con --aplicar) o solo muestra (simulación). La salida real de gcloud no imprime el id del proyecto.
 ejecutar() {
-  if (( APLICAR == 1 )); then mostrar "+" "$@"; "$@"; else mostrar "[simulación]" "$@"; fi
+  if (( APLICAR == 1 )); then mostrar "+" "$@"; "$@" 2>&1 | quitar_ids; else mostrar "[simulación]" "$@"; fi
 }
 existe() { # comando de lectura; en simulación se asume que NO existe para mostrar el paso completo
   (( APLICAR == 1 )) || return 1
@@ -157,8 +182,26 @@ ejecutar gcloud projects add-iam-policy-binding "$PROYECTO" --member="serviceAcc
   --role="projects/$PROYECTO/roles/$ROL_LANZADOR" --condition=None --quiet --format=none
 ejecutar gcloud iam service-accounts add-iam-policy-binding "$CUENTA_EMAIL" --project="$PROYECTO" \
   --member="serviceAccount:$FUNCIONES" --role=roles/iam.serviceAccountUser --quiet --format=none
-ejecutar gcloud projects add-iam-policy-binding "$PROYECTO" --member="serviceAccount:$FUNCIONES" \
-  --role=roles/cloudtasks.enqueuer --condition=None --quiet --format=none
+if existe gcloud tasks queues describe "$COLA" --location="$REGION" --project="$PROYECTO" || (( APLICAR == 0 )); then
+  ejecutar gcloud tasks queues add-iam-policy-binding "$COLA" --location="$REGION" --project="$PROYECTO" \
+    --member="serviceAccount:$FUNCIONES" --role=roles/cloudtasks.enqueuer --quiet --format=none
+else
+  echo "  la cola de tareas indicada no existe aún (la crea el despliegue de las Functions): despliegue y repita este paso" >&2
+  exit 1
+fi
+
+paso "O5bis. Cuenta por defecto de Cloud Build (sin permisos)"
+CUENTA_BUILD="build-sin-permisos"
+CUENTA_BUILD_EMAIL="${CUENTA_BUILD}@${PROYECTO}.iam.gserviceaccount.com"
+ejecutar gcloud builds get-default-service-account --project="$PROYECTO"
+if existe gcloud iam service-accounts describe "$CUENTA_BUILD_EMAIL" --project="$PROYECTO"; then
+  echo "  $CUENTA_BUILD: ya existe"
+else
+  ejecutar gcloud iam service-accounts create "$CUENTA_BUILD" --display-name="Cuenta por defecto de Cloud Build (sin permisos)" \
+    --project="$PROYECTO"
+fi
+ejecutar gcloud builds set-default-service-account --service-account="projects/$PROYECTO/serviceAccounts/$CUENTA_BUILD_EMAIL" \
+  --project="$PROYECTO"
 
 paso "O6. Secretos (los valores pasan por stdin; nunca se imprimen)"
 for s in "${SECRETOS[@]}"; do
@@ -173,7 +216,7 @@ for s in "${SECRETOS[@]}"; do
       if [[ -n "$(gcloud secrets versions list "$s" --project="$PROYECTO" --limit=1 --format='value(name)' 2>/dev/null)" ]]; then
         echo "  $s: ya tiene versión; no se agrega otra (usar la rotación del plan)"
       else
-        printf '%s' "$valor" | gcloud secrets versions add "$s" --project="$PROYECTO" --data-file=- --format=none
+        printf '%s' "$valor" | gcloud secrets versions add "$s" --project="$PROYECTO" --data-file=- --format=none 2>&1 | quitar_ids
         echo "  $s: versión agregada (valor no mostrado)"
       fi
     else

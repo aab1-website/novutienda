@@ -1,7 +1,8 @@
 // Imagen y preparación del constructor del sitio: coherencia con el workflow y simulación sin nube.
 import { spawnSync } from 'node:child_process';
-import { readFileSync } from 'node:fs';
-import { resolve } from 'node:path';
+import { chmodSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
+import { tmpdir } from 'node:os';
+import { join, resolve } from 'node:path';
 import { describe, expect, it } from 'vitest';
 
 const raiz = resolve(__dirname, '../..');
@@ -16,6 +17,7 @@ describe('scripts/constructor-sitio/Dockerfile', () => {
     expect(dockerfile).toMatch(/^HEALTHCHECK /m);
     // La imagen final no conserva npm ni corepack (su árbol de dependencias lo marca Trivy).
     expect(dockerfile).toContain('rm -rf /usr/local/lib/node_modules/npm /usr/local/lib/node_modules/corepack');
+    expect(dockerfile).not.toMatch(/^\s*(ENV\s+)?NODE_ENV=/m);
     expect(dockerfile).toMatch(/^USER node$/m);
     expect(dockerfile).toContain('pnpm install --frozen-lockfile');
     expect(dockerfile).toContain('reconstruir-sitio.sh');
@@ -61,6 +63,12 @@ describe('scripts/preparar-constructor-sitio.sh', () => {
     expect(s).toContain('SITIO_NEGOCIO_B2');
     expect(s).toContain('--locations=us-east1');
     expect(s).toContain('--member=serviceAccount:<cuenta-de-despliegue> --role=roles/artifactregistry.writer');
+    expect(s).toContain('O5bis.');
+    expect(s).toContain('gcloud builds get-default-service-account');
+    expect(s).toContain('gcloud builds set-default-service-account --service-account=projects/<proyecto>/serviceAccounts/build-sin-permisos@<proyecto>');
+    // cloudtasks.enqueuer sobre la cola, no sobre el proyecto.
+    expect(s).toContain('gcloud tasks queues add-iam-policy-binding <cola>');
+    expect(s).not.toMatch(/projects add-iam-policy-binding[^\n]*cloudtasks\.enqueuer/);
     expect(s).not.toContain('proyecto-prueba-1');
     expect(s).not.toContain('valor-secreto-xyz');
     expect(s).not.toContain('modo APLICAR');
@@ -70,5 +78,52 @@ describe('scripts/preparar-constructor-sitio.sh', () => {
   });
   it.each([[[]], [['MAL_ID']], [['proyecto-prueba-1', '--otra']], [['proyecto-prueba-1', '--claves', 'MAL']]])('uso inválido %j da 2', (args) => {
     expect(correr(args, { PATH: '/usr/bin:/bin' }).status).toBe(2);
+  });
+});
+
+describe('scripts/preparar-constructor-sitio.sh --aplicar (gcloud sustituto)', () => {
+  it('ejecuta los pasos, pasa el secreto por stdin y no imprime el id del proyecto aunque gcloud lo haga', () => {
+    const dir = mkdtempSync(join(tmpdir(), 'prep-constructor-'));
+    try {
+      writeFileSync(join(dir, 'gcloud'), `#!/usr/bin/env bash
+echo "gcloud $*" >> "${dir}/llamadas.txt"
+[[ "$*" == *"versions list"* ]] && exit 0
+echo "salida de gcloud para proyecto-prueba-1 y f@proyecto-prueba-1.iam.gserviceaccount.com"
+if [[ "$1 $2" == "secrets versions" && "$3" == add ]]; then cat > "${dir}/stdin.txt"; fi
+exit 0
+`);
+      chmodSync(join(dir, 'gcloud'), 0o755);
+      const r = spawnSync('bash', [resolve(raiz, 'scripts/preparar-constructor-sitio.sh'), 'proyecto-prueba-1', '--aplicar'], {
+        env: {
+          PATH: `${dir}:/usr/bin:/bin`,
+          CUENTA_FUNCIONES: 'f@proyecto-prueba-1.iam.gserviceaccount.com',
+          CUENTA_DESPLIEGUE: 'd@proyecto-prueba-1.iam.gserviceaccount.com',
+          COLA_TAREAS: 'cola-prueba',
+          SITIO_RECONSTRUCCION_SECRETO: 'valor-secreto-xyz',
+        },
+        encoding: 'utf8',
+      });
+      expect(r.status).toBe(0);
+      expect(r.stdout).not.toContain('proyecto-prueba-1');
+      expect(r.stdout).not.toContain('valor-secreto-xyz');
+      const llamadas = readFileSync(join(dir, 'llamadas.txt'), 'utf8');
+      expect(llamadas).not.toContain('valor-secreto-xyz');
+      expect(llamadas).toContain('tasks queues add-iam-policy-binding cola-prueba');
+      expect(llamadas).toContain('builds set-default-service-account');
+      expect(readFileSync(join(dir, 'stdin.txt'), 'utf8')).toBe('valor-secreto-xyz');
+    } finally {
+      rmSync(dir, { recursive: true, force: true });
+    }
+  });
+  it('--aplicar exige COLA_TAREAS', () => {
+    const r = spawnSync('bash', [resolve(raiz, 'scripts/preparar-constructor-sitio.sh'), 'proyecto-prueba-1', '--aplicar'], {
+      env: {
+        PATH: '/usr/bin:/bin',
+        CUENTA_FUNCIONES: 'f@proyecto-prueba-1.iam.gserviceaccount.com',
+        CUENTA_DESPLIEGUE: 'd@proyecto-prueba-1.iam.gserviceaccount.com',
+      },
+      encoding: 'utf8',
+    });
+    expect(r.status).toBe(2);
   });
 });
