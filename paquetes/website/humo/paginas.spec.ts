@@ -56,3 +56,22 @@ test.describe('catálogo de más de una página', () => {
     });
   }
 });
+
+// Guardia de regresión: a 390 px el catálogo no debe desbordar ni perder el margen lateral.
+test.describe('catálogo en móvil de 390 px', () => {
+  test.use({ viewport: { width: 390, height: 844 } });
+
+  test('/productos no desborda y conserva el margen lateral', async ({ page }) => {
+    await simularApi(page);
+    await decidirConsentimiento(page, false, false);
+    await page.goto('/productos');
+    await page.waitForLoadState('networkidle');
+    const m = await page.evaluate(() => ({
+      scroll: document.documentElement.scrollWidth,
+      cliente: document.documentElement.clientWidth,
+      izquierdo: document.querySelector('.catalogo')?.getBoundingClientRect().left ?? -1,
+    }));
+    expect(m.scroll).toBeLessThanOrEqual(m.cliente);
+    expect(m.izquierdo).toBeGreaterThanOrEqual(16);
+  });
+});
