@@ -1,6 +1,7 @@
 // `LecturaRecibos` de Recibos sobre Firestore: consultas indexadas por número (prefijo o exacto sin serie) y por fecha.
 // La búsqueda por cliente y el acotado final los completa `buscarComprobantes`.
 import type { Firestore, Query } from 'firebase-admin/firestore';
+import { interpretarNumeroRecibo, numeroDeRecibo } from '@novutienda/nucleo';
 import type { LecturaRecibos, Recibo } from '@novutienda/recibos';
 
 /** Tope de documentos que una consulta puede traer antes de filtrar en memoria. */
@@ -28,7 +29,13 @@ export function crearLecturaRecibos(firestore: Firestore): LecturaRecibos {
       let q: Query = firestore.collection(`tenants/${tenantId}/recibos`);
       // Las series son mayúsculas: la búsqueda no distingue mayúsculas porque se normaliza aquí.
       const numero = filtro.numero?.trim().toUpperCase();
-      if (numero !== undefined && numero.includes('-')) {
+      const conSerie = numero === undefined ? null : interpretarNumeroRecibo(numero);
+      // Con ceros a la izquierda y menos de seis dígitos («A-0000») es un prefijo que se escribe a medias, no un número.
+      const digitos = numero?.replace(/^[A-Z\s-]+/, '') ?? '';
+      if (conSerie?.serie !== undefined && (digitos.length === LARGO_CORRELATIVO || !digitos.startsWith('0'))) {
+        // Forma corta con serie («A6», «A-6», «A-000006»): consulta exacta por el número impreso.
+        q = q.where('numero', '==', numeroDeRecibo(conSerie.serie, conSerie.numero));
+      } else if (numero !== undefined && numero.includes('-')) {
         // Número con serie (A-0001…): prefijo indexado; el fragmento intermedio lo filtra el módulo.
         q = q.where('numero', '>=', numero).where('numero', '<=', `${numero}${FIN_PREFIJO}`).orderBy('numero', 'desc');
       } else if (numero !== undefined && /^\d{1,6}$/.test(numero)) {

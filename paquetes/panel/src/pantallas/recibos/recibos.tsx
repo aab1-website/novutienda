@@ -1,5 +1,6 @@
 import type { JSX } from 'preact';
 import { useState } from 'preact/hooks';
+import { aliasRecibo } from '@novutienda/nucleo';
 import type { ConsultaArchivo, EstadoEnvio, Recibo } from '../../api/tipos.js';
 import { Boton, Campo, ConCarga, Seccion, fechaHora } from '../../ui/comun.js';
 import { Dialogo } from '../../ui/dialogo.js';
@@ -11,6 +12,12 @@ import { formatearMonto } from '../../util/dinero.js';
 
 /** Tope de la lista que devuelve el servidor por consulta. */
 export const TOPE_LISTA = 50;
+
+/** Formas cortas de un número impreso («A-000006»: A6, A-6, 6). */
+function aliasDe(numero: string): string[] {
+  const m = /^([A-Za-z]+)-(\d+)$/.exec(numero);
+  return m?.[1] !== undefined && m[2] !== undefined ? aliasRecibo(m[1], Number(m[2])) : [];
+}
 
 const TEXTO_ENVIO: Record<EstadoEnvio, string> = {
   no_enviado: 'Sin enviar',
@@ -72,7 +79,7 @@ export function PantallaRecibos(): JSX.Element {
               clave={(r) => r.reciboId}
               porPagina={25}
               vistaCelular="tarjetas"
-              buscar={{ etiqueta: 'Buscar en esta lista', en: (r) => [r.numero, r.cliente?.nombre ?? '', r.facturaSuma ?? ''] }}
+              buscar={{ etiqueta: 'Buscar en esta lista', en: (r) => [r.numero, ...aliasDe(r.numero), r.cliente?.nombre ?? '', r.facturaSuma ?? ''] }}
               cortada={recibos.length >= TOPE_LISTA ? { mostradas: recibos.length, mensaje: `Se muestran los ${String(recibos.length)} recibos más recientes; puede haber más. Acote la búsqueda por número, cliente o fechas para ver el resto.` } : undefined}
               vacio={{ titulo: 'No hay recibos que coincidan' }}
               columnas={[

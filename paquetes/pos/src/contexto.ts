@@ -1,4 +1,5 @@
 import {
+  numeroDeRecibo,
   esTenantIdValido,
   leerCotizacionDe,
   versionDeEventos,
@@ -115,7 +116,7 @@ export const rutaCobroCredito = (t: string, id: string): string => `tenants/${t}
 export const rutaContadorRecibo = (t: string, serie: string): string => `tenants/${t}/contadores/recibo_${serie}`;
 
 /** Número legible del recibo: serie y correlativo con ceros (A-000123). El POS es el único que numera. */
-export const formatearNumeroRecibo = (serie: string, correlativo: number): string => `${serie}-${String(correlativo).padStart(6, '0')}`;
+export const formatearNumeroRecibo = (serie: string, correlativo: number): string => numeroDeRecibo(serie, correlativo);
 
 /** Lee un documento y exige que exista. */
 export async function leerObligatorio(tx: TransaccionIdentidad, ruta: string): Promise<Datos | undefined> {
