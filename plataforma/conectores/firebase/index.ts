@@ -23,3 +23,5 @@ export {
   crearConstructorSitio, ErrorConstructorSitio, interpretarAvisoBuild, leerSitios, REGION_CONSTRUCTOR, SECRETO_RECONSTRUCCION,
 } from './constructor-sitio.js';
 export type { AvisoBuild, FetchConstructor, OpcionesConstructorSitio, SitioDeConstruccion } from './constructor-sitio.js';
+export { crearLectorSitios } from './secreto-sitios.js';
+export type { FetchSecreto, OpcionesLectorSitios } from './secreto-sitios.js';

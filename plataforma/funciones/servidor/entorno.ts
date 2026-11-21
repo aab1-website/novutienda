@@ -15,7 +15,7 @@ import { crearLectorComercial, type LectorComercial } from '../../coordinador/co
 import { crearLectorHojas } from '../../coordinador/lector-hojas.js';
 import { crearCatalogoConsola, crearLogoDelNegocio, almacenCotizacionesDesde, catalogoParaPos, inventariosParaPos, type LogoDelNegocio } from '../../coordinador/index.js';
 import {
-  appCheckReal, appCheckSimulado, crearAlmacenMedios, crearColaSitio, crearConstructorSitio, leerSitios, esEntornoDePruebas, crearAuthMin, crearBaseDatos, crearConsultaSubidas, crearEjecutorRecibos, crearGuardarContacto, crearIndiceInvitaciones, crearLimiteTasa,
+  appCheckReal, appCheckSimulado, crearAlmacenMedios, crearColaSitio, crearConstructorSitio, crearLectorSitios, esEntornoDePruebas, crearAuthMin, crearBaseDatos, crearConsultaSubidas, crearEjecutorRecibos, crearGuardarContacto, crearIndiceInvitaciones, crearLimiteTasa,
   crearLecturaRecibos, crearLectorDisponibilidad, crearProcesadorMedios, recaptchaEnterprise, recaptchaSimulado,
   type BaseDatosFirestore, type Bucket,
 } from '../../conectores/firebase/index.js';
@@ -197,8 +197,24 @@ export const FUNCION_TAREA_SITIO = 'construirSitio';
 /** Modo de esta instancia: `google` solo con el valor exacto del parámetro. */
 export const constructorSitioEsGoogle = (): boolean => modoConstructorSitio(PARAMETROS.constructorSitioModo.value()) === 'google';
 
-/** Sitios por tenant (`SITIOS_TENANT`); solo se lee en modo `google` y dentro de un manejador. */
-export const sitiosDeLaInstancia = (): ReturnType<typeof leerSitios> => leerSitios(SECRETOS.sitiosTenant.value());
+const proyectoDeLaInstancia = (): string => process.env['GCLOUD_PROJECT'] ?? process.env['GOOGLE_CLOUD_PROJECT'] ?? '';
+
+const tokenDeLaInstancia = async (): Promise<string> => {
+  const credencial = getApps()[0]?.options.credential;
+  if (credencial === undefined) throw new Error('sin credenciales');
+  return (await credencial.getAccessToken()).access_token;
+};
+
+let lectorSitios: ReturnType<typeof crearLectorSitios> | undefined;
+
+/**
+ * Sitios por tenant (`SITIOS_TENANT`), leídos de Secret Manager en tiempo de ejecución con caché por instancia. Solo en modo `google`:
+ * no es un `defineSecret`, así el despliegue en modo `github` no exige que el secreto exista.
+ */
+export function sitiosDeLaInstancia(): ReturnType<ReturnType<typeof crearLectorSitios>> {
+  lectorSitios ??= crearLectorSitios({ proyecto: proyectoDeLaInstancia(), nombre: 'SITIOS_TENANT', tokenAcceso: tokenDeLaInstancia });
+  return lectorSitios();
+}
 
 /**
  * Dependencias de la construcción en Cloud Build, o `undefined` en modo `github` (todo queda como antes y no se lee ningún secreto).
@@ -207,13 +223,12 @@ export const sitiosDeLaInstancia = (): ReturnType<typeof leerSitios> => leerSiti
 export function construccionDeLaInstancia(e: Entorno): DepsTareaConstruccion | undefined {
   if (!constructorSitioEsGoogle()) return undefined;
   const c = exigirConfiguracionConstructor({
-    proyecto: process.env['GCLOUD_PROJECT'] ?? process.env['GOOGLE_CLOUD_PROJECT'] ?? '',
+    proyecto: proyectoDeLaInstancia(),
     imagen: PARAMETROS.constructorSitioImagen.value(), cuenta: PARAMETROS.constructorSitioCuenta.value(),
     maquina: PARAMETROS.constructorSitioMaquina.value(), apiKey: PARAMETROS.viteFirebaseApiKey.value(),
     appId: PARAMETROS.viteFirebaseAppId.value(), recaptcha: PARAMETROS.viteRecaptchaSitio.value(),
     panel: PARAMETROS.sitioPanelId.value(), mediosBaseUrl: PARAMETROS.mediosBaseUrl.value(),
   });
-  const credencial = getApps()[0]?.options.credential;
   return {
     almacen: almacenConstruccionFirestore(e.firestore),
     reloj: { ahora: e.ahora },
@@ -223,10 +238,7 @@ export function construccionDeLaInstancia(e: Entorno): DepsTareaConstruccion | u
     constructorSitio: crearConstructorSitio({
       proyecto: c.proyecto, imagen: c.imagen, cuentaServicio: c.cuentaServicio, entorno: c.entorno, sitios: sitiosDeLaInstancia,
       ...(c.maquina === undefined ? {} : { maquina: c.maquina }),
-      tokenAcceso: async () => {
-        if (credencial === undefined) throw new Error('sin credenciales');
-        return (await credencial.getAccessToken()).access_token;
-      },
+      tokenAcceso: tokenDeLaInstancia,
     }),
   };
 }

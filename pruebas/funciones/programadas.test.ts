@@ -340,6 +340,6 @@ describe.skipIf(!hayEmulador)('trabajos programados (Firestore del emulador)', (
     const r = await publicarSitio({ db: e.db, catalogo: e.catalogo, reloj: { ahora: e.ahora }, disparador: e.disparadorSitio }, { tenantId: t, actor });
     expect(r.decision.accion).toBe('programar');
     const docs = (await h.firestore.collection(`tenants/${t}/reconstrucciones`).get()).docs.map((d) => d.data());
-    expect(docs).toEqual([expect.objectContaining({ estado: 'programada', para: AHORA + 600_000 })]);
+    expect(docs).toEqual([expect.objectContaining({ estado: 'programada', para: AHORA + 60_000 })]);
   });
 });

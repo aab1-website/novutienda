@@ -178,7 +178,7 @@ export const limpiezaSubidas = onSchedule({ ...horarioDe('limpiezaSubidas'), mem
 
 // El token de GitHub (DS-3) se vincula SOLO a esta función; sin él (o sin `GITHUB_REPO_SITIO`) el disparo queda deshabilitado.
 // En modo `google` la red de seguridad corre sobre Cloud Build (`construccion`) y no se avisa a GitHub; en `github` todo igual que antes.
-export const temporizadorSitio = onSchedule({ ...horarioDe('temporizadorSitio'), secrets: [SECRETOS.disparoSitio, SECRETOS.sitiosTenant] }, async () => {
+export const temporizadorSitio = onSchedule({ ...horarioDe('temporizadorSitio'), secrets: [SECRETOS.disparoSitio] }, async () => {
   const e = entorno();
   const construccion = construccionDeLaInstancia(e);
   if (construccion !== undefined) {
@@ -192,7 +192,7 @@ export const temporizadorSitio = onSchedule({ ...horarioDe('temporizadorSitio'),
 // ---- Construcción del sitio en Cloud Build (DR-CB). En modo `github` ambas funciones no hacen nada. ------------------------------------------------
 // Tarea agendada por `programar` (Cloud Tasks): despierta la construcción a la hora. Solo Cloud Tasks la invoca (invoker privado por defecto).
 export const construirSitio = onTaskDispatched(
-  { retryConfig: { maxAttempts: 3, minBackoffSeconds: 10 }, rateLimits: { maxConcurrentDispatches: 3 }, secrets: [SECRETOS.sitiosTenant] },
+  { retryConfig: { maxAttempts: 3, minBackoffSeconds: 10 }, rateLimits: { maxConcurrentDispatches: 3 } },
   async (req) => {
     const deps = construccionDeLaInstancia(entorno());
     if (deps === undefined) return;
@@ -206,10 +206,10 @@ export const construirSitio = onTaskDispatched(
 );
 
 // Aviso de Cloud Build al terminar cada construcción (tema `cloud-builds` del proyecto). Solo atiende los builds con la etiqueta `sitio-<clave>`.
-export const avisoConstruccionSitio = onMessagePublished({ topic: 'cloud-builds', retry: false, secrets: [SECRETOS.sitiosTenant] }, async (ev) => {
+export const avisoConstruccionSitio = onMessagePublished({ topic: 'cloud-builds', retry: false }, async (ev) => {
   const deps = construccionDeLaInstancia(entorno());
   if (deps === undefined) return;
-  const aviso = interpretarAvisoBuild(ev.data.message.json, sitiosDeLaInstancia());
+  const aviso = interpretarAvisoBuild(ev.data.message.json, await sitiosDeLaInstancia());
   if (aviso === undefined) return;
   logger.info('aviso de construcción del sitio', { resultado: await manejarAvisoConstruccion(deps, aviso) });
 });

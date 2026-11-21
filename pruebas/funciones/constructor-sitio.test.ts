@@ -2,7 +2,7 @@
 // Sin red: dobles de `fetch` y de la cola. Identificadores ficticios.
 import { describe, expect, it } from 'vitest';
 import {
-  crearColaSitio, crearConstructorSitio, ErrorConstructorSitio, interpretarAvisoBuild, leerSitios,
+  crearColaSitio, crearConstructorSitio, crearLectorSitios, ErrorConstructorSitio, interpretarAvisoBuild, leerSitios,
   type ColaDeTareas, type FetchConstructor, type SitioDeConstruccion,
 } from '../../plataforma/conectores/firebase/index.js';
 import { exigirConfiguracionConstructor, modoConstructorSitio, ConfiguracionIncompleta } from '../../plataforma/funciones/servidor/config.js';
@@ -32,7 +32,7 @@ const operacion = { name: 'projects/1/locations/us-east1/operations/op', metadat
 
 function constructor(fetchFn: FetchConstructor, extra: Record<string, unknown> = {}) {
   return crearConstructorSitio({
-    proyecto: 'proy-prueba', imagen: IMAGEN, cuentaServicio: 'sitio-constructor', sitios: () => SITIOS, entorno: ENTORNO,
+    proyecto: 'proy-prueba', imagen: IMAGEN, cuentaServicio: 'sitio-constructor', sitios: () => Promise.resolve(SITIOS), entorno: ENTORNO,
     tokenAcceso: () => Promise.resolve('TOKEN-DE-ACCESO'), fetchFn, ...extra,
   });
 }
@@ -139,6 +139,52 @@ describe('SITIOS_TENANT', () => {
     expect(() => leerSitios('[]')).toThrow(/lista/);
     expect(() => leerSitios(JSON.stringify([{ ...SITIOS[0], url: 'http://x.example.com' }]))).toThrow(/entrada 1/);
     expect(() => leerSitios(JSON.stringify([SITIOS[0], SITIOS[0]]))).toThrow(/repetida/);
+  });
+});
+
+describe('lectura de SITIOS_TENANT desde Secret Manager', () => {
+  const dato = Buffer.from(JSON.stringify(SITIOS)).toString('base64');
+  function lector(r: { ok?: boolean; status?: number; cuerpo?: unknown } | Error, reloj = { t: 0 }) {
+    const urls: string[] = [];
+    const cabeceras: Record<string, string>[] = [];
+    const l = crearLectorSitios({
+      proyecto: 'proy-prueba', nombre: 'SITIOS_TENANT', tokenAcceso: () => Promise.resolve('TOKEN-SM'), ahora: () => reloj.t,
+      fetchFn: (url, init) => {
+        urls.push(url); cabeceras.push(init.headers);
+        if (r instanceof Error) return Promise.reject(r);
+        return Promise.resolve({ ok: r.ok ?? true, status: r.status ?? 200, json: () => Promise.resolve(r.cuerpo) });
+      },
+    });
+    return { l, urls, cabeceras, reloj };
+  }
+
+  it('lee la última versión, decodifica y guarda en caché 5 minutos', async () => {
+    const x = lector({ cuerpo: { payload: { data: dato } } });
+    expect(await x.l()).toEqual(SITIOS);
+    expect(x.urls).toEqual(['https://secretmanager.googleapis.com/v1/projects/proy-prueba/secrets/SITIOS_TENANT/versions/latest:access']);
+    expect(x.cabeceras[0]).toEqual({ Authorization: 'Bearer TOKEN-SM' });
+    x.reloj.t = 299_000;
+    await x.l();
+    expect(x.urls).toHaveLength(1);
+    x.reloj.t = 301_000;
+    await x.l();
+    expect(x.urls).toHaveLength(2);
+  });
+
+  it('errores: estado HTTP, red y contenido inválido, sin valores en el mensaje', async () => {
+    const http = await lector({ ok: false, status: 403, cuerpo: { error: 'detalle-secreto' } }).l().catch((e: unknown) => e);
+    expect((http as ErrorConstructorSitio).estado).toBe(403);
+    expect((http as Error).message).not.toContain('detalle-secreto');
+    expect(((await lector(new Error('x')).l().catch((e: unknown) => e)) as ErrorConstructorSitio).estado).toBe('red');
+    expect(((await lector({ cuerpo: {} }).l().catch((e: unknown) => e)) as ErrorConstructorSitio).estado).toBe('respuesta');
+    await expect(lector({ cuerpo: { payload: { data: Buffer.from('no json').toString('base64') } } }).l()).rejects.toThrow(/JSON/);
+  });
+
+  it('el despliegue no enlaza SITIOS_TENANT con defineSecret (no exige que exista en modo github)', async () => {
+    const { readFileSync } = await import('node:fs');
+    for (const f of ['config.ts', 'index.ts', 'entorno.ts']) {
+      expect(readFileSync(new URL(`../../plataforma/funciones/servidor/${f}`, import.meta.url), 'utf8')).not.toMatch(/defineSecret\('SITIOS_TENANT'\)|SECRETOS\.sitiosTenant/);
+    }
   });
 });
 

@@ -78,8 +78,8 @@ export interface OpcionesConstructorSitio {
   readonly imagen: string;
   /** Cuenta de servicio del build: nombre corto o correo. Debe tener solo el rol mínimo de DR-CB. */
   readonly cuentaServicio: string;
-  /** Sitios por tenant; se lee al lanzar (el secreto `SITIOS_TENANT` solo se puede leer dentro de un manejador). */
-  readonly sitios: () => readonly SitioDeConstruccion[];
+  /** Sitios por tenant; se lee al lanzar (`SITIOS_TENANT` se lee de Secret Manager en tiempo de ejecución, ver `crearLectorSitios`). */
+  readonly sitios: () => Promise<readonly SitioDeConstruccion[]>;
   /** Variables públicas del build (`VITE_*`, `MEDIOS_BASE_URL`, `FIREBASE_SITE_PANEL`, …). Nunca secretos. */
   readonly entorno: Readonly<Record<string, string>>;
   readonly tokenAcceso: () => Promise<string>;
@@ -105,7 +105,7 @@ export function crearConstructorSitio(o: OpcionesConstructorSitio): ConstructorS
   return {
     async lanzar(tenantId: string, trabajoId: string): Promise<ConstruccionLanzada> {
       if (!RE_TRABAJO.test(trabajoId)) throw new ErrorConstructorSitio('id de trabajo inválido');
-      const sitio = o.sitios().find((s) => s.tenant === tenantId);
+      const sitio = (await o.sitios()).find((s) => s.tenant === tenantId);
       if (sitio === undefined) throw new ErrorConstructorSitio('el tenant no tiene sitio en SITIOS_TENANT');
       const secretoNegocio = `SITIO_NEGOCIO_${sitio.clave.toUpperCase()}`;
       const secretos = [SECRETO_RECONSTRUCCION, secretoNegocio];

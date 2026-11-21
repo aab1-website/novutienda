@@ -91,8 +91,6 @@ export const SECRETOS = {
    * Actions. Vinculado SOLO a `temporizadorSitio`. Vacío o con forma inválida = disparo deshabilitado.
    */
   disparoSitio: defineSecret('GITHUB_DISPARO_SITIO'),
-  /** JSON `[{clave, tenant, sitio, url}]` de los sitios por tenant (identificadores del cliente: por eso es secreto). Solo en modo `google`. */
-  sitiosTenant: defineSecret('SITIOS_TENANT'),
 } as const;
 
 /** Entero positivo de un parámetro de texto; si no es válido, el valor por defecto. */
