@@ -93,7 +93,7 @@ env:
   NODE_VERSION: ${{ vars.NODE_VERSION || '22' }}
   # firebase-tools fijado: verificar en npm antes de subir de versión (hubo una
   # regresión de ADC en 15.22.2, jun-2026).
-  FIREBASE_TOOLS_VERSION: '15.28.1'
+  FIREBASE_TOOLS_VERSION: '15.37.0'
 
 jobs:
   # ---------------------------------------------------------------------------

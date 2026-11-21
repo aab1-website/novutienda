@@ -106,7 +106,7 @@ permissions:
 env:
   NODE_VERSION: ${{ vars.NODE_VERSION || '22' }}
   # Mismo firebase-tools que ci-node-firebase.yml.
-  FIREBASE_TOOLS_VERSION: '15.28.1'
+  FIREBASE_TOOLS_VERSION: '15.37.0'
 
 jobs:
   # ---------------------------------------------------------------------------

@@ -20,13 +20,18 @@ describe('scripts/constructor-sitio/Dockerfile', () => {
     expect(dockerfile).toContain('pnpm install --frozen-lockfile');
     expect(dockerfile).toContain('reconstruir-sitio.sh');
   });
-  it('firebase-tools y pnpm coinciden con el script, deploy.sh y package.json', () => {
+  it('firebase-tools y pnpm coinciden con los workflows, el script, deploy.sh y package.json', () => {
     const dep = /FIREBASE_TOOLS_VERSION:-([\d.]+)\}/.exec(leer('deploy.sh'))?.[1];
+    // Los dos workflows que instalan firebase-tools (CI y reconstrucción del sitio por GitHub).
+    const wfCi = /FIREBASE_TOOLS_VERSION: '([\d.]+)'/.exec(leer('.github/workflows/ci-node-firebase.yml'))?.[1];
+    const wfSitio = /FIREBASE_TOOLS_VERSION: '([\d.]+)'/.exec(leer('.github/workflows/reconstruir-sitio.yml'))?.[1];
     const df = /^ARG FIREBASE_TOOLS_VERSION=([\d.]+)$/m.exec(dockerfile)?.[1];
     const sh = /FIREBASE_TOOLS_VERSION:-([\d.]+)\}/.exec(leer('scripts/reconstruir-sitio.sh'))?.[1];
     expect(df).toBeDefined();
     expect(df).toBe(dep);
     expect(df).toBe(sh);
+    expect(wfCi).toBe(df);
+    expect(wfSitio).toBe(df);
     const pnpm = /"packageManager": "pnpm@([\d.]+)"/.exec(leer('package.json'))?.[1];
     expect(/^ARG PNPM_VERSION=([\d.]+)$/m.exec(dockerfile)?.[1]).toBe(pnpm);
   });
