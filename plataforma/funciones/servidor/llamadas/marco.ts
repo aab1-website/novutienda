@@ -83,7 +83,7 @@ export function accion<E extends z.ZodType>(def: DefAccion<E>): Implementacion {
         // Solo rutas y tipos esperados: nunca se devuelve el valor recibido.
         const campos = r.error.issues.slice(0, 10).map((i) => `${i.path.join('.') || 'datos'}: ${i.message}`);
         // Para el registro: solo ruta y code (el mensaje de un enum incluye el valor recibido).
-        const camposLog = r.error.issues.slice(0, 10).map((i) => ({ path: i.path.join('.') || 'datos', code: i.code }));
+        const camposLog = r.error.issues.slice(0, 10).map((i) => ({ path: i.path.join('.').slice(0, 100) || 'datos', code: i.code }));
         throw new RechazoDeEsquema('Los datos enviados no son válidos.', { campos }, camposLog);
       }
       return def.ejecutar(c, r.data);
@@ -133,7 +133,9 @@ export function comoHttpsError(error: unknown, contexto: Readonly<Record<string,
     // Los HttpsError nacidos en el borde también dejan rastro: solo el código, nunca el mensaje ni datos de la petición.
     const codigo = (h.details as { codigo?: unknown }).codigo;
     const campos = error instanceof RechazoDeEsquema ? error.camposLog : undefined;
-    logger.warn('callable rechazado', { ...contexto, codigo: typeof codigo === 'string' ? codigo : h.code, ...(campos === undefined ? {} : { campos }) });
+    // Solo los rechazos de datos (`invalid-argument`, `failed-precondition`) van como aviso; los esperados (permisos, no encontrado) en `debug`.
+    const nivel = h.code === 'invalid-argument' || h.code === 'failed-precondition' ? 'warn' : 'debug';
+    logger[nivel]('callable rechazado', { ...contexto, codigo: typeof codigo === 'string' ? codigo : h.code, ...(campos === undefined ? {} : { campos }) });
     return h;
   }
   if (error instanceof RedondeoInvalido) {
@@ -168,12 +170,13 @@ export function crearManejador(o: OpcionesManejador): (req: CallableRequest) => 
       if (!sobre.success) throw new HttpsError('invalid-argument', 'La petición debe traer accion y tenantId.');
       const { accion: nombre, tenantId, datos } = sobre.data;
       marca['accion'] = nombre;
-      marca['tenantId'] = tenantId;
       const def = Object.hasOwn(o.acciones, nombre) ? o.acciones[nombre] : undefined;
       if (def === undefined) throw new HttpsError('invalid-argument', 'Acción desconocida.');
       const e = o.entorno();
       tenantDelError = tenantId;
       const sesion = await autenticar(e, req);
+      // Solo después de autenticar: antes, el tenantId es un dato arbitrario de quien llama.
+      marca['tenantId'] = tenantId;
       marca['uid'] = sesion.uid;
       let rol: Rol | undefined;
       let tenantSesion: SesionTenant | undefined;

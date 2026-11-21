@@ -1,6 +1,8 @@
-// El marco registra los rechazos de los callables: ruta y code de zod (nunca mensaje ni valor) y el código de los HttpsError.
+// El registro de un callable rechazado lleva el código del módulo y un motivo corto y limpio, nunca el valor enviado.
+// Sin emulador: se espía el logger.
 import { beforeEach, describe, expect, it, vi } from 'vitest';
-import { accion, actorPos, comoHttpsError, type Contexto } from '../../plataforma/funciones/servidor/llamadas/marco.js';
+import { ErrorRecibo } from '@novutienda/recibos';
+import { accion, actorPos, comoHttpsError, motivoLimpio, type Contexto } from '../../plataforma/funciones/servidor/llamadas/marco.js';
 
 // El logger de `firebase-functions` toma `console.warn` al cargarse: se intercepta antes de los imports (hoisted).
 const avisos = vi.hoisted(() => {
@@ -26,6 +28,25 @@ const esquema = {
 
 beforeEach(() => { avisos.length = 0; });
 
+describe('registro de «callable rechazado»', () => {
+  it('agrega codigoModulo y motivo, limpia símbolos y recorta', () => {
+    const secreto = 'Juan-Perez-NIT-1234567<script>';
+    comoHttpsError(new ErrorRecibo(`Campo desconocido: ${secreto}`), { modulo: 'recibos', accion: 'guardarDatos' });
+    const linea = avisos.find((l) => l.includes('callable rechazado'));
+    expect(linea).toBeDefined();
+    const datos = JSON.parse(linea as string) as Record<string, unknown>;
+    expect(datos['codigoModulo']).toBe('recibo-invalido');
+    expect(String(datos['motivo'])).toMatch(/^Campo desconocido/);
+    expect(linea).not.toContain('<script>');
+    expect(linea).not.toContain('>');
+  });
+
+  it('recorta a 120 caracteres y limpia los símbolos', () => {
+    expect(motivoLimpio('a'.repeat(300))).toHaveLength(120);
+    expect(motivoLimpio('Campo: <b>{"x":1}</b>')).toBe('Campo: bx:1b');
+  });
+});
+
 describe('registro de rechazos del marco', () => {
   it('esquema inválido: registra warn con ruta y code, sin mensaje ni valor recibido', () => {
     const impl = accion({ esquema, ejecutar: async () => 1 });
@@ -49,18 +70,31 @@ describe('registro de rechazos del marco', () => {
     expect(linea).not.toContain('SECRETO-123');
   });
 
-  it('otro HttpsError: registra su código sin el mensaje', () => {
+  it('permission-denied (esperado): no sube a aviso, y el error sale con su código', () => {
     let error: unknown;
     try {
       actorPos({ rol: undefined } as Contexto);
     } catch (e) {
       error = e;
     }
+    const h = comoHttpsError(error, marca);
+    expect(h.code).toBe('permission-denied');
+    expect(avisos).toHaveLength(0);
+  });
+
+  it('la ruta de un campo se recorta a 100 caracteres', () => {
+    const largo = {
+      safeParse: () => ({ success: false, error: { issues: [{ path: ['x'.repeat(500)], code: 'invalid_type', message: 'm' }] } }),
+    } as unknown as Parameters<typeof accion>[0]['esquema'];
+    let error: unknown;
+    try {
+      void accion({ esquema: largo, ejecutar: async () => 1 }).ejecutar({} as Contexto, {});
+    } catch (e) {
+      error = e;
+    }
     comoHttpsError(error, marca);
     const linea = avisos[0] ?? '';
-    const datos = JSON.parse(linea.slice(linea.indexOf('{'))) as Record<string, unknown>;
-    expect(datos).toMatchObject({ ...marca });
-    expect(typeof datos['codigo']).toBe('string');
-    expect(linea).not.toContain('No tiene permiso');
+    const datos = JSON.parse(linea.slice(linea.indexOf('{'))) as { campos: { path: string }[] };
+    expect(datos.campos[0]?.path).toHaveLength(100);
   });
 });
