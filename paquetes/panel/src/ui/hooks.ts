@@ -61,8 +61,14 @@ export interface Carga<T> {
   readonly recargar: () => void;
 }
 
+export interface OpcionesCarga {
+  /** Vuelve a cargar (sin parpadeo) cuando la pestaña vuelve a verse (`visibilitychange`) o recupera el foco (`focus`). */
+  readonly alVolver?: boolean;
+}
+
 /** Carga datos al montar y cuando cambian las dependencias; el error se traduce a un mensaje legible. */
-export function useCarga<T>(fn: () => Promise<T>, deps: readonly unknown[], cadaMs?: number): Carga<T> {
+export function useCarga<T>(fn: () => Promise<T>, deps: readonly unknown[], cadaMs?: number, opciones?: OpcionesCarga): Carga<T> {
+  const alVolver = opciones?.alVolver === true;
   const [datos, setDatos] = useState<T | undefined>(undefined);
   const [error, setError] = useState<string | null>(null);
   const [cargando, setCargando] = useState(true);
@@ -101,11 +107,23 @@ export function useCarga<T>(fn: () => Promise<T>, deps: readonly unknown[], cada
     };
     cargar(!mismas);
     const t = cadaMs === undefined ? undefined : setInterval(() => cargar(false), cadaMs);
+    const volver = (): void => {
+      if (document.visibilityState === 'hidden') return;
+      cargar(false);
+    };
+    if (alVolver) {
+      document.addEventListener('visibilitychange', volver);
+      window.addEventListener('focus', volver);
+    }
     return () => {
       vivo = false;
       if (t !== undefined) clearInterval(t);
+      if (alVolver) {
+        document.removeEventListener('visibilitychange', volver);
+        window.removeEventListener('focus', volver);
+      }
     };
-  }, [...deps, version, cadaMs]);
+  }, [...deps, version, cadaMs, alVolver]);
 
   const recargar = useCallback(() => setVersion((v) => v + 1), []);
   return { datos, error, cargando, recargar };
