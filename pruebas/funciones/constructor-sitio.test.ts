@@ -52,7 +52,7 @@ describe('constructor del sitio (Cloud Build por REST)', () => {
       steps: [{
         name: IMAGEN,
         entrypoint: 'bash',
-        args: ['-c', 'bash /app/scripts/reconstruir-sitio.sh reconstruir; rc=$?; [ "$rc" = 10 ] && exit 0; exit "$rc"'],
+        args: ['-c', 'bash /app/scripts/reconstruir-sitio.sh reconstruir; rc=$$?; [ "$$rc" = 10 ] && exit 0; exit "$$rc"'],
         env: [
           'VITE_FIREBASE_PROJECT_ID=proy-prueba', 'VITE_FIREBASE_API_KEY=clave-publica', 'VITE_FIREBASE_APP_ID=app-id',
           'VITE_RECAPTCHA_ENTERPRISE_SITE_KEY=sitio-key', 'MEDIOS_BASE_URL=https://medios.example.com/', 'FIREBASE_SITE_PANEL=panel-prueba',

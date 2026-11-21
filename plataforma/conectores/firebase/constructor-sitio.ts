@@ -11,7 +11,7 @@ export const REGION_CONSTRUCTOR = 'us-east1';
 export const SECRETO_RECONSTRUCCION = 'SITIO_RECONSTRUCCION_SECRETO';
 /**
  * El script termina con código 10 cuando no desplegó sin ser un fallo (409, respuesta `repetido`, sin pendiente). En Cloud Build un
- * paso con código distinto de 0 es FAILURE (y reintentaría); por eso el paso convierte 10 en 0. Así SUCCESS ya no prueba que se
+ * paso con código distinto de 0 es FAILURE (y reintentaría); por eso el paso convierte 10 en 0 (`$$` escapa el `$` para Cloud Build). Así SUCCESS ya no prueba que se
  * desplegó: el manejador del aviso debe comprobar en Firestore que el trabajo propio quedó `completada`.
  */
 const ORDEN_DEL_CONSTRUCTOR = 'bash /app/scripts/reconstruir-sitio.sh reconstruir; rc=$$?; [ "$$rc" = 10 ] && exit 0; exit "$$rc"';
