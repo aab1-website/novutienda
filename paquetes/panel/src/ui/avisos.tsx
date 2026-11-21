@@ -100,9 +100,16 @@ function AvisoVista({ aviso, cerrar }: { aviso: AvisoActivo; cerrar: (id: number
  * regiones vivas existen desde el montaje (un lector de pantalla solo anuncia lo que se inserta en una región ya
  * presente). Usan `aria-live` y no `role="status"/"alert"` para no duplicar esos roles en cada pantalla.
  */
-export function ProveedorAvisos({ children }: { children?: ComponentChildren }): JSX.Element {
+export function ProveedorAvisos({ children, reiniciarCon }: { children?: ComponentChildren; reiniciarCon?: string | undefined }): JSX.Element {
   const [lista, setLista] = useState<readonly AvisoActivo[]>([]);
   const contador = useRef(0);
+  // Cuando cambia el usuario (salir o entrar con otra cuenta) los avisos de la persona anterior no pasan a la siguiente.
+  const anterior = useRef(reiniciarCon);
+  useEffect(() => {
+    if (anterior.current === reiniciarCon) return;
+    anterior.current = reiniciarCon;
+    setLista([]);
+  }, [reiniciarCon]);
 
   const cerrar = useCallback((id: number) => setLista((l) => l.filter((a) => a.id !== id)), []);
   const agregar = useCallback((tipo: AvisoActivo['tipo'], texto: string, reintentar?: () => void, silencioso?: boolean): number => {

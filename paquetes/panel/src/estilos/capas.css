@@ -2,6 +2,8 @@
    Un solo corte de celular: 767.98px. Las variables --velo y --sombra salen de panel.css (una por tema). */
 html.sin-desplazar { overflow: hidden; }
 html { scroll-padding-bottom: 120px; }
+/* Alto de la cabecera de un diálogo (botón de 44 px, relleno y borde): en celular los avisos arrancan justo debajo. */
+:root { --alto-cabecera-dialogo: 65px; }
 
 .boton-icono { display: inline-flex; align-items: center; justify-content: center; flex: none; width: 44px; height: 44px; padding: 0; border: 1px solid transparent; border-radius: 12px; background: transparent; color: var(--texto); cursor: pointer; }
 .boton-icono:hover { border-color: var(--borde-control); color: var(--acento); }
@@ -15,7 +17,7 @@ html { scroll-padding-bottom: 120px; }
 .dialogo-lateral .dialogo { max-width: 640px; height: 100%; }
 .dialogo-derecha.dialogo-lateral .dialogo { border-left: 1px solid var(--borde); }
 .dialogo-izquierda.dialogo-lateral .dialogo { border-right: 1px solid var(--borde); }
-.dialogo-cabecera { display: flex; align-items: center; justify-content: space-between; gap: 12px; flex: none; padding: 10px 12px 10px 20px; border-bottom: 1px solid var(--borde); background: var(--superficie); }
+.dialogo-cabecera { box-sizing: border-box; min-height: var(--alto-cabecera-dialogo); display: flex; align-items: center; justify-content: space-between; gap: 12px; flex: none; padding: 10px 12px 10px 20px; border-bottom: 1px solid var(--borde); background: var(--superficie); }
 .dialogo-titulo { margin: 0; font-size: 20px; }
 .dialogo-cuerpo { flex: 1 1 auto; min-height: 0; overflow-y: auto; overscroll-behavior: contain; padding: 16px 20px; }
 .dialogo-descripcion { color: var(--texto-suave); }
@@ -43,6 +45,8 @@ html { scroll-padding-bottom: 120px; }
 
 @media (max-width: 767.98px) {
   .avisos { right: 0; left: 0; bottom: 0; width: auto; padding: 8px; padding-bottom: max(8px, env(safe-area-inset-bottom)); }
+  /* Con un diálogo abierto los avisos pasan arriba, bajo su cabecera: abajo taparían el pie y arriba, la «X». */
+  body:has(.dialogo-fondo) .avisos { top: var(--alto-cabecera-dialogo); bottom: auto; padding-top: 8px; padding-bottom: 8px; max-height: 40vh; overflow-y: auto; }
 }
 
 .campo-error { margin: 0; font-size: 14px; font-weight: 500; color: var(--peligro); }

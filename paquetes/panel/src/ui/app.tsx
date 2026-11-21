@@ -104,15 +104,15 @@ function Pantalla({ seccion, sub }: { seccion: string; sub: string }): JSX.Eleme
 }
 
 export function App(p: { sesion: Sesion; api: ClienteApi; almacen: AlmacenSubidas }): JSX.Element {
+  const usuario = useUsuario(p.sesion);
   return (
-    <ProveedorAvisos>
-      <AppInterna {...p} />
+    <ProveedorAvisos reiniciarCon={usuario?.uid}>
+      <AppInterna {...p} usuario={usuario} />
     </ProveedorAvisos>
   );
 }
 
-function AppInterna({ sesion, api, almacen }: { sesion: Sesion; api: ClienteApi; almacen: AlmacenSubidas }): JSX.Element {
-  const usuario = useUsuario(sesion);
+function AppInterna({ sesion, api, almacen, usuario }: { sesion: Sesion; api: ClienteApi; almacen: AlmacenSubidas; usuario: UsuarioSesion | null }): JSX.Element {
   const [vencida, setVencida] = useState(false);
   const rutaGuardada = useRef('');
   const yaVencida = useRef(false);

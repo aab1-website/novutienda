@@ -268,4 +268,20 @@ describe('9.1.2: sin turno se ve el catálogo, no se vende', () => {
     expect(screen.queryByRole('button', { name: /^Agregar/ })).toBeNull();
     expect(within(document.body).queryByRole('group', { name: 'Carrito' })).toBeNull();
   });
+  it('la lista en solo consulta se alcanza con teclado; la de venta no lo necesita', async () => {
+    const e = crearEntorno('caj');
+    ver(e, 'terminal');
+    await screen.findByRole('heading', { name: 'Productos (solo consulta)' });
+    await screen.findByText('Cable HDMI 2 m');
+    const lista = screen.getByRole('list', { name: 'Productos' });
+    expect(lista.getAttribute('tabindex')).toBe('0');
+    cleanup();
+    const e2 = crearEntorno('caj');
+    await e2.api.llamar('abrirTurno', { turnoId: uuid(), apertura: { BOB: 10000 } });
+    ver(e2, 'terminal');
+    await screen.findByRole('button', { name: 'Agregar Cable HDMI 2 m' });
+    const venta = document.querySelector('ul.lista-productos') as HTMLElement;
+    expect(venta.hasAttribute('tabindex')).toBe(false);
+    expect(venta.hasAttribute('aria-label')).toBe(false);
+  });
 });

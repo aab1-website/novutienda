@@ -89,6 +89,33 @@ describe('identificador del comercio', () => {
   });
 });
 
+describe('avisos y cambio de usuario', () => {
+  it('un error visible no pasa a la persona que entra después de «Salir»', async () => {
+    const sesion = new SesionDoble();
+    const entorno = crearEntorno('adm');
+    const base = entorno.api;
+    const api = {
+      llamar: (nombre: string, ...resto: unknown[]) => (nombre === 'guardarPlantilla' ? Promise.reject(new Error('La plantilla no se pudo guardar.')) : (base.llamar as (...a: unknown[]) => Promise<unknown>)(nombre, ...resto)),
+    } as unknown as typeof entorno.api;
+    render(h(App, { sesion, api, almacen: entorno.almacen }));
+    await entrar('adm@ejemplo.test', 'clave-adm-1');
+    await screen.findByRole('navigation', { name: 'Menú principal' });
+    window.location.hash = '#/configuracion';
+    const u = userEvent.setup();
+    await screen.findByRole('heading', { name: 'Datos del negocio' });
+    await u.type(screen.getByLabelText('Dirección'), ' 9');
+    await u.click(screen.getByRole('button', { name: 'Guardar datos del negocio' }));
+    await waitFor(() => expect(document.querySelectorAll('.aviso-error').length).toBeGreaterThan(0));
+    await u.click(screen.getByRole('button', { name: 'Salir' }));
+    await u.click(await screen.findByRole('button', { name: 'Salir sin guardar' }));
+    await screen.findByRole('button', { name: 'Entrar' });
+    await waitFor(() => expect(document.querySelectorAll('.aviso-error').length).toBe(0));
+    await entrar('sup@ejemplo.test', 'clave-sup-1');
+    await screen.findByRole('navigation', { name: 'Menú principal' });
+    expect(document.querySelectorAll('.aviso-error').length).toBe(0);
+  });
+});
+
 describe('menú por rol', () => {
   const items = (): string[] => within(screen.getByRole('navigation', { name: 'Menú principal' })).getAllByRole('link').map((a) => a.textContent ?? '');
   it('vendedor: Venta y Mis recibos', async () => {
