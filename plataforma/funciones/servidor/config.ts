@@ -69,6 +69,13 @@ export const PARAMETROS = {
   constructorSitioImagen: defineString('CONSTRUCTOR_SITIO_IMAGEN', { default: '' }),
   /** Cuenta de servicio del build (nombre corto o correo). Obligatoria solo en modo `google`. */
   constructorSitioCuenta: defineString('CONSTRUCTOR_SITIO_CUENTA', { default: '' }),
+  /**
+   * Cuenta de servicio PROPIA de las funciones que lanzan y consultan builds (`construirSitio`, `avisoConstruccionSitio`): es la única
+   * con permiso de crear builds y de actuar como `sitio-constructor`, y la única que lee `SITIOS_TENANT`. Vacío = la cuenta por defecto.
+   */
+  cuentaFnConstructor: defineString('CUENTA_FN_CONSTRUCTOR_SITIO', { default: '' }),
+  /** `APP_ENV` del script del constructor (`staging` o `production`). */
+  constructorSitioAppEnv: defineString('CONSTRUCTOR_SITIO_APP_ENV', { default: 'staging' }),
   /** Máquina de Cloud Build (`options.machineType`); vacío = la del grupo regional por defecto. */
   constructorSitioMaquina: defineString('CONSTRUCTOR_SITIO_MAQUINA', { default: '' }),
   /** Configuración web pública del sitio que compila el build (valores públicos, como en el workflow). Obligatorias solo en modo `google`. */
@@ -158,7 +165,7 @@ export interface ConfiguracionConstructorSitio {
 
 /** Valida lo que exige el modo `google` y arma lo del conector. Falla cerrado listando los nombres que faltan (nunca valores). */
 export function exigirConfiguracionConstructor(v: {
-  readonly proyecto: string; readonly imagen: string; readonly cuenta: string; readonly maquina: string;
+  readonly proyecto: string; readonly imagen: string; readonly cuenta: string; readonly maquina: string; readonly appEnv: string;
   readonly apiKey: string; readonly appId: string; readonly recaptcha: string; readonly panel: string; readonly mediosBaseUrl: string;
 }): ConfiguracionConstructorSitio {
   const t = (x: string): string => x.trim();
@@ -171,12 +178,13 @@ export function exigirConfiguracionConstructor(v: {
   if (t(v.recaptcha) === '') faltan.push('VITE_RECAPTCHA_ENTERPRISE_SITE_KEY');
   if (t(v.panel) === '') faltan.push('SITIO_PANEL_ID');
   if (t(v.mediosBaseUrl) === '') faltan.push('MEDIOS_BASE_URL');
+  if (t(v.appEnv) !== 'staging' && t(v.appEnv) !== 'production') faltan.push('CONSTRUCTOR_SITIO_APP_ENV (staging o production)');
   if (faltan.length > 0) throw new ConfiguracionIncompleta(faltan);
   return {
     proyecto: t(v.proyecto), imagen: t(v.imagen), cuentaServicio: t(v.cuenta), maquina: t(v.maquina) === '' ? undefined : t(v.maquina),
     entorno: {
       VITE_FIREBASE_PROJECT_ID: t(v.proyecto), VITE_FIREBASE_API_KEY: t(v.apiKey), VITE_FIREBASE_APP_ID: t(v.appId),
-      VITE_RECAPTCHA_ENTERPRISE_SITE_KEY: t(v.recaptcha), MEDIOS_BASE_URL: t(v.mediosBaseUrl), FIREBASE_SITE_PANEL: t(v.panel),
+      VITE_RECAPTCHA_ENTERPRISE_SITE_KEY: t(v.recaptcha), MEDIOS_BASE_URL: t(v.mediosBaseUrl), SITIOS_PROHIBIDOS: t(v.panel), APP_ENV: t(v.appEnv),
     },
   };
 }

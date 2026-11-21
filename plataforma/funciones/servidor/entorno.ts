@@ -7,7 +7,7 @@ import { getFirestore, type Firestore } from 'firebase-admin/firestore';
 import { getFunctions } from 'firebase-admin/functions';
 import { logger } from 'firebase-functions';
 import { getStorage } from 'firebase-admin/storage';
-import type { CatalogoPuerto, ColaSitio, DisparadorSitio, ProcesadorMedios } from '@novutienda/consola';
+import type { CatalogoPuerto, ColaSitio, ConstructorSitio, DisparadorSitio, ProcesadorMedios } from '@novutienda/consola';
 import { crearDisparoGithub, repoValido, tokenValido, type DisparoGithub } from '../../conectores/github/index.js';
 import { crearLectorDominios, type LectorDominios } from '../../coordinador/dominios.js';
 import { crearLectoresModulos, type LectorEstadoModulos, type LectorModulos } from '../../coordinador/modulos-activos.js';
@@ -15,7 +15,7 @@ import { crearLectorComercial, type LectorComercial } from '../../coordinador/co
 import { crearLectorHojas } from '../../coordinador/lector-hojas.js';
 import { crearCatalogoConsola, crearLogoDelNegocio, almacenCotizacionesDesde, catalogoParaPos, inventariosParaPos, type LogoDelNegocio } from '../../coordinador/index.js';
 import {
-  appCheckReal, appCheckSimulado, crearAlmacenMedios, crearColaSitio, crearConstructorSitio, crearLectorSitios, esEntornoDePruebas, crearAuthMin, crearBaseDatos, crearConsultaSubidas, crearEjecutorRecibos, crearGuardarContacto, crearIndiceInvitaciones, crearLimiteTasa,
+  appCheckReal, appCheckSimulado, crearAlmacenMedios, crearColaSitio, crearConstructorSitio, crearConsultaBuild, crearLectorSitios, esEntornoDePruebas, crearAuthMin, crearBaseDatos, crearConsultaSubidas, crearEjecutorRecibos, crearGuardarContacto, crearIndiceInvitaciones, crearLimiteTasa,
   crearLecturaRecibos, crearLectorDisponibilidad, crearProcesadorMedios, recaptchaEnterprise, recaptchaSimulado,
   type BaseDatosFirestore, type Bucket,
 } from '../../conectores/firebase/index.js';
@@ -216,18 +216,52 @@ export function sitiosDeLaInstancia(): ReturnType<ReturnType<typeof crearLectorS
   return lectorSitios();
 }
 
+/** Se lanza desde el temporizador cuando, en vez de lanzar el build, deja la tarea encolada para `construirSitio`. */
+export class ConstruccionEncolada extends Error {
+  constructor() {
+    super('construcción encolada para construirSitio');
+    this.name = 'ConstruccionEncolada';
+  }
+}
+
+/**
+ * Constructor del temporizador en modo `google`: NO llama a Cloud Build (el temporizador corre con la cuenta general y no debe poder
+ * crear builds ni actuar como `sitio-constructor`); encola la tarea de `construirSitio` y falla con `ConstruccionEncolada`, de modo que
+ * `lanzarSiguiente` libera el bloqueo y el trabajo sigue `pendiente` hasta que la tarea lo lance con la cuenta propia.
+ */
+function delegarEnLaCola(ahora: () => number): ConstructorSitio {
+  return {
+    async lanzar(tenantId, trabajoId) {
+      const para = ahora();
+      await colaSitioReal().encolar({ nombre: `sitio-${tenantId}-red-${trabajoId}`.replace(/[^A-Za-z0-9_-]/g, '_'), tenantId, para });
+      throw new ConstruccionEncolada();
+    },
+  };
+}
+
+/** Consulta `builds.get` con el token de esta instancia (la de `avisoConstruccionSitio`, con cuenta propia). */
+export const consultaBuildDeLaInstancia = (): ReturnType<typeof crearConsultaBuild> =>
+  crearConsultaBuild({ proyecto: proyectoDeLaInstancia(), tokenAcceso: tokenDeLaInstancia });
+
+const colaSitioReal = (): ColaSitio => crearColaSitio(getFunctions().taskQueue(`locations/${REGION}/functions/${FUNCION_TAREA_SITIO}`));
+
 /**
  * Dependencias de la construcción en Cloud Build, o `undefined` en modo `github` (todo queda como antes y no se lee ningún secreto).
  * En modo `google` falla cerrado si falta algún parámetro. Tampoco se llama a la nube aquí: el token se pide al lanzar.
  */
-export function construccionDeLaInstancia(e: Entorno): DepsTareaConstruccion | undefined {
+export function construccionDeLaInstancia(e: Entorno, delegar = false): DepsTareaConstruccion | undefined {
   if (!constructorSitioEsGoogle()) return undefined;
   const c = exigirConfiguracionConstructor({
     proyecto: proyectoDeLaInstancia(),
     imagen: PARAMETROS.constructorSitioImagen.value(), cuenta: PARAMETROS.constructorSitioCuenta.value(),
-    maquina: PARAMETROS.constructorSitioMaquina.value(), apiKey: PARAMETROS.viteFirebaseApiKey.value(),
+    maquina: PARAMETROS.constructorSitioMaquina.value(), appEnv: PARAMETROS.constructorSitioAppEnv.value(), apiKey: PARAMETROS.viteFirebaseApiKey.value(),
     appId: PARAMETROS.viteFirebaseAppId.value(), recaptcha: PARAMETROS.viteRecaptchaSitio.value(),
     panel: PARAMETROS.sitioPanelId.value(), mediosBaseUrl: PARAMETROS.mediosBaseUrl.value(),
+  });
+  const real = crearConstructorSitio({
+    proyecto: c.proyecto, imagen: c.imagen, cuentaServicio: c.cuentaServicio, entorno: c.entorno, sitios: sitiosDeLaInstancia,
+    ...(c.maquina === undefined ? {} : { maquina: c.maquina }),
+    tokenAcceso: tokenDeLaInstancia,
   });
   return {
     almacen: almacenConstruccionFirestore(e.firestore),
@@ -235,11 +269,7 @@ export function construccionDeLaInstancia(e: Entorno): DepsTareaConstruccion | u
     imagenActual: c.imagen,
     db: e.db,
     disparador: e.disparadorSitio,
-    constructorSitio: crearConstructorSitio({
-      proyecto: c.proyecto, imagen: c.imagen, cuentaServicio: c.cuentaServicio, entorno: c.entorno, sitios: sitiosDeLaInstancia,
-      ...(c.maquina === undefined ? {} : { maquina: c.maquina }),
-      tokenAcceso: tokenDeLaInstancia,
-    }),
+    constructorSitio: delegar ? delegarEnLaCola(e.ahora) : real,
   };
 }
 
@@ -266,7 +296,7 @@ export function entorno(): Entorno {
     const bucketPublico = nombrePublico === '' ? bucket : almacenamiento.bucket(nombrePublico);
     const procesador = crearProcesadorMedios(bucket, env, esEntornoDePruebas(process.env) ? undefined : logger);
     unico = crearEntorno({ firestore: getFirestore(), auth: getAuth(), bucket, bucketPublico, env, procesador, mediosBaseUrl: PARAMETROS.mediosBaseUrl.value(), planPruebasHabilitado: planPruebasHabilitado(PARAMETROS.planPruebasHabilitado.value()),
-      ...(constructorSitioEsGoogle() ? { colaSitio: crearColaSitio(getFunctions().taskQueue(`locations/${REGION}/functions/${FUNCION_TAREA_SITIO}`)) } : {}) });
+      ...(constructorSitioEsGoogle() ? { colaSitio: colaSitioReal() } : {}) });
   }
   return unico;
 }

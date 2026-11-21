@@ -20,7 +20,7 @@ const TIEMPO_MAXIMO_PETICION_MS = 15_000;
 const RE_CLAVE = /^[a-z0-9]{1,12}$/;
 const RE_TENANT = /^[a-z0-9][a-z0-9-]{0,62}$/;
 const RE_SITIO = /^[a-z0-9-]{6,30}$/;
-const RE_URL = /^https:\/\/[^/?#\s@]+\/?$/;
+const RE_URL = /^https:\/\/[a-z0-9.-]+(:[0-9]{1,5})?\/?$/;
 const RE_PROYECTO = /^[a-z][a-z0-9-]{4,28}[a-z0-9]$/;
 const RE_CUENTA = /^[a-z][a-z0-9-]{4,28}[a-z0-9]$/;
 const RE_TRABAJO = /^[A-Za-z0-9._-]{1,128}$/;
@@ -88,6 +88,9 @@ export interface OpcionesConstructorSitio {
   readonly maquina?: string;
 }
 
+/** Versión de la imagen para `VITE_APP_VERSION`: los 12 primeros caracteres de su digest. */
+const versionDeImagen = (imagen: string): string => imagen.slice(imagen.indexOf('@sha256:') + 8, imagen.indexOf('@sha256:') + 20);
+
 const NOMBRE_VARIABLE = /^[A-Z][A-Z0-9_]{0,127}$/;
 
 export function crearConstructorSitio(o: OpcionesConstructorSitio): ConstructorSitio {
@@ -107,19 +110,23 @@ export function crearConstructorSitio(o: OpcionesConstructorSitio): ConstructorS
       if (!RE_TRABAJO.test(trabajoId)) throw new ErrorConstructorSitio('id de trabajo inválido');
       const sitio = (await o.sitios()).find((s) => s.tenant === tenantId);
       if (sitio === undefined) throw new ErrorConstructorSitio('el tenant no tiene sitio en SITIOS_TENANT');
+      for (const v of [sitio.clave, sitio.tenant, sitio.sitio, sitio.url]) {
+        if (v.includes('$') || /[\r\n]/.test(v)) throw new ErrorConstructorSitio('un valor de SITIOS_TENANT tiene un carácter no admitido');
+      }
       const secretoNegocio = `SITIO_NEGOCIO_${sitio.clave.toUpperCase()}`;
       const secretos = [SECRETO_RECONSTRUCCION, secretoNegocio];
       const env = {
         ...o.entorno,
         CLAVE: sitio.clave, TENANT: sitio.tenant, SITIO: sitio.sitio, URL_SITIO: sitio.url,
-        PROYECTO: o.proyecto, TRABAJO: trabajoId, OMITIR_INSTALAR: '1',
+        PROYECTO: o.proyecto, TRABAJO: trabajoId, OMITIR_INSTALAR: '1', VITE_APP_VERSION: versionDeImagen(o.imagen),
       };
       const cuerpo = {
         steps: [{
           name: o.imagen,
           entrypoint: 'bash',
           args: ['-c', ORDEN_DEL_CONSTRUCTOR],
-          env: Object.entries(env).map(([k, v]) => `${k}=${v}`),
+          // `BUILD_ID=$BUILD_ID` es la sustitución integrada de Cloud Build (id del build para los registros); va fuera del filtro de `$`.
+          env: [...Object.entries(env).map(([k, v]) => `${k}=${v}`), 'BUILD_ID=$BUILD_ID'],
           secretEnv: secretos,
         }],
         availableSecrets: {
@@ -182,4 +189,55 @@ export function interpretarAvisoBuild(mensaje: unknown, sitios: readonly SitioDe
   const sitio = sitios.find((s) => `sitio-${s.clave}` === etiqueta);
   if (sitio === undefined) return undefined;
   return { tenantId: sitio.tenant, buildId: id, estado: status };
+}
+
+export interface BuildConsultado {
+  readonly id: string;
+  readonly status: string;
+  readonly tags: readonly string[];
+}
+
+export interface OpcionesConsultaBuild {
+  readonly proyecto: string;
+  readonly tokenAcceso: () => Promise<string>;
+  readonly fetchFn?: (
+    url: string,
+    init: { method: 'GET'; headers: Record<string, string>; redirect: 'error'; signal: AbortSignal },
+  ) => Promise<{ readonly ok: boolean; readonly status: number; json(): Promise<unknown> }>;
+}
+
+/**
+ * `builds.get`: el aviso de Pub/Sub no es de fiar (cualquiera con permiso de publicar en el tema podría falsificarlo), así que del
+ * mensaje solo se toma el id y el estado y las etiquetas se leen de la respuesta de Cloud Build.
+ */
+export function crearConsultaBuild(o: OpcionesConsultaBuild): (buildId: string) => Promise<BuildConsultado> {
+  if (!RE_PROYECTO.test(o.proyecto)) throw new ErrorConstructorSitio('proyecto inválido');
+  const fetchFn = o.fetchFn ?? ((url, init) => fetch(url, init));
+  return async (buildId) => {
+    if (!/^[A-Za-z0-9-]{8,64}$/.test(buildId)) throw new ErrorConstructorSitio('id de construcción inválido');
+    let token: string;
+    try {
+      token = await o.tokenAcceso();
+    } catch {
+      throw new ErrorConstructorSitio('sin token de acceso para Cloud Build', 'red');
+    }
+    let r;
+    try {
+      r = await fetchFn(`https://cloudbuild.googleapis.com/v1/projects/${o.proyecto}/locations/${REGION_CONSTRUCTOR}/builds/${buildId}`, {
+        method: 'GET', headers: { Authorization: `Bearer ${token}` }, redirect: 'error', signal: AbortSignal.timeout(TIEMPO_MAXIMO_PETICION_MS),
+      });
+    } catch {
+      throw new ErrorConstructorSitio('Cloud Build no respondió', 'red');
+    }
+    if (!r.ok) throw new ErrorConstructorSitio(`Cloud Build rechazó la consulta (estado ${String(r.status)})`, r.status);
+    const b = (await r.json().catch(() => undefined)) as { id?: unknown; status?: unknown; tags?: unknown } | undefined;
+    if (b?.id !== buildId || typeof b.status !== 'string') throw new ErrorConstructorSitio('Cloud Build respondió con una construcción distinta', 'respuesta');
+    return { id: b.id, status: b.status, tags: Array.isArray(b.tags) ? b.tags.filter((t): t is string => typeof t === 'string') : [] };
+  };
+}
+
+/** Id de la construcción de un mensaje de `cloud-builds` (solo el id: el resto se reconsulta con `builds.get`). */
+export function idDeMensajeBuild(mensaje: unknown): string | undefined {
+  const id = (mensaje as { id?: unknown } | null | undefined)?.id;
+  return typeof id === 'string' && /^[A-Za-z0-9-]{8,64}$/.test(id) ? id : undefined;
 }

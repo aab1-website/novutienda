@@ -2,7 +2,7 @@
 // Sin red: dobles de `fetch` y de la cola. Identificadores ficticios.
 import { describe, expect, it } from 'vitest';
 import {
-  crearColaSitio, crearConstructorSitio, crearLectorSitios, ErrorConstructorSitio, interpretarAvisoBuild, leerSitios,
+  crearColaSitio, crearConstructorSitio, crearConsultaBuild, crearLectorSitios, idDeMensajeBuild, ErrorConstructorSitio, interpretarAvisoBuild, leerSitios,
   type ColaDeTareas, type FetchConstructor, type SitioDeConstruccion,
 } from '../../plataforma/conectores/firebase/index.js';
 import { exigirConfiguracionConstructor, modoConstructorSitio, ConfiguracionIncompleta } from '../../plataforma/funciones/servidor/config.js';
@@ -15,7 +15,7 @@ const SITIOS: SitioDeConstruccion[] = [
 ];
 const ENTORNO = {
   VITE_FIREBASE_PROJECT_ID: 'proy-prueba', VITE_FIREBASE_API_KEY: 'clave-publica', VITE_FIREBASE_APP_ID: 'app-id',
-  VITE_RECAPTCHA_ENTERPRISE_SITE_KEY: 'sitio-key', MEDIOS_BASE_URL: 'https://medios.example.com/', FIREBASE_SITE_PANEL: 'panel-prueba',
+  VITE_RECAPTCHA_ENTERPRISE_SITE_KEY: 'sitio-key', MEDIOS_BASE_URL: 'https://medios.example.com/', SITIOS_PROHIBIDOS: 'panel-prueba', APP_ENV: 'staging',
 };
 
 interface Llamada { url: string; init: Parameters<FetchConstructor>[1] }
@@ -55,9 +55,10 @@ describe('constructor del sitio (Cloud Build por REST)', () => {
         args: ['-c', 'bash /app/scripts/reconstruir-sitio.sh reconstruir; rc=$$?; [ "$$rc" = 10 ] && exit 0; exit "$$rc"'],
         env: [
           'VITE_FIREBASE_PROJECT_ID=proy-prueba', 'VITE_FIREBASE_API_KEY=clave-publica', 'VITE_FIREBASE_APP_ID=app-id',
-          'VITE_RECAPTCHA_ENTERPRISE_SITE_KEY=sitio-key', 'MEDIOS_BASE_URL=https://medios.example.com/', 'FIREBASE_SITE_PANEL=panel-prueba',
+          'VITE_RECAPTCHA_ENTERPRISE_SITE_KEY=sitio-key', 'MEDIOS_BASE_URL=https://medios.example.com/', 'SITIOS_PROHIBIDOS=panel-prueba', 'APP_ENV=staging',
           'CLAVE=ab1', 'TENANT=tienda-uno', 'SITIO=sitio-uno-web', 'URL_SITIO=https://sitio-uno-web.example.com',
-          'PROYECTO=proy-prueba', 'TRABAJO=rec-publicacion-v3-202611210900', 'OMITIR_INSTALAR=1',
+          'PROYECTO=proy-prueba', 'TRABAJO=rec-publicacion-v3-202611210900', 'OMITIR_INSTALAR=1', `VITE_APP_VERSION=${DIGEST.slice(0, 12)}`,
+          'BUILD_ID=$BUILD_ID',
         ],
         secretEnv: ['SITIO_RECONSTRUCCION_SECRETO', 'SITIO_NEGOCIO_AB1'],
       }],
@@ -139,6 +140,58 @@ describe('SITIOS_TENANT', () => {
     expect(() => leerSitios('[]')).toThrow(/lista/);
     expect(() => leerSitios(JSON.stringify([{ ...SITIOS[0], url: 'http://x.example.com' }]))).toThrow(/entrada 1/);
     expect(() => leerSitios(JSON.stringify([SITIOS[0], SITIOS[0]]))).toThrow(/repetida/);
+    for (const url of ['https://Sitio.example.com', 'https://a.example.com/ruta', 'https://a.example.com?x=1', 'https://u@a.example.com', 'https://a.example.com:99999x', 'https://a b.example.com', 'https://a.example.com$']) {
+      expect(() => leerSitios(JSON.stringify([{ ...SITIOS[0], url }])), url).toThrow(/entrada 1/);
+    }
+    expect(leerSitios(JSON.stringify([{ ...SITIOS[0], url: 'https://a.example.com:8443/' }]))).toHaveLength(1);
+  });
+});
+
+describe('construcción del paso: valores de sitio y BUILD_ID', () => {
+  it('un valor de sitio con «$» o salto de línea (aunque venga ya validado) no llama a la red', async () => {
+    const d = doble({ cuerpo: operacion });
+    const c = constructor(d.fetchFn, { sitios: () => Promise.resolve([{ ...SITIOS[0] as SitioDeConstruccion, sitio: 'sitio-$HOME' }]) });
+    await expect(c.lanzar('tienda-uno', 'rec-1')).rejects.toThrow(/carácter no admitido/);
+    expect(d.llamadas).toHaveLength(0);
+  });
+
+  it('BUILD_ID es la sustitución integrada y no pasa por el filtro de «$» de las variables públicas', async () => {
+    const d = doble({ cuerpo: operacion });
+    await constructor(d.fetchFn).lanzar('tienda-uno', 'rec-1');
+    expect(JSON.parse((d.llamadas[0] as Llamada).init.body).steps[0].env).toContain('BUILD_ID=$BUILD_ID');
+  });
+});
+
+describe('consulta builds.get del aviso', () => {
+  const ID = 'b1b2c3d4-e5f6-7890';
+  function consulta(r: { ok?: boolean; status?: number; cuerpo?: unknown } | Error) {
+    const urls: string[] = [];
+    const f = crearConsultaBuild({
+      proyecto: 'proy-prueba', tokenAcceso: () => Promise.resolve('T'),
+      fetchFn: (url) => { urls.push(url); return r instanceof Error ? Promise.reject(r) : Promise.resolve({ ok: r.ok ?? true, status: r.status ?? 200, json: () => Promise.resolve(r.cuerpo) }); },
+    });
+    return { f, urls };
+  }
+
+  it('toma estado y etiquetas de la respuesta, no del mensaje', async () => {
+    const c = consulta({ cuerpo: { id: ID, status: 'SUCCESS', tags: ['sitio-ab1', 3] } });
+    expect(await c.f(ID)).toEqual({ id: ID, status: 'SUCCESS', tags: ['sitio-ab1'] });
+    expect(c.urls).toEqual([`https://cloudbuild.googleapis.com/v1/projects/proy-prueba/locations/us-east1/builds/${ID}`]);
+  });
+
+  it('rechaza un id raro sin llamar, una respuesta de otro build y los errores de HTTP o red', async () => {
+    const c = consulta({ cuerpo: { id: ID, status: 'SUCCESS' } });
+    await expect(c.f('../x')).rejects.toThrow(/inválido/);
+    expect(c.urls).toHaveLength(0);
+    await expect(consulta({ cuerpo: { id: 'otro-id-distinto', status: 'SUCCESS' } }).f(ID)).rejects.toThrow(/distinta/);
+    expect(((await consulta({ ok: false, status: 404 }).f(ID).catch((e: unknown) => e)) as ErrorConstructorSitio).estado).toBe(404);
+    expect(((await consulta(new Error('x')).f(ID).catch((e: unknown) => e)) as ErrorConstructorSitio).estado).toBe('red');
+  });
+
+  it('del mensaje solo se toma el id', () => {
+    expect(idDeMensajeBuild({ id: ID, status: 'SUCCESS', tags: ['sitio-ab1'] })).toBe(ID);
+    expect(idDeMensajeBuild({ id: '../x' })).toBeUndefined();
+    expect(idDeMensajeBuild(null)).toBeUndefined();
   });
 });
 
@@ -243,7 +296,7 @@ describe('modo y configuración del constructor', () => {
   });
 
   const completa = {
-    proyecto: 'proy-prueba', imagen: IMAGEN, cuenta: 'sitio-constructor', maquina: '', apiKey: 'k', appId: 'a', recaptcha: 'r',
+    proyecto: 'proy-prueba', imagen: IMAGEN, cuenta: 'sitio-constructor', maquina: '', appEnv: 'staging', apiKey: 'k', appId: 'a', recaptcha: 'r',
     panel: 'panel-prueba', mediosBaseUrl: 'https://medios.example.com/',
   };
 
@@ -252,8 +305,13 @@ describe('modo y configuración del constructor', () => {
     expect(c.maquina).toBeUndefined();
     expect(c.entorno).toEqual({
       VITE_FIREBASE_PROJECT_ID: 'proy-prueba', VITE_FIREBASE_API_KEY: 'k', VITE_FIREBASE_APP_ID: 'a', VITE_RECAPTCHA_ENTERPRISE_SITE_KEY: 'r',
-      MEDIOS_BASE_URL: 'https://medios.example.com/', FIREBASE_SITE_PANEL: 'panel-prueba',
+      MEDIOS_BASE_URL: 'https://medios.example.com/', SITIOS_PROHIBIDOS: 'panel-prueba', APP_ENV: 'staging',
     });
+  });
+
+  it('APP_ENV solo admite staging o production', () => {
+    expect(() => exigirConfiguracionConstructor({ ...completa, appEnv: 'prod' })).toThrow(/CONSTRUCTOR_SITIO_APP_ENV/);
+    expect(exigirConfiguracionConstructor({ ...completa, appEnv: 'production' }).entorno['APP_ENV']).toBe('production');
   });
 
   it('falla cerrado listando los nombres que faltan, sin valores', () => {

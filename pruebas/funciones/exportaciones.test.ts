@@ -11,6 +11,7 @@ import { IMPLEMENTACIONES, tablasCompuestas } from './tablas.js';
 
 const codigo = readFileSync(fileURLToPath(new URL('../../plataforma/funciones/servidor/index.ts', import.meta.url)), 'utf8');
 const entornoFuente = readFileSync(fileURLToPath(new URL('../../plataforma/funciones/servidor/entorno.ts', import.meta.url)), 'utf8');
+const funcionesSitio = readFileSync(fileURLToPath(new URL('../../plataforma/funciones/servidor/funciones-sitio.ts', import.meta.url)), 'utf8');
 const exportadas = (disparador: string): string[] => [...codigo.matchAll(new RegExp(`export const (\\w+) = ${disparador}\\(`, 'g'))].map((x) => x[1] as string).sort();
 const ordenados = (l: readonly string[]): string[] => [...new Set(l)].sort();
 
@@ -33,16 +34,32 @@ describe('exportaciones de las Functions frente al registro', () => {
     expect(exportadas('onObjectFinalized')).toEqual(['subidaFinalizada']);
   });
 
-  it('la construcción del sitio en Cloud Build (DR-CB) expone una tarea y un aviso del tema cloud-builds', () => {
-    expect(exportadas('onTaskDispatched')).toEqual(['construirSitio']);
-    expect(exportadas('onMessagePublished')).toEqual(['avisoConstruccionSitio']);
-    expect(codigo).toContain("topic: 'cloud-builds'");
+  it('la construcción del sitio (DR-CB) NO se exporta todavía desde index.ts: exportarla activa Cloud Tasks y rompe el despliegue sin permisos', () => {
+    expect(exportadas('onTaskDispatched')).toEqual([]);
+    expect(exportadas('onMessagePublished')).toEqual([]);
+    expect(codigo).not.toMatch(/^export[^\n]*(construirSitio|avisoConstruccionSitio)/m);
+    // Las funciones existen, listas para P5, con cuenta propia, invoker privado y tema cloud-builds.
+    expect(funcionesSitio).toMatch(/export const construirSitio = onTaskDispatched\(/);
+    expect(funcionesSitio).toContain("invoker: 'private'");
+    expect(funcionesSitio).toContain("topic: 'cloud-builds'");
+    expect(funcionesSitio.match(/serviceAccount: PARAMETROS\.cuentaFnConstructor/g)).toHaveLength(2);
     expect(entornoFuente).toContain("export const FUNCION_TAREA_SITIO = 'construirSitio'");
+  });
+
+  it('el temporizador, con la cuenta general, no lanza builds: delega en la cola de construirSitio', () => {
+    expect(codigo).toContain('construccionDeLaInstancia(e, true)');
+    expect(entornoFuente).toMatch(/constructorSitio: delegar \? delegarEnLaCola\(e\.ahora\) : real/);
+  });
+
+  // Cuando P5 las exporte desde index.ts (`export { avisoConstruccionSitio, construirSitio } from './funciones-sitio.js'`), reemplazar el caso
+  // anterior por este: las exportaciones directas siguen sin pasar por `export const`, así que se comprueba la línea de reexportación.
+  it.skip('P5: index.ts reexporta construirSitio y avisoConstruccionSitio desde funciones-sitio.js', () => {
+    expect(codigo).toMatch(/export \{ avisoConstruccionSitio, construirSitio \} from '\.\/funciones-sitio\.js'/);
   });
 
   it('no hay otras exportaciones de disparadores', () => {
     const todas = [...codigo.matchAll(/^export const (\w+) = (on\w+)\(/gm)].map((x) => x[1] as string).sort();
-    expect(todas).toEqual(ordenados([...exportadas('onCall'), ...exportadas('onSchedule'), 'api', 'eventos', 'subidaFinalizada', 'construirSitio', 'avisoConstruccionSitio']));
+    expect(todas).toEqual(ordenados([...exportadas('onCall'), ...exportadas('onSchedule'), 'api', 'eventos', 'subidaFinalizada']));
   });
 
   it('los bordes reales y el registro coinciden: cada callable compone sin sobrar ni faltar acciones', () => {

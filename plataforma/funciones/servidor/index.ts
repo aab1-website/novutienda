@@ -4,23 +4,19 @@
 //  Callables (uno por módulo; contrato en docs/produccion/funciones.md):  pos · inventarios · consola · recibos · medios
 //  HTTP:                                                                   api  (rutas /api/** de Hosting)
 //  Eventos:                                                                eventos (bus) · subidaFinalizada (Storage)
-//  Construcción del sitio (modo `google`, DR-CB):                          construirSitio (Cloud Tasks) · avisoConstruccionSitio (tema `cloud-builds`)
 //  Programadas:                                                            cotizacion · limpiezaSubidas · temporizadorSitio
 import { getApps, initializeApp } from 'firebase-admin/app';
 import { logger, setGlobalOptions } from 'firebase-functions';
 import { onDocumentCreated } from 'firebase-functions/v2/firestore';
 import { onCall, onRequest, type Request } from 'firebase-functions/v2/https';
-import { onMessagePublished } from 'firebase-functions/v2/pubsub';
 import { onSchedule } from 'firebase-functions/v2/scheduler';
-import { onTaskDispatched } from 'firebase-functions/v2/tasks';
 import { onObjectFinalized } from 'firebase-functions/v2/storage';
 import { limiteMemoria, type LimiteTasa } from '@novutienda/nucleo';
 import { tablaDeCallable, horarioDe } from '../../coordinador/encendido.js';
-import { crearLimiteTasa, esEntornoDePruebas, interpretarAvisoBuild } from '../../conectores/firebase/index.js';
+import { crearLimiteTasa, esEntornoDePruebas } from '../../conectores/firebase/index.js';
 import { entregarEvento } from './bus.js';
 import { enteroDe, exigirConfiguracionDeServicio, PARAMETROS, REGION, SECRETOS } from './config.js';
-import { construccionDeLaInstancia, disparoSitioDeLaInstancia, entorno, sitiosDeLaInstancia, verificadoresSitio } from './entorno.js';
-import { manejarAvisoConstruccion, manejarTareaConstruccion } from './construccion-sitio.js';
+import { ConstruccionEncolada, construccionDeLaInstancia, disparoSitioDeLaInstancia, entorno, verificadoresSitio } from './entorno.js';
 import { ipDelCliente } from './origen.js';
 import { enrutar, type ConfigRouter } from './http/router.js';
 import type { PeticionHttp } from './http/tipos.js';
@@ -177,39 +173,27 @@ export const limpiezaSubidas = onSchedule({ ...horarioDe('limpiezaSubidas'), mem
 });
 
 // El token de GitHub (DS-3) se vincula SOLO a esta función; sin él (o sin `GITHUB_REPO_SITIO`) el disparo queda deshabilitado.
-// En modo `google` la red de seguridad corre sobre Cloud Build (`construccion`) y no se avisa a GitHub; en `github` todo igual que antes.
+// En modo `google` la red de seguridad no lanza builds (corre con la cuenta general): deja encolada la tarea de `construirSitio`, que lanza
+// con la cuenta propia del constructor (`construccionDeLaInstancia(e, true)`); en `github` todo igual que antes.
 export const temporizadorSitio = onSchedule({ ...horarioDe('temporizadorSitio'), secrets: [SECRETOS.disparoSitio] }, async () => {
   const e = entorno();
-  const construccion = construccionDeLaInstancia(e);
+  const construccion = construccionDeLaInstancia(e, true);
   if (construccion !== undefined) {
-    await ejecutarTemporizadorSitio(e, construccion);
+    try {
+      await ejecutarTemporizadorSitio(e, construccion);
+    } catch (error) {
+      // Encolar en vez de lanzar es lo esperado, no un fallo del temporizador.
+      if (!(error instanceof ConstruccionEncolada)) throw error;
+      logger.info('temporizador del sitio: construcción encolada para construirSitio');
+    }
     return;
   }
   const disparoSitio = disparoSitioDeLaInstancia();
   await ejecutarTemporizadorSitio(disparoSitio === undefined ? e : { ...e, disparoSitio });
 });
 
-// ---- Construcción del sitio en Cloud Build (DR-CB). En modo `github` ambas funciones no hacen nada. ------------------------------------------------
-// Tarea agendada por `programar` (Cloud Tasks): despierta la construcción a la hora. Solo Cloud Tasks la invoca (invoker privado por defecto).
-export const construirSitio = onTaskDispatched(
-  { retryConfig: { maxAttempts: 3, minBackoffSeconds: 10 }, rateLimits: { maxConcurrentDispatches: 3 } },
-  async (req) => {
-    const deps = construccionDeLaInstancia(entorno());
-    if (deps === undefined) return;
-    const d = req.data as { tenantId?: unknown; para?: unknown } | undefined;
-    if (typeof d?.tenantId !== 'string' || typeof d.para !== 'number' || !Number.isFinite(d.para)) {
-      logger.error('tarea de construcción del sitio con forma inválida');
-      return; // sin reintento: una tarea mal formada no mejora al repetirla
-    }
-    logger.info('tarea de construcción del sitio', { resultado: await manejarTareaConstruccion(deps, { tenantId: d.tenantId, para: d.para }) });
-  },
-);
-
-// Aviso de Cloud Build al terminar cada construcción (tema `cloud-builds` del proyecto). Solo atiende los builds con la etiqueta `sitio-<clave>`.
-export const avisoConstruccionSitio = onMessagePublished({ topic: 'cloud-builds', retry: false }, async (ev) => {
-  const deps = construccionDeLaInstancia(entorno());
-  if (deps === undefined) return;
-  const aviso = interpretarAvisoBuild(ev.data.message.json, await sitiosDeLaInstancia());
-  if (aviso === undefined) return;
-  logger.info('aviso de construcción del sitio', { resultado: await manejarAvisoConstruccion(deps, aviso) });
-});
+// ---- Construcción del sitio en Cloud Build (DR-CB) ----------------------------------------------------------------------------------------
+// `construirSitio` (Cloud Tasks) y `avisoConstruccionSitio` (tema `cloud-builds`) están definidas en `funciones-sitio.ts` y NO se exportan
+// desde aquí todavía: exportarlas hace que el despliegue active Cloud Tasks y cree la cola, su IAM y la suscripción al tema, y eso necesita
+// la API activada y permisos que se dan en P5 con autorización de Andres. En P5 se agrega:
+//   export { avisoConstruccionSitio, construirSitio } from './funciones-sitio.js';
