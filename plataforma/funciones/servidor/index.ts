@@ -16,7 +16,7 @@ import { tablaDeCallable, horarioDe } from '../../coordinador/encendido.js';
 import { crearLimiteTasa, esEntornoDePruebas } from '../../conectores/firebase/index.js';
 import { entregarEvento } from './bus.js';
 import { enteroDe, exigirConfiguracionDeServicio, PARAMETROS, REGION, SECRETOS } from './config.js';
-import { ConstruccionEncolada, construccionDeLaInstancia, disparoSitioDeLaInstancia, entorno, verificadoresSitio } from './entorno.js';
+import { construccionDeLaInstancia, disparoSitioDeLaInstancia, entorno, verificadoresSitio } from './entorno.js';
 import { ipDelCliente } from './origen.js';
 import { enrutar, type ConfigRouter } from './http/router.js';
 import type { PeticionHttp } from './http/tipos.js';
@@ -179,13 +179,7 @@ export const temporizadorSitio = onSchedule({ ...horarioDe('temporizadorSitio'),
   const e = entorno();
   const construccion = construccionDeLaInstancia(e, true);
   if (construccion !== undefined) {
-    try {
-      await ejecutarTemporizadorSitio(e, construccion);
-    } catch (error) {
-      // Encolar en vez de lanzar es lo esperado, no un fallo del temporizador.
-      if (!(error instanceof ConstruccionEncolada)) throw error;
-      logger.info('temporizador del sitio: construcción encolada para construirSitio');
-    }
+    await ejecutarTemporizadorSitio(e, construccion);
     return;
   }
   const disparoSitio = disparoSitioDeLaInstancia();

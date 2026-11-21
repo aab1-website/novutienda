@@ -7,7 +7,7 @@ import { getFirestore, type Firestore } from 'firebase-admin/firestore';
 import { getFunctions } from 'firebase-admin/functions';
 import { logger } from 'firebase-functions';
 import { getStorage } from 'firebase-admin/storage';
-import type { CatalogoPuerto, ColaSitio, ConstructorSitio, DisparadorSitio, ProcesadorMedios } from '@novutienda/consola';
+import type { CatalogoPuerto, ColaSitio, DisparadorSitio, ProcesadorMedios } from '@novutienda/consola';
 import { crearDisparoGithub, repoValido, tokenValido, type DisparoGithub } from '../../conectores/github/index.js';
 import { crearLectorDominios, type LectorDominios } from '../../coordinador/dominios.js';
 import { crearLectoresModulos, type LectorEstadoModulos, type LectorModulos } from '../../coordinador/modulos-activos.js';
@@ -216,29 +216,6 @@ export function sitiosDeLaInstancia(): ReturnType<ReturnType<typeof crearLectorS
   return lectorSitios();
 }
 
-/** Se lanza desde el temporizador cuando, en vez de lanzar el build, deja la tarea encolada para `construirSitio`. */
-export class ConstruccionEncolada extends Error {
-  constructor() {
-    super('construcción encolada para construirSitio');
-    this.name = 'ConstruccionEncolada';
-  }
-}
-
-/**
- * Constructor del temporizador en modo `google`: NO llama a Cloud Build (el temporizador corre con la cuenta general y no debe poder
- * crear builds ni actuar como `sitio-constructor`); encola la tarea de `construirSitio` y falla con `ConstruccionEncolada`, de modo que
- * `lanzarSiguiente` libera el bloqueo y el trabajo sigue `pendiente` hasta que la tarea lo lance con la cuenta propia.
- */
-function delegarEnLaCola(ahora: () => number): ConstructorSitio {
-  return {
-    async lanzar(tenantId, trabajoId) {
-      const para = ahora();
-      await colaSitioReal().encolar({ nombre: `sitio-${tenantId}-red-${trabajoId}`.replace(/[^A-Za-z0-9_-]/g, '_'), tenantId, para });
-      throw new ConstruccionEncolada();
-    },
-  };
-}
-
 /** Consulta `builds.get` con el token de esta instancia (la de `avisoConstruccionSitio`, con cuenta propia). */
 export const consultaBuildDeLaInstancia = (): ReturnType<typeof crearConsultaBuild> =>
   crearConsultaBuild({ proyecto: proyectoDeLaInstancia(), tokenAcceso: tokenDeLaInstancia });
@@ -269,7 +246,11 @@ export function construccionDeLaInstancia(e: Entorno, delegar = false): DepsTare
     imagenActual: c.imagen,
     db: e.db,
     disparador: e.disparadorSitio,
-    constructorSitio: delegar ? delegarEnLaCola(e.ahora) : real,
+    // Modo «delegar» (temporizador, cuenta general): no se lanza ningún build; se encola la tarea de `construirSitio`, que lanza con la cuenta
+    // propia del constructor. Sin `constructorSitio`, `lanzarSiguiente` no toma el bloqueo.
+    ...(delegar
+      ? { encolarLanzamiento: (t: string, trabajoId: string) => colaSitioReal().encolar({ nombre: `sitio-${t}-red-${trabajoId}`.replace(/[^A-Za-z0-9_-]/g, '_'), tenantId: t, para: e.ahora() }) }
+      : { constructorSitio: real }),
   };
 }
 

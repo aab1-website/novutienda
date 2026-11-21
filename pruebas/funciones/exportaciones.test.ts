@@ -48,7 +48,9 @@ describe('exportaciones de las Functions frente al registro', () => {
 
   it('el temporizador, con la cuenta general, no lanza builds: delega en la cola de construirSitio', () => {
     expect(codigo).toContain('construccionDeLaInstancia(e, true)');
-    expect(entornoFuente).toMatch(/constructorSitio: delegar \? delegarEnLaCola\(e\.ahora\) : real/);
+    expect(entornoFuente).toContain('encolarLanzamiento:');
+    expect(entornoFuente).not.toContain('ConstruccionEncolada');
+    expect(codigo).not.toContain('ConstruccionEncolada');
   });
 
   // Cuando P5 las exporte desde index.ts (`export { avisoConstruccionSitio, construirSitio } from './funciones-sitio.js'`), reemplazar el caso
