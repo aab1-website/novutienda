@@ -145,6 +145,7 @@ export function PantallaUsuarios(): JSX.Element {
         {invitaciones !== undefined && invitaciones.length > 0 && (
           <Tabla
             titulo="Invitaciones pendientes"
+            vistaCelular="tarjetas"
             filas={invitaciones}
             clave={(u) => u.uid}
             vacio={{ titulo: 'No hay invitaciones pendientes' }}
@@ -181,6 +182,7 @@ export function PantallaUsuarios(): JSX.Element {
         {lista.datos && (
           <Tabla
             titulo="Usuarios del negocio"
+            vistaCelular="tarjetas"
             filas={miembros ?? []}
             clave={(u) => u.uid}
             buscar={{ etiqueta: 'Buscar por correo', en: (u) => [correoDe(u)] }}

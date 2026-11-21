@@ -53,6 +53,14 @@ describe('lista de páginas de producto', () => {
   });
 });
 
+describe('lista en celular', () => {
+  it('la tabla usa la vista de tarjetas', async () => {
+    ver(crearEntorno('sup'));
+    const tabla = await screen.findByRole('table', { name: 'Productos y su página en el sitio' });
+    expect(tabla.classList.contains('tabla-tarjetas')).toBe(true);
+  });
+});
+
 describe('panel lateral de la ficha', () => {
   it('«Editar página» abre el panel con las dos secciones y Cancelar devuelve el foco a la fila', async () => {
     const e = crearEntorno('sup');

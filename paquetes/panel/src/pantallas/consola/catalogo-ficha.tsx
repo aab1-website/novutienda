@@ -441,6 +441,7 @@ export function PantallaFichas(): JSX.Element {
               {d.sinPublicar !== null && d.sinPublicar > 0 && <p class="texto-suave" data-prueba="sin-publicar">{textoCambiosSinPublicar(d.sinPublicar)}. <a href="#/catalogo/tablero">Ver el Tablero</a></p>}
               <Tabla
                 titulo="Productos y su página en el sitio"
+                vistaCelular="tarjetas"
                 filas={d.productos}
                 clave={(x) => x.id}
                 buscar={{ etiqueta: 'Buscar producto', en: (x) => [x.nombre, x.sku] }}
