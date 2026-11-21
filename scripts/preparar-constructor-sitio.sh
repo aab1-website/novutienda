@@ -2,7 +2,7 @@
 # preparar-constructor-sitio.sh — deja listo, en UN proyecto, lo que necesita el constructor del sitio en
 # Cloud Build (plan: «Publicar el sitio con Cloud Build», operación P5, pasos O1 a O6).
 #
-# Uso: preparar-constructor-sitio.sh <proyecto> [--aplicar] [--claves a1,b2]
+# Uso: preparar-constructor-sitio.sh <proyecto> [--aplicar] [--claves a1,b2] [--neutralizar-cuenta-por-defecto]
 #   Sin --aplicar es una SIMULACIÓN: imprime lo que haría y no llama a la nube (ni siquiera a gcloud).
 #   Con --aplicar ejecuta con gcloud (credenciales de quien lo corra). Idempotente: cada paso comprueba si ya existe.
 #   Nunca despliega el sitio, no activa el modo `google` ni crea la alerta (pasos 6 y 7 del plan, aparte).
@@ -30,10 +30,12 @@
 #   O5  Permisos de la cuenta de las Functions: rol personalizado con SOLO cloudbuild.builds.create y
 #       cloudbuild.builds.get; iam.serviceAccountUser únicamente sobre `sitio-constructor`; cloudtasks.enqueuer
 #       sobre la cola COLA_TAREAS.
-#   O5bis  Cuenta de servicio POR DEFECTO de Cloud Build: consulta cuál es y, con --aplicar, fija `build-sin-permisos`
-#       (cuenta nueva sin roles) para que ningún build sin cuenta propia herede permisos amplios. Los builds del
-#       constructor siempre indican `sitio-constructor`. Comando por verificar en staging (`gcloud builds
-#       set-default-service-account`).
+#   O5bis  Cuenta de servicio POR DEFECTO de Cloud Build. Siempre consulta (sin cambiar nada) cuál es y con qué cuenta
+#       construyen las Functions de 2.ª generación. SOLO con la opción explícita --neutralizar-cuenta-por-defecto
+#       crea `build-sin-permisos` (sin roles) y la fija como cuenta por defecto. Riesgo: el despliegue de Functions 2.ª gen
+#       también construye con Cloud Build; en P5 se usa solo tras verificar lo consultado o tras fijar
+#       `--build-service-account` para las Functions. Comando por verificar en staging (`gcloud builds
+#       set-default-service-account`). Los builds del constructor siempre indican `sitio-constructor`.
 #   O6  Secretos en Secret Manager (SITIO_RECONSTRUCCION_SECRETO y SITIO_NEGOCIO_<CLAVE>) con acceso solo para
 #       `sitio-constructor`.
 #   (O2 incluye además roles/artifactregistry.writer sobre el repositorio para CUENTA_DESPLIEGUE.)
@@ -41,14 +43,16 @@
 # La salida muestra <proyecto> en vez del id real.
 set -Eeuo pipefail
 
-uso() { echo "uso: preparar-constructor-sitio.sh <proyecto> [--aplicar] [--claves a1,b2]" >&2; exit 2; }
+uso() { echo "uso: preparar-constructor-sitio.sh <proyecto> [--aplicar] [--claves a1,b2] [--neutralizar-cuenta-por-defecto]" >&2; exit 2; }
 
 PROYECTO=""
 APLICAR=0
+NEUTRALIZAR=0
 CLAVES="${CLAVES_SITIO:-}"
 while (( $# > 0 )); do
   case "$1" in
     --aplicar) APLICAR=1 ;;
+    --neutralizar-cuenta-por-defecto) NEUTRALIZAR=1 ;;
     --claves) shift; [[ $# -gt 0 && "$1" != --* ]] || uso; CLAVES="$1" ;;
     -*) uso ;;
     *) [[ -z "$PROYECTO" ]] || uso; PROYECTO="$1" ;;
@@ -190,18 +194,24 @@ else
   exit 1
 fi
 
-paso "O5bis. Cuenta por defecto de Cloud Build (sin permisos)"
-CUENTA_BUILD="build-sin-permisos"
-CUENTA_BUILD_EMAIL="${CUENTA_BUILD}@${PROYECTO}.iam.gserviceaccount.com"
+paso "O5bis. Cuenta por defecto de Cloud Build (consulta; cambio solo con --neutralizar-cuenta-por-defecto)"
+# Solo lectura: qué cuenta usa hoy Cloud Build por defecto y con qué cuenta construyen las Functions de 2.ª generación.
 ejecutar gcloud builds get-default-service-account --project="$PROYECTO"
-if existe gcloud iam service-accounts describe "$CUENTA_BUILD_EMAIL" --project="$PROYECTO"; then
-  echo "  $CUENTA_BUILD: ya existe"
-else
-  ejecutar gcloud iam service-accounts create "$CUENTA_BUILD" --display-name="Cuenta por defecto de Cloud Build (sin permisos)" \
+ejecutar gcloud functions list --v2 --project="$PROYECTO" --format="value(buildConfig.serviceAccount)"
+if (( NEUTRALIZAR == 1 )); then
+  CUENTA_BUILD="build-sin-permisos"
+  CUENTA_BUILD_EMAIL="${CUENTA_BUILD}@${PROYECTO}.iam.gserviceaccount.com"
+  if existe gcloud iam service-accounts describe "$CUENTA_BUILD_EMAIL" --project="$PROYECTO"; then
+    echo "  $CUENTA_BUILD: ya existe"
+  else
+    ejecutar gcloud iam service-accounts create "$CUENTA_BUILD" --display-name="Cuenta por defecto de Cloud Build (sin permisos)" \
+      --project="$PROYECTO"
+  fi
+  ejecutar gcloud builds set-default-service-account --service-account="projects/$PROYECTO/serviceAccounts/$CUENTA_BUILD_EMAIL" \
     --project="$PROYECTO"
+else
+  echo "  (no se cambia la cuenta por defecto: use --neutralizar-cuenta-por-defecto en P5, tras verificar lo de arriba)"
 fi
-ejecutar gcloud builds set-default-service-account --service-account="projects/$PROYECTO/serviceAccounts/$CUENTA_BUILD_EMAIL" \
-  --project="$PROYECTO"
 
 paso "O6. Secretos (los valores pasan por stdin; nunca se imprimen)"
 for s in "${SECRETOS[@]}"; do
