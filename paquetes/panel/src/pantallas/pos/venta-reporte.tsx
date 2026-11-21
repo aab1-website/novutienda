@@ -1,5 +1,5 @@
 import type { JSX } from 'preact';
-import { useRef, useState } from 'preact/hooks';
+import { useEffect, useRef, useState } from 'preact/hooks';
 import type { VentaPos } from '../../api/tipos.js';
 import { Alerta, Boton, Cargando, Dato, ErrorCarga, Seccion, fechaHora } from '../../ui/comun.js';
 import { Tabla } from '../../ui/tabla.js';
@@ -23,6 +23,39 @@ const MEDIOS: readonly (readonly [keyof MontosPorMedioVista, string])[] = [
 const soloLoPropio = (u: { readonly uid: string }): { cajeroUid: string } => ({ cajeroUid: u.uid });
 const numeroDe = (v: VentaPos): string => `${v.serie}-${String(v.receiptNo).padStart(6, '0')}`;
 const veces = (n: number, uno: string, varias: string): string => `${n} ${n === 1 ? uno : varias}`;
+
+/**
+ * Imprimir un bloque: solo el que se manda a imprimir lleva `.imprimible` (en `@media print` es el único visible),
+ * con una cabecera del negocio, el cajero y la fecha. El botón no se imprime.
+ */
+function useImprimir(): { imprimiendo: boolean; imprimir: () => void } {
+  const [imprimiendo, setImprimiendo] = useState(false);
+  useEffect(() => {
+    if (!imprimiendo) return undefined;
+    const fin = (): void => setImprimiendo(false);
+    window.addEventListener('afterprint', fin);
+    window.print();
+    return () => window.removeEventListener('afterprint', fin);
+  }, [imprimiendo]);
+  return { imprimiendo, imprimir: () => setImprimiendo(true) };
+}
+
+function CabeceraImpresion({ titulo }: { titulo: string }): JSX.Element {
+  const { api, usuario } = useApp();
+  const config = useCarga(() => api.llamar('leerConfigPos', {}), []);
+  return (
+    <header class="cabecera-impresion">
+      <h2>{config.datos?.negocio.nombre ?? ''}</h2>
+      <p>{titulo}</p>
+      <p>Cajero: {usuario.correo}</p>
+      <p>Impreso el {fechaHora(Date.now())}</p>
+    </header>
+  );
+}
+
+function BotonImprimir({ alImprimir }: { alImprimir: () => void }): JSX.Element {
+  return <span class="no-imprimir"><Boton chico variante="secundario" onClick={alImprimir}>Imprimir</Boton></span>;
+}
 
 /** Resumen de una moneda en lenguaje simple. Los montos de «Cobrado» ya descuentan el cambio y lo devuelto por anulaciones. */
 function ResumenMoneda({ moneda, r }: { moneda: string; r: ResumenMonedaVista }): JSX.Element {
@@ -71,8 +104,11 @@ function TurnoActual(): JSX.Element {
     ultimo.current = await api.llamar('resumenTurno', propio);
     return ultimo.current;
   }, [], MS_ACTUALIZAR_TURNO);
+  const imp = useImprimir();
   return (
-    <Seccion titulo="Turno actual" acciones={<Boton chico variante="secundario" onClick={r.recargar}>Actualizar</Boton>}>
+    <div class={imp.imprimiendo ? 'imprimible' : undefined}>
+    {imp.imprimiendo && <CabeceraImpresion titulo="Turno actual" />}
+    <Seccion titulo="Turno actual" acciones={<span class="no-imprimir"><Boton chico variante="secundario" onClick={r.recargar}>Actualizar</Boton> {r.datos && <BotonImprimir alImprimir={imp.imprimir} />}</span>}>
       {r.cargando && <Cargando />}
       {r.error && <ErrorCarga error={r.error} reintentar={r.recargar} />}
       {!r.cargando && !r.error && r.datos === null && <p class="texto-suave">No tiene un turno abierto. Abra uno en «Terminal» para ver aquí sus ventas del día.</p>}
@@ -83,6 +119,7 @@ function TurnoActual(): JSX.Element {
         </>
       )}
     </Seccion>
+    </div>
   );
 }
 
@@ -128,13 +165,18 @@ function VentasDelTurno({ turnoId }: { turnoId: string }): JSX.Element {
 function DetalleTurno({ turno, alCerrar }: { turno: FilaTurnoVista; alCerrar: () => void }): JSX.Element {
   const { api, usuario } = useApp();
   const r = useCarga(() => api.llamar('resumenTurno', { turnoId: turno.turnoId, ...soloLoPropio(usuario) }), [turno.turnoId]);
+  const imp = useImprimir();
+  const titulo = `Turno del ${fechaHora(turno.abiertoEnMs)}`;
   return (
-    <Seccion titulo={`Turno del ${fechaHora(turno.abiertoEnMs)}`} acciones={<Boton chico variante="secundario" onClick={alCerrar}>Cerrar el detalle</Boton>}>
+    <div class={imp.imprimiendo ? 'imprimible' : undefined}>
+    {imp.imprimiendo && <CabeceraImpresion titulo={titulo} />}
+    <Seccion titulo={titulo} acciones={<span class="no-imprimir"><Boton chico variante="secundario" onClick={alCerrar}>Cerrar el detalle</Boton> <BotonImprimir alImprimir={imp.imprimir} /></span>}>
       {r.cargando && <Cargando />}
       {r.error && <ErrorCarga error={r.error} reintentar={r.recargar} />}
       {r.datos && <ResumenVista resumen={r.datos} />}
       <VentasDelTurno turnoId={turno.turnoId} />
     </Seccion>
+    </div>
   );
 }
 

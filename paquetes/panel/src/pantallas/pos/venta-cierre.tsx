@@ -8,7 +8,7 @@ import { useAvisos } from '../../ui/avisos.js';
 import { Tabla } from '../../ui/tabla.js';
 import { useApp } from '../../ui/contexto.js';
 import { useAccion, useCarga } from '../../ui/hooks.js';
-import { diferenciaPorMoneda, monedasDelTurno, ordenarMonedas, proyectarTurno } from './arqueo.js';
+import { TOTALES_VACIOS, desgloseEfectivo, diferenciaPorMoneda, monedasDelTurno, ordenarMonedas, proyectarTurno } from './arqueo.js';
 import { formatearMonto, textoACentavos } from '../../util/dinero.js';
 import { lineasGuardadas, textoProductos } from './carritos.js';
 import { CancelarConMotivo } from './venta-carritos.js';
@@ -67,6 +67,21 @@ function CarritosAbiertos({ lista, alRetomar, alCambiar }: { lista: readonly { c
   );
 }
 
+/** Cómo se llega al efectivo esperado: apertura + cobrado − devuelto + ingresos − egresos. */
+function DesgloseDeEfectivo({ moneda, apertura, turno, devuelto }: { moneda: string; apertura: number; turno: TurnoPos; devuelto: number | undefined }): JSX.Element {
+  const d = desgloseEfectivo(apertura, turno.totales[moneda] ?? TOTALES_VACIOS, devuelto ?? 0);
+  const m = (c: number): string => formatearMonto(c, moneda);
+  return (
+    <>
+      <Dato etiqueta="Apertura">{m(d.apertura)}</Dato>
+      <Dato etiqueta="Efectivo cobrado">{m(d.cobrado)}</Dato>
+      <Dato etiqueta="Devuelto por anulaciones (se resta)">{devuelto === undefined ? 'No disponible' : m(d.devuelto)}</Dato>
+      <Dato etiqueta="Ingresos excepcionales (se suman)">{m(d.ingresos)}</Dato>
+      <Dato etiqueta="Egresos excepcionales (se restan)">{m(d.egresos)}</Dato>
+    </>
+  );
+}
+
 function CierreListo({ turno, orden, alCerrar, alRetomar }: { turno: TurnoPos; orden: readonly string[]; alCerrar: () => void; alRetomar?: ((carritoId: string) => void) | undefined }): JSX.Element {
   const { api } = useApp();
   const accion = useAccion();
@@ -100,6 +115,8 @@ function CierreListo({ turno, orden, alCerrar, alRetomar }: { turno: TurnoPos; o
       }
     });
   };
+  // Lo devuelto por anulaciones sale del resumen del turno; si falla, se avisa que no está disponible.
+  const resumen = useCarga(() => api.llamar('resumenTurno', { turnoId: turno.turnoId }), [turno.turnoId, vigente]);
   const monedas = monedasDelTurno(vigente, orden);
   const [textos, setTextos] = useState<Record<string, string>>({});
   const [cierre, setCierre] = useState<ResultadoCierre | null>(null);
@@ -142,7 +159,7 @@ function CierreListo({ turno, orden, alCerrar, alRetomar }: { turno: TurnoPos; o
           <fieldset key={m} class="fila-pago">
             <legend>{m}</legend>
             <dl class="datos">
-              <Dato etiqueta="Apertura">{formatearMonto(p.apertura, m)}</Dato>
+              <DesgloseDeEfectivo moneda={m} apertura={p.apertura} turno={vigente} devuelto={resumen.datos?.porMoneda[m]?.reembolsos.efectivo} />
               <Dato etiqueta="Efectivo esperado">{formatearMonto(p.efectivoEsperado, m)}</Dato>
               <Dato etiqueta="QR (informativo)">{formatearMonto(p.qr, m)}</Dato>
               <Dato etiqueta="Transferencias (informativo)">{formatearMonto(p.transferencia, m)}</Dato>
@@ -157,6 +174,7 @@ function CierreListo({ turno, orden, alCerrar, alRetomar }: { turno: TurnoPos; o
           </fieldset>
         );
       })}
+      {resumen.datos?.truncado === true && <Alerta tipo="info">El turno tiene muchísimas operaciones: lo devuelto por anulaciones puede estar incompleto. El efectivo esperado sí es exacto.</Alerta>}
       {actualizando && <p class="texto-suave" aria-live="polite">Actualizando…</p>}
       {cambio !== null && <Alerta tipo="info">{cambio}</Alerta>}
       {accion.error && <Alerta>{accion.error}</Alerta>}

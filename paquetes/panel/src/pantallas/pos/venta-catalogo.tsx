@@ -120,7 +120,7 @@ export function CatalogoSoloLectura(): JSX.Element {
 
 function CatalogoCargado({ mercados }: { mercados: readonly MercadoDeclarado[] }): JSX.Element {
   const { api } = useApp();
-  const datos = useCarga(async () => ({ productos: await api.llamar('listarProductos', {}), cot: await api.llamar('cotizacionesVigentes', {}) }), []);
+  const datos = useCarga(async () => ({ productos: await api.llamar('listarProductos', {}), cot: await api.llamar('cotizacionesVigentes', {}) }), [], undefined, { alVolver: true });
   const [mercadoId, setMercadoId] = useState(mercados[0]?.id ?? '');
   const mercado = mercados.find((m) => m.id === mercadoId) ?? mercados[0];
   const [moneda, setMoneda] = useState(mercados[0]?.monedaVenta ?? '');

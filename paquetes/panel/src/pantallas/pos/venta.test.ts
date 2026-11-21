@@ -510,7 +510,7 @@ describe('cierre y supervisión: orden de monedas declarado por el comercio', ()
     e.como('caj');
     ver(e, 'cierre');
     await screen.findByRole('heading', { name: 'Cierre de turno' });
-    const esperados = [...document.querySelectorAll('fieldset')].map((f) => f.querySelectorAll('dd')[1]?.textContent);
+    const esperados = [...document.querySelectorAll('fieldset')].map((f) => [...f.querySelectorAll('dt')].find((t) => t.textContent === 'Efectivo esperado')?.nextElementSibling?.textContent);
     expect(esperados).toEqual(celdas);
   });
 

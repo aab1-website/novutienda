@@ -30,6 +30,24 @@ export const deltaPorMedio = (medio: MedioPago, monto: number): Partial<TotalesM
  */
 export const efectivoEsperado = (apertura: number, t: TotalesMoneda): number => apertura + t.efectivo + t.ingresos - t.egresos;
 
+/** Líneas del efectivo esperado, para mostrarlas: su suma es siempre `efectivoEsperado` (el cobrado se reconstruye como neto + devuelto). */
+export interface DesgloseEfectivo {
+  readonly apertura: number;
+  /** Efectivo cobrado en el turno, antes de descontar lo devuelto. */
+  readonly cobrado: number;
+  /** Efectivo devuelto por anulaciones (positivo; se resta). */
+  readonly devuelto: number;
+  readonly ingresos: number;
+  readonly egresos: number;
+  readonly esperado: number;
+}
+
+/** `devueltoEfectivo` es lo reembolsado en efectivo (del resumen del turno); `totales.efectivo` ya viene neto de eso. */
+export function desgloseEfectivo(apertura: number, t: TotalesMoneda, devueltoEfectivo: number): DesgloseEfectivo {
+  const devuelto = Math.max(0, devueltoEfectivo);
+  return { apertura, cobrado: t.efectivo + devuelto, devuelto, ingresos: t.ingresos, egresos: t.egresos, esperado: efectivoEsperado(apertura, t) };
+}
+
 /** Efectivo disponible hoy en la caja para una moneda (misma fórmula que el esperado). */
 export function efectivoDisponible(turno: Pick<TurnoPos, 'apertura' | 'totales'>, moneda: string): number {
   return efectivoEsperado(turno.apertura[moneda] ?? 0, turno.totales[moneda] ?? TOTALES_VACIOS);
