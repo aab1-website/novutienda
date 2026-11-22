@@ -153,6 +153,11 @@ legend { padding: 0 6px; font-weight: 700; }
   .recibo, .recibo * { visibility: visible; }
   .recibo { position: absolute; left: 0; top: 0; width: 100%; max-width: none; border: 0; }
   .recibo .tabla-contenedor { overflow: visible; }
+  /* `.imprimible`: al imprimir solo se ve ese bloque; `.no-imprimir` se oculta siempre. */
+  .imprimible, .imprimible * { visibility: visible; }
+  .imprimible { position: absolute; left: 0; top: 0; width: 100%; max-width: none; }
+  .imprimible .tabla-contenedor { overflow: visible; }
+  .no-imprimir, .no-imprimir * { display: none !important; }
   body { background: #fff; color: #000; }
 }
 @media (prefers-reduced-motion: reduce) { * { transition: none !important; scroll-behavior: auto !important; } }

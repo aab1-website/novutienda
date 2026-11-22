@@ -61,8 +61,14 @@ export interface Carga<T> {
   readonly recargar: () => void;
 }
 
+export interface OpcionesCarga {
+  /** Vuelve a cargar (sin parpadeo) cuando la pestaña vuelve a verse (`visibilitychange`) o recupera el foco (`focus`). */
+  readonly alVolver?: boolean;
+}
+
 /** Carga datos al montar y cuando cambian las dependencias; el error se traduce a un mensaje legible. */
-export function useCarga<T>(fn: () => Promise<T>, deps: readonly unknown[], cadaMs?: number): Carga<T> {
+export function useCarga<T>(fn: () => Promise<T>, deps: readonly unknown[], cadaMs?: number, opciones?: OpcionesCarga): Carga<T> {
+  const alVolver = opciones?.alVolver === true;
   const [datos, setDatos] = useState<T | undefined>(undefined);
   const [error, setError] = useState<string | null>(null);
   const [cargando, setCargando] = useState(true);
@@ -82,17 +88,24 @@ export function useCarga<T>(fn: () => Promise<T>, deps: readonly unknown[], cada
     const previas = depsPrevias.current;
     const mismas = previas !== null && previas.length === deps.length && previas.every((d, i) => Object.is(d, deps[i]));
     depsPrevias.current = deps;
+    // Solo la carga más reciente aplica su resultado: una respuesta vieja no pisa a una nueva.
+    let ultima = 0;
+    let enCurso = 0;
+    let inicioMs = 0;
     const cargar = (inicial: boolean): void => {
       if (inicial) setCargando(true);
-      conRenovacion(() => fnRef.current(), renovarRef.current).then(
+      const mia = ++ultima;
+      enCurso++;
+      inicioMs = Date.now();
+      conRenovacion(() => fnRef.current(), renovarRef.current).finally(() => { enCurso--; }).then(
         (d) => {
-          if (!vivo) return;
+          if (!vivo || mia !== ultima) return;
           setDatos(d);
           setError(null);
           setCargando(false);
         },
         (e: unknown) => {
-          if (!vivo) return;
+          if (!vivo || mia !== ultima) return;
           if (e instanceof SesionPerdida) vencidaRef.current?.();
           setError(textoDe(e));
           setCargando(false);
@@ -101,11 +114,25 @@ export function useCarga<T>(fn: () => Promise<T>, deps: readonly unknown[], cada
     };
     cargar(!mismas);
     const t = cadaMs === undefined ? undefined : setInterval(() => cargar(false), cadaMs);
+    const volver = (): void => {
+      if (document.visibilityState === 'hidden') return;
+      // `visibilitychange` y `focus` llegan juntos: se ignora el segundo si hay una carga en curso o es muy reciente.
+      if (enCurso > 0 || Date.now() - inicioMs < 500) return;
+      cargar(false);
+    };
+    if (alVolver) {
+      document.addEventListener('visibilitychange', volver);
+      window.addEventListener('focus', volver);
+    }
     return () => {
       vivo = false;
       if (t !== undefined) clearInterval(t);
+      if (alVolver) {
+        document.removeEventListener('visibilitychange', volver);
+        window.removeEventListener('focus', volver);
+      }
     };
-  }, [...deps, version, cadaMs]);
+  }, [...deps, version, cadaMs, alVolver]);
 
   const recargar = useCallback(() => setVersion((v) => v + 1), []);
   return { datos, error, cargando, recargar };
