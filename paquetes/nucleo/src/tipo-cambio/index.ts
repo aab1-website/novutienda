@@ -13,7 +13,7 @@ export {
 export type {
   ActorCarga, AlmacenCotizaciones, Documento, OpcionesAlmacen, OpcionesAlmacenDe, ResultadoEscritura, TransaccionCotizaciones,
 } from './almacen.js';
-export { ConfirmacionRequerida, fijarCotizacionManualDe, quitarCotizacionManualDe } from './manual.js';
+export { BANDAS_POR_PAR, BANDA_POR_DEFECTO, ConfirmacionRequerida, ValorFueraDeBanda, fijarCotizacionManualDe, quitarCotizacionManualDe } from './manual.js';
 export { diasHabilesEntre, hoyEn } from './fechas.js';
 export type { EsFeriado } from './fechas.js';
 export { aCentavos, precioDeMercado, precioFinal, redondear } from './precio.js';

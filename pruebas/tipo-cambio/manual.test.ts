@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import {
-  COMERCIAL_LEGADO_TRES_MONEDAS, CargaNoAutorizada, ConfirmacionRequerida, SaltoSinConfirmar, SinCotizacionUtilizable,
+  COMERCIAL_LEGADO_TRES_MONEDAS, CargaNoAutorizada, ValorFueraDeBanda, ConfirmacionRequerida, SaltoSinConfirmar, SinCotizacionUtilizable,
   escribirCotizacion, fijarCotizacionManualDe, leerCotizacionDe, leerReferenciaDe, quitarCotizacionManualDe,
   rutaCotizacionManual, type Lectura,
 } from './nucleo-tc.js';
@@ -82,5 +82,32 @@ describe('tipo de cambio manual', () => {
     // y se puede volver a fijar
     await fijarCotizacionManualDe(a, { mercado: 'BO', valor: 12.1, actor: adm, ahoraMs: AHORA + 4 }, O);
     expect((await leerCotizacionDe(a, 'BO', AHORA, O)).fuente).toBe('manual');
+  });
+
+  it('sin referencia ni manual previo exige confirmación', async () => {
+    const a = new AlmacenMemoria();
+    await expect(fijarCotizacionManualDe(a, { mercado: 'BO', valor: 6.96, actor: adm, ahoraMs: AHORA }, O)).rejects.toThrow(SaltoSinConfirmar);
+    await expect(fijarCotizacionManualDe(a, { mercado: 'BO', valor: 6.96, actor: adm, ahoraMs: AHORA, confirmarSalto: true }, O)).resolves.toMatchObject({ valor: 6.96 });
+  });
+
+  it('la banda de cordura rechaza valores fuera de rango aunque vengan confirmados', async () => {
+    const a = await conBcb();
+    for (const valor of [0.5, 101, 1e9]) {
+      await expect(fijarCotizacionManualDe(a, { mercado: 'BO', valor, actor: adm, ahoraMs: AHORA, confirmarSalto: true }, O)).rejects.toThrow(ValorFueraDeBanda);
+    }
+    await expect(fijarCotizacionManualDe(a, { mercado: 'AR', valor: 5, actor: adm, ahoraMs: AHORA, confirmarSalto: true }, O)).rejects.toThrow(ValorFueraDeBanda);
+    await expect(fijarCotizacionManualDe(a, { mercado: 'AR', valor: 1500, actor: adm, ahoraMs: AHORA, confirmarSalto: true }, O)).resolves.toMatchObject({ valor: 1500 });
+  });
+
+  it('el documento manual no lleva uid; el propietario también puede volver al banco central', async () => {
+    const a = await conBcb();
+    await fijarCotizacionManualDe(a, { mercado: 'BO', valor: 12.2, actor: adm, ahoraMs: AHORA }, O);
+    expect(a.docs.get(rutaCotizacionManual('t1', 'BO'))).not.toHaveProperty('por');
+    const p = { uid: 'prop', rol: 'propietario' as const, proveedor: 'google.com' };
+    await quitarCotizacionManualDe(a, { mercado: 'BO', actor: p, ahoraMs: AHORA + 1, confirmar: true }, O);
+    const doc = a.docs.get(rutaCotizacionManual('t1', 'BO'));
+    expect(doc).toMatchObject({ activo: false });
+    expect(doc).not.toHaveProperty('quitadoPor');
+    expect(a.docs.get(`${rutaCotizacionManual('t1', 'BO')}/historial/BO-quitar-${AHORA + 1}`)).toMatchObject({ por: 'prop' });
   });
 });
