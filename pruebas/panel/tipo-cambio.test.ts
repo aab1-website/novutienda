@@ -95,4 +95,18 @@ describe('tipo de cambio manual (borde del servidor)', () => {
     (sin.e as unknown as Record<string, unknown>)['limiteTipoCambio'] = undefined;
     await expect(sin.llamar(sin.como('ana'), 'cotizacionManual', { mercado: 'BO', valor: 7 })).rejects.toMatchObject({ code: 'internal' });
   });
+
+  it('el cupo se descuenta solo al concretarse: un rechazo no gasta y un salto confirmado gasta uno', async () => {
+    const m = await montar();
+    for (let i = 0; i < 12; i++) await expect(m.llamar(m.como('ana'), 'cotizacionManual', { mercado: 'BO', valor: 9 })).rejects.toMatchObject({ name: 'SaltoSinConfirmar' });
+    for (let i = 0; i < 10; i++) await m.llamar(m.como('ana'), 'cotizacionManual', { mercado: 'BO', valor: 9 + i * 0.001, confirmarSalto: true });
+    await expect(m.llamar(m.como('ana'), 'cotizacionManual', { mercado: 'BO', valor: 9, confirmarSalto: true })).rejects.toMatchObject({ code: 'resource-exhausted' });
+  });
+
+  it('el propietario con Google que además es adm del comercio actúa como propietario', async () => {
+    const m = await montar();
+    const c = m.como('due', 'adm', 'google.com');
+    (c.sesion as unknown as Record<string, unknown>)['propietario'] = true;
+    await expect(m.llamar(c, 'cotizacionManual', { mercado: 'BO', valor: 7 })).resolves.toMatchObject({ ok: true });
+  });
 });

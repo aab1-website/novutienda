@@ -121,7 +121,7 @@ function TarjetaMercado({ m, api, recargar }: { m: MercadoTipoCambio; api: Clien
         <Alerta tipo="info">
           <p>
             {base === null
-              ? `El valor ${numero(saltoPendiente)} cambia más del 5 % respecto del vigente.`
+              ? 'No hay un valor de comparación; confirme el valor.'
               : `El valor ${numero(saltoPendiente)} cambia más del 5 % respecto del vigente (${numero(base)}). ¿Es correcto?`}
           </p>
           <div class="fila">

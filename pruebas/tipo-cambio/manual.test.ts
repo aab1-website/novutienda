@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import {
-  COMERCIAL_LEGADO_TRES_MONEDAS, CargaNoAutorizada, ValorFueraDeBanda, ConfirmacionRequerida, SaltoSinConfirmar, SinCotizacionUtilizable,
+  COMERCIAL_LEGADO_TRES_MONEDAS, CargaNoAutorizada, ValorFueraDeBanda, ConfirmacionRequerida, SaltoSinConfirmar, SinCotizacionUtilizable, SinManualActivo, TipoCambioInvalido,
   actualizarMercado, escribirCotizacion, fijarCotizacionManualDe, leerTipoCambioDe, type AvisoOperativo, type AlmacenCotizaciones, leerCotizacionDe, leerReferenciaDe, quitarCotizacionManualDe,
   rutaCotizacionManual, type Lectura,
 } from './nucleo-tc.js';
@@ -78,7 +78,9 @@ describe('tipo de cambio manual', () => {
     await quitarCotizacionManualDe(a, { mercado: 'BO', actor: adm, ahoraMs: AHORA + 2, confirmar: true }, O);
     expect(await leerCotizacionDe(a, 'BO', AHORA, O)).toMatchObject({ fuente: 'BCB', valor: 12.06 });
     expect(a.docs.get(`${rutaCotizacionManual('t1', 'BO')}/historial/BO-quitar-${AHORA + 2}`)).toMatchObject({ accion: 'quitar', por: 'ana', antes: { valor: 12.2 } });
-    await expect(quitarCotizacionManualDe(a, { mercado: 'BO', actor: adm, ahoraMs: AHORA + 3, confirmar: true }, O)).rejects.toThrow(RangeError);
+    await expect(quitarCotizacionManualDe(a, { mercado: 'BO', actor: adm, ahoraMs: AHORA + 3, confirmar: true }, O)).rejects.toThrow(SinManualActivo);
+    await expect(quitarCotizacionManualDe(a, { mercado: 'BO', actor: adm, ahoraMs: AHORA + 3, confirmar: true }, O)).rejects.toBeInstanceOf(RangeError);
+    await expect(quitarCotizacionManualDe(a, { mercado: 'BO', actor: { ...adm, uid: ' ' }, ahoraMs: AHORA + 3, confirmar: true }, O)).rejects.toThrow(TipoCambioInvalido);
     // y se puede volver a fijar
     await fijarCotizacionManualDe(a, { mercado: 'BO', valor: 12.1, actor: adm, ahoraMs: AHORA + 4 }, O);
     expect((await leerCotizacionDe(a, 'BO', AHORA, O)).fuente).toBe('manual');

@@ -6,8 +6,8 @@ import { HttpsError } from 'firebase-functions/v2/https';
 import { z } from 'zod';
 import {
   ConfirmacionRequerida, fijarCotizacionManualDe, leerTipoCambioDe, mercadosDe, quitarCotizacionManualDe, rutaCotizacion,
-  tieneTipoCambio, ValorFueraDeBanda,
-  type ActorCarga, type ConfiguracionComercial, type LimiteTasa, type VistaTipoCambio,
+  SinManualActivo, tieneTipoCambio, TipoCambioInvalido, ValorFueraDeBanda,
+  type ActorCarga, type AlmacenCotizaciones, type ConfiguracionComercial, type LimiteTasa, type VistaTipoCambio,
 } from '@novutienda/nucleo';
 import { accion, type Contexto, type TablaImplementaciones } from './marco.js';
 import type { Entorno } from '../entorno.js';
@@ -35,6 +35,11 @@ function limiteDe(e: Entorno): LimiteTasa {
   return l;
 }
 
+/**
+ * Descuenta un cupo solo si la operación se concreta: se llama dentro de la transacción, cuando la validación del núcleo
+ * ya pasó y solo faltan las escrituras. Si el tope se pasó, lanza y la transacción se aborta sin escribir. Así un intento
+ * rechazado no gasta cupo y el conteo y la escritura no se separan (no hay hueco para pasar el tope).
+ */
 async function limitar(c: Contexto): Promise<void> {
   const r = await limiteDe(c.e).intentar(`tipo-cambio:${c.tenantId}`, c.e.ahora());
   if (!r.permitido) {
@@ -42,11 +47,39 @@ async function limitar(c: Contexto): Promise<void> {
   }
 }
 
+/** Almacén que cuenta el cupo al primer intento de escritura de la transacción (validación ya superada). */
+function almacenConLimite(c: Contexto): AlmacenCotizaciones {
+  limiteDe(c.e); // falla cerrado antes de tocar nada si falta el puerto
+  const base = c.e.almacenCotizaciones;
+  return {
+    leer: (ruta) => base.leer(ruta),
+    transaccion: (fn) => base.transaccion(async (tx) => {
+      let contado = false;
+      const contar = async (): Promise<void> => { if (!contado) { contado = true; await limitar(c); } };
+      const escrituras: Array<() => void> = [];
+      const r = await fn({
+        leer: (ruta) => tx.leer(ruta),
+        establecer: (ruta, datos) => { escrituras.push(() => tx.establecer(ruta, datos)); },
+        crear: (ruta, datos) => { escrituras.push(() => tx.crear(ruta, datos)); },
+      });
+      if (escrituras.length > 0) await contar();
+      for (const w of escrituras) w();
+      return r;
+    }),
+    ...(base.listarRecientes === undefined ? {} : { listarRecientes: (ruta, limite) => base.listarRecientes!(ruta, limite) }),
+  };
+}
+
 const MERCADO = z.string().regex(/^[A-Z]{2}$/, 'mercado inválido');
 /** Positivo, finito y con hasta 6 decimales. */
 const VALOR = z.number().finite().positive().max(1_000_000_000).refine((v) => Math.abs(Math.round(v * 1e6) / 1e6 - v) < 1e-9, 'hasta 6 decimales');
 
-const actorDe = (c: Contexto): ActorCarga => ({ uid: c.sesion.uid, rol: c.rol ?? 'propietario', proveedor: c.sesion.proveedor });
+/** El propietario de la plataforma con Google actúa como propietario aunque además tenga rol (p. ej. adm) en el comercio. */
+const actorDe = (c: Contexto): ActorCarga => ({
+  uid: c.sesion.uid,
+  rol: c.sesion.propietario && c.sesion.proveedor === 'google.com' ? 'propietario' : (c.rol ?? 'propietario'),
+  proveedor: c.sesion.proveedor,
+});
 
 function exigirMercado(comercial: ConfiguracionComercial, mercado: string): void {
   if (!mercadosDe(comercial).includes(mercado) || !tieneTipoCambio(comercial, mercado)) {
@@ -110,11 +143,10 @@ export const accionesTipoCambio: TablaImplementaciones = {
     ejecutar: async (c, d) => {
       const comercial = await c.e.comercialDelTenant(c.tenantId);
       exigirMercado(comercial, d.mercado);
-      await limitar(c);
       let r;
       try {
         r = await fijarCotizacionManualDe(
-          c.e.almacenCotizaciones,
+          almacenConLimite(c),
           { mercado: d.mercado, valor: d.valor, actor: actorDe(c), ahoraMs: c.e.ahora(), ...(d.confirmarSalto === true ? { confirmarSalto: true } : {}) },
           { tenantId: c.tenantId, comercial },
         );
@@ -122,6 +154,7 @@ export const accionesTipoCambio: TablaImplementaciones = {
         if (error instanceof ValorFueraDeBanda) {
           throw new HttpsError('invalid-argument', `El valor está fuera del rango razonable para ${error.par} (${error.minimo} a ${error.maximo}). Revíselo.`, { codigo: 'valor-fuera-de-rango' });
         }
+        if (error instanceof TipoCambioInvalido) throw new HttpsError('invalid-argument', 'El tipo de cambio indicado no es válido. Revise el mercado y el valor.', { codigo: 'entrada-invalida' });
         throw error;
       }
       return { ok: true, mercado: r.mercado, fecha: r.fecha };
@@ -133,16 +166,16 @@ export const accionesTipoCambio: TablaImplementaciones = {
     ejecutar: async (c, d) => {
       const comercial = await c.e.comercialDelTenant(c.tenantId);
       exigirMercado(comercial, d.mercado);
-      await limitar(c);
       try {
         await quitarCotizacionManualDe(
-          c.e.almacenCotizaciones,
+          almacenConLimite(c),
           { mercado: d.mercado, actor: actorDe(c), ahoraMs: c.e.ahora(), ...(d.confirmar === true ? { confirmar: true } : {}) },
           { tenantId: c.tenantId, comercial },
         );
       } catch (error) {
         if (error instanceof ConfirmacionRequerida) throw new HttpsError('failed-precondition', error.message, { codigo: 'confirmacion-requerida' });
-        if (error instanceof RangeError) throw new HttpsError('failed-precondition', 'No hay un tipo de cambio manual vigente que quitar.', { codigo: 'sin-manual' });
+        if (error instanceof SinManualActivo) throw new HttpsError('failed-precondition', 'No hay un tipo de cambio manual vigente que quitar.', { codigo: 'sin-manual' });
+        if (error instanceof TipoCambioInvalido) throw new HttpsError('invalid-argument', 'Ese mercado no tiene tipo de cambio.', { codigo: 'entrada-invalida' });
         throw error;
       }
       return { ok: true, mercado: d.mercado };

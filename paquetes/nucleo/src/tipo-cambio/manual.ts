@@ -53,10 +53,10 @@ export async function fijarCotizacionManualDe(
 ): Promise<CotizacionGuardada> {
   if (!esAutorizado(e.actor)) throw new CargaNoAutorizada();
   const cfg = { ...CONFIG_POR_DEFECTO, ...e.config };
-  if (!Number.isFinite(e.valor) || e.valor <= 0) throw new RangeError('el valor debe ser un número positivo');
-  if (e.actor.uid.trim() === '') throw new RangeError('hay que indicar quién carga');
+  if (!Number.isFinite(e.valor) || e.valor <= 0) throw new TipoCambioInvalido('el valor debe ser un número positivo');
+  if (e.actor.uid.trim() === '') throw new TipoCambioInvalido('hay que indicar quién carga');
   const par = tieneTipoCambio(opciones.comercial, e.mercado) ? parDe(opciones.comercial, e.mercado) : null;
-  if (par === null) throw new RangeError(`el mercado ${e.mercado} no está declarado o no tiene tipo de cambio`);
+  if (par === null) throw new TipoCambioInvalido(`el mercado ${e.mercado} no está declarado o no tiene tipo de cambio`);
   const [minimo, maximo] = BANDAS_POR_PAR[par] ?? BANDA_POR_DEFECTO;
   if (e.valor < minimo || e.valor > maximo) throw new ValorFueraDeBanda(par, e.valor, minimo, maximo);
   const fecha = hoyEn(e.mercado, e.ahoraMs, opciones.comercial);
@@ -83,6 +83,22 @@ export async function fijarCotizacionManualDe(
   });
 }
 
+/** Entrada inválida del tipo de cambio (valor, quién actúa, mercado no declarado). Sigue siendo un `RangeError`. */
+export class TipoCambioInvalido extends RangeError {
+  constructor(mensaje: string) {
+    super(mensaje);
+    this.name = 'TipoCambioInvalido';
+  }
+}
+
+/** No hay un tipo de cambio manual vigente que quitar. Sigue siendo un `RangeError`. */
+export class SinManualActivo extends RangeError {
+  constructor() {
+    super('no hay un tipo de cambio manual vigente que quitar');
+    this.name = 'SinManualActivo';
+  }
+}
+
 /**
  * Vuelve al tipo de cambio del banco central: deja inactivo el manual vigente (conserva el documento)
  * y registra la quita en el historial. Mismo permiso que fijar (administrador con contraseña o propietario) y con `confirmar: true`.
@@ -95,12 +111,12 @@ export async function quitarCotizacionManualDe(
 ): Promise<true> {
   if (!esAutorizado(e.actor)) throw new CargaNoAutorizada();
   if (e.confirmar !== true) throw new ConfirmacionRequerida('volver al tipo de cambio del banco central exige confirmación expresa');
-  if (e.actor.uid.trim() === '') throw new RangeError('hay que indicar quién quita');
-  if (!tieneTipoCambio(opciones.comercial, e.mercado)) throw new RangeError(`el mercado ${e.mercado} no está declarado o no tiene tipo de cambio`);
+  if (e.actor.uid.trim() === '') throw new TipoCambioInvalido('hay que indicar quién quita');
+  if (!tieneTipoCambio(opciones.comercial, e.mercado)) throw new TipoCambioInvalido(`el mercado ${e.mercado} no está declarado o no tiene tipo de cambio`);
   const rutaM = rutaCotizacionManual(opciones.tenantId, e.mercado);
   return almacen.transaccion(async (tx) => {
     const manual = await tx.leer(rutaM);
-    if (manual === null || manual['activo'] === false || !valido(manual)) throw new RangeError('no hay un tipo de cambio manual vigente que quitar');
+    if (manual === null || manual['activo'] === false || !valido(manual)) throw new SinManualActivo();
     const ahora = new Date(e.ahoraMs).toISOString();
     tx.establecer(rutaM, { ...manual, activo: false });
     tx.crear(`${rutaM}/historial/${e.mercado}-quitar-${e.ahoraMs}`, {
@@ -144,7 +160,7 @@ export async function leerTipoCambioDe(
   opciones: OpcionesAlmacenDe & { readonly config?: Partial<ConfigCotizacion>; readonly esFeriado?: EsFeriado; readonly limite?: number },
 ): Promise<VistaTipoCambio> {
   const par = tieneTipoCambio(opciones.comercial, mercado) ? parDe(opciones.comercial, mercado) : null;
-  if (par === null) throw new RangeError(`el mercado ${mercado} no está declarado o no tiene tipo de cambio`);
+  if (par === null) throw new TipoCambioInvalido(`el mercado ${mercado} no está declarado o no tiene tipo de cambio`);
   let referencia: VistaTipoCambio['referencia'];
   try {
     referencia = await leerReferenciaDe(almacen, mercado, ahoraMs, opciones);

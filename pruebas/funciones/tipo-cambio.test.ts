@@ -60,4 +60,17 @@ describe.skipIf(!hayEmulador)('consola: tipo de cambio manual (emulador)', () =>
     expect(v2).toMatchObject({ rige: 'referencia', manual: null });
     expect((v2['historial'] as Obj[])[0]).toMatchObject({ accion: 'quitar' });
   });
+
+  it('el tope de 10 cambios por hora es global (en Firestore): el cambio 11 del comercio da resource-exhausted', async () => {
+    const T = 'tc-limite';
+    await sembrarTenant(h, T);
+    const u = await crearUsuario(h, { rol: 'adm', tenant: T });
+    const f = (valor: number) => accion('consola', 'cotizacionManual', { mercado: 'BO', valor }, u.token, T);
+    for (let i = 0; i < 10; i++) {
+      const r = await f(i % 2 === 0 ? 7.1 : 7.2);
+      expect(r.status, `cambio ${i + 1}: ${JSON.stringify(r.error)}`).toBe(200);
+    }
+    const once = await f(7.1);
+    expect(once.error?.status).toBe('RESOURCE_EXHAUSTED');
+  });
 });

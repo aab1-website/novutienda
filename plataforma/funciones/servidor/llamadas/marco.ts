@@ -119,6 +119,9 @@ function conCodigo(error: HttpsError, codigoPorDefecto?: string): HttpsError {
  * caracteres. Solo limpia caracteres y recorta: no quita valores. Algunos validadores interpolan lo que envió el propio usuario
  * (una clave desconocida, una serie o un id inválidos), así que un validador NO debe interpolar datos personales en su mensaje.
  */
+/** Errores de dominio cuyo mensaje lleva valores (cifras, saltos): se registra solo su código, nunca el texto. */
+const CODIGOS_SIN_MENSAJE: ReadonlySet<string> = new Set(['salto-sin-confirmar', 'valor-fuera-de-banda', 'carga-no-autorizada']);
+
 export function motivoLimpio(mensaje: string): string {
   return mensaje.replace(/[^\w .:áéíóúñ-]/gi, '').slice(0, 120);
 }
@@ -154,7 +157,11 @@ export function comoHttpsError(error: unknown, contexto: Readonly<Record<string,
   }
   const t = traducirError(error);
   if (t.interno) logger.error('error interno en callable', { ...contexto, error: error instanceof Error ? { nombre: error.name, mensaje: error.message } : String(error) });
-  else logger.warn('callable rechazado', { ...contexto, codigo: t.code, codigoModulo: (t.details as { codigo?: unknown } | undefined)?.codigo, motivo: motivoLimpio(t.message) });
+  else {
+    const codigoModulo = (t.details as { codigo?: unknown } | undefined)?.codigo;
+    const motivo = typeof codigoModulo === 'string' && CODIGOS_SIN_MENSAJE.has(codigoModulo) ? codigoModulo : motivoLimpio(t.message);
+    logger.warn('callable rechazado', { ...contexto, codigo: t.code, codigoModulo, motivo });
+  }
   return new HttpsError(t.code, t.message, t.details);
 }
 

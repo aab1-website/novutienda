@@ -20,7 +20,7 @@ import {
   type BaseDatosFirestore, type Bucket,
 } from '../../conectores/firebase/index.js';
 import type { AlmacenMedios, ConsultaSubidas } from '@novutienda/consola';
-import { limiteMemoria, type AlmacenCotizaciones, type AuthMin, type IndiceInvitaciones, type LimiteTasa, type Redondeo } from '@novutienda/nucleo';
+import { type AlmacenCotizaciones, type AuthMin, type IndiceInvitaciones, type LimiteTasa, type Redondeo } from '@novutienda/nucleo';
 import type { LectorHojas } from '@novutienda/inventarios';
 import type { DepsPos } from '@novutienda/pos';
 import type { EjecutorRecibos, LecturaRecibos } from '@novutienda/recibos';
@@ -66,7 +66,7 @@ export interface Entorno {
   readonly limiteBusquedaSerieUsuario: LimiteTasa;
   /** Tope de búsquedas de serie por el comienzo: 300 por hora por tenant (clave `serie:{tenant}`). */
   readonly limiteBusquedaSerieTenant: LimiteTasa;
-  /** Tope de cargas y retornos del tipo de cambio manual: 10 por comercio y hora (clave `tipo-cambio:{tenant}`). */
+  /** Tope de cargas y retornos del tipo de cambio manual: 10 por comercio y hora, global entre instancias (en Firestore, sal `tipo-cambio-v1`; clave `tipo-cambio:{tenant}`). */
   readonly limiteTipoCambio: LimiteTasa;
   readonly ahora: () => number;
   /** Módulos efectivos del tenant (cache de 60 s por instancia); `undefined` si el tenant no existe o es inválido. */
@@ -144,7 +144,7 @@ export function crearEntorno(o: OpcionesEntorno): Entorno {
     limiteActivaciones: crearLimiteTasa(o.firestore, { maximo: MAXIMO_ACTIVACIONES_POR_HORA, ventanaMs: VENTANA_INVITACIONES_MS, sal: 'invitaciones-v1' }),
     limiteBusquedaSerieUsuario: crearLimiteTasa(o.firestore, { maximo: MAXIMO_BUSQUEDAS_SERIE_POR_MINUTO, ventanaMs: 60_000, sal: 'busqueda-serie-usuario-v1' }),
     limiteBusquedaSerieTenant: crearLimiteTasa(o.firestore, { maximo: MAXIMO_BUSQUEDAS_SERIE_POR_HORA, ventanaMs: 3_600_000, sal: 'busqueda-serie-tenant-v1' }),
-    limiteTipoCambio: limiteMemoria(MAXIMO_CAMBIOS_TIPO_CAMBIO_POR_HORA, VENTANA_TIPO_CAMBIO_MS),
+    limiteTipoCambio: crearLimiteTasa(o.firestore, { maximo: MAXIMO_CAMBIOS_TIPO_CAMBIO_POR_HORA, ventanaMs: VENTANA_TIPO_CAMBIO_MS, sal: 'tipo-cambio-v1' }),
     ahora,
     modulosDelTenant: lectoresModulos.modulos,
     estadoModulosDelTenant: lectoresModulos.estado,

@@ -121,7 +121,8 @@ export class CargaNoAutorizada extends Error {
 /** El valor se aparta del guardado más que el salto máximo y no se confirmó. */
 export class SaltoSinConfirmar extends Error {
   constructor(readonly guardado: number, readonly propuesto: number, readonly saltoMaximo: number) {
-    super(`el valor ${propuesto} se aparta más del ${saltoMaximo * 100} % de ${guardado}: hay que confirmarlo expresamente`);
+    // Los valores van en las propiedades (`guardado`, `propuesto`), no en el texto.
+    super(`el valor propuesto se aparta más del ${saltoMaximo * 100} % del guardado: hay que confirmarlo expresamente`);
     this.name = 'SaltoSinConfirmar';
   }
 }
