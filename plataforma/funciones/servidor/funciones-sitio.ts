@@ -12,6 +12,16 @@ import { PARAMETROS } from './config.js';
 import { manejarAvisoConstruccion, manejarTareaConstruccion } from './construccion-sitio.js';
 import { consultaBuildDeLaInstancia, constructorSitioEsGoogle, construccionDeLaInstancia, entorno, sitiosDeLaInstancia } from './entorno.js';
 
+const RE_TENANT_TAREA = /^[a-z0-9][a-z0-9-]{0,62}$/; // misma forma que el id de tenant del núcleo
+/** Carga válida de la tarea: `{ tenantId, para }` con id de tenant de forma válida y `para` entero positivo. Otra cosa: `undefined`. */
+export function tareaValida(d: unknown): { tenantId: string; para: number } | undefined {
+  if (typeof d !== 'object' || d === null) return undefined;
+  const { tenantId, para } = d as { tenantId?: unknown; para?: unknown };
+  if (typeof tenantId !== 'string' || !RE_TENANT_TAREA.test(tenantId)) return undefined;
+  if (typeof para !== 'number' || !Number.isSafeInteger(para) || para <= 0) return undefined;
+  return { tenantId, para };
+}
+
 // Tarea agendada por `programar` (Cloud Tasks): despierta la construcción a la hora.
 // Invocador explícito (D-P5-2 = A). El formato `nombre@` lo completa firebase-tools con el proyecto del despliegue (ningún id queda en el repositorio).
 // En cada despliegue firebase-tools deja `cloudtasks.enqueuer` en la cola y `run.invoker` en el servicio solo a estas dos cuentas, que son las de los
@@ -25,14 +35,15 @@ export const construirSitio = onTaskDispatched(
   },
   async (req) => {
     if (!constructorSitioEsGoogle()) return; // modo `github`: sin efecto y sin tocar el entorno
-    const deps = construccionDeLaInstancia(entorno());
-    if (deps === undefined) return;
-    const d = req.data as { tenantId?: unknown; para?: unknown } | undefined;
-    if (typeof d?.tenantId !== 'string' || typeof d.para !== 'number' || !Number.isFinite(d.para)) {
+    // Se valida la carga ANTES de leer el entorno: cualquier cuenta invocadora podría encolar, y el tenantId arma rutas de Firestore.
+    const tarea = tareaValida(req.data);
+    if (tarea === undefined) {
       logger.error('tarea de construcción del sitio con forma inválida');
       return; // sin reintento: una tarea mal formada no mejora al repetirla
     }
-    logger.info('tarea de construcción del sitio', { resultado: await manejarTareaConstruccion(deps, { tenantId: d.tenantId, para: d.para }) });
+    const deps = construccionDeLaInstancia(entorno());
+    if (deps === undefined) return;
+    logger.info('tarea de construcción del sitio', { resultado: await manejarTareaConstruccion(deps, tarea) });
   },
 );
 

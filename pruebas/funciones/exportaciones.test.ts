@@ -5,7 +5,7 @@ import { fileURLToPath } from 'node:url';
 import { describe, expect, it, vi } from 'vitest';
 import { PARAMETROS } from '../../plataforma/funciones/servidor/config.js';
 import { constructorSitioEsGoogle, entorno } from '../../plataforma/funciones/servidor/entorno.js';
-import { avisoConstruccionSitio, construirSitio, INVOCADORES_TAREA_SITIO } from '../../plataforma/funciones/servidor/funciones-sitio.js';
+import { avisoConstruccionSitio, construirSitio, INVOCADORES_TAREA_SITIO, tareaValida } from '../../plataforma/funciones/servidor/funciones-sitio.js';
 import { horarioDe, tablaDeCallable } from '../../plataforma/coordinador/encendido.js';
 import { accion } from '../../plataforma/funciones/servidor/llamadas/marco.js';
 import { VACIO } from '../../plataforma/funciones/servidor/llamadas/comunes.js';
@@ -53,6 +53,26 @@ describe('exportaciones de las Functions frente al registro', () => {
     expect(funcionesSitio).toContain('invoker: INVOCADORES_TAREA_SITIO');
     expect(funcionesSitio).not.toContain("invoker: 'private'");
     expect(entornoFuente).toContain("export const FUNCION_TAREA_SITIO = 'construirSitio'");
+  });
+
+  // R1 (prerrequisito de P9): exportar sin condición hace que el despliegue intente dar el invocador `fn-constructor-sitio@` en CADA proyecto.
+  // En producción esa cuenta aún no existe: antes del primer tag hay que crearla allí (y `novutienda-funciones`), o el despliegue fallaría.
+  // No se resuelve en el código; producción está en pausa.
+  it('el invocador usa los nombres de las dos cuentas, con el formato `nombre@` que firebase-tools completa y el CI acepta', () => {
+    expect(INVOCADORES_TAREA_SITIO).toHaveLength(2);
+    for (const c of INVOCADORES_TAREA_SITIO) expect(c).toMatch(/^[a-z][a-z0-9-]{4,28}[a-z0-9]@$/);
+    // La cuenta del constructor es la que el CI pasa como CUENTA_FN_CONSTRUCTOR_SITIO (nombre@): el script de preparación (C2) debe crear esa.
+    const preparador = readFileSync(fileURLToPath(new URL('../../.github/scripts/preparar-despliegue-firebase.sh', import.meta.url)), 'utf8');
+    expect(preparador).toContain('CUENTA_FN_CONSTRUCTOR_SITIO');
+    expect(preparador).toContain('FUNCIONES_SERVICE_ACCOUNT');
+  });
+
+  it('construirSitio valida la carga antes de leer nada', async () => {
+    expect(tareaValida({ tenantId: 'tienda-uno', para: 1_700_000_000_000 })).toEqual({ tenantId: 'tienda-uno', para: 1_700_000_000_000 });
+    for (const mala of [undefined, null, 'x', {}, { tenantId: 'a' }, { para: 1 }, { tenantId: '', para: 1 }, { tenantId: 'A/b', para: 1 }, { tenantId: '../x', para: 1 },
+      { tenantId: 'a'.repeat(64), para: 1 }, { tenantId: 7, para: 1 }, { tenantId: 'a', para: '1' }, { tenantId: 'a', para: 0 }, { tenantId: 'a', para: -1 },
+      { tenantId: 'a', para: 1.5 }, { tenantId: 'a', para: Number.NaN }]) expect(tareaValida(mala), JSON.stringify(mala)).toBeUndefined();
+    expect(funcionesSitio.indexOf('tareaValida(req.data)')).toBeLessThan(funcionesSitio.indexOf('construccionDeLaInstancia(entorno())'));
   });
 
   it('en modo github las dos funciones salen antes de hacer nada: no tocan el entorno', async () => {
