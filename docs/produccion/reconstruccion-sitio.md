@@ -161,7 +161,7 @@ Decisión y riesgo aceptado: `docs/arquitectura/decisiones.md` (DR-CB y RIESGO-H
 | Cuenta | Para qué | Permisos |
 |---|---|---|
 | `sitio-constructor` | Ejecuta el build y despliega el sitio | `firebasehosting.admin` (proyecto: Hosting no admite permisos por sitio, es el riesgo aceptado), `logging.logWriter`, `serviceusage.serviceUsageConsumer`, lector del repositorio de imágenes, acceso solo a los secretos del sitio |
-| `fn-constructor-sitio` | Corre las dos funciones del constructor: encola y recibe el aviso | rol propio con solo `cloudbuild.builds.create` y `get`; `actAs` solo sobre `sitio-constructor`; Firestore y registros |
+| `fn-constructor-sitio` | Corre las dos funciones del constructor: encola y recibe el aviso | rol propio con solo `cloudbuild.builds.create` y `get`; `actAs` solo sobre `sitio-constructor`; Firestore y registros; `secretAccessor` de `SITIOS_TENANT`; opcional, `actAs` de cada cuenta que encola sobre sí misma, que solo se da si P6 lo pide |
 | `build-funciones` (cuenta por defecto de Cloud Build) | Construye las Functions | lo mínimo: `logging.logWriter`, `artifactregistry.writer` sobre `gcf-artifacts` y lectura del bucket de fuentes. Reemplaza a la de Compute con rol Editor (D-P5-1); tras cambiarla se re-despliega en el acto para comprobar las 12 Functions |
 
 El invocador de la cola `construirSitio` va en el código (constante `INVOCADORES_TAREA_SITIO`: `novutienda-funciones@` y `fn-constructor-sitio@`, D-P5-2); firebase-tools lo reaplica en cada despliegue, así que el permiso de la cola no se pierde al desplegar.
@@ -186,3 +186,11 @@ El workflow de GitHub y sus secretos se retiran solo tras 14 días de staging en
 - Es un aviso, no un freno: el freno es la guardia.
 - Prueba real: forzar en P6 un trabajo de más de 10 minutos y comprobar que llega el correo. `gcloud logging write` usa el recurso `global` y no sirve para probar la rama de Cloud Run.
 - Un latido (ausencia de datos sobre `temporizadorSitio`) sumaría otros USD 0,10 al mes; se propone y no se crea sin autorización. Costos y sus fuentes: `docs/produccion/alertas.md`.
+
+### Prerrequisito de P9 (producción por cliente)
+
+Antes del primer tag de producción con las funciones del constructor exportadas, hay que crear en producción la cuenta `fn-constructor-sitio`: si no existe, el despliegue falla al dar el invocador de la cola (`INVOCADORES_TAREA_SITIO`). También se crean allí `sitio-constructor` y sus permisos. La producción de cada cliente se revisa aparte del riesgo aceptado de staging.
+
+### Verificación en N5 y riesgo residual
+
+`fn-constructor-sitio` podría lanzar un build sin indicar cuenta; ese build correría como `build-funciones`, que escribe en `gcf-artifacts`. Al aplicar N5 se envía un build sin `serviceAccount` con la identidad de `fn-constructor-sitio` y se espera PERMISSION_DENIED. Si no lo rechaza, el riesgo se acepta y se anota en `docs/arquitectura/decisiones.md`.

@@ -25,3 +25,9 @@ corrido contra un staging real. Requisitos antes de crearlo:
 
 No se relaja la exigencia vaciando la variable ni quitando el job: configurar
 staging es parte del pase a producción (ver `/pase-a-produccion`).
+
+## Funciones del constructor del sitio
+
+Antes del primer tag con las funciones del constructor exportadas, debe existir en
+producción la cuenta `fn-constructor-sitio`: si no, el despliegue falla al dar el
+invocador de la cola. Detalle en `docs/produccion/reconstruccion-sitio.md` (P9).
