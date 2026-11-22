@@ -10,7 +10,7 @@ import type { PeticionHttp, RespuestaApi } from './tipos.js';
 /** Lo que el borde de website necesita de la configuración del enrutador. */
 export interface ConfigWebsite {
   readonly limiteContacto: LimiteTasa;
-  /** Límite en memoria por origen de `/api/vista` (la IP nunca se guarda). */
+  /** Límite del manejador de `/api/vista`; los de memoria (por origen, global y por producto) los aplica el enrutador. */
   readonly limiteVista: LimiteTasa;
   readonly recaptcha: VerificadorRecaptcha;
   readonly appCheck: VerificadorAppCheck;

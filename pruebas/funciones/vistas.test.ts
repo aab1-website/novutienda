@@ -5,7 +5,7 @@ import { HOST_A, hayEmulador, herramientas, http, T, TENANT_TODO_ENCENDIDO, unic
 vi.setConfig({ testTimeout: 60_000, hookTimeout: 60_000 });
 
 const origenAleatorio = (): string => `198.51.100.${String(Math.floor(Math.random() * 200) + 1)}`;
-const cabecera = (ip: string): Record<string, string> => ({ 'x-forwarded-for': `9.9.9.9, ${ip}, 151.101.1.1` });
+const cabecera = (ip: string): Record<string, string> => ({ 'sec-fetch-site': 'same-origin', 'x-forwarded-for': `9.9.9.9, ${ip}, 151.101.1.1` });
 
 describe.skipIf(!hayEmulador)('/api/vista (emulador)', () => {
   let h: Herramientas;
@@ -44,11 +44,18 @@ describe.skipIf(!hayEmulador)('/api/vista (emulador)', () => {
     expect((await http('/api/vista?id=A', { headers: cabecera(ip) })).status).toBe(400);
   });
 
-  it('límite de tasa por origen: el POST 31 en un minuto da 429; otro origen no se afecta', async () => {
+  it('límite por producto, origen y hora: el 3.º POST da 429; otro origen no se afecta', async () => {
+    const ip = origenAleatorio();
+    const estados: number[] = [];
+    for (let i = 0; i < 3; i += 1) estados.push((await http(`/api/vista?id=${prod}`, { method: 'POST', headers: cabecera(ip) })).status);
+    expect(estados).toEqual([200, 200, 429]);
+    expect((await http(`/api/vista?id=${prod}`, { method: 'POST', headers: cabecera(origenAleatorio()) })).status).toBe(200);
+  });
+
+  it('límite por origen y minuto: la petición 31 (GET) da 429', async () => {
     const ip = origenAleatorio();
     let ultimo = 0;
-    for (let i = 0; i < 31; i += 1) ultimo = (await http(`/api/vista?id=${prod}`, { method: 'POST', headers: cabecera(ip) })).status;
+    for (let i = 0; i < 31; i += 1) ultimo = (await http(`/api/vista?id=${prod}`, { headers: cabecera(ip) })).status;
     expect(ultimo).toBe(429);
-    expect((await http(`/api/vista?id=${prod}`, { method: 'POST', headers: cabecera(origenAleatorio()) })).status).toBe(200);
   });
 });

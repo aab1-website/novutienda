@@ -40,7 +40,7 @@ export function despacharApi(req: PeticionApi, deps: DepsApi): Promise<Respuesta
     case '/api/contacto':
       return manejarContacto({ metodo: req.metodo, cabeceras: req.cabeceras, cuerpo: req.cuerpo, origen: req.origen }, deps.contacto);
     case '/api/vista':
-      return manejarVista({ metodo: req.metodo, id: req.consulta['id'] ?? null, origen: req.origen }, deps.vistas);
+      return manejarVista({ metodo: req.metodo, id: req.consulta['id'] ?? null, origen: req.origen, claves: Object.keys(req.consulta), cabeceras: req.cabeceras }, deps.vistas);
     default:
       return Promise.resolve(respuestaJson(404, { error: 'no_encontrado' }));
   }

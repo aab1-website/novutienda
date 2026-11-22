@@ -23,12 +23,35 @@ export interface DepsVista {
 const RE_ID = /^[a-z0-9][a-z0-9-]{1,59}$/;
 export const CACHE_VISTA = 'public, max-age=60, s-maxage=60';
 
+/** Solo cuenta lo que viene de las páginas del propio sitio: `Sec-Fetch-Site: same-origin`, o `Origin` con el mismo host. */
+export function mismoOrigen(c: Readonly<Record<string, string | undefined>>): boolean {
+  if (c['sec-fetch-site'] === 'same-origin') return true;
+  const origin = c['origin'];
+  if (origin === undefined || origin === '') return false;
+  let host: string;
+  try {
+    host = new URL(origin).host.toLowerCase();
+  } catch {
+    return false;
+  }
+  return [c['x-forwarded-host'], c['host']].some((h) => h !== undefined && h.split(',')[0]!.trim().toLowerCase() === host);
+}
+
 export async function manejarVista(
-  req: { readonly metodo: string; readonly id?: string | null; readonly origen: string },
+  req: {
+    readonly metodo: string;
+    readonly id?: string | null;
+    readonly origen: string;
+    /** Claves de la consulta: solo se admite `id`, para que parámetros basura no esquiven la caché del CDN. */
+    readonly claves?: readonly string[];
+    readonly cabeceras?: Readonly<Record<string, string | undefined>>;
+  },
   deps: DepsVista,
 ): Promise<RespuestaHttp> {
   const metodo = req.metodo.toUpperCase();
   if (metodo !== 'GET' && metodo !== 'POST') return respuestaJson(405, { error: 'metodo_no_permitido' }, { Allow: 'GET, POST' });
+  if ((req.claves ?? []).some((k) => k !== 'id')) return respuestaJson(400, { error: 'parametros_invalidos' });
+  if (metodo === 'POST' && !mismoOrigen(req.cabeceras ?? {})) return respuestaJson(403, { error: 'origen_no_permitido' });
   const id = (req.id ?? '').trim();
   if (!RE_ID.test(id)) return respuestaJson(400, { error: 'id_invalido' });
   try {

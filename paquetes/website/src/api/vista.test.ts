@@ -3,6 +3,8 @@ import { limiteMemoria } from '@novutienda/nucleo';
 import { manejarVista, type DepsVista } from './vista.js';
 import { MIN_VISTAS_VISIBLES, marcarVista, textoVistas, yaContoVista } from '../lib/vistas.js';
 
+const SO = { 'sec-fetch-site': 'same-origin' };
+
 function deps(publicados: Record<string, number>, max = 100): DepsVista {
   return {
     almacen: {
@@ -21,7 +23,7 @@ function deps(publicados: Record<string, number>, max = 100): DepsVista {
 describe('/api/vista', () => {
   it('POST suma y GET lee, con caché solo en el GET', async () => {
     const d = deps({ 'tv-1': 4 });
-    const p = await manejarVista({ metodo: 'POST', id: 'tv-1', origen: 'a' }, d);
+    const p = await manejarVista({ metodo: 'POST', id: 'tv-1', origen: 'a', cabeceras: SO }, d);
     expect(p.status).toBe(200);
     expect(p.cuerpo).toEqual({ vistas: 5 });
     expect(p.headers['Cache-Control']).toBe('no-store');
@@ -31,20 +33,20 @@ describe('/api/vista', () => {
   });
   it('id inexistente o no publicado da 404; id mal formado, 400; otro método, 405', async () => {
     const d = deps({ 'tv-1': 0 });
-    expect((await manejarVista({ metodo: 'POST', id: 'inventado', origen: 'a' }, d)).status).toBe(404);
+    expect((await manejarVista({ metodo: 'POST', id: 'inventado', origen: 'a', cabeceras: SO }, d)).status).toBe(404);
     expect((await manejarVista({ metodo: 'GET', id: 'inventado', origen: 'a' }, d)).status).toBe(404);
-    expect((await manejarVista({ metodo: 'POST', id: '../x', origen: 'a' }, d)).status).toBe(400);
-    expect((await manejarVista({ metodo: 'POST', id: null, origen: 'a' }, d)).status).toBe(400);
+    expect((await manejarVista({ metodo: 'POST', id: '../x', origen: 'a', cabeceras: SO }, d)).status).toBe(400);
+    expect((await manejarVista({ metodo: 'POST', id: null, origen: 'a', cabeceras: SO }, d)).status).toBe(400);
     expect((await manejarVista({ metodo: 'DELETE', id: 'tv-1', origen: 'a' }, d)).status).toBe(405);
   });
   it('limita los POST por origen (429) sin afectar a otro origen ni a los GET', async () => {
     const d = deps({ 'tv-1': 0 }, 2);
-    expect((await manejarVista({ metodo: 'POST', id: 'tv-1', origen: 'ip-1' }, d)).status).toBe(200);
-    expect((await manejarVista({ metodo: 'POST', id: 'tv-1', origen: 'ip-1' }, d)).status).toBe(200);
-    const r = await manejarVista({ metodo: 'POST', id: 'tv-1', origen: 'ip-1' }, d);
+    expect((await manejarVista({ metodo: 'POST', id: 'tv-1', origen: 'ip-1', cabeceras: SO }, d)).status).toBe(200);
+    expect((await manejarVista({ metodo: 'POST', id: 'tv-1', origen: 'ip-1', cabeceras: SO }, d)).status).toBe(200);
+    const r = await manejarVista({ metodo: 'POST', id: 'tv-1', origen: 'ip-1', cabeceras: SO }, d);
     expect(r.status).toBe(429);
     expect(r.headers['Retry-After']).toBeDefined();
-    expect((await manejarVista({ metodo: 'POST', id: 'tv-1', origen: 'ip-2' }, d)).status).toBe(200);
+    expect((await manejarVista({ metodo: 'POST', id: 'tv-1', origen: 'ip-2', cabeceras: SO }, d)).status).toBe(200);
     expect((await manejarVista({ metodo: 'GET', id: 'tv-1', origen: 'ip-1' }, d)).status).toBe(200);
   });
   it('un fallo del almacén da 503 sin detalle', async () => {
@@ -52,6 +54,28 @@ describe('/api/vista', () => {
     const r = await manejarVista({ metodo: 'GET', id: 'tv-1', origen: 'a' }, d);
     expect(r.status).toBe(503);
     expect(JSON.stringify(r.cuerpo)).not.toContain('secreto');
+  });
+});
+
+describe('/api/vista: origen y parámetros', () => {
+  const mismo = { 'sec-fetch-site': 'same-origin' };
+  it('el POST exige el propio sitio: same-origin, u Origin igual al host', async () => {
+    const d = deps({ 'tv-1': 0 });
+    const post = (cabeceras: Record<string, string>) => manejarVista({ metodo: 'POST', id: 'tv-1', origen: 'a', cabeceras }, d);
+    expect((await post(mismo)).status).toBe(200);
+    expect((await post({ origin: 'https://tienda.invalid', host: 'tienda.invalid' })).status).toBe(200);
+    expect((await post({ origin: 'https://tienda.invalid', 'x-forwarded-host': 'tienda.invalid' })).status).toBe(200);
+    expect((await post({ 'sec-fetch-site': 'cross-site' })).status).toBe(403);
+    expect((await post({ origin: 'https://otro.invalid', host: 'tienda.invalid' })).status).toBe(403);
+    expect((await post({ origin: 'no es url', host: 'tienda.invalid' })).status).toBe(403);
+    expect((await post({})).status).toBe(403);
+    expect((await manejarVista({ metodo: 'POST', id: 'tv-1', origen: 'a' }, d)).status).toBe(403);
+  });
+  it('el GET no exige origen, pero rechaza claves de consulta distintas de id', async () => {
+    const d = deps({ 'tv-1': 3 });
+    expect((await manejarVista({ metodo: 'GET', id: 'tv-1', origen: 'a', claves: ['id'] }, d)).status).toBe(200);
+    expect((await manejarVista({ metodo: 'GET', id: 'tv-1', origen: 'a', claves: ['id', 'cb'] }, d)).status).toBe(400);
+    expect((await manejarVista({ metodo: 'POST', id: 'tv-1', origen: 'a', claves: ['x'], cabeceras: mismo }, d)).status).toBe(400);
   });
 });
 

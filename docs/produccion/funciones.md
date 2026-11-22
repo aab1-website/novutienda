@@ -161,6 +161,7 @@ Hosting reescribe `/api/**` y `/healthz` a la función `api` (región `us-east1`
 | `GET /healthz` | ninguna | `200 ok` solo en el emulador y las pruebas; en Cloud Run no llega a la función |
 | `GET /api/cotizacion[?mercado=BO\|AR]` | pública | handler del núcleo; `Cache-Control: public, max-age=60, s-maxage=300` |
 | `GET /api/disponibilidad?ids=a,b` | pública | `{ disponibilidad: { id: 'disponible'\|'agotado' } }`, nunca cantidades |
+| `GET /api/vista?id=<productoId>` · `POST /api/vista` | GET pública; POST solo desde el mismo sitio (`Origin` o `Referer` del host del tenant; otro origen, `403`) | POST suma una vista a un producto publicado; GET devuelve el número de vistas. `Cache-Control: public, max-age=60` en GET. Un límite por origen y producto y un tope global por instancia, en memoria, sin guardar la IP. La ficha lo muestra desde 10 vistas |
 | `POST /api/contacto` | límite en memoria por origen (antes de todo) + App Check de un solo uso (`X-Firebase-AppCheck`) + límite de tasa por origen + reCAPTCHA Enterprise | `200 { ok, repetido }`; `401 app_check`; `403 recaptcha`; `429` con `Retry-After`; idempotente por `envioId` |
 | `GET /api/novuchat/v1/catalogo?mercado=BO\|AR` | `Authorization: Bearer <token>` (SHA-256 en `novuchatTokens/{hash}`) | Contrato de `docs/integracion-novuchat.md` §1; `ETag` y `Cache-Control: private, max-age=60`; `304` con `If-None-Match`; `401 sin_credencial\|credencial_invalida`, `400 mercado_invalido`, `429 limite`, `503 sin_cotizacion` |
 | `GET /api/novuchat/v1/inventario` | idem | `{ version, generadoEn, items: [{ id, nombre, sku, activo, conSerie, stockTotal, stockPorAlmacen, minimo, bajoMinimo }] }`, sin costos; `ETag` |
@@ -182,7 +183,7 @@ Firestore y la lectura de datos. Sin credencial válida no se consultan módulos
 
 | Ruta | Tenant que se controla | Módulo apagado |
 |---|---|---|
-| `/api/cotizacion`, `/api/disponibilidad`, `/api/contacto` | el del host (`x-forwarded-host`, tabla `dominios`), antes del manejador; host sin mapeo, `404` | `404 no_encontrado` |
+| `/api/cotizacion`, `/api/disponibilidad`, `/api/vista`, `/api/contacto` | el del host (`x-forwarded-host`, tabla `dominios`), antes del manejador; host sin mapeo, `404` | `404 no_encontrado` |
 | `/api/novuchat/v1/catalogo`, `/api/novuchat/v1/inventario` | el del token, tras autenticarlo y antes de leer datos | `401 credencial_invalida` (igual que un token inválido; sin cambio de contrato) |
 | `/api/novuchat/v1/pedidos/confirmar` | el del host (`x-forwarded-host`, tabla `dominios`); el encendido se controla tras verificar la firma | `401 credencial_invalida` |
 | `/api/sitio/v1/…` | el `tenantId` firmado, tras la firma y su validación | `404 no_encontrado` |
@@ -305,6 +306,7 @@ Pruebas contra el emulador: `pnpm test:funciones` (puertos de `firebase.json`; p
 - **Origen del límite de tasa:** último salto confiable de `X-Forwarded-For` (`PROXY_SALTOS`, 2 detrás de Hosting + GFE); jamás `Fastly-Client-IP` ni el primer elemento. Además hay un límite en
   memoria por instancia antes de autenticar (NovuChat), de leer (`/api/disponibilidad`) y de verificar App Check (`/api/contacto`, `CONTACTO_MAXIMO_POR_MINUTO`); el límite de Firestore
   de `/api/contacto` va después de App Check, con token de un solo uso (`consume: true`; el sitio pide un token nuevo por envío con `getLimitedUseToken`, proveedor `cbAppCheck`).
+- **Vistas por producto:** `vistasProducto/{productoId}` en `tenants/{t}/…` guarda el contador; solo lo escribe el servidor (`/api/vista`), las reglas lo niegan al cliente. El límite por origen y producto y el tope global por instancia viven en memoria, antes de escribir, y no guardan la IP.
 - **Configuración en la nube pendiente:** App Check, reCAPTCHA Enterprise, IAM y secretos no se crearon (§11).
 
 ## 11. Qué debe autorizar Andres (lo ejecuta Claude con su «sí»)

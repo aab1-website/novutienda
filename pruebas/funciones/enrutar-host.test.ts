@@ -56,7 +56,7 @@ function montar(docs: Record<string, unknown>, o: { hosts?: number; hostsGlobal?
     appCheck: { verificar: () => Promise.resolve(true) },
     novuchat: { sitioUrl: '', mediosBaseUrl: 'https://medios.test', limite: limiteMemoria(1000, 60_000), secretoPedidos: SECRETO },
     limiteContacto: limiteMemoria(1000, 60_000),
-    limiteMemoria: { novuchat: limiteMemoria(1000, 60_000), disponibilidad: limiteMemoria(1000, 60_000), contacto: limiteMemoria(1000, 60_000), vista: limiteMemoria(1000, 60_000), hosts: limiteMemoria(o.hosts ?? 1000, 60_000), hostsGlobal: limiteMemoria(o.hostsGlobal ?? 1000, 60_000) },
+    limiteMemoria: { novuchat: limiteMemoria(1000, 60_000), disponibilidad: limiteMemoria(1000, 60_000), contacto: limiteMemoria(1000, 60_000), vista: limiteMemoria(1000, 60_000), vistaGlobal: limiteMemoria(1000, 60_000), vistaProducto: limiteMemoria(1000, 3_600_000), hosts: limiteMemoria(o.hosts ?? 1000, 60_000), hostsGlobal: limiteMemoria(o.hostsGlobal ?? 1000, 60_000) },
   };
   return { e, cfg, reloj, lecturas, contactos, disponibilidad, cotizaciones };
 }

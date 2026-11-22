@@ -15,8 +15,13 @@ export interface ConfigRouter extends Pick<ConfigWebsite, 'recaptcha' | 'appChec
   readonly secretoReconstruccion: string;
   readonly limiteContacto: LimiteTasa;
   /** Límites en memoria por instancia y por origen, ANTES de autenticar (NovuChat), de leer (disponibilidad) o de verificar App Check (contacto); `hosts` (por origen) y `hostsGlobal` (clave fija `hosts:*`, tope de la instancia), ante un host que no está en caché. */
-  readonly limiteMemoria: { readonly novuchat: LimiteTasa; readonly disponibilidad: LimiteTasa; readonly contacto: LimiteTasa; readonly vista: LimiteTasa; readonly hosts: LimiteTasa; readonly hostsGlobal: LimiteTasa };
+  readonly limiteMemoria: { readonly novuchat: LimiteTasa; readonly disponibilidad: LimiteTasa; readonly contacto: LimiteTasa; readonly vista: LimiteTasa; readonly vistaGlobal: LimiteTasa; readonly vistaProducto: LimiteTasa; readonly hosts: LimiteTasa; readonly hostsGlobal: LimiteTasa };
 }
+
+/** Forma del id de producto de `/api/vista` (la misma que valida el manejador): solo ids válidos crean claves. */
+const RE_ID_VISTA = /^[a-z0-9][a-z0-9-]{1,59}$/;
+/** Sin límite propio: el del manejador de vistas ya lo aplica el enrutador (evita contar dos veces). */
+const SIN_LIMITE: LimiteTasa = { intentar: () => Promise.resolve({ permitido: true, reintentarEnSeg: 0 }) };
 
 const RUTAS_SITIO = new Set(['/api/cotizacion', '/api/disponibilidad', '/api/contacto', '/api/vista']);
 
@@ -113,6 +118,14 @@ export async function enrutar(e: Entorno, req: PeticionHttp, cfg: ConfigRouter):
     // Antes de App Check: verificar y consumir un token cuesta una llamada a Google; el límite de Firestore por origen va después.
     const limitado = await excedeLimite(cfg.limiteMemoria.contacto, `contacto:${req.origen}`, e.ahora());
     if (limitado !== undefined) return limitado;
+  } else if (ruta === '/api/vista') {
+    // Orden: tope global de la instancia (acota la memoria), por origen y minuto (GET y POST) y, solo en POST con un id de forma válida,
+    // un tope por producto y origen y hora (para que cuenten vistas reales). Las claves viven en memoria; el origen nunca se guarda.
+    const id = (req.consulta['id'] ?? '').trim();
+    const limitado = (await excedeLimite(cfg.limiteMemoria.vistaGlobal, 'vista:*', e.ahora()))
+      ?? (await excedeLimite(cfg.limiteMemoria.vista, `vista:${req.origen}`, e.ahora()))
+      ?? (req.metodo.toUpperCase() === 'POST' && RE_ID_VISTA.test(id) ? await excedeLimite(cfg.limiteMemoria.vistaProducto, `vista:${req.origen}:${id}`, e.ahora()) : undefined);
+    if (limitado !== undefined) return limitado;
   } else if (ruta.startsWith('/api/novuchat/')) {
     // Antes de autenticar: un token inventado ya cuesta una lectura de Firestore.
     const limitado = await excedeLimite(cfg.limiteMemoria.novuchat, `novuchat:${req.origen}`, e.ahora());
@@ -123,7 +136,7 @@ export async function enrutar(e: Entorno, req: PeticionHttp, cfg: ConfigRouter):
     const tenantId = await tenantDelHost(e, req, cfg);
     if (typeof tenantId !== 'string') return tenantId;
     if (!(await servir(e, ruta, tenantId))) return json(404, { error: 'no_encontrado' });
-    return manejarSitioPublico(e, req, ruta, { ...cfg, limiteVista: cfg.limiteMemoria.vista }, tenantId);
+    return manejarSitioPublico(e, req, ruta, { ...cfg, limiteVista: SIN_LIMITE }, tenantId);
   }
   // Rutas con tenant de credencial: el manejador llama a `puedeServir` DESPUÉS de autenticar y ANTES de leer datos.
   const puedeServir = (tenantId: string): Promise<boolean> => servir(e, ruta, tenantId);

@@ -189,12 +189,14 @@ describe('despachador', () => {
     vistas: { almacen: { leer: () => Promise.resolve(null), sumar: () => Promise.resolve(null) }, limite: limiteMemoria(10, 1000), ahora: () => 0 },
   };
   const base = { metodo: 'GET', consulta: {}, cabeceras: {}, origen: 'ip' };
-  it('enruta las tres APIs y responde 404 al resto', async () => {
+  it('enruta las cuatro APIs y responde 404 al resto', async () => {
     expect(RUTAS_API).toHaveLength(4);
     expect((await despacharApi({ ...base, ruta: '/api/cotizacion', consulta: { mercado: 'BO' } }, d)).status).toBe(200);
     expect((await despacharApi({ ...base, ruta: '/api/cotizacion/', consulta: { mercado: 'XX' } }, d)).status).toBe(400);
     expect((await despacharApi({ ...base, ruta: '/api/disponibilidad', consulta: { ids: 'tv-1' } }, d)).cuerpo).toEqual({ disponibilidad: { 'tv-1': 'disponible' } });
     expect((await despacharApi({ ...base, metodo: 'POST', ruta: '/api/contacto', cabeceras: { 'content-type': 'application/json' }, cuerpo: {} }, d)).status).toBe(401);
+    expect((await despacharApi({ ...base, ruta: '/api/vista', consulta: { id: 'tv-1' } }, d)).status).toBe(404);
+    expect((await despacharApi({ ...base, ruta: '/api/vista', consulta: { id: 'tv-1', x: '1' } }, d)).status).toBe(400);
     expect((await despacharApi({ ...base, ruta: '/api/otra' }, d)).status).toBe(404);
     expect((await despacharApi({ ...base, ruta: '/' }, d)).status).toBe(404);
   });

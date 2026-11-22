@@ -50,6 +50,12 @@ export const PARAMETROS = {
   disponibilidadMaximoPorMinuto: defineString('DISPONIBILIDAD_MAXIMO_POR_MINUTO', { default: '60' }),
   /** Peticiones por minuto a `/api/contacto`, por origen y por instancia (memoria), antes de verificar App Check. */
   contactoMaximoPorMinuto: defineString('CONTACTO_MAXIMO_POR_MINUTO', { default: '30' }),
+  /** Peticiones por minuto a `/api/vista`, por origen y por instancia (memoria). */
+  vistaMaximoPorMinuto: defineString('VISTA_MAXIMO_POR_MINUTO', { default: '30' }),
+  /** Peticiones por minuto a `/api/vista`, en total por instancia (memoria): acota la memoria de los límites. */
+  vistaGlobalMaximoPorMinuto: defineString('VISTA_GLOBAL_MAXIMO_POR_MINUTO', { default: '600' }),
+  /** Vistas que suma un mismo origen al mismo producto por hora y por instancia (memoria): para que las vistas sean reales. */
+  vistaMaximoPorHoraYProducto: defineString('VISTA_MAXIMO_POR_HORA_Y_PRODUCTO', { default: '2' }),
   /**
    * Repositorio (`owner/nombre`) cuyo workflow `reconstruir-sitio.yml` se avisa tras pasar un trabajo a `reconstruir` (S7-3).
    * Vacío = disparo deshabilitado: el trabajo queda `pendiente` y lo recoge el sondeo programado, como antes.
