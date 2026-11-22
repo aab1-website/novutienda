@@ -38,10 +38,9 @@ describe.skipIf(!hayEmulador)('búsqueda de comprobantes (emulador)', () => {
     }
   });
 
-  it('el número con serie no distingue mayúsculas ni exige el número completo', async () => {
+  it('el número con serie no distingue mayúsculas', async () => {
     expect(await numeros(sup, { numero: 'A-000002' })).toEqual(['A-000002']);
     expect(await numeros(sup, { numero: 'a-000002' })).toEqual(['A-000002']);
-    expect(await numeros(sup, { numero: 'a-00000' })).toEqual(['A-000006', 'A-000005', 'A-000004', 'A-000003', 'A-000002', 'A-000001']);
   });
 
   it('las formas cortas con serie (A6, A-6, a-6) encuentran el recibo exacto', async () => {
@@ -54,6 +53,8 @@ describe.skipIf(!hayEmulador)('búsqueda de comprobantes (emulador)', () => {
   it('un número sin serie encuentra el comprobante de la serie del tenant', async () => {
     expect(await numeros(sup, { numero: '000003' })).toEqual(['A-000003']);
     expect(await numeros(sup, { numero: '3' })).toEqual(['A-000003']);
+    expect(await numeros(sup, { numero: '6' })).toEqual(['A-000006']);
+    expect(await numeros(sup, { numero: '000006' })).toEqual(['A-000006']);
     expect(await numeros(sup, { numero: '000099' })).toEqual([]);
   });
 
@@ -64,5 +65,15 @@ describe.skipIf(!hayEmulador)('búsqueda de comprobantes (emulador)', () => {
     expect(await numeros(caj, { numero: '000005' })).toEqual([]);
     expect(await numeros(caj, { numero: '000002' })).toEqual(['A-000002']);
     expect(await numeros(sup, { limite: 2 })).toEqual(['A-000006', 'A-000005']);
+  });
+
+  it('el número exacto no depende de la fecha: un recibo antiguo bajo más de 500 recientes se encuentra', async () => {
+    const lote = h.firestore.batch();
+    for (let n = 1; n <= 510; n += 1) {
+      lote.set(h.firestore.doc(`tenants/${A}/recibos/relleno-${n}`), { reciboId: `relleno-${n}`, tenantId: A, ventaId: `r-${n}`, numero: `Z-${String(n).padStart(6, '0')}`, estado: 'EMITIDO', fecha: '2026-12-01', emitidoEn: '2026-12-01T10:00:00.000Z' });
+    }
+    await lote.commit();
+    expect(await numeros(sup, { numero: '6' })).toContain('A-000006');
+    expect(await numeros(sup, { numero: 'A-6' })).toEqual(['A-000006']);
   });
 });

@@ -19,3 +19,22 @@ describe('búsqueda por formas cortas del número de recibo', () => {
     expect(await buscar('A-0000')).toEqual(['A-000060', 'A-000006']);
   });
 });
+
+describe('filtro que se pasa a la lectura', () => {
+  const soloConNumero: LecturaRecibos = {
+    consultar: (_t, f) => Promise.resolve(f.numero === undefined ? [] : todos),
+  };
+  it.each(['6', '000006'])('«%s» (sin serie) manda el número sin ceros', async (t) => {
+    const vistos: (string | undefined)[] = [];
+    const lect: LecturaRecibos = { consultar: (_t, f) => { vistos.push(f.numero); return soloConNumero.consultar(_t, f); } };
+    const r = await buscarComprobantes(lect, 't1', { numero: t });
+    expect(vistos).toEqual(['6']);
+    expect(r.map((x) => x.numero)).toEqual(['B-000006', 'A-000006']);
+  });
+  it('con serie manda la forma canónica', async () => {
+    const vistos: (string | undefined)[] = [];
+    const lect: LecturaRecibos = { consultar: (_t, f) => { vistos.push(f.numero); return Promise.resolve(todos); } };
+    await buscarComprobantes(lect, 't1', { numero: 'a-6' });
+    expect(vistos).toEqual(['A-000006']);
+  });
+});

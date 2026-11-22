@@ -57,7 +57,7 @@ export async function buscarComprobantes(lectura: LecturaRecibos, tenantId: stri
   };
   const cliente = consulta.cliente === undefined ? undefined : normalizar(consulta.cliente);
   const filtro: FiltroLectura = {
-    ...(interpretado === null ? consulta.numero !== undefined && { numero: consulta.numero } : canonico !== undefined && { numero: canonico }),
+    ...(interpretado === null ? consulta.numero !== undefined && { numero: consulta.numero } : { numero: canonico ?? String(interpretado.numero) }),
     ...(consulta.desde !== undefined && { desde: consulta.desde }),
     ...(consulta.hasta !== undefined && { hasta: consulta.hasta }),
   };

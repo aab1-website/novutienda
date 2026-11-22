@@ -1,4 +1,4 @@
-// `LecturaRecibos` de Recibos sobre Firestore: consultas indexadas por número (prefijo o exacto sin serie) y por fecha.
+// `LecturaRecibos` de Recibos sobre Firestore: consultas indexadas por número (exacto, con o sin serie) y por fecha.
 // La búsqueda por cliente y el acotado final los completa `buscarComprobantes`.
 import type { Firestore, Query } from 'firebase-admin/firestore';
 import { interpretarNumeroRecibo, numeroDeRecibo } from '@novutienda/nucleo';
@@ -7,8 +7,6 @@ import type { LecturaRecibos, Recibo } from '@novutienda/recibos';
 /** Tope de documentos que una consulta puede traer antes de filtrar en memoria. */
 export const MAX_CANDIDATOS = 500;
 
-/** Cota superior de un prefijo en Firestore: el último carácter BMP (escrito explícito, no un carácter invisible). */
-const FIN_PREFIJO = '\uf8ff';
 /** Largo del correlativo del número (A-000123). */
 const LARGO_CORRELATIVO = 6;
 /** `in` de Firestore admite hasta 30 valores. */
@@ -30,16 +28,12 @@ export function crearLecturaRecibos(firestore: Firestore): LecturaRecibos {
       // Las series son mayúsculas: la búsqueda no distingue mayúsculas porque se normaliza aquí.
       const numero = filtro.numero?.trim().toUpperCase();
       const conSerie = numero === undefined ? null : interpretarNumeroRecibo(numero);
-      // Con ceros a la izquierda y menos de seis dígitos («A-0000») es un prefijo que se escribe a medias, no un número.
-      const digitos = numero?.replace(/^[A-Z\s-]+/, '') ?? '';
-      if (conSerie?.serie !== undefined && (digitos.length === LARGO_CORRELATIVO || !digitos.startsWith('0'))) {
-        // Forma corta con serie («A6», «A-6», «A-000006»): consulta exacta por el número impreso.
+      if (conSerie?.serie !== undefined) {
+        // Con serie llega la forma canónica («A-000006»): consulta exacta por el número impreso, sin depender de la fecha.
         q = q.where('numero', '==', numeroDeRecibo(conSerie.serie, conSerie.numero));
-      } else if (numero !== undefined && numero.includes('-')) {
-        // Número con serie (A-0001…): prefijo indexado; el fragmento intermedio lo filtra el módulo.
-        q = q.where('numero', '>=', numero).where('numero', '<=', `${numero}${FIN_PREFIJO}`).orderBy('numero', 'desc');
       } else if (numero !== undefined && /^\d{1,6}$/.test(numero)) {
-        // Número sin serie («123» o «000123»): consulta exacta por «{serie}-{correlativo}» para cada serie del tenant.
+        // Sin serie («6» o «000006»; el documento no guarda el correlativo aparte): consulta exacta por
+        // «{serie}-{correlativo}» para cada serie del tenant, también independiente de la fecha.
         const series = await seriesDelTenant(firestore, tenantId);
         if (series.length === 0) return [];
         const correlativo = numero.padStart(LARGO_CORRELATIVO, '0');
