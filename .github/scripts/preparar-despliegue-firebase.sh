@@ -116,6 +116,22 @@ if [[ "$P_CONSTRUCTOR_SITIO_MODO" == "google" ]]; then
     [[ -n "${!v:-}" ]] || error "CONSTRUCTOR_SITIO_MODO=google exige ${v#P_}."
   done
 fi
+# Cuentas de servicio del constructor (sin imprimir valores). Nombre: mismo patrón que RE_CUENTA de
+# plataforma/conectores/firebase/constructor-sitio.ts; mantener ambos iguales. Correo completo solo del proyecto del ambiente.
+#   CONSTRUCTOR_SITIO_CUENTA: nombre, nombre@ o correo completo (el conector toma la parte local).
+#   CUENTA_FN_CONSTRUCTOR_SITIO: nombre@ o correo completo (firebase-tools rechaza el nombre solo; ver formatServiceAccount).
+cuenta_nombre='[a-z][a-z0-9-]{4,28}[a-z0-9]'
+cuenta_correo="@${PROYECTO}\\.iam\\.gserviceaccount\\.com"  # ids de proyecto GCP: [a-z0-9-], sin metacaracteres
+cuenta_build="^${cuenta_nombre}(@|${cuenta_correo})?\$"
+cuenta_fn="^${cuenta_nombre}(@|${cuenta_correo})\$"
+if [[ -n "${P_CONSTRUCTOR_SITIO_CUENTA:-}" ]] \
+  && [[ ! "$P_CONSTRUCTOR_SITIO_CUENTA" =~ $cuenta_build ]]; then
+  error "CONSTRUCTOR_SITIO_CUENTA debe ser <nombre>, <nombre>@ o <nombre>@<proyecto del ambiente>.iam.gserviceaccount.com."
+fi
+if [[ -n "${P_CUENTA_FN_CONSTRUCTOR_SITIO:-}" ]] \
+  && [[ ! "$P_CUENTA_FN_CONSTRUCTOR_SITIO" =~ $cuenta_fn ]]; then
+  error "CUENTA_FN_CONSTRUCTOR_SITIO debe ser <nombre>@ o <nombre>@<proyecto del ambiente>.iam.gserviceaccount.com."
+fi
 if [[ -n "${P_CONSTRUCTOR_SITIO_APP_ENV:-}" && "$P_CONSTRUCTOR_SITIO_APP_ENV" != "$AMBIENTE" ]]; then
   error "CONSTRUCTOR_SITIO_APP_ENV no coincide con AMBIENTE: lo fija preparar-despliegue-firebase.sh. Quite la variable."
 fi
@@ -194,7 +210,7 @@ for nombre in APP_CHECK_EXIGIDO RECAPTCHA_CLAVE_SITIO SITIO_URL MEDIOS_BASE_URL 
   VITE_RECAPTCHA_ENTERPRISE_SITE_KEY SITIO_PANEL_ID; do
   var="P_${nombre}"
   valor="${!var:-}"
-  [[ "$valor" != *$'\n'* ]] || error "El parámetro $nombre contiene un salto de línea."
+  [[ "$valor" != *$'\n'* && "$valor" != *$'\r'* ]] || error "El parámetro $nombre contiene un salto de línea o un retorno de carro."
   [[ -z "$valor" ]] || printf '%s=%s\n' "$nombre" "$valor" >>"$parametros"
 done
 # firebase-tools (15.x) en modo no interactivo exige un valor en el dotenv para TODO parámetro definido con

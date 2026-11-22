@@ -119,6 +119,41 @@ describe('preparar-despliegue-firebase.sh: interruptor del constructor', () => {
     expect(r.codigo, r.salida).toBe(0);
     expect(r.valor('CONSTRUCTOR_SITIO_MODO')).toBe('google');
   });
+  it('valor con retorno de carro o salto de línea: falla cerrado sin imprimir el valor', () => {
+    for (const valor of ['clave\rX=1', 'clave\nX=1']) {
+      const r = correr('staging', { P_VITE_FIREBASE_API_KEY: valor });
+      expect(r.codigo).not.toBe(0);
+      expect(r.salida).toContain('VITE_FIREBASE_API_KEY contiene un salto de línea o un retorno de carro');
+      expect(r.salida).not.toContain('X=1');
+    }
+  });
+  it('CONSTRUCTOR_SITIO_CUENTA: nombre, nombre@ o correo del mismo proyecto', () => {
+    for (const cuenta of ['sitio-constructor', 'sitio-constructor@', 'sitio-constructor@proyecto-x.iam.gserviceaccount.com']) {
+      const r = correr('staging', { P_CONSTRUCTOR_SITIO_CUENTA: cuenta });
+      expect(r.codigo, `${cuenta}: ${r.salida}`).toBe(0);
+      expect(r.valor('CONSTRUCTOR_SITIO_CUENTA')).toBe(cuenta);
+    }
+  });
+  it('CONSTRUCTOR_SITIO_CUENTA inválida: falla cerrado sin imprimir el valor', () => {
+    for (const cuenta of ['Sitio', 'abc', 'sitio-constructor@otro.iam.gserviceaccount.com', 'sitio-constructor@proyecto-x.iam.gserviceaccount.com.evil', 'sitio constructor', 'sitio-constructor-']) {
+      const r = correr('staging', { P_CONSTRUCTOR_SITIO_CUENTA: cuenta });
+      expect(r.codigo, cuenta).not.toBe(0);
+      expect(r.salida).toContain('CONSTRUCTOR_SITIO_CUENTA debe ser');
+      expect(r.salida).not.toContain(cuenta);
+    }
+  });
+  it('CUENTA_FN_CONSTRUCTOR_SITIO: nombre@ o correo del mismo proyecto; el nombre solo no (firebase-tools lo rechaza)', () => {
+    for (const cuenta of ['fn-constructor-sitio@', 'fn-constructor-sitio@proyecto-x.iam.gserviceaccount.com']) {
+      const r = correr('staging', { P_CUENTA_FN_CONSTRUCTOR_SITIO: cuenta });
+      expect(r.codigo, `${cuenta}: ${r.salida}`).toBe(0);
+      expect(r.valor('CUENTA_FN_CONSTRUCTOR_SITIO')).toBe(cuenta);
+    }
+    for (const cuenta of ['fn-constructor-sitio', 'fn-constructor-sitio@otro.iam.gserviceaccount.com', 'FN@']) {
+      const r = correr('staging', { P_CUENTA_FN_CONSTRUCTOR_SITIO: cuenta });
+      expect(r.codigo, cuenta).not.toBe(0);
+      expect(r.salida).toContain('CUENTA_FN_CONSTRUCTOR_SITIO debe ser');
+    }
+  });
   it('APP_ENV distinto del ambiente o id de panel distinto: falla cerrado', () => {
     expect(correr('production', { P_CONSTRUCTOR_SITIO_APP_ENV: 'staging' }).codigo).not.toBe(0);
     expect(correr('staging', { P_SITIO_PANEL_ID: 'otro-panel' }).codigo).not.toBe(0);
