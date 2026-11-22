@@ -5,9 +5,9 @@
 import { HttpsError } from 'firebase-functions/v2/https';
 import { z } from 'zod';
 import {
-  ConfirmacionRequerida, fijarCotizacionManualDe, leerReferenciaDe, mercadosDe, parDe, quitarCotizacionManualDe, rutaCotizacion,
-  rutaCotizacionManual, SinCotizacionUtilizable, tieneTipoCambio,
-  type ActorCarga, type ConfiguracionComercial, type Documento, type LimiteTasa,
+  ConfirmacionRequerida, fijarCotizacionManualDe, leerTipoCambioDe, mercadosDe, quitarCotizacionManualDe, rutaCotizacion,
+  tieneTipoCambio, ValorFueraDeBanda,
+  type ActorCarga, type ConfiguracionComercial, type LimiteTasa, type VistaTipoCambio,
 } from '@novutienda/nucleo';
 import { accion, type Contexto, type TablaImplementaciones } from './marco.js';
 import type { Entorno } from '../entorno.js';
@@ -22,13 +22,10 @@ export const HISTORIAL_RECIENTE = 20;
 /**
  * Puertos que el coordinador debe sumar (el marco no los trae todavía):
  * - `limiteTipoCambio`: `LimiteTasa` de 10 por hora (`MAXIMO_CAMBIOS_TIPO_CAMBIO_POR_HORA`, `VENTANA_TIPO_CAMBIO_MS`), con clave por comercio.
- * - `almacenCotizaciones.listarRecientes?(ruta, limite)`: las últimas entradas de una subcolección, la más nueva primero.
+ * - `almacenCotizaciones.listarRecientes?` (puerto del núcleo): las últimas entradas de una subcolección, la más nueva primero.
  */
 export interface PuertosTipoCambio {
   readonly limiteTipoCambio: LimiteTasa;
-}
-interface ConListado {
-  listarRecientes?(ruta: string, limite: number): Promise<readonly Documento[]>;
 }
 
 function limiteDe(e: Entorno): LimiteTasa {
@@ -60,13 +57,8 @@ function exigirMercado(comercial: ConfiguracionComercial, mercado: string): void
 const num = (v: unknown): number | null => (typeof v === 'number' && Number.isFinite(v) ? v : null);
 const txt = (v: unknown): string | null => (typeof v === 'string' && v !== '' ? v : null);
 
-async function referenciaDe(c: Contexto, comercial: ConfiguracionComercial, mercado: string): Promise<{ valor: number; fecha: string; fuente: string; estado: string } | null> {
-  try {
-    const r = await leerReferenciaDe(c.e.almacenCotizaciones, mercado, c.e.ahora(), { tenantId: c.tenantId, comercial });
-    return { valor: r.valor, fecha: r.fecha, fuente: r.fuente, estado: r.estado };
-  } catch (error) {
-    if (!(error instanceof SinCotizacionUtilizable)) throw error;
-  }
+async function referenciaDe(c: Contexto, vista: VistaTipoCambio, mercado: string): Promise<{ valor: number; fecha: string; fuente: string; estado: string } | null> {
+  if ('valor' in vista.referencia) return { valor: vista.referencia.valor, fecha: vista.referencia.fecha, fuente: vista.referencia.fuente, estado: vista.referencia.estado };
   // La referencia no sirve (vieja o ausente): se muestra lo que haya, marcado como vencido, para que el administrador decida.
   const d = await c.e.almacenCotizaciones.leer(rutaCotizacion(c.tenantId, mercado));
   const valor = d === null ? null : num(d['valor']);
@@ -90,22 +82,12 @@ export const accionesTipoCambio: TablaImplementaciones = {
     esquema: VACIO,
     ejecutar: async (c) => {
       const comercial = await c.e.comercialDelTenant(c.tenantId);
-      const listar = (c.e.almacenCotizaciones as ConListado).listarRecientes?.bind(c.e.almacenCotizaciones);
       const parciales = [];
       for (const mercado of mercadosDe(comercial).filter((m) => tieneTipoCambio(comercial, m))) {
-        const rutaM = rutaCotizacionManual(c.tenantId, mercado);
-        const md = await c.e.almacenCotizaciones.leer(rutaM);
-        const valorM = md === null ? null : num(md['valor']);
-        const fechaM = md === null ? null : txt(md['fecha']);
-        const vigente = md !== null && md['activo'] !== false && valorM !== null && valorM > 0 && fechaM !== null;
-        const historial = listar === undefined ? [] : await listar(`${rutaM}/historial`, HISTORIAL_RECIENTE);
-        parciales.push({
-          mercado, par: parDe(comercial, mercado), referencia: await referenciaDe(c, comercial, mercado),
-          manual: vigente ? { valor: valorM, fecha: fechaM, actualizadoEn: txt(md['actualizadoEn']), por: txt(md['por']) } : null,
-          historial: historial.slice(0, HISTORIAL_RECIENTE),
-        });
+        const v = await leerTipoCambioDe(c.e.almacenCotizaciones, mercado, c.e.ahora(), { tenantId: c.tenantId, comercial, limite: HISTORIAL_RECIENTE });
+        parciales.push({ mercado, par: v.par, referencia: await referenciaDe(c, v, mercado), manual: v.manual, historial: v.historial.slice(0, HISTORIAL_RECIENTE) });
       }
-      const nombres = await nombresDe(c.e, parciales.flatMap((p) => [p.manual?.por ?? null, ...p.historial.map((h) => txt(h['por']))]).filter((x): x is string => x !== null));
+      const nombres = await nombresDe(c.e, parciales.flatMap((p) => [p.manual?.por ?? null, ...p.historial.map((h) => txt(h.por))]).filter((x): x is string => x !== null));
       const quien = (uid: string | null): string => (uid === null ? 'Persona sin correo' : (nombres.get(uid) ?? 'Persona que ya no tiene acceso'));
       return {
         mercados: parciales.map((p) => ({
@@ -114,14 +96,10 @@ export const accionesTipoCambio: TablaImplementaciones = {
           rige: p.manual !== null ? 'manual' : p.referencia !== null && p.referencia.estado !== 'vencida' ? 'referencia' : 'ninguna',
           referencia: p.referencia,
           manual: p.manual === null ? null : { valor: p.manual.valor, fecha: p.manual.fecha, actualizadoEn: p.manual.actualizadoEn, por: quien(p.manual.por) },
-          historial: p.historial.map((h) => {
-            const antes = h['antes'] as Documento | null | undefined;
-            return {
-              accion: h['accion'] === 'quitar' ? 'quitar' : 'fijar',
-              valor: num(h['valor']), antes: antes === null || antes === undefined ? null : num(antes['valor']),
-              fecha: txt(h['fecha']), actualizadoEn: txt(h['actualizadoEn']), por: quien(txt(h['por'])),
-            };
-          }),
+          historial: p.historial.map((h) => ({
+            accion: h.accion, valor: h.valor, antes: h.antes === null ? null : num(h.antes.valor),
+            fecha: h.fecha, actualizadoEn: txt(h.actualizadoEn), por: quien(txt(h.por)),
+          })),
         })),
       };
     },
@@ -133,15 +111,23 @@ export const accionesTipoCambio: TablaImplementaciones = {
       const comercial = await c.e.comercialDelTenant(c.tenantId);
       exigirMercado(comercial, d.mercado);
       await limitar(c);
-      const r = await fijarCotizacionManualDe(
-        c.e.almacenCotizaciones,
-        { mercado: d.mercado, valor: d.valor, actor: actorDe(c), ahoraMs: c.e.ahora(), ...(d.confirmarSalto === true ? { confirmarSalto: true } : {}) },
-        { tenantId: c.tenantId, comercial },
-      );
+      let r;
+      try {
+        r = await fijarCotizacionManualDe(
+          c.e.almacenCotizaciones,
+          { mercado: d.mercado, valor: d.valor, actor: actorDe(c), ahoraMs: c.e.ahora(), ...(d.confirmarSalto === true ? { confirmarSalto: true } : {}) },
+          { tenantId: c.tenantId, comercial },
+        );
+      } catch (error) {
+        if (error instanceof ValorFueraDeBanda) {
+          throw new HttpsError('invalid-argument', `El valor está fuera del rango razonable para ${error.par} (${error.minimo} a ${error.maximo}). Revíselo.`, { codigo: 'valor-fuera-de-rango' });
+        }
+        throw error;
+      }
       return { ok: true, mercado: r.mercado, fecha: r.fecha };
     },
   }),
-  /** Vuelve al tipo de cambio del banco central (solo administrador con contraseña, con confirmación expresa). */
+  /** Vuelve al tipo de cambio del banco central (administrador con contraseña o propietario, con confirmación expresa). */
   quitarCotizacionManual: accion({
     esquema: objeto({ mercado: MERCADO, confirmar: z.boolean().optional() }),
     ejecutar: async (c, d) => {

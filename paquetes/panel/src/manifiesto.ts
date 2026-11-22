@@ -34,9 +34,9 @@ export const manifiestoPanel: ManifiestoModulo = {
     // Mercados y monedas del comercio de la sesión (solo lectura): todos los roles necesitan saber en qué monedas se trabaja.
     { callable: 'consola', nombre: 'configuracionComercial', roles: ['caj', 'sup', 'adm'], propietario: false },
     // Tipo de cambio manual (TC-2): ver la referencia y el manual, fijarlo y volver al del banco central. Solo administrador;
-    // quitar exige contraseña (sin propietario), como lo impone el núcleo.
+    // fijar y quitar admiten administrador con contraseña o propietario, como lo impone el núcleo.
     { callable: 'consola', nombre: 'verTipoCambio', roles: ['adm'], propietario: true },
     { callable: 'consola', nombre: 'cotizacionManual', roles: ['adm'], propietario: true },
-    { callable: 'consola', nombre: 'quitarCotizacionManual', roles: ['adm'], propietario: false },
+    { callable: 'consola', nombre: 'quitarCotizacionManual', roles: ['adm'], propietario: true },
   ],
 };
