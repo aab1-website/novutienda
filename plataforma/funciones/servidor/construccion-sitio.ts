@@ -168,8 +168,15 @@ export async function lanzarSiguiente(deps: DepsConstruccion, tenantId: string):
   try {
     lanzada = await (constructor as ConstructorSitio).lanzar(tenantId, r.trabajoId);
   } catch (error) {
-    // No quedó construcción: se libera el bloqueo (el trabajo sigue `pendiente`), se devuelve la unidad al contador del día (una racha
-    // de fallas al crear el build no debe agotar el tope sin desplegar nada) y el error sube para que la cola reintente.
+    if (!buildNoCreado(error)) {
+      // Sin prueba de que el build no existe (tiempo agotado, respuesta sin id, error desconocido): pudo crearse. Liberar el bloqueo o
+      // devolver la unidad daría dos builds a la vez o un contador falso. Se conserva el bloqueo (sin `buildId`): lo libera el cierre del
+      // trabajo o su vencimiento a los 12 min, que cierra el trabajo y encola el reintento. Solo se alerta.
+      (deps.alertar ?? alertaPorDefecto)({ tenantId, trabajoId: r.trabajoId, estado: 'lanzamiento_incierto' });
+      return r.resultado;
+    }
+    // Hay prueba de que no quedó construcción: se libera el bloqueo (el trabajo sigue `pendiente`), se devuelve la unidad al contador del
+    // día (una racha de fallas al crear el build no debe agotar el tope sin desplegar nada) y el error sube para que la cola reintente.
     await deps.almacen.transaccion(tenantId, async (tx) => {
       const { bloqueo, ultimaImagen, contador } = await tx.estado();
       if (bloqueo?.trabajoId !== r.trabajoId || bloqueo.desdeMs !== ahora) return;
@@ -189,6 +196,17 @@ export async function lanzarSiguiente(deps: DepsConstruccion, tenantId: string):
     (deps.alertar ?? alertaPorDefecto)({ tenantId, trabajoId: r.trabajoId, estado: 'build_id_no_guardado' });
   }
   return r.resultado;
+}
+
+/**
+ * ¿Hay prueba de que `lanzar()` NO creó el build? Solo con un rechazo 4xx de Cloud Build (`estado` numérico 400-499) o un error que el
+ * conector marca `noCreado: true` (falta de token, validación previa a la petición). `'red'`, `'respuesta'`, 5xx y errores
+ * desconocidos no prueban nada: el build pudo crearse igual.
+ */
+export function buildNoCreado(error: unknown): boolean {
+  if (typeof error !== 'object' || error === null) return false;
+  const { estado, noCreado } = error as { estado?: unknown; noCreado?: unknown };
+  return noCreado === true || (typeof estado === 'number' && estado >= 400 && estado < 500);
 }
 
 export interface DepsTareaConstruccion extends DepsConstruccion {

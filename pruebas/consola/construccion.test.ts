@@ -62,9 +62,13 @@ class AlmacenDoble implements AlmacenConstruccion {
 
 class ConstructorDoble implements ConstructorSitio {
   readonly lanzados: string[] = [];
-  falla = false;
+  falla: boolean | 'red' | 'respuesta' | 'sin-token' = false;
   lanzar(_t: string, trabajoId: string): Promise<{ buildId: string; imagen: string }> {
-    if (this.falla) return Promise.reject(new Error('sin cuota'));
+    // `true`: rechazo 4xx de Cloud Build (prueba de que no se creó). Los demás, como el conector real.
+    if (this.falla === true) return Promise.reject(Object.assign(new Error('sin cuota'), { estado: 403 }));
+    if (this.falla === 'red') return Promise.reject(Object.assign(new Error('Cloud Build no respondió'), { estado: 'red' }));
+    if (this.falla === 'respuesta') return Promise.reject(Object.assign(new Error('sin id'), { estado: 'respuesta' }));
+    if (this.falla === 'sin-token') return Promise.reject(Object.assign(new Error('sin token'), { noCreado: true }));
     this.lanzados.push(trabajoId);
     return Promise.resolve({ buildId: `b${String(this.lanzados.length)}`, imagen: 'img@sha256:aaa' });
   }
@@ -470,6 +474,32 @@ describe('tope duro de 60 construcciones por sitio y día de La Paz', () => {
     m.constructor.falla = false;
     expect(await lanzarSiguiente(m.deps, T)).toBe('lanzado'); // sigue habiendo cupo
     expect(m.almacen.contador?.n).toBe(1);
+  });
+  it('con la falla incierta (red o respuesta sin id) no se devuelve la unidad: se conserva el bloqueo y se alerta', async () => {
+    for (const falla of ['red', 'respuesta'] as const) {
+      const alertar = vi.fn();
+      const m = montar({ alertar });
+      m.constructor.falla = falla;
+      m.almacen.poner('rec-1', 'pendiente', m.reloj.ms);
+      expect(await lanzarSiguiente(m.deps, T)).toBe('lanzado'); // no sube: el build pudo crearse
+      expect(m.almacen.contador?.n).toBe(1);
+      expect(m.almacen.bloqueo).toMatchObject({ trabajoId: 'rec-1', buildId: '' });
+      expect(alertar).toHaveBeenCalledWith({ tenantId: T, trabajoId: 'rec-1', estado: 'lanzamiento_incierto' });
+      m.constructor.falla = false;
+      m.almacen.poner('rec-2', 'pendiente', m.reloj.ms);
+      expect(await lanzarSiguiente(m.deps, T)).toBe('esperar'); // sin segundo build
+      expect(m.constructor.lanzados).toEqual([]);
+    }
+  });
+  it('con prueba de que no se creó (4xx o falta de token) sí se devuelve la unidad y se libera el bloqueo', async () => {
+    for (const falla of [true, 'sin-token'] as const) {
+      const m = montar();
+      m.constructor.falla = falla;
+      m.almacen.poner('rec-1', 'pendiente', m.reloj.ms);
+      await expect(lanzarSiguiente(m.deps, T)).rejects.toThrow();
+      expect(m.almacen.contador?.n).toBe(0);
+      expect(m.almacen.bloqueo).toBeNull();
+    }
   });
   it('el tope también rige en modo delegar: no encola', async () => {
     const encolar = vi.fn(() => Promise.resolve());
