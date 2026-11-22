@@ -2,12 +2,17 @@
 // pero deben coincidir con lo que declaran los manifiestos. Se lee el texto de index.ts (importarlo arrancaría la app de Firebase).
 import { readFileSync } from 'node:fs';
 import { fileURLToPath } from 'node:url';
-import { describe, expect, it } from 'vitest';
+import { describe, expect, it, vi } from 'vitest';
+import { PARAMETROS } from '../../plataforma/funciones/servidor/config.js';
+import { constructorSitioEsGoogle, entorno } from '../../plataforma/funciones/servidor/entorno.js';
+import { avisoConstruccionSitio, construirSitio, INVOCADORES_TAREA_SITIO } from '../../plataforma/funciones/servidor/funciones-sitio.js';
 import { horarioDe, tablaDeCallable } from '../../plataforma/coordinador/encendido.js';
 import { accion } from '../../plataforma/funciones/servidor/llamadas/marco.js';
 import { VACIO } from '../../plataforma/funciones/servidor/llamadas/comunes.js';
 import { registroPlataforma } from '../../plataforma/registro.js';
 import { IMPLEMENTACIONES, tablasCompuestas } from './tablas.js';
+
+vi.mock('../../plataforma/funciones/servidor/entorno.js', async (original) => ({ ...(await original<object>()), entorno: vi.fn(() => { throw new Error('no debe usarse en modo github'); }) }));
 
 const codigo = readFileSync(fileURLToPath(new URL('../../plataforma/funciones/servidor/index.ts', import.meta.url)), 'utf8');
 const entornoFuente = readFileSync(fileURLToPath(new URL('../../plataforma/funciones/servidor/entorno.ts', import.meta.url)), 'utf8');
@@ -34,16 +39,28 @@ describe('exportaciones de las Functions frente al registro', () => {
     expect(exportadas('onObjectFinalized')).toEqual(['subidaFinalizada']);
   });
 
-  it('la construcción del sitio (DR-CB) NO se exporta todavía desde index.ts: exportarla activa Cloud Tasks y rompe el despliegue sin permisos', () => {
-    expect(exportadas('onTaskDispatched')).toEqual([]);
-    expect(exportadas('onMessagePublished')).toEqual([]);
-    expect(codigo).not.toMatch(/^export[^\n]*(construirSitio|avisoConstruccionSitio)/m);
-    // Las funciones existen, listas para P5, con cuenta propia, invoker privado y tema cloud-builds.
+  it('la construcción del sitio (DR-CB) se exporta desde index.ts, con cuenta propia y el invocador de las dos cuentas', () => {
+    expect(exportadas('onTaskDispatched')).toEqual([]); // las dos salen por re-exportación, no por `export const` en index.ts
+    expect(codigo).toMatch(/^export \{ avisoConstruccionSitio, construirSitio \} from '\.\/funciones-sitio\.js';$/m);
     expect(funcionesSitio).toMatch(/export const construirSitio = onTaskDispatched\(/);
-    expect(funcionesSitio).toContain("invoker: 'private'");
+    expect(funcionesSitio).toMatch(/export const avisoConstruccionSitio = onMessagePublished\(/);
     expect(funcionesSitio).toContain("topic: 'cloud-builds'");
+    // Ambas con la cuenta de CUENTA_FN_CONSTRUCTOR_SITIO.
     expect(funcionesSitio.match(/serviceAccount: PARAMETROS\.cuentaFnConstructor/g)).toHaveLength(2);
+    expect(PARAMETROS.cuentaFnConstructor.name).toBe('CUENTA_FN_CONSTRUCTOR_SITIO');
+    // Invocador: exactamente la cuenta general y la del constructor, en formato `nombre@`, y ya no `private`.
+    expect(INVOCADORES_TAREA_SITIO).toEqual(['novutienda-funciones@', 'fn-constructor-sitio@']);
+    expect(funcionesSitio).toContain('invoker: INVOCADORES_TAREA_SITIO');
+    expect(funcionesSitio).not.toContain("invoker: 'private'");
     expect(entornoFuente).toContain("export const FUNCION_TAREA_SITIO = 'construirSitio'");
+  });
+
+  it('en modo github las dos funciones salen antes de hacer nada: no tocan el entorno', async () => {
+    expect(constructorSitioEsGoogle()).toBe(false);
+    const entornoMock = vi.mocked(entorno);
+    await construirSitio.run({ data: { tenantId: 't', para: 1 } } as never);
+    await avisoConstruccionSitio.run({ data: { message: { json: { buildId: 'x' } } } } as never);
+    expect(entornoMock).not.toHaveBeenCalled();
   });
 
   it('el temporizador, con la cuenta general, no lanza builds: delega en la cola de construirSitio', () => {

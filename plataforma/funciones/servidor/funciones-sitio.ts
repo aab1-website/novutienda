@@ -1,6 +1,6 @@
-// Funciones de la construcción del sitio en Cloud Build (DR-CB, modo `google`). Definidas aquí y NO exportadas desde `index.ts` hasta P5:
-// exportarlas hace que el despliegue active Cloud Tasks y cree la cola y la suscripción al tema `cloud-builds`, y eso necesita la API
-// activada y permisos que se dan con autorización de Andres. En modo `github` (o sin exportar) no tienen ningún efecto.
+// Funciones de la construcción del sitio en Cloud Build (DR-CB, modo `google`), exportadas desde `index.ts` (P5). Al desplegarlas se crea la cola
+// de Cloud Tasks y la suscripción al tema `cloud-builds`: necesitan la API activada y los permisos de P5 (el PR no se fusiona antes).
+// En modo `github` salen antes de hacer nada: sin efecto.
 //
 // Cuenta propia: ambas corren con `CUENTA_FN_CONSTRUCTOR_SITIO`, la única con permiso de crear/consultar builds, actuar como
 // `sitio-constructor` y leer `SITIOS_TENANT`. El temporizador (cuenta general) nunca lanza builds: solo encola la tarea de `construirSitio`.
@@ -12,10 +12,15 @@ import { PARAMETROS } from './config.js';
 import { manejarAvisoConstruccion, manejarTareaConstruccion } from './construccion-sitio.js';
 import { consultaBuildDeLaInstancia, constructorSitioEsGoogle, construccionDeLaInstancia, entorno, sitiosDeLaInstancia } from './entorno.js';
 
-// Tarea agendada por `programar` (Cloud Tasks): despierta la construcción a la hora. `invoker: 'private'`: solo Cloud Tasks (con su cuenta) la invoca.
+// Tarea agendada por `programar` (Cloud Tasks): despierta la construcción a la hora.
+// Invocador explícito (D-P5-2 = A). El formato `nombre@` lo completa firebase-tools con el proyecto del despliegue (ningún id queda en el repositorio).
+// En cada despliegue firebase-tools deja `cloudtasks.enqueuer` en la cola y `run.invoker` en el servicio solo a estas dos cuentas, que son las de los
+// parámetros `FUNCIONES_SERVICE_ACCOUNT` y `CUENTA_FN_CONSTRUCTOR_SITIO`. Los nombres van fijos y no salen de los parámetros porque `invoker`
+// solo admite texto literal (no expresiones de parámetros): si se renombran las cuentas, se cambian aquí y en el script de preparación.
+export const INVOCADORES_TAREA_SITIO = ['novutienda-funciones@', 'fn-constructor-sitio@'];
 export const construirSitio = onTaskDispatched(
   {
-    serviceAccount: PARAMETROS.cuentaFnConstructor, invoker: 'private',
+    serviceAccount: PARAMETROS.cuentaFnConstructor, invoker: INVOCADORES_TAREA_SITIO,
     retryConfig: { maxAttempts: 3, minBackoffSeconds: 10 }, rateLimits: { maxConcurrentDispatches: 3 },
   },
   async (req) => {
