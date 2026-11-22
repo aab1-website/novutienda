@@ -716,12 +716,11 @@ test.describe('celular (375×812): grilla de 2 columnas, cabecera que se oculta 
 });
 
 test.describe('secciones opcionales del contenido', () => {
-  test('portada: contador, misión, visión y maqueta de chat aparecen con contenido', async ({ page }) => {
+  test('portada: misión, visión y maqueta de chat aparecen con contenido', async ({ page }) => {
     await simularApi(page);
     await page.goto('/');
     const sec = page.locator('#institucional');
     await expect(sec).toBeVisible();
-    await expect(sec.getByText('+1,000')).toBeVisible();
     await expect(sec.getByRole('heading', { name: 'Nuestra misión' })).toBeVisible();
     await expect(sec.getByRole('heading', { name: 'Nuestra visión' })).toBeVisible();
     await expect(sec.getByText('Ejemplo de conversación')).toBeVisible();

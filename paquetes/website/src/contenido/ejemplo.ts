@@ -151,7 +151,6 @@ export const contenidoEjemplo: Contenido = {
   institucional: {
     mision: 'EJEMPLO. Acercar tecnología confiable a cada hogar, con asesoramiento claro y entrega coordinada.',
     vision: 'EJEMPLO. Ser la tienda de referencia en la región por la calidad de su atención.',
-    contador: { valor: { texto: '+1,000', confirmada: true }, texto: 'clientes satisfechos (ejemplo)' },
     chat: {
       mensajes: [
         { de: 'cliente', texto: 'Hola, ¿tienen disponible el televisor de 55 pulgadas?' },

@@ -54,9 +54,9 @@ describe('institucionalVisible', () => {
     expect(institucionalVisible({}).hay).toBe(false);
     expect(institucionalVisible({ mision: '  ' }).hay).toBe(false);
   });
-  it('el contador sin confirmar no se muestra; confirmado, sí', () => {
-    expect(institucionalVisible({ contador: { valor: { texto: '+5,000', confirmada: false }, texto: 'clientes' } }).contador).toBeNull();
-    expect(institucionalVisible({ contador: { valor: { texto: '+5,000', confirmada: true }, texto: 'clientes' } }).contador).toEqual({ valor: '+5,000', texto: 'clientes' });
+  it('la cifra sin confirmar figura entre los pendientes de confirmar', () => {
+    const c2 = { beneficios: [], identidad: { ...c.identidad, sello: { texto: 's', confirmada: true }, cifra: { valor: { texto: '+5,000', confirmada: false }, detalle: 'clientes' } } };
+    expect(pendientesDeConfirmar(c2)).toEqual(['+5,000']);
   });
   it('misión, visión y chat con contenido se muestran', () => {
     const v = institucionalVisible({ mision: 'm', vision: 'v', chat: { mensajes: [{ de: 'cliente', texto: 'hola' }] } });

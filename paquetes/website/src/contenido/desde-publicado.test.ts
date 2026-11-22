@@ -429,7 +429,7 @@ describe('campos opcionales en el contenido publicado', () => {
     expect(c.productos.some((p) => 'caracteristicas' in p)).toBe(false);
   });
   it('copia institucional del negocio y valida sus límites', () => {
-    const inst = { mision: 'm', contador: { valor: { texto: '+5,000', confirmada: true }, texto: 'clientes satisfechos' } };
+    const inst = { mision: 'm', chat: { mensajes: [{ de: 'cliente', texto: 'hola' }] } };
     expect(contenidoDesdePublicado(respuesta(), { ...negocioBase(), institucional: inst }, entorno).institucional).toEqual(inst);
     expect(() => contenidoDesdePublicado(respuesta(), { ...negocioBase(), institucional: { vision: '' } }, entorno)).toThrow();
   });

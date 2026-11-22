@@ -412,12 +412,9 @@ h3.descripcion-titulo, h4.descripcion-titulo { font-size: 17px; }
   .relacionados-lista { gap: 10px; }
 }
 
-/* Secciones opcionales: contador, misión y visión, maqueta de chat y características destacadas (solo tokens --cb-*). */
+/* Secciones opcionales: misión y visión, maqueta de chat y características destacadas (solo tokens --cb-*). */
 .institucional { background: var(--cb-seccion); border-top: 1px solid var(--cb-borde); }
 .institucional-interior { display: flex; flex-direction: column; gap: 28px; }
-.contador-clientes { display: flex; flex-direction: column; align-items: center; gap: 4px; text-align: center; }
-.contador-clientes strong { font-size: clamp(36px, 8vw, 56px); line-height: 1.1; color: var(--cb-texto); }
-.contador-clientes span { font-size: 14px; font-weight: 700; letter-spacing: .08em; text-transform: uppercase; color: var(--cb-texto-suave); }
 .mision-vision { display: grid; grid-template-columns: repeat(auto-fit, minmax(min(100%, 280px), 1fr)); gap: 20px; }
 .chat-maqueta { margin: 0 auto; width: min(100%, 420px); display: flex; flex-direction: column; gap: 10px; padding: 16px; border-radius: 20px; background: var(--cb-superficie); border: 1px solid var(--cb-borde); }
 .chat-maqueta figcaption { font-size: 12px; font-weight: 700; letter-spacing: .08em; text-transform: uppercase; color: var(--cb-texto-suave); }
@@ -428,3 +425,4 @@ h3.descripcion-titulo, h4.descripcion-titulo { font-size: 17px; }
 .ficha-caracteristicas h2 { font-size: 18px; }
 .ficha-caracteristicas ul { padding-left: 1.4em; display: flex; flex-direction: column; gap: .4em; list-style: disc; }
 .ficha-caracteristicas li::marker { color: var(--cb-acento); }
+.identidad-cifra-suelta { position: static; align-self: flex-start; }

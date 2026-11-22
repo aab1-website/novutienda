@@ -110,18 +110,16 @@ export interface MensajeChat {
 
 /**
  * Textos institucionales opcionales. Cada campo se muestra solo si existe; ausente = el sitio no pinta esa pieza y el contenido
- * queda idéntico al de antes. El contador no se muestra sin `valor.confirmada` (el comercio confirma que la cifra es real).
+ * queda idéntico al de antes.
  */
 export interface Institucional {
   readonly mision?: string;
   readonly vision?: string;
-  /** Contador destacado: `valor.texto` es el número tal como se muestra («+5,000») y `texto` lo que cuenta («clientes satisfechos»). */
-  readonly contador?: { readonly valor: Afirmacion; readonly texto: string };
   /** Maqueta de conversación de WhatsApp (se rotula «Ejemplo de conversación»). */
   readonly chat?: { readonly mensajes: readonly MensajeChat[] };
 }
 
-export const LIMITES_INSTITUCIONAL = { texto: 600, contador: 80, mensajes: 6, mensaje: 300, caracteristicas: 8, caracteristica: 160 } as const;
+export const LIMITES_INSTITUCIONAL = { texto: 600, mensajes: 6, mensaje: 300, caracteristicas: 8, caracteristica: 160 } as const;
 
 export interface Portada {
   readonly insignia: string;
@@ -212,7 +210,7 @@ export interface Contenido {
   readonly identidad: Identidad;
   readonly productos: readonly Producto[];
   readonly secciones: readonly Seccion[];
-  /** Misión, visión, contador y maqueta de chat; ausente = ninguna se muestra. */
+  /** Misión, visión y maqueta de chat; ausente = ninguna se muestra. */
   readonly institucional?: Institucional;
   /** Fotos del carrusel de la portada, por plantilla. */
   readonly carruseles: Readonly<Record<IdPlantilla, readonly Foto[]>>;

@@ -204,11 +204,10 @@ describe('campos opcionales: institucional y características', () => {
     expect(r.ok && r.contenido.productos.some((p) => 'caracteristicas' in p)).toBe(false);
   });
   it('acepta institucional completo', () => {
-    expect(errores(con({ institucional: { mision: 'm', vision: 'v', contador: { valor: { texto: '+5,000', confirmada: true }, texto: 'clientes satisfechos' }, chat: { mensajes: [{ de: 'cliente', texto: 'hola' }] } } }))).toEqual([]);
+    expect(errores(con({ institucional: { mision: 'm', vision: 'v', chat: { mensajes: [{ de: 'cliente', texto: 'hola' }] } } }))).toEqual([]);
   });
-  it('rechaza misión larga, contador mal formado, chat vacío, de más de 6 o con emisor inválido', () => {
+  it('rechaza misión larga, chat vacío, de más de 6 o con emisor inválido', () => {
     expect(errores(con({ institucional: { mision: 'x'.repeat(601) } }))).toContain('institucional.mision: debe ser texto de 1 a 600 caracteres');
-    expect(errores(con({ institucional: { contador: { valor: { texto: '+5', confirmada: 'si' }, texto: '' } } })).length).toBe(2);
     expect(errores(con({ institucional: { chat: { mensajes: [] } } }))).toHaveLength(1);
     const siete = Array.from({ length: 7 }, () => ({ de: 'cliente', texto: 'a' }));
     expect(errores(con({ institucional: { chat: { mensajes: siete } } }))).toHaveLength(1);

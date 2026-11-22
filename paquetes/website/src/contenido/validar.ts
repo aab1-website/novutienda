@@ -307,14 +307,6 @@ export function leerInstitucional(l: Lector, v: unknown, ruta: string): Instituc
   const r: { -readonly [K in keyof Institucional]?: Exclude<Institucional[K], undefined> } = {};
   if (o['mision'] !== undefined) r.mision = l.texto(o['mision'], `${ruta}.mision`, 1, L.texto);
   if (o['vision'] !== undefined) r.vision = l.texto(o['vision'], `${ruta}.vision`, 1, L.texto);
-  if (o['contador'] !== undefined) {
-    const c = l.obj(o['contador'], `${ruta}.contador`);
-    const valor = l.obj(c['valor'], `${ruta}.contador.valor`);
-    r.contador = {
-      valor: { texto: l.texto(valor['texto'], `${ruta}.contador.valor.texto`, 1, 20), confirmada: l.bool(valor['confirmada'], `${ruta}.contador.valor.confirmada`) },
-      texto: l.texto(c['texto'], `${ruta}.contador.texto`, 1, L.contador),
-    };
-  }
   if (o['chat'] !== undefined) {
     const c = l.obj(o['chat'], `${ruta}.chat`);
     const mensajes = l.lista(c['mensajes'], `${ruta}.chat.mensajes`, L.mensajes, 1).map((m, i) => {

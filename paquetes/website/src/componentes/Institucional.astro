@@ -5,11 +5,9 @@ import { institucionalVisible } from '../contenido/consultas';
 const v = institucionalVisible(contenido.institucional);
 ---
 {v.hay && (
-  <section id="institucional" class="seccion institucional" aria-label="Quiénes somos en detalle">
+  <section id="institucional" class="seccion institucional" aria-labelledby="titulo-institucional">
     <div class="contenedor institucional-interior">
-      {v.contador !== null && (
-        <p class="contador-clientes"><strong>{v.contador.valor}</strong><span>{v.contador.texto}</span></p>
-      )}
+      <h2 id="titulo-institucional" class="titulo-seccion">Lo que nos guía</h2>
       {(v.mision !== null || v.vision !== null) && (
         <div class="mision-vision">
           {v.mision !== null && <article class="valor"><h3>Nuestra misión</h3><p>{v.mision}</p></article>}
