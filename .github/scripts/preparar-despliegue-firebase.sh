@@ -26,6 +26,10 @@
 # P_GITHUB_REPO_SITIO (opcional, S7-3/DS-3): repositorio `owner/nombre` al que temporizadorSitio dispara
 # reconstruir-sitio.yml; vacío = disparo deshabilitado (queda el sondeo). Solo staging: reconstruir-sitio.yml despliega
 # solo staging (DC3), así que en production debe quedar vacío. Forma inválida: falla cerrado.
+# P_CONSTRUCTOR_SITIO_IMAGEN (opcional, plan Cloud Build P2): imagen del constructor del sitio que publicó el job
+# constructor-sitio, SIEMPRE por digest y en el Artifact Registry del MISMO proyecto
+# (us-east1-docker.pkg.dev/<PROYECTO>/<repo>/<imagen>@sha256:<64 hex>). Solo staging (producción: P9). Vacía = la línea
+# queda vacía (Functions en modo github no la usa). Forma inválida: falla cerrado, sin imprimir el valor.
 # PLAN_PRUEBAS_HABILITADO (plan `pruebas`, solo staging) NO es una entrada: lo fija este script según AMBIENTE
 # (`si` en staging; vacío —el valor por defecto de config.ts, plan deshabilitado— en production, porque firebase-tools
 # exige una línea por parámetro). Si llega como P_PLAN_PRUEBAS_HABILITADO o PLAN_PRUEBAS_HABILITADO, falla cerrado; y
@@ -86,6 +90,14 @@ if [[ -n "${P_GITHUB_REPO_SITIO:-}" ]]; then
   if [[ ! "$P_GITHUB_REPO_SITIO" =~ $repo_forma ]] || [[ "$P_GITHUB_REPO_SITIO" =~ $repo_segmento_relativo ]]; then
     error "GITHUB_REPO_SITIO debe tener la forma owner/nombre (solo letras, dígitos, _ . -; sin URL, sin segmentos . o ..). Ver docs/produccion/reconstruccion-sitio.md."
   fi
+fi
+# Imagen del constructor del sitio (plan Cloud Build P2): por digest, del registro de este proyecto, solo staging.
+if [[ -n "${P_CONSTRUCTOR_SITIO_IMAGEN:-}" ]]; then
+  [[ "$AMBIENTE" == "staging" ]] \
+    || error "CONSTRUCTOR_SITIO_IMAGEN solo se admite en staging (la producción por cliente es P9 del plan)."
+  imagen_forma="^us-east1-docker\.pkg\.dev/${PROYECTO}/[a-z][a-z0-9-]{0,62}/[a-z0-9][a-z0-9._-]{0,127}@sha256:[0-9a-f]{64}\$"
+  [[ "$P_CONSTRUCTOR_SITIO_IMAGEN" =~ $imagen_forma ]] \
+    || error "CONSTRUCTOR_SITIO_IMAGEN debe ser us-east1-docker.pkg.dev/<proyecto del ambiente>/<repositorio>/<imagen>@sha256:<digest> (por digest, nunca por tag)."
 fi
 # Plan `pruebas` (B-D, barrera 3): el valor depende solo del ambiente, nunca de una variable de GitHub ni del entorno
 # del job. Una variable cargada por error (p. ej. en el Environment production) detiene el despliegue. Sin imprimir el valor.
@@ -151,7 +163,7 @@ firebase target:apply hosting panel "$PANEL_ID" --project "$PROYECTO"
 # 4. Parámetros de Functions (no secretos; los secretos viven en Secret Manager).
 parametros="${RUNNER_TEMP:-/tmp}/funciones.env"
 : >"$parametros"
-for nombre in APP_CHECK_EXIGIDO RECAPTCHA_CLAVE_SITIO SITIO_URL MEDIOS_BASE_URL MEDIOS_BUCKET_PUBLICO FUNCIONES_SERVICE_ACCOUNT PROXY_SALTOS GITHUB_REPO_SITIO; do
+for nombre in APP_CHECK_EXIGIDO RECAPTCHA_CLAVE_SITIO SITIO_URL MEDIOS_BASE_URL MEDIOS_BUCKET_PUBLICO FUNCIONES_SERVICE_ACCOUNT PROXY_SALTOS GITHUB_REPO_SITIO CONSTRUCTOR_SITIO_IMAGEN; do
   var="P_${nombre}"
   valor="${!var:-}"
   [[ "$valor" != *$'\n'* ]] || error "El parámetro $nombre contiene un salto de línea."
@@ -166,6 +178,7 @@ declare -A POR_DEFECTO=(
   [CONTACTO_MAXIMO]=5 [CONTACTO_VENTANA_SEG]=600 [NOVUCHAT_MAXIMO_POR_MINUTO]=120
   [DISPONIBILIDAD_MAXIMO_POR_MINUTO]=60 [CONTACTO_MAXIMO_POR_MINUTO]=30
   [RECAPTCHA_CLAVE_SITIO]="" [FUNCIONES_SERVICE_ACCOUNT]="" [GITHUB_REPO_SITIO]=""
+  [CONSTRUCTOR_SITIO_IMAGEN]=""
 )
 for nombre in "${!POR_DEFECTO[@]}"; do
   grep -q "^${nombre}=" "$parametros" || printf '%s=%s\n' "$nombre" "${POR_DEFECTO[$nombre]}" >>"$parametros"

@@ -1,367 +1,202 @@
-// Conector de Cloud Build (constructor del sitio), cola de tareas, filtro del aviso `cloud-builds` y configuración del modo `google`.
-// Sin red: dobles de `fetch` y de la cola. Identificadores ficticios.
+// Imagen y preparación del constructor del sitio: coherencia con el workflow y simulación sin nube.
+import { spawnSync } from 'node:child_process';
+import { chmodSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
+import { tmpdir } from 'node:os';
+import { join, resolve } from 'node:path';
 import { describe, expect, it } from 'vitest';
-import {
-  crearColaSitio, crearConstructorSitio, crearConsultaBuild, crearLectorSitios, idDeMensajeBuild, ErrorConstructorSitio, interpretarAvisoBuild, leerSitios,
-  type ColaDeTareas, type FetchConstructor, type SitioDeConstruccion,
-} from '../../plataforma/conectores/firebase/index.js';
-import { nombreTareaRed } from '../../plataforma/funciones/servidor/entorno.js';
-import { exigirConfiguracionConstructor, modoConstructorSitio, ConfiguracionIncompleta } from '../../plataforma/funciones/servidor/config.js';
 
-const DIGEST = 'a'.repeat(64);
-const IMAGEN = `us-east1-docker.pkg.dev/proy-prueba/sitio/constructor@sha256:${DIGEST}`;
-const SITIOS: SitioDeConstruccion[] = [
-  { clave: 'ab1', tenant: 'tienda-uno', sitio: 'sitio-uno-web', url: 'https://sitio-uno-web.example.com' },
-  { clave: 'cd2', tenant: 'tienda-dos', sitio: 'sitio-dos-web', url: 'https://sitio-dos-web.example.com' },
-];
-const ENTORNO = {
-  VITE_FIREBASE_PROJECT_ID: 'proy-prueba', VITE_FIREBASE_API_KEY: 'clave-publica', VITE_FIREBASE_APP_ID: 'app-id',
-  VITE_RECAPTCHA_ENTERPRISE_SITE_KEY: 'sitio-key', MEDIOS_BASE_URL: 'https://medios.example.com/', SITIOS_PROHIBIDOS: 'panel-prueba', APP_ENV: 'staging',
-};
+const raiz = resolve(__dirname, '../..');
+const leer = (r: string) => readFileSync(resolve(raiz, r), 'utf8');
+const dockerfile = leer('scripts/constructor-sitio/Dockerfile');
 
-interface Llamada { url: string; init: Parameters<FetchConstructor>[1] }
-function doble(respuesta: { ok?: boolean; status?: number; cuerpo?: unknown } | Error) {
-  const llamadas: Llamada[] = [];
-  const fetchFn: FetchConstructor = (url, init) => {
-    llamadas.push({ url, init });
-    if (respuesta instanceof Error) return Promise.reject(respuesta);
-    return Promise.resolve({ ok: respuesta.ok ?? true, status: respuesta.status ?? 200, json: () => Promise.resolve(respuesta.cuerpo) });
-  };
-  return { llamadas, fetchFn };
-}
-const operacion = { name: 'projects/1/locations/us-east1/operations/op', metadata: { build: { id: 'b1b2c3d4-e5f6-7890' } } };
-
-function constructor(fetchFn: FetchConstructor, extra: Record<string, unknown> = {}) {
-  return crearConstructorSitio({
-    proyecto: 'proy-prueba', imagen: IMAGEN, cuentaServicio: 'sitio-constructor', sitios: () => Promise.resolve(SITIOS), entorno: ENTORNO,
-    tokenAcceso: () => Promise.resolve('TOKEN-DE-ACCESO'), fetchFn, ...extra,
+describe('scripts/constructor-sitio/Dockerfile', () => {
+  it('base node fijada por digest, multi-stage, usuario no root y lockfile congelado', () => {
+    // Digest literal en cada FROM (Checkov CKV_DOCKER_7 no acepta ARG).
+    expect(dockerfile).toMatch(/^FROM node:[\w.-]+@sha256:[0-9a-f]{64} AS dependencias$/m);
+    expect(dockerfile).toMatch(/^FROM node:[\w.-]+@sha256:[0-9a-f]{64} AS constructor$/m);
+    expect(dockerfile).toMatch(/^HEALTHCHECK /m);
+    // La imagen final no conserva npm ni corepack (su árbol de dependencias lo marca Trivy).
+    expect(dockerfile).toContain('rm -rf /usr/local/lib/node_modules/npm /usr/local/lib/node_modules/corepack');
+    expect(dockerfile).not.toMatch(/^\s*(ENV\s+)?NODE_ENV=/m);
+    expect(dockerfile).toMatch(/^USER node$/m);
+    expect(dockerfile).toContain('pnpm install --frozen-lockfile');
+    expect(dockerfile).toContain('reconstruir-sitio.sh');
   });
-}
+  it('firebase-tools y pnpm coinciden con los workflows, el script, deploy.sh y package.json', () => {
+    const dep = /FIREBASE_TOOLS_VERSION:-([\d.]+)\}/.exec(leer('deploy.sh'))?.[1];
+    // Los dos workflows que instalan firebase-tools (CI y reconstrucción del sitio por GitHub).
+    const wfCi = /FIREBASE_TOOLS_VERSION: '([\d.]+)'/.exec(leer('.github/workflows/ci-node-firebase.yml'))?.[1];
+    const wfSitio = /FIREBASE_TOOLS_VERSION: '([\d.]+)'/.exec(leer('.github/workflows/reconstruir-sitio.yml'))?.[1];
+    const df = /^ARG FIREBASE_TOOLS_VERSION=([\d.]+)$/m.exec(dockerfile)?.[1];
+    const sh = /FIREBASE_TOOLS_VERSION:-([\d.]+)\}/.exec(leer('scripts/reconstruir-sitio.sh'))?.[1];
+    expect(df).toBeDefined();
+    expect(df).toBe(dep);
+    expect(df).toBe(sh);
+    expect(wfCi).toBe(df);
+    expect(wfSitio).toBe(df);
+    const pnpm = /"packageManager": "pnpm@([\d.]+)"/.exec(leer('package.json'))?.[1];
+    expect(/^ARG PNPM_VERSION=([\d.]+)$/m.exec(dockerfile)?.[1]).toBe(pnpm);
+  });
+  it('no lleva secretos ni identificadores', () => {
+    expect(dockerfile).not.toMatch(/(secret|token|password)\s*=/i);
+    expect(leer('scripts/constructor-sitio/Dockerfile.dockerignore')).toContain('.env');
+  });
+});
 
-describe('constructor del sitio (Cloud Build por REST)', () => {
-  it('arma el build exacto: un paso con la imagen por digest, secretos por nombre, cuenta, plazos y etiqueta', async () => {
-    const d = doble({ cuerpo: operacion });
-    const r = await constructor(d.fetchFn).lanzar('tienda-uno', 'rec-publicacion-v3-202611210900');
-    expect(r).toEqual({ buildId: 'b1b2c3d4-e5f6-7890', imagen: IMAGEN });
-    expect(d.llamadas).toHaveLength(1);
-    const { url, init } = d.llamadas[0] as Llamada;
-    expect(url).toBe('https://cloudbuild.googleapis.com/v1/projects/proy-prueba/locations/us-east1/builds');
-    expect(init.method).toBe('POST');
-    expect(init.redirect).toBe('error');
-    expect(init.headers).toEqual({ Authorization: 'Bearer TOKEN-DE-ACCESO', 'Content-Type': 'application/json' });
-    expect(JSON.parse(init.body)).toEqual({
-      steps: [{
-        name: IMAGEN,
-        entrypoint: 'bash',
-        args: ['-c', 'bash /app/scripts/reconstruir-sitio.sh reconstruir; rc=$$?; [ "$$rc" = 10 ] && exit 0; exit "$$rc"'],
-        env: [
-          'VITE_FIREBASE_PROJECT_ID=proy-prueba', 'VITE_FIREBASE_API_KEY=clave-publica', 'VITE_FIREBASE_APP_ID=app-id',
-          'VITE_RECAPTCHA_ENTERPRISE_SITE_KEY=sitio-key', 'MEDIOS_BASE_URL=https://medios.example.com/', 'SITIOS_PROHIBIDOS=panel-prueba', 'APP_ENV=staging',
-          'CLAVE=ab1', 'TENANT=tienda-uno', 'SITIO=sitio-uno-web', 'URL_SITIO=https://sitio-uno-web.example.com',
-          'PROYECTO=proy-prueba', 'TRABAJO=rec-publicacion-v3-202611210900', 'OMITIR_INSTALAR=1', `VITE_APP_VERSION=${DIGEST.slice(0, 12)}`,
-          'BUILD_ID=$BUILD_ID',
-        ],
-        secretEnv: ['SITIO_RECONSTRUCCION_SECRETO', 'SITIO_NEGOCIO_AB1'],
-      }],
-      availableSecrets: {
-        secretManager: [
-          { versionName: 'projects/proy-prueba/secrets/SITIO_RECONSTRUCCION_SECRETO/versions/latest', env: 'SITIO_RECONSTRUCCION_SECRETO' },
-          { versionName: 'projects/proy-prueba/secrets/SITIO_NEGOCIO_AB1/versions/latest', env: 'SITIO_NEGOCIO_AB1' },
-        ],
-      },
-      serviceAccount: 'projects/proy-prueba/serviceAccounts/sitio-constructor@proy-prueba.iam.gserviceaccount.com',
-      timeout: '300s',
-      queueTtl: '120s',
-      options: { logging: 'CLOUD_LOGGING_ONLY' },
-      tags: ['sitio-ab1'],
+describe('scripts/preparar-constructor-sitio.sh', () => {
+  const correr = (args: string[], env: Record<string, string> = {}) =>
+    spawnSync('bash', [resolve(raiz, 'scripts/preparar-constructor-sitio.sh'), ...args], {
+      // Sin gcloud en el PATH: la simulación no puede llamarlo.
+      env: { PATH: '/nonexistent', ...env },
+      encoding: 'utf8',
     });
-  });
 
-  it('no pone ningún secreto en claro: solo nombres de versión; el cuerpo no lleva el token', async () => {
-    const d = doble({ cuerpo: operacion });
-    await constructor(d.fetchFn).lanzar('tienda-dos', 'rec-1');
-    const cuerpo = (d.llamadas[0] as Llamada).init.body;
-    expect(cuerpo).not.toContain('TOKEN-DE-ACCESO');
-    expect(cuerpo).toContain('SITIO_NEGOCIO_CD2');
-    expect(cuerpo).not.toContain('SITIO_NEGOCIO_AB1');
-    expect(cuerpo).not.toMatch(/"(SITIO_RECONSTRUCCION_SECRETO|SITIO_NEGOCIO)[^"]*=/);
+  it('simula por defecto: muestra O1 a O6 sin llamar a gcloud ni imprimir el proyecto ni los valores', () => {
+    const r = correr(['proyecto-prueba-1', '--claves', 'a1,b2'], { SITIO_RECONSTRUCCION_SECRETO: 'valor-secreto-xyz', CUENTA_FUNCIONES: 'f@proyecto-prueba-1.iam.gserviceaccount.com', PATH: '/usr/bin:/bin' });
+    expect(r.status).toBe(0);
+    const s = r.stdout;
+    for (const o of ['O1.', 'O2.', 'O3.', 'O4.', 'O5.', 'O6.']) expect(s).toContain(o);
+    expect(s).toContain('SIMULACIÓN');
+    expect(s).toContain('cloudbuild.builds.create,cloudbuild.builds.get');
+    expect(s).toContain('--role=roles/iam.serviceAccountUser');
+    expect(s).toContain('sitio-constructor@<proyecto>.iam.gserviceaccount.com');
+    expect(s).toContain('SITIO_NEGOCIO_B2');
+    expect(s).toContain('--locations=us-east1');
+    expect(s).toContain('--member=serviceAccount:<cuenta-de-despliegue> --role=roles/artifactregistry.writer');
+    expect(s).toContain('O5bis.');
+    expect(s).toContain('gcloud builds get-default-service-account');
+    expect(s).toContain('gcloud functions list --v2');
+    // El cambio de la cuenta por defecto de Cloud Build solo con la opción explícita.
+    expect(s).not.toContain('set-default-service-account');
+    // cloudtasks.enqueuer sobre la cola, no sobre el proyecto.
+    expect(s).toContain('gcloud tasks queues add-iam-policy-binding <cola>');
+    expect(s).not.toMatch(/projects add-iam-policy-binding[^\n]*cloudtasks\.enqueuer/);
+    expect(s).not.toContain('proyecto-prueba-1');
+    expect(s).not.toContain('valor-secreto-xyz');
+    expect(s).not.toContain('modo APLICAR');
   });
-
-  it('la máquina solo viaja si se configura', async () => {
-    const d = doble({ cuerpo: operacion });
-    await constructor(d.fetchFn, { maquina: 'E2_HIGHCPU_8' }).lanzar('tienda-uno', 'rec-1');
-    expect(JSON.parse((d.llamadas[0] as Llamada).init.body).options).toEqual({ logging: 'CLOUD_LOGGING_ONLY', machineType: 'E2_HIGHCPU_8' });
+  it('--neutralizar-cuenta-por-defecto agrega la creación y el cambio de la cuenta por defecto', () => {
+    const r = correr(['proyecto-prueba-1', '--neutralizar-cuenta-por-defecto'], { PATH: '/usr/bin:/bin' });
+    expect(r.status).toBe(0);
+    expect(r.stdout).toContain('gcloud builds set-default-service-account --service-account=projects/<proyecto>/serviceAccounts/build-sin-permisos@<proyecto>');
+    expect(r.stdout).toContain('gcloud iam service-accounts create build-sin-permisos');
   });
-
-  it('un error HTTP lanza con el estado y sin el cuerpo de la respuesta ni el token', async () => {
-    const d = doble({ ok: false, status: 403, cuerpo: { error: 'detalle-secreto-de-google' } });
-    const e = await constructor(d.fetchFn).lanzar('tienda-uno', 'rec-1').catch((x: unknown) => x);
-    expect(e).toBeInstanceOf(ErrorConstructorSitio);
-    expect((e as ErrorConstructorSitio).estado).toBe(403);
-    expect((e as Error).message).not.toContain('detalle-secreto');
-    expect((e as Error).message).not.toContain('TOKEN');
+  it('--aplicar exige la cuenta de las Functions', () => {
+    expect(correr(['proyecto-prueba-1', '--aplicar'], { PATH: '/usr/bin:/bin' }).status).toBe(2);
   });
-
-  it('una caída de red, un token que falla o una respuesta sin id lanzan con su estado', async () => {
-    const red = await constructor(doble(new Error('ECONNRESET con TOKEN')).fetchFn).lanzar('tienda-uno', 'rec-1').catch((x: unknown) => x);
-    expect((red as ErrorConstructorSitio).estado).toBe('red');
-    expect((red as Error).message).not.toContain('ECONNRESET');
-    const sinToken = await constructor(doble({ cuerpo: operacion }).fetchFn, { tokenAcceso: () => Promise.reject(new Error('x')) }).lanzar('tienda-uno', 'rec-1').catch((x: unknown) => x);
-    expect((sinToken as ErrorConstructorSitio).estado).toBe('red');
-    const sinId = await constructor(doble({ cuerpo: { name: 'op' } }).fetchFn).lanzar('tienda-uno', 'rec-1').catch((x: unknown) => x);
-    expect((sinId as ErrorConstructorSitio).estado).toBe('respuesta');
-  });
-
-  it('un tenant sin sitio o un trabajo de forma inválida no llaman a la red', async () => {
-    const d = doble({ cuerpo: operacion });
-    await expect(constructor(d.fetchFn).lanzar('otro-tenant', 'rec-1')).rejects.toThrow(/no tiene sitio/);
-    await expect(constructor(d.fetchFn).lanzar('tienda-uno', 'rec 1; rm')).rejects.toThrow(/trabajo/);
-    expect(d.llamadas).toHaveLength(0);
-  });
-
-  it('falla cerrado al crearlo: imagen sin digest, cuenta o proyecto inválidos, variable con «$»', () => {
-    const f = doble({}).fetchFn;
-    expect(() => constructor(f, { imagen: 'us-east1-docker.pkg.dev/p/r/i:latest' })).toThrow(/digest/);
-    expect(() => constructor(f, { cuentaServicio: 'X' })).toThrow(/cuenta/);
-    expect(() => constructor(f, { proyecto: 'Mal Proyecto' })).toThrow(/proyecto/);
-    expect(() => constructor(f, { entorno: { ...ENTORNO, MEDIOS_BASE_URL: 'https://$HOST' } })).toThrow(/variable/);
-  });
-
-  it('noCreado: solo cuando la petición no llegó a enviarse (token, validación previa, entorno inválido)', async () => {
-    const noCreado = (e: unknown) => (e as ErrorConstructorSitio).noCreado;
-    const d = doble({ cuerpo: operacion });
-    const sinToken = await constructor(d.fetchFn, { tokenAcceso: () => Promise.reject(new Error('x')) }).lanzar('tienda-uno', 'rec-1').catch((x: unknown) => x);
-    expect(noCreado(sinToken)).toBe(true);
-    expect(noCreado(await constructor(d.fetchFn).lanzar('otro-tenant', 'rec-1').catch((x: unknown) => x))).toBe(true);
-    expect(noCreado(await constructor(d.fetchFn).lanzar('tienda-uno', 'rec 1; rm').catch((x: unknown) => x))).toBe(true);
-    const sitioRaro = [{ ...(SITIOS[0] as SitioDeConstruccion), url: 'https://x$y.example.com' }];
-    expect(noCreado(await constructor(d.fetchFn, { sitios: () => Promise.resolve(sitioRaro) }).lanzar('tienda-uno', 'rec-1').catch((x: unknown) => x))).toBe(true);
-    expect(d.llamadas).toHaveLength(0);
-    for (const extra of [{ imagen: 'a/b:latest' }, { cuentaServicio: 'X' }, { proyecto: 'Mal Proyecto' }, { entorno: { ...ENTORNO, MEDIOS_BASE_URL: 'https://$HOST' } }]) {
-      let e: unknown;
-      try { constructor(d.fetchFn, extra); } catch (x) { e = x; }
-      expect(noCreado(e)).toBe(true);
-    }
-  });
-
-  it('noCreado no se pone ante tiempo agotado, red, respuesta sin id ni rechazo HTTP', async () => {
-    const e1 = await constructor(doble(new Error('timeout')).fetchFn).lanzar('tienda-uno', 'rec-1').catch((x: unknown) => x);
-    const e2 = await constructor(doble({ cuerpo: { name: 'op' } }).fetchFn).lanzar('tienda-uno', 'rec-1').catch((x: unknown) => x);
-    const e3 = await constructor(doble({ ok: false, status: 503 }).fetchFn).lanzar('tienda-uno', 'rec-1').catch((x: unknown) => x);
-    for (const e of [e1, e2, e3]) expect((e as ErrorConstructorSitio).noCreado).toBeUndefined();
-  });
-
-  it('acepta la cuenta de servicio como correo', async () => {
-    const d = doble({ cuerpo: operacion });
-    await constructor(d.fetchFn, { cuentaServicio: 'sitio-constructor@proy-prueba.iam.gserviceaccount.com' }).lanzar('tienda-uno', 'rec-1');
-    expect(JSON.parse((d.llamadas[0] as Llamada).init.body).serviceAccount).toBe('projects/proy-prueba/serviceAccounts/sitio-constructor@proy-prueba.iam.gserviceaccount.com');
+  it.each([[[]], [['MAL_ID']], [['proyecto-prueba-1', '--otra']], [['proyecto-prueba-1', '--claves', 'MAL']]])('uso inválido %j da 2', (args) => {
+    expect(correr(args, { PATH: '/usr/bin:/bin' }).status).toBe(2);
   });
 });
 
-describe('SITIOS_TENANT', () => {
-  it('lee la lista y falla cerrado sin imprimir valores', () => {
-    expect(leerSitios(JSON.stringify(SITIOS))).toEqual(SITIOS);
-    expect(() => leerSitios('no json')).toThrow(/JSON/);
-    expect(() => leerSitios('[]')).toThrow(/lista/);
-    expect(() => leerSitios(JSON.stringify([{ ...SITIOS[0], url: 'http://x.example.com' }]))).toThrow(/entrada 1/);
-    expect(() => leerSitios(JSON.stringify([SITIOS[0], SITIOS[0]]))).toThrow(/repetida/);
-    for (const url of ['https://Sitio.example.com', 'https://a.example.com/ruta', 'https://a.example.com?x=1', 'https://u@a.example.com', 'https://a.example.com:99999x', 'https://a b.example.com', 'https://a.example.com$']) {
-      expect(() => leerSitios(JSON.stringify([{ ...SITIOS[0], url }])), url).toThrow(/entrada 1/);
-    }
-    expect(leerSitios(JSON.stringify([{ ...SITIOS[0], url: 'https://a.example.com:8443/' }]))).toHaveLength(1);
-  });
-});
-
-describe('construcción del paso: valores de sitio y BUILD_ID', () => {
-  it('un valor de sitio con «$» o salto de línea (aunque venga ya validado) no llama a la red', async () => {
-    const d = doble({ cuerpo: operacion });
-    const c = constructor(d.fetchFn, { sitios: () => Promise.resolve([{ ...SITIOS[0] as SitioDeConstruccion, sitio: 'sitio-$HOME' }]) });
-    await expect(c.lanzar('tienda-uno', 'rec-1')).rejects.toThrow(/carácter no admitido/);
-    expect(d.llamadas).toHaveLength(0);
-  });
-
-  it('BUILD_ID es la sustitución integrada y no pasa por el filtro de «$» de las variables públicas', async () => {
-    const d = doble({ cuerpo: operacion });
-    await constructor(d.fetchFn).lanzar('tienda-uno', 'rec-1');
-    expect(JSON.parse((d.llamadas[0] as Llamada).init.body).steps[0].env).toContain('BUILD_ID=$BUILD_ID');
-  });
-});
-
-describe('consulta builds.get del aviso', () => {
-  const ID = 'b1b2c3d4-e5f6-7890';
-  function consulta(r: { ok?: boolean; status?: number; cuerpo?: unknown } | Error) {
-    const urls: string[] = [];
-    const f = crearConsultaBuild({
-      proyecto: 'proy-prueba', tokenAcceso: () => Promise.resolve('T'),
-      fetchFn: (url) => { urls.push(url); return r instanceof Error ? Promise.reject(r) : Promise.resolve({ ok: r.ok ?? true, status: r.status ?? 200, json: () => Promise.resolve(r.cuerpo) }); },
-    });
-    return { f, urls };
-  }
-
-  it('toma estado y etiquetas de la respuesta, no del mensaje', async () => {
-    const c = consulta({ cuerpo: { id: ID, status: 'SUCCESS', tags: ['sitio-ab1', 3] } });
-    expect(await c.f(ID)).toEqual({ id: ID, status: 'SUCCESS', tags: ['sitio-ab1'] });
-    expect(c.urls).toEqual([`https://cloudbuild.googleapis.com/v1/projects/proy-prueba/locations/us-east1/builds/${ID}`]);
-  });
-
-  it('rechaza un id raro sin llamar, una respuesta de otro build y los errores de HTTP o red', async () => {
-    const c = consulta({ cuerpo: { id: ID, status: 'SUCCESS' } });
-    await expect(c.f('../x')).rejects.toThrow(/inválido/);
-    expect(c.urls).toHaveLength(0);
-    await expect(consulta({ cuerpo: { id: 'otro-id-distinto', status: 'SUCCESS' } }).f(ID)).rejects.toThrow(/distinta/);
-    expect(((await consulta({ ok: false, status: 404 }).f(ID).catch((e: unknown) => e)) as ErrorConstructorSitio).estado).toBe(404);
-    expect(((await consulta(new Error('x')).f(ID).catch((e: unknown) => e)) as ErrorConstructorSitio).estado).toBe('red');
-  });
-
-  it('del mensaje solo se toma el id', () => {
-    expect(idDeMensajeBuild({ id: ID, status: 'SUCCESS', tags: ['sitio-ab1'] })).toBe(ID);
-    expect(idDeMensajeBuild({ id: '../x' })).toBeUndefined();
-    expect(idDeMensajeBuild(null)).toBeUndefined();
-  });
-});
-
-describe('lectura de SITIOS_TENANT desde Secret Manager', () => {
-  const dato = Buffer.from(JSON.stringify(SITIOS)).toString('base64');
-  function lector(r: { ok?: boolean; status?: number; cuerpo?: unknown } | Error, reloj = { t: 0 }) {
-    const urls: string[] = [];
-    const cabeceras: Record<string, string>[] = [];
-    const l = crearLectorSitios({
-      proyecto: 'proy-prueba', nombre: 'SITIOS_TENANT', tokenAcceso: () => Promise.resolve('TOKEN-SM'), ahora: () => reloj.t,
-      fetchFn: (url, init) => {
-        urls.push(url); cabeceras.push(init.headers);
-        if (r instanceof Error) return Promise.reject(r);
-        return Promise.resolve({ ok: r.ok ?? true, status: r.status ?? 200, json: () => Promise.resolve(r.cuerpo) });
-      },
-    });
-    return { l, urls, cabeceras, reloj };
-  }
-
-  it('lee la última versión, decodifica y guarda en caché 5 minutos', async () => {
-    const x = lector({ cuerpo: { payload: { data: dato } } });
-    expect(await x.l()).toEqual(SITIOS);
-    expect(x.urls).toEqual(['https://secretmanager.googleapis.com/v1/projects/proy-prueba/secrets/SITIOS_TENANT/versions/latest:access']);
-    expect(x.cabeceras[0]).toEqual({ Authorization: 'Bearer TOKEN-SM' });
-    x.reloj.t = 299_000;
-    await x.l();
-    expect(x.urls).toHaveLength(1);
-    x.reloj.t = 301_000;
-    await x.l();
-    expect(x.urls).toHaveLength(2);
-  });
-
-  it('errores: estado HTTP, red y contenido inválido, sin valores en el mensaje', async () => {
-    const http = await lector({ ok: false, status: 403, cuerpo: { error: 'detalle-secreto' } }).l().catch((e: unknown) => e);
-    expect((http as ErrorConstructorSitio).estado).toBe(403);
-    expect((http as Error).message).not.toContain('detalle-secreto');
-    expect(((await lector(new Error('x')).l().catch((e: unknown) => e)) as ErrorConstructorSitio).estado).toBe('red');
-    expect(((await lector({ cuerpo: {} }).l().catch((e: unknown) => e)) as ErrorConstructorSitio).estado).toBe('respuesta');
-    await expect(lector({ cuerpo: { payload: { data: Buffer.from('no json').toString('base64') } } }).l()).rejects.toThrow(/JSON/);
-  });
-
-  it('el despliegue no enlaza SITIOS_TENANT con defineSecret (no exige que exista en modo github)', async () => {
-    const { readFileSync } = await import('node:fs');
-    for (const f of ['config.ts', 'index.ts', 'entorno.ts']) {
-      expect(readFileSync(new URL(`../../plataforma/funciones/servidor/${f}`, import.meta.url), 'utf8')).not.toMatch(/defineSecret\('SITIOS_TENANT'\)|SECRETOS\.sitiosTenant/);
-    }
-  });
-});
-
-describe('filtro del aviso de cloud-builds', () => {
-  const build = (extra: Record<string, unknown>) => ({ id: 'b1b2c3d4-e5f6-7890', status: 'SUCCESS', tags: ['sitio-ab1'], ...extra });
-
-  it('un build con etiqueta de sitio conocido entrega tenant, id y estado', () => {
-    expect(interpretarAvisoBuild(build({}), SITIOS)).toEqual({ tenantId: 'tienda-uno', buildId: 'b1b2c3d4-e5f6-7890', estado: 'SUCCESS' });
-    expect(interpretarAvisoBuild(build({ status: 'TIMEOUT', tags: ['otra', 'sitio-cd2'] }), SITIOS)?.tenantId).toBe('tienda-dos');
-  });
-
-  it('ignora lo que no es de un sitio: sin etiqueta, clave desconocida, forma inválida', () => {
-    expect(interpretarAvisoBuild(build({ tags: [] }), SITIOS)).toBeUndefined();
-    expect(interpretarAvisoBuild(build({ tags: ['panel'] }), SITIOS)).toBeUndefined();
-    expect(interpretarAvisoBuild(build({ tags: ['sitio-zz9'] }), SITIOS)).toBeUndefined();
-    expect(interpretarAvisoBuild(build({ tags: ['sitio-AB1'] }), SITIOS)).toBeUndefined();
-    expect(interpretarAvisoBuild(build({ tags: undefined }), SITIOS)).toBeUndefined();
-    expect(interpretarAvisoBuild(build({ id: 7 }), SITIOS)).toBeUndefined();
-    expect(interpretarAvisoBuild(null, SITIOS)).toBeUndefined();
-    expect(interpretarAvisoBuild('texto', SITIOS)).toBeUndefined();
-  });
-});
-
-describe('cola de tareas del sitio', () => {
-  const tarea = { nombre: 'sitio-tienda-uno-1000', tenantId: 'tienda-uno', para: 5000 };
-
-  it('encola con nombre idempotente, a la hora agendada y con plazo', async () => {
-    const llamadas: Parameters<ColaDeTareas['enqueue']>[] = [];
-    const cola: ColaDeTareas = { enqueue: (...a) => { llamadas.push(a); return Promise.resolve(); } };
-    await crearColaSitio(cola, () => 1000).encolar(tarea);
-    expect(llamadas).toEqual([[{ tenantId: 'tienda-uno', para: 5000 }, { id: 'sitio-tienda-uno-1000', scheduleTime: new Date(5000), dispatchDeadlineSeconds: 60 }]]);
-  });
-
-  it('una hora ya pasada se despacha de inmediato', async () => {
-    const llamadas: Parameters<ColaDeTareas['enqueue']>[] = [];
-    await crearColaSitio({ enqueue: (...a) => { llamadas.push(a); return Promise.resolve(); } }, () => 9000).encolar(tarea);
-    expect(llamadas[0]?.[1].scheduleTime).toEqual(new Date(9000));
-  });
-
-  it('una tarea que ya existe se ignora; cualquier otro error sube', async () => {
-    const existe = { enqueue: () => Promise.reject(Object.assign(new Error('x'), { code: 'functions/task-already-exists' })) };
-    await expect(crearColaSitio(existe).encolar(tarea)).resolves.toBeUndefined();
-    await expect(crearColaSitio({ enqueue: () => Promise.reject(new Error('caída')) }).encolar(tarea)).rejects.toThrow('caída');
-  });
-
-  it('rechaza un nombre con caracteres no admitidos', async () => {
-    await expect(crearColaSitio({ enqueue: () => Promise.resolve() }).encolar({ ...tarea, nombre: 'a/b' })).rejects.toThrow(/nombre/);
-  });
-});
-
-describe('modo y configuración del constructor', () => {
-  it('solo el valor exacto «google» activa Cloud Build; todo lo demás es github', () => {
-    expect(modoConstructorSitio('google')).toBe('google');
-    expect(modoConstructorSitio(' google ')).toBe('google');
-    for (const v of ['', 'github', 'Google', 'GOOGLE', 'si', 'true']) expect(modoConstructorSitio(v)).toBe('github');
-  });
-
-  const completa = {
-    proyecto: 'proy-prueba', imagen: IMAGEN, cuenta: 'sitio-constructor', cuentaFn: 'fn-constructor', maquina: '', appEnv: 'staging', apiKey: 'k', appId: 'a', recaptcha: 'r',
-    panel: 'panel-prueba', mediosBaseUrl: 'https://medios.example.com/',
-  };
-
-  it('arma el entorno público del build y deja la máquina ausente si no se configura', () => {
-    const c = exigirConfiguracionConstructor(completa);
-    expect(c.maquina).toBeUndefined();
-    expect(c.entorno).toEqual({
-      VITE_FIREBASE_PROJECT_ID: 'proy-prueba', VITE_FIREBASE_API_KEY: 'k', VITE_FIREBASE_APP_ID: 'a', VITE_RECAPTCHA_ENTERPRISE_SITE_KEY: 'r',
-      MEDIOS_BASE_URL: 'https://medios.example.com/', SITIOS_PROHIBIDOS: 'panel-prueba', APP_ENV: 'staging',
-    });
-  });
-
-  it('exige la cuenta propia de las funciones del constructor (nunca la cuenta general)', () => {
-    for (const cuentaFn of ['', '  ']) {
-      expect(() => exigirConfiguracionConstructor({ ...completa, cuentaFn })).toThrow(/CUENTA_FN_CONSTRUCTOR_SITIO/);
-    }
-  });
-
-  it('el nombre de la tarea de la red cambia cada 5 minutos y es idempotente dentro del tramo', () => {
-    const a = nombreTareaRed('tienda-uno', 'rec-1', 1_000_000);
-    expect(nombreTareaRed('tienda-uno', 'rec-1', 1_000_000 + 60_000)).toBe(a);
-    expect(nombreTareaRed('tienda-uno', 'rec-1', 1_000_000 + 300_000)).not.toBe(a);
-    expect(a).toMatch(/^[A-Za-z0-9_-]+$/);
-    expect(nombreTareaRed('tienda-uno', 'rec.1', 0)).toMatch(/^[A-Za-z0-9_-]+$/);
-  });
-
-  it('APP_ENV solo admite staging o production', () => {
-    expect(() => exigirConfiguracionConstructor({ ...completa, appEnv: 'prod' })).toThrow(/CONSTRUCTOR_SITIO_APP_ENV/);
-    expect(exigirConfiguracionConstructor({ ...completa, appEnv: 'production' }).entorno['APP_ENV']).toBe('production');
-  });
-
-  it('falla cerrado listando los nombres que faltan, sin valores', () => {
+describe('scripts/preparar-constructor-sitio.sh --aplicar (gcloud sustituto)', () => {
+  it('ejecuta los pasos, pasa el secreto por stdin y no imprime el id del proyecto aunque gcloud lo haga', () => {
+    const dir = mkdtempSync(join(tmpdir(), 'prep-constructor-'));
     try {
-      exigirConfiguracionConstructor({ ...completa, imagen: ' ', panel: '' });
-      expect.unreachable();
-    } catch (e) {
-      expect(e).toBeInstanceOf(ConfiguracionIncompleta);
-      expect((e as Error).message).toContain('CONSTRUCTOR_SITIO_IMAGEN');
-      expect((e as Error).message).toContain('SITIO_PANEL_ID');
-      expect((e as Error).message).not.toContain('proy-prueba');
+      writeFileSync(join(dir, 'gcloud'), `#!/usr/bin/env bash
+echo "gcloud $*" >> "${dir}/llamadas.txt"
+[[ "$*" == *"versions list"* ]] && exit 0
+echo "salida de gcloud para proyecto-prueba-1 y f@proyecto-prueba-1.iam.gserviceaccount.com"
+if [[ "$1 $2" == "secrets versions" && "$3" == add ]]; then cat > "${dir}/stdin.txt"; fi
+exit 0
+`);
+      chmodSync(join(dir, 'gcloud'), 0o755);
+      const r = spawnSync('bash', [resolve(raiz, 'scripts/preparar-constructor-sitio.sh'), 'proyecto-prueba-1', '--aplicar'], {
+        env: {
+          PATH: `${dir}:/usr/bin:/bin`,
+          CUENTA_FUNCIONES: 'f@proyecto-prueba-1.iam.gserviceaccount.com',
+          CUENTA_DESPLIEGUE: 'd@proyecto-prueba-1.iam.gserviceaccount.com',
+          COLA_TAREAS: 'cola-prueba',
+          SITIO_RECONSTRUCCION_SECRETO: 'valor-secreto-xyz',
+        },
+        encoding: 'utf8',
+      });
+      expect(r.status).toBe(0);
+      expect(r.stdout).not.toContain('proyecto-prueba-1');
+      expect(r.stdout).not.toContain('valor-secreto-xyz');
+      const llamadas = readFileSync(join(dir, 'llamadas.txt'), 'utf8');
+      expect(llamadas).not.toContain('valor-secreto-xyz');
+      expect(llamadas).toContain('tasks queues add-iam-policy-binding cola-prueba');
+      expect(llamadas).toContain('builds get-default-service-account');
+      expect(llamadas).toContain('functions list --v2');
+      expect(llamadas).not.toContain('set-default-service-account');
+      expect(readFileSync(join(dir, 'stdin.txt'), 'utf8')).toBe('valor-secreto-xyz');
+    } finally {
+      rmSync(dir, { recursive: true, force: true });
     }
+  });
+  it('--aplicar exige COLA_TAREAS', () => {
+    const r = spawnSync('bash', [resolve(raiz, 'scripts/preparar-constructor-sitio.sh'), 'proyecto-prueba-1', '--aplicar'], {
+      env: {
+        PATH: '/usr/bin:/bin',
+        CUENTA_FUNCIONES: 'f@proyecto-prueba-1.iam.gserviceaccount.com',
+        CUENTA_DESPLIEGUE: 'd@proyecto-prueba-1.iam.gserviceaccount.com',
+      },
+      encoding: 'utf8',
+    });
+    expect(r.status).toBe(2);
+  });
+});
+
+describe('scripts/preparar-constructor-sitio.sh: O5bis antes de O5', () => {
+  const correrConStub = (extraEnv: Record<string, string>, args: string[] = []) => {
+    const dir = mkdtempSync(join(tmpdir(), 'prep-o5bis-'));
+    try {
+      writeFileSync(join(dir, 'gcloud'), `#!/usr/bin/env bash
+echo "gcloud $*" >> "${dir}/llamadas.txt"
+[[ "$*" == *"versions list"* ]] && exit 0
+if [[ "$*" == *"get-default-service-account"* && "$*" == *"--format"* ]]; then echo "\${SA_DEFECTO:-}"; exit 0; fi
+if [[ "$*" == *"functions list"* && -n "\${FALLA_FUNCTIONS:-}" ]]; then echo "API not enabled" >&2; exit 1; fi
+exit 0
+`);
+      chmodSync(join(dir, 'gcloud'), 0o755);
+      const r = spawnSync('bash', [resolve(raiz, 'scripts/preparar-constructor-sitio.sh'), 'proyecto-prueba-1', '--aplicar', ...args], {
+        env: {
+          PATH: `${dir}:/usr/bin:/bin`,
+          CUENTA_FUNCIONES: 'f@proyecto-prueba-1.iam.gserviceaccount.com',
+          CUENTA_DESPLIEGUE: 'd@proyecto-prueba-1.iam.gserviceaccount.com',
+          COLA_TAREAS: 'cola-prueba',
+          ...extraEnv,
+        },
+        encoding: 'utf8',
+      });
+      return { r, llamadas: readFileSync(join(dir, 'llamadas.txt'), 'utf8') };
+    } finally {
+      rmSync(dir, { recursive: true, force: true });
+    }
+  };
+  it('en la simulación O5bis aparece antes que O5', () => {
+    const r = spawnSync('bash', [resolve(raiz, 'scripts/preparar-constructor-sitio.sh'), 'proyecto-prueba-1'], { env: { PATH: '/usr/bin:/bin' }, encoding: 'utf8' });
+    expect(r.stdout.indexOf('O5bis.')).toBeGreaterThan(0);
+    expect(r.stdout.indexOf('O5bis.')).toBeLessThan(r.stdout.indexOf('O5. Permisos'));
+  });
+  it.each([
+    ['la heredada de Cloud Build', '123456@cloudbuild.gserviceaccount.com'],
+    ['la de Compute', '123456-compute@developer.gserviceaccount.com'],
+    ['desconocida (falla cerrado)', ''],
+  ])('con la cuenta por defecto %s no otorga el rol lanzador y sale con 3', (_n, sa) => {
+    const { r, llamadas } = correrConStub({ SA_DEFECTO: sa });
+    expect(r.status).toBe(3);
+    expect(llamadas).not.toContain('iam roles');
+    expect(llamadas).not.toContain('tasks queues add-iam-policy-binding');
+    expect(llamadas).not.toContain('roles/cloudtasks.enqueuer');
+    expect(r.stderr).not.toContain('proyecto-prueba-1');
+  });
+  it('con una cuenta por defecto acotada sigue y otorga el rol lanzador', () => {
+    const { r, llamadas } = correrConStub({ SA_DEFECTO: 'build-sin-permisos@proyecto-prueba-1.iam.gserviceaccount.com' });
+    expect(r.status).toBe(0);
+    expect(llamadas).toContain('iam roles');
+  });
+  it('con --neutralizar-cuenta-por-defecto la fija antes de consultar y sigue', () => {
+    const { r, llamadas } = correrConStub({ SA_DEFECTO: 'build-sin-permisos@proyecto-prueba-1.iam.gserviceaccount.com' }, ['--neutralizar-cuenta-por-defecto']);
+    expect(r.status).toBe(0);
+    expect(llamadas.indexOf('set-default-service-account')).toBeGreaterThan(0);
+    expect(llamadas.indexOf('set-default-service-account')).toBeLessThan(llamadas.indexOf('iam roles'));
+  });
+  it('si `functions list --v2` falla (API inactiva) avisa y el script sigue', () => {
+    const { r, llamadas } = correrConStub({ SA_DEFECTO: 'a@proyecto-prueba-1.iam.gserviceaccount.com', FALLA_FUNCTIONS: '1' });
+    expect(r.status).toBe(0);
+    expect(r.stderr).toContain('no se pudo consultar las Functions');
+    expect(llamadas).toContain('secrets');
   });
 });

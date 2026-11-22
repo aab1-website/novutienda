@@ -1,0 +1,12 @@
+.git
+.github/workflows
+.claude
+.security-reports
+.env
+.env.*
+**/node_modules
+**/dist
+**/.astro
+coverage
+docs
+*.log
