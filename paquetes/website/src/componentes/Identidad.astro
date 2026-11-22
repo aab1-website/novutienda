@@ -13,13 +13,14 @@ const sello = afirmacionVisible(i.sello, false) ? i.sello : null;
     {i.foto !== null && (
       <div class="identidad-foto">
         <img src={i.foto.url} srcset={srcsetDe(i.foto)} alt={i.foto.alt} loading="lazy" decoding="async" width="800" height="600" />
-        {cifra !== null && <div class="identidad-cifra"><strong>{cifra.valor.texto}</strong><span>{cifra.detalle}</span></div>}
+        {cifra !== null && <div class="identidad-cifra"><strong>{cifra.valor.texto}</strong>{' '}<span>{cifra.detalle}</span></div>}
       </div>
     )}
     <div class="identidad-texto">
       <span class="etiqueta">{i.etiqueta}</span>
       <h2 id="titulo-identidad" class="titulo-seccion">{i.titulo}</h2>
       <p class="subtitulo">{i.texto}</p>
+      {i.foto === null && cifra !== null && <div class="identidad-cifra identidad-cifra-suelta"><strong>{cifra.valor.texto}</strong>{' '}<span>{cifra.detalle}</span></div>}
       {i.valores.length > 0 && (
         <ul class="valores">
           {i.valores.map((v) => (

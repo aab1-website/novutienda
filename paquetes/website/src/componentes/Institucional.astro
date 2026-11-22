@@ -1,0 +1,31 @@
+---
+import { contenido } from '../contenido/instancia';
+import { institucionalVisible } from '../contenido/consultas';
+
+const v = institucionalVisible(contenido.institucional);
+---
+{v.hay && (
+  <section id="institucional" class="seccion institucional" aria-labelledby="titulo-institucional">
+    <div class="contenedor institucional-interior">
+      <h2 id="titulo-institucional" class="titulo-seccion">Lo que nos guía</h2>
+      {(v.mision !== null || v.vision !== null) && (
+        <div class="mision-vision">
+          {v.mision !== null && <article class="valor"><h3>Nuestra misión</h3><p>{v.mision}</p></article>}
+          {v.vision !== null && <article class="valor"><h3>Nuestra visión</h3><p>{v.vision}</p></article>}
+        </div>
+      )}
+      {v.chat !== null && (
+        <figure class="chat-maqueta">
+          <figcaption>Ejemplo de conversación</figcaption>
+          <ol class="chat-mensajes">
+            {v.chat.map((m) => (
+              <li class={`chat-mensaje chat-${m.de}`}>
+                <span class="solo-lectores">{m.de === 'cliente' ? 'Cliente: ' : 'Comercio: '}</span>{m.texto}
+              </li>
+            ))}
+          </ol>
+        </figure>
+      )}
+    </div>
+  </section>
+)}

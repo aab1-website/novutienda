@@ -68,6 +68,8 @@ export interface Producto {
   readonly fotos: readonly Foto[];
   readonly video: Video | null;
   readonly destacado: boolean;
+  /** «Características destacadas»: viñetas de la ficha (hasta 8, de 1 a 160 caracteres). Ausente o vacía = la ficha no muestra la sección. */
+  readonly caracteristicas?: readonly string[];
   readonly seo: { readonly titulo?: string; readonly descripcion?: string };
 }
 
@@ -99,6 +101,25 @@ export interface Identidad {
   readonly valores: readonly Valor[];
   readonly sello: Afirmacion;
 }
+
+/** Mensaje de la maqueta de chat de WhatsApp. */
+export interface MensajeChat {
+  readonly de: 'cliente' | 'comercio';
+  readonly texto: string;
+}
+
+/**
+ * Textos institucionales opcionales. Cada campo se muestra solo si existe; ausente = el sitio no pinta esa pieza y el contenido
+ * queda idéntico al de antes.
+ */
+export interface Institucional {
+  readonly mision?: string;
+  readonly vision?: string;
+  /** Maqueta de conversación de WhatsApp (se rotula «Ejemplo de conversación»). */
+  readonly chat?: { readonly mensajes: readonly MensajeChat[] };
+}
+
+export const LIMITES_INSTITUCIONAL = { texto: 600, mensajes: 6, mensaje: 300, caracteristicas: 8, caracteristica: 160 } as const;
 
 export interface Portada {
   readonly insignia: string;
@@ -189,6 +210,8 @@ export interface Contenido {
   readonly identidad: Identidad;
   readonly productos: readonly Producto[];
   readonly secciones: readonly Seccion[];
+  /** Misión, visión y maqueta de chat; ausente = ninguna se muestra. */
+  readonly institucional?: Institucional;
   /** Fotos del carrusel de la portada, por plantilla. */
   readonly carruseles: Readonly<Record<IdPlantilla, readonly Foto[]>>;
   /** Versión y fecha de la publicación de la que se compiló (de `publicado/estado`); ausente en el contenido de ejemplo. */
@@ -214,6 +237,7 @@ export interface NegocioSitio {
   readonly portada: Portada;
   readonly beneficios: readonly Beneficio[];
   readonly identidad: Identidad;
+  readonly institucional?: Institucional;
   readonly textoPrivacidad: readonly string[];
   /** Sobrescribe nombre e ícono derivados de una categoría (id = el de la categoría del producto). */
   readonly categorias?: Readonly<Record<string, { readonly nombre: string; readonly icono: IdIcono }>>;

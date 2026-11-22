@@ -190,3 +190,40 @@ describe('URL seguras', () => {
     expect(con('/productos', { version: 1.5, publicadoEn: 'ayer' }).join()).toContain('publicacion');
   });
 });
+
+describe('campos opcionales: institucional y características', () => {
+  const con = (extra: Record<string, unknown>): Record<string, unknown> => ({ ...clon(), ...extra });
+  const sinInst = (): Record<string, unknown> => { const c = clon(); delete c['institucional']; return c; };
+
+  it('ausentes: el contenido es válido y la salida no trae las claves', () => {
+    const c = sinInst();
+    for (const p of c['productos'] as Record<string, unknown>[]) delete p['caracteristicas'];
+    const r = validarContenido(c);
+    expect(r.ok).toBe(true);
+    expect(r.ok && 'institucional' in r.contenido).toBe(false);
+    expect(r.ok && r.contenido.productos.some((p) => 'caracteristicas' in p)).toBe(false);
+  });
+  it('acepta institucional completo', () => {
+    expect(errores(con({ institucional: { mision: 'm', vision: 'v', chat: { mensajes: [{ de: 'cliente', texto: 'hola' }] } } }))).toEqual([]);
+  });
+  it('rechaza misión larga, chat vacío, de más de 6 o con emisor inválido', () => {
+    expect(errores(con({ institucional: { mision: 'x'.repeat(601) } }))).toContain('institucional.mision: debe ser texto de 1 a 600 caracteres');
+    expect(errores(con({ institucional: { chat: { mensajes: [] } } }))).toHaveLength(1);
+    const siete = Array.from({ length: 7 }, () => ({ de: 'cliente', texto: 'a' }));
+    expect(errores(con({ institucional: { chat: { mensajes: siete } } }))).toHaveLength(1);
+    expect(errores(con({ institucional: { chat: { mensajes: [{ de: 'robot', texto: 'a' }] } } }))).toEqual(["institucional.chat.mensajes[0].de: debe ser 'cliente' o 'comercio'"]);
+  });
+  it('caracteristicas: de 1 a 8 viñetas de hasta 160 caracteres', () => {
+    const conCar = (v: unknown): readonly string[] => {
+      const c = clon();
+      (c['productos'] as Record<string, unknown>[])[0]!['caracteristicas'] = v;
+      return errores(c);
+    };
+    expect(conCar(['a', 'b'])).toEqual([]);
+    expect(conCar([])).toHaveLength(1);
+    expect(conCar(Array.from({ length: 9 }, () => 'a'))).toHaveLength(1);
+    expect(conCar(['x'.repeat(161)])).toHaveLength(1);
+    expect(conCar([' '])).toHaveLength(1);
+    expect(conCar('texto')).toHaveLength(1);
+  });
+});

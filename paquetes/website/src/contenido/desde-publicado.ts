@@ -5,7 +5,7 @@
  */
 import { MAX_CATEGORIAS_SITIO, esIdProductoSitio, leerCausasFallaSitio, type CausaFallaSitio } from '@novutienda/nucleo';
 import {
-  IDS_PLANTILLA, LIMITES_SITIO,
+  IDS_PLANTILLA, LIMITES_INSTITUCIONAL, LIMITES_SITIO,
   type Bloque, type Categoria, type ConfigAppCheck, type Contenido, type Foto, type IdIcono, type IdPlantilla,
   type Producto, type Seccion,
 } from './tipos.js';
@@ -179,6 +179,19 @@ export function nombreDeCategoria(id: string): string {
   return t.charAt(0).toUpperCase() + t.slice(1);
 }
 
+/** Viñetas de la ficha: se recortan, se descartan las vacías o demasiado largas (con aviso) y se corta en 8. Sin ninguna, la clave no existe. */
+function caracteristicasDe(x: unknown, ruta: string, advertencias: string[] | undefined): { caracteristicas?: string[] } {
+  const { caracteristicas: tope, caracteristica: largo } = LIMITES_INSTITUCIONAL;
+  const ok: string[] = [];
+  for (const [i, t] of lista(x).entries()) {
+    const v = cadena(t).trim();
+    if (v === '' || v.length > largo) { advertencias?.push(`${ruta}[${i}]: viñeta descartada (vacía o demasiado larga)`); continue; }
+    if (ok.length >= tope) { advertencias?.push(`${ruta}[${i}]: viñeta descartada (tope de ${tope})`); continue; }
+    ok.push(v);
+  }
+  return ok.length === 0 ? {} : { caracteristicas: ok };
+}
+
 const TITULO_MAXIMO = 120;
 const PARRAFO_MAXIMO = 3000;
 const PARRAFOS_MAXIMO = 20;
@@ -286,6 +299,7 @@ export function contenidoDesdePublicado(respuesta: unknown, negocio: unknown, en
       fotos: fotosDe(medios, base, LIMITES_SITIO.fotosPorProducto),
       video: vid,
       destacado: destacados.has(id),
+      ...caracteristicasDe(d['caracteristicas'], `${r}.caracteristicas`, advertencias),
       seo: {
         ...(cadena(seo['titulo']) === '' ? {} : { titulo: cadena(seo['titulo']) }),
         ...(cadena(seo['descripcion']) === '' ? {} : { descripcion: cadena(seo['descripcion']) }),
@@ -368,6 +382,7 @@ export function contenidoDesdePublicado(respuesta: unknown, negocio: unknown, en
     },
     portada: neg?.portada, beneficios: neg?.beneficios, categorias, marcas, identidad: neg?.identidad,
     productos, secciones, carruseles,
+    ...(neg?.institucional === undefined ? {} : { institucional: neg.institucional }),
     publicacion: {
       version: entero(esObj(estado) ? estado['version'] : undefined) ?? entero(s['version']),
       publicadoEn: esObj(estado) && typeof estado['publicadoEn'] === 'string' && estado['publicadoEn'] !== '' ? estado['publicadoEn'] : null,

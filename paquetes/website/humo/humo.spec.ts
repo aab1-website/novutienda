@@ -714,3 +714,26 @@ test.describe('celular (375×812): grilla de 2 columnas, cabecera que se oculta 
     }
   }
 });
+
+test.describe('secciones opcionales del contenido', () => {
+  test('portada: misión, visión y maqueta de chat aparecen con contenido', async ({ page }) => {
+    await simularApi(page);
+    await page.goto('/');
+    const sec = page.locator('#institucional');
+    await expect(sec).toBeVisible();
+    await expect(sec.getByRole('heading', { name: 'Nuestra misión' })).toBeVisible();
+    await expect(sec.getByRole('heading', { name: 'Nuestra visión' })).toBeVisible();
+    await expect(sec.getByText('Ejemplo de conversación')).toBeVisible();
+    await expect(sec.locator('.chat-mensaje')).toHaveCount(2);
+  });
+
+  test('ficha: las características salen en viñetas y, vacías, la sección no existe', async ({ page }) => {
+    await simularApi(page);
+    await page.goto('/producto/televisor-ejemplo-55');
+    await expect(page.getByRole('heading', { name: 'Características destacadas' })).toBeVisible();
+    await expect(page.locator('.ficha-caracteristicas li')).toHaveCount(3);
+    await page.goto('/producto/televisor-ejemplo-65');
+    await expect(page.getByRole('heading', { name: 'Características destacadas' })).toHaveCount(0);
+    await expect(page.locator('.ficha-caracteristicas')).toHaveCount(0);
+  });
+});
