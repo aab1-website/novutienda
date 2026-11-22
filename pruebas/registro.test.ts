@@ -470,7 +470,7 @@ describe('L2-1: campos L2 del manifiesto (sin efecto)', () => {
       expect(registroPlataforma.rutasHttp().map((r) => [r.ruta, r.modulo]).sort()).toEqual([
         ['/api/contacto', 'website'], ['/api/cotizacion', 'website'], ['/api/disponibilidad', 'website'],
         ['/api/novuchat/v1/catalogo', 'consola'], ['/api/novuchat/v1/inventario', 'inventarios'],
-        ['/api/novuchat/v1/pedidos/confirmar', 'inventarios'], ['/api/sitio/v1', 'consola'],
+        ['/api/novuchat/v1/pedidos/confirmar', 'inventarios'], ['/api/sitio/v1', 'consola'], ['/api/vista', 'website'],
       ]);
     });
 

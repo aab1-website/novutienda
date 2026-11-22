@@ -186,6 +186,7 @@ describe('despachador', () => {
       recaptcha: { verificar: () => Promise.resolve({ valido: true, puntaje: 1 }) }, appCheck: { verificar: () => Promise.resolve(true) },
       limite: limiteMemoria(10, 1000), almacen: { guardar: () => Promise.resolve('creado') }, ahora: () => 0,
     },
+    vistas: { almacen: { leer: () => Promise.resolve(null), sumar: () => Promise.resolve(null) }, limite: limiteMemoria(10, 1000), ahora: () => 0 },
   };
   const base = { metodo: 'GET', consulta: {}, cabeceras: {}, origen: 'ip' };
   it('enruta las tres APIs y responde 404 al resto', async () => {

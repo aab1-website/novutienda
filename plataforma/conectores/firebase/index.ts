@@ -7,6 +7,7 @@ export { crearGuardarContacto } from './contacto.js';
 export { crearEjecutorRecibos } from './ejecutor-recibos.js';
 export { crearConsultaSubidas } from './consulta-subidas.js';
 export { crearLectorDisponibilidad } from './disponibilidad.js';
+export { crearAlmacenVistas } from './vistas.js';
 export { aKebab, CODIGO_DE_BORDE, CODIGO_MODULO_APAGADO, traducirError } from './errores.js';
 export type { CodigoHttps, ErrorTraducido } from './errores.js';
 export { COLECCION_LIMITES, crearLimiteTasa, hashClave } from './limite-tasa.js';

@@ -350,12 +350,13 @@ describe('límites en memoria antes de autenticar', () => {
     firestore: new Proxy({}, { get: () => { throw new Error('tocó Firestore antes del límite'); } }),
     leerDisponibilidad: () => () => Promise.resolve({ 'tv-1': true }),
     guardarContacto: () => ({}),
+    almacenVistas: () => ({}),
     almacenCotizaciones: {},
   } as never;
   const cfg = (n: number): ConfigRouter => ({
     secretoReconstruccion: '', novuchat: {} as never, recaptcha: {} as never, appCheck: {} as never,
     limiteContacto: limiteMemoria(100, 60_000),
-    limiteMemoria: { novuchat: limiteMemoria(n, 60_000), disponibilidad: limiteMemoria(n, 60_000), contacto: limiteMemoria(n, 60_000), hosts: limiteMemoria(n, 60_000), hostsGlobal: limiteMemoria(1000, 60_000) },
+    limiteMemoria: { novuchat: limiteMemoria(n, 60_000), disponibilidad: limiteMemoria(n, 60_000), contacto: limiteMemoria(n, 60_000), vista: limiteMemoria(1000, 60_000), hosts: limiteMemoria(n, 60_000), hostsGlobal: limiteMemoria(1000, 60_000) },
   });
   const peticion = (ruta: string, origen: string) => ({ metodo: 'GET', ruta, url: ruta, consulta: { ids: 'tv-1' }, cabeceras: { authorization: 'Bearer token-inventado', 'x-forwarded-host': 'tienda.test' }, cuerpoCrudo: '', cuerpo: undefined, origen });
 
@@ -387,6 +388,7 @@ describe('contacto: App Check de un solo uso y límite en memoria antes de verif
     almacenCotizaciones: {},
     leerDisponibilidad: () => () => Promise.resolve({}),
     guardarContacto: () => ({ guardar: (c: { operacionId: string }) => { guardados.push(c.operacionId); return Promise.resolve('creado' as const); } }),
+    almacenVistas: () => ({ leer: () => Promise.resolve(null), sumar: () => Promise.resolve(null) }),
   } as never;
   /** Admin simulado: un token solo se consume una vez (`alreadyConsumed`), como el de uso limitado de App Check. */
   const adminConsume = () => {
@@ -408,7 +410,7 @@ describe('contacto: App Check de un solo uso y límite en memoria antes de verif
     recaptcha: { verificar: () => Promise.resolve({ valido: true, puntaje: 0.9 }) },
     appCheck: appCheckReal(admin as never, { consumir: true }),
     limiteContacto: limiteMemoria(100, 60_000),
-    limiteMemoria: { novuchat: limiteMemoria(1, 60_000), disponibilidad: limiteMemoria(1, 60_000), contacto: limiteMemoria(maximoMemoria, 60_000), hosts: limiteMemoria(100, 60_000), hostsGlobal: limiteMemoria(1000, 60_000) },
+    limiteMemoria: { novuchat: limiteMemoria(1, 60_000), disponibilidad: limiteMemoria(1, 60_000), contacto: limiteMemoria(maximoMemoria, 60_000), vista: limiteMemoria(1000, 60_000), hosts: limiteMemoria(100, 60_000), hostsGlobal: limiteMemoria(1000, 60_000) },
   });
   const cuerpo = { envioId: 'envio-0123456789abcdef', nombre: 'Ana Pérez', correo: 'ana@ejemplo.test', mensaje: 'Quisiera una cotización', aceptaPrivacidad: true, recaptchaToken: 'x'.repeat(30) };
   const envio = (token: string | undefined, origen = '203.0.113.1') => ({

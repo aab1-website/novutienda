@@ -15,10 +15,10 @@ export interface ConfigRouter extends Pick<ConfigWebsite, 'recaptcha' | 'appChec
   readonly secretoReconstruccion: string;
   readonly limiteContacto: LimiteTasa;
   /** Límites en memoria por instancia y por origen, ANTES de autenticar (NovuChat), de leer (disponibilidad) o de verificar App Check (contacto); `hosts` (por origen) y `hostsGlobal` (clave fija `hosts:*`, tope de la instancia), ante un host que no está en caché. */
-  readonly limiteMemoria: { readonly novuchat: LimiteTasa; readonly disponibilidad: LimiteTasa; readonly contacto: LimiteTasa; readonly hosts: LimiteTasa; readonly hostsGlobal: LimiteTasa };
+  readonly limiteMemoria: { readonly novuchat: LimiteTasa; readonly disponibilidad: LimiteTasa; readonly contacto: LimiteTasa; readonly vista: LimiteTasa; readonly hosts: LimiteTasa; readonly hostsGlobal: LimiteTasa };
 }
 
-const RUTAS_SITIO = new Set(['/api/cotizacion', '/api/disponibilidad', '/api/contacto']);
+const RUTAS_SITIO = new Set(['/api/cotizacion', '/api/disponibilidad', '/api/contacto', '/api/vista']);
 
 async function excedeLimite(limite: LimiteTasa, clave: string, ahora: number): Promise<RespuestaApi | undefined> {
   const r = await limite.intentar(clave, ahora);
@@ -123,7 +123,7 @@ export async function enrutar(e: Entorno, req: PeticionHttp, cfg: ConfigRouter):
     const tenantId = await tenantDelHost(e, req, cfg);
     if (typeof tenantId !== 'string') return tenantId;
     if (!(await servir(e, ruta, tenantId))) return json(404, { error: 'no_encontrado' });
-    return manejarSitioPublico(e, req, ruta, cfg, tenantId);
+    return manejarSitioPublico(e, req, ruta, { ...cfg, limiteVista: cfg.limiteMemoria.vista }, tenantId);
   }
   // Rutas con tenant de credencial: el manejador llama a `puedeServir` DESPUÉS de autenticar y ANTES de leer datos.
   const puedeServir = (tenantId: string): Promise<boolean> => servir(e, ruta, tenantId);

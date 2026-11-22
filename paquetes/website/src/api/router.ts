@@ -23,8 +23,8 @@ export interface DepsApi {
   readonly leerCotizacion: (m: Mercado) => Promise<CopiaCotizacion>;
   readonly leerDisponibilidad: LectorDisponibilidad;
   readonly contacto: DepsContacto;
-  /** Contador de vistas; sin él, /api/vista responde 404 (hasta que el coordinador lo cablee). */
-  readonly vistas?: DepsVista;
+  /** Contador de vistas (`/api/vista`). */
+  readonly vistas: DepsVista;
 }
 
 export const RUTAS_API = ['/api/cotizacion', '/api/disponibilidad', '/api/contacto', '/api/vista'] as const;
@@ -40,9 +40,7 @@ export function despacharApi(req: PeticionApi, deps: DepsApi): Promise<Respuesta
     case '/api/contacto':
       return manejarContacto({ metodo: req.metodo, cabeceras: req.cabeceras, cuerpo: req.cuerpo, origen: req.origen }, deps.contacto);
     case '/api/vista':
-      return deps.vistas === undefined
-        ? Promise.resolve(respuestaJson(404, { error: 'no_encontrado' }))
-        : manejarVista({ metodo: req.metodo, id: req.consulta['id'] ?? null, origen: req.origen }, deps.vistas);
+      return manejarVista({ metodo: req.metodo, id: req.consulta['id'] ?? null, origen: req.origen }, deps.vistas);
     default:
       return Promise.resolve(respuestaJson(404, { error: 'no_encontrado' }));
   }
