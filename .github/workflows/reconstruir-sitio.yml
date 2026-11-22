@@ -9,10 +9,19 @@
 #          + 1.4: el cierre `fallida` informa la etapa que falló y, si «Generar»
 #            rechazó el contenido, las causas saneadas (solo en el cuerpo
 #            firmado; nunca en el log, el repositorio es público)
+#          + 1.5 (2026-11-21, plan Cloud Build P1): los pasos 2 a 9 del job
+#            `reconstruir` pasan a scripts/reconstruir-sitio.sh (el mismo que
+#            corre Cloud Build); el job conserva la resolución enmascarada del
+#            sitio y la autenticación WIF. Mismo comportamiento.
+#          + 1.6 (2026-11-21): fases preparar (sin credenciales de nube) →
+#            WIF solo si hay algo que desplegar → desplegar; paso final
+#            `cancelar` si el run se cancela; secretos solo en las fases que
+#            los usan.
 # -----------------------------------------------------------------------------
 # Contrato con las funciones: docs/produccion/reconstruccion-sitio.md (cola
 # firmada `tenants/{t}/reconstrucciones`, estados pendiente → en_curso →
-# completada | fallida). Scripts: scripts/sitios-tenant.mjs (matriz),
+# completada | fallida). Scripts: scripts/reconstruir-sitio.sh (pasos 2 a 9
+# del job `reconstruir`), scripts/sitios-tenant.mjs (matriz),
 # scripts/contenido-sitio.mjs (pendiente, estado, rezagados, cubiertos, generar),
 # scripts/build.mjs
 # --solo sitio --sitio <id>, scripts/certificar-sitio.mjs (S5: el sitio
@@ -101,7 +110,7 @@ permissions:
 env:
   NODE_VERSION: ${{ vars.NODE_VERSION || '22' }}
   # Mismo firebase-tools que ci-node-firebase.yml.
-  FIREBASE_TOOLS_VERSION: '15.28.1'
+  FIREBASE_TOOLS_VERSION: '15.37.0'
 
 jobs:
   # ---------------------------------------------------------------------------
@@ -111,7 +120,7 @@ jobs:
   # que tienen un trabajo pendiente. Sin concurrencia propia: varios sondeos
   # solapados (un disparo cada 5 min como máximo, más el schedule) solo leen la
   # cola; el que llega tarde a un trabajo ya tomado termina sin desplegar en
-  # «Tomar el trabajo». El timeout de 5 min cubre un sondeo por sitio en serie.
+  # el paso «tomar el trabajo» de reconstruir-sitio.sh. El timeout de 5 min cubre un sondeo por sitio en serie.
   # ---------------------------------------------------------------------------
   sondear:
     name: sondear
@@ -137,7 +146,7 @@ jobs:
     outputs:
       matriz: ${{ steps.sondeo.outputs.matriz }}
       hay: ${{ steps.sondeo.outputs.hay }}
-      # pendientes | todos: `reconstruir` lo usa en «Tomar el trabajo».
+      # pendientes | todos: `reconstruir` lo usa al tomar el trabajo (reconstruir-sitio.sh).
       modo: ${{ steps.sondeo.outputs.modo }}
     steps:
       - name: Checkout (scripts)
@@ -169,7 +178,7 @@ jobs:
           if [[ -n "$SITIO_RECONSTRUCCION_SECRETO" ]]; then echo "::add-mask::$SITIO_RECONSTRUCCION_SECRETO"; fi
           # pendientes: schedule, o dispatch con el valor reservado `cola:pendientes`
           # (S7-3: lo lanza la plataforma). Ambos siguen el MISMO camino aquí y en
-          # «Tomar el trabajo». `cola:pendientes` no es una clave válida
+          # «tomar el trabajo» (reconstruir-sitio.sh). `cola:pendientes` no es una clave válida
           # (^[a-z0-9]{1,12}$): no choca con ninguna real; se vacía CLAVE para que
           # se sondeen todos los sitios. Comparación de bash: exacta y sensible a
           # mayúsculas; cualquier otro valor con `:` falla abajo.
@@ -316,13 +325,14 @@ jobs:
     # TENANT, SITIO y URL_SITIO NO van aquí: los fija (enmascarados) el primer paso.
     env:
       CLAVE: ${{ matrix.clave }}
-      EVENTO: ${{ github.event_name }}
       # pendientes (schedule o dispatch `cola:pendientes`) | todos; lo decidió sondear.
+      # reconstruir-sitio.sh falla cerrado si falta (sin él no se sabe si
+      # reconstruir sin trabajo en la cola).
       MODO_SONDEO: ${{ needs.sondear.outputs.modo }}
       # 'true' solo en un dispatch con `clave` = `certificar:` o `certificar:<clave>`
-      # (sondear ya validó el formato). Entonces el job salta tomar el trabajo y,
-      # con él, todo lo que depende de steps.trabajo (build, despliegue, cierres
-      # y rezagados): solo resuelve, instala y certifica.
+      # (sondear ya validó el formato). Entonces el script corre en modo
+      # `certificar`: no toma trabajo, no compila, no despliega ni cierra nada;
+      # solo resuelve, instala y certifica.
       SOLO_CERTIFICAR: ${{ github.event_name == 'workflow_dispatch' && startsWith(inputs.clave, 'certificar:') }}
       APP_ENV: staging
       PROYECTO: ${{ vars.GCP_PROJECT_ID_STAGING }}
@@ -332,6 +342,9 @@ jobs:
       VITE_FIREBASE_API_KEY: ${{ vars.VITE_FIREBASE_API_KEY_STAGING }}
       VITE_RECAPTCHA_ENTERPRISE_SITE_KEY: ${{ vars.VITE_RECAPTCHA_ENTERPRISE_SITE_KEY_STAGING }}
       VITE_FIREBASE_APP_ID: ${{ vars.VITE_FIREBASE_APP_ID_STAGING }}
+      # Sitio reservado (el panel): ninguna fase despliega sobre él; el script y
+      # preparar-sitio-tenant.sh fallan si queda vacía. Todas las fases la exigen.
+      FIREBASE_SITE_PANEL: ${{ vars.FIREBASE_SITE_PANEL }}
     steps:
       - name: Resolver y enmascarar el sitio de la clave
         # Falla cerrado: clave inválida, SITIOS_TENANT ausente o no JSON, clave
@@ -394,398 +407,89 @@ jobs:
           node-version: ${{ env.NODE_VERSION }}
           cache: pnpm
 
-      - name: Tomar el trabajo (en_curso)
-        id: trabajo
-        # Solo certificación: no se toca la cola. Sin este paso, `continuar` y
-        # `trabajo` quedan vacíos y se omiten build, despliegue y cierres.
+      # Pasos 2 a 9 (1.6): scripts/reconstruir-sitio.sh, el MISMO script que corre
+      # en Cloud Build (imagen scripts/constructor-sitio/Dockerfile), partido en
+      # fases para que las credenciales de nube existan solo cuando hacen falta:
+      #   preparar  → tomar el trabajo (en_curso), instalar, generar, build y
+      #               dist-real.test.ts con EXIGIR_DIST=1. SIN autenticación de
+      #               nube: pnpm, el build y vitest nunca ven credenciales.
+      #   WIF       → solo si `preparar` dejó continuar=true.
+      #   desplegar → firebase.json solo de este sitio (guardia del panel por
+      #               SITIOS_PROHIBIDOS = FIREBASE_SITE_PANEL), copia `previa`,
+      #               deploy (revisa también el registro), humo, certificación
+      #               contra el contenido del build, cierre `completada`/`fallida`
+      #               con etapa y causas, pendientes cubiertos y rezagados.
+      #   cancelar  → si el job falla o se cancela: cierra `fallida` (etapa
+      #               `cancelado` o `despliegue`) el trabajo que quedó en_curso.
+      # El estado entre fases vive en $RUNNER_TEMP/reconstruir-sitio-<CLAVE>.
+      # Códigos del script: 0 ok; 10 = no desplegó sin ser un fallo (409 de otro
+      # corredor, `repetido`, o sin pendiente en modo pendientes) → verde sin
+      # desplegar; 3 = no se pudo certificar; 143 = cancelado; otro = fallo (el
+      # trabajo ya quedó `fallida` con su etapa).
+      # Secretos: cada paso recibe solo los que su fase usa; el script los retira
+      # de su entorno y los pasa únicamente a contenido-sitio.mjs y
+      # certificar-sitio.mjs. Contrato: docs/produccion/reconstruccion-sitio.md.
+      - name: Preparar el sitio (tomar trabajo, generar, build y pruebas; sin nube)
+        id: preparar
         if: env.SOLO_CERTIFICAR != 'true'
-        env:
-          SITIO_RECONSTRUCCION_SECRETO: ${{ secrets.SITIO_RECONSTRUCCION_SECRETO }}
-        run: |
-          set -euo pipefail
-          [[ -n "$SITIO_RECONSTRUCCION_SECRETO" ]] \
-            || { echo "::error::Falta el secreto SITIO_RECONSTRUCCION_SECRETO del Environment staging."; exit 1; }
-          echo "::add-mask::$SITIO_RECONSTRUCCION_SECRETO"
-          # Falla cerrado: sin el modo de sondear no se sabe si reconstruir sin trabajo.
-          [[ "$MODO_SONDEO" == "pendientes" || "$MODO_SONDEO" == "todos" ]] \
-            || { echo "::error::$CLAVE: sondear no informó el modo (pendientes o todos)."; exit 1; }
-          id="$(node scripts/contenido-sitio.mjs pendiente --tenant "$TENANT" --url "$URL_SITIO")"
-          if [[ -z "$id" ]]; then
-            if [[ "$MODO_SONDEO" == "pendientes" ]]; then
-              # Lo tomó otro corredor entre el sondeo y este job (otro run del
-              # schedule o de un disparo `cola:pendientes` solapado).
-              echo "::notice::$CLAVE: ya no hay trabajo pendiente; nada que hacer."
-              { echo "continuar=false"; echo "trabajo="; } >> "$GITHUB_OUTPUT"
-              exit 0
-            fi
-            echo "$CLAVE: sin trabajo en la cola; reconstrucción pedida por $EVENTO."
-            { echo "continuar=true"; echo "trabajo="; } >> "$GITHUB_OUTPUT"
-            exit 0
-          fi
-          rc=0
-          node scripts/contenido-sitio.mjs estado "$id" en_curso --tenant "$TENANT" --url "$URL_SITIO" || rc=$?
-          case "$rc" in
-            0) { echo "continuar=true"; echo "trabajo=$id"; } >> "$GITHUB_OUTPUT"
-               echo "$CLAVE: trabajo tomado (en_curso)." ;;
-            3) echo "::notice::$CLAVE: el trabajo lo tomó otro corredor (409); este termina sin desplegar."
-               { echo "continuar=false"; echo "trabajo="; } >> "$GITHUB_OUTPUT" ;;
-            *) echo "::error::$CLAVE: no se pudo marcar el trabajo en_curso (código $rc)."
-               exit 1 ;;
-          esac
-
-      - name: Instalar dependencias
-        # Después de tomar el trabajo (en_curso): `pendiente` y `estado` no
-        # necesitan node_modules; si la instalación falla, el paso final cierra
-        # el trabajo como fallida en vez de dejarlo pendiente para el próximo
-        # sondeo. `generar`, el build, las pruebas y la certificación sí las
-        # necesitan (también en el modo de solo certificación).
-        if: steps.trabajo.outputs.continuar == 'true' || env.SOLO_CERTIFICAR == 'true'
-        run: pnpm install --frozen-lockfile
-
-      - name: Generar el contenido publicado
-        id: generar
-        if: steps.trabajo.outputs.continuar == 'true'
         env:
           SITIO_RECONSTRUCCION_SECRETO: ${{ secrets.SITIO_RECONSTRUCCION_SECRETO }}
           # Textos del negocio de ESTE sitio (secreto del Environment por clave).
           SITIO_NEGOCIO: ${{ secrets[format('SITIO_NEGOCIO_{0}', matrix.clave)] }}
-        run: |
-          set -euo pipefail
-          echo "::add-mask::$SITIO_RECONSTRUCCION_SECRETO"
-          # Misma exigencia que `construir`: sin la configuración web completa
-          # el sitio no inicia App Check y las funciones lo rechazarían.
-          faltan=()
-          for v in VITE_FIREBASE_PROJECT_ID VITE_FIREBASE_API_KEY VITE_RECAPTCHA_ENTERPRISE_SITE_KEY VITE_FIREBASE_APP_ID MEDIOS_BASE_URL; do
-            [[ -n "${!v:-}" ]] || faltan+=("$v")
-          done
-          [[ -n "$SITIO_NEGOCIO" ]] || faltan+=("SITIO_NEGOCIO_$(tr '[:lower:]' '[:upper:]' <<<"$CLAVE")")
-          if (( ${#faltan[@]} > 0 )); then
-            echo "::error::Faltan variables o secretos para reconstruir $CLAVE: ${faltan[*]}. Ver docs/produccion/reconstruccion-sitio.md."
-            exit 1
-          fi
-          salida="$RUNNER_TEMP/sitio/contenido.json"
-          # Causas saneadas si el contenido publicado no es válido (códigos,
-          # ids de producto y mercados). El script escribe el archivo SOLO si
-          # falla y nunca lo imprime; este workflow tampoco: lo lee únicamente
-          # «Cerrar el trabajo (fallida)», que lo envía en el cuerpo firmado.
-          mkdir -p "$RUNNER_TEMP/sitio"
-          # Hora de inicio (ms) ANTES de leer lo publicado: tope de
-          # «Cerrar los pendientes cubiertos por este despliegue».
-          echo "GENERAR_INICIO_MS=$(date +%s%3N)" >> "$GITHUB_ENV"
-          node scripts/contenido-sitio.mjs generar --salida "$salida" --causas "$RUNNER_TEMP/sitio/causas.json" \
-            --tenant "$TENANT" --url "$URL_SITIO"
-          echo "SITIO_CONTENIDO=$salida" >> "$GITHUB_ENV"
-
-      - name: Build del sitio (solo sitio, staging)
-        id: build
-        if: steps.trabajo.outputs.continuar == 'true'
-        env:
           VITE_APP_VERSION: ${{ github.ref_name }}-${{ github.sha }}
         run: |
-          set -euo pipefail
-          export VITE_FIREBASE_AUTH_DOMAIN="${VITE_FIREBASE_PROJECT_ID}.firebaseapp.com"
-          node scripts/build.mjs --mode staging --solo sitio --sitio "$SITIO"
-
-      - name: Pruebas del sitio compilado con contenido real (dist-real.test.ts)
-        id: pruebas
-        # EXIGIR_DIST=1: si falta dist/website la prueba FALLA, no se omite.
-        if: steps.trabajo.outputs.continuar == 'true'
-        env:
-          EXIGIR_DIST: '1'
-        run: pnpm vitest run pruebas/website/dist-real.test.ts
-
-      - name: Preparar firebase.json (solo este sitio)
-        if: steps.trabajo.outputs.continuar == 'true'
-        env:
-          # El panel nunca se despliega desde aquí, aunque SITIOS_TENANT lo nombre
-          # (preparar-sitio-tenant.sh falla si esta lista queda vacía).
-          SITIOS_PROHIBIDOS: ${{ vars.FIREBASE_SITE_PANEL }}
-        run: bash .github/scripts/preparar-sitio-tenant.sh "$SITIO"
+          set -uo pipefail
+          rc=0
+          bash scripts/reconstruir-sitio.sh preparar || rc=$?
+          case "$rc" in
+            0) echo "continuar=true" >> "$GITHUB_OUTPUT" ;;
+            10) echo "continuar=false" >> "$GITHUB_OUTPUT"
+                echo "$CLAVE: no hay nada que desplegar en esta ejecución (código 10)." ;;
+            *) exit "$rc" ;;
+          esac
 
       - name: Autenticar en GCP (WIF + impersonación de la SA de deploy)
-        if: steps.trabajo.outputs.continuar == 'true'
+        if: steps.preparar.outputs.continuar == 'true'
         uses: google-github-actions/auth@7c6bc770dae815cd3e89ee6cdf493a5fab2cc093 # v3
         with:
           workload_identity_provider: ${{ secrets.GCP_WIF_PROVIDER }}
           service_account: ${{ secrets.GCP_SA_DEPLOY_STAGING }}
 
-      - name: Instalar firebase-tools
-        if: steps.trabajo.outputs.continuar == 'true'
-        run: npm i -g "firebase-tools@${FIREBASE_TOOLS_VERSION}"
-
-      - name: Conservar copia de la versión actual del sitio (canal "previa" para rollback)
-        # D7: el rollback es clonar previa → live. Sin copia (primer despliegue
-        # del sitio) se avisa y se continúa, como en ci-node-firebase.yml.
-        if: steps.trabajo.outputs.continuar == 'true'
+      - name: Desplegar, probar, certificar y cerrar el trabajo
+        if: steps.preparar.outputs.continuar == 'true'
+        env:
+          SITIO_RECONSTRUCCION_SECRETO: ${{ secrets.SITIO_RECONSTRUCCION_SECRETO }}
         run: |
-          firebase hosting:channel:create previa --site "$SITIO" --project "$PROYECTO" --expires 30d \
-            --non-interactive >/dev/null 2>&1 || true
-          firebase hosting:clone "$SITIO:live" "$SITIO:previa" --project "$PROYECTO" \
-            || echo "::warning::$CLAVE: no se pudo guardar la copia para rollback (live → previa). ¿Primer despliegue o sitio sin crear?"
-
-      - name: Desplegar el sitio (solo hosting de este sitio)
-        id: despliegue
-        if: steps.trabajo.outputs.continuar == 'true'
-        run: |
-          set -euo pipefail
-          # `firebase deploy` PUEDE SALIR CON CÓDIGO 0 HABIENDO FALLADO (ver
-          # desplegar-staging en ci-node-firebase.yml): se revisa también el
-          # registro. firebase.json solo contiene este sitio (paso anterior).
-          log="$RUNNER_TEMP/despliegue.log"
+          set -uo pipefail
           rc=0
-          firebase deploy --only hosting --project "$PROYECTO" --non-interactive \
-            --message "sitio $CLAVE ${GITHUB_SHA::7} (run ${GITHUB_RUN_ID})" 2>&1 \
-            | tee "$log" || rc=$?
-          if grep -qiE 'site not found|404.*site|no site (named|with id)' "$log"; then
-            echo "::error::$CLAVE: el sitio de Hosting no existe en el proyecto de staging (paso de alta del tenant)."
-            exit 1
-          fi
-          [ "$rc" -eq 0 ] || exit "$rc"
-          if grep -qiE 'failed to create function|failed to update function|Build failed with status|Deploy failed|had HTTP Error' "$log"; then
-            echo "::error::firebase deploy terminó con código 0 pero su registro contiene fallos: el despliegue NO está completo."
-            exit 1
-          fi
-          echo "### Sitio $CLAVE desplegado en staging" >> "$GITHUB_STEP_SUMMARY"
-
-      - name: Humo del sitio (/, /productos y /api/cotizacion?mercado=BO en 200)
-        id: humo
-        if: steps.trabajo.outputs.continuar == 'true'
-        run: |
-          set -uo pipefail
-          comprobar() { # ruta exigir_csp(si|no)
-            local ruta="$1" csp="$2" i codigo cabeceras
-            cabeceras="$(mktemp)"
-            for ((i = 1; i <= 10; i++)); do
-              codigo="$(curl -sS --max-time 15 -D "$cabeceras" -o /dev/null -w '%{http_code}' "${URL_SITIO%/}$ruta" 2>/dev/null || echo 000)"
-              if [[ "$codigo" == "200" ]] && { [[ "$csp" == "no" ]] || grep -qi '^content-security-policy:' "$cabeceras"; }; then
-                echo "OK  $ruta (intento $i)"; rm -f "$cabeceras"; return 0
-              fi
-              echo "…   $ruta: HTTP $codigo (intento $i/10)"
-              sleep 15
-            done
-            rm -f "$cabeceras"
-            echo "::error::$CLAVE: humo fallido en $ruta"
-            return 1
-          }
-          fallos=0
-          comprobar / si || fallos=$((fallos + 1))
-          # Una página interna sin .html: comprueba las URLs limpias de Hosting (los enlaces del sitio no llevan extensión).
-          comprobar /productos si || fallos=$((fallos + 1))
-          comprobar '/api/cotizacion?mercado=BO' no || fallos=$((fallos + 1))
-          [ "$fallos" -eq 0 ] || exit 1
-
-      # S5. Certificación (scripts/certificar-sitio.mjs): contrasta lo que sirve
-      # el sitio —versión, conteos y huellaSinDisponibilidad de
-      # /version-contenido.json, índice, fichas, portada, secciones,
-      # disponibilidad y cotización— con el contenido de referencia. El log
-      # lleva solo conteos; la tabla va al resumen del job. Dos pasos con la
-      # misma lógica (función `certificar`, repetida a propósito): tras un
-      # despliegue no hacen falta los secretos de la cola ni del negocio, así
-      # que ese paso no los recibe.
-      #
-      # Códigos del script: 0 = coincide (puede haber avisos); 1 = diferencias
-      # firmes; 2 = uso inválido; 3 = error de operación (no se pudo comparar:
-      # sitio caído, falta un secreto, fallo al regenerar). Todo código distinto
-      # de 0 pone el paso en rojo.
-      #
-      # Caché de Hosting: cada release purga el CDN, pero la purga no llega a
-      # todos los bordes en el mismo instante y los .json se sirven con
-      # s-maxage=300. El script reintenta 5xx y errores de red, no una versión
-      # vieja. Por eso hay UN reintento tras 20 s, SOLO con código 1: cubre la
-      # propagación normal (segundos) y una diferencia real persiste. Con 2 o 3
-      # no se reintenta. Un CDN que siguiera sirviendo la versión anterior más
-      # allá de eso es un fallo que debe verse, no esperarse.
-      - name: Certificar el sitio desplegado contra el contenido del build
-        id: certificar
-        # Compara contra el MISMO contenido con el que se compiló el sitio
-        # ($SITIO_CONTENIDO, escrito por «Generar»): una publicación hecha en la
-        # consola entre el build y este paso no da una falsa alarma.
-        #
-        # Orden y cierre: va DESPUÉS del humo y ANTES de «Cerrar el trabajo
-        # (completada)». Si falla, success() es falso y el cierre completada se
-        # omite (outcome 'skipped', no 'failure'); entonces la condición de
-        # «Cerrar el trabajo (fallida)» —failure() && trabajo != '' &&
-        # cierre_completada.outcome != 'failure'— se cumple y el trabajo se
-        # cierra como fallida. Los rezagados (success()) tampoco corren.
-        if: steps.trabajo.outputs.continuar == 'true'
-        run: |
-          set -uo pipefail
-          certificar() { # args extra del script; deja rc e intento
-            local resumen="$RUNNER_TEMP/certificacion.md"
-            rc=3
-            for intento in 1 2; do
-              rm -f "$resumen"
-              rc=0
-              node scripts/certificar-sitio.mjs --tenant "$TENANT" --url "$URL_SITIO" --resumen "$resumen" "$@" || rc=$?
-              (( rc == 1 && intento == 1 )) || break
-              echo "::notice::$CLAVE: la certificación encontró diferencias (intento 1/2); se repite en 20 s por si el CDN de Hosting aún servía la versión anterior."
-              sleep 20
-            done
-            {
-              echo "### Certificación del sitio $CLAVE (intento $intento/2)"
-              if [[ -f "$resumen" ]]; then cat "$resumen"; else echo "Sin tabla: la certificación terminó antes de comparar (código $rc)."; fi
-            } >> "$GITHUB_STEP_SUMMARY"
-            case "$rc" in
-              0) echo "$CLAVE: el sitio coincide con lo publicado (intento $intento)."; return 0 ;;
-              1) echo "::error::$CLAVE: el sitio NO coincide con lo publicado (detalle en el resumen del job)." ;;
-              2) echo "::error::$CLAVE: no se pudo certificar (error de uso del script, código 2)." ;;
-              3) echo "::error::$CLAVE: no se pudo certificar (error de operación; motivo en el log)." ;;
-              *) echo "::error::$CLAVE: no se pudo certificar (código inesperado $rc)." ;;
-            esac
-            return 1
-          }
-          [[ -n "${SITIO_CONTENIDO:-}" && -f "$SITIO_CONTENIDO" ]] \
-            || { echo "::error::$CLAVE: no se pudo certificar (error de operación): falta el contenido generado por el build."; exit 3; }
-          certificar --contenido "$SITIO_CONTENIDO" || exit "$rc"
+          bash scripts/reconstruir-sitio.sh desplegar || rc=$?
+          # 10 tras un preparar correcto no debería ocurrir; si ocurre, no hubo
+          # fallo ni despliegue: verde, como en preparar.
+          [[ "$rc" == 0 || "$rc" == 10 ]] || exit "$rc"
 
       - name: Certificar a pedido (sin desplegar)
-        # Solo en el modo `certificar:`. No hay build: el script regenera el
-        # contenido desde lo publicado con el mismo código y entorno que
-        # «Generar»; por eso solo este paso recibe los secretos. No toca la
-        # cola: `trabajo` está vacío, así que ningún cierre ni rezagado corre.
+        # Solo en el modo `certificar:`. No toma trabajo, no compila, no despliega,
+        # no cierra nada; regenera el contenido desde lo publicado para comparar.
+        # Sin autenticación de nube.
         if: env.SOLO_CERTIFICAR == 'true'
         env:
           SITIO_RECONSTRUCCION_SECRETO: ${{ secrets.SITIO_RECONSTRUCCION_SECRETO }}
-          # Textos del negocio de ESTE sitio (secreto del Environment por clave).
           SITIO_NEGOCIO: ${{ secrets[format('SITIO_NEGOCIO_{0}', matrix.clave)] }}
-        run: |
-          set -uo pipefail
-          certificar() { # sin --contenido: el script regenera; deja rc e intento
-            local resumen="$RUNNER_TEMP/certificacion.md"
-            rc=3
-            for intento in 1 2; do
-              rm -f "$resumen"
-              rc=0
-              node scripts/certificar-sitio.mjs --tenant "$TENANT" --url "$URL_SITIO" --resumen "$resumen" || rc=$?
-              (( rc == 1 && intento == 1 )) || break
-              echo "::notice::$CLAVE: la certificación encontró diferencias (intento 1/2); se repite en 20 s por si el CDN de Hosting aún servía la versión anterior."
-              sleep 20
-            done
-            {
-              echo "### Certificación del sitio $CLAVE (intento $intento/2)"
-              if [[ -f "$resumen" ]]; then cat "$resumen"; else echo "Sin tabla: la certificación terminó antes de comparar (código $rc)."; fi
-            } >> "$GITHUB_STEP_SUMMARY"
-            case "$rc" in
-              0) echo "$CLAVE: el sitio coincide con lo publicado (intento $intento)."; return 0 ;;
-              1) echo "::error::$CLAVE: el sitio NO coincide con lo publicado (detalle en el resumen del job)." ;;
-              2) echo "::error::$CLAVE: no se pudo certificar (error de uso del script, código 2)." ;;
-              3) echo "::error::$CLAVE: no se pudo certificar (error de operación; motivo en el log)." ;;
-              *) echo "::error::$CLAVE: no se pudo certificar (código inesperado $rc)." ;;
-            esac
-            return 1
-          }
-          [[ -n "$SITIO_RECONSTRUCCION_SECRETO" ]] \
-            || { echo "::error::$CLAVE: no se pudo certificar (error de operación): falta el secreto SITIO_RECONSTRUCCION_SECRETO del Environment staging."; exit 3; }
-          echo "::add-mask::$SITIO_RECONSTRUCCION_SECRETO"
-          # Misma exigencia que «Generar»: un faltante da su motivo, no un reintento.
-          faltan=()
-          for v in VITE_FIREBASE_PROJECT_ID VITE_FIREBASE_API_KEY VITE_RECAPTCHA_ENTERPRISE_SITE_KEY VITE_FIREBASE_APP_ID MEDIOS_BASE_URL; do
-            [[ -n "${!v:-}" ]] || faltan+=("$v")
-          done
-          [[ -n "$SITIO_NEGOCIO" ]] || faltan+=("SITIO_NEGOCIO_$(tr '[:lower:]' '[:upper:]' <<<"$CLAVE")")
-          if (( ${#faltan[@]} > 0 )); then
-            echo "::error::$CLAVE: no se pudo certificar (error de operación): faltan ${faltan[*]}. Ver docs/produccion/reconstruccion-sitio.md."
-            exit 3
-          fi
-          certificar || exit "$rc"
+        run: bash scripts/reconstruir-sitio.sh certificar
 
-      - name: Cerrar el trabajo (completada)
-        id: cierre_completada
-        if: success() && steps.trabajo.outputs.trabajo != ''
+      - name: Cerrar el trabajo si quedó en_curso (cancelación o fallo)
+        # Red de seguridad: un trabajo no queda en_curso para siempre si el run se
+        # cancela, vence el timeout o un paso falla sin que el script alcance a
+        # cerrarlo (p. ej. WIF falla entre preparar y desplegar). Etapa:
+        # `cancelado` si el job se canceló; si no, `despliegue`. El script se
+        # abstiene sin trabajo propio o si ya está CERRADO o DESPLEGADO, y es
+        # idempotente. Solo el secreto de la cola; identidad desde el env.
+        if: (failure() || cancelled()) && env.SOLO_CERTIFICAR != 'true'
         env:
           SITIO_RECONSTRUCCION_SECRETO: ${{ secrets.SITIO_RECONSTRUCCION_SECRETO }}
-          ID_TRABAJO: ${{ steps.trabajo.outputs.trabajo }}
-        run: |
-          set -euo pipefail
-          echo "::add-mask::$SITIO_RECONSTRUCCION_SECRETO"
-          node scripts/contenido-sitio.mjs estado "$ID_TRABAJO" completada --tenant "$TENANT" --url "$URL_SITIO"
-
-      - name: Cerrar el trabajo (fallida)
-        # También si el run se cancela: un trabajo no queda en_curso para siempre.
-        # No corre si lo que falló fue el propio cierre `completada` (el sitio ya
-        # está desplegado y probado; marcarlo fallida sería falso). Cubre la
-        # certificación tras el despliegue: si falla, cierre_completada queda
-        # 'skipped'. En la certificación a pedido `trabajo` está vacío y ningún
-        # cierre corre.
-        #
-        # Etapa (1.4): cancelado si el job se canceló; si no, la PRIMERA de las
-        # etapas que no terminó en 'success'. Como cada paso posterior a un
-        # fallo se omite, un fallo intermedio cae en la etapa siguiente:
-        # dependencias → generar; firebase.json, WIF, firebase-tools o la copia
-        # previa → despliegue. Las causas solo se envían si «Generar» las
-        # escribió; el archivo nunca se imprime.
-        if: >-
-          (failure() || cancelled())
-          && steps.trabajo.outputs.trabajo != ''
-          && steps.cierre_completada.outcome != 'failure'
-        env:
-          SITIO_RECONSTRUCCION_SECRETO: ${{ secrets.SITIO_RECONSTRUCCION_SECRETO }}
-          ID_TRABAJO: ${{ steps.trabajo.outputs.trabajo }}
           ESTADO_JOB: ${{ job.status }}
-          RESULTADO_GENERAR: ${{ steps.generar.outcome }}
-          RESULTADO_BUILD: ${{ steps.build.outcome }}
-          RESULTADO_PRUEBAS: ${{ steps.pruebas.outcome }}
-          RESULTADO_DESPLIEGUE: ${{ steps.despliegue.outcome }}
-          RESULTADO_HUMO: ${{ steps.humo.outcome }}
-          RESULTADO_CERTIFICAR: ${{ steps.certificar.outcome }}
         run: |
           set -euo pipefail
-          echo "::add-mask::$SITIO_RECONSTRUCCION_SECRETO"
-          etapa=''
-          if [[ "$ESTADO_JOB" == 'cancelled' ]]; then
-            etapa='cancelado'
-          else
-            for par in "generar:$RESULTADO_GENERAR" "build:$RESULTADO_BUILD" "pruebas:$RESULTADO_PRUEBAS" \
-                       "despliegue:$RESULTADO_DESPLIEGUE" "humo:$RESULTADO_HUMO" "certificacion:$RESULTADO_CERTIFICAR"; do
-              resultado="${par#*:}"
-              if [[ "$resultado" == 'cancelled' ]]; then etapa='cancelado'; break; fi
-              if [[ "$resultado" != 'success' ]]; then etapa="${par%%:*}"; break; fi
-            done
-            # Todas en 'success' y aun así un fallo: solo puede venir después
-            # de la certificación (el cierre `completada` fallido no llega aquí).
-            [[ -n "$etapa" ]] || etapa='certificacion'
-          fi
-          args=(estado "$ID_TRABAJO" fallida --etapa "$etapa")
-          causas="$RUNNER_TEMP/sitio/causas.json"
-          if [[ -f "$causas" ]]; then args+=(--causas "$causas"); fi
-          node scripts/contenido-sitio.mjs "${args[@]}" --tenant "$TENANT" --url "$URL_SITIO"
-          echo "::notice::$CLAVE: etapa fallida: $etapa."
-          echo "::error::$CLAVE: reconstrucción fallida; trabajo cerrado como fallida. Rollback: clonar previa → live del sitio."
-
-      - name: Cerrar los pendientes cubiertos por este despliegue
-        id: cubiertos
-        # El build compiló lo publicado vigente (versión publicacion.version de
-        # $SITIO_CONTENIDO): todo pendiente de versión menor o igual, solicitado
-        # antes de «Generar», ya está en el sitio. Sin esto, una publicación
-        # quedaba pendiente detrás de un trabajo más viejo (incidente del
-        # 19/11/2026). Solo conteos en el log; un fallo pone el run en rojo.
-        if: success() && steps.trabajo.outputs.continuar == 'true'
-        env:
-          SITIO_RECONSTRUCCION_SECRETO: ${{ secrets.SITIO_RECONSTRUCCION_SECRETO }}
-        run: |
-          set -euo pipefail
-          echo "::add-mask::$SITIO_RECONSTRUCCION_SECRETO"
-          [[ -n "${SITIO_CONTENIDO:-}" && -f "$SITIO_CONTENIDO" && "${GENERAR_INICIO_MS:-}" =~ ^[0-9]{13}$ ]] \
-            || { echo "::error::$CLAVE: falta el contenido del build o su hora de inicio; no se cierran pendientes."; exit 1; }
-          node scripts/contenido-sitio.mjs cubiertos --contenido "$SITIO_CONTENIDO" --hasta-ms "$GENERAR_INICIO_MS" --tenant "$TENANT" --url "$URL_SITIO"
-
-      - name: Cerrar trabajos rezagados (en_curso de corridas anteriores)
-        # Un cierre `completada` que falló en una corrida anterior (p. ej. un 502
-        # agotado) deja su trabajo en_curso para siempre. Corre solo si el
-        # despliegue, el humo y la certificación fueron correctos, haya o no trabajo propio
-        # (dispatch, workflow_run). Sin --excepto: el trabajo propio ya está
-        # cerrado (paso anterior) y el grupo de concurrencia por sitio impide
-        # otro corredor del mismo sitio; tras un despliegue y humo correctos el
-        # sitio ya contiene lo publicado, así que `completada` es verdadero.
-        # Va después de «fallida» para que su fallo no cierre como fallida un
-        # trabajo propio ya completado. Un fallo pone el run en rojo (sin
-        # continue-on-error): un rezagado sin cerrar debe verse, no ocultarse.
-        # Corre también si lo único que falló fue «cubiertos» (justo antes; solo corre si todo lo anterior salió bien):
-        # así este mismo run limpia lo que quedó en_curso.
-        if: ${{ (success() || (failure() && steps.cubiertos.outcome == 'failure')) && steps.trabajo.outputs.continuar == 'true' }}
-        env:
-          SITIO_RECONSTRUCCION_SECRETO: ${{ secrets.SITIO_RECONSTRUCCION_SECRETO }}
-        run: |
-          set -euo pipefail
-          echo "::add-mask::$SITIO_RECONSTRUCCION_SECRETO"
-          node scripts/contenido-sitio.mjs rezagados --tenant "$TENANT" --url "$URL_SITIO"
+          etapa=despliegue
+          if [[ "$ESTADO_JOB" == "cancelled" ]]; then etapa=cancelado; fi
+          bash scripts/reconstruir-sitio.sh cancelar --etapa "$etapa"

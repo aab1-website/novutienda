@@ -53,6 +53,12 @@
 #     SITIOS_TENANT (JSON de sitios por tenant; secreto para que la cabecera
 #     del paso lo muestre como ***; en production puede quedar vacío).
 #     Producción: sin cambio de alcance (DC3).
+#   - constructor-sitio (2026-11-21, plan Cloud Build P2): solo en push a main;
+#     imagen de scripts/constructor-sitio/Dockerfile, Trivy image y push a
+#     Artifact Registry de staging (us-east1, repositorio sitio-constructor);
+#     desplegar-staging pasa su digest a Functions (CONSTRUCTOR_SITIO_IMAGEN).
+#     Interruptor: variable CONSTRUCTOR_SITIO_ACTIVO del Environment staging
+#     (true = obligatorio y falla cerrado; vacía/false = se omite en verde).
 # =============================================================================
 name: CI/CD Node → Firebase
 
@@ -87,7 +93,7 @@ env:
   NODE_VERSION: ${{ vars.NODE_VERSION || '22' }}
   # firebase-tools fijado: verificar en npm antes de subir de versión (hubo una
   # regresión de ADC en 15.22.2, jun-2026).
-  FIREBASE_TOOLS_VERSION: '15.28.1'
+  FIREBASE_TOOLS_VERSION: '15.37.0'
 
 jobs:
   # ---------------------------------------------------------------------------
@@ -670,11 +676,205 @@ jobs:
             });
 
   # ---------------------------------------------------------------------------
+  # Fase 3b — constructor-sitio (plan «Publicar el sitio con Cloud Build», P2):
+  # imagen scripts/constructor-sitio/Dockerfile con la que Cloud Build corre
+  # scripts/reconstruir-sitio.sh. Solo en push a main, con calidad y
+  # seguridad-estatica en verde. Orden: build (contexto raíz, exclusiones de
+  # scripts/constructor-sitio/Dockerfile.dockerignore) → Trivy image (bloquea
+  # CRITICAL/HIGH con corrección disponible, sin archivo de ignorados) →
+  # recién entonces WIF y push a Artifact Registry de staging. Una imagen que
+  # no pasa Trivy nunca llega al registro. El digest publicado sale como
+  # `imagen` (<repo>/constructor-sitio@sha256:…) y desplegar-staging lo pasa a
+  # Functions como CONSTRUCTOR_SITIO_IMAGEN: se lanza siempre por digest.
+  #
+  # Interruptor CONSTRUCTOR_SITIO_ACTIVO (variable del Environment staging):
+  #   'true' → construye, escanea y publica; cualquier fallo (repositorio de AR
+  #            inexistente, permisos, Trivy) pone el job en rojo y, con él,
+  #            desplegar-staging no corre (falla cerrado).
+  #   vacía o 'false' → el job termina en verde sin construir ni tocar la nube
+  #            e `imagen` queda vacía (staging sigue igual que antes de P5).
+  #   otro valor → falla (un error de tipeo no apaga el control en silencio).
+  # El repositorio `sitio-constructor` (us-east1) lo crea
+  # scripts/preparar-constructor-sitio.sh en P5; mismo nombre aquí.
+  # ---------------------------------------------------------------------------
+  constructor-sitio:
+    name: constructor-sitio
+    needs: [calidad, seguridad-estatica]
+    if: github.event_name == 'push' && github.ref == 'refs/heads/main'
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    # Secretos WIF y variables del Environment staging, sin crear un registro de
+    # despliegue (este job no despliega nada).
+    environment:
+      name: staging
+      deployment: false
+    concurrency:
+      group: constructor-sitio-staging
+      cancel-in-progress: false
+    permissions:
+      contents: read
+      id-token: write # token OIDC para WIF (push a Artifact Registry)
+    outputs:
+      activo: ${{ steps.interruptor.outputs.activo }}
+      imagen: ${{ steps.publicar.outputs.imagen }}
+    env:
+      REGION_AR: us-east1
+      # Mismo valor por defecto que REPO_IMAGENES de scripts/preparar-constructor-sitio.sh.
+      REPO_AR: sitio-constructor
+      NOMBRE_IMAGEN: constructor-sitio
+    steps:
+      - name: Interruptor CONSTRUCTOR_SITIO_ACTIVO
+        id: interruptor
+        env:
+          ACTIVO: ${{ vars.CONSTRUCTOR_SITIO_ACTIVO }}
+          PROYECTO: ${{ vars.GCP_PROJECT_ID_STAGING }}
+        run: |
+          set -euo pipefail
+          case "${ACTIVO:-}" in
+            true)
+              [[ -n "${PROYECTO:-}" ]] \
+                || { echo "::error::CONSTRUCTOR_SITIO_ACTIVO=true pero falta GCP_PROJECT_ID_STAGING."; exit 1; }
+              echo "activo=true" >> "$GITHUB_OUTPUT"
+              echo "IMAGEN_BASE=${REGION_AR}-docker.pkg.dev/${PROYECTO}/${REPO_AR}/${NOMBRE_IMAGEN}" >> "$GITHUB_ENV" ;;
+            '' | false)
+              echo "activo=false" >> "$GITHUB_OUTPUT"
+              echo "::notice::Constructor del sitio inactivo (CONSTRUCTOR_SITIO_ACTIVO no es true): no se construye ni se publica la imagen." ;;
+            *)
+              echo "::error::CONSTRUCTOR_SITIO_ACTIVO debe ser true, false o quedar vacía."
+              exit 1 ;;
+          esac
+
+      - name: Checkout
+        if: steps.interruptor.outputs.activo == 'true'
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+
+      - name: Archivo de ignorados de Trivy vacío (este escaneo no exceptúa nada)
+        # .github/trivy.yaml declara `ignorefile: .trivyignore.yaml`, que solo
+        # genera _reusable-security.yml; sin él Trivy 0.70 termina con FATAL
+        # («ignore file not found»). Aquí se apunta TRIVY_IGNOREFILE a un archivo
+        # VACÍO fuera del workspace: ni las excepciones del manifiesto ni un
+        # .trivyignore del repositorio pueden ocultar un hallazgo de la imagen.
+        if: steps.interruptor.outputs.activo == 'true'
+        run: |
+          set -euo pipefail
+          printf 'vulnerabilities: []\nmisconfigurations: []\nsecrets: []\n' > "$RUNNER_TEMP/sin-ignorados.trivyignore.yaml"
+          echo "SIN_IGNORADOS=$RUNNER_TEMP/sin-ignorados.trivyignore.yaml" >> "$GITHUB_ENV"
+
+      - name: Build de la imagen (contexto raíz, sin credenciales en el workspace)
+        # Antes de autenticar: el contexto es la raíz del repositorio y
+        # google-github-actions/auth escribe su archivo de credenciales en el
+        # workspace; construir después lo copiaría a la imagen.
+        if: steps.interruptor.outputs.activo == 'true'
+        env:
+          DOCKER_BUILDKIT: '1'
+        run: |
+          set -euo pipefail
+          docker build --pull \
+            -f scripts/constructor-sitio/Dockerfile \
+            -t "${IMAGEN_BASE}:${GITHUB_SHA}" \
+            --label "org.opencontainers.image.revision=${GITHUB_SHA}" \
+            --label "org.opencontainers.image.source=${GITHUB_SERVER_URL}/${GITHUB_REPOSITORY}" \
+            .
+
+      - name: Trivy image (bloquea CRITICAL/HIGH con corrección disponible)
+        if: steps.interruptor.outputs.activo == 'true'
+        uses: aquasecurity/trivy-action@ed142fd0673e97e23eac54620cfb913e5ce36c25 # v0.36.0
+        env:
+          TRIVY_IGNOREFILE: ${{ env.SIN_IGNORADOS }}
+        with:
+          scan-type: image
+          image-ref: ${{ env.IMAGEN_BASE }}:${{ github.sha }}
+          severity: ${{ vars.BLOQUEAR_EN || 'CRITICAL,HIGH' }}
+          ignore-unfixed: true
+          exit-code: '1'
+          format: table
+          trivy-config: .github/trivy.yaml
+
+      - name: SBOM de la imagen (SPDX JSON, Syft) como artefacto
+        # Tras Trivy y antes de autenticar: se genera de la imagen local que se
+        # va a publicar (sin credenciales del registro) y se guarda como
+        # artefacto del run (inventario para responder a un CVE futuro).
+        if: steps.interruptor.outputs.activo == 'true'
+        uses: anchore/sbom-action@e22c389904149dbc22b58101806040fa8d37a610 # v0.24.0
+        with:
+          image: ${{ env.IMAGEN_BASE }}:${{ github.sha }}
+          format: spdx-json
+          output-file: ${{ runner.temp }}/sbom-constructor-sitio.spdx.json
+          artifact-name: sbom-constructor-sitio-${{ github.sha }}.spdx.json
+          upload-artifact: true
+          upload-release-assets: false
+
+      - name: Autenticar en GCP (WIF + impersonación de la SA de deploy)
+        id: auth
+        if: steps.interruptor.outputs.activo == 'true'
+        uses: google-github-actions/auth@7c6bc770dae815cd3e89ee6cdf493a5fab2cc093 # v3
+        with:
+          workload_identity_provider: ${{ secrets.GCP_WIF_PROVIDER }}
+          service_account: ${{ secrets.GCP_SA_DEPLOY_STAGING }}
+          token_format: access_token
+          # Solo hace falta el token de acceso (login del registro y la consulta
+          # del repositorio); sin archivo de credenciales en el workspace.
+          create_credentials_file: false
+
+      - name: Comprobar el repositorio de Artifact Registry (falla cerrado)
+        if: steps.interruptor.outputs.activo == 'true'
+        env:
+          TOKEN: ${{ steps.auth.outputs.access_token }}
+          PROYECTO: ${{ vars.GCP_PROJECT_ID_STAGING }}
+        run: |
+          set -euo pipefail
+          codigo="$(curl -sS -o /dev/null -w '%{http_code}' --max-time 30 \
+            -H "Authorization: Bearer ${TOKEN}" \
+            "https://artifactregistry.googleapis.com/v1/projects/${PROYECTO}/locations/${REGION_AR}/repositories/${REPO_AR}" \
+            || echo 000)"
+          case "$codigo" in
+            200) echo "Repositorio ${REPO_AR} (${REGION_AR}) presente." ;;
+            404) echo "::error::No existe el repositorio ${REPO_AR} en ${REGION_AR} (se crea en P5 con scripts/preparar-constructor-sitio.sh). Con CONSTRUCTOR_SITIO_ACTIVO=true el job falla cerrado."; exit 1 ;;
+            403) echo "::error::La SA de deploy de staging no puede leer el repositorio ${REPO_AR} (falta artifactregistry.writer sobre el repositorio)."; exit 1 ;;
+            *) echo "::error::No se pudo consultar Artifact Registry (HTTP ${codigo})."; exit 1 ;;
+          esac
+
+      - name: Login en Artifact Registry
+        if: steps.interruptor.outputs.activo == 'true'
+        uses: docker/login-action@dbcb813823bdd20940b903addbd779551569679f # v4
+        with:
+          registry: ${{ env.REGION_AR }}-docker.pkg.dev
+          username: oauth2accesstoken
+          password: ${{ steps.auth.outputs.access_token }}
+
+      - name: Publicar la imagen escaneada y exportar su digest
+        id: publicar
+        if: steps.interruptor.outputs.activo == 'true'
+        run: |
+          set -euo pipefail
+          ref="${IMAGEN_BASE}:${GITHUB_SHA}"
+          salida="$(docker push "$ref")"
+          printf '%s\n' "$salida"
+          digest="$(grep -oE 'digest: sha256:[0-9a-f]{64}' <<<"$salida" | tail -n1 | cut -d' ' -f2 || true)"
+          if [[ -z "$digest" ]]; then
+            # Respaldo: el digest que el daemon registró para ESTE repositorio.
+            digest="$(docker image inspect --format '{{range .RepoDigests}}{{println .}}{{end}}' "$ref" \
+              | grep -F "${IMAGEN_BASE}@" | head -n1 | cut -d@ -f2 || true)"
+          fi
+          [[ "$digest" =~ ^sha256:[0-9a-f]{64}$ ]] \
+            || { echo "::error::No se obtuvo el digest de la imagen publicada."; exit 1; }
+          echo "imagen=${IMAGEN_BASE}@${digest}" >> "$GITHUB_OUTPUT"
+          {
+            echo "### Imagen del constructor del sitio"
+            echo "- Publicada por digest: \`${NOMBRE_IMAGEN}@${digest}\`"
+            echo "- Trivy image: sin CRITICAL/HIGH corregibles"
+          } >> "$GITHUB_STEP_SUMMARY"
+
+  # ---------------------------------------------------------------------------
   # Fase 4 — desplegar-staging: automático en cada push a main.
   # ---------------------------------------------------------------------------
   desplegar-staging:
     name: desplegar-staging
-    needs: [calidad, humo-panel, humo-sitio, seguridad-estatica, construir]
+    # constructor-sitio: con el interruptor apagado termina en verde y no cambia
+    # nada; encendido, su fallo impide desplegar (falla cerrado).
+    needs: [calidad, humo-panel, humo-sitio, seguridad-estatica, construir, constructor-sitio]
     # Desviación local (docs/arquitectura/decisiones.md): sin proyecto de staging federado no se despliega.
     if: github.event_name == 'push' && github.ref == 'refs/heads/main' && vars.GCP_PROJECT_ID_STAGING != ''
     runs-on: ubuntu-latest
@@ -748,7 +948,19 @@ jobs:
           # S7-3 (DS-3): repositorio owner/nombre del disparo de reconstruir-sitio.yml (vacío = deshabilitado).
           # GitHub no admite variables con prefijo GITHUB_: la variable se llama SITIO_REPO_GITHUB. Solo staging.
           P_GITHUB_REPO_SITIO: ${{ vars.SITIO_REPO_GITHUB }}
-        run: bash .github/scripts/preparar-despliegue-firebase.sh
+          # Plan Cloud Build (P2): imagen del constructor del sitio, por digest, que
+          # acaba de publicar constructor-sitio (vacía con el interruptor apagado).
+          P_CONSTRUCTOR_SITIO_IMAGEN: ${{ needs.constructor-sitio.outputs.imagen }}
+          CONSTRUCTOR_SITIO_ACTIVO_JOB: ${{ needs.constructor-sitio.outputs.activo }}
+        run: |
+          set -euo pipefail
+          # Encendido sin imagen = algo se saltó en constructor-sitio: no se
+          # despliegan Functions que lanzarían una imagen vacía o vieja.
+          if [[ "${CONSTRUCTOR_SITIO_ACTIVO_JOB:-}" == "true" && -z "${P_CONSTRUCTOR_SITIO_IMAGEN:-}" ]]; then
+            echo "::error::CONSTRUCTOR_SITIO_ACTIVO=true pero constructor-sitio no entregó la imagen por digest."
+            exit 1
+          fi
+          bash .github/scripts/preparar-despliegue-firebase.sh
 
       - name: Conservar copia de la versión actual del panel (canal "previa" para rollback)
         # D7: antes de CADA deploy a live se clona el contenido en vivo a un
