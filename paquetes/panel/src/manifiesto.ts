@@ -16,6 +16,7 @@ export const manifiestoPanel: ManifiestoModulo = {
   consume: [],
   pantallas: [
     { id: 'usuarios', titulo: 'Usuarios', orden: 80, roles: ['adm'] },
+    { id: 'tipoCambio', titulo: 'Tipo de cambio', orden: 85, roles: ['adm'] },
     { id: 'configuracion', titulo: 'Configuración', orden: 90, roles: ['adm'] },
   ],
   // Las acciones de usuarios y `modulosActivos` (Central) viajan en el callable `consola`.
@@ -32,5 +33,10 @@ export const manifiestoPanel: ManifiestoModulo = {
     { callable: 'consola', nombre: 'modulosActivos', roles: ['caj', 'sup', 'adm'], propietario: false },
     // Mercados y monedas del comercio de la sesión (solo lectura): todos los roles necesitan saber en qué monedas se trabaja.
     { callable: 'consola', nombre: 'configuracionComercial', roles: ['caj', 'sup', 'adm'], propietario: false },
+    // Tipo de cambio manual (TC-2): ver la referencia y el manual, fijarlo y volver al del banco central. Solo administrador;
+    // quitar exige contraseña (sin propietario), como lo impone el núcleo.
+    { callable: 'consola', nombre: 'verTipoCambio', roles: ['adm'], propietario: true },
+    { callable: 'consola', nombre: 'cotizacionManual', roles: ['adm'], propietario: true },
+    { callable: 'consola', nombre: 'quitarCotizacionManual', roles: ['adm'], propietario: false },
   ],
 };

@@ -135,7 +135,7 @@ describe('menú por rol', () => {
     montar();
     await entrar('adm@ejemplo.test', 'clave-adm-1');
     await screen.findByRole('navigation', { name: 'Menú principal' });
-    expect(items()).toEqual(['Venta', 'Recibos', 'Inventario', 'Mermas', 'Aprobaciones', 'Supervisión', 'Catálogo y sitio', 'Usuarios', 'Configuración']);
+    expect(items()).toEqual(['Venta', 'Recibos', 'Inventario', 'Mermas', 'Aprobaciones', 'Supervisión', 'Catálogo y sitio', 'Usuarios', 'Tipo de cambio', 'Configuración']);
   });
   it('una ruta fuera del rol muestra «no tiene acceso» y salir vuelve al ingreso', async () => {
     montar();
@@ -152,7 +152,7 @@ describe('menú por rol', () => {
     montar(['pos']);
     await entrar('adm@ejemplo.test', 'clave-adm-1');
     await screen.findByRole('navigation', { name: 'Menú principal' });
-    expect(items()).toEqual(['Recibos', 'Inventario', 'Mermas', 'Catálogo y sitio', 'Usuarios', 'Configuración']);
+    expect(items()).toEqual(['Recibos', 'Inventario', 'Mermas', 'Catálogo y sitio', 'Usuarios', 'Tipo de cambio', 'Configuración']);
     await waitFor(() => expect(window.location.hash).toBe('#/recibos'));
     window.location.hash = '#/venta';
     expect(await screen.findByText('No tiene acceso a esta página')).toBeTruthy();
@@ -164,7 +164,7 @@ describe('menú por rol', () => {
     render(h(App, { sesion, api, almacen: entorno.almacen }));
     await entrar('adm@ejemplo.test', 'clave-adm-1');
     await screen.findByRole('navigation', { name: 'Menú principal' });
-    expect(items()).toEqual(['Usuarios', 'Configuración']);
+    expect(items()).toEqual(['Usuarios', 'Tipo de cambio', 'Configuración']);
   });
   it('el tema se puede alternar y se recuerda', async () => {
     montar();

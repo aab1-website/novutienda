@@ -3,7 +3,7 @@ import type { Medio, MedioLogo, Recibo, SubidaVista } from '../api/tipos.js';
 import { BYTES_LOGO, ID_NEGOCIO, ID_PORTADA, LIMITES_PANEL, PLANTILLAS_SITIO } from '../api/tipos.js';
 import { interpretarNumeroRecibo } from '@novutienda/nucleo';
 import { normalizar } from '../util/buscar.js';
-import { auditar, exigirRol, fallo, iso, vistaProducto, type Contexto } from './estado.js';
+import { auditar, exigirRol, fallo, fechaLaPaz, iso, vistaProducto, type Contexto, type EstadoDoble } from './estado.js';
 
 
 type H<N extends NombreCallable> = (c: Contexto, e: Entrada<N>) => Salida<N> | Promise<Salida<N>>;
@@ -47,6 +47,25 @@ function procesarSubida(c: Contexto, subidaId: string): Medio {
   anotarCambio(c);
   auditar(c, 'medio.subir', `medios/${m.id}`);
   return m;
+}
+
+const MAXIMO_CAMBIOS_TIPO_CAMBIO_POR_HORA = 10;
+const SALTO_MAXIMO = 0.05;
+
+/** Estado del tipo de cambio de un mercado; la primera vez toma como referencia lo que el doble ya tenía vigente. */
+function estadoTipoCambio(c: Contexto, mercado: string): EstadoDoble['tipoCambio'][string] {
+  const mercadoDeclarado = c.e.comercial.mercados.find((m) => m.id === mercado);
+  if (mercadoDeclarado === undefined || c.e.cotizaciones[mercado] === undefined) throw fallo('entrada-invalida', 'Ese mercado no tiene tipo de cambio.');
+  return (c.e.tipoCambio[mercado] ??= { referencia: c.e.cotizaciones[mercado] ?? null, manual: null, historial: [] });
+}
+
+/** Límite del servidor: 10 cambios por hora y comercio (los instantes viven en el mismo registro de envíos de la hora). */
+const cambiosTipoCambio: number[] = [];
+function limitarTipoCambio(c: Contexto): void {
+  const vivos = cambiosTipoCambio.filter((t) => c.ahora - t < 3_600_000);
+  if (vivos.length >= MAXIMO_CAMBIOS_TIPO_CAMBIO_POR_HORA) throw fallo('limite-tipo-cambio', 'Demasiados cambios.');
+  vivos.push(c.ahora);
+  cambiosTipoCambio.splice(0, cambiosTipoCambio.length, ...vivos);
 }
 
 const CADUCIDAD_INVITACION_MS = 7 * 24 * 60 * 60 * 1000;
@@ -94,7 +113,7 @@ function estadoDeSubida(c: Contexto, subidaId: string, tipo: 'logo' | 'producto'
 }
 
 export const handlersOtros: {
-  [N in 'buscarComprobantes' | 'enviarRecibo' | 'referenciarFacturaSuma' | 'guardarPlantilla' | 'leerPlantilla' | 'obtenerRecibo' | 'obtenerTablero' | 'publicarSitio' | 'guardarFicha' | 'reservarSubida' | 'estadoSubida' | 'finalizarSubida' | 'borrarMedio' | 'guardarSeccion' | 'eliminarSeccion' | 'ordenarSecciones' | 'guardarCarrusel' | 'guardarConfigSitio' | 'asignarRol' | 'quitarRol' | 'invitarUsuario' | 'anularInvitacion' | 'reenviarInvitacion' | 'buscarUsuarioPorCorreo' | 'listarFichas' | 'listarMedios' | 'leerConfigSitio' | 'listarSecciones' | 'listarCarruseles' | 'listarUsuarios' | 'modulosActivos' | 'configuracionComercial' | 'reservarSubidaLogo' | 'estadoSubidaLogo' | 'finalizarSubidaLogo' | 'leerLogo' | 'quitarLogo']: H<N>;
+  [N in 'buscarComprobantes' | 'enviarRecibo' | 'referenciarFacturaSuma' | 'guardarPlantilla' | 'leerPlantilla' | 'obtenerRecibo' | 'obtenerTablero' | 'publicarSitio' | 'guardarFicha' | 'reservarSubida' | 'estadoSubida' | 'finalizarSubida' | 'borrarMedio' | 'guardarSeccion' | 'eliminarSeccion' | 'ordenarSecciones' | 'guardarCarrusel' | 'guardarConfigSitio' | 'asignarRol' | 'quitarRol' | 'invitarUsuario' | 'anularInvitacion' | 'reenviarInvitacion' | 'buscarUsuarioPorCorreo' | 'listarFichas' | 'listarMedios' | 'leerConfigSitio' | 'listarSecciones' | 'listarCarruseles' | 'listarUsuarios' | 'modulosActivos' | 'configuracionComercial' | 'verTipoCambio' | 'cotizacionManual' | 'quitarCotizacionManual' | 'reservarSubidaLogo' | 'estadoSubidaLogo' | 'finalizarSubidaLogo' | 'leerLogo' | 'quitarLogo']: H<N>;
 } = {
   buscarComprobantes(c, e) {
     const q = e.consulta;
@@ -464,6 +483,51 @@ export const handlersOtros: {
   modulosActivos: (c) => [...c.e.modulos],
   // Por omisión, la forma de tres monedas del tenant de referencia (BO vende en BOB y AR en ARS, base USD); `c.e.comercial` la reemplaza.
   configuracionComercial: (c) => c.e.comercial,
+  verTipoCambio(c) {
+    exigirRol(c, ['adm']);
+    const nombreDe = (uid: string): string => c.e.usuarios.find((u) => u.uid === uid)?.correo ?? 'Persona sin correo';
+    return c.e.comercial.mercados.filter((m) => c.e.cotizaciones[m.id] !== undefined || c.e.tipoCambio[m.id] !== undefined).map((m) => {
+      const t = estadoTipoCambio(c, m.id);
+      const r = t.referencia;
+      return {
+        mercado: m.id,
+        par: r?.par ?? `${m.monedaVenta}/${m.monedaBase}`,
+        rige: t.manual !== null ? 'manual' as const : r !== null ? 'referencia' as const : 'ninguna' as const,
+        referencia: r === null ? null : { valor: r.valor, fecha: r.fecha, fuente: r.fuente, estado: r.estado },
+        manual: t.manual === null ? null : { ...t.manual, por: nombreDe(t.manual.por) },
+        historial: t.historial.map((h) => ({ ...h, por: nombreDe(h.por) })),
+      };
+    });
+  },
+  cotizacionManual(c, e) {
+    exigirRol(c, ['adm']);
+    const t = estadoTipoCambio(c, e.mercado);
+    if (!Number.isFinite(e.valor) || e.valor <= 0) throw fallo('entrada-invalida', 'El valor debe ser positivo.');
+    limitarTipoCambio(c);
+    const previo = t.manual?.valor ?? t.referencia?.valor ?? null;
+    if (previo !== null && Math.abs(e.valor - previo) / previo > SALTO_MAXIMO && e.confirmarSalto !== true) {
+      throw fallo('salto-sin-confirmar', 'El valor cambia más del 5 % respecto del vigente.');
+    }
+    const fecha = fechaLaPaz(c.ahora);
+    const actualizadoEn = iso(c.ahora);
+    t.manual = { valor: e.valor, fecha, actualizadoEn, por: c.uid };
+    t.historial.unshift({ accion: 'fijar', valor: e.valor, antes: previo, fecha, actualizadoEn, por: c.uid });
+    c.e.cotizaciones = { ...c.e.cotizaciones, [e.mercado]: { cotizacionId: `${e.mercado}-manual`, par: t.referencia?.par ?? '', valor: e.valor, fecha, fuente: 'manual', estado: 'vigente' } };
+    auditar(c, 'tipo-cambio.fijar', `cotizaciones/manual-${e.mercado}`);
+    return { ok: true };
+  },
+  quitarCotizacionManual(c, e) {
+    exigirRol(c, ['adm']);
+    const t = estadoTipoCambio(c, e.mercado);
+    if ((e.confirmar as boolean) !== true) throw fallo('confirmacion-requerida', 'Falta confirmar la operación.');
+    if (t.manual === null) throw fallo('sin-manual', 'No hay un tipo de cambio manual vigente.');
+    limitarTipoCambio(c);
+    t.historial.unshift({ accion: 'quitar', valor: null, antes: t.manual.valor, fecha: null, actualizadoEn: iso(c.ahora), por: c.uid });
+    t.manual = null;
+    c.e.cotizaciones = { ...c.e.cotizaciones, [e.mercado]: t.referencia };
+    auditar(c, 'tipo-cambio.quitar', `cotizaciones/manual-${e.mercado}`);
+    return { ok: true };
+  },
   buscarUsuarioPorCorreo(c, e) {
     exigirRol(c, ['adm']);
     const buscado = e.correo.trim().toLowerCase();

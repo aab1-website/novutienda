@@ -788,6 +788,42 @@ export interface UsuarioVista {
   readonly venceEnMs?: number;
 }
 
+/** Referencia del banco central de un mercado (`estado`: vigente, desactualizada o vencida). */
+export interface ReferenciaTipoCambio {
+  readonly valor: number;
+  readonly fecha: string;
+  readonly fuente: string;
+  readonly estado: string;
+}
+
+/** Tipo de cambio manual vigente: quién lo cargó se muestra por nombre o correo, nunca por uid. */
+export interface ManualTipoCambio {
+  readonly valor: number;
+  readonly fecha: string;
+  readonly actualizadoEn: string | null;
+  readonly por: string;
+}
+
+export interface EntradaHistorialTipoCambio {
+  readonly accion: 'fijar' | 'quitar';
+  readonly valor: number | null;
+  readonly antes: number | null;
+  readonly fecha: string | null;
+  readonly actualizadoEn: string | null;
+  readonly por: string;
+}
+
+export interface MercadoTipoCambio {
+  readonly mercado: IdMercado;
+  /** Par `VENTA/BASE` (por ejemplo `BOB/USD`). */
+  readonly par: string;
+  /** Qué valor rige hoy: el manual, la referencia o ninguno. */
+  readonly rige: 'manual' | 'referencia' | 'ninguna';
+  readonly referencia: ReferenciaTipoCambio | null;
+  readonly manual: ManualTipoCambio | null;
+  readonly historial: readonly EntradaHistorialTipoCambio[];
+}
+
 export interface EntradaAuditoriaVista {
   readonly id: string;
   readonly fecha: string;

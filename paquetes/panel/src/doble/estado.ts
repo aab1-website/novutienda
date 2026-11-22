@@ -3,7 +3,7 @@ import { ErrorApi } from '../api/errores.js';
 import { UBICACIONES } from '../api/tipos.js';
 import type {
   AprobacionPos, Carrusel, ConteoAbierto, MarcaOcultamiento, CobroCredito, ConfigPos, TotalesMoneda, ConfigSitio, ConteoVista, CotizacionesVigentes, CreditoVista, EntradaAuditoriaVista,
-  FichaWeb, Medio, MedioLogo, MermaVista, MovimientoCaja, MovimientoVista, PlantillaRecibo, ProductoPanel, Recibo, Seccion, SubidaVista, TipoSubida, TurnoPos,
+  EntradaHistorialTipoCambio, FichaWeb, Medio, MedioLogo, MermaVista, MovimientoCaja, MovimientoVista, PlantillaRecibo, ProductoPanel, Recibo, Seccion, SubidaVista, TipoSubida, TurnoPos,
   UbicacionId, UnidadSerie, UsuarioVista, VentaPos, VistaComercial,
   Tablero,
 } from '../api/tipos.js';
@@ -20,6 +20,8 @@ export interface EstadoDoble {
   mermas: MermaVista[];
   conteos: Map<string, ConteoVista & { teoricos: Map<string, number> }>;
   cotizaciones: CotizacionesVigentes;
+  /** Tipo de cambio manual por mercado: la referencia del banco central que quedó debajo, el manual vigente y el historial (el más nuevo primero). */
+  tipoCambio: Record<string, { referencia: CotizacionesVigentes[string]; manual: { valor: number; fecha: string; actualizadoEn: string; por: string } | null; historial: EntradaHistorialTipoCambio[] }>;
   turnos: Map<string, TurnoPos>;
   ventas: Map<string, VentaPos>;
   aprobaciones: Map<string, AprobacionPos>;
@@ -72,7 +74,7 @@ const HTTPS_DE_MODULO: Readonly<Record<string, string>> = {
   'entrada-invalida': 'invalid-argument', 'no-autorizado': 'permission-denied', 'sin-permiso': 'permission-denied', 'no-encontrado': 'not-found',
   'producto-inexistente': 'not-found', 'venta-inexistente': 'not-found', 'aprobacion-inexistente': 'not-found', 'credito-inexistente': 'not-found',
   'operacion-conflicto': 'already-exists', conflicto: 'already-exists', 'request-en-uso': 'already-exists', limite: 'resource-exhausted',
-  'cuota-excedida': 'resource-exhausted', 'limite-del-plan': 'failed-precondition', 'limite-invitaciones': 'resource-exhausted',
+  'cuota-excedida': 'resource-exhausted', 'limite-del-plan': 'failed-precondition', 'limite-invitaciones': 'resource-exhausted', 'limite-tipo-cambio': 'resource-exhausted',
 };
 
 /** Error del módulo con su código HTTPS (por omisión `failed-precondition`). */
@@ -130,6 +132,7 @@ export function crearEstado(ahora: number): EstadoDoble {
       BO: { cotizacionId: 'BO-demo', par: 'BOB/USD', valor: 6.96, fecha: iso(ahora).slice(0, 10), fuente: 'BCB', estado: 'vigente' },
       AR: { cotizacionId: 'AR-demo', par: 'ARS/USD', valor: 1000, fecha: iso(ahora).slice(0, 10), fuente: 'BNA', estado: 'vigente' },
     },
+    tipoCambio: {},
     turnos: new Map(), ventas: new Map(), aprobaciones: new Map(), movCaja: new Map(), creditos: new Map(), cobros: new Map(),
     recibos: new Map(), contadorRecibo: new Map(),
     configPos: {

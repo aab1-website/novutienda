@@ -9,7 +9,7 @@ import type {
   LineaAjuste, LineaIngreso, LineaTraspaso, LogoNegocio, Medio, MedioLogo, ResultadoEstadoSubidaLogo, MermaVista, MontosPorMoneda, MovimientoCaja, MovimientoCajaEntrada, MovimientoVista,
   ConMarca, ListaConMarca, PagoEntrada, PlantillaRecibo, ProductoPanel, Recibo, Reserva, ResultadoAnulacion, ResultadoCierre, ResultadoEnvio,
   FuenteImportacion, ResultadoImportacion, ResultadoOperacion, ResultadoEstadoSubida, ResultadoPublicacion, ResultadoVenta, Rol, Seccion, Simulacion, SolicitudAprobacion,
-  ResumenCarritoSupervision, CursorTurno, CursorVenta, FilaTurnoVista, ResumenTurnoVista, Tablero, TipoMedio, TurnoPos, UbicacionId, UnidadSerie, UsuarioVista, VentaPos, EstadoMerma,
+  ResumenCarritoSupervision, CursorTurno, CursorVenta, FilaTurnoVista, ResumenTurnoVista, Tablero, TipoMedio, TurnoPos, UbicacionId, UnidadSerie, UsuarioVista, MercadoTipoCambio, IdMercado, VentaPos, EstadoMerma,
   TipoMovimiento, VistaComercial,
 } from './tipos.js';
 
@@ -183,6 +183,12 @@ export interface Contrato {
   modulosActivos: { entrada: Vacio; salida: readonly string[] };
   /** Mercados y monedas del comercio de la sesión (solo lectura). */
   configuracionComercial: { entrada: Vacio; salida: VistaComercial };
+  /** Tipo de cambio por mercado: referencia del banco central, manual vigente e historial (solo administrador). */
+  verTipoCambio: { entrada: Vacio; salida: readonly MercadoTipoCambio[] };
+  /** Fija el tipo de cambio manual; un salto de más del 5 % exige `confirmarSalto`. */
+  cotizacionManual: { entrada: { mercado: IdMercado; valor: number; confirmarSalto?: boolean }; salida: { ok: true } };
+  /** Vuelve al tipo de cambio del banco central (exige `confirmar`). */
+  quitarCotizacionManual: { entrada: { mercado: IdMercado; confirmar: true }; salida: { ok: true } };
 }
 
 export type NombreCallable = keyof Contrato;
