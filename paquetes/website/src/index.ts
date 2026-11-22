@@ -27,6 +27,7 @@ export * from './lib/descripcion.js';
 export * from './lib/huella.js';
 export * from './lib/indexacion.js';
 export * from './lib/eventos.js';
+export * from './lib/vistas.js';
 
 // Medición
 export * from './medicion/consentimiento.js';
@@ -36,6 +37,7 @@ export * from './medicion/medicion.js';
 export * from './api/http.js';
 export * from './api/disponibilidad.js';
 export * from './api/contacto.js';
+export * from './api/vista.js';
 export * from './api/cotizacion.js';
 export * from './api/router.js';
 

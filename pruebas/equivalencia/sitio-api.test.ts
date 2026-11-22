@@ -13,6 +13,7 @@ async function preparar(): Promise<{ deps: DepsApi; quitarCotizacion: (m: 'BO' |
     leerCotizacion: lectorCotizacion(e.almacen, T, () => AHORA),
     leerDisponibilidad: crearLectorDisponibilidad(firestoreDoble(e.db), T),
     contacto: undefined as never, // las rutas bajo prueba no tocan el contacto
+    vistas: undefined as never, // ni el contador de vistas
   };
   return { deps, quitarCotizacion: (m) => e.db.docs.delete(`tenants/${T}/cotizaciones/${m}`) };
 }

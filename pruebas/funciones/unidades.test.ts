@@ -350,12 +350,13 @@ describe('límites en memoria antes de autenticar', () => {
     firestore: new Proxy({}, { get: () => { throw new Error('tocó Firestore antes del límite'); } }),
     leerDisponibilidad: () => () => Promise.resolve({ 'tv-1': true }),
     guardarContacto: () => ({}),
+    almacenVistas: () => ({ leer: () => Promise.resolve(null), sumar: () => Promise.resolve(null) }),
     almacenCotizaciones: {},
   } as never;
-  const cfg = (n: number): ConfigRouter => ({
+  const cfg = (n: number, v: { min?: number; global?: number; producto?: number } = {}): ConfigRouter => ({
     secretoReconstruccion: '', novuchat: {} as never, recaptcha: {} as never, appCheck: {} as never,
     limiteContacto: limiteMemoria(100, 60_000),
-    limiteMemoria: { novuchat: limiteMemoria(n, 60_000), disponibilidad: limiteMemoria(n, 60_000), contacto: limiteMemoria(n, 60_000), hosts: limiteMemoria(n, 60_000), hostsGlobal: limiteMemoria(1000, 60_000) },
+    limiteMemoria: { novuchat: limiteMemoria(n, 60_000), disponibilidad: limiteMemoria(n, 60_000), contacto: limiteMemoria(n, 60_000), vista: limiteMemoria(v.min ?? 1000, 60_000), vistaGlobal: limiteMemoria(v.global ?? 1000, 60_000), vistaProducto: limiteMemoria(v.producto ?? 1000, 3_600_000), hosts: limiteMemoria(n, 60_000), hostsGlobal: limiteMemoria(1000, 60_000) },
   });
   const peticion = (ruta: string, origen: string) => ({ metodo: 'GET', ruta, url: ruta, consulta: { ids: 'tv-1' }, cabeceras: { authorization: 'Bearer token-inventado', 'x-forwarded-host': 'tienda.test' }, cuerpoCrudo: '', cuerpo: undefined, origen });
 
@@ -376,6 +377,39 @@ describe('límites en memoria antes de autenticar', () => {
     expect((await enrutar(e, peticion('/api/disponibilidad', '203.0.113.1'), c)).status).toBe(429);
     expect((await enrutar(e, peticion('/api/disponibilidad', '203.0.113.9'), c)).status).toBe(200);
   });
+
+  describe('/api/vista: límites en memoria', () => {
+    const pedir = (c: ConfigRouter, origen: string, id: string, metodo = 'POST') =>
+      enrutar(e, { ...peticion('/api/vista', origen), metodo, consulta: { id } }, c);
+
+    it('por origen y minuto: aplica a GET y a POST', async () => {
+      const c = cfg(5, { min: 2 });
+      expect((await pedir(c, '203.0.113.1', 'lapiz', 'GET')).status).not.toBe(429);
+      expect((await pedir(c, '203.0.113.1', 'lapiz', 'POST')).status).not.toBe(429);
+      expect((await pedir(c, '203.0.113.1', 'lapiz', 'GET')).status).toBe(429);
+      expect((await pedir(c, '203.0.113.9', 'lapiz', 'GET')).status).not.toBe(429);
+    });
+
+    it('tope global por instancia: otro origen también recibe 429', async () => {
+      const c = cfg(5, { global: 2 });
+      await pedir(c, '203.0.113.1', 'lapiz');
+      await pedir(c, '203.0.113.2', 'lapiz');
+      expect((await pedir(c, '203.0.113.3', 'lapiz')).status).toBe(429);
+    });
+
+    it('por producto, origen y hora: solo el POST; otro producto u otro origen cuentan aparte; id inválido no crea clave', async () => {
+      const c = cfg(5, { producto: 1 });
+      expect((await pedir(c, '203.0.113.1', 'lapiz')).status).not.toBe(429);
+      const r = await pedir(c, '203.0.113.1', 'lapiz');
+      expect(r.status).toBe(429);
+      expect(Number(r.headers['Retry-After'])).toBeGreaterThan(0);
+      expect((await pedir(c, '203.0.113.1', 'lapiz', 'GET')).status).not.toBe(429);
+      expect((await pedir(c, '203.0.113.1', 'goma')).status).not.toBe(429);
+      expect((await pedir(c, '203.0.113.2', 'lapiz')).status).not.toBe(429);
+      expect((await pedir(c, '203.0.113.1', 'A')).status).not.toBe(429);
+      expect((await pedir(c, '203.0.113.1', 'A')).status).not.toBe(429);
+    });
+  });
 });
 
 describe('contacto: App Check de un solo uso y límite en memoria antes de verificarlo', () => {
@@ -387,6 +421,7 @@ describe('contacto: App Check de un solo uso y límite en memoria antes de verif
     almacenCotizaciones: {},
     leerDisponibilidad: () => () => Promise.resolve({}),
     guardarContacto: () => ({ guardar: (c: { operacionId: string }) => { guardados.push(c.operacionId); return Promise.resolve('creado' as const); } }),
+    almacenVistas: () => ({ leer: () => Promise.resolve(null), sumar: () => Promise.resolve(null) }),
   } as never;
   /** Admin simulado: un token solo se consume una vez (`alreadyConsumed`), como el de uso limitado de App Check. */
   const adminConsume = () => {
@@ -408,7 +443,7 @@ describe('contacto: App Check de un solo uso y límite en memoria antes de verif
     recaptcha: { verificar: () => Promise.resolve({ valido: true, puntaje: 0.9 }) },
     appCheck: appCheckReal(admin as never, { consumir: true }),
     limiteContacto: limiteMemoria(100, 60_000),
-    limiteMemoria: { novuchat: limiteMemoria(1, 60_000), disponibilidad: limiteMemoria(1, 60_000), contacto: limiteMemoria(maximoMemoria, 60_000), hosts: limiteMemoria(100, 60_000), hostsGlobal: limiteMemoria(1000, 60_000) },
+    limiteMemoria: { novuchat: limiteMemoria(1, 60_000), disponibilidad: limiteMemoria(1, 60_000), contacto: limiteMemoria(maximoMemoria, 60_000), vista: limiteMemoria(1000, 60_000), vistaGlobal: limiteMemoria(1000, 60_000), vistaProducto: limiteMemoria(1000, 3_600_000), hosts: limiteMemoria(100, 60_000), hostsGlobal: limiteMemoria(1000, 60_000) },
   });
   const cuerpo = { envioId: 'envio-0123456789abcdef', nombre: 'Ana Pérez', correo: 'ana@ejemplo.test', mensaje: 'Quisiera una cotización', aceptaPrivacidad: true, recaptchaToken: 'x'.repeat(30) };
   const envio = (token: string | undefined, origen = '203.0.113.1') => ({

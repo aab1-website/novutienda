@@ -18,9 +18,11 @@ export const manifiestoWebsite: ManifiestoModulo = {
     // Las demás colecciones del sitio (fichas, secciones, carruseles, configuración, publicado, subidas y medios)
     // son del módulo consola, que es su único dueño; el sitio las consume ya publicadas.
     { ruta: 'contactos', lectura: ['sup', 'adm'], escritura: 'servidor' },
+    // Contador de vistas por producto, sumado por /api/vista. Nadie lo lee desde el navegador.
+    { ruta: 'vistasProducto', lectura: [], escritura: 'servidor' },
   ],
   emite: [],
   consume: [],
   requiere: ['consola', 'inventarios'],
-  rutasHttp: [{ ruta: '/api/cotizacion' }, { ruta: '/api/disponibilidad' }, { ruta: '/api/contacto' }],
+  rutasHttp: [{ ruta: '/api/cotizacion' }, { ruta: '/api/disponibilidad' }, { ruta: '/api/contacto' }, { ruta: '/api/vista' }],
 };

@@ -15,7 +15,7 @@ import { crearLectorComercial, type LectorComercial } from '../../coordinador/co
 import { crearLectorHojas } from '../../coordinador/lector-hojas.js';
 import { crearCatalogoConsola, crearLogoDelNegocio, almacenCotizacionesDesde, catalogoParaPos, inventariosParaPos, type LogoDelNegocio } from '../../coordinador/index.js';
 import {
-  appCheckReal, appCheckSimulado, crearAlmacenMedios, crearColaSitio, crearConstructorSitio, crearConsultaBuild, crearLectorSitios, esEntornoDePruebas, crearAuthMin, crearBaseDatos, crearConsultaSubidas, crearEjecutorRecibos, crearGuardarContacto, crearIndiceInvitaciones, crearLimiteTasa,
+  appCheckReal, appCheckSimulado, crearAlmacenMedios, crearColaSitio, crearConstructorSitio, crearConsultaBuild, crearLectorSitios, esEntornoDePruebas, crearAuthMin, crearBaseDatos, crearConsultaSubidas, crearEjecutorRecibos, crearAlmacenVistas, crearGuardarContacto, crearIndiceInvitaciones, crearLimiteTasa,
   crearLecturaRecibos, crearLectorDisponibilidad, crearProcesadorMedios, recaptchaEnterprise, recaptchaSimulado,
   type BaseDatosFirestore, type Bucket,
 } from '../../conectores/firebase/index.js';
@@ -24,7 +24,7 @@ import { type AlmacenCotizaciones, type AuthMin, type IndiceInvitaciones, type L
 import type { LectorHojas } from '@novutienda/inventarios';
 import type { DepsPos } from '@novutienda/pos';
 import type { EjecutorRecibos, LecturaRecibos } from '@novutienda/recibos';
-import type { GuardarContacto, LectorDisponibilidad, VerificadorAppCheck, VerificadorRecaptcha } from '@novutienda/website';
+import type { AlmacenVistas, GuardarContacto, LectorDisponibilidad, VerificadorAppCheck, VerificadorRecaptcha } from '@novutienda/website';
 import { exigirBucketPublico, exigirConfiguracionConstructor, modoConstructorSitio, PARAMETROS, REGION, SECRETOS } from './config.js';
 import { almacenConstruccionFirestore, type DepsTareaConstruccion } from './construccion-sitio.js';
 import { crearDisparadorSitio } from './disparador-sitio.js';
@@ -90,6 +90,7 @@ export interface Entorno {
   depsPos(tenantId: string): Promise<DepsPos>;
   readonly leerDisponibilidad: (tenantId: string) => LectorDisponibilidad;
   readonly guardarContacto: (tenantId: string) => GuardarContacto;
+  readonly almacenVistas: (tenantId: string) => AlmacenVistas;
 }
 
 export interface OpcionesEntorno {
@@ -158,6 +159,7 @@ export function crearEntorno(o: OpcionesEntorno): Entorno {
     }),
     leerDisponibilidad: (tenantId) => crearLectorDisponibilidad(o.firestore, tenantId),
     guardarContacto: (tenantId) => crearGuardarContacto(o.firestore, tenantId),
+    almacenVistas: (tenantId) => crearAlmacenVistas(o.firestore, tenantId),
   };
 }
 

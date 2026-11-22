@@ -83,12 +83,15 @@ function aPeticion(req: Request): PeticionHttp {
 
 // Límites en memoria POR INSTANCIA y por origen, antes de autenticar o de verificar App Check (el límite de Firestore por token se paga con una lectura
 // del token y una escritura transaccional). Se crean una vez, con los valores de los parámetros de la primera petición.
-let memoria: { readonly novuchat: LimiteTasa; readonly disponibilidad: LimiteTasa; readonly contacto: LimiteTasa; readonly hosts: LimiteTasa; readonly hostsGlobal: LimiteTasa } | undefined;
+let memoria: { readonly novuchat: LimiteTasa; readonly disponibilidad: LimiteTasa; readonly contacto: LimiteTasa; readonly vista: LimiteTasa; readonly vistaGlobal: LimiteTasa; readonly vistaProducto: LimiteTasa; readonly hosts: LimiteTasa; readonly hostsGlobal: LimiteTasa } | undefined;
 function limitesEnMemoria(): NonNullable<typeof memoria> {
   memoria ??= {
     novuchat: limiteMemoria(enteroDe(PARAMETROS.novuchatMaximoPorMinuto.value(), 120), 60_000),
     disponibilidad: limiteMemoria(enteroDe(PARAMETROS.disponibilidadMaximoPorMinuto.value(), 60), 60_000),
     contacto: limiteMemoria(enteroDe(PARAMETROS.contactoMaximoPorMinuto.value(), 30), 60_000),
+    vista: limiteMemoria(enteroDe(PARAMETROS.vistaMaximoPorMinuto.value(), 30), 60_000),
+    vistaGlobal: limiteMemoria(enteroDe(PARAMETROS.vistaGlobalMaximoPorMinuto.value(), 600), 60_000),
+    vistaProducto: limiteMemoria(enteroDe(PARAMETROS.vistaMaximoPorHoraYProducto.value(), 2), 3_600_000),
     hosts: limiteMemoria(60, 60_000),
     hostsGlobal: limiteMemoria(300, 60_000),
   };

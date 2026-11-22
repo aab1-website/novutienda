@@ -10,6 +10,8 @@ import type { PeticionHttp, RespuestaApi } from './tipos.js';
 /** Lo que el borde de website necesita de la configuración del enrutador. */
 export interface ConfigWebsite {
   readonly limiteContacto: LimiteTasa;
+  /** Límite del manejador de `/api/vista`; los de memoria (por origen, global y por producto) los aplica el enrutador. */
+  readonly limiteVista: LimiteTasa;
   readonly recaptcha: VerificadorRecaptcha;
   readonly appCheck: VerificadorAppCheck;
 }
@@ -20,7 +22,8 @@ export async function manejarSitioPublico(e: Entorno, req: PeticionHttp, ruta: s
   };
   const r = await despacharApi(
     { metodo: req.metodo, ruta, consulta: req.consulta, cabeceras: req.cabeceras, cuerpo: req.cuerpo, origen: req.origen },
-    { leerCotizacion: lectorCotizacion(e.almacenCotizaciones, tenantId, e.ahora), leerDisponibilidad: e.leerDisponibilidad(tenantId), contacto },
+    { leerCotizacion: lectorCotizacion(e.almacenCotizaciones, tenantId, e.ahora), leerDisponibilidad: e.leerDisponibilidad(tenantId), contacto,
+      vistas: { almacen: e.almacenVistas(tenantId), limite: cfg.limiteVista, ahora: e.ahora } },
   );
   return { status: r.status, headers: r.headers, cuerpo: r.cuerpo };
 }

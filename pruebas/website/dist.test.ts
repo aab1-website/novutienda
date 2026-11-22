@@ -83,6 +83,11 @@ describe.skipIf(!compilado)('CSP del sitio compilado', () => {
     for (const id of ['cielo', 'bosque', 'ambar', 'grafito', 'ciruela']) expect(css).toContain(`data-plantilla="${id}"`);
   });
 
+  it('la ficha monta la isla del contador de vistas y no pinta ningún número sin JavaScript', () => {
+    const ficha = readFileSync(join(DIST, 'producto/televisor-ejemplo-55.html'), 'utf8');
+    expect(ficha).toMatch(/component-url="[^"]*VistasProducto[^"]*"/);
+    expect(ficha).not.toContain('personas vieron');
+  });
   it('la ficha pinta la descripción con elementos reales, escapada y sin saltar niveles; la tarjeta usa texto plano', () => {
     const ficha = readFileSync(join(DIST, 'producto/televisor-ejemplo-55.html'), 'utf8');
     const desc = /<div class="ficha-descripcion">([\s\S]*?)<\/div>\s*(?:<p class="ficha-garantia"|<\/div>)/.exec(ficha)?.[1] ?? '';
