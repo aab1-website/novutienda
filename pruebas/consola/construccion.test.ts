@@ -459,6 +459,18 @@ describe('tope duro de 60 construcciones por sitio y día de La Paz', () => {
     expect(m.constructor.lanzados.at(-1)).toBe('rec-61');
     expect(m.almacen.contador).toMatchObject({ n: 1 });
   });
+  it('si lanzar() falla, la construcción no cuenta: una racha de fallas no agota el tope', async () => {
+    const m = montar();
+    m.constructor.falla = true;
+    for (let i = 1; i <= 70; i += 1) {
+      m.almacen.poner('rec-1', 'pendiente', m.reloj.ms);
+      await expect(lanzarSiguiente(m.deps, T)).rejects.toThrow('sin cuota');
+    }
+    expect(m.almacen.contador?.n).toBe(0);
+    m.constructor.falla = false;
+    expect(await lanzarSiguiente(m.deps, T)).toBe('lanzado'); // sigue habiendo cupo
+    expect(m.almacen.contador?.n).toBe(1);
+  });
   it('el tope también rige en modo delegar: no encola', async () => {
     const encolar = vi.fn(() => Promise.resolve());
     const almacen = new AlmacenDoble();

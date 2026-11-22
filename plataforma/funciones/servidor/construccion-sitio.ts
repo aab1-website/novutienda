@@ -29,7 +29,7 @@ export interface BloqueoSitio {
 export interface EstadoConstruccion {
   readonly bloqueo: BloqueoSitio | null;
   readonly ultimaImagen?: string;
-  /** Construcciones lanzadas en el día (La Paz) del sitio, para la alerta de más de 60 (no bloquea nada). */
+  /** Construcciones lanzadas en el día (La Paz) del sitio, para el tope duro de `construccionesPorDia` (60): desde la 61 no se lanza. `alertado`: la alerta de ese día ya salió. */
   readonly contador?: { readonly dia: string; readonly n: number; readonly alertado?: boolean };
 }
 
@@ -168,10 +168,13 @@ export async function lanzarSiguiente(deps: DepsConstruccion, tenantId: string):
   try {
     lanzada = await (constructor as ConstructorSitio).lanzar(tenantId, r.trabajoId);
   } catch (error) {
-    // No quedó construcción: se libera el bloqueo (el trabajo sigue `pendiente`) y el error sube para que la cola reintente.
+    // No quedó construcción: se libera el bloqueo (el trabajo sigue `pendiente`), se devuelve la unidad al contador del día (una racha
+    // de fallas al crear el build no debe agotar el tope sin desplegar nada) y el error sube para que la cola reintente.
     await deps.almacen.transaccion(tenantId, async (tx) => {
-      const { bloqueo, ultimaImagen } = await tx.estado();
-      if (bloqueo?.trabajoId === r.trabajoId && bloqueo.desdeMs === ahora) tx.liberar(ultimaImagen);
+      const { bloqueo, ultimaImagen, contador } = await tx.estado();
+      if (bloqueo?.trabajoId !== r.trabajoId || bloqueo.desdeMs !== ahora) return;
+      tx.liberar(ultimaImagen);
+      if (contador?.dia === dia && contador.n > 0) tx.fijarContador({ ...contador, n: contador.n - 1 });
     });
     throw error;
   }
