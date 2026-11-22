@@ -30,6 +30,11 @@ export interface TransaccionCotizaciones {
 export interface AlmacenCotizaciones {
   leer(ruta: string): Promise<Documento | null>;
   transaccion<T>(fn: (tx: TransaccionCotizaciones) => Promise<T>): Promise<T>;
+  /**
+   * Opcional: los últimos `limite` documentos de la subcolección `ruta` (p. ej. `.../manual-BO/historial`),
+   * del más nuevo al más viejo. Sin él, `leerTipoCambioDe` devuelve el historial vacío.
+   */
+  listarRecientes?(ruta: string, limite: number): Promise<readonly Documento[]>;
 }
 
 function tenantValido(tenantId: string): string {

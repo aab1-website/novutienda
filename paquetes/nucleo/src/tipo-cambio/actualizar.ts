@@ -3,7 +3,7 @@
  * decide y escribe. Las fuentes que fallan no abortan: la decisión se toma con
  * lo que haya y deja avisos. Pensada para que la invoque un job programado.
  */
-import { type AlmacenCotizaciones, type ResultadoEscritura, escribirCotizacionDe, leerCotizacionDe } from './almacen.js';
+import { type AlmacenCotizaciones, type ResultadoEscritura, escribirCotizacionDe, leerReferenciaDe } from './almacen.js';
 import type { EsFeriado } from './fechas.js';
 import { bajarTexto, type OpcionesDescarga } from './descargar.js';
 import { leerTablaBcb, URL_TABLA_BCB } from './parser-bcb.js';
@@ -124,7 +124,8 @@ async function avisar(
   };
   if (fallas.length > 0) await enviar({ tipo: 'fallas_fuente', mercado, detalle: `${fallas.length} fuente(s) con falla`, fallas });
   try {
-    await leerCotizacionDe(almacen, mercado, ahoraMs, {
+    // La referencia automática: la vigilancia de la fuente sigue aunque haya un manual vigente.
+    await leerReferenciaDe(almacen, mercado, ahoraMs, {
       tenantId: o.tenantId, comercial: o.comercial, ...(o.config ? { config: o.config } : {}), ...(o.esFeriado ? { esFeriado: o.esFeriado } : {}),
     });
   } catch (e) {

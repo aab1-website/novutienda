@@ -10,7 +10,9 @@ import {
   type ActorCarga, type OpcionesAlmacenDe, type AlmacenCotizaciones, type Documento,
 } from './almacen.js';
 import { esFechaIso } from './texto.js';
-import { CONFIG_POR_DEFECTO, type CotizacionGuardada, type ConfigCotizacion, type IdMercado } from './tipos.js';
+import { leerReferenciaDe } from './almacen.js';
+import type { EsFeriado } from './fechas.js';
+import { CONFIG_POR_DEFECTO, SinCotizacionUtilizable, type CopiaCotizacion, type CotizacionGuardada, type ConfigCotizacion, type IdMercado } from './tipos.js';
 
 /** Falta la confirmación expresa de una operación que la exige (volver al del banco central). */
 export class ConfirmacionRequerida extends Error {
@@ -107,4 +109,68 @@ export async function quitarCotizacionManualDe(
     });
     return true as const;
   });
+}
+
+/** Una entrada del historial del manual (quién, qué y cuándo). */
+export interface EntradaHistorialManual {
+  readonly id: string;
+  readonly accion: 'fijar' | 'quitar';
+  readonly por: string;
+  readonly valor: number | null;
+  readonly fecha: string | null;
+  readonly actualizadoEn: string;
+  readonly antes: { readonly valor: unknown; readonly fecha: unknown; readonly fuente: unknown } | null;
+}
+
+/** Lo que muestra la pantalla de un mercado: la referencia automática, el manual vigente (si lo hay) y el historial reciente. */
+export interface VistaTipoCambio {
+  readonly mercado: IdMercado;
+  readonly par: string;
+  /** La cotización automática (BCB/BNA) con su estado, o el motivo por el que no hay una utilizable. */
+  readonly referencia: CopiaCotizacion<string> | { readonly motivo: string };
+  /** El manual vigente; `por` sale de su última entrada de historial (el documento no lleva uid). */
+  readonly manual: { readonly cotizacionId: string; readonly valor: number; readonly fecha: string; readonly actualizadoEn: string; readonly por: string | null } | null;
+  readonly historial: readonly EntradaHistorialManual[];
+}
+
+/**
+ * Vista de un mercado para el panel. `limite` (por defecto 20) acota el historial; si el almacén no
+ * implementa `listarRecientes`, el historial va vacío y `manual.por` es `null`.
+ */
+export async function leerTipoCambioDe(
+  almacen: AlmacenCotizaciones,
+  mercado: IdMercado,
+  ahoraMs: number,
+  opciones: OpcionesAlmacenDe & { readonly config?: Partial<ConfigCotizacion>; readonly esFeriado?: EsFeriado; readonly limite?: number },
+): Promise<VistaTipoCambio> {
+  const par = tieneTipoCambio(opciones.comercial, mercado) ? parDe(opciones.comercial, mercado) : null;
+  if (par === null) throw new RangeError(`el mercado ${mercado} no está declarado o no tiene tipo de cambio`);
+  let referencia: VistaTipoCambio['referencia'];
+  try {
+    referencia = await leerReferenciaDe(almacen, mercado, ahoraMs, opciones);
+  } catch (e) {
+    if (!(e instanceof SinCotizacionUtilizable)) throw e;
+    referencia = { motivo: e.motivo };
+  }
+  const rutaM = rutaCotizacionManual(opciones.tenantId, mercado);
+  const d = await almacen.leer(rutaM);
+  const docs = almacen.listarRecientes ? await almacen.listarRecientes(`${rutaM}/historial`, opciones.limite ?? 20) : [];
+  const historial: EntradaHistorialManual[] = docs.map((h) => ({
+    id: typeof h['cotizacionId'] === 'string' ? h['cotizacionId'] : '',
+    accion: h['accion'] === 'quitar' ? 'quitar' : 'fijar',
+    por: typeof h['por'] === 'string' ? h['por'] : '',
+    valor: typeof h['valor'] === 'number' ? h['valor'] : null,
+    fecha: typeof h['fecha'] === 'string' ? h['fecha'] : null,
+    actualizadoEn: typeof h['actualizadoEn'] === 'string' ? h['actualizadoEn'] : '',
+    antes: h['antes'] !== null && typeof h['antes'] === 'object' ? (h['antes'] as EntradaHistorialManual['antes']) : null,
+  }));
+  const activo = d !== null && d['activo'] !== false && valido(d) && typeof d['cotizacionId'] === 'string' && d['cotizacionId'] !== '';
+  const manual = activo
+    ? {
+      cotizacionId: d['cotizacionId'] as string, valor: d.valor, fecha: d.fecha,
+      actualizadoEn: typeof d['actualizadoEn'] === 'string' ? d['actualizadoEn'] : '',
+      por: historial.find((h) => h.accion === 'fijar' && h.id === d['cotizacionId'])?.por ?? null,
+    }
+    : null;
+  return { mercado, par, referencia, manual, historial };
 }

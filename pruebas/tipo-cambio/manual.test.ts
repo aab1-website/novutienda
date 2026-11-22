@@ -1,7 +1,7 @@
 import { describe, expect, it } from 'vitest';
 import {
   COMERCIAL_LEGADO_TRES_MONEDAS, CargaNoAutorizada, ValorFueraDeBanda, ConfirmacionRequerida, SaltoSinConfirmar, SinCotizacionUtilizable,
-  escribirCotizacion, fijarCotizacionManualDe, leerCotizacionDe, leerReferenciaDe, quitarCotizacionManualDe,
+  actualizarMercado, escribirCotizacion, fijarCotizacionManualDe, leerTipoCambioDe, type AvisoOperativo, type AlmacenCotizaciones, leerCotizacionDe, leerReferenciaDe, quitarCotizacionManualDe,
   rutaCotizacionManual, type Lectura,
 } from './nucleo-tc.js';
 import { AHORA, AlmacenMemoria } from './ayudas.js';
@@ -109,5 +109,40 @@ describe('tipo de cambio manual', () => {
     expect(doc).toMatchObject({ activo: false });
     expect(doc).not.toHaveProperty('quitadoPor');
     expect(a.docs.get(`${rutaCotizacionManual('t1', 'BO')}/historial/BO-quitar-${AHORA + 1}`)).toMatchObject({ por: 'prop' });
+  });
+
+  it('con un manual vigente, la vigilancia de la fuente automática sigue avisando', async () => {
+    const a = new AlmacenMemoria();
+    a.docs.set('tenants/t1/cotizaciones/BO', { cotizacionId: 'BO-x', mercado: 'BO', par: 'BOB/USD', valor: 12.06, fecha: '2026-10-20', fuente: 'BCB', origen: 'automatico' });
+    await fijarCotizacionManualDe(a, { mercado: 'BO', valor: 12.1, actor: adm, ahoraMs: AHORA }, O);
+    const avisos: AvisoOperativo[] = [];
+    const caida = async (): Promise<never> => { throw new Error('sin red'); };
+    await actualizarMercado(a, 'BO', AHORA, { fetchFn: caida, tenantId: 't1', notificador: { notificar: async (x) => { avisos.push(x); } } });
+    expect(avisos.map((x) => x.tipo)).toEqual(['fallas_fuente', 'cotizacion_vieja']);
+  });
+
+  it('leerTipoCambioDe: referencia, manual vigente con su autor e historial reciente', async () => {
+    const base = await conBcb();
+    const a: AlmacenCotizaciones = {
+      leer: (r) => base.leer(r), transaccion: (f) => base.transaccion(f),
+      listarRecientes: async (ruta, limite) => [...base.docs].filter(([k]) => k.startsWith(`${ruta}/`)).map(([, d]) => d).slice(0, limite),
+    };
+    const vacia = await leerTipoCambioDe(a, 'BO', AHORA, O);
+    expect(vacia).toMatchObject({ mercado: 'BO', par: 'BOB/USD', manual: null, historial: [], referencia: { fuente: 'BCB' } });
+    await fijarCotizacionManualDe(a, { mercado: 'BO', valor: 12.2, actor: adm, ahoraMs: AHORA }, O);
+    const v = await leerTipoCambioDe(a, 'BO', AHORA, O);
+    expect(v.manual).toMatchObject({ valor: 12.2, por: 'ana' });
+    expect(v.historial).toEqual([expect.objectContaining({ accion: 'fijar', por: 'ana', valor: 12.2 })]);
+    await quitarCotizacionManualDe(a, { mercado: 'BO', actor: adm, ahoraMs: AHORA + 1, confirmar: true }, O);
+    expect((await leerTipoCambioDe(a, 'BO', AHORA, O)).manual).toBeNull();
+    expect((await leerTipoCambioDe(a, 'BO', AHORA, { ...O, limite: 1 })).historial).toHaveLength(1);
+  });
+
+  it('leerTipoCambioDe sin listarRecientes: historial vacío; sin referencia: motivo', async () => {
+    const a = new AlmacenMemoria();
+    const v = await leerTipoCambioDe(a, 'BO', AHORA, O);
+    expect(v.historial).toEqual([]);
+    expect(v.referencia).toMatchObject({ motivo: expect.any(String) });
+    await expect(leerTipoCambioDe(a, 'US', AHORA, O)).rejects.toThrow(RangeError);
   });
 });
