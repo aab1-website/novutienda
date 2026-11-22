@@ -386,8 +386,9 @@ h3.descripcion-titulo, h4.descripcion-titulo { font-size: 17px; }
 
 /* Celular: cabecera que se oculta al bajar y grilla de 2 columnas */
 @media (max-width: 640px) {
-  .cabecera { transition: transform .2s ease; }
-  .cabecera.cabecera-oculta { transform: translateY(-100%); }
+  /* Sin transform: crearía un bloque contenedor y la barra fija «Tu pedido» (dentro de la cabecera) saldría con ella. */
+  .cabecera { transition: top .2s ease; }
+  .cabecera.cabecera-oculta { top: -400px; }
 
   .grilla-productos { grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 10px; }
   .tarjeta { border-radius: 14px; }

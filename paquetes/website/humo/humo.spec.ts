@@ -618,8 +618,9 @@ test.describe('celular (375×812): grilla de 2 columnas, cabecera que se oculta 
   };
 
   for (const plantilla of PLANTILLAS) {
-    test(`${plantilla}: /productos muestra al menos 5 tarjetas con su descripción tras ocultar la cabecera, sin desborde`, async ({ page }) => {
-      await preparar(page, plantilla, 'claro', '/productos');
+   for (const tema of ['claro', 'oscuro'] as const) {
+    test(`${plantilla} / ${tema}: /productos muestra al menos 5 tarjetas con su descripción tras ocultar la cabecera, sin desborde`, async ({ page }) => {
+      await preparar(page, plantilla, tema, '/productos');
       await page.evaluate(() => window.scrollTo(0, document.querySelector('.grilla-productos')!.getBoundingClientRect().top + window.scrollY - 4));
       await expect(page.locator('.cabecera')).toHaveClass(/cabecera-oculta/);
       const columnas = await page.locator('.grilla-productos').evaluate((e) => getComputedStyle(e).gridTemplateColumns.split(' ').length);
@@ -633,11 +634,27 @@ test.describe('celular (375×812): grilla de 2 columnas, cabecera que se oculta 
       await expect(page.locator('.tarjeta').first().getByRole('button', { name: 'AGREGAR' })).toBeVisible();
       await expect(page.locator('.tarjeta').first().getByRole('link', { name: 'COMPRAR', exact: true })).toBeVisible();
       expect(await page.evaluate(() => document.documentElement.scrollWidth)).toBe(375);
+      // La barra fija «Tu pedido» sigue abajo con la cabecera oculta.
+      const barra = await page.getByRole('region', { name: 'Tu pedido' }).boundingBox();
+      expect(barra).not.toBeNull();
+      expect(barra!.y).toBeGreaterThan(700);
+      expect(barra!.y + barra!.height).toBeLessThanOrEqual(812.5);
       // Al subir, la cabecera vuelve.
       await page.evaluate(() => window.scrollBy(0, -200));
       await expect(page.locator('.cabecera')).not.toHaveClass(/cabecera-oculta/);
     });
+   }
   }
+
+  test('con el foco en un botón de la cabecera, bajar con el dedo igual la oculta', async ({ page }) => {
+    await preparar(page, 'cielo', 'claro', '/productos');
+    await page.getByRole('button', { name: /Buscar productos/ }).first().focus();
+    await page.mouse.move(100, 400);
+    await page.mouse.down();
+    await page.mouse.up();
+    await page.evaluate(() => window.scrollTo(0, 600));
+    await expect(page.locator('.cabecera')).toHaveClass(/cabecera-oculta/);
+  });
 
   test('en una pantalla ancha la cabecera nunca se oculta', async ({ page }) => {
     await page.setViewportSize({ width: 1024, height: 800 });

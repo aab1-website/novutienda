@@ -7,14 +7,14 @@ import TarjetaProducto from '../componentes/TarjetaProducto.astro';
 import CatalogoVacio from '../componentes/CatalogoVacio.astro';
 import Icono from '../componentes/Icono.astro';
 import { contenido } from '../contenido/instancia';
-import { productosDeCategoria, textoModelos } from '../contenido/consultas';
+import { marcasDe, productosDeCategoria, textoModelos } from '../contenido/consultas';
 import { jsonLdOrganizacion, rutaCategoria, rutaProducto } from '../lib/seo';
 import { marcasConRuta, rutaMarca } from '../lib/paginas';
 import Precio from '../islas/Precio';
 import { logoParaCompartir } from '../contenido/logo-subido';
 import { enlaceWhatsApp } from '../lib/whatsapp';
 
-const { config, categorias, productos, marcas, carruseles } = contenido;
+const { config, categorias, productos, carruseles } = contenido;
 const destacados = productos.filter((p) => p.destacado).slice(0, 6);
 // Vista previa al compartir la portada: el logo subido (PNG, JPG o WebP; nunca el de la cabecera ni un SVG) y, si no hay, la primera foto del carrusel o de un producto.
 const imagenPortada = logoParaCompartir(config.imagenCompartir, config.logo) ?? carruseles[config.plantilla][0]?.url ?? productos.find((p) => p.fotos.length > 0)?.fotos[0]?.url;
@@ -65,11 +65,11 @@ const wa = enlaceWhatsApp(config.whatsappNovuchat, 'Hola, tengo una consulta.');
           <div class="grilla-productos">{destacados.map((p) => <TarjetaProducto producto={p} />)}</div>
         </section>
       )}
-      {marcas.length > 0 && (
+      {productos.length > 0 && marcasDe(productos).length > 0 && (
         <section class="marcas" aria-labelledby="titulo-marcas">
           <h2 id="titulo-marcas">Marcas que trabajamos</h2>
           <nav aria-label="Marcas">
-            <ul>{marcasConRuta(marcas).map((m) => <li><a href={rutaMarca(m.slug)}>{m.nombre}</a></li>)}</ul>
+            <ul>{marcasConRuta(marcasDe(productos)).map((m) => <li><a href={rutaMarca(m.slug)}>{m.nombre}</a></li>)}</ul>
           </nav>
         </section>
       )}
