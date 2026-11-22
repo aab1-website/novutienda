@@ -30,6 +30,12 @@
 # constructor-sitio, SIEMPRE por digest y en el Artifact Registry del MISMO proyecto
 # (us-east1-docker.pkg.dev/<PROYECTO>/<repo>/<imagen>@sha256:<64 hex>). Solo staging (producción: P9). Vacía = la línea
 # queda vacía (Functions en modo github no la usa). Forma inválida: falla cerrado, sin imprimir el valor.
+# Interruptor del constructor (#198, DR-CB): P_CONSTRUCTOR_SITIO_MODO (opcional; `github` por defecto o `google`; en
+# production solo `github`, P9 aparte). En modo `google` son obligatorias CONSTRUCTOR_SITIO_IMAGEN, CONSTRUCTOR_SITIO_CUENTA,
+# VITE_FIREBASE_API_KEY, VITE_FIREBASE_APP_ID y VITE_RECAPTCHA_ENTERPRISE_SITE_KEY. P_CONSTRUCTOR_SITIO_CUENTA,
+# P_CUENTA_FN_CONSTRUCTOR_SITIO, P_CONSTRUCTOR_SITIO_MAQUINA y P_VITE_* son opcionales (vacías por defecto, como en config.ts).
+# CONSTRUCTOR_SITIO_APP_ENV y SITIO_PANEL_ID NO son entradas: los fija este script (AMBIENTE y PANEL_ID); un
+# P_CONSTRUCTOR_SITIO_APP_ENV distinto de AMBIENTE o un P_SITIO_PANEL_ID distinto de PANEL_ID fallan cerrado.
 # PLAN_PRUEBAS_HABILITADO (plan `pruebas`, solo staging) NO es una entrada: lo fija este script según AMBIENTE
 # (`si` en staging; vacío —el valor por defecto de config.ts, plan deshabilitado— en production, porque firebase-tools
 # exige una línea por parámetro). Si llega como P_PLAN_PRUEBAS_HABILITADO o PLAN_PRUEBAS_HABILITADO, falla cerrado; y
@@ -99,6 +105,25 @@ if [[ -n "${P_CONSTRUCTOR_SITIO_IMAGEN:-}" ]]; then
   [[ "$P_CONSTRUCTOR_SITIO_IMAGEN" =~ $imagen_forma ]] \
     || error "CONSTRUCTOR_SITIO_IMAGEN debe ser us-east1-docker.pkg.dev/<proyecto del ambiente>/<repositorio>/<imagen>@sha256:<digest> (por digest, nunca por tag)."
 fi
+# Interruptor del constructor del sitio (#198). Falla cerrado, sin imprimir valores.
+P_CONSTRUCTOR_SITIO_MODO="${P_CONSTRUCTOR_SITIO_MODO:-github}"
+[[ "$P_CONSTRUCTOR_SITIO_MODO" == "github" || "$P_CONSTRUCTOR_SITIO_MODO" == "google" ]] \
+  || error "CONSTRUCTOR_SITIO_MODO debe ser github o google."
+if [[ "$P_CONSTRUCTOR_SITIO_MODO" == "google" ]]; then
+  [[ "$AMBIENTE" == "staging" ]] \
+    || error "CONSTRUCTOR_SITIO_MODO=google solo se admite en staging (la producción por cliente es P9 del plan)."
+  for v in P_CONSTRUCTOR_SITIO_IMAGEN P_CONSTRUCTOR_SITIO_CUENTA P_VITE_FIREBASE_API_KEY P_VITE_FIREBASE_APP_ID P_VITE_RECAPTCHA_ENTERPRISE_SITE_KEY; do
+    [[ -n "${!v:-}" ]] || error "CONSTRUCTOR_SITIO_MODO=google exige ${v#P_}."
+  done
+fi
+if [[ -n "${P_CONSTRUCTOR_SITIO_APP_ENV:-}" && "$P_CONSTRUCTOR_SITIO_APP_ENV" != "$AMBIENTE" ]]; then
+  error "CONSTRUCTOR_SITIO_APP_ENV no coincide con AMBIENTE: lo fija preparar-despliegue-firebase.sh. Quite la variable."
+fi
+P_CONSTRUCTOR_SITIO_APP_ENV="$AMBIENTE"
+if [[ -n "${P_SITIO_PANEL_ID:-}" && "$P_SITIO_PANEL_ID" != "$PANEL_ID" ]]; then
+  error "SITIO_PANEL_ID no coincide con FIREBASE_SITE_PANEL: lo fija preparar-despliegue-firebase.sh. Quite la variable."
+fi
+P_SITIO_PANEL_ID="$PANEL_ID"
 # Plan `pruebas` (B-D, barrera 3): el valor depende solo del ambiente, nunca de una variable de GitHub ni del entorno
 # del job. Una variable cargada por error (p. ej. en el Environment production) detiene el despliegue. Sin imprimir el valor.
 if [[ -n "${P_PLAN_PRUEBAS_HABILITADO+x}" || -n "${PLAN_PRUEBAS_HABILITADO+x}" ]]; then
@@ -163,7 +188,10 @@ firebase target:apply hosting panel "$PANEL_ID" --project "$PROYECTO"
 # 4. Parámetros de Functions (no secretos; los secretos viven en Secret Manager).
 parametros="${RUNNER_TEMP:-/tmp}/funciones.env"
 : >"$parametros"
-for nombre in APP_CHECK_EXIGIDO RECAPTCHA_CLAVE_SITIO SITIO_URL MEDIOS_BASE_URL MEDIOS_BUCKET_PUBLICO FUNCIONES_SERVICE_ACCOUNT PROXY_SALTOS GITHUB_REPO_SITIO CONSTRUCTOR_SITIO_IMAGEN; do
+for nombre in APP_CHECK_EXIGIDO RECAPTCHA_CLAVE_SITIO SITIO_URL MEDIOS_BASE_URL MEDIOS_BUCKET_PUBLICO FUNCIONES_SERVICE_ACCOUNT \
+  PROXY_SALTOS GITHUB_REPO_SITIO CONSTRUCTOR_SITIO_IMAGEN CONSTRUCTOR_SITIO_MODO CONSTRUCTOR_SITIO_CUENTA \
+  CUENTA_FN_CONSTRUCTOR_SITIO CONSTRUCTOR_SITIO_APP_ENV CONSTRUCTOR_SITIO_MAQUINA VITE_FIREBASE_API_KEY VITE_FIREBASE_APP_ID \
+  VITE_RECAPTCHA_ENTERPRISE_SITE_KEY SITIO_PANEL_ID; do
   var="P_${nombre}"
   valor="${!var:-}"
   [[ "$valor" != *$'\n'* ]] || error "El parámetro $nombre contiene un salto de línea."
@@ -178,7 +206,9 @@ declare -A POR_DEFECTO=(
   [CONTACTO_MAXIMO]=5 [CONTACTO_VENTANA_SEG]=600 [NOVUCHAT_MAXIMO_POR_MINUTO]=120
   [DISPONIBILIDAD_MAXIMO_POR_MINUTO]=60 [CONTACTO_MAXIMO_POR_MINUTO]=30
   [RECAPTCHA_CLAVE_SITIO]="" [FUNCIONES_SERVICE_ACCOUNT]="" [GITHUB_REPO_SITIO]=""
-  [CONSTRUCTOR_SITIO_IMAGEN]=""
+  [CONSTRUCTOR_SITIO_IMAGEN]="" [CONSTRUCTOR_SITIO_MODO]=github [CONSTRUCTOR_SITIO_CUENTA]=""
+  [CUENTA_FN_CONSTRUCTOR_SITIO]="" [CONSTRUCTOR_SITIO_MAQUINA]="" [VITE_FIREBASE_API_KEY]="" [VITE_FIREBASE_APP_ID]=""
+  [VITE_RECAPTCHA_ENTERPRISE_SITE_KEY]=""
 )
 for nombre in "${!POR_DEFECTO[@]}"; do
   grep -q "^${nombre}=" "$parametros" || printf '%s=%s\n' "$nombre" "${POR_DEFECTO[$nombre]}" >>"$parametros"
