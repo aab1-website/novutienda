@@ -30,10 +30,13 @@ const RE_IMAGEN = /^[a-z0-9.-]+(\/[a-z0-9._-]+)+@sha256:[0-9a-f]{64}$/;
 export class ErrorConstructorSitio extends Error {
   /** Estado HTTP, `'red'` (sin respuesta) o `'respuesta'` (respuesta sin id de build). */
   readonly estado: number | 'red' | 'respuesta' | undefined;
-  constructor(mensaje: string, estado?: number | 'red' | 'respuesta') {
+  /** `true` solo cuando es seguro que la petición no llegó a enviarse a Cloud Build (no se creó ningún build). Ausente = incierto. */
+  readonly noCreado: boolean | undefined;
+  constructor(mensaje: string, estado?: number | 'red' | 'respuesta', noCreado?: boolean) {
     super(mensaje);
     this.name = 'ErrorConstructorSitio';
     this.estado = estado;
+    this.noCreado = noCreado;
   }
 }
 
@@ -50,17 +53,17 @@ export function leerSitios(texto: string): readonly SitioDeConstruccion[] {
   try {
     datos = JSON.parse(texto);
   } catch {
-    throw new ErrorConstructorSitio('SITIOS_TENANT no es JSON');
+    throw new ErrorConstructorSitio('SITIOS_TENANT no es JSON', undefined, true);
   }
-  if (!Array.isArray(datos) || datos.length === 0) throw new ErrorConstructorSitio('SITIOS_TENANT debe ser una lista no vacía');
+  if (!Array.isArray(datos) || datos.length === 0) throw new ErrorConstructorSitio('SITIOS_TENANT debe ser una lista no vacía', undefined, true);
   const claves = new Set<string>();
   return datos.map((e: unknown, i) => {
     const o = (typeof e === 'object' && e !== null ? e : {}) as Record<string, unknown>;
     const { clave, tenant, sitio, url } = o;
     const ok = typeof clave === 'string' && RE_CLAVE.test(clave) && typeof tenant === 'string' && RE_TENANT.test(tenant)
       && typeof sitio === 'string' && RE_SITIO.test(sitio) && typeof url === 'string' && RE_URL.test(url);
-    if (!ok) throw new ErrorConstructorSitio(`SITIOS_TENANT: la entrada ${String(i + 1)} es inválida`);
-    if (claves.has(clave)) throw new ErrorConstructorSitio('SITIOS_TENANT: clave repetida');
+    if (!ok) throw new ErrorConstructorSitio(`SITIOS_TENANT: la entrada ${String(i + 1)} es inválida`, undefined, true);
+    if (claves.has(clave)) throw new ErrorConstructorSitio('SITIOS_TENANT: clave repetida', undefined, true);
     claves.add(clave);
     return { clave, tenant, sitio, url };
   });
@@ -94,24 +97,24 @@ const versionDeImagen = (imagen: string): string => imagen.slice(imagen.indexOf(
 const NOMBRE_VARIABLE = /^[A-Z][A-Z0-9_]{0,127}$/;
 
 export function crearConstructorSitio(o: OpcionesConstructorSitio): ConstructorSitio {
-  if (!RE_PROYECTO.test(o.proyecto)) throw new ErrorConstructorSitio('proyecto inválido');
-  if (!RE_IMAGEN.test(o.imagen)) throw new ErrorConstructorSitio('la imagen del constructor debe ir fijada por digest (@sha256)');
+  if (!RE_PROYECTO.test(o.proyecto)) throw new ErrorConstructorSitio('proyecto inválido', undefined, true);
+  if (!RE_IMAGEN.test(o.imagen)) throw new ErrorConstructorSitio('la imagen del constructor debe ir fijada por digest (@sha256)', undefined, true);
   const cuenta = o.cuentaServicio.includes('@') ? o.cuentaServicio.split('@')[0] ?? '' : o.cuentaServicio;
-  if (!RE_CUENTA.test(cuenta)) throw new ErrorConstructorSitio('cuenta de servicio del constructor inválida');
+  if (!RE_CUENTA.test(cuenta)) throw new ErrorConstructorSitio('cuenta de servicio del constructor inválida', undefined, true);
   const cuentaCompleta = `projects/${o.proyecto}/serviceAccounts/${cuenta}@${o.proyecto}.iam.gserviceaccount.com`;
   for (const [k, v] of Object.entries(o.entorno)) {
     // Cloud Build sustituye `$VAR` en los valores de `env`: un `$` cambiaría lo que ve el script.
-    if (!NOMBRE_VARIABLE.test(k) || v.includes('$') || /[\r\n]/.test(v)) throw new ErrorConstructorSitio(`variable pública inválida: ${k}`);
+    if (!NOMBRE_VARIABLE.test(k) || v.includes('$') || /[\r\n]/.test(v)) throw new ErrorConstructorSitio(`variable pública inválida: ${k}`, undefined, true);
   }
   const fetchFn: FetchConstructor = o.fetchFn ?? ((url, init) => fetch(url, init));
 
   return {
     async lanzar(tenantId: string, trabajoId: string): Promise<ConstruccionLanzada> {
-      if (!RE_TRABAJO.test(trabajoId)) throw new ErrorConstructorSitio('id de trabajo inválido');
+      if (!RE_TRABAJO.test(trabajoId)) throw new ErrorConstructorSitio('id de trabajo inválido', undefined, true);
       const sitio = (await o.sitios()).find((s) => s.tenant === tenantId);
-      if (sitio === undefined) throw new ErrorConstructorSitio('el tenant no tiene sitio en SITIOS_TENANT');
+      if (sitio === undefined) throw new ErrorConstructorSitio('el tenant no tiene sitio en SITIOS_TENANT', undefined, true);
       for (const v of [sitio.clave, sitio.tenant, sitio.sitio, sitio.url]) {
-        if (v.includes('$') || /[\r\n]/.test(v)) throw new ErrorConstructorSitio('un valor de SITIOS_TENANT tiene un carácter no admitido');
+        if (v.includes('$') || /[\r\n]/.test(v)) throw new ErrorConstructorSitio('un valor de SITIOS_TENANT tiene un carácter no admitido', undefined, true);
       }
       const secretoNegocio = `SITIO_NEGOCIO_${sitio.clave.toUpperCase()}`;
       const secretos = [SECRETO_RECONSTRUCCION, secretoNegocio];
@@ -142,7 +145,7 @@ export function crearConstructorSitio(o: OpcionesConstructorSitio): ConstructorS
       try {
         token = await o.tokenAcceso();
       } catch {
-        throw new ErrorConstructorSitio('sin token de acceso para Cloud Build', 'red');
+        throw new ErrorConstructorSitio('sin token de acceso para Cloud Build', 'red', true);
       }
       let r;
       try {

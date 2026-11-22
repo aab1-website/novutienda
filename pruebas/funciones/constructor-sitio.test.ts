@@ -127,6 +127,30 @@ describe('constructor del sitio (Cloud Build por REST)', () => {
     expect(() => constructor(f, { entorno: { ...ENTORNO, MEDIOS_BASE_URL: 'https://$HOST' } })).toThrow(/variable/);
   });
 
+  it('noCreado: solo cuando la petición no llegó a enviarse (token, validación previa, entorno inválido)', async () => {
+    const noCreado = (e: unknown) => (e as ErrorConstructorSitio).noCreado;
+    const d = doble({ cuerpo: operacion });
+    const sinToken = await constructor(d.fetchFn, { tokenAcceso: () => Promise.reject(new Error('x')) }).lanzar('tienda-uno', 'rec-1').catch((x: unknown) => x);
+    expect(noCreado(sinToken)).toBe(true);
+    expect(noCreado(await constructor(d.fetchFn).lanzar('otro-tenant', 'rec-1').catch((x: unknown) => x))).toBe(true);
+    expect(noCreado(await constructor(d.fetchFn).lanzar('tienda-uno', 'rec 1; rm').catch((x: unknown) => x))).toBe(true);
+    const sitioRaro = [{ ...(SITIOS[0] as SitioDeConstruccion), url: 'https://x$y.example.com' }];
+    expect(noCreado(await constructor(d.fetchFn, { sitios: () => Promise.resolve(sitioRaro) }).lanzar('tienda-uno', 'rec-1').catch((x: unknown) => x))).toBe(true);
+    expect(d.llamadas).toHaveLength(0);
+    for (const extra of [{ imagen: 'a/b:latest' }, { cuentaServicio: 'X' }, { proyecto: 'Mal Proyecto' }, { entorno: { ...ENTORNO, MEDIOS_BASE_URL: 'https://$HOST' } }]) {
+      let e: unknown;
+      try { constructor(d.fetchFn, extra); } catch (x) { e = x; }
+      expect(noCreado(e)).toBe(true);
+    }
+  });
+
+  it('noCreado no se pone ante tiempo agotado, red, respuesta sin id ni rechazo HTTP', async () => {
+    const e1 = await constructor(doble(new Error('timeout')).fetchFn).lanzar('tienda-uno', 'rec-1').catch((x: unknown) => x);
+    const e2 = await constructor(doble({ cuerpo: { name: 'op' } }).fetchFn).lanzar('tienda-uno', 'rec-1').catch((x: unknown) => x);
+    const e3 = await constructor(doble({ ok: false, status: 503 }).fetchFn).lanzar('tienda-uno', 'rec-1').catch((x: unknown) => x);
+    for (const e of [e1, e2, e3]) expect((e as ErrorConstructorSitio).noCreado).toBeUndefined();
+  });
+
   it('acepta la cuenta de servicio como correo', async () => {
     const d = doble({ cuerpo: operacion });
     await constructor(d.fetchFn, { cuentaServicio: 'sitio-constructor@proy-prueba.iam.gserviceaccount.com' }).lanzar('tienda-uno', 'rec-1');
