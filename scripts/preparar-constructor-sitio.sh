@@ -2,7 +2,7 @@
 # preparar-constructor-sitio.sh — deja listo, en UN proyecto, lo que necesita el constructor del sitio en
 # Cloud Build (plan: «Publicar el sitio con Cloud Build», operación P5, pasos O1 a O6).
 #
-# Uso: preparar-constructor-sitio.sh <proyecto> [--aplicar] [--claves a1,b2] [--neutralizar-cuenta-por-defecto]
+# Uso: preparar-constructor-sitio.sh <proyecto> [--aplicar] [--claves a1,b2] [--neutralizar-cuenta-por-defecto] [--ampliar-despliegue]
 #   Sin --aplicar es una SIMULACIÓN: imprime lo que haría y no llama a la nube (ni siquiera a gcloud).
 #   Con --aplicar ejecuta con gcloud (credenciales de quien lo corra). Idempotente: cada paso comprueba si ya existe.
 #   Nunca despliega el sitio, no activa el modo `google` ni crea la alerta (pasos 6 y 7 del plan, aparte).
@@ -11,8 +11,7 @@
 #   CUENTA_FUNCIONES  correo de la cuenta de servicio con la que corren las Functions (obligatorio con --aplicar).
 #   CUENTA_DESPLIEGUE correo de la cuenta de despliegue de staging (la del CI); recibe artifactregistry.writer sobre
 #                     el repositorio para publicar la imagen (obligatorio con --aplicar).
-#   COLA_TAREAS       nombre de la cola de Cloud Tasks (obligatorio con --aplicar; debe existir: la crea el despliegue de
-#                     las Functions). cloudtasks.enqueuer se da SOLO sobre esa cola, no sobre el proyecto.
+#                     (El permiso de encolar NO se da aquí: lo fija el código con `invoker` en cada despliegue, D-P5-2 = A.)
 #   CLAVES_SITIO      claves de sitio separadas por comas (o --claves); define los secretos SITIO_NEGOCIO_<CLAVE>.
 #   REGION            us-east1 (por defecto; los recursos de nube van siempre allí).
 #   REPO_IMAGENES     repositorio de Artifact Registry (sitio-constructor por defecto).
@@ -23,36 +22,48 @@
 # Pasos:
 #   O1  Activar las API cloudbuild, artifactregistry y cloudtasks.
 #   O2  Repositorio de imágenes en Artifact Registry (formato docker) con limpieza: conserva las 10 versiones más recientes.
-#   O3  Cuenta de servicio `sitio-constructor` (la que ejecuta la construcción).
+#   O3  Cuentas de servicio `sitio-constructor` (la que ejecuta la construcción) y `fn-constructor-sitio` (la propia de las
+#       funciones del constructor; su correo es el valor de CUENTA_FN_CONSTRUCTOR_SITIO).
 #   O4  Roles de `sitio-constructor`: firebasehosting.admin (no se puede limitar por sitio: lo cubre la guardia de
 #       preparar-sitio-tenant.sh), logging.logWriter, serviceusage.serviceUsageConsumer y artifactregistry.reader
 #       sobre el repositorio.
-#   O5  Permisos de la cuenta de las Functions: rol personalizado con SOLO cloudbuild.builds.create y
-#       cloudbuild.builds.get; iam.serviceAccountUser únicamente sobre `sitio-constructor`; cloudtasks.enqueuer
-#       sobre la cola COLA_TAREAS.
+#   O5  Permisos de `fn-constructor-sitio` (no de la cuenta general de las Functions): rol personalizado con SOLO
+#       cloudbuild.builds.create y cloudbuild.builds.get; iam.serviceAccountUser únicamente sobre `sitio-constructor`;
+#       roles/datastore.user y roles/logging.logWriter; secretAccessor de SITIOS_TENANT (en O6).
+#   O5b iam.serviceAccountUser de `fn-constructor-sitio` y de la cuenta de las Functions SOBRE SÍ MISMAS: Cloud Tasks lo
+#       exige para encolar con token OIDC. Paso explícito (no verificado todavía en staging: se prueba en P6).
 #   O5bis  Cuenta de servicio POR DEFECTO de Cloud Build. Siempre consulta (sin cambiar nada) cuál es y con qué cuenta
 #       construyen las Functions de 2.ª generación. SOLO con la opción explícita --neutralizar-cuenta-por-defecto
-#       crea `build-sin-permisos` (sin roles) y la fija como cuenta por defecto. Riesgo: el despliegue de Functions 2.ª gen
-#       también construye con Cloud Build; en P5 se usa solo tras verificar lo consultado o tras fijar
-#       `--build-service-account` para las Functions. Comando por verificar en staging (`gcloud builds
-#       set-default-service-account`). Los builds del constructor siempre indican `sitio-constructor`.
-#   O6  Secretos en Secret Manager (SITIO_RECONSTRUCCION_SECRETO y SITIO_NEGOCIO_<CLAVE>) con acceso solo para
-#       `sitio-constructor`.
+#       crea `build-funciones` con lo mínimo para construir Functions 2.ª gen (logging.logWriter; artifactregistry.writer
+#       sobre `gcf-artifacts`; lectura del bucket de fuentes gcf-v2-sources-<número>-us-east1, número calculado) y la fija
+#       como cuenta por defecto. Nunca una cuenta sin roles. ACTO SEGUIDO hay que volver a desplegar las Functions
+#       (re-ejecutar `desplegar-staging`) y comprobar que las 12 construyen: firebase-tools no fija la cuenta de build.
+#       Reversión: `gcloud builds set-default-service-account` con la cuenta de Compute. Los builds del constructor siempre
+#       indican `sitio-constructor`.
+#   O6  Secretos en Secret Manager: SITIO_RECONSTRUCCION_SECRETO y SITIO_NEGOCIO_<CLAVE> con acceso solo para
+#       `sitio-constructor`; SITIOS_TENANT con acceso solo para `fn-constructor-sitio`.
+#   N9  (solo con --ampliar-despliegue; no corre por defecto) amplía el rol `despliegueFuncionesIam` de la cuenta de
+#       despliegue con lo que firebase-tools usa al exportar construirSitio y avisoConstruccionSitio: crear/leer/actualizar
+#       la cola (cloudtasks.queues.create/get/update/getIamPolicy/setIamPolicy: el `invoker` reescribe su política) y crear/
+#       leer el tema (pubsub.topics.create/get). La suscripción y el disparador los crea el servicio de Cloud Functions,
+#       no firebase-tools. AMPLÍA PERMISOS: revisión de `seguridad` y justificación en el PR antes de aplicarlo.
 #   (O2 incluye además roles/artifactregistry.writer sobre el repositorio para CUENTA_DESPLIEGUE.)
 # Los roles de O4 y los permisos de Hosting están por verificar en staging (el plan los marca sin verificar).
 # La salida muestra <proyecto> en vez del id real.
 set -Eeuo pipefail
 
-uso() { echo "uso: preparar-constructor-sitio.sh <proyecto> [--aplicar] [--claves a1,b2] [--neutralizar-cuenta-por-defecto]" >&2; exit 2; }
+uso() { echo "uso: preparar-constructor-sitio.sh <proyecto> [--aplicar] [--claves a1,b2] [--neutralizar-cuenta-por-defecto] [--ampliar-despliegue]" >&2; exit 2; }
 
 PROYECTO=""
 APLICAR=0
 NEUTRALIZAR=0
+AMPLIAR=0
 CLAVES="${CLAVES_SITIO:-}"
 while (( $# > 0 )); do
   case "$1" in
     --aplicar) APLICAR=1 ;;
     --neutralizar-cuenta-por-defecto) NEUTRALIZAR=1 ;;
+    --ampliar-despliegue) AMPLIAR=1 ;;
     --claves) shift; [[ $# -gt 0 && "$1" != --* ]] || uso; CLAVES="$1" ;;
     -*) uso ;;
     *) [[ -z "$PROYECTO" ]] || uso; PROYECTO="$1" ;;
@@ -66,6 +77,12 @@ REPO="${REPO_IMAGENES:-sitio-constructor}"
 CUENTA="sitio-constructor"
 ROL_LANZADOR="lanzadorConstructorSitio"
 CUENTA_EMAIL="${CUENTA}@${PROYECTO}.iam.gserviceaccount.com"
+CUENTA_FN="fn-constructor-sitio"
+FN_EMAIL="${CUENTA_FN}@${PROYECTO}.iam.gserviceaccount.com"
+ROL_DESPLIEGUE="despliegueFuncionesIam"
+# Permisos que firebase-tools usa al exportar construirSitio (cola) y avisoConstruccionSitio (tema).
+PERMISOS_N9="cloudtasks.queues.create,cloudtasks.queues.get,cloudtasks.queues.update,cloudtasks.queues.getIamPolicy,cloudtasks.queues.setIamPolicy,pubsub.topics.create,pubsub.topics.get"
+NUMERO="<numero>" # número del proyecto: se calcula con --aplicar, nunca se escribe en el repositorio
 [[ "$REPO" =~ ^[a-z][a-z0-9-]{0,62}$ ]] || { echo "REPO_IMAGENES inválido" >&2; exit 2; }
 [[ "$REGION" == "us-east1" ]] || { echo "los recursos van en us-east1" >&2; exit 2; }
 
@@ -85,15 +102,7 @@ elif ! [[ "$DESPLIEGUE" =~ ^[a-z0-9._-]+@[a-z0-9-]+\.iam\.gserviceaccount\.com$ 
   echo "CUENTA_DESPLIEGUE no es un correo de cuenta de servicio" >&2; exit 2
 fi
 
-COLA="${COLA_TAREAS:-}"
-if [[ -z "$COLA" ]]; then
-  (( APLICAR == 0 )) || { echo "con --aplicar hace falta COLA_TAREAS (nombre de la cola de Cloud Tasks)" >&2; exit 2; }
-  COLA="<cola>"
-elif ! [[ "$COLA" =~ ^[A-Za-z0-9_-]{1,100}$ ]]; then
-  echo "COLA_TAREAS inválida" >&2; exit 2
-fi
-
-SECRETOS=(SITIO_RECONSTRUCCION_SECRETO)
+SECRETOS=(SITIO_RECONSTRUCCION_SECRETO SITIOS_TENANT)
 if [[ -n "$CLAVES" ]]; then
   IFS=',' read -r -a lista <<<"$CLAVES"
   for c in "${lista[@]}"; do
@@ -108,6 +117,7 @@ mostrar() { # prefijo, comando...
   shift
   t="$*"
   t="${t//"$PROYECTO"/<proyecto>}"
+  if [[ "$NUMERO" != "<numero>" ]]; then t="${t//"$NUMERO"/<numero>}"; fi
   if [[ "$FUNCIONES" != "<cuenta-de-las-functions>" ]]; then t="${t//"$FUNCIONES"/<cuenta-de-las-functions>}"; fi
   if [[ "$DESPLIEGUE" != "<cuenta-de-despliegue>" ]]; then t="${t//"$DESPLIEGUE"/<cuenta-de-despliegue>}"; fi
   echo "  $pre $t"
@@ -117,6 +127,7 @@ quitar_ids() {
   local l
   while IFS= read -r l || [[ -n "$l" ]]; do
     l="${l//"$PROYECTO"/<proyecto>}"
+    if [[ "$NUMERO" != "<numero>" ]]; then l="${l//"$NUMERO"/<numero>}"; fi
     if [[ "$FUNCIONES" != "<cuenta-de-las-functions>" ]]; then l="${l//"$FUNCIONES"/<cuenta-de-las-functions>}"; fi
     if [[ "$DESPLIEGUE" != "<cuenta-de-despliegue>" ]]; then l="${l//"$DESPLIEGUE"/<cuenta-de-despliegue>}"; fi
     printf '%s\n' "$l"
@@ -159,11 +170,17 @@ ejecutar gcloud artifacts repositories set-cleanup-policies "$REPO" --location="
 ejecutar gcloud artifacts repositories add-iam-policy-binding "$REPO" --location="$REGION" --project="$PROYECTO" \
   --member="serviceAccount:$DESPLIEGUE" --role=roles/artifactregistry.writer --quiet --format=none
 
-paso "O3. Cuenta de servicio $CUENTA"
+paso "O3. Cuentas de servicio $CUENTA y $CUENTA_FN"
 if existe gcloud iam service-accounts describe "$CUENTA_EMAIL" --project="$PROYECTO"; then
-  echo "  ya existe"
+  echo "  $CUENTA: ya existe"
 else
   ejecutar gcloud iam service-accounts create "$CUENTA" --display-name="Constructor del sitio" --project="$PROYECTO"
+fi
+if existe gcloud iam service-accounts describe "$FN_EMAIL" --project="$PROYECTO"; then
+  echo "  $CUENTA_FN: ya existe"
+else
+  ejecutar gcloud iam service-accounts create "$CUENTA_FN" --display-name="Funciones del constructor del sitio" \
+    --project="$PROYECTO"
 fi
 
 paso "O4. Roles de $CUENTA"
@@ -178,16 +195,29 @@ paso "O5bis. Cuenta por defecto de Cloud Build (consulta; cambio solo con --neut
 # Va ANTES de O5: sin una cuenta por defecto acotada, el rol lanzador de las Functions permitiría lanzar builds con la
 # cuenta heredada de Cloud Build o la de Compute, que tienen permisos amplios (escalada de privilegios).
 if (( NEUTRALIZAR == 1 )); then
-  CUENTA_BUILD="build-sin-permisos"
+  CUENTA_BUILD="build-funciones"
   CUENTA_BUILD_EMAIL="${CUENTA_BUILD}@${PROYECTO}.iam.gserviceaccount.com"
+  if (( APLICAR == 1 )); then
+    NUMERO="$(gcloud projects describe "$PROYECTO" --format='value(projectNumber)' 2>/dev/null || true)"
+    [[ "$NUMERO" =~ ^[0-9]+$ ]] || { echo "  No se pudo calcular el número del proyecto: no se cambia la cuenta por defecto." >&2; exit 3; }
+  fi
   if existe gcloud iam service-accounts describe "$CUENTA_BUILD_EMAIL" --project="$PROYECTO"; then
     echo "  $CUENTA_BUILD: ya existe"
   else
-    ejecutar gcloud iam service-accounts create "$CUENTA_BUILD" --display-name="Cuenta por defecto de Cloud Build (sin permisos)" \
+    ejecutar gcloud iam service-accounts create "$CUENTA_BUILD" --display-name="Cuenta por defecto de Cloud Build (Functions)" \
       --project="$PROYECTO"
   fi
+  # Lo mínimo para construir Functions 2.ª gen: registros, imagen en gcf-artifacts y lectura de las fuentes subidas.
+  ejecutar gcloud projects add-iam-policy-binding "$PROYECTO" --member="serviceAccount:$CUENTA_BUILD_EMAIL" \
+    --role=roles/logging.logWriter --condition=None --quiet --format=none
+  ejecutar gcloud artifacts repositories add-iam-policy-binding gcf-artifacts --location="$REGION" --project="$PROYECTO" \
+    --member="serviceAccount:$CUENTA_BUILD_EMAIL" --role=roles/artifactregistry.writer --quiet --format=none
+  ejecutar gcloud storage buckets add-iam-policy-binding "gs://gcf-v2-sources-${NUMERO}-${REGION}" --project="$PROYECTO" \
+    --member="serviceAccount:$CUENTA_BUILD_EMAIL" --role=roles/storage.objectViewer --quiet --format=none
   ejecutar gcloud builds set-default-service-account --service-account="projects/$PROYECTO/serviceAccounts/$CUENTA_BUILD_EMAIL" \
     --project="$PROYECTO"
+  echo "  SIGUIENTE (obligatorio): volver a desplegar las Functions (re-ejecutar desplegar-staging) y comprobar que las 12 construyen."
+  echo "  Si fallan: gcloud builds set-default-service-account con la cuenta de Compute y re-desplegar."
 fi
 # Consulta (solo lectura): cuenta por defecto de Cloud Build.
 ejecutar gcloud builds get-default-service-account --project="$PROYECTO"
@@ -196,7 +226,7 @@ if (( APLICAR == 1 )); then
   case "$defecto" in
     *@cloudbuild.gserviceaccount.com | *-compute@developer.gserviceaccount.com)
       echo "  La cuenta por defecto de Cloud Build es la heredada o la de Compute (permisos amplios)." >&2
-      echo "  No se otorga el rol lanzador a las Functions. Use --neutralizar-cuenta-por-defecto (tras verificar las Functions 2.ª gen) y repita." >&2
+      echo "  No se otorga el rol lanzador a las Functions. Use --neutralizar-cuenta-por-defecto y repita; luego vuelva a desplegar las Functions." >&2
       exit 3 ;;
     "")
       echo "  No se pudo determinar la cuenta por defecto de Cloud Build: no se otorga el rol lanzador (falla cerrado)." >&2
@@ -209,7 +239,7 @@ if ! ejecutar gcloud functions list --v2 --project="$PROYECTO" --format="value(b
   echo "  AVISO: no se pudo consultar las Functions 2.ª gen (¿API inactiva o sin Functions?); verifique a mano antes de neutralizar." >&2
 fi
 
-paso "O5. Permisos de la cuenta de las Functions (rol mínimo, uso solo de $CUENTA, cola de tareas)"
+paso "O5. Permisos de $CUENTA_FN (rol mínimo, uso solo de $CUENTA, Firestore, registros)"
 if existe gcloud iam roles describe "$ROL_LANZADOR" --project="$PROYECTO"; then
   ejecutar gcloud iam roles update "$ROL_LANZADOR" --project="$PROYECTO" \
     --permissions=cloudbuild.builds.create,cloudbuild.builds.get --quiet --format=none
@@ -217,17 +247,21 @@ else
   ejecutar gcloud iam roles create "$ROL_LANZADOR" --project="$PROYECTO" --title="Lanzador del constructor del sitio" \
     --permissions=cloudbuild.builds.create,cloudbuild.builds.get --stage=GA --quiet --format=none
 fi
-ejecutar gcloud projects add-iam-policy-binding "$PROYECTO" --member="serviceAccount:$FUNCIONES" \
+ejecutar gcloud projects add-iam-policy-binding "$PROYECTO" --member="serviceAccount:$FN_EMAIL" \
   --role="projects/$PROYECTO/roles/$ROL_LANZADOR" --condition=None --quiet --format=none
 ejecutar gcloud iam service-accounts add-iam-policy-binding "$CUENTA_EMAIL" --project="$PROYECTO" \
-  --member="serviceAccount:$FUNCIONES" --role=roles/iam.serviceAccountUser --quiet --format=none
-if existe gcloud tasks queues describe "$COLA" --location="$REGION" --project="$PROYECTO" || (( APLICAR == 0 )); then
-  ejecutar gcloud tasks queues add-iam-policy-binding "$COLA" --location="$REGION" --project="$PROYECTO" \
-    --member="serviceAccount:$FUNCIONES" --role=roles/cloudtasks.enqueuer --quiet --format=none
-else
-  echo "  la cola de tareas indicada no existe aún (la crea el despliegue de las Functions): despliegue y repita este paso" >&2
-  exit 1
-fi
+  --member="serviceAccount:$FN_EMAIL" --role=roles/iam.serviceAccountUser --quiet --format=none
+for rol in roles/datastore.user roles/logging.logWriter; do
+  ejecutar gcloud projects add-iam-policy-binding "$PROYECTO" --member="serviceAccount:$FN_EMAIL" \
+    --role="$rol" --condition=None --quiet --format=none
+done
+
+paso "O5b. actAs de cada cuenta que encola sobre sí misma (Cloud Tasks lo exige para el token OIDC)"
+# El permiso de encolar lo da el código (`invoker` de construirSitio) en cada despliegue; aquí solo el actAs propio.
+for cuenta in "$FN_EMAIL" "$FUNCIONES"; do
+  ejecutar gcloud iam service-accounts add-iam-policy-binding "$cuenta" --project="$PROYECTO" \
+    --member="serviceAccount:$cuenta" --role=roles/iam.serviceAccountUser --quiet --format=none
+done
 
 paso "O6. Secretos (los valores pasan por stdin; nunca se imprimen)"
 for s in "${SECRETOS[@]}"; do
@@ -251,10 +285,17 @@ for s in "${SECRETOS[@]}"; do
   else
     echo "  $s: sin valor en el entorno; solo el contenedor y el permiso"
   fi
+  lector="$CUENTA_EMAIL"
+  [[ "$s" != "SITIOS_TENANT" ]] || lector="$FN_EMAIL"
   ejecutar gcloud secrets add-iam-policy-binding "$s" --project="$PROYECTO" \
-    --member="serviceAccount:$CUENTA_EMAIL" --role=roles/secretmanager.secretAccessor --quiet --format=none
+    --member="serviceAccount:$lector" --role=roles/secretmanager.secretAccessor --quiet --format=none
 done
 unset valor
+
+if (( AMPLIAR == 1 )); then
+  paso "N9. Ampliar el rol $ROL_DESPLIEGUE (cola y tema que crea el despliegue; requiere revisión de seguridad)"
+  ejecutar gcloud iam roles update "$ROL_DESPLIEGUE" --project="$PROYECTO" --add-permissions="$PERMISOS_N9" --quiet --format=none
+fi
 
 echo
 if (( APLICAR == 1 )); then echo "Listo."; else echo "Simulación terminada: no se cambió nada. Use --aplicar para ejecutar."; fi
