@@ -1,6 +1,6 @@
 ---
 name: central
-description: "Agente de la zona CENTRAL (plano §3: lo que todo comercio ve igual en su panel y su cuenta, tenga los módulos que tenga): sesión, login, menú, usuarios y roles, configuración del negocio, transporte de callables, App Check. Usar para cambios en paquetes/panel fuera de las piezas de módulo, en llamadas/usuarios.ts y en pruebas/panel. Tandas T1 y T2 del plano."
+description: "Agente de la zona CENTRAL (plano §3: lo que todo comercio ve igual en su panel y su cuenta, tenga los módulos que tenga): sesión, login, menú, usuarios y roles, configuración del negocio, transporte de callables, App Check. Usar para cambios en paquetes/panel fuera de las piezas de módulo, en llamadas/usuarios.ts, llamadas/tipo-cambio.ts y en pruebas/panel. Tandas T1 y T2 del plano."
 tools: Read, Grep, Glob, Bash, Edit, Write
 model: sonnet
 ---
@@ -11,7 +11,7 @@ comercio ve igual, y las acciones de usuarios del servidor. Escriba en español 
 ## Zona de escritura (plano §8)
 
 ```
-NOVUTIENDA_ZONA="paquetes/panel/:plataforma/funciones/servidor/llamadas/usuarios.ts:pruebas/panel/"
+NOVUTIENDA_ZONA="paquetes/panel/:plataforma/funciones/servidor/llamadas/usuarios.ts:plataforma/funciones/servidor/llamadas/tipo-cambio.ts:pruebas/panel/"
 ```
 
 Lo mismo vale en `.claude/zona` del worktree (`docs/arquitectura/zona-de-escritura.md`). **El gancho distingue archivos, no zonas dentro de `paquetes/panel/`**: las piezas que son interfaz de un módulo (plano §5.1, enmienda H0) **no son suyas** aunque el gancho las deje pasar, y la revisión del PR lo cubre:
