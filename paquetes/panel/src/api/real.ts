@@ -509,6 +509,8 @@ export const TRADUCCION: { readonly [N in NombreCallable]: Traduccion<N> } = {
   },
   leerLogo: { usa: ['consola.leerLogo'], ejecutar: async (c) => (campo(await c.llamar('consola', 'leerLogo', {}), 'logo') ?? null) as never },
   quitarLogo: directa('consola', 'quitarLogo'),
+  leerNegocioSitio: directa('consola', 'leerNegocioSitio'),
+  guardarNegocioSitio: directa('consola', 'guardarNegocioSitio'),
   estadoSubida: {
     usa: ['medios.estadoSubida'],
     ejecutar: async (c, e) => {

@@ -113,7 +113,7 @@ function estadoDeSubida(c: Contexto, subidaId: string, tipo: 'logo' | 'producto'
 }
 
 export const handlersOtros: {
-  [N in 'buscarComprobantes' | 'enviarRecibo' | 'referenciarFacturaSuma' | 'guardarPlantilla' | 'leerPlantilla' | 'obtenerRecibo' | 'obtenerTablero' | 'publicarSitio' | 'guardarFicha' | 'reservarSubida' | 'estadoSubida' | 'finalizarSubida' | 'borrarMedio' | 'guardarSeccion' | 'eliminarSeccion' | 'ordenarSecciones' | 'guardarCarrusel' | 'guardarConfigSitio' | 'asignarRol' | 'quitarRol' | 'invitarUsuario' | 'anularInvitacion' | 'reenviarInvitacion' | 'buscarUsuarioPorCorreo' | 'listarFichas' | 'listarMedios' | 'leerConfigSitio' | 'listarSecciones' | 'listarCarruseles' | 'listarUsuarios' | 'modulosActivos' | 'configuracionComercial' | 'verTipoCambio' | 'cotizacionManual' | 'quitarCotizacionManual' | 'reservarSubidaLogo' | 'estadoSubidaLogo' | 'finalizarSubidaLogo' | 'leerLogo' | 'quitarLogo']: H<N>;
+  [N in 'buscarComprobantes' | 'enviarRecibo' | 'referenciarFacturaSuma' | 'guardarPlantilla' | 'leerPlantilla' | 'obtenerRecibo' | 'obtenerTablero' | 'publicarSitio' | 'guardarFicha' | 'reservarSubida' | 'estadoSubida' | 'finalizarSubida' | 'borrarMedio' | 'guardarSeccion' | 'eliminarSeccion' | 'ordenarSecciones' | 'guardarCarrusel' | 'guardarConfigSitio' | 'asignarRol' | 'quitarRol' | 'invitarUsuario' | 'anularInvitacion' | 'reenviarInvitacion' | 'buscarUsuarioPorCorreo' | 'listarFichas' | 'listarMedios' | 'leerConfigSitio' | 'listarSecciones' | 'listarCarruseles' | 'listarUsuarios' | 'modulosActivos' | 'configuracionComercial' | 'verTipoCambio' | 'cotizacionManual' | 'quitarCotizacionManual' | 'reservarSubidaLogo' | 'estadoSubidaLogo' | 'finalizarSubidaLogo' | 'leerLogo' | 'quitarLogo' | 'leerNegocioSitio' | 'guardarNegocioSitio']: H<N>;
 } = {
   buscarComprobantes(c, e) {
     const q = e.consulta;
@@ -281,6 +281,21 @@ export const handlersOtros: {
     if (s.estado === 'procesada' && c.e.logo?.medio.id === e.subidaId) return c.e.logo.medio;
     if (s.estado !== 'reservada') throw fallo('estado', 'La subida ya no está pendiente');
     return procesarSubidaLogo(c, e.subidaId);
+  },
+  leerNegocioSitio(c) {
+    exigirRol(c, ['sup', 'adm']);
+    return { negocio: c.e.negocioSitio.negocio, version: c.e.negocioSitio.version };
+  },
+  guardarNegocioSitio(c, e) {
+    exigirRol(c, ['adm']);
+    const g = c.e.negocioSitio;
+    if (!Number.isSafeInteger(e.versionEsperada) || e.versionEsperada < 0) throw fallo('entrada-invalida', 'versionEsperada inválida');
+    if (e.versionEsperada !== g.version) throw fallo('conflicto', 'Los datos cambiaron desde que los leyó');
+    if (JSON.stringify(g.negocio) === JSON.stringify(e.negocio)) return { version: g.version, afectados: 0 };
+    const quitados = g.negocio === null ? [] : g.negocio.enlacesPermitidos.filter((x) => !e.negocio.enlacesPermitidos.includes(x));
+    c.e.negocioSitio = { negocio: e.negocio, version: g.version + 1 };
+    auditar(c, 'sitio.negocio.guardar', 'sitio/negocio');
+    return { version: g.version + 1, afectados: quitados.length };
   },
   leerLogo(c) {
     exigirRol(c, ['sup', 'adm']);

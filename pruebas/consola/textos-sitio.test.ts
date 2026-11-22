@@ -1,6 +1,7 @@
 // «Textos del sitio» del panel: sus topes coinciden con los del servidor y lo que arma es lo que el servidor acepta.
 import { describe, expect, it } from 'vitest';
-import { LIMITES_INSTITUCIONAL_NEGOCIO, LIMITES_NEGOCIO, validarNegocioSitio } from '@novutienda/consola/negocio';
+import { LIMITES_TEXTOS_SITIO } from '@novutienda/nucleo';
+import { validarNegocioSitio } from '@novutienda/consola/negocio';
 import { aEstado, aNegocio, revisarTextos, TOPES_TEXTOS } from '@novutienda/panel/consola';
 
 const negocio = {
@@ -16,11 +17,11 @@ const valido = (n: unknown): boolean => { try { validarNegocioSitio(n, { nivel: 
 
 describe('textos del sitio', () => {
   it('los topes son los del servidor', () => {
-    expect(TOPES_TEXTOS.texto).toBe(LIMITES_INSTITUCIONAL_NEGOCIO.texto);
-    expect(TOPES_TEXTOS.mensajes).toBe(LIMITES_INSTITUCIONAL_NEGOCIO.mensajes);
-    expect(TOPES_TEXTOS.mensaje).toBe(LIMITES_INSTITUCIONAL_NEGOCIO.mensaje);
-    expect(TOPES_TEXTOS.cifraValor).toBe(LIMITES_NEGOCIO.identidad.afirmacion);
-    expect(TOPES_TEXTOS.cifraDetalle).toBe(LIMITES_NEGOCIO.identidad.detalleCifra);
+    expect(TOPES_TEXTOS.texto).toBe(LIMITES_TEXTOS_SITIO.texto);
+    expect(TOPES_TEXTOS.mensajes).toBe(LIMITES_TEXTOS_SITIO.mensajes);
+    expect(TOPES_TEXTOS.mensaje).toBe(LIMITES_TEXTOS_SITIO.mensaje);
+    expect(TOPES_TEXTOS.cifraValor).toBe(LIMITES_TEXTOS_SITIO.cifraValor);
+    expect(TOPES_TEXTOS.cifraDetalle).toBe(LIMITES_TEXTOS_SITIO.cifraDetalle);
   });
   it('todo vacío no agrega nada: sin institucional y cifra nula', () => {
     const n = aNegocio(negocio, vacio);

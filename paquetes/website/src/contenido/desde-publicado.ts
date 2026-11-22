@@ -3,9 +3,9 @@
  * No importa otros módulos: lee la respuesta como `unknown` y la valida. El resultado pasa por `validarContenido`; si algo
  * falla, el error lista campos y motivos, nunca valores (el contenido es del comercio y el log es público).
  */
-import { MAX_CATEGORIAS_SITIO, esIdProductoSitio, leerCausasFallaSitio, type CausaFallaSitio } from '@novutienda/nucleo';
+import { LIMITES_TEXTOS_SITIO, MAX_CATEGORIAS_SITIO, esIdProductoSitio, leerCausasFallaSitio, type CausaFallaSitio } from '@novutienda/nucleo';
 import {
-  IDS_PLANTILLA, LIMITES_INSTITUCIONAL, LIMITES_SITIO,
+  IDS_PLANTILLA, LIMITES_SITIO,
   type Bloque, type Categoria, type ConfigAppCheck, type Contenido, type Foto, type IdIcono, type IdPlantilla,
   type Producto, type Seccion,
 } from './tipos.js';
@@ -181,7 +181,7 @@ export function nombreDeCategoria(id: string): string {
 
 /** Viñetas de la ficha: se recortan, se descartan las vacías o demasiado largas (con aviso) y se corta en 8. Sin ninguna, la clave no existe. */
 function caracteristicasDe(x: unknown, ruta: string, advertencias: string[] | undefined): { caracteristicas?: string[] } {
-  const { caracteristicas: tope, caracteristica: largo } = LIMITES_INSTITUCIONAL;
+  const { caracteristicas: tope, caracteristica: largo } = LIMITES_TEXTOS_SITIO;
   const ok: string[] = [];
   for (const [i, t] of lista(x).entries()) {
     const v = cadena(t).trim();

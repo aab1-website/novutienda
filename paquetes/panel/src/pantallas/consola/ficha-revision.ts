@@ -1,7 +1,7 @@
-import type { FichaWeb as FichaBase } from '../../api/tipos.js';
+import { LIMITES_TEXTOS_SITIO } from '@novutienda/nucleo';
+import type { FichaWeb } from '../../api/tipos.js';
 
-/** La ficha del contrato más las viñetas destacadas (el tipo central aún no las declara; ver el informe de S-3). */
-export type FichaWeb = FichaBase & { readonly caracteristicas?: readonly string[] };
+export type { FichaWeb };
 
 /**
  * Revisión de la página de un producto antes de enviarla: el error de cada campo, con los mismos topes y reglas que el
@@ -18,8 +18,8 @@ export const TOPES_FICHA = {
   seoDescripcion: 160,
   alt: 160,
   medios: 6,
-  caracteristicas: 8,
-  caracteristica: 160,
+  caracteristicas: LIMITES_TEXTOS_SITIO.caracteristicas,
+  caracteristica: LIMITES_TEXTOS_SITIO.caracteristica,
 } as const;
 
 const SLUG = /^[a-z0-9]+(?:-[a-z0-9]+)*$/;

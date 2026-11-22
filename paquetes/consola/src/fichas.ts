@@ -1,3 +1,4 @@
+import { LIMITES_TEXTOS_SITIO, validarCaracteristicas } from '@novutienda/nucleo';
 import { esObjeto, resultado, soloClaves, textoPlano, type Validacion } from './validar.js';
 
 export const ESTADOS_FICHA = ['borrador', 'publicado', 'oculto'] as const;
@@ -30,7 +31,6 @@ export interface FichaWeb {
 export const SLUG = /^[a-z0-9]+(?:-[a-z0-9]+)*$/;
 export const ID_MEDIO = /^[A-Za-z0-9_-]{8,40}$/;
 const MAX_MEDIOS_FICHA = 6;
-const MAX_CARACTERISTICAS = 8;
 
 /** Valida la entrada de una ficha. La unicidad del slug y la existencia de los medios se verifican en la transacción. */
 export function validarFichaWeb(x: unknown): Validacion<FichaWeb> {
@@ -83,16 +83,16 @@ export function validarFichaWeb(x: unknown): Validacion<FichaWeb> {
     if (t !== undefined && d !== undefined) seo = { titulo: t, descripcion: d };
   }
 
-  const caracteristicas: string[] = [];
   const crudas = x['caracteristicas'];
-  if (crudas !== undefined) {
-    if (!Array.isArray(crudas) || crudas.length < 1 || crudas.length > MAX_CARACTERISTICAS) errores.push(`caracteristicas: debe ser una lista de 1 a ${String(MAX_CARACTERISTICAS)} viñetas (para no mostrarla, quítela)`);
-    else {
-      crudas.forEach((c: unknown, i: number) => {
-        const t = textoPlano(c, `caracteristicas[${String(i)}]`, { min: 1, max: 160 }, errores);
-        if (t !== undefined) caracteristicas.push(t);
-      });
-    }
+  const erroresCaracteristicas = validarCaracteristicas(crudas, 'caracteristicas');
+  errores.push(...erroresCaracteristicas);
+  const caracteristicas: string[] = [];
+  // Largo y cantidad: regla única del núcleo; aquí solo se añade la regla de seguridad (sin control ni HTML).
+  if (Array.isArray(crudas) && erroresCaracteristicas.length === 0) {
+    crudas.forEach((c: unknown, i: number) => {
+      const t = textoPlano(c, `caracteristicas[${String(i)}]`, { min: 1, max: LIMITES_TEXTOS_SITIO.caracteristica }, errores);
+      if (t !== undefined) caracteristicas.push(t);
+    });
   }
 
   return resultado(errores, {

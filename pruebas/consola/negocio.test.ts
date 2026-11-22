@@ -3,7 +3,7 @@ import {
   finalizarSubida, guardarCarrusel, guardarConfigSitio, guardarFicha, guardarNegocioSitio, guardarSeccion, leerNegocioSitio, publicarSitio,
   reservarSubida, type DepsMedios,
 } from '@novutienda/consola';
-import { enlacePermitidoEnSitio, IDS_ICONO_NEGOCIO, LIMITES_INSTITUCIONAL_NEGOCIO, LIMITES_NEGOCIO, validarNegocioSitio } from '@novutienda/consola/negocio';
+import { enlacePermitidoEnSitio, IDS_ICONO_NEGOCIO, LIMITES_NEGOCIO, validarNegocioSitio } from '@novutienda/consola/negocio';
 import { actor, AlmacenDoble, CatalogoDoble, DisparadorDoble, JPG, MP4, nuevaDb, ProcesadorSimulado, RelojFijo, T } from './dobles.js';
 
 const adm = actor('adm');
@@ -488,9 +488,6 @@ describe('servicio y publicación del negocio', () => {
 });
 
 describe('institucional (misión, visión y chat) y características de la ficha', () => {
-  it('los límites son los acordados con el sitio (600, 6, 300, 8, 160)', () => {
-    expect(LIMITES_INSTITUCIONAL_NEGOCIO).toEqual({ texto: 600, mensajes: 6, mensaje: 300, caracteristicas: 8, caracteristica: 160 });
-  });
   const chat = (n: number) => ({ mensajes: Array.from({ length: n }, (_, i) => ({ de: i % 2 === 0 ? 'cliente' : 'comercio', texto: 'Hola' })) });
   it('ausente es válido y presente se valida entero', () => {
     expect(errores(base())).toEqual([]);

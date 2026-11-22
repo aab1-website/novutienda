@@ -6,7 +6,7 @@
  * Los precios se guardan en USD por mercado; el precio final lo calcula `precioFinal`
  * del núcleo con la cotización oficial. Un precio base 0 significa «consultar».
  */
-import type { Mercado, Redondeo } from '@novutienda/nucleo';
+import type { Mercado, MensajeChatTexto, Redondeo, TextosInstitucionales } from '@novutienda/nucleo';
 
 /** Lista cerrada de plantillas de color (ver `plantillas/plantillas.ts`). */
 export const IDS_PLANTILLA = ['cielo', 'bosque', 'ambar', 'grafito', 'ciruela'] as const;
@@ -102,24 +102,14 @@ export interface Identidad {
   readonly sello: Afirmacion;
 }
 
-/** Mensaje de la maqueta de chat de WhatsApp. */
-export interface MensajeChat {
-  readonly de: 'cliente' | 'comercio';
-  readonly texto: string;
-}
+/** Mensaje de la maqueta de chat de WhatsApp (tipo del núcleo). */
+export type MensajeChat = MensajeChatTexto;
 
 /**
- * Textos institucionales opcionales. Cada campo se muestra solo si existe; ausente = el sitio no pinta esa pieza y el contenido
- * queda idéntico al de antes.
+ * Textos institucionales opcionales (misión, visión y maqueta de chat; tipo y límites del núcleo). Cada campo se muestra solo
+ * si existe; ausente = el sitio no pinta esa pieza y el contenido queda idéntico al de antes.
  */
-export interface Institucional {
-  readonly mision?: string;
-  readonly vision?: string;
-  /** Maqueta de conversación de WhatsApp (se rotula «Ejemplo de conversación»). */
-  readonly chat?: { readonly mensajes: readonly MensajeChat[] };
-}
-
-export const LIMITES_INSTITUCIONAL = { texto: 600, mensajes: 6, mensaje: 300, caracteristicas: 8, caracteristica: 160 } as const;
+export type Institucional = TextosInstitucionales;
 
 export interface Portada {
   readonly insignia: string;

@@ -1,11 +1,14 @@
 /**
  * «Textos del sitio»: misión, visión, cifra de clientes y maqueta de chat. Pasa de los datos del negocio (`sitio/negocio`) al
- * estado del formulario y de vuelta, sin tocar los demás campos del negocio. Los topes son los del servidor
- * (`LIMITES_INSTITUCIONAL_NEGOCIO` y `LIMITES_NEGOCIO.identidad` de `@novutienda/consola`; los compara
- * `pruebas/consola/textos-sitio.test.ts`).
+ * estado del formulario y de vuelta, sin tocar los demás campos del negocio. Los topes son los de la fuente única del núcleo
+ * (`LIMITES_TEXTOS_SITIO`).
  */
+import { LIMITES_TEXTOS_SITIO } from '@novutienda/nucleo';
 
-export const TOPES_TEXTOS = { texto: 600, mensajes: 6, mensaje: 300, cifraValor: 200, cifraDetalle: 120 } as const;
+export const TOPES_TEXTOS = {
+  texto: LIMITES_TEXTOS_SITIO.texto, mensajes: LIMITES_TEXTOS_SITIO.mensajes, mensaje: LIMITES_TEXTOS_SITIO.mensaje,
+  cifraValor: LIMITES_TEXTOS_SITIO.cifraValor, cifraDetalle: LIMITES_TEXTOS_SITIO.cifraDetalle,
+} as const;
 
 export type Emisor = 'cliente' | 'comercio';
 export interface MensajeEditable { readonly de: Emisor; readonly texto: string }

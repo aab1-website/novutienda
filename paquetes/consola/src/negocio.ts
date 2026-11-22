@@ -12,7 +12,7 @@
  * - `estricto`: lo de `heredado` más reglas de seguridad (sin caracteres engañosos ni HTML, correo y teléfono con forma,
  *   anfitriones sin IP, topes de categorías y de tamaño). Lo usa el guardado para lo que escribe una persona.
  */
-import { RE_SLUG_SITIO } from '@novutienda/nucleo';
+import { LIMITES_TEXTOS_SITIO, RE_SLUG_SITIO, validarCifra, type MensajeChatTexto, type TextosInstitucionales } from '@novutienda/nucleo';
 import { ErrorConsola } from './errores.js';
 import { esObjeto } from './validar.js';
 
@@ -37,7 +37,7 @@ export const LIMITES_NEGOCIO = {
   /** línea 84 */ largoEnlace: 500,
   /** líneas 302-313 */ portada: { insignia: 60, titulo: 60, lineasTitulo: 3, texto: 400, boton: 60 },
   /** líneas 315-320 */ beneficios: { max: 8, titulo: 200, descripcion: 160 },
-  /** líneas 322-338 */ identidad: { etiqueta: 80, titulo: 120, texto: 1200, detalleCifra: 120, afirmacion: 200, valores: 6, tituloValor: 80, textoValor: 400, alt: 200, url: 500, versiones: 6, anchoMin: 16, anchoMax: 8000 },
+  /** líneas 322-338 */ identidad: { etiqueta: 80, titulo: 120, texto: 1200, afirmacion: 200, valores: 6, tituloValor: 80, textoValor: 400, alt: 200, url: 500, versiones: 6, anchoMin: 16, anchoMax: 8000 },
   /** línea 412 */ textoPrivacidad: { minParrafos: 1, maxParrafos: 40, min: 1, max: 2000 },
   /**
    * líneas 18 (RE_SLUG) y 380-390. El sitio NO acota la cantidad de categorías del negocio; el tope de 40 es el que impone al
@@ -82,15 +82,9 @@ export interface IdentidadNegocio {
   readonly sello: Afirmacion;
 }
 
-/** Límites de los textos institucionales y de las viñetas de la ficha (copia de `LIMITES_INSTITUCIONAL` de `website/src/contenido/tipos.ts`; los compara `pruebas/consola/negocio.test.ts`). */
-export const LIMITES_INSTITUCIONAL_NEGOCIO = { texto: 600, mensajes: 6, mensaje: 300, caracteristicas: 8, caracteristica: 160 } as const;
-export interface MensajeChatNegocio { readonly de: 'cliente' | 'comercio'; readonly texto: string }
-/** Textos opcionales del sitio: cada uno se muestra solo si existe. */
-export interface InstitucionalNegocio {
-  readonly mision?: string;
-  readonly vision?: string;
-  readonly chat?: { readonly mensajes: readonly MensajeChatNegocio[] };
-}
+/** Textos opcionales del sitio (misión, visión y chat): el tipo y los límites son los del núcleo (`LIMITES_TEXTOS_SITIO`). */
+export type InstitucionalNegocio = TextosInstitucionales;
+export type MensajeChatNegocio = MensajeChatTexto;
 
 /** Los datos del negocio (campo por campo, sin versión). */
 export interface NegocioSitioDatos {
@@ -226,7 +220,7 @@ class Lector {
 /** `institucional` opcional: presente, se valida entero (misión y visión de 1 a 600; chat de 1 a 6 mensajes de 1 a 300). */
 function institucional(l: Lector, v: unknown): InstitucionalNegocio | undefined {
   if (v === undefined) return undefined;
-  const L = LIMITES_INSTITUCIONAL_NEGOCIO;
+  const L = LIMITES_TEXTOS_SITIO;
   const o = l.obj(v, 'institucional', ['mision', 'vision', 'chat']);
   const r: { -readonly [K in keyof InstitucionalNegocio]?: InstitucionalNegocio[K] } = {};
   if (o['mision'] !== undefined) r.mision = l.texto(o['mision'], 'institucional.mision', 1, L.texto, true);
@@ -368,7 +362,7 @@ export function evaluarNegocioSitio(entrada: unknown, nivel: NivelNegocio): Eval
     foto: fotoIdentidad(l, ide['foto'], 'identidad.foto'),
     cifra: ide['cifra'] === null ? null : (() => {
       const c = l.obj(ide['cifra'], 'identidad.cifra', ['valor', 'detalle']);
-      return { valor: afirmacion(l, c['valor'], 'identidad.cifra.valor'), detalle: l.texto(c['detalle'], 'identidad.cifra.detalle', 1, I.detalleCifra) };
+      return { valor: afirmacion(l, c['valor'], 'identidad.cifra.valor'), detalle: l.texto(c['detalle'], 'identidad.cifra.detalle', 1, LIMITES_TEXTOS_SITIO.cifraDetalle) };
     })(),
     valores: l.lista(ide['valores'], 'identidad.valores', I.valores).map((x, i): ValorNegocio => {
       const r = `identidad.valores[${String(i)}]`;
@@ -377,6 +371,9 @@ export function evaluarNegocioSitio(entrada: unknown, nivel: NivelNegocio): Eval
     }),
     sello: afirmacion(l, ide['sello'], 'identidad.sello'),
   };
+
+  // La cifra del contador (valor de hasta 20 caracteres) la valida la regla única del núcleo al guardar.
+  if (l.estricto) l.errores.push(...validarCifra(ide['cifra'], 'identidad.cifra'));
 
   const categorias: Record<string, { nombre: string; icono: IdIconoNegocio }> = {};
   if (o['categorias'] !== undefined) {
