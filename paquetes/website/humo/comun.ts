@@ -17,6 +17,8 @@ export async function simularApi(page: Page, opciones: { sinCotizacion?: boolean
       : r.fulfill({ status: 200, contentType: 'application/json', body: JSON.stringify(COTIZACIONES_PRUEBA) }),
   );
   await page.route('**/api/disponibilidad*', (r: Route) => r.fulfill({ status: 200, contentType: 'application/json', body: JSON.stringify({ disponibilidad: {} }) }));
+  // Contador de vistas: el servidor real responde 200 con el total (0 si el producto publicado aún no tiene vistas).
+  await page.route('**/api/vista*', (r: Route) => r.fulfill({ status: 200, contentType: 'application/json', body: JSON.stringify({ vistas: 0 }) }));
 }
 
 /** Registra violaciones de CSP y errores de consola/página. */
