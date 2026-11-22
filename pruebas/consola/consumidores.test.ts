@@ -144,14 +144,14 @@ describe('consumirProductoCambiado', () => {
       expect(db3.dato(ESTADO)?.['cambios']).toBe(0);
     });
 
-    it('el primer cambio tras una reconstrucción programa a +10 min; los siguientes dentro de la ventana no reprograman', async () => {
+    it('el primer cambio tras una reconstrucción programa a +60 s; los siguientes dentro de la ventana no reprograman', async () => {
       db3.poner(`${PUB}/estado`, { ...estadoPub(), reconstruccion: { programadaPara: null, ultima: 1 } });
       catalogo.agregar('p1', { precioUSD: { bo: 1, ar: 1 } });
       await consumirEv(ev('b1'));
       catalogo.agregar('p2', { precioUSD: { bo: 2, ar: 2 } });
       await consumirEv(ev('b2', 'precio', 'p2'));
-      expect(programadas).toEqual([reloj.ms + 600_000]);
-      expect(estadoPub()['reconstruccion']).toMatchObject({ programadaPara: reloj.ms + 600_000, ultima: 1 });
+      expect(programadas).toEqual([reloj.ms + 60_000]);
+      expect(estadoPub()['reconstruccion']).toMatchObject({ programadaPara: reloj.ms + 60_000, primerCambioEnMs: reloj.ms, ultima: 1 });
       expect(estadoPub()['version']).toBe(3);
     });
 

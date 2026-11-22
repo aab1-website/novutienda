@@ -35,8 +35,16 @@ export const LIMITES_CONSOLA = {
   vigenciaReservaMs: 6 * 60 * 60 * 1000,
   /** Tiempo que una invocación puede tener reclamada una subida (`procesando`) antes de que otra la retome; debe superar el timeout máximo de la función (540 s). */
   vencimientoProcesandoMs: 10 * 60 * 1000,
-  /** Ventana de agrupación de cambios antes de reconstruir el sitio. */
-  ventanaReconstruccionMs: 10 * 60 * 1000,
+  /** Ventana de agrupación de cambios antes de reconstruir el sitio (60 s; antes 10 min, ver DR-CB). */
+  ventanaReconstruccionMs: 60 * 1000,
+  /** Una tarea de Cloud Tasks que llega hasta esto antes de la hora agendada ya reconstruye (reloj de la cola vs. del servidor). */
+  toleranciaTareaMs: 5 * 1000,
+  /** Un bloqueo de construcción con más antigüedad se da por muerto y se relanza (el tiempo máximo de Cloud Build es 5 min). */
+  bloqueoVencidoMs: 12 * 60 * 1000,
+  /** Tope duro de construcciones del sitio por día de La Paz: desde la 61 no se lanza (el trabajo espera al día siguiente). */
+  construccionesPorDia: 60,
+  /** Un trabajo de reconstrucción sin completar más allá de esto dispara la alerta `sitio` (D7). */
+  alertaTrabajoMs: 10 * 60 * 1000,
   /** Espera antes de borrar las versiones PÚBLICAS de un logo reemplazado o quitado: el sitio ya construido aún puede estar usándolas. */
   esperaBorradoLogoMs: 24 * 60 * 60 * 1000,
 } as const;
@@ -51,3 +59,6 @@ export function topesDelPlan(plan: unknown): { readonly productos: number; reado
 export function cupoPortadaDelPlan(plan: unknown): number {
   return PLANES[esPlanId(plan) ? plan : 'base'].fotosPortada;
 }
+
+/** Día calendario de La Paz (UTC-4, sin horario de verano) de un instante, `AAAA-MM-DD`. */
+export const diaLaPaz = (ms: number): string => new Date(ms - 4 * 3_600_000).toISOString().slice(0, 10);

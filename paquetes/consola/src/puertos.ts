@@ -186,3 +186,28 @@ export interface DisparadorSitio {
   /** Dispara la reconstrucción del sitio estático del tenant. */
   reconstruir(tenantId: string, version: number, motivo: 'publicacion' | 'diaria'): Promise<void>;
 }
+
+/** Tarea de Cloud Tasks que despierta la construcción de un sitio a la hora agendada. */
+export interface TareaSitio {
+  /** Nombre idempotente por (tenant, `para`): encolar dos veces la misma tarea no la duplica. Solo `[A-Za-z0-9_-]`. */
+  readonly nombre: string;
+  readonly tenantId: string;
+  /** Hora agendada (ms): la tarea se ejecuta entonces. */
+  readonly para: number;
+}
+
+/** Cola de tareas (Cloud Tasks). Una tarea con un nombre ya usado se ignora sin error. */
+export interface ColaSitio {
+  encolar(tarea: TareaSitio): Promise<void>;
+}
+
+/** Resultado de lanzar una construcción: su id y la imagen del constructor con la que corre. */
+export interface ConstruccionLanzada {
+  readonly buildId: string;
+  readonly imagen: string;
+}
+
+/** Lanza la construcción del sitio fuera de las funciones (Cloud Build). Sin este puerto el modo es `github`: nada cambia. */
+export interface ConstructorSitio {
+  lanzar(tenantId: string, trabajoId: string): Promise<ConstruccionLanzada>;
+}

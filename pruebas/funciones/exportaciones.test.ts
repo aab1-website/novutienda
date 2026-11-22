@@ -10,6 +10,8 @@ import { registroPlataforma } from '../../plataforma/registro.js';
 import { IMPLEMENTACIONES, tablasCompuestas } from './tablas.js';
 
 const codigo = readFileSync(fileURLToPath(new URL('../../plataforma/funciones/servidor/index.ts', import.meta.url)), 'utf8');
+const entornoFuente = readFileSync(fileURLToPath(new URL('../../plataforma/funciones/servidor/entorno.ts', import.meta.url)), 'utf8');
+const funcionesSitio = readFileSync(fileURLToPath(new URL('../../plataforma/funciones/servidor/funciones-sitio.ts', import.meta.url)), 'utf8');
 const exportadas = (disparador: string): string[] => [...codigo.matchAll(new RegExp(`export const (\\w+) = ${disparador}\\(`, 'g'))].map((x) => x[1] as string).sort();
 const ordenados = (l: readonly string[]): string[] => [...new Set(l)].sort();
 
@@ -30,6 +32,25 @@ describe('exportaciones de las Functions frente al registro', () => {
     expect(exportadas('onRequest')).toEqual(['api']);
     expect(exportadas('onDocumentCreated')).toEqual(['eventos']);
     expect(exportadas('onObjectFinalized')).toEqual(['subidaFinalizada']);
+  });
+
+  it('la construcción del sitio (DR-CB) NO se exporta todavía desde index.ts: exportarla activa Cloud Tasks y rompe el despliegue sin permisos', () => {
+    expect(exportadas('onTaskDispatched')).toEqual([]);
+    expect(exportadas('onMessagePublished')).toEqual([]);
+    expect(codigo).not.toMatch(/^export[^\n]*(construirSitio|avisoConstruccionSitio)/m);
+    // Las funciones existen, listas para P5, con cuenta propia, invoker privado y tema cloud-builds.
+    expect(funcionesSitio).toMatch(/export const construirSitio = onTaskDispatched\(/);
+    expect(funcionesSitio).toContain("invoker: 'private'");
+    expect(funcionesSitio).toContain("topic: 'cloud-builds'");
+    expect(funcionesSitio.match(/serviceAccount: PARAMETROS\.cuentaFnConstructor/g)).toHaveLength(2);
+    expect(entornoFuente).toContain("export const FUNCION_TAREA_SITIO = 'construirSitio'");
+  });
+
+  it('el temporizador, con la cuenta general, no lanza builds: delega en la cola de construirSitio', () => {
+    expect(codigo).toContain('construccionDeLaInstancia(e, true)');
+    expect(entornoFuente).toContain('encolarLanzamiento:');
+    expect(entornoFuente).not.toContain('ConstruccionEncolada');
+    expect(codigo).not.toContain('ConstruccionEncolada');
   });
 
   it('no hay otras exportaciones de disparadores', () => {

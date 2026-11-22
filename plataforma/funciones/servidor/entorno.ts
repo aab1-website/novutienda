@@ -4,9 +4,10 @@ import { getApps, initializeApp } from 'firebase-admin/app';
 import { getAppCheck } from 'firebase-admin/app-check';
 import { getAuth, type Auth } from 'firebase-admin/auth';
 import { getFirestore, type Firestore } from 'firebase-admin/firestore';
+import { getFunctions } from 'firebase-admin/functions';
 import { logger } from 'firebase-functions';
 import { getStorage } from 'firebase-admin/storage';
-import type { CatalogoPuerto, DisparadorSitio, ProcesadorMedios } from '@novutienda/consola';
+import type { CatalogoPuerto, ColaSitio, DisparadorSitio, ProcesadorMedios } from '@novutienda/consola';
 import { crearDisparoGithub, repoValido, tokenValido, type DisparoGithub } from '../../conectores/github/index.js';
 import { crearLectorDominios, type LectorDominios } from '../../coordinador/dominios.js';
 import { crearLectoresModulos, type LectorEstadoModulos, type LectorModulos } from '../../coordinador/modulos-activos.js';
@@ -14,7 +15,7 @@ import { crearLectorComercial, type LectorComercial } from '../../coordinador/co
 import { crearLectorHojas } from '../../coordinador/lector-hojas.js';
 import { crearCatalogoConsola, crearLogoDelNegocio, almacenCotizacionesDesde, catalogoParaPos, inventariosParaPos, type LogoDelNegocio } from '../../coordinador/index.js';
 import {
-  appCheckReal, appCheckSimulado, crearAlmacenMedios, esEntornoDePruebas, crearAuthMin, crearBaseDatos, crearConsultaSubidas, crearEjecutorRecibos, crearGuardarContacto, crearIndiceInvitaciones, crearLimiteTasa,
+  appCheckReal, appCheckSimulado, crearAlmacenMedios, crearColaSitio, crearConstructorSitio, crearConsultaBuild, crearLectorSitios, esEntornoDePruebas, crearAuthMin, crearBaseDatos, crearConsultaSubidas, crearEjecutorRecibos, crearGuardarContacto, crearIndiceInvitaciones, crearLimiteTasa,
   crearLecturaRecibos, crearLectorDisponibilidad, crearProcesadorMedios, recaptchaEnterprise, recaptchaSimulado,
   type BaseDatosFirestore, type Bucket,
 } from '../../conectores/firebase/index.js';
@@ -24,7 +25,8 @@ import type { LectorHojas } from '@novutienda/inventarios';
 import type { DepsPos } from '@novutienda/pos';
 import type { EjecutorRecibos, LecturaRecibos } from '@novutienda/recibos';
 import type { GuardarContacto, LectorDisponibilidad, VerificadorAppCheck, VerificadorRecaptcha } from '@novutienda/website';
-import { exigirBucketPublico, PARAMETROS, SECRETOS } from './config.js';
+import { exigirBucketPublico, exigirConfiguracionConstructor, modoConstructorSitio, PARAMETROS, REGION, SECRETOS } from './config.js';
+import { almacenConstruccionFirestore, type DepsTareaConstruccion } from './construccion-sitio.js';
 import { crearDisparadorSitio } from './disparador-sitio.js';
 import { emisorEnlaceEmulador, emisorEnlaceFirmado, type EmisorEnlacePdf } from './enlace-pdf.js';
 import { MAXIMO_BUSQUEDAS_SERIE_POR_HORA, MAXIMO_BUSQUEDAS_SERIE_POR_MINUTO } from './llamadas/inventarios.js';
@@ -101,6 +103,8 @@ export interface OpcionesEntorno {
   readonly mediosBaseUrl?: string;
   /** Disparo de GitHub (doble en pruebas); ausente = sin aviso. */
   readonly disparoSitio?: DisparoGithub;
+  /** Cola de tareas del sitio (modo `google`); ausente = el disparador solo escribe `prog-*`, como siempre. */
+  readonly colaSitio?: ColaSitio;
   /** Habilita el plan `pruebas` (`PLAN_PRUEBAS_HABILITADO=si`); ausente o `false`: un tenant con ese plan es inválido. */
   readonly planPruebasHabilitado?: boolean;
 }
@@ -127,7 +131,7 @@ export function crearEntorno(o: OpcionesEntorno): Entorno {
     almacenMedios: crearAlmacenMedios(o.bucket, o.bucketPublico ?? o.bucket),
     procesador: o.procesador ?? crearProcesadorMedios(o.bucket, env),
     consultaSubidas: crearConsultaSubidas(o.firestore),
-    disparadorSitio: crearDisparadorSitio(o.firestore, ahora),
+    disparadorSitio: crearDisparadorSitio(o.firestore, ahora, o.colaSitio),
     ...(o.disparoSitio === undefined ? {} : { disparoSitio: o.disparoSitio }),
     emisorEnlacePdf: o.emisorEnlacePdf ?? (emulador ? emisorEnlaceEmulador(o.bucket) : emisorEnlaceFirmado(o.bucket, ahora)),
     lectorHojas: crearLectorHojas(),
@@ -187,6 +191,77 @@ export function disparoSitioDeLaInstancia(): DisparoGithub | undefined {
   return disparoUnico.valor;
 }
 
+/** Nombre de la función que atiende las tareas de construcción (su cola de Cloud Tasks lleva el mismo nombre). */
+export const FUNCION_TAREA_SITIO = 'construirSitio';
+
+/** Modo de esta instancia: `google` solo con el valor exacto del parámetro. */
+export const constructorSitioEsGoogle = (): boolean => modoConstructorSitio(PARAMETROS.constructorSitioModo.value()) === 'google';
+
+const proyectoDeLaInstancia = (): string => process.env['GCLOUD_PROJECT'] ?? process.env['GOOGLE_CLOUD_PROJECT'] ?? '';
+
+const tokenDeLaInstancia = async (): Promise<string> => {
+  const credencial = getApps()[0]?.options.credential;
+  if (credencial === undefined) throw new Error('sin credenciales');
+  return (await credencial.getAccessToken()).access_token;
+};
+
+let lectorSitios: ReturnType<typeof crearLectorSitios> | undefined;
+
+/**
+ * Sitios por tenant (`SITIOS_TENANT`), leídos de Secret Manager en tiempo de ejecución con caché por instancia. Solo en modo `google`:
+ * no es un `defineSecret`, así el despliegue en modo `github` no exige que el secreto exista.
+ */
+export function sitiosDeLaInstancia(): ReturnType<ReturnType<typeof crearLectorSitios>> {
+  lectorSitios ??= crearLectorSitios({ proyecto: proyectoDeLaInstancia(), nombre: 'SITIOS_TENANT', tokenAcceso: tokenDeLaInstancia });
+  return lectorSitios();
+}
+
+/**
+ * Nombre de la tarea que encola la red de seguridad. Lleva un tramo de 5 minutos: Cloud Tasks no deja reusar un nombre durante ~60 minutos y
+ * `crearColaSitio` ignora «ya existe», así que sin el tramo un reintento de la red dentro de esa hora quedaría mudo. Dentro del mismo tramo
+ * sigue siendo idempotente.
+ */
+export const nombreTareaRed = (tenantId: string, trabajoId: string, ahora: number): string =>
+  `sitio-${tenantId}-red-${trabajoId}-${String(Math.floor(ahora / 300_000))}`.replace(/[^A-Za-z0-9_-]/g, '_');
+
+/** Consulta `builds.get` con el token de esta instancia (la de `avisoConstruccionSitio`, con cuenta propia). */
+export const consultaBuildDeLaInstancia = (): ReturnType<typeof crearConsultaBuild> =>
+  crearConsultaBuild({ proyecto: proyectoDeLaInstancia(), tokenAcceso: tokenDeLaInstancia });
+
+const colaSitioReal = (): ColaSitio => crearColaSitio(getFunctions().taskQueue(`locations/${REGION}/functions/${FUNCION_TAREA_SITIO}`));
+
+/**
+ * Dependencias de la construcción en Cloud Build, o `undefined` en modo `github` (todo queda como antes y no se lee ningún secreto).
+ * En modo `google` falla cerrado si falta algún parámetro. Tampoco se llama a la nube aquí: el token se pide al lanzar.
+ */
+export function construccionDeLaInstancia(e: Entorno, delegar = false): DepsTareaConstruccion | undefined {
+  if (!constructorSitioEsGoogle()) return undefined;
+  const c = exigirConfiguracionConstructor({
+    proyecto: proyectoDeLaInstancia(),
+    imagen: PARAMETROS.constructorSitioImagen.value(), cuenta: PARAMETROS.constructorSitioCuenta.value(), cuentaFn: PARAMETROS.cuentaFnConstructor.value(),
+    maquina: PARAMETROS.constructorSitioMaquina.value(), appEnv: PARAMETROS.constructorSitioAppEnv.value(), apiKey: PARAMETROS.viteFirebaseApiKey.value(),
+    appId: PARAMETROS.viteFirebaseAppId.value(), recaptcha: PARAMETROS.viteRecaptchaSitio.value(),
+    panel: PARAMETROS.sitioPanelId.value(), mediosBaseUrl: PARAMETROS.mediosBaseUrl.value(),
+  });
+  const real = crearConstructorSitio({
+    proyecto: c.proyecto, imagen: c.imagen, cuentaServicio: c.cuentaServicio, entorno: c.entorno, sitios: sitiosDeLaInstancia,
+    ...(c.maquina === undefined ? {} : { maquina: c.maquina }),
+    tokenAcceso: tokenDeLaInstancia,
+  });
+  return {
+    almacen: almacenConstruccionFirestore(e.firestore),
+    reloj: { ahora: e.ahora },
+    imagenActual: c.imagen,
+    db: e.db,
+    disparador: e.disparadorSitio,
+    // Modo «delegar» (temporizador, cuenta general): no se lanza ningún build; se encola la tarea de `construirSitio`, que lanza con la cuenta
+    // propia del constructor. Sin `constructorSitio`, `lanzarSiguiente` no toma el bloqueo.
+    ...(delegar
+      ? { encolarLanzamiento: (t: string, trabajoId: string) => colaSitioReal().encolar({ nombre: nombreTareaRed(t, trabajoId, e.ahora()), tenantId: t, para: e.ahora() }) }
+      : { constructorSitio: real }),
+  };
+}
+
 let unico: Entorno | undefined;
 
 /** El plan `pruebas` solo se habilita con el valor exacto `si` (sin mayúsculas, espacios ni sinónimos). */
@@ -209,7 +284,8 @@ export function entorno(): Entorno {
     const nombrePublico = exigirBucketPublico(PARAMETROS.mediosBucketPublico.value(), bucket.name, esEntornoDePruebas(process.env));
     const bucketPublico = nombrePublico === '' ? bucket : almacenamiento.bucket(nombrePublico);
     const procesador = crearProcesadorMedios(bucket, env, esEntornoDePruebas(process.env) ? undefined : logger);
-    unico = crearEntorno({ firestore: getFirestore(), auth: getAuth(), bucket, bucketPublico, env, procesador, mediosBaseUrl: PARAMETROS.mediosBaseUrl.value(), planPruebasHabilitado: planPruebasHabilitado(PARAMETROS.planPruebasHabilitado.value()) });
+    unico = crearEntorno({ firestore: getFirestore(), auth: getAuth(), bucket, bucketPublico, env, procesador, mediosBaseUrl: PARAMETROS.mediosBaseUrl.value(), planPruebasHabilitado: planPruebasHabilitado(PARAMETROS.planPruebasHabilitado.value()),
+      ...(constructorSitioEsGoogle() ? { colaSitio: colaSitioReal() } : {}) });
   }
   return unico;
 }

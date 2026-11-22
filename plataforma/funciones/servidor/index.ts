@@ -16,7 +16,7 @@ import { tablaDeCallable, horarioDe } from '../../coordinador/encendido.js';
 import { crearLimiteTasa, esEntornoDePruebas } from '../../conectores/firebase/index.js';
 import { entregarEvento } from './bus.js';
 import { enteroDe, exigirConfiguracionDeServicio, PARAMETROS, REGION, SECRETOS } from './config.js';
-import { disparoSitioDeLaInstancia, entorno, verificadoresSitio } from './entorno.js';
+import { construccionDeLaInstancia, disparoSitioDeLaInstancia, entorno, verificadoresSitio } from './entorno.js';
 import { ipDelCliente } from './origen.js';
 import { enrutar, type ConfigRouter } from './http/router.js';
 import type { PeticionHttp } from './http/tipos.js';
@@ -173,7 +173,21 @@ export const limpiezaSubidas = onSchedule({ ...horarioDe('limpiezaSubidas'), mem
 });
 
 // El token de GitHub (DS-3) se vincula SOLO a esta función; sin él (o sin `GITHUB_REPO_SITIO`) el disparo queda deshabilitado.
+// En modo `google` la red de seguridad no lanza builds (corre con la cuenta general): deja encolada la tarea de `construirSitio`, que lanza
+// con la cuenta propia del constructor (`construccionDeLaInstancia(e, true)`); en `github` todo igual que antes.
 export const temporizadorSitio = onSchedule({ ...horarioDe('temporizadorSitio'), secrets: [SECRETOS.disparoSitio] }, async () => {
+  const e = entorno();
+  const construccion = construccionDeLaInstancia(e, true);
+  if (construccion !== undefined) {
+    await ejecutarTemporizadorSitio(e, construccion);
+    return;
+  }
   const disparoSitio = disparoSitioDeLaInstancia();
-  await ejecutarTemporizadorSitio(disparoSitio === undefined ? entorno() : { ...entorno(), disparoSitio });
+  await ejecutarTemporizadorSitio(disparoSitio === undefined ? e : { ...e, disparoSitio });
 });
+
+// ---- Construcción del sitio en Cloud Build (DR-CB) ----------------------------------------------------------------------------------------
+// `construirSitio` (Cloud Tasks) y `avisoConstruccionSitio` (tema `cloud-builds`) están definidas en `funciones-sitio.ts` y NO se exportan
+// desde aquí todavía: exportarlas hace que el despliegue active Cloud Tasks y cree la cola, su IAM y la suscripción al tema, y eso necesita
+// la API activada y permisos que se dan en P5 con autorización de Andres. En P5 se agrega:
+//   export { avisoConstruccionSitio, construirSitio } from './funciones-sitio.js';

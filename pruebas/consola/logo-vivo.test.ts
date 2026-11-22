@@ -120,7 +120,7 @@ describe('logo del negocio en lo publicado (logo vivo)', () => {
       disparador.eventos.length = 0;
       const antes = cambios();
       await subirLogo(png(1));
-      expect(disparador.eventos).toEqual([`programar:${String(reloj.ms + 600_000)}`]);
+      expect(disparador.eventos).toEqual([`programar:${String(reloj.ms + 60_000)}`]);
       expect(cambios()).toBe(antes);
       expect(sitio()?.['logo']).toBeDefined();
     });

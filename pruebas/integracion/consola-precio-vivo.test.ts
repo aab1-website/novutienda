@@ -37,7 +37,7 @@ beforeEach(async () => {
     { db: e.db, catalogo: e.catalogoConsola, reloj: { ahora: () => e.reloj.ahora }, disparador: e.disparador },
     { tenantId: T, actor: adm },
   );
-  expect(e.disparador.programadas).toHaveLength(1); // la publicación agenda su reconstrucción (ventana de 10 minutos)
+  expect(e.disparador.programadas).toHaveLength(1); // la publicación agenda su reconstrucción (ventana de 60 s)
   e.reloj.ahora += 60_000; // los cambios posteriores ocurren después del corte de la publicación
 });
 
