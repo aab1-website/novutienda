@@ -136,6 +136,8 @@ describe('V-03: la aprobación llega sola', () => {
     expect(screen.queryByLabelText('Aprobación a usar')).toBeNull();
     await vi.advanceTimersByTimeAsync(4000);
     expect(await screen.findByLabelText('Aprobación a usar')).toBeTruthy();
+    expect(await screen.findByText('Aprobación del supervisor lista')).toBeTruthy();
+    expect((screen.getByLabelText('Aprobación a usar') as HTMLSelectElement).value).not.toBe('');
     // Resuelta la solicitud, ya no se consulta: ninguna llamada nueva en 20 s.
     await vi.advanceTimersByTimeAsync(5000);
     const antes = e.api.llamadas.filter((l) => l.nombre === 'listarAprobaciones').length;

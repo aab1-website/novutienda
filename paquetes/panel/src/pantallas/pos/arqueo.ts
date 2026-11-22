@@ -7,6 +7,24 @@ export const TOTALES_VACIOS: TotalesMoneda = { efectivo: 0, qr: 0, transferencia
 /** Efectivo esperado: apertura + efectivo neto + ingresos − egresos (QR, transferencia y crédito nunca suman). */
 export const efectivoEsperado = (apertura: number, t: TotalesMoneda): number => apertura + t.efectivo + t.ingresos - t.egresos;
 
+/** Líneas del efectivo esperado, para mostrarlas: su suma es siempre `efectivoEsperado` (el cobrado se reconstruye como neto + devuelto). */
+export interface DesgloseEfectivo {
+  readonly apertura: number;
+  /** Efectivo cobrado en el turno, antes de descontar lo devuelto. */
+  readonly cobrado: number;
+  /** Efectivo devuelto por anulaciones (positivo; se resta). */
+  readonly devuelto: number;
+  readonly ingresos: number;
+  readonly egresos: number;
+  readonly esperado: number;
+}
+
+/** `devueltoEfectivo` es lo reembolsado en efectivo (del resumen del turno); `totales.efectivo` ya viene neto de eso. */
+export function desgloseEfectivo(apertura: number, t: TotalesMoneda, devueltoEfectivo: number): DesgloseEfectivo {
+  const devuelto = Math.max(0, devueltoEfectivo);
+  return { apertura, cobrado: t.efectivo + devuelto, devuelto, ingresos: t.ingresos, egresos: t.egresos, esperado: efectivoEsperado(apertura, t) };
+}
+
 /**
  * Códigos en orden estable. Con `orden` (las monedas de caja declaradas por el comercio) primero van esas, en ese orden;
  * sin él, o para las que no estén en él, orden alfabético por código.

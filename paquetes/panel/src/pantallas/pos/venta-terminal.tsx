@@ -83,6 +83,8 @@ function TerminalLista({ turno, alCambiar, mercados, carritoPedido, alUsarPedido
       ventas: await api.llamar('listarVentas', { turnoId: turno.turnoId }),
     }),
     [turno.turnoId],
+    undefined,
+    { alVolver: true },
   );
   // Los carritos viven en el servidor: sobreviven a recargar la página, a cambiar de usuario y a cerrar la computadora.
   const c = useCarritoServidor(turno.turnoId, mercados, carritoPedido);
@@ -177,7 +179,21 @@ function CarritoActivo({ carritoId, version, borrador, c, mercados, datos, visto
   const cobrando = useAccion();
   const solicitadaId = borrador.solicitadaId;
   const setSolicitadaId = (v: string | null): void => cambiar({ solicitadaId: v });
-  const aprobs = useCarga(async () => (await api.llamar('listarAprobaciones', {})).filter((a) => a.aprobacionId === solicitadaId || (aprobacionId !== '' && a.aprobacionId === aprobacionId)), [solicitadaId, aprobacionId, paso]);
+  // La aprobación elegida ya está en la lista que se carga: elegirla (también sola) no vuelve a consultar.
+  const elegidaRef = useRef(aprobacionId);
+  elegidaRef.current = aprobacionId;
+  const aprobs = useCarga(async () => (await api.llamar('listarAprobaciones', {})).filter((a) => a.aprobacionId === solicitadaId || (elegidaRef.current !== '' && a.aprobacionId === elegidaRef.current)), [solicitadaId, paso], undefined, { alVolver: true });
+  // Con UNA sola aprobación válida se elige sola (una vez: si la persona vuelve a «Elija una aprobación», se respeta).
+  // Con varias, el selector queda en «Elija una aprobación».
+  const aprobadasVigentes = useRef<readonly AprobacionPos[]>([]);
+  const autoElegidas = useRef(new Set<string>());
+  useEffect(() => {
+    const l = aprobadasVigentes.current;
+    const unica = l.length === 1 ? l[0] : undefined;
+    if (unica === undefined || aprobacionId !== '' || autoElegidas.current.has(unica.aprobacionId)) return;
+    autoElegidas.current.add(unica.aprobacionId);
+    setAprobacionId(unica.aprobacionId);
+  });
   // Una aprobación sirve solo al carrito para el que se pidió: aquí solo se ven las de este carrito.
   // Solo se espera la solicitud que esta pantalla acaba de pedir; vive en el carrito y se va con él.
   const espera = useEsperaAprobacion(solicitadaId, aprobs.recargar, 'descuento');
@@ -262,6 +278,7 @@ function CarritoActivo({ carritoId, version, borrador, c, mercados, datos, visto
   const excede = monto > 0 && monto * 10000 > tope * subtotal;
   const total = subtotal - (descInvalido ? 0 : monto);
   const aprobadas: AprobacionPos[] = (aprobs.datos ?? []).filter((a) => a.tipo === 'descuento' && a.estado === 'aprobada' && a.moneda === moneda && a.monto >= monto);
+  aprobadasVigentes.current = aprobadas;
   const pendiente = (aprobs.datos ?? []).find((a) => a.tipo === 'descuento' && a.estado === 'pendiente' && a.moneda === moneda && a.monto >= monto);
   const rechazada = solicitadaId === null ? undefined : (aprobs.datos ?? []).find((a) => a.aprobacionId === solicitadaId && a.estado === 'rechazada');
   const falta = excede && aprobacionId === '';
@@ -395,12 +412,15 @@ function CarritoActivo({ carritoId, version, borrador, c, mercados, datos, visto
             <div class="caja-aviso">
               <p>El descuento supera su tope: necesita la aprobación de un supervisor.</p>
               {aprobadas.length > 0 ? (
+                <>
+                {aprobadas.some((a) => a.aprobacionId === aprobacionId) && <Alerta tipo="ok">Aprobación del supervisor lista</Alerta>}
                 <Selector
                   etiqueta="Aprobación a usar"
                   valor={aprobacionId}
                   onCambio={setAprobacionId}
                   opciones={[{ valor: '', texto: 'Elija una aprobación' }, ...aprobadas.map((a) => ({ valor: a.aprobacionId, texto: `Hasta ${formatearMonto(a.monto, a.moneda)} · ${a.motivo}` }))]}
                 />
+                </>
               ) : pendiente ? (
                 espera.consultando && pendiente.aprobacionId === solicitadaId ? (
                 <Alerta tipo="info">Esperando la aprobación del supervisor: se consulta sola cada pocos segundos.</Alerta>

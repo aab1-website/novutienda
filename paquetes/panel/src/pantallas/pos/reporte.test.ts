@@ -3,7 +3,7 @@ import { h } from 'preact';
 import { act, cleanup, render, screen, waitFor, within } from '@testing-library/preact';
 import { useState } from 'preact/hooks';
 import { userEvent } from '@testing-library/user-event';
-import { afterEach, describe, expect, it } from 'vitest';
+import { afterEach, describe, expect, it, vi } from 'vitest';
 import { crearEntorno, uuid, type Entorno } from '../../ayuda-pruebas.js';
 import { usePaginado } from './paginado.js';
 import { PantallaVenta } from './venta.js';
@@ -142,5 +142,26 @@ describe('«Mi reporte» de sup y adm: solo lo propio', () => {
     expect(lo('misTurnos').every((x) => typeof x.cajeroUid === 'string')).toBe(true);
     // El turno abierto es del cajero: la supervisora no lo ve como suyo.
     expect(await screen.findByText(/No tiene un turno abierto/)).toBeTruthy();
+  });
+});
+
+describe('«Mi reporte»: imprimir', () => {
+  it('imprime solo con el nombre del negocio ya en la cabecera', async () => {
+    const e = crearEntorno('caj');
+    await abrir(e);
+    await vender(e, 1);
+    let nombreAlImprimir: string | null | undefined;
+    const imprimir = vi.spyOn(window, 'print').mockImplementation(() => {
+      nombreAlImprimir = document.querySelector('.imprimible .cabecera-impresion h2')?.textContent;
+    });
+    const nombre = (await e.api.llamar('leerConfigPos', {})).negocio.nombre;
+    expect(nombre).not.toBe('');
+    ver(e, 'reporte');
+    await screen.findByRole('heading', { name: 'Turno actual' });
+    const u = userEvent.setup();
+    await u.click(await screen.findByRole('button', { name: 'Imprimir' }));
+    await waitFor(() => expect(imprimir).toHaveBeenCalledTimes(1));
+    expect(nombreAlImprimir).toBe(nombre);
+    imprimir.mockRestore();
   });
 });
