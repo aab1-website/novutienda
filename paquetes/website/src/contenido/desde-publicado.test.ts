@@ -421,3 +421,24 @@ describe('causas saneadas del error', () => {
     expect(JSON.stringify(capturar(r).causas)).not.toContain('Producto p-uno');
   });
 });
+
+describe('campos opcionales en el contenido publicado', () => {
+  it('sin institucional ni características, la salida no trae las claves', () => {
+    const c = contenidoDesdePublicado(respuesta(), negocioBase(), entorno);
+    expect('institucional' in c).toBe(false);
+    expect(c.productos.some((p) => 'caracteristicas' in p)).toBe(false);
+  });
+  it('copia institucional del negocio y valida sus límites', () => {
+    const inst = { mision: 'm', contador: { valor: { texto: '+5,000', confirmada: true }, texto: 'clientes satisfechos' } };
+    expect(contenidoDesdePublicado(respuesta(), { ...negocioBase(), institucional: inst }, entorno).institucional).toEqual(inst);
+    expect(() => contenidoDesdePublicado(respuesta(), { ...negocioBase(), institucional: { vision: '' } }, entorno)).toThrow();
+  });
+  it('características: recorta, descarta vacías y largas con aviso, topa en 8; sin ninguna, no hay clave', () => {
+    const avisos: string[] = [];
+    const lista = ['  uno ', '', 'x'.repeat(161), 'dos', 'tres', 'cuatro', 'cinco', 'seis', 'siete', 'ocho', 'nueve'];
+    const c = contenidoDesdePublicado(respuesta({ producto__tres: prod('p-tres', { caracteristicas: lista }), producto__cuatro: prod('p-cuatro', { caracteristicas: ['', ' '] }) }), negocioBase(), entorno, avisos);
+    expect(c.productos.find((p) => p.id === 'p-tres')!.caracteristicas).toEqual(['uno', 'dos', 'tres', 'cuatro', 'cinco', 'seis', 'siete', 'ocho']);
+    expect('caracteristicas' in c.productos.find((p) => p.id === 'p-cuatro')!).toBe(false);
+    expect(avisos.filter((a) => a.includes('caracteristicas')).length).toBeGreaterThanOrEqual(4);
+  });
+});

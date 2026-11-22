@@ -1,5 +1,5 @@
 /** Consultas puras sobre el contenido: las usan las páginas (build) y las islas (navegador). */
-import type { Afirmacion, Categoria, Contenido, Producto, Seccion } from './tipos.js';
+import type { Afirmacion, Categoria, Contenido, MensajeChat, Producto, Seccion } from './tipos.js';
 
 export const productoPorSlug = (ps: readonly Producto[], slug: string): Producto | undefined => ps.find((p) => p.slug === slug);
 
@@ -62,6 +62,19 @@ export function filtrarProductos<T extends { readonly marca: string }>(
 
 /** Una afirmación sin confirmar no se publica (solo se muestra en una vista previa explícita). */
 export const afirmacionVisible = (a: Afirmacion, mostrarPendientes: boolean): boolean => a.confirmada || mostrarPendientes;
+
+/** Qué piezas institucionales se pintan: solo las que tienen contenido (y el contador solo confirmado). Vacío en todo = no hay sección. */
+export function institucionalVisible(i: Contenido['institucional']): {
+  readonly mision: string | null; readonly vision: string | null;
+  readonly contador: { readonly valor: string; readonly texto: string } | null;
+  readonly chat: readonly MensajeChat[] | null; readonly hay: boolean;
+} {
+  const mision = i?.mision?.trim() ? i.mision : null;
+  const vision = i?.vision?.trim() ? i.vision : null;
+  const contador = i?.contador !== undefined && i.contador.valor.confirmada ? { valor: i.contador.valor.texto, texto: i.contador.texto } : null;
+  const chat = i?.chat !== undefined && i.chat.mensajes.length > 0 ? i.chat.mensajes : null;
+  return { mision, vision, contador, chat, hay: mision !== null || vision !== null || contador !== null || chat !== null };
+}
 
 export function textoModelos(n: number): string {
   return n === 1 ? '1 modelo disponible' : `${n} modelos disponibles`;

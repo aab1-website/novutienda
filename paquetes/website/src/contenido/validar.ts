@@ -6,7 +6,8 @@
 import { LARGO_MAXIMO_CATEGORIA, MAX_CATEGORIAS_SITIO, RE_SLUG_SITIO, TOPE_PRECIO_BASE, motivoReglaRedondeoInvalida } from '@novutienda/nucleo';
 import type { Mercado } from '@novutienda/nucleo';
 import {
-  IDS_ICONO, IDS_PLANTILLA, LIMITES_SITIO,
+  IDS_ICONO, IDS_PLANTILLA, LIMITES_INSTITUCIONAL, LIMITES_SITIO,
+  type Institucional,
   type Beneficio, type Bloque, type Contenido, type Foto, type IdIcono, type IdPlantilla, type Identidad, type NegocioSitio, type Portada, type Producto, type Seccion,
 } from './tipos.js';
 
@@ -298,6 +299,40 @@ function leerBloque(l: Lector, v: unknown, ruta: string, cfg: Contenido['config'
   }
 }
 
+/** `institucional` opcional: ausente = `undefined`. Cada campo es opcional; presente, se valida entero (nunca se descarta en silencio). */
+export function leerInstitucional(l: Lector, v: unknown, ruta: string): Institucional | undefined {
+  if (v === undefined) return undefined;
+  const o = l.obj(v, ruta);
+  const L = LIMITES_INSTITUCIONAL;
+  const r: { -readonly [K in keyof Institucional]?: Exclude<Institucional[K], undefined> } = {};
+  if (o['mision'] !== undefined) r.mision = l.texto(o['mision'], `${ruta}.mision`, 1, L.texto);
+  if (o['vision'] !== undefined) r.vision = l.texto(o['vision'], `${ruta}.vision`, 1, L.texto);
+  if (o['contador'] !== undefined) {
+    const c = l.obj(o['contador'], `${ruta}.contador`);
+    const valor = l.obj(c['valor'], `${ruta}.contador.valor`);
+    r.contador = {
+      valor: { texto: l.texto(valor['texto'], `${ruta}.contador.valor.texto`, 1, 20), confirmada: l.bool(valor['confirmada'], `${ruta}.contador.valor.confirmada`) },
+      texto: l.texto(c['texto'], `${ruta}.contador.texto`, 1, L.contador),
+    };
+  }
+  if (o['chat'] !== undefined) {
+    const c = l.obj(o['chat'], `${ruta}.chat`);
+    const mensajes = l.lista(c['mensajes'], `${ruta}.chat.mensajes`, L.mensajes, 1).map((m, i) => {
+      const x = l.obj(m, `${ruta}.chat.mensajes[${i}]`);
+      if (x['de'] !== 'cliente' && x['de'] !== 'comercio') l.falla(`${ruta}.chat.mensajes[${i}].de`, "debe ser 'cliente' o 'comercio'");
+      return { de: x['de'] === 'comercio' ? 'comercio' as const : 'cliente' as const, texto: l.texto(x['texto'], `${ruta}.chat.mensajes[${i}].texto`, 1, L.mensaje) };
+    });
+    r.chat = { mensajes };
+  }
+  return r;
+}
+
+/** `caracteristicas` opcional de un producto: lista de 1 a 8 viñetas de 1 a 160 caracteres (vacía = error; para no mostrarla se omite). */
+function leerCaracteristicas(l: Lector, v: unknown, ruta: string): readonly string[] | undefined {
+  if (v === undefined) return undefined;
+  return l.lista(v, ruta, LIMITES_INSTITUCIONAL.caracteristicas, 1).map((t, i) => l.texto(t, `${ruta}[${i}]`, 1, LIMITES_INSTITUCIONAL.caracteristica));
+}
+
 function leerPortada(l: Lector, v: unknown): Portada {
   const por = l.obj(v, 'portada');
   const tit = l.lista(por['titulo'], 'portada.titulo', 3, 3).map((t, i) => l.texto(t, `portada.titulo[${i}]`, 1, 60));
@@ -345,6 +380,8 @@ function conPrefijo<T>(l: Lector, f: () => T): T {
   for (let i = antes; i < l.errores.length; i += 1) l.errores[i] = `negocio.${l.errores[i]}`;
   return r;
 }
+
+const conInstitucional = (i: Institucional | undefined): { institucional?: Institucional } => (i === undefined ? {} : { institucional: i });
 
 export type ResultadoNegocio =
   | { readonly ok: true; readonly negocio: NegocioSitio }
@@ -408,6 +445,7 @@ export function validarNegocio(entrada: unknown, origenes: readonly (string | nu
     portada: conPrefijo(l, () => leerPortada(l, o['portada'])),
     beneficios: conPrefijo(l, () => leerBeneficios(l, o['beneficios'])),
     identidad: conPrefijo(l, () => leerIdentidad(l, o['identidad'], origenes)),
+    ...conInstitucional(conPrefijo(l, () => leerInstitucional(l, o['institucional'], 'institucional'))),
     textoPrivacidad: l.lista(o['textoPrivacidad'], 'negocio.textoPrivacidad', 40, 1).map((p, i) => l.texto(p, `negocio.textoPrivacidad[${i}]`, 1, 2000)),
     categorias,
     destacados,
@@ -485,6 +523,7 @@ export function validarContenido(entrada: unknown): ResultadoValidacion {
       }
       video = { url, poster, titulo: l.texto(v['titulo'], `${r}.video.titulo`, 1, 120) };
     }
+    const caracteristicas = leerCaracteristicas(l, o['caracteristicas'], `${r}.caracteristicas`);
     return {
       id, slug, categoria,
       nombre: l.texto(o['nombre'], `${r}.nombre`, 1, 120),
@@ -496,6 +535,7 @@ export function validarContenido(entrada: unknown): ResultadoValidacion {
       fotos: l.lista(o['fotos'], `${r}.fotos`, LIMITES_SITIO.fotosPorProducto).map((f, j) => leerFoto(l, f, `${r}.fotos[${j}]`, origenes)),
       video,
       destacado: o['destacado'] === true,
+      ...(caracteristicas === undefined ? {} : { caracteristicas }),
       seo: {
         ...(typeof seo['titulo'] === 'string' ? { titulo: l.texto(seo['titulo'], `${r}.seo.titulo`, 1, 70) } : {}),
         ...(typeof seo['descripcion'] === 'string' ? { descripcion: l.texto(seo['descripcion'], `${r}.seo.descripcion`, 1, 200) } : {}),
@@ -526,8 +566,9 @@ export function validarContenido(entrada: unknown): ResultadoValidacion {
     carruseles[id] = l.lista(car[id], `carruseles.${id}`, LIMITES_SITIO.carruselesPorPlantilla).map((f, i) => leerFoto(l, f, `carruseles.${id}[${i}]`, origenes, config.enlacesPermitidos));
   }
 
+  const institucional = leerInstitucional(l, raiz['institucional'], 'institucional');
   const publicacion = leerPublicacion(l, raiz['publicacion']);
 
   if (l.errores.length > 0) return { ok: false, errores: l.errores };
-  return { ok: true, contenido: { config, portada, beneficios, categorias, marcas, identidad, productos, secciones, carruseles, ...(publicacion !== undefined ? { publicacion } : {}) } };
+  return { ok: true, contenido: { config, portada, beneficios, categorias, marcas, identidad, productos, secciones, ...conInstitucional(institucional), carruseles, ...(publicacion !== undefined ? { publicacion } : {}) } };
 }

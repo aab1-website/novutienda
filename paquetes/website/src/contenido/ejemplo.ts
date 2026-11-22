@@ -21,6 +21,7 @@ const productos: readonly Producto[] = [
     ...base, id: 'ejemplo-tv-55', slug: 'televisor-ejemplo-55', nombre: 'Televisor de ejemplo 55"', categoria: 'televisores', marca: 'Aurora',
     descripcion: 'EJEMPLO. Televisor inventado para probar el sitio.\n\n## Características\n* Pantalla de **55 pulgadas**\n* - Resolución 4K\n\n### Conexiones\nAplicaciones de transmisión incluidas. <b>Texto literal</b>.',
     garantia: '12 meses (ejemplo)', precioUsd: { BO: 450, AR: 480 }, destacado: true,
+    caracteristicas: ['Pantalla de 55 pulgadas (ejemplo)', 'Resolución 4K', 'Aplicaciones de transmisión incluidas'],
     fotos: [foto(1, 'Televisor de ejemplo, vista frontal'), foto(2, 'Televisor de ejemplo, vista lateral'), foto(3, 'Televisor de ejemplo, conexiones')],
     video: { url: '/ejemplo/video-ejemplo.mp4', poster: '/ejemplo/producto-1.svg', titulo: 'Video de ejemplo del televisor' },
   },
@@ -146,6 +147,17 @@ export const contenidoEjemplo: Contenido = {
       { icono: 'camion', titulo: 'Entregas', texto: 'Ejemplo: coordinamos el envío contigo.' },
     ],
     sello: { texto: 'CALIDAD, GARANTÍA Y RESPALDO EN NUESTROS PRODUCTOS.', confirmada: false },
+  },
+  institucional: {
+    mision: 'EJEMPLO. Acercar tecnología confiable a cada hogar, con asesoramiento claro y entrega coordinada.',
+    vision: 'EJEMPLO. Ser la tienda de referencia en la región por la calidad de su atención.',
+    contador: { valor: { texto: '+1,000', confirmada: true }, texto: 'clientes satisfechos (ejemplo)' },
+    chat: {
+      mensajes: [
+        { de: 'cliente', texto: 'Hola, ¿tienen disponible el televisor de 55 pulgadas?' },
+        { de: 'comercio', texto: '¡Hola! Sí, lo tenemos. ¿Te lo enviamos o prefieres retirarlo?' },
+      ],
+    },
   },
   productos,
   secciones: [

@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { afirmacionVisible, buscarProductos, categoriaPorId, filtrarProductos, marcasDe, pendientesDeConfirmar, normalizar, productoPorSlug, productosDeCategoria, seccionesEnMenu, textoModelos } from './consultas.js';
+import { afirmacionVisible, institucionalVisible, buscarProductos, categoriaPorId, filtrarProductos, marcasDe, pendientesDeConfirmar, normalizar, productoPorSlug, productosDeCategoria, seccionesEnMenu, textoModelos } from './consultas.js';
 import { contenidoEjemplo as c } from './ejemplo.js';
 
 describe('consultas de contenido', () => {
@@ -45,5 +45,22 @@ describe('consultas de contenido', () => {
     const pendientes = [...c.beneficios.map((b) => b.titulo), c.identidad.cifra!.valor, c.identidad.sello].filter((a) => !a.confirmada);
     expect(pendientes.length).toBeGreaterThanOrEqual(3);
     expect([...pendientesDeConfirmar(c)].sort()).toEqual(pendientes.map((a) => a.texto).sort());
+  });
+});
+
+describe('institucionalVisible', () => {
+  it('sin nada o vacío no hay sección', () => {
+    expect(institucionalVisible(undefined).hay).toBe(false);
+    expect(institucionalVisible({}).hay).toBe(false);
+    expect(institucionalVisible({ mision: '  ' }).hay).toBe(false);
+  });
+  it('el contador sin confirmar no se muestra; confirmado, sí', () => {
+    expect(institucionalVisible({ contador: { valor: { texto: '+5,000', confirmada: false }, texto: 'clientes' } }).contador).toBeNull();
+    expect(institucionalVisible({ contador: { valor: { texto: '+5,000', confirmada: true }, texto: 'clientes' } }).contador).toEqual({ valor: '+5,000', texto: 'clientes' });
+  });
+  it('misión, visión y chat con contenido se muestran', () => {
+    const v = institucionalVisible({ mision: 'm', vision: 'v', chat: { mensajes: [{ de: 'cliente', texto: 'hola' }] } });
+    expect(v).toMatchObject({ mision: 'm', vision: 'v', hay: true });
+    expect(v.chat).toHaveLength(1);
   });
 });
