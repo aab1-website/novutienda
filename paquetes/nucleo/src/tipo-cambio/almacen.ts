@@ -39,6 +39,8 @@ function tenantValido(tenantId: string): string {
 
 /** `tenants/{t}/cotizaciones/{BO|AR}`. Lanza si el tenantId no es válido (no altera la ruta). */
 export const rutaCotizacion = (tenantId: string, mercado: IdMercado): string => `tenants/${tenantValido(tenantId)}/cotizaciones/${mercado}`;
+/** `tenants/{t}/cotizaciones/manual-{M}`: el tipo de cambio fijado a mano. Un id de mercado son dos mayúsculas, así que no choca con ninguno. */
+export const rutaCotizacionManual = (tenantId: string, mercado: IdMercado): string => `tenants/${tenantValido(tenantId)}/cotizaciones/manual-${mercado}`;
 export const rutaHistorial = (tenantId: string, mercado: IdMercado, id: string): string => `${rutaCotizacion(tenantId, mercado)}/historial/${id}`;
 
 /** Id del historial: determinista según mercado, fecha e instante de escritura. */
@@ -119,7 +121,7 @@ export class SaltoSinConfirmar extends Error {
   }
 }
 
-const esAutorizado = (a: ActorCarga): boolean =>
+export const esAutorizado = (a: ActorCarga): boolean =>
   (a.rol === 'adm' && a.proveedor === 'password') || (a.rol === 'propietario' && a.proveedor === 'google.com');
 
 /**
@@ -213,14 +215,36 @@ export function leerCotizacion(
 }
 
 /**
- * Lee la cotización que rige y le pone el estado. La antigüedad se cuenta en
+ * Lee la cotización que rige. Si hay un manual activo (`manual-{M}`), manda siempre y no vence:
+ * `fuente: 'manual'`, `estado: 'vigente'`. Si no, rige la referencia automática (`leerReferenciaDe`).
+ * Un manual mal formado se trata como ausente.
+ */
+export async function leerCotizacionDe(
+  almacen: AlmacenCotizaciones,
+  mercado: IdMercado,
+  ahoraMs: number,
+  opciones: OpcionesAlmacenDe & { readonly config?: Partial<ConfigCotizacion>; readonly esFeriado?: EsFeriado },
+): Promise<CopiaCotizacion<string>> {
+  const par = parDe(opciones.comercial, mercado);
+  if (par !== null) {
+    const m = await almacen.leer(rutaCotizacionManual(opciones.tenantId, mercado));
+    if (m && m['activo'] !== false && typeof m['valor'] === 'number' && Number.isFinite(m['valor']) && m['valor'] > 0
+      && esFechaIso(m['fecha']) && typeof m['cotizacionId'] === 'string' && m['cotizacionId'] !== '') {
+      return { cotizacionId: m['cotizacionId'], par, valor: m['valor'], fecha: m['fecha'], fuente: 'manual', estado: 'vigente' };
+    }
+  }
+  return leerReferenciaDe(almacen, mercado, ahoraMs, opciones);
+}
+
+/**
+ * Lee la cotización automática (la referencia) y le pone el estado. La antigüedad se cuenta en
  * días HÁBILES (lunes a viernes sin los feriados de `esFeriado`, calendario
  * inyectable; sin él solo se descuentan fines de semana). Lanza
  * `SinCotizacionUtilizable` si falta, está mal formada, tiene una fecha futura
  * que `futuroVigente`/`diasFuturoMax` no admiten o supera `diasLimite` días hábiles, o si el mercado no está
  * declarado o no tiene tipo de cambio. `opciones.comercial` es obligatorio.
  */
-export async function leerCotizacionDe(
+export async function leerReferenciaDe(
   almacen: AlmacenCotizaciones,
   mercado: IdMercado,
   ahoraMs: number,
