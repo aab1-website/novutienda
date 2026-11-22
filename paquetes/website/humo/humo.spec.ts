@@ -602,3 +602,98 @@ async function simularRecaptchaYAppCheck(page: Page): Promise<{ limitados: numbe
   });
   return cuenta;
 }
+
+test.describe('celular (375×812): grilla de 2 columnas, cabecera que se oculta y marcas en fila', () => {
+  test.use({ viewport: { width: 375, height: 812 } });
+  const preparar = async (page: Page, plantilla: string, tema: string, ruta: string): Promise<void> => {
+    await page.emulateMedia({ reducedMotion: 'reduce' });
+    await simularApi(page);
+    await decidirConsentimiento(page, false, false);
+    await page.goto(ruta);
+    await islasListas(page);
+    await page.evaluate(([p, t]) => {
+      document.documentElement.dataset['plantilla'] = p;
+      document.documentElement.dataset['tema'] = t;
+    }, [plantilla, tema] as const);
+  };
+
+  for (const plantilla of PLANTILLAS) {
+    test(`${plantilla}: /productos muestra al menos 5 tarjetas con su descripción tras ocultar la cabecera, sin desborde`, async ({ page }) => {
+      await preparar(page, plantilla, 'claro', '/productos');
+      await page.evaluate(() => window.scrollTo(0, document.querySelector('.grilla-productos')!.getBoundingClientRect().top + window.scrollY - 4));
+      await expect(page.locator('.cabecera')).toHaveClass(/cabecera-oculta/);
+      const columnas = await page.locator('.grilla-productos').evaluate((e) => getComputedStyle(e).gridTemplateColumns.split(' ').length);
+      expect(columnas).toBe(2);
+      const visibles = await page.locator('.tarjeta').evaluateAll((els, h) => els.filter((e) => {
+        const d = e.querySelector('.tarjeta-descripcion')!.getBoundingClientRect();
+        return d.top >= 0 && d.bottom <= h;
+      }).length, 812);
+      expect(visibles).toBeGreaterThanOrEqual(5);
+      // Las dos acciones siguen en la tarjeta (D10) y AGREGAR conserva su nombre accesible.
+      await expect(page.locator('.tarjeta').first().getByRole('button', { name: 'AGREGAR' })).toBeVisible();
+      await expect(page.locator('.tarjeta').first().getByRole('link', { name: 'COMPRAR', exact: true })).toBeVisible();
+      expect(await page.evaluate(() => document.documentElement.scrollWidth)).toBe(375);
+      // Al subir, la cabecera vuelve.
+      await page.evaluate(() => window.scrollBy(0, -200));
+      await expect(page.locator('.cabecera')).not.toHaveClass(/cabecera-oculta/);
+    });
+  }
+
+  test('en una pantalla ancha la cabecera nunca se oculta', async ({ page }) => {
+    await page.setViewportSize({ width: 1024, height: 800 });
+    await preparar(page, 'cielo', 'claro', '/productos');
+    await page.evaluate(() => window.scrollTo(0, 400));
+    await page.evaluate(() => window.scrollTo(0, 800));
+    await page.waitForTimeout(150);
+    await expect(page.locator('.cabecera')).not.toHaveClass(/cabecera-oculta/);
+  });
+
+  test('la portada: marcas en fila que se desplazan sin desbordar y categorías en acordeón con teclado', async ({ page }) => {
+    await preparar(page, 'cielo', 'claro', '/');
+    const fila = page.getByRole('navigation', { name: 'Marcas' }).locator('ul');
+    expect(await fila.evaluate((e) => ({ flex: getComputedStyle(e).display, x: getComputedStyle(e).overflowX }))).toEqual({ flex: 'flex', x: 'auto' });
+    expect(await page.evaluate(() => document.documentElement.scrollWidth)).toBe(375);
+    const resumen = page.locator('.categoria-acordeon > summary').first();
+    await resumen.scrollIntoViewIfNeeded();
+    await expect(resumen).toContainText('VER PRECIOS');
+    await resumen.focus();
+    await page.keyboard.press('Enter');
+    await expect(page.locator('.categoria-acordeon').first()).toHaveAttribute('open', '');
+    await expect(resumen).toContainText('OCULTAR PRECIOS');
+    await expect(page.locator('.categoria-acordeon').first().locator('.categoria-productos li > a').first()).toBeVisible();
+    await page.keyboard.press('Space');
+    await expect(page.locator('.categoria-acordeon').first()).not.toHaveAttribute('open', '');
+  });
+
+  test('catálogo en 375 px: la nav «Marcas» se desplaza en fila y conserva aria-current', async ({ page }) => {
+    await preparar(page, 'cielo', 'claro', '/marca/aurora');
+    const nav = page.getByRole('navigation', { name: 'Marcas' });
+    expect(await nav.locator('ul').evaluate((e) => ({ dir: getComputedStyle(e).flexDirection, x: getComputedStyle(e).overflowX }))).toEqual({ dir: 'row', x: 'auto' });
+    await expect(nav.getByRole('link', { name: 'Aurora' })).toHaveAttribute('aria-current', 'page');
+    expect(await page.evaluate(() => document.documentElement.scrollWidth)).toBe(375);
+  });
+
+  test('ficha: volver al catálogo, categoría y relacionados con precio', async ({ page }) => {
+    await preparar(page, 'cielo', 'claro', '/producto/televisor-ejemplo-55');
+    await expect(page.getByRole('link', { name: 'Volver al catálogo' })).toHaveAttribute('href', '/productos');
+    await expect(page.locator('.ficha-meta').getByRole('link', { name: 'Televisores' })).toBeVisible();
+    const rel = page.getByRole('region', { name: 'Productos relacionados' });
+    await expect(rel.locator('.relacionado')).toHaveCount(2);
+    await rel.scrollIntoViewIfNeeded();
+    await expect(rel.locator('.precio-valor').first()).toBeVisible();
+    await expect(rel.getByRole('link', { name: 'Televisor de ejemplo 55"' })).toHaveCount(0);
+  });
+
+  for (const plantilla of PLANTILLAS) {
+    for (const tema of ['claro', 'oscuro'] as const) {
+      test(`axe en el celular: ${plantilla} / ${tema}`, async ({ page }) => {
+        for (const ruta of ['/productos', '/', '/producto/televisor-ejemplo-55']) {
+          await preparar(page, plantilla, tema, ruta);
+          await page.waitForLoadState('networkidle');
+          if (ruta === '/') await page.locator('.categoria-acordeon > summary').first().click();
+          await auditar(page, `movil/${plantilla}/${tema}${ruta}`);
+        }
+      });
+    }
+  }
+});

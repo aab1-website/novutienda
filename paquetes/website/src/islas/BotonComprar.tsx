@@ -65,8 +65,8 @@ export default function BotonComprar({ id, nombre, disponible, whatsapp, verific
     <div class="acciones-producto">
       {estado}
       {conAgregar && (
-        <button type="button" class="boton boton-secundario" onClick={sumar}>
-          <Icono nombre="bolsa" tamano={15} /> AGREGAR
+        <button type="button" class="boton boton-secundario boton-agregar" aria-label={`Agregar al pedido: ${nombre}`} onClick={sumar}>
+          <Icono nombre="bolsa" tamano={15} /> <span class="boton-texto">AGREGAR</span>
         </button>
       )}
       {enlace === null ? (

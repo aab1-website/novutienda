@@ -123,8 +123,6 @@ main:focus { outline: none; }
 .destacados h2 { margin-bottom: 20px; font-size: 24px; text-align: left; }
 .marcas { width: 100%; margin-top: 56px; padding-top: 40px; border-top: 1px solid var(--cb-borde); display: flex; flex-direction: column; align-items: center; gap: 24px; }
 .marcas h2 { font-size: 12px; letter-spacing: .12em; color: var(--cb-texto-suave); text-transform: uppercase; }
-.marcas ul { width: 100%; display: grid; grid-template-columns: repeat(auto-fit, minmax(110px, 1fr)); gap: 20px; }
-.marcas li { text-align: center; font-size: 17px; font-weight: 700; letter-spacing: .14em; color: var(--cb-texto-suave); text-transform: uppercase; }
 
 /* Tarjetas */
 .grilla-productos { display: grid; grid-template-columns: repeat(auto-fill, minmax(min(100%, 300px), 1fr)); gap: 28px; }
@@ -132,7 +130,7 @@ main:focus { outline: none; }
 .tarjeta { position: relative; display: flex; flex-direction: column; overflow: hidden; border-radius: 20px; border: 1px solid var(--cb-borde); background: var(--cb-superficie); text-align: left; transition: border-color .2s, transform .2s; }
 .tarjeta:hover, .tarjeta:focus-within { border-color: var(--cb-acento); transform: translateY(-2px); }
 .tarjeta-imagen { position: relative; aspect-ratio: 1; background: var(--cb-superficie-2); display: flex; align-items: center; justify-content: center; color: var(--cb-texto-suave); }
-.tarjeta-imagen img { width: 100%; height: 100%; object-fit: contain; background: var(--cb-superficie-2); }
+.tarjeta-imagen img { position: absolute; inset: 0; width: 100%; height: 100%; object-fit: contain; background: var(--cb-superficie-2); }
 .tarjeta-imagen.agotado img { filter: grayscale(.6); opacity: .6; }
 .tarjeta-sin-imagen { display: flex; flex-direction: column; align-items: center; gap: 8px; font-size: 12px; font-weight: 700; letter-spacing: .1em; }
 .tarjeta-etiqueta, .tarjeta-agotado { position: absolute; top: 12px; padding: 4px 10px; border-radius: 8px; font-size: 11px; font-weight: 700; letter-spacing: .08em; background: var(--cb-superficie); border: 1px solid var(--cb-borde-control); }
@@ -333,3 +331,82 @@ h3.descripcion-titulo, h4.descripcion-titulo { font-size: 17px; }
 }
 .estado-disponibilidad { font-size: 15px; color: var(--cb-texto-suave); width: 100%; }
 .estado-disponibilidad strong { color: var(--cb-texto); }
+
+/* Portada: marcas en fila con desplazamiento (siempre) */
+.marcas { min-width: 0; }
+.marcas nav { width: 100%; min-width: 0; }
+.marcas ul { display: flex; gap: 10px; overflow-x: auto; scroll-snap-type: x mandatory; padding: 4px 2px 10px; margin: 0; list-style: none; max-width: 100%; }
+.marcas li { flex: 0 0 auto; scroll-snap-align: start; }
+.marcas li:first-child { margin-left: auto; }
+.marcas li:last-child { margin-right: auto; }
+.marcas a { display: inline-flex; align-items: center; min-height: 44px; padding: 0 18px; border-radius: 999px; border: 1px solid var(--cb-borde-control); background: var(--cb-superficie); color: var(--cb-texto); font-size: 14px; font-weight: 700; letter-spacing: .1em; text-transform: uppercase; text-decoration: none; white-space: nowrap; }
+.marcas a:hover { border-color: var(--cb-acento); color: var(--cb-acento); }
+
+/* Portada: categorías en acordeón (VER PRECIOS / OCULTAR PRECIOS), sin JavaScript */
+.categoria-acordeon { border-radius: 16px; border: 1px solid var(--cb-borde); background: var(--cb-superficie); }
+.categoria-acordeon[open] { border-color: var(--cb-acento); }
+.categoria-acordeon > summary { cursor: pointer; list-style: none; border: 0; background: transparent; }
+.categoria-acordeon > summary::-webkit-details-marker { display: none; }
+.categoria-acordeon > summary:focus-visible { outline: 2px solid var(--cb-acento); outline-offset: 2px; border-radius: 16px; }
+.categoria-acordeon .accion-abierto, .categoria-acordeon[open] .accion-cerrado { display: none; }
+.categoria-acordeon[open] .accion-abierto { display: inline; }
+.categoria-productos { margin: 0; padding: 4px 14px 14px; list-style: none; display: flex; flex-direction: column; text-align: left; }
+.categoria-productos li { display: flex; align-items: center; justify-content: space-between; gap: 12px; padding: 8px 0; border-top: 1px solid var(--cb-borde); }
+.categoria-productos li > a { min-height: 44px; display: flex; align-items: center; font-size: 15px; font-weight: 500; text-decoration: none; min-width: 0; }
+.categoria-productos li > a:hover { color: var(--cb-acento); }
+.categoria-productos .precio { align-items: flex-end; flex: 0 0 auto; }
+.categoria-productos .precio-valor { font-size: 16px; }
+.categoria-productos .categoria-ver-todos { justify-content: center; }
+.categoria-productos .categoria-ver-todos a { color: var(--cb-acento); font-weight: 700; font-size: 13px; letter-spacing: .08em; text-transform: uppercase; }
+
+/* Tarjeta: «Ver más detalles»; ficha: volver, categoría y relacionados */
+.tarjeta-detalle { font-size: 12px; font-weight: 700; letter-spacing: .06em; text-transform: uppercase; color: var(--cb-acento); }
+.volver-catalogo { display: inline-flex; align-items: center; gap: 6px; min-height: 44px; margin-bottom: 8px; font-size: 14px; font-weight: 500; text-decoration: none; color: var(--cb-texto); }
+.volver-catalogo:hover { color: var(--cb-acento); }
+.ficha-meta a { color: var(--cb-acento); }
+.relacionados { margin-top: 56px; }
+.relacionados h2 { margin-bottom: 20px; font-size: 24px; }
+.relacionados-lista { display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 16px; margin: 0; padding: 0; list-style: none; }
+.relacionado { display: flex; flex-direction: column; gap: 8px; padding: 10px; border-radius: 14px; border: 1px solid var(--cb-borde); background: var(--cb-superficie); min-width: 0; }
+.relacionado-enlace { display: flex; flex-direction: column; gap: 8px; text-decoration: none; }
+.relacionado-enlace .tarjeta-imagen { aspect-ratio: 4 / 3; border-radius: 10px; overflow: hidden; }
+.relacionado-nombre { font-size: 14px; font-weight: 700; line-height: 1.3; display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical; overflow: hidden; }
+.relacionado .precio-valor { font-size: 18px; }
+
+/* Marcas del catálogo en fila con desplazamiento (900 px o menos) */
+@media (max-width: 900px) {
+  .catalogo { grid-template-columns: minmax(0, 1fr); }
+  .filtro-marcas { min-width: 0; }
+  .filtro-marcas ul { flex-direction: row; gap: 8px; overflow-x: auto; scroll-snap-type: x mandatory; padding: 2px 2px 10px; max-width: 100%; }
+  .filtro-marcas li { flex: 0 0 auto; scroll-snap-align: start; }
+  .filtro-marcas a { white-space: nowrap; border: 1px solid var(--cb-borde-control); border-radius: 999px; background: var(--cb-superficie); padding: 0 16px; }
+  .filtro-marcas a[aria-current='page'] { border-color: var(--cb-cta); }
+  .relacionados-lista { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+}
+
+/* Celular: cabecera que se oculta al bajar y grilla de 2 columnas */
+@media (max-width: 640px) {
+  .cabecera { transition: transform .2s ease; }
+  .cabecera.cabecera-oculta { transform: translateY(-100%); }
+
+  .grilla-productos { grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 10px; }
+  .tarjeta { border-radius: 14px; }
+  .tarjeta-imagen { aspect-ratio: 4 / 3; }
+  .tarjeta-etiqueta, .tarjeta-agotado { top: 6px; padding: 2px 6px; border-radius: 6px; font-size: 10px; }
+  .tarjeta-etiqueta { left: 6px; max-width: calc(100% - 12px); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+  .tarjeta-agotado { top: auto; bottom: 6px; right: 6px; }
+  .tarjeta-cuerpo { gap: 3px; padding: 6px 8px 8px; }
+  .tarjeta-titulo { font-size: 13px; line-height: 1.2; letter-spacing: .01em; display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical; overflow: hidden; }
+  .tarjeta-descripcion { font-size: 12px; line-height: 1.3; display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical; overflow: hidden; }
+  .tarjeta-detalle { font-size: 10px; }
+  .tarjeta-pie { gap: 5px; padding-top: 5px; }
+  .tarjeta .precio-etiqueta { display: none; }
+  .tarjeta .precio-valor { font-size: 16px; line-height: 1.15; }
+  .tarjeta .precio-consultar, .tarjeta .precio-cargando { font-size: 13px; }
+  .tarjeta .acciones-producto { flex-wrap: nowrap; gap: 6px; }
+  .tarjeta .acciones-producto .boton { min-width: 0; min-height: 34px; padding: 0 8px; font-size: 12px; letter-spacing: .03em; border-radius: 10px; }
+  .tarjeta .etiqueta-agotado { box-sizing: border-box; width: 100%; min-height: 34px; justify-content: center; gap: 4px; padding: 3px 6px; font-size: 10px; line-height: 1.15; letter-spacing: .02em; text-align: center; }
+  .tarjeta .boton-agregar { flex: 0 0 34px; padding: 0; }
+  .tarjeta .boton-agregar .boton-texto { display: none; }
+  .relacionados-lista { gap: 10px; }
+}

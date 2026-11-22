@@ -8,7 +8,9 @@ import CatalogoVacio from '../componentes/CatalogoVacio.astro';
 import Icono from '../componentes/Icono.astro';
 import { contenido } from '../contenido/instancia';
 import { productosDeCategoria, textoModelos } from '../contenido/consultas';
-import { jsonLdOrganizacion, rutaCategoria } from '../lib/seo';
+import { jsonLdOrganizacion, rutaCategoria, rutaProducto } from '../lib/seo';
+import { marcasConRuta, rutaMarca } from '../lib/paginas';
+import Precio from '../islas/Precio';
 import { logoParaCompartir } from '../contenido/logo-subido';
 import { enlaceWhatsApp } from '../lib/whatsapp';
 
@@ -30,11 +32,22 @@ const wa = enlaceWhatsApp(config.whatsappNovuchat, 'Hola, tengo una consulta.');
       <ul class="lista-categorias">
         {categorias.map((c) => (
           <li>
-            <a class="categoria-item" href={rutaCategoria(c.id)}>
-              <span class="icono-caja"><Icono nombre={c.icono} tamano={22} grosor={1.8} /></span>
-              <span class="categoria-info"><strong>{c.nombre}</strong><span>{textoModelos(productosDeCategoria(productos, c.id).length)}</span></span>
-              <span class="categoria-accion">VER PRECIOS</span>
-            </a>
+            <details class="categoria-acordeon">
+              <summary class="categoria-item">
+                <span class="icono-caja"><Icono nombre={c.icono} tamano={22} grosor={1.8} /></span>
+                <span class="categoria-info"><strong>{c.nombre}</strong><span>{textoModelos(productosDeCategoria(productos, c.id).length)}</span></span>
+                <span class="categoria-accion"><span class="accion-cerrado">VER PRECIOS</span><span class="accion-abierto">OCULTAR PRECIOS</span></span>
+              </summary>
+              <ul class="categoria-productos">
+                {productosDeCategoria(productos, c.id).slice(0, 12).map((p) => (
+                  <li>
+                    <a href={rutaProducto(p)}>{p.nombre}</a>
+                    <Precio client:visible usd={p.precioUsd} inicial={config.mercadoInicial} mercados={config.mercados} redondeo={config.redondeo} etiqueta="" />
+                  </li>
+                ))}
+                <li class="categoria-ver-todos"><a href={rutaCategoria(c.id)}>Ver todos ({productosDeCategoria(productos, c.id).length})</a></li>
+              </ul>
+            </details>
           </li>
         ))}
         <li>
@@ -55,7 +68,9 @@ const wa = enlaceWhatsApp(config.whatsappNovuchat, 'Hola, tengo una consulta.');
       {marcas.length > 0 && (
         <section class="marcas" aria-labelledby="titulo-marcas">
           <h2 id="titulo-marcas">Marcas que trabajamos</h2>
-          <ul>{marcas.map((m) => <li>{m}</li>)}</ul>
+          <nav aria-label="Marcas">
+            <ul>{marcasConRuta(marcas).map((m) => <li><a href={rutaMarca(m.slug)}>{m.nombre}</a></li>)}</ul>
+          </nav>
         </section>
       )}
     </div>

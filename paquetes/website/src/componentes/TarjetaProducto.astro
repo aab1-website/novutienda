@@ -29,6 +29,7 @@ const Titulo = nivelTitulo === 2 ? 'h2' : 'h3';
   <div class="tarjeta-cuerpo">
     <Titulo class="tarjeta-titulo"><a href={rutaProducto(p)}>{p.nombre}</a></Titulo>
     <p class="tarjeta-descripcion">{resumen}</p>
+    <span class="tarjeta-detalle" aria-hidden="true">Ver más detalles</span>
     <div class="tarjeta-pie">
       <Precio client:visible usd={p.precioUsd} inicial={config.mercadoInicial} mercados={config.mercados} redondeo={config.redondeo} />
       <BotonComprar client:visible id={p.id} nombre={p.nombre} disponible={p.disponible} whatsapp={config.whatsappNovuchat} />
