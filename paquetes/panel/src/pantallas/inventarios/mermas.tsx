@@ -2,7 +2,7 @@ import type { JSX } from 'preact';
 import { useEffect, useRef, useState } from 'preact/hooks';
 import { nuevoId } from '../../api/cliente.js';
 import { ErrorApi, mensajeDeError } from '../../api/errores.js';
-import type { MermaVista, ProductoPanel, UbicacionId } from '../../api/tipos.js';
+import type { MermaVista, ProductoPanel, UbicacionId, UsuarioVista } from '../../api/tipos.js';
 import { useAvisos } from '../../ui/avisos.js';
 import { Alerta, Boton, Campo, ConCarga, Selector, Seccion, fechaHora } from '../../ui/comun.js';
 import { useApp } from '../../ui/contexto.js';
@@ -13,7 +13,7 @@ import { useAccion, useCarga } from '../../ui/hooks.js';
 import { AvisoConteoAbierto } from '../../ui/existencia.js';
 import { Tabla } from '../../ui/tabla.js';
 import { SelectorProducto } from './movimientos.js';
-import { MERMA_INICIAL, MOTIVO_MAX, MOTIVO_RECHAZO_FALTA, ESTADO_TEXTO, enlaceMovimientos, textoExistenciaActual, OPCIONES_ESTADO, ordenarMermas, resumenResolucion, revisarSolicitud, type BorradorMerma, type FiltroEstado } from './mermas-logica.js';
+import { MERMA_INICIAL, MOTIVO_MAX, MOTIVO_RECHAZO_FALTA, ESTADO_TEXTO, enlaceMovimientos, textoExistenciaActual, OPCIONES_ESTADO, ordenarMermas, resumenResolucion, revisarSolicitud, quienSolicito, TEXTO_MERMA_PROPIA, type BorradorMerma, type FiltroEstado } from './mermas-logica.js';
 import { separar } from './movimientos-resumen.js';
 import { nombreAlmacen, OPCIONES_ALMACEN } from './nombres.js';
 import { useConteosAbiertos } from './usar-conteos-abiertos.js';
@@ -156,6 +156,9 @@ export function PantallaMermas(): JSX.Element {
   const { api, usuario } = useApp();
   const productos = useCarga(() => api.llamar('listarProductos', {}), []);
   const conteosAbiertos = useConteosAbiertos();
+  // Los nombres vienen de `listarUsuarios` (sup y adm); si no se puede leer, se muestra el uid.
+  const veUsuarios = usuario.rol === 'sup' || usuario.rol === 'adm';
+  const usuarios = useCarga(() => (veUsuarios ? api.llamar('listarUsuarios', {}).catch((): readonly UsuarioVista[] => []) : Promise.resolve<readonly UsuarioVista[]>([])), [veUsuarios]);
   const [estado, setEstado] = useState<FiltroEstado>('solicitada');
   const mermas = useCarga(() => api.llamar('listarMermas', estado === '' ? {} : { estado }), [estado]);
   const [resolviendo, setResolviendo] = useState<{ merma: MermaVista; decision: 'aprobada' | 'rechazada'; etiqueta: string } | null>(null);
@@ -190,6 +193,7 @@ export function PantallaMermas(): JSX.Element {
                 { id: 'producto', titulo: 'Producto', valor: (m) => nombre(m.productoId), celda: (m) => `${nombre(m.productoId)}${m.series.length > 0 ? ` (${m.series.join(', ')})` : ''} · ${nombreAlmacen(m.ubicacionId)}` },
                 { id: 'cantidad', titulo: 'Cantidad', valor: (m) => m.cantidad },
                 { id: 'existencia', titulo: 'Existencia actual', valor: (m) => textoExistenciaActual(lista.find((x) => x.id === m.productoId), m.ubicacionId) },
+                { id: 'solicito', titulo: 'Solicitada por', valor: (m) => quienSolicito(m, usuario.uid, usuarios.datos ?? []) },
                 { id: 'motivo', titulo: 'Motivo', valor: (m) => m.motivo },
                 { id: 'estado', titulo: 'Estado', valor: (m) => ESTADO_TEXTO[m.estado], celda: (m) => (procesando === m.mermaId ? 'Procesando…' : ESTADO_TEXTO[m.estado]) },
                 { id: 'resolucion', titulo: 'Motivo de la resolución', valor: (m) => m.motivoResolucion ?? '', celda: (m) => m.motivoResolucion ?? '—' },
@@ -197,7 +201,7 @@ export function PantallaMermas(): JSX.Element {
               acciones={(m) => {
                 const ver = <a href={enlaceMovimientos(m.productoId)} aria-label={`Ver movimientos de ${nombre(m.productoId)}`}>Ver movimientos</a>;
                 return m.estado !== 'solicitada' ? ver : m.solicitadaPor === usuario.uid ? (
-                  <div class="fila"><span class="texto-suave">La resuelve otra persona</span>{ver}</div>
+                  <div class="fila"><span class="texto-suave">{TEXTO_MERMA_PROPIA}</span>{ver}</div>
                 ) : (
                   <div class="fila">
                     <Boton chico ocupado={procesando === m.mermaId} etiqueta={`Aprobar la merma de ${nombre(m.productoId)}`} onClick={() => { setResolviendo({ merma: m, decision: 'aprobada', etiqueta: `Aprobar la merma de ${nombre(m.productoId)}` }); }}>Aprobar</Boton>

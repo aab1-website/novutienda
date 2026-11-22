@@ -21,11 +21,17 @@ export function quienFue(m: Pick<MovimientoVista, 'por' | 'rol'>, usuarios: read
   return nombre !== null && nombre !== '' ? `${nombre} (${m.rol})` : `${m.por} (${m.rol})`;
 }
 
-/** Filas del CSV: las columnas de siempre, más `sku`, `series` y `usuarioNombre` al final. */
+/**
+ * Filas del CSV para Excel en español (separador «;»): fecha legible (La Paz), nombre y SKU del producto, tipo legible,
+ * almacén por su nombre, Entrada/Salida según el signo de la cantidad y quién lo hizo. Sin identificadores internos.
+ */
 export function filasCsvMovimientos(lista: readonly MovimientoVista[], productos: readonly ProductoPanel[], usuarios: readonly UsuarioVista[]): (string | number | undefined)[][] {
-  return lista.map((m) => [m.fecha, m.tipo, m.productoId, m.ubicacionId, m.delta, m.saldoUbicacion, m.por, m.rol, m.motivo, productos.find((p) => p.id === m.productoId)?.sku ?? '', m.series.join(' '), quienFue(m, usuarios)]);
+  return lista.map((m) => {
+    const p = productos.find((x) => x.id === m.productoId);
+    return [fechaHora(m.fecha), nombreTipo(m.tipo), p?.nombre ?? m.productoId, p?.sku ?? '', nombreAlmacen(m.ubicacionId), m.delta, m.delta < 0 ? 'Salida' : m.delta > 0 ? 'Entrada' : '', m.saldoUbicacion, m.series.join(' '), quienFue(m, usuarios), m.motivo];
+  });
 }
-export const ENCABEZADOS_CSV_MOVIMIENTOS = ['fecha', 'tipo', 'productoId', 'almacen', 'cantidad', 'saldo', 'usuario', 'rol', 'motivo', 'sku', 'series', 'usuarioNombre'];
+export const ENCABEZADOS_CSV_MOVIMIENTOS = ['Fecha', 'Tipo', 'Producto', 'SKU', 'Almacén', 'Cantidad', 'Entrada/Salida', 'Saldo', 'Series', 'Usuario', 'Motivo'];
 
 /** Tabla de movimientos con búsqueda, filtro por almacén y páginas. Con `cortada`, avisa que la lista no está completa. */
 export function TablaMovimientos({ movs, productos, usuarios = [], cortada = false }: { movs: readonly MovimientoVista[]; productos: readonly ProductoPanel[]; usuarios?: readonly UsuarioVista[]; cortada?: boolean }): JSX.Element {
@@ -74,7 +80,7 @@ export function Registro({ productoInicial = '' }: { productoInicial?: string })
     const cortada = r.datos?.cortada === true;
     // El archivo mismo dice que está cortado: quien lo abra sin ver la pantalla no lo toma por completo.
     if (cortada) filas.push([`AVISO: lista cortada. Solo trae los primeros ${String(lista.length)} movimientos; hay más. Afine los filtros y exporte de nuevo.`]);
-    descargarTexto(cortada ? 'movimientos-inventario-cortado.csv' : 'movimientos-inventario.csv', aCsv(ENCABEZADOS_CSV_MOVIMIENTOS, filas));
+    descargarTexto(cortada ? 'movimientos-inventario-cortado.csv' : 'movimientos-inventario.csv', aCsv(ENCABEZADOS_CSV_MOVIMIENTOS, filas, { separador: ';' }));
     if (cortada) avisos.info('El CSV está cortado: solo trae los primeros movimientos. Afine los filtros para exportar el resto.');
     else avisos.ok('Archivo exportado.');
   };

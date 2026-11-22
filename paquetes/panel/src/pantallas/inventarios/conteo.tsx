@@ -11,7 +11,7 @@ import { useBorrador, useCambiosSinGuardar } from '../../ui/guardia.js';
 import { useAccion, useCarga } from '../../ui/hooks.js';
 import { Tabla } from '../../ui/tabla.js';
 import { normalizar } from '../../util/buscar.js';
-import { AVISO_NADA_CONTADO, avance, contarPendientes, lineasDeCierre, normalizarTexto, puedeCerrar, revisarTexto, sinContar, textoGuardado, type EleccionSinContar } from './conteo-logica.js';
+import { AVISO_NADA_CONTADO, avance, contarPendientes, lineasDeCierre, normalizarTexto, productosSinContar, puedeCerrar, revisarTexto, sinContar, textoGuardado, type EleccionSinContar } from './conteo-logica.js';
 import { MOTIVO_MAX } from './mermas-logica.js';
 import { separar } from './movimientos-resumen.js';
 import { nombreAlmacen, OPCIONES_ALMACEN } from './nombres.js';
@@ -283,7 +283,7 @@ function ConteoAbierto({ abierto, productos, alCambiar }: { abierto: ConteoVista
           }
         >
           <ul class="lista-simple inv-resumen" data-prueba="resumen-cierre">
-            {lineasDeCierre(av, eleccion).map((l) => <li key={l}>{l}</li>)}
+            {lineasDeCierre(av, eleccion, productosSinContar(lista, abierto.lineas)).map((l) => <li key={l}>{l}</li>)}
           </ul>
           {sinContar(av) > 0 && (
             <fieldset class="plantillas">

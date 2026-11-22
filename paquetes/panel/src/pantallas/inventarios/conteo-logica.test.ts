@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import type { ProductoDeConteo } from '../../api/tipos.js';
-import { avance, contarPendientes, lineasDeCierre, normalizarTexto, puedeCerrar, revisarTexto, textoGuardado } from './conteo-logica.js';
+import { avance, contarPendientes, lineasDeCierre, productosSinContar, normalizarTexto, puedeCerrar, revisarTexto, textoGuardado } from './conteo-logica.js';
 
 const p = (id: string, conSerie = false): ProductoDeConteo => ({ productoId: id, nombre: id, categoria: 'c', sku: id, conSerie });
 
@@ -60,5 +60,16 @@ describe('avance y cierre', () => {
     expect(puedeCerrar({ contados: 0, total: 3 }, 'igual')).toBe(false);
     expect(puedeCerrar({ contados: 0, total: 3 }, 'cero')).toBe(true);
     expect(puedeCerrar({ contados: 1, total: 3 }, 'igual')).toBe(true);
+  });
+});
+
+describe('paso 28: productos sin contar con su SKU', () => {
+  it('el cierre nombra los que faltan con su SKU y recorta la lista larga', () => {
+    const lista = [{ ...p('a'), nombre: 'Cable', sku: 'CAB-1' }, p('b')];
+    const faltan = productosSinContar(lista, [{ productoId: 'b', cantidad: 1 } as never]);
+    expect(faltan.map((x) => x.productoId)).toEqual(['a']);
+    expect(lineasDeCierre({ contados: 1, total: 2 }, 'igual', faltan)).toContain('Sin contar: Cable (CAB-1).');
+    const muchos = Array.from({ length: 12 }, (_, i) => p(`p${String(i)}`));
+    expect(lineasDeCierre({ contados: 0, total: 12 }, 'cero', muchos).join(' ')).toContain('y 2 más.');
   });
 });

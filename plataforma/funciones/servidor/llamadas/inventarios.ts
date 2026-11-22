@@ -137,15 +137,64 @@ async function conteosAbiertos(c: Contexto): Promise<{ conteos: Conteos; ubicaci
   return { conteos: conteosAbiertosDe(ubic, porId), ubicaciones: ubic.map((u) => u.id) };
 }
 
+/** Tope de series por ingreso: acota las consultas previas (una por cada 30 series) y las escrituras de la transacción. */
+const MAX_SERIES_POR_INGRESO = 600;
+const MENSAJE_VARIANTE_GENERICO = 'Esa serie ya existe con otras mayúsculas';
+
+/** Cuenta las series de todas las líneas de un ingreso. */
+const totalSeries = (lineas: readonly { series?: readonly string[] | undefined }[]): number => lineas.reduce((n, l) => n + (l.series?.length ?? 0), 0);
+
+/**
+ * Con un conteo abierto en el almacén de destino, quien no es `adm` no debe saber qué series existen: el mensaje «Ya existe como X»
+ * se vuelve genérico (no revela la serie guardada).
+ */
+async function sinRevelarSerie<T>(c: Contexto, ubicacionId: string, f: () => Promise<T>): Promise<T> {
+  try {
+    return await f();
+  } catch (e) {
+    const variante = e instanceof Error && e.message.startsWith('Ya existe como ');
+    if (variante && c.rol !== 'adm' && (await conteosAbiertos(c)).conteos.some((k) => k.ubicacionId === ubicacionId)) throw new HttpsError('already-exists', MENSAJE_VARIANTE_GENERICO);
+    throw e;
+  }
+}
+
+/**
+ * Paso 25 (tercera ronda): una serie que ya existe en el mismo producto con otras mayúsculas se rechaza con `already-exists` y
+ * «Ya existe como X». La garantía contra la carrera es la RESERVA `seriesClaves/{producto}__{serie en minúsculas}` que el módulo
+ * crea dentro de la transacción del ingreso (`ingresar`). Esta consulta previa, por `serieBusqueda` (como `cerrarConteo`),
+ * cubre solo las unidades anteriores a las reservas: agrupa todas las líneas en consultas de a 30 series y filtra por producto en
+ * memoria, así que un ingreso cuesta como máximo MAX_SERIES_POR_INGRESO / 30 consultas.
+ */
+async function exigirSinVariantes(c: Contexto, lineas: readonly LineaIngreso[]): Promise<void> {
+  const porNorma = new Map<string, { productoId: string; series: string[] }[]>();
+  for (const l of lineas) for (const s of l.series ?? []) {
+    const k = normalizarSerieBusqueda(s);
+    porNorma.set(k, [...(porNorma.get(k) ?? []), { productoId: l.productoId, series: [s] }]);
+  }
+  const normas = [...porNorma.keys()];
+  for (let i = 0; i < normas.length; i += 30) {
+    const lote = normas.slice(i, i + 30);
+    const docs = (await c.e.firestore.collection(ruta(c.tenantId, 'unidades')).where('serieBusqueda', 'in', lote).get()).docs;
+    for (const u of docs) {
+      const d = datosDe(u);
+      const existente = String(d['serie'] ?? '');
+      const pedidas = porNorma.get(normalizarSerieBusqueda(existente))?.filter((x) => x.productoId === d['productoId']) ?? [];
+      if (existente !== '' && pedidas.length > 0 && !pedidas.some((x) => x.series.includes(existente))) throw new HttpsError('already-exists', `Ya existe como ${existente}`);
+    }
+  }
+}
+
 export const accionesInventarios: TablaImplementaciones = {
   // ---- Operaciones ------------------------------------------------------------------------------------------
   ingresar: accion({
     maxCaracteres: 256_000,
-    esquema: objeto({ operacionId: ID, ubicacionId: UBICACION, lineas: z.array(LINEA_INGRESO).min(1).max(50) }),
-    ejecutar: (c, d) =>
-      c.e.db.runTransaction((tx) =>
+    esquema: objeto({ operacionId: ID, ubicacionId: UBICACION, lineas: z.array(LINEA_INGRESO).min(1).max(50).refine((l) => totalSeries(l) <= MAX_SERIES_POR_INGRESO, `Un ingreso admite hasta ${String(MAX_SERIES_POR_INGRESO)} series; divídalo en varios.`) }),
+    ejecutar: (c, d) => sinRevelarSerie(c, d.ubicacionId, async () => {
+      await exigirSinVariantes(c, d.lineas as unknown as LineaIngreso[]);
+      return c.e.db.runTransaction((tx) =>
         ingresar(tx, { tenantId: c.tenantId, operacionId: d.operacionId, por: autor(c), ubicacionId: d.ubicacionId, lineas: d.lineas as unknown as LineaIngreso[] }),
-      ),
+      );
+    }),
   }),
   traspasar: accion({
     maxCaracteres: 256_000,

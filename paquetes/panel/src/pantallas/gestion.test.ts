@@ -146,7 +146,7 @@ describe('mermas', () => {
     await u.type(screen.getByLabelText(/^Motivo/), 'Cable cortado');
     await u.click(screen.getByRole('button', { name: 'Solicitar merma' }));
     expect(await screen.findByText(/no mueve el stock hasta entonces/)).toBeTruthy();
-    expect(await screen.findByText('La resuelve otra persona')).toBeTruthy();
+    expect(await screen.findByText('La generó usted: la resuelve un supervisor u otro administrador')).toBeTruthy();
     cleanup();
     e.como('adm');
     ver(e, h(PantallaMermas, {}));

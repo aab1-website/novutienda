@@ -477,7 +477,7 @@ for (const esquema of ESQUEMAS) {
         await page.getByLabel(/^Motivo/).fill('Cable cortado');
         await page.getByRole('button', { name: 'Solicitar merma' }).click();
         await expect(page.getByText(/Merma de Cable HDMI 2 m solicitada/)).toBeVisible();
-        await expect(page.getByText('La resuelve otra persona').first()).toBeVisible();
+        await expect(page.getByText('La generó usted: la resuelve un supervisor u otro administrador').first()).toBeVisible();
 
         // Administrador: filtra por estado y rechaza con motivo.
         if (ancho < 1024) await page.getByRole('button', { name: 'Menú', exact: true }).click();

@@ -27,11 +27,12 @@ async function conConteo(rol: Rol): Promise<Entorno> {
 }
 
 describe('4.4.1 registro: SKU, series y usuario', () => {
-  it('el CSV conserva las columnas actuales y agrega sku, series y usuarioNombre', () => {
-    expect(ENCABEZADOS_CSV_MOVIMIENTOS.slice(0, 9)).toEqual(['fecha', 'tipo', 'productoId', 'almacen', 'cantidad', 'saldo', 'usuario', 'rol', 'motivo']);
-    expect(ENCABEZADOS_CSV_MOVIMIENTOS.slice(9)).toEqual(['sku', 'series', 'usuarioNombre']);
-    const [fila] = filasCsvMovimientos([mov], [producto], usuarios);
-    expect(fila?.slice(9)).toEqual(['CAB-1', 'SN-1 SN-2', 'ana@ejemplo.test (sup)']);
+  it('paso 24: el CSV es legible: fecha, producto, SKU, tipo, almacén, Entrada/Salida y usuario', () => {
+    expect(ENCABEZADOS_CSV_MOVIMIENTOS).toEqual(['Fecha', 'Tipo', 'Producto', 'SKU', 'Almacén', 'Cantidad', 'Entrada/Salida', 'Saldo', 'Series', 'Usuario', 'Motivo']);
+    const [fila] = filasCsvMovimientos([mov], [{ id: 'cable-hdmi', sku: 'CAB-1', nombre: 'Cable HDMI' } as never], usuarios);
+    expect(fila?.slice(0, 7)).toEqual(['04/11/2026 06:00', 'Ingreso', 'Cable HDMI', 'CAB-1', 'Tienda', 2, 'Entrada']);
+    expect(fila?.slice(8)).toEqual(['SN-1 SN-2', 'ana@ejemplo.test (sup)', undefined]);
+    expect(filasCsvMovimientos([{ ...mov, delta: -1 }], [producto], usuarios)[0]?.[6]).toBe('Salida');
   });
   it('el usuario sale con su correo y, si no se sabe, con el uid y el rol', () => {
     expect(quienFue(mov, usuarios)).toBe('ana@ejemplo.test (sup)');

@@ -57,6 +57,8 @@ export const manifiestoInventarios: ManifiestoModulo = {
     col('ubicaciones', 'almacenes'),
     col('existencias'),
     col('unidades'),
+    // Reserva «producto + serie en minúsculas» creada con cada ingreso: impide variantes de mayúsculas, también entre ingresos simultáneos.
+    col('seriesClaves'),
     col('movimientos'),
     col('operaciones'),
     col('traspasos'),

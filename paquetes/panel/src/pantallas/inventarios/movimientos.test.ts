@@ -91,7 +91,7 @@ describe('ingreso', () => {
     await waitFor(() => expect(producto().value).toBe(''));
   });
 
-  it('D3: avisa en la confirmación si la serie ya existe con otras mayúsculas, sin impedir el ingreso', async () => {
+  it('paso 25: bloquea el ingreso si la serie ya existe con otras mayúsculas', async () => {
     const e = crearEntorno('adm');
     ver(e, 'ingreso');
     const u = userEvent.setup();
@@ -99,12 +99,15 @@ describe('ingreso', () => {
     await elegir(u, 'celular', /Celular A1/);
     await u.type(screen.getByLabelText(/^Series/), 'cela1-001 NUEVA-777');
     await u.click(screen.getByRole('button', { name: 'Registrar ingreso' }));
-    const d = await screen.findByRole('dialog', { name: '¿Registrar este ingreso?' });
-    expect(within(d).getByText('Aviso: la serie cela1-001 ya existe como CELA1-001 (con otras mayúsculas).')).toBeTruthy();
-    expect(within(d).queryByText(/NUEVA-777 ya existe/)).toBeNull();
-    // La consulta lleva el producto.
+    expect(await screen.findByText('La serie cela1-001: ya existe como CELA1-001.')).toBeTruthy();
+    expect(screen.queryByRole('dialog', { name: '¿Registrar este ingreso?' })).toBeNull();
+    expect(llamadas(e, 'ingresar')).toHaveLength(0);
     expect(llamadas(e, 'buscarSerie').every((l) => l.entrada['productoId'] === 'cel-a1')).toBe(true);
-    expect((within(d).getByRole('button', { name: 'Sí, registrar el ingreso' }) as HTMLButtonElement).disabled).toBe(false);
+  });
+
+  it('paso 25: el doble rechaza la variante igual que el servidor (already-exists)', async () => {
+    const e = crearEntorno('adm');
+    await expect(e.api.llamar('ingresar', { operacionId: 'op-v', ubicacionId: 'tienda', lineas: [{ productoId: 'cel-a1', cantidad: 1, series: ['cela1-001'] }] })).rejects.toMatchObject({ codigoHttps: 'already-exists', message: 'Ya existe como CELA1-001' });
   });
 
   it('si el envío falla, el error se ve dentro de la confirmación y el reintento usa el MISMO operacionId', async () => {

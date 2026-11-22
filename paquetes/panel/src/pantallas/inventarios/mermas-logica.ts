@@ -4,6 +4,16 @@ import { nombreAlmacen } from './nombres.js';
 
 export const ESTADO_TEXTO: Readonly<Record<EstadoMerma, string>> = { solicitada: 'Pendiente', aprobada: 'Aprobada', rechazada: 'Rechazada' };
 
+/** Paso 29: quien generó la merma no la resuelve; el texto dice quién la resuelve. */
+export const TEXTO_MERMA_PROPIA = 'La generó usted: la resuelve un supervisor u otro administrador';
+
+/** Quién solicitó la merma: su correo si se conoce (sup y adm listan usuarios) y, si no, «otra persona». */
+export function quienSolicito(m: Pick<MermaVista, 'solicitadaPor'>, uidActual: string, usuarios: readonly { uid: string; correo?: string | null }[]): string {
+  if (m.solicitadaPor === uidActual) return 'Usted';
+  const c = usuarios.find((u) => u.uid === m.solicitadaPor)?.correo;
+  return c !== undefined && c !== null && c !== '' ? c : m.solicitadaPor;
+}
+
 export type FiltroEstado = '' | EstadoMerma;
 export const OPCIONES_ESTADO: readonly { valor: FiltroEstado; texto: string }[] = [
   { valor: 'solicitada', texto: 'Pendientes' }, { valor: 'aprobada', texto: 'Aprobadas' }, { valor: 'rechazada', texto: 'Rechazadas' }, { valor: '', texto: 'Todas' },

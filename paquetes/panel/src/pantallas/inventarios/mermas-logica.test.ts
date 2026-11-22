@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import type { MermaVista, ProductoPanel } from '../../api/tipos.js';
-import { MERMA_INICIAL, ordenarMermas, resumenResolucion, revisarSolicitud } from './mermas-logica.js';
+import { MERMA_INICIAL, ordenarMermas, quienSolicito, TEXTO_MERMA_PROPIA, resumenResolucion, revisarSolicitud } from './mermas-logica.js';
 
 const prod = (conSerie = false): ProductoPanel => ({ id: 'cable', nombre: 'Cable', categoria: 'c', sku: 's', activo: true, publicado: false, conSerie, precioUSD: { bo: 1, ar: 1 }, stockTotal: 5, existencias: { tienda: 5, 'deposito-1': 0, 'deposito-2': 0 }, bajoMinimo: false, disponible: true });
 const merma = (mermaId: string, estado: MermaVista['estado'], fecha: string): MermaVista => ({ mermaId, productoId: 'cable', ubicacionId: 'tienda', cantidad: 2, series: [], motivo: 'roto', estado, solicitadaPor: 'u', fecha });
@@ -29,5 +29,14 @@ describe('resumenResolucion', () => {
   it('al aprobar dice «Hay 5, quedarán 3»; al rechazar, que el stock no cambia', () => {
     expect(resumenResolucion(merma('a', 'solicitada', 'f'), prod(), 'aprobada').join(' ')).toContain('Hay 5, quedarán 3');
     expect(resumenResolucion(merma('a', 'solicitada', 'f'), prod(), 'rechazada').join(' ')).toContain('El stock no cambia');
+  });
+});
+
+describe('paso 29: quién solicitó y quién resuelve', () => {
+  it('dice que la generó usted y nombra a quien la pidió', () => {
+    expect(TEXTO_MERMA_PROPIA).toBe('La generó usted: la resuelve un supervisor u otro administrador');
+    expect(quienSolicito(merma('m', 'solicitada', 'f'), 'u', [])).toBe('Usted');
+    expect(quienSolicito(merma('m', 'solicitada', 'f'), 'otro', [{ uid: 'u', correo: 'ana@ejemplo.test' }])).toBe('ana@ejemplo.test');
+    expect(quienSolicito(merma('m', 'solicitada', 'f'), 'otro', [])).toBe('u');
   });
 });
