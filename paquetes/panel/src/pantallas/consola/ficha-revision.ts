@@ -1,4 +1,7 @@
+import { LIMITES_TEXTOS_SITIO } from '@novutienda/nucleo';
 import type { FichaWeb } from '../../api/tipos.js';
+
+export type { FichaWeb };
 
 /**
  * Revisión de la página de un producto antes de enviarla: el error de cada campo, con los mismos topes y reglas que el
@@ -15,6 +18,8 @@ export const TOPES_FICHA = {
   seoDescripcion: 160,
   alt: 160,
   medios: 6,
+  caracteristicas: LIMITES_TEXTOS_SITIO.caracteristicas,
+  caracteristica: LIMITES_TEXTOS_SITIO.caracteristica,
 } as const;
 
 const SLUG = /^[a-z0-9]+(?:-[a-z0-9]+)*$/;
@@ -23,6 +28,7 @@ const ETIQUETA_HTML = /<\/?[a-zA-Z!][^>]*>/;
 /** Mensajes por campo. Claves: `slug`, `descripcion`, `garantia`, `seo.titulo`, `seo.descripcion`, `medios`, `medios.<i>.alt`. */
 export type ErroresFicha = Readonly<Record<string, string>>;
 
+export const claveViñeta = (i: number): string => `caracteristicas.${String(i)}`;
 export const claveAlt = (i: number): string => `medios.${String(i)}.alt`;
 
 function tieneControl(t: string, multilinea: boolean): boolean {
@@ -68,6 +74,16 @@ export function revisarFicha(f: FichaWeb): ErroresFicha {
         const falla = fallaDeTexto(m.alt, TOPES_FICHA.alt, false);
         if (falla !== undefined) e[claveAlt(i)] = falla;
       }
+    });
+  }
+  if (f.caracteristicas !== undefined) {
+    // Las filas en blanco no viajan (el panel las quita al enviar); el resto cumple lo del servidor.
+    const llenas = f.caracteristicas.filter((v) => v.trim() !== '');
+    if (llenas.length > TOPES_FICHA.caracteristicas) e['caracteristicas'] = `Máximo ${String(TOPES_FICHA.caracteristicas)} viñetas.`;
+    f.caracteristicas.forEach((v, i) => {
+      if (v.trim() === '') return;
+      const falla = fallaDeTexto(v, TOPES_FICHA.caracteristica, false);
+      if (falla !== undefined) e[claveViñeta(i)] = falla;
     });
   }
   return e;

@@ -3,7 +3,7 @@ import { ErrorApi } from '../api/errores.js';
 import { UBICACIONES } from '../api/tipos.js';
 import type {
   AprobacionPos, Carrusel, ConteoAbierto, MarcaOcultamiento, CobroCredito, ConfigPos, TotalesMoneda, ConfigSitio, ConteoVista, CotizacionesVigentes, CreditoVista, EntradaAuditoriaVista,
-  EntradaHistorialTipoCambio, FichaWeb, Medio, MedioLogo, MermaVista, MovimientoCaja, MovimientoVista, PlantillaRecibo, ProductoPanel, Recibo, Seccion, SubidaVista, TipoSubida, TurnoPos,
+  EntradaHistorialTipoCambio, FichaWeb, NegocioSitio, Medio, MedioLogo, MermaVista, MovimientoCaja, MovimientoVista, PlantillaRecibo, ProductoPanel, Recibo, Seccion, SubidaVista, TipoSubida, TurnoPos,
   UbicacionId, UnidadSerie, UsuarioVista, VentaPos, VistaComercial,
   Tablero,
 } from '../api/tipos.js';
@@ -43,6 +43,8 @@ export interface EstadoDoble {
   secciones: Seccion[];
   carruseles: Map<string, Carrusel>;
   configSitio: ConfigSitio | null;
+  /** `sitio/negocio`: lo guardado y su versión (0 = sin guardar). */
+  negocioSitio: { negocio: NegocioSitio | null; version: number };
   cambiosSinPublicar: number;
   ultimoCambioEn: string;
   publicadoEn: string | null;
@@ -143,6 +145,7 @@ export function crearEstado(ahora: number): EstadoDoble {
     },
     plantilla: { negocio: { nombre: 'Negocio de ejemplo', direccion: 'Calle Ejemplo 123', telefono: '70000000' }, pie: 'Comprobante no fiscal.', politicaGarantia: 'Garantía según ficha del producto.', politicaCambios: 'Cambios dentro de 7 días con el comprobante.' },
     auditoria: [], fichas: new Map(), medios: new Map(), logo: null, subidas: new Map(), disparador: { demoraMs: 15 }, secciones: [], carruseles: new Map(),
+    negocioSitio: { negocio: null, version: 0 },
     configSitio: { plantillaActiva: 'cielo', whatsappNovuchat: '59170000000', medicion: {} },
     cambiosSinPublicar: 0, ultimoCambioEn: iso(ahora), publicadoEn: null, versionPublicada: 0, avisoSitio: null, ultimaReconstruccion: null,
     modulos: ['inventarios', 'pos', 'recibos', 'consola', 'website'],

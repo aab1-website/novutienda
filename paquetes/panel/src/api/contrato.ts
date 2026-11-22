@@ -6,7 +6,7 @@
 import type {
   AprobacionPos, Carrito, CarritoGuardado, ContenidoCarritoGuardado, Carrusel, CambiosProducto, CobroCredito, CobroCreditoEntrada, ConfigPos, ConfigSitio,
   ConsultaArchivo, PreciosPorMercado, ConteoVista, CotizacionesVigentes, CreditoVista, EntradaAuditoriaVista, EntradaProducto, FichaWeb,
-  LineaAjuste, LineaIngreso, LineaTraspaso, LogoNegocio, Medio, MedioLogo, ResultadoEstadoSubidaLogo, MermaVista, MontosPorMoneda, MovimientoCaja, MovimientoCajaEntrada, MovimientoVista,
+  LecturaNegocioSitio, NegocioSitio, LineaAjuste, LineaIngreso, LineaTraspaso, LogoNegocio, Medio, MedioLogo, ResultadoEstadoSubidaLogo, MermaVista, MontosPorMoneda, MovimientoCaja, MovimientoCajaEntrada, MovimientoVista,
   ConMarca, ListaConMarca, PagoEntrada, PlantillaRecibo, ProductoPanel, Recibo, Reserva, ResultadoAnulacion, ResultadoCierre, ResultadoEnvio,
   FuenteImportacion, ResultadoImportacion, ResultadoOperacion, ResultadoEstadoSubida, ResultadoPublicacion, ResultadoVenta, Rol, Seccion, Simulacion, SolicitudAprobacion,
   ResumenCarritoSupervision, CursorTurno, CursorVenta, FilaTurnoVista, ResumenTurnoVista, Tablero, TipoMedio, TurnoPos, UbicacionId, UnidadSerie, UsuarioVista, MercadoTipoCambio, IdMercado, VentaPos, EstadoMerma,
@@ -107,6 +107,10 @@ export interface Contrato {
   finalizarSubidaLogo: { entrada: { subidaId: string }; salida: MedioLogo };
   /** Logo vigente del negocio (`sup` y `adm`) o `null` si no hay uno subido. */
   leerLogo: { entrada: Vacio; salida: LogoNegocio | null };
+  /** Datos del negocio del sitio (`sup` y `adm`): `negocio` es `null` y `version` 0 si aún no se guardaron. */
+  leerNegocioSitio: { entrada: Vacio; salida: LecturaNegocioSitio };
+  /** Guarda los datos del negocio (solo `adm`); `versionEsperada` es la leída (otra: `conflicto`). `afectados`: enlaces guardados que la lista nueva deja fuera. */
+  guardarNegocioSitio: { entrada: { negocio: NegocioSitio; versionEsperada: number }; salida: { version: number; afectados: number } };
   /** Quita el logo subido (solo `adm`); idempotente: sin logo responde `{ quitado: false }`. No toca la dirección web escrita a mano. */
   quitarLogo: { entrada: Vacio; salida: { quitado: boolean } };
   /** Consulta el estado de una subida sin procesarla (el disparador de Storage la procesa al llegar el original). */

@@ -199,6 +199,8 @@ const ACCIONES: Readonly<Record<string, WireHandler>> = {
   'consola.carruseles': (c) => legado(c, 'listarCarruseles', {}).then((carruseles) => ({ carruseles })),
   'consola.leerLogo': (c) => legado(c, 'leerLogo', {}).then((logo) => ({ logo })),
   'consola.quitarLogo': igual('quitarLogo'),
+  'consola.leerNegocioSitio': igual('leerNegocioSitio'),
+  'consola.guardarNegocioSitio': igual('guardarNegocioSitio'),
   'consola.configSitio': (c) => legado(c, 'leerConfigSitio', {}).then((config) => ({ config })),
   // medios
   'medios.reservarSubida': (c, d) => (d['tipo'] === 'logo'

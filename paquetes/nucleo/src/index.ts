@@ -35,3 +35,5 @@ export * from './formatos/index.js';
 
 // Moneda existe en tenant (BOB, USD, ARS) y en tipo-cambio (BOB, ARS): gana la del tenant.
 export type { Moneda } from './tenant/index.js';
+export { LIMITES_TEXTOS_SITIO, validarCaracteristicas, validarCifra, validarInstitucional, validarTextoSitio } from './contenido/textos-sitio.js';
+export type { AutorMensajeChat, MensajeChatTexto, TextosInstitucionales } from './contenido/textos-sitio.js';

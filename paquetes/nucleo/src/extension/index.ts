@@ -4,3 +4,5 @@ export type { ManifiestoModulo, Rol } from '../registro/tipos.js';
 export type { ConfiguracionComercial, MercadoTenant, TipoCambioMercado, FuenteTipoCambio } from '../tenant/mercados.js';
 export type { ReglaRedondeo, ModoRedondeo } from '../tipo-cambio/regla-redondeo.js';
 export type { SobreEvento } from '../contratos/sobre-evento.js';
+export { LIMITES_TEXTOS_SITIO, validarCaracteristicas, validarCifra, validarInstitucional, validarTextoSitio } from '../contenido/textos-sitio.js';
+export type { AutorMensajeChat, MensajeChatTexto, TextosInstitucionales } from '../contenido/textos-sitio.js';

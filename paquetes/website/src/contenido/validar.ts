@@ -3,10 +3,10 @@
  * archivo de ejemplo) se comprueba antes de generar una sola página. Un contenido
  * inválido detiene el build con la lista completa de errores, no solo el primero.
  */
-import { LARGO_MAXIMO_CATEGORIA, MAX_CATEGORIAS_SITIO, RE_SLUG_SITIO, TOPE_PRECIO_BASE, motivoReglaRedondeoInvalida } from '@novutienda/nucleo';
+import { LARGO_MAXIMO_CATEGORIA, MAX_CATEGORIAS_SITIO, RE_SLUG_SITIO, TOPE_PRECIO_BASE, motivoReglaRedondeoInvalida, validarCaracteristicas, validarCifra, validarInstitucional } from '@novutienda/nucleo';
 import type { Mercado } from '@novutienda/nucleo';
 import {
-  IDS_ICONO, IDS_PLANTILLA, LIMITES_INSTITUCIONAL, LIMITES_SITIO,
+  IDS_ICONO, IDS_PLANTILLA, LIMITES_SITIO,
   type Institucional,
   type Beneficio, type Bloque, type Contenido, type Foto, type IdIcono, type IdPlantilla, type Identidad, type NegocioSitio, type Portada, type Producto, type Seccion,
 } from './tipos.js';
@@ -302,19 +302,15 @@ function leerBloque(l: Lector, v: unknown, ruta: string, cfg: Contenido['config'
 /** `institucional` opcional: ausente = `undefined`. Cada campo es opcional; presente, se valida entero (nunca se descarta en silencio). */
 export function leerInstitucional(l: Lector, v: unknown, ruta: string): Institucional | undefined {
   if (v === undefined) return undefined;
+  const errores = validarInstitucional(v, ruta);
+  if (errores.length > 0) { l.errores.push(...errores); return {}; }
   const o = l.obj(v, ruta);
-  const L = LIMITES_INSTITUCIONAL;
   const r: { -readonly [K in keyof Institucional]?: Exclude<Institucional[K], undefined> } = {};
-  if (o['mision'] !== undefined) r.mision = l.texto(o['mision'], `${ruta}.mision`, 1, L.texto);
-  if (o['vision'] !== undefined) r.vision = l.texto(o['vision'], `${ruta}.vision`, 1, L.texto);
-  if (o['chat'] !== undefined) {
-    const c = l.obj(o['chat'], `${ruta}.chat`);
-    const mensajes = l.lista(c['mensajes'], `${ruta}.chat.mensajes`, L.mensajes, 1).map((m, i) => {
-      const x = l.obj(m, `${ruta}.chat.mensajes[${i}]`);
-      if (x['de'] !== 'cliente' && x['de'] !== 'comercio') l.falla(`${ruta}.chat.mensajes[${i}].de`, "debe ser 'cliente' o 'comercio'");
-      return { de: x['de'] === 'comercio' ? 'comercio' as const : 'cliente' as const, texto: l.texto(x['texto'], `${ruta}.chat.mensajes[${i}].texto`, 1, L.mensaje) };
-    });
-    r.chat = { mensajes };
+  if (typeof o['mision'] === 'string') r.mision = o['mision'];
+  if (typeof o['vision'] === 'string') r.vision = o['vision'];
+  const chat = o['chat'];
+  if (esObj(chat) && Array.isArray(chat['mensajes'])) {
+    r.chat = { mensajes: chat['mensajes'].map((m: Obj) => ({ de: m['de'] === 'comercio' ? 'comercio' as const : 'cliente' as const, texto: String(m['texto']) })) };
   }
   return r;
 }
@@ -322,7 +318,9 @@ export function leerInstitucional(l: Lector, v: unknown, ruta: string): Instituc
 /** `caracteristicas` opcional de un producto: lista de 1 a 8 viñetas de 1 a 160 caracteres (vacía = error; para no mostrarla se omite). */
 function leerCaracteristicas(l: Lector, v: unknown, ruta: string): readonly string[] | undefined {
   if (v === undefined) return undefined;
-  return l.lista(v, ruta, LIMITES_INSTITUCIONAL.caracteristicas, 1).map((t, i) => l.texto(t, `${ruta}[${i}]`, 1, LIMITES_INSTITUCIONAL.caracteristica));
+  const errores = validarCaracteristicas(v, ruta);
+  if (errores.length > 0) { l.errores.push(...errores); return []; }
+  return (v as string[]).slice();
 }
 
 function leerPortada(l: Lector, v: unknown): Portada {
@@ -354,8 +352,12 @@ function leerIdentidad(l: Lector, v: unknown, origenes: readonly (string | null)
     texto: l.texto(ide['texto'], 'identidad.texto', 1, 1200),
     foto: ide['foto'] === null ? null : leerFoto(l, ide['foto'], 'identidad.foto', origenes),
     cifra: cifraCruda === null ? null : (() => {
-      const c = l.obj(cifraCruda, 'identidad.cifra');
-      return { valor: leerAfirmacion(l, c['valor'], 'identidad.cifra.valor'), detalle: l.texto(c['detalle'], 'identidad.cifra.detalle', 1, 120) };
+      const errores = validarCifra(cifraCruda, 'identidad.cifra');
+      l.errores.push(...errores);
+      const c = esObj(cifraCruda) ? cifraCruda : {};
+      const valor = esObj(c['valor']) ? c['valor'] : {};
+      if (errores.length === 0 && typeof valor['confirmada'] !== 'boolean') l.falla('identidad.cifra.valor.confirmada', 'debe ser verdadero o falso');
+      return { valor: { texto: typeof valor['texto'] === 'string' ? valor['texto'] : '', confirmada: valor['confirmada'] === true }, detalle: typeof c['detalle'] === 'string' ? c['detalle'] : '' };
     })(),
     valores: l.lista(ide['valores'], 'identidad.valores', 6).map((x, i) => {
       const o = l.obj(x, `identidad.valores[${i}]`);

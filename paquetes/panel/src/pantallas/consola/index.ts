@@ -11,3 +11,5 @@ export { revisarFicha, TOPES_FICHA, type ErroresFicha } from './ficha-revision.j
 export { PALETAS } from './plantillas-vista.js';
 // Validación del WhatsApp de la tienda (la compara pruebas/consola/sitio.test.ts con la del servidor).
 export { esWhatsappValido, pareceNumeroDeRelleno } from './whatsapp.js';
+// Pasos puros de «Textos del sitio» (los compara pruebas/consola/textos-sitio.test.ts con los topes del servidor).
+export { aEstado, aNegocio, revisarTextos, TOPES_TEXTOS } from './textos-sitio-logica.js';

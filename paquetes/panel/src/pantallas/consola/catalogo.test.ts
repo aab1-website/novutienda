@@ -700,3 +700,46 @@ describe('catálogo: vistas previas de las plantillas', () => {
     expect(document.querySelector('[class*="vp-marfil"]')).toBeNull();
   });
 });
+
+describe('catálogo: Textos del sitio', () => {
+  const negocio = {
+    nombre: 'Tienda', lema: 'Lema', telefono: null, correo: null, direccion: 'Calle 1', horario: null, enlacesPermitidos: [],
+    portada: { insignia: 'N', titulo: ['a', 'b', 'c'], texto: 't', textoBotonCatalogo: 'v', textoBotonConsulta: 'c' }, beneficios: [],
+    identidad: { etiqueta: 'N', titulo: 'T', texto: 'X', foto: null, cifra: null, valores: [], sello: { texto: 'S', confirmada: false } },
+    textoPrivacidad: ['P'], categorias: {}, destacados: [],
+  };
+  it('la pestaña existe solo para el administrador', async () => {
+    const adm = crearEntorno('adm');
+    render(adm.envolver(h(PantallaCatalogo, { sub: 'tablero' })));
+    expect(await screen.findByRole('link', { name: 'Textos del sitio' })).toBeTruthy();
+    cleanup();
+    const sup = crearEntorno('sup');
+    render(sup.envolver(h(PantallaCatalogo, { sub: 'textos' })));
+    expect(screen.queryByRole('link', { name: 'Textos del sitio' })).toBeNull();
+    expect(screen.queryByText('Misión y visión')).toBeNull();
+  });
+  it('un conflicto de versión al guardar ofrece «Volver a cargar»', async () => {
+    const e = crearEntorno('adm');
+    const original = e.api.llamar.bind(e.api) as (n: string, x: unknown) => Promise<unknown>;
+    vi.spyOn(e.api, 'llamar').mockImplementation(((n: string, x: unknown) => {
+      if (n === 'leerNegocioSitio') return Promise.resolve({ negocio, version: 3 });
+      if (n === 'guardarNegocioSitio') return Promise.reject(new ErrorApi('failed-precondition', 'Los datos cambiaron desde que los leyó'));
+      return original(n, x);
+    }) as never);
+    render(e.envolver(h(PantallaCatalogo, { sub: 'textos' })));
+    const mision = (await screen.findAllByRole('textbox'))[0] as HTMLElement;
+    fireEvent.input(mision, { target: { value: 'Nuestra misión' } });
+    await userEvent.click(screen.getByRole('button', { name: /Guardar/ }));
+    expect(await screen.findByRole('button', { name: 'Volver a cargar' })).toBeTruthy();
+  });
+  it('con un error de revisión, el foco va al primer campo inválido', async () => {
+    const e = crearEntorno('adm');
+    const original = e.api.llamar.bind(e.api) as (n: string, x: unknown) => Promise<unknown>;
+    vi.spyOn(e.api, 'llamar').mockImplementation(((n: string, x: unknown) => (n === 'leerNegocioSitio' ? Promise.resolve({ negocio, version: 1 }) : original(n, x))) as never);
+    render(e.envolver(h(PantallaCatalogo, { sub: 'textos' })));
+    const mision = (await screen.findAllByRole('textbox'))[0] as HTMLElement;
+    fireEvent.input(mision, { target: { value: 'a'.repeat(601) } });
+    await userEvent.click(screen.getByRole('button', { name: /Guardar/ }));
+    await waitFor(() => expect(document.activeElement?.getAttribute('aria-invalid')).toBe('true'));
+  });
+});

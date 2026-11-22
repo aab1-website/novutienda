@@ -1,3 +1,4 @@
+import { LIMITES_TEXTOS_SITIO, validarCaracteristicas } from '@novutienda/nucleo';
 import { esObjeto, resultado, soloClaves, textoPlano, type Validacion } from './validar.js';
 
 export const ESTADOS_FICHA = ['borrador', 'publicado', 'oculto'] as const;
@@ -22,6 +23,8 @@ export interface FichaWeb {
   /** En orden de aparición. Hasta 5 fotos y 1 video (el tipo se verifica contra `medios/`). */
   readonly medios: readonly MedioFicha[];
   readonly seo: SeoFicha;
+  /** Viñetas destacadas (1 a 8 de 1 a 160); ausente = el sitio no pinta la pieza. */
+  readonly caracteristicas?: readonly string[];
   readonly estado: EstadoFicha;
 }
 
@@ -33,7 +36,7 @@ const MAX_MEDIOS_FICHA = 6;
 export function validarFichaWeb(x: unknown): Validacion<FichaWeb> {
   const errores: string[] = [];
   if (!esObjeto(x)) return { ok: false, errores: ['la ficha debe ser un objeto'] };
-  soloClaves(x, ['slug', 'descripcion', 'garantia', 'medios', 'seo', 'estado'], 'ficha', errores);
+  soloClaves(x, ['slug', 'descripcion', 'garantia', 'medios', 'seo', 'caracteristicas', 'estado'], 'ficha', errores);
 
   const slug = x['slug'];
   if (typeof slug !== 'string' || slug.length < 2 || slug.length > 80 || !SLUG.test(slug)) {
@@ -80,12 +83,25 @@ export function validarFichaWeb(x: unknown): Validacion<FichaWeb> {
     if (t !== undefined && d !== undefined) seo = { titulo: t, descripcion: d };
   }
 
+  const crudas = x['caracteristicas'];
+  const erroresCaracteristicas = validarCaracteristicas(crudas, 'caracteristicas');
+  errores.push(...erroresCaracteristicas);
+  const caracteristicas: string[] = [];
+  // Largo y cantidad: regla única del núcleo; aquí solo se añade la regla de seguridad (sin control ni HTML).
+  if (Array.isArray(crudas) && erroresCaracteristicas.length === 0) {
+    crudas.forEach((c: unknown, i: number) => {
+      const t = textoPlano(c, `caracteristicas[${String(i)}]`, { min: 1, max: LIMITES_TEXTOS_SITIO.caracteristica }, errores);
+      if (t !== undefined) caracteristicas.push(t);
+    });
+  }
+
   return resultado(errores, {
     slug: typeof slug === 'string' ? slug : '',
     descripcion: descripcion ?? '',
     garantia: garantia ?? '',
     medios,
     seo,
+    ...(crudas === undefined ? {} : { caracteristicas }),
     estado: (estado as EstadoFicha | undefined) ?? 'borrador',
   });
 }

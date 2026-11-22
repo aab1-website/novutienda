@@ -1,7 +1,7 @@
 // Tipos del contrato del panel. Se re-declaran (no se importan de los módulos) para que el panel no dependa de su
 // código: cada tipo copia la forma serializable que devuelve la función pública del módulo indicado. Los montos son
 // centavos enteros, igual que en el POS. Las fechas viajan como milisegundos (`...Ms`) o texto ISO, como en el módulo.
-import type { CodigoCausaSitio, CopiaCotizacion, EtapaFallaSitio, Rol } from '@novutienda/nucleo';
+import type { CodigoCausaSitio, CopiaCotizacion, EtapaFallaSitio, Rol, TextosInstitucionales } from '@novutienda/nucleo';
 
 export type { CodigoCausaSitio, CopiaCotizacion, EtapaFallaSitio, Rol };
 
@@ -537,6 +537,8 @@ export interface FichaWeb {
   readonly medios: readonly MedioFicha[];
   readonly seo: { readonly titulo: string; readonly descripcion: string };
   readonly estado: EstadoFicha;
+  /** Viñetas destacadas del producto (1 a 8 de 1 a 160 caracteres); ausente = sin viñetas. */
+  readonly caracteristicas?: readonly string[];
 }
 
 export type Bloque =
@@ -626,6 +628,40 @@ export interface LogoNegocio {
   readonly alto: number;
   readonly versiones: readonly { readonly formato: 'png' | 'webp'; readonly lado: number; readonly ruta: string; readonly bytes: number }[];
   readonly actualizadoEn: string;
+}
+
+/** Texto con su confirmación (`sitio/negocio`). */
+export interface AfirmacionNegocio { readonly texto: string; readonly confirmada: boolean }
+/** Datos del negocio que muestra el sitio (`leerNegocioSitio` / `guardarNegocioSitio`); `institucional` usa los tipos del núcleo. */
+export interface NegocioSitio {
+  readonly nombre: string;
+  readonly lema: string;
+  readonly telefono: string | null;
+  readonly correo: string | null;
+  readonly direccion: string;
+  readonly horario: string | null;
+  readonly enlacesPermitidos: readonly string[];
+  readonly portada: { readonly insignia: string; readonly titulo: readonly [string, string, string]; readonly texto: string; readonly textoBotonCatalogo: string; readonly textoBotonConsulta: string };
+  readonly beneficios: readonly { readonly icono: string; readonly titulo: AfirmacionNegocio; readonly descripcion: string }[];
+  readonly identidad: {
+    readonly etiqueta: string; readonly titulo: string; readonly texto: string;
+    readonly foto: { readonly medioId?: string; readonly url?: string; readonly alt: string } | null;
+    readonly cifra: { readonly valor: AfirmacionNegocio; readonly detalle: string } | null;
+    readonly valores: readonly { readonly icono: string; readonly titulo: string; readonly texto: string }[];
+    readonly sello: AfirmacionNegocio;
+  };
+  readonly textoPrivacidad: readonly string[];
+  readonly categorias: Readonly<Record<string, { readonly nombre: string; readonly icono: string }>>;
+  readonly destacados: readonly string[];
+  /** Misión, visión y maqueta de chat; ausente = el sitio no los pinta. */
+  readonly institucional?: TextosInstitucionales;
+}
+export interface LecturaNegocioSitio {
+  /** `null` si aún no se guardó o lo guardado no cumple la regla heredada (ver `invalido`). */
+  readonly negocio: NegocioSitio | null;
+  readonly version: number;
+  /** Rutas (nunca valores) de los campos inválidos. */
+  readonly invalido?: readonly string[];
 }
 
 export interface Reserva {

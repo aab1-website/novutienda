@@ -9,6 +9,7 @@
 // (se fijan como tales en una prueba, para que un cambio de comportamiento sea visible).
 import { LIMITES_NEGOCIO, IDS_ICONO_NEGOCIO, enlacePermitidoEnSitio, evaluarNegocioSitio, validarNegocioSitio } from '@novutienda/consola/negocio';
 import { IDS_ICONO, LARGO_MAXIMO_ENLACE, urlEnlaceSegura, validarNegocio } from '@novutienda/website';
+import { LIMITES_TEXTOS_SITIO } from '@novutienda/nucleo';
 import { describe, expect, it } from 'vitest';
 
 type Json = Record<string, unknown>;
@@ -162,7 +163,7 @@ describe('heredado: límites de texto con el mismo veredicto que el sitio', () =
     ['portada.texto', 1, 400], ['portada.textoBotonCatalogo', 1, 60], ['portada.textoBotonConsulta', 1, 60],
     ['beneficios[0].titulo.texto', 1, 200], ['beneficios[0].descripcion', 1, 160],
     ['identidad.etiqueta', 1, 80], ['identidad.titulo', 1, 120], ['identidad.texto', 1, 1200],
-    ['identidad.cifra.valor.texto', 1, 200], ['identidad.cifra.detalle', 1, 120],
+    ['identidad.cifra.valor.texto', 1, LIMITES_TEXTOS_SITIO.cifraValor], ['identidad.cifra.detalle', 1, 120],
     ['identidad.valores[0].titulo', 1, 80], ['identidad.valores[0].texto', 1, 400], ['identidad.sello.texto', 1, 200],
     ['textoPrivacidad[0]', 1, 2000], ['categorias.herramientas.nombre', 1, 80],
   ];

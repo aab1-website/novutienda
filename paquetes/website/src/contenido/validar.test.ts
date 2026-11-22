@@ -207,7 +207,7 @@ describe('campos opcionales: institucional y características', () => {
     expect(errores(con({ institucional: { mision: 'm', vision: 'v', chat: { mensajes: [{ de: 'cliente', texto: 'hola' }] } } }))).toEqual([]);
   });
   it('rechaza misión larga, chat vacío, de más de 6 o con emisor inválido', () => {
-    expect(errores(con({ institucional: { mision: 'x'.repeat(601) } }))).toContain('institucional.mision: debe ser texto de 1 a 600 caracteres');
+    expect(errores(con({ institucional: { mision: 'x'.repeat(601) } }))).toContain('institucional.mision: debe ser un texto de 1 a 600 caracteres');
     expect(errores(con({ institucional: { chat: { mensajes: [] } } }))).toHaveLength(1);
     const siete = Array.from({ length: 7 }, () => ({ de: 'cliente', texto: 'a' }));
     expect(errores(con({ institucional: { chat: { mensajes: siete } } }))).toHaveLength(1);

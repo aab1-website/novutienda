@@ -45,7 +45,7 @@ export type { LogoPublicado } from './logo-publico.js';
 export { PANTALLAS } from './pantallas.js';
 export type { Pantalla } from './pantallas.js';
 export { camposCambiados, enlacePermitidoEnSitio, IDS_ICONO_NEGOCIO, LIMITES_NEGOCIO, validarNegocioSitio } from './negocio.js';
-export type { NegocioSitioDatos, NivelNegocio } from './negocio.js';
+export type { InstitucionalNegocio, MensajeChatNegocio, NegocioSitioDatos, NivelNegocio } from './negocio.js';
 export { guardarNegocioSitio, leerNegocioSitio } from './servicio-negocio.js';
 export type { DocumentoNegocio, LecturaNegocio, ResultadoGuardadoNegocio } from './servicio-negocio.js';
 export type { NegocioPublicado } from './publicar.js';

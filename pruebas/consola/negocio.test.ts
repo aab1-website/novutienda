@@ -402,7 +402,7 @@ describe('servicio y publicación del negocio', () => {
         expect(l.invalido).toBeUndefined();
         expect(l).toMatchObject({ version: 5, negocio: { nombre: 'Tienda Ejemplo' } });
         const aud = db.coleccion(`tenants/${T}/auditoria`).filter((a) => a['accion'] === 'sitio.negocio.guardar');
-        expect((aud[0]?.['resumenDespues'] as { campos: string[] }).campos).toHaveLength(13);
+        expect((aud[0]?.['resumenDespues'] as { campos: string[] }).campos).toHaveLength(14);
       });
     });
   });
@@ -484,5 +484,53 @@ describe('servicio y publicación del negocio', () => {
       await publicarSitio(dp(), { tenantId: T, actor: adm });
       expect((db.dato(`tenants/${T}/publicado/carrusel__ambar`) as { items: { enlace?: string }[] }).items[0]?.enlace).toBe('https://tercero.test/c');
     });
+  });
+});
+
+describe('cifra del contador (identidad.cifra)', () => {
+  const cifra = (valor: string) => ({ valor: { texto: valor, confirmada: true }, detalle: 'desde 2015' });
+  const conCifra = (valor: string): Dato => ({ ...base(), identidad: { ...base().identidad, cifra: cifra(valor) } });
+  for (const nivel of ['estricto', 'heredado'] as const) {
+    it(`${nivel}: acepta 20 caracteres y rechaza 21`, () => {
+      expect(errores(conCifra(rep(20)), nivel)).toEqual([]);
+      expect(errores(conCifra(rep(21)), nivel).some((m) => m.includes('identidad.cifra.valor.texto'))).toBe(true);
+    });
+  }
+});
+
+describe('institucional (misión, visión y chat) y características de la ficha', () => {
+  const chat = (n: number) => ({ mensajes: Array.from({ length: n }, (_, i) => ({ de: i % 2 === 0 ? 'cliente' : 'comercio', texto: 'Hola' })) });
+  it('ausente es válido y presente se valida entero', () => {
+    expect(errores(base())).toEqual([]);
+    expect(errores(con({ institucional: { mision: 'M', vision: 'V', chat: chat(6) } }))).toEqual([]);
+    expect(errores(con({ institucional: {} }))).toEqual([]);
+  });
+  it('topes y forma', () => {
+    const casos: [Dato, boolean][] = [
+      [{ mision: rep(600) }, true], [{ mision: rep(601) }, false], [{ mision: '' }, false], [{ vision: rep(601) }, false],
+      [{ chat: chat(6) }, true], [{ chat: chat(7) }, false], [{ chat: { mensajes: [] } }, false],
+      [{ chat: { mensajes: [{ de: 'otro', texto: 'x' }] } }, false], [{ chat: { mensajes: [{ de: 'cliente', texto: rep(301) }] } }, false],
+      [{ chat: { mensajes: [{ de: 'cliente', texto: rep(300) }] } }, true],
+    ];
+    for (const [inst, ok] of casos) expect(errores(con({ institucional: inst }), 'heredado').length === 0, JSON.stringify(inst).slice(0, 80)).toBe(ok);
+  });
+  it('rechaza claves desconocidas y HTML en estricto', () => {
+    expect(errores(con({ institucional: { otra: 'x' } })).length).toBeGreaterThan(0);
+    expect(errores(con({ institucional: { mision: '<b>x</b>' } })).some((e) => e.startsWith('institucional.mision'))).toBe(true);
+  });
+  it('se guarda y sube la versión; la ficha admite características de 1 a 8', async () => {
+    const db = nuevaDb();
+    const reloj = new RelojFijo();
+    const catalogo = new CatalogoDoble(db);
+    catalogo.agregar('cam-1', { marca: 'Acme', sku: 'SKU-1', garantiaMeses: 12, stockTotal: 5 });
+    const r = await guardarNegocioSitio({ db, reloj }, T, adm, { negocio: con({ institucional: { mision: 'Nuestra misión' } }), versionEsperada: 0 });
+    expect(r.version).toBe(1);
+    const leido = await leerNegocioSitio({ db }, T, sup);
+    expect(leido.negocio?.institucional?.mision).toBe('Nuestra misión');
+    const r2 = await guardarNegocioSitio({ db, reloj }, T, adm, { negocio: con({ institucional: { mision: 'Otra' } }), versionEsperada: 1 });
+    expect(r2.version).toBe(2);
+    const f = (caracteristicas: string[]) => ({ slug: 'cam-1', descripcion: 'D', garantia: '', medios: [], seo: { titulo: '', descripcion: '' }, estado: 'borrador', caracteristicas });
+    await expect(guardarFicha({ db, catalogo, reloj }, { tenantId: T, actor: adm, productoId: 'cam-1', ficha: f([]) })).rejects.toThrow();
+    await guardarFicha({ db, catalogo, reloj }, { tenantId: T, actor: adm, productoId: 'cam-1', ficha: f(['Uno', 'Dos']) });
   });
 });

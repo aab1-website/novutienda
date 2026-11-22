@@ -139,6 +139,7 @@ export interface ProductoPublicado {
   readonly garantiaMeses?: number;
   readonly medios: readonly MedioPublico[];
   readonly seo: FichaWeb['seo'];
+  readonly caracteristicas?: readonly string[];
   /** Precio base en USD por mercado; el sitio lo convierte con `precioFinal` y la cotización. */
   readonly precioUSD: PrecioUSD;
 }
@@ -234,7 +235,7 @@ export function construirPublicado(e: EntradaPublicado): Publicado {
       descripcion: f.descripcion, garantia: f.garantia,
       ...(p.garantiaMeses === undefined ? {} : { garantiaMeses: p.garantiaMeses }),
       medios: sinNulos(f.medios.map((m) => publico(m.medioId, m.alt, `producto ${p.id}`))),
-      seo: f.seo, precioUSD: p.precioUSD,
+      seo: f.seo, ...(f.caracteristicas === undefined ? {} : { caracteristicas: f.caracteristicas }), precioUSD: p.precioUSD,
     });
   }
 
