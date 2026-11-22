@@ -57,6 +57,9 @@
 #     imagen de scripts/constructor-sitio/Dockerfile, Trivy image y push a
 #     Artifact Registry de staging (us-east1, repositorio sitio-constructor);
 #     desplegar-staging pasa su digest a Functions (CONSTRUCTOR_SITIO_IMAGEN).
+#     Parámetros del constructor en Functions (staging): CONSTRUCTOR_SITIO_MODO
+#     (github por defecto), CONSTRUCTOR_SITIO_CUENTA, CUENTA_FN_CONSTRUCTOR_SITIO;
+#     production siempre en modo github (preparar-despliegue-firebase.sh).
 #     Interruptor: variable CONSTRUCTOR_SITIO_ACTIVO del Environment staging
 #     (true = obligatorio y falla cerrado; vacía/false = se omite en verde).
 # =============================================================================
@@ -952,6 +955,15 @@ jobs:
           # acaba de publicar constructor-sitio (vacía con el interruptor apagado).
           P_CONSTRUCTOR_SITIO_IMAGEN: ${{ needs.constructor-sitio.outputs.imagen }}
           CONSTRUCTOR_SITIO_ACTIVO_JOB: ${{ needs.constructor-sitio.outputs.activo }}
+          # Parámetros del constructor (#198). Sin variable, modo github y cuentas vacías;
+          # CONSTRUCTOR_SITIO_APP_ENV y SITIO_PANEL_ID los fija el script (AMBIENTE, PANEL_ID).
+          # CONSTRUCTOR_SITIO_MAQUINA queda vacío a propósito (máquina por defecto, tramo gratis).
+          P_CONSTRUCTOR_SITIO_MODO: ${{ vars.CONSTRUCTOR_SITIO_MODO }}
+          P_CONSTRUCTOR_SITIO_CUENTA: ${{ vars.CONSTRUCTOR_SITIO_CUENTA }}
+          P_CUENTA_FN_CONSTRUCTOR_SITIO: ${{ vars.CUENTA_FN_CONSTRUCTOR_SITIO }}
+          P_VITE_FIREBASE_API_KEY: ${{ vars.VITE_FIREBASE_API_KEY_STAGING }}
+          P_VITE_FIREBASE_APP_ID: ${{ vars.VITE_FIREBASE_APP_ID_STAGING }}
+          P_VITE_RECAPTCHA_ENTERPRISE_SITE_KEY: ${{ vars.VITE_RECAPTCHA_ENTERPRISE_SITE_KEY_STAGING }}
         run: |
           set -euo pipefail
           # Encendido sin imagen = algo se saltó en constructor-sitio: no se
