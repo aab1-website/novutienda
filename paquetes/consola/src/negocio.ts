@@ -82,6 +82,16 @@ export interface IdentidadNegocio {
   readonly sello: Afirmacion;
 }
 
+/** Límites de los textos institucionales y de las viñetas de la ficha (copia de `LIMITES_INSTITUCIONAL` de `website/src/contenido/tipos.ts`; los compara `pruebas/consola/negocio.test.ts`). */
+export const LIMITES_INSTITUCIONAL_NEGOCIO = { texto: 600, mensajes: 6, mensaje: 300, caracteristicas: 8, caracteristica: 160 } as const;
+export interface MensajeChatNegocio { readonly de: 'cliente' | 'comercio'; readonly texto: string }
+/** Textos opcionales del sitio: cada uno se muestra solo si existe. */
+export interface InstitucionalNegocio {
+  readonly mision?: string;
+  readonly vision?: string;
+  readonly chat?: { readonly mensajes: readonly MensajeChatNegocio[] };
+}
+
 /** Los datos del negocio (campo por campo, sin versión). */
 export interface NegocioSitioDatos {
   readonly nombre: string;
@@ -98,6 +108,8 @@ export interface NegocioSitioDatos {
   /** id de categoría → nombre e ícono. */
   readonly categorias: Readonly<Record<string, { readonly nombre: string; readonly icono: IdIconoNegocio }>>;
   readonly destacados: readonly string[];
+  /** Ausente = el sitio no pinta misión, visión ni chat. */
+  readonly institucional?: InstitucionalNegocio;
 }
 
 /** Identificador de un medio de la consola (el mismo formato que `ID_MEDIO` de las fichas). */
@@ -211,6 +223,27 @@ class Lector {
   }
 }
 
+/** `institucional` opcional: presente, se valida entero (misión y visión de 1 a 600; chat de 1 a 6 mensajes de 1 a 300). */
+function institucional(l: Lector, v: unknown): InstitucionalNegocio | undefined {
+  if (v === undefined) return undefined;
+  const L = LIMITES_INSTITUCIONAL_NEGOCIO;
+  const o = l.obj(v, 'institucional', ['mision', 'vision', 'chat']);
+  const r: { -readonly [K in keyof InstitucionalNegocio]?: InstitucionalNegocio[K] } = {};
+  if (o['mision'] !== undefined) r.mision = l.texto(o['mision'], 'institucional.mision', 1, L.texto, true);
+  if (o['vision'] !== undefined) r.vision = l.texto(o['vision'], 'institucional.vision', 1, L.texto, true);
+  if (o['chat'] !== undefined) {
+    const c = l.obj(o['chat'], 'institucional.chat', ['mensajes']);
+    const mensajes = l.lista(c['mensajes'], 'institucional.chat.mensajes', L.mensajes, 1).map((m, i): MensajeChatNegocio => {
+      const ruta = `institucional.chat.mensajes[${String(i)}]`;
+      const x = l.obj(m, ruta, ['de', 'texto']);
+      if (x['de'] !== 'cliente' && x['de'] !== 'comercio') l.falla(`${ruta}.de`, "debe ser 'cliente' o 'comercio'");
+      return { de: x['de'] === 'comercio' ? 'comercio' : 'cliente', texto: l.texto(x['texto'], `${ruta}.texto`, 1, L.mensaje) };
+    });
+    r.chat = { mensajes };
+  }
+  return r;
+}
+
 function afirmacion(l: Lector, v: unknown, ruta: string): Afirmacion {
   const o = l.obj(v, ruta, ['texto', 'confirmada']);
   return { texto: l.texto(o['texto'], `${ruta}.texto`, 1, LIMITES_NEGOCIO.identidad.afirmacion), confirmada: l.bool(o['confirmada'], `${ruta}.confirmada`) };
@@ -251,7 +284,7 @@ function fotoIdentidad(l: Lector, v: unknown, ruta: string): FotoIdentidad | nul
 
 export const CAMPOS_NEGOCIO = [
   'nombre', 'lema', 'telefono', 'correo', 'direccion', 'horario', 'enlacesPermitidos', 'portada', 'beneficios',
-  'identidad', 'textoPrivacidad', 'categorias', 'destacados',
+  'identidad', 'textoPrivacidad', 'categorias', 'destacados', 'institucional',
 ] as const;
 
 /** Claves de primer nivel de la siembra que el servicio no guarda: en `heredado` se ignoran en silencio (el sitio las usa de `config`). */
@@ -379,6 +412,7 @@ export function evaluarNegocioSitio(entrada: unknown, nivel: NivelNegocio): Eval
       .map((p, i) => l.texto(p, `textoPrivacidad[${String(i)}]`, L.textoPrivacidad.min, L.textoPrivacidad.max, true)),
     categorias,
     destacados,
+    ...(o['institucional'] === undefined ? {} : { institucional: institucional(l, o['institucional']) ?? {} }),
   };
   if (l.estricto && l.errores.length === 0 && canonico(negocio).length > L.documentoMax) l.falla('negocio', `el documento supera ${String(L.documentoMax)} caracteres`);
   return { negocio: l.errores.length > 0 ? null : negocio, errores: l.errores };

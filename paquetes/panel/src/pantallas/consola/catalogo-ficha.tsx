@@ -2,7 +2,7 @@ import type { ComponentChildren, JSX, RefObject } from 'preact';
 import { useEffect, useRef, useState } from 'preact/hooks';
 import { ErrorApi, mensajeDeError } from '../../api/errores.js';
 import { Miniatura } from './miniatura-vista.js';
-import { LIMITES_PANEL, type EstadoFicha, type FichaWeb, type Medio, type ProductoPanel } from '../../api/tipos.js';
+import { LIMITES_PANEL, type EstadoFicha, type Medio, type ProductoPanel } from '../../api/tipos.js';
 import { Alerta, Area, Boton, BotonConfirmado, Campo, ConCarga, Seccion, Vacio } from '../../ui/comun.js';
 import { useApp } from '../../ui/contexto.js';
 import { Dialogo } from '../../ui/dialogo.js';
@@ -13,7 +13,8 @@ import { useAccion, useCarga } from '../../ui/hooks.js';
 import { Tabla } from '../../ui/tabla.js';
 import { formatoBytes } from '../../util/base64.js';
 import './ficha.css';
-import { claveAlt, revisarFicha, TOPES_FICHA } from './ficha-revision.js';
+import { claveAlt, revisarFicha, TOPES_FICHA, type FichaWeb } from './ficha-revision.js';
+import { ListaViñetas, viñetasParaEnviar } from './caracteristicas-vista.js';
 import { cumpleFiltro, pasosPendientes, siguientePaso, textoCambiosSinPublicar, textoQueFalta } from './pasos-ficha.js';
 import { useSubidas, type Subida } from './subidas-ficha.js';
 
@@ -23,7 +24,7 @@ const ACEPTA_FOTO = 'image/jpeg,image/png,image/webp,image/heic,image/heif,.heic
 const ACEPTA_VIDEO = 'video/mp4,video/x-m4v,video/quicktime,video/webm,.m4v';
 
 /** Solo los campos editables viajan al servidor (esquema estricto): no los de almacenamiento (version, por…). */
-const editable = (f: FichaWeb): FichaWeb => ({ slug: f.slug, descripcion: f.descripcion, garantia: f.garantia, medios: f.medios.map((m) => ({ medioId: m.medioId, alt: m.alt })), seo: { titulo: f.seo.titulo, descripcion: f.seo.descripcion }, estado: f.estado });
+const editable = (f: FichaWeb): FichaWeb => ({ slug: f.slug, descripcion: f.descripcion, garantia: f.garantia, medios: f.medios.map((m) => ({ medioId: m.medioId, alt: m.alt })), seo: { titulo: f.seo.titulo, descripcion: f.seo.descripcion }, ...viñetasParaEnviar(f.caracteristicas), estado: f.estado });
 const igual = (a: FichaWeb, b: FichaWeb): boolean => JSON.stringify(editable(a)) === JSON.stringify(editable(b));
 const porDefecto = (p: ProductoPanel): FichaWeb => ({ slug: slugDe(p.nombre), descripcion: '', garantia: p.garantiaMeses ? `${p.garantiaMeses} meses` : '', medios: [], seo: { titulo: p.nombre.slice(0, TOPES_FICHA.seoTitulo), descripcion: '' }, estado: 'borrador' });
 const plural = (n: number, uno: string, varios: string): string => `${String(n)} ${n === 1 ? uno : varios}`;
@@ -378,6 +379,7 @@ function PanelFicha({ producto, modo, marcarVisible = false, alCerrar, alCerrarE
           <h3 id="ficha-textos-titulo">Textos de la página</h3>
           <Campo etiqueta="Dirección de la página" valor={f.slug} tope={TOPES_FICHA.slugMax} requerido error={errores['slug']} ayuda="Minúsculas, números y guiones. Ejemplo: televisor-55." onInput={(v) => { setErrorSlug(null); cambiar({ slug: v }); }} />
           <Campo etiqueta="Garantía (texto)" valor={f.garantia} tope={TOPES_FICHA.garantia} error={errores['garantia']} onInput={(v) => cambiar({ garantia: v })} />
+          <ListaViñetas valor={f.caracteristicas ?? []} errores={errores} onCambio={(v) => cambiar({ caracteristicas: v })} />
           <Area etiqueta="Descripción del producto" valor={f.descripcion} filas={5} tope={TOPES_FICHA.descripcion} error={errores['descripcion']} onInput={(v) => cambiar({ descripcion: v })} />
           <Campo etiqueta="Título para buscadores" valor={f.seo.titulo} tope={TOPES_FICHA.seoTitulo} error={errores['seo.titulo']} onInput={(v) => cambiar({ seo: { ...f.seo, titulo: v } })} />
           <Campo etiqueta="Descripción para buscadores" valor={f.seo.descripcion} tope={TOPES_FICHA.seoDescripcion} error={errores['seo.descripcion']} onInput={(v) => cambiar({ seo: { ...f.seo, descripcion: v } })} />

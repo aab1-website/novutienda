@@ -22,18 +22,21 @@ export interface FichaWeb {
   /** En orden de aparición. Hasta 5 fotos y 1 video (el tipo se verifica contra `medios/`). */
   readonly medios: readonly MedioFicha[];
   readonly seo: SeoFicha;
+  /** Viñetas destacadas (1 a 8 de 1 a 160); ausente = el sitio no pinta la pieza. */
+  readonly caracteristicas?: readonly string[];
   readonly estado: EstadoFicha;
 }
 
 export const SLUG = /^[a-z0-9]+(?:-[a-z0-9]+)*$/;
 export const ID_MEDIO = /^[A-Za-z0-9_-]{8,40}$/;
 const MAX_MEDIOS_FICHA = 6;
+const MAX_CARACTERISTICAS = 8;
 
 /** Valida la entrada de una ficha. La unicidad del slug y la existencia de los medios se verifican en la transacción. */
 export function validarFichaWeb(x: unknown): Validacion<FichaWeb> {
   const errores: string[] = [];
   if (!esObjeto(x)) return { ok: false, errores: ['la ficha debe ser un objeto'] };
-  soloClaves(x, ['slug', 'descripcion', 'garantia', 'medios', 'seo', 'estado'], 'ficha', errores);
+  soloClaves(x, ['slug', 'descripcion', 'garantia', 'medios', 'seo', 'caracteristicas', 'estado'], 'ficha', errores);
 
   const slug = x['slug'];
   if (typeof slug !== 'string' || slug.length < 2 || slug.length > 80 || !SLUG.test(slug)) {
@@ -80,12 +83,25 @@ export function validarFichaWeb(x: unknown): Validacion<FichaWeb> {
     if (t !== undefined && d !== undefined) seo = { titulo: t, descripcion: d };
   }
 
+  const caracteristicas: string[] = [];
+  const crudas = x['caracteristicas'];
+  if (crudas !== undefined) {
+    if (!Array.isArray(crudas) || crudas.length < 1 || crudas.length > MAX_CARACTERISTICAS) errores.push(`caracteristicas: debe ser una lista de 1 a ${String(MAX_CARACTERISTICAS)} viñetas (para no mostrarla, quítela)`);
+    else {
+      crudas.forEach((c: unknown, i: number) => {
+        const t = textoPlano(c, `caracteristicas[${String(i)}]`, { min: 1, max: 160 }, errores);
+        if (t !== undefined) caracteristicas.push(t);
+      });
+    }
+  }
+
   return resultado(errores, {
     slug: typeof slug === 'string' ? slug : '',
     descripcion: descripcion ?? '',
     garantia: garantia ?? '',
     medios,
     seo,
+    ...(crudas === undefined ? {} : { caracteristicas }),
     estado: (estado as EstadoFicha | undefined) ?? 'borrador',
   });
 }
