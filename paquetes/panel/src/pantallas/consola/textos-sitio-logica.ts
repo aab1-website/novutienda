@@ -3,7 +3,7 @@
  * estado del formulario y de vuelta, sin tocar los demás campos del negocio. Los topes son los de la fuente única del núcleo
  * (`LIMITES_TEXTOS_SITIO`).
  */
-import { LIMITES_TEXTOS_SITIO } from '@novutienda/nucleo';
+import { LIMITES_TEXTOS_SITIO, validarCifra, validarInstitucional } from '@novutienda/nucleo';
 
 export const TOPES_TEXTOS = {
   texto: LIMITES_TEXTOS_SITIO.texto, mensajes: LIMITES_TEXTOS_SITIO.mensajes, mensaje: LIMITES_TEXTOS_SITIO.mensaje,
@@ -60,21 +60,41 @@ export function aNegocio(negocio: NegocioCrudo, e: EstadoTextos): Record<string,
   };
 }
 
-/** Errores por campo (`mision`, `vision`, `cifraValor`, `cifraDetalle`, `mensaje.<i>`, `mensajes`). Vacío = se puede guardar. */
+/** Clave del campo del formulario al que corresponde un error de la regla del núcleo (por su ruta). */
+function claveDeError(msg: string): string {
+  const ruta = msg.slice(0, msg.indexOf(':'));
+  if (ruta === 'institucional.mision') return 'mision';
+  if (ruta === 'institucional.vision') return 'vision';
+  if (ruta === 'cifra.valor.texto') return 'cifraValor';
+  if (ruta === 'cifra.detalle') return 'cifraDetalle';
+  const m = /^institucional\.chat\.mensajes\[(\d+)\]/.exec(ruta);
+  return m ? `mensaje.${m[1] ?? ''}` : 'mensajes';
+}
+
+/**
+ * Errores por campo (`mision`, `vision`, `cifraValor`, `cifraDetalle`, `mensaje.<i>`, `mensajes`). Vacío = se puede guardar.
+ * Largos y cantidades los decide la regla del núcleo (`validarInstitucional`, `validarCifra`) sobre lo que se enviaría;
+ * aquí solo se redactan los mensajes y se agregan las reglas propias del formulario (cifra y detalle van juntos).
+ */
 export function revisarTextos(e: EstadoTextos): Readonly<Record<string, string>> {
   const r: Record<string, string> = {};
-  if (e.mision.length > TOPES_TEXTOS.texto) r['mision'] = `Máximo ${String(TOPES_TEXTOS.texto)} caracteres.`;
-  if (e.vision.length > TOPES_TEXTOS.texto) r['vision'] = `Máximo ${String(TOPES_TEXTOS.texto)} caracteres.`;
+  const enviado = aNegocio({}, e);
+  const cifra = obj(enviado['identidad'])['cifra'];
+  const errores = [...validarInstitucional(enviado['institucional'], 'institucional'), ...validarCifra(cifra, 'cifra')];
+  for (const msg of errores) {
+    const k = claveDeError(msg);
+    if (r[k] !== undefined) continue;
+    r[k] = k === 'mensajes' ? `Máximo ${String(TOPES_TEXTOS.mensajes)} mensajes.`
+      : k === 'cifraValor' ? `Máximo ${String(TOPES_TEXTOS.cifraValor)} caracteres.`
+      : k === 'cifraDetalle' ? `Máximo ${String(TOPES_TEXTOS.cifraDetalle)} caracteres.`
+      : k === 'mision' || k === 'vision' ? `Máximo ${String(TOPES_TEXTOS.texto)} caracteres.`
+      : `Máximo ${String(TOPES_TEXTOS.mensaje)} caracteres.`;
+  }
   const valor = e.cifraValor.trim();
   const detalle = e.cifraDetalle.trim();
-  if (valor.length > TOPES_TEXTOS.cifraValor) r['cifraValor'] = `Máximo ${String(TOPES_TEXTOS.cifraValor)} caracteres.`;
-  if (detalle.length > TOPES_TEXTOS.cifraDetalle) r['cifraDetalle'] = `Máximo ${String(TOPES_TEXTOS.cifraDetalle)} caracteres.`;
   if (valor === '' && detalle !== '') r['cifraValor'] = 'Escriba la cifra (por ejemplo, «Más de 500 clientes») o borre también el detalle.';
   if (valor !== '' && detalle === '') r['cifraDetalle'] = 'Escriba el detalle de la cifra (por ejemplo, «familias atendidas desde 2015»).';
   if (e.cifraConfirmada && valor === '') r['cifraValor'] = 'No se puede confirmar una cifra vacía.';
-  const llenos = e.mensajes.filter((m) => m.texto.trim() !== '');
-  if (llenos.length > TOPES_TEXTOS.mensajes) r['mensajes'] = `Máximo ${String(TOPES_TEXTOS.mensajes)} mensajes.`;
-  e.mensajes.forEach((m, i) => { if (m.texto.length > TOPES_TEXTOS.mensaje) r[`mensaje.${String(i)}`] = `Máximo ${String(TOPES_TEXTOS.mensaje)} caracteres.`; });
   return r;
 }
 

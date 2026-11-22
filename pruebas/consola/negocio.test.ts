@@ -487,6 +487,17 @@ describe('servicio y publicación del negocio', () => {
   });
 });
 
+describe('cifra del contador (identidad.cifra)', () => {
+  const cifra = (valor: string) => ({ valor: { texto: valor, confirmada: true }, detalle: 'desde 2015' });
+  const conCifra = (valor: string): Dato => ({ ...base(), identidad: { ...base().identidad, cifra: cifra(valor) } });
+  for (const nivel of ['estricto', 'heredado'] as const) {
+    it(`${nivel}: acepta 20 caracteres y rechaza 21`, () => {
+      expect(errores(conCifra(rep(20)), nivel)).toEqual([]);
+      expect(errores(conCifra(rep(21)), nivel).some((m) => m.includes('identidad.cifra.valor.texto'))).toBe(true);
+    });
+  }
+});
+
 describe('institucional (misión, visión y chat) y características de la ficha', () => {
   const chat = (n: number) => ({ mensajes: Array.from({ length: n }, (_, i) => ({ de: i % 2 === 0 ? 'cliente' : 'comercio', texto: 'Hola' })) });
   it('ausente es válido y presente se valida entero', () => {

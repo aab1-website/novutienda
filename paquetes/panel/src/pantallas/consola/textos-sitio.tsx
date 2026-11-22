@@ -1,5 +1,5 @@
 import type { JSX } from 'preact';
-import { useState } from 'preact/hooks';
+import { useRef, useState } from 'preact/hooks';
 import { Alerta, Area, Boton, Campo, Casilla, ConCarga, Seccion } from '../../ui/comun.js';
 import { useAccion, useCarga } from '../../ui/hooks.js';
 import { mover } from './caracteristicas-vista.js';
@@ -21,6 +21,7 @@ function Formulario({ servicio, inicial, recargar }: { servicio: ServicioTextos;
   const [intento, setIntento] = useState(false);
   const [guardado, setGuardado] = useState(false);
   const accion = useAccion();
+  const formulario = useRef<HTMLFormElement>(null);
   const errores = intento ? revisarTextos(e) : {};
   const sucio = !iguales(e, base.estado);
   const cambiar = (c: Partial<EstadoTextos>): void => { setGuardado(false); setE({ ...e, ...c }); };
@@ -28,7 +29,11 @@ function Formulario({ servicio, inicial, recargar }: { servicio: ServicioTextos;
 
   const guardar = (): void => {
     setIntento(true);
-    if (Object.keys(revisarTextos(e)).length > 0) return;
+    if (Object.keys(revisarTextos(e)).length > 0) {
+      // Lleva el foco al primer campo con error, para quien usa lector de pantalla o teclado.
+      setTimeout(() => formulario.current?.querySelector<HTMLElement>('[aria-invalid="true"]')?.focus(), 0);
+      return;
+    }
     // Sin datos del negocio guardados no hay sobre qué escribir: el resto de los datos los carga la persona que implementa el sitio.
     if (base.negocio === null) return;
     const negocio = base.negocio;
@@ -51,7 +56,7 @@ function Formulario({ servicio, inicial, recargar }: { servicio: ServicioTextos;
   }
 
   return (
-    <form class="ficha-formulario" onSubmit={(ev) => { ev.preventDefault(); guardar(); }} noValidate>
+    <form ref={formulario} class="ficha-formulario" onSubmit={(ev) => { ev.preventDefault(); guardar(); }} noValidate>
       <p class="texto-suave">Estos textos son opcionales: si deja uno vacío, esa parte no aparece en el sitio.</p>
       <section class="ficha-bloque" aria-labelledby="textos-mision">
         <h3 id="textos-mision">Misión y visión</h3>

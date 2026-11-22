@@ -12,7 +12,7 @@
  * - `estricto`: lo de `heredado` más reglas de seguridad (sin caracteres engañosos ni HTML, correo y teléfono con forma,
  *   anfitriones sin IP, topes de categorías y de tamaño). Lo usa el guardado para lo que escribe una persona.
  */
-import { LIMITES_TEXTOS_SITIO, RE_SLUG_SITIO, validarCifra, type MensajeChatTexto, type TextosInstitucionales } from '@novutienda/nucleo';
+import { LIMITES_TEXTOS_SITIO, RE_SLUG_SITIO, validarCifra, validarInstitucional, type MensajeChatTexto, type TextosInstitucionales } from '@novutienda/nucleo';
 import { ErrorConsola } from './errores.js';
 import { esObjeto } from './validar.js';
 
@@ -217,21 +217,25 @@ class Lector {
   }
 }
 
-/** `institucional` opcional: presente, se valida entero (misión y visión de 1 a 600; chat de 1 a 6 mensajes de 1 a 300). */
+/**
+ * `institucional` opcional: presente, se valida entero con la regla única del núcleo (`validarInstitucional`: misión y visión
+ * de 1 a 600; chat de 1 a 6 mensajes de 1 a 300). Aquí solo se agrega la forma (campos conocidos) y la tolerancia de caracteres.
+ */
 function institucional(l: Lector, v: unknown): InstitucionalNegocio | undefined {
   if (v === undefined) return undefined;
-  const L = LIMITES_TEXTOS_SITIO;
   const o = l.obj(v, 'institucional', ['mision', 'vision', 'chat']);
+  const c = o['chat'] === undefined ? undefined : l.obj(o['chat'], 'institucional.chat', ['mensajes']);
+  const errores = validarInstitucional(v, 'institucional');
+  l.errores.push(...errores);
+  if (errores.length > 0) return {};
+  const L = LIMITES_TEXTOS_SITIO;
   const r: { -readonly [K in keyof InstitucionalNegocio]?: InstitucionalNegocio[K] } = {};
   if (o['mision'] !== undefined) r.mision = l.texto(o['mision'], 'institucional.mision', 1, L.texto, true);
   if (o['vision'] !== undefined) r.vision = l.texto(o['vision'], 'institucional.vision', 1, L.texto, true);
-  if (o['chat'] !== undefined) {
-    const c = l.obj(o['chat'], 'institucional.chat', ['mensajes']);
+  if (c !== undefined) {
     const mensajes = l.lista(c['mensajes'], 'institucional.chat.mensajes', L.mensajes, 1).map((m, i): MensajeChatNegocio => {
-      const ruta = `institucional.chat.mensajes[${String(i)}]`;
-      const x = l.obj(m, ruta, ['de', 'texto']);
-      if (x['de'] !== 'cliente' && x['de'] !== 'comercio') l.falla(`${ruta}.de`, "debe ser 'cliente' o 'comercio'");
-      return { de: x['de'] === 'comercio' ? 'comercio' : 'cliente', texto: l.texto(x['texto'], `${ruta}.texto`, 1, L.mensaje) };
+      const x = l.obj(m, `institucional.chat.mensajes[${String(i)}]`, ['de', 'texto']);
+      return { de: x['de'] === 'comercio' ? 'comercio' : 'cliente', texto: l.texto(x['texto'], `institucional.chat.mensajes[${String(i)}].texto`, 1, L.mensaje) };
     });
     r.chat = { mensajes };
   }
@@ -372,8 +376,8 @@ export function evaluarNegocioSitio(entrada: unknown, nivel: NivelNegocio): Eval
     sello: afirmacion(l, ide['sello'], 'identidad.sello'),
   };
 
-  // La cifra del contador (valor de hasta 20 caracteres) la valida la regla única del núcleo al guardar.
-  if (l.estricto) l.errores.push(...validarCifra(ide['cifra'], 'identidad.cifra'));
+  // La cifra del contador (valor de hasta 20 caracteres) la valida la regla única del núcleo, en ambos niveles: el sitio rechaza más.
+  l.errores.push(...validarCifra(ide['cifra'], 'identidad.cifra'));
 
   const categorias: Record<string, { nombre: string; icono: IdIconoNegocio }> = {};
   if (o['categorias'] !== undefined) {
