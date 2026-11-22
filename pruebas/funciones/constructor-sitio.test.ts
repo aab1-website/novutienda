@@ -55,7 +55,7 @@ describe('scripts/preparar-constructor-sitio.sh', () => {
     const r = correr(['proyecto-prueba-1', '--claves', 'a1,b2'], { SITIO_RECONSTRUCCION_SECRETO: 'valor-secreto-xyz', CUENTA_FUNCIONES: 'f@proyecto-prueba-1.iam.gserviceaccount.com', PATH: '/usr/bin:/bin' });
     expect(r.status).toBe(0);
     const s = r.stdout;
-    for (const o of ['O1.', 'O2.', 'O3.', 'O4.', 'O5.', 'O5b.', 'O6.']) expect(s).toContain(o);
+    for (const o of ['O1.', 'O2.', 'O3.', 'O4.', 'O5.', 'O6.']) expect(s).toContain(o);
     expect(s).toContain('SIMULACIÓN');
     expect(s).toContain('cloudbuild.builds.create,cloudbuild.builds.get');
     expect(s).toContain('--role=roles/iam.serviceAccountUser');
@@ -76,8 +76,7 @@ describe('scripts/preparar-constructor-sitio.sh', () => {
     expect(s).toMatch(/--member=serviceAccount:fn-constructor-sitio@<proyecto>\S* --role=projects\/<proyecto>\/roles\/lanzadorConstructorSitio/);
     expect(s).not.toMatch(/--member=serviceAccount:<cuenta-de-las-functions> --role=projects/);
     expect(s).toContain('--role=roles/datastore.user');
-    expect(s).toContain('O5b.');
-    expect(s).toContain('add-iam-policy-binding fn-constructor-sitio@<proyecto>.iam.gserviceaccount.com --project=<proyecto> --member=serviceAccount:fn-constructor-sitio@<proyecto>.iam.gserviceaccount.com --role=roles/iam.serviceAccountUser');
+    expect(s).not.toContain('O5b.');
     // O6: SITIOS_TENANT solo para fn-constructor-sitio.
     expect(s).toMatch(/secrets add-iam-policy-binding SITIOS_TENANT[^\n]*--member=serviceAccount:fn-constructor-sitio@/);
     expect(s).toMatch(/secrets add-iam-policy-binding SITIO_NEGOCIO_B2[^\n]*--member=serviceAccount:sitio-constructor@/);
@@ -98,6 +97,11 @@ describe('scripts/preparar-constructor-sitio.sh', () => {
     expect(r.stdout).toContain('gs://gcf-v2-sources-<numero>-us-east1');
     expect(r.stdout).toContain('--role=roles/storage.objectViewer');
     expect(r.stdout).toContain('volver a desplegar las Functions');
+  });
+  it('--actas-propio agrega O5b: actAs de cada cuenta sobre sí misma', () => {
+    const r = correr(['proyecto-prueba-1', '--actas-propio'], { PATH: '/usr/bin:/bin' });
+    expect(r.stdout).toContain('O5b.');
+    expect(r.stdout).toContain('add-iam-policy-binding fn-constructor-sitio@<proyecto>.iam.gserviceaccount.com --project=<proyecto> --member=serviceAccount:fn-constructor-sitio@<proyecto>.iam.gserviceaccount.com --role=roles/iam.serviceAccountUser');
   });
   it('--ampliar-despliegue agrega N9 con la lista exacta de permisos', () => {
     const r = correr(['proyecto-prueba-1', '--ampliar-despliegue'], { PATH: '/usr/bin:/bin' });
@@ -209,5 +213,42 @@ exit 0
     expect(r.status).toBe(0);
     expect(r.stderr).toContain('no se pudo consultar las Functions');
     expect(llamadas).toContain('secrets');
+  });
+});
+
+describe('scripts/preparar-constructor-sitio.sh: fallo cerrado y propagación', () => {
+  const correrStub = (cuerpo: string) => {
+    const dir = mkdtempSync(join(tmpdir(), 'prep-prop-'));
+    try {
+      writeFileSync(join(dir, 'gcloud'), `#!/usr/bin/env bash\necho "gcloud $*" >> "${dir}/llamadas.txt"\n${cuerpo.replaceAll('$DIR', dir)}\nexit 0\n`);
+      chmodSync(join(dir, 'gcloud'), 0o755);
+      const r = spawnSync('bash', [resolve(raiz, 'scripts/preparar-constructor-sitio.sh'), 'proyecto-prueba-1', '--aplicar'], {
+        env: {
+          PATH: `${dir}:/usr/bin:/bin`,
+          ESPERA_PROPAGACION: '0',
+          CUENTA_FUNCIONES: 'f@proyecto-prueba-1.iam.gserviceaccount.com',
+          CUENTA_DESPLIEGUE: 'd@proyecto-prueba-1.iam.gserviceaccount.com',
+          SITIOS_TENANT: 'valor-secreto-xyz',
+        },
+        encoding: 'utf8',
+      });
+      return { r, llamadas: readFileSync(join(dir, 'llamadas.txt'), 'utf8') };
+    } finally {
+      rmSync(dir, { recursive: true, force: true });
+    }
+  };
+  const defecto = `if [[ "$*" == *"get-default-service-account"* && "$*" == *"--format"* ]]; then echo "build-funciones@x.iam.gserviceaccount.com"; exit 0; fi`;
+  it('si `secrets versions list` falla, no agrega la versión y sale con 3', () => {
+    const { r, llamadas } = correrStub(`${defecto}\n[[ "$*" == *"versions list"* ]] && exit 1`);
+    expect(r.status).toBe(3);
+    expect(llamadas).not.toContain('versions add');
+  });
+  it('reintenta un enlace de IAM mientras la cuenta no se propaga', () => {
+    const { r, llamadas } = correrStub(`${defecto}
+[[ "$*" == *"versions list"* ]] && exit 0
+if [[ "$*" == *"add-iam-policy-binding"* && ! -e "$DIR/ya" ]]; then touch "$DIR/ya"; echo "no existe" >&2; exit 1; fi`);
+    expect(r.status).toBe(0);
+    expect(r.stderr).toContain('reintento 2');
+    expect(llamadas.split('\n').filter((l) => l.includes('add-iam-policy-binding')).length).toBeGreaterThan(1);
   });
 });

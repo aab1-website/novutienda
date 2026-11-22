@@ -2,7 +2,7 @@
 # preparar-constructor-sitio.sh — deja listo, en UN proyecto, lo que necesita el constructor del sitio en
 # Cloud Build (plan: «Publicar el sitio con Cloud Build», operación P5, pasos O1 a O6).
 #
-# Uso: preparar-constructor-sitio.sh <proyecto> [--aplicar] [--claves a1,b2] [--neutralizar-cuenta-por-defecto] [--ampliar-despliegue]
+# Uso: preparar-constructor-sitio.sh <proyecto> [--aplicar] [--claves a1,b2] [--neutralizar-cuenta-por-defecto] [--ampliar-despliegue] [--actas-propio]
 #   Sin --aplicar es una SIMULACIÓN: imprime lo que haría y no llama a la nube (ni siquiera a gcloud).
 #   Con --aplicar ejecuta con gcloud (credenciales de quien lo corra). Idempotente: cada paso comprueba si ya existe.
 #   Nunca despliega el sitio, no activa el modo `google` ni crea la alerta (pasos 6 y 7 del plan, aparte).
@@ -24,14 +24,14 @@
 #   O2  Repositorio de imágenes en Artifact Registry (formato docker) con limpieza: conserva las 10 versiones más recientes.
 #   O3  Cuentas de servicio `sitio-constructor` (la que ejecuta la construcción) y `fn-constructor-sitio` (la propia de las
 #       funciones del constructor; su correo es el valor de CUENTA_FN_CONSTRUCTOR_SITIO).
-#   O4  Roles de `sitio-constructor`: firebasehosting.admin (no se puede limitar por sitio: lo cubre la guardia de
-#       preparar-sitio-tenant.sh), logging.logWriter, serviceusage.serviceUsageConsumer y artifactregistry.reader
+#   O4  Roles de `sitio-constructor`: firebasehosting.admin (no se puede limitar por sitio: lo cubre la guardia
+#       SITIOS_PROHIBIDOS de reconstruir-sitio.sh), logging.logWriter, serviceusage.serviceUsageConsumer y artifactregistry.reader
 #       sobre el repositorio.
 #   O5  Permisos de `fn-constructor-sitio` (no de la cuenta general de las Functions): rol personalizado con SOLO
 #       cloudbuild.builds.create y cloudbuild.builds.get; iam.serviceAccountUser únicamente sobre `sitio-constructor`;
 #       roles/datastore.user y roles/logging.logWriter; secretAccessor de SITIOS_TENANT (en O6).
-#   O5b iam.serviceAccountUser de `fn-constructor-sitio` y de la cuenta de las Functions SOBRE SÍ MISMAS: Cloud Tasks lo
-#       exige para encolar con token OIDC. Paso explícito (no verificado todavía en staging: se prueba en P6).
+#   O5b (solo con --actas-propio) iam.serviceAccountUser de `fn-constructor-sitio` y de la cuenta de las Functions SOBRE SÍ
+#       MISMAS, para encolar con token OIDC. No corre por defecto: se usa solo si encolar falla sin él en P6 (no verificado).
 #   O5bis  Cuenta de servicio POR DEFECTO de Cloud Build. Siempre consulta (sin cambiar nada) cuál es y con qué cuenta
 #       construyen las Functions de 2.ª generación. SOLO con la opción explícita --neutralizar-cuenta-por-defecto
 #       crea `build-funciones` con lo mínimo para construir Functions 2.ª gen (logging.logWriter; artifactregistry.writer
@@ -52,18 +52,20 @@
 # La salida muestra <proyecto> en vez del id real.
 set -Eeuo pipefail
 
-uso() { echo "uso: preparar-constructor-sitio.sh <proyecto> [--aplicar] [--claves a1,b2] [--neutralizar-cuenta-por-defecto] [--ampliar-despliegue]" >&2; exit 2; }
+uso() { echo "uso: preparar-constructor-sitio.sh <proyecto> [--aplicar] [--claves a1,b2] [--neutralizar-cuenta-por-defecto] [--ampliar-despliegue] [--actas-propio]" >&2; exit 2; }
 
 PROYECTO=""
 APLICAR=0
 NEUTRALIZAR=0
 AMPLIAR=0
+ACTAS_PROPIO=0
 CLAVES="${CLAVES_SITIO:-}"
 while (( $# > 0 )); do
   case "$1" in
     --aplicar) APLICAR=1 ;;
     --neutralizar-cuenta-por-defecto) NEUTRALIZAR=1 ;;
     --ampliar-despliegue) AMPLIAR=1 ;;
+    --actas-propio) ACTAS_PROPIO=1 ;;
     --claves) shift; [[ $# -gt 0 && "$1" != --* ]] || uso; CLAVES="$1" ;;
     -*) uso ;;
     *) [[ -z "$PROYECTO" ]] || uso; PROYECTO="$1" ;;
@@ -134,8 +136,19 @@ quitar_ids() {
   done
 }
 # Ejecuta (con --aplicar) o solo muestra (simulación). La salida real de gcloud no imprime el id del proyecto.
+# Los enlaces de IAM (idempotentes) se reintentan unos segundos: una cuenta recién creada tarda en propagarse.
 ejecutar() {
-  if (( APLICAR == 1 )); then mostrar "+" "$@"; "$@" 2>&1 | quitar_ids; else mostrar "[simulación]" "$@"; fi
+  if (( APLICAR == 1 )); then
+    mostrar "+" "$@"
+    local intento=1 maximo=1
+    [[ " $* " == *" add-iam-policy-binding "* ]] && maximo=6
+    until "$@" 2>&1 | quitar_ids; do
+      (( intento < maximo )) || return 1
+      intento=$((intento + 1))
+      echo "  (la cuenta aún no se propaga; reintento $intento de $maximo)" >&2
+      sleep "${ESPERA_PROPAGACION:-5}"
+    done
+  else mostrar "[simulación]" "$@"; fi
 }
 existe() { # comando de lectura; en simulación se asume que NO existe para mostrar el paso completo
   (( APLICAR == 1 )) || return 1
@@ -256,12 +269,14 @@ for rol in roles/datastore.user roles/logging.logWriter; do
     --role="$rol" --condition=None --quiet --format=none
 done
 
-paso "O5b. actAs de cada cuenta que encola sobre sí misma (Cloud Tasks lo exige para el token OIDC)"
-# El permiso de encolar lo da el código (`invoker` de construirSitio) en cada despliegue; aquí solo el actAs propio.
-for cuenta in "$FN_EMAIL" "$FUNCIONES"; do
-  ejecutar gcloud iam service-accounts add-iam-policy-binding "$cuenta" --project="$PROYECTO" \
-    --member="serviceAccount:$cuenta" --role=roles/iam.serviceAccountUser --quiet --format=none
-done
+if (( ACTAS_PROPIO == 1 )); then
+  paso "O5b. actAs de cada cuenta que encola sobre sí misma (solo si encolar falla sin él)"
+  # El permiso de encolar lo da el código (`invoker` de construirSitio) en cada despliegue; aquí solo el actAs propio.
+  for cuenta in "$FN_EMAIL" "$FUNCIONES"; do
+    ejecutar gcloud iam service-accounts add-iam-policy-binding "$cuenta" --project="$PROYECTO" \
+      --member="serviceAccount:$cuenta" --role=roles/iam.serviceAccountUser --quiet --format=none
+  done
+fi
 
 paso "O6. Secretos (los valores pasan por stdin; nunca se imprimen)"
 for s in "${SECRETOS[@]}"; do
@@ -273,7 +288,12 @@ for s in "${SECRETOS[@]}"; do
   valor="${!s:-}"
   if [[ -n "$valor" ]]; then
     if (( APLICAR == 1 )); then
-      if [[ -n "$(gcloud secrets versions list "$s" --project="$PROYECTO" --limit=1 --format='value(name)' 2>/dev/null)" ]]; then
+      # Falla cerrado: si no se puede listar, no se agrega ninguna versión.
+      if ! versiones="$(gcloud secrets versions list "$s" --project="$PROYECTO" --limit=1 --format='value(name)' 2>/dev/null)"; then
+        echo "  $s: no se pudo consultar sus versiones; no se agrega nada (falla cerrado)" >&2
+        exit 3
+      fi
+      if [[ -n "$versiones" ]]; then
         echo "  $s: ya tiene versión; no se agrega otra (usar la rotación del plan)"
       else
         printf '%s' "$valor" | gcloud secrets versions add "$s" --project="$PROYECTO" --data-file=- --format=none 2>&1 | quitar_ids
