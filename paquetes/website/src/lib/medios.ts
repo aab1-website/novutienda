@@ -7,4 +7,5 @@ export function srcsetDe(f: Foto): string | undefined {
 }
 
 export const TAMANOS_FICHA = '(min-width: 1024px) 560px, (min-width: 640px) 50vw, 100vw';
-export const TAMANOS_TARJETA = '(min-width: 1024px) 360px, (min-width: 640px) 50vw, 100vw';
+/** La grilla es de 2 columnas desde el celular (la imagen ocupa unos 50 vw) y auto-fill desde 640 px. */
+export const TAMANOS_TARJETA = '(min-width: 1024px) 360px, 50vw';

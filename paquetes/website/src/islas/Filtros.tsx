@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState } from 'preact/hooks';
+import { useEffect, useMemo, useRef, useState } from 'preact/hooks';
 import type { Mercado, Redondeo } from '@novutienda/nucleo';
 import { filtrarProductos } from '../contenido/consultas.js';
 import { parsearMonto } from '../lib/dinero.js';
@@ -34,6 +34,7 @@ interface Props {
 export default function Filtros({ productos, marcas, marcaActual, pagina = 1, totalPaginas = 1, inicial, mercados, redondeo }: Props) {
   const [mercado] = useMercado(inicial, mercados);
   const cot = useCotizacion(mercado);
+  const navMarcas = useRef<HTMLElement>(null);
   const [minimo, setMinimo] = useState('');
   const [maximo, setMaximo] = useState('');
 
@@ -53,11 +54,18 @@ export default function Filtros({ productos, marcas, marcaActual, pagina = 1, to
     }
   }, [visibles, productos]);
 
+  // En el celular las marcas van en fila con desplazamiento: la marca actual se deja a la vista (sin mover la página).
+  useEffect(() => {
+    const fila = navMarcas.current?.querySelector<HTMLElement>('ul');
+    const actual = fila?.querySelector<HTMLElement>('[aria-current="page"]');
+    if (fila !== null && fila !== undefined && actual !== null && actual !== undefined) fila.scrollLeft = Math.max(0, actual.offsetLeft - fila.offsetLeft - 16);
+  }, [marcaActual]);
+
   const hayFiltro = minimo !== '' || maximo !== '';
   return (
     <form class="filtros" aria-label="Filtros del catálogo" onSubmit={(e) => e.preventDefault()}>
       {marcas.length > 1 && (
-        <nav class="filtro-marcas" aria-label="Marcas">
+        <nav class="filtro-marcas" aria-label="Marcas" ref={navMarcas}>
           <p class="filtros-titulo">Marca</p>
           <ul>
             {marcas.map((m) => (

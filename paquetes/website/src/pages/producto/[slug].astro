@@ -3,6 +3,8 @@ import Base from '../../layouts/Base.astro';
 import Migas from '../../componentes/Migas.astro';
 import Icono from '../../componentes/Icono.astro';
 import DescripcionProducto from '../../componentes/DescripcionProducto.astro';
+import ProductosRelacionados from '../../componentes/ProductosRelacionados.astro';
+import { relacionados } from '../../lib/relacionados';
 import Galeria from '../../islas/Galeria';
 import Precio from '../../islas/Precio';
 import BotonComprar from '../../islas/BotonComprar';
@@ -24,11 +26,12 @@ const descripcion = recortar(descripcionPlana(p.seo.descripcion ?? p.descripcion
 <Base titulo={titulo} descripcion={descripcion} ruta={rutaProducto(p)} imagen={p.fotos[0]?.url} datosEstructurados={[jsonLdProducto(p, contenido)]}>
   <div class="contenedor pagina">
     <Migas pasos={[{ texto: 'Inicio', href: '/' }, { texto: 'Productos', href: '/productos' }, ...(cat !== undefined ? [{ texto: cat.nombre, href: rutaCategoria(cat.id) }] : []), { texto: p.nombre }]} />
+    <a class="volver-catalogo" href="/productos"><Icono nombre="anterior" tamano={16} />Volver al catálogo</a>
     <div class="ficha">
       <Galeria client:load nombre={p.nombre} fotos={p.fotos} video={p.video} />
       <div class="ficha-info">
         <h1>{p.nombre}</h1>
-        <p class="ficha-meta"><span>Marca: <strong>{p.marca}</strong></span><span>Código: <strong>{p.id}</strong></span></p>
+        <p class="ficha-meta">{cat !== undefined && <span>Categoría: <a href={rutaCategoria(cat.id)}><strong>{cat.nombre}</strong></a></span>}<span>Marca: <strong>{p.marca}</strong></span><span>Código: <strong>{p.id}</strong></span></p>
         <Precio client:load usd={p.precioUsd} inicial={config.mercadoInicial} mercados={config.mercados} redondeo={config.redondeo} />
         <noscript><p class="aviso-estado">Activa JavaScript para ver el precio o consúltalo por WhatsApp.</p></noscript>
         <BotonComprar client:load id={p.id} nombre={p.nombre} disponible={p.disponible} whatsapp={config.whatsappNovuchat} verificar />
@@ -37,6 +40,7 @@ const descripcion = recortar(descripcionPlana(p.seo.descripcion ?? p.descripcion
         {p.garantia !== null && <p class="ficha-garantia"><Icono nombre="escudo" tamano={20} />Garantía: {p.garantia}</p>}
       </div>
     </div>
+    <ProductosRelacionados productos={relacionados(contenido.productos, p)} />
   </div>
   <EventoVista client:idle id={p.id} nombre={p.nombre} />
 </Base>

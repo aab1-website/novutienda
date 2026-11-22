@@ -3,6 +3,7 @@ import SelectorPais from '../islas/SelectorPais';
 import TemaToggle from '../islas/TemaToggle';
 import Buscador from '../islas/Buscador';
 import Carrito from '../islas/Carrito';
+import CabeceraMovil from '../islas/CabeceraMovil';
 import { contenido } from '../contenido/instancia';
 import { seccionesEnMenu } from '../contenido/consultas';
 import { rutaSeccion } from '../lib/seo';
@@ -48,6 +49,7 @@ const actual = (href: string): boolean => (href === '/' ? ruta === '/' : !href.i
       <TemaToggle client:idle />
       <Buscador client:idle />
       <Carrito client:load whatsapp={config.whatsappNovuchat} />
+      <CabeceraMovil client:idle />
     </div>
   </div>
 </header>

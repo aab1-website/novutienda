@@ -1,0 +1,37 @@
+---
+import Precio from '../islas/Precio';
+import Icono from './Icono.astro';
+import { contenido } from '../contenido/instancia';
+import type { Producto } from '../contenido/tipos';
+import { srcsetDe, TAMANOS_TARJETA } from '../lib/medios';
+import { rutaProducto } from '../lib/seo';
+
+interface Props { productos: readonly Producto[] }
+const { productos } = Astro.props;
+const { config, categorias } = contenido;
+---
+{productos.length > 0 && (
+  <section class="relacionados" aria-labelledby="titulo-relacionados">
+    <h2 id="titulo-relacionados">Productos relacionados</h2>
+    <ul class="relacionados-lista">
+      {productos.map((r) => {
+        const foto = r.fotos[0];
+        return (
+          <li class="relacionado">
+            <a class="relacionado-enlace" href={rutaProducto(r)}>
+              <span class="tarjeta-imagen">
+                {foto !== undefined ? (
+                  <img src={foto.url} srcset={srcsetDe(foto)} sizes={TAMANOS_TARJETA} alt="" loading="lazy" decoding="async" width="600" height="600" />
+                ) : (
+                  <span class="tarjeta-sin-imagen"><Icono nombre={categorias.find((c) => c.id === r.categoria)?.icono ?? 'cuadricula'} tamano={28} /></span>
+                )}
+              </span>
+              <span class="relacionado-nombre">{r.nombre}</span>
+            </a>
+            <Precio client:visible usd={r.precioUsd} inicial={config.mercadoInicial} mercados={config.mercados} redondeo={config.redondeo} etiqueta="" />
+          </li>
+        );
+      })}
+    </ul>
+  </section>
+)}
