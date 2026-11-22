@@ -24,8 +24,9 @@ cotización más vieja que el límite (4 días hábiles) el notificador:
 
 ## Cómo se crea la alerta por correo
 
-Costo: las alertas basadas en registros de Cloud Monitoring no cobran por la política; el correo es gratuito. Verificar los precios vigentes en la
-documentación oficial de Google Cloud con fecha antes de crearla.
+Costo: desde el 01/05/2026, Cloud Monitoring cobra USD 0,10 al mes por cada condición de alerta, también en las políticas basadas en registros
+(sin cargo adicional por series de tiempo); el correo es gratuito. Por eso cada política se diseña con una sola condición. Verificar los precios
+vigentes en la documentación oficial de Google Cloud con fecha antes de crearla.
 
 1. **Canal de notificación** (correo) en el proyecto: `gcloud beta monitoring channels create --display-name="Cotización <CLIENTE>" --type=email --channel-labels=email_address=<CORREO_DEL_CLIENTE> --project=<PROYECTO>` (el correo y el proyecto salen de las variables de GitHub; no se guardan en el repositorio).
 2. **Política de alerta basada en registros** sobre este filtro:
