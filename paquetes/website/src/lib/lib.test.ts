@@ -39,7 +39,7 @@ describe('dinero', () => {
 describe('whatsapp', () => {
   it('arma el enlace de «Comprar»: una línea con el producto, sin guion', () => {
     const m = mensajeConsulta([{ id: 'tv-x', nombre: 'Televisor X', cantidad: 1 }]);
-    expect(m).toBe('Hola, quiero consultar por estos productos:\n1 x Televisor X (cód. tv-x)');
+    expect(m).toBe('Hola, quiero comprar estos productos:\n1 x Televisor X (cód. tv-x)');
     expect(enlaceWhatsApp('59100000001', m)).toBe(`https://wa.me/59100000001?text=${encodeURIComponent(m)}`);
   });
   it('sin número válido no hay enlace (nunca uno roto)', () => {
@@ -51,8 +51,8 @@ describe('whatsapp', () => {
   });
   it('acota el largo del mensaje y arma la consulta del carrito', () => {
     expect(enlaceWhatsApp('59100000001', 'a'.repeat(5000))!.length).toBeLessThan(1700);
-    expect(mensajeConsulta([{ id: 'a-1', nombre: 'A', cantidad: 2 }])).toBe('Hola, quiero consultar por estos productos:\n2 x A (cód. a-1)');
-    expect(mensajeConsulta([{ id: 'a-1', nombre: 'A', cantidad: 2 }, { id: 'b-2', nombre: 'B', cantidad: 1 }])).toBe('Hola, quiero consultar por estos productos:\n2 x A (cód. a-1)\n1 x B (cód. b-2)');
+    expect(mensajeConsulta([{ id: 'a-1', nombre: 'A', cantidad: 2 }])).toBe('Hola, quiero comprar estos productos:\n2 x A (cód. a-1)');
+    expect(mensajeConsulta([{ id: 'a-1', nombre: 'A', cantidad: 2 }, { id: 'b-2', nombre: 'B', cantidad: 1 }])).toBe('Hola, quiero comprar estos productos:\n2 x A (cód. a-1)\n1 x B (cód. b-2)');
   });
 });
 
