@@ -162,7 +162,9 @@ Decisión y riesgo aceptado: `docs/arquitectura/decisiones.md` (DR-CB y RIESGO-H
 |---|---|---|
 | `sitio-constructor` | Ejecuta el build y despliega el sitio | `firebasehosting.admin` (proyecto: Hosting no admite permisos por sitio, es el riesgo aceptado), `logging.logWriter`, `serviceusage.serviceUsageConsumer`, lector del repositorio de imágenes, acceso solo a los secretos del sitio |
 | `fn-constructor-sitio` | Corre las dos funciones del constructor: encola y recibe el aviso | rol propio con solo `cloudbuild.builds.create` y `get`; `actAs` solo sobre `sitio-constructor`; Firestore y registros |
-| cuenta por defecto de Cloud Build | Construye las Functions | no se cambia sin re-desplegar acto seguido y comprobar todas las Functions |
+| `build-funciones` (cuenta por defecto de Cloud Build) | Construye las Functions | lo mínimo: `logging.logWriter`, `artifactregistry.writer` sobre `gcf-artifacts` y lectura del bucket de fuentes. Reemplaza a la de Compute con rol Editor (D-P5-1); tras cambiarla se re-despliega en el acto para comprobar las 12 Functions |
+
+El invocador de la cola `construirSitio` va en el código (constante `INVOCADORES_TAREA_SITIO`: `novutienda-funciones@` y `fn-constructor-sitio@`, D-P5-2); firebase-tools lo reaplica en cada despliegue, así que el permiso de la cola no se pierde al desplegar.
 
 La imagen del constructor se publica en un repositorio propio de Artifact Registry por el CI, tras Trivy, y se lanza solo por digest. Todo cambio de estos permisos lo revisa el agente `seguridad`.
 
