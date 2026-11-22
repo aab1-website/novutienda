@@ -12,4 +12,11 @@ describe('número de recibo', () => {
     ['000006', { numero: 6 }],
   ])('interpreta %s', (t, esperado) => expect(interpretarNumeroRecibo(t)).toEqual(esperado));
   it.each(['', 'A', 'A-', '0', 'A-x', '6A', '1.5', '-6'])('rechaza «%s»', (t) => expect(interpretarNumeroRecibo(t)).toBeNull());
+  it('una entrada larga de espacios responde rápido y da null', () => {
+    const ini = Date.now();
+    expect(interpretarNumeroRecibo('A' + ' '.repeat(50000) + 'x')).toBeNull();
+    expect(interpretarNumeroRecibo(' '.repeat(50000) + '6')).toBeNull();
+    expect(Date.now() - ini).toBeLessThan(200);
+  });
+  it('rechaza series de más de 5 letras', () => expect(interpretarNumeroRecibo('ABCDEF6')).toBeNull());
 });

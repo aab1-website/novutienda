@@ -8,7 +8,8 @@ export function aliasRecibo(serie: string, n: number): string[] {
 
 /** Interpreta «A6», «a-6», «A-000006» o «6»; la serie sale en mayúsculas. `null` si no es un número de recibo. */
 export function interpretarNumeroRecibo(texto: string): { serie?: string; numero: number } | null {
-  const m = /^(?:([A-Za-z]+)\s*-?\s*)?(\d{1,9})$/.exec(texto.trim());
+  if (texto.length > 30) return null;
+  const m = /^(?:([A-Za-z]{1,5})\s*(?:-\s*)?)?(\d{1,9})$/.exec(texto.trim());
   if (!m) return null;
   const numero = Number(m[2]);
   if (!Number.isSafeInteger(numero) || numero < 1) return null;
