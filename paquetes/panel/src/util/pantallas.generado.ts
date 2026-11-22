@@ -22,5 +22,6 @@ export const PANTALLAS: readonly PantallaGenerada[] = [
   { id: 'supervision', titulo: 'Supervisión', roles: ['sup', 'adm'], orden: 60, modulo: 'pos' },
   { id: 'catalogo', titulo: 'Catálogo y sitio', roles: ['sup', 'adm'], orden: 70, modulo: 'consola' },
   { id: 'usuarios', titulo: 'Usuarios', roles: ['adm'], orden: 80, modulo: 'panel' },
+  { id: 'tipoCambio', titulo: 'Tipo de cambio', roles: ['adm'], orden: 85, modulo: 'panel' },
   { id: 'configuracion', titulo: 'Configuración', roles: ['adm'], orden: 90, modulo: 'panel' },
 ];

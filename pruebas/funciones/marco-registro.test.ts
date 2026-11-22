@@ -1,6 +1,7 @@
 // El registro de un callable rechazado lleva el código del módulo y un motivo corto y limpio, nunca el valor enviado.
 // Sin emulador: se espía el logger.
 import { beforeEach, describe, expect, it, vi } from 'vitest';
+import { SaltoSinConfirmar } from '@novutienda/nucleo';
 import { ErrorRecibo } from '@novutienda/recibos';
 import { accion, actorPos, comoHttpsError, motivoLimpio, type Contexto } from '../../plataforma/funciones/servidor/llamadas/marco.js';
 
@@ -39,6 +40,14 @@ describe('registro de «callable rechazado»', () => {
     expect(String(datos['motivo'])).toMatch(/^Campo desconocido/);
     expect(linea).not.toContain('<script>');
     expect(linea).not.toContain('>');
+  });
+
+  it('SaltoSinConfirmar: registra solo el código, nunca el mensaje con valores', () => {
+    comoHttpsError(new SaltoSinConfirmar(100, 777, 0.05), { modulo: 'consola', accion: 'fijarTipoCambio' });
+    const linea = avisos.find((l) => l.includes('callable rechazado')) as string;
+    const datos = JSON.parse(linea) as Record<string, unknown>;
+    expect(datos['motivo']).toBe('salto-sin-confirmar');
+    expect(linea).not.toContain('777');
   });
 
   it('recorta a 120 caracteres y limpia los símbolos', () => {

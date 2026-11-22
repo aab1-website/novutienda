@@ -105,6 +105,10 @@ export const FOTO_PERMISOS_L2: readonly AccionFoto[] = [
   // L2-6 (D3): acción central nueva; todos los roles, sin propietario. Las 82 anteriores no cambian.
   f('consola', 'modulosActivos', ['sup', 'adm', 'caj']),
   f('consola', 'configuracionComercial', ['sup', 'adm', 'caj']),
+  // Tipo de cambio manual (TC-2): ver, fijar y volver al del banco central: administrador con contraseña o propietario.
+  f('consola', 'verTipoCambio', ['adm'], true),
+  f('consola', 'cotizacionManual', ['adm'], true),
+  f('consola', 'quitarCotizacionManual', ['adm'], true),
   // Invitar por correo (U-01): el administrador invita, anula y reenvía; el propietario de la plataforma también (igual que asignarRol).
   f('consola', 'invitarUsuario', ['adm'], true),
   f('consola', 'anularInvitacion', ['adm'], true),

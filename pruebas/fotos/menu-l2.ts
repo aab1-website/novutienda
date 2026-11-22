@@ -8,6 +8,7 @@ export const FOTO_MENU_L2: readonly { readonly id: string; readonly titulo: stri
   { id: 'supervision', titulo: 'Supervisión', roles: ['sup', 'adm'] },
   { id: 'catalogo', titulo: 'Catálogo y sitio', roles: ['sup', 'adm'] },
   { id: 'usuarios', titulo: 'Usuarios', roles: ['adm'] },
+  { id: 'tipoCambio', titulo: 'Tipo de cambio', roles: ['adm'] },
   { id: 'configuracion', titulo: 'Configuración', roles: ['adm'] },
 ];
 

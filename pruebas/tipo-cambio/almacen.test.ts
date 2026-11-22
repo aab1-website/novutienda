@@ -97,7 +97,10 @@ describe('carga manual', () => {
     const a = new AlmacenMemoria();
     await escribirCotizacion(a, { mercado: 'BO', principal: bcb(12.06), control: null, ahoraMs: AHORA - 1000 }, T);
     const e = { mercado: 'BO' as const, valor: 14, fecha: '2026-11-04', actor: adm, ahoraMs: AHORA };
-    await expect(cargarManual(a, e, T)).rejects.toBeInstanceOf(SaltoSinConfirmar);
+    const err = await cargarManual(a, e, T).catch((x: unknown) => x);
+    expect(err).toBeInstanceOf(SaltoSinConfirmar);
+    expect((err as SaltoSinConfirmar).message).not.toMatch(/14|12\.06/); // los valores van en propiedades, no en el texto
+    expect(err).toMatchObject({ propuesto: 14, guardado: 12.06 });
     await expect(cargarManual(a, { ...e, confirmarSalto: false }, T)).rejects.toBeInstanceOf(SaltoSinConfirmar);
     expect(a.docs.get(rutaCotizacion('t1', 'BO'))).toMatchObject({ valor: 12.06 });
     await expect(cargarManual(a, { ...e, config: { saltoMaximo: 0.5 } }, T)).resolves.toMatchObject({ valor: 14 });

@@ -17,6 +17,7 @@ import { PantallaMermas } from '../pantallas/inventarios/mermas.js';
 import { PantallaRecibos } from '../pantallas/recibos/recibos.js';
 import { PestanaPlantillaRecibo } from '../pantallas/recibos/plantilla.js';
 import { PantallaSupervision } from '../pantallas/pos/supervision.js';
+import { PantallaTipoCambio } from '../pantallas/tipo-cambio.js';
 import { PantallaUsuarios } from '../pantallas/usuarios.js';
 import { PantallaVenta } from '../pantallas/pos/venta.js';
 import { restablecerRedondeo } from '../util/precio.js';
@@ -95,6 +96,7 @@ export const COMPONENTES_PANTALLA: Readonly<Record<string, (p: { sub: string }) 
   supervision: ({ sub }) => <PantallaSupervision sub={sub} />,
   catalogo: ({ sub }) => <PantallaCatalogo sub={sub} />,
   usuarios: () => <PantallaUsuarios />,
+  tipoCambio: () => <PantallaTipoCambio />,
   configuracion: ({ sub }) => <ConfiguracionConRecibos sub={sub} />,
 };
 

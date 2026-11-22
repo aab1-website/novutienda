@@ -171,12 +171,12 @@ describe('menú por rol', () => {
   });
   it('un módulo apagado quita sus pantallas del menú y de puedeVer; Central no depende de módulos', () => {
     const sinPos = TODOS.filter((m) => m !== 'pos');
-    expect(menuPara('adm', sinPos).map((i) => i.id)).toEqual(['recibos', 'inventario', 'mermas', 'catalogo', 'usuarios', 'configuracion']);
+    expect(menuPara('adm', sinPos).map((i) => i.id)).toEqual(['recibos', 'inventario', 'mermas', 'catalogo', 'usuarios', 'tipoCambio', 'configuracion']);
     expect(puedeVer('adm', 'venta', sinPos)).toBe(false);
-    expect(menuPara('adm', []).map((i) => i.id)).toEqual(['usuarios', 'configuracion']);
+    expect(menuPara('adm', []).map((i) => i.id)).toEqual(['usuarios', 'tipoCambio', 'configuracion']);
   });
   it('falla cerrado: sin módulos conocidos solo se ven las pantallas de Central', () => {
-    expect(menuPara('adm', null).map((i) => i.id)).toEqual(['usuarios', 'configuracion']);
+    expect(menuPara('adm', null).map((i) => i.id)).toEqual(['usuarios', 'tipoCambio', 'configuracion']);
     expect(menuPara('caj', null)).toEqual([]);
     expect(puedeVer('adm', 'venta', null)).toBe(false);
     expect(puedeVer('adm', 'usuarios', null)).toBe(true);

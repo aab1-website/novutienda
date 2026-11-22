@@ -578,6 +578,24 @@ export const TRADUCCION: { readonly [N in NombreCallable]: Traduccion<N> } = {
     usa: ['consola.configuracionComercial'],
     ejecutar: async (c) => vistaComercialDe(await c.llamar('consola', 'configuracionComercial', {})),
   },
+  verTipoCambio: {
+    usa: ['consola.verTipoCambio'],
+    ejecutar: async (c) => lista(await c.llamar('consola', 'verTipoCambio', {}), 'mercados') as never,
+  },
+  cotizacionManual: {
+    usa: ['consola.cotizacionManual'],
+    ejecutar: async (c, e) => {
+      await c.llamar('consola', 'cotizacionManual', { mercado: e.mercado, valor: e.valor, ...(e.confirmarSalto === true ? { confirmarSalto: true } : {}) });
+      return { ok: true };
+    },
+  },
+  quitarCotizacionManual: {
+    usa: ['consola.quitarCotizacionManual'],
+    ejecutar: async (c, e) => {
+      await c.llamar('consola', 'quitarCotizacionManual', { mercado: e.mercado, confirmar: e.confirmar });
+      return { ok: true };
+    },
+  },
 };
 
 export const NOMBRES_CALLABLE = Object.keys(TRADUCCION) as NombreCallable[];

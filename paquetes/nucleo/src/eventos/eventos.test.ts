@@ -258,7 +258,7 @@ describe('tope de reintentos', () => {
 describe('cotización real del núcleo en los eventos', () => {
   const ahora = Date.UTC(2026, 10, 4, 15, 0, 0);
   const almacen = (fuente: string, id: string): AlmacenCotizaciones => ({
-    leer: () => Promise.resolve({ cotizacionId: id, valor: 6.96, fecha: '2026-11-04', fuente }),
+    leer: (ruta) => Promise.resolve(ruta.includes('/manual-') ? null : { cotizacionId: id, valor: 6.96, fecha: '2026-11-04', fuente }),
     transaccion: () => Promise.reject(new Error('no se usa')),
   });
   it('la copia producida por leerCotizacion pasa por validarEvento en venta.confirmada', async () => {

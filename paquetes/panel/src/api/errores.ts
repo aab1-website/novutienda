@@ -78,6 +78,12 @@ const POR_CODIGO_MODULO: Readonly<Record<string, string>> = {
   'carrito-ajeno': 'Ese carrito es de otra persona.',
   'carrito-conflicto': 'El carrito cambió desde otra pantalla. Se muestra la versión vigente.',
   'limite-carritos': 'Hay demasiadas ventas en espera en este turno. Cobre o cancele alguna.',
+  // Tipo de cambio manual
+  'salto-sin-confirmar': 'El valor cambia más del 5 % respecto del vigente. Confirme que es correcto para guardarlo.',
+  'carga-no-autorizada': 'Solo un administrador que entró con correo y contraseña, o el propietario con Google, puede cambiar el tipo de cambio.',
+  'confirmacion-requerida': 'Falta confirmar la operación.',
+  'sin-manual': 'No hay un tipo de cambio manual vigente: ya rige el del banco central.',
+  'limite-tipo-cambio': 'Se hicieron demasiados cambios del tipo de cambio. Intente de nuevo más tarde.',
   // Consola
   'no-encontrado': 'No se encontró lo que buscaba.',
   conflicto: 'Eso ya existe o está en uso. Revise los datos.',

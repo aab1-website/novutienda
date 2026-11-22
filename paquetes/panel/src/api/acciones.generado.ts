@@ -101,4 +101,7 @@ export const ROLES_ACCION: Readonly<Record<string, readonly Rol[]>> = {
   'consola.reenviarInvitacion': ['adm'],
   'consola.modulosActivos': ['caj', 'sup', 'adm'],
   'consola.configuracionComercial': ['caj', 'sup', 'adm'],
+  'consola.verTipoCambio': ['adm'],
+  'consola.cotizacionManual': ['adm'],
+  'consola.quitarCotizacionManual': ['adm'],
 };

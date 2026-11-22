@@ -69,6 +69,7 @@ export const ZONA_POR_ARCHIVO: readonly ReglaZona[] = [
   { patron: new RegExp(`^plataforma/funciones/servidor/llamadas/(${M})\\.ts$`), zona: 'modulo:$1' },
   { patron: /^plataforma\/funciones\/servidor\/llamadas\/medios\.ts$/, zona: 'modulo:consola' },
   { patron: /^plataforma\/funciones\/servidor\/llamadas\/usuarios\.ts$/, zona: 'central', nota: 'acciones de usuarios (T1)' },
+  { patron: /^plataforma\/funciones\/servidor\/llamadas\/tipo-cambio\.ts$/, zona: 'central', nota: 'callables del tipo de cambio manual (TC-2)' },
   { patron: /^plataforma\/funciones\/servidor\/trigger-medios\.ts$/, zona: 'modulo:consola' },
   { patron: /^plataforma\/funciones\/servidor\/disparador-sitio\.ts$/, zona: 'modulo:consola' },
   { patron: /^plataforma\/funciones\/servidor\/enlace-pdf\.ts$/, zona: 'modulo:recibos' },

@@ -20,7 +20,7 @@ import {
   type BaseDatosFirestore, type Bucket,
 } from '../../conectores/firebase/index.js';
 import type { AlmacenMedios, ConsultaSubidas } from '@novutienda/consola';
-import type { AlmacenCotizaciones, AuthMin, IndiceInvitaciones, LimiteTasa, Redondeo } from '@novutienda/nucleo';
+import { type AlmacenCotizaciones, type AuthMin, type IndiceInvitaciones, type LimiteTasa, type Redondeo } from '@novutienda/nucleo';
 import type { LectorHojas } from '@novutienda/inventarios';
 import type { DepsPos } from '@novutienda/pos';
 import type { EjecutorRecibos, LecturaRecibos } from '@novutienda/recibos';
@@ -30,6 +30,7 @@ import { almacenConstruccionFirestore, type DepsTareaConstruccion } from './cons
 import { crearDisparadorSitio } from './disparador-sitio.js';
 import { emisorEnlaceEmulador, emisorEnlaceFirmado, type EmisorEnlacePdf } from './enlace-pdf.js';
 import { MAXIMO_BUSQUEDAS_SERIE_POR_HORA, MAXIMO_BUSQUEDAS_SERIE_POR_MINUTO } from './llamadas/inventarios.js';
+import { MAXIMO_CAMBIOS_TIPO_CAMBIO_POR_HORA, VENTANA_TIPO_CAMBIO_MS } from './llamadas/tipo-cambio.js';
 import { MAXIMO_ACTIVACIONES_POR_HORA, MAXIMO_INVITACIONES_POR_HORA, VENTANA_INVITACIONES_MS } from './llamadas/usuarios.js';
 import { lectorRedondeo, lectorRedondeoDe, type LectorRedondeo } from './redondeo.js';
 
@@ -65,6 +66,8 @@ export interface Entorno {
   readonly limiteBusquedaSerieUsuario: LimiteTasa;
   /** Tope de búsquedas de serie por el comienzo: 300 por hora por tenant (clave `serie:{tenant}`). */
   readonly limiteBusquedaSerieTenant: LimiteTasa;
+  /** Tope de cargas y retornos del tipo de cambio manual: 10 por comercio y hora, global entre instancias (en Firestore, sal `tipo-cambio-v1`; clave `tipo-cambio:{tenant}`). */
+  readonly limiteTipoCambio: LimiteTasa;
   readonly ahora: () => number;
   /** Módulos efectivos del tenant (cache de 60 s por instancia); `undefined` si el tenant no existe o es inválido. */
   readonly modulosDelTenant: LectorModulos;
@@ -141,6 +144,7 @@ export function crearEntorno(o: OpcionesEntorno): Entorno {
     limiteActivaciones: crearLimiteTasa(o.firestore, { maximo: MAXIMO_ACTIVACIONES_POR_HORA, ventanaMs: VENTANA_INVITACIONES_MS, sal: 'invitaciones-v1' }),
     limiteBusquedaSerieUsuario: crearLimiteTasa(o.firestore, { maximo: MAXIMO_BUSQUEDAS_SERIE_POR_MINUTO, ventanaMs: 60_000, sal: 'busqueda-serie-usuario-v1' }),
     limiteBusquedaSerieTenant: crearLimiteTasa(o.firestore, { maximo: MAXIMO_BUSQUEDAS_SERIE_POR_HORA, ventanaMs: 3_600_000, sal: 'busqueda-serie-tenant-v1' }),
+    limiteTipoCambio: crearLimiteTasa(o.firestore, { maximo: MAXIMO_CAMBIOS_TIPO_CAMBIO_POR_HORA, ventanaMs: VENTANA_TIPO_CAMBIO_MS, sal: 'tipo-cambio-v1' }),
     ahora,
     modulosDelTenant: lectoresModulos.modulos,
     estadoModulosDelTenant: lectoresModulos.estado,

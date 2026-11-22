@@ -170,6 +170,9 @@ const ACCIONES: Readonly<Record<string, WireHandler>> = {
   }),
   'consola.modulosActivos': async (c) => ({ modulos: (await legado(c, 'modulosActivos', {})) as string[] }),
   'consola.configuracionComercial': (c) => legado(c, 'configuracionComercial', {}),
+  'consola.verTipoCambio': async (c) => ({ mercados: await legado(c, 'verTipoCambio', {}) }),
+  'consola.cotizacionManual': ok('cotizacionManual'),
+  'consola.quitarCotizacionManual': ok('quitarCotizacionManual'),
   'consola.asignarRol': async (c, d) => {
     await legado(c, 'asignarRol', d);
     return { claim: {} };
