@@ -1,6 +1,7 @@
 import type { Entrada, NombreCallable, Salida } from '../api/contrato.js';
 import type { Medio, MedioLogo, Recibo, SubidaVista } from '../api/tipos.js';
 import { BYTES_LOGO, ID_NEGOCIO, ID_PORTADA, LIMITES_PANEL, PLANTILLAS_SITIO } from '../api/tipos.js';
+import { interpretarNumeroRecibo } from '@novutienda/nucleo';
 import { normalizar } from '../util/buscar.js';
 import { auditar, exigirRol, fallo, iso, vistaProducto, type Contexto } from './estado.js';
 
@@ -100,10 +101,17 @@ export const handlersOtros: {
     for (const f of [q.desde, q.hasta]) if (f !== undefined && !FECHA.test(f)) throw fallo('entrada-invalida', 'Las fechas deben tener la forma aaaa-mm-dd');
     const limite = q.limite ?? 50;
     if (!Number.isInteger(limite) || limite < 1 || limite > 200) throw fallo('entrada-invalida', 'limite entre 1 y 200');
+    const numeroBuscado = q.numero === undefined ? null : interpretarNumeroRecibo(q.numero);
+    const coincideNumero = (numero: string): boolean => {
+      if (q.numero === undefined) return true;
+      if (numeroBuscado === null) return normalizar(numero).includes(normalizar(q.numero));
+      const r = interpretarNumeroRecibo(numero);
+      return r !== null && r.numero === numeroBuscado.numero && (numeroBuscado.serie === undefined || r.serie === numeroBuscado.serie);
+    };
     const propias = c.rol === 'caj' ? new Set([...c.e.ventas.values()].filter((v) => v.cajeroUid === c.uid).map((v) => v.ventaId)) : undefined;
     return [...c.e.recibos.values()]
       .filter((r) => propias === undefined || propias.has(r.ventaId))
-      .filter((r) => q.numero === undefined || normalizar(r.numero).includes(normalizar(q.numero)))
+      .filter((r) => coincideNumero(r.numero))
       .filter((r) => q.desde === undefined || r.fecha >= q.desde)
       .filter((r) => q.hasta === undefined || r.fecha <= q.hasta)
       .filter((r) => q.cliente === undefined || (r.cliente !== undefined && normalizar(r.cliente.nombre).includes(normalizar(q.cliente))))

@@ -1,3 +1,4 @@
+import { interpretarNumeroRecibo, numeroDeRecibo } from '@novutienda/nucleo';
 import { ErrorRecibo } from './errores.js';
 import type { Recibo } from './tipos.js';
 
@@ -43,17 +44,27 @@ export async function buscarComprobantes(lectura: LecturaRecibos, tenantId: stri
   }
   const limite = consulta.limite ?? LIMITE_POR_DEFECTO;
   if (!Number.isInteger(limite) || limite < 1 || limite > LIMITE_MAXIMO) throw new ErrorRecibo(`limite debe estar entre 1 y ${String(LIMITE_MAXIMO)}`);
+  const interpretado = consulta.numero === undefined ? null : interpretarNumeroRecibo(consulta.numero);
   const numero = consulta.numero === undefined ? undefined : normalizar(consulta.numero);
+  const canonico = interpretado?.serie === undefined ? undefined : numeroDeRecibo(interpretado.serie, interpretado.numero);
+  const coincideNumero = (n: string): boolean => {
+    if (numero === undefined) return true;
+    if (interpretado === null) return normalizar(n).includes(numero);
+    // Forma de número de recibo (A6, A-6, a-6, 6, A-000006): se compara por la forma canónica.
+    if (canonico !== undefined) return n.toUpperCase() === canonico;
+    const m = /^[A-Za-z]+-(\d+)$/.exec(n);
+    return m !== null && Number(m[1]) === interpretado.numero;
+  };
   const cliente = consulta.cliente === undefined ? undefined : normalizar(consulta.cliente);
   const filtro: FiltroLectura = {
-    ...(consulta.numero !== undefined && { numero: consulta.numero }),
+    ...(interpretado === null ? consulta.numero !== undefined && { numero: consulta.numero } : { numero: canonico ?? String(interpretado.numero) }),
     ...(consulta.desde !== undefined && { desde: consulta.desde }),
     ...(consulta.hasta !== undefined && { hasta: consulta.hasta }),
   };
   const candidatos = await lectura.consultar(tenantId, filtro);
   return candidatos
     .filter((r) => r.tenantId === tenantId)
-    .filter((r) => numero === undefined || normalizar(r.numero).includes(numero))
+    .filter((r) => coincideNumero(r.numero))
     .filter((r) => consulta.desde === undefined || r.fecha >= consulta.desde)
     .filter((r) => consulta.hasta === undefined || r.fecha <= consulta.hasta)
     .filter((r) => cliente === undefined || (r.cliente !== undefined && normalizar(r.cliente.nombre).includes(cliente)))
