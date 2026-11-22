@@ -43,6 +43,11 @@ describe.skipIf(!hayEmulador)('búsqueda de comprobantes (emulador)', () => {
     expect(await numeros(sup, { numero: 'a-000002' })).toEqual(['A-000002']);
   });
 
+  it('un fragmento con guion que no es un número se busca por prefijo indexado', async () => {
+    expect(await numeros(sup, { numero: 'a-00000' })).toEqual(['A-000006', 'A-000005', 'A-000004', 'A-000003', 'A-000002', 'A-000001']);
+    expect(await numeros(sup, { numero: 'A-' })).toEqual(['A-000006', 'A-000005', 'A-000004', 'A-000003', 'A-000002', 'A-000001']);
+  });
+
   it('las formas cortas con serie (A6, A-6, a-6) encuentran el recibo exacto', async () => {
     expect(await numeros(sup, { numero: 'A6' })).toEqual(['A-000006']);
     expect(await numeros(sup, { numero: 'A-6' })).toEqual(['A-000006']);
@@ -65,6 +70,16 @@ describe.skipIf(!hayEmulador)('búsqueda de comprobantes (emulador)', () => {
     expect(await numeros(caj, { numero: '000005' })).toEqual([]);
     expect(await numeros(caj, { numero: '000002' })).toEqual(['A-000002']);
     expect(await numeros(sup, { limite: 2 })).toEqual(['A-000006', 'A-000005']);
+  });
+
+  it('con dos series (A y B), el número sin serie encuentra el de cada una', async () => {
+    await h.firestore.doc(`tenants/${A}/contadores/recibo_B`).set({ valor: 6 });
+    await h.firestore.doc(`tenants/${A}/recibos/recibo-b-6`).set({
+      reciboId: 'recibo-b-6', tenantId: A, ventaId: 'vb-6', numero: 'B-000006', estado: 'EMITIDO', fecha: '2026-10-01', emitidoEn: '2026-10-01T15:00:00.000Z',
+    });
+    expect((await numeros(sup, { numero: '6' })).sort()).toEqual(['A-000006', 'B-000006']);
+    expect((await numeros(sup, { numero: '000006' })).sort()).toEqual(['A-000006', 'B-000006']);
+    expect(await numeros(sup, { numero: 'B6' })).toEqual(['B-000006']);
   });
 
   it('el número exacto no depende de la fecha: un recibo antiguo bajo más de 500 recientes se encuentra', async () => {
