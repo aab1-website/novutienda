@@ -189,7 +189,7 @@ describe('despachador', () => {
   };
   const base = { metodo: 'GET', consulta: {}, cabeceras: {}, origen: 'ip' };
   it('enruta las tres APIs y responde 404 al resto', async () => {
-    expect(RUTAS_API).toHaveLength(3);
+    expect(RUTAS_API).toHaveLength(4);
     expect((await despacharApi({ ...base, ruta: '/api/cotizacion', consulta: { mercado: 'BO' } }, d)).status).toBe(200);
     expect((await despacharApi({ ...base, ruta: '/api/cotizacion/', consulta: { mercado: 'XX' } }, d)).status).toBe(400);
     expect((await despacharApi({ ...base, ruta: '/api/disponibilidad', consulta: { ids: 'tv-1' } }, d)).cuerpo).toEqual({ disponibilidad: { 'tv-1': 'disponible' } });

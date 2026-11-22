@@ -163,9 +163,9 @@ describe('SEO y JSON-LD', () => {
 });
 
 describe('manifiesto', () => {
-  it('declara solo sus colecciones (contactos), con escritura de servidor, y ningún dato de otro módulo', () => {
+  it('declara solo sus colecciones (contactos y vistasProducto), con escritura de servidor, y ningún dato de otro módulo', () => {
     const rutas = manifiestoWebsite.colecciones.map((x) => x.ruta);
-    expect(rutas).toEqual(['contactos']);
+    expect(rutas).toEqual(['contactos', 'vistasProducto']);
     expect(manifiestoWebsite.colecciones.every((x) => x.escritura === 'servidor')).toBe(true);
     for (const ajeno of ['productos', 'existencias', 'existenciasPublicas', 'cotizaciones', 'fichasWeb', 'publicado']) expect(rutas).not.toContain(ajeno);
   });

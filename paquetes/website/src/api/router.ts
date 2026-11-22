@@ -6,6 +6,7 @@ import type { CopiaCotizacion, Mercado } from '@novutienda/nucleo';
 import { manejarCotizacionSitio } from './cotizacion.js';
 import { manejarContacto, type DepsContacto } from './contacto.js';
 import { manejarDisponibilidad, type LectorDisponibilidad } from './disponibilidad.js';
+import { manejarVista, type DepsVista } from './vista.js';
 import { respuestaJson, type RespuestaHttp } from './http.js';
 
 export interface PeticionApi {
@@ -22,9 +23,11 @@ export interface DepsApi {
   readonly leerCotizacion: (m: Mercado) => Promise<CopiaCotizacion>;
   readonly leerDisponibilidad: LectorDisponibilidad;
   readonly contacto: DepsContacto;
+  /** Contador de vistas; sin él, /api/vista responde 404 (hasta que el coordinador lo cablee). */
+  readonly vistas?: DepsVista;
 }
 
-export const RUTAS_API = ['/api/cotizacion', '/api/disponibilidad', '/api/contacto'] as const;
+export const RUTAS_API = ['/api/cotizacion', '/api/disponibilidad', '/api/contacto', '/api/vista'] as const;
 
 export function despacharApi(req: PeticionApi, deps: DepsApi): Promise<RespuestaHttp> {
   let ruta = req.ruta;
@@ -36,6 +39,10 @@ export function despacharApi(req: PeticionApi, deps: DepsApi): Promise<Respuesta
       return manejarDisponibilidad({ metodo: req.metodo, ids: req.consulta['ids'] ?? null }, deps.leerDisponibilidad);
     case '/api/contacto':
       return manejarContacto({ metodo: req.metodo, cabeceras: req.cabeceras, cuerpo: req.cuerpo, origen: req.origen }, deps.contacto);
+    case '/api/vista':
+      return deps.vistas === undefined
+        ? Promise.resolve(respuestaJson(404, { error: 'no_encontrado' }))
+        : manejarVista({ metodo: req.metodo, id: req.consulta['id'] ?? null, origen: req.origen }, deps.vistas);
     default:
       return Promise.resolve(respuestaJson(404, { error: 'no_encontrado' }));
   }
