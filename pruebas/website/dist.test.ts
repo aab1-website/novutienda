@@ -5,7 +5,7 @@ import { existsSync, readFileSync, readdirSync, statSync } from 'node:fs';
 import { join } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { describe, expect, it } from 'vitest';
-import { ARCHIVO_CABECERAS, ESTILO_ISLAS, estilosEnLinea, hashDe, scriptsEnLinea, verificarDist } from '@novutienda/website';
+import { ARCHIVO_CABECERAS, ESTILO_ISLAS, contenidoEjemplo, estilosEnLinea, hashDe, scriptsEnLinea, verificarDist, versionContenido } from '@novutienda/website';
 
 const DIST = fileURLToPath(new URL('../../dist/website', import.meta.url));
 const compilado = existsSync(join(DIST, ARCHIVO_CABECERAS));
@@ -109,6 +109,10 @@ describe.skipIf(!compilado)('CSP del sitio compilado', () => {
     expect(v['huella']).toMatch(/^[0-9a-f]{64}$/);
     expect(v['huellaSinDisponibilidad']).toMatch(/^[0-9a-f]{64}$/);
     expect(v['productos']).toBeGreaterThan(0);
+    // El contenido de ejemplo tiene productos agotados: el build y la certificación calculan la misma huella sobre el contenido completo.
+    expect(contenidoEjemplo.productos.some((p) => !p.disponible)).toBe(true);
+    expect(v['huellaSinDisponibilidad']).toBe(versionContenido(contenidoEjemplo).huellaSinDisponibilidad);
+    expect(v['productos']).toBe(contenidoEjemplo.productos.length);
   });
 
   it('el carrusel de la portada con enlace lo pinta como enlace con nombre accesible', () => {
