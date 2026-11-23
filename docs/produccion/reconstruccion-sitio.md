@@ -143,3 +143,54 @@ o con un archivo marcado como ejemplo, `pnpm build -- --mode production` falla. 
 `workflow_dispatch`, con `SITIO_CONTENIDO` tomado de la variable de repositorio del mismo nombre (ruta al JSON ya generado por la reconstrucción, que
 debe existir en el checkout o haberse descargado en un paso previo). Mientras producción no tenga su propio flujo de reconstrucción (DC3: queda fuera del PR C) y no produzca ese archivo, un tag `v*` falla
 en `construir` por diseño: es mejor que publicar el sitio de ejemplo.
+
+## Constructor en Cloud Build (procedimiento P5, staging)
+
+Decisión y riesgo aceptado: `docs/arquitectura/decisiones.md` (DR-CB y RIESGO-HOSTING-PROYECTO). Este apartado dice cómo se enciende, con qué cuentas, cómo se vuelve atrás y qué vigila la alerta. Todo paso en la nube lo ejecuta Claude con la cuenta del propietario, con la autorización de Andres por botón; se hace solo en staging.
+
+### El interruptor `CONSTRUCTOR_SITIO_MODO`
+
+- `github` (por defecto): el temporizador dispara el workflow de GitHub, como hasta ahora. Las funciones del constructor se despliegan, pero no construyen.
+- `google`: publicar encola una tarea en Cloud Tasks y Cloud Build construye, prueba, guarda la copia previa, despliega y certifica.
+- Es una variable del Environment `staging` que el despliegue de Functions escribe en el dotenv; cambiarla exige re-desplegar (volver a correr `desplegar-staging` o el siguiente merge).
+- Al pasar a `google`, en el mismo turno se desactiva `reconstruir-sitio.yml` (su sondeo cada 15 minutos competiría con Cloud Build por el mismo sitio). Al volver a `github`, se reactiva.
+- Los otros parámetros del constructor (`CONSTRUCTOR_SITIO_CUENTA`, `CUENTA_FN_CONSTRUCTOR_SITIO`, `CONSTRUCTOR_SITIO_APP_ENV`, `CONSTRUCTOR_SITIO_MAQUINA`, `SITIO_PANEL_ID` y los `VITE_*`) también deben llegar al dotenv: sin valor, firebase-tools falla en modo no interactivo aunque el parámetro tenga `default`.
+
+### Cuentas (principio de mínimo permiso)
+
+| Cuenta | Para qué | Permisos |
+|---|---|---|
+| `sitio-constructor` | Ejecuta el build y despliega el sitio | `firebasehosting.admin` (proyecto: Hosting no admite permisos por sitio, es el riesgo aceptado), `logging.logWriter`, `serviceusage.serviceUsageConsumer`, lector del repositorio de imágenes, acceso solo a los secretos del sitio |
+| `fn-constructor-sitio` | Corre las dos funciones del constructor: encola y recibe el aviso | rol propio con solo `cloudbuild.builds.create` y `get`; `actAs` solo sobre `sitio-constructor`; Firestore y registros; `secretAccessor` de `SITIOS_TENANT`; opcional, `actAs` de cada cuenta que encola sobre sí misma, que solo se da si P6 lo pide |
+| `build-funciones` (cuenta por defecto de Cloud Build) | Construye las Functions | lo mínimo: `logging.logWriter`, `artifactregistry.writer` sobre `gcf-artifacts` y lectura del bucket de fuentes. Reemplaza a la de Compute con rol Editor (D-P5-1); tras cambiarla se re-despliega en el acto para comprobar las 12 Functions |
+
+El invocador de la cola `construirSitio` va en el código (constante `INVOCADORES_TAREA_SITIO`: `novutienda-funciones@` y `fn-constructor-sitio@`, D-P5-2); firebase-tools lo reaplica en cada despliegue, así que el permiso de la cola no se pierde al desplegar.
+
+La imagen del constructor se publica en un repositorio propio de Artifact Registry por el CI, tras Trivy, y se lanza solo por digest. Todo cambio de estos permisos lo revisa el agente `seguridad`.
+
+### La guardia `SITIOS_PROHIBIDOS`
+
+`scripts/reconstruir-sitio.sh` aborta si el sitio destino figura en `SITIOS_PROHIBIDOS` (el sitio del panel). Es la defensa principal contra el riesgo de Hosting: no se debilita ni se omite para que un build pase.
+
+### Cómo volver atrás
+
+1. Poner `CONSTRUCTOR_SITIO_MODO=github` en el Environment `staging` y re-desplegar.
+2. Reactivar `reconstruir-sitio.yml`.
+3. Lo publicado mientras tanto sale en la primera reconstrucción del camino de GitHub: los trabajos `pendiente` se conservan.
+El workflow de GitHub y sus secretos se retiran solo tras 14 días de staging en verde (D3 de DR-CB).
+
+### La alerta
+
+- Un canal de correo del propietario (el correo no se guarda en el repositorio) y **una sola política con una sola condición** por registro (USD 0,10 al mes, D-P5-4), con un aviso por hora como máximo y cierre automático a 7 días.
+- El filtro tiene dos ramas: (1) errores de Cloud Run con `jsonPayload.alerta="sitio"` (trabajo de más de 10 minutos o falla); (2) los registros del propio build (`resource.type="build"`, con la etiqueta del sitio) que muestren el texto de la guardia o un destino de Hosting distinto del sitio. Firebase Hosting no deja registros de auditoría en staging, por eso la segunda rama no mira Hosting.
+- Es un aviso, no un freno: el freno es la guardia.
+- Prueba real: forzar en P6 un trabajo de más de 10 minutos y comprobar que llega el correo. `gcloud logging write` usa el recurso `global` y no sirve para probar la rama de Cloud Run.
+- Un latido (ausencia de datos sobre `temporizadorSitio`) sumaría otros USD 0,10 al mes; se propone y no se crea sin autorización. Costos y sus fuentes: `docs/produccion/alertas.md`.
+
+### Prerrequisito de P9 (producción por cliente)
+
+Antes del primer tag de producción con las funciones del constructor exportadas, hay que crear en producción la cuenta `fn-constructor-sitio`: si no existe, el despliegue falla al dar el invocador de la cola (`INVOCADORES_TAREA_SITIO`). También se crean allí `sitio-constructor` y sus permisos. La producción de cada cliente se revisa aparte del riesgo aceptado de staging.
+
+### Verificación en N5 y riesgo residual
+
+`fn-constructor-sitio` podría lanzar un build sin indicar cuenta; ese build correría como `build-funciones`, que escribe en `gcf-artifacts`. Al aplicar N5 se envía un build sin `serviceAccount` con la identidad de `fn-constructor-sitio` y se espera PERMISSION_DENIED. Si no lo rechaza, el riesgo se acepta y se anota en `docs/arquitectura/decisiones.md`.
