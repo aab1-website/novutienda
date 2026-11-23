@@ -155,6 +155,8 @@ describe('base válida', () => {
 });
 
 const un = (n: number, c = 'a'): string => c.repeat(n);
+/** Texto de largo exacto `n` para el campo; el correo del sitio exige forma de correo, así que desde 5 caracteres es `a@bbb.c`. */
+const de = (ruta: string, n: number): string => (ruta === 'correo' && n >= 5 ? `a@${'b'.repeat(n - 4)}.c` : un(n));
 
 describe('heredado: límites de texto con el mismo veredicto que el sitio', () => {
   // ruta, mínimo (0 = sin mínimo de contenido), máximo
@@ -171,11 +173,11 @@ describe('heredado: límites de texto con el mismo veredicto que el sitio', () =
 
   for (const [ruta, min, max] of CAMPOS) {
     it(`${ruta}: largos ${String(min - 1)}, ${String(min)}, ${String(max)} y ${String(max + 1)}`, () => {
-      if (min >= 1) expect(mismoVeredicto(con(base(), ruta, un(min - 1)))).toBe(false); // vacío (min-1 = 0)
-      if (min >= 2) expect(mismoVeredicto(con(base(), ruta, un(min)))).toBe(true);
-      expect(mismoVeredicto(con(base(), ruta, un(min === 0 ? 0 : Math.max(min, 1))))).toBe(true);
-      expect(mismoVeredicto(con(base(), ruta, un(max)))).toBe(true);
-      expect(mismoVeredicto(con(base(), ruta, un(max + 1)))).toBe(false);
+      if (min >= 1) expect(mismoVeredicto(con(base(), ruta, de(ruta, min - 1)))).toBe(false); // vacío (min-1 = 0)
+      if (min >= 2) expect(mismoVeredicto(con(base(), ruta, de(ruta, min)))).toBe(true);
+      expect(mismoVeredicto(con(base(), ruta, de(ruta, min === 0 ? 0 : Math.max(min, 1))))).toBe(true);
+      expect(mismoVeredicto(con(base(), ruta, de(ruta, max)))).toBe(true);
+      expect(mismoVeredicto(con(base(), ruta, de(ruta, max + 1)))).toBe(false);
     });
   }
 
@@ -188,8 +190,8 @@ describe('heredado: límites de texto con el mismo veredicto que el sitio', () =
   it('teléfono y correo: los largos min-1 y min exactos (6 y 5), y nulo', () => {
     expect(mismoVeredicto(con(base(), 'telefono', un(5)))).toBe(false);
     expect(mismoVeredicto(con(base(), 'telefono', un(6)))).toBe(true);
-    expect(mismoVeredicto(con(base(), 'correo', un(4)))).toBe(false);
-    expect(mismoVeredicto(con(base(), 'correo', un(5)))).toBe(true);
+    expect(mismoVeredicto(con(base(), 'correo', de('correo', 4)))).toBe(false);
+    expect(mismoVeredicto(con(base(), 'correo', de('correo', 5)))).toBe(true);
     for (const k of ['telefono', 'correo', 'horario']) expect(mismoVeredicto(con(base(), k, null)), k).toBe(true);
     for (const k of ['nombre', 'lema', 'direccion']) expect(mismoVeredicto(con(base(), k, null)), k).toBe(false);
   });
@@ -258,7 +260,11 @@ describe('heredado: límites de texto con el mismo veredicto que el sitio', () =
     const hs = (n: number): string[] => Array.from({ length: n }, (_, i) => `h${String(i)}.ejemplo.test`);
     for (const n of [0, 1, 20, 21]) expect(mismoVeredicto(con(base(), 'enlacesPermitidos', hs(n))), String(n)).toBe(n <= 20);
     for (const h of ['ejemplo.test', 'a.b', 'a-b.c-d', 'sinpunto', 'EJEMPLO.test', '-a.b', 'a-.b', 'a..b', '.a.b', 'a.b.', 'a b.c', 'a.b/c', 'a.b:80', '127.0.0.1', 'localhost', 'ñ.test', '', 'a.b.c.d.e']) {
-      expect(mismoVeredicto(con(base(), 'enlacesPermitidos', [h])), h).toBe(/^[a-z0-9]([a-z0-9-]*[a-z0-9])?(\.[a-z0-9]([a-z0-9-]*[a-z0-9])?)+$/.test(h));
+      // El sitio ya rechaza IP y localhost como el nivel estricto de la consola; el nivel heredado todavía los acepta.
+      const esperado = /^[a-z0-9]([a-z0-9-]*[a-z0-9])?(\.[a-z0-9]([a-z0-9-]*[a-z0-9])?)+$/.test(h) && h !== '127.0.0.1' && h !== 'localhost';
+      expect(veredictoSitio(con(base(), 'enlacesPermitidos', [h])), h).toBe(esperado);
+      if (h === '127.0.0.1' || h === 'localhost') expect(evaluarNegocioSitio(con(base(), 'enlacesPermitidos', [h]), 'estricto').errores.length, h).toBeGreaterThan(0);
+      else expect(veredictoConsola(con(base(), 'enlacesPermitidos', [h])), h).toBe(esperado);
     }
     for (const malo of [[5], [null], 'x', null]) expect(mismoVeredicto(con(base(), 'enlacesPermitidos', malo)), JSON.stringify(malo)).toBe(false);
   });
@@ -278,7 +284,8 @@ describe('heredado: tolerancia de caracteres igual a la del sitio', () => {
     ['salto de línea', 'a\nb'], ['retorno', 'a\rb'], ['DEL', 'a\u007fb'], ['HTML', '<b>a</b>'], ['U+202E', 'a‮b'],
     ['nulo', 'a\u0000b'], ['ancho cero', 'a​b'], ['U+2028', 'a b'], ['BOM', '﻿a'], ['script', '<script>x</script>'],
   ];
-  for (const campo of ['nombre', 'lema', 'telefono', 'correo', 'direccion', 'horario', 'portada.insignia', 'portada.titulo[0]', 'identidad.etiqueta', 'categorias.herramientas.nombre']) {
+  // `correo` queda fuera a propósito: el sitio exige forma de correo (como el nivel estricto), el heredado no.
+  for (const campo of ['nombre', 'lema', 'telefono', 'direccion', 'horario', 'portada.insignia', 'portada.titulo[0]', 'identidad.etiqueta', 'categorias.herramientas.nombre']) {
     it(`${campo}: mismo veredicto (y heredado acepta)`, () => {
       for (const [nombre, v] of RAROS) {
         // Se rellena para superar el mínimo de largo (6 el teléfono, 5 el correo): solo se prueba el carácter.

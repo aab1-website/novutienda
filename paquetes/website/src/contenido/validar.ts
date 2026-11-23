@@ -428,6 +428,12 @@ export type ResultadoNegocio =
  * Valida los datos del negocio (JSON externo). `origenes` son los orígenes de medios aceptados para el logo y la foto de identidad
  * (además de rutas propias). Los errores nombran campos, nunca valores.
  */
+/** Correo con forma de correo (el mismo criterio que el nivel estricto de la consola); el error nombra el campo, nunca el valor. */
+function correoValido(l: Lector, c: string): string {
+  if (c !== '' && !esCorreoSimple(c)) l.falla('negocio.correo', 'debe tener forma de correo (usuario@dominio.tld)');
+  return c;
+}
+
 export function validarNegocio(entrada: unknown, origenes: readonly (string | null)[] = []): ResultadoNegocio {
   const l = new Lector();
   const o = l.obj(entrada, 'negocio');
@@ -447,6 +453,11 @@ export function validarNegocio(entrada: unknown, origenes: readonly (string | nu
   const enlacesPermitidos = l.lista(o['enlacesPermitidos'], 'negocio.enlacesPermitidos', 20).map((h, i) => {
     if (typeof h !== 'string' || !RE_HOST.test(h)) {
       l.falla(`negocio.enlacesPermitidos[${i}]`, 'debe ser un nombre de anfitrión');
+      return '';
+    }
+    // Mismo criterio que el nivel estricto de la consola: ni localhost ni direcciones IP (última etiqueta numérica).
+    if (h === 'localhost' || /^[0-9]+$/.test(h.slice(h.lastIndexOf('.') + 1))) {
+      l.falla(`negocio.enlacesPermitidos[${i}]`, 'no se admite una dirección IP ni localhost');
       return '';
     }
     return h;
@@ -473,7 +484,7 @@ export function validarNegocio(entrada: unknown, origenes: readonly (string | nu
     logo: o['logo'] === null ? null : leerFoto(l, o['logo'], 'negocio.logo', origenes),
     whatsappTienda: wa('whatsappTienda'),
     telefono: o['telefono'] === null ? null : l.texto(o['telefono'], 'negocio.telefono', 6, 30),
-    correo: o['correo'] === null ? null : l.texto(o['correo'], 'negocio.correo', 5, 120),
+    correo: o['correo'] === null ? null : correoValido(l, l.texto(o['correo'], 'negocio.correo', 5, 120)),
     direccion: l.texto(o['direccion'], 'negocio.direccion', 1, 200),
     horario: l.textoONulo(o['horario'], 'negocio.horario', 200),
     ...conMapa(l.mapa(o['mapa'], 'negocio.mapa')),
