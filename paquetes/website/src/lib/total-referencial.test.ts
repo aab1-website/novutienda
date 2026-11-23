@@ -53,7 +53,7 @@ describe('total referencial', () => {
   });
 
   it('si ningún producto tiene precio, no hay total', () => {
-    expect(totalReferencial([{ id: 'sin-3', nombre: 'S', cantidad: 1 }], precios, 'BO', undefined, redondeo)).toEqual({ tipo: 'a_consultar', sinPrecio: 1 });
+    expect(totalReferencial([{ id: 'sin-3', nombre: 'S', cantidad: 1 }], precios, 'BO', undefined, redondeo)).toEqual({ tipo: 'a_consultar', sinPrecio: 1, lineas: [{ id: 'sin-3', unitario: null, subtotal: null }] });
   });
 
   it('sin cotización no se inventa un total; mientras carga, tampoco', () => {

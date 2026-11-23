@@ -23,7 +23,7 @@ export interface PrecioLinea {
 export type TotalReferencial =
   | { readonly tipo: 'total'; readonly texto: string; readonly centavos: number; readonly sinPrecio: number; readonly lineas: readonly PrecioLinea[] }
   /** Ningún producto del pedido tiene precio. */
-  | { readonly tipo: 'a_consultar'; readonly sinPrecio: number }
+  | { readonly tipo: 'a_consultar'; readonly sinPrecio: number; readonly lineas: readonly PrecioLinea[] }
   | { readonly tipo: 'cargando' }
   | { readonly tipo: 'sin_cotizacion' };
 
@@ -53,6 +53,6 @@ export function totalReferencial(
       lineas.push({ id: l.id, unitario: v.texto, subtotal: formatearMonto(v.centavos * l.cantidad, moneda) });
     }
   }
-  if (conPrecio === 0) return { tipo: 'a_consultar', sinPrecio };
+  if (conPrecio === 0) return { tipo: 'a_consultar', sinPrecio, lineas };
   return { tipo: 'total', texto: formatearMonto(centavos, moneda), centavos, sinPrecio, lineas };
 }

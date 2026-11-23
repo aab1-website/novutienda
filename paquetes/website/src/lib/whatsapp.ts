@@ -1,4 +1,4 @@
-import type { PrecioLinea } from './total-referencial.js';
+import type { PrecioLinea, TotalReferencial } from './total-referencial.js';
 
 /** Enlaces de WhatsApp. El número viene de la configuración; sin número no hay enlace (nunca uno roto). */
 
@@ -62,4 +62,11 @@ export function mensajePedido(
 export function mensajeContacto(nombre: string, mensaje: string): string {
   const cabecera = `Hola, soy ${cortar(nombre.trim(), 80)}.\n`;
   return cabecera + cortar(mensaje.trim(), Math.max(0, MAX_MENSAJE - Array.from(cabecera).length));
+}
+
+/** Mensaje del pedido a partir del resultado de `totalReferencial`: con total lleva montos; sin ningún precio, cada línea dice «precio a consultar». */
+export function mensajeDePedido(lineas: readonly LineaMensaje[], t: TotalReferencial | null): string {
+  if (t?.tipo === 'total') return mensajePedido(lineas, t.lineas, t.texto);
+  if (t?.tipo === 'a_consultar') return mensajePedido(lineas, t.lineas, null);
+  return mensajePedido(lineas, null, null);
 }

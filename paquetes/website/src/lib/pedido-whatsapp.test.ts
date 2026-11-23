@@ -2,7 +2,7 @@ import { describe, expect, it } from 'vitest';
 import type { Redondeo } from '@novutienda/nucleo';
 import type { CotizacionCliente } from './cotizacion-cliente.js';
 import { totalReferencial, type PreciosProductos } from './total-referencial.js';
-import { LEYENDA_TOTAL, MAX_MENSAJE, enlaceWhatsApp, mensajeContacto, mensajePedido } from './whatsapp.js';
+import { LEYENDA_TOTAL, MAX_MENSAJE, enlaceWhatsApp, mensajeContacto, mensajeDePedido, mensajePedido } from './whatsapp.js';
 
 const redondeo: Redondeo = {
   BOB: { tipo: 'decimales', decimales: 0, modo: 'arriba' },
@@ -42,6 +42,25 @@ describe('mensaje del pedido con precios', () => {
     expect(m).toContain('Total referencial: Bs 1.000');
   });
 
+  it('con a_consultar (ningún producto con precio) cada línea dice «precio a consultar» y no hay total', () => {
+    const carrito = [{ id: 'sin-3', nombre: 'Raro', cantidad: 1 }, { id: 'sin-4', nombre: 'Otro', cantidad: 2 }];
+    const t = totalReferencial(carrito, precios, 'BO', cot('BOB/USD', 10), redondeo);
+    expect(t.tipo).toBe('a_consultar');
+    expect(mensajeDePedido(carrito, t)).toBe([
+      'Hola, quiero comprar estos productos:',
+      '1 x Raro (cód. sin-3): precio a consultar',
+      '2 x Otro (cód. sin-4): precio a consultar',
+      LEYENDA_TOTAL,
+    ].join('\n'));
+  });
+
+  it('con un total, mensajeDePedido lleva montos; sin resultado (cargando) no lleva ninguno', () => {
+    const carrito = [{ id: 'tv-1', nombre: 'TV', cantidad: 1 }];
+    const t = totalReferencial(carrito, precios, 'BO', cot('BOB/USD', 10), redondeo);
+    expect(mensajeDePedido(carrito, t)).toContain('Total referencial: Bs 1.000');
+    expect(mensajeDePedido(carrito, null)).not.toMatch(/Bs|Total referencial/);
+  });
+
   it('sin total (precios no disponibles) no lleva montos pero sí la leyenda', () => {
     const m = mensajePedido([{ id: 'a-1', nombre: 'A', cantidad: 2 }], null, null);
     expect(m).toBe(['Hola, quiero comprar estos productos:', '2 x A (cód. a-1)', LEYENDA_TOTAL].join('\n'));
@@ -71,7 +90,7 @@ describe('mensaje del formulario de contacto', () => {
     const cabecera = Array.from('Hola, soy Ana.\n').length;
     for (const relleno of [MAX_MENSAJE - cabecera - 1, MAX_MENSAJE - cabecera]) {
       const m = mensajeContacto('Ana', `${'x'.repeat(relleno)}😀😀`);
-      expect(m.isWellFormed()).toBe(true);
+      expect(/[\uD800-\uDBFF](?![\uDC00-\uDFFF])|(?<![\uD800-\uDBFF])[\uDC00-\uDFFF]/.test(m)).toBe(false);
       expect(Array.from(m).length).toBeLessThanOrEqual(MAX_MENSAJE);
     }
     expect(mensajeContacto('Ana', `${'x'.repeat(MAX_MENSAJE - cabecera - 2)}😀`).endsWith('😀')).toBe(true);

@@ -2,7 +2,7 @@ import { useEffect, useState } from 'preact/hooks';
 import type { Carrito } from '../lib/carrito.js';
 import { configCliente } from '../lib/config-cliente.js';
 import { totalReferencial, type PreciosProductos, type TotalReferencial } from '../lib/total-referencial.js';
-import { enlaceWhatsApp, mensajePedido } from '../lib/whatsapp.js';
+import { enlaceWhatsApp, mensajeDePedido } from '../lib/whatsapp.js';
 import { useCotizacion, useMercado } from './estado.js';
 
 /**
@@ -29,8 +29,7 @@ export function usePedido(carrito: Carrito, activo = true): { readonly t: TotalR
   return { t: precios === null ? null : totalReferencial(carrito, precios, mercado, cot, cfg.redondeo), fallo };
 }
 
-/** Enlace de WhatsApp del pedido: con precios y total cuando hay total; si no, sin montos. */
+/** Enlace de WhatsApp del pedido: con precios y total cuando hay total; sin ningún precio, «precio a consultar» por línea. */
 export function enlacePedido(whatsapp: string | null, carrito: Carrito, t: TotalReferencial | null): string | null {
-  const conTotal = t?.tipo === 'total' ? t : null;
-  return enlaceWhatsApp(whatsapp, mensajePedido(carrito, conTotal?.lineas ?? null, conTotal?.texto ?? null));
+  return enlaceWhatsApp(whatsapp, mensajeDePedido(carrito, t));
 }
