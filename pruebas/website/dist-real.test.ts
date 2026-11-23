@@ -14,13 +14,13 @@ import { existsSync, readFileSync, readdirSync, statSync } from 'node:fs';
 import { join } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { describe, expect, it } from 'vitest';
-import { ARCHIVO_CABECERAS } from '@novutienda/website';
+import { ARCHIVO_CABECERAS, enVenta } from '@novutienda/website';
 
 const DIST = process.env['SITIO_OUT_DIR'] || fileURLToPath(new URL('../../dist/website', import.meta.url));
 const activo = process.env['EXIGIR_DIST'] !== undefined || process.env['SITIO_CONTENIDO'] !== undefined;
 const ambiente = process.env['APP_ENV'] || 'staging';
 
-interface ProductoReal { slug: string; fotos: { url: string }[] }
+interface ProductoReal { id: string; slug: string; disponible: boolean; fotos: { url: string }[] }
 /** Productos del contenido con que se compiló; `null` si no se indicó SITIO_CONTENIDO (entonces se exige el caso normal). */
 function productosDelContenido(): ProductoReal[] | null {
   const ruta = process.env['SITIO_CONTENIDO'];
@@ -80,8 +80,10 @@ describe.skipIf(!activo)('dist del sitio real (dist/website)', () => {
       return;
     }
     expect(fichas.map((f) => f.slice(join(DIST, 'producto').length + 1, -'.html'.length)).sort()).toEqual(productos.map((p) => p.slug).sort());
-    expect(indice).toHaveLength(productos.length);
-    if (productos.length === 0) expect(indice).toEqual([]);
+    // Hay una ficha por producto (también los agotados, marcadas sin stock), pero el índice del buscador lista solo lo que está a la venta.
+    const aLaVenta = enVenta(productos);
+    expect((indice as { i: string }[]).map((e) => e.i).sort()).toEqual(aLaVenta.map((p) => p.id).sort());
+    if (aLaVenta.length === 0) expect(indice).toEqual([]);
   });
 
   it('las imágenes de cada ficha de producto salen del origen de medios, y solo hay galería con fotos si el producto las tiene', () => {
