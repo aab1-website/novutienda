@@ -247,7 +247,11 @@ describe('validarNegocio: mapa', () => {
     expect(ok.ok && ok.negocio.mapa).toBe('https://maps.app.goo.gl/AbC123');
     const sin = validarNegocio(negocioBase());
     expect(sin.ok && 'mapa' in sin.negocio).toBe(false);
-    for (const mapa of ['https://evil.com/maps', 'javascript:alert(1)']) {
+    for (const mapa of ['https://evil.com/maps', 'javascript:alert(1)',
+      'https://maps.google.com:443/x', 'https://maps.google.com:/x', 'https:///maps.google.com/x', 'https:/maps.google.com/x',
+      'https://maps.google.com\\@evil.com/x', 'https://maps.google%2ecom/x', 'https://maps.google.\uff43om/x', 'https://MAPS.GOOGLE.COM/x',
+      'https://www.google.com/maps/../url?q=https://evil.com', 'https://www.google.com/maps/%2e%2e/url?q=x', 'https://www.google.com/maps/%2E./url?q=x',
+      'https://goo.gl/maps/../abc', 'https://maps.app.goo.gl/./x']) {
       const r = validarNegocio({ ...negocioBase(), mapa });
       expect(r.ok).toBe(false);
       expect(!r.ok && r.errores.some((e) => e.startsWith('negocio.mapa:'))).toBe(true);

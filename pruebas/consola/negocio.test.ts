@@ -544,6 +544,7 @@ const MAPAS_INVALIDOS = [
   'javascript:alert(1)', 'http://www.google.com/maps', 'https://www.google.com/search?q=maps', 'https://www.google.com/mapsx', 'https://goo.gl/otra',
   'https://google.com/maps', 'https://evil.com/maps', 'https://www.google.com.evil.com/maps', 'https://usuario@www.google.com/maps',
   'https://www.google.com:8443/maps', 'https://maps.google.com/ruta con espacio', `https://maps.app.goo.gl/${'a'.repeat(1000)}`, '', 'data:text/html,x',
+  'https://www.google.com/maps/../url?q=https://evil.com', 'https://www.google.com/maps/%2e%2e/url?q=x', 'https://goo.gl/maps/../abc', 'https://MAPS.GOOGLE.COM/x', 'https://maps.google.com:443/x', 'https://maps.google.com:/x', 'https:///maps.google.com/x', 'https:/maps.google.com/x', 'https://maps.google.com\\@evil.com/x', 'https://maps.google%2ecom/x', 'https://maps.google.\uff43om/x', 'https://www.google.com/maps/%2E%2E/url', 'https://www.google.com/maps/./x', 'https://www.google.com/maps/..',
 ] as const;
 
 describe('enlace al mapa (campo opcional mapa)', () => {
@@ -564,10 +565,10 @@ describe('enlace al mapa (campo opcional mapa)', () => {
       expect(acepta(con('https://evil.com/maps'), nivel)).toBe(false);
       expect(acepta(con(5), nivel)).toBe(false);
     }
-    try { validarNegocioSitio(con('javascript:alert(1)'), { nivel: 'estricto' }); } catch (e) {
-      expect(JSON.stringify(e)).toContain('mapa');
-      expect(JSON.stringify(e)).not.toContain('alert');
-    }
+    let error: unknown;
+    expect(() => { try { validarNegocioSitio(con('javascript:alert(1)'), { nivel: 'estricto' }); } catch (e) { error = e; throw e; } }).toThrow();
+    expect(JSON.stringify(error)).toContain('mapa');
+    expect(JSON.stringify(error)).not.toContain('alert');
   });
   it('cuenta como campo cambiado', () => {
     const antes = validarNegocioSitio(base(), { nivel: 'estricto' });

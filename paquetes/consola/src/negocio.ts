@@ -161,16 +161,20 @@ export function enlacePermitidoEnSitio(url: string, permitidos: readonly string[
  * DUPLICADA de `urlMapaSegura` de `paquetes/website/src/contenido/validar.ts`: la consola no puede importar del sitio y el
  * núcleo no es zona de este módulo. Si cambia una, cambia la otra; `pruebas/consola/negocio.test.ts` fija los mismos casos que
  * `validar.test.ts` del sitio. Sin la clase `URL` (este archivo no depende de tipos de plataforma): es algo más estricta
- * (rechaza `:` en la autoridad aunque el puerto esté vacío y anfitriones que `URL` normalizaría).
+ * (rechaza `:` en la autoridad aunque el puerto esté vacío, anfitriones que no vengan en minúsculas o que `URL` normalizaría,
+ * y toda ruta con segmentos `.` o `..`, crudos o con `%2e`).
  */
 export function urlMapaSegura(url: string): boolean {
   if (typeof url !== 'string' || url.length === 0 || url.length > LIMITES_NEGOCIO.mapa.max) return false;
   if (RE_CONTROL.test(url) || /[\s\\]/.test(url)) return false;
-  const m = /^https:\/\/([^/?#]*)([^?#]*)/i.exec(url);
+  const m = /^https:\/\/([^/?#]*)([^?#]*)/.exec(url);
   if (m === null) return false;
-  const host = (m[1] ?? '').toLowerCase();
-  if (host.includes('@') || host.includes(':')) return false;
+  // El anfitrión debe venir ya en minúsculas (el sitio lo compara tal cual) y sin credenciales ni puerto.
+  const host = m[1] ?? '';
+  if (host !== host.toLowerCase() || host.includes('@') || host.includes(':')) return false;
   const ruta = (m[2] ?? '').toLowerCase();
+  // Sin segmentos `.` ni `..` (crudos) ni codificados (`%2e`): permitirían salir de `/maps`.
+  if (ruta.includes('%2e') || ruta.split('/').some((x) => x === '.' || x === '..')) return false;
   const enMaps = ruta === '/maps' || ruta.startsWith('/maps/');
   switch (host) {
     case 'www.google.com':

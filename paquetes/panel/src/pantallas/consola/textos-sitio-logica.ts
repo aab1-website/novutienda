@@ -24,11 +24,14 @@ export const LARGO_MAXIMO_MAPA = 1000;
 export function mapaValido(url: string): boolean {
   // eslint-disable-next-line no-control-regex -- se buscan justamente los caracteres de control
   if (url.length === 0 || url.length > LARGO_MAXIMO_MAPA || /[\u0000-\u001f\s\\]/.test(url)) return false;
-  const m = /^https:\/\/([^/?#]*)([^?#]*)/i.exec(url);
+  const m = /^https:\/\/([^/?#]*)([^?#]*)/.exec(url);
   if (m === null) return false;
-  const host = (m[1] ?? '').toLowerCase();
-  if (host.includes('@') || host.includes(':')) return false;
+  // El anfitrión debe venir ya en minúsculas (el sitio lo compara tal cual) y sin credenciales ni puerto.
+  const host = m[1] ?? '';
+  if (host !== host.toLowerCase() || host.includes('@') || host.includes(':')) return false;
   const ruta = (m[2] ?? '').toLowerCase();
+  // Sin segmentos `.` ni `..` (crudos) ni codificados (`%2e`): permitirían salir de `/maps`.
+  if (ruta.includes('%2e') || ruta.split('/').some((x) => x === '.' || x === '..')) return false;
   const enMaps = ruta === '/maps' || ruta.startsWith('/maps/');
   if (host === 'www.google.com' || host === 'goo.gl') return enMaps;
   return host === 'maps.google.com' || host === 'maps.app.goo.gl';

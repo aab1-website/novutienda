@@ -106,21 +106,24 @@ export const LARGO_MAXIMO_MAPA = 1000;
  * `maps.app.goo.gl`, `goo.gl/maps…`), sin credenciales ni puerto, sin espacios ni caracteres de control y de hasta 1.000 caracteres.
  */
 export function urlMapaSegura(url: string): boolean {
-  if (url.length === 0 || url.length > LARGO_MAXIMO_MAPA || RE_CONTROL.test(url) || /\s/.test(url)) return false;
-  try {
-    const u = new URL(url);
-    if (u.protocol !== 'https:' || u.username !== '' || u.password !== '' || u.port !== '') return false;
-    const ruta = u.pathname.toLowerCase();
-    const enMaps = (p: string): boolean => ruta === p || ruta.startsWith(`${p}/`);
-    switch (u.hostname.toLowerCase()) {
-      case 'www.google.com': return enMaps('/maps');
-      case 'goo.gl': return enMaps('/maps');
-      case 'maps.google.com':
-      case 'maps.app.goo.gl': return true;
-      default: return false;
-    }
-  } catch {
-    return false;
+  if (url.length === 0 || url.length > LARGO_MAXIMO_MAPA || RE_CONTROL.test(url) || /\s/.test(url) || url.includes('\\')) return false;
+  // Forma cruda, sin depender de cómo `URL` normaliza: `https://` + anfitrión (sin credenciales ni puerto) + `/`, `?`, `#` o el final.
+  const m = /^https:\/\/([^/?#@:\\]+)(?=[/?#]|$)/.exec(url);
+  if (m === null) return false;
+  const host = m[1]!;
+  // Anfitrión ya en minúsculas, ASCII y sin codificar: nada que `URL` tenga que reescribir.
+  if (!/^[a-z0-9.-]+$/.test(host)) return false;
+  const resto = url.slice('https://'.length + host.length);
+  const ruta = /^[^?#]*/.exec(resto)![0].toLowerCase();
+  // Sin segmentos `.` ni `..`, crudos o codificados (`%2e`): no se confía en la normalización de `URL`.
+  if (ruta.split('/').some((seg) => ['.', '..'].includes(seg.replaceAll('%2e', '.')))) return false;
+  const enMaps = (p: string): boolean => ruta === p || ruta.startsWith(`${p}/`);
+  switch (host) {
+    case 'www.google.com': return enMaps('/maps');
+    case 'goo.gl': return enMaps('/maps');
+    case 'maps.google.com':
+    case 'maps.app.goo.gl': return true;
+    default: return false;
   }
 }
 
