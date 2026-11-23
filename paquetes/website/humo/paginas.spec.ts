@@ -2,7 +2,7 @@ import AxeBuilder from '@axe-core/playwright';
 import { expect, test } from '@playwright/test';
 import { decidirConsentimiento, simularApi } from './comun.js';
 
-// Sitio de 41 productos: el catálogo tiene 2 páginas (24 + 17).
+// Sitio de 41 productos (2 sin stock, que no se listan): el catálogo tiene 2 páginas (24 + 15).
 test.describe('catálogo de más de una página', () => {
   test.beforeEach(async ({ page }) => {
     await simularApi(page);
@@ -14,12 +14,12 @@ test.describe('catálogo de más de una página', () => {
     expect((await page.request.get('/productos/pagina/3')).status()).toBe(404);
   });
 
-  test('la página 1 trae 24 productos y la 2, 17, con paginación', async ({ page }) => {
+  test('la página 1 trae 24 productos y la 2, 15, con paginación', async ({ page }) => {
     await page.goto('/productos');
     await expect(page.locator('[data-producto-id]')).toHaveCount(24);
     await expect(page.getByRole('navigation', { name: 'Páginas del catálogo' }).getByRole('link', { name: 'Página 1' })).toHaveAttribute('aria-current', 'page');
     await page.goto('/productos/pagina/2');
-    await expect(page.locator('[data-producto-id]')).toHaveCount(17);
+    await expect(page.locator('[data-producto-id]')).toHaveCount(15);
     await expect(page.getByRole('navigation', { name: 'Páginas del catálogo' }).getByRole('link', { name: 'Página 2' })).toHaveAttribute('aria-current', 'page');
   });
 
@@ -34,10 +34,10 @@ test.describe('catálogo de más de una página', () => {
     await expect(page.locator('link[rel="prev"]')).toHaveCount(0);
   });
 
-  test('el filtro de precio avisa que solo filtra la página visible', async ({ page }) => {
-    await page.goto('/productos/pagina/2');
-    await expect(page.getByRole('status').filter({ hasText: 'Mostrando 17 de 17 productos de esta página (página 2 de 2).' })).toBeVisible();
-    await expect(page.getByText('El filtro de precio actúa solo sobre los productos de la página que ves.')).toBeVisible();
+  test('los productos sin stock no se listan (39 de 41), pero su ficha existe', async ({ page }) => {
+    await page.goto('/productos');
+    await expect(page.locator('[data-producto-id="ejemplo-tv-65"]')).toHaveCount(0);
+    expect((await page.request.get('/producto/televisor-ejemplo-65')).status()).toBe(200);
   });
 
   test('el sitemap incluye la página 2 y las páginas de marca', async ({ page }) => {
@@ -53,6 +53,54 @@ test.describe('catálogo de más de una página', () => {
       await page.waitForLoadState('networkidle');
       const r = await new AxeBuilder({ page }).withTags(['wcag2a', 'wcag2aa', 'wcag21a', 'wcag21aa', 'wcag22aa']).analyze();
       expect(r.violations.map((v) => `${ruta}: ${v.id} (${v.impact}) ${v.nodes.slice(0, 3).map((n) => n.target.join(' ')).join(' | ')}`)).toEqual([]);
+    });
+  }
+});
+
+// «Refinar la búsqueda» filtra todo el catálogo, no solo la página que se ve (celular de 375×812, las 5 plantillas).
+test.describe('refinar la búsqueda en todo el catálogo (celular)', () => {
+  test.use({ viewport: { width: 375, height: 812 } });
+  for (const plantilla of ['cielo', 'bosque', 'ambar', 'grafito', 'ciruela']) {
+    test(`${plantilla}: el deslizante filtra también la página 2 y los chips se quitan`, async ({ page }) => {
+      await simularApi(page);
+      await decidirConsentimiento(page, false, false);
+      await page.goto('/productos/pagina/2');
+      await page.evaluate((p) => { document.documentElement.dataset['plantilla'] = p; }, plantilla);
+      await page.waitForFunction(() => document.querySelectorAll('astro-island[ssr][client="load"]').length === 0);
+      await page.getByRole('button', { name: 'Refinar la búsqueda' }).click();
+      const panel = page.getByRole('dialog', { name: 'Refinar la búsqueda' });
+      const minimo = panel.getByRole('slider', { name: 'Precio mínimo' });
+      await expect(minimo).toBeEnabled();
+      // Mínimo al máximo posible con Fin: queda lo más caro de TODO el catálogo (que incluye la página 1).
+      await minimo.focus();
+      await page.keyboard.press('End');
+      await expect(page.getByRole('status').filter({ hasText: /^\d+ productos?$/ })).toBeVisible();
+      await page.keyboard.press('Escape');
+      await expect(page.locator('nav.paginacion')).toBeHidden();
+      const ids = await page.locator('.grilla-productos:not([data-lista-servidor]) [data-producto-id]').evaluateAll((els) => els.map((e) => e.getAttribute('data-producto-id') ?? ''));
+      expect(ids.length).toBeGreaterThan(0);
+      // Los chips se pueden quitar y vuelven las tarjetas de la página.
+      await expect(page.getByRole('list', { name: 'Filtros activos' })).toBeVisible();
+      await page.getByRole('button', { name: 'Quitar el filtro de precio' }).click();
+      await expect(page.getByRole('list', { name: 'Filtros activos' })).toHaveCount(0);
+      await expect(page.locator('[data-lista-servidor] [data-producto-id]')).toHaveCount(15);
+      await expect(page.locator('nav.paginacion')).toBeVisible();
+    });
+
+    test(`${plantilla}: una marca elegida muestra productos de las dos páginas`, async ({ page }) => {
+      await simularApi(page);
+      await decidirConsentimiento(page, false, false);
+      await page.goto('/productos/pagina/2');
+      await page.evaluate((p) => { document.documentElement.dataset['plantilla'] = p; }, plantilla);
+      await page.waitForFunction(() => document.querySelectorAll('astro-island[ssr][client="load"]').length === 0);
+      await page.getByRole('button', { name: 'Refinar la búsqueda' }).click();
+      await page.getByRole('dialog').getByRole('button', { name: 'Aurora' }).click();
+      await page.keyboard.press('Escape');
+      const ids = await page.locator('.grilla-productos:not([data-lista-servidor]) [data-producto-id]').evaluateAll((els) => els.map((e) => e.getAttribute('data-producto-id') ?? ''));
+      expect(ids.some((i) => i.includes('-x'))).toBe(true);
+      expect(ids.some((i) => !i.includes('-x'))).toBe(true);
+      await page.getByRole('button', { name: 'Quitar la marca Aurora' }).click();
+      await expect(page.locator('[data-lista-servidor] [data-producto-id]')).toHaveCount(15);
     });
   }
 });

@@ -12,6 +12,30 @@ export const categoriaPorId = (cs: readonly Categoria[], id: string): Categoria 
 export const seccionesEnMenu = (ss: readonly Seccion[]): readonly Seccion[] =>
   [...ss].sort((a, b) => a.orden - b.orden || a.titulo.localeCompare(b.titulo, 'es'));
 
+/** Productos a la venta: sin stock en Tienda no se listan (la ficha sigue existiendo, marcada como agotada). */
+export const enVenta = <T extends { readonly disponible: boolean }>(ps: readonly T[]): readonly T[] => ps.filter((p) => p.disponible);
+
+/**
+ * Une las marcas que solo difieren en mayúsculas, tildes o signos («samsung», «Samsung»): un solo nombre visible por marca,
+ * el más usado y, si empatan, el que trae alguna mayúscula (después, el primero por orden alfabético).
+ */
+export function unificarMarcas<T extends { readonly marca: string }>(ps: readonly T[]): readonly T[] {
+  const grupos = new Map<string, Map<string, number>>();
+  for (const p of ps) {
+    const nombre = p.marca.trim();
+    const clave = normalizar(nombre);
+    const g = grupos.get(clave) ?? new Map<string, number>();
+    g.set(nombre, (g.get(nombre) ?? 0) + 1);
+    grupos.set(clave, g);
+  }
+  const elegido = new Map<string, string>();
+  for (const [clave, g] of grupos) {
+    const mejor = [...g.entries()].sort((a, b) => b[1] - a[1] || Number(b[0] !== b[0].toLowerCase()) - Number(a[0] !== a[0].toLowerCase()) || a[0].localeCompare(b[0], 'es'))[0]![0];
+    elegido.set(clave, mejor);
+  }
+  return ps.map((p) => ({ ...p, marca: elegido.get(normalizar(p.marca.trim())) ?? p.marca }));
+}
+
 export function marcasDe(ps: readonly Producto[]): readonly string[] {
   return [...new Set(ps.map((p) => p.marca))].sort((a, b) => a.localeCompare(b, 'es'));
 }

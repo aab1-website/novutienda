@@ -1,15 +1,15 @@
 ---
 import PaginaCatalogo from '../../componentes/PaginaCatalogo.astro';
-import { contenido } from '../../contenido/instancia';
+import { contenido, enVenta } from '../../contenido/instancia';
 import { marcasDe } from '../../contenido/consultas';
 import { marcasConRuta, rutaMarca } from '../../lib/paginas';
 
 export function getStaticPaths() {
-  return marcasConRuta(marcasDe(contenido.productos)).map((m) => ({ params: { marca: m.slug }, props: { nombre: m.nombre } }));
+  return marcasConRuta(marcasDe(enVenta)).map((m) => ({ params: { marca: m.slug }, props: { nombre: m.nombre } }));
 }
 const { marca } = Astro.params;
 const { nombre } = Astro.props;
-const productos = contenido.productos.filter((p) => p.marca === nombre);
+const productos = enVenta.filter((p) => p.marca === nombre);
 ---
 <PaginaCatalogo
   titulo={nombre}

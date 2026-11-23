@@ -1,10 +1,10 @@
 ---
 import PaginaCatalogo from '../../../componentes/PaginaCatalogo.astro';
-import { contenido } from '../../../contenido/instancia';
+import { enVenta } from '../../../contenido/instancia';
 import { paginasExtra } from '../../../lib/paginas';
 
 export function getStaticPaths() {
-  return paginasExtra(contenido.productos.length).map((n) => ({ params: { n: String(n) }, props: { n } }));
+  return paginasExtra(enVenta.length).map((n) => ({ params: { n: String(n) }, props: { n } }));
 }
 const { n } = Astro.props;
 ---
@@ -13,7 +13,7 @@ const { n } = Astro.props;
   descripcion="Todos nuestros productos con precios actualizados en tu moneda."
   subtitulo="Elige una marca. El filtro de precio actúa solo sobre los productos de la página que ves. Los precios se calculan con la cotización oficial del día."
   migas={[{ texto: 'Inicio', href: '/' }]}
-  productos={contenido.productos}
+  productos={enVenta}
   base="/productos"
   pagina={n}
 />

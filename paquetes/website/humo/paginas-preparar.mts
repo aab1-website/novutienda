@@ -18,7 +18,7 @@ function preparar(): void {
   const base = contenidoEjemplo.productos;
   const productos = Array.from({ length: PRODUCTOS_DE_PRUEBA }, (_, i) => {
     const b = base[i % base.length]!;
-    return i < base.length ? b : { ...b, id: `${b.id}-x${i}`, slug: `${b.slug}-x${i}`, destacado: false };
+    return i < base.length ? b : { ...b, id: `${b.id}-x${i}`, slug: `${b.slug}-x${i}`, destacado: false, disponible: true };
   });
   mkdirSync(resolve(raiz, 'dist'), { recursive: true });
   writeFileSync(archivo, JSON.stringify({ ...contenidoEjemplo, productos }));

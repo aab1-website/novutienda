@@ -8,7 +8,7 @@ export type Trazo = readonly [forma: 'path' | 'circle' | 'rect', atributos: Read
 
 export const ICONOS_UI = [
   'buscar', 'carrito', 'chevron', 'chevron-abajo', 'destello', 'x', 'basura', 'menos', 'mas', 'bolsa', 'prohibido',
-  'sol', 'luna', 'flecha-arriba', 'chat', 'enviar', 'etiqueta', 'play', 'anterior', 'siguiente', 'pausa',
+  'sol', 'luna', 'flecha-arriba', 'chat', 'enviar', 'etiqueta', 'play', 'anterior', 'siguiente', 'pausa', 'filtro',
 ] as const;
 export type IdIconoUi = (typeof ICONOS_UI)[number];
 export type NombreIcono = IdIcono | IdIconoUi;
@@ -31,6 +31,7 @@ export const TRAZOS: Readonly<Record<NombreIcono, readonly Trazo[]>> = {
   pin: [['path', { d: 'M20 10c0 4.993-5.539 10.193-7.399 11.799a1 1 0 0 1-1.202 0C9.539 20.193 4 14.993 4 10a8 8 0 0 1 16 0' }], ['circle', { cx: 12, cy: 10, r: 3 }]],
   telefono: [['path', { d: 'M22 16.92v3a2 2 0 0 1-2.18 2 19.79 19.79 0 0 1-8.63-3.07 19.5 19.5 0 0 1-6-6 19.79 19.79 0 0 1-3.07-8.67A2 2 0 0 1 4.11 2h3a2 2 0 0 1 2 1.72 12.84 12.84 0 0 0 .7 2.81 2 2 0 0 1-.45 2.11L8.09 9.91a16 16 0 0 0 6 6l1.27-1.27a2 2 0 0 1 2.11-.45 12.84 12.84 0 0 0 2.81.7A2 2 0 0 1 22 16.92z' }]],
   actualizar: [['path', { d: 'M3 12a9 9 0 0 1 9-9 9.75 9.75 0 0 1 6.74 2.74L21 8M21 3v5h-5M21 12a9 9 0 0 1-9 9 9.75 9.75 0 0 1-6.74-2.74L3 16M8 16H3v5' }]],
+  filtro: [['path', { d: 'M10 20a1 1 0 0 0 .553.895l2 1A1 1 0 0 0 14 21v-7a2 2 0 0 1 .517-1.341L21.74 4.67A1 1 0 0 0 21 3H3a1 1 0 0 0-.742 1.67l7.225 7.989A2 2 0 0 1 10 14z' }]],
   buscar: [['circle', { cx: 11, cy: 11, r: 8 }], ['path', { d: 'm21 21-4.3-4.3' }]],
   carrito: [['circle', { cx: 8, cy: 21, r: 1 }], ['circle', { cx: 19, cy: 21, r: 1 }], ['path', { d: 'M2.05 2.05h2l2.66 12.42a2 2 0 0 0 2 1.58h9.78a2 2 0 0 0 1.95-1.57l1.65-7.43H5.12' }]],
   chevron: [['path', { d: 'm9 18 6-6-6-6' }]],

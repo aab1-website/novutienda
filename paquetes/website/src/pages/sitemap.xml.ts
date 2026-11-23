@@ -1,4 +1,4 @@
-import { contenido } from '../contenido/instancia.js';
+import { contenido, enVenta } from '../contenido/instancia.js';
 import { marcasDe, productosDeCategoria } from '../contenido/consultas.js';
 import { marcasConRuta, paginasExtra, rutaMarca, rutaPagina } from '../lib/paginas.js';
 import { rutaCategoria, rutaProducto, rutaSeccion, urlAbsoluta } from '../lib/seo.js';
@@ -10,9 +10,9 @@ const paginas = (base: string, cantidad: number): string[] => [base, ...paginasE
 export function GET(): Response {
   const rutas = [
     '/', '/contacto', '/privacidad',
-    ...paginas('/productos', contenido.productos.length),
-    ...contenido.categorias.flatMap((c) => paginas(rutaCategoria(c.id), productosDeCategoria(contenido.productos, c.id).length)),
-    ...marcasConRuta(marcasDe(contenido.productos)).flatMap((m) => paginas(rutaMarca(m.slug), contenido.productos.filter((p) => p.marca === m.nombre).length)),
+    ...paginas('/productos', enVenta.length),
+    ...contenido.categorias.flatMap((c) => paginas(rutaCategoria(c.id), productosDeCategoria(enVenta, c.id).length)),
+    ...marcasConRuta(marcasDe(enVenta)).flatMap((m) => paginas(rutaMarca(m.slug), enVenta.filter((p) => p.marca === m.nombre).length)),
     ...contenido.productos.map((p) => rutaProducto(p)),
     ...contenido.secciones.map((s) => rutaSeccion(s.slug)),
   ];

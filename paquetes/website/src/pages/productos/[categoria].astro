@@ -1,6 +1,6 @@
 ---
 import PaginaCatalogo from '../../componentes/PaginaCatalogo.astro';
-import { contenido } from '../../contenido/instancia';
+import { contenido, enVenta } from '../../contenido/instancia';
 import { productosDeCategoria } from '../../contenido/consultas';
 import { rutaCategoria } from '../../lib/seo';
 
@@ -8,7 +8,7 @@ export function getStaticPaths() {
   return contenido.categorias.map((c) => ({ params: { categoria: c.id }, props: { categoria: c } }));
 }
 const { categoria } = Astro.props;
-const productos = productosDeCategoria(contenido.productos, categoria.id);
+const productos = productosDeCategoria(enVenta, categoria.id);
 ---
 <PaginaCatalogo
   titulo={categoria.nombre}
