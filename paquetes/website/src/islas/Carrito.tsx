@@ -38,7 +38,7 @@ function ResumenPedido({ carrito, whatsapp }: { carrito: TipoCarrito; whatsapp: 
       {enlace !== null ? (
         <a class="boton boton-cta boton-ancho" href={enlace} target="_blank" rel="noopener noreferrer"><Icono nombre="chat" tamano={18} /> ENVIAR PEDIDO POR WHATSAPP</a>
       ) : (
-        <p class="aviso-estado">El envío por WhatsApp no está disponible por ahora. Usa el formulario de <a href="/contacto">contacto</a>.</p>
+        <p class="aviso-estado">El envío por WhatsApp no está disponible por ahora. Escríbenos con los <a href="/contacto">datos de contacto</a>.</p>
       )}
     </>
   );
