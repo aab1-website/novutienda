@@ -10,7 +10,7 @@
 // Entorno (scripts/guardia-operador.mjs `validarEntorno`): GOOGLE_CLOUD_PROJECT igual a --proyecto; NOVUTIENDA_AMBIENTE=staging con
 // GCP_PROJECT_ID_STAGING, o emulador con proyecto demo-*. Rechaza producción. Nunca imprime valores del JSON ni identificadores:
 // solo nombres de campo y rutas. La lógica vive en plataforma/operador/negocio-sitio.ts (pura, con la base inyectable).
-import { readFileSync } from 'node:fs';
+import { readSync } from 'node:fs';
 import { resolve } from 'node:path';
 import { pathToFileURL } from 'node:url';
 import { cargarManifiestos } from './generar-reglas.mjs';
@@ -45,16 +45,34 @@ try {
   falla(e instanceof Error ? e.message : 'entorno inválido');
 }
 
-// Los ganchos de TypeScript se registran ANTES de leer la entrada (el orden inverso rompe la carga del núcleo).
+// Los ganchos de TypeScript se registran ANTES de leer la entrada. Causa conocida: el gancho `load` de `generar-reglas.mjs` excluye toda URL
+// con `/node_modules/`, y `@novutienda/nucleo` se resuelve por el enlace del workspace; el orden con la lectura de stdin cambia cómo se
+// resuelve esa ruta y, si no se registran primero, Node se niega a quitar tipos bajo node_modules.
 await cargarManifiestos(); // registra los ganchos de TypeScript
 
 // stdin: se lee entero con tope; un JSON mal formado no se cita (el mensaje de JSON.parse puede traer un fragmento).
 let crudo;
 try {
-  const texto = readFileSync(0);
-  if (texto.length === 0) falla('la entrada está vacía: pase el JSON por la entrada estándar');
-  if (texto.length > MAX_BYTES) falla('la entrada supera 256 KB');
-  crudo = JSON.parse(texto.toString('utf8'));
+  // Por partes: se corta al pasar el tope sin cargar el resto.
+  const partes = [];
+  let total = 0;
+  const trozo = Buffer.alloc(64 * 1024);
+  for (;;) {
+    let n;
+    try {
+      n = readSync(0, trozo, 0, trozo.length, null);
+    } catch (e) {
+      if (e && typeof e === 'object' && e.code === 'EAGAIN') continue;
+      if (e && typeof e === 'object' && e.code === 'EOF') break;
+      throw e;
+    }
+    if (n === 0) break;
+    total += n;
+    if (total > MAX_BYTES) falla('la entrada supera 256 KB');
+    partes.push(Buffer.from(trozo.subarray(0, n)));
+  }
+  if (total === 0) falla('la entrada está vacía: pase el JSON por la entrada estándar');
+  crudo = JSON.parse(Buffer.concat(partes).toString('utf8'));
 } catch (e) {
   if (e instanceof SyntaxError) falla('la entrada no es un JSON válido');
   falla('no se pudo leer la entrada estándar');
@@ -74,6 +92,8 @@ const sinIdentificadores = async (fn) => {
   try {
     return await fn();
   } catch (e) {
+    // Los errores propios (sin código de Firebase) pasan tal cual; solo los de Firebase se reducen a su código.
+    if (e instanceof Error && !('code' in e)) throw e;
     throw new Error(`error de Firebase (${e && typeof e === 'object' && 'code' in e ? String(e.code) : 'desconocido'})`, { cause: e });
   }
 };
@@ -86,7 +106,6 @@ const db = {
             const s = await tx.get(firestore.doc(ruta));
             return { existe: s.exists, data: () => s.data() };
           },
-          set: (ruta, datos) => void tx.set(firestore.doc(ruta), datos),
           create: (ruta, datos) => void tx.create(firestore.doc(ruta), datos),
           nuevoId: (coleccion) => firestore.collection(coleccion).doc().id,
           marcaTiempoServidor: () => FieldValue.serverTimestamp(),
@@ -101,6 +120,7 @@ try {
     for (const ruta of r.errores) console.error(`  inválido: ${ruta}`);
     falla('el JSON no cumple la regla del negocio del sitio (arriba, las rutas; sin valores)');
   }
+  if (r.estado === 'sin-tenant') falla('el tenant no existe: corra el alta antes');
   if (r.estado === 'ya-existe') falla('ya-existe: el tenant ya tiene sitio/negocio; no se escribió nada', 2);
   console.log(`  campos: ${r.campos.join(', ')}`);
   for (const a of r.avisos) console.log(`  aviso (nivel estricto): ${a}`);

@@ -13,7 +13,6 @@ export type EvaluarNegocio = (entrada: unknown, nivel: 'heredado' | 'estricto') 
 
 export interface TransaccionSiembra extends TransaccionAuditoria {
   get(ruta: string): Promise<{ readonly existe: boolean; data(): Readonly<Record<string, unknown>> | undefined }>;
-  set(ruta: string, datos: Readonly<Record<string, unknown>>): void;
 }
 export interface BaseDatosSiembra {
   runTransaction<T>(fn: (tx: TransaccionSiembra) => Promise<T>): Promise<T>;
@@ -21,6 +20,7 @@ export interface BaseDatosSiembra {
 
 export type ResultadoSiembra =
   | { readonly estado: 'invalido'; readonly errores: readonly string[] }
+  | { readonly estado: 'sin-tenant' }
   | { readonly estado: 'ya-existe' }
   | { readonly estado: 'listo'; readonly aplicado: boolean; readonly campos: readonly string[]; readonly avisos: readonly string[] };
 
@@ -28,7 +28,7 @@ const rutaDe = (e: string): string => e.split(': ')[0] ?? '';
 
 /**
  * Valida con el nivel `heredado` (paridad con el sitio; ignora `mercados`, `mercadoInicial`, `logo` y `whatsappTienda`, que no se
- * guardan). Las rutas que fallan el nivel `estricto` se devuelven como avisos (el panel las exigirá al editar). Si ya existe
+ * guardan). Las rutas que fallan el nivel `estricto` se devuelven como avisos (el panel las exigirá al editar). Si el tenant no existe devuelve `sin-tenant`. Si ya existe
  * `tenants/{t}/sitio/negocio` devuelve `ya-existe` y no escribe. Con `aplicar` escribe la versión 1 y audita `sitio.negocio.sembrar`
  * con los nombres de los campos. No toca `publicado/negocio`: lo publicado se genera al pulsar Publicar.
  */
@@ -45,13 +45,15 @@ export async function sembrarNegocioSitio(
   const ruta = `tenants/${o.tenant}/sitio/negocio`;
   const ahora = new Date(deps.reloj.ahora()).toISOString();
   return deps.db.runTransaction(async (tx): Promise<ResultadoSiembra> => {
+    if (!(await tx.get(`tenants/${o.tenant}`)).existe) return { estado: 'sin-tenant' };
     if ((await tx.get(ruta)).existe) return { estado: 'ya-existe' };
     if (!o.aplicar) return { estado: 'listo', aplicado: false, campos, avisos };
-    tx.set(ruta, { ...negocio, version: 1, actualizadoEn: ahora, por: 'siembra' });
+    tx.create(ruta, { ...negocio, version: 1, actualizadoEn: ahora, por: 'siembra' });
     registrarAuditoria(tx, {
       tenantId: o.tenant,
       uid: 'operador',
-      rol: 'adm', // valor admitido por el núcleo; quién actuó lo dice `uid`
+      // El núcleo solo admite los roles caj, sup y adm (no hay rol de operador): se usa `adm` y quién actuó lo dice `uid`.
+      rol: 'adm',
       motivo: 'operador de plataforma',
       accion: 'sitio.negocio.sembrar',
       ruta,

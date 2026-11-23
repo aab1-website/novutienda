@@ -30,14 +30,14 @@ const T1 = 'tienda-x';
 const RUTA = `tenants/${T1}/sitio/negocio`;
 const reloj = { ahora: () => Date.parse('2026-11-23T12:00:00Z') };
 
-function montaje() {
+function montaje(conTenant = true) {
   const doble = new DobleDb();
+  if (conTenant) doble.poner(`tenants/${T1}`, { estado: 'activo' });
   const db: BaseDatosSiembra = {
     runTransaction: (fn) =>
       doble.runTransaction((tx: TransaccionIdentidad) =>
         fn({
           get: tx.get.bind(tx) as unknown as TransaccionSiembra['get'],
-          set: (ruta, datos) => tx.set(ruta, { ...datos }),
           create: tx.create.bind(tx),
           nuevoId: tx.nuevoId.bind(tx),
           marcaTiempoServidor: tx.marcaTiempoServidor.bind(tx),
@@ -93,6 +93,15 @@ describe('sembrarNegocioSitio', () => {
     const m = montaje();
     const r = await m.correr({ ...negocio(), correo: 'sin-forma' }, false);
     expect(r).toMatchObject({ estado: 'listo', avisos: ['correo'] });
+  });
+
+  it('un tenant que no existe devuelve sin-tenant, también en seco, y no escribe', async () => {
+    for (const aplicar of [false, true]) {
+      const m = montaje(false);
+      expect(await m.correr(negocio(), aplicar)).toEqual({ estado: 'sin-tenant' });
+      expect(m.doble.dato(RUTA)).toBeUndefined();
+      expect(m.doble.coleccion(`tenants/${T1}/auditoria`)).toEqual([]);
+    }
   });
 
   it('rechaza un tenant inválido', async () => {
@@ -161,16 +170,38 @@ describe.skipIf(!hayEmulador)('scripts/sembrar-negocio-sitio.mjs contra el emula
     expect(roto.salida).not.toContain('VALOR-SECRETO');
     expect((await h.firestore.doc(`tenants/${B}/sitio/negocio`).get()).exists).toBe(false);
   });
+});
 
-  it('rechaza producción y entradas mayores de 256 KB', () => {
-    const r = spawnSync(process.execPath, [script, A, '--proyecto', 'proyecto-stg'], {
+// Sin emulador real: el emulador falso (puerto inexistente) basta, porque estas rutas fallan antes de tocar la base.
+describe('scripts/sembrar-negocio-sitio.mjs: guardias previas a la base', () => {
+  const script = resolve(import.meta.dirname, '../../scripts/sembrar-negocio-sitio.mjs');
+  const raiz = resolve(import.meta.dirname, '../..');
+  const falso = { GOOGLE_CLOUD_PROJECT: 'demo-x', NOVUTIENDA_AMBIENTE: 'emulador', FIRESTORE_EMULATOR_HOST: '127.0.0.1:1' };
+
+  it('rechaza producción sin mostrar el proyecto', () => {
+    const r = spawnSync(process.execPath, [script, 'tienda-x', '--proyecto', 'proyecto-stg'], {
       env: { PATH: process.env['PATH'] ?? '', GOOGLE_CLOUD_PROJECT: 'proyecto-stg', NOVUTIENDA_AMBIENTE: 'staging', GCP_PROJECT_ID_STAGING: 'proyecto-stg', GCP_PROJECT_ID_PROD: 'proyecto-stg' },
       input: '{}', encoding: 'utf8',
     });
     expect(r.status).toBe(1);
     expect(r.stderr).toMatch(/producción/);
-    const grande = correr(JSON.stringify({ x: 'a'.repeat(300 * 1024) }));
-    expect(grande.codigo).toBe(1);
-    expect(grande.salida).toMatch(/256 KB/);
+    expect(r.stderr).not.toContain('proyecto-stg');
+  });
+
+  it('corta las entradas mayores de 256 KB', () => {
+    const r = spawnSync(process.execPath, [script, 'tienda-x', '--proyecto', 'demo-x'], {
+      env: { PATH: process.env['PATH'] ?? '', ...falso }, input: JSON.stringify({ x: 'a'.repeat(300 * 1024) }), encoding: 'utf8', cwd: raiz,
+    });
+    expect(r.status).toBe(1);
+    expect(r.stderr).toMatch(/256 KB/);
+  });
+
+  it('una entrada vacía o un JSON roto salen con código 1 sin citar el contenido', () => {
+    const correr = (input: string) => spawnSync(process.execPath, [script, 'tienda-x', '--proyecto', 'demo-x'], { env: { PATH: process.env['PATH'] ?? '', ...falso }, input, encoding: 'utf8', cwd: raiz });
+    const vacio = correr('');
+    expect(vacio.status).toBe(1);
+    const roto = correr('{"nombre": "VALOR-SECRETO"');
+    expect(roto.status).toBe(1);
+    expect(roto.stderr).not.toContain('VALOR-SECRETO');
   });
 });
