@@ -277,6 +277,20 @@ test.describe('precio, país y compra', () => {
     await expect(page.locator('.grilla-productos:not([data-lista-servidor]) [data-producto-id="ejemplo-tv-43"]')).toBeVisible();
   });
 
+  test('un producto que se agota después de construir el sitio se oculta en vivo (según /api/disponibilidad), también en los resultados', async ({ page }) => {
+    await simularApi(page);
+    await page.route('**/api/disponibilidad*', (r) => r.fulfill({ status: 200, contentType: 'application/json', body: JSON.stringify({ disponibilidad: { 'ejemplo-tv-55': 'agotado', 'ejemplo-tv-43': 'disponible' } }) }));
+    await decidirConsentimiento(page, false, false);
+    await page.setViewportSize({ width: 375, height: 812 });
+    await page.goto('/productos/televisores');
+    await islasListas(page);
+    await expect(page.locator('[data-lista-servidor] [data-producto-id="ejemplo-tv-55"]')).toBeHidden();
+    await expect(page.locator('[data-lista-servidor] [data-producto-id="ejemplo-tv-43"]')).toBeVisible();
+    await page.getByRole('button', { name: 'Refinar la búsqueda' }).click();
+    await page.getByRole('dialog').getByRole('searchbox', { name: 'Nombre' }).fill('televisor');
+    await expect(page.getByRole('status').filter({ hasText: '1 producto' })).toBeVisible();
+  });
+
   test('«Refinar la búsqueda» en todo el catálogo encuentra un producto de otra categoría', async ({ page }) => {
     await simularApi(page);
     await decidirConsentimiento(page, false, false);
