@@ -96,6 +96,39 @@ export function urlEnlaceSegura(url: string, permitidos: readonly string[]): boo
   }
 }
 
+/** La clave `mapa` solo existe si hay valor: sin mapa el contenido queda idéntico al de antes. */
+const conMapa = (m: string | undefined): { mapa?: string } => (m === undefined ? {} : { mapa: m });
+
+export const LARGO_MAXIMO_MAPA = 1000;
+
+/**
+ * Enlace al mapa de la tienda: https a Google Maps y a ningún otro anfitrión (`www.google.com/maps…`, `maps.google.com`,
+ * `maps.app.goo.gl`, `goo.gl/maps…`), sin credenciales ni puerto, sin espacios ni caracteres de control y de hasta 1.000 caracteres.
+ */
+export function urlMapaSegura(url: string): boolean {
+  if (url.length === 0 || url.length > LARGO_MAXIMO_MAPA || RE_CONTROL.test(url) || /\s/.test(url) || url.includes('\\')) return false;
+  // Forma cruda, sin depender de cómo `URL` normaliza: `https://` + anfitrión (sin credenciales ni puerto) + `/`, `?`, `#` o el final.
+  const m = /^https:\/\/([^/?#@:\\]+)(?=[/?#]|$)/.exec(url);
+  if (m === null) return false;
+  const host = m[1]!;
+  // Anfitrión ya en minúsculas, ASCII y sin codificar: nada que `URL` tenga que reescribir.
+  if (!/^[a-z0-9.-]+$/.test(host)) return false;
+  const resto = url.slice('https://'.length + host.length);
+  const ruta = /^[^?#]*/.exec(resto)![0].toLowerCase();
+  // Sin `.` ni `/` ni `\` codificados (`%2e`, `%2f`, `%5c`) ni segmentos `.` o `..`: no se confía en la normalización de `URL`
+  // ni en cómo decodifica el servidor de destino. Misma regla que la consola y el panel.
+  if (/%2e|%2f|%5c/.test(ruta) || ruta.split('/').some((seg) => seg === '.' || seg === '..')) return false;
+  const enMaps = (p: string): boolean => ruta === p || ruta.startsWith(`${p}/`);
+  switch (host) {
+    case 'www.google.com': return enMaps('/maps');
+    case 'goo.gl': return enMaps('/maps');
+    // `maps.google.com` solo en la raíz o bajo `/maps` (no `/url?q=…`, que redirige fuera de Google Maps).
+    case 'maps.google.com': return ruta === '' || ruta === '/' || enMaps('/maps');
+    case 'maps.app.goo.gl': return true;
+    default: return false;
+  }
+}
+
 class Lector {
   readonly errores: string[] = [];
   falla(ruta: string, motivo: string): void {
@@ -110,6 +143,15 @@ class Lector {
   }
   textoONulo(v: unknown, ruta: string, max = 500): string | null {
     return v === null ? null : this.texto(v, ruta, 1, max);
+  }
+  /** Enlace de mapa opcional: ausente o `null` = sin mapa (`undefined`). */
+  mapa(v: unknown, ruta: string): string | undefined {
+    if (v === undefined || v === null) return undefined;
+    if (typeof v !== 'string' || !urlMapaSegura(v)) {
+      this.falla(ruta, 'debe ser una dirección https de Google Maps (www.google.com/maps, maps.google.com, maps.app.goo.gl o goo.gl/maps) de hasta 1.000 caracteres');
+      return undefined;
+    }
+    return v;
   }
   bool(v: unknown, ruta: string): boolean {
     if (typeof v !== 'boolean') this.falla(ruta, 'debe ser verdadero o falso');
@@ -259,6 +301,7 @@ function leerConfig(l: Lector, v: unknown): Contenido['config'] {
     correo: o['correo'] === null ? null : l.texto(o['correo'], 'config.correo', 5, 120),
     direccion: l.texto(o['direccion'], 'config.direccion', 1, 200),
     horario: l.textoONulo(o['horario'], 'config.horario', 200),
+    ...conMapa(l.mapa(o['mapa'], 'config.mapa')),
     mercados,
     mercadoInicial,
     redondeo: { BOB: leerRegla(l, red['BOB'], 'config.redondeo.BOB'), ARS: leerRegla(l, red['ARS'], 'config.redondeo.ARS') },
@@ -433,6 +476,7 @@ export function validarNegocio(entrada: unknown, origenes: readonly (string | nu
     correo: o['correo'] === null ? null : l.texto(o['correo'], 'negocio.correo', 5, 120),
     direccion: l.texto(o['direccion'], 'negocio.direccion', 1, 200),
     horario: l.textoONulo(o['horario'], 'negocio.horario', 200),
+    ...conMapa(l.mapa(o['mapa'], 'negocio.mapa')),
     mercados,
     mercadoInicial,
     enlacesPermitidos: enlacesPermitidos.filter((h) => h !== ''),

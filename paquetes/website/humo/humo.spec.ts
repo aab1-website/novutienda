@@ -71,6 +71,17 @@ test.describe('CSP y peticiones', () => {
   });
 });
 
+test.describe('enlace al mapa', () => {
+  test('sin `mapa` en el contenido no aparece «Cómo llegar» ni en contacto ni en el pie', async ({ page }) => {
+    await simularApi(page);
+    await decidirConsentimiento(page, false, false);
+    for (const ruta of ['/contacto', '/']) {
+      await page.goto(ruta);
+      await expect(page.getByRole('link', { name: /Cómo llegar/ })).toHaveCount(0);
+    }
+  });
+});
+
 test.describe('precio, país y compra', () => {
   test('el precio sale de la cotización del API con precioFinal; precio 0 dice «Consultar»', async ({ page }) => {
     await simularApi(page);

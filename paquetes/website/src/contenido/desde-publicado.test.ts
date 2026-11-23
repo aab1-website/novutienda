@@ -52,6 +52,14 @@ const respuesta = (extra: Record<string, unknown> = {}, estado: Record<string, u
   },
 });
 
+describe('contenidoDesdePublicado: mapa', () => {
+  it('pasa el enlace del mapa del negocio a la configuración y, sin él, no agrega la clave', () => {
+    const con = contenidoDesdePublicado(respuesta(), { ...negocioBase(), mapa: 'https://maps.app.goo.gl/AbC123' }, entorno);
+    expect(con.config.mapa).toBe('https://maps.app.goo.gl/AbC123');
+    expect('mapa' in contenidoDesdePublicado(respuesta(), negocioBase(), entorno).config).toBe(false);
+  });
+});
+
 describe('contenidoDesdePublicado', () => {
   it('mapea productos, precios, disponibilidad y garantía vacía', () => {
     const c = contenidoDesdePublicado(respuesta(), negocioBase(), entorno);
@@ -230,6 +238,24 @@ describe('urlMedioSegura', () => {
     expect(urlMedioSegura('/m/a b.webp', [])).toBe(false);
     expect(urlMedioSegura(`${MEDIOS}/m/a,b.webp`, [MEDIOS])).toBe(false);
     expect(urlMedioSegura(`${MEDIOS}/m/ab.webp`, [MEDIOS])).toBe(true);
+  });
+});
+
+describe('validarNegocio: mapa', () => {
+  it('acepta un enlace de Google Maps, lo conserva y rechaza otros anfitriones', () => {
+    const ok = validarNegocio({ ...negocioBase(), mapa: 'https://maps.app.goo.gl/AbC123' });
+    expect(ok.ok && ok.negocio.mapa).toBe('https://maps.app.goo.gl/AbC123');
+    const sin = validarNegocio(negocioBase());
+    expect(sin.ok && 'mapa' in sin.negocio).toBe(false);
+    for (const mapa of ['https://evil.com/maps', 'javascript:alert(1)',
+      'https://maps.google.com:443/x', 'https://maps.google.com:/x', 'https:///maps.google.com/x', 'https:/maps.google.com/x',
+      'https://maps.google.com\\@evil.com/x', 'https://maps.google%2ecom/x', 'https://maps.google.\uff43om/x', 'https://MAPS.GOOGLE.COM/x',
+      'https://www.google.com/maps/../url?q=https://evil.com', 'https://www.google.com/maps/%2e%2e/url?q=x', 'https://www.google.com/maps/%2E./url?q=x',
+      'https://www.google.com/maps/a%2eb', 'https://www.google.com/maps/..%2f..%2furl?q=x', 'https://www.google.com/maps/%5c..', 'https://maps.google.com/url?q=https://evil.example', 'https://goo.gl/maps/../abc', 'https://maps.app.goo.gl/./x']) {
+      const r = validarNegocio({ ...negocioBase(), mapa });
+      expect(r.ok).toBe(false);
+      expect(!r.ok && r.errores.some((e) => e.startsWith('negocio.mapa:'))).toBe(true);
+    }
   });
 });
 

@@ -21,7 +21,7 @@ function preparar(): void {
     return i < base.length ? b : { ...b, id: `${b.id}-x${i}`, slug: `${b.slug}-x${i}`, destacado: false, disponible: true };
   });
   mkdirSync(resolve(raiz, 'dist'), { recursive: true });
-  writeFileSync(archivo, JSON.stringify({ ...contenidoEjemplo, productos }));
+  writeFileSync(archivo, JSON.stringify({ ...contenidoEjemplo, config: { ...contenidoEjemplo.config, mapa: 'https://maps.app.goo.gl/AbC123' }, productos }));
   rmSync(destino, { recursive: true, force: true });
   execFileSync('pnpm', ['--filter', '@novutienda/website', 'run', 'build'], {
     cwd: raiz,

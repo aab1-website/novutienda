@@ -13,7 +13,34 @@ export const TOPES_TEXTOS = {
 export type Emisor = 'cliente' | 'comercio';
 export interface MensajeEditable { readonly de: Emisor; readonly texto: string }
 
+/** Largo máximo del enlace del mapa (el del servidor: `LIMITES_NEGOCIO.mapa.max` de `@novutienda/consola/negocio`). */
+export const LARGO_MAXIMO_MAPA = 1000;
+
+/**
+ * Enlace de Google Maps admitido: https a `www.google.com/maps`, `maps.google.com`, `maps.app.goo.gl` o `goo.gl/maps`, sin
+ * credenciales ni puerto. COPIA de `urlMapaSegura` de `@novutienda/consola/negocio` (el panel no importa la consola);
+ * `pruebas/consola/textos-sitio.test.ts` fija los mismos casos en ambas.
+ */
+export function mapaValido(url: string): boolean {
+  // eslint-disable-next-line no-control-regex -- se buscan justamente los caracteres de control
+  if (url.length === 0 || url.length > LARGO_MAXIMO_MAPA || /[\u0000-\u001f\s\\]/.test(url)) return false;
+  const m = /^https:\/\/([^/?#]*)([^?#]*)/.exec(url);
+  if (m === null) return false;
+  // El anfitrión debe venir ya en minúsculas (el sitio lo compara tal cual) y sin credenciales ni puerto.
+  const host = m[1] ?? '';
+  if (host !== host.toLowerCase() || host.includes('@') || host.includes(':')) return false;
+  const ruta = (m[2] ?? '').toLowerCase();
+  // Sin `.` ni `/` ni `\` codificados (`%2e`, `%2f`, `%5c`) ni segmentos `.` o `..`: permitirían salir de `/maps`.
+  if (/%2e|%2f|%5c/.test(ruta) || ruta.split('/').some((x) => x === '.' || x === '..')) return false;
+  const enMaps = ruta === '/maps' || ruta.startsWith('/maps/');
+  if (host === 'www.google.com' || host === 'goo.gl') return enMaps;
+  if (host === 'maps.google.com') return ruta === '' || ruta === '/' || enMaps;
+  return host === 'maps.app.goo.gl';
+}
+
 export interface EstadoTextos {
+  /** Enlace de Google Maps de la tienda; vacío = sin enlace. */
+  readonly mapa: string;
   readonly mision: string;
   readonly vision: string;
   readonly cifraValor: string;
@@ -28,7 +55,7 @@ export type NegocioCrudo = Readonly<Record<string, unknown>>;
 const obj = (v: unknown): Record<string, unknown> => (typeof v === 'object' && v !== null && !Array.isArray(v) ? (v as Record<string, unknown>) : {});
 const txt = (v: unknown): string => (typeof v === 'string' ? v : '');
 
-export const ESTADO_VACIO: EstadoTextos = { mision: '', vision: '', cifraValor: '', cifraDetalle: '', cifraConfirmada: false, mensajes: [] };
+export const ESTADO_VACIO: EstadoTextos = { mapa: '', mision: '', vision: '', cifraValor: '', cifraDetalle: '', cifraConfirmada: false, mensajes: [] };
 
 export function aEstado(negocio: NegocioCrudo | null): EstadoTextos {
   if (negocio === null) return ESTADO_VACIO;
@@ -37,6 +64,7 @@ export function aEstado(negocio: NegocioCrudo | null): EstadoTextos {
   const valor = obj(cifra['valor']);
   const mensajes = Array.isArray(obj(inst['chat'])['mensajes']) ? (obj(inst['chat'])['mensajes'] as unknown[]) : [];
   return {
+    mapa: txt(negocio['mapa']),
     mision: txt(inst['mision']), vision: txt(inst['vision']),
     cifraValor: txt(valor['texto']), cifraDetalle: txt(cifra['detalle']), cifraConfirmada: valor['confirmada'] === true,
     mensajes: mensajes.map((m): MensajeEditable => ({ de: obj(m)['de'] === 'comercio' ? 'comercio' : 'cliente', texto: txt(obj(m)['texto']) })),
@@ -45,7 +73,8 @@ export function aEstado(negocio: NegocioCrudo | null): EstadoTextos {
 
 /** Los datos del negocio con estos textos aplicados. Lo vacío se omite (misión, visión, chat) o queda en `null` (cifra). */
 export function aNegocio(negocio: NegocioCrudo, e: EstadoTextos): Record<string, unknown> {
-  const resto = Object.fromEntries(Object.entries(negocio).filter(([k]) => k !== 'institucional'));
+  const resto = Object.fromEntries(Object.entries(negocio).filter(([k]) => k !== 'institucional' && k !== 'mapa'));
+  const mapa = e.mapa.trim();
   const mision = e.mision.trim();
   const vision = e.vision.trim();
   const mensajes = e.mensajes.map((m) => ({ de: m.de, texto: m.texto.trim() })).filter((m) => m.texto !== '');
@@ -55,6 +84,7 @@ export function aNegocio(negocio: NegocioCrudo, e: EstadoTextos): Record<string,
   const cifra = valor === '' && detalle === '' ? null : { valor: { texto: valor, confirmada: e.cifraConfirmada }, detalle };
   return {
     ...resto,
+    ...(mapa === '' ? {} : { mapa }),
     identidad: { ...obj(negocio['identidad']), cifra },
     ...(Object.keys(inst).length === 0 ? {} : { institucional: inst }),
   };
@@ -90,6 +120,8 @@ export function revisarTextos(e: EstadoTextos): Readonly<Record<string, string>>
       : k === 'mision' || k === 'vision' ? `Máximo ${String(TOPES_TEXTOS.texto)} caracteres.`
       : `Máximo ${String(TOPES_TEXTOS.mensaje)} caracteres.`;
   }
+  const mapa = e.mapa.trim();
+  if (mapa !== '' && !mapaValido(mapa)) r['mapa'] = 'Pegue un enlace de Google Maps (que empiece con https://www.google.com/maps, https://maps.app.goo.gl o similar).';
   const valor = e.cifraValor.trim();
   const detalle = e.cifraDetalle.trim();
   if (valor === '' && detalle !== '') r['cifraValor'] = 'Escriba la cifra (por ejemplo, «Más de 500 clientes») o borre también el detalle.';
