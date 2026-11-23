@@ -615,13 +615,31 @@ test.describe('celular (375×812): grilla de 2 columnas, cabecera que se oculta 
       document.documentElement.dataset['plantilla'] = p;
       document.documentElement.dataset['tema'] = t;
     }, [plantilla, tema] as const);
+    // Cambiar plantilla o tema mueve la cabecera y la grilla (tipografías, medidas): se espera a que el diseño se asiente antes de
+    // desplazar; si no, un cambio de altura posterior movía el desplazamiento y la isla veía una subida y mostraba la cabecera.
+    await page.evaluate(async () => {
+      await document.fonts.ready;
+      const cuadro = (): Promise<void> => new Promise((r) => requestAnimationFrame(() => r()));
+      let alto = -1;
+      for (let i = 0; i < 20; i += 1) {
+        await cuadro();
+        const h = document.documentElement.scrollHeight + document.querySelector('.grilla-productos, main')!.getBoundingClientRect().top;
+        if (h === alto) break;
+        alto = h;
+      }
+    });
   };
 
   for (const plantilla of PLANTILLAS) {
    for (const tema of ['claro', 'oscuro'] as const) {
     test(`${plantilla} / ${tema}: /productos muestra al menos 5 tarjetas con su descripción tras ocultar la cabecera, sin desborde`, async ({ page }) => {
       await preparar(page, plantilla, tema, '/productos');
-      await page.evaluate(() => window.scrollTo(0, document.querySelector('.grilla-productos')!.getBoundingClientRect().top + window.scrollY - 4));
+      // Dos pasos, como un dedo real: el primero arma la referencia de la isla y el segundo, ya con dy > 4, la oculta.
+      await page.evaluate(() => new Promise<void>((r) => {
+        const meta = document.querySelector('.grilla-productos')!.getBoundingClientRect().top + window.scrollY - 4;
+        window.scrollTo(0, meta / 2);
+        requestAnimationFrame(() => requestAnimationFrame(() => { window.scrollTo(0, meta); r(); }));
+      }));
       await expect(page.locator('.cabecera')).toHaveClass(/cabecera-oculta/);
       const columnas = await page.locator('.grilla-productos').evaluate((e) => getComputedStyle(e).gridTemplateColumns.split(' ').length);
       expect(columnas).toBe(2);
