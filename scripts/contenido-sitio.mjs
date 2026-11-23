@@ -364,8 +364,8 @@ export function appCheckDesdeEntorno(env) {
   return [claveSitio, apiKey, appId, projectId].every((x) => typeof x === 'string' && x !== '') ? { claveSitio, apiKey, appId, projectId } : null;
 }
 
-// Respaldo del negocio: si `publicado/negocio` existe, el mapeo toma de aquí solo mercados, mercadoInicial, logo y whatsappTienda;
-// sin él, este JSON completo (D1/D2 de «Negocio desde lo publicado»; un publicado inválido hace fallar el build con rutas `documentos.negocio.*`).
+// Respaldo del negocio: si `publicado/negocio` existe, el mapeo toma de aquí solo mercados, mercadoInicial, logo, whatsappTienda y enlacesPermitidos;
+// sin él, este JSON completo (`enlacesPermitidos` sale siempre de aquí, D8; D1/D2 de «Negocio desde lo publicado»; un publicado inválido hace fallar el build con rutas `documentos.negocio.*`).
 export function negocioDesdeEntorno(env) {
   try {
     return JSON.parse(env.SITIO_NEGOCIO ?? '');
@@ -389,8 +389,9 @@ export async function generarContenido({ tenant, url, secreto, env, calcularFirm
   const entorno = { origen: url, origenMedios, baseMedios, appCheck: appCheckDesdeEntorno(env), recaptchaSiteKey: env.VITE_RECAPTCHA_ENTERPRISE_SITE_KEY || null, disponibilidad };
   let contenido;
   const avisosMapeo = [];
+  let origenNegocio;
   try {
-    contenido = mapear(r.json, negocio, entorno, avisosMapeo);
+    contenido = mapear(r.json, negocio, entorno, avisosMapeo, (linea) => { origenNegocio = linea; });
   } catch (e) {
     // Solo rutas de campos: los ids de productos, secciones y categorías se enmascaran (el log de CI es público).
     const errores = Array.isArray(e?.errores) ? e.errores.filter((m) => typeof m === 'string') : [];
@@ -401,7 +402,7 @@ export async function generarContenido({ tenant, url, secreto, env, calcularFirm
   }
   // Solo rutas de campo, enmascaradas; el conteo es el de avisos (no el de rutas distintas).
   const advertencias = avisosMapeo.filter((m) => typeof m === 'string').map(enmascararRuta);
-  return { contenido, productos: ids.length, invalidos: todos.length - ids.length, advertencias };
+  return { contenido, productos: ids.length, invalidos: todos.length - ids.length, advertencias, origenNegocio };
 }
 
 export function valor(args, nombre) {
@@ -512,13 +513,13 @@ export async function ejecutar(args, env = process.env, deps = undefined, fetchF
       }
       throw e;
     }
-    const { contenido, productos, invalidos, advertencias } = generado;
+    const { contenido, productos, invalidos, advertencias, origenNegocio } = generado;
     const destino = resolve(salida);
     mkdirSync(dirname(destino), { recursive: true });
     rmSync(destino, { force: true }); // un archivo previo con otros permisos no se reutiliza
     writeFileSync(destino, `${JSON.stringify(contenido)}\n`, { mode: 0o600 });
     const aviso = invalidos > 0 ? ` (aviso: ${invalidos} ids de producto inválidos sin consultar)` : '';
-    const lineas = [`contenido generado: ${productos} productos${aviso}`, `advertencias del mapeo: ${advertencias.length}`, ...[...new Set(advertencias)].slice(0, 20).map((a) => `  ${a}`)];
+    const lineas = [`contenido generado: ${productos} productos${aviso}`, ...(typeof origenNegocio === 'string' ? [origenNegocio] : []), `advertencias del mapeo: ${advertencias.length}`, ...[...new Set(advertencias)].slice(0, 20).map((a) => `  ${a}`)];
     return { codigo: 0, salida: lineas.join('\n') };
   } catch (e) {
     if (e instanceof ErrorContenidoSitio) return { codigo: e.codigo, error: e.message };

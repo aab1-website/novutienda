@@ -482,10 +482,12 @@ describe('contenidoDesdePublicado: negocio desde lo publicado', () => {
   });
   const con = (n: Record<string, unknown>, avisos?: string[]) => contenidoDesdePublicado(respuesta({ negocio: n }), secreto(), entorno, avisos);
 
-  it('sin negocio publicado, la salida es idéntica a la de hoy (sin aviso de origen)', () => {
+  it('sin negocio publicado, la salida es idéntica a la de hoy (el origen sale aparte)', () => {
     const avisos: string[] = [];
-    const a = contenidoDesdePublicado(respuesta(), secreto(), entorno, avisos);
+    const origenes: string[] = [];
+    const a = contenidoDesdePublicado(respuesta(), secreto(), entorno, avisos, (l) => origenes.push(l));
     expect(avisos).toEqual([]);
+    expect(origenes).toEqual(['negocio: respaldo del entorno']);
     expect(a.config.nombre).toBe('Nombre Secreto');
     const mapa = a.config.mapa;
     expect(mapa).toBe('https://maps.app.goo.gl/Secreto');
@@ -494,13 +496,14 @@ describe('contenidoDesdePublicado: negocio desde lo publicado', () => {
 
   it('con negocio publicado ganan horario, dirección, teléfono y nombre; se avisa la versión', () => {
     const avisos: string[] = [];
-    const c = con(publicadoNegocio(), avisos);
+    const origenes: string[] = [];
+    const c = contenidoDesdePublicado(respuesta({ negocio: publicadoNegocio() }), secreto(), entorno, avisos, (l) => origenes.push(l));
     expect(c.config.nombre).toBe('Nombre Publicado');
     expect(c.config.direccion).toBe('Dirección Publicada 9');
     expect(c.config.telefono).toBe('+59122123456');
     expect(c.config.horario).toBe('Lunes a sábado');
-    expect(avisos.map((a) => a.split(':')[0])).toContain('negocio.publicado.v7');
-    expect(avisos.join()).not.toContain('Nombre Publicado');
+    expect(origenes).toEqual(['negocio: publicado v7']);
+    expect(avisos).toEqual([]); // el origen no cuenta como advertencia
   });
 
   it('horario: null publicado da null aunque el secreto tenga horario', () => {
@@ -512,11 +515,25 @@ describe('contenidoDesdePublicado: negocio desde lo publicado', () => {
     expect(con(publicadoNegocio({ mapa: 'https://maps.app.goo.gl/Publicado' })).config.mapa).toBe('https://maps.app.goo.gl/Publicado');
   });
 
-  it('mercados, mercadoInicial, logo y whatsappTienda salen del secreto', () => {
+  it('mercados, mercadoInicial, logo, whatsappTienda y enlacesPermitidos salen del secreto', () => {
     const c = con(publicadoNegocio());
     expect(c.config.mercados).toEqual(['BO']);
     expect(c.config.mercadoInicial).toBe('BO');
     expect(c.config.whatsappTienda).toBe('59171111111');
+  });
+
+  it('D8: una lista de enlacesPermitidos publicada distinta se ignora; manda la del secreto', () => {
+    const { candidato } = negocioEfectivo({ negocio: publicadoNegocio({ enlacesPermitidos: ['otro.invalid'] }) }, secreto(), MEDIOS);
+    expect((candidato as Record<string, unknown>)['enlacesPermitidos']).toEqual(['ejemplo.invalid']);
+  });
+
+  it('un publicado con __proto__, constructor o prototype no contamina el candidato', () => {
+    const malo = JSON.parse('{"__proto__":{"contaminado":true},"constructor":"x","prototype":"y"}') as Record<string, unknown>;
+    const { candidato } = negocioEfectivo({ negocio: { ...publicadoNegocio(), ...malo } }, secreto(), MEDIOS);
+    const o = candidato as Record<string, unknown>;
+    expect(Object.getPrototypeOf(o)).toBeNull();
+    for (const k of ['__proto__', 'constructor', 'prototype']) expect(Object.keys(o)).not.toContain(k);
+    expect(({} as Record<string, unknown>)['contaminado']).toBeUndefined();
   });
 
   it('negocioEfectivo quita version, actualizadoEn y por, e ignora las 4 claves si el publicado las trajera', () => {
@@ -542,7 +559,8 @@ describe('contenidoDesdePublicado: negocio desde lo publicado', () => {
     expect(e.message).toContain('documentos.negocio.direccion');
     expect(e.message).toContain('documentos.negocio.correo');
     expect(e.message).not.toContain('Nombre Privado');
-    expect(e.message).not.toMatch(/\bnegocio\.direccion/.test(e.message) && !e.message.includes('documentos.negocio.direccion') ? 'x' : /^$/);
+    expect(e.message).not.toMatch(/(^|[^.])negocio\.direccion/);
+    expect(e.message).not.toContain('x'.repeat(500));
     expect(e.causas.map((x) => x.codigo)).toEqual(['contenido_invalido']);
   });
 

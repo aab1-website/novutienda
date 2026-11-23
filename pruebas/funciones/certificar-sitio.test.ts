@@ -6,6 +6,7 @@ import { join } from 'node:path';
 import { afterAll, beforeAll, beforeEach, describe, expect, it } from 'vitest';
 import { calcularFirma, verificarFirma } from '@novutienda/nucleo/servidor';
 import { contenidoDesdePublicado, versionContenido } from '../../plataforma/registro.js';
+import { MEDIOS_REAL, SECRETO_NEGOCIO, publicadoReal } from './negocio-publicado-apoyo.js';
 import {
   armarResumen, armarSalida, codigoDe, atributos, compararCotizacion, compararFicha, compararIndice, compararPortada, compararVersion, configCliente, decodificarEntidades,
   ejecutar, etiquetas, islasDe, jsonLdDe, metaFicha, primerH1, textoPlano, comprobacion, cerrar,
@@ -541,38 +542,6 @@ describe('extractores y comparadores puros', () => {
     expect(Date.now() - t0).toBeLessThan(8000);
   });
 });
-
-// ---- negocio publicado con el mapeo real (regresión de la huella, #219) ----
-const MEDIOS_REAL = 'https://medios.example.com';
-const negocioPublicado = (): Record<string, unknown> => ({
-  nombre: 'Tienda de Prueba', lema: 'Lema de prueba', telefono: null, correo: null, direccion: 'Calle Ficticia 123', horario: 'Lunes a sábado',
-  enlacesPermitidos: ['example.com'],
-  portada: { insignia: 'PRUEBA', titulo: ['UNO', 'DOS ', 'TRES.'], texto: 'Texto de prueba.', textoBotonCatalogo: 'VER CATÁLOGO', textoBotonConsulta: 'CONSULTAR' },
-  beneficios: [
-    { icono: 'check', titulo: { texto: 'UNO', confirmada: true }, descripcion: 'Descripción uno.' },
-    { icono: 'tendencia', titulo: { texto: 'DOS', confirmada: true }, descripcion: 'Descripción dos.' },
-    { icono: 'usuario', titulo: { texto: 'TRES', confirmada: true }, descripcion: 'Descripción tres.' },
-    { icono: 'mensaje', titulo: { texto: 'CUATRO', confirmada: true }, descripcion: 'Descripción cuatro.' },
-  ],
-  identidad: {
-    etiqueta: 'IDENTIDAD', titulo: 'HISTORIA', texto: 'Texto de identidad de prueba.',
-    foto: { tipo: 'foto', alt: 'Foto de prueba', ancho: 2000, alto: 1000, versiones: [{ clase: 'imagen', lado: 960, formato: 'webp', ruta: 'm/identidad/960.webp' }] },
-    cifra: { valor: { texto: 'Más de 10', confirmada: true }, detalle: 'CLIENTES' },
-    valores: [{ icono: 'escudo', titulo: 'Confianza', texto: 'Texto uno.' }, { icono: 'camion', titulo: 'Entregas', texto: 'Texto dos.' }],
-    sello: { texto: 'SELLO DE PRUEBA.', confirmada: true },
-  },
-  textoPrivacidad: ['Texto de privacidad de prueba.'], categorias: {}, destacados: [], version: 3, actualizadoEn: '2026-11-23T10:00:00.000Z', por: 'uid-prueba',
-});
-const publicadoReal = () => ({
-  redondeo: { BOB: { tipo: 'decimales', decimales: 2, modo: 'cercano' }, ARS: { tipo: 'multiplo', multiplo: 500, modo: 'arriba' } },
-  documentos: {
-    sitio: { plantillaActiva: 'bosque', whatsappNovuchat: '59170000000', medicion: {}, version: 3 },
-    estado: { version: 3, secciones: [], publicadoEn: '2026-11-23T10:00:00.000Z' },
-    producto__p0: { id: 'p0', slug: 'p0', nombre: 'Producto de prueba', categoria: 'otros', marca: 'Marca', descripcion: 'Descripción.', garantia: '', medios: [], seo: {}, precioUSD: { bo: 100, ar: 120 } },
-    negocio: negocioPublicado(),
-  },
-});
-const SECRETO_NEGOCIO = JSON.stringify({ mercados: ['BO', 'AR'], mercadoInicial: 'BO', logo: null, whatsappTienda: null, nombre: 'Nombre Secreto', direccion: 'Dirección Secreta 1' });
 
 describe('certificar con negocio publicado (mapeo real)', () => {
   it('la huella coincide: la certificación regenera con el mismo mapeo y no hay diferencias en huella', async () => {

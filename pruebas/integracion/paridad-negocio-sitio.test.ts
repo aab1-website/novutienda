@@ -362,6 +362,13 @@ describe('lo que publica la consola lo acepta el sitio (negocio publicado + las 
     expect(validarNegocio({ ...resto, ...respaldo }, ['https://medios.ejemplo.test']).ok).toBe(true);
   });
 
+  it('lema vacío con teléfono, correo y horario en null', () => {
+    const { negocio } = publicadoDe({ ...base(), lema: '', telefono: null, correo: null, horario: null });
+    const r = validarNegocio({ ...sinControl(negocio), ...respaldo }, ['https://medios.ejemplo.test']);
+    expect(r.ok, JSON.stringify(r)).toBe(true);
+    if (r.ok) { expect(r.negocio.lema).toBe(''); expect(r.negocio.telefono).toBeNull(); expect(r.negocio.correo).toBeNull(); expect(r.negocio.horario).toBeNull(); }
+  });
+
   it('sin foto, con mapa y horario nulo', () => {
     const { negocio } = publicadoDe({ ...con(base(), 'horario', null), mapa: 'https://maps.app.goo.gl/AbC123' });
     const resto = sinControl(negocio);

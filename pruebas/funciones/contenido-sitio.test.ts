@@ -6,6 +6,7 @@ import { join } from 'node:path';
 import { afterAll, beforeAll, beforeEach, describe, expect, it } from 'vitest';
 import { calcularFirma, verificarFirma } from '@novutienda/nucleo/servidor';
 import { contenidoDesdePublicado, versionContenido } from '../../plataforma/registro.js';
+import { MEDIOS_REAL, SECRETO_NEGOCIO, publicadoReal } from './negocio-publicado-apoyo.js';
 import { calcularFirmaLocal, cambiarEstado, cerrarCubiertos, cerrarRezagados, ejecutar, generarContenido, idsValidos, leerDisponibilidad, normalizarUrl, pedirFirmado, trabajoPendiente, trabajosPendientes } from '../../scripts/contenido-sitio.mjs';
 
 // Valores de prueba sin aspecto de clave (gitleaks): armados en ejecución.
@@ -736,38 +737,6 @@ describe('causas de la falla (generar --causas y estado fallida)', () => {
   });
 });
 
-// ---- negocio publicado con el mapeo real (regresión de la huella, #219) ----
-const MEDIOS_REAL = 'https://medios.example.com';
-const negocioPublicado = (): Record<string, unknown> => ({
-  nombre: 'Tienda de Prueba', lema: 'Lema de prueba', telefono: null, correo: null, direccion: 'Calle Ficticia 123', horario: 'Lunes a sábado',
-  enlacesPermitidos: ['example.com'],
-  portada: { insignia: 'PRUEBA', titulo: ['UNO', 'DOS ', 'TRES.'], texto: 'Texto de prueba.', textoBotonCatalogo: 'VER CATÁLOGO', textoBotonConsulta: 'CONSULTAR' },
-  beneficios: [
-    { icono: 'check', titulo: { texto: 'UNO', confirmada: true }, descripcion: 'Descripción uno.' },
-    { icono: 'tendencia', titulo: { texto: 'DOS', confirmada: true }, descripcion: 'Descripción dos.' },
-    { icono: 'usuario', titulo: { texto: 'TRES', confirmada: true }, descripcion: 'Descripción tres.' },
-    { icono: 'mensaje', titulo: { texto: 'CUATRO', confirmada: true }, descripcion: 'Descripción cuatro.' },
-  ],
-  identidad: {
-    etiqueta: 'IDENTIDAD', titulo: 'HISTORIA', texto: 'Texto de identidad de prueba.',
-    foto: { tipo: 'foto', alt: 'Foto de prueba', ancho: 2000, alto: 1000, versiones: [{ clase: 'imagen', lado: 960, formato: 'webp', ruta: 'm/identidad/960.webp' }] },
-    cifra: { valor: { texto: 'Más de 10', confirmada: true }, detalle: 'CLIENTES' },
-    valores: [{ icono: 'escudo', titulo: 'Confianza', texto: 'Texto uno.' }, { icono: 'camion', titulo: 'Entregas', texto: 'Texto dos.' }],
-    sello: { texto: 'SELLO DE PRUEBA.', confirmada: true },
-  },
-  textoPrivacidad: ['Texto de privacidad de prueba.'], categorias: {}, destacados: [], version: 3, actualizadoEn: '2026-11-23T10:00:00.000Z', por: 'uid-prueba',
-});
-const publicadoReal = () => ({
-  redondeo: { BOB: { tipo: 'decimales', decimales: 2, modo: 'cercano' }, ARS: { tipo: 'multiplo', multiplo: 500, modo: 'arriba' } },
-  documentos: {
-    sitio: { plantillaActiva: 'bosque', whatsappNovuchat: '59170000000', medicion: {}, version: 3 },
-    estado: { version: 3, secciones: [], publicadoEn: '2026-11-23T10:00:00.000Z' },
-    producto__p0: { id: 'p0', slug: 'p0', nombre: 'Producto de prueba', categoria: 'otros', marca: 'Marca', descripcion: 'Descripción.', garantia: '', medios: [], seo: {}, precioUSD: { bo: 100, ar: 120 } },
-    negocio: negocioPublicado(),
-  },
-});
-const SECRETO_NEGOCIO = JSON.stringify({ mercados: ['BO', 'AR'], mercadoInicial: 'BO', logo: null, whatsappTienda: null, nombre: 'Nombre Secreto', direccion: 'Dirección Secreta 1' });
-
 describe('generar con negocio publicado (mapeo real)', () => {
   const envReal = { ...env, MEDIOS_BASE_URL: `${MEDIOS_REAL}/`, SITIO_NEGOCIO: SECRETO_NEGOCIO };
   const real = { ...base, mapear: contenidoDesdePublicado as never };
@@ -780,10 +749,22 @@ describe('generar con negocio publicado (mapeo real)', () => {
     expect(c.config.horario).toBe('Lunes a sábado');
     expect(c.config.mercados).toEqual(['BO', 'AR']);
     expect(c.identidad.foto?.url).toBe(`${MEDIOS_REAL}/m/identidad/960.webp`);
-    expect(r.advertencias).toContain('negocio.publicado.v3');
+    expect(r.origenNegocio).toBe('negocio: publicado v3');
+    expect(r.advertencias).toEqual([]);
     const huella = versionContenido(r.contenido as never) as unknown as { huella: string; huellaSinDisponibilidad: string };
     expect(huella.huella).toMatch(/^[0-9a-f]{64}$/);
     expect((versionContenido((await generarContenido({ ...real, env: envReal })).contenido as never) as unknown as { huella: string }).huella).toBe(huella.huella);
+  });
+
+  it('ejecutar generar imprime el origen en una línea propia y mantiene «advertencias del mapeo: 0»', async () => {
+    modo.publicado = publicadoReal();
+    const salida = join(mkdtempSync(join(tmpdir(), 'origen-negocio-')), 'c.json');
+    const r = await ejecutar(['generar', '--salida', salida, ...args], envReal, { calcularFirma, mapear: contenidoDesdePublicado as never }, fetchLocal);
+    expect(r.codigo).toBe(0);
+    expect(r.salida).toBe('contenido generado: 1 productos\nnegocio: publicado v3\nadvertencias del mapeo: 0');
+    modo.publicado = (() => { const p = publicadoReal(); delete (p.documentos as Record<string, unknown>)['negocio']; return p; })();
+    const r2 = await ejecutar(['generar', '--salida', salida, ...args], envReal, { calcularFirma, mapear: contenidoDesdePublicado as never }, fetchLocal);
+    expect(r2.salida).toBe('contenido generado: 1 productos\nnegocio: respaldo del entorno\nadvertencias del mapeo: 0');
   });
 
   it('un negocio publicado inválido: el error lleva rutas documentos.negocio.*, causa contenido_invalido y ningún valor', async () => {
