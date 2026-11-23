@@ -6,9 +6,11 @@ import { contenido } from '../contenido/instancia';
 import { seccionesEnMenu } from '../contenido/consultas';
 import { rutaSeccion } from '../lib/seo';
 import { enlaceWhatsApp } from '../lib/whatsapp';
+import { hrefCorreo } from '../lib/correo';
 
 const { config, secciones } = contenido;
 const wa = enlaceWhatsApp(config.whatsappNovuchat, 'Hola, tengo una consulta.');
+const hrefMail = config.correo === null ? null : hrefCorreo(config.correo);
 const anio = new Date().getFullYear();
 ---
 <footer class="pie">
@@ -40,7 +42,7 @@ const anio = new Date().getFullYear();
       <ul>
         {config.telefono !== null && <li class="pie-linea"><Icono nombre="telefono" tamano={16} /><a href={`tel:${config.telefono.replace(/[^+0-9]/g, '')}`}>{config.telefono}</a></li>}
         {wa !== null && <li class="pie-linea"><Icono nombre="chat" tamano={16} /><a href={wa} target="_blank" rel="noopener noreferrer">Escribir por WhatsApp</a></li>}
-        {config.correo !== null && <li class="pie-linea"><Icono nombre="mensaje" tamano={16} /><a href={`mailto:${config.correo}`}>{config.correo}</a></li>}
+        {config.correo !== null && <li class="pie-linea"><Icono nombre="mensaje" tamano={16} />{hrefMail === null ? <span>{config.correo}</span> : <a href={hrefMail}>{config.correo}</a>}</li>}
         {config.horario !== null && <li>{config.horario}</li>}
         {config.mapa !== undefined && <li class="pie-linea"><Icono nombre="pin" tamano={16} /><a href={config.mapa} target="_blank" rel="noopener noreferrer">Cómo llegar<span class="solo-lectores"> (se abre en una pestaña nueva)</span></a></li>}
       </ul>

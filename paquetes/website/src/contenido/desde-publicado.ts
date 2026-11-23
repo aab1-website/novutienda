@@ -252,7 +252,7 @@ const CLAVES_DEL_RESPALDO = ['mercados', 'mercadoInicial', 'logo', 'whatsappTien
 const CLAVES_DE_CONTROL = ['version', 'actualizadoEn', 'por'] as const;
 
 export interface NegocioEfectivo {
-  /** Candidato a `validarNegocio`: publicado entero + las 4 claves del respaldo; sin `negocio` publicado, el respaldo tal cual. */
+  /** Candidato a `validarNegocio`: publicado entero + las 5 claves del respaldo; sin `negocio` publicado, el respaldo tal cual. */
   readonly candidato: unknown;
   /** `true` si el candidato parte de `documentos.negocio`. */
   readonly publicado: boolean;
@@ -289,7 +289,7 @@ export function negocioEfectivo(docs: Obj | undefined, respaldo: unknown, base: 
   return { candidato: salida, publicado: true };
 }
 
-/** Los errores del negocio publicado nombran `documentos.negocio.*`; los de las 4 claves del respaldo conservan `negocio.*`. */
+/** Los errores del negocio publicado nombran `documentos.negocio.*`; los de las 5 claves del respaldo conservan `negocio.*`. */
 function rutaPublicada(e: string): string {
   if (!e.startsWith('negocio')) return e;
   const resto = e.slice('negocio'.length);

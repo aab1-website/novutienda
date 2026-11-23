@@ -9,7 +9,7 @@
 // (se fijan como tales en una prueba, para que un cambio de comportamiento sea visible).
 import { construirPublicado } from '@novutienda/consola';
 import { LIMITES_NEGOCIO, IDS_ICONO_NEGOCIO, enlacePermitidoEnSitio, evaluarNegocioSitio, validarNegocioSitio } from '@novutienda/consola/negocio';
-import { IDS_ICONO, LARGO_MAXIMO_ENLACE, urlEnlaceSegura, validarNegocio } from '@novutienda/website';
+import { IDS_ICONO, LARGO_MAXIMO_ENLACE, negocioEfectivo, urlEnlaceSegura, validarNegocio } from '@novutienda/website';
 import { LIMITES_TEXTOS_SITIO } from '@novutienda/nucleo';
 import { describe, expect, it } from 'vitest';
 
@@ -155,8 +155,6 @@ describe('base válida', () => {
 });
 
 const un = (n: number, c = 'a'): string => c.repeat(n);
-/** Texto de largo exacto `n` para el campo; el correo del sitio exige forma de correo, así que desde 5 caracteres es `a@bbb.c`. */
-const de = (ruta: string, n: number): string => (ruta === 'correo' && n >= 5 ? `a@${'b'.repeat(n - 4)}.c` : un(n));
 
 describe('heredado: límites de texto con el mismo veredicto que el sitio', () => {
   // ruta, mínimo (0 = sin mínimo de contenido), máximo
@@ -173,11 +171,11 @@ describe('heredado: límites de texto con el mismo veredicto que el sitio', () =
 
   for (const [ruta, min, max] of CAMPOS) {
     it(`${ruta}: largos ${String(min - 1)}, ${String(min)}, ${String(max)} y ${String(max + 1)}`, () => {
-      if (min >= 1) expect(mismoVeredicto(con(base(), ruta, de(ruta, min - 1)))).toBe(false); // vacío (min-1 = 0)
-      if (min >= 2) expect(mismoVeredicto(con(base(), ruta, de(ruta, min)))).toBe(true);
-      expect(mismoVeredicto(con(base(), ruta, de(ruta, min === 0 ? 0 : Math.max(min, 1))))).toBe(true);
-      expect(mismoVeredicto(con(base(), ruta, de(ruta, max)))).toBe(true);
-      expect(mismoVeredicto(con(base(), ruta, de(ruta, max + 1)))).toBe(false);
+      if (min >= 1) expect(mismoVeredicto(con(base(), ruta, un(min - 1)))).toBe(false); // vacío (min-1 = 0)
+      if (min >= 2) expect(mismoVeredicto(con(base(), ruta, un(min)))).toBe(true);
+      expect(mismoVeredicto(con(base(), ruta, un(min === 0 ? 0 : Math.max(min, 1))))).toBe(true);
+      expect(mismoVeredicto(con(base(), ruta, un(max)))).toBe(true);
+      expect(mismoVeredicto(con(base(), ruta, un(max + 1)))).toBe(false);
     });
   }
 
@@ -190,8 +188,8 @@ describe('heredado: límites de texto con el mismo veredicto que el sitio', () =
   it('teléfono y correo: los largos min-1 y min exactos (6 y 5), y nulo', () => {
     expect(mismoVeredicto(con(base(), 'telefono', un(5)))).toBe(false);
     expect(mismoVeredicto(con(base(), 'telefono', un(6)))).toBe(true);
-    expect(mismoVeredicto(con(base(), 'correo', de('correo', 4)))).toBe(false);
-    expect(mismoVeredicto(con(base(), 'correo', de('correo', 5)))).toBe(true);
+    expect(mismoVeredicto(con(base(), 'correo', un(4)))).toBe(false);
+    expect(mismoVeredicto(con(base(), 'correo', un(5)))).toBe(true);
     for (const k of ['telefono', 'correo', 'horario']) expect(mismoVeredicto(con(base(), k, null)), k).toBe(true);
     for (const k of ['nombre', 'lema', 'direccion']) expect(mismoVeredicto(con(base(), k, null)), k).toBe(false);
   });
@@ -284,8 +282,7 @@ describe('heredado: tolerancia de caracteres igual a la del sitio', () => {
     ['salto de línea', 'a\nb'], ['retorno', 'a\rb'], ['DEL', 'a\u007fb'], ['HTML', '<b>a</b>'], ['U+202E', 'a‮b'],
     ['nulo', 'a\u0000b'], ['ancho cero', 'a​b'], ['U+2028', 'a b'], ['BOM', '﻿a'], ['script', '<script>x</script>'],
   ];
-  // `correo` queda fuera a propósito: el sitio exige forma de correo (como el nivel estricto), el heredado no.
-  for (const campo of ['nombre', 'lema', 'telefono', 'direccion', 'horario', 'portada.insignia', 'portada.titulo[0]', 'identidad.etiqueta', 'categorias.herramientas.nombre']) {
+  for (const campo of ['nombre', 'lema', 'telefono', 'correo', 'direccion', 'horario', 'portada.insignia', 'portada.titulo[0]', 'identidad.etiqueta', 'categorias.herramientas.nombre']) {
     it(`${campo}: mismo veredicto (y heredado acepta)`, () => {
       for (const [nombre, v] of RAROS) {
         // Se rellena para superar el mínimo de largo (6 el teléfono, 5 el correo): solo se prueba el carácter.
@@ -350,7 +347,7 @@ describe('diferencias conocidas, fijadas como tales', () => {
   });
 });
 
-describe('lo que publica la consola lo acepta el sitio (negocio publicado + las 4 claves del respaldo)', () => {
+describe('lo que publica la consola lo acepta el sitio (negocio publicado + las 5 claves del respaldo)', () => {
   const publicadoDe = (datos: Json, medios = new Map()): { negocio: Json; advertencias: readonly string[] } => {
     const negocio = evaluarNegocioSitio(datos, 'estricto').negocio;
     expect(negocio).not.toBeNull();
@@ -360,27 +357,42 @@ describe('lo que publica la consola lo acepta el sitio (negocio publicado + las 
     });
     return { negocio: p.negocio as unknown as Json, advertencias: p.advertencias };
   };
-  const sinControl = (n: Json): Json => Object.fromEntries(Object.entries(n).filter(([k]) => !['version', 'actualizadoEn', 'por'].includes(k)));
-  const respaldo = { mercados: ['BO', 'AR'], mercadoInicial: 'BO', logo: null, whatsappTienda: null };
+  // Respaldo del entorno (D8): las 4 claves que la consola no guarda y `enlacesPermitidos`, que sale siempre de aquí.
+  const respaldo = { mercados: ['BO', 'AR'], mercadoInicial: 'BO', logo: null, whatsappTienda: null, enlacesPermitidos: ['ejemplo.test'] };
+  const candidatoDe = (negocio: Json): unknown => negocioEfectivo({ negocio }, respaldo, 'https://medios.ejemplo.test').candidato;
 
   it('con foto de identidad heredada (url)', () => {
     const { negocio } = publicadoDe(con(base(), 'identidad.foto', { url: '/a.webp', alt: 'Foto', versiones: [{ url: '/b.webp', ancho: 480 }] }));
-    const resto = sinControl(negocio);
-    expect(validarNegocio({ ...resto, ...respaldo }, ['https://medios.ejemplo.test']).ok).toBe(true);
+    expect(validarNegocio(candidatoDe(negocio), ['https://medios.ejemplo.test']).ok).toBe(true);
   });
 
   it('lema vacío con teléfono, correo y horario en null', () => {
     const { negocio } = publicadoDe({ ...base(), lema: '', telefono: null, correo: null, horario: null });
-    const r = validarNegocio({ ...sinControl(negocio), ...respaldo }, ['https://medios.ejemplo.test']);
+    const r = validarNegocio(candidatoDe(negocio), ['https://medios.ejemplo.test']);
     expect(r.ok, JSON.stringify(r)).toBe(true);
     if (r.ok) { expect(r.negocio.lema).toBe(''); expect(r.negocio.telefono).toBeNull(); expect(r.negocio.correo).toBeNull(); expect(r.negocio.horario).toBeNull(); }
   });
 
   it('sin foto, con mapa y horario nulo', () => {
     const { negocio } = publicadoDe({ ...con(base(), 'horario', null), mapa: 'https://maps.app.goo.gl/AbC123' });
-    const resto = sinControl(negocio);
-    const r = validarNegocio({ ...resto, ...respaldo }, ['https://medios.ejemplo.test']);
+    const r = validarNegocio(candidatoDe(negocio), ['https://medios.ejemplo.test']);
     expect(r.ok).toBe(true);
     if (r.ok) { expect(r.negocio.horario).toBeNull(); expect(r.negocio.mapa).toBe('https://maps.app.goo.gl/AbC123'); }
+  });
+});
+
+describe('lo que guardarNegocioSitio puede guardar en el nivel heredado lo acepta validarNegocio', () => {
+  it('correo: todo lo que el nivel heredado acepta (5 a 120 caracteres) lo acepta el sitio', () => {
+    for (const c of ['sin-arroba-aqui', 'a@@b.co', 'a b@c.co', 'a@bcd', 'hola@ejemplo.test', 'x'.repeat(5), 'x'.repeat(120), 'a@b.co?bcc=x@evil.test']) {
+      const x = con(base(), 'correo', c);
+      expect(veredictoConsola(x), `consola ${c.slice(0, 10)}`).toBe(true);
+      expect(veredictoSitio(x), `sitio ${c.slice(0, 10)}`).toBe(true);
+    }
+  });
+  it('un negocio heredado completo y válido lo acepta el sitio, también con correo y horario nulos y lema vacío', () => {
+    for (const x of [base(), { ...base(), lema: '', telefono: null, correo: null, horario: null }]) {
+      expect(veredictoConsola(x)).toBe(true);
+      expect(veredictoSitio(x)).toBe(true);
+    }
   });
 });

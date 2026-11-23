@@ -536,12 +536,13 @@ describe('contenidoDesdePublicado: negocio desde lo publicado', () => {
     expect(({} as Record<string, unknown>)['contaminado']).toBeUndefined();
   });
 
-  it('negocioEfectivo quita version, actualizadoEn y por, e ignora las 4 claves si el publicado las trajera', () => {
+  it('negocioEfectivo quita version, actualizadoEn y por, e ignora las 5 claves del respaldo si el publicado las trajera', () => {
     const { candidato, publicado } = negocioEfectivo({ negocio: publicadoNegocio({ mercados: ['AR'] }) }, secreto(), MEDIOS);
     expect(publicado).toBe(true);
     const o = candidato as Record<string, unknown>;
     for (const k of ['version', 'actualizadoEn', 'por']) expect(k in o).toBe(false);
     expect(o['mercados']).toEqual(['BO']);
+    expect(o['enlacesPermitidos']).toEqual(['ejemplo.invalid']);
   });
 
   it('la foto de identidad publicada como medio sale con su URL', () => {

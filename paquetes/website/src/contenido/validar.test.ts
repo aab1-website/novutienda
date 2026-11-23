@@ -259,7 +259,7 @@ describe('enlace al mapa (Google Maps)', () => {
   });
 });
 
-describe('validarNegocio: correo y anfitriones (mismo criterio que el nivel estricto de la consola)', () => {
+describe('validarNegocio: correo y anfitriones', () => {
   const negocio = (extra: Record<string, unknown> = {}): Record<string, unknown> => ({
     nombre: 'Tienda de Ejemplo', lema: '', logo: null, whatsappTienda: null, telefono: null, correo: null, direccion: 'Calle Ficticia 123', horario: null,
     mercados: ['BO'], mercadoInicial: 'BO', enlacesPermitidos: [], portada: contenidoEjemplo.portada, beneficios: contenidoEjemplo.beneficios,
@@ -270,13 +270,9 @@ describe('validarNegocio: correo y anfitriones (mismo criterio que el nivel estr
   it('el negocio base es válido, con correo null y lista vacía', () => {
     expect(fallas(negocio())).toEqual([]);
   });
-  it('correo con forma de correo se acepta; sin forma se rechaza sin copiar el valor', () => {
-    expect(fallas(negocio({ correo: 'ventas@sutienda.com' }))).toEqual([]);
-    for (const c of ['sin-arroba-aqui', 'a@@b.co', 'a b@c.co', 'a@b', '@b.co', 'a@b.']) {
-      const e = fallas(negocio({ correo: c }));
-      expect(e.some((x) => x.startsWith('negocio.correo:')), c).toBe(true);
-      expect(e.join()).not.toContain(c);
-    }
+  it('correo: se valida solo por largo (5 a 120), como el nivel heredado de la consola; el enlace mailto se decide al mostrarlo', () => {
+    for (const c of ['ventas@sutienda.com', 'sin-arroba-aqui']) expect(fallas(negocio({ correo: c })), c).toEqual([]);
+    for (const c of ['a@b', 'x'.repeat(121)]) expect(fallas(negocio({ correo: c })).some((x) => x.startsWith('negocio.correo:')), c).toBe(true);
   });
   it('enlacesPermitidos rechaza IP y localhost; acepta nombres de anfitrión', () => {
     expect(fallas(negocio({ enlacesPermitidos: ['ejemplo.test', 'sub.ejemplo.test'] }))).toEqual([]);
