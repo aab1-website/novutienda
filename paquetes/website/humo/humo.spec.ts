@@ -159,7 +159,10 @@ test.describe('precio, país y compra', () => {
     const wa = dlg.getByRole('link', { name: /ENVIAR PEDIDO POR WHATSAPP/ });
     const url = new URL((await wa.getAttribute('href')) ?? '');
     expect(url.origin + url.pathname).toBe('https://wa.me/59100000001');
-    expect(url.searchParams.get('text')).toContain('1 x Televisor de ejemplo 55" (cód. ejemplo-tv-55)');
+    await expect(wa).toHaveAttribute('href', /Total/);
+    const texto = new URL((await wa.getAttribute('href')) ?? '').searchParams.get('text') ?? '';
+    expect(texto).toContain('1 x Televisor de ejemplo 55" (cód. ejemplo-tv-55): Bs ');
+    expect(texto).toMatch(/Total referencial: Bs /);
   });
 
   test('sin número configurado, «Comprar» es un botón que agrega y abre el carrito, como «Agregar»', async ({ page }) => {
@@ -236,7 +239,7 @@ test.describe('precio, país y compra', () => {
     expect(texto).toContain('2 x Lavadora de ejemplo 9 kg (cód. ejemplo-lavadora-9)');
   });
 
-  test('Mi pedido muestra el «Total referencial» con su leyenda y el mensaje de WhatsApp no lleva el total', async ({ page }) => {
+  test('Mi pedido muestra el «Total referencial» con su leyenda y el mensaje de WhatsApp lleva los mismos precios y el mismo total', async ({ page }) => {
     await simularApi(page);
     await decidirConsentimiento(page, false, false);
     // Un producto con stock y precio 0 (el ejemplo no trae ninguno): se simula en el archivo de precios.
@@ -259,7 +262,10 @@ test.describe('precio, país y compra', () => {
     await expect(dlg.getByText('+ 1 con precio a consultar')).toBeVisible();
     await expect(dlg.getByText('El precio final y el envío se confirman por WhatsApp')).toBeVisible();
     const href = (await dlg.getByRole('link', { name: /ENVIAR PEDIDO POR WHATSAPP/ }).getAttribute('href')) ?? '';
-    expect(decodeURIComponent(href)).not.toMatch(/total|Bs|4\.500/i);
+    const mensaje = decodeURIComponent(href);
+    expect(mensaje).toContain('(cód. ejemplo-tv-55): Bs 4.500 c/u, subtotal Bs 4.500');
+    expect(mensaje).toContain('(cód. ejemplo-tv-43): precio a consultar');
+    expect(mensaje).toContain('Total referencial: Bs 4.500');
   });
 
   test('el botón flotante de WhatsApp lleva el pedido cuando hay productos y la consulta general cuando no', async ({ page }) => {
@@ -486,69 +492,64 @@ test.describe('ficha, tema y formulario', () => {
     await expect(page.locator('html')).toHaveAttribute('data-tema', 'claro');
   });
 
-  test('formulario: valida en el navegador, anuncia los errores y no envía nada con datos inválidos', async ({ page }) => {
+  test('contacto: «ENVIAR POR WHATSAPP» abre wa.me con el nombre y el mensaje, sin enviar nada al servidor ni cargar reCAPTCHA', async ({ page }) => {
+    const { errores, peticiones } = vigilar(page);
     await simularApi(page);
     await decidirConsentimiento(page, false, false);
     const posts: string[] = [];
     page.on('request', (r) => r.method() === 'POST' && posts.push(r.url()));
     await page.goto('/contacto');
     await islasListas(page);
-    await page.getByRole('button', { name: /ENVIAR MENSAJE/ }).click();
-    const alerta = page.getByRole('alert');
-    await expect(alerta).toContainText('Revisa los campos marcados');
-    await expect(alerta).toContainText('Nombre');
-    expect(posts).toEqual([]);
-  });
-
-  test('formulario: envío válido con reCAPTCHA simulado y clave de idempotencia estable', async ({ page }) => {
-    await simularApi(page);
-    await decidirConsentimiento(page, false, false);
-    await simularRecaptchaYAppCheck(page);
-    const cuerpos: Record<string, unknown>[] = [];
-    await page.route('**/api/contacto', async (r) => {
-      cuerpos.push(r.request().postDataJSON() as Record<string, unknown>);
-      await r.fulfill({ status: 200, contentType: 'application/json', body: '{"ok":true}' });
-    });
-    await page.goto('/contacto');
-    await islasListas(page);
+    const enviar = page.getByRole('link', { name: /ENVIAR POR WHATSAPP/ });
+    await enviar.click();
+    await expect(page.getByRole('alert')).toContainText('Escribe tu nombre');
     await page.getByLabel('Nombre', { exact: true }).fill('Ana Pérez');
-    await page.getByLabel('Correo electrónico').fill('ana@ejemplo.invalid');
     await page.getByLabel('Mensaje').fill('Quisiera saber el precio.');
-    await page.getByLabel(/Acepto/).check();
-    await page.getByRole('button', { name: /ENVIAR MENSAJE/ }).click();
-    await expect(page.getByRole('status').filter({ hasText: 'Recibimos tu mensaje' })).toBeVisible();
-    expect(cuerpos).toHaveLength(1);
-    expect(cuerpos[0]).toMatchObject({ nombre: 'Ana Pérez', aceptaPrivacidad: true, sitioWeb: '' });
-    expect(String(cuerpos[0]?.['envioId'])).toMatch(/^[A-Za-z0-9_-]{16,64}$/);
+    const url = new URL((await enviar.getAttribute('href')) ?? '');
+    expect(url.origin + url.pathname).toBe('https://wa.me/59100000001');
+    expect(url.searchParams.get('text')).toBe('Hola, soy Ana Pérez.\nQuisiera saber el precio.');
+    await expect(enviar).toHaveAttribute('target', '_blank');
+    expect(posts).toEqual([]);
+    expect(peticiones.some((u) => /recaptcha|appcheck|api\/contacto/i.test(u))).toBe(false);
+    expect(errores).toEqual([]);
   });
 
-  test('formulario: App Check de un solo uso, con el SDK real y el intercambio simulado, sin violaciones de CSP', async ({ page }) => {
-    const { errores } = vigilar(page);
+  test('pedido: el carrito manda por WhatsApp cantidad, código, precio unitario, subtotal y total en la moneda elegida', async ({ page }) => {
     await simularApi(page);
     await decidirConsentimiento(page, false, false);
-    const intercambios = await simularRecaptchaYAppCheck(page);
-    const cabeceras: (string | undefined)[] = [];
-    await page.route('**/api/contacto', async (r) => {
-      cabeceras.push(r.request().headers()['x-firebase-appcheck']);
-      await r.fulfill({ status: 200, contentType: 'application/json', body: '{"ok":true}' });
-    });
-    await page.goto('/contacto');
+    await page.goto('/producto/televisor-ejemplo-55');
     await islasListas(page);
-    expect(await page.evaluate(() => typeof (window as unknown as { cbAppCheck?: unknown }).cbAppCheck)).toBe('function');
-    for (let i = 0; i < 2; i += 1) {
-      await page.getByLabel('Nombre', { exact: true }).fill('Ana Pérez');
-      await page.getByLabel('Correo electrónico').fill('ana@ejemplo.invalid');
-      await page.getByLabel('Mensaje').fill('Quisiera saber el precio.');
-      await page.getByLabel(/Acepto/).check();
-      await page.getByRole('button', { name: /ENVIAR MENSAJE/ }).click();
-      await expect(page.getByRole('status').filter({ hasText: 'Recibimos tu mensaje' })).toBeVisible();
-    }
-    expect(cabeceras).toHaveLength(2);
-    expect(cabeceras[0]).toMatch(/^token-appcheck-\d+$/);
-    expect(cabeceras[1]).toMatch(/^token-appcheck-\d+$/);
-    expect(cabeceras[1]).not.toBe(cabeceras[0]);
-    expect(intercambios.limitados).toBeGreaterThanOrEqual(2);
-    expect(errores).toEqual([]);
+    await page.getByRole('button', { name: /Agregar al pedido/ }).click();
+    await page.getByRole('button', { name: /Agregar al pedido/ }).click();
+    await page.getByRole('button', { name: /^Mi pedido/ }).click();
+    const dlg = page.getByRole('dialog', { name: 'Mi pedido' });
+    await expect(dlg.locator('.total-linea strong').first()).toHaveText(/^Bs /);
+    const total = (await dlg.locator('.total-linea strong').first().innerText()).trim();
+    const wa = dlg.getByRole('link', { name: /ENVIAR PEDIDO POR WHATSAPP/ });
+    await expect(wa).toHaveAttribute('href', /text=.*Total/);
+    const texto = new URL((await wa.getAttribute('href')) ?? '').searchParams.get('text') ?? '';
+    expect(texto).toContain('2 x Televisor de ejemplo 55" (cód. ejemplo-tv-55): Bs ');
+    expect(texto).toMatch(/ c\/u, subtotal Bs /);
+    expect(texto).toContain(`Total referencial: ${total}`);
+    expect(texto.endsWith('El precio final y el envío se confirman por WhatsApp')).toBe(true);
+  });
+
+  test('pedido: en el mercado de Argentina el mensaje va en pesos', async ({ page }) => {
+    await simularApi(page);
+    await page.addInitScript(() => {
+      localStorage.setItem('cb.consentimiento', JSON.stringify({ v: 1, analitica: false, marketing: false }));
+      localStorage.setItem('cb.mercado', 'AR');
+    });
+    await page.goto('/producto/televisor-ejemplo-55');
+    await islasListas(page);
+    await page.getByRole('button', { name: /Agregar al pedido/ }).click();
+    await page.getByRole('button', { name: /^Mi pedido/ }).click();
+    const wa = page.getByRole('dialog', { name: 'Mi pedido' }).getByRole('link', { name: /ENVIAR PEDIDO POR WHATSAPP/ });
+    await expect(wa).toHaveAttribute('href', /Total/);
+    const texto = new URL((await wa.getAttribute('href')) ?? '').searchParams.get('text') ?? '';
+    expect(texto).toMatch(/c\/u, subtotal \$ /);
+    expect(texto).toMatch(/Total referencial: \$ /);
+    expect(texto).not.toMatch(/Bs /);
   });
 
   test('el sitio no tiene ingreso de administración ni chat simulado, ni voseo', async ({ page }) => {
@@ -638,25 +639,6 @@ test.describe('accesibilidad (axe) en claro y oscuro con las 5 plantillas', () =
     await auditar(page, 'convertidor');
   });
 });
-
-/**
- * reCAPTCHA Enterprise simulado (el mismo script sirve al antiabuso y al proveedor de App Check) y el intercambio de App Check de
- * Firebase simulado: devuelve un token distinto por llamada. Cuenta los intercambios de uso limitado.
- */
-async function simularRecaptchaYAppCheck(page: Page): Promise<{ limitados: number }> {
-  const cuenta = { limitados: 0 };
-  let n = 0;
-  await page.route('**/recaptcha/enterprise.js*', (r) => r.fulfill({ status: 200, contentType: 'text/javascript', body: 'window.grecaptcha={enterprise:{ready:function(f){f()},render:function(c,o){window.cbCbRecaptcha=o;return 1},execute:function(w){if(w===1&&window.cbCbRecaptcha)window.cbCbRecaptcha.callback();return Promise.resolve("t".repeat(40))}}};' }));
-  const cors = { 'access-control-allow-origin': '*', 'access-control-allow-headers': '*', 'access-control-allow-methods': 'POST, OPTIONS' };
-  await page.route('https://content-firebaseappcheck.googleapis.com/**', async (r) => {
-    if (r.request().method() === 'OPTIONS') return r.fulfill({ status: 204, headers: cors });
-    const cuerpo = r.request().postDataJSON() as { limited_use?: boolean; limitedUse?: boolean } | null;
-    if (cuerpo?.limited_use === true || cuerpo?.limitedUse === true) cuenta.limitados += 1;
-    n += 1;
-    return r.fulfill({ status: 200, headers: cors, contentType: 'application/json', body: JSON.stringify({ token: `token-appcheck-${n}`, ttl: '3600s' }) });
-  });
-  return cuenta;
-}
 
 test.describe('celular (375×812): grilla de 2 columnas, cabecera que se oculta y marcas en fila', () => {
   test.use({ viewport: { width: 375, height: 812 } });

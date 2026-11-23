@@ -32,7 +32,13 @@ describe('total referencial', () => {
       const c = cot(par, mercado === 'BO' ? 10 : 1000);
       const t = totalReferencial(pedido, precios, mercado, c, redondeo);
       const centavos = esperado(100, mercado, c) * 2 + esperado(50, mercado, c);
-      expect(t).toEqual({ tipo: 'total', centavos, texto: formatearMonto(centavos, moneda), sinPrecio: 0 });
+      expect(t).toEqual({
+        tipo: 'total', centavos, texto: formatearMonto(centavos, moneda), sinPrecio: 0,
+        lineas: [
+          { id: 'tv-1', unitario: formatearMonto(esperado(100, mercado, c), moneda), subtotal: formatearMonto(esperado(100, mercado, c) * 2, moneda) },
+          { id: 'lav-2', unitario: formatearMonto(esperado(50, mercado, c), moneda), subtotal: formatearMonto(esperado(50, mercado, c), moneda) },
+        ],
+      });
     });
   }
 

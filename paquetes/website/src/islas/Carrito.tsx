@@ -3,20 +3,20 @@ import type { Carrito as TipoCarrito } from '../lib/carrito.js';
 import { totalUnidades } from '../lib/carrito.js';
 import { EVENTOS, escuchar } from '../lib/eventos.js';
 import { configCliente } from '../lib/config-cliente.js';
-import { totalReferencial, type PreciosProductos } from '../lib/total-referencial.js';
-import { enlaceWhatsApp, mensajeConsulta } from '../lib/whatsapp.js';
+import { totalReferencial, type PreciosProductos, type TotalReferencial } from '../lib/total-referencial.js';
+import { LEYENDA_TOTAL, enlaceWhatsApp, mensajePedido } from '../lib/whatsapp.js';
 import { Dialogo } from './Dialogo.js';
 import { Icono } from './Icono.js';
 import { cambiarEnCarrito, cargarCarrito, quitarDelCarrito, vaciarCarrito } from './carrito-store.js';
 import { useCotizacion, useMercado } from './estado.js';
 
-export const LEYENDA_TOTAL = 'El precio final y el envío se confirman por WhatsApp';
+export { LEYENDA_TOTAL };
 
 /**
- * «Total referencial»: suma los productos con precio según la cotización oficial. Es solo una referencia y no viaja
- * en el mensaje de WhatsApp. Los precios base se piden una vez, al abrir el pedido, a un archivo estático del sitio.
+ * Precios del pedido: los precios base se piden una vez, al abrir el pedido, a un archivo estático del sitio y se
+ * pasan por `totalReferencial` (la misma cuenta que `Precio.tsx`). Lo que se ve y lo que viaja en el mensaje sale de aquí.
  */
-function TotalPedido({ carrito }: { carrito: TipoCarrito }) {
+function usePedido(carrito: TipoCarrito): { readonly t: TotalReferencial | null; readonly fallo: boolean } {
   const cfg = configCliente();
   const [mercado] = useMercado(cfg.mercadoInicial, cfg.mercados);
   const cot = useCotizacion(mercado);
@@ -32,7 +32,11 @@ function TotalPedido({ carrito }: { carrito: TipoCarrito }) {
       vivo = false;
     };
   }, []);
-  const t = precios === null ? null : totalReferencial(carrito, precios, mercado, cot, cfg.redondeo);
+  return { t: precios === null ? null : totalReferencial(carrito, precios, mercado, cot, cfg.redondeo), fallo };
+}
+
+/** «Total referencial» en pantalla. */
+function TotalPedido({ t, fallo }: { t: TotalReferencial | null; fallo: boolean }) {
   return (
     <div class="total-pedido" aria-live="polite">
       {t?.tipo === 'total' && (
@@ -47,6 +51,23 @@ function TotalPedido({ carrito }: { carrito: TipoCarrito }) {
       {fallo && <p class="total-linea"><span>Total referencial</span> <strong>Total no disponible por ahora</strong></p>}
       <p class="dialogo-texto">{LEYENDA_TOTAL}</p>
     </div>
+  );
+}
+
+/** Total y envío del pedido: el mensaje de WhatsApp lleva los mismos precios y el mismo total que se ven aquí. */
+function ResumenPedido({ carrito, whatsapp }: { carrito: TipoCarrito; whatsapp: string | null }) {
+  const { t, fallo } = usePedido(carrito);
+  const conTotal = t?.tipo === 'total' ? t : null;
+  const enlace = enlaceWhatsApp(whatsapp, mensajePedido(carrito, conTotal?.lineas ?? null, conTotal?.texto ?? null));
+  return (
+    <>
+      <TotalPedido t={t} fallo={fallo} />
+      {enlace !== null ? (
+        <a class="boton boton-cta boton-ancho" href={enlace} target="_blank" rel="noopener noreferrer"><Icono nombre="chat" tamano={18} /> ENVIAR PEDIDO POR WHATSAPP</a>
+      ) : (
+        <p class="aviso-estado">El envío por WhatsApp no está disponible por ahora. Usa el formulario de <a href="/contacto">contacto</a>.</p>
+      )}
+    </>
   );
 }
 
@@ -72,7 +93,6 @@ export default function Carrito({ whatsapp }: { whatsapp: string | null }) {
   }, []);
 
   const unidades = totalUnidades(carrito);
-  const enlace = enlaceWhatsApp(whatsapp, mensajeConsulta(carrito));
   return (
     <>
       <button type="button" class="boton-icono boton-carrito" aria-label={`Mi pedido, ${unidades} ${unidades === 1 ? 'producto' : 'productos'}`} aria-haspopup="dialog" onClick={() => setAbierto(true)}>
@@ -106,12 +126,7 @@ export default function Carrito({ whatsapp }: { whatsapp: string | null }) {
                   </li>
                 ))}
               </ul>
-              <TotalPedido carrito={carrito} />
-              {enlace !== null ? (
-                <a class="boton boton-cta boton-ancho" href={enlace} target="_blank" rel="noopener noreferrer"><Icono nombre="chat" tamano={18} /> ENVIAR PEDIDO POR WHATSAPP</a>
-              ) : (
-                <p class="aviso-estado">El envío por WhatsApp no está disponible por ahora. Usa el formulario de <a href="/contacto">contacto</a>.</p>
-              )}
+              <ResumenPedido carrito={carrito} whatsapp={whatsapp} />
               <button type="button" class="enlace-boton" onClick={() => vaciarCarrito()}>Vaciar pedido</button>
             </>
           )}
