@@ -364,6 +364,8 @@ export function appCheckDesdeEntorno(env) {
   return [claveSitio, apiKey, appId, projectId].every((x) => typeof x === 'string' && x !== '') ? { claveSitio, apiKey, appId, projectId } : null;
 }
 
+// Respaldo del negocio: si `publicado/negocio` existe, el mapeo toma de aquí solo mercados, mercadoInicial, logo y whatsappTienda;
+// sin él, este JSON completo (D1/D2 de «Negocio desde lo publicado»; un publicado inválido hace fallar el build con rutas `documentos.negocio.*`).
 export function negocioDesdeEntorno(env) {
   try {
     return JSON.parse(env.SITIO_NEGOCIO ?? '');

@@ -8,7 +8,7 @@
 // Sin la opción, el comportamiento es el de siempre. La salida y el resumen dicen con qué se comparó («referencia: …»).
 //
 // Mismo contrato de entorno que `contenido-sitio.mjs generar` (SITIO_RECONSTRUCCION_SECRETO, MEDIOS_BASE_URL, SITIO_NEGOCIO, VITE_*): regenera el
-// contenido con el mismo código y lo contrasta con el sitio desplegado. Solo lectura, sin contraseñas de usuario (la firma es la del workflow).
+// contenido con el mismo código (SITIO_NEGOCIO es solo el respaldo: con `publicado/negocio` aporta mercados, mercadoInicial, logo y whatsappTienda) y lo contrasta con el sitio desplegado. Solo lectura, sin contraseñas de usuario (la firma es la del workflow).
 //
 // Comprobaciones:
 //   1. huella       `/version-contenido.json` contra `versionContenido(contenido)` (esquema, version, publicadoEn, productos, secciones,

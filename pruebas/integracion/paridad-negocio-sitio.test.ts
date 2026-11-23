@@ -7,6 +7,7 @@
 //
 // Casos en que difieren en la dirección segura (la consola rechaza y `urlEnlaceSegura` acepta): ver el arreglo `MAS_ESTRICTA` más abajo
 // (se fijan como tales en una prueba, para que un cambio de comportamiento sea visible).
+import { construirPublicado } from '@novutienda/consola';
 import { LIMITES_NEGOCIO, IDS_ICONO_NEGOCIO, enlacePermitidoEnSitio, evaluarNegocioSitio, validarNegocioSitio } from '@novutienda/consola/negocio';
 import { IDS_ICONO, LARGO_MAXIMO_ENLACE, urlEnlaceSegura, validarNegocio } from '@novutienda/website';
 import { LIMITES_TEXTOS_SITIO } from '@novutienda/nucleo';
@@ -339,5 +340,33 @@ describe('diferencias conocidas, fijadas como tales', () => {
       expect(veredictoConsola(con(base(), 'identidad.foto', { url: '/a.webp', alt: 'F', versiones: [{ url: '/b.webp', ancho }] })), String(ancho))
         .toBe(veredictoSitio(con(base(), 'identidad.foto', { url: '/a.webp', alt: 'F', versiones: [{ url: '/b.webp', ancho }] })));
     }
+  });
+});
+
+describe('lo que publica la consola lo acepta el sitio (negocio publicado + las 4 claves del respaldo)', () => {
+  const publicadoDe = (datos: Json, medios = new Map()): { negocio: Json; advertencias: readonly string[] } => {
+    const negocio = evaluarNegocioSitio(datos, 'estricto').negocio;
+    expect(negocio).not.toBeNull();
+    const p = construirPublicado({
+      productos: [], fichas: new Map(), medios, config: {} as never, secciones: [], carruseles: [],
+      negocio: { datos: negocio!, version: 4, actualizadoEn: '2026-11-23T10:00:00.000Z' },
+    });
+    return { negocio: p.negocio as unknown as Json, advertencias: p.advertencias };
+  };
+  const sinControl = (n: Json): Json => Object.fromEntries(Object.entries(n).filter(([k]) => !['version', 'actualizadoEn', 'por'].includes(k)));
+  const respaldo = { mercados: ['BO', 'AR'], mercadoInicial: 'BO', logo: null, whatsappTienda: null };
+
+  it('con foto de identidad heredada (url)', () => {
+    const { negocio } = publicadoDe(con(base(), 'identidad.foto', { url: '/a.webp', alt: 'Foto', versiones: [{ url: '/b.webp', ancho: 480 }] }));
+    const resto = sinControl(negocio);
+    expect(validarNegocio({ ...resto, ...respaldo }, ['https://medios.ejemplo.test']).ok).toBe(true);
+  });
+
+  it('sin foto, con mapa y horario nulo', () => {
+    const { negocio } = publicadoDe({ ...con(base(), 'horario', null), mapa: 'https://maps.app.goo.gl/AbC123' });
+    const resto = sinControl(negocio);
+    const r = validarNegocio({ ...resto, ...respaldo }, ['https://medios.ejemplo.test']);
+    expect(r.ok).toBe(true);
+    if (r.ok) { expect(r.negocio.horario).toBeNull(); expect(r.negocio.mapa).toBe('https://maps.app.goo.gl/AbC123'); }
   });
 });
