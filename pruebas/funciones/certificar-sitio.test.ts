@@ -67,6 +67,7 @@ interface Modo {
   versionAjuste?: ((v: Record<string, unknown>) => Record<string, unknown>) | undefined;
   sinFicha?: number | undefined;
   sinIndiceId?: string | undefined;
+  indiceIncluye?: string; // el índice servido es anterior al agotado: aún lista este producto
   cotizacion: 'vigente' | 'ultimo_verificado' | 'ausente';
   viva: Record<string, boolean>;
   vivaOmitir?: string[] | undefined;
@@ -112,7 +113,7 @@ beforeAll(async () => {
     }
     if (ruta === '/indice-productos.json') {
       peticionesIndice++;
-      return json(200, modo.html.productos.filter((p) => p.id !== modo.sinIndiceId).map((p) => ({ i: p.id, nombre: p.nombre, marca: 'M', categoria: 'c', ruta: `/producto/${p.slug}` })));
+      return json(200, modo.html.productos.filter((p) => (p.disponible || p.id === modo.indiceIncluye) && p.id !== modo.sinIndiceId).map((p) => ({ i: p.id, nombre: p.nombre, marca: 'M', categoria: 'c', ruta: `/producto/${p.slug}` })));
     }
     if (ruta === '/') return enviar(200, 'text/html', paginaPortada(modo.html));
     const m = /^\/producto\/(.+)$/.exec(ruta);
@@ -203,6 +204,7 @@ describe('certificar-sitio de punta a punta', () => {
   it('la disponibilidad del HTML estático difiere de la viva: aviso con conteo, código 0', async () => {
     modo.html.productos[0]!.disponible = false; // el build vio otra cosa; la huella sin disponibilidad no cambia
     modo.version.productos[0]!.disponible = false;
+    modo.indiceIncluye = IDS[0];
     const r = await correr();
     expect(r.codigo).toBe(0);
     expect(r.salida).toContain('aviso: 1 en disponibilidad.html-estatico-vs-viva');
@@ -380,7 +382,7 @@ describe('certificar-sitio: separación de códigos, corte temprano y sin falsos
     modo.html = vacio;
     const r = await conBuild();
     expect(r.codigo).toBe(1);
-    expect(r.salida).toContain('diferencias: 3 en indice.faltan');
+    expect(r.salida).toContain('diferencias: 2 en indice.faltan');
     expect(r.salida).toContain('fichas.estado');
   });
   it('portada sin carrusel ni bloque de catálogo, coherente con el contenido: sin diferencias de portada', async () => {
@@ -493,6 +495,9 @@ describe('extractores y comparadores puros', () => {
     expect(compararPortada(c.config, '<html></html>')).toEqual(['plantilla', 'cb-config']);
     expect(compararIndice([p], [{ i: 'zz-1', nombre: 'x', ruta: '/producto/otro' }, { i: 'extra' }, 3])).toEqual({ campos: { formato: 1, ruta: 1, nombre: 1, sobran: 1 } });
     expect(compararIndice([p], 'no')).toEqual({ campos: { formato: 1 } });
+    // Un producto agotado no está en el índice y no cuenta como faltante.
+    const agotado: ProductoT = { ...p, id: 'zz-2', slug: 'zz2', nombre: 'B', disponible: false };
+    expect(compararIndice([p, agotado], [{ i: 'zz-1', nombre: p.nombre, ruta: '/producto/zz' }])).toEqual({ campos: {} });
     expect(compararCotizacion(['BO', 'AR'], { cotizaciones: { BO: { estado: 'vigente' } } })).toEqual({ diferencias: ['estado.AR'], avisos: [] });
     expect(compararCotizacion(['BO'], null)).toEqual({ diferencias: ['estado.BO'], avisos: [] });
   });

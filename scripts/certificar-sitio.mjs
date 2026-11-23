@@ -232,13 +232,15 @@ export function compararIndice(productos, indice) {
     if (porId.has(f.i)) suma('duplicadas');
     porId.set(f.i, f);
   }
-  for (const p of productos) {
+  // El índice solo lista los disponibles: los agotados no cuentan como faltantes ni sobrantes.
+  const publicados = productos.filter((p) => p.disponible);
+  for (const p of publicados) {
     const f = porId.get(p.id);
     if (f === undefined) { suma('faltan'); continue; }
     if (f.ruta !== `/producto/${p.slug}`) suma('ruta');
     if (f.nombre !== p.nombre) suma('nombre');
   }
-  const ids = new Set(productos.map((p) => p.id));
+  const ids = new Set(publicados.map((p) => p.id));
   const sobran = [...porId.keys()].filter((i) => !ids.has(i)).length;
   if (sobran > 0) suma('sobran', sobran);
   return { campos };
