@@ -32,14 +32,14 @@
 #       roles/datastore.user y roles/logging.logWriter; secretAccessor de SITIOS_TENANT (en O6).
 #   O5b (solo con --actas-propio) iam.serviceAccountUser de `fn-constructor-sitio` y de la cuenta de las Functions SOBRE SÍ
 #       MISMAS, para encolar con token OIDC. No corre por defecto: se usa solo si encolar falla sin él en P6 (no verificado).
-#   O5bis  Cuenta de servicio POR DEFECTO de Cloud Build. Siempre consulta (sin cambiar nada) cuál es y con qué cuenta
-#       construyen las Functions de 2.ª generación. SOLO con la opción explícita --neutralizar-cuenta-por-defecto
-#       crea `build-funciones` con lo mínimo para construir Functions 2.ª gen (logging.logWriter; artifactregistry.writer
-#       sobre `gcf-artifacts`; lectura del bucket de fuentes gcf-v2-sources-<número>-us-east1, número calculado) y la fija
-#       como cuenta por defecto. Nunca una cuenta sin roles. ACTO SEGUIDO hay que volver a desplegar las Functions
-#       (re-ejecutar `desplegar-staging`) y comprobar que las 12 construyen: firebase-tools no fija la cuenta de build.
-#       Reversión: `gcloud builds set-default-service-account` con la cuenta de Compute. Los builds del constructor siempre
-#       indican `sitio-constructor`.
+#   O5bis  Cuenta de servicio POR DEFECTO de Cloud Build. Cloud Build no permite fijar una propia (no existe
+#       `set-default-service-account`): se REDUCE la que ya es. Siempre consulta cuál es y con qué cuenta construyen las
+#       Functions de 2.ª generación. SOLO con --neutralizar-cuenta-por-defecto, si es la de Compute o la heredada
+#       (@cloudbuild.gserviceaccount.com), le agrega roles/cloudbuild.builds.builder y le quita roles/editor a nivel de
+#       proyecto, conservando sus demás roles. ACTO SEGUIDO hay que volver a desplegar las Functions (re-ejecutar
+#       `desplegar-staging`) y comprobar que las 12 construyen. Reversión: volver a agregarle roles/editor.
+#       La guardia de O5 exige que la cuenta por defecto NO tenga roles/editor ni roles/owner; si los tiene, sale con 3
+#       y no otorga el rol lanzador. Los builds del constructor siempre indican `sitio-constructor`.
 #   O6  Secretos en Secret Manager: SITIO_RECONSTRUCCION_SECRETO y SITIO_NEGOCIO_<CLAVE> con acceso solo para
 #       `sitio-constructor`; SITIOS_TENANT con acceso solo para `fn-constructor-sitio`.
 #   N9  (solo con --ampliar-despliegue; no corre por defecto) amplía el rol `despliegueFuncionesIam` de la cuenta de
@@ -122,6 +122,7 @@ mostrar() { # prefijo, comando...
   if [[ "$NUMERO" != "<numero>" ]]; then t="${t//"$NUMERO"/<numero>}"; fi
   if [[ "$FUNCIONES" != "<cuenta-de-las-functions>" ]]; then t="${t//"$FUNCIONES"/<cuenta-de-las-functions>}"; fi
   if [[ "$DESPLIEGUE" != "<cuenta-de-despliegue>" ]]; then t="${t//"$DESPLIEGUE"/<cuenta-de-despliegue>}"; fi
+  if [[ "${DEFECTO:-<cuenta-por-defecto>}" != "<cuenta-por-defecto>" ]]; then t="${t//"$DEFECTO"/<cuenta-por-defecto>}"; fi
   echo "  $pre $t"
 }
 # Reemplaza el id del proyecto y los correos de las cuentas en lo que imprime gcloud (stdin → stdout).
@@ -132,6 +133,7 @@ quitar_ids() {
     if [[ "$NUMERO" != "<numero>" ]]; then l="${l//"$NUMERO"/<numero>}"; fi
     if [[ "$FUNCIONES" != "<cuenta-de-las-functions>" ]]; then l="${l//"$FUNCIONES"/<cuenta-de-las-functions>}"; fi
     if [[ "$DESPLIEGUE" != "<cuenta-de-despliegue>" ]]; then l="${l//"$DESPLIEGUE"/<cuenta-de-despliegue>}"; fi
+    if [[ "${DEFECTO:-<cuenta-por-defecto>}" != "<cuenta-por-defecto>" ]]; then l="${l//"$DEFECTO"/<cuenta-por-defecto>}"; fi
     printf '%s\n' "$l"
   done
 }
@@ -205,47 +207,55 @@ ejecutar gcloud artifacts repositories add-iam-policy-binding "$REPO" --location
   --member="serviceAccount:$CUENTA_EMAIL" --role=roles/artifactregistry.reader --quiet --format=none
 
 paso "O5bis. Cuenta por defecto de Cloud Build (consulta; cambio solo con --neutralizar-cuenta-por-defecto)"
-# Va ANTES de O5: sin una cuenta por defecto acotada, el rol lanzador de las Functions permitiría lanzar builds con la
-# cuenta heredada de Cloud Build o la de Compute, que tienen permisos amplios (escalada de privilegios).
+# Va ANTES de O5: con una cuenta por defecto de permisos amplios, el rol lanzador de las Functions permitiría lanzar builds
+# con ella (escalada de privilegios).
+DEFECTO="<cuenta-por-defecto>"
+amplios() { # roles editor/owner que la cuenta por defecto tiene a nivel de proyecto (vacío = ninguno); falla si no se puede leer
+  gcloud projects get-iam-policy "$PROYECTO" --flatten="bindings[].members" \
+    --filter="bindings.members:serviceAccount:$DEFECTO AND (bindings.role:roles/editor OR bindings.role:roles/owner)" \
+    --format="value(bindings.role)" 2>/dev/null
+}
+if (( APLICAR == 1 )); then
+  NUMERO="$(gcloud projects describe "$PROYECTO" --format='value(projectNumber)' 2>/dev/null || true)"
+  [[ "$NUMERO" =~ ^[0-9]+$ ]] || { echo "  No se pudo calcular el número del proyecto." >&2; exit 3; }
+  DEFECTO="$(gcloud builds get-default-service-account --project="$PROYECTO" --format='value(serviceAccountEmail)' 2>/dev/null || true)"
+  DEFECTO="${DEFECTO##*/}"
+  if [[ -z "$DEFECTO" ]]; then
+    echo "  No se pudo determinar la cuenta por defecto de Cloud Build: no se otorga el rol lanzador (falla cerrado)." >&2
+    exit 3
+  fi
+fi
 if (( NEUTRALIZAR == 1 )); then
-  CUENTA_BUILD="build-funciones"
-  CUENTA_BUILD_EMAIL="${CUENTA_BUILD}@${PROYECTO}.iam.gserviceaccount.com"
   if (( APLICAR == 1 )); then
-    NUMERO="$(gcloud projects describe "$PROYECTO" --format='value(projectNumber)' 2>/dev/null || true)"
-    [[ "$NUMERO" =~ ^[0-9]+$ ]] || { echo "  No se pudo calcular el número del proyecto: no se cambia la cuenta por defecto." >&2; exit 3; }
+    case "$DEFECTO" in
+      *@cloudbuild.gserviceaccount.com | *-compute@developer.gserviceaccount.com) ;;
+      *) echo "  La cuenta por defecto no es la de Compute ni la heredada: no se cambia." ;;
+    esac
   fi
-  if existe gcloud iam service-accounts describe "$CUENTA_BUILD_EMAIL" --project="$PROYECTO"; then
-    echo "  $CUENTA_BUILD: ya existe"
-  else
-    ejecutar gcloud iam service-accounts create "$CUENTA_BUILD" --display-name="Cuenta por defecto de Cloud Build (Functions)" \
-      --project="$PROYECTO"
+  if (( APLICAR == 0 )) || [[ "$DEFECTO" == *@cloudbuild.gserviceaccount.com || "$DEFECTO" == *-compute@developer.gserviceaccount.com ]]; then
+    ejecutar gcloud projects add-iam-policy-binding "$PROYECTO" --member="serviceAccount:$DEFECTO" \
+      --role=roles/cloudbuild.builds.builder --condition=None --quiet --format=none
+    if (( APLICAR == 0 )) || [[ "$(amplios)" == *roles/editor* ]]; then
+      ejecutar gcloud projects remove-iam-policy-binding "$PROYECTO" --member="serviceAccount:$DEFECTO" \
+        --role=roles/editor --condition=None --quiet --format=none
+    fi
+    echo "  SIGUIENTE (obligatorio): volver a desplegar las Functions (re-ejecutar desplegar-staging) y comprobar que las 12 construyen."
+    echo "  Si fallan: volver a agregar roles/editor a la cuenta por defecto (add-iam-policy-binding) y re-desplegar."
   fi
-  # Lo mínimo para construir Functions 2.ª gen: registros, imagen en gcf-artifacts y lectura de las fuentes subidas.
-  ejecutar gcloud projects add-iam-policy-binding "$PROYECTO" --member="serviceAccount:$CUENTA_BUILD_EMAIL" \
-    --role=roles/logging.logWriter --condition=None --quiet --format=none
-  ejecutar gcloud artifacts repositories add-iam-policy-binding gcf-artifacts --location="$REGION" --project="$PROYECTO" \
-    --member="serviceAccount:$CUENTA_BUILD_EMAIL" --role=roles/artifactregistry.writer --quiet --format=none
-  ejecutar gcloud storage buckets add-iam-policy-binding "gs://gcf-v2-sources-${NUMERO}-${REGION}" --project="$PROYECTO" \
-    --member="serviceAccount:$CUENTA_BUILD_EMAIL" --role=roles/storage.objectViewer --quiet --format=none
-  ejecutar gcloud builds set-default-service-account --service-account="projects/$PROYECTO/serviceAccounts/$CUENTA_BUILD_EMAIL" \
-    --project="$PROYECTO"
-  echo "  SIGUIENTE (obligatorio): volver a desplegar las Functions (re-ejecutar desplegar-staging) y comprobar que las 12 construyen."
-  echo "  Si fallan: gcloud builds set-default-service-account con la cuenta de Compute y re-desplegar."
 fi
 # Consulta (solo lectura): cuenta por defecto de Cloud Build.
 ejecutar gcloud builds get-default-service-account --project="$PROYECTO"
 if (( APLICAR == 1 )); then
-  defecto="$(gcloud builds get-default-service-account --project="$PROYECTO" --format='value(serviceAccountEmail)' 2>/dev/null || true)"
-  case "$defecto" in
-    *@cloudbuild.gserviceaccount.com | *-compute@developer.gserviceaccount.com)
-      echo "  La cuenta por defecto de Cloud Build es la heredada o la de Compute (permisos amplios)." >&2
-      echo "  No se otorga el rol lanzador a las Functions. Use --neutralizar-cuenta-por-defecto y repita; luego vuelva a desplegar las Functions." >&2
-      exit 3 ;;
-    "")
-      echo "  No se pudo determinar la cuenta por defecto de Cloud Build: no se otorga el rol lanzador (falla cerrado)." >&2
-      exit 3 ;;
-    *) echo "  La cuenta por defecto de Cloud Build es una cuenta acotada: sigue O5." ;;
-  esac
+  if ! roles="$(amplios)"; then
+    echo "  No se pudieron leer los roles de la cuenta por defecto: no se otorga el rol lanzador (falla cerrado)." >&2
+    exit 3
+  fi
+  if [[ -n "$roles" ]]; then
+    echo "  La cuenta por defecto de Cloud Build tiene roles/editor o roles/owner (permisos amplios)." >&2
+    echo "  No se otorga el rol lanzador a las Functions. Use --neutralizar-cuenta-por-defecto y repita; luego vuelva a desplegar las Functions." >&2
+    exit 3
+  fi
+  echo "  La cuenta por defecto de Cloud Build no tiene editor ni owner: sigue O5."
 fi
 # Cuentas con las que construyen las Functions 2.ª gen: la consulta puede fallar (p. ej. API inactiva) y no detiene el paso.
 if ! ejecutar gcloud functions list --v2 --project="$PROYECTO" --format="value(buildConfig.serviceAccount)"; then

@@ -87,16 +87,15 @@ describe('scripts/preparar-constructor-sitio.sh', () => {
     expect(s).not.toContain('valor-secreto-xyz');
     expect(s).not.toContain('modo APLICAR');
   });
-  it('--neutralizar-cuenta-por-defecto agrega la creación y el cambio de la cuenta por defecto', () => {
+  it('--neutralizar-cuenta-por-defecto reduce la cuenta por defecto: agrega el rol de construcción y quita editor', () => {
     const r = correr(['proyecto-prueba-1', '--neutralizar-cuenta-por-defecto'], { PATH: '/usr/bin:/bin' });
     expect(r.status).toBe(0);
-    expect(r.stdout).toContain('gcloud builds set-default-service-account --service-account=projects/<proyecto>/serviceAccounts/build-funciones@<proyecto>');
-    expect(r.stdout).toContain('gcloud iam service-accounts create build-funciones');
-    expect(r.stdout).toContain('--role=roles/logging.logWriter');
-    expect(r.stdout).toContain('gcloud artifacts repositories add-iam-policy-binding gcf-artifacts');
-    expect(r.stdout).toContain('gs://gcf-v2-sources-<numero>-us-east1');
-    expect(r.stdout).toContain('--role=roles/storage.objectViewer');
+    expect(r.stdout).toContain('--member=serviceAccount:<cuenta-por-defecto> --role=roles/cloudbuild.builds.builder');
+    expect(r.stdout).toContain('projects remove-iam-policy-binding <proyecto> --member=serviceAccount:<cuenta-por-defecto> --role=roles/editor');
+    expect(r.stdout).not.toContain('set-default-service-account');
+    expect(r.stdout).not.toContain('build-funciones');
     expect(r.stdout).toContain('volver a desplegar las Functions');
+    expect(r.stdout).toContain('volver a agregar roles/editor');
   });
   it('--actas-propio agrega O5b: actAs de cada cuenta sobre sí misma', () => {
     const r = correr(['proyecto-prueba-1', '--actas-propio'], { PATH: '/usr/bin:/bin' });
@@ -125,6 +124,8 @@ describe('scripts/preparar-constructor-sitio.sh --aplicar (gcloud sustituto)', (
 echo "gcloud $*" >> "${dir}/llamadas.txt"
 [[ "$*" == *"versions list"* ]] && exit 0
 [[ "$*" == *"projects describe"* ]] && { echo 987654321; exit 0; }
+[[ "$*" == *"get-iam-policy"* ]] && exit 0
+[[ "$*" == *"get-default-service-account"* && "$*" == *"--format"* ]] && { echo "acotada@proyecto-prueba-1.iam.gserviceaccount.com"; exit 0; }
 echo "salida de gcloud para proyecto-prueba-1 y f@proyecto-prueba-1.iam.gserviceaccount.com"
 if [[ "$1 $2" == "secrets versions" && "$3" == add ]]; then cat > "${dir}/stdin.txt"; fi
 exit 0
@@ -164,6 +165,11 @@ echo "gcloud $*" >> "${dir}/llamadas.txt"
 [[ "$*" == *"versions list"* ]] && exit 0
 [[ "$*" == *"projects describe"* ]] && { echo 987654321; exit 0; }
 if [[ "$*" == *"get-default-service-account"* && "$*" == *"--format"* ]]; then echo "\${SA_DEFECTO:-}"; exit 0; fi
+if [[ "$*" == *"get-iam-policy"* ]]; then
+  [[ -n "\${FALLA_POLITICA:-}" ]] && exit 1
+  [[ -e "${dir}/quitado" ]] || echo "\${ROLES_DEFECTO:-}"; exit 0
+fi
+[[ "$*" == *"remove-iam-policy-binding"* ]] && touch "${dir}/quitado"
 if [[ "$*" == *"functions list"* && -n "\${FALLA_FUNCTIONS:-}" ]]; then echo "API not enabled" >&2; exit 1; fi
 exit 0
 `);
@@ -188,25 +194,41 @@ exit 0
     expect(r.stdout.indexOf('O5bis.')).toBeLessThan(r.stdout.indexOf('O5. Permisos'));
   });
   it.each([
-    ['la heredada de Cloud Build', '123456@cloudbuild.gserviceaccount.com'],
-    ['la de Compute', '123456-compute@developer.gserviceaccount.com'],
-    ['desconocida (falla cerrado)', ''],
-  ])('con la cuenta por defecto %s no otorga el rol lanzador y sale con 3', (_n, sa) => {
-    const { r, llamadas } = correrConStub({ SA_DEFECTO: sa });
+    ['la heredada con editor', '123456@cloudbuild.gserviceaccount.com', 'roles/editor'],
+    ['la de Compute con editor', '123456-compute@developer.gserviceaccount.com', 'roles/editor'],
+    ['una propia con owner', 'a@proyecto-prueba-1.iam.gserviceaccount.com', 'roles/owner'],
+    ['desconocida (falla cerrado)', '', ''],
+  ])('con la cuenta por defecto %s no otorga el rol lanzador y sale con 3', (_n, sa, roles) => {
+    const { r, llamadas } = correrConStub({ SA_DEFECTO: sa, ROLES_DEFECTO: roles });
     expect(r.status).toBe(3);
     expect(llamadas).not.toContain('iam roles');
     expect(r.stderr).not.toContain('proyecto-prueba-1');
   });
-  it('con una cuenta por defecto acotada sigue y otorga el rol lanzador', () => {
-    const { r, llamadas } = correrConStub({ SA_DEFECTO: 'build-funciones@proyecto-prueba-1.iam.gserviceaccount.com' });
+  it('si no se pueden leer los roles de la cuenta por defecto, falla cerrado', () => {
+    const { r, llamadas } = correrConStub({ SA_DEFECTO: '123456-compute@developer.gserviceaccount.com', FALLA_POLITICA: '1' });
+    expect(r.status).toBe(3);
+    expect(llamadas).not.toContain('iam roles');
+  });
+  it('con la cuenta de Compute sin editor ni owner (ya reducida) sigue y otorga el rol lanzador', () => {
+    const { r, llamadas } = correrConStub({ SA_DEFECTO: '123456-compute@developer.gserviceaccount.com' });
     expect(r.status).toBe(0);
     expect(llamadas).toContain('iam roles');
   });
-  it('con --neutralizar-cuenta-por-defecto la fija antes de consultar y sigue', () => {
-    const { r, llamadas } = correrConStub({ SA_DEFECTO: 'build-funciones@proyecto-prueba-1.iam.gserviceaccount.com' }, ['--neutralizar-cuenta-por-defecto']);
+  it('con --neutralizar-cuenta-por-defecto reduce la de Compute antes de la guardia y sigue', () => {
+    const { r, llamadas } = correrConStub({ SA_DEFECTO: '123456-compute@developer.gserviceaccount.com', ROLES_DEFECTO: 'roles/editor' }, ['--neutralizar-cuenta-por-defecto']);
     expect(r.status).toBe(0);
-    expect(llamadas.indexOf('set-default-service-account')).toBeGreaterThan(0);
-    expect(llamadas.indexOf('set-default-service-account')).toBeLessThan(llamadas.indexOf('iam roles'));
+    expect(llamadas).toContain('--role=roles/cloudbuild.builds.builder');
+    expect(llamadas).toContain('projects remove-iam-policy-binding proyecto-prueba-1 --member=serviceAccount:123456-compute@developer.gserviceaccount.com --role=roles/editor');
+    expect(llamadas).not.toContain('set-default-service-account');
+    expect(llamadas.indexOf('remove-iam-policy-binding')).toBeLessThan(llamadas.indexOf('iam roles'));
+    expect(r.stdout).not.toContain('123456-compute');
+    expect(r.stdout).not.toContain('987654321');
+  });
+  it('--neutralizar-cuenta-por-defecto no quita editor si ya no lo tiene', () => {
+    const { r, llamadas } = correrConStub({ SA_DEFECTO: '123456@cloudbuild.gserviceaccount.com' }, ['--neutralizar-cuenta-por-defecto']);
+    expect(r.status).toBe(0);
+    expect(llamadas).toContain('--role=roles/cloudbuild.builds.builder');
+    expect(llamadas).not.toContain('remove-iam-policy-binding');
   });
   it('si `functions list --v2` falla (API inactiva) avisa y el script sigue', () => {
     const { r, llamadas } = correrConStub({ SA_DEFECTO: 'a@proyecto-prueba-1.iam.gserviceaccount.com', FALLA_FUNCTIONS: '1' });
@@ -237,7 +259,9 @@ describe('scripts/preparar-constructor-sitio.sh: fallo cerrado y propagación', 
       rmSync(dir, { recursive: true, force: true });
     }
   };
-  const defecto = `if [[ "$*" == *"get-default-service-account"* && "$*" == *"--format"* ]]; then echo "build-funciones@x.iam.gserviceaccount.com"; exit 0; fi`;
+  const defecto = `if [[ "$*" == *"get-default-service-account"* && "$*" == *"--format"* ]]; then echo "acotada@x.iam.gserviceaccount.com"; exit 0; fi
+[[ "$*" == *"projects describe"* ]] && { echo 987654321; exit 0; }
+[[ "$*" == *"get-iam-policy"* ]] && exit 0`;
   it('si `secrets versions list` falla, no agrega la versión y sale con 3', () => {
     const { r, llamadas } = correrStub(`${defecto}\n[[ "$*" == *"versions list"* ]] && exit 1`);
     expect(r.status).toBe(3);
