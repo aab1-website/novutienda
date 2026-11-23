@@ -1,4 +1,4 @@
-import { useState } from 'preact/hooks';
+import { useRef, useState } from 'preact/hooks';
 import { enlaceWhatsApp, mensajeContacto } from '../lib/whatsapp.js';
 import { Icono } from './Icono.js';
 import { medicionGlobal } from './navegador.js';
@@ -8,41 +8,55 @@ interface Props {
   whatsapp: string | null;
 }
 
-const ETIQUETAS: Readonly<Record<string, string>> = { nombre: 'Escribe tu nombre', mensaje: 'Escribe tu mensaje' };
+type Campo = 'nombre' | 'mensaje';
+const ETIQUETAS: Readonly<Record<Campo, string>> = { nombre: 'Escribe tu nombre', mensaje: 'Escribe tu mensaje' };
+const MENSAJE_GENERAL = 'Hola, tengo una consulta.';
 
-/** Contacto por WhatsApp: el nombre y el mensaje arman el texto de un enlace a wa.me. Nada se envía a ningún servidor. */
+/**
+ * Contacto por WhatsApp: el nombre y el mensaje arman el texto de un enlace a wa.me. Nada se envía a ningún servidor.
+ * Sin JavaScript (o sin nombre y mensaje) el enlace lleva el mensaje general; con JavaScript valida y abre WhatsApp.
+ */
 export default function FormularioContacto({ whatsapp }: Props) {
   const [nombre, setNombre] = useState('');
   const [mensaje, setMensaje] = useState('');
-  const [errores, setErrores] = useState<readonly string[]>([]);
-  const enlace = enlaceWhatsApp(whatsapp, mensajeContacto(nombre, mensaje));
+  const [errores, setErrores] = useState<readonly Campo[]>([]);
+  const refNombre = useRef<HTMLInputElement>(null);
+  const refMensaje = useRef<HTMLTextAreaElement>(null);
+  const completo = nombre.trim() !== '' && mensaje.trim() !== '';
+  const enlace = enlaceWhatsApp(whatsapp, completo ? mensajeContacto(nombre, mensaje) : MENSAJE_GENERAL);
   if (enlace === null) return null;
 
-  const alEnviar = (e: Event): void => {
-    const faltan = [nombre.trim() === '' ? 'nombre' : '', mensaje.trim() === '' ? 'mensaje' : ''].filter((k) => k !== '');
+  const enviar = (): void => {
+    const faltan: Campo[] = [];
+    if (nombre.trim() === '') faltan.push('nombre');
+    if (mensaje.trim() === '') faltan.push('mensaje');
+    setErrores(faltan);
     if (faltan.length > 0) {
-      e.preventDefault();
-      setErrores(faltan);
+      (faltan[0] === 'nombre' ? refNombre : refMensaje).current?.focus();
       return;
     }
-    setErrores([]);
     medicionGlobal().evento('envio_formulario');
+    window.open(enlace, '_blank', 'noopener');
   };
-  const invalido = (k: string): boolean => errores.includes(k);
+  const invalido = (k: Campo): boolean => errores.includes(k);
   return (
-    <form class="formulario" noValidate aria-label="Formulario de contacto" onSubmit={(e) => e.preventDefault()}>
+    <form class="formulario" noValidate aria-label="Formulario de contacto" onSubmit={(e) => { e.preventDefault(); enviar(); }}>
       <div class="resumen-formulario" role="alert">
-        {errores.length > 0 && <ul>{errores.map((k) => <li key={k}>{ETIQUETAS[k] ?? k}</li>)}</ul>}
+        {errores.length > 0 && <p>Revisa los campos marcados.</p>}
       </div>
-      <label>Nombre
-        <input name="nombre" autocomplete="name" maxLength={80} value={nombre} aria-invalid={invalido('nombre')} onInput={(e) => setNombre((e.currentTarget as HTMLInputElement).value)} />
-      </label>
-      <label>Mensaje
-        <textarea name="mensaje" rows={5} maxLength={1000} value={mensaje} aria-invalid={invalido('mensaje')} onInput={(e) => setMensaje((e.currentTarget as HTMLTextAreaElement).value)} />
-      </label>
+      <div class="campo">
+        <label for="contacto-nombre">Nombre</label>
+        <input id="contacto-nombre" ref={refNombre} name="nombre" autocomplete="name" maxLength={80} value={nombre} aria-required="true" aria-invalid={invalido('nombre')} aria-describedby={invalido('nombre') ? 'error-nombre' : undefined} onInput={(e) => setNombre((e.currentTarget as HTMLInputElement).value)} />
+        {invalido('nombre') && <span id="error-nombre" class="error-campo">{ETIQUETAS.nombre}</span>}
+      </div>
+      <div class="campo">
+        <label for="contacto-mensaje">Mensaje</label>
+        <textarea id="contacto-mensaje" ref={refMensaje} name="mensaje" rows={5} maxLength={1000} value={mensaje} aria-required="true" aria-invalid={invalido('mensaje')} aria-describedby={invalido('mensaje') ? 'error-mensaje' : undefined} onInput={(e) => setMensaje((e.currentTarget as HTMLTextAreaElement).value)} />
+        {invalido('mensaje') && <span id="error-mensaje" class="error-campo">{ETIQUETAS.mensaje}</span>}
+      </div>
       <div class="acciones-formulario">
-        <a class="boton boton-cta" href={enlace} target="_blank" rel="noopener noreferrer" onClick={alEnviar}>
-          <Icono nombre="chat" tamano={16} /> ENVIAR POR WHATSAPP
+        <a class="boton boton-cta" href={enlace} target="_blank" rel="noopener noreferrer" onClick={(e) => { e.preventDefault(); enviar(); }}>
+          <Icono nombre="chat" tamano={16} /> ENVIAR POR WHATSAPP<span class="solo-lectores"> (se abre en una pestaña nueva)</span>
         </a>
       </div>
       <p class="aviso-estado">Se abrirá WhatsApp con tu mensaje listo para enviar a la tienda. Este sitio no guarda lo que escribes aquí.</p>

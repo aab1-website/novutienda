@@ -502,14 +502,35 @@ test.describe('ficha, tema y formulario', () => {
     await page.goto('/contacto');
     await islasListas(page);
     const enviar = page.getByRole('link', { name: /ENVIAR POR WHATSAPP/ });
+    const nombre = page.getByLabel('Nombre', { exact: true });
+    const mensaje = page.getByLabel('Mensaje');
+    await expect(nombre).toHaveAttribute('aria-required', 'true');
+    await expect(mensaje).toHaveAttribute('aria-required', 'true');
+    await expect(enviar.locator('.solo-lectores')).toHaveText('(se abre en una pestaña nueva)');
+    // Sin nombre ni mensaje el enlace lleva el mensaje general; al pulsar no se abre nada, se avisa y el foco va al primer campo inválido.
+    expect(new URL((await enviar.getAttribute('href')) ?? '').searchParams.get('text')).toBe('Hola, tengo una consulta.');
     await enviar.click();
-    await expect(page.getByRole('alert')).toContainText('Escribe tu nombre');
-    await page.getByLabel('Nombre', { exact: true }).fill('Ana Pérez');
-    await page.getByLabel('Mensaje').fill('Quisiera saber el precio.');
+    await expect(page.getByRole('alert')).toContainText('Revisa los campos marcados');
+    await expect(nombre).toBeFocused();
+    await expect(nombre).toHaveAttribute('aria-describedby', 'error-nombre');
+    await expect(page.locator('#error-nombre')).toHaveText('Escribe tu nombre');
+    await nombre.fill('Ana Pérez');
+    await enviar.click();
+    await expect(mensaje).toBeFocused();
+    await expect(mensaje).toHaveAttribute('aria-describedby', 'error-mensaje');
+    await mensaje.fill('Quisiera saber el precio.');
     const url = new URL((await enviar.getAttribute('href')) ?? '');
     expect(url.origin + url.pathname).toBe('https://wa.me/59100000001');
     expect(url.searchParams.get('text')).toBe('Hola, soy Ana Pérez.\nQuisiera saber el precio.');
     await expect(enviar).toHaveAttribute('target', '_blank');
+    // Con los datos completos se abre wa.me en una pestaña nueva (sin red real), con el texto escrito.
+    await page.context().route('https://wa.me/**', (r) => r.fulfill({ status: 200, contentType: 'text/html', body: 'ok' }));
+    const [nueva] = await Promise.all([page.waitForEvent('popup'), enviar.click()]);
+    await nueva.waitForURL(/^https:\/\/wa\.me\/59100000001/);
+    expect(new URL(nueva.url()).searchParams.get('text')).toBe('Hola, soy Ana Pérez.\nQuisiera saber el precio.');
+    // El Enter dentro del formulario también valida y abre.
+    const [otra] = await Promise.all([page.waitForEvent('popup'), nombre.press('Enter')]);
+    await otra.waitForURL(/wa\.me/);
     expect(posts).toEqual([]);
     expect(peticiones.some((u) => /recaptcha|appcheck|api\/contacto/i.test(u))).toBe(false);
     expect(errores).toEqual([]);

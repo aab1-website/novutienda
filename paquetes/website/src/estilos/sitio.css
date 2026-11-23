@@ -222,6 +222,8 @@ h3.descripcion-titulo, h4.descripcion-titulo { font-size: 17px; }
 .tarjeta-contacto { display: flex; flex-direction: column; gap: 16px; padding: 24px; border-radius: 24px; background: var(--cb-superficie); border: 1px solid var(--cb-borde); }
 .tarjeta-contacto a.enlace-telefono, .tarjeta-contacto a.enlace-mapa { display: inline-flex; align-items: center; justify-content: center; gap: 8px; font-weight: 700; padding: 8px; }
 .formulario { display: flex; flex-direction: column; gap: 16px; padding: 24px; border-radius: 24px; background: var(--cb-superficie); border: 1px solid var(--cb-borde); }
+.formulario .campo { display: flex; flex-direction: column; gap: 6px; }
+.formulario .campo label { font-size: 14px; font-weight: 500; }
 .formulario label { display: flex; flex-direction: column; gap: 6px; font-size: 14px; font-weight: 500; }
 .formulario .casilla { flex-direction: row; align-items: flex-start; }
 .formulario textarea { resize: vertical; }
@@ -229,6 +231,7 @@ h3.descripcion-titulo, h4.descripcion-titulo { font-size: 17px; }
 .resumen-formulario:empty { display: none; }
 .resumen-formulario { padding: 12px 14px; border-radius: 10px; border: 1px solid var(--cb-borde-control); background: var(--cb-superficie-2); font-size: 14px; }
 .resumen-formulario[role='alert'] { border-color: var(--cb-peligro); }
+.error-campo { font-size: 13px; font-weight: 600; }
 .trampa { position: absolute; left: -10000px; width: 1px; height: 1px; overflow: hidden; }
 .bloque-texto { display: flex; flex-direction: column; gap: 14px; max-width: 760px; }
 .bloque-texto p { font-size: 17px; line-height: 1.65; }
