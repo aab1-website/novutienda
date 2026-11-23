@@ -1,7 +1,8 @@
 import { createHash } from 'node:crypto';
 import { describe, expect, it } from 'vitest';
 import { contenidoEjemplo } from '../contenido/ejemplo.js';
-import { huellaContenido, jsonCanonico, versionContenido } from './huella.js';
+import { unificarMarcas } from '../contenido/consultas.js';
+import { huellaContenido, huellaSinDisponibilidad, jsonCanonico, versionContenido } from './huella.js';
 
 describe('huella del contenido', () => {
   it('JSON canónico: claves ordenadas recursivamente, sin espacios, sin undefined', () => {
@@ -30,5 +31,19 @@ describe('huella del contenido', () => {
     const precio = cambia((p) => ({ ...p, precioUsd: { ...p.precioUsd, BO: p.precioUsd.BO + 1 } }));
     expect(precio.huella).not.toBe(base.huella);
     expect(precio.huellaSinDisponibilidad).not.toBe(base.huellaSinDisponibilidad);
+  });
+
+  it('la huella «sin disponibilidad» no cambia porque un producto esté agotado', () => {
+    const base = contenidoEjemplo.productos;
+    const conAgotado = { ...contenidoEjemplo, productos: base.map((p, i) => (i === 0 ? { ...p, disponible: !p.disponible } : p)) };
+    expect(huellaSinDisponibilidad(conAgotado)).toBe(huellaSinDisponibilidad(contenidoEjemplo));
+    expect(versionContenido(conAgotado).huellaSinDisponibilidad).toBe(versionContenido(contenidoEjemplo).huellaSinDisponibilidad);
+  });
+
+  it('unificar marcas cambia la huella: por eso /version-contenido.json se calcula sobre el contenido publicado, no el unificado', () => {
+    const p = contenidoEjemplo.productos;
+    const publicado = { ...contenidoEjemplo, productos: [{ ...p[0]!, marca: 'samsung' }, { ...p[1]!, marca: 'Samsung' }, ...p.slice(2)] };
+    const unificado = { ...publicado, productos: unificarMarcas(publicado.productos) };
+    expect(huellaSinDisponibilidad(unificado)).not.toBe(huellaSinDisponibilidad(publicado));
   });
 });

@@ -3,6 +3,12 @@ import { enVenta as soloEnVenta, unificarMarcas } from './consultas.js';
 
 const cargado = cargarContenido();
 
+/**
+ * El contenido tal como se publicó, sin tocar: es el que declara `/version-contenido.json` y el que compara la certificación del
+ * sitio (la huella no puede depender de cómo el sitio ordena o presenta los datos, ni de qué productos estén agotados).
+ */
+export const contenidoPublicado = cargado;
+
 /** Contenido del sitio para este build (validado una sola vez). Las marcas que difieren solo en mayúsculas quedan unificadas. */
 export const contenido = { ...cargado, productos: unificarMarcas(cargado.productos) };
 
