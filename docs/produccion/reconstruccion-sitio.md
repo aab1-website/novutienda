@@ -110,6 +110,8 @@ Solo staging. El CI principal (`ci-node-firebase.yml`) ya no despliega el sitio 
 
 **Qué compara.** `scripts/certificar-sitio.mjs` contrasta lo que sirve el sitio con un contenido de referencia: `/version-contenido.json` (versión, fecha de publicación, conteos de productos y secciones y `huellaSinDisponibilidad`), el índice de productos, cada ficha (nombre, código, precios y JSON-LD), la portada, las secciones, la disponibilidad y la cotización. Una huella distinta solo por disponibilidad es un aviso, no un error.
 
+**Solo productos a la venta.** El índice del sitio (`indice-productos.json`), el catálogo y la portada listan únicamente los productos a la venta, es decir, con stock en Tienda; los agotados se ocultan (decisión de Andres del 23/11/2026). La certificación compara el índice con ese mismo criterio. Un producto que vuelve a tener stock reaparece en la siguiente reconstrucción.
+
 **Referencia según el modo.** Tras un despliegue, el paso «Certificar el sitio desplegado contra el contenido del build» pasa con `--contenido` el mismo archivo con el que se compiló el sitio: una publicación hecha entre el build y la certificación no da una falsa alarma. Ese paso no recibe `SITIO_RECONSTRUCCION_SECRETO` ni `SITIO_NEGOCIO_<CLAVE>` y no exige `VITE_*` ni `MEDIOS_BASE_URL`. A pedido, el paso «Certificar a pedido (sin desplegar)» regenera el contenido publicado con el mismo código y entorno que `contenido-sitio.mjs generar` y por eso es el único que recibe esos secretos y comprueba los faltantes. En este modo, si hay una publicación aún sin reconstruir, la certificación falla en `huella`: es el resultado correcto, porque el sitio no está al día con lo publicado.
 
 **Alcance real.** Lo que no se compara campo a campo:

@@ -6,7 +6,7 @@ interface Props {
   titulo: string;
   onCerrar(): void;
   /** `lateral` para el carrito; `centro` para el resto. */
-  variante?: 'centro' | 'lateral';
+  variante?: 'centro' | 'lateral' | 'inferior';
   children: ComponentChildren;
   /** Si es verdadero, el foco inicial va al primer campo en lugar de al botón de cerrar. */
   enfocarCampo?: boolean;

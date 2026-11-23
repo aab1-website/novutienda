@@ -44,8 +44,5 @@ export function marcasConRuta(marcas: readonly string[]): readonly MarcaConRuta[
   });
 }
 
-/** Aviso de los filtros de precio: con varias páginas aclara que el precio filtra solo la página que se está viendo. */
-export function avisoDeFiltro(visibles: number, enPagina: number, pagina: number, total: number): string {
-  if (total <= 1) return `Mostrando ${visibles} de ${enPagina} productos.`;
-  return `Mostrando ${visibles} de ${enPagina} productos de esta página (página ${pagina} de ${total}).`;
-}
+/** «1 producto» / «N productos»: el contador de los filtros del catálogo. */
+export const textoProductos = (n: number): string => (n === 1 ? '1 producto' : `${n} productos`);

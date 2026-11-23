@@ -7,7 +7,7 @@ import Institucional from '../componentes/Institucional.astro';
 import TarjetaProducto from '../componentes/TarjetaProducto.astro';
 import CatalogoVacio from '../componentes/CatalogoVacio.astro';
 import Icono from '../componentes/Icono.astro';
-import { contenido } from '../contenido/instancia';
+import { contenido, enVenta } from '../contenido/instancia';
 import { marcasDe, productosDeCategoria, textoModelos } from '../contenido/consultas';
 import { jsonLdOrganizacion, rutaCategoria, rutaProducto } from '../lib/seo';
 import { marcasConRuta, rutaMarca } from '../lib/paginas';
@@ -15,7 +15,8 @@ import Precio from '../islas/Precio';
 import { logoParaCompartir } from '../contenido/logo-subido';
 import { enlaceWhatsApp } from '../lib/whatsapp';
 
-const { config, categorias, productos, carruseles } = contenido;
+const { config, categorias, carruseles } = contenido;
+const productos = enVenta;
 const destacados = productos.filter((p) => p.destacado).slice(0, 6);
 // Vista previa al compartir la portada: el logo subido (PNG, JPG o WebP; nunca el de la cabecera ni un SVG) y, si no hay, la primera foto del carrusel o de un producto.
 const imagenPortada = logoParaCompartir(config.imagenCompartir, config.logo) ?? carruseles[config.plantilla][0]?.url ?? productos.find((p) => p.fotos.length > 0)?.fotos[0]?.url;

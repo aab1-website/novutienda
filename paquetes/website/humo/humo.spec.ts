@@ -78,9 +78,13 @@ test.describe('precio, país y compra', () => {
     await page.goto('/productos/televisores');
     const t55 = page.locator('[data-producto-id="ejemplo-tv-55"]');
     await hidratar(t55);
-    await hidratar(page.locator('[data-producto-id="ejemplo-tv-65"]'));
     await expect(t55.locator('.precio-valor')).toHaveText('Bs 4.500');
-    await expect(page.locator('[data-producto-id="ejemplo-tv-65"] .precio-valor')).toHaveText('Consultar');
+    // El 65" no tiene precio (USD 0) y está sin stock: no se lista, pero su ficha existe y dice «Consultar».
+    await expect(page.locator('[data-producto-id="ejemplo-tv-65"]')).toHaveCount(0);
+    await page.goto('/producto/televisor-ejemplo-65');
+    await expect(page.locator('.precio-valor').first()).toHaveText('Consultar');
+    await page.goto('/productos/televisores');
+    await hidratar(t55);
     await page.getByRole('button', { name: 'Ver precios en pesos argentinos' }).click();
     await expect(t55.locator('.precio-valor')).toHaveText('$ 480.000');
   });
@@ -261,10 +265,41 @@ test.describe('precio, país y compra', () => {
   test('«Buscar en el catálogo» encuentra un producto de otra página', async ({ page }) => {
     await simularApi(page);
     await decidirConsentimiento(page, false, false);
+    await page.setViewportSize({ width: 375, height: 812 });
     await page.goto('/productos/televisores');
     await islasListas(page);
-    await page.getByRole('searchbox', { name: 'Buscar en el catálogo' }).fill('lavadora nordika');
-    await expect(page.getByRole('region', { name: 'Buscar en el catálogo' }).getByRole('link')).toHaveCount(1);
+    // El alcance de «Refinar la búsqueda» es toda la lista de la página (aquí, los televisores): una lavadora no aparece.
+    await page.getByRole('button', { name: 'Refinar la búsqueda' }).click();
+    await page.getByRole('dialog', { name: 'Refinar la búsqueda' }).getByRole('searchbox', { name: 'Nombre' }).fill('televisor nordika');
+    await expect(page.getByRole('status').filter({ hasText: '1 producto' })).toBeVisible();
+    await page.getByRole('dialog').getByRole('button', { name: /Ver 1 producto/ }).click();
+    await expect(page.locator('.grilla-productos:not([data-lista-servidor]) [data-producto-id]')).toHaveCount(1);
+    await expect(page.locator('.grilla-productos:not([data-lista-servidor]) [data-producto-id="ejemplo-tv-43"]')).toBeVisible();
+  });
+
+  test('un producto que se agota después de construir el sitio se oculta en vivo (según /api/disponibilidad), también en los resultados', async ({ page }) => {
+    await simularApi(page);
+    await page.route('**/api/disponibilidad*', (r) => r.fulfill({ status: 200, contentType: 'application/json', body: JSON.stringify({ disponibilidad: { 'ejemplo-tv-55': 'agotado', 'ejemplo-tv-43': 'disponible' } }) }));
+    await decidirConsentimiento(page, false, false);
+    await page.setViewportSize({ width: 375, height: 812 });
+    await page.goto('/productos/televisores');
+    await islasListas(page);
+    await expect(page.locator('[data-lista-servidor] [data-producto-id="ejemplo-tv-55"]')).toBeHidden();
+    await expect(page.locator('[data-lista-servidor] [data-producto-id="ejemplo-tv-43"]')).toBeVisible();
+    await page.getByRole('button', { name: 'Refinar la búsqueda' }).click();
+    await page.getByRole('dialog').getByRole('searchbox', { name: 'Nombre' }).fill('televisor');
+    await expect(page.getByRole('status').filter({ hasText: '1 producto' })).toBeVisible();
+  });
+
+  test('«Refinar la búsqueda» en todo el catálogo encuentra un producto de otra categoría', async ({ page }) => {
+    await simularApi(page);
+    await decidirConsentimiento(page, false, false);
+    await page.setViewportSize({ width: 375, height: 812 });
+    await page.goto('/productos');
+    await islasListas(page);
+    await page.getByRole('button', { name: 'Refinar la búsqueda' }).click();
+    await page.getByRole('dialog').getByRole('searchbox', { name: 'Nombre' }).fill('lavadora nordika');
+    await expect(page.getByRole('status').filter({ hasText: '1 producto' })).toBeVisible();
   });
 
   test('en el celular (375 px) las migas no se superponen y el título queda a 16 px o más del borde', async ({ page }) => {
@@ -295,19 +330,28 @@ test.describe('precio, país y compra', () => {
     await page.getByRole('dialog').getByRole('searchbox').fill('lavadora nordika');
     await expect(page.getByRole('dialog').getByRole('link')).toHaveCount(1);
     await page.keyboard.press('Escape');
-    const todas = page.locator('[data-producto-id]');
-    const total = await todas.count();
-    // Cada marca lleva a su propia página estática.
+    // Cada marca de la portada lleva a su propia página estática (el 65" de Aurora está sin stock: quedan 2).
+    await page.goto('/');
+    await islasListas(page);
     await page.getByRole('navigation', { name: 'Marcas' }).getByRole('link', { name: 'Aurora' }).click();
     await expect(page).toHaveURL(/\/marca\/aurora$/);
     await islasListas(page);
-    await expect(page.locator('[data-producto-id]')).toHaveCount(3);
-    await expect(page.getByRole('navigation', { name: 'Marcas' }).getByRole('link', { name: 'Aurora' })).toHaveAttribute('aria-current', 'page');
+    await expect(page.locator('[data-producto-id]')).toHaveCount(2);
     await page.goto('/productos');
     await islasListas(page);
-    await page.getByLabel('Hasta').fill('3000');
-    await expect(page.locator('[data-producto-id]:not([hidden])')).not.toHaveCount(total);
-    await expect(page.locator('[data-producto-id="ejemplo-tv-65"]')).toBeHidden();
+    // Marca y precio en la columna de la computadora (1280 px), con el mismo componente que la hoja del celular.
+    await page.setViewportSize({ width: 1280, height: 900 });
+    const columna = page.getByRole('complementary', { name: 'Filtros' });
+    await expect(columna).toBeVisible();
+    await columna.getByRole('button', { name: 'Aurora' }).click();
+    await expect(page.getByRole('status').filter({ hasText: '2 productos' })).toBeVisible();
+    await columna.getByRole('button', { name: 'Aurora' }).click();
+    await expect(page.getByRole('status').filter({ hasText: /productos/ })).toHaveCount(0);
+    // Precio: el máximo llevado al mínimo con Inicio deja solo lo más barato y se ocultan las tarjetas de la página.
+    await columna.getByRole('slider', { name: 'Precio máximo' }).focus();
+    await page.keyboard.press('Home');
+    await expect(page.getByRole('status').filter({ hasText: /^\d+ productos?$/ })).toBeVisible();
+    await expect(page.locator('[data-producto-id="ejemplo-heladera-450"]')).toBeHidden();
   });
 
   test('Compartir: sin navigator.share copia el enlace y avisa; con navigator.share lo usa', async ({ page, context }) => {
@@ -667,7 +711,7 @@ test.describe('celular (375×812): grilla de 2 columnas, cabecera que se oculta 
   test('con el foco en un botón de la cabecera, bajar con el dedo igual la oculta', async ({ page }) => {
     await preparar(page, 'cielo', 'claro', '/productos');
     await page.getByRole('button', { name: /Buscar productos/ }).first().focus();
-    await page.mouse.move(100, 400);
+    await page.mouse.move(4, 400);
     await page.mouse.down();
     await page.mouse.up();
     await page.evaluate(() => window.scrollTo(0, 600));
@@ -700,13 +744,44 @@ test.describe('celular (375×812): grilla de 2 columnas, cabecera que se oculta 
     await expect(page.locator('.categoria-acordeon').first()).not.toHaveAttribute('open', '');
   });
 
-  test('catálogo en 375 px: la nav «Marcas» se desplaza en fila y conserva aria-current', async ({ page }) => {
-    await preparar(page, 'cielo', 'claro', '/marca/aurora');
-    const nav = page.getByRole('navigation', { name: 'Marcas' });
-    expect(await nav.locator('ul').evaluate((e) => ({ dir: getComputedStyle(e).flexDirection, x: getComputedStyle(e).overflowX }))).toEqual({ dir: 'row', x: 'auto' });
-    await expect(nav.getByRole('link', { name: 'Aurora' })).toHaveAttribute('aria-current', 'page');
+  test('catálogo en 375 px: las categorías van en una sola fila que se desplaza y conservan aria-current', async ({ page }) => {
+    await preparar(page, 'cielo', 'claro', '/productos/televisores');
+    const nav = page.getByRole('navigation', { name: 'Categorías' });
+    expect(await nav.evaluate((e) => ({ dir: getComputedStyle(e).flexDirection, envuelve: getComputedStyle(e).flexWrap, x: getComputedStyle(e).overflowX }))).toEqual({ dir: 'row', envuelve: 'nowrap', x: 'auto' });
+    const filas = await nav.getByRole('link').evaluateAll((els) => new Set(els.map((e) => Math.round(e.getBoundingClientRect().top))).size);
+    expect(filas).toBe(1);
+    await expect(nav.getByRole('link', { name: 'Televisores' })).toHaveAttribute('aria-current', 'page');
     expect(await page.evaluate(() => document.documentElement.scrollWidth)).toBe(375);
   });
+
+  for (const plantilla of PLANTILLAS) {
+    for (const tema of ['claro', 'oscuro'] as const) {
+      test(`${plantilla} / ${tema}: tras elegir una categoría la primera foto se ve sin bajar y «Refinar la búsqueda» abre y cierra con teclado`, async ({ page }) => {
+        await preparar(page, plantilla, tema, '/productos');
+        await page.getByRole('navigation', { name: 'Categorías' }).getByRole('link', { name: 'Televisores' }).click();
+        await expect(page).toHaveURL(/\/productos\/televisores$/);
+        await islasListas(page);
+        const caja = await page.locator('.tarjeta-imagen').first().boundingBox();
+        expect(caja).not.toBeNull();
+        expect(caja!.y).toBeGreaterThanOrEqual(0);
+        expect(caja!.y + Math.min(caja!.height, 120)).toBeLessThanOrEqual(812);
+        const boton = page.getByRole('button', { name: 'Refinar la búsqueda' });
+        await boton.focus();
+        await page.keyboard.press('Enter');
+        const panel = page.getByRole('dialog', { name: 'Refinar la búsqueda' });
+        await expect(panel).toBeVisible();
+        await expect(panel.getByRole('slider', { name: 'Precio mínimo' })).toHaveAttribute('aria-valuetext', /Desde Bs .* BOB/);
+        await expect(panel.getByRole('slider', { name: 'Precio máximo' })).toHaveAttribute('aria-valuetext', /Hasta Bs .* BOB/);
+        // Foco atrapado: tras muchas pulsaciones de Tab el foco sigue dentro de la hoja.
+        for (let i = 0; i < 12; i += 1) await page.keyboard.press('Tab');
+        expect(await page.evaluate(() => document.activeElement?.closest('[role="dialog"]') !== null)).toBe(true);
+        await auditar(page, `refinar/${plantilla}/${tema}`);
+        await page.keyboard.press('Escape');
+        await expect(panel).toHaveCount(0);
+        await expect(boton).toBeFocused();
+      });
+    }
+  }
 
   test('ficha: volver al catálogo, categoría y relacionados con precio', async ({ page }) => {
     await preparar(page, 'cielo', 'claro', '/producto/televisor-ejemplo-55');
