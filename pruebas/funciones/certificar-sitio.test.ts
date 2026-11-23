@@ -204,7 +204,7 @@ describe('certificar-sitio de punta a punta', () => {
   it('la disponibilidad del HTML estático difiere de la viva: aviso con conteo, código 0', async () => {
     modo.html.productos[0]!.disponible = false; // el build vio otra cosa; la huella sin disponibilidad no cambia
     modo.version.productos[0]!.disponible = false;
-    modo.indiceIncluye = IDS[0];
+    modo.indiceIncluye = IDS[0]!;
     const r = await correr();
     expect(r.codigo).toBe(0);
     expect(r.salida).toContain('aviso: 1 en disponibilidad.html-estatico-vs-viva');
