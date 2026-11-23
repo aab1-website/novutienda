@@ -162,7 +162,9 @@ Decisión y riesgo aceptado: `docs/arquitectura/decisiones.md` (DR-CB y RIESGO-H
 |---|---|---|
 | `sitio-constructor` | Ejecuta el build y despliega el sitio | `firebasehosting.admin` (proyecto: Hosting no admite permisos por sitio, es el riesgo aceptado), `logging.logWriter`, `serviceusage.serviceUsageConsumer`, lector del repositorio de imágenes, acceso solo a los secretos del sitio |
 | `fn-constructor-sitio` | Corre las dos funciones del constructor: encola y recibe el aviso | rol propio con solo `cloudbuild.builds.create` y `get`; `actAs` solo sobre `sitio-constructor`; Firestore y registros; `secretAccessor` de `SITIOS_TENANT`; opcional, `actAs` de cada cuenta que encola sobre sí misma, que solo se da si P6 lo pide |
-| `build-funciones` (cuenta por defecto de Cloud Build) | Construye las Functions | lo mínimo: `logging.logWriter`, `artifactregistry.writer` sobre `gcf-artifacts` y lectura del bucket de fuentes. Reemplaza a la de Compute con rol Editor (D-P5-1); tras cambiarla se re-despliega en el acto para comprobar las 12 Functions |
+| Cuenta de Compute (por defecto de Cloud Build; Cloud Build no permite fijar otra) | Construye las Functions | reducida (D-P5-1): se le agrega `roles/cloudbuild.builds.builder` y se le quita `roles/editor`, conservando `run.invoker` y `eventarc.eventReceiver`; tras cambiarla se re-despliega en el acto para comprobar las 12 Functions. Reversión: volver a agregar `roles/editor` |
+
+La guardia de `preparar-constructor-sitio.sh` solo ve los roles dados en el proyecto: no ve los heredados de carpeta u organización ni los dados por grupos. En staging no hay organización; en producción hay que revisarlo a mano. Si la cuenta por defecto es la misma con la que corren las Functions, el script se niega a neutralizar (quitarle Editor las rompería en ejecución).
 
 El invocador de la cola `construirSitio` va en el código (constante `INVOCADORES_TAREA_SITIO`: `novutienda-funciones@` y `fn-constructor-sitio@`, D-P5-2); firebase-tools lo reaplica en cada despliegue, así que el permiso de la cola no se pierde al desplegar.
 
@@ -193,4 +195,4 @@ Antes del primer tag de producción con las funciones del constructor exportadas
 
 ### Verificación en N5 y riesgo residual
 
-`fn-constructor-sitio` podría lanzar un build sin indicar cuenta; ese build correría como `build-funciones`, que escribe en `gcf-artifacts`. Al aplicar N5 se envía un build sin `serviceAccount` con la identidad de `fn-constructor-sitio` y se espera PERMISSION_DENIED. Si no lo rechaza, el riesgo se acepta y se anota en `docs/arquitectura/decisiones.md`.
+`fn-constructor-sitio` podría lanzar un build sin indicar cuenta; ese build correría como la cuenta por defecto (la de Compute reducida). Al aplicar N5 se envía un build sin `serviceAccount` con la identidad de `fn-constructor-sitio` y se espera PERMISSION_DENIED. Si no lo rechaza, el riesgo se acepta y se anota en `docs/arquitectura/decisiones.md`.
