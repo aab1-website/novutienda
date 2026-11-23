@@ -5,9 +5,15 @@ import type { PrecioLinea } from './total-referencial.js';
 const RE_NUMERO = /^[1-9]\d{7,14}$/;
 export const MAX_MENSAJE = 1500;
 
+/** Corta por puntos de código (no por unidades UTF-16): nunca parte un emoji ni deja una mitad que haga fallar `encodeURIComponent`. */
+export function cortar(texto: string, max: number): string {
+  const puntos = Array.from(texto);
+  return puntos.length <= max ? texto : puntos.slice(0, Math.max(0, max)).join('');
+}
+
 export function enlaceWhatsApp(numero: string | null, mensaje: string): string | null {
   if (numero === null || !RE_NUMERO.test(numero)) return null;
-  return `https://wa.me/${numero}?text=${encodeURIComponent(mensaje.slice(0, MAX_MENSAJE))}`;
+  return `https://wa.me/${numero}?text=${encodeURIComponent(cortar(mensaje, MAX_MENSAJE))}`;
 }
 
 export interface LineaMensaje {
@@ -54,6 +60,6 @@ export function mensajePedido(
 
 /** Mensaje del formulario de contacto: recorta el texto de la persona, nunca el saludo. */
 export function mensajeContacto(nombre: string, mensaje: string): string {
-  const cabecera = `Hola, soy ${nombre.trim().slice(0, 80)}.\n`;
-  return cabecera + mensaje.trim().slice(0, Math.max(0, MAX_MENSAJE - cabecera.length));
+  const cabecera = `Hola, soy ${cortar(nombre.trim(), 80)}.\n`;
+  return cabecera + cortar(mensaje.trim(), Math.max(0, MAX_MENSAJE - Array.from(cabecera).length));
 }

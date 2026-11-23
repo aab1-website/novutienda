@@ -67,4 +67,19 @@ describe('mensaje del formulario de contacto', () => {
   it('recorta el texto largo sin pasar de MAX_MENSAJE', () => {
     expect(mensajeContacto('Ana', 'x'.repeat(5000)).length).toBe(MAX_MENSAJE);
   });
+  it('corta por puntos de código: un emoji en el borde queda entero o fuera, nunca partido', () => {
+    const cabecera = Array.from('Hola, soy Ana.\n').length;
+    for (const relleno of [MAX_MENSAJE - cabecera - 1, MAX_MENSAJE - cabecera]) {
+      const m = mensajeContacto('Ana', `${'x'.repeat(relleno)}😀😀`);
+      expect(m.isWellFormed()).toBe(true);
+      expect(Array.from(m).length).toBeLessThanOrEqual(MAX_MENSAJE);
+    }
+    expect(mensajeContacto('Ana', `${'x'.repeat(MAX_MENSAJE - cabecera - 2)}😀`).endsWith('😀')).toBe(true);
+    expect(mensajeContacto('😀'.repeat(100), 'hola').startsWith(`Hola, soy ${'😀'.repeat(80)}.`)).toBe(true);
+  });
+  it('enlaceWhatsApp no falla con un emoji en el borde del límite', () => {
+    const url = enlaceWhatsApp('59100000001', `${'a'.repeat(MAX_MENSAJE - 1)}😀😀`);
+    expect(url).not.toBeNull();
+    expect(decodeURIComponent(url!.split('text=')[1]!)).toBe('a'.repeat(MAX_MENSAJE - 1) + '😀');
+  });
 });
