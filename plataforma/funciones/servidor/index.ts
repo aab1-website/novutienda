@@ -15,7 +15,7 @@ import { limiteMemoria, type LimiteTasa } from '@novutienda/nucleo';
 import { tablaDeCallable, horarioDe } from '../../coordinador/encendido.js';
 import { crearLimiteTasa, esEntornoDePruebas } from '../../conectores/firebase/index.js';
 import { entregarEvento } from './bus.js';
-import { enteroDe, exigirConfiguracionDeServicio, PARAMETROS, REGION, SECRETOS } from './config.js';
+import { enteroDe, exigirConfiguracionDeServicio, OPCIONES_GLOBALES, PARAMETROS, SECRETOS } from './config.js';
 import { construccionDeLaInstancia, disparoSitioDeLaInstancia, entorno, verificadoresSitio } from './entorno.js';
 import { ipDelCliente } from './origen.js';
 import { enrutar, type ConfigRouter } from './http/router.js';
@@ -37,7 +37,7 @@ if (getApps().length === 0) initializeApp();
 
 // `serviceAccount` sale de un parámetro: vacío = cuenta por defecto (solo emulador y, si se acepta, staging); en producción,
 // una cuenta dedicada con roles mínimos (docs/produccion/pase-a-staging.md, paso 6).
-setGlobalOptions({ region: REGION, maxInstances: 10, memory: '256MiB', timeoutSeconds: 60, serviceAccount: PARAMETROS.cuentaServicio });
+setGlobalOptions(OPCIONES_GLOBALES);
 
 const appCheckExigido = (): boolean => PARAMETROS.appCheckExigido.value();
 // Roles y `propietario` de cada acción salen del registro (manifiestos); aquí solo se aportan esquema y ejecución. Si no coinciden, el arranque falla.

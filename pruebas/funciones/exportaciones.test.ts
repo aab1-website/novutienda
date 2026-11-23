@@ -55,6 +55,20 @@ describe('exportaciones de las Functions frente al registro', () => {
     expect(entornoFuente).toContain("export const FUNCION_TAREA_SITIO = 'construirSitio'");
   });
 
+  it('toda función exportada vive en us-east1 (las de funciones-sitio.ts se evalúan antes del setGlobalOptions: región explícita)', () => {
+    expect(codigo).toContain('setGlobalOptions(OPCIONES_GLOBALES)');
+    expect(codigo.indexOf('export const pos =')).toBeGreaterThan(codigo.indexOf('setGlobalOptions('));
+    for (const f of [construirSitio, avisoConstruccionSitio]) {
+      const ep = (f as unknown as { __endpoint: { region?: string[]; maxInstances?: number; availableMemoryMb?: number; timeoutSeconds?: number } }).__endpoint;
+      expect(ep.region).toEqual(['us-east1']);
+      expect(ep.maxInstances).toBe(10);
+      expect(ep.availableMemoryMb).toBe(256);
+    }
+    expect(funcionesSitio.match(/\.\.\.OPCIONES_GLOBALES,/g)).toHaveLength(2);
+    // Quien encola apunta a la cola regional (sin `locations/…` firebase-admin usa us-central1).
+    expect(entornoFuente).toContain('taskQueue(`locations/${REGION}/functions/${FUNCION_TAREA_SITIO}`)');
+  });
+
   // R1 (prerrequisito de P9): exportar sin condición hace que el despliegue intente dar el invocador `fn-constructor-sitio@` en CADA proyecto.
   // En producción esa cuenta aún no existe: antes del primer tag hay que crearla allí (y `novutienda-funciones`), o el despliegue fallaría.
   // No se resuelve en el código; producción está en pausa.

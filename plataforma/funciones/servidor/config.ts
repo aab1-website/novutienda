@@ -92,6 +92,9 @@ export const PARAMETROS = {
   sitioPanelId: defineString('SITIO_PANEL_ID', { default: '' }),
 } as const;
 
+/** Opciones comunes de toda función (las que `index.ts` pasa a `setGlobalOptions`); las funciones de `funciones-sitio.ts`, que se evalúan antes, las reciben de aquí. */
+export const OPCIONES_GLOBALES = { region: REGION, maxInstances: 10, memory: '256MiB', timeoutSeconds: 60, serviceAccount: PARAMETROS.cuentaServicio } as const;
+
 export const SECRETOS = {
   /** Secreto HMAC del pedido firmado de NovuChat. */
   pedidos: defineSecret('NOVUCHAT_PEDIDOS_SECRETO'),
