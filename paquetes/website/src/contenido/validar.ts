@@ -115,13 +115,15 @@ export function urlMapaSegura(url: string): boolean {
   if (!/^[a-z0-9.-]+$/.test(host)) return false;
   const resto = url.slice('https://'.length + host.length);
   const ruta = /^[^?#]*/.exec(resto)![0].toLowerCase();
-  // Sin segmentos `.` ni `..`, crudos o codificados (`%2e`): no se confía en la normalización de `URL`.
-  if (ruta.split('/').some((seg) => ['.', '..'].includes(seg.replaceAll('%2e', '.')))) return false;
+  // Sin `.` ni `/` ni `\` codificados (`%2e`, `%2f`, `%5c`) ni segmentos `.` o `..`: no se confía en la normalización de `URL`
+  // ni en cómo decodifica el servidor de destino. Misma regla que la consola y el panel.
+  if (/%2e|%2f|%5c/.test(ruta) || ruta.split('/').some((seg) => seg === '.' || seg === '..')) return false;
   const enMaps = (p: string): boolean => ruta === p || ruta.startsWith(`${p}/`);
   switch (host) {
     case 'www.google.com': return enMaps('/maps');
     case 'goo.gl': return enMaps('/maps');
-    case 'maps.google.com':
+    // `maps.google.com` solo en la raíz o bajo `/maps` (no `/url?q=…`, que redirige fuera de Google Maps).
+    case 'maps.google.com': return ruta === '' || ruta === '/' || enMaps('/maps');
     case 'maps.app.goo.gl': return true;
     default: return false;
   }

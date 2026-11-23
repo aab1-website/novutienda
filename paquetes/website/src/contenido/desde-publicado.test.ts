@@ -251,7 +251,7 @@ describe('validarNegocio: mapa', () => {
       'https://maps.google.com:443/x', 'https://maps.google.com:/x', 'https:///maps.google.com/x', 'https:/maps.google.com/x',
       'https://maps.google.com\\@evil.com/x', 'https://maps.google%2ecom/x', 'https://maps.google.\uff43om/x', 'https://MAPS.GOOGLE.COM/x',
       'https://www.google.com/maps/../url?q=https://evil.com', 'https://www.google.com/maps/%2e%2e/url?q=x', 'https://www.google.com/maps/%2E./url?q=x',
-      'https://goo.gl/maps/../abc', 'https://maps.app.goo.gl/./x']) {
+      'https://www.google.com/maps/a%2eb', 'https://www.google.com/maps/..%2f..%2furl?q=x', 'https://www.google.com/maps/%5c..', 'https://maps.google.com/url?q=https://evil.example', 'https://goo.gl/maps/../abc', 'https://maps.app.goo.gl/./x']) {
       const r = validarNegocio({ ...negocioBase(), mapa });
       expect(r.ok).toBe(false);
       expect(!r.ok && r.errores.some((e) => e.startsWith('negocio.mapa:'))).toBe(true);

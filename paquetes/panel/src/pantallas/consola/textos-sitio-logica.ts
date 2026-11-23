@@ -30,11 +30,12 @@ export function mapaValido(url: string): boolean {
   const host = m[1] ?? '';
   if (host !== host.toLowerCase() || host.includes('@') || host.includes(':')) return false;
   const ruta = (m[2] ?? '').toLowerCase();
-  // Sin segmentos `.` ni `..` (crudos) ni codificados (`%2e`): permitirían salir de `/maps`.
-  if (ruta.includes('%2e') || ruta.split('/').some((x) => x === '.' || x === '..')) return false;
+  // Sin `.` ni `/` ni `\` codificados (`%2e`, `%2f`, `%5c`) ni segmentos `.` o `..`: permitirían salir de `/maps`.
+  if (/%2e|%2f|%5c/.test(ruta) || ruta.split('/').some((x) => x === '.' || x === '..')) return false;
   const enMaps = ruta === '/maps' || ruta.startsWith('/maps/');
   if (host === 'www.google.com' || host === 'goo.gl') return enMaps;
-  return host === 'maps.google.com' || host === 'maps.app.goo.gl';
+  if (host === 'maps.google.com') return ruta === '' || ruta === '/' || enMaps;
+  return host === 'maps.app.goo.gl';
 }
 
 export interface EstadoTextos {
