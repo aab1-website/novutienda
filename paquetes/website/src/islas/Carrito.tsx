@@ -9,8 +9,6 @@ import { Icono } from './Icono.js';
 import { enlacePedido, usePedido } from './pedido.js';
 import { cambiarEnCarrito, cargarCarrito, quitarDelCarrito, vaciarCarrito } from './carrito-store.js';
 
-export { LEYENDA_TOTAL };
-
 /** «Total referencial» en pantalla. */
 function TotalPedido({ t, fallo }: { t: TotalReferencial | null; fallo: boolean }) {
   return (

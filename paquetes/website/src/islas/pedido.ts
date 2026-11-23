@@ -6,17 +6,16 @@ import { enlaceWhatsApp, mensajeDePedido } from '../lib/whatsapp.js';
 import { useCotizacion, useMercado } from './estado.js';
 
 /**
- * Precios del pedido: los precios base se piden una vez a un archivo estático del sitio (solo si `activo`) y se pasan
+ * Precios del pedido: los precios base se piden una vez a un archivo estático del sitio y se pasan
  * por `totalReferencial` (la misma cuenta que `Precio.tsx`). Lo que se ve y lo que viaja en el mensaje sale de aquí.
  */
-export function usePedido(carrito: Carrito, activo = true): { readonly t: TotalReferencial | null; readonly fallo: boolean } {
+export function usePedido(carrito: Carrito): { readonly t: TotalReferencial | null; readonly fallo: boolean } {
   const cfg = configCliente();
   const [mercado] = useMercado(cfg.mercadoInicial, cfg.mercados);
   const cot = useCotizacion(mercado);
   const [precios, setPrecios] = useState<PreciosProductos | null>(null);
   const [fallo, setFallo] = useState(false);
   useEffect(() => {
-    if (!activo || precios !== null) return;
     let vivo = true;
     fetch('/precios-productos.json', { headers: { Accept: 'application/json' } })
       .then((r) => (r.ok ? r.json() : Promise.reject(new Error('precios'))))
@@ -25,7 +24,7 @@ export function usePedido(carrito: Carrito, activo = true): { readonly t: TotalR
     return () => {
       vivo = false;
     };
-  }, [activo]);
+  }, []);
   return { t: precios === null ? null : totalReferencial(carrito, precios, mercado, cot, cfg.redondeo), fallo };
 }
 

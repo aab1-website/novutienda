@@ -36,7 +36,7 @@ const ENCABEZADO = 'Hola, quiero comprar estos productos:';
  * Cabe siempre en `MAX_MENSAJE`: si no entra, recorta líneas del final y conserva el total y la leyenda.
  */
 export function mensajePedido(
-  lineas: readonly (LineaMensaje & { readonly cantidad: number })[],
+  lineas: readonly LineaMensaje[],
   precios: readonly PrecioLinea[] | null,
   total: string | null,
 ): string {
