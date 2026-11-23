@@ -15,6 +15,19 @@ export const SECRETO_RECONSTRUCCION = 'SITIO_RECONSTRUCCION_SECRETO';
  * desplegó: el manejador del aviso debe comprobar en Firestore que el trabajo propio quedó `completada`.
  */
 const ORDEN_DEL_CONSTRUCTOR = 'bash /app/scripts/reconstruir-sitio.sh reconstruir; rc=$$?; [ "$$rc" = 10 ] && exit 0; exit "$$rc"';
+/**
+ * Cloud Build fija `HOME=/builder/home` (de root) y la imagen corre sin privilegios: Astro (telemetría), firebase-tools (configstore)
+ * y pnpm necesitan un HOME escribible. `/tmp` lo es para cualquier usuario y las herramientas crean sus subcarpetas.
+ */
+export const ENTORNO_ESCRIBIBLE: Readonly<Record<string, string>> = {
+  HOME: '/tmp/constructor',
+  XDG_CONFIG_HOME: '/tmp/constructor/.config',
+  XDG_CACHE_HOME: '/tmp/constructor/.cache',
+  XDG_DATA_HOME: '/tmp/constructor/.local/share',
+  ASTRO_TELEMETRY_DISABLED: '1',
+  NO_UPDATE_NOTIFIER: '1',
+  FIREBASE_CLI_DISABLE_UPDATE_CHECK: 'true',
+};
 const TIEMPO_MAXIMO_PETICION_MS = 15_000;
 
 const RE_CLAVE = /^[a-z0-9]{1,12}$/;
@@ -120,6 +133,7 @@ export function crearConstructorSitio(o: OpcionesConstructorSitio): ConstructorS
       const secretos = [SECRETO_RECONSTRUCCION, secretoNegocio];
       const env = {
         ...o.entorno,
+        ...ENTORNO_ESCRIBIBLE,
         CLAVE: sitio.clave, TENANT: sitio.tenant, SITIO: sitio.sitio, URL_SITIO: sitio.url,
         PROYECTO: o.proyecto, TRABAJO: trabajoId, OMITIR_INSTALAR: '1', VITE_APP_VERSION: versionDeImagen(o.imagen),
       };

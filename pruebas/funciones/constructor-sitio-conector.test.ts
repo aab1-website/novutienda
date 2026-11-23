@@ -57,6 +57,8 @@ describe('constructor del sitio (Cloud Build por REST)', () => {
         env: [
           'VITE_FIREBASE_PROJECT_ID=proy-prueba', 'VITE_FIREBASE_API_KEY=clave-publica', 'VITE_FIREBASE_APP_ID=app-id',
           'VITE_RECAPTCHA_ENTERPRISE_SITE_KEY=sitio-key', 'MEDIOS_BASE_URL=https://medios.example.com/', 'SITIOS_PROHIBIDOS=panel-prueba', 'APP_ENV=staging',
+          'HOME=/tmp/constructor', 'XDG_CONFIG_HOME=/tmp/constructor/.config', 'XDG_CACHE_HOME=/tmp/constructor/.cache',
+          'XDG_DATA_HOME=/tmp/constructor/.local/share', 'ASTRO_TELEMETRY_DISABLED=1', 'NO_UPDATE_NOTIFIER=1', 'FIREBASE_CLI_DISABLE_UPDATE_CHECK=true',
           'CLAVE=ab1', 'TENANT=tienda-uno', 'SITIO=sitio-uno-web', 'URL_SITIO=https://sitio-uno-web.example.com',
           'PROYECTO=proy-prueba', 'TRABAJO=rec-publicacion-v3-202611210900', 'OMITIR_INSTALAR=1', `VITE_APP_VERSION=${DIGEST.slice(0, 12)}`,
           'BUILD_ID=$BUILD_ID',
@@ -173,6 +175,14 @@ describe('SITIOS_TENANT', () => {
 });
 
 describe('construcción del paso: valores de sitio y BUILD_ID', () => {
+  it('el paso corre con un HOME escribible (Cloud Build fija HOME=/builder/home de root) y sin telemetría', async () => {
+    const d = doble({ cuerpo: operacion });
+    // Aunque la configuración pública intente fijar HOME, manda el escribible.
+    await constructor(d.fetchFn, { entorno: { ...ENTORNO, HOME: '/builder/home' } }).lanzar('tienda-uno', 'rec-x');
+    const env = JSON.parse((d.llamadas[0] as Llamada).init.body).steps[0].env as string[];
+    expect(env.filter((e) => e.startsWith('HOME='))).toEqual(['HOME=/tmp/constructor']);
+    for (const e of ['XDG_CONFIG_HOME=/tmp/constructor/.config', 'ASTRO_TELEMETRY_DISABLED=1', 'NO_UPDATE_NOTIFIER=1']) expect(env).toContain(e);
+  });
   it('un valor de sitio con «$» o salto de línea (aunque venga ya validado) no llama a la red', async () => {
     const d = doble({ cuerpo: operacion });
     const c = constructor(d.fetchFn, { sitios: () => Promise.resolve([{ ...SITIOS[0] as SitioDeConstruccion, sitio: 'sitio-$HOME' }]) });
