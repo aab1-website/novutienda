@@ -56,10 +56,15 @@ describe('exportaciones de las Functions frente al registro', () => {
   });
 
   it('toda función exportada vive en us-east1 (las de funciones-sitio.ts se evalúan antes del setGlobalOptions: región explícita)', () => {
-    expect(codigo).toMatch(/setGlobalOptions\(\{ region: REGION,/);
+    expect(codigo).toContain('setGlobalOptions(OPCIONES_GLOBALES)');
     expect(codigo.indexOf('export const pos =')).toBeGreaterThan(codigo.indexOf('setGlobalOptions('));
-    for (const f of [construirSitio, avisoConstruccionSitio]) expect((f as unknown as { __endpoint: { region?: string[] } }).__endpoint.region).toEqual(['us-east1']);
-    expect(funcionesSitio.match(/ region: REGION,/g)).toHaveLength(2);
+    for (const f of [construirSitio, avisoConstruccionSitio]) {
+      const ep = (f as unknown as { __endpoint: { region?: string[]; maxInstances?: number; availableMemoryMb?: number; timeoutSeconds?: number } }).__endpoint;
+      expect(ep.region).toEqual(['us-east1']);
+      expect(ep.maxInstances).toBe(10);
+      expect(ep.availableMemoryMb).toBe(256);
+    }
+    expect(funcionesSitio.match(/\.\.\.OPCIONES_GLOBALES,/g)).toHaveLength(2);
     // Quien encola apunta a la cola regional (sin `locations/…` firebase-admin usa us-central1).
     expect(entornoFuente).toContain('taskQueue(`locations/${REGION}/functions/${FUNCION_TAREA_SITIO}`)');
   });

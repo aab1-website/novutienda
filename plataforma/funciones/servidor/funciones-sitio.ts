@@ -8,7 +8,7 @@ import { logger } from 'firebase-functions';
 import { onMessagePublished } from 'firebase-functions/v2/pubsub';
 import { onTaskDispatched } from 'firebase-functions/v2/tasks';
 import { idDeMensajeBuild, interpretarAvisoBuild } from '../../conectores/firebase/index.js';
-import { PARAMETROS, REGION } from './config.js';
+import { OPCIONES_GLOBALES, PARAMETROS } from './config.js';
 import { manejarAvisoConstruccion, manejarTareaConstruccion } from './construccion-sitio.js';
 import { consultaBuildDeLaInstancia, constructorSitioEsGoogle, construccionDeLaInstancia, entorno, sitiosDeLaInstancia } from './entorno.js';
 
@@ -22,7 +22,7 @@ export function tareaValida(d: unknown): { tenantId: string; para: number } | un
   return { tenantId, para };
 }
 
-// `region: REGION` va explícito en las dos: este módulo se evalúa al importarse, ANTES del `setGlobalOptions` de `index.ts` (los `import` se elevan),
+// `...OPCIONES_GLOBALES` (región, instancias, memoria, plazo) va explícito en las dos: este módulo se evalúa al importarse, ANTES del `setGlobalOptions` de `index.ts` (los `import` se elevan),
 // así que la región global no les llega (construirSitio quedó en us-central1).
 // Tarea agendada por `programar` (Cloud Tasks): despierta la construcción a la hora.
 // Invocador explícito (D-P5-2 = A). El formato `nombre@` lo completa firebase-tools con el proyecto del despliegue (ningún id queda en el repositorio).
@@ -32,7 +32,7 @@ export function tareaValida(d: unknown): { tenantId: string; para: number } | un
 export const INVOCADORES_TAREA_SITIO = ['novutienda-funciones@', 'fn-constructor-sitio@'];
 export const construirSitio = onTaskDispatched(
   {
-    region: REGION, serviceAccount: PARAMETROS.cuentaFnConstructor, invoker: INVOCADORES_TAREA_SITIO,
+    ...OPCIONES_GLOBALES, serviceAccount: PARAMETROS.cuentaFnConstructor, invoker: INVOCADORES_TAREA_SITIO,
     retryConfig: { maxAttempts: 3, minBackoffSeconds: 10 }, rateLimits: { maxConcurrentDispatches: 3 },
   },
   async (req) => {
@@ -52,7 +52,7 @@ export const construirSitio = onTaskDispatched(
 // Aviso de Cloud Build al terminar cada construcción (tema `cloud-builds`). No se confía en el mensaje: de él solo se toma el id y el estado y
 // las etiquetas salen de `builds.get`. Solo atiende los builds con la etiqueta `sitio-<clave>` de un sitio de `SITIOS_TENANT`.
 export const avisoConstruccionSitio = onMessagePublished(
-  { topic: 'cloud-builds', region: REGION, retry: false, serviceAccount: PARAMETROS.cuentaFnConstructor },
+  { topic: 'cloud-builds', ...OPCIONES_GLOBALES, retry: false, serviceAccount: PARAMETROS.cuentaFnConstructor },
   async (ev) => {
     if (!constructorSitioEsGoogle()) return;
     const deps = construccionDeLaInstancia(entorno());
