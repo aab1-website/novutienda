@@ -727,7 +727,7 @@ describe('catálogo: Textos del sitio', () => {
       return original(n, x);
     }) as never);
     render(e.envolver(h(PantallaCatalogo, { sub: 'textos' })));
-    const mision = (await screen.findAllByRole('textbox'))[0] as HTMLElement;
+    const mision = await screen.findByLabelText('Misión');
     fireEvent.input(mision, { target: { value: 'Nuestra misión' } });
     await userEvent.click(screen.getByRole('button', { name: /Guardar/ }));
     expect(await screen.findByRole('button', { name: 'Volver a cargar' })).toBeTruthy();
@@ -737,9 +737,34 @@ describe('catálogo: Textos del sitio', () => {
     const original = e.api.llamar.bind(e.api) as (n: string, x: unknown) => Promise<unknown>;
     vi.spyOn(e.api, 'llamar').mockImplementation(((n: string, x: unknown) => (n === 'leerNegocioSitio' ? Promise.resolve({ negocio, version: 1 }) : original(n, x))) as never);
     render(e.envolver(h(PantallaCatalogo, { sub: 'textos' })));
-    const mision = (await screen.findAllByRole('textbox'))[0] as HTMLElement;
+    const mision = await screen.findByLabelText('Misión');
     fireEvent.input(mision, { target: { value: 'a'.repeat(601) } });
     await userEvent.click(screen.getByRole('button', { name: /Guardar/ }));
     await waitFor(() => expect(document.activeElement?.getAttribute('aria-invalid')).toBe('true'));
+  });
+  it('el enlace de Google Maps se guarda en el negocio; uno ajeno se rechaza antes de enviar y vacío lo quita', async () => {
+    const e = crearEntorno('adm');
+    const original = e.api.llamar.bind(e.api) as (n: string, x: unknown) => Promise<unknown>;
+    const guardados: unknown[] = [];
+    vi.spyOn(e.api, 'llamar').mockImplementation(((n: string, x: unknown) => {
+      if (n === 'leerNegocioSitio') return Promise.resolve({ negocio: { ...negocio, mapa: 'https://maps.app.goo.gl/Viejo1' }, version: 2 });
+      if (n === 'guardarNegocioSitio') { guardados.push((x as { negocio: unknown }).negocio); return Promise.resolve({ version: 3 }); }
+      return original(n, x);
+    }) as never);
+    render(e.envolver(h(PantallaCatalogo, { sub: 'textos' })));
+    const mapa = await screen.findByLabelText(/^Enlace de Google Maps/);
+    expect((mapa as HTMLInputElement).value).toBe('https://maps.app.goo.gl/Viejo1');
+    fireEvent.input(mapa, { target: { value: 'https://evil.example/maps' } });
+    await userEvent.click(screen.getByRole('button', { name: /Guardar/ }));
+    expect(await screen.findByText(/Pegue un enlace de Google Maps/)).toBeTruthy();
+    expect(guardados).toHaveLength(0);
+    fireEvent.input(mapa, { target: { value: 'https://maps.app.goo.gl/Nuevo2' } });
+    await userEvent.click(screen.getByRole('button', { name: /Guardar/ }));
+    await waitFor(() => expect(guardados).toHaveLength(1));
+    expect((guardados[0] as { mapa?: string }).mapa).toBe('https://maps.app.goo.gl/Nuevo2');
+    fireEvent.input(mapa, { target: { value: '' } });
+    await userEvent.click(screen.getByRole('button', { name: /Guardar/ }));
+    await waitFor(() => expect(guardados).toHaveLength(2));
+    expect('mapa' in (guardados[1] as object)).toBe(false);
   });
 });

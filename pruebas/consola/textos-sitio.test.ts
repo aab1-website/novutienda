@@ -1,8 +1,8 @@
 // «Textos del sitio» del panel: sus topes coinciden con los del servidor y lo que arma es lo que el servidor acepta.
 import { describe, expect, it } from 'vitest';
 import { LIMITES_TEXTOS_SITIO } from '@novutienda/nucleo';
-import { validarNegocioSitio } from '@novutienda/consola/negocio';
-import { aEstado, aNegocio, revisarTextos, TOPES_TEXTOS } from '@novutienda/panel/consola';
+import { urlMapaSegura, validarNegocioSitio } from '@novutienda/consola/negocio';
+import { aEstado, aNegocio, mapaValido, revisarTextos, TOPES_TEXTOS } from '@novutienda/panel/consola';
 
 const negocio = {
   nombre: 'Tienda Ejemplo', lema: 'Lema', telefono: '22223333', correo: 'hola@ejemplo.test', direccion: 'Calle 1', horario: null,
@@ -12,6 +12,12 @@ const negocio = {
   identidad: { etiqueta: 'N', titulo: 'T', texto: 'X', foto: null, cifra: null, valores: [], sello: { texto: 'S', confirmada: false } },
   textoPrivacidad: ['P'], categorias: {}, destacados: [],
 };
+const MAPAS_VALIDOS = ['https://www.google.com/maps/place/Tienda+Ejemplo/@-17.39,-66.15,17z', 'https://www.google.com/maps?q=-17.39,-66.15', 'https://maps.google.com/?q=tienda', 'https://maps.app.goo.gl/AbC123', 'https://goo.gl/maps/AbC123'];
+const MAPAS_INVALIDOS = [
+  'javascript:alert(1)', 'http://www.google.com/maps', 'https://www.google.com/search?q=maps', 'https://www.google.com/mapsx', 'https://goo.gl/otra',
+  'https://google.com/maps', 'https://evil.com/maps', 'https://www.google.com.evil.com/maps', 'https://usuario@www.google.com/maps',
+  'https://www.google.com:8443/maps', 'https://maps.google.com/ruta con espacio', `https://maps.app.goo.gl/${'a'.repeat(1000)}`, '', 'data:text/html,x',
+];
 const vacio = aEstado(null);
 const valido = (n: unknown): boolean => { try { validarNegocioSitio(n, { nivel: 'estricto' }); return true; } catch { return false; } };
 
@@ -50,6 +56,18 @@ describe('textos del sitio', () => {
     ];
     for (const e of casos) {
       expect(Object.keys(revisarTextos(e)).length > 0, JSON.stringify(e).slice(0, 60)).toBe(!valido(aNegocio(negocio, e)));
+    }
+  });
+  it('el enlace del mapa: vacío no agrega la clave; con valor la copia del panel y la del servidor deciden igual', () => {
+    expect('mapa' in aNegocio(negocio, vacio)).toBe(false);
+    expect('mapa' in aNegocio({ ...negocio, mapa: 'https://maps.app.goo.gl/x' }, vacio)).toBe(false);
+    expect(aEstado({ ...negocio, mapa: 'https://maps.app.goo.gl/x' }).mapa).toBe('https://maps.app.goo.gl/x');
+    const lleno = aNegocio(negocio, { ...vacio, mapa: ' https://maps.app.goo.gl/AbC123 ' });
+    expect(lleno['mapa']).toBe('https://maps.app.goo.gl/AbC123');
+    expect(valido(lleno)).toBe(true);
+    for (const u of [...MAPAS_VALIDOS, ...MAPAS_INVALIDOS]) {
+      expect(mapaValido(u), u).toBe(urlMapaSegura(u));
+      if (u !== '') expect(Object.keys(revisarTextos({ ...vacio, mapa: u })).includes('mapa'), u).toBe(!urlMapaSegura(u));
     }
   });
 });

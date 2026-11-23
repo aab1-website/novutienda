@@ -33,6 +33,7 @@ export const LIMITES_NEGOCIO = {
   /** línea 403 */ correo: { min: 5, max: 120 },
   /** línea 404 */ direccion: { min: 1, max: 200 },
   /** línea 405 */ horario: { min: 1, max: 200 },
+  /** `LARGO_MAXIMO_MAPA` de `website/src/contenido/validar.ts` */ mapa: { max: 1000 },
   /** líneas 20 (RE_HOST) y 372-378 */ enlacesPermitidos: { max: 20, host: /^[a-z0-9]([a-z0-9-]*[a-z0-9])?(\.[a-z0-9]([a-z0-9-]*[a-z0-9])?)+$/ },
   /** línea 84 */ largoEnlace: 500,
   /** líneas 302-313 */ portada: { insignia: 60, titulo: 60, lineasTitulo: 3, texto: 400, boton: 60 },
@@ -94,6 +95,8 @@ export interface NegocioSitioDatos {
   readonly correo: string | null;
   readonly direccion: string;
   readonly horario: string | null;
+  /** Enlace de Google Maps a la tienda; ausente = el sitio no muestra «Cómo llegar». */
+  readonly mapa?: string;
   readonly enlacesPermitidos: readonly string[];
   readonly portada: PortadaNegocio;
   readonly beneficios: readonly BeneficioNegocio[];
@@ -151,6 +154,33 @@ export function enlacePermitidoEnSitio(url: string, permitidos: readonly string[
   return permitidos.includes(sinPuerto.toLowerCase());
 }
 
+/**
+ * Enlace al mapa de la tienda: https a Google Maps y a ningún otro anfitrión (`www.google.com/maps…`, `maps.google.com`,
+ * `maps.app.goo.gl`, `goo.gl/maps…`), sin credenciales ni puerto, sin espacios ni controles y de hasta 1.000 caracteres.
+ *
+ * DUPLICADA de `urlMapaSegura` de `paquetes/website/src/contenido/validar.ts`: la consola no puede importar del sitio y el
+ * núcleo no es zona de este módulo. Si cambia una, cambia la otra; `pruebas/consola/negocio.test.ts` fija los mismos casos que
+ * `validar.test.ts` del sitio. Sin la clase `URL` (este archivo no depende de tipos de plataforma): es algo más estricta
+ * (rechaza `:` en la autoridad aunque el puerto esté vacío y anfitriones que `URL` normalizaría).
+ */
+export function urlMapaSegura(url: string): boolean {
+  if (typeof url !== 'string' || url.length === 0 || url.length > LIMITES_NEGOCIO.mapa.max) return false;
+  if (RE_CONTROL.test(url) || /[\s\\]/.test(url)) return false;
+  const m = /^https:\/\/([^/?#]*)([^?#]*)/i.exec(url);
+  if (m === null) return false;
+  const host = (m[1] ?? '').toLowerCase();
+  if (host.includes('@') || host.includes(':')) return false;
+  const ruta = (m[2] ?? '').toLowerCase();
+  const enMaps = ruta === '/maps' || ruta.startsWith('/maps/');
+  switch (host) {
+    case 'www.google.com':
+    case 'goo.gl': return enMaps;
+    case 'maps.google.com':
+    case 'maps.app.goo.gl': return true;
+    default: return false;
+  }
+}
+
 // ---------------------------------------------------------------------------------------------
 // Validación
 // ---------------------------------------------------------------------------------------------
@@ -195,6 +225,15 @@ class Lector {
   }
   textoONulo(v: unknown, ruta: string, min: number, max: number): string | null {
     return v === null ? null : this.texto(v, ruta, min, max);
+  }
+  /** Enlace de mapa opcional: ausente o `null` = sin mapa (`undefined`). */
+  mapa(v: unknown, ruta: string): string | undefined {
+    if (v === undefined || v === null) return undefined;
+    if (typeof v !== 'string' || !urlMapaSegura(v)) {
+      this.falla(ruta, 'debe ser una dirección https de Google Maps (www.google.com/maps, maps.google.com, maps.app.goo.gl o goo.gl/maps) de hasta 1.000 caracteres');
+      return undefined;
+    }
+    return v;
   }
   obj(v: unknown, ruta: string, claves: readonly string[], ignorarDesconocidas = false): Record<string, unknown> {
     if (!esObjeto(v)) { this.falla(ruta, 'debe ser un objeto'); return {}; }
@@ -280,8 +319,11 @@ function fotoIdentidad(l: Lector, v: unknown, ruta: string): FotoIdentidad | nul
   return { medioId: typeof id === 'string' ? id : '', alt: l.texto(o['alt'], `${ruta}.alt`, 1, I.alt) };
 }
 
+/** La clave `mapa` solo existe si hay valor: sin mapa el negocio queda idéntico al de antes. */
+const conMapa = (m: string | undefined): { mapa?: string } => (m === undefined ? {} : { mapa: m });
+
 export const CAMPOS_NEGOCIO = [
-  'nombre', 'lema', 'telefono', 'correo', 'direccion', 'horario', 'enlacesPermitidos', 'portada', 'beneficios',
+  'nombre', 'lema', 'telefono', 'correo', 'direccion', 'horario', 'mapa', 'enlacesPermitidos', 'portada', 'beneficios',
   'identidad', 'textoPrivacidad', 'categorias', 'destacados', 'institucional',
 ] as const;
 
@@ -405,6 +447,7 @@ export function evaluarNegocioSitio(entrada: unknown, nivel: NivelNegocio): Eval
     correo: nulo('correo') ? null : contacto('correo', L.correo.min, L.correo.max),
     direccion: l.texto(o['direccion'], 'direccion', L.direccion.min, L.direccion.max),
     horario: l.textoONulo(o['horario'], 'horario', L.horario.min, L.horario.max),
+    ...conMapa(l.mapa(o['mapa'], 'mapa')),
     enlacesPermitidos,
     portada,
     beneficios,

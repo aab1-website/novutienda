@@ -4,7 +4,7 @@ import { Alerta, Area, Boton, Campo, Casilla, ConCarga, Seccion } from '../../ui
 import { useAccion, useCarga } from '../../ui/hooks.js';
 import { mover } from './caracteristicas-vista.js';
 import {
-  aEstado, aNegocio, iguales, revisarTextos, TOPES_TEXTOS, type EstadoTextos, type MensajeEditable, type NegocioCrudo,
+  aEstado, aNegocio, iguales, LARGO_MAXIMO_MAPA, revisarTextos, TOPES_TEXTOS, type EstadoTextos, type MensajeEditable, type NegocioCrudo,
 } from './textos-sitio-logica.js';
 
 /** Lectura de `sitio/negocio` (`leerNegocioSitio`) y guardado con control de versión (`guardarNegocioSitio`, solo adm). */
@@ -58,6 +58,11 @@ function Formulario({ servicio, inicial, recargar }: { servicio: ServicioTextos;
   return (
     <form ref={formulario} class="ficha-formulario" onSubmit={(ev) => { ev.preventDefault(); guardar(); }} noValidate>
       <p class="texto-suave">Estos textos son opcionales: si deja uno vacío, esa parte no aparece en el sitio.</p>
+      <section class="ficha-bloque" aria-labelledby="textos-mapa">
+        <h3 id="textos-mapa">Cómo llegar</h3>
+        <Campo etiqueta="Enlace de Google Maps" valor={e.mapa} tope={LARGO_MAXIMO_MAPA} ayuda="Abra su tienda en Google Maps, toque «Compartir» y copie el enlace aquí. Si lo deja vacío, el sitio no muestra «Cómo llegar»." error={errores['mapa']} onInput={(v) => cambiar({ mapa: v })} />
+      </section>
+
       <section class="ficha-bloque" aria-labelledby="textos-mision">
         <h3 id="textos-mision">Misión y visión</h3>
         <Area etiqueta="Misión" valor={e.mision} filas={4} tope={TOPES_TEXTOS.texto} error={errores['mision']} onInput={(v) => cambiar({ mision: v })} />

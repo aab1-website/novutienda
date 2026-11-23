@@ -3,7 +3,7 @@ import {
   finalizarSubida, guardarCarrusel, guardarConfigSitio, guardarFicha, guardarNegocioSitio, guardarSeccion, leerNegocioSitio, publicarSitio,
   reservarSubida, type DepsMedios,
 } from '@novutienda/consola';
-import { enlacePermitidoEnSitio, IDS_ICONO_NEGOCIO, LIMITES_NEGOCIO, validarNegocioSitio } from '@novutienda/consola/negocio';
+import { camposCambiados, enlacePermitidoEnSitio, IDS_ICONO_NEGOCIO, LIMITES_NEGOCIO, urlMapaSegura, validarNegocioSitio } from '@novutienda/consola/negocio';
 import { actor, AlmacenDoble, CatalogoDoble, DisparadorDoble, JPG, MP4, nuevaDb, ProcesadorSimulado, RelojFijo, T } from './dobles.js';
 
 const adm = actor('adm');
@@ -402,7 +402,7 @@ describe('servicio y publicación del negocio', () => {
         expect(l.invalido).toBeUndefined();
         expect(l).toMatchObject({ version: 5, negocio: { nombre: 'Tienda Ejemplo' } });
         const aud = db.coleccion(`tenants/${T}/auditoria`).filter((a) => a['accion'] === 'sitio.negocio.guardar');
-        expect((aud[0]?.['resumenDespues'] as { campos: string[] }).campos).toHaveLength(14);
+        expect((aud[0]?.['resumenDespues'] as { campos: string[] }).campos).toHaveLength(15);
       });
     });
   });
@@ -532,5 +532,47 @@ describe('institucional (misión, visión y chat) y características de la ficha
     const f = (caracteristicas: string[]) => ({ slug: 'cam-1', descripcion: 'D', garantia: '', medios: [], seo: { titulo: '', descripcion: '' }, estado: 'borrador', caracteristicas });
     await expect(guardarFicha({ db, catalogo, reloj }, { tenantId: T, actor: adm, productoId: 'cam-1', ficha: f([]) })).rejects.toThrow();
     await guardarFicha({ db, catalogo, reloj }, { tenantId: T, actor: adm, productoId: 'cam-1', ficha: f(['Uno', 'Dos']) });
+  });
+});
+
+// Mismos casos que `validar.test.ts` del sitio (`urlMapaSegura`): la regla está duplicada y estos casos las mantienen iguales.
+const MAPAS_VALIDOS = [
+  'https://www.google.com/maps/place/Tienda+Ejemplo/@-17.39,-66.15,17z', 'https://www.google.com/maps?q=-17.39,-66.15',
+  'https://maps.google.com/?q=tienda', 'https://maps.app.goo.gl/AbC123', 'https://goo.gl/maps/AbC123',
+] as const;
+const MAPAS_INVALIDOS = [
+  'javascript:alert(1)', 'http://www.google.com/maps', 'https://www.google.com/search?q=maps', 'https://www.google.com/mapsx', 'https://goo.gl/otra',
+  'https://google.com/maps', 'https://evil.com/maps', 'https://www.google.com.evil.com/maps', 'https://usuario@www.google.com/maps',
+  'https://www.google.com:8443/maps', 'https://maps.google.com/ruta con espacio', `https://maps.app.goo.gl/${'a'.repeat(1000)}`, '', 'data:text/html,x',
+] as const;
+
+describe('enlace al mapa (campo opcional mapa)', () => {
+  const con = (mapa: unknown) => ({ ...base(), mapa });
+  const acepta = (n: unknown, nivel: 'estricto' | 'heredado' = 'estricto'): boolean => { try { validarNegocioSitio(n, { nivel }); return true; } catch { return false; } };
+
+  it('urlMapaSegura acepta Google Maps y rechaza el resto', () => {
+    for (const u of MAPAS_VALIDOS) expect(urlMapaSegura(u), u).toBe(true);
+    for (const u of MAPAS_INVALIDOS) expect(urlMapaSegura(u), u).toBe(false);
+  });
+  it('es opcional: ausente o null no deja la clave; con valor válido se conserva', () => {
+    expect('mapa' in validarNegocioSitio(base(), { nivel: 'estricto' })).toBe(false);
+    expect('mapa' in validarNegocioSitio(con(null), { nivel: 'heredado' })).toBe(false);
+    expect(validarNegocioSitio(con('https://maps.app.goo.gl/AbC123'), { nivel: 'estricto' }).mapa).toBe('https://maps.app.goo.gl/AbC123');
+  });
+  it('un valor inválido falla en ambos niveles nombrando la ruta, sin copiar el valor', () => {
+    for (const nivel of ['estricto', 'heredado'] as const) {
+      expect(acepta(con('https://evil.com/maps'), nivel)).toBe(false);
+      expect(acepta(con(5), nivel)).toBe(false);
+    }
+    try { validarNegocioSitio(con('javascript:alert(1)'), { nivel: 'estricto' }); } catch (e) {
+      expect(JSON.stringify(e)).toContain('mapa');
+      expect(JSON.stringify(e)).not.toContain('alert');
+    }
+  });
+  it('cuenta como campo cambiado', () => {
+    const antes = validarNegocioSitio(base(), { nivel: 'estricto' });
+    const despues = validarNegocioSitio(con('https://maps.app.goo.gl/AbC123'), { nivel: 'estricto' });
+    expect(camposCambiados(antes, despues)).toEqual(['mapa']);
+    expect(camposCambiados(despues, despues)).toEqual([]);
   });
 });
