@@ -52,6 +52,14 @@ const respuesta = (extra: Record<string, unknown> = {}, estado: Record<string, u
   },
 });
 
+describe('contenidoDesdePublicado: mapa', () => {
+  it('pasa el enlace del mapa del negocio a la configuración y, sin él, no agrega la clave', () => {
+    const con = contenidoDesdePublicado(respuesta(), { ...negocioBase(), mapa: 'https://maps.app.goo.gl/AbC123' }, entorno);
+    expect(con.config.mapa).toBe('https://maps.app.goo.gl/AbC123');
+    expect('mapa' in contenidoDesdePublicado(respuesta(), negocioBase(), entorno).config).toBe(false);
+  });
+});
+
 describe('contenidoDesdePublicado', () => {
   it('mapea productos, precios, disponibilidad y garantía vacía', () => {
     const c = contenidoDesdePublicado(respuesta(), negocioBase(), entorno);
@@ -230,6 +238,20 @@ describe('urlMedioSegura', () => {
     expect(urlMedioSegura('/m/a b.webp', [])).toBe(false);
     expect(urlMedioSegura(`${MEDIOS}/m/a,b.webp`, [MEDIOS])).toBe(false);
     expect(urlMedioSegura(`${MEDIOS}/m/ab.webp`, [MEDIOS])).toBe(true);
+  });
+});
+
+describe('validarNegocio: mapa', () => {
+  it('acepta un enlace de Google Maps, lo conserva y rechaza otros anfitriones', () => {
+    const ok = validarNegocio({ ...negocioBase(), mapa: 'https://maps.app.goo.gl/AbC123' });
+    expect(ok.ok && ok.negocio.mapa).toBe('https://maps.app.goo.gl/AbC123');
+    const sin = validarNegocio(negocioBase());
+    expect(sin.ok && 'mapa' in sin.negocio).toBe(false);
+    for (const mapa of ['https://evil.com/maps', 'javascript:alert(1)']) {
+      const r = validarNegocio({ ...negocioBase(), mapa });
+      expect(r.ok).toBe(false);
+      expect(!r.ok && r.errores.some((e) => e.startsWith('negocio.mapa:'))).toBe(true);
+    }
   });
 });
 

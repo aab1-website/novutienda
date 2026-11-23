@@ -42,6 +42,7 @@ const anio = new Date().getFullYear();
         {wa !== null && <li class="pie-linea"><Icono nombre="chat" tamano={16} /><a href={wa} target="_blank" rel="noopener noreferrer">Escribir por WhatsApp</a></li>}
         {config.correo !== null && <li class="pie-linea"><Icono nombre="mensaje" tamano={16} /><a href={`mailto:${config.correo}`}>{config.correo}</a></li>}
         {config.horario !== null && <li>{config.horario}</li>}
+        {config.mapa !== undefined && <li class="pie-linea"><Icono nombre="pin" tamano={16} /><a href={config.mapa} target="_blank" rel="noopener">Cómo llegar<span class="solo-lectores"> (se abre en una pestaña nueva)</span></a></li>}
       </ul>
     </div>
   </div>

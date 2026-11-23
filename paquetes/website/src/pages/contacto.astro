@@ -25,6 +25,7 @@ const wa = enlaceWhatsApp(config.whatsappNovuchat, 'Hola, tengo una consulta.');
         {config.correo !== null && <a class="enlace-telefono" href={`mailto:${config.correo}`}><Icono nombre="mensaje" tamano={16} />{config.correo}</a>}
         <p class="pie-linea"><Icono nombre="pin" tamano={16} />{config.direccion}</p>
         {config.horario !== null && <p class="subtitulo">{config.horario}</p>}
+        {config.mapa !== undefined && <a class="enlace-mapa" href={config.mapa} target="_blank" rel="noopener"><Icono nombre="pin" tamano={16} />Cómo llegar<span class="solo-lectores"> (se abre en una pestaña nueva)</span></a>}
       </div>
     </div>
   </div>

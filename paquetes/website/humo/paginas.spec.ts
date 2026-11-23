@@ -105,6 +105,27 @@ test.describe('refinar la búsqueda en todo el catálogo (celular)', () => {
   }
 });
 
+// Enlace «Cómo llegar»: este sitio se compila con `config.mapa` (el del ejemplo, en humo.spec, no lo trae).
+test.describe('enlace al mapa de la tienda', () => {
+  for (const ruta of ['/contacto', '/']) {
+    test(`${ruta}: «Cómo llegar» abre Google Maps en una pestaña nueva, con rel noopener`, async ({ page }) => {
+      await simularApi(page);
+      await decidirConsentimiento(page, false, false);
+      await page.goto(ruta);
+      const enlace = page.getByRole('contentinfo').getByRole('link', { name: /Cómo llegar/ });
+      await expect(enlace).toHaveAttribute('href', 'https://maps.app.goo.gl/AbC123');
+      await expect(enlace).toHaveAttribute('target', '_blank');
+      await expect(enlace).toHaveAttribute('rel', /noopener/);
+    });
+  }
+  test('en contacto aparece junto a la dirección y el horario', async ({ page }) => {
+    await simularApi(page);
+    await decidirConsentimiento(page, false, false);
+    await page.goto('/contacto');
+    await expect(page.locator('.tarjeta-contacto').getByRole('link', { name: /Cómo llegar/ })).toHaveAttribute('href', 'https://maps.app.goo.gl/AbC123');
+  });
+});
+
 // Guardia de regresión: a 390 px el catálogo no debe desbordar ni perder el margen lateral.
 test.describe('catálogo en móvil de 390 px', () => {
   test.use({ viewport: { width: 390, height: 844 } });

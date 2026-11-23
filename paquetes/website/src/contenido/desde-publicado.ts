@@ -370,6 +370,7 @@ export function contenidoDesdePublicado(respuesta: unknown, negocio: unknown, en
       whatsappTienda: neg?.whatsappTienda ?? null,
       telefono: neg?.telefono ?? null, correo: neg?.correo ?? null,
       direccion: neg?.direccion, horario: neg?.horario ?? null,
+      ...(neg?.mapa === undefined ? {} : { mapa: neg.mapa }),
       mercados: neg?.mercados, mercadoInicial: neg?.mercadoInicial,
       redondeo,
       medicion: { google: nulo(med['ga4']), searchConsole: nulo(med['searchConsole']), meta: nulo(med['metaPixel']), tiktok: nulo(med['tiktokPixel']) },

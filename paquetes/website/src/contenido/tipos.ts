@@ -170,6 +170,8 @@ export interface ConfigSitio {
   readonly correo: string | null;
   readonly direccion: string;
   readonly horario: string | null;
+  /** Enlace de Google Maps a la tienda (https, solo anfitriones de Google Maps); ausente = no se muestra «Cómo llegar». */
+  readonly mapa?: string;
   readonly mercados: readonly Mercado[];
   readonly mercadoInicial: Mercado;
   /** Regla de redondeo del precio final por moneda: es política del negocio, vive en la configuración. */
@@ -221,6 +223,8 @@ export interface NegocioSitio {
   readonly correo: string | null;
   readonly direccion: string;
   readonly horario: string | null;
+  /** Enlace de Google Maps a la tienda (https, solo anfitriones de Google Maps); ausente = no se muestra «Cómo llegar». */
+  readonly mapa?: string;
   readonly mercados: readonly Mercado[];
   readonly mercadoInicial: Mercado;
   readonly enlacesPermitidos: readonly string[];

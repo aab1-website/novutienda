@@ -1,7 +1,7 @@
 import { describe, expect, it } from 'vitest';
 import { contenidoEjemplo } from './ejemplo.js';
 import { LIMITES_SITIO, type Producto } from './tipos.js';
-import { origenValido, urlEnlaceSegura, urlMedioSegura, validarContenido } from './validar.js';
+import { origenValido, urlEnlaceSegura, urlMapaSegura, urlMedioSegura, validarContenido } from './validar.js';
 
 const clon = (): Record<string, unknown> => JSON.parse(JSON.stringify(contenidoEjemplo)) as Record<string, unknown>;
 const errores = (c: unknown): readonly string[] => {
@@ -225,5 +225,33 @@ describe('campos opcionales: institucional y características', () => {
     expect(conCar(['x'.repeat(161)])).toHaveLength(1);
     expect(conCar([' '])).toHaveLength(1);
     expect(conCar('texto')).toHaveLength(1);
+  });
+});
+
+describe('enlace al mapa (Google Maps)', () => {
+  it('acepta solo https a los anfitriones de Google Maps', () => {
+    for (const u of [
+      'https://www.google.com/maps/place/Tienda+Ejemplo/@-17.39,-66.15,17z', 'https://www.google.com/maps?q=-17.39,-66.15',
+      'https://maps.google.com/?q=tienda', 'https://maps.app.goo.gl/AbC123', 'https://goo.gl/maps/AbC123',
+    ]) expect(urlMapaSegura(u), u).toBe(true);
+  });
+  it('rechaza otros anfitriones, esquemas peligrosos, credenciales, puertos y excesos de largo', () => {
+    for (const u of [
+      'javascript:alert(1)', 'http://www.google.com/maps', 'https://www.google.com/search?q=maps', 'https://www.google.com/mapsx', 'https://goo.gl/otra',
+      'https://google.com/maps', 'https://evil.com/maps', 'https://www.google.com.evil.com/maps', 'https://usuario@www.google.com/maps',
+      'https://www.google.com:8443/maps', 'https://maps.google.com/ruta con espacio', `https://maps.app.goo.gl/${'a'.repeat(1000)}`, '', 'data:text/html,x',
+    ]) expect(urlMapaSegura(u), u).toBe(false);
+  });
+  it('en el contenido: opcional, y si viene inválido falla con la ruta (sin copiar el valor)', () => {
+    expect(errores(clon())).toEqual([]);
+    const ok = clon();
+    (ok['config'] as Record<string, unknown>)['mapa'] = 'https://maps.app.goo.gl/AbC123';
+    const r = validarContenido(ok);
+    expect(r.ok && r.contenido.config.mapa).toBe('https://maps.app.goo.gl/AbC123');
+    const mal = clon();
+    (mal['config'] as Record<string, unknown>)['mapa'] = 'javascript:alert(1)';
+    const e = errores(mal);
+    expect(e.some((x) => x.startsWith('config.mapa:'))).toBe(true);
+    expect(e.join()).not.toContain('alert');
   });
 });

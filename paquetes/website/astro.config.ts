@@ -33,8 +33,8 @@ export default defineConfig({
       recaptcha: config.recaptchaSiteKey !== null,
       appCheck: config.appCheck !== null,
       origenMedios: config.origenMedios,
-      // El host de medios se declara aquí también: la verificación del dist rechaza todo recurso de un dominio no declarado.
-      hostsPermitidos: ['wa.me', new URL(config.origen).hostname, ...(config.origenMedios !== null ? [new URL(config.origenMedios).hostname] : []), ...config.enlacesPermitidos],
+      // El host de medios y el del enlace al mapa (solo si hay `mapa`) se declaran aquí también: la verificación del dist rechaza todo recurso de un dominio no declarado.
+      hostsPermitidos: ['wa.me', new URL(config.origen).hostname, ...(config.origenMedios !== null ? [new URL(config.origenMedios).hostname] : []), ...(config.mapa !== undefined ? [new URL(config.mapa).hostname] : []), ...config.enlacesPermitidos],
     }),
   ],
   vite: {
