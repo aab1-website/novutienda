@@ -164,6 +164,8 @@ Decisión y riesgo aceptado: `docs/arquitectura/decisiones.md` (DR-CB y RIESGO-H
 | `fn-constructor-sitio` | Corre las dos funciones del constructor: encola y recibe el aviso | rol propio con solo `cloudbuild.builds.create` y `get`; `actAs` solo sobre `sitio-constructor`; Firestore y registros; `secretAccessor` de `SITIOS_TENANT`; opcional, `actAs` de cada cuenta que encola sobre sí misma, que solo se da si P6 lo pide |
 | Cuenta de Compute (por defecto de Cloud Build; Cloud Build no permite fijar otra) | Construye las Functions | reducida (D-P5-1): se le agrega `roles/cloudbuild.builds.builder` y se le quita `roles/editor`, conservando `run.invoker` y `eventarc.eventReceiver`; tras cambiarla se re-despliega en el acto para comprobar las 12 Functions. Reversión: volver a agregar `roles/editor` |
 
+La guardia de `preparar-constructor-sitio.sh` solo ve los roles dados en el proyecto: no ve los heredados de carpeta u organización ni los dados por grupos. En staging no hay organización; en producción hay que revisarlo a mano. Si la cuenta por defecto es la misma con la que corren las Functions, el script se niega a neutralizar (quitarle Editor las rompería en ejecución).
+
 El invocador de la cola `construirSitio` va en el código (constante `INVOCADORES_TAREA_SITIO`: `novutienda-funciones@` y `fn-constructor-sitio@`, D-P5-2); firebase-tools lo reaplica en cada despliegue, así que el permiso de la cola no se pierde al desplegar.
 
 La imagen del constructor se publica en un repositorio propio de Artifact Registry por el CI, tras Trivy, y se lanza solo por digest. Todo cambio de estos permisos lo revisa el agente `seguridad`.

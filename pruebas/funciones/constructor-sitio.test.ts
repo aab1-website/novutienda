@@ -224,6 +224,13 @@ exit 0
     expect(r.stdout).not.toContain('123456-compute');
     expect(r.stdout).not.toContain('987654321');
   });
+  it('--neutralizar-cuenta-por-defecto se niega si la cuenta por defecto es la de ejecución de las Functions', () => {
+    const { r, llamadas } = correrConStub({ SA_DEFECTO: 'f@proyecto-prueba-1.iam.gserviceaccount.com', ROLES_DEFECTO: 'roles/editor' }, ['--neutralizar-cuenta-por-defecto']);
+    expect(r.status).toBe(3);
+    expect(r.stderr).toContain('No se neutraliza');
+    expect(llamadas).not.toContain('remove-iam-policy-binding');
+    expect(llamadas).not.toContain('cloudbuild.builds.builder');
+  });
   it('--neutralizar-cuenta-por-defecto no quita editor si ya no lo tiene', () => {
     const { r, llamadas } = correrConStub({ SA_DEFECTO: '123456@cloudbuild.gserviceaccount.com' }, ['--neutralizar-cuenta-por-defecto']);
     expect(r.status).toBe(0);

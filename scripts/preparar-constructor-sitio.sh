@@ -40,6 +40,9 @@
 #       `desplegar-staging`) y comprobar que las 12 construyen. Reversión: volver a agregarle roles/editor.
 #       La guardia de O5 exige que la cuenta por defecto NO tenga roles/editor ni roles/owner; si los tiene, sale con 3
 #       y no otorga el rol lanzador. Los builds del constructor siempre indican `sitio-constructor`.
+#       LÍMITES: la guardia solo ve los roles dados en el PROYECTO; no ve los heredados de carpeta u organización ni los
+#       dados por grupos (en staging no hay organización; en producción hay que revisarlo a mano). Si CUENTA_FUNCIONES es
+#       la misma cuenta por defecto, --neutralizar se niega (salida 3): quitarle Editor rompería las Functions en ejecución.
 #   O6  Secretos en Secret Manager: SITIO_RECONSTRUCCION_SECRETO y SITIO_NEGOCIO_<CLAVE> con acceso solo para
 #       `sitio-constructor`; SITIOS_TENANT con acceso solo para `fn-constructor-sitio`.
 #   N9  (solo con --ampliar-despliegue; no corre por defecto) amplía el rol `despliegueFuncionesIam` de la cuenta de
@@ -226,6 +229,10 @@ if (( APLICAR == 1 )); then
   fi
 fi
 if (( NEUTRALIZAR == 1 )); then
+  if (( APLICAR == 1 )) && [[ "$DEFECTO" == "$FUNCIONES" ]]; then
+    echo "  La cuenta por defecto de Cloud Build es la misma que usan las Functions al ejecutar: quitarle Editor las rompería. No se neutraliza." >&2
+    exit 3
+  fi
   if (( APLICAR == 1 )); then
     case "$DEFECTO" in
       *@cloudbuild.gserviceaccount.com | *-compute@developer.gserviceaccount.com) ;;
