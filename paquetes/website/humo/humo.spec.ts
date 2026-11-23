@@ -276,7 +276,8 @@ test.describe('precio, país y compra', () => {
     const flotante = page.locator('a.whatsapp-flotante');
     expect(new URL((await flotante.getAttribute('href')) ?? '').searchParams.get('text')).toBe('Hola, tengo una consulta.');
     await page.getByRole('button', { name: 'AGREGAR' }).click();
-    await expect.poll(async () => new URL((await flotante.getAttribute('href')) ?? '').searchParams.get('text')).toContain('1 x Televisor de ejemplo 55" (cód. ejemplo-tv-55)');
+    await expect.poll(async () => new URL((await flotante.getAttribute('href')) ?? '').searchParams.get('text')).toContain('1 x Televisor de ejemplo 55" (cód. ejemplo-tv-55): Bs ');
+    await expect.poll(async () => new URL((await flotante.getAttribute('href')) ?? '').searchParams.get('text')).toMatch(/c\/u, subtotal Bs .*\nTotal referencial: Bs .*\nEl precio final y el envío se confirman por WhatsApp$/);
   });
 
   test('«Buscar en el catálogo» encuentra un producto de otra página', async ({ page }) => {

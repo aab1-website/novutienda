@@ -2,38 +2,14 @@ import { useEffect, useState } from 'preact/hooks';
 import type { Carrito as TipoCarrito } from '../lib/carrito.js';
 import { totalUnidades } from '../lib/carrito.js';
 import { EVENTOS, escuchar } from '../lib/eventos.js';
-import { configCliente } from '../lib/config-cliente.js';
-import { totalReferencial, type PreciosProductos, type TotalReferencial } from '../lib/total-referencial.js';
-import { LEYENDA_TOTAL, enlaceWhatsApp, mensajePedido } from '../lib/whatsapp.js';
+import { type TotalReferencial } from '../lib/total-referencial.js';
+import { LEYENDA_TOTAL } from '../lib/whatsapp.js';
 import { Dialogo } from './Dialogo.js';
 import { Icono } from './Icono.js';
+import { enlacePedido, usePedido } from './pedido.js';
 import { cambiarEnCarrito, cargarCarrito, quitarDelCarrito, vaciarCarrito } from './carrito-store.js';
-import { useCotizacion, useMercado } from './estado.js';
 
 export { LEYENDA_TOTAL };
-
-/**
- * Precios del pedido: los precios base se piden una vez, al abrir el pedido, a un archivo estático del sitio y se
- * pasan por `totalReferencial` (la misma cuenta que `Precio.tsx`). Lo que se ve y lo que viaja en el mensaje sale de aquí.
- */
-function usePedido(carrito: TipoCarrito): { readonly t: TotalReferencial | null; readonly fallo: boolean } {
-  const cfg = configCliente();
-  const [mercado] = useMercado(cfg.mercadoInicial, cfg.mercados);
-  const cot = useCotizacion(mercado);
-  const [precios, setPrecios] = useState<PreciosProductos | null>(null);
-  const [fallo, setFallo] = useState(false);
-  useEffect(() => {
-    let vivo = true;
-    fetch('/precios-productos.json', { headers: { Accept: 'application/json' } })
-      .then((r) => (r.ok ? r.json() : Promise.reject(new Error('precios'))))
-      .then((j: PreciosProductos) => vivo && setPrecios(j))
-      .catch(() => vivo && setFallo(true));
-    return () => {
-      vivo = false;
-    };
-  }, []);
-  return { t: precios === null ? null : totalReferencial(carrito, precios, mercado, cot, cfg.redondeo), fallo };
-}
 
 /** «Total referencial» en pantalla. */
 function TotalPedido({ t, fallo }: { t: TotalReferencial | null; fallo: boolean }) {
@@ -57,8 +33,7 @@ function TotalPedido({ t, fallo }: { t: TotalReferencial | null; fallo: boolean 
 /** Total y envío del pedido: el mensaje de WhatsApp lleva los mismos precios y el mismo total que se ven aquí. */
 function ResumenPedido({ carrito, whatsapp }: { carrito: TipoCarrito; whatsapp: string | null }) {
   const { t, fallo } = usePedido(carrito);
-  const conTotal = t?.tipo === 'total' ? t : null;
-  const enlace = enlaceWhatsApp(whatsapp, mensajePedido(carrito, conTotal?.lineas ?? null, conTotal?.texto ?? null));
+  const enlace = enlacePedido(whatsapp, carrito, t);
   return (
     <>
       <TotalPedido t={t} fallo={fallo} />
