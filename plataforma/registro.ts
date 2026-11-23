@@ -11,6 +11,7 @@ import { manifiestoRecibos } from '@novutienda/recibos';
 import { manifiestoWebsite } from '@novutienda/website';
 // Reexportado para los scripts del operador (zona Plataforma no importa módulos directamente).
 export { contenidoDesdePublicado, versionContenido } from '@novutienda/website';
+export { evaluarNegocioSitio } from '@novutienda/consola/negocio';
 import { manifiestoConsola } from '@novutienda/consola';
 import { manifiestoPanel } from '@novutienda/panel/manifiesto';
 // Manifiesto del operador (zona Plataforma, L1-b): datos de plataforma que no son de ningún tenant.
