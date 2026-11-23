@@ -191,7 +191,5 @@ export const temporizadorSitio = onSchedule({ ...horarioDe('temporizadorSitio'),
 });
 
 // ---- Construcción del sitio en Cloud Build (DR-CB) ----------------------------------------------------------------------------------------
-// `construirSitio` (Cloud Tasks) y `avisoConstruccionSitio` (tema `cloud-builds`) están definidas en `funciones-sitio.ts` y NO se exportan
-// desde aquí todavía: exportarlas hace que el despliegue active Cloud Tasks y cree la cola, su IAM y la suscripción al tema, y eso necesita
-// la API activada y permisos que se dan en P5 con autorización de Andres. En P5 se agrega:
-//   export { avisoConstruccionSitio, construirSitio } from './funciones-sitio.js';
+// `construirSitio` (Cloud Tasks) y `avisoConstruccionSitio` (tema `cloud-builds`): definidas en `funciones-sitio.ts`. En modo `github` salen sin efecto.
+export { avisoConstruccionSitio, construirSitio } from './funciones-sitio.js';
