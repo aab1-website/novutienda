@@ -325,7 +325,23 @@ describe('servicio y publicación del negocio', () => {
       const r = await guardarNegocioSitio(dn(), T, adm, { negocio: base(), versionEsperada: 0 });
       expect(r.afectados).toBe(2); // otro.test y tercero.test; ejemplo.test y la ruta interna pasan
       expect(JSON.stringify([db.dato(`tenants/${T}/secciones/ayuda`), db.dato(`tenants/${T}/carruseles/bosque`)])).toBe(antes);
-      expect((await guardarNegocioSitio(dn(), T, adm, { negocio: con({ enlacesPermitidos: ['ejemplo.test', 'otro.test', 'tercero.test'] }), versionEsperada: 1 })).afectados).toBe(0);
+    });
+
+    it('D6: desde el panel no se cambian los anfitriones permitidos (se conserva la lista guardada)', async () => {
+      await guardarNegocioSitio(dn(), T, adm, { negocio: base(), versionEsperada: 0 });
+      // Solo cambia la lista: no hay cambios, no sube la versión ni escribe.
+      const r = await guardarNegocioSitio(dn(), T, adm, { negocio: con({ enlacesPermitidos: ['ejemplo.test', 'otro.test'] }), versionEsperada: 1 });
+      expect(r.version).toBe(1);
+      expect(db.dato(ruta)?.['enlacesPermitidos']).toEqual(['ejemplo.test']);
+      // Cambia otro campo y la lista entrante se ignora.
+      const r2 = await guardarNegocioSitio(dn(), T, adm, { negocio: con({ lema: 'Otro lema', enlacesPermitidos: ['malo.test'] }), versionEsperada: 1 });
+      expect(r2.version).toBe(2);
+      expect(db.dato(ruta)?.['enlacesPermitidos']).toEqual(['ejemplo.test']);
+      expect(db.dato(ruta)?.['lema']).toBe('Otro lema');
+    });
+    it('D6: sin negocio guardado previo rige la lista entrante', async () => {
+      await guardarNegocioSitio(dn(), T, adm, { negocio: con({ enlacesPermitidos: ['inicial.test'] }), versionEsperada: 0 });
+      expect(db.dato(ruta)?.['enlacesPermitidos']).toEqual(['inicial.test']);
     });
 
     it('foto que apunta a un medio de tipo video: rechazada', async () => {

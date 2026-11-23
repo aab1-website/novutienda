@@ -104,6 +104,7 @@ async function contarEnlacesFuera(tx: TransaccionIdentidad, t: string, permitido
  * nivel que cambian respecto de lo guardado (`camposCambiados`). Un campo que la persona no tocó y que ya estaba guardado se acepta
  * como está, así un dato heredado no impide corregir otro campo. Los errores del documento entero (clave desconocida, tamaño) y
  * todo, si no había nada válido guardado, se exigen siempre. Sin cambios: no sube la versión, no anota cambio ni audita.
+ * `enlacesPermitidos` no se cambia desde aquí: con un negocio guardado válido se conserva su lista (la entrante se ignora).
  * La foto de identidad por dirección web solo se admite si es la que ya estaba guardada.
  * Audita `sitio.negocio.guardar` con los NOMBRES de los campos que cambiaron.
  */
@@ -115,7 +116,7 @@ export async function guardarNegocioSitio(
   if (!Number.isSafeInteger(e.versionEsperada) || e.versionEsperada < 0) throw new ErrorConsola('entrada-invalida', 'versionEsperada inválida');
   const heredado = evaluarNegocioSitio(e.negocio, 'heredado');
   if (heredado.negocio === null) throw new ErrorConsola('entrada-invalida', 'Hay datos inválidos', heredado.errores);
-  const nuevo = heredado.negocio;
+  const entrante = heredado.negocio;
   const estricto = evaluarNegocioSitio(e.negocio, 'estricto').errores;
   const ahora = new Date(deps.reloj.ahora()).toISOString();
   return deps.db.runTransaction(async (tx) => {
@@ -124,6 +125,9 @@ export async function guardarNegocioSitio(
     const previa = leerDocumentoNegocio(cruda);
     const version = previa?.version ?? 0;
     if (version !== e.versionEsperada) throw new ErrorConsola('conflicto', 'Otra persona cambió los datos del negocio; vuelva a cargarlos');
+    // D6: los anfitriones permitidos para enlaces no se cambian desde el panel (solo NovuTienda, por operación): si ya hay un
+    // negocio guardado válido se conserva su lista y la entrante se descarta; si no lo hay, rige la entrante.
+    const nuevo: NegocioSitioDatos = previa?.negocio == null ? entrante : { ...entrante, enlacesPermitidos: previa.negocio.enlacesPermitidos };
     const cambiados = camposCambiados(previa?.negocio ?? null, nuevo);
     const aExigir = estricto.filter((m) => { const c = campoDeError(m); return !(CAMPOS_NEGOCIO as readonly string[]).includes(c) || cambiados.includes(c as (typeof CAMPOS_NEGOCIO)[number]); });
     if (aExigir.length > 0) throw new ErrorConsola('entrada-invalida', 'Hay datos inválidos', aExigir);
