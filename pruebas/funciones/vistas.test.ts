@@ -4,7 +4,15 @@ import { HOST_A, hayEmulador, herramientas, http, T, TENANT_TODO_ENCENDIDO, unic
 
 vi.setConfig({ testTimeout: 60_000, hookTimeout: 60_000 });
 
-const origenAleatorio = (): string => `198.51.100.${String(Math.floor(Math.random() * 200) + 1)}`;
+// El limitador vive en la memoria del emulador (mismo proceso entre pruebas y corridas): cada llamada devuelve un origen
+// que no repite ninguno anterior (contador + base aleatoria de 16 bits), no uno de solo 200 valores que podían chocar.
+const baseOrigen = Math.floor(Math.random() * 60_000);
+let contadorOrigen = 0;
+const origenAleatorio = (): string => {
+  contadorOrigen += 1;
+  const n = baseOrigen + contadorOrigen;
+  return `100.64.${String(Math.floor(n / 250) % 250)}.${String((n % 250) + 1)}`;
+};
 const cabecera = (ip: string): Record<string, string> => ({ 'sec-fetch-site': 'same-origin', 'x-forwarded-for': `9.9.9.9, ${ip}, 151.101.1.1` });
 
 describe.skipIf(!hayEmulador)('/api/vista (emulador)', () => {
