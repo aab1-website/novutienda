@@ -109,11 +109,13 @@ export function aNegocio(negocio: NegocioCrudo, e: EstadoTextos): Record<string,
   const valor = e.cifraValor.trim();
   const detalle = e.cifraDetalle.trim();
   const cifra = valor === '' && detalle === '' ? null : { valor: { texto: valor, confirmada: e.cifraConfirmada }, detalle };
-  const opcional = (v: string): string | null => (v.trim() === '' ? null : v.trim());
+  // Un dato antiguo que no se tocó se envía tal cual lo guardado (aunque tenga espacios en los bordes); solo lo editado se recorta.
+  const dato = (k: string, v: string): string => { const g = negocio[k]; return typeof g === 'string' && g.trim() === v.trim() ? g : v.trim(); };
+  const opcional = (k: string, v: string): string | null => (v.trim() === '' ? null : dato(k, v));
   return {
     ...resto,
-    nombre: e.nombre.trim(), lema: e.lema.trim(), direccion: e.direccion.trim(),
-    horario: opcional(e.horario), telefono: opcional(e.telefono), correo: opcional(e.correo),
+    nombre: dato('nombre', e.nombre), lema: dato('lema', e.lema), direccion: dato('direccion', e.direccion),
+    horario: opcional('horario', e.horario), telefono: opcional('telefono', e.telefono), correo: opcional('correo', e.correo),
     ...(mapa === '' ? {} : { mapa }),
     identidad: { ...obj(negocio['identidad']), cifra },
     ...(Object.keys(inst).length === 0 ? {} : { institucional: inst }),

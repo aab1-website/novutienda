@@ -112,6 +112,12 @@ describe('textos del sitio', () => {
         expect(Object.keys(revisarTextos(e)).length > 0, JSON.stringify(c).slice(0, 50)).toBe(!valido(aNegocio(negocio, e)));
       }
     });
+    it('un dato antiguo con espacios en los bordes se envía intacto si no se tocó', () => {
+      const antiguo = { ...negocio, nombre: ' Tienda Ejemplo ', direccion: 'Calle 1 ', telefono: ' 22223333' };
+      const n = aNegocio(antiguo, aEstado(antiguo));
+      expect(n).toMatchObject({ nombre: ' Tienda Ejemplo ', direccion: 'Calle 1 ', telefono: ' 22223333' });
+      expect(aNegocio(antiguo, { ...aEstado(antiguo), nombre: ' Otra ' })).toMatchObject({ nombre: 'Otra', direccion: 'Calle 1 ' });
+    });
     it('un dato antiguo que no se tocó no impide guardar otro campo', () => {
       const antiguo = { ...negocio, telefono: '2222-3333 int 5' };
       const base = aEstado(antiguo);

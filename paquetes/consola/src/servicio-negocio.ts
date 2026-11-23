@@ -6,7 +6,7 @@ import { registrarAuditoria, type Actor, type TransaccionIdentidad } from '@novu
 import { anotarCambio, leerEstadoSitio } from './cambios.js';
 import { ErrorConsola } from './errores.js';
 import {
-  campoDeError, CAMPOS_NEGOCIO, camposCambiados, canonico, enlacePermitidoEnSitio, evaluarNegocioSitio, rutasDeErrores, type NegocioSitioDatos,
+  campoDeError, CAMPOS_NEGOCIO, camposCambiados, canonico, enlacePermitidoEnSitio, evaluarNegocioSitio, LIMITES_NEGOCIO, rutasDeErrores, type NegocioSitioDatos,
 } from './negocio.js';
 import { exigirRol, ROLES } from './permisos.js';
 import { PLANTILLAS } from './plantillas.js';
@@ -96,6 +96,13 @@ async function contarEnlacesFuera(tx: TransaccionIdentidad, t: string, permitido
   return fuera;
 }
 
+/** Los anfitriones del documento crudo que cumplen la forma de anfitrión (hasta el tope); `[]` si no hay documento o no es una lista. */
+function enlacesGuardados(cruda: Readonly<Record<string, unknown>> | undefined): readonly string[] {
+  const l = cruda?.['enlacesPermitidos'];
+  if (!Array.isArray(l)) return [];
+  return l.filter((h): h is string => typeof h === 'string' && LIMITES_NEGOCIO.enlacesPermitidos.host.test(h)).slice(0, LIMITES_NEGOCIO.enlacesPermitidos.max);
+}
+
 /**
  * Guarda los datos del negocio (solo adm). Compara `versionEsperada` con la guardada (0 si no existe) y, si no coincide, lanza
  * `conflicto` sin escribir. Un documento guardado que ya no cumple la regla (`invalido`) se puede reemplazar con su versión cruda.
@@ -104,7 +111,7 @@ async function contarEnlacesFuera(tx: TransaccionIdentidad, t: string, permitido
  * nivel que cambian respecto de lo guardado (`camposCambiados`). Un campo que la persona no tocó y que ya estaba guardado se acepta
  * como está, así un dato heredado no impide corregir otro campo. Los errores del documento entero (clave desconocida, tamaño) y
  * todo, si no había nada válido guardado, se exigen siempre. Sin cambios: no sube la versión, no anota cambio ni audita.
- * `enlacesPermitidos` no se cambia desde aquí: con un negocio guardado válido se conserva su lista (la entrante se ignora).
+ * `enlacesPermitidos` no se cambia desde aquí (D8): se conserva la guardada o `[]`; la entrante se ignora siempre.
  * La foto de identidad por dirección web solo se admite si es la que ya estaba guardada.
  * Audita `sitio.negocio.guardar` con los NOMBRES de los campos que cambiaron.
  */
@@ -125,9 +132,9 @@ export async function guardarNegocioSitio(
     const previa = leerDocumentoNegocio(cruda);
     const version = previa?.version ?? 0;
     if (version !== e.versionEsperada) throw new ErrorConsola('conflicto', 'Otra persona cambió los datos del negocio; vuelva a cargarlos');
-    // D6: los anfitriones permitidos para enlaces no se cambian desde el panel (solo NovuTienda, por operación): si ya hay un
-    // negocio guardado válido se conserva su lista y la entrante se descarta; si no lo hay, rige la entrante.
-    const nuevo: NegocioSitioDatos = previa?.negocio == null ? entrante : { ...entrante, enlacesPermitidos: previa.negocio.enlacesPermitidos };
+    // D6 y D8: los anfitriones permitidos para enlaces son de NovuTienda; el panel nunca los cambia, ni en el primer guardado. La lista
+    // entrante se ignora siempre: se conserva la guardada (aunque el resto del documento sea inválido) o, sin documento, `[]`.
+    const nuevo: NegocioSitioDatos = { ...entrante, enlacesPermitidos: enlacesGuardados(cruda) };
     const cambiados = camposCambiados(previa?.negocio ?? null, nuevo);
     const aExigir = estricto.filter((m) => { const c = campoDeError(m); return !(CAMPOS_NEGOCIO as readonly string[]).includes(c) || cambiados.includes(c as (typeof CAMPOS_NEGOCIO)[number]); });
     if (aExigir.length > 0) throw new ErrorConsola('entrada-invalida', 'Hay datos inválidos', aExigir);

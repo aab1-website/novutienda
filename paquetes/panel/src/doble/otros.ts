@@ -291,9 +291,11 @@ export const handlersOtros: {
     const g = c.e.negocioSitio;
     if (!Number.isSafeInteger(e.versionEsperada) || e.versionEsperada < 0) throw fallo('entrada-invalida', 'versionEsperada inválida');
     if (e.versionEsperada !== g.version) throw fallo('conflicto', 'Los datos cambiaron desde que los leyó');
-    if (JSON.stringify(g.negocio) === JSON.stringify(e.negocio)) return { version: g.version, afectados: 0 };
-    const quitados = g.negocio === null ? [] : g.negocio.enlacesPermitidos.filter((x) => !e.negocio.enlacesPermitidos.includes(x));
-    c.e.negocioSitio = { negocio: e.negocio, version: g.version + 1 };
+    // D8: el panel nunca cambia los anfitriones permitidos: se conserva la lista guardada (o `[]` sin documento).
+    const negocio = { ...e.negocio, enlacesPermitidos: g.negocio?.enlacesPermitidos ?? [] };
+    if (JSON.stringify(g.negocio) === JSON.stringify(negocio)) return { version: g.version, afectados: 0 };
+    const quitados: string[] = [];
+    c.e.negocioSitio = { negocio, version: g.version + 1 };
     auditar(c, 'sitio.negocio.guardar', 'sitio/negocio');
     return { version: g.version + 1, afectados: quitados.length };
   },
