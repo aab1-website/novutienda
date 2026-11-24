@@ -83,6 +83,15 @@ export interface Contrato {
   };
   /** Función pura del módulo expuesta como callable: devuelve el CSV (celdas neutralizadas) de los productos del tenant. */
   exportarProductosCsv: { entrada: Vacio; salida: { csv: string } };
+  /** Descarga total (solo `adm`): filas de las cinco hojas del libro, sin bytes. `recortado`: había más de 5.000 movimientos; `seriesRecortadas`: había más de 20.000 unidades con serie. */
+  exportarInventarioTotal: {
+    entrada: Vacio;
+    salida: {
+      hojas: readonly { readonly nombre: string; readonly filas: readonly (readonly (string | number)[])[] }[];
+      recortado: boolean;
+      seriesRecortadas: boolean;
+    };
+  };
   // ---- Recibos ----
   buscarComprobantes: { entrada: { consulta: ConsultaArchivo }; salida: readonly Recibo[] };
   /** El servidor genera el PDF, lo guarda en una ruta privada y devuelve el enlace `wa.me` (que la persona abre y envía). */

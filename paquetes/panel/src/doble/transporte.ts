@@ -3,6 +3,7 @@ import { rolesDeAccion, type Modulo } from '../api/real.js';
 import type { Sobre, Transporte } from '../api/transporte.js';
 import { ID_NEGOCIO, type ProductoPanel, type Rol } from '../api/tipos.js';
 import { fechaLaPaz, fallo, marcaDoble, type Contexto } from './estado.js';
+import { exportarTotalDoble } from './inventario/exportacion-total.js';
 import { handlersInventario } from './inventario/inventario.js';
 import { handlersOtros } from './otros.js';
 import { carritosDeSupervision, handlersPos } from './pos/pos.js';
@@ -139,6 +140,8 @@ const ACCIONES: Readonly<Record<string, WireHandler>> = {
     return { conteo: { id: conteoId, ...r, ...(motivoCancelacion !== undefined ? { motivo: motivoCancelacion } : {}) }, lineas, ...(resultado !== undefined ? { resultado } : {}), ...(productos !== undefined ? { productos } : {}) };
   },
   'inventarios.exportarCsv': (c, d) => legado({ ...c, rol: d['conCostos'] === true ? 'adm' : 'sup' }, 'exportarProductosCsv', {}),
+  // Descarga total: las mismas cinco hojas que arma el servidor, con el estado del doble (`inventario/exportacion-total.ts`).
+  'inventarios.exportarTotal': (c) => exportarTotalDoble(c),
   // recibos
   'recibos.buscarComprobantes': async (c, d) => ({ recibos: await legado(c, 'buscarComprobantes', { consulta: d }) }),
   'recibos.leerRecibo': (c, d) => {

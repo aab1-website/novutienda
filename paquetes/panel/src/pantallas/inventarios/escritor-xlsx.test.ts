@@ -33,6 +33,17 @@ describe('escritor xlsx', () => {
     expect(crc32(new TextEncoder().encode('123456789'))).toBe(0xcbf43926);
   });
 
+  it('un número finito va como celda numérica, el texto «-3» se sigue neutralizando y NaN o Infinity no salen como número', () => {
+    const libro = entradas(escribirXlsx([{ nombre: 'H', filas: [[-3, 12.5, '-3', Number.NaN, Number.POSITIVE_INFINITY, Number.NEGATIVE_INFINITY]] }]));
+    const hoja = [...libro.values()].find((x) => x.includes('<sheetData>')) ?? '';
+    expect(hoja).toContain('<c r="A1" t="n"><v>-3</v></c>');
+    expect(hoja).toContain('<c r="B1" t="n"><v>12.5</v></c>');
+    expect(hoja).toContain(">'-3</t>");
+    expect(hoja).not.toMatch(/NaN|Infinity/);
+    expect(hoja).not.toContain('r="D1"');
+    expect(hoja).not.toContain('r="E1"');
+  });
+
   it('neutraliza con un apóstrofe lo que empieza con = + - @, TAB o CR, y lo ya neutralizado', () => {
     for (const c of ['=1+1', '+54', '-2', '@SUMA(A1)', '\tx', '\rx', "'=ya"]) expect(neutralizarCeldaXlsx(c)).toBe(`'${c}`);
     expect(neutralizarCeldaXlsx('normal')).toBe('normal');
