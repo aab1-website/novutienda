@@ -234,7 +234,7 @@ export interface NegocioSitio {
   readonly institucional?: Institucional;
   readonly textoPrivacidad: readonly string[];
   /** Sobrescribe nombre e ícono derivados de una categoría (id = el de la categoría del producto). */
-  readonly categorias?: Readonly<Record<string, { readonly nombre: string; readonly icono: IdIcono }>>;
+  readonly categorias?: Readonly<Record<string, { readonly nombre: string; readonly icono: IdIcono; readonly orden?: number; readonly oculta?: true }>>;
   /** Ids de productos destacados; vacía o ausente = ninguno. */
   readonly destacados?: readonly string[];
 }

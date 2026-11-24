@@ -2,6 +2,7 @@ import { MAX_CATEGORIAS_SITIO } from '@novutienda/nucleo';
 import { describe, expect, it } from 'vitest';
 import { ErrorContenidoPublicado, contenidoDesdePublicado, iconoDeCategoria, negocioEfectivo, nombreDeCategoria, type EntornoSitio } from './desde-publicado.js';
 import { contenidoEjemplo } from './ejemplo.js';
+import { huellaSinDisponibilidad } from '../lib/huella.js';
 import { urlMedioSegura, validarNegocio } from './validar.js';
 
 // Todo inventado: dominios .invalid, nombres de ejemplo.
@@ -50,6 +51,36 @@ const respuesta = (extra: Record<string, unknown> = {}, estado: Record<string, u
     producto__dos: prod('p-dos', { categoria: 'parlantes-audio', garantia: '', medios: [medioFoto('m/p-dos'), medioVideo('m/p-dos')] }),
     ...extra,
   },
+});
+
+describe('contenidoDesdePublicado: orden de categorías', () => {
+  const tres = () => respuesta({ producto__tres: prod('p-tres', { categoria: 'cocinas' }), producto__cuatro: prod('p-cuatro', { categoria: 'ollas-y-sartenes' }) });
+  const ids = (neg: Record<string, unknown>) => contenidoDesdePublicado(tres(), { ...negocioBase(), categorias: neg }, entorno).categorias.map((c) => c.id);
+  const k = (nombre: string, extra: Record<string, unknown> = {}) => ({ nombre, icono: 'cuadricula', ...extra });
+
+  it('sin orden: alfabético por nombre visible, sin tildes ni mayúsculas', () => {
+    expect(ids({})).toEqual(['aire-acondicionado', 'cocinas', 'ollas-y-sartenes', 'parlantes-audio']);
+    expect(ids({ 'parlantes-audio': k('Ábaco'), 'cocinas': k('zeta') })).toEqual(['parlantes-audio', 'aire-acondicionado', 'ollas-y-sartenes', 'cocinas']);
+  });
+  it('con orden: ascendente por orden', () => {
+    expect(ids({ 'parlantes-audio': k('P', { orden: 0 }), 'cocinas': k('C', { orden: 1 }), 'aire-acondicionado': k('A', { orden: 2 }), 'ollas-y-sartenes': k('O', { orden: 3 }) }))
+      .toEqual(['parlantes-audio', 'cocinas', 'aire-acondicionado', 'ollas-y-sartenes']);
+  });
+  it('mezcla: las ordenadas primero; las demás al final, alfabéticas por nombre visible', () => {
+    expect(ids({ 'ollas-y-sartenes': k('Ollas', { orden: 5 }), 'parlantes-audio': k('Sonido', { orden: 1 }), 'cocinas': k('Zeta') }))
+      .toEqual(['parlantes-audio', 'ollas-y-sartenes', 'aire-acondicionado', 'cocinas']);
+  });
+  it('una categoría con oculta no falla y no cambia el resultado (el panel ya quitó sus productos)', () => {
+    expect(ids({ 'cocinas': k('Cocinas', { oculta: true, orden: 0 }) })).toEqual(['cocinas', 'aire-acondicionado', 'ollas-y-sartenes', 'parlantes-audio']);
+  });
+  it('la huella no depende del orden de las claves del negocio y no cambia sin orden', () => {
+    const h = (neg: Record<string, unknown>) => huellaSinDisponibilidad(contenidoDesdePublicado(tres(), { ...negocioBase(), categorias: neg }, entorno));
+    const a = { 'parlantes-audio': k('P', { orden: 0 }), 'cocinas': k('C', { orden: 1 }) };
+    const b = { 'cocinas': k('C', { orden: 1 }), 'parlantes-audio': k('P', { orden: 0 }) };
+    expect(h(a)).toBe(h(b));
+    expect(h({})).toBe(h({}));
+    expect(h(a)).not.toBe(h({}));
+  });
 });
 
 describe('contenidoDesdePublicado: mapa', () => {
@@ -271,6 +302,18 @@ describe('validarNegocio', () => {
     delete sinOpcionales['categorias'];
     delete sinOpcionales['destacados'];
     expect(validarNegocio(sinOpcionales).ok).toBe(true);
+  });
+  it('acepta orden (entero 0..39) y oculta (true) en categorias, y rechaza lo demás', () => {
+    const cat = (extra: Record<string, unknown>) => ({ ...negocioBase(), categorias: { 'cat-uno': { nombre: 'X', icono: 'check', ...extra } } });
+    expect(validarNegocio(cat({ orden: 0, oculta: true })).ok).toBe(true);
+    expect(validarNegocio(cat({ orden: 39 })).ok).toBe(true);
+    for (const malo of [{ orden: 40 }, { orden: -1 }, { orden: 1.5 }, { orden: '2' }, { oculta: false }, { oculta: 'si' }]) {
+      expect(validarNegocio(cat(malo)).ok).toBe(false);
+    }
+  });
+  it('sin orden ni oculta, el negocio validado no los trae (contenido idéntico al de antes)', () => {
+    const r = validarNegocio({ ...negocioBase(), categorias: { 'cat-uno': { nombre: 'X', icono: 'check' } } });
+    expect(r.ok && r.negocio.categorias).toEqual({ 'cat-uno': { nombre: 'X', icono: 'check' } });
   });
   it('rechaza ícono fuera de la lista en categorias', () => {
     const r = validarNegocio({ ...negocioBase(), categorias: { 'cat-uno': { nombre: 'X', icono: 'inventado' } } });
