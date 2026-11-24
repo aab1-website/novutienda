@@ -4,7 +4,8 @@ import { EVENTOS, escuchar } from '../lib/eventos.js';
 import { enlaceWhatsApp } from '../lib/whatsapp.js';
 import { Icono } from './Icono.js';
 import { cargarCarrito } from './carrito-store.js';
-import { enlacePedido, usePedido } from './pedido.js';
+import { enlaceSegunPrecios } from '../lib/enlace-pedido.js';
+import { usePedido } from './pedido.js';
 
 const MENSAJE_GENERAL = 'Hola, tengo una consulta.';
 
@@ -32,8 +33,17 @@ export default function WhatsAppFlotante({ whatsapp }: { whatsapp: string | null
 }
 
 function FlotanteConPedido({ whatsapp, carrito }: { whatsapp: string | null; carrito: Carrito }) {
-  const { t } = usePedido(carrito);
-  return <Boton enlace={enlacePedido(whatsapp, carrito, t)} etiqueta="Enviar mi pedido por WhatsApp" />;
+  const { t, fallo } = usePedido(carrito);
+  const r = enlaceSegunPrecios(whatsapp, carrito, t, fallo);
+  // Sin precios todavía no se envía nada: un mensaje sin montos saldría «en silencio». Si la carga falló, se degrada a sin montos.
+  if (r.estado === 'cargando') {
+    return (
+      <button type="button" class="whatsapp-flotante" disabled aria-busy="true" aria-label="Preparando tu pedido con precios…">
+        <Icono nombre="chat" tamano={28} />
+      </button>
+    );
+  }
+  return <Boton enlace={r.enlace} etiqueta="Enviar mi pedido por WhatsApp" />;
 }
 
 function Boton({ enlace, etiqueta }: { enlace: string | null; etiqueta: string }) {
