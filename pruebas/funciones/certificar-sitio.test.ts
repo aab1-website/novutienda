@@ -5,7 +5,8 @@ import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { afterAll, beforeAll, beforeEach, describe, expect, it } from 'vitest';
 import { calcularFirma, verificarFirma } from '@novutienda/nucleo/servidor';
-import { versionContenido } from '../../plataforma/registro.js';
+import { contenidoDesdePublicado, versionContenido } from '../../plataforma/registro.js';
+import { MEDIOS_REAL, SECRETO_NEGOCIO, publicadoReal } from './negocio-publicado-apoyo.js';
 import {
   armarResumen, armarSalida, codigoDe, atributos, compararCotizacion, compararFicha, compararIndice, compararPortada, compararVersion, configCliente, decodificarEntidades,
   ejecutar, etiquetas, islasDe, jsonLdDe, metaFicha, primerH1, textoPlano, comprobacion, cerrar,
@@ -73,6 +74,8 @@ interface Modo {
   vivaOmitir?: string[] | undefined;
   vivaSinMapa?: boolean | undefined;
   sinBoton?: boolean | undefined;
+  /** Respuesta completa de `/publicado` (mapeo real); ausente = la sintética. */
+  publicado?: unknown;
 }
 let peticionesFichas = 0;
 let peticionesIndice = 0;
@@ -94,6 +97,7 @@ beforeAll(async () => {
       peticionesPublicado++;
       const v = verificarFirma({ secreto: SECRETO, marcaTiempo: String(req.headers['x-marca-tiempo']), firma: String(req.headers['x-firma']), cuerpo: `${req.method}\n${ruta}\n${cuerpo}`, ahoraMs: Date.now() });
       if (!v.ok) return json(401, {});
+      if (modo.publicado !== undefined) return json(200, modo.publicado);
       return json(200, { documentos: Object.fromEntries(IDS.map((id) => [`producto__${id}`, {}])) });
     }
     if (ruta.startsWith('/api/disponibilidad')) {
@@ -536,5 +540,18 @@ describe('extractores y comparadores puros', () => {
       etiquetas(html, 'p'); textoPlano(html); atributos(html.slice(0, 300_000));
     }
     expect(Date.now() - t0).toBeLessThan(8000);
+  });
+});
+
+describe('certificar con negocio publicado (mapeo real)', () => {
+  it('la huella coincide: la certificación regenera con el mismo mapeo y no hay diferencias en huella', async () => {
+    modo.publicado = publicadoReal();
+    const envReal = { ...env, MEDIOS_BASE_URL: `${MEDIOS_REAL}/`, SITIO_NEGOCIO: SECRETO_NEGOCIO };
+    const disponibilidad = { p0: false };
+    const contenido = contenidoDesdePublicado(modo.publicado, JSON.parse(SECRETO_NEGOCIO), { origen: ORIGEN, origenMedios: MEDIOS_REAL, baseMedios: MEDIOS_REAL, appCheck: null, recaptchaSiteKey: null, disponibilidad });
+    modo.version = contenido as never;
+    const r = await ejecutar([...args], envReal, { calcularFirma, mapear: contenidoDesdePublicado as never, versionContenido: versionContenido as unknown as (c: unknown) => unknown }, fetchLocal, red);
+    expect(r.salida).toContain('huella: ok');
+    expect(r.salida).not.toContain('diferencias: 1 en huella');
   });
 });

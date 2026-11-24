@@ -71,7 +71,7 @@ export function urlMedioSegura(url: string, origenes: readonly (string | null)[]
  * Sin expresión regular: la entrada es contenido editable y un patrón con varios `+` adyacentes
  * a `.` es cuadrático (ReDoS).
  */
-function esCorreoSimple(correo: string): boolean {
+export function esCorreoSimple(correo: string): boolean {
   if (correo.length === 0 || correo.length > 254 || /[\s<>"]/.test(correo)) return false;
   const arroba = correo.indexOf('@');
   if (arroba <= 0 || arroba !== correo.lastIndexOf('@')) return false;
@@ -447,6 +447,11 @@ export function validarNegocio(entrada: unknown, origenes: readonly (string | nu
   const enlacesPermitidos = l.lista(o['enlacesPermitidos'], 'negocio.enlacesPermitidos', 20).map((h, i) => {
     if (typeof h !== 'string' || !RE_HOST.test(h)) {
       l.falla(`negocio.enlacesPermitidos[${i}]`, 'debe ser un nombre de anfitrión');
+      return '';
+    }
+    // Mismo criterio que el nivel estricto de la consola: ni localhost ni direcciones IP (última etiqueta numérica).
+    if (h === 'localhost' || /^[0-9]+$/.test(h.slice(h.lastIndexOf('.') + 1))) {
+      l.falla(`negocio.enlacesPermitidos[${i}]`, 'no se admite una dirección IP ni localhost');
       return '';
     }
     return h;

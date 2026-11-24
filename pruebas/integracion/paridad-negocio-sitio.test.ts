@@ -7,8 +7,9 @@
 //
 // Casos en que difieren en la dirección segura (la consola rechaza y `urlEnlaceSegura` acepta): ver el arreglo `MAS_ESTRICTA` más abajo
 // (se fijan como tales en una prueba, para que un cambio de comportamiento sea visible).
+import { construirPublicado } from '@novutienda/consola';
 import { LIMITES_NEGOCIO, IDS_ICONO_NEGOCIO, enlacePermitidoEnSitio, evaluarNegocioSitio, validarNegocioSitio } from '@novutienda/consola/negocio';
-import { IDS_ICONO, LARGO_MAXIMO_ENLACE, urlEnlaceSegura, validarNegocio } from '@novutienda/website';
+import { IDS_ICONO, LARGO_MAXIMO_ENLACE, negocioEfectivo, urlEnlaceSegura, validarNegocio } from '@novutienda/website';
 import { LIMITES_TEXTOS_SITIO } from '@novutienda/nucleo';
 import { describe, expect, it } from 'vitest';
 
@@ -257,7 +258,11 @@ describe('heredado: límites de texto con el mismo veredicto que el sitio', () =
     const hs = (n: number): string[] => Array.from({ length: n }, (_, i) => `h${String(i)}.ejemplo.test`);
     for (const n of [0, 1, 20, 21]) expect(mismoVeredicto(con(base(), 'enlacesPermitidos', hs(n))), String(n)).toBe(n <= 20);
     for (const h of ['ejemplo.test', 'a.b', 'a-b.c-d', 'sinpunto', 'EJEMPLO.test', '-a.b', 'a-.b', 'a..b', '.a.b', 'a.b.', 'a b.c', 'a.b/c', 'a.b:80', '127.0.0.1', 'localhost', 'ñ.test', '', 'a.b.c.d.e']) {
-      expect(mismoVeredicto(con(base(), 'enlacesPermitidos', [h])), h).toBe(/^[a-z0-9]([a-z0-9-]*[a-z0-9])?(\.[a-z0-9]([a-z0-9-]*[a-z0-9])?)+$/.test(h));
+      // El sitio ya rechaza IP y localhost como el nivel estricto de la consola; el nivel heredado todavía los acepta.
+      const esperado = /^[a-z0-9]([a-z0-9-]*[a-z0-9])?(\.[a-z0-9]([a-z0-9-]*[a-z0-9])?)+$/.test(h) && h !== '127.0.0.1' && h !== 'localhost';
+      expect(veredictoSitio(con(base(), 'enlacesPermitidos', [h])), h).toBe(esperado);
+      if (h === '127.0.0.1' || h === 'localhost') expect(evaluarNegocioSitio(con(base(), 'enlacesPermitidos', [h]), 'estricto').errores.length, h).toBeGreaterThan(0);
+      else expect(veredictoConsola(con(base(), 'enlacesPermitidos', [h])), h).toBe(esperado);
     }
     for (const malo of [[5], [null], 'x', null]) expect(mismoVeredicto(con(base(), 'enlacesPermitidos', malo)), JSON.stringify(malo)).toBe(false);
   });
@@ -338,6 +343,56 @@ describe('diferencias conocidas, fijadas como tales', () => {
     for (const ancho of [15, 16, 8000, 8001, Number.NaN, '100']) {
       expect(veredictoConsola(con(base(), 'identidad.foto', { url: '/a.webp', alt: 'F', versiones: [{ url: '/b.webp', ancho }] })), String(ancho))
         .toBe(veredictoSitio(con(base(), 'identidad.foto', { url: '/a.webp', alt: 'F', versiones: [{ url: '/b.webp', ancho }] })));
+    }
+  });
+});
+
+describe('lo que publica la consola lo acepta el sitio (negocio publicado + las 5 claves del respaldo)', () => {
+  const publicadoDe = (datos: Json, medios = new Map()): { negocio: Json; advertencias: readonly string[] } => {
+    const negocio = evaluarNegocioSitio(datos, 'estricto').negocio;
+    expect(negocio).not.toBeNull();
+    const p = construirPublicado({
+      productos: [], fichas: new Map(), medios, config: {} as never, secciones: [], carruseles: [],
+      negocio: { datos: negocio!, version: 4, actualizadoEn: '2026-11-23T10:00:00.000Z' },
+    });
+    return { negocio: p.negocio as unknown as Json, advertencias: p.advertencias };
+  };
+  // Respaldo del entorno (D8): las 4 claves que la consola no guarda y `enlacesPermitidos`, que sale siempre de aquí.
+  const respaldo = { mercados: ['BO', 'AR'], mercadoInicial: 'BO', logo: null, whatsappTienda: null, enlacesPermitidos: ['ejemplo.test'] };
+  const candidatoDe = (negocio: Json): unknown => negocioEfectivo({ negocio }, respaldo, 'https://medios.ejemplo.test').candidato;
+
+  it('con foto de identidad heredada (url)', () => {
+    const { negocio } = publicadoDe(con(base(), 'identidad.foto', { url: '/a.webp', alt: 'Foto', versiones: [{ url: '/b.webp', ancho: 480 }] }));
+    expect(validarNegocio(candidatoDe(negocio), ['https://medios.ejemplo.test']).ok).toBe(true);
+  });
+
+  it('lema vacío con teléfono, correo y horario en null', () => {
+    const { negocio } = publicadoDe({ ...base(), lema: '', telefono: null, correo: null, horario: null });
+    const r = validarNegocio(candidatoDe(negocio), ['https://medios.ejemplo.test']);
+    expect(r.ok, JSON.stringify(r)).toBe(true);
+    if (r.ok) { expect(r.negocio.lema).toBe(''); expect(r.negocio.telefono).toBeNull(); expect(r.negocio.correo).toBeNull(); expect(r.negocio.horario).toBeNull(); }
+  });
+
+  it('sin foto, con mapa y horario nulo', () => {
+    const { negocio } = publicadoDe({ ...con(base(), 'horario', null), mapa: 'https://maps.app.goo.gl/AbC123' });
+    const r = validarNegocio(candidatoDe(negocio), ['https://medios.ejemplo.test']);
+    expect(r.ok).toBe(true);
+    if (r.ok) { expect(r.negocio.horario).toBeNull(); expect(r.negocio.mapa).toBe('https://maps.app.goo.gl/AbC123'); }
+  });
+});
+
+describe('lo que guardarNegocioSitio puede guardar en el nivel heredado lo acepta validarNegocio', () => {
+  it('correo: todo lo que el nivel heredado acepta (5 a 120 caracteres) lo acepta el sitio', () => {
+    for (const c of ['sin-arroba-aqui', 'a@@b.co', 'a b@c.co', 'a@bcd', 'hola@ejemplo.test', 'x'.repeat(5), 'x'.repeat(120), 'a@b.co?bcc=x@evil.test']) {
+      const x = con(base(), 'correo', c);
+      expect(veredictoConsola(x), `consola ${c.slice(0, 10)}`).toBe(true);
+      expect(veredictoSitio(x), `sitio ${c.slice(0, 10)}`).toBe(true);
+    }
+  });
+  it('un negocio heredado completo y válido lo acepta el sitio, también con correo y horario nulos y lema vacío', () => {
+    for (const x of [base(), { ...base(), lema: '', telefono: null, correo: null, horario: null }]) {
+      expect(veredictoConsola(x)).toBe(true);
+      expect(veredictoSitio(x)).toBe(true);
     }
   });
 });

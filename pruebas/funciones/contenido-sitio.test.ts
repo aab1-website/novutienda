@@ -5,6 +5,8 @@ import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { afterAll, beforeAll, beforeEach, describe, expect, it } from 'vitest';
 import { calcularFirma, verificarFirma } from '@novutienda/nucleo/servidor';
+import { contenidoDesdePublicado, versionContenido } from '../../plataforma/registro.js';
+import { MEDIOS_REAL, SECRETO_NEGOCIO, publicadoReal } from './negocio-publicado-apoyo.js';
 import { calcularFirmaLocal, cambiarEstado, cerrarCubiertos, cerrarRezagados, ejecutar, generarContenido, idsValidos, leerDisponibilidad, normalizarUrl, pedirFirmado, trabajoPendiente, trabajosPendientes } from '../../scripts/contenido-sitio.mjs';
 
 // Valores de prueba sin aspecto de clave (gitleaks): armados en ejecución.
@@ -14,7 +16,7 @@ const TENANT = 'tienda-a';
 type TrabajoCola = { id: string; estado: string; version?: unknown; solicitadaEnMs?: unknown };
 let servidor: Server;
 let url = '';
-let modo: { estado?: number; pendientes?: unknown; productos?: number; sinFirmaValida?: boolean; redirigir?: boolean; disponibilidadEstado?: number; repetido?: boolean; cola?: TrabajoCola[] } = {};
+let modo: { estado?: number; pendientes?: unknown; productos?: number; sinFirmaValida?: boolean; redirigir?: boolean; disponibilidadEstado?: number; repetido?: boolean; cola?: TrabajoCola[]; publicado?: unknown } = {};
 const peticiones: { metodo: string; ruta: string; cuerpo: string }[] = [];
 
 const leer = (req: IncomingMessage) => new Promise<string>((ok) => { let t = ''; req.on('data', (c) => (t += c)); req.on('end', () => ok(t)); });
@@ -58,6 +60,7 @@ beforeAll(async () => {
     if (ruta.startsWith('/api/sitio/v1/reconstrucciones?')) return responder(200, modo.pendientes ?? { trabajos: [{ id: 'job-1' }, { id: 'job-2' }] });
     if (ruta.endsWith('/estado')) return responder(200, { repetido: false });
     if (ruta.startsWith('/api/sitio/v1/publicado')) {
+      if (modo.publicado !== undefined) return responder(200, modo.publicado);
       const documentos: Record<string, unknown> = { 'config__sitio': {} };
       for (let i = 0; i < (modo.productos ?? 3); i++) documentos[`producto__p${i}`] = { nombre: `Producto-privado-${i}` };
       return responder(200, { documentos });
@@ -731,5 +734,47 @@ describe('causas de la falla (generar --causas y estado fallida)', () => {
     const r = await ejecutar(['estado', 'job-1', 'fallida', ...args], env, undefined, fetchLocal, red);
     expect(r.codigo).toBe(0);
     expect(cuerposEstado()).toEqual([{ tenantId: TENANT, estado: 'fallida' }]);
+  });
+});
+
+describe('generar con negocio publicado (mapeo real)', () => {
+  const envReal = { ...env, MEDIOS_BASE_URL: `${MEDIOS_REAL}/`, SITIO_NEGOCIO: SECRETO_NEGOCIO };
+  const real = { ...base, mapear: contenidoDesdePublicado as never };
+
+  it('el publicado gana, la foto sale con su URL, hay aviso de origen sin valores y la huella se calcula sin errores', async () => {
+    modo.publicado = publicadoReal();
+    const r = await generarContenido({ ...real, env: envReal });
+    const c = r.contenido as { config: { nombre: string; horario: string | null; mercados: string[] }; identidad: { foto: { url: string } | null } };
+    expect(c.config.nombre).toBe('Tienda de Prueba');
+    expect(c.config.horario).toBe('Lunes a sábado');
+    expect(c.config.mercados).toEqual(['BO', 'AR']);
+    expect(c.identidad.foto?.url).toBe(`${MEDIOS_REAL}/m/identidad/960.webp`);
+    expect(r.origenNegocio).toBe('negocio: publicado v3');
+    expect(r.advertencias).toEqual([]);
+    const huella = versionContenido(r.contenido as never) as unknown as { huella: string; huellaSinDisponibilidad: string };
+    expect(huella.huella).toMatch(/^[0-9a-f]{64}$/);
+    expect((versionContenido((await generarContenido({ ...real, env: envReal })).contenido as never) as unknown as { huella: string }).huella).toBe(huella.huella);
+  });
+
+  it('ejecutar generar imprime el origen en una línea propia y mantiene «advertencias del mapeo: 0»', async () => {
+    modo.publicado = publicadoReal();
+    const salida = join(mkdtempSync(join(tmpdir(), 'origen-negocio-')), 'c.json');
+    const r = await ejecutar(['generar', '--salida', salida, ...args], envReal, { calcularFirma, mapear: contenidoDesdePublicado as never }, fetchLocal);
+    expect(r.codigo).toBe(0);
+    expect(r.salida).toBe('contenido generado: 1 productos\nnegocio: publicado v3\nadvertencias del mapeo: 0');
+    modo.publicado = (() => { const p = publicadoReal(); delete (p.documentos as Record<string, unknown>)['negocio']; return p; })();
+    const r2 = await ejecutar(['generar', '--salida', salida, ...args], envReal, { calcularFirma, mapear: contenidoDesdePublicado as never }, fetchLocal);
+    expect(r2.salida).toBe('contenido generado: 1 productos\nnegocio: respaldo del entorno\nadvertencias del mapeo: 0');
+  });
+
+  it('un negocio publicado inválido: el error lleva rutas documentos.negocio.*, causa contenido_invalido y ningún valor', async () => {
+    const p = publicadoReal();
+    (p.documentos.negocio as Record<string, unknown>)['direccion'] = '';
+    (p.documentos.negocio as Record<string, unknown>)['nombre'] = 'Nombre-privado-'.repeat(20);
+    modo.publicado = p;
+    const error = await generarContenido({ ...real, env: envReal }).then(() => null, (e: unknown) => e as Error & { causas?: { codigo: string }[] });
+    expect(error?.message).toContain('documentos.negocio.direccion');
+    expect(error?.message).not.toContain('Nombre-privado');
+    expect(error?.causas?.map((x) => x.codigo)).toEqual(['contenido_invalido']);
   });
 });

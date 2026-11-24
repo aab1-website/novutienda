@@ -1,7 +1,7 @@
 import { describe, expect, it } from 'vitest';
 import { contenidoEjemplo } from './ejemplo.js';
 import { LIMITES_SITIO, type Producto } from './tipos.js';
-import { origenValido, urlEnlaceSegura, urlMapaSegura, urlMedioSegura, validarContenido } from './validar.js';
+import { origenValido, urlEnlaceSegura, urlMapaSegura, urlMedioSegura, validarContenido, validarNegocio } from './validar.js';
 
 const clon = (): Record<string, unknown> => JSON.parse(JSON.stringify(contenidoEjemplo)) as Record<string, unknown>;
 const errores = (c: unknown): readonly string[] => {
@@ -256,5 +256,30 @@ describe('enlace al mapa (Google Maps)', () => {
     const e = errores(mal);
     expect(e.some((x) => x.startsWith('config.mapa:'))).toBe(true);
     expect(e.join()).not.toContain('alert');
+  });
+});
+
+describe('validarNegocio: correo y anfitriones', () => {
+  const negocio = (extra: Record<string, unknown> = {}): Record<string, unknown> => ({
+    nombre: 'Tienda de Ejemplo', lema: '', logo: null, whatsappTienda: null, telefono: null, correo: null, direccion: 'Calle Ficticia 123', horario: null,
+    mercados: ['BO'], mercadoInicial: 'BO', enlacesPermitidos: [], portada: contenidoEjemplo.portada, beneficios: contenidoEjemplo.beneficios,
+    identidad: { ...contenidoEjemplo.identidad, foto: null }, textoPrivacidad: ['Texto.'], categorias: {}, destacados: [], ...extra,
+  });
+  const fallas = (x: Record<string, unknown>): readonly string[] => { const r = validarNegocio(x); return r.ok ? [] : r.errores; };
+
+  it('el negocio base es válido, con correo null y lista vacía', () => {
+    expect(fallas(negocio())).toEqual([]);
+  });
+  it('correo: se valida solo por largo (5 a 120), como el nivel heredado de la consola; el enlace mailto se decide al mostrarlo', () => {
+    for (const c of ['ventas@sutienda.com', 'sin-arroba-aqui']) expect(fallas(negocio({ correo: c })), c).toEqual([]);
+    for (const c of ['a@b', 'x'.repeat(121)]) expect(fallas(negocio({ correo: c })).some((x) => x.startsWith('negocio.correo:')), c).toBe(true);
+  });
+  it('enlacesPermitidos rechaza IP y localhost; acepta nombres de anfitrión', () => {
+    expect(fallas(negocio({ enlacesPermitidos: ['ejemplo.test', 'sub.ejemplo.test'] }))).toEqual([]);
+    for (const h of ['127.0.0.1', '10.0.0.1', '192.168.1.10', 'localhost', 'host.123']) {
+      const e = fallas(negocio({ enlacesPermitidos: [h] }));
+      expect(e.some((x) => x.startsWith('negocio.enlacesPermitidos[0]:')), h).toBe(true);
+      expect(e.join()).not.toContain(h);
+    }
   });
 });

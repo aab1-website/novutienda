@@ -80,6 +80,10 @@ Solo staging. El CI principal (`ci-node-firebase.yml`) ya no despliega el sitio 
 
 - `SITIOS_TENANT`: JSON `[{ "clave", "tenant", "sitio", "url" }]`. `clave` `^[a-z0-9]{1,12}$` y única (es lo único que se imprime); `tenant` id del núcleo; `sitio` `^[a-z0-9-]{6,30}$` y único; `url` https sin ruta. Ejemplo: `[{"clave":"t1","tenant":"<tenant>","sitio":"<sitio>","url":"https://<sitio>.web.app"}]`.
 - `SITIO_NEGOCIO_<CLAVE>`: JSON con los textos del negocio de ese sitio. Sin él, el paso `generar` falla.
+  - **Qué manda (Negocio desde lo publicado).** Si el tenant tiene `publicado/negocio`, ese documento gana entero en los campos de la consola (nombre, lema, teléfono, correo, dirección, horario, mapa, portada, beneficios, identidad, privacidad, categorías, destacados e institucional); del secreto salen solo `mercados`, `mercadoInicial`, `logo`, `whatsappTienda` y `enlacesPermitidos` (D8: la lista de anfitriones permitidos la cambia solo NovuTienda, por operación). Sin `publicado/negocio`, el secreto completo, como antes. El secreto sigue siendo obligatorio.
+  - **Publicado inválido:** `generar` falla con `contenido_invalido` y rutas `documentos.negocio.*` (sin valores); el sitio anterior sigue en línea. Se corrige en «Textos del sitio» y se vuelve a publicar.
+  - **Origen:** `generar` imprime una línea propia, `negocio: publicado vN` o `negocio: respaldo del entorno`, sin valores. No cuenta como advertencia.
+  - **Ciclo:** guardar en el panel no reconstruye; el sitio cambia tras Publicar y la reconstrucción siguiente.
 - Medios: `MEDIOS_BASE_URL` puede llevar ruta (bucket, p. ej. `https://<host>/<bucket>`). El sitio separa `origenMedios` (solo el origen; sirve para la CSP y la validación) de `baseMedios` (la URL completa de las fotos) (#69, #70). El host de medios se declara en `hostsPermitidos` del build (#71).
 - Icono del sitio: es el logo del negocio; sin logo no hay icono (#71). El logo de `t1` aún no está cargado.
 - `SITIO_RECONSTRUCCION_SECRETO`: el mismo valor que lee la función `api`; compartido entre tenants hasta el PR D (derivación por tenant).

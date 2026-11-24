@@ -1,6 +1,6 @@
 import { MAX_CATEGORIAS_SITIO } from '@novutienda/nucleo';
 import { describe, expect, it } from 'vitest';
-import { ErrorContenidoPublicado, contenidoDesdePublicado, iconoDeCategoria, nombreDeCategoria, type EntornoSitio } from './desde-publicado.js';
+import { ErrorContenidoPublicado, contenidoDesdePublicado, iconoDeCategoria, negocioEfectivo, nombreDeCategoria, type EntornoSitio } from './desde-publicado.js';
 import { contenidoEjemplo } from './ejemplo.js';
 import { urlMedioSegura, validarNegocio } from './validar.js';
 
@@ -466,5 +466,106 @@ describe('campos opcionales en el contenido publicado', () => {
     expect(c.productos.find((p) => p.id === 'p-tres')!.caracteristicas).toEqual(['uno', 'dos', 'tres', 'cuatro', 'cinco', 'seis', 'siete', 'ocho']);
     expect('caracteristicas' in c.productos.find((p) => p.id === 'p-cuatro')!).toBe(false);
     expect(avisos.filter((a) => a.includes('caracteristicas')).length).toBeGreaterThanOrEqual(4);
+  });
+});
+
+describe('contenidoDesdePublicado: negocio desde lo publicado', () => {
+  // Lo que escribe la consola en `publicado/negocio`: sin mercados, mercadoInicial, logo ni whatsappTienda; con metadatos de versión.
+  const publicadoNegocio = (extra: Record<string, unknown> = {}) => {
+    const resto: Record<string, unknown> = { ...negocioBase() };
+    for (const k of ['mercados', 'mercadoInicial', 'logo', 'whatsappTienda']) delete resto[k];
+    return { ...resto, nombre: 'Nombre Publicado', direccion: 'Dirección Publicada 9', telefono: '+59122123456', horario: 'Lunes a sábado', version: 7, actualizadoEn: '2026-11-23T10:00:00.000Z', por: 'uid-x', ...extra };
+  };
+  const secreto = () => ({
+    ...negocioBase(), nombre: 'Nombre Secreto', direccion: 'Dirección Secreta 1', telefono: '+59100000000', horario: 'Horario del secreto',
+    mapa: 'https://maps.app.goo.gl/Secreto', whatsappTienda: '59171111111', mercados: ['BO'], mercadoInicial: 'BO',
+  });
+  const con = (n: Record<string, unknown>, avisos?: string[]) => contenidoDesdePublicado(respuesta({ negocio: n }), secreto(), entorno, avisos);
+
+  it('sin negocio publicado, la salida es idéntica a la de hoy (el origen sale aparte)', () => {
+    const avisos: string[] = [];
+    const origenes: string[] = [];
+    const a = contenidoDesdePublicado(respuesta(), secreto(), entorno, avisos, (l) => origenes.push(l));
+    expect(avisos).toEqual([]);
+    expect(origenes).toEqual(['negocio: respaldo del entorno']);
+    expect(a.config.nombre).toBe('Nombre Secreto');
+    const mapa = a.config.mapa;
+    expect(mapa).toBe('https://maps.app.goo.gl/Secreto');
+    expect(a.config.horario).toBe('Horario del secreto');
+  });
+
+  it('con negocio publicado ganan horario, dirección, teléfono y nombre; se avisa la versión', () => {
+    const avisos: string[] = [];
+    const origenes: string[] = [];
+    const c = contenidoDesdePublicado(respuesta({ negocio: publicadoNegocio() }), secreto(), entorno, avisos, (l) => origenes.push(l));
+    expect(c.config.nombre).toBe('Nombre Publicado');
+    expect(c.config.direccion).toBe('Dirección Publicada 9');
+    expect(c.config.telefono).toBe('+59122123456');
+    expect(c.config.horario).toBe('Lunes a sábado');
+    expect(origenes).toEqual(['negocio: publicado v7']);
+    expect(avisos).toEqual([]); // el origen no cuenta como advertencia
+  });
+
+  it('horario: null publicado da null aunque el secreto tenga horario', () => {
+    expect(con(publicadoNegocio({ horario: null })).config.horario).toBeNull();
+  });
+
+  it('sin mapa publicado no hay mapa, aunque el secreto lo tenga', () => {
+    expect('mapa' in con(publicadoNegocio()).config).toBe(false);
+    expect(con(publicadoNegocio({ mapa: 'https://maps.app.goo.gl/Publicado' })).config.mapa).toBe('https://maps.app.goo.gl/Publicado');
+  });
+
+  it('mercados, mercadoInicial, logo, whatsappTienda y enlacesPermitidos salen del secreto', () => {
+    const c = con(publicadoNegocio());
+    expect(c.config.mercados).toEqual(['BO']);
+    expect(c.config.mercadoInicial).toBe('BO');
+    expect(c.config.whatsappTienda).toBe('59171111111');
+  });
+
+  it('D8: una lista de enlacesPermitidos publicada distinta se ignora; manda la del secreto', () => {
+    const { candidato } = negocioEfectivo({ negocio: publicadoNegocio({ enlacesPermitidos: ['otro.invalid'] }) }, secreto(), MEDIOS);
+    expect((candidato as Record<string, unknown>)['enlacesPermitidos']).toEqual(['ejemplo.invalid']);
+  });
+
+  it('un publicado con __proto__, constructor o prototype no contamina el candidato', () => {
+    const malo = JSON.parse('{"__proto__":{"contaminado":true},"constructor":"x","prototype":"y"}') as Record<string, unknown>;
+    const { candidato } = negocioEfectivo({ negocio: { ...publicadoNegocio(), ...malo } }, secreto(), MEDIOS);
+    const o = candidato as Record<string, unknown>;
+    expect(Object.getPrototypeOf(o)).toBeNull();
+    for (const k of ['__proto__', 'constructor', 'prototype']) expect(Object.keys(o)).not.toContain(k);
+    expect(({} as Record<string, unknown>)['contaminado']).toBeUndefined();
+  });
+
+  it('negocioEfectivo quita version, actualizadoEn y por, e ignora las 5 claves del respaldo si el publicado las trajera', () => {
+    const { candidato, publicado } = negocioEfectivo({ negocio: publicadoNegocio({ mercados: ['AR'] }) }, secreto(), MEDIOS);
+    expect(publicado).toBe(true);
+    const o = candidato as Record<string, unknown>;
+    for (const k of ['version', 'actualizadoEn', 'por']) expect(k in o).toBe(false);
+    expect(o['mercados']).toEqual(['BO']);
+    expect(o['enlacesPermitidos']).toEqual(['ejemplo.invalid']);
+  });
+
+  it('la foto de identidad publicada como medio sale con su URL', () => {
+    const base = publicadoNegocio();
+    const c = con({ ...base, identidad: { ...negocioBase().identidad, foto: { ...medioFoto('m/identidad'), alt: 'Foto del local' } } });
+    expect(c.identidad.foto?.url).toBe(`${MEDIOS}/m/identidad/960.webp`);
+    expect(c.identidad.foto?.alt).toBe('Foto del local');
+  });
+
+  it('un publicado inválido lanza con rutas documentos.negocio.* y sin valores', () => {
+    let error: unknown;
+    try { con(publicadoNegocio({ direccion: '', correo: 'x'.repeat(500), nombre: 'Nombre Privado '.repeat(20) })); } catch (e) { error = e; }
+    expect(error).toBeInstanceOf(ErrorContenidoPublicado);
+    const e = error as ErrorContenidoPublicado;
+    expect(e.message).toContain('documentos.negocio.direccion');
+    expect(e.message).toContain('documentos.negocio.correo');
+    expect(e.message).not.toContain('Nombre Privado');
+    expect(e.message).not.toMatch(/(^|[^.])negocio\.direccion/);
+    expect(e.message).not.toContain('x'.repeat(500));
+    expect(e.causas.map((x) => x.codigo)).toEqual(['contenido_invalido']);
+  });
+
+  it('un publicado que no es objeto falla sin valores', () => {
+    expect(() => con('texto privado' as never)).toThrow(/documentos\.negocio/);
   });
 });

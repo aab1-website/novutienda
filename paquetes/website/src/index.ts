@@ -3,7 +3,7 @@ export { manifiestoWebsite } from './manifiesto.js';
 // Contenido
 export * from './contenido/tipos.js';
 export * from './contenido/validar.js';
-export { contenidoDesdePublicado, ErrorContenidoPublicado, type EntornoSitio } from './contenido/desde-publicado.js';
+export { contenidoDesdePublicado, negocioEfectivo, ErrorContenidoPublicado, type EntornoSitio } from './contenido/desde-publicado.js';
 export * from './contenido/consultas.js';
 export { contenidoEjemplo } from './contenido/ejemplo.js';
 
@@ -15,6 +15,7 @@ export { cssPlantillas } from './plantillas/css.js';
 // Lógica pura del cliente
 export * from './lib/dinero.js';
 export * from './lib/whatsapp.js';
+export * from './lib/correo.js';
 export * from './lib/carrito.js';
 export * from './lib/almacen.js';
 export * from './lib/mercado.js';

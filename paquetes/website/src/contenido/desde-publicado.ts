@@ -246,23 +246,77 @@ function bloque(b: Obj, base: string, rutaBloque: string, permitidos: readonly s
   }
 }
 
+/** Claves del negocio que salen siempre del respaldo del entorno: las 4 que la consola no guarda y `enlacesPermitidos` (D8: solo NovuTienda la cambia, por operación). */
+const CLAVES_DEL_RESPALDO = ['mercados', 'mercadoInicial', 'logo', 'whatsappTienda', 'enlacesPermitidos'] as const;
+/** Metadatos de versión del documento guardado: no son del sitio. */
+const CLAVES_DE_CONTROL = ['version', 'actualizadoEn', 'por'] as const;
+
+export interface NegocioEfectivo {
+  /** Candidato a `validarNegocio`: publicado entero + las 5 claves del respaldo; sin `negocio` publicado, el respaldo tal cual. */
+  readonly candidato: unknown;
+  /** `true` si el candidato parte de `documentos.negocio`. */
+  readonly publicado: boolean;
+}
+
+/**
+ * Datos del negocio que usa el sitio. Si la respuesta trae `documentos.negocio`, ese documento gana ENTERO en los campos de la consola
+ * (sin mezclar campo por campo: un `horario: null` publicado no se rellena con el del respaldo ni aparece un `mapa` que no se publicó) y del
+ * respaldo (secreto del entorno) salen solo `mercados`, `mercadoInicial`, `logo`, `whatsappTienda` y `enlacesPermitidos` (D8). Sin `negocio` publicado, el respaldo
+ * completo, como siempre. La foto de identidad publicada como medio (`versiones` sin `url`) se convierte con `foto`.
+ * `origen` (opcional) recibe una línea sin valores: `negocio: publicado vN` o `negocio: respaldo del entorno`. No es una advertencia.
+ */
+export function negocioEfectivo(docs: Obj | undefined, respaldo: unknown, base: string, origen?: (linea: string) => void): NegocioEfectivo {
+  const pub = docs?.['negocio'];
+  if (pub === undefined) {
+    origen?.('negocio: respaldo del entorno');
+    return { candidato: respaldo, publicado: false };
+  }
+  if (!esObj(pub)) return { candidato: pub, publicado: true };
+  const del = esObj(respaldo) ? respaldo : {};
+  // Sin prototipo y sin claves de prototipo: un publicado con `__proto__` no puede contaminar el candidato.
+  const salida: Record<string, unknown> = Object.create(null) as Record<string, unknown>;
+  for (const [k, v] of Object.entries(pub)) {
+    if (k === '__proto__' || k === 'constructor' || k === 'prototype') continue;
+    if ((CLAVES_DE_CONTROL as readonly string[]).includes(k) || (CLAVES_DEL_RESPALDO as readonly string[]).includes(k)) continue;
+    salida[k] = v;
+  }
+  for (const k of CLAVES_DEL_RESPALDO) if (k in del) salida[k] = del[k];
+  const ide = salida['identidad'];
+  if (esObj(ide) && esObj(ide['foto']) && !('url' in ide['foto'])) {
+    salida['identidad'] = { ...ide, foto: foto(ide['foto'], base) ?? null };
+  }
+  origen?.(typeof pub['version'] === 'number' ? `negocio: publicado v${String(pub['version'])}` : 'negocio: publicado');
+  return { candidato: salida, publicado: true };
+}
+
+/** Los errores del negocio publicado nombran `documentos.negocio.*`; los de las 5 claves del respaldo conservan `negocio.*`. */
+function rutaPublicada(e: string): string {
+  if (!e.startsWith('negocio')) return e;
+  const resto = e.slice('negocio'.length);
+  if ((CLAVES_DEL_RESPALDO as readonly string[]).some((k) => resto.startsWith(`.${k}`))) return e;
+  return `documentos.${e}`;
+}
+
 /**
  * `advertencias` (opcional): si se pasa un arreglo, se le agregan avisos no fatales del mapeo (enlaces de fotos de carrusel y de
  * bloques de enlaces descartados; bloques y secciones que quedan vacíos se omiten). Cada aviso nombra solo la ruta del campo, nunca el valor. Quien llama decide si los imprime.
  *
+ * `origenNegocio` (opcional): recibe de dónde salió el negocio, sin valores (no cuenta como advertencia).
+ *
  * @throws ErrorContenidoPublicado si la respuesta, el negocio o el resultado no son válidos.
  */
-export function contenidoDesdePublicado(respuesta: unknown, negocio: unknown, entorno: EntornoSitio, advertencias?: string[]): Contenido {
+export function contenidoDesdePublicado(respuesta: unknown, negocio: unknown, entorno: EntornoSitio, advertencias?: string[], origenNegocio?: (linea: string) => void): Contenido {
   const errores: string[] = [];
   const sinBarras = (t: string): string => { let r = t; while (r.endsWith('/')) r = r.slice(0, -1); return r; };
   const origenMedios = sinBarras(entorno.origenMedios);
   const base = sinBarras(entorno.baseMedios ?? entorno.origenMedios);
 
-  const n = validarNegocio(negocio, [entorno.origen, origenMedios]);
-  if (!n.ok) errores.push(...n.errores);
+  const docs = esObj(respuesta) && esObj(respuesta['documentos']) ? respuesta['documentos'] : undefined;
+  const efectivo = negocioEfectivo(docs, negocio, base, origenNegocio);
+  const n = validarNegocio(efectivo.candidato, [entorno.origen, origenMedios]);
+  if (!n.ok) errores.push(...(efectivo.publicado ? n.errores.map(rutaPublicada) : n.errores));
   const neg = n.ok ? n.negocio : undefined;
 
-  const docs = esObj(respuesta) && esObj(respuesta['documentos']) ? respuesta['documentos'] : undefined;
   if (docs === undefined) errores.push('respuesta.documentos: debe ser un objeto');
   const redondeo = esObj(respuesta) ? respuesta['redondeo'] : undefined;
   if (!esObj(redondeo)) errores.push('respuesta.redondeo: debe ser un objeto');
