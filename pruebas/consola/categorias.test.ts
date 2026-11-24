@@ -2,7 +2,7 @@
 import { describe, expect, it } from 'vitest';
 import { IDS_ICONO_NEGOCIO, LIMITES_NEGOCIO, validarNegocioSitio } from '@novutienda/consola/negocio';
 import {
-  aplicarCategoria, claveDesdeNombre, ICONOS_CATEGORIA, leerCategorias, moverCategoria, revisarCategoria, TOPES_CATEGORIAS, unirCategorias,
+  aplicarCategoria, claveDesdeNombre, mensajeDeCategorias, ICONOS_CATEGORIA, leerCategorias, moverCategoria, revisarCategoria, TOPES_CATEGORIAS, unirCategorias,
 } from '@novutienda/panel/consola';
 
 const negocio = {
@@ -64,5 +64,15 @@ describe('categorías del panel', () => {
     expect(revisarCategoria({ nombre: 'Radios', icono: 'pin' }, { negocio, claves: ['linea-blanca'] })).toEqual({});
     const lleno = { ...negocio, categorias: Object.fromEntries(Array.from({ length: 40 }, (_, i) => [`c-${String(i)}`, { nombre: 'C', icono: 'pin' }])) };
     expect(revisarCategoria({ nombre: 'Otra', icono: 'pin' }, { negocio: lleno, claves: [] }).categorias).toBeDefined();
+    // Editar una «sin nombre propio» suma una categoría: con 40 guardadas tampoco cabe; con 39 sí.
+    expect(revisarCategoria({ nombre: 'Radios', icono: 'pin' }, null, lleno).categorias).toBeDefined();
+    expect(revisarCategoria({ nombre: 'Radios', icono: 'pin' }, null, negocio)).toEqual({});
+  });
+  it('los errores del servidor por categoría se dicen en palabras de usuaria', () => {
+    const m = mensajeDeCategorias(['categorias.tv.icono: ícono fuera de la lista cerrada', 'categorias.tv.orden: debe ser un entero de 0 a 39', 'categorias: máximo 40 categorías'], negocio);
+    expect(m).toContain('La categoría «Televisores» no se pudo guardar: elija un ícono de la lista.');
+    expect(m).toContain('Use Subir o Bajar');
+    expect(m).toContain('el máximo es 40');
+    expect(mensajeDeCategorias(['portada.titulo: debe ser un texto'], negocio)).toBeNull();
   });
 });

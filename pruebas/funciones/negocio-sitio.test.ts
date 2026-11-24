@@ -273,6 +273,42 @@ describe.skipIf(!hayEmulador)('datos del negocio del sitio (callable consola, em
     expect((await h.firestore.doc(`tenants/${t}/publicado/negocio`).get()).data()?.['categorias']).toEqual(categorias);
   });
 
+  it('ciclo completo: publicar, ocultar la categoría (el producto desaparece), publicar, reactivarla y publicar (vuelve)', async () => {
+    const t = await nuevoTenant();
+    const adm = await crearUsuario(h, { rol: 'adm', tenant: t });
+    await h.db.runTransaction((tx) => crearProducto(tx, {
+      tenantId: t, operacionId: unico('prod'), por: SEMBRADOR,
+      producto: { id: 'radio-uno', nombre: 'Radio', categoria: 'radios', sku: 'SKU-2', marca: 'Marca', precioUSD: { bo: 100, ar: 100 }, activo: true, publicado: true },
+    }));
+    await h.firestore.doc(`tenants/${t}/fichasWeb/radio-uno`).set({
+      productoId: 'radio-uno', slug: 'slug-radio-uno', descripcion: 'Descripción.', garantia: '12 meses', medios: [{ medioId: 'medfototvx', alt: 'Foto' }],
+      seo: { titulo: 'SEO', descripcion: 'Descripción SEO' }, estado: 'publicado',
+    });
+    await sembrar(t);
+    const visibles = { televisores: { nombre: 'Televisores', icono: 'cuadricula' }, radios: { nombre: 'Radios', icono: 'cuadricula' } };
+    const ocultaTv = { ...visibles, televisores: { ...visibles.televisores, oculta: true } };
+    const productos = async (): Promise<string[]> => [...((await h.firestore.doc(`tenants/${t}/publicado/estado`).get()).data()?.['productos'] as string[])].sort();
+    const copia = async (id: string): Promise<boolean> => (await h.firestore.doc(`tenants/${t}/publicado/producto__${id}`).get()).exists;
+    const guardarYPublicar = async (categorias: Record<string, unknown>, versionEsperada: number): Promise<void> => {
+      const g = await accion('consola', 'guardarNegocioSitio', { negocio: negocio({ categorias, destacados: ['radio-uno'] }), versionEsperada }, adm.token, t);
+      expect(g.status, JSON.stringify(g.error)).toBe(200);
+      const p = await accion('consola', 'publicarSitio', {}, adm.token, t);
+      expect(p.status, JSON.stringify(p.error)).toBe(200);
+    };
+
+    await guardarYPublicar(visibles, 1);
+    expect(await productos()).toEqual(['radio-uno', 'tv-uno']);
+    expect(await copia('tv-uno')).toBe(true);
+
+    await guardarYPublicar(ocultaTv, 2);
+    expect(await productos()).toEqual(['radio-uno']);
+    expect(await copia('tv-uno')).toBe(false);
+
+    await guardarYPublicar(visibles, 3);
+    expect(await productos()).toEqual(['radio-uno', 'tv-uno']);
+    expect(await copia('tv-uno')).toBe(true);
+  });
+
   // Reglas de Firestore con el SDK de cliente: omitido a propósito. Esta suite no prueba reglas de Firestore (solo las de Storage,
   // con `@firebase/rules-unit-testing`); `sitio/negocio` y `publicado/negocio` caen en la matriz generada de `pruebas/reglas`.
 });

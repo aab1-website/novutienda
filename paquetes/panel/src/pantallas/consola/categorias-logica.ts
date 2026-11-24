@@ -110,6 +110,8 @@ export interface ErroresCategoria { nombre?: string; clave?: string; categorias?
 /** Revisa el nombre (y, si es nueva, su clave y el tope de categorías) antes de guardar. El servidor vuelve a validar todo. */
 export function revisarCategoria(
   e: { readonly nombre: string; readonly icono: string }, nueva: { readonly negocio: NegocioCrudo; readonly claves: readonly string[] } | null,
+  /** Negocio al editar una categoría «sin nombre propio» (la usa un producto pero no está guardada): al guardarla suma una, así que también cuenta contra el tope. */
+  negocioDeSinNombre?: NegocioCrudo,
 ): ErroresCategoria {
   const r: ErroresCategoria = {};
   const nombre = e.nombre.trim();
@@ -122,7 +124,35 @@ export function revisarCategoria(
     const clave = claveDesdeNombre(nombre);
     if (clave === '') r.nombre = 'Use al menos una letra o un número.';
     else if (nueva.claves.includes(clave)) r.nombre = 'Ya existe una categoría con ese nombre.';
-    else if (Object.keys(obj(nueva.negocio['categorias'])).length >= TOPES_CATEGORIAS.max) r.categorias = `Llegó al máximo de ${String(TOPES_CATEGORIAS.max)} categorías.`;
+    else if (Object.keys(obj(nueva.negocio['categorias'])).length >= TOPES_CATEGORIAS.max) r.categorias = topeLleno();
+  } else if (negocioDeSinNombre !== undefined && Object.keys(obj(negocioDeSinNombre['categorias'])).length >= TOPES_CATEGORIAS.max) {
+    r.categorias = topeLleno();
   }
   return r;
+}
+
+const topeLleno = (): string => `Llegó al máximo de ${String(TOPES_CATEGORIAS.max)} categorías.`;
+
+/**
+ * Mensaje en palabras de usuaria cuando el servidor rechaza el guardado con rutas `categorias.<clave>.<campo>` (nunca valores).
+ * Nombra la categoría (por el nombre que se envió) y dice qué arreglar. `null` si ningún detalle es de una categoría.
+ */
+export function mensajeDeCategorias(detalles: readonly string[], enviado: NegocioCrudo): string | null {
+  const guardadas = leerCategorias(enviado);
+  const partes: string[] = [];
+  for (const d of detalles) {
+    const ruta = d.slice(0, Math.max(0, d.indexOf(':')));
+    if (ruta === 'categorias') { partes.push(`Hay demasiadas categorías: el máximo es ${String(TOPES_CATEGORIAS.max)}.`); continue; }
+    const m = /^categorias\.([a-z0-9-]+)\.(nombre|icono|orden|oculta)$/.exec(ruta);
+    if (m === null) { if (/^categorias\[\d+\]/.test(ruta)) partes.push('Una categoría tiene una dirección de página no válida. Quite esa categoría o vuelva a crearla con otro nombre.'); continue; }
+    const nombre = `«${guardadas[m[1] ?? '']?.nombre ?? m[1] ?? ''}»`;
+    const T = TOPES_CATEGORIAS.nombre;
+    partes.push(
+      m[2] === 'nombre' ? `La categoría ${nombre} no se pudo guardar: escriba un nombre de ${String(T.min)} a ${String(T.max)} caracteres, sin etiquetas ni saltos de línea.`
+        : m[2] === 'icono' ? `La categoría ${nombre} no se pudo guardar: elija un ícono de la lista.`
+        : m[2] === 'orden' ? `La categoría ${nombre} no se pudo guardar: su posición no es válida. Use Subir o Bajar para reordenar.`
+        : `La categoría ${nombre} no se pudo guardar: vuelva a marcar si está oculta o visible.`,
+    );
+  }
+  return partes.length === 0 ? null : [...new Set(partes)].join(' ');
 }

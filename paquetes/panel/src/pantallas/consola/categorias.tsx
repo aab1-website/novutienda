@@ -1,11 +1,12 @@
 import type { JSX } from 'preact';
 import { useState } from 'preact/hooks';
+import { ErrorApi } from '../../api/errores.js';
 import { Alerta, Boton, Campo, Casilla, ConCarga, Selector, Seccion } from '../../ui/comun.js';
 import { Dialogo } from '../../ui/dialogo.js';
 import { useAccion, useCarga } from '../../ui/hooks.js';
 import { Tabla } from '../../ui/tabla.js';
 import {
-  aplicarCategoria, claveDesdeNombre, ICONOS_CATEGORIA, leerCategorias, moverCategoria, revisarCategoria, TOPES_CATEGORIAS, unirCategorias,
+  aplicarCategoria, claveDesdeNombre, ICONOS_CATEGORIA, leerCategorias, mensajeDeCategorias, moverCategoria, revisarCategoria, TOPES_CATEGORIAS, unirCategorias,
   type CategoriaVista, type NegocioCrudo,
 } from './categorias-logica.js';
 
@@ -31,13 +32,13 @@ function Edicion({ categoria, negocio, claves, guardando, error, onGuardar, onCe
   const [icono, setIcono] = useState(categoria?.icono ?? 'cuadricula');
   const [oculta, setOculta] = useState(categoria?.oculta ?? false);
   const [intento, setIntento] = useState(false);
-  const errores = intento ? revisarCategoria({ nombre, icono }, categoria === null ? { negocio, claves } : null) : {};
+  const errores = intento ? revisarCategoria({ nombre, icono }, categoria === null ? { negocio, claves } : null, categoria?.definida === false ? negocio : undefined) : {};
   const clave = categoria?.clave ?? claveDesdeNombre(nombre);
   const sucio = categoria === null ? nombre.trim() !== '' : nombre !== categoria.nombre || icono !== categoria.icono || oculta !== categoria.oculta || !categoria.definida;
 
   const guardar = (): void => {
     setIntento(true);
-    if (Object.keys(revisarCategoria({ nombre, icono }, categoria === null ? { negocio, claves } : null)).length > 0) return;
+    if (Object.keys(revisarCategoria({ nombre, icono }, categoria === null ? { negocio, claves } : null, categoria?.definida === false ? negocio : undefined)).length > 0) return;
     onGuardar(aplicarCategoria(negocio, clave, { nombre, icono, oculta }));
   };
 
@@ -79,6 +80,7 @@ function Contenido({ servicio, d, recargar }: { servicio: ServicioCategorias; d:
   const accion = useAccion();
   const [abierta, setAbierta] = useState<{ categoria: CategoriaVista | null } | null>(null);
   const [guardado, setGuardado] = useState(false);
+  const [errorCategoria, setErrorCategoria] = useState<string | null>(null);
   const [local, setLocal] = useState<{ negocio: NegocioCrudo; version: number } | null>(null);
   const negocio = local?.negocio ?? d.negocio;
   const version = local?.version ?? d.version;
@@ -95,11 +97,20 @@ function Contenido({ servicio, d, recargar }: { servicio: ServicioCategorias; d:
 
   const vista = unirCategorias(negocio, d.claves);
   const guardar = (nuevo: NegocioCrudo, alExito?: () => void): void => {
+    setErrorCategoria(null);
+    setGuardado(false);
     void accion.ejecutar(async () => {
-      const r = await servicio.guardar(nuevo, version);
-      setLocal({ negocio: nuevo, version: r.version });
-      setGuardado(true);
-      alExito?.();
+      try {
+        const r = await servicio.guardar(nuevo, version);
+        setLocal({ negocio: nuevo, version: r.version });
+        setGuardado(true);
+        alExito?.();
+      } catch (e) {
+        // Rutas `categorias.<clave>.<campo>`: se dice qué categoría y qué arreglar, no el texto genérico.
+        const m = e instanceof ErrorApi ? mensajeDeCategorias(e.detalle.detalles ?? [], nuevo) : null;
+        if (m === null) throw e;
+        setErrorCategoria(m);
+      }
     });
   };
 
@@ -109,9 +120,9 @@ function Contenido({ servicio, d, recargar }: { servicio: ServicioCategorias; d:
       <div class="fila">
         <Boton onClick={() => setAbierta({ categoria: null })} deshabilitado={Object.keys(leerCategorias(negocio)).length >= TOPES_CATEGORIAS.max}>Nueva categoría</Boton>
       </div>
-      {accion.error !== null && abierta === null && (
+      {(errorCategoria ?? accion.error) !== null && abierta === null && (
         <Alerta>
-          <span>{accion.error}</span>
+          <span>{errorCategoria ?? accion.error}</span>
           <Boton chico variante="secundario" onClick={recargar}>Volver a cargar</Boton>
         </Alerta>
       )}
@@ -147,7 +158,7 @@ function Contenido({ servicio, d, recargar }: { servicio: ServicioCategorias; d:
       />
       {abierta !== null && (
         <Edicion
-          categoria={abierta.categoria} negocio={negocio} claves={vista.map((v) => v.clave)} guardando={accion.ocupado} error={accion.error}
+          categoria={abierta.categoria} negocio={negocio} claves={vista.map((v) => v.clave)} guardando={accion.ocupado} error={errorCategoria ?? accion.error}
           onGuardar={(n) => guardar(n, () => setAbierta(null))}
           onCerrar={() => setAbierta(null)}
         />

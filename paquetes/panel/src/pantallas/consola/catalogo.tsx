@@ -401,6 +401,8 @@ function CategoriasDelSitio(): JSX.Element {
       return { negocio: r.negocio === null ? null : { ...r.negocio }, version: r.version, ...(r.invalido === undefined ? {} : { invalido: r.invalido }) };
     },
     guardar: async (negocio, versionEsperada) => {
+      // El panel trabaja el negocio como documento crudo (solo cambia `categorias` y deja intacto el resto); no puede revalidar todos los
+      // campos de `NegocioSitio` sin duplicar la regla del servidor, que valida todo en «estricto» y responde con la ruta de cada error.
       const r = await api.llamar('guardarNegocioSitio', { negocio: negocio as unknown as NegocioSitio, versionEsperada });
       return { version: r.version };
     },

@@ -96,6 +96,31 @@ describe('categorías: pantalla', () => {
     expect(screen.queryByRole('dialog')).not.toBeNull();
   });
 
+  it('si el servidor rechaza una categoría con su ruta, el mensaje la nombra y dice qué arreglar', async () => {
+    const falla = new ErrorApi('invalid-argument', 'Hay datos inválidos', { codigo: 'entrada-invalida', detalles: ['categorias.linea-blanca.nombre: máximo 80 caracteres'] });
+    ver(servicio(NEGOCIO, falla));
+    const u = userEvent.setup();
+    await u.click(await screen.findByRole('button', { name: 'Editar Línea blanca' }));
+    const dialogo = await screen.findByRole('dialog', { name: 'Categoría: Línea blanca' });
+    await u.click(within(dialogo).getByLabelText('Ocultar esta categoría'));
+    await u.click(within(dialogo).getByRole('button', { name: 'Guardar' }));
+    const alerta = await within(dialogo).findByRole('alert');
+    expect(alerta.textContent).toContain('La categoría «Línea blanca» no se pudo guardar: escriba un nombre de 1 a 80 caracteres');
+    expect(alerta.textContent).not.toContain('categorias.');
+  });
+
+  it('una categoría «sin nombre propio» también respeta el tope de 40', async () => {
+    const llenas = Object.fromEntries(Array.from({ length: 40 }, (_, i) => [`c-${String(i)}`, { nombre: `C ${String(i)}`, icono: 'pin' }]));
+    const s = servicio({ ...NEGOCIO, categorias: llenas });
+    ver(s);
+    const u = userEvent.setup();
+    await u.click(await screen.findByRole('button', { name: 'Editar tv' }));
+    const dialogo = await screen.findByRole('dialog', { name: 'Categoría: tv' });
+    await u.click(within(dialogo).getByRole('button', { name: 'Guardar' }));
+    expect(await within(dialogo).findByText('Llegó al máximo de 40 categorías.')).toBeTruthy();
+    expect(s.guardados).toHaveLength(0);
+  });
+
   it('subir y bajar reordenan guardando el orden', async () => {
     const s = servicio({ ...NEGOCIO, categorias: { ...NEGOCIO.categorias, tv: { nombre: 'Televisores', icono: 'televisor', orden: 1 } } });
     ver(s);
