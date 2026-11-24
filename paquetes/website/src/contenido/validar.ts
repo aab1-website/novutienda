@@ -456,7 +456,7 @@ export function validarNegocio(entrada: unknown, origenes: readonly (string | nu
     }
     return h;
   });
-  const categorias: Record<string, { nombre: string; icono: IdIcono }> = {};
+  const categorias: Record<string, { nombre: string; icono: IdIcono; orden?: number; oculta?: true }> = {};
   if (o['categorias'] !== undefined) {
     const c = l.obj(o['categorias'], 'negocio.categorias');
     for (const [i, [id, x]] of Object.entries(c).entries()) {
@@ -464,7 +464,17 @@ export function validarNegocio(entrada: unknown, origenes: readonly (string | nu
       const r = RE_SLUG_SITIO.test(id) ? `negocio.categorias.${id}` : `negocio.categorias[${i}]`;
       if (!RE_SLUG_SITIO.test(id)) l.falla(r, 'la clave no es un identificador válido');
       const e = l.obj(x, r);
-      categorias[id] = { nombre: l.texto(e['nombre'], `${r}.nombre`, 1, 80), icono: l.icono(e['icono'], `${r}.icono`) };
+      const cat: { nombre: string; icono: IdIcono; orden?: number; oculta?: true } = { nombre: l.texto(e['nombre'], `${r}.nombre`, 1, 80), icono: l.icono(e['icono'], `${r}.icono`) };
+      // `orden` y `oculta` son opcionales (los guarda el panel); ausentes, el contenido queda idéntico al de antes.
+      if (e['orden'] !== undefined) {
+        if (typeof e['orden'] === 'number' && Number.isInteger(e['orden']) && e['orden'] >= 0 && e['orden'] <= 39) cat.orden = e['orden'];
+        else l.falla(`${r}.orden`, 'debe ser un entero entre 0 y 39');
+      }
+      if (e['oculta'] !== undefined) {
+        if (e['oculta'] === true) cat.oculta = true;
+        else l.falla(`${r}.oculta`, 'debe ser true cuando se indica');
+      }
+      categorias[id] = cat;
     }
   }
   const destacados = o['destacados'] === undefined ? [] : l.lista(o['destacados'], 'negocio.destacados', LIMITES_SITIO.productos).map((d, i) => {

@@ -250,6 +250,7 @@ h3.descripcion-titulo, h4.descripcion-titulo { font-size: 17px; }
 .pie-legal { display: flex; flex-wrap: wrap; align-items: center; justify-content: space-between; gap: 12px 24px; padding-top: 20px; padding-bottom: 28px; border-top: 1px solid var(--cb-borde); font-size: 13px; color: var(--cb-texto-suave); }
 .pie-legal-enlaces { display: flex; flex-wrap: wrap; align-items: center; gap: 8px 20px; }
 .whatsapp-flotante { position: fixed; right: 20px; bottom: 20px; z-index: 45; display: flex; align-items: center; justify-content: center; width: 56px; height: 56px; border-radius: 50%; background: #0b6b3a; color: #fff; box-shadow: 0 6px 20px rgba(0, 0, 0, .3); }
+button.whatsapp-flotante { border: 0; padding: 0; cursor: progress; opacity: .75; }
 .whatsapp-flotante:hover { background: #09562f; }
 
 /* Ventanas */

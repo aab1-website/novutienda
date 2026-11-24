@@ -174,6 +174,13 @@ export function iconoDeCategoria(id: string): IdIcono {
   return hallado?.[0] ?? 'cuadricula';
 }
 
+const cmp = (a: string, b: string): number => (a < b ? -1 : a > b ? 1 : 0);
+
+/** Nombre sin tildes ni mayúsculas, para ordenar. */
+function claveNombre(n: string): string {
+  return n.normalize('NFD').replace(/\p{M}/gu, '').toLowerCase();
+}
+
 export function nombreDeCategoria(id: string): string {
   const t = id.replace(/-+/g, ' ').trim();
   return t.charAt(0).toUpperCase() + t.slice(1);
@@ -365,10 +372,13 @@ export function contenidoDesdePublicado(respuesta: unknown, negocio: unknown, en
   const sobrescritas = neg?.categorias ?? {};
   const idsCategoria = [...new Set(productos.map((p) => p.categoria))].sort();
   if (idsCategoria.length > MAX_CATEGORIAS_SITIO) errores.push(`categorias: hay más de ${MAX_CATEGORIAS_SITIO} categorías distintas (tope del sitio)`);
-  const categorias: Categoria[] = idsCategoria.slice(0, MAX_CATEGORIAS_SITIO).map((id) => {
+  const conOrden = idsCategoria.slice(0, MAX_CATEGORIAS_SITIO).map((id) => {
     const o = Object.hasOwn(sobrescritas, id) ? sobrescritas[id] : undefined;
-    return { id, nombre: o?.nombre ?? nombreDeCategoria(id), icono: o?.icono ?? iconoDeCategoria(id) };
+    return { orden: o?.orden, categoria: { id, nombre: o?.nombre ?? nombreDeCategoria(id), icono: o?.icono ?? iconoDeCategoria(id) } as Categoria };
   });
+  // Por `orden` ascendente; sin orden, al final y alfabéticas por nombre visible (comparación determinista, sin depender del locale: la huella no debe cambiar).
+  conOrden.sort((a, b) => (a.orden ?? Infinity) - (b.orden ?? Infinity) || cmp(claveNombre(a.categoria.nombre), claveNombre(b.categoria.nombre)) || cmp(a.categoria.id, b.categoria.id));
+  const categorias: Categoria[] = conOrden.map((x) => x.categoria);
   const marcas = [...new Set(productos.map((p) => p.marca).filter((m) => m !== ''))].sort().slice(0, 40);
 
   // Secciones, en el orden del estado

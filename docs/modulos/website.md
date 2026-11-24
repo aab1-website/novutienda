@@ -20,3 +20,8 @@ Reglas de Firestore y Storage en el emulador (otro tenant, archivo > 15 MB, sext
 
 ## Encendido por tenant y API HTTP
 El encendido por tenant rige para los callables, el menú, las programadas y la API HTTP (`/api/*`). Toman el tenant del host (`dominios/{host}`; sin mapeo, `404`) las rutas del sitio (`/api/cotizacion`, `/api/disponibilidad`, `/api/contacto`) y el pedido firmado; el catálogo y el inventario de NovuChat toman el tenant del token y `/api/sitio/v1/*` del `tenantId` firmado. Cada ruta tiene un módulo dueño (`rutasHttp` del manifiesto): con ese módulo apagado, las rutas del sitio y `/api/sitio/v1/*` responden `404 no_encontrado` y NovuChat `401 credencial_invalida`. Detalle, orden del control y caché en `docs/produccion/funciones.md` (§4).
+
+## Orden de categorías y COMPRAR con precio (23/11/2026)
+
+- Categorías: el validador del negocio acepta `orden` (entero 0..39) y `oculta` (`true`) por categoría; `contenidoDesdePublicado` las ordena por `orden` y, sin orden, al final por nombre visible. Menú, portada y `/productos` usan ese orden.
+- Comprar: la ficha y el botón flotante arman el mensaje con `enlaceSegunPrecios` (`lib/enlace-pedido.ts`) sobre `usePedido`: con precios, línea de cantidad 1 con unitario, subtotal, total referencial y leyenda; cargando, sin enlace; carga fallida, sin montos.
