@@ -33,6 +33,23 @@ describe('mensaje del pedido con precios', () => {
     expect(m).toContain('Total referencial: $ 300.000');
   });
 
+  it('con el redondeo del encargo (BOB con 2 decimales, ARS múltiplo de 100) el mensaje lleva centavos y redondea a 100', () => {
+    const encargo: Redondeo = {
+      BOB: { tipo: 'decimales', decimales: 2, modo: 'cercano' },
+      ARS: { tipo: 'multiplo', multiplo: 100, modo: 'cercano' },
+    };
+    const carrito = [{ id: 'tv-1', nombre: 'TV', cantidad: 2 }];
+    const bo = totalReferencial(carrito, { 'tv-1': { BO: 105.04, AR: 99.99 } }, 'BO', cot('BOB/USD', 11.75), encargo);
+    if (bo.tipo !== 'total') throw new Error('sin total');
+    const mb = mensajePedido(carrito, bo.lineas, bo.texto);
+    expect(mb).toMatch(/Bs 1\.234,22 c\/u, subtotal Bs 2\.468,44/);
+    expect(mb).toContain('Total referencial: Bs 2.468,44');
+    const ar = totalReferencial(carrito, { 'tv-1': { BO: 105.04, AR: 99.99 } }, 'AR', cot('ARS/USD', 1545), encargo);
+    if (ar.tipo !== 'total') throw new Error('sin total');
+    const ma = mensajePedido(carrito, ar.lineas, ar.texto);
+    expect(ma).toContain('$ 154.500 c/u, subtotal $ 309.000');
+  });
+
   it('un producto sin precio se marca «a consultar» y no suma', () => {
     const carrito = [{ id: 'tv-1', nombre: 'TV', cantidad: 1 }, { id: 'sin-3', nombre: 'Raro', cantidad: 1 }];
     const t = totalReferencial(carrito, precios, 'BO', cot('BOB/USD', 10), redondeo);
