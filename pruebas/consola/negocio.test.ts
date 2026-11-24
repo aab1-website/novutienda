@@ -259,9 +259,24 @@ describe('servicio y publicación del negocio', () => {
     disparador = new DisparadorDoble();
   });
 
+  /** Documento sembrado por NovuTienda (versión 0, otro nombre): sin él, el panel no puede guardar. */
+  const sembrar = (extra: Dato = {}): void => { db.poner(ruta, { ...base(), nombre: 'Semilla', version: 0, actualizadoEn: 'x', por: 'siembra', ...extra }); };
+
   describe('guardar y leer', () => {
+    beforeEach(() => { sembrar(); });
+    it('sin documento sembrado se rechaza con `estado` y no se escribe nada', async () => {
+      const vacia = nuevaDb();
+      await expect(guardarNegocioSitio({ db: vacia, reloj }, T, adm, { negocio: base(), versionEsperada: 0 }))
+        .rejects.toMatchObject({ codigo: 'estado', message: 'Todavía no están cargados los datos generales del sitio. Pida a NovuTienda que los cargue primero.' });
+      expect(vacia.dato(ruta)).toBeUndefined();
+    });
+    it('una lista entrante mal formada se descarta sin rechazar el guardado', async () => {
+      await guardarNegocioSitio(dn(), T, adm, { negocio: con({ lema: 'Nuevo', enlacesPermitidos: ['no es host', 7] }), versionEsperada: 0 });
+      expect(db.dato(ruta)?.['enlacesPermitidos']).toEqual(['ejemplo.test']);
+      expect(db.dato(ruta)?.['lema']).toBe('Nuevo');
+    });
     it('sin documento: negocio nulo y versión 0; solo sup y adm leen', async () => {
-      expect(await leerNegocioSitio(dn(), T, sup)).toEqual({ negocio: null, version: 0, enlacesPermitidos: [] });
+      expect(await leerNegocioSitio({ db: nuevaDb() }, T, sup)).toEqual({ negocio: null, version: 0, enlacesPermitidos: [] });
       await expect(leerNegocioSitio(dn(), T, caj)).rejects.toMatchObject({ codigo: 'no-autorizado' });
       await expect(leerNegocioSitio(dn(), T, actor('adm', 'otro'))).rejects.toMatchObject({ codigo: 'no-autorizado' });
     });
@@ -279,14 +294,14 @@ describe('servicio y publicación del negocio', () => {
     });
     it('versión equivocada: conflicto sin escribir', async () => {
       await expect(guardarNegocioSitio(dn(), T, adm, { negocio: base(), versionEsperada: 3 })).rejects.toMatchObject({ codigo: 'conflicto' });
-      expect(db.dato(ruta)).toBeUndefined();
+      expect(db.dato(ruta)).toMatchObject({ nombre: 'Semilla', version: 0 });
       await guardarNegocioSitio(dn(), T, adm, { negocio: base(), versionEsperada: 0 });
       await expect(guardarNegocioSitio(dn(), T, adm, { negocio: con({ lema: 'Otro' }), versionEsperada: 0 })).rejects.toMatchObject({ codigo: 'conflicto' });
       expect(db.dato(ruta)).toMatchObject({ version: 1, lema: 'Lema de ejemplo' });
     });
     it('datos inválidos: entrada-invalida con rutas y sin escribir', async () => {
       await expect(guardarNegocioSitio(dn(), T, adm, { negocio: con({ nombre: '' }), versionEsperada: 0 })).rejects.toMatchObject({ codigo: 'entrada-invalida', detalles: [expect.stringMatching(/^nombre:/)] });
-      expect(db.dato(ruta)).toBeUndefined();
+      expect(db.dato(ruta)).toMatchObject({ nombre: 'Semilla', version: 0 });
     });
     it('audita los NOMBRES de los campos cambiados, nunca los valores, y anota un cambio sin publicar', async () => {
       await guardarNegocioSitio(dn(), T, adm, { negocio: base(), versionEsperada: 0 });
@@ -322,16 +337,53 @@ describe('servicio y publicación del negocio', () => {
       const m = await medio('cam-1');
       await guardarCarrusel(ds(), { tenantId: T, actor: adm, carrusel: { plantilla: 'bosque', items: [{ medioId: m, alt: 'a', enlace: 'https://tercero.test/c' }, { medioId: m, alt: 'b' }] } });
       const antes = JSON.stringify([db.dato(`tenants/${T}/secciones/ayuda`), db.dato(`tenants/${T}/carruseles/bosque`)]);
-      const r = await guardarNegocioSitio(dn(), T, adm, { negocio: base(), versionEsperada: 0 });
+      // La lista guardada (de NovuTienda) rige; el panel no la cambia.
+      db.poner(ruta, { ...base(), version: 1, actualizadoEn: 'x', por: 'u' });
+      const r = await guardarNegocioSitio(dn(), T, adm, { negocio: con({ lema: 'Otro lema' }), versionEsperada: 1 });
       expect(r.afectados).toBe(2); // otro.test y tercero.test; ejemplo.test y la ruta interna pasan
       expect(JSON.stringify([db.dato(`tenants/${T}/secciones/ayuda`), db.dato(`tenants/${T}/carruseles/bosque`)])).toBe(antes);
-      expect((await guardarNegocioSitio(dn(), T, adm, { negocio: con({ enlacesPermitidos: ['ejemplo.test', 'otro.test', 'tercero.test'] }), versionEsperada: 1 })).afectados).toBe(0);
+    });
+
+    it('D8: el panel nunca cambia los anfitriones permitidos (se conserva la lista guardada)', async () => {
+      db.poner(ruta, { ...base(), version: 1, actualizadoEn: 'x', por: 'u' });
+      // Solo cambia la lista: no hay cambios, no sube la versión ni escribe.
+      const r = await guardarNegocioSitio(dn(), T, adm, { negocio: con({ enlacesPermitidos: ['ejemplo.test', 'otro.test'] }), versionEsperada: 1 });
+      expect(r.version).toBe(1);
+      expect(db.dato(ruta)?.['enlacesPermitidos']).toEqual(['ejemplo.test']);
+      // Cambia otro campo y la lista entrante se ignora.
+      const r2 = await guardarNegocioSitio(dn(), T, adm, { negocio: con({ lema: 'Otro lema', enlacesPermitidos: ['malo.test'] }), versionEsperada: 1 });
+      expect(r2.version).toBe(2);
+      expect(db.dato(ruta)?.['enlacesPermitidos']).toEqual(['ejemplo.test']);
+      expect(db.dato(ruta)?.['lema']).toBe('Otro lema');
+    });
+    it('D8: con un documento previo inválido se conserva su lista (filtrada) al corregirlo', async () => {
+      db.poner(ruta, { ...base(), nombre: '', enlacesPermitidos: ['ejemplo.test', 'no es host', 7], version: 4, actualizadoEn: 'x', por: 'u' });
+      await guardarNegocioSitio(dn(), T, adm, { negocio: con({ enlacesPermitidos: ['malo.test'] }), versionEsperada: 4 });
+      expect(db.dato(ruta)?.['enlacesPermitidos']).toEqual(['ejemplo.test']);
+      expect(db.dato(ruta)?.['version']).toBe(5);
+    });
+    it('D8: documento previo con enlacesPermitidos que no es una lista: queda []', async () => {
+      db.poner(ruta, { ...base(), nombre: '', enlacesPermitidos: 'ejemplo.test', version: 2, actualizadoEn: 'x', por: 'u' });
+      await guardarNegocioSitio(dn(), T, adm, { negocio: con({ enlacesPermitidos: ['malo.test'] }), versionEsperada: 2 });
+      expect(db.dato(ruta)?.['enlacesPermitidos']).toEqual([]);
+    });
+
+    it('de extremo a extremo: con documento sembrado con lista, guardar (con otra lista entrante) y publicar conserva los enlaces permitidos', async () => {
+      const m = await publicable();
+      await guardarSeccion(ds(), { tenantId: T, actor: adm, seccion: { id: 'ayuda', titulo: 'Ayuda', visible: true, bloques: [{ tipo: 'enlaces', items: [{ texto: 'Uno', url: 'https://ejemplo.test/a' }] }] } });
+      await guardarCarrusel(ds(), { tenantId: T, actor: adm, carrusel: { plantilla: 'ambar', items: [{ medioId: m, alt: 'a', enlace: 'https://ejemplo.test/ok' }] } });
+      await guardarNegocioSitio(dn(), T, adm, { negocio: con({ lema: 'Nuevo', enlacesPermitidos: [] }), versionEsperada: 0 });
+      const r = await publicarSitio(dp(), { tenantId: T, actor: adm });
+      expect(r.advertencias).toEqual([]);
+      expect((db.dato(rutaPub) as Dato)['enlacesPermitidos']).toEqual(['ejemplo.test']);
+      expect((db.dato(`tenants/${T}/publicado/carrusel__ambar`) as { items: { enlace?: string }[] }).items[0]?.enlace).toBe('https://ejemplo.test/ok');
+      expect(JSON.stringify(db.dato(`tenants/${T}/publicado/secciones__ayuda`) ?? db.coleccion(`tenants/${T}/publicado`))).toContain('https://ejemplo.test/a');
     });
 
     it('foto que apunta a un medio de tipo video: rechazada', async () => {
       const v = await medio('cam-1', 'video');
       await expect(guardarNegocioSitio(dn(), T, adm, { negocio: con({ identidad: { ...base().identidad, foto: { medioId: v, alt: 'x' } } }), versionEsperada: 0 })).rejects.toMatchObject({ codigo: 'entrada-invalida' });
-      expect(db.dato(ruta)).toBeUndefined();
+      expect(db.dato(ruta)).toMatchObject({ nombre: 'Semilla', version: 0 });
     });
     it('guardar sin cambios: no sube la versión, no anota cambio ni audita, y responde la versión actual', async () => {
       await guardarNegocioSitio(dn(), T, adm, { negocio: base(), versionEsperada: 0 });
@@ -417,11 +469,12 @@ describe('servicio y publicación del negocio', () => {
     it('con sitio/negocio: copia pública sin autor, con foto resuelta a medio público y sin whatsapp', async () => {
       await publicable();
       const fm = await medio('cam-1');
-      await guardarNegocioSitio(dn(), T, adm, { negocio: con({ identidad: { ...base().identidad, foto: { medioId: fm, alt: 'Fachada' } } }), versionEsperada: 0 });
+      db.poner(ruta, { ...base(), version: 1, actualizadoEn: 'x', por: 'u' });
+      await guardarNegocioSitio(dn(), T, adm, { negocio: con({ identidad: { ...base().identidad, foto: { medioId: fm, alt: 'Fachada' } } }), versionEsperada: 1 });
       const r = await publicarSitio(dp(), { tenantId: T, actor: adm });
       expect(r.advertencias).toEqual([]);
       const pub = db.dato(rutaPub) as Dato;
-      expect(pub).toMatchObject({ nombre: 'Tienda Ejemplo', version: 1, telefono: '22223333', enlacesPermitidos: ['ejemplo.test'] });
+      expect(pub).toMatchObject({ nombre: 'Tienda Ejemplo', version: 2, telefono: '22223333', enlacesPermitidos: ['ejemplo.test'] });
       expect(pub).not.toHaveProperty('por');
       expect(JSON.stringify(pub)).not.toContain('u-adm');
       expect(JSON.stringify(pub)).not.toContain('whatsapp');
@@ -444,7 +497,8 @@ describe('servicio y publicación del negocio', () => {
         { tipo: 'texto', titulo: '', parrafos: ['Hola'] },
       ] } });
       await guardarCarrusel(ds(), { tenantId: T, actor: adm, carrusel: { plantilla: 'ambar', items: [{ medioId: m, alt: 'a', enlace: 'https://tercero.test/c' }, { medioId: m, alt: 'b', enlace: 'https://ejemplo.test/ok' }] } });
-      await guardarNegocioSitio(dn(), T, adm, { negocio: con({ destacados: ['cam-1', 'cam-2', 'no-existe'] }), versionEsperada: 0 });
+      db.poner(ruta, { ...base(), version: 1, actualizadoEn: 'x', por: 'u' });
+      await guardarNegocioSitio(dn(), T, adm, { negocio: con({ destacados: ['cam-1', 'cam-2', 'no-existe'] }), versionEsperada: 1 });
       const r = await publicarSitio(dp(), { tenantId: T, actor: adm });
       const sec = db.dato(`tenants/${T}/publicado/seccion__ayuda`) as { bloques: { tipo: string; items?: { url: string }[] }[] };
       expect(sec.bloques).toHaveLength(2);
@@ -523,6 +577,7 @@ describe('institucional (misión, visión y chat) y características de la ficha
     const reloj = new RelojFijo();
     const catalogo = new CatalogoDoble(db);
     catalogo.agregar('cam-1', { marca: 'Acme', sku: 'SKU-1', garantiaMeses: 12, stockTotal: 5 });
+    db.poner(`tenants/${T}/sitio/negocio`, { ...base(), nombre: 'Semilla', version: 0, actualizadoEn: 'x', por: 'siembra' });
     const r = await guardarNegocioSitio({ db, reloj }, T, adm, { negocio: con({ institucional: { mision: 'Nuestra misión' } }), versionEsperada: 0 });
     expect(r.version).toBe(1);
     const leido = await leerNegocioSitio({ db }, T, sup);
