@@ -73,7 +73,17 @@ export function unirCategorias(negocio: NegocioCrudo | null, clavesDeProductos: 
 
 /** «Línea blanca» → «linea-blanca». Vacío si no queda ningún carácter válido. */
 export function claveDesdeNombre(nombre: string): string {
-  const c = nombre.normalize('NFD').replace(/[̀-ͯ]/g, '').toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/^-+|-+$/g, '').slice(0, 80).replace(/-+$/, '');
+  // Sin expresiones con «-+» anclado al final (ReDoS polinomial, CodeQL js/polynomial-redos): los guiones ya
+  // quedan sueltos tras colapsar cada tramo no alfanumérico en uno solo, y se recortan por los extremos sin regex.
+  let c = nombre.slice(0, 200).normalize('NFD').replace(/[̀-ͯ]/g, '').toLowerCase().replace(/[^a-z0-9]+/g, '-');
+  const recortar = (s: string): string => {
+    let i = 0;
+    let f = s.length;
+    while (i < f && s[i] === '-') i++;
+    while (f > i && s[f - 1] === '-') f--;
+    return s.slice(i, f);
+  };
+  c = recortar(recortar(c).slice(0, 80));
   return RE_SLUG_SITIO.test(c) ? c : '';
 }
 
