@@ -13,3 +13,5 @@ export { PALETAS } from './plantillas-vista.js';
 export { esWhatsappValido, pareceNumeroDeRelleno } from './whatsapp.js';
 // Pasos puros de «Textos del sitio» (los compara pruebas/consola/textos-sitio.test.ts con los topes del servidor).
 export { aEstado, aNegocio, LIMITES_DATOS, mapaValido, revisarTextos, TOPES_TEXTOS } from './textos-sitio-logica.js';
+// Pasos puros de «Categorías» (los compara pruebas/consola/categorias.test.ts con los topes e íconos del servidor).
+export { aplicarCategoria, claveDesdeNombre, ICONOS_CATEGORIA, leerCategorias, mensajeDeCategorias, moverCategoria, revisarCategoria, TOPES_CATEGORIAS, unirCategorias } from './categorias-logica.js';
