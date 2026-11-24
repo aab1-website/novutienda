@@ -40,3 +40,8 @@ Motivo: Cambio de comportamiento deliberado, bloque S7-1 «precio vivo» (decisi
 
 Sello: a9c43b72e55cdba6858fb466dd77e185cbe6487d0e14f22aa7a24a4f7d13cea0
 Motivo: 20/11/2026. Regla nueva de formato de series (3 a 60 caracteres, solo al ingresar; decisión D2 de Andres del 20/11/2026): las series de prueba «A», «B» y «C» del celular del escenario pasan a «SN-A», «SN-B» y «SN-C» (la serie «A» de los recibos no cambia). Regeneración autorizada por Andres el 20/11/2026 (botón «Sí, regenerar»). Cambia solo el texto de esas series en caja-eventos-venta.json, caja-existencias-tras-ventas.json, caja-ventas.json, recibos-documentos.json y recibo-A-000001-BOB.html; ningún monto, id, orden, cantidad ni evento.
+
+## Regeneración cf3740a15f23
+
+Sello: cf3740a15f2323a74ae98417e60fb464ddb45c0127391f6a06308f403bbaa484
+Motivo: Cambio de comportamiento deliberado, autorizado por el dueño del producto el 24/11/2026 («Sí, PR y fusionar»), a pedido de NovuChat para su catálogo de WhatsApp. Cada ítem del catálogo agrega `areaClave` (clave estable de la categoría) y `ordenArea` (orden fijado por el administrador, o null). `area` pasa a ser el nombre visible de la categoría según publicado/negocio; si la categoría no tiene nombre propio, sigue siendo la clave, y por eso queda igual en el tenant de referencia. `descripcion` se entrega en una línea y con un máximo de 300 caracteres; las del tenant de referencia ya cumplían y no cambian. Cambian solo las tres referencias del catálogo de NovuChat: dos campos nuevos por ítem y el ETag, que se calcula sobre el cuerpo. No cambian precios, stock, el orden de los ítems ni el resto de las referencias.

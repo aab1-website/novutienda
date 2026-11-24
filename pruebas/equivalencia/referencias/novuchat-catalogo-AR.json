@@ -13,6 +13,7 @@
       {
         "activo": true,
         "area": "general",
+        "areaClave": "general",
         "descripcion": "Solo con precio en Argentina.",
         "disponible": true,
         "foto": "https://medios.ejemplo.invalid/publico/tenants/casa-a/publico/medios/p-adaptador/bbb-imagen960.webp",
@@ -22,6 +23,7 @@
         "id": "p-adaptador",
         "moneda": "ARS",
         "nombre": "Adaptador",
+        "ordenArea": null,
         "precio": 5300,
         "precioCentavos": 530000,
         "stock": 4,
@@ -35,6 +37,7 @@
       {
         "activo": true,
         "area": "general",
+        "areaClave": "general",
         "descripcion": "Sin existencias.",
         "disponible": false,
         "foto": "https://medios.ejemplo.invalid/publico/tenants/casa-a/publico/medios/p-agotado/bbb-imagen960.webp",
@@ -44,6 +47,7 @@
         "id": "p-agotado",
         "moneda": "ARS",
         "nombre": "Cargador agotado",
+        "ordenArea": null,
         "precio": 17800,
         "precioCentavos": 1780000,
         "stock": 0,
@@ -57,6 +61,7 @@
       {
         "activo": true,
         "area": "general",
+        "areaClave": "general",
         "descripcion": "Celular de ejemplo.",
         "disponible": true,
         "foto": "https://medios.ejemplo.invalid/publico/tenants/casa-a/publico/medios/p-celular/bbb-imagen960.webp",
@@ -66,6 +71,7 @@
         "id": "p-celular",
         "moneda": "ARS",
         "nombre": "Celular X1",
+        "ordenArea": null,
         "precio": 249300,
         "precioCentavos": 24930000,
         "stock": 3,
@@ -79,6 +85,7 @@
       {
         "activo": true,
         "area": "general",
+        "areaClave": "general",
         "descripcion": "No controla stock.",
         "disponible": true,
         "foto": "https://medios.ejemplo.invalid/publico/tenants/casa-a/publico/medios/p-servicio/bbb-imagen960.webp",
@@ -88,6 +95,7 @@
         "id": "p-servicio",
         "moneda": "ARS",
         "nombre": "Instalación",
+        "ordenArea": null,
         "precio": 17800,
         "precioCentavos": 1780000,
         "stock": null,
@@ -101,6 +109,7 @@
       {
         "activo": true,
         "area": "general",
+        "areaClave": "general",
         "descripcion": "Lápiz de grafito.",
         "disponible": true,
         "foto": "https://medios.ejemplo.invalid/publico/tenants/casa-a/publico/medios/p-lapiz/bbb-imagen960.webp",
@@ -110,6 +119,7 @@
         "id": "p-lapiz",
         "moneda": "ARS",
         "nombre": "Lápiz HB",
+        "ordenArea": null,
         "precio": 1600,
         "precioCentavos": 160000,
         "stock": 10,
@@ -123,6 +133,7 @@
       {
         "activo": true,
         "area": "general",
+        "areaClave": "general",
         "descripcion": "Decimales incómodos.",
         "disponible": true,
         "foto": "https://medios.ejemplo.invalid/publico/tenants/casa-a/publico/medios/p-parlante/bbb-imagen960.webp",
@@ -132,6 +143,7 @@
         "id": "p-parlante",
         "moneda": "ARS",
         "nombre": "Parlante portátil",
+        "ordenArea": null,
         "precio": 12300,
         "precioCentavos": 1230000,
         "stock": 2,
@@ -145,6 +157,7 @@
       {
         "activo": true,
         "area": "general",
+        "areaClave": "general",
         "descripcion": "Solo en depósito.",
         "disponible": false,
         "foto": "https://medios.ejemplo.invalid/publico/tenants/casa-a/publico/medios/p-televisor/bbb-imagen960.webp",
@@ -154,6 +167,7 @@
         "id": "p-televisor",
         "moneda": "ARS",
         "nombre": "Televisor 50\"",
+        "ordenArea": null,
         "precio": 534900,
         "precioCentavos": 53490000,
         "stock": 0,
@@ -172,7 +186,7 @@
   "headers": {
     "Cache-Control": "private, max-age=60",
     "Content-Type": "application/json; charset=utf-8",
-    "ETag": "\"454efc98328f10e1a2d1c50f99c1c00f\"",
+    "ETag": "\"7352b3e65c6f769e899e1626919ce8e0\"",
     "Vary": "Authorization",
     "X-Content-Type-Options": "nosniff"
   },

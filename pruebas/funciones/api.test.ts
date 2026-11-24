@@ -164,6 +164,35 @@ describe.skipIf(!hayEmulador)('API HTTP (emulador)', () => {
       expect((await http('/api/novuchat/v1/catalogo?mercado=BO', { method: 'POST', headers: auth })).status).toBe(405);
     });
 
+    it('categoría con su nombre visible, clave y orden; descripción en una línea y de 300 caracteres o menos', async () => {
+      const copia = h.firestore.doc(`tenants/${T}/publicado/producto__${prod}`);
+      const antes = (await copia.get()).data();
+      const negocio = h.firestore.doc(`tenants/${T}/publicado/negocio`);
+      const larga = `Primera línea\n\n  con   espacios. ${'palabra '.repeat(60)}`;
+      await copia.set({ descripcion: larga }, { merge: true });
+      try {
+        // Sin nombre propio, el área es la clave tal cual (como en el sitio) y no tiene orden.
+        const sin = (await http('/api/novuchat/v1/catalogo?mercado=BO', { headers: auth })).cuerpo as { items: Record<string, unknown>[] };
+        expect(sin.items.find((i) => i['id'] === prod)).toMatchObject({ area: 'general', areaClave: 'general', ordenArea: null });
+        await negocio.set({ categorias: { general: { nombre: 'Línea general', icono: 'cuadricula', orden: 2 } } });
+        const r = (await http('/api/novuchat/v1/catalogo?mercado=BO', { headers: auth })).cuerpo as { items: Record<string, unknown>[] };
+        const item = r.items.find((i) => i['id'] === prod)!;
+        expect(item).toMatchObject({ area: 'Línea general', areaClave: 'general', ordenArea: 2 });
+        const d = item['descripcion'] as string;
+        expect(d.length).toBeLessThanOrEqual(300);
+        expect(d.startsWith('Primera línea con espacios. palabra')).toBe(true);
+        expect(d).not.toMatch(/\n|\s{2}/);
+        expect(d.endsWith('palabra…')).toBe(true); // se corta sin partir una palabra
+        // Categoría oculta: igual que en el sitio, sus productos no se ofrecen.
+        await negocio.set({ categorias: { general: { nombre: 'Línea general', icono: 'cuadricula', orden: 2, oculta: true } } });
+        const oculta = (await http('/api/novuchat/v1/catalogo?mercado=BO', { headers: auth })).cuerpo as { items: Record<string, unknown>[] };
+        expect(oculta.items.some((i) => i['id'] === prod)).toBe(false);
+      } finally {
+        await negocio.delete();
+        await copia.set({ descripcion: antes?.['descripcion'] ?? '' }, { merge: true });
+      }
+    });
+
     it('inventario de solo lectura: existencias por almacén y sin costos', async () => {
       const r = await http('/api/novuchat/v1/inventario', { headers: auth });
       expect(r.status).toBe(200);
