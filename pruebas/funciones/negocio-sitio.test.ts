@@ -110,13 +110,15 @@ describe.skipIf(!hayEmulador)('datos del negocio del sitio (callable consola, em
   it('sin siembra, guardar da FAILED_PRECONDITION y no escribe nada', async () => {
     const t = await nuevoTenant();
     const adm = await crearUsuario(h, { rol: 'adm', tenant: t });
-    const estadoAntes = (await h.firestore.doc(`tenants/${t}/sitio/estado`).get()).data();
     const g = await accion('consola', 'guardarNegocioSitio', { negocio: negocio(), versionEsperada: 0 }, adm.token, t);
     expect(g.status).toBe(400);
     expect(g.error?.status).toBe('FAILED_PRECONDITION');
     expect(JSON.stringify(g.error)).toContain('Pida a NovuTienda que los cargue primero');
     expect(await docNegocio(t)).toBeUndefined();
-    expect((await h.firestore.doc(`tenants/${t}/sitio/estado`).get()).data()).toEqual(estadoAntes);
+    // No se compara `sitio/estado`: el consumidor de `producto.cambiado` de la siembra de productos lo anota en paralelo
+    // (carrera vista en CI). Que el guardado no escribió nada lo prueban la ausencia del documento y de su auditoría.
+    const aud = await h.firestore.collection(`tenants/${t}/auditoria`).where('accion', '==', 'sitio.negocio.guardar').get();
+    expect(aud.empty).toBe(true);
   });
 
   it('el supervisor lee y NO puede guardar', async () => {
