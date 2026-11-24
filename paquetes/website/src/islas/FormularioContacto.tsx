@@ -1,137 +1,72 @@
-import { useEffect, useRef, useState } from 'preact/hooks';
-import type { ConfigAppCheck } from '../contenido/tipos.js';
-import { ACCION_RECAPTCHA, CABECERA_APP_CHECK, validarContacto } from '../api/contacto.js';
-import { enlaceWhatsApp } from '../lib/whatsapp.js';
-import { instalarCbAppCheck } from './appcheck.js';
+import { useRef, useState } from 'preact/hooks';
+import { enlaceWhatsApp, mensajeContacto } from '../lib/whatsapp.js';
 import { Icono } from './Icono.js';
 import { medicionGlobal } from './navegador.js';
-import { cargarRecaptcha, obtenerTokenRecaptcha, proveedorAppCheck } from './recaptcha.js';
 
 interface Props {
-  recaptcha: string | null;
-  appCheck: ConfigAppCheck | null;
+  /** Número de la tienda; sin número no hay formulario (la página muestra solo los datos de contacto). */
   whatsapp: string | null;
-  productoId?: string | null;
-  apiBase?: string;
 }
 
-type Estado = 'inactivo' | 'enviando' | 'enviado' | 'error';
-const ETIQUETAS: Readonly<Record<string, string>> = {
-  nombre: 'Nombre (2 a 80 caracteres)', correo: 'Correo electrónico válido', telefono: 'Teléfono válido', contacto: 'Indica un correo o un teléfono',
-  mensaje: 'Mensaje (5 a 2000 caracteres)', aceptaPrivacidad: 'Debes aceptar el tratamiento de tus datos', pais: 'País',
-};
-const nuevoId = (): string => (crypto.randomUUID?.() ?? `${Date.now()}${Math.random().toString(36).slice(2)}0000`).replace(/-/g, '');
+type Campo = 'nombre' | 'mensaje';
+const ETIQUETAS: Readonly<Record<Campo, string>> = { nombre: 'Escribe tu nombre', mensaje: 'Escribe tu mensaje' };
+const MENSAJE_GENERAL = 'Hola, tengo una consulta.';
 
-/** Formulario de contacto con reCAPTCHA y App Check de un solo uso (token nuevo por envío; el SDK se descarga al enfocar). Reintentar el mismo envío no duplica el mensaje (clave de idempotencia). */
-export default function FormularioContacto({ recaptcha, appCheck, whatsapp, productoId = null, apiBase = '' }: Props) {
-  const [estado, setEstado] = useState<Estado>('inactivo');
-  const [errores, setErrores] = useState<readonly string[]>([]);
-  const [mensajeError, setMensajeError] = useState('');
-  const envioId = useRef(nuevoId());
-  const resumen = useRef<HTMLDivElement>(null);
-  const formulario = useRef<HTMLFormElement>(null);
+/**
+ * Contacto por WhatsApp: el nombre y el mensaje arman el texto de un enlace a wa.me. Nada se envía a ningún servidor.
+ * Sin JavaScript (o sin nombre y mensaje) el enlace lleva el mensaje general; con JavaScript valida y abre WhatsApp.
+ */
+export default function FormularioContacto({ whatsapp }: Props) {
+  const [nombre, setNombre] = useState('');
+  const [mensaje, setMensaje] = useState('');
+  const [errores, setErrores] = useState<readonly Campo[]>([]);
+  const refNombre = useRef<HTMLInputElement>(null);
+  const refMensaje = useRef<HTMLTextAreaElement>(null);
+  const refEnlace = useRef<HTMLAnchorElement>(null);
+  const completo = nombre.trim() !== '' && mensaje.trim() !== '';
+  const enlace = enlaceWhatsApp(whatsapp, completo ? mensajeContacto(nombre, mensaje) : MENSAJE_GENERAL);
+  if (enlace === null) return null;
 
-  const appCheckProv = useRef<ReturnType<typeof instalarCbAppCheck>>(null);
-  // Solo en el navegador (el prerrenderizado no tiene `window`): registra `window.cbAppCheck`; el SDK aún no se descarga.
-  useEffect(() => {
-    appCheckProv.current = instalarCbAppCheck(appCheck);
-  }, [appCheck]);
-
-  const precargar = (): void => {
-    void appCheckProv.current?.preparar().catch(() => undefined);
-    if (recaptcha !== null) void cargarRecaptcha(recaptcha).catch(() => undefined);
-  };
-  const falla = (campos: readonly string[], texto: string): void => {
-    setErrores(campos);
-    setMensajeError(texto);
-    setEstado('error');
-    window.setTimeout(() => resumen.current?.focus(), 0);
-  };
-
-  async function enviar(e: Event): Promise<void> {
-    e.preventDefault();
-    const f = new FormData(e.currentTarget as HTMLFormElement);
-    const texto = (k: string): string => String(f.get(k) ?? '');
-    const cuerpo = {
-      envioId: envioId.current, nombre: texto('nombre'), correo: texto('correo'), telefono: texto('telefono'), mensaje: texto('mensaje'),
-      pais: texto('pais'), productoId, aceptaPrivacidad: f.get('aceptaPrivacidad') === 'on', sitioWeb: texto('sitioWeb'),
-    };
-    const previo = validarContacto({ ...cuerpo, recaptchaToken: 'x'.repeat(20) });
-    if (!previo.ok) return falla(previo.campos, 'Revisa los campos marcados.');
-    if (recaptcha === null || appCheck === null) return falla([], 'El formulario no está disponible por ahora. Escríbenos por WhatsApp.');
-
-    setEstado('enviando');
-    setErrores([]);
-    try {
-      const recaptchaToken = await obtenerTokenRecaptcha(recaptcha, ACCION_RECAPTCHA);
-      const cabeceras: Record<string, string> = { 'Content-Type': 'application/json', Accept: 'application/json' };
-      const obtenerAppCheck = proveedorAppCheck();
-      if (obtenerAppCheck === null) return falla([], 'El formulario no está disponible por ahora. Escríbenos por WhatsApp.');
-      cabeceras[CABECERA_APP_CHECK] = await obtenerAppCheck();
-      const r = await fetch(`${apiBase}/api/contacto`, { method: 'POST', headers: cabeceras, body: JSON.stringify({ ...cuerpo, recaptchaToken }) });
-      if (r.ok) {
-        medicionGlobal().evento('envio_formulario');
-        envioId.current = nuevoId();
-        formulario.current?.reset();
-        setEstado('enviado');
-        window.setTimeout(() => resumen.current?.focus(), 0);
-        return;
-      }
-      if (r.status === 400) return falla(((await r.json()) as { campos?: string[] }).campos ?? [], 'Revisa los campos marcados.');
-      if (r.status === 429) return falla([], 'Hiciste varios envíos seguidos. Espera unos minutos e inténtalo de nuevo.');
-      if (r.status === 401 || r.status === 403) return falla([], 'No pudimos verificar que eres una persona. Recarga la página e inténtalo de nuevo.');
-      return falla([], 'No pudimos enviar tu mensaje. Inténtalo de nuevo o escríbenos por WhatsApp.');
-    } catch {
-      return falla([], 'No pudimos enviar tu mensaje. Revisa tu conexión o escríbenos por WhatsApp.');
+  /** Valida; si falta algo marca los campos, enfoca el primero y devuelve false. */
+  const validar = (): boolean => {
+    const faltan: Campo[] = [];
+    if (nombre.trim() === '') faltan.push('nombre');
+    if (mensaje.trim() === '') faltan.push('mensaje');
+    setErrores(faltan);
+    if (faltan.length > 0) {
+      (faltan[0] === 'nombre' ? refNombre : refMensaje).current?.focus();
+      return false;
     }
-  }
-
-  const enlaceWa = enlaceWhatsApp(whatsapp, 'Hola, tengo una consulta.');
-  const invalido = (k: string): boolean => errores.includes(k);
+    return true;
+  };
+  // Con los datos completos el enlace navega solo (su href ya lleva el texto): así funciona también en los
+  // navegadores internos de Instagram y Facebook, que bloquean window.open. El evento cuenta clics válidos.
+  const alPulsar = (e: MouseEvent): void => {
+    if (!validar()) { e.preventDefault(); return; }
+    medicionGlobal().evento('envio_formulario');
+  };
+  const invalido = (k: Campo): boolean => errores.includes(k);
   return (
-    <form ref={formulario} class="formulario" noValidate onSubmit={(e) => void enviar(e)} onFocusCapture={precargar} aria-label="Formulario de contacto">
-      <div ref={resumen} tabIndex={-1} class="resumen-formulario" role={estado === 'error' ? 'alert' : 'status'}>
-        {estado === 'enviado' && '¡Gracias! Recibimos tu mensaje y te responderemos pronto.'}
-        {estado === 'error' && (
-          <>
-            {mensajeError}
-            {errores.length > 0 && <ul>{errores.map((k) => <li key={k}>{ETIQUETAS[k] ?? k}</li>)}</ul>}
-          </>
-        )}
+    <form class="formulario" noValidate aria-label="Formulario de contacto" onSubmit={(e) => { e.preventDefault(); if (validar()) refEnlace.current?.click(); }}>
+      <div class="resumen-formulario" role="alert">
+        {errores.length > 0 && <p>Revisa los campos marcados.</p>}
       </div>
-      <label>Nombre
-        <input name="nombre" autocomplete="name" required aria-invalid={invalido('nombre')} />
-      </label>
-      <label>Correo electrónico
-        <input name="correo" type="email" autocomplete="email" aria-invalid={invalido('correo') || invalido('contacto')} />
-      </label>
-      <label>Teléfono o WhatsApp (opcional si indicas un correo)
-        <input name="telefono" type="tel" autocomplete="tel" aria-invalid={invalido('telefono') || invalido('contacto')} />
-      </label>
-      <label>País
-        <select name="pais" aria-invalid={invalido('pais')}>
-          <option value="">Prefiero no indicarlo</option>
-          <option value="BO">Bolivia</option>
-          <option value="AR">Argentina</option>
-        </select>
-      </label>
-      <label>Mensaje
-        <textarea name="mensaje" rows={5} required aria-invalid={invalido('mensaje')} />
-      </label>
-      <div class="trampa" aria-hidden="true">
-        <label>No completar este campo <input name="sitioWeb" tabIndex={-1} autocomplete="off" /></label>
+      <div class="campo">
+        <label for="contacto-nombre">Nombre</label>
+        <input id="contacto-nombre" ref={refNombre} autocomplete="name" maxLength={80} value={nombre} aria-required="true" aria-invalid={invalido('nombre')} aria-describedby={invalido('nombre') ? 'error-nombre' : undefined} onInput={(e) => setNombre((e.currentTarget as HTMLInputElement).value)} />
+        {invalido('nombre') && <span id="error-nombre" class="error-campo">{ETIQUETAS.nombre}</span>}
       </div>
-      <label class="casilla">
-        <input name="aceptaPrivacidad" type="checkbox" aria-invalid={invalido('aceptaPrivacidad')} />
-        Acepto que usen mis datos para responder mi consulta. <a href="/privacidad">Política de privacidad</a>
-      </label>
+      <div class="campo">
+        <label for="contacto-mensaje">Mensaje</label>
+        <textarea id="contacto-mensaje" ref={refMensaje} rows={5} maxLength={1000} value={mensaje} aria-required="true" aria-invalid={invalido('mensaje')} aria-describedby={invalido('mensaje') ? 'error-mensaje' : undefined} onInput={(e) => setMensaje((e.currentTarget as HTMLTextAreaElement).value)} />
+        {invalido('mensaje') && <span id="error-mensaje" class="error-campo">{ETIQUETAS.mensaje}</span>}
+      </div>
       <div class="acciones-formulario">
-        <button type="submit" class="boton boton-cta" disabled={estado === 'enviando'}>
-          <Icono nombre="enviar" tamano={16} /> {estado === 'enviando' ? 'ENVIANDO…' : 'ENVIAR MENSAJE'}
-        </button>
-        {enlaceWa !== null && <a class="boton boton-secundario" href={enlaceWa} target="_blank" rel="noopener noreferrer"><Icono nombre="chat" tamano={16} /> ESCRIBIR POR WHATSAPP</a>}
+        <a ref={refEnlace} class="boton boton-cta" href={enlace} target="_blank" rel="noopener noreferrer" onClick={alPulsar}>
+          <Icono nombre="chat" tamano={16} /> ENVIAR POR WHATSAPP<span class="solo-lectores"> (se abre en una pestaña nueva)</span>
+        </a>
       </div>
-      <p class="aviso-estado">Este sitio usa reCAPTCHA de Google y Firebase App Check para evitar abusos; se carga solo cuando empiezas a escribir.</p>
+      <p class="aviso-estado">Se abrirá WhatsApp con tu mensaje listo para enviar a la tienda. Este sitio no guarda lo que escribes aquí.</p>
     </form>
   );
 }
