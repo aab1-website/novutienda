@@ -30,8 +30,9 @@ export default defineConfig({
     preact(),
     integracionSellarCsp({
       medicion: config.medicion,
-      recaptcha: config.recaptchaSiteKey !== null,
-      appCheck: config.appCheck !== null,
+      // Ninguna página carga reCAPTCHA ni App Check (el contacto abre WhatsApp): la CSP no autoriza esos orígenes.
+      recaptcha: false,
+      appCheck: false,
       origenMedios: config.origenMedios,
       // El host de medios y el del enlace al mapa (solo si hay `mapa`) se declaran aquí también: la verificación del dist rechaza todo recurso de un dominio no declarado.
       hostsPermitidos: ['wa.me', new URL(config.origen).hostname, ...(config.origenMedios !== null ? [new URL(config.origenMedios).hostname] : []), ...(config.mapa !== undefined ? [new URL(config.mapa).hostname] : []), ...config.enlacesPermitidos],

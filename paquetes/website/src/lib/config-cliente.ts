@@ -9,7 +9,6 @@ export interface ConfigCliente {
   readonly redondeo: Redondeo;
   readonly whatsappNovuchat: string | null;
   readonly medicion: ConfigMedicion;
-  readonly recaptchaSiteKey: string | null;
   readonly apiBase: string;
   /** Muestra las afirmaciones sin confirmar (solo vista previa). */
   readonly vistaPrevia: boolean;
