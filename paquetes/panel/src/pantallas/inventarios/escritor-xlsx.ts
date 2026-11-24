@@ -45,6 +45,8 @@ function xmlHoja(h: HojaXlsx): string {
   const cols = h.anchos === undefined ? '' : `<cols>${h.anchos.map((a, i) => `<col min="${String(i + 1)}" max="${String(i + 1)}" width="${String(a)}" customWidth="1"/>`).join('')}</cols>`;
   const filas = h.filas.map((f, r) => {
     const celdas = f.map((v, c) => {
+      // Un número finito va como celda numérica (Excel puede sumarlo); un NaN o un infinito no sale como número: la celda queda vacía.
+      if (typeof v === 'number') return Number.isFinite(v) ? `<c r="${letraColumna(c)}${String(r + 1)}" t="n"><v>${String(v)}</v></c>` : '';
       const t = TEXTO_CELDA(v);
       if (t === '') return '';
       return `<c r="${letraColumna(c)}${String(r + 1)}" t="inlineStr"><is><t xml:space="preserve">${xml(t)}</t></is></c>`;

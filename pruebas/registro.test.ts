@@ -427,7 +427,7 @@ describe('L2-1: campos L2 del manifiesto (sin efecto)', () => {
 
     // Foto de permisos congelada (pruebas/fotos/permisos-l2.ts): este caso es el que L2-3 NO debe tocar.
     it('las acciones del registro coinciden con la foto de permisos (callable, nombre, roles, propietario; ni de más ni de menos)', () => {
-      expect(FOTO_PERMISOS_L2.length).toBe(100); // 97 → 100: entran consola.verTipoCambio, cotizacionManual y quitarCotizacionManual (tipo de cambio manual, 22/11/2026). Antes: 95 → 97: entran pos.resumenTurno y pos.misTurnos («Mi reporte» del cajero, 20/11/2026). Antes: 91 → 95: entran pos.crearCarrito, guardarCarrito, cancelarCarrito y misCarritos (carritos del POS, 19/11/2026). Antes: 92 → 91: sale consola.exportarProductosCsv (D6, 17/11/2026)
+      expect(FOTO_PERMISOS_L2.length).toBe(101); // 100 → 101: entra inventarios.exportarTotal (descarga total a Excel, solo administrador, 23/11/2026). Antes: 97 → 100: entran consola.verTipoCambio, cotizacionManual y quitarCotizacionManual (tipo de cambio manual, 22/11/2026). Antes: 95 → 97: entran pos.resumenTurno y pos.misTurnos («Mi reporte» del cajero, 20/11/2026). Antes: 91 → 95: entran pos.crearCarrito, guardarCarrito, cancelarCarrito y misCarritos (carritos del POS, 19/11/2026). Antes: 92 → 91: sale consola.exportarProductosCsv (D6, 17/11/2026)
       expect(normal(registroPlataforma.acciones())).toEqual(normal(FOTO_PERMISOS_L2));
     });
 

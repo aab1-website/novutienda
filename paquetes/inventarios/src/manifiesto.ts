@@ -40,6 +40,7 @@ const ACCIONES_INVENTARIOS: readonly (readonly [string, readonly Rol[]])[] = [
   ['conteo', ['caj', 'sup', 'adm']],
   ['conteos', ['caj', 'sup', 'adm']],
   ['exportarCsv', ['sup', 'adm']],
+  ['exportarTotal', ['adm']],
 ];
 
 /** Manifiesto del módulo inventarios (lo registra el coordinador en `plataforma/registro.ts`). */
