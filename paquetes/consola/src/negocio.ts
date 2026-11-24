@@ -44,7 +44,7 @@ export const LIMITES_NEGOCIO = {
    * líneas 18 (RE_SLUG) y 380-390. El sitio NO acota la cantidad de categorías del negocio; el tope de 40 es el que impone al
    * contenido (línea 448, `l.lista(raiz['categorias'], 'categorias', 40)`) y aquí rige solo en `estricto`.
    */
-  categorias: { id: RE_SLUG_SITIO, nombre: { min: 1, max: 80 }, max: 40 },
+  categorias: { id: RE_SLUG_SITIO, nombre: { min: 1, max: 80 }, max: 40, orden: { min: 0, max: 39 } },
   /** Tope del documento completo (JSON canónico); el sitio no lo impone: rige solo en `estricto`. */
   documentoMax: 200_000,
   /** Correo y teléfono con forma (solo `estricto`; el sitio solo acota el largo). */
@@ -63,6 +63,7 @@ export interface PortadaNegocio {
   readonly textoBotonConsulta: string;
 }
 export interface BeneficioNegocio { readonly icono: IdIconoNegocio; readonly titulo: Afirmacion; readonly descripcion: string }
+export interface CategoriaNegocio { readonly nombre: string; readonly icono: IdIconoNegocio; readonly oculta?: true; readonly orden?: number }
 export interface ValorNegocio { readonly icono: IdIconoNegocio; readonly titulo: string; readonly texto: string }
 /** Foto de la identidad: un medio de la consola de tipo foto. */
 export interface FotoIdentidadMedio { readonly medioId: string; readonly alt: string }
@@ -103,7 +104,8 @@ export interface NegocioSitioDatos {
   readonly identidad: IdentidadNegocio;
   readonly textoPrivacidad: readonly string[];
   /** id de categoría → nombre e ícono. */
-  readonly categorias: Readonly<Record<string, { readonly nombre: string; readonly icono: IdIconoNegocio }>>;
+  /** `oculta`: sus productos no se publican; `orden`: posición en el sitio (entero 0..39). */
+  readonly categorias: Readonly<Record<string, CategoriaNegocio>>;
   readonly destacados: readonly string[];
   /** Ausente = el sitio no pinta misión, visión ni chat. */
   readonly institucional?: InstitucionalNegocio;
@@ -426,7 +428,7 @@ export function evaluarNegocioSitio(entrada: unknown, nivel: NivelNegocio): Eval
   // La cifra del contador (valor de hasta 20 caracteres) la valida la regla única del núcleo, en ambos niveles: el sitio rechaza más.
   l.errores.push(...validarCifra(ide['cifra'], 'identidad.cifra'));
 
-  const categorias: Record<string, { nombre: string; icono: IdIconoNegocio }> = {};
+  const categorias: Record<string, CategoriaNegocio> = {};
   if (o['categorias'] !== undefined) {
     const c = esObjeto(o['categorias']) ? o['categorias'] : {};
     if (!esObjeto(o['categorias'])) l.falla('categorias', 'debe ser un objeto');
@@ -435,8 +437,17 @@ export function evaluarNegocioSitio(entrada: unknown, nivel: NivelNegocio): Eval
       // Una clave inválida no se copia al error: se nombra por posición.
       const r = L.categorias.id.test(id) ? `categorias.${id}` : `categorias[${String(i)}]`;
       if (!L.categorias.id.test(id)) l.falla(r, 'la clave no es un identificador válido');
-      const e = l.obj(x, r, ['nombre', 'icono']);
-      categorias[id] = { nombre: l.texto(e['nombre'], `${r}.nombre`, L.categorias.nombre.min, L.categorias.nombre.max), icono: l.icono(e['icono'], `${r}.icono`) };
+      const e = l.obj(x, r, ['nombre', 'icono', 'oculta', 'orden']);
+      if (e['oculta'] !== undefined && e['oculta'] !== true) l.falla(`${r}.oculta`, 'debe ser verdadero o no estar');
+      const O = L.categorias.orden;
+      if (e['orden'] !== undefined && !(typeof e['orden'] === 'number' && Number.isInteger(e['orden']) && e['orden'] >= O.min && e['orden'] <= O.max)) {
+        l.falla(`${r}.orden`, `debe ser un entero de ${String(O.min)} a ${String(O.max)}`);
+      }
+      categorias[id] = {
+        nombre: l.texto(e['nombre'], `${r}.nombre`, L.categorias.nombre.min, L.categorias.nombre.max), icono: l.icono(e['icono'], `${r}.icono`),
+        ...(e['oculta'] === true ? { oculta: true as const } : {}),
+        ...(typeof e['orden'] === 'number' && Number.isInteger(e['orden']) && e['orden'] >= O.min && e['orden'] <= O.max ? { orden: e['orden'] } : {}),
+      };
     }
   }
   const destacados = o['destacados'] === undefined ? [] : l.lista(o['destacados'], 'destacados', L.destacados.max).map((d, i) => {

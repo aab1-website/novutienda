@@ -338,6 +338,20 @@ describe('servicios de la consola', () => {
       expect(p.productos[0]?.precioUSD).toEqual({ bo: 0, ar: 0 }); // precio 0 = a consultar, se publica tal cual
     });
 
+    it('construirPublicado deja fuera los productos de una categoría oculta y lo advierte', () => {
+      const prod = (id: string, categoria: string): never => ({ id, nombre: id, categoria, marca: 'M', activo: true, disponible: true, precioUSD: { bo: 1, ar: 1 } }) as never;
+      const datos = { enlacesPermitidos: [], identidad: { foto: null }, destacados: ['b-1'], categorias: { a: { nombre: 'A', icono: 'pin', oculta: true }, b: { nombre: 'B', icono: 'pin' } } } as never;
+      const p = construirPublicado({
+        productos: [prod('a-1', 'a'), prod('a-2', 'a'), prod('b-1', 'b'), prod('c-1', 'sin-definir')],
+        fichas: new Map(['a-1', 'a-2', 'b-1', 'c-1'].map((id) => [id, { productoId: id, ...ficha(`${id}-slug`, []) } as never])),
+        medios: new Map(), config: { plantillaActiva: 'cielo', whatsappNovuchat: '59170000000', medicion: {} }, secciones: [], carruseles: [],
+        negocio: { datos, version: 1, actualizadoEn: '2026-11-04T11:30:00.000Z' },
+      });
+      expect(p.productos.map((x) => x.id)).toEqual(['b-1', 'c-1']);
+      expect(p.advertencias).toContain('2 productos no se publican porque su categoría está oculta');
+      expect(p.negocio?.destacados).toEqual(['b-1']);
+    });
+
     it('el temporizador y la corrida diaria reconstruyen una sola vez', async () => {
       await configurar();
       await publicable();

@@ -15,6 +15,7 @@ import { formatoBytes } from '../../util/base64.js';
 import { PALETAS } from './plantillas-vista.js';
 import { PantallaFichas } from './catalogo-ficha.js';
 import { PantallaSecciones } from './catalogo-secciones.js';
+import { PantallaCategorias, type ServicioCategorias } from './categorias.js';
 import { PantallaTextosSitio, type ServicioTextos } from './textos-sitio.js';
 import type { NegocioSitio } from '../../api/tipos.js';
 import { BloqueLogo } from './logo-vista.js';
@@ -24,7 +25,7 @@ import './apariencia.css';
 
 const TODAS = [
   { id: 'tablero', titulo: 'Tablero' }, { id: 'fichas', titulo: 'Fichas, fotos y video' }, { id: 'secciones', titulo: 'Secciones' },
-  { id: 'apariencia', titulo: 'Apariencia' }, { id: 'textos', titulo: 'Textos del sitio' },
+  { id: 'apariencia', titulo: 'Apariencia' }, { id: 'textos', titulo: 'Textos del sitio' }, { id: 'categorias', titulo: 'Categorías' },
 ];
 
 function Uso({ etiqueta, usados, tope, formato }: { etiqueta: string; usados: number; tope: number; formato?: (n: number) => string }): JSX.Element {
@@ -392,6 +393,24 @@ function TextosDelSitio(): JSX.Element {
   return <PantallaTextosSitio servicio={servicio} />;
 }
 
+function CategoriasDelSitio(): JSX.Element {
+  const { api } = useApp();
+  const servicio: ServicioCategorias = {
+    leer: async () => {
+      const r = await api.llamar('leerNegocioSitio', {});
+      return { negocio: r.negocio === null ? null : { ...r.negocio }, version: r.version, ...(r.invalido === undefined ? {} : { invalido: r.invalido }) };
+    },
+    guardar: async (negocio, versionEsperada) => {
+      // El panel trabaja el negocio como documento crudo (solo cambia `categorias` y deja intacto el resto); no puede revalidar todos los
+      // campos de `NegocioSitio` sin duplicar la regla del servidor, que valida todo en «estricto» y responde con la ruta de cada error.
+      const r = await api.llamar('guardarNegocioSitio', { negocio: negocio as unknown as NegocioSitio, versionEsperada });
+      return { version: r.version };
+    },
+    categoriasDeProductos: async () => (await api.llamar('listarProductos', {})).map((p) => p.categoria),
+  };
+  return <PantallaCategorias servicio={servicio} />;
+}
+
 export function PantallaCatalogo({ sub }: { sub: string }): JSX.Element {
   const { usuario, puedeVer } = useApp();
   const items = usuario.rol === 'adm' ? TODAS : TODAS.filter((i) => i.id === 'tablero' || i.id === 'fichas');
@@ -407,6 +426,7 @@ export function PantallaCatalogo({ sub }: { sub: string }): JSX.Element {
       {actual === 'secciones' && <PantallaSecciones />}
       {actual === 'apariencia' && <Apariencia />}
       {actual === 'textos' && <TextosDelSitio />}
+      {actual === 'categorias' && <CategoriasDelSitio />}
     </div>
   );
 }
