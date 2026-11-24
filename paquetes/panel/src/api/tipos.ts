@@ -651,7 +651,7 @@ export interface NegocioSitio {
     readonly sello: AfirmacionNegocio;
   };
   readonly textoPrivacidad: readonly string[];
-  readonly categorias: Readonly<Record<string, { readonly nombre: string; readonly icono: string }>>;
+  readonly categorias: Readonly<Record<string, { readonly nombre: string; readonly icono: string; readonly oculta?: true; readonly orden?: number }>>;
   readonly destacados: readonly string[];
   /** Misión, visión y maqueta de chat; ausente = el sitio no los pinta. */
   readonly institucional?: TextosInstitucionales;

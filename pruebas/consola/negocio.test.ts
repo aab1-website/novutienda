@@ -25,6 +25,7 @@ const base = () => ({
 });
 type Dato = Record<string, unknown>;
 const con = (cambios: Dato): Dato => ({ ...base(), ...cambios });
+const una2 = (): Dato => con({ categorias: { camaras: { nombre: 'Cámaras', icono: 'pin', oculta: true, orden: 3 } } });
 const errores = (entrada: unknown, nivel: 'estricto' | 'heredado' = 'estricto'): readonly string[] => {
   try { validarNegocioSitio(entrada, { nivel }); } catch (e) { return (e as { detalles: readonly string[] }).detalles; }
   return [];
@@ -178,6 +179,19 @@ describe('niveles de validación: heredado (paridad con el sitio) y estricto', (
     for (const h of ['1.2.3.4', '192.168.0.1', 'ejemplo.123', 'localhost']) expect(errores(con({ enlacesPermitidos: [h] })), h).not.toEqual([]);
     expect(errores(con({ enlacesPermitidos: ['1.2.3.4'] }))[0]).toBe('enlacesPermitidos[0]: no se admite una dirección IP ni localhost');
     expect(errores(con({ enlacesPermitidos: ['1.2.3.4'] }), 'heredado')).toEqual([]);
+  });
+  it('categorías: `oculta` (solo verdadero) y `orden` (entero 0 a 39) valen en ambos niveles; fuera de eso se rechaza con su ruta', () => {
+    const una = (extra: Dato): Dato => con({ categorias: { camaras: { nombre: 'Cámaras', icono: 'pin', ...extra } } });
+    for (const nivel of ['estricto', 'heredado'] as const) {
+      expect(errores(una({ oculta: true, orden: 0 }), nivel), nivel).toEqual([]);
+      expect(errores(una({ orden: 39 }), nivel), nivel).toEqual([]);
+      expect(errores(una({ oculta: false }), nivel), nivel).toEqual(['categorias.camaras.oculta: debe ser verdadero o no estar']);
+      for (const o of [-1, 40, 1.5, '3']) expect(errores(una({ orden: o }), nivel), `${nivel} ${String(o)}`).toEqual(['categorias.camaras.orden: debe ser un entero de 0 a 39']);
+    }
+  });
+  it('categorías: lo válido se conserva en el negocio validado', () => {
+    const n = validarNegocioSitio(una2(), { nivel: 'estricto' });
+    expect(n.categorias['camaras']).toEqual({ nombre: 'Cámaras', icono: 'pin', oculta: true, orden: 3 });
   });
   it('categorías: tope de 40 solo en estricto (el sitio no acota las del negocio); tamaño del documento', () => {
     const cats = (n: number): Dato => Object.fromEntries(Array.from({ length: n }, (_, i) => [`cat-${String(i)}`, { nombre: `Cat ${String(i)}`, icono: 'pin' }]));

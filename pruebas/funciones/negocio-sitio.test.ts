@@ -242,6 +242,37 @@ describe.skipIf(!hayEmulador)('datos del negocio del sitio (callable consola, em
     expect(r.texto).not.toContain(adm.uid);
   });
 
+  it('una categoría oculta guardada desde el panel saca sus productos de lo publicado (lo que lee el catálogo de NovuChat) pero no del inventario', async () => {
+    const t = await nuevoTenant();
+    const adm = await crearUsuario(h, { rol: 'adm', tenant: t });
+    // Segundo producto en otra categoría, para que el sitio siga siendo publicable.
+    await h.db.runTransaction((tx) => crearProducto(tx, {
+      tenantId: t, operacionId: unico('prod'), por: SEMBRADOR,
+      producto: { id: 'radio-uno', nombre: 'Radio', categoria: 'radios', sku: 'SKU-2', marca: 'Marca', precioUSD: { bo: 100, ar: 100 }, activo: true, publicado: true },
+    }));
+    await h.firestore.doc(`tenants/${t}/fichasWeb/radio-uno`).set({
+      productoId: 'radio-uno', slug: 'slug-radio-uno', descripcion: 'Descripción.', garantia: '12 meses', medios: [],
+      seo: { titulo: 'SEO', descripcion: 'Descripción SEO' }, estado: 'publicado',
+    });
+    await sembrar(t, { destacados: ['radio-uno'] });
+    const categorias = { televisores: { nombre: 'Televisores', icono: 'cuadricula', oculta: true, orden: 1 }, radios: { nombre: 'Radios', icono: 'cuadricula', orden: 0 } };
+    const g = await accion('consola', 'guardarNegocioSitio', { negocio: negocio({ categorias, destacados: ['radio-uno'] }), versionEsperada: 1 }, adm.token, t);
+    expect(g.status, JSON.stringify(g.error)).toBe(200);
+    expect((await docNegocio(t))?.['categorias']).toEqual(categorias);
+    const p = await accion('consola', 'publicarSitio', {}, adm.token, t);
+    expect(p.status, JSON.stringify(p.error)).toBe(200);
+    expect(JSON.stringify(p.resultado)).toContain('1 producto no se publica porque su categoría está oculta');
+    // El catálogo de NovuChat lista `publicado/estado.productos` y lee `publicado/producto__<id>`: ninguno de los dos trae el oculto.
+    const estado = (await h.firestore.doc(`tenants/${t}/publicado/estado`).get()).data();
+    expect(estado?.['productos']).toEqual(['radio-uno']);
+    expect((await h.firestore.doc(`tenants/${t}/publicado/producto__tv-uno`).get()).exists).toBe(false);
+    expect((await h.firestore.doc(`tenants/${t}/publicado/producto__radio-uno`).get()).exists).toBe(true);
+    // Sigue en inventario.
+    expect((await h.firestore.doc(`tenants/${t}/productos/tv-uno`).get()).exists).toBe(true);
+    // La categoría guardada llega al negocio publicado con su `orden` y su marca.
+    expect((await h.firestore.doc(`tenants/${t}/publicado/negocio`).get()).data()?.['categorias']).toEqual(categorias);
+  });
+
   // Reglas de Firestore con el SDK de cliente: omitido a propósito. Esta suite no prueba reglas de Firestore (solo las de Storage,
   // con `@firebase/rules-unit-testing`); `sitio/negocio` y `publicado/negocio` caen en la matriz generada de `pruebas/reglas`.
 });

@@ -221,9 +221,12 @@ export function construirPublicado(e: EntradaPublicado): Publicado {
   const sinNulos = <T>(xs: readonly (T | undefined)[]): T[] => xs.filter((x): x is T => x !== undefined);
 
   const productos: ProductoPublicado[] = [];
+  let enCategoriaOculta = 0;
   for (const p of [...e.productos].sort((a, b) => (a.id < b.id ? -1 : 1))) {
     const f = e.fichas.get(p.id);
     if (f?.estado !== 'publicado' || !p.activo) continue;
+    // Una categoría oculta no se publica: sus productos siguen en el punto de venta y en inventario, pero no salen al sitio ni al catálogo de NovuChat.
+    if (e.negocio?.datos.categorias[p.categoria]?.oculta === true) { enCategoriaOculta += 1; continue; }
     // El sitio exige marca; un dato viejo sin marca se excluye (no tumba la publicación) y se avisa al comerciante.
     if ((p.marca ?? '').trim() === '') {
       advertencias.push(`El producto «${p.nombre}» no se publicó porque no tiene marca; agréguela en Inventario y vuelva a publicar`);
@@ -237,6 +240,10 @@ export function construirPublicado(e: EntradaPublicado): Publicado {
       medios: sinNulos(f.medios.map((m) => publico(m.medioId, m.alt, `producto ${p.id}`))),
       seo: f.seo, ...(f.caracteristicas === undefined ? {} : { caracteristicas: f.caracteristicas }), precioUSD: p.precioUSD,
     });
+  }
+
+  if (enCategoriaOculta > 0) {
+    advertencias.push(`${String(enCategoriaOculta)} ${enCategoriaOculta === 1 ? 'producto no se publica porque su categoría está oculta' : 'productos no se publican porque su categoría está oculta'}`);
   }
 
   const secciones: SeccionPublicada[] = e.secciones.filter((s) => s.visible).map((s) => ({
