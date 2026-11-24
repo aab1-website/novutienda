@@ -13,6 +13,7 @@
       {
         "activo": true,
         "area": "general",
+        "areaClave": "general",
         "descripcion": "Solo con precio en Bolivia.",
         "disponible": true,
         "foto": "https://medios.ejemplo.invalid/publico/tenants/casa-a/publico/medios/p-cable/bbb-imagen960.webp",
@@ -22,6 +23,7 @@
         "id": "p-cable",
         "moneda": "BOB",
         "nombre": "Cable USB",
+        "ordenArea": null,
         "precio": 23.19,
         "precioCentavos": 2319,
         "stock": 7,
@@ -35,6 +37,7 @@
       {
         "activo": true,
         "area": "general",
+        "areaClave": "general",
         "descripcion": "Sin existencias.",
         "disponible": false,
         "foto": "https://medios.ejemplo.invalid/publico/tenants/casa-a/publico/medios/p-agotado/bbb-imagen960.webp",
@@ -44,6 +47,7 @@
         "id": "p-agotado",
         "moneda": "BOB",
         "nombre": "Cargador agotado",
+        "ordenArea": null,
         "precio": 104.48,
         "precioCentavos": 10448,
         "stock": 0,
@@ -57,6 +61,7 @@
       {
         "activo": true,
         "area": "general",
+        "areaClave": "general",
         "descripcion": "Celular de ejemplo.",
         "disponible": true,
         "foto": "https://medios.ejemplo.invalid/publico/tenants/casa-a/publico/medios/p-celular/bbb-imagen960.webp",
@@ -66,6 +71,7 @@
         "id": "p-celular",
         "moneda": "BOB",
         "nombre": "Celular X1",
+        "ordenArea": null,
         "precio": 1392.93,
         "precioCentavos": 139293,
         "stock": 3,
@@ -79,6 +85,7 @@
       {
         "activo": true,
         "area": "general",
+        "areaClave": "general",
         "descripcion": "No controla stock.",
         "disponible": true,
         "foto": "https://medios.ejemplo.invalid/publico/tenants/casa-a/publico/medios/p-servicio/bbb-imagen960.webp",
@@ -88,6 +95,7 @@
         "id": "p-servicio",
         "moneda": "BOB",
         "nombre": "Instalación",
+        "ordenArea": null,
         "precio": 104.48,
         "precioCentavos": 10448,
         "stock": null,
@@ -101,6 +109,7 @@
       {
         "activo": true,
         "area": "general",
+        "areaClave": "general",
         "descripcion": "Lápiz de grafito.",
         "disponible": true,
         "foto": "https://medios.ejemplo.invalid/publico/tenants/casa-a/publico/medios/p-lapiz/bbb-imagen960.webp",
@@ -110,6 +119,7 @@
         "id": "p-lapiz",
         "moneda": "BOB",
         "nombre": "Lápiz HB",
+        "ordenArea": null,
         "precio": 8.71,
         "precioCentavos": 871,
         "stock": 10,
@@ -123,6 +133,7 @@
       {
         "activo": true,
         "area": "general",
+        "areaClave": "general",
         "descripcion": "Decimales incómodos.",
         "disponible": true,
         "foto": "https://medios.ejemplo.invalid/publico/tenants/casa-a/publico/medios/p-parlante/bbb-imagen960.webp",
@@ -132,6 +143,7 @@
         "id": "p-parlante",
         "moneda": "BOB",
         "nombre": "Parlante portátil",
+        "ordenArea": null,
         "precio": 139.23,
         "precioCentavos": 13923,
         "stock": 2,
@@ -145,6 +157,7 @@
       {
         "activo": true,
         "area": "general",
+        "areaClave": "general",
         "descripcion": "Solo en depósito.",
         "disponible": false,
         "foto": "https://medios.ejemplo.invalid/publico/tenants/casa-a/publico/medios/p-televisor/bbb-imagen960.webp",
@@ -154,6 +167,7 @@
         "id": "p-televisor",
         "moneda": "BOB",
         "nombre": "Televisor 50\"",
+        "ordenArea": null,
         "precio": 3137.73,
         "precioCentavos": 313773,
         "stock": 0,
@@ -172,7 +186,7 @@
   "headers": {
     "Cache-Control": "private, max-age=60",
     "Content-Type": "application/json; charset=utf-8",
-    "ETag": "\"65ff94f43f253474101784ab21ff6d1b\"",
+    "ETag": "\"bda28b8ebd950d59d297cc627eeea515\"",
     "Vary": "Authorization",
     "X-Content-Type-Options": "nosniff"
   },

@@ -88,6 +88,47 @@ async function existenciasPorProducto(e: Entorno, tenantId: string): Promise<Map
 const stockPorAlmacen = (por: Record<string, number> | undefined): Record<string, number> =>
   Object.fromEntries(UBICACIONES.map((u) => [u, por?.[u] ?? 0]));
 
+/** Largo máximo de `descripcion` en el catálogo: el catálogo de WhatsApp muestra un texto corto. */
+export const MAX_DESCRIPCION_CATALOGO = 300;
+
+/** Descripción en una sola línea (espacios y saltos colapsados) y de hasta 300 caracteres; si se corta, termina en «…» sin partir una palabra. */
+export function descripcionCorta(texto: string): string {
+  const plano = texto.replace(/\s+/g, ' ').trim();
+  if (plano.length <= MAX_DESCRIPCION_CATALOGO) return plano;
+  // Un espacio en el lugar 300 deja entera la palabra anterior: con el «…» suma 300.
+  const espacio = plano.slice(0, MAX_DESCRIPCION_CATALOGO).lastIndexOf(' ');
+  let corte = espacio > MAX_DESCRIPCION_CATALOGO / 2 ? plano.slice(0, espacio) : plano.slice(0, MAX_DESCRIPCION_CATALOGO - 1);
+  // No dejar medio emoji: una unidad alta de un par sustituto al final se quita.
+  if (/[\uD800-\uDBFF]$/.test(corte)) corte = corte.slice(0, -1);
+  return `${corte.trimEnd()}…`;
+}
+
+type CategoriaPublicada = { readonly nombre: string; readonly orden: number | null; readonly oculta: boolean };
+
+/** Nombre y orden de cada categoría de `publicado/negocio`; una entrada malformada se ignora (la categoría sale con su clave). */
+function categoriasPublicadas(negocio: Datos | undefined): ReadonlyMap<string, CategoriaPublicada> {
+  const r = new Map<string, CategoriaPublicada>();
+  const crudas = negocio?.['categorias'];
+  if (typeof crudas !== 'object' || crudas === null || Array.isArray(crudas)) return r;
+  for (const [clave, v] of Object.entries(crudas as Datos)) {
+    if (typeof v !== 'object' || v === null) continue;
+    const c = v as Datos;
+    if (typeof c['nombre'] !== 'string' || c['nombre'].trim() === '') continue;
+    const orden = c['orden'];
+    r.set(clave, {
+      nombre: c['nombre'].trim(), oculta: c['oculta'] === true,
+      orden: typeof orden === 'number' && Number.isInteger(orden) && orden >= 0 && orden <= 39 ? orden : null,
+    });
+  }
+  return r;
+}
+
+/** `area`: nombre visible de la categoría (sin nombre propio, la clave tal cual, como en el sitio); `areaClave`: la clave estable; `ordenArea`: su posición o `null`. */
+function areaDe(clave: string, categorias: ReadonlyMap<string, CategoriaPublicada>): { area: string; areaClave: string; ordenArea: number | null } {
+  const c = categorias.get(clave);
+  return { area: c?.nombre ?? clave, areaClave: clave, ordenArea: c?.orden ?? null };
+}
+
 async function catalogo(e: Entorno, tenantId: string, comercial: ConfiguracionComercial, mercadoId: string, cfg: ConfigNovuchat): Promise<{ estable: Record<string, unknown>; generadoEn: string } | RespuestaApi> {
   // `mercadoId` ya se comprobó contra los mercados del tenant (`esMercadoDe`), por eso `mercadoDe` no devuelve `undefined`.
   const mercado = mercadoDe(comercial, mercadoId)!;
@@ -103,10 +144,13 @@ async function catalogo(e: Entorno, tenantId: string, comercial: ConfiguracionCo
   const redondeo: Readonly<Record<string, ReglaRedondeo | undefined>> = await e.redondeo(tenantId);
   // Una sola definición de «publicado» (DS-1): existe la copia `publicado/producto__<id>` que escribe la publicación de la consola.
   // La lista de ids sale de `publicado/estado.productos`; `producto.publicado` de Inventarios no se lee.
-  const [estadoDoc, existencias] = await Promise.all([
+  const [estadoDoc, existencias, negocioDoc] = await Promise.all([
     e.firestore.doc(`tenants/${tenantId}/publicado/estado`).get(),
     existenciasPorProducto(e, tenantId),
+    // Nombre visible y orden de cada categoría: la copia publicada del negocio, la misma que usa el sitio.
+    e.firestore.doc(`tenants/${tenantId}/publicado/negocio`).get(),
   ]);
+  const categorias = categoriasPublicadas(negocioDoc.data());
   const lista: unknown = estadoDoc.data()?.['productos'];
   const candidatos = Array.isArray(lista) ? [...new Set(lista.filter((x): x is string => typeof x === 'string'))] : [];
   // Solo ids con la forma de un id de producto (`ID_PRODUCTO`, llamadas/comunes.ts): uno con `/` haría lanzar a `doc()` o leería un documento anidado.
@@ -146,6 +190,9 @@ async function catalogo(e: Entorno, tenantId: string, comercial: ConfiguracionCo
   for (const p of productos) {
     const pub = copiaDe.get(p.productoId);
     if (pub === undefined) continue; // sin copia publicada no hay ficha que mostrar
+    // Categoría oculta (decisión del 24/11/2026): igual que en el sitio, sus productos no se ofrecen. Se mira la categoría viva,
+    // así un producto que se pasa a una categoría oculta sale de inmediato, sin esperar a la siguiente publicación.
+    if (categorias.get(p.categoria ?? '')?.oculta === true) continue;
     // D7: una sola regla de redondeo (0 a 2 decimales o un múltiplo de centavos). Una configuración con otra regla ya falló antes,
     // en `e.redondeo` (`RedondeoInvalido`), y el catálogo no sale: falla cerrado, sin precios.
     const base = precioEnMercado(p, mercadoId);
@@ -163,7 +210,8 @@ async function catalogo(e: Entorno, tenantId: string, comercial: ConfiguracionCo
     const fotos = medios.filter((m) => m.tipo === 'foto').map((m) => urlFoto(m, urlMedios)).filter((u): u is string => u !== undefined).slice(0, 5);
     items.push({
       id: p.productoId, nombre: p.nombre, precio: precio.monto, precioCentavos: precio.centavos, moneda, stock: stockTienda, disponible, stockPorAlmacen: por,
-      foto: fotos[0] ?? null, fotos, activo: true, area: p.categoria ?? '', descripcion: typeof pub['descripcion'] === 'string' ? pub['descripcion'] : '',
+      foto: fotos[0] ?? null, fotos, activo: true, ...areaDe(p.categoria ?? '', categorias),
+      descripcion: descripcionCorta(typeof pub['descripcion'] === 'string' ? pub['descripcion'] : ''),
       urlProducto: cfg.sitioUrl !== '' && typeof pub['slug'] === 'string' ? `${cfg.sitioUrl}/producto/${pub['slug']}` : null,
     });
     if (items.length >= MAX_ITEMS_CATALOGO) break;
