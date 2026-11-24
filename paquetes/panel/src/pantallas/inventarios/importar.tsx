@@ -70,6 +70,8 @@ export function ImportarExportar(): JSX.Element {
   const simulacion = useAccion();
   const importacion = useAccion();
   const [inicial, setInicial] = useState(false);
+  /** La última descarga total traía más de 5.000 movimientos y se recortó. */
+  const [recortado, setRecortado] = useState(false);
   const [fuente, setFuente] = useState<Fuente | null>(null);
   const [errorArchivo, setErrorArchivo] = useState<string | null>(null);
   const [sim, setSim] = useState<Simulacion | null>(null);
@@ -96,6 +98,15 @@ export function ImportarExportar(): JSX.Element {
       const { csv } = await api.llamar('exportarProductosCsv', {});
       const filas = filasDeExportacion(csv);
       descargarBytes('productos.xlsx', escribirXlsx([{ nombre: 'Productos', filas, anchos: (filas[0] ?? []).map((c) => Math.max(14, c.length + 4)) }]));
+    }, { exito: 'Archivo exportado.', error: 'ambos' });
+  };
+  const descargarTodo = (): void => {
+    void exportacion.ejecutar(async () => {
+      const r = await api.llamar('exportarInventarioTotal', {});
+      descargarBytes(`inventario-completo-${new Date().toISOString().slice(0, 10)}.xlsx`, escribirXlsx(r.hojas.map((h) => ({
+        nombre: h.nombre, filas: h.filas, anchos: (h.filas[0] ?? []).map((c) => Math.max(14, String(c).length + 4)),
+      }))));
+      setRecortado(r.recortado);
     }, { exito: 'Archivo exportado.', error: 'ambos' });
   };
   const plantillaExcel = (): void => {
@@ -229,10 +240,12 @@ export function ImportarExportar(): JSX.Element {
         <div class="fila">
           <Boton variante="secundario" onClick={plantillaExcel} deshabilitado={comercial.estado !== 'lista'}>Descargar plantilla (Excel)</Boton>
           <Boton variante="secundario" onClick={exportarExcel} ocupado={exportacion.ocupado}>Exportar productos (Excel)</Boton>
+          {esAdm && <Boton variante="secundario" onClick={descargarTodo} ocupado={exportacion.ocupado}>Descargar todo (Excel)</Boton>}
           <Boton chico variante="secundario" onClick={plantilla} deshabilitado={comercial.estado !== 'lista'}>Plantilla en CSV</Boton>
           <Boton chico variante="secundario" onClick={exportar} ocupado={exportacion.ocupado}>Exportar en CSV</Boton>
         </div>
-        <p class="texto-suave">«Exportar productos (Excel)» baja los productos actuales en este mismo formato: sirve para editarlos en una planilla y volver a cargarlos. El CSV sigue disponible como opción.</p>
+        <p class="texto-suave">«Exportar productos (Excel)» baja los productos actuales en este mismo formato: sirve para editarlos en una planilla y volver a cargarlos. El CSV sigue disponible como opción.{esAdm ? ' «Descargar todo (Excel)» trae además las existencias por almacén, las series, los movimientos y los márgenes; la primera hoja, «Productos», se puede volver a cargar.' : ''}</p>
+        {recortado && <p class="texto-suave">El archivo trae los últimos 5.000 movimientos.</p>}
         {exportacion.error && <Alerta>{exportacion.error}</Alerta>}
 
         {!esAdm ? (

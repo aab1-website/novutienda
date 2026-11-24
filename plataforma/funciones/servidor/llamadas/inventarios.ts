@@ -6,11 +6,11 @@ import { logger } from 'firebase-functions';
 import { HttpsError } from 'firebase-functions/v2/https';
 import { z } from 'zod';
 import {
-  abrirConteo, actualizarProducto, cancelarConteo, claveDePrecio, ajustar, cerrarConteo, conteosAbiertosDe, crearProducto, crearUbicacion, esDisponible, exportarProductosCsv, importarCsvPorLotes, leerArchivoImportacion, MAX_BYTES_ARCHIVO, type FuenteTabla, type LectorHojas, type LecturaSinBloqueo, type LeerCatalogo,
+  abrirConteo, actualizarProducto, armarExportacionTotal, MAX_MOVIMIENTOS_EXPORTACION, MAX_SERIES_EXPORTACION, type CotizacionTotal, cancelarConteo, claveDePrecio, ajustar, cerrarConteo, conteosAbiertosDe, crearProducto, crearUbicacion, esDisponible, exportarProductosCsv, importarCsvPorLotes, leerArchivoImportacion, MAX_BYTES_ARCHIVO, type FuenteTabla, type LectorHojas, type LecturaSinBloqueo, type LeerCatalogo,
   filtrarUnidadesLista, ingresar, normalizarSerieBusqueda, ORIGEN_COMO_CERO, leerDocumentoProducto, marcaOcultamiento, mercadosSinPrecio, proyectarMovimiento, proyectarProducto, registrarLineaConteo, resolverMerma, simularImportacionCsv, solicitarMerma, traspasar, UBICACION_DISPONIBILIDAD,
   type Autor, type CambiosProducto, type Conteos, type EntradaProducto, type LineaAjuste, type LineaIngreso, type LineaTraspaso, type ProductoExportable,
 } from '@novutienda/inventarios';
-import { mercadosDe, type LimiteTasa } from '@novutienda/nucleo';
+import { leerCotizacionDe, mercadosDe, SinCotizacionUtilizable, type LimiteTasa } from '@novutienda/nucleo';
 import { accion, actorPos, type Contexto, type TablaImplementaciones } from './marco.js';
 import { ID, ID_PRODUCTO, LIMITE, MS, TEXTO, UBICACION, VACIO, objeto, validarRango } from './comunes.js';
 
@@ -19,6 +19,12 @@ const autor = (c: Contexto): Autor => actorPos(c);
 
 const ruta = (t: string, col: string, id?: string): string => `tenants/${t}/${col}${id === undefined ? '' : `/${id}`}`;
 const datosDe = (d: { data(): unknown }): Record<string, unknown> => d.data() as Record<string, unknown>;
+/** Fecha de un documento (marca de tiempo de Firestore, `Date` o texto) como texto ISO. */
+const fechaIso = (v: unknown): string => {
+  if (v instanceof Date) return v.toISOString();
+  if (typeof v === 'object' && v !== null && typeof (v as { toDate?: unknown }).toDate === 'function') return (v as { toDate(): Date }).toDate().toISOString();
+  return typeof v === 'string' ? v : '';
+};
 /** Documento de un conteo para `caj` (D9): sin los productos tomados «como 0» ni `mermas`, que delatan qué tenía existencia. */
 const conteoParaCaj = (conteo: Record<string, unknown>, lineas: Record<string, unknown>[]): Record<string, unknown> => {
   const ocultos = new Set(lineas.filter((l) => l['origen'] === ORIGEN_COMO_CERO).map((l) => String(l['productoId'])));
@@ -597,6 +603,64 @@ export const accionesInventarios: TablaImplementaciones = {
         }),
       );
       return { conteos };
+    },
+  }),
+  /**
+   * Descarga total del inventario, solo `adm`: devuelve FILAS de cinco hojas (el panel escribe el .xlsx), no bytes. Productos con
+   * costos, existencias por almacén, series (hasta 20.000), los últimos 5.000 movimientos (`recortado` avisa si había más) y el margen por
+   * mercado con el tipo de cambio de hoy. No incluye ventas ni cajas (son del POS).
+   */
+  exportarTotal: accion({
+    esquema: VACIO,
+    ejecutar: async (c) => {
+      if (c.rol !== 'adm') throw new HttpsError('permission-denied', 'Solo el administrador descarga todo el inventario.');
+      const comercial = await c.e.comercialDelTenant(c.tenantId);
+      const col = (n: string) => c.e.firestore.collection(ruta(c.tenantId, n));
+      const [prods, costos, ubic, exis, unid, movs] = await Promise.all([
+        col('productos').get(), col('costos').get(), col('ubicaciones').get(), col('existencias').get(),
+        col('unidades').limit(MAX_SERIES_EXPORTACION).get(),
+        col('movimientos').orderBy('fecha', 'desc').limit(MAX_MOVIMIENTOS_EXPORTACION + 1).get(),
+      ]);
+      const costo = new Map(costos.docs.map((x) => [x.id, x.data()['costoUSD']]));
+      const productos: ProductoExportable[] = prods.docs.map((x) => {
+        const p = leerDocumentoProducto(x.id, x.data(), comercial);
+        const cu = costo.get(x.id);
+        return {
+          id: p.productoId, nombre: p.nombre, categoria: p.categoria ?? '', ...(p.marca !== undefined ? { marca: p.marca } : {}), sku: p.sku ?? p.productoId,
+          conSerie: p.conSerie, ...(p.garantiaMeses !== undefined ? { garantiaMeses: p.garantiaMeses } : {}), ...(p.minimo !== undefined ? { minimo: p.minimo } : {}),
+          precioUSD: Object.fromEntries(mercadosDe(comercial).flatMap((id) => { const v = p.precioCentavos[claveDePrecio(id)]; return v === undefined ? [] : [[claveDePrecio(id), v] as const]; })),
+          ...(typeof cu === 'number' ? { costoUSD: cu } : {}), activo: p.activo, publicado: p.publicado,
+        };
+      }).sort((a, b) => a.nombre.localeCompare(b.nombre, 'es'));
+      const cotizaciones: Record<string, CotizacionTotal> = {};
+      for (const m of comercial.mercados) {
+        if (m.tipoCambio == null) continue;
+        try {
+          const k = await leerCotizacionDe(c.e.almacenCotizaciones, m.id, c.e.ahora(), { tenantId: c.tenantId, comercial });
+          cotizaciones[m.id] = { par: k.par, valor: k.valor, fecha: k.fecha };
+        } catch (error) {
+          if (!(error instanceof SinCotizacionUtilizable)) throw error;
+        }
+      }
+      const recortado = movs.docs.length > MAX_MOVIMIENTOS_EXPORTACION;
+      const hojas = armarExportacionTotal({
+        productos, comercial, cotizaciones,
+        almacenes: ubic.docs.map((u) => ({ id: u.id, nombre: typeof u.data()['nombre'] === 'string' ? String(u.data()['nombre']) : u.id })),
+        existencias: exis.docs.map(datosDe).filter((x) => typeof x['productoId'] === 'string' && typeof x['ubicacionId'] === 'string' && typeof x['cantidad'] === 'number')
+          .map((x) => ({ productoId: String(x['productoId']), ubicacionId: String(x['ubicacionId']), cantidad: Number(x['cantidad']) })),
+        unidades: unid.docs.map(unidadDe).map((x) => ({
+          productoId: String(x['productoId']), serie: String(x['serie']), estado: String(x['estado']), ubicacionId: String(x['ubicacionId']),
+          ...(typeof x['garantiaHasta'] === 'string' ? { garantiaHasta: x['garantiaHasta'] } : {}),
+        })),
+        movimientos: movs.docs.slice(0, MAX_MOVIMIENTOS_EXPORTACION).map(datosDe).map((m) => {
+          const ref = m['referencia'] as { tipo?: unknown; id?: unknown } | undefined;
+          return {
+            fecha: fechaIso(m['fecha']), tipo: String(m['tipo']), productoId: String(m['productoId']), ubicacionId: String(m['ubicacionId']), delta: Number(m['delta']),
+            ...(typeof ref?.tipo === 'string' ? { referencia: `${ref.tipo}:${String(ref.id ?? '')}` } : {}),
+          };
+        }),
+      });
+      return { hojas, recortado, seriesRecortadas: unid.docs.length >= MAX_SERIES_EXPORTACION };
     },
   }),
   exportarCsv: accion({

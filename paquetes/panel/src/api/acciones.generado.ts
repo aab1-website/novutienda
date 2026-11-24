@@ -28,6 +28,7 @@ export const ROLES_ACCION: Readonly<Record<string, readonly Rol[]>> = {
   'inventarios.conteo': ['caj', 'sup', 'adm'],
   'inventarios.conteos': ['caj', 'sup', 'adm'],
   'inventarios.exportarCsv': ['sup', 'adm'],
+  'inventarios.exportarTotal': ['adm'],
   'pos.abrirTurno': ['caj', 'sup', 'adm'],
   'pos.cerrarTurno': ['caj', 'sup', 'adm'],
   'pos.cerrarTurnoForzado': ['adm'],

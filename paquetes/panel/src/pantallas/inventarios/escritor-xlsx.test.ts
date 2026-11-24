@@ -33,6 +33,13 @@ describe('escritor xlsx', () => {
     expect(crc32(new TextEncoder().encode('123456789'))).toBe(0xcbf43926);
   });
 
+  it('un número negativo no lleva apóstrofe, pero el texto «-2» sí', () => {
+    const libro = entradas(escribirXlsx([{ nombre: 'H', filas: [[-3, '-3']] }]));
+    const hoja = [...libro.values()].find((x) => x.includes('<sheetData>')) ?? '';
+    expect(hoja).toContain('>-3</t>');
+    expect(hoja).toContain(">'-3</t>");
+  });
+
   it('neutraliza con un apóstrofe lo que empieza con = + - @, TAB o CR, y lo ya neutralizado', () => {
     for (const c of ['=1+1', '+54', '-2', '@SUMA(A1)', '\tx', '\rx', "'=ya"]) expect(neutralizarCeldaXlsx(c)).toBe(`'${c}`);
     expect(neutralizarCeldaXlsx('normal')).toBe('normal');

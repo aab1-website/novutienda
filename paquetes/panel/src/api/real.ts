@@ -384,6 +384,13 @@ export const TRADUCCION: { readonly [N in NombreCallable]: Traduccion<N> } = {
     usa: ['inventarios.exportarCsv'],
     ejecutar: async (c) => ({ csv: String(campo(await c.llamar('inventarios', 'exportarCsv', c.rol === 'adm' ? { conCostos: true } : {}), 'csv')) }),
   },
+  exportarInventarioTotal: {
+    usa: ['inventarios.exportarTotal'],
+    ejecutar: async (c) => {
+      const r = await c.llamar('inventarios', 'exportarTotal', {});
+      return { hojas: campo(r, 'hojas'), recortado: campo(r, 'recortado') === true, seriesRecortadas: campo(r, 'seriesRecortadas') === true } as never;
+    },
+  },
   listarProductos: {
     usa: ['inventarios.listarProductos', 'inventarios.costos'],
     roles: TODOS,

@@ -23,6 +23,8 @@ const NO_XML = /[\u0000-\u0008\u000B\u000C\u000E-\u001F\uFFFE\uFFFF]/g;
 const TEXTO_CELDA = (v: CeldaXlsx): string => {
   if (v === null || v === undefined) return '';
   if (typeof v === 'boolean') return v ? 'sí' : 'no';
+  // Un número de verdad (p. ej. una cantidad negativa) no se neutraliza: es solo texto en la celda y no puede ser una fórmula.
+  if (typeof v === 'number') return String(v);
   return neutralizarCeldaXlsx(String(v).replace(NO_XML, ''));
 };
 

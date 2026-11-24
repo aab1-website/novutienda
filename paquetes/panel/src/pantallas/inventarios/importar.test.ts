@@ -404,3 +404,37 @@ describe('importar: el producto se reconoce por su SKU (el doble se comporta com
     expect(amb.filas[0]?.errores[0]?.motivo).toMatch(/ambigua/);
   });
 });
+
+describe('importar: descarga total', () => {
+  it('el administrador baja el libro con las cinco hojas; el supervisor no ve el botón', async () => {
+    const e = crearEntorno('adm');
+    ver(e);
+    const u = userEvent.setup();
+    const bajar = vi.mocked(escritor.descargarBytes);
+    bajar.mockClear();
+    await u.click(await screen.findByRole('button', { name: 'Descargar todo (Excel)' }));
+    expect(await screen.findByText('Archivo exportado.')).toBeTruthy();
+    expect(bajar.mock.calls[0]?.[0]).toMatch(/^inventario-completo-\d{4}-\d{2}-\d{2}\.xlsx$/);
+    expect(llamadas(e, 'exportarInventarioTotal')).toHaveLength(1);
+    const r = await e.api.llamar('exportarInventarioTotal', {});
+    expect(r.hojas.map((x) => x.nombre)).toEqual(['Productos', 'Existencias por almacén', 'Series', 'Movimientos', 'Costos y márgenes']);
+    expect(r.recortado).toBe(false);
+    cleanup();
+    const s = crearEntorno('sup');
+    ver(s);
+    await screen.findByRole('button', { name: 'Exportar productos (Excel)' });
+    expect(screen.queryByRole('button', { name: 'Descargar todo (Excel)' })).toBeNull();
+  });
+
+  it('avisa cuando los movimientos vinieron recortados', async () => {
+    const e = crearEntorno('adm');
+    ver(e);
+    const u = userEvent.setup();
+    const original = e.api.llamar.bind(e.api);
+    vi.spyOn(e.api, 'llamar').mockImplementation(((n: string, d: never) => n === 'exportarInventarioTotal'
+      ? Promise.resolve({ hojas: [{ nombre: 'Productos', filas: [['nombre']] }], recortado: true, seriesRecortadas: false })
+      : original(n as never, d)) as never);
+    await u.click(await screen.findByRole('button', { name: 'Descargar todo (Excel)' }));
+    expect(await screen.findByText('El archivo trae los últimos 5.000 movimientos.')).toBeTruthy();
+  });
+});
