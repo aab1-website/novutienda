@@ -291,9 +291,15 @@ export const handlersOtros: {
     const g = c.e.negocioSitio;
     if (!Number.isSafeInteger(e.versionEsperada) || e.versionEsperada < 0) throw fallo('entrada-invalida', 'versionEsperada inválida');
     if (e.versionEsperada !== g.version) throw fallo('conflicto', 'Los datos cambiaron desde que los leyó');
-    if (JSON.stringify(g.negocio) === JSON.stringify(e.negocio)) return { version: g.version, afectados: 0 };
-    const quitados = g.negocio === null ? [] : g.negocio.enlacesPermitidos.filter((x) => !e.negocio.enlacesPermitidos.includes(x));
-    c.e.negocioSitio = { negocio: e.negocio, version: g.version + 1 };
+    // Sin datos guardados no hay dónde escribir: los siembra NovuTienda primero (como el servicio real).
+    if (g.negocio === null) throw fallo('estado', 'Todavía no están cargados los datos generales del sitio. Pida a NovuTienda que los cargue primero.');
+    // D8: el panel nunca cambia los anfitriones permitidos: se conserva la lista guardada.
+    const negocio = { ...e.negocio, enlacesPermitidos: g.negocio.enlacesPermitidos };
+    if (JSON.stringify(g.negocio) === JSON.stringify(negocio)) return { version: g.version, afectados: 0 };
+    // `afectados` simplificado: el doble no modela secciones ni carruseles, y la lista no cambia, así que siempre es 0
+    // (el servicio real lo cuenta con `contarEnlacesFuera`).
+    const quitados: string[] = [];
+    c.e.negocioSitio = { negocio, version: g.version + 1 };
     auditar(c, 'sitio.negocio.guardar', 'sitio/negocio');
     return { version: g.version + 1, afectados: quitados.length };
   },

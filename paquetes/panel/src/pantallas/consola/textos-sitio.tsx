@@ -4,7 +4,7 @@ import { Alerta, Area, Boton, Campo, Casilla, ConCarga, Seccion } from '../../ui
 import { useAccion, useCarga } from '../../ui/hooks.js';
 import { mover } from './caracteristicas-vista.js';
 import {
-  aEstado, aNegocio, iguales, LARGO_MAXIMO_MAPA, revisarTextos, TOPES_TEXTOS, type EstadoTextos, type MensajeEditable, type NegocioCrudo,
+  aEstado, aNegocio, iguales, LARGO_MAXIMO_MAPA, LIMITES_DATOS, revisarTextos, TOPES_TEXTOS, type EstadoTextos, type MensajeEditable, type NegocioCrudo,
 } from './textos-sitio-logica.js';
 
 /** Lectura de `sitio/negocio` (`leerNegocioSitio`) y guardado con control de versión (`guardarNegocioSitio`, solo adm). */
@@ -22,14 +22,14 @@ function Formulario({ servicio, inicial, recargar }: { servicio: ServicioTextos;
   const [guardado, setGuardado] = useState(false);
   const accion = useAccion();
   const formulario = useRef<HTMLFormElement>(null);
-  const errores = intento ? revisarTextos(e) : {};
+  const errores = intento ? revisarTextos(e, base.estado) : {};
   const sucio = !iguales(e, base.estado);
   const cambiar = (c: Partial<EstadoTextos>): void => { setGuardado(false); setE({ ...e, ...c }); };
   const msg = (i: number, c: Partial<MensajeEditable>): void => cambiar({ mensajes: e.mensajes.map((m, j) => (j === i ? { ...m, ...c } : m)) });
 
   const guardar = (): void => {
     setIntento(true);
-    if (Object.keys(revisarTextos(e)).length > 0) {
+    if (Object.keys(revisarTextos(e, base.estado)).length > 0) {
       // Lleva el foco al primer campo con error, para quien usa lector de pantalla o teclado.
       setTimeout(() => formulario.current?.querySelector<HTMLElement>('[aria-invalid="true"]')?.focus(), 0);
       return;
@@ -57,7 +57,16 @@ function Formulario({ servicio, inicial, recargar }: { servicio: ServicioTextos;
 
   return (
     <form ref={formulario} class="ficha-formulario" onSubmit={(ev) => { ev.preventDefault(); guardar(); }} noValidate>
-      <p class="texto-suave">Estos textos son opcionales: si deja uno vacío, esa parte no aparece en el sitio.</p>
+      <p class="texto-suave">El nombre y la dirección son obligatorios. Los demás textos son opcionales: si deja uno vacío, esa parte no aparece en el sitio.</p>
+      <section class="ficha-bloque" aria-labelledby="textos-datos">
+        <h3 id="textos-datos">Datos de la tienda</h3>
+        <Campo etiqueta="Nombre de la tienda" valor={e.nombre} tope={LIMITES_DATOS.nombre.max} ayuda="Así se llama su tienda en la página. Ejemplo: Tienda Ejemplo." error={errores['nombre']} onInput={(v) => cambiar({ nombre: v })} />
+        <Campo etiqueta="Lema" valor={e.lema} tope={LIMITES_DATOS.lema.max} ayuda="Una frase corta que acompaña al nombre. Ejemplo: Todo para su hogar. Si lo deja vacío, no se muestra." error={errores['lema']} onInput={(v) => cambiar({ lema: v })} />
+        <Campo etiqueta="Dirección" valor={e.direccion} tope={LIMITES_DATOS.direccion.max} ayuda="Así la verán sus clientes en el pie de la página. Ejemplo: Av. Principal 123, zona Centro." error={errores['direccion']} onInput={(v) => cambiar({ direccion: v })} />
+        <Campo etiqueta="Horario de atención" valor={e.horario} tope={LIMITES_DATOS.horario.max} ayuda="Escriba los días y horas en que atiende. Ejemplo: Lunes a sábado, de 9:00 a 19:00. Si lo deja vacío, no se muestra." error={errores['horario']} onInput={(v) => cambiar({ horario: v })} />
+        <Campo etiqueta="Teléfono" valor={e.telefono} tope={LIMITES_DATOS.telefono.max} ayuda="El número para llamar a la tienda, con código de país si quiere. Ejemplo: +591 2 2123456. Si lo deja vacío, no se muestra." error={errores['telefono']} onInput={(v) => cambiar({ telefono: v })} />
+        <Campo etiqueta="Correo" valor={e.correo} tope={LIMITES_DATOS.correo.max} ayuda="Ejemplo: ventas@sutienda.com. Si lo deja vacío, no se muestra." error={errores['correo']} onInput={(v) => cambiar({ correo: v })} />
+      </section>
       <section class="ficha-bloque" aria-labelledby="textos-mapa">
         <h3 id="textos-mapa">Cómo llegar</h3>
         <Campo etiqueta="Enlace de Google Maps" valor={e.mapa} tope={LARGO_MAXIMO_MAPA} ayuda="Abra su tienda en Google Maps, toque «Compartir» y copie el enlace aquí. Si lo deja vacío, el sitio no muestra «Cómo llegar»." error={errores['mapa']} onInput={(v) => cambiar({ mapa: v })} />
@@ -113,6 +122,7 @@ function Formulario({ servicio, inicial, recargar }: { servicio: ServicioTextos;
       {guardado && <Alerta tipo="ok">Guardado. Falta publicar el sitio para que los cambios se vean.</Alerta>}
       <div>
         <Boton tipo="submit" ocupado={accion.ocupado} deshabilitado={!sucio}>Guardar textos del sitio</Boton>
+        <p class="texto-suave">Lo guardado se ve en la página después de pulsar Publicar; tarda unos minutos.</p>
       </div>
     </form>
   );

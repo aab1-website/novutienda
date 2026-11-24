@@ -109,7 +109,7 @@ export interface Contrato {
   leerLogo: { entrada: Vacio; salida: LogoNegocio | null };
   /** Datos del negocio del sitio (`sup` y `adm`): `negocio` es `null` y `version` 0 si aún no se guardaron. */
   leerNegocioSitio: { entrada: Vacio; salida: LecturaNegocioSitio };
-  /** Guarda los datos del negocio (solo `adm`); `versionEsperada` es la leída (otra: `conflicto`). `afectados`: enlaces guardados que la lista nueva deja fuera. */
+  /** Guarda los datos del negocio (solo `adm`); `versionEsperada` es la leída (otra: `conflicto`). Sin datos sembrados por NovuTienda responde `estado`. `enlacesPermitidos` no cambia desde el panel (D8): se conserva la guardada. `afectados`: enlaces publicados que quedan fuera de esa lista. */
   guardarNegocioSitio: { entrada: { negocio: NegocioSitio; versionEsperada: number }; salida: { version: number; afectados: number } };
   /** Quita el logo subido (solo `adm`); idempotente: sin logo responde `{ quitado: false }`. No toca la dirección web escrita a mano. */
   quitarLogo: { entrada: Vacio; salida: { quitado: boolean } };

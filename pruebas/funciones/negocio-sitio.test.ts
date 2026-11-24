@@ -43,6 +43,11 @@ describe.skipIf(!hayEmulador)('datos del negocio del sitio (callable consola, em
     h = herramientas();
   });
 
+  /** Siembra de NovuTienda (Admin SDK): sin `sitio/negocio` el panel no puede guardar. Versión 1. */
+  const sembrar = async (t: string, extra: Record<string, unknown> = {}): Promise<void> => {
+    await h.firestore.doc(`tenants/${t}/sitio/negocio`).set({ ...negocio(extra), version: 1, actualizadoEn: '2026-11-04T11:30:00.000Z', por: 'siembra' });
+  };
+
   /** Tenant con un producto publicable (para publicar y para que el destacado exista). */
   const nuevoTenant = async (): Promise<string> => {
     const t = unico('neg').toLowerCase();
@@ -66,34 +71,35 @@ describe.skipIf(!hayEmulador)('datos del negocio del sitio (callable consola, em
     return t;
   };
 
-  it('el administrador guarda un negocio válido (versión 1) y lo lee; el documento lleva versión, fecha y autor', async () => {
+  it('el administrador guarda sobre lo sembrado (versión 2) y lo lee; el documento lleva versión, fecha y autor', async () => {
     const t = await nuevoTenant();
     const adm = await crearUsuario(h, { rol: 'adm', tenant: t });
     const vacio = await accion('consola', 'leerNegocioSitio', {}, adm.token, t);
     expect(vacio.status, JSON.stringify(vacio.error)).toBe(200);
     expect(vacio.resultado).toEqual({ negocio: null, version: 0, enlacesPermitidos: [] });
 
-    const g = await accion('consola', 'guardarNegocioSitio', { negocio: negocio(), versionEsperada: 0 }, adm.token, t);
+    await sembrar(t, { lema: 'Lema sembrado' });
+    const g = await accion('consola', 'guardarNegocioSitio', { negocio: negocio(), versionEsperada: 1 }, adm.token, t);
     expect(g.status, JSON.stringify(g.error)).toBe(200);
-    expect(g.resultado).toEqual({ version: 1, afectados: 0 });
+    expect(g.resultado).toEqual({ version: 2, afectados: 0 });
 
     const l = await accion('consola', 'leerNegocioSitio', {}, adm.token, t);
     expect(l.status, JSON.stringify(l.error)).toBe(200);
     const lectura = l.resultado as Lectura;
-    expect(lectura.version).toBe(1);
+    expect(lectura.version).toBe(2);
     expect(lectura.enlacesPermitidos).toEqual(['ejemplo.test']);
     expect(lectura.negocio).toMatchObject({ nombre: 'Tienda de Prueba', destacados: ['tv-uno'], enlacesPermitidos: ['ejemplo.test'] });
     expect(lectura).not.toHaveProperty('invalido');
 
     const d = await docNegocio(t);
-    expect(d).toMatchObject({ nombre: 'Tienda de Prueba', version: 1, por: adm.uid });
+    expect(d).toMatchObject({ nombre: 'Tienda de Prueba', lema: 'Lema de prueba', version: 2, por: adm.uid });
     expect(typeof d?.['actualizadoEn']).toBe('string');
   });
 
   it('guardar lo mismo no sube la versión; un cambio la sube a 2', async () => {
     const t = await nuevoTenant();
     const adm = await crearUsuario(h, { rol: 'adm', tenant: t });
-    await accion('consola', 'guardarNegocioSitio', { negocio: negocio(), versionEsperada: 0 }, adm.token, t);
+    await sembrar(t);
     const igual = await accion('consola', 'guardarNegocioSitio', { negocio: negocio(), versionEsperada: 1 }, adm.token, t);
     expect(igual.resultado).toEqual({ version: 1, afectados: 0 });
     const cambio = await accion('consola', 'guardarNegocioSitio', { negocio: negocio({ lema: 'Otro lema' }), versionEsperada: 1 }, adm.token, t);
@@ -101,11 +107,22 @@ describe.skipIf(!hayEmulador)('datos del negocio del sitio (callable consola, em
     expect((await docNegocio(t))?.['lema']).toBe('Otro lema');
   });
 
-  it('el supervisor lee y NO puede guardar', async () => {
+  it('sin siembra, guardar da FAILED_PRECONDITION y no escribe nada', async () => {
     const t = await nuevoTenant();
     const adm = await crearUsuario(h, { rol: 'adm', tenant: t });
+    const estadoAntes = (await h.firestore.doc(`tenants/${t}/sitio/estado`).get()).data();
+    const g = await accion('consola', 'guardarNegocioSitio', { negocio: negocio(), versionEsperada: 0 }, adm.token, t);
+    expect(g.status).toBe(400);
+    expect(g.error?.status).toBe('FAILED_PRECONDITION');
+    expect(JSON.stringify(g.error)).toContain('Pida a NovuTienda que los cargue primero');
+    expect(await docNegocio(t)).toBeUndefined();
+    expect((await h.firestore.doc(`tenants/${t}/sitio/estado`).get()).data()).toEqual(estadoAntes);
+  });
+
+  it('el supervisor lee y NO puede guardar', async () => {
+    const t = await nuevoTenant();
     const sup = await crearUsuario(h, { rol: 'sup', tenant: t });
-    await accion('consola', 'guardarNegocioSitio', { negocio: negocio(), versionEsperada: 0 }, adm.token, t);
+    await sembrar(t);
 
     const l = await accion('consola', 'leerNegocioSitio', {}, sup.token, t);
     expect(l.status, JSON.stringify(l.error)).toBe(200);
@@ -133,8 +150,7 @@ describe.skipIf(!hayEmulador)('datos del negocio del sitio (callable consola, em
   it('un administrador de otro tenant no puede leer ni guardar', async () => {
     const t = await nuevoTenant();
     const otro = await nuevoTenant();
-    const adm = await crearUsuario(h, { rol: 'adm', tenant: t });
-    await accion('consola', 'guardarNegocioSitio', { negocio: negocio(), versionEsperada: 0 }, adm.token, t);
+    await sembrar(t);
     const ajeno = await crearUsuario(h, { rol: 'adm', tenant: otro });
     const l = await accion('consola', 'leerNegocioSitio', {}, ajeno.token, t);
     expect(l.status).toBe(403);
@@ -149,7 +165,7 @@ describe.skipIf(!hayEmulador)('datos del negocio del sitio (callable consola, em
   it('versionEsperada equivocada: conflicto y el documento no cambia', async () => {
     const t = await nuevoTenant();
     const adm = await crearUsuario(h, { rol: 'adm', tenant: t });
-    await accion('consola', 'guardarNegocioSitio', { negocio: negocio(), versionEsperada: 0 }, adm.token, t);
+    await sembrar(t);
     const antes = await docNegocio(t);
     for (const versionEsperada of [0, 2, 99]) {
       const g = await accion('consola', 'guardarNegocioSitio', { negocio: negocio({ lema: 'No debe guardarse' }), versionEsperada }, adm.token, t);
@@ -163,27 +179,29 @@ describe.skipIf(!hayEmulador)('datos del negocio del sitio (callable consola, em
   it('un campo inválido: error de validación que nombra la ruta del campo y no contiene el valor', async () => {
     const t = await nuevoTenant();
     const adm = await crearUsuario(h, { rol: 'adm', tenant: t });
+    await sembrar(t);
+    const antes = await docNegocio(t);
     const marca = 'MARCA-SENSIBLE-8f3a';
     const demasiadoLargo = marca + 'a'.repeat(80); // el nombre admite 80
     const g = await accion('consola', 'guardarNegocioSitio', {
-      negocio: negocio({ nombre: demasiadoLargo, portada: { ...(negocio()['portada'] as object), insignia: `<b>${marca}</b>` } }), versionEsperada: 0,
+      negocio: negocio({ nombre: demasiadoLargo, portada: { ...(negocio()['portada'] as object), insignia: `<b>${marca}</b>` } }), versionEsperada: 1,
     }, adm.token, t);
     expect(g.status).toBe(400);
     expect(g.error?.status).toBe('INVALID_ARGUMENT');
     const cuerpo = JSON.stringify(g.error);
     expect(cuerpo).toContain('nombre');
     expect(cuerpo).not.toContain(marca);
-    expect(await docNegocio(t)).toBeUndefined();
+    expect(await docNegocio(t)).toEqual(antes);
 
     // En el nivel estricto (campo nuevo con HTML): nombra la ruta, no el valor.
-    const html = await accion('consola', 'guardarNegocioSitio', { negocio: negocio({ lema: `<script>${marca}</script>` }), versionEsperada: 0 }, adm.token, t);
+    const html = await accion('consola', 'guardarNegocioSitio', { negocio: negocio({ lema: `<script>${marca}</script>` }), versionEsperada: 1 }, adm.token, t);
     expect(html.status).toBe(400);
     expect(JSON.stringify(html.error)).toContain('lema');
     expect(JSON.stringify(html.error)).not.toContain(marca);
     // Forma que el esquema del callable rechaza (versión no numérica): tampoco guarda.
     const forma = await accion('consola', 'guardarNegocioSitio', { negocio: negocio(), versionEsperada: 'cero' }, adm.token, t);
     expect(forma.status).toBe(400);
-    expect(await docNegocio(t)).toBeUndefined();
+    expect(await docNegocio(t)).toEqual(antes);
   });
 
   it('con el módulo consola apagado para el tenant, leer y guardar se rechazan', async () => {
@@ -202,7 +220,8 @@ describe.skipIf(!hayEmulador)('datos del negocio del sitio (callable consola, em
   it('tras guardar y publicar existe publicado/negocio sin el campo `por`, y el endpoint lo entrega en documentos.negocio', async () => {
     const t = await nuevoTenant();
     const adm = await crearUsuario(h, { rol: 'adm', tenant: t });
-    const g = await accion('consola', 'guardarNegocioSitio', { negocio: negocio(), versionEsperada: 0 }, adm.token, t);
+    await sembrar(t);
+    const g = await accion('consola', 'guardarNegocioSitio', { negocio: negocio(), versionEsperada: 1 }, adm.token, t);
     expect(g.status, JSON.stringify(g.error)).toBe(200);
     const p = await accion('consola', 'publicarSitio', {}, adm.token, t);
     expect(p.status, JSON.stringify(p.error)).toBe(200);
