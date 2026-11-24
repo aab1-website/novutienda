@@ -437,4 +437,17 @@ describe('importar: descarga total', () => {
     await u.click(await screen.findByRole('button', { name: 'Descargar todo (Excel)' }));
     expect(await screen.findByText('El archivo trae los últimos 5.000 movimientos.')).toBeTruthy();
   });
+
+  it('avisa cuando las series vinieron recortadas', async () => {
+    const e = crearEntorno('adm');
+    ver(e);
+    const u = userEvent.setup();
+    const original = e.api.llamar.bind(e.api);
+    vi.spyOn(e.api, 'llamar').mockImplementation(((n: string, d: never) => n === 'exportarInventarioTotal'
+      ? Promise.resolve({ hojas: [{ nombre: 'Productos', filas: [['nombre']] }], recortado: false, seriesRecortadas: true })
+      : original(n as never, d)) as never);
+    await u.click(await screen.findByRole('button', { name: 'Descargar todo (Excel)' }));
+    expect(await screen.findByText('El archivo trae solo 20.000 series.')).toBeTruthy();
+    expect(screen.queryByText('El archivo trae los últimos 5.000 movimientos.')).toBeNull();
+  });
 });

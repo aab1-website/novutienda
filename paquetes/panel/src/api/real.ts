@@ -388,7 +388,7 @@ export const TRADUCCION: { readonly [N in NombreCallable]: Traduccion<N> } = {
     usa: ['inventarios.exportarTotal'],
     ejecutar: async (c) => {
       const r = await c.llamar('inventarios', 'exportarTotal', {});
-      return { hojas: campo(r, 'hojas'), recortado: campo(r, 'recortado') === true, seriesRecortadas: campo(r, 'seriesRecortadas') === true } as never;
+      return { hojas: campo<Salida<'exportarInventarioTotal'>['hojas']>(r, 'hojas'), recortado: campo(r, 'recortado') === true, seriesRecortadas: campo(r, 'seriesRecortadas') === true };
     },
   },
   listarProductos: {

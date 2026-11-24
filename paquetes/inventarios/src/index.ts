@@ -25,8 +25,8 @@ export { abrirConteo, cancelarConteo, cerrarConteo, ORIGEN_COMO_CERO, registrarL
 export {
   aEnteroEscalado, analizarCsv, centavosAUsd, deshacerNeutralizacion, columnasDeExportacion, exportarProductosCsv, exportarProductosCsvLegado, importarCsvPorLotes, importarProductosCsv, leerCsvFilas, leerCsvProductos, MAX_FILAS_IMPORTACION, neutralizarCelda, simularImportacionCsv,
 } from './importacion.js';
-export { armarExportacionTotal, HOJAS_EXPORTACION_TOTAL, MAX_MOVIMIENTOS_EXPORTACION, MAX_SERIES_EXPORTACION } from './exportacion-total.js';
-export type { AlmacenTotal, CeldaTotal, CotizacionTotal, EntradaExportacionTotal, ExistenciaTotal, HojaTotal, MovimientoTotal, UnidadTotal } from './exportacion-total.js';
+export { armarExportacionTotal, ETIQUETA_ESTADO_SERIE, ETIQUETA_TIPO, fechaHoraEn, HOJAS_EXPORTACION_TOTAL, MAX_MOVIMIENTOS_EXPORTACION, MAX_SERIES_EXPORTACION } from './exportacion-total.js';
+export type { AlmacenTotal, CeldaTotal, CotizacionTotal, EntradaExportacionTotal, ExistenciaTotal, HojaTotal, MovimientoTotal, ResultadoExportacionTotal, UnidadTotal } from './exportacion-total.js';
 export { leerArchivoImportacion, MAX_BYTES_ARCHIVO, MAX_COLUMNAS_ARCHIVO, MAX_FILAS_ARCHIVO, validarMatriz } from './archivo.js';
 export type { LectorHojas } from './archivo.js';
 export type { LeerCatalogo, ProductoCatalogo, LecturaSinBloqueo, BaseTransaccional, ErrorFila, FuenteTabla, FilaImportada, FilaSimulada, ProductoExportable, ResultadoImportacion, Simulacion } from './importacion.js';

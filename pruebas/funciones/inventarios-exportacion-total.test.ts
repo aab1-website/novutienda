@@ -52,9 +52,22 @@ describe.skipIf(!hayEmulador)('inventarios: descarga total (emulador)', () => {
     );
     expect(por('Series').filas.slice(1).map((f) => f[1]).sort()).toEqual(['TV-001', 'TV-002']);
     expect(por('Movimientos').filas.length).toBeGreaterThanOrEqual(3);
+    // Textos en español y hora de La Paz: ningún código interno de tipo o de estado, y la fecha con el formato AAAA-MM-DD HH:MM.
+    expect(por('Movimientos').filas.slice(1).every((f) => /^\d{4}-\d{2}-\d{2} \d{2}:\d{2}$/.test(String(f[0])) && f[1] === 'Ingreso' && f[5] === 'Ingreso')).toBe(true);
+    expect(por('Series').filas.slice(1).every((f) => f[2] === 'Disponible')).toBe(true);
     // Lápiz: precio 100 USD * 7 = 700,00 BOB; costo 50 USD * 7 = 350,00 BOB; margen 50 %, con el tipo de cambio y su fecha.
     const fila = por('Costos y márgenes').filas.find((f) => f[0] === 'Lápiz HB' && f[3] === 'BOB') as (string | number)[];
-    expect(fila.slice(4, 12)).toEqual(['700.00', 'USD', '50.00', '350.00', 50, '7', hoyLaPaz(), '']);
+    expect(fila.slice(4, 12)).toEqual([700, 'USD', 50, 350, 50, 7, hoyLaPaz(), '']);
+  });
+
+  it('limita las descargas: la sexta en una hora se rechaza con un mensaje claro y no afecta a otro usuario', async () => {
+    const otro = await crearUsuario(h, { rol: 'adm', tenant: A });
+    for (let i = 0; i < 5; i++) expect((await llamar(otro, 'exportarTotal')).status).toBe(200);
+    const sexta = await llamar(otro, 'exportarTotal');
+    expect(sexta.status).toBe(429);
+    expect(sexta.error?.status).toBe('RESOURCE_EXHAUSTED');
+    expect(sexta.error?.message).toMatch(/descargó el inventario completo/);
+    expect((await llamar(adm, 'exportarTotal')).status).toBe(200);
   });
 
   it('ida y vuelta: la hoja Productos se reimporta con 0 cambios', async () => {
@@ -66,5 +79,21 @@ describe.skipIf(!hayEmulador)('inventarios: descarga total (emulador)', () => {
     const filas = (cuerpo(sim)['simulacion'] as { filas: { accion: string }[] }).filas;
     expect(filas).toHaveLength(2);
     expect(filas.every((f) => f.accion === 'sin-cambios')).toBe(true);
+  });
+
+  it('con más de 20.000 series, escribe 20.000 y lo avisa', async () => {
+    const B = 'exptot-b';
+    await sembrarTenant(h, B, { productos: [{ id: 'tv', nombre: 'Televisor', precioUSD: { bo: 90_000, ar: 90_000 }, tienda: 0, conSerie: true }] });
+    const escritor = h.firestore.bulkWriter();
+    for (let i = 0; i < 20_001; i++) {
+      const serie = `S-${String(i).padStart(6, '0')}`;
+      void escritor.set(h.firestore.doc(`tenants/${B}/unidades/tv__${serie}`), { productoId: 'tv', serie, estado: 'disponible', ubicacionId: 'tienda' });
+    }
+    await escritor.close();
+    const admB = await crearUsuario(h, { rol: 'adm', tenant: B });
+    const r = await accion('inventarios', 'exportarTotal', {}, admB.token, B);
+    expect(r.status, JSON.stringify(r.error)).toBe(200);
+    expect(cuerpo(r)['seriesRecortadas']).toBe(true);
+    expect(((cuerpo(r)['hojas'] as Hoja[])[2] as Hoja).filas).toHaveLength(20_001);
   });
 });

@@ -6,11 +6,12 @@ import { logger } from 'firebase-functions';
 import { HttpsError } from 'firebase-functions/v2/https';
 import { z } from 'zod';
 import {
-  abrirConteo, actualizarProducto, armarExportacionTotal, MAX_MOVIMIENTOS_EXPORTACION, MAX_SERIES_EXPORTACION, type CotizacionTotal, cancelarConteo, claveDePrecio, ajustar, cerrarConteo, conteosAbiertosDe, crearProducto, crearUbicacion, esDisponible, exportarProductosCsv, importarCsvPorLotes, leerArchivoImportacion, MAX_BYTES_ARCHIVO, type FuenteTabla, type LectorHojas, type LecturaSinBloqueo, type LeerCatalogo,
+  abrirConteo, actualizarProducto, armarExportacionTotal, MAX_MOVIMIENTOS_EXPORTACION, MAX_SERIES_EXPORTACION, type CotizacionTotal, type ProductoLeido, cancelarConteo, claveDePrecio, ajustar, cerrarConteo, conteosAbiertosDe, crearProducto, crearUbicacion, esDisponible, exportarProductosCsv, importarCsvPorLotes, leerArchivoImportacion, MAX_BYTES_ARCHIVO, type FuenteTabla, type LectorHojas, type LecturaSinBloqueo, type LeerCatalogo,
   filtrarUnidadesLista, ingresar, normalizarSerieBusqueda, ORIGEN_COMO_CERO, leerDocumentoProducto, marcaOcultamiento, mercadosSinPrecio, proyectarMovimiento, proyectarProducto, registrarLineaConteo, resolverMerma, simularImportacionCsv, solicitarMerma, traspasar, UBICACION_DISPONIBILIDAD,
   type Autor, type CambiosProducto, type Conteos, type EntradaProducto, type LineaAjuste, type LineaIngreso, type LineaTraspaso, type ProductoExportable,
 } from '@novutienda/inventarios';
-import { leerCotizacionDe, mercadosDe, SinCotizacionUtilizable, type LimiteTasa } from '@novutienda/nucleo';
+import { leerCotizacionDe, mercadosDe, SinCotizacionUtilizable, type ConfiguracionComercial, type LimiteTasa } from '@novutienda/nucleo';
+import { crearLimiteTasa } from '../../../conectores/firebase/index.js';
 import { accion, actorPos, type Contexto, type TablaImplementaciones } from './marco.js';
 import { ID, ID_PRODUCTO, LIMITE, MS, TEXTO, UBICACION, VACIO, objeto, validarRango } from './comunes.js';
 
@@ -19,6 +20,13 @@ const autor = (c: Contexto): Autor => actorPos(c);
 
 const ruta = (t: string, col: string, id?: string): string => `tenants/${t}/${col}${id === undefined ? '' : `/${id}`}`;
 const datosDe = (d: { data(): unknown }): Record<string, unknown> => d.data() as Record<string, unknown>;
+/** Un producto del archivo de exportación (CSV o Excel): precios solo de los mercados declarados y costo solo si viene. */
+const productoExportable = (p: ProductoLeido, comercial: ConfiguracionComercial, costo?: unknown): ProductoExportable => ({
+  id: p.productoId, nombre: p.nombre, categoria: p.categoria ?? '', ...(p.marca !== undefined ? { marca: p.marca } : {}), sku: p.sku ?? p.productoId,
+  conSerie: p.conSerie, ...(p.garantiaMeses !== undefined ? { garantiaMeses: p.garantiaMeses } : {}), ...(p.minimo !== undefined ? { minimo: p.minimo } : {}),
+  precioUSD: Object.fromEntries(mercadosDe(comercial).flatMap((id) => { const v = p.precioCentavos[claveDePrecio(id)]; return v === undefined ? [] : [[claveDePrecio(id), v] as const]; })),
+  ...(typeof costo === 'number' ? { costoUSD: costo } : {}), activo: p.activo, publicado: p.publicado,
+});
 /** Fecha de un documento (marca de tiempo de Firestore, `Date` o texto) como texto ISO. */
 const fechaIso = (v: unknown): string => {
   if (v instanceof Date) return v.toISOString();
@@ -127,6 +135,28 @@ async function limitarBusquedaSerie(c: Contexto): Promise<void> {
   if (!u.permitido || !t.permitido) {
     logger.warn('búsqueda de serie limitada', { alerta: 'busqueda-serie', tenantId: c.tenantId, alcance: u.permitido ? 'tenant' : 'usuario' });
     throw new HttpsError('resource-exhausted', 'Hizo demasiadas búsquedas de serie. Intente de nuevo en unos minutos.', { codigo: 'limite-busqueda-serie', reintentarEnSeg: t.reintentarEnSeg });
+  }
+}
+
+export const MAXIMO_EXPORTACIONES_TOTALES_POR_HORA = 5;
+const VENTANA_EXPORTACION_TOTAL_MS = 3_600_000;
+const limitesExportacion = new WeakMap<object, LimiteTasa>();
+
+/**
+ * Tope de descargas totales: 5 por hora por usuario de cada comercio (clave `exportar-total:{tenant}:{uid}`), en Firestore y global entre
+ * instancias. Es una lectura grande de la base: el tope evita que un uso repetido la encarezca. El limitador se arma aquí a partir del
+ * Firestore del entorno (mismo patrón que `limiteBusquedaSerieUsuario`; pasarlo a un puerto del `Entorno` es de `entorno.ts`).
+ */
+async function limitarExportacionTotal(c: Contexto): Promise<void> {
+  let limite = limitesExportacion.get(c.e.firestore);
+  if (limite === undefined) {
+    limite = crearLimiteTasa(c.e.firestore, { maximo: MAXIMO_EXPORTACIONES_TOTALES_POR_HORA, ventanaMs: VENTANA_EXPORTACION_TOTAL_MS, sal: 'exportar-total-v1' });
+    limitesExportacion.set(c.e.firestore, limite);
+  }
+  const r = await limite.intentar(`exportar-total:${c.tenantId}:${c.sesion.uid}`, c.e.ahora());
+  if (!r.permitido) {
+    logger.warn('descarga total limitada', { alerta: 'exportar-total', tenantId: c.tenantId });
+    throw new HttpsError('resource-exhausted', 'Ya descargó el inventario completo varias veces en esta hora. Intente de nuevo en unos minutos.', { codigo: 'limite-exportar-total', reintentarEnSeg: r.reintentarEnSeg });
   }
 }
 
@@ -614,24 +644,17 @@ export const accionesInventarios: TablaImplementaciones = {
     esquema: VACIO,
     ejecutar: async (c) => {
       if (c.rol !== 'adm') throw new HttpsError('permission-denied', 'Solo el administrador descarga todo el inventario.');
+      await limitarExportacionTotal(c);
       const comercial = await c.e.comercialDelTenant(c.tenantId);
       const col = (n: string) => c.e.firestore.collection(ruta(c.tenantId, n));
       const [prods, costos, ubic, exis, unid, movs] = await Promise.all([
         col('productos').get(), col('costos').get(), col('ubicaciones').get(), col('existencias').get(),
-        col('unidades').limit(MAX_SERIES_EXPORTACION).get(),
+        col('unidades').orderBy('__name__').limit(MAX_SERIES_EXPORTACION + 1).get(),
         col('movimientos').orderBy('fecha', 'desc').limit(MAX_MOVIMIENTOS_EXPORTACION + 1).get(),
       ]);
       const costo = new Map(costos.docs.map((x) => [x.id, x.data()['costoUSD']]));
-      const productos: ProductoExportable[] = prods.docs.map((x) => {
-        const p = leerDocumentoProducto(x.id, x.data(), comercial);
-        const cu = costo.get(x.id);
-        return {
-          id: p.productoId, nombre: p.nombre, categoria: p.categoria ?? '', ...(p.marca !== undefined ? { marca: p.marca } : {}), sku: p.sku ?? p.productoId,
-          conSerie: p.conSerie, ...(p.garantiaMeses !== undefined ? { garantiaMeses: p.garantiaMeses } : {}), ...(p.minimo !== undefined ? { minimo: p.minimo } : {}),
-          precioUSD: Object.fromEntries(mercadosDe(comercial).flatMap((id) => { const v = p.precioCentavos[claveDePrecio(id)]; return v === undefined ? [] : [[claveDePrecio(id), v] as const]; })),
-          ...(typeof cu === 'number' ? { costoUSD: cu } : {}), activo: p.activo, publicado: p.publicado,
-        };
-      }).sort((a, b) => a.nombre.localeCompare(b.nombre, 'es'));
+      const productos = prods.docs.map((x) => productoExportable(leerDocumentoProducto(x.id, x.data(), comercial), comercial, costo.get(x.id)))
+        .sort((x, y) => x.nombre.localeCompare(y.nombre, 'es'));
       const cotizaciones: Record<string, CotizacionTotal> = {};
       for (const m of comercial.mercados) {
         if (m.tipoCambio == null) continue;
@@ -642,8 +665,7 @@ export const accionesInventarios: TablaImplementaciones = {
           if (!(error instanceof SinCotizacionUtilizable)) throw error;
         }
       }
-      const recortado = movs.docs.length > MAX_MOVIMIENTOS_EXPORTACION;
-      const hojas = armarExportacionTotal({
+      return armarExportacionTotal({
         productos, comercial, cotizaciones,
         almacenes: ubic.docs.map((u) => ({ id: u.id, nombre: typeof u.data()['nombre'] === 'string' ? String(u.data()['nombre']) : u.id })),
         existencias: exis.docs.map(datosDe).filter((x) => typeof x['productoId'] === 'string' && typeof x['ubicacionId'] === 'string' && typeof x['cantidad'] === 'number')
@@ -652,7 +674,7 @@ export const accionesInventarios: TablaImplementaciones = {
           productoId: String(x['productoId']), serie: String(x['serie']), estado: String(x['estado']), ubicacionId: String(x['ubicacionId']),
           ...(typeof x['garantiaHasta'] === 'string' ? { garantiaHasta: x['garantiaHasta'] } : {}),
         })),
-        movimientos: movs.docs.slice(0, MAX_MOVIMIENTOS_EXPORTACION).map(datosDe).map((m) => {
+        movimientos: movs.docs.map(datosDe).map((m) => {
           const ref = m['referencia'] as { tipo?: unknown; id?: unknown } | undefined;
           return {
             fecha: fechaIso(m['fecha']), tipo: String(m['tipo']), productoId: String(m['productoId']), ubicacionId: String(m['ubicacionId']), delta: Number(m['delta']),
@@ -660,7 +682,6 @@ export const accionesInventarios: TablaImplementaciones = {
           };
         }),
       });
-      return { hojas, recortado, seriesRecortadas: unid.docs.length >= MAX_SERIES_EXPORTACION };
     },
   }),
   exportarCsv: accion({
@@ -674,15 +695,7 @@ export const accionesInventarios: TablaImplementaciones = {
         conCostos ? c.e.firestore.collection(ruta(c.tenantId, 'costos')).get() : Promise.resolve(undefined),
       ]);
       const costo = new Map(costos?.docs.map((x) => [x.id, x.data()['costoUSD']]) ?? []);
-      const filas: ProductoExportable[] = prods.docs.map((x) => {
-        const p = leerDocumentoProducto(x.id, x.data(), comercial);
-        const cu = costo.get(x.id);
-        return {
-          id: p.productoId, nombre: p.nombre, categoria: p.categoria ?? '', ...(p.marca !== undefined ? { marca: p.marca } : {}), sku: p.sku ?? p.productoId,
-          conSerie: p.conSerie, ...(p.garantiaMeses !== undefined ? { garantiaMeses: p.garantiaMeses } : {}), ...(p.minimo !== undefined ? { minimo: p.minimo } : {}),
-          precioUSD: Object.fromEntries(mercadosDe(comercial).flatMap((id) => { const v = p.precioCentavos[claveDePrecio(id)]; return v === undefined ? [] : [[claveDePrecio(id), v] as const]; })), ...(typeof cu === 'number' ? { costoUSD: cu } : {}), activo: p.activo, publicado: p.publicado,
-        };
-      });
+      const filas = prods.docs.map((x) => productoExportable(leerDocumentoProducto(x.id, x.data(), comercial), comercial, costo.get(x.id)));
       return { csv: exportarProductosCsv(filas, comercial) };
     },
   }),

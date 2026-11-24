@@ -13,6 +13,7 @@ import { useAccion } from '../../ui/hooks.js';
 import { useIdUnico } from '../../ui/ids.js';
 import { Tabla } from '../../ui/tabla.js';
 import { aBase64, formatoBytes } from '../../util/base64.js';
+import { fechaLaPaz } from '../../util/rango.js';
 import { aCsv, descargarTexto } from '../../util/csv.js';
 import { descargarBytes, escribirXlsx, filasDeExportacion } from './escritor-xlsx.js';
 import {
@@ -72,6 +73,8 @@ export function ImportarExportar(): JSX.Element {
   const [inicial, setInicial] = useState(false);
   /** La última descarga total traía más de 5.000 movimientos y se recortó. */
   const [recortado, setRecortado] = useState(false);
+  /** La última descarga total traía más de 20.000 series y se recortó. */
+  const [seriesRecortadas, setSeriesRecortadas] = useState(false);
   const [fuente, setFuente] = useState<Fuente | null>(null);
   const [errorArchivo, setErrorArchivo] = useState<string | null>(null);
   const [sim, setSim] = useState<Simulacion | null>(null);
@@ -103,10 +106,11 @@ export function ImportarExportar(): JSX.Element {
   const descargarTodo = (): void => {
     void exportacion.ejecutar(async () => {
       const r = await api.llamar('exportarInventarioTotal', {});
-      descargarBytes(`inventario-completo-${new Date().toISOString().slice(0, 10)}.xlsx`, escribirXlsx(r.hojas.map((h) => ({
+      descargarBytes(`inventario-completo-${fechaLaPaz(Date.now())}.xlsx`, escribirXlsx(r.hojas.map((h) => ({
         nombre: h.nombre, filas: h.filas, anchos: (h.filas[0] ?? []).map((c) => Math.max(14, String(c).length + 4)),
       }))));
       setRecortado(r.recortado);
+      setSeriesRecortadas(r.seriesRecortadas);
     }, { exito: 'Archivo exportado.', error: 'ambos' });
   };
   const plantillaExcel = (): void => {
@@ -246,6 +250,7 @@ export function ImportarExportar(): JSX.Element {
         </div>
         <p class="texto-suave">«Exportar productos (Excel)» baja los productos actuales en este mismo formato: sirve para editarlos en una planilla y volver a cargarlos. El CSV sigue disponible como opción.{esAdm ? ' «Descargar todo (Excel)» trae además las existencias por almacén, las series, los movimientos y los márgenes; la primera hoja, «Productos», se puede volver a cargar.' : ''}</p>
         {recortado && <p class="texto-suave">El archivo trae los últimos 5.000 movimientos.</p>}
+        {seriesRecortadas && <p class="texto-suave">El archivo trae solo 20.000 series.</p>}
         {exportacion.error && <Alerta>{exportacion.error}</Alerta>}
 
         {!esAdm ? (
