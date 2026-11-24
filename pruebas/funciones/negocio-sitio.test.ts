@@ -245,13 +245,13 @@ describe.skipIf(!hayEmulador)('datos del negocio del sitio (callable consola, em
   it('una categoría oculta guardada desde el panel saca sus productos de lo publicado (lo que lee el catálogo de NovuChat) pero no del inventario', async () => {
     const t = await nuevoTenant();
     const adm = await crearUsuario(h, { rol: 'adm', tenant: t });
-    // Segundo producto en otra categoría, para que el sitio siga siendo publicable.
+    // Segundo producto en otra categoría (con la misma foto), para que el sitio siga siendo publicable.
     await h.db.runTransaction((tx) => crearProducto(tx, {
       tenantId: t, operacionId: unico('prod'), por: SEMBRADOR,
       producto: { id: 'radio-uno', nombre: 'Radio', categoria: 'radios', sku: 'SKU-2', marca: 'Marca', precioUSD: { bo: 100, ar: 100 }, activo: true, publicado: true },
     }));
     await h.firestore.doc(`tenants/${t}/fichasWeb/radio-uno`).set({
-      productoId: 'radio-uno', slug: 'slug-radio-uno', descripcion: 'Descripción.', garantia: '12 meses', medios: [],
+      productoId: 'radio-uno', slug: 'slug-radio-uno', descripcion: 'Descripción.', garantia: '12 meses', medios: [{ medioId: 'medfototvx', alt: 'Foto' }],
       seo: { titulo: 'SEO', descripcion: 'Descripción SEO' }, estado: 'publicado',
     });
     await sembrar(t, { destacados: ['radio-uno'] });
