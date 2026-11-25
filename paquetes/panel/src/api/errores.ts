@@ -84,6 +84,9 @@ const POR_CODIGO_MODULO: Readonly<Record<string, string>> = {
   'confirmacion-requerida': 'Falta confirmar la operación.',
   'sin-manual': 'No hay un tipo de cambio manual vigente: ya rige el del banco central.',
   'limite-tipo-cambio': 'Se hicieron demasiados cambios del tipo de cambio. Intente de nuevo más tarde.',
+  // Redondeo de precios
+  'redondeo-conflicto': 'Otra persona cambió el redondeo mientras usted lo editaba. Se muestran las reglas actuales: revíselas y vuelva a intentarlo.',
+  'redondeo-regla-invalida': 'Alguna de las reglas de redondeo no es válida. Revise cada moneda.',
   // Consola
   'no-encontrado': 'No se encontró lo que buscaba.',
   conflicto: 'Eso ya existe o está en uso. Revise los datos.',

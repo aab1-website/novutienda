@@ -2,7 +2,8 @@ import { ErrorApi } from '../api/errores.js';
 import { rolesDeAccion, type Modulo } from '../api/real.js';
 import type { Sobre, Transporte } from '../api/transporte.js';
 import { ID_NEGOCIO, type ProductoPanel, type Rol } from '../api/tipos.js';
-import { fechaLaPaz, fallo, marcaDoble, type Contexto } from './estado.js';
+import { esReglaRedondeoValida, type RedondeoPorMoneda } from '@novutienda/nucleo';
+import { auditar, fechaLaPaz, fallo, marcaDoble, type Contexto } from './estado.js';
 import { exportarTotalDoble } from './inventario/exportacion-total.js';
 import { handlersInventario } from './inventario/inventario.js';
 import { handlersOtros } from './otros.js';
@@ -14,6 +15,11 @@ type WireHandler = (c: Contexto, d: Obj) => unknown | Promise<unknown>;
 
 const LEGADO = { ...handlersPos, ...handlersInventario, ...handlersOtros } as unknown as Record<string, Legado>;
 const legado = (c: Contexto, nombre: string, entrada: object): Promise<unknown> => Promise.resolve((LEGADO[nombre] as Legado)(c, entrada as never));
+
+/** Monedas de venta del comercio, en el orden de sus mercados y sin repetir. */
+const monedasDeVenta = (c: Contexto): string[] => [...new Set(c.e.comercial.mercados.map((m) => m.monedaVenta))];
+/** Acciones que solo ejecuta el operador de NovuTienda (propietario), sea cual sea el rol de la sesión en el comercio. */
+const SOLO_OPERADOR: ReadonlySet<string> = new Set(['consola.fijarRedondeo']);
 
 /** Misma acción y mismos datos que la operación del doble. */
 const igual = (nombre: string): WireHandler => (c, d) => legado(c, nombre, d);
@@ -176,6 +182,26 @@ const ACCIONES: Readonly<Record<string, WireHandler>> = {
   'consola.verTipoCambio': async (c) => ({ mercados: await legado(c, 'verTipoCambio', {}) }),
   'consola.cotizacionManual': ok('cotizacionManual'),
   'consola.quitarCotizacionManual': ok('quitarCotizacionManual'),
+  'consola.verRedondeo': (c) => ({ monedas: monedasDeVenta(c), reglas: c.e.redondeo, puedeEditar: c.e.operador }),
+  'consola.fijarRedondeo': (c, d) => {
+    const monedas = monedasDeVenta(c);
+    const reglas = (d['reglas'] ?? {}) as Record<string, unknown>;
+    const esperadas = (d['esperadas'] ?? {}) as Record<string, unknown>;
+    const mismas = (k: string[]): boolean => k.length === monedas.length && monedas.every((m) => k.includes(m));
+    if (!mismas(Object.keys(reglas)) || !monedas.every((m) => esReglaRedondeoValida(reglas[m]))) {
+      throw fallo('redondeo-regla-invalida', 'Alguna de las reglas de redondeo no es válida.');
+    }
+    const clave = (r: unknown): string => JSON.stringify(r, Object.keys((r ?? {}) as object).sort());
+    if (!mismas(Object.keys(esperadas)) || monedas.some((m) => clave(esperadas[m]) !== clave(c.e.redondeo[m]))) {
+      throw fallo('redondeo-conflicto', 'El redondeo cambió mientras se editaba.');
+    }
+    const cambiadas = monedas.filter((m) => clave(reglas[m]) !== clave(c.e.redondeo[m]));
+    if (cambiadas.length === 0) return { estado: 'sin-cambios' };
+    const nuevas = Object.fromEntries(monedas.map((m) => [m, reglas[m]])) as RedondeoPorMoneda;
+    c.e.redondeo = nuevas;
+    auditar(c, 'redondeo.fijar', 'config/redondeo');
+    return { estado: 'fijado', cambiadas, reglas: nuevas };
+  },
   'consola.asignarRol': async (c, d) => {
     await legado(c, 'asignarRol', d);
     return { claim: {} };
@@ -245,7 +271,7 @@ export class TransporteDoble implements Transporte {
     if (h === undefined) throw new ErrorApi('invalid-argument', 'Acción desconocida.');
     const c = this.o.contexto();
     const roles: readonly Rol[] = rolesDeAccion(clave);
-    if (!roles.includes(c.rol)) throw new ErrorApi('permission-denied', 'Su rol no permite esta acción.', { codigo: 'no-autorizado' });
+    if (SOLO_OPERADOR.has(clave) ? !c.e.operador : !roles.includes(c.rol)) throw new ErrorApi('permission-denied', 'Su rol no permite esta acción.', { codigo: 'no-autorizado' });
     try {
       // Clon profundo: el servidor nunca comparte objetos con el cliente.
       const r = await h(c, structuredClone(sobre.datos ?? {}) as Obj);

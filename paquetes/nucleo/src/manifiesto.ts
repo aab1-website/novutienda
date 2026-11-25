@@ -20,7 +20,7 @@ export const manifiestoNucleo: ManifiestoModulo = {
     // L1-b: raíz; la usa el conector de límite de tasa (limite-tasa.ts), solo con Admin. Su TTL vive en firestore.indexes.json.
     { ruta: 'limitesTasa', lectura: [], escritura: 'servidor', ambito: 'raiz' },
   ],
-  emite: [],
+  emite: ['redondeo.cambiado'],
   consume: [],
   // L2: la corrida recorre todos los tenants (ejecutarCotizaciones); el horario espeja a la Cloud Function.
   programadas: [{ id: 'cotizacion', horario: '0 7,13,19 * * *', zonaHoraria: 'America/La_Paz', porTenant: true }],

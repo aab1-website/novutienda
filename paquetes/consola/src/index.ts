@@ -28,7 +28,7 @@ export { liberarEnUso, reservarEnUso } from './medios/uso.js';
 export type { UsoMedios } from './medios/uso.js';
 export { MENSAJE_VIDEO_NO_DISPONIBLE, borrarMedio, CAMPOS_RESERVA, estadoSubida, finalizarSubida, leerLogo, limpiarSubidas, quitarLogo, reservarSubida } from './medios/subidas.js';
 export type { DepsMedios, EntradaLogo, LogoNegocio, Medio, MedioLogo, MedioSubido, Reserva, ResultadoLimpieza, VersionLogo, VersionMedio } from './medios/subidas.js';
-export { CONSUMIDOR_CONSOLA, consumirProductoCambiado, ejecutorConsola, type DepsConsumidorProducto } from './consumidores.js';
+export { CONSUMIDOR_CONSOLA, consumirProductoCambiado, consumirRedondeoCambiado, ejecutorConsola, type DepsConsumidorProducto, type DepsConsumidorRedondeo } from './consumidores.js';
 export type { TransaccionConsola } from './consumidores.js';
 export { eliminarSeccion, guardarCarrusel, guardarConfigSitio, guardarFicha, guardarSeccion, ordenarSecciones } from './servicio-sitio.js';
 export {

@@ -8,6 +8,7 @@ import {
 import { CONTRATOS_V1, validarEvento } from './contratos.js';
 import { fixturesPedidoConfirmadoV1, validarPedidoConfirmadoV1 } from './pedido-confirmado.v1.js';
 import { fixturesPedidoSolicitadoV1, validarPedidoSolicitadoV1 } from './pedido-solicitado.v1.js';
+import { fixturesRedondeoCambiadoV1, validarRedondeoCambiadoV1 } from './redondeo-cambiado.v1.js';
 import { fixturesReciboEmitidoV1, validarReciboEmitidoV1 } from './recibo-emitido.v1.js';
 import { fixturesProductoCambiadoV1, validarProductoCambiadoV1 } from './producto-cambiado.v1.js';
 import { fixturesStockBajoV1, validarStockBajoV1 } from './stock-bajo.v1.js';
@@ -26,6 +27,7 @@ const contratos = [
   ['recibo.emitido', validarReciboEmitidoV1, fixturesReciboEmitidoV1],
   ['pedido.solicitado', validarPedidoSolicitadoV1, fixturesPedidoSolicitadoV1],
   ['pedido.confirmado', validarPedidoConfirmadoV1, fixturesPedidoConfirmadoV1],
+  ['redondeo.cambiado', validarRedondeoCambiadoV1, fixturesRedondeoCambiadoV1],
 ] as const;
 
 describe.each(contratos)('contrato %s v1', (tipo, validar, fixtures) => {

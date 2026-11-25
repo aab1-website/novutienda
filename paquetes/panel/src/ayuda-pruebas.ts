@@ -38,7 +38,7 @@ export function usuarioDe(rol: Rol): UsuarioSesion {
   return { uid: `u-${rol}`, correo: `${rol}@ejemplo.test`, tenantId: 'demo', rol };
 }
 
-export function crearEntorno(rol: Rol = 'caj', ahora: () => number = () => AHORA, comercio: Pick<OpcionesDoble, 'comercial' | 'redondeo'> = {}): Entorno {
+export function crearEntorno(rol: Rol = 'caj', ahora: () => number = () => AHORA, comercio: Pick<OpcionesDoble, 'comercial' | 'redondeo' | 'operador'> = {}): Entorno {
   let actual = usuarioDe(rol);
   let vencidas = 0;
   const correosDeAcceso: string[] = [];

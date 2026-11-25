@@ -106,7 +106,7 @@ export const manifiestoConsola: ManifiestoModulo = {
   colecciones,
   emite: [],
   consume: [],
-  consumeOpcional: ['producto.cambiado'],
+  consumeOpcional: ['producto.cambiado', 'redondeo.cambiado'],
   almacenamiento,
   acciones: [
     ...ACCIONES_CONSOLA.map(([nombre, roles]) => accion('consola', nombre, roles)),

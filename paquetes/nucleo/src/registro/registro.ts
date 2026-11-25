@@ -15,6 +15,7 @@ export const TIPOS_EVENTO_V1: readonly string[] = [
   'recibo.emitido',
   'pedido.solicitado',
   'pedido.confirmado',
+  'redondeo.cambiado',
 ];
 
 /** Forma mínima que el registro necesita de un manifiesto. */

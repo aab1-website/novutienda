@@ -7,6 +7,7 @@ import type { TablaAcciones, TablaImplementaciones } from '../../plataforma/func
 import { accionesMedios } from '../../plataforma/funciones/servidor/llamadas/medios.js';
 import { accionesPos } from '../../plataforma/funciones/servidor/llamadas/pos.js';
 import { accionesRecibos } from '../../plataforma/funciones/servidor/llamadas/recibos.js';
+import { accionesRedondeo } from '../../plataforma/funciones/servidor/llamadas/redondeo.js';
 import { accionesTipoCambio } from '../../plataforma/funciones/servidor/llamadas/tipo-cambio.js';
 import { accionesUsuarios } from '../../plataforma/funciones/servidor/llamadas/usuarios.js';
 
@@ -14,7 +15,7 @@ import { accionesUsuarios } from '../../plataforma/funciones/servidor/llamadas/u
 export const IMPLEMENTACIONES: Readonly<Record<string, TablaImplementaciones>> = {
   pos: accionesPos,
   inventarios: accionesInventarios,
-  consola: { ...accionesConsola, ...accionesUsuarios, ...accionesTipoCambio },
+  consola: { ...accionesConsola, ...accionesUsuarios, ...accionesTipoCambio, ...accionesRedondeo },
   recibos: accionesRecibos,
   medios: accionesMedios,
 };

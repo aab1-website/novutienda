@@ -8,6 +8,7 @@ import { validarTurnoCerradoV2 } from './turno-cerrado.v2.js';
 import { validarVentaAnuladaV2 } from './venta-anulada.v2.js';
 import { validarVentaConfirmadaV2 } from './venta-confirmada.v2.js';
 import { validarProductoCambiadoV1 } from './producto-cambiado.v1.js';
+import { validarRedondeoCambiadoV1 } from './redondeo-cambiado.v1.js';
 import { validarReciboEmitidoV1 } from './recibo-emitido.v1.js';
 import { validarStockBajoV1 } from './stock-bajo.v1.js';
 import { validarStockCambiadoV1 } from './stock-cambiado.v1.js';
@@ -28,6 +29,7 @@ export const CONTRATOS_V1: Readonly<Record<string, ValidadorDatos>> = {
   'recibo.emitido': validarReciboEmitidoV1,
   'pedido.solicitado': validarPedidoSolicitadoV1,
   'pedido.confirmado': validarPedidoConfirmadoV1,
+  'redondeo.cambiado': validarRedondeoCambiadoV1,
 };
 
 /**

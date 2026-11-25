@@ -87,3 +87,72 @@ export function lectorRedondeoDe(
   };
   return Object.assign(leer, { invalidar: (tenantId?: string): void => { if (tenantId === undefined) cache.clear(); else cache.delete(tenantId); } });
 }
+
+// ---------------------------------------------------------------------------------------------------------------------
+// Edición del redondeo por el operador de NovuTienda (`propietario`). El administrador del comercio solo lo ve.
+import { publicarEvento, registrarAuditoria, type Resumen, type SobreEvento, type TransaccionAuditoria, type TransaccionBandeja } from '@novutienda/nucleo';
+
+/** Transacción que necesita `fijarRedondeoDe`: lee y escribe el documento, audita y publica en la bandeja, todo atómico. */
+export interface TransaccionRedondeo extends TransaccionAuditoria, TransaccionBandeja {
+  get(ruta: string): Promise<{ readonly existe: boolean; data(): Readonly<Record<string, unknown>> | undefined }>;
+  set(ruta: string, datos: Readonly<Record<string, unknown>>): void;
+}
+
+export interface EntradaFijarRedondeo {
+  readonly tenantId: string;
+  readonly comercial: ConfiguracionComercial;
+  /** Reglas nuevas por moneda de venta (sin validar: se validan aquí). */
+  readonly reglas: Readonly<Record<string, unknown>>;
+  /** Reglas que quien edita vio al abrir la pantalla; si ya no son las vigentes, hay conflicto. */
+  readonly esperadas: Readonly<Record<string, unknown>>;
+  /** uid del operador de NovuTienda. */
+  readonly uid: string;
+  readonly motivo?: string;
+  readonly ahora?: () => number;
+}
+
+export type ResultadoFijarRedondeo =
+  | { readonly tipo: 'fijado'; readonly cambiadas: readonly string[]; readonly reglas: RedondeoPorMoneda }
+  | { readonly tipo: 'sin-cambios' }
+  | { readonly tipo: 'conflicto'; readonly actuales: RedondeoPorMoneda }
+  | { readonly tipo: 'invalido'; readonly motivo: string };
+
+const canonica = (r: unknown): string => JSON.stringify(r, Object.keys((r ?? {}) as object).sort());
+const mismasClaves = (a: readonly string[], b: readonly string[]): boolean => a.length === b.length && a.every((k) => b.includes(k));
+
+/**
+ * Fija el redondeo de un tenant dentro de la transacción dada: valida cada regla con el esquema, exige que las claves sean
+ * exactamente las monedas de venta, compara `esperadas` con las vigentes (si difieren, `conflicto`), escribe
+ * `tenants/{t}/config/redondeo`, audita `redondeo.fijar` (antes y después) y publica `redondeo.cambiado` con solo las monedas
+ * que cambiaron. Si nada cambió no escribe nada. Un documento vigente inválido lanza `RedondeoInvalido` (no se adivina).
+ */
+export async function fijarRedondeoDe(tx: TransaccionRedondeo, e: EntradaFijarRedondeo): Promise<ResultadoFijarRedondeo> {
+  const monedas = [...new Set(e.comercial.mercados.map((m) => m.monedaVenta))];
+  if (!mismasClaves(Object.keys(e.reglas), monedas)) return { tipo: 'invalido', motivo: 'Las reglas deben cubrir exactamente las monedas de venta del tenant' };
+  const nuevas: Record<string, RedondeoPorMoneda[string]> = {};
+  for (const m of monedas) {
+    const r = regla.safeParse(e.reglas[m]);
+    if (!r.success) return { tipo: 'invalido', motivo: `Regla de redondeo inválida para ${m}` };
+    nuevas[m] = r.data;
+  }
+  const ruta = rutaRedondeo(e.tenantId);
+  const actuales = interpretarRedondeoDe((await tx.get(ruta)).data(), e.comercial);
+  const esperadas = Object.keys(e.esperadas);
+  if (!mismasClaves(esperadas, monedas) || monedas.some((m) => canonica(e.esperadas[m]) !== canonica(actuales[m]))) return { tipo: 'conflicto', actuales };
+  const cambiadas = monedas.filter((m) => canonica(nuevas[m]) !== canonica(actuales[m]));
+  if (cambiadas.length === 0) return { tipo: 'sin-cambios' };
+
+  tx.set(ruta, nuevas);
+  registrarAuditoria(tx, {
+    tenantId: e.tenantId, uid: e.uid, rol: 'propietario', accion: 'redondeo.fijar', ruta,
+    resumenAntes: actuales as unknown as Resumen, resumenDespues: nuevas as unknown as Resumen,
+    ...(e.motivo === undefined ? {} : { motivo: e.motivo }),
+  });
+  const id = tx.nuevoId(`tenants/${e.tenantId}/eventos`);
+  const sobre: SobreEvento = {
+    id, tipo: 'redondeo.cambiado', version: 1, tenantId: e.tenantId, origen: 'nucleo',
+    ocurridoEn: new Date((e.ahora ?? Date.now)()).toISOString(), claveIdempotencia: id, datos: { monedas: cambiadas },
+  };
+  publicarEvento(tx, sobre);
+  return { tipo: 'fijado', cambiadas, reglas: nuevas };
+}

@@ -18,6 +18,8 @@ export interface OpcionesDoble {
   readonly comercial?: VistaComercial;
   /** Reglas de redondeo por moneda de venta que devuelve `pos.cotizaciones`; por omisión, las del comercio de referencia. */
   readonly redondeo?: RedondeoPorMoneda;
+  /** La sesión es del operador de NovuTienda (propietario), que es quien puede fijar el redondeo. Por omisión, no. */
+  readonly operador?: boolean;
 }
 
 /**
@@ -40,6 +42,7 @@ export class ClienteDoble implements ClienteApi {
     this.estado = crearEstado(this.ahora());
     if (o.comercial !== undefined) this.estado.comercial = o.comercial;
     if (o.redondeo !== undefined) this.estado.redondeo = o.redondeo;
+    if (o.operador === true) this.estado.operador = true;
     const tenantId = o.tenantId ?? 'demo';
     const contexto = (): Contexto => {
       const { uid, rol } = this.o.usuario();

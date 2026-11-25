@@ -9,13 +9,16 @@ export interface TransaccionAuditoria {
   marcaTiempoServidor(): unknown;
 }
 
+/** Actor de una entrada de auditoría: un rol del comercio o `propietario`, el operador de NovuTienda (no es un rol de comercio). */
+export type RolAuditoria = Rol | 'propietario';
+
 export type ValorResumen = string | number | boolean | null | readonly ValorResumen[] | { readonly [clave: string]: ValorResumen };
 export type Resumen = { readonly [clave: string]: ValorResumen };
 
 export interface EntradaAuditoria {
   readonly tenantId: string;
   readonly uid: string;
-  readonly rol: Rol;
+  readonly rol: RolAuditoria;
   readonly accion: string;
   readonly ruta: string;
   readonly resumenAntes?: Resumen;
@@ -25,7 +28,7 @@ export interface EntradaAuditoria {
 
 export class ErrorAuditoria extends Error {}
 
-const ROLES: readonly string[] = ['caj', 'sup', 'adm'];
+const ROLES: readonly string[] = ['caj', 'sup', 'adm', 'propietario'];
 /** Palabras (en minúsculas, sin tildes) que se rechazan si son una palabra completa de la clave. */
 const PALABRAS_CORTAS = new Set(['pin', 'email', 'ci', 'nit']);
 /** Fragmentos que se rechazan si aparecen dentro de la clave normalizada (correoElectronico, telefonoCliente...). */
