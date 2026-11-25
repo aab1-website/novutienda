@@ -4,7 +4,7 @@
 // tiempo constante. Las respuestas llevan ETag y `Cache-Control: private, max-age=60`.
 import { createHash, timingSafeEqual } from 'node:crypto';
 import {
-  esDisponible, leerDocumentoProducto, precioEnMercado, UBICACION_DISPONIBILIDAD, UBICACIONES, confirmarPedidoFirmado,
+  esDisponible, leerDocumentoProducto, precioEnMercado, UBICACION_DISPONIBILIDAD, UBICACIONES, anularPedidoFirmado, confirmarPedidoFirmado,
 } from '@novutienda/inventarios';
 import {
   esMercadoDe, leerCotizacionDe, mercadoDe, precioDeMercado, SinCotizacionUtilizable, type ConfiguracionComercial, type CopiaCotizacion, type LimiteTasa, type ReglaRedondeo,
@@ -345,6 +345,17 @@ export async function manejarPedido(e: Entorno, req: PeticionHttp, cfg: ConfigNo
   if (req.metodo !== 'POST') return json(405, { error: 'metodo_no_permitido' }, { Allow: 'POST' });
   if (cfg.secretoPedidos === '') return json(503, { error: 'no_configurado' });
   const r = await confirmarPedidoFirmado(
+    { db: e.db, secreto: cfg.secretoPedidos, ahora: e.ahora, autorizado },
+    { tenantId, marcaTiempo: req.cabeceras['x-marca-tiempo'] ?? '', firma: req.cabeceras['x-firma'] ?? '', cuerpo: req.cuerpoCrudo },
+  );
+  return json(r.estado, r.cuerpo as Datos);
+}
+
+/** `POST /api/novuchat/v1/pedidos/anular`: misma firma, ventana y control de encendido que confirmar; cuerpo `{ pedidoId, anuladoEn }`. */
+export async function manejarAnulacion(e: Entorno, req: PeticionHttp, cfg: ConfigNovuchat, tenantId: string, autorizado: () => Promise<boolean>): Promise<RespuestaApi> {
+  if (req.metodo !== 'POST') return json(405, { error: 'metodo_no_permitido' }, { Allow: 'POST' });
+  if (cfg.secretoPedidos === '') return json(503, { error: 'no_configurado' });
+  const r = await anularPedidoFirmado(
     { db: e.db, secreto: cfg.secretoPedidos, ahora: e.ahora, autorizado },
     { tenantId, marcaTiempo: req.cabeceras['x-marca-tiempo'] ?? '', firma: req.cabeceras['x-firma'] ?? '', cuerpo: req.cuerpoCrudo },
   );

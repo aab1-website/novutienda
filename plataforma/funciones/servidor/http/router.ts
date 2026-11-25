@@ -5,7 +5,7 @@ import { logger } from 'firebase-functions';
 import { hostDePeticion } from '../../../coordinador/dominios.js';
 import { duenoDeRuta, rutaEncendida } from '../../../coordinador/rutas-http.js';
 import type { Entorno } from '../entorno.js';
-import { manejarCatalogo, manejarInventario, manejarPedido, type ConfigNovuchat } from './novuchat.js';
+import { manejarAnulacion, manejarCatalogo, manejarInventario, manejarPedido, type ConfigNovuchat } from './novuchat.js';
 import { manejarSitio } from './sitio.js';
 import { manejarSitioPublico, type ConfigWebsite } from './website.js';
 import { json, type PeticionHttp, type RespuestaApi } from './tipos.js';
@@ -152,6 +152,12 @@ export async function enrutar(e: Entorno, req: PeticionHttp, cfg: ConfigRouter):
       const tenantId = await tenantDelHost(e, req, cfg);
       if (typeof tenantId !== 'string') return tenantId;
       return manejarPedido(e, peticion, cfg.novuchat, tenantId, () => puedeServir(tenantId));
+    }
+    case '/api/novuchat/v1/pedidos/anular':
+    {
+      const tenantId = await tenantDelHost(e, req, cfg);
+      if (typeof tenantId !== 'string') return tenantId;
+      return manejarAnulacion(e, peticion, cfg.novuchat, tenantId, () => puedeServir(tenantId));
     }
     default:
       if (ruta.startsWith('/api/sitio/v1/')) return manejarSitio(e, peticion, cfg.secretoReconstruccion, puedeServir);

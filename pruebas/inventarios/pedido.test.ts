@@ -3,12 +3,16 @@ import type { SobreEvento } from '@novutienda/nucleo';
 import { calcularFirma, verificarFirma, VENTANA_FIRMA_MS } from '@novutienda/nucleo/servidor';
 import {
   aplicarSalida,
+  anularPedido,
+  anularPedidoFirmado,
   confirmarPedido,
   confirmarPedidoFirmado,
   consumirPedidoConfirmado,
   consumirVentaAnulada,
   ejecutorDesde,
+  leerCuerpoAnulacion,
   OperacionConflicto,
+  PedidoAnulado,
   prepararSalida,
 } from './api.js';
 import type { DobleDb } from './doble-db.js';
@@ -257,5 +261,138 @@ describe('eventos consumidos', () => {
   it('un evento inválido o de otro tipo se rechaza', async () => {
     await expect(consumirPedidoConfirmado(ejecutorDesde(db), { ...pedidoEv('p1', []), id: 'x' })).rejects.toThrow();
     await expect(consumirPedidoConfirmado(ejecutorDesde(db), sobre('venta.anulada', 'y', 'y', {}))).rejects.toThrow();
+  });
+});
+
+describe('anular pedido', () => {
+  const anular = (pedidoId: string) => db.runTransaction((tx) => anularPedido(tx, { tenantId: T, pedidoId }));
+
+  it('devuelve stock y series a tienda, con movimiento, evento y auditoría', async () => {
+    await pedir('p1', [{ productoId: 'lapiz', cantidad: 2 }, { productoId: 'celular', cantidad: 2 }]);
+    expect(await anular('p1')).toEqual({ ok: true, operacionId: 'nc-anula-p1', repetida: false });
+    expect(doc(db, 'existencias', 'lapiz__tienda')?.['cantidad']).toBe(5);
+    expect(doc(db, 'existencias', 'lapiz__deposito-1')?.['cantidad']).toBe(50);
+    expect(doc(db, 'existencias', 'celular__tienda')?.['cantidad']).toBe(3);
+    expect(doc(db, 'unidades', 'celular__SN-A')?.['estado']).toBe('disponible');
+    expect(doc(db, 'unidades', 'celular__SN-B')?.['estado']).toBe('disponible');
+    expect(doc(db, 'movimientos', 'nc-anula-p1__lapiz__tienda')).toMatchObject({ tipo: 'anulacion', delta: 2, por: 'sistema-pedidos' });
+    expect(doc(db, 'eventos', 'sc-nc-anula-p1__lapiz__tienda')).toMatchObject({ tipo: 'stock.cambiado', datos: { delta: 2, saldo: 5, motivo: 'anulacion' } });
+    expect(db.coleccion(`tenants/${T}/auditoria`).some((a) => a.datos['accion'] === 'inventarios.reversion-pedido')).toBe(true);
+    verificarInvariantes(db);
+  });
+
+  it('repetir la anulación no escribe nada', async () => {
+    await pedir('p1', [{ productoId: 'lapiz', cantidad: 2 }]);
+    await anular('p1');
+    const antes = JSON.stringify([...db.docs]);
+    expect(await anular('p1')).toEqual({ ok: true, operacionId: 'nc-anula-p1', repetida: true });
+    expect(JSON.stringify([...db.docs])).toBe(antes);
+  });
+
+  it('pedido inexistente o rechazado por stock: pedido-no-encontrado', async () => {
+    expect(await anular('nada')).toEqual({ ok: false, error: 'pedido-no-encontrado' });
+    await pedir('p9', [{ productoId: 'lapiz', cantidad: 99 }]);
+    expect(await anular('p9')).toEqual({ ok: false, error: 'pedido-no-encontrado' });
+    expect(doc(db, 'operaciones', 'nc-anula-p9')).toBeUndefined();
+  });
+
+  it('confirmar un pedido anulado falla con PedidoAnulado y no descuenta (también al repetir la confirmación)', async () => {
+    await pedir('p1', [{ productoId: 'lapiz', cantidad: 2 }]);
+    await anular('p1');
+    await expect(pedir('p1', [{ productoId: 'lapiz', cantidad: 2 }])).rejects.toBeInstanceOf(PedidoAnulado);
+    await expect(pedir('p1', [{ productoId: 'lapiz', cantidad: 1 }])).rejects.toBeInstanceOf(PedidoAnulado);
+    expect(doc(db, 'existencias', 'lapiz__tienda')?.['cantidad']).toBe(5);
+    verificarInvariantes(db);
+  });
+
+  it('un evento pedido.confirmado de un pedido anulado se da por procesado sin descontar', async () => {
+    await pedir('p1', [{ productoId: 'lapiz', cantidad: 2 }]);
+    await anular('p1');
+    const ev = sobre('pedido.confirmado', 'e-p1', 'p1', { pedidoId: 'p1', mercado: 'AR', moneda: 'ARS', total: 1000, cotizacion: { cotizacionId: 'AR-1', par: 'ARS/USD', valor: 1200, fecha: '2026-11-04', fuente: 'BNA', estado: 'vigente' }, lineas: [{ productoId: 'lapiz', cantidad: 2 }], confirmadoEn: '2026-11-04T11:59:00Z' });
+    expect(await consumirPedidoConfirmado(ejecutorDesde(db), ev)).toBe(true);
+    expect(doc(db, 'existencias', 'lapiz__tienda')?.['cantidad']).toBe(5);
+  });
+
+  it('una serie que ya no está vendida en el pedido bloquea la anulación sin escribir', async () => {
+    await pedir('p1', [{ productoId: 'celular', cantidad: 1 }]);
+    const ruta = [...db.docs.keys()].find((r) => r.endsWith('/unidades/celular__SN-A')) as string;
+    const u = db.docs.get(ruta)?.datos as Record<string, unknown>;
+    db.docs.set(ruta, { datos: { ...u, estado: 'disponible' }, version: 9 });
+    const antes = JSON.stringify([...db.docs]);
+    await expect(anular('p1')).rejects.toMatchObject({ codigo: 'failed-precondition' });
+    expect(JSON.stringify([...db.docs])).toBe(antes);
+  });
+});
+
+describe('anular pedido firmado', () => {
+  const secreto = 'secreto-de-prueba';
+  const ahora = Date.parse('2026-11-04T12:00:00Z');
+  const marca = String(ahora);
+  const conf = JSON.stringify({ pedidoId: 'p1', items: [{ productoId: 'lapiz', cantidad: 2 }], confirmadoEn: '2026-11-04T11:59:00Z' });
+  const anul = JSON.stringify({ pedidoId: 'p1', anuladoEn: '2026-11-04T11:59:30Z', tenantId: T });
+  const deps = (autorizado?: () => Promise<boolean>) => ({ db, secreto, ahora: () => ahora, ...(autorizado ? { autorizado } : {}) });
+  const sol = (c: string, firma?: string) => ({ tenantId: T, marcaTiempo: marca, firma: firma ?? calcularFirma(secreto, marca, c), cuerpo: c });
+
+  it('200 ok, 200 repetida y devuelve el stock', async () => {
+    await confirmarPedidoFirmado(deps(), sol(conf));
+    expect(await anularPedidoFirmado(deps(), sol(anul))).toEqual({ estado: 200, cuerpo: { ok: true, operacionId: 'nc-anula-p1', repetida: false } });
+    expect(doc(db, 'existencias', 'lapiz__tienda')?.['cantidad']).toBe(5);
+    expect((await anularPedidoFirmado(deps(), sol(anul))).cuerpo).toMatchObject({ ok: true, repetida: true });
+    verificarInvariantes(db);
+  });
+
+  it('409 pedido-no-encontrado, también para un pedido rechazado por stock', async () => {
+    expect(await anularPedidoFirmado(deps(), sol(anul))).toEqual({ estado: 409, cuerpo: { ok: false, error: 'pedido-no-encontrado' } });
+    const grande = JSON.stringify({ pedidoId: 'p1', items: [{ productoId: 'lapiz', cantidad: 99 }], confirmadoEn: '2026-11-04T11:59:00Z' });
+    expect((await confirmarPedidoFirmado(deps(), sol(grande))).estado).toBe(409);
+    expect((await anularPedidoFirmado(deps(), sol(anul))).cuerpo).toEqual({ ok: false, error: 'pedido-no-encontrado' });
+  });
+
+  it('400 tenant-distinto si el cuerpo firmado nombra otro tenant: no escribe nada', async () => {
+    await confirmarPedidoFirmado(deps(), sol(conf));
+    const otro = JSON.stringify({ pedidoId: 'p1', anuladoEn: '2026-11-04T11:59:30Z', tenantId: 'otro-tenant' });
+    expect(await anularPedidoFirmado(deps(), sol(otro))).toEqual({ estado: 400, cuerpo: { ok: false, error: 'tenant-distinto' } });
+    expect(doc(db, 'operaciones', 'nc-anula-p1')).toBeUndefined();
+    expect(doc(db, 'existencias', 'lapiz__tienda')?.['cantidad']).toBe(3);
+  });
+
+  it('anuladoEn queda en la auditoría de la anulación (una sola vez)', async () => {
+    await confirmarPedidoFirmado(deps(), sol(conf));
+    const cuenta = () => [...db.docs.values()].filter((d) => d.datos?.['accion'] === 'inventarios.pedido-anulado');
+    await anularPedidoFirmado(deps(), sol(anul));
+    await anularPedidoFirmado(deps(), sol(anul));
+    const a = cuenta();
+    expect(a).toHaveLength(1);
+    expect(JSON.stringify(a[0]?.datos)).toContain('2026-11-04T11:59:30Z');
+  });
+
+  it('409 si el producto fue borrado', async () => {
+    await confirmarPedidoFirmado(deps(), sol(conf));
+    const ruta = [...db.docs.keys()].find((r) => r.endsWith('/productos/lapiz')) as string;
+    db.docs.set(ruta, { datos: undefined, version: 9 });
+    const r = await anularPedidoFirmado(deps(), sol(anul));
+    expect(r.estado).toBe(409);
+    expect(r.cuerpo['error']).not.toBe('pedido-no-encontrado');
+  });
+
+  it('401 con firma inválida o vencida y con el módulo apagado; 400 con cuerpo inválido', async () => {
+    expect(await anularPedidoFirmado(deps(), sol(anul, 'a'.repeat(64)))).toEqual({ estado: 401, cuerpo: { error: 'firma-invalida' } });
+    expect((await anularPedidoFirmado({ ...deps(), ahora: () => ahora + 6 * 60_000 }, sol(anul))).estado).toBe(401);
+    expect(await anularPedidoFirmado(deps(async () => false), sol(anul))).toEqual({ estado: 401, cuerpo: { error: 'credencial_invalida' } });
+    for (const mal of ['no es json', '[]', JSON.stringify({ pedidoId: 'p1', tenantId: T }), JSON.stringify({ pedidoId: 'p1', anuladoEn: '2026-11-04T11:59:30Z' }), JSON.stringify({ pedidoId: 'p1', anuladoEn: '2026-11-04 11:59', tenantId: T }), JSON.stringify({ pedidoId: 'p1', anuladoEn: '2026-11-04T11:59:30Z', tenantId: T, extra: 1 }), JSON.stringify({ pedidoId: '', anuladoEn: '2026-11-04T11:59:30Z', tenantId: T })]) {
+      expect((await anularPedidoFirmado(deps(), sol(mal))).estado).toBe(400);
+    }
+    expect(() => leerCuerpoAnulacion(anul)).not.toThrow();
+  });
+
+  it('los cuerpos no se cruzan entre endpoints (400 en ambos sentidos) y confirmar tras anular da 409 pedido-anulado', async () => {
+    expect((await anularPedidoFirmado(deps(), sol(conf))).estado).toBe(400);
+    expect((await confirmarPedidoFirmado(deps(), sol(anul))).estado).toBe(400);
+    await confirmarPedidoFirmado(deps(), sol(conf));
+    await anularPedidoFirmado(deps(), sol(anul));
+    const r = await confirmarPedidoFirmado(deps(), sol(conf));
+    expect(r).toMatchObject({ estado: 409, cuerpo: { ok: false, error: 'pedido-anulado' } });
+    expect(doc(db, 'existencias', 'lapiz__tienda')?.['cantidad']).toBe(5);
+    verificarInvariantes(db);
   });
 });

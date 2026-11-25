@@ -86,6 +86,13 @@ const pedido = (host: string | undefined) => {
   return peticion('POST', '/api/novuchat/v1/pedidos/confirmar', host, { cuerpo, cabeceras: { 'x-marca-tiempo': marca, 'x-firma': firmar(SECRETO, marca, cuerpo) } });
 };
 
+// El doble de Firestore de esta prueba no tiene transacciones: el cuerpo lleva una fecha inválida para que el manejador responda 400 antes de escribir.
+const anulacion = (host: string | undefined, tenantId = A) => {
+  const cuerpo = JSON.stringify({ pedidoId: 'p1', anuladoEn: 'ayer', tenantId });
+  const marca = String(AHORA);
+  return peticion('POST', '/api/novuchat/v1/pedidos/anular', host, { cuerpo, cabeceras: { 'x-marca-tiempo': marca, 'x-firma': firmar(SECRETO, marca, cuerpo) } });
+};
+
 describe('tenant por host en las rutas públicas', () => {
   beforeEach(() => { reiniciarAvisosRechazo(); });
 
@@ -113,10 +120,18 @@ describe('tenant por host en las rutas públicas', () => {
     expect((await enrutar(m.e, pedido(HOST_A), m.cfg)).status).not.toBe(404);
   });
 
-  it('host desconocido, sin cabecera, con lista o inválido: 404 en las cuatro rutas', async () => {
+  it('anulación firmada: el host fija el tenant (B sin inventarios: 401; A: llega a anular)', async () => {
+    const m = montar(base());
+    const sinInv = montar({ ...base(), [`tenants/${B}`]: { ...TENANT_TODO_ENCENDIDO, modulos: { website: { version: '0.1.0', submodulos: [] } } } });
+    const r = await enrutar(sinInv.e, anulacion(HOST_B, B), sinInv.cfg);
+    expect([r.status, r.cuerpo]).toEqual([401, { error: 'credencial_invalida' }]);
+    expect((await enrutar(m.e, anulacion(HOST_A), m.cfg)).status).toBe(400);
+  });
+
+  it('host desconocido, sin cabecera, con lista o inválido: 404 en todas las rutas', async () => {
     const m = montar(base());
     for (const host of ['no-mapeado.test', undefined, 'tienda-a.test, tienda-b.test', 'localhost']) {
-      for (const p of [peticion('GET', '/api/cotizacion', host), peticion('GET', '/api/disponibilidad', host), contacto(host), pedido(host)]) {
+      for (const p of [peticion('GET', '/api/cotizacion', host), peticion('GET', '/api/disponibilidad', host), contacto(host), pedido(host), anulacion(host)]) {
         const r = await enrutar(m.e, p, m.cfg);
         expect([p.ruta, r.status]).toEqual([p.ruta, 404]);
         expect(r.cuerpo).toEqual({ error: 'no_encontrado' });

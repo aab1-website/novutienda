@@ -50,3 +50,8 @@ Motivo: Cambio de comportamiento deliberado, autorizado por el dueño del produc
 
 Sello: f36316db281a5d1ac7b7052a4f82b7dc55196e3f3d5619259ad007b2fc53d3e9
 Motivo: Cambio aditivo deliberado, del 25/11/2026, a pedido de NovuChat. El asistente de WhatsApp tiene que mandar la dirección y el enlace de Google Maps cuando el cliente pregunta dónde está la tienda o elige retirar en tienda. Por eso la respuesta del catálogo agrega `tienda` (nombre, direccion, enlaceMapa, coordenadas y horario), tomado de publicado/negocio. El tenant de referencia no tiene negocio publicado, así que en sus referencias `tienda` sale con los cinco campos en null. Cambia además el ETag, que se calcula sobre el cuerpo. Los ítems, los precios, el stock y su orden no cambian.
+
+## Regeneración 2a35c2561f8d
+
+Sello: 2a35c2561f8de403bab1b7d664807cea8ad1fa6b7022a2775b55ed0ae2d7e7a4
+Motivo: Cambio aditivo deliberado del 25/11/2026, decidido por Andres con botones (anular sin plazo; reconfirmar un pedido anulado responde 409 «pedido-anulado»; restauración de staging con un script propio). Se agrega la ruta firmada POST /api/novuchat/v1/pedidos/anular, que revierte un pedido confirmado y devuelve al almacén tienda lo que descontó. La referencia nueva es novuchat-pedido-anular.json: confirma, anula, repite la anulación sin escribir, rechaza un pedido inexistente y rechaza reconfirmar; las existencias vuelven a las iniciales. Ninguna referencia existente cambia, novuchat-pedido.json incluida. Solo cambia el sello.

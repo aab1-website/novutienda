@@ -99,6 +99,11 @@ function casos(): Caso[] {
         const marca = String(AHORA);
         return peticionDe('POST', ruta, { cuerpo, cabeceras: { 'x-marca-tiempo': marca, 'x-firma': x.firmaMala === true ? 'f'.repeat(64) : firmar(SECRETO_PEDIDOS, marca, cuerpo) } });
       }
+      if (r.ruta === '/api/novuchat/v1/pedidos/anular') {
+        const cuerpo = JSON.stringify({ pedidoId: 'p1', anuladoEn: '2026-11-09T10:00:00Z', tenantId: T });
+        const marca = String(AHORA);
+        return peticionDe('POST', ruta, { cuerpo, cabeceras: { 'x-marca-tiempo': marca, 'x-firma': x.firmaMala === true ? 'f'.repeat(64) : firmar(SECRETO_PEDIDOS, marca, cuerpo) } });
+      }
       if (r.prefijo === true) {
         const consulta = { tenantId: T };
         const marca = String(AHORA);
@@ -158,7 +163,7 @@ describe('cada ruta declarada: módulo dueño apagado → rechazo; encendido →
       const encendido = montar(tenantCon(...TODOS));
       const ok = await correr(encendido, c.peticion());
       expect(rechazada(ok, c), JSON.stringify(ok)).toBe(false);
-      if (c.novuchat && c.ruta !== '/api/novuchat/v1/pedidos/confirmar') expect(encendido.datos().length, 'llegó a leer datos').toBeGreaterThan(0);
+      if (c.novuchat && !c.ruta.startsWith('/api/novuchat/v1/pedidos/')) expect(encendido.datos().length, 'llegó a leer datos').toBeGreaterThan(0);
     });
 
     it(`${c.ruta}: tenant sin documento o con documento inválido → rechazo, sin leer datos`, async () => {
@@ -221,9 +226,10 @@ describe('el control va DESPUÉS de autenticar: sin credencial no se leen los m�
   });
 });
 
-describe('pedido firmado: la firma se verifica ANTES del control de encendido', () => {
+for (const rutaPedido of ['/api/novuchat/v1/pedidos/confirmar', '/api/novuchat/v1/pedidos/anular']) {
+  describe(`${rutaPedido}: la firma se verifica ANTES del control de encendido`, () => {
   it('sin firma válida responde igual con el módulo apagado o encendido y no consulta los módulos', async () => {
-    const c = casos().find((x) => x.ruta === '/api/novuchat/v1/pedidos/confirmar');
+    const c = casos().find((x) => x.ruta === rutaPedido);
     if (c === undefined) throw new Error('falta la ruta del pedido');
     const consultas: string[] = [];
     const espiar = { modulosDelTenant: async (t: string) => { consultas.push(t); return []; } };
@@ -237,7 +243,7 @@ describe('pedido firmado: la firma se verifica ANTES del control de encendido', 
     expect(apagado.lecturas).toEqual([]);
   });
   it('con firma válida y módulo apagado → 401 credencial_invalida; encendido → pasa el control', async () => {
-    const c = casos().find((x) => x.ruta === '/api/novuchat/v1/pedidos/confirmar');
+    const c = casos().find((x) => x.ruta === rutaPedido);
     if (c === undefined) throw new Error('falta la ruta del pedido');
     const apagado = montar(tenantCon('consola'));
     const r = await correr(apagado, c.peticion());
@@ -245,6 +251,7 @@ describe('pedido firmado: la firma se verifica ANTES del control de encendido', 
     expect(apagado.datos()).toEqual([]);
   });
 });
+}
 
 describe('infraestructura y rutas desconocidas', () => {
   const sonda = (ruta: string) => peticionDe('GET', ruta);

@@ -1,0 +1,55 @@
+{
+  "existencias": {
+    "p-adaptador__tienda": 4,
+    "p-borrador__tienda": 9,
+    "p-cable__tienda": 7,
+    "p-celular__tienda": 3,
+    "p-inactivo__tienda": 4,
+    "p-lapiz__deposito-1": 5,
+    "p-lapiz__tienda": 10,
+    "p-parlante__deposito-1": 6,
+    "p-parlante__tienda": 2,
+    "p-televisor__deposito-1": 2
+  },
+  "resultados": {
+    "anula": {
+      "cuerpo": {
+        "ok": true,
+        "operacionId": "nc-anula-pd-1",
+        "repetida": false
+      },
+      "status": 200
+    },
+    "confirma": {
+      "cuerpo": {
+        "ok": true,
+        "operacionId": "nc-pd-1",
+        "repetida": false
+      },
+      "status": 200
+    },
+    "inexistente": {
+      "cuerpo": {
+        "error": "pedido-no-encontrado",
+        "ok": false
+      },
+      "status": 409
+    },
+    "reconfirma": {
+      "cuerpo": {
+        "error": "pedido-anulado",
+        "mensaje": "El pedido pd-1 ya fue anulado",
+        "ok": false
+      },
+      "status": 409
+    },
+    "repite": {
+      "cuerpo": {
+        "ok": true,
+        "operacionId": "nc-anula-pd-1",
+        "repetida": true
+      },
+      "status": 200
+    }
+  }
+}
