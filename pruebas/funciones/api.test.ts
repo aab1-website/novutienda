@@ -193,6 +193,22 @@ describe.skipIf(!hayEmulador)('API HTTP (emulador)', () => {
       }
     });
 
+    it('tienda: dirección, enlace de Google Maps, coordenadas y horario de la copia publicada del negocio; null si falta', async () => {
+      const negocio = h.firestore.doc(`tenants/${T}/publicado/negocio`);
+      try {
+        const sin = (await http('/api/novuchat/v1/catalogo?mercado=BO', { headers: auth })).cuerpo as { tienda: unknown };
+        expect(sin.tienda).toEqual({ nombre: null, direccion: null, enlaceMapa: null, coordenadas: null, horario: null });
+        const mapa = 'https://www.google.com/maps/place/x/@-22.73,-64.35,17z/data=!3d-22.7324562!4d-64.3476868';
+        await negocio.set({ nombre: 'Tienda Uno', direccion: 'Calle 1,\nBarrio 2', horario: 'Lunes a sábado', mapa });
+        for (const mercado of ['BO', 'AR']) {
+          const r = (await http(`/api/novuchat/v1/catalogo?mercado=${mercado}`, { headers: auth })).cuerpo as { tienda: unknown };
+          expect(r.tienda).toEqual({ nombre: 'Tienda Uno', direccion: 'Calle 1, Barrio 2', enlaceMapa: mapa, coordenadas: { lat: -22.7324562, lng: -64.3476868 }, horario: 'Lunes a sábado' });
+        }
+      } finally {
+        await negocio.delete();
+      }
+    });
+
     it('inventario de solo lectura: existencias por almacén y sin costos', async () => {
       const r = await http('/api/novuchat/v1/inventario', { headers: auth });
       expect(r.status).toBe(200);

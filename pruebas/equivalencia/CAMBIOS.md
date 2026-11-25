@@ -45,3 +45,8 @@ Motivo: 20/11/2026. Regla nueva de formato de series (3 a 60 caracteres, solo al
 
 Sello: cf3740a15f2323a74ae98417e60fb464ddb45c0127391f6a06308f403bbaa484
 Motivo: Cambio de comportamiento deliberado, autorizado por el dueño del producto el 24/11/2026 («Sí, PR y fusionar»), a pedido de NovuChat para su catálogo de WhatsApp. Cada ítem del catálogo agrega `areaClave` (clave estable de la categoría) y `ordenArea` (orden fijado por el administrador, o null). `area` pasa a ser el nombre visible de la categoría según publicado/negocio; si la categoría no tiene nombre propio, sigue siendo la clave, y por eso queda igual en el tenant de referencia. `descripcion` se entrega en una línea y con un máximo de 300 caracteres; las del tenant de referencia ya cumplían y no cambian. Cambian solo las tres referencias del catálogo de NovuChat: dos campos nuevos por ítem y el ETag, que se calcula sobre el cuerpo. No cambian precios, stock, el orden de los ítems ni el resto de las referencias.
+
+## Regeneración f36316db281a
+
+Sello: f36316db281a5d1ac7b7052a4f82b7dc55196e3f3d5619259ad007b2fc53d3e9
+Motivo: Cambio aditivo deliberado, del 25/11/2026, a pedido de NovuChat. El asistente de WhatsApp tiene que mandar la dirección y el enlace de Google Maps cuando el cliente pregunta dónde está la tienda o elige retirar en tienda. Por eso la respuesta del catálogo agrega `tienda` (nombre, direccion, enlaceMapa, coordenadas y horario), tomado de publicado/negocio. El tenant de referencia no tiene negocio publicado, así que en sus referencias `tienda` sale con los cinco campos en null. Cambia además el ETag, que se calcula sobre el cuerpo. Los ítems, los precios, el stock y su orden no cambian.

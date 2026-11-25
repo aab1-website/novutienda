@@ -181,12 +181,19 @@
     ],
     "mercado": "BO",
     "moneda": "BOB",
+    "tienda": {
+      "coordenadas": null,
+      "direccion": null,
+      "enlaceMapa": null,
+      "horario": null,
+      "nombre": null
+    },
     "version": 1
   },
   "headers": {
     "Cache-Control": "private, max-age=60",
     "Content-Type": "application/json; charset=utf-8",
-    "ETag": "\"bda28b8ebd950d59d297cc627eeea515\"",
+    "ETag": "\"0a21a3c6c2331a1a3bbc22c70002dbdb\"",
     "Vary": "Authorization",
     "X-Content-Type-Options": "nosniff"
   },
