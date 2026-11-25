@@ -47,7 +47,7 @@
   "noModificado": {
     "headers": {
       "Cache-Control": "private, max-age=60",
-      "ETag": "\"bda28b8ebd950d59d297cc627eeea515\"",
+      "ETag": "\"0a21a3c6c2331a1a3bbc22c70002dbdb\"",
       "Vary": "Authorization"
     },
     "status": 304

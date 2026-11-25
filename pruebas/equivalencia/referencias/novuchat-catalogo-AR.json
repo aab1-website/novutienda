@@ -181,12 +181,19 @@
     ],
     "mercado": "AR",
     "moneda": "ARS",
+    "tienda": {
+      "coordenadas": null,
+      "direccion": null,
+      "enlaceMapa": null,
+      "horario": null,
+      "nombre": null
+    },
     "version": 1
   },
   "headers": {
     "Cache-Control": "private, max-age=60",
     "Content-Type": "application/json; charset=utf-8",
-    "ETag": "\"7352b3e65c6f769e899e1626919ce8e0\"",
+    "ETag": "\"0ed2ed1c4eba80417ce6e7ddd0421628\"",
     "Vary": "Authorization",
     "X-Content-Type-Options": "nosniff"
   },

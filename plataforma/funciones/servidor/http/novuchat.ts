@@ -105,6 +105,71 @@ export function descripcionCorta(texto: string): string {
 
 type CategoriaPublicada = { readonly nombre: string; readonly orden: number | null; readonly oculta: boolean };
 
+export const MAX_TEXTO_TIENDA = 200;
+
+/** Texto plano de una línea, de hasta `max` caracteres (corta en palabra y termina en «…»); vacío o no texto = `null`. */
+export function textoTienda(v: unknown, max = MAX_TEXTO_TIENDA): string | null {
+  if (typeof v !== 'string') return null;
+  const plano = v.replace(/\p{Cc}/gu, ' ').replace(/\s+/g, ' ').trim();
+  if (plano === '') return null;
+  if (plano.length <= max) return plano;
+  const espacio = plano.slice(0, max).lastIndexOf(' ');
+  let corte = espacio > max / 2 ? plano.slice(0, espacio) : plano.slice(0, max - 1);
+  if (/[\uD800-\uDBFF]$/.test(corte)) corte = corte.slice(0, -1);
+  return `${corte.trimEnd()}…`;
+}
+
+/**
+ * Enlace de Google Maps publicado; si no cumple, `null`. Defensa en profundidad: `publicado/negocio` solo lo escribe la publicación,
+ * que ya lo validó.
+ *
+ * DUPLICADA de `urlMapaSegura` de `paquetes/consola/src/negocio.ts` (y del sitio, `paquetes/website/src/contenido/validar.ts`):
+ * la consola no la exporta y su índice es zona del módulo. Si cambia una, cambian las demás. Pendiente: exportarla desde
+ * `@novutienda/consola` y usar esa.
+ */
+export function enlaceMapaSeguro(v: unknown): string | null {
+  if (typeof v !== 'string' || v.length === 0 || v.length > 1000 || /[\s\\]/.test(v) || /\p{Cc}/u.test(v)) return null;
+  const m = /^https:\/\/([^/?#]*)([^?#]*)/.exec(v);
+  if (m === null) return null;
+  const host = m[1] ?? '';
+  if (host !== host.toLowerCase() || host.includes('@') || host.includes(':')) return null;
+  const ruta = (m[2] ?? '').toLowerCase();
+  if (/%2e|%2f|%5c/.test(ruta) || ruta.split('/').some((x) => x === '.' || x === '..')) return null;
+  const enMaps = ruta === '/maps' || ruta.startsWith('/maps/');
+  switch (host) {
+    case 'www.google.com':
+    case 'goo.gl': return enMaps ? v : null;
+    case 'maps.google.com': return ruta === '' || ruta === '/' || enMaps ? v : null;
+    case 'maps.app.goo.gl': return v;
+    default: return null;
+  }
+}
+
+/** Coordenadas que trae un enlace largo de Google Maps (`!3d<lat>!4d<lng>`, si no `@<lat>,<lng>`); los enlaces cortos no las traen: `null`. */
+export function coordenadasDeMapa(enlace: string | null): { lat: number; lng: number } | null {
+  if (enlace === null) return null;
+  let texto: string;
+  try { texto = decodeURIComponent(enlace); } catch { texto = enlace; }
+  const m = /!3d(-?\d{1,2}(?:\.\d+)?)!4d(-?\d{1,3}(?:\.\d+)?)/.exec(texto) ?? /@(-?\d{1,2}(?:\.\d+)?),(-?\d{1,3}(?:\.\d+)?)/.exec(texto);
+  if (m === null) return null;
+  const lat = Number(m[1]);
+  const lng = Number(m[2]);
+  if (!Number.isFinite(lat) || !Number.isFinite(lng) || Math.abs(lat) > 90 || Math.abs(lng) > 180) return null;
+  return { lat, lng };
+}
+
+/** Datos de la tienda física para el asistente, de la copia publicada del negocio (la misma que usa el sitio); lo que falte va en `null`. */
+export function tiendaPublicada(negocio: Datos | undefined): Record<string, unknown> {
+  const enlaceMapa = enlaceMapaSeguro(negocio?.['mapa']);
+  return {
+    nombre: textoTienda(negocio?.['nombre']),
+    direccion: textoTienda(negocio?.['direccion']),
+    enlaceMapa,
+    coordenadas: coordenadasDeMapa(enlaceMapa),
+    horario: textoTienda(negocio?.['horario']),
+  };
+}
+
 /** Nombre y orden de cada categoría de `publicado/negocio`; una entrada malformada se ignora (la categoría sale con su clave). */
 function categoriasPublicadas(negocio: Datos | undefined): ReadonlyMap<string, CategoriaPublicada> {
   const r = new Map<string, CategoriaPublicada>();
@@ -151,6 +216,7 @@ async function catalogo(e: Entorno, tenantId: string, comercial: ConfiguracionCo
     e.firestore.doc(`tenants/${tenantId}/publicado/negocio`).get(),
   ]);
   const categorias = categoriasPublicadas(negocioDoc.data());
+  const tienda = tiendaPublicada(negocioDoc.data());
   const lista: unknown = estadoDoc.data()?.['productos'];
   const candidatos = Array.isArray(lista) ? [...new Set(lista.filter((x): x is string => typeof x === 'string'))] : [];
   // Solo ids con la forma de un id de producto (`ID_PRODUCTO`, llamadas/comunes.ts): uno con `/` haría lanzar a `doc()` o leería un documento anidado.
@@ -222,6 +288,8 @@ async function catalogo(e: Entorno, tenantId: string, comercial: ConfiguracionCo
       version: 1, mercado: mercadoId, moneda,
       cotizacion: { id: cot.cotizacionId, par: cot.par, valor: cot.valor, fecha: cot.fecha, fuente: cot.fuente, estado: cot.estado },
       items,
+      // Aditivo (25/11/2026): dirección y mapa de la tienda para «¿dónde están?» y el retiro en tienda.
+      tienda,
     },
   };
 }
@@ -247,7 +315,7 @@ export async function manejarCatalogo(e: Entorno, req: PeticionHttp, cfg: Config
   const c = await catalogo(e, a.tenantId, comercial, mercado, cfg);
   if (esRespuesta(c)) return c;
   const { estable, generadoEn } = c;
-  return conEtag(req, estable, { version: 1, mercado: estable['mercado'], moneda: estable['moneda'], generadoEn, cotizacion: estable['cotizacion'], items: estable['items'] });
+  return conEtag(req, estable, { version: 1, mercado: estable['mercado'], moneda: estable['moneda'], generadoEn, cotizacion: estable['cotizacion'], items: estable['items'], tienda: estable['tienda'] });
 }
 
 /** `GET /api/novuchat/v1/inventario`: existencias por almacén de todos los productos (sin costos). */
