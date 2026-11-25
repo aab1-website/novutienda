@@ -19,7 +19,7 @@ const legado = (c: Contexto, nombre: string, entrada: object): Promise<unknown> 
 /** Monedas de venta del comercio, en el orden de sus mercados y sin repetir. */
 const monedasDeVenta = (c: Contexto): string[] => [...new Set(c.e.comercial.mercados.map((m) => m.monedaVenta))];
 /** Acciones que solo ejecuta el operador de NovuTienda (propietario), sea cual sea el rol de la sesión en el comercio. */
-const SOLO_OPERADOR: ReadonlySet<string> = new Set(['consola.fijarRedondeo']);
+const SOLO_OPERADOR: ReadonlySet<string> = new Set(['consola.cambiarRedondeo']);
 
 /** Misma acción y mismos datos que la operación del doble. */
 const igual = (nombre: string): WireHandler => (c, d) => legado(c, nombre, d);
@@ -183,16 +183,17 @@ const ACCIONES: Readonly<Record<string, WireHandler>> = {
   'consola.cotizacionManual': ok('cotizacionManual'),
   'consola.quitarCotizacionManual': ok('quitarCotizacionManual'),
   'consola.verRedondeo': (c) => ({ monedas: monedasDeVenta(c), reglas: c.e.redondeo, puedeEditar: c.e.operador }),
-  'consola.fijarRedondeo': (c, d) => {
+  'consola.cambiarRedondeo': (c, d) => {
     const monedas = monedasDeVenta(c);
     const reglas = (d['reglas'] ?? {}) as Record<string, unknown>;
+    const reparando = d['esperadas'] === null;
     const esperadas = (d['esperadas'] ?? {}) as Record<string, unknown>;
     const mismas = (k: string[]): boolean => k.length === monedas.length && monedas.every((m) => k.includes(m));
     if (!mismas(Object.keys(reglas)) || !monedas.every((m) => esReglaRedondeoValida(reglas[m]))) {
       throw fallo('redondeo-regla-invalida', 'Alguna de las reglas de redondeo no es válida.');
     }
     const clave = (r: unknown): string => JSON.stringify(r, Object.keys((r ?? {}) as object).sort());
-    if (!mismas(Object.keys(esperadas)) || monedas.some((m) => clave(esperadas[m]) !== clave(c.e.redondeo[m]))) {
+    if (!reparando && (!mismas(Object.keys(esperadas)) || monedas.some((m) => clave(esperadas[m]) !== clave(c.e.redondeo[m])))) {
       throw fallo('redondeo-conflicto', 'El redondeo cambió mientras se editaba.');
     }
     const cambiadas = monedas.filter((m) => clave(reglas[m]) !== clave(c.e.redondeo[m]));

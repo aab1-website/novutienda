@@ -97,7 +97,7 @@ function Editor({ vista, api, recargar }: { vista: VistaRedondeo; api: ClienteAp
     if (Object.keys(malos).length > 0) return;
     void accion.ejecutar(async () => {
       try {
-        return await api.llamar('fijarRedondeo', { reglas, esperadas: vista.reglas });
+        return await api.llamar('cambiarRedondeo', { reglas, esperadas: vista.invalido === true ? null : vista.reglas });
       } catch (e) {
         // Otra persona lo cambió: se muestran las reglas vigentes para que decida con lo que hay hoy.
         if (e instanceof ErrorApi && e.detalle.codigo === 'redondeo-conflicto') recargar();
@@ -186,6 +186,7 @@ export function SeccionRedondeo(): JSX.Element {
             Así se redondea el precio final de venta en la caja, la web y WhatsApp.{' '}
             {v.puedeEditar ? 'Usted puede cambiarlo.' : 'Solo lo cambia el operador de NovuTienda; para modificarlo, solicítelo a él.'}
           </p>
+          {v.invalido === true && <Alerta tipo="info">La regla guardada no es válida; se muestran las reglas por defecto. {v.puedeEditar ? 'Guarde una regla para repararla.' : 'Avise al operador de NovuTienda.'}</Alerta>}
           {v.monedas.length === 0 && <Alerta tipo="info">Este negocio no tiene monedas de venta declaradas.</Alerta>}
           <ul>
             {v.monedas.map((m) => { const r = v.reglas[m]; return (r === undefined ? null : <li key={m}>{lineaDeRegla(m, r)}</li>); })}

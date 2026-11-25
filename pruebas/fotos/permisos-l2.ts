@@ -112,7 +112,7 @@ export const FOTO_PERMISOS_L2: readonly AccionFoto[] = [
   f('consola', 'quitarCotizacionManual', ['adm'], true),
   // Redondeo de precios: el administrador solo ve; solo el operador de NovuTienda (propietario) fija.
   f('consola', 'verRedondeo', ['adm'], true),
-  f('consola', 'fijarRedondeo', [], true),
+  f('consola', 'cambiarRedondeo', [], true),
   // Invitar por correo (U-01): el administrador invita, anula y reenvía; el propietario de la plataforma también (igual que asignarRol).
   f('consola', 'invitarUsuario', ['adm'], true),
   f('consola', 'anularInvitacion', ['adm'], true),

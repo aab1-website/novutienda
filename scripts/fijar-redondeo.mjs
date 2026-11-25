@@ -1,27 +1,29 @@
 // Fija el redondeo de precios de un tenant (decisión del 25/11: lo cambia SOLO NovuTienda, por ahora con este script del operador).
 //
 //   node scripts/fijar-redondeo.mjs --tenant <t> --proyecto <id> [--bob <regla>] [--ars <regla>] [--modo cercano|arriba|abajo]
-//        [--motivo <texto>] [--uid <uid>] [--seco | --aplicar] [--confirmar-produccion]
+//        [--motivo <texto>] [--seco | --aplicar] [--confirmar-produccion]
 //
 // Cada regla se escribe `decimales:N` (0 a 2) o `multiplo:M` (por ejemplo `multiplo:100`); el modo es `cercano` salvo que se pase --modo.
 // Una moneda sin bandera conserva su regla vigente. Por omisión es --seco: muestra la regla vigente, la nueva y un ejemplo de precio, sin
 // escribir. Con --aplicar ejecuta `fijarRedondeoDe` (plataforma/funciones/servidor/redondeo.ts) en una transacción de Admin SDK: valida,
 // compara con las reglas vigentes (esperadas), escribe `config/redondeo`, audita `redondeo.fijar` y publica `redondeo.cambiado`, con lo que
-// el consumidor de consola reconstruye el sitio. El uid de la auditoría es --uid o la constante OPERADOR_SCRIPT.
+// el consumidor de consola reconstruye el sitio. El uid de la auditoría es `script:<cuenta>`, con la cuenta real que corre el script
+// (client_email de GOOGLE_APPLICATION_CREDENTIALS o `gcloud config get-value account`); si no se obtiene, falla. No hay --uid.
+// Si `config/redondeo` está inválido, se muestran las reglas de la configuración y se escribe sin reglas esperadas (repara el documento).
+// La lectura previa vive en plataforma/operador/redondeo.ts.
 // Entorno (scripts/guardia-operador.mjs `validarEntornoAlta`): como alta-tenant.mjs; producción solo con NOVUTIENDA_AMBIENTE=produccion,
 // GCP_PROJECT_ID_PROD y --confirmar-produccion. No imprime identificadores de proyecto ni de tenant.
+import { execFileSync } from 'node:child_process';
+import { readFileSync } from 'node:fs';
 import { resolve } from 'node:path';
 import { pathToFileURL } from 'node:url';
 import { cargarManifiestos } from './generar-reglas.mjs';
 import { validarEntornoAlta } from './guardia-operador.mjs';
 
-/** uid de auditoría cuando no se pasa --uid: el operador que corre este script (sin sesión de panel). */
-export const OPERADOR_SCRIPT = 'operador-script';
-export const USO = 'uso: fijar-redondeo.mjs --tenant <t> --proyecto <id> [--bob decimales:N|multiplo:M] [--ars decimales:N|multiplo:M] [--modo cercano|arriba|abajo] [--motivo <texto>] [--uid <uid>] [--seco | --aplicar] [--confirmar-produccion]';
+export const USO = 'uso: fijar-redondeo.mjs --tenant <t> --proyecto <id> [--bob decimales:N|multiplo:M] [--ars decimales:N|multiplo:M] [--modo cercano|arriba|abajo] [--motivo <texto>] [--seco | --aplicar] [--confirmar-produccion]';
 export const PRECIO_EJEMPLO = 1234.567;
 
 const RE_TENANT = /^[a-z0-9][a-z0-9-]{0,62}$/;
-const RE_UID = /^[A-Za-z0-9._-]{1,128}$/;
 const MODOS = ['cercano', 'arriba', 'abajo'];
 const MONEDAS = { '--bob': 'BOB', '--ars': 'ARS' };
 
@@ -36,7 +38,7 @@ export function parsearRegla(texto, modo = 'cercano') {
 }
 
 export function leerArgumentos(args) {
-  const o = { tenant: undefined, proyecto: undefined, reglas: {}, modo: 'cercano', motivo: undefined, uid: OPERADOR_SCRIPT, aplicar: false, seco: false, confirmarProduccion: false };
+  const o = { tenant: undefined, proyecto: undefined, reglas: {}, modo: 'cercano', motivo: undefined, aplicar: false, seco: false, confirmarProduccion: false };
   const crudas = {};
   const valor = (i) => {
     const v = args[i + 1];
@@ -49,7 +51,6 @@ export function leerArgumentos(args) {
     else if (a === '--proyecto') o.proyecto = valor(i++);
     else if (a === '--modo') o.modo = valor(i++);
     else if (a === '--motivo') o.motivo = valor(i++);
-    else if (a === '--uid') o.uid = valor(i++);
     else if (a === '--aplicar') o.aplicar = true;
     else if (a === '--seco') o.seco = true;
     else if (a === '--confirmar-produccion') o.confirmarProduccion = true;
@@ -59,7 +60,6 @@ export function leerArgumentos(args) {
   if (o.tenant === undefined || !RE_TENANT.test(o.tenant)) throw new ErrorUso('indique un --tenant válido');
   if (o.aplicar && o.seco) throw new ErrorUso('--seco y --aplicar son excluyentes');
   if (!MODOS.includes(o.modo)) throw new ErrorUso('--modo debe ser cercano, arriba o abajo');
-  if (!RE_UID.test(o.uid)) throw new ErrorUso('--uid no es válido');
   if (o.motivo !== undefined && (o.motivo.trim() === '' || o.motivo.length > 200)) throw new ErrorUso('--motivo debe tener entre 1 y 200 caracteres');
   if (Object.keys(crudas).length === 0) throw new ErrorUso('indique al menos --bob o --ars');
   for (const [moneda, texto] of Object.entries(crudas)) o.reglas[moneda] = parsearRegla(texto, o.modo);
@@ -81,8 +81,8 @@ export function validarEntrada(args, env) {
 
 /**
  * Ejecuta el script con dependencias inyectables (las pruebas pasan dobles). `deps`:
- *   comercialDe(tenant), documentoRedondeo(tenant) -> datos|undefined, transaccion(fn) con una `TransaccionRedondeo`,
- *   fijarRedondeoDe, interpretarRedondeoDe, redondear, motivoReglaRedondeoInvalida.
+ *   comercialDe(tenant), vigentesDe(tenant, comercial) -> { reglas, invalido }, cuenta() -> cuenta real que corre el script,
+ *   uidDeScript(cuenta), transaccion(fn) con una `TransaccionRedondeo`, fijarRedondeoDe, redondear, motivoReglaRedondeoInvalida.
  * Devuelve `{ codigo, salida[], error? }`: 0 bien; 1 rechazo de negocio; 2 uso o entorno; 3 error de Firebase.
  */
 export async function ejecutar(args, env, deps) {
@@ -99,9 +99,11 @@ export async function ejecutar(args, env, deps) {
       const motivo = deps.motivoReglaRedondeoInvalida(r);
       if (motivo !== null) return { codigo: 1, salida, error: `regla inválida para ${m}: ${motivo}` };
     }
-    const vigentes = deps.interpretarRedondeoDe(await deps.documentoRedondeo(o.tenant), comercial);
+    const { reglas: vigentes, invalido } = await deps.vigentesDe(o.tenant, comercial);
+    const uid = deps.uidDeScript(await deps.cuenta());
     const nuevas = Object.fromEntries(monedas.map((m) => [m, o.reglas[m] ?? vigentes[m]]));
     salida.push(`entorno: ${entorno.ambiente}`);
+    if (invalido) salida.push('config/redondeo está inválido: se muestran las reglas de la configuración y se escribirá sin reglas esperadas (repara el documento).');
     for (const m of monedas) {
       const cambia = o.reglas[m] !== undefined;
       salida.push(`${m}: vigente ${describir(vigentes[m])} -> nueva ${describir(nuevas[m])}${cambia ? '' : ' (sin cambio)'}`);
@@ -112,7 +114,7 @@ export async function ejecutar(args, env, deps) {
       return { codigo: 0, salida };
     }
     const r = await deps.transaccion((tx) =>
-      deps.fijarRedondeoDe(tx, { tenantId: o.tenant, comercial, reglas: nuevas, esperadas: vigentes, uid: o.uid, ...(o.motivo === undefined ? {} : { motivo: o.motivo }) }),
+      deps.fijarRedondeoDe(tx, { tenantId: o.tenant, comercial, reglas: nuevas, esperadas: invalido ? null : vigentes, uid, ...(o.motivo === undefined ? {} : { motivo: o.motivo }) }),
     );
     switch (r.tipo) {
       case 'fijado':
@@ -134,20 +136,35 @@ export async function ejecutar(args, env, deps) {
 }
 
 /** Dependencias reales: Admin SDK + el código del servidor (los ganchos de TypeScript los registra cargarManifiestos). */
-export async function dependenciasReales(proyecto) {
+export function cuentaDelOperador(env) {
+  try {
+    const ruta = env.GOOGLE_APPLICATION_CREDENTIALS;
+    const correo = ruta ? JSON.parse(readFileSync(ruta, 'utf8')).client_email : undefined;
+    if (typeof correo === 'string' && correo !== '') return correo;
+  } catch {
+    // sin credencial legible: se prueba gcloud
+  }
+  try {
+    return execFileSync('gcloud', ['config', 'get-value', 'account'], { encoding: 'utf8', stdio: ['ignore', 'pipe', 'ignore'] }).trim();
+  } catch {
+    return undefined;
+  }
+}
+
+export async function dependenciasReales(proyecto, env = process.env) {
   await cargarManifiestos();
-  const raiz = (ruta) => import(pathToFileURL(resolve(ruta)).href);
-  const { fijarRedondeoDe, interpretarRedondeoDe, rutaRedondeo } = await raiz('plataforma/funciones/servidor/redondeo.ts');
-  const { crearLectorComercial } = await raiz('plataforma/coordinador/comercial.ts');
+  const { fijarRedondeoDe, interpretarRedondeoDe, RedondeoInvalido } = await import(pathToFileURL(resolve('plataforma/funciones/servidor/redondeo.ts')).href);
+  const { leerComercial, leerReglasVigentes, uidDeScript } = await import(pathToFileURL(resolve('plataforma/operador/redondeo.ts')).href);
   const { redondear, motivoReglaRedondeoInvalida } = await import('@novutienda/nucleo');
   const { getApps, initializeApp } = await import('firebase-admin/app');
   const { FieldValue, getFirestore } = await import('firebase-admin/firestore');
   if (getApps().length === 0) initializeApp({ projectId: proyecto });
   const firestore = getFirestore();
-  const lector = crearLectorComercial(firestore, Date.now);
   return {
-    comercialDe: (t) => lector(t),
-    documentoRedondeo: async (t) => (await firestore.doc(rutaRedondeo(t)).get()).data(),
+    comercialDe: (t) => leerComercial(firestore, t),
+    vigentesDe: (t, comercial) => leerReglasVigentes(firestore, t, comercial, { interpretarRedondeoDe, esRedondeoInvalido: (e) => e instanceof RedondeoInvalido }),
+    cuenta: () => cuentaDelOperador(env),
+    uidDeScript,
     transaccion: (fn) =>
       firestore.runTransaction((tx) =>
         fn({
@@ -163,7 +180,6 @@ export async function dependenciasReales(proyecto) {
         }),
       ),
     fijarRedondeoDe,
-    interpretarRedondeoDe,
     redondear,
     motivoReglaRedondeoInvalida,
   };
@@ -178,7 +194,7 @@ async function principal() {
     console.error(`fijar-redondeo: ${previo.error}`);
     process.exit(2);
   }
-  const r = await ejecutar(args, env, await dependenciasReales(previo.entorno.proyecto));
+  const r = await ejecutar(args, env, await dependenciasReales(previo.entorno.proyecto, env));
   for (const l of r.salida) console.log(l);
   if (r.error !== undefined) console.error(`fijar-redondeo: ${r.error}`);
   process.exit(r.codigo);

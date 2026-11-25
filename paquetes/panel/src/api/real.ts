@@ -599,15 +599,16 @@ export const TRADUCCION: { readonly [N in NombreCallable]: Traduccion<N> } = {
         monedas: Array.isArray(r['monedas']) ? r['monedas'].filter((m): m is string => typeof m === 'string') : [],
         reglas: (r['reglas'] ?? {}) as VistaRedondeo['reglas'],
         puedeEditar: r['puedeEditar'] === true,
+        ...(r['invalido'] === true ? { invalido: true } : {}),
       };
     },
   },
-  fijarRedondeo: {
-    usa: ['consola.fijarRedondeo'],
+  cambiarRedondeo: {
+    usa: ['consola.cambiarRedondeo'],
     // Solo el operador de NovuTienda (sesión con Google) la ejecuta en el servidor; el panel de comercio se limita a ofrecer la pantalla a quien el servidor dijo `puedeEditar`.
     roles: ['adm'],
     ejecutar: async (c, e) => {
-      const r = (await c.llamar('consola', 'fijarRedondeo', { reglas: e.reglas, esperadas: e.esperadas, ...(e.motivo === undefined ? {} : { motivo: e.motivo }) })) as Obj;
+      const r = (await c.llamar('consola', 'cambiarRedondeo', { reglas: e.reglas, esperadas: e.esperadas, ...(e.motivo === undefined ? {} : { motivo: e.motivo }) })) as Obj;
       // Lo que se cobra en esta sesión ya es la regla nueva, sin esperar a la próxima carga de cotizaciones.
       if (r['estado'] === 'fijado' && c.sesionVigente()) fijarRedondeo(r['reglas']);
       return { estado: r['estado'] === 'fijado' ? 'fijado' : 'sin-cambios' };

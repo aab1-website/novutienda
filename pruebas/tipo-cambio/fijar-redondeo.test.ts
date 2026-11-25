@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { COMERCIAL_LEGADO_TRES_MONEDAS, validarEvento, type SobreEvento } from '@novutienda/nucleo';
+import { COMERCIAL_LEGADO_TRES_MONEDAS, redondeoPorMoneda, validarEvento, type SobreEvento } from '@novutienda/nucleo';
 import { fijarRedondeoDe, rutaRedondeo, type TransaccionRedondeo } from '../../plataforma/funciones/servidor/redondeo.js';
 
 const C = COMERCIAL_LEGADO_TRES_MONEDAS;
@@ -24,19 +24,19 @@ function crearTx(inicial?: Record<string, unknown>) {
   return { tx, escrituras };
 }
 const base = { tenantId: 't1', comercial: C, uid: 'op1', ahora: () => Date.UTC(2026, 10, 25, 12) };
-const vigentes = { BOB: BOB2, ARS: ARS100 };
+const vigentes = redondeoPorMoneda(C);
 
 describe('fijarRedondeoDe', () => {
   it('escribe el documento, audita con el actor propietario y publica el evento con solo las monedas', async () => {
     const { tx, escrituras } = crearTx();
-    const r = await fijarRedondeoDe(tx, { ...base, reglas: { BOB: BOB0, ARS: ARS1000 }, esperadas: vigentes, motivo: 'decisión del cliente' });
+    const r = await fijarRedondeoDe(tx, { ...base, reglas: { BOB: BOB2, ARS: ARS100 }, esperadas: vigentes, motivo: 'decisión del cliente' });
     expect(r).toMatchObject({ tipo: 'fijado', cambiadas: ['BOB', 'ARS'] });
     expect(escrituras.map((x) => x.op)).toEqual(['set', 'create', 'create']);
-    expect(escrituras[0]).toMatchObject({ ruta: RUTA, datos: { BOB: BOB0, ARS: ARS1000 } });
+    expect(escrituras[0]).toMatchObject({ ruta: RUTA, datos: { BOB: BOB2, ARS: ARS100 } });
     expect(escrituras[1]?.ruta).toBe('tenants/t1/auditoria/id1');
     expect(escrituras[1]?.datos).toMatchObject({
       rol: 'propietario', uid: 'op1', accion: 'redondeo.fijar', ruta: RUTA, motivo: 'decisión del cliente',
-      resumenAntes: vigentes, resumenDespues: { BOB: BOB0, ARS: ARS1000 },
+      resumenAntes: vigentes, resumenDespues: { BOB: BOB2, ARS: ARS100 },
     });
     expect(escrituras[2]?.ruta).toBe('tenants/t1/eventos/id1');
     const sobre = escrituras[2]?.datos as unknown as SobreEvento;
@@ -92,8 +92,23 @@ describe('fijarRedondeoDe', () => {
     expect(escrituras).toEqual([]);
   });
 
-  it('un documento vigente inválido falla cerrado', async () => {
-    const { tx } = crearTx({ BOB: BOB0 });
-    await expect(fijarRedondeoDe(tx, { ...base, reglas: { BOB: BOB0, ARS: ARS1000 }, esperadas: vigentes })).rejects.toThrow(/redondeo/i);
+  it('un documento vigente inválido se repara con esperadas null y se anota en la auditoría', async () => {
+    const { tx, escrituras } = crearTx({ BOB: BOB0 });
+    const r = await fijarRedondeoDe(tx, { ...base, reglas: { BOB: BOB2, ARS: ARS100 }, esperadas: null });
+    expect(r).toMatchObject({ tipo: 'fijado' });
+    expect(escrituras[0]).toMatchObject({ op: 'set', ruta: RUTA, datos: { BOB: BOB2, ARS: ARS100 } });
+    expect(escrituras[1]?.datos).toMatchObject({ resumenAntes: { invalido: true } });
+  });
+
+  it('un documento inválido se repara aunque la regla nueva sea la de por defecto', async () => {
+    const { tx, escrituras } = crearTx({ BOB: BOB0 });
+    expect((await fijarRedondeoDe(tx, { ...base, reglas: vigentes, esperadas: null })).tipo).toBe('fijado');
+    expect(escrituras[0]?.ruta).toBe(RUTA);
+  });
+
+  it('con documento válido, esperadas null es conflicto', async () => {
+    const { tx, escrituras } = crearTx({ BOB: BOB0, ARS: ARS100 });
+    expect((await fijarRedondeoDe(tx, { ...base, reglas: vigentes, esperadas: null })).tipo).toBe('conflicto');
+    expect(escrituras).toEqual([]);
   });
 });

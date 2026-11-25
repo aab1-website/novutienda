@@ -4,35 +4,37 @@
 // claim `p` y sesión con Google, verificado por el marco) la FIJA. La regla de fondo vive en `fijarRedondeoDe`.
 import { HttpsError } from 'firebase-functions/v2/https';
 import { z } from 'zod';
-import { accion, type Contexto, type TablaImplementaciones } from './marco.js';
+import { accion, type TablaImplementaciones } from './marco.js';
 import { VACIO, objeto } from './comunes.js';
-import { fijarRedondeoDe, type TransaccionRedondeo } from '../redondeo.js';
+import { redondeoPorMoneda } from '@novutienda/nucleo';
+import { RedondeoInvalido, fijarRedondeoDe, interpretarRedondeoDe, rutaRedondeo, type TransaccionRedondeo } from '../redondeo.js';
 
 /** Reglas por moneda de venta. Cada regla la valida `fijarRedondeoDe` con el esquema del núcleo; aquí solo se acota la forma. */
 const POR_MONEDA = z.record(z.string().regex(/^[A-Z]{3,5}$/, 'moneda inválida'), z.unknown()).refine((r) => Object.keys(r).length <= 10, 'demasiadas monedas');
 
-/** Monedas de venta del tenant, en el orden de sus mercados y sin repetir. */
-async function monedasDe(c: Contexto): Promise<readonly string[]> {
-  const comercial = await c.e.comercialDelTenant(c.tenantId);
-  return [...new Set(comercial.mercados.map((m) => m.monedaVenta))];
-}
-
 export const accionesRedondeo: TablaImplementaciones = {
   /**
-   * Reglas vigentes por moneda de venta y si quien pregunta puede cambiarlas. Lee sin caché: lo que devuelve es lo que el
-   * editor enviará como `esperadas`.
+   * Reglas vigentes por moneda de venta y si quien pregunta puede cambiarlas. Lee `config/redondeo` directamente (sin caché): lo que
+   * devuelve es lo que el editor enviará como `esperadas`. Si el documento es inválido responde las reglas por defecto con `invalido`.
    */
   verRedondeo: accion({
     esquema: VACIO,
     ejecutar: async (c) => {
-      c.e.redondeoDelTenant.invalidar(c.tenantId);
-      const reglas = await c.e.redondeoDelTenant(c.tenantId);
-      return { monedas: await monedasDe(c), reglas, puedeEditar: c.sesion.propietario };
+      const comercial = await c.e.comercialDelTenant(c.tenantId);
+      const datos = await c.e.db.runTransaction(async (tx) => (await tx.get(rutaRedondeo(c.tenantId))).data());
+      const monedas = [...new Set(comercial.mercados.map((m) => m.monedaVenta))];
+      try {
+        return { monedas, reglas: interpretarRedondeoDe(datos, comercial), puedeEditar: c.sesion.propietario };
+      } catch (e) {
+        if (!(e instanceof RedondeoInvalido)) throw e;
+        // Documento inválido: se muestra la regla por defecto y se avisa, para que el operador pueda repararlo.
+        return { monedas, reglas: redondeoPorMoneda(comercial), invalido: true, puedeEditar: c.sesion.propietario };
+      }
     },
   }),
   /** Fija las reglas (solo el operador de NovuTienda). Cambia los precios de caja, web y WhatsApp; el sitio se reconstruye. */
-  fijarRedondeo: accion({
-    esquema: objeto({ reglas: POR_MONEDA, esperadas: POR_MONEDA, motivo: z.string().trim().min(1).max(200).optional() }),
+  cambiarRedondeo: accion({
+    esquema: objeto({ reglas: POR_MONEDA, esperadas: POR_MONEDA.nullable(), motivo: z.string().trim().min(1).max(200).optional() }),
     maxCaracteres: 8_000,
     ejecutar: async (c, d) => {
       // Defensa en profundidad: el manifiesto ya deja pasar solo al propietario.

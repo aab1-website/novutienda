@@ -871,13 +871,15 @@ export interface VistaRedondeo {
   readonly monedas: readonly string[];
   readonly reglas: Readonly<Record<string, ReglaRedondeoVista>>;
   readonly puedeEditar: boolean;
+  /** El documento de redondeo guardado es inválido: `reglas` son las de por defecto y el operador puede repararlo. */
+  readonly invalido?: boolean;
 }
 
 export interface EntradaAuditoriaVista {
   readonly id: string;
   readonly fecha: string;
   readonly uid: string;
-  readonly rol: Rol;
+  readonly rol: Rol | 'propietario';
   readonly accion: string;
   readonly ruta: string;
   readonly motivo?: string;

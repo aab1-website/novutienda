@@ -215,7 +215,7 @@ function Auditoria(): JSX.Element {
           cortada={registros.length >= TOPE_AUDITORIA ? { mostradas: registros.length, mensaje: `Se muestran los ${registros.length} registros más recientes y puede haber más. Acote las fechas o elija una acción.` } : undefined}
           columnas={[
             { id: 'fecha', titulo: 'Fecha', valor: (a) => a.fecha, celda: (a) => fechaHora(a.fecha), ordenable: true },
-            { id: 'usuario', titulo: 'Usuario', valor: (a) => correoDe(a.uid), celda: (a) => `${correoDe(a.uid)} (${ROL_TEXTO[a.rol] ?? a.rol})` },
+            { id: 'usuario', titulo: 'Usuario', valor: (a) => correoDe(a.uid), celda: (a) => (a.rol === 'propietario' ? 'Operador de NovuTienda' : `${correoDe(a.uid)} (${ROL_TEXTO[a.rol] ?? a.rol})`) },
             { id: 'accion', titulo: 'Acción', valor: (a) => nombreDeAccion(a.accion) },
             { id: 'motivo', titulo: 'Motivo', valor: (a) => a.motivo ?? '' },
           ]}

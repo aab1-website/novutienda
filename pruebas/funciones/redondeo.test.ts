@@ -13,8 +13,8 @@ const PROD = 'lapiz-red';
 type Obj = Record<string, unknown>;
 const cuerpo = (r: { resultado?: unknown }): Obj => r.resultado as Obj;
 const sha256 = (t: string): string => createHash('sha256').update(t).digest('hex');
-const BOB_DEFECTO = { tipo: 'decimales', decimales: 2, modo: 'cercano' };
-const ARS_DEFECTO = { tipo: 'multiplo', multiplo: 100, modo: 'cercano' };
+const BOB_DEFECTO = { tipo: 'decimales', decimales: 0, modo: 'cercano' };
+const ARS_DEFECTO = { tipo: 'multiplo', multiplo: 1000, modo: 'cercano' };
 
 /** Propietario con sesión de Google en el emulador de Auth (`signInWithIdp`): el token lleva `sign_in_provider: google.com`. */
 async function crearPropietarioGoogle(h: Herramientas): Promise<Usuario> {
@@ -47,7 +47,7 @@ describe.skipIf(!hayEmulador)('consola: redondeo de precios (emulador)', () => {
   let admPassword: Usuario;
   const tokenNovuchat = randomBytes(24).toString('hex');
   const ver = (u: Usuario) => accion('consola', 'verRedondeo', {}, u.token, A);
-  const fijar = (u: Usuario, datos: Obj) => accion('consola', 'fijarRedondeo', datos, u.token, A);
+  const fijar = (u: Usuario, datos: Obj) => accion('consola', 'cambiarRedondeo', datos, u.token, A);
   /** Precio de BO en el catálogo de NovuChat; `undefined` si el límite de tasa respondió 429 (el sondeo reintenta). */
   const precioBO = async (): Promise<number | undefined> => {
     const r = await http('/api/novuchat/v1/catalogo?mercado=BO', { headers: { authorization: `Bearer ${tokenNovuchat}` } });
@@ -83,7 +83,7 @@ describe.skipIf(!hayEmulador)('consola: redondeo de precios (emulador)', () => {
   });
 
   it('el propietario fija: auditoría, evento, reconstrucción agendada y catálogo con la cifra nueva', async () => {
-    expect(await precioBO()).toBe(70.07);
+    expect(await precioBO()).toBe(70);
     const v = await ver(propietario);
     expect(cuerpo(v)).toMatchObject({ puedeEditar: true });
     const BOB_NUEVA = { tipo: 'decimales', decimales: 0, modo: 'arriba' };
@@ -107,13 +107,13 @@ describe.skipIf(!hayEmulador)('consola: redondeo de precios (emulador)', () => {
     expect(estado['version']).toBe(2);
     expect((estado['reconstruccion'] as Obj)['programadaPara']).not.toBeNull();
 
-    // El catálogo de NovuChat aún lee la política por el lector LEGADO (`e.redondeo`, caché propia de 60 s que `fijarRedondeo` no
-    // invalida): la cifra nueva llega en cuanto expira. `redondeoDelTenant` (lo que ve `verRedondeo` y usa el POS) sí se invalida al instante.
+    // El catálogo de NovuChat usa `redondeoDelTenant`. `cambiarRedondeo` invalida la caché de SU instancia (y `verRedondeo` lo ve al
+    // instante); la instancia del catálogo es otra y su caché de 60 s expira por su cuenta: la cifra nueva llega en menos de 60 s.
     const precio = await esperar(async () => {
       const p = await precioBO();
       if (p === undefined) await new Promise((r) => setTimeout(r, 5000)); // 429: el límite de tasa del catálogo; se espera
       return p === 71 ? p : undefined;
-    }, 120_000, 'el catálogo de NovuChat con la cifra nueva');
+    }, 90_000, 'el catálogo de NovuChat con la cifra nueva');
     expect(precio).toBe(71);
     expect(cuerpo(await ver(propietario))).toMatchObject({ reglas: { BOB: BOB_NUEVA } });
   });
@@ -139,5 +139,16 @@ describe.skipIf(!hayEmulador)('consola: redondeo de precios (emulador)', () => {
       expect(r.status, JSON.stringify(r.error)).toBe(400);
       expect(r.error?.status).toBe('INVALID_ARGUMENT');
     }
+  });
+
+  it('documento inválido: verRedondeo lo avisa y cambiarRedondeo con esperadas null lo repara', async () => {
+    await h.firestore.doc(`tenants/${A}/config/redondeo`).set({ BOB: { tipo: 'basura' } });
+    const v = await ver(propietario);
+    expect(v.status, JSON.stringify(v.error)).toBe(200);
+    expect(cuerpo(v)).toMatchObject({ invalido: true, reglas: { BOB: BOB_DEFECTO, ARS: ARS_DEFECTO } });
+    const r = await fijar(propietario, { reglas: { BOB: BOB_DEFECTO, ARS: ARS_DEFECTO }, esperadas: null, motivo: 'reparar' });
+    expect(r.status, JSON.stringify(r.error)).toBe(200);
+    expect((await h.firestore.doc(`tenants/${A}/config/redondeo`).get()).data()).toMatchObject({ BOB: BOB_DEFECTO, ARS: ARS_DEFECTO });
+    expect(cuerpo(await ver(propietario))['invalido']).toBeUndefined();
   });
 });

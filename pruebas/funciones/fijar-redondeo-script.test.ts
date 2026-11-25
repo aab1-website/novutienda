@@ -1,6 +1,6 @@
 // scripts/fijar-redondeo.mjs con dobles: sin nube ni emulador. Cubre argumentos, entorno, --seco y el armado de la llamada a fijarRedondeoDe.
 import { describe, expect, it, vi } from 'vitest';
-import { OPERADOR_SCRIPT, ejecutar, leerArgumentos, parsearRegla, type DependenciasFijar, type ReglaScript } from '../../scripts/fijar-redondeo.mjs';
+import { ejecutar, leerArgumentos, parsearRegla, type DependenciasFijar, type ReglaScript } from '../../scripts/fijar-redondeo.mjs';
 
 const ENV = { GOOGLE_CLOUD_PROJECT: 'demo-prueba', NOVUTIENDA_AMBIENTE: 'emulador', FIRESTORE_EMULATOR_HOST: 'localhost:8080' };
 const BASE = ['--tenant', 'tienda-a', '--proyecto', 'demo-prueba'];
@@ -11,10 +11,14 @@ function deps(sobre: Partial<DependenciasFijar> = {}) {
   const fijar = vi.fn(async () => ({ tipo: 'fijado', cambiadas: ['ARS'] }));
   const d: DependenciasFijar = {
     comercialDe: async () => ({ mercados: [{ monedaVenta: 'BOB' }, { monedaVenta: 'ARS' }, { monedaVenta: 'BOB' }] }),
-    documentoRedondeo: async () => undefined,
+    vigentesDe: async () => ({ reglas: VIGENTES, invalido: false }),
+    cuenta: () => 'andres@example.com',
+    uidDeScript: (c) => {
+      if (c === undefined || c === '') throw new Error('no se pudo determinar la cuenta');
+      return `script:${c}`;
+    },
     transaccion: async (fn) => fn(tx),
     fijarRedondeoDe: fijar,
-    interpretarRedondeoDe: () => VIGENTES,
     redondear: (m, r) => (r.tipo === 'multiplo' ? Math.round(m / (r.multiplo ?? 1)) * (r.multiplo ?? 1) : Math.round(m * 100) / 100),
     motivoReglaRedondeoInvalida: (r) => ((r as { multiplo?: number }).multiplo === 0 ? 'múltiplo inválido' : null),
     ...sobre,
@@ -28,7 +32,8 @@ describe('argumentos', () => {
     expect(parsearRegla('multiplo:0,5', 'arriba')).toEqual({ tipo: 'multiplo', multiplo: 0.5, modo: 'arriba' });
     const o = leerArgumentos([...BASE, '--ars', 'multiplo:50', '--modo', 'abajo']);
     expect(o.reglas).toEqual({ ARS: { tipo: 'multiplo', multiplo: 50, modo: 'abajo' } });
-    expect(o).toMatchObject({ aplicar: false, uid: OPERADOR_SCRIPT });
+    expect(o).toMatchObject({ aplicar: false });
+    expect('uid' in o).toBe(false);
   });
   it.each([
     [['--proyecto', 'demo-prueba', '--bob', 'decimales:2']],
@@ -38,7 +43,7 @@ describe('argumentos', () => {
     [[...BASE, '--bob', 'decimales:2', '--seco', '--aplicar']],
     [[...BASE, '--bob', 'decimales:2', '--otra']],
     [[...BASE, '--bob']],
-    [[...BASE, '--bob', 'decimales:2', '--uid', 'con espacio']],
+    [[...BASE, '--bob', 'decimales:2', '--uid', 'yo']],
   ])('rechaza %j con código 2', async (args) => {
     const { d, fijar } = deps();
     const r = await ejecutar(args, ENV, d);
@@ -80,24 +85,37 @@ describe('--seco (por omisión)', () => {
 describe('--aplicar', () => {
   it('arma la llamada: reglas completas, esperadas vigentes, uid y motivo', async () => {
     const { d, fijar, tx } = deps();
-    const r = await ejecutar([...BASE, '--ars', 'multiplo:50', '--aplicar', '--uid', 'yo', '--motivo', 'pedido del cliente'], ENV, d);
+    const r = await ejecutar([...BASE, '--ars', 'multiplo:50', '--aplicar', '--motivo', 'pedido del cliente'], ENV, d);
     expect(r.codigo).toBe(0);
     expect(fijar).toHaveBeenCalledWith(tx, {
       tenantId: 'tienda-a',
       comercial: expect.objectContaining({ mercados: expect.any(Array) }),
       reglas: { BOB: VIGENTES.BOB, ARS: { tipo: 'multiplo', multiplo: 50, modo: 'cercano' } },
       esperadas: VIGENTES,
-      uid: 'yo',
+      uid: 'script:andres@example.com',
       motivo: 'pedido del cliente',
     });
     expect(r.salida.join('\n')).toContain('aplicado en ARS');
   });
-  it('usa el uid del operador-script y omite el motivo si no se pasa', async () => {
+  it('omite el motivo si no se pasa', async () => {
     const { d, fijar } = deps();
     await ejecutar([...BASE, '--bob', 'decimales:0', '--aplicar'], ENV, d);
     const entrada = (fijar.mock.calls[0] as unknown as [unknown, Record<string, unknown>])[1];
-    expect(entrada['uid']).toBe('operador-script');
     expect('motivo' in entrada).toBe(false);
+  });
+  it('sin identidad del operador falla y no escribe', async () => {
+    const { d, fijar } = deps({ cuenta: () => undefined });
+    const r = await ejecutar([...BASE, '--bob', 'decimales:0', '--aplicar'], ENV, d);
+    expect(r.codigo).toBe(1);
+    expect(r.error).toContain('cuenta');
+    expect(fijar).not.toHaveBeenCalled();
+  });
+  it('con config/redondeo inválido escribe con esperadas null', async () => {
+    const { d, fijar } = deps({ vigentesDe: async () => ({ reglas: VIGENTES, invalido: true }) });
+    const r = await ejecutar([...BASE, '--bob', 'decimales:0', '--aplicar'], ENV, d);
+    expect(r.codigo).toBe(0);
+    expect(r.salida.join('\n')).toContain('inválido');
+    expect(fijar).toHaveBeenCalledWith(expect.anything(), expect.objectContaining({ esperadas: null }));
   });
   it.each([
     [{ tipo: 'conflicto' }, 1, 'cambiaron'],

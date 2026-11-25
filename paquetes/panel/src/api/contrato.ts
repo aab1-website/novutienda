@@ -201,8 +201,8 @@ export interface Contrato {
   /** Reglas de redondeo por moneda de venta y si quien pregunta puede cambiarlas (administrador: ve; operador: ve y fija). */
   verRedondeo: { entrada: Vacio; salida: VistaRedondeo };
   /** Fija el redondeo (solo el operador de NovuTienda). `esperadas` son las reglas que vio al abrir: si ya cambiaron, hay conflicto. */
-  fijarRedondeo: {
-    entrada: { reglas: Readonly<Record<string, ReglaRedondeoVista>>; esperadas: Readonly<Record<string, ReglaRedondeoVista>>; motivo?: string };
+  cambiarRedondeo: {
+    entrada: { reglas: Readonly<Record<string, ReglaRedondeoVista>>; esperadas: Readonly<Record<string, ReglaRedondeoVista>> | null; motivo?: string };
     salida: { estado: 'fijado' | 'sin-cambios' };
   };
   /** Fija el tipo de cambio manual; un salto de más del 5 % exige `confirmarSalto`. */

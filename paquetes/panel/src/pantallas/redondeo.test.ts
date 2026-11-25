@@ -35,7 +35,7 @@ describe('pantalla Redondeo', () => {
 
   it('el administrador no puede fijar aunque llame: el servidor lo rechaza', async () => {
     const e = crearEntorno('adm', undefined, { redondeo: REGLAS });
-    await expect(e.api.llamar('fijarRedondeo', { reglas: REGLAS, esperadas: REGLAS })).rejects.toMatchObject({ codigoHttps: 'permission-denied' });
+    await expect(e.api.llamar('cambiarRedondeo', { reglas: REGLAS, esperadas: REGLAS })).rejects.toMatchObject({ codigoHttps: 'permission-denied' });
   });
 
   it('el operador cambia el redondeo tras confirmar el aviso y queda guardado', async () => {
@@ -64,7 +64,7 @@ describe('pantalla Redondeo', () => {
     await u.click(screen.getByRole('button', { name: 'Guardar el redondeo' }));
     await u.click(await screen.findByRole('button', { name: 'Sí, cambiar el redondeo' }));
     expect(await screen.findByText(/Escriba un número mayor que cero/)).toBeTruthy();
-    expect(e.api.llamadas.some((l) => l.nombre === 'fijarRedondeo')).toBe(false);
+    expect(e.api.llamadas.some((l) => l.nombre === 'cambiarRedondeo')).toBe(false);
   });
 
   it('si otra persona lo cambió antes, avisa y muestra las reglas vigentes sin pisarlas', async () => {

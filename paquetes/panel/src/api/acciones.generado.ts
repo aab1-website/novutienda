@@ -106,5 +106,5 @@ export const ROLES_ACCION: Readonly<Record<string, readonly Rol[]>> = {
   'consola.cotizacionManual': ['adm'],
   'consola.quitarCotizacionManual': ['adm'],
   'consola.verRedondeo': ['adm'],
-  'consola.fijarRedondeo': [],
+  'consola.cambiarRedondeo': [],
 };
