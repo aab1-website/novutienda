@@ -4,8 +4,8 @@ import { interpretarRedondeo, interpretarRedondeoDe, REDONDEO_POR_DEFECTO, Redon
 
 // D7: el documento `config/redondeo` solo admite 0 a 2 decimales o un múltiplo de centavos exactos. Un documento con otra
 // regla es inválido (falla cerrado con RedondeoInvalido, que el marco registra como alerta): jamás cae en los valores por omisión.
-const BOB = { tipo: 'decimales', decimales: 2, modo: 'cercano' } as const;
-const ARS = { tipo: 'multiplo', multiplo: 100, modo: 'cercano' } as const;
+const BOB = { tipo: 'decimales', decimales: 0, modo: 'cercano' } as const;
+const ARS = { tipo: 'multiplo', multiplo: 1000, modo: 'cercano' } as const;
 const NO_ADMITIDAS: unknown[] = [
   { tipo: 'ninguno' }, { tipo: 'decimales', decimales: 3, modo: 'cercano' }, { tipo: 'decimales', decimales: 6, modo: 'abajo' },
   { tipo: 'decimales', decimales: -1, modo: 'cercano' }, { tipo: 'decimales', decimales: 1.5, modo: 'cercano' },
@@ -39,16 +39,16 @@ describe('documento config/redondeo (D7)', () => {
 describe('tenant de tres monedas con los valores por omisión', () => {
   const R: Redondeo = REDONDEO_POR_DEFECTO;
   const casos: [number, Mercado, { par: string; valor: number }, unknown][] = [
-    [10, 'BO', { par: 'BOB/USD', valor: 12.06 }, { tipo: 'precio', moneda: 'BOB', monto: 120.6, centavos: 12060 }],
-    [19.99, 'BO', { par: 'BOB/USD', valor: 12.06 }, { tipo: 'precio', moneda: 'BOB', monto: 241.08, centavos: 24108 }],
-    [12.345, 'BO', { par: 'BOB/USD', valor: 12.06 }, { tipo: 'precio', moneda: 'BOB', monto: 148.88, centavos: 14888 }],
+    [10, 'BO', { par: 'BOB/USD', valor: 12.06 }, { tipo: 'precio', moneda: 'BOB', monto: 121, centavos: 12100 }],
+    [19.99, 'BO', { par: 'BOB/USD', valor: 12.06 }, { tipo: 'precio', moneda: 'BOB', monto: 241, centavos: 24100 }],
+    [12.345, 'BO', { par: 'BOB/USD', valor: 12.06 }, { tipo: 'precio', moneda: 'BOB', monto: 149, centavos: 14900 }],
     [10.5, 'AR', { par: 'ARS/USD', valor: 1520 }, { tipo: 'precio', moneda: 'ARS', monto: 16000, centavos: 1_600_000 }],
-    [0.4, 'AR', { par: 'ARS/USD', valor: 1520 }, { tipo: 'precio', moneda: 'ARS', monto: 600, centavos: 60_000 }],
-    [1, 'AR', { par: 'ARS/USD', valor: 1520 }, { tipo: 'precio', moneda: 'ARS', monto: 1500, centavos: 150_000 }],
+    [0.4, 'AR', { par: 'ARS/USD', valor: 1520 }, { tipo: 'precio', moneda: 'ARS', monto: 1000, centavos: 100_000 }],
+    [1, 'AR', { par: 'ARS/USD', valor: 1520 }, { tipo: 'precio', moneda: 'ARS', monto: 2000, centavos: 200_000 }],
     [0, 'BO', { par: 'BOB/USD', valor: 12.06 }, { tipo: 'sin_precio' }],
     [0.0001, 'BO', { par: 'BOB/USD', valor: 12.06 }, { tipo: 'invalido', motivo: 'el redondeo dejó el precio en cero' }],
   ];
-  it('da exactamente los resultados de main (valores calculados con main)', () => {
+  it('da los resultados de la regla vigente del 25/11/2026 (BOB enteros, ARS al múltiplo de 1000)', () => {
     for (const [usd, m, cot, esperado] of casos) expect(precioFinal(usd, m, cot, R)).toEqual(esperado);
   });
   it('la política derivada de su configuración comercial es la misma que la de omisión', () => {

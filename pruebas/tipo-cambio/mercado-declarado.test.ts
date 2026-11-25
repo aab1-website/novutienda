@@ -54,7 +54,7 @@ describe('precioDeMercado', () => {
         expect(precioDeMercado(usd, mer, cot)).toEqual(precioFinal(usd, m, cot, red));
       }
     }
-    expect(precioDeMercado(10, bo, { par: 'BOB/USD', valor: 12.06 })).toEqual({ tipo: 'precio', moneda: 'BOB', monto: 120.6, centavos: 12060 });
+    expect(precioDeMercado(10, bo, { par: 'BOB/USD', valor: 12.06 })).toEqual({ tipo: 'precio', moneda: 'BOB', monto: 121, centavos: 12100 });
   });
   it('sin tipo de cambio devuelve el precio base redondeado y marcado sin cotización', () => {
     expect(precioDeMercado(12345.6, co, null)).toEqual({ tipo: 'precio', moneda: 'COP', monto: 12350, centavos: 1_235_000, sinCotizacion: true });
@@ -73,7 +73,7 @@ describe('precioDeMercado', () => {
     expect(precioDeMercado(10, bo, { par: 'BOB/USD', valor: 0 })).toMatchObject({ tipo: 'invalido' });
   });
   it('redondeo parcial por moneda: solo hace falta la regla de la moneda de venta', () => {
-    expect(precioFinal(10, 'BO', { par: 'BOB/USD', valor: 12.06 }, { BOB: bo.redondeo })).toMatchObject({ tipo: 'precio', monto: 120.6 });
+    expect(precioFinal(10, 'BO', { par: 'BOB/USD', valor: 12.06 }, { BOB: bo.redondeo })).toMatchObject({ tipo: 'precio', monto: 121 });
     expect(precioFinal(10, 'AR', { par: 'ARS/USD', valor: 1520 }, { BOB: bo.redondeo })).toMatchObject({ tipo: 'invalido', motivo: expect.stringContaining('ARS') });
   });
   it('acepta otra moneda base con par venta/base', () => {

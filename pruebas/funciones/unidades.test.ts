@@ -126,10 +126,10 @@ describe('traducción de errores a HttpsError', () => {
 });
 
 describe('política de redondeo', () => {
-  it('sin documento rige la decisión: BOB dos decimales y ARS múltiplo de 100 más cercano', () => {
+  it('sin documento rige la decisión: BOB bolivianos enteros y ARS múltiplo de 1000 más cercano', () => {
     expect(interpretarRedondeo(undefined)).toEqual(REDONDEO_POR_DEFECTO);
-    expect(REDONDEO_POR_DEFECTO.BOB).toEqual({ tipo: 'decimales', decimales: 2, modo: 'cercano' });
-    expect(REDONDEO_POR_DEFECTO.ARS).toEqual({ tipo: 'multiplo', multiplo: 100, modo: 'cercano' });
+    expect(REDONDEO_POR_DEFECTO.BOB).toEqual({ tipo: 'decimales', decimales: 0, modo: 'cercano' });
+    expect(REDONDEO_POR_DEFECTO.ARS).toEqual({ tipo: 'multiplo', multiplo: 1000, modo: 'cercano' });
   });
   it('acepta una política válida y rechaza lo inválido, ajeno o con claves de más', () => {
     expect(interpretarRedondeo({ BOB: { tipo: 'decimales', decimales: 0, modo: 'abajo' }, ARS: { tipo: 'multiplo', multiplo: 500, modo: 'arriba' } }).ARS).toEqual({ tipo: 'multiplo', multiplo: 500, modo: 'arriba' });

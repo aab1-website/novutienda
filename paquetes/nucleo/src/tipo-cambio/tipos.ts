@@ -28,11 +28,11 @@ export const COMERCIAL_LEGADO_TRES_MONEDAS: ConfiguracionComercial = {
   mercados: [
     {
       id: 'BO', nombre: 'Bolivia', monedaVenta: 'BOB', monedaBase: 'USD', zonaHoraria: 'America/La_Paz',
-      tipoCambio: { par: 'BOB/USD', fuentes: ['BCB'] }, redondeo: { tipo: 'decimales', decimales: 2, modo: 'cercano' },
+      tipoCambio: { par: 'BOB/USD', fuentes: ['BCB'] }, redondeo: { tipo: 'decimales', decimales: 0, modo: 'cercano' },
     },
     {
       id: 'AR', nombre: 'Argentina', monedaVenta: 'ARS', monedaBase: 'USD', zonaHoraria: 'America/Argentina/Buenos_Aires',
-      tipoCambio: { par: 'ARS/USD', fuentes: ['BNA', 'BCRA'] }, redondeo: { tipo: 'multiplo', multiplo: 100, modo: 'cercano' },
+      tipoCambio: { par: 'ARS/USD', fuentes: ['BNA', 'BCRA'] }, redondeo: { tipo: 'multiplo', multiplo: 1000, modo: 'cercano' },
     },
   ],
   monedas: ['BOB', 'USD', 'ARS'],

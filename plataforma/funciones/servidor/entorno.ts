@@ -20,7 +20,7 @@ import {
   type BaseDatosFirestore, type Bucket,
 } from '../../conectores/firebase/index.js';
 import type { AlmacenMedios, ConsultaSubidas } from '@novutienda/consola';
-import { type AlmacenCotizaciones, type AuthMin, type IndiceInvitaciones, type LimiteTasa, type Redondeo } from '@novutienda/nucleo';
+import { type AlmacenCotizaciones, type AuthMin, type IndiceInvitaciones, type LimiteTasa } from '@novutienda/nucleo';
 import type { LectorHojas } from '@novutienda/inventarios';
 import type { DepsPos } from '@novutienda/pos';
 import type { EjecutorRecibos, LecturaRecibos } from '@novutienda/recibos';
@@ -32,7 +32,7 @@ import { emisorEnlaceEmulador, emisorEnlaceFirmado, type EmisorEnlacePdf } from 
 import { MAXIMO_BUSQUEDAS_SERIE_POR_HORA, MAXIMO_BUSQUEDAS_SERIE_POR_MINUTO } from './llamadas/inventarios.js';
 import { MAXIMO_CAMBIOS_TIPO_CAMBIO_POR_HORA, VENTANA_TIPO_CAMBIO_MS } from './llamadas/tipo-cambio.js';
 import { MAXIMO_ACTIVACIONES_POR_HORA, MAXIMO_INVITACIONES_POR_HORA, VENTANA_INVITACIONES_MS } from './llamadas/usuarios.js';
-import { lectorRedondeo, lectorRedondeoDe, type LectorRedondeo } from './redondeo.js';
+import { lectorRedondeoDe, type LectorRedondeo } from './redondeo.js';
 
 export interface Entorno {
   readonly firestore: Firestore;
@@ -84,8 +84,6 @@ export interface Entorno {
   readonly logoDelNegocio: LogoDelNegocio;
   /** Política de redondeo efectiva por moneda de venta del tenant (su configuración; `config/redondeo` la sobrescribe si existe). Un cambio del operador tarda hasta 60 s en propagarse. */
   readonly redondeoDelTenant: LectorRedondeo;
-  /** @deprecated LEGADO, como en main: política BOB/ARS de `config/redondeo`, sin leer `tenants/{t}`. Usar `redondeoDelTenant` (B2 a B4). */
-  readonly redondeo: (tenantId: string) => Promise<Redondeo>;
   /** `DepsPos` del tenant, con la política de redondeo de su configuración. */
   depsPos(tenantId: string): Promise<DepsPos>;
   readonly leerDisponibilidad: (tenantId: string) => LectorDisponibilidad;
@@ -119,7 +117,6 @@ export function crearEntorno(o: OpcionesEntorno): Entorno {
   const db = crearBaseDatos(o.firestore);
   const comercialDelTenant = crearLectorComercial(o.firestore, ahora);
   const redondeoDelTenant = lectorRedondeoDe(db, ahora, comercialDelTenant);
-  const redondeo = lectorRedondeo(db, ahora); // LEGADO: como en main (misma fuente y mismos fallos), hasta B2 a B4
   const emulador = env['FUNCTIONS_EMULATOR'] === 'true';
   const lectoresModulos = crearLectoresModulos(o.firestore, ahora, undefined, o.planPruebasHabilitado === true);
   return {
@@ -153,7 +150,6 @@ export function crearEntorno(o: OpcionesEntorno): Entorno {
     comercialDelTenant,
     logoDelNegocio: crearLogoDelNegocio({ db, modulosDelTenant: lectoresModulos.modulos, baseMedios: o.mediosBaseUrl ?? '', avisar: (m, d) => logger.warn(m, d) }),
     redondeoDelTenant,
-    redondeo,
     depsPos: async (tenantId) => ({
       db, inventarios: inventariosParaPos, catalogo: catalogoParaPos, comercial: await comercialDelTenant(tenantId), redondeo: await redondeoDelTenant(tenantId), ahora,
     }),

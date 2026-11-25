@@ -1,20 +1,21 @@
 // Política de redondeo del precio final, leída de `tenants/{t}/config/redondeo`. Decisión vigente (Andres,
-// 04/11/2026): BOB con dos decimales; ARS al múltiplo de 100 más cercano. Sin documento rige esa política;
+// 25/11/2026): BOB a bolivianos enteros; ARS al múltiplo de 1000 más cercano; la mitad sube. Sin documento rige esa política;
 // con un documento inválido NO se adivina: se falla (un precio mal redondeado se cobra).
 import { z } from 'zod';
 import { esReglaRedondeoValida, redondeoPorMoneda, type BaseDatosIdentidad, type ConfiguracionComercial, type Redondeo, type RedondeoPorMoneda } from '@novutienda/nucleo';
 
 /** @deprecated LEGADO del tenant de tres monedas: la política por defecto sale de `redondeoPorMoneda(comercial)`. */
 export const REDONDEO_POR_DEFECTO: Redondeo = {
-  BOB: { tipo: 'decimales', decimales: 2, modo: 'cercano' },
-  ARS: { tipo: 'multiplo', multiplo: 100, modo: 'cercano' },
+  BOB: { tipo: 'decimales', decimales: 0, modo: 'cercano' },
+  ARS: { tipo: 'multiplo', multiplo: 1000, modo: 'cercano' },
 };
 
 const modo = z.enum(['cercano', 'arriba', 'abajo']);
-const regla = z.discriminatedUnion('tipo', [
+export const reglaRedondeoEsquema = z.discriminatedUnion('tipo', [
   z.object({ tipo: z.literal('decimales'), decimales: z.number().int().min(0).max(2), modo }).strict(),
   z.object({ tipo: z.literal('multiplo'), multiplo: z.number().min(0.01).max(1_000_000), modo }).strict(),
 ]).refine((r) => esReglaRedondeoValida(r)); // D7: múltiplo exacto en centavos; sin «ninguno» ni más de 2 decimales
+const regla = reglaRedondeoEsquema;
 const esquemaRedondeo = z.object({ BOB: regla, ARS: regla }).strict();
 
 export class RedondeoInvalido extends Error {
@@ -52,23 +53,6 @@ export function interpretarRedondeoDe(datos: Readonly<Record<string, unknown>> |
     salida[m] = r.data;
   }
   return salida;
-}
-
-/**
- * LEGADO, idéntico a main: lector con caché corta por tenant de la política BOB/ARS (misma fuente, `config/redondeo`, y mismos
- * fallos: no lee `tenants/{t}`). Lo usan los callers de caja, consola y sitio hasta B2 a B4.
- * @deprecated Usar `lectorRedondeoDe`.
- */
-export function lectorRedondeo(db: BaseDatosIdentidad, ahora: () => number, ttlMs = 60_000): (tenantId: string) => Promise<Redondeo> {
-  const cache = new Map<string, { readonly hasta: number; readonly valor: Redondeo }>();
-  return async (tenantId) => {
-    const t = ahora();
-    const previo = cache.get(tenantId);
-    if (previo !== undefined && previo.hasta > t) return previo.valor;
-    const valor = interpretarRedondeo(await db.runTransaction(async (tx) => (await tx.get(rutaRedondeo(tenantId))).data()));
-    cache.set(tenantId, { hasta: t + ttlMs, valor });
-    return valor;
-  };
 }
 
 /** Lector de la política efectiva por tenant. `invalidar()` la vacía (pruebas). */

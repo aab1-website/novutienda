@@ -31,9 +31,11 @@ Base: la URL del sitio (`/api/sitio/v1/…`, reescrita por Hosting a la función
 |---|---|
 | `GET /api/sitio/v1/reconstrucciones?tenantId=T[&estado=pendiente]` | `200 { trabajos: [{ id, estado, version, motivo, solicitadaEnMs }] }` (hasta 20, el más antiguo primero) |
 | `POST /api/sitio/v1/reconstrucciones/{id}/estado` con `{ "tenantId": "T", "estado": "en_curso" \| "completada" \| "fallida"[, "etapa", "causas"] }` (ver «Resultado de la última reconstrucción») | `200 { id, estado }`; repetir el mismo estado → `200 { repetido: true }`; transición no permitida → `409`; trabajo inexistente → `404` |
-| `GET /api/sitio/v1/publicado?tenantId=T` | `200 { documentos: { "producto__<id>": {…}, "sitio": {…}, "estado": {…}, … }, redondeo: { BOB: Regla, ARS: Regla } }`: la copia publicada que lee la compilación y la política de redondeo de `tenants/T/config/redondeo` (sin documento rige BOB 2 decimales y ARS múltiplo de 100; un documento inválido responde `500`: no se adivina) |
+| `GET /api/sitio/v1/publicado?tenantId=T` | `200 { documentos: { "producto__<id>": {…}, "sitio": {…}, "estado": {…}, … }, redondeo: { BOB: Regla, ARS: Regla } }`: la copia publicada que lee la compilación y la política de redondeo de `tenants/T/config/redondeo` (sin documento rige la regla del tenant de referencia: BOB enteros y ARS múltiplo de 1.000, la mitad hacia arriba; un documento inválido responde `500`: no se adivina) |
 
 Errores: `401 firma_invalida`, `400 tenant_invalido | estado_invalido | entrada_invalida`, `503 no_configurado` (falta el secreto).
+
+**Redondeo del sitio.** El sitio toma el redondeo (`config.redondeo`, leído de `tenants/{t}/config/redondeo`) al construirse: un cambio de redondeo no llega al sitio hasta una reconstrucción. Si el documento se cambia sin pasar por un mecanismo que agende la reconstrucción, hay que publicar el sitio para que tome la regla nueva.
 
 ## Resultado de la última reconstrucción
 

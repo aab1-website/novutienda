@@ -42,7 +42,7 @@ Para una línea `{ productoId, cantidad, opciones: [opcionId…] }`:
 1. Validar contra el catálogo leído: cada `opcionId` existe en un grupo del producto y está `disponible`; cada grupo `obligatorio` tiene al menos `min` elegidas; ninguno supera `max`; sin repetidos. Errores tipados: `opcion_invalida` (no existe, obligatorio sin elegir, fuera de mín/máx, repetida), `opcion_no_disponible`.
 2. `precioUnitarioCentavos = precioCentavos + Σ deltaCentavos` de las opciones elegidas de tipo `precio`.
 3. `subtotalCentavos = precioUnitarioCentavos × cantidad`.
-4. **Redondeo por componente**: `precioCentavos` y cada `deltaCentavos` llegan ya redondeados con la política del mercado (BOB: dos decimales; ARS: múltiplo de 100 al más cercano). La suma de enteros no se vuelve a redondear, así ambos lados obtienen el mismo total.
+4. **Redondeo por componente**: `precioCentavos` y cada `deltaCentavos` llegan ya redondeados con la política del mercado (la regla de redondeo del tenant, `redondeoDelTenant`; para el tenant de referencia, BOB a enteros y ARS al múltiplo de 1.000, la mitad hacia arriba). La suma de enteros no se vuelve a redondear, así ambos lados obtienen el mismo total.
 5. Delta negativo permitido («sin queso −3») con tope: `precioUnitarioCentavos ≥ 0`; si una combinación lo viola, la plataforma dueña del catálogo la rechaza al guardar el producto, no en la venta.
 
 El modelo de lenguaje y el navegador **nunca** envían precios ni nombres: solo ids y cantidades.

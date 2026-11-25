@@ -43,7 +43,7 @@ describe.skipIf(!hayEmulador)('acciones faltantes del panel (emulador)', () => {
         expect(r.status, JSON.stringify(r.error)).toBe(200);
         expect(cuerpo(r)).toMatchObject({
           cotizaciones: { BO: { par: 'BOB/USD', valor: 7, estado: 'vigente', fuente: 'manual' }, AR: { par: 'ARS/USD', valor: 1000, estado: 'vigente' } },
-          redondeo: { BOB: { tipo: 'decimales', decimales: 2, modo: 'cercano' }, ARS: { tipo: 'multiplo', multiplo: 100, modo: 'cercano' } },
+          redondeo: { BOB: { tipo: 'decimales', decimales: 0, modo: 'cercano' }, ARS: { tipo: 'multiplo', multiplo: 1000, modo: 'cercano' } },
         });
       }
       expect((await accion('pos', 'cotizaciones', {}, undefined, A)).status).toBe(401);

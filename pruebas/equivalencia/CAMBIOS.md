@@ -55,3 +55,8 @@ Motivo: Cambio aditivo deliberado, del 25/11/2026, a pedido de NovuChat. El asis
 
 Sello: 2a35c2561f8de403bab1b7d664807cea8ad1fa6b7022a2775b55ed0ae2d7e7a4
 Motivo: Cambio aditivo deliberado del 25/11/2026, decidido por Andres con botones (anular sin plazo; reconfirmar un pedido anulado responde 409 «pedido-anulado»; restauración de staging con un script propio). Se agrega la ruta firmada POST /api/novuchat/v1/pedidos/anular, que revierte un pedido confirmado y devuelve al almacén tienda lo que descontó. La referencia nueva es novuchat-pedido-anular.json: confirma, anula, repite la anulación sin escribir, rechaza un pedido inexistente y rechaza reconfirmar; las existencias vuelven a las iniciales. Ninguna referencia existente cambia, novuchat-pedido.json incluida. Solo cambia el sello.
+
+## Regeneración f13fd3857cb3
+
+Sello: f13fd3857cb3ded71d12536280682bedebd3882278c8565bdbf9df2d982e7d19
+Motivo: 25/11/2026, decisión de Andres: BOB a bolivianos enteros y ARS al múltiplo de 1.000, la mitad sube; cambian precios, totales, recibos, CSV y el ETag (el vuelto no cambia, porque se ajustaron los pagos); no cambian ids, orden ni stock. Se ajustó jornada.ts porque los pagos fijos ya no coincidían con los totales nuevos (BOB 1.411 y 104; ARS 22.000): el QR de la primera venta pasa de 410,35 a 411,00, la transferencia ARS de 2.900 a 2.000 y el efectivo de la venta de servicio a 104; el arqueo de BOB esperado pasa a 1.304 (contado 1.305, sobrante de 1). Regenerado sobre las referencias de main con la anulación de pedidos (#232): novuchat-pedido-anular.json no cambia.
