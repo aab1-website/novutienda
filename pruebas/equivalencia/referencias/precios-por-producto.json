@@ -22,12 +22,12 @@
       "id": "p-lapiz",
       "panel": {
         "ARS": {
-          "centavos": 160000,
+          "centavos": 200000,
           "moneda": "ARS",
           "tipo": "precio"
         },
         "BOB": {
-          "centavos": 871,
+          "centavos": 900,
           "moneda": "BOB",
           "tipo": "precio"
         },
@@ -47,15 +47,15 @@
       },
       "precioFinal": {
         "AR": {
-          "centavos": 160000,
+          "centavos": 200000,
           "moneda": "ARS",
-          "monto": 1600,
+          "monto": 2000,
           "tipo": "precio"
         },
         "BO": {
-          "centavos": 871,
+          "centavos": 900,
           "moneda": "BOB",
-          "monto": 8.71,
+          "monto": 9,
           "tipo": "precio"
         }
       },
@@ -65,15 +65,15 @@
       },
       "preciosDelDia": {
         "AR": {
-          "centavos": 160000,
+          "centavos": 200000,
           "moneda": "ARS",
-          "monto": 1600,
+          "monto": 2000,
           "tipo": "precio"
         },
         "BO": {
-          "centavos": 871,
+          "centavos": 900,
           "moneda": "BOB",
-          "monto": 8.71,
+          "monto": 9,
           "tipo": "precio"
         }
       },
@@ -88,14 +88,14 @@
       "sitio": {
         "AR": {
           "aviso": null,
-          "centavos": 160000,
-          "texto": "$ 1.600",
+          "centavos": 200000,
+          "texto": "$ 2.000",
           "tipo": "precio"
         },
         "BO": {
           "aviso": null,
-          "centavos": 871,
-          "texto": "Bs 8,71",
+          "centavos": 900,
+          "texto": "Bs 9",
           "tipo": "precio"
         },
         "BOcargando": {
@@ -110,12 +110,12 @@
       "id": "p-celular",
       "panel": {
         "ARS": {
-          "centavos": 24930000,
+          "centavos": 24900000,
           "moneda": "ARS",
           "tipo": "precio"
         },
         "BOB": {
-          "centavos": 139293,
+          "centavos": 139300,
           "moneda": "BOB",
           "tipo": "precio"
         },
@@ -135,15 +135,15 @@
       },
       "precioFinal": {
         "AR": {
-          "centavos": 24930000,
+          "centavos": 24900000,
           "moneda": "ARS",
-          "monto": 249300,
+          "monto": 249000,
           "tipo": "precio"
         },
         "BO": {
-          "centavos": 139293,
+          "centavos": 139300,
           "moneda": "BOB",
-          "monto": 1392.93,
+          "monto": 1393,
           "tipo": "precio"
         }
       },
@@ -153,15 +153,15 @@
       },
       "preciosDelDia": {
         "AR": {
-          "centavos": 24930000,
+          "centavos": 24900000,
           "moneda": "ARS",
-          "monto": 249300,
+          "monto": 249000,
           "tipo": "precio"
         },
         "BO": {
-          "centavos": 139293,
+          "centavos": 139300,
           "moneda": "BOB",
-          "monto": 1392.93,
+          "monto": 1393,
           "tipo": "precio"
         }
       },
@@ -176,14 +176,14 @@
       "sitio": {
         "AR": {
           "aviso": null,
-          "centavos": 24930000,
-          "texto": "$ 249.300",
+          "centavos": 24900000,
+          "texto": "$ 249.000",
           "tipo": "precio"
         },
         "BO": {
           "aviso": null,
-          "centavos": 139293,
-          "texto": "Bs 1.392,93",
+          "centavos": 139300,
+          "texto": "Bs 1.393",
           "tipo": "precio"
         },
         "BOcargando": {
@@ -201,7 +201,7 @@
           "tipo": "sin_precio"
         },
         "BOB": {
-          "centavos": 2319,
+          "centavos": 2300,
           "moneda": "BOB",
           "tipo": "precio"
         },
@@ -222,9 +222,9 @@
           "tipo": "sin_precio"
         },
         "BO": {
-          "centavos": 2319,
+          "centavos": 2300,
           "moneda": "BOB",
-          "monto": 23.19,
+          "monto": 23,
           "tipo": "precio"
         }
       },
@@ -237,9 +237,9 @@
           "tipo": "sin_precio"
         },
         "BO": {
-          "centavos": 2319,
+          "centavos": 2300,
           "moneda": "BOB",
-          "monto": 23.19,
+          "monto": 23,
           "tipo": "precio"
         }
       },
@@ -257,8 +257,8 @@
         },
         "BO": {
           "aviso": null,
-          "centavos": 2319,
-          "texto": "Bs 23,19",
+          "centavos": 2300,
+          "texto": "Bs 23",
           "tipo": "precio"
         },
         "BOcargando": {
@@ -273,7 +273,7 @@
       "id": "p-adaptador",
       "panel": {
         "ARS": {
-          "centavos": 530000,
+          "centavos": 500000,
           "moneda": "ARS",
           "tipo": "precio"
         },
@@ -294,9 +294,9 @@
       },
       "precioFinal": {
         "AR": {
-          "centavos": 530000,
+          "centavos": 500000,
           "moneda": "ARS",
-          "monto": 5300,
+          "monto": 5000,
           "tipo": "precio"
         },
         "BO": {
@@ -309,9 +309,9 @@
       },
       "preciosDelDia": {
         "AR": {
-          "centavos": 530000,
+          "centavos": 500000,
           "moneda": "ARS",
-          "monto": 5300,
+          "monto": 5000,
           "tipo": "precio"
         },
         "BO": {
@@ -329,8 +329,8 @@
       "sitio": {
         "AR": {
           "aviso": null,
-          "centavos": 530000,
-          "texto": "$ 5.300",
+          "centavos": 500000,
+          "texto": "$ 5.000",
           "tipo": "precio"
         },
         "BO": {
@@ -348,12 +348,12 @@
       "id": "p-parlante",
       "panel": {
         "ARS": {
-          "centavos": 1230000,
+          "centavos": 1200000,
           "moneda": "ARS",
           "tipo": "precio"
         },
         "BOB": {
-          "centavos": 13923,
+          "centavos": 13900,
           "moneda": "BOB",
           "tipo": "precio"
         },
@@ -373,15 +373,15 @@
       },
       "precioFinal": {
         "AR": {
-          "centavos": 1230000,
+          "centavos": 1200000,
           "moneda": "ARS",
-          "monto": 12300,
+          "monto": 12000,
           "tipo": "precio"
         },
         "BO": {
-          "centavos": 13923,
+          "centavos": 13900,
           "moneda": "BOB",
-          "monto": 139.23,
+          "monto": 139,
           "tipo": "precio"
         }
       },
@@ -391,15 +391,15 @@
       },
       "preciosDelDia": {
         "AR": {
-          "centavos": 1230000,
+          "centavos": 1200000,
           "moneda": "ARS",
-          "monto": 12300,
+          "monto": 12000,
           "tipo": "precio"
         },
         "BO": {
-          "centavos": 13923,
+          "centavos": 13900,
           "moneda": "BOB",
-          "monto": 139.23,
+          "monto": 139,
           "tipo": "precio"
         }
       },
@@ -414,14 +414,14 @@
       "sitio": {
         "AR": {
           "aviso": null,
-          "centavos": 1230000,
-          "texto": "$ 12.300",
+          "centavos": 1200000,
+          "texto": "$ 12.000",
           "tipo": "precio"
         },
         "BO": {
           "aviso": null,
-          "centavos": 13923,
-          "texto": "Bs 139,23",
+          "centavos": 13900,
+          "texto": "Bs 139",
           "tipo": "precio"
         },
         "BOcargando": {
@@ -436,12 +436,12 @@
       "id": "p-televisor",
       "panel": {
         "ARS": {
-          "centavos": 53490000,
+          "centavos": 53500000,
           "moneda": "ARS",
           "tipo": "precio"
         },
         "BOB": {
-          "centavos": 313773,
+          "centavos": 313800,
           "moneda": "BOB",
           "tipo": "precio"
         },
@@ -461,15 +461,15 @@
       },
       "precioFinal": {
         "AR": {
-          "centavos": 53490000,
+          "centavos": 53500000,
           "moneda": "ARS",
-          "monto": 534900,
+          "monto": 535000,
           "tipo": "precio"
         },
         "BO": {
-          "centavos": 313773,
+          "centavos": 313800,
           "moneda": "BOB",
-          "monto": 3137.73,
+          "monto": 3138,
           "tipo": "precio"
         }
       },
@@ -479,15 +479,15 @@
       },
       "preciosDelDia": {
         "AR": {
-          "centavos": 53490000,
+          "centavos": 53500000,
           "moneda": "ARS",
-          "monto": 534900,
+          "monto": 535000,
           "tipo": "precio"
         },
         "BO": {
-          "centavos": 313773,
+          "centavos": 313800,
           "moneda": "BOB",
-          "monto": 3137.73,
+          "monto": 3138,
           "tipo": "precio"
         }
       },
@@ -502,14 +502,14 @@
       "sitio": {
         "AR": {
           "aviso": null,
-          "centavos": 53490000,
-          "texto": "$ 534.900",
+          "centavos": 53500000,
+          "texto": "$ 535.000",
           "tipo": "precio"
         },
         "BO": {
           "aviso": null,
-          "centavos": 313773,
-          "texto": "Bs 3.137,73",
+          "centavos": 313800,
+          "texto": "Bs 3.138",
           "tipo": "precio"
         },
         "BOcargando": {
@@ -524,12 +524,12 @@
       "id": "p-agotado",
       "panel": {
         "ARS": {
-          "centavos": 1780000,
+          "centavos": 1800000,
           "moneda": "ARS",
           "tipo": "precio"
         },
         "BOB": {
-          "centavos": 10448,
+          "centavos": 10400,
           "moneda": "BOB",
           "tipo": "precio"
         },
@@ -549,15 +549,15 @@
       },
       "precioFinal": {
         "AR": {
-          "centavos": 1780000,
+          "centavos": 1800000,
           "moneda": "ARS",
-          "monto": 17800,
+          "monto": 18000,
           "tipo": "precio"
         },
         "BO": {
-          "centavos": 10448,
+          "centavos": 10400,
           "moneda": "BOB",
-          "monto": 104.48,
+          "monto": 104,
           "tipo": "precio"
         }
       },
@@ -567,15 +567,15 @@
       },
       "preciosDelDia": {
         "AR": {
-          "centavos": 1780000,
+          "centavos": 1800000,
           "moneda": "ARS",
-          "monto": 17800,
+          "monto": 18000,
           "tipo": "precio"
         },
         "BO": {
-          "centavos": 10448,
+          "centavos": 10400,
           "moneda": "BOB",
-          "monto": 104.48,
+          "monto": 104,
           "tipo": "precio"
         }
       },
@@ -590,14 +590,14 @@
       "sitio": {
         "AR": {
           "aviso": null,
-          "centavos": 1780000,
-          "texto": "$ 17.800",
+          "centavos": 1800000,
+          "texto": "$ 18.000",
           "tipo": "precio"
         },
         "BO": {
           "aviso": null,
-          "centavos": 10448,
-          "texto": "Bs 104,48",
+          "centavos": 10400,
+          "texto": "Bs 104",
           "tipo": "precio"
         },
         "BOcargando": {
@@ -612,12 +612,12 @@
       "id": "p-inactivo",
       "panel": {
         "ARS": {
-          "centavos": 950000,
+          "centavos": 900000,
           "moneda": "ARS",
           "tipo": "precio"
         },
         "BOB": {
-          "centavos": 5572,
+          "centavos": 5600,
           "moneda": "BOB",
           "tipo": "precio"
         },
@@ -637,15 +637,15 @@
       },
       "precioFinal": {
         "AR": {
-          "centavos": 950000,
+          "centavos": 900000,
           "moneda": "ARS",
-          "monto": 9500,
+          "monto": 9000,
           "tipo": "precio"
         },
         "BO": {
-          "centavos": 5572,
+          "centavos": 5600,
           "moneda": "BOB",
-          "monto": 55.72,
+          "monto": 56,
           "tipo": "precio"
         }
       },
@@ -655,15 +655,15 @@
       },
       "preciosDelDia": {
         "AR": {
-          "centavos": 950000,
+          "centavos": 900000,
           "moneda": "ARS",
-          "monto": 9500,
+          "monto": 9000,
           "tipo": "precio"
         },
         "BO": {
-          "centavos": 5572,
+          "centavos": 5600,
           "moneda": "BOB",
-          "monto": 55.72,
+          "monto": 56,
           "tipo": "precio"
         }
       },
@@ -678,14 +678,14 @@
       "sitio": {
         "AR": {
           "aviso": null,
-          "centavos": 950000,
-          "texto": "$ 9.500",
+          "centavos": 900000,
+          "texto": "$ 9.000",
           "tipo": "precio"
         },
         "BO": {
           "aviso": null,
-          "centavos": 5572,
-          "texto": "Bs 55,72",
+          "centavos": 5600,
+          "texto": "Bs 56",
           "tipo": "precio"
         },
         "BOcargando": {
@@ -700,12 +700,12 @@
       "id": "p-servicio",
       "panel": {
         "ARS": {
-          "centavos": 1780000,
+          "centavos": 1800000,
           "moneda": "ARS",
           "tipo": "precio"
         },
         "BOB": {
-          "centavos": 10448,
+          "centavos": 10400,
           "moneda": "BOB",
           "tipo": "precio"
         },
@@ -725,15 +725,15 @@
       },
       "precioFinal": {
         "AR": {
-          "centavos": 1780000,
+          "centavos": 1800000,
           "moneda": "ARS",
-          "monto": 17800,
+          "monto": 18000,
           "tipo": "precio"
         },
         "BO": {
-          "centavos": 10448,
+          "centavos": 10400,
           "moneda": "BOB",
-          "monto": 104.48,
+          "monto": 104,
           "tipo": "precio"
         }
       },
@@ -743,15 +743,15 @@
       },
       "preciosDelDia": {
         "AR": {
-          "centavos": 1780000,
+          "centavos": 1800000,
           "moneda": "ARS",
-          "monto": 17800,
+          "monto": 18000,
           "tipo": "precio"
         },
         "BO": {
-          "centavos": 10448,
+          "centavos": 10400,
           "moneda": "BOB",
-          "monto": 104.48,
+          "monto": 104,
           "tipo": "precio"
         }
       },
@@ -766,14 +766,14 @@
       "sitio": {
         "AR": {
           "aviso": null,
-          "centavos": 1780000,
-          "texto": "$ 17.800",
+          "centavos": 1800000,
+          "texto": "$ 18.000",
           "tipo": "precio"
         },
         "BO": {
           "aviso": null,
-          "centavos": 10448,
-          "texto": "Bs 104,48",
+          "centavos": 10400,
+          "texto": "Bs 104",
           "tipo": "precio"
         },
         "BOcargando": {
@@ -788,12 +788,12 @@
       "id": "p-borrador",
       "panel": {
         "ARS": {
-          "centavos": 590000,
+          "centavos": 600000,
           "moneda": "ARS",
           "tipo": "precio"
         },
         "BOB": {
-          "centavos": 3483,
+          "centavos": 3500,
           "moneda": "BOB",
           "tipo": "precio"
         },
@@ -813,15 +813,15 @@
       },
       "precioFinal": {
         "AR": {
-          "centavos": 590000,
+          "centavos": 600000,
           "moneda": "ARS",
-          "monto": 5900,
+          "monto": 6000,
           "tipo": "precio"
         },
         "BO": {
-          "centavos": 3483,
+          "centavos": 3500,
           "moneda": "BOB",
-          "monto": 34.83,
+          "monto": 35,
           "tipo": "precio"
         }
       },
@@ -831,15 +831,15 @@
       },
       "preciosDelDia": {
         "AR": {
-          "centavos": 590000,
+          "centavos": 600000,
           "moneda": "ARS",
-          "monto": 5900,
+          "monto": 6000,
           "tipo": "precio"
         },
         "BO": {
-          "centavos": 3483,
+          "centavos": 3500,
           "moneda": "BOB",
-          "monto": 34.83,
+          "monto": 35,
           "tipo": "precio"
         }
       },
@@ -854,14 +854,14 @@
       "sitio": {
         "AR": {
           "aviso": null,
-          "centavos": 590000,
-          "texto": "$ 5.900",
+          "centavos": 600000,
+          "texto": "$ 6.000",
           "tipo": "precio"
         },
         "BO": {
           "aviso": null,
-          "centavos": 3483,
-          "texto": "Bs 34,83",
+          "centavos": 3500,
+          "texto": "Bs 35",
           "tipo": "precio"
         },
         "BOcargando": {
@@ -876,11 +876,11 @@
   "redondeo": {
     "ARS": {
       "modo": "cercano",
-      "multiplo": 100,
+      "multiplo": 1000,
       "tipo": "multiplo"
     },
     "BOB": {
-      "decimales": 2,
+      "decimales": 0,
       "modo": "cercano",
       "tipo": "decimales"
     }

@@ -17,14 +17,14 @@
         "egresos": 0,
         "ingresos": 50000,
         "qr": 0,
-        "transferencia": 290000
+        "transferencia": 200000
       },
       "BOB": {
         "credito": 0,
-        "efectivo": 110448,
+        "efectivo": 110400,
         "egresos": 0,
         "ingresos": 0,
-        "qr": 41035,
+        "qr": 41100,
         "transferencia": 0
       },
       "USD": {
@@ -48,16 +48,16 @@
         "efectivo": 2000000,
         "esperado": 2150000,
         "qr": 0,
-        "transferencia": 290000
+        "transferencia": 200000
       },
       "BOB": {
         "apertura": 20000,
-        "contado": 130548,
+        "contado": 130500,
         "credito": 0,
         "diferencia": 100,
-        "efectivo": 110448,
-        "esperado": 130448,
-        "qr": 41035,
+        "efectivo": 110400,
+        "esperado": 130400,
+        "qr": 41100,
         "transferencia": 0
       },
       "USD": {
@@ -84,7 +84,7 @@
       "cerradoPor": "u-caj",
       "contado": {
         "ARS": 2145000,
-        "BOB": 130548,
+        "BOB": 130500,
         "USD": 5008
       },
       "diferencia": {
@@ -94,7 +94,7 @@
       },
       "esperado": {
         "ARS": 2150000,
-        "BOB": 130448,
+        "BOB": 130400,
         "USD": 5008
       },
       "estado": "cerrado",
@@ -105,14 +105,14 @@
           "egresos": 0,
           "ingresos": 50000,
           "qr": 0,
-          "transferencia": 290000
+          "transferencia": 200000
         },
         "BOB": {
           "credito": 0,
-          "efectivo": 110448,
+          "efectivo": 110400,
           "egresos": 0,
           "ingresos": 0,
-          "qr": 41035,
+          "qr": 41100,
           "transferencia": 0
         },
         "USD": {
@@ -166,7 +166,7 @@
     "cerradoPor": "u-caj",
     "contado": {
       "ARS": 2145000,
-      "BOB": 130548,
+      "BOB": 130500,
       "USD": 5008
     },
     "creadoEn": "MARCA",
@@ -177,7 +177,7 @@
     },
     "esperado": {
       "ARS": 2150000,
-      "BOB": 130448,
+      "BOB": 130400,
       "USD": 5008
     },
     "estado": "cerrado",
@@ -188,14 +188,14 @@
         "egresos": 0,
         "ingresos": 50000,
         "qr": 0,
-        "transferencia": 290000
+        "transferencia": 200000
       },
       "BOB": {
         "credito": 0,
-        "efectivo": 110448,
+        "efectivo": 110400,
         "egresos": 0,
         "ingresos": 0,
-        "qr": 41035,
+        "qr": 41100,
         "transferencia": 0
       },
       "USD": {

@@ -229,7 +229,7 @@ describe.skipIf(!hayEmulador)('contrato consola → /publicado → contenido del
     await sembrarProducto(sinDoc, { id: 'red-uno' });
     await publicar(sinDoc);
     expect(mapear(await leerPublicado(sinDoc)).config.redondeo).toEqual({
-      BOB: { tipo: 'decimales', decimales: 2, modo: 'cercano' }, ARS: { tipo: 'multiplo', multiplo: 100, modo: 'cercano' },
+      BOB: { tipo: 'decimales', decimales: 0, modo: 'cercano' }, ARS: { tipo: 'multiplo', multiplo: 1000, modo: 'cercano' },
     });
     const conDoc = await nuevoTenant();
     const regla = { BOB: { tipo: 'decimales', decimales: 0, modo: 'arriba' }, ARS: { tipo: 'multiplo', multiplo: 500, modo: 'abajo' } };

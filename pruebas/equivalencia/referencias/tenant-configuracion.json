@@ -62,11 +62,11 @@
   "redondeoPorDefecto": {
     "ARS": {
       "modo": "cercano",
-      "multiplo": 100,
+      "multiplo": 1000,
       "tipo": "multiplo"
     },
     "BOB": {
-      "decimales": 2,
+      "decimales": 0,
       "modo": "cercano",
       "tipo": "decimales"
     }

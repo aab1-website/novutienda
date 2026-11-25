@@ -24,8 +24,8 @@
         "moneda": "ARS",
         "nombre": "Adaptador",
         "ordenArea": null,
-        "precio": 5300,
-        "precioCentavos": 530000,
+        "precio": 5000,
+        "precioCentavos": 500000,
         "stock": 4,
         "stockPorAlmacen": {
           "deposito-1": 0,
@@ -48,8 +48,8 @@
         "moneda": "ARS",
         "nombre": "Cargador agotado",
         "ordenArea": null,
-        "precio": 17800,
-        "precioCentavos": 1780000,
+        "precio": 18000,
+        "precioCentavos": 1800000,
         "stock": 0,
         "stockPorAlmacen": {
           "deposito-1": 0,
@@ -72,8 +72,8 @@
         "moneda": "ARS",
         "nombre": "Celular X1",
         "ordenArea": null,
-        "precio": 249300,
-        "precioCentavos": 24930000,
+        "precio": 249000,
+        "precioCentavos": 24900000,
         "stock": 3,
         "stockPorAlmacen": {
           "deposito-1": 0,
@@ -96,8 +96,8 @@
         "moneda": "ARS",
         "nombre": "Instalación",
         "ordenArea": null,
-        "precio": 17800,
-        "precioCentavos": 1780000,
+        "precio": 18000,
+        "precioCentavos": 1800000,
         "stock": null,
         "stockPorAlmacen": {
           "deposito-1": 0,
@@ -120,8 +120,8 @@
         "moneda": "ARS",
         "nombre": "Lápiz HB",
         "ordenArea": null,
-        "precio": 1600,
-        "precioCentavos": 160000,
+        "precio": 2000,
+        "precioCentavos": 200000,
         "stock": 10,
         "stockPorAlmacen": {
           "deposito-1": 5,
@@ -144,8 +144,8 @@
         "moneda": "ARS",
         "nombre": "Parlante portátil",
         "ordenArea": null,
-        "precio": 12300,
-        "precioCentavos": 1230000,
+        "precio": 12000,
+        "precioCentavos": 1200000,
         "stock": 2,
         "stockPorAlmacen": {
           "deposito-1": 6,
@@ -168,8 +168,8 @@
         "moneda": "ARS",
         "nombre": "Televisor 50\"",
         "ordenArea": null,
-        "precio": 534900,
-        "precioCentavos": 53490000,
+        "precio": 535000,
+        "precioCentavos": 53500000,
         "stock": 0,
         "stockPorAlmacen": {
           "deposito-1": 2,
@@ -193,7 +193,7 @@
   "headers": {
     "Cache-Control": "private, max-age=60",
     "Content-Type": "application/json; charset=utf-8",
-    "ETag": "\"0ed2ed1c4eba80417ce6e7ddd0421628\"",
+    "ETag": "\"3c4935d7ba6c7d261911e2420e86adf5\"",
     "Vary": "Authorization",
     "X-Content-Type-Options": "nosniff"
   },

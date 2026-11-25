@@ -11,7 +11,7 @@ describe('caja del tenant de referencia en tres monedas', () => {
   it('ventas: totales, conversión, pagos y vuelto por moneda', async () => {
     const { e } = await jornada();
     const ventas = e.db.coleccion(`tenants/${T}/ventas`).sort((a, b) => a.id.localeCompare(b.id)).map((v) => ({ id: v.id, ...v.datos }) as Record<string, unknown>);
-    expect(ventas.map((v) => [v['moneda'], v['total']])).toEqual([['BOB', 141035], ['USD', 708], ['ARS', 2290000], ['BOB', 10448]]);
+    expect(ventas.map((v) => [v['moneda'], v['total']])).toEqual([['BOB', 141100], ['USD', 708], ['ARS', 2200000], ['BOB', 10400]]);
     compararConFotoJson('caja-ventas.json', ventas);
     const eventos = e.db.coleccion(`tenants/${T}/eventos`).filter((x) => x.datos['tipo'] === 'venta.confirmada').map((x) => x.datos);
     compararConFotoJson('caja-eventos-venta.json', eventos);
@@ -20,14 +20,14 @@ describe('caja del tenant de referencia en tres monedas', () => {
   });
 
   // Esperado en efectivo por moneda: apertura + efectivo neto de vuelto + ingresos - egresos.
-  //   BOB 20 000 + 110 448 = 130 448 (se cuenta 130 548: sobrante de 100)
+  //   BOB 20 000 + 110 400 = 130 400 (se cuenta 130 500: sobrante de 100)
   //   USD  5 000 +     408 -     400 =   5 008 (se cuenta 5 008: exacto)
   //   ARS 100 000 + 2 000 000 + 50 000 = 2 150 000 (se cuenta 2 145 000: faltante de 5 000)
   it('turno: arqueo esperado y cierre por moneda con faltante, sobrante y exacto', async () => {
     const { e, d } = await jornada();
     const abierto = doc(e, T, `turnos/${TURNO}`);
     const movs = e.db.coleccion(`tenants/${T}/movimientos_caja`).sort((a, b) => a.id.localeCompare(b.id)).map((m) => ({ id: m.id, ...m.datos }));
-    const cierre = await cerrarTurno(d, T, caj, TURNO, { BOB: 130548, USD: 5008, ARS: 2145000 });
+    const cierre = await cerrarTurno(d, T, caj, TURNO, { BOB: 130500, USD: 5008, ARS: 2145000 });
     compararConFotoJson('caja-turno-cierre.json', { abierto, movimientos: movs, cierre, turnoCerrado: doc(e, T, `turnos/${TURNO}`) });
     expect(cierre.arqueo.BOB?.diferencia).toBe(100);
     expect(cierre.arqueo.USD?.diferencia).toBe(0);

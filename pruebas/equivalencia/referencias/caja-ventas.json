@@ -24,7 +24,7 @@
         "cantidad": 1,
         "garantiaMeses": 12,
         "nombre": "Celular X1",
-        "precioUnitario": 139293,
+        "precioUnitario": 139300,
         "productoId": "p-celular",
         "series": [
           "SN-A"
@@ -34,7 +34,7 @@
         "almacenId": "tienda",
         "cantidad": 2,
         "nombre": "Lápiz HB",
-        "precioUnitario": 871,
+        "precioUnitario": 900,
         "productoId": "p-lapiz",
         "series": []
       }
@@ -51,15 +51,15 @@
       {
         "medio": "qr",
         "moneda": "BOB",
-        "monto": 41035,
+        "monto": 41100,
         "referencia": "QR-0001",
         "registradoPor": "u-caj"
       }
     ],
     "receiptNo": 1,
     "serie": "A",
-    "subtotal": 141035,
-    "total": 141035,
+    "subtotal": 141100,
+    "total": 141100,
     "turnoId": "00000000-0000-4000-8000-000000000900",
     "ventaId": "00000000-0000-4000-8000-000000000001"
   },
@@ -131,7 +131,7 @@
         "almacenId": "tienda",
         "cantidad": 1,
         "nombre": "Parlante portátil",
-        "precioUnitario": 1230000,
+        "precioUnitario": 1200000,
         "productoId": "p-parlante",
         "series": []
       },
@@ -139,7 +139,7 @@
         "almacenId": "tienda",
         "cantidad": 2,
         "nombre": "Adaptador",
-        "precioUnitario": 530000,
+        "precioUnitario": 500000,
         "productoId": "p-adaptador",
         "series": []
       }
@@ -156,13 +156,13 @@
       {
         "medio": "transferencia",
         "moneda": "ARS",
-        "monto": 290000
+        "monto": 200000
       }
     ],
     "receiptNo": 3,
     "serie": "A",
-    "subtotal": 2290000,
-    "total": 2290000,
+    "subtotal": 2200000,
+    "total": 2200000,
     "turnoId": "00000000-0000-4000-8000-000000000900",
     "ventaId": "00000000-0000-4000-8000-000000000003"
   },
@@ -186,7 +186,7 @@
         "almacenId": "tienda",
         "cantidad": 1,
         "nombre": "Instalación",
-        "precioUnitario": 10448,
+        "precioUnitario": 10400,
         "productoId": "p-servicio",
         "series": []
       }
@@ -197,13 +197,13 @@
       {
         "medio": "efectivo",
         "moneda": "BOB",
-        "monto": 10448
+        "monto": 10400
       }
     ],
     "receiptNo": 4,
     "serie": "A",
-    "subtotal": 10448,
-    "total": 10448,
+    "subtotal": 10400,
+    "total": 10400,
     "turnoId": "00000000-0000-4000-8000-000000000900",
     "ventaId": "00000000-0000-4000-8000-000000000004"
   }

@@ -24,8 +24,8 @@
         "moneda": "BOB",
         "nombre": "Cable USB",
         "ordenArea": null,
-        "precio": 23.19,
-        "precioCentavos": 2319,
+        "precio": 23,
+        "precioCentavos": 2300,
         "stock": 7,
         "stockPorAlmacen": {
           "deposito-1": 0,
@@ -48,8 +48,8 @@
         "moneda": "BOB",
         "nombre": "Cargador agotado",
         "ordenArea": null,
-        "precio": 104.48,
-        "precioCentavos": 10448,
+        "precio": 104,
+        "precioCentavos": 10400,
         "stock": 0,
         "stockPorAlmacen": {
           "deposito-1": 0,
@@ -72,8 +72,8 @@
         "moneda": "BOB",
         "nombre": "Celular X1",
         "ordenArea": null,
-        "precio": 1392.93,
-        "precioCentavos": 139293,
+        "precio": 1393,
+        "precioCentavos": 139300,
         "stock": 3,
         "stockPorAlmacen": {
           "deposito-1": 0,
@@ -96,8 +96,8 @@
         "moneda": "BOB",
         "nombre": "Instalación",
         "ordenArea": null,
-        "precio": 104.48,
-        "precioCentavos": 10448,
+        "precio": 104,
+        "precioCentavos": 10400,
         "stock": null,
         "stockPorAlmacen": {
           "deposito-1": 0,
@@ -120,8 +120,8 @@
         "moneda": "BOB",
         "nombre": "Lápiz HB",
         "ordenArea": null,
-        "precio": 8.71,
-        "precioCentavos": 871,
+        "precio": 9,
+        "precioCentavos": 900,
         "stock": 10,
         "stockPorAlmacen": {
           "deposito-1": 5,
@@ -144,8 +144,8 @@
         "moneda": "BOB",
         "nombre": "Parlante portátil",
         "ordenArea": null,
-        "precio": 139.23,
-        "precioCentavos": 13923,
+        "precio": 139,
+        "precioCentavos": 13900,
         "stock": 2,
         "stockPorAlmacen": {
           "deposito-1": 6,
@@ -168,8 +168,8 @@
         "moneda": "BOB",
         "nombre": "Televisor 50\"",
         "ordenArea": null,
-        "precio": 3137.73,
-        "precioCentavos": 313773,
+        "precio": 3138,
+        "precioCentavos": 313800,
         "stock": 0,
         "stockPorAlmacen": {
           "deposito-1": 2,
@@ -193,7 +193,7 @@
   "headers": {
     "Cache-Control": "private, max-age=60",
     "Content-Type": "application/json; charset=utf-8",
-    "ETag": "\"0a21a3c6c2331a1a3bbc22c70002dbdb\"",
+    "ETag": "\"f3fb8fb0cb14a498ff1e565d942bf34d\"",
     "Vary": "Authorization",
     "X-Content-Type-Options": "nosniff"
   },

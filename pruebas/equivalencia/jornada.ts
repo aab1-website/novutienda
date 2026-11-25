@@ -14,14 +14,14 @@ export async function jornada() {
   e.db.poner(rutaPlantilla(T), { negocio: { nombre: 'Tienda de Ejemplo', direccion: 'Calle Ficticia 123', telefono: '70000000', nit: '1000000000' }, pie: 'Gracias por su compra.', politicaGarantia: 'Garantía según ficha del producto.' });
   await abrirTurno(d, T, caj, TURNO, { BOB: 20000, USD: 5000, ARS: 100000 });
 
-  // BOB: celular con serie (1 392,93) + 2 lápices (8,71 c/u) = 1 410,35; efectivo con vuelto + QR.
+  // BOB: celular con serie (1 392,93 → 1 393) + 2 lápices (8,71 → 9 c/u) = 1 411 (BOB a enteros); efectivo con vuelto + QR.
   const bob: Carrito = {
-    mercado: 'BO', moneda: 'BOB', cliente: { nombre: 'Ana Pérez', telefono: '70000000' }, totalMostrado: 141035,
+    mercado: 'BO', moneda: 'BOB', cliente: { nombre: 'Ana Pérez', telefono: '70000000' }, totalMostrado: 141100,
     lineas: [{ productoId: 'p-celular', cantidad: 1, series: ['SN-A'] }, { productoId: 'p-lapiz', cantidad: 2 }],
   };
   await confirmarVenta(d, T, caj, UUID(1), bob, [
     { medio: 'efectivo', moneda: 'BOB', monto: 110000, cambio: 10000 },
-    { medio: 'qr', moneda: 'BOB', monto: 41035, referencia: 'QR-0001' },
+    { medio: 'qr', moneda: 'BOB', monto: 41100, referencia: 'QR-0001' },
   ]);
 
   // USD: precio base sin conversión: 3 lápices (1,25) + cable (3,33) = 7,08; efectivo con vuelto en dólares + transferencia.
@@ -31,16 +31,16 @@ export async function jornada() {
     { medio: 'transferencia', moneda: 'USD', monto: 300 },
   ]);
 
-  // ARS (mercado AR, lista AR): parlante 12 300 + 2 adaptadores a 5 300 = 22 900,00; efectivo con vuelto + transferencia.
-  const ars: Carrito = { mercado: 'AR', moneda: 'ARS', totalMostrado: 2290000, lineas: [{ productoId: 'p-parlante', cantidad: 1 }, { productoId: 'p-adaptador', cantidad: 2 }] };
+  // ARS (mercado AR, lista AR): parlante 12 000 + 2 adaptadores a 5 000 = 22 000 (ARS al múltiplo de 1 000); efectivo con vuelto + transferencia.
+  const ars: Carrito = { mercado: 'AR', moneda: 'ARS', totalMostrado: 2200000, lineas: [{ productoId: 'p-parlante', cantidad: 1 }, { productoId: 'p-adaptador', cantidad: 2 }] };
   await confirmarVenta(d, T, caj, UUID(3), ars, [
     { medio: 'efectivo', moneda: 'ARS', monto: 2100000, cambio: 100000 },
-    { medio: 'transferencia', moneda: 'ARS', monto: 290000 },
+    { medio: 'transferencia', moneda: 'ARS', monto: 200000 },
   ]);
 
   // Venta en BOB de un producto sin control de stock y de otro al límite de redondeo hacia abajo.
-  const servicio: Carrito = { mercado: 'BO', moneda: 'BOB', totalMostrado: 10448, lineas: [{ productoId: 'p-servicio', cantidad: 1 }] };
-  await confirmarVenta(d, T, caj, UUID(4), servicio, [{ medio: 'efectivo', moneda: 'BOB', monto: 10448 }]);
+  const servicio: Carrito = { mercado: 'BO', moneda: 'BOB', totalMostrado: 10400, lineas: [{ productoId: 'p-servicio', cantidad: 1 }] };
+  await confirmarVenta(d, T, caj, UUID(4), servicio, [{ medio: 'efectivo', moneda: 'BOB', monto: 10400 }]);
 
   await registrarMovimientoCaja(d, T, caj, UUID(70), { tipo: 'egreso', moneda: 'USD', monto: 400, motivo: 'compra de insumos' });
   await registrarMovimientoCaja(d, T, caj, UUID(71), { tipo: 'ingreso', moneda: 'ARS', monto: 50000, motivo: 'fondo adicional' });

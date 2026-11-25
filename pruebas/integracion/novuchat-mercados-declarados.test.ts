@@ -35,7 +35,7 @@ async function preparar(opciones: { redondeo?: unknown; comercial?: () => Promis
   e.db.poner(`tenants/${T}/publicado/estado`, { ...estado, productos: [...(estado['productos'] as string[]), ID].sort() });
   const entorno = {
     firestore: firestoreDoble(e.db), db: e.db, almacenCotizaciones: e.almacen, ahora: () => AHORA,
-    redondeo: () => Promise.resolve(opciones.redondeo ?? REDONDEO), comercialDelTenant: opciones.comercial ?? (() => Promise.resolve(COMERCIAL)),
+    redondeoDelTenant: () => Promise.resolve(opciones.redondeo ?? REDONDEO), comercialDelTenant: opciones.comercial ?? (() => Promise.resolve(COMERCIAL)),
   } as unknown as Entorno;
   const cfg: ConfigNovuchat = { sitioUrl: 'https://tienda.ejemplo.invalid', mediosBaseUrl: 'https://medios.ejemplo.invalid/publico', limite: limiteMemoria(1000, 60_000), secretoPedidos: 's' };
   return { entorno, cfg };

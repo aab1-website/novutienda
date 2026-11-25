@@ -12,7 +12,7 @@ describe('recibos del tenant de referencia', () => {
     const entrega = await e.bandeja.entregar(T);
     expect(entrega.fallidas).toEqual([]);
     const recibos = [1, 2, 3, 4].map((n) => doc(e, T, `recibos/recibo-${UUID(n)}`) as unknown as Recibo);
-    expect(recibos.map((r) => [r.moneda, r.total])).toEqual([['BOB', 141035], ['USD', 708], ['ARS', 2290000], ['BOB', 10448]]);
+    expect(recibos.map((r) => [r.moneda, r.total])).toEqual([['BOB', 141100], ['USD', 708], ['ARS', 2200000], ['BOB', 10400]]);
     compararConFotoJson('recibos-documentos.json', recibos);
     for (const r of recibos) compararConFoto(`recibo-${r.numero}-${r.moneda}.html`, `${renderizarReciboHtml(r)}\n`);
   });

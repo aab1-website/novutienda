@@ -358,9 +358,9 @@ describe.skipIf(!hayEmulador)('API HTTP (emulador)', () => {
       const pub = await firmado('GET', `/api/sitio/v1/publicado?tenantId=${T}`);
       expect(pub.status).toBe(200);
       expect(Object.keys((pub.cuerpo as { documentos: object }).documentos)).toContain(`producto__${prod}`);
-      // Sin documento de configuración rige la política vigente (BOB 2 decimales; ARS múltiplo de 100).
+      // Sin documento de configuración rige la política vigente (BOB enteros; ARS múltiplo de 1000).
       expect((pub.cuerpo as { redondeo: unknown }).redondeo).toEqual({
-        BOB: { tipo: 'decimales', decimales: 2, modo: 'cercano' }, ARS: { tipo: 'multiplo', multiplo: 100, modo: 'cercano' },
+        BOB: { tipo: 'decimales', decimales: 0, modo: 'cercano' }, ARS: { tipo: 'multiplo', multiplo: 1000, modo: 'cercano' },
       });
     });
 

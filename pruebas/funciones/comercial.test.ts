@@ -46,16 +46,7 @@ describe.skipIf(!hayEmulador)('configuración comercial del tenant (emulador)', 
     const c = await e.comercialDelTenant(t);
     expect(c.mercados.map((m) => [m.id, m.monedaVenta, m.monedaBase, m.tipoCambio?.par])).toEqual([['BO', 'BOB', 'USD', 'BOB/USD'], ['AR', 'ARS', 'USD', 'ARS/USD']]);
     expect(c.monedas).toEqual(['BOB', 'USD', 'ARS']);
-    expect(await e.redondeoDelTenant(t)).toEqual({ BOB: { tipo: 'decimales', decimales: 2, modo: 'cercano' }, ARS: { tipo: 'multiplo', multiplo: 100, modo: 'cercano' } });
-    expect(await e.redondeo(t)).toEqual({ BOB: { tipo: 'decimales', decimales: 2, modo: 'cercano' }, ARS: { tipo: 'multiplo', multiplo: 100, modo: 'cercano' } });
-  });
-
-  it('para el tenant de tres monedas la política nueva es idéntica a la del lector legado: sin documento y con documento BOB/ARS', async () => {
-    const sinDoc = await sembrar('eq1', TENANT_TODO_ENCENDIDO);
-    expect(await e.redondeoDelTenant(sinDoc)).toEqual(await e.redondeo(sinDoc));
-    const conDoc = await sembrar('eq2', TENANT_TODO_ENCENDIDO);
-    await h.firestore.doc(`tenants/${conDoc}/config/redondeo`).set({ BOB: { tipo: 'decimales', decimales: 1, modo: 'arriba' }, ARS: { tipo: 'multiplo', multiplo: 10, modo: 'abajo' } });
-    expect(await e.redondeoDelTenant(conDoc)).toEqual(await e.redondeo(conDoc));
+    expect(await e.redondeoDelTenant(t)).toEqual({ BOB: { tipo: 'decimales', decimales: 0, modo: 'cercano' }, ARS: { tipo: 'multiplo', multiplo: 1000, modo: 'cercano' } });
   });
 
   it('un tenant de un mercado sin tipo de cambio recibe SU configuración, no la de tres monedas', async () => {
@@ -64,8 +55,6 @@ describe.skipIf(!hayEmulador)('configuración comercial del tenant (emulador)', 
     expect(c.mercados.map((m) => m.id)).toEqual(['CO']);
     expect(c.monedas).toEqual(['COP']);
     expect(await e.redondeoDelTenant(t)).toEqual({ COP: { tipo: 'multiplo', multiplo: 50, modo: 'cercano' } });
-    // `e.redondeo` (LEGADO, hasta B2 a B4) se comporta como en main: lee solo `config/redondeo`, no `tenants/{t}`.
-    expect(await e.redondeo(await sembrar('rl', { estado: 'activo', plan: 'base', modulos: {} }))).toEqual({ BOB: { tipo: 'decimales', decimales: 2, modo: 'cercano' }, ARS: { tipo: 'multiplo', multiplo: 100, modo: 'cercano' } });
   });
 
   it('la proyección para el panel trae mercados y monedas de caja, nunca fuentes ni par', async () => {

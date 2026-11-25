@@ -175,18 +175,18 @@ describe.skipIf(!hayEmulador)('flujo POS → evento → recibo (emulador)', () =
     expect(rechazo.error).toMatchObject({ status: 'RESOURCE_EXHAUSTED', details: { clave: 'usuarios', tope: 3 } });
   });
 
-  it('la política de redondeo sale de la configuración del tenant (BOB 2 decimales; ARS múltiplo de 100)', async () => {
+  it('la política de redondeo sale de la configuración del tenant (BOB bolivianos enteros; ARS múltiplo de 1000)', async () => {
     const r = await accion('consola', 'preciosDelDia', { precioUSD: { bo: 10.01, ar: 10.01 } }, adm.token, A);
     expect(r.status, JSON.stringify(r.error)).toBe(200);
-    // 10.01 × 7 = 70.07 BOB; 10.01 × 1000 = 10010 ARS → 10000 (múltiplo de 100 más cercano).
-    expect(r.resultado).toMatchObject({ BO: { tipo: 'precio', moneda: 'BOB', monto: 70.07 }, AR: { tipo: 'precio', moneda: 'ARS', monto: 10_000 } });
+    // 10.01 × 7 = 70.07 → 70 BOB (entero); 10.01 × 1000 = 10010 ARS → 10000 (múltiplo de 1000 más cercano).
+    expect(r.resultado).toMatchObject({ BO: { tipo: 'precio', moneda: 'BOB', monto: 70 }, AR: { tipo: 'precio', moneda: 'ARS', monto: 10_000 } });
   });
 
   it('preciosDelDia: falta de precio, clave no declarada y más de 20 claves', async () => {
     // Solo llega el precio de Bolivia: Argentina queda como «falta precio».
     const falta = await accion('consola', 'preciosDelDia', { precioUSD: { bo: 10.01 } }, adm.token, A);
     expect(falta.status, JSON.stringify(falta.error)).toBe(200);
-    expect(falta.resultado).toMatchObject({ BO: { tipo: 'precio', monto: 70.07 }, AR: { tipo: 'falta_precio' } });
+    expect(falta.resultado).toMatchObject({ BO: { tipo: 'precio', monto: 70 }, AR: { tipo: 'falta_precio' } });
     // Una clave de un mercado que el comercio no declara se rechaza, sin eco del valor.
     const ajena = await accion('consola', 'preciosDelDia', { precioUSD: { bo: 1, zz: 1 } }, adm.token, A);
     expect(ajena.status).toBe(400);

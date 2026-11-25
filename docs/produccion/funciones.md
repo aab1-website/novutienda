@@ -78,7 +78,7 @@ const { data } = await llamar({ accion: 'abrirTurno', tenantId: '<tenant>', dato
 | `guardarCarrito` | TODOS (el dueño) | `{ carritoId, version, contenido?, etiqueta? }` (hasta 64 000 caracteres; sin precios) | `{ carrito }`; versión distinta: `carrito-conflicto` con el carrito vigente en `details`; ajeno: `carrito-ajeno`; terminado: `carrito-cerrado` |
 | `cancelarCarrito` | TODOS (el dueño; SUP cancela también el ajeno) | `{ carritoId, motivo }` | `{ carrito }` (sin contenido; audita `pos.carrito.cancelar`) |
 | `misCarritos` | TODOS | `{}` | `{ carritos[] }`: los abiertos de su turno abierto, con contenido |
-| `cotizaciones` | TODOS | `{}` | `{ cotizaciones: { BO, AR }, redondeo }`: cada mercado es `{ cotizacionId, par, valor, fecha, fuente, estado }` o `null` si no hay una utilizable; `redondeo` es la política de `tenants/{t}/config/redondeo` (por defecto BOB dos decimales, ARS múltiplo de 100 más cercano). El panel calcula con ese redondeo. |
+| `cotizaciones` | TODOS | `{}` | `{ cotizaciones: { BO, AR }, redondeo }`: cada mercado es `{ cotizacionId, par, valor, fecha, fuente, estado }` o `null` si no hay una utilizable; `redondeo` es la política de `tenants/{t}/config/redondeo` (por defecto, la regla del tenant de referencia: BOB enteros, ARS múltiplo de 1.000, la mitad hacia arriba). El panel calcula con ese redondeo. |
 | `turnos`, `supervision` | SUP | `{ limite? }` / `{}` | listas; `supervision`: `{ turno, proyeccion, ultimasVentas[], carritos[] }` (resumen de carritos abiertos sin cliente, teléfono ni series) |
 | `exportarVentasCsv` / `exportarMovimientosCajaCsv` | SUP | `{ desde, hasta }` / `{ turnoId }` | `{ csv, truncado }` (celdas con `= + - @` neutralizadas; máximo 5000 filas: si hay más, `truncado: true` y el panel avisa) |
 
@@ -230,8 +230,8 @@ Cómo crear la alerta por correo (no se creó): `docs/produccion/alertas.md`. A 
 ## 8. Redondeo
 
 `DepsPos.redondeo` y los precios del catálogo salen de `tenants/{t}/config/redondeo` (caché de 60 s). Sin documento rige la decisión vigente:
-BOB dos decimales; ARS al múltiplo de 100 más cercano. Documento válido de ejemplo:
-`{ "BOB": { "tipo": "decimales", "decimales": 2, "modo": "cercano" }, "ARS": { "tipo": "multiplo", "multiplo": 100, "modo": "cercano" } }`.
+BOB a bolivianos enteros; ARS al múltiplo de 1.000; la mitad hacia arriba. Un solo lector, `redondeoDelTenant`, sirve al catálogo de NovuChat, al sitio, a la caja y al panel. Solo el operador de NovuTienda cambia la regla. Documento válido de ejemplo:
+`{ "BOB": { "tipo": "decimales", "decimales": 0, "modo": "cercano" }, "ARS": { "tipo": "multiplo", "multiplo": 1000, "modo": "cercano" } }`.
 Un documento inválido **no se adivina**: las operaciones que lo necesitan fallan con `failed-precondition`.
 
 ## 9. Variables, secretos y despliegue (solo nombres)

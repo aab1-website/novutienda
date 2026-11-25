@@ -204,9 +204,9 @@ async function catalogo(e: Entorno, tenantId: string, comercial: ConfiguracionCo
     if (error instanceof SinCotizacionUtilizable) return json(503, { error: 'sin_cotizacion' }, { 'Retry-After': '300' });
     throw error;
   }
-  // Redondeo: la misma fuente y los mismos fallos que en main (`e.redondeo`, `config/redondeo`).
+  // Redondeo: el lector único `redondeoDelTenant` (configuración comercial; `config/redondeo` la sobrescribe si existe).
   // Indexado por la moneda de venta del mercado declarado: sin regla para ella el producto se salta antes de llamar a `precioDeMercado`.
-  const redondeo: Readonly<Record<string, ReglaRedondeo | undefined>> = await e.redondeo(tenantId);
+  const redondeo: Readonly<Record<string, ReglaRedondeo | undefined>> = await e.redondeoDelTenant(tenantId);
   // Una sola definición de «publicado» (DS-1): existe la copia `publicado/producto__<id>` que escribe la publicación de la consola.
   // La lista de ids sale de `publicado/estado.productos`; `producto.publicado` de Inventarios no se lee.
   const [estadoDoc, existencias, negocioDoc] = await Promise.all([
@@ -260,7 +260,7 @@ async function catalogo(e: Entorno, tenantId: string, comercial: ConfiguracionCo
     // así un producto que se pasa a una categoría oculta sale de inmediato, sin esperar a la siguiente publicación.
     if (categorias.get(p.categoria ?? '')?.oculta === true) continue;
     // D7: una sola regla de redondeo (0 a 2 decimales o un múltiplo de centavos). Una configuración con otra regla ya falló antes,
-    // en `e.redondeo` (`RedondeoInvalido`), y el catálogo no sale: falla cerrado, sin precios.
+    // en `e.redondeoDelTenant` (`RedondeoInvalido`), y el catálogo no sale: falla cerrado, sin precios.
     const base = precioEnMercado(p, mercadoId);
     if (base === null) continue; // sin precio declarado en este mercado
     const regla = redondeo[mercado.monedaVenta];

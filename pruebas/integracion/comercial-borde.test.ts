@@ -41,7 +41,7 @@ async function catalogo(comercial: ConfiguracionComercial, consulta: Record<stri
   e.db.poner(`${COLECCION_TOKENS}/${sha256Hex(TOKEN)}`, { tenantId: T, hash: sha256Hex(TOKEN), activo: true });
   const entorno = {
     firestore: firestoreDoble(e.db), db: e.db, almacenCotizaciones: e.almacen, ahora: () => AHORA,
-    redondeo: () => Promise.resolve(REDONDEO_POR_DEFECTO), comercialDelTenant: () => Promise.resolve(comercial),
+    redondeoDelTenant: () => Promise.resolve(REDONDEO_POR_DEFECTO), comercialDelTenant: () => Promise.resolve(comercial),
   } as unknown as Entorno;
   const cfg: ConfigNovuchat = { sitioUrl: 'https://tienda.ejemplo.invalid', mediosBaseUrl: 'https://medios.ejemplo.invalid/publico', limite: limiteMemoria(1000, 60_000), secretoPedidos: 's' };
   const r = await manejarCatalogo(entorno, {
