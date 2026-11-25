@@ -2,6 +2,7 @@
 import Base from '../layouts/Base.astro';
 import Migas from '../componentes/Migas.astro';
 import Icono from '../componentes/Icono.astro';
+import EnlaceMapa from '../componentes/EnlaceMapa.astro';
 import FormularioContacto from '../islas/FormularioContacto';
 import { contenido } from '../contenido/instancia';
 import { enlaceWhatsApp } from '../lib/whatsapp';
@@ -31,7 +32,7 @@ const hrefMail = config.correo === null ? null : hrefCorreo(config.correo);
           : <a class="enlace-telefono" href={hrefMail}><Icono nombre="mensaje" tamano={16} />{config.correo}</a>)}
         <p class="pie-linea"><Icono nombre="pin" tamano={16} />{config.direccion}</p>
         {config.horario !== null && <p class="subtitulo">{config.horario}</p>}
-        {config.mapa !== undefined && <a class="enlace-mapa" href={config.mapa} target="_blank" rel="noopener noreferrer"><Icono nombre="pin" tamano={16} />Cómo llegar<span class="solo-lectores"> (se abre en una pestaña nueva)</span></a>}
+        {config.mapa !== undefined && <EnlaceMapa href={config.mapa} />}
       </div>
     </div>
   </div>

@@ -218,7 +218,7 @@ h3.descripcion-titulo, h4.descripcion-titulo { font-size: 17px; }
 .contacto-bloque { background: var(--cb-seccion); border-top: 1px solid var(--cb-borde); }
 .contacto-interior { display: grid; grid-template-columns: repeat(auto-fit, minmax(min(100%, 420px), 1fr)); gap: 40px; align-items: start; }
 .tarjeta-contacto { display: flex; flex-direction: column; gap: 16px; padding: 24px; border-radius: 24px; background: var(--cb-superficie); border: 1px solid var(--cb-borde); }
-.tarjeta-contacto a.enlace-telefono, .tarjeta-contacto a.enlace-mapa { display: inline-flex; align-items: center; justify-content: center; gap: 8px; font-weight: 700; padding: 8px; }
+.tarjeta-contacto a.enlace-telefono { display: inline-flex; align-items: center; justify-content: center; gap: 8px; font-weight: 700; padding: 8px; }
 .formulario { display: flex; flex-direction: column; gap: 16px; padding: 24px; border-radius: 24px; background: var(--cb-superficie); border: 1px solid var(--cb-borde); }
 .formulario .campo { display: flex; flex-direction: column; gap: 6px; }
 .formulario .campo label { font-size: 14px; font-weight: 500; }
@@ -247,6 +247,20 @@ h3.descripcion-titulo, h4.descripcion-titulo { font-size: 17px; }
 .pie a:hover { color: var(--cb-acento); }
 .pie-linea { display: flex; align-items: center; gap: 10px; }
 .pie-linea .icono { color: var(--cb-acento); }
+/* Enlace a Google Maps destacado: pin rojo (el de los mapas) y fondo teñido de rojo, legible en tema claro y oscuro. */
+.enlace-mapa-destacado { --mapa-rojo: #ea4335; display: inline-flex; align-items: center; gap: 12px; padding: 10px 18px 10px 12px; border-radius: 14px; border: 2px solid var(--mapa-rojo); background: var(--cb-superficie-2); background: color-mix(in srgb, var(--mapa-rojo) 12%, var(--cb-superficie)); color: var(--cb-texto); text-decoration: none; box-shadow: 0 4px 14px color-mix(in srgb, var(--mapa-rojo) 22%, transparent); transition: transform .15s, background .2s; }
+.enlace-mapa-destacado:hover { background: color-mix(in srgb, var(--mapa-rojo) 22%, var(--cb-superficie)); transform: translateY(-1px); }
+.enlace-mapa-destacado:focus-visible { outline: 3px solid var(--mapa-rojo); outline-offset: 3px; }
+.enlace-mapa-pin { flex: none; }
+.enlace-mapa-pin path { fill: var(--mapa-rojo); }
+.enlace-mapa-pin circle { fill: #fff; }
+.enlace-mapa-textos { display: flex; flex-direction: column; line-height: 1.2; text-align: left; }
+.enlace-mapa-textos strong { font-size: 17px; font-weight: 700; letter-spacing: .02em; color: var(--cb-texto); }
+.enlace-mapa-textos span { font-size: 13px; font-weight: 500; color: var(--cb-texto-suave); }
+.pie .enlace-mapa-destacado { color: var(--cb-texto); }
+.pie .enlace-mapa-destacado:hover { color: var(--cb-texto); }
+.tarjeta-contacto .enlace-mapa-destacado { align-self: stretch; justify-content: center; }
+@media (prefers-reduced-motion: reduce) { .enlace-mapa-destacado { transition: none; } .enlace-mapa-destacado:hover { transform: none; } }
 .pie-legal { display: flex; flex-wrap: wrap; align-items: center; justify-content: space-between; gap: 12px 24px; padding-top: 20px; padding-bottom: 28px; border-top: 1px solid var(--cb-borde); font-size: 13px; color: var(--cb-texto-suave); }
 .pie-legal-enlaces { display: flex; flex-wrap: wrap; align-items: center; gap: 8px 20px; }
 .whatsapp-flotante { position: fixed; right: 20px; bottom: 20px; z-index: 45; display: flex; align-items: center; justify-content: center; width: 56px; height: 56px; border-radius: 50%; background: #0b6b3a; color: #fff; box-shadow: 0 6px 20px rgba(0, 0, 0, .3); }

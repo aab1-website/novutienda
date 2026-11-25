@@ -116,13 +116,18 @@ test.describe('enlace al mapa de la tienda', () => {
       await expect(enlace).toHaveAttribute('href', 'https://maps.app.goo.gl/AbC123');
       await expect(enlace).toHaveAttribute('target', '_blank');
       await expect(enlace).toHaveAttribute('rel', /noopener/);
+      // Destacado: «Visítanos» con pin rojo, no un enlace plano.
+      await expect(enlace).toHaveAccessibleName(/Visítanos/);
+      await expect(enlace).toHaveClass(/enlace-mapa-destacado/);
     });
   }
   test('en contacto aparece junto a la dirección y el horario', async ({ page }) => {
     await simularApi(page);
     await decidirConsentimiento(page, false, false);
     await page.goto('/contacto');
-    await expect(page.locator('.tarjeta-contacto').getByRole('link', { name: /Cómo llegar/ })).toHaveAttribute('href', 'https://maps.app.goo.gl/AbC123');
+    const enlace = page.locator('.tarjeta-contacto').getByRole('link', { name: /Visítanos.*Cómo llegar/ });
+    await expect(enlace).toHaveAttribute('href', 'https://maps.app.goo.gl/AbC123');
+    await expect(enlace).toHaveClass(/enlace-mapa-destacado/);
   });
 });
 

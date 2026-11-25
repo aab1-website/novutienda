@@ -2,6 +2,7 @@
 import Convertidor from '../islas/Convertidor';
 import Consentimiento from '../islas/Consentimiento';
 import Icono from './Icono.astro';
+import EnlaceMapa from './EnlaceMapa.astro';
 import { contenido } from '../contenido/instancia';
 import { seccionesEnMenu } from '../contenido/consultas';
 import { rutaSeccion } from '../lib/seo';
@@ -44,7 +45,7 @@ const anio = new Date().getFullYear();
         {wa !== null && <li class="pie-linea"><Icono nombre="chat" tamano={16} /><a href={wa} target="_blank" rel="noopener noreferrer">Escribir por WhatsApp</a></li>}
         {config.correo !== null && <li class="pie-linea"><Icono nombre="mensaje" tamano={16} />{hrefMail === null ? <span>{config.correo}</span> : <a href={hrefMail}>{config.correo}</a>}</li>}
         {config.horario !== null && <li>{config.horario}</li>}
-        {config.mapa !== undefined && <li class="pie-linea"><Icono nombre="pin" tamano={16} /><a href={config.mapa} target="_blank" rel="noopener noreferrer">Cómo llegar<span class="solo-lectores"> (se abre en una pestaña nueva)</span></a></li>}
+        {config.mapa !== undefined && <li><EnlaceMapa href={config.mapa} /></li>}
       </ul>
     </div>
   </div>
