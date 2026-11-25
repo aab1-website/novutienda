@@ -11,6 +11,7 @@ import { useAccion, useCarga } from '../ui/hooks.js';
 import { useConfiguracionComercial } from '../ui/comercial.js';
 import { Tabla } from '../ui/tabla.js';
 import { baseDeMedios, urlDelLogo } from '../util/logo.js';
+import { SeccionRedondeo } from './redondeo.js';
 
 const MEDIO_TEXTO: Record<MedioPago, string> = { efectivo: 'Efectivo', qr: 'QR', transferencia: 'Transferencia', credito: 'Crédito' };
 const bpAPorciento = (bp: number): string => String(bp / 100).replace('.', ',');
@@ -358,6 +359,7 @@ export function PantallaConfiguracion({ sub, plantillaRecibo: PestanaRecibo }: {
           <DatosDelNegocio />
           <ConfigPosForm />
           <MercadosYMonedas />
+          <SeccionRedondeo />
         </>
       ) : (
         <PestanaRecibo />

@@ -16,7 +16,7 @@ import { ErrorApi } from './errores.js';
 import { ponerMarca } from './marca.js';
 import type {
   AprobacionPos, CarritoGuardado, ResumenCarritoSupervision, ConteoAbierto, ConteoVista, ListaConMarca, MarcaOcultamiento, ProductoDeConteo, CotizacionesVigentes, CreditoVista, Medio, MedioLogo, MermaVista, MovimientoVista, ProductoPanel,
-  Rol, TurnoPos, UbicacionId, UnidadSerie, UsuarioVista, VentaPos, VistaComercial,
+  Rol, TurnoPos, UbicacionId, UnidadSerie, UsuarioVista, VentaPos, VistaComercial, VistaRedondeo,
 } from './tipos.js';
 import { ID_NEGOCIO } from './tipos.js';
 import { fijarRedondeo } from '../util/precio.js';
@@ -590,6 +590,29 @@ export const TRADUCCION: { readonly [N in NombreCallable]: Traduccion<N> } = {
   verTipoCambio: {
     usa: ['consola.verTipoCambio'],
     ejecutar: async (c) => lista(await c.llamar('consola', 'verTipoCambio', {}), 'mercados') as never,
+  },
+  verRedondeo: {
+    usa: ['consola.verRedondeo'],
+    ejecutar: async (c) => {
+      const r = (await c.llamar('consola', 'verRedondeo', {})) as Obj;
+      return {
+        monedas: Array.isArray(r['monedas']) ? r['monedas'].filter((m): m is string => typeof m === 'string') : [],
+        reglas: (r['reglas'] ?? {}) as VistaRedondeo['reglas'],
+        puedeEditar: r['puedeEditar'] === true,
+        ...(r['invalido'] === true ? { invalido: true } : {}),
+      };
+    },
+  },
+  cambiarRedondeo: {
+    usa: ['consola.cambiarRedondeo'],
+    // Solo el operador de NovuTienda (sesión con Google) la ejecuta en el servidor; el panel de comercio se limita a ofrecer la pantalla a quien el servidor dijo `puedeEditar`.
+    roles: ['adm'],
+    ejecutar: async (c, e) => {
+      const r = (await c.llamar('consola', 'cambiarRedondeo', { reglas: e.reglas, esperadas: e.esperadas, ...(e.motivo === undefined ? {} : { motivo: e.motivo }) })) as Obj;
+      // Lo que se cobra en esta sesión ya es la regla nueva, sin esperar a la próxima carga de cotizaciones.
+      if (r['estado'] === 'fijado' && c.sesionVigente()) fijarRedondeo(r['reglas']);
+      return { estado: r['estado'] === 'fijado' ? 'fijado' : 'sin-cambios' };
+    },
   },
   cotizacionManual: {
     usa: ['consola.cotizacionManual'],

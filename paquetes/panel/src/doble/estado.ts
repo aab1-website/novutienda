@@ -60,6 +60,8 @@ export interface EstadoDoble {
   comercial: VistaComercial;
   /** Reglas de redondeo por moneda de venta que devuelve `pos.cotizaciones`. */
   redondeo: RedondeoPorMoneda;
+  /** La sesión es del operador de NovuTienda (propietario): solo él fija el redondeo. El administrador del comercio solo lo ve. */
+  operador: boolean;
   /** Cuentas de Firebase Auth que existen pero aún no son miembros de este negocio (el panel no crea cuentas). */
   cuentasSinRol: Mutable<UsuarioVista>[];
   /** Invitaciones: instantes de los envíos de la última hora (límite de 5 por hora) y uid de las cuentas nacidas con una invitación. */
@@ -157,6 +159,7 @@ export function crearEstado(ahora: number): EstadoDoble {
       monedasCaja: ['BOB', 'USD', 'ARS'],
       monedaCosto: 'USD',
     },
+    operador: false,
     redondeo: { BOB: { tipo: 'decimales', decimales: 2, modo: 'cercano' }, ARS: { tipo: 'multiplo', multiplo: 100, modo: 'cercano' } },
     usuarios: [
       { uid: 'u-adm', correo: 'adm@ejemplo.test', rol: 'adm', verificado: true },

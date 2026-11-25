@@ -1,6 +1,6 @@
 // Consumidores de producción del bus: los que la plataforma suscribe a los eventos de Recibos e Inventarios.
 // El bus real (`servidor/bus.ts`) y las pruebas de integración usan esta misma lista.
-import { consumirProductoCambiado, ejecutorConsola, type DepsConsumidorProducto } from '@novutienda/consola';
+import { consumirProductoCambiado, consumirRedondeoCambiado, ejecutorConsola, type DepsConsumidorProducto } from '@novutienda/consola';
 import { consumirPedidoConfirmado, consumirVentaAnulada, ejecutorDesde } from '@novutienda/inventarios';
 import type { BaseDatosIdentidad, SobreEvento } from '@novutienda/nucleo';
 import { manejarVentaAnulada, manejarVentaConfirmada, type OpcionesEmision } from '@novutienda/recibos';
@@ -40,6 +40,14 @@ export function consumidoresDePlataforma(db: BaseDatosIdentidad, opcionesRecibos
       manejar: async (e) => {
         if (modulosDelTenant !== undefined && ((await modulosDelTenant(e.tenantId)) ?? []).includes('consola') === false) return false;
         return consumirProductoCambiado(consola, e, depsConsola);
+      },
+    },
+    {
+      nombre: 'consola:redondeo.cambiado',
+      tipos: ['redondeo.cambiado'],
+      manejar: async (e) => {
+        if (modulosDelTenant !== undefined && ((await modulosDelTenant(e.tenantId)) ?? []).includes('consola') === false) return false;
+        return consumirRedondeoCambiado(consola, e, depsConsola);
       },
     },
   ];

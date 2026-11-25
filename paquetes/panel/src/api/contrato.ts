@@ -9,7 +9,7 @@ import type {
   LecturaNegocioSitio, NegocioSitio, LineaAjuste, LineaIngreso, LineaTraspaso, LogoNegocio, Medio, MedioLogo, ResultadoEstadoSubidaLogo, MermaVista, MontosPorMoneda, MovimientoCaja, MovimientoCajaEntrada, MovimientoVista,
   ConMarca, ListaConMarca, PagoEntrada, PlantillaRecibo, ProductoPanel, Recibo, Reserva, ResultadoAnulacion, ResultadoCierre, ResultadoEnvio,
   FuenteImportacion, ResultadoImportacion, ResultadoOperacion, ResultadoEstadoSubida, ResultadoPublicacion, ResultadoVenta, Rol, Seccion, Simulacion, SolicitudAprobacion,
-  ResumenCarritoSupervision, CursorTurno, CursorVenta, FilaTurnoVista, ResumenTurnoVista, Tablero, TipoMedio, TurnoPos, UbicacionId, UnidadSerie, UsuarioVista, MercadoTipoCambio, IdMercado, VentaPos, EstadoMerma,
+  ResumenCarritoSupervision, CursorTurno, CursorVenta, FilaTurnoVista, ResumenTurnoVista, Tablero, TipoMedio, TurnoPos, UbicacionId, UnidadSerie, UsuarioVista, MercadoTipoCambio, IdMercado, VistaRedondeo, ReglaRedondeoVista, VentaPos, EstadoMerma,
   TipoMovimiento, VistaComercial,
 } from './tipos.js';
 
@@ -198,6 +198,13 @@ export interface Contrato {
   configuracionComercial: { entrada: Vacio; salida: VistaComercial };
   /** Tipo de cambio por mercado: referencia del banco central, manual vigente e historial (solo administrador). */
   verTipoCambio: { entrada: Vacio; salida: readonly MercadoTipoCambio[] };
+  /** Reglas de redondeo por moneda de venta y si quien pregunta puede cambiarlas (administrador: ve; operador: ve y fija). */
+  verRedondeo: { entrada: Vacio; salida: VistaRedondeo };
+  /** Fija el redondeo (solo el operador de NovuTienda). `esperadas` son las reglas que vio al abrir: si ya cambiaron, hay conflicto. */
+  cambiarRedondeo: {
+    entrada: { reglas: Readonly<Record<string, ReglaRedondeoVista>>; esperadas: Readonly<Record<string, ReglaRedondeoVista>> | null; motivo?: string };
+    salida: { estado: 'fijado' | 'sin-cambios' };
+  };
   /** Fija el tipo de cambio manual; un salto de más del 5 % exige `confirmarSalto`. */
   cotizacionManual: { entrada: { mercado: IdMercado; valor: number; confirmarSalto?: boolean }; salida: { ok: true } };
   /** Vuelve al tipo de cambio del banco central (exige `confirmar`). */

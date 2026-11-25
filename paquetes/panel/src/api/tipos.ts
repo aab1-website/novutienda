@@ -860,11 +860,26 @@ export interface MercadoTipoCambio {
   readonly historial: readonly EntradaHistorialTipoCambio[];
 }
 
+/** Regla de redondeo del precio de una moneda de venta (misma forma que el núcleo). */
+export type ReglaRedondeoVista =
+  | { readonly tipo: 'decimales'; readonly decimales: number; readonly modo: 'cercano' | 'arriba' | 'abajo' }
+  | { readonly tipo: 'multiplo'; readonly multiplo: number; readonly modo: 'cercano' | 'arriba' | 'abajo' };
+
+/** Redondeo de precios del comercio: las reglas por moneda de venta y si quien pregunta puede cambiarlas (solo el operador). */
+export interface VistaRedondeo {
+  /** Monedas de venta del comercio, en el orden de sus mercados. */
+  readonly monedas: readonly string[];
+  readonly reglas: Readonly<Record<string, ReglaRedondeoVista>>;
+  readonly puedeEditar: boolean;
+  /** El documento de redondeo guardado es inválido: `reglas` son las de por defecto y el operador puede repararlo. */
+  readonly invalido?: boolean;
+}
+
 export interface EntradaAuditoriaVista {
   readonly id: string;
   readonly fecha: string;
   readonly uid: string;
-  readonly rol: Rol;
+  readonly rol: Rol | 'propietario';
   readonly accion: string;
   readonly ruta: string;
   readonly motivo?: string;

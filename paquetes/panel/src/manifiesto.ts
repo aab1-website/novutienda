@@ -38,5 +38,8 @@ export const manifiestoPanel: ManifiestoModulo = {
     { callable: 'consola', nombre: 'verTipoCambio', roles: ['adm'], propietario: true },
     { callable: 'consola', nombre: 'cotizacionManual', roles: ['adm'], propietario: true },
     { callable: 'consola', nombre: 'quitarCotizacionManual', roles: ['adm'], propietario: true },
+    // Redondeo de precios: el administrador solo lo VE; solo el operador de NovuTienda (propietario, sin rol de comercio) lo FIJA.
+    { callable: 'consola', nombre: 'verRedondeo', roles: ['adm'], propietario: true },
+    { callable: 'consola', nombre: 'cambiarRedondeo', roles: [], propietario: true },
   ],
 };

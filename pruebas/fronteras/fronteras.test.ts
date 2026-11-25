@@ -150,6 +150,9 @@ describe('reglas de zona con árboles inventados', () => {
     expect(zonaDe('plataforma/conectores/github/disparo.ts')).toBe('conector:github');
     expect(zonaDe('pruebas/funciones/disparo-github.test.ts')).toBe('pruebas:coordinador');
     expect(zonaDe('plataforma/funciones/servidor/redondeo.ts')).toBe('nucleo');
+    expect(zonaDe('plataforma/funciones/servidor/llamadas/redondeo.ts')).toBe('central');
+    expect(zonaDe('paquetes/panel/src/pantallas/redondeo.tsx')).toBe('central');
+    expect(zonaDe('paquetes/nucleo/src/eventos/redondeo-cambiado.v1.ts')).toBe('nucleo');
     expect(zonaDe('pruebas/inventarios/pedido.test.ts')).toBe('pruebas:modulo:inventarios');
     expect(zonaDe('pruebas/reglas/matriz.ts')).toBe('pruebas:nucleo');
     expect(zonaDe('scripts/build.mjs')).toBe('plataforma');

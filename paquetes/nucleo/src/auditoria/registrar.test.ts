@@ -23,6 +23,12 @@ describe('registrarAuditoria', () => {
     expect(creados[0]?.datos).toMatchObject({ uid: 'u1', rol: 'adm', en: 'MARCA_SERVIDOR', resumenDespues: { precio: 120 }, motivo: 'ajuste' });
   });
 
+  it('acepta el actor propietario (operador de NovuTienda)', () => {
+    const { tx, creados } = crearTx();
+    registrarAuditoria(tx, { ...base, rol: 'propietario', accion: 'redondeo.fijar' });
+    expect(creados[0]?.datos).toMatchObject({ rol: 'propietario', accion: 'redondeo.fijar' });
+  });
+
   it('omite los campos opcionales ausentes', () => {
     const { tx, creados } = crearTx();
     registrarAuditoria(tx, base);

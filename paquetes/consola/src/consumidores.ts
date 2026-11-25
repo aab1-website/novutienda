@@ -163,3 +163,43 @@ export async function consumirProductoCambiado(
   if (consumido && pendiente.valor !== null) await deps.disparador.programar(pendiente.valor.tenantId, pendiente.valor.para);
   return consumido;
 }
+
+/** Lo que necesita `consumirRedondeoCambiado`: el reloj y el disparador (no lee el catálogo). */
+export interface DepsConsumidorRedondeo {
+  readonly reloj: Reloj;
+  readonly disparador: DisparadorSitio;
+}
+
+/**
+ * Consume `redondeo.cambiado` (v1). Una sola vez por evento (id y clave de idempotencia, en la misma transacción). Si el tenant
+ * tiene algo publicado (`publicado/estado`), sube `version` en +1 de `publicado/estado` y de `publicado/sitio`, guarda
+ * `redondeoVivoEn` y agenda la reconstrucción con la ventana de 60 s (`avanzarPublicadoVivo`); `disparador.programar` se llama
+ * tras el commit y solo si esta transacción fue la primera del grupo. Sin nada publicado no hace nada: la siguiente publicación
+ * ya lee la regla vigente. Las reglas no viajan en el evento: la construcción las lee de `config/redondeo`.
+ */
+export async function consumirRedondeoCambiado(
+  ejecutor: EjecutorTransacciones<TransaccionConsola>,
+  evento: SobreEvento,
+  deps: DepsConsumidorRedondeo,
+): Promise<boolean> {
+  const pendiente: { valor: { tenantId: string; para: number } | null } = { valor: null };
+  const consumido = await consumir(ejecutor, {
+    consumidor: CONSUMIDOR_CONSOLA,
+    evento,
+    manejador: async (tx, ev) => {
+      pendiente.valor = null;
+      const t = ev.tenantId;
+      const rutaEstadoPub = rutaPublicado(t, 'estado');
+      const dEstadoPub = (await tx.get(rutaEstadoPub)).data();
+      if (dEstadoPub === undefined) return;
+      const dSitio = (await tx.get(rutaPublicado(t, 'sitio'))).data();
+      const ahora = deps.reloj.ahora();
+      const { version, reconstruccion, decision } = avanzarPublicadoVivo(dEstadoPub, ahora);
+      if (dSitio !== undefined) tx.set(rutaPublicado(t, 'sitio'), { ...dSitio, version });
+      tx.set(rutaEstadoPub, { ...dEstadoPub, version, redondeoVivoEn: new Date(ahora).toISOString(), reconstruccion });
+      if (decision.accion === 'programar') pendiente.valor = { tenantId: t, para: decision.para };
+    },
+  });
+  if (consumido && pendiente.valor !== null) await deps.disparador.programar(pendiente.valor.tenantId, pendiente.valor.para);
+  return consumido;
+}
