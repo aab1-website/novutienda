@@ -248,16 +248,16 @@ h3.descripcion-titulo, h4.descripcion-titulo { font-size: 17px; }
 .pie-linea { display: flex; align-items: center; gap: 10px; }
 .pie-linea .icono { color: var(--cb-acento); }
 /* Enlace a Google Maps destacado: pin rojo (el de los mapas) y fondo teñido de rojo, legible en tema claro y oscuro. */
-.enlace-mapa-destacado { --mapa-rojo: #ea4335; display: inline-flex; align-items: center; gap: 12px; padding: 10px 18px 10px 12px; border-radius: 14px; border: 2px solid var(--mapa-rojo); background: color-mix(in srgb, var(--mapa-rojo) 12%, var(--cb-superficie)); color: var(--cb-texto); text-decoration: none; box-shadow: 0 4px 14px color-mix(in srgb, var(--mapa-rojo) 22%, transparent); transition: transform .15s, background .2s; }
+.enlace-mapa-destacado { --mapa-rojo: #ea4335; display: inline-flex; align-items: center; gap: 12px; padding: 10px 18px 10px 12px; border-radius: 14px; border: 2px solid var(--mapa-rojo); background: var(--cb-superficie-2); background: color-mix(in srgb, var(--mapa-rojo) 12%, var(--cb-superficie)); color: var(--cb-texto); text-decoration: none; box-shadow: 0 4px 14px color-mix(in srgb, var(--mapa-rojo) 22%, transparent); transition: transform .15s, background .2s; }
 .enlace-mapa-destacado:hover { background: color-mix(in srgb, var(--mapa-rojo) 22%, var(--cb-superficie)); transform: translateY(-1px); }
 .enlace-mapa-destacado:focus-visible { outline: 3px solid var(--mapa-rojo); outline-offset: 3px; }
 .enlace-mapa-pin { flex: none; }
 .enlace-mapa-pin path { fill: var(--mapa-rojo); }
 .enlace-mapa-pin circle { fill: #fff; }
 .enlace-mapa-textos { display: flex; flex-direction: column; line-height: 1.2; text-align: left; }
-.enlace-mapa-textos strong { font-size: 17px; font-weight: 800; letter-spacing: .02em; color: var(--cb-texto); }
+.enlace-mapa-textos strong { font-size: 17px; font-weight: 700; letter-spacing: .02em; color: var(--cb-texto); }
 .enlace-mapa-textos span { font-size: 13px; font-weight: 500; color: var(--cb-texto-suave); }
-.pie .enlace-mapa-destacado, .pie .enlace-mapa-destacado strong { color: var(--cb-texto); font-weight: 800; }
+.pie .enlace-mapa-destacado { color: var(--cb-texto); }
 .pie .enlace-mapa-destacado:hover { color: var(--cb-texto); }
 .tarjeta-contacto .enlace-mapa-destacado { align-self: stretch; justify-content: center; }
 @media (prefers-reduced-motion: reduce) { .enlace-mapa-destacado { transition: none; } .enlace-mapa-destacado:hover { transform: none; } }
