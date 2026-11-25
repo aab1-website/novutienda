@@ -21,6 +21,12 @@ describe('tienda del catálogo NovuChat', () => {
     expect(enlaceMapaSeguro('https://evil.example/maps')).toBeNull();
     expect(enlaceMapaSeguro('https://user:x@maps.app.goo.gl/a')).toBeNull();
     expect(enlaceMapaSeguro('https://goo.gl/xyz')).toBeNull();
+    expect(enlaceMapaSeguro('https://maps.google.com/url?q=https://malo.example')).toBeNull();
+    expect(enlaceMapaSeguro('https://google.com/maps')).toBeNull();
+    expect(enlaceMapaSeguro('https://www.google.com/mapsfoo')).toBeNull();
+    expect(enlaceMapaSeguro('https://www.google.com/maps%2f..%2furl?q=x')).toBeNull();
+    expect(enlaceMapaSeguro('https://WWW.GOOGLE.COM/maps')).toBeNull();
+    expect(enlaceMapaSeguro('https://maps.app.goo.gl:443/a')).toBeNull();
     expect(enlaceMapaSeguro(undefined)).toBeNull();
   });
 

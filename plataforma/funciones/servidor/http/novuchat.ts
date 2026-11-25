@@ -119,17 +119,30 @@ export function textoTienda(v: unknown, max = MAX_TEXTO_TIENDA): string | null {
   return `${corte.trimEnd()}…`;
 }
 
-const HOSTS_MAPA = new Set(['www.google.com', 'google.com', 'maps.google.com', 'maps.app.goo.gl', 'goo.gl']);
-
-/** Enlace de Google Maps publicado: https, anfitrión de Google Maps, sin credenciales ni puerto y de hasta 1.000 caracteres; si no, `null`. */
+/**
+ * Enlace de Google Maps publicado; si no cumple, `null`. Defensa en profundidad: `publicado/negocio` solo lo escribe la publicación,
+ * que ya lo validó.
+ *
+ * DUPLICADA de `urlMapaSegura` de `paquetes/consola/src/negocio.ts` (y del sitio, `paquetes/website/src/contenido/validar.ts`):
+ * la consola no la exporta y su índice es zona del módulo. Si cambia una, cambian las demás. Pendiente: exportarla desde
+ * `@novutienda/consola` y usar esa.
+ */
 export function enlaceMapaSeguro(v: unknown): string | null {
-  if (typeof v !== 'string' || v.length === 0 || v.length > 1000 || (/[\s\\]/.test(v) || /\p{Cc}/u.test(v))) return null;
-  let u: URL;
-  try { u = new URL(v); } catch { return null; }
-  if (u.protocol !== 'https:' || u.username !== '' || u.password !== '' || u.port !== '' || !HOSTS_MAPA.has(u.hostname)) return null;
-  if ((u.hostname === 'www.google.com' || u.hostname === 'google.com') && !u.pathname.startsWith('/maps')) return null;
-  if (u.hostname === 'goo.gl' && !u.pathname.startsWith('/maps')) return null;
-  return v;
+  if (typeof v !== 'string' || v.length === 0 || v.length > 1000 || /[\s\\]/.test(v) || /\p{Cc}/u.test(v)) return null;
+  const m = /^https:\/\/([^/?#]*)([^?#]*)/.exec(v);
+  if (m === null) return null;
+  const host = m[1] ?? '';
+  if (host !== host.toLowerCase() || host.includes('@') || host.includes(':')) return null;
+  const ruta = (m[2] ?? '').toLowerCase();
+  if (/%2e|%2f|%5c/.test(ruta) || ruta.split('/').some((x) => x === '.' || x === '..')) return null;
+  const enMaps = ruta === '/maps' || ruta.startsWith('/maps/');
+  switch (host) {
+    case 'www.google.com':
+    case 'goo.gl': return enMaps ? v : null;
+    case 'maps.google.com': return ruta === '' || ruta === '/' || enMaps ? v : null;
+    case 'maps.app.goo.gl': return v;
+    default: return null;
+  }
 }
 
 /** Coordenadas que trae un enlace largo de Google Maps (`!3d<lat>!4d<lng>`, si no `@<lat>,<lng>`); los enlaces cortos no las traen: `null`. */
