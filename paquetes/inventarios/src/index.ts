@@ -35,9 +35,9 @@ export type { ResultadoOperacion } from './operacion.js';
 
 // Eventos y endpoint firmado.
 export {
-  ACTOR_SISTEMA, confirmarPedido, confirmarPedidoFirmado, consumirPedidoConfirmado, consumirVentaAnulada, ejecutorDesde, leerCuerpoPedido, VERSIONES_CONSUMO_INVENTARIOS,
+  ACTOR_SISTEMA, anularPedido, anularPedidoFirmado, confirmarPedido, confirmarPedidoFirmado, consumirPedidoConfirmado, consumirVentaAnulada, ejecutorDesde, leerCuerpoAnulacion, leerCuerpoPedido, PedidoAnulado, VERSIONES_CONSUMO_INVENTARIOS,
 } from './pedido.js';
-export type { ItemPedido, RespuestaHttp, ResultadoPedido, SolicitudConfirmarPedido, TransaccionInventario } from './pedido.js';
+export type { ItemPedido, RespuestaHttp, ResultadoAnulacion, ResultadoPedido, SolicitudConfirmarPedido, TransaccionInventario } from './pedido.js';
 
 // Utilidades de dominio.
 export { esIdSegmento, esProductoId, identificadorParaAlta, esSerie, esSerieNueva, exigirSeriesNuevas, MENSAJE_SERIE_NUEVA, normalizarSerieBusqueda, esUbicacionId, UBICACIONES } from './ids.js';

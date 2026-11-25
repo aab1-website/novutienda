@@ -4,7 +4,7 @@ import { calcularFirma } from '@novutienda/nucleo/servidor';
 import { comercialLegado, limiteMemoria } from '@novutienda/nucleo';
 import { describe, expect, it } from 'vitest';
 import type { Entorno as EntornoServidor } from '../../plataforma/funciones/servidor/entorno.js';
-import { COLECCION_TOKENS, manejarCatalogo, manejarInventario, manejarPedido, sha256Hex, type ConfigNovuchat } from '../../plataforma/funciones/servidor/http/novuchat.js';
+import { COLECCION_TOKENS, manejarCatalogo, manejarAnulacion, manejarInventario, manejarPedido, sha256Hex, type ConfigNovuchat } from '../../plataforma/funciones/servidor/http/novuchat.js';
 import type { PeticionHttp } from '../../plataforma/funciones/servidor/http/tipos.js';
 import { AHORA, REDONDEO, T, crearEscenario } from './escenario.js';
 import { firestoreDoble } from './firestore-doble.js';
@@ -100,5 +100,25 @@ describe('NovuChat: contrato actual del tenant de referencia', () => {
     };
     const existencias = Object.fromEntries(e.db.coleccion(`tenants/${T}/existencias`).map((d) => [d.id, d.datos['cantidad']]));
     compararConFotoJson('novuchat-pedido.json', { resultados, existencias });
+  });
+  it('pedido firmado: anula, repite sin duplicar, rechaza el inexistente y el reconfirmado', async () => {
+    const { e, entorno, cfg } = await preparar();
+    const firmado = async (ruta: string, cuerpo: string) => {
+      const marca = String(AHORA);
+      const p = peticion(ruta, {}, { metodo: 'POST', cuerpoCrudo: cuerpo, cabeceras: { 'x-marca-tiempo': marca, 'x-firma': calcularFirma(SECRETO, marca, cuerpo) } });
+      const r = ruta.endsWith('/anular') ? await manejarAnulacion(entorno, p, cfg, T, sirve) : await manejarPedido(entorno, p, cfg, T, sirve);
+      return { status: r.status, cuerpo: r.cuerpo };
+    };
+    const confirmar = (pedidoId: string) => firmado('/api/novuchat/v1/pedidos/confirmar', JSON.stringify({ pedidoId, items: [{ productoId: 'p-lapiz', cantidad: 3 }, { productoId: 'p-celular', cantidad: 1 }], confirmadoEn: '2026-11-04T14:59:00Z' }));
+    const anular = (pedidoId: string) => firmado('/api/novuchat/v1/pedidos/anular', JSON.stringify({ pedidoId, anuladoEn: '2026-11-04T15:00:00Z', tenantId: T }));
+    const resultados = {
+      confirma: await confirmar('pd-1'),
+      anula: await anular('pd-1'),
+      repite: await anular('pd-1'),
+      inexistente: await anular('pd-9'),
+      reconfirma: await confirmar('pd-1'),
+    };
+    const existencias = Object.fromEntries(e.db.coleccion(`tenants/${T}/existencias`).map((d) => [d.id, d.datos['cantidad']]));
+    compararConFotoJson('novuchat-pedido-anular.json', { resultados, existencias });
   });
 });

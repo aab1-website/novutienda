@@ -1,4 +1,4 @@
-import { confirmarPedidoFirmado } from '@novutienda/inventarios';
+import { anularPedidoFirmado, confirmarPedidoFirmado } from '@novutienda/inventarios';
 import { calcularFirma } from '@novutienda/nucleo/servidor';
 import type { DatosPedidoConfirmadoV1, SobreEvento } from '@novutienda/nucleo';
 import { beforeEach, describe, expect, it } from 'vitest';
@@ -67,6 +67,46 @@ describe('pedido de WhatsApp firmado', () => {
     );
     expect(vieja.estado).toBe(401);
     expect(doc(e, T, 'operaciones/nc-pd-3')).toBeUndefined();
+  });
+});
+
+describe('anulación de pedido firmada', () => {
+  const anulado = (pedidoId: string, cuerpo = JSON.stringify({ pedidoId, anuladoEn: '2026-11-04T15:30:00Z', tenantId: T })) => {
+    const marcaTiempo = String(e.reloj.ahora);
+    return anularPedidoFirmado(
+      { db: e.db, secreto: SECRETO, ahora: () => e.reloj.ahora },
+      { tenantId: T, marcaTiempo, firma: calcularFirma(SECRETO, marcaTiempo, cuerpo), cuerpo },
+    );
+  };
+
+  it('devuelve el stock y las series a tienda, deja el movimiento y no escribe al repetir', async () => {
+    await firmado('pd-6', [{ productoId: 'lapiz', cantidad: 3 }, { productoId: 'celular', cantidad: 1 }]);
+    const r = await anulado('pd-6');
+    expect(r).toMatchObject({ estado: 200, cuerpo: { ok: true, operacionId: 'nc-anula-pd-6', repetida: false } });
+    expect(doc(e, T, 'existencias/lapiz__tienda')?.['cantidad']).toBe(10);
+    expect(doc(e, T, 'unidades/celular__SN-A')).toMatchObject({ estado: 'disponible' });
+    verificarInvariantes(e, T);
+    const movimientos = contar(e, T, 'movimientos');
+    expect(await anulado('pd-6')).toMatchObject({ estado: 200, cuerpo: { repetida: true } });
+    expect(contar(e, T, 'movimientos')).toBe(movimientos);
+    verificarInvariantes(e, T);
+  });
+
+  it('un pedido que no existe responde 409 y no escribe; confirmar un pedido anulado responde 409 pedido-anulado', async () => {
+    const movimientos = contar(e, T, 'movimientos');
+    expect(await anulado('pd-nada')).toEqual({ estado: 409, cuerpo: { ok: false, error: 'pedido-no-encontrado' } });
+    expect(contar(e, T, 'movimientos')).toBe(movimientos);
+    await firmado('pd-7', [{ productoId: 'lapiz', cantidad: 2 }]);
+    await anulado('pd-7');
+    const otra = await firmado('pd-7', [{ productoId: 'lapiz', cantidad: 2 }]);
+    expect(otra).toMatchObject({ estado: 409, cuerpo: { error: 'pedido-anulado' } });
+    expect(doc(e, T, 'existencias/lapiz__tienda')?.['cantidad']).toBe(10);
+    verificarInvariantes(e, T);
+  });
+
+  it('cuerpo de confirmar en la anulación: 400', async () => {
+    const r = await anulado('pd-8', JSON.stringify({ pedidoId: 'pd-8', items: [], confirmadoEn: '2026-11-04T14:59:00Z' }));
+    expect(r.estado).toBe(400);
   });
 });
 

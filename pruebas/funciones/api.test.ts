@@ -272,6 +272,69 @@ describe.skipIf(!hayEmulador)('API HTTP (emulador)', () => {
     });
   });
 
+  describe('NovuChat: anulación de pedido firmada', () => {
+    const enviar = (ruta: string, cuerpo: string, o: { marca?: string; firma?: string; method?: string } = {}) => {
+      const marca = o.marca ?? String(Date.now());
+      return http(ruta, {
+        method: o.method ?? 'POST',
+        headers: { 'content-type': 'application/json', 'x-marca-tiempo': marca, 'x-firma': o.firma ?? firmar(secretoPedidos, marca, cuerpo) },
+        body: cuerpo,
+      });
+    };
+    const confirmar = (id: string, cantidad: number) =>
+      enviar('/api/novuchat/v1/pedidos/confirmar', JSON.stringify({ pedidoId: id, items: [{ productoId: prod, cantidad }], confirmadoEn: new Date().toISOString() }));
+    const anular = (id: string, o: { marca?: string; firma?: string } = {}) =>
+      enviar('/api/novuchat/v1/pedidos/anular', JSON.stringify({ pedidoId: id, anuladoEn: new Date().toISOString(), tenantId: T }), o);
+    const stockTienda = async () => (await h.firestore.doc(`tenants/${T}/existencias/${prod}__tienda`).get()).data()?.['cantidad'] as number;
+
+    it('confirma, anula (devuelve el stock), repite sin escribir y no deja confirmar de nuevo', async () => {
+      const id = unico('PED').toUpperCase();
+      const antes = await stockTienda();
+      expect((await confirmar(id, 2)).status).toBe(200);
+      expect(await stockTienda()).toBe(antes - 2);
+      const a = await anular(id);
+      expect(a.status, a.texto).toBe(200);
+      expect(a.cuerpo).toMatchObject({ ok: true, operacionId: `nc-anula-${id}`, repetida: false });
+      expect(await stockTienda()).toBe(antes);
+      const b = await anular(id);
+      expect(b.status).toBe(200);
+      expect(b.cuerpo).toMatchObject({ repetida: true });
+      expect(await stockTienda()).toBe(antes);
+      const c = await confirmar(id, 2);
+      expect(c.status).toBe(409);
+      expect(c.cuerpo).toMatchObject({ error: 'pedido-anulado' });
+      expect(await stockTienda()).toBe(antes);
+    });
+
+    it('409 pedido-no-encontrado si no hay confirmación registrada', async () => {
+      const r = await anular(unico('PED'));
+      expect(r.status).toBe(409);
+      expect(r.cuerpo).toMatchObject({ ok: false, error: 'pedido-no-encontrado' });
+    });
+
+    it('400 tenant-distinto si el tenantId del cuerpo no es el del host, y no escribe nada', async () => {
+      const id = unico('PED').toUpperCase();
+      const antes = await stockTienda();
+      expect((await confirmar(id, 2)).status).toBe(200);
+      const r = await enviar('/api/novuchat/v1/pedidos/anular', JSON.stringify({ pedidoId: id, anuladoEn: new Date().toISOString(), tenantId: `${T}-otro` }));
+      expect(r.status, r.texto).toBe(400);
+      expect(r.cuerpo).toEqual({ ok: false, error: 'tenant-distinto' });
+      expect(await stockTienda()).toBe(antes - 2);
+      expect((await h.firestore.doc(`tenants/${T}/operaciones/nc-anula-${id}`).get()).exists).toBe(false);
+      expect((await anular(id)).status).toBe(200);
+      expect(await stockTienda()).toBe(antes);
+    });
+
+    it('401 con firma inválida o marca vencida; 400 con cuerpo de confirmar; 405 con GET', async () => {
+      const id = unico('PED');
+      expect((await anular(id, { firma: 'a'.repeat(64) })).status).toBe(401);
+      expect((await anular(id, { marca: String(Date.now() - 6 * 60_000) })).status).toBe(401);
+      const cruzado = await enviar('/api/novuchat/v1/pedidos/anular', JSON.stringify({ pedidoId: id, items: [], confirmadoEn: new Date().toISOString() }));
+      expect(cruzado.status).toBe(400);
+      expect((await http('/api/novuchat/v1/pedidos/anular')).status).toBe(405);
+    });
+  });
+
   describe('reconstrucción del sitio (endpoint firmado)', () => {
     const firmado = (metodo: string, ruta: string, cuerpo = '') => {
       const marca = String(Date.now());

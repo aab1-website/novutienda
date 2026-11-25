@@ -13,8 +13,18 @@ Errores: 401 `sin_credencial`/`credencial_invalida`, 400 `mercado_invalido`, 429
 ## 2. Pedidos (de servidor a servidor, Functions de NovuChat hacia la plataforma)
 Confirmar: `POST /api/novuchat/v1/pedidos/confirmar` con cuerpo `{ pedidoId, items: [{ productoId, cantidad }], confirmadoEn }`. Firma: `X-Marca-Tiempo` (milisegundos Unix) y `X-Firma` = HMAC-SHA256 hexadecimal de `"{marca}.{cuerpo exacto}"` con un secreto por tenant (Secret Manager de cada lado), ventana de 5 minutos.
 Respuestas: 200 aplicada o ya aplicada (idempotente por `pedidoId`: operación `nc-{pedidoId}`), 400, 401, 409 (stock insuficiente: devuelve `faltantes`; no escribe nada y se puede reintentar al reponer).
-Regla de negocio decidida: se descuenta SIEMPRE del almacén `tienda`; en productos con serie se asigna la unidad más antigua. Cancelar: operación `nc-anula-{pedidoId}` (reversión idempotente).
-La plataforma ya implementa y prueba esto (módulo Inventarios: `confirmarPedidoFirmado`).
+Regla de negocio decidida: se descuenta SIEMPRE del almacén `tienda`; en productos con serie se asigna la unidad más antigua. Anular: `POST /api/novuchat/v1/pedidos/anular` con cuerpo `{ pedidoId, anuladoEn, tenantId }` (`anuladoEn` en ISO 8601 UTC). `tenantId` debe ser el del comercio del host; si no coincide, la respuesta es 400 `tenant-distinto` y no se escribe nada (la firma no liga el tenant). Usa la misma firma, el mismo secreto, la misma ventana y el mismo destino por host que confirmar. Devuelve al almacén `tienda` todo lo que descontó el pedido (las series vuelven a quedar disponibles) con la operación `nc-anula-{pedidoId}`, y queda trazado como anulación del pedido. Respuestas:
+
+- 200: anulado o ya anulado (`repetida`, idempotente por `pedidoId`).
+- 409 `pedido-no-encontrado`: no hay confirmación registrada (incluye un pedido rechazado por stock).
+- 409 con un código de estado: las series ya no están en el pedido.
+- 409 por producto borrado: un producto del pedido ya no existe y no se puede devolver su stock.
+- 400 y 401.
+
+No hay anulación parcial. No hay plazo: NovuChat anula solo lo que no entregó. Confirmar un pedido ya anulado responde 409 `pedido-anulado`.
+La plataforma ya implementa y prueba esto (módulo Inventarios: `confirmarPedidoFirmado` y `anularPedidoFirmado`).
+
+Invariante de firma: la firma HMAC no incluye la ruta. Un cuerpo firmado no sirve en el otro endpoint porque las claves exactas de cada cuerpo no se cruzan (confirmar no admite `anuladoEn` ni `tenantId`, anular no admite `items` ni `confirmadoEn`). Todo endpoint firmado futuro debe mantener esa propiedad o firmar también la ruta.
 
 ## 3. Lo que falta del lado de NovuChat (según su diseño del 31/10)
 1. Que el adaptador del flujo apunte a esta API de catálogo (hoy la fuente es Wegic).
@@ -37,7 +47,7 @@ La plataforma ya implementa y prueba esto (módulo Inventarios: `confirmarPedido
 - P10. El recibo se envía hoy como enlace `wa.me`. La propuesta dice «envío automático»: ¿pueden enviarlo por el número del asistente, y con qué costo?
 
 ## 5. Lectura desde la consola de NovuChat (decisión de Andres, 04/11/2026)
-El panel único de gestión del primer cliente es independiente de la consola de NovuChat (ver docs/panel-unico.md). La consola de NovuChat podrá recuperar información de inventarios y productos de la plataforma con endpoints de solo lectura, con el mismo token por tenant que el catálogo: `GET /api/novuchat/v1/catalogo` (precio final y stock) y, si se necesita más detalle, `GET /api/novuchat/v1/inventario` (existencias por almacén). No se escribe en la plataforma salvo la confirmación de pedido firmada del §2.
+El panel único de gestión del primer cliente es independiente de la consola de NovuChat (ver docs/panel-unico.md). La consola de NovuChat podrá recuperar información de inventarios y productos de la plataforma con endpoints de solo lectura, con el mismo token por tenant que el catálogo: `GET /api/novuchat/v1/catalogo` (precio final y stock) y, si se necesita más detalle, `GET /api/novuchat/v1/inventario` (existencias por almacén). No se escribe en la plataforma salvo la confirmación y la anulación de pedido firmadas del §2.
 
 ## 6. Propiedades de producto (v1.1 aditiva)
 Especificación acordada con NovuChat el 05/11/2026: `docs/contratos/propiedades-de-producto-v1.1.md`. No construida aún; el alcance para el tenant de referencia es decisión aparte de Andres.

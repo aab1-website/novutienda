@@ -11,7 +11,7 @@ import {
   type TransaccionIdentidad,
 } from '@novutienda/nucleo';
 import { EntradaInvalida, EstadoInvalido, ErrorInventario, OperacionConflicto, StockInsuficiente, type Faltante } from './errores.js';
-import { hashSalida, aplicarReversion, aplicarSalida, idOperacionSalida, prepararReversion, prepararSalida, type LineaResuelta, type ReferenciaSalida } from './puerto.js';
+import { hashSalida, aplicarReversion, aplicarSalida, idOperacionReversion, idOperacionSalida, prepararReversion, prepararSalida, type LineaResuelta, type ReferenciaSalida } from './puerto.js';
 import { exigirCantidad, exigirProducto, exigirSegmento, exigirTenant, MAX_LINEAS } from './ids.js';
 import { verificarFirma } from '@novutienda/nucleo/servidor';
 import { Lector, type Autor, type Datos } from './motor.js';
@@ -27,6 +27,14 @@ export const CONSUMIDOR = 'inventarios';
  * que el manejador no lee; `pedido.confirmado` sigue en la 1 (los pedidos v2 aún no tienen emisor).
  */
 export const VERSIONES_CONSUMO_INVENTARIOS = { 'venta.anulada': [1, 2], 'pedido.confirmado': [1] } as const;
+
+/** El pedido ya fue anulado (`nc-anula-{id}`): confirmarlo no descuenta. El borde responde 409 `pedido-anulado`. */
+export class PedidoAnulado extends ErrorInventario {
+  constructor(readonly pedidoId: string) {
+    super('failed-precondition', `El pedido ${pedidoId} ya fue anulado`);
+    this.name = 'PedidoAnulado';
+  }
+}
 
 export interface ItemPedido {
   readonly productoId: string;
@@ -58,7 +66,9 @@ export async function confirmarPedido(
   }));
   const ref: ReferenciaSalida = { tipo: 'pedido', id: pedidoId };
   const opId = idOperacionSalida(ref);
-  const previa = await new Lector(tx, tenantId).leer('operaciones', opId);
+  const lector = new Lector(tx, tenantId);
+  const [previa, anulada] = await Promise.all([lector.leer('operaciones', opId), lector.leer('operaciones', idOperacionReversion(ref))]);
+  if (anulada !== undefined) throw new PedidoAnulado(pedidoId);
   if (previa !== undefined) {
     if (previa['hashCarga'] !== hashSalida(lineas)) throw new OperacionConflicto(opId);
     const guardadas = ((previa['resultado'] as Datos | undefined)?.['lineas'] ?? []) as LineaResuelta[];
@@ -83,6 +93,40 @@ export async function confirmarPedido(
     });
     return { ok: false, faltantes: error.faltantes };
   }
+}
+
+export type ResultadoAnulacion =
+  | { readonly ok: true; readonly operacionId: string; readonly repetida: boolean }
+  | { readonly ok: false; readonly error: 'pedido-no-encontrado' };
+
+/**
+ * Anula un pedido confirmado (completo, sin plazo): devuelve stock y series a la tienda y graba `nc-anula-{pedidoId}`.
+ * Repetir la anulación no escribe nada. Un pedido sin confirmación registrada (incluido el rechazado por stock) devuelve
+ * `pedido-no-encontrado`. Una serie que ya no está vendida en ese pedido o un producto borrado lanzan un error de inventario.
+ */
+export async function anularPedido(
+  tx: TransaccionIdentidad,
+  e: { tenantId: string; pedidoId: string; anuladoEn?: string },
+  por: Autor = ACTOR_SISTEMA,
+): Promise<ResultadoAnulacion> {
+  const tenantId = exigirTenant(e.tenantId);
+  const pedidoId = exigirSegmento(e.pedidoId, 'pedidoId');
+  const ref: ReferenciaSalida = { tipo: 'pedido', id: pedidoId };
+  const orig = await new Lector(tx, tenantId).leer('operaciones', idOperacionSalida(ref));
+  if (orig === undefined) return { ok: false, error: 'pedido-no-encontrado' };
+  const plan = await prepararReversion(tx, tenantId, ref);
+  aplicarReversion(tx, plan, ref, por);
+  if (!plan.repetida && e.anuladoEn !== undefined) {
+    registrarAuditoria(tx, {
+      tenantId,
+      uid: por.uid,
+      rol: por.rol,
+      accion: 'inventarios.pedido-anulado',
+      ruta: `operaciones/${idOperacionReversion(ref)}`,
+      resumenDespues: { pedidoId, anuladoEn: e.anuladoEn },
+    });
+  }
+  return { ok: true, operacionId: idOperacionReversion(ref), repetida: plan.repetida };
 }
 
 /** Transacción con lo que necesitan a la vez las operaciones de inventario y la bandeja de eventos. */
@@ -124,7 +168,20 @@ export function consumirPedidoConfirmado(
     manejador: async (tx, ev) => {
       if (ev.tipo !== 'pedido.confirmado') throw new EntradaInvalida(`Tipo inesperado: ${ev.tipo}`);
       const d = ev.datos as DatosPedidoConfirmadoV1;
-      await confirmarPedido(tx, { tenantId: ev.tenantId, pedidoId: d.pedidoId, items: d.lineas });
+      try {
+        await confirmarPedido(tx, { tenantId: ev.tenantId, pedidoId: d.pedidoId, items: d.lineas });
+      } catch (error) {
+        // Un pedido anulado antes de que llegue su evento no descuenta: el evento se da por procesado.
+        if (!(error instanceof PedidoAnulado)) throw error;
+        registrarAuditoria(tx, {
+          tenantId: ev.tenantId,
+          uid: ACTOR_SISTEMA.uid,
+          rol: ACTOR_SISTEMA.rol,
+          accion: 'inventarios.pedido-descartado-anulado',
+          ruta: `operaciones/${idOperacionReversion({ tipo: 'pedido', id: d.pedidoId })}`,
+          resumenDespues: { pedidoId: d.pedidoId },
+        });
+      }
     },
   });
 }
@@ -183,8 +240,7 @@ export interface RespuestaHttp {
 const MAX_CUERPO = 64 * 1024;
 const ISO_UTC = /^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}(\.\d+)?Z$/;
 
-/** Valida el cuerpo `{pedidoId, items[{productoId,cantidad}], confirmadoEn}` (claves exactas). */
-export function leerCuerpoPedido(cuerpo: string): { pedidoId: string; items: ItemPedido[]; confirmadoEn: string } {
+function leerObjeto(cuerpo: string): Record<string, unknown> {
   if (typeof cuerpo !== 'string' || cuerpo.length > MAX_CUERPO) throw new EntradaInvalida('cuerpo inválido o demasiado grande');
   let o: unknown;
   try {
@@ -193,7 +249,12 @@ export function leerCuerpoPedido(cuerpo: string): { pedidoId: string; items: Ite
     throw new EntradaInvalida('El cuerpo no es JSON');
   }
   if (typeof o !== 'object' || o === null || Array.isArray(o)) throw new EntradaInvalida('El cuerpo debe ser un objeto');
-  const r = o as Record<string, unknown>;
+  return o as Record<string, unknown>;
+}
+
+/** Valida el cuerpo `{pedidoId, items[{productoId,cantidad}], confirmadoEn}` (claves exactas). */
+export function leerCuerpoPedido(cuerpo: string): { pedidoId: string; items: ItemPedido[]; confirmadoEn: string } {
+  const r = leerObjeto(cuerpo);
   const claves = Object.keys(r).sort().join(',');
   if (claves !== 'confirmadoEn,items,pedidoId') throw new EntradaInvalida('El cuerpo requiere exactamente pedidoId, items y confirmadoEn');
   const confirmadoEn = r['confirmadoEn'];
@@ -218,9 +279,60 @@ export function leerCuerpoPedido(cuerpo: string): { pedidoId: string; items: Ite
  * contenido distinto o producto no vendible). Otros errores se propagan (500 en el borde).
  */
 export async function confirmarPedidoFirmado(
-  deps: { db: BaseDatosIdentidad; secreto: string; ahora?: () => number; autorizado?: () => Promise<boolean> },
+  deps: DependenciasFirmadas,
   s: SolicitudConfirmarPedido,
 ): Promise<RespuestaHttp> {
+  const rechazo = await rechazarSinFirma(deps, s);
+  if (rechazo !== undefined) return rechazo;
+  try {
+    const p = leerCuerpoPedido(s.cuerpo);
+    const r = await deps.db.runTransaction((tx) => confirmarPedido(tx, { tenantId: s.tenantId, pedidoId: p.pedidoId, items: p.items }));
+    if (r.ok) return { estado: 200, cuerpo: { ok: true, operacionId: r.operacionId, repetida: r.repetida } };
+    return { estado: 409, cuerpo: { ok: false, error: 'stock-insuficiente', faltantes: r.faltantes } };
+  } catch (error) {
+    if (error instanceof PedidoAnulado) return { estado: 409, cuerpo: { ok: false, error: 'pedido-anulado', mensaje: error.message } };
+    return errorDeBorde(error);
+  }
+}
+
+/** Valida el cuerpo `{pedidoId, anuladoEn, tenantId}` (claves exactas; `anuladoEn` ISO 8601 UTC; el tenant liga la firma al host). */
+export function leerCuerpoAnulacion(cuerpo: string): { pedidoId: string; anuladoEn: string; tenantId: string } {
+  const r = leerObjeto(cuerpo);
+  if (Object.keys(r).sort().join(',') !== 'anuladoEn,pedidoId,tenantId') throw new EntradaInvalida('El cuerpo requiere exactamente pedidoId, anuladoEn y tenantId');
+  const anuladoEn = r['anuladoEn'];
+  if (typeof anuladoEn !== 'string' || !ISO_UTC.test(anuladoEn) || Number.isNaN(Date.parse(anuladoEn))) {
+    throw new EntradaInvalida('anuladoEn debe ser ISO 8601 UTC');
+  }
+  return { pedidoId: exigirSegmento(r['pedidoId'], 'pedidoId'), anuladoEn, tenantId: exigirSegmento(r['tenantId'], 'tenantId') };
+}
+
+/**
+ * Endpoint `anularPedido`: misma firma, ventana y control de encendido que `confirmarPedidoFirmado`. Devuelve 200 (ok o repetida),
+ * 400 (incluye `tenant-distinto`), 401 o 409 (`pedido-no-encontrado`, serie ya no vendida en el pedido o producto borrado). Otros errores se propagan.
+ */
+export async function anularPedidoFirmado(deps: DependenciasFirmadas, s: SolicitudConfirmarPedido): Promise<RespuestaHttp> {
+  const rechazo = await rechazarSinFirma(deps, s);
+  if (rechazo !== undefined) return rechazo;
+  try {
+    const p = leerCuerpoAnulacion(s.cuerpo);
+    if (p.tenantId !== s.tenantId) return { estado: 400, cuerpo: { ok: false, error: 'tenant-distinto' } };
+    const r = await deps.db.runTransaction((tx) => anularPedido(tx, { tenantId: s.tenantId, pedidoId: p.pedidoId, anuladoEn: p.anuladoEn }));
+    if (r.ok) return { estado: 200, cuerpo: { ok: true, operacionId: r.operacionId, repetida: r.repetida } };
+    return { estado: 409, cuerpo: { ok: false, error: r.error } };
+  } catch (error) {
+    return errorDeBorde(error);
+  }
+}
+
+interface DependenciasFirmadas {
+  readonly db: BaseDatosIdentidad;
+  readonly secreto: string;
+  readonly ahora?: () => number;
+  readonly autorizado?: () => Promise<boolean>;
+}
+
+/** Firma y control de encendido (este solo tras una firma válida: no revela el estado de los módulos a un anónimo). */
+async function rechazarSinFirma(deps: DependenciasFirmadas, s: SolicitudConfirmarPedido): Promise<RespuestaHttp | undefined> {
   const v = verificarFirma({
     secreto: deps.secreto,
     marcaTiempo: s.marcaTiempo,
@@ -229,16 +341,12 @@ export async function confirmarPedidoFirmado(
     ahoraMs: (deps.ahora ?? Date.now)(),
   });
   if (!v.ok) return { estado: 401, cuerpo: { error: v.motivo } };
-  // Control de encendido del coordinador: solo tras una firma válida (no revela el estado de los módulos a un anónimo).
   if (deps.autorizado !== undefined && !(await deps.autorizado())) return { estado: 401, cuerpo: { error: 'credencial_invalida' } };
-  try {
-    const p = leerCuerpoPedido(s.cuerpo);
-    const r = await deps.db.runTransaction((tx) => confirmarPedido(tx, { tenantId: s.tenantId, pedidoId: p.pedidoId, items: p.items }));
-    if (r.ok) return { estado: 200, cuerpo: { ok: true, operacionId: r.operacionId, repetida: r.repetida } };
-    return { estado: 409, cuerpo: { ok: false, error: 'stock-insuficiente', faltantes: r.faltantes } };
-  } catch (error) {
-    if (error instanceof EntradaInvalida) return { estado: 400, cuerpo: { error: 'entrada-invalida', mensaje: error.message } };
-    if (error instanceof ErrorInventario) return { estado: 409, cuerpo: { error: error.codigo, mensaje: error.message } };
-    throw error;
-  }
+  return undefined;
+}
+
+function errorDeBorde(error: unknown): RespuestaHttp {
+  if (error instanceof EntradaInvalida) return { estado: 400, cuerpo: { error: 'entrada-invalida', mensaje: error.message } };
+  if (error instanceof ErrorInventario) return { estado: 409, cuerpo: { error: error.codigo, mensaje: error.message } };
+  throw error;
 }
