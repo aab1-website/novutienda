@@ -16,7 +16,7 @@ export const seccionesEnMenu = (ss: readonly Seccion[]): readonly Seccion[] =>
 export const enVenta = <T extends { readonly disponible: boolean }>(ps: readonly T[]): readonly T[] => ps.filter((p) => p.disponible);
 
 /**
- * Categorías navegables: solo las que tienen al menos un producto a la venta (menú, móvil, pie, portada y sitemap). La página de
+ * Categorías navegables: solo las que tienen al menos un producto a la venta (menú de Catalogo.astro, portada y sitemap; la cabecera y el pie no listan categorías). La página de
  * una categoría sin venta se sigue generando (los enlaces viejos no se rompen), pero no aparece en ninguna lista. Conserva el
  * orden recibido, que es el del panel (o alfabético si no hay orden): `contenido.categorias`.
  */
