@@ -5,6 +5,7 @@ import { marcaDe } from '../../api/marca.js';
 import type { AprobacionPos, ConfigPos, CotizacionesVigentes, MercadoDeclarado, ProductoPanel, TurnoPos, UbicacionId, VentaPos } from '../../api/tipos.js';
 import { Alerta, Boton, Campo, Cargando, Casilla, ErrorCarga, Selector, Seccion, Vacio } from '../../ui/comun.js';
 import { useConfiguracionComercial } from '../../ui/comercial.js';
+import { useAvisos } from '../../ui/avisos.js';
 import { useApp } from '../../ui/contexto.js';
 import { AvisoConteoAbierto, TEXTO_OCULTO } from '../../ui/existencia.js';
 import { useAccion, useCarga } from '../../ui/hooks.js';
@@ -115,6 +116,7 @@ function TerminalLista({ turno, alCambiar, mercados, carritoPedido, alUsarPedido
         mercados={mercados}
         datos={datos.datos}
         vistos={preciosVistos.current}
+        recargarDatos={datos.recargar}
         alVender={(ventaId, repetida) => setRecibo({ ventaId, carritoId: carritoActivoId, repetida })}
       />
     </div>
@@ -156,7 +158,7 @@ export async function avisosAlRetomar(b: BorradorCarrito, porId: ReadonlyMap<str
   return avisos;
 }
 
-function CarritoActivo({ carritoId, version, borrador, c, mercados, datos, vistos, alVender }: { carritoId: string; version: number; borrador: BorradorCarrito; c: CarritoServidor; mercados: readonly MercadoDeclarado[]; datos: DatosTerminal; vistos: Map<string, Record<string, number>>; alVender: (ventaId: string, repetida: boolean) => void }): JSX.Element {
+function CarritoActivo({ carritoId, version, borrador, c, mercados, datos, vistos, alVender, recargarDatos }: { carritoId: string; version: number; borrador: BorradorCarrito; c: CarritoServidor; mercados: readonly MercadoDeclarado[]; datos: DatosTerminal; vistos: Map<string, Record<string, number>>; alVender: (ventaId: string, repetida: boolean) => void; recargarDatos: () => void }): JSX.Element {
   const { api, usuario } = useApp();
   const { cot, config, ventas } = datos;
   const { mercadoId, moneda, lineas, descTexto, descMotivo, aprobacionId, cliente, telefono } = borrador;
@@ -177,6 +179,7 @@ function CarritoActivo({ carritoId, version, borrador, c, mercados, datos, visto
   const [paso, setPaso] = useState<'carrito' | 'cobro'>('carrito');
   const solicitud = useAccion();
   const cobrando = useAccion();
+  const avisos = useAvisos();
   const solicitadaId = borrador.solicitadaId;
   const setSolicitadaId = (v: string | null): void => cambiar({ solicitadaId: v });
   // La aprobación elegida ya está en la lista que se carga: elegirla (también sola) no vuelve a consultar.
@@ -332,6 +335,11 @@ function CarritoActivo({ carritoId, version, borrador, c, mercados, datos, visto
         if (!c.tomarConflicto(e)) return false;
         setPaso('carrito');
         return true;
+      },
+      alPrecioAlterado: () => {
+        recargarDatos();
+        setPaso('carrito');
+        avisos.error('Los precios se actualizaron mientras vendía. Revise el total del carrito antes de volver a cobrar.');
       },
       nombreProducto: (id) => porId.get(id)?.nombre,
       nombreAlmacen: (id) => ALMACENES.find((a) => a.valor === id)?.texto,

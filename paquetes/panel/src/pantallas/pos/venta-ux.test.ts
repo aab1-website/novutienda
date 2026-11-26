@@ -545,3 +545,25 @@ describe('revisión: venta repetida, sesión vencida y filas editadas', () => {
     expect((campo(/Monto que paga con este medio/) as HTMLInputElement).value).toBe('3');
   });
 });
+
+describe('precio alterado al cobrar: la terminal recarga sus datos', () => {
+  it('si el tipo de cambio cambia con el cobro abierto, se vuelve al carrito con el precio nuevo y el reintento se registra', async () => {
+    const e = crearEntorno('caj');
+    await conTurno(e);
+    const u = userEvent.setup();
+    await u.click(await screen.findByRole('button', { name: 'Agregar Cable HDMI 2 m' }));
+    await u.click(boton('Cobrar'));
+    await screen.findByRole('heading', { name: 'Cobro' });
+    const totalViejo = document.querySelector('[data-prueba="total-cobro"]')?.textContent;
+    // El tipo de cambio cambia mientras el cobro está abierto.
+    e.api.estado.cotizaciones = { ...e.api.estado.cotizaciones, BO: { ...e.api.estado.cotizaciones.BO!, cotizacionId: 'BO-nueva', valor: 7.2 } };
+    await u.click(boton('Confirmar cobro'));
+    expect(await screen.findByText(/Los precios se actualizaron mientras vendía/)).toBeTruthy();
+    await screen.findByRole('heading', { name: 'Carrito' });
+    await u.click(await screen.findByRole('button', { name: 'Cobrar' }));
+    await screen.findByRole('heading', { name: 'Cobro' });
+    expect(document.querySelector('[data-prueba="total-cobro"]')?.textContent).not.toBe(totalViejo);
+    await u.click(boton('Confirmar cobro'));
+    await screen.findByRole('heading', { name: 'Venta registrada' });
+  });
+});
