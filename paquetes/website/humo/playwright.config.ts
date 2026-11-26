@@ -9,8 +9,8 @@ export default defineConfig({
   // Fuera del paquete (dist/ de la raíz está ignorado por git, ESLint y la prueba de fronteras).
   outputDir: '../../../dist/humo-resultados',
   reporter: 'list',
-  // Debe superar el tope de hidratación de humo.spec.ts (25 s) más lo que el propio caso hace después.
-  timeout: 45_000,
+  // Debe superar 2 x 25 s (tope de hidratación de humo.spec.ts, que algunas pruebas usan dos veces) más un margen para el resto del caso.
+  timeout: 60_000,
   use: {
     baseURL: `http://127.0.0.1:${puerto}`,
     // Usa el Chrome instalado en el sistema; en CI puede reemplazarse con PLAYWRIGHT_CHANNEL.
