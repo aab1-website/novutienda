@@ -53,6 +53,9 @@ function Productos(): JSX.Element {
   const carga = useCarga(async () => ({ productos: await api.llamar('listarProductos', {}), cot: await api.llamar('cotizacionesVigentes', {}) }), [], undefined, { alVolver: true });
   const [mostrar, setMostrar] = useState<Mostrar>('');
   const [abierto, setAbierto] = useState<{ producto: ProductoPanel | null; etiqueta: string } | null>(null);
+  // Tras guardar, la lista se vuelve a leer: hasta que llegue, la fila muestra datos viejos y abrirla ofrecería editar sobre ellos.
+  const [releyendo, setReleyendo] = useState<unknown>(null);
+  const releyendoAhora = releyendo !== null && releyendo === carga.datos && carga.error === null;
   const raiz = useRef<HTMLDivElement>(null);
   const esAdm = usuario.rol === 'adm';
   const volverAlBoton = (): HTMLElement | null => {
@@ -106,7 +109,7 @@ function Productos(): JSX.Element {
                   ]}
                   acciones={(p) => (
                     <div class="fila">
-                      <Boton chico variante="secundario" onClick={() => setAbierto({ producto: p, etiqueta: `Datos del producto de ${p.nombre}` })} etiqueta={`Datos del producto de ${p.nombre}`}>Datos del producto</Boton>
+                      <Boton chico variante="secundario" deshabilitado={releyendoAhora} onClick={() => setAbierto({ producto: p, etiqueta: `Datos del producto de ${p.nombre}` })} etiqueta={`Datos del producto de ${p.nombre}`}>Datos del producto</Boton>
                       {puedeVer('catalogo') && <a href="#/catalogo/fichas" aria-label={`Fotos y página en el sitio de ${p.nombre}`}>Fotos y página en el sitio</a>}
                     </div>
                   )}
@@ -122,7 +125,10 @@ function Productos(): JSX.Element {
                   alCerrarEnfocar={volverAlBoton}
                   alCerrar={(guardado) => {
                     setAbierto(null);
-                    if (guardado) carga.recargar();
+                    if (guardado) {
+                      setReleyendo(carga.datos);
+                      carga.recargar();
+                    }
                   }}
                 />
               )}
