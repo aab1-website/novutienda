@@ -16,6 +16,26 @@ export const seccionesEnMenu = (ss: readonly Seccion[]): readonly Seccion[] =>
 export const enVenta = <T extends { readonly disponible: boolean }>(ps: readonly T[]): readonly T[] => ps.filter((p) => p.disponible);
 
 /**
+ * Categorías navegables: solo las que tienen al menos un producto a la venta (menú de Catalogo.astro, portada y sitemap; la cabecera y el pie no listan categorías). La página de
+ * una categoría sin venta se sigue generando (los enlaces viejos no se rompen), pero no aparece en ninguna lista. Conserva el
+ * orden recibido, que es el del panel (o alfabético si no hay orden): `contenido.categorias`.
+ */
+export const categoriasConVenta = (cs: readonly Categoria[], ps: readonly Producto[]): readonly Categoria[] => {
+  const con = new Set(enVenta(ps).map((p) => p.categoria));
+  return cs.filter((c) => con.has(c.id));
+};
+
+/**
+ * Agrupa los productos por categoría en el MISMO orden que el menú (`categorias`); dentro de cada categoría, conserva el orden
+ * recibido. Una función única de orden: el menú y el listado /productos no pueden discrepar.
+ */
+export function productosEnOrdenDeCategorias<T extends { readonly categoria: string }>(ps: readonly T[], cs: readonly Categoria[]): readonly T[] {
+  const lugar = new Map(cs.map((c, i) => [c.id, i] as const));
+  const de = (p: T): number => lugar.get(p.categoria) ?? cs.length;
+  return ps.map((p, i) => ({ p, i })).sort((a, b) => de(a.p) - de(b.p) || a.i - b.i).map((x) => x.p);
+}
+
+/**
  * Une las marcas que solo difieren en mayúsculas, tildes o signos («samsung», «Samsung»): un solo nombre visible por marca,
  * el más usado y, si empatan, el que trae alguna mayúscula (después, el primero por orden alfabético).
  */

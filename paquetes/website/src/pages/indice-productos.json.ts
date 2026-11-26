@@ -1,4 +1,4 @@
-import { contenido, enVenta } from '../contenido/instancia.js';
+import { catalogo, contenido } from '../contenido/instancia.js';
 import { descripcionPlana, recortar } from '../lib/descripcion.js';
 import { srcsetDe } from '../lib/medios.js';
 import { rutaProducto } from '../lib/seo.js';
@@ -9,7 +9,7 @@ import { rutaProducto } from '../lib/seo.js';
  */
 export function GET(): Response {
   const nombreCat = new Map(contenido.categorias.map((c) => [c.id, c.nombre]));
-  const indice = enVenta.map((p) => {
+  const indice = catalogo.map((p) => {
     const foto = p.fotos[0];
     return {
       i: p.id,

@@ -6,10 +6,17 @@ const PAGINAS = ['/', '/404', '/productos', '/productos/televisores', '/producto
 const PLANTILLAS = ['cielo', 'bosque', 'ambar', 'grafito', 'ciruela'] as const;
 /** Las islas `load` e `idle` ya están listas (las `visible` se hidratan al llegar a la pantalla). */
 const islasListas = (page: Page): Promise<unknown> => page.waitForFunction(() => document.querySelectorAll('astro-island[ssr][client="load"], astro-island[ssr][client="idle"]').length === 0);
-/** Lleva el elemento al centro de la pantalla (así todas sus islas quedan visibles) y espera a que se hidraten. */
+/** Tope de la hidratación: en un ejecutor lento del CI bajan una treintena de módulos y las islas tardan más que el 5 s por omisión de `expect`. */
+const TOPE_HIDRATACION_MS = 25_000;
+/**
+ * Lleva el elemento al centro de la pantalla (así todas sus islas quedan visibles) y espera a que se hidraten.
+ * Vuelve a centrarlo en cada intento: si el diseño se mueve al cargar fuentes o imágenes, las islas `visible` siguen a la vista.
+ */
 async function hidratar(el: Locator): Promise<void> {
-  await el.evaluate((e) => e.scrollIntoView({ block: 'center', behavior: 'instant' }));
-  await expect(el.locator('astro-island[ssr]')).toHaveCount(0);
+  await expect(async () => {
+    await el.evaluate((e) => e.scrollIntoView({ block: 'center', behavior: 'instant' }));
+    await expect(el.locator('astro-island[ssr]')).toHaveCount(0, { timeout: 3_000 });
+  }).toPass({ timeout: TOPE_HIDRATACION_MS, intervals: [250, 500, 1_000] });
 }
 const hostPropio = (u: string): boolean => /^(http:\/\/127\.0\.0\.1|data:|blob:)/.test(u);
 

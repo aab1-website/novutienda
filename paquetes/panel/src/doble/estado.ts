@@ -48,6 +48,7 @@ export interface EstadoDoble {
   cambiosSinPublicar: number;
   ultimoCambioEn: string;
   publicadoEn: string | null;
+  publicadoAutomatico: { en: string; motivo: 'producto' | 'redondeo' | 'logo' } | null;
   versionPublicada: number;
   /** Aviso de sitio incompleto que devuelve el tablero; una publicación correcta lo deja en `null`. */
   avisoSitio: Tablero['avisoSitio'];
@@ -149,7 +150,7 @@ export function crearEstado(ahora: number): EstadoDoble {
     auditoria: [], fichas: new Map(), medios: new Map(), logo: null, subidas: new Map(), disparador: { demoraMs: 15 }, secciones: [], carruseles: new Map(),
     negocioSitio: { negocio: null, version: 0 },
     configSitio: { plantillaActiva: 'cielo', whatsappNovuchat: '59170000000', medicion: {} },
-    cambiosSinPublicar: 0, ultimoCambioEn: iso(ahora), publicadoEn: null, versionPublicada: 0, avisoSitio: null, ultimaReconstruccion: null,
+    cambiosSinPublicar: 0, ultimoCambioEn: iso(ahora), publicadoEn: null, publicadoAutomatico: null, versionPublicada: 0, avisoSitio: null, ultimaReconstruccion: null,
     modulos: ['inventarios', 'pos', 'recibos', 'consola', 'website'],
     comercial: {
       mercados: [
