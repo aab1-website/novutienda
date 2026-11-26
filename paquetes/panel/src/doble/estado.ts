@@ -48,7 +48,7 @@ export interface EstadoDoble {
   cambiosSinPublicar: number;
   ultimoCambioEn: string;
   publicadoEn: string | null;
-  publicadoAutomatico: { en: string; motivo: 'producto' | 'redondeo' } | null;
+  publicadoAutomatico: { en: string; motivo: 'producto' | 'redondeo' | 'logo' } | null;
   versionPublicada: number;
   /** Aviso de sitio incompleto que devuelve el tablero; una publicación correcta lo deja en `null`. */
   avisoSitio: Tablero['avisoSitio'];

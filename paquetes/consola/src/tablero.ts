@@ -29,8 +29,8 @@ export interface UltimaReconstruccionTablero {
 }
 
 function leerPublicadoAutomatico(pub: Readonly<Record<string, unknown>> | undefined): Tablero['publicadoAutomatico'] {
-  const candidatos: { en: string; motivo: 'producto' | 'redondeo' }[] = [];
-  for (const [campo, motivo] of [['precioVivoEn', 'producto'], ['redondeoVivoEn', 'redondeo']] as const) {
+  const candidatos: { en: string; motivo: 'producto' | 'redondeo' | 'logo' }[] = [];
+  for (const [campo, motivo] of [['precioVivoEn', 'producto'], ['redondeoVivoEn', 'redondeo'], ['logoVivoEn', 'logo']] as const) {
     const v = pub?.[campo];
     if (typeof v === 'string' && !Number.isNaN(Date.parse(v))) candidatos.push({ en: v, motivo });
   }
@@ -43,10 +43,10 @@ export interface Tablero {
   readonly ultimoCambioEn: string;
   readonly publicadoEn: string | null;
   /**
-   * Última publicación hecha por el sistema solo (cambio vivo de producto o de redondeo) POSTERIOR a `publicadoEn`; `null` si la
-   * versión vigente es la de la publicación manual. Una publicación manual reescribe `publicado/estado` y la borra.
+   * Última publicación hecha por el sistema solo (cambio vivo de producto, redondeo o logo); `null` si no hay. No compara con `publicadoEn`: lo hace el panel. Una
+   * publicación manual reescribe `publicado/estado` y la borra.
    */
-  readonly publicadoAutomatico: { readonly en: string; readonly motivo: 'producto' | 'redondeo' } | null;
+  readonly publicadoAutomatico: { readonly en: string; readonly motivo: 'producto' | 'redondeo' | 'logo' } | null;
   readonly versionPublicada: number;
   /** Si un retiro automático dejó el sitio sin productos o sin fotos; `null` si no hay aviso. */
   readonly avisoSitio: AvisoSitio | null;

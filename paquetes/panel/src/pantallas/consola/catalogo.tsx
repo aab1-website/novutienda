@@ -415,7 +415,7 @@ function CategoriasDelSitio(): JSX.Element {
 function textoUltimaPublicacion(d: Pick<TableroApi, 'publicadoEn' | 'publicadoAutomatico'>): string {
   const auto = d.publicadoAutomatico;
   if (auto !== null && (d.publicadoEn === null || Date.parse(auto.en) >= Date.parse(d.publicadoEn))) {
-    const porQue = auto.motivo === 'redondeo' ? 'al cambiar el redondeo' : 'por un cambio en un producto';
+    const porQue = auto.motivo === 'redondeo' ? 'al cambiar el redondeo' : auto.motivo === 'logo' ? 'al cambiar el logo' : 'por un cambio en un producto';
     return `${fechaHora(auto.en)} (automática, ${porQue})`;
   }
   return d.publicadoEn === null ? 'Todavía no se publicó' : fechaHora(d.publicadoEn);
