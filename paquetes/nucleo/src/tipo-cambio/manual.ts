@@ -23,16 +23,26 @@ export class ConfirmacionRequerida extends Error {
 }
 
 /**
- * Banda absoluta de cordura por par (VENTA/BASE): fuera de ella el valor se rechaza aunque venga confirmado,
- * para que un error de tipeo no frene las ventas. Un par sin entrada usa `BANDA_POR_DEFECTO`.
+ * Banda absoluta de cordura por par (VENTA/BASE), de respaldo cuando no hay referencia del banco central utilizable;
+ * fuera de ella el valor se rechaza aunque venga confirmado, para que un error de tipeo no frene las ventas. Un par sin entrada usa `BANDA_POR_DEFECTO`.
  */
 export const BANDAS_POR_PAR: Readonly<Record<string, readonly [number, number]>> = { 'BOB/USD': [1, 100], 'ARS/USD': [10, 100_000] };
 export const BANDA_POR_DEFECTO: readonly [number, number] = [0.0001, 10_000_000];
 
-/** El valor cae fuera de la banda de cordura del par. */
+/** Banda relativa sobre la referencia del banco central: el manual se admite hasta ±50 % de ella (bordes incluidos). */
+export const BANDA_RELATIVA = 0.5;
+
+const TOLERANCIA = 1e-9;
+const formatear = (n: number): string => String(Math.round(n * 1000 + TOLERANCIA) / 1000).replace('.', ',');
+
+/** El valor cae fuera del rango admitido del par: ±50 % del banco central, o la banda absoluta si no hay referencia utilizable. */
 export class ValorFueraDeBanda extends RangeError {
-  constructor(readonly par: string, readonly valor: number, readonly minimo: number, readonly maximo: number) {
-    super(`el valor ${valor} está fuera del rango admitido para ${par} (${minimo} a ${maximo})`);
+  /** `referencia` es el valor del banco central que fijó el rango, o `null` si rigió la banda absoluta. */
+  /** Rango admitido ya formateado («5,915 a 17,745»), para que quien traduzca el error no repita el formato. */
+  readonly rango: string;
+  constructor(readonly par: string, readonly valor: number, readonly minimo: number, readonly maximo: number, readonly referencia: number | null = null) {
+    super(`el valor ${formatear(valor)} está fuera del rango admitido para ${par} (${formatear(minimo)} a ${formatear(maximo)}${referencia === null ? '' : ': ±50 % del banco central'})`);
+    this.rango = `${formatear(minimo)} a ${formatear(maximo)}`;
     this.name = 'ValorFueraDeBanda';
   }
 }
@@ -57,14 +67,19 @@ export async function fijarCotizacionManualDe(
   if (e.actor.uid.trim() === '') throw new TipoCambioInvalido('hay que indicar quién carga');
   const par = tieneTipoCambio(opciones.comercial, e.mercado) ? parDe(opciones.comercial, e.mercado) : null;
   if (par === null) throw new TipoCambioInvalido(`el mercado ${e.mercado} no está declarado o no tiene tipo de cambio`);
-  const [minimo, maximo] = BANDAS_POR_PAR[par] ?? BANDA_POR_DEFECTO;
-  if (e.valor < minimo || e.valor > maximo) throw new ValorFueraDeBanda(par, e.valor, minimo, maximo);
   const fecha = hoyEn(e.mercado, e.ahoraMs, opciones.comercial);
   const rutaM = rutaCotizacionManual(opciones.tenantId, e.mercado);
   const rutaR = rutaCotizacion(opciones.tenantId, e.mercado);
   return almacen.transaccion(async (tx) => {
     const manual = await tx.leer(rutaM);
-    const base = manual !== null && manual['activo'] !== false && valido(manual) ? manual : await tx.leer(rutaR);
+    const ref = await tx.leer(rutaR);
+    // Banda relativa sobre la referencia del banco central (no el manual); sin referencia utilizable, la absoluta por par.
+    const refValor = valido(ref) && ref['fuente'] !== 'manual' ? ref.valor : null;
+    const [minimo, maximo] = refValor !== null
+      ? [refValor * (1 - BANDA_RELATIVA), refValor * (1 + BANDA_RELATIVA)]
+      : (BANDAS_POR_PAR[par] ?? BANDA_POR_DEFECTO);
+    if (e.valor < minimo * (1 - TOLERANCIA) || e.valor > maximo * (1 + TOLERANCIA)) throw new ValorFueraDeBanda(par, e.valor, minimo, maximo, refValor);
+    const base = manual !== null && manual['activo'] !== false && valido(manual) ? manual : ref;
     const previo = valido(base) ? base.valor : null;
     // Sin base de comparación no hay cómo medir el salto: se exige la confirmación expresa.
     if (e.confirmarSalto !== true && (previo === null || Math.abs(e.valor - previo) / previo > cfg.saltoMaximo)) {
