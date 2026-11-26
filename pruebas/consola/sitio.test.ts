@@ -625,6 +625,22 @@ describe('servicios de la consola', () => {
       transaccion: () => Promise.reject(new Error('no usada')),
     });
 
+    it('publicadoAutomatico: la publicación del sistema posterior a la manual se informa; una manual nueva la borra', async () => {
+      await configurar();
+      const deps = { db, reloj, comercial: COMERCIAL_LEGADO_TRES_MONEDAS, cotizaciones: almacenCot({}) };
+      const ruta = `tenants/${T}/publicado/estado`;
+      db.poner(ruta, { version: 3, publicadoEn: '2026-11-25T10:00:00.000Z', productos: [] });
+      expect((await obtenerTablero(deps, { tenantId: T, actor: sup })).publicadoAutomatico).toBeNull();
+      db.poner(ruta, { version: 4, publicadoEn: '2026-11-25T10:00:00.000Z', precioVivoEn: '2026-11-25T20:07:00.000Z', productos: [] });
+      expect(await obtenerTablero(deps, { tenantId: T, actor: sup })).toMatchObject({
+        publicadoEn: '2026-11-25T10:00:00.000Z', versionPublicada: 4, publicadoAutomatico: { en: '2026-11-25T20:07:00.000Z', motivo: 'producto' },
+      });
+      db.poner(ruta, { version: 5, publicadoEn: '2026-11-25T10:00:00.000Z', precioVivoEn: '2026-11-25T20:07:00.000Z', redondeoVivoEn: '2026-11-25T21:00:00.000Z', productos: [] });
+      expect((await obtenerTablero(deps, { tenantId: T, actor: sup })).publicadoAutomatico).toEqual({ en: '2026-11-25T21:00:00.000Z', motivo: 'redondeo' });
+      db.poner(ruta, { version: 6, publicadoEn: '2026-11-25T10:00:00.000Z', logoVivoEn: '2026-11-25T22:00:00.000Z', productos: [] });
+      expect((await obtenerTablero(deps, { tenantId: T, actor: sup })).publicadoAutomatico).toEqual({ en: '2026-11-25T22:00:00.000Z', motivo: 'logo' });
+    });
+
     it('resume cambios, cotización vigente por mercado y uso frente a los topes', async () => {
       await configurar();
       db.poner(rutaContador(T), { productos: 37, usuarios: 2 });

@@ -101,6 +101,46 @@ describe('tipo de cambio manual', () => {
     await expect(fijarCotizacionManualDe(a, { mercado: 'AR', valor: 1500, actor: adm, ahoraMs: AHORA, confirmarSalto: true }, O)).resolves.toMatchObject({ valor: 1500 });
   });
 
+  it('banda relativa: con 11,83 del banco central se admite de 5,915 a 17,745, bordes incluidos', async () => {
+    const a = await conBcb(11.83);
+    let n = 0;
+    const f = (valor: number) => fijarCotizacionManualDe(a, { mercado: 'BO', valor, actor: adm, ahoraMs: AHORA + n++, confirmarSalto: true }, O);
+    await expect(f(5.915)).resolves.toMatchObject({ valor: 5.915 });
+    await expect(f(17.745)).resolves.toMatchObject({ valor: 17.745 });
+    for (const valor of [5.914, 17.746, 1]) await expect(f(valor)).rejects.toThrow(ValorFueraDeBanda);
+    await expect(f(1)).rejects.toThrow('el valor 1 está fuera del rango admitido para BOB/USD (5,915 a 17,745: ±50 % del banco central)');
+    await expect(f(1)).rejects.toMatchObject({ rango: '5,915 a 17,745', referencia: 11.83 });
+  });
+
+  it('la banda relativa se mide contra el banco central, no contra el manual vigente', async () => {
+    const a = await conBcb(11.83);
+    await fijarCotizacionManualDe(a, { mercado: 'BO', valor: 17, actor: adm, ahoraMs: AHORA, confirmarSalto: true }, O);
+    await expect(fijarCotizacionManualDe(a, { mercado: 'BO', valor: 25, actor: adm, ahoraMs: AHORA + 1, confirmarSalto: true }, O)).rejects.toThrow(ValorFueraDeBanda);
+  });
+
+  it('el texto nunca contradice el rechazo y expone descripcion', async () => {
+    const a = await conBcb(11.83);
+    const e = await fijarCotizacionManualDe(a, { mercado: 'BO', valor: 5.9149, actor: adm, ahoraMs: AHORA, confirmarSalto: true }, O).catch((x) => x);
+    expect(e).toBeInstanceOf(ValorFueraDeBanda);
+    expect(e.message).toContain('el valor 5,9149 está fuera');
+    expect(e.descripcion).toBe('5,915 a 17,745: ±50 % del banco central');
+    const b = await fijarCotizacionManualDe(new AlmacenMemoria(), { mercado: 'BO', valor: 0.00005, actor: adm, ahoraMs: AHORA, confirmarSalto: true }, O).catch((x) => x);
+    expect(b.descripcion).toBe('1 a 100');
+  });
+
+  it('una referencia guardada con fuente manual se ignora y rige la banda absoluta', async () => {
+    const a = new AlmacenMemoria();
+    a.docs.set('tenants/t1/cotizaciones/BO', { valor: 12, fecha: '2026-11-04', fuente: 'manual', cotizacionId: 'x' });
+    await expect(fijarCotizacionManualDe(a, { mercado: 'BO', valor: 50, actor: adm, ahoraMs: AHORA, confirmarSalto: true }, O)).resolves.toMatchObject({ valor: 50 });
+  });
+
+  it('sin referencia usable rige la banda absoluta del par', async () => {
+    const a = new AlmacenMemoria();
+    await expect(fijarCotizacionManualDe(a, { mercado: 'BO', valor: 101, actor: adm, ahoraMs: AHORA, confirmarSalto: true }, O))
+      .rejects.toThrow('el valor 101 está fuera del rango admitido para BOB/USD (1 a 100)');
+    await expect(fijarCotizacionManualDe(a, { mercado: 'BO', valor: 50, actor: adm, ahoraMs: AHORA, confirmarSalto: true }, O)).resolves.toMatchObject({ valor: 50 });
+  });
+
   it('el documento manual no lleva uid; el propietario también puede volver al banco central', async () => {
     const a = await conBcb();
     await fijarCotizacionManualDe(a, { mercado: 'BO', valor: 12.2, actor: adm, ahoraMs: AHORA }, O);
