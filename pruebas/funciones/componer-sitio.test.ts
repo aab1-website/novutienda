@@ -78,7 +78,7 @@ describe('caché del sitio', () => {
   const sitio = (componerSitioTenant(firebase, cabeceras, SITIO_ID) as { hosting: Sitio[] }).hosting[0]!;
 
   it('las rutas sin extensión y html|xml|json quedan en caché 5 minutos', () => {
-    for (const source of ['/', '**/!(*.*)', '**/*.@(html|xml|json)']) expect(cache(sitio, source)).toBe(CORTA);
+    for (const source of ['/', '/!(api|healthz)', '/!(api|healthz)/**/!(*.*)', '**/*.@(html|xml|json)']) expect(cache(sitio, source)).toBe(CORTA);
   });
 
   it('los recursos con hash siguen con caché larga y ninguna regla de caché corta los cubre', () => {
@@ -86,5 +86,35 @@ describe('caché del sitio', () => {
     expect(cache(sitio, '**/*.@(avif|webp|mp4|woff2)')).toBe(LARGA);
     const fuentes = sitio.headers.filter((h) => h.headers.some((x) => x.key === 'Cache-Control' && x.value === CORTA)).map((h) => h.source);
     expect(fuentes.some((s) => s.includes('_astro'))).toBe(false);
+  });
+
+  // Traductor mínimo del glob de Hosting (minimatch con extglob) a RegExp: solo `**`, `*`, `!(a|b)` y `@(a|b)`.
+  const glob = (g: string): RegExp => {
+    let r = '';
+    for (let i = 0; i < g.length; i++) {
+      const resto = g.slice(i);
+      const ext = /^([!@])\(([^)]*)\)/.exec(resto);
+      if (ext !== null) {
+        const alt = ext[2]!.split('|').map((a) => a.replace(/[.+?^${}()[\]\\]/g, '\\$&').replace(/\*/g, '[^/]*'));
+        r += ext[1] === '!' ? `(?!(?:${alt.join('|')})(?:/|$))[^/]+` : `(?:${alt.join('|')})`;
+        i += ext[0].length - 1;
+      } else if (resto.startsWith('**/')) { r += '(?:.*/)?'; i += 2; }
+      else if (resto.startsWith('**')) { r += '.*'; i += 1; }
+      else if (g[i] === '*') r += '[^/]*';
+      else r += g[i]!.replace(/[.+?^${}()[\]\\|]/g, '\\$&');
+    }
+    return new RegExp(`^${r}$`);
+  };
+
+  it('ninguna regla de caché de páginas cubre /api/** ni /healthz: mandan los encabezados de la función', () => {
+    const paginas = sitio.headers.filter((h) => h.headers.some((x) => x.key === 'Cache-Control' && x.value === CORTA));
+    expect(paginas.length).toBeGreaterThan(0);
+    for (const ruta of ['/api/cotizacion', '/api/disponibilidad', '/api/vista', '/api/otra/anidada', '/healthz']) {
+      expect(paginas.filter((h) => glob(h.source).test(ruta)).map((h) => h.source), ruta).toEqual([]);
+    }
+    // El traductor sí calza las páginas reales (guarda contra una prueba vacía).
+    for (const ruta of ['/', '/productos', '/productos/x', '/a/b/c', '/index.html']) {
+      expect(paginas.some((h) => glob(h.source).test(ruta)), ruta).toBe(true);
+    }
   });
 });
