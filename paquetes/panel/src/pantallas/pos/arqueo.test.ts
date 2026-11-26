@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import type { CotizacionesVigentes, MercadoDeclarado } from '../../api/tipos.js';
-import { precioDeCobro } from './arqueo.js';
+import { precioDeCobro, textoCierre } from './arqueo.js';
 
 // Valores calculados a mano con la regla de `centavosDeLinea` (paquetes/pos/src/precio.ts). El panel no declara
 // `@novutienda/pos` como dependencia (la frontera lo impide), así que no se compara contra la función del servidor:
@@ -32,5 +32,20 @@ describe('precioDeCobro: equivale al precio que acepta el servidor', () => {
   });
   it('sin precio en el mercado: sin_precio', () => {
     expect(centavos(precioDeCobro({ precioUSD: { bo: 0, ar: 0 } } as never, mercado({}), 'USD', cot, reglas))).toBe('sin_precio');
+  });
+});
+
+describe('textoCierre', () => {
+  const a = (d: Record<string, number>): never => Object.fromEntries(Object.entries(d).map(([m, x]) => [m, { esperado: 0, contado: 0, diferencia: x }])) as never;
+  it('si todo cuadra, solo dice que el turno se cerró', () => {
+    expect(textoCierre(a({ BOB: 0, USD: 0 }), ['BOB', 'USD'])).toBe('El turno se cerró.');
+  });
+  it('menciona el faltante o el sobrante solo en las monedas con diferencia', () => {
+    const t = textoCierre(a({ BOB: 0, USD: -500, ARS: 1000 }), ['BOB', 'USD', 'ARS']);
+    expect(t).toContain('faltante');
+    expect(t).toContain('USD');
+    expect(t).toContain('sobrante');
+    expect(t).toContain('ARS');
+    expect(t).not.toContain('BOB');
   });
 });

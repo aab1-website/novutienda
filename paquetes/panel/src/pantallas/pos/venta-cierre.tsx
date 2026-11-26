@@ -8,7 +8,7 @@ import { useAvisos } from '../../ui/avisos.js';
 import { Tabla } from '../../ui/tabla.js';
 import { useApp } from '../../ui/contexto.js';
 import { useAccion, useCarga } from '../../ui/hooks.js';
-import { TOTALES_VACIOS, desgloseEfectivo, diferenciaPorMoneda, monedasDelTurno, ordenarMonedas, proyectarTurno } from './arqueo.js';
+import { TOTALES_VACIOS, desgloseEfectivo, diferenciaPorMoneda, monedasDelTurno, ordenarMonedas, proyectarTurno, textoCierre } from './arqueo.js';
 import { formatearMonto, textoACentavos } from '../../util/dinero.js';
 import { lineasGuardadas, textoProductos } from './carritos.js';
 import { CancelarConMotivo } from './venta-carritos.js';
@@ -124,7 +124,7 @@ function CierreListo({ turno, orden, alCerrar, alRetomar }: { turno: TurnoPos; o
   if (cierre !== null) {
     return (
       <Seccion titulo="Turno cerrado">
-        <Alerta tipo="ok">El turno se cerró. La diferencia negativa (faltante) queda registrada tal cual.</Alerta>
+        <Alerta tipo="ok">{textoCierre(cierre.arqueo, orden)}</Alerta>
         <ResumenArqueo cierre={cierre} orden={orden} />
         <button type="button" class="boton boton-cta" onClick={alCerrar}>Continuar</button>
       </Seccion>
