@@ -1,4 +1,4 @@
-import { contenido, enVenta } from '../contenido/instancia.js';
+import { categoriasNavegables, contenido, enVenta } from '../contenido/instancia.js';
 import { marcasDe, productosDeCategoria } from '../contenido/consultas.js';
 import { marcasConRuta, paginasExtra, rutaMarca, rutaPagina } from '../lib/paginas.js';
 import { rutaCategoria, rutaProducto, rutaSeccion, urlAbsoluta } from '../lib/seo.js';
@@ -11,7 +11,7 @@ export function GET(): Response {
   const rutas = [
     '/', '/contacto', '/privacidad',
     ...paginas('/productos', enVenta.length),
-    ...contenido.categorias.flatMap((c) => paginas(rutaCategoria(c.id), productosDeCategoria(enVenta, c.id).length)),
+    ...categoriasNavegables.flatMap((c) => paginas(rutaCategoria(c.id), productosDeCategoria(enVenta, c.id).length)),
     ...marcasConRuta(marcasDe(enVenta)).flatMap((m) => paginas(rutaMarca(m.slug), enVenta.filter((p) => p.marca === m.nombre).length)),
     ...contenido.productos.map((p) => rutaProducto(p)),
     ...contenido.secciones.map((s) => rutaSeccion(s.slug)),
