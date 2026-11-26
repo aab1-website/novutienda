@@ -1,12 +1,14 @@
 /**
  * Cotización en el navegador: se pide a `/api/cotizacion` (una sola fuente, la del núcleo)
- * y se guarda 15 minutos en `sessionStorage`. No hay ninguna tasa en el código: si la API
- * no responde, el precio no se muestra (nunca se inventa).
+ * y se guarda 60 segundos en `sessionStorage`. El peor caso total para que un cambio de tipo
+ * de cambio llegue al visitante es 60 s del navegador + 240 s del CDN (meta: 5 minutos o
+ * menos). No hay ninguna tasa en el código: si la API no responde, el precio no se muestra
+ * (nunca se inventa).
  */
 import { MERCADOS, PAR_DE, type Mercado } from '@novutienda/nucleo';
 import { borrarSeguro, guardarSeguro, leerSeguro, type AlmacenClaveValor } from './almacen.js';
 
-export const VIGENCIA_CACHE_MS = 15 * 60 * 1000;
+export const VIGENCIA_CACHE_MS = 60 * 1000;
 const CLAVE = (m: Mercado): string => `cb.cotizacion.${m}`;
 
 export interface CotizacionCliente {
