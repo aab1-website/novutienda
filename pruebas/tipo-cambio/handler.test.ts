@@ -12,9 +12,9 @@ const copia = (m: string): CopiaCotizacion => ({
 describe('GET /api/cotizacion', () => {
   it('responde ambos mercados con la caché pública pedida', async () => {
     const r = await manejarCotizacion({ metodo: 'GET' }, async (m) => copia(m));
-    expect(CACHE_COTIZACION).toBe('public, max-age=60, s-maxage=300');
+    expect(CACHE_COTIZACION).toBe('public, max-age=0, s-maxage=240');
     expect(r.status).toBe(200);
-    expect(r.headers['Cache-Control']).toBe('public, max-age=60, s-maxage=300');
+    expect(r.headers['Cache-Control']).toBe('public, max-age=0, s-maxage=240');
     expect(r.cuerpo).toEqual({ cotizaciones: { BO: copia('BO'), AR: copia('AR') } });
   });
   it('responde un solo mercado si se pide', async () => {

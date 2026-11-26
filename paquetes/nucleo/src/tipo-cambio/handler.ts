@@ -11,8 +11,12 @@
 import { esMercadoDe, mercadosDe, tieneTipoCambio, type ConfiguracionComercial } from '../tenant/mercados.js';
 import { COMERCIAL_LEGADO_TRES_MONEDAS, SinCotizacionUtilizable, type CopiaCotizacion, type IdMercado, type Mercado } from './tipos.js';
 
-/** Caché: navegador 60 s, CDN 5 min. */
-export const CACHE_COTIZACION = 'public, max-age=60, s-maxage=300';
+/**
+ * Caché con presupuesto de 5 minutos para que un cambio de tipo de cambio llegue al sitio:
+ * el navegador no guarda por HTTP (`max-age=0`), el sitio guarda 60 s en sessionStorage y el
+ * CDN 240 s; peor caso 60 + 240 = 300 s.
+ */
+export const CACHE_COTIZACION = 'public, max-age=0, s-maxage=240';
 
 export interface RespuestaHttp {
   readonly status: number;
