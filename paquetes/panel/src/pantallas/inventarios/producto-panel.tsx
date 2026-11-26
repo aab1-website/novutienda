@@ -153,7 +153,7 @@ export function ProductoPanelLateral({ producto, cot, comercial, existentes, alC
         const deCampo = errorDeServidor(e, mercados);
         if (deCampo === null) {
           // Sin panel donde mostrar el error (la persona cambió de pantalla), se avisa por el aviso fijo.
-          if (!montado.current) avisos.error(`No se guardó ${f.nombre.trim()}: ${e instanceof Error ? e.message : 'error inesperado'}`);
+          if (!montado.current && !(e instanceof ErrorApi && e.codigoHttps === 'unauthenticated')) avisos.error(`No se guardó ${f.nombre.trim()}: ${e instanceof Error ? e.message : 'error inesperado'}`);
           throw e;
         }
         if (!montado.current) {
@@ -209,7 +209,7 @@ export function ProductoPanelLateral({ producto, cot, comercial, existentes, alC
       titulo={nuevo ? 'Nuevo producto' : `Datos del producto: ${producto.nombre}`}
       variante="lateral"
       foco="campo"
-      sucio={sucio}
+      sucio={sucio && !accion.ocupado}
       onCerrar={cerrar}
       alCerrarEnfocar={alCerrarEnfocar}
       pie={

@@ -83,7 +83,7 @@ function Productos(): JSX.Element {
                   <Boton chico variante="secundario" onClick={() => setMostrar(modo === 'bajo' ? '' : 'bajo')}>{modo === 'bajo' ? 'Ver todos' : 'Ver'}</Boton>
                 </Alerta>
               )}
-              <Seccion titulo="Productos" acciones={esAdm && comercial.estado === 'lista' ? <Boton chico onClick={() => setAbierto({ producto: null, etiqueta: 'Nuevo producto' })}>Nuevo producto</Boton> : undefined}>
+              <Seccion titulo="Productos" acciones={esAdm && comercial.estado === 'lista' ? <Boton chico deshabilitado={releyendoAhora} onClick={() => setAbierto({ producto: null, etiqueta: 'Nuevo producto' })}>Nuevo producto</Boton> : undefined}>
                 {comercial.estado === 'error' && <Alerta>{`No se pudo leer la configuración comercial: ${comercial.mensaje}`}</Alerta>}
                 <div class="inv-filtro">
                   <Selector etiqueta="Mostrar" valor={modo} onCambio={(v) => setMostrar(v as Mostrar)} opciones={opcionesMostrar.map((o) => ({ valor: o.valor, texto: o.texto }))} ayuda={ocultas ? `Filtro «Bajo el mínimo»: ${MOTIVO_FILTRO_MINIMO}.` : undefined} />

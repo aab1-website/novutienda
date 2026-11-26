@@ -52,6 +52,8 @@ describe('guardado del producto con la llamada en vuelo', () => {
     await waitFor(() => expect((within(d).getByRole('button', { name: 'Cancelar' }) as HTMLButtonElement).disabled).toBe(true));
     await u.keyboard('{Escape}');
     expect(screen.queryByRole('dialog', { name: /^Datos del producto/ })).not.toBeNull();
+    expect(screen.queryByText(/¿Descartar los cambios\?/)).toBeNull();
+    expect(screen.queryByRole('dialog', { name: /Descartar/ })).toBeNull();
     r.resolver();
     expect(await screen.findByText('Cambios guardados: Cable HDMI 3 m.')).toBeTruthy();
     await waitFor(() => expect(screen.queryByRole('dialog')).toBeNull());
@@ -85,7 +87,7 @@ describe('guardado del producto con la llamada en vuelo', () => {
     expect(await screen.findByText(/Intente de nuevo/)).toBeTruthy();
   });
 
-  it('al guardar un producto y abrir otro enseguida, el cierre del primero no cierra el panel del segundo', async () => {
+  it('con el primer guardado en vuelo no se puede abrir otro producto: el cierre tardío no puede cerrar un panel ajeno', async () => {
     const e = crearEntorno('adm');
     const r = retener(e);
     ver(e);
@@ -93,6 +95,9 @@ describe('guardado del producto con la llamada en vuelo', () => {
     const d = await abrir(u, CABLE);
     await cambiarNombre(u, d, 'Cable HDMI 3 m');
     await u.click(within(d).getByRole('button', { name: 'Guardar cambios' }));
+    // El panel sigue (modal) y Cancelar está apagado: no hay forma de abrir otro con la llamada en vuelo.
+    expect((within(d).getByRole('button', { name: 'Cancelar' }) as HTMLButtonElement).disabled).toBe(true);
+    expect(screen.queryByRole('dialog', { name: `Datos del producto: ${PARLANTE}` })).toBeNull();
     r.resolver();
     await waitFor(() => expect(screen.queryByRole('dialog')).toBeNull());
     await abrir(u, PARLANTE);
@@ -118,6 +123,7 @@ describe('guardado del producto con la llamada en vuelo', () => {
     // La lista aún muestra el nombre viejo: no se ofrece editar sobre datos viejos hasta que llegue la lista nueva.
     const boton = (await screen.findByRole('button', { name: `Datos del producto de ${CABLE}` })) as HTMLButtonElement;
     expect(boton.disabled).toBe(true);
+    expect((screen.getByRole('button', { name: 'Nuevo producto' }) as HTMLButtonElement).disabled).toBe(true);
     await waitFor(() => expect(screen.queryByRole('button', { name: `Datos del producto de ${CABLE}` })).toBeNull());
     const d2 = await abrir(u, 'Cable HDMI 3 m');
     expect((within(d2).getByLabelText(/^Nombre/) as HTMLInputElement).value).toBe('Cable HDMI 3 m');
