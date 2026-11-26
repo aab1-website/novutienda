@@ -23,16 +23,39 @@ export class ConfirmacionRequerida extends Error {
 }
 
 /**
- * Banda absoluta de cordura por par (VENTA/BASE): fuera de ella el valor se rechaza aunque venga confirmado,
- * para que un error de tipeo no frene las ventas. Un par sin entrada usa `BANDA_POR_DEFECTO`.
+ * Banda absoluta de cordura por par (VENTA/BASE), de respaldo cuando no hay referencia del banco central utilizable;
+ * fuera de ella el valor se rechaza aunque venga confirmado, para que un error de tipeo no frene las ventas. Un par sin entrada usa `BANDA_POR_DEFECTO`.
  */
 export const BANDAS_POR_PAR: Readonly<Record<string, readonly [number, number]>> = { 'BOB/USD': [1, 100], 'ARS/USD': [10, 100_000] };
 export const BANDA_POR_DEFECTO: readonly [number, number] = [0.0001, 10_000_000];
 
-/** El valor cae fuera de la banda de cordura del par. */
+/** Banda relativa sobre la referencia del banco central: el manual se admite hasta ±50 % de ella (bordes incluidos). */
+export const BANDA_RELATIVA = 0.5;
+
+const TOLERANCIA = 1e-9;
+/** Número con coma decimal y los decimales necesarios (sin ruido de punto flotante ni ceros de más): nunca redondea un valor hasta contradecir el rechazo. */
+const formatear = (n: number): string => String(Number(n.toPrecision(10))).replace('.', ',');
+const ETIQUETA_BANDA_RELATIVA = `±${formatear(BANDA_RELATIVA * 100)} % del banco central`;
+
+/**
+ * El valor cae fuera del rango admitido del par: ±50 % de la referencia del banco central, o la banda
+ * absoluta si no hay referencia utilizable.
+ */
 export class ValorFueraDeBanda extends RangeError {
-  constructor(readonly par: string, readonly valor: number, readonly minimo: number, readonly maximo: number) {
-    super(`el valor ${valor} está fuera del rango admitido para ${par} (${minimo} a ${maximo})`);
+  /** Rango admitido ya formateado («5,915 a 17,745»). */
+  readonly rango: string;
+  /**
+   * Rango con su origen, listo para mostrar: «5,915 a 17,745: ±50 % del banco central» con referencia,
+   * «1 a 100» con la banda absoluta. Quien traduzca el error usa este campo y no escribe el texto a mano.
+   */
+  readonly descripcion: string;
+  /** `referencia` es el valor del banco central que fijó el rango, o `null` si rigió la banda absoluta. */
+  constructor(readonly par: string, readonly valor: number, readonly minimo: number, readonly maximo: number, readonly referencia: number | null = null) {
+    const rango = `${formatear(minimo)} a ${formatear(maximo)}`;
+    const descripcion = referencia === null ? rango : `${rango}: ${ETIQUETA_BANDA_RELATIVA}`;
+    super(`el valor ${formatear(valor)} está fuera del rango admitido para ${par} (${descripcion})`);
+    this.rango = rango;
+    this.descripcion = descripcion;
     this.name = 'ValorFueraDeBanda';
   }
 }
@@ -42,6 +65,8 @@ const valido = (d: Documento | null): d is Documento & { valor: number; fecha: s
 
 /**
  * Fija el tipo de cambio manual del mercado. Solo administrador con contraseña o propietario.
+ * La referencia de la banda relativa es la automática guardada (no la manual) y se usa aunque su estado sea
+ * `ultimo_verificado` (vieja pero no inválida); una referencia con `fuente: 'manual'` (caso heredado) se ignora.
  * La fecha la pone el servidor (`hoyEn`). El salto de más de `saltoMaximo` (5 %) contra el manual
  * anterior activo, o contra la referencia si no hay, exige `confirmarSalto: true`.
  * Deja una entrada de historial con `por` y `antes`.
@@ -57,14 +82,19 @@ export async function fijarCotizacionManualDe(
   if (e.actor.uid.trim() === '') throw new TipoCambioInvalido('hay que indicar quién carga');
   const par = tieneTipoCambio(opciones.comercial, e.mercado) ? parDe(opciones.comercial, e.mercado) : null;
   if (par === null) throw new TipoCambioInvalido(`el mercado ${e.mercado} no está declarado o no tiene tipo de cambio`);
-  const [minimo, maximo] = BANDAS_POR_PAR[par] ?? BANDA_POR_DEFECTO;
-  if (e.valor < minimo || e.valor > maximo) throw new ValorFueraDeBanda(par, e.valor, minimo, maximo);
   const fecha = hoyEn(e.mercado, e.ahoraMs, opciones.comercial);
   const rutaM = rutaCotizacionManual(opciones.tenantId, e.mercado);
   const rutaR = rutaCotizacion(opciones.tenantId, e.mercado);
   return almacen.transaccion(async (tx) => {
     const manual = await tx.leer(rutaM);
-    const base = manual !== null && manual['activo'] !== false && valido(manual) ? manual : await tx.leer(rutaR);
+    const ref = await tx.leer(rutaR);
+    // Banda relativa sobre la referencia del banco central (no el manual); sin referencia utilizable, la absoluta por par.
+    const refValor = valido(ref) && ref['fuente'] !== 'manual' ? ref.valor : null;
+    const [minimo, maximo] = refValor !== null
+      ? [refValor * (1 - BANDA_RELATIVA), refValor * (1 + BANDA_RELATIVA)]
+      : (BANDAS_POR_PAR[par] ?? BANDA_POR_DEFECTO);
+    if (e.valor < minimo * (1 - TOLERANCIA) || e.valor > maximo * (1 + TOLERANCIA)) throw new ValorFueraDeBanda(par, e.valor, minimo, maximo, refValor);
+    const base = manual !== null && manual['activo'] !== false && valido(manual) ? manual : ref;
     const previo = valido(base) ? base.valor : null;
     // Sin base de comparación no hay cómo medir el salto: se exige la confirmación expresa.
     if (e.confirmarSalto !== true && (previo === null || Math.abs(e.valor - previo) / previo > cfg.saltoMaximo)) {
