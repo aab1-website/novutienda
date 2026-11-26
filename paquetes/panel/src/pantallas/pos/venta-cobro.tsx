@@ -119,6 +119,8 @@ export interface DatosCobro {
   guardarSolicitudCredito?: ((id: string) => Promise<void>) | undefined;
   /** Ante un conflicto de versión del carrito: lo toma, vuelve al carrito y devuelve `true`. */
   alConflicto?: ((e: unknown) => boolean) | undefined;
+  /** Ante un `precio-alterado` (cambió el precio o el tipo de cambio): recarga los datos, vuelve al carrito y avisa. */
+  alPrecioAlterado?: (() => void) | undefined;
 }
 
 /** Si el servidor devolvió faltantes sin nombre de producto o de almacén, los completa con lo que el panel ya tiene. */
@@ -195,6 +197,11 @@ export function VentaCobro({ datos, volver, alVender }: { datos: DatosCobro; vol
       } catch (e) {
         // Otra ventana cambió el carrito: se vuelve a él con la versión vigente y el aviso.
         if (datos.alConflicto?.(e) === true) return;
+        // Cambió el precio o el tipo de cambio: se recargan los datos para no reintentar con el precio viejo.
+        if (e instanceof ErrorApi && e.detalle.codigo === 'precio-alterado' && datos.alPrecioAlterado !== undefined) {
+          datos.alPrecioAlterado();
+          return;
+        }
         throw conNombresDeFaltantes(e, datos);
       }
     }, { error: 'ambos' });
