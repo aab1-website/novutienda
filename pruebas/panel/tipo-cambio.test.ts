@@ -55,7 +55,7 @@ describe('tipo de cambio manual (borde del servidor)', () => {
 
   it('un valor fuera de la banda de cordura se rechaza con un mensaje claro, aun confirmado', async () => {
     const m = await montar();
-    await expect(m.llamar(m.como('ana'), 'cotizacionManual', { mercado: 'BO', valor: 696, confirmarSalto: true })).rejects.toMatchObject({ details: { codigo: 'valor-fuera-de-rango' }, message: expect.stringContaining('a') });
+    await expect(m.llamar(m.como('ana'), 'cotizacionManual', { mercado: 'BO', valor: 696, confirmarSalto: true })).rejects.toMatchObject({ details: { codigo: 'valor-fuera-de-rango' }, message: 'El valor está fuera del rango razonable para BOB/USD (3,48 a 10,44: ±50 % del banco central). Revíselo.' });
   });
 
   it('un salto de más del 5 % exige confirmarSalto', async () => {

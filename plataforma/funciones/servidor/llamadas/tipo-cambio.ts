@@ -152,7 +152,7 @@ export const accionesTipoCambio: TablaImplementaciones = {
         );
       } catch (error) {
         if (error instanceof ValorFueraDeBanda) {
-          throw new HttpsError('invalid-argument', `El valor está fuera del rango razonable para ${error.par} (${error.minimo} a ${error.maximo}). Revíselo.`, { codigo: 'valor-fuera-de-rango' });
+          throw new HttpsError('invalid-argument', `El valor está fuera del rango razonable para ${error.par} (${error.rango}${error.referencia === null ? '' : ': ±50 % del banco central'}). Revíselo.`, { codigo: 'valor-fuera-de-rango' });
         }
         if (error instanceof TipoCambioInvalido) throw new HttpsError('invalid-argument', 'El tipo de cambio indicado no es válido. Revise el mercado y el valor.', { codigo: 'entrada-invalida' });
         throw error;
