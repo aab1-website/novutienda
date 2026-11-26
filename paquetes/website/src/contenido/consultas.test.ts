@@ -1,5 +1,6 @@
 import { describe, expect, it } from 'vitest';
-import { afirmacionVisible, institucionalVisible, buscarProductos, categoriaPorId, filtrarProductos, marcasDe, pendientesDeConfirmar, normalizar, productoPorSlug, productosDeCategoria, seccionesEnMenu, textoModelos } from './consultas.js';
+import { paginar } from '../lib/paginas.js';
+import { categoriasConVenta, productosEnOrdenDeCategorias, afirmacionVisible, institucionalVisible, buscarProductos, categoriaPorId, filtrarProductos, marcasDe, pendientesDeConfirmar, normalizar, productoPorSlug, productosDeCategoria, seccionesEnMenu, textoModelos } from './consultas.js';
 import { contenidoEjemplo as c } from './ejemplo.js';
 
 describe('consultas de contenido', () => {
@@ -45,6 +46,32 @@ describe('consultas de contenido', () => {
     const pendientes = [...c.beneficios.map((b) => b.titulo), c.identidad.cifra!.valor, c.identidad.sello].filter((a) => !a.confirmada);
     expect(pendientes.length).toBeGreaterThanOrEqual(3);
     expect([...pendientesDeConfirmar(c)].sort()).toEqual(pendientes.map((a) => a.texto).sort());
+  });
+
+  it('categoría sin productos a la venta (sin productos o todos agotados) no es navegable', () => {
+    const [a, b] = c.categorias;
+    const vacia = { id: 'vacia', nombre: 'Vacía', icono: a!.icono };
+    const ps = c.productos.filter((p) => p.categoria === a!.id || p.categoria === b!.id).map((p) => (p.categoria === b!.id ? { ...p, disponible: false } : p));
+    expect(categoriasConVenta([a!, b!, vacia], ps).map((x) => x.id)).toEqual([a!.id]);
+  });
+
+  it('categoría desconocida va al final y el orden es estable dentro de cada categoría', () => {
+    const [a, b] = c.categorias;
+    const base = c.productos.find((p) => p.categoria === a!.id)!;
+    const mk = (id: string, categoria: string) => ({ ...base, id, categoria });
+    const ps = [mk('x1', 'rara'), mk('b1', b!.id), mk('a1', a!.id), mk('x2', 'otra'), mk('a2', a!.id), mk('b2', b!.id)];
+    expect(productosEnOrdenDeCategorias(ps, [b!, a!]).map((p) => p.id)).toEqual(['b1', 'b2', 'a1', 'a2', 'x1', 'x2']);
+  });
+
+  it('las páginas 1 y 2 del listado parten el mismo orden del catálogo, sin repetir ni omitir', () => {
+    const base = c.productos[0]!;
+    const cats = c.categorias;
+    const ps = Array.from({ length: 30 }, (_, i) => ({ ...base, id: `p${i}`, categoria: cats[i % cats.length]!.id }));
+    const catalogo = productosEnOrdenDeCategorias(ps, cats);
+    const p1 = paginar(catalogo, 1).items.map((p) => p.id);
+    const p2 = paginar(catalogo, 2).items.map((p) => p.id);
+    expect([...p1, ...p2]).toEqual(catalogo.map((p) => p.id));
+    expect(new Set([...p1, ...p2]).size).toBe(30);
   });
 });
 

@@ -3,7 +3,7 @@ import CatalogoVacio from './CatalogoVacio.astro';
 import Paginacion from './Paginacion.astro';
 import RefinarCatalogo from '../islas/RefinarCatalogo';
 import TarjetaProducto from './TarjetaProducto.astro';
-import { contenido, enVenta } from '../contenido/instancia';
+import { categoriasNavegables, contenido, enVenta } from '../contenido/instancia';
 import { marcasDe } from '../contenido/consultas';
 import type { Producto } from '../contenido/tipos';
 import { paginar } from '../lib/paginas';
@@ -20,7 +20,8 @@ interface Props {
   pagina?: number;
 }
 const { productos, categoriaActual, marcaActual, base, pagina = 1 } = Astro.props;
-const { config, categorias } = contenido;
+const { config } = contenido;
+const categorias = categoriasNavegables;
 const { items, total, pagina: actual } = paginar(productos, pagina);
 const marcas = marcasDe(categoriaActual === undefined ? enVenta : enVenta.filter((p) => p.categoria === categoriaActual));
 ---

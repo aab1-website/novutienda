@@ -1,13 +1,13 @@
 ---
 import PaginaCatalogo from '../componentes/PaginaCatalogo.astro';
-import { enVenta } from '../contenido/instancia';
+import { catalogo } from '../contenido/instancia';
 ---
 <PaginaCatalogo
   titulo="Catálogo de productos"
   descripcion="Todos nuestros productos con precios actualizados en tu moneda."
   subtitulo="Los precios se calculan con la cotización oficial del día."
   migas={[{ texto: 'Inicio', href: '/' }]}
-  productos={enVenta}
+  productos={catalogo}
   base="/productos"
   pagina={1}
 />
