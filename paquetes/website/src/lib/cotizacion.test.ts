@@ -19,7 +19,7 @@ function montar(respuesta: unknown, ok = true): { deps: DepsCotizacion; llamadas
 }
 
 describe('cliente de cotización', () => {
-  it('pide /api/cotizacion una sola vez para ambos mercados y guarda 15 minutos', async () => {
+  it('pide /api/cotizacion una sola vez para ambos mercados y guarda 60 segundos', async () => {
     const { deps, llamadas, reloj } = montar({ cotizaciones: { BO: bo, AR: ar } });
     const c = crearClienteCotizacion(deps);
     const [a, b] = await Promise.all([c.obtener('BO'), c.obtener('AR')]);
