@@ -565,5 +565,7 @@ describe('precio alterado al cobrar: la terminal recarga sus datos', () => {
     expect(document.querySelector('[data-prueba="total-cobro"]')?.textContent).not.toBe(totalViejo);
     await u.click(boton('Confirmar cobro'));
     await screen.findByRole('heading', { name: 'Venta registrada' });
+    // El primer intento fue rechazado y el reintento con el precio nuevo registró una sola venta.
+    expect(e.api.estado.ventas.size).toBe(1);
   });
 });

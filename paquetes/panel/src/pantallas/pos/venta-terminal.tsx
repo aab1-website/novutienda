@@ -91,6 +91,12 @@ function TerminalLista({ turno, alCambiar, mercados, carritoPedido, alUsarPedido
   const c = useCarritoServidor(turno.turnoId, mercados, carritoPedido);
   const [recibo, setRecibo] = useState<{ ventaId: string; carritoId: string; repetida: boolean } | null>(null);
   // Precios que se vieron en esta sesión por carrito, para avisar al retomarlo si cambiaron (el servidor no guarda precios).
+  // Tras un `precio-alterado` se espera a que lleguen los datos nuevos: mientras tanto no se muestra el carrito ni se puede cobrar.
+  const [datosViejos, setDatosViejos] = useState<object | null>(null);
+  const recargarPorPrecio = (): void => {
+    setDatosViejos(datos.datos ?? {});
+    datos.recargar();
+  };
   const preciosVistos = useRef(new Map<string, Record<string, number>>());
   useEffect(() => {
     if (carritoPedido !== undefined && c.activo?.carritoId === carritoPedido) alUsarPedido?.();
@@ -100,6 +106,7 @@ function TerminalLista({ turno, alCambiar, mercados, carritoPedido, alUsarPedido
     return <ReciboFinal ventaId={recibo.ventaId} repetida={recibo.repetida} nuevaVenta={() => { const id = recibo.carritoId; setRecibo(null); void c.retirarCobrado(id); alCambiar(); datos.recargar(); }} />;
   }
   if (datos.cargando || c.cargando) return <Cargando />;
+  if (datosViejos !== null && datos.error === null && datos.datos === datosViejos) return <Cargando />;
   if (datos.error || !datos.datos) return <ErrorCarga error={datos.error ?? 'Sin datos'} reintentar={datos.recargar} />;
   if (c.error !== null) return <ErrorCarga error={c.error} reintentar={c.recargar} />;
   if (c.activo === undefined || c.borrador === null) return <Cargando />;
@@ -116,7 +123,7 @@ function TerminalLista({ turno, alCambiar, mercados, carritoPedido, alUsarPedido
         mercados={mercados}
         datos={datos.datos}
         vistos={preciosVistos.current}
-        recargarDatos={datos.recargar}
+        recargarDatos={recargarPorPrecio}
         alVender={(ventaId, repetida) => setRecibo({ ventaId, carritoId: carritoActivoId, repetida })}
       />
     </div>
