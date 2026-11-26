@@ -33,16 +33,29 @@ export const BANDA_POR_DEFECTO: readonly [number, number] = [0.0001, 10_000_000]
 export const BANDA_RELATIVA = 0.5;
 
 const TOLERANCIA = 1e-9;
-const formatear = (n: number): string => String(Math.round(n * 1000 + TOLERANCIA) / 1000).replace('.', ',');
+/** Número con coma decimal y los decimales necesarios (sin ruido de punto flotante ni ceros de más): nunca redondea un valor hasta contradecir el rechazo. */
+const formatear = (n: number): string => String(Number(n.toPrecision(10))).replace('.', ',');
+const ETIQUETA_BANDA_RELATIVA = `±${formatear(BANDA_RELATIVA * 100)} % del banco central`;
 
-/** El valor cae fuera del rango admitido del par: ±50 % del banco central, o la banda absoluta si no hay referencia utilizable. */
+/**
+ * El valor cae fuera del rango admitido del par: ±50 % de la referencia del banco central, o la banda
+ * absoluta si no hay referencia utilizable.
+ */
 export class ValorFueraDeBanda extends RangeError {
-  /** `referencia` es el valor del banco central que fijó el rango, o `null` si rigió la banda absoluta. */
-  /** Rango admitido ya formateado («5,915 a 17,745»), para que quien traduzca el error no repita el formato. */
+  /** Rango admitido ya formateado («5,915 a 17,745»). */
   readonly rango: string;
+  /**
+   * Rango con su origen, listo para mostrar: «5,915 a 17,745: ±50 % del banco central» con referencia,
+   * «1 a 100» con la banda absoluta. Quien traduzca el error usa este campo y no escribe el texto a mano.
+   */
+  readonly descripcion: string;
+  /** `referencia` es el valor del banco central que fijó el rango, o `null` si rigió la banda absoluta. */
   constructor(readonly par: string, readonly valor: number, readonly minimo: number, readonly maximo: number, readonly referencia: number | null = null) {
-    super(`el valor ${formatear(valor)} está fuera del rango admitido para ${par} (${formatear(minimo)} a ${formatear(maximo)}${referencia === null ? '' : ': ±50 % del banco central'})`);
-    this.rango = `${formatear(minimo)} a ${formatear(maximo)}`;
+    const rango = `${formatear(minimo)} a ${formatear(maximo)}`;
+    const descripcion = referencia === null ? rango : `${rango}: ${ETIQUETA_BANDA_RELATIVA}`;
+    super(`el valor ${formatear(valor)} está fuera del rango admitido para ${par} (${descripcion})`);
+    this.rango = rango;
+    this.descripcion = descripcion;
     this.name = 'ValorFueraDeBanda';
   }
 }
@@ -52,6 +65,8 @@ const valido = (d: Documento | null): d is Documento & { valor: number; fecha: s
 
 /**
  * Fija el tipo de cambio manual del mercado. Solo administrador con contraseña o propietario.
+ * La referencia de la banda relativa es la automática guardada (no la manual) y se usa aunque su estado sea
+ * `ultimo_verificado` (vieja pero no inválida); una referencia con `fuente: 'manual'` (caso heredado) se ignora.
  * La fecha la pone el servidor (`hoyEn`). El salto de más de `saltoMaximo` (5 %) contra el manual
  * anterior activo, o contra la referencia si no hay, exige `confirmarSalto: true`.
  * Deja una entrada de historial con `por` y `antes`.

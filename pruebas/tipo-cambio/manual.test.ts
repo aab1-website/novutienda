@@ -118,6 +118,22 @@ describe('tipo de cambio manual', () => {
     await expect(fijarCotizacionManualDe(a, { mercado: 'BO', valor: 25, actor: adm, ahoraMs: AHORA + 1, confirmarSalto: true }, O)).rejects.toThrow(ValorFueraDeBanda);
   });
 
+  it('el texto nunca contradice el rechazo y expone descripcion', async () => {
+    const a = await conBcb(11.83);
+    const e = await fijarCotizacionManualDe(a, { mercado: 'BO', valor: 5.9149, actor: adm, ahoraMs: AHORA, confirmarSalto: true }, O).catch((x) => x);
+    expect(e).toBeInstanceOf(ValorFueraDeBanda);
+    expect(e.message).toContain('el valor 5,9149 está fuera');
+    expect(e.descripcion).toBe('5,915 a 17,745: ±50 % del banco central');
+    const b = await fijarCotizacionManualDe(new AlmacenMemoria(), { mercado: 'BO', valor: 0.00005, actor: adm, ahoraMs: AHORA, confirmarSalto: true }, O).catch((x) => x);
+    expect(b.descripcion).toBe('1 a 100');
+  });
+
+  it('una referencia guardada con fuente manual se ignora y rige la banda absoluta', async () => {
+    const a = new AlmacenMemoria();
+    a.docs.set('tenants/t1/cotizaciones/BO', { valor: 12, fecha: '2026-11-04', fuente: 'manual', cotizacionId: 'x' });
+    await expect(fijarCotizacionManualDe(a, { mercado: 'BO', valor: 50, actor: adm, ahoraMs: AHORA, confirmarSalto: true }, O)).resolves.toMatchObject({ valor: 50 });
+  });
+
   it('sin referencia usable rige la banda absoluta del par', async () => {
     const a = new AlmacenMemoria();
     await expect(fijarCotizacionManualDe(a, { mercado: 'BO', valor: 101, actor: adm, ahoraMs: AHORA, confirmarSalto: true }, O))
