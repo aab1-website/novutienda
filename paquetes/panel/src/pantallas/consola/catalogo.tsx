@@ -63,7 +63,7 @@ function Tablero(): JSX.Element {
         <dl class="datos">
           <Dato etiqueta="Cambios sin publicar"><span data-prueba="cambios">{d.cambiosSinPublicar}</span></Dato>
           <Dato etiqueta="Último cambio">{fechaHora(d.ultimoCambioEn)}</Dato>
-          <Dato etiqueta="Última publicación del sitio">{d.publicadoEn === null ? 'Todavía no se publicó' : `${fechaHora(d.publicadoEn)} (versión ${d.versionPublicada})`}</Dato>
+          <Dato etiqueta="Última publicación del sitio">{d.publicadoEn === null ? 'Todavía no se publicó' : fechaHora(d.publicadoEn)}</Dato>
         </dl>
         {d.avisoSitio !== null && (
           <Alerta tipo="info">
@@ -85,7 +85,7 @@ function Tablero(): JSX.Element {
         ) : (
           <p class="texto-suave">Solo el administrador publica.</p>
         )}
-        <p class="texto-suave" role={d.ultimaReconstruccion?.estado === 'fallida' && !d.ultimaReconstruccion.enCurso ? 'alert' : 'status'} data-prueba="estado-sitio">{textoUltimaReconstruccion(d.ultimaReconstruccion, d.versionPublicada)}</p>
+        <p class="texto-suave" role={d.ultimaReconstruccion?.estado === 'fallida' && !d.ultimaReconstruccion.enCurso ? 'alert' : 'status'} data-prueba="estado-sitio">{textoUltimaReconstruccion(d.ultimaReconstruccion, d.versionPublicada, d.cambiosSinPublicar)}</p>
         {accion.error && <Alerta>{accion.error}</Alerta>}
         {msg && <Alerta tipo="ok">{msg}</Alerta>}
       </Seccion>
