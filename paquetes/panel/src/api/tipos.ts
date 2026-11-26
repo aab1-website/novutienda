@@ -482,7 +482,7 @@ export interface Recibo {
   readonly descuento?: { readonly monto: number; readonly motivo: string };
   readonly cotizacion: CopiaCotizacion<string> | null;
   readonly lineas: readonly LineaRecibo[];
-  readonly pagos: readonly { readonly medio: string; readonly moneda: string; readonly monto: number }[];
+  readonly pagos: readonly { readonly medio: string; readonly moneda: string; readonly monto: number; readonly cambio?: number }[];
   readonly facturaSuma?: string;
   readonly cliente?: { readonly nombre: string; readonly telefono?: string };
   readonly plantilla: PlantillaRecibo;

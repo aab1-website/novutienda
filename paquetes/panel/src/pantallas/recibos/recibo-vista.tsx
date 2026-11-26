@@ -60,6 +60,7 @@ export function ReciboVista({ recibo, registradoPor }: { recibo: Recibo; registr
         {recibo.pagos.map((p, i) => (
           <li key={i}>
             {p.medio === 'qr' ? `QR registrado por ${registradoPor?.['qr'] ?? 'el vendedor'}` : (MEDIO_TEXTO[p.medio] ?? p.medio)}: {formatearMonto(p.monto, p.moneda)}
+            {p.cambio !== undefined && p.cambio > 0 && <div>Cambio: {formatearMonto(p.cambio, p.moneda)}</div>}
           </li>
         ))}
       </ul>
