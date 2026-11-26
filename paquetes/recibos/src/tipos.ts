@@ -53,11 +53,13 @@ export interface LineaRecibo {
   readonly garantiaHasta?: string;
 }
 
-/** Pago resumido: sin referencias ni importes recibidos o cambio. */
+/** Pago resumido: sin referencias ni importe recibido; el cambio entregado (efectivo) solo si es mayor que cero. */
 export interface PagoRecibo {
   readonly medio: string;
   readonly moneda: string;
   readonly monto: number;
+  /** Cambio entregado al cliente (centavos), en la moneda del pago; ausente si no hubo. */
+  readonly cambio?: number;
 }
 
 export interface AnulacionRecibo {

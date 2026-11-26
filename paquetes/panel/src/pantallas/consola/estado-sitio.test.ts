@@ -10,6 +10,12 @@ describe('textoUltimaReconstruccion', () => {
   it('en curso', () => expect(t({ ...base, enCurso: true })).toBe('Publicando la versión 3: el sitio se actualiza en unos minutos.'));
   it('en curso usa la versión publicada', () => expect(t({ ...base, enCurso: true }, 5)).toBe('Publicando la versión 5: el sitio se actualiza en unos minutos.'));
   it('completada', () => expect(t({ ...base, estado: 'completada', etapa: null })).toBe('El sitio está al día (versión 3).'));
+  it('completada con cambios sin publicar no dice «al día»', () => {
+    const r = t({ ...base, estado: 'completada', etapa: null }, 3, 1);
+    expect(r).toBe('Hay cambios sin publicar: se verán en el sitio al publicar.');
+    expect(r).not.toContain('al día');
+  });
+  it('completada sin cambios sigue «al día»', () => expect(t({ ...base, estado: 'completada', etapa: null }, 3, 0)).toBe('El sitio está al día (versión 3).'));
   it('precio fuera de tope', () => expect(t({ ...base, causas: [{ codigo: 'precio_fuera_de_tope', mercado: 'AR', producto: 'Mate' }] }))
     .toBe('La última publicación no llegó al sitio: el producto «Mate» tiene un precio fuera del tope en Argentina.'));
   it('mercado desconocido y sin producto', () => expect(t({ ...base, causas: [{ codigo: 'precio_fuera_de_tope', mercado: 'CL' }] }))

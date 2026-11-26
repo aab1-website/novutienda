@@ -5,6 +5,7 @@ import { userEvent } from '@testing-library/user-event';
 import { afterEach, describe, expect, it, vi } from 'vitest';
 import { AHORA, crearEntorno, uuid, type Entorno } from '../../ayuda-pruebas.js';
 import type { EstadoEnvio, Recibo } from '../../api/tipos.js';
+import { ReciboVista } from './recibo-vista.js';
 import { PantallaRecibos, TOPE_LISTA, textoEnvio } from './recibos.js';
 
 afterEach(() => {
@@ -118,5 +119,18 @@ describe('Archivo de recibos', () => {
     await u.click(await screen.findByRole('button', { name: 'Preparar WhatsApp' }));
     await waitFor(() => expect(document.querySelectorAll('.aviso-error').length).toBeGreaterThan(0));
     expect(within(screen.getByRole('dialog')).getByRole('alert')).toBeTruthy();
+  });
+});
+
+describe('ReciboVista: cambio', () => {
+  it('muestra «Cambio» solo si el pago lo trae mayor que cero', async () => {
+    const { base } = await conRecibo();
+    const con: Recibo = { ...base, pagos: [{ medio: 'efectivo', moneda: 'USD', monto: 40000, cambio: 5000 }] };
+    render(h(ReciboVista, { recibo: con }));
+    expect(screen.getByText(/Cambio:/).textContent).toContain('50,00');
+    cleanup();
+    const sin: Recibo = { ...base, pagos: [{ medio: 'efectivo', moneda: 'USD', monto: 40000 }] };
+    render(h(ReciboVista, { recibo: sin }));
+    expect(screen.queryByText(/Cambio:/)).toBeNull();
   });
 });

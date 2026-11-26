@@ -1,5 +1,6 @@
 import { esReglaRedondeoValida, type RedondeoPorMoneda } from '@novutienda/nucleo';
-import type { CotizacionesVigentes, MercadoDeclarado, MontosPorMoneda, ProductoPanel, TotalesMoneda, TotalesTurno, TurnoPos } from '../../api/tipos.js';
+import type { CotizacionesVigentes, ResultadoCierre, MercadoDeclarado, MontosPorMoneda, ProductoPanel, TotalesMoneda, TotalesTurno, TurnoPos } from '../../api/tipos.js';
+import { formatearMonto } from '../../util/dinero.js';
 import { precioDeVentaMercado, reglasDeclaradasActuales, type PrecioMercadoVista } from '../../util/precio.js';
 
 export const TOTALES_VACIOS: TotalesMoneda = { efectivo: 0, qr: 0, transferencia: 0, credito: 0, ingresos: 0, egresos: 0 };
@@ -117,4 +118,15 @@ export function precioDeCobro(p: Pick<ProductoPanel, 'precioUSD'>, mercado: Merc
   const r = precioDeVentaMercado(base, mercado, c === null ? null : { par: c.par, valor: c.valor }, reglas);
   // Sin tipo de cambio y cobrando en la moneda base: el monto redondeado se cobra en la moneda elegida.
   return r.tipo === 'precio' && !mercado.tieneTipoCambio ? { ...r, moneda } : r;
+}
+
+/** Aviso del cierre: «El turno se cerró.» y, solo en las monedas con diferencia, el faltante o el sobrante. */
+export function textoCierre(arqueo: ResultadoCierre['arqueo'], orden: readonly string[]): string {
+  const partes: string[] = [];
+  for (const m of ordenarMonedas(Object.keys(arqueo), orden)) {
+    const d = arqueo[m]?.diferencia ?? 0;
+    if (d < 0) partes.push(`faltante de ${formatearMonto(-d, m)} en ${m}`);
+    else if (d > 0) partes.push(`sobrante de ${formatearMonto(d, m)} en ${m}`);
+  }
+  return partes.length === 0 ? 'El turno se cerró.' : `El turno se cerró. Queda registrado un ${partes.join(' y un ')}.`;
 }

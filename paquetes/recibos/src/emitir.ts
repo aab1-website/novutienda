@@ -88,8 +88,8 @@ async function emitirDesdeEvento(tx: TransaccionRecibos, evento: SobreEvento, op
     ...(d.descuento !== undefined && { descuento: { monto: d.descuento.monto, motivo: d.descuento.motivo } }),
     cotizacion: d.cotizacion,
     lineas,
-    // Solo medio, moneda y monto: sin referencias, recibido ni cambio.
-    pagos: d.pagos.map((p) => ({ medio: p.medio, moneda: p.moneda, monto: p.monto })),
+    // Medio, moneda y monto, más el cambio entregado si lo hubo: sin referencias ni importe recibido.
+    pagos: d.pagos.map((p) => ({ medio: p.medio, moneda: p.moneda, monto: p.monto, ...((p.cambio ?? 0) > 0 && { cambio: p.cambio }) })),
     ...(d.cliente !== undefined && {
       cliente: { nombre: d.cliente.nombre, ...(d.cliente.telefono !== undefined && { telefono: d.cliente.telefono }) },
     }),

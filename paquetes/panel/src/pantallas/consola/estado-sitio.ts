@@ -32,6 +32,7 @@ function frase(c: CausaSitioVista): string | null {
 export function textoUltimaReconstruccion(
   u: UltimaReconstruccionVista | null | undefined,
   versionPublicada?: number,
+  cambiosSinPublicar = 0,
 ): string {
   if (!u) {
     return versionPublicada !== undefined && versionPublicada > 0
@@ -39,7 +40,10 @@ export function textoUltimaReconstruccion(
       : 'Todavía no se publicó el sitio.';
   }
   if (u.enCurso) return `Publicando la versión ${versionPublicada ?? u.version}: el sitio se actualiza en unos minutos.`;
-  if (u.estado === 'completada') return `El sitio está al día (versión ${u.version}).`;
+  if (u.estado === 'completada') {
+    if (cambiosSinPublicar > 0) return 'Hay cambios sin publicar: se verán en el sitio al publicar.';
+    return `El sitio está al día (versión ${u.version}).`;
+  }
   if (u.etapa !== null && u.etapa !== 'generar') return TECNICO;
   const frases: string[] = [];
   for (const c of u.causas) {

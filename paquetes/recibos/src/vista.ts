@@ -36,7 +36,10 @@ export function lineasDeTexto(r: Recibo): string[] {
   }
   if (r.descuento !== undefined) t.push(`Descuento: -${formatearMonto(r.descuento.monto, r.moneda)}`);
   t.push(`TOTAL: ${formatearMonto(r.total, r.moneda)}`);
-  for (const p of r.pagos) t.push(`Pago ${MEDIOS[p.medio] ?? p.medio}: ${formatearMonto(p.monto, p.moneda)}`);
+  for (const p of r.pagos) {
+    t.push(`Pago ${MEDIOS[p.medio] ?? p.medio}: ${formatearMonto(p.monto, p.moneda)}`);
+    if (p.cambio !== undefined && p.cambio > 0) t.push(`Cambio: ${formatearMonto(p.cambio, p.moneda)}`);
+  }
   if (r.cotizacion !== null) {
     t.push(`Cotización ${r.cotizacion.par}: ${String(r.cotizacion.valor)} (${r.cotizacion.fuente}, ${r.cotizacion.fecha})`);
   }
@@ -61,7 +64,7 @@ export function renderizarReciboHtml(r: Recibo): string {
         `<tr><td>${e(l.nombre)}${l.series.length > 0 ? `<br><small>Serie: ${e(l.series.join(', '))}</small>` : ''}${l.garantiaHasta !== undefined ? `<br><small>Garantía hasta: ${e(l.garantiaHasta)}</small>` : ''}</td><td>${String(l.cantidad)}</td><td>${e(formatearMonto(l.precioUnitario, r.moneda))}</td><td>${e(formatearMonto(l.subtotal, r.moneda))}</td></tr>`,
     )
     .join('');
-  const pagos = r.pagos.map((p) => `<li>${e(MEDIOS[p.medio] ?? p.medio)}: ${e(formatearMonto(p.monto, p.moneda))}</li>`).join('');
+  const pagos = r.pagos.map((p) => `<li>${e(MEDIOS[p.medio] ?? p.medio)}: ${e(formatearMonto(p.monto, p.moneda))}</li>${p.cambio !== undefined && p.cambio > 0 ? `<li>Cambio: ${e(formatearMonto(p.cambio, p.moneda))}</li>` : ''}`).join('');
   const bloque = (titulo: string, v: string | undefined): string => (v === undefined ? '' : `<p><strong>${e(titulo)}</strong> ${e(v)}</p>`);
   return [
     '<!doctype html><html lang="es"><head><meta charset="utf-8">',

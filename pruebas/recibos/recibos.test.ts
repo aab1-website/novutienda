@@ -3,7 +3,7 @@ import { MENSAJE_NIT, validarEvento, type DatosVentaAnuladaV1, type DatosVentaCo
 import {
   EnviadorSimulado, EnviadorWaMe, PlantillaInvalida, ReciboNoEncontrado, AccionNoPermitida, buscarComprobantes, enviarRecibo, escaparHtml,
   generarPdfRecibo, guardarPlantilla, manejarVentaAnulada, manejarVentaConfirmada, manifiestoRecibos, referenciarFacturaSuma,
-  renderizarReciboHtml, rutaAnulacionPendiente, rutaPlantilla, rutaRecibo, plantillaVigente, validarPlantilla, type Recibo,
+  renderizarReciboHtml, lineasDeTexto, rutaAnulacionPendiente, rutaPlantilla, rutaRecibo, plantillaVigente, validarPlantilla, type Recibo,
 } from '@novutienda/recibos';
 import { DobleDb } from './doble-db.js';
 
@@ -60,6 +60,23 @@ describe('emisión desde venta.confirmada', () => {
     await manejarVentaConfirmada(db, eventoVenta('t1', 'v1'), AHORA);
     expect(JSON.stringify(recibo(db, 't1', 'v1'))).not.toContain('REF-SECRETA');
     expect(recibo(db, 't1', 'v1').pagos[0]).toEqual({ medio: 'qr', moneda: 'BOB', monto: 125000 });
+  });
+
+  it('guarda y muestra el cambio entregado solo cuando es mayor que cero', async () => {
+    const db = new DobleDb();
+    const conCambio = { total: 35000, pagos: [{ medio: 'efectivo', moneda: 'BOB', monto: 40000, recibido: 40000, cambio: 5000 }] } as Extra;
+    await manejarVentaConfirmada(db, eventoVenta('t1', 'v1', conCambio), AHORA);
+    const r = recibo(db, 't1', 'v1');
+    expect(r.pagos[0]).toEqual({ medio: 'efectivo', moneda: 'BOB', monto: 40000, cambio: 5000 });
+    expect(lineasDeTexto(r).join('\n')).toContain('Cambio: ');
+    expect(renderizarReciboHtml(r)).toContain('Cambio: ');
+
+    const sin = { total: 40000, pagos: [{ medio: 'efectivo', moneda: 'BOB', monto: 40000, cambio: 0 }] } as Extra;
+    await manejarVentaConfirmada(db, eventoVenta('t1', 'v2', sin), AHORA);
+    const r2 = recibo(db, 't1', 'v2');
+    expect(r2.pagos[0]).toEqual({ medio: 'efectivo', moneda: 'BOB', monto: 40000 });
+    expect(lineasDeTexto(r2).join('\n')).not.toContain('Cambio');
+    expect(renderizarReciboHtml(r2)).not.toContain('Cambio');
   });
 
   it('publica recibo.emitido válido en la misma transacción, con la garantía por serie', async () => {

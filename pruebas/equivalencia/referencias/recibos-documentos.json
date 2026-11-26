@@ -45,6 +45,7 @@
     "numero": "A-000001",
     "pagos": [
       {
+        "cambio": 10000,
         "medio": "efectivo",
         "moneda": "BOB",
         "monto": 110000
@@ -101,6 +102,7 @@
     "numero": "A-000002",
     "pagos": [
       {
+        "cambio": 92,
         "medio": "efectivo",
         "moneda": "USD",
         "monto": 500
@@ -164,6 +166,7 @@
     "numero": "A-000003",
     "pagos": [
       {
+        "cambio": 100000,
         "medio": "efectivo",
         "moneda": "ARS",
         "monto": 2100000
