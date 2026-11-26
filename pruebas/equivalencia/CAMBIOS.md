@@ -65,3 +65,8 @@ Motivo: 25/11/2026, decisión de Andres: BOB a bolivianos enteros y ARS al múlt
 
 Sello: 498b4d11724f45a1e1f3ac026ed1b816c372c15094baa5574dd62779f4bee163
 Motivo: la caché del CDN de /api/cotizacion baja a 240 s y la del navegador a 60 s para que un cambio de tipo de cambio llegue al sitio en 5 minutos o menos.
+
+## Regeneración 4a1d6de15a64
+
+Sello: 4a1d6de15a64393517b0b1bcc3e39c78c50c8bc0122503e3be4e90713446bce3
+Motivo: el recibo muestra el cambio entregado en efectivo (`pagos[].cambio` y la línea «Cambio: …»), decisión de Andres del 25/11/2026 tras la batería integral.
