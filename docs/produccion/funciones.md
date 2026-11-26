@@ -159,7 +159,7 @@ Hosting reescribe `/api/**` y `/healthz` a la función `api` (región `us-east1`
 |---|---|---|
 | `GET /api/salud` | ninguna | `200 ok` (texto). Es la ruta de salud pública (`HEALTH_PATH`): el frontend de Google intercepta `/healthz` exacto en Cloud Run |
 | `GET /healthz` | ninguna | `200 ok` solo en el emulador y las pruebas; en Cloud Run no llega a la función |
-| `GET /api/cotizacion[?mercado=BO\|AR]` | pública | handler del núcleo; `Cache-Control: public, max-age=60, s-maxage=300` |
+| `GET /api/cotizacion[?mercado=BO\|AR]` | pública | handler del núcleo; `Cache-Control: public, max-age=0, s-maxage=240` |
 | `GET /api/disponibilidad?ids=a,b` | pública | `{ disponibilidad: { id: 'disponible'\|'agotado' } }`, nunca cantidades |
 | `GET /api/vista?id=<productoId>` · `POST /api/vista` | GET pública; POST solo desde el mismo sitio (`Origin` o `Referer` del host del tenant; otro origen, `403`) | POST suma una vista a un producto publicado; GET devuelve el número de vistas. `Cache-Control: public, max-age=60` en GET. Un límite por origen y producto y un tope global por instancia, en memoria, sin guardar la IP. La ficha lo muestra desde 10 vistas |
 | `POST /api/contacto` | límite en memoria por origen (antes de todo) + App Check de un solo uso (`X-Firebase-AppCheck`) + límite de tasa por origen + reCAPTCHA Enterprise | `200 { ok, repetido }`; `401 app_check`; `403 recaptcha`; `429` con `Retry-After`; idempotente por `envioId` |
