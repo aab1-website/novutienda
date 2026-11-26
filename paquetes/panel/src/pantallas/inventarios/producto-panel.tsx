@@ -78,6 +78,12 @@ export function ProductoPanelLateral({ producto, cot, comercial, existentes, alC
   const [confirmando, setConfirmando] = useState(false);
   const [pideFoco, setPideFoco] = useState(0);
   const cuerpo = useRef<HTMLDivElement>(null);
+  /** El panel sigue en pantalla: si la llamada termina con el panel ya desmontado, el resultado se avisa por el aviso fijo. */
+  const montado = useRef(true);
+  useEffect(() => {
+    montado.current = true;
+    return () => { montado.current = false; };
+  }, []);
   /** Un identificador de operación por intento de guardado; el mismo en un reintento con los mismos datos. */
   const operaciones = useRef(new Map<string, { firma: string; id: string }>());
 
@@ -112,6 +118,8 @@ export function ProductoPanelLateral({ producto, cot, comercial, existentes, alC
   };
 
   const cerrar = (): void => {
+    // Con el guardado en vuelo el panel no se cierra: la persona vería desaparecer el panel sin saber si se guardó.
+    if (accion.ocupado) return;
     borrador.descartar();
     alCerrar(false);
   };
@@ -143,7 +151,15 @@ export function ProductoPanelLateral({ producto, cot, comercial, existentes, alC
         }
       } catch (e) {
         const deCampo = errorDeServidor(e, mercados);
-        if (deCampo === null) throw e;
+        if (deCampo === null) {
+          // Sin panel donde mostrar el error (la persona cambió de pantalla), se avisa por el aviso fijo.
+          if (!montado.current && !(e instanceof ErrorApi && e.codigoHttps === 'unauthenticated')) avisos.error(`No se guardó ${f.nombre.trim()}: ${e instanceof Error ? e.message : 'error inesperado'}`);
+          throw e;
+        }
+        if (!montado.current) {
+          avisos.error(`No se guardó ${f.nombre.trim()}: ${deCampo.texto}`);
+          return;
+        }
         setConfirmando(false);
         setDelServidor({ [deCampo.campo]: deCampo.texto });
         setIntento(true);
@@ -154,6 +170,7 @@ export function ProductoPanelLateral({ producto, cot, comercial, existentes, alC
       operaciones.current.clear();
       marcarGuardado();
       borrador.descartar();
+      if (!montado.current) return;
       setConfirmando(false);
       alCerrar(true);
     });
@@ -192,12 +209,12 @@ export function ProductoPanelLateral({ producto, cot, comercial, existentes, alC
       titulo={nuevo ? 'Nuevo producto' : `Datos del producto: ${producto.nombre}`}
       variante="lateral"
       foco="campo"
-      sucio={sucio}
+      sucio={sucio && !accion.ocupado}
       onCerrar={cerrar}
       alCerrarEnfocar={alCerrarEnfocar}
       pie={
         <>
-          <Boton variante="secundario" onClick={() => confirmarSalida(cerrar)}>{soloLectura ? 'Cerrar' : 'Cancelar'}</Boton>
+          <Boton variante="secundario" deshabilitado={accion.ocupado} onClick={() => confirmarSalida(cerrar)}>{soloLectura ? 'Cerrar' : 'Cancelar'}</Boton>
           {esAdm && <Boton onClick={guardar} ocupado={accion.ocupado && !confirmando}>{nuevo ? 'Crear producto' : 'Guardar cambios'}</Boton>}
         </>
       }
