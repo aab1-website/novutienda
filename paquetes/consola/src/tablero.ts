@@ -28,10 +28,25 @@ export interface UltimaReconstruccionTablero {
   readonly causas: readonly { readonly codigo: CodigoCausaSitio; readonly mercado?: string; readonly producto?: string }[];
 }
 
+function leerPublicadoAutomatico(pub: Readonly<Record<string, unknown>> | undefined): Tablero['publicadoAutomatico'] {
+  const candidatos: { en: string; motivo: 'producto' | 'redondeo' }[] = [];
+  for (const [campo, motivo] of [['precioVivoEn', 'producto'], ['redondeoVivoEn', 'redondeo']] as const) {
+    const v = pub?.[campo];
+    if (typeof v === 'string' && !Number.isNaN(Date.parse(v))) candidatos.push({ en: v, motivo });
+  }
+  candidatos.sort((a, b) => Date.parse(b.en) - Date.parse(a.en));
+  return candidatos[0] ?? null;
+}
+
 export interface Tablero {
   readonly cambiosSinPublicar: number;
   readonly ultimoCambioEn: string;
   readonly publicadoEn: string | null;
+  /**
+   * Última publicación hecha por el sistema solo (cambio vivo de producto o de redondeo) POSTERIOR a `publicadoEn`; `null` si la
+   * versión vigente es la de la publicación manual. Una publicación manual reescribe `publicado/estado` y la borra.
+   */
+  readonly publicadoAutomatico: { readonly en: string; readonly motivo: 'producto' | 'redondeo' } | null;
   readonly versionPublicada: number;
   /** Si un retiro automático dejó el sitio sin productos o sin fotos; `null` si no hay aviso. */
   readonly avisoSitio: AvisoSitio | null;
@@ -127,6 +142,7 @@ export async function obtenerTablero(deps: DepsTablero, e: { tenantId: string; a
     cambiosSinPublicar: base.estado.cambios,
     ultimoCambioEn: base.estado.ultimoCambioEn,
     publicadoEn: typeof base.publicado?.['publicadoEn'] === 'string' ? base.publicado['publicadoEn'] : null,
+    publicadoAutomatico: leerPublicadoAutomatico(base.publicado),
     versionPublicada: entero(base.publicado?.['version']),
     avisoSitio: base.estado.avisoSitio,
     ultimaReconstruccion: leerUltimaReconstruccion(base.ultima, base.nombres, entero(base.publicado?.['version'])),

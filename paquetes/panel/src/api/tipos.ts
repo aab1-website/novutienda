@@ -712,6 +712,8 @@ export interface Tablero {
   readonly cambiosSinPublicar: number;
   readonly ultimoCambioEn: string;
   readonly publicadoEn: string | null;
+  /** Publicación automática posterior a `publicadoEn` (cambio de producto o de redondeo); `null` si la vigente es manual. */
+  readonly publicadoAutomatico: { readonly en: string; readonly motivo: 'producto' | 'redondeo' } | null;
   readonly versionPublicada: number;
   /** Si un retiro automático dejó el sitio sin productos o sin fotos (`en`: instante ISO del retiro); `null` si no hay aviso. */
   readonly avisoSitio: { readonly motivo: 'sin_productos' | 'sin_fotos'; readonly en: string } | null;

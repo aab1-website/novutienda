@@ -2,7 +2,7 @@ import type { JSX } from 'preact';
 import { useEffect, useRef, useState } from 'preact/hooks';
 import { esWhatsappValido, pareceNumeroDeRelleno } from './whatsapp.js';
 import { Miniatura } from './miniatura-vista.js';
-import { ID_PORTADA, LIMITES_PANEL, PLANTILLAS_SITIO, type Carrusel, type Medio, type ConfigSitio, type PlantillaSitio } from '../../api/tipos.js';
+import { ID_PORTADA, LIMITES_PANEL, PLANTILLAS_SITIO, type Carrusel, type Medio, type ConfigSitio, type PlantillaSitio, type Tablero as TableroApi } from '../../api/tipos.js';
 import { ErrorApi, mensajeDeError } from '../../api/errores.js';
 import { Alerta, Boton, BotonConfirmado, Campo, Cargando, Dato, ErrorCarga, Pestanas, Seccion, Vacio, fechaHora } from '../../ui/comun.js';
 import { useAvisos } from '../../ui/avisos.js';
@@ -63,7 +63,7 @@ function Tablero(): JSX.Element {
         <dl class="datos">
           <Dato etiqueta="Cambios sin publicar"><span data-prueba="cambios">{d.cambiosSinPublicar}</span></Dato>
           <Dato etiqueta="Último cambio">{fechaHora(d.ultimoCambioEn)}</Dato>
-          <Dato etiqueta="Última publicación del sitio">{d.publicadoEn === null ? 'Todavía no se publicó' : fechaHora(d.publicadoEn)}</Dato>
+          <Dato etiqueta="Última publicación del sitio"><span data-prueba="ultima-publicacion">{textoUltimaPublicacion(d)}</span></Dato>
         </dl>
         {d.avisoSitio !== null && (
           <Alerta tipo="info">
@@ -409,6 +409,16 @@ function CategoriasDelSitio(): JSX.Element {
     categoriasDeProductos: async () => (await api.llamar('listarProductos', {})).map((p) => p.categoria),
   };
   return <PantallaCategorias servicio={servicio} />;
+}
+
+/** La fecha es la de la versión vigente: si el sistema publicó solo después de la manual, se muestra esa y se dice por qué. */
+function textoUltimaPublicacion(d: Pick<TableroApi, 'publicadoEn' | 'publicadoAutomatico'>): string {
+  const auto = d.publicadoAutomatico;
+  if (auto !== null && (d.publicadoEn === null || Date.parse(auto.en) >= Date.parse(d.publicadoEn))) {
+    const porQue = auto.motivo === 'redondeo' ? 'al cambiar el redondeo' : 'por un cambio en un producto';
+    return `${fechaHora(auto.en)} (automática, ${porQue})`;
+  }
+  return d.publicadoEn === null ? 'Todavía no se publicó' : fechaHora(d.publicadoEn);
 }
 
 export function PantallaCatalogo({ sub }: { sub: string }): JSX.Element {

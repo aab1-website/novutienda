@@ -28,6 +28,23 @@ describe('catálogo: sin exportar', () => {
   });
 });
 
+describe('catálogo: fecha de la última publicación', () => {
+  it('si el sistema publicó solo después de la manual, muestra esa fecha y dice que fue automática', async () => {
+    const e = crearEntorno('adm');
+    const api = e.api as unknown as { llamar: (a: string, d: unknown) => Promise<Record<string, unknown>> };
+    const real = api.llamar.bind(api);
+    vi.spyOn(api, 'llamar').mockImplementation(async (a, d) => {
+      const r = await real(a, d);
+      return a === 'obtenerTablero'
+        ? { ...r, publicadoEn: '2026-11-25T10:00:00.000Z', publicadoAutomatico: { en: '2026-11-25T20:07:00.000Z', motivo: 'producto' } }
+        : r;
+    });
+    render(e.envolver(h(PantallaCatalogo, { sub: 'tablero' })));
+    await waitFor(() => expect(document.querySelector('[data-prueba="ultima-publicacion"]')).not.toBeNull());
+    expect(document.querySelector('[data-prueba="ultima-publicacion"]')?.textContent ?? '').toMatch(/\(automática, por un cambio en un producto\)/);
+  });
+});
+
 describe('catálogo: mercados declarados', () => {
   it('el tenant de referencia ve los nombres de sus mercados', async () => {
     const e = crearEntorno('adm');
