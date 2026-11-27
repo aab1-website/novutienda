@@ -1,10 +1,18 @@
 # Estado del proyecto
 
-Última actualización: 11/11/2026 (sitio real en staging con fotos; sigue el pase a producción).
+Última actualización: 27/11/2026 (relevo de la sesión principal).
 
 **El estado vivo de la arquitectura no se escribe aquí: lo imprime `pnpm zonas`** (pieza → zona, archivos
 sin zona, cruces de importación y qué deuda queda). Lo que sigue son hitos y pendientes que no se
 derivan del código; las cifras caducan y por eso no se copian.
+
+## Punto de retorno (27/11/2026, relevo de la sesión principal)
+
+- **Qué se hacía:** batería integral de Casa Bermejo antes de la guía final de Silvana. Parte NovuTienda 100 %. Parte WhatsApp en pausa: el asistente de NovuChat no ofrece catálogo y recorta listas; lo corrige la sesión de NovuChat «Corrección y ajustes Novuchat Casa Bermejo», que avisará una vez cuando esté en vivo.
+- **Qué sigue:** al aviso, repetir en vivo por WhatsApp desde el carrito real («COMPRAR» → chat → resumen → QR de monto abierto → comprobante N-11 → confirmación en la consola de NovuChat → una sola baja de stock), además de recojo, N-10 sin stock y catálogo completo; luego, el botón a Andres para la guía final.
+- **Hecho el 27/11:** PR 235 a 248 en staging; el 248 agrega la nota opcional de «Mi pedido» al mensaje de WhatsApp (probada en staging).
+- **Traspasado de la sesión sitio-consola:** verificar S6-3 a S6-5 contra el PR 223; disparo de reconstrucción de punta a punta y retiro de la versión vieja de su secreto (con botón; renovar el token antes del 15/02/2027); S2-3, S7-4; bloques P (proyecto y dominios del cliente) y O (operadores con Google); el caso de `sitio/negocio` inválido tras una publicación válida.
+- **Espera a Andres:** nada bloqueante. Emil: fotos de la tienda y frases de búsqueda. Andres o Emil: marcar eventos clave en Google Analytics. Andres: cargar los datos de cobro en pesos argentinos en NovuChat.
 
 ## Hecho
 
