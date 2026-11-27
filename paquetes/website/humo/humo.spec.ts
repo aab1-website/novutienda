@@ -292,6 +292,11 @@ test.describe('precio, país y compra', () => {
     expect(mensaje).toContain('(cód. ejemplo-tv-55): Bs 4.500 c/u, subtotal Bs 4.500');
     expect(mensaje).toContain('(cód. ejemplo-tv-43): precio a consultar');
     expect(mensaje).toContain('Total referencial: Bs 4.500');
+    // La nota opcional viaja en su línea, después del total y antes de la leyenda, también en el botón flotante.
+    await dlg.getByLabel('Nota para la tienda (opcional)').fill('Entregar después\nde las 18');
+    const conNota = decodeURIComponent((await dlg.getByRole('link', { name: /ENVIAR PEDIDO POR WHATSAPP/ }).getAttribute('href')) ?? '');
+    expect(conNota).toContain('Total referencial: Bs 4.500\nNota: Entregar después de las 18\nEl precio final y el envío se confirman por WhatsApp');
+    await expect.poll(async () => new URL((await page.locator('a.whatsapp-flotante').getAttribute('href')) ?? '').searchParams.get('text')).toContain('Nota: Entregar después de las 18');
   });
 
   test('el botón flotante de WhatsApp lleva el pedido cuando hay productos y la consulta general cuando no', async ({ page }) => {

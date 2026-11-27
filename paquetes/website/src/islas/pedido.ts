@@ -47,6 +47,6 @@ export function usePedido(carrito: Carrito): { readonly t: TotalReferencial | nu
 }
 
 /** Enlace de WhatsApp del pedido: con precios y total cuando hay total; sin ningún precio, «precio a consultar» por línea. */
-export function enlacePedido(whatsapp: string | null, carrito: Carrito, t: TotalReferencial | null): string | null {
-  return enlaceWhatsApp(whatsapp, mensajeDePedido(carrito, t));
+export function enlacePedido(whatsapp: string | null, carrito: Carrito, t: TotalReferencial | null, nota = ''): string | null {
+  return enlaceWhatsApp(whatsapp, mensajeDePedido(carrito, t, nota));
 }

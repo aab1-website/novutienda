@@ -10,7 +10,7 @@ import { enlaceWhatsApp, mensajeDePedido } from './whatsapp.js';
  */
 export type EnlacePedido = { readonly estado: 'cargando' } | { readonly estado: 'listo'; readonly enlace: string | null };
 
-export function enlaceSegunPrecios(whatsapp: string | null, carrito: Carrito, t: TotalReferencial | null, fallo: boolean): EnlacePedido {
+export function enlaceSegunPrecios(whatsapp: string | null, carrito: Carrito, t: TotalReferencial | null, fallo: boolean, nota = ''): EnlacePedido {
   if (t === null && !fallo) return { estado: 'cargando' };
-  return { estado: 'listo', enlace: enlaceWhatsApp(whatsapp, mensajeDePedido(carrito, t)) };
+  return { estado: 'listo', enlace: enlaceWhatsApp(whatsapp, mensajeDePedido(carrito, t, nota)) };
 }

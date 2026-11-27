@@ -3,11 +3,12 @@ import type { Carrito as TipoCarrito } from '../lib/carrito.js';
 import { totalUnidades } from '../lib/carrito.js';
 import { EVENTOS, escuchar } from '../lib/eventos.js';
 import { type TotalReferencial } from '../lib/total-referencial.js';
+import { CLAVE_NOTA, MAX_NOTA } from '../lib/nota.js';
 import { LEYENDA_TOTAL } from '../lib/whatsapp.js';
 import { Dialogo } from './Dialogo.js';
 import { Icono } from './Icono.js';
 import { enlacePedido, usePedido } from './pedido.js';
-import { cambiarEnCarrito, cargarCarrito, quitarDelCarrito, vaciarCarrito } from './carrito-store.js';
+import { cambiarEnCarrito, cargarCarrito, cargarNota, guardarNota, quitarDelCarrito, vaciarCarrito } from './carrito-store.js';
 
 /** «Total referencial» en pantalla. */
 function TotalPedido({ t, fallo }: { t: TotalReferencial | null; fallo: boolean }) {
@@ -28,13 +29,34 @@ function TotalPedido({ t, fallo }: { t: TotalReferencial | null; fallo: boolean 
   );
 }
 
+/** Nota opcional para la tienda: viaja en el mensaje de WhatsApp como «Nota: …». */
+function NotaPedido({ nota }: { nota: string }) {
+  const usados = Array.from(nota).length;
+  return (
+    <div class="nota-pedido">
+      <label for="nota-pedido">Nota para la tienda (opcional)</label>
+      <textarea
+        id="nota-pedido"
+        rows={3}
+        maxLength={MAX_NOTA}
+        placeholder="Por ejemplo: color, horario de entrega o una consulta"
+        aria-describedby="nota-pedido-ayuda"
+        value={nota}
+        onInput={(e) => guardarNota((e.currentTarget as HTMLTextAreaElement).value)}
+      />
+      <p id="nota-pedido-ayuda" class="dialogo-texto">Va en el mensaje de WhatsApp. {usados}/{MAX_NOTA}</p>
+    </div>
+  );
+}
+
 /** Total y envío del pedido: el mensaje de WhatsApp lleva los mismos precios y el mismo total que se ven aquí. */
-function ResumenPedido({ carrito, whatsapp }: { carrito: TipoCarrito; whatsapp: string | null }) {
+function ResumenPedido({ carrito, whatsapp, nota }: { carrito: TipoCarrito; whatsapp: string | null; nota: string }) {
   const { t, fallo } = usePedido(carrito);
-  const enlace = enlacePedido(whatsapp, carrito, t);
+  const enlace = enlacePedido(whatsapp, carrito, t, nota);
   return (
     <>
       <TotalPedido t={t} fallo={fallo} />
+      <NotaPedido nota={nota} />
       {enlace !== null ? (
         <a class="boton boton-cta boton-ancho" href={enlace} target="_blank" rel="noopener noreferrer"><Icono nombre="chat" tamano={18} /> ENVIAR PEDIDO POR WHATSAPP</a>
       ) : (
@@ -48,15 +70,19 @@ function ResumenPedido({ carrito, whatsapp }: { carrito: TipoCarrito; whatsapp: 
 export default function Carrito({ whatsapp }: { whatsapp: string | null }) {
   const [abierto, setAbierto] = useState(false);
   const [carrito, setCarrito] = useState<TipoCarrito>([]);
+  const [nota, setNota] = useState('');
 
   useEffect(() => {
     setCarrito(cargarCarrito());
+    setNota(cargarNota());
     const paradas = [
       escuchar<TipoCarrito>(EVENTOS.carrito, setCarrito),
+      escuchar<string>(EVENTOS.nota, setNota),
       escuchar<void>(EVENTOS.abrirCarrito, () => setAbierto(true)),
     ];
     const entreVentanas = (e: StorageEvent): void => {
       if (e.key === null || e.key === 'cb.carrito') setCarrito(cargarCarrito());
+      if (e.key === null || e.key === CLAVE_NOTA) setNota(cargarNota());
     };
     window.addEventListener('storage', entreVentanas);
     return () => {
@@ -99,7 +125,7 @@ export default function Carrito({ whatsapp }: { whatsapp: string | null }) {
                   </li>
                 ))}
               </ul>
-              <ResumenPedido carrito={carrito} whatsapp={whatsapp} />
+              <ResumenPedido carrito={carrito} whatsapp={whatsapp} nota={nota} />
               <button type="button" class="enlace-boton" onClick={() => vaciarCarrito()}>Vaciar pedido</button>
             </>
           )}

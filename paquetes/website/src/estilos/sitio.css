@@ -306,6 +306,10 @@ button.whatsapp-flotante { border: 0; padding: 0; cursor: progress; opacity: .75
 .total-linea { display: flex; flex-wrap: wrap; align-items: baseline; gap: 4px 8px; }
 .total-linea strong { font-size: 18px; }
 .total-aviso { font-size: 13px; color: var(--cb-texto-suave); }
+.nota-pedido { display: flex; flex-direction: column; gap: 6px; }
+.nota-pedido label { font-size: 14px; font-weight: 500; }
+.nota-pedido textarea { width: 100%; min-height: 72px; padding: 8px 12px; border-radius: 10px; border: 1px solid var(--cb-borde-control); background: var(--cb-superficie); color: var(--cb-texto); resize: vertical; }
+.nota-pedido .dialogo-texto { font-size: 13px; }
 .campo-conversion { display: flex; flex-direction: column; gap: 6px; font-size: 14px; font-weight: 500; }
 .consentimiento { position: fixed; left: 16px; right: 16px; bottom: 16px; z-index: 55; max-width: 720px; margin: 0 auto; padding: 18px 20px; display: flex; flex-direction: column; gap: 12px; border-radius: 16px; background: var(--cb-superficie); color: var(--cb-texto); border: 1px solid var(--cb-borde-control); box-shadow: 0 10px 40px rgba(0, 0, 0, .35); font-size: 14px; }
 .consentimiento-titulo { font-size: 16px; }

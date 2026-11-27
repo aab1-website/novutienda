@@ -1,3 +1,4 @@
+import { limpiarNota } from './nota.js';
 import type { PrecioLinea, TotalReferencial } from './total-referencial.js';
 
 /** Enlaces de WhatsApp. El número viene de la configuración; sin número no hay enlace (nunca uno roto). */
@@ -33,12 +34,15 @@ const ENCABEZADO = 'Hola, quiero comprar estos productos:';
 /**
  * Mensaje del pedido con precios. `precios` y `total` vienen de `totalReferencial` (la misma fuente que la pantalla):
  * aquí solo se redacta. Sin total (cotización o precios no disponibles) el mensaje no lleva montos.
- * Cabe siempre en `MAX_MENSAJE`: si no entra, recorta líneas del final y conserva el total y la leyenda.
+ * La nota del cliente, si la hay, va en su propia línea «Nota: …» después del total (o de la última línea de producto) y
+ * antes de la leyenda.
+ * Cabe siempre en `MAX_MENSAJE`: si no entra, recorta líneas de producto del final y conserva el total, la nota y la leyenda.
  */
 export function mensajePedido(
   lineas: readonly LineaMensaje[],
   precios: readonly PrecioLinea[] | null,
   total: string | null,
+  nota = '',
 ): string {
   const items = lineas.map((l) => {
     const base = `${l.cantidad} x ${l.nombre} (cód. ${l.id})`;
@@ -47,7 +51,8 @@ export function mensajePedido(
     if (p.unitario === null || p.subtotal === null) return `${base}: precio a consultar`;
     return `${base}: ${p.unitario} c/u, subtotal ${p.subtotal}`;
   });
-  const pie = [...(total !== null ? [`Total referencial: ${total}`] : []), LEYENDA_TOTAL];
+  const n0 = limpiarNota(nota);
+  const pie = [...(total !== null ? [`Total referencial: ${total}`] : []), ...(n0 !== '' ? [`Nota: ${n0}`] : []), LEYENDA_TOTAL];
   const armar = (visibles: readonly string[]): string => {
     const omitidas = items.length - visibles.length;
     const resto = omitidas > 0 ? [`… y ${omitidas} ${omitidas === 1 ? 'producto más' : 'productos más'} (se detallan por WhatsApp)`] : [];
@@ -65,8 +70,8 @@ export function mensajeContacto(nombre: string, mensaje: string): string {
 }
 
 /** Mensaje del pedido a partir del resultado de `totalReferencial`: con total lleva montos; sin ningún precio, cada línea dice «precio a consultar». */
-export function mensajeDePedido(lineas: readonly LineaMensaje[], t: TotalReferencial | null): string {
-  if (t?.tipo === 'total') return mensajePedido(lineas, t.lineas, t.texto);
-  if (t?.tipo === 'a_consultar') return mensajePedido(lineas, t.lineas, null);
-  return mensajePedido(lineas, null, null);
+export function mensajeDePedido(lineas: readonly LineaMensaje[], t: TotalReferencial | null, nota = ''): string {
+  if (t?.tipo === 'total') return mensajePedido(lineas, t.lineas, t.texto, nota);
+  if (t?.tipo === 'a_consultar') return mensajePedido(lineas, t.lineas, null, nota);
+  return mensajePedido(lineas, null, null, nota);
 }
