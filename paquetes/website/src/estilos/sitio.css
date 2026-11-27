@@ -213,6 +213,11 @@ h3.descripcion-titulo, h4.descripcion-titulo { font-size: 17px; }
 .valor { display: flex; flex-direction: column; gap: 10px; padding: 22px; border-radius: 18px; background: var(--cb-superficie-2); border: 1px solid var(--cb-borde); }
 .valor h3 { font-size: 17px; }
 .valor p { font-size: 14px; color: var(--cb-texto-suave); }
+.nosotros-bloques { display: grid; grid-template-columns: 1fr; gap: 20px; }
+.nosotros-bloque { display: flex; flex-direction: column; gap: 10px; padding: 22px; border-radius: 18px; background: var(--cb-superficie-2); border: 1px solid var(--cb-borde); }
+.nosotros-bloque h3 { font-size: 17px; }
+.nosotros-bloque p { font-size: 14px; color: var(--cb-texto-suave); }
+@media (min-width: 900px) { .nosotros-bloques { grid-template-columns: repeat(auto-fit, minmax(220px, 1fr)); } }
 .sello { display: flex; align-items: center; gap: 12px; padding: 16px 18px; border-radius: 14px; background: var(--cb-superficie-2); border: 1px solid var(--cb-borde); font-size: 13px; font-weight: 700; letter-spacing: .04em; color: var(--cb-texto); }
 .sello .icono { color: var(--cb-acento); }
 .contacto-bloque { background: var(--cb-seccion); border-top: 1px solid var(--cb-borde); }
