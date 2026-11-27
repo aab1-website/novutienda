@@ -768,21 +768,32 @@ test.describe('celular (375×812): grilla de 2 columnas, cabecera que se oculta 
     await expect(page.locator('.cabecera')).not.toHaveClass(/cabecera-oculta/);
   });
 
-  test('la portada: marcas en fila que se desplazan sin desbordar y categorías en acordeón con teclado', async ({ page }) => {
+  test('la portada: marcas en fila que se desplazan sin desbordar y chips de categoría que filtran la grilla ahí mismo', async ({ page }) => {
     await preparar(page, 'cielo', 'claro', '/');
     const fila = page.getByRole('navigation', { name: 'Marcas' }).locator('ul');
     expect(await fila.evaluate((e) => ({ flex: getComputedStyle(e).display, x: getComputedStyle(e).overflowX }))).toEqual({ flex: 'flex', x: 'auto' });
     expect(await page.evaluate(() => document.documentElement.scrollWidth)).toBe(375);
-    const resumen = page.locator('.categoria-acordeon > summary').first();
-    await resumen.scrollIntoViewIfNeeded();
-    await expect(resumen).toContainText('VER PRECIOS');
-    await resumen.focus();
+    const chips = page.getByRole('navigation', { name: 'Categorías de productos' });
+    await chips.scrollIntoViewIfNeeded();
+    await expect(chips.getByRole('link', { name: 'Todos' })).toHaveAttribute('aria-current', 'true');
+    const visibles = page.locator('#portada-grilla .tarjeta:visible');
+    const todos = await visibles.count();
+    expect(todos).toBeGreaterThan(0);
+    const url = page.url();
+    // Los chips caben en una sola fila que se desplaza.
+    expect(await chips.locator('ul').evaluate((e) => ({ envuelve: getComputedStyle(e).flexWrap, x: getComputedStyle(e).overflowX }))).toEqual({ envuelve: 'nowrap', x: 'auto' });
+    await chips.getByRole('link', { name: 'Televisores' }).focus();
     await page.keyboard.press('Enter');
-    await expect(page.locator('.categoria-acordeon').first()).toHaveAttribute('open', '');
-    await expect(resumen).toContainText('OCULTAR PRECIOS');
-    await expect(page.locator('.categoria-acordeon').first().locator('.categoria-productos li > a').first()).toBeVisible();
-    await page.keyboard.press('Space');
-    await expect(page.locator('.categoria-acordeon').first()).not.toHaveAttribute('open', '');
+    await expect(chips.getByRole('link', { name: 'Televisores' })).toHaveAttribute('aria-current', 'true');
+    expect(page.url()).toBe(url);
+    // La grilla se actualiza justo después de marcar el chip: se espera con aserciones que reintentan, no con una lectura única.
+    await expect(page.locator('#portada-grilla .tarjeta:visible .tarjeta-etiqueta:text-is("Televisores")')).not.toHaveCount(0);
+    await expect(page.locator('#portada-grilla .tarjeta:visible .tarjeta-etiqueta:not(:text-is("Televisores"))')).toHaveCount(0);
+    await expect(page.locator('#portada-ver-todos')).toHaveAttribute('href', '/productos/televisores');
+    await expect(chips.locator('xpath=following-sibling::p[@role="status"]')).toHaveText(/^Televisores: \d+ productos?$/);
+    await chips.getByRole('link', { name: 'Todos' }).click();
+    await expect(visibles).toHaveCount(todos);
+    await expect(page.locator('#portada-ver-todos')).toHaveAttribute('href', '/productos');
   });
 
   test('catálogo en 375 px: las categorías van en una sola fila que se desplaza y conservan aria-current', async ({ page }) => {
@@ -841,7 +852,6 @@ test.describe('celular (375×812): grilla de 2 columnas, cabecera que se oculta 
         for (const ruta of ['/productos', '/', '/producto/televisor-ejemplo-55']) {
           await preparar(page, plantilla, tema, ruta);
           await page.waitForLoadState('networkidle');
-          if (ruta === '/') await page.locator('.categoria-acordeon > summary').first().click();
           await auditar(page, `movil/${plantilla}/${tema}${ruta}`);
         }
       });
