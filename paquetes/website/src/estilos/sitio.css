@@ -19,7 +19,9 @@ button, input, select, textarea { font: inherit; color: inherit; }
 .solo-lectores { position: absolute; width: 1px; height: 1px; padding: 0; margin: -1px; overflow: hidden; clip: rect(0, 0, 0, 0); white-space: nowrap; border: 0; }
 .salto { position: absolute; left: 8px; top: -64px; z-index: 100; padding: 10px 16px; border-radius: 8px; background: var(--cb-cta); color: var(--cb-cta-texto); font-weight: 700; }
 .salto:focus { top: 8px; }
-.contenedor { max-width: 1488px; margin: 0 auto; padding: 0 24px; }
+/* Escala lateral única: ancho máximo 1280 px y margen que va de 16 px (celular) a 48 px (pantalla grande). */
+:root { --cb-margen: clamp(16px, 4vw, 48px); }
+.contenedor { max-width: 1280px; margin: 0 auto; padding: 0 var(--cb-margen); }
 .icono { flex: none; }
 main:focus { outline: none; }
 .aviso-ejemplo { padding: 8px 24px; text-align: center; font-size: 14px; background: var(--cb-superficie-2); color: var(--cb-texto-suave); border-bottom: 1px solid var(--cb-borde); }
@@ -119,8 +121,15 @@ main:focus { outline: none; }
 .categoria-info strong { font-size: 17px; letter-spacing: .02em; }
 .categoria-info span { font-size: 13px; color: var(--cb-texto-suave); }
 .categoria-accion { padding: 6px 12px; border-radius: 8px; font-size: 12px; font-weight: 700; letter-spacing: .08em; color: var(--cb-acento); background: var(--cb-superficie-2); border: 1px solid var(--cb-borde); white-space: nowrap; }
-.destacados { margin-top: 56px; width: 100%; }
-.destacados h2 { margin-bottom: 20px; font-size: 24px; text-align: left; }
+/* Portada: chips de categoría en una o dos filas y, debajo, la grilla de productos */
+.portada-chips { width: 100%; margin-top: 14px; }
+.portada-chips ul { display: flex; flex-wrap: wrap; justify-content: center; gap: 8px; }
+.chip { display: inline-flex; align-items: center; min-height: 40px; padding: 0 16px; border-radius: 999px; border: 1px solid var(--cb-borde-control); background: var(--cb-superficie); color: var(--cb-texto); font-size: 14px; font-weight: 500; text-decoration: none; white-space: nowrap; }
+.chip:hover { border-color: var(--cb-acento); color: var(--cb-acento); }
+.chip[aria-current='true'] { background: var(--cb-cta); color: var(--cb-cta-texto); border-color: var(--cb-cta); font-weight: 700; }
+.grilla-productos.portada-grilla { width: 100%; margin-top: 24px; text-align: left; grid-template-columns: repeat(auto-fill, minmax(min(100%, 260px), 1fr)); }
+.portada-item { display: contents; }
+.portada-ver-todos { margin-top: 28px; }
 .marcas { width: 100%; margin-top: 56px; padding-top: 40px; border-top: 1px solid var(--cb-borde); display: flex; flex-direction: column; align-items: center; gap: 24px; }
 .marcas h2 { font-size: 12px; letter-spacing: .12em; color: var(--cb-texto-suave); text-transform: uppercase; }
 
@@ -384,7 +393,7 @@ button.whatsapp-flotante { border: 0; padding: 0; cursor: progress; opacity: .75
   .cabecera { transition: top .2s ease; }
   .cabecera.cabecera-oculta { top: -400px; }
 
-  .grilla-productos { grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 10px; }
+  .grilla-productos, .grilla-productos.portada-grilla { grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 10px; }
   .tarjeta { border-radius: 14px; }
   .tarjeta-imagen { aspect-ratio: 4 / 3; }
   .tarjeta-etiqueta, .tarjeta-agotado { top: 6px; padding: 2px 6px; border-radius: 6px; font-size: 10px; }
@@ -427,8 +436,9 @@ button.whatsapp-flotante { border: 0; padding: 0; cursor: progress; opacity: .75
 .nav-categorias a { flex: 0 0 auto; scroll-snap-align: start; display: inline-flex; align-items: center; min-height: 36px; padding: 0 14px; border-radius: 999px; border: 1px solid var(--cb-borde-control); background: var(--cb-superficie); font-size: 14px; white-space: nowrap; text-decoration: none; }
 .nav-categorias a[aria-current='page'] { background: var(--cb-cta); color: var(--cb-cta-texto); border-color: var(--cb-cta); }
 .catalogo { display: grid; grid-template-columns: 220px minmax(0, 1fr); column-gap: 24px; align-items: start; }
-.catalogo > aside { grid-column: 1; grid-row: 1 / span 3; }
-.catalogo > .refinar-superior, .catalogo > .grilla-productos, .catalogo > .paginacion { grid-column: 2; }
+.catalogo > astro-island { display: contents; }
+.catalogo > aside, .catalogo > astro-island > aside { grid-column: 1; grid-row: 1 / span 3; }
+.catalogo > .refinar-superior, .catalogo > astro-island > .refinar-superior, .catalogo > .grilla-productos, .catalogo > .paginacion { grid-column: 2; }
 .filtros { padding: 14px; border-radius: 14px; background: var(--cb-superficie); border: 1px solid var(--cb-borde); }
 .refinar-superior { display: flex; flex-direction: column; gap: 8px; margin-bottom: 12px; min-width: 0; }
 .refinar-barra { display: flex; align-items: center; gap: 8px; min-width: 0; }
@@ -471,7 +481,7 @@ button.whatsapp-flotante { border: 0; padding: 0; cursor: progress; opacity: .75
 @media (min-width: 641px) { .dialogo-inferior { align-items: center; padding: 16px; } .dialogo-inferior .dialogo { max-width: 440px; border-radius: 20px; } }
 @media (max-width: 900px) {
   .catalogo { grid-template-columns: minmax(0, 1fr); }
-  .catalogo > .refinar-superior, .catalogo > .grilla-productos, .catalogo > .paginacion { grid-column: 1; }
+  .catalogo > .refinar-superior, .catalogo > astro-island > .refinar-superior, .catalogo > .grilla-productos, .catalogo > .paginacion { grid-column: 1; }
   .encabezado-pagina { margin-bottom: 12px; gap: 6px; }
   .paginacion { margin-top: 20px; }
 }
