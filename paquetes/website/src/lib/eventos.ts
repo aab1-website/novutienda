@@ -3,6 +3,7 @@
 export const EVENTOS = {
   mercado: 'cb:mercado',
   carrito: 'cb:carrito',
+  nota: 'cb:nota',
   abrirCarrito: 'cb:abrir-carrito',
   abrirBuscador: 'cb:abrir-buscador',
   abrirConvertidor: 'cb:abrir-convertidor',
