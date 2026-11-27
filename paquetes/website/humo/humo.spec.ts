@@ -60,9 +60,21 @@ test.describe('CSP y peticiones', () => {
     await simularApi(page);
     await page.addInitScript(() => localStorage.setItem('cb.mercado', 'BO'));
     const pedidas: string[] = [];
-    for (const patron of ['**/*googletagmanager.com/**', '**/*connect.facebook.net/**', '**/*analytics.tiktok.com/**']) {
+    const v = vigilar(page);
+    for (const patron of ['**/*googletagmanager.com/**', '**/*analytics.tiktok.com/**']) {
       await page.route(patron, (r) => { pedidas.push(r.request().url()); return r.fulfill({ status: 200, contentType: 'text/javascript', body: '' }); });
     }
+    // fbevents.js real no sale a internet: este sustituto envía cada `track` de la cola como imagen GET a facebook.com/tr
+    // (el camino del píxel real cuando el pedido es corto), para comprobar que la CSP lo permite.
+    await page.route('**/*connect.facebook.net/**', (r) => {
+      pedidas.push(r.request().url());
+      return r.fulfill({
+        status: 200,
+        contentType: 'text/javascript',
+        body: "(function(){var q=window.fbq.queue||[];q.forEach(function(a){if(a[0]==='track'){new Image().src='https://www.facebook.com/tr/?ev='+encodeURIComponent(String(a[1]))}})})();",
+      });
+    });
+    await page.route('**/*www.facebook.com/tr*', (r) => r.fulfill({ status: 200, contentType: 'image/gif', body: Buffer.from('R0lGODlhAQABAAAAACw=', 'base64') }));
     await page.goto('/producto/televisor-ejemplo-55');
     await islasListas(page);
     await page.getByRole('button', { name: 'Aceptar todo' }).click();
@@ -71,6 +83,13 @@ test.describe('CSP y peticiones', () => {
     expect(hosts.some((u) => u.hostname === 'www.googletagmanager.com' && u.pathname === '/gtag/js' && u.searchParams.get('id') === 'G-EJEMPLO00')).toBe(true);
     expect(hosts.some((u) => u.hostname === 'connect.facebook.net')).toBe(true);
     expect(hosts.some((u) => u.hostname === 'analytics.tiktok.com')).toBe(true);
+    // Meta: la configuración automática se apaga antes de `init`, y al menos un evento llega a facebook.com/tr sin violar la CSP.
+    const colaMeta = await page.evaluate(() => ((window as unknown as { fbq: { queue: unknown[][] } }).fbq.queue ?? []).map((c) => Array.from(c).slice(0, 3)));
+    const iAuto = colaMeta.findIndex((c) => c[0] === 'set' && c[1] === 'autoConfig' && c[2] === false);
+    expect(iAuto).toBeGreaterThanOrEqual(0);
+    expect(iAuto).toBeLessThan(colaMeta.findIndex((c) => c[0] === 'init'));
+    await expect.poll(() => v.peticiones.filter((u) => u.startsWith('https://www.facebook.com/tr')).length).toBeGreaterThan(0);
+    expect(v.errores.filter((e) => /Content.Security.Policy|Refused to/i.test(e))).toEqual([]);
     await page.getByRole('link', { name: 'COMPRAR', exact: true }).click();
     const comandos = await page.evaluate(() => (window as unknown as { dataLayer: ArrayLike<unknown>[] }).dataLayer.map((a) => Array.from(a)[1]));
     expect(comandos).toContain('clic_comprar');

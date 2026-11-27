@@ -72,6 +72,16 @@ describe('medición por categoría', () => {
     expect(w['ttq']).toBeDefined();
   });
 
+  it('Meta: la configuración automática se apaga antes de init, para que el pedido viaje como imagen y no como formulario', () => {
+    const { m, w } = montar();
+    m.iniciar(TODO_ACEPTADO);
+    const cola = (w['fbq'] as { queue?: unknown[][] }).queue ?? [];
+    const orden = cola.map((c) => c[0]);
+    expect(cola).toContainEqual(['set', 'autoConfig', false, '1234567890123456']);
+    expect(orden.indexOf('set')).toBeLessThan(orden.indexOf('init'));
+    expect(orden.indexOf('init')).toBeLessThan(orden.indexOf('track'));
+  });
+
   it('no se carga dos veces aunque se aplique varias veces', () => {
     const { m, cargados } = montar();
     m.iniciar(TODO_ACEPTADO);
