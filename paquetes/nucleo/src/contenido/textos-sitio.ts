@@ -13,6 +13,11 @@ export const LIMITES_TEXTOS_SITIO = {
   /** Cifra del contador: `valor.texto` de 1 a `cifraValor` y su detalle de 1 a `cifraDetalle`. */
   cifraValor: 20,
   cifraDetalle: 120,
+  /** Bloques de «Nosotros»: de 1 a `bloquesNosotros` bloques, cada uno con título y de 1 a `parrafosBloque` párrafos. */
+  bloquesNosotros: 6,
+  tituloBloque: 80,
+  parrafosBloque: 6,
+  parrafoBloque: 1000,
 } as const;
 
 export type AutorMensajeChat = 'cliente' | 'comercio';
@@ -22,10 +27,17 @@ export interface MensajeChatTexto {
   readonly texto: string;
 }
 
+export interface BloqueNosotros {
+  readonly titulo: string;
+  readonly parrafos: readonly string[];
+}
+
 export interface TextosInstitucionales {
   readonly mision?: string;
   readonly vision?: string;
   readonly chat?: { readonly mensajes: readonly MensajeChatTexto[] };
+  /** Bloques con título de la sección «Nosotros»; ausente = no se dibuja. */
+  readonly nosotros?: readonly BloqueNosotros[];
 }
 
 const largoValido = (v: unknown, max: number): boolean => typeof v === 'string' && v.trim().length >= 1 && v.length <= max;
@@ -56,6 +68,32 @@ export function validarCifra(v: unknown, ruta: string): string[] {
   ];
 }
 
+// Sin etiquetas HTML (`<`, `>`) ni caracteres de control (los saltos de línea también lo son).
+// eslint-disable-next-line no-control-regex
+const CARACTER_NO_PERMITIDO = /[<>\u0000-\u001f\u007f-\u009f\u2028\u2029]/;
+
+const textoLimpio = (v: unknown, ruta: string, max: number): string[] => {
+  const e = validarTextoSitio(v, ruta, max);
+  if (e.length > 0) return e;
+  return CARACTER_NO_PERMITIDO.test(v as string) ? [`${ruta}: no admite HTML, saltos de línea ni caracteres de control`] : [];
+};
+
+function validarNosotros(v: unknown, ruta: string): string[] {
+  const L = LIMITES_TEXTOS_SITIO;
+  if (!Array.isArray(v) || v.length < 1 || v.length > L.bloquesNosotros) return [`${ruta}: debe ser una lista de 1 a ${L.bloquesNosotros} bloques`];
+  return v.flatMap((b, i) => {
+    const r = `${ruta}[${i}]`;
+    if (typeof b !== 'object' || b === null || Array.isArray(b)) return [`${r}: debe ser un objeto`];
+    const x = b as Record<string, unknown>;
+    const parrafos = x['parrafos'];
+    const ep =
+      !Array.isArray(parrafos) || parrafos.length < 1 || parrafos.length > L.parrafosBloque
+        ? [`${r}.parrafos: debe ser una lista de 1 a ${L.parrafosBloque} párrafos`]
+        : parrafos.flatMap((p, j) => textoLimpio(p, `${r}.parrafos[${j}]`, L.parrafoBloque));
+    return [...textoLimpio(x['titulo'], `${r}.titulo`, L.tituloBloque), ...ep];
+  });
+}
+
 /** Errores de los textos institucionales (misión, visión y chat); cada campo es opcional. */
 export function validarInstitucional(v: unknown, ruta: string): string[] {
   if (v === undefined) return [];
@@ -78,5 +116,6 @@ export function validarInstitucional(v: unknown, ruta: string): string[] {
       });
     }
   }
+  if (o['nosotros'] !== undefined) errores.push(...validarNosotros(o['nosotros'], `${ruta}.nosotros`));
   return errores;
 }

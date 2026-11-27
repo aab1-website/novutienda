@@ -7,7 +7,7 @@ const t = (n: number): string => 'a'.repeat(n);
 
 describe('textos del sitio: límites únicos', () => {
   it('fija los límites del contrato', () => {
-    expect(L).toEqual({ texto: 600, mensajes: 6, mensaje: 300, caracteristicas: 8, caracteristica: 160, cifraValor: 20, cifraDetalle: 120 });
+    expect(L).toEqual({ texto: 600, mensajes: 6, mensaje: 300, caracteristicas: 8, caracteristica: 160, cifraValor: 20, cifraDetalle: 120, bloquesNosotros: 6, tituloBloque: 80, parrafosBloque: 6, parrafoBloque: 1000 });
   });
   it('misión y visión: de 1 a 600', () => {
     expect(validarInstitucional({ mision: t(600), vision: t(1) }, 'i')).toEqual([]);
@@ -40,6 +40,28 @@ describe('textos del sitio: límites únicos', () => {
     expect(validarInstitucional({ chat: { mensajes: [{ de: 'cliente', texto: '  ' }] } }, 'i')).toHaveLength(1);
     expect(validarCaracteristicas(['   '], 'c')).toHaveLength(1);
     expect(validarCifra({ valor: { texto: '  ' }, detalle: ' ' }, 'x')).toHaveLength(2);
+  });
+  it('nosotros: bloques con título y párrafos, límites exactos', () => {
+    const b = (titulo = 'Título', parrafos: unknown[] = ['Texto']) => ({ titulo, parrafos });
+    const v = (nosotros: unknown) => validarInstitucional({ nosotros }, 'i');
+    expect(validarInstitucional({}, 'i')).toEqual([]);
+    expect(v(Array.from({ length: 6 }, () => b()))).toEqual([]);
+    expect(v(Array.from({ length: 7 }, () => b()))).toHaveLength(1);
+    expect(v([])).toHaveLength(1);
+    expect(v([b(t(80))])).toEqual([]);
+    expect(v([b(t(81))])).toHaveLength(1);
+    expect(v([b('')])).toHaveLength(1);
+    expect(v([b('Título', Array.from({ length: 6 }, () => 'x'))])).toEqual([]);
+    expect(v([b('Título', Array.from({ length: 7 }, () => 'x'))])).toHaveLength(1);
+    expect(v([b('Título', [])])).toHaveLength(1);
+    expect(v([b('Título', [t(1000)])])).toEqual([]);
+    expect(v([b('Título', [t(1001)])])).toHaveLength(1);
+    expect(v([b('Título', [''])])).toHaveLength(1);
+    expect(v([b('<b>Hola</b>')])).toHaveLength(1);
+    expect(v([b('Título', ['Hola <script>x</script>'])])).toHaveLength(1);
+    expect(v([b('Título', ['línea uno\nlínea dos'])])).toHaveLength(1);
+    expect(v([b('Título', ['con\u0007control'])])).toHaveLength(1);
+    expect(v('texto')).toHaveLength(1);
   });
   it('la raíz y /extension exponen lo mismo', () => {
     expect(raiz.LIMITES_TEXTOS_SITIO).toBe(ext.LIMITES_TEXTOS_SITIO);
