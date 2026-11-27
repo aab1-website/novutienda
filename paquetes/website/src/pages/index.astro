@@ -8,11 +8,11 @@ import TarjetaProducto from '../componentes/TarjetaProducto.astro';
 import CatalogoVacio from '../componentes/CatalogoVacio.astro';
 import Icono from '../componentes/Icono.astro';
 import CategoriasPortada from '../islas/CategoriasPortada';
-import { categoriasNavegables, contenido, enVenta } from '../contenido/instancia';
+import { catalogo, categoriasNavegables, contenido, enVenta } from '../contenido/instancia';
 import { marcasDe } from '../contenido/consultas';
 import { jsonLdOrganizacion, rutaCategoria } from '../lib/seo';
 import { marcasConRuta, rutaMarca } from '../lib/paginas';
-import { escribirPortada, visiblesPortada } from '../lib/portada';
+import { escribirPortada, ordenarPortada, visiblesPortada } from '../lib/portada';
 import { logoParaCompartir } from '../contenido/logo-subido';
 import { enlaceWhatsApp } from '../lib/whatsapp';
 
@@ -20,8 +20,10 @@ const { config, carruseles } = contenido;
 const categorias = categoriasNavegables;
 const productos = enVenta;
 // La grilla trae las primeras tarjetas de «Todos» y de cada categoría; los chips muestran u ocultan, sin pedir nada.
-const escritos = escribirPortada(productos);
-const iniciales = visiblesPortada(productos, null);
+// Orden de «Todos» y de cada categoría: destacados primero y luego el del catálogo.
+const ordenados = ordenarPortada(catalogo);
+const escritos = escribirPortada(ordenados);
+const iniciales = visiblesPortada(ordenados, null);
 // Vista previa al compartir la portada: el logo subido (PNG, JPG o WebP; nunca el de la cabecera ni un SVG) y, si no hay, la primera foto del carrusel o de un producto.
 const imagenPortada = logoParaCompartir(config.imagenCompartir, config.logo) ?? carruseles[config.plantilla][0]?.url ?? productos.find((p) => p.fotos.length > 0)?.fotos[0]?.url;
 const wa = enlaceWhatsApp(config.whatsappNovuchat, 'Hola, tengo una consulta.');
@@ -36,7 +38,7 @@ const wa = enlaceWhatsApp(config.whatsappNovuchat, 'Hola, tengo una consulta.');
       {productos.length === 0 ? <CatalogoVacio conBoton={false} /> : <p class="subtitulo">Elige una categoría para ver sus modelos y precios actualizados.</p>}
       {productos.length > 0 && (
         <>
-          <CategoriasPortada client:load categorias={categorias.map((c) => ({ id: c.id, nombre: c.nombre, href: rutaCategoria(c.id) }))} items={productos.map((p) => ({ id: p.id, categoria: p.categoria }))} />
+          <CategoriasPortada client:load categorias={categorias.map((c) => ({ id: c.id, nombre: c.nombre, href: rutaCategoria(c.id) }))} items={ordenados.map((p) => ({ id: p.id, categoria: p.categoria }))} />
           <div id="portada-grilla" class="grilla-productos portada-grilla">
             {escritos.map((p) => <div class="portada-item" data-portada-id={p.id} hidden={!iniciales.has(p.id)}><TarjetaProducto producto={p} /></div>)}
           </div>

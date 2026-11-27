@@ -113,17 +113,14 @@ main:focus { outline: none; }
 .centrado { display: flex; flex-direction: column; align-items: center; text-align: center; gap: 10px; }
 .catalogo-vacio { display: flex; flex-direction: column; align-items: center; text-align: center; gap: 16px; width: 100%; max-width: 576px; margin: 0 auto; padding: 32px 20px; }
 .catalogo-vacio .subtitulo { font-size: 17px; font-weight: 400; color: var(--cb-texto); }
-.lista-categorias { width: 100%; max-width: 576px; display: flex; flex-direction: column; gap: 12px; margin-top: 18px; }
-.categoria-item { display: flex; align-items: center; gap: 16px; padding: 14px 18px 14px 14px; border-radius: 16px; border: 1px solid var(--cb-borde); background: var(--cb-superficie); text-decoration: none; text-align: left; }
-.categoria-item:hover { border-color: var(--cb-acento); }
-.categoria-item .icono-caja { width: 48px; height: 48px; }
-.categoria-info { flex: 1; display: flex; flex-direction: column; gap: 2px; min-width: 0; }
-.categoria-info strong { font-size: 17px; letter-spacing: .02em; }
-.categoria-info span { font-size: 13px; color: var(--cb-texto-suave); }
-.categoria-accion { padding: 6px 12px; border-radius: 8px; font-size: 12px; font-weight: 700; letter-spacing: .08em; color: var(--cb-acento); background: var(--cb-superficie-2); border: 1px solid var(--cb-borde); white-space: nowrap; }
 /* Portada: chips de categoría en una o dos filas y, debajo, la grilla de productos */
 .portada-chips { width: 100%; margin-top: 14px; }
 .portada-chips ul { display: flex; flex-wrap: wrap; justify-content: center; gap: 8px; }
+@media (max-width: 640px) {
+  /* Celular: los chips van en una sola fila que se desplaza, como las categorías del catálogo. */
+  .portada-chips ul { flex-wrap: nowrap; justify-content: flex-start; overflow-x: auto; scroll-snap-type: x proximity; padding: 2px 2px 8px; }
+  .portada-chips li { flex: 0 0 auto; scroll-snap-align: start; }
+}
 .chip { display: inline-flex; align-items: center; min-height: 40px; padding: 0 16px; border-radius: 999px; border: 1px solid var(--cb-borde-control); background: var(--cb-superficie); color: var(--cb-texto); font-size: 14px; font-weight: 500; text-decoration: none; white-space: nowrap; }
 .chip:hover { border-color: var(--cb-acento); color: var(--cb-acento); }
 .chip[aria-current='true'] { background: var(--cb-cta); color: var(--cb-cta-texto); border-color: var(--cb-cta); font-weight: 700; }
@@ -352,21 +349,6 @@ button.whatsapp-flotante { border: 0; padding: 0; cursor: progress; opacity: .75
 .marcas a:hover { border-color: var(--cb-acento); color: var(--cb-acento); }
 
 /* Portada: categorías en acordeón (VER PRECIOS / OCULTAR PRECIOS), sin JavaScript */
-.categoria-acordeon { border-radius: 16px; border: 1px solid var(--cb-borde); background: var(--cb-superficie); }
-.categoria-acordeon[open] { border-color: var(--cb-acento); }
-.categoria-acordeon > summary { cursor: pointer; list-style: none; border: 0; background: transparent; }
-.categoria-acordeon > summary::-webkit-details-marker { display: none; }
-.categoria-acordeon > summary:focus-visible { outline: 2px solid var(--cb-acento); outline-offset: 2px; border-radius: 16px; }
-.categoria-acordeon .accion-abierto, .categoria-acordeon[open] .accion-cerrado { display: none; }
-.categoria-acordeon[open] .accion-abierto { display: inline; }
-.categoria-productos { margin: 0; padding: 4px 14px 14px; list-style: none; display: flex; flex-direction: column; text-align: left; }
-.categoria-productos li { display: flex; align-items: center; justify-content: space-between; gap: 12px; padding: 8px 0; border-top: 1px solid var(--cb-borde); }
-.categoria-productos li > a { min-height: 44px; display: flex; align-items: center; font-size: 15px; font-weight: 500; text-decoration: none; min-width: 0; }
-.categoria-productos li > a:hover { color: var(--cb-acento); }
-.categoria-productos .precio { align-items: flex-end; flex: 0 0 auto; }
-.categoria-productos .precio-valor { font-size: 16px; }
-.categoria-productos .categoria-ver-todos { justify-content: center; }
-.categoria-productos .categoria-ver-todos a { color: var(--cb-acento); font-weight: 700; font-size: 13px; letter-spacing: .08em; text-transform: uppercase; }
 
 /* Tarjeta: «Ver más detalles»; ficha: volver, categoría y relacionados */
 .tarjeta-detalle { font-size: 12px; font-weight: 700; letter-spacing: .06em; text-transform: uppercase; color: var(--cb-acento); }
@@ -437,6 +419,7 @@ button.whatsapp-flotante { border: 0; padding: 0; cursor: progress; opacity: .75
 .nav-categorias a[aria-current='page'] { background: var(--cb-cta); color: var(--cb-cta-texto); border-color: var(--cb-cta); }
 .catalogo { display: grid; grid-template-columns: 220px minmax(0, 1fr); column-gap: 24px; align-items: start; }
 .catalogo > astro-island { display: contents; }
+@media (min-width: 641px) { .catalogo > .grilla-productos { grid-template-columns: repeat(auto-fill, minmax(min(100%, 240px), 1fr)); gap: 20px; } }
 .catalogo > aside, .catalogo > astro-island > aside { grid-column: 1; grid-row: 1 / span 3; }
 .catalogo > .refinar-superior, .catalogo > astro-island > .refinar-superior, .catalogo > .grilla-productos, .catalogo > .paginacion { grid-column: 2; }
 .filtros { padding: 14px; border-radius: 14px; background: var(--cb-superficie); border: 1px solid var(--cb-borde); }

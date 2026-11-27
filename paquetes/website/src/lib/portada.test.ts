@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { escribirPortada, totalPortada, visiblesPortada, type ItemPortada } from './portada.js';
+import { anuncioPortada, escribirPortada, ordenarPortada, totalPortada, visiblesPortada, type ItemPortada } from './portada.js';
 
 const items = (n: number, cat: (i: number) => string): ItemPortada[] => Array.from({ length: n }, (_, i) => ({ id: `p${i}`, categoria: cat(i) }));
 
@@ -26,5 +26,29 @@ describe('portada: filtro por categoría', () => {
   });
   it('con pocos productos se escriben todos', () => {
     expect(escribirPortada(lista, 12)).toEqual(lista);
+  });
+
+  it('el orden pone los destacados primero y respeta el del catálogo en cada grupo', () => {
+    const base = [
+      { id: 'a1', categoria: 'a', destacado: false },
+      { id: 'a2', categoria: 'a', destacado: true },
+      { id: 'b1', categoria: 'b', destacado: false },
+      { id: 'b2', categoria: 'b', destacado: true },
+      { id: 'b3', categoria: 'b', destacado: true },
+    ];
+    const orden = ordenarPortada(base);
+    expect(orden.map((i) => i.id)).toEqual(['a2', 'b2', 'b3', 'a1', 'b1']);
+    // «Todos» arranca con los destacados y cada categoría, también.
+    expect([...visiblesPortada(orden, null, 3)]).toEqual(['a2', 'b2', 'b3']);
+    expect([...visiblesPortada(orden, 'b', 3)]).toEqual(['b2', 'b3', 'b1']);
+  });
+  it('sin destacados se conserva el orden del catálogo', () => {
+    const base = lista.map((i) => ({ ...i, destacado: false }));
+    expect(ordenarPortada(base)).toEqual(base);
+  });
+  it('el anuncio dice la categoría y la cuenta en singular o plural', () => {
+    expect(anuncioPortada('Televisores', 3)).toBe('Televisores: 3 productos');
+    expect(anuncioPortada('Lavadoras', 1)).toBe('Lavadoras: 1 producto');
+    expect(anuncioPortada(null, 12)).toBe('Todos: 12 productos');
   });
 });

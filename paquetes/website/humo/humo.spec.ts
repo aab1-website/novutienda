@@ -761,6 +761,8 @@ test.describe('celular (375×812): grilla de 2 columnas, cabecera que se oculta 
     const todos = await visibles.count();
     expect(todos).toBeGreaterThan(0);
     const url = page.url();
+    // Los chips caben en una sola fila que se desplaza.
+    expect(await chips.locator('ul').evaluate((e) => ({ envuelve: getComputedStyle(e).flexWrap, x: getComputedStyle(e).overflowX }))).toEqual({ envuelve: 'nowrap', x: 'auto' });
     await chips.getByRole('link', { name: 'Televisores' }).focus();
     await page.keyboard.press('Enter');
     await expect(chips.getByRole('link', { name: 'Televisores' })).toHaveAttribute('aria-current', 'true');
@@ -769,6 +771,7 @@ test.describe('celular (375×812): grilla de 2 columnas, cabecera que se oculta 
     await expect(page.locator('#portada-grilla .tarjeta:visible .tarjeta-etiqueta:text-is("Televisores")')).not.toHaveCount(0);
     await expect(page.locator('#portada-grilla .tarjeta:visible .tarjeta-etiqueta:not(:text-is("Televisores"))')).toHaveCount(0);
     await expect(page.locator('#portada-ver-todos')).toHaveAttribute('href', '/productos/televisores');
+    await expect(chips.locator('xpath=following-sibling::p[@role="status"]')).toHaveText(/^Televisores: \d+ productos?$/);
     await chips.getByRole('link', { name: 'Todos' }).click();
     await expect(visibles).toHaveCount(todos);
     await expect(page.locator('#portada-ver-todos')).toHaveAttribute('href', '/productos');
