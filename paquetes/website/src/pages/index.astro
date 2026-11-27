@@ -7,18 +7,21 @@ import Institucional from '../componentes/Institucional.astro';
 import TarjetaProducto from '../componentes/TarjetaProducto.astro';
 import CatalogoVacio from '../componentes/CatalogoVacio.astro';
 import Icono from '../componentes/Icono.astro';
+import CategoriasPortada from '../islas/CategoriasPortada';
 import { categoriasNavegables, contenido, enVenta } from '../contenido/instancia';
-import { marcasDe, productosDeCategoria, textoModelos } from '../contenido/consultas';
-import { jsonLdOrganizacion, rutaCategoria, rutaProducto } from '../lib/seo';
+import { marcasDe } from '../contenido/consultas';
+import { jsonLdOrganizacion, rutaCategoria } from '../lib/seo';
 import { marcasConRuta, rutaMarca } from '../lib/paginas';
-import Precio from '../islas/Precio';
+import { escribirPortada, visiblesPortada } from '../lib/portada';
 import { logoParaCompartir } from '../contenido/logo-subido';
 import { enlaceWhatsApp } from '../lib/whatsapp';
 
 const { config, carruseles } = contenido;
 const categorias = categoriasNavegables;
 const productos = enVenta;
-const destacados = productos.filter((p) => p.destacado).slice(0, 6);
+// La grilla trae las primeras tarjetas de «Todos» y de cada categoría; los chips muestran u ocultan, sin pedir nada.
+const escritos = escribirPortada(productos);
+const iniciales = visiblesPortada(productos, null);
 // Vista previa al compartir la portada: el logo subido (PNG, JPG o WebP; nunca el de la cabecera ni un SVG) y, si no hay, la primera foto del carrusel o de un producto.
 const imagenPortada = logoParaCompartir(config.imagenCompartir, config.logo) ?? carruseles[config.plantilla][0]?.url ?? productos.find((p) => p.fotos.length > 0)?.fotos[0]?.url;
 const wa = enlaceWhatsApp(config.whatsappNovuchat, 'Hola, tengo una consulta.');
@@ -32,41 +35,13 @@ const wa = enlaceWhatsApp(config.whatsappNovuchat, 'Hola, tengo una consulta.');
       <h2 id="titulo-categorias" class="titulo-seccion">Nuestros productos</h2>
       {productos.length === 0 ? <CatalogoVacio conBoton={false} /> : <p class="subtitulo">Elige una categoría para ver sus modelos y precios actualizados.</p>}
       {productos.length > 0 && (
-      <ul class="lista-categorias">
-        {categorias.map((c) => (
-          <li>
-            <details class="categoria-acordeon">
-              <summary class="categoria-item">
-                <span class="icono-caja"><Icono nombre={c.icono} tamano={22} grosor={1.8} /></span>
-                <span class="categoria-info"><strong>{c.nombre}</strong><span>{textoModelos(productosDeCategoria(productos, c.id).length)}</span></span>
-                <span class="categoria-accion"><span class="accion-cerrado">VER PRECIOS</span><span class="accion-abierto">OCULTAR PRECIOS</span></span>
-              </summary>
-              <ul class="categoria-productos">
-                {productosDeCategoria(productos, c.id).slice(0, 12).map((p) => (
-                  <li>
-                    <a href={rutaProducto(p)}>{p.nombre}</a>
-                    <Precio client:visible usd={p.precioUsd} inicial={config.mercadoInicial} mercados={config.mercados} redondeo={config.redondeo} etiqueta="" />
-                  </li>
-                ))}
-                <li class="categoria-ver-todos"><a href={rutaCategoria(c.id)}>Ver todos ({productosDeCategoria(productos, c.id).length})</a></li>
-              </ul>
-            </details>
-          </li>
-        ))}
-        <li>
-          <a class="categoria-item" href="/productos">
-            <span class="icono-caja"><Icono nombre="cuadricula" tamano={22} grosor={1.8} /></span>
-            <span class="categoria-info"><strong>Ver todos los productos</strong><span>{productos.length} productos en total</span></span>
-            <span class="categoria-accion">VER TODO</span>
-          </a>
-        </li>
-      </ul>
-      )}
-      {destacados.length > 0 && (
-        <section class="destacados" aria-labelledby="titulo-destacados">
-          <h2 id="titulo-destacados">Productos destacados</h2>
-          <div class="grilla-productos">{destacados.map((p) => <TarjetaProducto producto={p} />)}</div>
-        </section>
+        <>
+          <CategoriasPortada client:load categorias={categorias.map((c) => ({ id: c.id, nombre: c.nombre, href: rutaCategoria(c.id) }))} items={productos.map((p) => ({ id: p.id, categoria: p.categoria }))} />
+          <div id="portada-grilla" class="grilla-productos portada-grilla">
+            {escritos.map((p) => <div class="portada-item" data-portada-id={p.id} hidden={!iniciales.has(p.id)}><TarjetaProducto producto={p} /></div>)}
+          </div>
+          <p class="portada-ver-todos"><a id="portada-ver-todos" class="boton boton-secundario" href="/productos">Ver todos los productos ({productos.length})</a></p>
+        </>
       )}
       {productos.length > 0 && marcasDe(productos).length > 0 && (
         <section class="marcas" aria-labelledby="titulo-marcas">
