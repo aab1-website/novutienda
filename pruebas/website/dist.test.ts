@@ -120,3 +120,30 @@ describe.skipIf(!compilado)('CSP del sitio compilado', () => {
     expect(portada).toMatch(/<a [^>]*class="carrusel-enlace activa"[^>]*href="\/productos"[^>]*aria-label="[^"]+"|<a [^>]*href="\/productos"[^>]*class="carrusel-enlace activa"/);
   });
 });
+
+describe.skipIf(!compilado)('portada compilada: chips de categoría y grilla de productos', () => {
+  const portada = (): string => readFileSync(join(DIST, 'index.html'), 'utf8');
+
+  it('escribe los chips como enlaces a la categoría (sirven sin JavaScript) y la grilla con tarjetas', () => {
+    const doc = portada();
+    expect(doc).toContain('aria-label="Categorías de productos"');
+    expect(doc).toMatch(/<a class="chip"[^>]*href="\/productos"[^>]*>Todos<\/a>/);
+    expect(doc).toMatch(/<a class="chip"[^>]*href="\/productos\/[a-z0-9-]+"/);
+    expect(doc).toContain('id="portada-grilla"');
+    expect(doc.match(/data-portada-id="/g)?.length ?? 0).toBeGreaterThan(0);
+    expect(doc).toMatch(/id="portada-ver-todos"[^>]*href="\/productos"|href="\/productos"[^>]*id="portada-ver-todos"/);
+  });
+
+  it('ya no trae la lista vertical de categorías en acordeón', () => {
+    const doc = portada();
+    expect(doc).not.toContain('categoria-acordeon');
+    expect(doc).not.toContain('lista-categorias');
+  });
+
+  it('solo se ve una parte de la grilla de entrada: el resto queda oculto hasta elegir su categoría', () => {
+    const doc = portada();
+    const total = doc.match(/data-portada-id="/g)?.length ?? 0;
+    const ocultas = doc.match(/data-portada-id="[^"]*"[^>]*\shidden/g)?.length ?? 0;
+    expect(total - ocultas).toBeLessThanOrEqual(12);
+  });
+});
