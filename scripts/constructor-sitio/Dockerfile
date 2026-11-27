@@ -42,7 +42,12 @@ ENV OMITIR_INSTALAR=1 \
 # bash, curl y jq: los usa reconstruir-sitio.sh (humo y preparar-sitio-tenant.sh).
 # Sin npm ni corepack al final: el script no los usa y su árbol de dependencias (brace-expansion, pacote, sigstore…)
 # es superficie de ataque que Trivy marca. pnpm y firebase-tools quedan instalados.
+# linux-pam (CVE-2025-6020, HIGH): la base node:22-slim más reciente publicada (27/11/2026) aún trae
+# 1.5.2-6+deb12u2; se actualizan solo esos paquetes a la versión corregida del repositorio de seguridad de Debian
+# (1.5.2-6+deb12u3 o superior). Se puede quitar cuando el digest de la base ya la traiga.
 RUN apt-get update \
+    && apt-get install -y --no-install-recommends --only-upgrade \
+       libpam-modules libpam-modules-bin libpam-runtime libpam0g \
     && apt-get install -y --no-install-recommends bash ca-certificates curl jq \
     && rm -rf /var/lib/apt/lists/* \
     && npm install -g "pnpm@${PNPM_VERSION}" "firebase-tools@${FIREBASE_TOOLS_VERSION}" \
