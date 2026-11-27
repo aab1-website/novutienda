@@ -496,6 +496,13 @@ describe('servicio y publicación del negocio', () => {
       expect(foto).toMatchObject({ tipo: 'foto', alt: 'Fachada' });
       expect(JSON.stringify(foto)).not.toContain('/privado/');
     });
+    it('institucional.nosotros llega tal cual a publicado/negocio', async () => {
+      await publicable();
+      const nosotros = [{ titulo: 'Envíos', parrafos: ['A todo el país.', 'En 48 horas.'] }, { titulo: 'Garantías', parrafos: ['Seis meses.'] }];
+      db.poner(ruta, { ...base(), institucional: { mision: 'M', nosotros }, version: 1, actualizadoEn: 'x', por: 'u' });
+      await publicarSitio(dp(), { tenantId: T, actor: adm });
+      expect(((db.dato(rutaPub) as Dato)['institucional'] as Dato)['nosotros']).toEqual(nosotros);
+    });
     it('foto heredada se publica tal cual', async () => {
       await publicable();
       const heredada = { url: 'https://medios.ejemplo.test/f.webp', alt: 'H' };

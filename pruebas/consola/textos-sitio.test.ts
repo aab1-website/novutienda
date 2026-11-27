@@ -53,6 +53,21 @@ describe('textos del sitio', () => {
       expect('institucional' in aNegocio(negocio, { ...vacio, nosotros: [{ titulo: '', texto: '' }] })).toBe(false);
       expect(aEstado(negocio).nosotros).toEqual([]);
     });
+    it('un bloque vacío antes de uno inválido no desplaza el error; igual con el chat', () => {
+      const x = { ...vacio, nosotros: [{ titulo: '', texto: '' }, { titulo: 'Envíos', texto: '' }] };
+      expect(Object.keys(revisarTextos(x))).toEqual(['nosotros.1.texto']);
+      const c = { ...vacio, mensajes: [{ de: 'cliente' as const, texto: '' }, { de: 'cliente' as const, texto: 'a'.repeat(301) }] };
+      expect(Object.keys(revisarTextos(c))).toEqual(['mensaje.1']);
+    });
+    it('HTML, tabuladores y caracteres invisibles caen en su campo con el mensaje de caracteres', () => {
+      const msg = 'No use los signos < ni >, tabuladores ni caracteres invisibles.';
+      const r1 = revisarTextos({ ...vacio, nosotros: [{ titulo: 'Ok', texto: 'uno\n<b>dos</b>' }, { titulo: 'a\tb', texto: 'x' }] });
+      expect(r1['nosotros.0.texto']).toBe(msg);
+      expect(r1['nosotros.1.titulo']).toBe(msg);
+      const r2 = revisarTextos({ ...vacio, nosotros: [{ titulo: 'Ok', texto: 'a\u200Bb' }, { titulo: 'T\u200B', texto: 'x' }] });
+      expect(r2['nosotros.0.texto']).toBe(msg);
+      expect(r2['nosotros.1.titulo']).toBe(msg);
+    });
     it('los errores caen en el campo correcto y coinciden con el servidor', () => {
       const bloque = (titulo: string, texto: string) => ({ ...vacio, nosotros: [{ titulo: 'Ok', texto: 'x' }, { titulo, texto }] });
       expect(Object.keys(revisarTextos(bloque('a'.repeat(81), 'x')))).toEqual(['nosotros.1.titulo']);
