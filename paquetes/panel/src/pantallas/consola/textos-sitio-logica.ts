@@ -8,10 +8,14 @@ import { LIMITES_TEXTOS_SITIO, validarCifra, validarInstitucional } from '@novut
 export const TOPES_TEXTOS = {
   texto: LIMITES_TEXTOS_SITIO.texto, mensajes: LIMITES_TEXTOS_SITIO.mensajes, mensaje: LIMITES_TEXTOS_SITIO.mensaje,
   cifraValor: LIMITES_TEXTOS_SITIO.cifraValor, cifraDetalle: LIMITES_TEXTOS_SITIO.cifraDetalle,
+  bloquesNosotros: LIMITES_TEXTOS_SITIO.bloquesNosotros, tituloBloque: LIMITES_TEXTOS_SITIO.tituloBloque,
+  parrafosBloque: LIMITES_TEXTOS_SITIO.parrafosBloque, parrafoBloque: LIMITES_TEXTOS_SITIO.parrafoBloque,
 } as const;
 
 export type Emisor = 'cliente' | 'comercio';
 export interface MensajeEditable { readonly de: Emisor; readonly texto: string }
+/** Bloque de «Nosotros» en el formulario: el texto lleva un párrafo por renglón. */
+export interface BloqueEditable { readonly titulo: string; readonly texto: string }
 
 /**
  * Topes y formas de los datos de la tienda: COPIA de `LIMITES_NEGOCIO` de `@novutienda/consola/negocio` (el panel no importa la
@@ -70,6 +74,8 @@ export interface EstadoTextos {
   readonly cifraDetalle: string;
   readonly cifraConfirmada: boolean;
   readonly mensajes: readonly MensajeEditable[];
+  /** Bloques de «Nosotros» (Sobre nosotros, Envíos, Garantías…). */
+  readonly nosotros: readonly BloqueEditable[];
 }
 
 /** Los datos del negocio tal como los guarda el servidor; solo se leen o escriben los campos de esta pantalla. */
@@ -78,7 +84,7 @@ export type NegocioCrudo = Readonly<Record<string, unknown>>;
 const obj = (v: unknown): Record<string, unknown> => (typeof v === 'object' && v !== null && !Array.isArray(v) ? (v as Record<string, unknown>) : {});
 const txt = (v: unknown): string => (typeof v === 'string' ? v : '');
 
-export const ESTADO_VACIO: EstadoTextos = { nombre: '', lema: '', direccion: '', horario: '', telefono: '', correo: '', mapa: '', mision: '', vision: '', cifraValor: '', cifraDetalle: '', cifraConfirmada: false, mensajes: [] };
+export const ESTADO_VACIO: EstadoTextos = { nombre: '', lema: '', direccion: '', horario: '', telefono: '', correo: '', mapa: '', mision: '', vision: '', cifraValor: '', cifraDetalle: '', cifraConfirmada: false, mensajes: [], nosotros: [] };
 
 export function aEstado(negocio: NegocioCrudo | null): EstadoTextos {
   if (negocio === null) return ESTADO_VACIO;
@@ -86,6 +92,7 @@ export function aEstado(negocio: NegocioCrudo | null): EstadoTextos {
   const cifra = obj(obj(negocio['identidad'])['cifra']);
   const valor = obj(cifra['valor']);
   const mensajes = Array.isArray(obj(inst['chat'])['mensajes']) ? (obj(inst['chat'])['mensajes'] as unknown[]) : [];
+  const bloques = Array.isArray(inst['nosotros']) ? (inst['nosotros'] as unknown[]) : [];
   return {
     nombre: txt(negocio['nombre']), lema: txt(negocio['lema']), direccion: txt(negocio['direccion']),
     horario: txt(negocio['horario']), telefono: txt(negocio['telefono']), correo: txt(negocio['correo']),
@@ -93,11 +100,21 @@ export function aEstado(negocio: NegocioCrudo | null): EstadoTextos {
     mision: txt(inst['mision']), vision: txt(inst['vision']),
     cifraValor: txt(valor['texto']), cifraDetalle: txt(cifra['detalle']), cifraConfirmada: valor['confirmada'] === true,
     mensajes: mensajes.map((m): MensajeEditable => ({ de: obj(m)['de'] === 'comercio' ? 'comercio' : 'cliente', texto: txt(obj(m)['texto']) })),
+    nosotros: bloques.map((b): BloqueEditable => {
+      const p = obj(b)['parrafos'];
+      return { titulo: txt(obj(b)['titulo']), texto: Array.isArray(p) ? p.map(txt).join('\n') : '' };
+    }),
   };
 }
 
 /** Los datos del negocio con estos textos aplicados. Lo vacío se omite (misión, visión, chat) o queda en `null` (cifra, horario, teléfono, correo). */
 const CLAVES_DATOS: readonly string[] = ['nombre', 'lema', 'direccion', 'horario', 'telefono', 'correo'];
+
+/** Párrafos de un bloque: un renglón cada uno, recortados y sin vacíos. */
+const parrafosDe = (texto: string): string[] => texto.split(/\r\n|\r|\n/).map((x) => x.trim()).filter((x) => x !== '');
+/** Índices originales de los bloques y mensajes que `aNegocio` envía (los vacíos se omiten y desplazan los índices del núcleo). */
+const indicesBloques = (e: EstadoTextos): number[] => e.nosotros.flatMap((b, i) => (b.titulo.trim() !== '' || parrafosDe(b.texto).length > 0 ? [i] : []));
+const indicesMensajes = (e: EstadoTextos): number[] => e.mensajes.flatMap((m, i) => (m.texto.trim() !== '' ? [i] : []));
 
 export function aNegocio(negocio: NegocioCrudo, e: EstadoTextos): Record<string, unknown> {
   const resto = Object.fromEntries(Object.entries(negocio).filter(([k]) => k !== 'institucional' && k !== 'mapa' && !CLAVES_DATOS.includes(k)));
@@ -105,7 +122,8 @@ export function aNegocio(negocio: NegocioCrudo, e: EstadoTextos): Record<string,
   const mision = e.mision.trim();
   const vision = e.vision.trim();
   const mensajes = e.mensajes.map((m) => ({ de: m.de, texto: m.texto.trim() })).filter((m) => m.texto !== '');
-  const inst = { ...(mision === '' ? {} : { mision }), ...(vision === '' ? {} : { vision }), ...(mensajes.length === 0 ? {} : { chat: { mensajes } }) };
+  const nosotros = indicesBloques(e).map((i) => ({ titulo: (e.nosotros[i]?.titulo ?? '').trim(), parrafos: parrafosDe(e.nosotros[i]?.texto ?? '') }));
+  const inst = { ...(mision === '' ? {} : { mision }), ...(vision === '' ? {} : { vision }), ...(mensajes.length === 0 ? {} : { chat: { mensajes } }), ...(nosotros.length === 0 ? {} : { nosotros }) };
   const valor = e.cifraValor.trim();
   const detalle = e.cifraDetalle.trim();
   const cifra = valor === '' && detalle === '' ? null : { valor: { texto: valor, confirmada: e.cifraConfirmada }, detalle };
@@ -123,14 +141,17 @@ export function aNegocio(negocio: NegocioCrudo, e: EstadoTextos): Record<string,
 }
 
 /** Clave del campo del formulario al que corresponde un error de la regla del núcleo (por su ruta). */
-function claveDeError(msg: string): string {
+function claveDeError(msg: string, bloques: readonly number[], mensajes: readonly number[]): string {
   const ruta = msg.slice(0, msg.indexOf(':'));
   if (ruta === 'institucional.mision') return 'mision';
   if (ruta === 'institucional.vision') return 'vision';
   if (ruta === 'cifra.valor.texto') return 'cifraValor';
   if (ruta === 'cifra.detalle') return 'cifraDetalle';
+  const b = /^institucional\.nosotros\[(\d+)\]\.(titulo|parrafos)/.exec(ruta);
+  if (b) return `nosotros.${String(bloques[Number(b[1])] ?? b[1])}.${b[2] === 'titulo' ? 'titulo' : 'texto'}`;
+  if (ruta === 'institucional.nosotros') return 'nosotros';
   const m = /^institucional\.chat\.mensajes\[(\d+)\]/.exec(ruta);
-  return m ? `mensaje.${m[1] ?? ''}` : 'mensajes';
+  return m ? `mensaje.${String(mensajes[Number(m[1])] ?? m[1])}` : 'mensajes';
 }
 
 type ClaveDato = 'nombre' | 'lema' | 'direccion' | 'horario' | 'telefono' | 'correo';
@@ -169,22 +190,35 @@ function revisarDatos(e: EstadoTextos, inicial: EstadoTextos | undefined, r: Rec
 }
 
 /**
- * Errores por campo (`nombre`, `lema`, `direccion`, `horario`, `telefono`, `correo`, `mision`, `vision`, `cifraValor`, `cifraDetalle`, `mensaje.<i>`, `mensajes`). Vacío = se puede guardar.
+ * Errores por campo (`nombre`, `lema`, `direccion`, `horario`, `telefono`, `correo`, `mision`, `vision`, `cifraValor`, `cifraDetalle`, `mensaje.<i>`, `mensajes`, `nosotros`, `nosotros.<i>.titulo`, `nosotros.<i>.texto`). Vacío = se puede guardar.
  * Largos y cantidades los decide la regla del núcleo (`validarInstitucional`, `validarCifra`) sobre lo que se enviaría;
  * aquí solo se redactan los mensajes y se agregan las reglas propias del formulario (cifra y detalle van juntos).
  */
+const MENSAJE_CARACTERES = 'No use los signos < ni >, tabuladores ni caracteres invisibles.';
+
 export function revisarTextos(e: EstadoTextos, inicial?: EstadoTextos): Readonly<Record<string, string>> {
   const r: Record<string, string> = {};
   revisarDatos(e, inicial, r);
   const enviado = aNegocio({}, e);
   const cifra = obj(enviado['identidad'])['cifra'];
   const errores = [...validarInstitucional(enviado['institucional'], 'institucional'), ...validarCifra(cifra, 'cifra')];
+  const ib = indicesBloques(e);
+  const im = indicesMensajes(e);
+  // El núcleo no rechaza los caracteres de formato invisibles (`\p{Cf}`) y la consola, en estricto, sí: se revisan aquí para que el error caiga en el campo.
+  e.nosotros.forEach((b, i) => {
+    if (RE_ENGANOSO.test(b.titulo)) r[`nosotros.${String(i)}.titulo`] = MENSAJE_CARACTERES;
+    if (parrafosDe(b.texto).some((p) => RE_ENGANOSO.test(p))) r[`nosotros.${String(i)}.texto`] = MENSAJE_CARACTERES;
+  });
   for (const msg of errores) {
-    const k = claveDeError(msg);
+    const k = claveDeError(msg, ib, im);
     if (r[k] !== undefined) continue;
-    r[k] = k === 'mensajes' ? `Máximo ${String(TOPES_TEXTOS.mensajes)} mensajes.`
+    r[k] = msg.includes('no admite HTML') ? MENSAJE_CARACTERES
+      : k === 'mensajes' ? `Máximo ${String(TOPES_TEXTOS.mensajes)} mensajes.`
       : k === 'cifraValor' ? `Máximo ${String(TOPES_TEXTOS.cifraValor)} caracteres.`
       : k === 'cifraDetalle' ? `Máximo ${String(TOPES_TEXTOS.cifraDetalle)} caracteres.`
+      : k === 'nosotros' ? `Máximo ${String(TOPES_TEXTOS.bloquesNosotros)} bloques.`
+      : k.endsWith('.titulo') ? `Escriba un título de 1 a ${String(TOPES_TEXTOS.tituloBloque)} caracteres.`
+      : k.startsWith('nosotros.') ? `Escriba de 1 a ${String(TOPES_TEXTOS.parrafosBloque)} renglones (un párrafo cada uno), de hasta ${String(TOPES_TEXTOS.parrafoBloque)} caracteres.`
       : k === 'mision' || k === 'vision' ? `Máximo ${String(TOPES_TEXTOS.texto)} caracteres.`
       : `Máximo ${String(TOPES_TEXTOS.mensaje)} caracteres.`;
   }

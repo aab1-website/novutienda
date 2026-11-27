@@ -1,11 +1,12 @@
 ---
 import Icono from './Icono.astro';
 import { contenido } from '../contenido/instancia';
-import { afirmacionVisible } from '../contenido/consultas';
+import { afirmacionVisible, nosotrosVisible } from '../contenido/consultas';
 import { srcsetDe } from '../lib/medios';
 
 const { identidad: i } = contenido;
 const cifra = i.cifra !== null && afirmacionVisible(i.cifra.valor, false) ? i.cifra : null;
+const bloques = nosotrosVisible(contenido.institucional);
 const sello = afirmacionVisible(i.sello, false) ? i.sello : null;
 ---
 <section id="nosotros" class="seccion identidad" aria-labelledby="titulo-identidad">
@@ -19,9 +20,19 @@ const sello = afirmacionVisible(i.sello, false) ? i.sello : null;
     <div class="identidad-texto">
       <span class="etiqueta">{i.etiqueta}</span>
       <h2 id="titulo-identidad" class="titulo-seccion">{i.titulo}</h2>
-      <p class="subtitulo">{i.texto}</p>
+      {bloques === null && <p class="subtitulo">{i.texto}</p>}
       {i.foto === null && cifra !== null && <div class="identidad-cifra identidad-cifra-suelta"><strong>{cifra.valor.texto}</strong>{' '}<span>{cifra.detalle}</span></div>}
-      {i.valores.length > 0 && (
+      {bloques !== null && (
+        <div class="nosotros-bloques">
+          {bloques.map((b) => (
+            <article class="nosotros-bloque">
+              <h3>{b.titulo}</h3>
+              {b.parrafos.map((t) => <p>{t}</p>)}
+            </article>
+          ))}
+        </div>
+      )}
+      {bloques === null && i.valores.length > 0 && (
         <ul class="valores">
           {i.valores.map((v) => (
             <li class="valor">

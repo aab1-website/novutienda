@@ -12,7 +12,7 @@
  * - `estricto`: lo de `heredado` más reglas de seguridad (sin caracteres engañosos ni HTML, correo y teléfono con forma,
  *   anfitriones sin IP, topes de categorías y de tamaño). Lo usa el guardado para lo que escribe una persona.
  */
-import { LIMITES_TEXTOS_SITIO, RE_SLUG_SITIO, validarCifra, validarInstitucional, type MensajeChatTexto, type TextosInstitucionales } from '@novutienda/nucleo';
+import { LIMITES_TEXTOS_SITIO, RE_SLUG_SITIO, validarCifra, validarInstitucional, type BloqueNosotros, type MensajeChatTexto, type TextosInstitucionales } from '@novutienda/nucleo';
 import { ErrorConsola } from './errores.js';
 import { esObjeto } from './validar.js';
 
@@ -107,7 +107,7 @@ export interface NegocioSitioDatos {
   /** `oculta`: sus productos no se publican; `orden`: posición en el sitio (entero 0..39). */
   readonly categorias: Readonly<Record<string, CategoriaNegocio>>;
   readonly destacados: readonly string[];
-  /** Ausente = el sitio no pinta misión, visión ni chat. */
+  /** Ausente = el sitio no pinta misión, visión, chat ni bloques de «Nosotros». */
   readonly institucional?: InstitucionalNegocio;
 }
 
@@ -265,11 +265,11 @@ class Lector {
 
 /**
  * `institucional` opcional: presente, se valida entero con la regla única del núcleo (`validarInstitucional`: misión y visión
- * de 1 a 600; chat de 1 a 6 mensajes de 1 a 300). Aquí solo se agrega la forma (campos conocidos) y la tolerancia de caracteres.
+ * de 1 a 600; chat de 1 a 6 mensajes de 1 a 300; «Nosotros» de 1 a 6 bloques con título de 1 a 80 y de 1 a 6 párrafos de 1 a 1000). Aquí solo se agrega la forma (campos conocidos) y la tolerancia de caracteres.
  */
 function institucional(l: Lector, v: unknown): InstitucionalNegocio | undefined {
   if (v === undefined) return undefined;
-  const o = l.obj(v, 'institucional', ['mision', 'vision', 'chat']);
+  const o = l.obj(v, 'institucional', ['mision', 'vision', 'chat', 'nosotros']);
   const c = o['chat'] === undefined ? undefined : l.obj(o['chat'], 'institucional.chat', ['mensajes']);
   const errores = validarInstitucional(v, 'institucional');
   l.errores.push(...errores);
@@ -284,6 +284,16 @@ function institucional(l: Lector, v: unknown): InstitucionalNegocio | undefined 
       return { de: x['de'] === 'comercio' ? 'comercio' : 'cliente', texto: l.texto(x['texto'], `institucional.chat.mensajes[${String(i)}].texto`, 1, L.mensaje) };
     });
     r.chat = { mensajes };
+  }
+  if (o['nosotros'] !== undefined) {
+    r.nosotros = l.lista(o['nosotros'], 'institucional.nosotros', L.bloquesNosotros, 1).map((b, i): BloqueNosotros => {
+      const ruta = `institucional.nosotros[${String(i)}]`;
+      const x = l.obj(b, ruta, ['titulo', 'parrafos']);
+      return {
+        titulo: l.texto(x['titulo'], `${ruta}.titulo`, 1, L.tituloBloque),
+        parrafos: l.lista(x['parrafos'], `${ruta}.parrafos`, L.parrafosBloque, 1).map((p, j) => l.texto(p, `${ruta}.parrafos[${String(j)}]`, 1, L.parrafoBloque)),
+      };
+    });
   }
   return r;
 }

@@ -355,6 +355,10 @@ export function leerInstitucional(l: Lector, v: unknown, ruta: string): Instituc
   if (esObj(chat) && Array.isArray(chat['mensajes'])) {
     r.chat = { mensajes: chat['mensajes'].map((m: Obj) => ({ de: m['de'] === 'comercio' ? 'comercio' as const : 'cliente' as const, texto: String(m['texto']) })) };
   }
+  const nosotros = o['nosotros'];
+  if (Array.isArray(nosotros)) {
+    r.nosotros = nosotros.map((b: Obj) => ({ titulo: String(b['titulo']), parrafos: (b['parrafos'] as unknown[]).map(String) }));
+  }
   return r;
 }
 

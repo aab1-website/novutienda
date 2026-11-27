@@ -502,6 +502,12 @@ describe('campos opcionales en el contenido publicado', () => {
     expect(contenidoDesdePublicado(respuesta(), { ...negocioBase(), institucional: inst }, entorno).institucional).toEqual(inst);
     expect(() => contenidoDesdePublicado(respuesta(), { ...negocioBase(), institucional: { vision: '' } }, entorno)).toThrow();
   });
+  it('nosotros: sin él el contenido no cambia; con él aparece', () => {
+    const sin = contenidoDesdePublicado(respuesta(), { ...negocioBase(), institucional: { mision: 'm' } }, entorno).institucional;
+    expect(sin).toEqual({ mision: 'm' });
+    const n = [{ titulo: 'Garantías', parrafos: ['un año'] }];
+    expect(contenidoDesdePublicado(respuesta(), { ...negocioBase(), institucional: { nosotros: n } }, entorno).institucional).toEqual({ nosotros: n });
+  });
   it('características: recorta, descarta vacías y largas con aviso, topa en 8; sin ninguna, no hay clave', () => {
     const avisos: string[] = [];
     const lista = ['  uno ', '', 'x'.repeat(161), 'dos', 'tres', 'cuatro', 'cinco', 'seis', 'siete', 'ocho', 'nueve'];

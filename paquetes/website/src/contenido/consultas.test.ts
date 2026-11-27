@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import { paginar } from '../lib/paginas.js';
-import { categoriasConVenta, productosEnOrdenDeCategorias, afirmacionVisible, institucionalVisible, buscarProductos, categoriaPorId, filtrarProductos, marcasDe, pendientesDeConfirmar, normalizar, productoPorSlug, productosDeCategoria, seccionesEnMenu, textoModelos } from './consultas.js';
+import { categoriasConVenta, productosEnOrdenDeCategorias, afirmacionVisible, institucionalVisible, nosotrosVisible, buscarProductos, categoriaPorId, filtrarProductos, marcasDe, pendientesDeConfirmar, normalizar, productoPorSlug, productosDeCategoria, seccionesEnMenu, textoModelos } from './consultas.js';
 import { contenidoEjemplo as c } from './ejemplo.js';
 
 describe('consultas de contenido', () => {
@@ -89,5 +89,17 @@ describe('institucionalVisible', () => {
     const v = institucionalVisible({ mision: 'm', vision: 'v', chat: { mensajes: [{ de: 'cliente', texto: 'hola' }] } });
     expect(v).toMatchObject({ mision: 'm', vision: 'v', hay: true });
     expect(v.chat).toHaveLength(1);
+  });
+});
+
+describe('nosotrosVisible', () => {
+  it('sin bloques es null', () => {
+    expect(nosotrosVisible(undefined)).toBeNull();
+    expect(nosotrosVisible({ mision: 'm' })).toBeNull();
+    expect(nosotrosVisible({ nosotros: [] })).toBeNull();
+  });
+  it('con bloques devuelve la lista', () => {
+    const n = [{ titulo: 'Envíos', parrafos: ['a'] }];
+    expect(nosotrosVisible({ nosotros: n })).toEqual(n);
   });
 });

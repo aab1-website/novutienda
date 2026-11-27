@@ -4,7 +4,7 @@ import { Alerta, Area, Boton, Campo, Casilla, ConCarga, Seccion } from '../../ui
 import { useAccion, useCarga } from '../../ui/hooks.js';
 import { mover } from './caracteristicas-vista.js';
 import {
-  aEstado, aNegocio, iguales, LARGO_MAXIMO_MAPA, LIMITES_DATOS, revisarTextos, TOPES_TEXTOS, type EstadoTextos, type MensajeEditable, type NegocioCrudo,
+  aEstado, aNegocio, iguales, LARGO_MAXIMO_MAPA, LIMITES_DATOS, revisarTextos, TOPES_TEXTOS, type BloqueEditable, type EstadoTextos, type MensajeEditable, type NegocioCrudo,
 } from './textos-sitio-logica.js';
 
 /** Lectura de `sitio/negocio` (`leerNegocioSitio`) y guardado con control de versión (`guardarNegocioSitio`, solo adm). */
@@ -25,6 +25,7 @@ function Formulario({ servicio, inicial, recargar }: { servicio: ServicioTextos;
   const errores = intento ? revisarTextos(e, base.estado) : {};
   const sucio = !iguales(e, base.estado);
   const cambiar = (c: Partial<EstadoTextos>): void => { setGuardado(false); setE({ ...e, ...c }); };
+  const bloque = (i: number, c: Partial<BloqueEditable>): void => cambiar({ nosotros: e.nosotros.map((b, j) => (j === i ? { ...b, ...c } : b)) });
   const msg = (i: number, c: Partial<MensajeEditable>): void => cambiar({ mensajes: e.mensajes.map((m, j) => (j === i ? { ...m, ...c } : m)) });
 
   const guardar = (): void => {
@@ -77,6 +78,25 @@ function Formulario({ servicio, inicial, recargar }: { servicio: ServicioTextos;
         <Area etiqueta="Misión" valor={e.mision} filas={4} tope={TOPES_TEXTOS.texto} error={errores['mision']} onInput={(v) => cambiar({ mision: v })} />
         <Area etiqueta="Visión" valor={e.vision} filas={4} tope={TOPES_TEXTOS.texto} error={errores['vision']} onInput={(v) => cambiar({ vision: v })} />
       </section>
+
+      <fieldset class="ficha-bloque">
+        <legend>Sobre nosotros, envíos y garantías</legend>
+        <p class="texto-suave">Aparece en la sección Nosotros de la página. Cada renglón es un párrafo.</p>
+        {errores['nosotros'] !== undefined && <p role="alert">{errores['nosotros']}</p>}
+        <ol class="ficha-medios">
+          {e.nosotros.map((b, i) => (
+            <li key={i} class="ficha-medio">
+              <Campo etiqueta="Título" valor={b.titulo} tope={TOPES_TEXTOS.tituloBloque} ayuda="Ejemplo: Envíos." error={errores[`nosotros.${String(i)}.titulo`]} onInput={(v) => bloque(i, { titulo: v })} />
+              <Area etiqueta="Texto" valor={b.texto} filas={4} error={errores[`nosotros.${String(i)}.texto`]} onInput={(v) => bloque(i, { texto: v })} />
+              <div class="ficha-zona-botones">
+                <Boton chico variante="secundario" onClick={() => cambiar({ nosotros: e.nosotros.filter((_, j) => j !== i) })}>Quitar</Boton>
+              </div>
+            </li>
+          ))}
+        </ol>
+        <Boton variante="secundario" deshabilitado={e.nosotros.length >= TOPES_TEXTOS.bloquesNosotros} onClick={() => cambiar({ nosotros: [...e.nosotros, { titulo: '', texto: '' }] })}>Agregar bloque</Boton>
+        {e.nosotros.length >= TOPES_TEXTOS.bloquesNosotros && <p class="texto-suave">Llegó al máximo de {TOPES_TEXTOS.bloquesNosotros} bloques.</p>}
+      </fieldset>
 
       <section class="ficha-bloque" aria-labelledby="textos-cifra">
         <h3 id="textos-cifra">Cifra de clientes</h3>

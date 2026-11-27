@@ -5,4 +5,4 @@ export type { ConfiguracionComercial, MercadoTenant, TipoCambioMercado, FuenteTi
 export type { ReglaRedondeo, ModoRedondeo } from '../tipo-cambio/regla-redondeo.js';
 export type { SobreEvento } from '../contratos/sobre-evento.js';
 export { LIMITES_TEXTOS_SITIO, validarCaracteristicas, validarCifra, validarInstitucional, validarTextoSitio } from '../contenido/textos-sitio.js';
-export type { AutorMensajeChat, MensajeChatTexto, TextosInstitucionales } from '../contenido/textos-sitio.js';
+export type { AutorMensajeChat, BloqueNosotros, MensajeChatTexto, TextosInstitucionales } from '../contenido/textos-sitio.js';

@@ -118,6 +118,12 @@ export function institucionalVisible(i: Contenido['institucional']): {
   return { mision, vision, chat, hay: mision !== null || vision !== null || chat !== null };
 }
 
+/** Bloques de «Nosotros» con título: la lista, o null si no hay (entonces la sección queda como siempre). */
+export function nosotrosVisible(i: Contenido['institucional']): NonNullable<NonNullable<Contenido['institucional']>['nosotros']> | null {
+  const n = i?.nosotros;
+  return n !== undefined && n.length > 0 ? n : null;
+}
+
 export function textoModelos(n: number): string {
   return n === 1 ? '1 modelo disponible' : `${n} modelos disponibles`;
 }

@@ -206,6 +206,13 @@ describe('campos opcionales: institucional y características', () => {
   it('acepta institucional completo', () => {
     expect(errores(con({ institucional: { mision: 'm', vision: 'v', chat: { mensajes: [{ de: 'cliente', texto: 'hola' }] } } }))).toEqual([]);
   });
+  it('copia los bloques de nosotros y los rechaza vacíos o con HTML', () => {
+    const n = [{ titulo: 'Envíos', parrafos: ['a', 'b'] }];
+    const r = validarContenido(con({ institucional: { nosotros: n } }));
+    expect(r.ok && r.contenido.institucional?.nosotros).toEqual(n);
+    expect(errores(con({ institucional: { nosotros: [] } }))).toHaveLength(1);
+    expect(errores(con({ institucional: { nosotros: [{ titulo: 'x', parrafos: ['<b>'] }] } }))).toHaveLength(1);
+  });
   it('rechaza misión larga, chat vacío, de más de 6 o con emisor inválido', () => {
     expect(errores(con({ institucional: { mision: 'x'.repeat(601) } }))).toContain('institucional.mision: debe ser un texto de 1 a 600 caracteres');
     expect(errores(con({ institucional: { chat: { mensajes: [] } } }))).toHaveLength(1);

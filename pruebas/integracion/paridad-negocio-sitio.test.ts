@@ -277,6 +277,34 @@ describe('heredado: límites de texto con el mismo veredicto que el sitio', () =
   });
 });
 
+describe('institucional.nosotros: mismo veredicto que el sitio', () => {
+  const bloque = (titulo = 'Título', parrafos: unknown[] = ['Párrafo']): Json => ({ titulo, parrafos });
+  const conNosotros = (nosotros: unknown): Json => ({ ...base(), institucional: { nosotros } });
+
+  it('válidos y en los límites: 1 bloque, 6 bloques, título de 80 y 6 párrafos de 1000', () => {
+    const casos: readonly unknown[] = [
+      [bloque()],
+      Array.from({ length: 6 }, (_, i) => bloque(`Bloque ${String(i)}`)),
+      [bloque(un(80))],
+      [bloque('Título', Array.from({ length: 6 }, () => un(1000)))],
+      [bloque(un(80), Array.from({ length: 6 }, () => un(1000)))],
+    ];
+    for (const [i, c] of casos.entries()) expect(mismoVeredicto(conNosotros(c)), `caso ${String(i)}`).toBe(true);
+  });
+
+  it('inválidos: lista vacía, 7 bloques, título vacío o de 81, 0 o 7 párrafos, párrafo de 1001, claves y tipos', () => {
+    const casos: readonly unknown[] = [
+      [],
+      Array.from({ length: 7 }, () => bloque()),
+      [bloque('')], [bloque('   ')], [bloque(un(81))],
+      [bloque('Título', [])], [bloque('Título', Array.from({ length: 7 }, () => 'p'))],
+      [bloque('Título', [un(1001)])], [bloque('Título', [''])], [bloque('Título', [5])],
+      [{ titulo: 'Título' }], [{ parrafos: ['p'] }], ['texto'], [null], 'texto', 5, null,
+    ];
+    for (const [i, c] of casos.entries()) expect(mismoVeredicto(conNosotros(c)), `caso ${String(i)}`).toBe(false);
+  });
+});
+
 describe('heredado: tolerancia de caracteres igual a la del sitio', () => {
   const RAROS: readonly [string, string][] = [
     ['salto de línea', 'a\nb'], ['retorno', 'a\rb'], ['DEL', 'a\u007fb'], ['HTML', '<b>a</b>'], ['U+202E', 'a‮b'],
