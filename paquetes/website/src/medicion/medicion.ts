@@ -87,6 +87,10 @@ export function crearMedicion(config: ConfigMedicion, entorno: Entorno): Medicio
     w['fbq'] = fbq;
     w['_fbq'] = fbq;
     fbq('consent', 'grant');
+    // Sin configuración automática: fbevents.js no agrega eventos inferidos, microdatos ni metadatos de página, y el pedido
+    // queda bajo 2048 caracteres, así que viaja como imagen GET (img-src). Con la carga automática el pedido lo supera y el
+    // píxel cae al POST por formulario+iframe, que la CSP (`form-action 'self'`, `frame-src 'none'`) bloquea.
+    fbq('set', 'autoConfig', false, config.meta);
     fbq('init', config.meta);
     fbq('track', 'PageView');
     entorno.cargarScript(URL_META);
