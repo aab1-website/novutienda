@@ -20,7 +20,7 @@
   },
   "dependencies": {
     "@novutienda/nucleo": "workspace:*",
-    "firebase": "13.1.0",
+    "firebase": "13.3.0",
     "preact": "10.29.8"
   },
   "devDependencies": {
