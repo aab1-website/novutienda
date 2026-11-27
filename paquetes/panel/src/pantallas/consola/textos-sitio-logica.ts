@@ -8,10 +8,14 @@ import { LIMITES_TEXTOS_SITIO, validarCifra, validarInstitucional } from '@novut
 export const TOPES_TEXTOS = {
   texto: LIMITES_TEXTOS_SITIO.texto, mensajes: LIMITES_TEXTOS_SITIO.mensajes, mensaje: LIMITES_TEXTOS_SITIO.mensaje,
   cifraValor: LIMITES_TEXTOS_SITIO.cifraValor, cifraDetalle: LIMITES_TEXTOS_SITIO.cifraDetalle,
+  bloquesNosotros: LIMITES_TEXTOS_SITIO.bloquesNosotros, tituloBloque: LIMITES_TEXTOS_SITIO.tituloBloque,
+  parrafosBloque: LIMITES_TEXTOS_SITIO.parrafosBloque, parrafoBloque: LIMITES_TEXTOS_SITIO.parrafoBloque,
 } as const;
 
 export type Emisor = 'cliente' | 'comercio';
 export interface MensajeEditable { readonly de: Emisor; readonly texto: string }
+/** Bloque de «Nosotros» en el formulario: el texto lleva un párrafo por renglón. */
+export interface BloqueEditable { readonly titulo: string; readonly texto: string }
 
 /**
  * Topes y formas de los datos de la tienda: COPIA de `LIMITES_NEGOCIO` de `@novutienda/consola/negocio` (el panel no importa la
@@ -70,6 +74,8 @@ export interface EstadoTextos {
   readonly cifraDetalle: string;
   readonly cifraConfirmada: boolean;
   readonly mensajes: readonly MensajeEditable[];
+  /** Bloques de «Nosotros» (Sobre nosotros, Envíos, Garantías…). */
+  readonly nosotros: readonly BloqueEditable[];
 }
 
 /** Los datos del negocio tal como los guarda el servidor; solo se leen o escriben los campos de esta pantalla. */
@@ -78,7 +84,7 @@ export type NegocioCrudo = Readonly<Record<string, unknown>>;
 const obj = (v: unknown): Record<string, unknown> => (typeof v === 'object' && v !== null && !Array.isArray(v) ? (v as Record<string, unknown>) : {});
 const txt = (v: unknown): string => (typeof v === 'string' ? v : '');
 
-export const ESTADO_VACIO: EstadoTextos = { nombre: '', lema: '', direccion: '', horario: '', telefono: '', correo: '', mapa: '', mision: '', vision: '', cifraValor: '', cifraDetalle: '', cifraConfirmada: false, mensajes: [] };
+export const ESTADO_VACIO: EstadoTextos = { nombre: '', lema: '', direccion: '', horario: '', telefono: '', correo: '', mapa: '', mision: '', vision: '', cifraValor: '', cifraDetalle: '', cifraConfirmada: false, mensajes: [], nosotros: [] };
 
 export function aEstado(negocio: NegocioCrudo | null): EstadoTextos {
   if (negocio === null) return ESTADO_VACIO;
@@ -86,6 +92,7 @@ export function aEstado(negocio: NegocioCrudo | null): EstadoTextos {
   const cifra = obj(obj(negocio['identidad'])['cifra']);
   const valor = obj(cifra['valor']);
   const mensajes = Array.isArray(obj(inst['chat'])['mensajes']) ? (obj(inst['chat'])['mensajes'] as unknown[]) : [];
+  const bloques = Array.isArray(inst['nosotros']) ? (inst['nosotros'] as unknown[]) : [];
   return {
     nombre: txt(negocio['nombre']), lema: txt(negocio['lema']), direccion: txt(negocio['direccion']),
     horario: txt(negocio['horario']), telefono: txt(negocio['telefono']), correo: txt(negocio['correo']),
@@ -93,6 +100,10 @@ export function aEstado(negocio: NegocioCrudo | null): EstadoTextos {
     mision: txt(inst['mision']), vision: txt(inst['vision']),
     cifraValor: txt(valor['texto']), cifraDetalle: txt(cifra['detalle']), cifraConfirmada: valor['confirmada'] === true,
     mensajes: mensajes.map((m): MensajeEditable => ({ de: obj(m)['de'] === 'comercio' ? 'comercio' : 'cliente', texto: txt(obj(m)['texto']) })),
+    nosotros: bloques.map((b): BloqueEditable => {
+      const p = obj(b)['parrafos'];
+      return { titulo: txt(obj(b)['titulo']), texto: Array.isArray(p) ? p.map(txt).join('\n') : '' };
+    }),
   };
 }
 
@@ -105,7 +116,10 @@ export function aNegocio(negocio: NegocioCrudo, e: EstadoTextos): Record<string,
   const mision = e.mision.trim();
   const vision = e.vision.trim();
   const mensajes = e.mensajes.map((m) => ({ de: m.de, texto: m.texto.trim() })).filter((m) => m.texto !== '');
-  const inst = { ...(mision === '' ? {} : { mision }), ...(vision === '' ? {} : { vision }), ...(mensajes.length === 0 ? {} : { chat: { mensajes } }) };
+  const nosotros = e.nosotros
+    .map((b) => ({ titulo: b.titulo.trim(), parrafos: b.texto.split(/\r\n|\r|\n/).map((x) => x.trim()).filter((x) => x !== '') }))
+    .filter((b) => b.titulo !== '' || b.parrafos.length > 0);
+  const inst = { ...(mision === '' ? {} : { mision }), ...(vision === '' ? {} : { vision }), ...(mensajes.length === 0 ? {} : { chat: { mensajes } }), ...(nosotros.length === 0 ? {} : { nosotros }) };
   const valor = e.cifraValor.trim();
   const detalle = e.cifraDetalle.trim();
   const cifra = valor === '' && detalle === '' ? null : { valor: { texto: valor, confirmada: e.cifraConfirmada }, detalle };
@@ -129,6 +143,9 @@ function claveDeError(msg: string): string {
   if (ruta === 'institucional.vision') return 'vision';
   if (ruta === 'cifra.valor.texto') return 'cifraValor';
   if (ruta === 'cifra.detalle') return 'cifraDetalle';
+  const b = /^institucional\.nosotros\[(\d+)\]\.(titulo|parrafos)/.exec(ruta);
+  if (b) return `nosotros.${b[1] ?? ''}.${b[2] === 'titulo' ? 'titulo' : 'texto'}`;
+  if (ruta === 'institucional.nosotros') return 'nosotros';
   const m = /^institucional\.chat\.mensajes\[(\d+)\]/.exec(ruta);
   return m ? `mensaje.${m[1] ?? ''}` : 'mensajes';
 }
@@ -169,7 +186,7 @@ function revisarDatos(e: EstadoTextos, inicial: EstadoTextos | undefined, r: Rec
 }
 
 /**
- * Errores por campo (`nombre`, `lema`, `direccion`, `horario`, `telefono`, `correo`, `mision`, `vision`, `cifraValor`, `cifraDetalle`, `mensaje.<i>`, `mensajes`). Vacío = se puede guardar.
+ * Errores por campo (`nombre`, `lema`, `direccion`, `horario`, `telefono`, `correo`, `mision`, `vision`, `cifraValor`, `cifraDetalle`, `mensaje.<i>`, `mensajes`, `nosotros`, `nosotros.<i>.titulo`, `nosotros.<i>.texto`). Vacío = se puede guardar.
  * Largos y cantidades los decide la regla del núcleo (`validarInstitucional`, `validarCifra`) sobre lo que se enviaría;
  * aquí solo se redactan los mensajes y se agregan las reglas propias del formulario (cifra y detalle van juntos).
  */
@@ -185,6 +202,9 @@ export function revisarTextos(e: EstadoTextos, inicial?: EstadoTextos): Readonly
     r[k] = k === 'mensajes' ? `Máximo ${String(TOPES_TEXTOS.mensajes)} mensajes.`
       : k === 'cifraValor' ? `Máximo ${String(TOPES_TEXTOS.cifraValor)} caracteres.`
       : k === 'cifraDetalle' ? `Máximo ${String(TOPES_TEXTOS.cifraDetalle)} caracteres.`
+      : k === 'nosotros' ? `Máximo ${String(TOPES_TEXTOS.bloquesNosotros)} bloques.`
+      : k.endsWith('.titulo') ? `Escriba un título de 1 a ${String(TOPES_TEXTOS.tituloBloque)} caracteres.`
+      : k.startsWith('nosotros.') ? `Escriba de 1 a ${String(TOPES_TEXTOS.parrafosBloque)} renglones (un párrafo cada uno), de hasta ${String(TOPES_TEXTOS.parrafoBloque)} caracteres.`
       : k === 'mision' || k === 'vision' ? `Máximo ${String(TOPES_TEXTOS.texto)} caracteres.`
       : `Máximo ${String(TOPES_TEXTOS.mensaje)} caracteres.`;
   }

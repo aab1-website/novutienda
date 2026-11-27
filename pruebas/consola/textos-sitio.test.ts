@@ -29,6 +29,42 @@ describe('textos del sitio', () => {
     expect(TOPES_TEXTOS.mensaje).toBe(LIMITES_TEXTOS_SITIO.mensaje);
     expect(TOPES_TEXTOS.cifraValor).toBe(LIMITES_TEXTOS_SITIO.cifraValor);
     expect(TOPES_TEXTOS.cifraDetalle).toBe(LIMITES_TEXTOS_SITIO.cifraDetalle);
+    expect(TOPES_TEXTOS.bloquesNosotros).toBe(LIMITES_TEXTOS_SITIO.bloquesNosotros);
+    expect(TOPES_TEXTOS.tituloBloque).toBe(LIMITES_TEXTOS_SITIO.tituloBloque);
+    expect(TOPES_TEXTOS.parrafosBloque).toBe(LIMITES_TEXTOS_SITIO.parrafosBloque);
+    expect(TOPES_TEXTOS.parrafoBloque).toBe(LIMITES_TEXTOS_SITIO.parrafoBloque);
+  });
+  describe('bloques de «Nosotros»', () => {
+    const e = { ...vacio, mision: 'M', nosotros: [{ titulo: ' Envíos ', texto: ' A todo el país. \n\n  Entrega en 48 horas.  \r\n' }, { titulo: '', texto: '  ' }, { titulo: 'Garantías', texto: 'Seis meses.' }] };
+    it('dos renglones son dos párrafos; los bloques vacíos se omiten; el servidor lo acepta', () => {
+      const n = aNegocio(negocio, e);
+      expect((n['institucional'] as { nosotros: unknown }).nosotros).toEqual([
+        { titulo: 'Envíos', parrafos: ['A todo el país.', 'Entrega en 48 horas.'] }, { titulo: 'Garantías', parrafos: ['Seis meses.'] },
+      ]);
+      expect(Object.keys(revisarTextos(e))).toEqual([]);
+      expect(valido(n)).toBe(true);
+    });
+    it('ida y vuelta conserva los otros campos; sin bloques no hay clave', () => {
+      const de = aEstado(aNegocio(negocio, e));
+      expect(de.mision).toBe('M');
+      expect(de.nosotros).toEqual([{ titulo: 'Envíos', texto: 'A todo el país.\nEntrega en 48 horas.' }, { titulo: 'Garantías', texto: 'Seis meses.' }]);
+      const sin = aNegocio(negocio, { ...e, nosotros: [{ titulo: '', texto: '' }] });
+      expect((sin['institucional'] as Record<string, unknown>)['nosotros']).toBeUndefined();
+      expect('institucional' in aNegocio(negocio, { ...vacio, nosotros: [{ titulo: '', texto: '' }] })).toBe(false);
+      expect(aEstado(negocio).nosotros).toEqual([]);
+    });
+    it('los errores caen en el campo correcto y coinciden con el servidor', () => {
+      const bloque = (titulo: string, texto: string) => ({ ...vacio, nosotros: [{ titulo: 'Ok', texto: 'x' }, { titulo, texto }] });
+      expect(Object.keys(revisarTextos(bloque('a'.repeat(81), 'x')))).toEqual(['nosotros.1.titulo']);
+      expect(Object.keys(revisarTextos(bloque('', 'texto sin título')))).toEqual(['nosotros.1.titulo']);
+      expect(Object.keys(revisarTextos(bloque('Solo título', '')))).toEqual(['nosotros.1.texto']);
+      expect(Object.keys(revisarTextos(bloque('T', 'a'.repeat(1001))))).toEqual(['nosotros.1.texto']);
+      expect(Object.keys(revisarTextos(bloque('T', Array(7).fill('x').join('\n'))))).toEqual(['nosotros.1.texto']);
+      expect(Object.keys(revisarTextos({ ...vacio, nosotros: Array.from({ length: 7 }, () => ({ titulo: 'T', texto: 'x' })) }))).toEqual(['nosotros']);
+      for (const x of [bloque('<b>T</b>', 'x'), bloque('T', 'x'), bloque('T', '')]) {
+        expect(Object.keys(revisarTextos(x)).length > 0).toBe(!valido(aNegocio(negocio, x)));
+      }
+    });
   });
   it('todo vacío no agrega nada: sin institucional y cifra nula', () => {
     const n = aNegocio(negocio, vacio);

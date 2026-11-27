@@ -586,6 +586,22 @@ describe('institucional (misión, visión y chat) y características de la ficha
     expect(errores(con({ institucional: { otra: 'x' } })).length).toBeGreaterThan(0);
     expect(errores(con({ institucional: { mision: '<b>x</b>' } })).some((e) => e.startsWith('institucional.mision'))).toBe(true);
   });
+  it('«Nosotros»: acepta tres bloques; rechaza claves desconocidas, HTML, controles y excesos; ausente queda igual', () => {
+    const bloque = (titulo: string, ...parrafos: string[]) => ({ titulo, parrafos });
+    const tres = [bloque('Sobre nosotros', 'Somos una tienda.', 'Desde 2015.'), bloque('Envíos', 'A todo el país.'), bloque('Garantías', 'Seis meses.')];
+    expect(errores(con({ institucional: { nosotros: tres } }))).toEqual([]);
+    const leido = validarNegocioSitio(con({ institucional: { nosotros: tres } }), { nivel: 'estricto' });
+    expect(leido.institucional?.nosotros).toEqual(tres);
+    expect(errores(con({ institucional: { mision: 'M' } }))).toEqual([]);
+    expect(validarNegocioSitio(con({ institucional: { mision: 'M' } }), { nivel: 'estricto' }).institucional?.nosotros).toBeUndefined();
+    const malos: unknown[] = [
+      [{ ...bloque('A', 'x'), otra: 1 }], [bloque('<b>A</b>', 'x')], [bloque('A', 'x <script>')], [bloque('A', 'uno\ndos')], [bloque('A\u0007', 'x')],
+      [bloque('', 'x')], [bloque('A')], [bloque('a'.repeat(81), 'x')], [bloque('A', 'a'.repeat(1001))], [bloque('A', ...Array(7).fill('x'))],
+      Array(7).fill(bloque('A', 'x')), [],
+    ];
+    for (const n of malos) expect(errores(con({ institucional: { nosotros: n } })).length, JSON.stringify(n).slice(0, 60)).toBeGreaterThan(0);
+    expect(errores(con({ institucional: { nosotros: [bloque('a'.repeat(80), ...Array(6).fill('a'.repeat(1000)))] } }))).toEqual([]);
+  });
   it('se guarda y sube la versión; la ficha admite características de 1 a 8', async () => {
     const db = nuevaDb();
     const reloj = new RelojFijo();
