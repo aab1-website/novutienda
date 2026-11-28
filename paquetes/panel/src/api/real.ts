@@ -188,6 +188,7 @@ function aMovimiento(m: Obj): MovimientoVista {
     rol: m['rol'] as Rol,
     fecha: String(m['fecha']),
     motivo: m['motivo'] as string | undefined,
+    nota: typeof m['nota'] === 'string' ? m['nota'] : undefined,
   }) as MovimientoVista;
 }
 
