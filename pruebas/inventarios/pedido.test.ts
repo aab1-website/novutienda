@@ -11,6 +11,7 @@ import {
   consumirVentaAnulada,
   ejecutorDesde,
   leerCuerpoAnulacion,
+  leerCuerpoPedido,
   OperacionConflicto,
   PedidoAnulado,
   prepararSalida,
@@ -394,5 +395,60 @@ describe('anular pedido firmado', () => {
     expect(r).toMatchObject({ estado: 409, cuerpo: { ok: false, error: 'pedido-anulado' } });
     expect(doc(db, 'existencias', 'lapiz__tienda')?.['cantidad']).toBe(5);
     verificarInvariantes(db);
+  });
+});
+
+describe('nota del cliente en el pedido', () => {
+  const secreto = 'secreto-de-prueba';
+  const ahora = Date.parse('2026-11-04T12:00:00Z');
+  const marca = String(ahora);
+  const cuerpoCon = (extra: Record<string, unknown>) =>
+    JSON.stringify({ pedidoId: 'n1', items: [{ productoId: 'lapiz', cantidad: 1 }], confirmadoEn: '2026-11-04T11:59:00Z', ...extra });
+  const llamar = (c: string, firma?: string) =>
+    confirmarPedidoFirmado({ db, secreto, ahora: () => ahora }, { tenantId: T, marcaTiempo: marca, firma: firma ?? calcularFirma(secreto, marca, c), cuerpo: c });
+
+  it('con nota: la guarda en la operación y en el movimiento', async () => {
+    expect((await llamar(cuerpoCon({ nota: 'Sin bolsa, por favor' }))).estado).toBe(200);
+    expect(doc(db, 'operaciones', 'nc-n1')?.['nota']).toBe('Sin bolsa, por favor');
+    expect(doc(db, 'movimientos', 'nc-n1__lapiz__tienda')?.['nota']).toBe('Sin bolsa, por favor');
+    verificarInvariantes(db);
+  });
+
+  it('sin nota o con nota vacía: no guarda el campo', async () => {
+    expect((await llamar(cuerpoCon({}))).estado).toBe(200);
+    expect(doc(db, 'operaciones', 'nc-n1')).not.toHaveProperty('nota');
+    expect(doc(db, 'movimientos', 'nc-n1__lapiz__tienda')).not.toHaveProperty('nota');
+    expect(leerCuerpoPedido(cuerpoCon({ nota: '' }))).not.toHaveProperty('nota');
+  });
+
+  it('acepta 500 caracteres (por caracteres, no bytes) y rechaza 501', () => {
+    expect(leerCuerpoPedido(cuerpoCon({ nota: 'ñ'.repeat(500) })).nota).toHaveLength(500);
+    expect(leerCuerpoPedido(cuerpoCon({ nota: '😀'.repeat(500) })).nota).toBe('😀'.repeat(500));
+    expect(() => leerCuerpoPedido(cuerpoCon({ nota: 'a'.repeat(501) }))).toThrow();
+    expect(() => leerCuerpoPedido(cuerpoCon({ nota: '😀'.repeat(501) }))).toThrow();
+  });
+
+  it('rechaza caracteres de control (incluido el salto de línea), tipos distintos y claves desconocidas con 400', async () => {
+    for (const nota of ['a\nb', 'a\tb', 'a\u0000b', 'a\u007fb', 'a b', 5, null, true, ['x'], { a: 1 }]) {
+      expect((await llamar(cuerpoCon({ nota }))).estado, JSON.stringify(nota)).toBe(400);
+    }
+    expect((await llamar(cuerpoCon({ nota: 'hola', otra: 1 }))).estado).toBe(400);
+    expect((await llamar(cuerpoCon({ notas: 'hola' }))).estado).toBe(400);
+    expect(doc(db, 'operaciones', 'nc-n1')).toBeUndefined();
+  });
+
+  it('la firma cubre la nota: alterarla invalida la firma', async () => {
+    const firmado = calcularFirma(secreto, marca, cuerpoCon({ nota: 'Hola' }));
+    expect(await llamar(cuerpoCon({ nota: 'Hola!' }), firmado)).toEqual({ estado: 401, cuerpo: { error: 'firma-invalida' } });
+    expect((await llamar(cuerpoCon({ nota: 'Hola' }), firmado)).estado).toBe(200);
+  });
+
+  it('reintento con otra nota (o sin ella): repetido y conserva la primera', async () => {
+    await llamar(cuerpoCon({ nota: 'Primera' }));
+    expect((await llamar(cuerpoCon({ nota: 'Segunda' }))).cuerpo).toMatchObject({ repetida: true });
+    expect((await llamar(cuerpoCon({}))).cuerpo).toMatchObject({ repetida: true });
+    expect(doc(db, 'operaciones', 'nc-n1')?.['nota']).toBe('Primera');
+    expect(doc(db, 'movimientos', 'nc-n1__lapiz__tienda')?.['nota']).toBe('Primera');
+    expect(doc(db, 'existencias', 'lapiz__tienda')?.['cantidad']).toBe(4);
   });
 });

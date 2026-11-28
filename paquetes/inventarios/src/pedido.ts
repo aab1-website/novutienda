@@ -53,7 +53,7 @@ export type ResultadoPedido =
  */
 export async function confirmarPedido(
   tx: TransaccionIdentidad,
-  e: { tenantId: string; pedidoId: string; items: readonly ItemPedido[] },
+  e: { tenantId: string; pedidoId: string; items: readonly ItemPedido[]; nota?: string },
   por: Autor = ACTOR_SISTEMA,
 ): Promise<ResultadoPedido> {
   const tenantId = exigirTenant(e.tenantId);
@@ -76,7 +76,7 @@ export async function confirmarPedido(
   }
   try {
     const plan = await prepararSalida(tx, tenantId, lineas);
-    aplicarSalida(tx, plan, ref, por);
+    aplicarSalida(tx, plan, ref, por, e.nota === undefined || e.nota === '' ? undefined : exigirNota(e.nota));
     return { ok: true, operacionId: opId, repetida: false, lineas: plan.lineas };
   } catch (error) {
     if (!(error instanceof StockInsuficiente)) throw error;
@@ -252,11 +252,25 @@ function leerObjeto(cuerpo: string): Record<string, unknown> {
   return o as Record<string, unknown>;
 }
 
-/** Valida el cuerpo `{pedidoId, items[{productoId,cantidad}], confirmadoEn}` (claves exactas). */
-export function leerCuerpoPedido(cuerpo: string): { pedidoId: string; items: ItemPedido[]; confirmadoEn: string } {
+export const MAX_NOTA = 500;
+// eslint-disable-next-line no-control-regex
+const CONTROL = /[\u0000-\u001f\u007f-\u009f\u2028\u2029]/;
+
+/** Nota del cliente: texto de 1 a 500 caracteres (puntos de código), sin caracteres de control (tampoco saltos de línea: el carrito del sitio los convierte en espacio). */
+function exigirNota(x: unknown): string {
+  if (typeof x !== 'string') throw new EntradaInvalida('nota debe ser texto');
+  const n = Array.from(x).length;
+  if (n < 1 || n > MAX_NOTA) throw new EntradaInvalida(`nota debe tener de 1 a ${String(MAX_NOTA)} caracteres`);
+  if (CONTROL.test(x)) throw new EntradaInvalida('nota no admite caracteres de control');
+  return x;
+}
+
+/** Valida el cuerpo `{pedidoId, items[{productoId,cantidad}], confirmadoEn, nota?}` (claves exactas; `nota` opcional, ausente o "" = sin nota). */
+export function leerCuerpoPedido(cuerpo: string): { pedidoId: string; items: ItemPedido[]; confirmadoEn: string; nota?: string } {
   const r = leerObjeto(cuerpo);
-  const claves = Object.keys(r).sort().join(',');
-  if (claves !== 'confirmadoEn,items,pedidoId') throw new EntradaInvalida('El cuerpo requiere exactamente pedidoId, items y confirmadoEn');
+  const claves = Object.keys(r).filter((k) => k !== 'nota').sort().join(',');
+  if (claves !== 'confirmadoEn,items,pedidoId') throw new EntradaInvalida('El cuerpo requiere pedidoId, items y confirmadoEn, y admite solo nota como opcional');
+  const nota = 'nota' in r && r['nota'] !== '' ? exigirNota(r['nota']) : undefined;
   const confirmadoEn = r['confirmadoEn'];
   if (typeof confirmadoEn !== 'string' || !ISO_UTC.test(confirmadoEn) || Number.isNaN(Date.parse(confirmadoEn))) {
     throw new EntradaInvalida('confirmadoEn debe ser ISO 8601 UTC');
@@ -270,7 +284,7 @@ export function leerCuerpoPedido(cuerpo: string): { pedidoId: string; items: Ite
     }
     return { productoId: exigirProducto(it['productoId']), cantidad: exigirCantidad(it['cantidad']) };
   });
-  return { pedidoId: exigirSegmento(r['pedidoId'], 'pedidoId'), items: lista, confirmadoEn };
+  return { pedidoId: exigirSegmento(r['pedidoId'], 'pedidoId'), items: lista, confirmadoEn, ...(nota !== undefined ? { nota } : {}) };
 }
 
 /**
@@ -286,7 +300,7 @@ export async function confirmarPedidoFirmado(
   if (rechazo !== undefined) return rechazo;
   try {
     const p = leerCuerpoPedido(s.cuerpo);
-    const r = await deps.db.runTransaction((tx) => confirmarPedido(tx, { tenantId: s.tenantId, pedidoId: p.pedidoId, items: p.items }));
+    const r = await deps.db.runTransaction((tx) => confirmarPedido(tx, { tenantId: s.tenantId, pedidoId: p.pedidoId, items: p.items, ...(p.nota !== undefined ? { nota: p.nota } : {}) }));
     if (r.ok) return { estado: 200, cuerpo: { ok: true, operacionId: r.operacionId, repetida: r.repetida } };
     return { estado: 409, cuerpo: { ok: false, error: 'stock-insuficiente', faltantes: r.faltantes } };
   } catch (error) {

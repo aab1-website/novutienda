@@ -9,7 +9,7 @@ import { ProveedorGuardia } from '../../ui/guardia.js';
 import { PantallaInventario, separarSub } from './inventario.js';
 import { PantallaMermas } from './mermas.js';
 import { enlaceMovimientos, textoExistenciaActual } from './mermas-logica.js';
-import { ENCABEZADOS_CSV_MOVIMIENTOS, filasCsvMovimientos, quienFue } from './registro.js';
+import { ENCABEZADOS_CSV_MOVIMIENTOS, filasCsvMovimientos, notaDelCliente, quienFue, TablaMovimientos } from './registro.js';
 import { textoSerieOculta } from './series.js';
 import { columnasArchivo } from './importar-logica.js';
 
@@ -45,6 +45,17 @@ describe('4.4.1 registro: SKU, series y usuario', () => {
     const t = await screen.findByRole('table', { name: 'Movimientos de inventario' });
     expect(within(t).getByRole('columnheader', { name: /SKU/ })).toBeTruthy();
     expect(within(t).getByRole('columnheader', { name: /Series/ })).toBeTruthy();
+  });
+});
+
+describe('nota escrita por el cliente en el movimiento de un pedido', () => {
+  it('se muestra como texto escapado bajo «Nota escrita por el cliente» y sin nota queda un guion', () => {
+    const peligrosa = '<img src=x onerror=alert(1)> Sin bolsa';
+    const { container } = render(h(TablaMovimientos, { movs: [{ ...mov, id: 'a', tipo: 'pedido', delta: -1, nota: peligrosa } as MovimientoVista, { ...mov, id: 'b' }], productos: [] }));
+    expect(screen.getByRole('columnheader', { name: /Nota escrita por el cliente/ })).toBeTruthy();
+    expect(screen.getByText(peligrosa)).toBeTruthy();
+    expect(container.querySelector('img')).toBeNull();
+    expect(notaDelCliente(mov)).toBe('');
   });
 });
 

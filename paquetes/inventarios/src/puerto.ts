@@ -225,6 +225,7 @@ export function aplicarSalida(
   plan: PlanSalida,
   ref: ReferenciaSalida,
   por: Autor,
+  nota?: string,
 ): void {
   exigirReferencia(ref);
   const autor = exigirAutor(por);
@@ -238,6 +239,7 @@ export function aplicarSalida(
     por: autor,
     hashCarga: hashSalida(plan.lineas),
     resultado: { lineas },
+    ...(nota !== undefined ? { nota } : {}),
     resumen: { referencia: `${ref.tipo}:${ref.id}`, lineas: lineas.length },
   });
 }

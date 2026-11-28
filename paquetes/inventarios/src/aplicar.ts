@@ -28,6 +28,8 @@ export interface Contexto {
   /** Resultado guardado en `operaciones/{id}` y devuelto ante un reintento. Solo valores JSON. */
   readonly resultado: Datos;
   readonly motivo?: string;
+  /** Nota escrita por el cliente en su pedido (solo `nc-{id}`): se guarda en la operación y en sus movimientos. */
+  readonly nota?: string;
   readonly resumen?: Resumen;
   /** Cambios de catálogo de la operación: publican `producto.cambiado` en la misma transacción. */
   readonly cambiosProducto?: readonly { readonly productoId: string; readonly cambio: CambioProductoCambiado }[];
@@ -97,6 +99,7 @@ export function aplicarPlan(tx: TransaccionIdentidad, plan: PlanStock, ctx: Cont
       series: [...m.series],
       ...(m.costoUSDUnit !== undefined ? { costoUSDUnit: m.costoUSDUnit } : {}),
       referencia: { ...ctx.referencia },
+      ...(ctx.nota !== undefined ? { nota: ctx.nota } : {}),
       por: ctx.por.uid,
       rol: ctx.por.rol,
       fecha: tx.marcaTiempoServidor(),
@@ -154,6 +157,7 @@ export function aplicarPlan(tx: TransaccionIdentidad, plan: PlanStock, ctx: Cont
     tipo: ctx.tipoOperacion,
     hashCarga: ctx.hashCarga,
     resultado: ctx.resultado,
+    ...(ctx.nota !== undefined ? { nota: ctx.nota } : {}),
     por: ctx.por.uid,
     rol: ctx.por.rol,
     fecha: tx.marcaTiempoServidor(),

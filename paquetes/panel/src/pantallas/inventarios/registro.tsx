@@ -33,6 +33,12 @@ export function filasCsvMovimientos(lista: readonly MovimientoVista[], productos
 }
 export const ENCABEZADOS_CSV_MOVIMIENTOS = ['Fecha', 'Tipo', 'Producto', 'SKU', 'Almacén', 'Cantidad', 'Entrada/Salida', 'Saldo', 'Series', 'Usuario', 'Motivo'];
 
+/** Movimiento con la nota que el cliente escribió en su pedido de WhatsApp (solo los `nc-{pedidoId}`). */
+type MovimientoConNota = MovimientoVista & { readonly nota?: string };
+/** Texto plano: Preact lo escapa; nunca se interpreta como HTML ni como estado del pedido. */
+export const TITULO_NOTA_CLIENTE = 'Nota escrita por el cliente';
+export const notaDelCliente = (m: MovimientoVista): string => ((m as MovimientoConNota).nota ?? '').trim();
+
 /** Tabla de movimientos con búsqueda, filtro por almacén y páginas. Con `cortada`, avisa que la lista no está completa. */
 export function TablaMovimientos({ movs, productos, usuarios = [], cortada = false }: { movs: readonly MovimientoVista[]; productos: readonly ProductoPanel[]; usuarios?: readonly UsuarioVista[]; cortada?: boolean }): JSX.Element {
   const nombre = (id: string): string => productos.find((p) => p.id === id)?.nombre ?? id;
@@ -43,7 +49,7 @@ export function TablaMovimientos({ movs, productos, usuarios = [], cortada = fal
       filas={movs}
       clave={(m) => m.id}
       porPagina={25}
-      buscar={{ etiqueta: 'Buscar por producto, SKU, serie, usuario o motivo', en: (m) => [nombre(m.productoId), sku(m.productoId), m.series.join(' '), m.por, quienFue(m, usuarios), m.motivo ?? ''] }}
+      buscar={{ etiqueta: 'Buscar por producto, SKU, serie, usuario o motivo', en: (m) => [nombre(m.productoId), sku(m.productoId), m.series.join(' '), m.por, quienFue(m, usuarios), m.motivo ?? '', notaDelCliente(m)] }}
       filtros={[{ id: 'almacen', etiqueta: 'Almacén', opciones: OPCIONES_ALMACEN.map((o) => ({ valor: o.valor, texto: o.texto })), aplica: (m, v) => m.ubicacionId === v }]}
       cortada={cortada ? { mostradas: movs.length, mensaje: mensajeCortada(movs.length) } : undefined}
       vacio={{ titulo: 'No hay movimientos' }}
@@ -56,6 +62,7 @@ export function TablaMovimientos({ movs, productos, usuarios = [], cortada = fal
         { id: 'cantidad', titulo: 'Cantidad', valor: (m) => m.delta, celda: (m) => (m.delta > 0 ? `+${String(m.delta)}` : String(m.delta)), ordenable: true },
         { id: 'series', titulo: 'Series', valor: (m) => m.series.join(', '), celda: (m) => (m.series.length > 0 ? m.series.join(', ') : '—') },
         { id: 'usuario', titulo: 'Usuario', valor: (m) => quienFue(m, usuarios) },
+        { id: 'nota', titulo: TITULO_NOTA_CLIENTE, valor: notaDelCliente, celda: (m) => (notaDelCliente(m) === '' ? '—' : notaDelCliente(m)) },
       ]}
     />
   );
