@@ -273,6 +273,16 @@ describe('existencias ocultas: el panel distingue «oculto» (null) de «no cont
     expect('saldoUbicacion' in (m.movimientos[0] ?? {})).toBe(false);
     expect(m.movimientos[1]?.saldoUbicacion).toBe(7);
   });
+
+  it('la nota del pedido llega en el movimiento; ausente si no la hay', async () => {
+    const base = { operacionId: 'o', productoId: 'p', ubicacionId: 'tienda', tipo: 'venta', delta: -1, por: 'u', rol: 'caj', fecha: 'f' };
+    const m = (await ejecutar('listarMovimientos', {
+      cortada: false,
+      movimientos: [{ ...base, nota: 'Entregar por la tarde' }, base],
+    })) as { movimientos: { nota?: string }[] };
+    expect(m.movimientos[0]?.nota).toBe('Entregar por la tarde');
+    expect('nota' in (m.movimientos[1] ?? {})).toBe(false);
+  });
 });
 
 describe('errores del servidor: el panel mapea por details.codigo', () => {

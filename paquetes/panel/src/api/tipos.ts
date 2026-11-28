@@ -399,6 +399,8 @@ export interface MovimientoVista {
   readonly rol: Rol;
   readonly fecha: string;
   readonly motivo?: string;
+  /** Nota opcional del cliente en un pedido firmado. */
+  readonly nota?: string;
 }
 
 export type EstadoMerma = 'solicitada' | 'aprobada' | 'rechazada';
